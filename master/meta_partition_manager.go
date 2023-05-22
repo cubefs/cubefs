@@ -53,7 +53,7 @@ func (c *Cluster) checkLoadMetaPartitions() {
 	}
 }
 
-func (mp *MetaPartition) checkSnapshot(clusterID string) {
+func (mp *MetaPartition) checkSnapshot(c *Cluster) {
 	if len(mp.LoadResponse) == 0 {
 		return
 	}
@@ -63,8 +63,8 @@ func (mp *MetaPartition) checkSnapshot(clusterID string) {
 	if !mp.isSameApplyID() {
 		return
 	}
-	ckInode := mp.checkInodeCount(clusterID)
-	ckDentry := mp.checkDentryCount(clusterID)
+	ckInode := mp.checkInodeCount(c)
+	ckDentry := mp.checkDentryCount(c)
 	if ckInode && ckDentry {
 		mp.EqualCheckPass = true
 	} else {
@@ -92,7 +92,7 @@ func (mp *MetaPartition) isSameApplyID() bool {
 	return rst
 }
 
-func (mp *MetaPartition) checkInodeCount(clusterID string) (isEqual bool) {
+func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 	isEqual = true
 	maxInode := mp.LoadResponse[0].MaxInode
 	maxInodeCount := mp.LoadResponse[0].InodeCount
@@ -112,7 +112,6 @@ func (mp *MetaPartition) checkInodeCount(clusterID string) (isEqual bool) {
 			break
 		}
 	}
-
 	if !isEqual {
 		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
@@ -121,12 +120,17 @@ func (mp *MetaPartition) checkInodeCount(clusterID string) (isEqual bool) {
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
 			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] maxInode[" + inodeMaxInodeStr + "] maxInodeCnt[" + inodeMaxCountStr + "],"
 		}
-		Warn(clusterID, msg)
+		Warn(c.Name, msg)
+		c.inodeCountNotEqualMP.Store(mp.PartitionID, mp)
+	} else {
+		if _, ok := c.inodeCountNotEqualMP.Load(mp.PartitionID); ok {
+			c.inodeCountNotEqualMP.Delete(mp.PartitionID)
+		}
 	}
 	return
 }
 
-func (mp *MetaPartition) checkDentryCount(clusterID string) (isEqual bool) {
+func (mp *MetaPartition) checkDentryCount(c *Cluster) (isEqual bool) {
 	isEqual = true
 	if mp.IsRecover {
 		return
@@ -146,7 +150,12 @@ func (mp *MetaPartition) checkDentryCount(clusterID string) (isEqual bool) {
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
 			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] dentryCount[" + dentryCountStr + "],"
 		}
-		Warn(clusterID, msg)
+		Warn(c.Name, msg)
+		c.dentryCountNotEqualMP.Store(mp.PartitionID, mp)
+	} else {
+		if _, ok := c.dentryCountNotEqualMP.Load(mp.PartitionID); ok {
+			c.dentryCountNotEqualMP.Delete(mp.PartitionID)
+		}
 	}
 	return
 }

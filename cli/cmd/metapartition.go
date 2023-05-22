@@ -183,6 +183,40 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			}
 
 			stdout("\n")
+			stdout("%v\n", "[Partition with replica inode count not equal]:")
+			stdout("%v\n", inodeCountNotEqualInfoTableHeader)
+			sort.SliceStable(diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs[i] < diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs[j]
+			})
+			for _, pid := range diagnosis.InodeCountNotEqualReplicaMetaPartitionIDs {
+				var partition *proto.MetaPartitionInfo
+				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdout("%v\n", formatMetaPartitionReplicaInodeNotEqualInfoRow(partition))
+				}
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Partition with replica dentry count not equal]:")
+			stdout("%v\n", dentryCountNotEqualInfoTableHeader)
+			sort.SliceStable(diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs[i] < diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs[j]
+			})
+			for _, pid := range diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs {
+				var partition *proto.MetaPartitionInfo
+				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdout("%v\n", formatMetaPartitionReplicaDentryNotEqualInfoRow(partition))
+				}
+			}
+
+			stdout("\n")
 			stdout("%v\n", "[Partition with excessive replicas]:")
 			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.ExcessReplicaMetaPartitionIDs, func(i, j int) bool {

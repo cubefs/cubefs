@@ -77,6 +77,8 @@ type Cluster struct {
 	DecommissionLimit            uint64
 	checkAutoCreateDataPartition bool
 	masterClient                 *masterSDK.MasterClient
+	inodeCountNotEqualMP         *sync.Map
+	dentryCountNotEqualMP        *sync.Map
 }
 
 type followerReadManager struct {
@@ -252,6 +254,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.DecommissionLimit = defaultDecommissionParallelLimit
 	c.checkAutoCreateDataPartition = false
 	c.masterClient = masterSDK.NewMasterClient(nil, false)
+	c.inodeCountNotEqualMP = new(sync.Map)
+	c.dentryCountNotEqualMP = new(sync.Map)
 	return
 }
 
