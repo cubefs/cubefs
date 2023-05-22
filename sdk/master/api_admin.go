@@ -654,3 +654,16 @@ func (api *AdminAPI) BatchModifyQuotaPath(volName string, quotaMap map[uint32]st
 	log.LogInfof("action[BatchModifyQuotaPath] vol [%v] quotaMap [%v] success.", volName, quotaMap)
 	return nil
 }
+
+func (api *AdminAPI) QueryBadDisks() (badDisks *proto.BadDiskInfos, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.QueryBadDisks)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	badDisks = &proto.BadDiskInfos{}
+	if err = json.Unmarshal(buf, &badDisks); err != nil {
+		return
+	}
+	return
+}

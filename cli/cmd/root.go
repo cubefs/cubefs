@@ -64,6 +64,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 		newAclCmd(client),
 		newUidCmd(client),
 		newQuotaCmd(client),
+		newDiskCmd(client),
 	)
 	return cmd
 }
