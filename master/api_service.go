@@ -76,8 +76,6 @@ func newZoneView(name string) *ZoneView {
 	return &ZoneView{NodeSet: make(map[uint64]*nodeSetView, 0), Name: name}
 }
 
-type badPartitionView = proto.BadPartitionView
-
 // Set the threshold of the memory usage on each meta node.
 // If the memory usage reaches this threshold, then all the mata partition will be marked as readOnly.
 func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {
@@ -4002,6 +4000,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 			return
 		}
 	}
+
 	rules := r.FormValue(smartRulesKey)
 	if rules != "" {
 		smartRules = strings.Split(rules, ",")

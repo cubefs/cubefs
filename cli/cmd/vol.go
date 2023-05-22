@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/cli/cmd/util/sdk"
 	"github.com/cubefs/cubefs/util/exporter"
 	"io/ioutil"
 	"net/http"
@@ -2213,8 +2214,8 @@ func getExtentsByDPs(client *master.MasterClient, volumeName string) (dataExtent
 }
 
 func getExtentsByDataPartition(dpId uint64, dataNodeAddr string) (extentsID []uint64, err error) {
-	var dpView *DataPartition
-	dpView, err = getExtentsByDp(dpId, dataNodeAddr)
+	var dpView *sdk.DataPartition
+	dpView, err = sdk.GetExtentsByDp(client, dpId, dataNodeAddr)
 	if err != nil {
 		return
 	}

@@ -2,35 +2,20 @@ package repaircrc_server
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/cli/cmd"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/log"
 	"regexp"
 	"strings"
 	"time"
 )
 
 type RepairCrcTask struct {
-	TaskId        int64        `json:"task_id"`
-	ClusterInfo   *ClusterInfo `json:"cluster_info"`
-	LimitLevel    uint32       `json:"limit_level"`
-	Filter        *Filter      `json:"filter"`
-	Frequency     *Frequency   `json:"frequency"`
-	ModifyTimeMin string       `json:"modify_time_min"`
-	ModifyTimeMax string       `json:"modify_time_max"`
-	RepairType    RepairType   `json:"repair_type"`
-	CheckTiny     bool         `json:"check_tiny"`
-	NodeAddress   string       `json:"node_address"`
-	mc            *master.MasterClient
-	stopC         chan bool
-}
-
-type Filter struct {
-	VolFilter         string `json:"vol_filter"`
-	VolExcludeFilter  string `json:"vol_exclude_filter"`
-	ZoneFilter        string `json:"zone_filter"`
-	ZoneExcludeFilter string `json:"zone_exclude_filter"`
+	proto.CheckCrcTaskInfo
+	Frequency   *Frequency   `json:"frequency"`
+	TaskId      int64        `json:"task_id"`
+	ClusterInfo *ClusterInfo `json:"cluster_info"`
+	mc          *master.MasterClient
+	stopC       chan bool
 }
 
 type Frequency struct {
@@ -44,24 +29,19 @@ type ClusterInfo struct {
 	MnProf uint16 `json:"mn_prof"`
 }
 
-type RepairType uint8
-
-const (
-	RepairDataNode RepairType = iota
-	RepairVolume
-)
-
 const (
 	defaultIntervalHour = 24
 )
 
 func NewRepairTask() *RepairCrcTask {
 	return &RepairCrcTask{
-		Frequency: &Frequency{
-			Interval: defaultIntervalHour,
+		CheckCrcTaskInfo: proto.CheckCrcTaskInfo{
+			Frequency: proto.Frequency{
+				Interval: defaultIntervalHour,
+			},
+			Filter: proto.Filter{},
 		},
 		ClusterInfo: new(ClusterInfo),
-		Filter:      new(Filter),
 		stopC:       make(chan bool, 8),
 	}
 }
@@ -84,7 +64,7 @@ func (t *RepairCrcTask) validTask() (err error) {
 		err = fmt.Errorf("frequency info illegal")
 		return
 	}
-	if t.RepairType > RepairVolume {
+	if t.RepairType > proto.RepairVolume {
 		err = fmt.Errorf("repair type illegal")
 		return
 	}
@@ -100,7 +80,7 @@ func (t *RepairCrcTask) validTask() (err error) {
 			return
 		}
 	}
-	if t.RepairType == RepairDataNode && t.NodeAddress == "" {
+	if t.RepairType == proto.RepairDataNode && t.NodeAddress == "" {
 		err = fmt.Errorf("nodeAddress can not be empty when repair datanode")
 		return
 	}
@@ -108,87 +88,5 @@ func (t *RepairCrcTask) validTask() (err error) {
 		err = fmt.Errorf("nodeAddress illegal")
 		return
 	}
-	return
-}
-
-func (t *RepairCrcTask) executeVolumeTask() (err error) {
-	var (
-		volsInfo []*proto.VolInfo
-		para     *cmd.CheckParam
-	)
-	log.LogInfof("executeVolumeTask begin, taskID:%v ", t.TaskId)
-	defer func() {
-		log.LogInfof("executeVolumeTask end, taskID:%v ", t.TaskId)
-	}()
-	for i := 1; i < 20; i++ {
-		volsInfo, err = t.mc.AdminAPI().ListVols("")
-		if err == nil {
-			break
-		}
-	}
-	if err != nil {
-		return
-	}
-	mpConcurrency := t.LimitLevel
-	inodeConcurrency := t.LimitLevel
-	extentConcurrency := t.LimitLevel
-	vols := make([]string, 0)
-	for _, v := range volsInfo {
-		if t.Filter.VolFilter != "" && !strings.Contains(v.Name, t.Filter.VolFilter) {
-			continue
-		}
-		if t.Filter.VolExcludeFilter != "" && strings.Contains(v.Name, t.Filter.VolExcludeFilter) {
-			continue
-		}
-		vols = append(vols, v.Name)
-	}
-	para, err = cmd.NewCheckParam(false, false, uint64(mpConcurrency), uint64(inodeConcurrency), uint64(extentConcurrency), checkTypeExtentReplica, t.ModifyTimeMin, t.ModifyTimeMax, 0, make([]uint64, 0), make([]uint64, 0))
-	if err != nil {
-		return
-	}
-	var checkStop = func() bool {
-		select {
-		case <-t.stopC:
-			return true
-		default:
-			return false
-		}
-	}
-	rp := cmd.NewRepairPersist(t.mc.Nodes()[0])
-	go rp.PersistResult()
-	defer rp.Close()
-	for _, v := range vols {
-		if checkStop() {
-			break
-		}
-		volume, err1 := t.mc.AdminAPI().GetVolumeSimpleInfo(v)
-		if err1 != nil {
-			continue
-		}
-		if t.Filter.ZoneFilter != "" && !strings.Contains(volume.ZoneName, t.Filter.ZoneFilter) {
-			continue
-		}
-		if t.Filter.ZoneExcludeFilter != "" && strings.Contains(volume.ZoneName, t.Filter.ZoneExcludeFilter) {
-			continue
-		}
-		cmd.CheckVol(v, t.mc, "", para, rp.RCh, checkStop)
-	}
-	return
-}
-
-func CheckVols(vols []string, c *master.MasterClient, para *cmd.CheckParam, path string, stopFunc func() bool) {
-	var err error
-	defer func() {
-		if err != nil {
-			log.LogErrorf("CheckVols error: %v", err)
-		}
-	}()
-
-}
-
-func (t *RepairCrcTask) executeDataNodeTask() (err error) {
-	log.LogInfof("executeDataNodeTask begin, taskID:%v ", t.TaskId)
-	cmd.CheckDataNodeCrc(t.NodeAddress, t.mc, uint64(t.LimitLevel), checkTypeExtentReplica, t.ModifyTimeMin, t.CheckTiny)
-	log.LogInfof("executeDataNodeTask end, taskID:%v ", t.TaskId)
 	return
 }

@@ -696,3 +696,10 @@ func (dc *DataHttpClient) PlaybackPartitionTinyDelete(partition uint64) (err err
 	}
 	return
 }
+
+func (dc *DataHttpClient) SetLoglevel(level string) (err error) {
+	params := make(map[string]string, 0)
+	params["level"] = level
+	_, err = dc.RequestHttp(http.MethodGet, "/loglevel/set", params)
+	return
+}
