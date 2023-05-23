@@ -41,7 +41,7 @@ func (mqMgr *MasterQuotaManager) setQuota(req *proto.SetMasterQuotaReuqest) (err
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
 
-	if len(mqMgr.IdQuotaInfoMap) >= MaxQuotaNumPerVol {
+	if len(mqMgr.IdQuotaInfoMap) >= gConfig.MaxQuotaNumPerVol {
 		err = errors.NewErrorf("the number of quota has reached the upper limit %v", len(mqMgr.IdQuotaInfoMap))
 		return
 	}
@@ -167,13 +167,13 @@ func (mqMgr *MasterQuotaManager) getQuota(fullPath string) (quotaInfo *proto.Quo
 	return quotaInfo, nil
 }
 
-func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
+func (mqMgr *MasterQuotaManager) deleteQuota(fullPath string) (err error) {
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
 
-	quotaInfo, isFind := mqMgr.IdQuotaInfoMap[quotaId]
+	quotaInfo, isFind := mqMgr.FullPathQuotaInfoMap[fullPath]
 	if !isFind {
-		log.LogErrorf("vol [%v] quota quotaId [%v] is not exist.", mqMgr.vol.Name, quotaId)
+		log.LogErrorf("vol [%v] quota fullPath [%v] is not exist.", mqMgr.vol.Name, fullPath)
 		err = errors.New("quota is not exist.")
 		return
 	}
@@ -186,7 +186,7 @@ func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
 	}
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncSetQuota
-	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaId), 10)
+	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaInfo.QuotaId), 10)
 	metadata.V = value
 
 	if err = mqMgr.c.submit(metadata); err != nil {
@@ -199,7 +199,7 @@ func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
 	request := &proto.BatchDeleteMetaserverQuotaReuqest{
 		PartitionId: quotaInfo.PartitionId,
 		Inodes:      inodes,
-		QuotaId:     quotaId,
+		QuotaId:     quotaInfo.QuotaId,
 	}
 
 	if err = mqMgr.DeleteQuotaToMetaNode(request); err != nil {
@@ -207,7 +207,7 @@ func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
 		return
 	}
 
-	delete(mqMgr.IdQuotaInfoMap, quotaId)
+	delete(mqMgr.IdQuotaInfoMap, quotaInfo.QuotaId)
 	delete(mqMgr.FullPathQuotaInfoMap, quotaInfo.FullPath)
 	log.LogInfof("deleteQuota: idmap len [%v] fullpathMap len [%v]",
 		len(mqMgr.IdQuotaInfoMap), len(mqMgr.FullPathQuotaInfoMap))
@@ -396,6 +396,16 @@ func (mqMgr *MasterQuotaManager) batchModifyQuotaFullPath(changeFullPathMap map[
 		}
 	}
 	log.LogInfof("batchModifyQuotaFullPath idMap [%v] pathmap [%v]", mqMgr.IdQuotaInfoMap, mqMgr.FullPathQuotaInfoMap)
+}
+
+func (mqMgr *MasterQuotaManager) HasQuota() bool {
+	mqMgr.RLock()
+	defer mqMgr.RUnlock()
+
+	if len(mqMgr.IdQuotaInfoMap) == 0 {
+		return false
+	}
+	return true
 }
 
 func resetQuotaTaskID(t *proto.AdminTask, quotaId uint32) {

@@ -1519,7 +1519,7 @@ func parserUpdateQuotaParam(r *http.Request, req *proto.UpdateMasterQuotaReuqest
 	return
 }
 
-func parseDeleteQuotaParam(r *http.Request) (volName string, quotaId uint32, err error) {
+func parseDeleteQuotaParam(r *http.Request) (volName string, fullPath string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1528,13 +1528,10 @@ func parseDeleteQuotaParam(r *http.Request) (volName string, quotaId uint32, err
 		return
 	}
 
-	value := r.FormValue(quotaKey)
-	if value == "" {
-		err = keyNotFound(startKey)
+	if fullPath, err = extractPath(r); err != nil {
 		return
 	}
-	v, err := strconv.ParseUint(value, 10, 32)
-	quotaId = uint32(v)
+
 	return
 }
 

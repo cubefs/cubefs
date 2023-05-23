@@ -3631,6 +3631,21 @@ func (c *Cluster) getAllDecommissionDataPartitionByDisk(addr, disk string) (part
 	return
 }
 
+func (c *Cluster) listQuotaAll() (volsInfo []*proto.VolInfo) {
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
+	for _, vol := range c.vols {
+		if vol.quotaManager.HasQuota() {
+			stat := volStat(vol, false)
+			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize,
+				stat.UsedSize, stat.DpReadOnlyWhenVolFull)
+			volsInfo = append(volsInfo, volInfo)
+		}
+	}
+
+	return
+}
+
 func mergeDataPartitionArr(newDps, oldDps []*DataPartition) []*DataPartition {
 	ret := make([]*DataPartition, 0)
 	tempMap := make(map[uint64]bool)

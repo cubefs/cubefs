@@ -606,10 +606,10 @@ func (api *AdminAPI) UpdateQuota(volName string, fullPath string, inodeId uint64
 	return nil
 }
 
-func (api *AdminAPI) DeleteQuota(volName string, quotaId string) (err error) {
+func (api *AdminAPI) DeleteQuota(volName string, fullPath string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QuotaDelete)
 	request.addParam("name", volName)
-	request.addParam("quotaId", quotaId)
+	request.addParam("fullPath", fullPath)
 
 	if _, err = api.mc.serveRequest(request); err != nil {
 		log.LogErrorf("action[DeleteQuota] fail. %v", err)
@@ -663,6 +663,21 @@ func (api *AdminAPI) QueryBadDisks() (badDisks *proto.BadDiskInfos, err error) {
 	}
 	badDisks = &proto.BadDiskInfos{}
 	if err = json.Unmarshal(buf, &badDisks); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) ListQuotaAll() (volsInfo []*proto.VolInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaListAll)
+	var data []byte
+
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+
+	volsInfo = make([]*proto.VolInfo, 0)
+	if err = json.Unmarshal(data, &volsInfo); err != nil {
 		return
 	}
 	return
