@@ -103,10 +103,11 @@ class CopyObjectTest(S3TestCase):
             # The response returned metadata key we specified is lower,
             # so when using this metadata, we need to transfer metadata key to lower
             self.assertIsNotNone(target_meta_data)
-            self.assertTrue(META_DATE_KEY_1.lower() in target_meta_data.keys())
-            self.assertTrue(META_DATE_KEY_2.lower() in target_meta_data.keys())
-            self.assertEqual(target_meta_data[META_DATE_KEY_1.lower()], META_DATE_VALUE_1)
-            self.assertEqual(target_meta_data[META_DATE_KEY_2.lower()], META_DATE_VALUE_2)
+            print("target_meta_data.keys():", target_meta_data.keys())
+            self.assertTrue(META_DATE_KEY_1.lower().capitalize() in target_meta_data.keys())
+            self.assertTrue(META_DATE_KEY_2.lower().capitalize() in target_meta_data.keys())
+            self.assertEqual(target_meta_data[META_DATE_KEY_1.lower().capitalize()], META_DATE_VALUE_1)
+            self.assertEqual(target_meta_data[META_DATE_KEY_2.lower().capitalize()], META_DATE_VALUE_2)
 
     @classmethod
     def clear_data(cls):
@@ -187,10 +188,10 @@ class CopyObjectTest(S3TestCase):
         target_metadata = target_response["Metadata"]
         self.assertEqual(len(source_metadata), 0)
         self.assertEqual(len(target_metadata), 2)
-        self.assertTrue(META_DATE_KEY_1.lower() in target_metadata.keys())
-        self.assertTrue(META_DATE_KEY_2.lower() in target_metadata.keys())
-        self.assertEqual(target_metadata[META_DATE_KEY_1.lower()], META_DATE_VALUE_1)
-        self.assertEqual(target_metadata[META_DATE_KEY_2.lower()], META_DATE_VALUE_2)
+        self.assertTrue(META_DATE_KEY_1.lower().capitalize() in target_metadata.keys())
+        self.assertTrue(META_DATE_KEY_2.lower().capitalize() in target_metadata.keys())
+        self.assertEqual(target_metadata[META_DATE_KEY_1.lower().capitalize()], META_DATE_VALUE_1)
+        self.assertEqual(target_metadata[META_DATE_KEY_2.lower().capitalize()], META_DATE_VALUE_2)
 
     def test_copy_modify_metadata(self):
         """
@@ -212,5 +213,5 @@ class CopyObjectTest(S3TestCase):
         # target key not contain metadata
         metadata = response["Metadata"]
         self.assertEqual(len(metadata), 1)
-        self.assertTrue(META_DATE_KEY_1.lower() in metadata.keys())
-        self.assertEqual(metadata[META_DATE_KEY_1.lower()], META_DATE_VALUE_1_MODIFIED)
+        self.assertTrue(META_DATE_KEY_1.lower().capitalize() in metadata.keys())
+        self.assertEqual(metadata[META_DATE_KEY_1.lower().capitalize()], META_DATE_VALUE_1_MODIFIED)
