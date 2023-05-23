@@ -83,8 +83,19 @@ const (
 	disabledActions               = "disabledActions"
 	configSignatureIgnoredActions = "signatureIgnoredActions"
 
-	//ObjMetaCache takes each path hierarchy of the path-like S3 object key as the cache key,
-	//and map it to the corresponding posix-compatible inode
+	// String array configuration item, used to configure the actions that are not allowed to be accessed by
+	// STS users.
+	// Example:
+	//		{
+	//			"stsNotAllowedActions": [
+	//				"action:oss:CreateBucket",
+	//				"action:oss:DeleteBucket"
+	//			]
+	//		}
+	configSTSNotAllowedActions = "stsNotAllowedActions"
+
+	// ObjMetaCache takes each path hierarchy of the path-like S3 object key as the cache key,
+	// and map it to the corresponding posix-compatible inode
 	// when enabled, the maxDentryCacheNum must at least be the minimum of defaultMaxDentryCacheNum
 	// Example:
 	//		{
@@ -101,9 +112,9 @@ const (
 	configMaxDentryCacheNum    = "maxDentryCacheNum"
 	configMaxInodeAttrCacheNum = "maxInodeAttrCacheNum"
 
-	//enable block cache when reading data in cold volume
+	// enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"
-	//define thread numbers for writing and reading ebs
+	// define thread numbers for writing and reading ebs
 	ebsWriteThreads = "bStoreWriteThreads"
 	ebsReadThreads  = "bStoreReadThreads"
 )
@@ -114,7 +125,7 @@ const (
 	defaultCacheRefreshInterval = 10 * 60
 	defaultMaxDentryCacheNum    = 10000000
 	defaultMaxInodeAttrCacheNum = 10000000
-	//ebs
+	// ebs
 	MaxSizePutOnce = int64(1) << 23
 )
 
@@ -144,6 +155,7 @@ type ObjectNode struct {
 
 	signatureIgnoredActions proto.Actions // signature ignored actions
 	disabledActions         proto.Actions // disabled actions
+	stsNotAllowedActions    proto.Actions // actions that are not accessible to STS users
 
 	control common.Control
 }
@@ -205,6 +217,16 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		if !action.IsNone() {
 			o.disabledActions = append(o.disabledActions, action)
 			log.LogInfof("loadConfig: disabled action: %v", action)
+		}
+	}
+
+	// parse sts not allowed actions
+	stsNotAllowedActions := cfg.GetStringSlice(configSTSNotAllowedActions)
+	for _, actionName := range stsNotAllowedActions {
+		action := proto.ParseAction(actionName)
+		if !action.IsNone() {
+			o.stsNotAllowedActions = append(o.stsNotAllowedActions, action)
+			log.LogInfof("loadConfig: sts not allowed action: %v", action)
 		}
 	}
 
