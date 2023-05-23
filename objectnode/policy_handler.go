@@ -46,26 +46,23 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 	var policy *Policy
 	if policy, err = vol.metaLoader.loadPolicy(); err != nil {
-		log.LogErrorf("getBucketPolicyHandler: load policy fail: requestID(%v) err(%v)",
+		log.LogErrorf("getBucketPolicyHandler: load volume policy fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		return
 	}
-
 	if policy == nil {
 		ec = NoSuchBucketPolicy
-		log.LogErrorf("getBucketPolicyHandler: NoSuchBucketPolicy, requestID(%v), err(%v), ec(%v)",
-			GetRequestID(r), err, ec)
 		return
 	}
 
-	var policyData []byte
-	policyData, err = json.Marshal(policy)
+	response, err := json.Marshal(policy)
 	if err != nil {
+		log.LogErrorf("getBucketPolicyHandler: json marshal fail, requestID(%v) policy(%v) err(%v)",
+			GetRequestID(r), policy, err)
 		return
 	}
 
-	w.Write(policyData)
-
+	writeSuccessResponseJSON(w, response)
 	return
 }
 
@@ -121,10 +118,9 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		log.LogErrorf("putBucketPolicyHandler: store policy fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
-
 	vol.metaLoader.storePolicy(policy)
-	w.WriteHeader(http.StatusNoContent)
 
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 
