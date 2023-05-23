@@ -29,6 +29,7 @@ This page contains a list of organizations who are using CubeFS in production or
 | [LinkSure Network](https://cn.wifi.com) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [BIGO LIVE](https://www.bigo.tv/cn/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
 | [Xiaomi](https://www.mi.com/global/) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
+| [PITS Global Data Recovery Services](https://www.pitsdatarecovery.net/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Da-Jiang Innovations](https://www.dji.com/cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Yanhuang Data](https://yanhuangdata.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Sinosoft](http://www.sinosoft.com.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
