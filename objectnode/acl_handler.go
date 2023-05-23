@@ -27,16 +27,15 @@ import (
 func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
-		ec  *ErrorCode
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, ec)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	param := ParseRequestParam(r)
-	log.LogDebugf("Get bucket acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
-		ec = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	var vol *Volume
@@ -60,11 +59,8 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), param.bucket, acl, err)
 		return
 	}
-	if _, err = w.Write(data); err != nil {
-		log.LogErrorf("getBucketACLHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
-			GetRequestID(r), param.bucket, string(data), err)
-	}
 
+	writeSuccessResponseXML(w, data)
 	return
 }
 
@@ -72,20 +68,19 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
-		ec  *ErrorCode
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, ec)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	param := ParseRequestParam(r)
-	log.LogDebugf("Put bucket acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
-		ec = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	if !HasAclInRequest(r) {
-		ec = ErrMissingSecurityHeader
+		erc = ErrMissingSecurityHeader
 		return
 	}
 
@@ -115,20 +110,19 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
-		ec  *ErrorCode
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, ec)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	param := ParseRequestParam(r)
-	log.LogDebugf("Get object acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
-		ec = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		ec = InvalidKey
+		erc = InvalidKey
 		return
 	}
 
@@ -143,7 +137,7 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		log.LogErrorf("getObjectACLHandler: get acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), param.bucket, param.object, err)
 		if err == syscall.ENOENT {
-			ec = NoSuchKey
+			erc = NoSuchKey
 		}
 		return
 	}
@@ -153,10 +147,8 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), param.bucket, param.object, acl, err)
 		return
 	}
-	if _, err = w.Write(data); err != nil {
-		log.LogErrorf("getObjectACLHandler: write response body fail: requestID(%v) volume(%v) path(%v) body(%v) err(%v)",
-			GetRequestID(r), param.bucket, param.object, string(data), err)
-	}
+
+	writeSuccessResponseXML(w, data)
 	return
 }
 
@@ -164,24 +156,23 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
-		ec  *ErrorCode
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, ec)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	param := ParseRequestParam(r)
-	log.LogDebugf("Put object acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
-		ec = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	if param.Object() == "" {
-		ec = InvalidKey
+		erc = InvalidKey
 		return
 	}
 	if !HasAclInRequest(r) {
-		ec = ErrMissingSecurityHeader
+		erc = ErrMissingSecurityHeader
 		return
 	}
 
@@ -196,7 +187,7 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		log.LogErrorf("putObjectACLHandler: get acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), param.bucket, param.object, err)
 		if err == syscall.ENOENT {
-			ec = NoSuchKey
+			erc = NoSuchKey
 		}
 		return
 	}
@@ -217,7 +208,7 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		if originalOwner != acl.GetOwner() {
 			log.LogErrorf("putObjectACLHandler: owner cannot be modified: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
 				GetRequestID(r), param.bucket, param.object, oldAcl, err)
-			ec = AccessDenied
+			erc = AccessDenied
 			return
 		}
 	}
@@ -225,8 +216,9 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		log.LogErrorf("putObjectACLHandler: store acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
 			GetRequestID(r), param.bucket, param.object, acl, err)
 		if err == syscall.ENOENT {
-			ec = NoSuchKey
+			erc = NoSuchKey
 		}
+		return
 	}
 
 	return
