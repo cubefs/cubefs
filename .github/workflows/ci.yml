@@ -69,7 +69,6 @@ jobs:
         run: |
           echo "mode: count" > coverage-all.out
           tail -n +2 ./coverage.txt >> coverage-all.out
-          tail -n +2 ./blobstore/coverage.txt >> coverage-all.out
       - name: Upload codecov
         uses: codecov/codecov-action@v3
         with:

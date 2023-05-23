@@ -139,7 +139,7 @@ class SignatureTest(S3TestCase):
         :return: None
         """
         self.__test_sign(
-            s3=get_env_s3_client(signature_version='s3'))
+            s3=get_env_s3_client())
 
     def test_signature_v2_cn(self):
         """
@@ -148,7 +148,7 @@ class SignatureTest(S3TestCase):
          :return: None
          """
         self.__test_sign(
-            s3=get_env_s3_client(signature_version='s3'),
+            s3=get_env_s3_client(),
             key=KEY_PREFIX + random_string_cn(16))
 
     def test_signature_v2_presign_en(self):
@@ -157,7 +157,7 @@ class SignatureTest(S3TestCase):
         :return:
         """
         self.__test_presign(
-            s3=get_env_s3_client(signature_version='s3'))
+            s3=get_env_s3_client())
 
     def test_signature_v2_presign_cn(self):
         """
@@ -166,7 +166,7 @@ class SignatureTest(S3TestCase):
          :return:
          """
         self.__test_presign(
-            s3=get_env_s3_client(signature_version='s3'),
+            s3=get_env_s3_client(),
             key=KEY_PREFIX + random_string_cn(16))
 
     def test_signature_v4_en(self):
