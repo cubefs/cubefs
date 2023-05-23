@@ -462,8 +462,8 @@ func TestAbortOps(t *testing.T) {
 	db.ReleaseRocksDb()
 }
 
-func TestRocksDB_panicRecover(t *testing.T) {
-	testPanicRecoverPath := "./testDBPanicRecover"
+func TestRocksDB_accessDB(t *testing.T) {
+	testPanicRecoverPath := "./test_access_db"
 	os.RemoveAll(testPanicRecoverPath)
 	defer func() {
 		os.RemoveAll(testPanicRecoverPath)
