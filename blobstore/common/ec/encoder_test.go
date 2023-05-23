@@ -17,6 +17,7 @@ package ec
 import (
 	"bytes"
 	"crypto/rand"
+	"math"
 	mrand "math/rand"
 	"reflect"
 	"testing"
@@ -331,65 +332,117 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 	// M failures test
 	dataShards = encoder.GetDataShards(shards)
 	parityShards := encoder.GetParityShards(shards)
-	for i := 0; i < cfg.CodeMode.M; i++ {
-		if i%2 == 0 {
-			badIdxs = append(badIdxs, i)
+	comb := func(n, k int) int {
+		lgmma1, _ := math.Lgamma(float64(n + 1))
+		lgmma2, _ := math.Lgamma(float64(k + 1))
+		lgmma3, _ := math.Lgamma(float64(n - k + 1))
+		return int(math.Round(math.Exp(lgmma1 - lgmma2 - lgmma3)))
+	}
+	n := cfg.CodeMode.N + cfg.CodeMode.M + cfg.CodeMode.L
+	k := cfg.CodeMode.M
+	combinationCnt := comb(n, k)
+	tmpCombination := make([]int, k)
+	for i := range tmpCombination {
+		tmpCombination[i] = i
+	}
+	if combinationCnt > 100000 {
+		combinationCnt = 100000
+	}
+	for i := 0; i < combinationCnt; i++ {
+		badIdxs = make([]int, 0)
+		// Obtaining corresponding matrix by the combination
+		for _, e := range tmpCombination {
+			badIdxs = append(badIdxs, e)
 			// set wrong data
-			if i < len(dataShards) {
-				for j := range dataShards[i] {
-					dataShards[i][j] = 222
+			if e < len(dataShards) {
+				for j := range dataShards[e] {
+					dataShards[e][j] = 222
+				}
+			} else {
+				for j := range parityShards[e-len(dataShards)] {
+					parityShards[e-len(dataShards)][j] = 222
 				}
 			}
-		} else {
-			badIdxs = append(badIdxs, cfg.CodeMode.N+cfg.CodeMode.M+cfg.CodeMode.L-i)
-			// set wrong data
-			for j := range parityShards[cfg.CodeMode.M+cfg.CodeMode.L-i] {
-				parityShards[cfg.CodeMode.M+cfg.CodeMode.L-i][j] = 222
+		}
+		// test verify failed
+		ok, err = encoder.Verify(shards)
+		require.False(t, ok)
+
+		err = encoder.Reconstruct(shards, badIdxs)
+		require.NoError(t, err)
+		ok, err = encoder.Verify(shards)
+		require.NoError(t, err)
+		require.True(t, ok)
+		wbuff = bytes.NewBuffer(make([]byte, 0))
+		err = encoder.Join(wbuff, shards, len(srcData))
+		require.NoError(t, err)
+		require.Equal(t, srcData, wbuff.Bytes())
+
+		if i < combinationCnt-1 {
+			j := k - 1
+			for j >= 0 && tmpCombination[j] == n-k+j {
+				j--
+			}
+			tmpCombination[j]++
+			for j = j + 1; j < k; j++ {
+				tmpCombination[j] = tmpCombination[j-1] + 1
 			}
 		}
 	}
 
-	// test verify failed
-	ok, err = encoder.Verify(shards)
-	require.False(t, ok)
-
-	err = encoder.Reconstruct(shards, badIdxs)
-	require.NoError(t, err)
-	ok, err = encoder.Verify(shards)
-	require.NoError(t, err)
-	require.True(t, ok)
-	wbuff = bytes.NewBuffer(make([]byte, 0))
-	err = encoder.Join(wbuff, shards, len(srcData))
-	require.NoError(t, err)
-	require.Equal(t, srcData, wbuff.Bytes())
-
-	badIdxs = make([]int, 0)
 	// M+1 failures test
-	dataShards = encoder.GetDataShards(shards)
-	parityShards = encoder.GetParityShards(shards)
-	for i := 0; i < cfg.CodeMode.M+1; i++ {
-		badIdxs = append(badIdxs, i)
-		// set wrong data
-		if i < len(dataShards) {
-			for j := range dataShards[i] {
-				dataShards[i][j] = 222
+	// find the combination
+	n = cfg.CodeMode.N + cfg.CodeMode.M + cfg.CodeMode.L
+	k = cfg.CodeMode.M + 1
+	combinationCnt = comb(n, k)
+	tmpCombination = make([]int, k)
+	for i := range tmpCombination {
+		tmpCombination[i] = i
+	}
+	if combinationCnt > 100000 {
+		combinationCnt = 100000
+	}
+	for i := 0; i < combinationCnt; i++ {
+		badIdxs = make([]int, 0)
+		// Obtaining corresponding matrix by the combination
+		for _, e := range tmpCombination {
+			badIdxs = append(badIdxs, e)
+			// set wrong data
+			if e < len(dataShards) {
+				for j := range dataShards[e] {
+					dataShards[e][j] = 222
+				}
+			} else {
+				for j := range parityShards[e-len(dataShards)] {
+					parityShards[e-len(dataShards)][j] = 222
+				}
+			}
+		}
+		// test verify failed
+		ok, err = encoder.Verify(shards)
+		require.False(t, ok)
+
+		err = encoder.Reconstruct(shards, badIdxs)
+		require.NoError(t, err)
+		ok, err = encoder.Verify(shards)
+		require.NoError(t, err)
+		require.True(t, ok)
+		wbuff = bytes.NewBuffer(make([]byte, 0))
+		err = encoder.Join(wbuff, shards, len(srcData))
+		require.NoError(t, err)
+		require.Equal(t, srcData, wbuff.Bytes())
+
+		if i < combinationCnt-1 {
+			j := k - 1
+			for j >= 0 && tmpCombination[j] == n-k+j {
+				j--
+			}
+			tmpCombination[j]++
+			for j = j + 1; j < k; j++ {
+				tmpCombination[j] = tmpCombination[j-1] + 1
 			}
 		}
 	}
-
-	// test verify failed
-	ok, err = encoder.Verify(shards)
-	require.False(t, ok)
-
-	err = encoder.Reconstruct(shards, badIdxs)
-	require.NoError(t, err)
-	ok, err = encoder.Verify(shards)
-	require.NoError(t, err)
-	require.True(t, ok)
-	wbuff = bytes.NewBuffer(make([]byte, 0))
-	err = encoder.Join(wbuff, shards, len(srcData))
-	require.NoError(t, err)
-	require.Equal(t, srcData, wbuff.Bytes())
 
 	ls := encoder.GetLocalShards(shards)
 	require.Equal(t, cfg.CodeMode.L, len(ls))

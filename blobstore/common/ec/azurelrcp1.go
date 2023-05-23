@@ -15,7 +15,6 @@
 package ec
 
 import (
-	"context"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"io"
 
@@ -23,7 +22,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
-	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
 type azureLrcP1Encoder struct {
@@ -47,42 +45,17 @@ func (e *azureLrcP1Encoder) Encode(shards [][]byte) error {
 	defer e.pool.Release()
 	fillFullShards(shards)
 
-	// firstly, do global ec encode
-	if err := e.globalEngine.Encode(shards[:e.CodeMode.N+e.CodeMode.M]); err != nil {
-		return errors.Info(err, "azureLrcP1Encoder.Encode global failed")
+	if err := e.entireEngine.Encode(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]); err != nil {
+		return errors.Info(err, "azureLrcP1Encoder.Encode entire failed")
 	}
 	if e.EnableVerify {
-		ok, err := e.globalEngine.Verify(shards[:e.CodeMode.N+e.CodeMode.M])
+		ok, err := e.entireEngine.Verify(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L])
 		if err != nil {
-			return errors.Info(err, "azureLrcP1Encoder.Encode global verify failed")
+			return errors.Info(err, "azureLrcP1Encoder.Encode entire verify failed")
 		}
 		if !ok {
 			return ErrVerify
 		}
-	}
-
-	tasks := make([]func() error, 0, e.CodeMode.AZCount)
-	// secondly, do local ec encode
-	for i := 0; i < e.CodeMode.AZCount; i++ {
-		localShards := e.GetShardsInIdc(shards, i)
-		tasks = append(tasks, func() error {
-			if err := e.localEngine.Encode(localShards); err != nil {
-				return errors.Info(err, "azureLrcP1Encoder.Encode local failed")
-			}
-			if e.EnableVerify {
-				ok, err := e.localEngine.Verify(localShards)
-				if err != nil {
-					return errors.Info(err, "azureLrcP1Encoder.Encode local verify failed")
-				}
-				if !ok {
-					return ErrVerify
-				}
-			}
-			return nil
-		})
-	}
-	if err := task.Run(context.Background(), tasks...); err != nil {
-		return err
 	}
 
 	return nil
@@ -144,52 +117,24 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 		return nil
 	}
 
-	// can't reconstruct from local ec
-	// Try to two-step repair :  global first, local second.
-	// all scenario with no more than g failure
-	globalStripeBadCnt := 0
-	for _, idx := range badIdx {
-		if idx < e.CodeMode.M+e.CodeMode.N {
-			globalStripeBadCnt++
+	// use entire reconstruct
+	isIn := func(elem int, list []int) bool {
+		for _, c := range list {
+			if elem == c {
+				return true
+			}
+		}
+		return false
+	}
+	survivalIndex, err := e.entireEngine.GetSurvivalShards(badIdx)
+	if err != nil {
+		return err
+	}
+	for i, v := range shards {
+		if isIn(i, survivalIndex) == false {
+			shards[i] = v[:0]
 		}
 	}
-	if globalStripeBadCnt <= e.CodeMode.M {
-		// firstly, use global ec reconstruct
-		if err := e.globalEngine.Reconstruct(shards[:e.CodeMode.N+e.CodeMode.M]); err != nil {
-			return errors.Info(err, "azureLrcP1Encoder.Reconstruct global ec reconstruct failed (two step)")
-		}
-
-		// secondly, check if it needs to reconstruct the local parity shards
-		localReconstructs := make(map[int][]int)
-		n, m := e.CodeMode.N, e.CodeMode.M
-		// we assume that l is equal to AZcount
-		for _, i := range badIdx {
-			if i < (n + m) {
-				continue
-			}
-			idcIdx := i - n - m
-			localBadIdx := m
-			if _, ok := localReconstructs[idcIdx]; !ok {
-				localReconstructs[idcIdx] = make([]int, 0)
-			}
-			localReconstructs[idcIdx] = append(localReconstructs[idcIdx], localBadIdx)
-		}
-		tasks := make([]func() error, 0, len(localReconstructs))
-		for idx, badIdx := range localReconstructs {
-			localShards := e.GetShardsInIdc(shards, idx)
-			initBadShards(localShards, badIdx)
-			tasks = append(tasks, func() error {
-				return e.localEngine.Reconstruct(localShards)
-			})
-
-		}
-		if err := task.Run(context.Background(), tasks...); err != nil {
-			return errors.Info(err, "azureLrcP1Encoder.Reconstruct local ec reconstruct after global ec failed")
-		}
-		return nil
-	}
-
-	// no less than g+1 failure
 	if err := e.entireEngine.Reconstruct(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]); err != nil {
 		return errors.Info(err, "azureLrcP1Encoder.Reconstruct ec reconstruct failed (entire reconstruct)")
 	}
