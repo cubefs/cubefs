@@ -537,6 +537,8 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 		}
 	}
 
+	WarnMetrics.CleanObsoleteMpMissing(clusterID, mp)
+
 	for _, addr := range mp.Hosts {
 		if mp.isMissingReplica(addr) && mp.shouldReportMissingReplica(addr, interval) {
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on node:%v  "+
