@@ -187,6 +187,8 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 		}
 	}
 
+	WarnMetrics.CleanObsoleteDpMissing(clusterID, partition)
+
 	if !proto.IsNormalDp(partition.PartitionType) {
 		return
 	}
