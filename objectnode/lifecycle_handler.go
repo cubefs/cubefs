@@ -15,7 +15,6 @@
 package objectnode
 
 import (
-	"encoding/xml"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -27,26 +26,26 @@ import (
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html
 func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
-	var errorCode *ErrorCode
+	var erc *ErrorCode
 
 	defer func() {
-		o.errorResponse(w, r, err, errorCode)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	if _, err = o.vm.Volume(param.Bucket()); err != nil {
-		errorCode = NoSuchBucket
+		erc = NoSuchBucket
 		return
 	}
 
 	var lcConf *proto.LcConfiguration
 	if lcConf, err = o.mc.AdminAPI().GetBucketLifecycle(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketLifecycle failed: bucket[%v] err(%v)", param.Bucket(), err)
-		errorCode = NoSuchLifecycleConfiguration
+		erc = NoSuchLifecycleConfiguration
 		return
 	}
 
@@ -75,14 +74,13 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	}
 
 	var data []byte
-	data, err = xml.Marshal(lifeCycle)
-	if err != nil {
+	if data, err = MarshalXMLEntity(lifeCycle); err != nil {
 		log.LogErrorf("getBucketLifecycle failed: bucket[%v] err(%v)", param.Bucket(), err)
-		errorCode = NoSuchLifecycleConfiguration
+		erc = NoSuchLifecycleConfiguration
 		return
 	}
 
-	_, _ = w.Write(data)
+	writeSuccessResponseXML(w, data)
 	return
 
 }
@@ -90,26 +88,26 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html
 func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
-	var errorCode *ErrorCode
+	var erc *ErrorCode
 
 	defer func() {
-		o.errorResponse(w, r, err, errorCode)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	if _, err = o.vm.Volume(param.Bucket()); err != nil {
-		errorCode = NoSuchBucket
+		erc = NoSuchBucket
 		return
 	}
 
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil && err != io.EOF {
 		log.LogErrorf("putBucketLifecycle failed: read request body data err: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = &ErrorCode{
+		erc = &ErrorCode{
 			ErrorCode:    http.StatusText(http.StatusBadRequest),
 			ErrorMessage: err.Error(),
 			StatusCode:   http.StatusBadRequest,
@@ -120,13 +118,13 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 	var lifeCycle = NewLifeCycle()
 	if err = UnmarshalXMLEntity(requestBody, lifeCycle); err != nil {
 		log.LogWarnf("putBucketLifecycle failed: decode request body err: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = LifeCycleErrMalformedXML
+		erc = LifeCycleErrMalformedXML
 		return
 	}
 
-	ok, errorCode := lifeCycle.Validate()
+	ok, erc := lifeCycle.Validate()
 	if !ok {
-		log.LogErrorf("putBucketLifecycle failed: validate err: requestID(%v) lifeCycle(%v) err(%v)", GetRequestID(r), lifeCycle, errorCode)
+		log.LogErrorf("putBucketLifecycle failed: validate err: requestID(%v) lifeCycle(%v) err(%v)", GetRequestID(r), lifeCycle, erc)
 		return
 	}
 
@@ -159,7 +157,6 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 
 	if err = o.mc.AdminAPI().SetBucketLifecycle(&req); err != nil {
 		log.LogErrorf("putBucketLifecycle failed: SetBucketLifecycle err: bucket[%v] err(%v)", param.Bucket(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -170,25 +167,24 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 // API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_DeleteBucketLifecycle.html
 func (o *ObjectNode) deleteBucketLifecycleConfigurationHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
-	var errorCode *ErrorCode
+	var erc *ErrorCode
 
 	defer func() {
-		o.errorResponse(w, r, err, errorCode)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	if _, err = o.vm.Volume(param.Bucket()); err != nil {
-		errorCode = NoSuchBucket
+		erc = NoSuchBucket
 		return
 	}
 
 	if err = o.mc.AdminAPI().DelBucketLifecycle(param.Bucket()); err != nil {
 		log.LogErrorf("deleteBucketLifecycle failed: bucket[%v] err(%v)", param.Bucket(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -1725,7 +1725,11 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.iunlink(mp, inode, mw.Client.GetLatestVer(), 0)
+	var ver uint64
+	if mw.Client != nil {
+		ver = mw.Client.GetLatestVer()
+	}
+	status, info, err := mw.iunlink(mp, inode, ver, 0)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)

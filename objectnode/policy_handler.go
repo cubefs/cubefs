@@ -20,8 +20,6 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -29,15 +27,15 @@ import (
 func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
-		ec  *ErrorCode
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, ec)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	var vol *Volume
@@ -48,27 +46,23 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 	var policy *Policy
 	if policy, err = vol.metaLoader.loadPolicy(); err != nil {
-		ec = InternalErrorCode(err)
+		log.LogErrorf("getBucketPolicyHandler: load volume policy fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		return
 	}
-
 	if policy == nil {
-		err = proto.ErrVolPolicyNotExists
-		ec = NoSuchBucketPolicy
-		log.LogErrorf("getBucketPolicyHandler: NoSuchBucketPolicy, requestID(%v), err(%v), ec(%v)",
-			GetRequestID(r), err, ec)
+		erc = NoSuchBucketPolicy
 		return
 	}
 
-	var policyData []byte
-	policyData, err = json.Marshal(policy)
+	response, err := json.Marshal(policy)
 	if err != nil {
-		ec = InternalErrorCode(err)
+		log.LogErrorf("getBucketPolicyHandler: json marshal fail, requestID(%v) policy(%v) err(%v)",
+			GetRequestID(r), policy, err)
 		return
 	}
 
-	_, _ = w.Write(policyData)
-
+	writeSuccessResponseJSON(w, response)
 	return
 }
 
@@ -76,15 +70,15 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
-		ec  *ErrorCode
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, ec)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		ec = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	var vol *Volume
@@ -95,14 +89,14 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if r.ContentLength > BucketPolicyLimitSize {
-		ec = MaxContentLength
+		erc = MaxContentLength
 		return
 	}
 
 	policyRaw, err := ioutil.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("putBucketPolicyHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		ec = &ErrorCode{
+		erc = &ErrorCode{
 			ErrorCode:    http.StatusText(http.StatusBadRequest),
 			ErrorMessage: err.Error(),
 			StatusCode:   http.StatusBadRequest,
@@ -114,7 +108,7 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		log.LogErrorf("putBucketPolicyHandler: parse policy fail: requestID(%v) policy(%v) err(%v)",
 			GetRequestID(r), string(policyRaw), err)
-		ec = &ErrorCode{
+		erc = &ErrorCode{
 			ErrorCode:    "InvalidPolicySyntax",
 			ErrorMessage: err.Error(),
 			StatusCode:   http.StatusBadRequest,
@@ -128,7 +122,6 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 	if err = storeBucketPolicy(vol, policyRaw); err != nil {
 		log.LogErrorf("putBucketPolicyHandler: store policy fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		ec = InternalErrorCode(err)
 		return
 	}
 
@@ -141,16 +134,16 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html
 func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		err       error
-		errorCode *ErrorCode
+		err error
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, errorCode)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	var vol *Volume
@@ -163,7 +156,6 @@ func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Re
 	if err = deleteBucketPolicy(vol); err != nil {
 		log.LogErrorf("deleteBucketPolicyHandler: delete policy fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	vol.metaLoader.storePolicy(nil)

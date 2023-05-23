@@ -3,7 +3,6 @@ package objectnode
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/EnableCorsUsingREST.html
 
 import (
-	"encoding/xml"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,16 +17,16 @@ const (
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors.html
 func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		err       error
-		errorCode *ErrorCode
+		err error
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, errorCode)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 
@@ -45,36 +44,33 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if cors == nil || len(cors.CORSRule) == 0 {
-		errorCode = NoSuchCORSConfiguration
+		erc = NoSuchCORSConfiguration
 		return
 	}
 	var data []byte
-	if data, err = xml.Marshal(cors); err != nil {
+	if data, err = MarshalXMLEntity(cors); err != nil {
 		log.LogErrorf("getBucketCorsHandler: xml marshal fail: requestID(%v) volume(%v) cors(%+v) err(%v)",
 			GetRequestID(r), vol.Name(), cors, err)
 		return
 	}
-	if _, err = w.Write(data); err != nil {
-		log.LogErrorf("getBucketCorsHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
-			GetRequestID(r), vol.Name(), string(data), err)
-	}
 
+	writeSuccessResponseXML(w, data)
 	return
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketCors.html
 func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		err       error
-		errorCode *ErrorCode
+		err error
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, errorCode)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	var vol *Volume
@@ -83,9 +79,9 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
-	md5 := r.Header.Get(HeaderNameContentMD5)
-	if md5 == "" {
-		errorCode = MissingContentMD5
+	requestMD5 := r.Header.Get(ContentMD5)
+	if requestMD5 == "" {
+		erc = MissingContentMD5
 		return
 	}
 	var body []byte
@@ -95,17 +91,17 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if len(body) > MaxCORSSize {
-		errorCode = EntityTooLarge
+		erc = EntityTooLarge
 		return
 	}
-	if md5 != GetMD5(body) {
-		errorCode = InvalidDigest
+	if requestMD5 != GetMD5(body) {
+		erc = InvalidDigest
 		return
 	}
 	var corsConfig *CORSConfiguration
-	if corsConfig, errorCode = parseCorsConfig(body); errorCode != nil {
+	if corsConfig, erc = parseCorsConfig(body); erc != nil {
 		log.LogErrorf("putBucketCorsHandler: parse cors config fail: requestID(%v) volume(%v) config(%v) err(%v)",
-			GetRequestID(r), vol.Name(), string(body), errorCode)
+			GetRequestID(r), vol.Name(), string(body), erc)
 		return
 	}
 	if err = storeBucketCors(body, vol); err != nil {
@@ -121,16 +117,16 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketCors.html
 func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 	var (
-		err       error
-		errorCode *ErrorCode
+		err error
+		erc *ErrorCode
 	)
 	defer func() {
-		o.errorResponse(w, r, err, errorCode)
+		o.errorResponse(w, r, err, erc)
 	}()
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = InvalidBucketName
+		erc = InvalidBucketName
 		return
 	}
 	var vol *Volume
