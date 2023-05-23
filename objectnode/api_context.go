@@ -31,9 +31,10 @@ const (
 	ContextKeyErrorMessage  = "error_message"
 	ContextKeyBucket        = "bucket"
 	ContextKeyObject        = "object"
+	ContextKeyUid           = "uid"
+	ContextKeyAccessKey     = "access_key"
 	ContextKeyRequester     = "requester"
 	ContextKeyOwner         = "owner"
-	ContextKeyAccessKey     = "access_key"
 )
 
 func SetRequestID(r *http.Request, requestID string) {
