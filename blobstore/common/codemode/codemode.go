@@ -49,8 +49,6 @@ const (
 	EC12P6L3 CodeMode = 211
 	EC18P9L3 CodeMode = 212
 	EC10P5L3 CodeMode = 213
-	//EC12P3L3 CodeMode = 214 // this is a wrong mode, just test
-	EC12P6 CodeMode = 214
 )
 
 // Note: Don't modify it unless you know very well how codemode works.
@@ -97,9 +95,6 @@ var constCodeModeTactic = map[CodeMode]Tactic{
 	EC12P6L3: {N: 12, M: 6, L: 3, AZCount: 3, PutQuorum: 18, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
 	EC18P9L3: {N: 18, M: 9, L: 3, AZCount: 3, PutQuorum: 27, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
 	EC10P5L3: {N: 10, M: 5, L: 3, AZCount: 3, PutQuorum: 15, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
-	//EC12P3L3: {N: 12, M: 3, L: 3, AZCount: 3, PutQuorum: 15, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
-	// test
-	EC12P6: {N: 12, M: 6, L: 0, AZCount: 0, PutQuorum: 12, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: ReedSolomon},
 }
 
 var constName2CodeMode = map[CodeModeName]CodeMode{
@@ -122,8 +117,6 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC12P6L3":      EC12P6L3,
 	"EC18P9L3":      EC18P9L3,
 	"EC10P5L3":      EC10P5L3,
-	//"EC12P3L3":      EC12P3L3,
-	"EC12P6": EC12P6,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -146,8 +139,6 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC12P6L3:      "EC12P6L3",
 	EC18P9L3:      "EC18P9L3",
 	EC10P5L3:      "EC10P5L3",
-	//EC12P3L3:      "EC12P3L3",
-	EC12P6: "EC12P6",
 }
 
 // vol layout ep:EC6P10L2
@@ -460,7 +451,5 @@ func GetAllCodeModes() []CodeMode {
 		EC12P6L3,
 		EC18P9L3,
 		EC10P5L3,
-		//EC12P3L3,
-		EC12P6,
 	}
 }
