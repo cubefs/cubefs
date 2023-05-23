@@ -172,7 +172,7 @@ func (r RetentionDate) MarshalXML(e *xml.Encoder, startElement xml.StartElement)
 	if r == (RetentionDate{time.Time{}}) {
 		return nil
 	}
-	return e.EncodeElement(r.Format(AMZTimeFormat), startElement)
+	return e.EncodeElement(r.Format(ISO8601Layout), startElement)
 }
 
 func storeObjectLock(bytes []byte, vol *Volume) (err error) {

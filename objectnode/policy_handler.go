@@ -20,8 +20,6 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -48,27 +46,23 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 	var policy *Policy
 	if policy, err = vol.metaLoader.loadPolicy(); err != nil {
-		ec = InternalErrorCode(err)
+		log.LogErrorf("getBucketPolicyHandler: load volume policy fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		return
 	}
-
 	if policy == nil {
-		err = proto.ErrVolPolicyNotExists
 		ec = NoSuchBucketPolicy
-		log.LogErrorf("getBucketPolicyHandler: NoSuchBucketPolicy, requestID(%v), err(%v), ec(%v)",
-			GetRequestID(r), err, ec)
 		return
 	}
 
-	var policyData []byte
-	policyData, err = json.Marshal(policy)
+	response, err := json.Marshal(policy)
 	if err != nil {
-		ec = InternalErrorCode(err)
+		log.LogErrorf("getBucketPolicyHandler: json marshal fail, requestID(%v) policy(%v) err(%v)",
+			GetRequestID(r), policy, err)
 		return
 	}
 
-	_, _ = w.Write(policyData)
-
+	writeSuccessResponseJSON(w, response)
 	return
 }
 
@@ -128,13 +122,11 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 	if err = storeBucketPolicy(vol, policyRaw); err != nil {
 		log.LogErrorf("putBucketPolicyHandler: store policy fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		ec = InternalErrorCode(err)
 		return
 	}
-
 	vol.metaLoader.storePolicy(policy)
-	w.WriteHeader(http.StatusNoContent)
 
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 
@@ -163,7 +155,6 @@ func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Re
 	if err = deleteBucketPolicy(vol); err != nil {
 		log.LogErrorf("deleteBucketPolicyHandler: delete policy fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	vol.metaLoader.storePolicy(nil)
