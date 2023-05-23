@@ -230,12 +230,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// Get bucket lifecycle
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycle.html
 		// Notes: unsupported operation
-		//r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLifecycleAction)).
+		// r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLifecycleAction)).
 		//	Methods(http.MethodGet).
 		//	Queries("lifecycle", "").
 		//	HandlerFunc(o.unsupportedOperationHandler)
 
-		//Get bucket lifecycle configuration
+		// Get bucket lifecycle configuration
 		// API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLifecycleConfigurationAction)).
 			Methods(http.MethodGet).
@@ -297,6 +297,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Methods(http.MethodPost).
 			Queries("delete", "").
 			HandlerFunc(o.deleteObjectsHandler)
+
+		// Post object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPOST.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPostObjectAction)).
+			Methods(http.MethodPost).
+			HandlerFunc(o.postObjectHandler)
 	}
 
 	var registerBucketHttpPutRouters = func(r *mux.Router) {
@@ -312,7 +318,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSUploadPartCopyAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
+			HeadersRegexp(XAmzCopySource, ".*?(\\/|%2F).*?").
 			Queries("partNumber", "{partNumber:[0-9]+}", "uploadId", "{uploadId:.*}").
 			HandlerFunc(o.uploadPartCopyHandler)
 
@@ -329,7 +335,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSCopyObjectAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
+			HeadersRegexp(XAmzCopySource, ".*?(\\/|%2F).*?").
 			HandlerFunc(o.copyObjectHandler)
 
 		// Put object tagging
@@ -453,12 +459,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// Put bucket lifecycle
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycle.html
 		// Notes: unsupported operation
-		//r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketLifecycleAction)).
+		// r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketLifecycleAction)).
 		//	Methods(http.MethodPut).
 		//	Queries("lifecycle", "").
 		//	HandlerFunc(o.unsupportedOperationHandler)
 
-		//Put bucket lifecycle configuration
+		// Put bucket lifecycle configuration
 		// API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketLifecycleConfigurationAction)).
 			Methods(http.MethodPut).
@@ -569,7 +575,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// Delete bucket lifecycle
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketLifecycle.html
 		// Notes: unsupported operation
-		//r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteBucketLifecycleAction)).
+		// r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteBucketLifecycleAction)).
 		//	Methods(http.MethodDelete).
 		//	Queries("lifecycle", "").
 		//	HandlerFunc(o.unsupportedOperationHandler)
@@ -611,6 +617,13 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	router.NewRoute().Name(ActionToUniqueRouteName(proto.OSSListBucketsAction)).
 		Methods(http.MethodGet).
 		HandlerFunc(o.listBucketsHandler)
+
+	// Get Federation Token (STS)
+	// API reference: https://docs.aws.amazon.com/STS/latest/APIReference/API_GetFederationToken.html
+	router.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetFederationTokenAction)).
+		Methods(http.MethodPost).
+		Path("/").
+		HandlerFunc(o.getFederationTokenHandler)
 
 	// Unsupported operation
 	router.NotFoundHandler = http.HandlerFunc(o.unsupportedOperationHandler)
