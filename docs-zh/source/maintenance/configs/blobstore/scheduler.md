@@ -75,8 +75,8 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 * fail_msg_sender_timeout_ms，消息消费失败后重新投递至失败主题的超时时间，默认为1000ms
 * shard_repair，修补消息主题及消费分区指定（分区未指定默认消费所有分区），其中包含三类主题：
     * normal，普通主题，默认为shard_repair
-    * failed，失败主题（正常消息消费失败后会将消息重新投递至该主题），默认为shard_repair_prior
-    * priority，优先消费主题，主要存放一些需要高优先级消费的修补消息，默认为shard_repair_failed
+    * failed，失败主题（正常消息消费失败后会将消息重新投递至该主题），默认为shard_repair_failed
+    * priority，优先消费主题，主要存放一些需要高优先级消费的修补消息，默认为shard_repair_prior
 * blob_delete，删除消息主题及消费分区指定，其中包含两类主题
     * normal，普通主题，默认为blob_delete
     * failed，失败主题（正常消息消费失败后会将消息重新投递至该主题），默认为blob_delete_failed
