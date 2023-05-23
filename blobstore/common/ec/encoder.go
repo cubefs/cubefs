@@ -87,8 +87,7 @@ func NewEncoder(cfg Config) (Encoder, error) {
 
 	switch cfg.CodeMode.CodeType {
 	case codemode.ReedSolomon:
-		optionTest := reedsolomon.WithJerasureMatrix()
-		engine, err := reedsolomon.New(cfg.CodeMode.N, cfg.CodeMode.M, optionTest)
+		engine, err := reedsolomon.New(cfg.CodeMode.N, cfg.CodeMode.M)
 		if err != nil {
 			return nil, err
 		}
@@ -125,16 +124,16 @@ func NewEncoder(cfg Config) (Encoder, error) {
 		optionGlobal := reedsolomon.WithSpecialJerasureMatrix()
 		optionLocal := reedsolomon.WithJerasureMatrix()
 		optionEntire := reedsolomon.WithAzureLrcP1Matrix()
-		k, g, l := cfg.CodeMode.N, cfg.CodeMode.M, cfg.CodeMode.L
-		globalEngine, err := reedsolomon.New(k, g, optionGlobal)
+		n, m, l := cfg.CodeMode.N, cfg.CodeMode.M, cfg.CodeMode.L
+		globalEngine, err := reedsolomon.New(n, m, optionGlobal)
 		if err != nil {
 			return nil, err
 		}
-		localEngine, err := reedsolomon.New(g, 1, optionLocal)
+		localEngine, err := reedsolomon.New(m, 1, optionLocal)
 		if err != nil {
 			return nil, err
 		}
-		entireEngine, err := reedsolomon.New(k, g+l, optionEntire)
+		entireEngine, err := reedsolomon.New(n, m+l, optionEntire)
 		if err != nil {
 			return nil, err
 		}
