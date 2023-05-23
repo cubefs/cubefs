@@ -95,7 +95,7 @@ func initMockVolumeMgr(t testing.TB) (*VolumeMgr, func()) {
 	mockConfigMgr := mock.NewMockConfigMgrAPI(ctr)
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
 
-	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
+	//mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
 	mockConfigMgr.EXPECT().Delete(gomock.Any(), "mockKey").AnyTimes().Return(nil)
 	mockConfigMgr.EXPECT().Get(gomock.Any(), proto.VolumeReserveSizeKey).AnyTimes().Return("2097152", nil)
 	mockConfigMgr.EXPECT().Get(gomock.Any(), proto.VolumeChunkSizeKey).AnyTimes().Return("17179869184", nil)
