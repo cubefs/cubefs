@@ -624,7 +624,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	// a path separator is appended at the end of the path, so the recursiveMakeDirectory
 	// method can be processed directly in recursion.
 	var fixedPath = path
-	if opt != nil && opt.MIMEType == HeaderValueContentTypeDirectory && !strings.HasSuffix(path, pathSep) {
+	if opt != nil && opt.MIMEType == ValueContentTypeDirectory && !strings.HasSuffix(path, pathSep) {
 		fixedPath = path + pathSep
 	}
 
@@ -640,7 +640,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			ModifyTime: time.Now(),
 			ETag:       EmptyContentMD5String,
 			Inode:      rootIno,
-			MIMEType:   HeaderValueContentTypeDirectory,
+			MIMEType:   ValueContentTypeDirectory,
 		}
 		return fsInfo, nil
 	}
@@ -668,7 +668,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			ModifyTime: info.ModifyTime,
 			ETag:       EmptyContentMD5String,
 			Inode:      info.Inode,
-			MIMEType:   HeaderValueContentTypeDirectory,
+			MIMEType:   ValueContentTypeDirectory,
 		}
 		return
 	}
@@ -827,7 +827,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		return
 	}
 
-	//force updating dentry and attrs in cache
+	// force updating dentry and attrs in cache
 	if objMetaCache != nil {
 		dentry := &DentryItem{
 			Dentry: metanode.Dentry{
@@ -867,7 +867,7 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) 
 			err = syscall.EINVAL
 			return
 		}
-		//current implementation dosen't support object versioning, so uploading a object with a key already existed in bucket
+		// current implementation dosen't support object versioning, so uploading a object with a key already existed in bucket
 		// is implemented with replacing the old one instead.
 		// refer: https://docs.aws.amazon.com/AmazonS3/latest/userguide/upload-objects.html
 		if err = v.applyInodeToExistDentry(parentId, name, inode); err != nil {
@@ -1744,7 +1744,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 	if mode.IsDir() {
 		// Folder has specific ETag and MIME type.
 		etagValue = DirectoryETagValue()
-		mimeType = HeaderValueContentTypeDirectory
+		mimeType = ValueContentTypeDirectory
 	} else {
 		// Try to get the advanced attributes stored in the extended attributes.
 		// The following advanced attributes apply to the object storage:
@@ -1777,7 +1777,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 					v.Name(), path, err)
 				return
 			}
-			retainUntilDate = time.Unix(0, retainUntilDateInt64).UTC().Format(AMZTimeFormat)
+			retainUntilDate = time.Unix(0, retainUntilDateInt64).UTC().Format(ISO8601Layout)
 		}
 	}
 
@@ -1866,7 +1866,7 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 					}
 				}
 
-				//force updating dentry in cache
+				// force updating dentry in cache
 				dentryNew := &DentryItem{
 					Dentry: metanode.Dentry{
 						ParentId: parent,
@@ -1939,7 +1939,7 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 			return
 		}
 
-		//force updating dentry in cache
+		// force updating dentry in cache
 		if objMetaCache != nil {
 			dentry := &DentryItem{
 				Dentry: metanode.Dentry{
@@ -1972,8 +1972,8 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 }
 
 func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
-	//in case of any mv or rename operation within refresh interval of dentry item in cache,
-	//recursiveMakeDirectory don't look up cache, and will force update dentry item
+	// in case of any mv or rename operation within refresh interval of dentry item in cache,
+	// recursiveMakeDirectory don't look up cache, and will force update dentry item
 	ino = rootIno
 	var pathIterator = NewPathIterator(path)
 	if !pathIterator.HasNext() {
@@ -2012,7 +2012,7 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 			curIno, curMode = info.Inode, info.Mode
 		}
 
-		//force updating dentry in cache
+		// force updating dentry in cache
 		if objMetaCache != nil {
 			dentry := &DentryItem{
 				Dentry: metanode.Dentry{
@@ -2729,7 +2729,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			CreateTime: tInodeInfo.CreateTime,
 			ETag:       EmptyContentMD5String,
 			Inode:      tInodeInfo.Inode,
-			MIMEType:   HeaderValueContentTypeDirectory,
+			MIMEType:   ValueContentTypeDirectory,
 		}
 		return info, nil
 	}

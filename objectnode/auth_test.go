@@ -1,52 +1,65 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package objectnode
 
 import (
-	"net/http"
+	"bytes"
+	"mime/multipart"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestParseRequestAuthInfo(t *testing.T) {
-	// Create a mock HTTP request for each signature version
-	v2HeaderReq := httptest.NewRequest("GET", "http://example.com/bucket", nil)
-	v2HeaderReq.Header.Set(HeaderNameAuthorization, RequestHeaderV2AuthorizationScheme+" AWSAccessKeyId:Signature")
+func TestGetSecurityToken(t *testing.T) {
+	token := "X-AMZ-SECURITY-TOKEN-EXAMPLE"
+	// header
+	request := httptest.NewRequest("GET", "https://s3.cubefs.com/bucket/key", nil)
+	request.Header.Set(XAmzSecurityToken, token)
+	require.Equal(t, token, getSecurityToken(request))
+	// query
+	queries := url.Values{}
+	queries.Set(XAmzSecurityToken, token)
+	request = httptest.NewRequest("GET", "https://s3.cubefs.com/bucket/key?"+queries.Encode(), nil)
+	require.Equal(t, token, getSecurityToken(request))
+	// post form upload
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, _ := w.CreateFormField(XAmzSecurityToken)
+	fw.Write([]byte(token))
+	fw, _ = w.CreateFormField("key")
+	fw.Write([]byte("test.txt"))
+	w.Close()
+	request = httptest.NewRequest("POST", "https://s3.cubefs.com/bucket", &buf)
+	request.Header.Set(ContentType, w.FormDataContentType())
+	require.NoError(t, request.ParseMultipartForm(64))
+	require.Equal(t, token, getSecurityToken(request))
 
-	// v4HeaderReq := httptest.NewRequest("GET", "http://example.com/bucket", nil)
-	// v4HeaderReq.Header.Set(HeaderNameAuthorization, SignatureV4Algorithm+" Credential=AWSAccessKeyId/20230721/us-east-1/s3/aws4_request")
-
-	v2QueryReq := httptest.NewRequest("GET", "http://example.com/bucket?AWSAccessKeyId=AccessKey&Expires=1573369185&Signature=Signature", nil)
-
-	// v4QueryReq := httptest.NewRequest("GET", "http://example.com/bucket?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AWSAccessKeyId/20230721/us-east-1/s3/aws4_request", nil)
-
-	tests := []struct {
-		name     string
-		request  *http.Request
-		expected *RequestAuthInfo
-	}{
-		{
-			name:    "V2 header",
-			request: v2HeaderReq,
-			expected: &RequestAuthInfo{
-				authType:  SignatrueV2,
-				accessKey: "AWSAccessKeyId",
-			},
-		},
-		{
-			name:    "V2 query",
-			request: v2QueryReq,
-			expected: &RequestAuthInfo{
-				authType:  PresignedV2,
-				accessKey: "AccessKey",
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			actual := parseRequestAuthInfo(tc.request)
-			assert.Equal(t, tc.expected, actual)
-		})
-	}
+	// no X-Amz-Security-Token
+	request = httptest.NewRequest("GET", "https://s3.cubefs.com/bucket/key", nil)
+	require.Equal(t, "", getSecurityToken(request))
+	request = httptest.NewRequest("GET", "https://s3.cubefs.com/bucket/key?no-token=test", nil)
+	require.Equal(t, "", getSecurityToken(request))
+	buf.Reset()
+	w = multipart.NewWriter(&buf)
+	fw, _ = w.CreateFormField("key")
+	fw.Write([]byte("test.txt"))
+	w.Close()
+	request = httptest.NewRequest("POST", "https://s3.cubefs.com/bucket", &buf)
+	request.Header.Set(ContentType, w.FormDataContentType())
+	require.NoError(t, request.ParseMultipartForm(64))
+	require.Equal(t, "", getSecurityToken(request))
 }

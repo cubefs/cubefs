@@ -110,7 +110,7 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 }
 
 func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
-	//if mw.EnableTransaction {
+	// if mw.EnableTransaction {
 	txMask := proto.TxOpMaskOff
 	if proto.IsRegular(mode) {
 		txMask = proto.TxOpMaskCreate
@@ -131,7 +131,9 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 
 func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, txType uint32) (info *proto.InodeInfo, err error) {
 	var (
-		status       int
+		status int
+		// err          error
+		// info         *proto.InodeInfo
 		mp           *MetaPartition
 		rwPartitions []*MetaPartition
 	)
@@ -181,7 +183,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 			log.LogErrorf("Create_ll status %v", status)
 			return nil, statusToErrno(status)
 		} else {
-			//sync cancel previous transaction before retry
+			// sync cancel previous transaction before retry
 			tx.Rollback(mw)
 		}
 	}
@@ -208,7 +210,7 @@ create_dentry:
 		} else {
 			filesInc = 1
 		}
-		//go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
+		// go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
 		job := func() {
 			mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
 		}
@@ -640,7 +642,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 
 	if mw.EnableSummary {
 		var job func()
-		//go func() {
+		// go func() {
 		if proto.IsDir(mode) {
 			job = func() {
 				mw.UpdateSummary_ll(parentID, 0, -1, 0)
@@ -650,7 +652,6 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 				mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
 			}
 		}
-
 		tx.SetOnCommit(job)
 	}
 
@@ -1011,7 +1012,6 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		funcs = append(funcs, func() (int, error) {
 			var newSt int
 			var newErr error
-
 			newSt, newErr = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{})
 			return newSt, newErr
 		})
@@ -1058,7 +1058,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return preErr
 	}
 
-	//update summary
+	// update summary
 	var job func()
 	if mw.EnableSummary {
 		var srcInodeInfo *proto.InodeInfo
@@ -1530,7 +1530,7 @@ func (mw *MetaWrapper) Truncate(inode, size uint64) error {
 }
 
 func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
-	//if mw.EnableTransaction {
+	// if mw.EnableTransaction {
 	if mw.EnableTransaction&proto.TxOpMaskLink > 0 {
 		return mw.txLink(parentID, name, ino)
 	} else {
@@ -1539,7 +1539,7 @@ func (mw *MetaWrapper) Link(parentID uint64, name string, ino uint64) (*proto.In
 }
 
 func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (info *proto.InodeInfo, err error) {
-	//var err error
+	// var err error
 	var status int
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
@@ -1791,7 +1791,11 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64) (*proto.InodeInfo, error) {
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.iunlink(mp, inode, mw.Client.GetLatestVer(), 0)
+	var ver uint64
+	if mw.Client != nil {
+		ver = mw.Client.GetLatestVer()
+	}
+	status, info, err := mw.iunlink(mp, inode, ver, 0)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)
