@@ -179,6 +179,7 @@ const (
 	QuotaList            = "/quota/list"
 	QuotaGet             = "/quota/get"
 	QuotaBatchModifyPath = "/quota/batchModifyPath"
+	QuotaListAll         = "/quota/listAll"
 )
 
 var GApiInfo map[string]string = map[string]string{

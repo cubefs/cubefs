@@ -4688,10 +4688,10 @@ func (m *Server) UpdateQuota(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 	var (
-		err     error
-		vol     *Vol
-		quotaId uint32
-		name    string
+		err      error
+		vol      *Vol
+		fullPath string
+		name     string
 	)
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaDelete))
@@ -4699,7 +4699,7 @@ func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.QuotaDelete, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, quotaId, err = parseDeleteQuotaParam(r); err != nil {
+	if name, fullPath, err = parseDeleteQuotaParam(r); err != nil {
 		log.LogErrorf("[DeleteQuota] del quota fail err [%v]", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -4710,12 +4710,12 @@ func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = vol.quotaManager.deleteQuota(quotaId); err != nil {
+	if err = vol.quotaManager.deleteQuota(fullPath); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	msg := fmt.Sprintf("delete quota successfully, vol [%v] quotaId [%v]", name, quotaId)
+	msg := fmt.Sprintf("delete quota successfully, vol [%v] fullPath [%v]", name, fullPath)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 	return
 }
@@ -4748,6 +4748,18 @@ func (m *Server) ListQuota(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("list quota vol [%v] resp [%v] success.", name, *resp)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
+	return
+}
+
+func (m *Server) ListQuotaAll(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaListAll))
+	defer func() {
+		doStatAndMetric(proto.QuotaListAll, metric, nil, nil)
+	}()
+
+	volsInfo := m.cluster.listQuotaAll()
+	log.LogInfof("list all vol has quota [%v]", volsInfo)
+	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 	return
 }
 

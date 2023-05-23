@@ -47,8 +47,9 @@ func (s *Super) InodeGet(ino uint64) (*proto.InodeInfo, error) {
 	node, isFind := s.nodeCache[ino]
 	s.fslock.Unlock()
 	if isFind {
-		if proto.IsDir(info.Mode) {
-			node.(*Dir).info = info
+		s, ok := node.(*Dir)
+		if ok {
+			s.info = info
 		} else {
 			node.(*File).info = info
 		}

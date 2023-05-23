@@ -44,6 +44,7 @@ const (
 	cfgDomainBatchGrpCnt                = "faultDomainGrpBatchCnt"
 	cfgDomainBuildAsPossible            = "faultDomainBuildAsPossible"
 	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
+	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
 )
 
 //default value
@@ -118,6 +119,7 @@ type clusterConfig struct {
 	QosMasterAcceptLimit                uint64
 	DirChildrenNumLimit                 uint32
 	MetaPartitionInodeIdStep            uint64
+	MaxQuotaNumPerVol                   int
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -141,6 +143,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.QosMasterAcceptLimit = defaultMasterMinQosAccept
 	cfg.DirChildrenNumLimit = pt.DefaultDirChildrenNumLimit
 	cfg.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
+	cfg.MaxQuotaNumPerVol = defaultMaxQuotaNumPerVol
 	return
 }
 
