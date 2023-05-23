@@ -3,7 +3,6 @@ package objectnode
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/EnableCorsUsingREST.html
 
 import (
-	"encoding/xml"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -49,16 +48,13 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var data []byte
-	if data, err = xml.Marshal(cors); err != nil {
+	if data, err = MarshalXMLEntity(cors); err != nil {
 		log.LogErrorf("getBucketCorsHandler: xml marshal fail: requestID(%v) volume(%v) cors(%+v) err(%v)",
 			GetRequestID(r), vol.Name(), cors, err)
 		return
 	}
-	if _, err = w.Write(data); err != nil {
-		log.LogErrorf("getBucketCorsHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
-			GetRequestID(r), vol.Name(), string(data), err)
-	}
 
+	writeSuccessResponseXML(w, data)
 	return
 }
 
@@ -83,8 +79,8 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
-	md5 := r.Header.Get(HeaderNameContentMD5)
-	if md5 == "" {
+	requestMD5 := r.Header.Get(ContentMD5)
+	if requestMD5 == "" {
 		errorCode = MissingContentMD5
 		return
 	}
@@ -98,7 +94,7 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		errorCode = EntityTooLarge
 		return
 	}
-	if md5 != GetMD5(body) {
+	if requestMD5 != GetMD5(body) {
 		errorCode = InvalidDigest
 		return
 	}
@@ -145,8 +141,8 @@ func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	vol.metaLoader.storeCORS(nil)
-	w.WriteHeader(http.StatusNoContent)
 
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 
