@@ -15,7 +15,10 @@
 package objectnode
 
 import (
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
 	"net"
 	"net/http"
@@ -286,9 +289,9 @@ func SplitFileRange(size, blockSize int64) (ranges [][2]int64) {
 func ParseUserDefinedMetadata(header http.Header) map[string]string {
 	metadata := make(map[string]string)
 	for name, values := range header {
-		if strings.HasPrefix(name, http.CanonicalHeaderKey(HeaderNameXAmzMetaPrefix)) &&
-			name != http.CanonicalHeaderKey(HeaderNameXAmzMetadataDirective) {
-			metaName := strings.ToLower(name[len(HeaderNameXAmzMetaPrefix):])
+		if strings.HasPrefix(name, http.CanonicalHeaderKey(XAmzMetaPrefix)) &&
+			name != http.CanonicalHeaderKey(XAmzMetadataDirective) {
+			metaName := strings.ToLower(name[len(XAmzMetaPrefix):])
 			metaValue := strings.Join(values, ",")
 			if !strings.HasPrefix(metaName, "oss:") {
 				metadata[metaName] = metaValue
@@ -333,4 +336,54 @@ func GetMD5(b []byte) string {
 	hash := md5.New()
 	hash.Write(b)
 	return base64.StdEncoding.EncodeToString(hash.Sum(nil))
+}
+
+func contains(items []string, key string) bool {
+	for _, s := range items {
+		if s == key {
+			return true
+		}
+	}
+	return false
+}
+
+func MakeMD5(data []byte) []byte {
+	hash := md5.New()
+	hash.Write(data)
+	return hash.Sum(nil)
+}
+
+func MakeSha256(data []byte) []byte {
+	hash := sha256.New()
+	hash.Write(data)
+	return hash.Sum(nil)
+}
+
+func MakeHmacSha1(key, data []byte) []byte {
+	hash := hmac.New(sha1.New, key)
+	hash.Write(data)
+	return hash.Sum(nil)
+}
+
+func MakeHmacSha256(key, data []byte) []byte {
+	hash := hmac.New(sha256.New, key)
+	hash.Write(data)
+	return hash.Sum(nil)
+}
+
+func ParseCompatibleTime(timeStr string) (t time.Time, err error) {
+	layouts := []string{
+		time.RFC1123,
+		time.RFC1123Z,
+		time.RFC3339,
+		ISO8601Format,
+		ISO8601Layout,
+		ISO8601LayoutCompatible,
+	}
+	for _, layout := range layouts {
+		if t, err = time.Parse(layout, timeStr); err == nil {
+			return
+		}
+	}
+	return
 }

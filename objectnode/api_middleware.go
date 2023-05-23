@@ -85,7 +85,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		if requestID, err = generateRequestID(); err != nil {
 			log.LogErrorf("traceMiddleware: generate request ID fail, remote(%v) url(%v) err(%v)",
 				r.RemoteAddr, r.URL.String(), err)
-			_ = InternalErrorCode(err).ServeResponse(w, r)
+			InternalErrorCode(err).ServeResponse(w, r)
 			// export ump warn info
 			exporter.Warning(generateWarnDetail(r, err.Error()))
 			return
@@ -93,13 +93,13 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		// store request ID to context and write to header
 		SetRequestID(r, requestID)
-		w.Header()[HeaderNameXAmzRequestId] = []string{requestID}
-		w.Header()[HeaderNameServer] = []string{HeaderValueServer}
+		w.Header().Set(XAmzRequestId, requestID)
+		w.Header().Set(Server, ValueServer)
 
-		if connHeader := r.Header.Get(HeaderNameConnection); strings.EqualFold(connHeader, "close") {
-			w.Header()[HeaderNameConnection] = []string{"close"}
+		if connHeader := r.Header.Get(Connection); strings.EqualFold(connHeader, "close") {
+			w.Header().Set(Connection, "close")
 		} else {
-			w.Header()[HeaderNameConnection] = []string{"keep-alive"}
+			w.Header().Set(Connection, "keep-alive")
 		}
 
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
@@ -122,7 +122,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		} else {
 			// If current action is disabled, return access denied in response.
 			log.LogDebugf("traceMiddleware: disabled action: requestID(%v) action(%v)", requestID, action.Name())
-			_ = AccessDenied.ServeResponse(w, r)
+			AccessDenied.ServeResponse(w, r)
 		}
 
 		// failed request monitor
@@ -146,55 +146,25 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 func (o *ObjectNode) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			var currentAction = ActionFromRouteName(mux.CurrentRoute(r).GetName())
-			if !currentAction.IsNone() && o.signatureIgnoredActions.Contains(currentAction) {
+			// parse authentication
+			auth, err := NewAuth(r)
+			if err != nil && err == MissingSecurityElement {
+				// anonymous request will be authed in policy and acl check step
 				next.ServeHTTP(w, r)
 				return
 			}
-
-			var (
-				pass bool
-				err  error
-			)
-			// anonymous request will be authed in policy and acl check step.
-			authInfo := parseRequestAuthInfo(r)
-			if isAnonymous(authInfo.accessKey) {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			//  check auth type
-			if isHeaderUsingSignatureAlgorithmV4(r) {
-				// using signature algorithm version 4 in header
-				pass, err = o.validateHeaderBySignatureAlgorithmV4(r)
-			} else if isHeaderUsingSignatureAlgorithmV2(r) {
-				// using signature algorithm version 2 in header
-				pass, err = o.validateHeaderBySignatureAlgorithmV2(r)
-			} else if isUrlUsingSignatureAlgorithmV2(r) {
-				// using signature algorithm version 2 in url parameter
-				pass, err = o.validateUrlBySignatureAlgorithmV2(r)
-			} else if isUrlUsingSignatureAlgorithmV4(r) {
-				// using signature algorithm version 4 in url parameter
-				pass, err = o.validateUrlBySignatureAlgorithmV4(r)
-			}
-
 			if err != nil {
-				if err, isErrCode := err.(*ErrorCode); isErrCode {
-					_ = err.ServeResponse(w, r)
-					return
-				}
-				if err == proto.ErrVolNotExists {
-					_ = NoSuchBucket.ServeResponse(w, r)
-					return
-				}
-				_ = InternalErrorCode(err).ServeResponse(w, r)
+				log.LogErrorf("authMiddleware: parse auth fail: requestID(%v) err(%v)",
+					GetRequestID(r), err)
+				o.errorResponse(w, r, err, nil)
+				return
+			}
+			// validate authentication information
+			if err = o.validateAuthInfo(r, auth); err != nil {
+				o.errorResponse(w, r, err, nil)
 				return
 			}
 
-			if !pass && !isAnonymous(authInfo.accessKey) {
-				_ = AccessDenied.ServeResponse(w, r)
-				return
-			}
 			next.ServeHTTP(w, r)
 		})
 }
@@ -231,7 +201,7 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 				w.WriteHeader(StatusServerPanic)
 			}
 		}()
-		if len(r.Header) > 0 && len(r.Header.Get(http.CanonicalHeaderKey(HeaderNameXAmzDecodeContentLength))) > 0 {
+		if r.Header.Get(XAmzDecodedContentLength) != "" && r.Header.Get(ContentEncoding) != streamingContentEncoding {
 			r.Body = NewClosableChunkedReader(r.Body)
 			log.LogDebugf("contentMiddleware: chunk reader inited: requestID(%v)", GetRequestID(r))
 		}
@@ -252,8 +222,8 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 // needs to use the value of X-Forwarded-Expect.
 func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-		if forwardedExpect, originExpect := r.Header.Get(HeaderNameXForwardedExpect), r.Header.Get(HeaderNameExpect); forwardedExpect != "" && originExpect == "" {
-			r.Header.Set(HeaderNameExpect, forwardedExpect)
+		if forwarded, origin := r.Header.Get(XForwardedExpect), r.Header.Get(Expect); forwarded != "" && origin == "" {
+			r.Header.Set(Expect, forwarded)
 		}
 		next.ServeHTTP(w, r)
 	}
@@ -301,14 +271,14 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 		cors, err := vol.metaLoader.loadCORS()
 		if err != nil {
 			log.LogErrorf("get cors fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			_ = InternalErrorCode(err).ServeResponse(w, r)
+			InternalErrorCode(err).ServeResponse(w, r)
 			return
 		}
 
 		if isPreflight {
 			errCode := preflightProcess(cors, w, r)
 			if errCode != nil {
-				_ = errCode.ServeResponse(w, r)
+				errCode.ServeResponse(w, r)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
@@ -317,7 +287,7 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 
 		errCode := simpleProcess(cors, w, r)
 		if errCode != nil {
-			_ = errCode.ServeResponse(w, r)
+			errCode.ServeResponse(w, r)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -327,10 +297,10 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 
 func isMatchAndSetupCORSHeader(cors *CORSConfiguration, writer http.ResponseWriter, request *http.Request, isPreflight bool) (match bool) {
 	origin := request.Header.Get(Origin)
-	reqHeaders := request.Header.Get(HeaderNameAccessControlRequestHeaders)
+	reqHeaders := request.Header.Get(AccessControlRequestHeaders)
 	var reqMethod string
 	if isPreflight {
-		reqMethod = request.Header.Get(HeaderNameAccessControlRequestMethod)
+		reqMethod = request.Header.Get(AccessControlRequestMethod)
 	} else {
 		reqMethod = request.Method
 	}
@@ -340,18 +310,18 @@ func isMatchAndSetupCORSHeader(cors *CORSConfiguration, writer http.ResponseWrit
 				// write access control allow headers
 				match = true
 				if StringListContain(corsRule.AllowedOrigin, "*") {
-					writer.Header().Set(HeaderNameAccessControlAllowOrigin, "*")
+					writer.Header().Set(AccessControlAllowOrigin, "*")
 				} else {
-					writer.Header().Set(HeaderNameAccessControlAllowOrigin, origin)
-					writer.Header().Set(HeaderNameAccessControlAllowCredentials, "true")
+					writer.Header().Set(AccessControlAllowOrigin, origin)
+					writer.Header().Set(AccessControlAllowCredentials, "true")
 				}
-				writer.Header()[HeaderNameAccessControlAllowMethods] = []string{strings.Join(corsRule.AllowedMethod, ",")}
-				writer.Header()[HeaderNameAccessControlExposeHeaders] = []string{strings.Join(corsRule.ExposeHeader, ",")}
+				writer.Header().Set(AccessControlAllowMethods, strings.Join(corsRule.AllowedMethod, ","))
+				writer.Header().Set(AccessControlExposeHeaders, strings.Join(corsRule.ExposeHeader, ","))
 				if corsRule.MaxAgeSeconds != 0 {
-					writer.Header()[HeaderNameAccessControlMaxAge] = []string{strconv.Itoa(int(corsRule.MaxAgeSeconds))}
+					writer.Header().Set(AccessControlMaxAge, strconv.Itoa(int(corsRule.MaxAgeSeconds)))
 				}
 				if reqHeaders != "" {
-					writer.Header()[HeaderNameAccessControlAllowHeaders] = []string{strings.Join(corsRule.AllowedHeader, ",")}
+					writer.Header().Set(AccessControlAllowHeaders, strings.Join(corsRule.AllowedHeader, ","))
 				}
 				return
 			}

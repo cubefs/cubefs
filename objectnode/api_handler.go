@@ -65,8 +65,9 @@ func ParseRequestParam(r *http.Request) *RequestParam {
 	p := new(RequestParam)
 	p.r = r
 	p.vars = mux.Vars(r)
-	p.bucket = p.vars["bucket"]
-	p.object = p.vars["object"]
+	p.bucket = p.vars[ContextKeyBucket]
+	p.object = p.vars[ContextKeyObject]
+	p.accessKey = p.vars[ContextKeyAccessKey]
 	p.sourceIP = getRequestIP(r)
 	if len(p.bucket) > 0 {
 		p.resource = p.bucket
@@ -77,10 +78,6 @@ func ParseRequestParam(r *http.Request) *RequestParam {
 				p.resource = p.bucket + "/" + p.object
 			}
 		}
-	}
-	auth := parseRequestAuthInfo(r)
-	if auth != nil {
-		p.accessKey = auth.accessKey
 	}
 	p.action = GetActionFromContext(r)
 	if p.action.IsNone() {
@@ -120,7 +117,7 @@ func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err e
 		if ec == nil {
 			ec = InternalErrorCode(err)
 		}
-		_ = ec.ServeResponse(w, r)
+		ec.ServeResponse(w, r)
 	}
 }
 
@@ -130,6 +127,6 @@ func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.
 		getRequestIP(r),
 		ActionFromRouteName(mux.CurrentRoute(r).GetName()),
 		r.UserAgent())
-	_ = UnsupportedOperation.ServeResponse(w, r)
+	UnsupportedOperation.ServeResponse(w, r)
 	return
 }

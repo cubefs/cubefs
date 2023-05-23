@@ -51,6 +51,7 @@ const (
 	// Object actions
 	OSSGetObjectAction     Action = OSSActionPrefix + "GetObject"
 	OSSPutObjectAction     Action = OSSActionPrefix + "PutObject"
+	OSSPostObjectAction    Action = OSSActionPrefix + "PostObject"
 	OSSCopyObjectAction    Action = OSSActionPrefix + "CopyObject"
 	OSSListObjectsAction   Action = OSSActionPrefix + "ListObjects"
 	OSSDeleteObjectAction  Action = OSSActionPrefix + "DeleteObject"
@@ -159,6 +160,9 @@ const (
 	OSSPutBucketReplicationAction    Action = OSSActionPrefix + "PutBucketReplicationAction"    // unsupported
 	OSSDeleteBucketReplicationAction Action = OSSActionPrefix + "DeleteBucketReplicationAction" // unsupported
 
+	// STS actions
+	OSSGetFederationTokenAction Action = OSSActionPrefix + "GetFederationToken"
+
 	// constants for POSIX file system interface
 	POSIXReadAction  Action = POSIXActionPrefix + "Read"
 	POSIXWriteAction Action = POSIXActionPrefix + "Write"
@@ -175,6 +179,7 @@ var (
 		// Object storage interface actions
 		OSSGetObjectAction,
 		OSSPutObjectAction,
+		OSSPostObjectAction,
 		OSSCopyObjectAction,
 		OSSListObjectsAction,
 		OSSDeleteObjectAction,
@@ -240,6 +245,7 @@ var (
 		OSSPutBucketReplicationAction,
 		OSSDeleteBucketReplicationAction,
 		OSSOptionsObjectAction,
+		OSSGetFederationTokenAction,
 
 		// POSIX file system interface actions
 		POSIXReadAction,
@@ -315,7 +321,7 @@ func (p Permission) MatchSubdir(subdir string) bool {
 	}
 
 	pars := strings.Split(s, ":")
-	pars = pars[:len(pars)-1] //trim (Writable|ReadOnly) at the end
+	pars = pars[:len(pars)-1] // trim (Writable|ReadOnly) at the end
 	for _, toCmp := range pars {
 		if toCmp == "/" || toCmp == "" {
 			return true
@@ -324,15 +330,15 @@ func (p Permission) MatchSubdir(subdir string) bool {
 		toCmp = path.Clean("/" + toCmp)
 		if strings.HasPrefix(subdir, toCmp) {
 			tail := strings.TrimPrefix(subdir, toCmp)
-			//match case 1:
-			//subdir = "/a/b/c"
-			//toCmp  = "/a/b/c"
-			//tail   =       ""
+			// match case 1:
+			// subdir = "/a/b/c"
+			// toCmp  = "/a/b/c"
+			// tail   =       ""
 
-			//match case 2:
-			//subdir = "/a/b/c"
-			//toCmp  = "/a/b"
-			//tail   =     "/c"
+			// match case 2:
+			// subdir = "/a/b/c"
+			// toCmp  = "/a/b"
+			// tail   =     "/c"
 
 			if tail == "" || strings.HasPrefix(tail, "/") {
 				return true

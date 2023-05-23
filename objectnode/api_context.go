@@ -28,6 +28,10 @@ const (
 	ContextKeyRequestAction = "ctx_request_action"
 	ContextKeyStatusCode    = "status_code"
 	ContextKeyErrorMessage  = "error_message"
+	ContextKeyBucket        = "bucket"
+	ContextKeyObject        = "object"
+	ContextKeyUid           = "uid"
+	ContextKeyAccessKey     = "access_key"
 )
 
 func SetRequestID(r *http.Request, requestID string) {
@@ -46,8 +50,8 @@ func GetActionFromContext(r *http.Request) (action proto.Action) {
 	return proto.ParseAction(mux.Vars(r)[ContextKeyRequestAction])
 }
 
-func SetResponseStatusCode(r *http.Request, code ErrorCode) {
-	mux.Vars(r)[ContextKeyStatusCode] = strconv.Itoa(code.StatusCode)
+func SetResponseStatusCode(r *http.Request, code string) {
+	mux.Vars(r)[ContextKeyStatusCode] = code
 }
 
 func GetStatusCodeFromContext(r *http.Request) int {

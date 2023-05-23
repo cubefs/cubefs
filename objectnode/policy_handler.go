@@ -19,9 +19,9 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -60,14 +60,20 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var policyData []byte
-	policyData, err = json.Marshal(policy)
+	response, err := json.Marshal(policy)
 	if err != nil {
+		log.LogErrorf("getBucketPolicyHandler: json marshal fail, requestID(%v) policy(%v) err(%v)",
+			GetRequestID(r), policy, err)
 		ec = InternalErrorCode(err)
 		return
 	}
 
-	_, _ = w.Write(policyData)
+	w.Header().Set(ContentType, ValueContentTypeJSON)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("getBucketPolicyHandler: write response body fail, requestID(%v) response(%v) err(%v)",
+			GetRequestID(r), string(response), err)
+	}
 
 	return
 }

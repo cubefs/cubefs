@@ -18,6 +18,7 @@ package objectnode
 
 import (
 	"net/http"
+	"strconv"
 	"syscall"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -34,7 +35,6 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	}()
 
 	param := ParseRequestParam(r)
-	log.LogDebugf("Get bucket acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
 		ec = InvalidBucketName
 		return
@@ -60,6 +60,9 @@ func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), param.bucket, acl, err)
 		return
 	}
+
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(data)))
 	if _, err = w.Write(data); err != nil {
 		log.LogErrorf("getBucketACLHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
 			GetRequestID(r), param.bucket, string(data), err)
@@ -79,7 +82,6 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 	}()
 
 	param := ParseRequestParam(r)
-	log.LogDebugf("Put bucket acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
 		ec = InvalidBucketName
 		return
@@ -122,7 +124,6 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 	}()
 
 	param := ParseRequestParam(r)
-	log.LogDebugf("Get object acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
 		ec = InvalidBucketName
 		return
@@ -153,10 +154,14 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), param.bucket, param.object, acl, err)
 		return
 	}
+
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(data)))
 	if _, err = w.Write(data); err != nil {
 		log.LogErrorf("getObjectACLHandler: write response body fail: requestID(%v) volume(%v) path(%v) body(%v) err(%v)",
 			GetRequestID(r), param.bucket, param.object, string(data), err)
 	}
+
 	return
 }
 
@@ -171,7 +176,6 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 	}()
 
 	param := ParseRequestParam(r)
-	log.LogDebugf("Put object acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
 		ec = InvalidBucketName
 		return

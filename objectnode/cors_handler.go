@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -54,6 +55,9 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 			GetRequestID(r), vol.Name(), cors, err)
 		return
 	}
+
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(data)))
 	if _, err = w.Write(data); err != nil {
 		log.LogErrorf("getBucketCorsHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
 			GetRequestID(r), vol.Name(), string(data), err)
@@ -83,8 +87,8 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
-	md5 := r.Header.Get(HeaderNameContentMD5)
-	if md5 == "" {
+	requestMD5 := r.Header.Get(ContentMD5)
+	if requestMD5 == "" {
 		errorCode = MissingContentMD5
 		return
 	}
@@ -98,7 +102,7 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 		errorCode = EntityTooLarge
 		return
 	}
-	if md5 != GetMD5(body) {
+	if requestMD5 != GetMD5(body) {
 		errorCode = InvalidDigest
 		return
 	}

@@ -17,68 +17,10 @@ package objectnode
 import (
 	"encoding/xml"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
-type ErrorCode struct {
-	ErrorCode    string
-	ErrorMessage string
-	StatusCode   int
-}
-
-func NewError(errCode, errMsg string, statusCode int) *ErrorCode {
-	return &ErrorCode{
-		ErrorCode:    errCode,
-		ErrorMessage: errMsg,
-		StatusCode:   statusCode,
-	}
-}
-
-func (code ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) error {
-	// write status code to request context,
-	// traceMiddleWare send exception request to prometheus via status code
-	SetResponseStatusCode(r, code)
-	SetResponseErrorMessage(r, code.ErrorMessage)
-
-	var err error
-	var marshaled []byte
-	var xmlError = struct {
-		XMLName   xml.Name `xml:"Error"`
-		Code      string   `xml:"Code"`
-		Message   string   `xml:"Message"`
-		Resource  string   `xml:"Resource"`
-		RequestId string   `xml:"RequestId"`
-	}{
-		Code:      code.ErrorCode,
-		Message:   code.ErrorMessage,
-		Resource:  r.URL.String(),
-		RequestId: GetRequestID(r),
-	}
-	if marshaled, err = xml.Marshal(&xmlError); err != nil {
-		return err
-	}
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.WriteHeader(code.StatusCode)
-	if _, err = w.Write(marshaled); err != nil {
-		return err
-	}
-	return nil
-}
-
-func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.WriteHeader(http.StatusInternalServerError)
-	sb := strings.Builder{}
-	sb.WriteString(xml.Header)
-	sb.WriteString("<Error><Code>InternalError</Code><Message>We encountered an internal error. Please try again.</Message><Resource>")
-	sb.WriteString(r.URL.String())
-	sb.WriteString("</Resource><RequestId>")
-	sb.WriteString(GetRequestID(r))
-	sb.WriteString("</RequestId></Error>")
-	_, _ = w.Write([]byte(sb.String()))
-}
-
-// Presets
 var (
 	UnsupportedOperation                = &ErrorCode{ErrorCode: "NotImplemented", ErrorMessage: "A header you provided implies functionality that is not implemented.", StatusCode: http.StatusNotImplemented}
 	AccessDenied                        = &ErrorCode{ErrorCode: "AccessDenied", ErrorMessage: "Access Denied", StatusCode: http.StatusForbidden}
@@ -116,22 +58,85 @@ var (
 	InvalidTagValue                     = &ErrorCode{ErrorCode: "InvalidTag", ErrorMessage: "The TagValue you have provided is invalid", StatusCode: http.StatusBadRequest}
 	MissingContentMD5                   = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "Missing required header for this request: Content-MD5.", StatusCode: http.StatusBadRequest}
 	UnexpectedContent                   = &ErrorCode{ErrorCode: "UnexpectedContent", ErrorMessage: "This request does not support content.", StatusCode: http.StatusBadRequest}
-	NoSuchTagSetError                   = &ErrorCode{"NoSuchTagSetError", "The TagSet does not exist.", http.StatusNotFound}
-	InvalidTagError                     = &ErrorCode{"InvalidTagError", "missing tag in body", http.StatusBadRequest}
-	NoSuchCORSConfiguration             = &ErrorCode{"NoSuchCORSConfiguration", "The CORS configuration does not exist", http.StatusNotFound}
-	CORSRuleNotMatch                    = &ErrorCode{"AccessForbidden", "CORSResponse: This CORS request is not allowed.", http.StatusForbidden}
-	ErrCORSNotEnabled                   = &ErrorCode{"AccessForbidden", "CORSResponse: CORS is not enabled for this bucket", http.StatusForbidden}
-	MissingOriginHeader                 = &ErrorCode{"MissingOriginHeader", "Missing Origin header.", http.StatusBadRequest}
-	MalformedXML                        = &ErrorCode{"MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema.", http.StatusBadRequest}
-	TooManyCorsRules                    = &ErrorCode{"TooManyCorsRules", "too many cors rules", http.StatusBadRequest}
-	InvalidDigest                       = &ErrorCode{"InvalidDigest", "The Content-MD5 you specified is not valid.", http.StatusBadRequest}
-	KeyTooLong                          = &ErrorCode{"KeyTooLongError", "Your key is too long.", http.StatusBadRequest}
-	InvalidAccessKeyId                  = &ErrorCode{"InvalidAccessKeyId", "The access key Id you provided does not exist in our records.", http.StatusForbidden}
-	SignatureDoesNotMatch               = &ErrorCode{"SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided.", http.StatusForbidden}
-	InvalidMaxPartNumber                = &ErrorCode{"InvalidRequest", "the total part numbers exceed limit.", http.StatusBadRequest}
-	InvalidMinPartNumber                = &ErrorCode{"InvalidRequest", "you must specify at least one part.", http.StatusBadRequest}
+	AccessDeniedBySTS                   = &ErrorCode{ErrorCode: "AccessDeniedBySTS", ErrorMessage: "Access Denied by STS.", StatusCode: http.StatusForbidden}
+	InvalidToken                        = &ErrorCode{ErrorCode: "InvalidToken", ErrorMessage: "The provided token is malformed or otherwise invalid.", StatusCode: http.StatusBadRequest}
+	ExpiredToken                        = &ErrorCode{ErrorCode: "ExpiredToken", ErrorMessage: "The provided token has expired.", StatusCode: http.StatusBadRequest}
+	MissingSecurityElement              = &ErrorCode{ErrorCode: "MissingSecurityElement", ErrorMessage: "The request is missing a security element.", StatusCode: http.StatusBadRequest}
+	RequestTimeTooSkewed                = &ErrorCode{ErrorCode: "RequestTimeTooSkewed", ErrorMessage: "The difference between the request time and the server's time is too large.", StatusCode: http.StatusBadRequest}
+	NoSuchTagSetError                   = &ErrorCode{ErrorCode: "NoSuchTagSetError", ErrorMessage: "The TagSet does not exist.", StatusCode: http.StatusNotFound}
+	InvalidTagError                     = &ErrorCode{ErrorCode: "InvalidTagError", ErrorMessage: "Missing tag in body.", StatusCode: http.StatusBadRequest}
+	NoSuchCORSConfiguration             = &ErrorCode{ErrorCode: "NoSuchCORSConfiguration", ErrorMessage: "The CORS configuration does not exist.", StatusCode: http.StatusNotFound}
+	CORSRuleNotMatch                    = &ErrorCode{ErrorCode: "AccessForbidden", ErrorMessage: "CORSResponse: This CORS request is not allowed.", StatusCode: http.StatusForbidden}
+	ErrCORSNotEnabled                   = &ErrorCode{ErrorCode: "AccessForbidden", ErrorMessage: "CORSResponse: CORS is not enabled for this bucket.", StatusCode: http.StatusForbidden}
+	MissingOriginHeader                 = &ErrorCode{ErrorCode: "MissingOriginHeader", ErrorMessage: "Missing Origin header.", StatusCode: http.StatusBadRequest}
+	MalformedXML                        = &ErrorCode{ErrorCode: "MalformedXML", ErrorMessage: "The XML you provided was not well-formed or did not validate against our published schema.", StatusCode: http.StatusBadRequest}
+	TooManyCorsRules                    = &ErrorCode{ErrorCode: "TooManyCorsRules", ErrorMessage: "Too many cors rules.", StatusCode: http.StatusBadRequest}
+	InvalidDigest                       = &ErrorCode{ErrorCode: "InvalidDigest", ErrorMessage: "The Content-MD5 you specified is not valid.", StatusCode: http.StatusBadRequest}
+	KeyTooLong                          = &ErrorCode{ErrorCode: "KeyTooLongError", ErrorMessage: "Your key is too long.", StatusCode: http.StatusBadRequest}
+	InvalidAccessKeyId                  = &ErrorCode{ErrorCode: "InvalidAccessKeyId", ErrorMessage: "The access key Id you provided does not exist in our records.", StatusCode: http.StatusForbidden}
+	SignatureDoesNotMatch               = &ErrorCode{ErrorCode: "SignatureDoesNotMatch", ErrorMessage: "The request signature we calculated does not match the signature you provided.", StatusCode: http.StatusForbidden}
+	InvalidMaxPartNumber                = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The total part numbers exceed limit.", StatusCode: http.StatusBadRequest}
+	InvalidMinPartNumber                = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "You must specify at least one part.", StatusCode: http.StatusBadRequest}
 	DiskQuotaExceeded                   = &ErrorCode{"DiskQuotaExceeded", "Disk Quota Exceeded.", http.StatusBadRequest}
 )
+
+type ErrorCode struct {
+	ErrorCode    string
+	ErrorMessage string
+	StatusCode   int
+}
+
+type ErrorResponse struct {
+	XMLName   xml.Name `xml:"Error"`
+	Code      string   `xml:"Code"`
+	Message   string   `xml:"Message"`
+	Resource  string   `xml:"Resource"`
+	RequestId string   `xml:"RequestId"`
+}
+
+func NewError(errCode, errMsg string, statusCode int) *ErrorCode {
+	return &ErrorCode{
+		ErrorCode:    errCode,
+		ErrorMessage: errMsg,
+		StatusCode:   statusCode,
+	}
+}
+
+func (ec *ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) {
+	// write status code to request context,
+	// traceMiddleWare send exception request to prometheus via status code
+	SetResponseStatusCode(r, strconv.Itoa(ec.StatusCode))
+	SetResponseErrorMessage(r, ec.ErrorMessage)
+
+	errorResponse := ErrorResponse{
+		Code:      ec.ErrorCode,
+		Message:   ec.ErrorMessage,
+		Resource:  r.URL.String(),
+		RequestId: GetRequestID(r),
+	}
+	response, _ := MarshalXMLEntity(errorResponse)
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	w.WriteHeader(ec.StatusCode)
+	_, _ = w.Write(response)
+}
+
+func (ec *ErrorCode) Error() string {
+	return ec.ErrorMessage
+}
+
+func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.WriteHeader(http.StatusInternalServerError)
+	sb := strings.Builder{}
+	sb.WriteString(xml.Header)
+	sb.WriteString("<Error><Code>InternalError</Code><Message>We encountered an internal error. Please try again.</Message><Resource>")
+	sb.WriteString(r.URL.String())
+	sb.WriteString("</Resource><RequestId>")
+	sb.WriteString(GetRequestID(r))
+	sb.WriteString("</RequestId></Error>")
+	_, _ = w.Write([]byte(sb.String()))
+}
 
 func HttpStatusErrorCode(code int) *ErrorCode {
 	statusText := http.StatusText(code)
@@ -155,8 +160,4 @@ func InternalErrorCode(err error) *ErrorCode {
 		ErrorMessage: errorMessage,
 		StatusCode:   http.StatusInternalServerError,
 	}
-}
-
-func (e *ErrorCode) Error() string {
-	return e.ErrorMessage
 }

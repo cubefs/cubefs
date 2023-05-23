@@ -67,13 +67,15 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// parse http range option
-	var rangeOpt = strings.TrimSpace(r.Header.Get(HeaderNameRange))
-	var rangeLower uint64
-	var rangeUpper uint64
-	var isRangeRead bool
-	var partSize uint64
-	var partCount uint64
-	revRange := false
+	var (
+		revRange    bool
+		isRangeRead bool
+		rangeLower  uint64
+		rangeUpper  uint64
+		partSize    uint64
+		partCount   uint64
+	)
+	rangeOpt := strings.TrimSpace(r.Header.Get(Range))
 	if len(rangeOpt) > 0 {
 		if !rangeRegexp.MatchString(rangeOpt) {
 			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
@@ -92,7 +94,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		upperPart := ""
 		if hyphenIndex+1 < len(rangeOpt) {
 			// bytes=-5
-			if hyphenIndex == len("bytes=") { //suffix range opt
+			if hyphenIndex == len("bytes=") { // suffix range opt
 				revRange = true
 				rangeUpper = 1<<64 - 1
 				lowerPart = rangeOpt[hyphenIndex+1:]
@@ -149,14 +151,13 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var start = time.Now()
 	fileInfo, xattr, err = vol.ObjectMeta(param.Object())
 	log.LogDebugf("getObjectHandler: get object meta cost: %v", time.Since(start))
-	if err == syscall.ENOENT {
-		errorCode = NoSuchKey
-		return
-	}
 	if err != nil {
 		log.LogErrorf("getObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
 		errorCode = InternalErrorCode(err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
 
@@ -184,36 +185,36 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	ossTaggingData := xattr.Get(XAttrKeyOSSTagging)
 	output, _ := ParseTagging(string(ossTaggingData))
 	if output != nil && len(output.TagSet) > 0 {
-		w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
+		w.Header().Set(XAmzTaggingCount, strconv.Itoa(len(output.TagSet)))
 	}
 
 	// set response header for GetObject
-	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
-	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
+	w.Header().Set(AcceptRanges, ValueAcceptRanges)
+	w.Header().Set(LastModified, formatTimeRFC1123(fileInfo.ModifyTime))
 	if len(responseContentType) > 0 {
-		w.Header()[HeaderNameContentType] = []string{responseContentType}
+		w.Header().Set(ContentType, responseContentType)
 	} else if len(fileInfo.MIMEType) > 0 {
-		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
+		w.Header().Set(ContentType, fileInfo.MIMEType)
 	} else {
-		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
+		w.Header().Set(ContentType, ValueContentTypeStream)
 	}
 	if len(responseContentDisposition) > 0 {
-		w.Header()[HeaderNameContentDisposition] = []string{responseContentDisposition}
+		w.Header().Set(ContentDisposition, responseContentDisposition)
 	} else if len(fileInfo.Disposition) > 0 {
-		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
+		w.Header().Set(ContentDisposition, fileInfo.Disposition)
 	}
 	if len(responseCacheControl) > 0 {
-		w.Header()[HeaderNameCacheControl] = []string{responseCacheControl}
+		w.Header().Set(CacheControl, responseCacheControl)
 	} else if len(fileInfo.CacheControl) > 0 {
-		w.Header()[HeaderNameCacheControl] = []string{fileInfo.CacheControl}
+		w.Header().Set(CacheControl, fileInfo.CacheControl)
 	}
 	if len(responseExpires) > 0 {
-		w.Header()[HeaderNameExpires] = []string{responseExpires}
+		w.Header().Set(Expires, responseExpires)
 	} else if len(fileInfo.Expires) > 0 {
-		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
+		w.Header().Set(Expires, fileInfo.Expires)
 	}
 
-	//check request is whether contain param : partNumber
+	// check request is whether contain param : partNumber
 	partNumber := r.URL.Query().Get(ParamPartNumber)
 	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
 		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
@@ -238,25 +239,25 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Header : Accept-Range, Content-Length, Content-Range, ETag, x-amz-mp-parts-count
-		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(partSize))}
-		w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
-		w.Header()[HeaderNameXAmzDownloadPartCount] = []string{strconv.Itoa(int(partCount))}
+		w.Header().Set(ContentLength, strconv.Itoa(int(partSize)))
+		w.Header().Set(ContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+		w.Header().Set(XAmzMpPartsCount, strconv.Itoa(int(partCount)))
 		if len(fileInfo.ETag) > 0 && !strings.Contains(fileInfo.ETag, "-") {
-			w.Header()[HeaderNameETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
+			w.Header()[ETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
 		}
 	} else {
-		w.Header()[HeaderNameContentLength] = []string{strconv.FormatUint(contentLength, 10)}
+		w.Header().Set(ContentLength, strconv.FormatUint(contentLength, 10))
 		if len(fileInfo.ETag) > 0 {
-			w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
+			w.Header()[ETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
 		}
 		if isRangeRead {
-			w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
+			w.Header().Set(ContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
 		}
 	}
 
 	// User-defined metadata
 	for name, value := range fileInfo.Metadata {
-		w.Header()[HeaderNameXAmzMetaPrefix+name] = []string{value}
+		w.Header().Set(XAmzMetaPrefix+name, value)
 	}
 
 	if fileInfo.Mode.IsDir() {
@@ -268,18 +269,15 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var size = uint64(fileInfo.Size)
 	if isRangeRead || len(partNumber) > 0 {
 		size = rangeUpper - rangeLower + 1
-	}
-	if isRangeRead {
 		w.WriteHeader(http.StatusPartialContent)
 	}
 	err = vol.readFile(fileInfo.Inode, uint64(fileInfo.Size), param.Object(), w, offset, size)
-	if err == syscall.ENOENT {
-		errorCode = NoSuchKey
-		return
-	}
 	if err != nil {
 		log.LogErrorf("getObjectHandler: read file fail: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
 	log.LogDebugf("getObjectHandler: read file success: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) cost(%v)",
@@ -290,10 +288,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
 	// parse request header
-	match := r.Header.Get(HeaderNameIfMatch)
-	noneMatch := r.Header.Get(HeaderNameIfNoneMatch)
-	modified := r.Header.Get(HeaderNameIfModifiedSince)
-	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
+	match := r.Header.Get(IfMatch)
+	noneMatch := r.Header.Get(IfNoneMatch)
+	modified := r.Header.Get(IfModifiedSince)
+	unmodified := r.Header.Get(IfUnmodifiedSince)
 	// Checking precondition: If-Match
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
 	if match != "" {
@@ -388,10 +386,10 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse request header
-	match := r.Header.Get(HeaderNameIfMatch)
-	noneMatch := r.Header.Get(HeaderNameIfNoneMatch)
-	modified := r.Header.Get(HeaderNameIfModifiedSince)
-	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
+	match := r.Header.Get(IfMatch)
+	noneMatch := r.Header.Get(IfNoneMatch)
+	modified := r.Header.Get(IfModifiedSince)
+	unmodified := r.Header.Get(IfUnmodifiedSince)
 
 	// Checking precondition: If-Match
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
@@ -447,22 +445,22 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
-	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
-	w.Header()[HeaderNameContentMD5] = []string{EmptyContentMD5String}
+	w.Header().Set(AcceptRanges, ValueAcceptRanges)
+	w.Header().Set(LastModified, formatTimeRFC1123(fileInfo.ModifyTime))
+	w.Header().Set(ContentMD5, EmptyContentMD5String)
 	if len(fileInfo.MIMEType) > 0 {
-		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
+		w.Header().Set(ContentType, fileInfo.MIMEType)
 	} else {
-		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
+		w.Header().Set(ContentType, ValueContentTypeStream)
 	}
 	if len(fileInfo.Disposition) > 0 {
-		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
+		w.Header().Set(ContentDisposition, fileInfo.Disposition)
 	}
 	if len(fileInfo.CacheControl) > 0 {
-		w.Header()[HeaderNameCacheControl] = []string{fileInfo.CacheControl}
+		w.Header().Set(CacheControl, fileInfo.CacheControl)
 	}
 	if len(fileInfo.Expires) > 0 {
-		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
+		w.Header().Set(Expires, fileInfo.Expires)
 	}
 
 	// check request is whether contain param : partNumber
@@ -485,23 +483,24 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = NoSuchKey
 			return
 		}
-		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(partSize))}
-		w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
-		w.Header()[HeaderNameXAmzDownloadPartCount] = []string{strconv.Itoa(int(partCount))}
+		w.Header().Set(ContentLength, strconv.Itoa(int(partSize)))
+		w.Header().Set(ContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+		w.Header().Set(XAmzMpPartsCount, strconv.Itoa(int(partCount)))
 		if len(fileInfo.ETag) > 0 && !strings.Contains(fileInfo.ETag, "-") {
-			w.Header()[HeaderNameETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
+			w.Header()[ETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
 		}
 	} else {
-		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(fileInfo.Size))}
+		w.Header().Set(ContentLength, strconv.Itoa(int(fileInfo.Size)))
 		if len(fileInfo.ETag) > 0 {
-			w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
+			w.Header()[ETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
 		}
 	}
 
 	// User-defined metadata
 	for name, value := range fileInfo.Metadata {
-		w.Header()[HeaderNameXAmzMetaPrefix+name] = []string{value}
+		w.Header().Set(XAmzMetaPrefix+name, value)
 	}
+
 	return
 }
 
@@ -529,8 +528,8 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var cmd5 string
-	if cmd5 = r.Header.Get(HeaderNameContentMD5); cmd5 == "" {
+	requestMD5 := r.Header.Get(ContentMD5)
+	if requestMD5 == "" {
 		errorCode = MissingContentMD5
 		return
 	}
@@ -543,7 +542,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		errorCode = UnexpectedContent
 		return
 	}
-	if cmd5 != GetMD5(bytes) {
+	if requestMD5 != GetMD5(bytes) {
 		errorCode = BadDigest
 		return
 	}
@@ -639,25 +638,25 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		Deleted: deletedObjects,
 		Error:   deletedErrors,
 	}
-	bytesRes, err1 := MarshalXMLEntity(deleteResult)
+	response, err1 := MarshalXMLEntity(deleteResult)
 	if err1 != nil {
 		log.LogErrorf("deleteObjectsHandler: xml marshal fail: requestID(%v) volume(%v) result(%+v) err(%v)",
 			GetRequestID(r), param.Bucket(), deleteResult, err1)
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytesRes))}
-	if _, err1 = w.Write(bytesRes); err1 != nil {
-		log.LogErrorf("deleteObjectsHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), string(bytesRes), err1)
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err1 = w.Write(response); err1 != nil {
+		log.LogErrorf("deleteObjectsHandler: write response fail: requestID(%v) volume(%v) body(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), string(response), err1)
 	}
 
 	return
 }
 
 func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string, err error) {
-	copySource := r.Header.Get(HeaderNameXAmzCopySource)
+	copySource := r.Header.Get(XAmzCopySource)
 	copySource, err = url.QueryUnescape(copySource)
 	if err != nil {
 		return "", "", "", InvalidArgument
@@ -711,21 +710,21 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// client can reset these system metadata: Content-Type, Content-Disposition
-	contentType := r.Header.Get(HeaderNameContentType)
-	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
-	cacheControl := r.Header.Get(HeaderNameCacheControl)
+	contentType := r.Header.Get(ContentType)
+	contentDisposition := r.Header.Get(ContentDisposition)
+	cacheControl := r.Header.Get(CacheControl)
 	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
 		errorCode = InvalidCacheArgument
 		return
 	}
-	expires := r.Header.Get(HeaderNameExpires)
+	expires := r.Header.Get(Expires)
 	if len(expires) > 0 && !ValidateCacheExpires(expires) {
 		errorCode = InvalidCacheArgument
 		return
 	}
 
 	// metadata directive, direct object node use source file metadata or recreate metadata for target file
-	metadataDirective := r.Header.Get(HeaderNameXAmzMetadataDirective)
+	metadataDirective := r.Header.Get(XAmzMetadataDirective)
 	// metadata directive default value is COPY
 	if len(metadataDirective) == 0 {
 		metadataDirective = MetadataDirectiveCopy
@@ -740,7 +739,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	sourceBucket, sourceObject, _, err := extractSrcBucketKey(r)
 	if err != nil {
 		log.LogErrorf("copyObjectHandler: copySource(%v) argument invalid: requestID(%v) volume(%v) err(%v)",
-			r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(r), param.Bucket(), err)
+			r.Header.Get(XAmzCopySource), GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
@@ -779,10 +778,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get header
-	copyMatch := r.Header.Get(HeaderNameXAmzCopyMatch)
-	noneMatch := r.Header.Get(HeaderNameXAmzCopyNoneMatch)
-	modified := r.Header.Get(HeaderNameXAmzCopyModified)
-	unModified := r.Header.Get(HeaderNameXAmzCopyUnModified)
+	copyMatch := r.Header.Get(XAmzCopySourceIfMatch)
+	noneMatch := r.Header.Get(XAmzCopySourceIfNoneMatch)
+	modified := r.Header.Get(XAmzCopySourceIfModifiedSince)
+	unModified := r.Header.Get(XAmzCopySourceIfUnmodifiedSince)
 
 	// response 412
 	if modified != "" {
@@ -859,20 +858,19 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ETag:         "\"" + fsFileInfo.ETag + "\"",
 		LastModified: formatTimeISO(fsFileInfo.ModifyTime),
 	}
-
-	var bytes []byte
-	if bytes, err = MarshalXMLEntity(copyResult); err != nil {
+	response, err := MarshalXMLEntity(copyResult)
+	if err != nil {
 		log.LogErrorf("copyObjectHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	if _, err1 := w.Write(bytes); err1 != nil {
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err1 := w.Write(response); err1 != nil {
 		log.LogWarnf("copyObjectHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), string(bytes), err)
+			GetRequestID(r), param.Bucket(), string(response), err1)
 	}
 
 	return
@@ -995,22 +993,20 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		Contents:       contents,
 		CommonPrefixes: commonPrefixes,
 	}
-
-	var bytes []byte
-	if bytes, err = MarshalXMLEntity(listBucketResult); err != nil {
-		log.LogErrorf("getBucketV1Handler: marshal result fail: requestID(%v) volume(%v) result(%v) err(%v)",
-			GetRequestID(r), vol.Name(), listBucketResult, err)
+	response, err := MarshalXMLEntity(listBucketResult)
+	if err != nil {
+		log.LogErrorf("getBucketV1Handler: xml marshal result fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("getBucketV1Handler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
-			GetRequestID(r), vol.Name(), string(bytes), err)
-		errorCode = InternalErrorCode(err)
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("getBucketV1Handler: write response body fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
 	}
 
 	return
@@ -1163,23 +1159,21 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		Contents:       contents,
 		CommonPrefixes: commonPrefixes,
 	}
-
-	var bytes []byte
-	if bytes, err = MarshalXMLEntity(listBucketResult); err != nil {
-		log.LogErrorf("getBucketV2Handler: marshal result fail: requestID(%v) volume(%v) result(%v) err(%v)",
-			GetRequestID(r), vol.Name(), listBucketResult, err)
-		errorCode = InternalErrorCode(err)
+	response, err := MarshalXMLEntity(listBucketResult)
+	if err != nil {
+		log.LogErrorf("getBucketV2Handler: xml marshal result fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("getBucketV2Handler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
-			GetRequestID(r), vol.Name(), string(bytes), err)
-		errorCode = InternalErrorCode(err)
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("getBucketV2Handler: write response body fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
 	}
+
 	return
 }
 
@@ -1222,7 +1216,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Check 'x-amz-tagging' header
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
 	var tagging *Tagging
-	if xAmxTagging := r.Header.Get(HeaderNameXAmzTagging); xAmxTagging != "" {
+	if xAmxTagging := r.Header.Get(XAmzTagging); xAmxTagging != "" {
 		if tagging, err = ParseTagging(xAmxTagging); err != nil {
 			errorCode = InvalidArgument
 			return
@@ -1244,7 +1238,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get request MD5, if request MD5 is not empty, compute and verify it.
-	requestMD5 := r.Header.Get(HeaderNameContentMD5)
+	requestMD5 := r.Header.Get(ContentMD5)
 	if requestMD5 != "" {
 		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
 		if err != nil {
@@ -1257,17 +1251,17 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// Get the requested content-type.
 	// In addition to being used to manage data types, it is used to distinguish
 	// whether the request is to create a directory.
-	contentType := r.Header.Get(HeaderNameContentType)
+	contentType := r.Header.Get(ContentType)
 	// Get request header : content-disposition
-	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
+	contentDisposition := r.Header.Get(ContentDisposition)
 	// Get request header : Cache-Control
-	cacheControl := r.Header.Get(HeaderNameCacheControl)
+	cacheControl := r.Header.Get(CacheControl)
 	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
 		errorCode = InvalidCacheArgument
 		return
 	}
 	// Get request header : Expires
-	expires := r.Header.Get(HeaderNameExpires)
+	expires := r.Header.Get(Expires)
 	if len(expires) > 0 && !ValidateCacheExpires(expires) {
 		errorCode = InvalidCacheArgument
 		return
@@ -1314,8 +1308,29 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		vol.Name(), param.Object(), time.Since(startPut))
 
 	// set response header
-	w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
-	w.Header()[HeaderNameContentLength] = []string{"0"}
+	w.Header()[ETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
+
+	return
+}
+
+// Post object
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPOST.html
+func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var errorCode *ErrorCode
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	param := ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+
+	// will be implemented
+	errorCode = UnsupportedOperation
+
 	return
 }
 
@@ -1401,17 +1416,22 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 
 	var output, _ = ParseTagging(string(ossTaggingData))
-
-	var encoded []byte
-	if encoded, err = MarshalXMLEntity(output); err != nil {
-		log.LogErrorf("getObjectTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
+	response, err := MarshalXMLEntity(output)
+	if err != nil {
+		log.LogErrorf("getObjectTaggingHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), output, err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
 
-	if _, err = w.Write(encoded); err != nil {
-		log.LogErrorf("getObjectTaggingHandler: write response fail: requestID(%v) err（%v)", GetRequestID(r), err)
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("getObjectTaggingHandler: write response fail: requestID(%v) response(%v) err（%v)",
+			GetRequestID(r), string(response), err)
 	}
+
 	return
 }
 
@@ -1443,35 +1463,35 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
-		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
 	}
 
 	var tagging = NewTagging()
 	if err = xml.Unmarshal(requestBody, tagging); err != nil {
-		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
 	}
 	validateRes, errorCode := tagging.Validate()
 	if !validateRes {
-		log.LogErrorf("putObjectTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
+		log.LogErrorf("putObjectTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)",
+			GetRequestID(r), tagging, errorCode.Error())
 		return
 	}
 
 	err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode()), false)
-
 	if err != nil {
-		log.LogErrorf("pubObjectTaggingHandler: volume set tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
+		log.LogErrorf("pubObjectTaggingHandler: set tagging xattr fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
-		} else {
-			errorCode = InternalErrorCode(err)
 		}
-		return
 	}
+
 	return
 }
 
@@ -1557,15 +1577,13 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err = vol.SetXAttr(param.object, key, []byte(value), true); err != nil {
-		if err == syscall.ENOENT {
-			errorCode = NoSuchKey
-			return
-		}
 		log.LogErrorf("pubObjectXAttrHandler: volume set extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 	}
+
 	return
 }
 
@@ -1609,20 +1627,28 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	var response = GetXAttrOutput{
+	output := GetXAttrOutput{
 		XAttr: &XAttr{
 			Key:   xattrKey,
 			Value: string(info.Get(xattrKey)),
 		},
 	}
-	var marshaled []byte
-	if marshaled, err = MarshalXMLEntity(&response); err != nil {
-		log.LogErrorf("getObjectXAttrHandler: marshal response body fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	response, err := MarshalXMLEntity(&output)
+	if err != nil {
+		log.LogErrorf("getObjectXAttrHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), output, err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	_, _ = w.Write(marshaled)
+
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("getObjectXAttrHandler: write response body fail: requestID(%v) response(%v) err(%v)",
+			GetRequestID(r), string(response), err)
+	}
+
 	return
 }
 
@@ -1656,15 +1682,13 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	if err = vol.DeleteXAttr(param.object, xattrKey); err != nil {
-		if err == syscall.ENOENT {
-			errorCode = NoSuchKey
-			return
-		}
 		log.LogErrorf("deleteObjectXAttrHandler: delete extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 	}
+
 	return
 }
 
@@ -1704,19 +1728,25 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var response = ListXAttrsOutput{
+	output := ListXAttrsOutput{
 		Keys: keys,
 	}
-	var marshaled []byte
-	if marshaled, err = MarshalXMLEntity(&response); err != nil {
+	response, err := MarshalXMLEntity(&output)
+	if err != nil {
 		log.LogErrorf("listObjectXAttrs: marshal response body fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	if _, err = w.Write(marshaled); err != nil {
-		log.LogErrorf("listObjectXAttrs: write response fail: requestID(%v) err(%v)", GetRequestID(r), err)
+
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("listObjectXAttrs: write response body fail: requestID(%v) response(%v) err(%v)",
+			GetRequestID(r), string(response), err)
 	}
+
 	return
 }
 
@@ -1725,7 +1755,7 @@ func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, 
 	var partCount uint64
 	var rangeLower uint64
 	var rangeUpper uint64
-	//partSize, partCount, rangeLower, rangeUpper
+	// partSize, partCount, rangeLower, rangeUpper
 	partSizeConst := ParallelDownloadPartSize
 	partCount = fileSize / uint64(partSizeConst)
 	lastSize := fileSize % uint64(partSizeConst)

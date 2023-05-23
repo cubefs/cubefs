@@ -210,8 +210,8 @@ func NewUploads(fsUploads []*FSUpload, accessKey string) []*Upload {
 
 func NewBucketOwner(volume *Volume) *BucketOwner {
 	return &BucketOwner{
-		//ID:          volume.Owner(),
-		//DisplayName: volume.Owner(),
+		// ID:          volume.Owner(),
+		// DisplayName: volume.Owner(),
 		ID:          volume.GetOwner(),
 		DisplayName: volume.GetOwner(),
 	}

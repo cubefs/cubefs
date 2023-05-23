@@ -121,7 +121,7 @@ func (fs *FileService) createDir(ctx context.Context, args struct {
 	}
 
 	return volume.PutObject(args.Path, nil, &PutFileOption{
-		MIMEType: HeaderValueContentTypeDirectory,
+		MIMEType: ValueContentTypeDirectory,
 		Tagging:  nil,
 		Metadata: nil,
 	})
@@ -246,7 +246,7 @@ func (fs *FileService) fileMeta(ctx context.Context, args struct {
 	}
 	info, _, err = volume.ObjectMeta(args.Path)
 	return
-	//return volume.ObjectMeta(args.Path)
+	// return volume.ObjectMeta(args.Path)
 }
 
 func (fs *FileService) signURL(ctx context.Context, args struct {
@@ -283,7 +283,7 @@ func (fs *FileService) signURL(ctx context.Context, args struct {
 	return proto.Success(u), err
 }
 
-//?vol_name=abc&path=/aaa/bbb/ddd.txt
+// ?vol_name=abc&path=/aaa/bbb/ddd.txt
 func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Request) error {
 	if err := request.ParseForm(); err != nil {
 		return err
@@ -308,7 +308,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 		return fmt.Errorf("not found path in get param ?vol_name=[your path]")
 	}
 
-	//author validate
+	// author validate
 	if err := fs.userVolPerm(ctx, info.User_id, volName).read(); err != nil {
 		return fmt.Errorf("the user does not have permission to access this volume")
 	}
@@ -341,7 +341,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 	return nil
 }
 
-//?vol_name=abc&path=/aaa/bbb/ddd.txt {file}
+// ?vol_name=abc&path=/aaa/bbb/ddd.txt {file}
 func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Request) error {
 	if err := request.ParseForm(); err != nil {
 		return err
@@ -366,7 +366,7 @@ func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Requ
 		return fmt.Errorf("not found path in get param ?vol_name=[your path]")
 	}
 
-	//author validate
+	// author validate
 	if err := fs.userVolPerm(ctx, info.User_id, volName).write(); err != nil {
 		return fmt.Errorf("the user:[%s] does not have permission to access this volume:[%s]", info.User_id, volName)
 	}

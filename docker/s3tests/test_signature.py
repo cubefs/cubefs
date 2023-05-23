@@ -39,7 +39,7 @@ class SignatureTest(S3TestCase):
         # Test head a bucket by expired presigned url.
         url = s3.generate_presigned_url('head_bucket', Params={'Bucket': env.BUCKET}, ExpiresIn=-1)
         response = requests.head(url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 400)
         response.close()
 
         # Vars for followed tests

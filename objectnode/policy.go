@@ -173,10 +173,12 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				allowed = true
 				return
 			}
+			log.LogErrorf("policyCheck: anonymous user is not allowed by api(%v) requestID(%v)",
+				param.apiName, GetRequestID(r))
 			allowed = false
 			return
 		}
-		if bucket := mux.Vars(r)["bucket"]; len(bucket) > 0 {
+		if bucket := mux.Vars(r)[ContextKeyBucket]; len(bucket) > 0 {
 			if _, err = o.getVol(bucket); err != nil {
 				allowed = false
 				return
@@ -191,7 +193,8 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			goto policycheck
 		}
 		if isAnonymous(param.accessKey) && !apiAllowAnonymous(param.apiName) {
-			log.LogDebugf("anonymous user is not allowed by api(%v) requestID(%v)", param.apiName, GetRequestID(r))
+			log.LogErrorf("policyCheck: anonymous user is not allowed by api(%v) requestID(%v)",
+				param.apiName, GetRequestID(r))
 			allowed = false
 			return
 		}
@@ -330,7 +333,7 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 	paramCopy := *param
 	srcBucketId, srcKey, _, err := extractSrcBucketKey(paramCopy.r)
 	if err != nil {
-		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", paramCopy.r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(paramCopy.r))
+		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", paramCopy.r.Header.Get(XAmzCopySource), GetRequestID(paramCopy.r))
 		return
 	}
 	vol, acl, policy, err := o.loadBucketMeta(srcBucketId)

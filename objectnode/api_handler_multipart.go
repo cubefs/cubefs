@@ -15,6 +15,8 @@
 package objectnode
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"io"
 	"io/ioutil"
@@ -68,8 +70,8 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 
 	var userInfo *proto.UserInfo
 	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
-		log.LogErrorf("createMultipleUploadHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		log.LogErrorf("createMultipleUploadHandler: get user info fail: requestID(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.AccessKey(), err)
 		return
 	}
 
@@ -77,17 +79,17 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	// Get the requested content-type.
 	// In addition to being used to manage data types, it is used to distinguish
 	// whether the request is to create a directory.
-	contentType := r.Header.Get(HeaderNameContentType)
+	contentType := r.Header.Get(ContentType)
 	// Get request header : content-disposition
-	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
+	contentDisposition := r.Header.Get(ContentDisposition)
 	// Get request header : Cache-Control
-	cacheControl := r.Header.Get(HeaderNameCacheControl)
+	cacheControl := r.Header.Get(CacheControl)
 	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
 		errorCode = InvalidCacheArgument
 		return
 	}
 	// Get request header : Expires
-	expires := r.Header.Get(HeaderNameExpires)
+	expires := r.Header.Get(Expires)
 	if len(expires) > 0 && !ValidateCacheExpires(expires) {
 		errorCode = InvalidCacheArgument
 		return
@@ -98,7 +100,7 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 
 	// Check 'x-amz-tagging' header
 	var tagging *Tagging
-	if xAmxTagging := r.Header.Get(HeaderNameXAmzTagging); xAmxTagging != "" {
+	if xAmxTagging := r.Header.Get(XAmzTagging); xAmxTagging != "" {
 		if tagging, err = ParseTagging(xAmxTagging); err != nil {
 			errorCode = InvalidArgument
 			return
@@ -124,7 +126,7 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 
 	var uploadID string
 	if uploadID, err = vol.InitMultipart(param.Object(), opt); err != nil {
-		log.LogErrorf("createMultipleUploadHandler:  init multipart fail, requestID(%v) err(%v)",
+		log.LogErrorf("createMultipleUploadHandler: init multipart fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		return
 	}
@@ -134,21 +136,21 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		Key:      param.Object(),
 		UploadId: uploadID,
 	}
-
-	var bytes []byte
-	if bytes, err = MarshalXMLEntity(initResult); err != nil {
-		log.LogErrorf("createMultipleUploadHandler: marshal result fail, requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	response, err := MarshalXMLEntity(initResult)
+	if err != nil {
+		log.LogErrorf("createMultipleUploadHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), initResult, err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("createMultipleUploadHandler: write response body fail, requestID(%v) err(%v)",
-			GetRequestID(r), err)
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("createMultipleUploadHandler: write response body fail: requestID(%v) response(%v) err(%v)",
+			GetRequestID(r), string(response), err)
 	}
+
 	return
 }
 
@@ -166,8 +168,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 
 	// check args
 	var param = ParseRequestParam(r)
-
-	//// get upload id and part number
+	// get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	partNumber := param.GetVar(ParamPartNumber)
 	if uploadId == "" || partNumber == "" {
@@ -183,7 +184,6 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InvalidArgument
 		return
 	}
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -193,13 +193,23 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get request MD5, if request MD5 is not empty, compute and verify it.
+	requestMD5 := r.Header.Get(ContentMD5)
+	if requestMD5 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
+		if err != nil {
+			errorCode = InvalidDigest
+			return
+		}
+		requestMD5 = hex.EncodeToString(decoded)
+	}
+
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("uploadPartHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		return
 	}
-
 	var fsFileInfo *FSFileInfo
 	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body); err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
@@ -219,11 +229,18 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InternalErrorCode(err)
 		return
 	}
+	// check content MD5
+	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
+		log.LogErrorf("uploadPartHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), requestMD5, fsFileInfo.ETag)
+		errorCode = BadDigest
+		return
+	}
 	log.LogDebugf("uploadPartHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%v)",
 		GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, fsFileInfo)
 	// write header to response
-	w.Header()[HeaderNameContentLength] = []string{"0"}
-	w.Header()[HeaderNameETag] = []string{"\"" + fsFileInfo.ETag + "\""}
+	w.Header()[ETag] = []string{"\"" + fsFileInfo.ETag + "\""}
+
 	return
 }
 
@@ -239,7 +256,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	//step1: check args
+	// step1: check args
 	var param = ParseRequestParam(r)
 	uploadId := param.GetVar(ParamUploadId)
 	partNumber := param.GetVar(ParamPartNumber)
@@ -265,21 +282,24 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("partCopyHandler: load volume fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("uploadPartCopyHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
-	//step2: extract params from req
+	// step2: extract params from req
 	srcBucket, srcObject, _, err := extractSrcBucketKey(r)
 	if err != nil {
-		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(r))
+		log.LogDebugf("uploadPartCopyHandler: copySource(%v) argument invalid: requestID(%v)",
+			r.Header.Get(XAmzCopySource), GetRequestID(r))
 		return
 	}
 
 	// step3: get srcObject metadata
 	var srcVol *Volume
 	if srcVol, err = o.getVol(srcBucket); err != nil {
-		log.LogErrorf("partCopyHandler: load src volume fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("uploadPartCopyHandler: load src volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), srcBucket, err)
 		return
 	}
 	srcFileInfo, _, err := srcVol.ObjectMeta(srcObject)
@@ -288,7 +308,8 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		log.LogErrorf("partCopyHandler: get fileMeta fail: requestId(%v) srcVol(%v) path(%v) err(%v)", GetRequestID(r), srcBucket, srcObject, err)
+		log.LogErrorf("uploadPartCopyHandler: get fileMeta fail: requestId(%v) srcVol(%v) path(%v) err(%v)",
+			GetRequestID(r), srcBucket, srcObject, err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
@@ -297,8 +318,8 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	//step4: extract range params
-	copyRange := r.Header.Get(HeaderNameXAmzCopyRange)
+	// step4: extract range params
+	copyRange := r.Header.Get(XAmzCopySourceRange)
 	firstByte, copyLength, errorCode := determineCopyRange(copyRange, srcFileInfo.Size)
 	if errorCode != nil {
 		return
@@ -307,7 +328,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	go func() {
 		err = srcVol.readFile(srcFileInfo.Inode, uint64(srcFileInfo.Size), srcObject, writer, uint64(firstByte), uint64(copyLength))
 		if err != nil {
-			log.LogErrorf("partCopyHandler: read srcObj err(%v): requestId(%v) srcVol(%v) path(%v)",
+			log.LogErrorf("uploadPartCopyHandler: read srcObj err(%v): requestId(%v) srcVol(%v) path(%v)",
 				err, GetRequestID(r), srcBucket, srcObject)
 		}
 		writer.CloseWithError(err)
@@ -316,32 +337,35 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	// step5: upload part by copy
 	var fsFileInfo *FSFileInfo
 	fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), reader)
-	if err == syscall.ENOENT {
-		errorCode = NoSuchUpload
-		return
-	}
-	if err == syscall.EAGAIN {
-		errorCode = ConflictUploadRequest
-		return
-	}
-	if err == io.ErrUnexpectedEOF {
-		log.LogWarnf("partCopyHandler: write part fail cause unexpected EOF: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
-		errorCode = EntityTooSmall
-		return
-	}
 	if err != nil {
-		log.LogErrorf("partCopyHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
+		log.LogErrorf("uploadPartCopyHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
 		errorCode = InternalErrorCode(err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchUpload
+			return
+		}
+		if err == syscall.EAGAIN {
+			errorCode = ConflictUploadRequest
+			return
+		}
+		if err == io.ErrUnexpectedEOF {
+			errorCode = EntityTooSmall
+		}
 		return
 	}
-	log.LogDebugf("partCopyHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%+v)",
-		GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, fsFileInfo)
+
+	// step6: write response
 	Etag := "\"" + fsFileInfo.ETag + "\""
-	w.Header()[HeaderNameETag] = []string{Etag}
-	cpr := NewS3CopyPartResult(Etag, fsFileInfo.CreateTime.UTC().Format(time.RFC3339))
-	w.Write([]byte(cpr.String()))
+	response := NewS3CopyPartResult(Etag, fsFileInfo.CreateTime.UTC().Format(time.RFC3339)).String()
+	w.Header()[ETag] = []string{Etag}
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write([]byte(response)); err != nil {
+		log.LogErrorf("uploadPartCopyHandler: write response fail: requestID(%v) response(%v) uploadId(%v) part(%v) err(%v)",
+			GetRequestID(r), response, uploadId, partNumberInt, err)
+	}
+
 	return
 }
 
@@ -376,7 +400,8 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		maxPartsInt, err = strconv.ParseUint(maxParts, 10, 64)
 		if err != nil {
-			log.LogErrorf("listPartsHandler: parse max parts fail, requestID(%v) raw(%v) err(%v)", GetRequestID(r), maxParts, err)
+			log.LogErrorf("listPartsHandler: parse max parts fail: requestID(%v) raw(%v) err(%v)",
+				GetRequestID(r), maxParts, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -387,7 +412,8 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	if partNoMarker != "" {
 		res, err := strconv.ParseUint(partNoMarker, 10, 64)
 		if err != nil {
-			log.LogErrorf("listPatsHandler: parse part number marker fail, requestID(%v) raw(%v) err(%v)", GetRequestID(r), partNoMarker, err)
+			log.LogErrorf("listPatsHandler: parse part number marker fail: requestID(%v) raw(%v) err(%v)",
+				GetRequestID(r), partNoMarker, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -412,7 +438,7 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 
 	fsParts, nextMarker, isTruncated, err := vol.ListParts(param.Object(), uploadId, maxPartsInt, partNoMarkerInt)
 	if err != nil {
-		log.LogErrorf("listPartsHandler: Volume list parts fail, requestID(%v) uploadID(%v) maxParts(%v) partNoMarker(%v) err(%v)",
+		log.LogErrorf("listPartsHandler: list parts fail, requestID(%v) uploadID(%v) maxParts(%v) partNoMarker(%v) err(%v)",
 			GetRequestID(r), uploadId, maxPartsInt, partNoMarkerInt, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchUpload
@@ -444,23 +470,22 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		Owner:        bucketOwner,
 		Initiator:    initiator,
 	}
-
-	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(listPartsResult); marshalError != nil {
-		log.LogErrorf("listPartsHandler: marshal result fail, requestID(%v) err(%v)",
+	response, err := MarshalXMLEntity(listPartsResult)
+	if err != nil {
+		log.LogErrorf("listPartsHandler: xml marshal result fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("listPartsHandler: write response body fail, requestID(%v) err(%v)",
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("listPartsHandler: write response body fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 	}
+
 	return
 }
 
@@ -468,7 +493,8 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, errCode *ErrorCode) {
 	if len(reqParts.Parts) <= 0 {
 		errCode = InvalidPart
-		log.LogErrorf("checkReqParts: upload part is empty: requestID(%v) volume(%v)", GetRequestID(param.r), param.Bucket())
+		log.LogErrorf("checkReqParts: upload part is empty: requestID(%v) volume(%v)",
+			GetRequestID(param.r), param.Bucket())
 		return
 	}
 
@@ -578,14 +604,16 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	var requestBytes []byte
 	requestBytes, err = ioutil.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
-		log.LogErrorf("completeMultipartUploadHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("completeMultipartUploadHandler: read request body fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
 	multipartUploadRequest := &CompleteMultipartUploadRequest{}
 	err = UnmarshalXMLEntity(requestBytes, multipartUploadRequest)
 	if err != nil {
-		log.LogErrorf("completeMultipartUploadHandler: unmarshal xml fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("completeMultipartUploadHandler: unmarshal xml fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		errorCode = MalformedXML
 		return
 	}
@@ -602,7 +630,8 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	previousPartNum := 0
 	for _, p := range multipartUploadRequest.Parts {
 		if p.PartNumber < previousPartNum {
-			log.LogDebugf("CompletedParts invalid part order with previousPartNum=%d partNum=%d, requestID(%v)", previousPartNum, p.PartNumber, GetRequestID(r))
+			log.LogDebugf("completeMultipartUploadHandler: invalid part order: requestID(%v) prevPartNum=%d partNum=%d",
+				GetRequestID(r), previousPartNum, p.PartNumber)
 			errorCode = InvalidPartOrder
 			return
 		}
@@ -616,7 +645,8 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	// get multipart info
 	var multipartInfo *proto.MultipartInfo
 	if multipartInfo, err = vol.mw.GetMultipart_ll(param.object, uploadId); err != nil {
-		log.LogErrorf("CompleteMultipart: meta get multipart fail: requestID(%v) path(%v) err(%v)", GetRequestID(r), param.object, err)
+		log.LogErrorf("completeMultipartUploadHandler: meta get multipart fail: requestID(%v) path(%v) err(%v)",
+			GetRequestID(r), param.object, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchUpload
 			return
@@ -631,7 +661,8 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 
 	discardedInods, committedPartInfo, errorCode := o.checkReqParts(param, multipartUploadRequest, multipartInfo)
 	if errorCode != nil {
-		log.LogWarnf("CompleteMultipart: checkReqParts err requestID(%v) path(%v) err(%v)", GetRequestID(r), param.object, errorCode)
+		log.LogWarnf("completeMultipartUploadHandler: check request parts fail: requestID(%v) path(%v) err(%v)",
+			GetRequestID(r), param.object, errorCode)
 		return
 	}
 	fsFileInfo, err := vol.CompleteMultipart(param.Object(), uploadId, committedPartInfo, discardedInods)
@@ -645,31 +676,28 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode = InternalErrorCode(err)
 		return
 	}
-	log.LogDebugf("completeMultipartUploadHandler: complete multipart: requestID(%v) volume(%v) key(%v) uploadID(%v) fileInfo(%v)",
-		GetRequestID(r), param.Bucket(), param.Object(), uploadId, fsFileInfo)
 
-	// write response
 	completeResult := CompleteMultipartResult{
 		Bucket: param.Bucket(),
 		Key:    param.Object(),
 		ETag:   wrapUnescapedQuot(fsFileInfo.ETag),
 	}
-
-	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(completeResult); marshalError != nil {
-		log.LogErrorf("completeMultipartUploadHandler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), marshalError)
-		errorCode = InternalErrorCode(marshalError)
+	response, err := MarshalXMLEntity(completeResult)
+	if err != nil {
+		log.LogErrorf("completeMultipartUploadHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), completeResult, err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("completeMultipartUploadHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		return
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("completeMultipartUploadHandler: write response fail: requestID(%v) response(%v) err(%v)",
+			GetRequestID(r), string(response), err)
 	}
+
 	return
 }
 
@@ -708,18 +736,18 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	}
 
 	// Abort multipart upload
-	err = vol.AbortMultipart(param.Object(), uploadId)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("abortMultipartUploadHandler: Volume abort multipart fail, requestID(%v) uploadID(%v) err(%v)", GetRequestID(r), uploadId, err)
+	if err = vol.AbortMultipart(param.Object(), uploadId); err != nil {
 		errorCode = InternalErrorCode(err)
+		log.LogErrorf("abortMultipartUploadHandler: abort multipart fail: requestID(%v) uploadID(%v) err(%v)",
+			GetRequestID(r), uploadId, err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchUpload
+		}
 		return
 	}
-	if err == syscall.ENOENT {
-		log.LogWarnf("abortMultipartUploadHandler: Volume abort multipart fail, requestID(%v) uploadID(%v) err(%v)", GetRequestID(r), uploadId, err)
-		errorCode = NoSuchUpload
-		return
-	}
-	log.LogDebugf("abortMultipartUploadHandler: Volume abort multipart, requestID(%v) uploadID(%v) path(%v)", GetRequestID(r), uploadId, param.Object())
+	log.LogDebugf("abortMultipartUploadHandler: abort multipart: requestID(%v) uploadID(%v) path(%v)",
+		GetRequestID(r), uploadId, param.Object())
+
 	w.WriteHeader(http.StatusNoContent)
 	return
 }
@@ -749,7 +777,8 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	} else {
 		maxUploadsInt, err = strconv.ParseUint(maxUploads, 10, 64)
 		if err != nil {
-			log.LogErrorf("listMultipartUploadsHandler: parse max uploads option fail: requestID(%v), err(%v)", GetRequestID(r), err)
+			log.LogErrorf("listMultipartUploadsHandler: parse max uploads fail: requestID(%v) raw(%v) err(%v)",
+				GetRequestID(r), maxUploads, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -765,14 +794,15 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("listMultipartUploadsHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
+		log.LogErrorf("listMultipartUploadsHandler: load volume fail: requestID(%v) vol(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
 	fsUploads, nextKeyMarker, nextUploadIdMarker, IsTruncated, prefixes, err := vol.ListMultipartUploads(prefix, delimiter, keyMarker, uploadIdMarker, maxUploadsInt)
 	if err != nil {
-		log.LogErrorf("listMultipartUploadsHandler: Volume list multipart uploads fail: requestID(%v), err(%v)", GetRequestID(r), err)
+		log.LogErrorf("listMultipartUploadsHandler: list multipart uploads fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		errorCode = NoSuchBucket
 		return
 	}
@@ -800,19 +830,22 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 		Uploads:            uploads,
 		CommonPrefixes:     commonPrefixes,
 	}
-
-	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(listUploadsResult); marshalError != nil {
-		log.LogErrorf("listMultipartUploadsHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(marshalError)
+	response, err := MarshalXMLEntity(listUploadsResult)
+	if err != nil {
+		log.LogErrorf("listMultipartUploadsHandler: xnl marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), listUploadsResult, err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	_, _ = w.Write(bytes)
+	// write response
+	w.Header().Set(ContentType, ValueContentTypeXML)
+	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("listMultipartUploadsHandler: write response fail: requestID(%v) response(%v) err(%v)",
+			GetRequestID(r), string(response), err)
+	}
+
 	return
 }
 
@@ -837,7 +870,7 @@ func determineCopyRange(copyRange string, fsize int64) (firstByte, copyLength in
 }
 
 func extractCopyRangeParam(copRange string) (firstByte, lastByte int64, err *ErrorCode) {
-	//copRange must use the form : bytes=first-last
+	// copRange must use the form : bytes=first-last
 	strs := strings.SplitN(copRange, "=", 2)
 	if len(strs) < 2 {
 		err = InvalidArgument

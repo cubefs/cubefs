@@ -13,6 +13,7 @@
 # permissions and limitations under the License.
 
 # -*- coding: utf-8 -*-
+import time
 
 import env
 from base import S3TestCase
@@ -28,21 +29,41 @@ class ObjectListTest(S3TestCase):
         super(ObjectListTest, self).__init__(case)
         self.s3 = get_env_s3_client()
 
-    def test_list_object_v1_etag(self):
-        file_num = 1000
+    def clear_data(self):
+        truncated = True
+        while truncated:
+            result = self.s3.list_objects(Bucket=env.BUCKET, MaxKeys=1000)
+            file_keys = []
+            if 'Contents' in result:
+                contents = result['Contents']
+                for content in contents:
+                    file_keys.append({'Key': content.get('Key')})
+                self.s3.delete_objects(
+                    Bucket=env.BUCKET,
+                    Delete={'Objects': file_keys}
+                )
+            truncated = bool(result.get('IsTruncated', False))
+
+    def insert_data(self, file_num=1000):
         files = {}  # key -> etag
         for _ in range(file_num):
             key = KEY_PREFIX + random_string(16)
             result = self.s3.put_object(Bucket=env.BUCKET, Key=key, Body=random_bytes(16))
             self.assert_put_object_result(result=result)
             files[key] = result['ETag'].strip('"')
+        return files
+
+    def test_list_object_v1_etag(self):
+        self.clear_data()
+        time.sleep(5)
+        files = self.insert_data(500)
 
         # validate list result
         contents = []
         marker = ''
         truncated = True
         while truncated:
-            result = self.s3.list_objects(Bucket=env.BUCKET, Prefix=KEY_PREFIX, Marker=marker, MaxKeys=30)
+            result = self.s3.list_objects(Bucket=env.BUCKET, Prefix=KEY_PREFIX, Marker=marker, MaxKeys=100)
             self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
             if 'Contents' in result:
                 result_contents = result['Contents']
@@ -74,13 +95,9 @@ class ObjectListTest(S3TestCase):
         )
 
     def test_list_object_v2_etag(self):
-        file_num = 1000
-        files = {}  # key -> etag
-        for _ in range(file_num):
-            key = KEY_PREFIX + random_string(16)
-            result = self.s3.put_object(Bucket=env.BUCKET, Key=key, Body=random_bytes(16))
-            self.assert_put_object_result(result=result)
-            files[key] = result['ETag'].strip('"')
+        self.clear_data()
+        time.sleep(5)
+        files = self.insert_data(500)
 
         # validate list result
         contents = []
@@ -91,7 +108,7 @@ class ObjectListTest(S3TestCase):
                 Bucket=env.BUCKET,
                 Prefix=KEY_PREFIX,
                 ContinuationToken=continuation_token,
-                MaxKeys=73)
+                MaxKeys=100)
             self.assertEqual(result['ResponseMetadata']['HTTPStatusCode'], 200)
             if 'Contents' in result:
                 result_contents = result['Contents']
