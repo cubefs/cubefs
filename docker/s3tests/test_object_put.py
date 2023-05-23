@@ -313,8 +313,8 @@ class ObjectPutTest(S3TestCase):
         def run():
             key = KEY_PREFIX + random_string(16)
             metadata = {
-                random_string(8).lower(): random_string(16),
-                random_string(8).lower(): random_string(16)
+                random_string(8).lower().capitalize(): random_string(16),
+                random_string(8).lower().capitalize(): random_string(16)
             }
             self.assert_put_object_result(
                 result=self.s3.put_object(

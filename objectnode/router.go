@@ -292,6 +292,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Methods(http.MethodPost).
 			Queries("delete", "").
 			HandlerFunc(o.deleteObjectsHandler)
+
+		// Post object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPOST.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPostObjectAction)).
+			Methods(http.MethodPost).
+			HandlerFunc(o.postObjectHandler)
 	}
 
 	var registerBucketHttpPutRouters = func(r *mux.Router) {
@@ -308,7 +314,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSUploadPartCopyAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
+			HeadersRegexp(XAmzCopySource, ".*?(\\/|%2F).*?").
 			Queries("partNumber", "{partNumber:[0-9]+}", "uploadId", "{uploadId:.*}").
 			HandlerFunc(o.uploadPartCopyHandler)
 
@@ -325,7 +331,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSCopyObjectAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
+			HeadersRegexp(XAmzCopySource, ".*?(\\/|%2F).*?").
 			HandlerFunc(o.copyObjectHandler)
 
 		// Put object tagging
@@ -593,6 +599,13 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	router.NewRoute().Name(ActionToUniqueRouteName(proto.OSSListBucketsAction)).
 		Methods(http.MethodGet).
 		HandlerFunc(o.listBucketsHandler)
+
+	// Get Federation Token (STS)
+	// API reference: https://docs.aws.amazon.com/STS/latest/APIReference/API_GetFederationToken.html
+	router.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetFederationTokenAction)).
+		Methods(http.MethodPost).
+		Path("/").
+		HandlerFunc(o.getFederationTokenHandler)
 
 	// Unsupported operation
 	router.NotFoundHandler = http.HandlerFunc(o.unsupportedOperationHandler)

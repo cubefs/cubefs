@@ -62,6 +62,7 @@ var (
 		proto.OSSListMultipartUploadsAction: PermissionRead,
 		// bucket write
 		proto.OSSPutObjectAction:               PermissionWrite,
+		proto.OSSPostObjectAction:              PermissionWrite,
 		proto.OSSCopyObjectAction:              PermissionWrite,
 		proto.OSSCreateMultipartUploadAction:   PermissionWrite,
 		proto.OSSUploadPartAction:              PermissionWrite,
