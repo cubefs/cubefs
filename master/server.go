@@ -315,6 +315,13 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.electionTick <= 3 {
 		m.electionTick = 5
 	}
+
+	maxQuotaNumPerVol := cfg.GetString(cfgMaxQuotaNumPerVol)
+	if maxQuotaNumPerVol != "" {
+		if m.config.MaxQuotaNumPerVol, err = strconv.Atoi(maxQuotaNumPerVol); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
 	return
 }
 

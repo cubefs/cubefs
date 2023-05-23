@@ -136,7 +136,6 @@ const (
 	QosMasterAcceptCnt = 3000
 	MinZoneDiskLimit   = 300
 	MaxZoneDiskLimit   = 10000
-	MaxQuotaNumPerVol  = 100
 )
 
 const (
@@ -173,6 +172,7 @@ const (
 	defaultLimitTypeCnt                          = 4
 	defaultClientTriggerHitCnt                   = 1
 	defaultClientReqPeriodSeconds                = 1
+	defaultMaxQuotaNumPerVol                     = 100
 )
 
 const (

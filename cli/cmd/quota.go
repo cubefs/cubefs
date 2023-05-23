@@ -37,6 +37,8 @@ const (
 	cmdQUotaDeleteShort   = "delete path quota"
 	cmdQuotaGetInodeUse   = "getInode [volname] [inode]"
 	cmdQuotaGetInodeShort = "get inode quotaInfo"
+	cmdQuotaListAllUse    = "listAll"
+	cmdQuotaListAllShort  = "list all volname has quota"
 )
 
 const (
@@ -58,6 +60,7 @@ func newQuotaCmd(client *master.MasterClient) *cobra.Command {
 		newQuotaUpdateCmd(client),
 		newQuotaDelete(client),
 		newQuotaGetInode(client),
+		newQuotaListAllCmd(client),
 	)
 	return cmd
 }
@@ -131,6 +134,29 @@ func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
+func newQuotaListAllCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   cmdQuotaListAllUse,
+		Short: cmdQuotaListAllShort,
+		Args:  cobra.MinimumNArgs(0),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var vols []*proto.VolInfo
+
+			if vols, err = client.AdminAPI().ListQuotaAll(); err != nil {
+				stdout("quota list all failed(%v)\n", err)
+				return
+			}
+			stdout("%v\n", volumeInfoTableHeader)
+			for _, vol := range vols {
+				stdout("%v\n", formatVolInfoTableRow(vol))
+			}
+		},
+	}
+
+	return cmd
+}
+
 func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var maxFiles uint64
 	var maxBytes uint64
@@ -194,13 +220,13 @@ func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			volName := args[0]
-			quotaId := args[1]
+			fullPath := args[1]
 			var err error
-			if err = client.AdminAPI().DeleteQuota(volName, quotaId); err != nil {
-				stdout("volName %v quotaId %v quota delete failed(%v)\n", volName, quotaId, err)
+			if err = client.AdminAPI().DeleteQuota(volName, fullPath); err != nil {
+				stdout("volName %v fullPath %v quota delete failed(%v)\n", volName, fullPath, err)
 				return
 			}
-			stdout("deleteQuota: volName %v quotaId %v success.\n", volName, quotaId)
+			stdout("deleteQuota: volName %v fullPath %v success.\n", volName, fullPath)
 		},
 	}
 	return cmd
