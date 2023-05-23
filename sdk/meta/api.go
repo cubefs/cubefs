@@ -133,7 +133,9 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, txType uint32,
 	fullPath string, ignoreExist bool) (info *proto.InodeInfo, err error) {
 	var (
-		status       int
+		status int
+		// err          error
+		// info         *proto.InodeInfo
 		mp           *MetaPartition
 		rwPartitions []*MetaPartition
 	)
@@ -183,7 +185,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 			log.LogErrorf("Create_ll status %v", status)
 			return nil, statusToErrno(status)
 		} else {
-			//sync cancel previous transaction before retry
+			// sync cancel previous transaction before retry
 			tx.Rollback(mw)
 		}
 	}
@@ -210,7 +212,7 @@ create_dentry:
 		} else {
 			filesInc = 1
 		}
-		//go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
+		// go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
 		job := func() {
 			mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
 		}
@@ -663,7 +665,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 
 	if mw.EnableSummary {
 		var job func()
-		//go func() {
+		// go func() {
 		if proto.IsDir(mode) {
 			job = func() {
 				mw.UpdateSummary_ll(parentID, 0, -1, 0)
@@ -673,7 +675,6 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 				mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
 			}
 		}
-
 		tx.SetOnCommit(job)
 	}
 	//clear trash cache
@@ -948,7 +949,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return preErr
 	}
 
-	//update summary
+	// update summary
 	var job func()
 	if mw.EnableSummary {
 		var srcInodeInfo *proto.InodeInfo
