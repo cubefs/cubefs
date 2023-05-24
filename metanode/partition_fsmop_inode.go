@@ -35,12 +35,67 @@ func NewInodeResponse() *InodeResponse {
 }
 
 // Create and inode and attach it to the inode tree.
+func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (status uint8) {
+	status = proto.OpOk
+	//1.if mpID == -1, register transaction in transaction manager
+	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
+	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
+	//}
+	//2.register rollback item
+
+	//inodeInfo := mp.txProcessor.txManager.getTxInodeInfo(txIno.TxInfo.TxID, txIno.Inode.Inode)
+	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
+	if !ok {
+		status = proto.OpTxInodeInfoNotExistErr
+		return
+	}
+	rbInode := NewTxRollbackInode(txIno.Inode, quotaIds, inodeInfo, TxDelete)
+	if status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); status != proto.OpOk {
+		//status = proto.OpTxConflictErr
+		return
+	}
+	//3.insert inode in inode tree
+	return mp.fsmCreateInode(txIno.Inode)
+}
+
+// Create and inode and attach it to the inode tree.
 func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
+	log.LogDebugf("action[fsmCreateInode] inode  %v be created", ino.Inode)
+
+	if status = mp.uidManager.addUidSpace(ino.Uid, ino.Inode, nil); status != proto.OpOk {
+		return
+	}
+
 	status = proto.OpOk
 	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
 		status = proto.OpExistErr
 	}
+
 	return
+}
+
+func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	resp.Status = proto.OpOk
+	//1.if mpID == -1, register transaction in transaction manager
+	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
+	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
+	//}
+
+	//2.register rollback item
+	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
+	if !ok {
+		resp.Status = proto.OpTxInodeInfoNotExistErr
+		return
+	}
+
+	rbInode := NewTxRollbackInode(txIno.Inode, []uint32{}, inodeInfo, TxUpdate)
+	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); resp.Status != proto.OpOk {
+		//resp.Status = proto.OpTxConflictErr
+		return
+	}
+
+	return mp.fsmCreateLinkInode(txIno.Inode)
 }
 
 func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
@@ -74,7 +129,7 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	ctime := Now.GetCurrentTime().Unix()
+	ctime := Now.GetCurrentTimeUnix()
 	/*
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.
 	 * Shall add inode lock in the future.
@@ -107,6 +162,38 @@ func (mp *metaPartition) Ascend(f func(i BtreeItem) bool) {
 	mp.inodeTree.Ascend(f)
 }
 
+func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	resp.Status = proto.OpOk
+
+	defer func() {
+		if txIno.TxInfo.TxType == proto.TxTypeRename && resp.Status == proto.OpOk {
+			mp.fsmEvictInode(txIno.Inode)
+		}
+	}()
+
+	//1.if mpID == -1, register transaction in transaction manager
+	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
+	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
+	//}
+	//2.register rollback item
+	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
+	if !ok {
+		resp.Status = proto.OpTxInodeInfoNotExistErr
+		return
+	}
+	var quotaIds []uint32
+	quotaIds, _ = mp.isExistQuota(txIno.Inode.Inode)
+
+	rbInode := NewTxRollbackInode(txIno.Inode, quotaIds, inodeInfo, TxAdd)
+	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); resp.Status != proto.OpOk {
+		//resp.Status = proto.OpTxConflictErr
+		return
+	}
+
+	return mp.fsmUnlinkInode(txIno.Inode)
+}
+
 // fsmUnlinkInode delete the specified inode from inode tree.
 func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
@@ -126,16 +213,19 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 
 	if inode.IsEmptyDir() {
 		mp.inodeTree.Delete(inode)
+		mp.updateUsedInfo(0, -1, inode.Inode)
 	}
 
 	inode.DecNLink()
 
 	//Fix#760: when nlink == 0, push into freeList and delay delete inode after 7 days
 	if inode.IsTempFile() {
+		mp.updateUsedInfo(-1*int64(inode.Size), -1, inode.Inode)
 		inode.DoWriteFunc(func() {
 			if inode.NLink == 0 {
 				inode.AccessTime = time.Now().Unix()
 				mp.freeList.Push(inode.Inode)
+				mp.uidManager.doMinusUidSpace(inode.Uid, inode.Inode, inode.Size)
 			}
 		})
 	}
@@ -213,15 +303,23 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
+	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
+	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
+		mp.extDelCh <- eks
+		return
+	}
+	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
+	mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
 	mp.extDelCh <- delExtents
 	return
 }
 
 func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	status = proto.OpOk
+	log.LogInfof("fsmAppendExtentsWithCheck ino %v", ino.Inode)
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -235,6 +333,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	var (
 		discardExtentKey []proto.ExtentKey
 	)
+	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
 	if len(eks) < 1 {
 		return
@@ -242,9 +341,23 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	if len(eks) > 1 {
 		discardExtentKey = eks[1:]
 	}
+
+	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks[:1]); status != proto.OpOk {
+		log.LogErrorf("fsmAppendExtentsWithCheck.addUidSpace status %v", status)
+		return
+	}
+
 	delExtents, status := ino2.AppendExtentWithCheck(eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
 	if status == proto.OpOk {
 		mp.extDelCh <- delExtents
+		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
+	}
+
+	// conflict need delete eks[0], to clear garbage data
+	if status == proto.OpConflictExtentsErr {
+		log.LogInfof("action[fsmAppendExtentsWithCheck] OpConflictExtentsErr [%v]", eks[:1])
+		mp.extDelCh <- eks[:1]
+		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, eks[:1])
 	}
 
 	// confict need delete eks[0], to clear garbage data
@@ -252,6 +365,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 		mp.extDelCh <- eks[:1]
 	}
 
+	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
 	return
 }
@@ -321,11 +435,19 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 
-	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime)
+	doOnLastKey := func(lastKey *proto.ExtentKey) {
+		var eks []proto.ExtentKey
+		eks = append(eks, *lastKey)
+		mp.uidManager.minusUidSpace(i.Uid, i.Inode, eks)
+	}
 
+	oldSize := int64(i.Size)
+	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, doOnLastKey)
+	mp.updateUsedInfo(int64(i.Size)-oldSize, 0, i.Inode)
 	// now we should delete the extent
 	log.LogInfof("fsmExtentsTruncate inode(%v) exts(%v)", i.Inode, delExtents)
 	mp.extDelCh <- delExtents
+	mp.uidManager.minusUidSpace(i.Uid, i.Inode, delExtents)
 	return
 }
 
@@ -412,6 +534,7 @@ func (mp *metaPartition) fsmExtentsEmpty(ino *Inode) (status uint8) {
 
 	if len(tinyEks) > 0 {
 		mp.extDelCh <- tinyEks
+		mp.uidManager.minusUidSpace(i.Uid, i.Inode, tinyEks)
 		log.LogDebugf("fsmExtentsEmpty mp(%d) inode(%d) tinyEks(%v)", mp.config.PartitionId, ino.Inode, tinyEks)
 	}
 

@@ -15,12 +15,13 @@
 package objectnode
 
 import (
+	"crypto/md5"
+	"encoding/base64"
+	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-
-	"net"
-	"net/http"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -62,7 +63,7 @@ type PathIterator struct {
 
 func (p *PathIterator) init() {
 	if !p.inited {
-		p.path = strings.TrimSpace(p.path)
+		// p.path = strings.TrimSpace(p.path)
 		loc := regexpSepPrefix.FindStringIndex(p.path)
 		if len(loc) == 2 {
 			p.path = p.path[loc[1]:]
@@ -326,4 +327,10 @@ func ValidateCacheExpires(expires string) bool {
 	}
 	log.LogErrorf("Expires less than now: %v, now: %v", expires, now)
 	return false
+}
+
+func GetMD5(b []byte) string {
+	hash := md5.New()
+	hash.Write(b)
+	return base64.StdEncoding.EncodeToString(hash.Sum(nil))
 }

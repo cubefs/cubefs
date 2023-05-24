@@ -15,6 +15,8 @@
 package util
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"regexp"
@@ -43,6 +45,20 @@ const (
 	PacketHeaderSize   = 57
 	BlockHeaderSize    = 4096
 	SyscallTryMaxTimes = 3
+)
+
+const (
+	AclListIP  = 0
+	AclAddIP   = 1
+	AclDelIP   = 2
+	AclCheckIP = 3
+)
+
+const (
+	UidLimitList = 0
+	UidAddLimit  = 1
+	UidDel       = 2
+	UidGetLimit  = 3
 )
 
 const (
@@ -206,4 +222,11 @@ func GenerateRepVolKey(volName string, ino uint64, dpId uint64, extentId uint64,
 
 func OneDaySec() int64 {
 	return 60 * 60 * 24
+}
+
+func CalcAuthKey(key string) (authKey string) {
+	h := md5.New()
+	_, _ = h.Write([]byte(key))
+	cipherStr := h.Sum(nil)
+	return strings.ToLower(hex.EncodeToString(cipherStr))
 }

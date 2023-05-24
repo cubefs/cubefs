@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/binary"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
@@ -27,10 +28,18 @@ import (
 type storeMsg struct {
 	command       uint32
 	applyIndex    uint64
+	txId          uint64
 	inodeTree     *BTree
 	dentryTree    *BTree
 	extendTree    *BTree
 	multipartTree *BTree
+	txTree        *BTree
+	//transactions       map[string]*proto.TransactionInfo
+	txRbInodeTree *BTree
+	//txRollbackInodes   map[uint64]*TxRollbackInode
+	txRbDentryTree *BTree
+	//txRollbackDentries map[string]*TxRollbackDentry
+
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {
@@ -67,15 +76,15 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		if _, ok := mp.IsLeader(); ok {
 			timer.Reset(intervalToPersistData)
 		}
-		scheduleState = common.StateStopped
+		atomic.StoreUint32(&scheduleState, common.StateStopped)
 	}
 	go func(stopC chan bool) {
 		var msgs []*storeMsg
 		readyChan := make(chan struct{}, 1)
 		for {
 			if len(msgs) > 0 {
-				if scheduleState == common.StateStopped {
-					scheduleState = common.StateRunning
+				if atomic.LoadUint32(&scheduleState) == common.StateStopped {
+					atomic.StoreUint32(&scheduleState, common.StateRunning)
 					readyChan <- struct{}{}
 				}
 			}
@@ -100,6 +109,11 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				if maxMsg != nil {
 					go dumpFunc(maxMsg)
+				} else {
+					if _, ok := mp.IsLeader(); ok {
+						timer.Reset(intervalToPersistData)
+					}
+					atomic.StoreUint32(&scheduleState, common.StateStopped)
 				}
 				msgs = msgs[:0]
 			case msg := <-mp.storeChan:
@@ -127,9 +141,14 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timerCursor.Reset(intervalToSyncCursor)
 					continue
 				}
-				cursorBuf := make([]byte, 8)
-				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
-				if _, err := mp.submit(opFSMSyncCursor, cursorBuf); err != nil {
+				Buf := make([]byte, 8)
+				binary.BigEndian.PutUint64(Buf, mp.config.Cursor)
+				if _, err := mp.submit(opFSMSyncCursor, Buf); err != nil {
+					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
+				}
+
+				binary.BigEndian.PutUint64(Buf, mp.txProcessor.txManager.txIdAlloc.getTransactionID())
+				if _, err := mp.submit(opFSMSyncTxID, Buf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerCursor.Reset(intervalToSyncCursor)

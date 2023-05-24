@@ -86,12 +86,17 @@ func (mp *metaPartition) AppendMultipart(req *proto.AddMultipartPartRequest, p *
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	status := resp.(uint8)
-	if status != proto.OpOk {
-		p.PacketErrorWithBody(status, nil)
+	appendMultipartResp := resp.(proto.AppendMultipartResponse)
+	if appendMultipartResp.Status != proto.OpOk {
+		p.PacketErrorWithBody(appendMultipartResp.Status, nil)
 		return
 	}
-	p.PacketOkReply()
+	var reply []byte
+	if reply, err = json.Marshal(appendMultipartResp); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithBody(reply)
 	return
 }
 

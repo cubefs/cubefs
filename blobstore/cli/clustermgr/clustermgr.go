@@ -52,6 +52,7 @@ func Register(app *grumble.App) {
 	app.AddCommand(cmCommand)
 
 	addCmdConfig(cmCommand)
+	addCmdBackground(cmCommand)
 	addCmdService(cmCommand)
 	addCmdWalParse(cmCommand)
 	addCmdVolume(cmCommand)

@@ -752,7 +752,7 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 		p.PackErrorBody(ActionGetAllExtentWatermarks, err.Error())
 	} else {
 		buf, err = json.Marshal(fInfoList)
-		p.PacketOkWithBody(buf)
+		p.PacketOkWithByte(buf)
 	}
 	return
 }

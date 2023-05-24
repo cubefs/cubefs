@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,6 +40,103 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 	if arr := strings.Split(host, colonSplit); len(arr) < 2 {
 		err = unmatchedKey(addrKey)
 		return
+	}
+	return
+}
+
+func extractTxTimeout(r *http.Request) (timeout int64, err error) {
+	var txTimeout uint64
+	if txTimeout, err = extractUint64WithDefault(r, txTimeoutKey, proto.DefaultTransactionTimeout); err != nil {
+		return
+	}
+
+	if txTimeout == 0 || txTimeout > proto.MaxTransactionTimeout {
+		return timeout, fmt.Errorf("txTimeout(%d) value range [1-%v] minutes", txTimeout, proto.MaxTransactionTimeout)
+	}
+	timeout = int64(txTimeout)
+	return timeout, nil
+}
+
+//func extractTxMask(r *http.Request) (mask uint8, err error) {
+//
+//	var maskStr string
+//	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
+//		return
+//	}
+//
+//	arr := strings.Split(maskStr, "|")
+//
+//	optNum := len(arr)
+//
+//	for _, v := range arr {
+//		if m, ok := proto.GTxMaskMap[v]; ok {
+//			if optNum >= 2 && (m == proto.TxOpMaskOff || m == proto.TxOpMaskAll) {
+//				mask = proto.TxOpMaskOff
+//				err = txInvalidMask()
+//				return
+//			} else {
+//				mask = mask | m
+//			}
+//		} else {
+//			mask = proto.TxOpMaskOff
+//			err = txInvalidMask()
+//			return
+//		}
+//	}
+//
+//	return
+//}
+
+func hasTxParams(r *http.Request) bool {
+	var (
+		maskStr    string
+		timeoutStr string
+	)
+	if maskStr = r.FormValue(enableTxMaskKey); maskStr != "" {
+		return true
+	}
+
+	if timeoutStr = r.FormValue(txTimeoutKey); timeoutStr != "" {
+		return true
+	}
+	return false
+}
+
+func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
+
+	var maskStr string
+	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
+		mask = oldMask
+		return
+	}
+
+	/*arr := strings.Split(maskStr, "|")
+
+	optNum := len(arr)
+
+	for _, v := range arr {
+		if m, ok := proto.GTxMaskMap[v]; ok {
+			if optNum >= 2 && (m == proto.TxOpMaskOff || m == proto.TxOpMaskAll) {
+				mask = proto.TxOpMaskOff
+				err = txInvalidMask()
+				return
+			} else {
+				mask = mask | m
+			}
+		} else {
+			mask = proto.TxOpMaskOff
+			err = txInvalidMask()
+			return
+		}
+	}*/
+
+	mask, err = proto.GetMaskFromString(maskStr)
+	if err != nil {
+		return
+	}
+
+	if mask != proto.TxOpMaskOff {
+		mask = mask | oldMask
 	}
 	return
 }
@@ -234,13 +332,16 @@ type updateVolReq struct {
 	name                  string
 	authKey               string
 	capacity              uint64
-	followRead            bool
+	followerRead          bool
 	authenticate          bool
 	enablePosixAcl        bool
+	enableTransaction     uint8
+	txTimeout             int64
 	zoneName              string
 	description           string
 	dpSelectorName        string
 	dpSelectorParm        string
+	replicaNum            int
 	coldArgs              *coldVolArgs
 	dpReadOnlyWhenVolFull bool
 }
@@ -327,11 +428,27 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
+	var txMask uint8
+	if txMask, err = parseTxMask(r, vol.enableTransaction); err != nil {
+		return
+	}
+	req.enableTransaction = txMask
+
+	var txTimeout int64
+	if txTimeout, err = extractTxTimeout(r); err != nil {
+		return
+	}
+	req.txTimeout = txTimeout
+
+	//if req.enableTransaction, err = extractBoolWithDefault(r, enableTxMaskKey, vol.enableTransaction); err != nil {
+	//	return
+	//}
+
 	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, vol.authenticate); err != nil {
 		return
 	}
 
-	if req.followRead, err = extractBoolWithDefault(r, followerReadKey, vol.FollowerRead); err != nil {
+	if req.followerRead, err = extractBoolWithDefault(r, followerReadKey, vol.FollowerRead); err != nil {
 		return
 	}
 
@@ -350,30 +467,9 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		req.dpSelectorName = vol.dpSelectorName
 		req.dpSelectorParm = vol.dpSelectorParm
 	}
-	var replicaNum int
-	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
-		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
-			err = unmatchedKey(replicaNumKey)
-			return
-		}
-	} else {
-		replicaNum = int(vol.dpReplicaNum)
-	}
-
-	if replicaNum != 0 && replicaNum != int(vol.dpReplicaNum) {
-		if replicaNum != 2 || vol.dpReplicaNum != 3 {
-			err = fmt.Errorf("replicaNum cann't be changed(3 to 2 is allowed)")
-			return
-		}
-		if !proto.IsHot(vol.VolType) {
-			err = fmt.Errorf("vol type(%v) replicaNum cann't be changed", vol.VolType)
-			return
-		}
-		vol.dpReplicaNum = 2
-	}
 
 	if proto.IsCold(vol.VolType) {
-		req.followRead = true
+		req.followerRead = true
 		req.coldArgs, err = parseColdVolUpdateArgs(r, vol)
 		if err != nil {
 			return
@@ -494,6 +590,8 @@ type createVolReq struct {
 	volType                              int
 	enablePosixAcl                       bool
 	DpReadOnlyWhenVolFull                bool
+	enableTransaction                    uint8
+	txTimeout                            int64
 	qosLimitArgs                         *qosArgs
 	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
@@ -627,6 +725,18 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
+	var txMask uint8
+	if txMask, err = parseTxMask(r, proto.TxOpMaskOff); err != nil {
+		return
+	}
+	req.enableTransaction = txMask
+
+	var txTimeout int64
+	if txTimeout, err = extractTxTimeout(r); err != nil {
+		return
+	}
+	req.txTimeout = txTimeout
+
 	return
 }
 
@@ -655,6 +765,16 @@ func parseRequestToGetDataPartition(r *http.Request) (ID uint64, volName string,
 		return
 	}
 	volName = r.FormValue(nameKey)
+	return
+}
+
+func parseRequestToBalanceMetaPartition(r *http.Request) (zones string, nodeSetIds string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	zones = r.FormValue(zoneNameKey)
+	nodeSetIds = r.FormValue(nodesetIdKey)
+
 	return
 }
 
@@ -1304,6 +1424,146 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 	var value string
 	if value = r.FormValue(decommissionLimit); value == "" {
 		err = keyNotFound(decommissionLimit)
+		return
+	}
+	return strconv.ParseUint(value, 10, 64)
+}
+
+func parseSetConfigParam(r *http.Request) (key string, value string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if value = r.FormValue(cfgmetaPartitionInodeIdStep); value == "" {
+		err = keyNotFound("config")
+		return
+	}
+	key = cfgmetaPartitionInodeIdStep
+	log.LogInfo("parseSetConfigParam success.")
+	return
+}
+
+func parseGetConfigParam(r *http.Request) (key string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if key = r.FormValue(configKey); key == "" {
+		err = keyNotFound("config")
+		return
+	}
+	log.LogInfo("parseGetConfigParam success.")
+	return
+}
+
+func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if req.VolName, err = extractName(r); err != nil {
+		return
+	}
+
+	if req.FullPath, err = extractPath(r); err != nil {
+		return
+	}
+
+	if req.PartitionId, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+
+	if req.Inode, err = extractInodeId(r); err != nil {
+		return
+	}
+
+	if req.MaxFiles, err = extractUint64WithDefault(r, MaxFilesKey, math.MaxUint64); err != nil {
+		return
+	}
+
+	if req.MaxBytes, err = extractUint64WithDefault(r, MaxBytesKey, math.MaxUint64); err != nil {
+		return
+	}
+	log.LogInfo("parserSetQuotaParam success.")
+	return
+}
+
+func parserUpdateQuotaParam(r *http.Request, req *proto.UpdateMasterQuotaReuqest) (err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if req.VolName, err = extractName(r); err != nil {
+		return
+	}
+
+	if req.FullPath, err = extractPath(r); err != nil {
+		return
+	}
+
+	if req.PartitionId, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+
+	if req.Inode, err = extractInodeId(r); err != nil {
+		return
+	}
+
+	if req.MaxFiles, err = extractUint64WithDefault(r, MaxFilesKey, math.MaxUint64); err != nil {
+		return
+	}
+
+	if req.MaxBytes, err = extractUint64WithDefault(r, MaxBytesKey, math.MaxUint64); err != nil {
+		return
+	}
+	log.LogInfo("parserUpdateQuotaParam success.")
+	return
+}
+
+func parseDeleteQuotaParam(r *http.Request) (volName string, quotaId uint32, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if volName, err = extractName(r); err != nil {
+		return
+	}
+
+	value := r.FormValue(quotaKey)
+	if value == "" {
+		err = keyNotFound(startKey)
+		return
+	}
+	v, err := strconv.ParseUint(value, 10, 32)
+	quotaId = uint32(v)
+	return
+}
+
+func parseGetQuotaParam(r *http.Request) (volName string, fullPath string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if volName, err = extractName(r); err != nil {
+		return
+	}
+
+	if fullPath, err = extractPath(r); err != nil {
+		return
+	}
+	return
+}
+
+func extractPath(r *http.Request) (fullPath string, err error) {
+	if fullPath = r.FormValue(fullPathKey); fullPath == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+	return
+}
+
+func extractInodeId(r *http.Request) (inode uint64, err error) {
+	var value string
+	if value = r.FormValue(inodeKey); value == "" {
+		err = keyNotFound(inodeKey)
 		return
 	}
 	return strconv.ParseUint(value, 10, 64)

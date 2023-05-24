@@ -150,9 +150,11 @@ func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
 		}
 	}
 
+	var report bool
 	if partition.getLeaderAddr() == "" {
-		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID)
+		report = true
 	}
+	WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, report)
 	return
 }
 
@@ -162,22 +164,26 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 	defer partition.Unlock()
 
 	for _, replica := range partition.Replicas {
-		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) && partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
-			dataNode := replica.getReplicaNode()
-			var (
-				lastReportTime time.Time
-			)
-			isActive := true
-			if dataNode != nil {
-				lastReportTime = dataNode.ReportTime
-				isActive = dataNode.isActive
+		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) {
+			if partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
+				dataNode := replica.getReplicaNode()
+				var (
+					lastReportTime time.Time
+				)
+				isActive := true
+				if dataNode != nil {
+					lastReportTime = dataNode.ReportTime
+					isActive = dataNode.isActive
+				}
+				msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on node:%v  "+
+					"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
+					clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
+				//msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
+				Warn(clusterID, msg)
+				WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, true)
 			}
-			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] paritionID:%v  on node:%v  "+
-				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
-				clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
-			//msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
-			Warn(clusterID, msg)
-			WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID)
+		} else {
+			WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, false)
 		}
 	}
 
@@ -255,9 +261,9 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	return
 }
 
-func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) (tasks []*proto.AdminTask) {
+func (partition *DataPartition) checkReplicationTask(clusterID string, dataPartitionSize uint64) {
 	var msg string
-	tasks = make([]*proto.AdminTask, 0)
+
 	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)

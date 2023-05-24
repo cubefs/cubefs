@@ -46,6 +46,7 @@ type MetadataManager interface {
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
+	GetLeaderPartitions() map[uint64]MetaPartition
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -57,17 +58,19 @@ type MetadataManagerConfig struct {
 }
 
 type metadataManager struct {
-	nodeId             uint64
-	zoneName           string
-	rootDir            string
-	raftStore          raftstore.RaftStore
-	connPool           *util.ConnectPool
-	state              uint32
-	mu                 sync.RWMutex
-	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
-	metaNode           *MetaNode
-	flDeleteBatchCount atomic.Value
-	fileStatsEnable    bool
+	nodeId               uint64
+	zoneName             string
+	rootDir              string
+	raftStore            raftstore.RaftStore
+	connPool             *util.ConnectPool
+	state                uint32
+	mu                   sync.RWMutex
+	partitions           map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
+	metaNode             *MetaNode
+	flDeleteBatchCount   atomic.Value
+	fileStatsEnable      bool
+	curQuotaGoroutineNum int32
+	maxQuotaGoroutineNum int32
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
@@ -211,6 +214,42 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opAppendMultipart(conn, p, remoteAddr)
 	case proto.OpGetMultipart:
 		err = m.opGetMultipart(conn, p, remoteAddr)
+
+	// operations for transactions
+	case proto.OpMetaTxCreateInode:
+		err = m.opTxCreateInode(conn, p, remoteAddr)
+	case proto.OpMetaTxCreateDentry:
+		err = m.opTxCreateDentry(conn, p, remoteAddr)
+	case proto.OpTxCommit:
+		err = m.opTxCommit(conn, p, remoteAddr)
+	case proto.OpTxInodeCommit:
+		err = m.opTxInodeCommit(conn, p, remoteAddr)
+	case proto.OpTxDentryCommit:
+		err = m.opTxDentryCommit(conn, p, remoteAddr)
+	case proto.OpTxRollback:
+		err = m.opTxRollback(conn, p, remoteAddr)
+	case proto.OpTxInodeRollback:
+		err = m.opTxInodeRollback(conn, p, remoteAddr)
+	case proto.OpTxDentryRollback:
+		err = m.opTxDentryRollback(conn, p, remoteAddr)
+	case proto.OpMetaTxDeleteDentry:
+		err = m.opTxDeleteDentry(conn, p, remoteAddr)
+	case proto.OpMetaTxUnlinkInode:
+		err = m.opTxMetaUnlinkInode(conn, p, remoteAddr)
+	case proto.OpMetaTxUpdateDentry:
+		err = m.opTxUpdateDentry(conn, p, remoteAddr)
+	case proto.OpMetaTxLinkInode:
+		err = m.opTxMetaLinkInode(conn, p, remoteAddr)
+	case proto.OpMasterSetInodeQuota:
+		err = m.OpMasterSetInodeQuota(conn, p, remoteAddr)
+	case proto.OpMasterDeleteInodeQuota:
+		err = m.OpMasterDeleteInodeQuota(conn, p, remoteAddr)
+	case proto.OpMetaBatchSetInodeQuota:
+		err = m.opMetaBatchSetInodeQuota(conn, p, remoteAddr)
+	case proto.OpMetaBatchDeleteInodeQuota:
+		err = m.opMetaBatchDeleteInodeQuota(conn, p, remoteAddr)
+	case proto.OpMetaGetInodeQuota:
+		err = m.opMetaGetInodeQuota(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -324,20 +363,6 @@ func (m *metadataManager) loadPartitions() (err error) {
 			wg.Add(1)
 			go func(fileName string) {
 				var errload error
-				defer func() {
-					if r := recover(); r != nil {
-						log.LogErrorf("loadPartitions partition: %s, "+
-							"error: %s, failed: %v", fileName, errload, r)
-						log.LogFlush()
-						panic(r)
-					}
-					if errload != nil {
-						log.LogErrorf("loadPartitions partition: %s, "+
-							"error: %s", fileName, errload)
-						log.LogFlush()
-						panic(errload)
-					}
-				}()
 				defer wg.Done()
 				if len(fileName) < 10 {
 					log.LogWarnf("ignore unknown partition dir: %s", fileName)
@@ -512,15 +537,42 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 	return json.Marshal(m.partitions)
 }
 
+func (m *metadataManager) QuotaGoroutineIsOver() (lsOver bool) {
+	log.LogInfof("QuotaGoroutineIsOver cur [%v] max [%v]", m.curQuotaGoroutineNum, m.maxQuotaGoroutineNum)
+	if atomic.LoadInt32(&m.curQuotaGoroutineNum) >= m.maxQuotaGoroutineNum {
+		return true
+	}
+	return false
+}
+
+func (m *metadataManager) QuotaGoroutineInc(num int32) {
+	atomic.AddInt32(&m.curQuotaGoroutineNum, num)
+}
+
+func (m *metadataManager) GetLeaderPartitions() map[uint64]MetaPartition {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	mps := make(map[uint64]MetaPartition)
+	for addr, mp := range m.partitions {
+		if _, leader := mp.IsLeader(); leader {
+			mps[addr] = mp
+		}
+	}
+
+	return mps
+}
+
 // NewMetadataManager returns a new metadata manager.
 func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) MetadataManager {
 	return &metadataManager{
-		nodeId:     conf.NodeID,
-		zoneName:   conf.ZoneName,
-		rootDir:    conf.RootDir,
-		raftStore:  conf.RaftStore,
-		partitions: make(map[uint64]MetaPartition),
-		metaNode:   metaNode,
+		nodeId:               conf.NodeID,
+		zoneName:             conf.ZoneName,
+		rootDir:              conf.RootDir,
+		raftStore:            conf.RaftStore,
+		partitions:           make(map[uint64]MetaPartition),
+		metaNode:             metaNode,
+		maxQuotaGoroutineNum: defaultMaxQuotaGoroutine,
 	}
 }
 

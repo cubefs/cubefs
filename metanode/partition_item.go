@@ -19,11 +19,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -125,10 +127,17 @@ type fileData struct {
 type MetaItemIterator struct {
 	fileRootDir   string
 	applyID       uint64
+	txId          uint64
 	inodeTree     *BTree
 	dentryTree    *BTree
 	extendTree    *BTree
 	multipartTree *BTree
+	txTree        *BTree
+	//transactions       map[string]*proto.TransactionInfo
+	txRbInodeTree *BTree
+	//txRollbackInodes   map[uint64]*TxRollbackInode
+	txRbDentryTree *BTree
+	//txRollbackDentries map[string]*TxRollbackDentry
 
 	filenames []string
 
@@ -144,10 +153,17 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
+	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 	si.inodeTree = mp.inodeTree.GetTree()
 	si.dentryTree = mp.dentryTree.GetTree()
 	si.extendTree = mp.extendTree.GetTree()
 	si.multipartTree = mp.multipartTree.GetTree()
+	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
+	//si.transactions = mp.txProcessor.txManager.transactions
+	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
+	//si.txRollbackInodes = mp.txProcessor.txResource.txRollbackInodes
+	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
+	//si.txRollbackDentries = mp.txProcessor.txResource.txRollbackDentries
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
@@ -199,6 +215,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 		// process index ID
 		produceItem(si.applyID)
+		strTxid := strconv.FormatUint(si.txId, 10)
+		produceItem(strTxid)
 
 		// process inodes
 		iter.inodeTree.Ascend(func(i BtreeItem) bool {
@@ -228,6 +246,38 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		if checkClose() {
 			return
 		}
+
+		iter.txTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+
+		//for _, item := range iter.transactions {
+		//	produceItem(item)
+		//}
+		if checkClose() {
+			return
+		}
+
+		iter.txRbInodeTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		//for _, item := range iter.txRollbackInodes {
+		//	produceItem(item)
+		//}
+		if checkClose() {
+			return
+		}
+
+		iter.txRbDentryTree.Ascend(func(i BtreeItem) bool {
+			return produceItem(i)
+		})
+		//for _, item := range iter.txRollbackDentries {
+		//	produceItem(item)
+		//}
+		if checkClose() {
+			return
+		}
+
 		// process extent del files
 		var err error
 		var raw []byte
@@ -260,7 +310,6 @@ func (si *MetaItemIterator) Close() {
 
 // Next returns the next item.
 func (si *MetaItemIterator) Next() (data []byte, err error) {
-
 	if si.err != nil {
 		err = si.err
 		return
@@ -289,6 +338,11 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		binary.BigEndian.PutUint64(applyIDBuf, si.applyID)
 		data = applyIDBuf
 		return
+	case string:
+		txIDBuf := make([]byte, 8)
+		binary.BigEndian.PutUint64(txIDBuf, si.txId)
+		data = txIDBuf
+		return
 	case *Inode:
 		snap = NewMetaItem(opFSMCreateInode, typedItem.MarshalKey(), typedItem.MarshalValue())
 	case *Dentry:
@@ -309,6 +363,15 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 			return
 		}
 		snap = NewMetaItem(opFSMCreateMultipart, nil, raw)
+	case *proto.TransactionInfo:
+		val, _ := typedItem.Marshal()
+		snap = NewMetaItem(opFSMTxSnapshot, []byte(typedItem.TxID), val)
+	case *TxRollbackInode:
+		val, _ := typedItem.Marshal()
+		snap = NewMetaItem(opFSMTxRbInodeSnapshot, typedItem.inode.MarshalKey(), val)
+	case *TxRollbackDentry:
+		val, _ := typedItem.Marshal()
+		snap = NewMetaItem(opFSMTxRbDentrySnapshot, []byte(typedItem.txDentryInfo.GetKey()), val)
 	case *fileData:
 		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
 	default:

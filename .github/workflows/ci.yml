@@ -6,7 +6,6 @@ on:
   push:
     branches: [ master ]
     paths-ignore:
-      - 'blobstore/**'
       - '.github/**'
       - 'docs/**'
       - 'docs-zh/**'
@@ -28,20 +27,35 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: 1.17
+
       - name: Checkout repo
         uses: actions/checkout@v3
+
+      - name: Download rocksdb_libs
+        run: |
+            pushd build
+            wget -O rocksdb_libs.tar.gz https://ocs-cn-north1.heytapcs.com/cubefs/github/ci/rocksdb_libs.tar.gz
+            tar -zxvf rocksdb_libs.tar.gz
+            popd
+
       - name: Check gofmt
         run: |
           find . -type f -name "*.go" | grep -v 'vendor' |grep -v 'depends'| xargs gofmt -l > gofmt_results.txt
           cat gofmt_results.txt
           if [ "$(cat gofmt_results.txt|wc -l)" -gt 0  ]; then exit 1; fi
+
       - name: Unit and Scenario tests
         run: |
           docker/run_docker.sh -t
           docker/run_docker.sh --scenariotest
+
       - name: Pack docker_data
         if: ${{ always() }}
-        run: pushd docker && sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
+        run: |
+            pushd docker 
+            sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
+            popd
+
       - name: Upload docker_data.tar.gz
         if: ${{ always() }}
         uses: actions/upload-artifact@v3
@@ -50,28 +64,11 @@ jobs:
           path: docker/docker_data.tar.gz
           retention-days: 7
 
-      # run blobstore coverage
-      - name: BlobStore includes compiled rocksdb
-        run: |
-          cd blobstore
-          wget -O deps.tar.gz https://ocs-cn-south1.heytapcs.com/blobstore/deps.tar.gz
-          tar -zxf deps.tar.gz
-          mv deps .deps
-          source env.sh
-          echo "CGO_CFLAGS=${CGO_CFLAGS}" >> $GITHUB_ENV
-          echo "CGO_LDFLAGS=${CGO_LDFLAGS}" >> $GITHUB_ENV
-      - name: BlobStore test with coverage
-        run: |
-          cd blobstore
-          go test -trimpath -covermode=count --coverprofile coverage.txt ./...
-        env:
-          JENKINS_TEST: TRUE
 
       - name: Merge coverages
         run: |
           echo "mode: count" > coverage-all.out
           tail -n +2 ./coverage.txt >> coverage-all.out
-          tail -n +2 ./blobstore/coverage.txt >> coverage-all.out
       - name: Upload codecov
         uses: codecov/codecov-action@v3
         with:

@@ -305,13 +305,12 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Upload part copy
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html
-		// Notes: unsupported operation
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSUploadPartCopyAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
 			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
 			Queries("partNumber", "{partNumber:[0-9]+}", "uploadId", "{uploadId:.*}").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.uploadPartCopyHandler)
 
 		// Upload part
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html .
@@ -577,7 +576,6 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSOptionsObjectAction)).
 			Methods(http.MethodOptions).
-			Path("/{object:.+}").
 			HandlerFunc(o.optionsObjectHandler)
 	}
 

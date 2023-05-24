@@ -215,6 +215,7 @@ type DataPartitionInfo struct {
 	SingleDecommissionStatus uint8
 	SingleDecommissionAddr   string
 	RdOnly                   bool
+	IsDiscard                bool
 }
 
 // FileInCore define file in data partition
@@ -253,14 +254,19 @@ type DataPartitionDiagnosis struct {
 	LackReplicaDataPartitionIDs []uint64
 	BadDataPartitionIDs         []BadPartitionView
 	BadReplicaDataPartitionIDs  []uint64
+	RepFileCountDifferDpIDs     []uint64
+	RepUsedSizeDifferDpIDs      []uint64
+	ExcessReplicaDpIDs          []uint64
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
 type MetaPartitionDiagnosis struct {
-	InactiveMetaNodes           []string
-	CorruptMetaPartitionIDs     []uint64
-	LackReplicaMetaPartitionIDs []uint64
-	BadMetaPartitionIDs         []BadPartitionView
+	InactiveMetaNodes             []string
+	CorruptMetaPartitionIDs       []uint64
+	LackReplicaMetaPartitionIDs   []uint64
+	BadMetaPartitionIDs           []BadPartitionView
+	BadReplicaMetaPartitionIDs    []uint64
+	ExcessReplicaMetaPartitionIDs []uint64
 }
 
 type DecommissionProgress struct {

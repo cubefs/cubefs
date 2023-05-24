@@ -97,6 +97,11 @@ const (
 	CliNormalZonesFirst       = "normalZonesFirst"
 	CliFlagCount              = "count"
 	CliDpReadOnlyWhenVolFull  = "readonly-when-full"
+	CliTxMask                 = "transaction-mask"
+	CliTxTimeout              = "transaction-timeout"
+	CliFlagMaxFiles           = "maxFiles"
+	CliFlagMaxBytes           = "maxBytes"
+
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	//Shorthand format of resource name

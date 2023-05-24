@@ -177,8 +177,16 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
-		disk = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
-		disk.RestorePartition(visitor)
+		disk, err = NewDisk(path, reservedSpace, diskRdonlySpace, maxErrCnt, manager)
+		if err != nil {
+			log.LogErrorf("NewDisk fail err:[%v]", err)
+			return
+		}
+		err = disk.RestorePartition(visitor)
+		if err != nil {
+			log.LogErrorf("RestorePartition fail err:[%v]", err)
+			return
+		}
 		manager.putDisk(disk)
 		err = nil
 		go disk.doBackendTask()

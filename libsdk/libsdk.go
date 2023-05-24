@@ -76,8 +76,6 @@ import "C"
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/buf"
 	"io"
 	syslog "log"
 	"os"
@@ -92,11 +90,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/cubefs/blobstore/common/trace"
-
 	"github.com/bits-and-blooms/bitset"
-	// "github.com/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/proto"
@@ -104,10 +100,11 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-	"github.com/hashicorp/consul/api"
 )
 
 const (
@@ -1185,7 +1182,7 @@ func (c *client) start() (err error) {
 	if c.ebsEndpoint != "" {
 		if ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
-			Consul: api.Config{
+			Consul: access.ConsulConfig{
 				Address: c.ebsEndpoint,
 			},
 			MaxSizePutOnce: MaxSizePutOnce,

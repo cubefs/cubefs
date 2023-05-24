@@ -140,16 +140,16 @@ type DataPartition struct {
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, disk); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
 	if request.CreateType == proto.NormalCreateDataPartition {
-		err = dp.StartRaft()
+		err = dp.StartRaft(false)
 	} else {
 		// init leaderSize to partitionSize
 		disk.updateDisk(uint64(request.LeaderSize))
-		go dp.StartRaftAfterRepair()
+		go dp.StartRaftAfterRepair(false)
 	}
 	if err != nil {
 		return nil, err
@@ -229,7 +229,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		NodeID:        disk.space.GetNodeID(),
 		ClusterID:     disk.space.GetClusterID(),
 	}
-	if dp, err = newDataPartition(dpCfg, disk); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
 	}
 	dp.computeUsage()
@@ -237,20 +237,22 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[loadApplyIndex] %v", err)
+		return
 	}
 	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.lastTruncateID = meta.LastTruncateID
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
-		err = dp.StartRaft()
+		err = dp.StartRaft(true)
 	} else {
 		// init leaderSize to partitionSize
 		dp.leaderSize = dp.partitionSize
-		go dp.StartRaftAfterRepair()
+		go dp.StartRaftAfterRepair(true)
 	}
 	if err != nil {
 		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.partitionID, err)
 		disk.space.DetachDataPartition(dp.partitionID)
+		return
 	}
 
 	go dp.StartRaftLoggingSchedule()
@@ -259,7 +261,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	return
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	var dataPath string
 
@@ -292,9 +294,10 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk) (dp *DataPartition, e
 		config:          dpCfg,
 		raftStatus:      RaftStatusStopped,
 	}
-	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
+	log.LogInfof("action[newDataPartition] dp %v replica num %v isCreate %v", partitionID, dpCfg.ReplicaNum, isCreate)
 	partition.replicasInit()
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, partition.partitionType)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
+		partition.partitionType, isCreate)
 	if err != nil {
 		return
 	}

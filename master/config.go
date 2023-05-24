@@ -32,6 +32,7 @@ const (
 	cfgPeers   = "peers"
 	// if the data partition has not been reported within this interval  (in terms of seconds), it will be considered as missing.
 	missingDataPartitionInterval        = "missingDataPartitionInterval"
+	noLeaderReportInterval              = "noLeaderReportInterval"
 	dataPartitionTimeOutSec             = "dataPartitionTimeOutSec"
 	NumberOfDataPartitionsToLoad        = "numberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
@@ -42,6 +43,7 @@ const (
 	faultDomain                         = "faultDomain"
 	cfgDomainBatchGrpCnt                = "faultDomainGrpBatchCnt"
 	cfgDomainBuildAsPossible            = "faultDomainBuildAsPossible"
+	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
 )
 
 //default value
@@ -58,6 +60,7 @@ const (
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
 	defaultDataPartitionTimeOutSec             = 5 * defaultIntervalToCheckHeartbeat
 	defaultMissingDataPartitionInterval        = 24 * 3600
+	defaultNoLeaderReportInterval              = 10 * 60
 
 	defaultIntervalToAlarmMissingDataPartition = 60 * 60
 	timeToWaitForResponse                      = 120         // time to wait for response by the master during loading partition
@@ -73,6 +76,7 @@ const (
 	defaultMaxMetaPartitionCountOnEachNode             = 10000
 	defaultReplicaNum                                  = 3
 	defaultDiffSpaceUsage                              = 1024 * 1024 * 1024
+	defaultDiffReplicaFileCount                        = 20
 	defaultNodeSetGrpStep                              = 1
 	defaultMasterMinQosAccept                          = 20000
 	defaultMaxDpCntLimit                               = 3000
@@ -85,6 +89,7 @@ type clusterConfig struct {
 	secondsToFreeDataPartitionAfterLoad int64
 	NodeTimeOutSec                      int64
 	MissingDataPartitionInterval        int64
+	NoLeaderReportInterval              int64
 	DataPartitionTimeOutSec             int64
 	IntervalToAlarmMissingDataPartition int64
 	PeriodToLoadALLDataPartitions       int64
@@ -105,13 +110,15 @@ type clusterConfig struct {
 	peerAddrs                           []string
 	heartbeatPort                       int64
 	replicaPort                         int64
-	diffSpaceUsage                      uint64
+	diffReplicaSpaceUsage               uint64
+	diffReplicaFileCount                uint32
 	faultDomain                         bool
 	DefaultNormalZoneCnt                int
 	DomainBuildAsPossible               bool
 	DataPartitionUsageThreshold         float64
 	QosMasterAcceptLimit                uint64
 	DirChildrenNumLimit                 uint32
+	MetaPartitionInodeIdStep            uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -120,6 +127,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.secondsToFreeDataPartitionAfterLoad = defaultSecondsToFreeDataPartitionAfterLoad
 	cfg.NodeTimeOutSec = defaultNodeTimeOutSec
 	cfg.MissingDataPartitionInterval = defaultMissingDataPartitionInterval
+	cfg.NoLeaderReportInterval = defaultNoLeaderReportInterval
 	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
 	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
 	cfg.IntervalToCheckQos = defaultIntervalToCheckQos
@@ -130,9 +138,11 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ClusterLoadFactor = defaultOverSoldFactor
 	cfg.MaxDpCntLimit = defaultMaxDpCntLimit
 	cfg.metaNodeReservedMem = defaultMetaNodeReservedMem
-	cfg.diffSpaceUsage = defaultDiffSpaceUsage
+	cfg.diffReplicaSpaceUsage = defaultDiffSpaceUsage
+	cfg.diffReplicaFileCount = defaultDiffReplicaFileCount
 	cfg.QosMasterAcceptLimit = defaultMasterMinQosAccept
 	cfg.DirChildrenNumLimit = pt.DefaultDirChildrenNumLimit
+	cfg.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
 	return
 }
 

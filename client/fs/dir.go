@@ -16,7 +16,6 @@ package fs
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"io"
 	"os"
 	"strconv"
@@ -24,6 +23,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/auditlog"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
@@ -383,12 +384,46 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		stat.EndStat("ReadDirLimit", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	dirCtx := d.dctx.GetCopy(req.Handle)
+	var dirCtx DirContext
+	if req.Offset != 0 {
+		dirCtx = d.dctx.GetCopy(req.Handle)
+	} else {
+		dirCtx = DirContext{}
+	}
 	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
-		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v)", d.info.Inode, err)
+		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
 		return make([]fuse.Dirent, 0), ParseError(err)
+	}
+
+	if req.Offset == 0 {
+		if len(children) == 0 {
+			dirents := make([]fuse.Dirent, 0, len(children))
+			dirents = append(dirents, fuse.Dirent{
+				Inode: d.info.Inode,
+				Type:  fuse.DT_Dir,
+				Name:  ".",
+			})
+			pid := uint64(req.Pid)
+			if d.info.Inode == 1 {
+				pid = d.info.Inode
+			}
+			dirents = append(dirents, fuse.Dirent{
+				Inode: pid,
+				Type:  fuse.DT_Dir,
+				Name:  "..",
+			})
+			return dirents, io.EOF
+		}
+		children = append([]proto.Dentry{{
+			Name:  ".",
+			Inode: d.info.Inode,
+			Type:  uint32(os.ModeDir),
+		}, {
+			Name:  "..",
+			Inode: uint64(req.Pid),
+			Type:  uint32(os.ModeDir),
+		}}, children...)
 	}
 
 	// skip the first one, which is already accessed
@@ -577,13 +612,15 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		d.super.fslock.Unlock()
 		auditlog.FormatLog("Rename", d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName, err, time.Since(start).Microseconds(), srcInode, dstInode)
 	}()
-
+	changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
 	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, true)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
 	}
-
+	if len(changePathMap) != 0 {
+		d.super.mw.BatchModifyQuotaPath(changePathMap)
+	}
 	d.super.ic.Delete(d.info.Inode)
 	d.super.ic.Delete(dstDir.info.Inode)
 

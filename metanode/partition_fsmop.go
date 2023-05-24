@@ -43,6 +43,15 @@ func (mp *metaPartition) initInode(ino *Inode) {
 			if !mp.raftPartition.IsRaftLeader() {
 				continue
 			}
+			// qinode := &MetaQuotaInode{
+			// 	inode:    ino,
+			// 	quotaIds: make([]uint32, 0, 0),
+			// }
+			// data, err := qinode.Marshal()
+			// if err != nil {
+			// 	log.LogFatalf("[initInode] marshal: %s", err.Error())
+			// }
+
 			data, err := ino.Marshal()
 			if err != nil {
 				log.LogFatalf("[initInode] marshal: %s", err.Error())
@@ -71,13 +80,16 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 	status = proto.OpOk
 	oldEnd := mp.config.End
 	mp.config.End = end
-	defer func() {
-		if err != nil {
-			mp.config.End = oldEnd
-			status = proto.OpDiskErr
-		}
-	}()
-	err = mp.PersistMetadata()
+
+	if end < mp.config.Cursor {
+		status = proto.OpAgain
+		mp.config.End = oldEnd
+		return
+	}
+	if err = mp.PersistMetadata(); err != nil {
+		status = proto.OpDiskErr
+		mp.config.End = oldEnd
+	}
 	return
 }
 

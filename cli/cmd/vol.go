@@ -15,9 +15,8 @@
 package cmd
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/util"
 	"sort"
 	"strconv"
 	"strings"
@@ -132,6 +131,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLowWater int
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
+	var optTxMask string
+	var optTxTimeout uint32
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -149,11 +150,15 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			crossZone, _ := strconv.ParseBool(optCrossZone)
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
-			replicaNum, _ := strconv.Atoi(optReplicaNum)
+
 			if optReplicaNum == "" && optVolType == 1 {
-				replicaNum = 1
+				optReplicaNum = "1"
+			}
+			if optVolType != 1 && optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
+				followerRead = true
 			}
 			dpReadOnlyWhenVolFull, _ := strconv.ParseBool(optDpReadOnlyWhenVolFull)
+			replicaNum, _ := strconv.Atoi(optReplicaNum)
 
 			// ask user for confirm
 			if !optYes {
@@ -165,7 +170,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  DefaultPriority     : %v\n", normalZonesFirst)
 				stdout("  description         : %v\n", optBusiness)
 				stdout("  mpCount             : %v\n", optMPCount)
-				stdout("  replicaNum          : %v\n", replicaNum)
+				stdout("  replicaNum          : %v\n", optReplicaNum)
 				stdout("  size                : %v G\n", optSize)
 				stdout("  volType             : %v\n", optVolType)
 				stdout("  followerRead        : %v\n", followerRead)
@@ -180,6 +185,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  cacheHighWater      : %v\n", optCacheHighWater)
 				stdout("  cacheLowWater       : %v\n", optCacheLowWater)
 				stdout("  cacheLRUInterval    : %v min\n", optCacheLRUInterval)
+				stdout("  TransactionMask     : %v\n", optTxMask)
+				stdout("  TransactionTimeout  : %vin\n", optTxTimeout)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -191,10 +198,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, crossZone, normalZonesFirst, optBusiness,
-				optMPCount, replicaNum, optSize, optVolType, followerRead,
+				optMPCount, int(replicaNum), optSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
-				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull)
+				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull, optTxMask, optTxTimeout)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -211,7 +218,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().IntVar(&optSize, CliFlagSize, cmdVolDefaultSize, "Specify data partition size[Unit: GB]")
 	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultVolType, "Type of volume (default 0)")
-	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, cmdVolDefaultFollowerRead, "Enable read form replica follower")
+	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, "", "Enable read form replica follower")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().StringVar(&optCacheRuleKey, CliFlagCacheRuleKey, cmdVolDefaultCacheRuleKey, "Anything that match this field will be written to the cache")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")
@@ -225,7 +232,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-
+	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
+	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout[Unit: minute] for transaction (0-60]")
 	return cmd
 }
 
@@ -250,6 +258,9 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
 	var optYes bool
+	var optTxMask string
+	var optTxTimeout int64
+	var optReplicaNum string
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
 	var cmd = &cobra.Command{
@@ -294,6 +305,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", vv.Capacity))
 			}
+
+			if optReplicaNum != "" {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v -> %v \n", vv.DpReplicaNum, optReplicaNum))
+				replicaNum, _ := strconv.Atoi(optReplicaNum)
+				vv.DpReplicaNum = uint8(replicaNum)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v \n", vv.Description))
+			}
+
 			if optFollowerRead != "" {
 				isChange = true
 				var enable bool
@@ -303,6 +324,9 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v -> %v\n", formatEnabledDisabled(vv.FollowerRead), formatEnabledDisabled(enable)))
 				vv.FollowerRead = enable
 			} else {
+				if vv.DpReplicaNum == 1 || vv.DpReplicaNum == 2 {
+					vv.FollowerRead = true
+				}
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
 			}
 			if optEbsBlkSize > 0 {
@@ -328,6 +352,28 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
 			}
+
+			//var maskStr string
+			if optTxMask != "" {
+				//maskStr = proto.GetMaskString(vv.EnableTransaction)
+				if strings.Contains(vv.EnableTransaction, optTxMask) {
+					confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+				} else {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, optTxMask))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+			}
+
+			if optTxTimeout > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v -> %v\n", vv.TxTimeout, optTxTimeout))
+				vv.TxTimeout = optTxTimeout
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v byte\n", vv.TxTimeout))
+			}
+
 			if optCacheAction != "" {
 				if vv.VolType == 0 {
 					err = fmt.Errorf("cache-action not support in hot vol\n")
@@ -414,11 +460,11 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				if enable, err = strconv.ParseBool(optDpReadOnlyWhenVolFull); err != nil {
 					return
 				}
-				confirmString.WriteString(fmt.Sprintf("  Become readonly when vol full : %v -> %v\n",
+				confirmString.WriteString(fmt.Sprintf("  Vol readonly when full : %v -> %v\n",
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull), formatEnabledDisabled(enable)))
 				vv.DpReadOnlyWhenVolFull = enable
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Become readonly when vol full : %v\n",
+				confirmString.WriteString(fmt.Sprintf("  Vol readonly full : %v\n",
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
@@ -440,9 +486,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Description, calcAuthKey(vv.Owner), vv.ZoneName, vv.Capacity,
-				vv.FollowerRead, vv.ObjBlockSize, vv.CacheCapacity, vv.CacheAction, vv.CacheThreshold, vv.CacheTtl,
-				vv.CacheHighWater, vv.CacheLowWater, vv.CacheLruInterval, vv.CacheRule, vv.DpReadOnlyWhenVolFull)
+			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask)
 			if err != nil {
 				return
 			}
@@ -470,9 +514,11 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, 0, " (default 60)")
 	cmd.Flags().StringVar(&optCacheRule, CliFlagCacheRule, "", "Specify cache rule")
 	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, 0, "Specify interval expiration time[Unit: min] (default 5)")
-	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
-		"Enable volume becomes read only when it is full")
+	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, "", "Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
+	cmd.Flags().Int64Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout[Unit: minute] for transaction (0-60]")
+	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 
 	return cmd
 
@@ -594,7 +640,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			if err = client.AdminAPI().DeleteVolume(volumeName, calcAuthKey(svv.Owner)); err != nil {
+			if err = client.AdminAPI().DeleteVolume(volumeName, util.CalcAuthKey(svv.Owner)); err != nil {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
@@ -768,11 +814,4 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 		},
 	}
 	return cmd
-}
-
-func calcAuthKey(key string) (authKey string) {
-	h := md5.New()
-	_, _ = h.Write([]byte(key))
-	cipherStr := h.Sum(nil)
-	return strings.ToLower(hex.EncodeToString(cipherStr))
 }

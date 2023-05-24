@@ -85,6 +85,11 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			return
 		}
 	}
+	if vv.Status == 1 {
+		log.LogErrorf("fetchVolumeView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+			vv.Name, vv.Status)
+		return nil, proto.ErrVolNotExists
+	}
 	var convert = func(volView *proto.VolView) *VolumeView {
 		result := &VolumeView{
 			Name:           volView.Name,
@@ -117,11 +122,11 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 func (mw *MetaWrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
 	if info, err = mw.mc.AdminAPI().GetClusterInfo(); err != nil {
-		log.LogWarnf("updateClusterInfo: get cluster info fail: err(%v)", err)
+		log.LogWarnf("updateClusterInfo: get cluster info fail: err(%v) volume(%v)", err, mw.volname)
 		return
 	}
-	log.LogInfof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v)",
-		info.Cluster, info.Ip)
+	log.LogInfof("updateClusterInfo: get cluster info: cluster(%v) localIP(%v) volume(%v)",
+		info.Cluster, info.Ip, mw.volname)
 	mw.cluster = info.Cluster
 	mw.localIP = info.Ip
 	return
@@ -156,14 +161,14 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
-	log.LogInfof("VolStatInfo: info(%v)", info)
+	log.LogInfof("VolStatInfo: volume(%v) info(%v)", mw.volname, info)
 	return
 }
 
 func (mw *MetaWrapper) updateMetaPartitions() error {
 	view, err := mw.fetchVolumeView()
 	if err != nil {
-		log.LogInfof("error: %v", err.Error())
+		log.LogInfof("updateMetaPartition volume(%v) error: %v", mw.volname, err.Error())
 		switch err {
 		case proto.ErrExpiredTicket:
 			// TODO: bad logic, remove later (Mofei Zhang)
@@ -357,4 +362,86 @@ func (mw *MetaWrapper) parseRespWithAuth(body []byte) (resp proto.MasterAPIAcces
 	}
 
 	return
+}
+
+func (mw *MetaWrapper) updateQuotaInfoTick() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			mw.UpdateQuotaInfo()
+		case <-mw.closeCh:
+			return
+		}
+
+	}
+}
+
+func (mw *MetaWrapper) UpdateQuotaInfo() {
+	quotaInfos, err := mw.mc.AdminAPI().ListQuota(mw.volname)
+	if err != nil {
+		log.LogWarnf("UpdateQuotaInfo get quota info fail: vol [%v] err [%v]", mw.volname, err)
+		return
+	}
+	mw.QuotaLock.Lock()
+	defer mw.QuotaLock.Unlock()
+	mw.QuotaInfoMap = make(map[uint32]*proto.QuotaInfo)
+	for _, info := range quotaInfos {
+		mw.QuotaInfoMap[info.QuotaId] = info
+		log.LogDebugf("UpdateQuotaInfo quotaInfo [%v]", info)
+	}
+}
+
+func (mw *MetaWrapper) IsQuotaLimited(quotaIds []uint32) bool {
+	mw.QuotaLock.RLock()
+	defer mw.QuotaLock.RUnlock()
+	for _, quotaId := range quotaIds {
+		if info, isFind := mw.QuotaInfoMap[quotaId]; isFind {
+			if info.LimitedInfo.LimitedBytes {
+				log.LogDebugf("IsQuotaLimited quotaId [%v]", quotaId)
+				return true
+			}
+		}
+		log.LogDebugf("IsQuotaLimited false quota [%v]", quotaId)
+	}
+	return false
+}
+
+func findNestedPath(path1, path2 string) string {
+	if path1 == path2 {
+		return ""
+	}
+
+	if len(path1) > len(path2) {
+		return ""
+	}
+
+	if strings.HasPrefix(path2, path1) {
+		if len(path1) == 1 || strings.HasSuffix(path1, "/") {
+			return path2[len(path1):]
+		} else if path2[len(path1)] == '/' {
+			return path2[len(path1)+1:]
+		}
+	}
+
+	return ""
+}
+
+func (mw *MetaWrapper) GetChangeQuota(srcPath string, dstPath string) (changePathMap map[uint32]string) {
+	changePathMap = make(map[uint32]string, 0)
+	mw.QuotaLock.RLock()
+	defer mw.QuotaLock.RUnlock()
+
+	for _, info := range mw.QuotaInfoMap {
+		nestedPath := findNestedPath(srcPath, info.FullPath)
+		if nestedPath != "" {
+			newPath := dstPath + "/" + nestedPath
+			changePathMap[info.QuotaId] = newPath
+		}
+	}
+
+	log.LogDebugf("GetChangeQuota map [%v]", changePathMap)
+	return changePathMap
 }

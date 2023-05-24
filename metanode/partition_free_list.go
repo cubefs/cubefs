@@ -152,7 +152,8 @@ func (mp *metaPartition) deleteWorker() {
 
 			//check inode nlink == 0 and deleteMarkFlag unset
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
-				if inode.ShouldDelayDelete() {
+				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
+				if inode.ShouldDelayDelete() || inTx {
 					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0", inode)
 					delayDeleteInos = append(delayDeleteInos, ino)
 					continue

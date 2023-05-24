@@ -86,10 +86,12 @@ func (cp *ConnectPool) GetConnect(targetAddr string) (c *net.TCPConn, err error)
 	pool, ok := cp.pools[targetAddr]
 	cp.RUnlock()
 	if !ok {
+		newPool := NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
 		cp.Lock()
 		pool, ok = cp.pools[targetAddr]
 		if !ok {
-			pool = NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
+			//pool = NewPool(cp.mincap, cp.maxcap, cp.timeout, cp.connectTimeout, targetAddr)
+			pool = newPool
 			cp.pools[targetAddr] = pool
 		}
 		cp.Unlock()

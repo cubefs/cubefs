@@ -53,6 +53,7 @@ func (api *APIResponse) Marshal() ([]byte, error) {
 func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getPartitions", m.getPartitionsHandler)
 	http.HandleFunc("/getPartitionById", m.getPartitionByIDHandler)
+	http.HandleFunc("/getLeaderPartitions", m.getLeaderPartitionsHandler)
 	http.HandleFunc("/getInode", m.getInodeHandler)
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
 	http.HandleFunc("/getEbsExtentsByInode", m.getEbsExtentsByInodeHandler)
@@ -136,6 +137,24 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
+}
+
+func (m *MetaNode) getLeaderPartitionsHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	mps := m.metadataManager.GetLeaderPartitions()
+	resp.Data = mps
+	data, err := resp.Marshal()
+	if err != nil {
+		log.LogErrorf("json marshal error:%v", err)
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	if _, err := w.Write(data); err != nil {
+		log.LogErrorf("[getPartitionsHandler] response %s", err)
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+	}
 }
 
 func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {

@@ -17,12 +17,15 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/google/uuid"
+	"math"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
 
 	"golang.org/x/time/rate"
 
@@ -111,18 +114,52 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	var (
 		err      error
 		volNames []string
+		view     *proto.DataPartitionsView
 	)
 	if err, volNames = mgr.c.loadVolsName(); err != nil {
 		panic(err)
 	}
 	if mgr.c.masterClient.Leader() == "" {
-		log.LogDebugf("followerReadManager.getVolumeDpView but master leader not ready")
+		log.LogErrorf("followerReadManager.getVolumeDpView but master leader not ready")
 		return
 	}
 	for _, name := range volNames {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", name)
-		if view, err := mgr.c.masterClient.ClientAPI().GetDataPartitions(name); err == nil {
-			mgr.updateVolViewFromLeader(name, view)
+		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitions(name); err != nil {
+			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v", name, err)
+			continue
+		}
+		mgr.updateVolViewFromLeader(name, view)
+	}
+}
+
+func (mgr *followerReadManager) sendFollowerVolumeDpView() {
+	var (
+		err error
+	)
+	vols := mgr.c.copyVols()
+	for _, vol := range vols {
+		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
+		if !proto.IsHot(vol.VolType) && vol.CacheAction == proto.NoCache {
+			continue
+		}
+		var body []byte
+		if body, err = vol.getDataPartitionsView(); err != nil {
+			log.LogErrorf("followerReadManager.sendFollowerVolumeDpView err %v", err)
+			continue
+		}
+		for _, addr := range AddrDatabase {
+			if addr == mgr.c.leaderInfo.addr {
+				continue
+			}
+			mgr.c.masterClient.SetLeader(addr)
+			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(vol.Name, body); err != nil {
+				mgr.c.masterClient.SetLeader("")
+				log.LogErrorf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", vol.Name, addr, err)
+				continue
+			}
+			mgr.c.masterClient.SetLeader("")
+			log.LogDebugf("followerReadManager.sendFollowerVolumeDpView PutDataPartitions name %v addr %v err %v", vol.Name, addr, err)
 		}
 	}
 }
@@ -133,9 +170,9 @@ func (mgr *followerReadManager) checkStatus() {
 
 	timeNow := time.Now()
 	for volNm, lastTime := range mgr.lastUpdateTick {
-		if lastTime.Before(timeNow.Add(-time.Second * 30)) {
+		if lastTime.Before(timeNow.Add(-5 * time.Minute)) {
 			mgr.status[volNm] = false
-			log.LogInfof("action[checkStatus] volume %v expired last time %v, now %v", volNm, lastTime, timeNow)
+			log.LogWarnf("action[checkStatus] volume %v expired last time %v, now %v", volNm, lastTime, timeNow)
 		}
 	}
 }
@@ -157,7 +194,6 @@ func (mgr *followerReadManager) updateVolViewFromLeader(key string, view *proto.
 		defer mgr.rwMutex.Unlock()
 		mgr.volDataPartitionsView[key] = body
 	}
-
 	mgr.status[key] = true
 	mgr.lastUpdateTick[key] = time.Now()
 }
@@ -353,6 +389,8 @@ func (c *Cluster) scheduleToCheckFollowerReadCache() {
 			if !c.partition.IsRaftLeader() {
 				c.followerReadManager.getVolumeDpView()
 				c.followerReadManager.checkStatus()
+			} else {
+				c.followerReadManager.sendFollowerVolumeDpView()
 			}
 			time.Sleep(5 * time.Second)
 		}
@@ -487,6 +525,9 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 		}
 	}()
 }
+func (c *Cluster) passAclCheck(ip string) {
+
+}
 
 func (c *Cluster) checkLeaderAddr() {
 	leaderID, _ := c.partition.LeaderTerm()
@@ -507,19 +548,34 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 
 func (c *Cluster) checkMetaNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
+
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
 		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable)
 		hbReq := task.Request.(*proto.HeartBeatRequest)
+
 		for _, vol := range c.vols {
 			if vol.FollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
 			}
+			spaceInfo := vol.uidSpaceManager.getSpaceOp()
+			hbReq.UidLimitInfo = append(hbReq.UidLimitInfo, spaceInfo...)
+			quotaHbInfos := vol.quotaManager.getQuotaHbInfos()
+			if len(quotaHbInfos) != 0 {
+				hbReq.QuotaHbInfos = append(hbReq.QuotaHbInfos, quotaHbInfos...)
+			}
+		}
+		log.LogDebugf("checkMetaNodeHeartbeat start")
+		for _, info := range hbReq.QuotaHbInfos {
+			log.LogDebugf("checkMetaNodeHeartbeat info [%v]", info)
 		}
 		tasks = append(tasks, task)
 		return true
 	})
+
 	c.addMetaNodeTasks(tasks)
 }
 
@@ -841,34 +897,18 @@ errHandler:
 	return
 }
 
-func (c *Cluster) checkCorruptDataPartitions() (inactiveDataNodes []string, corruptPartitions []*DataPartition, err error) {
-
+func (c *Cluster) checkInactiveDataNodes() (inactiveDataNodes []string, err error) {
 	inactiveDataNodes = make([]string, 0)
-	corruptPartitions = make([]*DataPartition, 0)
-
-	vols := c.copyVols()
-	for _, vol := range vols {
-		if vol.Status == markDelete || !proto.IsHot(vol.VolType) {
-			continue
-		}
-		for _, dp := range vol.dataPartitions.partitions {
-			if dp.getLeaderAddr() == "" {
-				corruptPartitions = append(corruptPartitions, dp)
-			}
-		}
-	}
 
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		if !dataNode.isActive {
 			inactiveDataNodes = append(inactiveDataNodes, dataNode.Addr)
 		}
-
 		return true
 	})
 
-	log.LogInfof("clusterID[%v] inactiveDataNodes:%v  corruptPartitions count:[%v]",
-		c.Name, inactiveDataNodes, len(corruptPartitions))
+	log.LogInfof("clusterID[%v] inactiveDataNodes:%v", c.Name, inactiveDataNodes)
 	return
 }
 
@@ -904,29 +944,77 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 	return
 }
 
-func (c *Cluster) checkReplicaOfDataPartitions() (lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, err error) {
+func (c *Cluster) checkReplicaOfDataPartitions() (
+	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
+	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
+	noLeaderDPs = make([]*DataPartition, 0)
 	lackReplicaDPs = make([]*DataPartition, 0)
 	unavailableReplicaDPs = make([]*DataPartition, 0)
+	excessReplicaDPs = make([]*DataPartition, 0)
+
 	vols := c.copyVols()
 	for _, vol := range vols {
 		var dps *DataPartitionMap
 		dps = vol.dataPartitions
 		for _, dp := range dps.partitions {
-			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
-				lackReplicaDPs = append(lackReplicaDPs, dp)
-			}
-
-			for _, replica := range dp.Replicas {
-				if replica.Status == proto.Unavailable {
-					unavailableReplicaDPs = append(unavailableReplicaDPs, dp)
-					break
+			if vol.Status != markDelete && proto.IsHot(vol.VolType) {
+				if dp.getLeaderAddr() == "" && (time.Now().Unix()-dp.LeaderReportTime > c.cfg.NoLeaderReportInterval) {
+					noLeaderDPs = append(noLeaderDPs, dp)
 				}
 			}
 
+			if dp.ReplicaNum > uint8(len(dp.Hosts)) || dp.ReplicaNum > uint8(len(dp.Replicas)) {
+				lackReplicaDPs = append(lackReplicaDPs, dp)
+			}
+
+			if (dp.GetDecommissionStatus() == DecommissionInitial || dp.GetDecommissionStatus() == DecommissionFail) &&
+				(uint8(len(dp.Hosts)) > dp.ReplicaNum || uint8(len(dp.Replicas)) > dp.ReplicaNum) {
+				excessReplicaDPs = append(excessReplicaDPs, dp)
+			}
+
+			repSizeDiff := 0.0
+			repSizeSentry := 0.0
+			repFileCountDiff := uint32(0)
+			repFileCountSentry := uint32(0)
+			if len(dp.Replicas) != 0 {
+				repSizeSentry = float64(dp.Replicas[0].Used)
+				repFileCountSentry = dp.Replicas[0].FileCount
+			}
+
+			recordReplicaUnavailable := false
+			for _, replica := range dp.Replicas {
+				if !recordReplicaUnavailable && replica.Status == proto.Unavailable {
+					unavailableReplicaDPs = append(unavailableReplicaDPs, dp)
+					recordReplicaUnavailable = true
+				}
+
+				tempSizeDiff := math.Abs(float64(replica.Used) - repSizeSentry)
+				if tempSizeDiff > repSizeDiff {
+					repSizeDiff = tempSizeDiff
+				}
+
+				tempFileCountDiff := replica.FileCount - repFileCountSentry
+				if tempFileCountDiff > repFileCountDiff {
+					repFileCountDiff = tempFileCountDiff
+				}
+			}
+
+			if repSizeDiff > float64(c.cfg.diffReplicaSpaceUsage) {
+				repUsedSizeDifferDps = append(repUsedSizeDifferDps, dp)
+			}
+
+			if repFileCountDiff > c.cfg.diffReplicaFileCount {
+				repFileCountDifferDps = append(repFileCountDifferDps, dp)
+			}
 		}
 	}
-	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v], unavailableReplicaDataPartitions count:[%v]",
-		c.Name, len(lackReplicaDPs), len(unavailableReplicaDPs))
+
+	log.LogInfof("clusterID[%v] lackReplicaDp count:[%v], unavailableReplicaDp count:[%v], "+
+		"repFileCountDifferDps count[%v], repUsedSizeDifferDps count[%v], "+
+		"excessReplicaDPs count[%v], noLeaderDPs count[%v]",
+		c.Name, len(lackReplicaDPs), len(unavailableReplicaDPs),
+		len(repFileCountDifferDps), len(repUsedSizeDifferDps),
+		len(excessReplicaDPs), len(noLeaderDPs))
 	return
 }
 
@@ -1186,7 +1274,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 		goto errHandler
 	default:
 		dp.total = vol.dataPartitionSize
-		dp.Status = proto.Unavailable
+		dp.setReadWrite()
 	}
 
 	if err = c.syncAddDataPartition(dp); err != nil {
@@ -2707,6 +2795,10 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		goto errHandler
 	}
 
+	vol.aclMgr.init(c, vol)
+	vol.initUidSpaceManager(c)
+	vol.initQuotaManager(c)
+
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
 
 		vol.Status = markDelete
@@ -2777,6 +2869,8 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		CreateTime:        createTime,
 		Description:       req.description,
 		EnablePosixAcl:    req.enablePosixAcl,
+		EnableTransaction: req.enableTransaction,
+		TxTimeout:         req.txTimeout,
 
 		VolType:          req.volType,
 		EbsBlkSize:       req.coldArgs.objBlockSize,
@@ -2860,9 +2954,10 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 		adjustStart = partition.MaxInodeID
 	}
 
-	adjustStart = adjustStart + defaultMetaPartitionInodeIDStep
+	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
+	adjustStart = adjustStart + metaPartitionInodeIdStep
 	log.LogWarnf("vol[%v],maxMp[%v],start[%v],adjustStart[%v]", volName, maxPartitionID, start, adjustStart)
-	if err = vol.splitMetaPartition(c, partition, adjustStart); err != nil {
+	if err = vol.splitMetaPartition(c, partition, adjustStart, metaPartitionInodeIdStep); err != nil {
 		log.LogErrorf("action[updateInodeIDRange]  mp[%v] err[%v]", partition.PartitionID, err)
 	}
 	return
@@ -2904,6 +2999,100 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		return true
 	})
 	return
+}
+
+// get metaNode with specified condition
+func (c *Cluster) getSpecifiedMetaNodes(zones map[string]struct{}, nodeSetIds map[uint64]struct{}) (metaNodes []*MetaNode) {
+	log.LogInfof("cluster metaNode length:%v", c.allMetaNodes())
+	// if nodeSetId is set,choose metaNode which in nodesetId and ignore zones
+	if len(nodeSetIds) != 0 {
+		log.LogInfof("select from nodeSet")
+		c.metaNodes.Range(func(addr, node interface{}) bool {
+			metaNode := node.(*MetaNode)
+			if _, ok := nodeSetIds[metaNode.NodeSetID]; ok {
+				metaNodes = append(metaNodes, metaNode)
+			}
+			return true
+		})
+		return
+	}
+
+	// if zones is set, choose metaNodes which in zones
+	if len(zones) != 0 {
+		log.LogInfof("select from zone")
+		c.metaNodes.Range(func(addr, node interface{}) bool {
+			metaNode := node.(*MetaNode)
+			if _, ok := zones[metaNode.ZoneName]; ok {
+				metaNodes = append(metaNodes, metaNode)
+			}
+			return true
+		})
+		return
+	}
+
+	log.LogInfof("select all cluster metaNode")
+	// get all metaNodes in cluster
+	c.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode := node.(*MetaNode)
+		metaNodes = append(metaNodes, metaNode)
+		return true
+	})
+
+	return
+}
+
+func (c *Cluster) balanceMetaPartitionLeader(zones map[string]struct{}, nodeSetIds map[uint64]struct{}) error {
+	sortedNodes := c.getSortLeaderMetaNodes(zones, nodeSetIds)
+	if sortedNodes == nil || len(sortedNodes.nodes) == 0 {
+		return errors.New("no metaNode be selected")
+	}
+
+	sortedNodes.balanceLeader()
+
+	return nil
+}
+
+func (c *Cluster) getSortLeaderMetaNodes(zones map[string]struct{}, nodeSetIds map[uint64]struct{}) *sortLeaderMetaNode {
+	metaNodes := c.getSpecifiedMetaNodes(zones, nodeSetIds)
+	log.LogInfof("metaNode length:%d", len(metaNodes))
+	if len(metaNodes) == 0 {
+		return nil
+	}
+
+	leaderNodes := make([]*LeaderMetaNode, 0)
+	countM := make(map[string]int)
+	totalCount := 0
+	average := 0
+	for _, node := range metaNodes {
+		metaPartitions := make([]*MetaPartition, 0)
+		for _, mp := range node.metaPartitionInfos {
+			if mp.IsLeader {
+				metaPartition, err := c.getMetaPartitionByID(mp.PartitionID)
+				if err != nil {
+					continue
+				}
+				metaPartitions = append(metaPartitions, metaPartition)
+			}
+		}
+
+		// some metaNode's mps length could be 0
+		leaderNodes = append(leaderNodes, &LeaderMetaNode{
+			metaPartitions: metaPartitions,
+			addr:           node.Addr,
+		})
+		countM[node.Addr] = len(metaPartitions)
+		totalCount += len(metaPartitions)
+	}
+	if len(leaderNodes) != 0 {
+		average = totalCount / len(leaderNodes)
+	}
+	s := &sortLeaderMetaNode{
+		nodes:        leaderNodes,
+		leaderCountM: countM,
+		average:      average,
+	}
+	sort.Sort(s)
+	return s
 }
 
 func (c *Cluster) allVolNames() (vols []string) {

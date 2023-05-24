@@ -23,16 +23,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"strings"
 	"testing"
-	"time"
 
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/cubefs/blobstore/common/crc32block"
-	"github.com/cubefs/blobstore/common/proto"
-	"github.com/cubefs/blobstore/util/bytespool"
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/crc32block"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	cproto "github.com/cubefs/cubefs/proto"
-	"github.com/hashicorp/consul/api"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,15 +37,7 @@ const (
 )
 
 var (
-	client     access.API
-	services   []*api.ServiceEntry
-	hostsApply []*api.ServiceEntry
-	dataCache  []byte
-	blobCache  = make([]byte, blobSize)
-	tokenAlloc = []byte("token")
-	tokenPutat = []byte("token")
-
-	partRandBroken = false
+	dataCache []byte
 )
 
 type MockEbsService struct {
@@ -60,19 +48,8 @@ func NewMockEbsService() *MockEbsService {
 	dataCache = make([]byte, 1<<25)
 	mockServer := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if req.URL.Path == "/v1/health/service/access" {
-				w.WriteHeader(http.StatusOK)
-				b, _ := json.Marshal(hostsApply)
-				w.Write(b)
-
-			} else if req.URL.Path == "/put" {
+			if req.URL.Path == "/put" {
 				putSize := req.URL.Query().Get("size")
-				// just for testing timeout
-				if strings.HasPrefix(putSize, "-") {
-					time.Sleep(30 * time.Second)
-					w.WriteHeader(http.StatusForbidden)
-					return
-				}
 
 				dataSize, _ := strconv.Atoi(putSize)
 				size := req.Header.Get("Content-Length")
@@ -133,31 +110,9 @@ func NewMockEbsService() *MockEbsService {
 					}
 				}
 
-				if len(args.Locations) > 0 && len(args.Locations)%2 == 0 {
-					locs := args.Locations[:]
-					b, _ := json.Marshal(access.DeleteResp{FailedLocations: locs})
-					w.Header().Set("Content-Type", "application/json")
-					w.Header().Set("Content-Length", strconv.Itoa(len(b)))
-					w.WriteHeader(http.StatusIMUsed)
-					w.Write(b)
-					return
-				}
-
 				b, _ := json.Marshal(access.DeleteResp{})
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Content-Length", strconv.Itoa(len(b)))
-				w.WriteHeader(http.StatusOK)
-				w.Write(b)
-
-			} else if req.URL.Path == "/sign" {
-				args := access.SignArgs{}
-				requestBody(req, &args)
-				if err := signCrc(&args.Location, args.Locations); err != nil {
-					w.WriteHeader(http.StatusForbidden)
-					return
-				}
-
-				b, _ := json.Marshal(access.SignResp{Location: args.Location})
 				w.WriteHeader(http.StatusOK)
 				w.Write(b)
 
@@ -213,54 +168,14 @@ func verifyCrc(loc *access.Location) bool {
 	}
 	return loc.Crc == crc
 }
-func signCrc(loc *access.Location, locs []access.Location) error {
-	first := locs[0]
-	bids := make(map[proto.BlobID]struct{}, 64)
-
-	if loc.ClusterID != first.ClusterID ||
-		loc.CodeMode != first.CodeMode ||
-		loc.BlobSize != first.BlobSize {
-		return fmt.Errorf("not equal in constant field")
-	}
-
-	for _, l := range locs {
-		if !verifyCrc(&l) {
-			return fmt.Errorf("not equal in crc %d", l.Crc)
-		}
-
-		// assert
-		if l.ClusterID != first.ClusterID ||
-			l.CodeMode != first.CodeMode ||
-			l.BlobSize != first.BlobSize {
-			return fmt.Errorf("not equal in constant field")
-		}
-
-		for _, blob := range l.Blobs {
-			for c := 0; c < int(blob.Count); c++ {
-				bids[blob.MinBid+proto.BlobID(c)] = struct{}{}
-			}
-		}
-	}
-
-	for _, blob := range loc.Blobs {
-		for c := 0; c < int(blob.Count); c++ {
-			bid := blob.MinBid + proto.BlobID(c)
-			if _, ok := bids[bid]; !ok {
-				return fmt.Errorf("not equal in blob_id(%d)", bid)
-			}
-		}
-	}
-
-	return fillCrc(loc)
-}
 
 func TestEbsClient_Write_Read(t *testing.T) {
 	cfg := access.Config{}
 	mockServer := NewMockEbsService()
-	cfg.Consul.Address = mockServer.service.URL[7:] // strip http://
 	cfg.PriorityAddrs = []string{mockServer.service.URL}
 	cfg.ConnMode = access.QuickConnMode
 	cfg.MaxSizePutOnce = 1 << 20
+	defer mockServer.service.Close()
 
 	blobStoreClient, err := NewEbsClient(cfg)
 	if err != nil {

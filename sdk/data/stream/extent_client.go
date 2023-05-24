@@ -18,13 +18,13 @@ import (
 	"container/list"
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data/manager"
-	"golang.org/x/time/rate"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
@@ -32,6 +32,8 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+
+	"golang.org/x/time/rate"
 )
 
 type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
@@ -43,7 +45,7 @@ type CacheBcacheFunc func(key string, buf []byte) error
 type EvictBacheFunc func(key string) error
 
 const (
-	MaxMountRetryLimit = 5
+	MaxMountRetryLimit = 6
 	MountRetryInterval = time.Second * 5
 
 	defaultReadLimitRate  = rate.Inf
@@ -126,22 +128,36 @@ type ExtentClient struct {
 
 	disableMetaCache bool
 
-	volumeType      int
-	volumeName      string
-	bcacheEnable    bool
-	bcacheDir       string
-	BcacheHealth    bool
-	preload         bool
-	LimitManager    *manager.LimitManager
-	dataWrapper     *wrapper.Wrapper
-	appendExtentKey AppendExtentKeyFunc
-	getExtents      GetExtentsFunc
-	truncate        TruncateFunc
-	evictIcache     EvictIcacheFunc //May be null, must check before using
-	loadBcache      LoadBcacheFunc
-	cacheBcache     CacheBcacheFunc
-	evictBcache     EvictBacheFunc
-	inflightL1cache sync.Map
+	volumeType         int
+	volumeName         string
+	bcacheEnable       bool
+	bcacheDir          string
+	BcacheHealth       bool
+	preload            bool
+	LimitManager       *manager.LimitManager
+	dataWrapper        *wrapper.Wrapper
+	appendExtentKey    AppendExtentKeyFunc
+	getExtents         GetExtentsFunc
+	truncate           TruncateFunc
+	evictIcache        EvictIcacheFunc //May be null, must check before using
+	loadBcache         LoadBcacheFunc
+	cacheBcache        CacheBcacheFunc
+	evictBcache        EvictBacheFunc
+	inflightL1cache    sync.Map
+	inflightL1BigBlock int32
+}
+
+func (client *ExtentClient) UidIsLimited(uid uint32) bool {
+	client.dataWrapper.UidLock.RLock()
+	defer client.dataWrapper.UidLock.RUnlock()
+	if uInfo, ok := client.dataWrapper.Uids[uid]; ok {
+		if uInfo.Limited {
+			log.LogDebugf("uid %v is limited", uid)
+			return true
+		}
+	}
+	log.LogDebugf("uid %v is not limited", uid)
+	return false
 }
 
 func (client *ExtentClient) evictStreamer() bool {
@@ -206,15 +222,20 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
 	client.LimitManager = manager.NewLimitManager(client)
 	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
-	limit := MaxMountRetryLimit
+	limit := 0
 retry:
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload)
 	if err != nil {
-		if limit <= 0 {
+		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
+			config.Volume, limit, err)
+		if strings.Contains(err.Error(), proto.ErrVolNotExists.Error()) {
+			return nil, proto.ErrVolNotExists
+		}
+		if limit >= MaxMountRetryLimit {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
 		} else {
-			limit--
-			time.Sleep(MountRetryInterval)
+			limit++
+			time.Sleep(MountRetryInterval * time.Duration(limit))
 			goto retry
 		}
 	}
@@ -370,7 +391,6 @@ func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 	return s.GetExtents()
 }
 
-//
 func (client *ExtentClient) ForceRefreshExtentsCache(inode uint64) error {
 	s := client.GetStreamer(inode)
 	if s == nil {

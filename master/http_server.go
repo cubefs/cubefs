@@ -58,6 +58,10 @@ func (m *Server) startHTTPService(modulename string, cfg *config.Config) {
 	return
 }
 
+func (m *Server) isClientPartitionsReq(r *http.Request) bool {
+	return r.URL.Path == proto.ClientDataPartitions
+}
+
 func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 	followerRead = false
 	if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
@@ -70,7 +74,10 @@ func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 				return
 			}
 		}
-	} else if r.URL.Path == proto.AdminChangeMasterLeader || r.URL.Path == proto.AdminOpFollowerPartitionsRead {
+	} else if r.URL.Path == proto.AdminChangeMasterLeader ||
+		r.URL.Path == proto.AdminOpFollowerPartitionsRead ||
+		r.URL.Path == proto.AdminPutDataPartitions ||
+		r.URL.Path == "/metrics" {
 		followerRead = true
 	}
 	return
@@ -115,13 +122,17 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					log.LogWarnf("action[interceptor] leader meta has not ready")
 					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 					return
-				}
-				if m.leaderInfo.addr == "" {
+				} else if m.leaderInfo.addr != "" {
+					if m.isClientPartitionsReq(r) {
+						http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
+						return
+					}
+					m.proxy(w, r)
+				} else {
 					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
 					http.Error(w, "no leader", http.StatusBadRequest)
 					return
 				}
-				m.proxy(w, r)
 			})
 	}
 	route.Use(interceptor)
@@ -160,6 +171,14 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetCluster).
 		HandlerFunc(m.getCluster)
+	router.NewRoute().Name(proto.AdminACL).
+		Methods(http.MethodGet).
+		Path(proto.AdminACL).
+		HandlerFunc(m.aclOperate)
+	router.NewRoute().Name(proto.AdminUid).
+		Methods(http.MethodGet).
+		Path(proto.AdminUid).
+		HandlerFunc(m.UidOperate)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetClusterInfo).
 		HandlerFunc(m.setClusterInfo)
@@ -179,7 +198,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetCheckDataReplicasEnable).
 		HandlerFunc(m.setCheckDataReplicasEnable)
-
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetConfig).
+		HandlerFunc(m.setConfigHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetConfig).
+		HandlerFunc(m.getConfigHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateDecommissionLimit).
 		HandlerFunc(m.updateDecommissionLimit)
@@ -264,6 +288,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminChangeMetaPartitionLeader).
 		HandlerFunc(m.changeMetaPartitionLeader)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminBalanceMetaPartitionLeader).
+		HandlerFunc(m.balanceMetaPartitionLeader)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.ClientMetaPartitions).
 		HandlerFunc(m.getMetaPartitions)
@@ -373,6 +400,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetInvalidNodes).
 		HandlerFunc(m.checkInvalidIDNodes)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminPutDataPartitions).
+		HandlerFunc(m.putDataPartitions)
 
 	// data node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -450,6 +480,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetDpRdOnly).
 		HandlerFunc(m.setDpRdOnlyHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetDpDiscard).
+		HandlerFunc(m.setDpDiscardHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).
@@ -493,6 +526,26 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetAllZones).
 		HandlerFunc(m.listZone)
+
+	// Quota
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QuotaSet).
+		HandlerFunc(m.SetQuota)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QuotaUpdate).
+		HandlerFunc(m.UpdateQuota)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QuotaDelete).
+		HandlerFunc(m.DeleteQuota)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QuotaList).
+		HandlerFunc(m.ListQuota)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QuotaGet).
+		HandlerFunc(m.GetQuota)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.QuotaBatchModifyPath).
+		HandlerFunc(m.BatchModifyQuotaFullPath)
 }
 
 func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {

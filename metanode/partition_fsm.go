@@ -17,15 +17,16 @@ package metanode
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"net"
-	"sync/atomic"
-	"time"
-
 	"io/ioutil"
+	"net"
 	"os"
 	"path"
+	"strconv"
+	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -56,6 +57,24 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.config.Cursor = ino.Inode
 		}
 		resp = mp.fsmCreateInode(ino)
+	case opFSMCreateInodeQuota:
+		qinode := &MetaQuotaInode{}
+		if err = qinode.Unmarshal(msg.V); err != nil {
+			return
+		}
+		ino := qinode.inode
+		if mp.config.Cursor < ino.Inode {
+			mp.config.Cursor = ino.Inode
+		}
+		if len(qinode.quotaIds) > 0 {
+			mp.setInodeQuota(qinode.quotaIds, ino.Inode)
+		}
+		resp = mp.fsmCreateInode(ino)
+		if resp == proto.OpOk {
+			for _, quotaId := range qinode.quotaIds {
+				mp.mqMgr.updateUsedInfo(0, 1, quotaId)
+			}
+		}
 	case opFSMUnlinkInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
@@ -174,13 +193,21 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		dentryTree := mp.dentryTree.GetTree()
 		extendTree := mp.extendTree.GetTree()
 		multipartTree := mp.multipartTree.GetTree()
+		txTree := mp.txProcessor.txManager.txTree.GetTree()
+		txRbInodeTree := mp.txProcessor.txResource.txRbInodeTree.GetTree()
+		txRbDentryTree := mp.txProcessor.txResource.txRbDentryTree.GetTree()
+		txId := mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 		msg := &storeMsg{
-			command:       opFSMStoreTick,
-			applyIndex:    index,
-			inodeTree:     inodeTree,
-			dentryTree:    dentryTree,
-			extendTree:    extendTree,
-			multipartTree: multipartTree,
+			command:        opFSMStoreTick,
+			applyIndex:     index,
+			txId:           txId,
+			inodeTree:      inodeTree,
+			dentryTree:     dentryTree,
+			extendTree:     extendTree,
+			multipartTree:  multipartTree,
+			txTree:         txTree,
+			txRbInodeTree:  txRbInodeTree,
+			txRbDentryTree: txRbDentryTree,
 		}
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
@@ -227,6 +254,113 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if cursor > mp.config.Cursor {
 			mp.config.Cursor = cursor
 		}
+
+	case opFSMSyncTxID:
+		var txID uint64
+		txID = binary.BigEndian.Uint64(msg.V)
+		if txID > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
+			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
+		}
+	case opFSMTxCreateInode:
+		txIno := NewTxInode("", 0, 0, 0, nil)
+		if err = txIno.Unmarshal(msg.V); err != nil {
+			return
+		}
+		if mp.config.Cursor < txIno.Inode.Inode {
+			mp.config.Cursor = txIno.Inode.Inode
+		}
+		resp = mp.fsmTxCreateInode(txIno, []uint32{})
+	case opFSMTxCreateInodeQuota:
+		qinode := &TxMetaQuotaInode{}
+		if err = qinode.Unmarshal(msg.V); err != nil {
+			return
+		}
+		txIno := qinode.txinode
+		if mp.config.Cursor < txIno.Inode.Inode {
+			mp.config.Cursor = txIno.Inode.Inode
+		}
+		if len(qinode.quotaIds) > 0 {
+			mp.setInodeQuota(qinode.quotaIds, txIno.Inode.Inode)
+		}
+		resp = mp.fsmTxCreateInode(txIno, qinode.quotaIds)
+		if resp == proto.OpOk {
+			for _, quotaId := range qinode.quotaIds {
+				mp.mqMgr.updateUsedInfo(0, 1, quotaId)
+			}
+		}
+	case opFSMTxCreateDentry:
+		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
+		if err = txDen.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxCreateDentry(txDen, false)
+	case opFSMTxSetState:
+		req := &proto.TxSetStateRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxSetState(req)
+	case opFSMTxCommit:
+		req := &proto.TxApplyRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxCommit(req.TxID)
+	case opFSMTxInodeCommit:
+		req := &proto.TxInodeApplyRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxInodeCommit(req.TxID, req.Inode)
+	case opFSMTxDentryCommit:
+		req := &proto.TxDentryApplyRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxDentryCommit(req.TxID, req.Pid, req.Name)
+	case opFSMTxRollback:
+		req := &proto.TxApplyRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxRollback(req.TxID)
+	case opFSMTxInodeRollback:
+		req := &proto.TxInodeApplyRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxInodeRollback(req)
+	case opFSMTxDentryRollback:
+		req := &proto.TxDentryApplyRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxDentryRollback(req)
+	case opFSMTxDeleteDentry:
+		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
+		if err = txDen.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxDeleteDentry(txDen, false)
+	case opFSMTxUnlinkInode:
+		txIno := NewTxInode("", 0, 0, 0, nil)
+		if err = txIno.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxUnlinkInode(txIno)
+	case opFSMTxUpdateDentry:
+		//txDen := NewTxDentry(0, "", 0, 0, nil)
+		txUpdateDen := NewTxUpdateDentry(nil, nil, nil)
+		if err = txUpdateDen.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxUpdateDentry(txUpdateDen)
+	case opFSMTxCreateLinkInode:
+		txIno := NewTxInode("", 0, 0, 0, nil)
+		if err = txIno.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxCreateLinkInode(txIno)
 	}
 
 	return
@@ -284,36 +418,65 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		data          []byte
 		index         int
 		appIndexID    uint64
+		txID          uint64
 		cursor        uint64
 		inodeTree     = NewBtree()
 		dentryTree    = NewBtree()
 		extendTree    = NewBtree()
 		multipartTree = NewBtree()
+		txTree        = NewBtree()
+		//transactions       = make(map[string]*proto.TransactionInfo)
+		txRbInodeTree = NewBtree()
+		//txRollbackInodes   = make(map[uint64]*TxRollbackInode)
+		txRbDentryTree = NewBtree()
+		//txRollbackDentries = make(map[string]*TxRollbackDentry)
+
 	)
 	defer func() {
 		if err == io.EOF {
 			mp.applyID = appIndexID
+			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
 			mp.inodeTree = inodeTree
 			mp.dentryTree = dentryTree
 			mp.extendTree = extendTree
 			mp.multipartTree = multipartTree
 			mp.config.Cursor = cursor
+			mp.txProcessor.txManager.txTree = txTree
+			//mp.txProcessor.txManager.transactions = transactions
+			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
+			//mp.txProcessor.txResource.txRollbackInodes = txRollbackInodes
+			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
+			//mp.txProcessor.txResource.txRollbackDentries = txRollbackDentries
+
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
 				command:       opFSMStoreTick,
 				applyIndex:    mp.applyID,
+				txId:          mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
 				inodeTree:     mp.inodeTree,
 				dentryTree:    mp.dentryTree,
 				extendTree:    mp.extendTree,
 				multipartTree: mp.multipartTree,
+				txTree:        mp.txProcessor.txManager.txTree,
+				//transactions:       mp.txProcessor.txManager.transactions,
+				txRbInodeTree: mp.txProcessor.txResource.txRbInodeTree,
+				//txRollbackInodes:   mp.txProcessor.txResource.txRollbackInodes,
+				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
+				//txRollbackDentries: mp.txProcessor.txResource.txRollbackDentries,
 			}
+			/*if mp.txProcessor.txManager.txTree.Len() > 0 {
+				log.LogDebugf("ApplySnapshot: notify transaction expiration")
+				mp.txProcessor.txManager.notifyNewTransaction()
+			}*/
+
 			select {
 			case mp.extReset <- struct{}{}:
 				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v)", mp.config.PartitionId, mp.applyID)
 				return
 			case <-mp.stopC:
 				log.LogWarnf("ApplySnapshot: revice stop signal, exit now, partition(%d), applyId(%d)", mp.config.PartitionId, mp.applyID)
+				err = errors.New("server has been shutdown")
 				return
 			}
 		}
@@ -326,6 +489,12 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		}
 		if index == 0 {
 			appIndexID = binary.BigEndian.Uint64(data)
+			index++
+			continue
+		}
+		if index == 1 {
+			strTxID := string(data)
+			txID, _ = strconv.ParseUint(strTxID, 10, 64)
 			index++
 			continue
 		}
@@ -368,6 +537,24 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			var multipart = MultipartFromBytes(snap.V)
 			multipartTree.ReplaceOrInsert(multipart, true)
 			log.LogDebugf("ApplySnapshot: create multipart: partitionID(%v) multipart(%v)", mp.config.PartitionId, multipart)
+		case opFSMTxSnapshot:
+			txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
+			txInfo.Unmarshal(snap.V)
+			//transactions[txInfo.TxID] = txInfo
+			txTree.ReplaceOrInsert(txInfo, true)
+			log.LogDebugf("ApplySnapshot: create transaction: partitionID(%v) txInfo(%v)", mp.config.PartitionId, txInfo)
+		case opFSMTxRbInodeSnapshot:
+			txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
+			txRbInode.Unmarshal(snap.V)
+			//txRollbackInodes[txRbInode.inode.Inode] = txRbInode
+			txRbInodeTree.ReplaceOrInsert(txRbInode, true)
+			log.LogDebugf("ApplySnapshot: create txRbInode: partitionID(%v) txRbInode(%v)", mp.config.PartitionId, txRbInode)
+		case opFSMTxRbDentrySnapshot:
+			txRbDentry := NewTxRollbackDentry(nil, nil, 0)
+			txRbDentry.Unmarshal(snap.V)
+			//txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
+			txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
+			log.LogDebugf("ApplySnapshot: create txRbDentry: partitionID(%v) txRbDentry(%v)", mp.config.PartitionId, txRbDentry)
 		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)
@@ -404,15 +591,19 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(localIp, serverPort), time.Second)
 		if err != nil {
 			log.LogErrorf(fmt.Sprintf("HandleLeaderChange serverPort not exsit ,error %v", err))
+			exporter.Warning(fmt.Sprintf("mp [%v] HandleLeaderChange serverPort not exsit ,error %v", mp.config.PartitionId, err))
 			go mp.raftPartition.TryToLeader(mp.config.PartitionId)
 			return
 		}
 		log.LogDebugf("[metaPartition] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", serverPort, mp.config.NodeId, leader)
+		exporter.Warning(fmt.Sprintf("[metaPartition]mp [%v] HandleLeaderChange close conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
 		conn.(*net.TCPConn).SetLinger(0)
 		conn.Close()
 	}
 	if mp.config.NodeId != leader {
 		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader)
+		exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader))
+		mp.txProcessor.txManager.Stop()
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
 		}
@@ -421,11 +612,16 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	mp.storeChan <- &storeMsg{
 		command: startStoreTick,
 	}
+
+	mp.txProcessor.txManager.Start()
+
 	log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
+	exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
 	if mp.config.Start == 0 && mp.config.Cursor == 0 {
 		id, err := mp.nextInodeID()
 		if err != nil {
 			log.LogFatalf("[HandleLeaderChange] init root inode id: %s.", err.Error())
+			exporter.Warning(fmt.Sprintf("[HandleLeaderChange] pid %v init root inode id: %s.", mp.config.PartitionId, err.Error()))
 		}
 		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
 		go mp.initInode(ino)

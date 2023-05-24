@@ -341,7 +341,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Stat disk path error: %s", err.Error()))
+			log.LogErrorf("Stat disk path [%v] error: [%s]", path, err)
+			continue
 		}
 		if !fileInfo.IsDir() {
 			return errors.New("Disk path is not dir")
@@ -486,24 +487,20 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	if len(dinfo.PersistenceDataPartitions) == 0 {
 		return
 	}
-	lackPartitionsNeedCheck := make([]uint64, 0)
+
 	for _, partitionID := range dinfo.PersistenceDataPartitions {
 		dp := s.space.Partition(partitionID)
 		if dp == nil {
-			lackPartitionsNeedCheck = append(lackPartitionsNeedCheck, partitionID)
+			lackPartitions = append(lackPartitions, partitionID)
 		}
 	}
 
-	if len(lackPartitionsNeedCheck) == 0 {
-		return
+	if len(lackPartitions) == 0 {
+		log.LogInfo("checkLocalPartitionMatchWithMaster no lack")
 	} else {
-		lackPartitions = make([]uint64, 0)
-		for _, lackPartitionID := range lackPartitionsNeedCheck {
-			lackPartitions = append(lackPartitions, lackPartitionID)
-		}
 		log.LogErrorf("checkLocalPartitionMatchWithMaster lack ids [%v]", lackPartitions)
-		return
 	}
+	return
 }
 
 func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uint64) {

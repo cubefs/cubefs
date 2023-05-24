@@ -100,6 +100,10 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 		response = &proto.UpdateMetaPartitionResponse{}
 	case proto.OpDecommissionMetaPartition:
 		response = &proto.MetaPartitionDecommissionResponse{}
+	case proto.OpMasterSetInodeQuota:
+		response = &proto.BatchSetMetaserverQuotaResponse{}
+	case proto.OpMasterDeleteInodeQuota:
+		response = &proto.BatchDeleteMetaserverQuotaResponse{}
 	default:
 		log.LogError(fmt.Sprintf("unknown operate code(%v)", task.OpCode))
 	}
@@ -184,6 +188,10 @@ func keyNotFound(name string) (err error) {
 
 func unmatchedKey(name string) (err error) {
 	return errors.NewErrorf("parameter %v not match", name)
+}
+
+func txInvalidMask() (err error) {
+	return errors.New("transaction mask key value pair should be: enableTxMaskKey=[create|mkdir|remove|rename|mknod|symlink|link]\n enableTxMaskKey=off \n enableTxMaskKey=all")
 }
 
 func notFoundMsg(name string) (err error) {

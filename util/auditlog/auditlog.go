@@ -1,12 +1,10 @@
 package auditlog
 
-import "C"
 import (
 	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -19,6 +17,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -422,7 +422,7 @@ func (a *Audit) newWriterSize(size int) error {
 
 		a.logFile = logFile
 		if size <= 0 {
-			log.LogErrorf("newWriterSize : buffer for logFileName is disabled")
+			log.LogDebugf("newWriterSize : buffer for logFileName: %s is disabled", a.logFileName)
 			a.writer = bufio.NewWriter(logFile)
 		} else {
 			a.writer = bufio.NewWriterSize(logFile, size)

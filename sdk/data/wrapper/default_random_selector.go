@@ -81,7 +81,8 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	if dp != nil {
 		return dp, nil
 	}
-
+	log.LogErrorf("DefaultRandomSelector: no writable data partition with %v partitions and exclude(%v)",
+		len(partitions), exclude)
 	return nil, fmt.Errorf("no writable data partition")
 }
 

@@ -18,12 +18,15 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
-func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
+func replyInfo(info *proto.InodeInfo, ino *Inode, quotaIds []uint32) bool {
 	ino.RLock()
 	defer ino.RUnlock()
 	if ino.Flag&DeleteMarkFlag > 0 {
@@ -43,11 +46,64 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	info.CreateTime = time.Unix(ino.CreateTime, 0)
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
+	info.QuotaIds = quotaIds
 	return true
 }
 
+func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo) (resp *proto.TxCreateInodeResponse) {
+	inoInfo := &proto.InodeInfo{
+		Inode:      inode.Inode,
+		Mode:       inode.Type,
+		Nlink:      inode.NLink,
+		Size:       inode.Size,
+		Uid:        inode.Uid,
+		Gid:        inode.Gid,
+		Generation: inode.Generation,
+		ModifyTime: time.Unix(inode.ModifyTime, 0),
+		CreateTime: time.Unix(inode.CreateTime, 0),
+		AccessTime: time.Unix(inode.AccessTime, 0),
+		Target:     nil,
+	}
+	if length := len(inode.LinkTarget); length > 0 {
+		inoInfo.Target = make([]byte, length)
+		copy(inoInfo.Target, inode.LinkTarget)
+	}
+
+	resp = &proto.TxCreateInodeResponse{
+		Info:   inoInfo,
+		TxInfo: txInfo,
+	}
+	return
+}
+
+/*func txReplyInfo(resp *proto.TxCreateInodeResponse, txInode *TxInode) bool {
+	resp.Info.Inode = txInode.Inode.Inode
+	resp.Info.Mode = txInode.Inode.Type
+	resp.Info.Size = txInode.Inode.Size
+	resp.Info.Nlink = txInode.Inode.NLink
+	resp.Info.Uid = txInode.Inode.Uid
+	resp.Info.Gid = txInode.Inode.Gid
+	resp.Info.Generation = txInode.Inode.Generation
+	if length := len(txInode.Inode.LinkTarget); length > 0 {
+		resp.Info.Target = make([]byte, length)
+		copy(resp.Info.Target, txInode.Inode.LinkTarget)
+	}
+	resp.Info.CreateTime = time.Unix(txInode.Inode.CreateTime, 0)
+	resp.Info.AccessTime = time.Unix(txInode.Inode.AccessTime, 0)
+	resp.Info.ModifyTime = time.Unix(txInode.Inode.ModifyTime, 0)
+
+	//resp.TxInfo = txInode.TxInfo
+	return true
+}*/
+
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
+	var (
+		status = proto.OpNotExistErr
+		reply  []byte
+		resp   interface{}
+		qinode *MetaQuotaInode
+	)
 	inoID, err := mp.nextInodeID()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
@@ -57,31 +113,110 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
-	val, err := ino.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
+	if defaultQuotaSwitch {
+		for _, quotaId := range req.QuotaIds {
+			status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+			if status != 0 {
+				err = errors.New("create inode is over quota")
+				reply = []byte(err.Error())
+				p.PacketErrorWithBody(status, reply)
+				return
+			}
+		}
+		qinode = &MetaQuotaInode{
+			inode:    ino,
+			quotaIds: req.QuotaIds,
+		}
+		val, err := qinode.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp, err = mp.submit(opFSMCreateInodeQuota, val)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return err
+		}
+	} else {
+		val, err := ino.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp, err = mp.submit(opFSMCreateInode, val)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return err
+		}
 	}
-	resp, err := mp.submit(opFSMCreateInode, val)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
-	var (
-		status = proto.OpNotExistErr
-		reply  []byte
-	)
+
 	if resp.(uint8) == proto.OpOk {
 		resp := &CreateInoResp{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, ino) {
+		if replyInfo(resp.Info, ino, req.QuotaIds) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
 				status = proto.OpErr
 				reply = []byte(err.Error())
 			}
+		}
+	}
+	p.PacketErrorWithBody(status, reply)
+	log.LogInfof("CreateInode req [%v] qinode [%v] success.", req, qinode)
+	return
+}
+
+func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error) {
+
+	txInfo := req.TxInfo.GetCopy()
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	ino := NewInode(req.Inode, 0)
+	inoResp := mp.getInode(ino)
+	if inoResp.Status != proto.OpOk {
+		err = fmt.Errorf("ino[%v] not exists", ino.Inode)
+		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
+		return
+	}
+	ti := &TxInode{
+		Inode:  inoResp.Msg,
+		TxInfo: txInfo,
+	}
+
+	val, err := ti.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	r, err := mp.submit(opFSMTxUnlinkInode, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	msg := r.(*InodeResponse)
+	status := msg.Status
+	var reply []byte
+	if status == proto.OpOk {
+		var rstTxInfo *proto.TransactionInfo
+		if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+			rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		} else {
+			rstTxInfo = req.TxInfo
+		}
+		//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		resp := &proto.TxUnlinkInodeResponse{
+			Info:   &proto.InodeInfo{},
+			TxInfo: rstTxInfo,
+		}
+		replyInfo(resp.Info, msg.Msg, make([]uint32, 0))
+		if reply, err = json.Marshal(resp); err != nil {
+			status = proto.OpErr
+			reply = []byte(err.Error())
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
@@ -108,7 +243,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		resp := &UnlinkInoResp{
 			Info: &proto.InodeInfo{},
 		}
-		replyInfo(resp.Info, msg.Msg)
+		replyInfo(resp.Info, msg.Msg, make([]uint32, 0))
 		if reply, err = json.Marshal(resp); err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
@@ -150,7 +285,7 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 		}
 
 		info := &proto.InodeInfo{}
-		replyInfo(info, ir.Msg)
+		replyInfo(info, ir.Msg, make([]uint32, 0))
 		result.Items = append(result.Items, &struct {
 			Info   *proto.InodeInfo `json:"info"`
 			Status uint8            `json:"status"`
@@ -171,18 +306,25 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 
 // InodeGet executes the inodeGet command from the client.
 func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	retMsg := mp.getInode(ino)
-	ino = retMsg.Msg
 	var (
 		reply  []byte
 		status = proto.OpNotExistErr
 	)
+	quotaIds, err := mp.getInodeQuotaIds(req.Inode)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
+	ino := NewInode(req.Inode, 0)
+	retMsg := mp.getInode(ino)
+	ino = retMsg.Msg
 	if retMsg.Status == proto.OpOk {
 		resp := &proto.InodeGetResponse{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, retMsg.Msg) {
+		if replyInfo(resp.Info, retMsg.Msg, quotaIds) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -197,14 +339,20 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 
 // InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
+	var quotaIds []uint32
 	resp := &proto.BatchInodeGetResponse{}
 	ino := NewInode(0, 0)
 	for _, inoId := range req.Inodes {
 		ino.Inode = inoId
 		retMsg := mp.getInode(ino)
+		quotaIds, err = mp.getInodeQuotaIds(inoId)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
 		if retMsg.Status == proto.OpOk {
 			inoInfo := &proto.InodeInfo{}
-			if replyInfo(inoInfo, retMsg.Msg) {
+			if replyInfo(inoInfo, retMsg.Msg, quotaIds) {
 				resp.Infos = append(resp.Infos, inoInfo)
 			}
 		}
@@ -215,6 +363,65 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		return
 	}
 	p.PacketOkWithBody(data)
+	return
+}
+
+func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error) {
+	txInfo := req.TxInfo.GetCopy()
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	ino := NewInode(req.Inode, 0)
+	inoResp := mp.getInode(ino)
+	if inoResp.Status != proto.OpOk {
+		err = fmt.Errorf("ino[%v] not exists", ino.Inode)
+		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
+		return
+	}
+	ti := &TxInode{
+		Inode:  inoResp.Msg,
+		TxInfo: txInfo,
+	}
+
+	val, err := ti.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
+	resp, err := mp.submit(opFSMTxCreateLinkInode, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	retMsg := resp.(*InodeResponse)
+	status := proto.OpNotExistErr
+	var reply []byte
+	if retMsg.Status == proto.OpOk {
+		var rstTxInfo *proto.TransactionInfo
+		if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+			rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		} else {
+			rstTxInfo = req.TxInfo
+		}
+		//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		resp := &proto.TxLinkInodeResponse{
+			Info:   &proto.InodeInfo{},
+			TxInfo: rstTxInfo,
+		}
+		if replyInfo(resp.Info, retMsg.Msg, make([]uint32, 0)) {
+			status = proto.OpOk
+			reply, err = json.Marshal(resp)
+			if err != nil {
+				status = proto.OpErr
+				reply = []byte(err.Error())
+			}
+		}
+
+	}
+	p.PacketErrorWithBody(status, reply)
 	return
 }
 
@@ -238,7 +445,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		resp := &LinkInodeResp{
 			Info: &proto.InodeInfo{},
 		}
-		if replyInfo(resp.Info, retMsg.Msg) {
+		if replyInfo(resp.Info, retMsg.Msg, make([]uint32, 0)) {
 			status = proto.OpOk
 			reply, err = json.Marshal(resp)
 			if err != nil {
@@ -386,5 +593,101 @@ func (mp *metaPartition) ClearInodeCache(req *proto.ClearInodeCacheRequest, p *P
 		return
 	}
 	p.PacketErrorWithBody(resp.(uint8), nil)
+	return
+}
+
+// TxCreateInode returns a new inode.
+func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet) (err error) {
+	var (
+		status = proto.OpNotExistErr
+		reply  []byte
+		resp   interface{}
+	)
+	inoID, err := mp.nextInodeID()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
+		return
+	}
+
+	txInfo := req.TxInfo.GetCopy()
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	addrs := make([]string, 0)
+	for _, peer := range mp.config.Peers {
+		addr := strings.Split(peer.Addr, ":")[0] + ":" + mp.manager.metaNode.listen
+		addrs = append(addrs, addr)
+	}
+	members := strings.Join(addrs, ",")
+
+	//mpIp := mp.manager.metaNode.localAddr
+	//mpPort := mp.manager.metaNode.listen
+	//mpAddr := fmt.Sprintf("%s:%s", mpIp, mpPort)
+	//txIno := NewTxInode(mpAddr, inoID, req.Mode, req.PartitionID, txInfo)
+	txIno := NewTxInode(members, inoID, req.Mode, req.PartitionID, txInfo)
+	log.LogDebugf("NewTxInode: TxInode: %v", txIno)
+	txIno.Inode.Uid = req.Uid
+	txIno.Inode.Gid = req.Gid
+	txIno.Inode.LinkTarget = req.Target
+
+	if defaultQuotaSwitch {
+		for _, quotaId := range req.QuotaIds {
+			status = mp.mqMgr.IsOverQuota(false, true, quotaId)
+			if status != 0 {
+				err = errors.New("tx create inode is over quota")
+				reply = []byte(err.Error())
+				p.PacketErrorWithBody(status, reply)
+				return
+			}
+		}
+
+		qinode := &TxMetaQuotaInode{
+			txinode:  txIno,
+			quotaIds: req.QuotaIds,
+		}
+		val, err := qinode.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp, err = mp.submit(opFSMTxCreateInodeQuota, val)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return err
+		}
+	} else {
+		val, err := txIno.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return err
+		}
+		resp, err = mp.submit(opFSMTxCreateInode, val)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return err
+		}
+	}
+
+	var rstTxInfo *proto.TransactionInfo
+	if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+		log.LogDebugf("TxCreateInode: getTransaction")
+		rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	} else {
+		log.LogDebugf("TxCreateInode: getTransaction from req")
+		rstTxInfo = req.TxInfo
+	}
+
+	if resp == proto.OpOk {
+		resp := txReplyInfo(txIno.Inode, rstTxInfo)
+		status = proto.OpOk
+		reply, err = json.Marshal(resp)
+		if err != nil {
+			status = proto.OpErr
+			reply = []byte(err.Error())
+		}
+	}
+	p.PacketErrorWithBody(status, reply)
 	return
 }

@@ -37,7 +37,9 @@ rocksdb_filterpolicy_t* gorocksdb_filterpolicy_create(uintptr_t idx) {
         (const char *(*)(void*))(gorocksdb_filterpolicy_name));
 }
 
-void gorocksdb_filterpolicy_delete_filter(void* state, const char* v, size_t s) { }
+void gorocksdb_filterpolicy_delete_filter(void* state, const char* v, size_t s) {
+    free((char*)v);
+}
 
 /* Merge Operator */
 
@@ -51,7 +53,9 @@ rocksdb_mergeoperator_t* gorocksdb_mergeoperator_create(uintptr_t idx) {
         (const char* (*)(void*))(gorocksdb_mergeoperator_name));
 }
 
-void gorocksdb_mergeoperator_delete_value(void* id, const char* v, size_t s) { }
+void gorocksdb_mergeoperator_delete_value(void* id, const char* v, size_t s) {
+    free((char*)v);
+}
 
 /* Slice Transform */
 

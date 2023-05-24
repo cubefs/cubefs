@@ -2,7 +2,11 @@ package master
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/cubefs/cubefs/util/ump"
 	"net/http"
+	"os"
+	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -57,8 +61,10 @@ func (api *UserAPI) UpdateUser(param *proto.UserUpdateParam) (userInfo *proto.Us
 }
 
 func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err error) {
+	localIP, _ := ump.GetLocalIpAddr()
 	var request = newAPIRequest(http.MethodGet, proto.UserGetAKInfo)
 	request.addParam("ak", accesskey)
+	request.addParam("ip", localIP)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -67,6 +73,45 @@ func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err e
 	if err = json.Unmarshal(data, userInfo); err != nil {
 		return
 	}
+	return
+}
+
+func (api *UserAPI) AclOperation(volName string, localIP string, op uint32) (aclInfo *proto.AclRsp, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminACL)
+	request.addParam("name", volName)
+	request.addParam("ip", localIP)
+	request.addParam("op", strconv.Itoa(int(op)))
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		fmt.Fprintf(os.Stdout, "AclOperation serveRequest err %v\n", err)
+		return
+	}
+	aclInfo = &proto.AclRsp{}
+	if err = json.Unmarshal(data, aclInfo); err != nil {
+		fmt.Fprintf(os.Stdout, "AclOperation Unmarshal err %v\n", err)
+		return
+	}
+
+	return
+}
+
+func (api *UserAPI) UidOperation(volName string, uid string, op uint32, val string) (uidInfo *proto.UidSpaceRsp, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminUid)
+	request.addParam("name", volName)
+	request.addParam("uid", uid)
+	request.addParam("op", strconv.Itoa(int(op)))
+	request.addParam("capacity", val)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		fmt.Fprintf(os.Stdout, "UidOperation serveRequest err %v\n", err)
+		return
+	}
+	uidInfo = &proto.UidSpaceRsp{}
+	if err = json.Unmarshal(data, uidInfo); err != nil {
+		fmt.Fprintf(os.Stdout, "UidOperation Unmarshal err %v\n", err)
+		return
+	}
+
 	return
 }
 

@@ -17,146 +17,217 @@ package objectnode
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-using-rest-api.html
 
 import (
-	"encoding/xml"
-	"io"
-	"io/ioutil"
 	"net/http"
+	"syscall"
 
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const (
-	XMLNS    = "http://www.w3.org/2001/XMLSchema-instance"
-	XSI_TYPE = "CanonicalUser" //
-
-)
-
-var (
-	defaultGrant = Grant{
-		Grantee: Grantee{
-			Xmlns: XMLNS,
-			Type:  XSI_TYPE,
-		},
-		Permission: FullControlPermission,
-	}
-)
-
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAcl.html
 func (o *ObjectNode) getBucketACLHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Get bucket acl")
 	var (
 		err error
 		ec  *ErrorCode
 	)
-	defer o.errorResponse(w, r, err, ec)
+	defer func() {
+		o.errorResponse(w, r, err, ec)
+	}()
 
-	var param *RequestParam
-	param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
+	log.LogDebugf("Get bucket acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
-		ec = NoSuchBucket
+		ec = InvalidBucketName
 		return
 	}
-
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		ec = NoSuchBucket
+	if vol, err = o.getVol(param.bucket); err != nil {
+		log.LogErrorf("getBucketACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.bucket, err)
 		return
 	}
 	var acl *AccessControlPolicy
 	if acl, err = vol.metaLoader.loadACL(); err != nil {
-		ec = InternalErrorCode(err)
+		log.LogErrorf("getBucketACLHandler: load acl fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.bucket, err)
 		return
 	}
-	var aclData []byte
-	if acl == nil {
-		acl = &AccessControlPolicy{
-			Owner: Owner{Id: param.AccessKey(), DisplayName: param.AccessKey()},
-		}
-		acl.Acl.Grants = append(acl.Acl.Grants, defaultGrant)
+	if acl == nil || acl.IsEmpty() {
+		acl = CreateDefaultACL(vol.owner)
 	}
-
-	acl.Acl.Grants[0].Grantee.Xmlxsi = acl.Acl.Grants[0].Grantee.Xmlns
-	acl.Acl.Grants[0].Grantee.XsiType = acl.Acl.Grants[0].Grantee.Type
-
-	aclData, err = xml.Marshal(acl)
-	if err != nil {
-		ec = InternalErrorCode(err)
+	var data []byte
+	if data, err = acl.XmlMarshal(); err != nil {
+		log.LogErrorf("getBucketACLHandler: acl xml marshal fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
+			GetRequestID(r), param.bucket, acl, err)
 		return
 	}
-
-	w.Write(aclData)
+	if _, err = w.Write(data); err != nil {
+		log.LogErrorf("getBucketACLHandler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
+			GetRequestID(r), param.bucket, string(data), err)
+	}
 
 	return
 }
 
-// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html#API_PutBucketAcl_RequestSyntax
-//
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html
 func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
 		ec  *ErrorCode
 	)
-	defer o.errorResponse(w, r, err, ec)
+	defer func() {
+		o.errorResponse(w, r, err, ec)
+	}()
 
-	log.LogInfof("Put bucket acl")
-
-	var param *RequestParam
-	param = ParseRequestParam(r)
+	param := ParseRequestParam(r)
+	log.LogDebugf("Put bucket acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
 	if param.Bucket() == "" {
-		ec = NoSuchBucket
+		ec = InvalidBucketName
 		return
 	}
+	if !HasAclInRequest(r) {
+		ec = ErrMissingSecurityHeader
+		return
+	}
+
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		ec = NoSuchBucket
+	if vol, err = o.getVol(param.bucket); err != nil {
+		log.LogErrorf("putBucketACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.bucket, err)
+		return
+	}
+	var acl *AccessControlPolicy
+	if acl, err = ParseACL(r, vol.owner, r.ContentLength > 0); err != nil {
+		log.LogErrorf("putBucketACLHandler: parse acl fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.bucket, err)
+		return
+	}
+	if err = putBucketACL(vol, acl); err != nil {
+		log.LogErrorf("putBucketACLHandler: put acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
+			GetRequestID(r), param.bucket, acl, err)
+		return
+	}
+	vol.metaLoader.storeACL(acl)
+
+	return
+}
+
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html
+func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		ec  *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, ec)
+	}()
+
+	param := ParseRequestParam(r)
+	log.LogDebugf("Get object acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
+	if param.Bucket() == "" {
+		ec = InvalidBucketName
+		return
+	}
+	if param.Object() == "" {
+		ec = InvalidKey
 		return
 	}
 
-	var bytes []byte
-	if bytes, err = ioutil.ReadAll(r.Body); err != nil && err != io.EOF {
+	var vol *Volume
+	if vol, err = o.getVol(param.bucket); err != nil {
+		log.LogErrorf("getObjectACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.bucket, err)
+		return
+	}
+	var acl *AccessControlPolicy
+	if acl, err = getObjectACL(vol, param.object, true); err != nil {
+		log.LogErrorf("getObjectACLHandler: get acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), param.bucket, param.object, err)
+		if err == syscall.ENOENT {
+			ec = NoSuchKey
+		}
+		return
+	}
+	var data []byte
+	if data, err = acl.XmlMarshal(); err != nil {
+		log.LogErrorf("getObjectACLHandler: xml marshal fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
+			GetRequestID(r), param.bucket, param.object, acl, err)
+		return
+	}
+	if _, err = w.Write(data); err != nil {
+		log.LogErrorf("getObjectACLHandler: write response body fail: requestID(%v) volume(%v) path(%v) body(%v) err(%v)",
+			GetRequestID(r), param.bucket, param.object, string(data), err)
+	}
+	return
+}
+
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectAcl.html
+func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		ec  *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, ec)
+	}()
+
+	param := ParseRequestParam(r)
+	log.LogDebugf("Put object acl with request param: %+v, requestID(%v)", param, GetRequestID(r))
+	if param.Bucket() == "" {
+		ec = InvalidBucketName
+		return
+	}
+	if param.Object() == "" {
+		ec = InvalidKey
+		return
+	}
+	if !HasAclInRequest(r) {
+		ec = ErrMissingSecurityHeader
 		return
 	}
 
-	var acp *AccessControlPolicy
-	if acp, err = ParseACL(bytes, param.Bucket()); err != nil {
+	var vol *Volume
+	if vol, err = o.getVol(param.bucket); err != nil {
+		log.LogErrorf("putObjectACLHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.bucket, err)
 		return
 	}
-	if acp == nil {
+	var acl, oldAcl *AccessControlPolicy
+	if oldAcl, err = getObjectACL(vol, param.object, false); err != nil {
+		log.LogErrorf("putObjectACLHandler: get acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), param.bucket, param.object, err)
+		if err == syscall.ENOENT {
+			ec = NoSuchKey
+		}
 		return
 	}
-
-	//add standard acl request header
-	// https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/acl-overview.html
-	if standardAcls, found := r.Header["x-amz-acl"]; found {
-		acp.SetBucketStandardACL(param, standardAcls[0])
-	} else {
-		for grant, permission := range aclGrantKeyPermissionMap {
-			if _, found2 := r.Header[grant]; found2 {
-				acp.SetBucketGrantACL(param, permission)
-			}
+	owner := vol.owner
+	if oldAcl != nil {
+		owner = oldAcl.GetOwner()
+	}
+	if acl, err = ParseACL(r, owner, r.ContentLength > 0); err != nil {
+		log.LogErrorf("putObjectACLHandler: parse acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), param.bucket, param.object, err)
+		return
+	}
+	if oldAcl != nil {
+		originalOwner := oldAcl.GetOwner()
+		if oldAcl.IsEmpty() {
+			originalOwner = vol.owner
+		}
+		if originalOwner != acl.GetOwner() {
+			log.LogErrorf("putObjectACLHandler: owner cannot be modified: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
+				GetRequestID(r), param.bucket, param.object, oldAcl, err)
+			ec = AccessDenied
+			return
 		}
 	}
-
-	var newBytes []byte
-	if newBytes, err = acp.Marshal(); err != nil {
-		return
+	if err = putObjectACL(vol, param.object, acl); err != nil {
+		log.LogErrorf("putObjectACLHandler: store acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
+			GetRequestID(r), param.bucket, param.object, acl, err)
+		if err == syscall.ENOENT {
+			ec = NoSuchKey
+		}
 	}
-
-	// store bucket acl
-	if _, err = storeBucketACL(newBytes, vol); err != nil {
-		return
-	}
-	return
-}
-
-func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request) {
-	//TODO: implement get object acl handler
-
-	return
-}
-
-func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request) {
-	//TODO: implement get object acl handler
 
 	return
 }

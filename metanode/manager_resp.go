@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/proto"
 	"net"
+
+	"github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"

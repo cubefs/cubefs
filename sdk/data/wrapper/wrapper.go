@@ -16,6 +16,7 @@ package wrapper
 
 import (
 	"fmt"
+	syslog "log"
 	"net"
 	"strings"
 	"sync"
@@ -23,9 +24,11 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ump"
 )
 
 var (
@@ -45,7 +48,7 @@ type SimpleClientInfo interface {
 
 // Wrapper TODO rename. This name does not reflect what it is doing.
 type Wrapper struct {
-	sync.RWMutex
+	Lock                  sync.RWMutex
 	clusterName           string
 	volName               string
 	volType               int
@@ -65,7 +68,10 @@ type Wrapper struct {
 	dpSelector DataPartitionSelector
 
 	HostsStatus map[string]bool
+	Uids        map[uint32]*proto.UidSimpleInfo
+	UidLock     sync.RWMutex
 	preload     bool
+	LocalIp     string
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -78,6 +84,12 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
 	w.preload = preload
+
+	if w.LocalIp, err = ump.GetLocalIpAddr(); err != nil {
+		err = errors.Trace(err, "NewDataPartitionWrapper:")
+		return
+	}
+
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -101,6 +113,7 @@ func NewDataPartitionWrapper(clientInfo SimpleClientInfo, volName string, master
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
 	go w.uploadFlowInfoByTick(clientInfo)
+	go w.updateSimpleVolViewByTick()
 	go w.update()
 	return
 }
@@ -120,6 +133,13 @@ func (w *Wrapper) FollowerRead() bool {
 	return w.followerRead
 }
 
+func (w *Wrapper) tryGetPartition(index uint64) (partition *DataPartition, ok bool) {
+	w.Lock.RLock()
+	defer w.Lock.RUnlock()
+	partition, ok = w.partitions[index]
+	return
+}
+
 func (w *Wrapper) updateClusterInfo() (err error) {
 	var info *proto.ClusterInfo
 	if info, err = w.mc.AdminAPI().GetClusterInfo(); err != nil {
@@ -132,6 +152,19 @@ func (w *Wrapper) updateClusterInfo() (err error) {
 	return
 }
 
+func (w *Wrapper) UpdateUidsView(view *proto.SimpleVolView) {
+	w.UidLock.Lock()
+	defer w.UidLock.Unlock()
+	w.Uids = make(map[uint32]*proto.UidSimpleInfo)
+	for _, uid := range view.Uids {
+		if uid.Limited == false {
+			continue
+		}
+		w.Uids[uid.UID] = &uid
+	}
+	log.LogDebugf("uid info be updated to %v", view.Uids)
+}
+
 func (w *Wrapper) GetSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 
@@ -139,17 +172,23 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 		log.LogWarnf("GetSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
+	if view.Status == 1 {
+		log.LogWarnf("GetSimpleVolView: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+			w.volName, view.Status)
+		return proto.ErrVolNotExists
+	}
 	w.followerRead = view.FollowerRead
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
 	w.volType = view.VolType
 	w.EnablePosixAcl = view.EnablePosixAcl
+	w.UpdateUidsView(view)
 
-	log.LogInfof("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
+	log.LogDebugf("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v)",
+		"dpSelectorParm(%v) uids(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
-		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm)
+		view.DpCnt, view.FollowerRead, view.CreateTime, view.DpSelectorName, view.DpSelectorParm, view.Uids)
 
 	return
 }
@@ -166,6 +205,26 @@ func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 	}
 }
 
+// uid need get uids info by volView with high frequency, but if no uid works
+// use 1 minute is fine
+func (w *Wrapper) updateSimpleVolViewByTick() {
+	ticker := time.NewTicker(10 * time.Second)
+	var tickCnt uint16
+	for {
+		select {
+		case <-ticker.C:
+			if len(w.Uids) == 0 && tickCnt%6 != 0 {
+				tickCnt++
+				continue
+			}
+			w.UpdateSimpleVolView()
+			tickCnt++
+		case <-w.stopC:
+			return
+		}
+	}
+}
+
 func (w *Wrapper) update() {
 	ticker := time.NewTicker(time.Minute)
 	for {
@@ -174,6 +233,7 @@ func (w *Wrapper) update() {
 			w.UpdateSimpleVolView()
 			w.updateDataPartition(true)
 			w.updateDataNodeStatus()
+			w.CheckPermission()
 		case <-w.stopC:
 			return
 		}
@@ -207,12 +267,23 @@ func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err er
 	return
 }
 
+func (w *Wrapper) CheckPermission() {
+	if info, err := w.mc.UserAPI().AclOperation(w.volName, w.LocalIp, util.AclCheckIP); err != nil {
+		syslog.Println(err)
+	} else if !info.OK {
+		syslog.Println(err)
+		log.LogFatal("Client Addr not allowed to access CubeFS Cluster!")
+	}
+}
+
 func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
+
+	w.UpdateUidsView(view)
 
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
 		log.LogDebugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",
@@ -223,11 +294,11 @@ func (w *Wrapper) UpdateSimpleVolView() (err error) {
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm {
 		log.LogDebugf("UpdateSimpleVolView: update dpSelector from old(%v %v) to new(%v %v)",
 			w.dpSelectorName, w.dpSelectorParm, view.DpSelectorName, view.DpSelectorParm)
-		w.Lock()
+		w.Lock.Lock()
 		w.dpSelectorName = view.DpSelectorName
 		w.dpSelectorParm = view.DpSelectorParm
 		w.dpSelectorChanged = true
-		w.Unlock()
+		w.Lock.Unlock()
 	}
 
 	return nil
@@ -270,6 +341,8 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 
 	// isInit used to identify whether this call is caused by mount action
 	if isInit || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
+		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all)",
+			w.volName, len(rwPartitionGroups), len(DataPartitions))
 		w.refreshDpSelector(rwPartitionGroups)
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
@@ -296,17 +369,17 @@ func (w *Wrapper) UpdateDataPartition() (err error) {
 	return w.updateDataPartition(false)
 }
 
-// getDataPartition will call master to get data partition info which not include in  cache updated by
+// getDataPartitionFromMaster will call master to get data partition info which not include in  cache updated by
 // updateDataPartition which may not take effect if nginx be placed for reduce the pressure of master
-func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
+func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err error) {
 
 	var dpInfo *proto.DataPartitionInfo
 	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, dpId); err != nil {
-		log.LogErrorf("getDataPartition: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+		log.LogErrorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
 
-	log.LogInfof("getDataPartition: get data partitions: volume(%v)", w.volName)
+	log.LogInfof("getDataPartitionFromMaster: get data partitions: volume(%v), dpId(%v)", w.volName, dpId)
 	var leaderAddr string
 	for _, replica := range dpInfo.Replicas {
 		if replica.IsLeader {
@@ -322,6 +395,7 @@ func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
 	copy(dpr.Hosts, dpInfo.Hosts)
 	dpr.LeaderAddr = leaderAddr
 	dpr.IsRecover = dpInfo.IsRecover
+	dpr.IsDiscard = dpInfo.IsDiscard
 
 	DataPartitions := make([]*proto.DataPartitionResponse, 1)
 	DataPartitions = append(DataPartitions, dpr)
@@ -329,8 +403,8 @@ func (w *Wrapper) getDataPartition(isInit bool, dpId uint64) (err error) {
 }
 
 func (w *Wrapper) clearPartitions() {
-	w.Lock()
-	defer w.Unlock()
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
 	w.partitions = make(map[uint64]*DataPartition)
 }
 
@@ -367,21 +441,24 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	var (
 		oldstatus int8
 	)
-	w.Lock()
+	w.Lock.Lock()
 	old, ok := w.partitions[dp.PartitionID]
 	if ok {
 		oldstatus = old.Status
+
 		old.Status = dp.Status
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
+		old.IsDiscard = dp.IsDiscard
 		old.NearHosts = dp.Hosts
+
 		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
 		w.partitions[dp.PartitionID] = dp
 	}
 
-	w.Unlock()
+	w.Lock.Unlock()
 
 	if ok && oldstatus != dp.Status {
 		log.LogInfof("partition:dp[%v] address %p status change (%v) -> (%v)", dp.PartitionID, &old, oldstatus, dp.Status)
@@ -390,15 +467,11 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
-	w.RLock()
-	dp, ok := w.partitions[partitionID]
-	w.RUnlock()
+	dp, ok := w.tryGetPartition(partitionID)
 	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
-		err := w.getDataPartition(false, partitionID)
+		err := w.getDataPartitionFromMaster(false, partitionID)
 		if err == nil {
-			w.RLock()
-			dp, ok = w.partitions[partitionID]
-			w.RUnlock()
+			dp, ok = w.tryGetPartition(partitionID)
 			if !ok {
 				return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
 			}

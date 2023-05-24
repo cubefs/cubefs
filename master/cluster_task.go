@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -228,10 +229,9 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	return
 }
 
-func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corruptPartitions []*MetaPartition, err error) {
-	partitionMap := make(map[uint64]uint8)
+func (c *Cluster) checkInactiveMetaNodes() (inactiveMetaNodes []string, err error) {
 	inactiveMetaNodes = make([]string, 0)
-	corruptPartitions = make([]*MetaPartition, 0)
+
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		if !metaNode.IsActive {
@@ -239,27 +239,8 @@ func (c *Cluster) checkCorruptMetaPartitions() (inactiveMetaNodes []string, corr
 		}
 		return true
 	})
-	for _, addr := range inactiveMetaNodes {
-		var metaNode *MetaNode
-		if metaNode, err = c.metaNode(addr); err != nil {
-			return
-		}
-		for _, partition := range metaNode.PersistenceMetaPartitions {
-			partitionMap[partition] = partitionMap[partition] + 1
-		}
-	}
 
-	for partitionID, badNum := range partitionMap {
-		var partition *MetaPartition
-		if partition, err = c.getMetaPartitionByID(partitionID); err != nil {
-			return
-		}
-		if badNum > partition.ReplicaNum/2 {
-			corruptPartitions = append(corruptPartitions, partition)
-		}
-	}
-	log.LogInfof("clusterID[%v] inactiveMetaNodes:%v  corruptPartitions count:[%v]",
-		c.Name, inactiveMetaNodes, len(corruptPartitions))
+	log.LogInfof("clusterID[%v] inactiveMetaNodes:%v", c.Name, inactiveMetaNodes)
 	return
 }
 
@@ -296,19 +277,42 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 	return
 }
 
-func (c *Cluster) checkLackReplicaMetaPartitions() (lackReplicaMetaPartitions []*MetaPartition, err error) {
+func (c *Cluster) checkReplicaMetaPartitions() (
+	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
+	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions []*MetaPartition, err error) {
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
+	noLeaderMetaPartitions = make([]*MetaPartition, 0)
+	excessReplicaMetaPartitions = make([]*MetaPartition, 0)
+
 	vols := c.copyVols()
 	for _, vol := range vols {
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			if mp.ReplicaNum > uint8(len(mp.Hosts)) {
+			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.Replicas)) < mp.ReplicaNum {
 				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
+			}
+
+			if !mp.isLeaderExist() && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.NoLeaderReportInterval) {
+				noLeaderMetaPartitions = append(noLeaderMetaPartitions, mp)
+			}
+
+			if uint8(len(mp.Hosts)) > mp.ReplicaNum || uint8(len(mp.Replicas)) > mp.ReplicaNum {
+				excessReplicaMetaPartitions = append(excessReplicaMetaPartitions, mp)
+			}
+
+			for _, replica := range mp.Replicas {
+				if replica.Status == proto.Unavailable {
+					unavailableReplicaMPs = append(unavailableReplicaMPs, mp)
+					break
+				}
 			}
 		}
 		vol.mpsLock.RUnlock()
 	}
-	log.LogInfof("clusterID[%v] lackReplicaMetaPartitions count:[%v]", c.Name, len(lackReplicaMetaPartitions))
+	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
+		"unavailableReplicaMPs count:[%v], excessReplicaMp count:[%v]",
+		c.Name, len(lackReplicaMetaPartitions), len(noLeaderMetaPartitions),
+		len(unavailableReplicaMPs), len(excessReplicaMetaPartitions))
 	return
 }
 
@@ -487,8 +491,16 @@ func (c *Cluster) buildAddMetaPartitionRaftMemberTaskAndSyncSend(mp *MetaPartiti
 		if resp != nil {
 			resultCode = resp.ResultCode
 		}
-		log.LogErrorf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v],err[%v]", mp.volName, mp.PartitionID, resultCode, err)
+
+		if err != nil {
+			log.LogErrorf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v],err[%v]",
+				mp.volName, mp.PartitionID, resultCode, err)
+		} else {
+			log.LogWarnf("action[addMetaRaftMemberAndSend],vol[%v],meta partition[%v],resultCode[%v]",
+				mp.volName, mp.PartitionID, resultCode)
+		}
 	}()
+
 	t, err := mp.createTaskToAddRaftMember(addPeer, leaderAddr)
 	if err != nil {
 		return
@@ -617,7 +629,7 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	dp.getFileCount()
 	if proto.IsNormalDp(dp.PartitionType) {
 		dp.validateCRC(c.Name)
-		dp.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
+		dp.checkReplicaSize(c.Name, c.cfg.diffReplicaSpaceUsage)
 	}
 
 	dp.setToNormal()
@@ -650,6 +662,12 @@ func (c *Cluster) handleMetaNodeTaskResponse(nodeAddr string, task *proto.AdminT
 	case proto.OpUpdateMetaPartition:
 		response := task.Response.(*proto.UpdateMetaPartitionResponse)
 		err = c.dealUpdateMetaPartitionResp(task.OperatorAddr, response)
+	case proto.OpMasterSetInodeQuota:
+		response := task.Response.(*proto.BatchSetMetaserverQuotaResponse)
+		err = c.dealSetMetaserverQuotaResponse(task.OperatorAddr, response)
+	case proto.OpMasterDeleteInodeQuota:
+		response := task.Response.(*proto.BatchDeleteMetaserverQuotaResponse)
+		err = c.dealDeleteMetaserverQuotaResponse(task.OperatorAddr, response)
 	default:
 		err := fmt.Errorf("unknown operate code %v", task.OpCode)
 		log.LogError(err)
@@ -746,7 +764,8 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		log.LogErrorf("action[dealMetaNodeHeartbeatResp],metaNode[%v] error[%v]", metaNode.Addr, err)
 	}
 	c.updateMetaNode(metaNode, resp.MetaPartitionReports, metaNode.reachesThreshold())
-	metaNode.metaPartitionInfos = nil
+	//todo remove, this no need set metaNode.metaPartitionInfos = nil
+	//metaNode.metaPartitionInfos = nil
 	logMsg = fmt.Sprintf("action[dealMetaNodeHeartbeatResp],metaNode:%v,zone[%v], ReportTime:%v  success", metaNode.Addr, metaNode.ZoneName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return
@@ -1033,6 +1052,8 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 		}
 
 		mp.updateMetaPartition(mr, metaNode)
+		vol.uidSpaceManager.volUidUpdate(mr)
+		vol.quotaManager.quotaUpdate(mr)
 		c.updateInodeIDUpperBound(mp, mr, threshold, metaNode)
 	}
 }
@@ -1051,14 +1072,122 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		return
 	}
 	var end uint64
+	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
 	if mr.MaxInodeID <= 0 {
-		end = mr.Start + defaultMetaPartitionInodeIDStep
+		end = mr.Start + metaPartitionInodeIdStep
 	} else {
-		end = mr.MaxInodeID + defaultMetaPartitionInodeIDStep
+		end = mr.MaxInodeID + metaPartitionInodeIdStep
 	}
 	log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
-	if err = vol.splitMetaPartition(c, mp, end); err != nil {
+	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep); err != nil {
 		log.LogError(err)
 	}
+	return
+}
+
+func (c *Cluster) dealSetMetaserverQuotaResponse(nodeAddr string, resp *proto.BatchSetMetaserverQuotaResponse) (err error) {
+	var (
+		mp        *MetaPartition
+		vol       *Vol
+		quotaInfo *proto.QuotaInfo
+		value     []byte
+	)
+	log.LogInfof("action[dealSetMetaserverQuotaResponse] resp [%v] start.", resp)
+	if resp.Status == proto.TaskFailed {
+		msg := fmt.Sprintf("action[dealSetMetaserverQuotaResponse],clusterID[%v] nodeAddr %v set meta quota failed,err %v",
+			c.Name, nodeAddr, resp.Result)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+
+	if mp, err = c.getMetaPartitionByID(resp.PartitionId); err != nil {
+		msg := fmt.Sprintf("action[dealSetMetaserverQuotaResponse],clusterID[%v] get meta partition [%v] failed,err %v",
+			c.Name, resp.PartitionId, err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+
+	if vol, err = c.getVol(mp.volName); err != nil {
+		msg := fmt.Sprintf("action[dealSetMetaserverQuotaResponse],clusterID[%v] get vol [%v] failed,err %v",
+			c.Name, mp.volName, err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+
+	if quotaInfo, err = vol.quotaManager.getQuotaInfoById(resp.QuotaId); err != nil {
+		msg := fmt.Sprintf("action[dealSetMetaserverQuotaResponse],clusterID[%v] get vol [%v] failed,err %v",
+			c.Name, mp.volName, err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+
+	quotaInfo.Status = proto.QuotaComplete
+	if value, err = json.Marshal(quotaInfo); err != nil {
+		log.LogErrorf("set quota [%v] marsha1 fail [%v].", quotaInfo, err)
+		return
+	}
+
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncSetQuota
+	metadata.K = quotaPrefix + strconv.FormatUint(vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(resp.QuotaId), 10)
+	metadata.V = value
+
+	if err = c.submit(metadata); err != nil {
+		log.LogErrorf("set quota [%v] submit fail [%v].", quotaInfo, err)
+		return
+	}
+
+	log.LogInfof("action[dealSetMetaserverQuotaResponse] resp [%v] success.", resp)
+	return
+}
+
+func (c *Cluster) dealDeleteMetaserverQuotaResponse(nodeAddr string, resp *proto.BatchDeleteMetaserverQuotaResponse) (err error) {
+	var (
+		mp        *MetaPartition
+		vol       *Vol
+		quotaInfo *proto.QuotaInfo
+		value     []byte
+	)
+	log.LogInfof("action[dealDeleteMetaserverQuotaResponse] resp [%v] start.", resp)
+	if resp.Status == proto.TaskFailed {
+		msg := fmt.Sprintf("action[dealDeleteMetaserverQuotaResponse],clusterID[%v] nodeAddr %v set meta quota failed,err %v",
+			c.Name, nodeAddr, resp.Result)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+
+	if mp, err = c.getMetaPartitionByID(resp.PartitionId); err != nil {
+		msg := fmt.Sprintf("action[dealDeleteMetaserverQuotaResponse],clusterID[%v] get meta partition [%v] failed,err %v",
+			c.Name, resp.PartitionId, err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+
+	if vol, err = c.getVol(mp.volName); err != nil {
+		msg := fmt.Sprintf("action[dealDeleteMetaserverQuotaResponse],clusterID[%v] get vol [%v] failed,err %v",
+			c.Name, mp.volName, err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncDeleteQuota
+	metadata.K = quotaPrefix + strconv.FormatUint(vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(resp.QuotaId), 10)
+	metadata.V = value
+
+	if err = c.submit(metadata); err != nil {
+		log.LogErrorf("delete quota [%v] submit fail [%v].", quotaInfo, err)
+		return
+	}
+	vol.quotaManager.DeleteQuotaInfoById(resp.QuotaId)
+
+	log.LogInfof("action[dealDeleteMetaserverQuotaResponse] resp [%v] success.", resp)
 	return
 }

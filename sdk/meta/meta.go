@@ -49,10 +49,15 @@ const (
 	statusNotPerm
 	statusConflictExtents
 	statusOpDirQuota
+	statusNoSpace
+	statusTxInodeInfoNotExist
+	statusTxConflict
+	statusTxTimeout
+	statusUploadPartConflict
 )
 
 const (
-	MaxMountRetryLimit = 5
+	MaxMountRetryLimit = 6
 	MountRetryInterval = time.Second * 5
 
 	/*
@@ -80,6 +85,8 @@ type MetaConfig struct {
 	OnAsyncTaskError AsyncTaskErrorFunc
 	EnableSummary    bool
 	MetaSendTimeout  int64
+	//EnableTransaction uint8
+	//EnableTransaction bool
 }
 
 type MetaWrapper struct {
@@ -134,9 +141,14 @@ type MetaWrapper struct {
 	EnableSummary       bool
 	metaSendTimeout     int64
 	DirChildrenNumLimit uint32
+	EnableTransaction   uint8
+	TxTimeout           int64
+	//EnableTransaction bool
+	QuotaInfoMap map[uint32]*proto.QuotaInfo
+	QuotaLock    sync.RWMutex
 }
 
-//the ticket from authnode
+// the ticket from authnode
 type Ticket struct {
 	ID         string `json:"client_id"`
 	SessionKey string `json:"session_key"`
@@ -179,23 +191,23 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.EnableSummary = config.EnableSummary
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
+	//mw.EnableTransaction = config.EnableTransaction
 
-	limit := MaxMountRetryLimit
+	limit := 0
 
-	for limit > 0 {
+	for limit < MaxMountRetryLimit {
 		err = mw.initMetaWrapper()
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
 		if err != nil {
-			log.LogErrorf("initMetaWrapper failed, err %s", err.Error())
+			log.LogErrorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
 		}
-
 		if err == proto.ErrVolNotExists {
 			return nil, err
 		}
 		if err != nil {
-			limit--
-			time.Sleep(MountRetryInterval)
+			limit++
+			time.Sleep(MountRetryInterval * time.Duration(limit))
 			continue
 		}
 		break
@@ -204,7 +216,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	if limit <= 0 && err != nil {
 		return nil, err
 	}
-
+	go mw.updateQuotaInfoTick()
 	go mw.refresh()
 	return mw, nil
 }
@@ -282,6 +294,16 @@ func parseStatus(result uint8) (status int) {
 		status = statusConflictExtents
 	case proto.OpDirQuota:
 		status = statusOpDirQuota
+	case proto.OpNoSpaceErr:
+		status = statusNoSpace
+	case proto.OpTxInodeInfoNotExistErr:
+		status = statusTxInodeInfoNotExist
+	case proto.OpTxConflictErr:
+		status = statusTxConflict
+	case proto.OpTxTimeoutErr:
+		status = statusTxTimeout
+	case proto.OpUploadPartConflictErr:
+		status = statusUploadPartConflict
 	default:
 		status = statusError
 	}
@@ -311,6 +333,16 @@ func statusToErrno(status int) error {
 		return syscall.ENOTSUP
 	case statusOpDirQuota:
 		return syscall.EDQUOT
+	case statusNoSpace:
+		return syscall.ENOSPC
+	case statusTxInodeInfoNotExist:
+		return syscall.EAGAIN
+	case statusTxConflict:
+		return syscall.EAGAIN
+	case statusTxTimeout:
+		return syscall.EAGAIN
+	case statusUploadPartConflict:
+		return syscall.EAGAIN
 	default:
 	}
 	return syscall.EIO

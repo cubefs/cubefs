@@ -16,9 +16,13 @@ package objectnode
 
 import (
 	"encoding/xml"
-	"github.com/cubefs/cubefs/util/log"
 	"net/url"
+	"regexp"
+
+	"github.com/cubefs/cubefs/util/log"
 )
+
+var regexKeyValue = regexp.MustCompile(`^[0-9a-zA-Z+=._ :/@-]+$`)
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
 	var err error
@@ -265,15 +269,18 @@ func (t Tagging) Encode() string {
 
 func (t Tagging) Validate() (bool, *ErrorCode) {
 	var errorCode *ErrorCode
+	if len(t.TagSet) == 0 {
+		return false, InvalidTagError
+	}
 	if len(t.TagSet) > TaggingCounts {
-		return false, TagsGreaterThen10
+		return false, ExceedTagLimit
 	}
 	for _, tag := range t.TagSet {
 		log.LogDebugf("Validate: key : (%v), value : (%v)", tag.Key, tag.Value)
-		if len(tag.Key) > TaggingKeyMaxLength {
+		if len(tag.Key) > TaggingKeyMaxLength || !regexKeyValue.MatchString(tag.Key) {
 			return false, InvalidTagKey
 		}
-		if len(tag.Value) > TaggingValueMaxLength {
+		if len(tag.Value) > TaggingValueMaxLength || !regexKeyValue.MatchString(tag.Value) {
 			return false, InvalidTagValue
 		}
 	}

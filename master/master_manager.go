@@ -58,6 +58,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.metaReady = false
 		m.cluster.masterClient.AddNode(m.leaderInfo.addr)
 		m.cluster.masterClient.SetLeader(m.leaderInfo.addr)
+		WarnMetrics.reset()
 	}
 }
 
@@ -168,6 +169,7 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadDataPartitions(); err != nil {
 		panic(err)
 	}
+
 	if err = m.cluster.startDecommissionListTraverse(); err != nil {
 		panic(err)
 	}
@@ -196,6 +198,12 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadApiLimiterInfo] end")
+
+	log.LogInfo("action[loadQuota] begin")
+	if err = m.cluster.loadQuota(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadQuota] end")
 }
 
 func (m *Server) clearMetadata() {

@@ -89,7 +89,7 @@ func OpenBackupEngine(opts *Options, path string) (*BackupEngine, error) {
 
 	be := C.rocksdb_backup_engine_open(opts.c, cpath, &cErr)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return nil, errors.New(C.GoString(cErr))
 	}
 	return &BackupEngine{
@@ -104,17 +104,23 @@ func (b *BackupEngine) UnsafeGetBackupEngine() unsafe.Pointer {
 	return unsafe.Pointer(b.c)
 }
 
-// CreateNewBackup takes a new backup from db.
-func (b *BackupEngine) CreateNewBackup(db *DB) error {
+// CreateNewBackupFlush takes a new backup from db. If flush is set to true,
+// it flushes the WAL before taking the backup.
+func (b *BackupEngine) CreateNewBackupFlush(db *DB, flush bool) error {
 	var cErr *C.char
 
-	C.rocksdb_backup_engine_create_new_backup(b.c, db.c, &cErr)
+	C.rocksdb_backup_engine_create_new_backup_flush(b.c, db.c, boolToChar(flush), &cErr)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return errors.New(C.GoString(cErr))
 	}
 
 	return nil
+}
+
+// CreateNewBackup takes a new backup from db.
+func (b *BackupEngine) CreateNewBackup(db *DB) error {
+	return b.CreateNewBackupFlush(db, false)
 }
 
 // GetInfo gets an object that gives information about
@@ -138,7 +144,18 @@ func (b *BackupEngine) RestoreDBFromLatestBackup(dbDir, walDir string, ro *Resto
 
 	C.rocksdb_backup_engine_restore_db_from_latest_backup(b.c, cDbDir, cWalDir, ro.c, &cErr)
 	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
+		return errors.New(C.GoString(cErr))
+	}
+	return nil
+}
+
+// PurgeOldBackups deletes all backups older than the latest 'n' backups
+func (b *BackupEngine) PurgeOldBackups(n uint32) error {
+	var cErr *C.char
+	C.rocksdb_backup_engine_purge_old_backups(b.c, C.uint32_t(n), &cErr)
+	if cErr != nil {
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
 		return errors.New(C.GoString(cErr))
 	}
 	return nil

@@ -86,7 +86,7 @@ func TestTruncate01(t *testing.T) {
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	delExtents, _ = se.AppendWithCheck(proto.ExtentKey{FileOffset: 2000, Size: 1000, ExtentId: 2}, nil)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
-	delExtents = se.Truncate(500)
+	delExtents = se.Truncate(500, nil)
 	t.Logf("\ndel: %v\neks: %v", delExtents, se.eks)
 	if len(delExtents) != 1 || delExtents[0].ExtentId != 2 ||
 		len(se.eks) != 1 || se.eks[0].ExtentId != 1 ||

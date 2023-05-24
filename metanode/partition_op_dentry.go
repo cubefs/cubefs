@@ -17,9 +17,77 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 )
+
+func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet) (err error) {
+	if req.ParentID == req.Inode {
+		err = fmt.Errorf("parentId is equal inodeId")
+		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		return
+	}
+
+	for _, quotaId := range req.QuotaIds {
+		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		if status != 0 {
+			err = errors.New("create dentry is over quota")
+			reply := []byte(err.Error())
+			p.PacketErrorWithBody(status, reply)
+			return
+		}
+	}
+
+	txInfo := req.TxInfo.GetCopy()
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	parIno := NewInode(req.ParentID, 0)
+	inoResp := mp.getInode(parIno)
+	if inoResp.Status != proto.OpOk {
+		p.PacketErrorWithBody(inoResp.Status, nil)
+		return
+	}
+
+	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, parIno, txInfo)
+
+	val, err := txDentry.Marshal()
+	if err != nil {
+		return
+	}
+	status, err := mp.submit(opFSMTxCreateDentry, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+
+	var reply []byte
+	//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	var rstTxInfo *proto.TransactionInfo
+	if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+		rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+	} else {
+		rstTxInfo = req.TxInfo
+	}
+
+	if status.(uint8) == proto.OpOk {
+		resp := &proto.TxCreateDentryResponse{
+			TxInfo: rstTxInfo,
+		}
+		reply, err = json.Marshal(resp)
+		if err != nil {
+			status = proto.OpErr
+			reply = []byte(err.Error())
+		}
+	}
+	p.PacketErrorWithBody(status.(uint8), reply)
+	//p.ResultCode = resp.(uint8)
+	return
+}
 
 // CreateDentry returns a new dentry.
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err error) {
@@ -28,7 +96,15 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
-
+	for _, quotaId := range req.QuotaIds {
+		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
+		if status != 0 {
+			err = errors.New("create dentry is over quota")
+			reply := []byte(err.Error())
+			p.PacketErrorWithBody(status, reply)
+			return
+		}
+	}
 	item := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
 	if item == nil {
 		err = fmt.Errorf("parent inode not exists")
@@ -60,6 +136,70 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		return
 	}
 	p.ResultCode = resp.(uint8)
+	return
+}
+
+func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet) (err error) {
+	txInfo := req.TxInfo.GetCopy()
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	den := &Dentry{
+		ParentId: req.ParentID,
+		Name:     req.Name,
+	}
+	dentry, status := mp.getDentry(den)
+	if status != proto.OpOk {
+		err = fmt.Errorf("dentry[%v] not exists", dentry)
+		p.PacketErrorWithBody(status, []byte(err.Error()))
+		return
+	}
+
+	parIno := NewInode(req.ParentID, 0)
+	inoResp := mp.getInode(parIno)
+	if inoResp.Status != proto.OpOk {
+		err = fmt.Errorf("parIno[%v] not exists", parIno.Inode)
+		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
+		return
+	}
+
+	txDentry := &TxDentry{
+		ParInode: parIno,
+		Dentry:   dentry,
+		TxInfo:   txInfo,
+	}
+
+	val, err := txDentry.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	r, err := mp.submit(opFSMTxDeleteDentry, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	retMsg := r.(*DentryResponse)
+	p.ResultCode = retMsg.Status
+	dentry = retMsg.Msg
+	if p.ResultCode == proto.OpOk {
+		var reply []byte
+		var rstTxInfo *proto.TransactionInfo
+		if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+			rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		} else {
+			rstTxInfo = req.TxInfo
+		}
+		//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		resp := &proto.TxDeleteDentryResponse{
+			Inode:  dentry.Inode,
+			TxInfo: rstTxInfo,
+		}
+		reply, err = json.Marshal(resp)
+		p.PacketOkWithBody(reply)
+	}
 	return
 }
 
@@ -154,6 +294,67 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 	}
 	p.PacketOkWithBody(reply)
 
+	return
+}
+
+func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Packet) (err error) {
+	if req.ParentID == req.Inode {
+		err = fmt.Errorf("parentId is equal inodeId")
+		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		return
+	}
+
+	txInfo := req.TxInfo.GetCopy()
+
+	if !txInfo.IsInitialized() {
+		mp.initTxInfo(txInfo)
+	}
+
+	newDentry := &Dentry{
+		ParentId: req.ParentID,
+		Name:     req.Name,
+		Inode:    req.Inode,
+	}
+	oldDentry, status := mp.getDentry(newDentry)
+	if status != proto.OpOk {
+		err = fmt.Errorf("oldDentry[%v] not exists", oldDentry)
+		p.PacketErrorWithBody(status, []byte(err.Error()))
+		return
+	}
+
+	txDentry := &TxUpdateDentry{
+		OldDentry: oldDentry,
+		NewDentry: newDentry,
+		TxInfo:    txInfo,
+	}
+	val, err := txDentry.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(opFSMTxUpdateDentry, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	msg := resp.(*DentryResponse)
+	p.ResultCode = msg.Status
+	if msg.Status == proto.OpOk {
+		var reply []byte
+		var rstTxInfo *proto.TransactionInfo
+		if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
+			rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		} else {
+			rstTxInfo = req.TxInfo
+		}
+		//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
+		m := &proto.TxUpdateDentryResponse{
+			Inode:  msg.Msg.Inode,
+			TxInfo: rstTxInfo,
+		}
+		reply, err = json.Marshal(m)
+		p.PacketOkWithBody(reply)
+	}
 	return
 }
 

@@ -73,7 +73,7 @@ func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 }
 
 // StartRaft start raft instance when data partition start or restore.
-func (dp *DataPartition) StartRaft() (err error) {
+func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
 
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
@@ -88,7 +88,13 @@ func (dp *DataPartition) StartRaft() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			mesg := fmt.Sprintf("StartRaft(%v)  Raft Panic (%v)", dp.partitionID, r)
-			panic(mesg)
+			log.LogError(mesg)
+			if isLoad {
+				err = errors.New(mesg)
+			} else {
+				log.LogFlush()
+				panic(mesg)
+			}
 		}
 	}()
 
@@ -260,7 +266,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 // It can only happens after all the extent files are repaired by the leader.
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
 // The repair task can be done in statusUpdateScheduler->LaunchRepair.
-func (dp *DataPartition) StartRaftAfterRepair() {
+func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
@@ -278,7 +284,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 		case <-timer.C:
 			err = nil
 			if dp.isLeader { // primary does not need to wait repair
-				if err := dp.StartRaft(); err != nil {
+				if err := dp.StartRaft(isLoad); err != nil {
 					log.LogErrorf("PartitionID(%v) leader start raft err(%v).", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
 					continue
@@ -329,7 +335,7 @@ func (dp *DataPartition) StartRaftAfterRepair() {
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 			dp.PersistMetadata()
-			if err := dp.StartRaft(); err != nil {
+			if err := dp.StartRaft(isLoad); err != nil {
 				log.LogErrorf("PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
@@ -464,15 +470,10 @@ func (dp *DataPartition) storeAppliedID(applyIndex uint64) (err error) {
 func (dp *DataPartition) LoadAppliedID() (err error) {
 	filename := path.Join(dp.Path(), ApplyIndexFile)
 	if _, err = os.Stat(filename); err != nil {
-		err = nil
 		return
 	}
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		if err == os.ErrNotExist {
-			err = nil
-			return
-		}
 		err = errors.NewErrorf("[loadApplyIndex] OpenFile: %s", err.Error())
 		return
 	}

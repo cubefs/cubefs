@@ -32,17 +32,18 @@ import (
 
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
-	PartitionID    uint64
-	PartitionType  int
-	PartitionTTL   int64
-	LastLoadedTime int64
-	ReplicaNum     uint8
-	Status         int8
-	isRecover      bool
-	Replicas       []*DataReplica
-	Hosts          []string // host addresses
-	Peers          []proto.Peer
-	offlineMutex   sync.RWMutex
+	PartitionID      uint64
+	PartitionType    int
+	PartitionTTL     int64
+	LastLoadedTime   int64
+	ReplicaNum       uint8
+	Status           int8
+	isRecover        bool
+	Replicas         []*DataReplica
+	LeaderReportTime int64
+	Hosts            []string // host addresses
+	Peers            []proto.Peer
+	offlineMutex     sync.RWMutex
 	sync.RWMutex
 	total                    uint64
 	used                     uint64
@@ -67,6 +68,7 @@ type DataPartition struct {
 	DecommissionRaftForce    bool
 	DecommissionSrcDiskPath  string //
 	DecommissionTerm         uint64 // only used for disk decommission
+	IsDiscard                bool
 }
 
 type DataPartitionPreLoad struct {
@@ -98,12 +100,21 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.PartitionType = partitionType
 	partition.PartitionTTL = partitionTTL
 
-	partition.modifyTime = time.Now().Unix()
-	partition.createTime = time.Now().Unix()
-	partition.lastWarnTime = time.Now().Unix()
+	now := time.Now().Unix()
+	partition.modifyTime = now
+	partition.createTime = now
+	partition.lastWarnTime = now
 	partition.singleDecommissionChan = make(chan bool, 1024)
 	partition.DecommissionStatus = DecommissionInitial
+	partition.LeaderReportTime = now
 	return
+}
+
+func (partition *DataPartition) setReadWrite() {
+	partition.Status = proto.ReadWrite
+	for _, replica := range partition.Replicas {
+		replica.Status = proto.ReadWrite
+	}
 }
 
 func (partition *DataPartition) isSpecialReplicaCnt() bool {
@@ -420,6 +431,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	copy(dpr.Hosts, partition.Hosts)
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	dpr.IsRecover = partition.isRecover
+	dpr.IsDiscard = partition.IsDiscard
 
 	return
 }
@@ -696,6 +708,9 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
+	if replica.IsLeader {
+		partition.LeaderReportTime = time.Now().Unix()
+	}
 	replica.NeedsToCompare = vr.NeedCompare
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
 		oldDiskPath := replica.DiskPath
@@ -820,14 +835,14 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 	return
 }
 
-func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
+func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string, isReplicaNormal bool) (err error) {
 	if err = c.removeDataReplica(partition, host, false, false); err != nil {
 		return
 	}
 
 	partition.RLock()
 	defer partition.RUnlock()
-	if partition.isSpecialReplicaCnt() {
+	if partition.isSpecialReplicaCnt() && isReplicaNormal {
 		partition.SingleDecommissionStatus = 0
 		partition.SingleDecommissionAddr = ""
 		return
@@ -933,6 +948,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		FilesWithMissingReplica:  partition.FilesWithMissingReplica,
 		SingleDecommissionStatus: partition.SingleDecommissionStatus,
 		SingleDecommissionAddr:   partition.SingleDecommissionAddr,
+		IsDiscard:                partition.IsDiscard,
 	}
 }
 

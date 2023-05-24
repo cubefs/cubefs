@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/util/exporter"
@@ -48,6 +49,10 @@ const (
 	MetricDataNodesNotWritable = "dataNodes_not_writable"
 	MetricMetaNodesNotWritable = "metaNodes_not_writable"
 	MetricInactiveMataNodeInfo = "inactive_mataNodes_info"
+	MetricMetaInconsistent     = "mp_inconsistent"
+	MetricMasterNoLeader       = "master_no_leader"
+	MetricMasterNoCache        = "master_no_cache"
+	MetricMasterSnapshot       = "master_snapshot"
 
 	MetricMissingDp                = "missing_dp"
 	MetricDpNoLeader               = "dp_no_leader"
@@ -59,7 +64,6 @@ const (
 	MetricMpMissingLeaderCount     = "mp_missing_Leader_count"
 	MetricDataNodesetInactiveCount = "data_nodeset_inactive_count"
 	MetricMetaNodesetInactiveCount = "meta_nodeset_inactive_count"
-	MetricMetaInconsistent         = "mp_inconsistent"
 )
 
 var WarnMetrics *warningMetrics
@@ -95,13 +99,15 @@ type monitorMetrics struct {
 	dataNodesetInactiveCount *exporter.GaugeVec
 	metaNodesetInactiveCount *exporter.GaugeVec
 	metaEqualCheckFail       *exporter.GaugeVec
+	masterNoLeader           *exporter.Gauge
+	masterNoCache            *exporter.GaugeVec
+	masterSnapshot           *exporter.Gauge
 
 	volNames                      map[string]struct{}
 	badDisks                      map[string]string
 	nodesetInactiveDataNodesCount map[uint64]int64
 	nodesetInactiveMetaNodesCount map[uint64]int64
 	inconsistentMps               map[string]string
-	//volNamesMutex sync.Mutex
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -115,37 +121,165 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 }
 
 type warningMetrics struct {
-	cluster    *Cluster
-	missingDp  *exporter.GaugeVec
-	dpNoLeader *exporter.GaugeVec
-	missingMp  *exporter.GaugeVec
-	mpNoLeader *exporter.GaugeVec
+	cluster               *Cluster
+	missingDp             *exporter.GaugeVec
+	dpNoLeader            *exporter.GaugeVec
+	missingMp             *exporter.GaugeVec
+	mpNoLeader            *exporter.GaugeVec
+	dpMutex               sync.Mutex
+	mpMutex               sync.Mutex
+	dpNoLeaderInfo        map[uint64]int64
+	mpNoLeaderInfo        map[uint64]int64
+	dpMissingReplicaMutex sync.Mutex
+	mpMissingReplicaMutex sync.Mutex
+	dpMissingReplicaInfo  map[string]string
+	mpMissingReplicaInfo  map[string]string
 }
 
 func newWarningMetrics(c *Cluster) *warningMetrics {
 	return &warningMetrics{
-		cluster:    c,
-		missingDp:  exporter.NewGaugeVec(MetricMissingDp, "", []string{"clusterName", "partitionID", "addr"}),
-		dpNoLeader: exporter.NewGaugeVec(MetricDpNoLeader, "", []string{"clusterName", "partitionID"}),
-		missingMp:  exporter.NewGaugeVec(MetricMissingMp, "", []string{"clusterName", "partitionID", "addr"}),
-		mpNoLeader: exporter.NewGaugeVec(MetricMpNoLeader, "", []string{"clusterName", "partitionID"}),
+		cluster:              c,
+		missingDp:            exporter.NewGaugeVec(MetricMissingDp, "", []string{"clusterName", "partitionID", "addr"}),
+		dpNoLeader:           exporter.NewGaugeVec(MetricDpNoLeader, "", []string{"clusterName", "partitionID"}),
+		missingMp:            exporter.NewGaugeVec(MetricMissingMp, "", []string{"clusterName", "partitionID", "addr"}),
+		mpNoLeader:           exporter.NewGaugeVec(MetricMpNoLeader, "", []string{"clusterName", "partitionID"}),
+		dpNoLeaderInfo:       make(map[uint64]int64),
+		mpNoLeaderInfo:       make(map[uint64]int64),
+		dpMissingReplicaInfo: make(map[string]string),
+		mpMissingReplicaInfo: make(map[string]string),
 	}
 }
 
-func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uint64) {
-	m.missingDp.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), addr)
+func (m *warningMetrics) reset() {
+	m.dpMutex.Lock()
+	for dp := range m.dpNoLeaderInfo {
+		m.dpNoLeader.DeleteLabelValues(m.cluster.Name, strconv.FormatUint(dp, 10))
+		delete(m.dpNoLeaderInfo, dp)
+	}
+	m.dpMutex.Unlock()
+
+	m.mpMutex.Lock()
+	for mp := range m.mpNoLeaderInfo {
+		m.mpNoLeader.DeleteLabelValues(m.cluster.Name, strconv.FormatUint(mp, 10))
+		delete(m.mpNoLeaderInfo, mp)
+	}
+	m.mpMutex.Unlock()
+
+	m.dpMissingReplicaMutex.Lock()
+	for id, addr := range m.dpMissingReplicaInfo {
+		m.missingDp.DeleteLabelValues(m.cluster.Name, id, addr)
+		delete(m.dpMissingReplicaInfo, id)
+	}
+	m.dpMissingReplicaMutex.Unlock()
+
+	m.mpMissingReplicaMutex.Lock()
+	for id, addr := range m.mpMissingReplicaInfo {
+		m.missingMp.DeleteLabelValues(m.cluster.Name, id, addr)
+		delete(m.mpMissingReplicaInfo, id)
+	}
+	m.mpMissingReplicaMutex.Unlock()
 }
 
-func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64) {
-	m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+//leader only
+func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uint64, report bool) {
+	m.dpMissingReplicaMutex.Lock()
+	defer m.dpMissingReplicaMutex.Unlock()
+	if clusterName != m.cluster.Name {
+		return
+	}
+	id := strconv.FormatUint(partitionID, 10)
+	if !report {
+		m.missingDp.DeleteLabelValues(clusterName, id, addr)
+		delete(m.dpMissingReplicaInfo, id)
+		return
+	}
+
+	m.missingDp.SetWithLabelValues(1, clusterName, id, addr)
+	m.dpMissingReplicaInfo[id] = addr
 }
 
-func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uint64) {
-	m.missingMp.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), addr)
+//func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64) {
+//	m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+//}
+
+//leader only
+func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, report bool) {
+	if clusterName != m.cluster.Name {
+		return
+	}
+
+	m.dpMutex.Lock()
+	defer m.dpMutex.Unlock()
+	t, ok := m.dpNoLeaderInfo[partitionID]
+	if !report {
+		if ok {
+			delete(m.dpNoLeaderInfo, partitionID)
+			m.dpNoLeader.DeleteLabelValues(clusterName, strconv.FormatUint(partitionID, 10))
+		}
+		return
+	}
+
+	now := time.Now().Unix()
+	if !ok {
+		m.dpNoLeaderInfo[partitionID] = now
+		return
+	}
+	if now-t > m.cluster.cfg.NoLeaderReportInterval {
+		m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+		m.dpNoLeaderInfo[partitionID] = now
+	}
 }
 
-func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64) {
-	m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+//leader only
+func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uint64, report bool) {
+	m.mpMissingReplicaMutex.Lock()
+	defer m.mpMissingReplicaMutex.Unlock()
+	if clusterName != m.cluster.Name {
+		return
+	}
+
+	id := strconv.FormatUint(partitionID, 10)
+	if !report {
+		m.missingMp.DeleteLabelValues(clusterName, id, addr)
+		delete(m.mpMissingReplicaInfo, id)
+		return
+	}
+	m.missingMp.SetWithLabelValues(1, clusterName, id, addr)
+	m.mpMissingReplicaInfo[id] = addr
+}
+
+//func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64) {
+//	m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+//}
+
+//leader only
+func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, report bool) {
+	if clusterName != m.cluster.Name {
+		return
+	}
+	m.mpMutex.Lock()
+	defer m.mpMutex.Unlock()
+	t, ok := m.mpNoLeaderInfo[partitionID]
+	if !report {
+		if ok {
+			delete(m.mpNoLeaderInfo, partitionID)
+			m.mpNoLeader.DeleteLabelValues(clusterName, strconv.FormatUint(partitionID, 10))
+		}
+		return
+	}
+
+	now := time.Now().Unix()
+
+	if !ok {
+		m.mpNoLeaderInfo[partitionID] = now
+		return
+	}
+
+	if now-t > m.cluster.cfg.NoLeaderReportInterval {
+		m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+		m.mpNoLeaderInfo[partitionID] = now
+	}
+
 }
 
 func (mm *monitorMetrics) start() {
@@ -178,6 +312,10 @@ func (mm *monitorMetrics) start() {
 	mm.dataNodesetInactiveCount = exporter.NewGaugeVec(MetricDataNodesetInactiveCount, "", []string{"nodeset"})
 	mm.metaNodesetInactiveCount = exporter.NewGaugeVec(MetricMetaNodesetInactiveCount, "", []string{"nodeset"})
 	mm.metaEqualCheckFail = exporter.NewGaugeVec(MetricMetaInconsistent, "", []string{"volume", "mpId"})
+
+	mm.masterSnapshot = exporter.NewGauge(MetricMasterSnapshot)
+	mm.masterNoLeader = exporter.NewGauge(MetricMasterNoLeader)
+	mm.masterNoCache = exporter.NewGaugeVec(MetricMasterNoCache, "", []string{"volName"})
 	go mm.statMetrics()
 }
 
@@ -186,7 +324,7 @@ func (mm *monitorMetrics) statMetrics() {
 	defer func() {
 		if err := recover(); err != nil {
 			ticker.Stop()
-			log.LogErrorf("statMetrics panic,err[%v]", err)
+			log.LogErrorf("statMetrics panic,msg:%v", err)
 		}
 	}()
 
@@ -195,12 +333,28 @@ func (mm *monitorMetrics) statMetrics() {
 		case <-ticker.C:
 			partition := mm.cluster.partition
 			if partition != nil && partition.IsRaftLeader() {
+				mm.resetFollowerMetrics()
 				mm.doStat()
 			} else {
-				mm.resetAllMetrics()
+				mm.resetAllLeaderMetrics()
+				mm.doFollowerStat()
 			}
 		}
 	}
+}
+
+func (mm *monitorMetrics) doFollowerStat() {
+	if mm.cluster.leaderInfo.addr == "" {
+		mm.masterNoLeader.Set(1)
+	} else {
+		mm.masterNoLeader.Set(0)
+	}
+	if mm.cluster.fsm.onSnapshot {
+		mm.masterSnapshot.Set(1)
+	} else {
+		mm.masterSnapshot.Set(0)
+	}
+	mm.setVolNoCacheMetrics()
 }
 
 func (mm *monitorMetrics) doStat() {
@@ -264,6 +418,26 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 
 	mm.MpMissingLeaderCount.Set(float64(mpMissingLeaderCount))
 	return
+}
+
+func (mm *monitorMetrics) setVolNoCacheMetrics() {
+	deleteVolNames := make(map[string]struct{})
+	mm.cluster.followerReadManager.rwMutex.RLock()
+	defer mm.cluster.followerReadManager.rwMutex.RUnlock()
+
+	for volName, stat := range mm.cluster.followerReadManager.status {
+		if stat == true {
+			deleteVolNames[volName] = struct{}{}
+			log.LogDebugf("setVolNoCacheMetrics deleteVolNames volName %v", volName)
+			continue
+		}
+		log.LogWarnf("setVolNoCacheMetrics volName %v", volName)
+		mm.masterNoCache.SetWithLabelValues(1, volName)
+	}
+
+	for volName := range deleteVolNames {
+		mm.masterNoCache.DeleteLabelValues(volName)
+	}
 }
 
 func (mm *monitorMetrics) setVolMetrics() {
@@ -383,11 +557,13 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 }
 
 func (mm *monitorMetrics) setDiskErrorMetric() {
+	// key: addr_diskpath, val: addr
 	deleteBadDisks := make(map[string]string)
 	for k, v := range mm.badDisks {
 		deleteBadDisks[k] = v
 		delete(mm.badDisks, k)
 	}
+
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
 		if !ok {
@@ -396,9 +572,10 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 		for _, badDisk := range dataNode.BadDisks {
 			for _, partition := range dataNode.DataPartitionReports {
 				if partition.DiskPath == badDisk {
-					mm.diskError.SetWithLabelValues(1, dataNode.Addr, badDisk)
-					mm.badDisks[badDisk] = dataNode.Addr
-					delete(deleteBadDisks, badDisk)
+					key := fmt.Sprintf("%s_%s", dataNode.Addr, badDisk)
+					mm.diskError.SetWithLabelValues(1, dataNode.Addr, key)
+					mm.badDisks[key] = dataNode.Addr
+					delete(deleteBadDisks, key)
 					break
 				}
 			}
@@ -431,6 +608,8 @@ func (mm *monitorMetrics) setInactiveMetaNodesCountMetric() {
 			mm.InactiveMataNodeInfo.SetWithLabelValues(1, mm.cluster.Name, metaNode.Addr)
 			mm.nodesetInactiveMetaNodesCount[metaNode.NodeSetID] = mm.nodesetInactiveMetaNodesCount[metaNode.NodeSetID] + 1
 			delete(deleteNodesetCount, metaNode.NodeSetID)
+		} else {
+			mm.InactiveMataNodeInfo.DeleteLabelValues(mm.cluster.Name, metaNode.Addr)
 		}
 		return true
 	})
@@ -470,6 +649,8 @@ func (mm *monitorMetrics) setInactiveDataNodesCountMetric() {
 			mm.InactiveDataNodeInfo.SetWithLabelValues(1, mm.cluster.Name, dataNode.Addr)
 			mm.nodesetInactiveDataNodesCount[dataNode.NodeSetID] = mm.nodesetInactiveDataNodesCount[dataNode.NodeSetID] + 1
 			delete(deleteNodesetCount, dataNode.NodeSetID)
+		} else {
+			mm.InactiveDataNodeInfo.DeleteLabelValues(mm.cluster.Name, dataNode.Addr)
 		}
 		return true
 	})
@@ -538,8 +719,13 @@ func (mm *monitorMetrics) clearDiskErrMetrics() {
 		mm.diskError.DeleteLabelValues(v, k)
 	}
 }
+func (mm *monitorMetrics) resetFollowerMetrics() {
+	mm.masterNoCache.GaugeVec.Reset()
+	mm.masterNoLeader.Set(0)
+	mm.masterSnapshot.Set(0)
+}
 
-func (mm *monitorMetrics) resetAllMetrics() {
+func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearVolMetrics()
 	mm.clearDiskErrMetrics()
 	mm.clearInactiveMetaNodesCountMetric()

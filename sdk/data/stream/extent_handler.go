@@ -427,6 +427,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			var discard []proto.ExtentKey
 			discard = eh.stream.extents.Append(eh.key, true)
 			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
+
 			if err == nil && len(discard) > 0 {
 				eh.stream.extents.RemoveDiscard(discard)
 			}

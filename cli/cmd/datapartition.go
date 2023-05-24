@@ -180,6 +180,58 @@ The "reset" command will be released in next version`,
 					stdout("%v\n", formatBadReplicaDpInfoRow(partition))
 				}
 			}
+
+			stdout("\n")
+			stdout("%v\n", "[Partition with replica file count differ significantly]:")
+			stdout("%v\n", RepFileCountDifferInfoTableHeader)
+			sort.SliceStable(diagnosis.RepFileCountDifferDpIDs, func(i, j int) bool {
+				return diagnosis.RepFileCountDifferDpIDs[i] < diagnosis.RepFileCountDifferDpIDs[j]
+			})
+			for _, dpId := range diagnosis.RepFileCountDifferDpIDs {
+				var partition *proto.DataPartitionInfo
+				if partition, err = client.AdminAPI().GetDataPartition("", dpId); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdout("%v\n", formatReplicaFileCountDiffDpInfoRow(partition))
+				}
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Partition with replica used size differ significantly]:")
+			stdout("%v\n", RepUsedSizeDifferInfoTableHeader)
+			sort.SliceStable(diagnosis.RepUsedSizeDifferDpIDs, func(i, j int) bool {
+				return diagnosis.RepUsedSizeDifferDpIDs[i] < diagnosis.RepUsedSizeDifferDpIDs[j]
+			})
+			for _, dpId := range diagnosis.RepUsedSizeDifferDpIDs {
+				var partition *proto.DataPartitionInfo
+				if partition, err = client.AdminAPI().GetDataPartition("", dpId); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdout("%v\n", formatReplicaSizeDiffDpInfoRow(partition))
+				}
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Partition with excessive replicas]:")
+			stdout("%v\n", partitionInfoTableHeader)
+			sort.SliceStable(diagnosis.ExcessReplicaDpIDs, func(i, j int) bool {
+				return diagnosis.ExcessReplicaDpIDs[i] < diagnosis.ExcessReplicaDpIDs[j]
+			})
+			for _, pid := range diagnosis.ExcessReplicaDpIDs {
+				var partition *proto.DataPartitionInfo
+				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdout("%v\n", formatDataPartitionInfoRow(partition))
+				}
+			}
+
 			return
 		},
 	}
@@ -187,6 +239,7 @@ The "reset" command will be released in next version`,
 }
 
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var raftForceDel bool
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDecommissionShort,
@@ -206,7 +259,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address); err != nil {
+			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address, raftForceDel); err != nil {
 				return
 			}
 			stdout("Decommission data partition successfully\n")
@@ -218,6 +271,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().BoolVarP(&raftForceDel, "raftForceDel", "r", false, "true for raftForceDel")
 	return cmd
 }
 

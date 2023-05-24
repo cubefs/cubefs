@@ -124,6 +124,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  ZoneName             : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  VolType              : %v\n", svv.VolType))
 	sb.WriteString(fmt.Sprintf("  DpReadOnlyWhenVolFull: %v\n", svv.DpReadOnlyWhenVolFull))
+	sb.WriteString(fmt.Sprintf("  Transaction Mask     : %v\n", svv.EnableTransaction))
+	sb.WriteString(fmt.Sprintf("  Transaction timeout  : %v\n", svv.TxTimeout))
 	if svv.VolType == 1 {
 		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
 		sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))
@@ -161,6 +163,31 @@ func formatVolInfoTableRow(vi *proto.VolInfo) string {
 }
 
 var (
+	volumeVersionPattern     = "%-20v    %-40v    %-8v    %-8v"
+	volumeVersionTableHeader = fmt.Sprintf(volumeVersionPattern, "VER", "CTIME", "STATUS", "OTHER")
+)
+
+var (
+	volumeAclPattern     = "%-20v    %-40v    %-8v"
+	volumeAclTableHeader = fmt.Sprintf(volumeAclPattern, "IP", "CTIME", "OTHER")
+)
+
+func formatAclInfoTableRow(aclInfo *proto.AclIpInfo) string {
+	return fmt.Sprintf(volumeAclPattern,
+		aclInfo.Ip, time.Unix(aclInfo.CTime, 0).Format(time.RFC1123), "")
+}
+
+var (
+	volumeUidPattern     = "%-20v    %-40v     %-8v   %-8v   %-8v    %-8v"
+	volumeUidTableHeader = fmt.Sprintf(volumeUidPattern, "UID", "CTIME", "ENABLED", "LIMITED", "LIMITSIZE", "USED")
+)
+
+func formatUidInfoTableRow(uidInfo *proto.UidSpaceInfo) string {
+	return fmt.Sprintf(volumeUidPattern,
+		uidInfo.Uid, time.Unix(uidInfo.CTime, 0).Format(time.RFC1123), uidInfo.Enabled, uidInfo.Limited, uidInfo.LimitSize, uidInfo.UsedSize)
+}
+
+var (
 	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
 		"ID", "REPLICAS", "STATUS", "ISRECOVER", "LEADER", "MEMBERS")
@@ -180,6 +207,14 @@ var (
 	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
+
+	repFileCountDifferPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v"
+	RepFileCountDifferInfoTableHeader           = fmt.Sprintf(repFileCountDifferPartitionInfoTablePattern,
+		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(fileCount)")
+
+	repUsedSizeDifferPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v"
+	RepUsedSizeDifferInfoTableHeader           = fmt.Sprintf(repUsedSizeDifferPartitionInfoTablePattern,
+		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(usedSize)")
 )
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
@@ -206,9 +241,70 @@ func formatBadReplicaDpInfoRow(partition *proto.DataPartitionInfo) string {
 		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
 }
 
+func formatReplicaFileCountDiffDpInfoRow(partition *proto.DataPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+
+		if replica.IsLeader {
+			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.FileCount))
+		} else {
+			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.FileCount))
+		}
+		firstItem = false
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(repFileCountDifferPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), sb.String())
+}
+
+func formatReplicaSizeDiffDpInfoRow(partition *proto.DataPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+
+		if replica.IsLeader {
+			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.Used))
+		} else {
+			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.Used))
+		}
+		firstItem = false
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(repUsedSizeDifferPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), sb.String())
+}
+
 func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 	return fmt.Sprintf(partitionInfoTablePattern,
 		partition.PartitionID, partition.VolName, partition.ReplicaNum, formatDataPartitionStatus(partition.Status), strings.Join(partition.Hosts, ", "))
+}
+
+func formatBadReplicaMpInfoRow(partition *proto.MetaPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if replica.Status == proto.Unavailable {
+			if !firstItem {
+				sb.WriteString(", ")
+			}
+
+			sb.WriteString(fmt.Sprintf("%v", replica.Addr))
+			firstItem = false
+		}
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(badReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
 }
 
 func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
@@ -220,6 +316,8 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatDataPartitionStatus(partition.Status)))
 	sb.WriteString(fmt.Sprintf("LastLoadedTime: %v\n", formatTime(partition.LastLoadedTime)))
 	sb.WriteString(fmt.Sprintf("OfflinePeerID : %v\n", partition.OfflinePeerID))
+	sb.WriteString(fmt.Sprintf("ISRdOnly      : %v\n", partition.RdOnly))
+	sb.WriteString(fmt.Sprintf("IsDiscard     : %v\n", partition.IsDiscard))
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Replicas : \n"))
@@ -589,4 +687,26 @@ func formatZoneView(zv *proto.ZoneView) string {
 		}
 	}
 	return sb.String()
+}
+
+var quotaTableRowPattern = "%-6v    %-30v    %-15v    %-8v    %-18v    %-10v    %-10v    %-12v    %-12v    %-10v    %-10v    %-10v    %-10v"
+
+func formatQuotaTableHeader() string {
+	return fmt.Sprintf(quotaTableRowPattern, "ID", "PATH", "VOL", "STATUS", "CTIME",
+		"PID", "RINODE", "LIMITEDFILES", "LIMITEDBYTES", "USEDFILES", "USEDBYTES", "MAXFILES", "MAXBYTES")
+}
+
+func formatQuotaInfo(info *proto.QuotaInfo) string {
+	var status string
+	if info.Status == proto.QuotaInit {
+		status = "Init"
+	} else if info.Status == proto.QuotaComplete {
+		status = "Complete"
+	} else {
+		status = "Deleting"
+	}
+	t := time.Unix(info.CTime, 0)
+	return fmt.Sprintf(quotaTableRowPattern, info.QuotaId, info.FullPath, info.VolName, status, t.Format("2006-01-02 15:04:05"), info.PartitionId,
+		info.RootInode, info.LimitedInfo.LimitedFiles, info.LimitedInfo.LimitedBytes, info.UsedInfo.UsedFiles, info.UsedInfo.UsedBytes,
+		info.MaxFiles, info.MaxBytes)
 }

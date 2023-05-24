@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type AdminAPI struct {
@@ -189,10 +190,11 @@ func (api *AdminAPI) CreateDataPartition(volName string, count int) (err error) 
 	return
 }
 
-func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string) (err error) {
+func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDecommissionDataPartition)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
+	request.addParam("raftForceDel", strconv.FormatBool(raftForce))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -259,26 +261,45 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(volName, description, auth, zoneName string, capacity uint64, followerRead bool,
-	ebsBlkSize int, CacheCap uint64, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater,
-	cacheLRUInterval int, cacheRule string, dpReadOnlyWhenVolFull bool) (err error) {
+func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView, txTimeout int64, txMask string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
+	request.addParam("name", vv.Name)
+	request.addParam("description", vv.Description)
+	request.addParam("authKey", util.CalcAuthKey(vv.Owner))
+	request.addParam("zoneName", vv.ZoneName)
+	request.addParam("capacity", strconv.FormatUint(vv.Capacity, 10))
+	request.addParam("followerRead", strconv.FormatBool(vv.FollowerRead))
+	request.addParam("ebsBlkSize", strconv.Itoa(vv.ObjBlockSize))
+	request.addParam("cacheCap", strconv.FormatUint(vv.CacheCapacity, 10))
+	request.addParam("cacheAction", strconv.Itoa(vv.CacheAction))
+	request.addParam("cacheThreshold", strconv.Itoa(vv.CacheThreshold))
+	request.addParam("cacheTTL", strconv.Itoa(vv.CacheTtl))
+	request.addParam("cacheHighWater", strconv.Itoa(vv.CacheHighWater))
+	request.addParam("cacheLowWater", strconv.Itoa(vv.CacheLowWater))
+	request.addParam("cacheLRUInterval", strconv.Itoa(vv.CacheLruInterval))
+	request.addParam("cacheRuleKey", vv.CacheRule)
+	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(vv.DpReadOnlyWhenVolFull))
+	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
+
+	if txMask != "" {
+		request.addParam("enableTxMask", txMask)
+	}
+
+	if txTimeout > 0 {
+		request.addParam("txTimeout", strconv.FormatInt(txTimeout, 10))
+	}
+
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) PutDataPartitions(volName string, dpsView []byte) (err error) {
+	var request = newAPIRequest(http.MethodPost, proto.AdminPutDataPartitions)
 	request.addParam("name", volName)
-	request.addParam("description", description)
-	request.addParam("authKey", auth)
-	request.addParam("zoneName", zoneName)
-	request.addParam("capacity", strconv.FormatUint(capacity, 10))
-	request.addParam("followerRead", strconv.FormatBool(followerRead))
-	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))
-	request.addParam("cacheCap", strconv.FormatUint(CacheCap, 10))
-	request.addParam("cacheAction", strconv.Itoa(cacheAction))
-	request.addParam("cacheThreshold", strconv.Itoa(cacheThreshold))
-	request.addParam("cacheTTL", strconv.Itoa(cacheTTL))
-	request.addParam("cacheHighWater", strconv.Itoa(cacheHighWater))
-	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
-	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
-	request.addParam("cacheRuleKey", cacheRule)
-	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
+	request.addBody(dpsView)
+
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -310,7 +331,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
-	dpReadOnlyWhenVolFull bool) (err error) {
+	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -334,6 +355,13 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, cross
 	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
 	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
+	if txMask != "" {
+		request.addParam("enableTxMask", txMask)
+	}
+
+	if txTimeout > 0 {
+		request.addParam("txTimeout", strconv.FormatUint(uint64(txTimeout), 10))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -405,6 +433,20 @@ func (api *AdminAPI) GetVolumeSimpleInfoWithFlowInfo(volName string) (vv *proto.
 	}
 	vv = &proto.SimpleVolView{}
 	if err = json.Unmarshal(buf, &vv); err != nil {
+		return
+	}
+	return
+}
+
+// access control list
+func (api *AdminAPI) CheckACL() (ci *proto.ClusterInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminACL)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	ci = &proto.ClusterInfo{}
+	if err = json.Unmarshal(buf, &ci); err != nil {
 		return
 	}
 	return
@@ -512,4 +554,103 @@ func (api *AdminAPI) CreatePreLoadDataPartition(volName string, count int, capac
 		return
 	}
 	return
+}
+
+func (api *AdminAPI) ListQuota(volName string) (quotaInfo []*proto.QuotaInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaList)
+	resp := &proto.ListMasterQuotaResponse{}
+	request.addParam("name", volName)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[ListQuota] fail. %v", err)
+		return
+	}
+	if err = json.Unmarshal(data, resp); err != nil {
+		log.LogErrorf("action[ListQuota] fail. %v", err)
+		return
+	}
+	quotaInfo = resp.Quotas
+	log.LogInfof("action[ListQuota] success.")
+	return quotaInfo, err
+}
+
+func (api *AdminAPI) SetQuota(volName string, fullPath string, inodeId uint64, partitionId uint64, maxFiles uint64, maxBytes uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaSet)
+	request.addParam("name", volName)
+	request.addParam("fullPath", fullPath)
+	request.addParam("inode", strconv.FormatUint(inodeId, 10))
+	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
+	request.addParam("maxBytes", strconv.FormatUint(maxBytes, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[SetQuota] fail. %v", err)
+		return
+	}
+	log.LogInfof("action[SetQuota] success.")
+	return
+}
+
+func (api *AdminAPI) UpdateQuota(volName string, fullPath string, inodeId uint64, partitionId uint64, maxFiles uint64, maxBytes uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaUpdate)
+	request.addParam("name", volName)
+	request.addParam("fullPath", fullPath)
+	request.addParam("inode", strconv.FormatUint(inodeId, 10))
+	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
+	request.addParam("maxBytes", strconv.FormatUint(maxBytes, 10))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[UpdateQuota] fail. %v", err)
+		return
+	}
+	log.LogInfof("action[UpdateQuota] success.")
+	return nil
+}
+
+func (api *AdminAPI) DeleteQuota(volName string, quotaId string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaDelete)
+	request.addParam("name", volName)
+	request.addParam("quotaId", quotaId)
+
+	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[DeleteQuota] fail. %v", err)
+		return
+	}
+	log.LogInfo("action[DeleteQuota] success.")
+	return nil
+}
+
+func (api *AdminAPI) GetQuota(volName string, fullPath string) (quotaInfo *proto.QuotaInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaGet)
+	request.addParam("name", volName)
+	request.addParam("fullPath", fullPath)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[GetQuota] fail. %v", err)
+		return
+	}
+	info := &proto.QuotaInfo{}
+	if err = json.Unmarshal(data, info); err != nil {
+		log.LogErrorf("action[GetQuota] fail. %v", err)
+		return
+	}
+	quotaInfo = info
+	log.LogInfof("action[GetQuota] %v success.", *quotaInfo)
+	return quotaInfo, err
+}
+
+func (api *AdminAPI) BatchModifyQuotaPath(volName string, quotaMap map[uint32]string) (err error) {
+	var data []byte
+	var request = newAPIRequest(http.MethodGet, proto.QuotaBatchModifyPath)
+	request.addParam("name", volName)
+	if data, err = json.Marshal(&quotaMap); err != nil {
+		log.LogErrorf("action[BatchModifyQuotaPath] fail. %v", err)
+		return err
+	}
+	request.addBody(data)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[BatchModifyQuotaPath] fail. %v", err)
+		return
+	}
+	log.LogInfof("action[BatchModifyQuotaPath] vol [%v] quotaMap [%v] success.", volName, quotaMap)
+	return nil
 }

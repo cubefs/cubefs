@@ -42,37 +42,28 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	if bucket == "" {
-		_ = InvalidBucketName.ServeResponse(w, r)
+		errorCode = InvalidBucketName
 		return
 	}
-	//if vol, _ := o.getVol(bucket); vol != nil {
-	//	log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
-	//	_ = DuplicatedBucket.ServeResponse(w, r)
-	//	return
-	//}
 
 	if vol, _ := o.vm.VolumeWithoutBlacklist(bucket); vol != nil {
-		log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
-		_ = DuplicatedBucket.ServeResponse(w, r)
+		log.LogInfof("createBucketHandler: duplicated bucket name: requestID(%v) bucket(%v)", GetRequestID(r), bucket)
+		errorCode = BucketAlreadyOwnedByYou
 		return
 	}
 
 	auth := parseRequestAuthInfo(r)
 	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	if userInfo, err = o.getUserInfoByAccessKeyV2(auth.accessKey); err != nil {
+		log.LogErrorf("createBucketHandler: get user info from master fail: requestID(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), auth.accessKey, err)
 		return
 	}
 
@@ -83,7 +74,6 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		requestBytes, err = ioutil.ReadAll(r.Body)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = InternalErrorCode(err)
 			return
 		}
 
@@ -96,80 +86,96 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if createBucketRequest.LocationConstraint != o.region {
-			_ = InvalidLocationConstraint.ServeResponse(w, r)
-			log.LogErrorf("createBucketHandler failed: LocationConstraint(%v), region(%v)",
-				createBucketRequest.LocationConstraint, o.region)
+			log.LogErrorf("createBucketHandler: location constraint not match the service: requestID(%v) LocationConstraint(%v) region(%v)",
+				GetRequestID(r), createBucketRequest.LocationConstraint, o.region)
+			errorCode = InvalidLocationConstraint
 			return
 		}
 	}
 
+	var acl *AccessControlPolicy
+	if acl, err = ParseACL(r, userInfo.UserID, false); err != nil {
+		log.LogErrorf("createBucketHandler: parse acl fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		return
+	}
+
 	if err = o.mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
-		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+		log.LogErrorf("createBucketHandler: create bucket fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), bucket, auth.accessKey, err)
 		return
 	}
 	//todo parse body
 	//w.Header()[HeaderNameLocation] = []string{o.region}
 	w.Header()[HeaderNameLocation] = []string{"/" + bucket}
 	w.Header()[HeaderNameConnection] = []string{"close"}
+
+	vol, err1 := o.vm.VolumeWithoutBlacklist(bucket)
+	if err1 != nil {
+		log.LogWarnf("createBucketHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), bucket, err1)
+		return
+	}
+	if err1 = putBucketACL(vol, acl); err1 != nil {
+		log.LogWarnf("createBucketHandler: put acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
+			GetRequestID(r), bucket, acl, err1)
+	}
+	vol.metaLoader.storeACL(acl)
+
 	return
 }
 
 // Delete bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
 func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request) {
-
 	var (
-		//volState *proto.VolStatInfo
-		authKey string
-		err     error
+		err       error
+		errorCode *ErrorCode
 	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	if bucket == "" {
-		_ = InvalidBucketName.ServeResponse(w, r)
+		errorCode = InvalidBucketName
 		return
 	}
 	auth := parseRequestAuthInfo(r)
 	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	if userInfo, err = o.getUserInfoByAccessKeyV2(auth.accessKey); err != nil {
+		log.LogErrorf("deleteBucketHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), bucket, auth.accessKey, err)
 		return
 	}
-	//if volState, err = o.mc.ClientAPI().GetVolumeStat(bucket); err != nil {
-	//	log.LogErrorf("get bucket state from master error: err(%v)", err)
-	//	_ = InternalErrorCode(err).ServeResponse(w, r)
-	//	return
-	//}
-	//if volState.UsedSize != 0 {
-	//	_ = BucketNotEmpty.ServeResponse(w, r)
-	//	return
-	//}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(bucket); err != nil {
-		_ = NoSuchBucket.ServeResponse(w, r)
+	if vol, err = o.getVol(bucket); err != nil {
+		log.LogErrorf("deleteBucketHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), bucket, err)
 		return
 	}
-
 	if !vol.IsEmpty() {
-		_ = BucketNotEmpty.ServeResponse(w, r)
+		errorCode = BucketNotEmpty
 		return
 	}
 
 	// delete Volume from master
+	var authKey string
 	if authKey, err = calculateAuthKey(userInfo.UserID); err != nil {
-		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, userInfo.UserID, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+		log.LogErrorf("deleteBucketHandler: calculate authKey fail: requestID(%v) volume(%v) authKey(%v) err(%v)",
+			GetRequestID(r), bucket, userInfo.UserID, err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	if err = o.mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
-		log.LogErrorf("delete bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+		log.LogErrorf("deleteBucketHandler: delete volume fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), bucket, auth.accessKey, err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
-
+	log.LogDebugf("deleteBucketHandler: delete bucket success: requestID(%v) volume(%v) accessKey(%v)",
+		GetRequestID(r), bucket, auth.accessKey)
 	// release Volume from Volume manager
 	o.vm.Release(bucket)
 	w.WriteHeader(http.StatusNoContent)
@@ -179,13 +185,19 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 // List buckets
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html
 func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
 
-	var err error
 	auth := parseRequestAuthInfo(r)
 	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	if userInfo, err = o.getUserInfoByAccessKeyV2(auth.accessKey); err != nil {
+		log.LogErrorf("listBucketsHandler: get user info fail: requestID(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), auth.accessKey, err)
 		return
 	}
 
@@ -201,14 +213,13 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 		Buckets []bucket `xml:"Buckets>Bucket"`
 	}
 
-	var output = listBucketsOutput{}
-
+	output := listBucketsOutput{}
 	ownVols := userInfo.Policy.OwnVols
 	for _, ownVol := range ownVols {
 		var vol *Volume
 		if vol, err = o.getVol(ownVol); err != nil {
-			log.LogErrorf("listBucketsHandler: load volume fail: volume(%v) err(%v)",
-				ownVol, err)
+			log.LogErrorf("listBucketsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+				GetRequestID(r), ownVol, err)
 			continue
 		}
 		output.Buckets = append(output.Buckets, bucket{
@@ -219,14 +230,14 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	output.Owner = Owner{DisplayName: userInfo.UserID, Id: userInfo.UserID}
 
 	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(&output); marshalError != nil {
-		log.LogErrorf("listBucketsHandler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+	if bytes, err = MarshalXMLEntity(&output); err != nil {
+		log.LogErrorf("listBucketsHandler: marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), output, err)
 		return
 	}
 	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("listBucketsHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("listBucketsHandler: write response body fail: requestID(%v) body(%v) err(%v)",
+			GetRequestID(r), string(bytes), err)
 	}
 	return
 }
@@ -241,22 +252,30 @@ func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
 // Get bucket tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html
 func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
-		_ = InvalidBucketName.ServeResponse(w, r)
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		_ = NoSuchBucket.ServeResponse(w, r)
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
@@ -264,14 +283,12 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 
 	var encoded []byte
 	if nil == output || len(output.TagSet) == 0 {
-		sb := strings.Builder{}
-		sb.WriteString(xml.Header)
-		sb.WriteString("<Tagging></Tagging>")
-		encoded = []byte(sb.String())
+		errorCode = NoSuchTagSetError
+		return
 	} else {
 		if encoded, err = MarshalXMLEntity(output); err != nil {
 			log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			_ = InternalErrorCode(err).ServeResponse(w, r)
+			errorCode = InternalErrorCode(err)
 			return
 		}
 	}
@@ -285,13 +302,12 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 // Put bucket tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketTagging.html
 func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
-
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -300,22 +316,23 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		errorCode = NoSuchBucket
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("putBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+		errorCode = InvalidArgument
 		return
 	}
 
 	var tagging = NewTagging()
 	if err = UnmarshalXMLEntity(requestBody, tagging); err != nil {
 		log.LogWarnf("putBucketTaggingHandler: decode request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+		errorCode = InvalidArgument
 		return
 	}
 	validateRes, errorCode := tagging.Validate()
@@ -325,8 +342,7 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, []byte(tagging.Encode()), false); err != nil {
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
+		errorCode = InternalErrorCode(err)
 	}
 
 	return
@@ -339,29 +355,25 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: load Volume fail: requestID(%v) Volume(%v) err(%v)", GetRequestID(r), param.bucket, err)
-		errorCode = NoSuchBucket
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("deleteBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 	if err = vol.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: Volume delete tagging xattr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+		log.LogErrorf("deleteBucketTaggingHandler: delete tagging xattr fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -381,5 +393,13 @@ func calculateAuthKey(key string) (authKey string, err error) {
 
 func (o *ObjectNode) getUserInfoByAccessKey(accessKey string) (userInfo *proto.UserInfo, err error) {
 	userInfo, err = o.userStore.LoadUser(accessKey)
+	return
+}
+
+func (o *ObjectNode) getUserInfoByAccessKeyV2(accessKey string) (userInfo *proto.UserInfo, err error) {
+	userInfo, err = o.userStore.LoadUser(accessKey)
+	if err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists || err == proto.ErrParamError {
+		err = InvalidAccessKeyId
+	}
 	return
 }

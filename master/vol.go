@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -39,6 +40,9 @@ type VolVarargs struct {
 	dpReplicaNum          uint8
 	enablePosixAcl        bool
 	dpReadOnlyWhenVolFull bool
+	enableTransaction     uint8
+	txTimeout             int64
+	//enableTransaction bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -66,14 +70,17 @@ type Vol struct {
 	CacheLRUInterval int
 	CacheRule        string
 
-	PreloadCacheOn        bool
-	NeedToLowerReplica    bool
-	FollowerRead          bool
-	authenticate          bool
-	crossZone             bool
-	domainOn              bool
-	defaultPriority       bool // old default zone first
-	enablePosixAcl        bool
+	PreloadCacheOn     bool
+	NeedToLowerReplica bool
+	FollowerRead       bool
+	authenticate       bool
+	crossZone          bool
+	domainOn           bool
+	defaultPriority    bool // old default zone first
+	enablePosixAcl     bool
+	enableTransaction  uint8
+	txTimeout          int64
+	//enableTransaction  bool
 	zoneName              string
 	MetaPartitions        map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock               sync.RWMutex
@@ -89,8 +96,10 @@ type Vol struct {
 	domainId              uint64
 	qosManager            *QosCtrlManager
 	DpReadOnlyWhenVolFull bool
-
-	volLock sync.RWMutex
+	aclMgr                AclManager
+	uidSpaceManager       *UidSpaceManager
+	volLock               sync.RWMutex
+	quotaManager          *MasterQuotaManager
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -119,6 +128,8 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.defaultPriority = vv.DefaultPriority
 	vol.domainId = vv.DomainId
 	vol.enablePosixAcl = vv.EnablePosixAcl
+	vol.enableTransaction = vv.EnableTransaction
+	vol.txTimeout = vv.TxTimeout
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
@@ -281,7 +292,7 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 		if index != 0 {
 			start = end + 1
 		}
-		end = defaultMetaPartitionInodeIDStep * uint64(index+1)
+		end = gConfig.MetaPartitionInodeIdStep * uint64(index+1)
 		if index == count-1 {
 			end = defaultMaxMetaPartitionInodeID
 		}
@@ -336,16 +347,16 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 
+		if time.Since(time.Unix(vol.createTime, 0).Add(time.Second*defaultIntervalToCheckHeartbeat*3)) < 0 {
+			dp.setReadWrite()
+		}
 		if dp.Status == proto.ReadWrite {
 			cnt++
 		}
 
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
 
-		tasks := dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
-		if len(tasks) != 0 {
-			c.addDataNodeTasks(tasks)
-		}
+		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 	}
 
 	return
@@ -395,6 +406,26 @@ func (vol *Vol) tryUpdateDpReplicaNum(c *Cluster, partition *DataPartition) (err
 	return
 }
 
+func (vol *Vol) isOkUpdateRepCnt() (ok bool, rsp []uint64) {
+
+	if proto.IsCold(vol.VolType) {
+		return
+	}
+	ok = true
+	dps := vol.cloneDataPartitionMap()
+	for _, dp := range dps {
+		if vol.dpReplicaNum != dp.ReplicaNum {
+			rsp = append(rsp, dp.PartitionID)
+			ok = false
+			// output dps detail info
+			if len(rsp) > 20 {
+				return
+			}
+		}
+	}
+	return ok, rsp
+}
+
 func (vol *Vol) checkReplicaNum(c *Cluster) {
 	if !vol.NeedToLowerReplica {
 		return
@@ -411,7 +442,7 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 		if host == "" {
 			continue
 		}
-		if err = dp.removeOneReplicaByHost(c, host); err != nil {
+		if err = dp.removeOneReplicaByHost(c, host, vol.dpReplicaNum == dp.ReplicaNum); err != nil {
 			if dp.isSpecialReplicaCnt() && len(dp.Hosts) > 1 {
 				log.LogWarnf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
 				continue
@@ -429,7 +460,8 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
-	vol.checkSplitMetaPartition(c)
+	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
+	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
 	var (
@@ -437,12 +469,12 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		err     error
 	)
 	for _, mp := range mps {
-		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
+		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep)
 		if doSplit {
-			nextStart := mp.MaxInodeID + defaultMetaPartitionInodeIDStep
+			nextStart := mp.MaxInodeID + metaPartitionInodeIdStep
 			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]",
-				c.Name, vol.Name, mp.PartitionID, mp.Start, mp.MaxInodeID, defaultMetaPartitionInodeIDStep, nextStart))
-			if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
+				c.Name, vol.Name, mp.PartitionID, mp.Start, mp.MaxInodeID, metaPartitionInodeIdStep, nextStart))
+			if err = vol.splitMetaPartition(c, mp, nextStart, metaPartitionInodeIdStep); err != nil {
 				Warn(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err))
 			}
 		}
@@ -456,7 +488,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	c.addMetaNodeTasks(tasks)
 }
 
-func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
+func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeIdStep uint64) {
 	maxPartitionID := vol.maxPartitionID()
 
 	vol.mpsLock.RLock()
@@ -485,8 +517,8 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 		Warn(c.Name, msg)
 		return
 	}
-	end := partition.MaxInodeID + defaultMetaPartitionInodeIDStep
-	if err := vol.splitMetaPartition(c, partition, end); err != nil {
+	end := partition.MaxInodeID + metaPartitionInodeIdStep
+	if err := vol.splitMetaPartition(c, partition, end, metaPartitionInodeIdStep); err != nil {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
 			partition.PartitionID, err)
 		Warn(c.Name, msg)
@@ -748,8 +780,8 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 		return
 	}
 	vol.setMpsCache(mpsBody)
-	dpResps := vol.dataPartitions.getDataPartitionsView(0)
-	view.DataPartitions = dpResps
+	//dpResps := vol.dataPartitions.getDataPartitionsView(0)
+	//view.DataPartitions = dpResps
 	view.DomainOn = vol.domainOn
 	viewReply := newSuccessHTTPReply(view)
 	body, err := json.Marshal(viewReply)
@@ -761,10 +793,15 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 }
 
 func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
+	mps := make(map[uint64]*MetaPartition)
 	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
+	for key, mp := range vol.MetaPartitions {
+		mps[key] = mp
+	}
+	vol.mpsLock.RUnlock()
+
 	mpViews = make([]*proto.MetaPartitionView, 0)
-	for _, mp := range vol.MetaPartitions {
+	for _, mp := range mps {
 		mpViews = append(mpViews, getMetaPartitionView(mp))
 	}
 	return
@@ -962,7 +999,9 @@ func (vol *Vol) getTasksToDeleteMetaPartitions() (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 
 	for _, mp := range vol.MetaPartitions {
+		log.LogDebugf("get delete task from vol(%s) mp(%d)", vol.Name, mp.PartitionID)
 		for _, replica := range mp.Replicas {
+			log.LogDebugf("get delete task from vol(%s) mp(%d),replica(%v)", vol.Name, mp.PartitionID, replica.Addr)
 			tasks = append(tasks, replica.createTaskToDeleteReplica(mp.PartitionID))
 		}
 	}
@@ -994,11 +1033,11 @@ func (vol *Vol) String() string {
 		vol.Name, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
 }
 
-func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (nextMp *MetaPartition, err error) {
+func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64) (nextMp *MetaPartition, err error) {
 	mp.Lock()
 	defer mp.Unlock()
 
-	if err = mp.canSplit(end); err != nil {
+	if err = mp.canSplit(end, metaPartitionInodeIdStep); err != nil {
 		return
 	}
 
@@ -1036,7 +1075,7 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 	return
 }
 
-func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (err error) {
+func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64) (err error) {
 	if c.DisableAutoAllocate {
 		return
 	}
@@ -1050,7 +1089,7 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (e
 		return
 	}
 
-	nextMp, err := vol.doSplitMetaPartition(c, mp, end)
+	nextMp, err := vol.doSplitMetaPartition(c, mp, end, metaPartitionInodeIdStep)
 	if err != nil {
 		return
 	}
@@ -1164,6 +1203,9 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.authenticate = args.authenticate
 	vol.enablePosixAcl = args.enablePosixAcl
 	vol.DpReadOnlyWhenVolFull = args.dpReadOnlyWhenVolFull
+	vol.enableTransaction = args.enableTransaction
+	vol.txTimeout = args.txTimeout
+	vol.dpReplicaNum = args.dpReplicaNum
 
 	if proto.IsCold(vol.VolType) {
 		coldArgs := args.coldArgs
@@ -1199,16 +1241,86 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 	}
 
 	return &VolVarargs{
-		zoneName:       vol.zoneName,
-		description:    vol.description,
-		capacity:       vol.Capacity,
-		followerRead:   vol.FollowerRead,
-		authenticate:   vol.authenticate,
-		dpSelectorName: vol.dpSelectorName,
-		dpSelectorParm: vol.dpSelectorParm,
-		enablePosixAcl: vol.enablePosixAcl,
-
+		zoneName:              vol.zoneName,
+		description:           vol.description,
+		capacity:              vol.Capacity,
+		followerRead:          vol.FollowerRead,
+		authenticate:          vol.authenticate,
+		dpSelectorName:        vol.dpSelectorName,
+		dpSelectorParm:        vol.dpSelectorParm,
+		enablePosixAcl:        vol.enablePosixAcl,
+		dpReplicaNum:          vol.dpReplicaNum,
+		enableTransaction:     vol.enableTransaction,
+		txTimeout:             vol.txTimeout,
 		coldArgs:              args,
 		dpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 	}
+}
+
+func (vol *Vol) initQuotaManager(c *Cluster) {
+	vol.quotaManager = &MasterQuotaManager{
+		MpQuotaInfoMap:       make(map[uint64][]*proto.QuotaReportInfo),
+		IdQuotaInfoMap:       make(map[uint32]*proto.QuotaInfo),
+		FullPathQuotaInfoMap: make(map[string]*proto.QuotaInfo),
+		c:                    c,
+		vol:                  vol,
+	}
+}
+
+func (vol *Vol) loadQuotaManager(c *Cluster) (err error) {
+	vol.quotaManager = &MasterQuotaManager{
+		MpQuotaInfoMap:       make(map[uint64][]*proto.QuotaReportInfo),
+		IdQuotaInfoMap:       make(map[uint32]*proto.QuotaInfo),
+		FullPathQuotaInfoMap: make(map[string]*proto.QuotaInfo),
+		c:                    c,
+		vol:                  vol,
+	}
+
+	result, err := c.fsm.store.SeekForPrefix([]byte(quotaPrefix + strconv.FormatUint(vol.ID, 10)))
+	if err != nil {
+		err = fmt.Errorf("loadQuotaManager get quota failed, err [%v]", err)
+		return err
+	}
+
+	for _, value := range result {
+		var quotaInfo = &proto.QuotaInfo{}
+
+		if err = json.Unmarshal(value, quotaInfo); err != nil {
+			log.LogErrorf("loadQuotaManager Unmarshal fail err [%v]", err)
+			return err
+		}
+		log.LogDebugf("loadQuotaManager info [%v]", quotaInfo)
+		if vol.Name != quotaInfo.VolName {
+			panic("vol name do not match")
+		}
+
+		// if quotaInfo.Status != proto.QuotaComplete {
+		// 	var inodes = make([]uint64, 0)
+		// 	inodes = append(inodes, quotaInfo.RootInode)
+		// 	if quotaInfo.Status == proto.QuotaInit {
+		// 		request := &proto.BatchSetMetaserverQuotaReuqest{
+		// 			PartitionId: quotaInfo.PartitionId,
+		// 			Inodes:      inodes,
+		// 			QuotaId:     quotaInfo.QuotaId,
+		// 		}
+		// 		if err = vol.quotaManager.setQuotaToMetaNode(request); err != nil {
+		// 			log.LogErrorf("set quota [%v] to metanode fail [%v].", quotaInfo, err)
+		// 		}
+		// 	} else if quotaInfo.Status == proto.QuotaDeleting {
+		// 		request := &proto.BatchDeleteMetaserverQuotaReuqest{
+		// 			PartitionId: quotaInfo.PartitionId,
+		// 			Inodes:      inodes,
+		// 			QuotaId:     quotaInfo.QuotaId,
+		// 		}
+		// 		if err = vol.quotaManager.DeleteQuotaToMetaNode(request); err != nil {
+		// 			log.LogErrorf("delete quota [%v] to metanode fail [%v].", quotaInfo, err)
+		// 		}
+		// 	}
+		// }
+
+		vol.quotaManager.IdQuotaInfoMap[quotaInfo.QuotaId] = quotaInfo
+		vol.quotaManager.FullPathQuotaInfoMap[quotaInfo.FullPath] = quotaInfo
+	}
+
+	return err
 }

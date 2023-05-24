@@ -80,7 +80,7 @@ var (
 	NormalExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(ei *ExtentInfo) bool {
-			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && ei.IsDeleted == false && ei.Size > 0
+			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && !ei.IsDeleted && ei.Size > 0
 		}
 	}
 
@@ -134,7 +134,7 @@ func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0755)
 }
 
-func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int) (s *ExtentStore, err error) {
+func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, isCreate bool) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionType = dpType
@@ -142,9 +142,34 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int) (
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
-	if s.tinyExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, TinyExtDeletedFileName), TinyDeleteFileOpt, 0666); err != nil {
-		return
+	if isCreate {
+		if s.tinyExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, TinyExtDeletedFileName), TinyDeleteFileOpt, 0666); err != nil {
+			return
+		}
+		if s.verifyExtentFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
+			return
+		}
+		if s.metadataFp, err = os.OpenFile(path.Join(s.dataPath, ExtBaseExtentIDFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
+			return
+		}
+		if s.normalExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, NormalExtDeletedFileName), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
+			return
+		}
+	} else {
+		if s.tinyExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, TinyExtDeletedFileName), os.O_RDWR|os.O_APPEND, 0666); err != nil {
+			return
+		}
+		if s.verifyExtentFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), os.O_RDWR, 0666); err != nil {
+			return
+		}
+		if s.metadataFp, err = os.OpenFile(path.Join(s.dataPath, ExtBaseExtentIDFileName), os.O_RDWR, 0666); err != nil {
+			return
+		}
+		if s.normalExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, NormalExtDeletedFileName), os.O_RDWR|os.O_APPEND, 0666); err != nil {
+			return
+		}
 	}
+
 	stat, err := s.tinyExtentDeleteFp.Stat()
 	if err != nil {
 		return
@@ -153,15 +178,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int) (
 		needWriteEmpty := DeleteTinyRecordSize - (stat.Size() % DeleteTinyRecordSize)
 		data := make([]byte, needWriteEmpty)
 		s.tinyExtentDeleteFp.Write(data)
-	}
-	if s.verifyExtentFp, err = os.OpenFile(path.Join(s.dataPath, ExtCrcHeaderFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
-		return
-	}
-	if s.metadataFp, err = os.OpenFile(path.Join(s.dataPath, ExtBaseExtentIDFileName), os.O_CREATE|os.O_RDWR, 0666); err != nil {
-		return
-	}
-	if s.normalExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, NormalExtDeletedFileName), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
-		return
 	}
 
 	s.extentInfoMap = make(map[uint64]*ExtentInfo, 0)
@@ -539,7 +555,7 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 
 // GetAllWatermarks returns all the watermarks.
 func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentInfo, tinyDeleteFileSize int64, err error) {
-	extents = make([]*ExtentInfo, 0)
+	extents = make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	extentInfoSlice := make([]*ExtentInfo, 0, len(s.extentInfoMap))
 	s.eiMutex.RLock()
 	for _, extentID := range s.extentInfoMap {

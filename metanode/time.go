@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,7 +26,8 @@ var Now = NewNowTime()
 // NowTime defines the current time.
 type NowTime struct {
 	sync.RWMutex
-	now time.Time
+	now      time.Time
+	timeUnix int64
 }
 
 // GetCurrentTime returns the current time.
@@ -36,6 +38,11 @@ func (t *NowTime) GetCurrentTime() (now time.Time) {
 	return
 }
 
+// GetCurrentTimeUnix returns the current time unix
+func (t *NowTime) GetCurrentTimeUnix() int64 {
+	return atomic.LoadInt64(&t.timeUnix)
+}
+
 // UpdateTime updates the stored time.
 func (t *NowTime) UpdateTime(now time.Time) {
 	t.Lock()
@@ -43,10 +50,16 @@ func (t *NowTime) UpdateTime(now time.Time) {
 	t.Unlock()
 }
 
+// UpdateTimeUnix updates the stored time unix.
+func (t *NowTime) UpdateTimeUnix(now int64) {
+	atomic.StoreInt64(&t.timeUnix, now)
+}
+
 // NewNowTime returns a new NowTime.
 func NewNowTime() *NowTime {
 	return &NowTime{
-		now: time.Now(),
+		now:      time.Now(),
+		timeUnix: time.Now().Unix(),
 	}
 }
 
@@ -56,6 +69,7 @@ func init() {
 			time.Sleep(time.Second)
 			now := time.Now()
 			Now.UpdateTime(now)
+			Now.UpdateTimeUnix(now.Unix())
 		}
 	}()
 }

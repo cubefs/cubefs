@@ -16,10 +16,11 @@ package objectnode
 
 import (
 	"encoding/json"
-	"github.com/cubefs/cubefs/proto"
 	"io"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -43,7 +44,6 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketPolicyHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		ec = NoSuchBucket
 		return
 	}
 	var policy *Policy
@@ -91,7 +91,6 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putBucketPolicyHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		ec = NoSuchBucket
 		return
 	}
 
@@ -128,22 +127,30 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 
 // https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html
 func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
-	log.LogInfof("Delete bucket policy...")
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
 
-	var err error
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		_ = NoSuchBucket.ServeResponse(w, r)
+		errorCode = NoSuchBucket
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		_ = NoSuchBucket.ServeResponse(w, r)
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("deleteBucketPolicyHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
 	if err = deleteBucketPolicy(vol); err != nil {
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+		log.LogErrorf("deleteBucketPolicyHandler: delete policy fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = InternalErrorCode(err)
 		return
 	}
 	vol.metaLoader.storePolicy(nil)
