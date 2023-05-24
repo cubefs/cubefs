@@ -14,8 +14,6 @@
 
 package stat
 
-import "C"
-
 import (
 	"bufio"
 	"errors"

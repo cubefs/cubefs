@@ -76,8 +76,8 @@ The configuration of the Scheduler is based on the [public configuration](./base
 * fail_msg_sender_timeout_ms, timeout for resending messages to the failed topic after message consumption fails, default is 1000ms
 * shard_repair, repair message topic and consumption partition specification (if the partition is not specified, all partitions will be consumed), which contains three types of topics:
   * normal, normal topic, default is shard_repair
-  * failed, failed topic (after normal message consumption fails, the message will be resent to this topic), default is shard_repair_prior
-  * priority, priority consumption topic, mainly used to store repair messages that need to be consumed with high priority, default is shard_repair_failed
+  * failed, failed topic (after normal message consumption fails, the message will be resent to this topic), default is shard_repair_failed
+  * priority, priority consumption topic, mainly used to store repair messages that need to be consumed with high priority, default is shard_repair_prior
 * blob_delete, deletion message topic and consumption partition specification, which contains two types of topics
   * normal, normal topic, default is blob_delete
   * failed, failed topic (after normal message consumption fails, the message will be resent to this topic), default is blob_delete_failed

@@ -17,10 +17,8 @@ package cli
 import (
 	"io"
 	"os"
-	"os/user"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/desertbit/grumble"
 	"github.com/fatih/color"
@@ -28,7 +26,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/access"
 	"github.com/cubefs/cubefs/blobstore/cli/blobnode"
 	"github.com/cubefs/cubefs/blobstore/cli/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
@@ -50,31 +47,6 @@ var App = grumble.New(&grumble.Config{
 	HelpSubCommands:       true,
 	Prompt:                "BS $> ",
 	PromptColor:           color.New(color.FgBlue, color.Bold),
-	PromptRuntime: func() func() string {
-		username := "NO-USER"
-		hostname := "NO-HOSTNAME"
-		if user, err := user.Current(); err == nil {
-			username = user.Username
-		}
-		if host, _ := os.Hostname(); host != "" {
-			hostname = host
-		}
-
-		return func() string {
-			now := time.Now()
-			mins := (now.Hour() * 60) + now.Minute()
-			curr := mins * 100 / (60 * 24)
-			tStr := now.Format("01-02 15:04:05.000")
-			return color.New().Sprintf("%s %s%s %s@%s %s ",
-				color.New(color.FgBlue, color.Italic).Sprint("BS"),
-				color.New(color.FgMagenta, color.Faint).Sprintf("[%s]", common.BoldBar(curr)),
-				color.New(color.FgMagenta, color.Faint).Sprintf("[%s]", tStr),
-				color.New(color.FgGreen, color.Bold).Sprint(username),
-				color.New(color.FgYellow, color.Bold).Sprint(hostname),
-				color.New(color.FgBlack, color.BgHiYellow).Sprint("  $> "),
-			)
-		}
-	}(),
 	Flags: func(f *grumble.Flags) {
 		flags.ConfigRegister(f)
 		flags.VerboseRegister(f)
@@ -84,6 +56,8 @@ var App = grumble.New(&grumble.Config{
 })
 
 func init() {
+	log.SetOutputLevel(log.Lerror)
+
 	App.OnInit(func(a *grumble.App, fm grumble.FlagMap) error {
 		if path := flags.Config(fm); path != "" {
 			config.LoadConfig(path)

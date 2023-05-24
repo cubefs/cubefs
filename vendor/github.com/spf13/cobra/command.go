@@ -366,7 +366,7 @@ func (c *Command) UsageFunc() (f func(*Command) error) {
 }
 
 // Usage puts out the usage for the command.
-// Used when a user provides invalid input.
+// Allocated when a user provides invalid input.
 // Can be defined by user by overriding UsageFunc.
 func (c *Command) Usage() error {
 	return c.UsageFunc()(c)
@@ -393,7 +393,7 @@ func (c *Command) HelpFunc() func(*Command, []string) {
 }
 
 // Help puts out the help for the command.
-// Used when a user calls help [command].
+// Allocated when a user calls help [command].
 // Can be defined by user by overriding HelpFunc.
 func (c *Command) Help() error {
 	c.HelpFunc()(c, []string{})
