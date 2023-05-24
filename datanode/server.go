@@ -53,15 +53,17 @@ var (
 
 	LocalIP, serverPort string
 	gConnPool           = util.NewConnectPool()
-	MasterClient        = masterSDK.NewMasterClient(nil, false)
+	//MasterClient        = masterSDK.NewMasterClient(nil, false)
+	MasterClient *masterSDK.MasterCLientWithResolver
 )
 
 const (
-	DefaultZoneName         = proto.DefaultZoneName
-	DefaultRaftDir          = "raft"
-	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
-	DefaultDiskMaxErr       = 1
-	DefaultDiskRetainMin    = 5 * util.GB // GB
+	DefaultZoneName            = proto.DefaultZoneName
+	DefaultRaftDir             = "raft"
+	DefaultRaftLogsToRetain    = 10 // Count of raft logs per data partition
+	DefaultDiskMaxErr          = 1
+	DefaultDiskRetainMin       = 5 * util.GB // GB
+	DefaultNameResolveInterval = 1           // minutes
 )
 
 const (
@@ -80,7 +82,8 @@ const (
 	CfgTickInterval        = "tickInterval"    // int
 	CfgRaftRecvBufSize     = "raftRecvBufSize" // int
 
-	ConfigKeyDiskPath = "diskPath" // string
+	ConfigKeyDiskPath         = "diskPath"            // string
+	configNameResolveInterval = "nameResolveInterval" // int
 
 	/*
 	 * Metrics Degrade Level
@@ -249,6 +252,7 @@ func doShutdown(server common.Server) {
 	s.stopRaftServer()
 	s.stopSmuxService()
 	s.closeSmuxConnPool()
+	MasterClient.Stop()
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -267,12 +271,35 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
-	if len(cfg.GetSlice(proto.MasterAddr)) == 0 {
+
+	/*for _, ip := range cfg.GetSlice(proto.MasterAddr) {
+		MasterClient.AddNode(ip.(string))
+	}*/
+
+	updateInterval := cfg.GetInt(configNameResolveInterval)
+	if updateInterval <= 0 || updateInterval > 60 {
+		log.LogWarnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
+		updateInterval = DefaultNameResolveInterval
+	}
+
+	addrs := cfg.GetSlice(proto.MasterAddr)
+	if len(addrs) == 0 {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
-	for _, ip := range cfg.GetSlice(proto.MasterAddr) {
-		MasterClient.AddNode(ip.(string))
+	masters := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		masters = append(masters, addr.(string))
 	}
+	MasterClient = masterSDK.NewMasterCLientWithResolver(masters, false, updateInterval)
+	if MasterClient == nil {
+		err = fmt.Errorf("parseConfig: masters addrs format err[%v]", masters)
+		log.LogErrorf("parseConfig: masters addrs format err[%v]", masters)
+		return err
+	}
+	if err = MasterClient.Start(); err != nil {
+		return err
+	}
+
 	s.zoneName = cfg.GetString(ConfigKeyZone)
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
