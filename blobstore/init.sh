@@ -3,20 +3,21 @@
 function INIT()
 {
     # build blobstore
-    rootPath=$(cd $(dirname $0); pwd)
-    source $rootPath/env.sh
-    ./build.sh
+    cd ..
+    rootPath=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
+    source build/cgo_env.sh
+    make blobstore
     if [ $? -ne 0 ]; then
       echo "build failed"
       exit 1
     fi
 
     # get consul
-    if [ ! -f bin/consul ]; then
+    if [ ! -f build/bin/blobstore/consul ]; then
         wget https://ocs-cn-south1.heytapcs.com/blobstore/consul_1.11.4_linux_amd64.zip
         unzip consul_1.11.4_linux_amd64.zip
         rm -f consul_1.11.4_linux_amd64.zip
-        mv consul bin/
+        mv consul build/bin/blobstore/
         if [ $? -ne 0 ]; then
           echo "prepare consul failed"
           exit 1
@@ -25,9 +26,9 @@ function INIT()
 
     # get kafka
     grep -q "export JAVA_HOME" /etc/profile
-    if [[ $? -ne 0 ]] && [[ ! -d bin/jdk1.8.0_321 ]]; then
+    if [[ $? -ne 0 ]] && [[ ! -d build/bin/blobstore/jdk1.8.0_321 ]]; then
          wget https://ocs-cn-south1.heytapcs.com/blobstore/jdk-8u321-linux-x64.tar.gz
-         tar -zxvf jdk-8u321-linux-x64.tar.gz -C bin/
+         tar -zxvf jdk-8u321-linux-x64.tar.gz -C build/bin/blobstore/
          if [ $? -ne 0 ]; then
           echo "prepare kafka failed"
           exit 1
@@ -37,18 +38,18 @@ function INIT()
     # init java
     grep -q "export JAVA_HOME" /etc/profile
     if [ $? -ne 0 ]; then
-       if [ ! -f ./bin/profile ]; then
-         touch ./bin/profile
+       if [ ! -f ./build/bin/blobstore/profile ]; then
+         touch ./build/bin/blobstore/profile
        fi
-       echo "export JAVA_HOME=$rootPath/bin/jdk1.8.0_321" > bin/profile
-       echo "export PATH=$JAVA_HOME/bin:$PATH" >> bin/profile
-       echo "export CLASSPATH=$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar" >> bin/profile
-       source bin/profile
+       echo "export JAVA_HOME=$rootPath/build/bin/blobstore/jdk1.8.0_321" > ./build/bin/blobstore/profile
+       echo "export PATH=$JAVA_HOME/bin:$PATH" >> ./build/bin/blobstore/profile
+       echo "export CLASSPATH=$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar" >> ./build/bin/blobstore/profile
+       source build/bin/blobstore/profile
     fi
 
-    if [ ! -d bin/kafka_2.13-3.1.0 ]; then
+    if [ ! -d build/bin/blobstore/kafka_2.13-3.1.0 ]; then
         wget https://ocs-cn-south1.heytapcs.com/blobstore/kafka_2.13-3.1.0.tgz
-        tar -zxvf kafka_2.13-3.1.0.tgz -C bin/
+        tar -zxvf kafka_2.13-3.1.0.tgz -C build/bin/blobstore/
         if [ $? -ne 0 ]; then
           echo "prepare kafka failed"
           exit 1
