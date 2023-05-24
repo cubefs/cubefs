@@ -22,15 +22,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Make compiled rocksdb includes
+      - name: Download rocksdb_libs
         run: |
-          cd blobstore
-          wget -O deps.tar.gz https://ocs-cn-south1.heytapcs.com/blobstore/deps.tar.gz
-          tar -zxf deps.tar.gz
-          mv deps .deps
-          source env.sh
-          echo "CGO_CFLAGS=${CGO_CFLAGS}" >> $GITHUB_ENV
-          echo "CGO_LDFLAGS=${CGO_LDFLAGS}" >> $GITHUB_ENV
+            pushd build
+            wget -O rocksdb_libs.tar.gz https://ocs-cn-north1.heytapcs.com/cubefs/github/ci/rocksdb_libs.tar.gz
+            tar -zxvf rocksdb_libs.tar.gz
+            . cgo_env.sh
+            echo "CGO_CFLAGS=${CGO_CFLAGS}" >> $GITHUB_ENV
+            echo "CGO_LDFLAGS=${CGO_LDFLAGS}" >> $GITHUB_ENV
+            popd
 
       - name: Check golang vet
         run: |
