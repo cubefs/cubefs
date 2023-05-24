@@ -110,6 +110,7 @@ const (
 	inodeKey                = "inode"
 	quotaKey                = "quotaId"
 	dpDiscardKey            = "dpDiscard"
+	ignoreDiscardKey        = "ignoreDiscard"
 )
 
 const (

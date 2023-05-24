@@ -80,6 +80,8 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
+	var ignoreDiscardDp bool
+
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptDataPartitionShort,
@@ -100,7 +102,7 @@ The "reset" command will be released in next version`,
 					errout("Error: %v", err)
 				}
 			}()
-			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(); err != nil {
+			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(ignoreDiscardDp); err != nil {
 				return
 			}
 			stdout("[Inactive Data nodes]:\n")
@@ -235,6 +237,8 @@ The "reset" command will be released in next version`,
 			return
 		},
 	}
+
+	cmd.Flags().BoolVarP(&ignoreDiscardDp, "ignoreDiscard", "r", false, "true for not display discard dp")
 	return cmd
 }
 
