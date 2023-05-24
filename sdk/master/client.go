@@ -38,6 +38,13 @@ var (
 	ErrNoValidMaster = errors.New("no valid master")
 )
 
+type MasterCLientWithResolver struct {
+	MasterClient
+	resolver       *NameResolver
+	updateInverval int
+	stopC          chan struct{}
+}
+
 type MasterClient struct {
 	sync.RWMutex
 	masters    []string
@@ -49,6 +56,13 @@ type MasterClient struct {
 	clientAPI *ClientAPI
 	nodeAPI   *NodeAPI
 	userAPI   *UserAPI
+}
+
+func (c *MasterClient) ReplaceMasterAddresses(addrs []string) {
+	c.Lock()
+	defer c.Unlock()
+	c.masters = addrs
+	c.leaderAddr = ""
 }
 
 // AddNode add the given address as the master address.
@@ -254,6 +268,89 @@ func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) str
 		return buff.String()
 	}
 	return url
+}
+
+func NewMasterCLientWithResolver(masters []string, useSSL bool, updateInverval int) *MasterCLientWithResolver {
+	mc := &MasterCLientWithResolver{
+		MasterClient:   MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout},
+		updateInverval: updateInverval,
+		stopC:          make(chan struct{}, 0),
+	}
+	mc.adminAPI = &AdminAPI{mc: &mc.MasterClient}
+	mc.clientAPI = &ClientAPI{mc: &mc.MasterClient}
+	mc.nodeAPI = &NodeAPI{mc: &mc.MasterClient}
+	mc.userAPI = &UserAPI{mc: &mc.MasterClient}
+	resolver, err := NewNameResolver(masters)
+	if err != nil {
+		return nil
+	} else {
+		mc.resolver = resolver
+	}
+	return mc
+}
+
+func (mc *MasterCLientWithResolver) Start() (err error) {
+	failed := true
+	for i := 0; i < 3; i++ {
+		var changed bool
+		changed, err = mc.resolver.Resolve()
+		if changed && err == nil {
+			var addrs []string
+			addrs, err = mc.resolver.GetAllAddresses()
+			if err == nil {
+				mc.ReplaceMasterAddresses(addrs)
+				failed = false
+				break
+			} else {
+				log.LogWarnf("MasterCLientWithResolver: Resolve failed: %v, retry %v", err, i)
+			}
+		}
+	}
+
+	if failed {
+		err = errors.New("MasterCLientWithResolver: Resolve failed")
+		log.LogErrorf("MasterCLientWithResolver: Resolve failed")
+		return
+	}
+
+	if len(mc.resolver.domains) == 0 {
+		log.LogDebugf("MasterCLientWithResolver: No domains found, skipping resolving timely")
+		return
+	}
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(mc.updateInverval) * time.Minute)
+		//timer := time.NewTimer(0)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-mc.stopC:
+				log.LogInfo("MasterCLientWithResolver goroutine stopped")
+				return
+			case <-ticker.C:
+				changed, err := mc.resolver.Resolve()
+				if changed && err == nil {
+					addrs, err := mc.resolver.GetAllAddresses()
+					if err == nil {
+						mc.ReplaceMasterAddresses(addrs)
+					}
+
+				}
+				//timer.Reset(time.Duration(mc.updateInverval) * time.Minute)
+			}
+		}
+	}()
+	return nil
+}
+
+func (mc *MasterCLientWithResolver) Stop() {
+
+	select {
+	case mc.stopC <- struct{}{}:
+		log.LogDebugf("stop resolver, notified!")
+	default:
+		log.LogDebugf("stop resolver, skipping notify!")
+	}
 }
 
 // NewMasterHelper returns a new MasterClient instance.

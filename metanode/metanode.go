@@ -39,8 +39,9 @@ import (
 )
 
 var (
-	clusterInfo    *proto.ClusterInfo
-	masterClient   *masterSDK.MasterClient
+	clusterInfo *proto.ClusterInfo
+	//masterClient   *masterSDK.MasterClient
+	masterClient   *masterSDK.MasterCLientWithResolver
 	configTotalMem uint64
 	serverPort     string
 	smuxPortShift  int
@@ -176,6 +177,7 @@ func doShutdown(s common.Server) {
 	m.stopSmuxServer()
 	m.stopMetaManager()
 	m.stopRaftServer()
+	masterClient.Stop()
 }
 
 // Sync blocks the invoker's goroutine until the meta node shuts down.
@@ -277,7 +279,23 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	for _, addr := range addrs {
 		masters = append(masters, addr.(string))
 	}
-	masterClient = masterSDK.NewMasterClient(masters, false)
+
+	updateInterval := cfg.GetInt(configNameResolveInterval)
+	if updateInterval <= 0 || updateInterval > 60 {
+		log.LogWarnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
+		updateInterval = DefaultNameResolveInterval
+	}
+
+	//masterClient = masterSDK.NewMasterClient(masters, false)
+	masterClient = masterSDK.NewMasterCLientWithResolver(masters, false, updateInterval)
+	if masterClient == nil {
+		err = fmt.Errorf("parseConfig: masters addrs format err[%v]", masters)
+		log.LogErrorf("parseConfig: masters addrs format err[%v]", masters)
+		return err
+	}
+	if err = masterClient.Start(); err != nil {
+		return err
+	}
 	err = m.validConfig()
 	return
 }
