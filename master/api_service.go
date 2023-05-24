@@ -445,6 +445,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
 		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
+		MasterNodes:         make([]proto.NodeView, 0),
 		MetaNodes:           make([]proto.NodeView, 0),
 		DataNodes:           make([]proto.NodeView, 0),
 		VolStatInfo:         make([]*proto.VolStatInfo, 0),
@@ -453,6 +454,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vols := m.cluster.allVolNames()
+	cv.MasterNodes = m.cluster.allMasterNodes()
 	cv.MetaNodes = m.cluster.allMetaNodes()
 	cv.DataNodes = m.cluster.allDataNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo

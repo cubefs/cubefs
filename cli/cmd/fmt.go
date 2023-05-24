@@ -37,6 +37,9 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  Cluster name       : %v\n", cv.Name))
 	sb.WriteString(fmt.Sprintf("  Master leader      : %v\n", cv.LeaderAddr))
+	for _, master := range cv.MasterNodes {
+		sb.WriteString(fmt.Sprintf("  Master-%d           : %v\n",master.ID, master.Addr))
+	}
 	sb.WriteString(fmt.Sprintf("  Auto allocate      : %v\n", formatEnabledDisabled(!cv.DisableAutoAlloc)))
 	sb.WriteString(fmt.Sprintf("  MetaNode count     : %v\n", len(cv.MetaNodes)))
 	sb.WriteString(fmt.Sprintf("  MetaNode used      : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
