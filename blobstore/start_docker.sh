@@ -24,6 +24,7 @@ sleep 5
 num=`ps -ef | egrep "./bin/clustermgr" |  egrep -v "vi|tail|grep" | wc -l`
 if [ $num -ne 3 ]; then
   echo "Failed to start clustermgr"
+  exit 1
 fi
 
 sleep 15
