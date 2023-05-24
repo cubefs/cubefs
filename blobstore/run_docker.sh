@@ -18,13 +18,20 @@ EOF
 }
 
 source ./init.sh
+if [ ! -d ./run/logs ];then
+  mkdir -p ./run/logs
+fi
+
+RootPath=$(cd $(dirname $0)/..; pwd)
 log=./run/logs/docker.log
 name="blobstore:${tag}"
+
 
 # build
 build() {
     INIT
-    docker build -t "${name}" -f Dockerfile . || return 1
+    echo  "start"
+    docker build -t "${name}" -f blobstore/Dockerfile ${RootPath} || return 1
     return 0
 }
 
