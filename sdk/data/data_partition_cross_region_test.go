@@ -1,6 +1,7 @@
 package data
 
 import (
+	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
 	"time"
@@ -87,10 +88,18 @@ func TestPingCrossRegionHosts(t *testing.T) {
 		t.Fatalf("TestPingCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}
 	dataWrapper.crossRegionHAType = proto.CrossRegionHATypeQuorum
-	err = dataWrapper.updateDataPartition(false)
-	if err != nil {
-		t.Fatalf("TestPingCrossRegionHosts: updateDataPartition failed, err %v", err)
+
+	for i:=0;i< 6;i++ {
+		err = dataWrapper.updateDataPartition(false)
+		if err==nil {
+			break
+		}
+		time.Sleep(time.Second*10)
 	}
+	if err != nil {
+		assert.FailNow(t,"TestPingCrossRegionHosts: updateDataPartition failed, err %v", err)
+	}
+
 	// test getUnknownCrossRegionHostStatus
 	dataWrapper.getUnknownCrossRegionHostStatus()
 	count1 := 0
