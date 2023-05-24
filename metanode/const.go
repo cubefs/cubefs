@@ -172,6 +172,7 @@ const (
 	cfgSmuxMaxBuffer     = "smuxMaxBuffer"     //int
 
 	metaNodeDeleteBatchCountKey = "batchCount"
+	configNameResolveInterval   = "nameResolveInterval" // int
 )
 
 const (
@@ -180,6 +181,8 @@ const (
 	intervalToSyncCursor  = time.Minute * 1
 
 	defaultDelExtentsCnt = 100000
+
+	DefaultNameResolveInterval = 1 // minutes
 )
 
 const (
