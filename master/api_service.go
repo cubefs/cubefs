@@ -1580,6 +1580,12 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminDiagnoseDataPartition, metric, err, nil)
 	}()
 
+	ignoreDiscardDp, err := pareseBoolWithDefault(r, ignoreDiscardKey, false)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	corruptDpIDs = make([]uint64, 0)
 	lackReplicaDpIDs = make([]uint64, 0)
 	badReplicaDpIDs = make([]uint64, 0)
@@ -1593,7 +1599,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs, corruptDps, err =
-		m.cluster.checkReplicaOfDataPartitions(); err != nil {
+		m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

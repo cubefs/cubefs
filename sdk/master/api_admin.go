@@ -144,9 +144,10 @@ func (api *AdminAPI) GetDataPartitionById(partitionID uint64) (partition *proto.
 	return
 }
 
-func (api *AdminAPI) DiagnoseDataPartition() (diagnosis *proto.DataPartitionDiagnosis, err error) {
+func (api *AdminAPI) DiagnoseDataPartition(ignoreDiscardDp bool) (diagnosis *proto.DataPartitionDiagnosis, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminDiagnoseDataPartition)
+	request.addParam("ignoreDiscard", strconv.FormatBool(ignoreDiscardDp))
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
