@@ -951,7 +951,7 @@ func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []
 	return
 }
 
-func (c *Cluster) checkReplicaOfDataPartitions() (
+func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
 	repUsedSizeDifferDps []*DataPartition, excessReplicaDPs []*DataPartition, noLeaderDPs []*DataPartition, err error) {
 	noLeaderDPs = make([]*DataPartition, 0)
@@ -964,6 +964,10 @@ func (c *Cluster) checkReplicaOfDataPartitions() (
 		var dps *DataPartitionMap
 		dps = vol.dataPartitions
 		for _, dp := range dps.partitions {
+			if ignoreDiscardDp && dp.IsDiscard {
+				continue
+			}
+
 			if vol.Status != markDelete && proto.IsHot(vol.VolType) {
 				if dp.getLeaderAddr() == "" && (time.Now().Unix()-dp.LeaderReportTime > c.cfg.NoLeaderReportInterval) {
 					noLeaderDPs = append(noLeaderDPs, dp)
