@@ -594,11 +594,12 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeDeleteLimitRate:     limitRate,
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
-		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
-		EbsAddr:                     m.bStoreAddr,
-		ServicePath:                 m.servicePath,
-		ClusterUuid:                 m.cluster.clusterUuid,
-		ClusterUuidEnable:           m.cluster.clusterUuidEnable,
+		//Ip:                          strings.Split(r.RemoteAddr, ":")[0],
+		Ip:                iputil.RealIP(r),
+		EbsAddr:           m.bStoreAddr,
+		ServicePath:       m.servicePath,
+		ClusterUuid:       m.cluster.clusterUuid,
+		ClusterUuidEnable: m.cluster.clusterUuidEnable,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
