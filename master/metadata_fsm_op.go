@@ -1242,7 +1242,7 @@ func (c *Cluster) loadVolsName() (err error, names []string) {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-		if !bsProto.IsHot(vv.VolType) && (vv.CacheAction == bsProto.NoCache || vv.CacheCapacity == 0) {
+		if vv.Status == markDelete || !bsProto.IsHot(vv.VolType) && (vv.CacheAction == bsProto.NoCache || vv.CacheCapacity == 0) {
 			continue
 		}
 		names = append(names, vv.Name)
