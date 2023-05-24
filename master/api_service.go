@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/iputil"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -444,9 +445,10 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DataNodeDeleteLimitRate:     limitRate,
 		DataNodeAutoRepairLimitRate: autoRepairRate,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
-		Ip:                          strings.Split(r.RemoteAddr, ":")[0],
-		EbsAddr:                     m.bStoreAddr,
-		ServicePath:                 m.servicePath,
+		//Ip:                          strings.Split(r.RemoteAddr, ":")[0],
+		Ip:          iputil.RealIP(r),
+		EbsAddr:     m.bStoreAddr,
+		ServicePath: m.servicePath,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
