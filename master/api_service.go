@@ -4199,8 +4199,8 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 
 func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView = proto.NewMetaPartitionView(mp.PartitionID, mp.Start, mp.End, mp.Status)
-	mp.Lock()
-	defer mp.Unlock()
+	mp.RLock()
+	defer mp.RUnlock()
 	for _, host := range mp.Hosts {
 		mpView.Members = append(mpView.Members, host)
 	}
