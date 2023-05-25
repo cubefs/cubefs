@@ -8,15 +8,14 @@
 
 ``` bash
 $ git clone https://github.com/cubefs/cubefs.git
-$ cd cubefs/blobstore
-$ source env.sh
-$ sh build.sh
+$ source build/cgo_env.sh
+$ make blobstore
 ```
 
-构建成功后，将在 `bin` 目录中生成以下可执行文件：
+构建成功后，将在 `build/bin/blobstore` 目录中生成以下可执行文件：
 
 ```text
-├── bin
+├── build/bin/blobstore
 │   ├── access
 │   ├── clustermgr
 │   ├── proxy
