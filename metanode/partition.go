@@ -332,10 +332,8 @@ func (uMgr *UidManager) minusUidSpace(uid uint32, inode uint64, eks []proto.Exte
 }
 
 func (uMgr *UidManager) getUidAcl(uid uint32) (enable bool) {
-	log.LogDebugf("getUidAcl. uid %v", uid)
 	if val, ok := uMgr.uidAcl.Load(uid); ok {
 		enable = val.(bool)
-		log.LogDebugf("getUidAcl. uid %v", enable)
 	}
 	return
 }
@@ -349,7 +347,7 @@ func (uMgr *UidManager) setUidAcl(info []*proto.UidSpaceInfo) {
 		if uidInfo.VolName != uMgr.volName {
 			continue
 		}
-		log.LogDebugf("setUidAcl.vol %v uid %v be set enable %v", uMgr.volName, uidInfo.Uid, uidInfo.Limited)
+		// log.LogDebugf("setUidAcl.vol %v uid %v be set enable %v", uMgr.volName, uidInfo.Uid, uidInfo.Limited)
 		uMgr.uidAcl.Store(uidInfo.Uid, uidInfo.Limited)
 	}
 }
@@ -386,7 +384,7 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 			Uid:  key.(uint32),
 			Size: uint64(size),
 		})
-		log.LogDebugf("getAllUidSpace. mp[%v] accumBase uid %v size %v", uMgr.mpID, key.(uint32), size)
+		// log.LogDebugf("getAllUidSpace. mp[%v] accumBase uid %v size %v", uMgr.mpID, key.(uint32), size)
 		return true
 	})
 
@@ -416,7 +414,6 @@ func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
 	if val, ok := accum.Load(ino.Uid); ok {
 		size += uint64(val.(int64))
 	}
-	log.LogDebugf("accumInoUidSize mp:[%v] now size %v", uMgr.mpID, size)
 	accum.Store(ino.Uid, int64(size))
 }
 
@@ -472,7 +469,6 @@ func (mp *metaPartition) acucumRebuildFin() {
 	mp.uidManager.accumRebuildFin()
 }
 func (mp *metaPartition) acucumUidSizeByStore(ino *Inode) {
-	log.LogDebugf("action[acucumUidSizeByStore] mp[%v] ino %v", mp.config.PartitionId, ino.Inode)
 	mp.uidManager.accumInoUidSize(ino, mp.uidManager.accumRebuildBase)
 }
 
