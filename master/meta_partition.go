@@ -206,13 +206,14 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 		log.LogWarnf("action[checkEnd] vol[%v] not exist", mp.volName)
 		return
 	}
-	mp.Lock()
-	defer mp.Unlock()
+
 	curMaxPartitionID := vol.maxPartitionID()
 	if mp.PartitionID != curMaxPartitionID {
 		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return
 	}
+	mp.Lock()
+	defer mp.Unlock()
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
 		log.LogWarnf("action[checkEnd] partition[%v] no leader", mp.PartitionID)
 		return
