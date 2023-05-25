@@ -109,7 +109,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 	return &File{super: s, info: i, parentIno: pino, name: filename}
 }
 
-//get file parentPath
+// get file parentPath
 func (f *File) getParentPath() string {
 	filepath := ""
 	if f.parentIno == f.super.rootIno {
@@ -205,9 +205,10 @@ func (f *File) Forget() {
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 	bgTime := stat.BeginStat()
 	var needBCache bool
-
+	runningStat := f.super.runningMonitor.AddClientOp("fileopen", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Open", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -277,9 +278,9 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
-
 	ino := f.info.Inode
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filerelease", req.Hdr().Pid)
 
 	defer func() {
 		stat.EndStat("Release", err, bgTime, 1)
@@ -287,6 +288,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		if DisableMetaCache {
 			f.super.ic.Delete(ino)
 		}
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
@@ -312,9 +314,11 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("fileread", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Read", err, bgTime, 1)
 		stat.StatBandWidth("Read", uint32(req.Size))
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
@@ -363,9 +367,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filewrite", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Write", err, bgTime, 1)
 		stat.StatBandWidth("Write", uint32(len(req.Data)))
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -463,8 +469,10 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 // Flush only when fsyncOnClose is enabled.
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filesync", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Flush", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.fsyncOnClose {
@@ -511,6 +519,10 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
+	runningStat := f.super.runningMonitor.AddClientOp("filefsnyc", req.Hdr().Pid)
+	defer func() {
+		f.super.runningMonitor.SubClientOp(runningStat, err)
+	}()
 	if proto.IsHot(f.super.volType) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
@@ -531,8 +543,10 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filesetattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Setattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -590,8 +604,10 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filereadlink", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Readlink", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := f.info.Inode
@@ -608,8 +624,10 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filegetxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Getxattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.enableXattr {
@@ -640,8 +658,10 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filelistxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Listxattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.enableXattr {
@@ -667,8 +687,10 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("filesetxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Setxattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.enableXattr {
@@ -690,8 +712,10 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := f.super.runningMonitor.AddClientOp("fileremovexattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Removexattr", err, bgTime, 1)
+		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if !f.super.enableXattr {

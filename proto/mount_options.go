@@ -49,6 +49,7 @@ const (
 	EnableSummary
 	EnableUnixPermission
 	RequestTimeout
+	ClientOpTimeOut
 
 	//adls
 	VolType
@@ -153,6 +154,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheCheckIntervalS] = MountOption{"bcacheCheckIntervalS", "The block cache check interval", "", int64(300)}
 	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", false}
 	opts[RequestTimeout] = MountOption{"requestTimeout", "The Request Expiration Time", "", int64(0)}
+	opts[ClientOpTimeOut] = MountOption{"clientOpTimeOut", "client op time out in seconds", "", int64(0)}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -305,4 +307,5 @@ type MountOptions struct {
 	MaxStreamerLimit     int64
 	EnableAudit          bool
 	RequestTimeout       int64
+	ClientOpTimeOut      int64
 }
