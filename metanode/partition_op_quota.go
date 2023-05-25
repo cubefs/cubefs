@@ -405,14 +405,12 @@ func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind boo
 	treeItem := mp.extendTree.Get(extend)
 	if treeItem == nil {
 		isFind = false
-		log.LogDebugf("isExistQuota treeItem is nil inode:%v", ino)
 		return
 	}
 	extend = treeItem.(*Extend)
 	value, exist := extend.Get([]byte(proto.QuotaKey))
 	if !exist {
 		isFind = false
-		log.LogDebugf("isExistQuota quotakey is not exist inode:%v", ino)
 		return
 	}
 	var quotaInfos = &proto.MetaQuotaInfos{
