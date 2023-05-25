@@ -480,13 +480,13 @@ func NewTransactionProcessor(mp *metaPartition) *TransactionProcessor {
 }
 
 func (tm *TransactionManager) Reset() {
+	tm.Stop()
+	tm.blacklist.Clear()
 	tm.Lock()
 	tm.txIdAlloc.Reset()
 	tm.txTree.Reset()
 	tm.txProcessor = nil
 	tm.Unlock()
-	tm.blacklist.Clear()
-	tm.Stop()
 }
 
 func (tm *TransactionManager) processExpiredTransactions() {
