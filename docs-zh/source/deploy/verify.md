@@ -46,8 +46,8 @@ Blobstore cli 可以方便的管理纠删码子系统, 用 help 可以查看帮�
 基于默认配置，启动命令行工具 `blobstore-cli` ，详细使用参考[BLOBSTORE-CLI工具使用指南](../maintenance/tool.md)
 1. 物理机环境
 ``` bash
-$> cd ./cubefs/blobstore
-$>./bin/blobstore-cli -c cli/cli/cli.conf # 采用默认配置启动cli 工具进入命令行
+$> cd ./cubefs
+$>./build/bin/blobstore/blobstore-cli -c blobstore/cli/cli/cli.conf # 采用默认配置启动cli 工具进入命令行
 ```
 2. docker环境
 ``` bash

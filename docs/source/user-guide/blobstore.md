@@ -8,15 +8,14 @@ For a quick experience, please refer to [Single-Node Deployment](../deploy/node.
 
 ``` bash
 $ git clone https://github.com/cubefs/cubefs.git
-$ cd cubefs/blobstore
-$ source env.sh
-$ sh build.sh
+$ source build/cgo_env.sh
+$ make blobstore
 ```
 
-After successful building, the following executable files will be generated in the `bin` directory:
+After successful building, the following executable files will be generated in the `build/bin/blobstore` directory:
 
 ```text
-├── bin
+├── build/bin/blobstore
 │   ├── access
 │   ├── clustermgr
 │   ├── proxy

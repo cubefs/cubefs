@@ -47,12 +47,12 @@ The Blobstore CLI can easily manage the erasure coding subsystem. Use `help` to 
 Based on the default configuration, start the command-line tool `cli`. For detailed usage, please refer to [CLI Tool User Guide](../maintenance/tool.md).
 1. Physical machine environment
 ``` bash
-$> cd ./cubefs/blobstore
-$>./bin/cli -c cli/cli/cli.conf # Start the command line with the default configuration
+$> cd ./cubefs
+$>./build/bin/blobstore/blobstore-cli -c blobstore/cli/cli/cli.conf # Start the command line with the default configuration
 ```
 2. Docker environment
 ``` bash
-$> ./bin/cli -c conf/cli.conf
+$> ./bin/blobstore-cli -c conf/blobstore-cli.conf
 ```
 
 ### Verification
