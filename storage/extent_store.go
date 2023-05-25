@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"os"
 	"path"
 	"regexp"
@@ -136,8 +137,11 @@ type ExtentStore struct {
 	closed                            bool
 	availableTinyExtentC              chan uint64 // available tinyExtent channel
 	availableTinyExtentMap            sync.Map
+	availableTinyExtentMutex          sync.Mutex
 	brokenTinyExtentC                 chan uint64 // broken tinyExtent channel
 	brokenTinyExtentMap               sync.Map
+	brokenTinyExtentMutex             sync.Mutex
+	lostTinyExtentsMap                sync.Map
 	blockSize                         int
 	partitionID                       uint64
 	verifyExtentFp                    *os.File
@@ -485,6 +489,7 @@ func (s *ExtentStore) Close() {
 	s.verifyExtentFp.Sync()
 	s.verifyExtentFp.Close()
 	s.closed = true
+	close(s.closeC)
 }
 
 // Watermark returns the extent info of the given extent on the record.
@@ -643,6 +648,8 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 
 // GetAvailableTinyExtent returns the available tiny extent from the channel.
 func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
+	s.availableTinyExtentMutex.Lock()
+	defer s.availableTinyExtentMutex.Unlock()
 	select {
 	case extentID = <-s.availableTinyExtentC:
 		s.availableTinyExtentMap.Delete(extentID)
@@ -655,20 +662,11 @@ func (s *ExtentStore) GetAvailableTinyExtent() (extentID uint64, err error) {
 
 // SendToAvailableTinyExtentC sends the extent to the channel that stores the available tiny extents.
 func (s *ExtentStore) SendToAvailableTinyExtentC(extentID uint64) {
+	s.availableTinyExtentMutex.Lock()
+	defer s.availableTinyExtentMutex.Unlock()
 	if _, ok := s.availableTinyExtentMap.Load(extentID); !ok {
 		s.availableTinyExtentC <- extentID
 		s.availableTinyExtentMap.Store(extentID, true)
-	}
-}
-
-// SendAllToBrokenTinyExtentC sends all the extents to the channel that stores the broken extents.
-func (s *ExtentStore) SendAllToBrokenTinyExtentC(extentIds []uint64) {
-	for _, extentID := range extentIds {
-		if _, ok := s.brokenTinyExtentMap.Load(extentID); !ok {
-			s.brokenTinyExtentC <- extentID
-			s.brokenTinyExtentMap.Store(extentID, true)
-		}
-
 	}
 }
 
@@ -695,18 +693,34 @@ func (s *ExtentStore) MoveAllToBrokenTinyExtentC(cnt int) {
 
 // SendToBrokenTinyExtentC sends the given extent id to the channel.
 func (s *ExtentStore) SendToBrokenTinyExtentC(extentID uint64) {
+	s.brokenTinyExtentMutex.Lock()
+	defer s.brokenTinyExtentMutex.Unlock()
 	if _, ok := s.brokenTinyExtentMap.Load(extentID); !ok {
 		s.brokenTinyExtentC <- extentID
 		s.brokenTinyExtentMap.Store(extentID, true)
 	}
+}
 
+// SendAllToBrokenTinyExtentC sends all the extents to the channel that stores the broken extents.
+func (s *ExtentStore) SendAllToBrokenTinyExtentC(extentIds []uint64) {
+	s.brokenTinyExtentMutex.Lock()
+	defer s.brokenTinyExtentMutex.Unlock()
+	for _, extentID := range extentIds {
+		if _, ok := s.brokenTinyExtentMap.Load(extentID); !ok {
+			s.brokenTinyExtentC <- extentID
+			s.brokenTinyExtentMap.Store(extentID, true)
+		}
+	}
 }
 
 // GetBrokenTinyExtent returns the first broken extent in the channel.
 func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
+	s.brokenTinyExtentMutex.Lock()
+	defer s.brokenTinyExtentMutex.Unlock()
 	select {
 	case extentID = <-s.brokenTinyExtentC:
 		s.brokenTinyExtentMap.Delete(extentID)
+		s.lostTinyExtentsMap.Delete(extentID)
 		return
 	default:
 		return 0, NoBrokenExtentError
@@ -1152,4 +1166,23 @@ func (s *ExtentStore) GetRealBlockCnt(extentID uint64) (block int64, err error) 
 	}
 	block = e.getRealBlockCnt()
 	return
+}
+
+func (s *ExtentStore) FixTinyExtentCh() {
+	lost := make([]uint64, 0)
+	s.lostTinyExtentsMap.Range(func(key, value interface{}) bool {
+		extent := key.(uint64)
+		lost = append(lost, extent)
+		return true
+	})
+	if len(lost) > 0 {
+		msg := fmt.Sprintf("partition[%v] found lost tiny extents[%v] and send to broken tiny extent chan", s.partitionID, lost)
+		exporter.Warning(msg)
+		s.SendAllToBrokenTinyExtentC(lost)
+	} else {
+		log.LogInfof("partition[%v] finish check and no lost tiny extents", s.partitionID)
+	}
+	for i := 1; i <= proto.TinyExtentCount; i++ {
+		s.lostTinyExtentsMap.Store(uint64(i), true)
+	}
 }

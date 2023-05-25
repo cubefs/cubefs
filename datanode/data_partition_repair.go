@@ -70,24 +70,24 @@ func NewDataPartitionRepairTask(extentFiles []storage.ExtentInfoBlock, tinyDelet
 // The repair process can be described as follows:
 // There are two types of repairs.
 // The first one is called the normal extent repair, and the second one is called the tiny extent repair.
-// 1. normal extent repair:
-// - the leader collects all the extent information from the followers.
-// - for each extent, we compare all the replicas to find the one with the largest size.
-// - periodically check the size of the local extent, and if it is smaller than the largest size,
-//   add it to the tobeRepaired list, and generate the corresponding tasks.
-// 2. tiny extent repair:
-// - when creating the new partition, add all tiny extents to the toBeRepaired list,
-//   and the repair task will create all the tiny extents first.
-// - The leader of the replicas periodically collects the extent information of each follower
-// - for each extent, we compare all the replicas to find the one with the largest size.
-// - periodically check the size of the local extent, and if it is smaller than the largest size,
-//   add it to the tobeRepaired list, and generate the corresponding tasks.
+//  1. normal extent repair:
+//     - the leader collects all the extent information from the followers.
+//     - for each extent, we compare all the replicas to find the one with the largest size.
+//     - periodically check the size of the local extent, and if it is smaller than the largest size,
+//     add it to the tobeRepaired list, and generate the corresponding tasks.
+//  2. tiny extent repair:
+//     - when creating the new partition, add all tiny extents to the toBeRepaired list,
+//     and the repair task will create all the tiny extents first.
+//     - The leader of the replicas periodically collects the extent information of each follower
+//     - for each extent, we compare all the replicas to find the one with the largest size.
+//     - periodically check the size of the local extent, and if it is smaller than the largest size,
+//     add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 	start := time.Now().UnixNano()
 	log.LogInfof("action[repair] partition(%v) start.",
 		dp.partitionID)
 
-	var tinyExtents []uint64 // unsvailable extents 小文件写
+	var tinyExtents []uint64 // unavailable extents 小文件写
 	if extentType == proto.TinyExtentType {
 		tinyExtents = dp.brokenTinyExtents()
 		if len(tinyExtents) == 0 {
@@ -131,7 +131,7 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
 	// error check
-	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() > proto.TinyExtentCount {
+	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() != proto.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
 			"BadTinyExtents(%v) finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
 			dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond))

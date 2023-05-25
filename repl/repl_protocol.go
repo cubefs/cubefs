@@ -827,8 +827,8 @@ func (rp *ReplProtocol) putToBeProcess(request *Packet) (err error) {
 	case rp.toBeProcessedCh <- request:
 		return
 	default:
-		err = fmt.Errorf("request(%v)  toBeProcessedCh Chan has full (%v)", request.GetUniqueLogId(), len(rp.toBeProcessedCh))
-		log.LogErrorf(err.Error())
+		msg := fmt.Sprintf("request(%v) toBeProcessedCh Chan is full(%v)", request.GetUniqueLogId(), len(rp.toBeProcessedCh))
+		exporter.WarningCritical(msg)
 		return err
 	}
 }
