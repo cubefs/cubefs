@@ -17,6 +17,7 @@ package ec
 import (
 	"bytes"
 	"crypto/rand"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"math"
 	mrand "math/rand"
 	"reflect"
@@ -255,6 +256,7 @@ func TestAzureLrcP1Encoder(t *testing.T) {
 		if cm.Tactic().CodeType == codemode.AzureLrcP1 {
 			testAzureLrcP1Encoder(t, cm)
 		}
+		log.Printf("cm:%v test finish!", cm)
 	}
 }
 
@@ -311,17 +313,16 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 	require.Equal(t, srcData, wbuff.Bytes())
 
 	// Local reconstruct shard and check
-	localShardsInIdc := encoder.GetShardsInIdc(shards, 0)
-	for idx := 0; idx < len(localShardsInIdc); idx++ {
+	for idx := 0; idx < len(shards); idx++ {
 		// set wrong data
-		for i := range localShardsInIdc[idx] {
-			localShardsInIdc[idx][i] = 11
+		for i := range shards[idx] {
+			shards[idx][i] = 11
 		}
 		// check must be false when a shard broken
 		ok, err := encoder.Verify(shards)
 		require.False(t, ok)
 
-		err = encoder.Reconstruct(localShardsInIdc, []int{idx})
+		err = encoder.Reconstruct(shards, []int{idx})
 		require.NoError(t, err)
 		ok, err = encoder.Verify(shards)
 		require.NoError(t, err)
