@@ -32,6 +32,10 @@ import (
 	"github.com/cubefs/cubefs/util/ump"
 )
 
+const (
+	BuffersTotalLimit = 1024 * 1024 // 1M
+)
+
 var gMetaWrapper *meta.MetaWrapper
 
 func newCleanCmd() *cobra.Command {
@@ -116,6 +120,8 @@ func Clean(opt string) error {
 	if err != nil {
 		return fmt.Errorf("NewMetaWrapper failed: %v", err)
 	}
+
+	proto.InitBufferPool(BuffersTotalLimit)
 
 	switch opt {
 	case "inode":
