@@ -351,7 +351,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
 	mp2.Status = proto.ReadOnly
 	vol.addMetaPartition(mp2)
-	vol.updateViewCache(server.cluster)
+	vol.updateViewCache(server.cluster, proto.JsonType)
 	for id := 0; id < 30000; id++ {
 		dp := newDataPartition(uint64(id), 3, name, volID)
 		vol.dataPartitions.put(dp)
@@ -367,7 +367,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	}()
 	for i := 0; i < 10; i++ {
 		time.Sleep(time.Second)
-		vol.updateViewCache(server.cluster)
+		vol.updateViewCache(server.cluster, proto.JsonType)
 	}
 }
 

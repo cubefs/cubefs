@@ -377,7 +377,7 @@ func (m *Server) getEcPartitions(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	send(w, r, body)
+	send(w, r, body, proto.JsonType)
 }
 
 func (c *Cluster) addEcReplica(ecdp *EcDataPartition, index int, hosts []string) (err error) {

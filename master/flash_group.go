@@ -17,15 +17,16 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type flashGroupValue struct {
@@ -484,7 +485,7 @@ func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {
 	defer func() { metrics.Set(err) }()
 	flashGroupRespCache, err = m.cluster.getFlashGroupResponseCache()
 	if len(flashGroupRespCache) != 0 {
-		send(w, r, flashGroupRespCache)
+		send(w, r, flashGroupRespCache, proto.JsonType)
 	} else {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
@@ -623,12 +624,12 @@ func extractFlashGroupID(r *http.Request) (ID uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
-func getSetSlots(r *http.Request) (slots []uint32){
+func getSetSlots(r *http.Request) (slots []uint32) {
 	slots = make([]uint32, 0)
 	slotStr := r.FormValue(fgSlotsKey)
 	if slotStr != "" {
 		arr := strings.Split(slotStr, ",")
-		for i := 0; i< len(arr); i++ {
+		for i := 0; i < len(arr); i++ {
 			slot, err := strconv.ParseUint(arr[i], 10, 32)
 			if err != nil {
 				continue

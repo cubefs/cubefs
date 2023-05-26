@@ -17,16 +17,18 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	stringutil "github.com/cubefs/cubefs/util/string"
 	"github.com/cubefs/cubefs/util/unit"
+	pb "github.com/gogo/protobuf/proto"
 )
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -65,7 +67,9 @@ type Vol struct {
 	mpsLock                    sync.RWMutex
 	dataPartitions             *DataPartitionMap
 	mpsCache                   []byte
+	mpsCachePb                 []byte
 	viewCache                  []byte
+	viewCachePb                []byte
 	createDpMutex              sync.RWMutex
 	createMpMutex              sync.RWMutex
 	createTime                 int64
@@ -113,12 +117,12 @@ type Vol struct {
 	EnableBitMapAllocator      bool
 	CleanTrashDurationEachTime int32
 	TrashCleanMaxCountEachTime int32
-	NewVolName           string
-	NewVolID             uint64
-	OldVolName           string
-	FinalVolStatus       uint8
-	RenameConvertStatus  proto.VolRenameConvertStatus
-	MarkDeleteTime       int64
+	NewVolName                 string
+	NewVolID                   uint64
+	OldVolName                 string
+	FinalVolStatus             uint8
+	RenameConvertStatus        proto.VolRenameConvertStatus
+	MarkDeleteTime             int64
 	RemoteCacheBoostPath       string
 	RemoteCacheBoostEnable     bool
 	RemoteCacheAutoPrepare     bool
@@ -166,7 +170,9 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.authenticate = authenticate
 	vol.zoneName = zoneName
 	vol.viewCache = make([]byte, 0)
+	vol.viewCachePb = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
+	vol.mpsCachePb = make([]byte, 0)
 	vol.createTime = createTime
 	vol.enableToken = enableToken
 	vol.autoRepair = autoRepair
@@ -423,8 +429,11 @@ func (vol *Vol) getDpCnt() (dpCnt int) {
 	return
 }
 
-func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
-	return vol.dataPartitions.updateResponseCache(vol.ecDataPartitions, false, 0)
+func (vol *Vol) getDataPartitionsView(encodeType string) (body []byte, err error) {
+	if encodeType == proto.ProtobufType {
+		return vol.dataPartitions.updateResponseProtobufCache(vol.ecDataPartitions, false, 0)
+	}
+	return vol.dataPartitions.updateResponseJsonCache(vol.ecDataPartitions, false, 0)
 }
 
 func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
@@ -765,7 +774,8 @@ func (vol *Vol) totalUsedSpace() uint64 {
 	return totalUsed
 }
 
-func (vol *Vol) updateViewCache(c *Cluster) {
+func (vol *Vol) updateViewCache(c *Cluster, encodeType string) (mpsCache, viewCache []byte, err error) {
+	var bodyPb []byte
 	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.isSmart, vol.createTime)
 	view.ForceROW = vol.ForceROW
 	view.EnableWriteCache = vol.enableWriteCache
@@ -777,24 +787,64 @@ func (vol *Vol) updateViewCache(c *Cluster) {
 	view.SetOSSBucketPolicy(vol.OSSBucketPolicy)
 	mpViews := vol.getMetaPartitionsView()
 	view.MetaPartitions = mpViews
-	mpViewsReply := newSuccessHTTPReply(mpViews)
-	mpsBody, err := json.Marshal(mpViewsReply)
-	if err != nil {
-		log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
-		return
+	if encodeType == proto.JsonType {
+		mpViewsReply := newSuccessHTTPReply(mpViews)
+		mpsCache, err = json.Marshal(mpViewsReply)
+		if err != nil {
+			log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
+			return
+		}
+		vol.setMpsCache(mpsCache, proto.JsonType)
+	} else if encodeType == proto.ProtobufType {
+		mpViewsPb := proto.ConvertMetaPartitionViews(mpViews)
+		bodyPb, err = pb.Marshal(mpViewsPb)
+		if err != nil {
+			log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
+			return
+		}
+		mpViewsReplyPb := &proto.HTTPReplyPb{Code: proto.ErrCodeSuccess, Msg: proto.ErrSuc.Error(), Data: bodyPb}
+		mpsCache, err = pb.Marshal(mpViewsReplyPb)
+		if err != nil {
+			log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
+			return
+		}
+		vol.setMpsCache(mpsCache, proto.ProtobufType)
 	}
-	vol.setMpsCache(mpsBody)
+
 	dpResps := vol.dataPartitions.getDataPartitionsView(vol.ecDataPartitions, 0)
 	ecResps := vol.ecDataPartitions.getEcPartitionsView(0)
 	view.DataPartitions = dpResps
 	view.EcPartitions = ecResps
-	viewReply := newSuccessHTTPReply(view)
-	body, err := json.Marshal(viewReply)
-	if err != nil {
-		log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
-		return
+
+	if encodeType == proto.JsonType {
+		viewReply := newSuccessHTTPReply(view)
+		viewCache, err = json.Marshal(viewReply)
+		if err != nil {
+			log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
+			return
+		}
+		vol.setViewCache(viewCache, proto.JsonType)
+	} else if encodeType == proto.ProtobufType {
+		viewPb := proto.ConvertVolView(view)
+		bodyPb, err = pb.Marshal(viewPb)
+		if err != nil {
+			log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
+			return
+		}
+		viewPbReply := &proto.HTTPReplyPb{Code: proto.ErrCodeSuccess, Msg: proto.ErrSuc.Error(), Data: bodyPb}
+		viewCache, err = pb.Marshal(viewPbReply)
+		if err != nil {
+			log.LogErrorf("action[updateViewCache] failed,vol[%v],err[%v]", vol.Name, err)
+			return
+		}
+		vol.setViewCache(viewCache, proto.ProtobufType)
 	}
-	vol.setViewCache(body)
+	return
+}
+
+func (vol *Vol) clearViewCachePb() {
+	vol.setMpsCache(nil, proto.ProtobufType)
+	vol.setViewCache(nil, proto.ProtobufType)
 }
 
 func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
@@ -807,27 +857,41 @@ func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
 	return
 }
 
-func (vol *Vol) setMpsCache(body []byte) {
+func (vol *Vol) setMpsCache(body []byte, contentType string) {
 	vol.Lock()
 	defer vol.Unlock()
-	vol.mpsCache = body
+	if contentType == proto.ProtobufType {
+		vol.mpsCachePb = body
+	} else {
+		vol.mpsCache = body
+	}
 }
 
-func (vol *Vol) getMpsCache() []byte {
+func (vol *Vol) getMpsCache(contentType string) []byte {
 	vol.RLock()
 	defer vol.RUnlock()
+	if contentType == proto.ProtobufType {
+		return vol.mpsCachePb
+	}
 	return vol.mpsCache
 }
 
-func (vol *Vol) setViewCache(body []byte) {
+func (vol *Vol) setViewCache(body []byte, contentType string) {
 	vol.Lock()
 	defer vol.Unlock()
-	vol.viewCache = body
+	if contentType == proto.ProtobufType {
+		vol.viewCachePb = body
+	} else {
+		vol.viewCache = body
+	}
 }
 
-func (vol *Vol) getViewCache() []byte {
+func (vol *Vol) getViewCache(contentType string) []byte {
 	vol.RLock()
 	defer vol.RUnlock()
+	if contentType == proto.ProtobufType {
+		return vol.viewCachePb
+	}
 	return vol.viewCache
 }
 
@@ -842,7 +906,10 @@ func (vol *Vol) checkStatus(c *Cluster) {
 				"checkStatus occurred panic")
 		}
 	}()
-	vol.updateViewCache(c)
+
+	vol.updateViewCache(c, proto.JsonType)
+	vol.clearViewCachePb()
+
 	vol.Lock()
 	defer vol.Unlock()
 	if vol.Status != proto.VolStMarkDelete {

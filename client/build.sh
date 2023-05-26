@@ -53,7 +53,7 @@ for opt in ${ARGS[*]} ; do
             build_sdk=1
             build_client=1
             pack_libs=1
-	    dynamic=1
+            dynamic=1
             ;;
         test)
             build_test=1

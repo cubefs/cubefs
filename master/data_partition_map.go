@@ -22,6 +22,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	pb "github.com/gogo/protobuf/proto"
 )
 
 // DataPartitionMap stores all the data partitionMap
@@ -32,7 +34,8 @@ type DataPartitionMap struct {
 	lastLoadedIndex        uint64 // last loaded partition index
 	lastReleasedIndex      uint64 // last released partition index
 	partitions             []*DataPartition
-	responseCache          []byte
+	responseJsonCache      []byte
+	responseProtobufCache  []byte
 	volName                string
 }
 
@@ -40,7 +43,8 @@ func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
 	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
 	dpMap.partitions = make([]*DataPartition, 0)
-	dpMap.responseCache = make([]byte, 0)
+	dpMap.responseJsonCache = make([]byte, 0)
+	dpMap.responseProtobufCache = make([]byte, 0)
 	dpMap.volName = volName
 	return
 }
@@ -99,26 +103,38 @@ func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, cluste
 	dpMap.readableAndWritableCnt = readWrites
 }
 
-func (dpMap *DataPartitionMap) getDataPartitionResponseCache() []byte {
+func (dpMap *DataPartitionMap) getDataPartitionResponseJsonCache() []byte {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
-	return dpMap.responseCache
+	return dpMap.responseJsonCache
 }
 
-func (dpMap *DataPartitionMap) setDataPartitionResponseCache(responseCache []byte) {
+func (dpMap *DataPartitionMap) setDataPartitionResponseJsonCache(responseJsonCache []byte) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
-	if responseCache != nil {
-		dpMap.responseCache = responseCache
+	if responseJsonCache != nil {
+		dpMap.responseJsonCache = responseJsonCache
 	}
 }
 
-func (dpMap *DataPartitionMap) updateResponseCache(eps *EcDataPartitionCache, needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
-	responseCache := dpMap.getDataPartitionResponseCache()
-	if responseCache == nil || needsUpdate || len(responseCache) == 0 {
+func (dpMap *DataPartitionMap) getDataPartitionResponseProtobufCache() []byte {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+	return dpMap.responseProtobufCache
+}
+
+func (dpMap *DataPartitionMap) setDataPartitionResponseProtobufCache(responseProtobufCache []byte) {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	dpMap.responseProtobufCache = responseProtobufCache
+}
+
+func (dpMap *DataPartitionMap) updateResponseJsonCache(eps *EcDataPartitionCache, needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+	responseJsonCache := dpMap.getDataPartitionResponseJsonCache()
+	if responseJsonCache == nil || needsUpdate || len(responseJsonCache) == 0 {
 		dpResps := dpMap.getDataPartitionsView(eps, minPartitionID)
 		if len(dpResps) == 0 {
-			log.LogError(fmt.Sprintf("action[updateDpResponseCache],volName[%v] minPartitionID:%v,err:%v",
+			log.LogError(fmt.Sprintf("action[updateDpResponseJsonCache],volName[%v] minPartitionID:%v,err:%v",
 				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
 			return nil, proto.ErrNoAvailDataPartition
 		}
@@ -126,15 +142,50 @@ func (dpMap *DataPartitionMap) updateResponseCache(eps *EcDataPartitionCache, ne
 		cv.DataPartitions = dpResps
 		reply := newSuccessHTTPReply(cv)
 		if body, err = json.Marshal(reply); err != nil {
-			log.LogError(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",
+			log.LogError(fmt.Sprintf("action[updateDpResponseJsonCache],minPartitionID:%v,err:%v",
 				minPartitionID, err.Error()))
 			return nil, proto.ErrMarshalData
 		}
-		dpMap.setDataPartitionResponseCache(body)
+		dpMap.setDataPartitionResponseJsonCache(body)
 		return
 	}
-	body = make([]byte, len(responseCache))
-	copy(body, responseCache)
+	body = make([]byte, len(responseJsonCache))
+	copy(body, responseJsonCache)
+
+	return
+}
+
+func (dpMap *DataPartitionMap) updateResponseProtobufCache(eps *EcDataPartitionCache, needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+	responseProtobufCache := dpMap.getDataPartitionResponseProtobufCache()
+	if responseProtobufCache == nil || needsUpdate || len(responseProtobufCache) == 0 {
+		dpResps := dpMap.getDataPartitionsView(eps, minPartitionID)
+		if len(dpResps) == 0 {
+			log.LogError(fmt.Sprintf("action[updateDpResponseProtobufCache],volName[%v] minPartitionID:%v,err:%v",
+				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
+			return nil, proto.ErrNoAvailDataPartition
+		}
+		cv := proto.NewDataPartitionsView()
+		cv.DataPartitions = dpResps
+		cvPb := proto.ConvertDataPartitionsView(cv)
+
+		pData := make([]byte, 0)
+		if pData, err = pb.Marshal(cvPb); err != nil {
+			log.LogError(fmt.Sprintf("action[updateDpResponseProtobufCache],minPartitionID:%v,err:%v",
+				minPartitionID, err.Error()))
+			return nil, proto.ErrMarshalData
+		}
+
+		reply := &proto.HTTPReplyPb{Code: proto.ErrCodeSuccess, Msg: proto.ErrSuc.Error(), Data: pData}
+		if body, err = pb.Marshal(reply); err != nil {
+			log.LogError(fmt.Sprintf("action[updateDpResponseProtobufCache],minPartitionID:%v,err:%v",
+				minPartitionID, err.Error()))
+			return nil, proto.ErrMarshalData
+		}
+		dpMap.setDataPartitionResponseProtobufCache(body)
+		return
+	}
+	body = make([]byte, len(responseProtobufCache))
+	copy(body, responseProtobufCache)
 
 	return
 }

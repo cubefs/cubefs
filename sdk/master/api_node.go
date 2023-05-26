@@ -17,13 +17,13 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
-	pb "github.com/gogo/protobuf/proto"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	pb "github.com/gogo/protobuf/proto"
 )
 
 type NodeAPI struct {
@@ -36,7 +36,7 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName, version string) (id uint64
 	request.addParam("zoneName", zoneName)
 	request.addParam("version", version)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	id, err = strconv.ParseUint(string(data), 10, 64)
@@ -49,7 +49,7 @@ func (api *NodeAPI) AddMetaNode(serverAddr, zoneName, version string) (id uint64
 	request.addParam("zoneName", zoneName)
 	request.addParam("version", version)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	id, err = strconv.ParseUint(string(data), 10, 64)
@@ -61,7 +61,7 @@ func (api *NodeAPI) AddCodecNode(serverAddr, version string) (id uint64, err err
 	request.addParam("addr", serverAddr)
 	request.addParam("version", version)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	id, err = strconv.ParseUint(string(data), 10, 64)
@@ -72,7 +72,7 @@ func (api *NodeAPI) CodEcNodeDecommission(nodeAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionCodecNode)
 	request.addParam("addr", nodeAddr)
 	request.addHeader("isTimeOut", "false")
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -85,7 +85,7 @@ func (api *NodeAPI) AddEcNode(serverAddr, httpPort, zoneName, version string) (i
 	request.addParam("zoneName", zoneName)
 	request.addParam("version", version)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	id, err = strconv.ParseUint(string(data), 10, 64)
@@ -98,7 +98,7 @@ func (api *NodeAPI) GetEcScrubInfo() (scrubInfo proto.UpdateEcScrubInfoRequest, 
 	var request = newAPIRequest(http.MethodGet, proto.AdminClusterGetScrub)
 	request.addHeader("isTimeOut", "false")
 
-	if respData, err = api.mc.serveRequest(request); err != nil {
+	if respData, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	if err = json.Unmarshal(respData, &respInfo); err != nil {
@@ -112,7 +112,7 @@ func (api *NodeAPI) EcNodeDecommission(nodeAddr string) (data []byte, err error)
 	request.addParam("addr", nodeAddr)
 	request.addHeader("isTimeOut", "false")
 
-	data, err = api.mc.serveRequest(request)
+	data, _, err = api.mc.serveRequest(request)
 	return
 }
 
@@ -122,14 +122,14 @@ func (api *NodeAPI) EcNodeDiskDecommission(nodeAddr, diskID string) (data []byte
 	request.addParam("disk", diskID)
 	request.addHeader("isTimeOut", "false")
 
-	data, err = api.mc.serveRequest(request)
+	data, _, err = api.mc.serveRequest(request)
 	return
 }
 
 func (api *NodeAPI) EcNodegetTaskStatus() (taskView []*proto.MigrateTaskView, err error) {
 	var data []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetAllTaskStatus)
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	taskView = make([]*proto.MigrateTaskView, 0)
@@ -141,7 +141,7 @@ func (api *NodeAPI) GetDataNode(serverHost string) (node *proto.DataNodeInfo, er
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetDataNode)
 	request.addParam("addr", serverHost)
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	if buf, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	node = &proto.DataNodeInfo{}
@@ -155,7 +155,7 @@ func (api *NodeAPI) GetMetaNode(serverHost string) (node *proto.MetaNodeInfo, er
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetMetaNode)
 	request.addParam("addr", serverHost)
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	if buf, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	node = &proto.MetaNodeInfo{}
@@ -172,7 +172,7 @@ func (api *NodeAPI) ResponseMetaNodeTask(task *proto.AdminTask) (err error) {
 	}
 	var request = newAPIRequest(http.MethodPost, proto.GetMetaNodeTaskResponse)
 	request.addBody(encoded)
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		log.LogErrorf("serveRequest: %v", err.Error())
 		return
 	}
@@ -187,7 +187,7 @@ func (api *NodeAPI) ResponseDataNodeTask(task *proto.AdminTask) (err error) {
 	}
 	var request = newAPIRequest(http.MethodPost, proto.GetDataNodeTaskResponse)
 	request.addBody(encoded)
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -200,7 +200,7 @@ func (api *NodeAPI) ResponseCodecNodeTask(task *proto.AdminTask) (err error) {
 	}
 	var request = newAPIRequest(http.MethodPost, proto.GetCodecNodeTaskResponse)
 	request.addBody(encoded)
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -213,7 +213,7 @@ func (api *NodeAPI) ResponseEcNodeTask(task *proto.AdminTask) (err error) {
 	}
 	var request = newAPIRequest(http.MethodPost, proto.GetEcNodeTaskResponse)
 	request.addBody(encoded)
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -223,7 +223,7 @@ func (api *NodeAPI) DataNodeDecommission(nodeAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionDataNode)
 	request.addParam("addr", nodeAddr)
 	request.addHeader("isTimeOut", "false")
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -234,7 +234,7 @@ func (api *NodeAPI) DataNodeDiskDecommission(nodeAddr, diskID string) (err error
 	request.addParam("addr", nodeAddr)
 	request.addParam("disk", diskID)
 	request.addHeader("isTimeOut", "false")
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -244,7 +244,7 @@ func (api *NodeAPI) MetaNodeDecommission(nodeAddr string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionMetaNode)
 	request.addParam("addr", nodeAddr)
 	request.addHeader("isTimeOut", "false")
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -257,7 +257,7 @@ func (api *NodeAPI) DataNodeGetPartition(addr string, id uint64) (node *proto.DN
 	nodeClient.DataNodeProfPort = api.mc.DataNodeProfPort
 	request.addParam("id", strconv.FormatUint(id, 10))
 	request.addHeader("isTimeOut", "false")
-	if buf, err = nodeClient.serveRequest(request); err != nil {
+	if buf, _, err = nodeClient.serveRequest(request); err != nil {
 		return
 	}
 	node = new(proto.DNDataPartitionInfo)
@@ -296,7 +296,7 @@ func (api *NodeAPI) MetaNodeGetPartition(addr string, id uint64) (node *proto.MN
 	nodeClient.MetaNodeProfPort = api.mc.MetaNodeProfPort
 	request.addParam("pid", strconv.FormatUint(id, 10))
 	request.addHeader("isTimeOut", "false")
-	if buf, err = nodeClient.serveRequest(request); err != nil {
+	if buf, _, err = nodeClient.serveRequest(request); err != nil {
 		return
 	}
 	node = &proto.MNMetaPartitionInfo{}
@@ -313,7 +313,7 @@ func (api *NodeAPI) DataNodeValidateCRCReport(dpCrcInfo *proto.DataPartitionExte
 	}
 	var request = newAPIRequest(http.MethodPost, proto.DataNodeValidateCRCReport)
 	request.addBody(encoded)
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -327,7 +327,7 @@ func (api *NodeAPI) DataNodeGetTinyExtentHolesAndAvali(addr string, partitionID,
 	request.addParam("partitionID", strconv.FormatUint(partitionID, 10))
 	request.addParam("extentID", strconv.FormatUint(extentID, 10))
 	request.addHeader("isTimeOut", "false")
-	if buf, err = nodeClient.serveRequest(request); err != nil {
+	if buf, _, err = nodeClient.serveRequest(request); err != nil {
 		return
 	}
 	info = &proto.DNTinyExtentInfo{}
@@ -341,7 +341,7 @@ func (api *NodeAPI) GetCodecNode(serverHost string) (node *proto.CodecNodeInfo, 
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetCodecNode)
 	request.addParam("addr", serverHost)
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	if buf, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	node = &proto.CodecNodeInfo{}
@@ -355,7 +355,7 @@ func (api *NodeAPI) GetEcNode(serverHost string) (node *proto.EcNodeInfo, err er
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetEcNode)
 	request.addParam("addr", serverHost)
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	if buf, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	node = &proto.EcNodeInfo{}
@@ -368,7 +368,7 @@ func (api *NodeAPI) GetEcNode(serverHost string) (node *proto.EcNodeInfo, err er
 func (api *NodeAPI) EcNodeGetTaskStatus() (taskView []*proto.MigrateTaskView, err error) {
 	var data []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetAllTaskStatus)
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	taskView = make([]*proto.MigrateTaskView, 0)
@@ -384,7 +384,7 @@ func (api *NodeAPI) DataNodeGetExtentCrc(addr string, partitionId, extentId uint
 	request.addParam("partitionId", strconv.FormatUint(partitionId, 10))
 	request.addParam("extentId", strconv.FormatUint(extentId, 10))
 	request.addHeader("isTimeOut", "false")
-	if buf, err = nodeClient.serveRequest(request); err != nil {
+	if buf, _, err = nodeClient.serveRequest(request); err != nil {
 		return
 	}
 	resp := &struct {
@@ -407,7 +407,7 @@ func (api *NodeAPI) EcNodeGetExtentCrc(addr string, partitionId, extentId, strip
 	request.addParam("stripeCount", strconv.FormatUint(stripeCount, 10))
 	request.addParam("crc", strconv.FormatUint(uint64(crc), 10))
 	request.addHeader("isTimeOut", "false")
-	if buf, err = nodeClient.serveRequest(request); err != nil {
+	if buf, _, err = nodeClient.serveRequest(request); err != nil {
 		return
 	}
 	resp = &proto.ExtentCrcResponse{}
@@ -421,7 +421,7 @@ func (api *NodeAPI) EcNodeGetExtentCrc(addr string, partitionId, extentId, strip
 func (api *NodeAPI) StopMigratingByDataNode(datanode string) string {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDNStopMigrating)
 	request.addParam("addr", datanode)
-	data, err := api.mc.serveRequest(request)
+	data, _, err := api.mc.serveRequest(request)
 	if err != nil {
 		return fmt.Sprintf("StopMigratingByDataNode fail:%v\n", err)
 	}
@@ -434,7 +434,7 @@ func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version string) (id uint6
 	request.addParam("zoneName", zoneName)
 	request.addParam("version", version)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	id, err = strconv.ParseUint(string(data), 10, 64)
@@ -446,7 +446,7 @@ func (api *NodeAPI) FlashNodeDecommission(nodeAddr string) (result string, err e
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionFlashNode)
 	request.addParam("addr", nodeAddr)
 	request.addHeader("isTimeOut", "false")
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return string(data), nil
@@ -456,7 +456,7 @@ func (api *NodeAPI) GetFlashNode(serverHost string) (node *proto.FlashNodeViewIn
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetFlashNode)
 	request.addParam("addr", serverHost)
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	if buf, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	node = &proto.FlashNodeViewInfo{}
@@ -471,7 +471,7 @@ func (api *NodeAPI) SetFlashNodeState(addr, state string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetFlashNode)
 	request.addParam("addr", addr)
 	request.addParam("state", state)
-	if buf, err = api.mc.serveRequest(request); err != nil {
+	if buf, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	var msg string
@@ -492,7 +492,7 @@ func (api *NodeAPI) ResponseHeartBeatTaskPb(taskPb *proto.HeartbeatAdminTaskPb) 
 	}
 	var request = newAPIRequest(http.MethodPost, proto.GetHeartbeatPbResponse)
 	request.addBody(encoded)
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return

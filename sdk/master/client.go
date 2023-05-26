@@ -29,6 +29,8 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+
+	pb "github.com/gogo/protobuf/proto"
 )
 
 const (
@@ -105,7 +107,29 @@ func (c *MasterClient) setLeader(addr string) {
 	c.Unlock()
 }
 
-func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
+func (c *MasterClient) parseJsonResp(r *request, respData []byte) (data []byte, code int32, msg string, err error) {
+	var body = &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err = json.Unmarshal(respData, body); err != nil {
+		err = fmt.Errorf("unmarshal json response body err:%v", err)
+		return
+	}
+	return []byte(body.Data), body.Code, body.Msg, nil
+}
+
+func (c *MasterClient) parseProtobufResp(r *request, respData []byte) (data []byte, code int32, msg string, err error) {
+	var body = &proto.HTTPReplyPb{}
+	if err = pb.Unmarshal(respData, body); err != nil {
+		err = fmt.Errorf("unmarshal protobuf response body err:%v", err)
+		return
+	}
+	return body.Data, body.Code, body.Msg, nil
+}
+
+func (c *MasterClient) serveRequest(r *request) (respData []byte, contentType string, err error) {
 	requestAddr, nodes := c.prepareRequest()
 	host := requestAddr
 	for i := -1; i < len(nodes); i++ {
@@ -138,7 +162,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			continue
 		}
 		stateCode := resp.StatusCode
-		repsData, err = ioutil.ReadAll(resp.Body)
+		respData, err = ioutil.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
 			log.LogWarnf("serveRequest: read http response body fail: err(%v)", err)
@@ -146,7 +170,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 		}
 		switch stateCode {
 		case http.StatusForbidden:
-			curMasterAddr := strings.TrimSpace(string(repsData))
+			curMasterAddr := strings.TrimSpace(string(respData))
 			curMasterAddr = strings.Replace(curMasterAddr, "\n", "", -1)
 			if len(curMasterAddr) == 0 {
 				log.LogWarnf("serveRequest: server response status 403: request(%s) status"+
@@ -154,53 +178,57 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				err = ErrNoValidMaster
 				return
 			}
-			repsData, err = c.serveRequest(r)
+			respData, contentType, err = c.serveRequest(r)
 			return
 		case http.StatusOK:
 			if requestAddr != host {
 				c.setLeader(host)
 			}
+			contentType = resp.Header.Get("content-type")
 			if proto.IsDbBack && r.path != proto.AdminSetNodeInfo && r.path != proto.AdminGetLimitInfo {
-				return repsData, nil
+				return respData, contentType, nil
 			}
-			var body = &struct {
-				Code int32           `json:"code"`
-				Msg  string          `json:"msg"`
-				Data json.RawMessage `json:"data"`
-			}{}
-			if err := json.Unmarshal(repsData, body); err != nil {
-				return nil, fmt.Errorf("unmarshal response body err:%v", err)
 
+			var (
+				code int32
+				msg  string
+			)
+			if contentType == proto.ProtobufType {
+				respData, code, msg, err = c.parseProtobufResp(r, respData)
+			} else {
+				respData, code, msg, err = c.parseJsonResp(r, respData)
 			}
+
 			switch c.ClientType {
 			case MASTER:
-				// o represent proto.ErrCodeSuccess
-				if body.Code != 0 {
+				// 0 represent proto.ErrCodeSuccess
+				if code != 0 {
 					if r.path != proto.AdminGetVolMutex {
-						log.LogErrorf("action failed, Code:%v, Msg:%v, Data:%v", body.Code, body.Msg, string(body.Data))
+						log.LogErrorf("action failed, Code:%v, Msg:%v", code, msg)
 					}
-					if err = proto.ParseErrorCode(body.Code); err == proto.ErrInternalError {
-						err = fmt.Errorf("errcode:%v, msg:%v\n", err.Error(), body.Msg)
+					if err = proto.ParseErrorCode(code); err == proto.ErrInternalError {
+						err = fmt.Errorf("errcode:%v, msg:%v\n", err.Error(), msg)
 					}
-					return nil, err
+					return
 				}
 			case DATANODE, METANODE, ECNODE:
-				// o represent proto.ErrCodeSuccess
-				if body.Code != 200 {
-					log.LogErrorf("action failed, Code:%v, Msg:%v, Data:%v", body.Code, body.Msg, string(body.Data))
-					return nil, proto.ParseErrorCode(body.Code)
+				// 200 represent proto.ErrCodeSuccess
+				if code != 200 {
+					log.LogErrorf("action failed, Code:%v, Msg:%v", code, msg)
+					err = proto.ParseErrorCode(code)
+					return
 				}
 			}
+			return
 
-			return []byte(body.Data), nil
 		default:
 			if proto.IsDbBack && stateCode == http.StatusBadRequest {
-				return nil, fmt.Errorf(string(repsData))
+				return nil, "", fmt.Errorf(string(respData))
 			}
 			log.LogWarnf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
-				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))
+				resp.Request.URL.String(), host, stateCode, strings.Replace(string(respData), "\n", "", -1))
 			err = fmt.Errorf("serveRequest: unknown status(%v) host(%v) uri(%v) body(%s)", stateCode, resp.Request.URL.String(),
-				host, strings.Replace(string(repsData), "\n", "", -1))
+				host, strings.Replace(string(respData), "\n", "", -1))
 			continue
 		}
 	}

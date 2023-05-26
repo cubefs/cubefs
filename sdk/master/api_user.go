@@ -19,7 +19,7 @@ func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.Us
 	}
 	request.addBody(reqBody)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	userInfo = &proto.UserInfo{}
@@ -32,7 +32,7 @@ func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.Us
 func (api *UserAPI) DeleteUser(userID string) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserDelete)
 	request.addParam("user", userID)
-	if _, err = api.mc.serveRequest(request); err != nil {
+	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
@@ -46,7 +46,7 @@ func (api *UserAPI) UpdateUser(param *proto.UserUpdateParam) (userInfo *proto.Us
 	}
 	request.addBody(reqBody)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	userInfo = &proto.UserInfo{}
@@ -60,7 +60,7 @@ func (api *UserAPI) GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err e
 	var request = newAPIRequest(http.MethodGet, proto.UserGetAKInfo)
 	request.addParam("ak", accesskey)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	userInfo = &proto.UserInfo{}
@@ -74,7 +74,7 @@ func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err er
 	var request = newAPIRequest(http.MethodGet, proto.UserGetInfo)
 	request.addParam("user", userID)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	userInfo = &proto.UserInfo{}
@@ -92,7 +92,7 @@ func (api *UserAPI) UpdatePolicy(param *proto.UserPermUpdateParam) (userInfo *pr
 	}
 	request.addBody(reqBody)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	userInfo = &proto.UserInfo{}
@@ -110,7 +110,7 @@ func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *pr
 	}
 	request.addBody(reqBody)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	userInfo = &proto.UserInfo{}
@@ -123,7 +123,7 @@ func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *pr
 //func (api *UserAPI) DeleteVolPolicy(vol string) (err error) {
 //	var request = newAPIRequest(http.MethodPost, proto.UserDeleteVolPolicy)
 //	request.addParam("name", vol)
-//	if _, err = api.mc.serveRequest(request); err != nil {
+//	if _, _, err = api.mc.serveRequest(request); err != nil {
 //		return
 //	}
 //	return
@@ -137,7 +137,7 @@ func (api *UserAPI) TransferVol(param *proto.UserTransferVolParam) (userInfo *pr
 	}
 	request.addBody(reqBody)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	userInfo = &proto.UserInfo{}
@@ -151,7 +151,7 @@ func (api *UserAPI) ListUsers(keywords string) (users []*proto.UserInfo, err err
 	var request = newAPIRequest(http.MethodGet, proto.UserList)
 	request.addParam("keywords", keywords)
 	var data []byte
-	if data, err = api.mc.serveRequest(request); err != nil {
+	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	users = make([]*proto.UserInfo, 0)
@@ -165,7 +165,7 @@ func (api *UserAPI) ListUsers(keywords string) (users []*proto.UserInfo, err err
 //	var request = newAPIRequest(http.MethodGet, proto.UsersOfVol)
 //	request.addParam("name", vol)
 //	var data []byte
-//	if data, err = api.mc.serveRequest(request); err != nil {
+//	if data, _, err = api.mc.serveRequest(request); err != nil {
 //		return
 //	}
 //	users = make([]string, 0)

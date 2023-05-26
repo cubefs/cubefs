@@ -389,6 +389,7 @@ func (ecdp *EcDataPartition) checkReplicaSaveTime(c *Cluster, vol *Vol) {
 		}
 		ecdp.Unlock()
 	}
-	vol.dataPartitions.updateResponseCache(vol.ecDataPartitions, true, 0)
+	vol.dataPartitions.updateResponseJsonCache(vol.ecDataPartitions, true, 0)
+	vol.dataPartitions.setDataPartitionResponseProtobufCache(nil)
 	log.LogInfof("CheckReplicaSaveTime delete dataPartitionId(%v) success", ecdp.PartitionID)
 }

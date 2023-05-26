@@ -24,6 +24,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -323,6 +324,7 @@ func TestGetClusterView(t *testing.T) {
 	if len(server.cluster.responseCache) == 0 {
 		t.Errorf("responseCache should not be empty")
 	}
+
 	var body = &struct {
 		Code int32           `json:"code"`
 		Msg  string          `json:"msg"`
@@ -334,6 +336,99 @@ func TestGetClusterView(t *testing.T) {
 	err = json.Unmarshal(body.Data, &cv)
 	assert.NoErrorf(t, err, "unmarshal data err:%v", err)
 	assert.Equalf(t, cv, clusterView, "clusterView not equal clusterView:%v cv:%v", clusterView, cv)
+}
+
+func TestGetVol(t *testing.T) {
+	volName := commonVolName
+	volView, err := mc.ClientAPI().GetVolumeWithoutAuthKey(volName)
+	if err != nil {
+		t.Error(err)
+	}
+
+	vol, err := server.cluster.getVol(volName)
+	if err != nil {
+		t.Error(err)
+	}
+	viewCache := vol.getViewCache(proto.JsonType)
+	if len(viewCache) == 0 {
+		vol.updateViewCache(server.cluster, proto.JsonType)
+		viewCache = vol.getViewCache(proto.JsonType)
+	}
+	var body = &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err = json.Unmarshal(viewCache, body); err != nil {
+		t.Errorf("unmarshal view cache err:%v", err)
+	}
+	vv := &proto.VolView{}
+	if err = json.Unmarshal(body.Data, &vv); err != nil {
+		t.Errorf("unmarshal data err:%v", err)
+	}
+
+	mpsJson := make(map[uint64]*proto.MetaPartitionView, len(vv.MetaPartitions))
+	for _, v := range vv.MetaPartitions {
+		mpsJson[v.PartitionID] = v
+	}
+	vv.MetaPartitions = nil
+	mpsPb := make(map[uint64]*proto.MetaPartitionView, len(volView.MetaPartitions))
+	for _, v := range volView.MetaPartitions {
+		mpsPb[v.PartitionID] = v
+	}
+	volView.MetaPartitions = nil
+
+	dpsJson := make(map[uint64]*proto.DataPartitionResponse, len(vv.DataPartitions))
+	for _, v := range vv.DataPartitions {
+		dpsJson[v.PartitionID] = v
+	}
+	vv.DataPartitions = nil
+	dpsPb := make(map[uint64]*proto.DataPartitionResponse, len(volView.DataPartitions))
+	for _, v := range volView.DataPartitions {
+		dpsPb[v.PartitionID] = v
+	}
+	volView.DataPartitions = nil
+
+	epsJson := make(map[uint64]*proto.EcPartitionResponse, len(vv.EcPartitions))
+	for _, v := range vv.EcPartitions {
+		epsJson[v.PartitionID] = v
+	}
+	vv.EcPartitions = nil
+	epsPb := make(map[uint64]*proto.EcPartitionResponse, len(volView.EcPartitions))
+	for _, v := range volView.EcPartitions {
+		epsPb[v.PartitionID] = v
+	}
+	volView.EcPartitions = nil
+	if !reflect.DeepEqual(volView, vv) {
+		t.Errorf("volView from protobuf: %v not equal volView from json:%v", volView, vv)
+	}
+	if !reflect.DeepEqual(mpsJson, mpsPb) {
+		t.Errorf("volView.MetaPartitions from protobuf: %v not equal volView.MetaPartitions from json:%v", mpsPb, mpsJson)
+	}
+	if !reflect.DeepEqual(dpsJson, dpsPb) {
+		t.Errorf("volView.DataPartitions from protobuf: %v not equal volView.DataPartitions from json:%v", dpsPb, dpsJson)
+	}
+	if !reflect.DeepEqual(epsJson, epsPb) {
+		t.Errorf("volView.EcPartitions from protobuf: %v not equal volView.EcPartitions from json:%v", epsPb, epsJson)
+	}
+}
+
+func TestGetVolSimpleInfo(t *testing.T) {
+	volName := commonVolName
+	simpleVolView, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		t.Error(err)
+	}
+
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVol, commonVol.Name)
+	reply := processReturnRawReply(reqURL, t)
+	svv := &proto.SimpleVolView{}
+	if err = json.Unmarshal(reply.Data, svv); err != nil {
+		t.Errorf("unmarshal data err:%v", err)
+	}
+	if !reflect.DeepEqual(simpleVolView, svv) {
+		t.Errorf("simpleVolView from protobuf: %v not equal simpleVolView from json:%v", simpleVolView, svv)
+	}
 }
 
 func TestSetMetaNodeThreshold(t *testing.T) {
@@ -588,11 +683,6 @@ func buildAuthKey(owner string) string {
 	h.Write([]byte(owner))
 	cipherStr := h.Sum(nil)
 	return hex.EncodeToString(cipherStr)
-}
-
-func TestGetVolSimpleInfo(t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVol, commonVol.Name)
-	process(reqURL, t)
 }
 
 func TestCreateVol(t *testing.T) {

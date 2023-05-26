@@ -18,9 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
-	pb "github.com/gogo/protobuf/proto"
-	atomic2 "go.uber.org/atomic"
 	"math"
 	"sort"
 	"strconv"
@@ -32,14 +29,18 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	pb "github.com/gogo/protobuf/proto"
+	atomic2 "go.uber.org/atomic"
 )
 
 // Cluster stores all the cluster-level information.
 type Cluster struct {
 	Name                       string
 	responseCache              []byte
+	responseCachePb            []byte
 	vols                       map[string]*Vol
 	dataNodes                  sync.Map
 	metaNodes                  sync.Map
@@ -271,7 +272,8 @@ func (c *Cluster) checkDataPartitions() {
 		readWrites, dataNodeBadDisksOfVol := vol.checkDataPartitions(c)
 		allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
-		vol.dataPartitions.updateResponseCache(vol.ecDataPartitions, true, 0)
+		vol.dataPartitions.updateResponseJsonCache(vol.ecDataPartitions, true, 0)
+		vol.dataPartitions.setDataPartitionResponseProtobufCache(nil)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
@@ -3186,7 +3188,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	vol.CreateStatus = proto.DefaultVolCreateStatus
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
-	vol.updateViewCache(c)
+	vol.updateViewCache(c, proto.JsonType)
 	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", name, readWriteDataPartitions)
 	return
 
@@ -5548,15 +5550,21 @@ func (c *Cluster) scheduleToUpdateClusterViewResponseCache() {
 	}()
 }
 
-func (c *Cluster) getClusterViewResponseCache() (responseCache []byte) {
-	if len(c.responseCache) == 0 {
+func (c *Cluster) getClusterViewResponseCache(encodeType string) (responseCache []byte) {
+	if len(c.responseCachePb) == 0 || len(c.responseCache) == 0 {
 		c.updateClusterViewResponseCache()
 	}
-	return c.responseCache
+
+	if encodeType == proto.ProtobufType {
+		return c.responseCachePb
+	} else {
+		return c.responseCache
+	}
 }
 
 func (c *Cluster) updateClusterViewResponseCache() {
 	cv := c.getClusterView()
+
 	reply := newSuccessHTTPReply(cv)
 	responseCache, err := json.Marshal(reply)
 	if err != nil {
@@ -5566,11 +5574,31 @@ func (c *Cluster) updateClusterViewResponseCache() {
 		return
 	}
 	c.responseCache = responseCache
+
+	cvPb := proto.ConvertClusterView(cv)
+	data, err := pb.Marshal(cvPb)
+	if err != nil {
+		msg := fmt.Sprintf("action[updateClusterViewResponseCache] protobuf marshal err:%v", err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+	replyPb := &proto.HTTPReplyPb{Code: proto.ErrCodeSuccess, Msg: proto.ErrSuc.Error(), Data: data}
+	responseCachePb, err := pb.Marshal(replyPb)
+	if err != nil {
+		msg := fmt.Sprintf("action[updateClusterViewResponseCache] protobuf marshal err:%v", err)
+		log.LogError(msg)
+		Warn(c.Name, msg)
+		return
+	}
+	c.responseCachePb = responseCachePb
+
 	return
 }
 
 func (c *Cluster) clearClusterViewResponseCache() {
 	c.responseCache = nil
+	c.responseCachePb = nil
 }
 
 func (c *Cluster) getClusterView() (cv *proto.ClusterView) {

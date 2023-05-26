@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	pb "github.com/gogo/protobuf/proto"
 )
 
 // NodeView provides the view of the data or meta node.
@@ -279,9 +280,11 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewModuleTP(proto.AdminGetClusterUmpKey)
 	defer func() { metrics.Set(nil) }()
-	responseCache := m.cluster.getClusterViewResponseCache()
+
+	encodeType := getEncodeType(r)
+	responseCache := m.cluster.getClusterViewResponseCache(encodeType)
 	if len(responseCache) != 0 {
-		send(w, r, responseCache)
+		send(w, r, responseCache, encodeType)
 		return
 	}
 	cv := &proto.ClusterView{
@@ -393,7 +396,18 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	})
 	cv.DataNodeBadDisks = m.cluster.getDataNodeBadDisks()
 
-	sendOkReply(w, r, newSuccessHTTPReply(cv))
+	if encodeType == proto.ProtobufType {
+		cvPb := proto.ConvertClusterView(cv)
+		data, err := pb.Marshal(cvPb)
+		if err != nil {
+			log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", cvPb, r.URL, r.RemoteAddr, err)
+			http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+			return
+		}
+		sendOkReplyPb(w, r, data)
+	} else {
+		sendOkReply(w, r, newSuccessHTTPReply(cv))
+	}
 }
 
 func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
@@ -2029,7 +2043,20 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	log.LogInfof("view vol convert state %v, mem vol convert st:%v", volView.ConvertState, vol.convertState)
-	sendOkReply(w, r, newSuccessHTTPReply(volView))
+
+	encodeType := getEncodeType(r)
+	if encodeType == proto.ProtobufType {
+		volViewPb := proto.ConvertSimpleVolView(volView)
+		data, err := pb.Marshal(volViewPb)
+		if err != nil {
+			log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", volViewPb, r.URL, r.RemoteAddr, err)
+			http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+			return
+		}
+		sendOkReplyPb(w, r, data)
+	} else {
+		sendOkReply(w, r, newSuccessHTTPReply(volView))
+	}
 }
 
 func newSimpleView(vol *Vol) *proto.SimpleVolView {
@@ -4752,12 +4779,24 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
 		return
 	}
-	send(w, r, reply)
+	send(w, r, reply, proto.JsonType)
 	return
 }
 
-func send(w http.ResponseWriter, r *http.Request, reply []byte) {
-	w.Header().Set("content-type", "application/json")
+func sendOkReplyPb(w http.ResponseWriter, r *http.Request, data []byte) (err error) {
+	replyPb := &proto.HTTPReplyPb{Code: proto.ErrCodeSuccess, Msg: proto.ErrSuc.Error(), Data: data}
+	data, err = pb.Marshal(replyPb)
+	if err != nil {
+		log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", replyPb, r.URL, r.RemoteAddr, err)
+		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+		return
+	}
+	send(w, r, data, proto.ProtobufType)
+	return
+}
+
+func send(w http.ResponseWriter, r *http.Request, reply []byte, contentType string) {
+	w.Header().Set("content-type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
 	if _, err := w.Write(reply); err != nil {
 		log.LogErrorf("fail to write http reply len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
@@ -4783,6 +4822,14 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPR
 	return
 }
 
+func getEncodeType(r *http.Request) string {
+	encodeType := r.Header.Get(proto.AcceptFormat)
+	if encodeType == "" {
+		encodeType = proto.JsonType
+	}
+	return encodeType
+}
+
 func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
 		name string
@@ -4800,12 +4847,17 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists), currentLeaderVersion)
 		return
 	}
-	mpsCache := vol.getMpsCache()
+
+	encodeType := getEncodeType(r)
+	mpsCache := vol.getMpsCache(encodeType)
 	if len(mpsCache) == 0 {
-		vol.updateViewCache(m.cluster)
-		mpsCache = vol.getMpsCache()
+		mpsCache, _, err = vol.updateViewCache(m.cluster, encodeType)
+		if err != nil {
+			m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			return
+		}
 	}
-	send(w, r, mpsCache)
+	send(w, r, mpsCache, encodeType)
 	return
 }
 
@@ -4829,11 +4881,12 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if body, err = vol.getDataPartitionsView(); err != nil {
+	encodeType := getEncodeType(r)
+	if body, err = vol.getDataPartitionsView(encodeType); err != nil {
 		m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
 		return
 	}
-	send(w, r, body)
+	send(w, r, body, encodeType)
 }
 
 func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
@@ -4861,10 +4914,15 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		m.sendErrReply(w, r, newErrHTTPReply(proto.ErrVolAuthKeyNotMatch), currentLeaderVersion)
 		return
 	}
-	viewCache := vol.getViewCache()
+
+	encodeType := getEncodeType(r)
+	viewCache := vol.getViewCache(encodeType)
 	if len(viewCache) == 0 {
-		vol.updateViewCache(m.cluster)
-		viewCache = vol.getViewCache()
+		_, viewCache, err = vol.updateViewCache(m.cluster, encodeType)
+		if err != nil {
+			m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			return
+		}
 	}
 	if !param.skipOwnerValidation && vol.authenticate {
 		if jobj, ticket, ts, err = parseAndCheckTicket(r, m.cluster.MasterSecretKey, param.name); err != nil {
@@ -4881,7 +4939,7 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(message))
 	} else {
-		send(w, r, viewCache)
+		send(w, r, viewCache, encodeType)
 	}
 }
 

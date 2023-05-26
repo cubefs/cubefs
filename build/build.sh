@@ -89,7 +89,7 @@ pre_build() {
     export GO111MODULE=off
     export GOPATH=/tmp/cfs/go
 
-    mkdir -p $GOPATH/src/github.com/chubaofs
+    mkdir -p $GOPATH/src/github.com/cubefs
     SrcPath=$GOPATH/src/github.com/cubefs/cubefs
     if [  ! -e "$SrcPath" ] ; then
         ln -s $RootPath $SrcPath 2>/dev/null
