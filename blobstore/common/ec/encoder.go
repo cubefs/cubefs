@@ -121,28 +121,16 @@ func NewEncoder(cfg Config) (Encoder, error) {
 		// for local parity Encoding & single failure (key insight of LRC)
 		// (3) entireEngine : entire Encoding matrix with dimension of (k+g+l)*k
 		// & used to solve the failure scenario that (1)(2) can't handle
-		optionGlobal := reedsolomon.WithSpecialJerasureMatrix()
-		optionLocal := reedsolomon.WithJerasureMatrix()
 		optionEntire := reedsolomon.WithAzureLrcP1Matrix()
 		n, m, l := cfg.CodeMode.N, cfg.CodeMode.M, cfg.CodeMode.L
-		globalEngine, err := reedsolomon.New(n, m, optionGlobal)
-		if err != nil {
-			return nil, err
-		}
-		localEngine, err := reedsolomon.New(m, 1, optionLocal)
-		if err != nil {
-			return nil, err
-		}
-		entireEngine, err := reedsolomon.New(n, m+l, optionEntire)
+		engine, err := reedsolomon.New(n, m+l, optionEntire)
 		if err != nil {
 			return nil, err
 		}
 		return &azureLrcP1Encoder{
-			Config:       cfg,
-			pool:         pool,
-			globalEngine: globalEngine,
-			localEngine:  localEngine,
-			entireEngine: entireEngine,
+			Config: cfg,
+			pool:   pool,
+			engine: engine,
 		}, nil
 	}
 
