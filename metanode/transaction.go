@@ -705,7 +705,7 @@ func (tm *TransactionManager) Stop() {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf("transaction manager process Stop,err:%v", r)
+			log.LogErrorf("transaction manager process Stop for mp[%v] ,err:%v", tm.txProcessor.mp.config.PartitionId, r)
 		}
 	}()
 
@@ -1095,6 +1095,10 @@ func (tm *TransactionManager) setTransactionState(txId string, state int32) (sta
 	val, _ = json.Marshal(stateReq)
 
 	resp, err = tm.txProcessor.mp.submit(opFSMTxSetState, val)
+	if err != nil {
+		log.LogWarnf("setTransactionState: set transaction[%v] state to [%v] failed, err[%v]", txId, state, err)
+		return proto.OpTxSetStateErr, err
+	}
 	status = resp.(uint8)
 
 	if status != proto.OpOk {
