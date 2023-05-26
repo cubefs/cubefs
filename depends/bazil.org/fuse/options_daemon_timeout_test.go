@@ -1,5 +1,6 @@
 // Test for adjustable timeout between a FUSE request and the daemon's response.
 //
+//go:build darwin || freebsd
 // +build darwin freebsd
 
 package fuse_test
