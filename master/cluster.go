@@ -110,23 +110,28 @@ func (mgr *followerReadManager) reSet() {
 func (mgr *followerReadManager) getVolumeDpView() {
 	var (
 		err      error
-		volNames []string
+		volViews []*volValue
 		view     *proto.DataPartitionsView
 	)
-	if err, volNames = mgr.c.loadVolsName(); err != nil {
+	if err, volViews = mgr.c.loadVolsViews(); err != nil {
 		panic(err)
 	}
 	if mgr.c.masterClient.Leader() == "" {
 		log.LogErrorf("followerReadManager.getVolumeDpView but master leader not ready")
 		return
 	}
-	for _, name := range volNames {
-		log.LogDebugf("followerReadManager.getVolumeDpView %v", name)
-		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitions(name); err != nil {
-			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v", name, err)
+	for _, vv := range volViews {
+		if vv.Status == markDelete {
+			mgr.lastUpdateTick[vv.Name] = time.Now()
+			mgr.status[vv.Name] = false
 			continue
 		}
-		mgr.updateVolViewFromLeader(name, view)
+		log.LogDebugf("followerReadManager.getVolumeDpView %v", vv.Name)
+		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitions(vv.Name); err != nil {
+			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v", vv.Name, err)
+			continue
+		}
+		mgr.updateVolViewFromLeader(vv.Name, view)
 	}
 }
 
@@ -137,7 +142,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	vols := mgr.c.copyVols()
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
-		if vol.Status == markDelete || !proto.IsHot(vol.VolType) && (vol.CacheAction == proto.NoCache || vol.CacheCapacity == 0) {
+		if vol.Status == markDelete {
 			continue
 		}
 		var body []byte
@@ -175,9 +180,8 @@ func (mgr *followerReadManager) checkStatus() {
 }
 
 func (mgr *followerReadManager) updateVolViewFromLeader(key string, view *proto.DataPartitionsView) {
-	log.LogDebugf("followerReadManager.updateVolViewFromLeader key %v", key)
 	if !mgr.checkViewContent(key, view, true) {
-		log.LogErrorf("updateVolViewFromLeader. checkViewContent failed")
+		log.LogErrorf("updateVolViewFromLeader. key %v checkViewContent failed status %v", key, mgr.status[key])
 		return
 	}
 	log.LogDebugf("action[updateVolViewFromLeader] volume %v be updated, value len %v", key, len(view.DataPartitions))
@@ -202,14 +206,12 @@ func (mgr *followerReadManager) checkViewContent(volName string, view *proto.Dat
 	log.LogDebugf("volName %v do check content", volName)
 
 	if len(view.DataPartitions) == 0 {
-		log.LogErrorf("checkViewContent. get nil partitions volName %v", volName)
-		return false
+		return true
 	}
 	for i := 0; i < len(view.DataPartitions); i++ {
 		dp := view.DataPartitions[i]
 		if len(dp.Hosts) == 0 {
 			log.LogErrorf("checkViewContent. dp id %v, leader %v, status %v", dp.PartitionID, dp.LeaderAddr, dp.Status)
-			ok = false
 		}
 	}
 	log.LogDebugf("checkViewContent. volName %v dp cnt %v check pass", volName, len(view.DataPartitions))
@@ -228,7 +230,10 @@ func (mgr *followerReadManager) getVolViewAsFollower(key string) (value []byte, 
 func (mgr *followerReadManager) IsVolViewReady(volName string) bool {
 	mgr.rwMutex.Lock()
 	defer mgr.rwMutex.Unlock()
-	return mgr.status[volName]
+	if status, ok := mgr.status[volName]; ok {
+		return status
+	}
+	return false
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
