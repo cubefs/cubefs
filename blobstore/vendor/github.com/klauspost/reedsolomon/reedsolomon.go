@@ -105,8 +105,31 @@ type Encoder interface {
 	// CORRECT n shards to form an invertable decode
 	// matrix.
 	//
+	// the first []int is selected survival index,
+	// which determines the decode matrix
+	//
+	// the second []int is real read shards index,
+	// which actually participate the decoding
+	//
 	// This function is specially design for LRC.
-	GetSurvivalShards(badIndex []int) ([]int, error)
+	GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int, []int, error)
+
+	// PartialReconstruct is specifically designed for reconstruction
+	// optimization, which supports the partial decoding with the
+	// selected survival shards in an AZ
+	//
+	// Assum we need to use D0 = x1*D1 + x2*D2 + x3*D3 + x4*P0 to reconstruct
+	// the D0, while D1 、D2 are stored in AZ0 and D3 、P0 are stored in AZ1.
+	// Using PartialReconstruct() allows the upper-level application to compute
+	// intermediate parity containing the specified shards.
+	// For example, if we pass (shards[][],[D1,D2,D3,P0],[D0]) to the PartialReconstruct()
+	// and shards[][] only contains D1 and D2, this function will only compute
+	// x1*D1 + x2*D2 and ADD it into D0.
+	// P.S. [D1,D2,D3,P0] is used to determine the decoding matrix
+	//
+	// The length of the array must be equal to Shards.
+	// You indicate that a shard is missing by setting it to nil
+	PartialReconstruct(shards [][]byte, survivalIdx, badIdx []int) error
 }
 
 // reedSolomon contains a matrix for a specific
@@ -327,9 +350,10 @@ func buildMatrixAzureLrcP1(dataShards, globalParityShards, localParityShards int
 		lm[i] = make([]byte, dataShards)
 	}
 	vm = append(vm, lm...)
+	localDataNum := dataShards / (localParityShards - 1)
 	for row := 0; row < localParityShards-1; row++ {
 		for col := 0; col < dataShards; col++ {
-			if col/globalParityShards != row {
+			if col/localDataNum != row {
 				vm[dataShards+globalParityShards+row][col] = 0
 			} else {
 				vm[dataShards+globalParityShards+row][col] = 1
@@ -435,13 +459,8 @@ func New(dataShards, parityShards int, opts ...Option) (Encoder, error) {
 	case r.o.useAzureLrcP1Matrix:
 		// we use n,m,l,t to refer the dataShards,globalParityShards,localParityShards and r.Shards
 		// we have the following limitations:
-		// m*(l-1) = n; n+m+l=t (n,t are known)
-		// so we can solve the equations to get:
-		// l = ((t+1-n) - sqrt((t+1-n)^2-4*t) )/2
-		// g = t-n-l
-		t := float64(r.Shards)
-		n := float64(dataShards)
-		l := int(((t + 1 - n) - math.Sqrt((t+1-n)*(t+1-n)-4*t)) / 2)
+		// l = 3
+		l := 3
 		r.m, err = buildMatrixAzureLrcP1(dataShards, r.Shards-dataShards-l, l)
 	default:
 		r.m, err = buildMatrix(dataShards, r.Shards)
@@ -997,21 +1016,61 @@ func (r reedSolomon) reconstruct(shards [][]byte, dataOnly bool) error {
 	return nil
 }
 
-func (r reedSolomon) GetSurvivalShards(badIndex []int) ([]int, error) {
-	var err error
-	// Quick check: are all of the shards present?  If so, there's
-	// nothing to do.
-	if len(badIndex) == 0 {
-		// Cool.  All of the shards data data.  We don't
-		// need to do anything.
-		return nil, nil
-	}
-	// More complete sanity check
-	if r.Shards-len(badIndex) < r.DataShards {
-		return nil, ErrTooFewShards
+// ErrShardsNotSurvival is returned if shards are not in survivalIdx[]
+// where given to PartitialReconstruct.
+var ErrShardsNotSurvival = errors.New("shards aren't in survivalIdx[]")
+var ErrIndexNotIncremental = errors.New("badIdx[]/survivalIdx[] aren't incremental")
+
+// PartialReconstruct is specifically designed for reconstruction
+// optimization, which supports the partial decoding with the
+// selected survival shards in an AZ
+//
+// Assum we need to use D0 = x1*D1 + x2*D2 + x3*D3 + x4*P0 to reconstruct
+// the D0, while D1 、D2 are stored in AZ0 and D3 、P0 are stored in AZ1.
+// Using PartialReconstruct() allows the upper-level application to compute
+// intermediate parity containing the specified shards.
+// For example, if we pass (shards[][],[D1,D2,D3,P0],[D0]) to the PartialReconstruct()
+// and shards[][] only contains D1 and D2, this function will only compute
+// x1*D1 + x2*D2 and ADD it into D0.
+// P.S. [D1,D2,D3,P0] is used to determine the decoding matrix
+//
+// The length of the array must be equal to Shards.
+// You indicate that a shard is missing by setting it to nil
+//
+// Make Sure that survivalIdx and badIdx is Incremental
+func (r reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []int) error {
+	if len(shards) != r.Shards {
+		return ErrTooFewShards
 	}
 
-	// find the survival shards index
+	// Make Sure that survivalIdx and badIdx is Incremental
+	for i := 1; i < len(survivalIdx); i++ {
+		if survivalIdx[i] <= survivalIdx[i-1] {
+			return ErrIndexNotIncremental
+		}
+	}
+
+	for i := 1; i < len(badIdx); i++ {
+		if badIdx[i] <= badIdx[i-1] {
+			return ErrIndexNotIncremental
+		}
+	}
+
+	// Quick check: are all of the shards present?  If so, there's
+	// nothing to do.
+	numberPresent := 0
+	for i := 0; i < r.Shards; i++ {
+		if len(shards[i]) != 0 {
+			numberPresent++
+		}
+	}
+	if numberPresent == r.Shards {
+		// Cool.  All of the shards data data.  We don't
+		// need to do anything.
+		return nil
+	}
+
+	var err error
 	isIn := func(elem int, list []int) bool {
 		for _, c := range list {
 			if elem == c {
@@ -1020,6 +1079,194 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int) ([]int, error) {
 		}
 		return false
 	}
+
+	// Check if shards in shards[][] are all in survivalIdx[]
+	for i := 0; i < r.Shards; i++ {
+		if len(shards[i]) != 0 {
+			if isIn(i, survivalIdx) == false {
+				return ErrShardsNotSurvival
+			}
+		}
+	}
+
+	// Attempt to get the cached inverted matrix out of the tree
+	// based on the indices of the invalid rows.
+	invalidIndices := make([]int, r.Shards-len(survivalIdx))
+	invalidCnt := 0
+	for i := 0; i < r.Shards; i++ {
+		if isIn(i, survivalIdx) == false {
+			invalidIndices[invalidCnt] = i
+			invalidCnt++
+		}
+	}
+
+	// get survival shards' decode matrix
+	dataDecodeMatrix := r.tree.GetInvertedMatrix(invalidIndices)
+	if dataDecodeMatrix == nil {
+		// Pull out the rows of the matrix that correspond to the
+		// shards that we have and build a square matrix.  This
+		// matrix could be used to generate the shards that we have
+		// from the original data.
+		subMatrix, _ := newMatrix(r.DataShards, r.DataShards)
+		for subMatrixRow, validIndex := range survivalIdx {
+			for c := 0; c < r.DataShards; c++ {
+				subMatrix[subMatrixRow][c] = r.m[validIndex][c]
+			}
+		}
+		// Invert the matrix, so we can go from the encoded shards
+		// back to the original data.  Then pull out the row that
+		// generates the shard that we want to decode.  Note that
+		// since this matrix maps back to the original data, it can
+		// be used to create a data shard, but not a parity shard.
+		dataDecodeMatrix, err = subMatrix.Invert()
+		if err != nil {
+			return err
+		}
+
+		// Cache the inverted matrix in the tree for future use keyed on the
+		// indices of the invalid rows.
+		err = r.tree.InsertInvertedMatrix(invalidIndices, dataDecodeMatrix, r.Shards)
+		if err != nil {
+			return err
+		}
+	}
+
+	// get invalid shards' encode matrix
+	invalidEncodeMatrix, _ := newMatrix(len(badIdx), r.DataShards)
+	for subMatrixRow, invalidIndex := range badIdx {
+		for c := 0; c < r.DataShards; c++ {
+			invalidEncodeMatrix[subMatrixRow][c] = r.m[invalidIndex][c]
+		}
+	}
+
+	// get final decode matrix
+	finalDecodeMatrix, err := invalidEncodeMatrix.Multiply(dataDecodeMatrix)
+	if err != nil {
+		return nil
+	}
+
+	// fill the shards[survivalIdx] with 0
+	// if shards[survivalIdx] contain data,skip
+	size := shardSize(shards)
+	for _, idx := range survivalIdx {
+		if len(shards[idx]) == 0 {
+			shards[idx] = make([]byte, size)
+			for c, _ := range shards[idx] {
+				shards[idx][c] = 0
+			}
+		}
+	}
+
+	subShards := make([][]byte, r.DataShards)
+	subShardsRow := 0
+	for i := 0; i < r.Shards; i++ {
+		if isIn(i, survivalIdx) {
+			subShards[subShardsRow] = shards[i]
+			subShardsRow++
+		}
+	}
+
+	// Re-create any data shards that were missing.
+	//
+	// The input to the coding is all of the shards we actually
+	// have, and the output is the missing data shards.  The computation
+	// is done using the special decode matrix we just built.
+	outputs := make([][]byte, r.ParityShards)
+	outputCount := 0
+
+	// partial Reconstruct
+	for iShard := 0; iShard < r.Shards; iShard++ {
+		if isIn(iShard, badIdx) {
+			if cap(shards[iShard]) >= size {
+				shards[iShard] = shards[iShard][0:size]
+			} else {
+				shards[iShard] = make([]byte, size)
+			}
+			outputs[outputCount] = shards[iShard]
+			outputCount++
+		}
+	}
+	r.codeSomeShards(finalDecodeMatrix, subShards, outputs[:outputCount], outputCount, size)
+	return nil
+}
+
+// GetSurvivalShards allows system to select the
+// CORRECT n shards to form an invertable decode
+// matrix.
+//
+// the first []int is selected survival index,
+// which determines the decode matrix
+//
+// the second []int is real read shards index,
+// which actually participate the decoding
+//
+// This function is specially design for LRC.
+func (r reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int, []int, error) {
+	var err error
+	// Quick check: are all of the shards present?  If so, there's
+	// nothing to do.
+	if len(badIndex) == 0 {
+		// Cool.  All of the shards data data.  We don't
+		// need to do anything.
+		return nil, nil, nil
+	}
+	// More complete sanity check
+	if r.Shards-len(badIndex) < r.DataShards {
+		return nil, nil, ErrTooFewShards
+	}
+
+	// Only one failure, consider local repair
+	// survivalShards[] should contain all survival
+	// shards in the AZ which hold the invalid shard
+	forComputationShards := make([]int, 0)
+	selectShards := make([]int, r.DataShards)
+	if len(badIndex) == 1 {
+		badAzId := 0
+		flag := false
+		// find the AZ contain failure
+		for azId, layout := range azLayout {
+			for _, shardIdx := range layout {
+				if badIndex[0] == shardIdx {
+					badAzId = azId
+					flag = true
+					break
+				}
+			}
+			if flag == true {
+				break
+			}
+		}
+		for _, shardIdx := range azLayout[badAzId] {
+			if badIndex[0] != shardIdx {
+				forComputationShards = append(forComputationShards, shardIdx)
+			}
+		}
+	}
+
+	isIn := func(elem int, list []int) bool {
+		for _, c := range list {
+			if elem == c {
+				return true
+			}
+		}
+		return false
+	}
+
+	isContainedIn := func(shortList, longList []int) bool {
+		cnt := 0
+		for _, s := range shortList {
+			for _, l := range longList {
+				if s == l {
+					cnt++
+					break
+				}
+			}
+		}
+		return cnt == len(shortList)
+	}
+
+	// find the survival shards index which
+	// can form an invertable decoding matrix
 	survivalCnt := 0
 	survivalIndices := make([]int, r.Shards-len(badIndex))
 	for i := 0; i < r.Shards; i++ {
@@ -1029,6 +1276,7 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int) ([]int, error) {
 		}
 	}
 	subMatrix, _ := newMatrix(r.DataShards, r.DataShards)
+
 	// find the combination
 	comb := func(n, k int) int {
 		lgmma1, _ := math.Lgamma(float64(n + 1))
@@ -1038,6 +1286,7 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int) ([]int, error) {
 	}
 	n := survivalCnt
 	k := r.DataShards
+	isChoosed := false
 	combinationCnt := comb(n, k)
 	tmpCombination := make([]int, k)
 	for i, _ := range tmpCombination {
@@ -1052,9 +1301,20 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int) ([]int, error) {
 		}
 		_, err = subMatrix.Invert()
 		if err == nil {
-			break
+			for i, sel := range tmpCombination {
+				selectShards[i] = survivalIndices[sel]
+			}
+			if len(badIndex) > 1 {
+				isChoosed = true
+				break
+			}
+			if len(badIndex) == 1 && isContainedIn(forComputationShards, selectShards) {
+				isChoosed = true
+				break
+			}
 		}
-		if err != nil && i < combinationCnt-1 {
+		// this combination can't be choosed
+		if i < combinationCnt-1 {
 			j := k - 1
 			for j >= 0 && tmpCombination[j] == n-k+j {
 				j--
@@ -1066,14 +1326,13 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int) ([]int, error) {
 		}
 	}
 	// All possible matrices are singular
-	if err != nil {
-		return nil, err
+	if isChoosed == false {
+		return nil, nil, err
 	}
-	selectShards := make([]int, r.DataShards)
-	for i, sel := range tmpCombination {
-		selectShards[i] = survivalIndices[sel]
+	if len(badIndex) == 1 {
+		return selectShards, forComputationShards, nil
 	}
-	return selectShards, nil
+	return selectShards, selectShards, nil
 }
 
 // ErrShortData will be returned by Split(), if there isn't enough data
@@ -1103,7 +1362,7 @@ func (r reedSolomon) Split(data []byte) ([][]byte, error) {
 		data = data[:cap(data)]
 	}
 
-	// Only allocate memory if necessary
+	// Only allocate memory if necessary.
 	if len(data) < (r.Shards * perShard) {
 		// Pad data to r.Shards*perShard.
 		padding := make([]byte, (r.Shards*perShard)-len(data))

@@ -26,30 +26,23 @@ import (
 
 type azureLrcP1Encoder struct {
 	Config
-	pool         limit.Limiter // concurrency pool
-	globalEngine reedsolomon.Encoder
-	localEngine  reedsolomon.Encoder
-	entireEngine reedsolomon.Encoder
+	pool   limit.Limiter // concurrency pool
+	engine reedsolomon.Encoder
 }
 
 func (e *azureLrcP1Encoder) Encode(shards [][]byte) error {
 	if len(shards) != (e.CodeMode.N + e.CodeMode.M + e.CodeMode.L) {
 		return ErrInvalidShards
 	}
-	// For better load balance, we force that m = n/(l-1)
-	// Our Encode() & Verify() are based on the limit above
-	if e.CodeMode.M != int(float64(e.CodeMode.N)/float64(e.CodeMode.L-1)) {
-		return ErrInvalidShards
-	}
 	e.pool.Acquire()
 	defer e.pool.Release()
 	fillFullShards(shards)
 
-	if err := e.entireEngine.Encode(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]); err != nil {
+	if err := e.engine.Encode(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]); err != nil {
 		return errors.Info(err, "azureLrcP1Encoder.Encode entire failed")
 	}
 	if e.EnableVerify {
-		ok, err := e.entireEngine.Verify(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L])
+		ok, err := e.engine.Verify(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L])
 		if err != nil {
 			return errors.Info(err, "azureLrcP1Encoder.Encode entire verify failed")
 		}
@@ -66,27 +59,8 @@ func (e *azureLrcP1Encoder) Verify(shards [][]byte) (bool, error) {
 	defer e.pool.Release()
 	log.SetOutputLevel(0)
 
-	// verify an AZ stripe
-	if len(shards) == e.CodeMode.M+e.CodeMode.L/e.CodeMode.AZCount {
-		ok, err := e.localEngine.Verify(shards)
-		if err != nil {
-			err = errors.Info(err, "azureLrcP1Encoder.Verify local shards failed")
-		}
-		if !ok && err == nil {
-			err = ErrVerify
-		}
-		return ok, err
-	}
-
-	ok, err := e.globalEngine.Verify(shards[:e.CodeMode.N+e.CodeMode.M])
-	if err != nil {
-		err = errors.Info(err, "azureLrcP1Encoder.Verify entire shards failed")
-	}
-	if !ok && err == nil {
-		err = ErrVerify
-	}
 	// verify the entire stripe
-	ok, err = e.entireEngine.Verify(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L])
+	ok, err := e.engine.Verify(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L])
 	if err != nil {
 		err = errors.Info(err, "azureLrcP1Encoder.Verify entire shards failed")
 	}
@@ -100,24 +74,9 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	e.pool.Acquire()
 	fillFullShards(shards)
 
-	globalBadIdx := make([]int, 0)
-	for _, i := range badIdx {
-		if i < e.CodeMode.N+e.CodeMode.M {
-			globalBadIdx = append(globalBadIdx, i)
-		}
-	}
-	initBadShards(shards, globalBadIdx)
+	initBadShards(shards, badIdx)
 	defer e.pool.Release()
 
-	// use local ec reconstruct, saving network bandwidth
-	if len(shards) == e.CodeMode.M+e.CodeMode.L/e.CodeMode.AZCount {
-		if err := e.localEngine.Reconstruct(shards); err != nil {
-			return errors.Info(err, "azureLrcP1Encoder.Reconstruct local ec reconstruct failed")
-		}
-		return nil
-	}
-
-	// use entire reconstruct
 	isIn := func(elem int, list []int) bool {
 		for _, c := range list {
 			if elem == c {
@@ -126,18 +85,36 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 		}
 		return false
 	}
-	survivalIndex, err := e.entireEngine.GetSurvivalShards(badIdx)
+	azLayout := e.CodeMode.GetECLayoutByAZ()
+	survivalIndex, forComputationShardsIdx, err := e.engine.GetSurvivalShards(badIdx, azLayout)
 	if err != nil {
 		return err
 	}
-	for i, v := range shards {
-		if isIn(i, survivalIndex) == false {
-			shards[i] = v[:0]
+
+	if len(badIdx) == 1 {
+		tmpShards := make([][]byte, e.CodeMode.N+e.CodeMode.M+e.CodeMode.L)
+		for i, v := range shards {
+			if isIn(i, forComputationShardsIdx) {
+				tmpShards[i] = v
+			} else {
+				tmpShards[i] = v[:0]
+			}
+		}
+		if err := e.engine.PartialReconstruct(tmpShards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L], survivalIndex, badIdx); err != nil {
+			return errors.Info(err, "azureLrcP1Encoder.ParticailReconstruct ec reconstruct failed (local reconstruct)")
+		}
+		shards[badIdx[0]] = tmpShards[badIdx[0]]
+	} else {
+		for i, v := range shards {
+			if isIn(i, survivalIndex) == false {
+				shards[i] = v[:0]
+			}
+		}
+		if err := e.engine.Reconstruct(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]); err != nil {
+			return errors.Info(err, "azureLrcP1Encoder.Reconstruct ec reconstruct failed (entire reconstruct)")
 		}
 	}
-	if err := e.entireEngine.Reconstruct(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]); err != nil {
-		return errors.Info(err, "azureLrcP1Encoder.Reconstruct ec reconstruct failed (entire reconstruct)")
-	}
+
 	return nil
 }
 
@@ -150,29 +127,16 @@ func (e *azureLrcP1Encoder) ReconstructData(shards [][]byte, badIdx []int) error
 		}
 	}
 	initBadShards(shards, globalBadIdx)
-	shards = shards[:e.CodeMode.N+e.CodeMode.M]
+	shards = shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]
 	e.pool.Acquire()
 	defer e.pool.Release()
-	return e.globalEngine.ReconstructData(shards)
+	return e.engine.ReconstructData(shards)
 }
 
 func (e *azureLrcP1Encoder) Split(data []byte) ([][]byte, error) {
-	shards, err := e.globalEngine.Split(data)
+	shards, err := e.engine.Split(data)
 	if err != nil {
 		return nil, err
-	}
-	shardN, shardLen := len(shards), len(shards[0])
-	if cap(data) >= (e.CodeMode.L+shardN)*shardLen {
-		if cap(data) > len(data) {
-			data = data[:cap(data)]
-		}
-		for i := 0; i < e.CodeMode.L; i++ {
-			shards = append(shards, data[(shardN+i)*shardLen:(shardN+i+1)*shardLen])
-		}
-	} else {
-		for i := 0; i < e.CodeMode.L; i++ {
-			shards = append(shards, make([]byte, shardLen))
-		}
 	}
 	return shards, nil
 }
@@ -200,5 +164,5 @@ func (e *azureLrcP1Encoder) GetShardsInIdc(shards [][]byte, idx int) [][]byte {
 }
 
 func (e *azureLrcP1Encoder) Join(dst io.Writer, shards [][]byte, outSize int) error {
-	return e.globalEngine.Join(dst, shards[:(e.CodeMode.N+e.CodeMode.M)], outSize)
+	return e.engine.Join(dst, shards[:(e.CodeMode.N+e.CodeMode.M+e.CodeMode.L)], outSize)
 }
