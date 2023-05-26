@@ -345,6 +345,7 @@ func (m *MetaNode) newMetaManager() (err error) {
 	conf := MetadataManagerConfig{
 		NodeID:    m.nodeId,
 		RootDir:   m.metadataDir,
+		RaftDir:   m.raftDir,
 		RaftStore: m.raftStore,
 		ZoneName:  m.zoneName,
 	}

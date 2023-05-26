@@ -52,6 +52,7 @@ type MetadataManager interface {
 type MetadataManagerConfig struct {
 	NodeID    uint64
 	RootDir   string
+	RaftDir   string
 	ZoneName  string
 	RaftStore raftstore.RaftStore
 }
@@ -60,6 +61,7 @@ type metadataManager struct {
 	nodeId             uint64
 	zoneName           string
 	rootDir            string
+	raftDir            string
 	raftStore          raftstore.RaftStore
 	connPool           *util.ConnectPool
 	state              uint32
@@ -306,6 +308,19 @@ func (m *metadataManager) loadPartitions() (err error) {
 	if err != nil {
 		return
 	}
+	raftInfo, err := os.Stat(m.raftDir)
+	if err != nil || !raftInfo.IsDir() {
+		err = errors.New(fmt.Sprintf("%s is not exist or not a directory", m.raftDir))
+	}
+	mpRaftDirs, err := os.ReadDir(m.raftDir)
+	if err != nil {
+		return
+	}
+	raftm := make(map[string]os.DirEntry)
+	for _, dir := range mpRaftDirs {
+		raftm[dir.Name()] = dir
+	}
+
 	syslog.Println("Start loadPartitions!!!")
 	var wg sync.WaitGroup
 	for _, fileInfo := range fileInfoList {
@@ -317,6 +332,14 @@ func (m *metadataManager) loadPartitions() (err error) {
 				oldName := path.Join(m.rootDir, fileInfo.Name())
 				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name())
 				os.Rename(oldName, newName)
+
+				// expired raft in raft Dir
+				partitionId := fileInfo.Name()[len(partitionPrefix):]
+				if _, ok := raftm[partitionId]; ok {
+					oldRaftName := path.Join(m.raftDir, partitionId)
+					newRaftName := path.Join(m.raftDir, ExpiredPartitionPrefix+partitionId)
+					os.Rename(oldRaftName, newRaftName)
+				}
 				continue
 			}
 
@@ -517,6 +540,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		nodeId:     conf.NodeID,
 		zoneName:   conf.ZoneName,
 		rootDir:    conf.RootDir,
+		raftDir:    conf.RaftDir,
 		raftStore:  conf.RaftStore,
 		partitions: make(map[uint64]MetaPartition),
 		metaNode:   metaNode,
