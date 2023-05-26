@@ -14,13 +14,13 @@
 
 package proto
 
-type StoreMode				uint8
-type VolConvertState		uint8
-type ConvertTaskState		uint32
-type MPConvertState			uint32
+type StoreMode uint8
+type VolConvertState uint8
+type ConvertTaskState uint32
+type MPConvertState uint32
 
 const (
-	TaskInit 					ConvertTaskState = iota
+	TaskInit ConvertTaskState = iota
 	TaskGetVolumeInfo
 	TaskSetVolumeState
 	TaskGetVolumeMPInfo
@@ -29,7 +29,7 @@ const (
 )
 
 const (
-	MPGetDetailInfo 			MPConvertState = iota
+	MPGetDetailInfo MPConvertState = iota
 	MPSelectLearner
 	MPAddLearner
 	MPWaitLearnerSync
@@ -40,15 +40,15 @@ const (
 	MPStopped
 )
 
-const StoreModeDef				StoreMode = 0
+const StoreModeDef StoreMode = 0
 const (
-	StoreModeMem     			StoreMode = 1<<iota
+	StoreModeMem StoreMode = 1 << iota
 	StoreModeRocksDb
 	StoreModeMax
 )
 
 const (
-	VolConvertStInit          VolConvertState = iota
+	VolConvertStInit VolConvertState = iota
 	VolConvertStPrePared
 	VolConvertStRunning
 	VolConvertStStopped
@@ -61,11 +61,6 @@ const (
 	ProcessorStarting
 	ProcessorRunning
 )
-
-type MetaPartitionLayout struct {
-	PercentOfMP      uint32 `json:"percent_of_mp"`
-	PercentOfReplica uint32 `json:"percent_of_replica"`
-}
 
 type ConvertTaskInfo struct {
 	ProcessorID    int32               `json:"processor_id"`
@@ -87,7 +82,7 @@ type ConvertProcessorInfo struct {
 	Count uint32 `json:"count"`
 }
 
-func (c *ConvertProcessorInfo)StateStr() string {
+func (c *ConvertProcessorInfo) StateStr() string {
 	switch c.State {
 	case ProcessorStopped:
 		return "Stopped"
@@ -108,31 +103,30 @@ type ConvertClusterInfo struct {
 }
 
 type ConvertProcessorDetailInfo struct {
-	Processor 		*ConvertProcessorInfo `json:"processor"`
-	Tasks			[]*ConvertTaskInfo    `json:"tasks"`
+	Processor *ConvertProcessorInfo `json:"processor"`
+	Tasks     []*ConvertTaskInfo    `json:"tasks"`
 }
 
 type ConvertClusterDetailInfo struct {
-	Cluster   	*ConvertClusterInfo		`json:"cluster"`
-	Tasks		[]*ConvertTaskInfo		`json:"tasks"`
+	Cluster *ConvertClusterInfo `json:"cluster"`
+	Tasks   []*ConvertTaskInfo  `json:"tasks"`
 }
 
 type ConvertNodeViewInfo struct {
-	Port         string                  `json:"port"`
-	Processors   []*ConvertProcessorInfo `json:"processor"`
-	Clusters     []*ConvertClusterInfo   `json:"cluster"`
-	Tasks        []*ConvertTaskInfo      `json:"task"`
+	Port       string                  `json:"port"`
+	Processors []*ConvertProcessorInfo `json:"processor"`
+	Clusters   []*ConvertClusterInfo   `json:"cluster"`
+	Tasks      []*ConvertTaskInfo      `json:"task"`
 }
-
 
 type SelectMetaNodeInfo struct {
-	PartitionID		uint64			`json:"partition_id"`
-	OldNodeAddr     string          `json:"old_node_addr"`
-	NewNodeAddr   	string 		 	`json:"new_node_addr"`
-	StoreMode		uint8			`json:"store_mode"`
+	PartitionID uint64 `json:"partition_id"`
+	OldNodeAddr string `json:"old_node_addr"`
+	NewNodeAddr string `json:"new_node_addr"`
+	StoreMode   uint8  `json:"store_mode"`
 }
 
-func(mode *StoreMode) Str() string {
+func (mode *StoreMode) Str() string {
 	switch *mode {
 	case StoreModeMem:
 		return "Mem"
@@ -145,7 +139,7 @@ func(mode *StoreMode) Str() string {
 	return "Unknown"
 }
 
-func(st * VolConvertState) Str() string {
+func (st *VolConvertState) Str() string {
 	switch *st {
 	case VolConvertStInit:
 		return "Init"
@@ -181,7 +175,7 @@ func (st *ConvertTaskState) Str() string {
 	return "Unknown"
 }
 
-func (state *MPConvertState) Str()string {
+func (state *MPConvertState) Str() string {
 	switch *state {
 	case MPGetDetailInfo:
 		return "GetDetailInfo"

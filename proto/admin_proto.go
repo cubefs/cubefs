@@ -177,6 +177,7 @@ const (
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"
 	ForceDelete         = "Force-Delete"
+	AcceptFormat        = "Accept"
 
 	// APIs for user management
 	UserCreate          = "/user/create"
@@ -416,6 +417,37 @@ func (v *AtomicString) UnmarshalJSON(b []byte) (err error) {
 	return
 }
 
+func (v *AtomicString) MarshalTo(data []byte) (int, error) {
+	str := v.getString()
+	copy(data, str)
+	return len(str), nil
+}
+
+func (v *AtomicString) Size() (n int) {
+	return len(v.getString())
+}
+
+func (v *AtomicString) Unmarshal(data []byte) error {
+	str := string(data)
+	v.Store(str)
+	return nil
+}
+
+func (v *AtomicString) getString() string {
+	if v == nil {
+		return ""
+	}
+	val := v.Load()
+	if val == nil {
+		return ""
+	}
+
+	if str, ok := val.(string); ok {
+		return str
+	}
+	return ""
+}
+
 type CompactTag uint8
 
 const (
@@ -486,6 +518,7 @@ const (
 	AutoChooseAddrForQuorumVol
 )
 
+// You Must modify TokenPb in admin.proto at the same time when modify this struct
 type Token struct {
 	TokenType int8
 	Value     string
@@ -901,6 +934,7 @@ type MetaPartitionLoadResponse struct {
 	Addr        string
 }
 
+// You Must modify DataPartitionResponsePb in admin.proto at the same time when modify this struct
 // DataPartitionResponse defines the response from a data node to the master that is related to a data partition.
 type DataPartitionResponse struct {
 	PartitionID     uint64
@@ -932,6 +966,7 @@ func NewAtomicString(newValue string) AtomicString {
 	return as
 }
 
+// You Must modify DataPartitionsViewPb in admin.proto at the same time when modify this struct
 // DataPartitionsView defines the view of a data partition
 type DataPartitionsView struct {
 	DataPartitions []*DataPartitionResponse
@@ -943,6 +978,7 @@ func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
 	return
 }
 
+// You Must modify EcPartitionResponsePb in admin.proto at the same time when modify this struct
 // EcPartitionResponse defines the response from a ec node to the master that is related to a ec partition.
 type EcPartitionResponse struct {
 	PartitionID    uint64
@@ -954,6 +990,7 @@ type EcPartitionResponse struct {
 	ParityUnitsNum uint8
 }
 
+// You Must modify EcPartitionsViewPb in admin.proto at the same time when modify this struct
 // EcPartitionsView defines the view of a ec partition
 type EcPartitionsView struct {
 	EcPartitions []*EcPartitionResponse
@@ -974,6 +1011,7 @@ type MigrateTaskView struct {
 	ModifyTime      int64
 }
 
+// You Must modify MetaPartitionViewPb in admin.proto at the same time when modify this struct
 // MetaPartitionView defines the view of a meta partition
 type MetaPartitionView struct {
 	PartitionID uint64
@@ -993,11 +1031,7 @@ type MetaPartitionView struct {
 	RocksCount  uint8
 }
 
-type OSSSecure struct {
-	AccessKey string
-	SecretKey string
-}
-
+// You Must modify VolViewPb in admin.proto at the same time when modify this struct
 // VolView defines the view of a volume
 type VolView struct {
 	Name              string
@@ -1063,6 +1097,7 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	return
 }
 
+// You MUST modify SimpleVolViewPb in admin.proto at the same time when modify this struct
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
 	ID                    uint64
@@ -1308,13 +1343,6 @@ const (
 	VolInCreation
 )
 
-type ConnConfig struct {
-	IdleTimeoutSec   int64
-	ConnectTimeoutNs int64
-	WriteTimeoutNs   int64
-	ReadTimeoutNs    int64
-}
-
 func (config *ConnConfig) String() string {
 	if config == nil {
 		return ""
@@ -1325,12 +1353,6 @@ func (config *ConnConfig) String() string {
 
 type TrashStatus struct {
 	Enable bool
-}
-
-type DpMetricsReportConfig struct {
-	EnableReport      bool
-	ReportIntervalSec int64
-	FetchIntervalSec  int64
 }
 
 func (config *DpMetricsReportConfig) String() string {
@@ -1467,11 +1489,6 @@ type MetaNodeDiskInfo struct {
 	MPCount    int
 }
 
-type DpFollowerReadDelayConfig struct {
-	EnableCollect        bool
-	DelaySummaryInterval int64
-}
-
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
 	Zones   []*ZoneView
@@ -1537,3 +1554,8 @@ const (
 	StrictMode
 )
 
+// http ContentType
+const (
+	JsonType     = "application/json"
+	ProtobufType = "application/x-protobuf"
+)

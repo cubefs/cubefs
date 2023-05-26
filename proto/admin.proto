@@ -1,0 +1,340 @@
+// 编译proto文件：
+// 1. 下载并解压：wget https://github.com/protocolbuffers/protobuf/releases/download/v22.2/protoc-22.2-linux-x86_64.zip;
+//    (内网下载地址：http://storage.jd.local/dpgimage/package/protoc-22.2-linux-x86_64.zip)
+// 2. go get github.com/gogo/protobuf/protoc-gen-gofast
+//    (内网下载地址：http://storage.jd.local/dpgimage/package/gogo_protobuf.zip)
+// 3. protoc --proto_path=./vendor/:./proto/  --gofast_out=./proto/   admin.proto
+syntax = "proto3";
+package proto;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+message DataPartitionResponsePb {
+    option (gogoproto.goproto_getters) = false;
+
+    uint64          PartitionID     = 1;
+    int32           Status          = 2;
+    uint32          ReplicaNum      = 3;
+    repeated string Hosts           = 4;
+    bytes           LeaderAddr      = 5 [(gogoproto.customtype) = "AtomicString", (gogoproto.nullable) = false];
+    uint64          Epoch           = 6;
+    bool            IsRecover       = 7;
+    bool            IsFrozen        = 8;
+    int64           CreateTime      = 9;
+    string          MediumType      = 10;
+    uint64          Total           = 11;
+    uint64          Used            = 12;
+    uint32          EcMigrateStatus = 13;
+    repeated string EcHosts         = 14;
+    uint32          EcDataNum       = 15;
+    uint64          EcMaxUnitSize   = 16;
+}
+
+message DataPartitionsViewPb {
+    repeated DataPartitionResponsePb DataPartitions = 1;
+}
+
+message MetaPartitionViewPb {
+    uint64          PartitionID = 1;
+    uint64          Start       = 2;
+    uint64          End         = 3;
+    uint64          MaxInodeID  = 4;
+    uint64          InodeCount  = 5;
+    uint64          DentryCount = 6;
+    uint64          MaxExistIno = 7;
+    bool            IsRecover   = 8;
+    repeated string Members     = 9;
+    repeated string Learners    = 10;
+    string          LeaderAddr  = 11;
+    int32           Status      = 12;
+    uint32          StoreMode   = 13;
+    uint32          MemCount    = 14;
+    uint32          RocksCount  = 15;
+}
+
+message MetaPartitionViewsPb {
+    repeated MetaPartitionViewPb MetaPartitions = 1;
+}
+
+message EcPartitionResponsePb {
+    uint64          PartitionID    = 1;
+    int32           Status         = 2;
+    uint32          ReplicaNum     = 3;
+    repeated string Hosts          = 4;
+    string          LeaderAddr     = 5;
+    uint32          DataUnitsNum   = 6;
+    uint32          ParityUnitsNum = 7;
+}
+
+message EcPartitionsViewPb {
+    repeated EcPartitionResponsePb EcPartitions = 1;
+}
+
+message OSSSecure {
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    string AccessKey = 1;
+    string SecretKey = 2;
+}
+
+message ConnConfig {
+    option (gogoproto.goproto_stringer)     = false;
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    int64 IdleTimeoutSec   = 1;
+    int64 ConnectTimeoutNs = 2;
+    int64 WriteTimeoutNs   = 3;
+    int64 ReadTimeoutNs    = 4;
+}
+
+message VolViewPb {
+    string                           Name              = 1;
+    string                           Owner             = 2;
+    uint32                           Status            = 3;
+    bool                             FollowerRead      = 4;
+    bool                             ForceROW          = 5;
+    bool                             EnableWriteCache  = 6;
+    uint32                           CrossRegionHAType = 7;
+    repeated MetaPartitionViewPb     MetaPartitions    = 8;
+    repeated DataPartitionResponsePb DataPartitions    = 9;
+    repeated EcPartitionResponsePb   EcPartitions      = 10;
+    OSSSecure                        OSSSecure         = 11;
+    uint32                           OSSBucketPolicy   = 12;
+    int64                            CreateTime        = 13;
+    ConnConfig                       ConnConfig        = 14;
+    bool                             IsSmart           = 15;
+    int64                            SmartEnableTime   = 16;
+    repeated string                  SmartRules        = 17;
+}
+
+message HTTPReplyPb {
+    int32  code = 1;
+    string msg  = 2;
+    bytes  data = 3;
+}
+
+message TokenPb {
+    int32  TokenType = 1;
+    string Value     = 2;
+    string VolName   = 3;
+}
+
+message DpMetricsReportConfig {
+    option (gogoproto.goproto_stringer)     = false;
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    bool  EnableReport      = 1;
+    int64 ReportIntervalSec = 2;
+    int64 FetchIntervalSec  = 3;
+}
+
+message DpFollowerReadDelayConfig {
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    bool  EnableCollect        = 1;
+    int64 DelaySummaryInterval = 2;
+}
+
+message MetaPartitionLayout {
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    uint32 PercentOfMP      = 1[(gogoproto.jsontag) = "percent_of_mp"];
+    uint32 PercentOfReplica = 2[(gogoproto.jsontag) = "percent_of_replica"];
+}
+
+message SimpleVolViewPb {
+    uint64                    ID                    = 1;
+    string                    Name                  = 2;
+    string                    Owner                 = 3;
+    string                    ZoneName              = 4;
+    uint32                    DpReplicaNum          = 5;
+    uint32                    MpReplicaNum          = 6;
+    uint32                    DpLearnerNum          = 7;
+    uint32                    MpLearnerNum          = 8;
+    uint64                    InodeCount            = 9;
+    uint64                    DentryCount           = 10;
+    uint64                    MaxMetaPartitionID    = 11;
+    uint32                    Status                = 12;
+    uint64                    Capacity              = 13;
+    double                    DpWriteableThreshold  = 14;
+    int64                     RwDpCnt               = 15;
+    int64                     MpCnt                 = 16;
+    int64                     DpCnt                 = 17;
+    bool                      FollowerRead          = 18;
+    bool                      NearRead              = 19;
+    bool                      NeedToLowerReplica    = 20;
+    bool                      Authenticate          = 21;
+    bool                      VolWriteMutexEnable   = 22;
+    bool                      CrossZone             = 23;
+    bool                      AutoRepair            = 24;
+    string                    CreateTime            = 25;
+    bool                      EnableToken           = 26;
+    bool                      ForceROW              = 27;
+    bool                      EnableWriteCache      = 28;
+    uint32                    CrossRegionHAType     = 29;
+    map<string, TokenPb>      Tokens                = 30;
+    string                    Description           = 31;
+    string                    DpSelectorName        = 32;
+    string                    DpSelectorParm        = 33;
+    int64                     Quorum                = 34;
+    uint32                    OSSBucketPolicy       = 35;
+    uint32                    DPConvertMode         = 36;
+    uint32                    MPConvertMode         = 37;
+    string                    MasterRegionZone      = 38;
+    string                    SlaveRegionZone       = 39;
+    ConnConfig                ConnConfig            = 40;
+    int64                     ExtentCacheExpireSec  = 41;
+    DpMetricsReportConfig     DpMetricsReportConfig = 42;
+    DpFollowerReadDelayConfig DpFolReadDelayConfig  = 43[(gogoproto.nullable) = false];
+    int64                     FolReadHostWeight     = 44;
+    int64                     RwMpCnt               = 45;
+    int64                     MinWritableMPNum      = 46;
+    int64                     MinWritableDPNum      = 47;
+    uint32                    TrashRemainingDays    = 48;
+    uint32                    DefaultStoreMode      = 49;
+    uint32                    ConvertState          = 50;
+    MetaPartitionLayout       MpLayout              = 51[(gogoproto.nullable) = false];
+    string                    TotalSizeGB           = 52[(gogoproto.jsontag) = "TotalGB"];
+    string                    UsedSizeGB            = 53[(gogoproto.jsontag) = "UsedGB"];
+    uint64                    TotalSize             = 54;
+    uint64                    UsedSize              = 55;
+    double                    UsedRatio             = 56;
+    double                    FileAvgSize           = 57;
+    uint32                    CreateStatus          = 58;
+    bool                      IsSmart               = 59;
+    string                    SmartEnableTime       = 60;
+    repeated string           SmartRules            = 61;
+    string                    CompactTag            = 62;
+    int64                     CompactTagModifyTime  = 63;
+    bool                      EcEnable              = 64;
+    uint32                    EcDataNum             = 65;
+    uint32                    EcParityNum           = 66;
+    int64                     EcWaitTime            = 67;
+    int64                     EcSaveTime            = 68;
+    int64                     EcTimeOut             = 69;
+    int64                     EcRetryWait           = 70;
+    uint64                    EcMaxUnitSize         = 71;
+    uint32                    ChildFileMaxCount     = 72;
+    uint64                    TrashCleanInterval    = 73;
+    uint32                    BatchDelInodeCnt      = 74;
+    uint32                    DelInodeInterval      = 75;
+    int64                     UmpCollectWay         = 76;
+    bool                      EnableBitMapAllocator = 77;
+    int32                     TrashCleanDuration    = 78;
+    int32                     TrashCleanMaxCount    = 79;
+    string                    NewVolName            = 80;
+    uint64                    NewVolID              = 81;
+    string                    OldVolName            = 82;
+    uint32                    FinalVolStatus        = 83;
+    uint32                    RenameConvertStatus   = 84;
+    int64                     MarkDeleteTime        = 85;
+}
+
+message NodeStatInfoPb {
+    uint64 TotalGB            = 1;
+    uint64 UsedGB             = 2;
+    int64  IncreasedGB        = 3;
+    string UsedRatio          = 4;
+    int64  TotalNodes         = 5;
+    int64  WritableNodes      = 6;
+    int64  HighUsedRatioNodes = 7;
+}
+
+message BadPartitionView {
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    string Path        = 1;
+    uint64 PartitionID = 2;
+}
+
+// NodeView provides the view of the data or meta node.
+message NodeView {
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    string Addr       = 1;
+    bool   Status     = 2;
+    uint64 ID         = 3;
+    bool   IsWritable = 4;
+    string Version    = 5;
+}
+
+message DataNodeBadDisksView {
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    string          Addr        = 1;
+    repeated string BadDiskPath = 2;
+}
+
+message ClusterViewPb {
+    string                        Name                                = 1;
+    string                        LeaderAddr                          = 2;
+    bool                          DisableAutoAlloc                    = 3;
+    bool                          AutoMergeNodeSet                    = 4;
+    int64                         NodeSetCapacity                     = 5;
+    float                         MetaNodeThreshold                   = 6;
+    int32                         DpRecoverPool                       = 7;
+    int32                         MpRecoverPool                       = 8;
+    int64                         DeleteMarkDelVolInterval            = 9;
+    uint64                        Applied                             = 10;
+    uint64                        MaxDataPartitionID                  = 11;
+    uint64                        MaxMetaNodeID                       = 12;
+    uint64                        MaxMetaPartitionID                  = 13;
+    bool                          EcScrubEnable                       = 14;
+    uint32                        EcMaxScrubExtents                   = 15;
+    uint32                        EcScrubPeriod                       = 16;
+    int64                         EcScrubStartTime                    = 17;
+    int64                         MaxCodecConcurrent                  = 18;
+    int64                         VolCount                            = 19;
+    NodeStatInfoPb                DataNodeStatInfo                    = 20;
+    NodeStatInfoPb                MetaNodeStatInfo                    = 21;
+    NodeStatInfoPb                EcNodeStatInfo                      = 22;
+    repeated BadPartitionView     BadPartitionIDs                     = 23[(gogoproto.nullable) = false];
+    repeated BadPartitionView     BadMetaPartitionIDs                 = 24[(gogoproto.nullable) = false];
+    repeated BadPartitionView     BadEcPartitionIDs                   = 25[(gogoproto.nullable) = false];
+    repeated BadPartitionView     MigratedDataPartitions              = 26[(gogoproto.nullable) = false];
+    repeated BadPartitionView     MigratedMetaPartitions              = 27[(gogoproto.nullable) = false];
+    repeated NodeView             MetaNodes                           = 28[(gogoproto.nullable) = false];
+    repeated NodeView             DataNodes                           = 29[(gogoproto.nullable) = false];
+    repeated NodeView             CodEcnodes                          = 30[(gogoproto.nullable) = false];
+    repeated NodeView             EcNodes                             = 31[(gogoproto.nullable) = false];
+    repeated DataNodeBadDisksView DataNodeBadDisks                    = 32[(gogoproto.nullable) = false];
+    string                        SchedulerDomain                     = 33;
+    string                        ClientPkgAddr                       = 34;
+    string                        UmpJmtpAddr                         = 35;
+    uint64                        UmpJmtpBatch                        = 36;
+    float                         MetaNodeRocksdbDiskThreshold        = 37;
+    float                         MetaNodeMemModeRocksdbDiskThreshold = 38;
+    uint64                        RocksDBDiskReservedSpace            = 39;
+    uint64                        LogMaxMB                            = 40;
+    uint64                        MetaRockDBWalFileSize               = 41;
+    uint64                        MetaRocksWalMemSize                 = 42;
+    uint64                        MetaRocksLogSize                    = 43;
+    uint64                        MetaRocksLogReservedTime            = 44;
+    uint64                        MetaRocksLogReservedCnt             = 45;
+    uint64                        MetaRocksFlushWalInterval           = 46;
+    uint64                        MetaRocksDisableFlushFlag           = 47;
+    uint64                        MetaRocksWalTTL                     = 48;
+    uint64                        MetaDelEKRecordFileMaxMB            = 49;
+    uint64                        MetaTrashCleanInterval              = 50;
+    int64                         MetaRaftLogSize                     = 51;
+    int64                         MetaRaftLogCap                      = 52;
+    double                        BitMapAllocatorMaxUsedFactor        = 53;
+    double                        BitMapAllocatorMinFreeFactor        = 54;
+    bool                          DisableStrictVolZone                = 55;
+    bool                          AutoUpdatePartitionReplicaNum       = 56;
+}

@@ -203,6 +203,7 @@ type MetaReplicaInfo struct {
 	IsRecover   bool
 }
 
+// You Must modify ClusterViewPb in admin.proto at the same time when modify this struct
 // ClusterView provides the view of a cluster.
 type ClusterView struct {
 	Name                                string
@@ -264,25 +265,6 @@ type ClusterView struct {
 	AutoUpdatePartitionReplicaNum       bool
 }
 
-// NodeView provides the view of the data or meta node.
-type NodeView struct {
-	Addr       string
-	Status     bool
-	ID         uint64
-	IsWritable bool
-	Version    string
-}
-
-type BadPartitionView struct {
-	Path         string
-	PartitionID  uint64
-}
-
-type DataNodeBadDisksView struct {
-	Addr        string
-	BadDiskPath []string
-}
-
 type ClusterStatInfo struct {
 	DataNodeStatInfo *NodeStatInfo
 	MetaNodeStatInfo *NodeStatInfo
@@ -326,6 +308,7 @@ func (zoneNodesStat *ZoneNodesStat) Add(otherZoneNodesStat *ZoneNodesStat) {
 	zoneNodesStat.HighUsedRatioNodes += otherZoneNodesStat.HighUsedRatioNodes
 }
 
+// You Must modify NodeStatInfoPb in admin.proto at the same time when modify this struct
 type NodeStatInfo struct {
 	TotalGB            uint64
 	UsedGB             uint64
