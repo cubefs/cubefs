@@ -485,8 +485,15 @@ func (tm *TransactionManager) Reset() {
 	tm.Lock()
 	tm.txIdAlloc.Reset()
 	tm.txTree.Reset()
+	defer func() {
+		tm.Unlock()
+		if r := recover(); r != nil {
+			log.LogErrorf("transaction manager process closed for mp[%v] ,err:%v", tm.txProcessor.mp.config.PartitionId, r)
+		}
+	}()
+
+	close(tm.exitCh)
 	tm.txProcessor = nil
-	tm.Unlock()
 }
 
 func (tm *TransactionManager) processExpiredTransactions() {
@@ -693,6 +700,15 @@ func (tm *TransactionManager) Start() {
 	log.LogDebugf("TransactionManager for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
 }
 
+func (tm *TransactionManager) stopProcess() {
+	select {
+	case tm.exitCh <- struct{}{}:
+		log.LogDebugf("stopProcess, notified!")
+	default:
+		log.LogDebugf("stopProcess, skipping notify!")
+	}
+}
+
 func (tm *TransactionManager) Stop() {
 	//log.LogDebugf("TransactionManager for mp[%v] enter", tm.txProcessor.mp.config.PartitionId)
 	tm.Lock()
@@ -703,13 +719,14 @@ func (tm *TransactionManager) Stop() {
 		return
 	}
 
-	defer func() {
+	/*defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("transaction manager process Stop for mp[%v] ,err:%v", tm.txProcessor.mp.config.PartitionId, r)
 		}
 	}()
 
-	close(tm.exitCh)
+	close(tm.exitCh)*/
+	tm.stopProcess()
 	tm.started = false
 	log.LogDebugf("TransactionManager for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
 }
@@ -1520,12 +1537,22 @@ func (tr *TransactionResource) isInodeInTransction(ino *Inode) (inTx bool, txID 
 	tr.Lock()
 	defer tr.Unlock()
 
-	//if rbInode, ok := tr.txRollbackInodes[ino.Inode]; ok {
-	//	return true, rbInode.txInodeInfo.TxID
-	//}
 	if rbInode := tr.getTxRbInode(ino.Inode); rbInode != nil {
-		return true, rbInode.txInodeInfo.TxID
+
+		now := time.Now().UnixNano()
+		if now < rbInode.txInodeInfo.CreateTime {
+			return true, rbInode.txInodeInfo.TxID
+		}
+		expired := 2*rbInode.txInodeInfo.Timeout*60*1e9 <= now-rbInode.txInodeInfo.CreateTime
+
+		if expired {
+			return false, ""
+		} else {
+			return true, rbInode.txInodeInfo.TxID
+		}
+
 	}
+
 	//todo_tx: if existed transaction item is expired due to commit or rollback failure,
 	// corresponding item should be rolled back? what if part of items is committed or rolled back,
 	// and others are not?
@@ -1536,10 +1563,7 @@ func (tr *TransactionResource) isDentryInTransction(dentry *Dentry) (inTx bool, 
 	//return true only if specified dentry is in an ongoing transaction(not expired yet)
 	tr.Lock()
 	defer tr.Unlock()
-	//key := fmt.Sprintf("%d_%s", dentry.ParentId, dentry.Name)
-	//if rbDentry, ok := tr.txRollbackDentries[key]; ok {
-	//	return true, rbDentry.txDentryInfo.TxID
-	//}
+
 	if rbDentry := tr.getTxRbDentry(dentry.ParentId, dentry.Name); rbDentry != nil {
 		return true, rbDentry.txDentryInfo.TxID
 	}
