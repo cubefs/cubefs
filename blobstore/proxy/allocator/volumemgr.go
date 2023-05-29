@@ -416,7 +416,7 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 	}
 
 	span.Debugf("codeMode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
-		info.TotalFree(), info.totalThreshold)
+		info.current.TotalFree(), info.totalThreshold)
 
 	return vid, nil
 }

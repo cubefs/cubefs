@@ -84,7 +84,7 @@ type MetaHttpClient struct {
 	host   string
 }
 
-// NewMasterHelper returns a new MasterClient instance.
+// NewMetaHttpClient NewMasterHelper returns a new MasterClient instance.
 func NewMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
 	mc := &MetaHttpClient{host: host, useSSL: useSSL}
 	return mc
@@ -288,12 +288,49 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, er
 		}
 	}()
 	reqURL := fmt.Sprintf("http://%v%v?pid=%v", mc.host, "/getAllInodes", pid)
+	fmt.Println(reqURL)
 	log.LogDebugf("reqURL=%v", reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		return
 	}
 	return unmarshalInodes(resp)
+}
+
+func (mc *MetaHttpClient) GetInodeInfo(pid uint64, ino uint64) (res *proto.GetExtentsResponse, err error) {
+	cmdline := fmt.Sprintf("http://%s/getExtentsByInode?pid=%d&ino=%d",
+		mc.host, pid, ino)
+	resp, err := http.Get(cmdline)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("invalid status code: %v", resp.StatusCode)
+	}
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ReadAll failed: %v", err)
+	}
+	body := &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err = json.Unmarshal(data, body); err != nil {
+		return nil, fmt.Errorf("unmarshal failed: %v", err)
+	}
+	if body.Code != http.StatusSeeOther {
+		return nil, fmt.Errorf("getExtentsByInode failed: code[%v] not %v",
+			body.Code, http.StatusSeeOther)
+	}
+	if strings.Compare(body.Msg, "Ok") != 0 {
+		return nil, fmt.Errorf("getExtentsByInode failed: %v", body.Msg)
+	}
+	if err = json.Unmarshal(body.Data, &res); err != nil {
+		return nil, fmt.Errorf("unmarshal extents failed: %v", err)
+	}
+	return
 }
 
 func unmarshalInodes(resp *http.Response) (rstMap map[uint64]*Inode, err error) {
