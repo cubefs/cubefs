@@ -47,6 +47,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer.Stop()
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	scheduleState := common.StateStopped
+	lastCursor := mp.GetCursor()
 	dumpFunc := func(msg *storeMsg) {
 		log.LogWarnf("[startSchedule] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
@@ -126,6 +127,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					msgs = append(msgs, msg)
 				}
 			case <-timer.C:
+				log.LogDebugf("[startSchedule] intervalToPersistData curIndex: %v,apply:%v", curIndex, mp.applyID)
 				if mp.applyID <= curIndex {
 					timer.Reset(intervalToPersistData)
 					continue
@@ -141,8 +143,14 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timerCursor.Reset(intervalToSyncCursor)
 					continue
 				}
+				curCursor := mp.GetCursor()
+				if curCursor == lastCursor {
+					log.LogDebugf("[startSchedule] partitionId=%d: curCursor[%v]=lastCursor[%v]",
+						mp.config.PartitionId, curCursor, lastCursor)
+					continue
+				}
 				Buf := make([]byte, 8)
-				binary.BigEndian.PutUint64(Buf, mp.config.Cursor)
+				binary.BigEndian.PutUint64(Buf, curCursor)
 				if _, err := mp.submit(opFSMSyncCursor, Buf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
@@ -151,6 +159,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				if _, err := mp.submit(opFSMSyncTxID, Buf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
+				lastCursor = curCursor
 				timerCursor.Reset(intervalToSyncCursor)
 			}
 		}
