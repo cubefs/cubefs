@@ -270,7 +270,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	if opt.NeedRestoreFuse {
-		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
+		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestoring))
 	}
 
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
@@ -318,16 +318,16 @@ func (s *Super) Root() (fs.Node, error) {
 	return root, nil
 }
 
-func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
+func (s *Super) Node(ino, pino uint64, mode uint32, name string) (fs.Node, error) {
 	var node fs.Node
 
 	// Create a fake InodeInfo. All File or Dir operations only use
 	// InodeInfo.Inode.
 	fakeInfo := &proto.InodeInfo{Inode: ino, Mode: mode}
 	if proto.OsMode(fakeInfo.Mode).IsDir() {
-		node = NewDir(s, fakeInfo, pino, "")
+		node = NewDir(s, fakeInfo, pino, name)
 	} else {
-		node = NewFile(s, fakeInfo, DefaultFlag, pino, "")
+		node = NewFile(s, fakeInfo, DefaultFlag, pino, name)
 		// The node is saved in FuseContextNodes list, that means
 		// the node is not evict. So we create a streamer for it,
 		// and streamer's refcnt is 0.
@@ -339,6 +339,19 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 	s.nodeCache[ino] = node
 	s.fslock.Unlock()
 	return node, nil
+}
+
+func (s *Super) GetNodeName(ino uint64, mode uint32) string {
+	s.fslock.Lock()
+	defer s.fslock.Unlock()
+	if node, ok := s.nodeCache[ino]; ok {
+		if proto.OsMode(mode).IsDir() {
+			return node.(*Dir).name
+		} else {
+			return node.(*File).name
+		}
+	}
+	return ""
 }
 
 // Statfs handles the Statfs request and returns a set of statistics.
@@ -468,17 +481,22 @@ func (s *Super) SetSuspend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !atomic.CompareAndSwapUint32((*uint32)(&s.state), uint32(fs.FSStatSuspend), uint32(fs.FSStatShutdown)) {
-		s.fslock.Lock()
-		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatResume))
-		s.sockaddr = ""
-		s.fslock.Unlock()
-		err = fmt.Errorf("Invalid old state %v", s.state)
-		replyFail(w, r, err.Error())
-		return
-	}
-
 	replySucc(w, r, fmt.Sprintf("set suspend successfully: %s", ret))
+}
+
+func (s *Super) IsRestored() bool {
+	if state, _ := s.State(); state == fs.FSStatRestored {
+		return true
+	}
+	return false
+}
+
+func (s *Super) SetShutdown(w http.ResponseWriter, r *http.Request) {
+	s.fslock.Lock()
+	atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatShutdown))
+	s.sockaddr = ""
+	s.fslock.Unlock()
+	replySucc(w, r, "set shutdown successfully")
 }
 
 func (s *Super) SetResume(w http.ResponseWriter, r *http.Request) {
@@ -549,7 +567,12 @@ func (s *Super) State() (state fs.FSStatType, sockaddr string) {
 func (s *Super) Notify(stat fs.FSStatType, msg interface{}) {
 	if stat == fs.FSStatSuspend {
 		s.suspendCh <- msg
-	} else if stat == fs.FSStatRestore {
+	} else if stat == fs.FSStatRestoring {
+		s.fslock.Lock()
+		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestored))
+		s.sockaddr = ""
+		s.fslock.Unlock()
+	} else if stat == fs.FSStatRestored {
 		s.fslock.Lock()
 		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatResume))
 		s.sockaddr = ""

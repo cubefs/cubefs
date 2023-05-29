@@ -48,7 +48,8 @@ const (
 	FSStatResume FSStatType = iota
 	FSStatSuspend
 	FSStatShutdown
-	FSStatRestore
+	FSStatRestoring
+	FSStatRestored
 )
 
 // An FS is the interface required of a file system.
@@ -58,9 +59,10 @@ const (
 type FS interface {
 	// Root is called to obtain the Node for the file system root.
 	Root() (Node, error)
-	Node(ino, pino uint64, mode uint32) (Node, error)
+	Node(ino, pino uint64, mode uint32, name string) (Node, error)
 	State() (FSStatType, string)
 	Notify(stat FSStatType, msg interface{})
+	GetNodeName(ino uint64, mode uint32) string
 }
 
 type FSStatfser interface {
@@ -445,12 +447,13 @@ type ContextNode struct {
 	Refs       uint64
 	NodeID     uint64
 	Mode       uint32
+	NameLen    uint32
 	Rsvd       uint32
 }
 
 func (cn *ContextNode) String() string {
-	return fmt.Sprintf("nodeid:%v inode:%v parent:%v gen:%v refs:%v mode:%o",
-		cn.NodeID, cn.Inode, cn.ParentIno, cn.Generation, cn.Refs, cn.Mode)
+	return fmt.Sprintf("nodeid:%v inode:%v parent:%v gen:%v refs:%v mode:%o nameLen:%v",
+		cn.NodeID, cn.Inode, cn.ParentIno, cn.Generation, cn.Refs, cn.Mode, cn.NameLen)
 }
 
 func ContextNodeToBytes(cn *ContextNode) []byte {
@@ -461,6 +464,7 @@ func ContextNodeToBytes(cn *ContextNode) []byte {
 	binary.BigEndian.PutUint64(buf[24:32], cn.Refs)
 	binary.BigEndian.PutUint64(buf[32:40], cn.NodeID)
 	binary.BigEndian.PutUint32(buf[40:44], cn.Mode)
+	binary.BigEndian.PutUint32(buf[44:48], cn.NameLen)
 	return buf
 }
 
@@ -472,6 +476,7 @@ func ContextNodeFromBytes(buf []byte) *ContextNode {
 	cn.Refs = binary.BigEndian.Uint64(buf[24:32])
 	cn.NodeID = binary.BigEndian.Uint64(buf[32:40])
 	cn.Mode = binary.BigEndian.Uint32(buf[40:44])
+	cn.NameLen = binary.BigEndian.Uint32(buf[44:48])
 	return cn
 }
 
@@ -592,13 +597,24 @@ func (s *Server) SaveFuseContext(fs FS) (msg string, err error) {
 		sn.wg.Wait()
 
 		if err = sn.node.Attr(nil, &attr); err != nil {
+			// if the node is not found, skip it
+			if err == fuse.ENOENT {
+				continue
+			}
 			s.meta.Unlock()
 			err = fmt.Errorf("SaveFuseContext: failed to get mode of node %v: %v", sn.inode, err)
 			return
 		}
-		cn := &ContextNode{sn.inode, attr.ParentIno, sn.generation, sn.refs, nodeid, uint32(attr.Mode), 0}
+		nodeName := fs.GetNodeName(sn.inode, uint32(attr.Mode))
+		cn := &ContextNode{sn.inode, attr.ParentIno, sn.generation,
+			sn.refs, nodeid, uint32(attr.Mode),uint32(len(nodeName)), 0}
 		data := ContextNodeToBytes(cn)
 		if n, err = nodeListFile.Write(data); n != len(data) || err != nil {
+			s.meta.Unlock()
+			err = fmt.Errorf("SaveFuseContext: failed to write nodes list file: %v", err)
+			return
+		}
+		if n, err = nodeListFile.Write([]byte(nodeName)); n != len(nodeName) || err != nil {
 			s.meta.Unlock()
 			err = fmt.Errorf("SaveFuseContext: failed to write nodes list file: %v", err)
 			return
@@ -712,7 +728,7 @@ func (s *Server) SaveFuseDevFd(sockaddr string) (err error) {
 func (s *Server) TryRestore(fs FS) error {
 	stat, sockaddr := fs.State()
 
-	if stat != FSStatRestore {
+	if stat != FSStatRestoring {
 		return nil
 	}
 
@@ -733,7 +749,7 @@ func (s *Server) TryRestore(fs FS) error {
 		if stat == FSStatResume {
 			//s.CleanupFuseContext()
 			return nil
-		} else if stat == FSStatRestore {
+		} else if stat == FSStatRestored {
 			runtime.Gosched()
 		} else {
 			err = fmt.Errorf("Unknown state changed %v", stat)
@@ -783,8 +799,18 @@ func (s *Server) LoadFuseContext(fs FS, sockaddr string) error {
 
 		if cnVersion == ContextNodeVersionV1 {
 			cn := ContextNodeFromBytes(data)
+			nodeName := ""
+			if cn.NameLen != 0 {
+				name := make([]byte, cn.NameLen)
+				rsize, err = nodeListFile.Read(name)
+				if rsize != int(cn.NameLen) {
+					err = fmt.Errorf("LoadFuseContext: failed to read node name: %v\n", err)
+					return err
+				}
+				nodeName = string(name)
+			}
 			sn := &serveNode{inode: cn.Inode, generation: cn.Generation, refs: cn.Refs}
-			if sn.node, err = fs.Node(cn.Inode, cn.ParentIno, cn.Mode); err != nil {
+			if sn.node, err = fs.Node(cn.Inode, cn.ParentIno, cn.Mode, nodeName); err != nil {
 				err = fmt.Errorf("LoadFuseContext: failed to get fs.Node of %v: %v\n", sn.inode, err)
 				return err
 			}

@@ -84,6 +84,7 @@ const (
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
 	ControlCommandSuspend      = "/suspend"
 	ControlCommandResume       = "/resume"
+	ControlCommandShutdown     = "/shutdown"
 	Role                       = "Client"
 
 	DefaultIP            = "127.0.0.1"
@@ -236,6 +237,36 @@ func sendResumeRequest(port string) (err error) {
 	return nil
 }
 
+func sendShutdownRequest(port string) (err error) {
+	var (
+		req  *http.Request
+		resp *http.Response
+		data []byte
+	)
+
+	url := fmt.Sprintf("http://%s:%s/shutdown", DefaultIP, port)
+	if req, err = http.NewRequest("POST", url, nil); err != nil {
+		log.LogErrorf("Failed to get new request: %v\n", err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/text")
+
+	client := http.DefaultClient
+	if resp, err = client.Do(req); err != nil {
+		log.LogErrorf("Failed to post request: %v\n", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+		log.LogErrorf("Failed to read response: %v\n", err)
+		return err
+	}
+
+	log.LogInfof("data: %s\n", string(data))
+	return nil
+}
+
 func doSuspend(uds string, port string) (*os.File, error) {
 	var fud *os.File
 
@@ -257,6 +288,39 @@ func doSuspend(uds string, port string) (*os.File, error) {
 	}
 
 	return fud, nil
+}
+
+func checkRestored(super *cfs.Super, opt *proto.MountOptions, cfg *config.Config) {
+	for {
+		if super.IsRestored() {
+			if err := sendShutdownRequest(*configFuseHttpPort); err != nil {
+				sendResumeRequest(*configFuseHttpPort)
+				daemonize.SignalOutcome(err)
+				os.Exit(1)
+			}
+
+			exporter.Init(ModuleName, cfg)
+			exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+
+			statusCh := make(chan error)
+			pprofAddr := ":" + opt.Profport
+			if opt.LocallyProf {
+				pprofAddr = "127.0.0.1:" + opt.Profport
+			}
+			go waitListenAndServe(statusCh, pprofAddr, nil)
+			if err := <-statusCh; err != nil {
+				daemonize.SignalOutcome(err)
+				os.Exit(1)
+			}
+
+			state, _ := super.State()
+			super.Notify(state, "")
+			log.LogInfof("cfs-client restore successfully.\n")
+			break
+		} else {
+			runtime.Gosched()
+		}
+	}
 }
 
 func main() {
@@ -444,8 +508,11 @@ func main() {
 	defer super.Close()
 
 	syslog.Printf("enable bcache %v", opt.EnableBcache)
-	exporter.Init(ModuleName, cfg)
-	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+	// In restore mode, exporter will be initialized after old cfs-client shutdown.
+	if !opt.NeedRestoreFuse {
+		exporter.Init(ModuleName, cfg)
+		exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
+	}
 
 	err = log.OutputPid(opt.Logpath, ModuleName)
 	if err != nil {
@@ -464,6 +531,12 @@ func main() {
 		} else {
 			fsConn.SetFuseDevFile(fud)
 		}
+		// wait the status to be restored
+		// and then shutdown the old cfs-client
+		// and start to receive the new fuse request
+		go func() {
+			checkRestored(super, opt, cfg)
+		}()
 	}
 
 	if err = fs.Serve(fsConn, super, opt); err != nil {
@@ -597,20 +670,24 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
 	http.HandleFunc(ControlCommandResume, super.SetResume)
+	http.HandleFunc(ControlCommandShutdown, super.SetShutdown)
 	//auditlog
 	http.HandleFunc(auditlog.EnableAuditLogReqPath, super.EnableAuditLog)
 	http.HandleFunc(auditlog.DisableAuditLogReqPath, auditlog.DisableAuditLog)
 	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
 
-	statusCh := make(chan error)
-	pprofAddr := ":" + opt.Profport
-	if opt.LocallyProf {
-		pprofAddr = "127.0.0.1:" + opt.Profport
-	}
-	go waitListenAndServe(statusCh, pprofAddr, nil)
-	if err = <-statusCh; err != nil {
-		daemonize.SignalOutcome(err)
-		return
+	// In restore mode, start the http server after old client shutdown
+	if !opt.NeedRestoreFuse {
+		statusCh := make(chan error)
+		pprofAddr := ":" + opt.Profport
+		if opt.LocallyProf {
+			pprofAddr = "127.0.0.1:" + opt.Profport
+		}
+		go waitListenAndServe(statusCh, pprofAddr, nil)
+		if err = <-statusCh; err != nil {
+			daemonize.SignalOutcome(err)
+			return
+		}
 	}
 
 	go func() {
