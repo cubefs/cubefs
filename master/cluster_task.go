@@ -301,6 +301,13 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 			if uint8(len(mp.Hosts)) > mp.ReplicaNum || uint8(len(mp.Replicas)) > mp.ReplicaNum {
 				excessReplicaMetaPartitions = append(excessReplicaMetaPartitions, mp)
 			}
+
+			for _, replica := range mp.Replicas {
+				if replica.Status == proto.Unavailable {
+					unavailableReplicaMPs = append(unavailableReplicaMPs, mp)
+					break
+				}
+			}
 		}
 		vol.mpsLock.RUnlock()
 	}
