@@ -78,6 +78,11 @@ type Reader struct {
 	objExtentKeys   []proto.ObjExtentKey
 	enableBcache    bool
 	cacheAction     int
+	readAheadBuf    []byte
+	enableReadAhead bool
+	readAheadOffset uint64
+	readAheadSize   uint64
+	readAheadOnce   sync.Once
 	fileCache       bool
 	cacheThreshold  int
 	fileLength      uint64
@@ -102,6 +107,7 @@ type ClientConfig struct {
 	FileCache       bool
 	FileSize        uint64
 	CacheThreshold  int
+	EnableReadAhead bool
 }
 
 func NewReader(config ClientConfig) (reader *Reader) {
@@ -119,6 +125,11 @@ func NewReader(config ClientConfig) (reader *Reader) {
 	reader.cacheAction = config.CacheAction
 	reader.fileCache = config.FileCache
 	reader.cacheThreshold = config.CacheThreshold
+	reader.enableReadAhead = config.EnableReadAhead
+	log.LogDebugf("TRACE reader NewReader. enableReadAhead(%v)", reader.enableReadAhead)
+	if reader.enableReadAhead {
+		reader.readAheadBuf = make([]byte, config.BlockSize)
+	}
 
 	if proto.IsCold(reader.volType) {
 		reader.ec.UpdateDataPartitionForColdVolume()
@@ -158,13 +169,20 @@ func (reader *Reader) Read(ctx context.Context, buf []byte, offset int, size int
 	sliceSize := len(rSlices)
 	if sliceSize > 0 {
 		reader.wg.Add(sliceSize)
-		pool := New(reader.readConcurrency, sliceSize)
-		defer pool.Close()
-		reader.err = make(chan error, sliceSize)
-		for _, rs := range rSlices {
-			pool.Execute(rs, func(param *rwSlice) {
-				reader.readSliceRange(ctx, param)
-			})
+		if reader.enableReadAhead {
+			reader.err = make(chan error, sliceSize)
+			for _, rs := range rSlices {
+				reader.readSliceRange(ctx, rs)
+			}
+		} else {
+			pool := New(reader.readConcurrency, sliceSize)
+			defer pool.Close()
+			reader.err = make(chan error, sliceSize)
+			for _, rs := range rSlices {
+				pool.Execute(rs, func(param *rwSlice) {
+					reader.readSliceRange(ctx, param)
+				})
+			}
 		}
 
 		reader.wg.Wait()
@@ -289,6 +307,17 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: reader.volName})
 	}()
 
+	if reader.enableReadAhead {
+		readN, err = reader.getFromReadAhead(rs.Data, rs.fileOffset, uint64(rs.size), rs.rOffset, uint64(rs.rSize))
+		if err == nil {
+			if readN == int(rs.rSize) {
+				reader.err <- nil
+				log.LogDebugf("TRACE blobStore readSliceRange getFromReadAhead. ino(%v)  rs.fileOffset(%v),rs.rOffset(%v),rs.rSize(%v) ", reader.ino, rs.fileOffset, rs.rOffset, rs.rSize)
+				return
+			}
+		}
+	}
+
 	//read local cache
 	if reader.enableBcache {
 		readN, err = reader.bc.Get(cacheKey, buf, rs.rOffset, rs.rSize)
@@ -340,13 +369,32 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		reader.limitManager.ReadAlloc(ctx, int(rs.rSize))
 	}
 
-	readN, err = reader.ebs.Read(ctx, reader.volName, buf, rs.rOffset, uint64(rs.rSize), rs.objExtentKey)
-	if err != nil {
-		reader.err <- err
-		return
+	var read int
+	if reader.enableReadAhead {
+		buffer := reader.prepareReadAheadBuf(rs.objExtentKey.Size)
+		readN, err = reader.ebs.Read(ctx, reader.volName, buffer, 0, rs.objExtentKey.Size, rs.objExtentKey)
+		if err != nil {
+			reader.err <- err
+			return
+		}
+		reader.updateReadAheadInfo(rs.fileOffset, readN)
+		log.LogDebugf("TRACE blobStore readSliceRange putToReadAhead. ino(%v)  rs.fileOffset(%v),rs.size(%v),rs.rOffset(%v),rs.rSize(%v),rs.objExtentKey.Size(%v) ",
+			reader.ino, rs.fileOffset, rs.size, rs.rOffset, rs.rSize, rs.objExtentKey.Size)
+		readN, err = reader.getFromReadAhead(rs.Data, rs.fileOffset, uint64(rs.size), rs.rOffset, uint64(rs.rSize))
+		if err != nil {
+			reader.err <- err
+			return
+		}
+		reader.err <- nil
+	} else {
+		readN, err = reader.ebs.Read(ctx, reader.volName, buf, rs.rOffset, uint64(rs.rSize), rs.objExtentKey)
+		if err != nil {
+			reader.err <- err
+			return
+		}
+		read = copy(rs.Data, buf)
+		reader.err <- nil
 	}
-	read := copy(rs.Data, buf)
-	reader.err <- nil
 
 	//cache full block
 	if !reader.needCacheL1() && !reader.needCacheL2() || reader.ec.IsPreloadMode() {
@@ -433,4 +481,38 @@ func (reader *Reader) fileSize() (uint64, bool) {
 		return objKeys[lastIndex].FileOffset + objKeys[lastIndex].Size, true
 	}
 	return 0, true
+}
+
+func (reader *Reader) getFromReadAhead(buf []byte, fileOffset uint64, size uint64, rOffset uint64, rSize uint64) (readN int, err error) {
+	if reader.readAheadOffset != fileOffset || reader.readAheadSize != size || rOffset+rSize > reader.readAheadSize {
+		return
+	}
+	copy(buf, reader.readAheadBuf[rOffset:rOffset+rSize])
+	readN = int(rSize)
+	return
+}
+
+func (reader *Reader) prepareReadAheadBuf(size uint64) (buffer []byte) {
+	if uint64(len(reader.readAheadBuf)) < size {
+		log.LogDebugf("TRACE blobStore prepareReadAheadBuf. size of readAheadBuf changes from len(reader.readAheadBuf)(%v) to size(%v) ", len(reader.readAheadBuf), size)
+		reader.readAheadBuf = make([]byte, size)
+	}
+	return reader.readAheadBuf[0:size]
+}
+
+func (reader *Reader) updateReadAheadInfo(fileOffset uint64, size int) {
+	reader.readAheadOffset = fileOffset
+	reader.readAheadSize = uint64(size)
+}
+
+func (reader *Reader) FreeReadAheadBuf() {
+	if reader == nil {
+		return
+	}
+	if !reader.enableReadAhead {
+		return
+	}
+	reader.readAheadOnce.Do(func() {
+		reader.readAheadBuf = nil
+	})
 }

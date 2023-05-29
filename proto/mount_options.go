@@ -69,6 +69,7 @@ const (
 	EnableAudit
 	LocallyProf
 	MinWriteAbleDataPartitionCnt
+	EnableReadAhead
 	MaxMountOption
 )
 
@@ -156,6 +157,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[MinWriteAbleDataPartitionCnt] = MountOption{"minWriteAbleDataPartitionCnt",
 		"Min writeable data partition count retained int dpSelector when update DataPartitionsView from master",
 		"", int64(10)}
+	opts[EnableReadAhead] = MountOption{"enableReadAhead", "enable read ahead", "", false}
+
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -311,4 +314,5 @@ type MountOptions struct {
 	MaxStreamerLimit             int64
 	EnableAudit                  bool
 	MinWriteAbleDataPartitionCnt int
+	EnableReadAhead              bool
 }

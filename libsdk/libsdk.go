@@ -241,6 +241,7 @@ type client struct {
 	cluster             string
 	dirChildrenNumLimit uint32
 	enableAudit         bool
+	enableReadAhead     bool
 
 	// runtime context
 	cwd    string // current working directory
@@ -323,6 +324,12 @@ func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
 			c.enableAudit = true
 		} else {
 			c.enableAudit = false
+		}
+	case "enableReadAhead":
+		if v == "true" {
+			c.enableReadAhead = true
+		} else {
+			c.enableReadAhead = false
 		}
 	default:
 		return statusEINVAL
@@ -529,7 +536,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		fileCachePattern := fmt.Sprintf(".*%s.*", c.cacheRuleKey)
 		fileCache, _ = regexp.MatchString(fileCachePattern, absPath)
 	}
-	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno)
+	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, proto.IsRegular(info.Mode))
 	if f == nil {
 		return statusEMFILE
 	}
@@ -1280,7 +1287,7 @@ func (c *client) checkPermission() (err error) {
 	return
 }
 
-func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSize uint64, parentInode uint64) *file {
+func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, isFile bool) *file {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	fd, ok := c.fdset.NextClear(0)
@@ -1289,7 +1296,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 	}
 	c.fdset.Set(fd)
 	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode}
-	if proto.IsCold(c.volType) {
+	if proto.IsCold(c.volType) && isFile {
 		clientConf := blobstore.ClientConfig{
 			VolName:         c.volName,
 			VolType:         c.volType,
@@ -1306,6 +1313,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 			FileCache:       fileCache,
 			FileSize:        fileSize,
 			CacheThreshold:  c.cacheThreshold,
+			EnableReadAhead: c.enableReadAhead,
 		}
 		f.fileWriter.FreeCache()
 		switch flags & 0xff {
@@ -1400,6 +1408,7 @@ func (c *client) closeStream(f *file) {
 	_ = c.ec.EvictStream(f.ino)
 	f.fileWriter.FreeCache()
 	f.fileWriter = nil
+	f.fileReader.FreeReadAheadBuf()
 	f.fileReader = nil
 }
 
