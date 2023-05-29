@@ -202,14 +202,14 @@ func TestTxRscOp(t *testing.T) {
 	txInodeInfo1 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo1.TxID = txMgr.nextTxID()
 	txInodeInfo1.Timeout = 5
-	txInodeInfo1.CreateTime = time.Now().Unix()
+	txInodeInfo1.CreateTime = time.Now().UnixNano()
 	inode1 := NewInode(inodeNum, FileModeType)
 	rbInode1 := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo1, TxAdd)
 
 	txInodeInfo2 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo2.TxID = txMgr.nextTxID()
 	txInodeInfo2.Timeout = 5
-	txInodeInfo2.CreateTime = time.Now().Unix()
+	txInodeInfo2.CreateTime = time.Now().UnixNano()
 	rbInode2 := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo2, TxAdd)
 
 	txRsc := mp1.txProcessor.txResource
@@ -234,13 +234,13 @@ func TestTxRscOp(t *testing.T) {
 	}
 	txDentryInfo1.TxID = txMgr.nextTxID()
 	txDentryInfo1.Timeout = 5
-	txDentryInfo1.CreateTime = time.Now().Unix()
+	txDentryInfo1.CreateTime = time.Now().UnixNano()
 	rbDentry1 := NewTxRollbackDentry(dentry, txDentryInfo1, TxAdd)
 
 	txDentryInfo2 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo2.TxID = txMgr.nextTxID()
 	txDentryInfo2.Timeout = 5
-	txDentryInfo2.CreateTime = time.Now().Unix()
+	txDentryInfo2.CreateTime = time.Now().UnixNano()
 	rbDentry2 := NewTxRollbackDentry(dentry, txDentryInfo2, TxAdd)
 
 	status = txRsc.addTxRollbackDentry(rbDentry1)
@@ -260,7 +260,7 @@ func mockAddTxInode(mp *metaPartition) *TxRollbackInode {
 	txInodeInfo1 := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
 	txInodeInfo1.TxID = txMgr.nextTxID()
 	txInodeInfo1.Timeout = 5
-	txInodeInfo1.CreateTime = time.Now().Unix()
+	txInodeInfo1.CreateTime = time.Now().UnixNano()
 	inode1 := NewInode(inodeNum, FileModeType)
 	rbInode := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo1, TxDelete)
 	txRsc := mp.txProcessor.txResource
@@ -278,7 +278,7 @@ func mockDeleteTxInode(mp *metaPartition) *TxRollbackInode {
 	txInodeInfo2 := proto.NewTxInodeInfo(MemberAddrs, inodeNum2, 10001)
 	txInodeInfo2.TxID = txMgr.nextTxID()
 	txInodeInfo2.Timeout = 5
-	txInodeInfo2.CreateTime = time.Now().Unix()
+	txInodeInfo2.CreateTime = time.Now().UnixNano()
 	rbInode := NewTxRollbackInode(inode2, []uint32{}, txInodeInfo2, TxAdd)
 	txRsc := mp.txProcessor.txResource
 	txRsc.addTxRollbackInode(rbInode)
@@ -302,7 +302,7 @@ func mockAddTxDentry(mp *metaPartition) *TxRollbackDentry {
 	txDentryInfo1 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo1.TxID = txMgr.nextTxID()
 	txDentryInfo1.Timeout = 5
-	txDentryInfo1.CreateTime = time.Now().Unix()
+	txDentryInfo1.CreateTime = time.Now().UnixNano()
 	dentry1 := &Dentry{
 		ParentId: pInodeNum,
 		Name:     dentryName,
@@ -330,7 +330,7 @@ func mockDeleteTxDentry(mp *metaPartition) *TxRollbackDentry {
 	txDentryInfo2 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo2.TxID = txMgr.nextTxID()
 	txDentryInfo2.Timeout = 5
-	txDentryInfo2.CreateTime = time.Now().Unix()
+	txDentryInfo2.CreateTime = time.Now().UnixNano()
 	rbDentry := NewTxRollbackDentry(dentry2, txDentryInfo2, TxAdd)
 	txRsc := mp.txProcessor.txResource
 	txRsc.addTxRollbackDentry(rbDentry)
