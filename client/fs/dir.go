@@ -140,6 +140,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 		return ParseError(err)
 	}
 	fillAttr(info, a)
+	a.ParentIno = d.parentIno
 	log.LogDebugf("TRACE Attr: inode(%v)", info)
 	return nil
 }
