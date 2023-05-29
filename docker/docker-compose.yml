@@ -426,6 +426,19 @@ services:
         networks:
             extnetwork:
 
+    format:
+        image: cubefs/cbfs-base:1.0-golang-1.17.13
+        volumes:
+            - ../:/go/src/github.com/cubefs/cubefs
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                tar -zxvf /go/rocksdb_libs.tar.gz -C /go/src/github.com/cubefs/cubefs/build && /go/src/github.com/cubefs/cubefs/docker/script/run_format.sh
+        networks:
+            extnetwork:
+
     unit_test:
         image: cubefs/cbfs-base:1.0-golang-1.17.13
         volumes:

@@ -18,6 +18,7 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
     -r, --run               run servers, client and monitor
+    -f, --format            run gofmt to format source code 
     --clean                 cleanup old docker image
 EOF
     exit 0
@@ -31,6 +32,11 @@ clean() {
 # unit test
 run_unit_test() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run unit_test
+}
+
+# go format
+run_format() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run format
 }
 
 # build
@@ -114,6 +120,9 @@ for opt in ${ARGS[*]} ; do
         -m|--monitor)
             cmd=run_monitor
             ;;
+        -f|--format)
+            cmd=run_format
+            ;;
         -clean|--clean)
             cmd=clean
             ;;
@@ -163,6 +172,7 @@ case "-$cmd" in
     -run_monitor) start_monitor ;;
     -run_ltptest) run_ltptest ;;
     -run_test) run_unit_test ;;
+    -run_format) run_format ;;
     -run_scenariotest) run_scenariotest ;;
     -clean) clean ;;
     *) help ;;
