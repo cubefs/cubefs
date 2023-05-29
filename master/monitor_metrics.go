@@ -206,7 +206,7 @@ func (m *warningMetrics) deleteMissingDp(missingDpAddrSet addrSet, clusterName, 
 		delete(m.dpMissingReplicaInfo, dpId)
 	}
 
-	m.missingMp.DeleteLabelValues(clusterName, dpId, addr)
+	m.missingDp.DeleteLabelValues(clusterName, dpId, addr)
 	log.LogDebugf("action[deleteMissingDp] delete: dpId(%v), addr(%v)", dpId, addr)
 }
 

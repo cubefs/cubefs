@@ -486,6 +486,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetDpDiscard).
 		HandlerFunc(m.setDpDiscardHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetDiscardDp).
+		HandlerFunc(m.getDiscardDpHandler)
 
 	// user management APIs
 	router.NewRoute().Methods(http.MethodPost).
