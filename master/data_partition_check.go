@@ -164,7 +164,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 	defer partition.Unlock()
 
 	for _, replica := range partition.Replicas {
-		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) {
+		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) && !partition.IsDiscard {
 			if partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
 				dataNode := replica.getReplicaNode()
 				var (

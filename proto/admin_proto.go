@@ -76,6 +76,7 @@ const (
 	AdminGetClusterUuid                       = "/admin/getClusterUuid"
 	AdminGenerateClusterUuid                  = "/admin/generateClusterUuid"
 	AdminSetDpDiscard                         = "/admin/setDpDiscard"
+	AdminGetDiscardDp                         = "/admin/getDiscardDp"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -227,6 +228,8 @@ var GApiInfo map[string]string = map[string]string{
 	"adminsetdprdonly":                AdminSetDpRdOnly,
 	"admindatapartitionchangeleader":  AdminDataPartitionChangeLeader,
 	"adminsetdpdiscard":               AdminSetDpDiscard,
+	"admingetdiscarddp":               AdminGetDiscardDp,
+
 	//"adminclusterapi":                 AdminClusterAPI,
 	//"adminuserapi":                    AdminUserAPI,
 	//"adminvolumeapi":                  AdminVolumeAPI,

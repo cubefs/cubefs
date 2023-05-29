@@ -284,6 +284,11 @@ type BadDiskInfo struct {
 	Address string
 	Path    string
 }
+
 type BadDiskInfos struct {
 	BadDisks []BadDiskInfo
+}
+
+type DiscardDataPartitionInfos struct {
+	DiscardDps []DataPartitionInfo
 }
