@@ -504,9 +504,13 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				args.isInit = false
 				continue
 			}
-			for _, vol := range volumeRets {
+			for index, vol := range volumeRets {
 				allocVolInfo := &volume{
 					AllocVolumeInfo: vol,
+				}
+				if allocArg.IsInit && len(volumeRets) >= 2*v.InitVolumeNum && index >= v.InitVolumeNum {
+					v.modeInfos[allocArg.CodeMode].Put(allocVolInfo, true)
+					continue
 				}
 				v.modeInfos[allocArg.CodeMode].Put(allocVolInfo, args.isBackup)
 			}
