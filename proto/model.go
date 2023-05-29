@@ -117,6 +117,7 @@ type ClusterView struct {
 	VolStatInfo         []*VolStatInfo
 	BadPartitionIDs     []BadPartitionView
 	BadMetaPartitionIDs []BadPartitionView
+	MasterNodes         []NodeView
 	MetaNodes           []NodeView
 	DataNodes           []NodeView
 }
