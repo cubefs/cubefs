@@ -5,6 +5,7 @@ ENV LTP_SOURCE=https://github.com/linux-test-project/ltp/archive/${LTP_VERSION}.
 
 # install requirements for LTP (Linux Test Program) tests
 RUN apt-get update && apt-get install -y xz-utils make gcc-10 g++-10 flex bison automake autoconf psmisc cmake
+RUN wget --no-check-certificate https://ocs-cn-north1.heytapcs.com/cubefs/github/ci/rocksdb_libs.tar.gz
 RUN  mkdir -p /tmp/ltp /opt/ltp && cd /tmp/ltp \
         && wget --no-check-certificate ${LTP_SOURCE} && tar xf ${LTP_VERSION}.tar.gz && cd ltp-${LTP_VERSION} \
         && make autotools && ./configure \

@@ -31,18 +31,9 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Download rocksdb_libs
-        run: |
-            pushd build
-            wget -O rocksdb_libs.tar.gz https://ocs-cn-north1.heytapcs.com/cubefs/github/ci/rocksdb_libs.tar.gz
-            tar -zxvf rocksdb_libs.tar.gz
-            popd
-
       - name: Check gofmt
         run: |
-          find . -type f -name "*.go" | grep -v 'vendor' |grep -v 'depends'| xargs gofmt -l > gofmt_results.txt
-          cat gofmt_results.txt
-          if [ "$(cat gofmt_results.txt|wc -l)" -gt 0  ]; then exit 1; fi
+            docker/run_docker.sh -f
 
       - name: Unit and Scenario tests
         run: |
