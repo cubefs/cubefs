@@ -39,6 +39,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionDecommissionCmd(client),
 		newDataPartitionReplicateCmd(client),
 		newDataPartitionDeleteReplicaCmd(client),
+		newDataPartitionGetDiscardCmd(client),
 	)
 	return cmd
 }
@@ -49,6 +50,7 @@ const (
 	cmdDataPartitionDecommissionShort  = "Decommission a replication of the data partition to a new address"
 	cmdDataPartitionReplicateShort     = "Add a replication of the data partition on a new address"
 	cmdDataPartitionDeleteReplicaShort = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionGetDiscardShort    = "Display all discard data partitions"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -342,6 +344,40 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionGetDiscardCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpGetDiscard,
+		Short: cmdDataPartitionGetDiscardShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				infos *proto.DiscardDataPartitionInfos
+				err   error
+			)
+
+			defer func() {
+				if err != nil {
+					errout("Error: %v\n", err)
+				}
+			}()
+
+			if infos, err = client.AdminAPI().GetDiscardDataPartition(); err != nil {
+				return
+			}
+
+			stdout("\n")
+			stdout("%v\n", "[Discard Partitions]:")
+			stdout("%v\n", partitionInfoTableHeader)
+			sort.SliceStable(infos.DiscardDps, func(i, j int) bool {
+				return infos.DiscardDps[i].PartitionID < infos.DiscardDps[j].PartitionID
+			})
+			for _, partition := range infos.DiscardDps {
+				stdout("%v\n", formatDataPartitionInfoRow(&partition))
+			}
 		},
 	}
 	return cmd
