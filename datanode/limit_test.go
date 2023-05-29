@@ -12,7 +12,7 @@ import (
 
 func TestInitRepairLimit(t *testing.T) {
 	initRepairLimit()
-	assert.Equal(t, MaxExtentRepairLimit, cap(extentRepairLimitRater))
+	assert.Equal(t, MaxExtentRepairLimit, len(extentRepairLimitRater))
 }
 
 func TestRequestDoExtentRepair(t *testing.T) {
@@ -25,11 +25,17 @@ func TestRequestDoExtentRepair(t *testing.T) {
 	err := requestDoExtentRepair()
 	require.NoError(t, err)
 
+	stop := false
 	for {
+		if stop {
+			break
+		}
 		select {
 		case <-extentRepairLimitRater:
+			// do nothing
 		default:
-			return
+			stop = true
+			break
 		}
 	}
 
@@ -46,19 +52,28 @@ func TestFininshDoExtentRepair(t *testing.T) {
 	err := requestDoExtentRepair()
 	require.NoError(t, err)
 
+	stop := false
 	for {
+		if stop {
+			break
+		}
 		select {
 		case <-extentRepairLimitRater:
+			// do nothing
 		default:
-			return
+			stop = true
+			break
 		}
 	}
 
+	// finishDoExtentRepair() will send a struct{} to extentRepairLimitRater
 	fininshDoExtentRepair()
 
 	select {
 	case <-extentRepairLimitRater:
-		t.Fatalf("extentRepairLimitRater should be empty")
+		if len(extentRepairLimitRater) != 0 {
+			t.Fatalf("extentRepairLimitRater should be empty, but len(extentRepairLimitRater) is %v", len(extentRepairLimitRater))
+		}
 	default:
 	}
 }
