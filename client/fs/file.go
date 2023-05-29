@@ -255,19 +255,36 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			FileSize:        uint64(fileSize),
 			CacheThreshold:  f.super.CacheThreshold,
 		}
-		f.fWriter.FreeCache()
 		switch req.Flags & 0x0f {
 		case syscall.O_RDONLY:
 			f.fReader = blobstore.NewReader(clientConf)
 			f.fWriter = nil
 		case syscall.O_WRONLY:
-			f.fWriter = blobstore.NewWriter(clientConf)
+			f.Lock()
+			if f.fWriter == nil || f.fWriter.GetClientCnt() <= 0 {
+				f.fWriter = blobstore.NewWriter(clientConf)
+			} else {
+				f.fWriter.IncreaseClientCnt()
+			}
+			f.Unlock()
 			f.fReader = nil
 		case syscall.O_RDWR:
 			f.fReader = blobstore.NewReader(clientConf)
-			f.fWriter = blobstore.NewWriter(clientConf)
+			f.Lock()
+			if f.fWriter == nil || f.fWriter.GetClientCnt() <= 0 {
+				f.fWriter = blobstore.NewWriter(clientConf)
+			} else {
+				f.fWriter.IncreaseClientCnt()
+			}
+			f.Unlock()
 		default:
-			f.fWriter = blobstore.NewWriter(clientConf)
+			f.Lock()
+			if f.fWriter == nil || f.fWriter.GetClientCnt() <= 0 {
+				f.fWriter = blobstore.NewWriter(clientConf)
+			} else {
+				f.fWriter.IncreaseClientCnt()
+			}
+			f.Unlock()
 			f.fReader = nil
 		}
 		log.LogDebugf("TRACE file open,ino(%v)  req.Flags(%v) reader(%v)  writer(%v)", ino, req.Flags, f.fReader, f.fWriter)
@@ -287,7 +304,14 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 	defer func() {
 		stat.EndStat("Release", err, bgTime, 1)
-		f.fWriter.FreeCache()
+		f.Lock()
+		if f.fWriter != nil {
+			f.fWriter.DecreaseClientCnt()
+			if f.fWriter.GetClientCnt() == 0 {
+				f.fWriter.FreeCache()
+			}
+		}
+		f.Unlock()
 		if DisableMetaCache {
 			f.super.ic.Delete(ino)
 		}
@@ -297,7 +321,12 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 	start := time.Now()
 
-	//log.LogErrorf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
+	log.LogDebugf("TRACE Release close stream: ino(%v) req(%v)", ino, req)
+	err = f.fWriter.Flush(ino, ctx)
+	if err != nil {
+		log.LogErrorf("Release: close fWriter failed, ino(%v) req(%v) err(%v)", ino, req, err)
+		return ParseError(err)
+	}
 	//if f.fWriter != nil {
 	//	f.fWriter.Close()
 	//}
@@ -333,6 +362,13 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	if proto.IsHot(f.super.volType) {
 		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	} else {
+		if err := f.fWriter.Flush(f.info.Inode, ctx); err != nil {
+			msg := fmt.Sprintf("Read: read wait for flush ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
+			f.super.handleError("Read", msg)
+			errMetric := exporter.NewCounter("fileReadFailed")
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EFLUSH"})
+			return ParseError(err)
+		}
 		size, err = f.fReader.Read(ctx, resp.Data[fuse.OutHeaderSize:], int(req.Offset), req.Size)
 	}
 	if err != nil && err != io.EOF {
@@ -408,7 +444,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 	}
 
-	if req.FileFlags&fuse.OpenAppend != 0 || proto.IsCold(f.super.volType) {
+	if req.FileFlags&fuse.OpenAppend != 0 {
 		flags |= proto.FlagsAppend
 	}
 
@@ -550,25 +586,33 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	ino := f.info.Inode
 	start := time.Now()
-	if req.Valid.Size() && proto.IsHot(f.super.volType) {
-		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
-		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
-		if err := f.super.ec.OpenStream(ino); err != nil {
-			log.LogErrorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
-			return ParseError(err)
-		}
-		defer f.super.ec.CloseStream(ino)
+	if req.Valid.Size() {
+		if proto.IsHot(f.super.volType) {
+			// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
+			// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
+			if err := f.super.ec.OpenStream(ino); err != nil {
+				log.LogErrorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
+				return ParseError(err)
+			}
+			defer f.super.ec.CloseStream(ino)
 
-		if err := f.super.ec.Flush(ino); err != nil {
-			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
-			return ParseError(err)
+			if err := f.super.ec.Flush(ino); err != nil {
+				log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
+				return ParseError(err)
+			}
+			if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size)); err != nil {
+				log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
+				return ParseError(err)
+			}
+			f.super.ic.Delete(ino)
+			f.super.ec.RefreshExtentsCache(ino)
+		} else if proto.IsCold(f.super.volType) {
+			if err := f.fWriter.Truncate(ino, ctx, req.Size); err != nil {
+				log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
+				return ParseError(err)
+			}
+			f.super.ic.Delete(ino)
 		}
-		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size)); err != nil {
-			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
-			return ParseError(err)
-		}
-		f.super.ic.Delete(ino)
-		f.super.ec.RefreshExtentsCache(ino)
 	}
 
 	info, err := f.super.InodeGet(ino)
