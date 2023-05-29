@@ -38,6 +38,7 @@ const (
 	CliOpDelReplica        = "del-replica"
 	CliOpExpand            = "expand"
 	CliOpShrink            = "shrink"
+	CliOpGetDiscard        = "get-discard"
 
 	//Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"

@@ -683,3 +683,16 @@ func (api *AdminAPI) ListQuotaAll() (volsInfo []*proto.VolInfo, err error) {
 	}
 	return
 }
+
+func (api *AdminAPI) GetDiscardDataPartition() (DiscardDpInfos *proto.DiscardDataPartitionInfos, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetDiscardDp)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	DiscardDpInfos = &proto.DiscardDataPartitionInfos{}
+	if err = json.Unmarshal(buf, &DiscardDpInfos); err != nil {
+		return
+	}
+	return
+}

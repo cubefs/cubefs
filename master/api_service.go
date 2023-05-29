@@ -4887,7 +4887,7 @@ func (m *Server) setDpDiscardHandler(w http.ResponseWriter, r *http.Request) {
 		err     error
 	)
 
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaGet))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetDpDiscard))
 	defer func() {
 		doStatAndMetric(proto.AdminSetDpDiscard, metric, err, nil)
 	}()
@@ -4909,6 +4909,33 @@ func (m *Server) setDpDiscardHandler(w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprintf("[setDpDiscardHandler] set dpid %v to discard(%v) success", dpId, discard)
 	log.LogInfo(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+	return
+}
+
+func (m *Server) getDiscardDpHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		DiscardDpInfos = proto.DiscardDataPartitionInfos{}
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetDiscardDp))
+	defer func() {
+		doStatAndMetric(proto.AdminGetDiscardDp, metric, nil, nil)
+	}()
+
+	vols := m.cluster.copyVols()
+	for _, vol := range vols {
+		var dps *DataPartitionMap
+		dps = vol.dataPartitions
+		for _, dp := range dps.partitions {
+			if dp.IsDiscard {
+				DiscardDpInfos.DiscardDps = append(DiscardDpInfos.DiscardDps, *dp.buildDpInfo(m.cluster))
+			}
+		}
+	}
+
+	msg := fmt.Sprintf("[GetDiscardDpHandler] discard dp num:%v", len(DiscardDpInfos.DiscardDps))
+	log.LogInfo(msg)
+	sendOkReply(w, r, newSuccessHTTPReply(DiscardDpInfos))
 	return
 }
 
