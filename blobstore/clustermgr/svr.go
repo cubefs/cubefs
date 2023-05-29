@@ -551,7 +551,7 @@ func (s *Service) loop() {
 	for {
 		select {
 		case <-reportTicker.C:
-			if !s.raftNode.IsLeader() || s.ConsulAgentAddr == "" {
+			if s.ConsulAgentAddr == "" {
 				continue
 			}
 			clusterInfo := clustermgr.ClusterInfo{
