@@ -955,6 +955,10 @@ func (tm *TransactionManager) rollbackTransaction(req *proto.TxApplyRequest, rbF
 
 	var resp interface{}
 	resp, err = tm.txProcessor.mp.submit(opFSMTxRollback, val)
+	if err != nil {
+		log.LogWarnf("rollbackTransaction: rollback transaction[%v]  failed, err[%v]", txId, err)
+		return proto.OpTxRollbackErr, err
+	}
 	status = resp.(uint8)
 
 	if status == proto.OpTxInfoNotExistErr {
@@ -1223,6 +1227,10 @@ func (tm *TransactionManager) commitTransaction(req *proto.TxApplyRequest, skipS
 	}
 
 	resp, err = tm.txProcessor.mp.submit(opFSMTxCommit, val)
+	if err != nil {
+		log.LogWarnf("commitTransaction: commit transaction[%v]  failed, err[%v]", txId, err)
+		return proto.OpTxCommitErr, err
+	}
 	status = resp.(uint8)
 
 	if status == proto.OpTxInfoNotExistErr {
