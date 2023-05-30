@@ -2371,3 +2371,65 @@ func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64) (quotaInfo
 	log.LogDebugf("getInodeQuota: req(%v) resp(%v) err(%v)", *req, *resp, err)
 	return
 }
+
+func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64,
+	maxInodes uint64, first bool) (err error) {
+	entries, err := mw.ReadDir_ll(parentIno)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		*inodes = append(*inodes, entry.Inode)
+		*curInodeCount = *curInodeCount + 1
+		*totalInodeCount = *totalInodeCount + 1
+		if *curInodeCount >= maxInodes {
+			mw.BatchSetInodeQuota_ll(*inodes, quotaId)
+			*curInodeCount = 0
+			*inodes = (*inodes)[:0]
+		}
+		if proto.IsDir(entry.Type) {
+			err = mw.applyQuota(entry.Inode, quotaId, totalInodeCount, curInodeCount, inodes, maxInodes, false)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if first && *curInodeCount > 0 {
+		mw.BatchSetInodeQuota_ll(*inodes, quotaId)
+		*curInodeCount = 0
+		*inodes = (*inodes)[:0]
+	}
+	return
+}
+
+func (mw *MetaWrapper) revokeQuota(parentIno uint64, quotaId uint32, totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64,
+	maxInodes uint64, first bool) (err error) {
+	entries, err := mw.ReadDir_ll(parentIno)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		*inodes = append(*inodes, entry.Inode)
+		*curInodeCount = *curInodeCount + 1
+		*totalInodeCount = *totalInodeCount + 1
+		if *curInodeCount >= maxInodes {
+			mw.BatchDeleteInodeQuota_ll(*inodes, quotaId)
+			*curInodeCount = 0
+			*inodes = (*inodes)[:0]
+		}
+		if proto.IsDir(entry.Type) {
+			err = mw.revokeQuota(entry.Inode, quotaId, totalInodeCount, curInodeCount, inodes, maxInodes, false)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if first && *curInodeCount > 0 {
+		mw.BatchDeleteInodeQuota_ll(*inodes, quotaId)
+		*curInodeCount = 0
+		*inodes = (*inodes)[:0]
+	}
+	return
+}
