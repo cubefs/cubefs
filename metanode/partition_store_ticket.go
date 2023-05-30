@@ -141,6 +141,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				if curCursor == lastCursor {
 					log.LogDebugf("[startSchedule] partitionId=%d: curCursor[%v]=lastCursor[%v]",
 						mp.config.PartitionId, curCursor, lastCursor)
+					timerCursor.Reset(intervalToSyncCursor)
 					continue
 				}
 				Buf := make([]byte, 8)
