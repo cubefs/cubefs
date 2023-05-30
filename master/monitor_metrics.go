@@ -53,7 +53,6 @@ type monitorMetrics struct {
 	metaNodesTotal     exporter.Gauge
 	metaNodesUsed      exporter.Gauge
 	metaNodesIncreased exporter.Gauge
-	diskError          exporter.Gauge
 	dataNodesInactive  exporter.Gauge
 	metaNodesInactive  exporter.Gauge
 	volNames           map[string]struct{}
@@ -213,7 +212,7 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 						Label: "path",
 						Value: badDisk,
 					}
-					exporter.NewGauge(MetricDiskError, clusterLV, addrLV, pathLV)
+					exporter.NewGauge(MetricDiskError, clusterLV, addrLV, pathLV).Set(1)
 					mm.badDisks[badDisk] = dataNode.Addr
 					delete(deleteBadDisks, badDisk)
 					break
@@ -307,7 +306,6 @@ func (mm *monitorMetrics) resetAllMetrics() {
 	mm.metaNodesTotal.Set(0)
 	mm.metaNodesUsed.Set(0)
 	mm.metaNodesIncreased.Set(0)
-	mm.diskError.Set(0)
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
 }
