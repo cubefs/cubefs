@@ -5,7 +5,9 @@ import (
 )
 
 // concurrent map and lock
-const SegmentCount = 256
+const (
+	DefaultSegmentCount = 256
+)
 
 type ConcurrentStreamerMap []*ConcurrentStreamerMapSegment
 
@@ -14,7 +16,11 @@ type ConcurrentStreamerMapSegment struct {
 	streamers map[uint64]*Streamer
 }
 
-func InitConcurrentStreamerMap() (m ConcurrentStreamerMap) {
+func InitConcurrentStreamerMap(setSegCount int64) (m ConcurrentStreamerMap) {
+	SegmentCount := DefaultSegmentCount
+	if setSegCount > 0 {
+		SegmentCount = int(setSegCount)
+	}
 	m = make([]*ConcurrentStreamerMapSegment, SegmentCount)
 	for i := 0; i < SegmentCount; i++ {
 		m[i] = &ConcurrentStreamerMapSegment{
@@ -25,24 +31,13 @@ func InitConcurrentStreamerMap() (m ConcurrentStreamerMap) {
 }
 
 func (m ConcurrentStreamerMap) GetMapSegment(inode uint64) *ConcurrentStreamerMapSegment {
-	index := inode % SegmentCount
+	index := inode % uint64(len(m))
 	return m[index]
-}
-
-func (m ConcurrentStreamerMap) Length() int {
-	length := 0
-	for i := 0; i < SegmentCount; i++ {
-		mapSeg := m[i]
-		mapSeg.Lock()
-		length += len(mapSeg.streamers)
-		mapSeg.Unlock()
-	}
-	return length
 }
 
 func (m ConcurrentStreamerMap) Keys() []uint64 {
 	inodes := make([]uint64, 0)
-	for i := 0; i < SegmentCount; i++ {
+	for i := 0; i < len(m); i++ {
 		mapSeg := m[i]
 		mapSeg.Lock()
 		for inode, _ := range mapSeg.streamers {

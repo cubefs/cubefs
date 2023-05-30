@@ -101,6 +101,17 @@ type EvictRequest struct {
 
 // Open request shall grab the lock until request is sent to the request channel
 func (s *Streamer) IssueOpenRequest() error {
+	if !s.initServer {
+		done, err := s.IssueWithoutServer(func() error {
+			s.open()
+			return nil
+		})
+		if done {
+			s.streamerMap.Unlock()
+			return err
+		}
+	}
+
 	request := openRequestPool.Get().(*OpenRequest)
 	request.done = make(chan struct{}, 1)
 	s.request <- request
@@ -121,6 +132,10 @@ func GetWriteRequestFromPool() (request *WriteRequest) {
 }
 
 func (s *Streamer) IssueWriteRequest(ctx context.Context, offset uint64, data []byte, direct bool) (write int, isROW bool, err error) {
+	if !s.initServer {
+		s.InitServer()
+	}
+
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, false, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -155,6 +170,10 @@ func (s *Streamer) IssueFlushRequest(ctx context.Context) error {
 		return nil
 	}
 
+	if !s.initServer {
+		s.InitServer()
+	}
+
 	request := flushRequestPool.Get().(*FlushRequest)
 	request.done = make(chan struct{}, 1)
 	request.ctx = ctx
@@ -165,19 +184,43 @@ func (s *Streamer) IssueFlushRequest(ctx context.Context) error {
 	return err
 }
 
-func (s *Streamer) IssueReleaseRequest(ctx context.Context) error {
+func (s *Streamer) IssueReleaseRequest(ctx context.Context) (err error) {
+	if !s.initServer {
+		done, err := s.IssueWithoutServer(func() error {
+			errMsg := s.release(ctx, false)
+			s.evict()
+			return errMsg
+		})
+		if done {
+			s.streamerMap.Unlock()
+			return err
+		}
+	}
+
 	request := releaseRequestPool.Get().(*ReleaseRequest)
 	request.done = make(chan struct{}, 1)
 	request.ctx = ctx
 	s.request <- request
 	s.streamerMap.Unlock()
 	<-request.done
-	err := request.err
+	err = request.err
 	releaseRequestPool.Put(request)
 	return err
 }
 
 func (s *Streamer) IssueMustReleaseRequest(ctx context.Context) error {
+	if !s.initServer {
+		done, err := s.IssueWithoutServer(func() error {
+			errMsg := s.release(ctx, true)
+			s.evict()
+			return errMsg
+		})
+		if done {
+			s.streamerMap.Unlock()
+			return err
+		}
+	}
+
 	request := releaseRequestPool.Get().(*ReleaseRequest)
 	request.done = make(chan struct{}, 1)
 	request.mustRelease = true
@@ -191,6 +234,10 @@ func (s *Streamer) IssueMustReleaseRequest(ctx context.Context) error {
 }
 
 func (s *Streamer) IssueTruncRequest(ctx context.Context, size uint64) error {
+	if !s.initServer {
+		s.InitServer()
+	}
+
 	request := truncRequestPool.Get().(*TruncRequest)
 	request.size = size
 	request.done = make(chan struct{}, 1)
@@ -203,6 +250,14 @@ func (s *Streamer) IssueTruncRequest(ctx context.Context, size uint64) error {
 }
 
 func (s *Streamer) IssueEvictRequest(ctx context.Context) error {
+	if !s.initServer {
+		done, err := s.IssueWithoutServer(s.evict)
+		if done {
+			s.streamerMap.Unlock()
+			return err
+		}
+	}
+
 	request := evictRequestPool.Get().(*EvictRequest)
 	request.done = make(chan struct{}, 1)
 	request.ctx = ctx
@@ -219,6 +274,9 @@ func (s *Streamer) server() {
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 
+	if log.IsDebugEnabled() {
+		log.LogDebugf("init server: ino(%v)", s.inode)
+	}
 	ctx := context.Background()
 
 	for {
@@ -321,7 +379,7 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 		request.err = s.release(request.ctx, request.mustRelease)
 		request.done <- struct{}{}
 	case *EvictRequest:
-		request.err = s.evict(request.ctx)
+		request.err = s.evictWithLock(request.ctx)
 		request.done <- struct{}{}
 	default:
 	}
@@ -422,7 +480,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
 				break
 			}
-			log.LogWarnf("doOverWriteOrROW failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
+			log.LogWarnf("doOverWrite failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
 		}
 		if writeSize, err = s.doROW(ctx, req, direct); err == nil {
 			isROW = true
@@ -977,17 +1035,21 @@ func (s *Streamer) release(ctx context.Context, mustRelease bool) error {
 	return err
 }
 
-func (s *Streamer) evict(ctx context.Context) error {
+func (s *Streamer) evictWithLock(ctx context.Context) error {
 	s.streamerMap.Lock()
+	err := s.evict()
+	s.streamerMap.Unlock()
+	return err
+}
+
+func (s *Streamer) evict() error {
 	if s.refcnt > 0 || len(s.request) != 0 {
-		s.streamerMap.Unlock()
 		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, s.refcnt))
 	}
 	if log.IsDebugEnabled() {
 		log.LogDebugf("evict: inode(%v)", s.inode)
 	}
 	delete(s.streamerMap.streamers, s.inode)
-	s.streamerMap.Unlock()
 	return nil
 }
 

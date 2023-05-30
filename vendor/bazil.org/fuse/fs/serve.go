@@ -30,7 +30,7 @@ const (
 
 const (
 	defaultForgetServeLimit = rate.Limit(1 << 16)
-	defaultForgetServeBurst = 128
+	defaultForgetServeBurst = (1 << 16)
 )
 
 var ForgetServeLimit *rate.Limiter = rate.NewLimiter(defaultForgetServeLimit, defaultForgetServeBurst)
@@ -488,9 +488,9 @@ func (s *Server) saveFuseContext() (fuseContext *FuseContext) {
 			continue
 		}
 		handleid := skip + uint64(i)
-		if hdl, ok := sh.handle.(HandleFlusher); ok {
-			if err = hdl.Flush(nil, nil); err != nil {
-				cfslog.LogErrorf("saveFuseContext: flush handle err. Inode %v, err: %v\n",
+		if nodeFsyncer, ok := sh.handle.(NodeFsyncer); ok {
+			if err = nodeFsyncer.Fsync(nil, nil); err != nil {
+				cfslog.LogErrorf("saveFuseContext: sync node err. Inode %v, err: %v\n",
 					s.node[sh.nodeID].inode, err)
 			}
 		}

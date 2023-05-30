@@ -51,6 +51,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/jacobsa/daemonize"
@@ -76,6 +77,11 @@ const (
 	ControlCommandGetOpRate    = "/opRate/get"
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
 	ControlCommandTracing      = "/tracing"
+
+	ControlPrefetchRead		   = "/prefetch/read"
+	ControlPrefetchAddPath	   = "/prefetch/pathAdd"
+	ControlPrefetchAppPid	   = "/post/processID"
+
 	Role                       = "Client"
 )
 
@@ -242,6 +248,9 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	gClient.wg.Add(2)
 	go func() {
 		gClient.portWg.Wait()
+		if err = gClient.super.GeneratePrefetchCubeInfo(opt.LocalIP, gClient.profPort); err != nil {
+			log.LogErrorf("GeneratePrefetchCubeInfo: err(%v) localIP(%v) prof(%v)", err, opt.LocalIP, gClient.profPort)
+		}
 		version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.volName, opt.MountPoint, CommitID, gClient.profPort, gClient.stopC, &gClient.wg)
 	}()
 
@@ -312,6 +321,9 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc(ControlCommandGetUmpCollectWay, GetUmpCollectWay)
 	http.HandleFunc(ControlCommandSetUmpCollectWay, SetUmpCollectWay)
 	http.HandleFunc(ControlAccessRoot, gClient.AccessRoot)
+	http.HandleFunc(ControlPrefetchRead, super.PrefetchIndex)
+	http.HandleFunc(ControlPrefetchAddPath, super.PrefetchAddPath)
+	http.HandleFunc(ControlPrefetchAppPid, super.PrefetchAppPid)
 	var (
 		server *http.Server
 		lc     net.ListenConfig
@@ -397,6 +409,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	}
 
 	fsConn, err = fuse.Mount(opt.MountPoint, fuseFd, options...)
+
 	return
 }
 
@@ -498,6 +511,14 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		return nil, fmt.Errorf("invalid config file: pidFile(%s) must be a absolute path", opt.PidFile)
 	}
 	opt.EnableReadDirPlus = GlobalMountOptions[proto.EnableReadDirPlus].GetBool()
+
+	opt.PrefetchThread = GlobalMountOptions[proto.PrefetchThread].GetInt64()
+	opt.LocalIP = GlobalMountOptions[proto.LocalIP].GetString()
+	if opt.PrefetchThread > 0 && !iputil.IsValidIP(opt.LocalIP) {
+		return nil, fmt.Errorf("invalid prefetch config: localIP(%v) must be a valid IP", opt.LocalIP)
+	}
+
+	opt.StreamerSegCount = GlobalMountOptions[proto.StreamerSegCount].GetInt64()
 
 	return opt, nil
 }
@@ -606,6 +627,8 @@ func GetFuseFd() *os.File {
 }
 
 func StopClient() (clientState []byte) {
+	gClient.super.ClosePrefetchWorker()
+
 	gClient.fuseServer.Stop()
 	close(gClient.stopC)
 	gClient.wg.Wait()

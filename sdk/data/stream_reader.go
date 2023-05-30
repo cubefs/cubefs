@@ -70,6 +70,9 @@ type Streamer struct {
 	pendingPacketList []*common.Packet
 
 	bloomStatus bool
+
+	initLock	 sync.RWMutex
+	initServer	 bool
 }
 
 // NewStreamer returns a new streamer.
@@ -85,11 +88,9 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.tinySize = client.tinySize
 	s.extentSize = client.extentSize
 	s.streamerMap = streamMap
+	s.initServer = false
 	s.pendingPacketList = make([]*common.Packet, 0)
 	s.bloomStatus = client.GetInodeBloomStatus(inode)
-
-	s.wg.Add(1)
-	go s.server()
 	return s
 }
 
@@ -99,6 +100,27 @@ func (s *Streamer) String() string {
 		return ""
 	}
 	return fmt.Sprintf("Streamer{ino(%v)}", s.inode)
+}
+
+func (s *Streamer) InitServer() {
+	s.initLock.Lock()
+	defer s.initLock.Unlock()
+	if s.initServer {
+		return
+	}
+	s.wg.Add(1)
+	go s.server()
+	s.initServer = true
+}
+
+func (s *Streamer) IssueWithoutServer(f func() error) (done bool, err error) {
+	s.initLock.RLock()
+	defer s.initLock.RUnlock()
+	if s.initServer {
+		return false, nil
+	}
+	err = f()
+	return true, err
 }
 
 // TODO should we call it RefreshExtents instead?

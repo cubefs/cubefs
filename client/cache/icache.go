@@ -87,6 +87,11 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 	ic.Unlock()
 }
 
+// PutValue puts the given inode info into the inode cache.
+func (ic *InodeCache) PutValue(info proto.InodeInfo) {
+	ic.Put(&info)
+}
+
 // Get returns the inode info based on the given inode number.
 func (ic *InodeCache) Get(ctx context.Context, ino uint64) *proto.InodeInfo {
 	if !ic.useCache {

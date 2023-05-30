@@ -59,7 +59,7 @@ var (
 	htbTick      = 1
 	tickInterval = 100 * time.Millisecond
 	logLevel     = "debug"
-	walDir       = ""
+	walDir       = "/cfs/log/rafttest"
 	diskNum      = 5
 	dataType     = 0
 	resolver     = newNodeManager()
@@ -347,7 +347,7 @@ func getCurrentNanoTime() int64 {
 }
 
 func initRaftLog(logDir string) {
-	raftLogPath := path.Join("/tmp/rafttest/", "logs")
+	raftLogPath := path.Join("/cfs/log/rafttest/", "logs")
 	os.RemoveAll(raftLogPath)
 	_, err := os.Stat(raftLogPath)
 	if err != nil {

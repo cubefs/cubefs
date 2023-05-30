@@ -33,7 +33,7 @@ import (
 // Dir defines the structure of a directory
 type Dir struct {
 	super  *Super
-	info   *proto.InodeInfo
+	info   proto.InodeInfo
 	dcache *cache.DentryCache
 }
 
@@ -58,11 +58,13 @@ var (
 	_ fs.NodeRemovexattrer      = (*Dir)(nil)
 )
 
+
 // NewDir returns a new directory.
 func NewDir(s *Super, i *proto.InodeInfo) fs.Node {
+
 	return &Dir{
 		super: s,
-		info:  i,
+		info:  *i,
 	}
 }
 
@@ -81,7 +83,7 @@ func (d *Dir) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	fillAttr(d.info, a)
+	fillAttr(&d.info, a)
 	return nil
 }
 
@@ -159,7 +161,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 // Remove handles the remove request.
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
-	tpObject := exporter.NewVolumeTP("Remove", d.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Remove_us", d.super.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -214,9 +216,23 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		err error
 	)
 
-	log.LogDebugf("TRACE Lookup: parent(%v) req(%v)", d.info.Inode, req)
+	tpObject := exporter.NewVolumeTPUs("Lookup_us", d.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	start := time.Now()
+	if log.IsDebugEnabled() {
+		log.LogDebugf("TRACE Lookup enter: parent(%v) req(%v)", d.info.Inode, req)
+	}
 
 	ino, ok := d.dcache.Get(req.Name)
+	if !ok && d.super.prefetchManager != nil {
+		dcache := d.super.prefetchManager.GetDentryCache(d.info.Inode)
+		if dcache != nil {
+			d.dcache = dcache
+			ino, ok = d.dcache.Get(req.Name)
+		}
+	}
 	if !ok {
 		ino, _, err = d.super.mw.Lookup_ll(ctx, d.info.Inode, req.Name)
 		if err != nil {
@@ -240,8 +256,11 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	} else {
 		child = NewFile(d.super, info)
 	}
-
 	resp.EntryValid = LookupValidDuration
+	
+	if log.IsDebugEnabled() {
+		log.LogDebugf("TRACE Lookup: parent(%v) req(%v) cost(%v)", d.info.Inode, req, time.Since(start))
+	}
 	return child, nil
 }
 
@@ -454,7 +473,7 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	var oldInode *proto.InodeInfo
 	switch old := old.(type) {
 	case *File:
-		oldInode = old.info
+		oldInode = &old.info
 	default:
 		return nil, fuse.EPERM
 	}

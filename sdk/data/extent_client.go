@@ -39,6 +39,7 @@ type InsertExtentKeyFunc func(ctx context.Context, inode uint64, key proto.Exten
 type GetExtentsFunc func(ctx context.Context, inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(ctx context.Context, inode, oldSize, size uint64) error
 type EvictIcacheFunc func(ctx context.Context, inode uint64)
+type PutIcacheFunc func(inodeInfo proto.InodeInfo)
 type InodeMergeExtentsFunc func(ctx context.Context, inode uint64, oldEks []proto.ExtentKey, newEk []proto.ExtentKey) error
 
 const (
@@ -93,18 +94,17 @@ type ExtentConfig struct {
 	NearRead                 bool
 	ReadRate                 int64
 	WriteRate                int64
-	AlignSize                int64
 	TinySize                 int
 	ExtentSize               int
-	MaxExtentNumPerAlignArea int64
-	ForceAlignMerge          bool
 	AutoFlush                bool
 	OnInsertExtentKey        InsertExtentKeyFunc
 	OnGetExtents             GetExtentsFunc
 	OnTruncate               TruncateFunc
 	OnEvictIcache            EvictIcacheFunc
+	OnPutIcache				 PutIcacheFunc
 	OnInodeMergeExtents      InodeMergeExtentsFunc
 	MetaWrapper              *meta.MetaWrapper
+	StreamerSegCount		 int64
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -128,11 +128,9 @@ type ExtentClient struct {
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
 	evictIcache     EvictIcacheFunc //May be null, must check before using
+	putIcache		PutIcacheFunc 	//May be null, must check before using
 
 	followerRead             bool
-	alignSize                int64
-	maxExtentNumPerAlignArea int64
-	forceAlignMerge          bool
 
 	tinySize   int
 	extentSize int
@@ -183,11 +181,12 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.wg.Add(1)
 	go client.DoPrepare()
 
-	client.streamerConcurrentMap = InitConcurrentStreamerMap()
+	client.streamerConcurrentMap = InitConcurrentStreamerMap(config.StreamerSegCount)
 	client.insertExtentKey = config.OnInsertExtentKey
 	client.getExtents = config.OnGetExtents
 	client.truncate = config.OnTruncate
 	client.evictIcache = config.OnEvictIcache
+	client.putIcache = config.OnPutIcache
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
 	client.tinySize = config.TinySize
@@ -219,15 +218,6 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.masterClient = masterSDK.NewMasterClient(config.Masters, false)
 	client.wg.Add(1)
 	go client.startUpdateConfig()
-
-	client.alignSize = config.AlignSize
-	if client.alignSize > defaultMaxAlignSize {
-		log.LogWarnf("config alignSize(%v) is too max, set it to default max value(%v).", client.alignSize,
-			defaultMaxAlignSize)
-		client.alignSize = defaultMaxAlignSize
-	}
-	client.maxExtentNumPerAlignArea = config.MaxExtentNumPerAlignArea
-	client.forceAlignMerge = config.ForceAlignMerge
 
 	return
 }
@@ -290,9 +280,12 @@ func (client *ExtentClient) EvictStream(ctx context.Context, inode uint64) error
 		return err
 	}
 
-	//s.done <- struct{}{}
-	close(s.done)
-	s.wg.Wait()
+	s.initLock.RLock()
+	if s.initServer {
+		close(s.done)
+		s.wg.Wait()
+	}
+	s.initLock.RUnlock()
 	return nil
 }
 
@@ -312,6 +305,9 @@ func (client *ExtentClient) FileSize(inode uint64) (size uint64, gen uint64, val
 	if s == nil {
 		return
 	}
+	if !s.extents.initialized {
+		s.GetExtents(context.Background())
+	}
 	valid = true
 	size, gen = s.extents.Size()
 	return
@@ -329,10 +325,15 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 		return 0, false, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
 	}
 	s.once.Do(func() {
-		s.GetExtents(ctx)
+		if !s.extents.initialized {
+			s.GetExtents(ctx)
+		}
 	})
 	if !s.extents.initialized {
 		return 0, false, proto.ErrGetExtentsFailed
+	}
+	if !s.initServer {
+		s.InitServer()
 	}
 
 	if s.overWriteBuffer {
@@ -428,7 +429,9 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size uin
 
 	// GetExtents if has not been called, to prevent file old size check failure.
 	s.once.Do(func() {
-		s.GetExtents(ctx)
+		if !s.extents.initialized {
+			s.GetExtents(ctx)
+		}
 	})
 	if !s.extents.initialized {
 		return proto.ErrGetExtentsFailed
@@ -471,17 +474,14 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	}
 
 	s.once.Do(func() {
-		s.GetExtents(ctx)
+		if !s.extents.initialized {
+			s.GetExtents(ctx)
+		}
 	})
 	if !s.extents.initialized {
 		err = proto.ErrGetExtentsFailed
 		return
 	}
-
-	//err = s.IssueFlushRequest(ctx)
-	//if err != nil {
-	//	return
-	//}
 
 	// ROW in cross-region mode maybe insert a new ek
 	s.UpdateExpiredExtentCache(ctx)

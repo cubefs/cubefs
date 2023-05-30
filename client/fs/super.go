@@ -15,7 +15,9 @@
 package fs
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -64,6 +66,8 @@ type Super struct {
 	stopC          chan struct{}
 
 	volumeLabelValue exporter.LabelValue
+
+	prefetchManager *data.PrefetchManager
 }
 
 type SuperState struct {
@@ -114,16 +118,15 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		NearRead:                 opt.NearRead,
 		ReadRate:                 opt.ReadRate,
 		WriteRate:                opt.WriteRate,
-		AlignSize:                opt.AlignSize,
-		MaxExtentNumPerAlignArea: opt.MaxExtentNumPerAlignArea,
-		ForceAlignMerge:          opt.ForceAlignMerge,
 		ExtentSize:               int(opt.ExtentSize),
 		AutoFlush:                opt.AutoFlush,
 		OnInsertExtentKey:        s.mw.InsertExtentKey,
 		OnGetExtents:             s.mw.GetExtents,
 		OnTruncate:               s.mw.Truncate,
 		OnEvictIcache:            s.ic.Delete,
+		OnPutIcache:              s.ic.PutValue,
 		MetaWrapper:              s.mw,
+		StreamerSegCount: 		  opt.StreamerSegCount,
 	}
 	if first_start {
 		s.ec, err = data.NewExtentClient(extentConfig, nil)
@@ -174,6 +177,10 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	s.stopC = make(chan struct{})
 	s.wg.Add(1)
 	go s.scheduler()
+
+	if opt.PrefetchThread > 0 {
+		s.prefetchManager = data.NewPrefetchManager(s.ec, s.volname, opt.MountPoint, opt.PrefetchThread)
+	}
 
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
 	return s, nil
@@ -416,4 +423,137 @@ func (s *Super) EnableReadDirPlus() bool {
 
 func (s *Super) Owner() string {
 	return s.owner
+}
+
+
+func (s *Super) ClosePrefetchWorker() {
+	if s.prefetchManager != nil {
+		s.prefetchManager.Close()
+	}
+}
+
+func (s *Super) PrefetchAddPath(w http.ResponseWriter, r *http.Request) {
+	if s.prefetchManager == nil {
+		w.Write([]byte("no prefetch thread\n"))
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+	datasetCnt := r.FormValue("dataset_cnt")
+	if datasetCnt == "" {
+		w.Write([]byte("no dataset_cnt\n"))
+		return
+	}
+	path := r.FormValue("path")
+	if path == "" {
+		w.Write([]byte("no path\n"))
+		return
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		w.Write([]byte("path not exists\n"))
+		return
+	}
+	ttlStr := r.FormValue("ttl")
+	ttlMinute := int64(0)
+	if ttlStr != "" {
+		if minutes, err := strconv.ParseInt(ttlStr, 10, 64); err != nil || minutes < 0 {
+			w.Write([]byte(fmt.Sprintf("ttl must be a non-negative number representing the number of minutes before expiration\n")))
+			return
+		} else {
+			ttlMinute = minutes
+		}
+	}
+	if err := s.prefetchManager.AddIndexFilepath(datasetCnt, path, ttlMinute); err != nil {
+		w.Write([]byte(fmt.Sprintf("add path(%v) err: %v\n", path, err)))
+		return
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("PrefetchAddPath: datasetCnt(%v) path(%v)", datasetCnt, path)
+	}
+	w.Write([]byte(fmt.Sprintf("Reading index path(%v).\n", path)))
+}
+
+func (s *Super) PrefetchIndex(w http.ResponseWriter, r *http.Request) {
+	var (
+		bytes	[]byte
+		err 	error
+	)
+	tpObject := exporter.NewVolumeTP("PrefetchAPI", s.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	if s.prefetchManager == nil {
+		w.Write([]byte("no prefetch thread\n"))
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+	datasetCnt := r.FormValue("dataset_cnt")
+	if datasetCnt == "" {
+		w.Write([]byte("no dataset_cnt\n"))
+		return
+	}
+	bytes, err = ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
+		return
+	}
+	var batchArr [][]uint64
+	if err = json.Unmarshal(bytes, &batchArr); err != nil {
+		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))
+		return
+	}
+
+	start := time.Now()
+	if log.IsDebugEnabled() {
+		log.LogDebugf("PrefetchIndex: datasetCnt(%v) batchArr(%v) enter", datasetCnt, batchArr)
+	}
+	s.prefetchManager.PrefetchInodeInfo(datasetCnt, batchArr)
+	for _, indexArr := range batchArr {
+		for _, index := range indexArr {
+			if err = s.prefetchManager.PrefetchIndex(datasetCnt, index); err != nil {
+				w.Write([]byte(fmt.Sprintf("prefetch err[%v]\n", err)))
+				return
+			}
+		}
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("PrefetchIndex: datasetCnt(%v) batchArr(%v) end cost(%v)", datasetCnt, batchArr, time.Since(start))
+	}
+	w.Write([]byte(fmt.Sprintf("prefetching index[%v].\n", batchArr)))
+}
+
+func (s *Super) PrefetchAppPid(w http.ResponseWriter, r *http.Request) {
+	if s.prefetchManager == nil {
+		w.Write([]byte("no prefetch thread\n"))
+		return
+	}
+	bytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
+		return
+	}
+	var pidArr []int
+	if err = json.Unmarshal(bytes, &pidArr); err != nil {
+		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))
+		return
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("PrefetchAppPid: pidArr(%v)", pidArr)
+	}
+	for _, pid := range pidArr {
+		s.prefetchManager.PutAppPid(uint32(pid))
+	}
+	w.Write([]byte(fmt.Sprintf("Set app pid (%v).\n", pidArr)))
+}
+
+func (s *Super) GeneratePrefetchCubeInfo(localIP string, port uint64) error {
+	if s.prefetchManager == nil {
+		return nil
+	}
+	return s.prefetchManager.GenerateCubeInfo(localIP, port)
 }

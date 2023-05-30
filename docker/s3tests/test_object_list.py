@@ -379,8 +379,9 @@ class ObjectListTest(S3TestCase):
         )
 
     def test_list_objects_scan_root(self):
-        # 清理所有文件
+        # 清理所有文件及隐藏文件
         os.system('rm -rf %s/*' % env.MOUNT_POINT)
+        os.system('rm -rf %s/.*' % env.MOUNT_POINT)
         # 根目录下创建4000个文件, 命名从'0000'到'3999'
         for i in range(4000):
             key = '%04d' % i

@@ -32,7 +32,7 @@ import (
 // File defines the structure of a file.
 type File struct {
 	super *Super
-	info  *proto.InodeInfo
+	info  proto.InodeInfo
 	sync.RWMutex
 }
 
@@ -57,7 +57,7 @@ var (
 
 // NewFile returns a new file.
 func NewFile(s *Super, i *proto.InodeInfo) fs.Node {
-	return &File{super: s, info: i}
+	return &File{super: s, info: *i}
 }
 
 // Getattr gets the attributes of a file.
@@ -88,7 +88,7 @@ func (f *File) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse
 }
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
-	fillAttr(f.info, a)
+	fillAttr(&f.info, a)
 	fileSize, gen := f.fileSize(ctx, f.info.Inode)
 	if gen >= f.info.Generation {
 		a.Size = uint64(fileSize)
@@ -134,7 +134,7 @@ func (f *File) Forget() {
 // Open handles the open request.
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
 
-	tpObject := exporter.NewVolumeTP("Open", f.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Open_us", f.super.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -148,22 +148,31 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	f.super.ec.OpenStream(ino, false)
 
-	f.super.ec.RefreshExtentsCache(ctx, ino)
+	if f.super.prefetchManager == nil {
+		f.super.ec.RefreshExtentsCache(ctx, ino)
+	}
 
 	if f.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
 	}
 
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)ns", ino, req, resp, elapsed.Nanoseconds())
+	if log.IsDebugEnabled() {
+		log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)", ino, req, resp, time.Since(start))
+	}
 	return f, nil
 }
 
 // Release handles the release request.
 func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
+	tpObject := exporter.NewVolumeTPUs("Release_us", f.super.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
 
 	ino := f.info.Inode
-	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
+	}
 
 	start := time.Now()
 
@@ -175,16 +184,20 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		return fuse.EIO
 	}
 
-	f.super.ic.Delete(ctx, ino)
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
+	if f.super.prefetchManager == nil {
+		f.super.ic.Delete(ctx, ino)
+	}
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)", ino, req, time.Since(start))
+	}
 	return nil
 }
 
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 
-	tpObject := exporter.NewVolumeTP("Read", f.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Read_us", f.super.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -192,12 +205,21 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	defer func() {
 		tpObject1.Set(err)
 	}()
+	if f.super.prefetchManager.ContainsAppPid(req.Pid) {
+		tpObjectPid := exporter.NewVolumeTPUs("AppRead_us", f.super.volname)
+		defer func() {
+			tpObjectPid.Set(err)
+			log.LogWarnf("Read CFS: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+		}()
+	}
 
-	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+	}
 
 	start := time.Now()
 
-	size, _, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:], uint64(req.Offset), req.Size)
+	size, _, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:(fuse.OutHeaderSize+req.Size)], uint64(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleErrorWithGetInode("Read", msg, f.info.Inode)
@@ -211,21 +233,22 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}
 
 	if size > 0 {
-		resp.Data = resp.Data[:size+fuse.OutHeaderSize]
+		resp.ActualSize = uint64(size+fuse.OutHeaderSize)
 	} else if size <= 0 {
-		resp.Data = resp.Data[:fuse.OutHeaderSize]
+		resp.ActualSize = uint64(fuse.OutHeaderSize)
 		log.LogWarnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.info.Inode, req.Offset, req.Size, req, size)
 	}
 
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)ns", f.info.Inode, req.Offset, req.Size, req, size, elapsed.Nanoseconds())
+	if log.IsDebugEnabled() {
+		log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)", f.info.Inode, req.Offset, req.Size, req, size, time.Since(start))
+	}
 	return nil
 }
 
 // Write handles the write request.
 func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
 
-	tpObject := exporter.NewVolumeTP("Write", f.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Write_us", f.super.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -282,9 +305,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 	}
 
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v)ns ",
-		ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v)",
+		ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, time.Since(start))
 	return nil
 }
 
@@ -297,7 +319,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
 	start := time.Now()
 
-	tpObject := exporter.NewVolumeTP("Flush", f.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Flush_us", f.super.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -313,14 +335,14 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		return fuse.EIO
 	}
 	f.super.ic.Delete(ctx, f.info.Inode)
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Flush: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
+
+	log.LogDebugf("TRACE Flush: ino(%v) (%v)", f.info.Inode, time.Since(start))
 	return nil
 }
 
 // Fsync hanldes the fsync request.
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
-	tpObject := exporter.NewVolumeTP("Fsync", f.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Fsync_us", f.super.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -339,14 +361,14 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 		return fuse.EIO
 	}
 	f.super.ic.Delete(ctx, f.info.Inode)
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Fsync: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
+
+	log.LogDebugf("TRACE Fsync: ino(%v) (%v)", f.info.Inode, time.Since(start))
 	return nil
 }
 
 // Setattr handles the setattr request.
 func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) (err error) {
-	tpObject := exporter.NewVolumeTP("Setattr", f.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Setattr_us", f.super.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -393,8 +415,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	fillAttr(info, &resp.Attr)
 
-	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Setattr: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Setattr: ino(%v) req(%v) (%v)", ino, req, time.Since(start))
 	return nil
 }
 
