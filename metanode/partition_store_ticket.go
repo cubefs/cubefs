@@ -38,6 +38,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer.Stop()
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	scheduleState := common.StateStopped
+	lastCursor := mp.GetCursor()
 	dumpFunc := func(msg *storeMsg) {
 		log.LogDebugf("[startSchedule] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
@@ -124,11 +125,17 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timerCursor.Reset(intervalToSyncCursor)
 					continue
 				}
+				curCursor := mp.GetCursor()
+				if curCursor == lastCursor {
+					timer.Reset(intervalToPersistData)
+					continue
+				}
 				cursorBuf := make([]byte, 8)
-				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
+				binary.BigEndian.PutUint64(cursorBuf, curCursor)
 				if _, err := mp.submit(opFSMSyncCursor, cursorBuf); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
+				lastCursor = curCursor
 				timerCursor.Reset(intervalToSyncCursor)
 			}
 		}
