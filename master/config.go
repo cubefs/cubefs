@@ -32,7 +32,8 @@ const (
 	cfgPeers   = "peers"
 	// if the data partition has not been reported within this interval  (in terms of seconds), it will be considered as missing.
 	missingDataPartitionInterval        = "missingDataPartitionInterval"
-	noLeaderReportInterval              = "noLeaderReportInterval"
+	cfgDpNoLeaderReportIntervalSec      = "dpNoLeaderReportIntervalSec"
+	cfgMpNoLeaderReportIntervalSec      = "mpNoLeaderReportIntervalSec"
 	dataPartitionTimeOutSec             = "dataPartitionTimeOutSec"
 	NumberOfDataPartitionsToLoad        = "numberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
@@ -61,8 +62,8 @@ const (
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
 	defaultDataPartitionTimeOutSec             = 5 * defaultIntervalToCheckHeartbeat
 	defaultMissingDataPartitionInterval        = 24 * 3600
-	defaultNoLeaderReportInterval              = 10 * 60
-
+	defaultDpNoLeaderReportIntervalSec         = 10 * 60
+	defaultMpNoLeaderReportIntervalSec         = 5
 	defaultIntervalToAlarmMissingDataPartition = 60 * 60
 	timeToWaitForResponse                      = 120         // time to wait for response by the master during loading partition
 	defaultPeriodToLoadAllDataPartitions       = 60 * 60 * 4 // how long we need to load all the data partitions on the master every time
@@ -90,7 +91,8 @@ type clusterConfig struct {
 	secondsToFreeDataPartitionAfterLoad int64
 	NodeTimeOutSec                      int64
 	MissingDataPartitionInterval        int64
-	NoLeaderReportInterval              int64
+	DpNoLeaderReportIntervalSec         int64
+	MpNoLeaderReportIntervalSec         int64
 	DataPartitionTimeOutSec             int64
 	IntervalToAlarmMissingDataPartition int64
 	PeriodToLoadALLDataPartitions       int64
@@ -129,7 +131,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.secondsToFreeDataPartitionAfterLoad = defaultSecondsToFreeDataPartitionAfterLoad
 	cfg.NodeTimeOutSec = defaultNodeTimeOutSec
 	cfg.MissingDataPartitionInterval = defaultMissingDataPartitionInterval
-	cfg.NoLeaderReportInterval = defaultNoLeaderReportInterval
+	cfg.DpNoLeaderReportIntervalSec = defaultDpNoLeaderReportIntervalSec
+	cfg.MpNoLeaderReportIntervalSec = defaultMpNoLeaderReportIntervalSec
 	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
 	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
 	cfg.IntervalToCheckQos = defaultIntervalToCheckQos
