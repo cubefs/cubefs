@@ -409,6 +409,16 @@ func (mw *MetaWrapper) IsQuotaLimited(quotaIds []uint32) bool {
 	return false
 }
 
+func (mw *MetaWrapper) GetQuotaFullPaths() (fullPaths []string) {
+	fullPaths = make([]string, 0, 0)
+	mw.QuotaLock.RLock()
+	defer mw.QuotaLock.RUnlock()
+	for _, info := range mw.QuotaInfoMap {
+		fullPaths = append(fullPaths, info.FullPath)
+	}
+	return fullPaths
+}
+
 func findNestedPath(path1, path2 string) string {
 	if path1 == path2 {
 		return ""
@@ -427,21 +437,4 @@ func findNestedPath(path1, path2 string) string {
 	}
 
 	return ""
-}
-
-func (mw *MetaWrapper) GetChangeQuota(srcPath string, dstPath string) (changePathMap map[uint32]string) {
-	changePathMap = make(map[uint32]string, 0)
-	mw.QuotaLock.RLock()
-	defer mw.QuotaLock.RUnlock()
-
-	for _, info := range mw.QuotaInfoMap {
-		nestedPath := findNestedPath(srcPath, info.FullPath)
-		if nestedPath != "" {
-			newPath := dstPath + "/" + nestedPath
-			changePathMap[info.QuotaId] = newPath
-		}
-	}
-
-	log.LogDebugf("GetChangeQuota map [%v]", changePathMap)
-	return changePathMap
 }

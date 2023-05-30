@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -609,15 +610,18 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		d.super.fslock.Unlock()
 		auditlog.FormatLog("Rename", d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName, err, time.Since(start).Microseconds(), srcInode, dstInode)
 	}()
-	changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
+	//changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
+	if !d.IsSameQuota(dstDir) {
+		return fuse.EPERM
+	}
 	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, true)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
 	}
-	if len(changePathMap) != 0 {
-		d.super.mw.BatchModifyQuotaPath(changePathMap)
-	}
+	// if len(changePathMap) != 0 {
+	// 	d.super.mw.BatchModifyQuotaPath(changePathMap)
+	// }
 	d.super.ic.Delete(d.info.Inode)
 	d.super.ic.Delete(dstDir.info.Inode)
 
@@ -946,4 +950,33 @@ func dentryExpired(info *proto.DentryInfo) bool {
 
 func dentrySetExpiration(info *proto.DentryInfo, t time.Duration) {
 	info.SetExpiration(time.Now().Add(t).UnixNano())
+}
+
+func (d *Dir) IsSameQuota(dstDir *Dir) bool {
+	fullPaths := d.super.mw.GetQuotaFullPaths()
+	if len(fullPaths) == 0 {
+		return true
+	}
+
+	srcPath := d.getCwd()
+	dstPath := dstDir.getCwd()
+	for _, fullPath := range fullPaths {
+		if IsSubdirectory(fullPath, srcPath) && !IsSubdirectory(fullPath, dstPath) {
+			return false
+		}
+
+		if !IsSubdirectory(fullPath, srcPath) && IsSubdirectory(fullPath, dstPath) {
+			return false
+		}
+	}
+	return true
+}
+
+func IsSubdirectory(parent, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+	if parent == child {
+		return true
+	}
+	return strings.HasPrefix(child, parent+string(filepath.Separator))
 }

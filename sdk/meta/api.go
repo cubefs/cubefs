@@ -719,28 +719,6 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return statusToErrno(status)
 	}
 
-	quotaInfos, err := mw.GetInodeQuota_ll(srcInode)
-	if err != nil {
-		log.LogErrorf("get inode [%v] quota failed [%v]", srcInode, err)
-		return syscall.ENOENT
-	}
-
-	for _, info := range quotaInfos {
-		if info.RootInode {
-			log.LogErrorf("can not rename quota Root inode equal inode [%v]", srcInode)
-			return syscall.EACCES
-		}
-	}
-
-	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
-	if err != nil {
-		log.LogErrorf("rename_ll: get dst partent quota fail, pa")
-	}
-	var quotaIds []uint32
-	for quotaId := range destQuotaInfos {
-		quotaIds = append(quotaIds, quotaId)
-	}
-
 	tx, err = NewRenameTransaction(srcParentMP, srcParentID, srcName, dstParentMP, dstParentID, dstName, mw.TxTimeout)
 	if err != nil {
 		return syscall.EAGAIN
@@ -815,7 +793,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		if err != nil {
 			return syscall.EAGAIN
 		}
-		status, err = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, quotaIds)
+		status, err = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{})
 		if err != nil {
 			//todo_tx: check process for error
 			return statusToErrno(status)
@@ -855,7 +833,6 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 			tx.SetOnCommit(job)
 		}
 	} else {
-
 		if mw.EnableSummary {
 			sizeInc := int64(srcInodeInfo.Size)
 			if proto.IsRegular(srcMode) {
@@ -883,27 +860,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 			}
 			tx.SetOnCommit(job)
 		}
-
 	}
-
-	var inodes []uint64
-	inodes = append(inodes, srcInode)
-	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
-	if err != nil {
-		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
-		return err
-	}
-	job = func() {
-		for quotaId := range srcQuotaInfos {
-			mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
-		}
-
-		for quotaId, info := range destQuotaInfos {
-			log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
-			mw.BatchSetInodeQuota_ll(inodes, quotaId)
-		}
-	}
-	tx.SetOnCommit(job)
 	return nil
 }
 
@@ -936,19 +893,6 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return statusToErrno(status)
 	}
 
-	quotaInfos, err := mw.GetInodeQuota_ll(inode)
-	if err != nil {
-		log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
-		return syscall.ENOENT
-	}
-
-	for _, info := range quotaInfos {
-		if info.RootInode {
-			log.LogErrorf("can not rename quota Root inode equal inode [%v]", inode)
-			return syscall.EACCES
-		}
-	}
-
 	srcMP := mw.getPartitionByInode(inode)
 	if srcMP == nil {
 		return syscall.ENOENT
@@ -959,16 +903,8 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return statusToErrno(status)
 	}
 
-	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
-	if err != nil {
-		log.LogErrorf("rename_ll: get dst partent quota fail, pa")
-	}
-	var quotaIds []uint32
-	for quotaId := range destQuotaInfos {
-		quotaIds = append(quotaIds, quotaId)
-	}
 	// create dentry in dst parent
-	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, quotaIds)
+	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, []uint32{})
 	if err != nil {
 		if status == statusOpDirQuota {
 			return statusToErrno(status)
@@ -1056,23 +992,6 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 				}()
 			}
 		}
-	}
-
-	var inodes []uint64
-	inodes = append(inodes, inode)
-	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
-	if err != nil {
-		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
-		return err
-	}
-
-	for quotaId := range srcQuotaInfos {
-		mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
-	}
-
-	for quotaId, info := range destQuotaInfos {
-		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
-		mw.BatchSetInodeQuota_ll(inodes, quotaId)
 	}
 
 	return nil
@@ -2152,6 +2071,16 @@ func (mw *MetaWrapper) GetInodeQuota_ll(inode uint64) (quotaInfos map[uint32]*pr
 	return
 }
 
-func (mw *MetaWrapper) BatchModifyQuotaPath(changePathMap map[uint32]string) {
-	mw.mc.AdminAPI().BatchModifyQuotaPath(mw.volname, changePathMap)
+func (mw *MetaWrapper) ApplyQuota_ll(parentIno uint64, quotaId uint32, maxConcurrencyInode uint64) (numInodes uint64, err error) {
+	inodes := make([]uint64, 0, maxConcurrencyInode)
+	var curInodeCount uint64
+	err = mw.applyQuota(parentIno, quotaId, &numInodes, &curInodeCount, &inodes, maxConcurrencyInode, true)
+	return
+}
+
+func (mw *MetaWrapper) RevokeQuota_ll(parentIno uint64, quotaId uint32, maxConcurrencyInode uint64) (numInodes uint64, err error) {
+	inodes := make([]uint64, 0, maxConcurrencyInode)
+	var curInodeCount uint64
+	err = mw.revokeQuota(parentIno, quotaId, &numInodes, &curInodeCount, &inodes, maxConcurrencyInode, true)
+	return
 }

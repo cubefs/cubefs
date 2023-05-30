@@ -535,8 +535,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 
 	// Quota
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.QuotaSet).
-		HandlerFunc(m.SetQuota)
+		Path(proto.QuotaCreate).
+		HandlerFunc(m.CreateQuota)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QuotaUpdate).
 		HandlerFunc(m.UpdateQuota)
@@ -549,9 +549,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.QuotaGet).
 		HandlerFunc(m.GetQuota)
-	router.NewRoute().Methods(http.MethodGet).
-		Path(proto.QuotaBatchModifyPath).
-		HandlerFunc(m.BatchModifyQuotaFullPath)
+	// router.NewRoute().Methods(http.MethodGet).
+	// 	Path(proto.QuotaBatchModifyPath).
+	// 	HandlerFunc(m.BatchModifyQuotaFullPath)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.QuotaListAll).
 		HandlerFunc(m.ListQuotaAll)
