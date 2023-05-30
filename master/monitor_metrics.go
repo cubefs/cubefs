@@ -277,7 +277,7 @@ func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, 
 		m.dpNoLeaderInfo[partitionID] = now
 		return
 	}
-	if now-t > m.cluster.cfg.NoLeaderReportInterval {
+	if now-t > m.cluster.cfg.DpNoLeaderReportIntervalSec {
 		m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
 		m.dpNoLeaderInfo[partitionID] = now
 	}
@@ -368,7 +368,7 @@ func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, 
 		return
 	}
 
-	if now-t > m.cluster.cfg.NoLeaderReportInterval {
+	if now-t > m.cluster.cfg.MpNoLeaderReportIntervalSec {
 		m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
 		m.mpNoLeaderInfo[partitionID] = now
 	}
