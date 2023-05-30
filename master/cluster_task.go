@@ -294,7 +294,7 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
 			}
 
-			if !mp.isLeaderExist() && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.NoLeaderReportInterval) {
+			if !mp.isLeaderExist() && (time.Now().Unix()-mp.LeaderReportTime > c.cfg.MpNoLeaderReportIntervalSec) {
 				noLeaderMetaPartitions = append(noLeaderMetaPartitions, mp)
 			}
 
