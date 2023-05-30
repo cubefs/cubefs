@@ -162,7 +162,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		exporter.Warning(err.Error())
 		return
 	}
-	go m.startUpdateInodeQuota()
 	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
 	return
 }

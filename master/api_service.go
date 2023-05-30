@@ -4792,20 +4792,20 @@ func (m *Server) getConfig(key string) (value string, err error) {
 	return value, err
 }
 
-func (m *Server) SetQuota(w http.ResponseWriter, r *http.Request) {
+func (m *Server) CreateQuota(w http.ResponseWriter, r *http.Request) {
 	var req = &proto.SetMasterQuotaReuqest{}
 	var (
 		err error
 		vol *Vol
 	)
 
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaSet))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaCreate))
 	defer func() {
-		doStatAndMetric(proto.QuotaSet, metric, err, map[string]string{exporter.Vol: req.VolName})
+		doStatAndMetric(proto.QuotaCreate, metric, err, map[string]string{exporter.Vol: req.VolName})
 	}()
 
 	if err = parserSetQuotaParam(r, req); err != nil {
-		log.LogErrorf("[SetQuota] set quota fail err [%v]", err)
+		log.LogErrorf("[CreateQuota] set quota fail err [%v]", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -4815,12 +4815,12 @@ func (m *Server) SetQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = vol.quotaManager.setQuota(req); err != nil {
+	if err = vol.quotaManager.createQuota(req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	msg := fmt.Sprintf("set quota successfully, req %v", req)
+	msg := fmt.Sprintf("create quota successfully, req %v", req)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -4959,45 +4959,45 @@ func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (m *Server) BatchModifyQuotaFullPath(w http.ResponseWriter, r *http.Request) {
-	var (
-		name              string
-		body              []byte
-		changeFullPathMap map[uint32]string
-		err               error
-		vol               *Vol
-	)
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaGet))
-	defer func() {
-		doStatAndMetric(proto.QuotaBatchModifyPath, metric, err, map[string]string{exporter.Vol: name})
-	}()
+// func (m *Server) BatchModifyQuotaFullPath(w http.ResponseWriter, r *http.Request) {
+// 	var (
+// 		name              string
+// 		body              []byte
+// 		changeFullPathMap map[uint32]string
+// 		err               error
+// 		vol               *Vol
+// 	)
+// 	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaGet))
+// 	defer func() {
+// 		doStatAndMetric(proto.QuotaBatchModifyPath, metric, err, map[string]string{exporter.Vol: name})
+// 	}()
 
-	if name, err = parseAndExtractName(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
+// 	if name, err = parseAndExtractName(r); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
 
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	changeFullPathMap = make(map[uint32]string)
-	if err = json.Unmarshal(body, &changeFullPathMap); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
+// 	if body, err = ioutil.ReadAll(r.Body); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
+// 	changeFullPathMap = make(map[uint32]string)
+// 	if err = json.Unmarshal(body, &changeFullPathMap); err != nil {
+// 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+// 		return
+// 	}
 
-	if vol, err = m.cluster.getVol(name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
-		return
-	}
+// 	if vol, err = m.cluster.getVol(name); err != nil {
+// 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+// 		return
+// 	}
 
-	vol.quotaManager.batchModifyQuotaFullPath(changeFullPathMap)
+// 	vol.quotaManager.batchModifyQuotaFullPath(changeFullPathMap)
 
-	log.LogInfof("BatchModifyQuotaFullPath vol [%v] changeFullPathMap [%v] success.", name, changeFullPathMap)
-	msg := fmt.Sprintf("BatchModifyQuotaFullPath successfully, vol [%v]", name)
-	sendOkReply(w, r, newSuccessHTTPReply(msg))
-}
+// 	log.LogInfof("BatchModifyQuotaFullPath vol [%v] changeFullPathMap [%v] success.", name, changeFullPathMap)
+// 	msg := fmt.Sprintf("BatchModifyQuotaFullPath successfully, vol [%v]", name)
+// 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+// }
 
 func parseSetDpDiscardParam(r *http.Request) (dpId uint64, rdOnly bool, err error) {
 	if err = r.ParseForm(); err != nil {

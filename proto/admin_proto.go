@@ -181,13 +181,13 @@ const (
 	UserKey         = "_user_key"
 	UserInfoKey     = "_user_info_key"
 	//quota
-	QuotaSet             = "/quota/set"
-	QuotaUpdate          = "/quota/update"
-	QuotaDelete          = "/quota/delete"
-	QuotaList            = "/quota/list"
-	QuotaGet             = "/quota/get"
-	QuotaBatchModifyPath = "/quota/batchModifyPath"
-	QuotaListAll         = "/quota/listAll"
+	QuotaCreate = "/quota/create"
+	QuotaUpdate = "/quota/update"
+	QuotaDelete = "/quota/delete"
+	QuotaList   = "/quota/list"
+	QuotaGet    = "/quota/get"
+	// QuotaBatchModifyPath = "/quota/batchModifyPath"
+	QuotaListAll = "/quota/listAll"
 )
 
 var GApiInfo map[string]string = map[string]string{

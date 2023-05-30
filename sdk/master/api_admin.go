@@ -575,8 +575,8 @@ func (api *AdminAPI) ListQuota(volName string) (quotaInfo []*proto.QuotaInfo, er
 	return quotaInfo, err
 }
 
-func (api *AdminAPI) SetQuota(volName string, fullPath string, inodeId uint64, partitionId uint64, maxFiles uint64, maxBytes uint64) (err error) {
-	var request = newAPIRequest(http.MethodGet, proto.QuotaSet)
+func (api *AdminAPI) CreateQuota(volName string, fullPath string, inodeId uint64, partitionId uint64, maxFiles uint64, maxBytes uint64) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.QuotaCreate)
 	request.addParam("name", volName)
 	request.addParam("fullPath", fullPath)
 	request.addParam("inode", strconv.FormatUint(inodeId, 10))
@@ -584,10 +584,10 @@ func (api *AdminAPI) SetQuota(volName string, fullPath string, inodeId uint64, p
 	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
 	request.addParam("maxBytes", strconv.FormatUint(maxBytes, 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
-		log.LogErrorf("action[SetQuota] fail. %v", err)
+		log.LogErrorf("action[CreateQuota] fail. %v", err)
 		return
 	}
-	log.LogInfof("action[SetQuota] success.")
+	log.LogInfof("action[CreateQuota] success.")
 	return
 }
 
@@ -637,23 +637,6 @@ func (api *AdminAPI) GetQuota(volName string, fullPath string) (quotaInfo *proto
 	quotaInfo = info
 	log.LogInfof("action[GetQuota] %v success.", *quotaInfo)
 	return quotaInfo, err
-}
-
-func (api *AdminAPI) BatchModifyQuotaPath(volName string, quotaMap map[uint32]string) (err error) {
-	var data []byte
-	var request = newAPIRequest(http.MethodGet, proto.QuotaBatchModifyPath)
-	request.addParam("name", volName)
-	if data, err = json.Marshal(&quotaMap); err != nil {
-		log.LogErrorf("action[BatchModifyQuotaPath] fail. %v", err)
-		return err
-	}
-	request.addBody(data)
-	if _, err = api.mc.serveRequest(request); err != nil {
-		log.LogErrorf("action[BatchModifyQuotaPath] fail. %v", err)
-		return
-	}
-	log.LogInfof("action[BatchModifyQuotaPath] vol [%v] quotaMap [%v] success.", volName, quotaMap)
-	return nil
 }
 
 func (api *AdminAPI) QueryBadDisks() (badDisks *proto.BadDiskInfos, err error) {
