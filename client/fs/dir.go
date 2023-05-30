@@ -282,12 +282,12 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	}
 	d.dcache = dcache
 
-	log.LogDebugf("TRACE ReadDir: ino(%v) time(%v)", d.info.Inode, time.Since(start))
+	log.LogDebugf("TRACE ReadDir: ino(%v) children count(%v) time(%v)", d.info.Inode, len(children), time.Since(start))
 	return dirents, nil
 }
 
 // ReadDirPlusAll gets all the dentries and their information in a directory and puts them into the cache.
-func (d *Dir) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse) ([]fs.DirentPlus, error) {
+func (d *Dir) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse) ([]*fs.DirentPlus, error) {
 	start := time.Now()
 
 	var err error
@@ -297,7 +297,7 @@ func (d *Dir) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse
 	children, err := d.super.mw.ReadDir_ll(ctx, d.info.Inode)
 	if err != nil {
 		log.LogErrorf("ReaddirPlus: ino(%v) err(%v)", d.info.Inode, err)
-		return make([]fs.DirentPlus, 0), ParseError(err)
+		return make([]*fs.DirentPlus, 0), ParseError(err)
 	}
 
 	inodes := make([]uint64, 0, len(children))
@@ -315,9 +315,9 @@ func (d *Dir) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse
 	if !d.super.disableDcache {
 		dcache = cache.NewDentryCache(DentryValidDuration, true)
 	}
-	dirents := make([]fs.DirentPlus, 0, len(children))
+	dirents := make([]*fs.DirentPlus, 0, len(children))
 	for _, child := range children {
-		dentryPlus := fs.DirentPlus{}
+		dentryPlus := &fs.DirentPlus{}
 		dentryPlus.Dirent = fuse.Dirent{
 			Inode: child.Inode,
 			Type:  ParseType(child.Type),
@@ -339,7 +339,7 @@ func (d *Dir) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse
 	d.dcache = dcache
 	resp.EntryValid = LookupValidDuration
 
-	log.LogDebugf("TRACE ReaddirPlus: ino(%v) resp(%v) time(%v)", d.info.Inode, resp, time.Since(start))
+	log.LogDebugf("TRACE ReadDirPlus: ino(%v) resp(%v) children count(%v) time(%v)", d.info.Inode, resp, len(dirents), time.Since(start))
 	return dirents, nil
 }
 

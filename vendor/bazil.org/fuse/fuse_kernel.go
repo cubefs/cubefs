@@ -763,7 +763,7 @@ type dirent struct {
 	Name    [0]byte
 }
 
-const direntSize = 8 + 8 + 4 + 4
+const DirentSize = 8 + 8 + 4 + 4
 
 const (
 	notifyCodePoll       int32 = 1

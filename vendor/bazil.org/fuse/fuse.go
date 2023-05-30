@@ -1949,16 +1949,20 @@ func (t DirentType) String() string {
 
 // AppendDirent appends the encoded form of a directory entry to data
 // and returns the resulting slice.
-func AppendDirent(data []byte, dir Dirent) []byte {
+func AppendDirent(data []byte, dir Dirent, dirOff int64) []byte {
 	de := dirent{
 		Ino:     dir.Inode,
 		Namelen: uint32(len(dir.Name)),
 		Type:    uint32(dir.Type),
 	}
-	de.Off = uint64(len(data) + direntSize + (len(dir.Name)+7)&^7)
-	data = append(data, (*[direntSize]byte)(unsafe.Pointer(&de))[:]...)
+	if dirOff > 0 {
+		de.Off = uint64(dirOff)
+	} else {
+		de.Off = uint64(len(data) + DirentSize + (len(dir.Name)+7)&^7)
+	}
+	data = append(data, (*[DirentSize]byte)(unsafe.Pointer(&de))[:]...)
 	data = append(data, dir.Name...)
-	n := direntSize + uintptr(len(dir.Name))
+	n := DirentSize + uintptr(len(dir.Name))
 	if n%8 != 0 {
 		var pad [8]byte
 		data = append(data, pad[:8-n%8]...)

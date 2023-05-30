@@ -303,18 +303,26 @@ type HandleReadDirAller interface {
 }
 
 type HandleReadDirPlusAller interface {
-	ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse) ([]DirentPlus, error)
+	ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusResponse) ([]*DirentPlus, error)
 }
 
 // A DirentPlus represents a single directory entry and its information.
 type DirentPlus struct {
 	Node   Node
 	Dirent fuse.Dirent
+	EndOff int64
+}
+
+func (dir *DirentPlus) String() string {
+	if dir == nil {
+		return ""
+	}
+	return fmt.Sprintf("dirent(%v) endOff(%v)", dir.Dirent, dir.EndOff)
 }
 
 // AppendDirentPlus appends the encoded form of a directory entry info to data
 // and returns the resulting slice.
-func AppendDirentPlus(data []byte, resp *fuse.LookupResponse, dir DirentPlus, proto fuse.Protocol) []byte {
+func AppendDirentPlus(data []byte, resp *fuse.LookupResponse, dir *DirentPlus, proto fuse.Protocol) []byte {
 	size := fuse.EntryOutSize(proto)
 	buf := fuse.NewBufferWithoutHdr(size)
 	out := (*fuse.EntryOut)(buf.Alloc(size))
@@ -328,7 +336,7 @@ func AppendDirentPlus(data []byte, resp *fuse.LookupResponse, dir DirentPlus, pr
 		resp.Attr.SetAttr(&out.Attr, proto)
 	}
 	data = append(data, buf...)
-	data = fuse.AppendDirent(data, dir.Dirent)
+	data = fuse.AppendDirent(data, dir.Dirent, dir.EndOff)
 	return data
 }
 
@@ -660,9 +668,56 @@ func (sn *serveNode) attr(ctx context.Context, attr *fuse.Attr) error {
 }
 
 type serveHandle struct {
-	handle   Handle
-	readData []byte
-	nodeID   fuse.NodeID
+	handle   	Handle
+	readData 	[]byte
+	nodeID   	fuse.NodeID
+	dirData		*dirPlusData
+	sync.Mutex
+}
+
+type dirPlusData struct {
+	dirs	 	[]*DirentPlus
+	dirPlusOff	int				// already read index
+	entryValid	time.Duration
+}
+
+func initDirPlusData(proto fuse.Protocol, dirs []*DirentPlus, entryValid time.Duration) *dirPlusData {
+	entryOutSize := int64(fuse.EntryOutSize(proto))
+	lastOff	:= int64(0)
+	for _, dir := range dirs {
+		dir.EndOff = lastOff + entryOutSize + fuse.DirentSize + int64((len(dir.Dirent.Name)+7)&^7)
+		lastOff = dir.EndOff
+	}
+	return &dirPlusData{
+		dirs:       dirs,
+		dirPlusOff: -1,
+		entryValid: entryValid,
+	}
+}
+
+func (dData *dirPlusData) correctDirPlusOff(reqOff int64) bool {
+	if dData.dirPlusOff >= 0 && dData.dirPlusOff < len(dData.dirs) && dData.dirs[dData.dirPlusOff].EndOff == reqOff {
+		return true
+	}
+	for i, dir := range dData.dirs {
+		if reqOff == dir.EndOff {
+			dData.dirPlusOff = i
+			return true
+		}
+	}
+	return false
+}
+
+func (dData *dirPlusData) seekDirPlusOff(reqOff int64) {
+	for i, dir := range dData.dirs {
+		dData.dirPlusOff = i
+		if reqOff < dir.EndOff {
+			return
+		}
+		if reqOff == dir.EndOff {
+			return
+		}
+	}
 }
 
 // NodeRef is deprecated. It remains here to decrease code churn on
@@ -1407,7 +1462,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 						if dir.Inode == 0 {
 							dir.Inode = c.dynamicInode(snode.inode, dir.Name)
 						}
-						data = fuse.AppendDirent(data, dir)
+						data = fuse.AppendDirent(data, dir, 0)
 					}
 					shandle.readData = data
 				}
@@ -1419,33 +1474,51 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		} else if r.DirPlus {
 			s.Data = make([]byte, r.Size)
 			if h, ok := handle.(HandleReadDirPlusAller); ok {
+				shandle.Lock()
+				defer shandle.Unlock()
+
+				if cfslog.IsDebugEnabled() {
+					cfslog.LogDebugf("readdirplus request: off(%v) size(%v)", r.Offset, r.Size)
+				}
 				// detect rewinddir(3) or similar seek and refresh
 				// contents
 				if r.Offset == 0 {
-					shandle.readData = nil
+					shandle.dirData = nil
 				}
 
-				if shandle.readData == nil {
+				proto := r.Header.Conn.Protocol()
+				if shandle.dirData == nil || !shandle.dirData.correctDirPlusOff(r.Offset) {
 					resp := &fuse.ReadDirPlusResponse{EntryValid: entryValidTime}
 					dirs, err := h.ReadDirPlusAll(ctx, resp)
 					if err != nil {
 						return err
 					}
-					var data []byte
-					proto := r.Header.Conn.Protocol()
-					for _, dir := range dirs {
-						lookupResp := &fuse.LookupResponse{EntryValid: resp.EntryValid}
-						if dir.Node != nil {
-							c.saveLookup(ctx, lookupResp, snode, dir.Dirent.Name, dir.Node)
-						}
-						if dir.Dirent.Inode == 0 {
-							dir.Dirent.Inode = c.dynamicInode(snode.inode, dir.Dirent.Name)
-						}
-						data = AppendDirentPlus(data, lookupResp, dir, proto)
+					shandle.dirData = initDirPlusData(proto, dirs, resp.EntryValid)
+					if r.Offset != 0 {
+						shandle.dirData.seekDirPlusOff(r.Offset)
 					}
-					shandle.readData = data
 				}
-				fuseutil.HandleRead(r, s, shandle.readData)
+
+				var data []byte
+				for pos := shandle.dirData.dirPlusOff+1; pos < len(shandle.dirData.dirs); pos++ {
+					dir := shandle.dirData.dirs[pos]
+					if dir.EndOff > r.Offset + int64(r.Size) {
+						break
+					}
+					lookupResp := &fuse.LookupResponse{EntryValid: shandle.dirData.entryValid}
+					if dir.Node != nil {
+						c.saveLookup(ctx, lookupResp, snode, dir.Dirent.Name, dir.Node)
+					}
+					if dir.Dirent.Inode == 0 {
+						dir.Dirent.Inode = c.dynamicInode(snode.inode, dir.Dirent.Name)
+					}
+					data = AppendDirentPlus(data, lookupResp, dir, proto)
+					shandle.dirData.dirPlusOff = pos
+					if cfslog.IsDebugEnabled() {
+						cfslog.LogDebugf("readdirplus appendDirentPlus: dir(%v) lookup(%v) dataLen(%v)", dir, lookupResp, len(data))
+					}
+				}
+				fuseutil.HandleReadDirPlus(r, s, data)
 				done(s)
 				r.Respond(s)
 				return nil

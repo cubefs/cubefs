@@ -18,3 +18,11 @@ func HandleRead(req *fuse.ReadRequest, resp *fuse.ReadResponse, data []byte) {
 	n := copy(resp.Data[:req.Size], data)
 	resp.Data = resp.Data[:n]
 }
+
+func HandleReadDirPlus(req *fuse.ReadRequest, resp *fuse.ReadResponse, data []byte) {
+	if len(data) > req.Size {
+		data = data[:req.Size]
+	}
+	n := copy(resp.Data[:req.Size], data)
+	resp.Data = resp.Data[:n]
+}
