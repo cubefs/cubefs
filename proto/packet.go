@@ -206,6 +206,8 @@ const (
 	OpTxRollbackUnknownRbType uint8 = 0xE9
 	OpTxTimeoutErr            uint8 = 0xEA
 	OpTxSetStateErr           uint8 = 0xEB
+	OpTxCommitErr             uint8 = 0xEC
+	OpTxRollbackErr           uint8 = 0xED
 )
 
 const (
@@ -565,6 +567,10 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpTxTimeoutErr"
 	case OpTxSetStateErr:
 		m = "OpTxSetStateErr"
+	case OpTxCommitErr:
+		m = "OpTxCommitErr"
+	case OpTxRollbackErr:
+		m = "OpTxRollbackErr"
 	case OpUploadPartConflictErr:
 		m = "OpUploadPartConflictErr"
 	default:
