@@ -287,9 +287,16 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
-	noLeaderReportInterval := cfg.GetString(noLeaderReportInterval)
-	if noLeaderReportInterval != "" {
-		if m.config.NoLeaderReportInterval, err = strconv.ParseInt(noLeaderReportInterval, 10, 0); err != nil {
+	dpNoLeaderReportInterval := cfg.GetString(cfgDpNoLeaderReportIntervalSec)
+	if dpNoLeaderReportInterval != "" {
+		if m.config.DpNoLeaderReportIntervalSec, err = strconv.ParseInt(dpNoLeaderReportInterval, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
+	mpNoLeaderReportInterval := cfg.GetString(cfgMpNoLeaderReportIntervalSec)
+	if mpNoLeaderReportInterval != "" {
+		if m.config.MpNoLeaderReportIntervalSec, err = strconv.ParseInt(mpNoLeaderReportInterval, 10, 0); err != nil {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
