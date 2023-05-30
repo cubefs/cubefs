@@ -20,8 +20,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/mergetask"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,7 +48,90 @@ func TestBlobFile_Op(t *testing.T) {
 	// create
 	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
 
-	ef := blobFile{f, syncWorker, nil}
+	ef := blobFile{f, syncWorker, nil, nil, nil}
+	log.Info(ef.Name())
+	fd := ef.Fd()
+	require.NotNil(t, fd)
+
+	info, err := ef.Stat()
+	require.NoError(t, err)
+	require.NotNil(t, info)
+
+	data := []byte("test data")
+
+	// write
+	n, err := ef.WriteAt(data, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(data), n)
+
+	// read
+	buf := make([]byte, len(data))
+	n, err = ef.ReadAt(buf, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(data), n)
+
+	require.Equal(t, data, buf)
+
+	// stat
+	stat, err := ef.SysStat()
+	require.NoError(t, err)
+	log.Infof("stat: %v", stat)
+	require.Equal(t, int32(stat.Size), int32(len(data)))
+
+	log.Infof("blksize: %d", stat.Blocks)
+
+	// pre allocate 1M
+	err = ef.Allocate(0, 1*1024*1024)
+	require.NoError(t, err)
+	stat, err = ef.SysStat()
+	require.NoError(t, err)
+	log.Infof("blksize: %d", stat.Blocks)
+	// scale size
+	require.Equal(t, int32(stat.Size), int32(1*1024*1024))
+	// phy allocate >= 1M
+	require.True(t, int32(stat.Blocks) >= 1*1024*1024/512)
+
+	// punch hole, release phy space
+	err = ef.Discard(0, 1*1024*1024)
+	require.NoError(t, err)
+	stat, err = ef.SysStat()
+	require.NoError(t, err)
+	log.Infof("blksize: %d", stat.Blocks)
+	// keep size
+	require.Equal(t, int32(stat.Size), int32(1*1024*1024))
+	// phy allocate == 0
+	require.Equal(t, int(stat.Blocks), 0)
+}
+
+func TestBlobFile_OpWithPool(t *testing.T) {
+	testDir, err := ioutil.TempDir(os.TempDir(), "BlobFileOp")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	posixfilepath := filepath.Join(testDir, "PoxsixFile")
+	log.Info(posixfilepath)
+
+	temppath := filepath.Join(posixfilepath, "xxxtemp")
+	f, err := OpenFile(temppath, false)
+	require.Error(t, err)
+	require.Nil(t, f)
+
+	f, err = OpenFile(posixfilepath, true)
+	require.NoError(t, err)
+
+	require.NotNil(t, f)
+
+	// create
+	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
+
+	readPool := taskpool.New(4, 4)
+	writePool := taskpool.New(2, 2)
+	readScheduler := iopool.NewSimpleIoScheduler(readPool)
+	writeScheduler := iopool.NewSimpleIoScheduler(writePool)
+	defer readPool.Close()
+	defer writePool.Close()
+
+	ef := blobFile{f, syncWorker, nil, readScheduler, writeScheduler}
 	log.Info(ef.Name())
 	fd := ef.Fd()
 	require.NotNil(t, fd)

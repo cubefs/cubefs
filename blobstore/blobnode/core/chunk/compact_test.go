@@ -167,7 +167,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 		},
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	chunk, err := NewChunkStorage(ctx, dataPath, vm, func(option *core.Option) {
+	chunk, err := NewChunkStorage(ctx, dataPath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = dbHandler
 		option.CreateDataIfMiss = true

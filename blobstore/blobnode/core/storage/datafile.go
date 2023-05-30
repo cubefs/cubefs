@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -147,7 +148,7 @@ func (hdr *ChunkHeader) String() string {
 	return s
 }
 
-func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos) (
+func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, readScheduler iopool.IoScheduler, writeScheduler iopool.IoScheduler) (
 	cd *datafile, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -166,7 +167,7 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		conf.HandleIOError(context.Background(), vm.DiskID, err)
 	}
 
-	ef := core.NewBlobFile(fd, handleIOError)
+	ef := core.NewBlobFile(fd, handleIOError, readScheduler, writeScheduler)
 
 	cd = &datafile{
 		File:   file,

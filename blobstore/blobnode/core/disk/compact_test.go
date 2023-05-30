@@ -78,7 +78,7 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, func(option *core.Option) {
+	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = db
 		option.CreateDataIfMiss = true

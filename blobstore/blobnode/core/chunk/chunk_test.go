@@ -76,7 +76,7 @@ func TestNewChunkStorage(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(context.TODO(), datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(context.TODO(), datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -137,7 +137,7 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -259,7 +259,7 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -375,7 +375,7 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -483,7 +483,7 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = metadb
 		option.CreateDataIfMiss = true

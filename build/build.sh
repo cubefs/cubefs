@@ -313,7 +313,7 @@ build_blobstore() {
 build_client() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-client   "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
@@ -374,13 +374,13 @@ build_fdstore() {
 build_preload() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-preload   "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/preload/*.go && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/preload/*.go && echo "success" || echo "failed"
 }
 
 build_bcache(){
     pushd $SrcPath >/dev/null
     echo -n "build cfs-blockcache      "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-bcache ${SrcPath}/blockcache/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-bcache ${SrcPath}/blockcache/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 

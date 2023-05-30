@@ -36,7 +36,7 @@ type IoTask struct {
 	taskType   IoTaskType
 	handleID   uint64
 	handle     FileHandle
-	date       []byte
+	data       []byte
 	offset     uint64
 	resultChan chan interface{}
 	// for write/sync
@@ -54,14 +54,10 @@ func newIoTask(taskType IoTaskType, handle FileHandle, handleID uint64, offset u
 		taskType:   taskType,
 		handleID:   handleID,
 		handle:     handle,
-		date:       data,
+		data:       data,
 		offset:     offset,
 		resultChan: make(chan interface{}, 1),
 		isSync:     isSync,
-		allocMode:  0,
-		allocSize:  0,
-		n:          0,
-		err:        nil,
 	}
 }
 
@@ -84,53 +80,51 @@ func NewAllocIoTask(handle FileHandle, id uint64, mode uint32, offset uint64, si
 	return task
 }
 
-func (task *IoTask) WaitAndClose() (int, error) {
-	<-task.resultChan
-	close(task.resultChan)
-	return task.n, task.err
+func (t *IoTask) WaitAndClose() (int, error) {
+	<-t.resultChan
+	close(t.resultChan)
+	return t.n, t.err
 }
 
-func (task *IoTask) GetHandleID() uint64 {
-	return task.handleID
+func (t *IoTask) GetHandleID() uint64 {
+	return t.handleID
 }
 
-func (task *IoTask) GetOffset() uint64 {
-	return task.offset
+func (t *IoTask) GetOffset() uint64 {
+	return t.offset
 }
 
-func (task *IoTask) GetSize() uint64 {
-	return uint64(len(task.date))
+func (t *IoTask) GetSize() uint64 {
+	return uint64(len(t.data))
 }
 
-func (task *IoTask) Vailed() bool {
-	return task.resultChan != nil
+func (t *IoTask) Valid() bool {
+	return t.resultChan != nil
 }
 
-func (task *IoTask) Complete() {
-	task.resultChan <- struct{}{}
+func (t *IoTask) Complete() {
+	t.resultChan <- struct{}{}
 }
 
-func (task *IoTask) Exec() {
-	switch task.GetType() {
+func (t *IoTask) Exec() {
+	switch t.GetType() {
 	case ReadIoTask:
-		task.n, task.err = task.handle.ReadAt(task.date, int64(task.GetOffset()))
+		t.n, t.err = t.handle.ReadAt(t.data, int64(t.GetOffset()))
 	case WriteIoTask:
-		task.n, task.err = task.handle.WriteAt(task.date, int64(task.GetOffset()))
+		t.n, t.err = t.handle.WriteAt(t.data, int64(t.GetOffset()))
 	case AllocIoTask:
-		task.err = sys.Fallocate(task.handle.Fd(), task.allocMode, int64(task.offset), int64(task.allocSize))
+		t.err = sys.Fallocate(t.handle.Fd(), t.allocMode, int64(t.offset), int64(t.allocSize))
 	}
 }
 
-func (task *IoTask) Sync() {
-	if task.isSync {
-		task.handle.Sync()
-	}
+func (t *IoTask) Sync() {
+	t.handle.Sync()
 }
 
-func (task *IoTask) GetType() IoTaskType {
-	return task.taskType
+func (t *IoTask) GetType() IoTaskType {
+	return t.taskType
 }
 
-func (task *IoTask) IsSync() bool {
-	return task.isSync
+func (t *IoTask) IsSync() bool {
+	return t.isSync
 }

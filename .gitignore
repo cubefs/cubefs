@@ -16,7 +16,9 @@ java/target
 java/src/main/resources/*.so
 blobstore/.deps/
 blobstore/bin/
-/build/include/
+blobstore/run
 /build/lib/
+/build/include
 /cover.output
 /cubefs_unittest.output
+blobstore/run

@@ -27,21 +27,17 @@ type IoScheduler interface {
 }
 
 type FileController struct {
-	run          bool
 	taskCount    uint32
 	pendingTasks []*IoTask
 	tasks        []*IoTask
 	taskLock     *sync.Mutex
-	routineLock  *sync.Mutex
 }
 
 func NewFileController() *FileController {
 	return &FileController{
-		run:          false,
 		pendingTasks: make([]*IoTask, 0),
 		tasks:        make([]*IoTask, 0),
 		taskLock:     &sync.Mutex{},
-		routineLock:  &sync.Mutex{},
 	}
 }
 
@@ -65,7 +61,7 @@ func (cb *FileController) swapTasks() {
 	cb.pendingTasks, cb.tasks = cb.tasks, cb.pendingTasks
 }
 
-func (cb *FileController) exec() {
+func (cb *FileController) runLoop() {
 	for {
 		cb.swapTasks()
 		if len(cb.tasks) != 0 {
@@ -78,6 +74,7 @@ func (cb *FileController) exec() {
 				isSync = isSync || task.IsSync()
 			}
 			// sync file
+			// these tasks have the same handle, so we only need to sync tasks[0]
 			if isSync {
 				cb.tasks[0].Sync()
 			}
@@ -92,16 +89,7 @@ func (cb *FileController) exec() {
 		// release goroutine if needed
 		newCount := cb.subtractTaskCount(int32(count))
 		if newCount == 0 {
-			ret := func() bool {
-				cb.routineLock.Lock()
-				defer cb.routineLock.Unlock()
-				newCount = atomic.LoadUint32(&cb.taskCount)
-				return newCount == 0
-			}()
-			if ret {
-				cb.run = false
-				return
-			}
+			return
 		}
 	}
 }
@@ -110,61 +98,53 @@ func (cb *FileController) Submit(task *IoTask, pool taskpool.TaskPool) {
 	count := cb.addTaskCount(1)
 	cb.addTask(task)
 	if count == 1 {
-		cb.routineLock.Lock()
-		defer cb.routineLock.Unlock()
-		if !cb.run {
-			cb.run = true
-			pool.Run(func() {
-				cb.exec()
-			})
-		}
+		// if count is 1, we need to submit a task
+		pool.Run(func() {
+			cb.runLoop()
+		})
 	}
 }
 
 type SimpleIoScheduler struct {
 	pool            taskpool.TaskPool
 	controllerTable map[uint64]*FileController
-	tabelLock       *sync.RWMutex
+	tableLock       *sync.RWMutex
 }
 
-func (scheduler *SimpleIoScheduler) getControllerLockless(id uint64) *FileController {
-	ctrl, exist := scheduler.controllerTable[id]
-	if exist {
-		return ctrl
-	}
-	return nil
+func (s *SimpleIoScheduler) getControllerLockless(id uint64) *FileController {
+	return s.controllerTable[id]
 }
 
-func (scheduler *SimpleIoScheduler) getController(id uint64) *FileController {
-	scheduler.tabelLock.RLock()
-	defer scheduler.tabelLock.RUnlock()
-	return scheduler.getControllerLockless(id)
+func (s *SimpleIoScheduler) getController(id uint64) *FileController {
+	s.tableLock.RLock()
+	defer s.tableLock.RUnlock()
+	return s.getControllerLockless(id)
 }
 
-func (scheduler *SimpleIoScheduler) ensureController(id uint64) *FileController {
-	ctrl := scheduler.getController(id)
+func (s *SimpleIoScheduler) ensureController(id uint64) *FileController {
+	ctrl := s.getController(id)
 	if ctrl == nil {
-		scheduler.tabelLock.Lock()
-		defer scheduler.tabelLock.Unlock()
-		ctrl = scheduler.getControllerLockless(id)
+		s.tableLock.Lock()
+		defer s.tableLock.Unlock()
+		ctrl = s.getControllerLockless(id)
 		if ctrl == nil {
 			ctrl = NewFileController()
-			scheduler.controllerTable[id] = ctrl
+			s.controllerTable[id] = ctrl
 		}
 	}
 	return ctrl
 }
 
-func (scheduler *SimpleIoScheduler) Schedule(task *IoTask) {
-	ctrl := scheduler.ensureController(task.handleID)
-	ctrl.Submit(task, scheduler.pool)
+func (s *SimpleIoScheduler) Schedule(task *IoTask) {
+	ctrl := s.ensureController(task.handleID)
+	ctrl.Submit(task, s.pool)
 }
 
 func NewSimpleIoScheduler(pool taskpool.TaskPool) *SimpleIoScheduler {
 	return &SimpleIoScheduler{
 		pool:            pool,
 		controllerTable: make(map[uint64]*FileController),
-		tabelLock:       &sync.RWMutex{},
+		tableLock:       &sync.RWMutex{},
 	}
 }
 
@@ -172,14 +152,16 @@ type ShardedIoScheduler struct {
 	subScheduler []IoScheduler
 }
 
-func (scheduler *ShardedIoScheduler) Schedule(task *IoTask) {
-	index := uint(task.GetHandleID() % uint64(len(scheduler.subScheduler)))
-	scheduler.subScheduler[index].Schedule(task)
+func (s *ShardedIoScheduler) Schedule(task *IoTask) {
+	index := uint(task.GetHandleID() % uint64(len(s.subScheduler)))
+	s.subScheduler[index].Schedule(task)
 }
+
+const defaultSharedIoSchedulerCount = 64
 
 func NewShardedIoScheduler(count uint32, pool taskpool.TaskPool) *ShardedIoScheduler {
 	if count == 0 {
-		count = 64
+		count = defaultSharedIoSchedulerCount
 	}
 	schedulers := make([]IoScheduler, 0, count)
 	for i := uint32(0); i < count; i++ {
