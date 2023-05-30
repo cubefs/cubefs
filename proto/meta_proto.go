@@ -120,11 +120,6 @@ type MetaQuotaInfos struct {
 
 type MetaQuotaInfo struct {
 	RootInode bool
-	Status    QuotaStatus
-}
-
-func (quotaInfo *MetaQuotaInfo) SetStatus(status QuotaStatus) {
-	quotaInfo.Status = status
 }
 
 func (usedInfo *QuotaUsedInfo) Add(info *QuotaUsedInfo) {

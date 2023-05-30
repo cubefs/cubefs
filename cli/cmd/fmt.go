@@ -729,24 +729,16 @@ func formatZoneView(zv *proto.ZoneView) string {
 	return sb.String()
 }
 
-var quotaTableRowPattern = "%-6v    %-30v    %-15v    %-8v    %-18v    %-10v    %-10v    %-12v    %-12v    %-10v    %-10v    %-10v    %-10v"
+var quotaTableRowPattern = "%-6v    %-30v    %-15v      %-18v    %-10v    %-10v    %-12v    %-12v    %-10v    %-10v    %-10v    %-10v"
 
 func formatQuotaTableHeader() string {
-	return fmt.Sprintf(quotaTableRowPattern, "ID", "PATH", "VOL", "STATUS", "CTIME",
+	return fmt.Sprintf(quotaTableRowPattern, "ID", "PATH", "VOL", "CTIME",
 		"PID", "RINODE", "LIMITEDFILES", "LIMITEDBYTES", "USEDFILES", "USEDBYTES", "MAXFILES", "MAXBYTES")
 }
 
 func formatQuotaInfo(info *proto.QuotaInfo) string {
-	var status string
-	if info.Status == proto.QuotaInit {
-		status = "Init"
-	} else if info.Status == proto.QuotaComplete {
-		status = "Complete"
-	} else {
-		status = "Deleting"
-	}
 	t := time.Unix(info.CTime, 0)
-	return fmt.Sprintf(quotaTableRowPattern, info.QuotaId, info.FullPath, info.VolName, status, t.Format("2006-01-02 15:04:05"), info.PartitionId,
+	return fmt.Sprintf(quotaTableRowPattern, info.QuotaId, info.FullPath, info.VolName, t.Format("2006-01-02 15:04:05"), info.PartitionId,
 		info.RootInode, info.LimitedInfo.LimitedFiles, info.LimitedInfo.LimitedBytes, info.UsedInfo.UsedFiles, info.UsedInfo.UsedBytes,
 		info.MaxFiles, info.MaxBytes)
 }
