@@ -43,6 +43,8 @@ type Encoder interface {
 	Encode(shards [][]byte) error
 	// reconstruct all missing shards, you should assign the missing or bad idx in shards
 	Reconstruct(shards [][]byte, badIdx []int) error
+	// partialReconstruct will use partial decoding to optimize the cross-az bandwidth
+	PartialReconstruct(shards [][]byte, badIdx []int) error
 	// only reconstruct data shards, you should assign the missing or bad idx in shards
 	ReconstructData(shards [][]byte, badIdx []int) error
 	// split source data into adapted shards size
@@ -59,6 +61,8 @@ type Encoder interface {
 	Join(dst io.Writer, shards [][]byte, outSize int) error
 	// verify parity shards with data shards
 	Verify(shards [][]byte) (bool, error)
+	// Get CORRECT survival shards to generate the invertable decoding matrix
+	GetSurvivalShards(badIdx []int, azLayout [][]int) ([]int, []int, error)
 }
 
 // Config ec encoder config
@@ -114,13 +118,6 @@ func NewEncoder(cfg Config) (Encoder, error) {
 			localEngine: localEngine,
 		}, nil
 	case codemode.AzureLrcP1:
-		// for CodeType = AzureLrcP1, we will maintain 3 engines
-		// (1) globalEngine : special Jerasure matrix for global parity Encoding
-		//	& normal repair for most scenario with few failure
-		// (2) localEngine  : normal Jerasure matrix (all 1 row vector while m=1)
-		// for local parity Encoding & single failure (key insight of LRC)
-		// (3) entireEngine : entire Encoding matrix with dimension of (k+g+l)*k
-		// & used to solve the failure scenario that (1)(2) can't handle
 		optionEntire := reedsolomon.WithAzureLrcP1Matrix()
 		n, m, l := cfg.CodeMode.N, cfg.CodeMode.M, cfg.CodeMode.L
 		engine, err := reedsolomon.New(n, m+l, optionEntire)
@@ -169,6 +166,18 @@ func (e *encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	return e.engine.Reconstruct(shards)
 }
 
+func (e *encoder) PartialReconstruct(shards [][]byte, badIdx []int) error {
+	initBadShards(shards, badIdx)
+	e.pool.Acquire()
+	azLayout := e.CodeMode.GetECLayoutByAZ()
+	survivalIdx, _, err := e.engine.GetSurvivalShards(badIdx, azLayout)
+	if err != nil {
+		return err
+	}
+	defer e.pool.Release()
+	return e.engine.PartialReconstruct(shards, survivalIdx, badIdx)
+}
+
 func (e *encoder) ReconstructData(shards [][]byte, badIdx []int) error {
 	initBadShards(shards, badIdx)
 	e.pool.Acquire()
@@ -203,6 +212,10 @@ func (e *encoder) GetShardsInIdc(shards [][]byte, idx int) [][]byte {
 
 func (e *encoder) Join(dst io.Writer, shards [][]byte, outSize int) error {
 	return e.engine.Join(dst, shards, outSize)
+}
+
+func (e *encoder) GetSurvivalShards(badIdx []int, azLayout [][]int) ([]int, []int, error) {
+	return e.engine.GetSurvivalShards(badIdx, azLayout)
 }
 
 func initBadShards(shards [][]byte, badIdx []int) {
