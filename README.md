@@ -68,15 +68,6 @@ Refer to [document](https://cubefs.io/docs/master/evaluation/env.html) for perfo
 There is the list of users and success stories [ADOPTERS.md](ADOPTERS.md).
 
 
-## Contributors
-
-Thanks to [all contributors](https://github.com/cubefs/cubefs/graphs/contributors) of CubeFS!
-
-<a href="https://github.com/cubefs/cubefs/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=cubefs/cubefs" />
-</a>
-
-
 ## Reference
 
 Haifeng Liu, et al., CFS: A Distributed File System for Large Scale Container Platforms. SIGMOD‘19, June 30-July 5, 2019, Amsterdam, Netherlands. 
@@ -92,3 +83,11 @@ For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 ## Note
 
 The master branch may be in an unstable or even broken state during development. Please use releases instead of the master branch in order to get a stable set of binaries.
+
+## Contributors
+
+Thanks to [all contributors](https://github.com/cubefs/cubefs/graphs/contributors) of CubeFS!
+
+<a href="https://github.com/cubefs/cubefs/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=cubefs/cubefs" />
+</a>
