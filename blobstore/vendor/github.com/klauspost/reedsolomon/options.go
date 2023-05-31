@@ -14,7 +14,6 @@ type options struct {
 	minSplitSize                          int
 	useAVX512, useAVX2, useSSSE3, useSSE2 bool
 	useJerasureMatrix                     bool
-	useSpecialJerasureMatrix              bool
 	useAzureLrcP1Matrix                   bool
 	usePAR1Matrix                         bool
 	useCauchy                             bool
@@ -106,7 +105,6 @@ func WithPAR1Matrix() Option {
 	return func(o *options) {
 		o.usePAR1Matrix = true
 		o.useCauchy = false
-		o.useSpecialJerasureMatrix = false
 		o.useJerasureMatrix = false
 		o.useAzureLrcP1Matrix = false
 	}
@@ -120,7 +118,6 @@ func WithCauchyMatrix() Option {
 	return func(o *options) {
 		o.useCauchy = true
 		o.usePAR1Matrix = false
-		o.useSpecialJerasureMatrix = false
 		o.useJerasureMatrix = false
 		o.useAzureLrcP1Matrix = false
 	}
@@ -133,23 +130,8 @@ func WithCauchyMatrix() Option {
 func WithJerasureMatrix() Option {
 	return func(o *options) {
 		o.useJerasureMatrix = true
-		o.useSpecialJerasureMatrix = false
 		o.usePAR1Matrix = false
 		o.useCauchy = false
-		o.useAzureLrcP1Matrix = false
-	}
-}
-
-// WithSpecialJerasureMatrix causes the encoder to build the incomplete jerausre style
-// Reed-Solomon-Vandermonde matrix without all 1 row vector.
-//
-// This option is used to build the engine for AzureLrc+1's global parity
-func WithSpecialJerasureMatrix() Option {
-	return func(o *options) {
-		o.useSpecialJerasureMatrix = true
-		o.usePAR1Matrix = false
-		o.useCauchy = false
-		o.useJerasureMatrix = false
 		o.useAzureLrcP1Matrix = false
 	}
 }
@@ -163,7 +145,6 @@ func WithAzureLrcP1Matrix() Option {
 	return func(o *options) {
 		o.useAzureLrcP1Matrix = true
 		o.useJerasureMatrix = false
-		o.useSpecialJerasureMatrix = false
 		o.usePAR1Matrix = false
 		o.useCauchy = false
 	}
