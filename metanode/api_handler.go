@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/errors"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -67,6 +69,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getSmuxStat", m.getSmuxStatHandler)
 	http.HandleFunc("/getRaftStatus", m.getRaftStatusHandler)
 	http.HandleFunc("/genClusterVersionFile", m.genClusterVersionFileHandler)
+	http.HandleFunc("/getInodeSnapshot", m.getInodeSnapshotHandler)
+	http.HandleFunc("/getDentrySnapshot", m.getDentrySnapshotHandler)
 	return
 }
 
@@ -550,4 +554,54 @@ func (m *MetaNode) genClusterVersionFileHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 	return
+}
+
+func (m *MetaNode) getInodeSnapshotHandler(w http.ResponseWriter, r *http.Request) {
+	m.getSnapshotHandler(w, r, inodeFile)
+}
+
+func (m *MetaNode) getDentrySnapshotHandler(w http.ResponseWriter, r *http.Request) {
+	m.getSnapshotHandler(w, r, dentryFile)
+}
+
+func (m *MetaNode) getSnapshotHandler(w http.ResponseWriter, r *http.Request, file string) {
+	var err error
+	defer func() {
+		if err != nil {
+			msg := fmt.Sprintf("[getInodeSnapshotHandler] err(%v)", err)
+			log.LogErrorf("%s", msg)
+			if _, e := w.Write([]byte(msg)); e != nil {
+				log.LogErrorf("[getInodeSnapshotHandler] failed to write response: err(%v) msg(%v)", e, msg)
+			}
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	id, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(id)
+	if err != nil {
+		return
+	}
+
+	filename := path.Join(mp.GetBaseConfig().RootDir, snapshotDir, file)
+	if _, err = os.Stat(filename); err != nil {
+		err = errors.NewErrorf("[getInodeSnapshotHandler] Stat: %s", err.Error())
+		return
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		err = errors.NewErrorf("[getInodeSnapshotHandler] OpenFile: %s", err.Error())
+		return
+	}
+	defer fp.Close()
+
+	_, err = io.Copy(w, fp)
+	if err != nil {
+		err = errors.NewErrorf("[getInodeSnapshotHandler] copy: %s", err.Error())
+		return
+	}
 }
