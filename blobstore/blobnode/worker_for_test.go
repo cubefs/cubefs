@@ -100,6 +100,35 @@ func NewMockGetterWithBids(replicas []proto.VunitLocation, mode codemode.CodeMod
 		IdcDataShards[idx] = make([][]byte, modeInfo.N/modeInfo.AZCount)
 	}
 
+	// gen stripe for AzureLrc
+	if modeInfo.CodeType == codemode.AzureLrcP1 {
+		for i := 0; i < len(bids); i++ {
+			if sizes[i] == 0 {
+				data := make([]byte, 0)
+				for k := 0; k < modeInfo.N+modeInfo.M+modeInfo.L; k++ {
+					vuid := replicas[k].Vuid
+					getter.vunits[vuid].putShard(bids[i], data)
+				}
+				continue
+			}
+
+			stripeShards := make([][]byte, modeInfo.N+modeInfo.M+modeInfo.L)
+			entireStripe, n, m, l := mode.T().EntireStripe()
+			for _, nShardIdx := range entireStripe[0:n] {
+				vuid := replicas[nShardIdx].Vuid
+				data := genMockBytes(byte(uint8(bids[i])+vuid.Index()), sizes[i])
+				stripeShards[nShardIdx] = data
+				getter.vunits[vuid].putShard(bids[i], data)
+			}
+			option := reedsolomon.WithAzureLrcP1Matrix()
+			genParityShards(n, m+l, stripeShards, option)
+			for _, mShardIdx := range entireStripe[n : n+m+l] {
+				vuid := replicas[mShardIdx].Vuid
+				getter.vunits[vuid].putShard(bids[i], stripeShards[mShardIdx])
+			}
+		}
+		return &getter
+	}
 	// gen stripe
 	for i := 0; i < len(bids); i++ {
 		if sizes[i] == 0 {
@@ -120,7 +149,7 @@ func NewMockGetterWithBids(replicas []proto.VunitLocation, mode codemode.CodeMod
 			getter.vunits[vuid].putShard(bids[i], data)
 		}
 
-		genParityShards(n, m, stripeShards)
+		genParityShards(n, m, stripeShards, nil)
 		for _, mShardIdx := range globalStripe[n : n+m] {
 			vuid := replicas[mShardIdx].Vuid
 			getter.vunits[vuid].putShard(bids[i], stripeShards[mShardIdx])
@@ -136,7 +165,7 @@ func NewMockGetterWithBids(replicas []proto.VunitLocation, mode codemode.CodeMod
 		localStripes, localN, localM := mode.T().AllLocalStripe()
 		for _, localStripe := range localStripes {
 			localStripeShards := abstractShards(localStripe, stripeShards)
-			genParityShards(localN, localM, localStripeShards)
+			genParityShards(localN, localM, localStripeShards, nil)
 			for j, localUintIdx := range localStripe[localN : localN+localM] {
 				data := localStripeShards[localN+j]
 				vuid := replicas[localUintIdx].Vuid
@@ -270,8 +299,13 @@ func (getter *MockGetter) getShardCrc32(vuid proto.Vuid, bid proto.BlobID) uint3
 	return getter.vunits[vuid].getCrc32(bid)
 }
 
-func genParityShards(N, M int, shards [][]byte) {
-	enc, _ := reedsolomon.New(N, M)
+func genParityShards(N, M int, shards [][]byte, o reedsolomon.Option) {
+	var enc reedsolomon.Encoder
+	if o != nil {
+		enc, _ = reedsolomon.New(N, M, o)
+	} else {
+		enc, _ = reedsolomon.New(N, M)
+	}
 	err := enc.Reconstruct(shards)
 	if err != nil {
 		panic("repair: failed to ec reconstruct")

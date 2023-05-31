@@ -471,7 +471,9 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 
 func TestLrcReconstruct(t *testing.T) {
 	for _, cm := range codemode.GetAllCodeModes() {
-		testLrcReconstruct(t, cm)
+		if cm.Tactic().CodeType == codemode.OPPOLrc {
+			testLrcReconstruct(t, cm)
+		}
 	}
 }
 
@@ -529,65 +531,107 @@ func testLrcReconstruct(t *testing.T, cm codemode.CodeMode) {
 	}
 }
 
-// This function has not been tested.
-//func TestAzureLrcP1Reconstruct(t *testing.T) {
-//	for _, cm := range codemode.GetAllCodeModes() {
-//		if cm.Tactic().CodeType == codemode.AzureLrcP1 {
-//			testAzureLrcP1Reconstruct(t, cm)
-//		}
-//	}
-//}
-//
-//func testAzureLrcP1Reconstruct(t *testing.T, cm codemode.CodeMode) {
-//	tactic := cm.Tactic()
-//	cfg := Config{CodeMode: tactic, EnableVerify: true}
-//	encoder, _ := NewEncoder(cfg)
-//
-//	data := make([]byte, (1<<16)+mrand.Intn(1<<16))
-//	rand.Read(data)
-//
-//	shards, err := encoder.Split(data)
-//	require.NoError(t, err)
-//	require.NoError(t, encoder.Encode(shards))
-//
-//	origin := copyShards(shards)
-//	bads := make([]int, 0)
-//	for badIdx := tactic.N + tactic.M; badIdx < cm.GetShardNum(); badIdx++ {
-//		bads = append(bads, badIdx)
-//		for _, idx := range bads {
-//			bytespool.Zero(shards[idx])
-//			shards[idx] = shards[idx][:0]
-//		}
-//		require.NoError(t, encoder.Reconstruct(shards, bads))
-//		require.True(t, reflect.DeepEqual(origin, shards))
-//	}
-//	for badIdx := 0; badIdx < tactic.N+tactic.M; badIdx++ {
-//		bads = append(bads, badIdx)
-//	}
-//	require.Error(t, encoder.Reconstruct(copyShards(shards), bads))
-//
-//	// use local ec reconstruct
-//	for azIdx := 0; azIdx < tactic.AZCount; azIdx++ {
-//		locals, n, m := tactic.LocalStripeInAZ(azIdx)
-//		var localShards [][]byte
-//		for _, idx := range locals {
-//			localShards = append(localShards, shards[idx])
-//		}
-//		localOrigin := copyShards(localShards)
-//
-//		bads := make([]int, 0)
-//		for badIdx := n; badIdx < n+m; badIdx++ {
-//			bads = append(bads, badIdx)
-//			for _, idx := range bads {
-//				bytespool.Zero(localShards[idx])
-//				localShards[idx] = localShards[idx][:0]
-//			}
-//			require.NoError(t, encoder.Reconstruct(localShards, bads))
-//			require.True(t, reflect.DeepEqual(localOrigin, localShards))
-//		}
-//		if n > 0 {
-//			bads = append(bads, n-1)
-//			require.Error(t, encoder.Reconstruct(localShards, bads))
-//		}
-//	}
-//}
+func TestReedSolomonPartialReconstruct(t *testing.T) {
+	for _, cm := range codemode.GetAllCodeModes() {
+		if cm.Tactic().CodeType == codemode.ReedSolomon {
+			testReedSolomonPartialReconstruct(t, cm)
+		}
+	}
+}
+
+func testReedSolomonPartialReconstruct(t *testing.T, cm codemode.CodeMode) {
+	cfg := Config{
+		CodeMode:     cm.Tactic(),
+		EnableVerify: true,
+	}
+	encoder, err := NewEncoder(cfg)
+	require.NoError(t, err)
+
+	_, err = encoder.Split([]byte{})
+	require.Error(t, err)
+
+	// source data split
+	shards, err := encoder.Split(srcData)
+	require.NoError(t, err)
+	{
+		enoughBuff := make([]byte, 1<<10)
+		copy(enoughBuff, srcData)
+		enoughBuff = enoughBuff[:len(srcData)]
+		_, err := encoder.Split(enoughBuff)
+		require.NoError(t, err)
+	}
+
+	// encode data
+	err = encoder.Encode(shards)
+	require.NoError(t, err)
+	wbuff := bytes.NewBuffer(make([]byte, 0))
+	err = encoder.Join(wbuff, shards, len(srcData))
+	require.NoError(t, err)
+	require.Equal(t, srcData, wbuff.Bytes())
+
+	// single failure reconstruct
+	for idx := 0; idx < len(shards); idx++ {
+		// set wrong data
+		for i := range shards[idx] {
+			shards[idx][i] = 222
+		}
+		// check must be false when a shard broken
+		ok, err := encoder.Verify(shards)
+		require.False(t, ok)
+
+		err = encoder.Reconstruct(shards, []int{idx})
+		require.NoError(t, err)
+		ok, err = encoder.Verify(shards)
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+
+	// single failure partial reconstruct
+	azLayout := cfg.CodeMode.GetECLayoutByAZ()
+	for idx := 0; idx < len(shards); idx++ {
+		// set wrong data
+		for i := range shards[idx] {
+			shards[idx][i] = 222
+		}
+		ok, _ := encoder.Verify(shards)
+		require.False(t, ok)
+
+		azCnt := len(azLayout)
+		survivalIdxMap := make(map[int]int)
+		survivalIdx, _, _ := encoder.GetSurvivalShards([]int{idx}, azLayout)
+		survivalCnt := 0
+		for _, s := range survivalIdx {
+			survivalIdxMap[s] = 1
+			survivalCnt++
+		}
+
+		partialData := make([]byte, len(shards[0]))
+		for c := range partialData {
+			partialData[c] = 0
+		}
+		// start partial reconstruct
+		for azIdx := 0; azIdx < azCnt; azIdx++ {
+			tmpShards := make([][]byte, cfg.CodeMode.N+cfg.CodeMode.M)
+			for _, v := range azLayout[azIdx] {
+				if _, ok := survivalIdxMap[v]; ok == true {
+					tmpShards[v] = shards[v]
+				} else {
+					tmpShards[v] = shards[v][:0]
+				}
+			}
+			err = encoder.PartialReconstruct(tmpShards[:cfg.CodeMode.N+cfg.CodeMode.M], []int{idx})
+			for c := range partialData {
+				partialData[c] ^= tmpShards[idx][c]
+			}
+		}
+		shards[idx] = partialData
+
+		ok, err = encoder.Verify(shards)
+		require.NoError(t, err)
+		require.True(t, ok)
+		wbuff = bytes.NewBuffer(make([]byte, 0))
+		err = encoder.Join(wbuff, shards, len(srcData))
+		require.NoError(t, err)
+		require.Equal(t, srcData, wbuff.Bytes())
+	}
+}

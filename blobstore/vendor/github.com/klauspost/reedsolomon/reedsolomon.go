@@ -454,10 +454,8 @@ func New(dataShards, parityShards int, opts ...Option) (Encoder, error) {
 		r.m, err = buildMatrixPAR1(dataShards, r.Shards)
 	case r.o.useJerasureMatrix:
 		r.m, err = buildMatrixJerasure(dataShards, r.Shards)
-	case r.o.useSpecialJerasureMatrix:
-		r.m, err = buildMatrixSpecialJerasure(dataShards, r.Shards)
 	case r.o.useAzureLrcP1Matrix:
-		// we use n,m,l,t to refer the dataShards,globalParityShards,localParityShards and r.Shards
+		// we use n,m,l to refer the dataShards,globalParityShards,localParityShards
 		// we have the following limitations:
 		// l = 3
 		l := 3
@@ -1071,19 +1069,19 @@ func (r reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []i
 	}
 
 	var err error
-	isIn := func(elem int, list []int) bool {
-		for _, c := range list {
-			if elem == c {
-				return true
-			}
-		}
-		return false
+	survivalIdxMap := make(map[int]int)
+	badIdxMap := make(map[int]int)
+	for _, idx := range survivalIdx {
+		survivalIdxMap[idx] = 1
+	}
+	for _, idx := range badIdx {
+		badIdxMap[idx] = 1
 	}
 
 	// Check if shards in shards[][] are all in survivalIdx[]
 	for i := 0; i < r.Shards; i++ {
 		if len(shards[i]) != 0 {
-			if isIn(i, survivalIdx) == false {
+			if _, ok := survivalIdxMap[i]; ok == false {
 				return ErrShardsNotSurvival
 			}
 		}
@@ -1094,7 +1092,7 @@ func (r reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []i
 	invalidIndices := make([]int, r.Shards-len(survivalIdx))
 	invalidCnt := 0
 	for i := 0; i < r.Shards; i++ {
-		if isIn(i, survivalIdx) == false {
+		if _, ok := survivalIdxMap[i]; ok == false {
 			invalidIndices[invalidCnt] = i
 			invalidCnt++
 		}
@@ -1160,7 +1158,7 @@ func (r reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []i
 	subShards := make([][]byte, r.DataShards)
 	subShardsRow := 0
 	for i := 0; i < r.Shards; i++ {
-		if isIn(i, survivalIdx) {
+		if _, ok := survivalIdxMap[i]; ok == true {
 			subShards[subShardsRow] = shards[i]
 			subShardsRow++
 		}
@@ -1176,7 +1174,7 @@ func (r reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []i
 
 	// partial Reconstruct
 	for iShard := 0; iShard < r.Shards; iShard++ {
-		if isIn(iShard, badIdx) {
+		if _, ok := badIdxMap[iShard]; ok == true {
 			if cap(shards[iShard]) >= size {
 				shards[iShard] = shards[iShard][0:size]
 			} else {
@@ -1215,12 +1213,17 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int,
 		return nil, nil, ErrTooFewShards
 	}
 
+	badIdxMap := make(map[int]int)
+	for _, idx := range badIndex {
+		badIdxMap[idx] = 1
+	}
+
 	// Only one failure, consider local repair
 	// survivalShards[] should contain all survival
 	// shards in the AZ which hold the invalid shard
 	forComputationShards := make([]int, 0)
 	selectShards := make([]int, r.DataShards)
-	if len(badIndex) == 1 {
+	if len(badIndex) == 1 && r.o.useAzureLrcP1Matrix == true {
 		badAzId := 0
 		flag := false
 		// find the AZ contain failure
@@ -1243,15 +1246,6 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int,
 		}
 	}
 
-	isIn := func(elem int, list []int) bool {
-		for _, c := range list {
-			if elem == c {
-				return true
-			}
-		}
-		return false
-	}
-
 	isContainedIn := func(shortList, longList []int) bool {
 		cnt := 0
 		for _, s := range shortList {
@@ -1270,7 +1264,7 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int,
 	survivalCnt := 0
 	survivalIndices := make([]int, r.Shards-len(badIndex))
 	for i := 0; i < r.Shards; i++ {
-		if isIn(i, badIndex) == false {
+		if _, ok := badIdxMap[i]; ok == false {
 			survivalIndices[survivalCnt] = i
 			survivalCnt++
 		}
@@ -1304,11 +1298,11 @@ func (r reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int,
 			for i, sel := range tmpCombination {
 				selectShards[i] = survivalIndices[sel]
 			}
-			if len(badIndex) > 1 {
+			if len(badIndex) > 1 || r.o.useAzureLrcP1Matrix == false { // not local reconstruct
 				isChoosed = true
 				break
 			}
-			if len(badIndex) == 1 && isContainedIn(forComputationShards, selectShards) {
+			if len(badIndex) == 1 && isContainedIn(forComputationShards, selectShards) && r.o.useAzureLrcP1Matrix == true {
 				isChoosed = true
 				break
 			}
