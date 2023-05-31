@@ -12,7 +12,9 @@ on:
       - 'docs-zh/**'
       - '**.md'
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
+      - develop-*
     paths-ignore:
       # - 'blobstore/**'
       - '.github/**'
