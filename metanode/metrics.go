@@ -21,7 +21,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 )
 
-//metrics
+// metrics
 const (
 	StatPeriod = time.Minute * time.Duration(1)
 
@@ -53,7 +53,7 @@ func (m *MetaNode) startStat() {
 	go m.collectPartitionMetrics()
 }
 
-func (m *MetaNode) upatePartitionMetrics(mp *metaPartition) {
+func (m *MetaNode) updatePartitionMetrics(mp *metaPartition) {
 	labels := map[string]string{
 		"partid":     fmt.Sprintf("%d", mp.config.PartitionId),
 		exporter.Vol: mp.config.VolName,
@@ -73,7 +73,7 @@ func (m *MetaNode) collectPartitionMetrics() {
 				manager.mu.RLock()
 				for _, p := range manager.partitions {
 					if mp, ok := p.(*metaPartition); ok {
-						m.upatePartitionMetrics(mp)
+						m.updatePartitionMetrics(mp)
 					}
 				}
 				manager.mu.RUnlock()
