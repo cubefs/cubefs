@@ -321,18 +321,21 @@ func (mqMgr *MasterQuotaManager) quotaUpdate(report *proto.MetaPartitionReport) 
 		quotaInfo.UsedInfo.UsedFiles = 0
 		quotaInfo.UsedInfo.UsedBytes = 0
 	}
-
+	deleteQuotaIds := make([]uint32, 0, 0)
 	for mpId, reportInfos := range mqMgr.MpQuotaInfoMap {
 		log.LogDebugf("[quotaUpdate] mpId [%v], info len [%v]", mpId, len(reportInfos))
 		for _, info := range reportInfos {
 			if _, isFind := mqMgr.IdQuotaInfoMap[info.QuotaId]; !isFind {
-				log.LogWarnf("[quotaUpdate] quotaId [%v] is delete", info.QuotaId)
+				deleteQuotaIds = append(deleteQuotaIds, info.QuotaId)
 				continue
 			}
 			log.LogDebugf("[quotaUpdate] quotaId [%v] reportinfo [%v]", info.QuotaId, info.UsedInfo)
 			quotaInfo = mqMgr.IdQuotaInfoMap[info.QuotaId]
 			quotaInfo.UsedInfo.Add(&info.UsedInfo)
 		}
+	}
+	if len(deleteQuotaIds) != 0 {
+		log.LogWarnf("[quotaUpdate] quotaIds [%v] is delete", deleteQuotaIds)
 	}
 	for id, quotaInfo = range mqMgr.IdQuotaInfoMap {
 		if quotaInfo.IsOverQuotaFiles() {
