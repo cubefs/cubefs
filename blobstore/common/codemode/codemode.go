@@ -355,7 +355,7 @@ func (c *Tactic) GetECLayoutByAZ() (azStripes [][]int) {
 			azStripes[idx] = stripe
 		}
 	}
-	if c.CodeType == OPPOLrc {
+	if c.CodeType == OPPOLrc || c.CodeType == ReedSolomon {
 		n, m, l := c.N/c.AZCount, c.M/c.AZCount, c.L/c.AZCount
 		for idx := range azStripes {
 			stripe := make([]int, 0, n+m+l)
@@ -381,6 +381,15 @@ func (c *Tactic) GlobalStripe() (indexes []int, n, m int) {
 		indexes[i] = i
 	}
 	return indexes, c.N, c.M
+}
+
+// EntireStripe returns initial stripe for azurelrc+1
+func (c *Tactic) EntireStripe() (indexes []int, n, m, l int) {
+	indexes = make([]int, c.N+c.M+c.L)
+	for i := 0; i < c.N+c.M+c.L; i++ {
+		indexes[i] = i
+	}
+	return indexes, c.N, c.M, c.L
 }
 
 // AllLocalStripe returns all local stripes
@@ -421,7 +430,7 @@ func (c *Tactic) LocalStripeInAZ(azIndex int) (localStripe []int, n, m int) {
 	}
 
 	l := c.L / c.AZCount
-	if c.CodeType == OPPOLrc {
+	if c.CodeType == OPPOLrc || c.CodeType == OPPOLrc {
 		n, m = c.N/c.AZCount, c.M/c.AZCount
 	}
 	if c.CodeType == AzureLrcP1 {
