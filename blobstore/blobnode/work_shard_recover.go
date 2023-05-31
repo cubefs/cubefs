@@ -137,7 +137,6 @@ func (stripe *repairStripe) genDownloadPlans() []downloadPlan {
 		plan.downloadReplicas[n-1] = wellReplications[int(n-1)+i]
 		downloadPlans = append(downloadPlans, plan)
 	}
-
 	return downloadPlans
 }
 
@@ -465,7 +464,7 @@ func (r *ShardRecover) recoverReplicaShards(ctx context.Context, repairIdxs []ui
 	failBids := repairBids
 	var err error
 
-	if localRepairable(repairIdxs, r.codeMode) {
+	if localRepairable(repairIdxs, r.codeMode) && r.codeMode.Tactic().CodeType == codemode.OPPOLrc {
 		span.Info("recover by local stripe")
 		err = r.recoverByLocalStripe(ctx, failBids, repairIdxs)
 		if err != nil {
@@ -548,12 +547,27 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []p
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start recoverByGlobalStripe: repairIdxs[%+v]", repairIdxs)
 
-	stripe := repairStripe{
-		replicas: r.replicas,
-		n:        r.codeMode.T().N,
-		m:        r.codeMode.T().M,
-		badIdxes: repairIdxs,
+	var stripe repairStripe
+	switch r.codeMode.Tactic().CodeType {
+	case codemode.ReedSolomon, codemode.OPPOLrc:
+		stripe = repairStripe{
+			replicas: r.replicas,
+			n:        r.codeMode.T().N,
+			m:        r.codeMode.T().M,
+			badIdxes: repairIdxs,
+		}
+	case codemode.AzureLrcP1:
+		stripe = repairStripe{
+			replicas: r.replicas,
+			n:        r.codeMode.T().N,
+			m:        r.codeMode.T().M + r.codeMode.T().L,
+			badIdxes: repairIdxs,
+		}
+	default:
+		span.Info("wrong codemode for recoverByGlobalStripe")
+		return
 	}
+
 	idxs := stripe.replicas.Indexes()
 	err = r.allocBuf(ctx, idxs)
 	if err != nil {
