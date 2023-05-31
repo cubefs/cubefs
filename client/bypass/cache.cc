@@ -107,8 +107,10 @@ int flush_page(page_t *p, ino_t inode, int index) {
         int dirty_len = p->offset + p->len - p->dirty_offset;
         off_t off = (off_t)p->inode_info->c->page_size*p->index + p->dirty_offset;
         re = p->inode_info->write_func(p->inode_info->client_id, p->inode_info->inode, (char *)p->data + p->dirty_offset, dirty_len, off);
-        p->dirty_offset = 0;
-        p->flag &= ~PAGE_DIRTY;
+        if(re == dirty_len) {
+            p->dirty_offset = 0;
+            p->flag &= ~PAGE_DIRTY;
+        }
     }
 
 log:
@@ -324,7 +326,7 @@ void *do_flush_inode(void *arg) {
         if (*stop) {
             break;
         }
-        if(pages.size() == 0 || dirty_num < pages.size()/BG_FLUSH_SLEEP_THRESHOLD) {
+        if(pages.size() == 0 || dirty_num <= pages.size()/BG_FLUSH_SLEEP_THRESHOLD) {
             sleep(BG_FLUSH_SLEEP);
         }
     }
