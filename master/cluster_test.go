@@ -73,13 +73,9 @@ func TestCheckMetaPartitions(t *testing.T) {
 func TestPanicCheckMetaPartitions(t *testing.T) {
 	c := buildPanicCluster()
 	vol, err := c.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
 	vol.addMetaPartition(mp)
 	mp = nil
@@ -109,13 +105,9 @@ func TestPanicCheckCreateDataPartitions(t *testing.T) {
 func TestPanicCheckBadDiskRecovery(t *testing.T) {
 	c := buildPanicCluster()
 	vol, err := c.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	partitionID, err := server.cluster.idAlloc.allocateDataPartitionID()
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID)
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckDiskRecoveryProgress()
@@ -124,13 +116,9 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 func TestPanicCheckMigratedDataPartitionsRecovery(t *testing.T) {
 	c := buildPanicCluster()
 	vol, err := c.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	partitionID, err := server.cluster.idAlloc.allocateDataPartitionID()
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID)
 	c.MigratedDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.checkMigratedDataPartitionsRecoveryProgress()
@@ -139,13 +127,9 @@ func TestPanicCheckMigratedDataPartitionsRecovery(t *testing.T) {
 func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
 	c := buildPanicCluster()
 	vol, err := c.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
 	vol.addMetaPartition(mp)
 	c.MigratedMetaPartitionIds.Store(fmt.Sprintf("%v", mp.PartitionID), mp)
@@ -158,8 +142,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	vol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	vol.RLock()
@@ -171,8 +154,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 	vol.RUnlock()
 	dpsLen := len(dps)
 	partitionIdMap := make(map[uint64]bool, dpsLen)
-	if dpsLen != dpsMapLen {
-		t.Errorf("dpsLen[%v],dpsMapLen[%v]", dpsLen, dpsMapLen)
+	if !assert.Equalf(t, dpsLen, dpsMapLen, "dpsLen[%v],dpsMapLen[%v]", dpsLen, dpsMapLen) {
 		return
 	}
 	//clear
@@ -202,8 +184,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		delete(partitionIdMap, value.(uint64))
 		return true
 	})
-	if count != dpsLen {
-		t.Errorf("expect bad partition num[%v],real num[%v]", dpsLen, count)
+	if !assert.Equalf(t, dpsLen, count, "expect bad partition num[%v],real num[%v]", dpsLen, count) {
 		return
 	}
 	assert.Equal(t, 0, len(partitionIdMap))
@@ -215,8 +196,7 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 		count++
 		return true
 	})
-	if count != 0 {
-		t.Errorf("expect bad partition num[0],real num[%v]", count)
+	if !assert.Equalf(t, 0, count, "expect bad partition num[0],real num[%v]", count) {
 		return
 	}
 }
@@ -224,13 +204,9 @@ func TestCheckBadDiskRecovery(t *testing.T) {
 func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 	c := buildPanicCluster()
 	vol, err := c.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
 	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
@@ -245,8 +221,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		return true
 	})
 	vol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	vol.RLock()
@@ -258,8 +233,7 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 	partitionIdMap := make(map[uint64]bool, mpsMapLen)
 	vol.RUnlock()
 	mpsLen := len(mps)
-	if mpsLen != mpsMapLen {
-		t.Errorf("mpsLen[%v],mpsMapLen[%v]", mpsLen, mpsMapLen)
+	if !assert.Equalf(t, mpsLen, mpsMapLen, "mpsLen[%v],mpsMapLen[%v]", mpsLen, mpsMapLen) {
 		return
 	}
 	for _, mp := range mps {
@@ -281,10 +255,10 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		return true
 	})
 
-	if count != mpsLen {
-		t.Errorf("expect bad partition num[%v],real num[%v]", mpsLen, count)
+	if !assert.Equalf(t, mpsLen, count, "expect bad partition num[%v],real num[%v]", mpsLen, count) {
 		return
 	}
+
 	assert.Equal(t, 0, len(partitionIdMap))
 	//check recovery
 	server.cluster.checkMetaPartitionRecoveryProgress()
@@ -294,16 +268,14 @@ func TestCheckBadMetaPartitionRecovery(t *testing.T) {
 		count++
 		return true
 	})
-	if count != 0 {
-		t.Errorf("expect bad partition num[0],real num[%v]", count)
+	if !assert.Equalf(t, 0, count, "expect bad partition num[0],real num[%v]", count) {
 		return
 	}
 }
 
 func TestUpdateInodeIDUpperBound(t *testing.T) {
 	vol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	maxPartitionID := vol.maxPartitionID()
@@ -321,19 +293,14 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		VolName:     mp.volName,
 	}
 	metaNode, err := server.cluster.metaNode(mp.Hosts[0])
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if err = server.cluster.updateInodeIDUpperBound(mp, mr, true, metaNode); err != nil {
-		t.Error(err)
+	if err = server.cluster.updateInodeIDUpperBound(mp, mr, true, metaNode); !assert.NoError(t, err) {
 		return
 	}
 	curMpLen := len(vol.MetaPartitions)
-	if curMpLen == mpLen {
-		t.Errorf("split failed,oldMpLen[%v],curMpLen[%v]", mpLen, curMpLen)
-	}
-
+	assert.NotEqualf(t, mpLen, curMpLen, "split failed,oldMpLen[%v],curMpLen[%v]", mpLen, curMpLen)
 }
 
 func TestUpdateDataNodeBadDisks(t *testing.T) {
@@ -345,27 +312,29 @@ func TestUpdateDataNodeBadDisks(t *testing.T) {
 	dataNodeBadDisksOfVol[addr1] = append(dataNodeBadDisksOfVol[addr1], "/diskPath1")
 	allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
 	allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
+
 	// one bad disk
 	c.updateDataNodeBadDisks(allBadDisks)
-	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 1 || len(badDiskView[0].BadDiskPath) != 1 {
-		t.Errorf("getDataNodeBadDisks should be 1 but get :%v detail:%v", len(badDiskView), badDiskView)
-	}
+	badDiskView := c.getDataNodeBadDisks()
+	assert.Equalf(t, 1, len(badDiskView), "getDataNodeBadDisks should be 1 but get :%v detail:%v", len(badDiskView), badDiskView)
+	assert.Equalf(t, 1, len(badDiskView[0].BadDiskPath), "getDataNodeBadDisks should be 1 but get :%v detail:%v", len(badDiskView), badDiskView)
+
 	// one datanode with more than one bad disk
 	allBadDisks = append(allBadDisks, map[string][]string{addr1: {"/diskPath2"}})
 	c.updateDataNodeBadDisks(allBadDisks)
-	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 1 || len(badDiskView[0].BadDiskPath) != 2 {
-		t.Errorf("getDataNodeBadDisks should be 1 and bad disks shoule be 2 but get :%v detail:%v", len(badDiskView), badDiskView)
-	}
+	badDiskView = c.getDataNodeBadDisks()
+	assert.Equalf(t, 1, len(badDiskView), "getDataNodeBadDisks should be 1 but get :%v detail:%v", len(badDiskView), badDiskView)
+	assert.Equalf(t, 2, len(badDiskView[0].BadDiskPath), "bad disks should be 2 but get :%v detail:%v", len(badDiskView), badDiskView)
+
 	// two datanode
 	dataNodeBadDisksOfVol[addr2] = append(dataNodeBadDisksOfVol[addr2], "/diskPath3")
 	allBadDisks = append(allBadDisks, map[string][]string{addr2: {"/diskPath3"}})
 	c.updateDataNodeBadDisks(allBadDisks)
-	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 2 {
-		t.Errorf("getDataNodeBadDisks should be 2 but get :%v detail:%v", len(badDiskView), badDiskView)
-	}
+	badDiskView = c.getDataNodeBadDisks()
+	assert.Equalf(t, 2, len(badDiskView), "getDataNodeBadDisks should be 2 but get :%v detail:%v", len(badDiskView), badDiskView)
+
 	// when there is no bad disks
 	c.updateDataNodeBadDisks(make([]map[string][]string, 0))
-	if badDiskView := c.getDataNodeBadDisks(); len(badDiskView) != 0 {
-		t.Errorf("getDataNodeBadDisks should be 0 but get :%v detail:%v", len(badDiskView), badDiskView)
-	}
+	badDiskView = c.getDataNodeBadDisks()
+	assert.Equalf(t, 0, len(badDiskView), "getDataNodeBadDisks should be 0 but get :%v detail:%v", len(badDiskView), badDiskView)
 }

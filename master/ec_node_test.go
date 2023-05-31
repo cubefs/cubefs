@@ -2,6 +2,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 
@@ -15,15 +16,12 @@ func TestEC_EcNode(t *testing.T) {
 	server.cluster.loadEcNodes()
 	server.cluster.checkEcNodeHeartbeat()
 	time.Sleep(5 * time.Second)
-	if allEcNodes := server.cluster.allEcNodes(); allEcNodes == nil {
-		t.Errorf("add ecNode [%v] failed", addr)
-	}
+	allEcNodes := server.cluster.allEcNodes()
+	assert.NotNilf(t, allEcNodes, "add ecNode [%v] failed", addr)
 
 	getEcNodeInfo(addr, t)
 	ecNode, err := server.cluster.ecNode(addr)
-	if err != nil {
-		t.Errorf("add ecNode [%v] failed", addr)
-	}
+	assert.NoErrorf(t, err, "add ecNode [%v] failed", addr)
 
 	setEcNodeProto(ecNode, t)
 	getEcNodeProto(ecNode, t)
@@ -31,9 +29,7 @@ func TestEC_EcNode(t *testing.T) {
 	decommissionDiskById(addr, t)
 	decommissionEcNode(addr, t)
 	ecNode, err = server.cluster.ecNode(addr)
-	if err == nil {
-		t.Errorf("decommission datanode [%v] failed", addr)
-	}
+	assert.Errorf(t, err, "decommission datanode [%v] failed", addr)
 
 	server.cluster.ecNodes.Delete(addr)
 }
@@ -45,9 +41,7 @@ func getEcNodeInfo(addr string, t *testing.T) {
 
 func setEcNodeProto(ecnode *ECNode, t *testing.T) {
 	ecnode.SetCarry(1.0, proto.StoreModeDef)
-	if ecnode.Carry != 1.0 {
-		t.Errorf("setCarry fail")
-	}
+	assert.Equal(t, 1.0, ecnode.Carry, "setCarry fail")
 	server.cluster.adjustEcNode(ecnode)
 }
 
@@ -56,17 +50,15 @@ func getEcNodeProto(ecnode *ECNode, t *testing.T) {
 	ecnode.isAvailCarryNode()
 	ecnode.GetID()
 	ecnode.GetAddr()
-	if badParitions := ecnode.badPartitions("/cfs/disk", server.cluster); badParitions == nil {
-		t.Errorf("add ecNode [%v] failed", ecnode.Addr)
-	}
+	badParitions := ecnode.badPartitions("/cfs/disk", server.cluster)
+	assert.NotNilf(t, badParitions, "add ecNode [%v] failed", ecnode.Addr)
 }
 
 func modifyEcNodeProto(ecnode *ECNode, t *testing.T) {
 	oldCarry := ecnode.Carry
 	ecnode.SelectNodeForWrite(proto.StoreModeDef)
-	if newCarry := ecnode.Carry; oldCarry-newCarry != 1 {
-		t.Errorf("select node fail")
-	}
+	newCarry := ecnode.Carry
+	assert.Equal(t, float64(1), oldCarry-newCarry, "select node fail")
 }
 
 func decommissionDiskById(addr string, t *testing.T) {

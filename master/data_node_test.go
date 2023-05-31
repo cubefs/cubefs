@@ -3,6 +3,7 @@ package master
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
@@ -16,9 +17,7 @@ func TestDataNode(t *testing.T) {
 	getDataNodeInfo(addr, t)
 	decommissionDataNode(addr, t)
 	_, err := server.cluster.dataNode(addr)
-	if err == nil {
-		t.Errorf("decommission datanode [%v] failed", addr)
-	}
+	assert.Errorf(t, err, "decommission datanode [%v] failed", addr)
 	server.cluster.dataNodes.Delete(addr)
 }
 

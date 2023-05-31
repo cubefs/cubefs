@@ -2,6 +2,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 
@@ -17,8 +18,7 @@ func TestDataPartition(t *testing.T) {
 	count := 20
 	commonVol.createTime = time.Now().Unix() - defaultAutoCreateDPAfterVolCreateSecond*2
 	createDataPartition(commonVol, count, t)
-	if len(commonVol.dataPartitions.partitions) <= 0 {
-		t.Errorf("getDataPartition no dp")
+	if !assert.Greater(t, len(commonVol.dataPartitions.partitions), 0, "getDataPartition no dp") {
 		return
 	}
 	partition := commonVol.dataPartitions.partitions[0]
@@ -54,9 +54,7 @@ func createDataPartition(vol *Vol, count int, t *testing.T) {
 	process(reqURL, t)
 	newCount := len(vol.dataPartitions.partitions)
 	total := oldCount + count
-	if newCount != total {
-		t.Errorf("createDataPartition failed,newCount[%v],total=%v,count[%v],oldCount[%v]",
-			newCount, total, count, oldCount)
+	if !assert.Equalf(t, total, newCount, "createDataPartition failed,newCount[%v],total=%v,count[%v],oldCount[%v]", newCount, total, count, oldCount) {
 		return
 	}
 }
@@ -73,8 +71,7 @@ func decommissionDataPartition(dp *DataPartition, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr)
 	process(reqURL, t)
-	if contains(dp.Hosts, offlineAddr) {
-		t.Errorf("decommissionDataPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, dp.Hosts)
+	if !assert.NotContainsf(t, dp.Hosts, offlineAddr, "decommissionDataPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, dp.Hosts) {
 		return
 	}
 	dp.isRecover = false
@@ -93,8 +90,8 @@ func decommissionDataPartitionToDestAddr(dp *DataPartition, allDataNodes []strin
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&destAddr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, dp.VolName, dp.PartitionID, offlineAddr, destAddr)
 	process(reqURL, t)
-	if contains(dp.Hosts, offlineAddr) || !contains(dp.Hosts, destAddr) {
-		t.Errorf("decommissionDataPartitionToDestAddr failed,offlineAddr[%v],destAddr[%v],hosts[%v]", offlineAddr, destAddr, dp.Hosts)
+	if !assert.NotContainsf(t, dp.Hosts, offlineAddr, "decommissionDataPartitionToDestAddr failed,offlineAddr[%v],destAddr[%v],hosts[%v]", offlineAddr, destAddr, dp.Hosts) ||
+		!assert.Containsf(t, dp.Hosts, destAddr, "decommissionDataPartitionToDestAddr failed,offlineAddr[%v],destAddr[%v],hosts[%v]", offlineAddr, destAddr, dp.Hosts) {
 		return
 	}
 	dp.isRecover = false
@@ -139,16 +136,11 @@ func delDataReplicaTest(dp *DataPartition, t *testing.T) {
 	}
 	dp.Replicas = append(dp.Replicas, extraDataReplica)
 	err := server.cluster.deleteDataReplica(dp, dn, false)
-	if err != nil {
-		t.Errorf("delete replica failed, err[%v]", err)
-	}
+	assert.NoErrorf(t, err, "delete replica failed, err[%v]", err)
 	server.cluster.checkDataPartitions()
-	if len(dp.Replicas) != 3 {
-		t.Errorf("delete replica failed, expect replica length[%v], but is[%v]", 3, len(dp.Replicas))
-	}
+	assert.Equalf(t, 3, len(dp.Replicas), "delete replica failed, expect replica length[%v], but is[%v]", 3, len(dp.Replicas))
 	for _, r := range dp.Replicas {
-		if testAddr == r.Addr {
-			t.Errorf("delete replica [%v] failed", testAddr)
+		if !assert.NotEqualf(t, r.Addr, testAddr, "delete replica [%v] failed", testAddr) {
 			return
 		}
 	}
@@ -158,15 +150,13 @@ func updateDataPartition(dp *DataPartition, isManual bool, c *Cluster, vol *Vol,
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&isManual=%v",
 		hostAddr, proto.AdminDataPartitionUpdate, dp.VolName, dp.PartitionID, isManual)
 	process(reqURL, t)
-	if dp.IsManual != isManual {
-		t.Errorf("expect isManual[%v],dp.IsManual[%v],not equal", isManual, dp.IsManual)
+	if !assert.Equalf(t, isManual, dp.IsManual, "expect isManual[%v],dp.IsManual[%v],not equal", isManual, dp.IsManual) {
 		return
 	}
 	dp.isRecover = false
 	dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, 0, vol.CrossRegionHAType, c, vol.getDataPartitionQuorum())
 	if dp.IsManual {
-		if dp.Status != proto.ReadOnly {
-			t.Errorf("dp.IsManual[%v] expect Status ReadOnly, but get Status[%v]", dp.IsManual, dp.Status)
+		if !assert.Equalf(t, proto.ReadOnly, int(dp.Status), "dp.IsManual[%v] expect Status ReadOnly, but get Status[%v]", dp.IsManual, dp.Status) {
 			return
 		}
 	}
@@ -176,8 +166,7 @@ func setDataPartitionIsRecover(dp *DataPartition, isRecover bool, t *testing.T) 
 	reqURL := fmt.Sprintf("%v%v?id=%v&isRecover=%v",
 		hostAddr, proto.AdminDataPartitionSetIsRecover, dp.PartitionID, isRecover)
 	process(reqURL, t)
-	if dp.isRecover != isRecover {
-		t.Errorf("expect isRecover[%v],dp.isRecover[%v],not equal", isRecover, dp.isRecover)
+	if !assert.Equalf(t, isRecover, dp.isRecover, "expect isRecover[%v],dp.isRecover[%v],not equal", isRecover, dp.isRecover) {
 		return
 	}
 }

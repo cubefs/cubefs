@@ -3,6 +3,7 @@ package master
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
@@ -13,8 +14,7 @@ func TestMetaPartition(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	server.cluster.checkMetaPartitions()
 	commonVol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	createMetaPartition(commonVol, t)
@@ -35,8 +35,7 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 	server.cluster.DisableAutoAllocate = false
 	maxPartitionID := commonVol.maxPartitionID()
 	mp, err := commonVol.metaPartition(maxPartitionID)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	var start uint64
@@ -49,19 +48,16 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 	}
 	start = start + proto.DefaultMetaPartitionInodeIDStep
 	vol, err = server.cluster.getVol(vol.Name)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	maxPartitionID = vol.maxPartitionID()
 	mp, err = vol.metaPartition(maxPartitionID)
-	if err != nil {
-		t.Errorf("createMetaPartition,err [%v]", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	start = start + 1
-	if mp.Start != start {
-		t.Errorf("expect start[%v],mp.start[%v],not equal", start, mp.Start)
+	if !assert.Equalf(t, mp.Start, start, "expect start[%v],mp.start[%v],not equal", start, mp.Start) {
 		return
 	}
 }
@@ -83,13 +79,11 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(vol.Name)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	mp, err := vol.metaPartition(id)
-	if err != nil {
-		t.Errorf("decommissionMetaPartition,err [%v]", err)
+	if !assert.NoErrorf(t, err, "decommissionMetaPartition,err [%v]", err) {
 		return
 	}
 	offlineAddr := mp.Hosts[0]
@@ -97,12 +91,10 @@ func decommissionMetaPartition(vol *Vol, id uint64, t *testing.T) {
 		hostAddr, proto.AdminDecommissionMetaPartition, vol.Name, id, offlineAddr)
 	process(reqURL, t)
 	mp, err = server.cluster.getMetaPartitionByID(id)
-	if err != nil {
-		t.Errorf("decommissionMetaPartition,err [%v]", err)
+	if !assert.NoErrorf(t, err, "decommissionMetaPartition,err [%v]", err) {
 		return
 	}
-	if contains(mp.Hosts, offlineAddr) {
-		t.Errorf("decommissionMetaPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, mp.Hosts)
+	if !assert.NotContainsf(t, mp.Hosts, offlineAddr, "decommissionMetaPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, mp.Hosts) {
 		return
 	}
 }
@@ -113,13 +105,11 @@ func decommissionMetaPartitionWithoutReplica(vol *Vol, id uint64, t *testing.T) 
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetCluster)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(vol.Name)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	mp, err := vol.metaPartition(id)
-	if err != nil {
-		t.Errorf("decommissionMetaPartition,err [%v]", err)
+	if !assert.NoErrorf(t, err, "decommissionMetaPartition,err [%v]", err) {
 		return
 	}
 	mp.RLock()
@@ -135,12 +125,10 @@ func decommissionMetaPartitionWithoutReplica(vol *Vol, id uint64, t *testing.T) 
 		hostAddr, proto.AdminDecommissionMetaPartition, vol.Name, id, offlineAddr)
 	process(reqURL, t)
 	mp, err = server.cluster.getMetaPartitionByID(id)
-	if err != nil {
-		t.Errorf("decommissionMetaPartition,err [%v]", err)
+	if !assert.NoErrorf(t, err, "decommissionMetaPartition,err [%v]", err) {
 		return
 	}
-	if contains(mp.Hosts, offlineAddr) {
-		t.Errorf("decommissionMetaPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, mp.Hosts)
+	if !assert.NotContainsf(t, mp.Hosts, offlineAddr, "decommissionMetaPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, mp.Hosts) {
 		return
 	}
 
@@ -157,13 +145,11 @@ func decommissionMetaPartitionToDestAddr(vol *Vol, id uint64, t *testing.T) {
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	vol, err := server.cluster.getVol(vol.Name)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	mp, err := vol.metaPartition(id)
-	if err != nil {
-		t.Errorf("decommissionMetaPartition,err [%v]", err)
+	if !assert.NoErrorf(t, err, "decommissionMetaPartition,err [%v]", err) {
 		return
 	}
 	mp.IsRecover = false
@@ -179,15 +165,13 @@ func decommissionMetaPartitionToDestAddr(vol *Vol, id uint64, t *testing.T) {
 
 func setMetaPartitionIsRecover(vol *Vol, id uint64, isRecover bool, t *testing.T) {
 	mp, err := vol.metaPartition(id)
-	if err != nil {
-		t.Errorf("setMetaPartitionIsRecover,err [%v]", err)
+	if !assert.NoErrorf(t, err, "setMetaPartitionIsRecover,err [%v]", err) {
 		return
 	}
 	reqURL := fmt.Sprintf("%v%v?id=%v&isRecover=%v",
 		hostAddr, proto.AdminMetaPartitionSetIsRecover, mp.PartitionID, isRecover)
 	process(reqURL, t)
-	if mp.IsRecover != isRecover {
-		t.Errorf("expect isRecover[%v],mp.isRecover[%v],not equal", isRecover, mp.IsRecover)
+	if !assert.Equalf(t, isRecover, mp.IsRecover, "expect isRecover[%v],mp.isRecover[%v],not equal", isRecover, mp.IsRecover) {
 		return
 	}
 }

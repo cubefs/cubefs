@@ -3,6 +3,7 @@ package master
 import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"sync"
 	"testing"
@@ -117,27 +118,19 @@ func TestMetaNode_SelectNodeCase01(t *testing.T) {
 	ns := newNodeSet(1, 7, "test")
 	ns.metaNodes = mockMetaNodes()
 	newHosts, _, err := ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, proto.StoreModeRocksDb)
-	if err != nil {
-		t.Logf("error:%v\n", err)
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	for _, host := range newHosts {
 		impossibleHosts := []string{"192.168.0.7", "192.168.0.4", "192.168.0.5"}
-		if contains(impossibleHosts, host) {
-			t.Errorf("impossible host:%s\n", host)
+		if !assert.NotContainsf(t, impossibleHosts, host, "impossible host:%s\n", host) {
 			t.FailNow()
 		}
 	}
 
 	newHosts, _, err = ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, proto.StoreModeRocksDb)
-	if err != nil {
-		t.Logf("error:%v\n", err)
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	for _, host := range newHosts {
 		impossibleHosts := []string{"192.168.0.7", "192.168.0.4", "192.168.0.5"}
-		if contains(impossibleHosts, host) {
-			t.Errorf("impossible host:%s\n", host)
+		if !assert.NotContainsf(t, impossibleHosts, host, "impossible host:%s\n", host) {
 			t.FailNow()
 		}
 	}
@@ -159,8 +152,7 @@ func TestMetaNode_SelectNodeCase02(t *testing.T) {
 	ns.metaNodes.Store(metaNode.Addr, metaNode)
 
 	_, _, err := ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, proto.StoreModeRocksDb)
-	if err == nil {
-		t.Errorf("error mismatch, expect not nil, actual is nil\n")
+	if !assert.Error(t, err) {
 		t.FailNow()
 	}
 }

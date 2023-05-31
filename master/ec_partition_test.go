@@ -2,6 +2,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 
@@ -15,8 +16,8 @@ func Test_EcPartition(t *testing.T) {
 	partitionId := uint64(1)
 	dp, err := server.cluster.getDataPartitionByID(partitionId)
 	if err == nil {
-		if err = server.cluster.ecMigrateById(partitionId, true); err != nil {
-			t.Errorf("ecMigrateById err(%v)", err)
+		err = server.cluster.ecMigrateById(partitionId, true)
+		if !assert.NoErrorf(t, err, "ecMigrateById err(%v)", err) {
 			return
 		}
 	}
@@ -24,8 +25,7 @@ func Test_EcPartition(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	server.cluster.checkEcDataPartitions()
 
-	if len(commonVol.ecDataPartitions.partitions) <= 0 {
-		t.Errorf("getEcDataPartition no ecdp")
+	if !assert.Greater(t, len(commonVol.ecDataPartitions.partitions), 0, "getEcDataPartition no ecdp") {
 		return
 	}
 	for _, partition := range commonVol.ecDataPartitions.partitions {
@@ -37,7 +37,6 @@ func Test_EcPartition(t *testing.T) {
 }
 
 func getEcPartition(id uint64, t *testing.T) {
-
 	reqURL := fmt.Sprintf("%v%v?id=%v",
 		hostAddr, proto.AdminGetEcPartition, id)
 	process(reqURL, t)

@@ -1,6 +1,7 @@
 package master
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
@@ -46,8 +47,6 @@ func TestCheckStatusOfCrossRegionQuorumVol(t *testing.T) {
 	for no, case_ := range caseList {
 		case_.dp.checkStatusOfCrossRegionQuorumVol(case_.liveReplicas, case_.dpWriteableThreshold, nil, 3)
 		res := case_.dp.Status
-		if res != case_.res {
-			t.Errorf("checkStatusOfCrossRegionQuorumVol failed, no=[%d] res=[%v] expectRes=[%v]", no, res, case_.res)
-		}
+		assert.Equalf(t, case_.res, res, "checkStatusOfCrossRegionQuorumVol failed, no=[%d] res=[%v] expectRes=[%v]", no, res, case_.res)
 	}
 }

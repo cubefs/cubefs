@@ -16,19 +16,14 @@ import (
 
 func TestAutoCreateDataPartitions(t *testing.T) {
 	commonVol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	commonVol.Capacity = 300 * unit.TB
 	dpCount := len(commonVol.dataPartitions.partitions)
 	commonVol.dataPartitions.readableAndWritableCnt = 0
 	server.cluster.DisableAutoAllocate = false
 	commonVol.checkAutoDataPartitionCreation(server.cluster)
 	newDpCount := len(commonVol.dataPartitions.partitions)
-	if dpCount == newDpCount {
-		t.Errorf("autoCreateDataPartitions failed,expand 0 data partitions,oldCount[%v],curCount[%v]", dpCount, newDpCount)
-		return
-	}
+	assert.NotEqualf(t, newDpCount, dpCount, "autoCreateDataPartitions failed,expand 0 data partitions,oldCount[%v],curCount[%v]", dpCount, newDpCount)
 }
 
 func TestCheckVol(t *testing.T) {
@@ -52,8 +47,7 @@ func TestVol(t *testing.T) {
 	server.cluster.checkLoadMetaPartitions()
 	server.cluster.doLoadDataPartitions()
 	vol, err := server.cluster.getVol(name)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	vol.checkStatus(server.cluster)
@@ -74,8 +68,7 @@ func createVol(name, zone string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name, zone)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	checkDataPartitionsWritableTest(vol, t)
@@ -100,8 +93,7 @@ func TestVolMultiZoneDowngrade(t *testing.T) {
 	server.cluster.checkLoadMetaPartitions()
 	server.cluster.doLoadDataPartitions()
 	vol, err = server.cluster.getVol(testMultiZone)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 
@@ -190,8 +182,7 @@ func TestVolMultiZone(t *testing.T) {
 	server.cluster.checkLoadMetaPartitions()
 	server.cluster.doLoadDataPartitions()
 	vol, err = server.cluster.getVol(testMultiZone)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	vol.checkStatus(server.cluster)
@@ -236,15 +227,11 @@ func checkDataPartitionsWritableTest(vol *Vol, t *testing.T) {
 	//after check data partitions ,the status must be writable
 	vol.checkDataPartitions(server.cluster)
 	partition := vol.dataPartitions.partitions[0]
-	if partition.Status != proto.ReadWrite {
-		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
-		return
-	}
+	assert.Equalf(t, proto.ReadWrite, int(partition.Status), "expect partition status[%v],real status[%v]\n", proto.ReadWrite, partition.Status)
 }
 
 func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
-	if len(vol.MetaPartitions) == 0 {
-		t.Error("no meta partition")
+	if !assert.NotZero(t, len(vol.MetaPartitions), "no meta partition") {
 		return
 	}
 	server.cluster.checkMetaNodeHeartbeat()
@@ -253,8 +240,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	//after check meta partitions ,the status must be writable
 	maxMp.checkStatus(server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID)
-	if maxMp.Status != proto.ReadWrite {
-		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status)
+	if !assert.Equalf(t, proto.ReadWrite, int(maxMp.Status), "expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status) {
 		return
 	}
 }
@@ -274,19 +260,16 @@ func updateVol(name, zone string, capacity int, t *testing.T) {
 		hostAddr, proto.AdminUpdateVol, name, capacity, buildAuthKey("cfs"), zone)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if vol.Capacity != uint64(capacity) {
-		t.Errorf("update vol failed,expect[%v],real[%v]", capacity, vol.Capacity)
+	if !assert.Equalf(t, uint64(capacity), vol.Capacity, "update vol failed,expect[%v],real[%v]", capacity, vol.Capacity) {
 		return
 	}
 	if zone == "" {
 		return
 	}
-	if vol.zoneName != zone {
-		t.Errorf("update vol failed,expect[%v],real[%v]", zone, vol.zoneName)
+	if !assert.Equalf(t, zone, vol.zoneName, "update vol failed,expect[%v],real[%v]", zone, vol.zoneName) {
 		return
 	}
 }
@@ -302,15 +285,13 @@ func markDeleteVol(name string, t *testing.T) {
 	server.cluster.cfg.DeleteMarkDelVolInterval = 0
 	defer func() { server.cluster.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval }()
 	vol, err := server.cluster.getVol(name)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v",
 		hostAddr, proto.AdminDeleteVol, name, buildAuthKey("cfs"))
 	process(reqURL, t)
-	if vol.Status != proto.VolStMarkDelete {
-		t.Errorf("markDeleteVol failed,expect[%v],real[%v]", proto.VolStMarkDelete, vol.Status)
+	if !assert.Equalf(t, proto.VolStMarkDelete, vol.Status, "markDeleteVol failed,expect[%v],real[%v]", proto.VolStMarkDelete, vol.Status) {
 		return
 	}
 }
@@ -436,9 +417,7 @@ func TestVolBatchUpdateDps(t *testing.T) {
 			manualDPCount++
 		}
 	}
-	if manualDPCount != 0 {
-		t.Errorf("expect manualDPCount is 0,but get :%v", manualDPCount)
-	}
+	assert.Zerof(t, manualDPCount, "expect manualDPCount is 0,but get :%v", manualDPCount)
 }
 
 func TestShrinkVolCapacity(t *testing.T) {
@@ -458,9 +437,7 @@ func TestShrinkVolCapacity(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
 		hostAddr, proto.AdminShrinkVolCapacity, commonVol.Name, newCapacity, buildAuthKey(vol.Owner))
 	process(reqURL, t)
-	if vol.Capacity != newCapacity {
-		t.Errorf("expect Capacity is %v,but get :%v", newCapacity, vol.Capacity)
-	}
+	assert.Equalf(t, newCapacity, vol.Capacity, "expect Capacity is %v,but get :%v", newCapacity, vol.Capacity)
 }
 
 func TestRecoverVol(t *testing.T) {
@@ -625,8 +602,7 @@ func compareVolValue(t *testing.T, newVolMarkDel, oldVol *Vol) {
 
 func checkNewRenamedVolDp(t *testing.T, newRenamedVol *Vol) {
 	dataPartitionMap := newRenamedVol.cloneDataPartitionMap()
-	if len(dataPartitionMap) == 0 {
-		t.Errorf("dpCount should not be 0")
+	if !assert.NotZerof(t, len(dataPartitionMap), "dpCount should not be 0") {
 		return
 	}
 	nodeDpMap := make(map[string][]uint64)
@@ -639,17 +615,14 @@ func checkNewRenamedVolDp(t *testing.T, newRenamedVol *Vol) {
 		dataNodeInfo, err := mc.NodeAPI().GetDataNode(addr)
 		assertErrNilOtherwiseFailNow(t, err)
 		for _, id := range dpIDs {
-			if !containsID(dataNodeInfo.PersistenceDataPartitions, id) {
-				t.Errorf("id:%v expect in node:%v but not", id, addr)
-			}
+			assert.Containsf(t, dataNodeInfo.PersistenceDataPartitions, id, "id:%v expect in node:%v but not", id, addr)
 		}
 	}
 }
 
 func checkNewRenamedVolMp(t *testing.T, newRenamedVol *Vol) {
 	mps := newRenamedVol.cloneMetaPartitionMap()
-	if len(mps) == 0 {
-		t.Errorf("mpCount should not be 0")
+	if !assert.NotZero(t, len(mps), "mpCount should not be 0") {
 		return
 	}
 	nodeMpMap := make(map[string][]uint64)
@@ -662,9 +635,7 @@ func checkNewRenamedVolMp(t *testing.T, newRenamedVol *Vol) {
 		metaNodeInfo, err := mc.NodeAPI().GetMetaNode(addr)
 		assertErrNilOtherwiseFailNow(t, err)
 		for _, id := range mpIDs {
-			if !containsID(metaNodeInfo.PersistenceMetaPartitions, id) {
-				t.Errorf("id:%v expect in node:%v but not", id, addr)
-			}
+			assert.Containsf(t, metaNodeInfo.PersistenceMetaPartitions, id, "id:%v expect in node:%v but not", id, addr)
 		}
 	}
 }
