@@ -11,7 +11,7 @@ nohup cfs-server -c objectnode.json &
 ```json
 {
      "role": "objectnode", 
-     "listen": "127.0.0.1:17410",
+     "listen": "17410",
      "domains": [
          "object.cfs.local"
      ],
