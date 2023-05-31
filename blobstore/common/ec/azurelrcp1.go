@@ -77,24 +77,24 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	initBadShards(shards, badIdx)
 	defer e.pool.Release()
 
-	isIn := func(elem int, list []int) bool {
-		for _, c := range list {
-			if elem == c {
-				return true
-			}
-		}
-		return false
-	}
 	azLayout := e.CodeMode.GetECLayoutByAZ()
 	survivalIndex, forComputationShardsIdx, err := e.engine.GetSurvivalShards(badIdx, azLayout)
 	if err != nil {
 		return err
 	}
+	survivalIdxMap := make(map[int]int)
+	forComputationShardsIdxMap := make(map[int]int)
+	for _, idx := range survivalIndex {
+		survivalIdxMap[idx] = 1
+	}
+	for _, idx := range forComputationShardsIdx {
+		forComputationShardsIdxMap[idx] = 1
+	}
 
 	if len(badIdx) == 1 {
 		tmpShards := make([][]byte, e.CodeMode.N+e.CodeMode.M+e.CodeMode.L)
 		for i, v := range shards {
-			if isIn(i, forComputationShardsIdx) {
+			if _, ok := forComputationShardsIdxMap[i]; ok == true {
 				tmpShards[i] = v
 			} else {
 				tmpShards[i] = v[:0]
@@ -106,7 +106,7 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 		shards[badIdx[0]] = tmpShards[badIdx[0]]
 	} else {
 		for i, v := range shards {
-			if isIn(i, survivalIndex) == false {
+			if _, ok := survivalIdxMap[i]; ok == false {
 				shards[i] = v[:0]
 			}
 		}
@@ -115,6 +115,12 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 		}
 	}
 
+	return nil
+}
+
+func (e *azureLrcP1Encoder) PartialReconstruct(shards [][]byte, badIdx []int) error {
+	var err error
+	return errors.Info(err, "azureLrcP1Encoder don't support partial decoding!")
 	return nil
 }
 
@@ -165,4 +171,8 @@ func (e *azureLrcP1Encoder) GetShardsInIdc(shards [][]byte, idx int) [][]byte {
 
 func (e *azureLrcP1Encoder) Join(dst io.Writer, shards [][]byte, outSize int) error {
 	return e.engine.Join(dst, shards[:(e.CodeMode.N+e.CodeMode.M+e.CodeMode.L)], outSize)
+}
+
+func (e *azureLrcP1Encoder) GetSurvivalShards(badIdx []int, azLayout [][]int) ([]int, []int, error) {
+	return e.engine.GetSurvivalShards(badIdx, azLayout)
 }
