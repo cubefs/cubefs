@@ -1034,6 +1034,8 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if err != nil {
 		return
 	}
+	log.LogDebugf("hytemp storeExtend: store start: partitoinID(%v) volume(%v) numInodes(%v) extends(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len())
 	defer func() {
 		closeErr := f.Close()
 		if err == nil && closeErr != nil {
@@ -1056,7 +1058,7 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	extendTree.Ascend(func(i BtreeItem) bool {
 		e := i.(*Extend)
 		var raw []byte
-		mp.statisticExtendByStore(e)
+		mp.statisticExtendByStore(e, sm.inodeTree)
 		if raw, err = e.Bytes(); err != nil {
 			return false
 		}
@@ -1077,6 +1079,8 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		}
 		return true
 	})
+	log.LogInfof("hytemp storeExtend: write data ok: partitoinID(%v) volume(%v) numInodes(%v) extends(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len())
 	mp.mqMgr.statisticRebuildFin()
 	if err != nil {
 		return
