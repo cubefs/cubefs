@@ -360,32 +360,42 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
 	return
 }
 
-func (mp *metaPartition) statisticExtendByStore(extend *Extend) {
+func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree) {
 	mqMgr := mp.mqMgr
 	ino := NewInode(extend.GetInode(), 0)
-	retMsg := mp.getInode(ino)
-	if retMsg.Status != proto.OpOk {
-		log.LogErrorf("statisticExtendByStore get inode [%v] fail [%v].", extend.GetInode(), retMsg.Status)
+	item := inodeTree.Get(ino)
+	if item == nil {
+		log.LogErrorf("statisticExtendByStore inode [%v] is not exist.", extend.GetInode())
 		return
 	}
-	ino = retMsg.Msg
-	if quotaIds, isFind := mp.isExistQuota(extend.GetInode()); isFind {
-		mqMgr.rwlock.Lock()
-		defer mqMgr.rwlock.Unlock()
-		for _, quotaId := range quotaIds {
-			var baseInfo proto.QuotaUsedInfo
-			value, isFind := mqMgr.statisticRebuildBase.Load(quotaId)
-			if isFind {
-				baseInfo = value.(proto.QuotaUsedInfo)
-			}
-			baseInfo.UsedBytes += int64(ino.Size)
-			baseInfo.UsedFiles += 1
-			mqMgr.statisticRebuildBase.Store(quotaId, baseInfo)
-			log.LogDebugf("[statisticExtendByStore] mp [%v] quotaId [%v] inode [%v] baseInfo [%v]",
-				mp.config.PartitionId, quotaId, extend.GetInode(), baseInfo)
-		}
-
+	ino = item.(*Inode)
+	value, exist := extend.Get([]byte(proto.QuotaKey))
+	if !exist {
+		log.LogDebugf("hytemp statisticExtendByStore get quota key failed, mp [%v] inode [%v]", mp.config.PartitionId, extend.GetInode())
+		return
 	}
+	var quotaInfos = &proto.MetaQuotaInfos{
+		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
+	}
+	if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
+		log.LogErrorf("set quota Unmarshal quotaInfos fail [%v]", err)
+		return
+	}
+	mqMgr.rwlock.Lock()
+	defer mqMgr.rwlock.Unlock()
+	for quotaId := range quotaInfos.QuotaInfoMap {
+		var baseInfo proto.QuotaUsedInfo
+		value, isFind := mqMgr.statisticRebuildBase.Load(quotaId)
+		if isFind {
+			baseInfo = value.(proto.QuotaUsedInfo)
+		}
+		baseInfo.UsedBytes += int64(ino.Size)
+		baseInfo.UsedFiles += 1
+		mqMgr.statisticRebuildBase.Store(quotaId, baseInfo)
+		log.LogDebugf("[statisticExtendByStore] mp [%v] quotaId [%v] inode [%v] baseInfo [%v]",
+			mp.config.PartitionId, quotaId, extend.GetInode(), baseInfo)
+	}
+	log.LogDebugf("hytemp statisticExtendByStore mp [%v] inode [%v] success.", mp.config.PartitionId, extend.GetInode())
 	return
 }
 
