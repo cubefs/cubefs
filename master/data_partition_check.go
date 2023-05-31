@@ -49,9 +49,16 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		partition.Status = proto.ReadOnly
 		if partition.checkReplicaEqualStatus(liveReplicas, proto.ReadWrite) &&
 			partition.hasEnoughAvailableSpace() &&
-			!shouldDpInhibitWriteByVolFull &&
-			partition.getLeaderAddr() != "" {
-			partition.Status = proto.ReadWrite
+			!shouldDpInhibitWriteByVolFull {
+
+			if proto.IsNormalDp(partition.PartitionType) {
+				if partition.getLeaderAddr() != "" {
+					partition.Status = proto.ReadWrite
+				}
+			} else {
+				// cold volume has no leader
+				partition.Status = proto.ReadWrite
+			}
 		}
 	default:
 		partition.Status = proto.ReadOnly
