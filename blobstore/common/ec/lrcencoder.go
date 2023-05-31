@@ -185,6 +185,11 @@ func (e *lrcEncoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	return nil
 }
 
+func (e *lrcEncoder) PartialReconstruct(shards [][]byte, badIdx []int) error {
+	var err error
+	return errors.Info(err, "lrcEncoder don't support partial decoding!")
+}
+
 func (e *lrcEncoder) ReconstructData(shards [][]byte, badIdx []int) error {
 	fillFullShards(shards[:e.CodeMode.N+e.CodeMode.M])
 	globalBadIdx := make([]int, 0)
@@ -244,4 +249,8 @@ func (e *lrcEncoder) GetShardsInIdc(shards [][]byte, idx int) [][]byte {
 
 func (e *lrcEncoder) Join(dst io.Writer, shards [][]byte, outSize int) error {
 	return e.engine.Join(dst, shards[:(e.CodeMode.N+e.CodeMode.M)], outSize)
+}
+
+func (e *lrcEncoder) GetSurvivalShards(badIdx []int, azLayout [][]int) ([]int, []int, error) {
+	return e.engine.GetSurvivalShards(badIdx, azLayout)
 }

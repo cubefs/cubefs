@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"context"
 	"hash/crc32"
+	"log"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -141,7 +143,7 @@ func TestRepairByLocalStripeAllMode(t *testing.T) {
 func testRepairByLocalStripe(t *testing.T, mode codemode.CodeMode) {
 	repair, bidInfos, getter, replicas := InitMockRepair(mode)
 	modeInfo := mode.Tactic()
-	if modeInfo.L == 0 {
+	if modeInfo.L == 0 || modeInfo.CodeType == codemode.AzureLrcP1 {
 		return
 	}
 
@@ -236,6 +238,64 @@ func TestRecoverShards(t *testing.T) {
 	err = repair4.RecoverShards(ctx, badi4, false)
 	require.NoError(t, err)
 	testCheckData(t, repair4, getter4, badi4)
+
+	comb := func(n, k int) int {
+		lgmma1, _ := math.Lgamma(float64(n + 1))
+		lgmma2, _ := math.Lgamma(float64(k + 1))
+		lgmma3, _ := math.Lgamma(float64(n - k + 1))
+		return int(math.Round(math.Exp(lgmma1 - lgmma2 - lgmma3)))
+	}
+
+	// test AzureLrc EC12P6L3
+	repair5, _, getter5, _ := InitMockRepair(codemode.EC12P6L3)
+	n := 12
+	k := 7
+	combinationCnt := comb(n, k)
+	tmpCombination := make([]uint8, k)
+	for i := range tmpCombination {
+		tmpCombination[i] = uint8(i)
+	}
+	for i := 0; i < combinationCnt; i++ {
+		badi5 := make([]uint8, 0)
+		for _, e := range tmpCombination {
+			badi5 = append(badi5, e)
+		}
+		log.Println(badi5)
+		err = repair5.RecoverShards(ctx, badi5, false)
+		require.NoError(t, err)
+		testCheckData(t, repair5, getter5, badi5)
+		if i < combinationCnt-1 {
+			j := k - 1
+			for j >= 0 && tmpCombination[j] == uint8(n-k+j) {
+				j--
+			}
+			tmpCombination[j]++
+			for j = j + 1; j < k; j++ {
+				tmpCombination[j] = tmpCombination[j-1] + 1
+			}
+		}
+	}
+
+	// test AzureLrc EC12P3L3
+	repair6, _, getter6, _ := InitMockRepair(codemode.EC12P3L3)
+	badi6 := []uint8{0, 1, 2, 3}
+	err = repair6.RecoverShards(ctx, badi6, false)
+	require.NoError(t, err)
+	testCheckData(t, repair6, getter6, badi6)
+
+	// test AzureLrc EC18P9L3
+	repair7, _, getter7, _ := InitMockRepair(codemode.EC18P9L3)
+	badi7 := []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	err = repair7.RecoverShards(ctx, badi7, false)
+	require.NoError(t, err)
+	testCheckData(t, repair7, getter7, badi7)
+
+	// test AzureLrc EC12P6L3
+	repair8, _, getter8, _ := InitMockRepair(codemode.EC10P5L3)
+	badi8 := []uint8{0, 1, 2, 3, 4, 5}
+	err = repair8.RecoverShards(ctx, badi8, false)
+	require.NoError(t, err)
+	testCheckData(t, repair8, getter8, badi8)
 }
 
 func TestRecoverShards2(t *testing.T) {
