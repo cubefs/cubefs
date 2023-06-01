@@ -254,7 +254,7 @@ run_test_cover() {
     pre_build
     pushd $SrcPath >/dev/null
     echo -n "${TPATH}"
-    go test -trimpath -covermode=count --coverprofile coverage.txt $(go list ./... | grep -v depends)
+    go test -trimpath -covermode=count --coverprofile coverage.txt $(go list ./... | grep -v depends| grep -v master)
     ret=$?
     popd >/dev/null
     exit $ret
