@@ -463,12 +463,13 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 	maxPartitionID := vol.maxPartitionID()
 
 	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-
 	partition, ok := vol.MetaPartitions[maxPartitionID]
 	if !ok {
+		vol.mpsLock.RUnlock()
 		return
 	}
+	vol.mpsLock.RUnlock()
+
 	liveReplicas := partition.getLiveReplicas()
 	foundReadonlyReplica := false
 	var readonlyReplica *MetaReplica
