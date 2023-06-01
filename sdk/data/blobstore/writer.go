@@ -169,8 +169,9 @@ func (writer *Writer) doParallelWrite(ctx context.Context, data []byte, offset i
 	}
 	writer.wg.Wait()
 	for i := 0; i < sliceSize; i++ {
-		if wErr, ok := <-writer.err; !ok || err != nil {
-			log.LogErrorf("slice write error,ino(%v) fileoffset(%v) sliceSize(%v) err(%v)", writer.ino, wErr.fileOffset, wErr.size, err)
+		if wErr := <-writer.err; wErr != nil {
+			log.LogErrorf("slice write error,ino(%v) fileoffset(%v) sliceSize(%v) err(%v)",
+				writer.ino, wErr.fileOffset, wErr.size, wErr.err)
 			return 0, wErr.err
 		}
 	}
