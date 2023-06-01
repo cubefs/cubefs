@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"strconv"
 	"sync"
 	"time"
@@ -492,7 +493,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 			if dp.ReplicaNum > uint8(len(dp.liveReplicas(defaultDataPartitionTimeOutSec))) {
 				dpMissingReplicaDpCount++
 			}
-			if dp.getLeaderAddr() == "" {
+			if proto.IsNormalDp(dp.PartitionType) && dp.getLeaderAddr() == "" {
 				dpMissingLeaderCount++
 			}
 		}

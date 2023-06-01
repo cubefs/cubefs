@@ -157,6 +157,10 @@ func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
 		}
 	}
 
+	if !proto.IsNormalDp(partition.PartitionType) {
+		return
+	}
+
 	var report bool
 	if partition.getLeaderAddr() == "" {
 		report = true
