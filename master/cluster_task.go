@@ -277,6 +277,8 @@ func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []
 	return
 }
 
+type VolNameSet map[string]struct{}
+
 func (c *Cluster) checkReplicaMetaPartitions() (
 	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
 	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error) {
@@ -286,8 +288,15 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 	inodeCountNotEqualMPs = make([]*MetaPartition, 0)
 	dentryCountNotEqualMPs = make([]*MetaPartition, 0)
 
+	markDeleteVolNames := make(VolNameSet)
+
 	vols := c.copyVols()
 	for _, vol := range vols {
+		if vol.Status == markDelete {
+			markDeleteVolNames[vol.Name] = struct{}{}
+			continue
+		}
+
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.Replicas)) < mp.ReplicaNum {
@@ -313,12 +322,16 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 	}
 	c.inodeCountNotEqualMP.Range(func(key, value interface{}) bool {
 		mp := value.(*MetaPartition)
-		inodeCountNotEqualMPs = append(inodeCountNotEqualMPs, mp)
+		if _, ok := markDeleteVolNames[mp.volName]; !ok {
+			inodeCountNotEqualMPs = append(inodeCountNotEqualMPs, mp)
+		}
 		return true
 	})
 	c.dentryCountNotEqualMP.Range(func(key, value interface{}) bool {
 		mp := value.(*MetaPartition)
-		dentryCountNotEqualMPs = append(dentryCountNotEqualMPs, mp)
+		if _, ok := markDeleteVolNames[mp.volName]; !ok {
+			dentryCountNotEqualMPs = append(dentryCountNotEqualMPs, mp)
+		}
 		return true
 	})
 	log.LogInfof("clusterID[%v], lackReplicaMetaPartitions count:[%v], noLeaderMetaPartitions count[%v]"+
