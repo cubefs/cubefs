@@ -24,7 +24,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -304,9 +303,7 @@ func stopMetaServer(mms *mocktest.MockMetaServer) {
 func TestGetClusterView(t *testing.T) {
 	server.cluster.responseCache = nil
 	clusterView, err := mc.AdminAPI().GetCluster()
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	if len(server.cluster.responseCache) == 0 {
 		t.Errorf("responseCache should not be empty")
 	}
@@ -315,24 +312,19 @@ func TestGetClusterView(t *testing.T) {
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
 	}{}
-	if err = json.Unmarshal(server.cluster.responseCache, body); err != nil {
-		t.Errorf("unmarshal response cache err:%v", err)
-	}
+	err = json.Unmarshal(server.cluster.responseCache, body)
+	assert.NoErrorf(t, err, "unmarshal response cache err:%v", err)
 	cv := &proto.ClusterView{}
-	if err = json.Unmarshal(body.Data, &cv); err != nil {
-		t.Errorf("unmarshal data err:%v", err)
-	}
-	if !reflect.DeepEqual(clusterView, cv) {
-		t.Errorf("clusterView not equal clusterView:%v cv:%v", clusterView, cv)
-	}
+	err = json.Unmarshal(body.Data, &cv)
+	assert.NoErrorf(t, err, "unmarshal data err:%v", err)
+	assert.Equalf(t, cv, clusterView, "clusterView not equal clusterView:%v cv:%v", clusterView, cv)
 }
 
 func TestSetMetaNodeThreshold(t *testing.T) {
 	threshold := 0.5
 	reqURL := fmt.Sprintf("%v%v?threshold=%v", hostAddr, proto.AdminSetMetaNodeThreshold, threshold)
 	process(reqURL, t)
-	if server.cluster.cfg.MetaNodeThreshold != float32(threshold) {
-		t.Errorf("set metanode threshold to %v failed", threshold)
+	if !assert.Equalf(t, float32(threshold), server.cluster.cfg.MetaNodeThreshold, "set metanode threshold to %v failed", threshold) {
 		return
 	}
 }
@@ -341,8 +333,7 @@ func TestSetDisableAutoAlloc(t *testing.T) {
 	enable := true
 	reqURL := fmt.Sprintf("%v%v?enable=%v", hostAddr, proto.AdminClusterFreeze, enable)
 	process(reqURL, t)
-	if server.cluster.DisableAutoAllocate != enable {
-		t.Errorf("set disableAutoAlloc to %v failed", enable)
+	if !assert.Equalf(t, enable, server.cluster.DisableAutoAllocate, "set disableAutoAlloc to %v failed", enable) {
 		return
 	}
 	server.cluster.DisableAutoAllocate = false
@@ -372,27 +363,23 @@ type RawHTTPReply struct {
 
 func processReturnRawReply(reqURL string, t *testing.T) (reply *RawHTTPReply) {
 	resp, err := http.Get(reqURL)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status code[%v]", resp.StatusCode)
+	if !assert.Equalf(t, http.StatusOK, resp.StatusCode, "status code[%v]", resp.StatusCode) {
 		return
 	}
 	reply = &RawHTTPReply{}
-	if err = json.Unmarshal(body, reply); err != nil {
-		t.Error(err)
+	err = json.Unmarshal(body, reply)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if reply.Code != 0 {
-		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+	if !assert.Zerof(t, reply.Code, "failed,msg[%v],data[%v]", reply.Msg, reply.Data) {
 		return
 	}
 	return
@@ -401,15 +388,13 @@ func processReturnRawReply(reqURL string, t *testing.T) (reply *RawHTTPReply) {
 func processNoTerminal(reqURL string, t *testing.T) (reply *proto.HTTPReply, err error) {
 	var resp *http.Response
 	resp, err = http.Get(reqURL)
-	if err != nil {
-		t.Logf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	defer resp.Body.Close()
 	var body []byte
 	body, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Logf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -417,8 +402,8 @@ func processNoTerminal(reqURL string, t *testing.T) (reply *proto.HTTPReply, err
 		return
 	}
 	reply = &proto.HTTPReply{}
-	if err = json.Unmarshal(body, reply); err != nil {
-		t.Log(err)
+	err = json.Unmarshal(body, reply)
+	if !assert.NoError(t, err) {
 		return
 	}
 	if reply.Code != 0 {
@@ -430,27 +415,23 @@ func processNoTerminal(reqURL string, t *testing.T) (reply *proto.HTTPReply, err
 
 func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 	resp, err := http.Get(reqURL)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status code[%v]", resp.StatusCode)
+	if !assert.Equalf(t, http.StatusOK, resp.StatusCode, "status code[%v]", resp.StatusCode) {
 		return
 	}
 	reply = &proto.HTTPReply{}
-	if err = json.Unmarshal(body, reply); err != nil {
-		t.Error(err)
+	err = json.Unmarshal(body, reply)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if reply.Code != 0 {
-		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+	if !assert.Zerof(t, reply.Code, "failed,msg[%v],data[%v]", reply.Msg, reply.Data) {
 		return
 	}
 	return
@@ -467,23 +448,20 @@ func decommissionDisk(addr, path string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v",
 		hostAddr, proto.DecommissionDisk, addr, path)
 	resp, err := http.Get(reqURL)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status code[%v]", resp.StatusCode)
+	if !assert.Equalf(t, http.StatusOK, resp.StatusCode, "status code[%v]", resp.StatusCode) {
 		return
 	}
 	reply := &proto.HTTPReply{}
-	if err = json.Unmarshal(body, reply); err != nil {
-		t.Error(err)
+	err = json.Unmarshal(body, reply)
+	if !assert.NoError(t, err) {
 		return
 	}
 	server.cluster.checkDataNodeHeartbeat()
@@ -495,23 +473,20 @@ func decommissionDiskWithAuto(addr, path string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v&auto=true",
 		hostAddr, proto.DecommissionDisk, addr, path)
 	resp, err := http.Get(reqURL)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status code[%v]", resp.StatusCode)
+	if !assert.Equalf(t, http.StatusOK, resp.StatusCode, "status code[%v]", resp.StatusCode) {
 		return
 	}
 	reply := &proto.HTTPReply{}
-	if err = json.Unmarshal(body, reply); err != nil {
-		t.Error(err)
+	err = json.Unmarshal(body, reply)
+	if !assert.NoError(t, err) {
 		return
 	}
 	server.cluster.checkDataNodeHeartbeat()
@@ -549,20 +524,17 @@ func TestUpdateVol(t *testing.T) {
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if vol.FollowerRead != false {
-		t.Errorf("expect FollowerRead is false, but is %v", vol.FollowerRead)
+	if !assert.Falsef(t, vol.FollowerRead, "expect FollowerRead is false, but is %v", vol.FollowerRead) {
 		return
 	}
 
 	reqURL = fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v&followerRead=true",
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
 	process(reqURL, t)
-	if vol.FollowerRead != true {
-		t.Errorf("expect FollowerRead is true, but is %v", vol.FollowerRead)
+	if !assert.Truef(t, vol.FollowerRead, "expect FollowerRead is true, but is %v", vol.FollowerRead) {
 		return
 	}
 
@@ -570,16 +542,13 @@ func TestUpdateVol(t *testing.T) {
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, capacity, buildAuthKey("cfs"))
 	process(reqURL, t)
 	vol, err = server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if vol.ForceROW != true {
-		t.Errorf("expect ForceROW is true, but is %v", vol.ForceROW)
+	if !assert.Truef(t, vol.ForceROW, "expect ForceROW is true, but is %v", vol.ForceROW) {
 		return
 	}
-	if vol.ExtentCacheExpireSec != 60 {
-		t.Errorf("expect ExtentCacheExpireSec is 60, but is %v", vol.ExtentCacheExpireSec)
+	if !assert.Equalf(t, int64(60), vol.ExtentCacheExpireSec, "expect ExtentCacheExpireSec is 60, but is %v", vol.ExtentCacheExpireSec) {
 		return
 	}
 	// test enableWriteCache
@@ -587,12 +556,10 @@ func TestUpdateVol(t *testing.T) {
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, buildAuthKey("cfs"))
 	process(reqURL, t)
 	vol, err = server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if vol.enableWriteCache != true {
-		t.Errorf("expect enableWriteCache is true, but is %v", vol.enableWriteCache)
+	if !assert.Truef(t, vol.enableWriteCache, "expect enableWriteCache is true, but is %v", vol.enableWriteCache) {
 		return
 	}
 }
@@ -613,12 +580,10 @@ func TestCreateVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
 	process(reqURL, t)
 	userInfo, err := server.user.getUserInfo("cfstest")
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if !contains(userInfo.Policy.OwnVols, name) {
-		t.Errorf("expect vol %v in own vols, but is not", name)
+	if !assert.Containsf(t, userInfo.Policy.OwnVols, name, "expect vol %v in own vols, but is not", name) {
 		return
 	}
 }
@@ -654,8 +619,7 @@ func TestGetDataPartition(t *testing.T) {
 }
 
 func TestLoadDataPartition(t *testing.T) {
-	if len(commonVol.dataPartitions.partitions) == 0 {
-		t.Errorf("no data partitions")
+	if !assert.NotZero(t, len(commonVol.dataPartitions.partitions), "no data partitions") {
 		return
 	}
 	partition := commonVol.dataPartitions.partitions[0]
@@ -665,8 +629,7 @@ func TestLoadDataPartition(t *testing.T) {
 }
 
 func TestDataPartitionDecommission(t *testing.T) {
-	if len(commonVol.dataPartitions.partitions) == 0 {
-		t.Errorf("no data partitions")
+	if !assert.NotZero(t, len(commonVol.dataPartitions.partitions), "no data partitions") {
 		return
 	}
 	server.cluster.checkDataNodeHeartbeat()
@@ -677,16 +640,14 @@ func TestDataPartitionDecommission(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, commonVol.Name, partition.PartitionID, offlineAddr)
 	process(reqURL, t)
-	if contains(partition.Hosts, offlineAddr) {
-		t.Errorf("offlineAddr[%v],hosts[%v]", offlineAddr, partition.Hosts)
+	if !assert.NotContainsf(t, partition.Hosts, offlineAddr, "offlineAddr[%v],hosts[%v]", offlineAddr, partition.Hosts) {
 		return
 	}
 	partition.isRecover = false
 }
 
 func TestDataPartitionDecommissionWithoutReplica(t *testing.T) {
-	if len(commonVol.dataPartitions.partitions) == 0 {
-		t.Errorf("no data partitions")
+	if !assert.NotZero(t, len(commonVol.dataPartitions.partitions), "no data partitions") {
 		return
 	}
 	server.cluster.checkDataNodeHeartbeat()
@@ -704,8 +665,7 @@ func TestDataPartitionDecommissionWithoutReplica(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&force=true",
 		hostAddr, proto.AdminDecommissionDataPartition, commonVol.Name, partition.PartitionID, offlineAddr)
 	process(reqURL, t)
-	if contains(partition.Hosts, offlineAddr) {
-		t.Errorf("offlineAddr[%v],hosts[%v]", offlineAddr, partition.Hosts)
+	if !assert.NotContainsf(t, partition.Hosts, offlineAddr, "offlineAddr[%v],hosts[%v]", offlineAddr, partition.Hosts) {
 		return
 	}
 	if len(partition.Hosts) == 2 || len(partition.Replicas) == 2 {
@@ -746,8 +706,7 @@ func TestAddDataReplica(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
-	if !contains(partition.Hosts, dsAddr) {
-		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, dsAddr)
+	if !assert.Containsf(t, partition.Hosts, dsAddr, "hosts[%v] should contains dsAddr[%v]", partition.Hosts, dsAddr) {
 		partition.RUnlock()
 		return
 	}
@@ -772,8 +731,7 @@ func TestRemoveDataReplica(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
-	if contains(partition.Hosts, dsAddr) {
-		t.Errorf("hosts[%v] should not contains dsAddr[%v]", partition.Hosts, dsAddr)
+	if !assert.NotContainsf(t, partition.Hosts, dsAddr, "hosts[%v] should not contains dsAddr[%v]", partition.Hosts, dsAddr) {
 		partition.RUnlock()
 		return
 	}
@@ -799,14 +757,12 @@ func TestResetDataReplica(t *testing.T) {
 	process(reqURL, t)
 	partition.Lock()
 	defer partition.Unlock()
-	if len(partition.Hosts) != 1 {
-		t.Errorf("hosts[%v] reset peers of data partition failed", partition.Hosts)
+	if !assert.Lenf(t, partition.Hosts, 1, "hosts[%v] reset peers of data partition failed", partition.Hosts) {
 		return
 	}
 	partition.isRecover = false
 	for _, dataNode := range inActiveDataNode {
-		if contains(partition.Hosts, dataNode.Addr) {
-			t.Errorf("hosts[%v] should not contains inactiveAddr[%v]", partition.Hosts, dataNode.Addr)
+		if !assert.NotContainsf(t, partition.Hosts, dataNode.Addr, "hosts[%v] should not contains inactiveAddr[%v]", partition.Hosts, dataNode.Addr) {
 			return
 		}
 		dataNode.isActive = true
@@ -816,8 +772,7 @@ func TestResetDataReplica(t *testing.T) {
 func TestAddMetaReplica(t *testing.T) {
 	maxPartitionID := commonVol.maxPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
-	if partition == nil {
-		t.Error("no meta partition")
+	if !assert.NotNil(t, partition, "no meta partition") {
 		return
 	}
 	msAddr := mms9Addr
@@ -827,8 +782,7 @@ func TestAddMetaReplica(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)
 	process(reqURL, t)
 	partition.RLock()
-	if !contains(partition.Hosts, msAddr) {
-		t.Errorf("hosts[%v] should contains msAddr[%v]", partition.Hosts, msAddr)
+	if !assert.Containsf(t, partition.Hosts, msAddr, "hosts[%v] should contains msAddr[%v]", partition.Hosts, msAddr) {
 		partition.RUnlock()
 		return
 	}
@@ -838,8 +792,7 @@ func TestAddMetaReplica(t *testing.T) {
 func TestRemoveMetaReplica(t *testing.T) {
 	maxPartitionID := commonVol.maxPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
-	if partition == nil {
-		t.Error("no meta partition")
+	if !assert.NotNil(t, partition, "no meta partition") {
 		return
 	}
 	partition.IsRecover = false
@@ -847,8 +800,7 @@ func TestRemoveMetaReplica(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
 	process(reqURL, t)
 	partition.RLock()
-	if contains(partition.Hosts, msAddr) {
-		t.Errorf("hosts[%v] should contains msAddr[%v]", partition.Hosts, msAddr)
+	if !assert.NotContainsf(t, partition.Hosts, msAddr, "hosts[%v] should contains msAddr[%v]", partition.Hosts, msAddr) {
 		partition.RUnlock()
 		return
 	}
@@ -913,8 +865,7 @@ func TestPromoteDataLearner(t *testing.T) {
 func TestAddMetaLearner(t *testing.T) {
 	maxPartitionID := commonVol.maxPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
-	if partition == nil {
-		t.Error("no meta partition")
+	if !assert.NotNil(t, partition, "no meta partition") {
 		return
 	}
 	msAddr := mms9Addr
@@ -952,8 +903,7 @@ func TestPromoteMetaLearner(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	maxPartitionID := commonVol.maxPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
-	if partition == nil {
-		t.Error("no meta partition")
+	if !assert.NotNil(t, partition, "no meta partition") {
 		return
 	}
 	msAddr := mms9Addr
@@ -986,8 +936,7 @@ func TestPromoteMetaLearner(t *testing.T) {
 func TestResetMetaReplica(t *testing.T) {
 	maxPartitionID := commonVol.maxPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
-	if partition == nil {
-		t.Error("no meta partition")
+	if !assert.NotNil(t, partition, "no meta partition") {
 		return
 	}
 	var inActiveMetaNode []*MetaNode
@@ -1010,8 +959,7 @@ func TestResetMetaReplica(t *testing.T) {
 	}
 	partition.IsRecover = false
 	for _, metaNode := range inActiveMetaNode {
-		if contains(partition.Hosts, metaNode.Addr) {
-			t.Errorf("hosts[%v] should not contains inactiveAddr[%v]", partition.Hosts, metaNode.Addr)
+		if !assert.NotContainsf(t, partition.Hosts, metaNode.Addr, "hosts[%v] should not contains inactiveAddr[%v]", partition.Hosts, metaNode.Addr) {
 			return
 		}
 		metaNode.IsActive = true
@@ -1055,8 +1003,7 @@ func TestUpdateToken(t *testing.T) {
 			hostAddr, proto.TokenUpdateURI, commonVol.Name, token.Value, tokenType, buildAuthKey("cfs"))
 		process(reqUrl, t)
 		token := commonVol.tokens[token.Value]
-		if token.TokenType != tokenType {
-			t.Errorf("expect tokenType[%v],real tokenType[%v]\n", tokenType, token.TokenType)
+		if !assert.Equalf(t, tokenType, token.TokenType, "expect tokenType[%v],real tokenType[%v]\n", tokenType, token.TokenType) {
 			return
 		}
 	}
@@ -1090,32 +1037,28 @@ func TestListVols(t *testing.T) {
 func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
 	reader := bytes.NewReader(data)
 	req, err := http.NewRequest(http.MethodPost, reqURL, reader)
-	if err != nil {
-		t.Errorf("generate request err: %v", err)
+	if !assert.NoErrorf(t, err, "generate request err: %v", err) {
 		return
 	}
 	var resp *http.Response
-	if resp, err = http.DefaultClient.Do(req); err != nil {
-		t.Errorf("post err: %v", err)
+	resp, err = http.DefaultClient.Do(req)
+	if !assert.NoErrorf(t, err, "post err: %v", err) {
 		return
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Errorf("err is %v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status code[%v]", resp.StatusCode)
+	if !assert.Equalf(t, http.StatusOK, resp.StatusCode, "status code[%v]", resp.StatusCode) {
 		return
 	}
 	reply = &proto.HTTPReply{}
-	if err = json.Unmarshal(body, reply); err != nil {
-		t.Error(err)
+	err = json.Unmarshal(body, reply)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if reply.Code != 0 {
-		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
+	if !assert.Zerof(t, reply.Code, "failed,msg[%v],data[%v]", reply.Msg, reply.Data) {
 		return
 	}
 	return
@@ -1125,8 +1068,7 @@ func TestCreateUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserCreate)
 	param := &proto.UserCreateParam{ID: testUserID, Type: proto.UserTypeNormal}
 	data, err := json.Marshal(param)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	post(reqURL, data, t)
@@ -1141,30 +1083,24 @@ func TestUpdateUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserUpdate)
 	param := &proto.UserUpdateParam{UserID: testUserID, AccessKey: ak, SecretKey: sk, Type: proto.UserTypeAdmin, Description: description}
 	data, err := json.Marshal(param)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if userInfo.AccessKey != ak {
-		t.Errorf("expect ak[%v], real ak[%v]\n", ak, userInfo.AccessKey)
+	if !assert.Equalf(t, ak, userInfo.AccessKey, "expect ak[%v], real ak[%v]\n", ak, userInfo.AccessKey) {
 		return
 	}
-	if userInfo.SecretKey != sk {
-		t.Errorf("expect sk[%v], real sk[%v]\n", sk, userInfo.SecretKey)
+	if !assert.Equalf(t, sk, userInfo.SecretKey, "expect sk[%v], real sk[%v]\n", sk, userInfo.SecretKey) {
 		return
 	}
-	if userInfo.UserType != proto.UserTypeAdmin {
-		t.Errorf("expect ak[%v], real ak[%v]\n", proto.UserTypeAdmin, userInfo.UserType)
+	if !assert.Equalf(t, proto.UserTypeAdmin, userInfo.UserType, "expect ak[%v], real ak[%v]\n", proto.UserTypeAdmin, userInfo.UserType) {
 		return
 	}
-	if userInfo.Description != description {
-		t.Errorf("expect description[%v], real description[%v]\n", description, userInfo.Description)
+	if !assert.Equalf(t, description, userInfo.Description, "expect description[%v], real description[%v]\n", description, userInfo.Description) {
 		return
 	}
 }
@@ -1178,18 +1114,16 @@ func TestUpdatePolicy(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserUpdatePolicy)
 	param := &proto.UserPermUpdateParam{UserID: testUserID, Volume: commonVolName, Policy: []string{proto.BuiltinPermissionWritable.String()}}
 	data, err := json.Marshal(param)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if _, exist := userInfo.Policy.AuthorizedVols[commonVolName]; !exist {
-		t.Errorf("expect vol %v in authorized vols, but is not", commonVolName)
+	_, exist := userInfo.Policy.AuthorizedVols[commonVolName]
+	if !assert.Truef(t, exist, "expect vol %v in authorized vols, but is not", commonVolName) {
 		return
 	}
 }
@@ -1198,18 +1132,16 @@ func TestRemovePolicy(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserRemovePolicy)
 	param := &proto.UserPermRemoveParam{UserID: testUserID, Volume: commonVolName}
 	data, err := json.Marshal(param)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	post(reqURL, data, t)
 	userInfo, err := server.user.getUserInfo(testUserID)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if _, exist := userInfo.Policy.AuthorizedVols[commonVolName]; exist {
-		t.Errorf("expect no vol %v in authorized vols, but is exist", commonVolName)
+	_, exist := userInfo.Policy.AuthorizedVols[commonVolName]
+	if !assert.Falsef(t, exist, "expect no vol %v in authorized vols, but is exist", commonVolName) {
 		return
 	}
 }
@@ -1218,64 +1150,54 @@ func TestTransferVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.UserTransferVol)
 	param := &proto.UserTransferVolParam{Volume: commonVolName, UserSrc: "cfs", UserDst: testUserID, Force: false}
 	data, err := json.Marshal(param)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	post(reqURL, data, t)
 	userInfo1, err := server.user.getUserInfo(testUserID)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if !contains(userInfo1.Policy.OwnVols, commonVolName) {
-		t.Errorf("expect vol %v in own vols, but is not", commonVolName)
+	if !assert.Containsf(t, userInfo1.Policy.OwnVols, commonVolName, "expect vol %v in own vols, but is not", commonVolName) {
 		return
 	}
 	userInfo2, err := server.user.getUserInfo("cfs")
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if contains(userInfo2.Policy.OwnVols, commonVolName) {
-		t.Errorf("expect no vol %v in own vols, but is exist", commonVolName)
+	if !assert.NotContainsf(t, userInfo2.Policy.OwnVols, commonVolName, "expect no vol %v in own vols, but is exist", commonVolName) {
 		return
 	}
 	vol, err := server.cluster.getVol(commonVolName)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if vol.Owner != testUserID {
-		t.Errorf("expect owner is %v, but is %v", testUserID, vol.Owner)
+	if !assert.Equalf(t, testUserID, vol.Owner, "expect owner is %v, but is %v", testUserID, vol.Owner) {
 		return
 	}
 }
 
 func TestDeleteVolPolicy(t *testing.T) {
 	param := &proto.UserPermUpdateParam{UserID: "cfs", Volume: commonVolName, Policy: []string{proto.BuiltinPermissionWritable.String()}}
-	if _, err := server.user.updatePolicy(param); err != nil {
-		t.Error(err)
+	_, err := server.user.updatePolicy(param)
+	if !assert.NoError(t, err) {
 		return
 	}
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UserDeleteVolPolicy, commonVolName)
 	process(reqURL, t)
 	userInfo1, err := server.user.getUserInfo(testUserID)
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if contains(userInfo1.Policy.OwnVols, commonVolName) {
-		t.Errorf("expect no vol %v in own vols, but is not", commonVolName)
+	if !assert.NotContainsf(t, userInfo1.Policy.OwnVols, commonVolName, "expect no vol %v in own vols, but is not", commonVolName) {
 		return
 	}
 	userInfo2, err := server.user.getUserInfo("cfs")
-	if err != nil {
-		t.Error(err)
+	if !assert.NoError(t, err) {
 		return
 	}
-	if _, exist := userInfo2.Policy.AuthorizedVols[commonVolName]; exist {
-		t.Errorf("expect no vols %v in authorized vol is 0, but is exist", commonVolName)
+	_, exist := userInfo2.Policy.AuthorizedVols[commonVolName]
+	if !assert.Falsef(t, exist, "expect no vols %v in authorized vol is 0, but is exist", commonVolName) {
 		return
 	}
 }
@@ -1288,10 +1210,8 @@ func TestListUser(t *testing.T) {
 func TestDeleteUser(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?user=%v", hostAddr, proto.UserDelete, testUserID)
 	process(reqURL, t)
-	if _, err := server.user.getUserInfo(testUserID); err != proto.ErrUserNotExists {
-		t.Errorf("expect err ErrUserNotExists, but err is %v", err)
-		return
-	}
+	_, err := server.user.getUserInfo(testUserID)
+	assert.ErrorIs(t, err, proto.ErrUserNotExists)
 }
 
 func TestListUsersOfVol(t *testing.T) {
@@ -1355,8 +1275,8 @@ func TestCheckMergeZoneNodeset(t *testing.T) {
 	topo := server.cluster.t
 	clusterID := server.cluster.Name
 	zoneNodeSet1, err := topo.getZone("zone-ns1")
-	if err != nil {
-		t.Errorf("topo getZone err:%v", err)
+	if !assert.NoError(t, err) {
+		return
 	}
 	nodeSet3 := newNodeSet(503, 18, zoneNodeSet1.name)
 	zoneNodeSet1.putNodeSet(nodeSet3)
@@ -1422,17 +1342,14 @@ func TestApplyAndGetVolWriteMutex(t *testing.T) {
 	// apply volume write mutex
 	applyReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v&addr=127.0.0.1:10090&slaves=127.0.0.1:10094,127.0.0.1:10095&addslave=127.0.0.1:10096", hostAddr, proto.AdminApplyVolMutex, commonVolName)
 	applyReply := process(applyReqURL, t)
-	if applyReply.Data.(string) != "apply volume mutex success" {
-		t.Errorf("apply volume mutex failed, responseInfo: %v", applyReply.Data)
-	}
+	assert.Equalf(t, "apply volume mutex success", applyReply.Data.(string), "apply volume mutex failed, responseInfo: %v", applyReply.Data)
 
 	// get volume write mutex
 	getReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
 	reply := processReturnRawReply(getReqURL, t)
 	mutexInfo := &proto.VolWriteMutexInfo{}
-	if err := json.Unmarshal(reply.Data, mutexInfo); err != nil {
-		t.Errorf("unmarshal data err:%v", err)
-	}
+	err := json.Unmarshal(reply.Data, mutexInfo)
+	assert.NoError(t, err)
 	if mutexInfo.Enable != true || mutexInfo.Holder != "127.0.0.1:10090" || len(mutexInfo.Slaves) != 3 {
 		expect := &proto.VolWriteMutexInfo{
 			Enable: true,
@@ -1447,17 +1364,14 @@ func TestReleaseAndGetVolWriteMutex(t *testing.T) {
 	// release volume write mutex
 	releaseReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v&addr=127.0.0.1:10090", hostAddr, proto.AdminReleaseVolMutex, commonVolName)
 	releaseReply := process(releaseReqURL, t)
-	if releaseReply.Data.(string) != "release volume mutex success" {
-		t.Errorf("Release volume write mutest failed, errorInfo: %v", releaseReply.Data)
-	}
+	assert.Equalf(t, "release volume mutex success", releaseReply.Data.(string), "Release volume write mutest failed, errorInfo: %v", releaseReply.Data)
 
 	// get volume write mutex
 	getReqURL := fmt.Sprintf("%v%v?app=coraldb&name=%v", hostAddr, proto.AdminGetVolMutex, commonVolName)
 	reply := processReturnRawReply(getReqURL, t)
 	mutexInfo := &proto.VolWriteMutexInfo{}
-	if err := json.Unmarshal(reply.Data, mutexInfo); err != nil {
-		t.Errorf("unmarshal data err:%v", err)
-	}
+	err := json.Unmarshal(reply.Data, mutexInfo)
+	assert.NoError(t, err)
 	if mutexInfo.Enable != true || mutexInfo.Holder != "" || len(mutexInfo.Slaves) != 3 {
 		expect := &proto.VolWriteMutexInfo{
 			Enable: true,
@@ -1473,21 +1387,16 @@ func TestSetNodeInfoHandler(t *testing.T) {
 	deleteRecord := 10
 	reqURL := fmt.Sprintf("%v%v?fixTinyDeleteRecordKey=%v", hostAddr, proto.AdminSetNodeInfo, deleteRecord)
 	process(reqURL, t)
-	if server.cluster.dnFixTinyDeleteRecordLimit != uint64(deleteRecord) {
-		t.Errorf("set fixTinyDeleteRecordKey to %v failed", deleteRecord)
+	if !assert.Equalf(t, uint64(deleteRecord), server.cluster.dnFixTinyDeleteRecordLimit, "set fixTinyDeleteRecordKey to %v failed", deleteRecord) {
 		return
 	}
 	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
 
-	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
-		t.Errorf("unmarshal limitinfo failed,err:%v", err)
-	}
-	if limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk != uint64(deleteRecord) {
-		t.Errorf("deleteRecordLimit expect:%v,real:%v", deleteRecord, limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
-	}
-
+	err := json.Unmarshal(reply.Data, limitInfo)
+	assert.NoErrorf(t, err, "unmarshal limitinfo failed,err:%v", err)
+	assert.Equalf(t, uint64(deleteRecord), limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk, "deleteRecordLimit expect:%v,real:%v", deleteRecord, limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
 }
 
 func TestSetVolConvertModeOfDPConvertMode(t *testing.T) {
@@ -1495,24 +1404,18 @@ func TestSetVolConvertModeOfDPConvertMode(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&partitionType=dataPartition&convertMode=1", hostAddr, proto.AdminSetVolConvertMode, volName)
 	process(reqURL, t)
 	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+	if !assert.NoErrorf(t, err, "vol:%v GetVolumeSimpleInfo err:%v", volName, err) {
 		return
 	}
-	if volumeSimpleInfo.DPConvertMode != proto.IncreaseReplicaNum {
-		t.Errorf("expect volName:%v DPConvertMode is 1, but is %v", volName, volumeSimpleInfo.DPConvertMode)
-	}
+	assert.Equalf(t, proto.IncreaseReplicaNum, volumeSimpleInfo.DPConvertMode, "expect volName:%v DPConvertMode is 1, but is %v", volName, volumeSimpleInfo.DPConvertMode)
 
 	reqURL = fmt.Sprintf("%v%v?name=%v&partitionType=dataPartition&convertMode=0", hostAddr, proto.AdminSetVolConvertMode, volName)
 	process(reqURL, t)
 	volumeSimpleInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+	if !assert.NoErrorf(t, err, "vol:%v GetVolumeSimpleInfo err:%v", volName, err) {
 		return
 	}
-	if volumeSimpleInfo.DPConvertMode != 0 {
-		t.Errorf("expect volName:%v DPConvertMode is 0, but is %v", volName, volumeSimpleInfo.DPConvertMode)
-	}
+	assert.Zerof(t, volumeSimpleInfo.DPConvertMode, "expect volName:%v DPConvertMode is 0, but is %v", volName, volumeSimpleInfo.DPConvertMode)
 }
 
 func TestSetVolConvertModeOfMPConvertMode(t *testing.T) {
@@ -1520,24 +1423,18 @@ func TestSetVolConvertModeOfMPConvertMode(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&partitionType=metaPartition&convertMode=1", hostAddr, proto.AdminSetVolConvertMode, volName)
 	process(reqURL, t)
 	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+	if !assert.NoErrorf(t, err, "vol:%v GetVolumeSimpleInfo err:%v", volName, err) {
 		return
 	}
-	if volumeSimpleInfo.MPConvertMode != proto.IncreaseReplicaNum {
-		t.Errorf("expect volName:%v MPConvertMode is 1, but is %v", volName, volumeSimpleInfo.MPConvertMode)
-	}
+	assert.Equalf(t, proto.IncreaseReplicaNum, volumeSimpleInfo.MPConvertMode, "expect volName:%v MPConvertMode is 1, but is %v", volName, volumeSimpleInfo.MPConvertMode)
 
 	reqURL = fmt.Sprintf("%v%v?name=%v&partitionType=metaPartition&convertMode=0", hostAddr, proto.AdminSetVolConvertMode, volName)
 	process(reqURL, t)
 	volumeSimpleInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+	if !assert.NoErrorf(t, err, "vol:%v GetVolumeSimpleInfo err:%v", volName, err) {
 		return
 	}
-	if volumeSimpleInfo.MPConvertMode != 0 {
-		t.Errorf("expect volName:%v MPConvertMode is 0, but is %v", volName, volumeSimpleInfo.MPConvertMode)
-	}
+	assert.Zerof(t, volumeSimpleInfo.MPConvertMode, "expect volName:%v MPConvertMode is 0, but is %v", volName, volumeSimpleInfo.MPConvertMode)
 }
 
 func TestCreateRegion(t *testing.T) {
@@ -1552,22 +1449,17 @@ func TestCreateRegion(t *testing.T) {
 	}
 
 	regionList, err := mc.AdminAPI().RegionList()
-	if err != nil {
-		t.Errorf("getRegionList err:%v", err)
+	if !assert.NoErrorf(t, err, "getRegionList err:%v", err) {
 		return
 	}
-	if len(regionList) != len(regionMap) {
-		t.Errorf("expect regionCount is %v, but is %v", len(regionMap), len(regionList))
-	}
+	assert.Equalf(t, len(regionMap), len(regionList), "expect regionCount is %v, but is %v", len(regionMap), len(regionList))
 	for _, regionView := range regionList {
 		regionType, ok := regionMap[regionView.Name]
 		if !ok {
 			t.Errorf("get unexpect region:%v ", regionView.Name)
 			continue
 		}
-		if regionView.RegionType != regionType {
-			t.Errorf("region:%v expect regionType is %v, but is %v", regionView.Name, regionType, regionView.RegionType)
-		}
+		assert.Equalf(t, regionType, regionView.RegionType, "region:%v expect regionType is %v, but is %v", regionView.Name, regionType, regionView.RegionType)
 	}
 }
 
@@ -1581,8 +1473,7 @@ func TestZoneSetRegion(t *testing.T) {
 	}
 
 	zoneList, err := mc.AdminAPI().ZoneList()
-	if err != nil {
-		t.Errorf("get ZoneList err:%v", err)
+	if !assert.NoErrorf(t, err, "get ZoneList err:%v", err) {
 		return
 	}
 	for zoneName, regionName := range zoneRegionMap {
@@ -1590,9 +1481,7 @@ func TestZoneSetRegion(t *testing.T) {
 		for _, zoneView := range zoneList {
 			if zoneView.Name == zoneName {
 				flag = true
-				if zoneView.Region != regionName {
-					t.Errorf("zone:%v expect region is %v, but is %v", zoneName, regionName, zoneView.Region)
-				}
+				assert.Equalf(t, regionName, zoneView.Region, "zone:%v expect region is %v, but is %v", zoneName, regionName, zoneView.Region)
 				break
 			}
 		}
@@ -1606,20 +1495,15 @@ func TestDefaultRegion(t *testing.T) {
 	server.cluster.t.putZoneIfAbsent(newZone(testZone6))
 	server.cluster.t.putZoneIfAbsent(newZone(testZone9))
 	topologyView, err := getTopologyView()
-	if err != nil {
-		t.Errorf("get getTopologyView err:%v", err)
+	if !assert.NoErrorf(t, err, "get topologyView err:%v", err) {
 		return
 	}
 	flag := false
 	for _, regionView := range topologyView.Regions {
 		if regionView.Name == "default" {
 			flag = true
-			if !contains(regionView.Zones, testZone6) {
-				t.Errorf("zone:%v is expected in default region but is not", testZone6)
-			}
-			if !contains(regionView.Zones, testZone9) {
-				t.Errorf("zone:%v is expected in default region but is not", testZone9)
-			}
+			assert.Containsf(t, regionView.Zones, testZone6, "zone:%v is expected in default region but is not", testZone6)
+			assert.Containsf(t, regionView.Zones, testZone9, "zone:%v is expected in default region but is not", testZone9)
 			break
 		}
 	}
@@ -1643,26 +1527,16 @@ func TestUpdateRegion(t *testing.T) {
 	process(reqURL, t)
 
 	regionView, err := mc.AdminAPI().GetRegionView(regionName)
-	if err != nil {
-		t.Errorf("region:%v GetRegionView err:%v", regionName, err)
+	if !assert.NoErrorf(t, err, "region:%v GetRegionView err:%v", regionName, err) {
 		return
 	}
-	if regionView.Name != regionName {
-		t.Errorf("expect regionName is %v, but is %v", regionName, regionView.Name)
+	if !assert.Equalf(t, regionName, regionView.Name, "expect regionName is %v, but is %v", regionName, regionView.Name) {
 		return
 	}
-	if regionView.RegionType != proto.MasterRegion {
-		t.Errorf("expect RegionType is %v, but is %v", proto.MasterRegion, regionView.RegionType)
-	}
-	if len(regionView.Zones) != 2 {
-		t.Errorf("expect region zones count is 2, but is %v", len(regionView.Zones))
-	}
-	if !contains(regionView.Zones, testZone4) {
-		t.Errorf("zone:%v is expected in region:%v but is not", testZone4, regionName)
-	}
-	if !contains(regionView.Zones, testZone5) {
-		t.Errorf("zone:%v is expected in region:%v but is not", testZone5, regionName)
-	}
+	assert.Equalf(t, proto.MasterRegion, regionView.RegionType, "expect RegionType is %v, but is %v", proto.MasterRegion, regionView.RegionType)
+	assert.Lenf(t, regionView.Zones, 2, "expect region zones count is 2, but is %v", len(regionView.Zones))
+	assert.Containsf(t, regionView.Zones, testZone4, "zone:%v is expected in region:%v but is not", testZone4, regionName)
+	assert.Containsf(t, regionView.Zones, testZone5, "zone:%v is expected in region:%v but is not", testZone5, regionName)
 }
 
 func getTopologyView() (topologyView TopologyView, err error) {
@@ -1699,11 +1573,8 @@ func TestVolDpWriteableThreshold(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&owner=%v&capacity=100&zoneName=%v&dpWriteableThreshold=%v", hostAddr, proto.AdminCreateVol, name, owner, testZone2, dpWriteableThreshold)
 	process(reqURL, t)
 	vol, err := server.cluster.getVol(name)
-	if err != nil {
-		t.Errorf("get vol %v failed,err:%v", name, err)
-	}
-	if vol.dpWriteableThreshold != dpWriteableThreshold {
-		t.Errorf("expect dpWriteableThreshold :%v,real:%v", dpWriteableThreshold, vol.dpWriteableThreshold)
+	assert.NoErrorf(t, err, "get vol %v failed,err:%v", name, err)
+	if !assert.Equalf(t, dpWriteableThreshold, vol.dpWriteableThreshold, "expect dpWriteableThreshold :%v,real:%v", dpWriteableThreshold, vol.dpWriteableThreshold) {
 		return
 	}
 
@@ -1712,11 +1583,8 @@ func TestVolDpWriteableThreshold(t *testing.T) {
 	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=%v&capacity=100&dpWriteableThreshold=%v", hostAddr, proto.AdminUpdateVol, name, buildAuthKey("cfs"), dpWriteableThreshold)
 	process(reqURL, t)
 	vol, err = server.cluster.getVol(name)
-	if err != nil {
-		t.Errorf("get vol %v failed,err:%v", name, err)
-	}
-	if vol.dpWriteableThreshold != dpWriteableThreshold {
-		t.Errorf("expect dpWriteableThreshold :%v,real:%v", dpWriteableThreshold, vol.dpWriteableThreshold)
+	assert.NoErrorf(t, err, "get vol %v failed,err:%v", name, err)
+	if !assert.Equalf(t, dpWriteableThreshold, vol.dpWriteableThreshold, "expect dpWriteableThreshold :%v,real:%v", dpWriteableThreshold, vol.dpWriteableThreshold) {
 		return
 	}
 
@@ -1724,29 +1592,21 @@ func TestVolDpWriteableThreshold(t *testing.T) {
 	vol.RLock()
 	defer vol.RUnlock()
 	vol.dpWriteableThreshold = 0.9
-	if len(vol.dataPartitions.partitions) == 0 {
-		t.Error("vol has 0 partitions")
-	}
+	assert.NotZero(t, len(vol.dataPartitions.partitions), "vol has 0 partitions")
 	partition := vol.dataPartitions.partitions[0]
 	partition.lastStatus = proto.ReadOnly
 	partition.lastModifyStatusTime = 0
 	canReset := partition.canResetStatusToWrite(vol.dpWriteableThreshold)
-	if canReset == false {
-		t.Errorf("expect canReset:%v,real canReset :%v ", true, canReset)
-	}
+	assert.Truef(t, canReset, "expect canReset:%v,real canReset :%v ", true, canReset)
 
 	partition.lastModifyStatusTime = time.Now().Unix()
 	canReset = partition.canResetStatusToWrite(vol.dpWriteableThreshold)
-	if canReset == true {
-		t.Errorf("expect canReset:%v,real canReset :%v ", false, canReset)
-	}
+	assert.Falsef(t, canReset, "expect canReset:%v,real canReset :%v ", false, canReset)
 
 	vol.dpWriteableThreshold = 0.6
 	partition.lastStatus = proto.ReadOnly
 	canReset = partition.canResetStatusToWrite(vol.dpWriteableThreshold)
-	if canReset == true {
-		t.Errorf("expect canReset:%v,real canReset :%v ", false, canReset)
-	}
+	assert.Falsef(t, canReset, "expect canReset:%v,real canReset :%v ", false, canReset)
 }
 
 func TestCreateVolForUpdateToCrossRegionVol(t *testing.T) {
@@ -1768,10 +1628,7 @@ func TestCreateVolForUpdateToCrossRegionVol(t *testing.T) {
 	// create a normal vol
 	err := mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, 1,
 		false, false, false, true, false, false, zoneName, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
-		return
-	}
+	assert.NoErrorf(t, err, "CreateVolume err:%v", err)
 }
 
 func TestUpdateVolToCrossRegionVol(t *testing.T) {
@@ -1780,34 +1637,24 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	// update to cross region vol
 	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false, false,
 		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false)
-	if err != nil {
-		t.Errorf("UpdateVolume err:%v", err)
+	if !assert.NoErrorf(t, err, "UpdateVolume err:%v", err) {
 		return
 	}
 	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Errorf("")
+	if !assert.NoError(t, err) {
 		return
 	}
-	if volumeSimpleInfo.CrossRegionHAType != proto.CrossRegionHATypeQuorum {
-		t.Errorf("vol:%v expect CrossRegionHAType is %v, but is %v", volName, proto.CrossRegionHATypeQuorum, volumeSimpleInfo.CrossRegionHAType)
-	}
-	if volumeSimpleInfo.DpReplicaNum != 5 || volumeSimpleInfo.DpLearnerNum != 0 {
-		t.Errorf("vol:%v expect DpReplicaNum,DpLearnerNum is (5,0), but is (%v,%v)", volName, volumeSimpleInfo.DpReplicaNum, volumeSimpleInfo.DpLearnerNum)
-	}
-	if volumeSimpleInfo.MpReplicaNum != 3 || volumeSimpleInfo.MpLearnerNum != 2 {
-		t.Errorf("vol:%v expect MpReplicaNum,MpLearnerNum is (3,2), but is (%v,%v)", volName, volumeSimpleInfo.MpReplicaNum, volumeSimpleInfo.MpLearnerNum)
-	}
-	if volumeSimpleInfo.DPConvertMode != proto.IncreaseReplicaNum || volumeSimpleInfo.MPConvertMode != proto.DefaultConvertMode {
-		t.Errorf("vol:%v expect DPConvertMode,MPConvertMode is (%v,%v), but is (%v,%v)", volName,
-			proto.IncreaseReplicaNum, proto.DefaultConvertMode, volumeSimpleInfo.DPConvertMode, volumeSimpleInfo.MPConvertMode)
-	}
-	if volumeSimpleInfo.ZoneName != newZoneName {
-		t.Errorf("vol:%v expect ZoneName is %v, but is %v", volName, newZoneName, volumeSimpleInfo.ZoneName)
-	}
-	if volumeSimpleInfo.ExtentCacheExpireSec != 120 {
-		t.Errorf("vol:%v expect ExtentCacheExpireSec is 120, but is %v", volName, volumeSimpleInfo.ExtentCacheExpireSec)
-	}
+	assert.Equalf(t, proto.CrossRegionHATypeQuorum, volumeSimpleInfo.CrossRegionHAType, "vol:%v expect CrossRegionHAType is %v, but is %v", volName, proto.CrossRegionHATypeQuorum, volumeSimpleInfo.CrossRegionHAType)
+	assert.Equalf(t, uint8(5), volumeSimpleInfo.DpReplicaNum, "vol:%v expect DpReplicaNum,DpLearnerNum is (5,0), but is (%v,%v)", volName, volumeSimpleInfo.DpReplicaNum, volumeSimpleInfo.DpLearnerNum)
+	assert.Zerof(t, volumeSimpleInfo.DpLearnerNum, "vol:%v expect DpReplicaNum,DpLearnerNum is (5,0), but is (%v,%v)", volName, volumeSimpleInfo.DpReplicaNum, volumeSimpleInfo.DpLearnerNum)
+	assert.Equalf(t, uint8(3), volumeSimpleInfo.MpReplicaNum, "vol:%v expect MpReplicaNum,MpLearnerNum is (3,2), but is (%v,%v)", volName, volumeSimpleInfo.MpReplicaNum, volumeSimpleInfo.MpLearnerNum)
+	assert.Equalf(t, uint8(2), volumeSimpleInfo.MpLearnerNum, "vol:%v expect MpReplicaNum,MpLearnerNum is (3,2), but is (%v,%v)", volName, volumeSimpleInfo.MpReplicaNum, volumeSimpleInfo.MpLearnerNum)
+	assert.Equalf(t, proto.IncreaseReplicaNum, volumeSimpleInfo.DPConvertMode, "vol:%v expect DPConvertMode,MPConvertMode is (%v,%v), but is (%v,%v)", volName,
+		proto.IncreaseReplicaNum, proto.DefaultConvertMode, volumeSimpleInfo.DPConvertMode, volumeSimpleInfo.MPConvertMode)
+	assert.Equalf(t, proto.DefaultConvertMode, volumeSimpleInfo.MPConvertMode, "vol:%v expect DPConvertMode,MPConvertMode is (%v,%v), but is (%v,%v)", volName,
+		proto.IncreaseReplicaNum, proto.DefaultConvertMode, volumeSimpleInfo.DPConvertMode, volumeSimpleInfo.MPConvertMode)
+	assert.Equalf(t, newZoneName, volumeSimpleInfo.ZoneName, "vol:%v expect ZoneName is %v, but is %v", volName, newZoneName, volumeSimpleInfo.ZoneName)
+	assert.Equalf(t, int64(120), volumeSimpleInfo.ExtentCacheExpireSec, "vol:%v expect ExtentCacheExpireSec is 120, but is %v", volName, volumeSimpleInfo.ExtentCacheExpireSec)
 }
 
 func TestAddDataReplicaForCrossRegionVol(t *testing.T) {
@@ -1816,20 +1663,21 @@ func TestAddDataReplicaForCrossRegionVol(t *testing.T) {
 		dataNode  *DataNode
 		err       error
 	)
-	if quorumVol, err = server.cluster.getVol(quorumVolName); err != nil || quorumVol == nil {
-		t.Fatalf("getVol:%v err:%v", quorumVolName, err)
+	quorumVol, err = server.cluster.getVol(quorumVolName)
+	if !assert.NoErrorf(t, err, "getVol:%v err:%v", quorumVolName, err) {
 		return
 	}
-	if len(quorumVol.dataPartitions.partitions) == 0 {
-		t.Errorf("vol:%v no data partition ", quorumVolName)
+	if !assert.NotNilf(t, quorumVol, "getVol:%v err:%v", quorumVolName, err) {
 		return
 	}
-	if partition = quorumVol.dataPartitions.partitions[0]; partition == nil {
-		t.Errorf("vol:%v no data partition ", quorumVolName)
+	if !assert.NotZerof(t, len(quorumVol.dataPartitions.partitions), "vol:%v no data partition ", quorumVolName) {
 		return
 	}
-	if quorumVol.dpReplicaNum != 5 {
-		t.Errorf("vol:%v dpReplicaNum should be 5, but get:%v", quorumVolName, quorumVol.dpReplicaNum)
+	partition = quorumVol.dataPartitions.partitions[0]
+	if !assert.NotNilf(t, partition, "vol:%v no data partition ", quorumVolName) {
+		return
+	}
+	if !assert.Equalf(t, uint8(5), quorumVol.dpReplicaNum, "vol:%v dpReplicaNum should be 5, but get:%v", quorumVolName, quorumVol.dpReplicaNum) {
 		return
 	}
 	// make the data catch up
@@ -1854,20 +1702,21 @@ func TestAddDataReplicaForCrossRegionVol(t *testing.T) {
 	partition.RUnlock()
 
 	load, ok := server.cluster.t.dataNodes.Load(newAddr)
-	if !ok {
-		t.Errorf("can not get datanode:%v", newAddr)
+	if !assert.Truef(t, ok, "can not get datanode:%v", newAddr) {
 		return
 	}
-	if dataNode, ok = load.(*DataNode); !ok {
-		t.Errorf("can not get datanode:%v", newAddr)
+	dataNode, ok = load.(*DataNode)
+	if !assert.Truef(t, ok, "can not get datanode:%v", newAddr) {
 		return
 	}
-	if dataNode.ZoneName != testZone6 {
-		t.Errorf("dp:%v dataNode:%v expect ZoneName is %v but is %v ", partition.PartitionID, dataNode.Addr, testZone6, dataNode.ZoneName)
+	if !assert.Equalf(t, testZone6, dataNode.ZoneName, "dp:%v dataNode:%v expect ZoneName is %v but is %v ", partition.PartitionID, dataNode.Addr, testZone6, dataNode.ZoneName) {
 		return
 	}
-	if regionType, err := server.cluster.getDataNodeRegionType(newAddr); err != nil || regionType != proto.SlaveRegion {
-		t.Errorf("dp:%v expect regionType is %v but is %v err:%v", partition.PartitionID, proto.SlaveRegion, regionType, err)
+	regionType, err := server.cluster.getDataNodeRegionType(newAddr)
+	if !assert.NoErrorf(t, err, "dp:%v expect regionType is %v but is %v err:%v", partition.PartitionID, proto.SlaveRegion, regionType, err) {
+		return
+	}
+	if !assert.Equalf(t, proto.SlaveRegion, regionType, "dp:%v expect regionType is %v but is %v err:%v", partition.PartitionID, proto.SlaveRegion, regionType, err) {
 		return
 	}
 	server.cluster.BadDataPartitionIds.Range(func(key, value interface{}) bool {
@@ -1887,8 +1736,8 @@ func TestAddMetaLearnerForCrossRegionVol(t *testing.T) {
 		partition *MetaPartition
 		metaNode  *MetaNode
 	)
-	if partition = quorumVol.MetaPartitions[quorumVol.maxPartitionID()]; partition == nil {
-		t.Errorf("vol:%v no meta partition ", quorumVolName)
+	partition = quorumVol.MetaPartitions[quorumVol.maxPartitionID()]
+	if !assert.NotNilf(t, partition, "vol:%v no meta partition ", quorumVolName) {
 		return
 	}
 	reqURL := fmt.Sprintf("%v%v?id=%v&addReplicaType=%d", hostAddr, proto.AdminAddMetaReplicaLearner, partition.PartitionID, proto.AutoChooseAddrForQuorumVol)
@@ -1907,20 +1756,21 @@ func TestAddMetaLearnerForCrossRegionVol(t *testing.T) {
 	}
 	partition.RUnlock()
 	load, ok := server.cluster.t.metaNodes.Load(newAddr)
-	if !ok {
-		t.Errorf("can not get metanode:%v", newAddr)
+	if !assert.Truef(t, ok, "can not get metanode:%v", newAddr) {
 		return
 	}
-	if metaNode, ok = load.(*MetaNode); !ok {
-		t.Errorf("can not get metanode:%v", newAddr)
+	metaNode, ok = load.(*MetaNode)
+	if !assert.Truef(t, ok, "can not get metanode:%v", newAddr) {
 		return
 	}
-	if metaNode.ZoneName != testZone6 {
-		t.Errorf("mp:%v metaNode:%v expect ZoneName is %v but is %v ", partition.PartitionID, metaNode.Addr, testZone6, metaNode.ZoneName)
+	if !assert.Equalf(t, testZone6, metaNode.ZoneName, "mp:%v metaNode:%v expect ZoneName is %v but is %v ", partition.PartitionID, metaNode.Addr, testZone6, metaNode.ZoneName) {
 		return
 	}
-	if regionType, err := server.cluster.getMetaNodeRegionType(newAddr); err != nil || regionType != proto.SlaveRegion {
-		t.Errorf("mp:%v expect regionType is %v but is %v err:%v", partition.PartitionID, proto.SlaveRegion, regionType, err)
+	regionType, err := server.cluster.getMetaNodeRegionType(newAddr)
+	if !assert.NoErrorf(t, err, "mp:%v expect regionType is %v but is %v err:%v", partition.PartitionID, proto.SlaveRegion, regionType, err) {
+		return
+	}
+	if !assert.Equalf(t, proto.SlaveRegion, regionType, "mp:%v expect regionType is %v but is %v err:%v", partition.PartitionID, proto.SlaveRegion, regionType, err) {
 		return
 	}
 }
@@ -1946,8 +1796,7 @@ func TestAddDataPartitionForCrossRegionVol(t *testing.T) {
 		}
 	}
 	quorumVol.dataPartitions.RUnlock()
-	if dataPartition == nil {
-		t.Errorf("can not find new dataPartition")
+	if !assert.NotNilf(t, dataPartition, "can not find new dataPartition") {
 		return
 	}
 	validateCrossRegionDataPartition(dataPartition, t)
@@ -1966,22 +1815,22 @@ func TestCreateCrossRegionVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicaNum=5&capacity=200&owner=cfs&mpCount=3&zoneName=%v&crossRegion=1",
 		hostAddr, proto.AdminCreateVol, volName, zoneName)
 	process(reqURL, t)
-	if vol, err = server.cluster.getVol(volName); err != nil || vol == nil {
-		t.Errorf("getVol:%v err:%v", volName, err)
+	vol, err = server.cluster.getVol(volName)
+	if !assert.NoErrorf(t, err, "getVol:%v err:%v", volName, err) {
 		return
 	}
-	if len(vol.dataPartitions.partitions) != 0 {
+	if !assert.NotNilf(t, vol, "getVol:%v err:%v", volName, err) {
+		return
+	}
+
+	if assert.NotZerof(t, len(vol.dataPartitions.partitions), "vol:%v no data partition ", volName) {
 		dataPartition = vol.dataPartitions.partitions[0]
-	} else {
-		t.Errorf("vol:%v no data partition ", volName)
 	}
-	if dataPartition != nil {
+	if assert.NotNilf(t, dataPartition, "vol:%v no data partition ", volName) {
 		validateCrossRegionDataPartition(dataPartition, t)
-	} else {
-		t.Errorf("vol:%v no data partition ", volName)
 	}
-	if metaPartition = vol.MetaPartitions[vol.maxPartitionID()]; metaPartition == nil {
-		t.Errorf("vol:%v no meta partition ", volName)
+	metaPartition = vol.MetaPartitions[vol.maxPartitionID()]
+	if !assert.NotNilf(t, metaPartition, "vol:%v no meta partition ", volName) {
 		return
 	}
 	validateCrossRegionMetaPartition(metaPartition, t)
@@ -1996,8 +1845,7 @@ func validateCrossRegionDataPartition(dataPartition *DataPartition, t *testing.T
 	}
 	dataPartition.RUnlock()
 	masterRegionAddrs, slaveRegionAddrs, err := server.cluster.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(dataPartitionHosts)
-	if err != nil {
-		t.Errorf("getMasterAndSlaveRegionAddrsFromDataNodeAddrs err:%v", err)
+	if !assert.NoErrorf(t, err, "getMasterAndSlaveRegionAddrsFromDataNodeAddrs err:%v", err) {
 		return
 	}
 	if len(masterRegionAddrs) != 3 || len(slaveRegionAddrs) != 2 {
@@ -2026,8 +1874,7 @@ func validateCrossRegionMetaPartition(metaPartition *MetaPartition, t *testing.T
 	}
 	metaPartition.RUnlock()
 	masterRegionAddrs, slaveRegionAddrs, err := server.cluster.getMasterAndSlaveRegionAddrsFromMetaNodeAddrs(metaPartitionHosts)
-	if err != nil {
-		t.Errorf("getMasterAndSlaveRegionAddrsFromMetaNodeAddrs err:%v", err)
+	if !assert.NoErrorf(t, err, "getMasterAndSlaveRegionAddrsFromMetaNodeAddrs err:%v", err) {
 		return
 	}
 	if len(masterRegionAddrs) != 3 || len(slaveRegionAddrs) != 2 {
@@ -2050,34 +1897,26 @@ func TestSetVolMinRWPartition(t *testing.T) {
 	minRwMPNum := 10
 	minRwDPNum := 4
 	err := mc.AdminAPI().SetVolMinRWPartition(volName, minRwMPNum, minRwDPNum)
-	if err != nil {
-		t.Errorf("vol:%v SetVolMinRWPartition err:%v", volName, err)
+	if !assert.NoErrorf(t, err, "vol:%v SetVolMinRWPartition err:%v", volName, err) {
 		return
 	}
 	volumeSimpleInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Errorf("vol:%v GetVolumeSimpleInfo err:%v", volName, err)
+	if !assert.NoErrorf(t, err, "vol:%v GetVolumeSimpleInfo err:%v", volName, err) {
 		return
 	}
-	if volumeSimpleInfo.MinWritableMPNum != minRwMPNum || volumeSimpleInfo.MinWritableDPNum != minRwDPNum {
-		t.Errorf("expect volName:%v MinWritableMPNum,MinWritableDPNum is (%v,%v), but is (%v,%v)",
-			volName, minRwMPNum, minRwDPNum, volumeSimpleInfo.MinWritableMPNum, volumeSimpleInfo.MinWritableDPNum)
-	}
+	assert.Equal(t, minRwMPNum, volumeSimpleInfo.MinWritableMPNum)
+	assert.Equal(t, minRwDPNum, volumeSimpleInfo.MinWritableDPNum)
 }
 
 func TestCreateDataPartitionOfDesignatedZoneName(t *testing.T) {
-	if err := validateCreateDataPartition(commonVolName, "", 5, t); err != nil {
-		t.Error(err)
-	}
-	if err := validateCreateDataPartition(commonVolName, fmt.Sprintf("%v,%v", testZone3, testZone2), 5, t); err != nil {
-		t.Error(err)
-	}
-	if err := validateCreateDataPartition(quorumVolName, "", 5, t); err != nil {
-		t.Error(err)
-	}
-	if err := validateCreateDataPartition(quorumVolName, fmt.Sprintf("%s,%s,%s", testZone6, testZone3, testZone2), 5, t); err != nil {
-		t.Error(err)
-	}
+	err := validateCreateDataPartition(commonVolName, "", 5, t)
+	assert.NoError(t, err)
+	err = validateCreateDataPartition(commonVolName, fmt.Sprintf("%v,%v", testZone3, testZone2), 5, t)
+	assert.NoError(t, err)
+	err = validateCreateDataPartition(quorumVolName, "", 5, t)
+	assert.NoError(t, err)
+	err = validateCreateDataPartition(quorumVolName, fmt.Sprintf("%s,%s,%s", testZone6, testZone3, testZone2), 5, t)
+	assert.NoError(t, err)
 }
 
 func validateCreateDataPartition(volName, designatedZoneName string, createCount int, t *testing.T) (err error) {
@@ -2091,7 +1930,7 @@ func validateCreateDataPartition(volName, designatedZoneName string, createCount
 	)
 	// record old dp info
 	vol, err := server.cluster.getVol(volName)
-	if err != nil {
+	if !assert.NoError(t, err) {
 		return
 	}
 	vol.createTime = time.Now().Unix() - defaultAutoCreateDPAfterVolCreateSecond*2
@@ -2123,27 +1962,22 @@ func validateCreateDataPartition(volName, designatedZoneName string, createCount
 			// check dp zone, must be in given zones
 			for _, nodeAddr := range dataPartition.Hosts {
 				load, ok := server.cluster.t.dataNodes.Load(nodeAddr)
-				if !ok {
-					t.Errorf("can not get datanode:%v", nodeAddr)
+				if !assert.Truef(t, ok, "can not get datanode:%v", nodeAddr) {
 					return
 				}
-				if dataNode, ok = load.(*DataNode); !ok {
-					t.Errorf("can not get datanode:%v", nodeAddr)
+				dataNode, ok = load.(*DataNode)
+				if !assert.Truef(t, ok, "can not get datanode:%v", nodeAddr) {
 					return
 				}
 				dpZones = append(dpZones, dataNode.ZoneName)
-				if !expectZoneMap[dataNode.ZoneName] {
-					t.Errorf("expect zones:%v but get:%v", expectZoneName, dataNode.ZoneName)
-				}
+				assert.Truef(t, expectZoneMap[dataNode.ZoneName], "expect zones:%v but get:%v", expectZoneName, dataNode.ZoneName)
 			}
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				validateCrossRegionDataPartition(dataPartition, t)
 			}
 		}
 	}
-	if newDpCount != createCount {
-		t.Errorf("expect createCount:%v but get newDpCount:%v", createCount, newDpCount)
-	}
+	assert.Equalf(t, createCount, newDpCount, "expect createCount:%v but get newDpCount:%v", createCount, newDpCount)
 	return
 }
 
@@ -2151,21 +1985,15 @@ func TestSetReadDirLimitNum(t *testing.T) {
 	readDirLimitNum := 500000
 	reqURL := fmt.Sprintf("%v%v?metaNodeReadDirLimit=%v", hostAddr, proto.AdminSetNodeInfo, readDirLimitNum)
 	process(reqURL, t)
-	if server.cluster.cfg.MetaNodeReadDirLimitNum != uint64(readDirLimitNum) {
-		t.Errorf("set readDirLimitNum to %v failed", readDirLimitNum)
+	if !assert.Equalf(t, uint64(readDirLimitNum), server.cluster.cfg.MetaNodeReadDirLimitNum, "set readDirLimitNum to %v failed", readDirLimitNum) {
 		return
 	}
 	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
-
-	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
-		t.Errorf("unmarshal limitinfo failed,err:%v", err)
-	}
-	if limitInfo.MetaNodeReadDirLimitNum != uint64(readDirLimitNum) {
-		t.Errorf("readDirLimitNum expect:%v, real:%v", readDirLimitNum, limitInfo.MetaNodeReadDirLimitNum)
-	}
-
+	err := json.Unmarshal(reply.Data, limitInfo)
+	assert.NoErrorf(t, err, "unmarshal limitinfo failed,err:%v", err)
+	assert.Equalf(t, uint64(readDirLimitNum), limitInfo.MetaNodeReadDirLimitNum, "readDirLimitNum expect:%v, real:%v", readDirLimitNum, limitInfo.MetaNodeReadDirLimitNum)
 }
 
 func TestSetDataNodeRepairTaskCountZoneLimit(t *testing.T) {
@@ -2173,56 +2001,42 @@ func TestSetDataNodeRepairTaskCountZoneLimit(t *testing.T) {
 	zone := testZone1
 	reqURL := fmt.Sprintf("%v%v?%v=%v&zoneName=%v", hostAddr, proto.AdminSetNodeInfo, dataNodeRepairTaskCntZoneKey, limitNum, zone)
 	process(reqURL, t)
-	if server.cluster.cfg.DataNodeRepairTaskCountZoneLimit[zone] != limitNum {
-		t.Errorf("set zone:%v DataNodeRepairTaskCountZoneLimit to %v failed", zone, limitNum)
+	if !assert.Equalf(t, limitNum, server.cluster.cfg.DataNodeRepairTaskCountZoneLimit[zone], "set zone:%v DataNodeRepairTaskCountZoneLimit to %v failed", zone, limitNum) {
 		return
 	}
 	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
-	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
-		t.Errorf("unmarshal limitinfo failed,err:%v", err)
-	}
-	if limitInfo.DataNodeRepairTaskCountZoneLimit[zone] != limitNum {
-		t.Errorf("DataNodeRepairTaskCountZoneLimit expect:%v, real:%v", limitNum, limitInfo.DataNodeRepairTaskCountZoneLimit)
-	}
+	err := json.Unmarshal(reply.Data, limitInfo)
+	assert.NoErrorf(t, err, "unmarshal limitinfo failed,err:%v", err)
+	assert.Equalf(t, limitNum, limitInfo.DataNodeRepairTaskCountZoneLimit[zone], "DataNodeRepairTaskCountZoneLimit expect:%v, real:%v", limitNum, limitInfo.DataNodeRepairTaskCountZoneLimit)
 }
 
 func TestSetDataNodeRepairTaskLimit(t *testing.T) {
 	limitInfoReqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(limitInfoReqURL, t)
 	limitInfo := &proto.LimitInfo{}
-	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
-		t.Errorf("unmarshal limitinfo failed,err:%v", err)
-	}
-	if limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk != defaultSSDZoneTaskLimit {
-		t.Errorf("DataNodeRepairSSDZoneTaskLimitOnDisk expect:%v, real:%v", defaultSSDZoneTaskLimit, limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk)
-	}
+	err := json.Unmarshal(reply.Data, limitInfo)
+	assert.NoErrorf(t, err, "unmarshal limitinfo failed,err:%v", err)
+	assert.Equalf(t, uint64(defaultSSDZoneTaskLimit), limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk, "DataNodeRepairSSDZoneTaskLimitOnDisk expect:%v, real:%v", defaultSSDZoneTaskLimit, limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk)
 
 	ssdLimitNum := uint64(29)
 	clusterLimitNum := uint64(5)
 	reqURL := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminSetNodeInfo, dataNodeRepairTaskSSDKey, ssdLimitNum, dataNodeRepairTaskCountKey, clusterLimitNum)
 	process(reqURL, t)
-	if server.cluster.cfg.DataNodeRepairSSDZoneTaskCount != ssdLimitNum {
-		t.Errorf("set DataNodeRepairSSDZoneTaskCount failed expect:%v, real:%v", ssdLimitNum, server.cluster.cfg.DataNodeRepairSSDZoneTaskCount)
+	if !assert.Equalf(t, ssdLimitNum, server.cluster.cfg.DataNodeRepairSSDZoneTaskCount, "set DataNodeRepairSSDZoneTaskCount failed expect:%v, real:%v", ssdLimitNum, server.cluster.cfg.DataNodeRepairSSDZoneTaskCount) {
 		return
 	}
-	if server.cluster.cfg.DataNodeRepairTaskCount != clusterLimitNum {
-		t.Errorf("set DataNodeRepairTaskCount failed expect:%v, real:%v", clusterLimitNum, server.cluster.cfg.DataNodeRepairTaskCount)
+	if !assert.Equalf(t, clusterLimitNum, server.cluster.cfg.DataNodeRepairTaskCount, "set DataNodeRepairTaskCount failed expect:%v, real:%v", clusterLimitNum, server.cluster.cfg.DataNodeRepairTaskCount) {
 		return
 	}
 
 	reply = processReturnRawReply(limitInfoReqURL, t)
 	limitInfo = &proto.LimitInfo{}
-	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
-		t.Errorf("unmarshal limitinfo failed,err:%v", err)
-	}
-	if limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk != ssdLimitNum {
-		t.Errorf("DataNodeRepairSSDZoneTaskLimitOnDisk expect:%v, real:%v", ssdLimitNum, limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk)
-	}
-	if limitInfo.DataNodeRepairClusterTaskLimitOnDisk != clusterLimitNum {
-		t.Errorf("DataNodeRepairClusterTaskLimitOnDisk expect:%v, real:%v", clusterLimitNum, limitInfo.DataNodeRepairClusterTaskLimitOnDisk)
-	}
+	err = json.Unmarshal(reply.Data, limitInfo)
+	assert.NoErrorf(t, err, "unmarshal limitinfo failed,err:%v", err)
+	assert.Equalf(t, ssdLimitNum, limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk, "DataNodeRepairSSDZoneTaskLimitOnDisk expect:%v, real:%v", ssdLimitNum, limitInfo.DataNodeRepairSSDZoneTaskLimitOnDisk)
+	assert.Equalf(t, clusterLimitNum, limitInfo.DataNodeRepairClusterTaskLimitOnDisk, "DataNodeRepairClusterTaskLimitOnDisk expect:%v, real:%v", clusterLimitNum, limitInfo.DataNodeRepairClusterTaskLimitOnDisk)
 }
 
 func TestValidSmartRules(t *testing.T) {
@@ -2232,10 +2046,7 @@ func TestValidSmartRules(t *testing.T) {
 		ruleStr := "actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5:hdd"
 		rules := strings.Split(ruleStr, ",")
 		err := proto.CheckLayerPolicy(clusterID, volName, rules)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 	}
 	{
 		ruleStr := "actionMetrics:dp:read:count:minute:1000:5:hdd,actionMetrics:dp:appendWrite:count:minute:1000:5"
@@ -2318,90 +2129,50 @@ func TestSetIDC(t *testing.T) {
 	idcName2 := "idcTestSetIDC2"
 	c := server.cluster
 	_, err := c.t.createIDC(idcName1, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	_, err = c.t.createIDC(idcName2, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	err = c.setZoneIDC(testZone2, idcName1, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	err = c.setZoneIDC(testZone1, idcName1, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	idc, err := c.t.getIDC(idcName1)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	if idc.getMediumType(testZone1) != proto.MediumSSD {
 		t.Error(idc.getMediumType(testZone1).String())
 		t.FailNow()
 	}
 
 	err = c.setZoneIDC(testZone1, idcName1, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	idc, err = c.t.getIDC(idcName1)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if idc.getMediumType(testZone1) != proto.MediumHDD {
-		t.Error(idc.getMediumType(testZone1).String())
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.Equal(t, proto.MediumHDD, idc.getMediumType(testZone1)) {
 		t.FailNow()
 	}
 
 	err = c.setZoneIDC(testZone1, idcName1, proto.MediumInit)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if idc.getMediumType(testZone1) != proto.MediumHDD {
-		t.Error(idc.getMediumType(testZone1).String())
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.Equal(t, proto.MediumHDD, idc.getMediumType(testZone1)) {
 		t.FailNow()
 	}
 
 	err = c.setZoneIDC(testZone1, idcName2, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	idc, err = c.t.getIDC(idcName2)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if idc.getMediumType(testZone1) != proto.MediumHDD {
-		t.Error(idc.getMediumType(testZone1).String())
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.Equal(t, proto.MediumHDD, idc.getMediumType(testZone1)) {
 		t.FailNow()
 	}
 
 	err = c.setZoneIDC(testZone2, idcName2, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	idc, err = c.t.getIDC(idcName2)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if idc.getMediumType(testZone2) != proto.MediumHDD {
-		t.Error(idc.getMediumType(testZone2).String())
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.Equal(t, proto.MediumHDD, idc.getMediumType(testZone2)) {
 		t.FailNow()
 	}
 }
@@ -2413,39 +2184,24 @@ func TestSmartVolRules(t *testing.T) {
 	idc1.Name = idcName
 	c := server.cluster
 	_, err := c.t.createIDC(idcName, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone1, idcName, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
 		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
+	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
 		return
 	}
 	vol, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Error(err.Error())
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.True(t, vol.IsSmart) {
 		t.FailNow()
 	}
-	if !vol.IsSmart {
-		t.Error(vol.IsSmart)
-		t.FailNow()
-	}
-	if len(vol.SmartRules) == 0 {
-		t.Error(len(vol.SmartRules))
+	if !assert.NotZero(t, len(vol.SmartRules)) {
 		t.FailNow()
 	}
 	defer log.LogFlush()
@@ -2460,47 +2216,31 @@ func TestSmartVolRules(t *testing.T) {
 		}
 
 	*/
-	if len(vols) < 1 {
-		t.Errorf("len: %v, data: %v\n", len(vols), resp.Data)
+	if !assert.GreaterOrEqualf(t, len(vols), 1, "len: %v, data: %v\n", len(vols), resp.Data) {
 		t.FailNow()
 	}
 
 	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=7b2f1bf38b87d32470c4557c7ff02e75&smart=%v", hostAddr, proto.AdminUpdateVol, volName, true)
 	_, err = processNoTerminal(reqURL, t)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	vol, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if !vol.IsSmart {
-		t.Error(vol.IsSmart)
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.True(t, vol.IsSmart) {
 		t.FailNow()
 	}
 
 	rules := "actionMetrics:dp:read:count:minute:1000:10:hdd,actionMetrics:dp:appendWrite:count:minute:1000:10:hdd"
 	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=7b2f1bf38b87d32470c4557c7ff02e75&smart=%v&smartRules=%v", hostAddr, proto.AdminUpdateVol, volName, false, rules)
 	_, err = processNoTerminal(reqURL, t)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	vol, err = mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	rulesArr := strings.Split(rules, ",")
-	if len(rulesArr) != len(vol.SmartRules) {
-		t.Errorf("%v %v", len(rulesArr), len(vol.SmartRules))
+	if !assert.Equal(t, len(vol.SmartRules), len(rulesArr)) {
 		t.FailNow()
 	}
 	for index, rule := range vol.SmartRules {
-		if rule != rulesArr[index] {
-			t.Errorf("%v %v", rule, rulesArr[index])
+		if !assert.Equal(t, rulesArr[index], rule) {
 			t.FailNow()
 		}
 	}
@@ -2549,46 +2289,28 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 	idc1.Name = idcName
 	c := server.cluster
 	_, err := c.t.createIDC(idcName, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone1, idcName, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
 		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	vol, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if !vol.IsSmart {
-		t.Error(vol.IsSmart)
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.True(t, vol.IsSmart) {
 		t.FailNow()
 	}
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminSmartVolList)
 	process(reqURL, t)
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 
@@ -2596,41 +2318,25 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 	dp, err := c.getDataPartitionByID(pid)
 	replica := dp.Replicas[0]
 	dn, err := c.dataNode(replica.Addr)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if oldAddr != replica.Addr {
-		t.Error(oldAddr)
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.Equal(t, replica.Addr, oldAddr) {
 		t.FailNow()
 	}
 	// check the new add is belong to old hosts
 	zone, err := c.t.getZone(dn.ZoneName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	_, err = zone.getDataNode(newAddr)
-	if err == nil {
+	if !assert.Error(t, err) {
 		t.FailNow()
 	}
 
 	// check the new addr is belong to expected zone
 	zone, err = c.t.getZone(testZone1)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	_, err = zone.getDataNode(newAddr)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 }
 
 /*
@@ -2656,20 +2362,11 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 	idc1.Name = idcName
 	c := server.cluster
 	_, err := c.t.createIDC(idcName, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone6, idcName, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
@@ -2679,12 +2376,8 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 		return
 	}
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 
@@ -2693,41 +2386,25 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 
 	for _, replica := range dp.Replicas {
 		dn, err := c.dataNode(replica.Addr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
-		if oldAddr != replica.Addr {
-			t.Error(oldAddr)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, replica.Addr, oldAddr) {
 			t.FailNow()
 		}
 		// check the new add is belong to old hosts
 		zone, err := c.t.getZone(dn.ZoneName)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		_, err = zone.getDataNode(newAddr)
-		if err == nil {
+		if !assert.Error(t, err) {
 			t.FailNow()
 		}
 
 		// check the new add is belong to expected zone
 		zone, err = c.t.getZone(testZone6)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		_, err = zone.getDataNode(newAddr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		replica.Addr = newAddr
 		hosts := make([]string, 0)
 		for _, host := range dp.Hosts {
@@ -2763,86 +2440,54 @@ func TestGetTargetAddressForDataPartitionSmartCase2(t *testing.T) {
 	idc1.Name = idcName
 	c := server.cluster
 	_, err := c.t.createIDC(idcName, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone1, idcName, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone3, idcName, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 
 	pid := dps.DataPartitions[0].PartitionID
 	dp, err := c.getDataPartitionByID(pid)
+	assert.NoError(t, err)
 
 	for index, replica := range dp.Replicas {
 		dn, err := c.dataNode(replica.Addr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
 		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
-		if oldAddr != replica.Addr {
-			t.Error(oldAddr)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, replica.Addr, oldAddr) {
 			t.FailNow()
 		}
 		// check the new add is belong to old hosts
 		zone, err := c.t.getZone(dn.ZoneName)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		_, err = zone.getDataNode(newAddr)
-		if err == nil {
+		if !assert.Error(t, err) {
 			t.FailNow()
 		}
 
 		// check the new add is belong to expected zone
 		zone1, err1 := c.t.getZone(testZone1)
-		if err1 != nil {
-			t.Error(err1.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err1)
 		_, err1 = zone1.getDataNode(newAddr)
 
 		zone3, err3 := c.t.getZone(testZone3)
-		if err3 != nil {
-			t.Error(err3.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err3)
 		_, err3 = zone3.getDataNode(newAddr)
 
 		if err1 != nil && err3 != nil {
@@ -2886,41 +2531,24 @@ func TestGetTargetAddressForDataPartitionSmartCase3(t *testing.T) {
 	idc1.Name = idcName
 	c := server.cluster
 	_, err := c.t.createIDC(idcName, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone1, idcName, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone3, idcName, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
 		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 
@@ -2929,42 +2557,26 @@ func TestGetTargetAddressForDataPartitionSmartCase3(t *testing.T) {
 
 	for _, replica := range dp.Replicas {
 		dn, err := c.dataNode(replica.Addr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
 		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
-		if oldAddr != replica.Addr {
-			t.Error(oldAddr)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, replica.Addr, oldAddr) {
 			t.FailNow()
 		}
 		// check the new add is belong to old hosts
 		zone, err := c.t.getZone(dn.ZoneName)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		_, err = zone.getDataNode(newAddr)
-		if err == nil {
+		if !assert.Error(t, err) {
 			t.FailNow()
 		}
 
 		// check the new add is belong to expected zone
 		zone, err = c.t.getZone(testZone2)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		_, err = zone.getDataNode(newAddr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		replica.Addr = newAddr
 		hosts := make([]string, 0)
 		for _, host := range dp.Hosts {
@@ -3001,52 +2613,29 @@ func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
 	idcName2 := "idc2TestGetTargetAddressForDataPartitionSmartCase4"
 	c := server.cluster
 	_, err := c.t.createIDC(idcName1, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone1, idcName1, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName1, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	_, err = c.t.createIDC(idcName2, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
 		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 
@@ -3056,28 +2645,18 @@ func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
 	for index, replica := range dp.Replicas {
 		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
 		dn, err := c.dataNode(replica.Addr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
 		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
-		if oldAddr != replica.Addr {
-			t.Error(oldAddr)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, replica.Addr, oldAddr) {
 			t.FailNow()
 		}
 		// check the new add is belong to old hosts
 		zone, err := c.t.getZone(dn.ZoneName)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		_, err = zone.getDataNode(newAddr)
-		if err == nil {
+		if !assert.Error(t, err) {
 			t.FailNow()
 		}
 
@@ -3092,17 +2671,11 @@ func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
 			t.FailNow()
 		}
 		zone, err = c.t.getZone(expectedZoneName)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 
 		// check the new add is belong to expected zone
 		_, err = zone.getDataNode(newAddr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 
 		// update the dp's replicas and hosts
 		replica.Addr = newAddr
@@ -3141,57 +2714,31 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 	idcName2 := "idc2TestGetTargetAddressForDataPartitionSmartCase5"
 	c := server.cluster
 	_, err := c.t.createIDC(idcName1, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	defer log.LogFlush()
 	err = c.setZoneIDC(testZone2, idcName1, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone7, idcName1, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone8, idcName1, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	_, err = c.t.createIDC(idcName2, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
 		fmt.Sprintf("%v,%v", testZone2, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 
@@ -3200,10 +2747,7 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 		zone2Count := 0
 		for _, host := range dp.Hosts {
 			zn, err := c.dataNode(host)
-			if err != nil {
-				t.Error(err.Error())
-				t.FailNow()
-			}
+			assertErrNilOtherwiseFailNow(t, err)
 			if zn.ZoneName == testZone2 {
 				zone2Count++
 			}
@@ -3223,28 +2767,18 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 	count := 0
 	for _, replica := range dp.Replicas {
 		dn, err := c.dataNode(replica.Addr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
 		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
-		if oldAddr != replica.Addr {
-			t.Error(oldAddr)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, replica.Addr, oldAddr) {
 			t.FailNow()
 		}
 		// check the new add is belong to old hosts
 		zone, err := c.t.getZone(dn.ZoneName)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 		_, err = zone.getDataNode(newAddr)
-		if err == nil {
+		if !assert.Error(t, err) {
 			t.FailNow()
 		}
 
@@ -3294,8 +2828,7 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 		dp.Hosts = hosts
 		t.Logf("dps: %v, pid: %v, addr: %v, new addr: %v", len(dps.DataPartitions), pid, oldAddr, newAddr)
 	}
-	if count != 1 {
-		t.Error(count)
+	if !assert.Equal(t, 1, count) {
 		t.FailNow()
 	}
 }
@@ -3315,9 +2848,8 @@ func TestSetMonitorTime(t *testing.T) {
 	fmt.Println(reqURL)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
-	if err := json.Unmarshal(reply.Data, limitInfo); err != nil {
-		t.Errorf("unmarshal limitinfo failed,err:%v", err)
-	}
+	err := json.Unmarshal(reply.Data, limitInfo)
+	assert.NoErrorf(t, err, "unmarshal limitinfo failed,err:%v", err)
 	if limitInfo.MonitorSummarySec != uint64(summarySecond) || limitInfo.MonitorReportSec != uint64(reportSecond) {
 		t.Errorf("get monitorTime failed: expect summarySecond(%v) but(%v), expect reportSecond(%v) but(%v)",
 			summarySecond, limitInfo.MonitorSummarySec, reportSecond, limitInfo.MonitorReportSec)
@@ -3349,98 +2881,56 @@ func TestGetTargetAddressForDataPartitionSmartCase6(t *testing.T) {
 	idcName3 := "idc3TestGetTargetAddressForDataPartitionSmartCase6"
 	c := server.cluster
 	_, err := c.t.createIDC(idcName1, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone7, idcName1, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName1, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	_, err = c.t.createIDC(idcName2, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	_, err = c.t.createIDC(idcName3, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone1, idcName3, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone8, idcName3, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
 		fmt.Sprintf("%v,%v,%v", testZone1, testZone3, testZone7), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 
 	zone, err := c.t.getZone(testZone8)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	zone.setStatus(unavailableZone)
 	defer zone.setStatus(normalZone)
-	if zone.getStatus() != unavailableZone {
-		t.Error(zone.getStatusToString())
+	if !assert.Equal(t, unavailableZone, zone.getStatus()) {
 		t.FailNow()
 	}
 
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 	for _, dpv := range dps.DataPartitions {
 		pid := dpv.PartitionID
 		dp, err := c.getDataPartitionByID(pid)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 
 		count := 0
 		for _, replica := range dp.Replicas {
 			dn, err := c.dataNode(replica.Addr)
-			if err != nil {
-				t.Error(err.Error())
-				t.FailNow()
-			}
+			assertErrNilOtherwiseFailNow(t, err)
 
 			if dn.ZoneName == testZone1 {
 				count++
@@ -3455,37 +2945,24 @@ func TestGetTargetAddressForDataPartitionSmartCase6(t *testing.T) {
 		for index, replica := range dp.Replicas {
 			t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
 			dn, err := c.dataNode(replica.Addr)
-			if err != nil {
-				t.Error(err.Error())
-				t.FailNow()
-			}
+			assertErrNilOtherwiseFailNow(t, err)
 
 			t.Logf("dps: %v, pid: %v, addr: %v", len(dps.DataPartitions), pid, replica.Addr)
 			oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
-			if err != nil {
-				t.Error(err.Error())
-				t.FailNow()
-			}
-			if oldAddr != replica.Addr {
-				t.Error(oldAddr)
+			assertErrNilOtherwiseFailNow(t, err)
+			if !assert.Equal(t, replica.Addr, oldAddr) {
 				t.FailNow()
 			}
 			// check the new add is belong to old hosts
 			zone, err := c.t.getZone(dn.ZoneName)
-			if err != nil {
-				t.Error(err.Error())
-				t.FailNow()
-			}
+			assertErrNilOtherwiseFailNow(t, err)
 			_, err = zone.getDataNode(newAddr)
-			if err == nil {
+			if !assert.Error(t, err) {
 				t.FailNow()
 			}
 
 			zone, err = c.t.getZone(testZone6)
-			if err != nil {
-				t.Error(err.Error())
-				t.FailNow()
-			}
+			assertErrNilOtherwiseFailNow(t, err)
 
 			// check the new add is belong to expected zone
 			_, err = zone.getDataNode(newAddr)
@@ -3547,41 +3024,20 @@ func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
 	idcName2 := "idc2TestGetTargetAddressForDataPartitionSmartCase7"
 	c := server.cluster
 	_, err := c.t.createIDC(idcName1, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone1, idcName1, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone9, idcName1, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName1, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	_, err = c.t.createIDC(idcName2, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone3, idcName2, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone6, idcName2, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	masterRegionName := "smartCaseMasterRegion1"
 	slaveRegionName := "smartCaseSlaveRegion1"
@@ -3608,17 +3064,12 @@ func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 5, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
 		fmt.Sprintf("%v,%v,%v", testZone1, testZone9, testZone3), "", testSmartRules, 1, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
+	if !assert.NoError(t, err) {
 		return
 	}
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 
@@ -3629,12 +3080,8 @@ func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
 	for index, replica := range dp.Replicas {
 		t.Logf("index; %v, mType: %v, dps: %v, pid: %v, addr: %v", index, replica.MType, len(dps.DataPartitions), pid, replica.Addr)
 		oldAddr, newAddr, err := getTargetAddressForDataPartitionSmartTransfer(c, replica.Addr, dp, nil, "", true)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
-		if oldAddr != replica.Addr {
-			t.Error(oldAddr)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, replica.Addr, oldAddr) {
 			t.FailNow()
 		}
 
@@ -3642,26 +3089,16 @@ func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
 		if oldAddr == "127.0.0.1:9101" || oldAddr == "127.0.0.1:9102" ||
 			oldAddr == "127.0.0.1:9116" || oldAddr == "127.0.0.1:9117" {
 			zone, err = c.t.getZone(testZone2)
-			if err != nil {
-				t.Error(err.Error())
-				t.FailNow()
-			}
+			assertErrNilOtherwiseFailNow(t, err)
 		} else if oldAddr == "127.0.0.1:9107" || oldAddr == "127.0.0.1:9108" {
 			zone, err = c.t.getZone(testZone6)
-			if err != nil {
-				t.Error(err.Error())
-				t.FailNow()
-			}
+			assertErrNilOtherwiseFailNow(t, err)
 		} else {
-			t.Error(oldAddr)
-			t.FailNow()
+			assert.FailNow(t, oldAddr)
 		}
 		// check the new add is belong to expected zone
 		_, err = zone.getDataNode(newAddr)
-		if err != nil {
-			t.Error(err.Error())
-			t.FailNow()
-		}
+		assertErrNilOtherwiseFailNow(t, err)
 
 		// update the dp's replicas and hosts
 		replica.Addr = newAddr
@@ -3682,72 +3119,46 @@ func TestFreezeDataPartition(t *testing.T) {
 	idcName := "idcTestFreezeDataPartition"
 	c := server.cluster
 	_, err := c.t.createIDC(idcName, c)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	err = c.setZoneIDC(testZone1, idcName, proto.MediumHDD)
-	if err != nil {
-		t.Log(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if err != nil {
-		t.Errorf("CreateVolume err:%v", err)
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 	dps, err := mc.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
-	if len(dps.DataPartitions) == 0 {
-		t.Error(len(dps.DataPartitions))
+	assertErrNilOtherwiseFailNow(t, err)
+	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
 	}
 
 	pid := dps.DataPartitions[0].PartitionID
 	dp, err := c.getDataPartitionByID(pid)
-	if dp.Status != proto.ReadWrite {
-		t.Error(dp.Status)
+	if !assert.Equal(t, proto.ReadWrite, int(dp.Status)) {
 		t.FailNow()
 	}
 
 	dpInfo, err := mc.AdminAPI().GetDataPartition(volName, pid)
-	if dpInfo.IsFrozen {
-		t.Errorf("%v should not be frozen", dp.PartitionID)
+	if !assert.Falsef(t, dpInfo.IsFrozen, "%v should not be frozen", dp.PartitionID) {
 		t.FailNow()
 	}
 
 	err = c.freezeDataPartition(volName, dp.PartitionID)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	dpInfo, err = mc.AdminAPI().GetDataPartition(volName, pid)
-	if !dpInfo.IsFrozen {
-		t.Errorf("%v should not be frozen", dp.PartitionID)
+	if !assert.Truef(t, dp.IsFrozen, "%v should not be frozen", dp.PartitionID) {
 		t.FailNow()
 	}
 
 	err = c.unfreezeDataPartition(volName, dp.PartitionID)
-	if err != nil {
-		t.Error(err.Error())
-		t.FailNow()
-	}
+	assertErrNilOtherwiseFailNow(t, err)
 
 	dpInfo, err = mc.AdminAPI().GetDataPartition(volName, pid)
-	if dpInfo.IsFrozen {
-		t.Errorf("%v should not be frozen", dp.PartitionID)
+	if !assert.Falsef(t, dpInfo.IsFrozen, "%v should not be frozen", dp.PartitionID) {
 		t.FailNow()
 	}
 }

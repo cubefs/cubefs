@@ -1,14 +1,13 @@
 package master
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestEC_MigrateList(t *testing.T) {
 	d := NewMigrateList()
-	if d == nil {
-		t.Errorf("newMigrateList error")
-	}
+	assert.NotNil(t, d, "newMigrateList error")
 
 	d.Push(&MigrateTask{
 		Status:      EcTaskRetry,
@@ -22,31 +21,25 @@ func TestEC_MigrateList(t *testing.T) {
 		PartitionID: 3,
 	})
 
-	if _, exist := d.Exists(1); !exist {
-		t.Errorf("push error")
-	}
+	_, exist := d.Exists(1)
+	assert.True(t, exist, "push error")
 
-	if allTasks := d.GetAllTask(); allTasks == nil {
-		t.Errorf("get allTask error")
-	}
-	if failTasks := d.GetFailTask(); failTasks == nil {
-		t.Errorf("get failTask error")
-	}
-	if retryTasks := d.GetRetryTask(); retryTasks == nil {
-		t.Errorf("get retryTask error")
-	}
+	allTasks := d.GetAllTask()
+	assert.NotNil(t, allTasks, "get allTask error")
 
-	if d.Len() == 0 {
-		t.Errorf("push task error")
-	}
+	failTasks := d.GetFailTask()
+	assert.NotNil(t, failTasks, "get failTasks error")
+
+	retryTasks := d.GetRetryTask()
+	assert.NotNil(t, retryTasks, "get retryTasks error")
+
+	assert.NotZero(t, d.Len(), "push task error")
 
 	d.Remove(1)
-	if _, exist := d.Exists(1); exist {
-		t.Errorf("push error")
-	}
+
+	_, exist = d.Exists(1)
+	assert.False(t, exist, "push error")
 
 	d.Clear()
-	if d.Len() > 0 {
-		t.Errorf("clear error")
-	}
+	assert.LessOrEqual(t, d.Len(), 0, "clear error")
 }

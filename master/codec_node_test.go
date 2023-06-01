@@ -3,6 +3,7 @@ package master
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
@@ -16,9 +17,7 @@ func Test_CodecNode(t *testing.T) {
 	getAllCodecNodeInfo(addr, t)
 	decommissionCodecNode(addr, t)
 	_, err := server.cluster.codecNode(addr)
-	if err == nil {
-		t.Errorf("decommission codecNode [%v] failed", addr)
-	}
+	assert.Errorf(t, err, "decommission codecNode [%v] failed", addr)
 	server.cluster.codecNodes.Delete(addr)
 }
 
