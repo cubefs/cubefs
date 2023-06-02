@@ -36,8 +36,8 @@ The CLI is mainly divided into six types of management commands:
 ./cfs-cli cluster info          # Get cluster information, including cluster name, address, number of volumes, number of nodes, and usage rate, etc.
 ./cfs-cli cluster stat          # Get usage, status, etc. of metadata and data nodes by region.
 ./cfs-cli cluster freeze [true/false]        # Freeze the cluster. After setting it to `true`, when the partition is full, the cluster will not automatically allocate new partitions.
-./cfs-cli cluster threshold [float]     # Set the memory threshold for each MetaNode in the cluster.
-./cfs-cli cluster cluster set [flags]    # Set the parameters of the cluster.
+./cfs-cli cluster threshold [float]     # Set the memory threshold for each MetaNode in the cluster. If the memory usage reaches this threshold, all the meta partition will be readOnly. [float] should be a float number between 0 and 1.
+./cfs-cli cluster set [flags]    # Set the parameters of the cluster.
 ```
 
 ### MetaData Management
@@ -380,4 +380,46 @@ Sub Commands:
   kafka       kafka consume tools
   migrate     migrate tools
   stat        show leader stat of scheduler
+```
+
+**Scheduler Checkpoint**
+
+```bash
+inspect checkpoint tools for scheduler
+
+Usage:
+  checkpoint [flags]
+
+Sub Commands:
+  get  get inspect checkpoint
+  set  set inspect checkpoint
+```
+
+**Scheduler Kafka**
+
+```bash
+kafka consume tools for scheduler
+
+Usage:
+  kafka [flags]
+
+Sub Commands:
+  get  get kafka consume offset
+  set  set kafka consume offset
+```
+
+**Scheduler Migrate**
+
+```bash
+migrate tools for scheduler
+
+Usage:
+  migrate [flags]
+
+Sub Commands:
+  add       add manual migrate task
+  disk      get migrating disk
+  get       get migrate task
+  list      list migrate tasks
+  progress  show migrating progress
 ```

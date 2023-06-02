@@ -163,7 +163,7 @@ func newClusterSetThresholdCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdClusterThresholdShort,
 		Args:  cobra.MinimumNArgs(1),
 		Long: `Set the threshold of memory on each meta node.
-If the memory usage reaches this threshold, all the mata partition will be readOnly.`,
+If the memory usage reaches this threshold, all the meta partition will be readOnly.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err       error
