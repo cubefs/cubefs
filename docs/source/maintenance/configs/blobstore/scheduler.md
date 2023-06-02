@@ -72,42 +72,30 @@ The configuration of the Scheduler is based on the [public configuration](./base
 
 ### kafka
 
+::: tip Note
+Starting from v3.3.0, consumer groups are supported. For previous versions, please refer to the corresponding configuration file.
+:::
+
 * broker_list, Kafka node list
 * fail_msg_sender_timeout_ms, timeout for resending messages to the failed topic after message consumption fails, default is 1000ms
-* shard_repair, repair message topic and consumption partition specification (if the partition is not specified, all partitions will be consumed), which contains three types of topics:
-  * normal, normal topic, default is shard_repair
-  * failed, failed topic (after normal message consumption fails, the message will be resent to this topic), default is shard_repair_failed
-  * priority, priority consumption topic, mainly used to store repair messages that need to be consumed with high priority, default is shard_repair_prior
-* blob_delete, deletion message topic and consumption partition specification, which contains two types of topics
-  * normal, normal topic, default is blob_delete
-  * failed, failed topic (after normal message consumption fails, the message will be resent to this topic), default is blob_delete_failed
+* topics，consume topics
+  * shard_repair, normal topic, default are `shard_repair` and `shard_repair_prior`
+  * shard_repair_failed, failed topic, default is `shard_repair_failed`
+  * blob_delete, normal topic, default is `blob_delete`
+  * blob_delete_failed, failed topic, default is `blob_delete_failed`
+
 ```json
 {
   "broker_list": ["127.0.0.1:9095","127.0.0.1:9095","127.0.0.1:9095"],
   "fail_msg_sender_timeout_ms": 1000,
-  "shard_repair": {
-    "normal": {
-      "topic": "shard_repair",
-      "partitions": [0,1]
-    },
-    "failed": {
-      "topic": "shard_repair_failed",
-      "partitions": [0,1]
-    },
-    "priority": {
-      "topic": "shard_repair_prior",
-      "partitions": [0,1]
-    }
-  },
-  "blob_delete": {
-    "normal": {
-      "topic": "blob_delete",
-      "partitions": [0,1]
-    },
-    "failed": {
-      "topic": "blob_delete_failed",
-      "partitions": [0,1]
-    }
+  "topics": {
+    "shard_repair": [
+      "shard_repair",
+      "shard_repair_prior"
+    ],
+    "shard_repair_failed": "shard_repair_failed",
+    "blob_delete": "blob_delete",
+    "blob_delete_failed": "blob_delete_failed"
   }
 }
 ```
@@ -205,9 +193,6 @@ Starting from version v3.3.0, concurrent disk repair is supported.
 ### shard_repair
 
 * task_pool_size, concurrency of repair tasks, default is 10
-* normal_handle_batch_cnt, batch consumption size of normal messages, default is 100
-* fail_handle_batch_cnt, batch consumption size of failed messages, default is 100
-* fail_msg_consume_interval_ms, time interval for consuming failed messages, default is 10000ms
 * orphan_shard_log, record information of orphan data repair failures, directory needs to be configured, chunkbits is the log file rotation size, default is 29 (2^29 bytes)
 ```json
 {
@@ -229,9 +214,6 @@ Starting from version v3.3.0, it is supported to configure the data deletion tim
 :::
 
 * task_pool_size, concurrency of deletion tasks, default is 10
-* normal_handle_batch_cnt, batch consumption size of normal messages, default is 100
-* fail_handle_batch_cnt, batch consumption size of failed messages, default is 100
-* fail_msg_consume_interval_ms, time interval for consuming failed messages, default is 10000ms
 * safe_delay_time_h, deletion protection period, default is 72h. If a negative value is configured, the data will be deleted directly.
 * delete_log, directory for storing deletion logs, needs to be configured, chunkbits default is 29
 * delete_hour_range, supports configuring the deletion time period in 24-hour format. For example, the following configuration indicates that deletion requests will only be initiated during the time period between 1:00 a.m. and 3:00 a.m. If not configured, deletion will be performed all day.
