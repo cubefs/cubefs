@@ -40,8 +40,8 @@ CLI主要分为六类管理命令：
 ./cfs-cli cluster info          #获取集群信息，包括集群名称、地址、卷数量、节点数量及使用率等
 ./cfs-cli cluster stat          #按区域获取元数据和数据节点的使用量、状态等
 ./cfs-cli cluster freeze [true/false]        #是否冻结集群，设置为 `true` 冻结后，当partition写满，集群不会自动分配新的partition
-./cfs-cli cluster threshold [float]     #设置集群中每个MetaNode的内存阈值
-./cfs-cli cluster cluster set [flags]    #设置集群的参数.
+./cfs-cli cluster threshold [float]     #设置集群中每个MetaNode的内存阈值，当内存使用率超过该阈值时，上面的meta partition将会被设为只读。[float]应当是一个介于0和1之间的小数.
+./cfs-cli cluster set [flags]    #设置集群的参数
 ```
 
 ### 元数据节点管理
@@ -386,4 +386,47 @@ Sub Commands:
   kafka       kafka consume tools
   migrate     migrate tools
   stat        show leader stat of scheduler
+  
+```
+
+**Scheduler Checkpoint**
+
+```bash
+inspect checkpoint tools for scheduler
+
+Usage:
+  checkpoint [flags]
+
+Sub Commands:
+  get  get inspect checkpoint
+  set  set inspect checkpoint
+```
+
+**Scheduler Kafka**
+
+```bash
+kafka consume tools for scheduler
+
+Usage:
+  kafka [flags]
+
+Sub Commands:
+  get  get kafka consume offset
+  set  set kafka consume offset
+```
+
+**Scheduler Migrate**
+
+```bash
+migrate tools for scheduler
+
+Usage:
+  migrate [flags]
+
+Sub Commands:
+  add       add manual migrate task
+  disk      get migrating disk
+  get       get migrate task
+  list      list migrate tasks
+  progress  show migrating progress
 ```
