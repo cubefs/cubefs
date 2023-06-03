@@ -304,6 +304,7 @@ func (mc *MetaHttpClient) GetInodeInfo(pid uint64, ino uint64) (res *proto.GetEx
 		return
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("invalid status code: %v", resp.StatusCode)
 	}
