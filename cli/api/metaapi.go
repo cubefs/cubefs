@@ -84,7 +84,7 @@ type MetaHttpClient struct {
 	host   string
 }
 
-// NewMasterHelper returns a new MasterClient instance.
+// NewMetaHttpClient NewMasterHelper returns a new MasterClient instance.
 func NewMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
 	mc := &MetaHttpClient{host: host, useSSL: useSSL}
 	return mc
