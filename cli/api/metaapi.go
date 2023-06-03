@@ -288,7 +288,6 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, er
 		}
 	}()
 	reqURL := fmt.Sprintf("http://%v%v?pid=%v", mc.host, "/getAllInodes", pid)
-	fmt.Println(reqURL)
 	log.LogDebugf("reqURL=%v", reqURL)
 	resp, err := http.Get(reqURL)
 	if err != nil {
