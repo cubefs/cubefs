@@ -186,7 +186,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  cacheLowWater       : %v\n", optCacheLowWater)
 				stdout("  cacheLRUInterval    : %v min\n", optCacheLRUInterval)
 				stdout("  TransactionMask     : %v\n", optTxMask)
-				stdout("  TransactionTimeout  : %vin\n", optTxTimeout)
+				stdout("  TransactionTimeout  : %v min\n", optTxTimeout)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -233,7 +233,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 		"Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
-	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout[Unit: minute] for transaction (0-60]")
+	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 1, "Specify timeout[Unit: minute] for transaction [1-60]")
 	return cmd
 }
 
@@ -360,7 +360,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
 				} else {
 					isChange = true
-					confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, optTxMask))
+					confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, vv.EnableTransaction+"|"+optTxMask))
 				}
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
@@ -371,7 +371,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v -> %v\n", vv.TxTimeout, optTxTimeout))
 				vv.TxTimeout = optTxTimeout
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v byte\n", vv.TxTimeout))
+				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v minutes\n", vv.TxTimeout))
 			}
 
 			if optCacheAction != "" {

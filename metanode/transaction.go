@@ -603,88 +603,6 @@ func (tm *TransactionManager) processExpiredTransactions() {
 
 }
 
-/*func (tm *TransactionManager) processExpiredTransactions() {
-	//scan transactions periodically, and invoke `rollbackTransaction` to roll back expired transactions
-	log.LogDebugf("processExpiredTransactions for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
-	clearInterval := time.Second * 60
-	clearTimer := time.NewTimer(clearInterval)
-
-	txCheckInterval := time.Second * 30
-	txCheckTimer := time.NewTimer(txCheckInterval)
-
-	for {
-		select {
-		case <-tm.txProcessor.mp.stopC:
-			log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
-			return
-		case <-tm.exitCh:
-			log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
-			return
-		case <-clearTimer.C:
-			tm.blacklist.Clear()
-			clearTimer.Reset(clearInterval)
-		//log.LogDebugf("processExpiredTransactions: blacklist cleared")
-		case <-txCheckTimer.C:
-			tm.notifyNewTransaction()
-			txCheckTimer.Reset(txCheckInterval)
-		case <-tm.newTxCh:
-			scanTimer := time.NewTimer(0)
-		LOOP:
-			for {
-				select {
-				case <-tm.txProcessor.mp.stopC:
-					log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
-					return
-				case <-tm.exitCh:
-					return
-				case <-scanTimer.C:
-					if tm.txTree.Len() == 0 {
-						break LOOP
-					}
-
-					var wg sync.WaitGroup
-					f := func(i BtreeItem) bool {
-						tx := i.(*proto.TransactionInfo)
-
-						//now := time.Now().Unix()
-						if tx.IsExpired() {
-							log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
-							wg.Add(1)
-							go func() {
-								defer wg.Done()
-								req := &proto.TxApplyRequest{
-									TxID:        tx.TxID,
-									TmID:        uint64(tx.TmID),
-									TxApplyType: proto.TxRollback,
-								}
-								status, err := tm.rollbackTransaction(req, RbFromTM)
-								if err == nil && status == proto.OpOk {
-									//tm.Lock()
-									//tm.txTree.Delete(tx)
-									//tm.Unlock()
-									log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
-								} else {
-									log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back failed, status(%v), err(%v)",
-										tx, status, err)
-								}
-							}()
-
-						} else {
-							log.LogDebugf("processExpiredTransactions: transaction (%v) is ongoing", tx)
-						}
-						return true
-					}
-
-					tm.txTree.GetTree().Ascend(f)
-					wg.Wait()
-					scanTimer.Reset(100 * time.Millisecond)
-				}
-			}
-		}
-	}
-
-}*/
-
 func (tm *TransactionManager) Start() {
 	//only metapartition raft leader can start scan goroutine
 	tm.Lock()
@@ -929,7 +847,6 @@ func (tm *TransactionManager) rollbackTransaction(req *proto.TxApplyRequest, rbF
 	wg.Wait()
 	close(errorsCh)
 
-	//todo_tx: what if some of them failed??? retry?
 	if len(errorsCh) > 0 {
 		status = proto.OpTxRollbackItemErr
 		err = <-errorsCh
@@ -1000,24 +917,6 @@ func (tm *TransactionManager) rollbackTxInfo(txId string) (status uint8, err err
 	log.LogDebugf("rollbackTxInfo: tx[%v] is rolled back", tx)
 	return
 }
-
-/*func (tm *TransactionManager) preCommitTxInfo(txId string) (status uint8, err error) {
-	tm.Lock()
-	defer tm.Unlock()
-	status = proto.OpOk
-
-	tx := tm.getTransaction(txId)
-	if tx == nil {
-		status = proto.OpTxInfoNotExistErr
-		err = fmt.Errorf("preCommitTxInfo: commit tx[%v] failed, not found", txId)
-		return
-	}
-
-	//todo_tx: 修改txinfo的phase
-	//tm.txTree.Delete(tx)
-	log.LogDebugf("preCommitTxInfo: tx[%v] is committed", tx)
-	return
-}*/
 
 func (tm *TransactionManager) commitTxInfo(txId string) (status uint8, err error) {
 	tm.Lock()
@@ -1354,11 +1253,12 @@ func (tm *TransactionManager) txRollbackToRM(applyItem *txApplyItem, wg *sync.Wa
 		errorsCh <- err
 	} else {
 		if newPacket.ResultCode == proto.OpTxConflictErr {
-			//todo_tx: already rolled back
 			/*_, _ = tm.setTransactionState(applyItem.txId, proto.TxStateFailed)
 			log.LogCriticalf("txRollbackToRM: rollback %v[%v] failed with conflict, tx[%v]")
 			err = errors.New(newPacket.GetResultMsg())
 			errorsCh <- err*/
+			log.LogDebugf("txRollbackToRM: %v[%v] might have already been rolled back, tx[%v]",
+				applyType, applyItem.key, applyItem.txId)
 		} else if newPacket.ResultCode == proto.OpTxRbInodeNotExistErr || newPacket.ResultCode == proto.OpTxRbDentryNotExistErr {
 			log.LogWarnf("txRollbackToRM: %v[%v] might have not been added before or rolled back by TM: tx[%v]",
 				applyType, applyItem.key, applyItem.txId)
@@ -1391,11 +1291,12 @@ func (tm *TransactionManager) txCommitToRM(applyItem *txApplyItem, wg *sync.Wait
 		errorsCh <- err
 	} else {
 		if newPacket.ResultCode == proto.OpTxConflictErr {
-			//todo_tx: already committed
 			/*_, _ = tm.setTransactionState(applyItem.txId, proto.TxStateFailed)
 			log.LogCriticalf("txCommitToRM: commit %v[%v] failed with conflict, tx[%v]")
 			err = errors.New(newPacket.GetResultMsg())
 			errorsCh <- err*/
+			log.LogDebugf("txRollbackToRM: %v[%v] might have already been committed, tx[%v]",
+				applyType, applyItem.key, applyItem.txId)
 		} else if newPacket.ResultCode == proto.OpTxRbInodeNotExistErr || newPacket.ResultCode == proto.OpTxRbDentryNotExistErr {
 			log.LogWarnf("txCommitToRM: %v[%v] already committed before, tx[%v]", applyType, applyItem.key, applyItem.txId)
 		} else {
@@ -1450,87 +1351,6 @@ func (tm *TransactionManager) txSetState(req *proto.TxSetStateRequest) (status u
 	return
 }
 
-/*func (tr *TransactionResource) clearExpiredPlaceholder() {
-	log.LogDebugf("clearExpiredPlaceholder for mp[%v] started", tr.txProcessor.mp.config.PartitionId)
-	clearInterval := time.Second * proto.MaxTransactionTimeout
-	clearTimer := time.NewTimer(clearInterval)
-	for {
-		select {
-		case <-tr.txProcessor.mp.stopC:
-			log.LogDebugf("clearExpiredPlaceholder for mp[%v] stopped", tr.txProcessor.mp.config.PartitionId)
-			return
-		case <-tr.exitCh:
-			log.LogDebugf("clearExpiredPlaceholder for mp[%v] stopped", tr.txProcessor.mp.config.PartitionId)
-			return
-		case <-clearTimer.C:
-
-			f := func(i BtreeItem) bool {
-				rbInode := i.(*TxRollbackInode)
-				if !rbInode.rbPlaceholder {
-					return true
-				}
-				if rbInode.IsExpired() {
-					tr.txRbInodeTree.Delete(rbInode)
-					log.LogWarnf("clearExpiredPlaceholder: deleting expired rbInode placeholder (%v) ", rbInode)
-
-				} else {
-					log.LogWarnf("clearExpiredPlaceholder: rbInode placeholder (%v) is not expired yet", rbInode)
-				}
-				return true
-			}
-			tr.txRbInodeTree.GetTree().Ascend(f)
-
-			f = func(i BtreeItem) bool {
-				rbDentry := i.(*TxRollbackDentry)
-				if !rbDentry.rbPlaceholder {
-					return true
-				}
-				if rbDentry.IsExpired() {
-					tr.txRbDentryTree.Delete(rbDentry)
-					log.LogWarnf("clearExpiredPlaceholder: deleting expired rbDentry placeholder (%v) ", rbDentry)
-
-				} else {
-					log.LogWarnf("clearExpiredPlaceholder: rbDentry placeholder (%v) is not expired yet", rbDentry)
-				}
-				return true
-			}
-			tr.txRbDentryTree.GetTree().Ascend(f)
-			clearTimer.Reset(clearInterval)
-
-		}
-	}
-
-}
-
-func (tr *TransactionResource) Start() {
-	tr.Lock()
-	defer tr.Unlock()
-	if tr.started {
-		return
-	}
-	go tr.clearExpiredPlaceholder()
-	tr.started = true
-}
-
-func (tr *TransactionResource) Stop() {
-	tr.Lock()
-	defer tr.Unlock()
-	if !tr.started {
-		log.LogDebugf("clearExpiredPlaceholder for mp[%v] already stopped", tr.txProcessor.mp.config.PartitionId)
-		return
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogErrorf("TransactionResource Stop,err:%v", r)
-		}
-	}()
-
-	close(tr.exitCh)
-	tr.started = false
-	log.LogDebugf("clearExpiredPlaceholder for mp[%v] stopped", tr.txProcessor.mp.config.PartitionId)
-}*/
-
 func (tr *TransactionResource) Reset() {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1560,10 +1380,6 @@ func (tr *TransactionResource) isInodeInTransction(ino *Inode) (inTx bool, txID 
 		}
 
 	}
-
-	//todo_tx: if existed transaction item is expired due to commit or rollback failure,
-	// corresponding item should be rolled back? what if part of items is committed or rolled back,
-	// and others are not?
 	return false, ""
 }
 
@@ -1709,7 +1525,6 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 		tr.txProcessor.mp.inodeTree.ReplaceOrInsert(rbInode.inode, true)
 
 	case TxDelete:
-		//todo_tx: fsmUnlinkInode or internalDelete?
 		//_ = tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode)
 		if rsp := tr.txProcessor.mp.getInode(rbInode.inode); rsp.Status == proto.OpOk {
 			if tr.txProcessor.mp.uidManager != nil {
@@ -1737,12 +1552,9 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 
 //RM roll back an inode, retry if error occours
 func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (status uint8, err error) {
-	//todo_tx: 添加，删除，修改，不存在item几种情况
 	tr.Lock()
 	defer tr.Unlock()
 	status = proto.OpOk
-	//todo_tx: what if rbInode is missing for whatever non-intended reason? transaction consistency will be broken?!
-	//rbItem is guaranteed by raft, if rbItem is missing, then most mp members are corrupted
 	rbInode := tr.getTxRbInode(req.Inode)
 	if rbInode == nil {
 		if req.ApplyFrom == RbFromTM {
@@ -1789,7 +1601,6 @@ func (tr *TransactionResource) rollbackDentryInternal(rbDentry *TxRollbackDentry
 	case TxAdd:
 		_ = tr.txProcessor.mp.fsmCreateDentry(rbDentry.dentry, true)
 	case TxDelete:
-		//todo_tx: fsmUnlinkInode or internalDelete?
 		_ = tr.txProcessor.mp.fsmDeleteDentry(rbDentry.dentry, true)
 		//resp := tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode)
 		//status = resp.Status
@@ -1811,7 +1622,6 @@ func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (
 	tr.Lock()
 	defer tr.Unlock()
 	status = proto.OpOk
-	//todo_tx: what if rbDentry is missing for whatever non-intended reason? transaction consistency will be broken?!
 	rbDentry := tr.getTxRbDentry(req.Pid, req.Name)
 	if rbDentry == nil {
 		if req.ApplyFrom == RbFromTM {
