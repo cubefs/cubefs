@@ -47,6 +47,8 @@ Starting from version v3.3.0, Proxy node supports caching of volume and disk inf
   "retain_interval_s": "Renewal interval cycle, used in conjunction with the volume expiration time set by cm",
   "init_volume_num": "The number of volumes requested from clustermgr when starting up, set according to the size of the cluster",
   "default_alloc_vols_num": "The number of volumes requested from clustermgr each time, access allocation requests can trigger",
+  "retain_volume_batch_num": "The number of retain volumes in batches, which can relieve the pressure of a single retain, the default is 400",
+  "retain_batch_interval_s": "Batch retain interval",
   "metric_report_interval_s": "Time interval for proxy to report running status to Prometheus",
   "mq": {
     "blob_delete_topic": "Topic name for delete messages",
