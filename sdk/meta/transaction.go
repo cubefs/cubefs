@@ -223,7 +223,6 @@ func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
 // Rollback will notify all the RM(related metapartitions) that transaction is cancelled,
 // and corresponding transaction items should be rolled back to previous state(before transaction)
 func (tx *Transaction) Rollback(mw *MetaWrapper) {
-	//todo_tx: if transaction info in TM is missing, should try to rollback each item
 	tmMP := mw.getPartitionByID(uint64(tx.txInfo.TmID))
 	if tmMP == nil {
 		log.LogWarnf("Transaction Rollback: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
@@ -272,40 +271,3 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 	log.LogDebugf("Transaction Rollback succesfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
 		tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
 }
-
-/********Transaction example
-func renameTxGenerator(srcParentID uint64, srcName string, dstParentID uint64, dstName string) (tx *Transaction) {
-	tx = NewTransaction(5)
-	inoTx := &TxInodeInfo{}
-	oldDtrTx := &TxDentryInfo{}
-	newDtrTx := &TxDentryInfo{}
-	tx.AddInode(inoTx)
-	tx.AddDentry(oldDtrTx)
-	tx.AddDentry(newDtrTx)
-	return tx
-}
-
-func TestRenameTransaction() {
-	err error
-	defer func() {
-		if err != nil {
-			go tx.Rollback()
-		} else {
-			go tx.Commit()
-		}
-	}
-
-	tx := renameTxGenerator(1, "oldname", 2, "newname")
-
-	// rename metawrapper invokation...
-	mw.ilinkTx(srcMP, inode, tx)
-	mw.dcreateTx(dstParentMP, dstParentID, dstName, inode, mode, tx)
-	mw.ddeleteTx(srcParentMP, srcParentID, srcName, lastVerSeq, tx)
-	mw.iunlinkTx(srcMP, inode, lastVerSeq, tx)
-
-	if err != nil {
-		return
-	}
-
-}
-**********/
