@@ -134,7 +134,7 @@ func NewTxInodeInfo(members string, ino uint64, mpID uint64) *TxInodeInfo {
 	return &TxInodeInfo{
 		Ino:       ino,
 		MpID:      mpID,
-		MpMembers: members, //todo_tx: add all members in case of any failed member situation
+		MpMembers: members,
 	}
 }
 
@@ -274,7 +274,7 @@ func NewTxDentryInfo(members string, parentId uint64, name string, mpID uint64) 
 		ParentId:  parentId,
 		Name:      name,
 		MpMembers: members,
-		MpID:      mpID, //todo_tx: add all members in case of any failed member situation
+		MpID:      mpID,
 	}
 }
 
