@@ -67,7 +67,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
@@ -144,7 +144,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			var userID = args[1]
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			crossZone, _ := strconv.ParseBool(optCrossZone)
@@ -273,7 +273,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			var isChange = false
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
@@ -545,7 +545,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			var svv *proto.SimpleVolView
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
@@ -620,7 +620,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			var volumeName = args[0]
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			// ask user for confirm
@@ -677,7 +677,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 
@@ -738,7 +738,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var count int64
@@ -791,7 +791,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			volume := r.(*volumeClient)

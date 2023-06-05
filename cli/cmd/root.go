@@ -74,7 +74,7 @@ func stdout(format string, a ...interface{}) {
 }
 
 func errout(format string, a ...interface{}) {
-	log.LogErrorf(format+"\n", a...)
+	log.LogErrorf(format, a...)
 	_, _ = fmt.Fprintf(os.Stderr, format, a...)
 	OsExitWithLogFlush()
 }
