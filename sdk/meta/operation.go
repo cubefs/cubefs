@@ -81,7 +81,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		//todo_tx: set tx error msg
+		//set tx error msg
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("txIcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
