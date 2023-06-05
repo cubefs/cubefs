@@ -47,6 +47,8 @@ v3.3.0版本开始支持Proxy节点卷和磁盘信息的缓存
   "retain_interval_s": "续租间隔周期，配合cm卷过期时间设定",
   "init_volume_num": "初始启动向clustermgr申请卷的数量，根据集群大小设定",
   "default_alloc_vols_num": "每次向clustermgr申请卷的个数，access的分配请求可以触发",
+  "retain_volume_batch_num": "批量续租，根据集群的大小设定，每次向clustermgr续租的卷数量，可缓解的单次续租压力，默认400",
+  "retain_batch_interval_s": "批次续租的时间间隔",
   "metric_report_interval_s": "proxy上报运行状态给普罗米修斯的时间周期",
   "mq": {
     "blob_delete_topic": "删除消息主题名",
