@@ -45,6 +45,18 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 					stdout(proto.DumpVersion("CLI"))
 					return
 				}
+				if len(args) == 0 {
+					cmd.Help()
+					return
+				}
+				suggestionsString := ""
+				if suggestions := cmd.SuggestionsFor(args[0]); len(suggestions) > 0 {
+					suggestionsString += "\nDid you mean this?\n"
+					for _, s := range suggestions {
+						suggestionsString += fmt.Sprintf("\t%v\n", s)
+					}
+				}
+				errout("cfs-cli: unknown command %q\n%s", args[0], suggestionsString)
 			},
 		},
 	}
