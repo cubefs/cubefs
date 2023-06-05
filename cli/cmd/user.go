@@ -69,7 +69,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 			var userType = proto.UserTypeFromString(optUserType)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if !userType.Valid() {
@@ -157,7 +157,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 			var userType proto.UserType
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if optUserType != "" {
@@ -238,7 +238,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 			var userID = args[0]
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if !optYes {
@@ -286,7 +286,7 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			var userInfo *proto.UserInfo
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
@@ -324,7 +324,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			var perm proto.Permission
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 
@@ -401,7 +401,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {

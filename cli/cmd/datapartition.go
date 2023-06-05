@@ -64,7 +64,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
@@ -97,7 +97,7 @@ The "reset" command will be released in next version`,
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(); err != nil {
@@ -251,7 +251,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			address := args[0]
@@ -287,7 +287,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			address := args[0]
@@ -321,7 +321,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			address := args[0]

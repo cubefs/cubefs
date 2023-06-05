@@ -60,7 +60,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var view *proto.ClusterView
@@ -101,7 +101,7 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			var datanodeInfo *proto.DataNodeInfo
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			nodeAddr = args[0]
@@ -133,7 +133,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			var nodeAddr string
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			nodeAddr = args[0]
@@ -169,7 +169,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			var src, dst string
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			src = args[0]

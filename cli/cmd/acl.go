@@ -52,7 +52,7 @@ func newAclAddCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var aclInfo *proto.AclRsp
@@ -81,7 +81,7 @@ func newAclListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var aclInfo *proto.AclRsp
@@ -114,7 +114,7 @@ func newAclDelCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var aclInfo *proto.AclRsp
@@ -143,7 +143,7 @@ func newAclCheckCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var aclInfo *proto.AclRsp

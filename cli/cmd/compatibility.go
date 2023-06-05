@@ -63,7 +63,7 @@ func newMetaCompatibilityCmd() *cobra.Command {
 			client := api.NewMetaHttpClient(host, false)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			id, err := strconv.ParseUint(pid, 10, 64)

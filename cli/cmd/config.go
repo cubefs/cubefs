@@ -76,7 +76,7 @@ func newConfigSetCmd() *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			tmp, _ := strconv.Atoi(optTimeout)

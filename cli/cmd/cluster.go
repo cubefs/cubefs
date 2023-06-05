@@ -67,18 +67,18 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cp *proto.ClusterIP
 			var clusterPara map[string]string
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
-				errout("Error: %v", err)
+				errout("Error: %v\n", err)
 			}
 			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
-				errout("Error: %v", err)
+				errout("Error: %v\n", err)
 			}
 			if cp, err = client.AdminAPI().GetClusterIP(); err != nil {
-				errout("Error: %v", err)
+				errout("Error: %v\n", err)
 			}
 			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv, cn, cp))
 			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
-				errout("Error: %v", err)
+				errout("Error: %v\n", err)
 			}
 
 			stdout(fmt.Sprintf("  BatchCount         : %v\n", clusterPara[nodeDeleteBatchCountKey]))
@@ -103,7 +103,7 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if cs, err = client.AdminAPI().GetClusterStat(); err != nil {
@@ -137,7 +137,7 @@ If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if enable, err = strconv.ParseBool(args[0]); err != nil {
@@ -171,7 +171,7 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if threshold, err = strconv.ParseFloat(args[0], 64); err != nil {
@@ -202,7 +202,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 
