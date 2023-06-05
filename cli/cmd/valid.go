@@ -28,7 +28,7 @@ func validVols(client, complete interface{}) []string {
 	clientSdk := client.(*sdk.MasterClient)
 	completeStr := complete.(string)
 	if vols, err = clientSdk.AdminAPI().ListVols(completeStr); err != nil {
-		errout("Error: %v", err)
+		errout("Error: %v\n", err)
 	}
 	for _, vol := range vols {
 		validVols = append(validVols, vol.Name)
@@ -44,7 +44,7 @@ func validDataNodes(client *sdk.MasterClient, toComplete string) []string {
 		err error
 	)
 	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
-		errout("Error: %v", err)
+		errout("Error: %v\n", err)
 	}
 	for _, dn := range clusterView.DataNodes {
 		validDataNodes = append(validDataNodes, dn.Addr)
@@ -59,7 +59,7 @@ func validMetaNodes(client *sdk.MasterClient, toComplete string) []string {
 		err            error
 	)
 	if clusterView, err = client.AdminAPI().GetCluster(); err != nil {
-		errout("Error: %v", err)
+		errout("Error: %v\n", err)
 	}
 	for _, mn := range clusterView.MetaNodes {
 		validMetaNodes = append(validMetaNodes, mn.Addr)
@@ -74,7 +74,7 @@ func validUsers(client *sdk.MasterClient, toComplete string) []string {
 		err        error
 	)
 	if users, err = client.UserAPI().ListUsers(toComplete); err != nil {
-		errout("Error: %v", err)
+		errout("Error: %v\n", err)
 	}
 	for _, user := range users {
 		validUsers = append(validUsers, user.UserID)
@@ -89,7 +89,7 @@ func validZones(client *sdk.MasterClient, toComplete string) []string {
 		err        error
 	)
 	if zones, err = client.AdminAPI().ListZones(); err != nil {
-		errout("Error: %v", err)
+		errout("Error: %v\n", err)
 	}
 	for _, zone := range zones {
 		validZones = append(validZones, zone.Name)

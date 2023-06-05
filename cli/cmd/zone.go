@@ -54,7 +54,7 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			if zones, err = client.AdminAPI().ListZones(); err != nil {
@@ -85,7 +85,7 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			zoneName = args[0]

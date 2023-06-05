@@ -55,7 +55,7 @@ func newUidAddCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var uidInfo *proto.UidSpaceRsp
@@ -92,7 +92,7 @@ func newUidListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var uidInfo *proto.UidSpaceRsp
@@ -128,7 +128,7 @@ func newUidDelCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var uidInfo *proto.UidSpaceRsp
@@ -157,7 +157,7 @@ func newUidCheckCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var uidInfo *proto.UidSpaceRsp

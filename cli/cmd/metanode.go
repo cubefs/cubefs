@@ -61,7 +61,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			var view *proto.ClusterView
@@ -102,7 +102,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			var metanodeInfo *proto.MetaNodeInfo
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			nodeAddr = args[0]
@@ -133,7 +133,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			var nodeAddr string
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			nodeAddr = args[0]
@@ -168,7 +168,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			var src, dst string
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			src = args[0]
