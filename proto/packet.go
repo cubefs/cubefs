@@ -213,7 +213,7 @@ const (
 const (
 	WriteDeadlineTime                         = 5
 	ReadDeadlineTime                          = 5
-	SyncSendTaskDeadlineTime                  = 20
+	SyncSendTaskDeadlineTime                  = 30
 	NoReadDeadlineTime                        = -1
 	BatchDeleteExtentReadDeadLineTime         = 120
 	GetAllWatermarksDeadLineTime              = 60

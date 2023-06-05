@@ -177,7 +177,7 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 			log.LogErrorf("Create_ll status %v", status)
 			return nil, statusToErrno(status)
 		} else {
-			//todo_tx: sync cancel previous transaction before retry
+			//sync cancel previous transaction before retry
 			tx.Rollback(mw)
 		}
 	}
@@ -185,16 +185,12 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 
 create_dentry:
 	log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
-	//todo_tx: test
-	//err = errors.New("mock test failed")
-	//return nil, err
+
 	status, err = mw.txDcreate(tx, parentMP, parentID, name, info.Inode, mode, quotaIds)
 	if err != nil {
 		return nil, statusToErrno(status)
 	}
-	//todo_tx: test
-	//err = errors.New("mock test failed")
-	//return nil, err
+
 	if mw.EnableSummary {
 		var filesInc, dirsInc int64
 		if proto.IsDir(mode) {
@@ -562,11 +558,6 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 		return nil, statusToErrno(status)
 	}
 
-	//todo_tx: test
-	//log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
-	//err = errors.New("mock test failed")
-	//return nil, err
-
 	status, info, err = mw.txIunlink(tx, mp, inode)
 	if err != nil || status != statusOK {
 		if err == nil {
@@ -574,10 +565,6 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 		}
 		return info, err
 	}
-	//todo_tx: test
-	//log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
-	//err = errors.New("mock test failed")
-	//return nil, err
 
 	if mw.EnableSummary {
 		var job func()
@@ -772,10 +759,6 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		log.LogDebugf("txRename_ll: tx(%v), pid:%v, name:%v, old(ino:%v) is replaced by src(new ino:%v)",
 			tx.txInfo, dstParentID, dstName, dstInode, srcInode)
 
-		//todo_tx: test
-		//log.LogDebugf("txRename_ll: tx.txInfo(%v)", tx.txInfo)
-		//return syscall.EAGAIN
-
 	} else if status == statusNoent {
 		var info *proto.InodeInfo
 		status, info, err = mw.iget(dstParentMP, dstParentID)
@@ -795,13 +778,9 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		}
 		status, err = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{})
 		if err != nil {
-			//todo_tx: check process for error
+			//check process for error
 			return statusToErrno(status)
 		}
-
-		//todo_tx: test
-		//log.LogDebugf("txRename_ll: tx.txInfo(%v)", tx.txInfo)
-		//return syscall.EAGAIN
 
 		if mw.EnableSummary {
 			srcInodeInfo, _ = mw.InodeGet_ll(srcInode)
@@ -1039,7 +1018,6 @@ func (mw *MetaWrapper) DentryCreate_ll(parentID uint64, name string, inode uint6
 	return nil
 }
 
-//todo_tx:
 func (mw *MetaWrapper) DentryUpdate_ll(parentID uint64, name string, inode uint64) (oldInode uint64, err error) {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
