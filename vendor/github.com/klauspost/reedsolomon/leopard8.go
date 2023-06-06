@@ -380,6 +380,14 @@ func (r *leopardFF8) ReconstructData(shards [][]byte) error {
 	return r.reconstruct(shards, false)
 }
 
+func (r *leopardFF8) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int, []int, error) {
+	return r.GetSurvivalShards(badIndex, azLayout)
+}
+
+func (r *leopardFF8) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []int) error {
+	return r.PartialReconstruct(shards, survivalIdx, badIdx)
+}
+
 func (r *leopardFF8) Verify(shards [][]byte) (bool, error) {
 	if len(shards) != r.totalShards {
 		return false, ErrTooFewShards
