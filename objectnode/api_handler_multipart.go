@@ -15,6 +15,8 @@
 package objectnode
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"io"
 	"io/ioutil"
@@ -183,7 +185,6 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InvalidArgument
 		return
 	}
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -193,13 +194,23 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get request MD5, if request MD5 is not empty, compute and verify it.
+	requestMD5 := r.Header.Get(HeaderNameContentMD5)
+	if requestMD5 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
+		if err != nil {
+			errorCode = InvalidDigest
+			return
+		}
+		requestMD5 = hex.EncodeToString(decoded)
+	}
+
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("uploadPartHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		return
 	}
-
 	var fsFileInfo *FSFileInfo
 	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body); err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
@@ -217,6 +228,13 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		errorCode = InternalErrorCode(err)
+		return
+	}
+	// check content MD5
+	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
+		log.LogErrorf("uploadPartHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), requestMD5, fsFileInfo.ETag)
+		errorCode = BadDigest
 		return
 	}
 	log.LogDebugf("uploadPartHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%v)",

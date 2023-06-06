@@ -11,7 +11,7 @@
   "logDir": "/cfs/log",
   "logLevel": "debug",
   "disks": [
-    "/cfs/disk:10737418240"
+    "/cfs/disk:6442450944"
   ],
 
   "diskIopsReadLimit" : "20000",
