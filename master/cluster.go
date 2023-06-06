@@ -93,6 +93,7 @@ type followerReadManager struct {
 	lastUpdateTick        map[string]time.Time
 	needCheck             bool
 	c                     *Cluster
+	volViewMap            map[string]*volValue
 	rwMutex               sync.RWMutex
 }
 
@@ -111,6 +112,7 @@ func (mgr *followerReadManager) reSet() {
 
 	mgr.volDataPartitionsView = make(map[string][]byte)
 	mgr.status = make(map[string]bool)
+	mgr.lastUpdateTick = make(map[string]time.Time)
 }
 
 func (mgr *followerReadManager) getVolumeDpView() {
@@ -122,16 +124,32 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	if err, volViews = mgr.c.loadVolsViews(); err != nil {
 		panic(err)
 	}
+
+	mgr.rwMutex.Lock()
+	mgr.volViewMap = make(map[string]*volValue)
+	for _, vv := range volViews {
+		mgr.volViewMap[vv.Name] = vv
+
+		if _, ok := mgr.lastUpdateTick[vv.Name]; !ok {
+			//record when first discovery the volume
+			mgr.lastUpdateTick[vv.Name] = time.Now()
+			mgr.status[vv.Name] = false
+		}
+	}
+	mgr.rwMutex.Unlock()
+
 	if mgr.c.masterClient.Leader() == "" {
 		log.LogErrorf("followerReadManager.getVolumeDpView but master leader not ready")
 		return
 	}
+
 	for _, vv := range volViews {
 		if vv.Status == markDelete {
 			mgr.lastUpdateTick[vv.Name] = time.Now()
 			mgr.status[vv.Name] = false
 			continue
 		}
+
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vv.Name)
 		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitions(vv.Name); err != nil {
 			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v", vv.Name, err)
@@ -172,12 +190,44 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	}
 }
 
+//NOTICE: caller must correctly use mgr.rwMutex
+func (mgr *followerReadManager) isVolRecordObsolete(volName string) bool {
+	volView, ok := mgr.volViewMap[volName]
+	if !ok {
+		//vol has been completely deleted
+		return true
+	}
+
+	if volView.Status == markDelete {
+		return true
+	}
+
+	return false
+}
+
+func (mgr *followerReadManager) DelObsoleteVolRecord(obsoleteVolNames map[string]struct{}) {
+	mgr.rwMutex.Lock()
+	defer mgr.rwMutex.Unlock()
+
+	for volName := range obsoleteVolNames {
+		log.LogDebugf("followerReadManager.DelObsoleteVolRecord, delete obsolete vol: %v", volName)
+		delete(mgr.volDataPartitionsView, volName)
+		delete(mgr.status, volName)
+		delete(mgr.lastUpdateTick, volName)
+	}
+}
+
 func (mgr *followerReadManager) checkStatus() {
 	mgr.rwMutex.Lock()
 	defer mgr.rwMutex.Unlock()
 
 	timeNow := time.Now()
 	for volNm, lastTime := range mgr.lastUpdateTick {
+		if mgr.isVolRecordObsolete(volNm) {
+			log.LogDebugf("action[checkStatus] volume %v is obsolete, skip it", volNm)
+			continue
+		}
+
 		if lastTime.Before(timeNow.Add(-5 * time.Minute)) {
 			mgr.status[volNm] = false
 			log.LogWarnf("action[checkStatus] volume %v expired last time %v, now %v", volNm, lastTime, timeNow)
@@ -234,8 +284,8 @@ func (mgr *followerReadManager) getVolViewAsFollower(key string) (value []byte, 
 }
 
 func (mgr *followerReadManager) IsVolViewReady(volName string) bool {
-	mgr.rwMutex.Lock()
-	defer mgr.rwMutex.Unlock()
+	mgr.rwMutex.RLock()
+	defer mgr.rwMutex.RUnlock()
 	if status, ok := mgr.status[volName]; ok {
 		return status
 	}

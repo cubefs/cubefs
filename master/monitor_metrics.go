@@ -516,22 +516,30 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 
 func (mm *monitorMetrics) setVolNoCacheMetrics() {
 	deleteVolNames := make(map[string]struct{})
-	mm.cluster.followerReadManager.rwMutex.RLock()
-	defer mm.cluster.followerReadManager.rwMutex.RUnlock()
 
+	mm.cluster.followerReadManager.rwMutex.RLock()
 	for volName, stat := range mm.cluster.followerReadManager.status {
+		if mm.cluster.followerReadManager.isVolRecordObsolete(volName) {
+			deleteVolNames[volName] = struct{}{}
+			log.LogDebugf("setVolNoCacheMetrics: to deleteVolNames volName %v for vol becomes obsolete", volName)
+			continue
+		}
+
 		if stat == true {
 			deleteVolNames[volName] = struct{}{}
-			log.LogDebugf("setVolNoCacheMetrics deleteVolNames volName %v", volName)
+			log.LogDebugf("setVolNoCacheMetrics: to deleteVolNames volName %v for status becomes ok", volName)
 			continue
 		}
 		log.LogWarnf("setVolNoCacheMetrics volName %v", volName)
 		mm.masterNoCache.SetWithLabelValues(1, volName)
 	}
+	mm.cluster.followerReadManager.rwMutex.RUnlock()
 
 	for volName := range deleteVolNames {
 		mm.masterNoCache.DeleteLabelValues(volName)
 	}
+
+	mm.cluster.followerReadManager.DelObsoleteVolRecord(deleteVolNames)
 }
 
 func (mm *monitorMetrics) setVolMetrics() {
