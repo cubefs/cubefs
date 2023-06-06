@@ -6,7 +6,7 @@
 
 ## 元数据内部设计
 
-每个元数据可以包含成百上千的元数据分片，每个分片由`InodeTree（BTree）`和`DentryTree（BTree`组成。
+每个元数据可以包含成百上千的元数据分片，每个分片由`InodeTree（BTree）`和`DentryTree（BTree）`组成。
 
 每个`inode`代表文件系统中的一个文件或目录， 每个`dentry`代表一个目录项，`dentry`由`parentId`和`name`组成。
 
