@@ -67,7 +67,7 @@ const (
 	MaxStreamerLimit
 
 	EnableAudit
-
+	LocallyProf
 	MaxMountOption
 )
 
@@ -104,6 +104,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[WarnLogDir] = MountOption{"warnLogDir", "Warn Log Path", "", ""}
 	opts[LogLevel] = MountOption{"logLevel", "Log Level", "", ""}
 	opts[ProfPort] = MountOption{"profPort", "PProf Port", "", ""}
+	opts[LocallyProf] = MountOption{"locallyProf", "Locally PProf", "", false}
 	opts[IcacheTimeout] = MountOption{"icacheTimeout", "Inode Cache Expiration Time", "", int64(-1)}
 	opts[LookupValid] = MountOption{"lookupValid", "Lookup Valid Duration", "", int64(-1)}
 	opts[AttrValid] = MountOption{"attrValid", "Attr Valid Duration", "", int64(-1)}
@@ -256,6 +257,7 @@ type MountOptions struct {
 	Logpath              string
 	Loglvl               string
 	Profport             string
+	LocallyProf          bool
 	IcacheTimeout        int64
 	LookupValid          int64
 	AttrValid            int64
