@@ -608,7 +608,11 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
 
 	statusCh := make(chan error)
-	go waitListenAndServe(statusCh, ":"+opt.Profport, nil)
+	pprofAddr := ":" + opt.Profport
+	if opt.LocallyProf {
+		pprofAddr = "127.0.0.1:" + opt.Profport
+	}
+	go waitListenAndServe(statusCh, pprofAddr, nil)
 	if err = <-statusCh; err != nil {
 		daemonize.SignalOutcome(err)
 		return
@@ -705,6 +709,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.Logpath = path.Join(logPath, LoggerPrefix)
 	opt.Loglvl = GlobalMountOptions[proto.LogLevel].GetString()
 	opt.Profport = GlobalMountOptions[proto.ProfPort].GetString()
+	opt.LocallyProf = GlobalMountOptions[proto.LocallyProf].GetBool()
 	opt.IcacheTimeout = GlobalMountOptions[proto.IcacheTimeout].GetInt64()
 	opt.LookupValid = GlobalMountOptions[proto.LookupValid].GetInt64()
 	opt.AttrValid = GlobalMountOptions[proto.AttrValid].GetInt64()
