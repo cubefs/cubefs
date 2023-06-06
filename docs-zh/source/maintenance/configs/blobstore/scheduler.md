@@ -192,6 +192,8 @@ v3.3.0版本开始支持并发修复磁盘。
 ### shard_repair示例
 
 * task_pool_size，修补任务的并发度，默认10
+* message_punish_threshold，惩罚阈值，如果对应消费失败次数超过该值，则会惩罚一段时间，避免短时间内大量重试，默认3次
+* message_punish_time_m，惩罚时间，默认10分钟
 * orphan_shard_log，记录修补失败的孤本信息，dir需要配置，chunkbits为日志文件轮转大小，默认29（2^29字节）
 ```json
 {
@@ -214,6 +216,8 @@ v3.3.0版本开始支持配置数据删除时间段。
 
 * task_pool_size，修补任务的并发度，默认10
 * safe_delay_time_h，删除保护期，默认72h，如果配置负数则表示直接删除
+* message_punish_threshold，惩罚阈值，如果对应消费失败次数超过该值，则会惩罚一段时间，避免短时间内大量重试，默认3次
+* message_punish_time_m，惩罚时间，默认10分钟
 * delete_log，删除日志保留目录，需要配置，chunkbits默认为29
 * delete_hour_range，支持配置删除时间段，24小时制，比如以下配置表示凌晨1点到3点中间时间段才会发起删除请求，如果不配置默认全天删除
 ```json
