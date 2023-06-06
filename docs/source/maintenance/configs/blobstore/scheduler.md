@@ -78,6 +78,7 @@ Starting from v3.3.0, consumer groups are supported. For previous versions, plea
 
 * broker_list, Kafka node list
 * fail_msg_sender_timeout_ms, timeout for resending messages to the failed topic after message consumption fails, default is 1000ms
+* commit_interval_ms, interval for updating consumer offset, default is 1000ms
 * topics，consume topics
   * shard_repair, normal topic, default are `shard_repair` and `shard_repair_prior`
   * shard_repair_failed, failed topic, default is `shard_repair_failed`
