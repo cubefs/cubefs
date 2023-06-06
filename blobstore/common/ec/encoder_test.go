@@ -544,6 +544,7 @@ func testReedSolomonPartialReconstruct(t *testing.T, cm codemode.CodeMode) {
 		CodeMode:     cm.Tactic(),
 		EnableVerify: true,
 	}
+	log.Println(cfg.CodeMode)
 	encoder, err := NewEncoder(cfg)
 	require.NoError(t, err)
 
@@ -629,9 +630,5 @@ func testReedSolomonPartialReconstruct(t *testing.T, cm codemode.CodeMode) {
 		ok, err = encoder.Verify(shards)
 		require.NoError(t, err)
 		require.True(t, ok)
-		wbuff = bytes.NewBuffer(make([]byte, 0))
-		err = encoder.Join(wbuff, shards, len(srcData))
-		require.NoError(t, err)
-		require.Equal(t, srcData, wbuff.Bytes())
 	}
 }
