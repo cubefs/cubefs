@@ -19,6 +19,7 @@ type options struct {
 	useJerasureMatrix                              bool
 	usePAR1Matrix                                  bool
 	useCauchy                                      bool
+	useAzureLrcP1Matrix                            bool
 	fastOneParity                                  bool
 	inversionCache                                 bool
 	forcedInversionCache                           bool
@@ -199,6 +200,7 @@ func WithJerasureMatrix() Option {
 		o.useJerasureMatrix = true
 		o.usePAR1Matrix = false
 		o.useCauchy = false
+		o.useAzureLrcP1Matrix = false
 	}
 }
 
@@ -211,6 +213,7 @@ func WithPAR1Matrix() Option {
 		o.useJerasureMatrix = false
 		o.usePAR1Matrix = true
 		o.useCauchy = false
+		o.useAzureLrcP1Matrix = false
 	}
 }
 
@@ -223,6 +226,21 @@ func WithCauchyMatrix() Option {
 		o.useJerasureMatrix = false
 		o.usePAR1Matrix = false
 		o.useCauchy = true
+		o.useAzureLrcP1Matrix = false
+	}
+}
+
+// WithAzureLrcMatrix causes the encoder to build the entire encoding
+// matrix for AzureLrcP1.
+//
+// This option is used to generate the engine to reconstruct the stripe
+// while encountering the scenario with more than g+1 failures
+func WithAzureLrcP1Matrix() Option {
+	return func(o *options) {
+		o.useJerasureMatrix = false
+		o.usePAR1Matrix = false
+		o.useCauchy = false
+		o.useAzureLrcP1Matrix = true
 	}
 }
 
