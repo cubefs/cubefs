@@ -43,6 +43,10 @@ const (
 	DefaultMetricReportIntervalS        = 30              // 30 Sec
 	DefaultBlockBufferSize              = 64 * 1024       // 64k
 	DefaultCompactEmptyRateThreshold    = float64(0.8)    // 80% rate
+	DefaultWriteThreadCnt               = 2
+	DefaultReadThreadCnt                = 4
+	DefaultWriteQueueDepth              = 128
+	DefaultReadQueueDepth               = 1024
 )
 
 // Config for disk
@@ -79,6 +83,8 @@ type RuntimeConfig struct {
 	EnableDataInspect            bool    `json:"enable_data_inspect"`
 	WriteThreadCnt               uint32  `json:"write_thread_count"`
 	ReadThreadCnt                uint32  `json:"read_thread_count"`
+	WriteQueueDepth              uint32  `json:"write_queue_depth"`
+	ReadQueueDepth               uint32  `json:"read_queue_depth"`
 
 	DataQos qos.Config `json:"data_qos"`
 }
@@ -168,6 +174,22 @@ func InitConfig(conf *Config) error {
 
 	if conf.BlockBufferSize <= 0 {
 		conf.BlockBufferSize = DefaultBlockBufferSize
+	}
+
+	if conf.ReadThreadCnt == 0 {
+		conf.ReadThreadCnt = DefaultReadThreadCnt
+	}
+
+	if conf.WriteThreadCnt == 0 {
+		conf.WriteThreadCnt = DefaultWriteThreadCnt
+	}
+
+	if conf.ReadQueueDepth == 0 {
+		conf.ReadQueueDepth = DefaultReadQueueDepth
+	}
+
+	if conf.WriteQueueDepth == 0 {
+		conf.WriteQueueDepth = DefaultWriteQueueDepth
 	}
 
 	return nil

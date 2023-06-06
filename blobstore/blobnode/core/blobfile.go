@@ -63,7 +63,7 @@ func (ef *blobFile) Fd() uintptr {
 func (ef *blobFile) ReadAt(b []byte, off int64) (n int, err error) {
 	if ef.readScheduler != nil {
 		task := iopool.NewReadIoTask(ef.file, uint64(ef.Fd()), uint64(off), b)
-		ef.readScheduler.Schedule(task)
+		ef.readScheduler.Submit(task)
 		n, err = task.WaitAndClose()
 	} else {
 		n, err = ef.file.ReadAt(b, off)
@@ -75,7 +75,7 @@ func (ef *blobFile) ReadAt(b []byte, off int64) (n int, err error) {
 func (ef *blobFile) WriteAt(b []byte, off int64) (n int, err error) {
 	if ef.writeScheduler != nil {
 		task := iopool.NewWriteIoTask(ef.file, uint64(ef.Fd()), uint64(off), b, false)
-		ef.writeScheduler.Schedule(task)
+		ef.writeScheduler.Submit(task)
 		n, err = task.WaitAndClose()
 	} else {
 		n, err = ef.file.WriteAt(b, off)
@@ -93,7 +93,7 @@ func (ef *blobFile) Stat() (info os.FileInfo, err error) {
 func (ef *blobFile) Allocate(off int64, size int64) (err error) {
 	if ef.writeScheduler != nil {
 		task := iopool.NewAllocIoTask(ef.file, uint64(ef.Fd()), poolsys.FALLOC_FL_DEFAULT, uint64(off), uint64(size))
-		ef.writeScheduler.Schedule(task)
+		ef.writeScheduler.Submit(task)
 		_, err = task.WaitAndClose()
 	} else {
 		err = sys.PreAllocate(ef.file.Fd(), off, size)
@@ -105,7 +105,7 @@ func (ef *blobFile) Allocate(off int64, size int64) (err error) {
 func (ef *blobFile) Discard(off int64, size int64) (err error) {
 	if ef.writeScheduler != nil {
 		task := iopool.NewAllocIoTask(ef.file, uint64(ef.Fd()), poolsys.FALLOC_FL_KEEP_SIZE|poolsys.FALLOC_FL_PUNCH_HOLE, uint64(off), uint64(size))
-		ef.writeScheduler.Schedule(task)
+		ef.writeScheduler.Submit(task)
 		_, err = task.WaitAndClose()
 	} else {
 		err = sys.PunchHole(ef.file.Fd(), off, size)
@@ -129,7 +129,7 @@ func (ef *blobFile) Sync() error {
 	var err error
 	if ef.writeScheduler != nil {
 		task := iopool.NewSyncIoTask(ef.file, uint64(ef.Fd()))
-		ef.writeScheduler.Schedule(task)
+		ef.writeScheduler.Submit(task)
 		_, err = task.WaitAndClose()
 	} else {
 		err = ef.syncHandler.Do(nil)

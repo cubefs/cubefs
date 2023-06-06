@@ -14,7 +14,11 @@
 
 package iopool
 
-import "github.com/cubefs/cubefs/blobstore/util/sys"
+import (
+	"syscall"
+
+	"github.com/cubefs/cubefs/blobstore/util/sys"
+)
 
 type IoTaskType uint32
 
@@ -113,7 +117,11 @@ func (t *IoTask) Exec() {
 	case WriteIoTask:
 		t.n, t.err = t.handle.WriteAt(t.data, int64(t.GetOffset()))
 	case AllocIoTask:
-		t.err = sys.Fallocate(t.handle.Fd(), t.allocMode, int64(t.offset), int64(t.allocSize))
+		// try again if a signal was caught during execution
+		t.err = syscall.EINTR
+		for t.err == syscall.EINTR {
+			t.err = sys.Fallocate(t.handle.Fd(), t.allocMode, int64(t.offset), int64(t.allocSize))
+		}
 	}
 }
 

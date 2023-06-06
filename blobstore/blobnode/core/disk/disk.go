@@ -39,18 +39,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const (
 	MaxChunkSize    = int64(1024 << 30) // 1024 GiB
 	RandomIntervalS = 30
-)
-
-const (
-	ShardedIoSchedulerCount = 1024
-	// the scheduler performs best when the pool size is 1
-	IoSchedulerPoolSize = 1
 )
 
 var StateTransitionRules = map[bnapi.ChunkStatus][]bnapi.ChunkStatus{
@@ -108,10 +101,6 @@ type DiskStorage struct {
 
 	CreateAt     int64
 	LastUpdateAt int64
-
-	// io pools
-	writePool taskpool.TaskPool
-	readPool  taskpool.TaskPool
 
 	// io schedulers
 	writeScheduler iopool.IoScheduler
@@ -180,9 +169,8 @@ func (ds *DiskStorage) Close(ctx context.Context) {
 		}
 
 		ds.closed = true
-
-		ds.writePool.Close()
-		ds.readPool.Close()
+		ds.readScheduler.Close()
+		ds.writeScheduler.Close()
 	}()
 }
 
@@ -508,20 +496,9 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		return nil, err
 	}
 
-	// setting pools
-	if conf.WriteThreadCnt == 0 {
-		conf.WriteThreadCnt = 2
-	}
-	if conf.ReadThreadCnt == 0 {
-		conf.ReadThreadCnt = 4
-	}
-
-	// create and start io pools
-	// the scheduler performs best when the pool size is 1
-	writePool := taskpool.New(int(conf.WriteThreadCnt), IoSchedulerPoolSize)
-	readPool := taskpool.New(int(conf.ReadThreadCnt), IoSchedulerPoolSize)
-	writeScheduler := iopool.NewShardedIoScheduler(ShardedIoSchedulerCount, writePool)
-	readScheduler := iopool.NewShardedIoScheduler(ShardedIoSchedulerCount, readPool)
+	// create and start io scheduler
+	readScheduler := iopool.NewSharedIoScheduler(int(conf.ReadThreadCnt), int(conf.ReadQueueDepth))
+	writeScheduler := iopool.NewPartitionIoScheduler(int(conf.WriteThreadCnt), int(conf.WriteQueueDepth))
 
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,
@@ -538,8 +515,6 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		dataQos:          dataQos,
 		CreateAt:         dm.Ctime,
 		LastUpdateAt:     dm.Mtime,
-		writePool:        writePool,
-		readPool:         readPool,
 		writeScheduler:   writeScheduler,
 		readScheduler:    readScheduler,
 	}

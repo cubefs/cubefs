@@ -23,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/mergetask"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 	"github.com/stretchr/testify/require"
 )
 
@@ -124,12 +123,10 @@ func TestBlobFile_OpWithPool(t *testing.T) {
 	// create
 	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
 
-	readPool := taskpool.New(4, 4)
-	writePool := taskpool.New(2, 2)
-	readScheduler := iopool.NewSimpleIoScheduler(readPool)
-	writeScheduler := iopool.NewSimpleIoScheduler(writePool)
-	defer readPool.Close()
-	defer writePool.Close()
+	readScheduler := iopool.NewSharedIoScheduler(DefaultReadThreadCnt, DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(DefaultWriteThreadCnt, DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
 
 	ef := blobFile{f, syncWorker, nil, readScheduler, writeScheduler}
 	log.Info(ef.Name())
