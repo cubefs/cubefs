@@ -194,6 +194,8 @@ Starting from version v3.3.0, concurrent disk repair is supported.
 ### shard_repair
 
 * task_pool_size, concurrency of repair tasks, default is 10
+* message_punish_threshold, Punishment threshold, if the corresponding number of failed attempts to consume a message exceeds this value, a punishment will be imposed for a period of time to avoid excessive retries within a short period. The default value is 3.
+* message_punish_time_m, punishment time, default 10 minutes
 * orphan_shard_log, record information of orphan data repair failures, directory needs to be configured, chunkbits is the log file rotation size, default is 29 (2^29 bytes)
 ```json
 {
@@ -216,6 +218,8 @@ Starting from version v3.3.0, it is supported to configure the data deletion tim
 
 * task_pool_size, concurrency of deletion tasks, default is 10
 * safe_delay_time_h, deletion protection period, default is 72h. If a negative value is configured, the data will be deleted directly.
+* message_punish_threshold, Punishment threshold, if the corresponding number of failed attempts to consume a message exceeds this value, a punishment will be imposed for a period of time to avoid excessive retries within a short period. The default value is 3.
+* message_punish_time_m, punishment time, default 10 minutes
 * delete_log, directory for storing deletion logs, needs to be configured, chunkbits default is 29
 * delete_hour_range, supports configuring the deletion time period in 24-hour format. For example, the following configuration indicates that deletion requests will only be initiated during the time period between 1:00 a.m. and 3:00 a.m. If not configured, deletion will be performed all day.
 ```json
