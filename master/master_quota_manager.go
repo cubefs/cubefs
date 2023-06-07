@@ -28,11 +28,10 @@ import (
 )
 
 type MasterQuotaManager struct {
-	MpQuotaInfoMap       map[uint64][]*proto.QuotaReportInfo
-	IdQuotaInfoMap       map[uint32]*proto.QuotaInfo
-	FullPathQuotaInfoMap map[string]*proto.QuotaInfo
-	vol                  *Vol
-	c                    *Cluster
+	MpQuotaInfoMap map[uint64][]*proto.QuotaReportInfo
+	IdQuotaInfoMap map[uint32]*proto.QuotaInfo
+	vol            *Vol
+	c              *Cluster
 	sync.RWMutex
 }
 
@@ -45,11 +44,20 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 		err = errors.NewErrorf("the number of quota has reached the upper limit %v", len(mqMgr.IdQuotaInfoMap))
 		return
 	}
-	for _, quotaInfo := range mqMgr.FullPathQuotaInfoMap {
-		if req.Inode == quotaInfo.RootInode {
-			err = errors.NewErrorf("inode [%v] is the same as quotaId [%v] inode [%v]",
-				req.Inode, quotaInfo.QuotaId, quotaInfo.RootInode)
-			return
+	for _, quotaInfo := range mqMgr.IdQuotaInfoMap {
+		for _, pathInfo := range req.PathInfos {
+			for _, quotaPathInfo := range quotaInfo.PathInfos {
+				if pathInfo.RootInode == quotaPathInfo.RootInode {
+					err = errors.NewErrorf("inode [%v] is the same as quotaId [%v] inode [%v]",
+						pathInfo.RootInode, quotaInfo.QuotaId, quotaPathInfo.RootInode)
+					return
+				}
+				if pathInfo.FullPath == quotaPathInfo.FullPath {
+					err = errors.NewErrorf("path [%v] is the same as quotaId [%v] path [%v]",
+						pathInfo.FullPath, quotaInfo.QuotaId, quotaPathInfo.FullPath)
+					return
+				}
+			}
 		}
 	}
 
@@ -58,15 +66,17 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 	}
 
 	var quotaInfo = &proto.QuotaInfo{
-		VolName:     req.VolName,
-		QuotaId:     quotaId,
-		Status:      proto.QuotaInit,
-		CTime:       time.Now().Unix(),
-		PartitionId: req.PartitionId,
-		RootInode:   req.Inode,
-		FullPath:    req.FullPath,
-		MaxFiles:    req.MaxFiles,
-		MaxBytes:    req.MaxBytes,
+		VolName:   req.VolName,
+		QuotaId:   quotaId,
+		Status:    proto.QuotaInit,
+		CTime:     time.Now().Unix(),
+		PathInfos: make([]proto.QuotaPathInfo, 0, 0),
+		MaxFiles:  req.MaxFiles,
+		MaxBytes:  req.MaxBytes,
+	}
+
+	for _, pathInfo := range req.PathInfos {
+		quotaInfo.PathInfos = append(quotaInfo.PathInfos, pathInfo)
 	}
 
 	var value []byte
@@ -85,21 +95,21 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 		return
 	}
 
-	var inodes = make([]uint64, 0)
-	inodes = append(inodes, req.Inode)
-	request := &proto.BatchSetMetaserverQuotaReuqest{
-		PartitionId: req.PartitionId,
-		Inodes:      inodes,
-		QuotaId:     quotaId,
-	}
+	for _, pathInfo := range req.PathInfos {
+		var inodes = make([]uint64, 0)
+		inodes = append(inodes, pathInfo.RootInode)
+		request := &proto.BatchSetMetaserverQuotaReuqest{
+			PartitionId: pathInfo.PartitionId,
+			Inodes:      inodes,
+			QuotaId:     quotaId,
+		}
 
-	if err = mqMgr.setQuotaToMetaNode(request); err != nil {
-		log.LogErrorf("create quota [%v] to metanode fail [%v].", quotaInfo, err)
-		return
+		if err = mqMgr.setQuotaToMetaNode(request); err != nil {
+			log.LogErrorf("create quota [%v] to metanode fail [%v].", quotaInfo, err)
+			return
+		}
 	}
-
 	mqMgr.IdQuotaInfoMap[quotaId] = quotaInfo
-	mqMgr.FullPathQuotaInfoMap[req.FullPath] = quotaInfo
 
 	log.LogInfof("create quota [%v] success.", quotaInfo)
 	return
@@ -108,16 +118,10 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 func (mqMgr *MasterQuotaManager) updateQuota(req *proto.UpdateMasterQuotaReuqest) (err error) {
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
-	quotaInfo, isFind := mqMgr.FullPathQuotaInfoMap[req.FullPath]
+	quotaInfo, isFind := mqMgr.IdQuotaInfoMap[req.QuotaId]
 	if !isFind {
-		log.LogErrorf("vol [%v] quota fullpath [%v] is not exist.", mqMgr.vol.Name, req.FullPath)
+		log.LogErrorf("vol [%v] quota quotaId [%v] is not exist.", mqMgr.vol.Name, req.QuotaId)
 		err = errors.New("quota is not exist.")
-		return
-	}
-
-	if quotaInfo.RootInode != req.Inode {
-		log.LogErrorf("vol [%v] update quota inode [%v] is not match.", mqMgr.vol.Name, req.Inode)
-		err = errors.New("quota inode is not match.")
 		return
 	}
 
@@ -155,10 +159,10 @@ func (mqMgr *MasterQuotaManager) listQuota() (resp *proto.ListMasterQuotaRespons
 	return
 }
 
-func (mqMgr *MasterQuotaManager) getQuota(fullPath string) (quotaInfo *proto.QuotaInfo, err error) {
+func (mqMgr *MasterQuotaManager) getQuota(quotaId uint32) (quotaInfo *proto.QuotaInfo, err error) {
 	mqMgr.RLock()
 	defer mqMgr.RUnlock()
-	quotaInfo, isFind := mqMgr.FullPathQuotaInfoMap[fullPath]
+	quotaInfo, isFind := mqMgr.IdQuotaInfoMap[quotaId]
 	if !isFind {
 		err = errors.New("quota is not exist.")
 		return nil, err
@@ -167,13 +171,13 @@ func (mqMgr *MasterQuotaManager) getQuota(fullPath string) (quotaInfo *proto.Quo
 	return quotaInfo, nil
 }
 
-func (mqMgr *MasterQuotaManager) deleteQuota(fullPath string) (err error) {
+func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
 
-	quotaInfo, isFind := mqMgr.FullPathQuotaInfoMap[fullPath]
+	quotaInfo, isFind := mqMgr.IdQuotaInfoMap[quotaId]
 	if !isFind {
-		log.LogErrorf("vol [%v] quota fullPath [%v] is not exist.", mqMgr.vol.Name, fullPath)
+		log.LogErrorf("vol [%v] quota quotaId [%v] is not exist.", mqMgr.vol.Name, quotaId)
 		err = errors.New("quota is not exist.")
 		return
 	}
@@ -193,24 +197,22 @@ func (mqMgr *MasterQuotaManager) deleteQuota(fullPath string) (err error) {
 		log.LogErrorf("delete quota [%v] submit fail [%v].", quotaInfo, err)
 		return
 	}
+	for _, pathInfo := range quotaInfo.PathInfos {
+		var inodes = make([]uint64, 0)
+		inodes = append(inodes, pathInfo.RootInode)
+		request := &proto.BatchDeleteMetaserverQuotaReuqest{
+			PartitionId: pathInfo.PartitionId,
+			Inodes:      inodes,
+			QuotaId:     quotaInfo.QuotaId,
+		}
 
-	var inodes = make([]uint64, 0)
-	inodes = append(inodes, quotaInfo.RootInode)
-	request := &proto.BatchDeleteMetaserverQuotaReuqest{
-		PartitionId: quotaInfo.PartitionId,
-		Inodes:      inodes,
-		QuotaId:     quotaInfo.QuotaId,
+		if err = mqMgr.DeleteQuotaToMetaNode(request); err != nil {
+			log.LogErrorf("delete quota [%v] to metanode fail [%v].", quotaInfo, err)
+			return
+		}
 	}
-
-	if err = mqMgr.DeleteQuotaToMetaNode(request); err != nil {
-		log.LogErrorf("delete quota [%v] to metanode fail [%v].", quotaInfo, err)
-		return
-	}
-
 	delete(mqMgr.IdQuotaInfoMap, quotaInfo.QuotaId)
-	delete(mqMgr.FullPathQuotaInfoMap, quotaInfo.FullPath)
-	log.LogInfof("deleteQuota: idmap len [%v] fullpathMap len [%v]",
-		len(mqMgr.IdQuotaInfoMap), len(mqMgr.FullPathQuotaInfoMap))
+	log.LogInfof("deleteQuota: idmap len [%v]", len(mqMgr.IdQuotaInfoMap))
 	return
 }
 
@@ -290,9 +292,8 @@ func (mqMgr *MasterQuotaManager) DeleteQuotaInfoById(quotaId uint32) {
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
 
-	quotaInfo, isFind := mqMgr.IdQuotaInfoMap[quotaId]
+	_, isFind := mqMgr.IdQuotaInfoMap[quotaId]
 	if isFind {
-		delete(mqMgr.FullPathQuotaInfoMap, quotaInfo.FullPath)
 		delete(mqMgr.IdQuotaInfoMap, quotaId)
 		log.LogInfof("DeleteQuotaInfoById delete quotaId [%v] success.", quotaId)
 	}
@@ -323,13 +324,12 @@ func (mqMgr *MasterQuotaManager) quotaUpdate(report *proto.MetaPartitionReport) 
 	}
 	deleteQuotaIds := make([]uint32, 0, 0)
 	for mpId, reportInfos := range mqMgr.MpQuotaInfoMap {
-		log.LogDebugf("[quotaUpdate] mpId [%v], info len [%v]", mpId, len(reportInfos))
 		for _, info := range reportInfos {
 			if _, isFind := mqMgr.IdQuotaInfoMap[info.QuotaId]; !isFind {
 				deleteQuotaIds = append(deleteQuotaIds, info.QuotaId)
 				continue
 			}
-			log.LogDebugf("[quotaUpdate] quotaId [%v] reportinfo [%v]", info.QuotaId, info.UsedInfo)
+			log.LogDebugf("[quotaUpdate] mpId [%v] quotaId [%v] reportinfo [%v]", mpId, info.QuotaId, info.UsedInfo)
 			quotaInfo = mqMgr.IdQuotaInfoMap[info.QuotaId]
 			quotaInfo.UsedInfo.Add(&info.UsedInfo)
 		}
@@ -368,38 +368,6 @@ func (mqMgr *MasterQuotaManager) getQuotaHbInfos() (infos []*proto.QuotaHeartBea
 
 	return
 }
-
-// func (mqMgr *MasterQuotaManager) batchModifyQuotaFullPath(changeFullPathMap map[uint32]string) {
-// 	mqMgr.Lock()
-// 	defer mqMgr.Unlock()
-
-// 	for quotaId, newPath := range changeFullPathMap {
-// 		quotaInfo, isFind := mqMgr.IdQuotaInfoMap[quotaId]
-// 		if isFind {
-// 			quotaInfo.FullPath = newPath
-// 			var value []byte
-// 			var err error
-// 			if value, err = json.Marshal(quotaInfo); err != nil {
-// 				log.LogErrorf("update quota [%v] marsha1 fail [%v].", quotaInfo, err)
-// 				continue
-// 			}
-
-// 			metadata := new(RaftCmd)
-// 			metadata.Op = opSyncSetQuota
-// 			metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaId), 10)
-// 			metadata.V = value
-
-// 			if err = mqMgr.c.submit(metadata); err != nil {
-// 				log.LogErrorf("update quota [%v] submit fail [%v].", quotaInfo, err)
-// 				continue
-// 			}
-
-// 			delete(mqMgr.FullPathQuotaInfoMap, quotaInfo.FullPath)
-// 			mqMgr.FullPathQuotaInfoMap[newPath] = quotaInfo
-// 		}
-// 	}
-// 	log.LogInfof("batchModifyQuotaFullPath idMap [%v] pathmap [%v]", mqMgr.IdQuotaInfoMap, mqMgr.FullPathQuotaInfoMap)
-// }
 
 func (mqMgr *MasterQuotaManager) HasQuota() bool {
 	mqMgr.RLock()
