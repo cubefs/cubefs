@@ -304,6 +304,7 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	if value = r.FormValue(OperateKey); value == "" {
 		err = keyNotFound(OperateKey)
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 
 	op, err = strconv.ParseUint(value, 10, 64)
@@ -353,7 +354,6 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rsp))
-	return
 }
 
 func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
@@ -375,6 +375,7 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 	if value = r.FormValue(OperateKey); value == "" {
 		err = keyNotFound(OperateKey)
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 
 	op, err = strconv.ParseUint(value, 10, 64)
@@ -387,6 +388,7 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 		if ip = r.FormValue(IPKey); ip == "" {
 			err = keyNotFound(IPKey)
 			sendErrReply(w, r, newErrHTTPReply(err))
+			return
 		}
 	}
 
@@ -426,7 +428,6 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 		List: ipList,
 	}
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rsp))
-	return
 }
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
@@ -845,15 +846,18 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 	if value = r.FormValue(ClientReqPeriod); value != "" {
 		if period, err = strconv.ParseUint(value, 10, 64); err != nil || period == 0 {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of peroid")))
+			return
 		}
 	}
 	if value = r.FormValue(ClientTriggerCnt); value != "" {
 		if triggerCnt, err = strconv.ParseUint(value, 10, 64); err != nil || triggerCnt == 0 {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of triggerCnt")))
+			return
 		}
 	}
 	if err = vol.updateClientParam(m.cluster, period, triggerCnt); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
@@ -962,6 +966,7 @@ func (m *Server) QosUpdateMagnify(w http.ResponseWriter, r *http.Request) {
 		if magnifyArgs, err = parseRequestQos(r, true, false); err == nil {
 			_ = vol.volQosUpdateMagnify(m.cluster, magnifyArgs)
 			sendOkReply(w, r, newSuccessHTTPReply("success"))
+			return
 		}
 	}
 	sendErrReply(w, r, newErrHTTPReply(err))
@@ -2073,9 +2078,11 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 			if clientInfo.ID == 0 {
 				if limit, err = vol.qosManager.init(m.cluster, clientInfo.Host); err != nil {
 					sendErrReply(w, r, newErrHTTPReply(err))
+					return
 				}
 			} else if limit, err = vol.qosManager.HandleClientQosReq(clientInfo, clientInfo.ID); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
+				return
 			}
 		} else {
 			log.LogInfof("action[qosUpload] qosEnableStr:[%v] err [%v]", qosEnableStr, err)
@@ -2231,6 +2238,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if nodesetId, err = strconv.ParseUint(value, 10, 64); err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
 		}
 	}
 	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, nodesetId); err != nil {
@@ -2935,6 +2943,7 @@ func (m *Server) updateNodeSetCapacityHandler(w http.ResponseWriter, r *http.Req
 	}
 	if err := m.updateNodesetCapcity(params[zoneNameKey].(string), params[idKey].(uint64), params[countKey].(uint64)); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply("set nodesetinfo successfully"))
 }
@@ -3058,7 +3067,8 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 	}()
 
 	if err = r.ParseForm(); err != nil {
-		sendOkReply(w, r, newErrHTTPReply(err))
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	var value string
 	var id uint64
@@ -3066,6 +3076,7 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 		id, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
 		}
 	}
 	var domainId uint64
@@ -3073,6 +3084,7 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 		domainId, err = strconv.ParseUint(value, 10, 64)
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
 		}
 	}
 
@@ -3080,6 +3092,7 @@ func (m *Server) getNodeSetGrpInfoHandler(w http.ResponseWriter, r *http.Request
 	var info *proto.SimpleNodeSetGrpInfo
 	if info, err = m.buildNodeSetGrpInfoByID(domainId, id); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
@@ -3202,11 +3215,13 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 
 	if inactiveNodes, err = m.cluster.checkInactiveMetaNodes(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 
 	if lackReplicaMps, noLeaderMps, badReplicaMps, excessReplicaMPs,
 		inodeCountNotEqualReplicaMps, dentryCountNotEqualReplicaMps, err = m.cluster.checkReplicaMetaPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	for _, mp := range noLeaderMps {
 		corruptMpIDs = append(corruptMpIDs, mp.PartitionID)
@@ -3504,6 +3519,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if nodesetId, err = strconv.ParseUint(value, 10, 64); err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
 		}
 	}
 	if id, err = m.cluster.addMetaNode(nodeAddr, zoneName, nodesetId); err != nil {
@@ -4351,6 +4367,7 @@ func (m *Server) OpFollowerPartitionsRead(w http.ResponseWriter, r *http.Request
 	if enableFollower, err = extractStatus(r); err != nil {
 		log.LogErrorf("OpFollowerPartitionsRead.err %v", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	m.cluster.followerReadManager.needCheck = enableFollower
 
@@ -4673,6 +4690,7 @@ func (m *Server) setClusterUuidEnable(w http.ResponseWriter, r *http.Request) {
 func (m *Server) generateClusterUuid(w http.ResponseWriter, r *http.Request) {
 	if m.cluster.clusterUuid != "" {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "The cluster already has a ClusterUuid"})
+		return
 	}
 	if err := m.cluster.generateClusterUuid(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrInternalError))
