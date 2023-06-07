@@ -614,7 +614,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		auditlog.FormatLog("Rename", d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName, err, time.Since(start).Microseconds(), srcInode, dstInode)
 	}()
 	//changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
-	if !d.IsSameQuota(dstDir) {
+	if !d.canRenameByQuota(dstDir, req.OldName) {
 		return fuse.EPERM
 	}
 	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, true)
@@ -923,6 +923,9 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 
 func (d *Dir) getCwd() string {
 	dirPath := ""
+	if d.info.Inode == d.super.rootIno {
+		return "/"
+	}
 	curIno := d.info.Inode
 	for curIno != d.super.rootIno {
 		d.super.fslock.Lock()
@@ -955,7 +958,7 @@ func dentrySetExpiration(info *proto.DentryInfo, t time.Duration) {
 	info.SetExpiration(time.Now().Add(t).UnixNano())
 }
 
-func (d *Dir) IsSameQuota(dstDir *Dir) bool {
+func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {
 	fullPaths := d.super.mw.GetQuotaFullPaths()
 	if len(fullPaths) == 0 {
 		return true
@@ -964,11 +967,16 @@ func (d *Dir) IsSameQuota(dstDir *Dir) bool {
 	srcPath := d.getCwd()
 	dstPath := dstDir.getCwd()
 	for _, fullPath := range fullPaths {
+		log.LogDebugf("srcPath [%v] dstPath [%v] fullPath[%v].", srcPath, dstPath, fullPath)
 		if IsSubdirectory(fullPath, srcPath) && !IsSubdirectory(fullPath, dstPath) {
 			return false
 		}
 
 		if !IsSubdirectory(fullPath, srcPath) && IsSubdirectory(fullPath, dstPath) {
+			return false
+		}
+
+		if IsSubdirectory(srcPath+"/"+srcName, fullPath) {
 			return false
 		}
 	}

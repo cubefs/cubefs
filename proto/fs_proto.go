@@ -749,21 +749,17 @@ type UpdateSummaryInfoRequest struct {
 }
 
 type SetMasterQuotaReuqest struct {
-	VolName     string `json:"vol"`
-	PartitionId uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	FullPath    string `json:"fpath"`
-	MaxFiles    uint64 `json:"mf"`
-	MaxBytes    uint64 `json:"mbyte"`
+	VolName   string          `json:"vol"`
+	PathInfos []QuotaPathInfo `json:"pinfos"`
+	MaxFiles  uint64          `json:"mf"`
+	MaxBytes  uint64          `json:"mbyte"`
 }
 
 type UpdateMasterQuotaReuqest struct {
-	VolName     string `json:"vol"`
-	PartitionId uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	FullPath    string `json:"fpath"`
-	MaxFiles    uint64 `json:"mf"`
-	MaxBytes    uint64 `json:"mbyte"`
+	VolName  string `json:"vol"`
+	QuotaId  uint32 `json:"qid"`
+	MaxFiles uint64 `json:"mf"`
+	MaxBytes uint64 `json:"mbyte"`
 }
 
 type ListMasterQuotaResponse struct {

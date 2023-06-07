@@ -4694,10 +4694,10 @@ func (m *Server) UpdateQuota(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 	var (
-		err      error
-		vol      *Vol
-		fullPath string
-		name     string
+		err     error
+		vol     *Vol
+		quotaId uint32
+		name    string
 	)
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaDelete))
@@ -4705,7 +4705,7 @@ func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.QuotaDelete, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, fullPath, err = parseDeleteQuotaParam(r); err != nil {
+	if name, quotaId, err = parseDeleteQuotaParam(r); err != nil {
 		log.LogErrorf("[DeleteQuota] del quota fail err [%v]", err)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -4716,12 +4716,12 @@ func (m *Server) DeleteQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = vol.quotaManager.deleteQuota(fullPath); err != nil {
+	if err = vol.quotaManager.deleteQuota(quotaId); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	msg := fmt.Sprintf("delete quota successfully, vol [%v] fullPath [%v]", name, fullPath)
+	msg := fmt.Sprintf("delete quota successfully, vol [%v] quotaId [%v]", name, quotaId)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 	return
 }
@@ -4774,7 +4774,7 @@ func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
 		err       error
 		vol       *Vol
 		name      string
-		fullPath  string
+		quotaId   uint32
 		quotaInfo *proto.QuotaInfo
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaGet))
@@ -4782,7 +4782,7 @@ func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.QuotaGet, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, fullPath, err = parseGetQuotaParam(r); err != nil {
+	if name, quotaId, err = parseGetQuotaParam(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -4792,12 +4792,12 @@ func (m *Server) GetQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if quotaInfo, err = vol.quotaManager.getQuota(fullPath); err != nil {
+	if quotaInfo, err = vol.quotaManager.getQuota(quotaId); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	log.LogInfof("get quota vol [%v] fullPath [%v] quotaInfo [%v] success.", name, fullPath, *quotaInfo)
+	log.LogInfof("get quota vol [%v] quotaInfo [%v] success.", name, *quotaInfo)
 	sendOkReply(w, r, newSuccessHTTPReply(quotaInfo))
 	return
 }
