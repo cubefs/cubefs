@@ -203,7 +203,7 @@ build_rocksdb() {
     if [ ${CCMAJOR} -ge 9 ]; then
         FLAGS="-Wno-error=deprecated-copy -Wno-error=pessimizing-move"
     fi
-    MAKECMDGOALS=static_lib make EXTRA_CXXFLAGS="-fPIC ${FLAGS} -I${BuildDependsIncludePath}" static_lib
+    PORTABLE=1 make EXTRA_CXXFLAGS="-fPIC ${FLAGS} -DZLIB -DBZIP2 -DSNAPPY -DLZ4 -DZSTD -I${BuildDependsIncludePath}" static_lib
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -389,6 +389,14 @@ dist_clean() {
 
 cmd=${1:-"all"}
 
+if [ "${cmd}" == "dist_clean" ]; then
+    dist_clean
+    exit 0
+elif [ "${cmd}" == "clean" ]; then
+    clean
+    exit 0
+fi
+
 pre_build
 
 case "$cmd" in
@@ -434,12 +442,6 @@ case "$cmd" in
         ;;
     "bcache")
         build_bcache
-        ;;
-    "clean")
-        clean
-        ;;
-    "dist_clean")
-        dist_clean
         ;;
     *)
         ;;
