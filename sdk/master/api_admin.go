@@ -575,14 +575,17 @@ func (api *AdminAPI) ListQuota(volName string) (quotaInfo []*proto.QuotaInfo, er
 	return quotaInfo, err
 }
 
-func (api *AdminAPI) CreateQuota(volName string, fullPath string, inodeId uint64, partitionId uint64, maxFiles uint64, maxBytes uint64) (err error) {
+func (api *AdminAPI) CreateQuota(volName string, quotaPathInfos []proto.QuotaPathInfo, maxFiles uint64, maxBytes uint64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QuotaCreate)
 	request.addParam("name", volName)
-	request.addParam("fullPath", fullPath)
-	request.addParam("inode", strconv.FormatUint(inodeId, 10))
-	request.addParam("id", strconv.FormatUint(partitionId, 10))
 	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
 	request.addParam("maxBytes", strconv.FormatUint(maxBytes, 10))
+	var value []byte
+	if value, err = json.Marshal(&quotaPathInfos); err != nil {
+		log.LogErrorf("action[CreateQuota] fail. %v", err)
+		return
+	}
+	request.addBody(value)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		log.LogErrorf("action[CreateQuota] fail. %v", err)
 		return
@@ -591,12 +594,10 @@ func (api *AdminAPI) CreateQuota(volName string, fullPath string, inodeId uint64
 	return
 }
 
-func (api *AdminAPI) UpdateQuota(volName string, fullPath string, inodeId uint64, partitionId uint64, maxFiles uint64, maxBytes uint64) (err error) {
+func (api *AdminAPI) UpdateQuota(volName string, quotaId string, maxFiles uint64, maxBytes uint64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QuotaUpdate)
 	request.addParam("name", volName)
-	request.addParam("fullPath", fullPath)
-	request.addParam("inode", strconv.FormatUint(inodeId, 10))
-	request.addParam("id", strconv.FormatUint(partitionId, 10))
+	request.addParam("quotaId", quotaId)
 	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
 	request.addParam("maxBytes", strconv.FormatUint(maxBytes, 10))
 	if _, err = api.mc.serveRequest(request); err != nil {
@@ -607,10 +608,10 @@ func (api *AdminAPI) UpdateQuota(volName string, fullPath string, inodeId uint64
 	return nil
 }
 
-func (api *AdminAPI) DeleteQuota(volName string, fullPath string) (err error) {
+func (api *AdminAPI) DeleteQuota(volName string, quotaId string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QuotaDelete)
 	request.addParam("name", volName)
-	request.addParam("fullPath", fullPath)
+	request.addParam("quotaId", quotaId)
 
 	if _, err = api.mc.serveRequest(request); err != nil {
 		log.LogErrorf("action[DeleteQuota] fail. %v", err)
@@ -620,10 +621,10 @@ func (api *AdminAPI) DeleteQuota(volName string, fullPath string) (err error) {
 	return nil
 }
 
-func (api *AdminAPI) GetQuota(volName string, fullPath string) (quotaInfo *proto.QuotaInfo, err error) {
+func (api *AdminAPI) GetQuota(volName string, quotaId string) (quotaInfo *proto.QuotaInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QuotaGet)
 	request.addParam("name", volName)
-	request.addParam("fullPath", fullPath)
+	request.addParam("quotaId", quotaId)
 	var data []byte
 	if data, err = api.mc.serveRequest(request); err != nil {
 		log.LogErrorf("action[GetQuota] fail. %v", err)
