@@ -118,7 +118,7 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	return nil
 }
 
-func (e *azureLrcP1Encoder) PartialReconstruct(shards [][]byte, badIdx []int) error {
+func (e *azureLrcP1Encoder) PartialReconstruct(shards [][]byte, survivalIndex, badIdx []int) error {
 	var err error
 	return errors.Info(err, "azureLrcP1Encoder don't support partial decoding!")
 	return nil
