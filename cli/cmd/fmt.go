@@ -744,7 +744,7 @@ func formatZoneView(zv *proto.ZoneView) string {
 	return sb.String()
 }
 
-var quotaTableRowPattern = "%-6v    %-30v    %-15v      %-18v    %-10v    %-10v    %-12v    %-12v    %-10v    %-10v    %-10v    %-10v"
+var quotaTableRowPattern = "%-6v %-30v %-15v %-20v     %-15v    %-10v    %-12v    %-12v    %-10v    %-10v    %-10v    %-10v"
 
 func formatQuotaTableHeader() string {
 	return fmt.Sprintf(quotaTableRowPattern, "ID", "PATH", "VOL", "CTIME",
@@ -753,9 +753,21 @@ func formatQuotaTableHeader() string {
 
 func formatQuotaInfo(info *proto.QuotaInfo) string {
 	t := time.Unix(info.CTime, 0)
-	return fmt.Sprintf(quotaTableRowPattern, info.QuotaId, info.FullPath, info.VolName, t.Format("2006-01-02 15:04:05"), info.PartitionId,
-		info.RootInode, info.LimitedInfo.LimitedFiles, info.LimitedInfo.LimitedBytes, info.UsedInfo.UsedFiles, info.UsedInfo.UsedBytes,
-		info.MaxFiles, info.MaxBytes)
+	var ret string
+	firstLine := true
+	for _, pathInfo := range info.PathInfos {
+		if firstLine {
+			ret = fmt.Sprintf(quotaTableRowPattern, info.QuotaId, pathInfo.FullPath, info.VolName, t.Format("2006-01-02 15:04:05"), pathInfo.PartitionId,
+				pathInfo.RootInode, info.LimitedInfo.LimitedFiles, info.LimitedInfo.LimitedBytes, info.UsedInfo.UsedFiles, info.UsedInfo.UsedBytes,
+				info.MaxFiles, info.MaxBytes)
+			firstLine = false
+		} else {
+			ret += "\n"
+			ret += fmt.Sprintf(quotaTableRowPattern, "", pathInfo.FullPath, "", "", pathInfo.PartitionId, pathInfo.RootInode,
+				"", "", "", "", "", "")
+		}
+	}
+	return ret
 }
 
 var badDiskDetailTableRowPattern = "%-18v    %-24v"

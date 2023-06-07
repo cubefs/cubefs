@@ -97,9 +97,7 @@ type QuotaInfo struct {
 	QuotaId     uint32
 	Status      QuotaStatus
 	CTime       int64
-	PartitionId uint64
-	RootInode   uint64
-	FullPath    string
+	PathInfos   []QuotaPathInfo
 	LimitedInfo QuotaLimitedInfo
 	UsedInfo    QuotaUsedInfo
 	MaxFiles    uint64
@@ -120,6 +118,12 @@ type MetaQuotaInfos struct {
 
 type MetaQuotaInfo struct {
 	RootInode bool
+}
+
+type QuotaPathInfo struct {
+	FullPath    string
+	RootInode   uint64
+	PartitionId uint64
 }
 
 func (usedInfo *QuotaUsedInfo) Add(info *QuotaUsedInfo) {

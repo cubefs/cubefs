@@ -1464,18 +1464,6 @@ func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err
 		return
 	}
 
-	if req.FullPath, err = extractPath(r); err != nil {
-		return
-	}
-
-	if req.PartitionId, err = extractMetaPartitionID(r); err != nil {
-		return
-	}
-
-	if req.Inode, err = extractInodeId(r); err != nil {
-		return
-	}
-
 	if req.MaxFiles, err = extractUint64WithDefault(r, MaxFilesKey, math.MaxUint64); err != nil {
 		return
 	}
@@ -1483,6 +1471,15 @@ func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err
 	if req.MaxBytes, err = extractUint64WithDefault(r, MaxBytesKey, math.MaxUint64); err != nil {
 		return
 	}
+	var body []byte
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		return
+	}
+
+	if err = json.Unmarshal(body, &req.PathInfos); err != nil {
+		return
+	}
+
 	log.LogInfo("parserSetQuotaParam success.")
 	return
 }
@@ -1496,15 +1493,7 @@ func parserUpdateQuotaParam(r *http.Request, req *proto.UpdateMasterQuotaReuqest
 		return
 	}
 
-	if req.FullPath, err = extractPath(r); err != nil {
-		return
-	}
-
-	if req.PartitionId, err = extractMetaPartitionID(r); err != nil {
-		return
-	}
-
-	if req.Inode, err = extractInodeId(r); err != nil {
+	if req.QuotaId, err = extractQuotaId(r); err != nil {
 		return
 	}
 
@@ -1519,7 +1508,7 @@ func parserUpdateQuotaParam(r *http.Request, req *proto.UpdateMasterQuotaReuqest
 	return
 }
 
-func parseDeleteQuotaParam(r *http.Request) (volName string, fullPath string, err error) {
+func parseDeleteQuotaParam(r *http.Request) (volName string, quotaId uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1528,14 +1517,14 @@ func parseDeleteQuotaParam(r *http.Request) (volName string, fullPath string, er
 		return
 	}
 
-	if fullPath, err = extractPath(r); err != nil {
+	if quotaId, err = extractQuotaId(r); err != nil {
 		return
 	}
 
 	return
 }
 
-func parseGetQuotaParam(r *http.Request) (volName string, fullPath string, err error) {
+func parseGetQuotaParam(r *http.Request) (volName string, quotaId uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1543,7 +1532,7 @@ func parseGetQuotaParam(r *http.Request) (volName string, fullPath string, err e
 		return
 	}
 
-	if fullPath, err = extractPath(r); err != nil {
+	if quotaId, err = extractQuotaId(r); err != nil {
 		return
 	}
 	return
@@ -1554,6 +1543,17 @@ func extractPath(r *http.Request) (fullPath string, err error) {
 		err = keyNotFound(nameKey)
 		return
 	}
+	return
+}
+
+func extractQuotaId(r *http.Request) (quotaId uint32, err error) {
+	var value string
+	if value = r.FormValue(quotaKey); value == "" {
+		err = keyNotFound(quotaKey)
+		return
+	}
+	tmp, err := strconv.ParseUint(value, 10, 32)
+	quotaId = uint32(tmp)
 	return
 }
 

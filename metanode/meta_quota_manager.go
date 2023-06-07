@@ -206,7 +206,7 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 		log.LogDebugf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
 		return true
 	})
-	log.LogInfof("[getQuotaReportInfos] end infos [%v]", infos)
+	log.LogDebugf("[getQuotaReportInfos] end infos [%v]", infos)
 	return
 }
 

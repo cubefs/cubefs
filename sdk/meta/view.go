@@ -414,7 +414,9 @@ func (mw *MetaWrapper) GetQuotaFullPaths() (fullPaths []string) {
 	mw.QuotaLock.RLock()
 	defer mw.QuotaLock.RUnlock()
 	for _, info := range mw.QuotaInfoMap {
-		fullPaths = append(fullPaths, info.FullPath)
+		for _, pathInfo := range info.PathInfos {
+			fullPaths = append(fullPaths, pathInfo.FullPath)
+		}
 	}
 	return fullPaths
 }
