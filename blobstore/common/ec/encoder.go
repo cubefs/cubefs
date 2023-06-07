@@ -44,7 +44,7 @@ type Encoder interface {
 	// reconstruct all missing shards, you should assign the missing or bad idx in shards
 	Reconstruct(shards [][]byte, badIdx []int) error
 	// partialReconstruct will use partial decoding to optimize the cross-az bandwidth
-	PartialReconstruct(shards [][]byte, badIdx []int) error
+	PartialReconstruct(shards [][]byte, survivalIndex, badIdx []int) error
 	// only reconstruct data shards, you should assign the missing or bad idx in shards
 	ReconstructData(shards [][]byte, badIdx []int) error
 	// split source data into adapted shards size
@@ -166,16 +166,11 @@ func (e *encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	return e.engine.Reconstruct(shards)
 }
 
-func (e *encoder) PartialReconstruct(shards [][]byte, badIdx []int) error {
+func (e *encoder) PartialReconstruct(shards [][]byte, survivalIndex, badIdx []int) error {
 	initBadShards(shards, badIdx)
 	e.pool.Acquire()
-	azLayout := e.CodeMode.GetECLayoutByAZ()
-	survivalIdx, _, err := e.engine.GetSurvivalShards(badIdx, azLayout)
-	if err != nil {
-		return err
-	}
 	defer e.pool.Release()
-	return e.engine.PartialReconstruct(shards, survivalIdx, badIdx)
+	return e.engine.PartialReconstruct(shards, survivalIndex, badIdx)
 }
 
 func (e *encoder) ReconstructData(shards [][]byte, badIdx []int) error {
