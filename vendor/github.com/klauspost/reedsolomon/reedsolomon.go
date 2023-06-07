@@ -1870,7 +1870,7 @@ func (r *reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []
 // the second []int is real read shards index,
 // which actually participate the decoding
 //
-// This function is specially design for LRC.
+// This function is specially design for azureLRC+1.
 func (r *reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int, []int, error) {
 	var err error
 	// Quick check: are all of the shards present?  If so, there's
@@ -1885,9 +1885,29 @@ func (r *reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int
 		return nil, nil, ErrTooFewShards
 	}
 
-	badIdxMap := make(map[int]int)
+	badIdxMap := make(map[int]int, len(badIndex))
 	for _, idx := range badIndex {
 		badIdxMap[idx] = 1
+	}
+
+	// find the survival shards index which
+	// can form an invertable decoding matrix
+	survivalCnt := 0
+	survivalIndices := make([]int, r.totalShards-len(badIndex))
+	for i := 0; i < r.totalShards; i++ {
+		if _, ok := badIdxMap[i]; ok == false {
+			survivalIndices[survivalCnt] = i
+			survivalCnt++
+		}
+	}
+
+	// failures less than m+1 and more than 1 , fast return
+	if len(badIndex) > 1 && len(badIndex) < r.parityShards-2 {
+		selectShards := make([]int, r.dataShards)
+		for i := 0; i < r.dataShards; i++ {
+			selectShards[i] = survivalIndices[i]
+		}
+		return selectShards, selectShards, nil
 	}
 
 	// Only one failure, consider local repair
@@ -1931,18 +1951,6 @@ func (r *reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int
 		return cnt == len(shortList)
 	}
 
-	// find the survival shards index which
-	// can form an invertable decoding matrix
-	survivalCnt := 0
-	survivalIndices := make([]int, r.totalShards-len(badIndex))
-	for i := 0; i < r.totalShards; i++ {
-		if _, ok := badIdxMap[i]; ok == false {
-			survivalIndices[survivalCnt] = i
-			survivalCnt++
-		}
-	}
-	subMatrix, _ := newMatrix(r.dataShards, r.dataShards)
-
 	// find the combination
 	comb := func(n, k int) int {
 		lgmma1, _ := math.Lgamma(float64(n + 1))
@@ -1958,6 +1966,8 @@ func (r *reedSolomon) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int
 	for i, _ := range tmpCombination {
 		tmpCombination[i] = i
 	}
+
+	subMatrix, _ := newMatrix(r.dataShards, r.dataShards)
 	for i := 0; i < combinationCnt; i++ {
 		// Obtaining corresponding matrix by the combination
 		for row, sel := range tmpCombination {
