@@ -620,7 +620,7 @@ func testReedSolomonPartialReconstruct(t *testing.T, cm codemode.CodeMode) {
 					tmpShards[v] = shards[v][:0]
 				}
 			}
-			err = encoder.PartialReconstruct(tmpShards[:cfg.CodeMode.N+cfg.CodeMode.M], []int{idx})
+			err = encoder.PartialReconstruct(tmpShards[:cfg.CodeMode.N+cfg.CodeMode.M], survivalIdx, []int{idx})
 			for c := range partialData {
 				partialData[c] ^= tmpShards[idx][c]
 			}
