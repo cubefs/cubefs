@@ -687,6 +687,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.CrossRegionMetrics.Unlock()
 		dp.Metrics = old.Metrics
 		dp.ReadMetrics = old.ReadMetrics
+		dp.timeoutCnt = atomic.LoadInt32(&old.timeoutCnt)
 		old.ecEnable = w.ecEnable
 	} else {
 		dp.Metrics = proto.NewDataPartitionMetrics()

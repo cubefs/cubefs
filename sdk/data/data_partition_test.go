@@ -163,7 +163,7 @@ func TestExcludeDp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dp := &DataPartition{}
 			dp.Hosts = tt.hosts
-			exclude := isExcluded(dp, tt.excludeMap, tt.quorum)
+			exclude := isExcludedByHost(dp, tt.excludeMap, tt.quorum)
 			if exclude != tt.expectExclude {
 				t.Errorf("TestExcludeDp: test(%v) expect(%v) but(%v)", tt.name, tt.expectExclude, exclude)
 				return

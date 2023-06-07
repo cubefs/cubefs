@@ -276,6 +276,7 @@ const (
 	FlashNodeVolRateKey          = "flashNodeVolRate"
 	DataNodeReqVolPartRateKey    = "dataNodeReqVolPartRate"
 	DataNodeReqVolOpPartRateKey  = "dataNodeReqVolOpPartRate"
+	DpTimeoutCntThreshold        = "dpTimeoutCntThreshold"
 )
 
 const (
@@ -580,6 +581,7 @@ type LimitInfo struct {
 	TrashItemCleanMaxCountEachTime int32
 
 	DeleteMarkDelVolInterval int64
+	DpTimeoutCntThreshold    int
 	ClientConnTimeoutUs      int64
 	FlashNodeLimitMap        map[string]uint64            //map[zone]
 	FlashNodeVolLimitMap     map[string]map[string]uint64 //map[zone]map[volume]
@@ -1273,6 +1275,7 @@ type RateLimitInfo struct {
 	DeleteMarkDelVolInterval         int64
 	RemoteCacheBoostEnableState      int64
 	ClientConnTimeoutUs              int64
+	DpTimeoutCntThreshold            int
 }
 
 type ConvertMode uint8

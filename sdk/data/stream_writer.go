@@ -513,6 +513,12 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 		reply := common.NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
 		err = reply.ReadFromConnNs(conn, s.client.dataWrapper.connConfig.ReadTimeoutNs)
 		if err != nil || reply.ResultCode != proto.OpOk || !packet.IsValidWriteReply(reply) || reply.CRC != packet.CRC {
+			if reply.ResultCode == proto.OpDiskNoSpaceErr {
+				s.client.dataWrapper.RemoveDataPartitionForWrite(packet.PartitionID)
+				if log.IsDebugEnabled() {
+					log.LogDebugf("writeToExtent: remove dp[%v] which returns NoSpaceErr, packet[%v]", packet.PartitionID, packet)
+				}
+			}
 			err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 			break
 		}
@@ -535,45 +541,47 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 		}
 	}()
 
-	exclude := make(map[string]struct{})
+	excludeDp := make(map[uint64]struct{})
+	excludeHost := make(map[string]struct{})
 	var conn *net.TCPConn
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
-		if err != nil {
-			if dp != nil {
-				dp.CheckAllHostsIsAvail(exclude)
-				if isExcluded(dp, exclude, dp.ClientWrapper.quorum) {
-					s.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
-				}
-			}
-			log.LogWarnf("writeToNewExtent: stream %v, oriReq %v, dp %v, extID %v, total %v, err %v, retry(%v/%v) exclude(%v)",
-				s, oriReq, dp, extID, total, err, i, MaxSelectDataPartitionForWrite, exclude)
+		if dp != nil && dp.checkDataPartitionForRemove(err, s.client.dpTimeoutCntThreshold, excludeHost, excludeDp) {
+			s.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+			log.LogWarnf("writeToNewExtent: remove rwDp(%v) extID(%v) total[%v] stream:%v, oriReq:%v, err:%v, retry(%v/%v) eHost(%v) eDp(%v)",
+				dp, extID, total, s, oriReq, err, i, MaxSelectDataPartitionForWrite, excludeHost, excludeDp)
 			dp, extID, total = nil, 0, 0
 		}
 
-		dp, err = s.client.dataWrapper.GetDataPartitionForWrite(exclude)
+		dp, err = s.client.dataWrapper.GetDataPartitionForWrite(excludeHost)
 		if err != nil {
-			if len(exclude) > 0 {
+			if len(excludeHost) > 0 || len(excludeDp) > 0 {
 				// if all dp is excluded, clean exclude map
-				log.LogWarnf("writeToNewExtent: clean exclude because no writable partition, stream(%v) oriReq(%v) exclude(%v)",
-					s, oriReq, exclude)
-				exclude = make(map[string]struct{})
+				log.LogWarnf("writeToNewExtent: clean exclude because no writable partition, stream(%v) oriReq(%v) excludeHost(%v) noSpaceDp(%v)",
+					s, oriReq, excludeHost, excludeDp)
+				excludeHost = make(map[string]struct{})
+				excludeDp = make(map[uint64]struct{})
 			}
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		conn, err = StreamConnPool.GetConnect(dp.Hosts[0])
 		if err != nil {
-			log.LogWarnf("writeToNewExtent: failed to create connection, err(%v) dp(%v) exclude(%v)", err, dp, exclude)
+			log.LogWarnf("writeToNewExtent: failed to create connection, err(%v) dp(%v) exclude(%v)", err, dp, excludeHost)
 			continue
 		}
-		extID, err = CreateExtent(ctx, conn, s.inode, dp, s.client.dataWrapper.quorum)
+		var status uint8
+		extID, status, err = CreateExtent(ctx, conn, s.inode, dp, s.client.dataWrapper.quorum)
 		if err != nil {
+			if status == proto.OpDiskNoSpaceErr {
+				excludeDp[dp.PartitionID] = struct{}{}
+			}
 			StreamConnPool.PutConnectWithErr(conn, err)
 			continue
 		}
 		total, err = s.writeToExtent(ctx, oriReq, dp, extID, direct, conn)
 		StreamConnPool.PutConnectWithErr(conn, err)
 		if err == nil {
+			dp.checkErrorIsTimeout(nil)
 			break
 		}
 	}

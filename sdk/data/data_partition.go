@@ -100,6 +100,7 @@ type DataPartition struct {
 	hostErrMap         sync.Map //key: host; value: last error access time
 	ecEnable           bool
 	ReadMetrics        *proto.ReadMetrics
+	timeoutCnt         int32
 
 	pingElapsedSortedHosts *PingElapsedSortedHosts
 }
@@ -234,6 +235,35 @@ func (dp *DataPartition) String() string {
 		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts, dp.NearHosts)
 }
 
+func (dp *DataPartition) checkErrorIsTimeout(err error) {
+	if err == nil {
+		atomic.StoreInt32(&dp.timeoutCnt, 0)
+		return
+	}
+	if strings.Contains(err.Error(), "i/o timeout") {
+		atomic.AddInt32(&dp.timeoutCnt, 1)
+	}
+}
+
+func (dp *DataPartition) checkDataPartitionForRemove(err error, threshold int, excludeHost map[string]struct{}, excludeDp map[uint64]struct{}) bool {
+	if err == nil {
+		return false
+	}
+	log.LogDebugf("checkDataPartitionForRemove: err: %s, threshold:%v, eHost:%v, eDp:%v", err.Error(), threshold, excludeHost, excludeDp)
+	// cond 1. timeout
+	if threshold > 0 {
+		dp.checkErrorIsTimeout(err)
+		count := atomic.LoadInt32(&dp.timeoutCnt)
+		if int(count) >= threshold {
+			excludeDp[dp.PartitionID] = struct{}{}
+		}
+	}
+	// cond 2. dp noSpace or all host is unreachable
+	dp.CheckAllHostsIsAvail(excludeHost)
+
+	return isExcludedByDp(dp, excludeDp) || isExcludedByHost(dp, excludeHost, dp.ClientWrapper.quorum)
+}
+
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 	var (
 		wg   sync.WaitGroup
@@ -269,7 +299,15 @@ func (dp *DataPartition) GetAllHosts() []string {
 	return dp.Hosts
 }
 
-func isExcluded(dp *DataPartition, exclude map[string]struct{}, quorum int) bool {
+func isExcludedByDp(dp *DataPartition, exclude map[uint64]struct{}) bool {
+	if dp == nil {
+		return false
+	}
+	_, exist := exclude[dp.PartitionID]
+	return exist
+}
+
+func isExcludedByHost(dp *DataPartition, exclude map[string]struct{}, quorum int) bool {
 	if _, exist := exclude[dp.Hosts[0]]; exist {
 		return true
 	}

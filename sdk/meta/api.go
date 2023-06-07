@@ -172,13 +172,13 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 	//		}
 	//	}
 
-	var icreateFunc operatePartitionFunc = func(mp1 *MetaPartition) bool {
+	var icreateFunc operatePartitionFunc = func(mp1 *MetaPartition) (bool, int) {
 		status, info, err = mw.icreate(ctx, mp1, mode, uid, gid, target)
 		if err == nil && status == statusOK {
 			mp = mp1
-			return true
+			return true, status
 		} else {
-			return false
+			return false, status
 		}
 	}
 	retryCount := 0
@@ -785,9 +785,9 @@ func (mw *MetaWrapper) InodeCreate_ll(ctx context.Context, mode, uid, gid uint32
 		err    error
 		info   *proto.InodeInfo
 	)
-	var icreateFunc operatePartitionFunc = func(mp *MetaPartition) bool {
+	var icreateFunc operatePartitionFunc = func(mp *MetaPartition) (bool, int) {
 		status, info, err = mw.icreate(ctx, mp, mode, uid, gid, target)
-		return err == nil && status == statusOK
+		return err == nil && status == statusOK, status
 	}
 	if mw.iteratePartitions(icreateFunc) {
 		return info, nil
@@ -834,9 +834,9 @@ func (mw *MetaWrapper) InitMultipart_ll(ctx context.Context, path string, extend
 		status    int
 		sessionId string
 	)
-	var createMultipartFunc operatePartitionFunc = func(mp *MetaPartition) bool {
+	var createMultipartFunc operatePartitionFunc = func(mp *MetaPartition) (bool, int) {
 		status, sessionId, err = mw.createMultipart(ctx, mp, path, extend)
-		return err == nil && status == statusOK && len(sessionId) > 0
+		return err == nil && status == statusOK && len(sessionId) > 0, status
 	}
 	if mw.iteratePartitions(createMultipartFunc) {
 		return sessionId, nil

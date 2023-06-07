@@ -121,6 +121,7 @@ type ExtentClient struct {
 	readLimiter     *rate.Limiter
 	writeLimiter    *rate.Limiter
 	masterClient    *masterSDK.MasterClient
+	dpTimeoutCntThreshold int
 
 	dataWrapper     *Wrapper
 	metaWrapper     *meta.MetaWrapper
@@ -652,6 +653,7 @@ func (client *ExtentClient) updateConfig() {
 		client.extentMergeIno = limitInfo.ExtentMergeIno[client.dataWrapper.volName]
 		client.ExtentMergeSleepMs = limitInfo.ExtentMergeSleepMs
 	}
+	client.dpTimeoutCntThreshold = limitInfo.DpTimeoutCntThreshold
 }
 
 func (client *ExtentClient) Close(ctx context.Context) error {

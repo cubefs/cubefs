@@ -155,3 +155,36 @@ func Test_containsExtent(t *testing.T) {
 		})
 	}
 }
+
+func Test_iteratePartitions(t *testing.T) {
+	mw, err := NewMetaWrapper(cfg)
+	if err != nil {
+		t.Fatalf("create meta wrapper failed")
+	}
+	var (
+		choosen *MetaPartition
+	)
+	var testFunc operatePartitionFunc = func(mp1 *MetaPartition) (bool, int) {
+		if mp1.PartitionID%2 == 0 {
+			return false, statusFull
+		} else {
+			choosen = mp1
+			return true, statusOK
+		}
+	}
+	count := 0
+	for {
+		if mw.iteratePartitions(testFunc) {
+			if choosen.PartitionID%2 == 0 {
+				t.Fatalf("! choose the statusFull mp[%v], try[%v/10]", choosen.PartitionID, count)
+			}
+		}
+		count++
+		if count == 10 {
+			break
+		}
+	}
+	if err = mw.updateMetaPartitions(); err != nil {
+		t.Errorf("updateMetaPartitons failed: %v", err)
+	}
+}

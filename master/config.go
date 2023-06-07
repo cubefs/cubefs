@@ -161,6 +161,7 @@ type clusterConfig struct {
 	DeleteMarkDelVolInterval            int64
 	RemoteCacheBoostEnable              bool
 	ClientNetConnTimeoutUs              int64
+	DpTimeoutCntThreshold               int32
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

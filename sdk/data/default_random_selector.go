@@ -80,11 +80,9 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	s.RUnlock()
 
 	dp = s.getRandomDataPartition(partitions, exclude)
-
 	if dp != nil {
 		return dp, nil
 	}
-
 	return nil, fmt.Errorf("no writable data partition")
 }
 
@@ -107,7 +105,7 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	newRwPartition = append(newRwPartition, rwPartitionGroups[:i]...)
 	newRwPartition = append(newRwPartition, rwPartitionGroups[i+1:]...)
 	s.partitions = newRwPartition
-	log.LogWarnf("RemoveDP: dp(%v), count(%v)", partitionID, len(s.partitions))
+	log.LogWarnf("RemoveDP: dpId(%v), rwDpLen(%v)", partitionID, len(s.partitions))
 
 	for i = 0; i < len(localLeaderPartitions); i++ {
 		if localLeaderPartitions[i].PartitionID == partitionID {
@@ -160,7 +158,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(length)
 	dp = partitions[index]
-	if !isExcluded(dp, exclude, s.param.quorum) {
+	if !isExcludedByHost(dp, exclude, s.param.quorum) {
 		log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", dp, index)
 		return dp
 	}
@@ -170,7 +168,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	var currIndex int
 	for i := 0; i < length; i++ {
 		currIndex = (index + i) % length
-		if !isExcluded(partitions[currIndex], exclude, s.param.quorum) {
+		if !isExcludedByHost(partitions[currIndex], exclude, s.param.quorum) {
 			log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", partitions[currIndex], currIndex)
 			return partitions[currIndex]
 		}

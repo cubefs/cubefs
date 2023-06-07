@@ -174,3 +174,25 @@ func (mw *MetaWrapper) getRefreshMp(ctx context.Context, inode uint64) *MetaPart
 //	defer mw.RUnlock()
 //	return mw.ranges.Max().(*MetaPartition)
 //}
+
+func (mw *MetaWrapper) removeRWPartitions(pid uint64) {
+	mw.Lock()
+	defer mw.Unlock()
+	rwPartitions := mw.rwPartitions
+	if len(rwPartitions) == 0 {
+		return
+	}
+	var i int
+	for i = 0; i < len(rwPartitions); i++ {
+		if rwPartitions[i].PartitionID == pid {
+			break
+		}
+	}
+	if i == len(rwPartitions) {
+		return
+	}
+
+	rwPartitions = append(rwPartitions[:i], rwPartitions[i+1:]...)
+	mw.rwPartitions = rwPartitions
+	return
+}

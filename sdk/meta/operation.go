@@ -2414,7 +2414,7 @@ func (mw *MetaWrapper) batchDeleteDentryUntest(ctx context.Context, wg *sync.Wai
 	return
 }
 
-type operatePartitionFunc func(*MetaPartition) bool
+type operatePartitionFunc func(*MetaPartition) (bool, int)
 
 // status of mp in metanode may not be accurate, so write operations should iterate over all mps
 func (mw *MetaWrapper) iteratePartitions(operateFunc operatePartitionFunc) bool {
@@ -2424,19 +2424,26 @@ func (mw *MetaWrapper) iteratePartitions(operateFunc operatePartitionFunc) bool 
 	)
 	partitions = mw.getRWPartitions()
 	length = len(partitions)
+	fullPartitions := make([]uint64, 0)
 	epoch := atomic.AddUint64(&mw.epoch, 1)
 	for i := 0; i < length; i++ {
 		index := (int(epoch) + i) % length
-		if operateFunc(partitions[index]) {
+		mp := partitions[index]
+		if ok, status := operateFunc(mp); ok {
 			return true
+		} else if status == statusFull {
+			fullPartitions = append(fullPartitions, mp.PartitionID)
 		}
+	}
+	for _, mpId := range fullPartitions {
+		mw.removeRWPartitions(mpId)
 	}
 
 	partitions = mw.getUnavailPartitions()
 	length = len(partitions)
 	for i := 0; i < length; i++ {
 		index := (int(epoch) + i) % length
-		if operateFunc(partitions[index]) {
+		if ok, _ := operateFunc(partitions[index]); ok {
 			return true
 		}
 	}
@@ -2449,7 +2456,7 @@ func (mw *MetaWrapper) iteratePartitions(operateFunc operatePartitionFunc) bool 
 			return false
 		}
 		index := (int(epoch) + i) % length
-		if operateFunc(partitions[index]) {
+		if ok, _ := operateFunc(partitions[index]); ok {
 			return true
 		}
 	}

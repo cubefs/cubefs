@@ -96,7 +96,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(kValue)
 	dp = partitions[index]
-	if !isExcluded(dp, exclude, s.param.quorum) {
+	if !isExcludedByHost(dp, exclude, s.param.quorum) {
 		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 			dp, index, kValue, len(partitions))
 		return dp, nil
@@ -107,7 +107,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	// if partitions[index] is excluded, select next in fasterRwPartitions
 	for i := 1; i < kValue; i++ {
 		dp = partitions[(index+i)%kValue]
-		if !isExcluded(dp, exclude, s.param.quorum) {
+		if !isExcludedByHost(dp, exclude, s.param.quorum) {
 			log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%kValue, kValue, len(partitions))
 			return dp, nil
@@ -120,7 +120,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	slowerRwPartitionsNum := len(partitions) - kValue
 	for i := 0; i < slowerRwPartitionsNum; i++ {
 		dp = partitions[(index+i)%slowerRwPartitionsNum+kValue]
-		if !isExcluded(dp, exclude, s.param.quorum) {
+		if !isExcludedByHost(dp, exclude, s.param.quorum) {
 			log.LogDebugf("KFasterRandomSelector: select slower dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%slowerRwPartitionsNum+kValue, kValue, len(partitions))
 			return dp, nil
@@ -152,7 +152,7 @@ func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 	kValue := s.updateKValue(newRwPartition)
 	s.kValue = kValue
 	s.partitions = newRwPartition
-	log.LogWarnf("RemoveDP: dp(%v), count(%v)", partitionID, len(s.partitions))
+	log.LogWarnf("RemoveDP: dpId(%v), rwDpLen(%v)", partitionID, len(s.partitions))
 
 	return
 }

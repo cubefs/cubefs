@@ -34,7 +34,7 @@ type DataPartitionSelector interface {
 	// Refresh refreshes current selector instance by specified data partitions.
 	Refresh(partitions []*DataPartition) error
 
-	// Select returns an data partition picked by selector.
+	// Select returns a data partition picked by selector.
 	Select(excludes map[string]struct{}) (*DataPartition, error)
 
 	// RemoveDP removes specified data partition.

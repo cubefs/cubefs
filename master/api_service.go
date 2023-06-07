@@ -478,6 +478,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	normalExtentDeleteExpireTime := atomic.LoadUint64(&m.cluster.cfg.DataNodeNormalExtentDeleteExpire)
 	trashCleanDuration := atomic.LoadInt32(&m.cluster.cfg.TrashCleanDurationEachTime)
 	trashCleanMaxCount := atomic.LoadInt32(&m.cluster.cfg.TrashItemCleanMaxCountEachTime)
+	dpTimeoutCntThreshold := atomic.LoadInt32(&m.cluster.cfg.DpTimeoutCntThreshold)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
@@ -548,6 +549,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DeleteMarkDelVolInterval:               m.cluster.cfg.DeleteMarkDelVolInterval,
 		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
 		ClientConnTimeoutUs:                    m.cluster.cfg.ClientNetConnTimeoutUs,
+		DpTimeoutCntThreshold:                  int(dpTimeoutCntThreshold),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -4602,7 +4604,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
-		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.NetConnTimeoutUsKey}
+		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.NetConnTimeoutUsKey, proto.DpTimeoutCntThreshold}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return
