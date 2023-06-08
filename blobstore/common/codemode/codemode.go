@@ -50,6 +50,7 @@ const (
 	EC18P9L3 CodeMode = 212
 	EC10P5L3 CodeMode = 213
 	EC12P3L3 CodeMode = 214
+	EC6P4L3  CodeMode = 215
 )
 
 // Note: Don't modify it unless you know very well how codemode works.
@@ -97,6 +98,7 @@ var constCodeModeTactic = map[CodeMode]Tactic{
 	EC18P9L3: {N: 18, M: 9, L: 3, AZCount: 3, PutQuorum: 27, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
 	EC10P5L3: {N: 10, M: 5, L: 3, AZCount: 3, PutQuorum: 15, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
 	EC12P3L3: {N: 12, M: 3, L: 3, AZCount: 3, PutQuorum: 15, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
+	EC6P4L3:  {N: 6, M: 4, L: 3, AZCount: 3, PutQuorum: 10, GetQuorum: 0, MinShardSize: alignSize2KB, CodeType: AzureLrcP1},
 }
 
 var constName2CodeMode = map[CodeModeName]CodeMode{
@@ -120,6 +122,7 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC18P9L3":      EC18P9L3,
 	"EC10P5L3":      EC10P5L3,
 	"EC12P3L3":      EC12P3L3,
+	"EC6P4L3":       EC6P4L3,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -143,6 +146,7 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC18P9L3:      "EC18P9L3",
 	EC10P5L3:      "EC10P5L3",
 	EC12P3L3:      "EC12P3L3",
+	EC6P4L3:       "EC6P4L3",
 }
 
 // vol layout ep:EC6P10L2
@@ -224,6 +228,7 @@ func init() {
 		{Mode: EC18P9L3, Size: alignSize2KB},
 		{Mode: EC10P5L3, Size: alignSize2KB},
 		{Mode: EC12P3L3, Size: alignSize2KB},
+		{Mode: EC6P4L3, Size: alignSize2KB},
 	} {
 		tactic := pair.Mode.Tactic()
 		if !tactic.IsValid() {
@@ -469,5 +474,6 @@ func GetAllCodeModes() []CodeMode {
 		EC18P9L3,
 		EC10P5L3,
 		EC12P3L3,
+		EC6P4L3,
 	}
 }
