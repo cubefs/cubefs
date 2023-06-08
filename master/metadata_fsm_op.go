@@ -242,6 +242,8 @@ type volValue struct {
 	EnablePosixAcl                                         bool
 	EnableTransaction                                      uint8
 	TxTimeout                                              int64
+	TxConflictRetryNum                                     int64
+	TxConflictRetryInterval                                int64
 	VolQosEnable                                           bool
 	DiskQosEnable                                          bool
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
@@ -256,29 +258,31 @@ func (v *volValue) Bytes() (raw []byte, err error) {
 
 func newVolValue(vol *Vol) (vv *volValue) {
 	vv = &volValue{
-		ID:                vol.ID,
-		Name:              vol.Name,
-		ReplicaNum:        vol.mpReplicaNum,
-		DpReplicaNum:      vol.dpReplicaNum,
-		Status:            vol.Status,
-		DataPartitionSize: vol.dataPartitionSize,
-		Capacity:          vol.Capacity,
-		Owner:             vol.Owner,
-		FollowerRead:      vol.FollowerRead,
-		Authenticate:      vol.authenticate,
-		CrossZone:         vol.crossZone,
-		DomainOn:          vol.domainOn,
-		ZoneName:          vol.zoneName,
-		OSSAccessKey:      vol.OSSAccessKey,
-		OSSSecretKey:      vol.OSSSecretKey,
-		CreateTime:        vol.createTime,
-		Description:       vol.description,
-		DpSelectorName:    vol.dpSelectorName,
-		DpSelectorParm:    vol.dpSelectorParm,
-		DefaultPriority:   vol.defaultPriority,
-		EnablePosixAcl:    vol.enablePosixAcl,
-		EnableTransaction: vol.enableTransaction,
-		TxTimeout:         vol.txTimeout,
+		ID:                      vol.ID,
+		Name:                    vol.Name,
+		ReplicaNum:              vol.mpReplicaNum,
+		DpReplicaNum:            vol.dpReplicaNum,
+		Status:                  vol.Status,
+		DataPartitionSize:       vol.dataPartitionSize,
+		Capacity:                vol.Capacity,
+		Owner:                   vol.Owner,
+		FollowerRead:            vol.FollowerRead,
+		Authenticate:            vol.authenticate,
+		CrossZone:               vol.crossZone,
+		DomainOn:                vol.domainOn,
+		ZoneName:                vol.zoneName,
+		OSSAccessKey:            vol.OSSAccessKey,
+		OSSSecretKey:            vol.OSSSecretKey,
+		CreateTime:              vol.createTime,
+		Description:             vol.description,
+		DpSelectorName:          vol.dpSelectorName,
+		DpSelectorParm:          vol.dpSelectorParm,
+		DefaultPriority:         vol.defaultPriority,
+		EnablePosixAcl:          vol.enablePosixAcl,
+		EnableTransaction:       vol.enableTransaction,
+		TxTimeout:               vol.txTimeout,
+		TxConflictRetryNum:      vol.txConflictRetryNum,
+		TxConflictRetryInterval: vol.txConflictRetryInterval,
 
 		VolType:             vol.VolType,
 		EbsBlkSize:          vol.EbsBlkSize,
