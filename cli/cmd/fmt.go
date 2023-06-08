@@ -210,6 +210,8 @@ var (
 	inodeCountNotEqualInfoTablePattern = "%-8v    %-8v    %-8v     %-8v    %-24v"
 	inodeCountNotEqualInfoTableHeader  = fmt.Sprintf(inodeCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(inodeCount)")
+	maxInodeNotEqualInfoTableHeader = fmt.Sprintf(inodeCountNotEqualInfoTablePattern,
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(maxInode)")
 
 	dentryCountNotEqualInfoTablePattern = "%-8v    %-8v    %-8v     %-8v    %-24v"
 	dentryCountNotEqualInfoTableHeader  = fmt.Sprintf(dentryCountNotEqualInfoTablePattern,
@@ -295,6 +297,28 @@ func formatMetaPartitionReplicaInodeNotEqualInfoRow(partition *proto.MetaPartiti
 			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.InodeCount))
 		} else {
 			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.InodeCount))
+		}
+		firstItem = false
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(inodeCountNotEqualInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), sb.String())
+
+}
+
+func formatMetaPartitionReplicaMaxInodeNotEqualInfoRow(partition *proto.MetaPartitionInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString("[")
+	var firstItem = true
+	for _, replica := range partition.Replicas {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+
+		if replica.IsLeader {
+			sb.WriteString(fmt.Sprintf("%v(%v isLeader)", replica.Addr, replica.MaxInode))
+		} else {
+			sb.WriteString(fmt.Sprintf("%v(%v)", replica.Addr, replica.MaxInode))
 		}
 		firstItem = false
 	}
