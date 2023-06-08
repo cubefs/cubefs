@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -97,14 +98,29 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			fullPaths := strings.Split(fullPath, ",")
-			if hasNestedPaths(fullPaths) {
-				stdout("fullPaths %v has nested.\n", fullPaths)
+			err = checkNestedDirectories(fullPaths)
+			if err != nil {
+				stdout("create quota failed, fullPaths %v has nested.\n", fullPaths)
+				return
+			}
+			if len(fullPaths) > 5 {
+				stdout("create quota failed, fullPath %v has more than 5 path.\n", fullPaths)
 				return
 			}
 			quotaPathInofs := make([]proto.QuotaPathInfo, 0, 0)
 			for _, path := range fullPaths {
 				var quotaPathInfo proto.QuotaPathInfo
 				quotaPathInfo.FullPath = path
+
+				if strings.Count(path, "/") != 1 {
+					stdout("create quota failed, path %v does not has only one / \n", path)
+					return
+				}
+				if !strings.HasPrefix(path, "/") {
+					stdout("create quota failed, path %v does not start with / \n", path)
+					return
+				}
+
 				inodeId, err := metaWrapper.LookupPath(path)
 				if err != nil {
 					stdout("get inode by fullPath %v fail %v\n", path, err)
@@ -118,7 +134,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 
 				if !proto.IsDir(inodeInfo.Mode) {
-					stdout("inode [%v] is not dir\n", inodeId)
+					stdout("create quota failed, inode [%v] is not dir\n", inodeId)
 					return
 				}
 
@@ -157,6 +173,9 @@ func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
 				stdout("volName %v quota list failed(%v)\n", volName, err)
 				return
 			}
+			sort.Slice(quotas, func(i, j int) bool {
+				return quotas[i].QuotaId < quotas[j].QuotaId
+			})
 			stdout("[quotas]\n")
 			stdout("%v\n", formatQuotaTableHeader())
 			for _, quotaInfo := range quotas {
@@ -385,6 +404,29 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
+func checkNestedDirectories(paths []string) error {
+	for i, path := range paths {
+		for j := i + 1; j < len(paths); j++ {
+			if isAncestor(path, paths[j]) {
+				return fmt.Errorf("Nested directories found: %s and %s", path, paths[j])
+			}
+		}
+	}
+	return nil
+}
+
+func isAncestor(parent, child string) bool {
+	if parent == child {
+		return false
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
+}
+
+/*
 func hasNestedPaths(paths []string) bool {
 	for i, path1 := range paths {
 		absPath1, _ := filepath.Abs(path1)
@@ -404,4 +446,4 @@ func hasNestedPaths(paths []string) bool {
 	}
 
 	return false
-}
+}*/
