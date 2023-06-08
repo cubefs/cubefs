@@ -255,8 +255,8 @@ func TestAzureLrcP1Encoder(t *testing.T) {
 	for _, cm := range codemode.GetAllCodeModes() {
 		if cm.Tactic().CodeType == codemode.AzureLrcP1 {
 			testAzureLrcP1Encoder(t, cm)
+			log.Printf("cm:%v test finish!", cm)
 		}
-		log.Printf("cm:%v test finish!", cm)
 	}
 }
 
