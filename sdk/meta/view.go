@@ -420,23 +420,3 @@ func (mw *MetaWrapper) GetQuotaFullPaths() (fullPaths []string) {
 	}
 	return fullPaths
 }
-
-func findNestedPath(path1, path2 string) string {
-	if path1 == path2 {
-		return ""
-	}
-
-	if len(path1) > len(path2) {
-		return ""
-	}
-
-	if strings.HasPrefix(path2, path1) {
-		if len(path1) == 1 || strings.HasSuffix(path1, "/") {
-			return path2[len(path1):]
-		} else if path2[len(path1)] == '/' {
-			return path2[len(path1)+1:]
-		}
-	}
-
-	return ""
-}
