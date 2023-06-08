@@ -84,6 +84,7 @@ type Cluster struct {
 	clusterUuid                  string
 	clusterUuidEnable            bool
 	inodeCountNotEqualMP         *sync.Map
+	maxInodeNotEqualMP           *sync.Map
 	dentryCountNotEqualMP        *sync.Map
 }
 
@@ -190,7 +191,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	}
 }
 
-//NOTICE: caller must correctly use mgr.rwMutex
+// NOTICE: caller must correctly use mgr.rwMutex
 func (mgr *followerReadManager) isVolRecordObsolete(volName string) bool {
 	volView, ok := mgr.volViewMap[volName]
 	if !ok {
@@ -319,6 +320,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.checkAutoCreateDataPartition = false
 	c.masterClient = masterSDK.NewMasterClient(nil, false)
 	c.inodeCountNotEqualMP = new(sync.Map)
+	c.maxInodeNotEqualMP = new(sync.Map)
 	c.dentryCountNotEqualMP = new(sync.Map)
 	return
 }

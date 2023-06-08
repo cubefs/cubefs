@@ -200,6 +200,23 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 			}
 
 			stdout("\n")
+			stdout("%v\n", "[Partition with replica max inode not equal]:")
+			stdout("%v\n", maxInodeNotEqualInfoTableHeader)
+			sort.SliceStable(diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs, func(i, j int) bool {
+				return diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs[i] < diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs[j]
+			})
+			for _, pid := range diagnosis.MaxInodeNotEqualReplicaMetaPartitionIDs {
+				var partition *proto.MetaPartitionInfo
+				if partition, err = client.ClientAPI().GetMetaPartition(pid); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdout("%v\n", formatMetaPartitionReplicaInodeNotEqualInfoRow(partition))
+				}
+			}
+
+			stdout("\n")
 			stdout("%v\n", "[Partition with replica dentry count not equal]:")
 			stdout("%v\n", dentryCountNotEqualInfoTableHeader)
 			sort.SliceStable(diagnosis.DentryCountNotEqualReplicaMetaPartitionIDs, func(i, j int) bool {
