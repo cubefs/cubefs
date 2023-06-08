@@ -57,6 +57,33 @@ func extractTxTimeout(r *http.Request) (timeout int64, err error) {
 	return timeout, nil
 }
 
+func extractTxConflictRetryNum(r *http.Request) (retryNum int64, err error) {
+	var txRetryNum uint64
+	if txRetryNum, err = extractUint64WithDefault(r, txConflictRetryNumKey, proto.DefaultTxConflictRetryNum); err != nil {
+		return
+	}
+
+	if txRetryNum == 0 || txRetryNum > proto.MaxTxConflictRetryNum {
+		return retryNum, fmt.Errorf("txRetryNum(%d) value range [1-%v]", txRetryNum, proto.MaxTxConflictRetryNum)
+	}
+	retryNum = int64(txRetryNum)
+	return retryNum, nil
+}
+
+func extractTxConflictRetryInterval(r *http.Request) (interval int64, err error) {
+	var txInterval uint64
+	if txInterval, err = extractUint64WithDefault(r, txConflictRetryIntervalKey, proto.DefaultTxConflictRetryInterval); err != nil {
+		return
+	}
+
+	if txInterval < proto.MinTxConflictRetryInterval || txInterval > proto.MaxTxConflictRetryInterval {
+		return interval, fmt.Errorf("txInterval(%d) value range [%v-%v] ms",
+			txInterval, proto.MinTxConflictRetryInterval, proto.MaxTxConflictRetryInterval)
+	}
+	interval = int64(txInterval)
+	return interval, nil
+}
+
 //func extractTxMask(r *http.Request) (mask uint8, err error) {
 //
 //	var maskStr string
@@ -110,6 +137,12 @@ func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
 		return
 	}
 
+	var reset bool
+	reset, err = extractBoolWithDefault(r, txForceResetKey, false)
+	if err != nil {
+		return
+	}
+
 	/*arr := strings.Split(maskStr, "|")
 
 	optNum := len(arr)
@@ -132,6 +165,10 @@ func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
 
 	mask, err = proto.GetMaskFromString(maskStr)
 	if err != nil {
+		return
+	}
+
+	if reset {
 		return
 	}
 
@@ -329,21 +366,23 @@ func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, er
 }
 
 type updateVolReq struct {
-	name                  string
-	authKey               string
-	capacity              uint64
-	followerRead          bool
-	authenticate          bool
-	enablePosixAcl        bool
-	enableTransaction     uint8
-	txTimeout             int64
-	zoneName              string
-	description           string
-	dpSelectorName        string
-	dpSelectorParm        string
-	replicaNum            int
-	coldArgs              *coldVolArgs
-	dpReadOnlyWhenVolFull bool
+	name                    string
+	authKey                 string
+	capacity                uint64
+	followerRead            bool
+	authenticate            bool
+	enablePosixAcl          bool
+	enableTransaction       uint8
+	txTimeout               int64
+	txConflictRetryNum      int64
+	txConflictRetryInterval int64
+	zoneName                string
+	description             string
+	dpSelectorName          string
+	dpSelectorParm          string
+	replicaNum              int
+	coldArgs                *coldVolArgs
+	dpReadOnlyWhenVolFull   bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -439,6 +478,18 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 	req.txTimeout = txTimeout
+
+	var txConflictRetryNum int64
+	if txConflictRetryNum, err = extractTxConflictRetryNum(r); err != nil {
+		return
+	}
+	req.txConflictRetryNum = txConflictRetryNum
+
+	var txConflictRetryInterval int64
+	if txConflictRetryInterval, err = extractTxConflictRetryInterval(r); err != nil {
+		return
+	}
+	req.txConflictRetryInterval = txConflictRetryInterval
 
 	//if req.enableTransaction, err = extractBoolWithDefault(r, enableTxMaskKey, vol.enableTransaction); err != nil {
 	//	return
@@ -592,6 +643,8 @@ type createVolReq struct {
 	DpReadOnlyWhenVolFull                bool
 	enableTransaction                    uint8
 	txTimeout                            int64
+	txConflictRetryNum                   int64
+	txConflictRetryInterval              int64
 	qosLimitArgs                         *qosArgs
 	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
@@ -736,6 +789,18 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 	req.txTimeout = txTimeout
+
+	var txConflictRetryNum int64
+	if txConflictRetryNum, err = extractTxConflictRetryNum(r); err != nil {
+		return
+	}
+	req.txConflictRetryNum = txConflictRetryNum
+
+	var txConflictRetryInterval int64
+	if txConflictRetryInterval, err = extractTxConflictRetryInterval(r); err != nil {
+		return
+	}
+	req.txConflictRetryInterval = txConflictRetryInterval
 
 	return
 }

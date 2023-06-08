@@ -262,7 +262,13 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView, txTimeout int64, txMask string) (err error) {
+func (api *AdminAPI) UpdateVolume(
+	vv *proto.SimpleVolView,
+	txTimeout int64,
+	txMask string,
+	txForceReset bool,
+	txConflictRetryNum int64,
+	txConflictRetryInterval int64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", vv.Name)
 	request.addParam("description", vv.Description)
@@ -284,10 +290,19 @@ func (api *AdminAPI) UpdateVolume(vv *proto.SimpleVolView, txTimeout int64, txMa
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
+		request.addParam("txForceReset", strconv.FormatBool(txForceReset))
 	}
 
 	if txTimeout > 0 {
 		request.addParam("txTimeout", strconv.FormatInt(txTimeout, 10))
+	}
+
+	if txConflictRetryNum > 0 {
+		request.addParam("txConflictRetryNum", strconv.FormatInt(txConflictRetryNum, 10))
+	}
+
+	if txConflictRetryInterval > 0 {
+		request.addParam("txConflictRetryInterval", strconv.FormatInt(txConflictRetryInterval, 10))
 	}
 
 	if _, err = api.mc.serveRequest(request); err != nil {
@@ -332,7 +347,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
-	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32) (err error) {
+	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -363,6 +378,15 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, cross
 	if txTimeout > 0 {
 		request.addParam("txTimeout", strconv.FormatUint(uint64(txTimeout), 10))
 	}
+
+	if txConflictRetryNum > 0 {
+		request.addParam("txConflictRetryNum", strconv.FormatInt(txConflictRetryNum, 10))
+	}
+
+	if txConflictRetryInterval > 0 {
+		request.addParam("txConflictRetryInterval", strconv.FormatInt(txConflictRetryInterval, 10))
+	}
+
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
