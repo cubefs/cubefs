@@ -187,7 +187,8 @@ func (v *Volume) loadOSSMeta() {
 	if cors, err = v.loadBucketCors(); err != nil { // if cors isn't exist, it may return nil. So it needs to be cleared manually when deleting cors.
 		return
 	}
-	v.metaLoader.storeCors(cors)
+	v.metaLoader.storeCORS(cors)
+	v.metaLoader.setSynced()
 }
 
 func (v *Volume) Name() string {
@@ -2936,7 +2937,11 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 	if config.MetaStrict {
 		v.metaLoader = &strictMetaLoader{v: v}
 	} else {
-		v.metaLoader = &cacheMetaLoader{om: new(OSSMeta)}
+		v.metaLoader = &cacheMetaLoader{
+			om:     new(OSSMeta),
+			sml:    &strictMetaLoader{v: v},
+			synced: new(int32),
+		}
 		go v.syncOSSMeta()
 	}
 

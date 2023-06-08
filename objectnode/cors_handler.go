@@ -39,7 +39,7 @@ func (o *ObjectNode) getBucketCorsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var cors *CORSConfiguration
-	if cors, err = vol.metaLoader.loadCors(); err != nil {
+	if cors, err = vol.metaLoader.loadCORS(); err != nil {
 		log.LogErrorf("getBucketCorsHandler: load cors fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), vol.Name(), err)
 		return
@@ -113,7 +113,7 @@ func (o *ObjectNode) putBucketCorsHandler(w http.ResponseWriter, r *http.Request
 			GetRequestID(r), vol.Name(), string(body), err)
 		return
 	}
-	vol.metaLoader.storeCors(corsConfig)
+	vol.metaLoader.storeCORS(corsConfig)
 
 	return
 }
@@ -144,7 +144,7 @@ func (o *ObjectNode) deleteBucketCorsHandler(w http.ResponseWriter, r *http.Requ
 			GetRequestID(r), vol.Name(), err)
 		return
 	}
-	vol.metaLoader.storeCors(nil)
+	vol.metaLoader.storeCORS(nil)
 	w.WriteHeader(http.StatusNoContent)
 
 	return
