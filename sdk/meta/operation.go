@@ -186,27 +186,36 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 		tx.OnExecuted(status, resp.TxInfo)
 	}()
 
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaTxUnlinkInode
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("txIunlink: ino(%v) err(%v)", inode, err)
-		return
-	}
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	metric := exporter.NewTPCnt("OpMetaTxUnlinkInode")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("txIunlink: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
+	var packet *proto.Packet
+	for i := int64(1); i <= mw.TxConflictRetryNum; i++ {
+		packet = proto.NewPacketReqID()
+		packet.Opcode = proto.OpMetaTxUnlinkInode
+		packet.PartitionID = mp.PartitionID
+		err = packet.MarshalData(req)
+		if err != nil {
+			log.LogErrorf("txIunlink: ino(%v) err(%v)", inode, err)
+			return
+		}
+		packet, err = mw.sendToMetaPartition(mp, packet)
+		if err != nil {
+			log.LogErrorf("txIunlink: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+			return
+		}
+
+		status = parseStatus(packet.ResultCode)
+		if status != statusTxConflict {
+			break
+		}
+		log.LogWarnf("txIunlink: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), i)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
 	}
 
-	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("txIunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -393,27 +402,36 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		tx.OnExecuted(status, resp.TxInfo)
 	}()
 
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaTxCreateDentry
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("txDcreate: req(%v) err(%v)", *req, err)
-		return
-	}
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	metric := exporter.NewTPCnt("OpMetaTxCreateDentry")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
+	var packet *proto.Packet
+	for i := int64(1); i <= mw.TxConflictRetryNum; i++ {
+		packet = proto.NewPacketReqID()
+		packet.Opcode = proto.OpMetaTxCreateDentry
+		packet.PartitionID = mp.PartitionID
+		err = packet.MarshalData(req)
+		if err != nil {
+			log.LogErrorf("txDcreate: req(%v) err(%v)", *req, err)
+			return
+		}
+		packet, err = mw.sendToMetaPartition(mp, packet)
+		if err != nil {
+			log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+			return
+		}
+
+		status = parseStatus(packet.ResultCode)
+		if status != statusTxConflict {
+			break
+		}
+		log.LogWarnf("txDcreate: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), i)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
 	}
 
-	status = parseStatus(packet.ResultCode)
 	if (status != statusOK) && (status != statusExist) {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -519,27 +537,36 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 		tx.OnExecuted(status, resp.TxInfo)
 	}()
 
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaTxUpdateDentry
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("txDupdate: req(%v) err(%v)", *req, err)
-		return
-	}
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	metric := exporter.NewTPCnt("OpMetaTxUpdateDentry")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("txDupdate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
+	var packet *proto.Packet
+	for i := int64(1); i <= mw.TxConflictRetryNum; i++ {
+		packet = proto.NewPacketReqID()
+		packet.Opcode = proto.OpMetaTxUpdateDentry
+		packet.PartitionID = mp.PartitionID
+		err = packet.MarshalData(req)
+		if err != nil {
+			log.LogErrorf("txDupdate: req(%v) err(%v)", *req, err)
+			return
+		}
+		packet, err = mw.sendToMetaPartition(mp, packet)
+		if err != nil {
+			log.LogErrorf("txDupdate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+			return
+		}
+
+		status = parseStatus(packet.ResultCode)
+		if status != statusTxConflict {
+			break
+		}
+		log.LogWarnf("txDupdate: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), i)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
 	}
 
-	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("txDupdate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -641,27 +668,35 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID ui
 		tx.OnExecuted(status, resp.TxInfo)
 	}()
 
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaTxDeleteDentry
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("txDdelete: req(%v) err(%v)", *req, err)
-		return
-	}
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	metric := exporter.NewTPCnt("OpMetaTxDeleteDentry")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("txDdelete: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
+	var packet *proto.Packet
+	for i := int64(1); i <= mw.TxConflictRetryNum; i++ {
+		packet = proto.NewPacketReqID()
+		packet.Opcode = proto.OpMetaTxDeleteDentry
+		packet.PartitionID = mp.PartitionID
+		err = packet.MarshalData(req)
+		if err != nil {
+			log.LogErrorf("txDdelete: req(%v) err(%v)", *req, err)
+			return
+		}
+		packet, err = mw.sendToMetaPartition(mp, packet)
+		if err != nil {
+			log.LogErrorf("txDdelete: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+			return
+		}
+		status = parseStatus(packet.ResultCode)
+		if status != statusTxConflict {
+			break
+		}
+		log.LogWarnf("txDdelete: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), i)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
 	}
 
-	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("txDdelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -1241,29 +1276,36 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64)
 		tx.OnExecuted(status, resp.TxInfo)
 	}()
 
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaTxLinkInode
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("txIlink: req(%v) err(%v)", *req, err)
-		return
-	}
-
-	log.LogDebugf("txIlink enter: packet(%v) mp(%v) req(%v)", packet, mp, string(packet.Data))
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	metric := exporter.NewTPCnt("OpMetaTxLinkInode")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("txIlink: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
+	var packet *proto.Packet
+	for i := int64(1); i <= mw.TxConflictRetryNum; i++ {
+		packet = proto.NewPacketReqID()
+		packet.Opcode = proto.OpMetaTxLinkInode
+		packet.PartitionID = mp.PartitionID
+		err = packet.MarshalData(req)
+		if err != nil {
+			log.LogErrorf("txIlink: req(%v) err(%v)", *req, err)
+			return
+		}
+		packet, err = mw.sendToMetaPartition(mp, packet)
+		if err != nil {
+			log.LogErrorf("txIlink: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+			return
+		}
+
+		status = parseStatus(packet.ResultCode)
+		if status != statusTxConflict {
+			break
+		}
+		log.LogWarnf("txIlink: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), i)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
 	}
 
-	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("txIlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())

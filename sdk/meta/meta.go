@@ -138,16 +138,17 @@ type MetaWrapper struct {
 	partCond  *sync.Cond
 
 	// Allocated to trigger and throttle instant partition updates
-	forceUpdate         chan struct{}
-	forceUpdateLimit    *rate.Limiter
-	EnableSummary       bool
-	metaSendTimeout     int64
-	DirChildrenNumLimit uint32
-	EnableTransaction   uint8
-	TxTimeout           int64
-	//EnableTransaction bool
-	QuotaInfoMap map[uint32]*proto.QuotaInfo
-	QuotaLock    sync.RWMutex
+	forceUpdate             chan struct{}
+	forceUpdateLimit        *rate.Limiter
+	EnableSummary           bool
+	metaSendTimeout         int64
+	DirChildrenNumLimit     uint32
+	EnableTransaction       uint8
+	TxTimeout               int64
+	TxConflictRetryNum      int64
+	TxConflictRetryInterval int64
+	QuotaInfoMap            map[uint32]*proto.QuotaInfo
+	QuotaLock               sync.RWMutex
 }
 
 // the ticket from authnode

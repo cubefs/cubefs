@@ -41,8 +41,13 @@ import (
 //}
 
 const (
-	DefaultTransactionTimeout = 1  //minutes
-	MaxTransactionTimeout     = 60 //minutes
+	DefaultTransactionTimeout      = 1  //minutes
+	MaxTransactionTimeout          = 60 //minutes
+	DefaultTxConflictRetryNum      = 10
+	MaxTxConflictRetryNum          = 100
+	DefaultTxConflictRetryInterval = 20   //ms
+	MaxTxConflictRetryInterval     = 1000 //ms
+	MinTxConflictRetryInterval     = 10   //ms
 	//MaxReplaceholderTimeout   = MaxTransactionTimeout * 30 //seconds
 )
 

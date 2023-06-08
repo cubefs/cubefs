@@ -28,21 +28,22 @@ import (
 )
 
 type VolVarargs struct {
-	zoneName              string
-	description           string
-	capacity              uint64 //GB
-	followerRead          bool
-	authenticate          bool
-	dpSelectorName        string
-	dpSelectorParm        string
-	coldArgs              *coldVolArgs
-	domainId              uint64
-	dpReplicaNum          uint8
-	enablePosixAcl        bool
-	dpReadOnlyWhenVolFull bool
-	enableTransaction     uint8
-	txTimeout             int64
-	//enableTransaction bool
+	zoneName                string
+	description             string
+	capacity                uint64 //GB
+	followerRead            bool
+	authenticate            bool
+	dpSelectorName          string
+	dpSelectorParm          string
+	coldArgs                *coldVolArgs
+	domainId                uint64
+	dpReplicaNum            uint8
+	enablePosixAcl          bool
+	dpReadOnlyWhenVolFull   bool
+	enableTransaction       uint8
+	txTimeout               int64
+	txConflictRetryNum      int64
+	txConflictRetryInterval int64
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -70,36 +71,37 @@ type Vol struct {
 	CacheLRUInterval int
 	CacheRule        string
 
-	PreloadCacheOn     bool
-	NeedToLowerReplica bool
-	FollowerRead       bool
-	authenticate       bool
-	crossZone          bool
-	domainOn           bool
-	defaultPriority    bool // old default zone first
-	enablePosixAcl     bool
-	enableTransaction  uint8
-	txTimeout          int64
-	//enableTransaction  bool
-	zoneName              string
-	MetaPartitions        map[uint64]*MetaPartition `graphql:"-"`
-	mpsLock               sync.RWMutex
-	dataPartitions        *DataPartitionMap
-	mpsCache              []byte
-	viewCache             []byte
-	createDpMutex         sync.RWMutex
-	createMpMutex         sync.RWMutex
-	createTime            int64
-	description           string
-	dpSelectorName        string
-	dpSelectorParm        string
-	domainId              uint64
-	qosManager            *QosCtrlManager
-	DpReadOnlyWhenVolFull bool
-	aclMgr                AclManager
-	uidSpaceManager       *UidSpaceManager
-	volLock               sync.RWMutex
-	quotaManager          *MasterQuotaManager
+	PreloadCacheOn          bool
+	NeedToLowerReplica      bool
+	FollowerRead            bool
+	authenticate            bool
+	crossZone               bool
+	domainOn                bool
+	defaultPriority         bool // old default zone first
+	enablePosixAcl          bool
+	enableTransaction       uint8
+	txTimeout               int64
+	txConflictRetryNum      int64
+	txConflictRetryInterval int64
+	zoneName                string
+	MetaPartitions          map[uint64]*MetaPartition `graphql:"-"`
+	mpsLock                 sync.RWMutex
+	dataPartitions          *DataPartitionMap
+	mpsCache                []byte
+	viewCache               []byte
+	createDpMutex           sync.RWMutex
+	createMpMutex           sync.RWMutex
+	createTime              int64
+	description             string
+	dpSelectorName          string
+	dpSelectorParm          string
+	domainId                uint64
+	qosManager              *QosCtrlManager
+	DpReadOnlyWhenVolFull   bool
+	aclMgr                  AclManager
+	uidSpaceManager         *UidSpaceManager
+	volLock                 sync.RWMutex
+	quotaManager            *MasterQuotaManager
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -130,6 +132,8 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.enablePosixAcl = vv.EnablePosixAcl
 	vol.enableTransaction = vv.EnableTransaction
 	vol.txTimeout = vv.TxTimeout
+	vol.txConflictRetryNum = vv.TxConflictRetryNum
+	vol.txConflictRetryInterval = vv.TxConflictRetryInterval
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
@@ -1206,6 +1210,8 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.DpReadOnlyWhenVolFull = args.dpReadOnlyWhenVolFull
 	vol.enableTransaction = args.enableTransaction
 	vol.txTimeout = args.txTimeout
+	vol.txConflictRetryNum = args.txConflictRetryNum
+	vol.txConflictRetryInterval = args.txConflictRetryInterval
 	vol.dpReplicaNum = args.dpReplicaNum
 
 	if proto.IsCold(vol.VolType) {
@@ -1242,19 +1248,21 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 	}
 
 	return &VolVarargs{
-		zoneName:              vol.zoneName,
-		description:           vol.description,
-		capacity:              vol.Capacity,
-		followerRead:          vol.FollowerRead,
-		authenticate:          vol.authenticate,
-		dpSelectorName:        vol.dpSelectorName,
-		dpSelectorParm:        vol.dpSelectorParm,
-		enablePosixAcl:        vol.enablePosixAcl,
-		dpReplicaNum:          vol.dpReplicaNum,
-		enableTransaction:     vol.enableTransaction,
-		txTimeout:             vol.txTimeout,
-		coldArgs:              args,
-		dpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
+		zoneName:                vol.zoneName,
+		description:             vol.description,
+		capacity:                vol.Capacity,
+		followerRead:            vol.FollowerRead,
+		authenticate:            vol.authenticate,
+		dpSelectorName:          vol.dpSelectorName,
+		dpSelectorParm:          vol.dpSelectorParm,
+		enablePosixAcl:          vol.enablePosixAcl,
+		dpReplicaNum:            vol.dpReplicaNum,
+		enableTransaction:       vol.enableTransaction,
+		txTimeout:               vol.txTimeout,
+		txConflictRetryNum:      vol.txConflictRetryNum,
+		txConflictRetryInterval: vol.txConflictRetryInterval,
+		coldArgs:                args,
+		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 	}
 }
 
