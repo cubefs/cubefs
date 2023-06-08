@@ -281,11 +281,12 @@ type VolNameSet map[string]struct{}
 
 func (c *Cluster) checkReplicaMetaPartitions() (
 	lackReplicaMetaPartitions []*MetaPartition, noLeaderMetaPartitions []*MetaPartition,
-	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error) {
+	unavailableReplicaMPs []*MetaPartition, excessReplicaMetaPartitions, inodeCountNotEqualMPs, maxInodeNotEqualMPs, dentryCountNotEqualMPs []*MetaPartition, err error) {
 	lackReplicaMetaPartitions = make([]*MetaPartition, 0)
 	noLeaderMetaPartitions = make([]*MetaPartition, 0)
 	excessReplicaMetaPartitions = make([]*MetaPartition, 0)
 	inodeCountNotEqualMPs = make([]*MetaPartition, 0)
+	maxInodeNotEqualMPs = make([]*MetaPartition, 0)
 	dentryCountNotEqualMPs = make([]*MetaPartition, 0)
 
 	markDeleteVolNames := make(VolNameSet)
@@ -324,6 +325,13 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 		mp := value.(*MetaPartition)
 		if _, ok := markDeleteVolNames[mp.volName]; !ok {
 			inodeCountNotEqualMPs = append(inodeCountNotEqualMPs, mp)
+		}
+		return true
+	})
+	c.maxInodeNotEqualMP.Range(func(key, value interface{}) bool {
+		mp := value.(*MetaPartition)
+		if _, ok := markDeleteVolNames[mp.volName]; !ok {
+			maxInodeNotEqualMPs = append(maxInodeNotEqualMPs, mp)
 		}
 		return true
 	})
