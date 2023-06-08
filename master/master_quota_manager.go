@@ -48,13 +48,13 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 		for _, pathInfo := range req.PathInfos {
 			for _, quotaPathInfo := range quotaInfo.PathInfos {
 				if pathInfo.RootInode == quotaPathInfo.RootInode {
-					err = errors.NewErrorf("inode [%v] is the same as quotaId [%v] inode [%v]",
-						pathInfo.RootInode, quotaInfo.QuotaId, quotaPathInfo.RootInode)
+					err = errors.NewErrorf("path [%v] is the same as quotaId [%v]",
+						pathInfo.FullPath, quotaInfo.QuotaId)
 					return
 				}
 				if pathInfo.FullPath == quotaPathInfo.FullPath {
-					err = errors.NewErrorf("path [%v] is the same as quotaId [%v] path [%v]",
-						pathInfo.FullPath, quotaInfo.QuotaId, quotaPathInfo.FullPath)
+					err = errors.NewErrorf("path [%v] is the same as quotaId [%v]",
+						pathInfo.FullPath, quotaInfo.QuotaId)
 					return
 				}
 			}
@@ -311,7 +311,6 @@ func (mqMgr *MasterQuotaManager) quotaUpdate(report *proto.MetaPartitionReport) 
 
 	mpId := report.PartitionID
 
-	log.LogDebugf("[quotaUpdate] mpId [%v] QuotaReportInfos [%v] leader [%v]", mpId, report.QuotaReportInfos, report.IsLeader)
 	if !report.IsLeader {
 		return
 	}
@@ -379,6 +378,6 @@ func (mqMgr *MasterQuotaManager) HasQuota() bool {
 	return true
 }
 
-func resetQuotaTaskID(t *proto.AdminTask, quotaId uint32) {
-	t.ID = fmt.Sprintf("%v_quota[%v]", t.ID, quotaId)
+func resetQuotaTaskID(t *proto.AdminTask, quotaId uint32, inodeId uint64) {
+	t.ID = fmt.Sprintf("%v_quota[%v]_inode[%v]", t.ID, quotaId, inodeId)
 }

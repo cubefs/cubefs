@@ -348,6 +348,9 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
 		return
 	}
 	ino = retMsg.Msg
+	if ino.NLink == 0 {
+		return
+	}
 	quotaIds, isFind := mp.isExistQuota(extend.GetInode())
 	if isFind {
 		mqMgr.rwlock.Lock()
@@ -378,6 +381,9 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 		return
 	}
 	ino = item.(*Inode)
+	if ino.NLink == 0 {
+		return
+	}
 	value, exist := extend.Get([]byte(proto.QuotaKey))
 	if !exist {
 		log.LogDebugf("hytemp statisticExtendByStore get quota key failed, mp [%v] inode [%v]", mp.config.PartitionId, extend.GetInode())
