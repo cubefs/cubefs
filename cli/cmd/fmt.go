@@ -31,11 +31,15 @@ func formatClusterView(cv *proto.ClusterView) string {
 	sb.WriteString(fmt.Sprintf("  Master leader    : %v\n", cv.LeaderAddr))
 	sb.WriteString(fmt.Sprintf("  Auto allocate    : %v\n", formatEnabledDisabled(!cv.DisableAutoAlloc)))
 	sb.WriteString(fmt.Sprintf("  MetaNode count   : %v\n", len(cv.MetaNodes)))
-	sb.WriteString(fmt.Sprintf("  MetaNode used    : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
-	sb.WriteString(fmt.Sprintf("  MetaNode total   : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
+	if cv.MetaNodeStatInfo != nil {
+		sb.WriteString(fmt.Sprintf("  MetaNode used    : %v GB\n", cv.MetaNodeStatInfo.UsedGB))
+		sb.WriteString(fmt.Sprintf("  MetaNode total   : %v GB\n", cv.MetaNodeStatInfo.TotalGB))
+	}
 	sb.WriteString(fmt.Sprintf("  DataNode count   : %v\n", len(cv.DataNodes)))
-	sb.WriteString(fmt.Sprintf("  DataNode used    : %v GB\n", cv.DataNodeStatInfo.UsedGB))
-	sb.WriteString(fmt.Sprintf("  DataNode total   : %v GB\n", cv.DataNodeStatInfo.TotalGB))
+	if cv.DataNodeStatInfo != nil {
+		sb.WriteString(fmt.Sprintf("  DataNode used    : %v GB\n", cv.DataNodeStatInfo.UsedGB))
+		sb.WriteString(fmt.Sprintf("  DataNode total   : %v GB\n", cv.DataNodeStatInfo.TotalGB))
+	}
 	sb.WriteString(fmt.Sprintf("  Volume count     : %v\n", cv.VolCount))
 	sb.WriteString(fmt.Sprintf("  Dp recover pool  : %v\n", cv.DpRecoverPool))
 	sb.WriteString(fmt.Sprintf("  Mp recover pool  : %v\n", cv.MpRecoverPool))

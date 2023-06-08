@@ -103,6 +103,31 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 					errout("List cluster volume failed:\n%v\n", err)
 				}
 			}()
+			if proto.IsDbBack {
+				var (
+					resp *http.Response
+					data []byte
+				)
+				resp, err = http.Get(fmt.Sprintf("http://%s/admin/listVols", client.Nodes()[0]))
+				if err != nil {
+					errout("list vol failed:\n%v\n", err)
+					return
+				}
+				data, err = ioutil.ReadAll(resp.Body)
+				if err != nil {
+					errout("list vol failed:\n%v\n", err)
+					return
+				}
+				value := make([]string, 0)
+				err = json.Unmarshal(data, &value)
+				if err != nil {
+					errout("list vol failed:\n%v\n", err)
+					return
+				}
+				stdout("%s", strings.Join(value, "\n"))
+				stdout("\n")
+				return
+			}
 			if vols, err = client.AdminAPI().ListVolsByKeywordsAndSmart(optKeyword, optMediumType); err != nil {
 				return
 			}
