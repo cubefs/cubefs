@@ -3200,12 +3200,14 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 		badReplicaMps                   []*MetaPartition
 		excessReplicaMPs                []*MetaPartition
 		inodeCountNotEqualReplicaMps    []*MetaPartition
+		maxInodeNotEqualMPs             []*MetaPartition
 		dentryCountNotEqualReplicaMps   []*MetaPartition
 		corruptMpIDs                    []uint64
 		lackReplicaMpIDs                []uint64
 		badReplicaMpIDs                 []uint64
 		excessReplicaMpIDs              []uint64
 		inodeCountNotEqualReplicaMpIDs  []uint64
+		maxInodeNotEqualReplicaMpIDs    []uint64
 		dentryCountNotEqualReplicaMpIDs []uint64
 		badMetaPartitions               []badPartitionView
 	)
@@ -3225,7 +3227,7 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if lackReplicaMps, noLeaderMps, badReplicaMps, excessReplicaMPs,
-		inodeCountNotEqualReplicaMps, dentryCountNotEqualReplicaMps, err = m.cluster.checkReplicaMetaPartitions(); err != nil {
+		inodeCountNotEqualReplicaMps, maxInodeNotEqualMPs, dentryCountNotEqualReplicaMps, err = m.cluster.checkReplicaMetaPartitions(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3245,6 +3247,9 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 	for _, mp := range inodeCountNotEqualReplicaMps {
 		inodeCountNotEqualReplicaMpIDs = append(inodeCountNotEqualReplicaMpIDs, mp.PartitionID)
 	}
+	for _, mp := range maxInodeNotEqualMPs {
+		maxInodeNotEqualReplicaMpIDs = append(maxInodeNotEqualReplicaMpIDs, mp.PartitionID)
+	}
 
 	for _, mp := range dentryCountNotEqualReplicaMps {
 		dentryCountNotEqualReplicaMpIDs = append(dentryCountNotEqualReplicaMpIDs, mp.PartitionID)
@@ -3258,6 +3263,7 @@ func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
 		BadReplicaMetaPartitionIDs:                 badReplicaMpIDs,
 		ExcessReplicaMetaPartitionIDs:              excessReplicaMpIDs,
 		InodeCountNotEqualReplicaMetaPartitionIDs:  inodeCountNotEqualReplicaMpIDs,
+		MaxInodeNotEqualReplicaMetaPartitionIDs:    maxInodeNotEqualReplicaMpIDs,
 		DentryCountNotEqualReplicaMetaPartitionIDs: dentryCountNotEqualReplicaMpIDs,
 	}
 	log.LogInfof("diagnose metaPartition cluster[%v], inactiveNodes:[%v], corruptMpIDs:[%v], "+
@@ -4282,6 +4288,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				IsLeader:    mp.Replicas[i].IsLeader,
 				InodeCount:  mp.Replicas[i].InodeCount,
 				DentryCount: mp.Replicas[i].DentryCount,
+				MaxInode:    mp.Replicas[i].MaxInodeID,
 			}
 		}
 		var mpInfo = &proto.MetaPartitionInfo{
