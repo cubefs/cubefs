@@ -124,7 +124,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!"+err.Error())
 	}
 
-	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout)
+	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
 
 	s.volname = opt.Volname
 	s.masters = opt.Master
@@ -715,7 +715,7 @@ func (s *Super) Close() {
 	close(s.closeC)
 }
 
-func (s *Super) SetTransaction(txMaskStr string, timeout int64) {
+func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, retryInterval int64) {
 	//maskStr := proto.GetMaskString(txMask)
 	mask, err := proto.GetMaskFromString(txMaskStr)
 	if err != nil {
@@ -728,5 +728,16 @@ func (s *Super) SetTransaction(txMaskStr string, timeout int64) {
 		timeout = proto.DefaultTransactionTimeout
 	}
 	s.mw.TxTimeout = timeout
-	log.LogDebugf("SetTransaction: mask[%v], op[%v], timeout[%v]", mask, txMaskStr, timeout)
+
+	if retryNum <= 0 {
+		retryNum = proto.DefaultTxConflictRetryNum
+	}
+	s.mw.TxConflictRetryNum = retryNum
+
+	if retryInterval <= 0 {
+		retryInterval = proto.DefaultTxConflictRetryInterval
+	}
+	s.mw.TxConflictRetryInterval = retryInterval
+	log.LogDebugf("SetTransaction: mask[%v], op[%v], timeout[%v], retryNum[%v], retryInterval[%v ms]",
+		mask, txMaskStr, timeout, retryNum, retryInterval)
 }
