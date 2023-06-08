@@ -1152,7 +1152,8 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 				(vol.defaultPriority && (c.needFaultDomain || len(c.t.domainExcludeZones) <= 1)))))
 	if !vol.domainOn && domainOn {
 		vol.domainOn = domainOn
-		vol.updateViewCache(c)
+		//todo:(leonchang). updateView used to update domainOn status in viewCache, use channel may be better or else lock may happend
+		//vol.updateViewCache(c)
 		c.syncUpdateVol(vol)
 		log.LogInfof("action[isFaultDomain] vol [%v] set domainOn", vol.Name)
 	}
