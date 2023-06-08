@@ -787,36 +787,38 @@ type UidSimpleInfo struct {
 
 // SimpleVolView defines the simple view of a volume
 type SimpleVolView struct {
-	ID                    uint64
-	Name                  string
-	Owner                 string
-	ZoneName              string
-	DpReplicaNum          uint8
-	MpReplicaNum          uint8
-	InodeCount            uint64
-	DentryCount           uint64
-	MaxMetaPartitionID    uint64
-	Status                uint8
-	Capacity              uint64 // GB
-	RwDpCnt               int
-	MpCnt                 int
-	DpCnt                 int
-	FollowerRead          bool
-	NeedToLowerReplica    bool
-	Authenticate          bool
-	CrossZone             bool
-	DefaultPriority       bool
-	DomainOn              bool
-	CreateTime            string
-	EnableToken           bool
-	EnablePosixAcl        bool
-	EnableTransaction     string
-	TxTimeout             int64
-	Description           string
-	DpSelectorName        string
-	DpSelectorParm        string
-	DefaultZonePrior      bool
-	DpReadOnlyWhenVolFull bool
+	ID                      uint64
+	Name                    string
+	Owner                   string
+	ZoneName                string
+	DpReplicaNum            uint8
+	MpReplicaNum            uint8
+	InodeCount              uint64
+	DentryCount             uint64
+	MaxMetaPartitionID      uint64
+	Status                  uint8
+	Capacity                uint64 // GB
+	RwDpCnt                 int
+	MpCnt                   int
+	DpCnt                   int
+	FollowerRead            bool
+	NeedToLowerReplica      bool
+	Authenticate            bool
+	CrossZone               bool
+	DefaultPriority         bool
+	DomainOn                bool
+	CreateTime              string
+	EnableToken             bool
+	EnablePosixAcl          bool
+	EnableTransaction       string
+	TxTimeout               int64
+	TxConflictRetryNum      int64
+	TxConflictRetryInterval int64
+	Description             string
+	DpSelectorName          string
+	DpSelectorParm          string
+	DefaultZonePrior        bool
+	DpReadOnlyWhenVolFull   bool
 
 	VolType          int
 	ObjBlockSize     int
