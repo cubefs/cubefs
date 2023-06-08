@@ -541,13 +541,14 @@ type MetaPartitionReport struct {
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
 type MetaNodeHeartbeatResponse struct {
-	ZoneName             string
-	Total                uint64
-	MemUsed              uint64
-	MetaPartitionReports []*MetaPartitionReport
-	Status               uint8
-	Result               string
-	CpuUtil              float64 `json:"cpuUtil"`
+	ZoneName               string
+	Total                  uint64
+	MemUsed                uint64
+	MetaPartitionReports   []*MetaPartitionReport
+	Status                 uint8
+	Result                 string
+	CpuUtil                float64 `json:"cpuUtil"`
+	PersistDataInternalSec int64
 }
 
 // DeleteFileRequest defines the request to delete a file.

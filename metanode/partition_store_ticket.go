@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"encoding/binary"
+	"math/rand"
 	"sync/atomic"
 	"time"
 
@@ -24,6 +25,8 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+const RandomIntervalS = 30
 
 type storeMsg struct {
 	command       uint32
@@ -47,6 +50,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer.Stop()
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	scheduleState := common.StateStopped
+	intervalToPersistData := mp.manager.metaNode.PersistDataInternalSec
 	dumpFunc := func(msg *storeMsg) {
 		log.LogWarnf("[startSchedule] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
@@ -74,7 +78,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		}
 
 		if _, ok := mp.IsLeader(); ok {
-			timer.Reset(intervalToPersistData)
+			resetTimerWithRandomTime(timer, intervalToPersistData)
 		}
 		atomic.StoreUint32(&scheduleState, common.StateStopped)
 	}
@@ -111,7 +115,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					go dumpFunc(maxMsg)
 				} else {
 					if _, ok := mp.IsLeader(); ok {
-						timer.Reset(intervalToPersistData)
+						resetTimerWithRandomTime(timer, intervalToPersistData)
 					}
 					atomic.StoreUint32(&scheduleState, common.StateStopped)
 				}
@@ -119,7 +123,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 			case msg := <-mp.storeChan:
 				switch msg.command {
 				case startStoreTick:
-					timer.Reset(intervalToPersistData)
+					resetTimerWithRandomTime(timer, intervalToPersistData)
 				case stopStoreTick:
 					timer.Stop()
 				case opFSMStoreTick:
@@ -127,13 +131,13 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 			case <-timer.C:
 				if mp.applyID <= curIndex {
-					timer.Reset(intervalToPersistData)
+					resetTimer(timer, intervalToPersistData)
 					continue
 				}
 				if _, err := mp.submit(opFSMStoreTick, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
-						timer.Reset(intervalToPersistData)
+						resetTimer(timer, intervalToPersistData)
 					}
 				}
 			case <-timerCursor.C:
@@ -161,4 +165,15 @@ func (mp *metaPartition) stop() {
 	if mp.stopC != nil {
 		close(mp.stopC)
 	}
+}
+
+func resetTimer(timer *time.Timer, ts int64) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	timer.Reset(time.Duration(ts+r.Int63n(RandomIntervalS)) * time.Second)
+}
+
+// Avoid devices starting scheduled tasks simultaneously
+func resetTimerWithRandomTime(timer *time.Timer, maxts int64) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	timer.Reset(time.Duration(float32(maxts)*r.Float32()) * time.Second)
 }

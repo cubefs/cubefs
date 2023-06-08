@@ -3640,6 +3640,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
 		CpuUtil:                   metaNode.CpuUtil.Load(),
+		PersistDataInternalSec:    metaNode.PersistDataInternalSec,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }

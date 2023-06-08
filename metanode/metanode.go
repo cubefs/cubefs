@@ -51,26 +51,27 @@ var (
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
 // The data consistency is ensured by Raft.
 type MetaNode struct {
-	nodeId            uint64
-	listen            string
-	bindIp            bool
-	metadataDir       string // root dir of the metaNode
-	raftDir           string // root dir of the raftStore log
-	metadataManager   MetadataManager
-	localAddr         string
-	clusterId         string
-	raftStore         raftstore.RaftStore
-	raftHeartbeatPort string
-	raftReplicatePort string
-	zoneName          string
-	httpStopC         chan uint8
-	smuxStopC         chan uint8
-	metrics           *MetaNodeMetrics
-	tickInterval      int
-	raftRecvBufSize   int
-	connectionCnt     int64
-	clusterUuid       string
-	clusterUuidEnable bool
+	nodeId                 uint64
+	listen                 string
+	bindIp                 bool
+	metadataDir            string // root dir of the metaNode
+	raftDir                string // root dir of the raftStore log
+	metadataManager        MetadataManager
+	localAddr              string
+	clusterId              string
+	raftStore              raftstore.RaftStore
+	raftHeartbeatPort      string
+	raftReplicatePort      string
+	zoneName               string
+	httpStopC              chan uint8
+	smuxStopC              chan uint8
+	metrics                *MetaNodeMetrics
+	tickInterval           int
+	raftRecvBufSize        int
+	connectionCnt          int64
+	clusterUuid            string
+	clusterUuidEnable      bool
+	PersistDataInternalSec int64
 
 	control common.Control
 }
@@ -202,6 +203,11 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.zoneName = cfg.GetString(cfgZoneName)
+	m.PersistDataInternalSec = cfg.GetInt64(cfgPersistDataInternalSec)
+
+	if m.PersistDataInternalSec < defaultPersistDataInternalSec {
+		m.PersistDataInternalSec = defaultPersistDataInternalSec
+	}
 
 	deleteBatchCount := cfg.GetInt64(cfgDeleteBatchCount)
 	if deleteBatchCount > 1 {

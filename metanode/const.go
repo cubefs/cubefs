@@ -177,31 +177,32 @@ const (
 
 // Configuration keys
 const (
-	cfgLocalIP           = "localIP"
-	cfgListen            = "listen"
-	cfgMetadataDir       = "metadataDir"
-	cfgRaftDir           = "raftDir"
-	cfgMasterAddrs       = "masterAddrs" // will be deprecated
-	cfgRaftHeartbeatPort = "raftHeartbeatPort"
-	cfgRaftReplicaPort   = "raftReplicaPort"
-	cfgDeleteBatchCount  = "deleteBatchCount"
-	cfgTotalMem          = "totalMem"
-	cfgMemRatio          = "memRatio"
-	cfgZoneName          = "zoneName"
-	cfgTickInterval      = "tickInterval"
-	cfgRaftRecvBufSize   = "raftRecvBufSize"
-	cfgSmuxPortShift     = "smuxPortShift"     //int
-	cfgSmuxMaxConn       = "smuxMaxConn"       //int
-	cfgSmuxStreamPerConn = "smuxStreamPerConn" //int
-	cfgSmuxMaxBuffer     = "smuxMaxBuffer"     //int
+	cfgLocalIP                = "localIP"
+	cfgListen                 = "listen"
+	cfgMetadataDir            = "metadataDir"
+	cfgRaftDir                = "raftDir"
+	cfgMasterAddrs            = "masterAddrs" // will be deprecated
+	cfgRaftHeartbeatPort      = "raftHeartbeatPort"
+	cfgRaftReplicaPort        = "raftReplicaPort"
+	cfgDeleteBatchCount       = "deleteBatchCount"
+	cfgTotalMem               = "totalMem"
+	cfgMemRatio               = "memRatio"
+	cfgZoneName               = "zoneName"
+	cfgTickInterval           = "tickInterval"
+	cfgRaftRecvBufSize        = "raftRecvBufSize"
+	cfgSmuxPortShift          = "smuxPortShift"     //int
+	cfgSmuxMaxConn            = "smuxMaxConn"       //int
+	cfgSmuxStreamPerConn      = "smuxStreamPerConn" //int
+	cfgSmuxMaxBuffer          = "smuxMaxBuffer"     //int
+	cfgPersistDataInternalSec = "persistDataInternalSec"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 )
 
 const (
 	// interval of persisting in-memory data
-	intervalToPersistData = time.Minute * 5
-	intervalToSyncCursor  = time.Minute * 1
+	defaultPersistDataInternalSec = 300
+	intervalToSyncCursor          = time.Minute * 1
 
 	defaultDelExtentsCnt     = 100000
 	defaultMaxQuotaGoroutine = 5

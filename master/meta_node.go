@@ -50,6 +50,7 @@ type MetaNode struct {
 	RdOnly                    bool
 	MigrateLock               sync.RWMutex
 	CpuUtil                   atomicutil.Float64 `json:"-"`
+	PersistDataInternalSec    int64
 }
 
 func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
@@ -141,6 +142,7 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	}
 	metaNode.ZoneName = resp.ZoneName
 	metaNode.Threshold = threshold
+	metaNode.PersistDataInternalSec = resp.PersistDataInternalSec
 }
 
 func (metaNode *MetaNode) reachesThreshold() bool {

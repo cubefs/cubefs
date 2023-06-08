@@ -725,6 +725,8 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
+	sb.WriteString(fmt.Sprintf("  PersistDataInternal : %v\n", mn.PersistDataInternalSec))
+
 	return sb.String()
 }
 

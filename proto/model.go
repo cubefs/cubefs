@@ -43,6 +43,7 @@ type MetaNodeInfo struct {
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
 	CpuUtil                   float64 `json:"cpuUtil"`
+	PersistDataInternalSec    int64
 }
 
 // DataNode stores all the information about a data node

@@ -114,6 +114,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			return true
 		})
 		resp.ZoneName = m.zoneName
+		resp.PersistDataInternalSec = m.metaNode.PersistDataInternalSec
 		resp.Status = proto.TaskSucceeds
 	end:
 		adminTask.Request = nil
