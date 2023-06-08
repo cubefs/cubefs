@@ -298,7 +298,7 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 
 		isPreflight := param.apiName == OPTIONS_OBJECT
 		w.Header().Add("Vary", "Origin,Access-Control-Request-Method,Access-Control-Request-Headers")
-		cors, err := vol.metaLoader.loadCors()
+		cors, err := vol.metaLoader.loadCORS()
 		if err != nil {
 			log.LogErrorf("get cors fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			_ = InternalErrorCode(err).ServeResponse(w, r)
