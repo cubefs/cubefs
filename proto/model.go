@@ -93,6 +93,7 @@ type MetaReplicaInfo struct {
 	Status      int8 // unavailable, readOnly, readWrite
 	IsLeader    bool
 	InodeCount  uint64
+	MaxInode    uint64
 	DentryCount uint64
 }
 
@@ -263,6 +264,7 @@ type MetaPartitionDiagnosis struct {
 	BadReplicaMetaPartitionIDs                 []uint64
 	ExcessReplicaMetaPartitionIDs              []uint64
 	InodeCountNotEqualReplicaMetaPartitionIDs  []uint64
+	MaxInodeNotEqualReplicaMetaPartitionIDs    []uint64
 	DentryCountNotEqualReplicaMetaPartitionIDs []uint64
 }
 

@@ -96,7 +96,8 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 	isEqual = true
 	maxInode := mp.LoadResponse[0].MaxInode
 	maxInodeCount := mp.LoadResponse[0].InodeCount
-
+	inodeEqual := true
+	maxInodeEqual := true
 	if mp.IsRecover {
 		return
 	}
@@ -104,11 +105,13 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 		diff := math.Abs(float64(loadResponse.MaxInode) - float64(maxInode))
 		if diff > defaultRangeOfCountDifferencesAllowed {
 			isEqual = false
+			inodeEqual = false
 			break
 		}
 		diff = math.Abs(float64(loadResponse.InodeCount) - float64(maxInodeCount))
 		if diff > defaultRangeOfCountDifferencesAllowed {
 			isEqual = false
+			maxInodeEqual = false
 			break
 		}
 	}
@@ -121,7 +124,13 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] maxInode[" + inodeMaxInodeStr + "] maxInodeCnt[" + inodeMaxCountStr + "],"
 		}
 		Warn(c.Name, msg)
-		c.inodeCountNotEqualMP.Store(mp.PartitionID, mp)
+		if !maxInodeEqual {
+			c.inodeCountNotEqualMP.Store(mp.PartitionID, mp)
+		}
+		if !inodeEqual {
+			c.maxInodeNotEqualMP.Store(mp.PartitionID, mp)
+		}
+
 	} else {
 		if _, ok := c.inodeCountNotEqualMP.Load(mp.PartitionID); ok {
 			c.inodeCountNotEqualMP.Delete(mp.PartitionID)

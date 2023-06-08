@@ -78,6 +78,7 @@ type Cluster struct {
 	checkAutoCreateDataPartition bool
 	masterClient                 *masterSDK.MasterClient
 	inodeCountNotEqualMP         *sync.Map
+	maxInodeNotEqualMP           *sync.Map
 	dentryCountNotEqualMP        *sync.Map
 }
 
@@ -184,7 +185,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	}
 }
 
-//NOTICE: caller must correctly use mgr.rwMutex
+// NOTICE: caller must correctly use mgr.rwMutex
 func (mgr *followerReadManager) isVolRecordObsolete(volName string) bool {
 	volView, ok := mgr.volViewMap[volName]
 	if !ok {
@@ -310,6 +311,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.checkAutoCreateDataPartition = false
 	c.masterClient = masterSDK.NewMasterClient(nil, false)
 	c.inodeCountNotEqualMP = new(sync.Map)
+	c.maxInodeNotEqualMP = new(sync.Map)
 	c.dentryCountNotEqualMP = new(sync.Map)
 	return
 }
@@ -1150,7 +1152,8 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 				(vol.defaultPriority && (c.needFaultDomain || len(c.t.domainExcludeZones) <= 1)))))
 	if !vol.domainOn && domainOn {
 		vol.domainOn = domainOn
-		vol.updateViewCache(c)
+		//todo:(leonchang). updateView used to update domainOn status in viewCache, use channel may be better or else lock may happend
+		//vol.updateViewCache(c)
 		c.syncUpdateVol(vol)
 		log.LogInfof("action[isFaultDomain] vol [%v] set domainOn", vol.Name)
 	}
