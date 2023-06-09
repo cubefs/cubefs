@@ -1308,7 +1308,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 			return
 		}
 		if readN > 0 {
-			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0); err != nil {
+			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0, nil); err != nil {
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
 				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 					v.name, inode, offset, readN, err))
@@ -2694,7 +2694,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			if proto.IsCold(v.volType) {
 				writeN, err = ebsWriter.WriteWithoutPool(tctx, writeOffset, buf[:readN])
 			} else {
-				writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0)
+				writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0, nil)
 			}
 			if err != nil {
 				log.LogErrorf("CopyFile: write target path from source fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
