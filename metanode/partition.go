@@ -576,25 +576,19 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 			mp.config.PartitionId, err.Error())
 		return
 	}
-	if err = mp.startRaft(); err != nil {
-		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
-			mp.config.PartitionId, err.Error())
-		return
-	}
 
 	// set EBS Client
-	clusterInfo, cerr := masterClient.AdminAPI().GetClusterInfo()
-	if cerr != nil {
-		err = cerr
+	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(); err != nil {
 		log.LogErrorf("action[onStart] GetClusterInfo err[%v]", err)
 		return
 	}
-	volumeInfo, verr := masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName)
-	if verr != nil {
-		err = verr
+
+	var volumeInfo *proto.SimpleVolView
+	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
 		log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
 		return
 	}
+
 	mp.volType = volumeInfo.VolType
 	var ebsClient *blobstore.BlobStoreClient
 	if clusterInfo.EbsAddr != "" && proto.IsCold(mp.volType) {
@@ -619,6 +613,13 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		}
 		mp.ebsClient = ebsClient
 	}
+
+	if err = mp.startRaft(); err != nil {
+		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
+			mp.config.PartitionId, err.Error())
+		return
+	}
+
 	mp.updateSize()
 
 	// do cache TTL die out process
