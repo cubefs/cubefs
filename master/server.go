@@ -143,7 +143,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 
-	if m.rocksDBStore, err = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+	if m.rocksDBStore, err = raftstore.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		return
 	}
 
