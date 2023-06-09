@@ -71,14 +71,14 @@ func (w *MigrateWorker) canDirectDownload() bool {
 // GenTasklets generates migrate tasklets
 func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError) {
 	span := trace.SpanFromContextSafe(ctx)
-	var badIdxs []uint8
+	var badIdxes []uint8
 
 	if workutils.TaskBufPool == nil {
 		return nil, OtherError(errors.New("TaskBufPool should init before"))
 	}
 
 	if w.t.TaskType == proto.TaskTypeDiskRepair {
-		badIdxs = []uint8{w.t.SourceVuid.Index()}
+		badIdxes = []uint8{w.t.SourceVuid.Index()}
 	} else {
 		// balance and disk drop task need to ensure most chunks are in read-only state
 		if err := retry.Timed(3, 1000).On(func() error {
@@ -90,7 +90,7 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 			return nil, OtherError(ErrNotReadyForMigrate)
 		}
 	}
-	migBids, benchmarkBids, err := GenMigrateBids(ctx, w.bolbNodeCli, w.t.Sources, w.t.Destination, w.t.CodeMode, badIdxs)
+	migBids, benchmarkBids, err := GenMigrateBids(ctx, w.bolbNodeCli, w.t.Sources, w.t.Destination, w.t.CodeMode, badIdxes)
 	if err != nil {
 		span.Errorf("gen migrate bids failed: err[%v]", err)
 		return nil, err
@@ -104,9 +104,10 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 
 // ExecTasklet execute migrate tasklet
 func (w *MigrateWorker) ExecTasklet(ctx context.Context, tasklet Tasklet) *WorkError {
-	replicas := w.t.Sources
+	sourceLocation := w.t.Sources
 	mode := w.t.CodeMode
-	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, w.bolbNodeCli, w.downloadShardConcurrency, w.t.TaskType)
+	shardRecover := NewShardRecover(sourceLocation, mode, tasklet.bids, w.bolbNodeCli,
+		w.downloadShardConcurrency, w.t.TaskType)
 	defer shardRecover.ReleaseBuf()
 
 	return MigrateBids(ctx,
@@ -123,7 +124,7 @@ func (w *MigrateWorker) Check(ctx context.Context) *WorkError {
 	return CheckVunit(ctx, w.benchmarkBids, w.t.Destination, w.bolbNodeCli)
 }
 
-// GetBenchmarkBids returns benchmark bids
+// GetRecoverableBids returns benchmark bids
 func (w *MigrateWorker) GetBenchmarkBids() []*ShardInfoSimple {
 	return w.benchmarkBids
 }
