@@ -45,6 +45,7 @@ const (
 	mds4Addr          = "127.0.0.1:9104"
 	mds5Addr          = "127.0.0.1:9105"
 	mds6Addr          = "127.0.0.1:9106"
+	mds7Addr          = "127.0.0.1:9107"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -52,6 +53,7 @@ const (
 	mms4Addr      = "127.0.0.1:8104"
 	mms5Addr      = "127.0.0.1:8105"
 	mms6Addr      = "127.0.0.1:8106"
+	mms7Addr      = "127.0.0.1:8107"
 	commonVolName = "commonVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
@@ -104,10 +106,11 @@ func createDefaultMasterServerForTest() *Server {
 	addMetaServer(mms4Addr, testZone2)
 	addMetaServer(mms5Addr, testZone2)
 	addMetaServer(mms6Addr, testZone2)
-	time.Sleep(1 * time.Second)
+	// we should wait 5 seoncds for master to prepare state
+	time.Sleep(5 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
-	time.Sleep(1 * time.Second)
+	time.Sleep(5 * time.Second)
 	testServer.cluster.scheduleToUpdateStatInfo()
 	// set load factor
 	err = testServer.cluster.setClusterLoadFactor(100)
@@ -453,7 +456,7 @@ func TestUpdateVol(t *testing.T) {
 	setParam(descriptionKey, proto.AdminUpdateVol, req, desc, t)
 	checkParam(zoneNameKey, proto.AdminUpdateVol, req, "default", testZone1, t)
 	checkParam(authenticateKey, proto.AdminUpdateVol, req, "tt", true, t)
-	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", false, t)
+	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", true, t)
 	checkParam(ebsBlkSizeKey, proto.AdminUpdateVol, req, "-1", blkSize, t)
 	checkParam(cacheActionKey, proto.AdminUpdateVol, req, "3", proto.RWCache, t)
 	checkParam(cacheCapacity, proto.AdminUpdateVol, req, "1027", cacheCap, t)
@@ -676,7 +679,7 @@ func TestSetNodeMaxDpCntLimit(t *testing.T) {
 
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
-	dsAddr := "127.0.0.1:9106"
+	dsAddr := mds7Addr
 	addDataServer(dsAddr, "zone2")
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
@@ -703,7 +706,7 @@ func TestAddDataReplica(t *testing.T) {
 func TestRemoveDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	partition.isRecover = false
-	dsAddr := "127.0.0.1:9106"
+	dsAddr := mds7Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
