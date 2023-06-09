@@ -322,6 +322,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
+
+	m.config.MonitorPushAddr = cfg.GetString(cfgMonitorPushAddr)
+
 	return
 }
 
