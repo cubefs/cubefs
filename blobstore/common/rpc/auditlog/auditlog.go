@@ -48,12 +48,14 @@ type jsonAuditlog struct {
 }
 
 func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser, err error) {
-	if cfg.BodyLimit == 0 {
+	if cfg.BodyLimit < 0 {
+		cfg.BodyLimit = 0
+	} else if cfg.BodyLimit == 0 {
 		cfg.BodyLimit = defaultReadBodyBuffLength
-	}
-	if cfg.BodyLimit > maxReadBodyBuffLength {
+	} else if cfg.BodyLimit > maxReadBodyBuffLength {
 		cfg.BodyLimit = maxReadBodyBuffLength
 	}
+
 	if cfg.ChunkBits == 0 {
 		cfg.ChunkBits = defaultFileChunkBits
 	}
@@ -65,6 +67,7 @@ func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser
 		Backup:            cfg.Backup,
 	}
 
+	logFile = noopLogCloser{}
 	if cfg.LogDir != "" {
 		logFile, err = largefile.OpenLargeFileLog(largeLogConfig, cfg.RotateNew)
 		if err != nil {
