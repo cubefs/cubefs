@@ -46,6 +46,7 @@ var (
 	errShardSizeNotMatch    = errors.New("shard data size not match")
 	errBufNotEnough         = errors.New("buf space not enough")
 	errInvalidReplicas      = errors.New("invalid volume replicas")
+	errInvalidCodeMode      = errors.New("invalid codeMode ")
 )
 
 const defaultGetConcurrency = 100
@@ -465,7 +466,7 @@ func (r *ShardRecover) recoverReplicaShards(ctx context.Context, repairIdxs []ui
 	var err error
 
 	if localRepairable(repairIdxs, r.codeMode) && r.codeMode.Tactic().CodeType == codemode.OPPOLrc {
-		span.Info("recover by local stripe")
+		span.Infof("recover by local stripe,codemode:%v", r.codeMode.Tactic().CodeType)
 		err = r.recoverByLocalStripe(ctx, failBids, repairIdxs)
 		if err != nil {
 			span.Warnf("recover by local stripe failed:%v", err)
@@ -564,8 +565,8 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []p
 			badIdxes: repairIdxs,
 		}
 	default:
-		span.Info("wrong codemode for recoverByGlobalStripe")
-		return
+		span.Errorf("wrong codemode:%v for recoverByGlobalStripe", r.codeMode.Tactic().CodeType)
+		return errInvalidCodeMode
 	}
 
 	idxs := stripe.replicas.Indexes()

@@ -185,9 +185,10 @@ func (e *lrcEncoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	return nil
 }
 
+// LRC encoder can use local partial recover single broken disk in one az.
+// no need use partial reconstruct
 func (e *lrcEncoder) PartialReconstruct(shards [][]byte, survivalIndex, badIdx []int) error {
-	var err error
-	return errors.Info(err, "lrcEncoder don't support partial decoding!")
+	return ErrNotSupported
 }
 
 func (e *lrcEncoder) ReconstructData(shards [][]byte, badIdx []int) error {

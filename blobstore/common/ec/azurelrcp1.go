@@ -15,7 +15,6 @@
 package ec
 
 import (
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"io"
 
 	"github.com/klauspost/reedsolomon"
@@ -57,7 +56,6 @@ func (e *azureLrcP1Encoder) Encode(shards [][]byte) error {
 func (e *azureLrcP1Encoder) Verify(shards [][]byte) (bool, error) {
 	e.pool.Acquire()
 	defer e.pool.Release()
-	log.SetOutputLevel(0)
 
 	// verify the entire stripe
 	ok, err := e.engine.Verify(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L])
@@ -71,11 +69,15 @@ func (e *azureLrcP1Encoder) Verify(shards [][]byte) (bool, error) {
 }
 
 func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
-	e.pool.Acquire()
-	fillFullShards(shards)
+	if len(badIdx) == 0 {
+		return nil
+	}
 
-	initBadShards(shards, badIdx)
+	e.pool.Acquire()
 	defer e.pool.Release()
+
+	fillFullShards(shards)
+	initBadShards(shards, badIdx)
 
 	azLayout := e.CodeMode.GetECLayoutByAZ()
 	survivalIndex, forComputationShardsIdx, err := e.engine.GetSurvivalShards(badIdx, azLayout)
@@ -101,7 +103,7 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 			}
 		}
 		if err := e.engine.PartialReconstruct(tmpShards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L], survivalIndex, badIdx); err != nil {
-			return errors.Info(err, "azureLrcP1Encoder.ParticailReconstruct ec reconstruct failed (local reconstruct)")
+			return errors.Info(err, "azureLrcP1Encoder.PartialReconstruct ec reconstruct failed (local reconstruct)")
 		}
 		shards[badIdx[0]] = tmpShards[badIdx[0]]
 	} else {
@@ -118,10 +120,10 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	return nil
 }
 
+// LRC encoder can use local partial recover single broken disk in one az.
+// no need use partial reconstruct
 func (e *azureLrcP1Encoder) PartialReconstruct(shards [][]byte, survivalIndex, badIdx []int) error {
-	var err error
-	return errors.Info(err, "azureLrcP1Encoder don't support partial decoding!")
-	return nil
+	return ErrNotSupported
 }
 
 func (e *azureLrcP1Encoder) ReconstructData(shards [][]byte, badIdx []int) error {
@@ -140,11 +142,7 @@ func (e *azureLrcP1Encoder) ReconstructData(shards [][]byte, badIdx []int) error
 }
 
 func (e *azureLrcP1Encoder) Split(data []byte) ([][]byte, error) {
-	shards, err := e.engine.Split(data)
-	if err != nil {
-		return nil, err
-	}
-	return shards, nil
+	return e.engine.Split(data)
 }
 
 func (e *azureLrcP1Encoder) GetDataShards(shards [][]byte) [][]byte {

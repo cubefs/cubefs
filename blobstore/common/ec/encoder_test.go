@@ -17,16 +17,15 @@ package ec
 import (
 	"bytes"
 	"crypto/rand"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"math"
 	mrand "math/rand"
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
+	"github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/stretchr/testify/require"
 )
 
 var srcData = []byte("Hello world")
