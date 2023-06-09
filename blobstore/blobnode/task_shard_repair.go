@@ -78,11 +78,6 @@ func NewShardRepairer(cli client.IBlobNode) *ShardRepairer {
 func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.ShardRepairTask) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	if !task.IsValid() {
-		span.Errorf("shard repair task is illegal: task[%+v]", task)
-		return errcode.ErrIllegalTask
-	}
-
 	shardInfos := repairer.listShardsInfo(ctx, task.Sources, task.Bid)
 	// check missed shard has repaired
 	badIdxs := sliceUint8ToInt(task.BadIdxs)
@@ -250,7 +245,7 @@ func (repairer *ShardRepairer) checkOrphanShard(ctx context.Context, repls []pro
 
 func (repairer *ShardRepairer) listShardsInfo(ctx context.Context, repls []proto.VunitLocation, bid proto.BlobID) []*ShardInfoEx {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Infof("start list shards info: bid[%d], replicas len[%d]", bid, len(repls))
+	span.Infof("start list shards info: bid[%d], locations len[%d]", bid, len(repls))
 
 	shardInfos := make([]*ShardInfoEx, len(repls))
 	wg := sync.WaitGroup{}
@@ -262,12 +257,8 @@ func (repairer *ShardRepairer) listShardsInfo(ctx context.Context, repls []proto
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			si, err := repairer.cli.StatShard(ctx, location, bid)
-			if err == nil {
-				shardInfos[idx] = &ShardInfoEx{err: nil, info: si}
-			} else {
-				shardInfos[idx] = &ShardInfoEx{err: err, info: nil}
-			}
+			info, err := repairer.cli.StatShard(ctx, location, bid)
+			shardInfos[idx] = &ShardInfoEx{err: err, info: info}
 		}()
 	}
 	wg.Wait()

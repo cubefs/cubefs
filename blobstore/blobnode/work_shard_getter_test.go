@@ -161,17 +161,17 @@ func testGetBenchmarkBids(t *testing.T, mode codemode.CodeMode) {
 	bids := []proto.BlobID{1, 2, 3, 4, 5, 6, 7}
 	sizes := []int64{10, 1024, 1024, 1024, 1024, 1024, 1024}
 	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
-	benchmarkBids, err := GetBenchmarkBids(context.Background(), getter, replicas, mode, []uint8{})
+	benchmarkBids, err := GetRecoverableBids(context.Background(), getter, replicas, mode, []uint8{})
 	require.NoError(t, err)
 	bidsEqual(t, benchmarkBids, bids, sizes)
 
 	getter.Delete(context.Background(), replicas[0].Vuid, 1)
-	benchmarkBids, err = GetBenchmarkBids(context.Background(), getter, replicas, mode, []uint8{})
+	benchmarkBids, err = GetRecoverableBids(context.Background(), getter, replicas, mode, []uint8{})
 	require.NoError(t, err)
 	bidsEqual(t, benchmarkBids, bids, sizes)
 
 	getter.MarkDelete(context.Background(), replicas[1].Vuid, 1)
-	benchmarkBids, err = GetBenchmarkBids(context.Background(), getter, replicas, mode, []uint8{})
+	benchmarkBids, err = GetRecoverableBids(context.Background(), getter, replicas, mode, []uint8{})
 	require.NoError(t, err)
 	bids1 := []proto.BlobID{2, 3, 4, 5, 6, 7}
 	sizes1 := []int64{1024, 1024, 1024, 1024, 1024, 1024}
@@ -185,7 +185,7 @@ func testGetBenchmarkBids(t *testing.T, mode codemode.CodeMode) {
 		replica := replicas[idx]
 		getter.Delete(context.Background(), replica.Vuid, 2)
 	}
-	benchmarkBids, err = GetBenchmarkBids(context.Background(), getter, replicas, mode, []uint8{})
+	benchmarkBids, err = GetRecoverableBids(context.Background(), getter, replicas, mode, []uint8{})
 	require.NoError(t, err)
 	bids2 := []proto.BlobID{3, 4, 5, 6, 7}
 	sizes2 := []int64{1024, 1024, 1024, 1024, 1024}
@@ -206,7 +206,7 @@ func testGetBenchmarkBids(t *testing.T, mode codemode.CodeMode) {
 		getter.setFail(replica.Vuid, errors.New("fake error"))
 	}
 
-	_, err = GetBenchmarkBids(context.Background(), getter, replicas, mode, []uint8{})
+	_, err = GetRecoverableBids(context.Background(), getter, replicas, mode, []uint8{})
 	require.Error(t, err)
 	require.EqualError(t, ErrNotEnoughWellReplicaCnt, err.Error())
 }

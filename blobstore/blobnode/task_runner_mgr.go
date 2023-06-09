@@ -174,7 +174,7 @@ func (tm *TaskRunnerMgr) RunningTaskCnt() map[proto.TaskType]int {
 	defer tm.mu.Unlock()
 	running := make(map[proto.TaskType]int)
 	for typ, mgr := range tm.typeMgr {
-		tm.typeMgr[typ] = mgr.eliminateStopped()
+		mgr.removeStoppedRunner()
 		running[typ] = len(tm.typeMgr[typ])
 	}
 	return running
@@ -190,17 +190,16 @@ func (tm *TaskRunnerMgr) TaskStats() blobnode.WorkerStats {
 
 type mapTaskRunner map[string]*TaskRunner
 
-func (m mapTaskRunner) eliminateStopped() mapTaskRunner {
-	newTasks := make(mapTaskRunner, len(m))
+func (m mapTaskRunner) removeStoppedRunner() {
 	for taskID, task := range m {
 		if task.Stopped() {
+			delete(m, taskID)
 			log.Infof("remove stopped task: taskID[%s], state[%d]", task.taskID, task.state.state)
 			continue
 		}
 		log.Debugf("remain task: taskID[%s], state[%d]", task.taskID, task.state.state)
-		newTasks[taskID] = task
 	}
-	return newTasks
+	return
 }
 
 func (m mapTaskRunner) addTask(taskID string, runner *TaskRunner) error {

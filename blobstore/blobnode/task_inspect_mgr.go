@@ -80,7 +80,7 @@ func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.VolumeInsp
 	replicasBids := GetReplicasBids(ctx, mgr.bidGetter, replicas)
 	for vuid, replBids := range replicasBids {
 		if replBids.RetErr != nil {
-			span.Errorf("get replicas bids failed: vuid[%d], err[%+v]", vuid, replBids.RetErr)
+			span.Errorf("get locations bids failed: vuid[%d], err[%+v]", vuid, replBids.RetErr)
 			ret.InspectErrStr = replBids.RetErr.Error()
 			return ret
 		}
@@ -118,9 +118,8 @@ func (mgr *InspectTaskMgr) doInspect(ctx context.Context, task *proto.VolumeInsp
 		if existStatus.CanRecover() {
 			allBlobMissed = append(allBlobMissed, oneBlobMissed...)
 			continue
-		} else {
-			span.Warnf("blob may be lost: vid[%d], bid[%d]", replicas[0].Vuid.Vid(), bid.Bid)
 		}
+		span.Warnf("blob may be lost: vid[%d], bid[%d]", replicas[0].Vuid.Vid(), bid.Bid)
 	}
 	ret.MissedShards = allBlobMissed
 	return ret

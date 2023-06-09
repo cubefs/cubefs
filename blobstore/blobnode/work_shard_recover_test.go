@@ -87,7 +87,7 @@ func TestShardsBuf(t *testing.T) {
 	require.Equal(t, true, ok)
 }
 
-func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, *MockGetter, Vunits) {
+func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, *MockGetter, VunitLocations) {
 	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
 		MigrateBufSize:     10 * 1024,
 		MigrateBufCapacity: 100,
@@ -188,7 +188,7 @@ func TestRecoverLocalReplicaShards(t *testing.T) {
 	repair, bidInfos, getter, _ := InitMockRepair(codemode.EC6P10L2)
 	badi := []uint8{16}
 	for idx := range [11]struct{}{} {
-		getter.setFail(repair.replicas[idx].Vuid, errors.New("fake error"))
+		getter.setFail(repair.locations[idx].Vuid, errors.New("fake error"))
 	}
 
 	err := repair.recoverReplicaShards(context.Background(), badi, GetBids(bidInfos))
@@ -197,7 +197,7 @@ func TestRecoverLocalReplicaShards(t *testing.T) {
 	repair, bidInfos, getter, _ = InitMockRepair(codemode.EC6P10L2)
 	badi = []uint8{16}
 	for idx := range [10]struct{}{} {
-		getter.setFail(repair.replicas[idx].Vuid, errors.New("fake error"))
+		getter.setFail(repair.locations[idx].Vuid, errors.New("fake error"))
 	}
 	err = repair.recoverReplicaShards(context.Background(), badi, GetBids(bidInfos))
 	require.NoError(t, err)
@@ -390,7 +390,7 @@ func TestLocalStripes(t *testing.T) {
 	stripes, err := repair.genLocalStripes(badi)
 	require.NoError(t, err)
 	for _, stripe := range stripes {
-		for _, replica := range stripe.replicas {
+		for _, replica := range stripe.locations {
 			localStripeIdxs = append(localStripeIdxs, replica.Vuid.Index())
 		}
 		require.Equal(t, []uint8{0, 1, 2, 6, 7, 8, 9, 10, 16}, localStripeIdxs)
@@ -399,7 +399,7 @@ func TestLocalStripes(t *testing.T) {
 
 func testCheckData(t *testing.T, repairer *ShardRecover, getter *MockGetter, badi []uint8) {
 	for _, bidInfo := range repairer.repairBidsReadOnly {
-		for _, repl := range repairer.replicas {
+		for _, repl := range repairer.locations {
 			if repairer.chunksShardsBuf[repl.Vuid.Index()] == nil {
 				continue
 			}

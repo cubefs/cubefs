@@ -182,6 +182,12 @@ func (s *WorkerService) ShardRepair(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(c.Request.Context())
 	ctx := trace.ContextWithSpan(c.Request.Context(), span)
 
+	if !args.IsValid() {
+		span.Errorf("shard repair task is illegal: task[%+v]", args)
+		c.RespondError(errcode.ErrIllegalTask)
+		return
+	}
+
 	err := s.shardRepairLimit.Acquire()
 	if err != nil {
 		span.Errorf("the shard repair request is too much: err[%+v]", err)
@@ -248,29 +254,28 @@ func (s *WorkerService) hasInspectTaskResource() bool {
 // acquire:disk repair & balance & disk drop task
 func (s *WorkerService) acquireTask() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "acquireTask")
-	t, err := s.schedulerCli.AcquireTask(ctx, &scheduler.AcquireArgs{IDC: s.taskRunnerMgr.idc})
+	task, err := s.schedulerCli.AcquireTask(ctx, &scheduler.AcquireArgs{IDC: s.taskRunnerMgr.idc})
 	if err != nil {
 		code := rpc.DetectStatusCode(err)
 		if code != errcode.CodeNotingTodo {
-			span.Errorf("acquire task failed: code[%d], err[%v]", code, err)
+			span.Infof("acquire task failed: code[%d], err[%v]", code, err)
 		}
 		return
 	}
 
-	if !t.IsValid() {
-		span.Errorf("task is illegal: task type[%s], task[%+v]", t.TaskType, t)
+	if !task.IsValid() {
+		span.Errorf("task is illegal: task type[%s], task[%+v]", task.TaskType, task)
 		return
 	}
-	err = s.taskRunnerMgr.AddTask(ctx, MigrateTaskEx{
-		taskInfo:                 t,
+	if err = s.taskRunnerMgr.AddTask(ctx, MigrateTaskEx{
+		taskInfo:                 task,
 		downloadShardConcurrency: s.DownloadShardConcurrency,
 		blobNodeCli:              s.blobNodeCli,
-	})
-	if err != nil {
-		span.Errorf("add task failed: taskID[%s], err[%v]", t.TaskID, err)
+	}); err != nil {
+		span.Errorf("add task failed: taskID[%s], err[%v]", task.TaskID, err)
 		return
 	}
-	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType, t.TaskID)
+	span.Infof("acquire task success: task_type[%s], taskID[%s]", task.TaskType, task.TaskID)
 }
 
 // acquire inspect task

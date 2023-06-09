@@ -41,7 +41,7 @@ var (
 	errIllegalBuf           = errors.New("illegal buffer")
 	errBidCanNotRecover     = errors.New("bid can not recover")
 	errCrcNotMatch          = errors.New("data conflict crc32 not match")
-	errUnexpectedLength     = errors.New("length of replicas is unexpected")
+	errUnexpectedLength     = errors.New("length of locations is unexpected")
 	errEcVerifyFailed       = errors.New("ec verify failed")
 	errShardSizeNotMatch    = errors.New("shard data size not match")
 	errBufNotEnough         = errors.New("buf space not enough")
@@ -52,13 +52,13 @@ var (
 const defaultGetConcurrency = 100
 
 type downloadPlan struct {
-	downloadReplicas Vunits
+	locations VunitLocations
 }
 
-// Vunits volume stripe locations.
-type Vunits []proto.VunitLocation
+// VunitLocations volume stripe locations.
+type VunitLocations []proto.VunitLocation
 
-func (locs Vunits) IsValid() bool {
+func (locs VunitLocations) IsValid() bool {
 	if !proto.CheckVunitLocations(locs) {
 		return false
 	}
@@ -70,7 +70,7 @@ func (locs Vunits) IsValid() bool {
 	return true
 }
 
-func (locs Vunits) Indexes() []uint8 {
+func (locs VunitLocations) Indexes() []uint8 {
 	idxes := make([]uint8, len(locs))
 	for idx, loc := range locs {
 		idxes[idx] = loc.Vuid.Index()
@@ -78,17 +78,17 @@ func (locs Vunits) Indexes() []uint8 {
 	return idxes
 }
 
-func (locs Vunits) Subset(idxes []int) Vunits {
-	sub := make(Vunits, 0, len(idxes))
+func (locs VunitLocations) Subset(idxes []int) VunitLocations {
+	sub := make(VunitLocations, 0, len(idxes))
 	for _, idx := range idxes {
 		sub = append(sub, locs[idx])
 	}
 	return sub
 }
 
-func (locs Vunits) IntactGlobalSet(mode codemode.CodeMode, bad []uint8) Vunits {
-	ex := make(map[int]struct{}, len(bad))
-	for _, idx := range bad {
+func (locs VunitLocations) IntactGlobalSet(mode codemode.CodeMode, badIdxes []uint8) VunitLocations {
+	ex := make(map[int]struct{}, len(badIdxes))
+	for _, idx := range badIdxes {
 		ex[int(idx)] = struct{}{}
 	}
 
@@ -105,47 +105,46 @@ func (locs Vunits) IntactGlobalSet(mode codemode.CodeMode, bad []uint8) Vunits {
 }
 
 func (stripe *repairStripe) genDownloadPlans() []downloadPlan {
-	badi := stripe.badIdxes
 	n := stripe.n
-	var downloadPlans []downloadPlan
-	var wellReplications Vunits
+	badIdxes := stripe.badIdxes
+	normalLocations := make(VunitLocations, 0, n)
 
-	stripeReplicas := make([]proto.VunitLocation, len(stripe.replicas))
-	copy(stripeReplicas, stripe.replicas)
-	rand.Shuffle(len(stripeReplicas), func(i, j int) {
-		stripeReplicas[i], stripeReplicas[j] = stripeReplicas[j], stripeReplicas[i]
+	stripeLocations := make(VunitLocations, len(stripe.locations))
+	copy(stripeLocations, stripe.locations)
+	rand.Shuffle(len(stripeLocations), func(i, j int) {
+		stripeLocations[i], stripeLocations[j] = stripeLocations[j], stripeLocations[i]
 	})
 
 	badMap := make(map[uint8]struct{})
-	for _, bad := range badi {
-		badMap[bad] = struct{}{}
+	for _, badIdx := range badIdxes {
+		badMap[badIdx] = struct{}{}
 	}
 
-	for _, replica := range stripeReplicas {
-		replicaIdx := replica.Vuid.Index()
-		if _, ok := badMap[replicaIdx]; ok {
-			continue
+	for _, location := range stripeLocations {
+		replicaIdx := location.Vuid.Index()
+		if _, ok := badMap[replicaIdx]; !ok {
+			normalLocations = append(normalLocations, location)
 		}
-		wellReplications = append(wellReplications, replica)
 	}
 
-	planCnt := len(wellReplications) - int(n) + 1
+	planCnt := len(normalLocations) - int(n) + 1
+	downloadPlans := make([]downloadPlan, 0, planCnt)
 	for i := 0; i < planCnt; i++ {
 		plan := downloadPlan{
-			downloadReplicas: make([]proto.VunitLocation, n),
+			locations: make([]proto.VunitLocation, n),
 		}
-		copy(plan.downloadReplicas, wellReplications[0:n-1]) // n-1 replicas
-		plan.downloadReplicas[n-1] = wellReplications[int(n-1)+i]
+		copy(plan.locations, normalLocations[0:n-1]) // n-1 locations
+		plan.locations[n-1] = normalLocations[n-1+i]
 		downloadPlans = append(downloadPlans, plan)
 	}
 	return downloadPlans
 }
 
 type repairStripe struct {
-	replicas Vunits
-	n        int
-	m        int
-	badIdxes []uint8
+	locations VunitLocations
+	n         int
+	m         int
+	badIdxes  []uint8
 }
 
 // duties：repair shard data
@@ -164,7 +163,7 @@ type repairStripe struct {
 // bid2：shard31 shard32 shard33
 // ShardsBuf:record of download shards data from same chunk({shard11，shard21，shard31})
 // ShardRecover.chunksShardsBuf:is a list of chunksShardsBuf, every ele in list is record a chunk shard data,
-// the order of chunks in list is keep some with volume replicas
+// the order of chunks in list is keep some with volume locations
 
 // usage：
 // first call RecoverShards to repair shard
@@ -192,149 +191,149 @@ func NewShardsBuf(buf []byte) *ShardsBuf {
 }
 
 // PlanningDataLayout planning data layout
-func (shards *ShardsBuf) PlanningDataLayout(bids []*ShardInfoSimple) error {
-	shards.mu.Lock()
-	defer shards.mu.Unlock()
+func (b *ShardsBuf) PlanningDataLayout(bids []*ShardInfoSimple) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	var totalSize int64 = 0
 	for _, bid := range bids {
 		totalSize += bid.Size
 	}
-	if totalSize > int64(len(shards.buf)) {
+	if totalSize > int64(len(b.buf)) {
 		return errBufNotEnough
 	}
 
 	var offset int64 = 0
 	for _, bid := range bids {
-		b := shard{
-			data: shards.buf[offset : offset+bid.Size],
+		s := shard{
+			data: b.buf[offset : offset+bid.Size],
 			size: bid.Size,
 			ok:   false,
 		}
 		if bid.Size == 0 {
-			b.ok = true
+			s.ok = true
 		}
-		shards.shards[bid.Bid] = &b
+		b.shards[bid.Bid] = &s
 		offset += bid.Size
 	}
 	return nil
 }
 
-func (shards *ShardsBuf) getShardBuf(bid proto.BlobID) ([]byte, error) {
-	shards.mu.Lock()
-	defer shards.mu.Unlock()
-	if _, ok := shards.shards[bid]; !ok {
+func (b *ShardsBuf) getShardBuf(bid proto.BlobID) ([]byte, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.shards[bid]; !ok {
 		return nil, errBidNotFoundInBuf
 	}
-	if shards.shards[bid].ok {
-		return shards.shards[bid].data, nil
+	if b.shards[bid].ok {
+		return b.shards[bid].data, nil
 	}
-	retBuf := shards.shards[bid].data[0:0]
+	retBuf := b.shards[bid].data[0:0]
 	return retBuf, nil
 }
 
-func (shards *ShardsBuf) setShardBuf(ctx context.Context, bid proto.BlobID, buf []byte) error {
-	shards.mu.Lock()
-	defer shards.mu.Unlock()
+func (b *ShardsBuf) setShardBuf(ctx context.Context, bid proto.BlobID, buf []byte) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	span := trace.SpanFromContextSafe(ctx)
 
-	if _, ok := shards.shards[bid]; !ok {
+	if _, ok := b.shards[bid]; !ok {
 		return errBidNotFoundInBuf
 	}
-	if shards.shards[bid].ok {
+	if b.shards[bid].ok {
 		return errBufHasData
 	}
-	if shards.shards[bid].size == 0 {
-		shards.shards[bid].ok = true
+	if b.shards[bid].size == 0 {
+		b.shards[bid].ok = true
 		return nil
 	}
 
-	ptr1 := unsafe.Pointer(&shards.shards[bid].data[0])
+	ptr1 := unsafe.Pointer(&b.shards[bid].data[0])
 	ptr2 := unsafe.Pointer(&buf[0])
-	if ptr1 == ptr2 && len(buf) == int(shards.shards[bid].size) {
-		shards.shards[bid].data = buf
-		shards.shards[bid].ok = true
+	if ptr1 == ptr2 && len(buf) == int(b.shards[bid].size) {
+		b.shards[bid].data = buf
+		b.shards[bid].ok = true
 		return nil
 	}
 
 	span.Errorf("set shard buf failed: expect point[%p], expect size[%d], actual point[%p], actual size[%d]",
-		shards.shards[bid].data, shards.shards[bid].size,
+		b.shards[bid].data, b.shards[bid].size,
 		buf, len(buf))
 	return errIllegalBuf
 }
 
 // ShardSizeIsZero return true if shard size is zero
-func (shards *ShardsBuf) ShardSizeIsZero(bid proto.BlobID) bool {
-	shards.mu.Lock()
-	defer shards.mu.Unlock()
-	return shards.shards[bid].size == 0
+func (b *ShardsBuf) ShardSizeIsZero(bid proto.BlobID) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.shards[bid].size == 0
 }
 
 // FetchShard returns shard data
-func (shards *ShardsBuf) FetchShard(bid proto.BlobID) ([]byte, error) {
-	shards.mu.Lock()
-	defer shards.mu.Unlock()
-	if _, ok := shards.shards[bid]; !ok {
+func (b *ShardsBuf) FetchShard(bid proto.BlobID) ([]byte, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.shards[bid]; !ok {
 		return nil, errBidNotFoundInBuf
 	}
-	if shards.shards[bid].size == 0 {
-		return shards.shards[bid].data, nil
+	if b.shards[bid].size == 0 {
+		return b.shards[bid].data, nil
 	}
-	if !shards.shards[bid].ok {
+	if !b.shards[bid].ok {
 		return nil, errShardDataNotPrepared
 	}
 
-	return shards.shards[bid].data, nil
+	return b.shards[bid].data, nil
 }
 
 // PutShard put shard data to shardsBuf
-func (shards *ShardsBuf) PutShard(bid proto.BlobID, input io.Reader) error {
-	shards.mu.Lock()
+func (b *ShardsBuf) PutShard(bid proto.BlobID, input io.Reader) error {
+	b.mu.Lock()
 
-	if _, ok := shards.shards[bid]; !ok {
-		shards.mu.Unlock()
+	if _, ok := b.shards[bid]; !ok {
+		b.mu.Unlock()
 		return errBidNotFoundInBuf
 	}
-	if shards.shards[bid].size == 0 {
-		shards.mu.Unlock()
+	if b.shards[bid].size == 0 {
+		b.mu.Unlock()
 		return nil
 	}
-	if shards.shards[bid].ok {
-		shards.mu.Unlock()
+	if b.shards[bid].ok {
+		b.mu.Unlock()
 		return errBufHasData
 	}
 
-	size := shards.shards[bid].size
-	if int64(len(shards.shards[bid].data)) != size {
+	size := b.shards[bid].size
+	if int64(len(b.shards[bid].data)) != size {
 		return errShardSizeNotMatch
 	}
-	shards.mu.Unlock()
+	b.mu.Unlock()
 
 	// read data from remote is slow,so optimize use of lock
-	_, err := io.ReadFull(input, shards.shards[bid].data)
+	_, err := io.ReadFull(input, b.shards[bid].data)
 	if err != nil {
 		return err
 	}
 
-	shards.mu.Lock()
-	shards.shards[bid].ok = true
-	shards.mu.Unlock()
+	b.mu.Lock()
+	b.shards[bid].ok = true
+	b.mu.Unlock()
 	return nil
 }
 
-func (shards *ShardsBuf) shardIsOk(bid proto.BlobID) bool {
-	shards.mu.Lock()
-	defer shards.mu.Unlock()
-	if _, exist := shards.shards[bid]; exist {
-		return shards.shards[bid].ok
+func (b *ShardsBuf) shardIsOk(bid proto.BlobID) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, exist := b.shards[bid]; exist {
+		return b.shards[bid].ok
 	}
 	return false
 }
 
 // ShardCrc32 returns shard crc32
-func (shards *ShardsBuf) ShardCrc32(bid proto.BlobID) (crc uint32, err error) {
-	buf, err := shards.FetchShard(bid)
+func (b *ShardsBuf) ShardCrc32(bid proto.BlobID) (crc uint32, err error) {
+	buf, err := b.FetchShard(bid)
 	if err != nil {
 		return 0, err
 	}
@@ -384,7 +383,7 @@ func (d *downloadStatus) downloaded(vuid proto.Vuid) {
 type ShardRecover struct {
 	chunksShardsBuf []*ShardsBuf // record batch download shard data
 
-	replicas           Vunits // stripe replicas list
+	locations          VunitLocations // stripe locations list
 	codeMode           codemode.CodeMode
 	repairBidsReadOnly []*ShardInfoSimple // Strictly not allow modification
 
@@ -396,7 +395,7 @@ type ShardRecover struct {
 }
 
 // NewShardRecover returns shard recover
-func NewShardRecover(replicas Vunits, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
+func NewShardRecover(locations VunitLocations, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
 	shardGetter client.IBlobNode, vunitShardGetConcurrency int, taskType proto.TaskType,
 ) *ShardRecover {
 	if vunitShardGetConcurrency <= 0 {
@@ -405,8 +404,8 @@ func NewShardRecover(replicas Vunits, mode codemode.CodeMode, bidInfos []*ShardI
 	ioType := blobnode.Task2IOType(taskType)
 
 	repair := ShardRecover{
-		replicas:                 replicas,
-		chunksShardsBuf:          make([]*ShardsBuf, len(replicas)),
+		locations:                locations,
+		chunksShardsBuf:          make([]*ShardsBuf, len(locations)),
 		codeMode:                 mode,
 		repairBidsReadOnly:       bidInfos,
 		shardGetter:              shardGetter,
@@ -421,7 +420,7 @@ func NewShardRecover(replicas Vunits, mode codemode.CodeMode, bidInfos []*ShardI
 // RecoverShards recover shards
 func (r *ShardRecover) RecoverShards(ctx context.Context, repairIdxs []uint8, direct bool) error {
 	span := trace.SpanFromContextSafe(ctx)
-	if !r.replicas.IsValid() {
+	if !r.locations.IsValid() {
 		return errInvalidReplicas
 	}
 
@@ -442,7 +441,7 @@ func (r *ShardRecover) RecoverShards(ctx context.Context, repairIdxs []uint8, di
 	// end
 
 	for _, idx := range repairIdxs {
-		repairVuid := r.replicas[idx].Vuid
+		repairVuid := r.locations[idx].Vuid
 		r.ds.forbiddenDownload(repairVuid)
 	}
 
@@ -502,9 +501,9 @@ func (r *ShardRecover) directGetShard(ctx context.Context, repairBids []proto.Bl
 	if allocBufErr != nil {
 		return nil, allocBufErr
 	}
-	replicas := make(Vunits, len(repairIdxs))
+	replicas := make(VunitLocations, len(repairIdxs))
 	for i, idx := range repairIdxs {
-		replicas[i] = r.replicas[idx]
+		replicas[i] = r.locations[idx]
 	}
 
 	r.download(ctx, repairBids, replicas)
@@ -518,24 +517,24 @@ func (r *ShardRecover) recoverByLocalStripe(ctx context.Context, repairBids []pr
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start recover by local stripe: repairIdxs[%+v]", repairIdxs)
 
-	stripes, err := r.genLocalStripes(repairIdxs)
+	rStripes, err := r.genLocalStripes(repairIdxs)
 	if err != nil {
 		return err
 	}
-	span.Infof("start recoverByLocalStripe: badIdxes[%+v], len stripes[%d]", repairIdxs, len(stripes))
-	if len(stripes) == 0 {
+	span.Infof("start recoverByLocalStripe: badIdxes[%+v], len stripes[%d]", repairIdxs, len(rStripes))
+	if len(rStripes) == 0 {
 		return nil
 	}
 
-	for _, stripe := range stripes {
+	for _, rStripe := range rStripes {
 		//todo:repairs between strips are completely unrelated,
 		// so can improve efficiency through concurrent repair
-		idxs := stripe.replicas.Indexes()
+		idxs := rStripe.locations.Indexes()
 		err = r.allocBuf(ctx, idxs)
 		if err != nil {
 			return
 		}
-		err = r.repairStripe(ctx, repairBids, stripe)
+		err = r.repairStripe(ctx, repairBids, rStripe)
 		if err != nil {
 			return err
 		}
@@ -552,24 +551,23 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []p
 	switch r.codeMode.Tactic().CodeType {
 	case codemode.ReedSolomon, codemode.OPPOLrc:
 		stripe = repairStripe{
-			replicas: r.replicas,
-			n:        r.codeMode.T().N,
-			m:        r.codeMode.T().M,
-			badIdxes: repairIdxs,
+			locations: r.locations,
+			n:         r.codeMode.T().N,
+			m:         r.codeMode.T().M,
+			badIdxes:  repairIdxs,
 		}
 	case codemode.AzureLrcP1:
 		stripe = repairStripe{
-			replicas: r.replicas,
-			n:        r.codeMode.T().N,
-			m:        r.codeMode.T().M + r.codeMode.T().L,
-			badIdxes: repairIdxs,
+			locations: r.locations,
+			n:         r.codeMode.T().N,
+			m:         r.codeMode.T().M + r.codeMode.T().L,
+			badIdxes:  repairIdxs,
 		}
 	default:
 		span.Errorf("wrong codemode:%v for recoverByGlobalStripe", r.codeMode.Tactic().CodeType)
 		return errInvalidCodeMode
 	}
-
-	idxs := stripe.replicas.Indexes()
+	idxs := stripe.locations.Indexes()
 	err = r.allocBuf(ctx, idxs)
 	if err != nil {
 		return
@@ -591,10 +589,10 @@ func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.Blob
 	failBids := repairBids
 	// step2:download data according download plans and repair data
 	for _, plan := range downloadPlans {
-		r.download(ctx, failBids, plan.downloadReplicas)
+		r.download(ctx, failBids, plan.locations)
 		err = r.repair(ctx, failBids, stripe)
 		if err != nil {
-			span.Errorf("plan.downloadReplicas:%+v repair error:%v", plan.downloadReplicas, err)
+			span.Errorf("plan.locations:%+v repair error:%v", plan.locations, err)
 		}
 		failBids = r.collectFailBids(failBids, stripe.badIdxes)
 		if len(failBids) == 0 {
@@ -604,7 +602,7 @@ func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.Blob
 	return err
 }
 
-func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, replicas Vunits) {
+func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, replicas VunitLocations) {
 	wg := sync.WaitGroup{}
 	tp := taskpool.New(len(replicas), len(replicas))
 	for _, replica := range replicas {
@@ -706,12 +704,13 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 	span := trace.SpanFromContextSafe(ctx)
 
 	var err error
-	replicas := stripe.replicas
+	locations := stripe.locations
 
-	span.Infof("start repair stripe: code mode[%v], bids len[%d], replicas[%+v]", r.codeMode.Tactic(), len(repairBids), replicas)
+	span.Infof("start repair stripe: code mode[%v], bids len[%d], locations[%+v]",
+		r.codeMode.Tactic(), len(repairBids), locations)
 
-	if len(replicas) == 0 {
-		span.Error("unexpect len of replicas is zero")
+	if len(locations) == 0 {
+		span.Error("unexpect len of locations is zero")
 		return errUnexpectedLength
 	}
 
@@ -723,11 +722,11 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 	for _, bid := range repairBids {
 		span.Debugf("start repair: bid[%d]", bid)
 
-		blobShards := make([][]byte, len(replicas))
-		var recoverIdxOfVunit []uint8
-		var recoverIdxOfStripe []int
-		for i := 0; i < len(replicas); i++ {
-			vuid := replicas[i].Vuid
+		blobShards := make([][]byte, len(locations))
+		var badIdxOfVunits []uint8
+		var badIdxes []int
+		for i := 0; i < len(locations); i++ {
+			vuid := locations[i].Vuid
 			blobShards[i], err = r.chunksShardsBuf[vuid.Index()].getShardBuf(bid)
 			if err != nil {
 				span.Errorf("unexpect get shard: bid[%d], buf fail err[%+v]", bid, err)
@@ -735,35 +734,35 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 			}
 
 			if !r.chunksShardsBuf[vuid.Index()].shardIsOk(bid) {
-				recoverIdxOfVunit = append(recoverIdxOfVunit, vuid.Index())
-				recoverIdxOfStripe = append(recoverIdxOfStripe, i)
+				badIdxOfVunits = append(badIdxOfVunits, vuid.Index())
+				badIdxes = append(badIdxes, i)
 			}
 		}
-		span.Debugf("shouldRecoverIdx recoverIdxOfVunit[%+v], recoverIdxOfStripe[%+v]", recoverIdxOfVunit, recoverIdxOfStripe)
+		span.Debugf("shouldRecoverIdx badIdxOfVunits[%+v], badIdxes[%+v]", badIdxOfVunits, badIdxes)
 
-		if r.chunksShardsBuf[replicas[0].Vuid.Index()].ShardSizeIsZero(bid) {
+		if r.chunksShardsBuf[locations[0].Vuid.Index()].ShardSizeIsZero(bid) {
 			span.Infof("blob size is zero not need to recover: bid[%d]", bid)
 			continue
 		}
 
 		// broken uints length > M + L can not repair
-		if len(recoverIdxOfVunit) > r.codeMode.Tactic().M+r.codeMode.Tactic().L {
+		if len(badIdxOfVunits) > r.codeMode.Tactic().M+r.codeMode.Tactic().L {
 			span.Warnf("too many data can not prepared: bid[%d]", bid)
 			continue
 		}
 
-		if len(recoverIdxOfStripe) != len(recoverIdxOfVunit) {
-			span.Errorf("unexpect:len of recoverIdxOfStripe(%d) and recoverIdxOfVunit(%d) must equal",
-				len(recoverIdxOfStripe), len(recoverIdxOfVunit))
+		if len(badIdxes) != len(badIdxOfVunits) {
+			span.Errorf("unexpect:len of badIdxes(%d) and badIdxOfVunits(%d) must equal",
+				len(badIdxes), len(badIdxOfVunits))
 			return errUnexpectedLength
 		}
 
-		if len(recoverIdxOfVunit) == 0 {
+		if len(badIdxOfVunits) == 0 {
 			span.Warnf("not bids need to recover, theoretically will not appear")
 			continue
 		}
 
-		err = encoder.Reconstruct(blobShards, recoverIdxOfStripe)
+		err = encoder.Reconstruct(blobShards, badIdxes)
 		if err != nil {
 			span.Errorf("reconstruct shard failed: err[%+v],codemode:%v", err, r.codeMode.Tactic())
 			return errBidCanNotRecover
@@ -774,9 +773,8 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 			return errEcVerifyFailed
 		}
 
-		for i := range recoverIdxOfVunit {
-			volIdx := recoverIdxOfVunit[i]
-			stripeIdx := recoverIdxOfStripe[i]
+		for i, volIdx := range badIdxOfVunits {
+			stripeIdx := badIdxes[i]
 			err = r.chunksShardsBuf[volIdx].setShardBuf(ctx, bid, blobShards[stripeIdx])
 			if err != nil {
 				span.Errorf("unexpect error when set shard buf: idx[%d], bid[%d], err[%+v]", volIdx, bid, err)
@@ -788,7 +786,7 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 	return nil
 }
 
-func (r *ShardRecover) genLocalStripes(repairIdxs []uint8) (stripes []repairStripe, err error) {
+func (r *ShardRecover) genLocalStripes(repairIdxs []uint8) (rStripes []repairStripe, err error) {
 	// generate local stripes list in same az with repairIdxs
 	repairIdxsInIdc := workutils.IdxSplitByLocalStripe(repairIdxs, r.codeMode)
 	for _, oneIdcRepairIdxs := range repairIdxsInIdc {
@@ -797,16 +795,16 @@ func (r *ShardRecover) genLocalStripes(repairIdxs []uint8) (stripes []repairStri
 		}
 		idxs, n, m := r.codeMode.T().LocalStripe(int(oneIdcRepairIdxs[0]))
 
-		replicas := r.replicas.Subset(idxs)
-		stripe := repairStripe{
-			replicas: replicas,
-			n:        n,
-			m:        m,
-			badIdxes: oneIdcRepairIdxs,
+		locations := r.locations.Subset(idxs)
+		rStripe := repairStripe{
+			locations: locations,
+			n:         n,
+			m:         m,
+			badIdxes:  oneIdcRepairIdxs,
 		}
-		stripes = append(stripes, stripe)
+		rStripes = append(rStripes, rStripe)
 	}
-	return stripes, nil
+	return rStripes, nil
 }
 
 func (r *ShardRecover) collectFailBids(repairBids []proto.BlobID, repairIdxs []uint8) []proto.BlobID {

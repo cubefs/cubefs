@@ -36,6 +36,7 @@ type PartialShards struct {
 	azParticipants   []proto.VunitLocation // participant vuid in one az which part in reconstruct
 	participantIndex []int                 // all participants index for reconstruct data
 }
+
 type ShardResponse struct {
 	body  io.ReadCloser
 	crc32 uint32
