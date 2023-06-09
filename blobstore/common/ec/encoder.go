@@ -35,6 +35,7 @@ var (
 	ErrInvalidCodeMode = errors.New("invalid code mode")
 	ErrVerify          = errors.New("shards verify failed")
 	ErrInvalidShards   = errors.New("invalid shards")
+	ErrNotSupported    = errors.New("not supported this operation")
 )
 
 // Encoder normal ec encoder, implements all these functions
@@ -44,6 +45,7 @@ type Encoder interface {
 	// reconstruct all missing shards, you should assign the missing or bad idx in shards
 	Reconstruct(shards [][]byte, badIdx []int) error
 	// partialReconstruct will use partial decoding to optimize the cross-az bandwidth
+	// now only use for optimize Rs code,
 	PartialReconstruct(shards [][]byte, survivalIndex, badIdx []int) error
 	// only reconstruct data shards, you should assign the missing or bad idx in shards
 	ReconstructData(shards [][]byte, badIdx []int) error
@@ -131,7 +133,7 @@ func NewEncoder(cfg Config) (Encoder, error) {
 		}, nil
 	}
 
-	return nil, nil
+	return nil, ErrInvalidCodeMode
 }
 
 func (e *encoder) Encode(shards [][]byte) error {

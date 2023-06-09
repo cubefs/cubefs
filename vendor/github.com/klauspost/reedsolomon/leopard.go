@@ -345,11 +345,11 @@ func (r *leopardFF16) ReconstructData(shards [][]byte) error {
 }
 
 func (r *leopardFF16) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int, []int, error) {
-	return r.GetSurvivalShards(badIndex, azLayout)
+	return nil,nil,ErrNotSupported
 }
 
 func (r *leopardFF16) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []int) error {
-	return r.PartialReconstruct(shards, survivalIdx, badIdx)
+	return ErrNotSupported
 }
 
 func (r *leopardFF16) Verify(shards [][]byte) (bool, error) {

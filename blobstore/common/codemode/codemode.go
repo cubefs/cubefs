@@ -14,9 +14,7 @@
 
 package codemode
 
-import (
-	"fmt"
-)
+import "fmt"
 
 type (
 	// CodeMode EC encode and decode mode
@@ -41,11 +39,11 @@ const (
 	EC10P4        CodeMode = 12
 	EC6P3         CodeMode = 13
 	EC12P9        CodeMode = 14
+
 	// for test
 	EC6P6L9  CodeMode = 200
 	EC6P8L10 CodeMode = 201
-	// for azureLrcP1
-	// dataShards/(L-1) MUST equal to globalParityShards
+	// for azureLrcP1 test dataShards/(L-1) MUST equal to globalParityShards
 	EC12P6L3 CodeMode = 211
 	EC18P9L3 CodeMode = 212
 	EC10P5L3 CodeMode = 213
@@ -435,7 +433,7 @@ func (c *Tactic) LocalStripeInAZ(azIndex int) (localStripe []int, n, m int) {
 	}
 
 	l := c.L / c.AZCount
-	if c.CodeType == OPPOLrc || c.CodeType == OPPOLrc {
+	if c.CodeType == OPPOLrc {
 		n, m = c.N/c.AZCount, c.M/c.AZCount
 	}
 	if c.CodeType == AzureLrcP1 {
