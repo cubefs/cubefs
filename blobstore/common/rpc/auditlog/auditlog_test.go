@@ -16,6 +16,7 @@ package auditlog
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -128,4 +129,25 @@ func TestOpen(t *testing.T) {
 	dirEntries, err = open.ReadDir(-1)
 	require.NoError(t, err)
 	require.Greater(t, len(dirEntries), 0)
+}
+
+func TestBodylimit(t *testing.T) {
+	for _, limit := range []struct {
+		actual, expected int
+	}{
+		{-100, 0},
+		{-1, 0},
+		{0, defaultReadBodyBuffLength},
+		{10, 10},
+		{defaultReadBodyBuffLength, defaultReadBodyBuffLength},
+		{maxReadBodyBuffLength, maxReadBodyBuffLength},
+		{maxReadBodyBuffLength + 1, maxReadBodyBuffLength},
+	} {
+		cfg := Config{BodyLimit: limit.actual}
+		cfg.MetricConfig.Idc = fmt.Sprint(limit)
+		_, lc, err := Open("name", &cfg)
+		require.NoError(t, err)
+		require.NoError(t, lc.Close())
+		require.Equal(t, limit.expected, cfg.BodyLimit)
+	}
 }

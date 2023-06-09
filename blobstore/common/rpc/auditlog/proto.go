@@ -22,7 +22,8 @@ type Config struct {
 	// ChunkBits means one audit log file size
 	// eg: chunkbits=20 means one log file will hold 1<<10 size
 	ChunkBits uint `json:"chunkbits"`
-	BodyLimit int  `json:"bodylimit"`
+	// BodyLimit negative means no body-cache, 0 means default buffer size.
+	BodyLimit int `json:"bodylimit"`
 	// rotate new audit log file every start time
 	RotateNew     bool   `json:"rotate_new"`
 	LogFileSuffix string `json:"log_file_suffix"`
@@ -40,6 +41,13 @@ type LogCloser interface {
 	Close() error
 	Log([]byte) error
 }
+
+type noopLogCloser struct{}
+
+var _ LogCloser = noopLogCloser{}
+
+func (noopLogCloser) Close() error     { return nil }
+func (noopLogCloser) Log([]byte) error { return nil }
 
 type MetricSender interface {
 	Send(raw []byte) error
