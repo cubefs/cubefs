@@ -175,6 +175,16 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.Status = vv.Status
 	vol.dpSelectorName = vv.DpSelectorName
 	vol.dpSelectorParm = vv.DpSelectorParm
+
+	if vol.txTimeout == 0 {
+		vol.txTimeout = proto.DefaultTransactionTimeout
+	}
+	if vol.txConflictRetryNum == 0 {
+		vol.txConflictRetryNum = proto.DefaultTxConflictRetryNum
+	}
+	if vol.txConflictRetryInterval == 0 {
+		vol.txConflictRetryInterval = proto.DefaultTxConflictRetryInterval
+	}
 	return vol
 }
 
