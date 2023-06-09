@@ -131,6 +131,20 @@ func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
 		proto.MinDirChildrenNumLimit, math.MaxUint32, quota)))
 }
 
+func (m *Server) getMonitorPushAddr(w http.ResponseWriter, r *http.Request) {
+	var (
+		addr string
+		err  error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetMonitorPushAddr))
+	defer func() {
+		doStatAndMetric(proto.AdminGetMonitorPushAddr, metric, err, nil)
+	}()
+
+	addr = m.cluster.getMonitorPushAddr()
+	sendOkReply(w, r, newSuccessHTTPReply(addr))
+}
+
 // Set the threshold of the memory usage on each meta node.
 // If the memory usage reaches this threshold, then all the mata partition will be marked as readOnly.
 func (m *Server) setMetaNodeThreshold(w http.ResponseWriter, r *http.Request) {

@@ -3248,6 +3248,11 @@ func (c *Cluster) setClusterInfo(quota uint32) (err error) {
 	return
 }
 
+func (c *Cluster) getMonitorPushAddr() (addr string) {
+	addr = c.cfg.MonitorPushAddr
+	return
+}
+
 func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
 	oldThreshold := c.cfg.MetaNodeThreshold
 	c.cfg.MetaNodeThreshold = threshold

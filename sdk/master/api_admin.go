@@ -418,6 +418,16 @@ func (api *AdminAPI) GetVolumeSimpleInfo(volName string) (vv *proto.SimpleVolVie
 	return
 }
 
+func (api *AdminAPI) GetMonitorPushAddr() (addr string, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetMonitorPushAddr)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	err = json.Unmarshal(buf, &addr)
+	return
+}
+
 func (api *AdminAPI) UploadFlowInfo(volName string,
 	flowInfo *proto.ClientReportLimitInfo) (vv *proto.LimitRsp2Client, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QosUpload)
