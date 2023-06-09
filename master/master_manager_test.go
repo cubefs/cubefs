@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"testing"
+	"time"
 
 	rproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
@@ -61,6 +62,74 @@ func TestRaft(t *testing.T) {
 	snapshotTest(t)
 }
 
+const volForSnapshot = "snapshtVol"
+
+const volForSnapshotCount = 300
+
+func BenchmarkSnapshot(b *testing.B) {
+	var err error
+	// perpare status
+	req := &createVolReq{
+		name:             "",
+		owner:            "cfs",
+		size:             1,
+		mpCount:          1,
+		dpReplicaNum:     3,
+		capacity:         300,
+		followerRead:     false,
+		authenticate:     false,
+		crossZone:        false,
+		normalZonesFirst: false,
+		zoneName:         testZone2,
+		description:      "",
+		qosLimitArgs:     &qosArgs{},
+	}
+	for i := 0; i != volForSnapshotCount; i++ {
+		req.name = fmt.Sprintf("%v_%v", volForSnapshot, i)
+		server.cluster.createVol(req)
+	}
+	time.Sleep(6 * time.Second)
+	mdSnapshot, err := server.cluster.fsm.Snapshot()
+	if err != nil {
+		b.Error(err)
+		return
+	}
+	b.Logf("snapshot apply index[%v]\n", mdSnapshot.ApplyIndex())
+	s := &Server{}
+
+	var dbStore *raftstore.RocksDBStore
+	dbStore, err = raftstore.NewRocksDBStore("/tmp/cubefs/raft3", LRUCacheSize, WriteBufferSize)
+	if err != nil {
+		b.Fatalf("init rocks db store fail cause: %v", err)
+	}
+	defer dbStore.Close()
+	fsm := &MetadataFsm{
+		rs:    server.fsm.rs,
+		store: dbStore,
+	}
+	fsm.registerApplySnapshotHandler(func() {
+		fsm.restore()
+	})
+	s.fsm = fsm
+	peers := make([]rproto.Peer, 0, len(server.config.peers))
+	for _, peer := range server.config.peers {
+		peers = append(peers, peer.Peer)
+	}
+	b.StopTimer()
+	b.ResetTimer()
+	b.StartTimer()
+	if err = fsm.ApplySnapshot(peers, mdSnapshot); err != nil {
+		b.Error(err)
+		return
+	}
+	b.StopTimer()
+	if fsm.applied != mdSnapshot.ApplyIndex() {
+		b.Errorf("applied not equal,applied[%v],snapshot applied[%v]\n", fsm.applied, mdSnapshot.ApplyIndex())
+		return
+	}
+	mdSnapshot.Close()
+}
+
 func snapshotTest(t *testing.T) {
 	var err error
 	mdSnapshot, err := server.cluster.fsm.Snapshot()
@@ -76,6 +145,7 @@ func snapshotTest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init rocks db store fail cause: %v", err)
 	}
+	defer dbStore.Close()
 	fsm := &MetadataFsm{
 		rs:    server.fsm.rs,
 		store: dbStore,
