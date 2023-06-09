@@ -16,38 +16,91 @@ package raftstore
 
 import (
 	"fmt"
+	"strings"
 
 	"os"
 
+	"github.com/cubefs/cubefs/util/fileutil"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/tecbot/gorocksdb"
 )
 
 // RocksDBStore is a wrapper of the gorocksdb.DB
 type RocksDBStore struct {
-	dir string
-	db  *gorocksdb.DB
+	dir             string
+	lruCacheSize    int
+	writeBufferSize int
+	db              *gorocksdb.DB
+}
+
+func (rs *RocksDBStore) GetLruCacheSize() int {
+	return rs.lruCacheSize
+}
+
+func (rs *RocksDBStore) GetWriteBufferSize() int {
+	return rs.writeBufferSize
+}
+
+func (rs *RocksDBStore) GetDir() string {
+	return rs.dir
 }
 
 // NewRocksDBStore returns a new RocksDB instance.
 func NewRocksDBStore(dir string, lruCacheSize, writeBufferSize int) (store *RocksDBStore, err error) {
+
 	if err = os.MkdirAll(dir, os.ModePerm); err != nil {
 		return
 	}
-	store = &RocksDBStore{dir: dir}
-	if err = store.Open(lruCacheSize, writeBufferSize); err != nil {
+	store = &RocksDBStore{
+		dir:             dir,
+		lruCacheSize:    lruCacheSize,
+		writeBufferSize: writeBufferSize,
+	}
+	if err = store.Open(); err != nil {
+		return
+	}
+	return
+}
+
+func GetRocksDBStoreRecoveryDir(dir string) string {
+	dir = strings.TrimSuffix(dir, "/")
+	return fmt.Sprintf("%v_temp", dir)
+}
+
+// NewRocksDBStoreAndRecovery returns a new RocksDB instance after execute recovery.
+func NewRocksDBStoreAndRecovery(dir string, lruCacheSize, writeBufferSize int) (store *RocksDBStore, err error) {
+	// start recovery
+	recoverDir := GetRocksDBStoreRecoveryDir(dir)
+	// if rocksdb dir is not exists but temp dir is exist
+	if !fileutil.ExistDir(dir) && fileutil.ExistDir(recoverDir) {
+		// we move temp dir to rocksdb dir for commiting transaction
+		if err = os.Rename(recoverDir, dir); err != nil {
+			log.LogErrorf("failed to rename rocksdb recovery dir %v", err.Error())
+			return
+		}
+		log.LogDebug("recovery rocksdb success")
+	} else if err = os.MkdirAll(dir, os.ModePerm); err != nil {
+		return
+	}
+	store = &RocksDBStore{
+		dir:             dir,
+		lruCacheSize:    lruCacheSize,
+		writeBufferSize: writeBufferSize,
+	}
+	if err = store.Open(); err != nil {
 		return
 	}
 	return
 }
 
 // Open opens the RocksDB instance.
-func (rs *RocksDBStore) Open(lruCacheSize, writeBufferSize int) error {
+func (rs *RocksDBStore) Open() error {
 	basedTableOptions := gorocksdb.NewDefaultBlockBasedTableOptions()
-	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(uint64(lruCacheSize)))
+	basedTableOptions.SetBlockCache(gorocksdb.NewLRUCache(uint64(rs.lruCacheSize)))
 	opts := gorocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(basedTableOptions)
 	opts.SetCreateIfMissing(true)
-	opts.SetWriteBufferSize(writeBufferSize)
+	opts.SetWriteBufferSize(rs.writeBufferSize)
 	opts.SetMaxWriteBufferNumber(2)
 	opts.SetCompression(gorocksdb.NoCompression)
 	db, err := gorocksdb.OpenDb(opts, rs.dir)
@@ -57,7 +110,10 @@ func (rs *RocksDBStore) Open(lruCacheSize, writeBufferSize int) error {
 	}
 	rs.db = db
 	return nil
+}
 
+func (rs *RocksDBStore) Close() {
+	rs.db.Close()
 }
 
 // Del deletes a key-value pair.
