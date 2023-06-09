@@ -1221,21 +1221,6 @@ func (c *client) start() (err error) {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
 	}
-	//if c.pushAddr == "" {
-	//	c.pushAddr = "cfs-push.oppo.local"
-	//}
-	//pushCfg := pushConfig{
-	//	PushAddr: c.pushAddr,
-	//}
-	//cfgJson, err := json.Marshal(pushCfg)
-	//if err != nil {
-	//	log.LogErrorf("newClient NewExtentClient: marsh push addr fail.(%v)", err)
-	//}
-	//cfg := config.LoadConfigString(string(cfgJson))
-	//once.Do(func() {
-	//	exporter.Init("hadoop-client", cfg)
-	//	exporter.RegistConsul(c.cluster, "hadoop-client", cfg)
-	//})
 
 	c.mw = mw
 	c.ec = ec
