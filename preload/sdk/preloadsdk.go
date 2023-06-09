@@ -472,7 +472,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 				log.LogWarnf("Read (%v) wrong size:(%v)", objExtent, n)
 				continue
 			}
-			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0)
+			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil)
 			//in preload mode,onece extend_hander set to error, streamer is set to error
 			// so write should failed immediately
 			if err != nil {
