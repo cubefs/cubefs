@@ -9,7 +9,7 @@ import (
 
 func TestMetaNode(t *testing.T) {
 	// /metaNode/add and /metaNode/response processed by mock meta server
-	addr := mms6Addr
+	addr := mms7Addr
 	addMetaServer(addr, testZone2)
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
