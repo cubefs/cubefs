@@ -182,6 +182,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetClusterInfo).
 		HandlerFunc(m.setClusterInfo)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminGetMonitorPushAddr).
+		HandlerFunc(m.getMonitorPushAddr)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminClusterFreeze).
 		HandlerFunc(m.setupAutoAllocation)

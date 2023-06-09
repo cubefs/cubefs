@@ -25,7 +25,7 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 )
 
-//config key
+// config key
 const (
 	colonSplit = ":"
 	commaSplit = ","
@@ -45,9 +45,10 @@ const (
 	cfgDomainBuildAsPossible            = "faultDomainBuildAsPossible"
 	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
+	cfgMonitorPushAddr                  = "monitorPushAddr"
 )
 
-//default value
+// default value
 const (
 	defaultTobeFreedDataPartitionCount         = 1000
 	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
@@ -121,6 +122,7 @@ type clusterConfig struct {
 	DirChildrenNumLimit                 uint32
 	MetaPartitionInodeIdStep            uint64
 	MaxQuotaNumPerVol                   int
+	MonitorPushAddr                     string
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
