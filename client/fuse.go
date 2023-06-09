@@ -444,11 +444,6 @@ func main() {
 	defer super.Close()
 
 	syslog.Printf("enable bcache %v", opt.EnableBcache)
-
-	if cfg.GetString(exporter.ConfigKeyPushAddr) == "" {
-		cfg.SetString(exporter.ConfigKeyPushAddr, "cfs-push.oppo.local")
-	}
-
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
