@@ -1421,7 +1421,7 @@ func (c *client) truncate(f *file, size int) error {
 func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
 	if proto.IsHot(c.volType) {
 		c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
-		n, err = c.ec.Write(f.ino, offset, data, flags)
+		n, err = c.ec.Write(f.ino, offset, data, flags, nil)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.id, f.ino), offset, data, flags)
 	}

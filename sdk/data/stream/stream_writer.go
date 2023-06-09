@@ -63,6 +63,7 @@ type WriteRequest struct {
 	writeBytes int
 	err        error
 	done       chan struct{}
+	checkFunc  func() error
 }
 
 // FlushRequest defines a flush request.
@@ -101,7 +102,7 @@ func (s *Streamer) IssueOpenRequest() error {
 	return nil
 }
 
-func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int) (write int, err error) {
+func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFunc func() error) (write int, err error) {
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -113,6 +114,8 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int) (write 
 	request.size = len(data)
 	request.flags = flags
 	request.done = make(chan struct{}, 1)
+	request.checkFunc = checkFunc
+
 	s.request <- request
 	s.writeLock.Unlock()
 
@@ -255,7 +258,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags)
+		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size)
@@ -273,7 +276,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 	}
 }
 
-func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err error) {
+func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error) (total int, err error) {
 	var direct bool
 
 	if flags&proto.FlagsSyncWrite != 0 {
@@ -293,6 +296,7 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
 
+	isChecked := false
 	// Must flush before doing overwrite
 	for _, req := range requests {
 		if req.ExtentKey == nil {
@@ -323,6 +327,12 @@ func (s *Streamer) write(data []byte, offset, size, flags int) (total int, err e
 			}
 
 		} else {
+			if !isChecked && checkFunc != nil {
+				isChecked = true
+				if err = checkFunc(); err != nil {
+					return
+				}
+			}
 			writeSize, err = s.doWrite(req.Data, req.FileOffset, req.Size, direct)
 		}
 		if err != nil {
