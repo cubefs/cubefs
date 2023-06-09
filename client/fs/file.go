@@ -412,16 +412,22 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
-	var size int
-	if proto.IsHot(f.super.volType) {
-		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
+
+	checkFunc := func() error {
 		if ok := f.super.ec.UidIsLimited(req.Uid); ok {
 			return ParseError(syscall.ENOSPC)
 		}
 		if limited := f.super.mw.IsQuotaLimited(f.info.QuotaIds); limited {
 			return ParseError(syscall.ENOSPC)
 		}
-		size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags)
+		return nil
+	}
+	var size int
+	if proto.IsHot(f.super.volType) {
+		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
+		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc); err == ParseError(syscall.ENOSPC) {
+			return
+		}
 	} else {
 		atomic.StoreInt32(&f.idle, 0)
 		size, err = f.fWriter.Write(ctx, int(req.Offset), req.Data, flags)

@@ -502,7 +502,7 @@ func MockCheckDataPartitionExistFalse(client *stream.ExtentClient, partitionID u
 }
 
 func MockWriteTrue(client *stream.ExtentClient, inode uint64, offset int, data []byte,
-	flags int) (write int, err error) {
+	flags int, checkFunc func() error) (write int, err error) {
 	return len(data), nil
 }
 
