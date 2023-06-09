@@ -420,7 +420,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Tx Conflict Retry Num : %v -> %v\n", vv.TxConflictRetryNum, optTxConflictRetryNum))
 				vv.TxConflictRetryNum = optTxConflictRetryNum
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Tx Conflict Retry Num : %v minutes\n", vv.TxConflictRetryNum))
+				confirmString.WriteString(fmt.Sprintf("  Tx Conflict Retry Num : %v\n", vv.TxConflictRetryNum))
 			}
 
 			if optTxConflictRetryInterval > 0 {
