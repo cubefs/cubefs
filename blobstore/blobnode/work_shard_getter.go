@@ -34,7 +34,7 @@ import (
 // but the rubbish bid which can recover can be allowed to be included in benchmark bids)
 
 var (
-	ErrNotEnoughWellReplicaCnt = errors.New("well replicas cnt is not enough")
+	ErrNotEnoughWellReplicaCnt = errors.New("well locations cnt is not enough")
 	ErrNotEnoughBidsInTasklet  = errors.New("check len of tasklet and bids is not equal")
 	ErrTaskletSizeInvalid      = errors.New("tasklet size is invalid")
 	ErrBidSizeOverTaskletSize  = errors.New("bid size is over tasklet size")
@@ -81,8 +81,8 @@ type ReplicaBidsRet struct {
 	Bids   map[proto.BlobID]*client.ShardInfo
 }
 
-// GetReplicasBids returns replicas bids info
-func GetReplicasBids(ctx context.Context, cli client.IBlobNode, replicas Vunits) map[proto.Vuid]*ReplicaBidsRet {
+// GetReplicasBids returns locations bids info
+func GetReplicasBids(ctx context.Context, cli client.IBlobNode, replicas VunitLocations) map[proto.Vuid]*ReplicaBidsRet {
 	result := make(map[proto.Vuid]*ReplicaBidsRet)
 	wg := sync.WaitGroup{}
 	var mu sync.Mutex
@@ -127,9 +127,9 @@ func MergeBids(replicasBids map[proto.Vuid]*ReplicaBidsRet) []*ShardInfoSimple {
 	return allBidsList
 }
 
-// GetBenchmarkBids returns bench mark bids
-func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits,
-	mode codemode.CodeMode, badIdxs []uint8) (bids []*ShardInfoSimple, err error) {
+// GetRecoverableBids returns bench mark bids
+func GetRecoverableBids(ctx context.Context, cli client.IBlobNode, replicas VunitLocations,
+	mode codemode.CodeMode, badIdxs []uint8) (bidInfos []*ShardInfoSimple, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	globalReplicas := replicas.IntactGlobalSet(mode, badIdxs)
@@ -142,14 +142,13 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits
 		}
 	}
 	if wellCnt < minWellReplicasCnt(mode) {
-		span.Errorf("well replicas cnt is not enough: wellCnt[%d], minWellReplicasCnt[%d]",
+		span.Errorf("well locations cnt is not enough: wellCnt[%d], minWellReplicasCnt[%d]",
 			wellCnt, minWellReplicasCnt(mode))
 		return nil, ErrNotEnoughWellReplicaCnt
 	}
 
 	allBidsList := MergeBids(replicasBids)
-	benchMark := []*ShardInfoSimple{}
-	for _, bid := range allBidsList {
+	for _, bidInfo := range allBidsList {
 		markDel := false
 		existStatus := workutils.NewBidExistStatus(mode)
 		notExistCnt := 0
@@ -158,7 +157,7 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits
 				continue
 			}
 
-			info, ok := replBids.Bids[bid.Bid]
+			info, ok := replBids.Bids[bidInfo.Bid]
 			if !ok {
 				notExistCnt++
 				continue
@@ -175,15 +174,14 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits
 			workutils.DroppedBidRecorderInst().Write(
 				ctx,
 				replicas[0].Vuid.Vid(),
-				bid.Bid,
+				bidInfo.Bid,
 				"mark deleted",
 			)
 			continue
 		}
 
 		if existStatus.CanRecover() {
-			bidInfo := ShardInfoSimple{Bid: bid.Bid, Size: bid.Size}
-			benchMark = append(benchMark, &bidInfo)
+			bidInfos = append(bidInfos, bidInfo)
 			continue
 		}
 
@@ -191,21 +189,21 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits
 			workutils.DroppedBidRecorderInst().Write(
 				ctx,
 				replicas[0].Vuid.Vid(),
-				bid.Bid,
+				bidInfo.Bid,
 				fmt.Sprintf("can't recover:notExist %d exist %d", notExistCnt, existStatus.ExistCnt()),
 			)
 			continue
 		}
 
 		span.Errorf("unexpect when get benchmark bids: vid[%d], bid[%d], existCnt[%d], notExistCnt[%d], allowFailCnt[%d]",
-			replicas[0].Vuid.Vid(), bid.Bid, existStatus.ExistCnt(), notExistCnt, allowFailCnt(mode))
+			replicas[0].Vuid.Vid(), bidInfo.Bid, existStatus.ExistCnt(), notExistCnt, allowFailCnt(mode))
 		return nil, ErrUnexpected
 	}
 
-	return benchMark, nil
+	return bidInfos, nil
 }
 
-// minWellReplicasCnt:It is the mini count of well replicas which can determine
+// minWellReplicasCnt:It is the mini count of well locations which can determine
 // whether a bid is repaired or discarded
 func minWellReplicasCnt(mode codemode.CodeMode) int {
 	return mode.Tactic().N + allowFailCnt(mode)
@@ -245,16 +243,8 @@ func BidsSplit(ctx context.Context, bids []*ShardInfoSimple, taskletSize int) ([
 		taskShardDataSize += uint64(bid.Size)
 		task.bids = append(task.bids, bid)
 	}
-
-	taskletBidCnt := 0
 	tasks = append(tasks, task)
-	for _, task := range tasks {
-		taskletBidCnt += len(task.bids)
-	}
-	if taskletBidCnt != len(bids) {
-		span.Errorf("check len of tasklet and bids is not equal: taskletBidCnt[%d], len(bids)[%d]", taskletBidCnt, len(bids))
-		return tasks, OtherError(ErrNotEnoughBidsInTasklet)
-	}
+	span.Debugf("generate %d tasks from bids[%v]", len(tasks), bids)
 
 	return tasks, nil
 }
