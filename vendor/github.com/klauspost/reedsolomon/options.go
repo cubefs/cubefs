@@ -234,7 +234,8 @@ func WithCauchyMatrix() Option {
 // matrix for AzureLrcP1.
 //
 // This option is used to generate the engine to reconstruct the stripe
-// while encountering the scenario with more than g+1 failures
+// while encountering the scenario with more than g+1 failures.
+// g is the num of global partial data.
 func WithAzureLrcP1Matrix() Option {
 	return func(o *options) {
 		o.useJerasureMatrix = false
