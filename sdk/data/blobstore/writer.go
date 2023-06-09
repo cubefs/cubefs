@@ -511,7 +511,7 @@ func (writer *Writer) asyncCache(ino uint64, offset int, data []byte) {
 	}()
 
 	log.LogDebugf("TRACE asyncCache Enter,fileOffset(%v) len(%v)", offset, len(data))
-	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache)
+	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache, nil)
 	log.LogDebugf("TRACE asyncCache Exit,write(%v) err(%v)", write, err)
 
 }
