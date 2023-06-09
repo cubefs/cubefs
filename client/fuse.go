@@ -445,6 +445,15 @@ func main() {
 	defer super.Close()
 
 	syslog.Printf("enable bcache %v", opt.EnableBcache)
+
+	if cfg.GetString(exporter.ConfigKeyPushAddr) == "" {
+		pushAddr, err := getPushAddrFromMaster(opt.Master)
+		if err == nil && pushAddr != "" {
+			syslog.Printf("use remote push addr %v", pushAddr)
+			cfg.SetString(exporter.ConfigKeyPushAddr, pushAddr)
+		}
+	}
+
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 
@@ -479,6 +488,12 @@ func main() {
 		syslog.Printf("fs Serve returns err(%v)\n", err)
 		os.Exit(1)
 	}
+}
+
+func getPushAddrFromMaster(masterAddr string) (addr string, err error) {
+	var mc = master.NewMasterClientFromString(masterAddr, false)
+	addr, err = mc.AdminAPI().GetMonitorPushAddr()
+	return
 }
 
 func startDaemon() error {

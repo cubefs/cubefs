@@ -27,6 +27,7 @@ const (
 	AdminRemoveApiQpsLimit                    = "/admin/rmApiQpsLimit"
 	AdminGetCluster                           = "/admin/getCluster"
 	AdminSetClusterInfo                       = "/admin/setClusterInfo"
+	AdminGetMonitorPushAddr                   = "/admin/getMonitorPushAddr"
 	AdminGetDataPartition                     = "/dataPartition/get"
 	AdminLoadDataPartition                    = "/dataPartition/load"
 	AdminCreateDataPartition                  = "/dataPartition/create"
