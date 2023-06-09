@@ -438,8 +438,6 @@ func (mgr *BlobDeleteMgr) consume(ctx context.Context, delMsg *proto.DeleteMsg, 
 		return delBlobRet{status: DeleteStatusFailed, err: errcode.ErrDiskBroken}
 	}
 
-	span.Infof("start delete msg: [%+v]", delMsg)
-
 	if err := mgr.deleteWithCheckVolConsistency(ctx, delMsg); err != nil {
 		return delBlobRet{status: DeleteStatusFailed, err: err}
 	}
