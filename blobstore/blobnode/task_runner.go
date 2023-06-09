@@ -120,13 +120,8 @@ func ShouldReclaim(e *WorkError) bool {
 	if e.errType != DstErr {
 		return false
 	}
-
 	errCode := rpc.DetectStatusCode(e.err)
-	if errCode == StatusInterrupt {
-		return false
-	}
-
-	if errCode == errcode.CodeOverload {
+	if errCode == StatusInterrupt || errCode == errcode.CodeOverload {
 		return false
 	}
 
@@ -142,11 +137,11 @@ func genWorkError(err error, errType WokeErrorType) *WorkError {
 
 // ITaskWorker define interface used for task execution
 type ITaskWorker interface {
-	// split tasklets accord by volume benchmark bids
+	// GenTasklets split tasklets accord by volume benchmark bids
 	GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
-	// define tasklet execution operator ,eg:disk repair & migrate
+	// ExecTasklet define tasklet execution operator ,eg:disk repair & migrate
 	ExecTasklet(ctx context.Context, t Tasklet) *WorkError
-	// check whether the task is executed successfully when volume task finish
+	// Check check whether the task is executed successfully when volume task finish
 	Check(ctx context.Context) *WorkError
 	OperateArgs() scheduler.OperateTaskArgs
 	TaskType() (taskType proto.TaskType)
@@ -194,7 +189,7 @@ func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string
 	span, ctx := trace.StartSpanFromContext(ctx, "taskRunner")
 	ctx, cancel := context.WithCancel(ctx)
 
-	task := TaskRunner{
+	runner := TaskRunner{
 		taskID:                taskID,
 		w:                     w,
 		idc:                   idc,
@@ -206,8 +201,8 @@ func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string
 		stats:                 proto.NewTaskProgress(),
 		taskCounter:           taskCounter,
 	}
-	task.state.set(TaskInit)
-	return &task
+	runner.state.set(TaskInit)
+	return &runner
 }
 
 // Run runs task
