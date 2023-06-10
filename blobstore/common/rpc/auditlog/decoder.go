@@ -60,7 +60,7 @@ var DefaultRequestHeaderKeys = []string{
 type DecodedReq struct {
 	Path   string
 	Header M
-	Params []byte
+	Params M
 }
 
 type ReadCloser struct {
@@ -69,14 +69,6 @@ type ReadCloser struct {
 }
 
 type M map[string]interface{}
-
-func (m M) Encode() []byte {
-	if len(m) > 0 {
-		ret, _ := json.Marshal(m)
-		return ret
-	}
-	return nil
-}
 
 type defaultDecoder struct{}
 
@@ -132,7 +124,7 @@ func (d *defaultDecoder) DecodeReq(req *http.Request) *DecodedReq {
 						params[k] = v
 					}
 				}
-				decodedReq.Params = params.Encode()
+				decodedReq.Params = params
 			}
 		case rpc.MIMEJSON:
 			buff, err := d.readFull(req)
@@ -140,7 +132,7 @@ func (d *defaultDecoder) DecodeReq(req *http.Request) *DecodedReq {
 				req.Body = ReadCloser{bytes.NewReader(buff), req.Body}
 				// check if request body is valid or not, and do not print invalid request body in audit log
 				if json.Valid(buff) {
-					decodedReq.Params = compactNewline(buff)
+					err = json.Unmarshal(buff, &decodedReq.Params)
 				}
 			}
 		}

@@ -15,21 +15,25 @@
 package auditlog
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testRespData struct {
@@ -150,4 +154,108 @@ func TestBodylimit(t *testing.T) {
 		require.NoError(t, lc.Close())
 		require.Equal(t, limit.expected, cfg.BodyLimit)
 	}
+}
+
+type mockMetricSender struct {
+	data []byte
+}
+
+func (m *mockMetricSender) Send(raw []byte) error {
+	m.data = append(m.data, raw...)
+	return nil
+}
+
+type mockLogFile struct {
+	logs bytes.Buffer
+}
+
+func (m *mockLogFile) Log(data []byte) error {
+	m.logs.Write(data)
+	return nil
+}
+
+func (m *mockLogFile) Close() error {
+	return nil
+}
+
+func TestHandler(t *testing.T) {
+	// Create a mock metric sender and log file
+	var (
+		metricSender     = &mockMetricSender{}
+		logFile          = &mockLogFile{}
+		mockHttpRespJson = "{\"msg\": \"OK\"}"
+		mockContentType  = "application/json"
+		testModule       = "testModule"
+	)
+
+	cfg := &Config{
+		BodyLimit: 13,
+	}
+	decoder := &defaultDecoder{}
+	j := &jsonAuditlog{
+		module:       testModule,
+		metricSender: metricSender,
+		logFile:      logFile,
+		cfg:          cfg,
+		decoder:      decoder,
+		logPool: sync.Pool{
+			New: func() interface{} {
+				return new(bytes.Buffer)
+			},
+		},
+		bodyPool: sync.Pool{
+			New: func() interface{} {
+				return make([]byte, cfg.BodyLimit)
+			},
+		},
+	}
+
+	// Define a test handler
+	testHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(mockHttpRespJson))
+		w.Header().Set("Content-Type", mockContentType)
+		w.Header().Set("Content-Length", strconv.Itoa(len(mockHttpRespJson)))
+		assert.NoError(t, err)
+	}
+
+	// Create a test request with a body
+	req := httptest.NewRequest("GET", "https://example.com/test", strings.NewReader("{\"text\": \"hello\"}"))
+	req.Header.Set("Content-Type", mockContentType)
+
+	// Record the response
+	respRec := httptest.NewRecorder()
+
+	// Call the Handler function
+	j.Handler(respRec, req, testHandler)
+
+	// Check the response
+	resp := respRec.Result()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, mockHttpRespJson, string(body))
+
+	// Check the log file
+	var logEntry AuditLog
+	err = json.Unmarshal(logFile.logs.Bytes(), &logEntry)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "REQ", logEntry.ReqType)
+	assert.Equal(t, testModule, logEntry.Module)
+	assert.True(t, logEntry.StartTime > 0)
+	assert.Equal(t, "GET", logEntry.Method)
+	assert.Equal(t, "/test", logEntry.Path)
+	assert.NotNil(t, logEntry.ReqHeader)
+	assert.NotNil(t, logEntry.RespHeader)
+	assert.Equal(t, "example.com", logEntry.ReqHeader["Host"])
+	assert.True(t, logEntry.ReqHeader["IP"] != "")
+	assert.Equal(t, logEntry.ReqParams["text"], "hello")
+	assert.Equal(t, http.StatusOK, logEntry.StatusCode)
+	assert.Contains(t, logEntry.RespHeader, "Blobstore-Tracer-Traceid")
+	assert.True(t, fmt.Sprintf("%v", logEntry.RespHeader["Trace-Log"]) != "")
+	assert.Equal(t, []interface{}{"span.kind:server"}, logEntry.RespHeader["Trace-Tags"])
+	assert.Equal(t, mockHttpRespJson, logEntry.RespBody)
+	assert.Equal(t, int64(len(mockHttpRespJson)), logEntry.BodyWritten)
+	assert.True(t, logEntry.Duration > 0)
 }

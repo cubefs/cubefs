@@ -16,9 +16,9 @@ package auditlog
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +45,22 @@ type jsonAuditlog struct {
 	bodyPool sync.Pool
 
 	cfg *Config
+}
+
+// AuditLog Define a struct to represent the structured log data
+type AuditLog struct {
+	ReqType     string `json:"req_type"`
+	Module      string `json:"module"`
+	StartTime   int64  `json:"start_time"`
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+	ReqHeader   M      `json:"req_header"`
+	ReqParams   M      `json:"req_params"`
+	StatusCode  int    `json:"status_code"`
+	RespHeader  M      `json:"resp_header"`
+	RespBody    string `json:"resp_body"`
+	BodyWritten int64  `json:"body_written"`
+	Duration    int64  `json:"duration"`
 }
 
 func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser, err error) {
@@ -127,68 +143,41 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	f(_w, req)
 
 	endTime := time.Now().UnixNano() / 1000
-	b := j.logPool.Get().(*bytes.Buffer)
-	defer j.logPool.Put(b)
-	b.Reset()
 
-	b.WriteString("REQ\t")
-	b.WriteString(j.module)
-	b.WriteByte('\t')
-
-	// record request info
-	b.WriteString(strconv.FormatInt(startTime/100, 10))
-	b.WriteByte('\t')
-	b.WriteString(req.Method)
-	b.WriteByte('\t')
-	b.WriteString(decodeReq.Path)
-	b.WriteByte('\t')
-	b.Write(decodeReq.Header.Encode())
-	b.WriteByte('\t')
-	if len(decodeReq.Params) <= maxSeekableBodyLength && len(decodeReq.Params) > 0 {
-		b.Write(decodeReq.Params)
+	// Create a new AuditLog instance
+	auditLog := &AuditLog{
+		ReqType:   "REQ",
+		Module:    j.module,
+		StartTime: startTime / 100,
+		Method:    req.Method,
+		Path:      decodeReq.Path,
+		ReqHeader: decodeReq.Header,
+		ReqParams: decodeReq.Params,
 	}
-	b.WriteByte('\t')
 
-	// record response info
-	respContentType := _w.Header().Get("Content-Type")
-	b.Write(_w.getStatusCode())
-	b.WriteByte('\t')
-
-	// Check if track-log and tags changed or not,
-	// if changed, we should set into response header again.
-	// But the additional headers DO NOT write to client if
-	// they set after response WriteHeader, just logging.
-	wHeader := _w.Header()
-	traceLogs := span.TrackLog()
-	if len(wHeader[rpc.HeaderTraceLog]) < len(traceLogs) {
-		wHeader[rpc.HeaderTraceLog] = traceLogs
-	}
-	tags := span.Tags().ToSlice()
-	if len(wHeader[rpc.HeaderTraceTags]) < len(tags) {
-		wHeader[rpc.HeaderTraceTags] = tags
-	}
-	b.Write(_w.getHeader())
-	b.WriteByte('\t')
+	// Update response fields in the AuditLog instance
+	auditLog.StatusCode = _w.getStatusCode()
+	auditLog.RespHeader = _w.getHeader()
 
 	// record body in json or xml content type
+	respContentType := _w.Header().Get("Content-Type")
 	if (respContentType == rpc.MIMEJSON || respContentType == rpc.MIMEXML) &&
 		_w.Header().Get("Content-Encoding") != rpc.GzipEncodingType {
-		b.Write(_w.getBody())
+		auditLog.RespBody = string(_w.getBody())
 	}
-	b.WriteByte('\t')
-	b.WriteString(strconv.FormatInt(_w.getBodyWritten(), 10))
-	b.WriteByte('\t')
-	b.WriteString(strconv.FormatInt(endTime-startTime/1000, 10))
-	b.WriteByte('\n')
 
-	// report request metric
-	j.metricSender.Send(b.Bytes())
+	auditLog.BodyWritten = _w.getBodyWritten()
+	auditLog.Duration = endTime - startTime/1000
 
-	// log filter
-	if j.logFile == nil || (len(j.cfg.KeywordsFilter) > 0 && defaultLogFilter(req, j.cfg.KeywordsFilter)) {
+	// Serialize the AuditLog instance as JSON
+	auditLogJSON, err := json.Marshal(auditLog)
+	if err != nil {
+		span.Errorf("jsonlog.Handler JSON serialization failed, err: %s", err.Error())
 		return
 	}
-	err := j.logFile.Log(b.Bytes())
+
+	// Write the JSON data to the log file
+	err = j.logFile.Log(auditLogJSON)
 	if err != nil {
 		span.Errorf("jsonlog.Handler Log failed, err: %s", err.Error())
 		return
