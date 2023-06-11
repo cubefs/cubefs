@@ -24,7 +24,6 @@ import (
 	"net"
 	"os"
 	"path"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -415,23 +414,20 @@ func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 // ApplySnapshot applies the given snapshots.
 func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
-		data          []byte
-		index         int
-		appIndexID    uint64
-		txID          uint64
-		cursor        uint64
-		inodeTree     = NewBtree()
-		dentryTree    = NewBtree()
-		extendTree    = NewBtree()
-		multipartTree = NewBtree()
-		txTree        = NewBtree()
-		//transactions       = make(map[string]*proto.TransactionInfo)
-		txRbInodeTree = NewBtree()
-		//txRollbackInodes   = make(map[uint64]*TxRollbackInode)
+		data           []byte
+		index          int
+		appIndexID     uint64
+		txID           uint64
+		cursor         uint64
+		inodeTree      = NewBtree()
+		dentryTree     = NewBtree()
+		extendTree     = NewBtree()
+		multipartTree  = NewBtree()
+		txTree         = NewBtree()
+		txRbInodeTree  = NewBtree()
 		txRbDentryTree = NewBtree()
-		//txRollbackDentries = make(map[string]*TxRollbackDentry)
-
 	)
+
 	defer func() {
 		if err == io.EOF {
 			mp.applyID = appIndexID
@@ -442,37 +438,28 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.multipartTree = multipartTree
 			mp.config.Cursor = cursor
 			mp.txProcessor.txManager.txTree = txTree
-			//mp.txProcessor.txManager.transactions = transactions
 			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
-			//mp.txProcessor.txResource.txRollbackInodes = txRollbackInodes
 			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
-			//mp.txProcessor.txResource.txRollbackDentries = txRollbackDentries
 
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
-				command:       opFSMStoreTick,
-				applyIndex:    mp.applyID,
-				txId:          mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-				inodeTree:     mp.inodeTree,
-				dentryTree:    mp.dentryTree,
-				extendTree:    mp.extendTree,
-				multipartTree: mp.multipartTree,
-				txTree:        mp.txProcessor.txManager.txTree,
-				//transactions:       mp.txProcessor.txManager.transactions,
-				txRbInodeTree: mp.txProcessor.txResource.txRbInodeTree,
-				//txRollbackInodes:   mp.txProcessor.txResource.txRollbackInodes,
+				command:        opFSMStoreTick,
+				applyIndex:     mp.applyID,
+				txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
+				inodeTree:      mp.inodeTree,
+				dentryTree:     mp.dentryTree,
+				extendTree:     mp.extendTree,
+				multipartTree:  mp.multipartTree,
+				txTree:         mp.txProcessor.txManager.txTree,
+				txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
 				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
-				//txRollbackDentries: mp.txProcessor.txResource.txRollbackDentries,
 			}
-			/*if mp.txProcessor.txManager.txTree.Len() > 0 {
-				log.LogDebugf("ApplySnapshot: notify transaction expiration")
-				mp.txProcessor.txManager.notifyNewTransaction()
-			}*/
 
 			select {
 			case mp.extReset <- struct{}{}:
-				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v)", mp.config.PartitionId, mp.applyID)
+				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), cursor(%v)",
+					mp.config.PartitionId, mp.applyID, mp.config.Cursor)
 				return
 			case <-mp.stopC:
 				log.LogWarnf("ApplySnapshot: revice stop signal, exit now, partition(%d), applyId(%d)", mp.config.PartitionId, mp.applyID)
@@ -487,23 +474,43 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		if err != nil {
 			return
 		}
-		if index == 0 {
-			appIndexID = binary.BigEndian.Uint64(data)
-			index++
-			continue
-		}
-		if index == 1 {
-			strTxID := string(data)
-			txID, _ = strconv.ParseUint(strTxID, 10, 64)
-			index++
-			continue
-		}
 		snap := NewMetaItem(0, nil, nil)
 		if err = snap.UnmarshalBinary(data); err != nil {
+			log.LogWarnf("ApplySnapshot: snap.UnmarshalBinary failed, partitionID(%v) index(%v)",
+				mp.config.PartitionId, index)
+			err = errors.New("unmarshal snap data failed")
 			return
 		}
+
+		if index == 0 && snap.Op != opFSMSnapFormatVersion {
+			// check whether the snapshot format matches
+			log.LogWarnf("ApplySnapshot: error for snapshot format not match, partitionID(%v), index:%v, expect snap.Op:%v, actual snap.Op:%v",
+				mp.config.PartitionId, index, opFSMSnapFormatVersion, snap.Op)
+			err = errors.New("snapshot format not match")
+			return
+		}
+
 		index++
 		switch snap.Op {
+		case opFSMSnapFormatVersion:
+			// check whether the snapshot format version number matches
+			var snapFormatVer uint32
+			snapFormatVer = binary.BigEndian.Uint32(snap.V)
+			if snapFormatVer != CurrentSnapFormatVersion {
+				log.LogWarnf("ApplySnapshot: error for snapshot format not match, partitionID(%v), index:%v, expect ver:%v, actual ver:%v",
+					mp.config.PartitionId, index, CurrentSnapFormatVersion, snapFormatVer)
+				err = errors.New("snapshot format not match")
+				return
+			}
+		case opFSMApplyId:
+			appIndexID = binary.BigEndian.Uint64(snap.V)
+			log.LogDebugf("ApplySnapshot: partitionID(%v) appIndexID:%v", mp.config.PartitionId, appIndexID)
+		case opFSMTxId:
+			txID = binary.BigEndian.Uint64(snap.V)
+			log.LogDebugf("ApplySnapshot: partitionID(%v) txID:%v", mp.config.PartitionId, txID)
+		case opFSMCursor:
+			cursor = binary.BigEndian.Uint64(snap.V)
+			log.LogDebugf("ApplySnapshot: partitionID(%v) cursor:%v", mp.config.PartitionId, cursor)
 		case opFSMCreateInode:
 			ino := NewInode(0, 0)
 
@@ -540,19 +547,16 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opFSMTxSnapshot:
 			txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
 			txInfo.Unmarshal(snap.V)
-			//transactions[txInfo.TxID] = txInfo
 			txTree.ReplaceOrInsert(txInfo, true)
 			log.LogDebugf("ApplySnapshot: create transaction: partitionID(%v) txInfo(%v)", mp.config.PartitionId, txInfo)
 		case opFSMTxRbInodeSnapshot:
 			txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 			txRbInode.Unmarshal(snap.V)
-			//txRollbackInodes[txRbInode.inode.Inode] = txRbInode
 			txRbInodeTree.ReplaceOrInsert(txRbInode, true)
 			log.LogDebugf("ApplySnapshot: create txRbInode: partitionID(%v) txRbInode(%v)", mp.config.PartitionId, txRbInode)
 		case opFSMTxRbDentrySnapshot:
 			txRbDentry := NewTxRollbackDentry(nil, nil, 0)
 			txRbDentry.Unmarshal(snap.V)
-			//txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
 			txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
 			log.LogDebugf("ApplySnapshot: create txRbDentry: partitionID(%v) txRbDentry(%v)", mp.config.PartitionId, txRbDentry)
 		case opExtentFileSnapshot:
