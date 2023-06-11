@@ -20,12 +20,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -123,21 +123,29 @@ type fileData struct {
 	data     []byte
 }
 
+const (
+	// initial version
+	SanpFormatVersion_0 uint32 = iota
+
+	// version since transaction feature, added formatVersion, txId and cursor in MetaItemIterator struct
+	SanpFormatVersion_1
+)
+
+const CurrentSnapFormatVersion = SanpFormatVersion_1
+
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
-	fileRootDir   string
-	applyID       uint64
-	txId          uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
-	txTree        *BTree
-	//transactions       map[string]*proto.TransactionInfo
-	txRbInodeTree *BTree
-	//txRollbackInodes   map[uint64]*TxRollbackInode
+	fileRootDir    string
+	applyID        uint64
+	txId           uint64
+	cursor         uint64
+	inodeTree      *BTree
+	dentryTree     *BTree
+	extendTree     *BTree
+	multipartTree  *BTree
+	txTree         *BTree
+	txRbInodeTree  *BTree
 	txRbDentryTree *BTree
-	//txRollbackDentries map[string]*TxRollbackDentry
 
 	filenames []string
 
@@ -148,22 +156,46 @@ type MetaItemIterator struct {
 	closeOnce sync.Once
 }
 
+// SnapItemWrapper key definition
+const (
+	SiwKeySnapFormatVer uint32 = iota
+	SiwKeyApplyId
+	SiwKeyTxId
+	SiwKeyCursor
+)
+
+type SnapItemWrapper struct {
+	key   uint32
+	value interface{}
+}
+
+func (siw *SnapItemWrapper) MarshalKey() (k []byte) {
+	k = make([]byte, 8)
+	binary.BigEndian.PutUint32(k, siw.key)
+	return
+}
+
+func (siw *SnapItemWrapper) UnmarshalKey(k []byte) (err error) {
+	siw.key = binary.BigEndian.Uint32(k)
+	return
+}
+
 // newMetaItemIterator returns a new MetaItemIterator.
 func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.applyID = mp.applyID
 	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
+	si.cursor = mp.GetCursor()
+
 	si.inodeTree = mp.inodeTree.GetTree()
 	si.dentryTree = mp.dentryTree.GetTree()
 	si.extendTree = mp.extendTree.GetTree()
 	si.multipartTree = mp.multipartTree.GetTree()
 	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
-	//si.transactions = mp.txProcessor.txManager.transactions
 	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
-	//si.txRollbackInodes = mp.txProcessor.txResource.txRollbackInodes
 	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
-	//si.txRollbackDentries = mp.txProcessor.txResource.txRollbackDentries
+
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
@@ -213,10 +245,24 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 				return false
 			}
 		}
-		// process index ID
-		produceItem(si.applyID)
-		strTxid := strconv.FormatUint(si.txId, 10)
-		produceItem(strTxid)
+
+		// process apply index ID
+		snapFormatVerWrapper := SnapItemWrapper{SiwKeySnapFormatVer, CurrentSnapFormatVersion}
+		produceItem(snapFormatVerWrapper)
+
+		// process apply index ID
+		applyIdWrapper := SnapItemWrapper{SiwKeyApplyId, si.applyID}
+		produceItem(applyIdWrapper)
+
+		// process txId
+		txIdWrapper := SnapItemWrapper{SiwKeyTxId, si.txId}
+		produceItem(txIdWrapper)
+
+		// process cursor
+		cursorWrapper := SnapItemWrapper{SiwKeyCursor, si.cursor}
+		produceItem(cursorWrapper)
+		log.LogDebugf("newMetaItemIterator: partitionId(%v) snapFormatVer(%v) applyID(%v), txId(%v), cursor(%v)",
+			mp.config.PartitionId, CurrentSnapFormatVersion, si.applyID, si.txId, si.cursor)
 
 		// process inodes
 		iter.inodeTree.Ascend(func(i BtreeItem) bool {
@@ -251,9 +297,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			return produceItem(i)
 		})
 
-		//for _, item := range iter.transactions {
-		//	produceItem(item)
-		//}
 		if checkClose() {
 			return
 		}
@@ -261,9 +304,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		iter.txRbInodeTree.Ascend(func(i BtreeItem) bool {
 			return produceItem(i)
 		})
-		//for _, item := range iter.txRollbackInodes {
-		//	produceItem(item)
-		//}
+
 		if checkClose() {
 			return
 		}
@@ -271,9 +312,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		iter.txRbDentryTree.Ascend(func(i BtreeItem) bool {
 			return produceItem(i)
 		})
-		//for _, item := range iter.txRollbackDentries {
-		//	produceItem(item)
-		//}
 		if checkClose() {
 			return
 		}
@@ -334,15 +372,27 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 	var snap *MetaItem
 	switch typedItem := item.(type) {
 	case uint64:
-		applyIDBuf := make([]byte, 8)
-		binary.BigEndian.PutUint64(applyIDBuf, si.applyID)
-		data = applyIDBuf
-		return
-	case string:
-		txIDBuf := make([]byte, 8)
-		binary.BigEndian.PutUint64(txIDBuf, si.txId)
-		data = txIDBuf
-		return
+	case SnapItemWrapper:
+		if typedItem.key == SiwKeySnapFormatVer {
+			snapFormatBuf := make([]byte, 8)
+			binary.BigEndian.PutUint32(snapFormatBuf, CurrentSnapFormatVersion)
+			snap = NewMetaItem(opFSMSnapFormatVersion, typedItem.MarshalKey(), snapFormatBuf)
+		} else if typedItem.key == SiwKeyApplyId {
+			applyIDBuf := make([]byte, 8)
+			binary.BigEndian.PutUint64(applyIDBuf, si.applyID)
+			snap = NewMetaItem(opFSMApplyId, typedItem.MarshalKey(), applyIDBuf)
+		} else if typedItem.key == SiwKeyTxId {
+			txIDBuf := make([]byte, 8)
+			binary.BigEndian.PutUint64(txIDBuf, si.txId)
+			snap = NewMetaItem(opFSMTxId, typedItem.MarshalKey(), txIDBuf)
+		} else if typedItem.key == SiwKeyCursor {
+			cursor := typedItem.value.(uint64)
+			cursorBuf := make([]byte, 8)
+			binary.BigEndian.PutUint64(cursorBuf, cursor)
+			snap = NewMetaItem(opFSMCursor, typedItem.MarshalKey(), cursorBuf)
+		} else {
+			panic(fmt.Sprintf("MetaItemIterator.Next: unknown SnapItemWrapper key: %v", typedItem.key))
+		}
 	case *Inode:
 		snap = NewMetaItem(opFSMCreateInode, typedItem.MarshalKey(), typedItem.MarshalValue())
 	case *Dentry:
