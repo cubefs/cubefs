@@ -30,15 +30,14 @@ func OpenRaftDB(path string, isSync bool, dbOpts ...kvstore.DbOptions) (*RaftDB,
 }
 
 func (r *RaftDB) Close() error {
-	r.kvs.Close()
-	return nil
+	return r.kvs.Close()
 }
 
 func (r *RaftDB) Put(key, value []byte) error {
 	return r.kvs.Put(kvstore.KV{Key: key, Value: value})
 }
 
-// don't return error if not found key
+// Get don't return error if not found key
 func (r *RaftDB) Get(key []byte) ([]byte, error) {
 	value, err := r.kvs.Get(key)
 	if err == kvstore.ErrNotFound {
