@@ -157,6 +157,11 @@ const (
 
 	//quota
 	opFSMCreateInodeQuota
+
+	opFSMSnapFormatVersion
+	opFSMApplyId
+	opFSMTxId
+	opFSMCursor
 )
 
 var (
