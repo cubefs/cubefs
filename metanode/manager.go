@@ -26,18 +26,23 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
 const partitionPrefix = "partition_"
 const ExpiredPartitionPrefix = "expired_"
+
+const sampleDuration = 1 * time.Second
 
 // MetadataManager manages all the meta partitions.
 type MetadataManager interface {
@@ -71,6 +76,8 @@ type metadataManager struct {
 	fileStatsEnable      bool
 	curQuotaGoroutineNum int32
 	maxQuotaGoroutineNum int32
+	cpuUtil              atomicutil.Float64
+	samplerDone          chan struct{}
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
@@ -286,10 +293,31 @@ func (m *metadataManager) Stop() {
 	}
 }
 
+func (m *metadataManager) startCpuSample() {
+	// async sample cpu util
+	m.samplerDone = make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-m.samplerDone:
+				return
+			default:
+				used := loadutil.GetCpuUtilPercent(sampleDuration)
+				m.cpuUtil.Store(used)
+			}
+		}
+	}()
+}
+
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
 	m.connPool = util.NewConnectPool()
 	err = m.loadPartitions()
+	if err != nil {
+		return
+	}
+	// start sampler
+	m.startCpuSample()
 	return
 }
 
@@ -299,6 +327,8 @@ func (m *metadataManager) onStop() {
 		for _, partition := range m.partitions {
 			partition.Stop()
 		}
+		// stop sampler
+		close(m.samplerDone)
 	}
 	return
 }
