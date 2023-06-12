@@ -323,11 +323,10 @@ func (c *Tactic) IsValid() bool {
 		return c.N > 0 && c.M > 0 && c.L >= 0 && c.AZCount > 0 &&
 			c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 &&
 			c.L == 3
-	} else {
-		return c.N > 0 && c.M > 0 && c.L >= 0 && c.AZCount > 0 &&
-			c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 &&
-			c.N%c.AZCount == 0 && c.M%c.AZCount == 0 && c.L%c.AZCount == 0
 	}
+	return c.N > 0 && c.M > 0 && c.L >= 0 && c.AZCount > 0 &&
+		c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 &&
+		c.N%c.AZCount == 0 && c.M%c.AZCount == 0 && c.L%c.AZCount == 0
 }
 
 // GetECLayoutByAZ ec layout by AZ
