@@ -109,6 +109,30 @@ func (manager *SpaceManager) Stop() {
 	wg.Wait()
 }
 
+func (manager *SpaceManager) GetAllDiskPartitions() []*disk.PartitionStat {
+	manager.diskMutex.RLock()
+	defer manager.diskMutex.RUnlock()
+	partitions := make([]*disk.PartitionStat, 0, len(manager.disks))
+	for _, disk := range manager.disks {
+		partition := disk.GetDiskPartition()
+		if partition != nil {
+			partitions = append(partitions, partition)
+		}
+	}
+	return partitions
+}
+
+func (manager *SpaceManager) FillIoUtils(samples map[string]loadutil.DiskIoSample) {
+	manager.diskMutex.RLock()
+	defer manager.diskMutex.RUnlock()
+	for _, sample := range samples {
+		util := manager.diskUtils[sample.GetPartition().Device]
+		if util != nil {
+			util.Store(sample.GetIoUtilPercent())
+		}
+	}
+}
+
 func (manager *SpaceManager) StartDiskSample() {
 	manager.samplerDone = make(chan struct{})
 	go func() {
@@ -117,33 +141,13 @@ func (manager *SpaceManager) StartDiskSample() {
 			case <-manager.samplerDone:
 				return
 			default:
-				var partitions []*disk.PartitionStat
-				func() {
-					manager.diskMutex.RLock()
-					defer manager.diskMutex.RUnlock()
-					partitions = make([]*disk.PartitionStat, 0, len(manager.disks))
-					for _, disk := range manager.disks {
-						partition := disk.GetDiskPartition()
-						if partition != nil {
-							partitions = append(partitions, partition)
-						}
-					}
-				}()
-				samplers, err := loadutil.GetDisksIoSample(partitions, diskSampleDuration)
+				partitions := manager.GetAllDiskPartitions()
+				samples, err := loadutil.GetDisksIoSample(partitions, diskSampleDuration)
 				if err != nil {
 					log.LogErrorf("failed to sample disk %v\n", err.Error())
 					return
 				}
-				func() {
-					manager.diskMutex.RLock()
-					defer manager.diskMutex.RUnlock()
-					for _, sample := range samplers {
-						used := manager.diskUtils[sample.GetPartition().Device]
-						if used != nil {
-							used.Store(sample.GetIoUtilPercent())
-						}
-					}
-				}()
+				manager.FillIoUtils(samples)
 			}
 		}
 	}()
