@@ -82,3 +82,7 @@ For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 ## Note
 
 The master branch may be in an unstable or even broken state during development. Please use releases instead of the master branch in order to get a stable set of binaries.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=cubefs/cubefs&type=Date)](https://star-history.com/#cubefs/cubefs&Date)
