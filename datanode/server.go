@@ -38,8 +38,10 @@ import (
 	"github.com/cubefs/cubefs/repl"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/xtaci/smux"
@@ -105,6 +107,8 @@ const (
 	ConfigDiskQosEnable = "diskQosEnable" //bool
 )
 
+const cpuSampleDuration = 1 * time.Second
+
 // DataNode defines the structure of a data node.
 type DataNode struct {
 	space           *SpaceManager
@@ -150,6 +154,9 @@ type DataNode struct {
 	diskFlowWriteLimit      uint64
 	clusterUuid             string
 	clusterUuidEnable       bool
+
+	cpuUtil        atomicutil.Float64
+	cpuSamplerDone chan struct{}
 }
 
 func NewServer() *DataNode {
@@ -233,6 +240,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	// start metrics (LackDpCount, etc.)
 	s.startMetrics()
 
+	// start cpu sampler
+	s.startCpuSample()
 	return
 }
 
@@ -249,6 +258,8 @@ func doShutdown(server common.Server) {
 	s.stopRaftServer()
 	s.stopSmuxService()
 	s.closeSmuxConnPool()
+	// stop cpu sample
+	close(s.cpuSamplerDone)
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -370,6 +381,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 
 	wg.Wait()
+	// start async sample
+	s.space.StartDiskSample()
 	return nil
 }
 
@@ -800,6 +813,22 @@ func (s *DataNode) shallDegrade() bool {
 func (s *DataNode) scheduleTask() {
 	go s.startUpdateNodeInfo()
 	s.scheduleToCheckLackPartitions()
+}
+
+func (s *DataNode) startCpuSample() {
+	s.cpuSamplerDone = make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-s.cpuSamplerDone:
+				return
+			default:
+				// this function will sleep cpuSampleDuration
+				used := loadutil.GetCpuUtilPercent(cpuSampleDuration)
+				s.cpuUtil.Store(used)
+			}
+		}
+	}()
 }
 
 func (s *DataNode) scheduleToCheckLackPartitions() {
