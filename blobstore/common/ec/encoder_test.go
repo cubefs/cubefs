@@ -271,7 +271,9 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 	require.Error(t, err)
 
 	// source data split
-	shards, err := encoder.Split(srcData)
+	data := make([]byte, len(srcData))
+	copy(data, srcData)
+	shards, err := encoder.Split(data)
 	require.NoError(t, err)
 	{
 		enoughBuff := make([]byte, 1<<10)
@@ -321,8 +323,25 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 		ok, err := encoder.Verify(shards)
 		require.False(t, ok)
 
-		err = encoder.Reconstruct(shards, []int{idx})
+		azLayout := cfg.CodeMode.GetECLayoutByAZ()
+		failAzIdx := 0
+		for i, az := range azLayout {
+			for _, nodeIdx := range az {
+				if idx == nodeIdx {
+					failAzIdx = i
+				}
+			}
+		}
+		tmpShards := make([][]byte, len(shards))
+		for _, nodeIdx := range azLayout[failAzIdx] {
+			if nodeIdx != idx {
+				tmpShards[nodeIdx] = make([]byte, len(shards[nodeIdx]))
+				copy(tmpShards[nodeIdx], shards[nodeIdx])
+			}
+		}
+		err = encoder.Reconstruct(tmpShards, []int{idx})
 		require.NoError(t, err)
+		shards[idx] = tmpShards[idx]
 		ok, err = encoder.Verify(shards)
 		require.NoError(t, err)
 		require.True(t, ok)

@@ -1751,13 +1751,13 @@ func (r *reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []
 	}
 
 	// Check if shards in shards[][] are all in survivalIdx[]
-	for i := 0; i < r.totalShards; i++ {
-		if len(shards[i]) != 0 {
-			if _, ok := survivalIdxMap[i]; ok == false {
-				return ErrShardsNotSurvival
-			}
-		}
-	}
+	//for i := 0; i < r.totalShards; i++ {
+	//	if len(shards[i]) != 0 {
+	//		if _, ok := survivalIdxMap[i]; ok == false {
+	//			return ErrShardsNotSurvival
+	//		}
+	//	}
+	//}
 
 	// Attempt to get the cached inverted matrix out of the tree
 	// based on the indices of the invalid rows.
