@@ -73,6 +73,8 @@ func (manager *SpaceManager) Stop() {
 	close(manager.stopC)
 	// stop sampler
 	close(manager.samplerDone)
+	// stop sampler
+	close(manager.samplerDone)
 	// Parallel stop data partitions.
 	const maxParallelism = 128
 	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
