@@ -21,6 +21,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -48,15 +49,18 @@ type MetaNode struct {
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
 	MigrateLock               sync.RWMutex
+	CpuUtil                   atomicutil.Float64 `json:"-"`
 }
 
 func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
-	return &MetaNode{
+	node = &MetaNode{
 		Addr:     addr,
 		ZoneName: zoneName,
 		Sender:   newAdminTaskManager(addr, clusterID),
 		Carry:    rand.Float64(),
 	}
+	node.CpuUtil.Store(0)
+	return
 }
 
 func (metaNode *MetaNode) clean() {
@@ -123,13 +127,13 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.metaPartitionInfos = resp.MetaPartitionReports
 	metaNode.MetaPartitionCount = len(metaNode.metaPartitionInfos)
 	metaNode.Total = resp.Total
-	metaNode.Used = resp.Used
+	metaNode.Used = resp.MemUsed
 	if resp.Total == 0 {
 		metaNode.Ratio = 0
 	} else {
-		metaNode.Ratio = float64(resp.Used) / float64(resp.Total)
+		metaNode.Ratio = float64(resp.MemUsed) / float64(resp.Total)
 	}
-	left := int64(resp.Total - resp.Used)
+	left := int64(resp.Total - resp.MemUsed)
 	if left < 0 {
 		metaNode.MaxMemAvailWeight = 0
 	} else {
