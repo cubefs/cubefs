@@ -235,6 +235,11 @@ func (getter *MockGetter) GetShard(ctx context.Context, location proto.VunitLoca
 	return ioutil.NopCloser(reader), crc, err
 }
 
+// todo need realize @zongchao
+func (getter *MockGetter) GetPartialShards(ctx context.Context, partials client.PartialShards, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error) {
+	return nil, 0, nil
+}
+
 func (getter *MockGetter) MarkDelete(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) {
 	getter.mu.Lock()
 	defer getter.mu.Unlock()
