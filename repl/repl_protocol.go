@@ -442,12 +442,15 @@ func (rp *ReplProtocol) Stop() {
 }
 
 type SmuxConn struct {
+	once sync.Once
 	net.Conn
 	put func(conn net.Conn, force bool)
 }
 
 func (d *SmuxConn) Close() error {
-	d.put(d.Conn, true)
+	d.once.Do(func() {
+		d.put(d.Conn, true)
+	})
 	return nil
 }
 
