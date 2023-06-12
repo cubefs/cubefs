@@ -255,3 +255,7 @@ func (e *lrcEncoder) Join(dst io.Writer, shards [][]byte, outSize int) error {
 func (e *lrcEncoder) GetSurvivalShards(badIdx []int, azLayout [][]int) ([]int, []int, error) {
 	return e.engine.GetSurvivalShards(badIdx, azLayout)
 }
+
+func (e *lrcEncoder) Update(shards [][]byte, newDatashards [][]byte) error {
+	return e.engine.Update(shards, newDatashards)
+}

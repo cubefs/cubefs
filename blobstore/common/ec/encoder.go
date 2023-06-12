@@ -65,6 +65,8 @@ type Encoder interface {
 	Verify(shards [][]byte) (bool, error)
 	// Get CORRECT survival shards to generate the invertable decoding matrix
 	GetSurvivalShards(badIdx []int, azLayout [][]int) ([]int, []int, error)
+	// Update parity is use for change a few data shards and update it's parity.
+	Update(shards [][]byte, newDatashards [][]byte) error
 }
 
 // Config ec encoder config
@@ -213,6 +215,10 @@ func (e *encoder) Join(dst io.Writer, shards [][]byte, outSize int) error {
 
 func (e *encoder) GetSurvivalShards(badIdx []int, azLayout [][]int) ([]int, []int, error) {
 	return e.engine.GetSurvivalShards(badIdx, azLayout)
+}
+
+func (e *encoder) Update(shards [][]byte, newDatashards [][]byte) error {
+	return e.engine.Update(shards, newDatashards)
 }
 
 func initBadShards(shards [][]byte, badIdx []int) {

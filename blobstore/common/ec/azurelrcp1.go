@@ -162,3 +162,7 @@ func (e *azureLrcP1Encoder) Join(dst io.Writer, shards [][]byte, outSize int) er
 func (e *azureLrcP1Encoder) GetSurvivalShards(badIdx []int, azLayout [][]int) ([]int, []int, error) {
 	return e.engine.GetSurvivalShards(badIdx, azLayout)
 }
+
+func (e *azureLrcP1Encoder) Update(shards [][]byte, newDatashards [][]byte) error {
+	return e.engine.Update(shards, newDatashards)
+}
