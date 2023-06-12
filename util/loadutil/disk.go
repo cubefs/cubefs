@@ -52,14 +52,14 @@ func GetMatchParation(path string) (*disk.PartitionStat, error) {
 }
 
 var (
-	ErrInvaliPartition      = errors.New("invalid partiton")
+	ErrInvalidDiskPartition = errors.New("invalid disk partiton")
 	ErrFailedToGetIoCounter = errors.New("failed to get io counter")
 )
 
 func getDeviceNameFromPartition(partition *disk.PartitionStat) (string, error) {
 	var name string
-	if n, _ := fmt.Sscanf(partition.Device, "/dev/%s", &name); n != 1 {
-		return "", ErrInvaliPartition
+	if n, err := fmt.Sscanf(partition.Device, "/dev/%s", &name); n != 1 || err != nil {
+		return "", ErrInvalidDiskPartition
 	}
 	return name, nil
 }
