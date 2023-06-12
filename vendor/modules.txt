@@ -116,6 +116,10 @@ github.com/edsrzf/mmap-go
 # github.com/fatih/color v1.15.0
 ## explicit; go 1.17
 github.com/fatih/color
+# github.com/go-ole/go-ole v1.2.6
+## explicit; go 1.12
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
 # github.com/go-playground/locales v0.14.1
 ## explicit; go 1.17
 github.com/go-playground/locales
@@ -342,6 +346,12 @@ github.com/samsarahq/thunder/internal
 github.com/samsarahq/thunder/internal/filter
 github.com/samsarahq/thunder/reactive
 github.com/samsarahq/thunder/thunderpb
+# github.com/shirou/gopsutil v3.21.11+incompatible
+## explicit
+github.com/shirou/gopsutil/cpu
+github.com/shirou/gopsutil/disk
+github.com/shirou/gopsutil/internal/common
+github.com/shirou/gopsutil/mem
 # github.com/smartystreets/goconvey v1.8.0
 ## explicit; go 1.18
 # github.com/spf13/cobra v1.2.1 => ./depends/spf13/cobra
@@ -354,9 +364,18 @@ github.com/stretchr/testify/require
 # github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 ## explicit
 github.com/tecbot/gorocksdb
+# github.com/tklauser/go-sysconf v0.3.11
+## explicit; go 1.13
+github.com/tklauser/go-sysconf
+# github.com/tklauser/numcpus v0.6.0
+## explicit; go 1.13
+github.com/tklauser/numcpus
 # github.com/xtaci/smux v1.5.16
 ## explicit; go 1.13
 github.com/xtaci/smux
+# github.com/yusufpapurcu/wmi v1.2.3
+## explicit; go 1.16
+github.com/yusufpapurcu/wmi
 # go.etcd.io/etcd/raft/v3 v3.5.8
 ## explicit; go 1.19
 go.etcd.io/etcd/raft/v3
