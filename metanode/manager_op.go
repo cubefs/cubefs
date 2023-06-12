@@ -72,11 +72,13 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		m.fileStatsEnable = req.FileStatsEnable
 		// collect memory info
 		resp.Total = configTotalMem
-		resp.Used, err = util.GetProcessMemory(os.Getpid())
+		resp.MemUsed, err = util.GetProcessMemory(os.Getpid())
 		if err != nil {
 			adminTask.Status = proto.TaskFailed
 			goto end
 		}
+		// set cpu util and io used in here
+		resp.CpuUtil = m.cpuUtil.Load()
 
 		m.Range(func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
@@ -106,7 +108,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly
 			}
-			if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
+			if resp.MemUsed > uint64(float64(resp.Total)*MaxUsedMemFactor) {
 				mpr.Status = proto.ReadOnly
 			}
 			resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
