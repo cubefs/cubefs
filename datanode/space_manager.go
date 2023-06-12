@@ -24,7 +24,10 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/atomicutil"
+	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/shirou/gopsutil/disk"
 )
 
 // SpaceManager manages the disk space.
@@ -42,19 +45,22 @@ type SpaceManager struct {
 	diskList             []string
 	dataNode             *DataNode
 	createPartitionMutex sync.RWMutex
+	diskUtils            map[string]*atomicutil.Float64
+	samplerDone          chan struct{}
 }
+
+const diskSampleDuration = 1 * time.Second
 
 // NewSpaceManager creates a new space manager.
 func NewSpaceManager(dataNode *DataNode) *SpaceManager {
-	var space *SpaceManager
-	space = &SpaceManager{}
+	space := &SpaceManager{}
 	space.disks = make(map[string]*Disk)
 	space.diskList = make([]string, 0)
 	space.partitions = make(map[uint64]*DataPartition)
 	space.stats = NewStats(dataNode.zoneName)
 	space.stopC = make(chan bool, 0)
 	space.dataNode = dataNode
-
+	space.diskUtils = make(map[string]*atomicutil.Float64)
 	go space.statUpdateScheduler()
 
 	return space
@@ -65,6 +71,8 @@ func (manager *SpaceManager) Stop() {
 		recover()
 	}()
 	close(manager.stopC)
+	// stop sampler
+	close(manager.samplerDone)
 	// Parallel stop data partitions.
 	const maxParallelism = 128
 	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
@@ -99,6 +107,56 @@ func (manager *SpaceManager) Stop() {
 		}(partitionC)
 	}
 	wg.Wait()
+}
+
+func (manager *SpaceManager) StartDiskSample() {
+	manager.samplerDone = make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-manager.samplerDone:
+				return
+			default:
+				var partitions []*disk.PartitionStat
+				func() {
+					manager.diskMutex.RLock()
+					defer manager.diskMutex.RUnlock()
+					partitions = make([]*disk.PartitionStat, 0, len(manager.disks))
+					for _, disk := range manager.disks {
+						partition := disk.GetDiskPartition()
+						if partition != nil {
+							partitions = append(partitions, partition)
+						}
+					}
+				}()
+				samplers, err := loadutil.GetDisksIoSample(partitions, diskSampleDuration)
+				if err != nil {
+					log.LogErrorf("failed to sample disk %v\n", err.Error())
+					return
+				}
+				func() {
+					manager.diskMutex.RLock()
+					defer manager.diskMutex.RUnlock()
+					for _, sample := range samplers {
+						used := manager.diskUtils[sample.GetPartition().Device]
+						if used != nil {
+							used.Store(sample.GetIoUtilPercent())
+						}
+					}
+				}()
+			}
+		}
+	}()
+}
+
+func (manager *SpaceManager) GetDiskUtils() map[string]float64 {
+	useds := make(map[string]float64)
+	manager.diskMutex.RLock()
+	defer manager.diskMutex.RUnlock()
+	for device, used := range manager.diskUtils {
+		useds[device] = used.Load()
+	}
+	return useds
 }
 
 func (manager *SpaceManager) SetNodeID(nodeID uint64) {
@@ -210,6 +268,10 @@ func (manager *SpaceManager) putDisk(d *Disk) {
 	manager.diskMutex.Lock()
 	manager.disks[d.Path] = d
 	manager.diskList = append(manager.diskList, d.Path)
+	if d.GetDiskPartition() != nil {
+		manager.diskUtils[d.GetDiskPartition().Device] = &atomicutil.Float64{}
+		manager.diskUtils[d.GetDiskPartition().Device].Store(0)
+	}
 	manager.diskMutex.Unlock()
 }
 
