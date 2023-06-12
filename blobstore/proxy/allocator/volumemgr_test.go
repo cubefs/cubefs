@@ -442,7 +442,7 @@ func TestGetAvaliableVols(t *testing.T) {
 	v.modeInfos[codemode.EC6P6] = info
 
 	args := &proxy.AllocVolsArgs{
-		Fsize:    5 << 30,
+		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
 		Excludes: nil,
@@ -458,7 +458,7 @@ func TestGetAvaliableVols(t *testing.T) {
 	require.Equal(t, []proto.Vid{1, 2, 3, 4, 5}, vids)
 
 	args2 := &proxy.AllocVolsArgs{
-		Fsize:    5 << 30,
+		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
 		Excludes: nil,
@@ -473,7 +473,6 @@ func TestGetAvaliableVols(t *testing.T) {
 	require.Equal(t, []proto.Vid{1, 3, 5}, vids2)
 
 	args3 := &proxy.AllocVolsArgs{
-		Fsize:    5 << 30,
 		CodeMode: codemode.EC6P6,
 		BidCount: 1,
 		Excludes: nil,
@@ -543,7 +542,7 @@ func TestAllocParallel(b *testing.T) {
 		go func() {
 			vid, err := vm.allocVid(context.Background(),
 				&proxy.AllocVolsArgs{
-					Fsize:    1024,
+					Fsize:    1024 * 1024,
 					CodeMode: codemode.EC6P6,
 					BidCount: 1,
 				})
