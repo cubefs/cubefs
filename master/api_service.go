@@ -2305,6 +2305,8 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		BadDisks:                  dataNode.BadDisks,
 		RdOnly:                    dataNode.RdOnly,
 		MaxDpCntLimit:             dataNode.GetDpCntLimit(),
+		CpuUtil:                   dataNode.CpuUtil.Load(),
+		IoUtils:                   dataNode.GetIoUtils(),
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -3642,6 +3644,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+		CpuUtil:                   metaNode.CpuUtil.Load(),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
