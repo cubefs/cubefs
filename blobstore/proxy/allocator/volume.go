@@ -29,9 +29,15 @@ type volume struct {
 	mu      sync.RWMutex
 }
 
+const (
+	ALLOCATING = true
+	ALLOCATED  = false
+)
+
 type volumes struct {
-	vols      []*volume
-	totalFree uint64
+	vols       []*volume
+	totalFree  uint64
+	allocating bool
 
 	sync.RWMutex
 }
@@ -87,6 +93,18 @@ func (s *volumes) List() (vols []*volume) {
 	defer s.RUnlock()
 	vols = s.vols[:]
 	return vols
+}
+
+func (s *volumes) SetAllocateState(state bool) {
+	s.Lock()
+	s.allocating = state
+	s.Unlock()
+}
+
+func (s *volumes) IsAllocating() bool {
+	s.RLock()
+	defer s.RUnlock()
+	return s.allocating
 }
 
 func (s *volumes) Len() int {
