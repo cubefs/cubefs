@@ -230,24 +230,10 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	}
 
 	go func() {
-		request := &proto.HeartBeatRequest{}
-		response := &proto.DataNodeHeartbeatResponse{}
-		s.buildHeartBeatResponse(response)
-
-		if task.OpCode == proto.OpDataNodeHeartbeat {
-			marshaled, _ := json.Marshal(task.Request)
-			_ = json.Unmarshal(marshaled, request)
-			response.Status = proto.TaskSucceeds
+		if task.IsHeartBeatPbRequest {
+			s.responseHeartbeatPb(task)
 		} else {
-			response.Status = proto.TaskFailed
-			err = fmt.Errorf("illegal opcode")
-			response.Result = err.Error()
-		}
-		task.Response = response
-		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
-			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
-			log.LogErrorf(err.Error())
-			return
+			s.responseHeartbeat(task)
 		}
 	}()
 
@@ -1680,4 +1666,52 @@ func (s *DataNode) rateLimit(p *repl.Packet, c *net.TCPConn) {
 	}
 
 	return
+}
+
+func (s *DataNode) responseHeartbeatPb(task *proto.AdminTask) {
+	var err error
+	request := &proto.HeartBeatRequest{}
+	taskPb := task.ConvertToPb()
+	taskPb.DataNodeResponse = &proto.DataNodeHeartbeatResponsePb{}
+	s.buildHeartBeatResponsePb(taskPb.DataNodeResponse)
+
+	if task.OpCode == proto.OpDataNodeHeartbeat {
+		marshaled, _ := json.Marshal(task.Request)
+		_ = json.Unmarshal(marshaled, request)
+		taskPb.Request = request.ConvertToPb()
+		taskPb.DataNodeResponse.Status = proto.TaskSucceeds
+	} else {
+		taskPb.DataNodeResponse.Status = proto.TaskFailed
+		err = fmt.Errorf("illegal opcode")
+		taskPb.DataNodeResponse.Result = err.Error()
+	}
+	if err = MasterClient.NodeAPI().ResponseHeartBeatTaskPb(taskPb); err != nil {
+		err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
+		log.LogErrorf(err.Error())
+		return
+	}
+}
+
+func (s *DataNode) responseHeartbeat(task *proto.AdminTask) {
+	var err error
+	request := &proto.HeartBeatRequest{}
+	resp := &proto.DataNodeHeartbeatResponse{}
+	s.buildHeartBeatResponse(resp)
+
+	if task.OpCode == proto.OpDataNodeHeartbeat {
+		marshaled, _ := json.Marshal(task.Request)
+		_ = json.Unmarshal(marshaled, request)
+		task.Request = request
+		resp.Status = proto.TaskSucceeds
+	} else {
+		resp.Status = proto.TaskFailed
+		err = fmt.Errorf("illegal opcode")
+		resp.Result = err.Error()
+	}
+	task.Response = resp
+	if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
+		err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
+		log.LogErrorf(err.Error())
+		return
+	}
 }

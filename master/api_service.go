@@ -2186,6 +2186,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		AvailableSpace:            dataNode.AvailableSpace,
 		ID:                        dataNode.ID,
 		ZoneName:                  dataNode.ZoneName,
+		HttpPort:                  dataNode.HttpPort,
 		Addr:                      dataNode.Addr,
 		ReportTime:                dataNode.ReportTime,
 		IsActive:                  dataNode.isActive,
@@ -2632,12 +2633,12 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
-	task := &HeartbeatTask{
+	task := &NodeTask{
 		addr:     r.RemoteAddr,
 		body:     body,
 		nodeType: NodeTypeDataNode,
 	}
-	m.cluster.heartbeatHandleChan <- task
+	m.cluster.nodeTaskHandleChan <- task
 }
 func readBodyFromRequest(r *http.Request) (body []byte, err error) {
 	if err = r.ParseForm(); err != nil {
@@ -3022,12 +3023,12 @@ func (m *Server) handleMetaNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
-	task := &HeartbeatTask{
+	task := &NodeTask{
 		addr:     r.RemoteAddr,
 		body:     body,
 		nodeType: NodeTypeMetaNode,
 	}
-	m.cluster.heartbeatHandleChan <- task
+	m.cluster.nodeTaskHandleChan <- task
 }
 
 // Dynamically add a raft node (replica) for the master.
@@ -6368,4 +6369,22 @@ func extractGetAllFlashNodes(r *http.Request) (status bool) {
 		return
 	}
 	return
+}
+
+
+// handle metanode datanode heartbeat protobuf info.
+func (m *Server) handleHeartbeatTaskPbResponse(w http.ResponseWriter, r *http.Request) {
+	body, err := readBodyFromRequest(r)
+	metrics := exporter.NewModuleTP(proto.GetHeartbeatPbResponse)
+	defer func() { metrics.Set(err) }()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
+	task := &HeartbeatPbTask{
+		addr: r.RemoteAddr,
+		body: body,
+	}
+	m.cluster.heartbeatPbHandleChan <- task
 }

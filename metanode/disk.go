@@ -150,6 +150,40 @@ func (m *MetaNode) getDisks() []*diskusage.FsCapMon {
 	return disks
 }
 
+func (m *MetaNode) getSingleDiskStat(path string) *diskusage.FsCapMon {
+	disk, ok := m.disks[path]
+	if !ok {
+		return nil
+	}
+
+	return disk
+}
+
+func (m *MetaNode) getRocksDBDiskStatPb() []*proto.MetaNodeDiskInfoPb {
+	disks := make([]*proto.MetaNodeDiskInfoPb, 0, len(m.disks))
+	for _, d := range m.disks {
+		if !d.IsRocksDBDisk {
+			continue
+		}
+		var ratio float64 = 0
+		total := uint64(d.Total) - d.ReservedSpace
+		if d.Used > 0 && d.Used <= float64(total) {
+			ratio = d.Used / d.Total
+		} else if d.Used > d.Total {
+			ratio = 1
+		}
+		disks = append(disks, &proto.MetaNodeDiskInfoPb{
+			Path:       d.Path,
+			Total:      total,
+			Used:       uint64(d.Used),
+			UsageRatio: float32(ratio),
+			Status:     int32(d.Status),
+			MPCount:    int32(d.MPCount),
+		})
+	}
+	return disks
+}
+
 func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeDiskInfo {
 	disks := make([]*proto.MetaNodeDiskInfo, 0, len(m.disks))
 	for _, d := range m.disks {
@@ -173,13 +207,4 @@ func (m *MetaNode) getRocksDBDiskStat() []*proto.MetaNodeDiskInfo {
 		})
 	}
 	return disks
-}
-
-func (m *MetaNode) getSingleDiskStat(path string) *diskusage.FsCapMon {
-	disk, ok := m.disks[path]
-	if !ok {
-		return nil
-	}
-
-	return disk
 }

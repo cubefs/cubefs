@@ -166,6 +166,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string) (task *proto.Ad
 		MasterAddr: masterAddr,
 	}
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
+	task.IsHeartBeatPbRequest = true
 	return
 }
 

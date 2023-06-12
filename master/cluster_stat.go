@@ -254,3 +254,59 @@ func updateZoneStatUsedRatio(zoneStat *proto.ZoneStat) {
 		zoneStat.MetaNodeStat.Avail = fixedPoint(zoneStat.MetaNodeStat.Avail, 2)
 	}
 }
+
+func (c *Cluster) handleDataNodeHeartbeatPbResponse(nodeAddr string, taskPb *proto.HeartbeatAdminTaskPb) {
+	if taskPb == nil {
+		log.LogInfof("action[handleDataNodeHeartbeatPbResponse] receive addr[%v] task response,but task is nil", nodeAddr)
+		return
+	}
+	var (
+		err      error
+		dataNode *DataNode
+	)
+	task := taskPb.ConvertToView()
+	log.LogDebugf("action[handleDataNodeHeartbeatPbResponse] receive addr[%v] task response:%v", nodeAddr, task.ToString())
+
+	response := taskPb.DataNodeResponse.ConvertToView()
+	if dataNode, err = c.dataNode(nodeAddr); err != nil {
+		goto errHandler
+	}
+	dataNode.TaskManager.DelTask(task)
+	err = c.handleDataNodeHeartbeatResp(task.OperatorAddr, response)
+	if err != nil {
+		goto errHandler
+	}
+	return
+
+errHandler:
+	log.LogErrorf("process task[%v] failed,status:%v, err:%v", task.ID, task.Status, err)
+	return
+}
+
+func (c *Cluster) handleMetaNodeHeartbeatPbResponse(nodeAddr string, taskPb *proto.HeartbeatAdminTaskPb) {
+	if taskPb == nil {
+		return
+	}
+	task := taskPb.ConvertToView()
+	log.LogDebugf(fmt.Sprintf("action[handleMetaNodeHeartbeatPbResponse] receive Task response:%v from %v", task.ID, nodeAddr))
+	var (
+		metaNode *MetaNode
+		err      error
+	)
+	response := taskPb.MetaNodeResponse.ConvertToView()
+	if metaNode, err = c.metaNode(nodeAddr); err != nil {
+		goto errHandler
+	}
+	metaNode.Sender.DelTask(task)
+	err = c.dealMetaNodeHeartbeatResp(task.OperatorAddr, response)
+	if err != nil {
+		log.LogErrorf("process task:%v failed,status:%v,err:%v ", task.ID, task.Status, err)
+	} else {
+		log.LogInfof("process task:%v status:%v success", task.ID, task.Status)
+	}
+	return
+errHandler:
+	log.LogError(fmt.Sprintf("action[handleMetaNodeHeartbeatPbResponse],nodeAddr %v,taskId %v,err %v",
+		nodeAddr, task.ID, err.Error()))
+	return
+}

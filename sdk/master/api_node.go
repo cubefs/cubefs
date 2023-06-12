@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/log"
+	pb "github.com/gogo/protobuf/proto"
 	"net/http"
 	"strconv"
 	"strings"
@@ -480,6 +481,19 @@ func (api *NodeAPI) SetFlashNodeState(addr, state string) (err error) {
 
 	if !strings.Contains(msg, "success") {
 		err = fmt.Errorf("set flashNodeState failed: %v", msg)
+	}
+	return
+}
+
+func (api *NodeAPI) ResponseHeartBeatTaskPb(taskPb *proto.HeartbeatAdminTaskPb) (err error) {
+	var encoded []byte
+	if encoded, err = pb.Marshal(taskPb); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.GetHeartbeatPbResponse)
+	request.addBody(encoded)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
 	}
 	return
 }

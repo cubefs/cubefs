@@ -649,3 +649,60 @@ func (manager *SpaceManager) SetNormalExtentDeleteExpireTime(newValue uint64) {
 		manager.normalExtentDeleteExpireTime = newValue
 	}
 }
+
+func (s *DataNode) buildHeartBeatResponsePb(response *proto.DataNodeHeartbeatResponsePb) {
+	response.Status = proto.TaskSucceeds
+	response.Version = DataNodeLatestVersion
+	stat := s.space.Stats()
+	stat.Lock()
+	response.Used = stat.Used
+	response.Total = stat.Total
+	response.Available = stat.Available
+	response.CreatedPartitionCnt = uint32(stat.CreatedPartitionCnt)
+	response.TotalPartitionSize = stat.TotalPartitionSize
+	response.MaxCapacity = stat.MaxCapacityToCreatePartition
+	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
+	response.BadDisks = make([]string, 0)
+	response.DiskInfos = make(map[string]*proto.DiskInfoPb, 0)
+	stat.Unlock()
+
+	response.HttpPort = s.httpPort
+	response.ZoneName = s.zoneName
+	response.PartitionReports = make([]*proto.PartitionReportPb, 0)
+	space := s.space
+	space.RangePartitions(func(partition *DataPartition) bool {
+		leaderAddr, isLeader := partition.IsRaftLeader()
+		vr := &proto.PartitionReportPb{
+			VolName:         partition.volumeID,
+			PartitionID:     partition.partitionID,
+			PartitionStatus: int32(partition.Status()),
+			Total:           uint64(partition.Size()),
+			Used:            uint64(partition.Used()),
+			DiskPath:        partition.Disk().Path,
+			IsLeader:        isLeader,
+			ExtentCount:     int32(partition.GetExtentCount()),
+			NeedCompare:     true,
+			IsLearner:       partition.IsRaftLearner(),
+			LastUpdateTime:  partition.lastUpdateTime,
+			IsRecover:       partition.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
+		}
+		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) isLearner(%v).",
+			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.IsLearner)
+		response.PartitionReports = append(response.PartitionReports, vr)
+		return true
+	})
+
+	disks := space.GetDisks()
+	var usageRatio float64
+	for _, d := range disks {
+		usageRatio = 0
+		if d.Total != 0 {
+			usageRatio = float64(d.Used) / float64(d.Total)
+		}
+		dInfo := &proto.DiskInfoPb{Total: d.Total, Used: d.Used, ReservedSpace: d.ReservedSpace, Status: int32(d.Status), Path: d.Path, UsageRatio: float32(usageRatio)}
+		response.DiskInfos[d.Path] = dInfo
+		if d.Status == proto.Unavailable {
+			response.BadDisks = append(response.BadDisks, d.Path)
+		}
+	}
+}

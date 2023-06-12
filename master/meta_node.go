@@ -242,7 +242,7 @@ func (metaNode *MetaNode) reachesRocksdbDisksThreshold(storeMode proto.StoreMode
 
 func (metaNode *MetaNode) getRocksdbDisksWeight(maxTotal uint64) (weight float64) {
 	for _, disk := range metaNode.RocksdbDisks {
-		w := float64(disk.Total - disk.Used) / float64(maxTotal)
+		w := float64(disk.Total-disk.Used) / float64(maxTotal)
 		if w > weight {
 			weight = w
 		}
@@ -259,6 +259,7 @@ func (metaNode *MetaNode) createHeartbeatTask(masterAddr string) (task *proto.Ad
 		MasterAddr: masterAddr,
 	}
 	task = proto.NewAdminTask(proto.OpMetaNodeHeartbeat, metaNode.Addr, request)
+	task.IsHeartBeatPbRequest = true
 	return
 }
 

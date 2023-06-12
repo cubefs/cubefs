@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/exporter"
+	pb "github.com/gogo/protobuf/proto"
 	atomic2 "go.uber.org/atomic"
 	"math"
 	"sort"
@@ -87,13 +88,19 @@ type Cluster struct {
 	flashNodeTopo              *flashNodeTopology
 	flashGroupRespCache        []byte
 	isLeader                   atomic2.Bool
-	heartbeatHandleChan        chan *HeartbeatTask
+	nodeTaskHandleChan         chan *NodeTask
+	heartbeatPbHandleChan      chan *HeartbeatPbTask
 }
 
-type HeartbeatTask struct {
+type NodeTask struct {
 	addr     string
 	body     []byte
 	nodeType NodeType
+}
+
+type HeartbeatPbTask struct {
+	addr string
+	body []byte
 }
 type NodeType uint8
 
@@ -146,13 +153,15 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.EcScrubPeriod = defaultEcScrubPeriod
 	c.MaxCodecConcurrent = defaultMaxCodecConcurrent
 	c.EcStartScrubTime = time.Now().Unix()
-	c.heartbeatHandleChan = make(chan *HeartbeatTask, defaultHeartbeatHandleChanCap)
+	c.nodeTaskHandleChan = make(chan *NodeTask, defaultHeartbeatHandleChanCap)
+	c.heartbeatPbHandleChan = make(chan *HeartbeatPbTask, defaultHeartbeatHandleChanCap)
 	c.flashNodeTopo = newFlashNodeTopology()
 	return
 }
 
 func (c *Cluster) scheduleTask() {
-	c.startHeartbeatHandlerWorker()
+	c.startNodeTaskHandlerWorker()
+	c.startHeartbeatPbInfoHandlerWorker()
 	c.scheduleToUpdateClusterViewResponseCache()
 	c.scheduleToCheckDataPartitions()
 	c.scheduleToLoadDataPartitions()
@@ -5713,22 +5722,22 @@ errHandler:
 	return
 }
 
-func (c *Cluster) startHeartbeatHandlerWorker() {
+func (c *Cluster) startNodeTaskHandlerWorker() {
 	for i := 0; i < defaultHeartbeatHandleGoRoutineCount; i++ {
 		go func() {
 			for {
 				select {
-				case task := <-c.heartbeatHandleChan:
+				case task := <-c.nodeTaskHandleChan:
 					if task == nil {
 						continue
 					}
 					tr, err := getAdminTaskFromRequestBody(task.body)
 					if err != nil {
-						log.LogError(fmt.Sprintf("action[startHeartbeatHandlerWorker] nodeType:%v addr:%v err:%v", task.nodeType, task.addr, err))
+						log.LogError(fmt.Sprintf("action[startNodeTaskHandlerWorker] nodeType:%v addr:%v err:%v", task.nodeType, task.addr, err))
 						continue
 					}
 					if tr == nil {
-						log.LogError(fmt.Sprintf("action[startHeartbeatHandlerWorker] nodeType:%v addr:%v admin task is nil", task.nodeType, task.addr))
+						log.LogError(fmt.Sprintf("action[startNodeTaskHandlerWorker] nodeType:%v addr:%v admin task is nil", task.nodeType, task.addr))
 						continue
 					}
 					switch task.nodeType {
@@ -5737,7 +5746,7 @@ func (c *Cluster) startHeartbeatHandlerWorker() {
 					case NodeTypeMetaNode:
 						c.handleMetaNodeTaskResponse(tr.OperatorAddr, tr)
 					default:
-						log.LogError(fmt.Sprintf("action[startHeartbeatHandlerWorker] unknown task nodeType:%v", task.nodeType))
+						log.LogError(fmt.Sprintf("action[startNodeTaskHandlerWorker] unknown task nodeType:%v", task.nodeType))
 					}
 				}
 			}
@@ -6096,4 +6105,38 @@ func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
 		return true
 	})
 	return
+}
+func (c *Cluster) startHeartbeatPbInfoHandlerWorker() {
+	for i := 0; i < defaultHeartbeatHandleGoRoutineCount; i++ {
+		go func() {
+			for {
+				select {
+				case task := <-c.heartbeatPbHandleChan:
+					if task == nil {
+						continue
+					}
+					tr := &proto.HeartbeatAdminTaskPb{}
+					err := pb.Unmarshal(task.body, tr)
+					if err != nil {
+						log.LogError(fmt.Sprintf("action[startHeartbeatPbHandlerWorker] addr:%v err:%v", task.addr, err))
+						continue
+					}
+					if tr == nil {
+						log.LogError(fmt.Sprintf("action[startHeartbeatPbHandlerWorker] addr:%v admin task is nil", task.addr))
+						continue
+					}
+
+					opCode := uint8(tr.OpCode)
+					switch opCode {
+					case proto.OpDataNodeHeartbeat:
+						c.handleDataNodeHeartbeatPbResponse(tr.OperatorAddr, tr)
+					case proto.OpMetaNodeHeartbeat:
+						c.handleMetaNodeHeartbeatPbResponse(tr.OperatorAddr, tr)
+					default:
+						log.LogError(fmt.Sprintf("action[startHeartbeatPbHandlerWorker] unknown heartBeat type:%v", opCode))
+					}
+				}
+			}
+		}()
+	}
 }

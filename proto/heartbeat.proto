@@ -1,0 +1,106 @@
+// protoc --proto_path=./vendor/:./proto/  --gofast_out=./proto/   heartbeat.proto
+syntax = "proto3";
+package proto;
+
+message PartitionReportPb {
+    string VolName = 1;
+    uint64 PartitionID = 2;
+    int32  PartitionStatus = 3;
+    uint64 Total = 4;
+    uint64 Used  = 5;
+    string DiskPath = 6;
+    bool   IsLeader = 7;
+    int32  ExtentCount = 8;
+    bool   NeedCompare = 9;
+    bool   IsLearner = 10;
+    int64  LastUpdateTime = 11;
+    bool   IsRecover = 12;
+}
+
+message DiskInfoPb {
+    uint64 Total = 1;
+    uint64 Used  = 2;
+    uint64 ReservedSpace = 3;
+    int32  Status = 4;
+    string Path = 5;
+    float  UsageRatio = 6;
+}
+
+message DataNodeHeartbeatResponsePb {
+    uint64 Total = 1;
+    uint64 Used  = 2;
+    uint64 Available = 3;
+    uint64 TotalPartitionSize = 4;
+    uint64 RemainingCapacity = 5;
+    uint32 CreatedPartitionCnt = 6;
+    uint64 MaxCapacity = 7;
+    string HttpPort = 8;
+    string ZoneName = 9;
+    repeated PartitionReportPb PartitionReports = 10;
+    uint32 Status = 11;
+    string Result = 12;
+    repeated string BadDisks = 13;
+    map<string, DiskInfoPb> DiskInfos = 14;
+    string Version = 15;
+}
+
+message MetaPartitionReportPb {
+    uint64 PartitionID = 1;
+    uint64 Start = 2;
+    uint64 End = 3;
+    int32 Status = 4;
+    uint64 MaxInodeID = 5;
+    bool IsLeader = 6;
+    string VolName = 7;
+    uint64 InodeCnt = 8;
+    uint64 DentryCnt = 9;
+    uint64 DelInodeCnt = 10;
+    uint64 DelDentryCnt = 11;
+    bool IsLearner = 12;
+    uint64 ExistMaxInodeID = 13;
+    uint32 StoreMode = 14;
+    uint64 ApplyId  = 15;
+    bool IsRecover = 16;
+    uint64 AllocatorInUseCnt = 17;
+}
+
+message MetaNodeDiskInfoPb {
+    string Path = 1;
+    uint64 Total = 2;
+    uint64 Used  = 3;
+    float  UsageRatio = 4;
+    int32  Status = 5;
+    int32 MPCount = 6;
+}
+
+message MetaNodeHeartbeatResponsePb {
+    string ZoneName = 1;
+    uint64 Total = 2;
+    uint64 Used  = 3;
+    repeated MetaPartitionReportPb MetaPartitionReports = 4;
+    uint32 Status = 5;
+    string ProfPort = 6;
+    string Result = 7;
+    repeated MetaNodeDiskInfoPb RocksDBDiskInfo = 8;
+    string Version = 9;
+}
+
+message HeartBeatRequestPb {
+    int64 CurrTime = 1;
+    string MasterAddr = 2;
+}
+
+message HeartbeatAdminTaskPb {
+    string ID = 1;
+    uint64 PartitionID = 2;
+    uint32 OpCode      = 3;
+    string OperatorAddr = 4;
+    int32 Status = 5;
+    int64 SendTime = 6;
+    int64 CreateTime = 7;
+    uint32  SendCount = 8;
+    bool ReserveResource = 9;
+    HeartBeatRequestPb Request = 10;
+    MetaNodeHeartbeatResponsePb    MetaNodeResponse = 11;
+    DataNodeHeartbeatResponsePb    DataNodeResponse = 12;
+}
