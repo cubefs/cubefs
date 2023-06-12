@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/proto"
@@ -67,7 +68,9 @@ type DataNode struct {
 	DecommissionLimit         int
 	DecommissionTerm          uint64
 	DecommissionCompleteTime  int64
-	DpCntLimit                DpCountLimiter `json:"-"` // max count of data partition in a data node
+	DpCntLimit                DpCountLimiter     `json:"-"` // max count of data partition in a data node
+	CpuUtil                   atomicutil.Float64 `json:"-"`
+	ioUtils                   atomic.Value       `json:"-"`
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -82,7 +85,17 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode.DecommissionTerm = 0
 	dataNode.DecommissionDpTotal = InvalidDecommissionDpCnt
 	dataNode.DpCntLimit = newDpCountLimiter(nil)
+	dataNode.CpuUtil.Store(0)
+	dataNode.SetIoUtils(make(map[string]float64))
 	return
+}
+
+func (dataNode *DataNode) GetIoUtils() map[string]float64 {
+	return dataNode.ioUtils.Load().(map[string]float64)
+}
+
+func (dataNode *DataNode) SetIoUtils(used map[string]float64) {
+	dataNode.ioUtils.Store(used)
 }
 
 func (dataNode *DataNode) checkLiveness() {
