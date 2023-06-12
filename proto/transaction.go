@@ -98,6 +98,16 @@ func txInvalidMask() (err error) {
 	return errors.New("transaction mask key value pair should be: enableTxMaskKey=[create|mkdir|remove|rename|mknod|symlink|link]\n enableTxMaskKey=off \n enableTxMaskKey=all")
 }
 
+func MaskContains(mask uint8, subMask uint8) bool {
+	if mask != TxOpMaskOff && subMask == TxOpMaskOff {
+		return false
+	}
+	if (mask | subMask) != mask {
+		return false
+	}
+	return true
+}
+
 func GetMaskFromString(maskStr string) (mask uint8, err error) {
 	if maskStr == "" {
 		err = txInvalidMask()
@@ -437,7 +447,7 @@ const (
 	TxTypeLink
 )
 
-func TxMastToType(mask uint8) (txType uint32) {
+func TxMaskToType(mask uint8) (txType uint32) {
 	switch mask {
 	case TxOpMaskOff:
 		txType = TxTypeUndefined
