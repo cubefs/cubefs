@@ -17,7 +17,6 @@ package disk
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -57,14 +56,19 @@ func (ds *DiskStorage) cleanTrash(ctx context.Context) (err error) {
 	trashPath := core.SysTrashPath(ds.Conf.Path)
 	trashProtection := time.Duration(ds.Conf.DiskTrashProtectionM) * time.Minute
 
-	fis, err := ioutil.ReadDir(trashPath)
+	fis, err := os.ReadDir(trashPath)
 	if err != nil {
 		span.Debugf("failed readdir, err:%v", err)
 		return
 	}
 	for _, fi := range fis {
+		info, err := fi.Info()
+		if err != nil {
+			span.Errorf("get FileInfo err:%v", err)
+			continue
+		}
 		path := filepath.Join(trashPath, fi.Name())
-		mtime := fi.ModTime()
+		mtime := info.ModTime()
 
 		if time.Since(mtime) < trashProtection {
 			span.Debugf("%s mtime:%v, trashProtection:%v. skip", path, mtime, trashProtection)
@@ -78,7 +82,7 @@ func (ds *DiskStorage) cleanTrash(ctx context.Context) (err error) {
 		}
 
 		span.Warnf("will remove %s, mtime:%s, protection:%v", fi.Name(), mtime.Format(time.RFC3339), trashProtection)
-		err := os.Remove(path)
+		err = os.Remove(path)
 		if err != nil {
 			span.Errorf("failed remove %s, err:%v", path, err)
 			continue

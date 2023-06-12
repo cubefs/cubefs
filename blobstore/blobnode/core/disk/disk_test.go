@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"hash/crc32"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -51,7 +50,7 @@ func setChunkCompactFn(ctx context.Context, args *cmapi.SetCompactChunkArgs) (er
 }
 
 func TestNewDiskStorage(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "NewDiskStorage")
+	testDir, err := os.MkdirTemp(os.TempDir(), "NewDiskStorage")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -133,7 +132,7 @@ func TestNewDiskStorage(t *testing.T) {
 }
 
 func TestRunCompact(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "TestRunCompact")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestRunCompact")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -192,7 +191,7 @@ func TestRunCompact(t *testing.T) {
 }
 
 func TestDiskStorage_UpdateChunkStatus(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "UpdateChunkStatus")
+	testDir, err := os.MkdirTemp(os.TempDir(), "UpdateChunkStatus")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -234,7 +233,7 @@ func TestDiskStorage_UpdateChunkStatus(t *testing.T) {
 }
 
 func TestSuperBlock_UpdateDiskStatus(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "UpdateDiskStatus")
+	testDir, err := os.MkdirTemp(os.TempDir(), "UpdateDiskStatus")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -283,7 +282,7 @@ func TestSuperBlock_UpdateDiskStatus(t *testing.T) {
 func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "NewBlobNodeService")
 
-	testDir, err := ioutil.TempDir(os.TempDir(), "CompactChunkFile2")
+	testDir, err := os.MkdirTemp(os.TempDir(), "CompactChunkFile2")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -366,7 +365,7 @@ func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 }
 
 func TestExecCompact(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "ExecCompact")
+	testDir, err := os.MkdirTemp(os.TempDir(), "ExecCompact")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -425,7 +424,7 @@ func TestExecCompact(t *testing.T) {
 }
 
 func TestCleanChunk(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "CleanChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "CleanChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -488,7 +487,7 @@ func TestCleanChunk(t *testing.T) {
 }
 
 func TestCheckChunkFile(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "CheckChunkFile")
+	testDir, err := os.MkdirTemp(os.TempDir(), "CheckChunkFile")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -539,7 +538,7 @@ func TestCheckChunkFile(t *testing.T) {
 }
 
 func TestDiskstorage_Finalizer(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "NewDiskStorage")
+	testDir, err := os.MkdirTemp(os.TempDir(), "NewDiskStorage")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -605,7 +604,7 @@ func TestDiskstorage_Finalizer(t *testing.T) {
 }
 
 func TestDiskStorageWrapper_CreateChunk(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "CreateChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "CreateChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -637,7 +636,7 @@ func TestDiskStorageWrapper_CreateChunk(t *testing.T) {
 }
 
 func TestDiskStorage_ReleaseChunk(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "CreateChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "CreateChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -682,7 +681,7 @@ func TestDiskStorage_ReleaseChunk(t *testing.T) {
 }
 
 func TestDiskStorage_UpdateChunkStatus2(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "CreateChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "CreateChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"reflect"
@@ -44,11 +43,12 @@ func (s *MetaItem) MarshalJson() ([]byte, error) {
 
 // MarshalBinary marshals MetaItem to binary data.
 // Binary frame structure:
-//  +------+----+------+------+------+------+
-//  | Item | Op | LenK |   K  | LenV |   V  |
-//  +------+----+------+------+------+------+
-//  | byte | 4  |  4   | LenK |  4   | LenV |
-//  +------+----+------+------+------+------+
+//
+//	+------+----+------+------+------+------+
+//	| Item | Op | LenK |   K  | LenV |   V  |
+//	+------+----+------+------+------+------+
+//	| byte | 4  |  4   | LenK |  4   | LenV |
+//	+------+----+------+------+------+------+
 func (s *MetaItem) MarshalBinary() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(4 + len(s.K) + len(s.V))
@@ -78,11 +78,12 @@ func (s *MetaItem) UnmarshalJson(data []byte) error {
 
 // MarshalBinary unmarshal this MetaItem entity from binary data.
 // Binary frame structure:
-//  +------+----+------+------+------+------+
-//  | Item | Op | LenK |   K  | LenV |   V  |
-//  +------+----+------+------+------+------+
-//  | byte | 4  |  4   | LenK |  4   | LenV |
-//  +------+----+------+------+------+------+
+//
+//	+------+----+------+------+------+------+
+//	| Item | Op | LenK |   K  | LenV |   V  |
+//	+------+----+------+------+------+------+
+//	| byte | 4  |  4   | LenK |  4   | LenV |
+//	+------+----+------+------+------+------+
 func (s *MetaItem) UnmarshalBinary(raw []byte) (err error) {
 	var (
 		lenK uint32
@@ -133,11 +134,11 @@ type MetaItemIterator struct {
 	extendTree    *BTree
 	multipartTree *BTree
 	txTree        *BTree
-	//transactions       map[string]*proto.TransactionInfo
+	// transactions       map[string]*proto.TransactionInfo
 	txRbInodeTree *BTree
-	//txRollbackInodes   map[uint64]*TxRollbackInode
+	// txRollbackInodes   map[uint64]*TxRollbackInode
 	txRbDentryTree *BTree
-	//txRollbackDentries map[string]*TxRollbackDentry
+	// txRollbackDentries map[string]*TxRollbackDentry
 
 	filenames []string
 
@@ -159,11 +160,11 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.extendTree = mp.extendTree.GetTree()
 	si.multipartTree = mp.multipartTree.GetTree()
 	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
-	//si.transactions = mp.txProcessor.txManager.transactions
+	// si.transactions = mp.txProcessor.txManager.transactions
 	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
-	//si.txRollbackInodes = mp.txProcessor.txResource.txRollbackInodes
+	// si.txRollbackInodes = mp.txProcessor.txResource.txRollbackInodes
 	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
-	//si.txRollbackDentries = mp.txProcessor.txResource.txRollbackDentries
+	// si.txRollbackDentries = mp.txProcessor.txResource.txRollbackDentries
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
 	si.closeCh = make(chan struct{})
@@ -251,9 +252,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			return produceItem(i)
 		})
 
-		//for _, item := range iter.transactions {
+		// for _, item := range iter.transactions {
 		//	produceItem(item)
-		//}
+		// }
 		if checkClose() {
 			return
 		}
@@ -261,9 +262,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		iter.txRbInodeTree.Ascend(func(i BtreeItem) bool {
 			return produceItem(i)
 		})
-		//for _, item := range iter.txRollbackInodes {
+		// for _, item := range iter.txRollbackInodes {
 		//	produceItem(item)
-		//}
+		// }
 		if checkClose() {
 			return
 		}
@@ -271,9 +272,9 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		iter.txRbDentryTree.Ascend(func(i BtreeItem) bool {
 			return produceItem(i)
 		})
-		//for _, item := range iter.txRollbackDentries {
+		// for _, item := range iter.txRollbackDentries {
 		//	produceItem(item)
-		//}
+		// }
 		if checkClose() {
 			return
 		}
@@ -282,7 +283,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		var err error
 		var raw []byte
 		for _, filename := range iter.filenames {
-			if raw, err = ioutil.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
+			if raw, err = os.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
 				produceError(err)
 				return
 			}

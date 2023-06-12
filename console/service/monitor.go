@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -61,7 +61,7 @@ func (ms *MonitorService) RangeQuery(ctx context.Context, args struct {
 		return "", err
 	}
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 
 	return string(b), nil
 }
@@ -111,7 +111,7 @@ func (ms *MonitorService) Query(ctx context.Context, args struct {
 		return "", err
 	}
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 
 	return string(b), nil
 }
@@ -153,7 +153,7 @@ func (ms *MonitorService) FuseClientList(ctx context.Context, args struct{}) ([]
 		return nil, err
 	}
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 
 	result := struct {
 		Data struct {

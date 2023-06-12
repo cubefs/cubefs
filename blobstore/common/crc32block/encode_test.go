@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"io"
-	"io/ioutil"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -105,7 +104,7 @@ func TestDecodeData(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, reader)
 
-		cont, err := ioutil.ReadAll(reader)
+		cont, err := io.ReadAll(reader)
 		require.NoError(t, err)
 		require.Equal(t, data[tb.from:tb.to], cont)
 	}
@@ -161,7 +160,7 @@ func TestLimitEncoderReader(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, reader)
 
-		cont, err := ioutil.ReadAll(reader)
+		cont, err := io.ReadAll(reader)
 		require.NoError(t, err)
 		require.Equal(t, data[tb.from:tb.to], cont)
 	}
@@ -221,7 +220,7 @@ func TestLimitEncoderReader2(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, reader)
 
-		cont, err := ioutil.ReadAll(reader)
+		cont, err := io.ReadAll(reader)
 		require.NoError(t, err)
 		require.Equal(t, data[tb.from:tb.to], cont)
 	}
@@ -247,7 +246,7 @@ func TestLimitEncoderReaderFailed(t *testing.T) {
 	require.Equal(t, n, EncodeSize(fsize, defaultCrc32BlockSize))
 
 	r = bytes.NewReader(data)
-	_, err = enc.Encode(r, fsize+1, ioutil.Discard)
+	_, err = enc.Encode(r, fsize+1, io.Discard)
 	require.Error(t, err)
 	_, ok := err.(ReaderError)
 	require.Equal(t, ok, true)

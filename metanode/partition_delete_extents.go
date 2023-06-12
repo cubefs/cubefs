@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -39,8 +38,8 @@ const (
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 
-/// start metapartition delete extents work
-///
+// / start metapartition delete extents work
+// /
 func (mp *metaPartition) startToDeleteExtents() {
 	fileList := synclist.New()
 	go mp.appendDelExtentsToFile(fileList)
@@ -64,7 +63,7 @@ func (mp *metaPartition) createExtentDeleteFile(prefix string, idx int64, fileLi
 	return
 }
 
-//append delete extents from extDelCh to EXTENT_DEL_N files
+// append delete extents from extDelCh to EXTENT_DEL_N files
 func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -80,13 +79,13 @@ func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
 	)
 LOOP:
 	// scan existed EXTENT_DEL_* files to fill fileList
-	finfos, err := ioutil.ReadDir(mp.config.RootDir)
+	finfos, err := os.ReadDir(mp.config.RootDir)
 	if err != nil {
 		panic(err)
 	}
 
-	finfos = sortDelExtFileInfo(finfos)
-	for _, info := range finfos {
+	fileInfos := sortDelExtFileInfo(finfos)
+	for _, info := range fileInfos {
 		fileList.PushBack(info.Name())
 		fileSize = info.Size()
 	}
@@ -94,13 +93,13 @@ LOOP:
 	// check
 	lastItem := fileList.Back()
 	if lastItem == nil {
-		//if no exist EXTENT_DEL_*, create one
+		// if no exist EXTENT_DEL_*, create one
 		fp, fileName, fileSize, err = mp.createExtentDeleteFile(prefixDelExtentV2, idx, fileList)
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		//exist, open last file
+		// exist, open last file
 		fileName = lastItem.Value.(string)
 		fp, err = os.OpenFile(path.Join(mp.config.RootDir, fileName),
 			os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -205,13 +204,13 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			fileList.Remove(element)
 			goto LOOP
 		}
-		//if not leader, ignore delete
+		// if not leader, ignore delete
 		if _, ok := mp.IsLeader(); !ok {
 			log.LogDebugf("[deleteExtentsFromList] partitionId=%d, "+
 				"not raft leader,please ignore", mp.config.PartitionId)
 			continue
 		}
-		//leader do delete extent for EXTENT_DEL_* file
+		// leader do delete extent for EXTENT_DEL_* file
 
 		// read delete extents from file
 		buf := make([]byte, MB)
@@ -222,7 +221,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			goto LOOP
 		}
 
-		//get delete extents cursor at file header 8 bytes
+		// get delete extents cursor at file header 8 bytes
 		if _, err = fp.ReadAt(buf[:8], 0); err != nil {
 			log.LogWarnf("[deleteExtentsFromList] partitionId=%d, "+
 				"read cursor least 8bytes, retry later", mp.config.PartitionId)
@@ -251,7 +250,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			}
 			buf = buf[:size]
 		}
-		//read extents from cursor
+		// read extents from cursor
 		n, err := fp.ReadAt(buf, int64(cursor))
 		// TODO Unhandled errors
 		fp.Close()

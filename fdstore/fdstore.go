@@ -18,7 +18,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -162,7 +161,7 @@ func SendSuspendRequest(port string, udsListener net.Listener) (err error) {
 	}
 	defer resp.Body.Close()
 
-	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+	if data, err = io.ReadAll(resp.Body); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read response: %v\n", err)
 		return err
 	}
@@ -193,17 +192,17 @@ func doSuspend(port string) error {
 	defer destroyUDS(udsListener)
 
 	if err = SendSuspendRequest(port, udsListener); err != nil {
-		//SendResumeRequest(port)
+		// SendResumeRequest(port)
 		return err
 	}
 
 	if fud, err = RecvFuseFdFromOldClient(udsListener); err != nil {
-		//SendResumeRequest(port)
+		// SendResumeRequest(port)
 		return err
 	}
 
 	if err = SendFuseFdToNewClient(udsListener, fud); err != nil {
-		//SendResumeRequest(port)
+		// SendResumeRequest(port)
 		return err
 	}
 
@@ -231,7 +230,7 @@ func SendResumeRequest(port string) (err error) {
 	}
 	defer resp.Body.Close()
 
-	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+	if data, err = io.ReadAll(resp.Body); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read response: %v\n", err)
 		return err
 	}

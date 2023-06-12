@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
@@ -761,15 +760,20 @@ func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64, module string) bool
 
 func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (err error) {
 	// collect free file list
-	fInfos, err := ioutil.ReadDir(logDir)
+	fInfos, err := os.ReadDir(logDir)
 	if err != nil {
 		LogErrorf("error read log directory files: %s", err.Error())
 		return
 	}
 	var needDelFiles RolledFile
 	for _, info := range fInfos {
-		if DeleteFileFilter(info, diskSpaceLeft, module) {
-			needDelFiles = append(needDelFiles, info)
+		fileInfo, err := info.Info()
+		if err != nil {
+			LogErrorf("FileInfo failed,  err: %v", err)
+			continue
+		}
+		if DeleteFileFilter(fileInfo, diskSpaceLeft, module) {
+			needDelFiles = append(needDelFiles, fileInfo)
 		}
 	}
 	sort.Sort(needDelFiles)

@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -34,7 +33,7 @@ import (
 )
 
 func TestNewKVDB(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbNew")
+	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbNew")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -48,7 +47,7 @@ func TestNewKVDB(t *testing.T) {
 }
 
 func TestKVDB_DirectOP(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbDirectOp")
+	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbDirectOp")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -89,7 +88,7 @@ func TestKVDB_DirectOP(t *testing.T) {
 }
 
 func TestKVDB_BatchWrite(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbBatchWrite")
+	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbBatchWrite")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -178,7 +177,7 @@ func TestKVDB_BatchWrite(t *testing.T) {
 }
 
 func TestKVDB_BatchDelete(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbBatchDelete")
+	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbBatchDelete")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -251,7 +250,7 @@ func TestKVDB_BatchDelete(t *testing.T) {
 }
 
 func TestKVDB_Close(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "Metadb")
+	testDir, err := os.MkdirTemp(os.TempDir(), "Metadb")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -288,7 +287,7 @@ func TestKVDB_Close(t *testing.T) {
 }
 
 func TestDeleteRange(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "DeleteRange")
+	testDir, err := os.MkdirTemp(os.TempDir(), "DeleteRange")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

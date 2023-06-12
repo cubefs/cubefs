@@ -16,7 +16,6 @@ package blobnode
 
 import (
 	"errors"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"path"
@@ -71,7 +70,7 @@ func newVDevice(dir, name string) (*vdevice, error) {
 	dev.Viewer = iov
 
 	pName := ""
-	if data, err := ioutil.ReadFile(fmt.Sprintf("/proc/%s/comm", pid)); err == nil {
+	if data, err := os.ReadFile(fmt.Sprintf("/proc/%s/comm", pid)); err == nil {
 		pName = strings.TrimSpace(string(data)) + "."
 	}
 	devName := pName + pid
@@ -137,7 +136,7 @@ func showVDevices(devices []*vdevice, extend, megabytes bool, descend, number in
 }
 
 func scanVDevices(dir string, filters []string) ([]*vdevice, error) {
-	fis, err := ioutil.ReadDir(dir)
+	fis, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}

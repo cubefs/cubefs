@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	urllib "net/url"
 	"strings"
@@ -295,7 +294,7 @@ func (c *client) doWithCtx(ctx context.Context, req *http.Request) (resp *http.R
 // ParseData parse response with data
 func ParseData(resp *http.Response, data interface{}) (err error) {
 	defer func() {
-		io.Copy(ioutil.Discard, resp.Body)
+		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}()
 	if resp.StatusCode/100 == 2 {

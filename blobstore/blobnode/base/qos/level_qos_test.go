@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -202,7 +201,7 @@ func TestBpsLimitControllerWriterAt(t *testing.T) {
 	qos := NewLevelQos(&input, diskIO)
 	defer qos.Close()
 
-	workDir, err := ioutil.TempDir(os.TempDir(), "workDir")
+	workDir, err := os.MkdirTemp(os.TempDir(), "workDir")
 	require.NoError(t, err)
 	defer os.RemoveAll(workDir)
 	path1 := filepath.Join(workDir, "path1")

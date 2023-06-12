@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -349,7 +348,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmTxUnlinkInode(txIno)
 	case opFSMTxUpdateDentry:
-		//txDen := NewTxDentry(0, "", 0, 0, nil)
+		// txDen := NewTxDentry(0, "", 0, 0, nil)
 		txUpdateDen := NewTxUpdateDentry(nil, nil, nil)
 		if err = txUpdateDen.Unmarshal(msg.V); err != nil {
 			return
@@ -391,7 +390,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		}
 		updated, err = mp.confRemoveNode(req, index)
 	case raftproto.ConfUpdateNode:
-		//updated, err = mp.confUpdateNode(req, index)
+		// updated, err = mp.confUpdateNode(req, index)
 	}
 	if err != nil {
 		return
@@ -425,11 +424,11 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		extendTree    = NewBtree()
 		multipartTree = NewBtree()
 		txTree        = NewBtree()
-		//transactions       = make(map[string]*proto.TransactionInfo)
+		// transactions       = make(map[string]*proto.TransactionInfo)
 		txRbInodeTree = NewBtree()
-		//txRollbackInodes   = make(map[uint64]*TxRollbackInode)
+		// txRollbackInodes   = make(map[uint64]*TxRollbackInode)
 		txRbDentryTree = NewBtree()
-		//txRollbackDentries = make(map[string]*TxRollbackDentry)
+		// txRollbackDentries = make(map[string]*TxRollbackDentry)
 
 	)
 	defer func() {
@@ -442,11 +441,11 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.multipartTree = multipartTree
 			mp.config.Cursor = cursor
 			mp.txProcessor.txManager.txTree = txTree
-			//mp.txProcessor.txManager.transactions = transactions
+			// mp.txProcessor.txManager.transactions = transactions
 			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
-			//mp.txProcessor.txResource.txRollbackInodes = txRollbackInodes
+			// mp.txProcessor.txResource.txRollbackInodes = txRollbackInodes
 			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
-			//mp.txProcessor.txResource.txRollbackDentries = txRollbackDentries
+			// mp.txProcessor.txResource.txRollbackDentries = txRollbackDentries
 
 			err = nil
 			// store message
@@ -459,11 +458,11 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				extendTree:    mp.extendTree,
 				multipartTree: mp.multipartTree,
 				txTree:        mp.txProcessor.txManager.txTree,
-				//transactions:       mp.txProcessor.txManager.transactions,
+				// transactions:       mp.txProcessor.txManager.transactions,
 				txRbInodeTree: mp.txProcessor.txResource.txRbInodeTree,
-				//txRollbackInodes:   mp.txProcessor.txResource.txRollbackInodes,
+				// txRollbackInodes:   mp.txProcessor.txResource.txRollbackInodes,
 				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
-				//txRollbackDentries: mp.txProcessor.txResource.txRollbackDentries,
+				// txRollbackDentries: mp.txProcessor.txResource.txRollbackDentries,
 			}
 			/*if mp.txProcessor.txManager.txTree.Len() > 0 {
 				log.LogDebugf("ApplySnapshot: notify transaction expiration")
@@ -540,25 +539,25 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opFSMTxSnapshot:
 			txInfo := proto.NewTransactionInfo(0, proto.TxTypeUndefined)
 			txInfo.Unmarshal(snap.V)
-			//transactions[txInfo.TxID] = txInfo
+			// transactions[txInfo.TxID] = txInfo
 			txTree.ReplaceOrInsert(txInfo, true)
 			log.LogDebugf("ApplySnapshot: create transaction: partitionID(%v) txInfo(%v)", mp.config.PartitionId, txInfo)
 		case opFSMTxRbInodeSnapshot:
 			txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 			txRbInode.Unmarshal(snap.V)
-			//txRollbackInodes[txRbInode.inode.Inode] = txRbInode
+			// txRollbackInodes[txRbInode.inode.Inode] = txRbInode
 			txRbInodeTree.ReplaceOrInsert(txRbInode, true)
 			log.LogDebugf("ApplySnapshot: create txRbInode: partitionID(%v) txRbInode(%v)", mp.config.PartitionId, txRbInode)
 		case opFSMTxRbDentrySnapshot:
 			txRbDentry := NewTxRollbackDentry(nil, nil, 0)
 			txRbDentry.Unmarshal(snap.V)
-			//txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
+			// txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
 			txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
 			log.LogDebugf("ApplySnapshot: create txRbDentry: partitionID(%v) txRbDentry(%v)", mp.config.PartitionId, txRbDentry)
 		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)
-			if err = ioutil.WriteFile(fileName, snap.V, 0644); err != nil {
+			if err = os.WriteFile(fileName, snap.V, 0644); err != nil {
 				log.LogErrorf("ApplySnapshot: write snap extent delete file fail: partitionID(%v) err(%v)",
 					mp.config.PartitionId, err)
 			}

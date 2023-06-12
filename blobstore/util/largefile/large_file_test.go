@@ -16,7 +16,6 @@ package largefile
 
 import (
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"strconv"
@@ -58,7 +57,7 @@ func TestLargeFile(t *testing.T) {
 	dir, _ := os.Open(tmpPath)
 	fis, _ := dir.Readdir(-1)
 	for i := range fis {
-		b, err := ioutil.ReadFile(tmpPath + "/" + fis[i].Name())
+		b, err := os.ReadFile(tmpPath + "/" + fis[i].Name())
 		require.NoError(t, err)
 		t.Log(fis[i].Name(), len(b))
 	}

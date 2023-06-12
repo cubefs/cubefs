@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -42,24 +41,24 @@ const (
 
 // config root
 //
-//! version: <cluster config version>
-//! cluster:
-//!   <cluster config>
+// ! version: <cluster config version>
+// ! cluster:
+// !   <cluster config>
 type RootConfig struct {
 	Version string         `yaml:"version,omitempty"`
 	Cluster *ClusterConfig `yaml:"cluster"`
 }
 
 // cluster config
-//! cluster:
-//!    name: <cluster name>
-//!    version:  <cluster version>
-//!    config:
-//!        <common config>
-//!    master:
-//!        <master config>
-//!    nodes:
-//!        - <other nodes>
+// ! cluster:
+// !    name: <cluster name>
+// !    version:  <cluster version>
+// !    config:
+// !        <common config>
+// !    master:
+// !        <master config>
+// !    nodes:
+// !        - <other nodes>
 type ClusterConfig struct {
 	Name    string                 `yaml:"name"`
 	Version string                 `yaml:"version,omitempty"`
@@ -69,10 +68,10 @@ type ClusterConfig struct {
 }
 
 // other node config
-//! role:  <node role>
-//! ignoreCommon: <ignore cluster common config>
-//! config:
-//!     <node specified config map>
+// ! role:  <node role>
+// ! ignoreCommon: <ignore cluster common config>
+// ! config:
+// !     <node specified config map>
 type NodeConfig struct {
 	Role         string                 `yaml:"role"`
 	IgnoreCommon bool                   `yaml:"ignoreCommon,omitempty"`
@@ -80,11 +79,11 @@ type NodeConfig struct {
 }
 
 // master config
-//! master:
-//!     hosts:
-//!         - <master host list>
-//!     config:
-//!         <master config map>
+// ! master:
+// !     hosts:
+// !         - <master host list>
+// !     config:
+// !         <master config map>
 type MasterConfig struct {
 	IgnoreCommon bool                   `yaml:"ignoreCommon,omitempty"`
 	Hosts        []string               `yaml:"hosts"`
@@ -92,7 +91,7 @@ type MasterConfig struct {
 }
 
 var (
-	//cluster *ClusterConfig
+	// cluster *ClusterConfig
 
 	optGenCfgInYaml string = "config/cluster.yaml"
 	optGenCfgOutDir string = "build/config"
@@ -113,9 +112,9 @@ func init() {
 }
 
 // update node config use cluster common config
-//! * if node ignoreCommon config is true, don't use cluster common config
-//! * else if node config map exist key, use node config
-//! * else add cluster common config key: value
+// ! * if node ignoreCommon config is true, don't use cluster common config
+// ! * else if node config map exist key, use node config
+// ! * else add cluster common config key: value
 func (cluster *ClusterConfig) updateNodeConfig(role, clusterName string, nodeConfig map[string]interface{}, ignoreCommon bool) {
 	if cluster.Version != "" {
 		nodeConfig[KeyVersion] = cluster.Version
@@ -135,7 +134,7 @@ func (cluster *ClusterConfig) updateNodeConfig(role, clusterName string, nodeCon
 
 // load yaml config file from filePath
 func loadYamlConfig(filePath string) (*RootConfig, error) {
-	yamlFile, err := ioutil.ReadFile(filePath)
+	yamlFile, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load yaml %v error: %v\n", filePath, err)
 		return nil, err
@@ -177,11 +176,11 @@ func genCfgCmd(cmd *cobra.Command, args []string) {
 		err           error
 		clusterConfig *ClusterConfig
 	)
-	//defer func() {
+	// defer func() {
 	//    if err != nil {
 	//        fmt.Println("Error: ", err)
 	//    }
-	//}()
+	// }()
 
 	if clusterConfig, err = loadClusterConfig(optGenCfgInYaml); err != nil {
 		return
@@ -257,9 +256,9 @@ func getMasterAddrsAndPeers(masterHosts []string, masterListen string) (masterAd
 }
 
 func generateMasterCfgJson(clusterConfig *ClusterConfig, masterPeers string) (err error) {
-	//generate master config json
+	// generate master config json
 	masterConfig := clusterConfig.Master
-	//masterConfig.Config[KeyMasterClusterName] = clusterConfig.Name
+	// masterConfig.Config[KeyMasterClusterName] = clusterConfig.Name
 	masterConfig.Config[KeyMasterPeers] = masterPeers
 	for i, host := range clusterConfig.Master.Hosts {
 		clusterConfig.updateNodeConfig(RoleMaster, clusterConfig.Name, masterConfig.Config, masterConfig.IgnoreCommon)
@@ -281,7 +280,7 @@ func storeConfig2Json(configPath string, config map[string]interface{}) error {
 	configData, _ := json.MarshalIndent(config, "", "  ")
 
 	os.MkdirAll(path.Dir(configPath), 0755)
-	if err := ioutil.WriteFile(configPath, configData, 0644); err != nil {
+	if err := os.WriteFile(configPath, configData, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "store config %s err: %v", configPath, err)
 		return err
 	}

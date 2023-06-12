@@ -15,7 +15,6 @@
 package fileutil
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,7 +24,7 @@ import (
 )
 
 func TestLockAndUnlock(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "testflock")
+	testDir, err := os.MkdirTemp(os.TempDir(), "testflock")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

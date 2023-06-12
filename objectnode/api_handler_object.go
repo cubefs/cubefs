@@ -20,7 +20,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -92,7 +91,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		upperPart := ""
 		if hyphenIndex+1 < len(rangeOpt) {
 			// bytes=-5
-			if hyphenIndex == len("bytes=") { //suffix range opt
+			if hyphenIndex == len("bytes=") { // suffix range opt
 				revRange = true
 				rangeUpper = 1<<64 - 1
 				lowerPart = rangeOpt[hyphenIndex+1:]
@@ -213,7 +212,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
 	}
 
-	//check request is whether contain param : partNumber
+	// check request is whether contain param : partNumber
 	partNumber := r.URL.Query().Get(ParamPartNumber)
 	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
 		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
@@ -536,7 +535,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var bytes []byte
-	bytes, err = ioutil.ReadAll(r.Body)
+	bytes, err = io.ReadAll(r.Body)
 	if err != nil {
 		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
@@ -1442,7 +1441,7 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+	if requestBody, err = io.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
@@ -1534,7 +1533,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+	if requestBody, err = io.ReadAll(r.Body); err != nil {
 		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),
@@ -1725,7 +1724,7 @@ func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, 
 	var partCount uint64
 	var rangeLower uint64
 	var rangeUpper uint64
-	//partSize, partCount, rangeLower, rangeUpper
+	// partSize, partCount, rangeLower, rangeUpper
 	partSizeConst := ParallelDownloadPartSize
 	partCount = fileSize / uint64(partSizeConst)
 	lastSize := fileSize % uint64(partSizeConst)

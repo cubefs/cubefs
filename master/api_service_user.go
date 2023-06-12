@@ -3,7 +3,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/cubefs/cubefs/proto"
@@ -23,7 +23,7 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	var bytes []byte
-	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+	if bytes, err = io.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -81,7 +81,7 @@ func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	var bytes []byte
-	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+	if bytes, err = io.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -156,7 +156,7 @@ func (m *Server) updateUserPolicy(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.UserUpdatePolicy, metric, err, nil)
 	}()
 
-	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+	if bytes, err = io.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -187,7 +187,7 @@ func (m *Server) removeUserPolicy(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.UserRemovePolicy, metric, err, nil)
 	}()
 
-	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+	if bytes, err = io.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -243,7 +243,7 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.UserTransferVol, metric, err, map[string]string{exporter.Vol: volName})
 	}()
 
-	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+	if bytes, err = io.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}

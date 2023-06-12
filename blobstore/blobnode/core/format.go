@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"hash/crc32"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -175,7 +174,7 @@ func ReadFormatInfo(ctx context.Context, diskRootPath string) (
 	span := trace.SpanFromContextSafe(ctx)
 
 	configFile := filepath.Join(sysRootPath(diskRootPath), formatConfigFile)
-	buf, err := ioutil.ReadFile(configFile)
+	buf, err := os.ReadFile(configFile)
 	if err != nil {
 		span.Errorf("Failed read file:%v, err:%v", configFile, err)
 		return nil, err

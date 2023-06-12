@@ -18,7 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"regexp"
@@ -505,7 +505,7 @@ func (m *Server) setApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//persist to rocksdb
+	// persist to rocksdb
 	var qPath string
 	if err, _, qPath = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -559,7 +559,7 @@ func (m *Server) rmApiQpsLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//persist to rocksdb
+	// persist to rocksdb
 	var qPath string
 	if err, _, qPath = m.cluster.apiLimiter.IsApiNameValid(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -2270,7 +2270,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dataNode.PersistenceDataPartitions = m.cluster.getAllDataPartitionIDByDatanode(nodeAddr)
-	//some dp maybe removed from this node but decommission failed
+	// some dp maybe removed from this node but decommission failed
 	dataNodeInfo = &proto.DataNodeInfo{
 		Total:                     dataNode.Total,
 		Used:                      dataNode.Used,
@@ -4029,7 +4029,7 @@ func (m *Server) putDataPartitions(w http.ResponseWriter, r *http.Request) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 	if !m.cluster.partition.IsRaftLeader() {
@@ -4971,7 +4971,7 @@ func (m *Server) BatchModifyQuotaFullPath(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}

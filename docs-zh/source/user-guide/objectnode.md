@@ -215,7 +215,7 @@ func UploadWithManager() {
 		LogLevel:         aws.LogLevel(aws.LogDebug),
 	}
 	sess := session.Must(session.NewSessionWithOptions(session.Options{Config: *conf}))
-	file, err := ioutil.ReadFile("D:/Users/80303220/Desktop/largeFile")
+	file, err := os.ReadFile("D:/Users/80303220/Desktop/largeFile")
 	if err != nil {
 		fmt.Println("Unable to read file ", err)
 		return

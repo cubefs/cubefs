@@ -2,6 +2,7 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"os"
 	"sort"
 	"strconv"
@@ -41,7 +42,7 @@ func getDelExtFileIdx(name string) int64 {
 	return idx
 }
 
-func sortDelExtFileInfo(files []os.FileInfo) []os.FileInfo {
+func sortDelExtFileInfo(files []os.DirEntry) []os.FileInfo {
 	newFiles := make([]os.FileInfo, 0)
 
 	for _, info := range files {
@@ -50,7 +51,12 @@ func sortDelExtFileInfo(files []os.FileInfo) []os.FileInfo {
 		}
 
 		if strings.HasPrefix(info.Name(), prefixDelExtent) {
-			newFiles = append(newFiles, info)
+			fileInfo, err := info.Info()
+			if err != nil {
+				log.Errorf("get FileInfo err:%v", err)
+				continue
+			}
+			newFiles = append(newFiles, fileInfo)
 		}
 	}
 

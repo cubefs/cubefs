@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -422,7 +421,7 @@ func accessAPI() {
 
 func loadCertfile(path string) (caCert []byte) {
 	var err error
-	caCert, err = ioutil.ReadFile(path)
+	caCert, err = os.ReadFile(path)
 	if err != nil {
 		log.Fatal(err)
 	}

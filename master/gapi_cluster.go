@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -479,12 +479,12 @@ func (m *ClusterService) addRaftNode(ctx context.Context, args struct {
 
 // Turn on or off the automatic allocation of the data partitions.
 // If DisableAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
-// 	1. the used space is below the max capacity,
-//	2. and the number of r&w data partition is less than 20.
+//  1. the used space is below the max capacity,
+//  2. and the number of r&w data partition is less than 20.
 //
 // If DisableAutoAllocate == on, then we WILL automatically allocate new data partitions for the volume when:
-// 	1. the used space is below the max capacity,
-//	2. and the number of r&w data partition is less than 20.
+//  1. the used space is below the max capacity,
+//  2. and the number of r&w data partition is less than 20.
 func (m *ClusterService) clusterFreeze(ctx context.Context, args struct {
 	Status bool
 }) (*proto.GeneralResp, error) {
@@ -553,7 +553,7 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 
 	buf := bufio.NewReader(f)
 
-	all, err := ioutil.ReadAll(buf)
+	all, err := io.ReadAll(buf)
 	if err != nil {
 		return nil, fmt.Errorf("read file:[%s] size:[%d] has err:[%s]", path, stat.Size(), err.Error())
 	}
@@ -593,7 +593,7 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 		list = append(list, msg)
 	}
 
-	//reverse slice
+	// reverse slice
 	l := len(list)
 	for i := 0; i < l/2; i++ {
 		list[i], list[l-i-1] = list[l-i-1], list[i]

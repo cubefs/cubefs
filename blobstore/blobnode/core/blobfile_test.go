@@ -15,7 +15,6 @@
 package core
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,7 +25,7 @@ import (
 )
 
 func TestBlobFile_Op(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "BlobFileOp")
+	testDir, err := os.MkdirTemp(os.TempDir(), "BlobFileOp")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

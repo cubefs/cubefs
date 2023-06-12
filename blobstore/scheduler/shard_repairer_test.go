@@ -17,7 +17,6 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -203,7 +202,7 @@ func TestNewShardRepairMgr(t *testing.T) {
 	broker0 := NewBroker(t)
 	defer broker0.Close()
 
-	testDir, err := ioutil.TempDir(os.TempDir(), "orphan_shard_log")
+	testDir, err := os.MkdirTemp(os.TempDir(), "orphan_shard_log")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

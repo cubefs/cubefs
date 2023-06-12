@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"strconv"
@@ -238,7 +237,7 @@ var storageAPIRangeGetShard = func(ctx context.Context, host string, args *blobn
 
 	buff = buff[int(args.Offset):int(args.Offset+args.Size)]
 	shardCrc = crc32.ChecksumIEEE(buff)
-	body = ioutil.NopCloser(bytes.NewReader(buff))
+	body = io.NopCloser(bytes.NewReader(buff))
 	return
 }
 

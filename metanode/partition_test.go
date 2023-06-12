@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -118,12 +117,12 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	os.Rename(path.Join(snapshotPath, dentryFile+"1"), path.Join(snapshotPath, dentryFile))
 
 	// modify crc file
-	crcData, err := ioutil.ReadFile(path.Join(snapshotPath, SnapshotSign))
+	crcData, err := os.ReadFile(path.Join(snapshotPath, SnapshotSign))
 	require.Nil(t, err)
 	require.True(t, len(crcData) != 0)
 	crcData[0] = '0'
 	crcData[1] = '1'
-	err = ioutil.WriteFile(path.Join(snapshotPath, SnapshotSign), crcData, 0644)
+	err = os.WriteFile(path.Join(snapshotPath, SnapshotSign), crcData, 0644)
 	require.Nil(t, err)
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Equal(t, ErrSnapshotCrcMismatch, err)

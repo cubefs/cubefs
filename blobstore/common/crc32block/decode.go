@@ -17,7 +17,6 @@ package crc32block
 import (
 	"bufio"
 	"io"
-	"io/ioutil"
 )
 
 /*
@@ -109,7 +108,7 @@ func (br *blockReader) nextBlock() (err error) {
 
 func (r *rangeReader) Read(p []byte) (n int, err error) {
 	if !r.skiped {
-		_, err := io.CopyN(ioutil.Discard, r.r, r.skip)
+		_, err := io.CopyN(io.Discard, r.r, r.skip)
 		if err != nil {
 			return 0, err
 		}

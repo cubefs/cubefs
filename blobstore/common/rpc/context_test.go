@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
@@ -102,7 +101,7 @@ func TestServerResponse(t *testing.T) {
 		resp, err := cli.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		buf, _ := ioutil.ReadAll(resp.Body)
+		buf, _ := io.ReadAll(resp.Body)
 		require.Equal(t, 200, resp.StatusCode)
 		require.Equal(t, "127.0.0.1", string(buf))
 	}

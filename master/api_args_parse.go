@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -57,7 +57,7 @@ func extractTxTimeout(r *http.Request) (timeout int64, err error) {
 	return timeout, nil
 }
 
-//func extractTxMask(r *http.Request) (mask uint8, err error) {
+// func extractTxMask(r *http.Request) (mask uint8, err error) {
 //
 //	var maskStr string
 //	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
@@ -85,7 +85,7 @@ func extractTxTimeout(r *http.Request) (timeout int64, err error) {
 //	}
 //
 //	return
-//}
+// }
 
 func hasTxParams(r *http.Request) bool {
 	var (
@@ -213,7 +213,7 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 	tr = &proto.AdminTask{}
@@ -440,9 +440,9 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 	req.txTimeout = txTimeout
 
-	//if req.enableTransaction, err = extractBoolWithDefault(r, enableTxMaskKey, vol.enableTransaction); err != nil {
+	// if req.enableTransaction, err = extractBoolWithDefault(r, enableTxMaskKey, vol.enableTransaction); err != nil {
 	//	return
-	//}
+	// }
 
 	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, vol.authenticate); err != nil {
 		return
@@ -1173,7 +1173,7 @@ func parseVolStatReq(r *http.Request) (name string, ver int, byMeta bool, err er
 func parseQosInfo(r *http.Request) (info *proto.ClientReportLimitInfo, err error) {
 	info = proto.NewClientReportLimitInfo()
 	var body []byte
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 	// log.LogInfof("action[parseQosInfo] body len:[%v],crc:[%v]", len(body), crc32.ChecksumIEEE(body))

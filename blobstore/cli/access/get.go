@@ -17,7 +17,6 @@ package access
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -77,7 +76,7 @@ func getFile(c *grumble.Context) error {
 		// > 4K
 		if size > 1<<12 {
 			fmt.Printf("data is too long %d > %d\n", size, 1<<12)
-			w = ioutil.Discard
+			w = io.Discard
 		} else {
 			w = buffer
 		}
