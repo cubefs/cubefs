@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -63,7 +63,7 @@ const (
 	AdminDeleteCaps = "/admin/deletecaps"
 	AdminGetCaps    = "/admin/getcaps"
 
-	//raft node APIs
+	// raft node APIs
 	AdminAddRaftNode    = "/admin/addraftnode"
 	AdminRemoveRaftNode = "/admin/removeraftnode"
 
@@ -86,7 +86,7 @@ const (
 	// DataServiceID defines ticket for datanode access (not supported)
 	DataServiceID = "DatanodeService"
 
-	//ObjectServiceID defines ticket for objectnode access
+	// ObjectServiceID defines ticket for objectnode access
 	ObjectServiceID = "ObjectService"
 )
 
@@ -196,7 +196,7 @@ const (
 	// MsgMasterAPIAccessResp response type for master api access
 	MsgMasterAPIAccessResp MsgType = 0x60001
 
-	//Master API ClientVol
+	// Master API ClientVol
 	MsgMasterFetchVolViewReq MsgType = MsgMasterAPIAccessReq + 0x10000
 )
 
@@ -612,7 +612,7 @@ func SendBytes(client *http.Client, target string, data []byte) (res []byte, err
 		return
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		err = fmt.Errorf("action[doRealSend] failed:" + err.Error())
 		return

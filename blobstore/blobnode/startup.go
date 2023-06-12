@@ -17,7 +17,6 @@ package blobnode
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 	"time"
@@ -49,7 +48,7 @@ func readFormatInfo(ctx context.Context, diskRootPath string) (
 	formatInfo *core.FormatInfo, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
-	_, err = ioutil.ReadDir(diskRootPath)
+	_, err = os.ReadDir(diskRootPath)
 	if err != nil {
 		span.Errorf("read disk root path error:%s", diskRootPath)
 		return nil, err

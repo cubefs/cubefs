@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/json"
 	"hash/crc32"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -129,7 +128,7 @@ func TestChunkReport2(t *testing.T) {
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mockClusterMgrServer.URL}
 
-	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+"ChunkReport2")
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"ChunkReport2")
 	require.NoError(t, err)
 
 	err = os.MkdirAll(workDir, 0o755)

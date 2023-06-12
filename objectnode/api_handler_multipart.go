@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -169,7 +168,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	// check args
 	var param = ParseRequestParam(r)
 
-	//// get upload id and part number
+	// // get upload id and part number
 	uploadId := param.GetVar(ParamUploadId)
 	partNumber := param.GetVar(ParamPartNumber)
 	if uploadId == "" || partNumber == "" {
@@ -257,7 +256,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	//step1: check args
+	// step1: check args
 	var param = ParseRequestParam(r)
 	uploadId := param.GetVar(ParamUploadId)
 	partNumber := param.GetVar(ParamPartNumber)
@@ -287,7 +286,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	//step2: extract params from req
+	// step2: extract params from req
 	srcBucket, srcObject, _, err := extractSrcBucketKey(r)
 	if err != nil {
 		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", r.Header.Get(HeaderNameXAmzCopySource), GetRequestID(r))
@@ -315,7 +314,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	//step4: extract range params
+	// step4: extract range params
 	copyRange := r.Header.Get(HeaderNameXAmzCopyRange)
 	firstByte, copyLength, errorCode := determineCopyRange(copyRange, srcFileInfo.Size)
 	if errorCode != nil {
@@ -594,7 +593,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 
 	// get uploaded part info in request
 	var requestBytes []byte
-	requestBytes, err = ioutil.ReadAll(r.Body)
+	requestBytes, err = io.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("completeMultipartUploadHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)
@@ -855,7 +854,7 @@ func determineCopyRange(copyRange string, fsize int64) (firstByte, copyLength in
 }
 
 func extractCopyRangeParam(copRange string) (firstByte, lastByte int64, err *ErrorCode) {
-	//copRange must use the form : bytes=first-last
+	// copRange must use the form : bytes=first-last
 	strs := strings.SplitN(copRange, "=", 2)
 	if len(strs) < 2 {
 		err = InvalidArgument

@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -170,7 +169,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 		if nodeID.NodeID == peer.ID {
 			continue
 		}
-		//check nodeID is valid
+		// check nodeID is valid
 		hasDownReplicasExcludePeer = append(hasDownReplicasExcludePeer, nodeID.NodeID)
 	}
 
@@ -472,7 +471,7 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 	if _, err = os.Stat(filename); err != nil {
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		err = errors.NewErrorf("[loadApplyIndex] OpenFile: %s", err.Error())
 		return
@@ -652,7 +651,7 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 	p := NewPacketToGetPartitionSize(dp.partitionID)
 	p.ExtentID = maxExtentID
 	target := dp.getReplicaAddr(0)
-	conn, err = gConnPool.GetConnect(target) //get remote connect
+	conn, err = gConnPool.GetConnect(target) // get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return
@@ -690,7 +689,7 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 	p := NewPacketToGetMaxExtentIDAndPartitionSIze(dp.partitionID)
 
 	target := dp.getReplicaAddr(0)
-	conn, err = gConnPool.GetConnect(target) //get remote connect
+	conn, err = gConnPool.GetConnect(target) // get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return

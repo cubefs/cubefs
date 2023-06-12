@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"testing"
@@ -31,7 +30,7 @@ func TestServerCrcDecode(t *testing.T) {
 	router.Handle(http.MethodPut, "/put/:size", func(c *Context) {
 		size, _ := strconv.Atoi(c.Param.ByName("size"))
 
-		n, err := io.Copy(ioutil.Discard, c.Request.Body)
+		n, err := io.Copy(io.Discard, c.Request.Body)
 		if err != nil && err != io.EOF {
 			c.RespondError(err)
 			return
@@ -74,7 +73,7 @@ func TestServerCrcDecodeWithMiddleware(t *testing.T) {
 	router.Handle(http.MethodPut, "/put/:size", func(c *Context) {
 		size, _ := strconv.Atoi(c.Param.ByName("size"))
 
-		n, err := io.Copy(ioutil.Discard, c.Request.Body)
+		n, err := io.Copy(io.Discard, c.Request.Body)
 		if err != nil && err != io.EOF {
 			c.RespondError(err)
 			return

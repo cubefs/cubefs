@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -213,7 +212,7 @@ func TestStorage_Operations(t *testing.T) {
 	b.Body = bytes.NewReader(mockBody)
 	rc, err := stg.NewRangeReader(ctx, b, 0, int64(len(mockBody)))
 	require.NoError(t, err)
-	buffer, err := ioutil.ReadAll(rc)
+	buffer, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	require.Equal(t, mockBody, buffer)
 

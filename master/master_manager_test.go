@@ -2,7 +2,7 @@ package master
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -170,7 +170,7 @@ func snapshotTest(t *testing.T) {
 }
 
 func addRaftServerTest(addRaftAddr string, id uint64, t *testing.T) {
-	//don't pass id test
+	// don't pass id test
 	reqURL := fmt.Sprintf("%v%v?id=&addr=%v", hostAddr, proto.AddRaftNode, addRaftAddr)
 	fmt.Println(reqURL)
 	resp, err := http.Get(reqURL)
@@ -180,7 +180,7 @@ func addRaftServerTest(addRaftAddr string, id uint64, t *testing.T) {
 	}
 	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return

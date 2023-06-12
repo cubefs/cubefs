@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path"
@@ -428,9 +427,10 @@ type OpQuota interface {
 // metaPartition manages the range of the inode IDs.
 // When a new inode is requested, it allocates a new inode id for this inode if possible.
 // States:
-//  +-----+             +-------+
-//  | New | → Restore → | Ready |
-//  +-----+             +-------+
+//
+//	+-----+             +-------+
+//	| New | → Restore → | Ready |
+//	+-----+             +-------+
 type metaPartition struct {
 	config                 *MetaPartitionConfig
 	size                   uint64                // For partition all file size
@@ -682,7 +682,7 @@ func (mp *metaPartition) startRaft() (err error) {
 func (mp *metaPartition) stopRaft() {
 	if mp.raftPartition != nil {
 		// TODO Unhandled errors
-		//mp.raftPartition.Stop()
+		// mp.raftPartition.Stop()
 	}
 	return
 }
@@ -790,7 +790,7 @@ func (mp *metaPartition) PersistMetadata() (err error) {
 }
 
 func (mp *metaPartition) parseCrcFromFile() ([]uint32, error) {
-	data, err := ioutil.ReadFile(path.Join(path.Join(mp.config.RootDir, snapshotDir), SnapshotSign))
+	data, err := os.ReadFile(path.Join(path.Join(mp.config.RootDir, snapshotDir), SnapshotSign))
 	if err != nil {
 		return nil, err
 	}
@@ -826,7 +826,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	var needLoadTxStuff bool
-	//handle compatibility in upgrade scenarios
+	// handle compatibility in upgrade scenarios
 	if len(crcs) == CRC_NUM_BEFORE_CUBEFS_V3_2_2 {
 		needLoadTxStuff = false
 	} else if len(crcs) == CRC_NUM_SINCE_CUBEFS_V3_2_2 {
@@ -847,7 +847,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		i := idx
 		go func() {
 			defer wg.Done()
-			if i == 2 { //loadExtend must be executed after loadInode
+			if i == 2 { // loadExtend must be executed after loadInode
 				return
 			}
 			errs[i] = loadFunc(snapshotPath, crcs[i])
@@ -946,7 +946,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		return
 	}
 	// write crc to file
-	if err = ioutil.WriteFile(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0775); err != nil {
+	if err = os.WriteFile(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0775); err != nil {
 		return
 	}
 	snapshotDir := path.Join(mp.config.RootDir, snapshotDir)

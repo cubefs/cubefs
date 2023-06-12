@@ -17,7 +17,6 @@ package objectnode
 import (
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/cubefs/cubefs/proto"
@@ -100,7 +99,7 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	var bytes []byte
-	bytes, err = ioutil.ReadAll(r.Body)
+	bytes, err = io.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("putBucketPolicyHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		ec = &ErrorCode{

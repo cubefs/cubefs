@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -60,7 +59,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		return
 	}
 	defer fp.Close()
-	data, err := ioutil.ReadAll(fp)
+	data, err := io.ReadAll(fp)
 	if err != nil || len(data) == 0 {
 		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
 			string(data))
@@ -375,7 +374,7 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		err = errors.NewErrorf("[loadApplyID] ReadFile: %s", err.Error())
 		return
@@ -472,7 +471,7 @@ func (mp *metaPartition) loadTxRbDentry(rootDir string, crc uint32) (err error) 
 			return err
 		}
 
-		//mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
+		// mp.txProcessor.txResource.txRollbackDentries[txRbDentry.txDentryInfo.GetKey()] = txRbDentry
 		mp.txProcessor.txResource.txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
 		numTxRbDentry++
 	}
@@ -542,7 +541,7 @@ func (mp *metaPartition) loadTxRbInode(rootDir string, crc uint32) (err error) {
 			return err
 		}
 
-		//mp.txProcessor.txResource.txRollbackInodes[txRbInode.inode.Inode] = txRbInode
+		// mp.txProcessor.txResource.txRollbackInodes[txRbInode.inode.Inode] = txRbInode
 		mp.txProcessor.txResource.txRbInodeTree.ReplaceOrInsert(txRbInode, true)
 		numTxRbInode++
 	}
@@ -617,8 +616,8 @@ func (mp *metaPartition) loadTxInfo(rootDir string, crc uint32) (err error) {
 			return err
 		}
 
-		//mp.txProcessor.txManager.transactions[txInfo.TxID] = txInfo
-		//mp.txProcessor.txManager.txTree.ReplaceOrInsert(txInfo, true)
+		// mp.txProcessor.txManager.transactions[txInfo.TxID] = txInfo
+		// mp.txProcessor.txManager.txTree.ReplaceOrInsert(txInfo, true)
 		mp.txProcessor.txManager.addTxInfo(txInfo)
 		numTxInfos++
 	}
@@ -630,7 +629,7 @@ func (mp *metaPartition) loadTxID(rootDir string) (err error) {
 		err = nil
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		if err == os.ErrNotExist {
 			err = nil
@@ -747,7 +746,7 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 
-	//for _, rbDentry := range sm.txRollbackDentries {
+	// for _, rbDentry := range sm.txRollbackDentries {
 	//	if data, err = rbDentry.Marshal(); err != nil {
 	//		break
 	//	}
@@ -765,7 +764,7 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 	//	if _, err = sign.Write(data); err != nil {
 	//		break
 	//	}
-	//}
+	// }
 
 	sm.txRbDentryTree.Ascend(func(i BtreeItem) bool {
 		rbDentry := i.(*TxRollbackDentry)
@@ -811,7 +810,7 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 
-	//for _, rbInode := range sm.txRollbackInodes {
+	// for _, rbInode := range sm.txRollbackInodes {
 	//	if data, err = rbInode.Marshal(); err != nil {
 	//		break
 	//	}
@@ -829,7 +828,7 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 	//	if _, err = sign.Write(data); err != nil {
 	//		break
 	//	}
-	//}
+	// }
 
 	sm.txRbInodeTree.Ascend(func(i BtreeItem) bool {
 		rbInode := i.(*TxRollbackInode)
@@ -875,7 +874,7 @@ func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, 
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
 
-	//for _, tx := range sm.transactions {
+	// for _, tx := range sm.transactions {
 	//	if data, err = tx.Marshal(); err != nil {
 	//		break
 	//	}
@@ -894,7 +893,7 @@ func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, 
 	//	if _, err = sign.Write(data); err != nil {
 	//		break
 	//	}
-	//}
+	// }
 
 	sm.txTree.Ascend(func(i BtreeItem) bool {
 		tx := i.(*proto.TransactionInfo)

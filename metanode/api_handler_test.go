@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -101,7 +100,7 @@ func httpReqHandle(url string, t *testing.T) (data []byte) {
 		t.Errorf("status code[%v]", resp.StatusCode)
 		return
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return

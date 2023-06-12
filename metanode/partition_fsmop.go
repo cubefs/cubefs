@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -158,15 +157,15 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	fileName := string(buf)
 	log.LogWarnf("[delOldExtentFile] del extent file(%s), mp(%d)", fileName, mp.config.PartitionId)
 
-	infos, err := ioutil.ReadDir(mp.config.RootDir)
+	infos, err := os.ReadDir(mp.config.RootDir)
 	if err != nil {
 		return
 	}
 
-	infos = sortDelExtFileInfo(infos)
 	tgtIdx := getDelExtFileIdx(fileName)
 
-	for _, f := range infos {
+	fileInfos := sortDelExtFileInfo(infos)
+	for _, f := range fileInfos {
 		idx := getDelExtFileIdx(f.Name())
 		if idx > tgtIdx {
 			break
@@ -179,7 +178,6 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	return
 }
 
-//
 func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	str := string(buf)
 	var (

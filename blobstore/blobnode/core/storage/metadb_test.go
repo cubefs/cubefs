@@ -16,7 +16,6 @@ package storage
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,7 +30,7 @@ import (
 )
 
 func TestNewChunkMeta(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"NewChunkMeta")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"NewChunkMeta")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -63,7 +62,7 @@ func TestNewChunkMeta(t *testing.T) {
 }
 
 func TestChunkMeta_Write(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkMetaWrite")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkMetaWrite")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -119,7 +118,7 @@ func TestChunkMeta_Write(t *testing.T) {
 }
 
 func TestChunkMeta_Scan(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkMetaScan")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkMetaScan")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -231,7 +230,7 @@ func TestGenShardKey(t *testing.T) {
 }
 
 func TestChunkMeta_Destroy(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkMetaDestroy")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkMetaDestroy")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

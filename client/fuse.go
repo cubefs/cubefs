@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/util/auditlog"
-	"io/ioutil"
+	"io"
 	syslog "log"
 	"net"
 	"net/http"
@@ -191,7 +191,7 @@ func sendSuspendRequest(port string, udsListener net.Listener) (err error) {
 	}
 	defer resp.Body.Close()
 
-	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+	if data, err = io.ReadAll(resp.Body); err != nil {
 		log.LogErrorf("Failed to read response: %v\n", err)
 		return err
 	}
@@ -227,7 +227,7 @@ func sendResumeRequest(port string) (err error) {
 	}
 	defer resp.Body.Close()
 
-	if data, err = ioutil.ReadAll(resp.Body); err != nil {
+	if data, err = io.ReadAll(resp.Body); err != nil {
 		log.LogErrorf("Failed to read response: %v\n", err)
 		return err
 	}
@@ -289,7 +289,7 @@ func main() {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
-	//load  conf from master
+	// load  conf from master
 	for retry := 0; retry < MasterRetrys; retry++ {
 		err = loadConfFromMaster(opt)
 		if err != nil {
@@ -308,7 +308,7 @@ func main() {
 	if opt.MaxCPUs > 0 {
 		runtime.GOMAXPROCS(int(opt.MaxCPUs))
 	}
-	//use uber automaxprocs: get real cpu number to k8s pod"
+	// use uber automaxprocs: get real cpu number to k8s pod"
 
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil)
@@ -597,7 +597,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(log.GetLogPath, log.GetLog)
 	http.HandleFunc(ControlCommandSuspend, super.SetSuspend)
 	http.HandleFunc(ControlCommandResume, super.SetResume)
-	//auditlog
+	// auditlog
 	http.HandleFunc(auditlog.EnableAuditLogReqPath, super.EnableAuditLog)
 	http.HandleFunc(auditlog.DisableAuditLogReqPath, auditlog.DisableAuditLog)
 	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
@@ -738,7 +738,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.ReadThreads = GlobalMountOptions[proto.ReadThreads].GetInt64()
 	opt.WriteThreads = GlobalMountOptions[proto.WriteThreads].GetInt64()
 	opt.BcacheDir = GlobalMountOptions[proto.BcacheDir].GetString()
-	//opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
+	// opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
 	opt.BcacheFilterFiles = GlobalMountOptions[proto.BcacheFilterFiles].GetString()
 	opt.BcacheBatchCnt = GlobalMountOptions[proto.BcacheBatchCnt].GetInt64()
 	opt.BcacheCheckIntervalS = GlobalMountOptions[proto.BcacheCheckIntervalS].GetInt64()

@@ -17,7 +17,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -40,7 +40,7 @@ func (s *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	uri := r.URL.RequestURI()
 	switch uri {
 	case "/retry":
-		b, err := ioutil.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
 		if err != nil || int64(len(b)) != r.ContentLength || first {
 			ReplyErr(w, 500, "test retry")
 			first = false
@@ -256,7 +256,7 @@ func TestTimeoutReadCloser_Read(t *testing.T) {
 	// test for read data for input buffer timeout
 	readCloser := timeoutReadCloser{
 		timeoutMs: 1,
-		body:      ioutil.NopCloser(&testTimeoutReader{}),
+		body:      io.NopCloser(&testTimeoutReader{}),
 	}
 	res := make([]byte, 30)
 	_, err := readCloser.Read(res)

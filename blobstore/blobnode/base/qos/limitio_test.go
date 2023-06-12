@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -134,7 +133,7 @@ func TestRateLimiter_Error(t *testing.T) {
 
 func TestRateLimiter_WriteAt(t *testing.T) {
 	levelQos := &levelQos{bpsLimiter: rate.NewLimiter(rate.Limit(2*_mb), 4*_mb)}
-	workDir, err := ioutil.TempDir(os.TempDir(), "workDir")
+	workDir, err := os.MkdirTemp(os.TempDir(), "workDir")
 	require.NoError(t, err)
 	defer os.RemoveAll(workDir)
 

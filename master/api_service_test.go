@@ -20,7 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -91,7 +91,7 @@ func createDefaultMasterServerForTest() *Server {
 	if err != nil {
 		panic(err)
 	}
-	//add data node
+	// add data node
 	addDataServer(mds1Addr, testZone1)
 	addDataServer(mds2Addr, testZone1)
 	addDataServer(mds3Addr, testZone2)
@@ -284,7 +284,7 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 	assert.True(t, resp.StatusCode == http.StatusOK)
 
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.Nil(t, err)
 
 	t.Log(string(body), reqURL)
@@ -311,7 +311,7 @@ func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 	}
 	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
@@ -350,7 +350,7 @@ func decommissionDisk(addr, path string, t *testing.T) {
 	}
 	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return
@@ -628,11 +628,10 @@ func TestDataPartitionDecommission(t *testing.T) {
 	partition.isRecover = false
 }
 
-//func TestGetAllVols(t *testing.T) {
-//	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
-//	process(reqURL, t)
-//}
-//
+//	func TestGetAllVols(t *testing.T) {
+//		reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
+//		process(reqURL, t)
+//	}
 func TestGetMetaPartitions(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientMetaPartitions, commonVolName)
 	process(reqURL, t)
@@ -787,7 +786,7 @@ func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
 	}
 	fmt.Println(resp.StatusCode)
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Errorf("err is %v", err)
 		return

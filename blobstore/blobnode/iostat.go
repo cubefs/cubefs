@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -76,7 +75,7 @@ func (s *Service) cleanExpiredStatFile() {
 			span.Errorf("path:%v, err:%v", path, err)
 			return err
 		}
-		data, err := ioutil.ReadFile(pidpath + "comm")
+		data, err := os.ReadFile(pidpath + "comm")
 		if err == nil {
 			return errors.New("progress still alive")
 		}

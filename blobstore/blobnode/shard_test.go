@@ -19,7 +19,7 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"reflect"
@@ -192,7 +192,7 @@ func TestShardPutAndGet(t *testing.T) {
 	defer body.Close()
 	require.Equal(t, dataCrc.Sum32(), crc)
 
-	getShardData, err := ioutil.ReadAll(body)
+	getShardData, err := io.ReadAll(body)
 	require.NoError(t, err)
 	require.Equal(t, true, reflect.DeepEqual(shardData, getShardData))
 
@@ -823,7 +823,7 @@ func TestShardRangeGet(t *testing.T) {
 	body, _, err := client.RangeGetShard(ctx, host, getShardArg)
 	require.NoError(t, err)
 
-	b, err := ioutil.ReadAll(body)
+	b, err := io.ReadAll(body)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(b))
 	require.Equal(t, byte('e'), byte(b[0]))
@@ -833,7 +833,7 @@ func TestShardRangeGet(t *testing.T) {
 	body, _, err = client.RangeGetShard(ctx, host, getShardArg)
 	require.NoError(t, err)
 
-	b, err = ioutil.ReadAll(body)
+	b, err = io.ReadAll(body)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(b))
 	require.Equal(t, byte('D'), byte(b[0]))
@@ -848,7 +848,7 @@ func TestShardRangeGet(t *testing.T) {
 	body, _, err = client.GetShard(ctx, host, &args)
 	require.NoError(t, err)
 
-	b, err = ioutil.ReadAll(body)
+	b, err = io.ReadAll(body)
 	require.NoError(t, err)
 	require.Equal(t, 8, len(b))
 	require.Equal(t, dataCrc.Sum32(), crc)

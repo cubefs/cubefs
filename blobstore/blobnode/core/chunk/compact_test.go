@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"context"
 	"hash/crc32"
-	"io/ioutil"
+	"io"
 	"os"
 	"reflect"
 	"runtime"
@@ -183,7 +183,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 func TestChunk_StartCompact(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "BlobNodeService")
 
-	testDir, err := ioutil.TempDir(os.TempDir(), "StartCompact")
+	testDir, err := os.MkdirTemp(os.TempDir(), "StartCompact")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -267,13 +267,13 @@ func TestChunk_StartCompact(t *testing.T) {
 	for i := 1; i <= shardCnt; i++ {
 		srcShard, err := cs.NewReader(ctx, proto.BlobID(i))
 		require.NoError(t, err)
-		srcData, err := ioutil.ReadAll(srcShard.Body)
+		srcData, err := io.ReadAll(srcShard.Body)
 		require.NoError(t, err)
 		require.Equal(t, true, reflect.DeepEqual(shardData, srcData))
 
 		dstShard, err := newcs.(*chunk).NewReader(ctx, proto.BlobID(i))
 		require.NoError(t, err)
-		dstData, err := ioutil.ReadAll(dstShard.Body)
+		dstData, err := io.ReadAll(dstShard.Body)
 		require.NoError(t, err)
 
 		require.Equal(t, true, reflect.DeepEqual(srcData, dstData))
@@ -361,12 +361,12 @@ func TestChunk_StartCompact(t *testing.T) {
 	for i := 1; i <= shardCnt+10; i++ {
 		srcShard, err := cs.NewReader(ctx, proto.BlobID(i))
 		require.NoError(t, err)
-		srcData, err := ioutil.ReadAll(srcShard.Body)
+		srcData, err := io.ReadAll(srcShard.Body)
 		require.NoError(t, err)
 
 		dstShard, err := newcs.(*chunk).NewReader(ctx, proto.BlobID(i))
 		require.NoError(t, err)
-		dstData, err := ioutil.ReadAll(dstShard.Body)
+		dstData, err := io.ReadAll(dstShard.Body)
 		require.NoError(t, err)
 
 		require.Equal(t, true, reflect.DeepEqual(srcData, dstData))
@@ -408,13 +408,13 @@ func TestChunk_StartCompact(t *testing.T) {
 	// ======== Scene: write when compacting ============
 
 	// vuid not match
-	//dstChunkStorage.vuid = vuid + 1
+	// dstChunkStorage.vuid = vuid + 1
 	//
-	//err = srcChunkStorageWapper.chunk.doCompact(ctx, dstChunkStorage)
-	//require.Error(t, err)
-	//dstChunkStorage.vuid = vuid
+	// err = srcChunkStorageWapper.chunk.doCompact(ctx, dstChunkStorage)
+	// require.Error(t, err)
+	// dstChunkStorage.vuid = vuid
 	//
-	//require.NotNil(t, srcChunkStorageWapper)
+	// require.NotNil(t, srcChunkStorageWapper)
 
 	// --------------- release ---------------
 	require.NotNil(t, cs)
@@ -426,7 +426,7 @@ func TestChunk_StartCompact(t *testing.T) {
 func TestChunkStorage_StopCompact(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "BlobNodeService")
 
-	testDir, err := ioutil.TempDir(os.TempDir(), "StopCompact")
+	testDir, err := os.MkdirTemp(os.TempDir(), "StopCompact")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -487,7 +487,7 @@ func TestChunkStorage_StopCompact(t *testing.T) {
 func TestChunkStorage_CompactCheck(t *testing.T) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "BlobNodeService")
 
-	testDir, err := ioutil.TempDir(os.TempDir(), "CompactCheck")
+	testDir, err := os.MkdirTemp(os.TempDir(), "CompactCheck")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

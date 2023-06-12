@@ -15,7 +15,6 @@
 package sys
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +34,7 @@ func TestIsMountPoint(t *testing.T) {
 	b := IsMountPoint("")
 	require.Equal(t, false, b)
 
-	dir, err := ioutil.TempDir(os.TempDir(), "MountPointTestFile")
+	dir, err := os.MkdirTemp(os.TempDir(), "MountPointTestFile")
 	require.NoError(t, err)
 
 	err = os.MkdirAll(dir, 0o775)

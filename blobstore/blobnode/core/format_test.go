@@ -16,7 +16,6 @@ package core
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -44,7 +43,7 @@ func TestFormatInfo(t *testing.T) {
 
 	ctx := context.Background()
 
-	diskPath, err := ioutil.TempDir(os.TempDir(), "BlobNodeTestFormatInfo")
+	diskPath, err := os.MkdirTemp(os.TempDir(), "BlobNodeTestFormatInfo")
 	require.NoError(t, err)
 	defer os.RemoveAll(diskPath)
 

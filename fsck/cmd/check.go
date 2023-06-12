@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -343,7 +342,7 @@ func getMetaPartitions(addr, name string) ([]*proto.MetaPartitionView, error) {
 		return nil, fmt.Errorf("Invalid status code: %v", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("Get meta partitions read all body failed: %v", err)
 	}

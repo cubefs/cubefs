@@ -16,7 +16,6 @@ package disk
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,7 +31,7 @@ import (
 )
 
 func TestNewSuperBlock(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "NewSuperBlock")
+	testDir, err := os.MkdirTemp(os.TempDir(), "NewSuperBlock")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -90,7 +89,7 @@ func TestNewSuperBlock(t *testing.T) {
 }
 
 func TestSuperBlock_RegisterDisk(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "SBRegisterDisk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "SBRegisterDisk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -138,7 +137,7 @@ func TestSuperBlock_RegisterDisk(t *testing.T) {
 }
 
 func TestSuperBlock_ListChunks(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "SBListChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "SBListChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -181,7 +180,7 @@ func TestSuperBlock_ListChunks(t *testing.T) {
 }
 
 func TestSuperBlock_ListVuids(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "SBListVuid")
+	testDir, err := os.MkdirTemp(os.TempDir(), "SBListVuid")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -231,7 +230,7 @@ func TestParseVuidSpacePrefix(t *testing.T) {
 }
 
 func TestSuperblockErrorCondition(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "TestWriteData")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestWriteData")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -273,7 +272,7 @@ func TestSuperblockErrorCondition(t *testing.T) {
 }
 
 func TestCleanChunkSpace(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "CleanChunkSpace")
+	testDir, err := os.MkdirTemp(os.TempDir(), "CleanChunkSpace")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

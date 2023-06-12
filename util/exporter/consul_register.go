@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"regexp"
@@ -75,7 +75,7 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int6
 	}
 
 	if resp, _ := client.Do(req); resp != nil {
-		ioutil.ReadAll(resp.Body)
+		io.ReadAll(resp.Body)
 		resp.Body.Close()
 	}
 
@@ -88,7 +88,7 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int6
 				return
 			}
 			if resp, _ := client.Do(req); resp != nil {
-				ioutil.ReadAll(resp.Body)
+				io.ReadAll(resp.Body)
 				resp.Body.Close()
 			}
 		}

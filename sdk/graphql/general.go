@@ -8,7 +8,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
-	"io/ioutil"
 	"os"
 	"strings"
 )
@@ -17,8 +16,8 @@ func main() {
 	us := master.UserService{}
 	parseSchema(us.Schema(), proto.AdminUserAPI, "user")
 
-	//vs := master.VolumeService{}
-	//parseSchema(vs.Schema(), proto.AdminVolumeAPI, "volume")
+	// vs := master.VolumeService{}
+	// parseSchema(vs.Schema(), proto.AdminVolumeAPI, "volume")
 
 	cs := master.ClusterService{}
 	parseSchema(cs.Schema(), proto.AdminClusterAPI, "cluster")
@@ -127,7 +126,7 @@ func (f *Function) String() string {
 
 	var returnBody string
 	if s, found := structMap[realKind(f.returnType)]; !found {
-		//panic(fmt.Sprintf("method:[%s] can return %s, %s", f.name, f.returnType, realKind(f.returnType)))
+		// panic(fmt.Sprintf("method:[%s] can return %s, %s", f.name, f.returnType, realKind(f.returnType)))
 		println("fun:[%s] the return type %s must can make", f.name, f.returnType)
 	} else {
 		returnBody = s.GraphqlFields(3)
@@ -187,7 +186,7 @@ func (f *Function) VarParam() string {
 	return buf.String()
 }
 
-//for graphql query varparam
+// for graphql query varparam
 func (f *Function) VarParamValue() string {
 	if len(f.args) == 0 {
 		return ""
@@ -251,7 +250,7 @@ func parseSchema(schema *graphql.Schema, path, name string) {
 	}
 
 	makeSource(name)
-	if e := ioutil.WriteFile(outfile, source.Bytes(), os.ModePerm); e != nil {
+	if e := os.WriteFile(outfile, source.Bytes(), os.ModePerm); e != nil {
 		panic(e)
 	}
 }

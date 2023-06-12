@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -97,7 +97,7 @@ func (helper *masterHelper) request(method, path string, param, header map[strin
 			continue
 		}
 		stateCode := resp.StatusCode
-		repsData, err = ioutil.ReadAll(resp.Body)
+		repsData, err = io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			log.LogErrorf("[masterHelper] %s", err)

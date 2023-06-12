@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -58,7 +57,7 @@ func (f ShiftedFile) Swap(i, j int) {
 	f[i], f[j] = f[j], f[i]
 }
 
-//type typeInfo struct {
+// type typeInfo struct {
 //	typeName  string
 //	allCount  uint32
 //	failCount uint32
@@ -66,7 +65,7 @@ func (f ShiftedFile) Swap(i, j int) {
 //	minTime   time.Duration
 //	allTimeUs time.Duration
 //	timeOut   [MaxTimeoutLevel]uint32
-//}
+// }
 
 type AuditPrefix struct {
 	prefixes []string
@@ -456,15 +455,20 @@ func (a *Audit) removeLogFile() {
 	diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
 	diskSpaceLeft -= DefaultHeadRoom * 1024 * 1024
 
-	fInfos, err := ioutil.ReadDir(a.logDir)
+	fInfos, err := os.ReadDir(a.logDir)
 	if err != nil {
 		log.LogErrorf("ReadDir failed, logDir: %s, err: %v", a.logDir, err)
 		return
 	}
 	var needDelFiles ShiftedFile
 	for _, info := range fInfos {
-		if a.shouldDelete(info, diskSpaceLeft, Audit_Module) {
-			needDelFiles = append(needDelFiles, info)
+		fileInfo, err := info.Info()
+		if err != nil {
+			log.LogErrorf("FileInfo failed,  err: %v", err)
+			continue
+		}
+		if a.shouldDelete(fileInfo, diskSpaceLeft, Audit_Module) {
+			needDelFiles = append(needDelFiles, fileInfo)
 		}
 	}
 	sort.Sort(needDelFiles)
