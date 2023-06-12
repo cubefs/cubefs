@@ -452,7 +452,6 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 
 	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc)
 	if err != nil {
-		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))
 		exporter.Warning(err.Error())
 	}
