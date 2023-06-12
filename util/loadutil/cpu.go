@@ -21,6 +21,6 @@ import (
 )
 
 func GetCpuUtilPercent(sampleDuration time.Duration) float64 {
-	percent, _ := cpu.Percent(sampleDuration, false)
-	return percent[0]
+	utils, _ := cpu.Percent(sampleDuration, false)
+	return utils[0]
 }
