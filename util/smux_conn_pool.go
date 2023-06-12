@@ -233,11 +233,6 @@ func (cp *SmuxConnectPool) PutConnect(stream *smux.Stream, forceClose bool) {
 		return
 	}
 	if forceClose {
-		err := stream.Close()
-		if err == io.ErrClosedPipe {
-			return
-		}
-
 		pool.MarkClosed(stream)
 		return
 	}
@@ -637,11 +632,6 @@ func (p *SmuxPool) PutStreamObjectToPool(obj *streamObject) {
 	case p.objects <- obj:
 		return
 	default:
-		err := obj.stream.Close()
-		if err == io.ErrClosedPipe {
-			return
-		}
-
 		p.MarkClosed(obj.stream)
 	}
 }
