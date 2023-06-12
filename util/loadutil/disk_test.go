@@ -28,7 +28,6 @@ func TestGetPartition(t *testing.T) {
 	partition, err := loadutil.GetMatchParation("/")
 	if err != nil {
 		t.Error(err)
-		t.Fail()
 		return
 	}
 	t.Log(partition.String())
@@ -38,7 +37,6 @@ func TestGetIoCounter(t *testing.T) {
 	partition, err := loadutil.GetMatchParation("/")
 	if err != nil {
 		t.Error(err)
-		t.Fail()
 		return
 	}
 	if !strings.HasPrefix(partition.Device, "/dev/") {
@@ -58,8 +56,7 @@ func TestGetIoCounter(t *testing.T) {
 func TestSample(t *testing.T) {
 	partition, err := loadutil.GetMatchParation("/")
 	if err != nil {
-		t.Error(err)
-		t.Fail()
+		t.Errorf("failed to get disk partition %v", err.Error())
 	}
 	if !strings.HasPrefix(partition.Device, "/dev/") {
 		t.Log("Unsupport device")
@@ -67,10 +64,8 @@ func TestSample(t *testing.T) {
 	}
 	sample, err := loadutil.GetDiskIoSample(partition, time.Second)
 	if err != nil {
-		t.Error(err)
-		t.Fail()
+		t.Errorf("failed to get disk sample %v", err.Error())
 	}
-
 	t.Logf("ReadCount:\t%v\n", sample.GetReadCount())
 	t.Logf("ReadFlow:\t%v\n", sample.GetReadFlow())
 	t.Logf("ReadTotalWaitTime:\t%v\n", sample.GetReadTotalWaitTime())
@@ -95,8 +90,7 @@ func TestSample(t *testing.T) {
 func TestMultiSample(t *testing.T) {
 	partition, err := loadutil.GetMatchParation("/")
 	if err != nil {
-		t.Error(err)
-		t.Fail()
+		t.Errorf("failed to get disk partition %v", err.Error())
 	}
 	if !strings.HasPrefix(partition.Device, "/dev/") {
 		t.Log("Unsupport device")
@@ -106,8 +100,7 @@ func TestMultiSample(t *testing.T) {
 	partitions[0] = partition
 	samples, err := loadutil.GetDisksIoSample(partitions, time.Second)
 	if err != nil {
-		t.Error(err)
-		t.Fail()
+		t.Errorf("failed to get disk sample %v", err.Error())
 	}
 	sample := samples[partition.Device]
 	t.Logf("ReadCount:\t%v\n", sample.GetReadCount())
