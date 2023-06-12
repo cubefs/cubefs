@@ -64,6 +64,10 @@ func (m *mBlobNodeCli) PutShard(ctx context.Context, location proto.VunitLocatio
 	return
 }
 
+func (m *mBlobNodeCli) GetPartialShards(ctx context.Context, partials client.PartialShards, ioType bnapi.IOType) (body io.ReadCloser, crc32 uint32, err error) {
+	return nil, 0, nil
+}
+
 type mockScheCli struct {
 	*mocks.MockIScheduler
 
