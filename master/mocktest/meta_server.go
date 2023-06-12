@@ -233,7 +233,7 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 		goto end
 	}
 	resp.Total = 10 * util.GB
-	resp.Used = 1 * util.GB
+	resp.MemUsed = 1 * util.GB
 	// every partition used
 	mms.RLock()
 	for id, partition := range mms.partitions {
