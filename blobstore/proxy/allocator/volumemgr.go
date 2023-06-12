@@ -128,10 +128,39 @@ func (m *modeInfo) TotalFree() uint64 {
 	return m.backup.TotalFree() + m.current.TotalFree()
 }
 
-func (m *modeInfo) needSwitch2Backup(fSize uint64) bool {
+func (m *modeInfo) needSwitch2Backup(fSize uint64) (bool, error) {
 	m.RLock()
 	defer m.RUnlock()
-	return m.current.UpdateTotalFree(-fSize) < m.totalThreshold
+	lastTotalFree := m.current.TotalFree()
+	totalFree := m.current.UpdateTotalFree(-fSize)
+	// in normal case, lastTotalFree must bigger than totalFree unless allocating from clusterMgr
+	if totalFree > lastTotalFree {
+		m.current.UpdateTotalFree(fSize)
+		if m.current.IsAllocating() { // allocating from clusterMgr, can not switch to backup
+			return false, errcode.ErrNoAvaliableVolume
+		}
+		return true, nil
+	}
+	return totalFree < m.totalThreshold, nil
+}
+
+func (m *modeInfo) SetAllocateState(state, isBackUp bool) {
+	m.RLock()
+	defer m.RUnlock()
+	if isBackUp {
+		m.backup.SetAllocateState(state)
+		return
+	}
+	m.current.SetAllocateState(state)
+}
+
+func (m *modeInfo) IsAllocating(isBackUp bool) bool {
+	m.RLock()
+	defer m.RUnlock()
+	if isBackUp {
+		return m.backup.IsAllocating()
+	}
+	return m.current.IsAllocating()
 }
 
 func (m *modeInfo) UpdateTotalFree(isBackup bool, free uint64) {
@@ -424,25 +453,32 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsArgs) (vols []*volume, err error) {
 	info := v.modeInfos[args.CodeMode]
 	info.dealDisCards(args.Discards)
+	// get the volumes list in advance to
+	// ensure consistency between the capacity statistics and the actual return volumes.
+	vols = info.List(false)
 
-	switch2Backup := info.needSwitch2Backup(args.Fsize)
+	switch2Backup, err := info.needSwitch2Backup(args.Fsize)
+	if err != nil {
+		return nil, err
+	}
 	if switch2Backup {
 		info.Lock()
-		if info.current.TotalFree() < info.totalThreshold {
+		totalFree := info.current.TotalFree()
+		if totalFree < info.totalThreshold || totalFree < args.Fsize {
 			info.current = info.backup
 			info.backup = &volumes{}
 		}
+		if info.current.TotalFree() < args.Fsize {
+			return nil, errcode.ErrNoAvaliableVolume
+		}
+		info.current.UpdateTotalFree(-args.Fsize)
+		vols = info.current.List()
 		info.Unlock()
 	}
 
-	vols = info.List(false)
 	if len(vols) == 0 {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, false)
 		return nil, errcode.ErrNoAvaliableVolume
-	}
-
-	if switch2Backup {
-		info.UpdateTotalFree(false, -args.Fsize)
 	}
 
 	if len(info.List(true)) == 0 {
@@ -490,6 +526,7 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 		args := <-v.allocChs[mode]
 		span, ctx := trace.StartSpanFromContext(context.Background(), "")
 		requireCount := args.count
+		v.modeInfos[args.codeMode].SetAllocateState(ALLOCATING, args.isBackup)
 		for {
 			allocArg := &clustermgr.AllocVolumeArgs{
 				IsInit:   args.isInit,
@@ -521,6 +558,7 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				args.isInit = false
 				continue
 			}
+			v.modeInfos[args.codeMode].SetAllocateState(ALLOCATED, args.isBackup)
 			break
 		}
 	}
