@@ -100,6 +100,7 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 	for _, ino := range req.Inodes {
 		var extend = NewExtend(ino)
 		var value []byte
+		var deleteValue []byte
 		var isRemove bool
 		treeItem := mp.extendTree.Get(extend)
 		inode := NewInode(ino, 0)
@@ -122,7 +123,7 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 			value, exist := extend.Get([]byte(proto.QuotaKey))
 			if exist {
 				if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
-					log.LogErrorf("batchDeleteInodeQuota Unmarshal quotaInfos fail [%v]", err)
+					log.LogErrorf("batchDeleteInodeQuota ino [%v] Unmarshal quotaInfos fail [%v]", ino, err)
 					resp.Status = proto.TaskFailed
 					resp.Result = err.Error()
 					return
@@ -133,6 +134,7 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 					delete(quotaInfos.QuotaInfoMap, req.QuotaId)
 					if len(quotaInfos.QuotaInfoMap) == 0 {
 						isRemove = true
+						deleteValue, err = json.Marshal(quotaInfos.QuotaInfoMap)
 					}
 				} else {
 					log.LogDebugf("batchDeleteInodeQuota QuotaInfoMap can not find inode [%v] quota [%v]", ino, req.QuotaId)
@@ -143,7 +145,7 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 			}
 		}
 		if isRemove {
-			extend.Put([]byte(proto.QuotaKey), nil)
+			extend.Put([]byte(proto.QuotaKey), deleteValue)
 			if _, err = mp.putExtend(opFSMRemoveXAttr, extend); err != nil {
 				log.LogErrorf("remove quota putExtend [%v] fail [%v]", quotaInfos, err)
 				resp.Status = proto.TaskFailed
@@ -181,154 +183,6 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 	resp.Status = proto.TaskSucceeds
 	return
 }
-
-// func (mp *metaPartition) setSubQuota(parentInode uint64, quotaId uint32, quotaInfos *proto.MetaQuotaInfos, newGoroutine bool) {
-// 	defer func() {
-// 		if newGoroutine {
-// 			mp.manager.QuotaGoroutineInc(-1)
-// 		}
-// 	}()
-// 	var (
-// 		maxReqCount uint64
-// 		j           uint64
-// 	)
-// 	begDentry := &Dentry{
-// 		ParentId: parentInode,
-// 	}
-// 	endDentry := &Dentry{
-// 		ParentId: parentInode + 1,
-// 	}
-
-// 	quotaInfo, isFind := quotaInfos.QuotaInfoMap[quotaId]
-// 	if !isFind {
-// 		log.LogErrorf("setSubQuota can not find quotaInfo  [%v] fail.", quotaId)
-// 		return
-// 	}
-
-// 	maxReqCount = 200
-// 	inodes := make([]uint64, 0, maxReqCount)
-// 	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
-// 		if j >= maxReqCount {
-// 			j = 0
-// 			mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId)
-// 			inodes = inodes[0:0]
-// 		}
-
-// 		d := i.(*Dentry)
-// 		inodes = append(inodes, d.Inode)
-// 		j++
-// 		return true
-// 	})
-// 	if len(inodes) != 0 {
-// 		mp.batchSetSubInodeQuotaToMetaNode(inodes, quotaId)
-// 	}
-// 	quotaInfo.SetStatus(proto.QuotaComplete)
-
-// 	var extend = NewExtend(parentInode)
-
-// 	value, err := json.Marshal(quotaInfos.QuotaInfoMap)
-// 	if err != nil {
-// 		log.LogErrorf("setSubQuota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
-// 		return
-// 	}
-// 	extend.Put([]byte(proto.QuotaKey), value)
-// 	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
-// 		log.LogErrorf("setSubQuota putExtend [%v] fail [%v]", quotaInfos, err)
-// 		return
-// 	}
-// 	log.LogInfof("setSubQuota mp [%v] inode [%v] quotaInfo [%v] newGoroutine [%v] success.", mp.config.PartitionId, parentInode, quotaInfo, newGoroutine)
-// 	return
-// }
-
-// func (mp *metaPartition) deleteSubQuota(parentInode uint64, quotaId uint32, quotaInfos *proto.MetaQuotaInfos, newGoroutine bool) {
-// 	defer func() {
-// 		if newGoroutine {
-// 			mp.manager.QuotaGoroutineInc(-1)
-// 		}
-// 	}()
-// 	var (
-// 		maxReqCount uint64
-// 		j           uint64
-// 	)
-// 	begDentry := &Dentry{
-// 		ParentId: parentInode,
-// 	}
-// 	endDentry := &Dentry{
-// 		ParentId: parentInode + 1,
-// 	}
-
-// 	maxReqCount = 200
-// 	inodes := make([]uint64, 0, maxReqCount)
-// 	mp.dentryTree.AscendRange(begDentry, endDentry, func(i BtreeItem) bool {
-// 		if j >= maxReqCount {
-// 			j = 0
-// 			mp.batchDeleteSubInodeQuotaToMetaNode(inodes, quotaId)
-// 			inodes = inodes[0:0]
-// 		}
-
-// 		d := i.(*Dentry)
-// 		inodes = append(inodes, d.Inode)
-// 		j++
-// 		return true
-// 	})
-// 	if len(inodes) != 0 {
-// 		mp.batchDeleteSubInodeQuotaToMetaNode(inodes, quotaId)
-// 	}
-
-// 	quotaInfo, isFind := quotaInfos.QuotaInfoMap[quotaId]
-// 	if !isFind {
-// 		log.LogErrorf("deleteSubQuota can not find quotaInfo  [%v] fail.", quotaId)
-// 		return
-// 	}
-// 	delete(quotaInfos.QuotaInfoMap, quotaId)
-// 	var extend = NewExtend(parentInode)
-// 	value, err := json.Marshal(quotaInfos.QuotaInfoMap)
-// 	if err != nil {
-// 		log.LogErrorf("deleteSubQuota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
-// 		return
-// 	}
-// 	extend.Put([]byte(proto.QuotaKey), value)
-// 	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
-// 		log.LogErrorf("deleteSubQuota putExtend [%v] fail [%v]", quotaInfos, err)
-// 		return
-// 	}
-// 	log.LogInfof("deleteSubQuota mp [%v] inode [%v] quotaInfo [%v] newGoroutine [%v] success.", mp.config.PartitionId, parentInode, quotaInfo, newGoroutine)
-// 	return
-// }
-
-// func (mp *metaPartition) batchSetSubInodeQuotaToMetaNode(inodes []uint64, quotaId uint32) {
-// 	masters := masterClient.Nodes()
-// 	var metaConfig = &meta.MetaConfig{
-// 		Volume:  mp.config.VolName,
-// 		Masters: masters,
-// 	}
-
-// 	metaWrapper, err := meta.NewMetaWrapper(metaConfig)
-// 	if err != nil {
-// 		log.LogErrorf("new MetaWarapper fail. vol [%v] err [%v]", mp.config.VolName, err)
-// 		return
-// 	}
-
-// 	metaWrapper.BatchSetInodeQuota_ll(inodes, quotaId)
-// 	return
-// }
-
-// func (mp *metaPartition) batchDeleteSubInodeQuotaToMetaNode(inodes []uint64, quotaId uint32) {
-// 	masters := masterClient.Nodes()
-// 	var metaConfig = &meta.MetaConfig{
-// 		Volume:  mp.config.VolName,
-// 		Masters: masters,
-// 	}
-
-// 	metaWrapper, err := meta.NewMetaWrapper(metaConfig)
-// 	if err != nil {
-// 		log.LogErrorf("new MetaWarapper fail. vol [%v] err [%v]", mp.config.VolName, err)
-// 		return
-// 	}
-
-// 	metaWrapper.BatchDeleteInodeQuota_ll(inodes, quotaId)
-// 	return
-// }
 
 func (mp *metaPartition) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo) {
 	mp.mqMgr.setQuotaHbInfo(infos)
@@ -377,7 +231,9 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 	ino := NewInode(extend.GetInode(), 0)
 	item := inodeTree.Get(ino)
 	if item == nil {
-		log.LogErrorf("statisticExtendByStore inode [%v] is not exist.", extend.GetInode())
+		_, isleader := mp.IsLeader()
+		log.LogErrorf("statisticExtendByStore mp [%v] leader [%v] inode [%v] is not exist.",
+			mp.config.PartitionId, isleader, extend.GetInode())
 		return
 	}
 	ino = item.(*Inode)
@@ -386,14 +242,14 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 	}
 	value, exist := extend.Get([]byte(proto.QuotaKey))
 	if !exist {
-		log.LogDebugf("hytemp statisticExtendByStore get quota key failed, mp [%v] inode [%v]", mp.config.PartitionId, extend.GetInode())
+		log.LogDebugf("statisticExtendByStore get quota key failed, mp [%v] inode [%v]", mp.config.PartitionId, extend.GetInode())
 		return
 	}
 	var quotaInfos = &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
-		log.LogErrorf("set quota Unmarshal quotaInfos fail [%v]", err)
+		log.LogErrorf("statisticExtendByStore inode [%v] Unmarshal quotaInfos fail [%v]", extend.GetInode(), err)
 		return
 	}
 	mqMgr.rwlock.Lock()
@@ -410,7 +266,7 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 		log.LogDebugf("[statisticExtendByStore] mp [%v] quotaId [%v] inode [%v] baseInfo [%v]",
 			mp.config.PartitionId, quotaId, extend.GetInode(), baseInfo)
 	}
-	log.LogDebugf("hytemp statisticExtendByStore mp [%v] inode [%v] success.", mp.config.PartitionId, extend.GetInode())
+	log.LogDebugf("statisticExtendByStore mp [%v] inode [%v] success.", mp.config.PartitionId, extend.GetInode())
 	return
 }
 
@@ -442,7 +298,7 @@ func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind boo
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
-		log.LogErrorf("set quota Unmarshal quotaInfos fail [%v]", err)
+		log.LogErrorf("set quota inode [%v] Unmarshal quotaInfos fail [%v]", ino, err)
 		isFind = false
 		return
 	}
@@ -455,28 +311,6 @@ func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind boo
 	log.LogInfof("isExistQuota inode:[%v] quotaIds [%v] isFind[%v]", ino, quotaIds, isFind)
 	return
 }
-
-// func (mp *metaPartition) getInodeQuotas(extend *Extend) (infos map[uint32]*proto.MetaQuotaInfo, isFind bool) {
-// 	value, exist := extend.Get([]byte(proto.QuotaKey))
-// 	if !exist {
-// 		isFind = false
-// 		log.LogErrorf("getInodeQuotas quotakey is not exist inode:%v", extend.GetInode())
-// 		return
-// 	}
-// 	var quotaInfos = &proto.MetaQuotaInfos{
-// 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
-// 	}
-// 	if err := json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
-// 		log.LogErrorf("set quota Unmarshal quotaInfos fail [%v]", err)
-// 		isFind = false
-// 		return
-// 	}
-// 	isFind = true
-// 	infos = quotaInfos.QuotaInfoMap
-
-// 	log.LogInfof("getInodeQuotas inode:[%v] infos [%v] isFind[%v]", extend.GetInode(), infos, isFind)
-// 	return
-// }
 
 func (mp *metaPartition) isOverQuota(ino uint64, size bool, files bool) (status uint8) {
 	quotaIds, isFind := mp.isExistQuota(ino)
@@ -501,7 +335,7 @@ func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
 		value []byte
 		exist bool
 	)
-	treeItem := mp.extendTree.Get(extend)
+	treeItem := mp.extendTree.CopyGet(extend)
 	if treeItem == nil {
 		goto handleRsp
 	}
@@ -510,7 +344,7 @@ func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
 	value, exist = extend.Get([]byte(proto.QuotaKey))
 	if exist {
 		if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
-			log.LogErrorf("getInodeQuota Unmarshal quotaInfos fail [%v]", err)
+			log.LogErrorf("getInodeQuota inode [%v] Unmarshal quotaInfos fail [%v]", inode, err)
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
@@ -531,7 +365,7 @@ handleRsp:
 
 func (mp *metaPartition) getInodeQuotaIds(inode uint64) (quotaIds []uint32, err error) {
 	log.LogInfof("getInodeQuotaIds mp [%v] treeLen[%v]", mp.config.PartitionId, mp.extendTree.Len())
-	treeItem := mp.extendTree.Get(NewExtend(inode))
+	treeItem := mp.extendTree.CopyGet(NewExtend(inode))
 	if treeItem == nil {
 		return
 	}
@@ -542,7 +376,7 @@ func (mp *metaPartition) getInodeQuotaIds(inode uint64) (quotaIds []uint32, err 
 	value, exist := extend.Get([]byte(proto.QuotaKey))
 	if exist {
 		if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
-			log.LogErrorf("getInodeQuota Unmarshal quotaInfos fail [%v]", err)
+			log.LogErrorf("getInodeQuota inode [%v] Unmarshal quotaInfos fail [%v]", inode, err)
 			return
 		}
 		for k := range quotaInfos.QuotaInfoMap {
