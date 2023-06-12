@@ -520,6 +520,8 @@ type DataNodeHeartbeatResponse struct {
 	Status              uint8
 	Result              string
 	BadDisks            []string
+	CpuUtil             float64            `json:"cpuUtil"`
+	IoUtils             map[string]float64 `json:"ioUtil"`
 }
 
 // MetaPartitionReport defines the meta partition report.
@@ -543,10 +545,11 @@ type MetaPartitionReport struct {
 type MetaNodeHeartbeatResponse struct {
 	ZoneName             string
 	Total                uint64
-	Used                 uint64
+	MemUsed              uint64
 	MetaPartitionReports []*MetaPartitionReport
 	Status               uint8
 	Result               string
+	CpuUtil              float64 `json:"cpuUtil"`
 }
 
 // DeleteFileRequest defines the request to delete a file.

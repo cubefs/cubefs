@@ -42,6 +42,7 @@ type MetaNodeInfo struct {
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
+	CpuUtil                   float64 `json:"cpuUtil"`
 }
 
 // DataNode stores all the information about a data node
@@ -65,7 +66,9 @@ type DataNodeInfo struct {
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
 	RdOnly                    bool
-	MaxDpCntLimit             uint32 `json:"maxDpCntLimit"`
+	MaxDpCntLimit             uint32             `json:"maxDpCntLimit"`
+	CpuUtil                   float64            `json:"cpuUtil"`
+	IoUtils                   map[string]float64 `json:"ioUtil"`
 }
 
 // MetaPartition defines the structure of a meta partition
