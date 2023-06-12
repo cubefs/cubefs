@@ -762,6 +762,8 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		log.LogWarnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}
 
+	// change cpu util and io used
+	metaNode.CpuUtil.Store(resp.CpuUtil)
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
 	metaNode.setNodeActive()
 
@@ -941,6 +943,9 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		c.adjustDataNode(dataNode)
 		log.LogWarnf("dataNode [%v] zone changed from [%v] to [%v]", dataNode.Addr, oldZoneName, resp.ZoneName)
 	}
+	// change cpu util and io used
+	dataNode.CpuUtil.Store(resp.CpuUtil)
+	dataNode.SetIoUtils(resp.IoUtils)
 
 	dataNode.updateNodeMetric(resp)
 	if err = c.t.putDataNode(dataNode); err != nil {
