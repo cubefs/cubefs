@@ -80,43 +80,30 @@ func (e *azureLrcP1Encoder) Reconstruct(shards [][]byte, badIdx []int) error {
 	initBadShards(shards, badIdx)
 
 	azLayout := e.CodeMode.GetECLayoutByAZ()
-	survivalIndex, forComputationShardsIdx, err := e.engine.GetSurvivalShards(badIdx, azLayout)
+	survivalIndex, _, err := e.engine.GetSurvivalShards(badIdx, azLayout)
 	if err != nil {
 		return err
 	}
-	survivalIdxMap := make(map[int]int)
-	forComputationShardsIdxMap := make(map[int]int)
+	survivalIdxMap := make(map[int]struct{}, len(survivalIndex))
 	for _, idx := range survivalIndex {
-		survivalIdxMap[idx] = 1
-	}
-	for _, idx := range forComputationShardsIdx {
-		forComputationShardsIdxMap[idx] = 1
+		survivalIdxMap[idx] = struct{}{}
 	}
 
 	if len(badIdx) == 1 {
-		tmpShards := make([][]byte, e.CodeMode.N+e.CodeMode.M+e.CodeMode.L)
-		for i, v := range shards {
-			if _, ok := forComputationShardsIdxMap[i]; ok == true {
-				tmpShards[i] = v
-			} else {
-				tmpShards[i] = v[:0]
-			}
-		}
-		if err := e.engine.PartialReconstruct(tmpShards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L], survivalIndex, badIdx); err != nil {
+		if err = e.engine.PartialReconstruct(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L], survivalIndex, badIdx); err != nil {
 			return errors.Info(err, "azureLrcP1Encoder.PartialReconstruct ec reconstruct failed (local reconstruct)")
 		}
-		shards[badIdx[0]] = tmpShards[badIdx[0]]
-	} else {
-		for i, v := range shards {
-			if _, ok := survivalIdxMap[i]; ok == false {
-				shards[i] = v[:0]
-			}
-		}
-		if err := e.engine.Reconstruct(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]); err != nil {
-			return errors.Info(err, "azureLrcP1Encoder.Reconstruct ec reconstruct failed (entire reconstruct)")
-		}
+		return nil
 	}
 
+	for i, shard := range shards {
+		if _, ok := survivalIdxMap[i]; !ok {
+			shards[i] = shard[:0]
+		}
+	}
+	if err = e.engine.Reconstruct(shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]); err != nil {
+		return errors.Info(err, "azureLrcP1Encoder.Reconstruct ec reconstruct failed (entire reconstruct)")
+	}
 	return nil
 }
 
@@ -127,6 +114,9 @@ func (e *azureLrcP1Encoder) PartialReconstruct(shards [][]byte, survivalIndex, b
 }
 
 func (e *azureLrcP1Encoder) ReconstructData(shards [][]byte, badIdx []int) error {
+	e.pool.Acquire()
+	defer e.pool.Release()
+
 	fillFullShards(shards[:e.CodeMode.N+e.CodeMode.M])
 	globalBadIdx := make([]int, 0)
 	for _, i := range badIdx {
@@ -135,9 +125,7 @@ func (e *azureLrcP1Encoder) ReconstructData(shards [][]byte, badIdx []int) error
 		}
 	}
 	initBadShards(shards, globalBadIdx)
-	shards = shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]
-	e.pool.Acquire()
-	defer e.pool.Release()
+	// shards = shards[:e.CodeMode.N+e.CodeMode.M+e.CodeMode.L]
 	return e.engine.ReconstructData(shards)
 }
 
