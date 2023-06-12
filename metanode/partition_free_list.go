@@ -366,11 +366,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	log.LogInfof("doDeleteMarkedInodes mp (%v) GetConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
 
 	defer func() {
-		if err != nil {
-			smuxPool.PutConnect(conn, ForceClosedConnect)
-		} else {
-			smuxPool.PutConnect(conn, NoClosedConnect)
-		}
+		smuxPool.PutConnect(conn, ForceClosedConnect)
 		log.LogInfof("doDeleteMarkedInodes mp (%v) PutConnect (%v), ext(%s)", mp.config.PartitionId, addr, ext.String())
 	}()
 
@@ -440,11 +436,7 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 	ResultCode := proto.OpOk
 
 	defer func() {
-		if err != nil && ResultCode != proto.OpAgain {
-			smuxPool.PutConnect(conn, ForceClosedConnect)
-		} else {
-			smuxPool.PutConnect(conn, NoClosedConnect)
-		}
+		smuxPool.PutConnect(conn, ForceClosedConnect)
 		log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
 	}()
 
