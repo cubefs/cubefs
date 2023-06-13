@@ -87,6 +87,7 @@ v3.3.0版本开始支持消费组，之前版本请参考对应版本配置文�
 {
   "broker_list": ["127.0.0.1:9095","127.0.0.1:9095","127.0.0.1:9095"],
   "fail_msg_sender_timeout_ms": 1000,
+  "commit_interval_ms": 1000,
   "topics": {
     "shard_repair": [
       "shard_repair",
@@ -198,9 +199,8 @@ v3.3.0版本开始支持并发修复磁盘。
 ```json
 {
   "task_pool_size": 10,
-  "normal_handle_batch_cnt": 500,
-  "fail_handle_batch_cnt": 100,
-  "fail_msg_consume_interval_ms": 10000,
+  "message_punish_threshold": 3,
+  "message_punish_time_m": 10,
   "orphan_shard_log": {
     "dir": "/home/service/scheduler/_package/orphan_shard_log",
     "chunkbits": 29
@@ -223,9 +223,8 @@ v3.3.0版本开始支持配置数据删除时间段。
 ```json
 {
   "task_pool_size": 400,
-  "normal_handle_batch_cnt": 1000,
-  "fail_handle_batch_cnt": 1000,
-  "fail_msg_consume_interval_ms": 6000,
+  "message_punish_threshold": 3,
+  "message_punish_time_m": 10,
   "safe_delay_time_h": 12,
   "delete_hour_range": {
     "from": 1,
