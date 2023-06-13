@@ -26,19 +26,39 @@ import (
 )
 
 func TestDefaultDecoder_DecodeReq(t *testing.T) {
-	request, err := http.NewRequest(http.MethodPost, "/test", strings.NewReader("test"))
-	require.NoError(t, err)
+	{
+		request, err := http.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"name":"test"}`))
+		require.NoError(t, err)
 
-	decoder := defaultDecoder{}
+		decoder := defaultDecoder{}
 
-	request.Header.Set("Content-Type", rpc.MIMEJSON)
-	request.Header.Set("Content-MD5", "1")
-	decodeReq := decoder.DecodeReq(request)
-	require.NotNil(t, decodeReq)
+		request.Header.Set(rpc.HeaderContentType, rpc.MIMEJSON)
+		request.Header.Set(rpc.HeaderContentMD5, "1")
+		decodeReq := decoder.DecodeReq(request)
+		require.Equal(t, "/test", decodeReq.Path)
+		require.Equal(t, rpc.MIMEJSON, decodeReq.Header[rpc.HeaderContentType])
+		require.Equal(t, "1", decodeReq.Header[rpc.HeaderContentMD5])
+		require.True(t, len(decodeReq.Params) > 0)
 
-	request.Header.Set("Content-Type", rpc.MIMEPOSTForm)
-	decodeReq = decoder.DecodeReq(request)
-	require.NotNil(t, decodeReq)
+		request.Header.Set(rpc.HeaderContentType, rpc.MIMEPOSTForm)
+		decodeReq = decoder.DecodeReq(request)
+		require.NotNil(t, decodeReq)
+		require.Equal(t, "/test", decodeReq.Path)
+		require.Equal(t, rpc.MIMEPOSTForm, decodeReq.Header[rpc.HeaderContentType])
+		require.True(t, len(decodeReq.Params) > 0)
+	}
+	{
+		body := bytes.NewReader(make([]byte, maxSeekableBodyLength+1))
+		request, err := http.NewRequest(http.MethodPut, "/nobody", body)
+		require.NoError(t, err)
+
+		decoder := defaultDecoder{}
+		request.Header.Set(rpc.HeaderContentType, rpc.MIMEJSON)
+		request.Header.Set(rpc.HeaderCrcEncoded, "1")
+		decodeReq := decoder.DecodeReq(request)
+		require.Equal(t, "/nobody", decodeReq.Path)
+		require.True(t, len(decodeReq.Params) == 0)
+	}
 }
 
 func TestDefaultDecoder_RequestCompact(t *testing.T) {
@@ -57,5 +77,18 @@ func TestDefaultDecoder_RequestCompact(t *testing.T) {
             }`),
 	} {
 		require.True(t, bytes.Equal(compactNewline(src), dst))
+	}
+}
+
+func Benchmark_Decode(b *testing.B) {
+	request, err := http.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"name":"test"}`))
+	require.NoError(b, err)
+	request.Header.Set(rpc.HeaderContentType, rpc.MIMEJSON)
+	request.Header.Set(rpc.HeaderContentMD5, "1")
+	request.Header.Set(rpc.HeaderContentMD5, "2")
+
+	for ii := 0; ii < b.N; ii++ {
+		decoder := defaultDecoder{}
+		decoder.DecodeReq(request)
 	}
 }

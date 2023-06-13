@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,5 +150,21 @@ func TestBodylimit(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, lc.Close())
 		require.Equal(t, limit.expected, cfg.BodyLimit)
+	}
+}
+
+func Benchmark_RowParser(b *testing.B) {
+	line := strings.Join([]string{
+		"REQ", "BENCH", "16866434380042975", "POST", "/bench/mark/test",
+		`{"Host":"127.0.0.1:9500","IP":"10.10.10.10","RawQuery":"size=1751\u0026hashes=4","X-Crc-Encoded":"1"}`, "200",
+		`{"Blobstore-Tracer-Traceid":"0e34ac5020793b24","Content-Length":"195","Content-Type":"application/json",` +
+			`"Trace-Log":["PROXY","a_0_r_19_w_2","ACCESS:22"],"Trace-Tags":["http.method:POST"],"X-Ack-Crc-Encoded":"1"}`,
+		"199", "22348",
+	}, "\t")
+	buff := []byte(line)
+	sender := NewPrometheusSender(PrometheusConfig{Idc: "Benchmark_RowParser" + strconv.Itoa(rand.Intn(100000))})
+	b.ResetTimer()
+	for ii := 0; ii < b.N; ii++ {
+		sender.Send(buff)
 	}
 }
