@@ -104,8 +104,6 @@ func AfterTP(o *TpObject, err error) {
 	case FunctionTpLogWrite.logCh <- tp:
 	default:
 	}
-
-	return
 }
 
 func Alive(key string) {
@@ -120,7 +118,6 @@ func Alive(key string) {
 	case SystemAliveLogWrite.logCh <- alive:
 	default:
 	}
-	return
 }
 
 func Alarm(key, detail string) {
@@ -143,5 +140,4 @@ func Alarm(key, detail string) {
 	case BusinessAlarmLogWrite.logCh <- alarm:
 	default:
 	}
-	return
 }

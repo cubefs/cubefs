@@ -18,7 +18,6 @@ package log
 
 import (
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"path"
 	"testing"
@@ -35,6 +34,7 @@ func TestLog(t *testing.T) {
 	if os.IsNotExist(err) {
 		os.MkdirAll(dir, 0755)
 	}
+	defer os.RemoveAll(dir)
 
 	logFilePath1 := path.Join(dir, "log_info.log.old")
 	if err = createFile(logFilePath1, true); err != nil {
@@ -58,13 +58,12 @@ func TestLog(t *testing.T) {
 		LogWarnf("[warn] current time %v.", time.Now())
 		LogErrorf("[error] current time %v.", time.Now())
 		LogInfof("[info] current time %v.", time.Now())
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 
 	_, err = os.Stat(logFilePath1)
-	if !os.IsNotExist(err) {
-		//t.Errorf("expect file[%v] doesn't exist but err is [%v]", logFilePath1, err)
-		//return
+	if err != nil {
+		t.Errorf("expect file[%v] exists but err is [%v]", logFilePath1, err)
 	}
 	_, err = os.Stat(logFilePath2)
 	if err != nil {

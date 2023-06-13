@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/gorilla/mux"
@@ -229,13 +228,9 @@ func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
 
 	ticker := time.NewTicker(time.Second * 15)
 	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				err := pusher.Push()
-				if err != nil {
-					log.LogWarnf("push monitor data to %s err, %s", pushAddr, err.Error())
-				}
+		for range ticker.C {
+			if err := pusher.Push(); err != nil {
+				log.LogWarnf("push monitor data to %s err, %s", pushAddr, err.Error())
 			}
 		}
 	}()
