@@ -53,7 +53,7 @@ func AesEncryptCBC(key, plaintext []byte) (ciphertext []byte, err error) {
 		block cipher.Block
 	)
 
-	if plaintext == nil || len(plaintext) == 0 {
+	if len(plaintext) == 0 {
 		err = fmt.Errorf("input for encryption is invalid")
 		return
 	}
@@ -199,7 +199,7 @@ func DecodeMessage(message string, key []byte) (plaintext []byte, err error) {
 	newChecksum := md5.Sum(decodedText)
 
 	// verify checksum
-	if bytes.Compare(msgChecksum, newChecksum[:]) != 0 {
+	if !bytes.Equal(msgChecksum, newChecksum[:]) {
 		err = fmt.Errorf("checksum not match")
 	}
 

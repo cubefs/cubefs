@@ -1,12 +1,12 @@
 package buf
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
-	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 )
 

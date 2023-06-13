@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -26,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -79,18 +79,15 @@ func DoConsulRegisterProc(addr, app, role, cluster, meta, host string, port int6
 		resp.Body.Close()
 	}
 
-	for {
-		select {
-		case <-ticker.C:
-			req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
-			if req == nil {
-				log.LogErrorf("make register req error")
-				return
-			}
-			if resp, _ := client.Do(req); resp != nil {
-				ioutil.ReadAll(resp.Body)
-				resp.Body.Close()
-			}
+	for range ticker.C {
+		req := makeRegisterReq(host, addr, app, role, cluster, meta, port)
+		if req == nil {
+			log.LogErrorf("make register req error")
+			return
+		}
+		if resp, _ := client.Do(req); resp != nil {
+			ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
 		}
 	}
 }

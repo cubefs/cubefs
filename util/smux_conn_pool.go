@@ -612,7 +612,6 @@ func (p *SmuxPool) handleCreateCall(call *createSessCall) {
 		return
 	}
 	p.insertSession(call.sess)
-	return
 }
 
 func (p *SmuxPool) openStream(sess *smux.Session) (stream *smux.Stream, err error) {

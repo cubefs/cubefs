@@ -1,13 +1,13 @@
 package buf
 
 import (
+	"context"
 	"fmt"
-	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
 	"sync"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/util"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -169,5 +169,4 @@ func (bufferP *BufferPool) Put(data []byte) {
 		bufferP.tinyPool.Put(data)
 		atomic.AddInt64(&tinyBuffersCount, -1)
 	}
-	return
 }

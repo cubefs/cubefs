@@ -41,7 +41,6 @@ type Gauge struct {
 	name   string
 	labels map[string]string
 	val    float64
-	ch     chan interface{}
 }
 
 func NewGauge(name string) (g *Gauge) {

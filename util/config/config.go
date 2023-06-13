@@ -290,6 +290,9 @@ func CheckOrStoreClusterUuid(dirPath, id string, force bool) (err error) {
 		// store clusterUUID
 		ClusterMap := map[string]interface{}{"ClusterUUID": id}
 		data, err := json.Marshal(ClusterMap)
+		if err != nil {
+			return fmt.Errorf("json marshal failed: %v", err.Error())
+		}
 		if err = ioutil.WriteFile(versionFile, data, 0755); err != nil {
 			return fmt.Errorf("write file %v failed: %v", versionFile, err.Error())
 		}
