@@ -2,6 +2,7 @@
 
 ## 入门系列
 
+- [CubeFS十分钟入门 | 玩转对象存储](https://mp.weixin.qq.com/s/DZ65u7MMZep5mM3wadrTYw) , 2023-05-23, Chi He
 - [CubeFS十分钟入门 | BlobStore跨AZ部署](https://mp.weixin.qq.com/s/HEgeVRITyoMF93fm3mXmqA) ，2023-05-09，存储团队@0PP0
 - [CubeFS十分钟入门 | 轻松掌握CubeFS对象存储权限管控](https://mp.weixin.qq.com/s/dJ2e5XDyVth3HL1UWR7fvw) ，2023-04-25，存储团队@OPPO
 - [CubeFS十分钟入门 | 基于FTP、NFS、SMB跨平台使用](https://mp.weixin.qq.com/s/PyOwFzOSZK0pe6Xd0MnHJQ) ，2023-04-18，存储团队@OPPO
@@ -13,6 +14,8 @@
 
 ## 最佳实践
 
+- [集群开源监控方案](https://mp.weixin.qq.com/s/QtO-ORwdanATR9hXwp-YMQ) , 2023-06-06, Ke Zhang
+- [CubeFS Autofs 实践](https://mp.weixin.qq.com/s/Y-M1K9_5NkJGQVPbJIpJyA) ， 2023-05-16，Liangliang Tang
 - [与CubeFS共创未来：BIGO的实践与思考](https://mp.weixin.qq.com/s/X5c14U55O2g0bT3bxJWFbg) ，2023-05-05，刘冰星@BIGO
 - [CubeFS 如何在 OPPO 混合云平台中加速 AI 训练3倍](https://mp.weixin.qq.com/s/9el9S66eDhqAKU2vvpJW3Q) ，2023-03-30，存储团队@OPPO
 - [纠删码模式选型](https://mp.weixin.qq.com/s/v-fFJZtDY2_9loHWAnPXqA) ，2022-12-15，存储团队@OPPO
@@ -22,6 +25,7 @@
 
 ## 技术揭秘
 
+- [CubeFS原创方案丨原生HDFS协议访问支持](https://mp.weixin.qq.com/s/vw9O9ssHIWDIozjYkoy8IA) , 2023-05-31, Tianjiong,Zhang
 - [CubeFS原创方案 | 卷级别流控方案](https://mp.weixin.qq.com/s/ytBvK3MazOzm3uDtzRBwaw) ，2023-04-13，存储团队@OPPO
 - [CubeFS源码解读 | Data Partition 及副本的状态管理](https://mp.weixin.qq.com/s/ICpXE3e1Vu497hmvUyzI5Q) ，2023-04-06，存储团队@OPPO
 - [CubeFS源码解读 | 副本子系统](https://mp.weixin.qq.com/s/Ryw4BLlVoysX5jeNFLpdig) ，2023-03-23，存储团队@OPPO
