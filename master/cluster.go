@@ -63,6 +63,7 @@ type Cluster struct {
 	BadDataPartitionIds          *sync.Map
 	BadMetaPartitionIds          *sync.Map
 	DisableAutoAllocate          bool
+	ForbidMpDecommission         bool
 	FaultDomain                  bool
 	needFaultDomain              bool // FaultDomain is true and normal zone aleady used up
 	fsm                          *MetadataFsm
@@ -2605,6 +2606,11 @@ func (c *Cluster) getBadDataPartitionsView() (bpvs []badPartitionView) {
 func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err error) {
 	var toBeOfflineMps []*MetaPartition
 
+	if c.ForbidMpDecommission {
+		err = fmt.Errorf("cluster mataPartition decommission switch is disabled")
+		return
+	}
+
 	msg := fmt.Sprintf("action[migrateMetaNode],clusterID[%v] migrate from node[%v] to [%s] begin", c.Name, srcAddr, targetAddr)
 	log.LogWarn(msg)
 
@@ -3358,6 +3364,18 @@ func (c *Cluster) setDisableAutoAllocate(disableAutoAllocate bool) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDisableAutoAllocate] err[%v]", err)
 		c.DisableAutoAllocate = oldFlag
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setForbidMpDecommission(isForbid bool) (err error) {
+	oldFlag := c.ForbidMpDecommission
+	c.ForbidMpDecommission = isForbid
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setForbidMpDecommission] err[%v]", err)
+		c.ForbidMpDecommission = oldFlag
 		err = proto.ErrPersistenceByRaft
 		return
 	}

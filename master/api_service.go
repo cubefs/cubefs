@@ -183,6 +183,32 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set DisableAutoAllocate to %v successfully", status)))
 }
 
+func (m *Server) setupForbidMetaPartitionDecommission(w http.ResponseWriter, r *http.Request) {
+	var (
+		status bool
+		err    error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminClusterForbidMpDecommission))
+	defer func() {
+		doStatAndMetric(proto.AdminClusterForbidMpDecommission, metric, err, nil)
+		if err != nil {
+			log.LogErrorf("set ForbidMpDecommission failed, error: %v", err)
+		} else {
+			log.LogInfof("set ForbidMpDecommission to (%v) success", status)
+		}
+	}()
+
+	if status, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setForbidMpDecommission(status); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set ForbidMpDecommission to %v successfully", status)))
+}
+
 // View the topology of the cluster.
 func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetTopologyView))
@@ -439,21 +465,22 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	cv := &proto.ClusterView{
-		Name:                m.cluster.Name,
-		CreateTime:          time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
-		LeaderAddr:          m.leaderInfo.addr,
-		DisableAutoAlloc:    m.cluster.DisableAutoAllocate,
-		MetaNodeThreshold:   m.cluster.cfg.MetaNodeThreshold,
-		Applied:             m.fsm.applied,
-		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
-		MasterNodes:         make([]proto.NodeView, 0),
-		MetaNodes:           make([]proto.NodeView, 0),
-		DataNodes:           make([]proto.NodeView, 0),
-		VolStatInfo:         make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs: make([]proto.BadPartitionView, 0),
+		Name:                 m.cluster.Name,
+		CreateTime:           time.Unix(m.cluster.CreateTime, 0).Format(proto.TimeFormat),
+		LeaderAddr:           m.leaderInfo.addr,
+		DisableAutoAlloc:     m.cluster.DisableAutoAllocate,
+		ForbidMpDecommission: m.cluster.ForbidMpDecommission,
+		MetaNodeThreshold:    m.cluster.cfg.MetaNodeThreshold,
+		Applied:              m.fsm.applied,
+		MaxDataPartitionID:   m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:        m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:   m.cluster.idAlloc.metaPartitionID,
+		MasterNodes:          make([]proto.NodeView, 0),
+		MetaNodes:            make([]proto.NodeView, 0),
+		DataNodes:            make([]proto.NodeView, 0),
+		VolStatInfo:          make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:      make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:  make([]proto.BadPartitionView, 0),
 	}
 
 	vols := m.cluster.allVolNames()

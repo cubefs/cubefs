@@ -196,6 +196,10 @@ errHandler:
 // 4. synchronized create a new meta partition
 // 5. persistent the new host list
 func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition) (err error) {
+	if c.ForbidMpDecommission {
+		err = fmt.Errorf("cluster mataPartition decommission switch is disabled")
+		return
+	}
 	return c.migrateMetaPartition(nodeAddr, "", mp)
 }
 

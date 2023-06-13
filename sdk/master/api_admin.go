@@ -523,6 +523,15 @@ func (api *AdminAPI) IsFreezeCluster(isFreeze bool) (err error) {
 	return
 }
 
+func (api *AdminAPI) SetForbidMpDecommission(disable bool) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminClusterForbidMpDecommission)
+	request.addParam("enable", strconv.FormatBool(disable))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetMetaNodeThreshold)
 	request.addParam("threshold", strconv.FormatFloat(threshold, 'f', 6, 64))
