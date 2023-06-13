@@ -39,6 +39,7 @@ func (cmd *CubeFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command 
 		newClusterFreezeCmd(client),
 		newClusterSetThresholdCmd(client),
 		newClusterSetParasCmd(client),
+		newClusterDisableMpDecommissionCmd(client),
 	)
 	return clusterCmd
 }
@@ -54,6 +55,7 @@ const (
 	nodeDeleteWorkerSleepMs       = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey         = "autoRepairRate"
 	nodeMaxDpCntLimit             = "maxDpCntLimit"
+	cmdForbidMpDecommission       = "forbid meta partition decommission"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -219,5 +221,42 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
 
+	return cmd
+}
+
+func newClusterDisableMpDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:       CliOpForbidMpDecommission + " [true|false]",
+		ValidArgs: []string{"true", "false"},
+		Short:     cmdForbidMpDecommission,
+		Args:      cobra.MinimumNArgs(1),
+		Long: `Forbid or allow MetaPartition decommission in the cluster. 
+the forbid flag is false by default when cluster created
+If 'forbid=false', MetaPartition decommission/migrate and MetaNode decommission is allowed.
+If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission is forbidden.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err    error
+				forbid bool
+			)
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			if forbid, err = strconv.ParseBool(args[0]); err != nil {
+				err = fmt.Errorf("Parse bool fail: %v\n", err)
+				return
+			}
+			if err = client.AdminAPI().SetForbidMpDecommission(forbid); err != nil {
+				return
+			}
+			if forbid {
+				stdout("Forbid MetaPartition decommission successful!\n")
+			} else {
+				stdout("Allow MetaPartition decommission successful!\n")
+			}
+		},
+	}
 	return cmd
 }

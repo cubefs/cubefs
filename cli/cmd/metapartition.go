@@ -268,7 +268,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v", err)
+					errout("Error: %v\n", err)
 				}
 			}()
 			address := args[0]

@@ -608,19 +608,20 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 
 func (m *ClusterService) makeClusterView() *proto.ClusterView {
 	cv := &proto.ClusterView{
-		Name:                m.cluster.Name,
-		LeaderAddr:          m.cluster.leaderInfo.addr,
-		DisableAutoAlloc:    m.cluster.DisableAutoAllocate,
-		MetaNodeThreshold:   m.cluster.cfg.MetaNodeThreshold,
-		Applied:             m.cluster.fsm.applied,
-		MaxDataPartitionID:  m.cluster.idAlloc.dataPartitionID,
-		MaxMetaNodeID:       m.cluster.idAlloc.commonID,
-		MaxMetaPartitionID:  m.cluster.idAlloc.metaPartitionID,
-		MetaNodes:           make([]proto.NodeView, 0),
-		DataNodes:           make([]proto.NodeView, 0),
-		VolStatInfo:         make([]*proto.VolStatInfo, 0),
-		BadPartitionIDs:     make([]proto.BadPartitionView, 0),
-		BadMetaPartitionIDs: make([]proto.BadPartitionView, 0),
+		Name:                 m.cluster.Name,
+		LeaderAddr:           m.cluster.leaderInfo.addr,
+		DisableAutoAlloc:     m.cluster.DisableAutoAllocate,
+		ForbidMpDecommission: m.cluster.ForbidMpDecommission,
+		MetaNodeThreshold:    m.cluster.cfg.MetaNodeThreshold,
+		Applied:              m.cluster.fsm.applied,
+		MaxDataPartitionID:   m.cluster.idAlloc.dataPartitionID,
+		MaxMetaNodeID:        m.cluster.idAlloc.commonID,
+		MaxMetaPartitionID:   m.cluster.idAlloc.metaPartitionID,
+		MetaNodes:            make([]proto.NodeView, 0),
+		DataNodes:            make([]proto.NodeView, 0),
+		VolStatInfo:          make([]*proto.VolStatInfo, 0),
+		BadPartitionIDs:      make([]proto.BadPartitionView, 0),
+		BadMetaPartitionIDs:  make([]proto.BadPartitionView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
