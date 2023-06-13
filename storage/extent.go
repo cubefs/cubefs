@@ -352,9 +352,6 @@ func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 	if int(size)%PageSize != 0 {
 		size += int64(PageSize - int(size)%PageSize)
 	}
-	if int(size)%PageSize != 0 {
-		return false, ParameterMismatchError
-	}
 
 	newOffset, err := e.file.Seek(offset, SEEK_DATA)
 	if err != nil {
