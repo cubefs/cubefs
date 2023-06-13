@@ -89,6 +89,7 @@ Starting from v3.3.0, consumer groups are supported. For previous versions, plea
 {
   "broker_list": ["127.0.0.1:9095","127.0.0.1:9095","127.0.0.1:9095"],
   "fail_msg_sender_timeout_ms": 1000,
+  "commit_interval_ms": 1000,
   "topics": {
     "shard_repair": [
       "shard_repair",
@@ -200,9 +201,8 @@ Starting from version v3.3.0, concurrent disk repair is supported.
 ```json
 {
   "task_pool_size": 10,
-  "normal_handle_batch_cnt": 500,
-  "fail_handle_batch_cnt": 100,
-  "fail_msg_consume_interval_ms": 10000,
+  "message_punish_threshold": 3,
+  "message_punish_time_m": 10,
   "orphan_shard_log": {
     "dir": "/home/service/scheduler/_package/orphan_shard_log",
     "chunkbits": 29
@@ -225,9 +225,8 @@ Starting from version v3.3.0, it is supported to configure the data deletion tim
 ```json
 {
   "task_pool_size": 400,
-  "normal_handle_batch_cnt": 1000,
-  "fail_handle_batch_cnt": 1000,
-  "fail_msg_consume_interval_ms": 6000,
+  "message_punish_threshold": 3,
+  "message_punish_time_m": 10,
   "safe_delay_time_h": 12,
   "delete_hour_range": {
     "from": 1,
