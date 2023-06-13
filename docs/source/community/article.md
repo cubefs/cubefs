@@ -2,6 +2,7 @@
 
 ## Getting Started Series
 
+- [Ten-minute introduction to CubeFS | Master Object Storage](https://mp.weixin.qq.com/s/DZ65u7MMZep5mM3wadrTYw) , 2023-05-23, Chi He
 - [Ten-minute introduction to CubeFS | BlobStore Cross-AZ Deployment](https://mp.weixin.qq.com/s/HEgeVRITyoMF93fm3mXmqA), May 9, 2023, Storage Team@0PP0
 - [Ten-minute introduction to CubeFS | Easily Master CubeFS Object Storage Permission Control](https://mp.weixin.qq.com/s/dJ2e5XDyVth3HL1UWR7fvw) , April 25, 2023，Storage Team @OPPO
 - [Ten-minute introduction to CubeFS | Cross-platform use based on FTP, NFS, and SMB](https://mp.weixin.qq.com/s/PyOwFzOSZK0pe6Xd0MnHJQ) , April 18, 2023，Storage Team @OPPO
@@ -13,6 +14,8 @@
 
 ## Best Practices
 
+- [Open-source Monitoring Solution for Clusters](https://mp.weixin.qq.com/s/QtO-ORwdanATR9hXwp-YMQ) , 2023-06-06, Ke Zhang
+- [CubeFS Autofs Practice](https://mp.weixin.qq.com/s/Y-M1K9_5NkJGQVPbJIpJyA) ， 2023-05-16，Liangliang Tang
 - [Create the future with CubeFS: BIGO's Practice and Thinking](https://mp.weixin.qq.com/s/X5c14U55O2g0bT3bxJWFbg), May 5, 2023, Bingxing Liu@BIGO
 - [How CubeFS Accelerates AI Training 3x in OPPO Hybrid Cloud Platform](https://mp.weixin.qq.com/s/9el9S66eDhqAKU2vvpJW3Q), March 30, 2023, Storage Team @OPPO
 - [Erasure Coding Mode Selection](https://mp.weixin.qq.com/s/v-fFJZtDY2_9loHWAnPXqA), December 15, 2022, Storage Team @OPPO
@@ -22,6 +25,7 @@
 
 ## Technical Insights
 
+- [CubeFS Original Solution丨Native HDFS Protocol Access Support](https://mp.weixin.qq.com/s/vw9O9ssHIWDIozjYkoy8IA) , 2023-05-31, Tianjiong,Zhang
 - [CubeFS Original Solution | Volume Level Flow Control Solution](https://mp.weixin.qq.com/s/ytBvK3MazOzm3uDtzRBwaw) ,April 13, 2023，Storage Team @OPPO
 - [CubeFS Source Code Interpretation | State Management of Data Partition and replica](https://mp.weixin.qq.com/s/ICpXE3e1Vu497hmvUyzI5Q), April 6, 2023，Storage Team @OPPO
 - [CubeFS Source Code Interpretation | Replica Subsystem](https://mp.weixin.qq.com/s/Ryw4BLlVoysX5jeNFLpdig), March 23, 2023, Storage Team @OPPO
