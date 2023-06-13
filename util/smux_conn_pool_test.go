@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/xtaci/smux"
 	"io"
 	"log"
 	"math/rand"
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/xtaci/smux"
 )
 
 func init() {
@@ -232,7 +233,7 @@ func TestWriteTo(t *testing.T) {
 		t.Fatal("WriteTo nw mismatch", nw)
 	}
 
-	if bytes.Compare(sndbuf, rcvbuf.Bytes()) != 0 {
+	if !bytes.Equal(sndbuf, rcvbuf.Bytes()) {
 		t.Fatal("mismatched echo bytes")
 	}
 }
@@ -305,7 +306,7 @@ func TestWriteToV2(t *testing.T) {
 		t.Fatal("WriteTo nw mismatch", nw)
 	}
 
-	if bytes.Compare(sndbuf, rcvbuf.Bytes()) != 0 {
+	if !bytes.Equal(sndbuf, rcvbuf.Bytes()) {
 		t.Fatal("mismatched echo bytes")
 	}
 }
@@ -552,7 +553,6 @@ func TestKeepAliveTimeout(t *testing.T) {
 		default:
 			t.Fatal(err)
 		}
-		return
 	}
 	pool := NewSmuxConnectPool(cfg)
 	wg := sync.WaitGroup{}
@@ -697,7 +697,6 @@ func BenchmarkGetConn(b *testing.B) {
 	for _, s := range created {
 		pool.PutConnect(s, true)
 	}
-	return
 }
 
 func BenchmarkParallelGetConn(b *testing.B) {
@@ -713,14 +712,11 @@ func BenchmarkParallelGetConn(b *testing.B) {
 	wg := sync.WaitGroup{}
 	wg.Add(par)
 	go func() {
-		for {
-			select {
-			case <-closeCh:
-				wg.Wait()
-				close(created)
-				stop()
-				return
-			}
+		for range closeCh {
+			wg.Wait()
+			close(created)
+			stop()
+			return
 		}
 	}()
 	for i := 0; i < par; i++ {
@@ -734,7 +730,7 @@ func BenchmarkParallelGetConn(b *testing.B) {
 					if stream, err := pool.GetConnect(addr); err == nil {
 						created <- stream
 					} else {
-						b.Fatal(err)
+						panic(err)
 					}
 				}
 			}
@@ -750,7 +746,6 @@ func BenchmarkParallelGetConn(b *testing.B) {
 		}
 		pool.PutConnect(stream, true)
 	}
-	return
 }
 
 func BenchmarkConnSmux(b *testing.B) {

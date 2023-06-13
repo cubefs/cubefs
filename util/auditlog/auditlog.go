@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,8 +40,6 @@ const (
 )
 
 var DefaultTimeOutUs = [3]uint32{100000, 500000, 1000000}
-
-var re = regexp.MustCompile(`\([0-9]*\)`)
 
 type ShiftedFile []os.FileInfo
 
@@ -106,7 +103,6 @@ type Audit struct {
 
 var gAdt *Audit = nil
 var AdtMutex sync.RWMutex
-var once sync.Once
 
 func getAddr() (HostName, IPAddr string) {
 	hostName, err := os.Hostname()
@@ -294,6 +290,7 @@ func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	_ = os.Chmod(dir, 0766)
 	logName := path.Join(dir, Audit_Module) + ".log"
 	audit := &Audit{
+		volName:          "",
 		hostName:         host,
 		ipAddr:           ip,
 		logDir:           dir,

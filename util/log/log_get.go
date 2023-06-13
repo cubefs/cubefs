@@ -39,12 +39,6 @@ const (
 	defaultLogLine = 100
 )
 
-type logView struct {
-	logLevel  string
-	getLogNum int
-	logText   []string
-}
-
 // HTTPReply uniform response structure
 type HTTPReply struct {
 	Code int32       `json:"code"`
@@ -114,8 +108,6 @@ func GetLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOKReply(w, r, msg, data)
-
-	return
 }
 
 func tailn(line int, file *os.File) (data []string, err error) {
@@ -200,15 +192,10 @@ func sendOKReply(w http.ResponseWriter, r *http.Request, msg string, data interf
 	}
 
 	send(w, r, httpReply)
-
-	return
 }
 
 func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
-	if _, err := w.Write(reply); err != nil {
-		return
-	}
-	return
+	w.Write(reply)
 }

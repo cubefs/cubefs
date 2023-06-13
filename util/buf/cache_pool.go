@@ -1,11 +1,12 @@
 package buf
 
 import (
-	"github.com/cubefs/cubefs/util"
-	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
+	"context"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/util"
+	"golang.org/x/time/rate"
 )
 
 var cacheTotalLimit int64

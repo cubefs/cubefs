@@ -104,7 +104,6 @@ func (c *Caps) Delete(caps *Caps) {
 	c.API = deleteCaps(c.API, caps.API)
 	c.OwnerVOL = deleteCaps(c.OwnerVOL, caps.OwnerVOL)
 	c.NoneOwnerVOL = deleteCaps(c.NoneOwnerVOL, caps.NoneOwnerVOL)
-	return
 }
 
 func deleteCaps(caps []string, deleteCaps []string) []string {
@@ -126,7 +125,6 @@ func (c *Caps) cleanDup() {
 	c.API = cleanCaps(c.API)
 	c.OwnerVOL = cleanCaps(c.OwnerVOL)
 	c.NoneOwnerVOL = cleanCaps(c.NoneOwnerVOL)
-	return
 }
 
 func cleanCaps(caps []string) []string {
@@ -137,7 +135,7 @@ func cleanCaps(caps []string) []string {
 		key1 := a[0]
 		key2 := a[1] + ":" + a[2]
 		if _, ok := m[key1]; !ok {
-			m[key1] = make(map[string]bool, 0)
+			m[key1] = make(map[string]bool)
 		}
 		if _, ok := m[key1][key2]; !ok {
 			newCaps = append(newCaps, cap)

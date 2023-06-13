@@ -2,9 +2,10 @@ package exporter
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"sync"
 )
 
 var (
@@ -30,7 +31,6 @@ type Histogram struct {
 	name   string
 	labels map[string]string
 	val    float64
-	ch     chan interface{}
 }
 
 func (c *Histogram) Key() (key string) {

@@ -95,10 +95,7 @@ func setBlobLogLevel(loglevel Level) {
 		blevel = blog.Lwarn
 	case ErrorLevel:
 		blevel = blog.Lerror
-	default:
-		blevel = blog.Lwarn
 	}
-
 	blog.SetOutputLevel(blevel)
 }
 
@@ -261,7 +258,6 @@ type Log struct {
 	criticalLogger *LogObject
 	qosLogger      *LogObject
 	level          Level
-	msgC           chan string
 	rotate         *LogRotate
 	lastRolledTime time.Time
 }
