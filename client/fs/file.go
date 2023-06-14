@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -22,8 +23,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
