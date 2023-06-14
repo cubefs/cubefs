@@ -107,10 +107,12 @@ func (cache *ExtentCache) Del(extentID uint64) {
 
 // Clear closes all the extents stored in the cache.
 func (cache *ExtentCache) Clear() {
+	cache.tinyLock.RLock()
 	for _, extent := range cache.tinyExtents {
-
 		extent.Close()
 	}
+	cache.tinyLock.RUnlock()
+
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
 	for e := cache.extentList.Front(); e != nil; {
@@ -153,9 +155,13 @@ func (cache *ExtentCache) evict() {
 
 // Flush synchronizes the extent stored in the cache to the disk.
 func (cache *ExtentCache) Flush() {
+
+	cache.tinyLock.RLock()
 	for _, extent := range cache.tinyExtents {
 		extent.Flush()
 	}
+	cache.tinyLock.RUnlock()
+
 	cache.lock.RLock()
 	defer cache.lock.RUnlock()
 	for _, item := range cache.extentMap {
