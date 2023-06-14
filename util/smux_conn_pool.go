@@ -391,7 +391,7 @@ func (p *SmuxPool) callCreate() (createCall *createSessCall) {
 		} else {
 			return
 		}
-	default:
+		//default:
 	}
 tryCreateNewSess:
 	prev := createCall
