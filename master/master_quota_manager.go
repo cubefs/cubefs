@@ -16,7 +16,6 @@ package master
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -35,8 +34,7 @@ type MasterQuotaManager struct {
 	sync.RWMutex
 }
 
-func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (err error) {
-	var quotaId uint32
+func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (quotaId uint32, err error) {
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
 
@@ -62,13 +60,12 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 	}
 
 	if quotaId, err = mqMgr.c.idAlloc.allocateQuotaID(); err != nil {
-		return err
+		return
 	}
 
 	var quotaInfo = &proto.QuotaInfo{
 		VolName:   req.VolName,
 		QuotaId:   quotaId,
-		Status:    proto.QuotaInit,
 		CTime:     time.Now().Unix(),
 		PathInfos: make([]proto.QuotaPathInfo, 0, 0),
 		MaxFiles:  req.MaxFiles,
@@ -95,20 +92,20 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 		return
 	}
 
-	for _, pathInfo := range req.PathInfos {
-		var inodes = make([]uint64, 0)
-		inodes = append(inodes, pathInfo.RootInode)
-		request := &proto.BatchSetMetaserverQuotaReuqest{
-			PartitionId: pathInfo.PartitionId,
-			Inodes:      inodes,
-			QuotaId:     quotaId,
-		}
+	// for _, pathInfo := range req.PathInfos {
+	// 	var inodes = make([]uint64, 0)
+	// 	inodes = append(inodes, pathInfo.RootInode)
+	// 	request := &proto.BatchSetMetaserverQuotaReuqest{
+	// 		PartitionId: pathInfo.PartitionId,
+	// 		Inodes:      inodes,
+	// 		QuotaId:     quotaId,
+	// 	}
 
-		if err = mqMgr.setQuotaToMetaNode(request); err != nil {
-			log.LogErrorf("create quota [%v] to metanode fail [%v].", quotaInfo, err)
-			return
-		}
-	}
+	// 	if err = mqMgr.setQuotaToMetaNode(request); err != nil {
+	// 		log.LogErrorf("create quota [%v] to metanode fail [%v].", quotaInfo, err)
+	// 		return
+	// 	}
+	// }
 	mqMgr.IdQuotaInfoMap[quotaId] = quotaInfo
 
 	log.LogInfof("create quota [%v] success.", quotaInfo)
@@ -182,14 +179,13 @@ func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
 		return
 	}
 
-	quotaInfo.Status = proto.QuotaDeleting
 	var value []byte
 	if value, err = json.Marshal(quotaInfo); err != nil {
 		log.LogErrorf("delete quota [%v] marsha1 fail [%v].", quotaInfo, err)
 		return
 	}
 	metadata := new(RaftCmd)
-	metadata.Op = opSyncSetQuota
+	metadata.Op = opSyncDeleteQuota
 	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaInfo.QuotaId), 10)
 	metadata.V = value
 
@@ -197,81 +193,9 @@ func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
 		log.LogErrorf("delete quota [%v] submit fail [%v].", quotaInfo, err)
 		return
 	}
-	for _, pathInfo := range quotaInfo.PathInfos {
-		var inodes = make([]uint64, 0)
-		inodes = append(inodes, pathInfo.RootInode)
-		request := &proto.BatchDeleteMetaserverQuotaReuqest{
-			PartitionId: pathInfo.PartitionId,
-			Inodes:      inodes,
-			QuotaId:     quotaInfo.QuotaId,
-		}
 
-		if err = mqMgr.DeleteQuotaToMetaNode(request); err != nil {
-			log.LogErrorf("delete quota [%v] to metanode fail [%v].", quotaInfo, err)
-			return
-		}
-	}
 	delete(mqMgr.IdQuotaInfoMap, quotaInfo.QuotaId)
 	log.LogInfof("deleteQuota: idmap len [%v]", len(mqMgr.IdQuotaInfoMap))
-	return
-}
-
-func (mqMgr *MasterQuotaManager) setQuotaToMetaNode(req *proto.BatchSetMetaserverQuotaReuqest) (err error) {
-	var (
-		mp   *MetaPartition
-		mr   *MetaReplica
-		node *MetaNode
-	)
-
-	if mp, err = mqMgr.c.getMetaPartitionByID(req.PartitionId); err != nil {
-		log.LogErrorf("get metaPartition fail mpid [%v].", req.PartitionId)
-		return
-	}
-
-	if mr, err = mp.getMetaReplicaLeader(); err != nil {
-		log.LogErrorf("get MetaReplica leader fail mpid [%v].", req.PartitionId)
-		return
-	}
-	log.LogInfof("setQuotaToMetaNode success. addr [%v].", mr.Addr)
-	if node, err = mqMgr.c.metaNode(mr.Addr); err != nil {
-		log.LogErrorf("get mp leader metanode fail mpid [%v].", req.PartitionId)
-		return
-	}
-	tasks := make([]*proto.AdminTask, 0)
-	task := node.setQuotaTask(req)
-	tasks = append(tasks, task)
-	mqMgr.c.addMetaNodeTasks(tasks)
-	log.LogInfof("setQuotaToMetaNode success. req [%v] node[%v].", req, node)
-	return
-}
-
-func (mqMgr *MasterQuotaManager) DeleteQuotaToMetaNode(req *proto.BatchDeleteMetaserverQuotaReuqest) (err error) {
-	var (
-		mp   *MetaPartition
-		mr   *MetaReplica
-		node *MetaNode
-	)
-
-	if mp, err = mqMgr.c.getMetaPartitionByID(req.PartitionId); err != nil {
-		log.LogErrorf("get metaPartition fail mpid [%v].", req.PartitionId)
-		return
-	}
-
-	if mr, err = mp.getMetaReplicaLeader(); err != nil {
-		log.LogErrorf("get MetaReplica leader fail mpid [%v].", req.PartitionId)
-		return
-	}
-
-	if node, err = mqMgr.c.metaNode(mr.Addr); err != nil {
-		log.LogErrorf("get mp leader metanode fail mpid [%v].", req.PartitionId)
-		return
-	}
-
-	tasks := make([]*proto.AdminTask, 0)
-	task := node.deleteQuotaTask(req)
-	tasks = append(tasks, task)
-	mqMgr.c.addMetaNodeTasks(tasks)
-	log.LogInfof("DeleteQuotaToMetaNode add task. req [%v] node[%v].", req, node)
 	return
 }
 
@@ -376,8 +300,4 @@ func (mqMgr *MasterQuotaManager) HasQuota() bool {
 		return false
 	}
 	return true
-}
-
-func resetQuotaTaskID(t *proto.AdminTask, quotaId uint32, inodeId uint64) {
-	t.ID = fmt.Sprintf("%v_quota[%v]_inode[%v]", t.ID, quotaId, inodeId)
 }

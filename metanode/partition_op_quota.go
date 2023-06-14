@@ -22,7 +22,7 @@ import (
 )
 
 func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
-	resp *proto.BatchSetMetaserverQuotaResponse, rootInode bool) (err error) {
+	resp *proto.BatchSetMetaserverQuotaResponse) (err error) {
 	for _, ino := range req.Inodes {
 		var isExist bool
 		var extend = NewExtend(ino)
@@ -39,7 +39,7 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 		}
 		var quotaInfo = &proto.MetaQuotaInfo{
-			RootInode: rootInode,
+			RootInode: req.IsRoot,
 		}
 
 		if treeItem == nil {
@@ -80,15 +80,6 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 		if !isExist {
 			mp.mqMgr.updateUsedInfo(int64(inode.Size), 1, req.QuotaId)
 		}
-		// if proto.IsDir(inode.Type) {
-		// 	if !mp.manager.QuotaGoroutineIsOver() {
-		// 		mp.manager.QuotaGoroutineInc(1)
-		// 		go mp.setSubQuota(ino, req.QuotaId, quotaInfos, true)
-		// 	} else {
-		// 		mp.setSubQuota(ino, req.QuotaId, quotaInfos, false)
-		// 	}
-
-		// }
 	}
 	log.LogInfof("batchSetInodeQuota quotaId [%v] mp [%v] btreeLen [%v] success", req.QuotaId, mp.config.PartitionId, mp.extendTree.Len())
 	resp.Status = proto.TaskSucceeds
@@ -170,14 +161,6 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 			}
 		}
 		mp.mqMgr.updateUsedInfo(-int64(inode.Size), -1, req.QuotaId)
-		// if proto.IsDir(inode.Type) {
-		// 	if !mp.manager.QuotaGoroutineIsOver() {
-		// 		mp.manager.QuotaGoroutineInc(1)
-		// 		go mp.deleteSubQuota(ino, req.QuotaId, quotaInfos, true)
-		// 	} else {
-		// 		mp.deleteSubQuota(ino, req.QuotaId, quotaInfos, false)
-		// 	}
-		// }
 	}
 	log.LogInfof("batchDeleteInodeQuota quotaId [%v] success", req.QuotaId)
 	resp.Status = proto.TaskSucceeds

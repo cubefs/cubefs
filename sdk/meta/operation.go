@@ -2290,7 +2290,7 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 }
 
 func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32,
-	currentGoroutineNum *int32, newGoroutine bool) {
+	currentGoroutineNum *int32, newGoroutine bool, IsRoot bool) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
@@ -2307,6 +2307,7 @@ func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition,
 		PartitionId: mp.PartitionID,
 		Inodes:      inodes,
 		QuotaId:     quotaId,
+		IsRoot:      IsRoot,
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaBatchSetInodeQuota
@@ -2444,12 +2445,20 @@ func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCo
 	if err != nil {
 		return err
 	}
+
+	if first {
+		var rootInodes []uint64
+		rootInodes = append(rootInodes, parentIno)
+		mw.BatchSetInodeQuota_ll(rootInodes, quotaId, true)
+		*totalInodeCount = *totalInodeCount + 1
+	}
+
 	for _, entry := range entries {
 		*inodes = append(*inodes, entry.Inode)
 		*curInodeCount = *curInodeCount + 1
 		*totalInodeCount = *totalInodeCount + 1
 		if *curInodeCount >= maxInodes {
-			mw.BatchSetInodeQuota_ll(*inodes, quotaId)
+			mw.BatchSetInodeQuota_ll(*inodes, quotaId, false)
 			*curInodeCount = 0
 			*inodes = (*inodes)[:0]
 		}
@@ -2462,7 +2471,7 @@ func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCo
 	}
 
 	if first && *curInodeCount > 0 {
-		mw.BatchSetInodeQuota_ll(*inodes, quotaId)
+		mw.BatchSetInodeQuota_ll(*inodes, quotaId, false)
 		*curInodeCount = 0
 		*inodes = (*inodes)[:0]
 	}
@@ -2475,6 +2484,14 @@ func (mw *MetaWrapper) revokeQuota(parentIno uint64, quotaId uint32, totalInodeC
 	if err != nil {
 		return err
 	}
+
+	if first {
+		var rootInodes []uint64
+		rootInodes = append(rootInodes, parentIno)
+		mw.BatchDeleteInodeQuota_ll(rootInodes, quotaId)
+		*totalInodeCount = *totalInodeCount + 1
+	}
+
 	for _, entry := range entries {
 		*inodes = append(*inodes, entry.Inode)
 		*curInodeCount = *curInodeCount + 1
