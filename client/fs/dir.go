@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -24,19 +25,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/auditlog"
-
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 
-	"github.com/cubefs/cubefs/sdk/meta"
-	"github.com/cubefs/cubefs/util/stat"
-
-	"golang.org/x/net/context"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // used to locate the position in parent
