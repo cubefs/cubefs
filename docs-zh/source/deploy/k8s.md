@@ -63,7 +63,7 @@ mkdir /data0
 mount /dev/sdx /data0
 ```
 
-如果机器上存在多个需要挂载的数据磁盘，则每个磁盘按以上步骤进行格式化和挂载磁盘，挂载目录按照`data0/data1/../data999`的顺序命名。
+如果机器上存在多个需要挂载的数据磁盘，则每个磁盘按以上步骤进行格式化和挂载磁盘，挂载目录按照`data0/data1/../data999`的顺序命名。如果没有特殊需求，请按照以上操作将数据盘挂载到 /data<x> 一级目录下，否则在部署时有可能遇到一些不必要的麻烦。 
 
 ## 安装 helm
 
@@ -102,6 +102,8 @@ component:
 
 # path.data: Master、MetaNode 的元数据存储路径，会以 hostPath 的方式存储在宿主机上，建议使用性能较高的底层磁盘
 # path.log: 所有组件的日志在宿主机上的存储路径
+# 注意：path.data 和 path.log 两个目录所在的磁盘不能是一样的，
+# 否则 metanode 容器启动会有问题。
 path:
   data: /var/lib/cubefs
   log: /var/log/cubefs
@@ -128,11 +130,6 @@ datanode:
   disks:
     - /data0:21474836480
     - /data1:21474836480
-
-# CSI 客户端配置
-provisioner:
-  # Kubelet 的主目录
-  kubelet_path: /var/lib/kubelet
 ```
 
 ## 部署

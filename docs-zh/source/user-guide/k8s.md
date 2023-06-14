@@ -173,7 +173,8 @@ csi:
     # StorageClass reclaim policy, 'Delete' or 'Retain' is supported
     reclaimPolicy: "Delete"
     # Override the master address parameter to connect to external cluster
-    # 如果是要连接外部 CubeFS 集群的设置该参数，否则可以忽略
+    # 如果是要连接外部 CubeFS 集群的设置该参数，否则可以忽略。
+    # 为空则默认是使用 “master-service:17010”
     masterAddr: ""
     otherParameters:
 ```
@@ -190,6 +191,103 @@ csi:
 
 ``` bash
 $ helm upgrade --install cubefs ./cubefs -f ./cubefs-csi-helm.yaml -n cubefs --create-namespace
+```
+
+::: warning 注意
+如果之前是根据文档[《快速入门 -> Kubernetes部署》](https://cubefs.io/zh/docs/master/deploy/k8s.html)使用 helm 部署 cubefs 集群，则这一步不能直接用上面的命令进行 helm upgrade 操作，否则将会把之前 helm 的部署内容全部删除。这里需要将上面的 cubefs-csi-helm.yaml 内容添加到之前的 helm yaml 脚本中，然后再执行更新操作。
+:::
+
+例如，之前的 helm 部署脚本是 cubefs-helm.yaml，将 cubefs-csi-helm.yaml 中的内容添加到 cubefs-helm.yaml 后，cubefs-helm.yaml的内容如下：
+
+``` yaml
+# 要安装哪些组件，如果只安装服务端的话保持下方配置即可，如果要安装客户端的话，把 csi 设置为 true
+component:
+  master: true
+  datanode: true
+  metanode: true
+  objectnode: true
+  client: false
+  csi: true
+  monitor: false
+  ingress: true
+
+# path.data: Master、MetaNode 的元数据存储路径，会以 hostPath 的方式存储在宿主机上，建议使用性能较高的底层磁盘
+# path.log: 所有组件的日志在宿主机上的存储路径
+# 注意：path.data 和 path.log 两个目录所在的磁盘不能是一样的，
+# 否则 metanode 容器启动会有问题。
+path:
+  data: /var/lib/cubefs
+  log: /var/log/cubefs
+
+master:
+  # Master 组件实例数量
+  replicas: 3
+  # Master Ingres 配置使用的域名，记得需要将该域名 DNS 解析到 Ingres Controller 的入口，当然也可以不配置，
+  # 在客户端处直接将所有 Master 的 IP + 端口配置上
+  host: master.cubefs.com
+
+objectnode:
+  # ObjectNode 组件实例数量
+  replicas: 3
+  
+metanode:
+  # MetaNode 可以使用的总内存，单位字节，建议设置为机器可以内存的 80%，也可以按需减少
+  total_mem: "26843545600"
+
+datanode:
+  # DataNode 要使用的磁盘，可以挂载多块
+  # 格式: 挂载点:保留的空间
+  # 保留的空间: 单位字节，当磁盘剩余空间小于该值时将不会再在该磁盘上写入数据
+  disks:
+    - /data0:21474836480
+    - /data1:21474836480
+
+image:
+  # CSI related images
+  csi_driver: ghcr.io/cubefs/cfs-csi-driver:3.2.0.150.0
+  csi_provisioner: registry.k8s.io/sig-storage/csi-provisioner:v2.2.2
+  csi_attacher: registry.k8s.io/sig-storage/csi-attacher:v3.4.0
+  csi_resizer: registry.k8s.io/sig-storage/csi-resizer:v1.3.0
+  driver_registrar: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.5.0
+
+csi:
+  driverName: csi.cubefs.com
+  logLevel: error
+  # If you changed the default kubelet home path, this
+  # value needs to be modified accordingly
+  kubeletPath: /var/lib/kubelet
+  controller:
+    tolerations: [ ]
+    nodeSelector:
+      "component.cubefs.io/csi": "enabled"
+  node:
+    tolerations: [ ]
+    nodeSelector:
+      "component.cubefs.io/csi": "enabled"
+    resources:
+      enabled: false
+      requests:
+        memory: "4048Mi"
+        cpu: "2000m"
+      limits:
+        memory: "4048Mi"
+        cpu: "2000m"
+  storageClass:
+    # Whether automatically set this StorageClass to default volume provisioner
+    setToDefault: true
+    # StorageClass reclaim policy, 'Delete' or 'Retain' is supported
+    reclaimPolicy: "Delete"
+    # Override the master address parameter to connect to external cluster
+    # 如果是要连接外部 CubeFS 集群的设置该参数，否则可以忽略。
+    # 为空则默认是使用 “master-service:17010”
+    masterAddr: ""
+    otherParameters:
+```
+
+接着使用如下命令进行 CubeFS 部署：
+
+``` bash
+helm upgrade --install cubefs ./cubefs -f ./cubefs-helm.yaml -n cubefs --create-namespace
 ```
 
 ## 检查 CSI 组件是否部署完成
