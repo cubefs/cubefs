@@ -15,8 +15,10 @@
 package datanode
 
 import (
+	"context"
 	"fmt"
 	syslog "log"
+	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -26,10 +28,7 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
-
-	"os"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"

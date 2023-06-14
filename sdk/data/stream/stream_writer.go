@@ -15,14 +15,13 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"hash/crc32"
 	"net"
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"

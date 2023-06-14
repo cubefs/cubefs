@@ -2,7 +2,7 @@ package manager
 
 import (
 	"container/list"
-	"golang.org/x/net/context"
+	"context"
 	"math"
 	"sync"
 	"sync/atomic"
