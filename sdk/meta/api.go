@@ -1966,7 +1966,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	}
 }
 
-func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32) {
+func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32, IsRoot bool) {
 	var wg sync.WaitGroup
 	var maxGoroutineNum int32 = MaxGoroutineNum
 	var curGoroutineNum int32 = 0
@@ -1987,9 +1987,9 @@ func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32) {
 		if atomic.LoadInt32(&curGoroutineNum) < maxGoroutineNum {
 			wg.Add(1)
 			atomic.AddInt32(&curGoroutineNum, 1)
-			go mw.batchSetInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, true)
+			go mw.batchSetInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, true, IsRoot)
 		} else {
-			mw.batchSetInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, false)
+			mw.batchSetInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, false, IsRoot)
 		}
 	}
 

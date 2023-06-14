@@ -84,18 +84,9 @@ type QuotaReportInfo struct {
 	UsedInfo QuotaUsedInfo
 }
 
-type QuotaStatus uint8
-
-const (
-	QuotaInit QuotaStatus = iota
-	QuotaComplete
-	QuotaDeleting
-) // quotaInfo status
-
 type QuotaInfo struct {
 	VolName     string
 	QuotaId     uint32
-	Status      QuotaStatus
 	CTime       int64
 	PathInfos   []QuotaPathInfo
 	LimitedInfo QuotaLimitedInfo
