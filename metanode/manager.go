@@ -240,10 +240,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opTxUpdateDentry(conn, p, remoteAddr)
 	case proto.OpMetaTxLinkInode:
 		err = m.opTxMetaLinkInode(conn, p, remoteAddr)
-	case proto.OpMasterSetInodeQuota:
-		err = m.OpMasterSetInodeQuota(conn, p, remoteAddr)
-	case proto.OpMasterDeleteInodeQuota:
-		err = m.OpMasterDeleteInodeQuota(conn, p, remoteAddr)
+	// case proto.OpMasterSetInodeQuota:
+	// 	err = m.OpMasterSetInodeQuota(conn, p, remoteAddr)
+	// case proto.OpMasterDeleteInodeQuota:
+	// 	err = m.OpMasterDeleteInodeQuota(conn, p, remoteAddr)
 	case proto.OpMetaBatchSetInodeQuota:
 		err = m.opMetaBatchSetInodeQuota(conn, p, remoteAddr)
 	case proto.OpMetaBatchDeleteInodeQuota:
