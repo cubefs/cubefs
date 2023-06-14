@@ -421,7 +421,7 @@ type OpQuota interface {
 	setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
 	getQuotaReportInfos() (infos []*proto.QuotaReportInfo)
 	batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
-		resp *proto.BatchSetMetaserverQuotaResponse, rootInode bool) (err error)
+		resp *proto.BatchSetMetaserverQuotaResponse) (err error)
 	batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQuotaReuqest,
 		resp *proto.BatchDeleteMetaserverQuotaResponse) (err error)
 	getInodeQuota(inode uint64, p *Packet) (err error)
