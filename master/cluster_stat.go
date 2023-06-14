@@ -265,9 +265,9 @@ func (c *Cluster) handleDataNodeHeartbeatPbResponse(nodeAddr string, taskPb *pro
 		dataNode *DataNode
 	)
 	task := taskPb.ConvertToView()
-	log.LogDebugf("action[handleDataNodeHeartbeatPbResponse] receive addr[%v] task response:%v", nodeAddr, task.ToString())
 
 	response := taskPb.DataNodeResponse.ConvertToView()
+	log.LogDebugf("action[handleDataNodeHeartbeatPbResponse] receive addr[%v] task[%v] response:[%v]", nodeAddr, task.ToString(), response)
 	if dataNode, err = c.dataNode(nodeAddr); err != nil {
 		goto errHandler
 	}

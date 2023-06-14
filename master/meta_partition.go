@@ -48,6 +48,7 @@ type MetaReplica struct {
 	ApplyId           uint64
 	AllocatorInUseCnt uint64
 	metaNode          *MetaNode
+	createTime        int64
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -85,6 +86,7 @@ func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	mr = &MetaReplica{start: start, end: end, nodeID: metaNode.ID, Addr: metaNode.Addr}
 	mr.metaNode = metaNode
 	mr.ReportTime = time.Now().Unix()
+	mr.createTime = time.Now().Unix()
 	return
 }
 
@@ -309,8 +311,8 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
 		allLiveReplicas := mp.getAllLiveReplicas()
 		inactiveAddrs := mp.getInactiveAddrsFromLiveReplicas(allLiveReplicas)
-		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v,learnerNum:%v,replicas:%v,persistenceHosts:%v inactiveAddrs:%v",
-			mp.PartitionID, mp.Status, mp.ReplicaNum, mp.LearnerNum, len(allLiveReplicas), mp.Hosts, inactiveAddrs)
+		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v, replicas:%v learnerNum:%v,replicas:%v,persistenceHosts:%v inactiveAddrs:%v",
+			mp.PartitionID, mp.Status, mp.ReplicaNum, len(mp.Replicas), mp.LearnerNum, len(allLiveReplicas), mp.Hosts, inactiveAddrs)
 		log.LogInfo(msg)
 		Warn(clusterID, msg)
 	}
@@ -748,8 +750,17 @@ func (mr *MetaReplica) isMissing() (miss bool) {
 }
 
 func (mr *MetaReplica) isActive() (active bool) {
-	return mr.metaNode.IsActive && mr.Status != proto.Unavailable &&
-		time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
+	active = mr.metaNode.IsActive && time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
+	if time.Now().Unix()-mr.createTime > defaultMetaReplicaCheckStatusSec {
+		active = active && mr.Status != proto.Unavailable
+	}
+
+	if !active {
+		log.LogInfof("metaNode.IsActive:%v mr.Status:%v diffReportTime:%v",
+			mr.metaNode.IsActive, mr.Status, time.Now().Unix()-mr.ReportTime)
+	}
+
+	return
 }
 
 func (mr *MetaReplica) setLastReportTime() {
@@ -757,6 +768,7 @@ func (mr *MetaReplica) setLastReportTime() {
 }
 
 func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
+	log.LogWarnf("updateMetric mp:%v status:%v", mgr.PartitionID, mgr.Status)
 	mr.Status = (int8)(mgr.Status)
 	mr.IsLeader = mgr.IsLeader
 	mr.MaxInodeID = mgr.MaxInodeID
