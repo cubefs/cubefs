@@ -599,7 +599,7 @@ func (api *AdminAPI) ListQuota(volName string) (quotaInfo []*proto.QuotaInfo, er
 	return quotaInfo, err
 }
 
-func (api *AdminAPI) CreateQuota(volName string, quotaPathInfos []proto.QuotaPathInfo, maxFiles uint64, maxBytes uint64) (err error) {
+func (api *AdminAPI) CreateQuota(volName string, quotaPathInfos []proto.QuotaPathInfo, maxFiles uint64, maxBytes uint64) (quotaId uint32, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QuotaCreate)
 	request.addParam("name", volName)
 	request.addParam("maxFiles", strconv.FormatUint(maxFiles, 10))
@@ -610,7 +610,12 @@ func (api *AdminAPI) CreateQuota(volName string, quotaPathInfos []proto.QuotaPat
 		return
 	}
 	request.addBody(value)
-	if _, err = api.mc.serveRequest(request); err != nil {
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		log.LogErrorf("action[CreateQuota] fail. %v", err)
+		return
+	}
+	if err = json.Unmarshal(data, &quotaId); err != nil {
 		log.LogErrorf("action[CreateQuota] fail. %v", err)
 		return
 	}

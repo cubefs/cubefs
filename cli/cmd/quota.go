@@ -146,13 +146,13 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 				quotaPathInfo.PartitionId = mp.PartitionID
 				quotaPathInofs = append(quotaPathInofs, quotaPathInfo)
 			}
-
-			if err = client.AdminAPI().CreateQuota(volName, quotaPathInofs, maxFiles, maxBytes); err != nil {
+			var quotaId uint32
+			if quotaId, err = client.AdminAPI().CreateQuota(volName, quotaPathInofs, maxFiles, maxBytes); err != nil {
 				stdout("volName %v path %v quota create failed(%v)\n", volName, fullPath, err)
 				return
 			}
-			stdout("createQuota: volName %v path %v  maxFiles %v maxBytes %v success.\n",
-				volName, fullPath, maxFiles, maxBytes)
+			stdout("createQuota: volName %v path %v  maxFiles %v maxBytes %v quotaId %v success.\n",
+				volName, fullPath, maxFiles, maxBytes, quotaId)
 		},
 	}
 	cmd.Flags().Uint64Var(&maxFiles, CliFlagMaxFiles, cmdQuotaDefaultMaxFiles, "Specify quota max files")

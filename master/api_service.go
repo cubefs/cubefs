@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/iputil"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -27,6 +26,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/iputil"
 
 	"golang.org/x/time/rate"
 
@@ -4651,8 +4652,9 @@ func (m *Server) getConfig(key string) (value string, err error) {
 func (m *Server) CreateQuota(w http.ResponseWriter, r *http.Request) {
 	var req = &proto.SetMasterQuotaReuqest{}
 	var (
-		err error
-		vol *Vol
+		err     error
+		vol     *Vol
+		quotaId uint32
 	)
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.QuotaCreate))
@@ -4671,13 +4673,12 @@ func (m *Server) CreateQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = vol.quotaManager.createQuota(req); err != nil {
+	if quotaId, err = vol.quotaManager.createQuota(req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
-	msg := fmt.Sprintf("create quota successfully, req %v", req)
-	sendOkReply(w, r, newSuccessHTTPReply(msg))
+	sendOkReply(w, r, newSuccessHTTPReply(&quotaId))
 }
 
 func (m *Server) UpdateQuota(w http.ResponseWriter, r *http.Request) {

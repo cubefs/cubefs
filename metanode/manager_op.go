@@ -1918,90 +1918,6 @@ func (m *metadataManager) opTxCreateInode(conn net.Conn, p *Packet,
 	return
 }
 
-func (m *metadataManager) OpMasterSetInodeQuota(conn net.Conn, p *Packet, remote string) (err error) {
-	req := &proto.BatchSetMetaserverQuotaReuqest{}
-	adminTask := &proto.AdminTask{
-		Request: req,
-	}
-
-	log.LogInfof("[OpMasterSetInodeQuota] req [%v] start.", req)
-	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
-	decode.UseNumber()
-	if err = decode.Decode(adminTask); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		log.LogErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return err
-	}
-	log.LogInfof("[OpMasterSetInodeQuota] req [%v] decode req.", req)
-	mp, err := m.getPartition(req.PartitionId)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[OpMasterSetInodeQuota] req: %v, resp: %v", req, err.Error())
-		return
-	}
-
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-
-	m.responseAckOKToMaster(conn, p)
-
-	resp := &proto.BatchSetMetaserverQuotaResponse{
-		PartitionId: req.PartitionId,
-		QuotaId:     req.QuotaId,
-	}
-	err = mp.batchSetInodeQuota(req, resp, true)
-	adminTask.Response = resp
-	adminTask.Request = nil
-	_ = m.respondToMaster(adminTask)
-
-	log.LogInfof("[OpMasterSetInodeQuota] req [%v] resp [%v] success.", req, resp)
-	return
-}
-
-func (m *metadataManager) OpMasterDeleteInodeQuota(conn net.Conn, p *Packet, remote string) (err error) {
-	req := &proto.BatchDeleteMetaserverQuotaReuqest{}
-	adminTask := &proto.AdminTask{
-		Request: req,
-	}
-
-	log.LogInfof("[OpMasterDeleteInodeQuota] req [%v] start.", req)
-	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
-	decode.UseNumber()
-	if err = decode.Decode(adminTask); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		log.LogErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return err
-	}
-	log.LogInfof("[OpMasterDeleteInodeQuota] req [%v] decode req.", req)
-	mp, err := m.getPartition(req.PartitionId)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[OpMasterDeleteInodeQuota] req: %v, resp: %v", req, err.Error())
-		return
-	}
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-
-	m.responseAckOKToMaster(conn, p)
-
-	resp := &proto.BatchDeleteMetaserverQuotaResponse{
-		PartitionId: req.PartitionId,
-		QuotaId:     req.QuotaId,
-	}
-	err = mp.batchDeleteInodeQuota(req, resp)
-	adminTask.Response = resp
-	adminTask.Request = nil
-	_ = m.respondToMaster(adminTask)
-	log.LogInfof("[OpMasterDeleteInodeQuota] req [%v] resp [%v] success.", req, resp)
-	return err
-}
-
 func (m *metadataManager) opMetaBatchSetInodeQuota(conn net.Conn, p *Packet, remote string) (err error) {
 	req := &proto.BatchSetMetaserverQuotaReuqest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
@@ -2018,8 +1934,7 @@ func (m *metadataManager) opMetaBatchSetInodeQuota(conn net.Conn, p *Packet, rem
 		err = errors.NewErrorf("[opMetaBatchSetInodeQuota] req: %v, resp: %v", req, err.Error())
 		return
 	}
-	// leaderAddr, ok := mp.IsLeader()
-	// log.LogInfof("[opMetaBatchSetInodeQuota] mp [%v] isLeader [%v] leader[%v]", mp, ok, leaderAddr)
+
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
@@ -2027,7 +1942,7 @@ func (m *metadataManager) opMetaBatchSetInodeQuota(conn net.Conn, p *Packet, rem
 		PartitionId: req.PartitionId,
 		QuotaId:     req.QuotaId,
 	}
-	err = mp.batchSetInodeQuota(req, resp, false)
+	err = mp.batchSetInodeQuota(req, resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
