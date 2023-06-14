@@ -460,7 +460,7 @@ func TestSmuxConnectPool_GetStat(t *testing.T) {
 		if stat.TotalStreams != streamCnt {
 			t.Fatal("stat.TotalStreams not correct!")
 		}
-		if stat.TotalSessions > pool.cfg.ConnsPerAddr+5 {
+		if stat.TotalSessions > pool.cfg.ConnsPerAddr {
 			t.Fatal("too much connections!")
 		}
 		for _, s := range streams {
@@ -494,6 +494,88 @@ func TestConcurrentPutConn(t *testing.T) {
 			wg.Done()
 		}(stream)
 	}
+	wg.Wait()
+}
+
+func TestConcurrentGetConn(t *testing.T) {
+	pool := newPool()
+	addr, stop, err := setupServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	numStreams := 10000
+	streamsCh := make(chan *smux.Stream, numStreams)
+	var wg sync.WaitGroup
+	wg.Add(numStreams)
+
+	for i := 0; i < numStreams; i++ {
+		go func() {
+			defer wg.Done()
+			stream, err := pool.GetConnect(addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			streamsCh <- stream
+		}()
+	}
+
+	wg.Wait()
+	if len(streamsCh) != numStreams {
+		t.Fatalf("stream ch not correct, want %d, got %d", numStreams, len(streamsCh))
+	}
+
+	stat := pool.GetStat()
+	output, _ := json.MarshalIndent(stat, "", "\t")
+	t.Logf("streamCnt:%d, stat:%s", numStreams, string(output))
+
+	if stat.TotalStreams != numStreams {
+		t.Fatalf("stat total streams not right, want %d, got %d", numStreams, stat.TotalStreams)
+	}
+
+	if stat.TotalSessions > pool.cfg.ConnsPerAddr {
+		t.Fatalf("sessions is too big, expect %d, got %d", pool.cfg.ConnsPerAddr, stat.TotalSessions)
+	}
+
+	close(streamsCh)
+	for stream := range streamsCh {
+		pool.PutConnect(stream, true)
+	}
+
+}
+
+func TestConcurrentGetPutConn(t *testing.T) {
+	pool := newPool()
+	addr, stop, err := setupServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	numStreams := 10000
+	var wg sync.WaitGroup
+	wg.Add(numStreams)
+
+	for i := 0; i < numStreams; i++ {
+		go func() {
+			defer wg.Done()
+			stream, err := pool.GetConnect(addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			time.Sleep(time.Millisecond * time.Duration(rand.Intn(10)+1))
+			pool.PutConnect(stream, true)
+		}()
+	}
+
+	stat := pool.GetStat()
+	output, _ := json.MarshalIndent(stat, "", "\t")
+	t.Logf("streamCnt:%d, stat:%s", numStreams, string(output))
+
+	if stat.TotalSessions > pool.cfg.ConnsPerAddr {
+		t.Fatalf("sessions is too big, expect %d, got %d", pool.cfg.ConnsPerAddr, stat.TotalSessions)
+	}
+
 	wg.Wait()
 }
 
