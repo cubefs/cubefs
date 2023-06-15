@@ -30,14 +30,14 @@ type volume struct {
 }
 
 const (
-	ALLOCATING = true
-	ALLOCATED  = false
+	ALLOCATED  = int32(0)
+	ALLOCATING = int32(1)
 )
 
 type volumes struct {
 	vols       []*volume
 	totalFree  uint64
-	allocating bool
+	allocating int32
 
 	sync.RWMutex
 }
@@ -95,16 +95,12 @@ func (s *volumes) List() (vols []*volume) {
 	return vols
 }
 
-func (s *volumes) SetAllocateState(state bool) {
-	s.Lock()
-	s.allocating = state
-	s.Unlock()
+func (s *volumes) SetAllocateState(state int32) {
+	atomic.StoreInt32(&s.allocating, state)
 }
 
 func (s *volumes) IsAllocating() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.allocating
+	return ALLOCATING == atomic.LoadInt32(&s.allocating)
 }
 
 func (s *volumes) Len() int {
