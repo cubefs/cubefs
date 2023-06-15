@@ -39,6 +39,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 	span.Infof("accept Alloc request, args: %v", args)
 	resp, err := s.volumeMgr.Alloc(ctx, args)
 	if err != nil {
+		span.Errorf("alloc volume failed, err: %v", err)
 		c.RespondError(err)
 		return
 	}
