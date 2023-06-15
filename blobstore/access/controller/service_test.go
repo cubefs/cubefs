@@ -83,7 +83,7 @@ func TestAccessServiceGetServiceHost(t *testing.T) {
 	require.ElementsMatch(t, []string{"proxy-1", "proxy-2"}, hosts)
 }
 
-func TestAccessServicePunishService(t *testing.T) {
+func TestAccessServicePunishServicex(t *testing.T) {
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
