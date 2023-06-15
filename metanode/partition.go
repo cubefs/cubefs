@@ -488,30 +488,6 @@ func (mp *metaPartition) acucumUidSizeByLoad(ino *Inode) {
 	mp.uidManager.accumInoUidSize(ino, mp.uidManager.accumBase)
 }
 
-func (mp *metaPartition) updateSize() {
-	timer := time.NewTicker(time.Minute * 2)
-	go func() {
-		for {
-			select {
-			case <-timer.C:
-				size := uint64(0)
-
-				mp.inodeTree.GetTree().Ascend(func(item BtreeItem) bool {
-					inode := item.(*Inode)
-					size += inode.Size
-					return true
-				})
-
-				mp.size = size
-				log.LogDebugf("[updateSize] update mp(%d) size(%d) success", mp.config.PartitionId, size)
-			case <-mp.stopC:
-				log.LogDebugf("[updateSize] stop update mp(%d) size", mp.config.PartitionId)
-				return
-			}
-		}
-	}()
-}
-
 func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {
 	mp.isLoadingMetaPartition = true
 }
@@ -636,6 +612,10 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	mp.updateSize()
 
+	if proto.IsHot(mp.volType) {
+		log.LogInfof("hot vol not need cacheTTL")
+		return
+	}
 	// do cache TTL die out process
 	if err = mp.cacheTTLWork(); err != nil {
 		err = errors.NewErrorf("[onStart] start CacheTTLWork id=%d: %s",
