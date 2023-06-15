@@ -141,8 +141,10 @@ func (mgr *followerReadManager) getVolumeDpView() {
 
 	for _, vv := range volViews {
 		if vv.Status == markDelete {
+			mgr.rwMutex.Lock()
 			mgr.lastUpdateTick[vv.Name] = time.Now()
 			mgr.status[vv.Name] = false
+			mgr.rwMutex.Unlock()
 			continue
 		}
 
