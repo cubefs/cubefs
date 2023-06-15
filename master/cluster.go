@@ -538,6 +538,9 @@ func (c *Cluster) doLoadDataPartitions() {
 	}()
 	vols := c.allVols()
 	for _, vol := range vols {
+		if vol.Status == markDelete {
+			continue
+		}
 		vol.loadDataPartition(c)
 	}
 }
