@@ -595,8 +595,6 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
-	mp.updateSize()
-
 	if proto.IsHot(mp.volType) {
 		log.LogInfof("hot vol not need cacheTTL")
 		return
