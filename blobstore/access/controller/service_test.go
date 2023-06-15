@@ -71,7 +71,7 @@ func TestAccessServiceGetServiceHost(t *testing.T) {
 	require.NoError(t, err)
 
 	keys := make(hostSet)
-	for ii := 0; ii < 100; ii++ {
+	for range [100]struct{}{} {
 		host, err := sc.GetServiceHost(serviceCtx, serviceName)
 		require.NoError(t, err)
 		keys[host] = struct{}{}
@@ -83,7 +83,7 @@ func TestAccessServiceGetServiceHost(t *testing.T) {
 	require.ElementsMatch(t, []string{"proxy-1", "proxy-2"}, hosts)
 }
 
-func TestAccessServicePunishService(t *testing.T) {
+func TestAccessServicePunishServicex(t *testing.T) {
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
@@ -92,7 +92,7 @@ func TestAccessServicePunishService(t *testing.T) {
 
 	{
 		keys := make(hostSet)
-		for ii := 0; ii < 100; ii++ {
+		for range [100]struct{}{} {
 			host, err := sc.GetServiceHost(serviceCtx, serviceName)
 			require.NoError(t, err)
 			keys[host] = struct{}{}
@@ -101,7 +101,7 @@ func TestAccessServicePunishService(t *testing.T) {
 	}
 
 	sc.PunishService(serviceCtx, serviceName, "proxy-2", 2)
-	for ii := 0; ii < 100; ii++ {
+	for range [100]struct{}{} {
 		host, err := sc.GetServiceHost(serviceCtx, serviceName)
 		require.NoError(t, err)
 		require.True(t, host == "proxy-1")
@@ -110,12 +110,24 @@ func TestAccessServicePunishService(t *testing.T) {
 	time.Sleep(time.Millisecond * 1200)
 	{
 		keys := make(hostSet)
-		for ii := 0; ii < 100; ii++ {
+		for range [100]struct{}{} {
 			host, err := sc.GetServiceHost(serviceCtx, serviceName)
 			require.NoError(t, err)
 			keys[host] = struct{}{}
 		}
 		require.ElementsMatch(t, keys.Keys(), []string{"proxy-1", "proxy-2"})
+	}
+
+	{
+		sc.PunishService(serviceCtx, serviceName, "proxy-1", 2)
+		sc.PunishService(serviceCtx, serviceName, "proxy-2", 2)
+		keys := make(hostSet)
+		for range [10000]struct{}{} {
+			host, err := sc.GetServiceHost(serviceCtx, serviceName)
+			require.NoError(t, err)
+			keys[host] = struct{}{}
+		}
+		require.Equal(t, 1, len(keys))
 	}
 }
 
@@ -134,7 +146,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 
 	{
 		keys := make(hostSet)
-		for ii := 0; ii < 100; ii++ {
+		for range [100]struct{}{} {
 			host, err := sc.GetServiceHost(serviceCtx, serviceName)
 			require.NoError(t, err)
 			keys[host] = struct{}{}
@@ -148,7 +160,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 	}
 	{
 		keys := make(hostSet)
-		for ii := 0; ii < 100; ii++ {
+		for range [100]struct{}{} {
 			host, err := sc.GetServiceHost(serviceCtx, serviceName)
 			require.NoError(t, err)
 			keys[host] = struct{}{}
@@ -158,7 +170,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 
 	// punished
 	sc.PunishServiceWithThreshold(serviceCtx, serviceName, "proxy-1", 2)
-	for ii := 0; ii < 100; ii++ {
+	for range [100]struct{}{} {
 		host, err := sc.GetServiceHost(serviceCtx, serviceName)
 		require.NoError(t, err)
 		require.True(t, host == "proxy-2")
@@ -167,7 +179,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 	time.Sleep(time.Millisecond * 1200)
 	{
 		keys := make(hostSet)
-		for ii := 0; ii < 100; ii++ {
+		for range [100]struct{}{} {
 			host, err := sc.GetServiceHost(serviceCtx, serviceName)
 			require.NoError(t, err)
 			keys[host] = struct{}{}
