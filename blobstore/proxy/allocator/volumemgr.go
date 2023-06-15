@@ -128,7 +128,7 @@ func (m *modeInfo) TotalFree() uint64 {
 	return m.backup.TotalFree() + m.current.TotalFree()
 }
 
-func (m *modeInfo) needSwitch2Backup(fSize uint64) (bool, error) {
+func (m *modeInfo) needSwitchToBackup(fSize uint64) (bool, error) {
 	m.RLock()
 	defer m.RUnlock()
 	lastTotalFree := m.current.TotalFree()
@@ -144,7 +144,23 @@ func (m *modeInfo) needSwitch2Backup(fSize uint64) (bool, error) {
 	return totalFree < m.totalThreshold, nil
 }
 
-func (m *modeInfo) SetAllocateState(state, isBackUp bool) {
+func (m *modeInfo) getAvailableList(fsize uint64) []*volume {
+	m.Lock()
+	defer m.Unlock()
+	totalFree := m.current.TotalFree()
+	if totalFree < m.totalThreshold || totalFree < fsize {
+		m.current = m.backup
+		m.backup = &volumes{}
+	}
+	if m.current.TotalFree() < fsize {
+		return nil
+	}
+	m.current.UpdateTotalFree(-fsize)
+	vols := m.current.List()
+	return vols
+}
+
+func (m *modeInfo) SetAllocateState(state int32, isBackUp bool) {
 	m.RLock()
 	defer m.RUnlock()
 	if isBackUp {
@@ -152,15 +168,6 @@ func (m *modeInfo) SetAllocateState(state, isBackUp bool) {
 		return
 	}
 	m.current.SetAllocateState(state)
-}
-
-func (m *modeInfo) IsAllocating(isBackUp bool) bool {
-	m.RLock()
-	defer m.RUnlock()
-	if isBackUp {
-		return m.backup.IsAllocating()
-	}
-	return m.current.IsAllocating()
 }
 
 func (m *modeInfo) UpdateTotalFree(isBackup bool, free uint64) {
@@ -436,11 +443,13 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 	}
 	vols, err := v.getAvailableVols(ctx, args)
 	if err != nil {
+		span.Errorf("get available volumes failed, err: %v", err)
 		return 0, err
 	}
 	span.Debugf("codeMode: %v, available volumes: %v", args.CodeMode, vols)
 	vid, err := v.getNextVid(ctx, vols, info, args)
 	if err != nil {
+		span.Errorf("get next vid failed, err: %v", err)
 		return 0, err
 	}
 
@@ -451,33 +460,23 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 }
 
 func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsArgs) (vols []*volume, err error) {
+	span := trace.SpanFromContextSafe(ctx)
 	info := v.modeInfos[args.CodeMode]
 	info.dealDisCards(args.Discards)
 	// get the volumes list in advance to
 	// ensure consistency between the capacity statistics and the actual return volumes.
 	vols = info.List(false)
 
-	switch2Backup, err := info.needSwitch2Backup(args.Fsize)
+	needSwitch, err := info.needSwitchToBackup(args.Fsize)
 	if err != nil {
 		return nil, err
 	}
-	if switch2Backup {
-		info.Lock()
-		totalFree := info.current.TotalFree()
-		if totalFree < info.totalThreshold || totalFree < args.Fsize {
-			info.current = info.backup
-			info.backup = &volumes{}
-		}
-		if info.current.TotalFree() < args.Fsize {
-			return nil, errcode.ErrNoAvaliableVolume
-		}
-		info.current.UpdateTotalFree(-args.Fsize)
-		vols = info.current.List()
-		info.Unlock()
+	if needSwitch {
+		vols = info.getAvailableList(args.Fsize)
 	}
-
 	if len(vols) == 0 {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, false)
+		span.Errorf("no available volumes to alloc")
 		return nil, errcode.ErrNoAvaliableVolume
 	}
 
