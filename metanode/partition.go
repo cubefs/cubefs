@@ -283,25 +283,21 @@ func (uMgr *UidManager) addUidSpace(uid uint32, inode uint64, eks []proto.Extent
 	for _, ek := range eks {
 		size += int64(ek.Size)
 	}
-	log.LogDebugf("addUidSpace. mp[%v] uid %v accumDelta size %v", uMgr.mpID, uid, size)
 	if val, ok := uMgr.accumDelta.Load(uid); ok {
 		size += val.(int64)
 	}
 	uMgr.accumDelta.Store(uid, size)
-	log.LogDebugf("addUidSpace. mp[%v] uid %v accumDelta Store size %v", uMgr.mpID, uid, size)
 
 	if uMgr.rbuilding {
 		if val, ok := uMgr.accumRebuildDelta.Load(uid); ok {
 			size += val.(int64)
 		}
-		log.LogDebugf("addUidSpace. mp[%v] rbuilding uid %v accumDelta Store size %v", uMgr.mpID, uid, size)
 		uMgr.accumRebuildDelta.Store(uid, size)
 	}
 	return
 }
 
 func (uMgr *UidManager) doMinusUidSpace(uid uint32, inode uint64, size uint64) {
-	log.LogDebugf("doMinusUidSpace. mp[%v] inode %v uid %v size %v", uMgr.mpID, inode, uid, size)
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
 
@@ -309,16 +305,13 @@ func (uMgr *UidManager) doMinusUidSpace(uid uint32, inode uint64, size uint64) {
 		var rsvSize int64
 		if val, ok := delta.Load(uid); ok {
 			delta.Store(uid, val.(int64)-int64(size))
-			log.LogDebugf("doMinusUidSpace. mp[%v] uid %v accumDelta now size %v", uMgr.mpID, uid, rsvSize)
 		} else {
 			rsvSize -= int64(size)
-			log.LogDebugf("doMinusUidSpace. mp[%v] uid %v accumDelta now size %v", uMgr.mpID, uid, rsvSize)
 			delta.Store(uid, rsvSize)
 		}
 	}
 	doWork(uMgr.accumDelta)
 	if uMgr.rbuilding {
-		log.LogDebugf("doMinusUidSpace.mp[%v] rbuilding inode %v uid %v size %v", uMgr.mpID, inode, uid, size)
 		doWork(uMgr.accumRebuildDelta)
 	}
 }
@@ -739,7 +732,12 @@ func (mp *metaPartition) SetFollowerRead(fRead bool) {
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
 func (mp *metaPartition) IsFollowerRead() (ok bool) {
 	if mp.raftPartition == nil {
-		return
+		return false
+	}
+	if mp.raftPartition.Status() == nil ||
+		mp.raftPartition.Status().RestoringSnapshot == true ||
+		mp.raftPartition.Status().Applied == 0 {
+		return false
 	}
 	return mp.isFollowerRead
 }
