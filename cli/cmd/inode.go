@@ -109,6 +109,7 @@ func newInodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout(" Generation        : %v\n", info.Generation)
 			stdout(" Size              : %v\n", info.Size)
 			stdout(" Extents           :\n")
+
 			/*// imitate 50 extents
 			extent1 := proto.ExtentKey{
 				FileOffset:   0,
