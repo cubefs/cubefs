@@ -427,7 +427,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		txRbInodeTree  = NewBtree()
 		txRbDentryTree = NewBtree()
 	)
-
 	defer func() {
 		if err == io.EOF {
 			mp.applyID = appIndexID
@@ -455,7 +454,6 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
 				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
 			}
-
 			select {
 			case mp.extReset <- struct{}{}:
 				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), cursor(%v)",
