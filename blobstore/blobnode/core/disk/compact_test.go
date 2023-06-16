@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	db2 "github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -78,7 +80,12 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, nil, nil, func(option *core.Option) {
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+
+	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, readScheduler, writeScheduler, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = db
 		option.CreateDataIfMiss = true
@@ -91,6 +98,10 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 	srcChunkStorage.Disk().(*DiskStorageWrapper).Conf = nil
 	_, err = srcChunkStorage.StartCompact(ctx)
 	require.Error(t, err)
+
+	srcChunkStorage = nil
+	runtime.GC()
+	time.Sleep(1 * time.Second)
 }
 
 func TestCompactChunkInternal(t *testing.T) {

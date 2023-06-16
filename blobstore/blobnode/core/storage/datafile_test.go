@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -53,15 +54,19 @@ func TestNewChunkData(t *testing.T) {
 	log.Info(chunkname)
 
 	ctx := context.Background()
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
 
-	_, err = NewChunkData(ctx, core.VuidMeta{}, "", nil, false, nil, nil, nil)
+	_, err = NewChunkData(ctx, core.VuidMeta{}, "", nil, false, nil, readScheduler, writeScheduler)
 	require.Error(t, err)
 
-	_, err = NewChunkData(ctx, core.VuidMeta{}, "/tmp/mock/file/path", conf, false, nil, nil, nil)
+	_, err = NewChunkData(ctx, core.VuidMeta{}, "/tmp/mock/file/path", conf, false, nil, readScheduler, writeScheduler)
 	require.Error(t, err)
 
 	// case: format data when first creating chunkdata
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil, nil, nil)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil, readScheduler, writeScheduler)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -79,7 +84,7 @@ func TestNewChunkData(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	cdRo, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil, nil, nil)
+	cdRo, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil, readScheduler, writeScheduler)
 	require.NoError(t, err)
 	require.NotNil(t, cdRo)
 	defer cdRo.Close()
@@ -110,8 +115,13 @@ func TestChunkData_Write(t *testing.T) {
 		},
 	}
 
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, nil, nil)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, readScheduler, writeScheduler)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -176,7 +186,11 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, nil, nil)
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, readScheduler, writeScheduler)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -256,7 +270,11 @@ func TestChunkData_Delete(t *testing.T) {
 		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024},
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, nil, nil)
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, readScheduler, writeScheduler)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -378,8 +396,11 @@ func TestChunkData_Destroy(t *testing.T) {
 		BaseConfig:    core.BaseConfig{Path: testDir},
 		RuntimeConfig: core.RuntimeConfig{},
 	}
-
-	cd, err := NewChunkData(context.TODO(), core.VuidMeta{}, chunkname, diskConfig, true, nil, nil, nil)
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cd, err := NewChunkData(context.TODO(), core.VuidMeta{}, chunkname, diskConfig, true, nil, readScheduler, writeScheduler)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -431,14 +452,17 @@ func TestParseMeta(t *testing.T) {
 		ParentChunk: bnapi.ChunkId{0x8},
 		Ctime:       ctime,
 	}
-
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
 	// scene 1
-	cd, err := NewChunkData(ctx, meta, chunkname, diskConfig, true, nil, nil, nil)
+	cd, err := NewChunkData(ctx, meta, chunkname, diskConfig, true, nil, readScheduler, writeScheduler)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
 
-	cd1, err := NewChunkData(ctx, meta, chunkname, diskConfig, false, nil, nil, nil)
+	cd1, err := NewChunkData(ctx, meta, chunkname, diskConfig, false, nil, readScheduler, writeScheduler)
 	require.NoError(t, err)
 	require.NotNil(t, cd1)
 	defer cd1.Close()

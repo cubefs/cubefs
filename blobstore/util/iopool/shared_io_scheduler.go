@@ -15,6 +15,8 @@
 package iopool
 
 import (
+	"context"
+
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 	"github.com/cubefs/cubefs/util/chanutil"
 )
@@ -25,11 +27,11 @@ type SharedIoScheduler struct {
 }
 
 func NewSharedIoScheduler(workerCount int, queueDepth int) *SharedIoScheduler {
-	queue := chanutil.NewQueue(queueDepth)
-	pool := taskpool.New(workerCount, 0)
+	// we never use the queue of taskpool
+	// so the poolSize of taskpool.New should be 0
 	scheduler := &SharedIoScheduler{
-		queue: queue,
-		pool:  pool,
+		queue: chanutil.NewQueue(queueDepth),
+		pool:  taskpool.New(workerCount, 0),
 	}
 	scheduler.startWorkers(workerCount)
 	return scheduler
@@ -60,6 +62,10 @@ func (s *SharedIoScheduler) Submit(task *IoTask) {
 
 func (s *SharedIoScheduler) TrySubmit(task *IoTask) bool {
 	return s.queue.TryEnque(task)
+}
+
+func (s *SharedIoScheduler) SubmitWithContext(task *IoTask, ctx context.Context) bool {
+	return s.queue.EnqueWithContext(task, ctx)
 }
 
 func (s *SharedIoScheduler) Close() {

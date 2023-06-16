@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -76,7 +77,11 @@ func TestNewChunkStorage(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(context.TODO(), datapath, vm, nil, nil, func(option *core.Option) {
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cs, err := NewChunkStorage(context.TODO(), datapath, vm, readScheduler, writeScheduler, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -97,6 +102,10 @@ func TestNewChunkStorage(t *testing.T) {
 
 	err = cs.UnmarshalJSON([]byte("!"))
 	require.Error(t, err)
+
+	cs = nil
+	runtime.GC()
+	time.Sleep(1 * time.Second)
 }
 
 func TestChunkStorage_ReadWrite(t *testing.T) {
@@ -137,7 +146,11 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cs, err := NewChunkStorage(ctx, datapath, vm, readScheduler, writeScheduler, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -217,6 +230,10 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	shard.Body = bytes.NewReader(shardData)
 	err = cs.Write(ctx, shard)
 	require.NoError(t, err)
+
+	cs = nil
+	runtime.GC()
+	time.Sleep(1 * time.Second)
 }
 
 func TestChunkStorage_ReadWriteInline(t *testing.T) {
@@ -259,7 +276,11 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cs, err := NewChunkStorage(ctx, datapath, vm, readScheduler, writeScheduler, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -335,6 +356,10 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	shard.Body = bytes.NewReader(shardData)
 	err = cs.Write(ctx, shard)
 	require.NoError(t, err)
+
+	cs = nil
+	runtime.GC()
+	time.Sleep(1 * time.Second)
 }
 
 func TestChunkStorage_DeleteOp(t *testing.T) {
@@ -375,7 +400,11 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	}
 
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cs, err := NewChunkStorage(ctx, datapath, vm, readScheduler, writeScheduler, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -444,6 +473,10 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	_, err = cs.ReadShardMeta(ctx, bid)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not exist")
+
+	cs = nil
+	runtime.GC()
+	time.Sleep(1 * time.Second)
 }
 
 func TestChunkStorage_Finalizer(t *testing.T) {
@@ -483,7 +516,11 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cs, err := NewChunkStorage(ctx, datapath, vm, readScheduler, writeScheduler, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = metadb
 		option.CreateDataIfMiss = true

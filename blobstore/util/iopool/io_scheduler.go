@@ -14,7 +14,11 @@
 
 package iopool
 
+import "context"
+
 type IoScheduler interface {
 	Submit(task *IoTask)
+	TrySubmit(task *IoTask) bool
+	SubmitWithContext(task *IoTask, ctx context.Context) bool
 	Close()
 }

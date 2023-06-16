@@ -14,6 +14,11 @@
 
 package chanutil
 
+import (
+	"context"
+	"math"
+)
+
 type Queue struct {
 	queue chan interface{}
 }
@@ -37,13 +42,25 @@ func (q Queue) TryEnque(item interface{}) bool {
 	}
 }
 
+func (q Queue) EnqueWithContext(item interface{}, ctx context.Context) bool {
+	if ctx.Done() == nil {
+		q.Enque(item)
+		return true
+	}
+	select {
+	case q.queue <- item:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 func (q Queue) Deque() (interface{}, bool) {
 	item, ok := <-q.queue
 	return item, ok
 }
 
-func (q Queue) DequeBatch(maxCount int) []interface{} {
-	batch := make([]interface{}, 0, maxCount)
+func (q Queue) dequeUntil(maxCount int, batch []interface{}) []interface{} {
 	item, ok := <-q.queue
 	if ok {
 		batch = append(batch, item)
@@ -64,25 +81,17 @@ func (q Queue) DequeBatch(maxCount int) []interface{} {
 	return batch
 }
 
+// deque item as much as possible until reach maxCount
+func (q Queue) DequeBatch(maxCount int) []interface{} {
+	batch := make([]interface{}, 0, maxCount)
+	batch = q.dequeUntil(maxCount, batch)
+	return batch
+}
+
+// deque item as much as possible
 func (q Queue) DequeAll() []interface{} {
 	batch := make([]interface{}, 0)
-	item, ok := <-q.queue
-	if ok {
-		batch = append(batch, item)
-		stop := false
-		for !stop {
-			select {
-			case item, ok = <-q.queue:
-				if !ok {
-					stop = true
-					break
-				}
-				batch = append(batch, item)
-			default:
-				stop = true
-			}
-		}
-	}
+	batch = q.dequeUntil(math.MaxInt, batch)
 	return batch
 }
 

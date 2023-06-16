@@ -15,7 +15,9 @@
 package chanutil_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/util/chanutil"
 )
@@ -48,6 +50,10 @@ func TestQueue(t *testing.T) {
 		queue.Enque(i)
 	}
 	if queue.TryEnque(0) {
+		t.Error("queue should be full")
+	}
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	if queue.EnqueWithContext(0, ctx) {
 		t.Error("queue should be full")
 	}
 	items = queue.DequeAll()

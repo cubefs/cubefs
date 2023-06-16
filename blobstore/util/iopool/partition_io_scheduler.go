@@ -15,7 +15,7 @@
 package iopool
 
 import (
-	"math"
+	"context"
 	"sort"
 
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
@@ -73,18 +73,31 @@ func NewPartitionIoScheduler(workerCount int, queueDepth int) *PartitionIoSchedu
 		queue := chanutil.NewQueue(queueDepth)
 		queues = append(queues, queue)
 	}
-	pool := taskpool.New(workerCount, 0)
+	// we never use the queue of taskpool
+	// so the poolSize of taskpool.New should be 0
 	scheduler := &PartitionIoScheduler{
 		queues: queues,
-		pool:   pool,
+		pool:   taskpool.New(workerCount, 0),
 	}
 	scheduler.startWorkers(workerCount, queueDepth)
 	return scheduler
 }
 
+func (s *PartitionIoScheduler) getQueue(task *IoTask) chanutil.Queue {
+	index := int(task.GetHandleID() % uint64(len(s.queues)))
+	return s.queues[index]
+}
+
 func (s *PartitionIoScheduler) Submit(task *IoTask) {
-	index := int(task.GetHandleID() % uint64(len(s.queues)) % math.MaxInt)
-	s.queues[index].Enque(task)
+	s.getQueue(task).Enque(task)
+}
+
+func (s *PartitionIoScheduler) TrySubmit(task *IoTask) bool {
+	return s.getQueue(task).TryEnque(task)
+}
+
+func (s *PartitionIoScheduler) SubmitWithContext(task *IoTask, ctx context.Context) bool {
+	return s.getQueue(task).EnqueWithContext(task, ctx)
 }
 
 func (s *PartitionIoScheduler) Close() {

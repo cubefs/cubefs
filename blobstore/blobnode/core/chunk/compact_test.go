@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/iopool"
 )
 
 type diskMock struct {
@@ -142,7 +143,7 @@ func ensureTestDir(t *testing.T, diskRoot string) (root, meta, data string) {
 	return
 }
 
-func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid proto.Vuid) (cs *Chunk) {
+func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid proto.Vuid, readScheduler iopool.IoScheduler, writeScheduler iopool.IoScheduler) (cs *Chunk) {
 	_, metaPath, dataPath := ensureTestDir(t, diskRoot)
 
 	dbHandler, err := db.NewMetaHandler(metaPath, db.MetaConfig{})
@@ -167,7 +168,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 		},
 	}
 	ioQos, _ := qos.NewQosManager(qos.Config{})
-	chunk, err := NewChunkStorage(ctx, dataPath, vm, nil, nil, func(option *core.Option) {
+	chunk, err := NewChunkStorage(ctx, dataPath, vm, readScheduler, writeScheduler, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = dbHandler
 		option.CreateDataIfMiss = true
@@ -188,8 +189,11 @@ func TestChunk_StartCompact(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	vuid := proto.Vuid(1024)
-
-	cs := createTestChunk(t, ctx, testDir, vuid)
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cs := createTestChunk(t, ctx, testDir, vuid, readScheduler, writeScheduler)
 	require.NotNil(t, cs)
 	cs.onClosed = func() {
 		span.Infof("=== gc ===")
@@ -431,8 +435,11 @@ func TestChunkStorage_StopCompact(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	vuid := proto.Vuid(1024)
-
-	cs := createTestChunk(t, ctx, testDir, vuid)
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cs := createTestChunk(t, ctx, testDir, vuid, readScheduler, writeScheduler)
 	require.NotNil(t, cs)
 	cs.onClosed = func() {
 		span.Infof("=== gc ===")
@@ -492,8 +499,11 @@ func TestChunkStorage_CompactCheck(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	vuid := proto.Vuid(1024)
-
-	cs := createTestChunk(t, ctx, testDir, vuid)
+	readScheduler := iopool.NewSharedIoScheduler(core.DefaultReadThreadCnt, core.DefaultReadQueueDepth)
+	defer readScheduler.Close()
+	writeScheduler := iopool.NewPartitionIoScheduler(core.DefaultWriteThreadCnt, core.DefaultWriteQueueDepth)
+	defer writeScheduler.Close()
+	cs := createTestChunk(t, ctx, testDir, vuid, readScheduler, writeScheduler)
 	require.NotNil(t, cs)
 
 	done := make(chan struct{})
