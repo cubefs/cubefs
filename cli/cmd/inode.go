@@ -15,7 +15,9 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/cubefs/cubefs/cli/api"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
 )
@@ -56,13 +58,26 @@ func newInodeListCmd(client *master.MasterClient) *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
-			info, err := api.NewMetaHttpClient(optMetaAddr, false).GetAllInodes(pid)
+			info, err := api.NewMetaHttpClient(optMetaAddr, false).GetAllInodesByPid(pid)
 			if err != nil {
 				return
 			}
 			stdout("[Inode List]\n")
 			for _, v := range info {
-				stdout("%v\n", v)
+				stdout("==============================\n")
+				stdout(" Inode ID             : %v\n", v.Inode)
+				stdout(" Type                 : %v\n", v.Type)
+				stdout(" Uid                  : %v\n", v.Uid)
+				stdout(" Gid                  : %v\n", v.Gid)
+				stdout(" Size                 : %v\n", v.Size)
+				stdout(" Generation           : %v\n", v.Generation)
+				stdout(" CreateTime           : %v\n", v.CreateTime)
+				stdout(" AccessTime           : %v\n", v.AccessTime)
+				stdout(" ModifyTime           : %v\n", v.ModifyTime)
+				stdout(" LinkTarget           : %v\n", v.LinkTarget)
+				stdout(" NLink                : %v\n", v.NLink)
+				stdout(" Flag                 : %v\n", v.Flag)
+				stdout(" Reserved             : %v\n", v.Reserved)
 			}
 		},
 	}
@@ -91,11 +106,88 @@ func newInodeInfoCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("[Inode info]\n")
-			stdout("%v\n", info)
+			stdout(" Generation        : %v\n", info.Generation)
+			stdout(" Size              : %v\n", info.Size)
+			stdout(" Extents           :\n")
+			/*// imitate 50 extents
+			extent1 := proto.ExtentKey{
+				FileOffset:   0,
+				PartitionId:  0,
+				ExtentId:     0,
+				ExtentOffset: 0,
+				Size:         0,
+				CRC:          0,
+			}
+			extent2 := proto.ExtentKey{
+				FileOffset:   1,
+				PartitionId:  1,
+				ExtentId:     1,
+				ExtentOffset: 1,
+				Size:         1,
+				CRC:          1,
+			}
+			info.Extents = append(info.Extents, extent2)
+			for i := 0; i < 50; i++ {
+				info.Extents = append(info.Extents, extent1)
+			}*/
+			displayExtentsPage(info.Extents)
 		},
 	}
 	cmd.Flags().StringVar(&optMetaAddr, "addr", "", "Meta server address")
 	cmd.Flags().Uint64Var(&pid, "pid", 0, "Partition id")
 	cmd.Flags().Uint64Var(&inodeId, "inodeId", 0, "Inode id")
 	return cmd
+}
+
+const itemsPerPage = 3
+
+func displayExtentsPage(extents []proto.ExtentKey) {
+	pageIndex := 0
+	displayColumns(extents, pageIndex)
+	for {
+		stdout("Press 'q' to quit, 'n' to next page, 'p' to previous page\n")
+		var input string
+		_, err := fmt.Scanln(&input)
+		if err != nil {
+			errout("Error: %v", err)
+			return
+		}
+		switch input {
+		case "q":
+			return
+		case "n":
+			if pageIndex >= len(extents)/itemsPerPage {
+				displayColumns(extents, pageIndex)
+				stdout("This is the last page\n")
+				continue
+			}
+			displayColumns(extents, pageIndex+1)
+			pageIndex++
+		case "p":
+			if pageIndex > 0 {
+				displayColumns(extents, pageIndex-1)
+				pageIndex--
+			} else {
+				displayColumns(extents, pageIndex)
+				stdout("This is the first page\n")
+			}
+		}
+	}
+}
+
+func displayColumns(arr []proto.ExtentKey, pageIndex int) {
+	start := pageIndex * itemsPerPage
+	end := start + itemsPerPage
+	if end > len(arr) {
+		end = len(arr)
+	}
+	for i := start; i < end; i++ {
+		stdout("==============================\n")
+		stdout(" ExtentId         : %v\n", arr[i].ExtentId)
+		stdout(" PartitionId      : %v\n", arr[i].PartitionId)
+		stdout(" FileOffset       : %v\n", arr[i].FileOffset)
+		stdout(" ExtentOffset     : %v\n", arr[i].ExtentOffset)
+		stdout(" Size             : %v\n", arr[i].Size)
+		stdout(" CRC              : %v\n", arr[i].CRC)
+	}
 }
