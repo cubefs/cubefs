@@ -117,9 +117,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask.Request = nil
 		adminTask.Response = resp
 		m.respondToMaster(adminTask)
-		data, _ := json.Marshal(resp)
-		log.LogInfof("%s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
-			remoteAddr, p.String(), req, adminTask, string(data), time.Since(start).String())
+		log.LogInfof("%s pkt %s, resp success req:%v; respAdminTask: %v, cost %s",
+			remoteAddr, p.String(), req, adminTask, time.Since(start).String())
 	}()
 
 	return
