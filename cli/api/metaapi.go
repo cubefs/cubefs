@@ -296,6 +296,57 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, er
 	return unmarshalInodes(resp)
 }
 
+func (mc *MetaHttpClient) GetAllInodesByPid(pid uint64) (rstMap map[uint64]*InodeResponse, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[GetAllInodes],pid:%v,err:%v", pid, err)
+		}
+	}()
+	reqURL := fmt.Sprintf("http://%v%v?pid=%v", mc.host, "/getAllInodes", pid)
+	log.LogDebugf("reqURL=%v", reqURL)
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		return
+	}
+	return unmarshalInodesResponse(resp)
+}
+
+func (mc *MetaHttpClient) GetInodeInfo(pid uint64, ino uint64) (res *proto.GetExtentsResponse, err error) {
+	cmdline := fmt.Sprintf("http://%s/getExtentsByInode?pid=%d&ino=%d",
+		mc.host, pid, ino)
+	resp, err := http.Get(cmdline)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("invalid status code: %v", resp.StatusCode)
+	}
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ReadAll failed: %v", err)
+	}
+	body := &struct {
+		Code int32           `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}{}
+	if err = json.Unmarshal(data, body); err != nil {
+		return nil, fmt.Errorf("unmarshal failed: %v", err)
+	}
+	if body.Code != http.StatusSeeOther {
+		return nil, fmt.Errorf("getExtentsByInode failed: code[%v] not %v",
+			body.Code, http.StatusSeeOther)
+	}
+	if strings.Compare(body.Msg, "Ok") != 0 {
+		return nil, fmt.Errorf("getExtentsByInode failed: %v", body.Msg)
+	}
+	if err = json.Unmarshal(body.Data, &res); err != nil {
+		return nil, fmt.Errorf("unmarshal extents failed: %v", err)
+	}
+	return
+}
+
 func unmarshalInodes(resp *http.Response) (rstMap map[uint64]*Inode, err error) {
 	bufReader := bufio.NewReader(resp.Body)
 	rstMap = make(map[uint64]*Inode)
@@ -308,6 +359,8 @@ func unmarshalInodes(resp *http.Response) (rstMap map[uint64]*Inode, err error) 
 		}
 		inode := &Inode{}
 		if err1 := json.Unmarshal(buf, inode); err1 != nil {
+			fmt.Println(string(buf))
+			fmt.Println(err1)
 			err = err1
 			return
 		}
@@ -318,4 +371,50 @@ func unmarshalInodes(resp *http.Response) (rstMap map[uint64]*Inode, err error) 
 			return
 		}
 	}
+}
+
+func unmarshalInodesResponse(resp *http.Response) (rstMap map[uint64]*InodeResponse, err error) {
+	bufReader := bufio.NewReader(resp.Body)
+	rstMap = make(map[uint64]*InodeResponse)
+	var buf []byte
+	for {
+		buf, err = bufReader.ReadBytes('\n')
+		log.LogInfof("buf[%v],err[%v]", string(buf), err)
+		if err != nil && err != io.EOF {
+			return
+		}
+		inode := &InodeResponse{}
+		if err1 := json.Unmarshal(buf, inode); err1 != nil {
+			fmt.Println(string(buf))
+			fmt.Println(err1)
+			err = err1
+			return
+		}
+		rstMap[inode.Inode] = inode
+		log.LogInfof("after unmarshal current inode[%v]", inode)
+		if err == io.EOF {
+			err = nil
+			return
+		}
+	}
+}
+
+type InodeResponse struct {
+	sync.RWMutex
+	Inode      uint64 // Inode ID
+	Type       uint32
+	Uid        uint32
+	Gid        uint32
+	Size       uint64
+	Generation uint64
+	CreateTime int64
+	AccessTime int64
+	ModifyTime int64
+	LinkTarget []byte // SymLink target name
+	NLink      uint32 // NodeLink counts
+	Flag       int32
+	Reserved   uint64 // reserved space
+	//Extents    *ExtentsTree
+	Extents    *metanode.SortedExtents
+	ObjExtents *metanode.SortedObjExtents
 }
