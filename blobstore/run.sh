@@ -6,8 +6,8 @@ source ./init.sh
 # build blobstore and get consul kafka
 INIT
 
-if [ ! -d ./run/logs ];then
-  mkdir -p ./run/logs
+if [ ! -d ./blobstore/run/logs ];then
+  mkdir -p ./blobstore/run/logs
 fi
 cd build
 # start consul
