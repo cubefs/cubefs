@@ -172,8 +172,9 @@ func resetTimer(timer *time.Timer, ts int64) {
 	timer.Reset(time.Duration(ts+r.Int63n(RandomIntervalS)) * time.Second)
 }
 
-// Avoid devices starting scheduled tasks simultaneously
+// resetTimerWithRandomTime resets the timer with a random duration in max*[1, 2)
+// to avoid devices starting scheduled tasks simultaneously.
 func resetTimerWithRandomTime(timer *time.Timer, maxts int64) {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	timer.Reset(time.Duration(float32(maxts)*r.Float32()) * time.Second)
+	timer.Reset(time.Duration(maxts+int64(float32(maxts)*r.Float32())) * time.Second)
 }
