@@ -2,10 +2,7 @@ module github.com/cubefs/cubefs
 
 go 1.17
 
-replace (
-	github.com/jacobsa/fuse => ./depends/jacobsa/fuse
-	github.com/spf13/cobra => ./depends/spf13/cobra
-)
+replace github.com/jacobsa/fuse => ./depends/jacobsa/fuse
 
 require (
 	github.com/Shopify/sarama v1.33.0
@@ -34,7 +31,7 @@ require (
 	github.com/prometheus/client_golang v1.13.0
 	github.com/rs/xid v1.5.0
 	github.com/samsarahq/thunder v0.0.0-20211005041752-96f4331b7baa
-	github.com/spf13/cobra v1.2.1
+	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.8.2
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 	github.com/xtaci/smux v1.5.16
@@ -87,7 +84,7 @@ require (
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
-	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
 	github.com/jcmturner/gofork v1.0.0 // indirect
@@ -111,11 +108,12 @@ require (
 	github.com/samsarahq/go v0.0.0-20181026175739-13570df44b46 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/smartystreets/goconvey v1.8.0 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/arch v0.0.0-20190312162104-788fe5ffcd8c // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
 	golang.org/x/text v0.8.0 // indirect
-	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987 // indirect
-	google.golang.org/grpc v1.35.0 // indirect
+	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
+	google.golang.org/grpc v1.38.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

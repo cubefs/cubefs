@@ -200,8 +200,8 @@ github.com/hashicorp/golang-lru/simplelru
 # github.com/hashicorp/serf v0.10.1
 ## explicit; go 1.12
 github.com/hashicorp/serf/coordinate
-# github.com/inconshreveable/mousetrap v1.0.0
-## explicit
+# github.com/inconshreveable/mousetrap v1.1.0
+## explicit; go 1.18
 github.com/inconshreveable/mousetrap
 # github.com/jacobsa/daemonize v0.0.0-20160101105449-e460293e890f
 ## explicit
@@ -354,9 +354,12 @@ github.com/shirou/gopsutil/internal/common
 github.com/shirou/gopsutil/mem
 # github.com/smartystreets/goconvey v1.8.0
 ## explicit; go 1.18
-# github.com/spf13/cobra v1.2.1 => ./depends/spf13/cobra
-## explicit; go 1.12
+# github.com/spf13/cobra v1.7.0
+## explicit; go 1.15
 github.com/spf13/cobra
+# github.com/spf13/pflag v1.0.5
+## explicit; go 1.12
+github.com/spf13/pflag
 # github.com/stretchr/testify v1.8.2
 ## explicit; go 1.13
 github.com/stretchr/testify/assert
@@ -428,10 +431,10 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
 ## explicit
 golang.org/x/time/rate
-# google.golang.org/genproto v0.0.0-20200825200019-8632dd797987
+# google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c
 ## explicit; go 1.11
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.35.0
+# google.golang.org/grpc v1.38.0
 ## explicit; go 1.11
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -527,4 +530,3 @@ gopkg.in/yaml.v2
 ## explicit
 gopkg.in/yaml.v3
 # github.com/jacobsa/fuse => ./depends/jacobsa/fuse
-# github.com/spf13/cobra => ./depends/spf13/cobra
