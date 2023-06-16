@@ -3,7 +3,6 @@ module github.com/cubefs/cubefs
 go 1.17
 
 replace (
-	github.com/jacobsa/daemonize => ./depends/jacobsa/daemonize
 	github.com/jacobsa/fuse => ./depends/jacobsa/fuse
 	github.com/spf13/cobra => ./depends/spf13/cobra
 )
@@ -27,7 +26,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/consul/api v1.15.2
 	github.com/hashicorp/golang-lru v0.5.4
-	github.com/jacobsa/daemonize v0.0.0-00010101000000-000000000000
+	github.com/jacobsa/daemonize v0.0.0-20160101105449-e460293e890f
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/klauspost/reedsolomon v1.11.7
 	github.com/opentracing/opentracing-go v1.2.0
