@@ -257,7 +257,7 @@ func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 			var err error
 			if !optYes {
 				stdout("Before deleting the quota, please confirm that the quota of the inode in the subdirectory has been cleared\n")
-				stdout("ensure that the quota list %v usedFiles is displayed as 1\n", volName)
+				stdout("ensure that the quota list %v usedFiles is displayed as 0\n", volName)
 				stdout("\nConfirm (yes/no)[yes]:")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -360,6 +360,7 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 
 func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 	var maxConcurrencyInode uint64
+	var forceInode uint64
 	var cmd = &cobra.Command{
 		Use:   cmdQuotaRevokeUse,
 		Short: cmdQuotaRevokeShort,
@@ -369,11 +370,7 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 			quotaId := args[1]
 			var err error
 			var quotaInfo *proto.QuotaInfo
-
-			if quotaInfo, err = client.AdminAPI().GetQuota(volName, quotaId); err != nil {
-				stdout("volName %v get quota %v failed(%v)\n", volName, quotaId, err)
-				return
-			}
+			var totalNums uint64
 
 			var metaConfig = &meta.MetaConfig{
 				Volume:  volName,
@@ -385,22 +382,33 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 				stdout("NewMetaWrapper failed: %v\n", err)
 				return
 			}
-
-			var totalNums uint64
 			var quotaIdNum uint32
 			tmp, err := strconv.ParseUint(quotaId, 10, 32)
 			quotaIdNum = uint32(tmp)
-			for _, pathInfo := range quotaInfo.PathInfos {
-				inodeNums, err := metaWrapper.RevokeQuota_ll(pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
-				if err != nil {
-					stdout("revoke quota inodeNums %v failed %v\n", inodeNums, err)
+			if forceInode == 0 {
+				if quotaInfo, err = client.AdminAPI().GetQuota(volName, quotaId); err != nil {
+					stdout("volName %v get quota %v failed(%v)\n", volName, quotaId, err)
+					return
 				}
-				totalNums += inodeNums
+
+				for _, pathInfo := range quotaInfo.PathInfos {
+					inodeNums, err := metaWrapper.RevokeQuota_ll(pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
+					if err != nil {
+						stdout("revoke quota inodeNums %v failed %v\n", inodeNums, err)
+					}
+					totalNums += inodeNums
+				}
+			} else {
+				totalNums, err = metaWrapper.RevokeQuota_ll(forceInode, quotaIdNum, maxConcurrencyInode)
+				if err != nil {
+					stdout("revoke quota inodeNums %v failed %v\n", totalNums, err)
+				}
 			}
 			stdout("revoke num [%v] success.\n", totalNums)
 		},
 	}
 	cmd.Flags().Uint64Var(&maxConcurrencyInode, CliFlagMaxConcurrencyInode, 1000, "max concurrency delete Inodes")
+	cmd.Flags().Uint64Var(&forceInode, CliFlagForceInode, 0, "force revoke quota inode")
 	return cmd
 }
 
@@ -417,7 +425,7 @@ func checkNestedDirectories(paths []string) error {
 
 func isAncestor(parent, child string) bool {
 	if parent == child {
-		return false
+		return true
 	}
 	rel, err := filepath.Rel(parent, child)
 	if err != nil {
