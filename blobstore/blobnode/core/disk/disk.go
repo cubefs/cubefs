@@ -917,7 +917,7 @@ func (ds *DiskStorage) cleanReleasedChunks() (err error) {
 	span.Debugf("come in CleanChunks.")
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, bnapi.InternalIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.InternalIO)
 
 	protectionPeriod := time.Duration(ds.Conf.ChunkReleaseProtectionM)
 	now := time.Now().UnixNano()
