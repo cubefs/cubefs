@@ -59,10 +59,10 @@ func (it IOType) IsValid() bool {
 }
 
 func (it IOType) String() string {
-	return IOtypemap[uint64(it)]
+	return IOtypemap[it]
 }
 
-func Getiotype(ctx context.Context) IOType {
+func GetIoType(ctx context.Context) IOType {
 	v := ctx.Value(_ioFlowStatKey)
 	if v == nil {
 		return NormalIO
@@ -70,7 +70,7 @@ func Getiotype(ctx context.Context) IOType {
 	return v.(IOType)
 }
 
-func Setiotype(ctx context.Context, iot IOType) context.Context {
+func SetIoType(ctx context.Context, iot IOType) context.Context {
 	return context.WithValue(ctx, _ioFlowStatKey, iot)
 }
 
