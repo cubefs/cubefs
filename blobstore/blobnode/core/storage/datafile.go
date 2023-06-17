@@ -505,17 +505,17 @@ func (cd *datafile) spaceInfo() (size int64, phySpace int64, err error) {
 }
 
 func (cd *datafile) qosReaderAt(ctx context.Context, reader io.ReaderAt) io.ReaderAt {
-	ioType := bnapi.Getiotype(ctx)
+	ioType := bnapi.GetIoType(ctx)
 	return cd.ioQos.ReaderAt(ctx, ioType, reader)
 }
 
 func (cd *datafile) qosWriterAt(ctx context.Context, writer io.WriterAt) io.WriterAt {
-	ioType := bnapi.Getiotype(ctx)
+	ioType := bnapi.GetIoType(ctx)
 	w := cd.ioQos.WriterAt(ctx, ioType, writer)
 	return w
 }
 
 func (cd *datafile) qosWriter(ctx context.Context, writer io.Writer) io.Writer {
-	ioType := bnapi.Getiotype(ctx)
+	ioType := bnapi.GetIoType(ctx)
 	return cd.ioQos.Writer(ctx, ioType, writer)
 }

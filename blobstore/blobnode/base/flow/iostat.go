@@ -67,7 +67,7 @@ func SetupDefaultIOStat(s *IOFlowStat) {
 	defaultIOStat = s
 }
 
-// ${pid}.${key}_${value}.${suffix}
+// GenerateStatName ${pid}.${key}_${value}.${suffix}
 func GenerateStatName(pid int, key string, value string, suffix string) string {
 	return fmt.Sprintf("%d.%s_%s.%s", pid, key, value, suffix)
 }

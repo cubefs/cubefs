@@ -149,7 +149,7 @@ func (cs *chunk) handleErrCompact(ctx context.Context, ncs core.ChunkAPI) {
 func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	ctx = bnapi.Setiotype(ctx, bnapi.CompactIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.CompactIO)
 
 	startBid := proto.InValidBlobID
 	replStg := cs.getStg()
