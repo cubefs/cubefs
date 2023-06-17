@@ -95,7 +95,7 @@ func ScanShard(ctx context.Context, cs core.ChunkAPI, startBid proto.BlobID, ins
 func startInspect(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start inspect chunk, vuid:%v,chunkid:%s.", cs.Vuid(), cs.ID())
-	ctx = bnapi.Setiotype(ctx, bnapi.InspectIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.InspectIO)
 	startBid := proto.InValidBlobID
 	ds := cs.Disk()
 	badShards := make([]bnapi.BadShard, 0)

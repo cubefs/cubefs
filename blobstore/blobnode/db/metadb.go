@@ -98,7 +98,7 @@ func (md *metadb) SetIOStat(stat *flow.IOFlowStat) {
 }
 
 func (md *metadb) Get(ctx context.Context, key []byte) (value []byte, err error) {
-	mgr, iot := md.getiotype(ctx)
+	mgr, iot := md.getIoType(ctx)
 
 	mgr.ReadBegin(1)
 	defer mgr.ReadEnd(time.Now())
@@ -134,7 +134,7 @@ func (md *metadb) Put(ctx context.Context, kv rdb.KV) (err error) {
 		Data: kv,
 	}
 
-	mgr, iot := md.getiotype(ctx)
+	mgr, iot := md.getIoType(ctx)
 
 	mgr.WriteBegin(1)
 	defer mgr.WriteEnd(time.Now())
@@ -158,7 +158,7 @@ func (md *metadb) Delete(ctx context.Context, key []byte) (err error) {
 		Data: rdb.KV{Key: key},
 	}
 
-	mgr, iot := md.getiotype(ctx)
+	mgr, iot := md.getIoType(ctx)
 
 	mgr.WriteBegin(1)
 	defer mgr.WriteEnd(time.Now())
@@ -182,7 +182,7 @@ func (md *metadb) DeleteRange(ctx context.Context, start, end []byte) (err error
 		Data: rdb.Range{Start: start, Limit: end},
 	}
 
-	mgr, iot := md.getiotype(ctx)
+	mgr, iot := md.getIoType(ctx)
 
 	mgr.WriteBegin(1)
 	defer mgr.WriteEnd(time.Now())
@@ -325,8 +325,8 @@ func (md *metadb) doBatch(ctx context.Context, reqs []Request) (err error) {
 	return err
 }
 
-func (md *metadb) getiotype(ctx context.Context) (iostat.StatMgrAPI, bnapi.IOType) {
-	iot := bnapi.Getiotype(ctx)
+func (md *metadb) getIoType(ctx context.Context) (iostat.StatMgrAPI, bnapi.IOType) {
+	iot := bnapi.GetIoType(ctx)
 	mgr := md.iostat.GetStatMgr(iot)
 	return mgr, iot
 }
