@@ -21,17 +21,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetIotype(t *testing.T) {
+func TestGetIoType(t *testing.T) {
 	ctx := context.TODO()
 
-	iotype := Getiotype(ctx)
+	iotype := GetIoType(ctx)
 	require.Equal(t, NormalIO, iotype)
 
 	ctx0 := context.WithValue(ctx, _ioFlowStatKey, CompactIO)
-	iotype = Getiotype(ctx0)
+	iotype = GetIoType(ctx0)
 	require.Equal(t, CompactIO, iotype)
 
 	ctx1 := context.WithValue(ctx0, _ioFlowStatKey, DiskRepairIO)
-	iotype = Getiotype(ctx1)
+	iotype = GetIoType(ctx1)
 	require.Equal(t, DiskRepairIO, iotype)
 }

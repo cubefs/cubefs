@@ -81,7 +81,7 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, args.Type)
+	ctx = bnapi.SetIoType(ctx, args.Type)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	s.lock.RLock()
@@ -342,7 +342,7 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, bnapi.DeleteIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	err = cs.MarkDelete(ctx, args.Bid)
@@ -413,7 +413,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, bnapi.DeleteIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	err = cs.Delete(ctx, args.Bid)
@@ -465,7 +465,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, args.Type)
+	ctx = bnapi.SetIoType(ctx, args.Type)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	s.lock.RLock()
