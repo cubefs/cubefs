@@ -797,7 +797,9 @@ func (p *Packet) readFromConn(c net.Conn) (err error) {
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
-	p.Data = make([]byte, size)
+	if p.Data == nil || cap(p.Data) < int(size) {
+		p.Data = make([]byte, size)
+	}
 	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
 		return err
 	}

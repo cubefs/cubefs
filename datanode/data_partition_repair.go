@@ -651,15 +651,20 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		return
 	}
 	currFixOffset := localExtentInfo[storage.Size]
+
 	var (
 		hasRecoverySize uint64
+		replData []byte
 	)
+	replData, _ = proto.Buffers.Get(unit.ReadBlockSize)
+	defer proto.Buffers.Put(replData)
+
 	for currFixOffset < remoteExtentInfo[storage.Size] {
 		if currFixOffset >= remoteExtentInfo[storage.Size] {
 			break
 		}
 		reply := repl.NewPacket(ctx)
-
+		reply.Data = replData
 		// read 64k streaming repair packet
 		if err = reply.ReadFromConn(conn, 60); err != nil {
 			err = errors.Trace(err, "streamRepairExtent receive data error,localExtentSize(%v) remoteExtentSize(%v)", currFixOffset, remoteExtentInfo[storage.Size])

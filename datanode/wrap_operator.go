@@ -573,6 +573,14 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		action = proto.ActionRepairRead
 	}
 
+	var dataBuffer []byte
+	if needReplySize >= unit.ReadBlockSize {
+		dataBuffer, _ = proto.Buffers.Get(unit.ReadBlockSize)
+		defer proto.Buffers.Put(dataBuffer)
+	} else {
+		dataBuffer = make([]byte, needReplySize)
+	}
+
 	for {
 		if needReplySize <= 0 {
 			break
@@ -581,11 +589,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
-		if currReadSize == unit.ReadBlockSize {
-			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
-		} else {
-			reply.Data = make([]byte, currReadSize)
-		}
+		reply.Data = dataBuffer[:currReadSize]
 
 		reply.ExtentOffset = offset
 		p.Size = uint32(currReadSize)
@@ -605,9 +609,6 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		partition.checkIsDiskError(err)
 		p.CRC = reply.CRC
 		if err != nil {
-			if currReadSize == unit.ReadBlockSize {
-				proto.Buffers.Put(reply.Data)
-			}
 			return
 		}
 		reply.Size = uint32(currReadSize)
@@ -628,9 +629,6 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		}()
 		partition.monitorData[action].UpdateData(uint64(currReadSize))
 		if err != nil {
-			if currReadSize == unit.ReadBlockSize {
-				proto.Buffers.Put(reply.Data)
-			}
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
 				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
 			log.LogErrorf(logContent)
@@ -638,9 +636,6 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		}
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
-		if currReadSize == unit.ReadBlockSize {
-			proto.Buffers.Put(reply.Data)
-		}
 		logContent := fmt.Sprintf("action[operatePacket] %v.",
 			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
 		log.LogReadf(logContent)
