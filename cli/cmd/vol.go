@@ -241,7 +241,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  BatchDelInodeCnt    : %v\n", optBatchDelInodeCnt)
 				stdout("  DelInodeInterval    : %v\n", optDelInodeInterval)
 				stdout("  BitMapAllocator     : %v\n", formatEnabledDisabled(optEnableBitMapAllocator))
-
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)

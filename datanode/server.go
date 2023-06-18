@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/cpu"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -34,6 +33,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/cpu"
 
 	"github.com/cubefs/cubefs/util/statinfo"
 
@@ -58,7 +59,6 @@ var (
 	LocalIP               string
 	LocalServerPort       string
 	gConnPool             = connpool.NewConnectPool()
-	gUpstreamConnPool     = connpool.NewConnectPoolWithTimeout(30, proto.UpstreamRequestDeadLineTimeMs)
 	MasterClient          = masterSDK.NewMasterClient(nil, false)
 	gHasLoadDataPartition bool
 	gHasFinishedLoadDisks bool

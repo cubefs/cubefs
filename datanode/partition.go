@@ -78,7 +78,6 @@ type DataPartitionMetadata struct {
 	LastTruncateID          uint64
 	LastUpdateTime          int64
 	VolumeHAType            proto.CrossRegionHAType
-	IsUpstreamRead          bool
 
 	// 该BOOL值表示Partition是否已经就绪，该值默认值为false，
 	// 新创建的DP成员为默认值，表示未完成第一次Raft恢复，Raft未就绪。
@@ -101,7 +100,6 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 			md.LastTruncateID == other.LastTruncateID &&
 			md.LastUpdateTime == other.LastUpdateTime &&
 			md.VolumeHAType == other.VolumeHAType) &&
-			md.IsUpstreamRead == other.IsUpstreamRead &&
 			md.IsCatchUp == other.IsCatchUp &&
 			md.NeedServerFaultCheck == other.NeedServerFaultCheck
 }
@@ -1003,12 +1001,6 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataPartitionRepairTask) {
-
-	// 在断电检查修复完成前不要进行修复
-	if dp.isNeedFaultCheck() {
-		return
-	}
-
 	store := dp.extentStore
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		if proto.IsTinyExtent(extentInfo[storage.FileID]) {

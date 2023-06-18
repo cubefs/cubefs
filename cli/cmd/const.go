@@ -157,7 +157,6 @@ const (
 	CliOpVolDelInodeInterval   = "del-inode-interval"
 	CliFlagBitMapAllocatorSt   = "enableBitMapAllocator"
 	CliFlagTrashCleanDuration  = "trashCleanDuration"
-	CliFlagIsUpstreamRead      = "isUpstream"
 	CliFlagTrashCleanMaxCount  = "trashCleanMaxCount"
 	CliFlagInodeInuse          = "inodeInuse"
 

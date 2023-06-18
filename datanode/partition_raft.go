@@ -30,16 +30,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util/holder"
-
-	"github.com/cubefs/cubefs/sdk/data"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/holder"
 	"github.com/cubefs/cubefs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
 )
@@ -325,7 +322,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 			err = nil
 			if dp.isLeader { // primary does not need to wait repair
 				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-				if err = dp.Persist(nil); err != nil {
+				if err = dp.persist(nil); err != nil {
 					log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
 					continue

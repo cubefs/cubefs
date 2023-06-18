@@ -38,11 +38,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-var (
-	ErrUnableToDetermineQuorumData = errors.New("unable to determine quorum data")
-	ErrCannotFixBrokenData         = errors.New("can not fix broken data")
-)
-
 // DataPartitionRepairTask defines the reapir task for the data partition.
 type DataPartitionRepairTask struct {
 	TaskType                       uint8
