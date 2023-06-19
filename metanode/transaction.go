@@ -536,6 +536,8 @@ func (tm *TransactionManager) processExpiredTransactions() {
 			}
 
 			var wg sync.WaitGroup
+			timeNow := time.Now().Unix()
+			delTx := make([]*proto.TransactionInfo, 100)
 			f := func(i BtreeItem) bool {
 				tx := i.(*proto.TransactionInfo)
 
@@ -570,7 +572,10 @@ func (tm *TransactionManager) processExpiredTransactions() {
 							tx, status, err)
 					}
 				}
-
+				if tx.IsDoneAndNoNeedWait(timeNow) {
+					delTx = append(delTx, tx)
+					return true
+				}
 				if tx.State == proto.TxStateCommit {
 					log.LogWarnf("processExpiredTransactions: transaction (%v) continue to commit...", tx)
 					wg.Add(1)
@@ -582,7 +587,7 @@ func (tm *TransactionManager) processExpiredTransactions() {
 				} else if tx.State == proto.TxStateFailed {
 					log.LogCriticalf("processExpiredTransactions: transaction (%v) is in state failed", tx)
 				} else {
-					if tx.IsExpired() {
+					if tx.IsExpired() && tx.State != proto.TxStateCommitDone {
 						log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
 						wg.Add(1)
 						go rollbackFunc(false)
@@ -596,6 +601,13 @@ func (tm *TransactionManager) processExpiredTransactions() {
 
 			tm.txTree.GetTree().Ascend(f)
 			wg.Wait()
+
+			tm.txTree.Execute(func(tree *btree.BTree) interface{} {
+				for _, tx := range delTx {
+					tm.txTree.Delete(tx)
+				}
+				return true
+			})
 			txCheckInterval = time.Second
 			txCheckTimer.Reset(txCheckInterval)
 		}
@@ -922,7 +934,6 @@ func (tm *TransactionManager) commitTxInfo(txId string) (status uint8, err error
 	tm.Lock()
 	defer tm.Unlock()
 	status = proto.OpOk
-
 	tx := tm.getTransaction(txId)
 	if tx == nil {
 		status = proto.OpTxInfoNotExistErr
@@ -930,8 +941,10 @@ func (tm *TransactionManager) commitTxInfo(txId string) (status uint8, err error
 		return
 	}
 
-	//delete(tm.transactions, txId)
-	tm.txTree.Delete(tx)
+	// the status TxStateCommitDone not persist in disk , it will be finished while do expire check after restart
+	// since it's status is TxStateCommit,the submit of TxStateCommitDone not necessary and would delay the response
+	tx.State = proto.TxStateCommitDone
+	tx.DoneTime = time.Now().Unix()
 	log.LogDebugf("commitTxInfo: tx[%v] is committed", tx)
 	return
 }
@@ -1036,6 +1049,20 @@ func (tm *TransactionManager) commitTransaction(req *proto.TxApplyRequest, skipS
 	var val []byte
 	var resp interface{}
 
+	txId := req.TxID
+	tx := tm.getTransaction(txId)
+	if tx == nil {
+		status = proto.OpTxInfoNotExistErr
+		err = fmt.Errorf("commitTransaction: tx[%v] not found", txId)
+		return
+	}
+
+	if tx.State == proto.TxStateCommitDone {
+		status = proto.OpOk
+		log.LogWarnf("commitTransaction: tx[%v] is already commited", txId)
+		return
+	}
+
 	//1.set transaction to TxStateCommit
 	if !skipSetStat {
 		status, err = tm.setTransactionState(req.TxID, proto.TxStateCommit)
@@ -1046,16 +1073,6 @@ func (tm *TransactionManager) commitTransaction(req *proto.TxApplyRequest, skipS
 	}
 
 	//2. notify all related RMs that a transaction is completed
-
-	txId := req.TxID
-
-	tx := tm.getTransaction(txId)
-	if tx == nil {
-		status = proto.OpTxInfoNotExistErr
-		err = fmt.Errorf("commitTransaction: tx[%v] not found", txId)
-		return
-	}
-
 	items := make([]*txApplyItem, 0)
 	for _, inoInfo := range tx.TxInodeInfos {
 		packet, err = tm.buildInodeApplyPacket(inoInfo, req.TxApplyType, RbFromDummy)
