@@ -16,6 +16,11 @@ package auditlog
 
 import "net/http"
 
+const (
+	LogFormatText = "text"
+	LogFormatJSON = "json"
+)
+
 type Config struct {
 	// LogDir audit log whether to enable depend on whether config log dir
 	LogDir string `json:"logdir"`
@@ -33,6 +38,9 @@ type Config struct {
 
 	// KeywordsFilter log filter based on uri and request method
 	KeywordsFilter []string `json:"keywords_filter"`
+
+	// LogFormat valid value is "text" or "json", default is "text"
+	LogFormat string `json:"log_format"`
 }
 
 // LogCloser a implemented audit logger should implements ProgressHandler
