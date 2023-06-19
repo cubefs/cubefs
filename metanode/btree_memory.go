@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"encoding/binary"
 	"github.com/cubefs/cubefs/util/btree"
 	"hash/crc32"
 	"sync"
@@ -105,10 +106,10 @@ func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 	switch tp {
 	case InodeType:
 		cb := func(i *Inode) (bool, error) {
-			i.AccessTime = 0
 			if data, err = i.MarshalV2(); err != nil {
 				return false, err
 			}
+			binary.BigEndian.PutUint64(data[AccessTimeOffset:AccessTimeOffset+8], 0)
 			if _, err = crc.Write(data); err != nil {
 				return false, err
 			}
@@ -161,10 +162,10 @@ func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 		err = b.delDentry.Range(&DeletedDentry{}, nil, cb)
 	case DelInodeType:
 		cb := func(delInode *DeletedINode) (bool, error) {
-			delInode.Inode.AccessTime = 0
 			if data, err = delInode.Marshal(); err != nil {
 				return false, err
 			}
+			binary.BigEndian.PutUint64(data[AccessTimeOffset:AccessTimeOffset+8], 0)
 			if _, err = crc.Write(data); err != nil {
 				return false, err
 			}
