@@ -475,6 +475,7 @@ const (
 	TxStateInit int32 = iota
 	TxStatePreCommit
 	TxStateCommit
+	TxStateCommitDone
 	TxStateRollback
 	TxStateFailed
 )
@@ -486,9 +487,15 @@ type TransactionInfo struct {
 	CreateTime int64 //time.Now().UnixNano()
 	Timeout    int64 //minutes
 	State      int32
+	DoneTime   int64 //time.Now().UnixNano()
 	//ItemMap    map[string]TxItemInfo
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
+}
+
+// wait in case repeat request after commit.
+func (txInfo *TransactionInfo) IsDoneAndNoNeedWait(timeNow int64) (done bool) {
+	return txInfo.State == TxStateCommitDone && (timeNow-txInfo.DoneTime > 60)
 }
 
 func (txInfo *TransactionInfo) IsExpired() (expired bool) {
