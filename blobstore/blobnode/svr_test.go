@@ -16,7 +16,6 @@ package blobnode
 
 import (
 	"context"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -151,7 +150,7 @@ func TestHandleDiskIOError(t *testing.T) {
 }
 
 func TestService2(t *testing.T) {
-	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+"Service2")
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"Service2")
 	require.NoError(t, err)
 	defer os.Remove(workDir)
 
@@ -197,7 +196,7 @@ func TestService2(t *testing.T) {
 }
 
 func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMgr) {
-	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+path)
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+path)
 	require.NoError(t, err)
 
 	path1 := filepath.Join(workDir, "disk1")
@@ -280,7 +279,7 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 }
 
 func TestService_CmdpChunk(t *testing.T) {
-	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+"TestService_CmdpChunkCompact")
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"TestService_CmdpChunkCompact")
 	require.NoError(t, err)
 	defer os.RemoveAll(workDir)
 

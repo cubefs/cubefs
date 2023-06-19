@@ -17,7 +17,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -31,7 +30,7 @@ import (
 )
 
 func BenchmarkKVDB_CoPut(b *testing.B) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbCoPut")
+	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbCoPut")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
 
@@ -76,7 +75,7 @@ func BenchmarkKVDB_CoPut(b *testing.B) {
 }
 
 func BenchmarkKVDB_DirectPut(b *testing.B) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbBenchmarkPut")
+	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbBenchmarkPut")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
 
@@ -121,7 +120,7 @@ func BenchmarkKVDB_DirectPut(b *testing.B) {
 }
 
 func BenchmarkKVDB_CoDelete(b *testing.B) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbCoDelete")
+	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbCoDelete")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
 
@@ -177,7 +176,7 @@ func BenchmarkKVDB_CoDelete(b *testing.B) {
 }
 
 func BenchmarkKVDB_DirectDelete(b *testing.B) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "kvdbDelete")
+	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbDelete")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
 

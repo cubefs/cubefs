@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -659,7 +658,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)
-			if err = ioutil.WriteFile(fileName, snap.V, 0644); err != nil {
+			if err = os.WriteFile(fileName, snap.V, 0644); err != nil {
 				log.LogErrorf("ApplySnapshot: write snap extent delete file fail: partitionID(%v) err(%v)",
 					mp.config.PartitionId, err)
 			}

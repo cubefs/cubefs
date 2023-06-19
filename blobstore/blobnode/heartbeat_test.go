@@ -17,7 +17,6 @@ package blobnode
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -75,7 +74,7 @@ func TestHeartbeat2(t *testing.T) {
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mockClusterMgrServer.URL}
 
-	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+"Heartbeat2")
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"Heartbeat2")
 	require.NoError(t, err)
 	defer os.Remove(workDir)
 
@@ -140,7 +139,7 @@ func TestHeartbeat3(t *testing.T) {
 	cc := &cmapi.Config{}
 	cc.Hosts = []string{mockClusterMgrServer.URL}
 
-	workDir, err := ioutil.TempDir(os.TempDir(), defaultSvrTestDir+"Heartbeat3")
+	workDir, err := os.MkdirTemp(os.TempDir(), defaultSvrTestDir+"Heartbeat3")
 	require.NoError(t, err)
 	defer os.Remove(workDir)
 

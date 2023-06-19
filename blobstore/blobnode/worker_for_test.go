@@ -19,7 +19,6 @@ import (
 	"context"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"sync"
 	"testing"
 
@@ -203,7 +202,7 @@ func (getter *MockGetter) GetShard(ctx context.Context, location proto.VunitLoca
 		return nil, 0, err
 	}
 	reader, crc, err := getter.vunits[vuid].getShard(bid)
-	return ioutil.NopCloser(reader), crc, err
+	return io.NopCloser(reader), crc, err
 }
 
 func (getter *MockGetter) MarkDelete(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) {

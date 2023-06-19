@@ -17,15 +17,15 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/cryptoutil"
 	"github.com/cubefs/cubefs/util/keystore"
-	"io/ioutil"
-	"net/http"
-	"sync"
-	"time"
-
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -182,7 +182,7 @@ func (c *AuthClient) serveAdminRequest(id, key string, ticket *auth.Ticket, keyI
 }
 
 func loadCertfile(path string) (caCert []byte, err error) {
-	caCert, err = ioutil.ReadFile(path)
+	caCert, err = os.ReadFile(path)
 	if err != nil {
 		return
 	}

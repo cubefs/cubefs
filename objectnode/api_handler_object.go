@@ -20,7 +20,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -536,7 +535,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var bytes []byte
-	bytes, err = ioutil.ReadAll(r.Body)
+	bytes, err = io.ReadAll(r.Body)
 	if err != nil {
 		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
@@ -1442,7 +1441,7 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+	if requestBody, err = io.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
@@ -1534,7 +1533,7 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+	if requestBody, err = io.ReadAll(r.Body); err != nil {
 		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),

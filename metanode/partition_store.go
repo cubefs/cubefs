@@ -21,16 +21,14 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 	"sync/atomic"
 
-	"github.com/cubefs/cubefs/util/log"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 	mmap "github.com/edsrzf/mmap-go"
 )
 
@@ -62,7 +60,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		return
 	}
 	defer fp.Close()
-	data, err := ioutil.ReadAll(fp)
+	data, err := io.ReadAll(fp)
 	if err != nil || len(data) == 0 {
 		err = errors.NewErrorf("[loadMetadata]: ReadFile %s, data: %s", err.Error(),
 			string(data))
@@ -378,7 +376,7 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		err = errors.NewErrorf("[loadApplyID]: Stat %s", err.Error())
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		err = errors.NewErrorf("[loadApplyID] ReadFile: %s", err.Error())
 		return
@@ -642,7 +640,7 @@ func (mp *metaPartition) loadTxID(rootDir string) (err error) {
 		err = nil
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		if err == os.ErrNotExist {
 			err = nil
@@ -680,7 +678,7 @@ func (mp *metaPartition) loadUniqChecker(rootDir string) (err error) {
 		return
 	}
 
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		if err == os.ErrNotExist {
 			err = nil

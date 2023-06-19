@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -146,15 +145,21 @@ func (st *Statistic) flushScheduler() {
 }
 
 func removeLogFile(diskSpaceLeft int64, module string) {
-	fInfos, err := ioutil.ReadDir(gSt.logDir)
+	fInfos, err := os.ReadDir(gSt.logDir)
 	if err != nil {
 		log.LogErrorf("ReadDir failed, logDir: %s, err: %v", gSt.logDir, err)
 		return
 	}
 	var needDelFiles ShiftedFile
 	for _, info := range fInfos {
-		if deleteFileFilter(info, diskSpaceLeft, module) {
-			needDelFiles = append(needDelFiles, info)
+		fileInfo, err := info.Info()
+		if err != nil {
+			log.LogErrorf("FileInfo failed,  err: %v", err)
+			continue
+		}
+
+		if deleteFileFilter(fileInfo, diskSpaceLeft, module) {
+			needDelFiles = append(needDelFiles, fileInfo)
 		}
 	}
 	sort.Sort(needDelFiles)

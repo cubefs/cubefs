@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
@@ -139,7 +138,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		return
 	}
 	stateCode := resp.StatusCode
-	respData, err = ioutil.ReadAll(resp.Body)
+	respData, err = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
 		log.LogErrorf("serveRequest: read http response body fail: err(%v)", err)

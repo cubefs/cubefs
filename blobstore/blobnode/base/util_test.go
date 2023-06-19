@@ -15,7 +15,6 @@
 package base
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,7 +106,7 @@ func TestIsEmptyDisk(t *testing.T) {
 	require.Equal(t, false, flag)
 	require.Error(t, err)
 
-	testDir, err := ioutil.TempDir(os.TempDir(), "blobnode_util")
+	testDir, err := os.MkdirTemp(os.TempDir(), "blobnode_util")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

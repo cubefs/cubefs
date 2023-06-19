@@ -19,7 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -612,7 +612,7 @@ func SendBytes(client *http.Client, target string, data []byte) (res []byte, err
 		return
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		err = fmt.Errorf("action[doRealSend] failed:" + err.Error())
 		return

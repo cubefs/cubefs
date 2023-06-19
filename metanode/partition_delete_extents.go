@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -80,13 +79,13 @@ func (mp *metaPartition) appendDelExtentsToFile(fileList *synclist.SyncList) {
 	)
 LOOP:
 	// scan existed EXTENT_DEL_* files to fill fileList
-	finfos, err := ioutil.ReadDir(mp.config.RootDir)
+	finfos, err := os.ReadDir(mp.config.RootDir)
 	if err != nil {
 		panic(err)
 	}
 
-	finfos = sortDelExtFileInfo(finfos)
-	for _, info := range finfos {
+	fileInfos := sortDelExtFileInfo(finfos)
+	for _, info := range fileInfos {
 		fileList.PushBack(info.Name())
 		fileSize = info.Size()
 	}

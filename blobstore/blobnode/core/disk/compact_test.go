@@ -17,7 +17,6 @@ package disk
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,7 +36,7 @@ import (
 func TestDiskStorage_StartCompact(t *testing.T) {
 	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "NewBlobNodeService")
 
-	testDir, err := ioutil.TempDir(os.TempDir(), "DoCompact2")
+	testDir, err := os.MkdirTemp(os.TempDir(), "DoCompact2")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -94,7 +93,7 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 }
 
 func TestCompactChunkInternal(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "TestCompactChunkInternal")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestCompactChunkInternal")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -157,7 +156,7 @@ func TestCompactChunkInternal(t *testing.T) {
 }
 
 func TestExecCompactChunk(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), "TestExecCompactChunk")
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestExecCompactChunk")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

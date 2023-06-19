@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -553,7 +553,7 @@ func (m *ClusterService) alarmList(ctx context.Context, args struct {
 
 	buf := bufio.NewReader(f)
 
-	all, err := ioutil.ReadAll(buf)
+	all, err := io.ReadAll(buf)
 	if err != nil {
 		return nil, fmt.Errorf("read file:[%s] size:[%d] has err:[%s]", path, stat.Size(), err.Error())
 	}

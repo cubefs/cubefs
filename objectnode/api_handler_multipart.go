@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -594,7 +593,7 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 
 	// get uploaded part info in request
 	var requestBytes []byte
-	requestBytes, err = ioutil.ReadAll(r.Body)
+	requestBytes, err = io.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("completeMultipartUploadHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InternalErrorCode(err)

@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -71,7 +70,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	contentLenStr := r.Header.Get(HeaderNameContentLength)
 	if contentLen, errConv := strconv.Atoi(contentLenStr); errConv == nil && contentLen > 0 {
 		var requestBytes []byte
-		requestBytes, err = ioutil.ReadAll(r.Body)
+		requestBytes, err = io.ReadAll(r.Body)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 			return
@@ -355,7 +354,7 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
+	if requestBody, err = io.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return

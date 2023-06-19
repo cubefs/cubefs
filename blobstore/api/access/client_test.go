@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	mrand "math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -926,7 +925,7 @@ func TestAccessClientRPCConfig(t *testing.T) {
 }
 
 func TestAccessClientLogger(t *testing.T) {
-	file, err := ioutil.TempFile(os.TempDir(), "TestAccessClientLogger")
+	file, err := os.CreateTemp(os.TempDir(), "TestAccessClientLogger")
 	require.NoError(t, err)
 	require.NoError(t, file.Close())
 	defer func() {

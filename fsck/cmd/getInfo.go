@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -137,7 +136,7 @@ func getExtentsByInode(ino uint64, mp *proto.MetaPartitionView) (res *proto.GetE
 		return nil, fmt.Errorf("Invalid status code: %v", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("ReadAll failed: %v", err)
 	}
@@ -213,7 +212,7 @@ func getDataPartitions(addr, name string) ([]*proto.DataPartitionResponse, error
 		return nil, fmt.Errorf("Invalid status code: %v", resp.StatusCode)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("Get data partitions read all body failed: %v", err)
 	}

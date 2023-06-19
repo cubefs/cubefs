@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path"
@@ -817,7 +816,7 @@ func (mp *metaPartition) PersistMetadata() (err error) {
 }
 
 func (mp *metaPartition) parseCrcFromFile() ([]uint32, error) {
-	data, err := ioutil.ReadFile(path.Join(path.Join(mp.config.RootDir, snapshotDir), SnapshotSign))
+	data, err := os.ReadFile(path.Join(path.Join(mp.config.RootDir, snapshotDir), SnapshotSign))
 	if err != nil {
 		return nil, err
 	}
@@ -990,7 +989,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		return
 	}
 	// write crc to file
-	if err = ioutil.WriteFile(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0775); err != nil {
+	if err = os.WriteFile(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0775); err != nil {
 		return
 	}
 	snapshotDir := path.Join(mp.config.RootDir, snapshotDir)

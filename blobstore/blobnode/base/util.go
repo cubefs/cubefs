@@ -16,7 +16,6 @@ package base
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -46,7 +45,7 @@ func IsFileExists(filename string) (bool, error) {
 }
 
 func IsEmptyDisk(filename string) (bool, error) {
-	fis, err := ioutil.ReadDir(filename)
+	fis, err := os.ReadDir(filename)
 	if err != nil {
 		return false, err
 	}

@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/cubefs/cubefs/master"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/introspection"
-	"io/ioutil"
-	"os"
-	"strings"
 )
 
 func main() {
@@ -251,7 +251,7 @@ func parseSchema(schema *graphql.Schema, path, name string) {
 	}
 
 	makeSource(name)
-	if e := ioutil.WriteFile(outfile, source.Bytes(), os.ModePerm); e != nil {
+	if e := os.WriteFile(outfile, source.Bytes(), os.ModePerm); e != nil {
 		panic(e)
 	}
 }

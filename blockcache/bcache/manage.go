@@ -22,10 +22,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,6 +35,7 @@ import (
 
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -255,7 +254,7 @@ func (bm *bcacheManager) read(key string, offset uint64, len uint32) (io.ReadClo
 		} else {
 			//decrypt
 			encryptXOR(buf[:n])
-			return ioutil.NopCloser(bytes.NewBuffer(buf[:n])), nil
+			return io.NopCloser(bytes.NewBuffer(buf[:n])), nil
 		}
 	} else {
 		err = os.ErrNotExist

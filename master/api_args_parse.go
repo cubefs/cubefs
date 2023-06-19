@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -210,7 +210,7 @@ func parseRequestToGetTaskResponse(r *http.Request) (tr *proto.AdminTask, err er
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 	tr = &proto.AdminTask{}
@@ -1215,7 +1215,7 @@ func parseVolStatReq(r *http.Request) (name string, ver int, byMeta bool, err er
 func parseQosInfo(r *http.Request) (info *proto.ClientReportLimitInfo, err error) {
 	info = proto.NewClientReportLimitInfo()
 	var body []byte
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 	// log.LogInfof("action[parseQosInfo] body len:[%v],crc:[%v]", len(body), crc32.ChecksumIEEE(body))
@@ -1514,7 +1514,7 @@ func parserSetQuotaParam(r *http.Request, req *proto.SetMasterQuotaReuqest) (err
 		return
 	}
 	var body []byte
-	if body, err = ioutil.ReadAll(r.Body); err != nil {
+	if body, err = io.ReadAll(r.Body); err != nil {
 		return
 	}
 

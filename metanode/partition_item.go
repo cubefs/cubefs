@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"reflect"
@@ -345,7 +344,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		var err error
 		var raw []byte
 		for _, filename := range iter.filenames {
-			if raw, err = ioutil.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
+			if raw, err = os.ReadFile(path.Join(iter.fileRootDir, filename)); err != nil {
 				produceError(err)
 				return
 			}

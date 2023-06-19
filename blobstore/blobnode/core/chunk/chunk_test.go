@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"context"
 	"hash/crc32"
-	"io/ioutil"
+	"io"
 	"os"
 	"runtime"
 	"sync/atomic"
@@ -42,7 +42,7 @@ const (
 )
 
 func TestNewChunkStorage(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"NewChunkStorage")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"NewChunkStorage")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -100,7 +100,7 @@ func TestNewChunkStorage(t *testing.T) {
 }
 
 func TestChunkStorage_ReadWrite(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkStorageRW")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkStorageRW")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -192,7 +192,7 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	require.Equal(t, shard.Flag, rs.Flag)
 	require.Equal(t, shard.Size, rs.Size)
 
-	rd, err := ioutil.ReadAll(rs.Body)
+	rd, err := io.ReadAll(rs.Body)
 	require.NoError(t, err)
 	require.Equal(t, shardData, rd)
 
@@ -220,7 +220,7 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 }
 
 func TestChunkStorage_ReadWriteInline(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkStorageRWInline")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkStorageRWInline")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -296,7 +296,7 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	require.Equal(t, shard.Flag, rs.Flag)
 	require.Equal(t, shard.Size, rs.Size)
 
-	rd, err := ioutil.ReadAll(rs.Body)
+	rd, err := io.ReadAll(rs.Body)
 	require.NoError(t, err)
 	require.Equal(t, shardData, rd)
 
@@ -310,7 +310,7 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	require.Equal(t, shard.Flag, rs1.Flag)
 	require.Equal(t, shard.Size, rs1.Size)
 
-	rd, err = ioutil.ReadAll(rs1.Body)
+	rd, err = io.ReadAll(rs1.Body)
 	require.NoError(t, err)
 	require.Equal(t, shardData[1:3], rd)
 
@@ -338,7 +338,7 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 }
 
 func TestChunkStorage_DeleteOp(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"ChunkStorageDelete")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkStorageDelete")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
@@ -447,7 +447,7 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 }
 
 func TestChunkStorage_Finalizer(t *testing.T) {
-	testDir, err := ioutil.TempDir(os.TempDir(), defaultDiskTestDir+"Finalizer")
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"Finalizer")
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 

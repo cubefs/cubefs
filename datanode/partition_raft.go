@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -472,7 +471,7 @@ func (dp *DataPartition) LoadAppliedID() (err error) {
 	if _, err = os.Stat(filename); err != nil {
 		return
 	}
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		err = errors.NewErrorf("[loadApplyIndex] OpenFile: %s", err.Error())
 		return
