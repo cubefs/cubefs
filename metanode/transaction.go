@@ -47,6 +47,14 @@ const (
 	RbFromClient uint32 = 2
 )
 
+func (i *TxRollbackInode) ToString() string {
+	content := fmt.Sprintf("{inode:[ino:%v, type:%v, nlink:%v], quotaIds:%v, rbType:%v, rbInitiator:%v, rbPlaceholder:%v, rbPlaceholderTimestamp:%v, "+
+		"txInodeInfo:[Ino:%v, MpID:%v, CreateTime:%v, Timeout:%v, TxID:%v, MpMembers:%v]}",
+		i.inode.Inode, i.inode.Type, i.inode.NLink, i.quotaIds, i.rbType, i.rbInitiator, i.rbPlaceholder, i.rbPlaceholderTimestamp,
+		i.txInodeInfo.Ino, i.txInodeInfo.MpID, i.txInodeInfo.CreateTime, i.txInodeInfo.Timeout, i.txInodeInfo.TxID, i.txInodeInfo.MpMembers)
+	return content
+}
+
 type TxRollbackInode struct {
 	inode                  *Inode
 	txInodeInfo            *proto.TxInodeInfo
@@ -55,14 +63,6 @@ type TxRollbackInode struct {
 	rbPlaceholder          bool   //default false
 	rbPlaceholderTimestamp int64
 	quotaIds               []uint32
-}
-
-func (i *TxRollbackInode) ToString() string {
-	content := fmt.Sprintf("{inode:[ino:%v, type:%v, nlink:%v], quotaIds:%v, rbType:%v, rbInitiator:%v, rbPlaceholder:%v, rbPlaceholderTimestamp:%v, "+
-		"txInodeInfo:[Ino:%v, MpID:%v, CreateTime:%v, Timeout:%v, TxID:%v, MpMembers:%v]}",
-		i.inode.Inode, i.inode.Type, i.inode.NLink, i.quotaIds, i.rbType, i.rbInitiator, i.rbPlaceholder, i.rbPlaceholderTimestamp,
-		i.txInodeInfo.Ino, i.txInodeInfo.MpID, i.txInodeInfo.CreateTime, i.txInodeInfo.Timeout, i.txInodeInfo.TxID, i.txInodeInfo.MpMembers)
-	return content
 }
 
 // Less tests whether the current TxRollbackInode item is less than the given one.

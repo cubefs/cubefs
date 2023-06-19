@@ -182,23 +182,25 @@ const (
 
 // Configuration keys
 const (
-	cfgLocalIP           = "localIP"
-	cfgListen            = "listen"
-	cfgMetadataDir       = "metadataDir"
-	cfgRaftDir           = "raftDir"
-	cfgMasterAddrs       = "masterAddrs" // will be deprecated
-	cfgRaftHeartbeatPort = "raftHeartbeatPort"
-	cfgRaftReplicaPort   = "raftReplicaPort"
-	cfgDeleteBatchCount  = "deleteBatchCount"
-	cfgTotalMem          = "totalMem"
-	cfgMemRatio          = "memRatio"
-	cfgZoneName          = "zoneName"
-	cfgTickInterval      = "tickInterval"
-	cfgRaftRecvBufSize   = "raftRecvBufSize"
-	cfgSmuxPortShift     = "smuxPortShift"     //int
-	cfgSmuxMaxConn       = "smuxMaxConn"       //int
-	cfgSmuxStreamPerConn = "smuxStreamPerConn" //int
-	cfgSmuxMaxBuffer     = "smuxMaxBuffer"     //int
+	cfgLocalIP                   = "localIP"
+	cfgListen                    = "listen"
+	cfgMetadataDir               = "metadataDir"
+	cfgRaftDir                   = "raftDir"
+	cfgMasterAddrs               = "masterAddrs" // will be deprecated
+	cfgRaftHeartbeatPort         = "raftHeartbeatPort"
+	cfgRaftReplicaPort           = "raftReplicaPort"
+	cfgDeleteBatchCount          = "deleteBatchCount"
+	cfgTotalMem                  = "totalMem"
+	cfgMemRatio                  = "memRatio"
+	cfgZoneName                  = "zoneName"
+	cfgTickInterval              = "tickInterval"
+	cfgRaftRecvBufSize           = "raftRecvBufSize"
+	cfgSmuxPortShift             = "smuxPortShift"             //int
+	cfgSmuxMaxConn               = "smuxMaxConn"               //int
+	cfgSmuxStreamPerConn         = "smuxStreamPerConn"         //int
+	cfgSmuxMaxBuffer             = "smuxMaxBuffer"             //int
+	cfgRetainLogs                = "retainLogs"                //string, raft RetainLogs
+	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion" //int, format version of snapshot that raft leader sent to follower
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
@@ -209,10 +211,11 @@ const (
 	intervalToPersistData = time.Minute * 5
 	intervalToSyncCursor  = time.Minute * 1
 
-	defaultDelExtentsCnt       = 100000
-	defaultMaxQuotaGoroutine   = 5
-	defaultQuotaSwitch         = true
-	DefaultNameResolveInterval = 1 // minutes
+	defaultDelExtentsCnt         = 100000
+	defaultMaxQuotaGoroutine     = 5
+	defaultQuotaSwitch           = true
+	DefaultNameResolveInterval   = 1 // minutes
+	DefaultRaftNumOfLogsToRetain = 20000 * 2
 )
 
 const (

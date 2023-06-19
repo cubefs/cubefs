@@ -56,7 +56,7 @@ func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
 		ReplicaPort:       replicaPort,
 		TickInterval:      m.tickInterval,
 		RecvBufSize:       m.raftRecvBufSize,
-		NumOfLogsToRetain: raftstore.DefaultNumOfLogsToRetain * 2,
+		NumOfLogsToRetain: m.raftRetainLogs,
 	}
 	m.raftStore, err = raftstore.NewRaftStore(raftConf, cfg)
 	if err != nil {
