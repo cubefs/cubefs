@@ -126,7 +126,7 @@ func (c *Config) GetBool(key string) bool {
 	return false
 }
 
-// GetBool returns a int value for the config key.
+// GetInt returns a int value for the config key.
 func (c *Config) GetInt(key string) int {
 	x, present := c.data[key]
 	if !present {
@@ -138,7 +138,7 @@ func (c *Config) GetInt(key string) int {
 	return 0
 }
 
-// GetBool returns a int64 value for the config key.
+// GetInt64 returns a int64 value for the config key.
 func (c *Config) GetInt64(key string) int64 {
 	x, present := c.data[key]
 	if !present {
@@ -159,7 +159,12 @@ func (c *Config) GetInt64(key string) int64 {
 	return 0
 }
 
-// GetBool returns a int64 value for the config key.
+func (c *Config) HasKey(key string) bool {
+	_, present := c.data[key]
+	return present
+}
+
+// GetInt64WithDefault returns a int64 value for the config key.
 func (c *Config) GetInt64WithDefault(key string, defaultVal int64) int64 {
 	if val := c.GetInt64(key); val == 0 {
 		return defaultVal

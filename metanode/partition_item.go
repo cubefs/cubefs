@@ -125,27 +125,26 @@ type fileData struct {
 
 const (
 	// initial version
-	SanpFormatVersion_0 uint32 = iota
+	SnapFormatVersion_0 uint32 = iota
 
 	// version since transaction feature, added formatVersion, txId and cursor in MetaItemIterator struct
-	SanpFormatVersion_1
+	SnapFormatVersion_1
 )
-
-const CurrentSnapFormatVersion = SanpFormatVersion_1
 
 // MetaItemIterator defines the iterator of the MetaItem.
 type MetaItemIterator struct {
-	fileRootDir    string
-	applyID        uint64
-	txId           uint64
-	cursor         uint64
-	inodeTree      *BTree
-	dentryTree     *BTree
-	extendTree     *BTree
-	multipartTree  *BTree
-	txTree         *BTree
-	txRbInodeTree  *BTree
-	txRbDentryTree *BTree
+	fileRootDir       string
+	SnapFormatVersion uint32
+	applyID           uint64
+	txId              uint64
+	cursor            uint64
+	inodeTree         *BTree
+	dentryTree        *BTree
+	extendTree        *BTree
+	multipartTree     *BTree
+	txTree            *BTree
+	txRbInodeTree     *BTree
+	txRbDentryTree    *BTree
 
 	filenames []string
 
@@ -184,6 +183,7 @@ func (siw *SnapItemWrapper) UnmarshalKey(k []byte) (err error) {
 func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
+	si.SnapFormatVersion = mp.manager.metaNode.raftSyncSnapFormatVersion
 	si.applyID = mp.applyID
 	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 	si.cursor = mp.GetCursor()
@@ -246,23 +246,32 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			}
 		}
 
-		// process apply index ID
-		snapFormatVerWrapper := SnapItemWrapper{SiwKeySnapFormatVer, CurrentSnapFormatVersion}
-		produceItem(snapFormatVerWrapper)
+		if si.SnapFormatVersion == SnapFormatVersion_0 {
+			// process index ID
+			produceItem(si.applyID)
+			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_0, partitionId(%v), applyID(%v)",
+				mp.config.PartitionId, si.applyID)
+		} else if si.SnapFormatVersion == SnapFormatVersion_1 {
+			// process snapshot format version
+			snapFormatVerWrapper := SnapItemWrapper{SiwKeySnapFormatVer, si.SnapFormatVersion}
+			produceItem(snapFormatVerWrapper)
 
-		// process apply index ID
-		applyIdWrapper := SnapItemWrapper{SiwKeyApplyId, si.applyID}
-		produceItem(applyIdWrapper)
+			// process apply index ID
+			applyIdWrapper := SnapItemWrapper{SiwKeyApplyId, si.applyID}
+			produceItem(applyIdWrapper)
 
-		// process txId
-		txIdWrapper := SnapItemWrapper{SiwKeyTxId, si.txId}
-		produceItem(txIdWrapper)
+			// process txId
+			txIdWrapper := SnapItemWrapper{SiwKeyTxId, si.txId}
+			produceItem(txIdWrapper)
 
-		// process cursor
-		cursorWrapper := SnapItemWrapper{SiwKeyCursor, si.cursor}
-		produceItem(cursorWrapper)
-		log.LogDebugf("newMetaItemIterator: partitionId(%v) snapFormatVer(%v) applyID(%v), txId(%v), cursor(%v)",
-			mp.config.PartitionId, CurrentSnapFormatVersion, si.applyID, si.txId, si.cursor)
+			// process cursor
+			cursorWrapper := SnapItemWrapper{SiwKeyCursor, si.cursor}
+			produceItem(cursorWrapper)
+			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v)",
+				mp.config.PartitionId, si.applyID, si.txId, si.cursor)
+		} else {
+			panic(fmt.Sprintf("invalid raftSyncSnapFormatVersione: %v", si.SnapFormatVersion))
+		}
 
 		// process inodes
 		iter.inodeTree.Ascend(func(i BtreeItem) bool {
@@ -372,11 +381,15 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 	var snap *MetaItem
 	switch typedItem := item.(type) {
 	case uint64:
+		applyIDBuf := make([]byte, 8)
+		binary.BigEndian.PutUint64(applyIDBuf, si.applyID)
+		data = applyIDBuf
+		return
 	case SnapItemWrapper:
 		if typedItem.key == SiwKeySnapFormatVer {
-			snapFormatBuf := make([]byte, 8)
-			binary.BigEndian.PutUint32(snapFormatBuf, CurrentSnapFormatVersion)
-			snap = NewMetaItem(opFSMSnapFormatVersion, typedItem.MarshalKey(), snapFormatBuf)
+			snapFormatVerBuf := make([]byte, 8)
+			binary.BigEndian.PutUint32(snapFormatVerBuf, si.SnapFormatVersion)
+			snap = NewMetaItem(opFSMSnapFormatVersion, typedItem.MarshalKey(), snapFormatVerBuf)
 		} else if typedItem.key == SiwKeyApplyId {
 			applyIDBuf := make([]byte, 8)
 			binary.BigEndian.PutUint64(applyIDBuf, si.applyID)
