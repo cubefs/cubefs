@@ -61,6 +61,7 @@ const (
 	TxOpMaskSymlink uint8 = 0x20
 	TxOpMaskLink    uint8 = 0x40
 	TxOpMaskAll     uint8 = 0x7F
+	TxPause         uint8 = 0xFF
 )
 
 var GTxMaskMap = map[string]uint8{
@@ -76,6 +77,9 @@ var GTxMaskMap = map[string]uint8{
 }
 
 func GetMaskString(mask uint8) (maskStr string) {
+	if mask == TxPause {
+		return "pause"
+	}
 	for k, v := range GTxMaskMap {
 		if k == "all" {
 			continue
@@ -113,7 +117,10 @@ func GetMaskFromString(maskStr string) (mask uint8, err error) {
 		err = txInvalidMask()
 		return
 	}
-
+	if maskStr == "pause" {
+		mask = TxPause
+		return
+	}
 	arr := strings.Split(maskStr, "|")
 
 	optNum := len(arr)

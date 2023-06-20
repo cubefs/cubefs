@@ -465,6 +465,15 @@ type QuotaHeartBeatInfos struct {
 	QuotaHbInfos []*QuotaHeartBeatInfo
 }
 
+type TxInfo struct {
+	Volume string
+	Mask   uint8
+}
+
+type TxInfos struct {
+	TxInfo []*TxInfo
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
@@ -473,6 +482,7 @@ type HeartBeatRequest struct {
 	QosToDataNode
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
+	TxInfos
 }
 
 // PartitionReport defines the partition report.
