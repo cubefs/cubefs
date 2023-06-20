@@ -1358,6 +1358,8 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		}
 
 		dp := dpv.Restore(c)
+		// TODO need to refactor
+		dp.setReadWrite()
 		vol.dataPartitions.put(dp)
 		c.addBadDataParitionIdMap(dp)
 		//add to nodeset decommission list
