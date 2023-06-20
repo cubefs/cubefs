@@ -17,6 +17,7 @@ package bcache
 import (
 	"github.com/cubefs/cubefs/util/stat"
 	"os"
+	"strings"
 
 	"sync"
 	"time"
@@ -110,6 +111,12 @@ func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (
 
 	readBgTime := stat.BeginStat()
 
+	subs := strings.Split(cachePath, "/")
+	if subs[len(subs)-1] != key {
+		log.LogDebugf("cacheKey(%v) cache path(%v) is not legal",
+			key, cachePath)
+		return 0, errors.NewErrorf("cacheKey(%v) cache path is not legal: %v", key, cachePath)
+	}
 	f, err := os.Open(cachePath)
 	if err != nil {
 		return 0, err
@@ -119,6 +126,10 @@ func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (
 	if n != int(size) {
 		log.LogDebugf("get block cache: BCache client GET() error,exception size(%v),but readSize(%v)", size, n)
 		return 0, errors.NewErrorf("BcacheClient GET() error, exception size(%v), but readSize(%v)", size, n)
+	}
+	if err != nil {
+		log.LogDebugf("get block cache: BCache client read %v err %v", cachePath, err.Error())
+		return 0, errors.NewErrorf("get block cache: BCache client read %v err %v", cachePath, err.Error())
 	}
 	encryptXOR(buf[:n])
 	stat.EndStat("bcache-get-read", err, readBgTime, 1)
