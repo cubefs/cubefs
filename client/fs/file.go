@@ -109,7 +109,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 	return &File{super: s, info: i, parentIno: pino, name: filename}
 }
 
-//get file parentPath
+// get file parentPath
 func (f *File) getParentPath() string {
 	filepath := ""
 	if f.parentIno == f.super.rootIno {
