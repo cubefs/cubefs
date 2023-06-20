@@ -432,6 +432,7 @@ type TransactionProcessor struct {
 	txResource *TransactionResource //RM
 	mp         *metaPartition
 	//connPool   *util.ConnectPool
+	mask uint8
 }
 
 func (p *TransactionProcessor) Reset() {
@@ -521,7 +522,9 @@ func (tm *TransactionManager) processExpiredTransactions() {
 		//log.LogDebugf("processExpiredTransactions: blacklist cleared")
 		case <-txCheckTimer.C:
 			//tm.notifyNewTransaction()
-
+			if tm.txProcessor.mask == proto.TxPause {
+				continue
+			}
 			if tm.txTree.Len() == 0 {
 				counter++
 				if counter >= 100 {

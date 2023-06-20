@@ -249,11 +249,13 @@ type volValue struct {
 	CacheLRUInterval int
 	CacheRule        string
 
-	EnablePosixAcl                                         bool
-	EnableTransaction                                      uint8
-	TxTimeout                                              int64
-	TxConflictRetryNum                                     int64
-	TxConflictRetryInterval                                int64
+	EnablePosixAcl bool
+
+	EnableTransaction       uint8
+	TxTimeout               int64
+	TxConflictRetryNum      int64
+	TxConflictRetryInterval int64
+
 	VolQosEnable                                           bool
 	DiskQosEnable                                          bool
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
