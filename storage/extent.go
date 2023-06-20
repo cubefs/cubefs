@@ -48,8 +48,8 @@ type Extent struct {
 	extentID   uint64
 	modifyTime int64
 	dataSize   int64
-	//modified   int32
-	header []byte
+	modified   int32
+	header     []byte
 	sync.Mutex
 }
 
@@ -185,6 +185,11 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 
 // Write writes data to an extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfoBlock) (err error) {
+	defer func() {
+		if err == nil {
+			atomic.StoreInt32(&e.modified, 1)
+		}
+	}()
 	if proto.IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
 		return
@@ -196,7 +201,6 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkWriteParameter(offset, size, writeType); err != nil {
 		return
 	}
-	//atomic.StoreInt32(&e.modified, 1)
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
@@ -286,10 +290,9 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 
 // Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
-	//if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
-	//	err = e.file.Sync()
-	//}
-	err = e.file.Sync()
+	if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
+		err = e.file.Sync()
+	}
 	return
 }
 
