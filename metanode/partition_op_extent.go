@@ -118,6 +118,15 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	return
 }
 
+func (mp *metaPartition) SetTxInfo(info []*proto.TxInfo) {
+	for _, txInfo := range info {
+		if txInfo.Volume != mp.config.VolName {
+			continue
+		}
+		mp.txProcessor.mask = txInfo.Mask
+	}
+}
+
 func (mp *metaPartition) SetUidLimit(info []*proto.UidSpaceInfo) {
 	mp.uidManager.volName = mp.config.VolName
 	mp.uidManager.setUidAcl(info)
