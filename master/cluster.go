@@ -52,6 +52,7 @@ type Cluster struct {
 	badPartitionMutex            sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 	leaderInfo                   *LeaderInfo
 	cfg                          *clusterConfig
+	metaReady                    bool
 	retainLogs                   uint64
 	idAlloc                      *IDAllocator
 	t                            *topology
@@ -517,7 +518,9 @@ func (c *Cluster) checkDataPartitions() {
 	for _, vol := range vols {
 		readWrites := vol.checkDataPartitions(c)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
-		vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
+		if c.metaReady {
+			vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
+		}
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ",
 			vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
