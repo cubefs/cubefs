@@ -632,14 +632,21 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			if vol.FollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
 			}
+
 			spaceInfo := vol.uidSpaceManager.getSpaceOp()
 			hbReq.UidLimitInfo = append(hbReq.UidLimitInfo, spaceInfo...)
+
 			if vol.quotaManager != nil {
 				quotaHbInfos := vol.quotaManager.getQuotaHbInfos()
 				if len(quotaHbInfos) != 0 {
 					hbReq.QuotaHbInfos = append(hbReq.QuotaHbInfos, quotaHbInfos...)
 				}
 			}
+
+			hbReq.TxInfo = append(hbReq.TxInfo, &proto.TxInfo{
+				Volume: vol.Name,
+				Mask:   vol.enableTransaction,
+			})
 		}
 		log.LogDebugf("checkMetaNodeHeartbeat start")
 		for _, info := range hbReq.QuotaHbInfos {

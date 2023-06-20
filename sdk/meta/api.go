@@ -106,7 +106,7 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 		txMask = proto.TxOpMaskMknod
 	}
 	txType := proto.TxMaskToType(txMask)
-	if mw.EnableTransaction&txMask > 0 && txType != proto.TxTypeUndefined {
+	if mw.EnableTransaction != proto.TxPause && mw.EnableTransaction&txMask > 0 && txType != proto.TxTypeUndefined {
 		return mw.txCreate_ll(parentID, name, mode, uid, gid, target, txType)
 	} else {
 		return mw.create_ll(parentID, name, mode, uid, gid, target)
