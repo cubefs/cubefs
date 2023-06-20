@@ -54,15 +54,16 @@ type ReplProtocol struct {
 	followerConnects map[string]*FollowerTransport
 	lock             sync.RWMutex
 
-	prepareFunc  func(p *Packet) error             // prepare packet
-	operatorFunc func(p *Packet, c net.Conn) error // operator
-	postFunc     func(p *Packet) error             // post-processing packet
+	prepareFunc  func(p *Packet) error                                       // prepare packet
+	operatorFunc func(p *Packet, c net.Conn, recvLimiter *RecvLimiter) error // operator
+	postFunc     func(p *Packet) error                                       // post-processing packet
 
 	getSmuxConn func(addr string) (c net.Conn, err error)
 	putSmuxConn func(conn net.Conn, force bool)
 
-	isError int32
-	replId  int64
+	isError     int32
+	replId      int64
+	recvLimiter *RecvLimiter
 }
 
 type FollowerTransport struct {
@@ -188,7 +189,7 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) {
 }
 
 func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
-	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error) *ReplProtocol {
+	operatorFunc func(p *Packet, c net.Conn, recvLimiter *RecvLimiter) error, postFunc func(p *Packet) error, recvLimiter *RecvLimiter) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
 	rp.ackCh = make(chan struct{}, RequestChanSize)
@@ -202,6 +203,7 @@ func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
 	rp.postFunc = postFunc
 	rp.exited = ReplRuning
 	rp.replId = proto.GenerateRequestID()
+	rp.recvLimiter = recvLimiter
 	go rp.OperatorAndForwardPktGoRoutine()
 	go rp.ReceiveResponseFromFollowersGoRoutine()
 	go rp.writeResponseToClientGoRroutine()
@@ -270,7 +272,7 @@ func (rp *ReplProtocol) hasError() bool {
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
-	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
+	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime, rp.recvLimiter); err != nil {
 		return
 	}
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
@@ -317,7 +319,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 		select {
 		case request := <-rp.toBeProcessedCh:
 			if !request.IsForwardPacket() {
-				rp.operatorFunc(request, rp.sourceConn)
+				rp.operatorFunc(request, rp.sourceConn, rp.recvLimiter)
 				rp.putResponse(request)
 			} else {
 				index, err := rp.sendRequestToAllFollowers(request)
@@ -326,7 +328,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 					rp.putResponse(request)
 				} else {
 					rp.pushPacketToList(request)
-					rp.operatorFunc(request, rp.sourceConn)
+					rp.operatorFunc(request, rp.sourceConn, rp.recvLimiter)
 					rp.putAck()
 				}
 			}

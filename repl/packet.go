@@ -15,12 +15,15 @@
 package repl
 
 import (
+	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
@@ -34,6 +37,8 @@ var (
 	ErrBadNodes       = errors.New("BadNodesErr")
 	ErrArgLenMismatch = errors.New("ArgLenMismatchErr")
 )
+
+const MaxOnceRecvSize = 128 * util.KB
 
 type Packet struct {
 	proto.Packet
@@ -322,17 +327,34 @@ func (p *Packet) PackErrorBody(action, msg string) {
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
 }
 
-func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
+func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int, limiter *rate.Limiter) (err error) {
 	if p.IsWriteOperation() && readSize == util.BlockSize {
 		p.Data, _ = proto.Buffers.Get(readSize)
 	} else {
 		p.Data = make([]byte, readSize)
 	}
-	_, err = io.ReadFull(c, p.Data[:readSize])
+	offset := 0
+	for offset != readSize {
+		size := readSize - offset
+		if size > MaxOnceRecvSize {
+			size = MaxOnceRecvSize
+		}
+
+		if !p.IsMasterCommand() && limiter != nil {
+			// recv limit
+			limiter.WaitN(context.Background(), size)
+		}
+
+		size, err = io.ReadFull(c, p.Data[offset:offset+size])
+		if err != nil {
+			return err
+		}
+		offset += size
+	}
 	return
 }
 
-func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
+func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration, limiter *RecvLimiter) (err error) {
 	if deadlineTime != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
 	} else {
@@ -349,8 +371,16 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	if err = p.UnmarshalHeader(header); err != nil {
 		return
 	}
-
 	if p.ArgLen > 0 {
+		if !p.IsMasterCommand() {
+			// wait for flow limit and packet limit
+			if limiter.Packet() != nil {
+				limiter.Packet().Wait(context.Background())
+			}
+			if limiter.Flow() != nil {
+				limiter.Flow().WaitN(context.Background(), int(p.ArgLen))
+			}
+		}
 		if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
 			return
 		}
@@ -363,7 +393,7 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
 		size = 0
 	}
-	return p.ReadFull(c, p.Opcode, int(size))
+	return p.ReadFull(c, p.Opcode, int(size), limiter.Flow())
 }
 
 func (p *Packet) IsMasterCommand() bool {
