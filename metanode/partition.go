@@ -192,6 +192,7 @@ type OpMultipart interface {
 	ListMultipart(req *proto.ListMultipartRequest, p *Packet) (err error)
 	GetUidInfo() (info []*proto.UidReportSpaceInfo)
 	SetUidLimit(info []*proto.UidSpaceInfo)
+	SetTxInfo(info []*proto.TxInfo)
 }
 
 // OpMeta defines the interface for the metadata operations.

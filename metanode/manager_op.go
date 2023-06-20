@@ -80,6 +80,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		m.Range(func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
 			partition.SetUidLimit(req.UidLimitInfo)
+			partition.SetTxInfo(req.TxInfo)
 			partition.setQuotaHbInfo(req.QuotaHbInfos)
 			mConf := partition.GetBaseConfig()
 			mpr := &proto.MetaPartitionReport{

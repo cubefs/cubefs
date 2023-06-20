@@ -142,26 +142,6 @@ func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
 		return
 	}
 
-	/*arr := strings.Split(maskStr, "|")
-
-	optNum := len(arr)
-
-	for _, v := range arr {
-		if m, ok := proto.GTxMaskMap[v]; ok {
-			if optNum >= 2 && (m == proto.TxOpMaskOff || m == proto.TxOpMaskAll) {
-				mask = proto.TxOpMaskOff
-				err = txInvalidMask()
-				return
-			} else {
-				mask = mask | m
-			}
-		} else {
-			mask = proto.TxOpMaskOff
-			err = txInvalidMask()
-			return
-		}
-	}*/
-
 	mask, err = proto.GetMaskFromString(maskStr)
 	if err != nil {
 		return
