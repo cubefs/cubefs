@@ -43,6 +43,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"golang.org/x/time/rate"
 
 	"github.com/xtaci/smux"
 )
@@ -59,11 +60,14 @@ var (
 )
 
 const (
-	DefaultZoneName         = proto.DefaultZoneName
-	DefaultRaftDir          = "raft"
-	DefaultRaftLogsToRetain = 10 // Count of raft logs per data partition
-	DefaultDiskMaxErr       = 1
-	DefaultDiskRetainMin    = 5 * util.GB // GB
+	DefaultZoneName            = proto.DefaultZoneName
+	DefaultRaftDir             = "raft"
+	DefaultRaftLogsToRetain    = 10 // Count of raft logs per data partition
+	DefaultDiskMaxErr          = 1
+	DefaultDiskRetainMin       = 5 * util.GB   // GB
+	DefaultNameResolveInterval = 1             // minutes
+	DefaultRecvLimit           = 100 * util.MB // MB
+	DefaultPacketLimit         = repl.RequestChanSize
 )
 
 const (
@@ -81,6 +85,7 @@ const (
 	ConfigKeyRaftReplica   = "raftReplica"     // string
 	CfgTickInterval        = "tickInterval"    // int
 	CfgRaftRecvBufSize     = "raftRecvBufSize" // int
+	ConfigKeyRecvFlowLimit = "recvFlowLimit"   // int
 
 	ConfigKeyDiskPath = "diskPath" // string
 
@@ -126,6 +131,7 @@ type DataNode struct {
 	tickInterval    int
 	raftRecvBufSize int
 	startTime       int64
+	recvFlowLimiter *rate.Limiter
 
 	tcpListener net.Listener
 	stopC       chan bool
@@ -278,7 +284,23 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
-	if len(cfg.GetSlice(proto.MasterAddr)) == 0 {
+
+	// recv limiter
+	recvLimit := cfg.GetInt64WithDefault(ConfigKeyRecvFlowLimit, DefaultRecvLimit)
+	s.recvFlowLimiter = rate.NewLimiter(rate.Limit(recvLimit), int(recvLimit))
+	log.LogDebugf("action[parseConfig] using flow speed limit %v MB per second", recvLimit/util.MB)
+	/*for _, ip := range cfg.GetSlice(proto.MasterAddr) {
+		MasterClient.AddNode(ip.(string))
+	}*/
+
+	updateInterval := cfg.GetInt(configNameResolveInterval)
+	if updateInterval <= 0 || updateInterval > 60 {
+		log.LogWarnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
+		updateInterval = DefaultNameResolveInterval
+	}
+
+	addrs := cfg.GetSlice(proto.MasterAddr)
+	if len(addrs) == 0 {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
 	for _, ip := range cfg.GetSlice(proto.MasterAddr) {
@@ -600,7 +622,7 @@ func (s *DataNode) serveConn(conn net.Conn) {
 	c, _ := conn.(*net.TCPConn)
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
-	packetProcessor := repl.NewReplProtocol(conn, s.Prepare, s.OperatePacket, s.Post)
+	packetProcessor := repl.NewReplProtocol(conn, s.Prepare, s.OperatePacket, s.Post, repl.NewRecvLimiter(s.recvFlowLimiter, rate.NewLimiter(DefaultPacketLimit, DefaultPacketLimit)))
 	packetProcessor.ServerConn()
 	space.Stats().RemoveConnection()
 }
@@ -677,7 +699,7 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 }
 
 func (s *DataNode) serveSmuxStream(stream *smux.Stream) {
-	packetProcessor := repl.NewReplProtocol(stream, s.Prepare, s.OperatePacket, s.Post)
+	packetProcessor := repl.NewReplProtocol(stream, s.Prepare, s.OperatePacket, s.Post, repl.NewRecvLimiter(s.recvFlowLimiter, rate.NewLimiter(DefaultPacketLimit, DefaultPacketLimit)))
 	if s.enableSmuxConnPool {
 		packetProcessor.SetSmux(s.getRepairConnFunc, s.putRepairConnFunc)
 	}
