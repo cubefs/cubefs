@@ -604,7 +604,7 @@ func (tm *TransactionManager) processExpiredTransactions() {
 
 			tm.txTree.Execute(func(tree *btree.BTree) interface{} {
 				for _, tx := range delTx {
-					tm.txTree.Delete(tx)
+					tm.txTree.tree.Delete(tx)
 				}
 				return true
 			})
