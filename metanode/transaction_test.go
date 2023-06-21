@@ -17,6 +17,8 @@ package metanode
 import (
 	"fmt"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -403,5 +405,82 @@ func TestTxRscCommit(t *testing.T) {
 	rbDentry2 := mockDeleteTxDentry(mp1)
 	status, err = txRsc.commitDentry(rbDentry2.txDentryInfo.TxID, rbDentry2.txDentryInfo.ParentId, rbDentry2.txDentryInfo.Name)
 	assert.True(t, status == proto.OpOk && err == nil)
+}
 
+func TestTxTreeRollback(t *testing.T) {
+	initMps(t)
+
+	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
+	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
+	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
+	if !txInfo.IsInitialized() {
+		mp1.initTxInfo(txInfo)
+	}
+	txId := txInfo.TxID
+
+	txMgr := mp1.txProcessor.txManager
+
+	//register
+	id := txMgr.txIdAlloc.getTransactionID()
+	expectedId := fmt.Sprintf("%d_%d", mp1.config.PartitionId, id)
+	assert.Equal(t, expectedId, txId)
+	txMgr.registerTransaction(txInfo)
+
+	txInfo.DoneTime = time.Now().Unix() - 70
+	txInfo.State = proto.TxStateCommitDone
+	go txMgr.processExpiredTransactions(nil)
+
+	time.Sleep(2 * time.Second)
+	assert.True(t, txMgr.txTree.Len() == 0)
+
+	txMgr.registerTransaction(txInfo)
+	txMgr.txProcessor.mask |= proto.TxPause
+	time.Sleep(2 * time.Second)
+	assert.True(t, txMgr.txTree.Len() == 1)
+}
+
+func TestMultiStartExpireCheck(t *testing.T) {
+	initMps(t)
+
+	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
+	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
+	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
+	if !txInfo.IsInitialized() {
+		mp1.initTxInfo(txInfo)
+	}
+
+	txMgr := mp1.txProcessor.txManager
+	wg := txMgr.Start()
+	assert.True(t, wg != nil)
+	assert.True(t, nil == txMgr.Start())
+
+	var exit int32
+	go func() {
+		wg.Wait()
+		atomic.StoreInt32(&exit, 1)
+	}()
+
+	cFunc := func(wgx *sync.WaitGroup) {
+		txMgr.stopProcess()
+		i := 1
+		for {
+			time.Sleep(time.Millisecond * 50)
+			if atomic.LoadInt32(&exit) == 1 {
+				wgx.Done()
+				break
+			}
+			i++
+			if i > 100 {
+				wgx.Done()
+				break
+			}
+		}
+	}
+	//time.Sleep(time.Second*5)
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+	cFunc(&wg1)
+
+	wg1.Wait()
+	assert.True(t, txMgr.started == false)
 }
