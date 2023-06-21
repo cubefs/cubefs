@@ -47,6 +47,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			m.cluster.checkPersistClusterValue()
 
 			m.loadMetadata()
+			m.cluster.metaReady = true
 			m.metaReady = true
 		}
 		m.cluster.checkDataNodeHeartbeat()
@@ -58,6 +59,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			m.clusterName, m.leaderInfo.addr))
 		m.clearMetadata()
 		m.metaReady = false
+		m.cluster.metaReady = false
 		m.cluster.masterClient.AddNode(m.leaderInfo.addr)
 		m.cluster.masterClient.SetLeader(m.leaderInfo.addr)
 		WarnMetrics.reset()
