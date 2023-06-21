@@ -58,7 +58,7 @@ func TestSyncPushBach(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			for i := 0; i < 1000; i += 1 {
-				println("pushback: ", i)
+				//println("pushback: ", i)
 				l.PushBack(i)
 			}
 			wg.Done()
@@ -69,7 +69,7 @@ func TestSyncPushBach(t *testing.T) {
 		go func() {
 			for i := 0; i < 1000; i += 1 {
 				if f := l.Front(); f != nil {
-					println("remove: ", f.Value)
+					//println("remove: ", f.Value)
 					l.Remove(f)
 				}
 			}
