@@ -72,7 +72,7 @@ func run() error {
 	}
 	defer log.LogFlush()
 
-	exporter.Init("check_crc", "jdos_chubaofs-node", cfg)
+	exporter.Init("check_crc", "jdos_chubaofs-node", "", cfg)
 
 	var profNetListener net.Listener = nil
 	if profPort != "" {

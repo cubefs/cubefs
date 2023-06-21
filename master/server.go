@@ -128,7 +128,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	if err = m.startHTTPService(ModuleName, cfg); err != nil {
 		return
 	}
-	exporter.Init(m.clusterName, ModuleName, cfg)
+	exporter.Init(m.clusterName, ModuleName, "", cfg)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()
 	m.wg.Add(1)

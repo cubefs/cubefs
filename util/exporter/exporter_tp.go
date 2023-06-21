@@ -136,6 +136,12 @@ func newTP(key string, start time.Time, precision UMPTPPrecision) (tp TP) {
 }
 
 func newModuleTP(op string, precision UMPTPPrecision) (tp TP) {
+	if len(zoneName) > 0 {
+		return multipleTP{
+			newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), unspecifiedTime, precision),
+			newTP(fmt.Sprintf("%s_%s_%s_%s", clusterName, zoneName, moduleName, op), unspecifiedTime, precision),
+		}
+	}
 	return newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), unspecifiedTime, precision)
 }
 

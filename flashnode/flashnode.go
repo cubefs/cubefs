@@ -102,7 +102,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	go f.startUpdateNodeInfo()
 
-	exporter.Init(f.clusterId, cfg.GetString("role"), cfg)
+	exporter.Init(f.clusterId, moduleName, f.zoneName, cfg)
 	if err = f.startTcpServer(); err != nil {
 		return
 	}

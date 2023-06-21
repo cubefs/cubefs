@@ -48,6 +48,7 @@ type LabelValue = prom.LabelValue
 var (
 	clusterName string
 	moduleName  string
+	zoneName    string
 
 	replacer = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
 	wg       sync.WaitGroup
@@ -56,10 +57,11 @@ var (
 )
 
 // Init initializes the exporter.
-func Init(cluster, module string, cfg *config.Config) {
+func Init(cluster, module, zone string, cfg *config.Config) {
 
-	clusterName = cluster
-	moduleName = module
+	clusterName = replaceSpace(cluster)
+	moduleName = replaceSpace(module)
+	zoneName = replaceSpace(zone)
 
 	if err := ump.InitUmp(module, umpAppName); err == nil {
 		umpEnabled = true
@@ -117,14 +119,20 @@ func InitWithRouter(cluster, module string, cfg *config.Config, router *mux.Rout
 }
 
 func SetCluster(cluster string) {
-	if cluster != clusterName {
-		clusterName = cluster
+	if clean := replaceSpace(cluster); cluster != clean {
+		clusterName = clean
 	}
 }
 
 func SetModule(module string) {
-	if moduleName != module {
-		moduleName = module
+	if clean := replaceSpace(module); moduleName != clean {
+		moduleName = clean
+	}
+}
+
+func SetZone(zone string) {
+	if clean := replaceSpace(zone); zoneName != clean {
+		zoneName = clean
 	}
 }
 
@@ -151,4 +159,8 @@ func Stop() {
 	if promEnabled {
 		prom.Stop()
 	}
+}
+
+func replaceSpace(src string) string {
+	return strings.Replace(src, " ", "", -1)
 }

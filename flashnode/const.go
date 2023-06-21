@@ -19,6 +19,8 @@ import (
 )
 
 const (
+	moduleName = "flashnode"
+
 	NodeLatestVersion                 = proto.BaseVersion
 	LruCacheDefaultCapacity           = 102400
 	CacheReqWriteTimeoutMilliSec      = 500

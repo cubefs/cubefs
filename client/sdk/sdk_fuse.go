@@ -232,7 +232,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	}
 	gClient.fsConn = fsConn
 
-	exporter.Init(gClient.super.ClusterName(), gClient.moduleName, cfg)
+	exporter.Init(gClient.super.ClusterName(), gClient.moduleName, "", cfg)
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)

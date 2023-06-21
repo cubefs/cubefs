@@ -120,7 +120,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.registerHandler()
 
 	// init ump monitor and alarm module
-	exporter.Init(proto.RoleScheduleNode, proto.RoleScheduleNode, cfg)
+	exporter.Init(proto.RoleScheduleNode, proto.RoleScheduleNode, "", cfg)
 
 	// start campaign goroutine
 	c := NewCandidate(fmt.Sprintf("%s:%s", s.localIp, s.port), s.ec)

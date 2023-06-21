@@ -4134,7 +4134,7 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 
 	// metric
 	c.initUmpKeys()
-	exporter.Init(mw.Cluster(), gClientManager.moduleName, nil)
+	exporter.Init(mw.Cluster(), gClientManager.moduleName, "", nil)
 
 	// version
 	startVersionReporter(mw.Cluster(), c.volName, masters)

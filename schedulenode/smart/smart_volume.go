@@ -87,7 +87,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	// init ump monitor and alarm module
-	exporter.Init(proto.RoleScheduleNode, proto.RoleSmartVolumeWorker, cfg)
+	exporter.Init(proto.RoleScheduleNode, proto.RoleSmartVolumeWorker, "", cfg)
 
 	// init smart volume worker
 	if err = sv.initWorker(); err != nil {

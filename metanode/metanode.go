@@ -140,7 +140,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 
 	go m.startUpdateNodeInfo()
 
-	exporter.Init(m.clusterId, cfg.GetString("role"), cfg)
+	exporter.Init(m.clusterId, cfg.GetString("role"), m.zoneName, cfg)
 
 	// check local partition compare with master ,if lack,then not start
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
