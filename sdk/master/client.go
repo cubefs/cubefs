@@ -181,12 +181,12 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			}
 			return []byte(body.Data), nil
 		default:
+			err = errors.New(fmt.Sprintf("err(%v)", strings.Replace(string(repsData), "\n", "", -1)))
 			log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 				resp.Request.URL.String(), host, stateCode, strings.Replace(string(repsData), "\n", "", -1))
 			continue
 		}
 	}
-	err = ErrNoValidMaster
 	return
 }
 
