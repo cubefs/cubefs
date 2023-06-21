@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -403,27 +404,22 @@ func NewTxRbDentryPlaceholder(pid uint64, name string, txId string) *TxRollbackD
 //TM
 type TransactionManager struct {
 	//need persistence and sync to all the raft members of the mp
-	txIdAlloc *TxIDAllocator
-	//transactions map[string]*proto.TransactionInfo //key: metapartitionID_mpTxID
+	txIdAlloc   *TxIDAllocator
 	txTree      *BTree
 	txProcessor *TransactionProcessor
 	started     bool
 	blacklist   *util.Set
 	//newTxCh     chan struct{}
-	exitCh chan struct{}
+	leaderChangeCh    chan struct{}
+	leaderChangeCheck int32
 	sync.RWMutex
 }
 
 //RM
 type TransactionResource struct {
-	//need persistence and sync to all the raft members of the mp
-	//txRollbackInodes   map[uint64]*TxRollbackInode //key: inode id
-	txRbInodeTree *BTree //key: inode id
-	//txRollbackDentries map[string]*TxRollbackDentry // key: parentId_name
+	txRbInodeTree  *BTree //key: inode id
 	txRbDentryTree *BTree // key: parentId_name
 	txProcessor    *TransactionProcessor
-	//started        bool
-	//exitCh         chan struct{}
 	sync.RWMutex
 }
 
@@ -443,30 +439,22 @@ func (p *TransactionProcessor) Reset() {
 
 func NewTransactionManager(txProcessor *TransactionProcessor) *TransactionManager {
 	txMgr := &TransactionManager{
-		txIdAlloc: newTxIDAllocator(),
-		//transactions: make(map[string]*proto.TransactionInfo, 0),
-		txTree:      NewBtree(),
-		txProcessor: txProcessor,
-		started:     false,
-		blacklist:   util.NewSet(),
-		exitCh:      make(chan struct{}),
-		//newTxCh:     make(chan struct{}, 1),
+		txIdAlloc:      newTxIDAllocator(),
+		txTree:         NewBtree(),
+		txProcessor:    txProcessor,
+		started:        false,
+		blacklist:      util.NewSet(),
+		leaderChangeCh: make(chan struct{}, 1000),
 	}
-	//txMgr.Start()
 	return txMgr
 }
 
 func NewTransactionResource(txProcessor *TransactionProcessor) *TransactionResource {
 	txRsc := &TransactionResource{
-		//txRollbackInodes:   make(map[uint64]*TxRollbackInode, 0),
-		txRbInodeTree: NewBtree(),
-		//txRollbackDentries: make(map[string]*TxRollbackDentry, 0),
+		txRbInodeTree:  NewBtree(),
 		txRbDentryTree: NewBtree(),
 		txProcessor:    txProcessor,
-		//started:        false,
-		//exitCh:         make(chan struct{}),
 	}
-	//txRsc.Start()
 	return txRsc
 }
 
@@ -493,38 +481,56 @@ func (tm *TransactionManager) Reset() {
 		}
 	}()
 
-	close(tm.exitCh)
+	close(tm.leaderChangeCh)
 	tm.txProcessor = nil
 }
 
-func (tm *TransactionManager) processExpiredTransactions() {
+func (tm *TransactionManager) processExpiredTransactions(wgEt *sync.WaitGroup) {
 	//scan transactions periodically, and invoke `rollbackTransaction` to roll back expired transactions
-	log.LogDebugf("processExpiredTransactions for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
+	log.LogInfof("processExpiredTransactions for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
 	clearInterval := time.Second * 60
 	clearTimer := time.NewTimer(clearInterval)
 
 	txCheckInterval := time.Second
 	txCheckTimer := time.NewTimer(txCheckInterval)
+	defer func() {
+		if wgEt != nil {
+			log.LogWarnf("processExpiredTransactions for mp[%v] exit", tm.txProcessor.mp.config.PartitionId)
+			wgEt.Done()
+		}
+		return
+	}()
 
 	var counter uint64 = 0
-
 	for {
 		select {
 		case <-tm.txProcessor.mp.stopC:
-			log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
+			log.LogInfof("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
+			tm.started = false
 			return
-		case <-tm.exitCh:
-			log.LogDebugf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
+		case <-tm.leaderChangeCh:
+			// lock to avoid
+			tm.Lock()
+			log.LogWarnf("processExpiredTransactions for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
+			if _, ok := tm.txProcessor.mp.IsLeader(); ok {
+				log.LogWarnf("processExpiredTransactions for mp[%v] already be leader again", tm.txProcessor.mp.config.PartitionId)
+				tm.Unlock()
+				continue
+			}
+			tm.started = false
+			tm.Unlock()
 			return
 		case <-clearTimer.C:
 			tm.blacklist.Clear()
 			clearTimer.Reset(clearInterval)
-		//log.LogDebugf("processExpiredTransactions: blacklist cleared")
+			//log.LogDebugf("processExpiredTransactions: blacklist cleared")
 		case <-txCheckTimer.C:
 			//tm.notifyNewTransaction()
 			if tm.txProcessor.mask == proto.TxPause {
+				txCheckTimer.Reset(txCheckInterval)
 				continue
 			}
+			log.LogInfof("processExpiredTransactions. mp %v mask %v", tm.txProcessor.mp.config.PartitionId, proto.GetMaskString(tm.txProcessor.mask))
 			if tm.txTree.Len() == 0 {
 				counter++
 				if counter >= 100 {
@@ -540,10 +546,16 @@ func (tm *TransactionManager) processExpiredTransactions() {
 
 			var wg sync.WaitGroup
 			timeNow := time.Now().Unix()
-			delTx := make([]*proto.TransactionInfo, 100)
+			var delTx []*proto.TransactionInfo
 			f := func(i BtreeItem) bool {
+				if atomic.CompareAndSwapInt32(&tm.leaderChangeCheck, 1, 0) {
+					if _, ok := tm.txProcessor.mp.IsLeader(); !ok {
+						log.LogWarnf("processExpiredTransactions for mp[%v] already not leader and break tx tree traverse",
+							tm.txProcessor.mp.config.PartitionId)
+						return false
+					}
+				}
 				tx := i.(*proto.TransactionInfo)
-
 				rollbackFunc := func(skipSetStat bool) {
 					defer wg.Done()
 					req := &proto.TxApplyRequest{
@@ -604,9 +616,11 @@ func (tm *TransactionManager) processExpiredTransactions() {
 
 			tm.txTree.GetTree().Ascend(f)
 			wg.Wait()
-
 			tm.txTree.Execute(func(tree *btree.BTree) interface{} {
 				for _, tx := range delTx {
+					if tx == nil {
+						return false
+					}
 					tm.txTree.tree.Delete(tx)
 				}
 				return true
@@ -618,50 +632,43 @@ func (tm *TransactionManager) processExpiredTransactions() {
 
 }
 
-func (tm *TransactionManager) Start() {
+func (tm *TransactionManager) Start() (wg *sync.WaitGroup) {
 	//only metapartition raft leader can start scan goroutine
 	tm.Lock()
 	defer tm.Unlock()
+	log.LogInfof("TransactionManager.start  mp %v", tm.txProcessor.mp.config.PartitionId)
 	if tm.started {
+		log.LogWarnf("TransactionManager.start  mp %v already started", tm.txProcessor.mp.config.PartitionId)
 		return
 	}
-	//if _, ok := tm.txProcessor.mp.IsLeader(); ok {
-	go tm.processExpiredTransactions()
-	//tm.notifyNewTransaction()
-	//}
+	wg = new(sync.WaitGroup)
+	wg.Add(1)
+	go tm.processExpiredTransactions(wg)
 	tm.started = true
-	log.LogDebugf("TransactionManager for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
+	log.LogInfof("TransactionManager for mp[%v] started", tm.txProcessor.mp.config.PartitionId)
+	return
 }
 
 func (tm *TransactionManager) stopProcess() {
 	select {
-	case tm.exitCh <- struct{}{}:
-		log.LogDebugf("stopProcess, notified!")
+	case tm.leaderChangeCh <- struct{}{}:
+		log.LogWarnf("stopProcess, mp[%v] notified!", tm.txProcessor.mp.config.PartitionId)
 	default:
-		log.LogDebugf("stopProcess, skipping notify!")
+		log.LogErrorf("stopProcess, mp[%v] failed!", tm.txProcessor.mp.config.PartitionId)
 	}
 }
 
 func (tm *TransactionManager) Stop() {
-	//log.LogDebugf("TransactionManager for mp[%v] enter", tm.txProcessor.mp.config.PartitionId)
 	tm.Lock()
 	defer tm.Unlock()
-	//log.LogDebugf("TransactionManager for mp[%v] enter2", tm.txProcessor.mp.config.PartitionId)
 	if !tm.started {
-		log.LogDebugf("TransactionManager for mp[%v] already stopped", tm.txProcessor.mp.config.PartitionId)
+		log.LogWarnf("TransactionManager for mp[%v] already stopped", tm.txProcessor.mp.config.PartitionId)
 		return
 	}
 
-	/*defer func() {
-		if r := recover(); r != nil {
-			log.LogErrorf("transaction manager process Stop for mp[%v] ,err:%v", tm.txProcessor.mp.config.PartitionId, r)
-		}
-	}()
-
-	close(tm.exitCh)*/
 	tm.stopProcess()
-	tm.started = false
-	log.LogDebugf("TransactionManager for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
+	log.LogWarnf("TransactionManager for mp[%v] stopped", tm.txProcessor.mp.config.PartitionId)
+	atomic.StoreInt32(&tm.leaderChangeCheck, 1)
 }
 
 func (tm *TransactionManager) nextTxID() string {
