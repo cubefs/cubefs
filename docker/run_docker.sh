@@ -18,7 +18,7 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -m, --monitor           start monitor web ui
     -l, --ltptest           run ltp test
     -r, --run               run servers, client and monitor
-    -f, --format            run gofmt to format source code 
+    -f, --format            run gofmt to format source code
     --clean                 cleanup old docker image
 EOF
     exit 0
@@ -29,6 +29,10 @@ clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
 }
 
+prepare() {
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run prepare
+}
+
 # unit test
 run_unit_test() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run unit_test
@@ -36,12 +40,20 @@ run_unit_test() {
 
 # go format
 run_format() {
+    prepare
     docker-compose -f ${RootPath}/docker/docker-compose.yml run format
 }
 
 # build
 build() {
+    prepare
     docker-compose -f ${RootPath}/docker/docker-compose.yml run build
+}
+
+# build
+build_scenario() {
+    prepare
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run build bash -c "/bin/bash /cfs/script/build.sh -scenario"
 }
 
 # start server
@@ -68,7 +80,7 @@ start_ltptest() {
 }
 
 run_scenariotest() {
-    build
+    build_scenario
     start_servers
     start_scenariotest
     clean

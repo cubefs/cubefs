@@ -35,11 +35,30 @@ jobs:
 
       - name: Check gofmt
         run: |
-            docker/run_docker.sh -f
+          docker/run_docker.sh --format
 
-      - name: Unit and Scenario tests
+      - name: Unit tests
         run: |
-          docker/run_docker.sh -t
+          docker/run_docker.sh --test
+
+      - name: Upload codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.txt
+
+  ci-scenario:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go Version 1.17.x
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.17
+
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Scenario tests
+        run: |
           docker/run_docker.sh --scenariotest
 
       - name: Pack docker_data
@@ -56,8 +75,3 @@ jobs:
           name: docker_data
           path: docker/docker_data.tar.gz
           retention-days: 7
-
-      - name: Upload codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage.txt
