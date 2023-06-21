@@ -341,8 +341,11 @@ func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int, limiter *rate.
 		}
 
 		if !p.IsMasterCommand() && limiter != nil {
-			// recv limit
-			limiter.WaitN(context.Background(), size)
+			err = limiter.WaitN(context.Background(), size)
+			if err != nil {
+				log.LogErrorf("failed to limit flow receiving %v", err.Error())
+				err = nil
+			}
 		}
 
 		size, err = io.ReadFull(c, p.Data[offset:offset+size])
@@ -375,10 +378,18 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration, lim
 		if !p.IsMasterCommand() {
 			// wait for flow limit and packet limit
 			if limiter.Packet() != nil {
-				limiter.Packet().Wait(context.Background())
+				err = limiter.Packet().Wait(context.Background())
+				if err != nil {
+					log.LogErrorf("failed to limit packet receiving %v", err.Error())
+					err = nil
+				}
 			}
 			if limiter.Flow() != nil {
-				limiter.Flow().WaitN(context.Background(), int(p.ArgLen))
+				err = limiter.Flow().WaitN(context.Background(), int(p.ArgLen))
+				if err != nil {
+					log.LogErrorf("failed to limit flow receiving %v", err.Error())
+					err = nil
+				}
 			}
 		}
 		if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
