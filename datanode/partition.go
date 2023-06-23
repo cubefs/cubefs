@@ -1374,9 +1374,10 @@ func (dp *DataPartition) scanIssueFragments() (fragments []*IssueFragment, err e
 	dp.extentStore.Load()
 
 	var latestFlushTime = time.Unix(unixTS, 0)
+	var safetyTime = latestFlushTime.Add(-time.Second)
 	// 对存储引擎中的所有数据块进行过滤，将有数据(Size > 0)且修改时间晚于最近一次Flush的Extent过滤出来进行接下来的检查和修复。
 	dp.extentStore.WalkExtentsInfo(func(info *storage.ExtentInfoBlock) {
-		if info[storage.Size] > 0 && time.Unix(int64(info[storage.ModifyTime]), 0).After(latestFlushTime) {
+		if info[storage.Size] > 0 && time.Unix(int64(info[storage.ModifyTime]), 0).After(safetyTime) {
 			var (
 				extentID       = info[storage.FileID]
 				extentSize     = info[storage.Size]
