@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -573,5 +574,140 @@ func (mp *metaPartition) fsmSendToChan(val []byte) (status uint8) {
 
 	log.LogInfof("fsmDelExtents mp(%d) delExtents(%v)", mp.config.PartitionId, len(sortExtents.eks))
 	mp.extDelCh <- sortExtents.eks
+	return
+}
+
+func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuotaReuqest) (resp *proto.BatchSetMetaserverQuotaResponse) {
+	var files int64
+	var bytes int64
+	resp = &proto.BatchSetMetaserverQuotaResponse{}
+	resp.InodeRes = make(map[uint64]uint8, 0)
+	for _, ino := range req.Inodes {
+		var isExist bool
+		var err error
+
+		var extend = NewExtend(ino)
+		treeItem := mp.extendTree.Get(extend)
+		inode := NewInode(ino, 0)
+		retMsg := mp.getInode(inode)
+
+		if retMsg.Status != proto.OpOk {
+			log.LogErrorf("fsmSetInodeQuotaBatch get inode [%v] fail.", ino)
+			resp.InodeRes[ino] = retMsg.Status
+			continue
+		}
+		inode = retMsg.Msg
+		log.LogDebugf("fsmSetInodeQuotaBatch msg [%v] inode [%v]", retMsg, inode)
+		var quotaInfos = &proto.MetaQuotaInfos{
+			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
+		}
+		var quotaInfo = &proto.MetaQuotaInfo{
+			RootInode: req.IsRoot,
+		}
+
+		if treeItem == nil {
+			quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
+			mp.extendTree.ReplaceOrInsert(extend, true)
+		} else {
+			extend = treeItem.(*Extend)
+			value, exist := extend.Get([]byte(proto.QuotaKey))
+			if exist {
+				if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
+					log.LogErrorf("set quota Unmarshal quotaInfos fail [%v]", err)
+					resp.InodeRes[ino] = proto.OpErr
+					continue
+				}
+				oldQuotaInfo, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
+				if ok {
+					isExist = true
+					quotaInfo = oldQuotaInfo
+				}
+			}
+			quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
+		}
+		value, err := json.Marshal(quotaInfos.QuotaInfoMap)
+		if err != nil {
+			log.LogErrorf("set quota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
+			resp.InodeRes[ino] = proto.OpErr
+			continue
+		}
+		extend.Put([]byte(proto.QuotaKey), value)
+		resp.InodeRes[ino] = proto.OpOk
+		if !isExist {
+			files += 1
+			bytes += int64(inode.Size)
+		}
+	}
+	mp.mqMgr.updateUsedInfo(bytes, files, req.QuotaId)
+	log.LogInfof("fsmSetInodeQuotaBatch quotaId [%v] resp [%v] success.", req.QuotaId, resp)
+	return
+}
+
+func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserverQuotaReuqest) (resp *proto.BatchDeleteMetaserverQuotaResponse) {
+	var files int64
+	var bytes int64
+	resp = &proto.BatchDeleteMetaserverQuotaResponse{}
+	resp.InodeRes = make(map[uint64]uint8, 0)
+
+	for _, ino := range req.Inodes {
+		var err error
+		var extend = NewExtend(ino)
+		treeItem := mp.extendTree.Get(extend)
+		inode := NewInode(ino, 0)
+		retMsg := mp.getInode(inode)
+		if retMsg.Status != proto.OpOk {
+			log.LogErrorf("fsmDeleteInodeQuotaBatch get inode [%v] fail.", ino)
+			resp.InodeRes[ino] = retMsg.Status
+			continue
+		}
+		inode = retMsg.Msg
+		log.LogDebugf("fsmDeleteInodeQuotaBatch msg [%v] inode [%v]", retMsg, inode)
+		var quotaInfos = &proto.MetaQuotaInfos{
+			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
+		}
+
+		if treeItem == nil {
+			log.LogDebugf("fsmDeleteInodeQuotaBatch inode [%v] not has extend ", ino)
+			resp.InodeRes[ino] = proto.OpOk
+			continue
+		} else {
+			extend = treeItem.(*Extend)
+			value, exist := extend.Get([]byte(proto.QuotaKey))
+			if exist {
+				if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
+					log.LogErrorf("fsmDeleteInodeQuotaBatch ino [%v] Unmarshal quotaInfos fail [%v]", ino, err)
+					resp.InodeRes[ino] = proto.OpErr
+					continue
+				}
+
+				_, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
+				if ok {
+					delete(quotaInfos.QuotaInfoMap, req.QuotaId)
+					if len(quotaInfos.QuotaInfoMap) == 0 {
+						extend.Remove([]byte(proto.QuotaKey))
+					} else {
+						value, err = json.Marshal(quotaInfos.QuotaInfoMap)
+						if err != nil {
+							log.LogErrorf("fsmDeleteInodeQuotaBatch marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
+							resp.InodeRes[ino] = proto.OpErr
+							continue
+						}
+						extend.Put([]byte(proto.QuotaKey), value)
+					}
+				} else {
+					log.LogDebugf("fsmDeleteInodeQuotaBatch QuotaInfoMap can not find inode [%v] quota [%v]", ino, req.QuotaId)
+					resp.InodeRes[ino] = proto.OpOk
+					continue
+				}
+			} else {
+				resp.InodeRes[ino] = proto.OpOk
+				continue
+			}
+		}
+		files -= 1
+		bytes -= int64(inode.Size)
+	}
+	mp.mqMgr.updateUsedInfo(bytes, files, req.QuotaId)
+	log.LogInfof("fsmDeleteInodeQuotaBatch quotaId [%v] resp [%v] success.", req.QuotaId, resp)
 	return
 }
