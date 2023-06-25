@@ -23,147 +23,47 @@ import (
 
 func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaReuqest,
 	resp *proto.BatchSetMetaserverQuotaResponse) (err error) {
-	for _, ino := range req.Inodes {
-		var isExist bool
-		var extend = NewExtend(ino)
-		treeItem := mp.extendTree.Get(extend)
-		inode := NewInode(ino, 0)
-		retMsg := mp.getInode(inode)
-		if retMsg.Status != proto.OpOk {
-			log.LogErrorf("batchSetInodeQuota get inode [%v] fail.", ino)
-			continue
-		}
-		inode = retMsg.Msg
-		log.LogDebugf("batchSetInodeQuota msg [%v] inode [%v]", retMsg, inode)
-		var quotaInfos = &proto.MetaQuotaInfos{
-			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
-		}
-		var quotaInfo = &proto.MetaQuotaInfo{
-			RootInode: req.IsRoot,
-		}
-
-		if treeItem == nil {
-			quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
-		} else {
-			extend = treeItem.(*Extend)
-			value, exist := extend.Get([]byte(proto.QuotaKey))
-			if exist {
-				if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
-					log.LogErrorf("set quota Unmarshal quotaInfos fail [%v]", err)
-					resp.Status = proto.TaskFailed
-					resp.Result = err.Error()
-					return
-				}
-				oldQuotaInfo, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
-				if ok {
-					isExist = true
-					quotaInfo = oldQuotaInfo
-				}
-			}
-			quotaInfos.QuotaInfoMap[req.QuotaId] = quotaInfo
-		}
-		value, err1 := json.Marshal(quotaInfos.QuotaInfoMap)
-		if err1 != nil {
-			log.LogErrorf("set quota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
-			resp.Status = proto.TaskFailed
-			resp.Result = err1.Error()
-			err = err1
-			return
-		}
-		extend.Put([]byte(proto.QuotaKey), value)
-		if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
-			log.LogErrorf("set quota putExtend [%v] fail [%v]", quotaInfos, err)
-			resp.Status = proto.TaskFailed
-			resp.Result = err.Error()
-			return
-		}
-		if !isExist {
-			mp.mqMgr.updateUsedInfo(int64(inode.Size), 1, req.QuotaId)
-		}
+	if len(req.Inodes) == 0 {
+		return nil
 	}
-	log.LogInfof("batchSetInodeQuota quotaId [%v] mp [%v] btreeLen [%v] success", req.QuotaId, mp.config.PartitionId, mp.extendTree.Len())
-	resp.Status = proto.TaskSucceeds
+
+	val, err := json.Marshal(req)
+	if err != nil {
+		log.LogErrorf("batchSetInodeQuota marshal req [%v] failed [%v]", req, err)
+		return
+	}
+
+	r, err := mp.submit(opFSMSetInodeQuotaBatch, val)
+	if err != nil {
+		log.LogErrorf("batchSetInodeQuota submit req [%v] failed [%v]", req, err)
+		return
+	}
+	resp.InodeRes = r.(*proto.BatchSetMetaserverQuotaResponse).InodeRes
+	log.LogInfof("batchSetInodeQuota quotaId [%v] mp [%v] btreeLen [%v] resp [%v] success", req.QuotaId, mp.config.PartitionId,
+		mp.extendTree.Len(), resp)
 	return
 }
 
 func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQuotaReuqest,
 	resp *proto.BatchDeleteMetaserverQuotaResponse) (err error) {
-	for _, ino := range req.Inodes {
-		var extend = NewExtend(ino)
-		var value []byte
-		var deleteValue []byte
-		var isRemove bool
-		treeItem := mp.extendTree.Get(extend)
-		inode := NewInode(ino, 0)
-		retMsg := mp.getInode(inode)
-		if retMsg.Status != proto.OpOk {
-			log.LogErrorf("batchDeleteInodeQuota get inode [%v] fail.", ino)
-			continue
-		}
-		inode = retMsg.Msg
-		log.LogDebugf("batchDeleteInodeQuota msg [%v] inode [%v]", retMsg, inode)
-		var quotaInfos = &proto.MetaQuotaInfos{
-			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
-		}
-
-		if treeItem == nil {
-			log.LogDebugf("batchDeleteInodeQuota inode [%v] not has extend ", ino)
-			continue
-		} else {
-			extend = treeItem.(*Extend)
-			value, exist := extend.Get([]byte(proto.QuotaKey))
-			if exist {
-				if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
-					log.LogErrorf("batchDeleteInodeQuota ino [%v] Unmarshal quotaInfos fail [%v]", ino, err)
-					resp.Status = proto.TaskFailed
-					resp.Result = err.Error()
-					return
-				}
-
-				_, ok := quotaInfos.QuotaInfoMap[req.QuotaId]
-				if ok {
-					delete(quotaInfos.QuotaInfoMap, req.QuotaId)
-					if len(quotaInfos.QuotaInfoMap) == 0 {
-						isRemove = true
-						deleteValue, err = json.Marshal(quotaInfos.QuotaInfoMap)
-					}
-				} else {
-					log.LogDebugf("batchDeleteInodeQuota QuotaInfoMap can not find inode [%v] quota [%v]", ino, req.QuotaId)
-					continue
-				}
-			} else {
-				continue
-			}
-		}
-		if isRemove {
-			extend.Put([]byte(proto.QuotaKey), deleteValue)
-			if _, err = mp.putExtend(opFSMRemoveXAttr, extend); err != nil {
-				log.LogErrorf("remove quota putExtend [%v] fail [%v]", quotaInfos, err)
-				resp.Status = proto.TaskFailed
-				resp.Result = err.Error()
-				return
-			}
-		} else {
-			value, err = json.Marshal(quotaInfos.QuotaInfoMap)
-			if err != nil {
-				log.LogErrorf("batchDeleteInodeQuota marsha1 quotaInfos [%v] fail [%v]", quotaInfos, err)
-				resp.Status = proto.TaskFailed
-				resp.Result = err.Error()
-				return
-			}
-			extend.Put([]byte(proto.QuotaKey), value)
-
-			if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
-				log.LogErrorf("set quota putExtend [%v] fail [%v]", quotaInfos, err)
-				resp.Status = proto.TaskFailed
-				resp.Result = err.Error()
-				return
-			}
-		}
-		mp.mqMgr.updateUsedInfo(-int64(inode.Size), -1, req.QuotaId)
+	if len(req.Inodes) == 0 {
+		return nil
 	}
-	log.LogInfof("batchDeleteInodeQuota quotaId [%v] success", req.QuotaId)
-	resp.Status = proto.TaskSucceeds
+
+	val, err := json.Marshal(req)
+	if err != nil {
+		log.LogErrorf("batchDeleteInodeQuota marshal req [%v] failed [%v]", req, err)
+		return
+	}
+
+	r, err := mp.submit(opFSMDeleteInodeQuotaBatch, val)
+	if err != nil {
+		log.LogErrorf("batchDeleteInodeQuota submit req [%v] failed [%v]", req, err)
+		return
+	}
+	resp.InodeRes = r.(*proto.BatchDeleteMetaserverQuotaResponse).InodeRes
+	log.LogInfof("batchSetInodeQuota quotaId [%v] mp [%v] btreeLen [%v] resp [%v] success", req.QuotaId, mp.config.PartitionId,
+		mp.extendTree.Len(), resp)
 	return
 }
 

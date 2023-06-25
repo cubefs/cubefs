@@ -774,10 +774,7 @@ type BatchSetMetaserverQuotaReuqest struct {
 }
 
 type BatchSetMetaserverQuotaResponse struct {
-	PartitionId uint64 `json:"pid"`
-	QuotaId     uint32 `json:"qid"`
-	Status      int32  `json:"status"`
-	Result      string `json:"rst"`
+	InodeRes map[uint64]uint8 `json:"inores"`
 }
 
 type BatchDeleteMetaserverQuotaReuqest struct {
@@ -787,10 +784,7 @@ type BatchDeleteMetaserverQuotaReuqest struct {
 }
 
 type BatchDeleteMetaserverQuotaResponse struct {
-	PartitionId uint64 `json:"pid"`
-	QuotaId     uint32 `json:"qid"`
-	Status      int32  `json:"status"`
-	Result      string `json:"rst"`
+	InodeRes map[uint64]uint8 `json:"inores"`
 }
 
 type GetInodeQuotaRequest struct {
