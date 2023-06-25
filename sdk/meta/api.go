@@ -49,6 +49,20 @@ const (
 	MaxGoroutineNum        = 5
 )
 
+func mapHaveSameKeys(m1, m2 map[uint32]*proto.MetaQuotaInfo) bool {
+	if len(m1) != len(m2) {
+		return false
+	}
+
+	for k := range m1 {
+		if _, ok := m2[k]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
 	rootIno, err := mw.LookupPath(subdir)
 	if err != nil {
@@ -971,6 +985,31 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 				}()
 			}
 		}
+	}
+
+	var inodes []uint64
+	inodes = append(inodes, inode)
+	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
+	if err != nil {
+		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
+	}
+
+	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
+	if err != nil {
+		log.LogErrorf("rename_ll: get dst partent inode [%v] quota fail [%v]", dstParentID, err)
+	}
+
+	if mapHaveSameKeys(srcQuotaInfos, destQuotaInfos) {
+		return nil
+	}
+
+	for quotaId := range srcQuotaInfos {
+		mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
+	}
+
+	for quotaId, info := range destQuotaInfos {
+		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
+		mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
 	}
 
 	return nil
@@ -1966,11 +2005,9 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	}
 }
 
-func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32, IsRoot bool) {
-	var wg sync.WaitGroup
-	var maxGoroutineNum int32 = MaxGoroutineNum
-	var curGoroutineNum int32 = 0
+func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32, IsRoot bool) (ret map[uint64]uint8, err error) {
 	batchInodeMap := make(map[uint64][]uint64)
+	ret = make(map[uint64]uint8, 0)
 	for _, ino := range inodes {
 		mp := mw.getPartitionByInode(ino)
 		if mp == nil {
@@ -1984,17 +2021,17 @@ func (mw *MetaWrapper) BatchSetInodeQuota_ll(inodes []uint64, quotaId uint32, Is
 
 	for id, inos := range batchInodeMap {
 		mp := mw.getPartitionByID(id)
-		if atomic.LoadInt32(&curGoroutineNum) < maxGoroutineNum {
-			wg.Add(1)
-			atomic.AddInt32(&curGoroutineNum, 1)
-			go mw.batchSetInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, true, IsRoot)
-		} else {
-			mw.batchSetInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, false, IsRoot)
+		resp, err := mw.batchSetInodeQuota(mp, inos, quotaId, IsRoot)
+		if err != nil {
+			log.LogErrorf("batchSetInodeQuota quota [%v] inodes [%v] err [%v]", quotaId, inos, err)
+			return ret, err
+		}
+		for k, v := range resp.InodeRes {
+			ret[k] = v
 		}
 	}
 
-	wg.Wait()
-	log.LogInfof("set subInode quota [%v] inodes [%v] success.", quotaId, inodes)
+	log.LogInfof("set subInode quota [%v] inodes [%v] ret [%v] success.", quotaId, inodes, ret)
 	return
 }
 
@@ -2002,11 +2039,9 @@ func (mw *MetaWrapper) GetPartitionByInodeId_ll(inodeId uint64) (mp *MetaPartiti
 	return mw.getPartitionByInode(inodeId)
 }
 
-func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32) {
-	var wg sync.WaitGroup
-	var maxGoroutineNum int32 = MaxGoroutineNum
-	var curGoroutineNum int32 = 0
+func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32) (ret map[uint64]uint8, err error) {
 	batchInodeMap := make(map[uint64][]uint64)
+	ret = make(map[uint64]uint8, 0)
 	for _, ino := range inodes {
 		mp := mw.getPartitionByInode(ino)
 		if mp == nil {
@@ -2019,17 +2054,17 @@ func (mw *MetaWrapper) BatchDeleteInodeQuota_ll(inodes []uint64, quotaId uint32)
 	}
 	for id, inos := range batchInodeMap {
 		mp := mw.getPartitionByID(id)
-		if atomic.LoadInt32(&curGoroutineNum) < maxGoroutineNum {
-			wg.Add(1)
-			atomic.AddInt32(&curGoroutineNum, 1)
-			go mw.batchDeleteInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, true)
-		} else {
-			mw.batchDeleteInodeQuota(&wg, mp, inos, quotaId, &curGoroutineNum, false)
+		resp, err := mw.batchDeleteInodeQuota(mp, inos, quotaId)
+		if err != nil {
+			log.LogErrorf("batchDeleteInodeQuota quota [%v] inodes [%v] err [%v]", quotaId, inos, err)
+			return ret, err
+		}
+		for k, v := range resp.InodeRes {
+			ret[k] = v
 		}
 	}
 
-	wg.Wait()
-	log.LogInfof("delete subInode inodes [%v] quota [%v] success.", inodes, quotaId)
+	log.LogInfof("delete subInode inodes [%v] quota [%v] ret [%v] success.", inodes, quotaId, ret)
 	return
 }
 

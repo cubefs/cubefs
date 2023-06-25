@@ -1939,10 +1939,7 @@ func (m *metadataManager) opMetaBatchSetInodeQuota(conn net.Conn, p *Packet, rem
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	resp := &proto.BatchSetMetaserverQuotaResponse{
-		PartitionId: req.PartitionId,
-		QuotaId:     req.QuotaId,
-	}
+	resp := &proto.BatchSetMetaserverQuotaResponse{}
 	err = mp.batchSetInodeQuota(req, resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1980,10 +1977,7 @@ func (m *metadataManager) opMetaBatchDeleteInodeQuota(conn net.Conn, p *Packet, 
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	resp := &proto.BatchDeleteMetaserverQuotaResponse{
-		PartitionId: req.PartitionId,
-		QuotaId:     req.QuotaId,
-	}
+	resp := &proto.BatchDeleteMetaserverQuotaResponse{}
 	err = mp.batchDeleteInodeQuota(req, resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -1998,7 +1992,6 @@ func (m *metadataManager) opMetaBatchDeleteInodeQuota(conn net.Conn, p *Packet, 
 	}
 	p.PacketOkWithBody(reply)
 	_ = m.respondToClient(conn, p)
-
 	log.LogInfof("[opMetaBatchDeleteInodeQuota] req [%v] resp [%v] success.", req, resp)
 	return err
 }

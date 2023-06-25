@@ -100,7 +100,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 			fullPaths := strings.Split(fullPath, ",")
 			err = checkNestedDirectories(fullPaths)
 			if err != nil {
-				stdout("create quota failed, fullPaths %v has nested.\n", fullPaths)
+				stdout("create quota failed, fullPaths %v error %v.\n", fullPaths, err)
 				return
 			}
 			if len(fullPaths) > 5 {
@@ -112,10 +112,6 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 				var quotaPathInfo proto.QuotaPathInfo
 				quotaPathInfo.FullPath = path
 
-				if strings.Count(path, "/") != 1 {
-					stdout("create quota failed, path %v does not has only one / \n", path)
-					return
-				}
 				if !strings.HasPrefix(path, "/") {
 					stdout("create quota failed, path %v does not start with / \n", path)
 					return
@@ -347,7 +343,8 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 			for _, pathInfo := range quotaInfo.PathInfos {
 				inodeNums, err := metaWrapper.ApplyQuota_ll(pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
 				if err != nil {
-					stdout("apply quota inodeNum %v failed  %v\n", inodeNums, err)
+					stdout("apply quota failed: %v\n", err)
+					return
 				}
 				totalNums += inodeNums
 			}
@@ -415,6 +412,10 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 func checkNestedDirectories(paths []string) error {
 	for i, path := range paths {
 		for j := i + 1; j < len(paths); j++ {
+			if path == paths[j] {
+				return fmt.Errorf("the same directories found: %s", path)
+			}
+
 			if isAncestor(path, paths[j]) {
 				return fmt.Errorf("Nested directories found: %s and %s", path, paths[j])
 			}
@@ -424,34 +425,9 @@ func checkNestedDirectories(paths []string) error {
 }
 
 func isAncestor(parent, child string) bool {
-	if parent == child {
-		return true
-	}
 	rel, err := filepath.Rel(parent, child)
 	if err != nil {
 		return false
 	}
 	return !strings.HasPrefix(rel, "..")
 }
-
-/*
-func hasNestedPaths(paths []string) bool {
-	for i, path1 := range paths {
-		absPath1, _ := filepath.Abs(path1)
-
-		for j, path2 := range paths {
-			if i == j {
-				continue
-			}
-
-			absPath2, _ := filepath.Abs(path2)
-
-			if filepath.HasPrefix(absPath1, absPath2) ||
-				filepath.HasPrefix(absPath2, absPath1) {
-				return true
-			}
-		}
-	}
-
-	return false
-}*/
