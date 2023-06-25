@@ -85,6 +85,7 @@ const (
 	txTimeoutKey               = "txTimeout"
 	txConflictRetryNumKey      = "txConflictRetryNum"
 	txConflictRetryIntervalKey = "txConflictRetryInterval"
+	txOpLimitKey               = "txOpLimit"
 	txForceResetKey            = "txForceReset"
 	QosEnableKey               = "qosEnable"
 	DiskEnableKey              = "diskenable"

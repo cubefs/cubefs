@@ -484,3 +484,23 @@ func TestMultiStartExpireCheck(t *testing.T) {
 	wg1.Wait()
 	assert.True(t, txMgr.started == false)
 }
+
+func TestCheckTxLimit(t *testing.T) {
+	initMps(t)
+	txMgr := mp1.txProcessor.txManager
+	txMgr.Start()
+	txMgr.setLimit(10)
+	txMgr.opLimiter.SetBurst(1)
+	var i int
+	st := time.Now().UnixNano() / 1e6
+	for i < 2 {
+		txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
+		txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
+		txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
+		mp1.initTxInfo(txInfo)
+		i++
+	}
+	et := time.Now().UnixNano() / 1e6
+	t.Logf("st %v et %v", st, et)
+	assert.True(t, et-st >= 100)
+}

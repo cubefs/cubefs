@@ -245,7 +245,6 @@ func (mgr *followerReadManager) updateVolViewFromLeader(key string, view *proto.
 		log.LogErrorf("updateVolViewFromLeader. key %v checkViewContent failed status %v", key, mgr.status[key])
 		return
 	}
-	log.LogDebugf("action[updateVolViewFromLeader] volume %v be updated, value len %v", key, len(view.DataPartitions))
 
 	reply := newSuccessHTTPReply(view)
 	if body, err := json.Marshal(reply); err != nil {
@@ -264,7 +263,6 @@ func (mgr *followerReadManager) checkViewContent(volName string, view *proto.Dat
 	if !isUpdate && !mgr.needCheck {
 		return true
 	}
-	log.LogDebugf("volName %v do check content", volName)
 
 	if len(view.DataPartitions) == 0 {
 		return true
@@ -275,7 +273,6 @@ func (mgr *followerReadManager) checkViewContent(volName string, view *proto.Dat
 			log.LogErrorf("checkViewContent. dp id %v, leader %v, status %v", dp.PartitionID, dp.LeaderAddr, dp.Status)
 		}
 	}
-	log.LogDebugf("checkViewContent. volName %v dp cnt %v check pass", volName, len(view.DataPartitions))
 	return true
 }
 
@@ -644,8 +641,9 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			}
 
 			hbReq.TxInfo = append(hbReq.TxInfo, &proto.TxInfo{
-				Volume: vol.Name,
-				Mask:   vol.enableTransaction,
+				Volume:     vol.Name,
+				Mask:       vol.enableTransaction,
+				OpLimitVal: vol.txOpLimit,
 			})
 		}
 		log.LogDebugf("checkMetaNodeHeartbeat start")

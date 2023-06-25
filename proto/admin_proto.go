@@ -475,8 +475,9 @@ type QuotaHeartBeatInfos struct {
 }
 
 type TxInfo struct {
-	Volume string
-	Mask   uint8
+	Volume     string
+	Mask       uint8
+	OpLimitVal int
 }
 
 type TxInfos struct {
@@ -836,6 +837,7 @@ type SimpleVolView struct {
 	TxTimeout               int64
 	TxConflictRetryNum      int64
 	TxConflictRetryInterval int64
+	TxOpLimit               int
 	Description             string
 	DpSelectorName          string
 	DpSelectorParm          string

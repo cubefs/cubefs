@@ -84,35 +84,15 @@ func extractTxConflictRetryInterval(r *http.Request) (interval int64, err error)
 	return interval, nil
 }
 
-//func extractTxMask(r *http.Request) (mask uint8, err error) {
-//
-//	var maskStr string
-//	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
-//		return
-//	}
-//
-//	arr := strings.Split(maskStr, "|")
-//
-//	optNum := len(arr)
-//
-//	for _, v := range arr {
-//		if m, ok := proto.GTxMaskMap[v]; ok {
-//			if optNum >= 2 && (m == proto.TxOpMaskOff || m == proto.TxOpMaskAll) {
-//				mask = proto.TxOpMaskOff
-//				err = txInvalidMask()
-//				return
-//			} else {
-//				mask = mask | m
-//			}
-//		} else {
-//			mask = proto.TxOpMaskOff
-//			err = txInvalidMask()
-//			return
-//		}
-//	}
-//
-//	return
-//}
+func extractTxOpLimitInterval(r *http.Request, volLimit int) (limit int, err error) {
+	var txLimit uint64
+	if txLimit, err = extractUint64WithDefault(r, txOpLimitKey, uint64(volLimit)); err != nil {
+		return
+	}
+
+	limit = int(txLimit)
+	return
+}
 
 func hasTxParams(r *http.Request) bool {
 	var (
@@ -356,6 +336,7 @@ type updateVolReq struct {
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
+	txOpLimit               int
 	zoneName                string
 	description             string
 	dpSelectorName          string
@@ -471,9 +452,9 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 	req.txConflictRetryInterval = txConflictRetryInterval
 
-	//if req.enableTransaction, err = extractBoolWithDefault(r, enableTxMaskKey, vol.enableTransaction); err != nil {
-	//	return
-	//}
+	if req.txOpLimit, err = extractTxOpLimitInterval(r, vol.txOpLimit); err != nil {
+		return
+	}
 
 	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, vol.authenticate); err != nil {
 		return
