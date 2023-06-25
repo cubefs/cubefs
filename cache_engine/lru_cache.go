@@ -82,6 +82,7 @@ func NewCache(size int, maxAlloc int64, expiration time.Duration, onDelete OnDel
 		ttl:      expiration,
 		hits:     1,
 		misses:   0,
+		hitRate:  1,
 		maxAlloc: maxAlloc,
 		onDelete: onDelete,
 		onClose:  onClose,
@@ -91,6 +92,7 @@ func NewCache(size int, maxAlloc int64, expiration time.Duration, onDelete OnDel
 	go func() {
 		tick := time.NewTicker(time.Second * 60)
 		defer tick.Stop()
+
 		for {
 			select {
 			case <-tick.C:

@@ -16,6 +16,7 @@ package flashnode
 
 import (
 	"github.com/cubefs/cubefs/proto"
+	"time"
 )
 
 const (
@@ -26,9 +27,10 @@ const (
 	CacheReqWriteTimeoutMilliSec      = 500
 	CacheReqReadTimeoutMilliSec       = 500
 	CacheReqConnectionTimeoutMilliSec = 500
-	UpdateRateLimitInfoIntervalSec    = 60
+	UpdateRateLimitInfoInterval       = 60 * time.Second
 	ServerTimeOut                     = 60 * 5
 	ConnectPoolIdleConnTimeoutSec     = 60
+	DefaultBurst                      = 512
 )
 
 // Configuration keys

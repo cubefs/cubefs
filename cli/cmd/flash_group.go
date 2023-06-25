@@ -35,14 +35,14 @@ func newFlashGroupCommand(client *master.MasterClient) *cobra.Command {
 }
 
 type slotInfo struct {
-	fgID uint64
-	slot uint32
+	fgID    uint64
+	slot    uint32
 	percent float64
 }
 
 func newListFlashGroupsCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		isActive bool
+		isActive      bool
 		showSortSlots bool
 	)
 	var cmd = &cobra.Command{
@@ -98,10 +98,10 @@ func newListFlashGroupsCmd(client *master.MasterClient) *cobra.Command {
 
 			stdout("sortSlots:\n")
 			for i, info := range sortSlots {
-				if i < len(sortSlots)-1{
-					info.percent = float64(sortSlots[i+1].slot-info.slot)*100/math.MaxUint32
-				}else {
-					info.percent = float64(math.MaxUint32-info.slot)*100/math.MaxUint32
+				if i < len(sortSlots)-1 {
+					info.percent = float64(sortSlots[i+1].slot-info.slot) * 100 / math.MaxUint32
+				} else {
+					info.percent = float64(math.MaxUint32-info.slot) * 100 / math.MaxUint32
 				}
 				stdout("num:%v slot:%v fg:%v percent:%0.5f%% \n", i+1, info.slot, info.fgID, info.percent)
 			}
@@ -185,9 +185,19 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 			var row string
 			for _, flashNodeViewInfos := range fgView.ZoneFlashNodes {
 				for _, fn := range flashNodeViewInfos {
-					hitRate, evicts := getHitRateAndEvicts(fn.Addr, client.FlashNodeProfPort)
+					var (
+						hitRate = "100%"
+						evicts  = 0
+						limit   = uint64(0)
+					)
+					stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
+					if err1 == nil {
+						hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
+						evicts = stat.CacheStatus.Evicts
+						limit = stat.NodeLimit
+					}
 					row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
-						formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
+						formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
 					stdout("%v\n", row)
 				}
 			}
@@ -196,13 +206,9 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func getHitRateAndEvicts(host string, port uint16) (string, int) {
+func getFlashNodeStat(host string, port uint16) (*proto.FlashNodeStat, error) {
 	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
-	if stat, e := fnClient.GetStat(); e == nil {
-		return fmt.Sprintf("%.2f%%", stat.HitRate*100), stat.Evicts
-	} else {
-		return "100.00%", 0
-	}
+	return fnClient.GetStat()
 }
 func newFlashGroupSetCmd(client *master.MasterClient) *cobra.Command {
 	var (

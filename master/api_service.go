@@ -507,6 +507,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DataNodeReqZoneVolOpRateLimitMap:       m.cluster.cfg.DataNodeReqZoneVolOpRateLimitMap,
 		DataNodeReqVolPartRateLimitMap:         m.cluster.cfg.DataNodeReqVolPartRateLimitMap,
 		DataNodeReqVolOpPartRateLimitMap:       m.cluster.cfg.DataNodeReqVolOpPartRateLimitMap,
+		FlashNodeLimitMap:                      m.cluster.cfg.FlashNodeLimitMap,
+		FlashNodeVolLimitMap:                   m.cluster.cfg.FlashNodeVolLimitMap,
 		ClientReadVolRateLimitMap:              m.cluster.cfg.ClientReadVolRateLimitMap,
 		ClientWriteVolRateLimitMap:             m.cluster.cfg.ClientWriteVolRateLimitMap,
 		ClientVolOpRateLimit:                   m.cluster.cfg.ClientVolOpRateLimitMap[vol],
@@ -523,27 +525,27 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		LogMaxSize:                             m.cluster.cfg.LogMaxSize,
 		MetaRockDBWalFileSize:                  metaRocksDBWalFileSize,
 		MetaRocksWalMemSize:                    metaRocksDBWalMemSize,
-		MetaRocksLogSize:                 metaRocksDBLogSize,
-		MetaRocksLogReservedTime:         metaRocksDBLogReservedTime,
-		MetaRocksLogReservedCnt:          metaRocksDBLogReservedCnt,
-		MetaRocksDisableFlushFlag:        metaRocksDBDisableFlush,
-		MetaRocksFlushWalInterval:        metaRocksDBFlushWalInterval,
-		MetaRocksWalTTL:                  metaRocksDBWalTTL,
-		DeleteEKRecordFileMaxMB:          metaDeleteEKRecordFilesMaxTotalSize,
-		MetaTrashCleanInterval:           metaTrashCleanInterval,
-		MetaRaftLogSize:                  metaRaftLogSize,
-		MetaRaftCap:                      metaRaftLogCap,
-		MetaSyncWALOnUnstableEnableState: m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
-		DataSyncWALOnUnstableEnableState: m.cluster.cfg.DataSyncWALOnUnstableEnableState,
-		DisableStrictVolZone:             m.cluster.cfg.DisableStrictVolZone,
-		AutoUpdatePartitionReplicaNum:    m.cluster.cfg.AutoUpdatePartitionReplicaNum,
-		BitMapAllocatorMaxUsedFactor:     m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
-		BitMapAllocatorMinFreeFactor:     m.cluster.cfg.BitMapAllocatorMinFreeFactor,
-		TrashItemCleanMaxCountEachTime:   trashCleanMaxCount,
-		TrashCleanDurationEachTime:       trashCleanDuartion,
-		DeleteMarkDelVolInterval:         m.cluster.cfg.DeleteMarkDelVolInterval,
-		RemoteCacheBoostEnable:           m.cluster.cfg.RemoteCacheBoostEnable,
-		ClientConnTimeoutUs:              m.cluster.cfg.ClientNetConnTimeoutUs,
+		MetaRocksLogSize:                       metaRocksDBLogSize,
+		MetaRocksLogReservedTime:               metaRocksDBLogReservedTime,
+		MetaRocksLogReservedCnt:                metaRocksDBLogReservedCnt,
+		MetaRocksDisableFlushFlag:              metaRocksDBDisableFlush,
+		MetaRocksFlushWalInterval:              metaRocksDBFlushWalInterval,
+		MetaRocksWalTTL:                        metaRocksDBWalTTL,
+		DeleteEKRecordFileMaxMB:                metaDeleteEKRecordFilesMaxTotalSize,
+		MetaTrashCleanInterval:                 metaTrashCleanInterval,
+		MetaRaftLogSize:                        metaRaftLogSize,
+		MetaRaftCap:                            metaRaftLogCap,
+		MetaSyncWALOnUnstableEnableState:       m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
+		DataSyncWALOnUnstableEnableState:       m.cluster.cfg.DataSyncWALOnUnstableEnableState,
+		DisableStrictVolZone:                   m.cluster.cfg.DisableStrictVolZone,
+		AutoUpdatePartitionReplicaNum:          m.cluster.cfg.AutoUpdatePartitionReplicaNum,
+		BitMapAllocatorMaxUsedFactor:           m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
+		BitMapAllocatorMinFreeFactor:           m.cluster.cfg.BitMapAllocatorMinFreeFactor,
+		TrashItemCleanMaxCountEachTime:         trashCleanMaxCount,
+		TrashCleanDurationEachTime:             trashCleanDuartion,
+		DeleteMarkDelVolInterval:               m.cluster.cfg.DeleteMarkDelVolInterval,
+		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
+		ClientConnTimeoutUs:                    m.cluster.cfg.ClientNetConnTimeoutUs,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1705,10 +1707,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		trashCleanDuration     int32
 		trashItemCleanMaxCount int32
 
-		remoteCacheBoostPath       string
-		remoteCacheBoostEnable     bool
-		remoteCacheAutoPrepare     bool
-		remoteCacheTTL             int64
+		remoteCacheBoostPath   string
+		remoteCacheBoostEnable bool
+		remoteCacheAutoPrepare bool
+		remoteCacheTTL         int64
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -2044,91 +2046,91 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		fileAvgSize = float64(stat.RealUsedSize) / float64(volInodeCount)
 	}
 	return &proto.SimpleVolView{
-		ID:                    vol.ID,
-		Name:                  vol.Name,
-		Owner:                 vol.Owner,
-		ZoneName:              vol.zoneName,
-		DpReplicaNum:          vol.dpReplicaNum,
-		MpReplicaNum:          vol.mpReplicaNum,
-		DpLearnerNum:          vol.dpLearnerNum,
-		MpLearnerNum:          vol.mpLearnerNum,
-		InodeCount:            volInodeCount,
-		DentryCount:           volDentryCount,
-		MaxMetaPartitionID:    maxPartitionID,
-		Status:                vol.Status,
-		Capacity:              vol.Capacity,
-		FollowerRead:          vol.FollowerRead,
-		DpFolReadDelayConfig:  vol.FollowerReadDelayCfg,
-		FolReadHostWeight:     vol.FollReadHostWeight,
-		NearRead:              vol.NearRead,
-		ForceROW:              vol.ForceROW,
-		EnableWriteCache:      vol.enableWriteCache,
-		CrossRegionHAType:     vol.CrossRegionHAType,
-		NeedToLowerReplica:    vol.NeedToLowerReplica,
-		Authenticate:          vol.authenticate,
-		EnableToken:           vol.enableToken,
-		CrossZone:             vol.crossZone,
-		AutoRepair:            vol.autoRepair,
-		VolWriteMutexEnable:   vol.volWriteMutexEnable,
-		Tokens:                vol.tokens,
-		RwDpCnt:               vol.dataPartitions.readableAndWritableCnt,
-		MpCnt:                 vol.getMpCnt(),
-		DpCnt:                 vol.getDpCnt(),
-		CreateTime:            time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
-		Description:           vol.description,
-		DpSelectorName:        vol.dpSelectorName,
-		DpSelectorParm:        vol.dpSelectorParm,
-		OSSBucketPolicy:       vol.OSSBucketPolicy,
-		DPConvertMode:         vol.DPConvertMode,
-		MPConvertMode:         vol.MPConvertMode,
-		Quorum:                vol.getDataPartitionQuorum(),
-		DpWriteableThreshold:  vol.dpWriteableThreshold,
-		ExtentCacheExpireSec:  vol.ExtentCacheExpireSec,
-		RwMpCnt:               int(vol.getWritableMpCount()),
-		MinWritableMPNum:      vol.MinWritableMPNum,
-		MinWritableDPNum:      vol.MinWritableDPNum,
-		TrashRemainingDays:    vol.trashRemainingDays,
-		DefaultStoreMode:      vol.DefaultStoreMode,
-		ConvertState:          vol.convertState,
-		MpLayout:              vol.MpLayout,
-		IsSmart:               vol.isSmart,
-		SmartEnableTime:       time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
-		SmartRules:            vol.smartRules,
-		TotalSize:             stat.TotalSize,
-		UsedSize:              stat.RealUsedSize,
-		TotalSizeGB:           fmt.Sprintf("%.2f", float64(stat.TotalSize)/unit.GB),
-		UsedSizeGB:            fmt.Sprintf("%.2f", float64(stat.RealUsedSize)/unit.GB),
-		UsedRatio:             usedRatio,
-		FileAvgSize:           fileAvgSize,
-		CreateStatus:          vol.CreateStatus,
-		CompactTag:            vol.compactTag.String(),
-		CompactTagModifyTime:  vol.compactTagModifyTime,
-		EcEnable:              vol.EcEnable,
-		EcWaitTime:            vol.EcMigrationWaitTime,
-		EcSaveTime:            vol.EcMigrationSaveTime,
-		EcRetryWait:           vol.EcMigrationRetryWait,
-		EcTimeOut:             vol.EcMigrationTimeOut,
-		EcDataNum:             vol.EcDataNum,
-		EcParityNum:           vol.EcParityNum,
-		EcMaxUnitSize:         vol.EcMaxUnitSize,
-		ChildFileMaxCount:     vol.ChildFileMaxCount,
-		TrashCleanInterval:    vol.TrashCleanInterval,
-		BatchDelInodeCnt:      vol.BatchDelInodeCnt,
-		DelInodeInterval:      vol.DelInodeInterval,
-		UmpCollectWay:         vol.UmpCollectWay,
-		EnableBitMapAllocator: vol.EnableBitMapAllocator,
-		TrashCleanMaxCount:    vol.TrashCleanMaxCountEachTime,
-		TrashCleanDuration:    vol.CleanTrashDurationEachTime,
-		NewVolName:            vol.NewVolName,
-		NewVolID:              vol.NewVolID,
-		OldVolName:            vol.OldVolName,
-		FinalVolStatus:        vol.FinalVolStatus,
-		RenameConvertStatus:   vol.RenameConvertStatus,
-		MarkDeleteTime:        vol.MarkDeleteTime,
-		RemoteCacheBoostPath:       vol.RemoteCacheBoostPath,
-		RemoteCacheBoostEnable:     vol.RemoteCacheBoostEnable,
-		RemoteCacheAutoPrepare:     vol.RemoteCacheAutoPrepare,
-		RemoteCacheTTL:             vol.RemoteCacheTTL,
+		ID:                     vol.ID,
+		Name:                   vol.Name,
+		Owner:                  vol.Owner,
+		ZoneName:               vol.zoneName,
+		DpReplicaNum:           vol.dpReplicaNum,
+		MpReplicaNum:           vol.mpReplicaNum,
+		DpLearnerNum:           vol.dpLearnerNum,
+		MpLearnerNum:           vol.mpLearnerNum,
+		InodeCount:             volInodeCount,
+		DentryCount:            volDentryCount,
+		MaxMetaPartitionID:     maxPartitionID,
+		Status:                 vol.Status,
+		Capacity:               vol.Capacity,
+		FollowerRead:           vol.FollowerRead,
+		DpFolReadDelayConfig:   vol.FollowerReadDelayCfg,
+		FolReadHostWeight:      vol.FollReadHostWeight,
+		NearRead:               vol.NearRead,
+		ForceROW:               vol.ForceROW,
+		EnableWriteCache:       vol.enableWriteCache,
+		CrossRegionHAType:      vol.CrossRegionHAType,
+		NeedToLowerReplica:     vol.NeedToLowerReplica,
+		Authenticate:           vol.authenticate,
+		EnableToken:            vol.enableToken,
+		CrossZone:              vol.crossZone,
+		AutoRepair:             vol.autoRepair,
+		VolWriteMutexEnable:    vol.volWriteMutexEnable,
+		Tokens:                 vol.tokens,
+		RwDpCnt:                vol.dataPartitions.readableAndWritableCnt,
+		MpCnt:                  vol.getMpCnt(),
+		DpCnt:                  vol.getDpCnt(),
+		CreateTime:             time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		Description:            vol.description,
+		DpSelectorName:         vol.dpSelectorName,
+		DpSelectorParm:         vol.dpSelectorParm,
+		OSSBucketPolicy:        vol.OSSBucketPolicy,
+		DPConvertMode:          vol.DPConvertMode,
+		MPConvertMode:          vol.MPConvertMode,
+		Quorum:                 vol.getDataPartitionQuorum(),
+		DpWriteableThreshold:   vol.dpWriteableThreshold,
+		ExtentCacheExpireSec:   vol.ExtentCacheExpireSec,
+		RwMpCnt:                int(vol.getWritableMpCount()),
+		MinWritableMPNum:       vol.MinWritableMPNum,
+		MinWritableDPNum:       vol.MinWritableDPNum,
+		TrashRemainingDays:     vol.trashRemainingDays,
+		DefaultStoreMode:       vol.DefaultStoreMode,
+		ConvertState:           vol.convertState,
+		MpLayout:               vol.MpLayout,
+		IsSmart:                vol.isSmart,
+		SmartEnableTime:        time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
+		SmartRules:             vol.smartRules,
+		TotalSize:              stat.TotalSize,
+		UsedSize:               stat.RealUsedSize,
+		TotalSizeGB:            fmt.Sprintf("%.2f", float64(stat.TotalSize)/unit.GB),
+		UsedSizeGB:             fmt.Sprintf("%.2f", float64(stat.RealUsedSize)/unit.GB),
+		UsedRatio:              usedRatio,
+		FileAvgSize:            fileAvgSize,
+		CreateStatus:           vol.CreateStatus,
+		CompactTag:             vol.compactTag.String(),
+		CompactTagModifyTime:   vol.compactTagModifyTime,
+		EcEnable:               vol.EcEnable,
+		EcWaitTime:             vol.EcMigrationWaitTime,
+		EcSaveTime:             vol.EcMigrationSaveTime,
+		EcRetryWait:            vol.EcMigrationRetryWait,
+		EcTimeOut:              vol.EcMigrationTimeOut,
+		EcDataNum:              vol.EcDataNum,
+		EcParityNum:            vol.EcParityNum,
+		EcMaxUnitSize:          vol.EcMaxUnitSize,
+		ChildFileMaxCount:      vol.ChildFileMaxCount,
+		TrashCleanInterval:     vol.TrashCleanInterval,
+		BatchDelInodeCnt:       vol.BatchDelInodeCnt,
+		DelInodeInterval:       vol.DelInodeInterval,
+		UmpCollectWay:          vol.UmpCollectWay,
+		EnableBitMapAllocator:  vol.EnableBitMapAllocator,
+		TrashCleanMaxCount:     vol.TrashCleanMaxCountEachTime,
+		TrashCleanDuration:     vol.CleanTrashDurationEachTime,
+		NewVolName:             vol.NewVolName,
+		NewVolID:               vol.NewVolID,
+		OldVolName:             vol.OldVolName,
+		FinalVolStatus:         vol.FinalVolStatus,
+		RenameConvertStatus:    vol.RenameConvertStatus,
+		MarkDeleteTime:         vol.MarkDeleteTime,
+		RemoteCacheBoostPath:   vol.RemoteCacheBoostPath,
+		RemoteCacheBoostEnable: vol.RemoteCacheBoostEnable,
+		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
+		RemoteCacheTTL:         vol.RemoteCacheTTL,
 	}
 }
 
@@ -2336,66 +2338,35 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if val, ok := params[dataNodeReqRateKey]; ok {
-		v := val.(uint64)
-		if v > 0 && v < minRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqRateKey, minRateLimit)
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		if err = m.cluster.setDataNodeReqRateLimit(v, zone); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
+	if err = setLimitRateWithPara(params, dataNodeReqRateKey, minRateLimit, updateLimitPara{zone: zone}, m.cluster.setDataNodeReqRateLimit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	if val, ok := params[dataNodeReqVolOpRateKey]; ok {
-		v := val.(uint64)
-		if v > 0 && v < minRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolOpRateKey, minRateLimit)
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		if err = m.cluster.setDataNodeReqVolOpRateLimit(v, zone, vol, op); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
+	if err = setLimitRateWithPara(params, dataNodeReqVolOpRateKey, minRateLimit, updateLimitPara{vol: vol, op: op, zone: zone}, m.cluster.setDataNodeReqVolOpRateLimit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	if val, ok := params[dataNodeReqOpRateKey]; ok {
-		v := val.(uint64)
-		if v > 0 && v < minRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqOpRateKey, minRateLimit)
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		if err = m.cluster.setDataNodeReqOpRateLimit(v, zone, op); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
+	if err = setLimitRateWithPara(params, dataNodeReqOpRateKey, minRateLimit, updateLimitPara{op: op, zone: zone}, m.cluster.setDataNodeReqOpRateLimit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	if val, ok := params[dataNodeReqVolPartRateKey]; ok {
-		v := val.(uint64)
-		if v > 0 && v < minPartRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolPartRateKey, minPartRateLimit)
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		if err = m.cluster.setDataNodeReqVolPartRateLimit(v, vol); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
+	if err = setLimitRateWithPara(params, dataNodeReqVolPartRateKey, minPartRateLimit, updateLimitPara{vol: vol}, m.cluster.setDataNodeReqVolPartRateLimit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
-	if val, ok := params[dataNodeReqVolOpPartRateKey]; ok {
-		v := val.(uint64)
-		if v > 0 && v < minPartRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", dataNodeReqVolOpPartRateKey, minPartRateLimit)
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-		if err = m.cluster.setDataNodeReqVolOpPartRateLimit(v, vol, op); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
+	if err = setLimitRateWithPara(params, dataNodeReqVolOpPartRateKey, minPartRateLimit, updateLimitPara{vol: vol, op: op}, m.cluster.setDataNodeReqVolOpPartRateLimit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
+	if err = setLimitRateWithPara(params, flashNodeRateKey, minRateLimit, updateLimitPara{zone: zone}, m.cluster.setFlashNodeRateLimit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = setLimitRateWithPara(params, flashNodeVolRateKey, minRateLimit, updateLimitPara{zone: zone, vol: vol}, m.cluster.setFlashNodeVolRateLimit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
 	if val, ok := params[metaNodeReqOpRateKey]; ok {
 		v := val.(int64)
 		if v > 0 && v < minRateLimit {
@@ -2491,6 +2462,30 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
+}
+
+type updateLimitFunc func(p updateLimitPara) error
+
+type updateLimitPara struct {
+	zone  string
+	vol   string
+	op    uint8
+	limit uint64
+}
+
+func setLimitRateWithPara(params map[string]interface{}, key string, min uint64, limitPara updateLimitPara, update updateLimitFunc) (err error) {
+	if val, ok := params[key]; ok {
+		v := val.(uint64)
+		if v > 0 && v < min {
+			err = errors.NewErrorf("parameter %s can't be less than %d", key, min)
+			return
+		}
+		limitPara.limit = v
+		if err = update(limitPara); err != nil {
+			return
+		}
+	}
+	return
 }
 
 // get metanode some interval params
@@ -4586,7 +4581,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		extentMergeSleepMsKey, dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
-		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey}
+		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, flashNodeRateKey, flashNodeVolRateKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
@@ -6233,12 +6228,12 @@ func (m *Server) markDeleteVolByRename(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) recoverMarkDeletedVolToNormal(w http.ResponseWriter, r *http.Request) {
 	var (
-		oldVol      *Vol
-		oldVolName  string
-		newVolName  string
-		authKey     string
-		err         error
-		msg         string
+		oldVol     *Vol
+		oldVolName string
+		newVolName string
+		authKey    string
+		err        error
+		msg        string
 	)
 
 	metrics := exporter.NewModuleTP(proto.AdminRecoverVolUmpKey)
@@ -6329,7 +6324,7 @@ func parseAndExtractFlashNode(r *http.Request) (nodeAddr string, state bool, err
 func extractGetAllFlashNodes(r *http.Request) (status bool) {
 	var (
 		value string
-		err error
+		err   error
 	)
 	if value = r.FormValue("getAllFlashNodes"); value == "" {
 		status = false

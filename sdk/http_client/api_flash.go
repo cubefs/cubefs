@@ -27,7 +27,7 @@ func (client *FlashClient) RequestHttp(method, path string, param map[string]str
 	return serveRequest(client.useSSL, client.host, req)
 }
 
-func (client *FlashClient) GetStat() (stat *proto.CacheStatus, err error) {
+func (client *FlashClient) GetStat() (nodeStat *proto.FlashNodeStat, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
 		d, err = client.RequestHttp(http.MethodGet, "/stat", nil)
@@ -39,8 +39,8 @@ func (client *FlashClient) GetStat() (stat *proto.CacheStatus, err error) {
 	if err != nil {
 		return
 	}
-	stat = new(proto.CacheStatus)
-	if err = json.Unmarshal(d, stat); err != nil {
+	nodeStat = new(proto.FlashNodeStat)
+	if err = json.Unmarshal(d, nodeStat); err != nil {
 		return
 	}
 	return

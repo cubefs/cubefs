@@ -749,10 +749,16 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 		request.addParam("dataNodeReqVolOpRate", strconv.FormatInt(info.DataNodeReqVolOpRate, 10))
 	}
 	if info.DataNodeReqVolPartRate >= 0 {
-		request.addParam("dataNodeReqVolPartRate", strconv.FormatInt(info.DataNodeReqVolPartRate, 10))
+		request.addParam(proto.DataNodeReqVolPartRateKey, strconv.FormatInt(info.DataNodeReqVolPartRate, 10))
 	}
 	if info.DataNodeReqVolOpPartRate >= 0 {
-		request.addParam("dataNodeReqVolOpPartRate", strconv.FormatInt(info.DataNodeReqVolOpPartRate, 10))
+		request.addParam(proto.DataNodeReqVolOpPartRateKey, strconv.FormatInt(info.DataNodeReqVolOpPartRate, 10))
+	}
+	if info.FlashNodeRate >= 0 {
+		request.addParam(proto.FlashNodeRateKey, strconv.FormatInt(info.FlashNodeRate, 10))
+	}
+	if info.FlashNodeVolRate >= 0 {
+		request.addParam(proto.FlashNodeVolRateKey, strconv.FormatInt(info.FlashNodeVolRate, 10))
 	}
 	if info.ExtentMergeIno != "" {
 		request.addParam("extentMergeIno", info.ExtentMergeIno)

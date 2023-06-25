@@ -31,10 +31,22 @@ import (
 	"time"
 )
 
-func (f *FlashNode) preHandle(p *Packet) error {
+func (f *FlashNode) preHandle(conn net.Conn, p *Packet) error {
 	if p.Opcode == proto.OpCachePrepare || p.Opcode == proto.OpCacheRead {
 		if f.cacheEngine == nil {
 			return errors.New("cache engine not started")
+		}
+	}
+	// request rate limit for entire flash node
+	if p.Opcode == proto.OpCacheRead && f.nodeLimit != 0 {
+		if !f.nodeLimiter.Allow() {
+			err := errors.NewErrorf("flashnode request is limited(%d)", f.nodeLimit)
+			metric := exporter.NewModuleTP("NodeReqLimit")
+			if log.IsWarnEnabled() {
+				log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
+			}
+			metric.Set(nil)
+			return err
 		}
 	}
 	return nil
@@ -65,8 +77,9 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *Packet, remoteAddr string) (e
 
 func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	p.PacketOkReply()
-	if err := p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
+	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		log.LogErrorf("ack master response: %s", err.Error())
+		return err
 	}
 	log.LogInfof("%s [opMasterHeartbeat] ", remoteAddr)
 	return
@@ -86,10 +99,28 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 			_ = respondToClient(conn, p)
 		}
 	}()
-	var ctx = f.getContext()
+	ctx := f.getContext()
 	if req, err = UnMarshalPacketToCacheRead(p); err != nil {
 		return
 	}
+	if len(f.volLimitMap) > 0 {
+		limiter, ok := f.volLimiterMap[req.CacheRequest.Volume]
+		if ok {
+			if !limiter.Allow() {
+				err = errors.NewErrorf("volume(%s) request is limited(%d)", req.CacheRequest.Volume, f.volLimitMap[req.CacheRequest.Volume])
+				if log.IsWarnEnabled() {
+					log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
+				}
+				metric := exporter.NewModuleTP("VolReqLimit")
+				p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+				_ = respondToClient(conn, p)
+				err = nil
+				metric.Set(nil)
+				return
+			}
+		}
+	}
+
 	if block, err = f.cacheEngine.GetCacheBlock(req.CacheRequest.Volume, req.CacheRequest.Inode, req.CacheRequest.FixedFileOffset, req.CacheRequest.Version); err != nil {
 		if block, err = f.cacheEngine.CreateBlock(req.CacheRequest); err != nil {
 			return err
@@ -180,10 +211,12 @@ func (f *FlashNode) opPrepare(conn net.Conn, p *Packet, remoteAddr string) (err 
 	}()
 	reqID := p.ReqID
 	if req, err = UnMarshalPacketToCachePrepare(p); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		_ = respondToClient(conn, p)
 		return err
 	}
 	p.PacketOkReply()
-	respondToClient(conn, p)
+	_ = respondToClient(conn, p)
 
 	if err = f.cacheEngine.PrepareCache(reqID, req.CacheRequest); err != nil {
 		return err

@@ -559,6 +559,13 @@ func IsDebugEnabled() bool {
 	return DebugLevel&gLog.level == gLog.level
 }
 
+func IsWarnEnabled() bool {
+	if gLog == nil {
+		return false
+	}
+	return WarnLevel&gLog.level == gLog.level
+}
+
 func IsInfoEnabled() bool {
 	return gLog != nil && InfoLevel&gLog.level == gLog.level
 }

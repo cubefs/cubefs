@@ -9,8 +9,7 @@ import (
 )
 
 const (
-	//CACHE_BLOCK_SIZE = 2 << 21 // 4MB
-	CACHE_BLOCK_SIZE   = 2 << 19
+	CACHE_BLOCK_SIZE   = 1 << 20
 	ReadCacheTimeout   = 1 // second
 	DefaultCacheTTLSec = 5 * 60
 )
@@ -252,7 +251,11 @@ type FlashNodeViewInfo struct {
 	FlashGroupID uint64
 	IsEnable     bool
 }
-
+type FlashNodeStat struct {
+	NodeLimit   uint64
+	VolLimit    map[string]uint64
+	CacheStatus *CacheStatus
+}
 type CacheStatus struct {
 	MaxAlloc int64    `json:"max_alloc"`
 	HasAlloc int64    `json:"has_alloc"`

@@ -1120,9 +1120,9 @@ func (c *Cluster) isValidZone(zoneName string) (isValid bool, err error) {
 	return
 }
 
-//valid zone name
-//if zone name duplicate, return error
-//if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return error
+// valid zone name
+// if zone name duplicate, return error
+// if vol enable cross zone and the zone number of cluster less than defaultReplicaNum return error
 func (c *Cluster) validZone(zoneName string, replicaNum int, isSmart bool) (err error) {
 	var crossZone bool
 	if zoneName == "" {
@@ -2388,7 +2388,7 @@ func (c *Cluster) forceRemoveDataReplica(dp *DataPartition, panicHosts []string)
 	return
 }
 
-//the order of newPeers must be consistent with former
+// the order of newPeers must be consistent with former
 func (c *Cluster) resetDataPartitionRaftMember(dp *DataPartition, newPeers []proto.Peer, host string) (err error) {
 	dp.Lock()
 	defer dp.Unlock()
@@ -2485,7 +2485,7 @@ func (c *Cluster) removeDataPartitionRaftMember(dp *DataPartition, removePeer pr
 	return
 }
 
-//This function is used to remove the redundant raft member or just apply an excess raft log, without any changement to the fsm
+// This function is used to remove the redundant raft member or just apply an excess raft log, without any changement to the fsm
 func (c *Cluster) removeDataPartitionRaftOnly(dp *DataPartition, removePeer proto.Peer) (err error) {
 	dp.Lock()
 	defer dp.Unlock()
@@ -3923,7 +3923,9 @@ func (c *Cluster) setDataNodeRepairTaskCountZoneLimit(val uint64, zone string) (
 	return
 }
 
-func (c *Cluster) setDataNodeReqRateLimit(val uint64, zone string) (err error) {
+func (c *Cluster) setDataNodeReqRateLimit(para updateLimitPara) (err error) {
+	val := para.limit
+	zone := para.zone
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
 	oldVal, ok := c.cfg.DataNodeReqZoneRateLimitMap[zone]
@@ -3945,33 +3947,40 @@ func (c *Cluster) setDataNodeReqRateLimit(val uint64, zone string) (err error) {
 	return
 }
 
-func (c *Cluster) setDataNodeReqOpRateLimit(val uint64, zone string, op uint8) (err error) {
+func (c *Cluster) setDataNodeReqOpRateLimit(para updateLimitPara) (err error) {
+	val := para.limit
+	zone := para.zone
+	op := para.op
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
-	opMap, ok := c.cfg.DataNodeReqZoneOpRateLimitMap[zone]
+	m := c.cfg.DataNodeReqZoneOpRateLimitMap
+	opMap, ok := m[zone]
 	var oldVal uint64
 	if ok {
 		oldVal, ok = opMap[op]
 	} else {
 		opMap = make(map[uint8]uint64)
-		c.cfg.DataNodeReqZoneOpRateLimitMap[zone] = opMap
+		m[zone] = opMap
 	}
 	if val > 0 {
 		opMap[op] = val
 	} else {
 		delete(opMap, op)
 		if len(opMap) == 0 {
-			delete(c.cfg.DataNodeReqZoneOpRateLimitMap, zone)
+			delete(m, zone)
 		}
 	}
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeReqOpRateLimit] err[%v]", err)
 		if ok {
-			c.cfg.DataNodeReqZoneOpRateLimitMap[zone][op] = oldVal
+			if _, ok = m[zone]; !ok {
+				m[zone] = make(map[uint8]uint64)
+			}
+			m[zone][op] = oldVal
 		} else {
 			delete(opMap, op)
 			if len(opMap) == 0 {
-				delete(c.cfg.DataNodeReqZoneOpRateLimitMap, zone)
+				delete(m, zone)
 			}
 		}
 		err = proto.ErrPersistenceByRaft
@@ -3980,13 +3989,18 @@ func (c *Cluster) setDataNodeReqOpRateLimit(val uint64, zone string, op uint8) (
 	return
 }
 
-func (c *Cluster) setDataNodeReqVolOpRateLimit(val uint64, zone string, vol string, op uint8) (err error) {
+func (c *Cluster) setDataNodeReqVolOpRateLimit(para updateLimitPara) (err error) {
+	val := para.limit
+	zone := para.zone
+	op := para.op
+	vol := para.vol
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
-	volOpMap, ok := c.cfg.DataNodeReqZoneVolOpRateLimitMap[zone]
+	m := c.cfg.DataNodeReqZoneVolOpRateLimitMap
+	volOpMap, ok := m[zone]
 	if !ok {
 		volOpMap = make(map[string]map[uint8]uint64)
-		c.cfg.DataNodeReqZoneVolOpRateLimitMap[zone] = volOpMap
+		m[zone] = volOpMap
 	}
 	opMap, ok := volOpMap[vol]
 	var oldVal uint64
@@ -4003,20 +4017,26 @@ func (c *Cluster) setDataNodeReqVolOpRateLimit(val uint64, zone string, vol stri
 		if len(opMap) == 0 {
 			delete(volOpMap, vol)
 			if len(volOpMap) == 0 {
-				delete(c.cfg.DataNodeReqZoneVolOpRateLimitMap, zone)
+				delete(m, zone)
 			}
 		}
 	}
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeReqVolOpRateLimit] err[%v]", err)
 		if ok {
-			c.cfg.DataNodeReqZoneVolOpRateLimitMap[zone][vol][op] = oldVal
+			if _, ok = m[zone]; !ok {
+				m[zone] = make(map[string]map[uint8]uint64)
+			}
+			if _, ok = m[zone][vol]; !ok {
+				m[zone][vol] = make(map[uint8]uint64)
+			}
+			m[zone][vol][op] = oldVal
 		} else {
 			delete(opMap, op)
 			if len(opMap) == 0 {
 				delete(volOpMap, vol)
 				if len(volOpMap) == 0 {
-					delete(c.cfg.DataNodeReqZoneVolOpRateLimitMap, zone)
+					delete(m, zone)
 				}
 			}
 		}
@@ -4026,21 +4046,24 @@ func (c *Cluster) setDataNodeReqVolOpRateLimit(val uint64, zone string, vol stri
 	return
 }
 
-func (c *Cluster) setDataNodeReqVolPartRateLimit(val uint64, vol string) (err error) {
+func (c *Cluster) setDataNodeReqVolPartRateLimit(para updateLimitPara) (err error) {
+	val := para.limit
+	vol := para.vol
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
-	oldVal, ok := c.cfg.DataNodeReqVolPartRateLimitMap[vol]
+	m := c.cfg.DataNodeReqVolPartRateLimitMap
+	oldVal, ok := m[vol]
 	if val > 0 {
-		c.cfg.DataNodeReqVolPartRateLimitMap[vol] = val
+		m[vol] = val
 	} else {
-		delete(c.cfg.DataNodeReqVolPartRateLimitMap, vol)
+		delete(m, vol)
 	}
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeReqVolPartRateLimit] err[%v]", err)
 		if ok {
-			c.cfg.DataNodeReqVolPartRateLimitMap[vol] = oldVal
+			m[vol] = oldVal
 		} else {
-			delete(c.cfg.DataNodeReqVolPartRateLimitMap, vol)
+			delete(m, vol)
 		}
 		err = proto.ErrPersistenceByRaft
 		return
@@ -4048,33 +4071,107 @@ func (c *Cluster) setDataNodeReqVolPartRateLimit(val uint64, vol string) (err er
 	return
 }
 
-func (c *Cluster) setDataNodeReqVolOpPartRateLimit(val uint64, vol string, op uint8) (err error) {
+func (c *Cluster) setDataNodeReqVolOpPartRateLimit(para updateLimitPara) (err error) {
+	val := para.limit
+	vol := para.vol
+	op := para.op
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
-	opMap, ok := c.cfg.DataNodeReqVolOpPartRateLimitMap[vol]
+	m := c.cfg.DataNodeReqVolOpPartRateLimitMap
+	opMap, ok := m[vol]
 	var oldVal uint64
 	if ok {
 		oldVal, ok = opMap[op]
 	} else {
 		opMap = make(map[uint8]uint64)
-		c.cfg.DataNodeReqVolOpPartRateLimitMap[vol] = opMap
+		m[vol] = opMap
 	}
 	if val > 0 {
 		opMap[op] = val
 	} else {
 		delete(opMap, op)
 		if len(opMap) == 0 {
-			delete(c.cfg.DataNodeReqVolOpPartRateLimitMap, vol)
+			delete(m, vol)
 		}
 	}
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataNodeReqVolOpPartRateLimit] err[%v]", err)
 		if ok {
-			c.cfg.DataNodeReqVolOpPartRateLimitMap[vol][op] = oldVal
+			if _, ok = m[vol]; !ok {
+				m[vol] = make(map[uint8]uint64)
+			}
+			m[vol][op] = oldVal
 		} else {
 			delete(opMap, op)
 			if len(opMap) == 0 {
-				delete(c.cfg.DataNodeReqVolOpPartRateLimitMap, vol)
+				delete(m, vol)
+			}
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setFlashNodeRateLimit(para updateLimitPara) (err error) {
+	var oldVal uint64
+	var ok bool
+	val := para.limit
+	zone := para.zone
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	m := c.cfg.FlashNodeLimitMap
+	oldVal, ok = m[zone]
+	if val > 0 {
+		m[zone] = val
+	} else {
+		delete(m, zone)
+	}
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setFlashNodeRateLimit] err[%v]", err)
+		if ok {
+			m[zone] = oldVal
+		} else {
+			delete(m, zone)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setFlashNodeVolRateLimit(para updateLimitPara) (err error) {
+	val := para.limit
+	zone := para.zone
+	vol := para.vol
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	m := c.cfg.FlashNodeVolLimitMap
+	volMap, ok := m[zone]
+	if !ok {
+		volMap = make(map[string]uint64)
+		m[zone] = volMap
+	}
+	oldVal, oldVExists := volMap[vol]
+	if val > 0 {
+		volMap[vol] = val
+	} else {
+		delete(volMap, vol)
+		if len(volMap) == 0 {
+			delete(m, zone)
+		}
+	}
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setFlashNodeVolRateLimit] err[%v]", err)
+		if oldVExists {
+			if _, ok = m[zone]; !ok {
+				m[zone] = make(map[string]uint64)
+			}
+			m[zone][vol] = oldVal
+		} else {
+			delete(volMap, vol)
+			if len(volMap) == 0 {
+				delete(m, zone)
 			}
 		}
 		err = proto.ErrPersistenceByRaft
@@ -5968,7 +6065,6 @@ func (c *Cluster) clearRenamedOldVolAndResetNewVolStatus(oldVol, newRenamedVol *
 	oldVol.DeleteRenamedOldVol(c)
 	return
 }
-
 
 func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
 	flashNodes = make([]proto.NodeView, 0)

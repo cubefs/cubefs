@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/util/memory"
 	"github.com/cubefs/cubefs/util/statinfo"
 	"github.com/cubefs/cubefs/util/statistics"
+	"golang.org/x/time/rate"
 	"net"
 	"strconv"
 	"strings"
@@ -57,6 +58,10 @@ type FlashNode struct {
 	currentCtx      context.Context
 	statistics      sync.Map // volume(string) -> []*statistics.MonitorData
 	control         common.Control
+	volLimitMap     map[string]uint64        // volume -> limit
+	volLimiterMap   map[string]*rate.Limiter // volume -> *Limiter
+	nodeLimiter     *rate.Limiter
+	nodeLimit       uint64
 	sync.RWMutex
 }
 
@@ -96,11 +101,12 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = f.register(); err != nil {
 		return
 	}
+	f.initLimiter()
 	f.connPool = connpool.NewConnectPoolWithTimeout(ConnectPoolIdleConnTimeoutSec, CacheReqConnectionTimeoutMilliSec)
 	if err = f.registerAPIHandler(); err != nil {
 		return
 	}
-	go f.startUpdateNodeInfo()
+	go f.startUpdateScheduler()
 
 	exporter.Init(f.clusterId, moduleName, f.zoneName, cfg)
 	if err = f.startTcpServer(); err != nil {
@@ -191,6 +197,13 @@ func (f *FlashNode) startCacheEngine() (err error) {
 	}
 	f.cacheEngine.Start()
 	return
+}
+
+func (f *FlashNode) initLimiter() {
+	f.nodeLimit = 0
+	f.nodeLimiter = rate.NewLimiter(rate.Inf, DefaultBurst)
+	f.volLimitMap = make(map[string]uint64)
+	f.volLimiterMap = make(map[string]*rate.Limiter)
 }
 
 func (f *FlashNode) register() (err error) {

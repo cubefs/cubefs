@@ -145,6 +145,12 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DataNodeReqVolOpPartRate >= 0 {
 				msg += fmt.Sprintf("dataNodeReqVolOpPartRate: %d, volume: %s, opcode: %d, ", info.DataNodeReqVolOpPartRate, info.Volume, info.Opcode)
 			}
+			if info.FlashNodeRate >= 0 {
+				msg += fmt.Sprintf("flashNodeRate: %d, zone:%s, ", info.FlashNodeRate, info.ZoneName)
+			}
+			if info.FlashNodeVolRate >= 0 {
+				msg += fmt.Sprintf("flashNodeVolRate: %d, zone:%s, volume: %s, ", info.FlashNodeVolRate, info.ZoneName, info.Volume)
+			}
 			if info.DataNodeFlushFDInterval >= 0 {
 				msg += fmt.Sprintf("dataNodeFlushFDInterval: %d, ", info.DataNodeFlushFDInterval)
 			}
@@ -284,8 +290,10 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.DataNodeReqRate, "dataNodeReqZoneRate", -1, "data node request rate limit")
 	cmd.Flags().Int64Var(&info.DataNodeReqOpRate, "dataNodeReqZoneOpRate", -1, "data node request rate limit for opcode")
 	cmd.Flags().Int64Var(&info.DataNodeReqVolOpRate, "dataNodeReqZoneVolOpRate", -1, "data node request rate limit for a given vol & opcode")
-	cmd.Flags().Int64Var(&info.DataNodeReqVolPartRate, "dataNodeReqVolPartRate", -1, "data node per partition request rate limit for a given volume")
-	cmd.Flags().Int64Var(&info.DataNodeReqVolOpPartRate, "dataNodeReqVolOpPartRate", -1, "data node per partition request rate limit for a given volume & opcode")
+	cmd.Flags().Int64Var(&info.DataNodeReqVolPartRate, proto.DataNodeReqVolPartRateKey, -1, "data node per partition request rate limit for a given volume")
+	cmd.Flags().Int64Var(&info.DataNodeReqVolOpPartRate, proto.DataNodeReqVolOpPartRateKey, -1, "data node per partition request rate limit for a given volume & opcode")
+	cmd.Flags().Int64Var(&info.FlashNodeRate, proto.FlashNodeRateKey, -1, "flash node cache read request rate limit")
+	cmd.Flags().Int64Var(&info.FlashNodeVolRate, proto.FlashNodeVolRateKey, -1, "flash node cache read request rate limit for a volume")
 	cmd.Flags().Int64Var(&info.ClientReadVolRate, "clientReadVolRate", -1, "client read rate limit for volume")
 	cmd.Flags().Int64Var(&info.ClientWriteVolRate, "clientWriteVolRate", -1, "client write limit rate for volume")
 	cmd.Flags().Int64Var(&info.ClientVolOpRate, "clientVolOpRate", -2, "client meta op limit rate. '-1': unlimit, '0': disable")
@@ -352,6 +360,8 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  DataNodeReqVolOpPartRateMap      : %v\n", info.DataNodeReqVolOpPartRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[volume]map[opcode]limit - per partition)\n"))
 	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("  FlashNodeZoneRateMap             : %v\n", info.FlashNodeLimitMap))
+	sb.WriteString(fmt.Sprintf("  FlashNodeZoneVolRateMap          : %v\n", info.FlashNodeVolLimitMap))
 	sb.WriteString(fmt.Sprintf("  ClientReadVolRateMap             : %v\n", info.ClientReadVolRateLimitMap))
 	sb.WriteString(fmt.Sprintf("  (map[volume]limit of specified volume)\n"))
 	sb.WriteString(fmt.Sprintf("  ClientWriteVolRateMap            : %v\n", info.ClientWriteVolRateLimitMap))
@@ -392,4 +402,3 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  ClientConnTimeoutUs              : %v(us)\n", info.ClientConnTimeoutUs))
 	return sb.String()
 }
-

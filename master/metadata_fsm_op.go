@@ -46,6 +46,8 @@ type clusterValue struct {
 	DataNodeReqZoneVolOpRateLimitMap    map[string]map[string]map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap      map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
+	FlashNodeLimitMap                   map[string]uint64
+	FlashNodeVolLimitMap                map[string]map[string]uint64
 	MetaNodeReqRateLimit                uint64
 	MetaNodeReadDirLimitNum             uint64
 	MetaNodeReqOpRateLimitMap           map[uint8]uint64
@@ -117,6 +119,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeReqZoneVolOpRateLimitMap:    c.cfg.DataNodeReqZoneVolOpRateLimitMap,
 		DataNodeReqVolPartRateLimitMap:      c.cfg.DataNodeReqVolPartRateLimitMap,
 		DataNodeReqVolOpPartRateLimitMap:    c.cfg.DataNodeReqVolOpPartRateLimitMap,
+		FlashNodeLimitMap:                   c.cfg.FlashNodeLimitMap,
+		FlashNodeVolLimitMap:                c.cfg.FlashNodeVolLimitMap,
 		MetaNodeReqRateLimit:                c.cfg.MetaNodeReqRateLimit,
 		MetaNodeReqOpRateLimitMap:           c.cfg.MetaNodeReqOpRateLimitMap,
 		MetaNodeReqVolOpRateLimitMap:        c.cfg.MetaNodeReqVolOpRateLimitMap,
@@ -338,10 +342,10 @@ type volValue struct {
 	RenameConvertStatus   bsProto.VolRenameConvertStatus
 	MarkDeleteTime        int64
 
-	RemoteCacheBoostPath       string
-	RemoteCacheBoostEnable     bool
-	RemoteCacheAutoPrepare     bool
-	RemoteCacheTTL             int64
+	RemoteCacheBoostPath   string
+	RemoteCacheBoostEnable bool
+	RemoteCacheAutoPrepare bool
+	RemoteCacheTTL         int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -422,10 +426,10 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RenameConvertStatus:   vol.RenameConvertStatus,
 		MarkDeleteTime:        vol.MarkDeleteTime,
 
-		RemoteCacheBoostPath:       vol.RemoteCacheBoostPath,
-		RemoteCacheBoostEnable:     vol.RemoteCacheBoostEnable,
-		RemoteCacheAutoPrepare:     vol.RemoteCacheAutoPrepare,
-		RemoteCacheTTL:             vol.RemoteCacheTTL,
+		RemoteCacheBoostPath:   vol.RemoteCacheBoostPath,
+		RemoteCacheBoostEnable: vol.RemoteCacheBoostEnable,
+		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
+		RemoteCacheTTL:         vol.RemoteCacheTTL,
 	}
 	return
 }
@@ -624,7 +628,7 @@ func (c *Cluster) buildTokenRaftCmd(opType uint32, token *bsProto.Token) (metada
 	return
 }
 
-//key=#c#name
+// key=#c#name
 func (c *Cluster) syncPutCluster() (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncPutCluster
@@ -695,7 +699,7 @@ func (c *Cluster) submit(metadata *RaftCmd) (err error) {
 	return
 }
 
-//key=#vol#volID,value=json.Marshal(vv)
+// key=#vol#volID,value=json.Marshal(vv)
 func (c *Cluster) syncAddVol(vol *Vol) (err error) {
 	return c.syncPutVolInfo(opSyncAddVol, vol)
 }
@@ -892,7 +896,7 @@ func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val)
 }
 
-//key=#region#regionName,value=json.Marshal(rv)
+// key=#region#regionName,value=json.Marshal(rv)
 func (c *Cluster) syncAddRegion(region *Region) (err error) {
 	return c.syncPutRegionInfo(OpSyncAddRegion, region)
 }
@@ -919,7 +923,7 @@ func (c *Cluster) syncPutRegionInfo(opType uint32, region *Region) (err error) {
 	return c.submit(metadata)
 }
 
-//key=#idc#idcName,value=json.Marshal(rv)
+// key=#idc#idcName,value=json.Marshal(rv)
 func (c *Cluster) syncAddIDC(idc *IDCInfo) (err error) {
 	return c.syncPutIDCInfo(OpSyncAddIDC, idc)
 }
@@ -1047,6 +1051,14 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.DataNodeReqVolOpPartRateLimitMap = cv.DataNodeReqVolOpPartRateLimitMap
 		if c.cfg.DataNodeReqVolOpPartRateLimitMap == nil {
 			c.cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
+		}
+		c.cfg.FlashNodeVolLimitMap = cv.FlashNodeVolLimitMap
+		if c.cfg.FlashNodeVolLimitMap == nil {
+			c.cfg.FlashNodeVolLimitMap = make(map[string]map[string]uint64)
+		}
+		c.cfg.FlashNodeLimitMap = cv.FlashNodeLimitMap
+		if c.cfg.FlashNodeLimitMap == nil {
+			c.cfg.FlashNodeLimitMap = make(map[string]uint64)
 		}
 		c.cfg.ClientReadVolRateLimitMap = cv.ClientReadVolRateLimitMap
 		if c.cfg.ClientReadVolRateLimitMap == nil {

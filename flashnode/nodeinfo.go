@@ -15,36 +15,81 @@
 package flashnode
 
 import (
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"golang.org/x/time/rate"
+	"reflect"
 	"time"
 )
 
-func (f *FlashNode) startUpdateNodeInfo() {
-	flashInfoTicker := time.NewTicker(UpdateRateLimitInfoIntervalSec * time.Second)
+func (f *FlashNode) startUpdateScheduler() {
+	limitTicker := time.NewTicker(UpdateRateLimitInfoInterval)
 	defer func() {
-		flashInfoTicker.Stop()
+		limitTicker.Stop()
 	}()
-	// call once on init before first tick
-	f.updateFlashNodeBaseInfo()
+	f.updateFlashNodeRateLimit()
 	for {
 		select {
 		case <-f.stopCh:
-			log.LogInfo("flashNode UpdateNodeInfo goroutine stopped")
+			log.LogInfo("flashNode startUpdateScheduler goroutine stopped")
 			return
-		case <-flashInfoTicker.C:
-			f.updateFlashNodeBaseInfo()
+		case <-limitTicker.C:
+			f.updateFlashNodeRateLimit()
 		}
 	}
 }
 
-// updateFlashNodeBaseInfo
-// 1. set tmpfs ratio
-// 2. set rate limit info
-// todo: add rate limit in cache read
-func (f *FlashNode) updateFlashNodeBaseInfo() {
-	_, err := masterClient.AdminAPI().GetLimitInfo("")
+func (f *FlashNode) updateFlashNodeRateLimit() {
+	limitInfo, err := masterClient.AdminAPI().GetLimitInfo("")
 	if err != nil {
-		log.LogErrorf("[updateFlashNodeBaseInfo] %s", err.Error())
+		log.LogWarnf("[updateRateLimitInfo] get limit info err: %s", err.Error())
 		return
+	}
+	f.updateZoneLimiter(limitInfo)
+	f.updateZoneVolLimiter(limitInfo)
+}
+
+// updateZoneLimiter update limiter for zone
+func (f *FlashNode) updateZoneLimiter(limitInfo *proto.LimitInfo) {
+	r, ok := limitInfo.FlashNodeLimitMap[f.zoneName]
+	if !ok {
+		r, ok = limitInfo.FlashNodeLimitMap[""]
+	}
+	if !ok {
+		f.nodeLimit = 0
+		f.nodeLimiter.SetLimit(rate.Inf)
+		return
+	}
+	if r == 0 && f.nodeLimit == 0 {
+		return
+	}
+	if f.nodeLimit != r {
+		f.nodeLimit = r
+		l := rate.Inf
+		if r > 0 {
+			l = rate.Limit(r)
+		}
+		f.nodeLimiter.SetLimit(l)
+	}
+}
+
+func (f *FlashNode) updateZoneVolLimiter(limitInfo *proto.LimitInfo) {
+	volLimitMap, ok := limitInfo.FlashNodeVolLimitMap[f.zoneName]
+	if !ok {
+		volLimitMap, ok = limitInfo.FlashNodeVolLimitMap[""]
+	}
+	if !ok {
+		f.volLimitMap = make(map[string]uint64)
+		f.volLimiterMap = make(map[string]*rate.Limiter)
+		return
+	}
+	if !reflect.DeepEqual(f.volLimitMap, volLimitMap) {
+		f.volLimitMap = volLimitMap
+		tmpVolLimiterMap := make(map[string]*rate.Limiter)
+		for vol, r := range volLimitMap {
+			l := rate.Limit(r)
+			tmpVolLimiterMap[vol] = rate.NewLimiter(l, DefaultBurst)
+		}
+		f.volLimiterMap = tmpVolLimiterMap
 	}
 }

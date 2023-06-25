@@ -100,12 +100,14 @@ func (f *FlashNode) serveConn(conn net.Conn, stopC chan uint8) {
 			}
 			return
 		}
-		if err := f.preHandle(p); err != nil {
-			logContent := fmt.Sprintf("preHandle %v.", p.LogMessage(p.GetOpMsg(), remoteAddr, p.StartT, err))
-			log.LogErrorf(logContent)
+		if err := f.preHandle(conn, p); err != nil {
+			if log.IsWarnEnabled() {
+				logContent := fmt.Sprintf("preHandle %v.", p.LogMessage(p.GetOpMsg(), remoteAddr, p.StartT, err))
+				log.LogWarnf(logContent)
+			}
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-			respondToClient(conn, p)
-			return
+			_ = respondToClient(conn, p)
+			continue
 		}
 		if err := f.handlePacket(conn, p, remoteAddr); err != nil {
 			log.LogErrorf("serve handlePacket fail: %v", err)

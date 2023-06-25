@@ -103,6 +103,8 @@ type clusterConfig struct {
 	DataNodeReqZoneVolOpRateLimitMap    map[string]map[string]map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap      map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
+	FlashNodeLimitMap                   map[string]uint64
+	FlashNodeVolLimitMap                map[string]map[string]uint64
 	reqRateLimitMapMutex                sync.Mutex
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
 	DataNodeRepairTaskCount             uint64
@@ -185,6 +187,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DataNodeReqZoneVolOpRateLimitMap = make(map[string]map[string]map[uint8]uint64)
 	cfg.DataNodeReqVolPartRateLimitMap = make(map[string]uint64)
 	cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
+	cfg.FlashNodeLimitMap = make(map[string]uint64)
+	cfg.FlashNodeVolLimitMap = make(map[string]map[string]uint64)
 	cfg.ClientReadVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientWriteVolRateLimitMap = make(map[string]uint64)
 	cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)

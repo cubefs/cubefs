@@ -116,7 +116,7 @@ func sendReadCmdToDataPartition(addr string, reqPacket *proto.Packet, afterReadF
 
 func sendToDataPartition(conn *net.TCPConn, req *proto.Packet, addr string) (err error) {
 	if log.IsDebugEnabled() {
-		log.LogDebugf("sendToDataPartition: send to addr(%v), reqPacket(%v)", addr, req)
+		log.LogDebugf("sendToDataPartition: send to addr(%v)", addr)
 	}
 	if req.Opcode == proto.OpStreamFollowerRead {
 		req.SendT = time.Now().UnixNano()
@@ -126,7 +126,7 @@ func sendToDataPartition(conn *net.TCPConn, req *proto.Packet, addr string) (err
 		return
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("sendToDataPartition exit: send to addr(%v) reqPacket(%v) successfully", addr, req)
+		log.LogDebugf("sendToDataPartition exit: send to addr(%v) successfully", addr)
 	}
 	return
 }

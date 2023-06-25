@@ -42,7 +42,11 @@ func (f *FlashNode) getVersion(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (f *FlashNode) getCacheStatHandler(w http.ResponseWriter, r *http.Request) {
-	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: f.cacheEngine.Status(), Msg: "ok"})
+	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: &proto.FlashNodeStat{
+		NodeLimit:   f.nodeLimit,
+		VolLimit:    f.volLimitMap,
+		CacheStatus: f.cacheEngine.Status(),
+	}, Msg: "ok"})
 	return
 }
 

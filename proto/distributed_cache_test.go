@@ -80,7 +80,6 @@ func generateMeaningfulRandomCacheReadRequest(num int) *CacheReadRequest {
 		Offset:       uint64(r.Int63n(unit.TB * 64)),
 		Size_:        uint64(r.Int63n(unit.KB * 128)),
 		CacheRequest: generateMeaningfulRandomCacheRequest(num),
-		Data:         make([]byte, 0),
 	}
 }
 
@@ -94,7 +93,6 @@ func generateRandomCacheReadRequest(num int) *CacheReadRequest {
 		Offset:       r.Uint64(),
 		Size_:        r.Uint64(),
 		CacheRequest: generateRandomCacheRequest(num),
-		Data:         make([]byte, 0),
 	}
 }
 

@@ -96,9 +96,19 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 					return flashNodeViewInfos[i].ID < flashNodeViewInfos[j].ID
 				})
 				for _, fn := range flashNodeViewInfos {
-					hitRate, evicts := getHitRateAndEvicts(fn.Addr, client.FlashNodeProfPort)
+					var (
+						hitRate = "100%"
+						evicts  = 0
+						limit   = uint64(0)
+					)
+					stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
+					if err1 == nil {
+						hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
+						evicts = stat.CacheStatus.Evicts
+						limit = stat.NodeLimit
+					}
 					row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
-						formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
+						formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
 					stdout("%v\n", row)
 				}
 			}

@@ -71,6 +71,8 @@ const (
 	dataNodeReqVolOpRateKey             = "dataNodeReqVolOpRate"
 	dataNodeReqVolPartRateKey           = "dataNodeReqVolPartRate"
 	dataNodeReqVolOpPartRateKey         = "dataNodeReqVolOpPartRate"
+	flashNodeRateKey                    = "flashNodeRate"
+	flashNodeVolRateKey                 = "flashNodeVolRate"
 	metaNodeReqRateKey                  = "metaNodeReqRate"
 	metaNodeReqOpRateKey                = "metaNodeReqOpRate"
 	metaNodeReadDirLimitKey             = "metaNodeReadDirLimit"
@@ -145,15 +147,15 @@ const (
 	umpCollectWayKey                    = "umpCollectWay"
 	umpJmtpAddrKey                      = "umpJmtpAddr"
 	umpJmtpBatchKey                     = "umpJmtpBatch"
-	remoteCacheBoostPathKey            = "remoteCacheBoostPath"
-	remoteCacheBoostEnableKey          = "remoteCacheBoostEnable"
-	remoteCacheAutoPrepareKey          = "remoteCacheAutoPrepare"
-	remoteCacheTTLKey                  = "remoteCacheTTL"
+	remoteCacheBoostPathKey             = "remoteCacheBoostPath"
+	remoteCacheBoostEnableKey           = "remoteCacheBoostEnable"
+	remoteCacheAutoPrepareKey           = "remoteCacheAutoPrepare"
+	remoteCacheTTLKey                   = "remoteCacheTTL"
 	appKey                              = "app"
 	slavesKey                           = "slaves"
 	addSlaveKey                         = "addslave"
 	newNameKey                          = "newName"
-	fgSlotsKey                            = "slots"
+	fgSlotsKey                          = "slots"
 )
 
 const (
@@ -204,81 +206,81 @@ const (
 )
 
 const (
-	defaultInitMetaPartitionCount                      = 3
-	defaultMaxInitMetaPartitionCount                   = 100
-	defaultMaxMetaPartitionInodeID              uint64 = 1<<63 - 1
-	defaultMetaPartitionInodeIDStep             uint64 = 1 << 24
-	defaultMetaNodeReservedMem                  uint64 = 1 << 30
-	runtimeStackBufSize                                = 4096
-	spaceAvailableRate                                 = 0.90
-	defaultNodeSetCapacity                             = 256
-	minNumOfRWDataPartitions                           = 10
-	intervalToCheckMissingReplica                      = 600
-	intervalToWarnDataPartition                        = 600
-	intervalToLoadDataPartition                        = 12 * 60 * 60
-	defaultUnrecoverableDuration                       = 24 * 60 * 60
-	defaultCheckRecoverDuration                        = 10 * 60 * 60
-	defaultDecommissionDuration                        = 10 * 60
-	defaultInitDataPartitionCnt                        = 10
-	volExpansionRatio                                  = 0.1
-	maxNumberOfDataPartitionsForExpansion              = 100
-	EmptyCrcValue                               uint32 = 4045511210
-	DefaultZoneName                                    = proto.DefaultZoneName
-	retrySendSyncTaskInternal                          = 5 * time.Second
-	defaultRangeOfCountDifferencesAllowed              = 50
-	defaultMinusOfMaxInodeID                           = 1000
-	defaultPercentMinusOfInodeCount                    = 0.20
-	defaultRecoverPoolSize                             = -1
-	maxDataPartitionsRecoverPoolSize                   = 50
-	maxMetaPartitionsRecoverPoolSize                   = 30
-	defaultMinusOfNodeSetCount                         = 3
-	defaultLearnerPromThreshold                        = 90
-	minRateLimit                                       = 100
-	minPartRateLimit                                   = 1
-	minReadDirLimitNum                                 = 500000
-	minNormalExtentDeleteExpire                        = 10 * 60
-	diskErrDataPartitionOfflineBatchCount              = 200
-	defaultHighUsedRatioDataNodesThreshold             = 0.85
-	defaultHighUsedRatioMetaNodesThreshold             = 0.85
-	defaultQuorumDataPartitionMasterRegionCount        = 3
-	defaultQuorumMetaPartitionMasterRegionCount        = 3
-	defaultQuorumMetaPartitionLearnerReplicaNum        = 2
-	maxQuorumVolDataPartitionReplicaNum                = 5
-	defaultMinDpWriteableThreshold                     = 0.5
-	defaultVolMaxWritableMPNum                         = 100
-	defaultVolMaxWritableDPNum                         = 6000
-	defaultLowCapacityVolMaxWritableDPNum              = 100
-	defaultLowCapacityVol                              = 10 * 1024
-	maxTrashRemainingDays                              = 30
-	defaultMetaNodeVersion                             = "3.0.0"
-	minCrossRegionVolMasterRegionZonesCount            = 1
-	defaultCompactTag                                  = "default"
-	defaultEcMigrationSaveTime                         = 100 * 365 * 24 * 60 //min
-	defaultMinEcTime                                   = 5                   //min
-	defaultEcMigrationTimeOut                          = 30                  //min
-	defaultEcMigrationWaitTime                         = 30 * 24 * 60        //min
-	defaultEcMigrationRetryWait                        = 60                  //min
-	defaultEcMaxUnitSize                               = 32 * 1024 * 1024    //byte
-	defaultEcScrubPeriod                               = 30 * 24 * 60        //min
-	defaultEcScrubPeriodTime                           = 60                  //second
-	defaultEcScrubDiskConcurrentExtents                = 3
-	defaultMaxCodecConcurrent                          = 10
-	defaultEcScrubEnable                               = false
-	defaultEcEnable                                    = false
-	defaultEcDataNum                                   = 4
-	defaultEcParityNum                                 = 2
-	defaultDataNodeHttpPort                            = "17320"
-	defaultSSDZoneTaskLimit                            = 20
-	defaultFollReadHostWeight                          = 0
-	defaultChildFileMaxCount                           = 2000 * 10000 //default 2kw
-	defaultDataNodeFlushFDParallelismOnDisk            = 5
-	defaultAutoCreateDPAfterVolCreateSecond            = 60
-	defaultHeartbeatHandleChanCap                      = 4096
-	defaultHeartbeatHandleGoRoutineCount               = 20
-	volDefaultMaxCapacityRatioForReservedTrashSpace    = 1.5
-	volLowCapThresholdForReservedTrashSpace            = 20 * 1024 // GB
-	volLowCapMaxCapacityRatioForReservedTrashSpace     = 2
-	defaultFlashNodeOnlineState                        = true
+	defaultInitMetaPartitionCount                          = 3
+	defaultMaxInitMetaPartitionCount                       = 100
+	defaultMaxMetaPartitionInodeID                  uint64 = 1<<63 - 1
+	defaultMetaPartitionInodeIDStep                 uint64 = 1 << 24
+	defaultMetaNodeReservedMem                      uint64 = 1 << 30
+	runtimeStackBufSize                                    = 4096
+	spaceAvailableRate                                     = 0.90
+	defaultNodeSetCapacity                                 = 256
+	minNumOfRWDataPartitions                               = 10
+	intervalToCheckMissingReplica                          = 600
+	intervalToWarnDataPartition                            = 600
+	intervalToLoadDataPartition                            = 12 * 60 * 60
+	defaultUnrecoverableDuration                           = 24 * 60 * 60
+	defaultCheckRecoverDuration                            = 10 * 60 * 60
+	defaultDecommissionDuration                            = 10 * 60
+	defaultInitDataPartitionCnt                            = 10
+	volExpansionRatio                                      = 0.1
+	maxNumberOfDataPartitionsForExpansion                  = 100
+	EmptyCrcValue                                   uint32 = 4045511210
+	DefaultZoneName                                        = proto.DefaultZoneName
+	retrySendSyncTaskInternal                              = 5 * time.Second
+	defaultRangeOfCountDifferencesAllowed                  = 50
+	defaultMinusOfMaxInodeID                               = 1000
+	defaultPercentMinusOfInodeCount                        = 0.20
+	defaultRecoverPoolSize                                 = -1
+	maxDataPartitionsRecoverPoolSize                       = 50
+	maxMetaPartitionsRecoverPoolSize                       = 30
+	defaultMinusOfNodeSetCount                             = 3
+	defaultLearnerPromThreshold                            = 90
+	minRateLimit                                           = 100
+	minPartRateLimit                                       = 1
+	minReadDirLimitNum                                     = 500000
+	minNormalExtentDeleteExpire                            = 10 * 60
+	diskErrDataPartitionOfflineBatchCount                  = 200
+	defaultHighUsedRatioDataNodesThreshold                 = 0.85
+	defaultHighUsedRatioMetaNodesThreshold                 = 0.85
+	defaultQuorumDataPartitionMasterRegionCount            = 3
+	defaultQuorumMetaPartitionMasterRegionCount            = 3
+	defaultQuorumMetaPartitionLearnerReplicaNum            = 2
+	maxQuorumVolDataPartitionReplicaNum                    = 5
+	defaultMinDpWriteableThreshold                         = 0.5
+	defaultVolMaxWritableMPNum                             = 100
+	defaultVolMaxWritableDPNum                             = 6000
+	defaultLowCapacityVolMaxWritableDPNum                  = 100
+	defaultLowCapacityVol                                  = 10 * 1024
+	maxTrashRemainingDays                                  = 30
+	defaultMetaNodeVersion                                 = "3.0.0"
+	minCrossRegionVolMasterRegionZonesCount                = 1
+	defaultCompactTag                                      = "default"
+	defaultEcMigrationSaveTime                             = 100 * 365 * 24 * 60 //min
+	defaultMinEcTime                                       = 5                   //min
+	defaultEcMigrationTimeOut                              = 30                  //min
+	defaultEcMigrationWaitTime                             = 30 * 24 * 60        //min
+	defaultEcMigrationRetryWait                            = 60                  //min
+	defaultEcMaxUnitSize                                   = 32 * 1024 * 1024    //byte
+	defaultEcScrubPeriod                                   = 30 * 24 * 60        //min
+	defaultEcScrubPeriodTime                               = 60                  //second
+	defaultEcScrubDiskConcurrentExtents                    = 3
+	defaultMaxCodecConcurrent                              = 10
+	defaultEcScrubEnable                                   = false
+	defaultEcEnable                                        = false
+	defaultEcDataNum                                       = 4
+	defaultEcParityNum                                     = 2
+	defaultDataNodeHttpPort                                = "17320"
+	defaultSSDZoneTaskLimit                                = 20
+	defaultFollReadHostWeight                              = 0
+	defaultChildFileMaxCount                               = 2000 * 10000 //default 2kw
+	defaultDataNodeFlushFDParallelismOnDisk                = 5
+	defaultAutoCreateDPAfterVolCreateSecond                = 60
+	defaultHeartbeatHandleChanCap                          = 4096
+	defaultHeartbeatHandleGoRoutineCount                   = 20
+	volDefaultMaxCapacityRatioForReservedTrashSpace        = 1.5
+	volLowCapThresholdForReservedTrashSpace                = 20 * 1024 // GB
+	volLowCapMaxCapacityRatioForReservedTrashSpace         = 2
+	defaultFlashNodeOnlineState                            = true
 )
 
 const (
@@ -294,7 +296,7 @@ const (
 )
 
 const (
-	markDeleteVolByRenamePrefix = "mark_del_by_rename"
+	markDeleteVolByRenamePrefix            = "mark_del_by_rename"
 	markDeleteVolUpdatePartitionBatchCount = 200
 )
 
@@ -353,12 +355,12 @@ const (
 	opSyncDeleteMigrateTask uint32 = 0x39
 	opSyncUpdateMigrateTask uint32 = 0x3A
 
-	opSyncAddFlashNode      uint32 = 0x40
-	opSyncDeleteFlashNode   uint32 = 0x41
-	opSyncUpdateFlashNode   uint32 = 0x42
-	opSyncAddFlashGroup     uint32 = 0x43
-	opSyncDeleteFlashGroup  uint32 = 0x44
-	opSyncUpdateFlashGroup  uint32 = 0x45
+	opSyncAddFlashNode     uint32 = 0x40
+	opSyncDeleteFlashNode  uint32 = 0x41
+	opSyncUpdateFlashNode  uint32 = 0x42
+	opSyncAddFlashGroup    uint32 = 0x43
+	opSyncDeleteFlashGroup uint32 = 0x44
+	opSyncUpdateFlashGroup uint32 = 0x45
 )
 
 const (

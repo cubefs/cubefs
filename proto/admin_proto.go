@@ -124,26 +124,26 @@ const (
 	RemoveRaftNode = "/raftNode/remove"
 
 	// Node APIs
-	AddDataNode                     = "/dataNode/add"
-	DecommissionDataNode            = "/dataNode/decommission"
-	DecommissionDisk                = "/disk/decommission"
-	GetDataNode                     = "/dataNode/get"
-	AddMetaNode                     = "/metaNode/add"
-	DecommissionMetaNode            = "/metaNode/decommission"
-	GetMetaNode                     = "/metaNode/get"
-	AdminUpdateMetaNode             = "/metaNode/update"
-	AdminLoadMetaPartition          = "/metaPartition/load"
-	AdminDiagnoseMetaPartition      = "/metaPartition/diagnose"
-	AdminResetMetaPartition         = "/metaPartition/reset"
-	AdminManualResetMetaPartition   = "/metaPartition/manualReset"
-	AdminResetCorruptMetaNode       = "/metaNode/reset"
-	AdminDecommissionMetaPartition  = "/metaPartition/decommission"
-	AdminAddMetaReplica             = "/metaReplica/add"
-	AdminDeleteMetaReplica          = "/metaReplica/delete"
-	AdminSelectMetaReplicaNode      = "/metaReplica/selectNode"
-	AdminAddMetaReplicaLearner      = "/metaLearner/add"
-	AdminPromoteMetaReplicaLearner  = "/metaLearner/promote"
-	AdminMetaPartitionSetIsRecover  = "/metaPartition/setIsRecover"
+	AddDataNode                    = "/dataNode/add"
+	DecommissionDataNode           = "/dataNode/decommission"
+	DecommissionDisk               = "/disk/decommission"
+	GetDataNode                    = "/dataNode/get"
+	AddMetaNode                    = "/metaNode/add"
+	DecommissionMetaNode           = "/metaNode/decommission"
+	GetMetaNode                    = "/metaNode/get"
+	AdminUpdateMetaNode            = "/metaNode/update"
+	AdminLoadMetaPartition         = "/metaPartition/load"
+	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
+	AdminResetMetaPartition        = "/metaPartition/reset"
+	AdminManualResetMetaPartition  = "/metaPartition/manualReset"
+	AdminResetCorruptMetaNode      = "/metaNode/reset"
+	AdminDecommissionMetaPartition = "/metaPartition/decommission"
+	AdminAddMetaReplica            = "/metaReplica/add"
+	AdminDeleteMetaReplica         = "/metaReplica/delete"
+	AdminSelectMetaReplicaNode     = "/metaReplica/selectNode"
+	AdminAddMetaReplicaLearner     = "/metaLearner/add"
+	AdminPromoteMetaReplicaLearner = "/metaLearner/promote"
+	AdminMetaPartitionSetIsRecover = "/metaPartition/setIsRecover"
 
 	// Operation response
 	GetMetaNodeTaskResponse   = "/metaNode/response"          // Method: 'POST', ContentType: 'application/json'
@@ -244,34 +244,38 @@ const (
 )
 
 const (
-	RocksDBDiskReservedSpaceKey    = "rocksDBDiskReservedSpace"
-	LogMaxMB                       = "logMaxMB"
-	MetaRockDBWalFileMaxMB         = "metaRockDBWalFileMaxMB"
-	MetaRocksDBWalMemMaxMB         = "metaRocksDBWalMemMaxMB"
-	MetaRocksDBLogMaxMB            = "metaRocksDBLogMaxMB"
-	MetaRocksLogReservedDay        = "metaRocksLogReservedDay"
-	MetaRocksLogReservedCnt        = "metaRocksLogReservedCnt"
-	MetaRocksWalFlushIntervalKey   = "metaRocksWalFlushInterval"
-	MetaRocksDisableFlushWalKey    = "metaRocksDisableFlushWal"
-	MetaRocksWalTTLKey             = "metaRocksWalTTL"
-	ChildFileMaxCountKey           = "childFileMaxCount"
-	NameKey                        = "name"
-	MetaDelEKRecordFileMaxMB       = "metaDelEKRecordFileMaxMB"
-	MetaTrashCleanIntervalKey      = "metaTrashCleanInterval"
-	MetaRaftLogSizeKey             = "metaRaftLogSize"
-	MetaRaftLogCapKey              = "metaRaftLogCap"
-	MetaSyncWalEnableStateKey      = "metaWalSyncEnableState"
-	DataSyncWalEnableStateKey      = "dataWalSyncEnableState"
-	DisableStrictVolZoneKey        = "disableStrictVolZone"
-	AutoUpPartitionReplicaNumKey   = "autoUpdatePartitionReplicaNum"
-	EnableBitMapAllocatorKey       = "enableBitMapAllocator"
-	AllocatorMaxUsedFactorKey      = "allocatorMaxUsedFactor"
-	AllocatorMinFreeFactorKey      = "allocatorMinFreeFactor"
-	TrashItemCleanMaxCountKey      = "trashItemCleanMaxCount"
-	TrashCleanDurationKey          = "trashItemCleanDuration"
-	DeleteMarkDelVolIntervalKey    = "deleteMarkDelVolInterval"
-	RemoteCacheBoostEnableKey      = "remoteCacheBoostEnable"
-	NetConnTimeoutUsKey            = "netConnTimeoutUs"
+	RocksDBDiskReservedSpaceKey  = "rocksDBDiskReservedSpace"
+	LogMaxMB                     = "logMaxMB"
+	MetaRockDBWalFileMaxMB       = "metaRockDBWalFileMaxMB"
+	MetaRocksDBWalMemMaxMB       = "metaRocksDBWalMemMaxMB"
+	MetaRocksDBLogMaxMB          = "metaRocksDBLogMaxMB"
+	MetaRocksLogReservedDay      = "metaRocksLogReservedDay"
+	MetaRocksLogReservedCnt      = "metaRocksLogReservedCnt"
+	MetaRocksWalFlushIntervalKey = "metaRocksWalFlushInterval"
+	MetaRocksDisableFlushWalKey  = "metaRocksDisableFlushWal"
+	MetaRocksWalTTLKey           = "metaRocksWalTTL"
+	ChildFileMaxCountKey         = "childFileMaxCount"
+	NameKey                      = "name"
+	MetaDelEKRecordFileMaxMB     = "metaDelEKRecordFileMaxMB"
+	MetaTrashCleanIntervalKey    = "metaTrashCleanInterval"
+	MetaRaftLogSizeKey           = "metaRaftLogSize"
+	MetaRaftLogCapKey            = "metaRaftLogCap"
+	MetaSyncWalEnableStateKey    = "metaWalSyncEnableState"
+	DataSyncWalEnableStateKey    = "dataWalSyncEnableState"
+	DisableStrictVolZoneKey      = "disableStrictVolZone"
+	AutoUpPartitionReplicaNumKey = "autoUpdatePartitionReplicaNum"
+	EnableBitMapAllocatorKey     = "enableBitMapAllocator"
+	AllocatorMaxUsedFactorKey    = "allocatorMaxUsedFactor"
+	AllocatorMinFreeFactorKey    = "allocatorMinFreeFactor"
+	TrashItemCleanMaxCountKey    = "trashItemCleanMaxCount"
+	TrashCleanDurationKey        = "trashItemCleanDuration"
+	DeleteMarkDelVolIntervalKey  = "deleteMarkDelVolInterval"
+	RemoteCacheBoostEnableKey    = "remoteCacheBoostEnable"
+	NetConnTimeoutUsKey          = "netConnTimeoutUs"
+	FlashNodeRateKey             = "flashNodeRate"
+	FlashNodeVolRateKey          = "flashNodeVolRate"
+	DataNodeReqVolPartRateKey    = "dataNodeReqVolPartRate"
+	DataNodeReqVolOpPartRateKey  = "dataNodeReqVolOpPartRate"
 )
 
 const (
@@ -279,7 +283,7 @@ const (
 	ReadWriteToken = 2
 )
 const (
-	DefaultMetaPartitionInodeIDStep    uint64  = 1 << 24
+	DefaultMetaPartitionInodeIDStep uint64 = 1 << 24
 )
 
 var IsDbBack bool = false
@@ -576,20 +580,22 @@ type LimitInfo struct {
 
 	DeleteMarkDelVolInterval int64
 	ClientConnTimeoutUs      int64
+	FlashNodeLimitMap        map[string]uint64            //map[zone]
+	FlashNodeVolLimitMap     map[string]map[string]uint64 //map[zone]map[volume]
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionType  string
-	PartitionId    uint64
-	PartitionSize  int
-	VolumeId       string
-	IsRandomWrite  bool
-	Members        []Peer
-	Learners       []Learner
-	Hosts          []string
-	CreateType     int
-	VolumeHAType   CrossRegionHAType
+	PartitionType string
+	PartitionId   uint64
+	PartitionSize int
+	VolumeId      string
+	IsRandomWrite bool
+	Members       []Peer
+	Learners      []Learner
+	Hosts         []string
+	CreateType    int
+	VolumeHAType  CrossRegionHAType
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
@@ -1222,6 +1228,8 @@ type RateLimitInfo struct {
 	DataNodeReqVolOpRate             int64
 	DataNodeReqVolPartRate           int64
 	DataNodeReqVolOpPartRate         int64
+	FlashNodeRate                    int64
+	FlashNodeVolRate                 int64
 	DataNodeFlushFDInterval          int64
 	DataNodeFlushFDParallelismOnDisk int64
 	DNNormalExtentDeleteExpire       int64
@@ -1251,18 +1259,18 @@ type RateLimitInfo struct {
 	MetaDelEKRecordFileMaxMB         uint64
 	MetaTrashCleanInterval           uint64
 	MetaRaftLogSize                  int64
-	MetaRaftLogCap                int64
-	MetaSyncWALEnableState        int64
-	DataSyncWALEnableState        int64
-	DisableStrictVolZone          int64
-	AutoUpdatePartitionReplicaNum int64
-	AllocatorMaxUsedFactor        float64
-	AllocatorMinFreeFactor        float64
-	TrashCleanDurationEachTime    int32
-	TrashCleanMaxCountEachTime    int32
-	DeleteMarkDelVolInterval      int64
-	RemoteCacheBoostEnableState   int64
-	ClientConnTimeoutUs           int64
+	MetaRaftLogCap                   int64
+	MetaSyncWALEnableState           int64
+	DataSyncWALEnableState           int64
+	DisableStrictVolZone             int64
+	AutoUpdatePartitionReplicaNum    int64
+	AllocatorMaxUsedFactor           float64
+	AllocatorMinFreeFactor           float64
+	TrashCleanDurationEachTime       int32
+	TrashCleanMaxCountEachTime       int32
+	DeleteMarkDelVolInterval         int64
+	RemoteCacheBoostEnableState      int64
+	ClientConnTimeoutUs              int64
 }
 
 type ConvertMode uint8
