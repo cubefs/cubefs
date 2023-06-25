@@ -1829,6 +1829,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.txTimeout = req.txTimeout
 	newArgs.txConflictRetryNum = req.txConflictRetryNum
 	newArgs.txConflictRetryInterval = req.txConflictRetryInterval
+	newArgs.txOpLimit = req.txOpLimit
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
@@ -1843,7 +1844,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var response string
-
 	if hasTxParams(r) {
 		response = fmt.Sprintf("update vol[%v] successfully, txTimeout[%v] enableTransaction[%v]",
 			req.name, newArgs.txTimeout, proto.GetMaskString(newArgs.enableTransaction))
@@ -2171,6 +2171,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		TxTimeout:               vol.txTimeout,
 		TxConflictRetryNum:      vol.txConflictRetryNum,
 		TxConflictRetryInterval: vol.txConflictRetryInterval,
+		TxOpLimit:               vol.txOpLimit,
 		NeedToLowerReplica:      vol.NeedToLowerReplica,
 		Authenticate:            vol.authenticate,
 		CrossZone:               vol.crossZone,
