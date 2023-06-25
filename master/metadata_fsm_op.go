@@ -255,6 +255,7 @@ type volValue struct {
 	TxTimeout               int64
 	TxConflictRetryNum      int64
 	TxConflictRetryInterval int64
+	TxOpLimit               int
 
 	VolQosEnable                                           bool
 	DiskQosEnable                                          bool
@@ -295,6 +296,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		TxTimeout:               vol.txTimeout,
 		TxConflictRetryNum:      vol.txConflictRetryNum,
 		TxConflictRetryInterval: vol.txConflictRetryInterval,
+		TxOpLimit:               vol.txOpLimit,
 
 		VolType:             vol.VolType,
 		EbsBlkSize:          vol.EbsBlkSize,

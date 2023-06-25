@@ -123,8 +123,9 @@ func (mp *metaPartition) SetTxInfo(info []*proto.TxInfo) {
 		if txInfo.Volume != mp.config.VolName {
 			continue
 		}
-		log.LogWarnf("SetTxInfo mp %v mask %v", mp.config.PartitionId, proto.GetMaskString(txInfo.Mask))
 		mp.txProcessor.mask = txInfo.Mask
+		mp.txProcessor.txManager.setLimit(txInfo.OpLimitVal)
+		log.LogInfof("SetTxInfo mp %v mask %v limit %v", mp.config.PartitionId, proto.GetMaskString(txInfo.Mask), txInfo.OpLimitVal)
 	}
 }
 

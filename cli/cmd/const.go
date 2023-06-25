@@ -101,6 +101,7 @@ const (
 	CliDpReadOnlyWhenVolFull   = "readonly-when-full"
 	CliTxMask                  = "transaction-mask"
 	CliTxTimeout               = "transaction-timeout"
+	CliTxOpLimit               = "transaction-limit"
 	CliTxConflictRetryNum      = "tx-conflict-retry-num"
 	CliTxConflictRetryInterval = "tx-conflict-retry-Interval"
 	CliTxForceReset            = "transaction-force-reset"

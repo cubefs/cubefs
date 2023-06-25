@@ -271,6 +271,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optTxForceReset bool
 	var optTxConflictRetryNum int64
 	var optTxConflictRetryInterval int64
+	var optTxOpLimitVal int
 	var optReplicaNum string
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -429,6 +430,14 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Tx Conflict Retry Interval : %v ms\n", vv.TxConflictRetryInterval))
 			}
 
+			if optTxOpLimitVal > 0 && vv.TxOpLimit != optTxOpLimitVal {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Tx Operation limit : %v -> %v\n", vv.TxOpLimit, optTxOpLimitVal))
+				vv.TxOpLimit = optTxOpLimitVal
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Tx Operation limit : %v\n", vv.TxOpLimit))
+			}
+
 			if optCacheAction != "" {
 				if vv.VolType == 0 {
 					err = fmt.Errorf("cache-action not support in hot vol\n")
@@ -541,7 +550,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum, optTxConflictRetryInterval)
+			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum, optTxConflictRetryInterval, optTxOpLimitVal)
 			if err != nil {
 				return
 			}
@@ -571,11 +580,12 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, 0, "Specify interval expiration time[Unit: min] (default 5)")
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, "", "Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
-	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
+	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link|pause\"] or \"off\" or \"all\"")
 	cmd.Flags().Int64Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout[Unit: minute] for transaction (0-60]")
 	cmd.Flags().Int64Var(&optTxConflictRetryNum, CliTxConflictRetryNum, 0, "Specify retry times for transaction conflict [1-100]")
 	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
 	cmd.Flags().BoolVar(&optTxForceReset, CliTxForceReset, false, "Reset transaction mask to the specified value of \"transaction-mask\"")
+	cmd.Flags().IntVar(&optTxOpLimitVal, CliTxOpLimit, 0, "Specify limitation[Unit: second] for transaction(default 0 unlimited)")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 
 	return cmd
