@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -1236,6 +1237,9 @@ func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) {
 	txInfo.TmID = int64(mp.config.PartitionId)
 	txInfo.CreateTime = time.Now().UnixNano()
 	txInfo.State = proto.TxStatePreCommit
+
+	ctx := context.Background()
+	mp.txProcessor.txManager.opLimiter.Wait(ctx)
 }
 
 func (mp *metaPartition) storeSnapshotFiles() (err error) {

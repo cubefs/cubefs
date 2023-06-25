@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/time/rate"
 	"net"
 	"strconv"
 	"strings"
@@ -412,6 +413,8 @@ type TransactionManager struct {
 	//newTxCh     chan struct{}
 	leaderChangeCh    chan struct{}
 	leaderChangeCheck int32
+
+	opLimiter *rate.Limiter
 	sync.RWMutex
 }
 
@@ -445,6 +448,7 @@ func NewTransactionManager(txProcessor *TransactionProcessor) *TransactionManage
 		started:        false,
 		blacklist:      util.NewSet(),
 		leaderChangeCh: make(chan struct{}, 1000),
+		opLimiter:      rate.NewLimiter(rate.Inf, 128),
 	}
 	return txMgr
 }
@@ -468,12 +472,22 @@ func NewTransactionProcessor(mp *metaPartition) *TransactionProcessor {
 	return txProcessor
 }
 
+func (tm *TransactionManager) setLimit(val int) string {
+	if val > 0 {
+		tm.opLimiter.SetLimit(rate.Limit(val))
+		return fmt.Sprintf("%v", val)
+	}
+	tm.opLimiter.SetLimit(rate.Inf)
+	return "unlimited"
+}
+
 func (tm *TransactionManager) Reset() {
 	tm.Stop()
 	tm.blacklist.Clear()
 	tm.Lock()
 	tm.txIdAlloc.Reset()
 	tm.txTree.Reset()
+	tm.opLimiter.SetLimit(0)
 	defer func() {
 		tm.Unlock()
 		if r := recover(); r != nil {

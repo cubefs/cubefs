@@ -268,7 +268,8 @@ func (api *AdminAPI) UpdateVolume(
 	txMask string,
 	txForceReset bool,
 	txConflictRetryNum int64,
-	txConflictRetryInterval int64) (err error) {
+	txConflictRetryInterval int64,
+	txOpLimit int) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", vv.Name)
 	request.addParam("description", vv.Description)
@@ -299,6 +300,10 @@ func (api *AdminAPI) UpdateVolume(
 
 	if txConflictRetryNum > 0 {
 		request.addParam("txConflictRetryNum", strconv.FormatInt(txConflictRetryNum, 10))
+	}
+
+	if txOpLimit > 0 {
+		request.addParam("txOpLimit", strconv.Itoa(txOpLimit))
 	}
 
 	if txConflictRetryInterval > 0 {
