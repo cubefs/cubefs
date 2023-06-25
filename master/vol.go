@@ -44,6 +44,7 @@ type VolVarargs struct {
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
+	txOpLimit               int
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -83,6 +84,7 @@ type Vol struct {
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
+	txOpLimit               int
 	zoneName                string
 	MetaPartitions          map[uint64]*MetaPartition `graphql:"-"`
 	mpsLock                 sync.RWMutex
@@ -134,6 +136,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.txTimeout = vv.TxTimeout
 	vol.txConflictRetryNum = vv.TxConflictRetryNum
 	vol.txConflictRetryInterval = vv.TxConflictRetryInterval
+	vol.txOpLimit = vv.TxOpLimit
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
@@ -1223,6 +1226,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.txTimeout = args.txTimeout
 	vol.txConflictRetryNum = args.txConflictRetryNum
 	vol.txConflictRetryInterval = args.txConflictRetryInterval
+	vol.txOpLimit = args.txOpLimit
 	vol.dpReplicaNum = args.dpReplicaNum
 
 	if proto.IsCold(vol.VolType) {
@@ -1272,6 +1276,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		txTimeout:               vol.txTimeout,
 		txConflictRetryNum:      vol.txConflictRetryNum,
 		txConflictRetryInterval: vol.txConflictRetryInterval,
+		txOpLimit:               vol.txOpLimit,
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 	}
