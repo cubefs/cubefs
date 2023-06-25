@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -2289,15 +2288,8 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 	return nil
 }
 
-func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32,
-	currentGoroutineNum *int32, newGoroutine bool, IsRoot bool) {
-	defer func() {
-		if newGoroutine {
-			atomic.AddInt32(currentGoroutineNum, -1)
-			wg.Done()
-		}
-	}()
-	var err error
+func (mw *MetaWrapper) batchSetInodeQuota(mp *MetaPartition, inodes []uint64, quotaId uint32,
+	IsRoot bool) (resp *proto.BatchSetMetaserverQuotaResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("batchSetInodeQuota", err, bgTime, 1)
@@ -2335,25 +2327,22 @@ func (mw *MetaWrapper) batchSetInodeQuota(wg *sync.WaitGroup, mp *MetaPartition,
 		log.LogErrorf("batchSetInodeQuota: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
-	log.LogInfof("batchSetInodeQuota inodes [%v] quota [%v] cur [%v] newGoroutine [%v] success.",
-		inodes, quotaId, *currentGoroutineNum, newGoroutine)
+	resp = new(proto.BatchSetMetaserverQuotaResponse)
+	resp.InodeRes = make(map[uint64]uint8, 0)
+	if err = packet.UnmarshalData(resp); err != nil {
+		log.LogErrorf("batchSetInodeQuota: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	log.LogInfof("batchSetInodeQuota inodes [%v] quota [%v] resp [%v] success.", inodes, quotaId, resp)
 	return
 }
 
-func (mw *MetaWrapper) batchDeleteInodeQuota(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, quotaId uint32,
-	currentGoroutineNum *int32, newGoroutine bool) {
-	defer func() {
-		if newGoroutine {
-			atomic.AddInt32(currentGoroutineNum, -1)
-			wg.Done()
-		}
-	}()
-	var err error
+func (mw *MetaWrapper) batchDeleteInodeQuota(mp *MetaPartition, inodes []uint64,
+	quotaId uint32) (resp *proto.BatchDeleteMetaserverQuotaResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("batchDeleteInodeQuota", err, bgTime, 1)
 	}()
-	log.LogDebugf("batchDeleteInodeQuota mp [%v] inodes [%v]", mp.PartitionID, inodes)
 	req := &proto.BatchDeleteMetaserverQuotaReuqest{
 		PartitionId: mp.PartitionID,
 		Inodes:      inodes,
@@ -2385,8 +2374,14 @@ func (mw *MetaWrapper) batchDeleteInodeQuota(wg *sync.WaitGroup, mp *MetaPartiti
 		log.LogErrorf("batchDeleteInodeQuota: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
-	log.LogInfof("batchDeleteInodeQuota inodes [%v] quota [%v] cur [%v] newGoroutine [%v] success.",
-		inodes, quotaId, *currentGoroutineNum, newGoroutine)
+	resp = new(proto.BatchDeleteMetaserverQuotaResponse)
+	resp.InodeRes = make(map[uint64]uint8, 0)
+	if err = packet.UnmarshalData(resp); err != nil {
+		log.LogErrorf("batchSetInodeQuota: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	log.LogInfof("batchDeleteInodeQuota inodes [%v] quota [%v] resp [%v] success.",
+		inodes, quotaId, resp)
 	return
 }
 
@@ -2441,33 +2436,65 @@ func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64) (quotaInfo
 
 func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64,
 	maxInodes uint64, first bool) (err error) {
-	entries, err := mw.ReadDir_ll(parentIno)
-	if err != nil {
-		return err
-	}
-
 	if first {
 		var rootInodes []uint64
+		var ret map[uint64]uint8
 		rootInodes = append(rootInodes, parentIno)
-		mw.BatchSetInodeQuota_ll(rootInodes, quotaId, true)
-		*totalInodeCount = *totalInodeCount + 1
-	}
-
-	for _, entry := range entries {
-		*inodes = append(*inodes, entry.Inode)
-		*curInodeCount = *curInodeCount + 1
-		*totalInodeCount = *totalInodeCount + 1
-		if *curInodeCount >= maxInodes {
-			mw.BatchSetInodeQuota_ll(*inodes, quotaId, false)
-			*curInodeCount = 0
-			*inodes = (*inodes)[:0]
+		ret, err = mw.BatchSetInodeQuota_ll(rootInodes, quotaId, true)
+		if err != nil {
+			return
 		}
-		if proto.IsDir(entry.Type) {
-			err = mw.applyQuota(entry.Inode, quotaId, totalInodeCount, curInodeCount, inodes, maxInodes, false)
-			if err != nil {
-				return err
+		if status, ok := ret[parentIno]; ok {
+			if status != proto.OpOk {
+				if status == proto.OpNotExistErr {
+					err = fmt.Errorf("apply inode %v is not exist.", parentIno)
+				} else {
+					err = fmt.Errorf("apply inode %v failed, status: %v.", parentIno, status)
+				}
+
+				return
 			}
 		}
+		*totalInodeCount = *totalInodeCount + 1
+	}
+	var defaultReaddirLimit uint64 = 1024
+	var noMore = false
+	var from = ""
+	for !noMore {
+		entries, err := mw.ReadDirLimit_ll(parentIno, from, defaultReaddirLimit)
+		if err != nil {
+			return err
+		}
+		entryNum := uint64(len(entries))
+		if entryNum == 0 {
+			break
+		}
+
+		if entryNum < defaultReaddirLimit {
+			noMore = true
+		}
+
+		if from != "" {
+			entries = entries[1:]
+		}
+
+		for _, entry := range entries {
+			*inodes = append(*inodes, entry.Inode)
+			*curInodeCount = *curInodeCount + 1
+			*totalInodeCount = *totalInodeCount + 1
+			if *curInodeCount >= maxInodes {
+				mw.BatchSetInodeQuota_ll(*inodes, quotaId, false)
+				*curInodeCount = 0
+				*inodes = (*inodes)[:0]
+			}
+			if proto.IsDir(entry.Type) {
+				err = mw.applyQuota(entry.Inode, quotaId, totalInodeCount, curInodeCount, inodes, maxInodes, false)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		from = entries[len(entries)-1].Name
 	}
 
 	if first && *curInodeCount > 0 {
@@ -2480,33 +2507,54 @@ func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCo
 
 func (mw *MetaWrapper) revokeQuota(parentIno uint64, quotaId uint32, totalInodeCount *uint64, curInodeCount *uint64, inodes *[]uint64,
 	maxInodes uint64, first bool) (err error) {
-	entries, err := mw.ReadDir_ll(parentIno)
-	if err != nil {
-		return err
-	}
-
 	if first {
 		var rootInodes []uint64
 		rootInodes = append(rootInodes, parentIno)
-		mw.BatchDeleteInodeQuota_ll(rootInodes, quotaId)
+		_, err = mw.BatchDeleteInodeQuota_ll(rootInodes, quotaId)
+		if err != nil {
+			return
+		}
 		*totalInodeCount = *totalInodeCount + 1
 	}
 
-	for _, entry := range entries {
-		*inodes = append(*inodes, entry.Inode)
-		*curInodeCount = *curInodeCount + 1
-		*totalInodeCount = *totalInodeCount + 1
-		if *curInodeCount >= maxInodes {
-			mw.BatchDeleteInodeQuota_ll(*inodes, quotaId)
-			*curInodeCount = 0
-			*inodes = (*inodes)[:0]
+	var defaultReaddirLimit uint64 = 1024
+	var noMore = false
+	var from = ""
+	for !noMore {
+		entries, err := mw.ReadDirLimit_ll(parentIno, from, defaultReaddirLimit)
+		if err != nil {
+			return err
 		}
-		if proto.IsDir(entry.Type) {
-			err = mw.revokeQuota(entry.Inode, quotaId, totalInodeCount, curInodeCount, inodes, maxInodes, false)
-			if err != nil {
-				return err
+		entryNum := uint64(len(entries))
+		if entryNum == 0 {
+			break
+		}
+
+		if entryNum < defaultReaddirLimit {
+			noMore = true
+		}
+
+		if from != "" {
+			entries = entries[1:]
+		}
+
+		for _, entry := range entries {
+			*inodes = append(*inodes, entry.Inode)
+			*curInodeCount = *curInodeCount + 1
+			*totalInodeCount = *totalInodeCount + 1
+			if *curInodeCount >= maxInodes {
+				mw.BatchDeleteInodeQuota_ll(*inodes, quotaId)
+				*curInodeCount = 0
+				*inodes = (*inodes)[:0]
+			}
+			if proto.IsDir(entry.Type) {
+				err = mw.revokeQuota(entry.Inode, quotaId, totalInodeCount, curInodeCount, inodes, maxInodes, false)
+				if err != nil {
+					return err
+				}
 			}
 		}
+		from = entries[len(entries)-1].Name
 	}
 
 	if first && *curInodeCount > 0 {

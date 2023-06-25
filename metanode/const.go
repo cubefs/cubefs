@@ -157,6 +157,8 @@ const (
 
 	//quota
 	opFSMCreateInodeQuota
+	opFSMSetInodeQuotaBatch
+	opFSMDeleteInodeQuotaBatch
 
 	opFSMSnapFormatVersion
 	opFSMApplyId
