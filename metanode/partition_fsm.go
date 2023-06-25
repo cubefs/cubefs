@@ -360,6 +360,18 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmTxCreateLinkInode(txIno)
+	case opFSMSetInodeQuotaBatch:
+		req := &proto.BatchSetMetaserverQuotaReuqest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmSetInodeQuotaBatch(req)
+	case opFSMDeleteInodeQuotaBatch:
+		req := &proto.BatchDeleteMetaserverQuotaReuqest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmDeleteInodeQuotaBatch(req)
 	}
 
 	return

@@ -963,31 +963,26 @@ func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {
 	if len(fullPaths) == 0 {
 		return true
 	}
+	var srcPath string
+	if d.getCwd() == "/" {
+		srcPath = "/" + srcName
+	} else {
+		srcPath = d.getCwd() + "/" + srcName
+	}
 
-	srcPath := d.getCwd()
-	dstPath := dstDir.getCwd()
 	for _, fullPath := range fullPaths {
-		log.LogDebugf("srcPath [%v] dstPath [%v] fullPath[%v].", srcPath, dstPath, fullPath)
-		if IsSubdirectory(fullPath, srcPath) && !IsSubdirectory(fullPath, dstPath) {
-			return false
-		}
-
-		if !IsSubdirectory(fullPath, srcPath) && IsSubdirectory(fullPath, dstPath) {
-			return false
-		}
-
-		if IsSubdirectory(srcPath+"/"+srcName, fullPath) {
+		log.LogDebugf("srcPath [%v] fullPath[%v].", srcPath, fullPath)
+		if isAncestor(srcPath, fullPath) {
 			return false
 		}
 	}
 	return true
 }
 
-func IsSubdirectory(parent, child string) bool {
-	parent = filepath.Clean(parent)
-	child = filepath.Clean(child)
-	if parent == child {
-		return true
+func isAncestor(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
 	}
-	return strings.HasPrefix(child, parent+string(filepath.Separator))
+	return !strings.HasPrefix(rel, "..")
 }
