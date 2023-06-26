@@ -23,6 +23,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -49,7 +50,6 @@ const (
 	pingTimeout          = 50 * time.Millisecond
 	IdleConnTimeoutData  = 30
 	ConnectTimeoutDataMs = 500
-	ReadCacheTimeoutData = proto.ReadCacheTimeout
 
 	RefreshFlashNodesInterval  = time.Minute
 	RefreshHostLatencyInterval = 15 * time.Minute
@@ -73,6 +73,9 @@ type CacheConfig struct {
 	Volume  string
 	Masters []string
 	MW      *meta.MetaWrapper
+
+	SameZoneWeight int
+	ConnTimeoutUs  int64 // 读写超时
 }
 
 type RemoteCache struct {
@@ -92,38 +95,47 @@ type RemoteCache struct {
 	cacheBloom  *bloom.BloomFilter
 
 	sameZoneWeight int
+	connTimeoutUs  int64
 }
 
 func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
-	cw := new(RemoteCache)
-	cw.stopC = make(chan struct{})
-	cw.cluster = config.Cluster
-	cw.volname = config.Volume
-	cw.metaWrapper = config.MW
-	cw.flashGroups = btree.New(32)
-	cw.mc = masterSDK.NewMasterClient(config.Masters, false)
-	cw.connConfig = &proto.ConnConfig{
+	rc := new(RemoteCache)
+	rc.stopC = make(chan struct{})
+	rc.cluster = config.Cluster
+	rc.volname = config.Volume
+	rc.metaWrapper = config.MW
+	rc.flashGroups = btree.New(32)
+	rc.mc = masterSDK.NewMasterClient(config.Masters, false)
+	if config.SameZoneWeight <= 0 {
+		rc.sameZoneWeight = sameZoneWeight
+	} else {
+		rc.sameZoneWeight = config.SameZoneWeight
+	}
+	if config.ConnTimeoutUs <= 0 {
+		rc.connTimeoutUs = ConnectTimeoutDataMs * int64(time.Microsecond)
+	} else {
+		rc.connTimeoutUs = config.ConnTimeoutUs
+	}
+	rc.connConfig = &proto.ConnConfig{
 		IdleTimeoutSec:   IdleConnTimeoutData,
 		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
-		ReadTimeoutNs:    ReadCacheTimeoutData * int64(time.Second),
+		ReadTimeoutNs:    rc.connTimeoutUs * int64(time.Microsecond),
+		WriteTimeoutNs:   rc.connTimeoutUs * int64(time.Microsecond),
 	}
 
-	err := cw.updateFlashGroups()
+	err := rc.updateFlashGroups()
 	if err != nil {
 		return nil, err
 	}
-	cw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, cw.connConfig.IdleTimeoutSec, cw.connConfig.ConnectTimeoutNs)
+	rc.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, rc.connConfig.IdleTimeoutSec, rc.connConfig.ConnectTimeoutNs)
+	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
 
-	cw.cacheBloom = bloom.New(BloomBits, BloomHashNum)
-	cw.sameZoneWeight = sameZoneWeight
-
-	cw.wg.Add(1)
-	go cw.refresh()
-
-	return cw, nil
+	rc.wg.Add(1)
+	go rc.refresh()
+	return rc, nil
 }
 
-func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, req *proto.CacheReadRequest) (read int, err error) {
+func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, req *CacheReadRequest) (read int, err error) {
 	var tp = exporter.NewVolumeTPUs("fgRead", rc.volname)
 	defer func() {
 		tp.Set(err)
@@ -134,13 +146,10 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		moved bool
 	)
 	reqPacket := common.NewCachePacket(ctx, inode, proto.OpCacheRead)
-	data := req.Data
-	req.Data = nil
-	if err = reqPacket.MarshalDataPb(req); err != nil {
+	if err = reqPacket.MarshalDataPb(&req.CacheReadRequest); err != nil {
 		log.LogWarnf("FlashGroup Read: failed to MarshalData (%+v). err(%v)", req, err)
 		return
 	}
-	req.Data = data
 	addr := fg.getFlashHost()
 	if addr == "" {
 		err = fmt.Errorf("getFlashHost failed: cannot find any available host")
@@ -173,7 +182,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 	return
 }
 
-func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *common.Packet, req *proto.CacheReadRequest) (readBytes int, err error) {
+func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *common.Packet, req *CacheReadRequest) (readBytes int, err error) {
 	for readBytes < int(req.Size_) {
 		replyPacket := common.NewCacheReply(reqPacket.Ctx())
 		err = replyPacket.ReadFromConnNs(conn, rc.connConfig.ReadTimeoutNs)
@@ -256,6 +265,21 @@ func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
 		return rc.cacheBloom
 	}
 	return nil
+}
+
+func (rc *RemoteCache) ResetConnConfig(timeouts int64) {
+	if rc != nil {
+		config := rc.connConfig
+		if timeouts > 0 {
+			log.LogInfof("ResetConnConfig: %v", timeouts)
+			if timeouts != config.ReadTimeoutNs {
+				atomic.StoreInt64(&config.ReadTimeoutNs, timeouts)
+			}
+			if timeouts != config.WriteTimeoutNs {
+				atomic.StoreInt64(&config.WriteTimeoutNs, timeouts)
+			}
+		}
+	}
 }
 
 func (rc *RemoteCache) ResetCacheBoostPathToBloom(cacheBoostPath string) bool {
@@ -472,18 +496,26 @@ func (rc *RemoteCache) retryHostLatency() {
 }
 
 func (rc *RemoteCache) GetFlashGroupBySlot(slot uint32) *FlashGroup {
-	var fg *SlotItem
+	var item *SlotItem
 	pivot := &SlotItem{slot: slot}
 
 	rc.RLock()
 	defer rc.RUnlock()
 	rc.flashGroups.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
-		fg = i.(*SlotItem)
+		item = i.(*SlotItem)
 		return false
 	})
 
-	if fg == nil && rc.flashGroups.Len() > 0 {
-		fg = rc.flashGroups.Min().(*SlotItem)
+	if item == nil && rc.flashGroups.Len() > 0 {
+		item = rc.flashGroups.Min().(*SlotItem)
 	}
-	return fg.FlashGroup
+	if item == nil {
+		return nil
+	}
+	return item.FlashGroup
+}
+
+type CacheReadRequest struct {
+	proto.CacheReadRequest
+	Data []byte
 }

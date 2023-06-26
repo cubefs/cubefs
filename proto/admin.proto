@@ -32,7 +32,6 @@ message CacheReadRequest {
   CacheRequest CacheRequest = 1;
   uint64       Offset       = 2;
   uint64       Size         = 3;
-  bytes        Data         = 4 [deprecated=true] ;
 }
 
 message CachePrepareRequest {

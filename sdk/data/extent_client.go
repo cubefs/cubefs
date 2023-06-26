@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/common"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
@@ -643,7 +644,6 @@ func (client *ExtentClient) updateConfig() {
 		client.extentMergeIno = limitInfo.ExtentMergeIno[client.dataWrapper.volName]
 		client.ExtentMergeSleepMs = limitInfo.ExtentMergeSleepMs
 	}
-	client.dataWrapper.setClusterBoostEnable(limitInfo.RemoteCacheBoostEnable)
 }
 
 func (client *ExtentClient) Close(ctx context.Context) error {
@@ -772,4 +772,12 @@ func (c *ExtentClient) UmpJmtpAddr() string {
 
 func (c *ExtentClient) RemoteCacheBloom() *bloom.BloomFilter {
 	return c.dataWrapper.remoteCache.GetRemoteCacheBloom()
+}
+
+func (c *ExtentClient) GetInodeBloomStatus(ino uint64) bool {
+	cacheBloom := c.dataWrapper.remoteCache.GetRemoteCacheBloom()
+	if cacheBloom == nil {
+		return false
+	}
+	return bloomfilter.CheckUint64Exist(cacheBloom, ino)
 }

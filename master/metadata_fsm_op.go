@@ -101,6 +101,7 @@ type clusterValue struct {
 	TrashItemCleanMaxCountEachTime      int32
 	DeleteMarkDelVolInterval            int64
 	RemoteCacheBoostEnable              bool
+	ClientConnTimeoutUs                 int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -172,6 +173,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		TrashCleanDurationEachTime:          c.cfg.TrashCleanDurationEachTime,
 		DeleteMarkDelVolInterval:            c.cfg.DeleteMarkDelVolInterval,
 		RemoteCacheBoostEnable:              c.cfg.RemoteCacheBoostEnable,
+		ClientConnTimeoutUs:                 c.cfg.ClientNetConnTimeoutUs,
 	}
 	return cv
 }
@@ -1115,6 +1117,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.cfg.DeleteMarkDelVolInterval = cv.DeleteMarkDelVolInterval
 		c.cfg.RemoteCacheBoostEnable = cv.RemoteCacheBoostEnable
+		c.cfg.ClientNetConnTimeoutUs = cv.ClientConnTimeoutUs
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

@@ -17,6 +17,7 @@ package data
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/flash"
 	"io"
 	"net"
 	"sync"
@@ -69,6 +70,11 @@ type Streamer struct {
 
 	writeLock         sync.Mutex
 	pendingPacketList []*common.Packet
+
+	bloomStatus     bool  // bloom状态
+	prepareChanSize int32 // 1024
+	prepareCh       chan *PrepareRequest
+	prepareOnce     sync.Once
 }
 
 // NewStreamer returns a new streamer.
@@ -86,6 +92,8 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.appendWriteBuffer = appendWriteBuffer
 	s.readAhead = readAhead
 	s.pendingPacketList = make([]*common.Packet, 0)
+	s.bloomStatus = client.GetInodeBloomStatus(inode)
+
 	s.wg.Add(1)
 	go s.server()
 	return s
@@ -126,7 +134,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 	var (
 		requests          []*ExtentRequest
 		revisedRequests   []*ExtentRequest
-		cacheReadRequests []*proto.CacheReadRequest
+		cacheReadRequests []*flash.CacheReadRequest
 		fileSize          uint64
 	)
 	ctx = context.Background()

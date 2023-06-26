@@ -523,27 +523,27 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		LogMaxSize:                             m.cluster.cfg.LogMaxSize,
 		MetaRockDBWalFileSize:                  metaRocksDBWalFileSize,
 		MetaRocksWalMemSize:                    metaRocksDBWalMemSize,
-		MetaRocksLogSize:                       metaRocksDBLogSize,
-		MetaRocksLogReservedTime:               metaRocksDBLogReservedTime,
-		MetaRocksLogReservedCnt:                metaRocksDBLogReservedCnt,
-		MetaRocksDisableFlushFlag:              metaRocksDBDisableFlush,
-		MetaRocksFlushWalInterval:              metaRocksDBFlushWalInterval,
-		MetaRocksWalTTL:                        metaRocksDBWalTTL,
-		DeleteEKRecordFileMaxMB:                metaDeleteEKRecordFilesMaxTotalSize,
-		MetaTrashCleanInterval:                 metaTrashCleanInterval,
-		MetaRaftLogSize:                        metaRaftLogSize,
-		MetaRaftCap:                            metaRaftLogCap,
-		MetaSyncWALOnUnstableEnableState:       m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
-		DataSyncWALOnUnstableEnableState:       m.cluster.cfg.DataSyncWALOnUnstableEnableState,
-		DisableStrictVolZone:                   m.cluster.cfg.DisableStrictVolZone,
-		AutoUpdatePartitionReplicaNum:          m.cluster.cfg.AutoUpdatePartitionReplicaNum,
-		BitMapAllocatorMaxUsedFactor:           m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
-		BitMapAllocatorMinFreeFactor:           m.cluster.cfg.BitMapAllocatorMinFreeFactor,
-		TrashItemCleanMaxCountEachTime:         trashCleanMaxCount,
-		TrashCleanDurationEachTime:             trashCleanDuartion,
-		DeleteMarkDelVolInterval:               m.cluster.cfg.DeleteMarkDelVolInterval,
-		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
-
+		MetaRocksLogSize:                 metaRocksDBLogSize,
+		MetaRocksLogReservedTime:         metaRocksDBLogReservedTime,
+		MetaRocksLogReservedCnt:          metaRocksDBLogReservedCnt,
+		MetaRocksDisableFlushFlag:        metaRocksDBDisableFlush,
+		MetaRocksFlushWalInterval:        metaRocksDBFlushWalInterval,
+		MetaRocksWalTTL:                  metaRocksDBWalTTL,
+		DeleteEKRecordFileMaxMB:          metaDeleteEKRecordFilesMaxTotalSize,
+		MetaTrashCleanInterval:           metaTrashCleanInterval,
+		MetaRaftLogSize:                  metaRaftLogSize,
+		MetaRaftCap:                      metaRaftLogCap,
+		MetaSyncWALOnUnstableEnableState: m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
+		DataSyncWALOnUnstableEnableState: m.cluster.cfg.DataSyncWALOnUnstableEnableState,
+		DisableStrictVolZone:             m.cluster.cfg.DisableStrictVolZone,
+		AutoUpdatePartitionReplicaNum:    m.cluster.cfg.AutoUpdatePartitionReplicaNum,
+		BitMapAllocatorMaxUsedFactor:     m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
+		BitMapAllocatorMinFreeFactor:     m.cluster.cfg.BitMapAllocatorMinFreeFactor,
+		TrashItemCleanMaxCountEachTime:   trashCleanMaxCount,
+		TrashCleanDurationEachTime:       trashCleanDuartion,
+		DeleteMarkDelVolInterval:         m.cluster.cfg.DeleteMarkDelVolInterval,
+		RemoteCacheBoostEnable:           m.cluster.cfg.RemoteCacheBoostEnable,
+		ClientConnTimeoutUs:              m.cluster.cfg.ClientNetConnTimeoutUs,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -6065,6 +6065,22 @@ func (m *Server) getClientPkgAddr(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewModuleTP(proto.AdminGetClientPkgAddrUmpKey)
 	defer func() { metrics.Set(nil) }()
 	sendOkReply(w, r, newSuccessHTTPReply(m.cluster.cfg.ClientPkgAddr))
+}
+
+func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
+	metrics := exporter.NewModuleTP(proto.AdminGetClientConfUmpKey)
+	defer func() { metrics.Set(nil) }()
+
+	cf := &proto.ClientClusterConf{
+		UmpJmtpAddr:            m.cluster.cfg.UmpJmtpAddr,
+		UmpJmtpBatch:           m.cluster.cfg.UmpJmtpBatch,
+		RemoteCacheBoostEnable: m.cluster.cfg.RemoteCacheBoostEnable,
+		NetConnTimeoutUs:       m.cluster.cfg.ClientNetConnTimeoutUs,
+	}
+	cf.DataNodes = m.cluster.allDataNodes()
+	cf.EcNodes = m.cluster.allEcNodes()
+
+	sendOkReply(w, r, newSuccessHTTPReply(cf))
 }
 
 func parseRequestToSetCompactVol(r *http.Request) (name, compactTag, authKey string, err error) {

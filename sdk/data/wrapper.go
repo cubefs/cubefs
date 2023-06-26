@@ -96,13 +96,15 @@ type Wrapper struct {
 
 	dpFollowerReadDelayConfig *proto.DpFollowerReadDelayConfig
 	dpLowestDelayHostWeight   int
-	clusterEnableCache        bool
-	enableRemoteCache         bool
-	cacheBoostPath            string
-	enableCacheAutoPrepare    bool
-	cacheTTL                  int64
-	remoteCache               *flash.RemoteCache
-	HostsDelay                sync.Map
+
+	clusterEnableCache     bool
+	connTimeoutUs          int64
+	enableRemoteCache      bool
+	cacheBoostPath         string
+	enableCacheAutoPrepare bool
+	cacheTTL               int64
+	remoteCache            *flash.RemoteCache
+	HostsDelay             sync.Map
 }
 
 type DataState struct {
@@ -111,7 +113,7 @@ type DataState struct {
 	VolNotExistCount int32
 	VolView          *proto.SimpleVolView
 	DpView           *proto.DataPartitionsView
-	ClusterView      *proto.ClusterView
+	ClusterView      *proto.ClientClusterConf
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -154,7 +156,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
-	if err = w.updateDataNodeStatus(); err != nil {
+	if err = w.updateClientClusterView(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
 
@@ -234,6 +236,13 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	return
 }
 
+func (w *Wrapper) setClusterTimeoutUs(timeoutUs int64) {
+	if timeoutUs <= 0 {
+		timeoutUs = ConnectTimeoutDataMs * int64(time.Microsecond)
+	}
+	w.connTimeoutUs = timeoutUs
+}
+
 func (w *Wrapper) setClusterBoostEnable(enableBoost bool) {
 	w.clusterEnableCache = enableBoost
 }
@@ -244,10 +253,11 @@ func (w *Wrapper) EnableRemoteCache() bool {
 
 func (w *Wrapper) initRemoteCache() (err error) {
 	cacheConfig := &flash.CacheConfig{
-		Cluster: w.clusterName,
-		Volume:  w.volName,
-		Masters: w.masters,
-		MW:      w.metaWrapper,
+		Cluster:       w.clusterName,
+		Volume:        w.volName,
+		Masters:       w.masters,
+		MW:            w.metaWrapper,
+		ConnTimeoutUs: w.connTimeoutUs,
 	}
 	if w.remoteCache, err = flash.NewRemoteCache(cacheConfig); err != nil {
 		return
@@ -255,6 +265,7 @@ func (w *Wrapper) initRemoteCache() (err error) {
 	if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
 		w.cacheBoostPath = ""
 	}
+	//w.remoteCache.ResetConnConfig(w.connTimeoutUs)
 	return
 }
 
@@ -266,7 +277,7 @@ func (w *Wrapper) saveDataState() *DataState {
 
 	dataState.VolView = w.saveSimpleVolView()
 	dataState.DpView = w.saveDataPartition()
-	dataState.ClusterView = w.saveClusterView()
+	dataState.ClusterView = w.saveClientClusterView()
 
 	return dataState
 }
@@ -413,7 +424,7 @@ func (w *Wrapper) updateWithRecover() (err error) {
 		case <-ticker.C:
 			w.updateSimpleVolView()
 			w.updateDataPartition(false)
-			w.updateDataNodeStatus()
+			w.updateClientClusterView()
 
 			hostsLock.Lock()
 			retryHosts = w.retryHostsPingtime(retryHosts)
@@ -750,15 +761,6 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (dp *DataPartition, err e
 //	return fmt.Sprintf("%s_client_warning", w.clusterName)
 //}
 
-func (w *Wrapper) updateDataNodeStatus() (err error) {
-	var cv *proto.ClusterView
-	if cv, err = w.fetchClusterView(); err != nil {
-		return
-	}
-	w._updateDataNodeStatus(cv)
-	return
-}
-
 func (w *Wrapper) fetchClusterView() (cv *proto.ClusterView, err error) {
 	cv, err = w.mc.AdminAPI().GetCluster()
 	if err != nil {
@@ -767,13 +769,38 @@ func (w *Wrapper) fetchClusterView() (cv *proto.ClusterView, err error) {
 	return
 }
 
-func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
+func (w *Wrapper) fetchClientClusterView() (cf *proto.ClientClusterConf, err error) {
+	cf, err = w.mc.AdminAPI().GetClientConf()
+	if err != nil {
+		log.LogWarnf("fetchClientConfView: getClientConf fail: err(%v)", err)
+	}
+	return
+}
+
+func (w *Wrapper) updateClientClusterView() (err error) {
+	var cf *proto.ClientClusterConf
+	if cf, err = w.fetchClientClusterView(); err != nil {
+		return
+	}
+	w._updateDataNodeStatus(cf)
+
+	w.umpJmtpAddr = cf.UmpJmtpAddr
+	exporter.SetUMPJMTPAddress(w.umpJmtpAddr)
+	exporter.SetUmpJMTPBatch(uint(cf.UmpJmtpBatch))
+
+	w.setClusterBoostEnable(cf.RemoteCacheBoostEnable)
+	w.setClusterTimeoutUs(cf.NetConnTimeoutUs)
+	w.remoteCache.ResetConnConfig(cf.NetConnTimeoutUs)
+	return
+}
+
+func (w *Wrapper) _updateDataNodeStatus(cf *proto.ClientClusterConf) {
 	newHostsStatus := make(map[string]bool)
-	for _, node := range cv.DataNodes {
+	for _, node := range cf.DataNodes {
 		newHostsStatus[node.Addr] = node.Status
 	}
 
-	for _, node := range cv.EcNodes {
+	for _, node := range cf.EcNodes {
 		newHostsStatus[node.Addr] = node.Status
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
@@ -782,29 +809,25 @@ func (w *Wrapper) _updateDataNodeStatus(cv *proto.ClusterView) {
 	w.HostsStatus = newHostsStatus
 	w.Unlock()
 
-	if w.dpMetricsReportDomain != cv.SchedulerDomain {
-		log.LogInfof("updateDataNodeStatus: update scheduler domain from old(%v) to new(%v)", w.dpMetricsReportDomain, cv.SchedulerDomain)
-		w.dpMetricsReportDomain = cv.SchedulerDomain
+	if w.dpMetricsReportDomain != cf.SchedulerDomain {
+		log.LogInfof("updateDataNodeStatus: update scheduler domain from old(%v) to new(%v)", w.dpMetricsReportDomain, cf.SchedulerDomain)
+		w.dpMetricsReportDomain = cf.SchedulerDomain
 		w.schedulerClient.UpdateSchedulerDomain(w.dpMetricsReportDomain)
 	}
-
-	w.umpJmtpAddr = cv.UmpJmtpAddr
-	exporter.SetUMPJMTPAddress(w.umpJmtpAddr)
-	exporter.SetUmpJMTPBatch(uint(cv.UmpJmtpBatch))
 	return
 }
 
-func (w *Wrapper) saveClusterView() *proto.ClusterView {
+func (w *Wrapper) saveClientClusterView() *proto.ClientClusterConf {
 	w.RLock()
 	defer w.RUnlock()
-	cv := &proto.ClusterView{
+	cf := &proto.ClientClusterConf{
 		DataNodes:       make([]proto.NodeView, 0, len(w.HostsStatus)),
 		SchedulerDomain: w.dpMetricsReportDomain,
 	}
 	for addr, status := range w.HostsStatus {
-		cv.DataNodes = append(cv.DataNodes, proto.NodeView{Addr: addr, Status: status})
+		cf.DataNodes = append(cf.DataNodes, proto.NodeView{Addr: addr, Status: status})
 	}
-	return cv
+	return cf
 }
 
 func (w *Wrapper) SetNearRead(nearRead bool) {

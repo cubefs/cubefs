@@ -116,8 +116,8 @@ const (
 	ClientVolStat                    = "/client/volStat"
 	ClientMetaPartitions             = "/client/metaPartitions"
 	ClientMetaPartitionSnapshotCheck = "/getSnapshotCrc"
-
-	ClientDataPartitionsDbBack = "/client/dataPartitions"
+	ClientDataPartitionsDbBack       = "/client/dataPartitions"
+	ClientConfCluster                = "/client/conf"
 
 	//raft node APIs
 	AddRaftNode    = "/raftNode/add"
@@ -271,6 +271,7 @@ const (
 	TrashCleanDurationKey          = "trashItemCleanDuration"
 	DeleteMarkDelVolIntervalKey    = "deleteMarkDelVolInterval"
 	RemoteCacheBoostEnableKey      = "remoteCacheBoostEnable"
+	NetConnTimeoutUsKey            = "netConnTimeoutUs"
 )
 
 const (
@@ -573,7 +574,8 @@ type LimitInfo struct {
 	TrashCleanDurationEachTime     int32
 	TrashItemCleanMaxCountEachTime int32
 
-	DeleteMarkDelVolInterval    int64
+	DeleteMarkDelVolInterval int64
+	ClientConnTimeoutUs      int64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1249,17 +1251,18 @@ type RateLimitInfo struct {
 	MetaDelEKRecordFileMaxMB         uint64
 	MetaTrashCleanInterval           uint64
 	MetaRaftLogSize                  int64
-	MetaRaftLogCap                   int64
-	MetaSyncWALEnableState           int64
-	DataSyncWALEnableState           int64
-	DisableStrictVolZone             int64
-	AutoUpdatePartitionReplicaNum    int64
-	AllocatorMaxUsedFactor           float64
-	AllocatorMinFreeFactor           float64
-	TrashCleanDurationEachTime       int32
-	TrashCleanMaxCountEachTime       int32
-	DeleteMarkDelVolInterval         int64
-	RemoteCacheBoostEnableState      int64
+	MetaRaftLogCap                int64
+	MetaSyncWALEnableState        int64
+	DataSyncWALEnableState        int64
+	DisableStrictVolZone          int64
+	AutoUpdatePartitionReplicaNum int64
+	AllocatorMaxUsedFactor        float64
+	AllocatorMinFreeFactor        float64
+	TrashCleanDurationEachTime    int32
+	TrashCleanMaxCountEachTime    int32
+	DeleteMarkDelVolInterval      int64
+	RemoteCacheBoostEnableState   int64
+	ClientConnTimeoutUs           int64
 }
 
 type ConvertMode uint8
@@ -1471,3 +1474,13 @@ type FlashNodeHeartbeatResponse struct {
 	ZoneName string `json:"z"`
 }
 
+type ClientClusterConf struct {
+	DataNodes       []NodeView
+	EcNodes         []NodeView
+	SchedulerDomain string
+	UmpJmtpAddr     string
+	UmpJmtpBatch    uint64
+
+	RemoteCacheBoostEnable bool
+	NetConnTimeoutUs       int64
+}

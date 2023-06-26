@@ -20,20 +20,20 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/flash"
-	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+type PrepareRequest struct {
+	ctx context.Context
+	ek  *proto.ExtentKey
+}
 
 func (s *Streamer) enableRemoteCache() bool {
 	if !s.client.dataWrapper.EnableRemoteCache() || s.client.dataWrapper.remoteCache == nil {
 		return false
 	}
-	cacheBloom := s.client.RemoteCacheBloom()
-	if cacheBloom == nil {
-		return false
-	}
-	return bloomfilter.CheckUint64Exist(cacheBloom, s.inode)
+	return s.bloomStatus
 }
 
 func (s *Streamer) enableCacheAutoPrepare() bool {
@@ -43,6 +43,30 @@ func (s *Streamer) enableCacheAutoPrepare() bool {
 	return s.enableRemoteCache()
 }
 
+func (s *Streamer) DoPrepare() {
+	s.prepareCh = make(chan *PrepareRequest, 1024)
+
+	s.wg.Add(1)
+	go s.servePrepare()
+}
+
+func (s *Streamer) servePrepare() {
+	defer s.wg.Done()
+	for {
+		select {
+		case req := <-s.prepareCh:
+			s.prepareRemoteCache(req.ctx, req.ek)
+		case <-s.done:
+			return
+		}
+	}
+}
+
+func (s *Streamer) sendToPrepareChan(req *PrepareRequest) {
+	s.prepareCh <- req
+}
+
+// todo: async
 func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey) {
 	cReadRequests, err := s.prepareCacheRequests(ek.FileOffset, uint64(ek.Size), nil)
 	if err != nil {
@@ -71,7 +95,7 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey) 
 	return
 }
 
-func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64, cReadRequests []*proto.CacheReadRequest) (total int, err error) {
+func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64, cReadRequests []*flash.CacheReadRequest) (total int, err error) {
 	var tp = exporter.NewVolumeTPUs("cacheRead", s.client.dataWrapper.volName)
 	defer func() {
 		tp.Set(err)
@@ -144,9 +168,9 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 	return sources, nil
 }
 
-func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*proto.CacheReadRequest, error) {
+func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*flash.CacheReadRequest, error) {
 	var (
-		cReadRequests []*proto.CacheReadRequest
+		cReadRequests []*flash.CacheReadRequest
 		cRequests     = make([]*proto.CacheRequest, 0)
 		isRead        = data != nil
 	)
@@ -169,12 +193,12 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*pr
 	if isRead {
 		cReadRequests = getCacheReadRequests(offset, size, data, cRequests)
 	} else {
-		cReadRequests = make([]*proto.CacheReadRequest, 0, len(cRequests))
+		cReadRequests = make([]*flash.CacheReadRequest, 0, len(cRequests))
 		for _, cReq := range cRequests {
 			if len(cReq.Sources) == 0 {
 				continue
 			}
-			cReadRequest := new(proto.CacheReadRequest)
+			cReadRequest := new(flash.CacheReadRequest)
 			cReadRequest.CacheRequest = cReq
 			cReadRequests = append(cReadRequests, cReadRequest)
 		}
@@ -182,13 +206,13 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*pr
 	return cReadRequests, nil
 }
 
-func getCacheReadRequests(offset uint64, size uint64, data []byte, cRequests []*proto.CacheRequest) (cReadRequests []*proto.CacheReadRequest) {
-	cReadRequests = make([]*proto.CacheReadRequest, 0, len(cRequests))
+func getCacheReadRequests(offset uint64, size uint64, data []byte, cRequests []*proto.CacheRequest) (cReadRequests []*flash.CacheReadRequest) {
+	cReadRequests = make([]*flash.CacheReadRequest, 0, len(cRequests))
 	startFixedOff := offset / proto.CACHE_BLOCK_SIZE * proto.CACHE_BLOCK_SIZE
 	endFixedOff := (offset + size - 1) / proto.CACHE_BLOCK_SIZE * proto.CACHE_BLOCK_SIZE
 
 	for _, cReq := range cRequests {
-		cReadReq := new(proto.CacheReadRequest)
+		cReadReq := new(flash.CacheReadRequest)
 		cReadReq.CacheRequest = cReq
 		if cReq.FixedFileOffset == startFixedOff {
 			cReadReq.Offset = offset - startFixedOff

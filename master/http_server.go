@@ -147,6 +147,7 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetClientPkgAddr).
 		HandlerFunc(m.getClientPkgAddr)
+	router.NewRoute().Methods(http.MethodGet).Path(proto.ClientConfCluster).HandlerFunc(m.getClientClusterConf)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

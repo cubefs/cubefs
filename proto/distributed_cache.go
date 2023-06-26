@@ -214,8 +214,8 @@ func (cr *CacheReadRequest) String() string {
 	if cr == nil {
 		return ""
 	}
-	return fmt.Sprintf("cacheReadRequest[Volume(%v) Inode(%v) FixedFileOffset(%v) Sources(%v) TTL(%v) Offset(%v) Size(%v) Data_len(%v)]",
-		cr.CacheRequest.Volume, cr.CacheRequest.Inode, cr.CacheRequest.FixedFileOffset, len(cr.CacheRequest.Sources), cr.CacheRequest.TTL, cr.Offset, cr.Size_, len(cr.Data))
+	return fmt.Sprintf("cacheReadRequest[Volume(%v) Inode(%v) FixedFileOffset(%v) Sources(%v) TTL(%v) Offset(%v) Size(%v)]",
+		cr.CacheRequest.Volume, cr.CacheRequest.Inode, cr.CacheRequest.FixedFileOffset, len(cr.CacheRequest.Sources), cr.CacheRequest.TTL, cr.Offset, cr.Size_)
 }
 
 //type CachePrepareRequest struct {

@@ -41,6 +41,19 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	}
 	return
 }
+
+func (api *AdminAPI) GetClientConf() (cf *proto.ClientClusterConf, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.ClientConfCluster)
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	cf = &proto.ClientClusterConf{}
+	if err = json.Unmarshal(buf, &cf); err != nil {
+		return
+	}
+	return
+}
 func (api *AdminAPI) GetTopology() (cv *proto.TopologyView, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetTopologyView)
@@ -830,6 +843,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.RemoteCacheBoostEnableState == 0 || info.RemoteCacheBoostEnableState == 1 {
 		request.addParam(proto.RemoteCacheBoostEnableKey, strconv.FormatInt(info.RemoteCacheBoostEnableState, 10))
+	}
+	if info.ClientConnTimeoutUs >= 0 {
+		request.addParam(proto.NetConnTimeoutUsKey, strconv.FormatInt(info.ClientConnTimeoutUs, 10))
 	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
