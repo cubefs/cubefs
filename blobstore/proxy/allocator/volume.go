@@ -29,84 +29,73 @@ type volume struct {
 	mu      sync.RWMutex
 }
 
-const (
-	ALLOCATED  = int32(0)
-	ALLOCATING = int32(1)
-)
-
 type volumes struct {
-	vols       []*volume
-	totalFree  uint64
-	allocating int32
+	vols      []*volume
+	totalFree int64
 
 	sync.RWMutex
 }
 
-func (s *volumes) Get(vid proto.Vid) (*volume, bool) {
+func (s *volumes) Get(vid proto.Vid) (res *volume, ok bool) {
 	s.RLock()
-	defer s.RUnlock()
 	i, ok := search(s.vols, vid)
 	if !ok {
+		s.RUnlock()
 		return nil, false
 	}
-	return s.vols[i], true
+	res = s.vols[i]
+	s.RUnlock()
+	return res, true
 }
 
-func (s *volumes) UpdateTotalFree(fsize uint64) uint64 {
-	return atomic.AddUint64(&s.totalFree, fsize)
+func (s *volumes) UpdateTotalFree(fsize int64) int64 {
+	return atomic.AddInt64(&s.totalFree, fsize)
 }
 
-func (s *volumes) TotalFree() uint64 {
-	return atomic.LoadUint64(&s.totalFree)
+func (s *volumes) TotalFree() int64 {
+	return atomic.LoadInt64(&s.totalFree)
 }
 
 func (s *volumes) Put(vol *volume) {
 	s.Lock()
-	defer s.Unlock()
 	idx, ok := search(s.vols, vol.Vid)
 	if !ok {
-		atomic.AddUint64(&s.totalFree, vol.Free)
+		atomic.AddInt64(&s.totalFree, int64(vol.Free))
 		s.vols = append(s.vols, vol)
 		if idx == len(s.vols)-1 {
+			s.Unlock()
 			return
 		}
 		copy(s.vols[idx+1:], s.vols[idx:len(s.vols)-1])
 		s.vols[idx] = vol
 	}
+	s.Unlock()
 }
 
 func (s *volumes) Delete(vid proto.Vid) bool {
 	s.Lock()
-	defer s.Unlock()
 	i, ok := search(s.vols, vid)
 	if ok {
-		atomic.AddUint64(&s.totalFree, -s.vols[i].Free)
+		atomic.AddInt64(&s.totalFree, -int64(s.vols[i].Free))
 		copy(s.vols[i:], s.vols[i+1:])
-		s.vols[len(s.vols)-1] = nil
 		s.vols = s.vols[:len(s.vols)-1]
 	}
+	s.Unlock()
 	return ok
 }
 
 func (s *volumes) List() (vols []*volume) {
 	s.RLock()
-	defer s.RUnlock()
 	vols = s.vols[:]
+	s.RUnlock()
 	return vols
-}
-
-func (s *volumes) SetAllocateState(state int32) {
-	atomic.StoreInt32(&s.allocating, state)
-}
-
-func (s *volumes) IsAllocating() bool {
-	return ALLOCATING == atomic.LoadInt32(&s.allocating)
 }
 
 func (s *volumes) Len() int {
 	s.RLock()
-	defer s.RUnlock()
-	return len(s.vols)
+	length := len(s.vols)
+	s.RUnlock()
+	return length
 }
 
 func search(vols []*volume, vid proto.Vid) (int, bool) {

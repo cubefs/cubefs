@@ -99,7 +99,6 @@ func (v *volumeMgr) handleFullVols(ctx context.Context, isBackup bool) {
 			if vol.Free < uint64(v.VolumeReserveSize) {
 				vol.deleted = true
 				fullVols = append(fullVols, vid)
-				info.UpdateTotalFree(isBackup, -vol.Free)
 			}
 			vol.mu.Unlock()
 		}
@@ -159,7 +158,6 @@ func (v *volumeMgr) discardVolume(ctx context.Context, token string, isBackup bo
 	for _, info := range v.modeInfos {
 		if vol, ok := info.Get(vid, isBackup); ok {
 			vol.mu.Lock()
-			info.UpdateTotalFree(isBackup, -vol.Free)
 			vol.deleted = true
 			vol.mu.Unlock()
 			info.Delete(vid)
