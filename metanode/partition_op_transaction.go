@@ -112,3 +112,29 @@ func (mp *metaPartition) TxDentryRollback(req *proto.TxDentryApplyRequest, p *Pa
 
 	return err
 }
+
+func (mp *metaPartition) TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error) {
+	var status uint8
+
+	txItem := proto.NewTxInfoBItem(req.TxID)
+	var txInfo *proto.TransactionInfo
+	if item := mp.txProcessor.txManager.txTree.Get(txItem); item != nil {
+		txInfo = item.(*proto.TransactionInfo)
+		status = proto.OpOk
+	} else {
+		status = proto.OpNotExistErr
+	}
+
+	var reply []byte
+	resp := &proto.TxGetInfoResponse{
+		TxInfo: txInfo,
+	}
+	reply, err = json.Marshal(resp)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+	}
+
+	p.PacketErrorWithBody(status, reply)
+	return err
+}

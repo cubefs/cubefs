@@ -63,6 +63,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getParams", m.getParamsHandler)
 	http.HandleFunc("/getSmuxStat", m.getSmuxStatHandler)
 	http.HandleFunc("/getRaftStatus", m.getRaftStatusHandler)
+	// get tx information
+	http.HandleFunc("/getTx", m.getTxHandler)
 	return
 }
 
@@ -413,7 +415,55 @@ func (m *MetaNode) getDentryHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Data = json.RawMessage(p.Data)
 	}
 	return
+}
 
+func (m *MetaNode) getTxHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getTxHandler] response %s", err)
+		}
+	}()
+	var (
+		pid  uint64
+		txId string
+		err  error
+	)
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err == nil {
+		if txId = r.FormValue("txId"); txId == "" {
+			err = fmt.Errorf("no txId")
+		}
+	}
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := &proto.TxGetInfoRequest{
+		Pid:  pid,
+		TxID: txId,
+	}
+	p := &Packet{}
+	if err = mp.TxGetInfo(req, p); err != nil {
+		resp.Code = http.StatusSeeOther
+		resp.Msg = err.Error()
+		return
+	}
+
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMsg()
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
+	return
 }
 
 func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request) {
