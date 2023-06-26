@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/cpu"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -34,6 +33,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/cpu"
 
 	"github.com/cubefs/cubefs/util/statinfo"
 

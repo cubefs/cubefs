@@ -38,10 +38,18 @@ import (
 type storeType uint8
 
 const (
-	memoryStore 	storeType = iota
+	memoryStore storeType = iota
 	singleStore
 	separateStore
 	specifyStore
+)
+
+type RaftMode int
+
+const (
+	StandardMode RaftMode = iota
+	StrictMode
+	MixMode
 )
 
 var (
@@ -52,8 +60,8 @@ var (
 	tickInterval = 100 * time.Millisecond
 	logLevel     = "debug"
 	walDir       = ""
-	diskNum		 = 5
-	dataType	 = 0
+	diskNum      = 5
+	dataType     = 0
 	resolver     = newNodeManager()
 
 	temp        = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -61,14 +69,18 @@ var (
 
 	peers      = []proto.Peer{{ID: 1}, {ID: 2}, {ID: 3}}
 	subTimeMap map[uint64]*subTime
+
+	outputToStdout bool
 )
 
 func init() {
 	numCpu := runtime.NumCPU()
 	runtime.GOMAXPROCS(numCpu)
 	initRaftLog(getTestPath())
-	fmt.Printf("[System], Cpu Num = [%d], Test Path = [%v]\r\n", numCpu, getTestPath())
+	output("[System], Cpu Num = [%d], Test Path = [%v]\r", numCpu, getTestPath())
 	subTimeMap = make(map[uint64]*subTime)
+
+	outputToStdout = os.Getenv("DEBUG") == "1"
 }
 
 type replAddr struct {
@@ -161,20 +173,51 @@ type testServer struct {
 	peers     []proto.Peer
 	hardState proto.HardState
 	conf      *raftServerConfig
+	mode      raft.ConsistencyMode
 }
 
-func initTestServer(peers []proto.Peer, isLease, clear bool, groupNum int) []*testServer {
-	if clear {
-		os.RemoveAll(getTestPath())
-	}
+func initTestServer(peers []proto.Peer, isLease, clear bool, groupNum int, testMode RaftMode) []*testServer {
 	rs := make([]*testServer, 0)
 	for _, p := range peers {
-		rs = append(rs, createRaftServer(p.ID, 0, 0, peers, isLease, clear, groupNum))
+		if clear {
+			os.RemoveAll(path.Join(getTestPath(), strconv.FormatUint(p.ID, 10)))
+		}
+		mode := getConsistencyMode(testMode, p.ID)
+		raftConfig := &raft.RaftConfig{Peers: peers, Leader: 0, Term: 0, Mode: mode}
+		rs = append(rs, createRaftServer(p.ID, isLease, clear, groupNum, raftConfig))
 	}
 	return rs
 }
 
-func createRaftServer(nodeId, leader, term uint64, peers []proto.Peer, isLease, clear bool, groupNum int) *testServer {
+func getConsistencyMode(testMode RaftMode, peerID uint64) raft.ConsistencyMode {
+	switch testMode {
+	case StandardMode:
+		return raft.DefaultMode
+	case StrictMode:
+		return raft.StrictMode
+	case MixMode:
+		if peerID == 1 {
+			return raft.StrictMode
+		} else {
+			return raft.DefaultMode
+		}
+	}
+	return raft.DefaultMode
+}
+
+func initTestServerWithMsgFilter(peers []proto.Peer, isLease, clear bool, groupNum int, mode raft.ConsistencyMode, msgFilter raft.MsgFilterFunc) []*testServer {
+	rs := make([]*testServer, 0)
+	for _, p := range peers {
+		if clear {
+			os.RemoveAll(path.Join(getTestPath(), strconv.FormatUint(p.ID, 10)))
+		}
+		raftConfig := &raft.RaftConfig{Peers: peers, Leader: 0, Term: 0, Mode: mode, MsgFilter: msgFilter}
+		rs = append(rs, createRaftServer(p.ID, isLease, clear, groupNum, raftConfig))
+	}
+	return rs
+}
+
+func createRaftServer(nodeId uint64, isLease, clear bool, groupNum int, raftConfig *raft.RaftConfig) *testServer {
 	config := raft.DefaultConfig()
 	config.NodeID = nodeId
 	config.TickInterval = tickInterval
@@ -199,15 +242,17 @@ func createRaftServer(nodeId, leader, term uint64, peers []proto.Peer, isLease, 
 		if clear {
 			st.ApplySnapshot(proto.SnapshotMeta{})
 		}
-		raftConfig := &raft.RaftConfig{
+		rc := &raft.RaftConfig{
 			ID:           uint64(i),
-			Peers:        peers,
-			Term:         term,
-			Leader:       leader,
+			Peers:        raftConfig.Peers,
+			Term:         raftConfig.Term,
+			Leader:       raftConfig.Leader,
 			Storage:      st,
 			StateMachine: sm,
+			Mode:         raftConfig.Mode,
+			MsgFilter:    raftConfig.MsgFilter,
 		}
-		err = rs.CreateRaft(raftConfig)
+		err = rs.CreateRaft(rc)
 		if err != nil {
 			panic(err)
 		}
@@ -217,11 +262,12 @@ func createRaftServer(nodeId, leader, term uint64, peers []proto.Peer, isLease, 
 	}
 	return &testServer{
 		nodeID:  nodeId,
-		peers:   peers,
+		peers:   raftConfig.Peers,
 		isLease: isLease,
 		raft:    rs,
 		sm:      smMap,
 		store:   stMap,
+		mode:    raftConfig.Mode,
 	}
 }
 
@@ -240,10 +286,10 @@ func getMemoryStorage(raft *raft.RaftServer, nodeId, raftId uint64) storage.Stor
 }
 
 func getSpecifyStorage(nodeId uint64, raftId uint64) storage.Storage {
-	walPath := path.Join("/data" + strconv.FormatUint(nodeId, 10), "rafttest", strconv.FormatUint(nodeId, 10), strconv.FormatUint(raftId, 10))
+	walPath := path.Join("/data"+strconv.FormatUint(nodeId, 10), "rafttest", strconv.FormatUint(nodeId, 10), strconv.FormatUint(raftId, 10))
 	os.RemoveAll(walPath)
-	os.MkdirAll(walPath,0777)
-	fmt.Println(fmt.Sprintf("raft: %v, walPath: %v", raftId, walPath))
+	os.MkdirAll(walPath, 0777)
+	output(fmt.Sprintf("raft: %v, walPath: %v", raftId, walPath))
 	wc := &wal.Config{}
 	st, err := wal.NewStorage(walPath, wc)
 	if err != nil {
@@ -264,8 +310,8 @@ func getStorage(nodeId, raftId uint64) storage.Storage {
 
 func getSeparateStorage(nodeId, raftId uint64) storage.Storage {
 	diskIndex := strconv.FormatUint(raftId%uint64(diskNum), 10)
-	walPath := path.Join("/data" + diskIndex, "rafttest", strconv.FormatUint(nodeId, 10), strconv.FormatUint(raftId, 10))
-	fmt.Println(fmt.Sprintf("raft: %v, walPath: %v", raftId, walPath))
+	walPath := path.Join("/data"+diskIndex, "rafttest", strconv.FormatUint(nodeId, 10), strconv.FormatUint(raftId, 10))
+	output(fmt.Sprintf("raft: %v, walPath: %v", raftId, walPath))
 	wc := &wal.Config{}
 	st, err := wal.NewStorage(walPath, wc)
 	if err != nil {
@@ -319,4 +365,14 @@ func initRaftLog(logDir string) {
 	}
 	logger.SetLogger(raftLog)
 	return
+}
+
+func output(format string, a ...interface{}) {
+	if outputToStdout {
+		const timeFmt = "2006-01-02 15:04:05.000000"
+		var pc, file, line, _ = runtime.Caller(1)
+		var funcName = runtime.FuncForPC(pc).Name()
+		var prefix = fmt.Sprintf("%v: %v:%v: %v: ", time.Now().Format(timeFmt), path.Base(file), line, path.Base(funcName))
+		fmt.Printf(prefix+format+"\n", a...)
+	}
 }

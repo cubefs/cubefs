@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 package wal
 
 import (
@@ -289,7 +290,8 @@ func (ls *logEntryStorage) TruncateAll() error {
 // truncateBack 从后面截断，用于删除冲突日志
 func (ls *logEntryStorage) truncateBack(index uint64) error {
 
-	if ls.LastIndex() < index {
+	var li = ls.LastIndex()
+	if li < index {
 		return nil
 	}
 
@@ -302,6 +304,7 @@ func (ls *logEntryStorage) truncateBack(index uint64) error {
 		if err := ls.last.Truncate(index); err != nil {
 			return err
 		}
+		logger.Warn("storage[%v] truncate last log file [name: %v, from: %v, to: %v]", ls.dir, ls.last.name.String(), li, index)
 	} else {
 		for i := idx + 1; i < len(ls.logfiles); i++ {
 			if err := ls.remove(ls.logfiles[i]); err != nil {
@@ -309,7 +312,7 @@ func (ls *logEntryStorage) truncateBack(index uint64) error {
 			}
 			_ = ls.cache.Delete(ls.logfiles[i], true)
 			var lfn = ls.logfiles[i]
-			logger.Warn("storage[%v] remove log file [name: %v] cause truncate back to [index: %v]", ls.dir, lfn.String(), index)
+			logger.Warn("storage[%v] remove log file [name: %v] cause truncate back [from: %v, to: %v]", ls.dir, lfn.String(), li, index)
 		}
 
 		n := ls.logfiles[idx]
@@ -332,6 +335,7 @@ func (ls *logEntryStorage) truncateBack(index uint64) error {
 			return err
 		}
 
+		logger.Warn("storage[%v] truncate last log file [name: %v, from: %v, to: %v]", ls.dir, ls.last.name.String(), li, index)
 		ls.logfiles = ls.logfiles[:idx+1]
 		ls.nextFileSeq = n.seq + 1
 	}

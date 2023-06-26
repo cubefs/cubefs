@@ -56,6 +56,7 @@ const (
 
 	EntryNormal     EntryType = 0
 	EntryConfChange EntryType = 1
+	EntryRollback   EntryType = 2
 
 	PeerNormal  PeerType = 0
 	PeerArbiter PeerType = 1
@@ -164,6 +165,14 @@ func (e *Entry) Ctx() context.Context {
 	return e.ctx
 }
 
+type FailureListener func(err error)
+
+func (ln FailureListener) OnFailure(err error) {
+	if ln != nil {
+		ln(err)
+	}
+}
+
 // Message is the transport message.
 type Message struct {
 	Type         MsgType
@@ -204,6 +213,11 @@ type ConfChange struct {
 	Type    ConfChangeType
 	Peer    Peer
 	Context []byte
+}
+
+type Rollback struct {
+	Index uint64 // Index of Entry to be rollback.
+	Data  []byte
 }
 
 type PromoteConfig struct {
@@ -282,12 +296,14 @@ func (t MsgType) String() string {
 
 func (t EntryType) String() string {
 	switch t {
-	case 0:
+	case EntryNormal:
 		return "EntryNormal"
-	case 1:
+	case EntryConfChange:
 		return "EntryConfChange"
+	case EntryRollback:
+		return "EntryRollback"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 func (t ConfChangeType) String() string {

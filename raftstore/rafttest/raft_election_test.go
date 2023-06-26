@@ -23,9 +23,65 @@ import (
 	"github.com/tiglabs/raft/proto"
 )
 
-func TestWithoutLeaseAndDown(t *testing.T) {
-	servers := initTestServer(peers, false, true, 1)
-	f, w := getLogFile("", "withoutLeaseAndDown.log")
+func TestElection(t *testing.T) {
+	tests := []RaftTestConfig{
+		{
+			name:     "withoutLeaseAndDown_default",
+			mode:     StandardMode,
+			testFunc: withoutLeaseAndDown,
+		},
+		{
+			name:     "withoutLeaseAndDown_strict",
+			mode:     StrictMode,
+			testFunc: withoutLeaseAndDown,
+		},
+		{
+			name:     "withoutLeaseAndDown_mix",
+			mode:     MixMode,
+			testFunc: withoutLeaseAndDown,
+		},
+		{
+			name:     "withLeaseAndDown_default",
+			mode:     StandardMode,
+			testFunc: withLeaseAndDown,
+		},
+		{
+			name:     "withLeaseAndDown_strict",
+			mode:     StrictMode,
+			testFunc: withLeaseAndDown,
+		},
+		{
+			name:     "withLeaseAndDown_mix",
+			mode:     MixMode,
+			testFunc: withLeaseAndDown,
+		},
+		{
+			name:     "withPriorityAndDown_default",
+			mode:     StandardMode,
+			testFunc: withPriorityAndDown,
+		},
+		{
+			name:     "withPriorityAndDown_strict",
+			mode:     StrictMode,
+			testFunc: withPriorityAndDown,
+		},
+		{
+			name:     "withPriorityAndDown_mix",
+			mode:     MixMode,
+			testFunc: withPriorityAndDown,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.testFunc(t, tt.name, tt.isLease, tt.mode)
+		})
+	}
+}
+
+func withoutLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode) {
+	servers := initTestServer(peers, false, true, 1, mode)
+	f, w := getLogFile("", testName+".log")
 
 	defer func() {
 		w.Flush()
@@ -36,7 +92,7 @@ func TestWithoutLeaseAndDown(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}()
 
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -53,16 +109,16 @@ func TestWithoutLeaseAndDown(t *testing.T) {
 		}
 	}
 	servers = newServers
-	fmt.Println("shutdown one Follower: waiting electing leader....")
+	output("shutdown one Follower: waiting electing leader....")
 	newLeader := waitElect(servers, 1, w)
 	printStatus(servers, w)
 
 	time.Sleep(time.Duration(int64(htbTick) * tickInterval.Nanoseconds()))
 	w.WriteString(fmt.Sprintf("[%s] restart shutdown Follower \r\n", time.Now().Format(format_time)))
 	leader, term := newLeader.raft.LeaderTerm(1)
-	newServers = restartServer(shutServer, leader, term, false)
+	newServers = restartAllServers(shutServer, leader, term, false)
 	servers = append(servers, newServers...)
-	fmt.Println("restart shutdown Follower: waiting electing leader....")
+	output("restart shutdown Follower: waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -78,16 +134,16 @@ func TestWithoutLeaseAndDown(t *testing.T) {
 		}
 	}
 	servers = newServers
-	fmt.Println("shutdown all Follower: waiting electing leader....")
+	output("shutdown all Follower: waiting electing leader....")
 	newLeader = waitElect(servers, 1, w)
 	printStatus(servers, w)
 
 	time.Sleep(time.Duration(int64(htbTick) * tickInterval.Nanoseconds()))
 	w.WriteString(fmt.Sprintf("[%s] restart all shutdown Follower \r\n", time.Now().Format(format_time)))
 	leader, term = newLeader.raft.LeaderTerm(1)
-	newServers = restartServer(shutServer, leader, term, false)
+	newServers = restartAllServers(shutServer, leader, term, false)
 	servers = append(servers, newServers...)
-	fmt.Println("restart all shutdown Follower: waiting electing leader....")
+	output("restart all shutdown Follower: waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -103,16 +159,16 @@ func TestWithoutLeaseAndDown(t *testing.T) {
 		}
 	}
 	servers = newServers
-	fmt.Println("shutdown Leader: waiting electing leader....")
+	output("shutdown Leader: waiting electing leader....")
 	newLeader = waitElect(servers, 1, w)
 	printStatus(servers, w)
 
 	time.Sleep(time.Duration(int64(htbTick) * tickInterval.Nanoseconds()))
 	w.WriteString(fmt.Sprintf("[%s] restart shutdown Leader \r\n", time.Now().Format(format_time)))
 	leader, term = newLeader.raft.LeaderTerm(1)
-	newServers = restartServer(shutServer, leader, term, false)
+	newServers = restartAllServers(shutServer, leader, term, false)
 	servers = append(servers, newServers...)
-	fmt.Println("restart shutdown Leader: waiting electing leader....")
+	output("restart shutdown Leader: waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -123,7 +179,7 @@ func TestWithoutLeaseAndDown(t *testing.T) {
 			break
 		}
 	}
-	fmt.Println("let leader to leader: waiting electing leader....")
+	output("let leader to leader: waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -134,16 +190,16 @@ func TestWithoutLeaseAndDown(t *testing.T) {
 			break
 		}
 	}
-	fmt.Println("let follower to leader: waiting electing leader....")
+	output("let follower to leader: waiting electing leader....")
 	time.Sleep(2000 * time.Millisecond)
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
 }
 
-func TestWithLeaseAndDown(t *testing.T) {
-	servers := initTestServer(peers, true, true, 1)
-	f, w := getLogFile("", "withLeaseAndDown.log")
+func withLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode) {
+	servers := initTestServer(peers, true, true, 1, mode)
+	f, w := getLogFile("", testName+".log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -153,7 +209,7 @@ func TestWithLeaseAndDown(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}()
 
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -169,16 +225,16 @@ func TestWithLeaseAndDown(t *testing.T) {
 		}
 	}
 	servers = newServers
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	newLeader := waitElect(servers, 1, w)
 	printStatus(servers, w)
 
 	time.Sleep(time.Duration(int64(htbTick) * tickInterval.Nanoseconds()))
 	w.WriteString(fmt.Sprintf("[%s] restart shutdown Follower \r\n", time.Now().Format(format_time)))
 	leader, term := newLeader.raft.LeaderTerm(1)
-	newServers = restartServer(shutServer, leader, term, false)
+	newServers = restartAllServers(shutServer, leader, term, false)
 	servers = append(servers, newServers...)
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -217,9 +273,9 @@ func TestWithLeaseAndDown(t *testing.T) {
 	printStatus(servers, w)
 
 	w.WriteString(fmt.Sprintf("[%s] restart all shutdown Follower \r\n", time.Now().Format(format_time)))
-	newServers = restartServer(shutServer, 0, 10, false)
+	newServers = restartAllServers(shutServer, 0, 10, false)
 	servers = append(servers, newServers...)
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -246,9 +302,9 @@ func TestWithLeaseAndDown(t *testing.T) {
 
 	time.Sleep(time.Duration(int64(htbTick) * tickInterval.Nanoseconds()))
 	w.WriteString(fmt.Sprintf("[%s] restart shutdown Leader \r\n", time.Now().Format(format_time)))
-	newServers = restartServer(shutServer, leader, term, false)
+	newServers = restartAllServers(shutServer, leader, term, false)
 	servers = append(servers, newServers...)
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -259,7 +315,7 @@ func TestWithLeaseAndDown(t *testing.T) {
 			break
 		}
 	}
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 
@@ -270,16 +326,16 @@ func TestWithLeaseAndDown(t *testing.T) {
 			break
 		}
 	}
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	time.Sleep(2000 * time.Millisecond)
 	waitElect(servers, 1, w)
 	printStatus(servers, w)
 }
 
-func TestWithPriorityAndDown(t *testing.T) {
+func withPriorityAndDown(t *testing.T, testName string, isLease bool, mode RaftMode) {
 	peers := []proto.Peer{{ID: 1, Priority: 1}, {ID: 2, Priority: 3}, {ID: 3, Priority: 2}}
-	servers := initTestServer(peers, false, true, 1)
-	f, w := getLogFile("", "withPriorityAndDown.log")
+	servers := initTestServer(peers, false, true, 1, mode)
+	f, w := getLogFile("", testName+".log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -289,7 +345,7 @@ func TestWithPriorityAndDown(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}()
 
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	if ns := waitElect(servers, 1, w); ns.nodeID != 2 && ns.nodeID != 3 {
 		t.Fatal("Priority Election error")
 	}
@@ -325,9 +381,9 @@ func TestWithPriorityAndDown(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	w.WriteString(fmt.Sprintf("[%s] restart shutdown Leader \r\n", time.Now().Format(format_time)))
-	newServers = restartServer(shutServer, 0, 10, true)
+	newServers = restartAllServers(shutServer, 0, 10, true)
 	servers = append(servers, newServers...)
-	fmt.Println("waiting electing leader....")
+	output("waiting electing leader....")
 	if ns := waitElect(servers, 1, w); ns.nodeID == shutServer[0].nodeID {
 		t.Fatal("Priority Election error")
 	}
@@ -367,14 +423,5 @@ func waitAndValidElect(ts []*testServer, w *bufio.Writer, start time.Time) *test
 		}
 	}
 
-	return ret
-}
-
-func restartServer(ts []*testServer, leader, term uint64, clear bool) []*testServer {
-	ret := make([]*testServer, 0)
-	for _, s := range ts {
-		ns := createRaftServer(s.nodeID, leader, term, s.peers, s.isLease, clear, 1)
-		ret = append(ret, ns)
-	}
 	return ret
 }

@@ -203,3 +203,9 @@ func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 func (mf *MetadataFsm) delKeyAndPutIndex(key string, cmdMap map[string][]byte) (err error) {
 	return mf.store.DeleteKeyAndPutIndex(key, cmdMap, true)
 }
+
+
+func (mf *MetadataFsm) AskRollback(original []byte) (rollback []byte, err error) {
+	// Do nothing.
+	return nil, nil
+}

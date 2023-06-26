@@ -2,9 +2,10 @@ package buf
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/unit"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 // BufferPool defines the struct of a buffered pool with 4 objects.

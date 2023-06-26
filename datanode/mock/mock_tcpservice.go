@@ -8,9 +8,11 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"net"
 )
 
@@ -20,9 +22,22 @@ const (
 )
 
 var (
-	ReplyGetAllWatermarksV2Err                = false
+	ReplyGetAllWatermarksV2Err                  = false
 	ReplyGetRemoteExtentInfoForValidateCRCCount = 3
 )
+var letterRunes = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+const UpstreamReadSeed = 1993
+const UpstreamReadSize = 10 * unit.MB
+
+func RandTestData(size int, seed int64) (data []byte) {
+	rand.Seed(seed)
+	b := make([]byte, size)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return b
+}
 
 type MockTcp struct {
 	ln     net.Listener
@@ -79,6 +94,12 @@ func (m *MockTcp) serveConn(conn net.Conn) (err error) {
 		m.handlePacketToNotifyExtentRepair(p, conn)
 	case proto.OpGetAllExtentInfo:
 		m.handlePacketToGetAllExtentInfo(p, conn)
+	case proto.OpGetAppliedId:
+		m.handlePacketToGetAppliedID(p, conn)
+	case proto.OpStreamRead:
+		m.handleStreamReadPacket(p, conn)
+	case proto.OpStreamFollowerRead:
+		m.handleStreamFollowerReadPacket(p, conn)
 	}
 	return
 }
@@ -292,4 +313,107 @@ func (m *MockTcp) handlePacketToGetAllExtentInfo(p *repl.Packet, c net.Conn) {
 		fmt.Printf("replyData err: %v", err)
 	}
 	p.PacketOkReply()
+}
+
+func (m *MockTcp) handlePacketToGetAppliedID(p *repl.Packet, c net.Conn) {
+	var err error
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, 2)
+	p.PacketOkWithBody(buf)
+	p.AddMesgLog(fmt.Sprintf("_AppliedID(%v)", 2))
+	if err = p.WriteToConn(c, proto.WriteDeadlineTime); err != nil {
+		err = fmt.Errorf(p.LogMessage(repl.ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", c.LocalAddr().String(),
+			c.RemoteAddr().String()), p.StartT, err))
+		err = fmt.Errorf("ReplProtocol(%v) will exit error(%v)",
+			c.RemoteAddr(), err)
+		log.LogErrorf(err.Error())
+	}
+	return
+}
+
+func (m *MockTcp) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Conn) {
+	m.handleReadPacket(p, connect)
+}
+
+func (m *MockTcp) handleStreamReadPacket(p *repl.Packet, connect net.Conn) {
+	m.handleReadPacket(p, connect)
+}
+
+func (m *MockTcp) handleReadPacket(p *repl.Packet, connect net.Conn) {
+	var (
+		err error
+	)
+	defer func() {
+		if err != nil {
+			logContent := fmt.Sprintf("action[operatePacket] %v.",
+				p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
+			log.LogErrorf(logContent)
+			p.PackErrorBody("ActionStreamRead", err.Error())
+			p.WriteToConn(connect, proto.WriteDeadlineTime)
+		}
+	}()
+
+	needReplySize := p.Size
+	offset := p.ExtentOffset
+	localData := RandTestData(UpstreamReadSize, UpstreamReadSeed)
+	for {
+		if needReplySize <= 0 {
+			break
+		}
+		err = nil
+		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
+		reply.StartT = p.StartT
+		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
+		if currReadSize == unit.ReadBlockSize {
+			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
+		} else {
+			reply.Data = make([]byte, currReadSize)
+		}
+
+		reply.ExtentOffset = offset
+		p.Size = uint32(currReadSize)
+		p.ExtentOffset = offset
+
+		//fake read
+		reply.CRC = crc32.ChecksumIEEE(localData[offset : offset+int64(currReadSize)])
+		copy(reply.Data[0:currReadSize], localData[offset:offset+int64(currReadSize)])
+
+		p.CRC = reply.CRC
+		if err != nil {
+			if currReadSize == unit.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
+			return
+		}
+		reply.Size = uint32(currReadSize)
+		reply.ResultCode = proto.OpOk
+		reply.Opcode = p.Opcode
+		p.ResultCode = proto.OpOk
+
+		err = func() error {
+			var netErr error
+			netErr = reply.WriteToConn(connect, proto.WriteDeadlineTime)
+			return netErr
+		}()
+		if err != nil {
+			if currReadSize == unit.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
+			logContent := fmt.Sprintf("action[operatePacket] %v.",
+				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+			log.LogErrorf(logContent)
+			return
+		}
+		needReplySize -= currReadSize
+		offset += int64(currReadSize)
+		if currReadSize == unit.ReadBlockSize {
+			proto.Buffers.Put(reply.Data)
+		}
+		logContent := fmt.Sprintf("action[operatePacket] %v.",
+			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
+		log.LogReadf(logContent)
+	}
+	p.PacketOkReply()
+
+	return
 }

@@ -18,9 +18,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/cubefs/cubefs/util/multipart"
 
@@ -41,7 +42,7 @@ func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet)
 		return
 	}
 	if multipart == nil {
-		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
+		p.PacketErrorWithBody(proto.OpDisabled, nil)
 		return
 	}
 	resp := &proto.GetMultipartResponse{

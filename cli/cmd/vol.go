@@ -653,7 +653,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  BitMapAllocator     : %v\n", formatEnabledDisabled(vv.EnableBitMapAllocator)))
-                        }
+			}
 
 			if optTrashCleanMaxCount >= 0 {
 				isChange = true

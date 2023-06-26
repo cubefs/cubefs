@@ -446,7 +446,7 @@ func (rs *RaftServer) sendHeartbeat() {
 		}
 		peers := raft.getPeers()
 		for _, p := range peers {
-			nodes[p] = append(nodes[p], proto.ContextInfo{ID: id, IsUnstable: raft.getRiskState() != stateStable})
+			nodes[p] = append(nodes[p], proto.ContextInfo{ID: id, IsUnstable: raft.getRiskState() != StableState})
 		}
 	}
 	rs.mu.RUnlock()
@@ -539,4 +539,16 @@ func (rs *RaftServer) Flush(id uint64, wait bool) (err error) {
 
 func (rs *RaftServer) Config() *Config {
 	return rs.config
+}
+
+func (rs *RaftServer) SetMsgFilterFunc(id uint64, msgFilterFunc MsgFilterFunc) {
+
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if ok {
+		raft.raftConfig.MsgFilter = msgFilterFunc
+	}
+	return
 }

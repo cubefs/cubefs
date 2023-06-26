@@ -43,13 +43,13 @@ const (
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
 type Extent struct {
-	file            *os.File
-	filePath        string
-	extentID        uint64
-	modifyTime      int64
-	dataSize        int64
-	isOccurNewWrite bool
-	header          []byte
+	file       *os.File
+	filePath   string
+	extentID   uint64
+	modifyTime int64
+	dataSize   int64
+	modified   int32
+	header     []byte
 	sync.Mutex
 }
 
@@ -60,10 +60,6 @@ func NewExtent(name string, extentID uint64) *Extent {
 	e.filePath = name
 
 	return e
-}
-
-func (e *Extent) IsOccurNewWrite() bool {
-	return e.isOccurNewWrite == true
 }
 
 // Close this extent and release FD.
@@ -189,6 +185,11 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 
 // Write writes data to an extent.
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfoBlock) (err error) {
+	defer func() {
+		if err == nil {
+			atomic.StoreInt32(&e.modified, 1)
+		}
+	}()
 	if proto.IsTinyExtent(e.extentID) {
 		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
 		return
@@ -200,7 +201,6 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkWriteParameter(offset, size, writeType); err != nil {
 		return
 	}
-	e.isOccurNewWrite = true
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		return
 	}
@@ -290,9 +290,8 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 
 // Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
-	err = e.file.Sync()
-	if err == nil {
-		e.isOccurNewWrite = false
+	if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
+		err = e.file.Sync()
 	}
 	return
 }

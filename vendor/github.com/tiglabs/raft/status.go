@@ -47,6 +47,11 @@ type LogStatus struct {
 	LastIndex  uint64
 }
 
+type PendingInfo struct {
+	Index      uint64
+	Type       string
+}
+
 // Status raft status
 type Status struct {
 	ID                uint64
@@ -58,7 +63,7 @@ type Status struct {
 	Applied           uint64
 	Vote              uint64
 	PendQueue         int
-	PendCmd           map[uint64]proto.EntryType
+	Pending           []PendingInfo
 	RecvQueue         int
 	AppQueue          int
 	Stopped           bool

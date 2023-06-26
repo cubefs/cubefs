@@ -610,6 +610,9 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		}
 	}
 
+	log.LogInfof("streamRepairExtent: partition[%v] start to fix extent [id: %v, modifytime: %v, localsize: %v, remotesize: %v] from [%v]",
+		dp.partitionID, remoteExtentInfo[storage.FileID], localExtentInfo[storage.ModifyTime], localExtentInfo[storage.Size], remoteExtentInfo[storage.Size], source)
+
 	//if the data size of extentinfo struct is not equal with the data size of extent struct,use the data size of extent struct
 	e, err := store.ExtentWithHeader(localExtentInfo)
 	if err != nil {
@@ -631,12 +634,12 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 
 	// size difference between the local extent and the remote extent
 	sizeDiff := remoteExtentInfo[storage.Size] - localExtentInfo[storage.Size]
-	request := repl.NewExtentRepairReadPacket(ctx, dp.partitionID, remoteExtentInfo[storage.FileID], int(localExtentInfo[storage.Size]), int(sizeDiff))
+	request := repl.NewExtentRepairReadPacket(ctx, dp.partitionID, remoteExtentInfo[storage.FileID], int(localExtentInfo[storage.Size]), int(sizeDiff), false)
 	if proto.IsTinyExtent(remoteExtentInfo[storage.FileID]) {
 		if sizeDiff >= math.MaxUint32 {
 			sizeDiff = math.MaxUint32 - unit.MB
 		}
-		request = repl.NewTinyExtentRepairReadPacket(ctx, dp.partitionID, remoteExtentInfo[storage.FileID], int(localExtentInfo[storage.Size]), int(sizeDiff))
+		request = repl.NewTinyExtentRepairReadPacket(ctx, dp.partitionID, remoteExtentInfo[storage.FileID], int(localExtentInfo[storage.Size]), int(sizeDiff), false)
 	}
 	var conn *net.TCPConn
 	conn, err = gConnPool.GetConnect(source)

@@ -18,6 +18,7 @@ package raft
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -30,10 +31,10 @@ func (r *raftFsm) becomeLeader() {
 	if r.state == stateFollower {
 		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] invalid transition [follower -> leader].", r.id)))
 	}
-	r.recoverCommit()
+	//_ = r.recoverCommit()
 	lasti := r.raftLog.lastIndex()
 	r.step = stepLeader
-	r.reset(r.term, lasti, true)
+	r.reset(r.term, lasti, true, true)
 	r.tick = r.tickHeartbeat
 	r.leader = r.config.NodeID
 	r.state = stateLeader
@@ -53,9 +54,30 @@ func (r *raftFsm) becomeLeader() {
 		r.pendingConf = true
 	}
 
+	if r.consistencyMode.Equals(StrictMode) {
+		// Find min valid match value of replicas
+		var matches = make([]uint64, 0, len(r.replicas))
+		for _, r := range r.replicas {
+			if r.match != 0 {
+				matches = append(matches, r.match)
+			}
+		}
+		// Minimum match index
+		var mmi uint64 = 0
+		if len(matches) > 0 {
+			sort.SliceStable(matches, func(i, j int) bool {
+				return matches[i] < matches[j]
+			})
+			mmi = matches[0]
+		}
+
+		r.maybeAskRollback(mmi + 1)
+	}
+
 	r.appendEntry(&proto.Entry{Term: r.term, Index: lasti + 1, Data: nil})
+
 	if logger.IsEnableDebug() {
-		logger.Debug("raft[%v] became leader at term %d.", r.id, r.term)
+		logger.Debug("raft[%v] became leader [node: %v] at term %d", r.id, r.config.NodeID, r.term)
 	}
 }
 
@@ -223,7 +245,7 @@ func (r *raftFsm) becomeElectionAck() {
 	logger.Debug("raft[%v] became election at term %d.", r.id, r.term)
 
 	r.step = stepElectionAck
-	r.reset(r.term, 0, false)
+	r.reset(r.term, 0, false, true)
 	r.tick = r.tickElectionAck
 	r.state = stateElectionACK
 	for id := range r.replicas {
@@ -287,12 +309,16 @@ func stepElectionAck(r *raftFsm, m *proto.Message) {
 		proto.ReturnMessage(m)
 		return
 
+	case proto.RespMsgVote:
+		r.maybeUpdateReplica(m.From, m.Index, m.Commit)
+
 	case proto.RespMsgElectAck:
 		r.replicas[m.From].active = true
 		r.replicas[m.From].lastActive = time.Now()
 		if !r.replicas[m.From].isLearner {
 			r.acks[m.From] = true
 		}
+		r.maybeUpdateReplica(m.From, m.Index, m.Commit)
 		if r.isCommitReady() && len(r.acks) >= r.quorum() {
 			r.becomeLeader()
 			r.bcastAppend(m.Ctx())
@@ -311,18 +337,17 @@ func (r *raftFsm) tickHeartbeat() {
 		self.lastActive = time.Now()
 	}
 
-	if stables, total := r.calcInStableStateReplicates(); stables < total && r.riskState != stateUnstable {
+	if stables, total := r.calcInStableStateReplicates(); stables < total && r.maybeChangeState(UnstableState) {
 		if logger.IsEnableDebug() {
-			logger.Debug("raft[%v] stable state replicas [%v/%v], change risk state to [%v].", r.id, stables, total, stateUnstable)
+			logger.Debug("raft[%v] stable state replicas [%v/%v], change risk state to [%v].", r.id, stables, total, UnstableState)
 		}
-		r.riskState = stateUnstable
-		r.riskStateLn.changeTo(stateUnstable)
-	} else if stables == total && r.riskState != stateStable {
+		if r.consistencyMode.Equals(StrictMode) {
+			r.maybeAskRollback(r.raftLog.committed + 1)
+		}
+	} else if stables == total && r.maybeChangeState(StableState) {
 		if logger.IsEnableDebug() {
-			logger.Debug("raft[%v] stable state replicas [%v/%v], change risk state to [%v].", r.id, stables, total, stateStable)
+			logger.Debug("raft[%v] stable state replicas [%v/%v], change risk state to [%v].", r.id, stables, total, StableState)
 		}
-		r.riskState = stateStable
-		r.riskStateLn.changeTo(stateStable)
 	}
 
 	if r.pastElectionTimeout() {
@@ -438,6 +463,11 @@ func (r *raftFsm) maybeCommit() bool {
 	}
 	sort.Sort(sort.Reverse(mis))
 	mci := mis[r.quorum()-1]
+	if mci < r.mci {
+		// Commit have been paused and current min commit index does not
+		// meet minimum requirements for pause abortion.
+		return false
+	}
 	isCommit := r.raftLog.maybeCommit(mci, r.term)
 	if r.state == stateLeader && r.replicas[r.config.NodeID] != nil {
 		r.replicas[r.config.NodeID].committed = r.raftLog.committed
@@ -451,6 +481,18 @@ func (r *raftFsm) maybeCommit() bool {
 	}
 
 	return isCommit
+}
+
+func (r *raftFsm) maybeAskRollback(rsi uint64) bool {
+	n, err := r.askRollbackLn.ask(rsi)
+	if err != nil {
+		panic(AppPanicError(fmt.Sprintf("raft[%v] unexpected error while asking rollback [rsi: %v]: %v", r.id, rsi, err)))
+	}
+	if n > 0 {
+		r.setMinimumCommitIndex(math.MaxUint64) // Pause commit
+		logger.Warn("raft[%v] prepare to ask rollback logs [rsi: %v, count: %v] and pause committing", r.id, rsi, n)
+	}
+	return n > 0
 }
 
 func (r *raftFsm) bcastAppend(ctx context.Context) {

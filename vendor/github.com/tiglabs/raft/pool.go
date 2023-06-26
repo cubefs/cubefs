@@ -23,6 +23,7 @@ var pool = newPoolFactory()
 type poolFactory struct {
 	applyPool    *sync.Pool
 	proposalPool *sync.Pool
+	pendingPool  *sync.Pool
 }
 
 func newPoolFactory() *poolFactory {
@@ -38,13 +39,18 @@ func newPoolFactory() *poolFactory {
 				return new(proposal)
 			},
 		},
+		pendingPool: &sync.Pool{
+			New: func() interface{} {
+				return new(pending)
+			},
+		},
 	}
 }
 
 func (f *poolFactory) getApply() *apply {
 	a := f.applyPool.Get().(*apply)
 	a.command = nil
-	a.future = nil
+	a.respond = nil
 	a.readIndexes = nil
 	return a
 }
@@ -58,12 +64,25 @@ func (f *poolFactory) returnApply(a *apply) {
 func (f *poolFactory) getProposal() *proposal {
 	p := f.proposalPool.Get().(*proposal)
 	p.data = nil
-	p.future = nil
+	p.respond = nil
 	return p
 }
 
 func (f *poolFactory) returnProposal(p *proposal) {
 	if p != nil {
+		p.data = nil
 		f.proposalPool.Put(p)
+	}
+}
+
+func (f *poolFactory) getPending() *pending {
+	p := f.pendingPool.Get().(*pending)
+	p.respond = nil
+	return p
+}
+
+func (f *poolFactory) returnPending(p *pending) {
+	if p != nil {
+		f.pendingPool.Put(p)
 	}
 }

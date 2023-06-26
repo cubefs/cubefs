@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof"
+	"testing"
 )
 
 const (
@@ -17,16 +18,23 @@ var (
 	ProfPort    int
 )
 
+type RaftTestConfig struct {
+	name     string
+	isLease  bool
+	mode     RaftMode
+	testFunc func(t *testing.T, testName string, isLease bool, mode RaftMode)
+}
+
 func init() {
 	flag.IntVar(&PutDataStep, "put-data-step", DefaultPutDataStep, "put data step")
 	flag.IntVar(&ProfPort, "prof-port", DefaultProfPort, "go pprof port")
 	flag.VisitAll(func(i *flag.Flag) {
-		fmt.Printf("Parsed tesing property: %v[%v]\n", i.Name, i.Value)
+		output("Parsed tesing property: %v[%v]", i.Name, i.Value)
 	})
 
 	go func() {
 		addr := fmt.Sprintf(":%v", ProfPort)
-		fmt.Printf("go debug pprof listen [%v]\n", addr)
+		output("go debug pprof listen [%v]", addr)
 		_ = http.ListenAndServe(addr, nil)
 	}()
 }

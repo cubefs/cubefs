@@ -28,7 +28,7 @@ func (r *raftFsm) becomeCandidate() {
 	}
 
 	r.step = stepCandidate
-	r.reset(r.term+1, 0, false)
+	r.reset(r.term+1, 0, false, false)
 	r.tick = r.tickElection
 	r.vote = r.config.NodeID
 	r.state = stateCandidate
@@ -81,14 +81,16 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		return
 
 	case proto.RespMsgVote:
+		r.maybeUpdateReplica(m.From, m.Index, m.Commit)
 		gr := r.poll(m.From, !m.Reject)
+		quorum := r.quorum()
 		if logger.IsEnableDebug() {
-			logger.Debug("raft[%v] [q:%d] has received %d votes and %d vote rejections.", r.id, r.quorum(), gr, len(r.votes)-gr)
+			logger.Debug("raft[%v] [quorum:%d] has received %d votes and %d vote rejections.", r.id, quorum, gr, len(r.votes)-gr)
 		}
 		if !r.isCommitReady() {
-			gr = len(r.votes) - r.quorum()
+			gr = len(r.votes) - quorum
 		}
-		switch r.quorum() {
+		switch quorum {
 		case gr:
 			if r.config.LeaseCheck {
 				r.becomeElectionAck()
@@ -114,7 +116,7 @@ func (r *raftFsm) isCommitReady() bool {
 func (r *raftFsm) campaign(force bool) {
 	r.becomeCandidate()
 
-	if r.isCommitReady() && r.quorum() == r.poll(r.config.NodeID, true)  {
+	if r.isCommitReady() && r.quorum() == r.poll(r.config.NodeID, true) {
 		if r.config.LeaseCheck {
 			r.becomeElectionAck()
 		} else {
@@ -142,17 +144,20 @@ func (r *raftFsm) campaign(force bool) {
 	}
 }
 
-func (r *raftFsm) poll(id uint64, v bool) (granted int) {
+func (r *raftFsm) poll(id uint64, vote bool) (granted int) {
 	if logger.IsEnableDebug() {
-		if v {
+		if vote {
 			logger.Debug("raft[%v] received vote from %v at term %d.", r.id, id, r.term)
 		} else {
 			logger.Debug("raft[%v] received vote rejection from %v at term %d.", r.id, id, r.term)
 		}
 	}
-	if _, ok := r.votes[id]; !ok {
-		r.votes[id] = v
+	if _, exist := r.replicas[id]; exist {
+		if _, ok := r.votes[id]; !ok {
+			r.votes[id] = vote
+		}
 	}
+
 	for _, vv := range r.votes {
 		if vv {
 			granted++

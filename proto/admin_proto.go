@@ -559,16 +559,16 @@ type LimitInfo struct {
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionType string
-	PartitionId   uint64
-	PartitionSize int
-	VolumeId      string
-	IsRandomWrite bool
-	Members       []Peer
-	Learners      []Learner
-	Hosts         []string
-	CreateType    int
-	VolumeHAType  CrossRegionHAType
+	PartitionType  string
+	PartitionId    uint64
+	PartitionSize  int
+	VolumeId       string
+	IsRandomWrite  bool
+	Members        []Peer
+	Learners       []Learner
+	Hosts          []string
+	CreateType     int
+	VolumeHAType   CrossRegionHAType
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
@@ -897,8 +897,6 @@ func NewAtomicString(newValue string) AtomicString {
 	as.Store(newValue)
 	return as
 }
-
-
 
 // DataPartitionsView defines the view of a data partition
 type DataPartitionsView struct {

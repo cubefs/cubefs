@@ -53,8 +53,8 @@ const (
 	ValidateCrcInterval      = 20 * RepairInterval
 	RandomWriteType          = 2
 	AppendWriteType          = 1
-	BaseExtentIDPersistStep = 500
-	BaseExtentIDSyncStep    = 400
+	BaseExtentIDPersistStep  = 500
+	BaseExtentIDSyncStep     = 400
 
 	LoadInProgress int32 = 0
 	LoadFinish     int32 = 1
@@ -143,6 +143,7 @@ type ExtentStore struct {
 	verifyExtentFp                    *os.File
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
 	loadStatus                        int32
+	loadMux                           sync.Mutex
 	normalExtentDeleteMap             sync.Map
 }
 
@@ -200,6 +201,12 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 		atomic.StoreInt32(&s.loadStatus, LoadInProgress)
 	}
 	return
+}
+
+func (s *ExtentStore) WalkExtentsInfo(f func(info *ExtentInfoBlock)) {
+	s.infoStore.Range(func(extentID uint64, ei *ExtentInfoBlock) {
+		f(ei)
+	})
 }
 
 // SnapShot returns the information of all the extents on the current data partition.
@@ -320,7 +327,15 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 	return nil
 }
 
-func (s *ExtentStore) AsyncLoadExtentSize() {
+// Load 加载存储引擎剩余未加载的必要信息.
+func (s *ExtentStore) Load() {
+
+	s.loadMux.Lock()
+	defer s.loadMux.Unlock()
+
+	if atomic.LoadInt32(&s.loadStatus) == LoadFinish {
+		return
+	}
 
 	s.infoStore.Range(func(extentID uint64, ei *ExtentInfoBlock) {
 		if proto.IsTinyExtent(extentID) {
@@ -462,7 +477,7 @@ func (s *ExtentStore) Close() {
 
 	// Release cache
 	s.cache.Flush()
-	s.cache.Clear()
+	s.cache.Close()
 	s.tinyExtentDeleteFp.Sync()
 	s.tinyExtentDeleteFp.Close()
 	s.normalExtentDeleteFp.Sync()
@@ -865,6 +880,7 @@ func (s *ExtentStore) IsRecentDelete(extentID uint64) (deleted bool) {
 	_, ok := s.normalExtentDeleteMap.Load(extentID)
 	return ok
 }
+
 // GetExtentCount returns the number of extents in the extentInfoMap
 func (s *ExtentStore) GetExtentCount() (count int) {
 	return int(atomic.LoadInt64(&s.extentCnt))
@@ -1073,15 +1089,16 @@ func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
 	s.cache.ForceEvict(ratio)
 }
 
-func (s *ExtentStore) ForceFlushAllFD() (cnt int) {
-	return s.cache.FlushAllFD()
+// Flush 强制下刷存储引擎当前所有打开的FD，保证这些FD的数据在内核PageCache里的脏页全部回写.
+func (s *ExtentStore) Flush() (cnt int) {
+	return s.cache.Flush()
 }
 
 func (s *ExtentStore) EvictExpiredNormalExtentDeleteCache(expireTime int64) {
 	var count int
 	s.normalExtentDeleteMap.Range(func(key, value interface{}) bool {
 		timeDelete := value.(int64)
-		if timeDelete < time.Now().Unix() - expireTime {
+		if timeDelete < time.Now().Unix()-expireTime {
 			s.normalExtentDeleteMap.Delete(key)
 			count++
 		}

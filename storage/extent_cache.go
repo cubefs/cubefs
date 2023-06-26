@@ -83,7 +83,6 @@ func NewExtentCache(capacity int, ttl time.Duration, ln CacheListener) *ExtentCa
 
 // Put puts an extent object into the cache.
 func (cache *ExtentCache) Put(e *Extent) {
-	var evictedExtents []*Extent
 	cache.lock.Lock()
 	item := &ExtentMapItem{
 		e:            e,
@@ -91,7 +90,7 @@ func (cache *ExtentCache) Put(e *Extent) {
 		latestActive: time.Now().UnixNano(),
 	}
 	cache.extentMap[e.extentID] = item
-	evictedExtents = cache.evict()
+	var evictedExtents = cache.evict()
 	cache.lock.Unlock()
 
 	cache.ln.OnEvent(CacheEvent_Add, e)
@@ -136,8 +135,8 @@ func (cache *ExtentCache) Del(extentID uint64) {
 	}
 }
 
-// Clear closes all the extents stored in the cache.
-func (cache *ExtentCache) Clear() {
+// Close closes all the extents stored in the cache.
+func (cache *ExtentCache) Close() {
 	var evictedExtents []*Extent
 	cache.lock.Lock()
 	for e := cache.extentList.Front(); e != nil; {
@@ -165,20 +164,26 @@ func (cache *ExtentCache) Size() int {
 }
 
 // evict方法用于从cache中释放超出capacity容积限制的extent。该方法不保证并发安全。
-func (cache *ExtentCache) evict() (evicts []*Extent) {
+func (cache *ExtentCache) evict() []*Extent {
 	if cache.capacity <= 0 {
-		return
+		return nil
 	}
 	needRemove := cache.extentList.Len() - cache.capacity
+	if needRemove <= 0 {
+		return nil
+	}
+	var evicts = make([]*Extent, needRemove)
+	var count = 0
 	for i := 0; i < needRemove; i++ {
 		if e := cache.extentList.Front(); e != nil {
-			front := e.Value.(*Extent)
+			var front = e.Value.(*Extent)
 			delete(cache.extentMap, front.extentID)
 			cache.extentList.Remove(e)
-			evicts = append(evicts, front)
+			evicts[i] = front
+			count++
 		}
 	}
-	return
+	return evicts[:count]
 }
 
 func (cache *ExtentCache) EvictExpired() {
@@ -186,33 +191,38 @@ func (cache *ExtentCache) EvictExpired() {
 		return
 	}
 	var nowUnixNano = time.Now().UnixNano()
-	var expiredMap = make([]*list.Element, 0)
 
 	// 检查Cache的过期节点
 	cache.lock.RLock()
+	var expiredElements = make([]*list.Element, cache.extentList.Len())
+	var count = 0
 	for element := cache.extentList.Front(); element != nil; element = element.Next() {
-		extent := element.Value.(*Extent)
-		item, has := cache.extentMap[extent.extentID]
+		var extent = element.Value.(*Extent)
+		var item, has = cache.extentMap[extent.extentID]
 		if !has || nowUnixNano-item.latestActive > cache.ttl {
-			expiredMap = append(expiredMap, element)
+			expiredElements[count] = element
+			count++
 			continue
 		}
 		break
 	}
 	cache.lock.RUnlock()
 
-	// 释放过期节点FD
-	var evictExtents []*Extent
-	if len(expiredMap) > 0 {
-		cache.lock.Lock()
-		for _, element := range expiredMap {
-			extent := element.Value.(*Extent)
-			delete(cache.extentMap, extent.extentID)
-			cache.extentList.Remove(element)
-			evictExtents = append(evictExtents, extent)
-		}
-		cache.lock.Unlock()
+	if count == 0 {
+		return
 	}
+
+	// 释放过期节点FD
+	var evictExtents = make([]*Extent, count)
+	cache.lock.Lock()
+	for i := 0; i < count; i++ {
+		var element = expiredElements[i]
+		extent := element.Value.(*Extent)
+		delete(cache.extentMap, extent.extentID)
+		cache.extentList.Remove(element)
+		evictExtents[i] = extent
+	}
+	cache.lock.Unlock()
 	for _, e := range evictExtents {
 		cache.ln.OnEvent(CacheEvent_Evict, e)
 		_ = e.Close(true)
@@ -223,61 +233,54 @@ func (cache *ExtentCache) ForceEvict(ratio Ratio) {
 	if !ratio.Valid() {
 		return
 	}
-	evicts := make([]*list.Element, 0)
 	cache.lock.RLock()
-	evictTotal := int(float64(len(cache.extentMap)) * float64(ratio))
-	count := 0
+	var (
+		evictTotal    = int(float64(len(cache.extentMap)) * float64(ratio))
+		evictElements = make([]*list.Element, evictTotal)
+		count         = 0
+	)
 	for element := cache.extentList.Front(); element != nil; element = element.Next() {
 		if count >= evictTotal {
 			break
 		}
-		evicts = append(evicts, element)
+		evictElements[count] = element
 		count++
 	}
 	cache.lock.RUnlock()
 
-	var evictExtents []*Extent
-	if len(evicts) > 0 {
-		cache.lock.Lock()
-		for _, element := range evicts {
-			extent := element.Value.(*Extent)
-			delete(cache.extentMap, extent.extentID)
-			cache.extentList.Remove(element)
-			evictExtents = append(evictExtents, extent)
-		}
-		cache.lock.Unlock()
+	if count == 0 {
+		return
 	}
+
+	var evictExtents = make([]*Extent, count)
+	cache.lock.Lock()
+	for i := 0; i < count; i++ {
+		var element = evictElements[i]
+		var extent = element.Value.(*Extent)
+		delete(cache.extentMap, extent.extentID)
+		cache.extentList.Remove(element)
+		evictExtents[i] = extent
+	}
+	cache.lock.Unlock()
 	for _, e := range evictExtents {
 		cache.ln.OnEvent(CacheEvent_Evict, e)
 		_ = e.Close(true)
 	}
 }
 
-func (cache *ExtentCache) FlushAllFD() (cnt int) {
-	var extents []*Extent
+func (cache *ExtentCache) Flush() (cnt int) {
 	cache.lock.RLock()
+	var extents = make([]*Extent, cache.extentList.Len())
+	var i int
 	for element := cache.extentList.Front(); element != nil; element = element.Next() {
-		if extent := element.Value.(*Extent); extent.isOccurNewWrite {
-			extents = append(extents, extent)
-		}
+		var extent = element.Value.(*Extent)
+		extents[i] = extent
+		i++
 	}
 	cache.lock.RUnlock()
-	for _, e := range extents {
-		cnt++
+	for _, e := range extents[:i] {
 		_ = e.Flush()
 	}
+	cnt = i
 	return
-}
-
-// Flush synchronizes the extent stored in the cache to the disk.
-func (cache *ExtentCache) Flush() {
-	var extents []*Extent
-	cache.lock.RLock()
-	for _, item := range cache.extentMap {
-		extents = append(extents, item.e)
-	}
-	cache.lock.RUnlock()
-	for _, e := range extents {
-		_ = e.Flush()
-	}
 }

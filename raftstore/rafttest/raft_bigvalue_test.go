@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -14,8 +13,30 @@ var (
 )
 
 func TestPutBigValue(t *testing.T) {
-	servers := initTestServer(peers, true, true, groupNum)
-	f, w := getLogFile("", "putBigValue.log")
+	tests := []RaftTestConfig{
+		{
+			name: "putBigValue_default",
+			mode: StandardMode,
+		},
+		{
+			name: "putBigValue_strict",
+			mode: StrictMode,
+		},
+		{
+			name: "putBigValue_mix",
+			mode: MixMode,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			putBigValue(t, tt.name, tt.mode)
+		})
+	}
+}
+
+func putBigValue(t *testing.T, testName string, mode RaftMode) {
+	servers := initTestServer(peers, true, true, groupNum, mode)
+	f, w := getLogFile("", testName+".log")
 	time.Sleep(time.Second)
 
 	defer func() {
@@ -34,7 +55,7 @@ func TestPutBigValue(t *testing.T) {
 	}
 	dataType = 1
 
-	// 50 partitions: put big data
+	// 10 partitions: put big data
 	var wg sync.WaitGroup
 	wg.Add(groupNum)
 	for i := 1; i <= groupNum; i++ {
@@ -43,13 +64,13 @@ func TestPutBigValue(t *testing.T) {
 			leadServer := leaderMap[raftId]
 			for n := 0; n < putCount; n++ {
 				if err := leadServer.putOneBigData(raftId, dataSize); err != nil {
-					fmt.Printf("raft[%v] put data fail: %v\n", raftId, err)
+					output("raft[%v] put data fail: %v", raftId, err)
 					leadServer = waitElect(servers, raftId, w)
 				}
 			}
 		}(uint64(i))
 	}
-	time.Sleep(5 * time.Second)
+	time.Sleep(1 * time.Second)
 	index := 0
 	for i := 1; i <= groupNum; i++ {
 		s := servers[index]

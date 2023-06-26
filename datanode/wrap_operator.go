@@ -360,6 +360,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PartitionID, p.ExtentID, remote)
 		partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 	}
+	_ = partition.RemoveIssueExtent(p.ExtentID)
 	if err != nil {
 		p.PackErrorBody(ActionMarkDelete, err.Error())
 	} else {
@@ -387,6 +388,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, ext.ExtentId, ext.ExtentOffset, ext.Size, remote)
 			store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+			_ = partition.RemoveIssueExtent(p.ExtentID)
 		}
 	}
 
@@ -526,12 +528,11 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
-	partition := p.Object.(*DataPartition)
-	if err = partition.CheckLeader(p, connect); err != nil {
+	if s.raftStore == nil {
+		err = proto.ErrOperationDisabled
 		return
 	}
 	s.handleExtentRepairReadPacket(p, connect, isRepairRead)
-
 	return
 }
 
@@ -568,6 +569,11 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		}()
 	}
 
+	if partition.CheckIssue(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) && (len(p.Arg) == 0 || p.Arg[0] != 1) {
+		err = proto.ErrOperationDisabled
+		return
+	}
+
 	action := proto.ActionRead
 	if isRepairRead {
 		action = proto.ActionRepairRead
@@ -602,6 +608,9 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 				defer func() {
 					tp.Set(storeErr)
 				}()
+			}
+			if storeErr = partition.checkAndWaitForPendingActionApplied(reply.ExtentID, offset, int64(currReadSize)); storeErr != nil {
+				return storeErr
 			}
 			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead)
 			return storeErr
@@ -1347,8 +1356,7 @@ func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 	if isUpdated {
-		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.Persist(nil); err != nil {
+		if err = dp.ChangeCreateType(proto.NormalCreateDataPartition); err != nil {
 			log.LogErrorf("handlePacketToResetDataPartitionRaftMember dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}

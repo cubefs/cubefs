@@ -19,18 +19,18 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math/rand"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"io"
-	"math/rand"
-	"net"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/tiglabs/raft"
 )
@@ -275,16 +275,12 @@ func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
 }
 
 // CheckLeader checks if itself is the leader during read
-func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (err error) {
-	//  and use another getRaftLeaderAddr() to return the actual address
-	_, ok := dp.IsRaftLeader()
+func (dp *DataPartition) CheckLeader() (addr string, err error) {
+	addr, ok := dp.IsRaftLeader()
 	if !ok {
 		err = raft.ErrNotLeader
-		logContent := fmt.Sprintf("action[ReadCheck] %v.", request.LogMessage(request.GetOpMsg(), connect.RemoteAddr().String(), request.StartT, err))
-		log.LogWarnf(logContent)
 		return
 	}
-
 	return
 }
 
@@ -451,7 +447,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 	}
 	dp.monitorData[proto.ActionOverWrite].UpdateData(uint64(opItem.size))
-
+	_ = dp.issueProcessor.RemoveByRange(opItem.extentID, uint64(opItem.offset), uint64(opItem.size))
 	return
 }
 

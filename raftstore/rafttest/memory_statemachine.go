@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	errNotExists = errors.New("Key not exists.")
+	errNotExists 	= errors.New("Key not exists.")
 )
 
 const NoCheckLinear = "none"
@@ -43,21 +43,24 @@ type subTime struct {
 type checkKV struct {
 	Key, Value       string
 	LastKey, LastVal string
+	IsRollback       bool
 }
 
 type memoryStatemachine struct {
 	sync.RWMutex
-	id      uint64
-	applied uint64
-	raft    *raft.RaftServer
-	data    map[string]string
+	id           uint64
+	applied      uint64
+	raft         *raft.RaftServer
+	data         map[string]string
+	rollbackData map[string]string
 }
 
 func newMemoryStatemachine(id uint64, raft *raft.RaftServer) *memoryStatemachine {
 	return &memoryStatemachine{
-		id:   id,
-		raft: raft,
-		data: make(map[string]string),
+		id:           id,
+		raft:         raft,
+		data:         make(map[string]string),
+		rollbackData: make(map[string]string),
 	}
 }
 
@@ -73,12 +76,36 @@ func (ms *memoryStatemachine) Apply(data []byte, index uint64) (interface{}, err
 		if err := json.Unmarshal(data, &kv); err != nil {
 			return nil, err
 		}
-		if kv.LastKey != NoCheckLinear && kv.LastVal != NoCheckLinear {
-			if val, exist := ms.data[kv.LastKey]; !exist || val != kv.LastVal {
-				return nil, fmt.Errorf("apply err: Key[%v], val[%v], err[%v]", kv.LastKey, kv.LastVal, errNotExists.Error())
+		if kv.IsRollback {
+			value, exist := ms.data[kv.Key]
+			if !exist || kv.Value != value {
+				msg := fmt.Sprintf("rollback key(%v) value(%v) exist(%v) is inconsistent with(%v)", kv.Key, kv.Value, exist, value)
+				panic(msg)
+				return nil, fmt.Errorf(msg)
 			}
+			if _, exist = ms.rollbackData[kv.Key]; exist {
+				msg := fmt.Sprintf("rollback data key(%v) value(%v) is exist", kv.Key, kv.Value)
+				panic(msg)
+				return nil, fmt.Errorf(msg)
+			}
+			ms.rollbackData[kv.Key] = kv.Value
+			delete(ms.data, kv.Key)
+		} else {
+			if kv.LastKey != NoCheckLinear && kv.LastVal != NoCheckLinear {
+				if val, exist := ms.data[kv.LastKey]; !exist || val != kv.LastVal {
+					msg := fmt.Sprintf("apply err: Key[%v], Val[%v], val[%v], exist[%v]", kv.LastKey, kv.LastVal, val, exist)
+					panic(msg)
+					return nil, fmt.Errorf(msg)
+				}
+			}
+			value, exist := ms.data[kv.Key]
+			if exist {
+				msg := fmt.Sprintf("apply err: Key[%v] val[%v] is exist", kv.Key, value)
+				//panic(msg)
+				return nil, fmt.Errorf(msg)
+			}
+			ms.data[kv.Key] = kv.Value
 		}
-		ms.data[kv.Key] = kv.Value
 	}
 
 	ms.applied = index
@@ -92,6 +119,33 @@ func (ms *memoryStatemachine) ApplyMemberChange(confChange *proto.ConfChange, in
 	}()
 
 	return nil, nil
+}
+
+func (ms *memoryStatemachine) AskRollback(original []byte) (rollback []byte, err error) {
+	ms.RLock()
+	defer ms.RUnlock()
+
+	switch dataType {
+	case 0:
+		var kv = &checkKV{}
+		if err = json.Unmarshal(original, &kv); err != nil {
+			return nil, err
+		}
+		_, exist := ms.data[kv.Key]
+		if exist {
+			msg := fmt.Sprintf("rollback key(%v) value(%v) is exist", kv.Key, kv.Value)
+			//panic(msg)
+			return nil, fmt.Errorf(msg)
+		}
+		kv.IsRollback = true
+		if rollback, err = json.Marshal(kv); err != nil {
+			return nil, err
+		}
+	default:
+		rollback = original
+	}
+
+	return rollback, nil
 }
 
 func (ms *memoryStatemachine) Snapshot(recoveryID uint64) (proto.Snapshot, error) {
@@ -150,20 +204,45 @@ func (ms *memoryStatemachine) Get(key string) (string, error) {
 	}
 }
 
+func (ms *memoryStatemachine) GetRollback(key string) (string, error) {
+	ms.RLock()
+	defer ms.RUnlock()
+
+	if v, ok := ms.rollbackData[key]; ok {
+		return v, nil
+	} else {
+		return "", errNotExists
+	}
+}
+
+func (ms *memoryStatemachine) GetLen() (dataLen, rollbackLen int) {
+	ms.RLock()
+	defer ms.RUnlock()
+
+	return len(ms.data), len(ms.rollbackData)
+}
+
 func (ms *memoryStatemachine) Put(key, value, lastKey, lastVal string) error {
 	kv := &checkKV{Key: key, Value: value, LastKey: lastKey, LastVal: lastVal}
 	if data, err := json.Marshal(kv); err != nil {
 		return err
 	} else {
-		//startTime := time.Now().UnixNano() / 1e3
 		resp := ms.raft.Submit(nil, ms.id, data)
 		_, err = resp.Response()
-		//endTime := time.Now().UnixNano() / 1e3
-		//computeTime(ms.id, startTime, endTime)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Put error[%v].\r\n", err))
+			return errors.New(fmt.Sprintf("Put error[%v].", err))
 		}
 		return nil
+	}
+}
+
+func (ms *memoryStatemachine) PutAsync(key, value, lastKey, lastVal string) (future *raft.Future, err error) {
+	kv := &checkKV{Key: key, Value: value, LastKey: lastKey, LastVal: lastVal}
+	if data, err := json.Marshal(kv); err != nil {
+		return nil, err
+	} else {
+		resp := ms.raft.Submit(nil, ms.id, data)
+		return resp, nil
 	}
 }
 
@@ -175,7 +254,7 @@ func (ms *memoryStatemachine) constructBigData(bitSize int) error {
 	resp := ms.raft.Submit(nil, ms.id, bArray)
 	_, err := resp.Response()
 	if err != nil {
-		return errors.New(fmt.Sprintf("Put error[%v].\r\n", err))
+		return errors.New(fmt.Sprintf("Put error[%v].", err))
 	}
 	return nil
 }

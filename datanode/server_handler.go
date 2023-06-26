@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	raftProto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -27,6 +26,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	raftProto "github.com/tiglabs/raft/proto"
 
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/util/cpu"
@@ -190,21 +191,22 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
 	s.space.RangePartitions(func(dp *DataPartition) bool {
 		partition := &struct {
-			ID               uint64                  `json:"id"`
-			Size             int                     `json:"size"`
-			Used             int                     `json:"used"`
-			Status           int                     `json:"status"`
-			Path             string                  `json:"path"`
-			Replicas         []string                `json:"replicas"`
-			CheckCommitLevel FaultOccurredCheckLevel `json:"checkCommitLevel"`
+			ID                    uint64                  `json:"id"`
+			Size                  int                     `json:"size"`
+			Used                  int                     `json:"used"`
+			Status                int                     `json:"status"`
+			Path                  string                  `json:"path"`
+			Replicas              []string                `json:"replicas"`
+			NeedServerFaultCheck  bool                    `json:"needServerFaultCheck"`
+			ServerFaultCheckLevel FaultOccurredCheckLevel `json:"serverFaultCheckLevel"`
 		}{
-			ID:               dp.partitionID,
-			Size:             dp.Size(),
-			Used:             dp.Used(),
-			Status:           dp.Status(),
-			Path:             dp.Path(),
-			Replicas:         dp.getReplicaClone(),
-			CheckCommitLevel: dp.serverFaultOccurredCheckLevel,
+			ID:                    dp.partitionID,
+			Size:                  dp.Size(),
+			Used:                  dp.Used(),
+			Status:                dp.Status(),
+			Path:                  dp.Path(),
+			Replicas:              dp.getReplicaClone(),
+			ServerFaultCheckLevel: dp.serverFaultCheckLevel,
 		}
 		partitions = append(partitions, partition)
 		return true

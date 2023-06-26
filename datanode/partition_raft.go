@@ -36,9 +36,24 @@ import (
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/holder"
 	"github.com/cubefs/cubefs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
 )
+
+type extentAction struct {
+	extentID uint64
+	offset   int64
+	size     int64
+}
+
+func (a *extentAction) Overlap(o holder.Action) bool {
+	other, is := o.(*extentAction)
+	return is &&
+		a.extentID == other.extentID &&
+		a.offset < other.offset+other.size &&
+		other.offset < a.offset+a.size
+}
 
 type dataPartitionCfg struct {
 	VolName       string              `json:"vol_name"`
@@ -138,16 +153,30 @@ func (dp *DataPartition) startRaft() (err error) {
 		return
 	}
 
+	var fsm = &raftstore.FunctionalPartitionFsm{
+		ApplyFunc:              dp.handleRaftApply,
+		ApplyMemberChangeFunc:  dp.handleRaftApplyMemberChange,
+		SnapshotFunc:           dp.handleRaftSnapshot,
+		AskRollbackFunc:        dp.handleRaftAskRollback,
+		ApplySnapshotFunc:      dp.handleRaftApplySnapshot,
+		HandleFatalEventFunc:   dp.handleRaftFatalEvent,
+		HandleLeaderChangeFunc: dp.handleRaftLeaderChange,
+	}
+
 	pc := &raftstore.PartitionConfig{
 		ID:                 dp.partitionID,
 		Peers:              peers,
 		Learners:           learners,
-		SM:                 dp,
+		SM:                 fsm,
 		WalPath:            dp.path,
 		StartCommit:        maxCommitID,
 		GetStartIndex:      getStartIndex,
-		WALContinuityCheck: dp.isNeedFaultOccurredCheck(),
-		WALContinuityFix:   dp.isNeedFaultOccurredCheck(),
+		WALContinuityCheck: dp.isNeedFaultCheck(),
+		WALContinuityFix:   dp.isNeedFaultCheck(),
+		Mode:               raftstore.StrictMode,
+		StorageListener: raftstore.NewStorageListenerBuilder().
+			ListenStoredEntry(dp.listenStoredRaftLogEntry).
+			Build(),
 	}
 	dp.raftPartition = dp.config.RaftStore.CreatePartition(pc)
 
@@ -164,7 +193,7 @@ func (dp *DataPartition) getMaxCommitID(ctx context.Context) (maxID uint64, err 
 			log.LogErrorf("getMaxCommitID, partition:%v, error:%v", dp.partitionID, err)
 		}
 	}()
-	minReply := dp.getCommitMinReply()
+	minReply := dp.getServerFaultCheckQuorum()
 	if minReply == 0 {
 		log.LogDebugf("start partition(%v), skip get max commit id", dp.partitionID)
 		return
@@ -261,7 +290,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			}
 			if minAppliedID, lastTruncateID, appliedID := dp.minAppliedID, dp.applyStatus.LastTruncate(), dp.applyStatus.Applied(); appliedID >= minAppliedID && minAppliedID > lastTruncateID { // Has changed
 				if snap, success := dp.applyStatus.AdvanceNextTruncate(minAppliedID); success {
-					if err := dp.Persist(&snap); err != nil {
+					if err := dp.persist(&snap); err != nil {
 						log.LogErrorf("partition(%v) scheduled persist all failed: %v", dp.partitionID, err)
 						truncateRaftLogTimer.Reset(time.Minute)
 						continue
@@ -293,7 +322,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 			err = nil
 			if dp.isLeader { // primary does not need to wait repair
 				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-				if err = dp.Persist(nil); err != nil {
+				if err = dp.persist(nil); err != nil {
 					log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
 					continue
@@ -348,7 +377,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-			if err = dp.Persist(nil); err != nil {
+			if err = dp.persist(nil); err != nil {
 				log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
@@ -993,7 +1022,7 @@ func (dp *DataPartition) getRemoteReplicaCommitID(ctx context.Context) (commitID
 }
 
 // Get all replica applied ids
-func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (appliedIDMap map[string]uint64, replyNum uint8) {
+func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context, timeoutNs, readTimeoutNs int64) (appliedIDMap map[string]uint64, replyNum uint8) {
 	hosts := dp.getReplicaClone()
 	if len(hosts) == 0 {
 		log.LogErrorf("action[getAllReplicaAppliedID] partition(%v) replicas is nil.", dp.partitionID)
@@ -1014,7 +1043,7 @@ func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context) (appliedIDM
 			if dp.IsLocalAddress(curAddr) {
 				appliedID = dp.applyStatus.Applied()
 			} else {
-				appliedID, err = dp.getRemoteAppliedID(ctx, curAddr)
+				appliedID, err = dp.getRemoteAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
 			}
 			ok := false
 			lock.Lock()
@@ -1059,9 +1088,9 @@ func (dp *DataPartition) getLocalAppliedID() {
 }
 
 // Get target members' applied id
-func (dp *DataPartition) getRemoteAppliedID(ctx context.Context, target string) (appliedID uint64, err error) {
+func (dp *DataPartition) getRemoteAppliedID(ctx context.Context, target string, timeoutNs, readTimeoutNs int64) (appliedID uint64, err error) {
 	p := NewPacketToGetAppliedID(ctx, dp.partitionID)
-	if err = dp.sendTcpPacket(target, p); err != nil {
+	if err = dp.sendTcpPacket(target, p, timeoutNs, readTimeoutNs); err != nil {
 		return
 	}
 	appliedID = binary.BigEndian.Uint64(p.Data[0:8])
@@ -1069,7 +1098,7 @@ func (dp *DataPartition) getRemoteAppliedID(ctx context.Context, target string) 
 	return
 }
 
-func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet) (err error) {
+func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet, timeout, readTimeout int64) (err error) {
 	var conn *net.TCPConn
 	start := time.Now().UnixNano()
 	defer func() {
@@ -1084,11 +1113,11 @@ func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet) (err error
 		return
 	}
 	defer gConnPool.PutConnect(conn, true)
-	err = p.WriteToConn(conn, proto.WriteDeadlineTime) // write command to the remote host
+	err = p.WriteToConnNs(conn, timeout) // write command to the remote host
 	if err != nil {
 		return
 	}
-	err = p.ReadFromConn(conn, 60)
+	err = p.ReadFromConnNs(conn, readTimeout)
 	if err != nil {
 		return
 	}
@@ -1123,7 +1152,7 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 		return
 	}
 
-	allAppliedID, replyNum := dp.getAllReplicaAppliedID(ctx)
+	allAppliedID, replyNum := dp.getAllReplicaAppliedID(ctx, proto.WriteDeadlineTime*1e9, 60*1e9)
 	if replyNum == 0 {
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
 		return
@@ -1143,12 +1172,16 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 	return
 }
 
-func (dp *DataPartition) isNeedFaultOccurredCheck() bool {
-	return dp.serverFaultOccurredCheckLevel == CheckQuorumCommitID || dp.serverFaultOccurredCheckLevel == CheckAllCommitID
+func (dp *DataPartition) isNeedFaultCheck() bool {
+	return dp.needServerFaultCheck
 }
 
-func (dp *DataPartition) getCommitMinReply() uint8 {
-	switch dp.serverFaultOccurredCheckLevel {
+func (dp *DataPartition) setNeedFaultCheck(need bool) {
+	dp.needServerFaultCheck = need
+}
+
+func (dp *DataPartition) getServerFaultCheckQuorum() uint8 {
+	switch dp.serverFaultCheckLevel {
 	case CheckAllCommitID:
 		return uint8(len(dp.replicas)) - 1
 	case CheckQuorumCommitID:
@@ -1156,4 +1189,43 @@ func (dp *DataPartition) getCommitMinReply() uint8 {
 	default:
 		return 0
 	}
+}
+
+func (dp *DataPartition) listenStoredRaftLogEntry(entry *raftproto.Entry) {
+	var command []byte = nil
+	switch entry.Type {
+	case raftproto.EntryNormal:
+		if len(entry.Data) > 0 {
+			command = entry.Data
+		}
+
+	case raftproto.EntryRollback:
+		rollback := new(raftproto.Rollback)
+		rollback.Decode(entry.Data)
+		if len(rollback.Data) > 0 {
+			command = rollback.Data
+		}
+
+	default:
+	}
+
+	if command != nil && len(command) > 0 {
+		if opItem, err := UnmarshalRandWriteRaftLog(entry.Data); err == nil && opItem.opcode == proto.OpRandomWrite {
+			dp.actionHolder.Register(entry.Index, &extentAction{
+				extentID: opItem.extentID,
+				offset:   opItem.offset,
+				size:     opItem.size,
+			})
+		}
+	}
+}
+
+func (dp *DataPartition) checkAndWaitForPendingActionApplied(extentID uint64, offset, size int64) (err error) {
+	var ctx, _ = context.WithTimeout(context.Background(), time.Second*3)
+	err = dp.actionHolder.Wait(ctx, &extentAction{
+		extentID: extentID,
+		offset:   offset,
+		size:     size,
+	})
+	return
 }
