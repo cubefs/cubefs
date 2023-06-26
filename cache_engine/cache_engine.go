@@ -233,6 +233,9 @@ func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) 
 }
 
 func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64) (block *CacheBlock, err error) {
+	if allocSize == 0 {
+		return nil, fmt.Errorf("alloc size is zero")
+	}
 	var key = GenCacheBlockKey(volume, inode, fixedOffset, version)
 	lock := c.getCacheLock(key)
 	lock.Lock()

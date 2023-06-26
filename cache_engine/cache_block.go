@@ -126,16 +126,11 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 	if err = cb.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
-	/*	if err = cb.checkWriteParameter(offset, size); err != nil {
-		return
-	}*/
 	if _, err = cb.file.WriteAt(data[:size], offset); err != nil {
 		return
 	}
-	defer func() {
-		atomic.StoreInt64(&cb.modifyTime, time.Now().Unix())
-		cb.usedSize = int64(math.Max(float64(cb.usedSize), float64(offset+size)))
-	}()
+	atomic.StoreInt64(&cb.modifyTime, time.Now().Unix())
+	cb.usedSize = int64(math.Max(float64(cb.usedSize), float64(offset+size)))
 	return
 }
 
@@ -144,17 +139,16 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	if err = cb.waitCacheReady(ctx); err != nil {
 		return
 	}
-	if offset >= cb.allocSize {
-		return 0, nil
+	if offset >= cb.allocSize || offset > cb.usedSize {
+		return 0, fmt.Errorf("invalid read, offset:%d, allocSize:%d, usedSize:%d", offset, cb.allocSize, cb.usedSize)
 	}
-	realSize := cb.allocSize - offset
+	realSize := cb.usedSize - offset
 	if size < realSize {
 		realSize = size
 	}
 	if _, err = cb.file.ReadAt(data[:realSize], offset); err != nil {
 		return
 	}
-	//crc = crc32.ChecksumIEEE(data)
 	return
 }
 
@@ -164,13 +158,6 @@ func (cb *CacheBlock) checkOffsetAndSize(offset, size int64) error {
 	}
 	if offset >= cb.allocSize || size == 0 {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v allocSize:%d", offset, size, cb.allocSize))
-	}
-	return nil
-}
-
-func (cb *CacheBlock) checkWriteParameter(offset, size int64) error {
-	if offset != cb.usedSize {
-		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, cb.usedSize))
 	}
 	return nil
 }
@@ -248,8 +235,11 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, cancel context.CancelFu
 			localStart := int64(task.FileOffset) & (proto.CACHE_BLOCK_SIZE - 1)
 			writeCacheAfterRead := func(data []byte, size int64) error {
 				e := cb.WriteAt(data, localStart, size)
+				if e != nil {
+					return e
+				}
 				localStart += size
-				return e
+				return nil
 			}
 			if log.IsDebugEnabled() {
 				log.LogDebugf("action[prepareSource] write cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, localStart:%d", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, localStart)
@@ -294,12 +284,11 @@ func (cb *CacheBlock) markReady() {
 func computeAllocSize(req *proto.CacheRequest) (alloc uint64) {
 	for _, s := range req.Sources {
 		blockOffset := s.FileOffset & (proto.CACHE_BLOCK_SIZE - 1)
-		blockEnd := blockOffset + s.Size_
+		blockEnd := blockOffset + s.Size_ - 1
 		pageOffset := blockOffset / proto.PageSize
 		pageEnd := blockEnd / proto.PageSize
-		if pageEnd&(proto.PageSize-1) == 0 {
-			pageEnd -= 1
-			return
+		if blockEnd < blockOffset {
+			return 0
 		}
 		for i := pageOffset; i <= pageEnd; i++ {
 			alloc += proto.PageSize
