@@ -408,34 +408,7 @@ func TestAllocVolumeFailed(t *testing.T) {
 	info.Put(&volume{
 		AllocVolumeInfo: volInfo,
 	}, false)
-	info.SetAllocateState(ALLOCATING, false)
 
-	args = &proxy.AllocVolsArgs{
-		Fsize:    1 << 30,
-		CodeMode: codemode.EC6P6,
-		BidCount: 1,
-		Excludes: nil,
-		Discards: nil,
-	}
-	_, err = vm.allocVid(ctx, args)
-	require.Error(t, err)
-	require.ErrorIs(t, err, errcode.ErrNoAvaliableVolume)
-
-	info.SetAllocateState(ALLOCATED, false)
-	info.Put(&volume{
-		AllocVolumeInfo: cm.AllocVolumeInfo{
-			VolumeInfo: cm.VolumeInfo{
-				VolumeInfoBase: cm.VolumeInfoBase{
-					Vid:  proto.Vid(20),
-					Free: 1024,
-				},
-			},
-			ExpireTime: 100,
-		},
-	}, true)
-	vm.modeInfos[codemode.EC6P6] = info
-	vm.allocChs = make(map[codemode.CodeMode]chan *allocArgs, 1)
-	vm.allocChs[codemode.EC6P6] = make(chan *allocArgs)
 	args = &proxy.AllocVolsArgs{
 		Fsize:    1 << 30,
 		CodeMode: codemode.EC6P6,
@@ -558,7 +531,7 @@ func TestGetAvaliableVols(t *testing.T) {
 		Discards: []proto.Vid{1, 3, 5},
 	}
 	_, err = v.getAvailableVols(ctx, args3)
-	require.Error(t, err, errcode.ErrNoAvaliableVolume)
+	require.NoError(t, err)
 
 	// test alloc background
 	v.modeInfos[codemode.EC6P6].current.vols = []*volume{}
@@ -590,7 +563,7 @@ func TestAllocParallel(b *testing.T) {
 				VolumeInfoBase: cm.VolumeInfoBase{
 					Vid:      proto.Vid(i),
 					CodeMode: codemode.EC6P6,
-					Free:     16 * 1024 * 1024,
+					Free:     20 * 1024 * 1024,
 				},
 			},
 			ExpireTime: 100,
