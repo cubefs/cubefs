@@ -74,7 +74,7 @@ func newFlashNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 	var showAllFlashNodes bool
 	var cmd = &cobra.Command{
-		Use:   CliOpList ,
+		Use:   CliOpList,
 		Short: "list all flash nodes",
 		Args:  cobra.MinimumNArgs(0),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -104,7 +104,7 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().BoolVar(&showAllFlashNodes, "showAllFlashNodes", false, fmt.Sprintf("show all flashNodes contain notActive or notEnable"))
+	cmd.Flags().BoolVar(&showAllFlashNodes, "showAllFlashNodes", true, fmt.Sprintf("show all flashNodes contain notActive or notEnable"))
 	return cmd
 }
 
