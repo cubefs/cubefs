@@ -302,27 +302,27 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			return
 		}
 
-		iter.txTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if si.SnapFormatVersion == SnapFormatVersion_1 {
+			iter.txTree.Ascend(func(i BtreeItem) bool {
+				return produceItem(i)
+			})
+			if checkClose() {
+				return
+			}
 
-		if checkClose() {
-			return
-		}
+			iter.txRbInodeTree.Ascend(func(i BtreeItem) bool {
+				return produceItem(i)
+			})
+			if checkClose() {
+				return
+			}
 
-		iter.txRbInodeTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
-
-		if checkClose() {
-			return
-		}
-
-		iter.txRbDentryTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
-		if checkClose() {
-			return
+			iter.txRbDentryTree.Ascend(func(i BtreeItem) bool {
+				return produceItem(i)
+			})
+			if checkClose() {
+				return
+			}
 		}
 
 		// process extent del files
