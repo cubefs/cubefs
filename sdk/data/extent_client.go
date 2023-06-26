@@ -771,11 +771,14 @@ func (c *ExtentClient) UmpJmtpAddr() string {
 }
 
 func (c *ExtentClient) RemoteCacheBloom() *bloom.BloomFilter {
-	return c.dataWrapper.remoteCache.GetRemoteCacheBloom()
+	if c.dataWrapper.remoteCache != nil {
+		return c.dataWrapper.remoteCache.GetRemoteCacheBloom()
+	}
+	return nil
 }
 
 func (c *ExtentClient) GetInodeBloomStatus(ino uint64) bool {
-	cacheBloom := c.dataWrapper.remoteCache.GetRemoteCacheBloom()
+	cacheBloom := c.RemoteCacheBloom()
 	if cacheBloom == nil {
 		return false
 	}

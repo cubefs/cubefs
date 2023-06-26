@@ -67,13 +67,11 @@ type testSlot struct {
 }
 
 func BenchmarkPbMarshal(b *testing.B) {
-	data := make([]byte, 4*proto.CACHE_BLOCK_SIZE, 4*proto.CACHE_BLOCK_SIZE)
 	source := &proto.DataSource{}
 	cReadReq1 := &proto.CacheReadRequest{
 		CacheRequest: &proto.CacheRequest{FixedFileOffset: proto.CACHE_BLOCK_SIZE, Sources: []*proto.DataSource{source}},
 		Offset:       0,
 		Size_:        4 * unit.MB,
-		Data:         data[proto.CACHE_BLOCK_SIZE : 2*proto.CACHE_BLOCK_SIZE],
 	}
 	var testF = func() {
 		packet := common.NewCachePacket(ctx, 1, proto.OpCacheRead)

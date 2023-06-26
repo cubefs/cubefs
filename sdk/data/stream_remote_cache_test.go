@@ -3,7 +3,6 @@ package data
 import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/flash"
-	"github.com/cubefs/cubefs/util/unit"
 	"reflect"
 	"testing"
 )
@@ -23,7 +22,7 @@ func Test_getCacheReadRequests(t *testing.T) {
 		CacheReadRequest: proto.CacheReadRequest{
 			CacheRequest: cRequests[0],
 			Offset:       0,
-			Size_:        4 * unit.MB,
+			Size_:        proto.CACHE_BLOCK_SIZE,
 		},
 		Data: data[0:proto.CACHE_BLOCK_SIZE],
 	}
@@ -31,81 +30,57 @@ func Test_getCacheReadRequests(t *testing.T) {
 		CacheReadRequest: proto.CacheReadRequest{
 			CacheRequest: cRequests[1],
 			Offset:       0,
-			Size_:        4 * unit.MB,
+			Size_:        1024,
 		},
-		Data: data[proto.CACHE_BLOCK_SIZE : 2*proto.CACHE_BLOCK_SIZE],
+		Data: data[proto.CACHE_BLOCK_SIZE : proto.CACHE_BLOCK_SIZE+1024],
 	}
 	cReadReq2 := &flash.CacheReadRequest{
 		CacheReadRequest: proto.CacheReadRequest{
-			CacheRequest: cRequests[2],
+			CacheRequest: cRequests[1],
 			Offset:       0,
-			Size_:        4 * unit.MB,
+			Size_:        proto.CACHE_BLOCK_SIZE,
 		},
-		Data: data[2*proto.CACHE_BLOCK_SIZE : 3*proto.CACHE_BLOCK_SIZE],
+		Data: data[1*proto.CACHE_BLOCK_SIZE : 2*proto.CACHE_BLOCK_SIZE],
 	}
 	cReadReq3 := &flash.CacheReadRequest{
 		CacheReadRequest: proto.CacheReadRequest{
-			CacheRequest: cRequests[3],
+			CacheRequest: cRequests[2],
 			Offset:       0,
-			Size_:        1 * unit.MB,
+			Size_:        proto.CACHE_BLOCK_SIZE,
 		},
-		Data: data[3*proto.CACHE_BLOCK_SIZE : 3*proto.CACHE_BLOCK_SIZE+unit.MB],
+		Data: data[2*proto.CACHE_BLOCK_SIZE : 3*proto.CACHE_BLOCK_SIZE],
 	}
 	cReadReq4 := &flash.CacheReadRequest{
 		CacheReadRequest: proto.CacheReadRequest{
 			CacheRequest: cRequests[3],
 			Offset:       0,
-			Size_:        1024,
+			Size_:        proto.CACHE_BLOCK_SIZE - 1024,
 		},
-		Data: data[3*proto.CACHE_BLOCK_SIZE : 3*proto.CACHE_BLOCK_SIZE+1024],
+		Data: data[3*proto.CACHE_BLOCK_SIZE : 4*proto.CACHE_BLOCK_SIZE-1024],
 	}
 	cReadReq5 := &flash.CacheReadRequest{
 		CacheReadRequest: proto.CacheReadRequest{
-			CacheRequest: cRequests[0],
-			Offset:       1 * unit.MB,
-			Size_:        3 * unit.MB,
+			CacheRequest: cRequests[3],
+			Offset:       0,
+			Size_:        proto.CACHE_BLOCK_SIZE,
 		},
-		Data: data[0 : 3*unit.MB],
+		Data: data[3*proto.CACHE_BLOCK_SIZE : 4*proto.CACHE_BLOCK_SIZE],
 	}
 	cReadReq6 := &flash.CacheReadRequest{
 		CacheReadRequest: proto.CacheReadRequest{
-			CacheRequest: cRequests[3],
-			Offset:       0,
-			Size_:        1*unit.MB - 1024,
+			CacheRequest: cRequests[1],
+			Offset:       1024,
+			Size_:        proto.CACHE_BLOCK_SIZE - 1024,
 		},
-		Data: data[11*unit.MB : 12*unit.MB-1024],
+		Data: data[proto.CACHE_BLOCK_SIZE+1024 : 2*proto.CACHE_BLOCK_SIZE],
 	}
 	cReadReq7 := &flash.CacheReadRequest{
 		CacheReadRequest: proto.CacheReadRequest{
 			CacheRequest: cRequests[0],
-			Offset:       2 * unit.MB,
-			Size_:        2 * unit.MB,
+			Offset:       1024,
+			Size_:        proto.CACHE_BLOCK_SIZE - 1024,
 		},
-		Data: data[0 : 2*unit.MB],
-	}
-	cReadReq8 := &flash.CacheReadRequest{
-		CacheReadRequest: proto.CacheReadRequest{
-			CacheRequest: cRequests[1],
-			Offset:       1 * unit.MB,
-			Size_:        1 * unit.MB,
-		},
-		Data: data[0 : 1*unit.MB],
-	}
-	cReadReq9 := &flash.CacheReadRequest{
-		CacheReadRequest: proto.CacheReadRequest{
-			CacheRequest: cRequests[1],
-			Offset:       1 * unit.MB,
-			Size_:        3 * unit.MB,
-		},
-		Data: data[0 : 3*unit.MB],
-	}
-	cReadReq10 := &flash.CacheReadRequest{
-		CacheReadRequest: proto.CacheReadRequest{
-			CacheRequest: cRequests[0],
-			Offset:       4096,
-			Size_:        proto.CACHE_BLOCK_SIZE - 4096,
-		},
-		Data: data[0 : proto.CACHE_BLOCK_SIZE-4096],
+		Data: data[1024:proto.CACHE_BLOCK_SIZE],
 	}
 
 	testCases := []struct {
@@ -115,40 +90,34 @@ func Test_getCacheReadRequests(t *testing.T) {
 		expect        []*flash.CacheReadRequest
 	}{
 		{
-			cacheRequests: cRequests,
+			cacheRequests: cRequests[:2],
 			offset:        0,
-			size:          12*unit.MB + 1024,
-			expect:        []*flash.CacheReadRequest{cReadReq0, cReadReq1, cReadReq2, cReadReq4},
-		},
-		{
-			cacheRequests: cRequests,
-			offset:        1 * unit.MB,
-			size:          12*unit.MB - 1024,
-			expect:        []*flash.CacheReadRequest{cReadReq5, cReadReq1, cReadReq2, cReadReq6},
-		},
-		{
-			cacheRequests: cRequests,
-			offset:        2 * unit.MB,
-			size:          11 * unit.MB,
-			expect:        []*flash.CacheReadRequest{cReadReq7, cReadReq1, cReadReq2, cReadReq3},
-		},
-		{
-			cacheRequests: cRequests[1:2],
-			offset:        5 * unit.MB,
-			size:          1 * unit.MB,
-			expect:        []*flash.CacheReadRequest{cReadReq8},
+			size:          proto.CACHE_BLOCK_SIZE + 1024,
+			expect:        []*flash.CacheReadRequest{cReadReq0, cReadReq1},
 		},
 		{
 			cacheRequests: cRequests[1:],
-			offset:        5 * unit.MB,
-			size:          8*unit.MB - 1024,
-			expect:        []*flash.CacheReadRequest{cReadReq9, cReadReq2, cReadReq6},
+			offset:        proto.CACHE_BLOCK_SIZE,
+			size:          3*proto.CACHE_BLOCK_SIZE - 1024,
+			expect:        []*flash.CacheReadRequest{cReadReq2, cReadReq3, cReadReq4},
 		},
 		{
-			cacheRequests: cRequests[:3],
-			offset:        4096,
-			size:          12*unit.MB - 4096,
-			expect:        []*flash.CacheReadRequest{cReadReq10, cReadReq1, cReadReq2},
+			cacheRequests: cRequests[2:],
+			offset:        2 * proto.CACHE_BLOCK_SIZE,
+			size:          2*proto.CACHE_BLOCK_SIZE + 1024,
+			expect:        []*flash.CacheReadRequest{cReadReq3, cReadReq5},
+		},
+		{
+			cacheRequests: cRequests[1:2],
+			offset:        proto.CACHE_BLOCK_SIZE + 1024,
+			size:          proto.CACHE_BLOCK_SIZE,
+			expect:        []*flash.CacheReadRequest{cReadReq6},
+		},
+		{
+			cacheRequests: cRequests[0:1],
+			offset:        1024,
+			size:          proto.CACHE_BLOCK_SIZE - 1024,
+			expect:        []*flash.CacheReadRequest{cReadReq7},
 		},
 	}
 

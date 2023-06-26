@@ -35,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -136,11 +135,6 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 }
 
 func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, req *CacheReadRequest) (read int, err error) {
-	var tp = exporter.NewVolumeTPUs("fgRead", rc.volname)
-	defer func() {
-		tp.Set(err)
-	}()
-
 	var (
 		conn  *net.TCPConn
 		moved bool
@@ -261,23 +255,18 @@ func (rc *RemoteCache) Stop() {
 }
 
 func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
-	if rc != nil {
-		return rc.cacheBloom
-	}
-	return nil
+	return rc.cacheBloom
 }
 
 func (rc *RemoteCache) ResetConnConfig(timeouts int64) {
-	if rc != nil {
-		config := rc.connConfig
-		if timeouts > 0 {
-			log.LogInfof("ResetConnConfig: %v", timeouts)
-			if timeouts != config.ReadTimeoutNs {
-				atomic.StoreInt64(&config.ReadTimeoutNs, timeouts)
-			}
-			if timeouts != config.WriteTimeoutNs {
-				atomic.StoreInt64(&config.WriteTimeoutNs, timeouts)
-			}
+	config := rc.connConfig
+	if timeouts > 0 {
+		log.LogInfof("ResetConnConfig: %v", timeouts)
+		if timeouts != config.ReadTimeoutNs {
+			atomic.StoreInt64(&config.ReadTimeoutNs, timeouts)
+		}
+		if timeouts != config.WriteTimeoutNs {
+			atomic.StoreInt64(&config.WriteTimeoutNs, timeouts)
 		}
 	}
 }

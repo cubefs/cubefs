@@ -265,7 +265,6 @@ func (w *Wrapper) initRemoteCache() (err error) {
 	if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
 		w.cacheBoostPath = ""
 	}
-	//w.remoteCache.ResetConnConfig(w.connTimeoutUs)
 	return
 }
 
@@ -790,7 +789,9 @@ func (w *Wrapper) updateClientClusterView() (err error) {
 
 	w.setClusterBoostEnable(cf.RemoteCacheBoostEnable)
 	w.setClusterTimeoutUs(cf.NetConnTimeoutUs)
-	w.remoteCache.ResetConnConfig(cf.NetConnTimeoutUs)
+	if w.EnableRemoteCache() && w.remoteCache != nil {
+		w.remoteCache.ResetConnConfig(cf.NetConnTimeoutUs)
+	}
 	return
 }
 

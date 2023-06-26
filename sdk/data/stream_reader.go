@@ -71,10 +71,9 @@ type Streamer struct {
 	writeLock         sync.Mutex
 	pendingPacketList []*common.Packet
 
-	bloomStatus     bool  // bloom状态
-	prepareChanSize int32 // 1024
-	prepareCh       chan *PrepareRequest
-	prepareOnce     sync.Once
+	bloomStatus bool
+	prepareCh   chan *PrepareRequest
+	prepareOnce sync.Once
 }
 
 // NewStreamer returns a new streamer.
