@@ -1271,7 +1271,9 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 		partitionTTL int64
 	)
 
+	c.volMutex.RLock()
 	vol = c.vols[volName]
+	c.volMutex.RUnlock()
 
 	dpReplicaNum := vol.dpReplicaNum
 	zoneName := vol.zoneName
