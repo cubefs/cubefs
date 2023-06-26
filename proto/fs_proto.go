@@ -221,6 +221,15 @@ type TxDentryApplyRequest struct {
 	ApplyFrom   uint32 `json:"from"`
 }
 
+type TxGetInfoRequest struct {
+	TxID string `json:"txid"`
+	Pid  uint64 `json:"pid"`
+}
+
+type TxGetInfoResponse struct {
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName     string `json:"vol"`

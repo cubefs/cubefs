@@ -169,6 +169,7 @@ type OpTransaction interface {
 	TxRollback(req *proto.TxApplyRequest, p *Packet) (err error)
 	TxInodeRollback(req *proto.TxInodeApplyRequest, p *Packet) (err error)
 	TxDentryRollback(req *proto.TxDentryApplyRequest, p *Packet) (err error)
+	TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error)
 }
 
 // OpExtent defines the interface for the extent operations.
