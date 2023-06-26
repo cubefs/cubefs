@@ -20,7 +20,7 @@
 在 `cubefs/cli` 目录下，执行命令 `./cfs-cli --help` 或 `./cfs-cli -h`
 ，可获取CLI的帮助文档。
 
-CLI主要分为六类管理命令：
+CLI主要分为10类管理命令：
 
 | 命令                    | 描述         |
 |-----------------------|------------|
@@ -33,7 +33,7 @@ CLI主要分为六类管理命令：
 | cfs-cli completion    | 生成自动补全命令脚本 |
 | cfs-cli volume, vol   | 卷管理        |
 | cfs-cli user          | 用户管理       |
-
+|cfs-cli quota          | 目录配额管理   |
 ### 集群管理
 
 ``` bash
@@ -206,6 +206,113 @@ Flags：
     --user-type string                      #更新后的用户类型，可选项为normal或admin
     -y, --yes                               #跳过所有问题并设置回答为"yes"
 ```
+
+### quota管理
+::: warning 注意
+目录配额管理为v3.3.0版本新增feature
+:::
+#### create quota
+``` bash
+create paths quota
+
+Usage:
+  cfs-cli quota create [volname] [fullpath1,fullpath2] [flags]
+
+Flags:
+  -h, --help            help for create
+      --maxBytes uint   Specify quota max bytes (default 18446744073709551615)
+      --maxFiles uint   Specify quota max files (default 18446744073709551615)
+```
+创建quota需要指定卷名一个或多个path目录。
+注意：path之间不能重复，以及嵌套。
+
+#### apply quota
+``` bash
+apply quota
+
+Usage:
+  cfs-cli quota apply [volname] [quotaId] [flags]
+
+Flags:
+  -h, --help                       help for apply
+      --maxConcurrencyInode uint   max concurrency set Inodes (default 1000)
+```
+apply quota需要指定卷名以及quotaId，这个接口在创建quota后执行，目的是让quota目录下（包括quota目录自身）的已有文件和目录该quotaId生效。整个创建quota的流程先执行quota create，然后执行quota apply命令。
+注意：如果quota目录下的文件数量很多，则该接口返回时间会比较长
+#### revoke quota
+``` bash
+revoke quota
+
+Usage:
+  cfs-cli quota revoke [volname] [quotaId] [flags]
+
+Flags:
+      --forceInode uint            force revoke quota inode
+  -h, --help                       help for revoke
+      --maxConcurrencyInode uint   max concurrency delete Inodes (default 1000)
+```
+revoke quota需要指定卷名以及quotaId，这个接口在准备删除quota的时候执行，目的是让quota目录下的（包括quota目录自身）的已有文件和目录该quotaId失效。整个删除quota的流程先执行quota revoke，然后通过quota list查询确认USEDFILES和USEDBYTES的值为0，再进行quota delete操作。
+#### delete quota
+``` bash
+delete path quota
+
+Usage:
+  cfs-cli quota delete [volname] [quotaId] [flags]
+
+Flags:
+  -h, --help   help for delete
+  -y, --yes    Do not prompt to clear the quota of inodes
+```
+delete quota需要指定卷名以及quotaId
+#### update quota
+``` bash
+update path quota
+
+Usage:
+  cfs-cli quota update [volname] [quotaId] [flags]
+
+Flags:
+  -h, --help            help for update
+      --maxBytes uint   Specify quota max bytes
+      --maxFiles uint   Specify quota max files
+
+```
+update quota需要指定卷名以及quotaId，目前可以更新的值只有maxBytes和maxFiles
+#### list quota
+``` bash
+list volname all quota
+
+Usage:
+  cfs-cli quota list [volname] [flags]
+
+Flags:
+  -h, --help   help for list
+
+```
+list quota需要指定卷名，遍历出所有该卷的quota信息
+#### listAll quota
+``` bash
+list all volname has quota
+
+Usage:
+  cfs-cli quota listAll [flags]
+
+Flags:
+  -h, --help   help for listAll
+```
+不带任何参数，遍历出所有带quota的卷信息
+#### getInode
+``` bash
+get inode quotaInfo
+
+Usage:
+  cfs-cli quota getInode [volname] [inode] [flags]
+
+Flags:
+  -h, --help   help for getInode
+
+```
+查看具体的某个inode是否带有quota信息
 
 ### 纠删码子系统管理
 
