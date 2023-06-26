@@ -85,6 +85,7 @@ type RemoteCache struct {
 	hostLatency sync.Map
 	flashGroups *btree.BTree
 	allSlots    map[uint32]bool
+	stopOnce    sync.Once
 	stopC       chan struct{}
 	wg          sync.WaitGroup
 	metaWrapper *meta.MetaWrapper
@@ -107,10 +108,8 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 		ReadTimeoutNs:    ReadCacheTimeoutData * int64(time.Second),
 	}
 
-	// When initializing the volume, if the master explicitly responds that the specified
-	// volume does not exist, it will not retry.
 	err := cw.updateFlashGroups()
-	if err == proto.ErrVolNotExists {
+	if err != nil {
 		return nil, err
 	}
 	cw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, cw.connConfig.IdleTimeoutSec, cw.connConfig.ConnectTimeoutNs)
@@ -245,9 +244,11 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 }
 
 func (rc *RemoteCache) Stop() {
-	close(rc.stopC)
-	rc.conns.Close()
-	rc.wg.Wait()
+	rc.stopOnce.Do(func() {
+		close(rc.stopC)
+		rc.conns.Close()
+		rc.wg.Wait()
+	})
 }
 
 func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
@@ -258,9 +259,6 @@ func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
 }
 
 func (rc *RemoteCache) ResetCacheBoostPathToBloom(cacheBoostPath string) bool {
-	if rc == nil {
-		return false
-	}
 	res := true
 	rc.cacheBloom.ClearAll()
 	for _, path := range strings.Split(cacheBoostPath, cacheBoostPathSeparator) {

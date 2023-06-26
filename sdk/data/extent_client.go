@@ -175,7 +175,9 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	if client.metaWrapper != nil {
 		client.metaWrapper.RemoteCacheBloom = client.RemoteCacheBloom
 	}
-	client.dataWrapper.initRemoteCache()
+	if client.dataWrapper.EnableRemoteCache() {
+		client.dataWrapper.initRemoteCache()
+	}
 
 	client.streamerConcurrentMap = InitConcurrentStreamerMap()
 	client.insertExtentKey = config.OnInsertExtentKey

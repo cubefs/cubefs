@@ -243,19 +243,17 @@ func (w *Wrapper) EnableRemoteCache() bool {
 }
 
 func (w *Wrapper) initRemoteCache() (err error) {
-	if w.EnableRemoteCache() && w.remoteCache == nil {
-		cacheConfig := &flash.CacheConfig{
-			Cluster: w.clusterName,
-			Volume:  w.volName,
-			Masters: w.masters,
-			MW:      w.metaWrapper,
-		}
-		if w.remoteCache, err = flash.NewRemoteCache(cacheConfig); err != nil {
-			return
-		}
-		if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
-			w.cacheBoostPath = ""
-		}
+	cacheConfig := &flash.CacheConfig{
+		Cluster: w.clusterName,
+		Volume:  w.volName,
+		Masters: w.masters,
+		MW:      w.metaWrapper,
+	}
+	if w.remoteCache, err = flash.NewRemoteCache(cacheConfig); err != nil {
+		return
+	}
+	if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
+		w.cacheBoostPath = ""
 	}
 	return
 }
@@ -528,26 +526,25 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.ecEnable = view.EcEnable
 	}
 
+	enableOld := w.EnableRemoteCache()
 	if w.enableRemoteCache != view.RemoteCacheBoostEnable {
 		log.LogInfof("updateSimpleVolView: update RemoteCacheBoostEnable from old(%v) to new(%v)", w.enableRemoteCache, view.RemoteCacheBoostEnable)
 		w.enableRemoteCache = view.RemoteCacheBoostEnable
 	}
 
-	if w.enableRemoteCache && w.remoteCache == nil {
+	// remoteCache may be nil if the first initialization failed, it will not be set nil anymore enven if remote cache is disabled
+	if w.EnableRemoteCache() && (!enableOld || w.remoteCache == nil) {
 		if err = w.initRemoteCache(); err != nil {
 			log.LogErrorf("updateSimpleVolView: NewRemoteCache failed, [%v]", err)
 		}
-	}
-
-	if !w.enableRemoteCache && w.remoteCache != nil {
+	} else if !w.EnableRemoteCache() && w.remoteCache != nil {
 		w.remoteCache.Stop()
-		w.remoteCache = nil
 	}
 
 	if w.cacheBoostPath != view.RemoteCacheBoostPath {
 		log.LogInfof("updateSimpleVolView: update RemoteCacheBoostPath from old(%v) to new(%v)", w.cacheBoostPath, view.RemoteCacheBoostPath)
 		w.cacheBoostPath = view.RemoteCacheBoostPath
-		if !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
+		if w.EnableRemoteCache() && w.remoteCache != nil && !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
 			w.cacheBoostPath = ""
 		}
 	}

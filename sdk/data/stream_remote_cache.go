@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"fmt"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/flash"
 	"github.com/cubefs/cubefs/util/bloomfilter"
@@ -25,7 +26,7 @@ import (
 )
 
 func (s *Streamer) enableRemoteCache() bool {
-	if !s.client.dataWrapper.EnableRemoteCache() {
+	if !s.client.dataWrapper.EnableRemoteCache() || s.client.dataWrapper.remoteCache == nil {
 		return false
 	}
 	cacheBloom := s.client.RemoteCacheBloom()
