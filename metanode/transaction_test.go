@@ -504,3 +504,29 @@ func TestCheckTxLimit(t *testing.T) {
 	t.Logf("st %v et %v", st, et)
 	assert.True(t, et-st >= 100)
 }
+
+func TestGetTxHandler(t *testing.T) {
+	initMps(t)
+	txMgr := mp1.txProcessor.txManager
+	txMgr.Start()
+
+	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
+	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
+	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
+	if !txInfo.IsInitialized() {
+		mp1.initTxInfo(txInfo)
+	}
+
+	//register
+	txMgr.registerTransaction(txInfo)
+	var (
+		req = &proto.TxGetInfoRequest{
+			TxID: txInfo.TxID,
+			Pid:  mp1.config.PartitionId,
+		}
+		p = new(Packet)
+	)
+
+	assert.True(t, mp1.TxGetInfo(req, p) == nil)
+	assert.True(t, p.ResultCode == proto.OpOk)
+}
