@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"

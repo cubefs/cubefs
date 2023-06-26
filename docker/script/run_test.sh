@@ -263,7 +263,7 @@ run_unit_test() {
     echo "************************";
     export GO111MODULE="off"
     pushd /go/src/github.com/cubefs/cubefs > /dev/null
-    packages=`GO111MODULE="off" go list \
+    packages=$(GO111MODULE="off" go list \
             ./master/... \
             ./datanode/... \
             ./metanode/... \
@@ -282,7 +282,7 @@ run_unit_test() {
             ./repl/... \
             ./raftstore/rafttest/... \
             ./util/... \
-            ./vendor/github.com/tiglabs/raft/...`
+            ./vendor/github.com/tiglabs/raft/...)
     echo "Following packages will be tested and record code coverage:"
     for package in `echo ${packages}`; do
         echo "  * "${package};

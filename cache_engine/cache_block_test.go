@@ -55,7 +55,7 @@ func initTestTmpfs(size int64) (err error) {
 		if !os.IsNotExist(err) {
 			return
 		}
-		_ = os.Mkdir(testTmpFS, 0777)
+		_ = os.MkdirAll(testTmpFS, 0777)
 		err = nil
 	}
 	err = tmpfs.MountTmpfs(testTmpFS, size)
