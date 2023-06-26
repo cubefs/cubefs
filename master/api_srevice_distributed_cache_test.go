@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
 	"testing"
-	"github.com/stretchr/testify/assert"
 )
 
 var flashGroupIDs []uint64
@@ -156,11 +156,20 @@ func TestFlashNodeDecommission_unused(t *testing.T) {
 }
 
 func TestFlashGroupAddFlashNode_givenAddr(t *testing.T) {
-	if !assert.NotZerof(t, len(flashGroupIDs), "flashGroupIDs count is 0") {
-		return
+	var err error
+	var fgID uint64
+	var groupsView proto.FlashGroupsAdminView
+	groupsView, err = mc.AdminAPI().ListFlashGroups(true, true)
+	assert.NoError(t, err)
+	if len(groupsView.FlashGroups) == 0 {
+		var groupView proto.FlashGroupAdminView
+		groupView, err = mc.AdminAPI().CreateFlashGroup("")
+		assert.NoError(t, err)
+		fgID = groupView.ID
+	} else {
+		fgID = groupsView.FlashGroups[0].ID
 	}
-	fgID := flashGroupIDs[0]
-	err := checkFlashGroupAddGivenFlashNode(1, fgID, mfs1Addr)
+	err = checkFlashGroupAddGivenFlashNode(1, fgID, mfs1Addr)
 	if !assert.NoError(t, err) {
 		return
 	}

@@ -3766,12 +3766,43 @@ func updateVolCacheConfig(volName, remoteCacheBoostPath string, remoteCacheBoost
 	if err != nil {
 		return
 	}
-	err = mc.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
-		int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
-		vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, false, buildAuthKey(vv.Owner), vv.ZoneName, fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), strings.Join(vv.SmartRules, ","),
-		uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag, vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight,
-		0, 0, 0, proto.UmpCollectByUnkown, -1, -1, false, 0,
-		remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL)
+	err = mc.AdminAPI().UpdateVolume(
+		vv.Name,
+		vv.Capacity,
+		int(vv.DpReplicaNum),
+		int(vv.MpReplicaNum),
+		int(vv.TrashRemainingDays),
+		int(vv.DefaultStoreMode),
+		vv.FollowerRead,
+		vv.VolWriteMutexEnable,
+		vv.NearRead,
+		vv.Authenticate,
+		vv.EnableToken,
+		vv.AutoRepair,
+		vv.ForceROW,
+		vv.IsSmart,
+		vv.EnableWriteCache,
+		buildAuthKey(vv.Owner),
+		vv.ZoneName,
+		fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), // MP Layout
+		strings.Join(vv.SmartRules, ","), // Smart Rules
+		uint8(vv.OSSBucketPolicy),
+		uint8(vv.CrossRegionHAType),
+		vv.ExtentCacheExpireSec,
+		vv.CompactTag,
+		vv.DpFolReadDelayConfig.DelaySummaryInterval,
+		vv.FolReadHostWeight,
+		0,
+		0,
+		0,
+		exporter.UMPCollectMethodFile,
+		-1,
+		-1,
+		false,
+		remoteCacheBoostPath,
+		remoteCacheBoostEnable,
+		remoteCacheAutoPrepare,
+		remoteCacheTTL)
 	if err != nil {
 		return
 	}
