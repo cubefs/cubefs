@@ -247,28 +247,6 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		log.LogErrorf("Create_ll: parent inode's nlink quota reached, parentID(%v)", parentID)
 		return nil, syscall.EDQUOT
 	}
-
-	// Create Inode
-
-	//	mp = mw.getLatestPartition()
-	//	if mp != nil {
-	//		status, info, err = mw.icreate(mp, mode, target)
-	//		if err == nil {
-	//			if status == statusOK {
-	//				goto create_dentry
-	//			} else if status == statusFull {
-	//				mw.UpdateMetaPartitions()
-	//			}
-	//		}
-	//	}
-	//
-	//	rwPartitions = mw.getRWPartitions()
-	//	for _, mp = range rwPartitions {
-	//		status, info, err = mw.icreate(mp, mode, target)
-	//		if err == nil && status == statusOK {
-	//			goto create_dentry
-	//		}
-	//	}
 	quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
 	if err != nil {
 		log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
