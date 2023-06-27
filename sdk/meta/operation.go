@@ -212,12 +212,13 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 			break
 		}
 		retryNum++
-		if retryNum <= mw.TxConflictRetryNum {
-			log.LogWarnf("txIunlink: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
-				packet, mp, *req, packet.GetResultMsg(), retryNum)
-			time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
-		}
+		log.LogWarnf("txIunlink: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), retryNum)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
 
+		if retryNum > mw.TxConflictRetryNum {
+			break
+		}
 	}
 
 	if status != statusOK {
@@ -432,11 +433,14 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		if status != statusTxConflict {
 			break
 		}
+
+		log.LogWarnf("txDcreate: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), retryNum)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
+
 		retryNum++
-		if retryNum <= mw.TxConflictRetryNum {
-			log.LogWarnf("txDcreate: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
-				packet, mp, *req, packet.GetResultMsg(), retryNum)
-			time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
+		if retryNum > mw.TxConflictRetryNum {
+			break
 		}
 	}
 
@@ -571,13 +575,15 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 		if status != statusTxConflict {
 			break
 		}
-		retryNum++
-		if retryNum <= mw.TxConflictRetryNum {
-			log.LogWarnf("txDupdate: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
-				packet, mp, *req, packet.GetResultMsg(), retryNum)
-			time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
-		}
 
+		log.LogWarnf("txDupdate: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), retryNum)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
+
+		retryNum++
+		if retryNum > mw.TxConflictRetryNum {
+			break
+		}
 	}
 
 	if status != statusOK {
@@ -706,11 +712,14 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID ui
 		if status != statusTxConflict {
 			break
 		}
+
+		log.LogWarnf("txDdelete: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), retryNum)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
+
 		retryNum++
-		if retryNum <= mw.TxConflictRetryNum {
-			log.LogWarnf("txDdelete: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
-				packet, mp, *req, packet.GetResultMsg(), retryNum)
-			time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
+		if retryNum > mw.TxConflictRetryNum {
+			break
 		}
 
 	}
@@ -1320,13 +1329,15 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64)
 		if status != statusTxConflict {
 			break
 		}
-		retryNum++
-		if retryNum <= mw.TxConflictRetryNum {
-			log.LogWarnf("txIlink: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
-				packet, mp, *req, packet.GetResultMsg(), retryNum)
-			time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
-		}
 
+		log.LogWarnf("txIlink: packet(%v) mp(%v) req(%v) result(%v), tx conflict retry: %v",
+			packet, mp, *req, packet.GetResultMsg(), retryNum)
+		time.Sleep(time.Duration(mw.TxConflictRetryInterval) * time.Millisecond)
+
+		retryNum++
+		if retryNum > mw.TxConflictRetryNum {
+			break
+		}
 	}
 
 	if status != statusOK {
