@@ -17,7 +17,6 @@ package cmd
 import (
 	"fmt"
 	"math"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -416,18 +415,14 @@ func checkNestedDirectories(paths []string) error {
 				return fmt.Errorf("the same directories found: %s", path)
 			}
 
-			if isAncestor(path, paths[j]) {
+			if proto.IsAncestor(path, paths[j]) {
+				return fmt.Errorf("Nested directories found: %s and %s", path, paths[j])
+			}
+
+			if proto.IsAncestor(paths[j], path) {
 				return fmt.Errorf("Nested directories found: %s and %s", path, paths[j])
 			}
 		}
 	}
 	return nil
-}
-
-func isAncestor(parent, child string) bool {
-	rel, err := filepath.Rel(parent, child)
-	if err != nil {
-		return false
-	}
-	return !strings.HasPrefix(rel, "..")
 }
