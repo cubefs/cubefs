@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -327,6 +328,61 @@ func (p *Packet) resolveFollowersAddr(remoteAddr string) (err error) {
 	}
 
 	return
+}
+
+// ReadFromConn reads the data from the given connection.
+func (p *Packet) ReadFromConnWithSpecifiedDataBuffer(c net.Conn, timeoutSec int, getBuffer func(size uint32) []byte) (err error) {
+	if timeoutSec != proto.NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
+	return p.readFromConnWithSpecifiedDataBuffer(c, getBuffer)
+}
+
+func (p *Packet) readFromConnWithSpecifiedDataBuffer(c net.Conn, getBuffer func(size uint32) []byte) (err error) {
+	header, err := proto.Buffers.Get(unit.PacketHeaderSize)
+	if err != nil {
+		header = make([]byte, unit.PacketHeaderSize)
+	}
+	defer proto.Buffers.Put(header)
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
+		return
+	}
+	if n != unit.PacketHeaderSize {
+		return syscall.EBADMSG
+	}
+	if err = p.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		if _, err = io.ReadFull(c, p.Arg[:int(p.ArgLen)]); err != nil {
+			return err
+		}
+	}
+
+	if p.Size < 0 {
+		return syscall.EBADMSG
+	}
+	size := p.Size
+	if (p.Opcode == proto.OpRead || p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead) && p.ResultCode == proto.OpInitResultCode {
+		size = 0
+	}
+	if getBuffer != nil {
+		p.Data = getBuffer(size)
+	} else {
+		p.Data = make([]byte, size)
+	}
+	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
 }
 
 const (
