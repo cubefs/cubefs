@@ -119,9 +119,9 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
 			inodeMaxInodeStr := strconv.FormatUint(lr.MaxInode, 10)
-			inodeMaxCountStr := strconv.FormatUint(lr.InodeCount, 10)
+			inodeCountStr := strconv.FormatUint(lr.InodeCount, 10)
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
-			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] maxInode[" + inodeMaxInodeStr + "] maxInodeCnt[" + inodeMaxCountStr + "],"
+			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] maxInode[" + inodeMaxInodeStr + "] maxInodeCnt[" + inodeCountStr + "],"
 		}
 		Warn(c.Name, msg)
 		if !maxInodeEqual {
@@ -134,6 +134,9 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 	} else {
 		if _, ok := c.inodeCountNotEqualMP.Load(mp.PartitionID); ok {
 			c.inodeCountNotEqualMP.Delete(mp.PartitionID)
+		}
+		if _, ok := c.maxInodeNotEqualMP.Load(mp.PartitionID); ok {
+			c.maxInodeNotEqualMP.Delete(mp.PartitionID)
 		}
 	}
 	return
