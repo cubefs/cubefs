@@ -558,9 +558,11 @@ func (tm *TransactionManager) processExpiredTransactions(wgEt *sync.WaitGroup) {
 				counter = 0
 			}
 
+			limitCh := make(chan struct{}, 32)
 			var wg sync.WaitGroup
 			timeNow := time.Now().Unix()
 			var delTx []*proto.TransactionInfo
+
 			f := func(i BtreeItem) bool {
 				if atomic.CompareAndSwapInt32(&tm.leaderChangeCheck, 1, 0) {
 					if _, ok := tm.txProcessor.mp.IsLeader(); !ok {
@@ -571,6 +573,9 @@ func (tm *TransactionManager) processExpiredTransactions(wgEt *sync.WaitGroup) {
 				}
 				tx := i.(*proto.TransactionInfo)
 				rollbackFunc := func(skipSetStat bool) {
+					defer func() {
+						<-limitCh
+					}()
 					defer wg.Done()
 					req := &proto.TxApplyRequest{
 						TxID:        tx.TxID,
@@ -587,6 +592,9 @@ func (tm *TransactionManager) processExpiredTransactions(wgEt *sync.WaitGroup) {
 				}
 
 				commitFunc := func() {
+					defer func() {
+						<-limitCh
+					}()
 					defer wg.Done()
 					req := &proto.TxApplyRequest{
 						TxID:        tx.TxID,
@@ -608,10 +616,12 @@ func (tm *TransactionManager) processExpiredTransactions(wgEt *sync.WaitGroup) {
 				if tx.State == proto.TxStateCommit {
 					log.LogWarnf("processExpiredTransactions: transaction (%v) continue to commit...", tx)
 					wg.Add(1)
+					limitCh <- struct{}{}
 					go commitFunc()
 				} else if tx.State == proto.TxStateRollback {
 					log.LogWarnf("processExpiredTransactions: transaction (%v) continue to roll back...", tx)
 					wg.Add(1)
+					limitCh <- struct{}{}
 					go rollbackFunc(true)
 				} else if tx.State == proto.TxStateFailed {
 					log.LogCriticalf("processExpiredTransactions: transaction (%v) is in state failed", tx)
@@ -619,6 +629,7 @@ func (tm *TransactionManager) processExpiredTransactions(wgEt *sync.WaitGroup) {
 					if tx.IsExpired() && tx.State != proto.TxStateCommitDone {
 						log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
 						wg.Add(1)
+						limitCh <- struct{}{}
 						go rollbackFunc(false)
 					} else {
 						log.LogDebugf("processExpiredTransactions: transaction (%v) is ongoing", tx)
