@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -972,17 +971,9 @@ func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {
 
 	for _, fullPath := range fullPaths {
 		log.LogDebugf("srcPath [%v] fullPath[%v].", srcPath, fullPath)
-		if isAncestor(srcPath, fullPath) {
+		if proto.IsAncestor(srcPath, fullPath) {
 			return false
 		}
 	}
 	return true
-}
-
-func isAncestor(parent, child string) bool {
-	rel, err := filepath.Rel(parent, child)
-	if err != nil {
-		return false
-	}
-	return !strings.HasPrefix(rel, "..")
 }
