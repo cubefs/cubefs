@@ -3845,6 +3845,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.RemoteCacheBoostEnable = val.(bool)
 	}
 
+	oldClientNetConnTimeout := c.cfg.ClientNetConnTimeoutUs
+	if val, ok := params[proto.NetConnTimeoutUsKey]; ok {
+		c.cfg.ClientNetConnTimeoutUs = val.(int64)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3889,6 +3894,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.TrashItemCleanMaxCountEachTime, oldTrashCleanMaxCount)
 		c.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval
 		c.cfg.RemoteCacheBoostEnable = oldRemoteCacheBoostEnable
+		atomic.StoreInt64(&c.cfg.ClientNetConnTimeoutUs, oldClientNetConnTimeout)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

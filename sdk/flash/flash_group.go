@@ -38,7 +38,7 @@ func (fg *FlashGroup) String() string {
 	if fg == nil {
 		return ""
 	}
-	return fmt.Sprintf("flashGroup[fgId(%v) Slot(%v) Hosts(%v)]", fg.ID, fg.Slot, fg.Hosts)
+	return fmt.Sprintf("flashGroup[fgId(%v) Hosts(%v)]", fg.ID, fg.Hosts)
 }
 
 func NewFlashGroup(flashGroupInfo *proto.FlashGroupInfo, rankedHost map[ZoneRankType][]string) *FlashGroup {

@@ -542,13 +542,15 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.enableRemoteCache = view.RemoteCacheBoostEnable
 	}
 
-	// remoteCache may be nil if the first initialization failed, it will not be set nil anymore enven if remote cache is disabled
+	// remoteCache may be nil if the first initialization failed, it will not be set nil anymore even if remote cache is disabled
 	if w.EnableRemoteCache() && (!enableOld || w.remoteCache == nil) {
+		log.LogInfof("updateSimpleVolView: initRemoteCache, enableOld(%v) new(%v) isNil(%v)", enableOld, w.EnableRemoteCache(), w.remoteCache == nil)
 		if err = w.initRemoteCache(); err != nil {
 			log.LogErrorf("updateSimpleVolView: NewRemoteCache failed, [%v]", err)
 		}
 	} else if !w.EnableRemoteCache() && w.remoteCache != nil {
 		w.remoteCache.Stop()
+		log.LogInfof("updateSimpleVolView: stop remoteCache")
 	}
 
 	if w.cacheBoostPath != view.RemoteCacheBoostPath {
