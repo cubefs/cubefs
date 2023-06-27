@@ -494,7 +494,7 @@ type TransactionInfo struct {
 	CreateTime int64 //time.Now().UnixNano()
 	Timeout    int64 //minutes
 	State      int32
-	DoneTime   int64 //time.Now().UnixNano()
+	DoneTime   int64 //time.Now()
 	//ItemMap    map[string]TxItemInfo
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
