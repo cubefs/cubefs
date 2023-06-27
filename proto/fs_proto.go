@@ -17,6 +17,7 @@ package proto
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -61,6 +62,14 @@ func IsDir(mode uint32) bool {
 // IsSymlink checks if the mode is symlink.
 func IsSymlink(mode uint32) bool {
 	return OsMode(mode)&os.ModeSymlink != 0
+}
+
+func IsAncestor(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
 }
 
 // InodeInfo defines the inode struct.
