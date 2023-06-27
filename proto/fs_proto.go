@@ -258,6 +258,10 @@ type TxLinkInodeRequest struct {
 	TxInfo      *TransactionInfo `json:"tx"`
 }
 
+func (tx *TxLinkInodeRequest) GetInfo() string {
+	return tx.TxInfo.String()
+}
+
 type TxLinkInodeResponse struct {
 	Info   *InodeInfo       `json:"info"`
 	TxInfo *TransactionInfo `json:"tx"`
@@ -279,6 +283,10 @@ type TxUnlinkInodeRequest struct {
 	Inode       uint64           `json:"ino"`
 	Evict       bool             `json:"evict"`
 	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+func (tx *TxUnlinkInodeRequest) GetInfo() string {
+	return tx.TxInfo.String()
 }
 
 type TxUnlinkInodeResponse struct {
@@ -337,6 +345,9 @@ type CreateDentryRequest struct {
 	Mode        uint32   `json:"mode"`
 	QuotaIds    []uint32 `json:"qids"`
 }
+type TxPack interface {
+	GetInfo() string
+}
 
 // TxCreateDentryRequest defines the request to create a dentry.
 type TxCreateDentryRequest struct {
@@ -348,6 +359,10 @@ type TxCreateDentryRequest struct {
 	Mode        uint32           `json:"mode"`
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+func (tx *TxCreateDentryRequest) GetInfo() string {
+	return tx.TxInfo.String()
 }
 
 type TxCreateDentryResponse struct {
@@ -377,6 +392,10 @@ type TxUpdateDentryRequest struct {
 	TxInfo      *TransactionInfo `json:"tx"`
 }
 
+func (tx *TxUpdateDentryRequest) GetInfo() string {
+	return tx.TxInfo.String()
+}
+
 type TxUpdateDentryResponse struct {
 	Inode  uint64           `json:"ino"` // old inode number
 	TxInfo *TransactionInfo `json:"tx"`
@@ -388,6 +407,10 @@ type TxDeleteDentryRequest struct {
 	ParentID    uint64           `json:"pino"`
 	Name        string           `json:"name"`
 	TxInfo      *TransactionInfo `json:"tx"`
+}
+
+func (tx *TxDeleteDentryRequest) GetInfo() string {
+	return tx.TxInfo.String()
 }
 
 type TxDeleteDentryResponse struct {
