@@ -32,29 +32,12 @@ Some key features of CubeFS include:
 - Flexible storage policies, high-performance replication or low-cost erasure coding
 
 
+<div width="100%" style="text-align:center;"><img alt="CubeFS Architecture" src="https://raw.githubusercontent.com/cubefs/cubefs/master/docs/source/pic/cfs-arch-ec.png"/></div>
+
 ## Documents
 
 - English version: https://cubefs.io/docs/master/overview/introduction.html
 - Chinese version: https://cubefs.io/zh/docs/master/overview/introduction.html
-
-## Benchmark
-
-Small file operation performance and scalability benchmark tested by [mdtest](https://github.com/LLNL/mdtest).
-
-<img src="https://raw.githubusercontent.com/cubefs/cubefs/master/docs/source/pic/cfs-small-file-benchmark.png" width="600" align=center/>
-
-|File Size (KB)	|  1	|  2	|  4	|  8	|   16  |   32  |   64  |  128 |
-|:-|:-|:-|:-|:-|:-|:-|:-|:-|
-|Creation (TPS)	|70383	|70383	|73738	|74617	|69479	|67435	|47540	|27147 |
-|Read (TPS)	    |108600	|118193	|118346	|122975	|116374	|110795	|90462	|62082 |
-|Removal (TPS)	|87648	|84651	|83532	|79279	|85498	|86523	|80946	|84441 |
-|Stat (TPS)	    |231961	|263270	|264207	|252309	|240244	|244906	|273576	|242930|
-
-Refer to [document](https://cubefs.io/docs/master/evaluation/env.html) for performance and scalability of `IO` and `Metadata`.
-
-## Setup CubeFS 
-- [Set up a small CubeFS cluster](https://github.com/cubefs/cubefs/blob/master/INSTALL.md) 
-- [Helm chart to Run a CubeFS Cluster in Kubernetes](https://github.com/cubefs/cubefs/blob/master/HELM.md)
 
 ## Community
 
