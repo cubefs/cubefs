@@ -488,14 +488,13 @@ const (
 )
 
 type TransactionInfo struct {
-	TxID       string // "metapartitionId_atomicId", if empty, mp should be TM, otherwise it will be RM
-	TxType     uint32
-	TmID       int64
-	CreateTime int64 //time.Now().UnixNano()
-	Timeout    int64 //minutes
-	State      int32
-	DoneTime   int64 //time.Now()
-	//ItemMap    map[string]TxItemInfo
+	TxID          string // "metapartitionId_atomicId", if empty, mp should be TM, otherwise it will be RM
+	TxType        uint32
+	TmID          int64
+	CreateTime    int64 //time.Now().UnixNano()
+	Timeout       int64 //minutes
+	State         int32
+	DoneTime      int64
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
 }

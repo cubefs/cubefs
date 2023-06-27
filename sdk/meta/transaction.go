@@ -133,9 +133,6 @@ func (tx *Transaction) OnExecuted(status int, respTxInfo *proto.TransactionInfo)
 		}
 		if tx.txInfo.TmID == -1 && respTxInfo != nil {
 			tx.txInfo = respTxInfo
-			//tx.setTxID(respTxInfo.TxID)
-			//tx.setTmID(respTxInfo.TmID)
-			//tx.Started = true
 		}
 	}
 }
