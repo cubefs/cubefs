@@ -5,6 +5,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
 	"sort"
+	"strconv"
 )
 
 const (
@@ -97,15 +98,17 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 				})
 				for _, fn := range flashNodeViewInfos {
 					var (
-						hitRate = "100%"
-						evicts  = 0
-						limit   = uint64(0)
+						hitRate = "N/A"
+						evicts  = "N/A"
+						limit   = "N/A"
 					)
-					stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
-					if err1 == nil {
-						hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
-						evicts = stat.CacheStatus.Evicts
-						limit = stat.NodeLimit
+					if fn.IsActive && fn.IsEnable {
+						stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
+						if err1 == nil {
+							hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
+							evicts = strconv.Itoa(stat.CacheStatus.Evicts)
+							limit = strconv.FormatUint(stat.NodeLimit, 10)
+						}
 					}
 					row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
 						formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
