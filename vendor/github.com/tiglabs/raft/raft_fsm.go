@@ -130,6 +130,13 @@ func (r *raftFsm) getConsistencyMode() ConsistencyMode {
 	return r.consistencyMode
 }
 
+func (r *raftFsm) setConsistencyMode(mode ConsistencyMode) {
+	if current := r.consistencyMode; current != mode {
+		r.consistencyMode = mode
+		logger.Info("raft[%v] consistency mode changes [%v -> %v]", r.id, current, r.consistencyMode)
+	}
+}
+
 func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 	raftlog, err := newRaftLog(raftConfig.Storage)
 	if err != nil {

@@ -592,6 +592,17 @@ func (manager *SpaceManager) SetForceFlushFDParallelismOnDisk(newValue uint64) {
 	}
 }
 
+func (manager *SpaceManager) SetPartitionConsistencyMode(mode proto.ConsistencyMode) {
+	if !mode.Valid() {
+		return
+	}
+	manager.partitionMutex.RLock()
+	for _, partition := range manager.partitions {
+		partition.SetConsistencyMode(mode)
+	}
+	manager.partitionMutex.RUnlock()
+}
+
 const (
 	MaxDiskRepairTaskLimit               = 256
 	DefaultForceFlushFDSecond            = 10

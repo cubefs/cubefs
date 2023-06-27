@@ -853,6 +853,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.ClientConnTimeoutUs >= 0 {
 		request.addParam(proto.NetConnTimeoutUsKey, strconv.FormatInt(info.ClientConnTimeoutUs, 10))
 	}
+	if mode := proto.ConsistencyModeFromInt32(info.DataPartitionConsistencyMode); mode.Valid() {
+		request.addParam("dataPartitionConsistencyMode", strconv.FormatInt(int64(mode.Int32()), 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, err = api.mc.serveRequest(request); err != nil {

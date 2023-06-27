@@ -266,6 +266,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.ClientConnTimeoutUs >= 0 {
 				msg += fmt.Sprintf("ClientConnTimeoutUs          : %v, ", info.ClientConnTimeoutUs)
 			}
+			if mode := proto.ConsistencyModeFromInt32(info.DataPartitionConsistencyMode); mode.Valid() {
+				msg += fmt.Sprintf("DataPartitionConsistencyMode: %v", mode.String())
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -333,6 +336,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.DeleteMarkDelVolInterval, "deleteMarkDelVolInterval", -1, "delete mark del vol interval, unit is seconds.")
 	cmd.Flags().Int64Var(&info.RemoteCacheBoostEnableState, "RemoteCacheBoostEnable", -1, "set cluster RemoteCacheBoostEnable, 0:disable, 1:enable")
 	cmd.Flags().Int64Var(&info.ClientConnTimeoutUs, "ClientConnTimeoutUs", -1, "set cluster client read/write connection timeout, unit: us")
+	cmd.Flags().Int32Var(&info.DataPartitionConsistencyMode, "dataPartitionConsistencyMode", -1, fmt.Sprintf("cluster consistency mode for data partitions [%v:%v, %v:%v] ",
+		proto.StandardMode.Int32(), proto.StandardMode.String(), proto.StrictMode.Int32(), proto.StrictMode.String()))
 	return cmd
 }
 
@@ -400,5 +405,6 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  DeleteMarkDelVolInterval         : %v(%v sec)\n", formatTimeInterval(info.DeleteMarkDelVolInterval), info.DeleteMarkDelVolInterval))
 	sb.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable           : %v\n", info.RemoteCacheBoostEnable))
 	sb.WriteString(fmt.Sprintf("  ClientConnTimeoutUs              : %v(us)\n", info.ClientConnTimeoutUs))
+	sb.WriteString(fmt.Sprintf("  DataPartitionConsistencyMode     : %v", info.DataPartitionConsistencyMode.String()))
 	return sb.String()
 }

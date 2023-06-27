@@ -528,10 +528,27 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
+
+	// 确保Raft服务以及Partition的Raft实例已经启动，否则拒绝服务。
 	if s.raftStore == nil {
 		err = proto.ErrOperationDisabled
 		return
 	}
+	var partition = p.Object.(*DataPartition)
+	if !partition.IsRaftStarted() {
+		err = proto.ErrOperationDisabled
+		return
+	}
+
+	// 检查所请求Partition的一致性模式(Consistency Mode)， 若为标准模式(StandardMode)则仅在当前Partition实例Raft复制组内Leader角色时才提供服务。
+	// 标准模式(StandardMode)下Raft采用标准的超半数复制提交机制，这种模式下仅Leader角色可以保证数据的绝对正确。
+	// 严格模式(StrictMode)下Raft实例使用了特殊的复制提交机制，数据操作请求被强行要求所有成员全部复制成功才会被提交，所以不需要检查当前实例是否为Leader角色。
+	if partition.GetConsistencyMode() == proto.StandardMode {
+		if _, err = partition.CheckLeader(); err != nil {
+			return
+		}
+	}
+
 	s.handleExtentRepairReadPacket(p, connect, isRepairRead)
 	return
 }
@@ -569,7 +586,13 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		}()
 	}
 
-	if partition.CheckIssue(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) && (len(p.Arg) == 0 || p.Arg[0] != 1) {
+	// isForceRead 函数用来检查读请求包是否有强制读表示，强制读请求会不检查请求所读数据区域是否存在风险
+	var isForceRead = func(p *repl.Packet) bool {
+		return len(p.Arg) > 0 && p.Arg[0] == 1
+	}
+
+	if !isForceRead(p) && partition.CheckIssue(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) {
+		// 正常非强制读请求下，若请求所读数据区域存在风险，则拒绝响应。
 		err = proto.ErrOperationDisabled
 		return
 	}

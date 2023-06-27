@@ -16,25 +16,28 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
-	"sort"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
 	cmdDataNodeShort = "Manage data nodes"
+	cmdDataNodeAlias = "dn"
 )
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliResourceDataNode,
-		Short: cmdDataNodeShort,
+		Use:     CliResourceDataNode,
+		Short:   cmdDataNodeShort,
+		Aliases: []string{cmdDataNodeAlias},
 	}
 	cmd.AddCommand(
 		newDataNodeListCmd(client),

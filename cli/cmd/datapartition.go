@@ -16,13 +16,14 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/http_client"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/http_client"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -33,13 +34,15 @@ import (
 const (
 	cmdDataPartitionUse   = "datapartition [COMMAND]"
 	cmdDataPartitionShort = "Manage data partition"
+	cmdDataPartitionAlias = "dp"
 	defaultNodeTimeOutSec = 180
 )
 
 func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdDataPartitionUse,
-		Short: cmdDataPartitionShort,
+		Use:     cmdDataPartitionUse,
+		Short:   cmdDataPartitionShort,
+		Aliases: []string{cmdDataPartitionAlias},
 	}
 	cmd.AddCommand(
 		newDataPartitionGetCmd(client),
@@ -73,6 +76,7 @@ const (
 	cmdCheckCommitDataPartitionShort     = "Check the snapshot blocking by analyze commit id in data partitions"
 	cmdResetDataPartitionShort           = "Reset corrupt data partition"
 	cmdDataPartitionDecommissionShort    = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionDecommissionAlias    = "decom"
 	cmdDataPartitionStopShort            = "Stop a data partition progress in a safe way"
 	cmdDataPartitionReloadShort          = "Reload a data partition on disk"
 	cmdDataPartitionReplicateShort       = "Add a replication of the data partition on a new address"
@@ -771,9 +775,10 @@ func newDataPartitionReloadCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID] [DestAddr] ",
-		Short: cmdDataPartitionDecommissionShort,
-		Args:  cobra.MinimumNArgs(2),
+		Use:     CliOpDecommission + " [ADDRESS] [DATA PARTITION ID] [DestAddr] ",
+		Short:   cmdDataPartitionDecommissionShort,
+		Aliases: []string{cmdDataPartitionDecommissionAlias},
+		Args:    cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var destAddr string
 			if len(args) >= 3 {

@@ -57,6 +57,7 @@ type clusterValue struct {
 	DataNodeFlushFDInterval             uint32
 	DataNodeFlushFDParallelismOnDisk    uint64
 	DataNodeNormalExtentDeleteExpire    uint64
+	DataPartitionConsistencyMode        int32
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64
@@ -128,6 +129,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeDeleteWorkerSleepMs:         c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeFlushFDInterval:             c.cfg.DataNodeFlushFDInterval,
 		DataNodeFlushFDParallelismOnDisk:    c.cfg.DataNodeFlushFDParallelismOnDisk,
+		DataPartitionConsistencyMode:        c.cfg.DataPartitionConsistencyMode,
 		DataNodeNormalExtentDeleteExpire:    c.cfg.DataNodeNormalExtentDeleteExpire,
 		MetaNodeReadDirLimitNum:             c.cfg.MetaNodeReadDirLimitNum,
 		ClientReadVolRateLimitMap:           c.cfg.ClientReadVolRateLimitMap,
@@ -878,6 +880,13 @@ func (c *Cluster) updateDataNodeFlushFDParallelismOnDisk(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeFlushFDParallelismOnDisk, val)
 }
 
+func (c *Cluster) updateDataPartitionConsistencyMode(val int32) {
+	if !bsProto.ConsistencyModeFromInt32(val).Valid() {
+		val = bsProto.StandardMode.Int32()
+	}
+	atomic.StoreInt32(&c.cfg.DataPartitionConsistencyMode, val)
+}
+
 func (c *Cluster) updateNormalExtentDeleteExpire(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeNormalExtentDeleteExpire, val)
 }
@@ -1012,6 +1021,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataNodeFlushFDInterval(cv.DataNodeFlushFDInterval)
 		c.updateDataNodeFlushFDParallelismOnDisk(cv.DataNodeFlushFDParallelismOnDisk)
 		c.updateNormalExtentDeleteExpire(cv.DataNodeNormalExtentDeleteExpire)
+		c.updateDataPartitionConsistencyMode(cv.DataPartitionConsistencyMode)
 		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, cv.MetaNodeReqRateLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, cv.MetaNodeReadDirLimitNum)
 		c.cfg.MetaNodeReqOpRateLimitMap = cv.MetaNodeReqOpRateLimitMap

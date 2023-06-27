@@ -68,6 +68,8 @@ type dataPartitionCfg struct {
 	CreationType  int                 `json:"-"`
 
 	VolHAType proto.CrossRegionHAType `json:"vol_ha_type"`
+
+	Mode proto.ConsistencyMode `json:"-"`
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
@@ -173,7 +175,7 @@ func (dp *DataPartition) startRaft() (err error) {
 		GetStartIndex:      getStartIndex,
 		WALContinuityCheck: dp.isNeedFaultCheck(),
 		WALContinuityFix:   dp.isNeedFaultCheck(),
-		Mode:               raftstore.StrictMode,
+		Mode:               dp.config.Mode,
 		StorageListener: raftstore.NewStorageListenerBuilder().
 			ListenStoredEntry(dp.listenStoredRaftLogEntry).
 			Build(),
@@ -710,6 +712,28 @@ func (dp *DataPartition) SetMinAppliedID(id uint64) {
 
 func (dp *DataPartition) GetAppliedID() (id uint64) {
 	return dp.applyStatus.Applied()
+}
+
+func (dp *DataPartition) SetConsistencyMode(mode proto.ConsistencyMode) {
+	if current := dp.config.Mode; current != mode {
+		dp.config.Mode = mode
+		if dp.raftPartition != nil {
+			dp.raftPartition.SetConsistencyMode(mode)
+		}
+		if log.IsInfoEnabled() {
+			log.LogInfof("SetConsistencyMode: Partition(%v) consistency mode changes [%v -> %v]", dp.partitionID, current, mode)
+		}
+		if err := dp.persistMetaDataOnly(); err != nil {
+			log.LogErrorf("SetConsistencyMode: Partition(%v) persist metadata failed: %v", dp.partitionID, err)
+		}
+	}
+}
+
+func (dp *DataPartition) GetConsistencyMode() proto.ConsistencyMode {
+	if dp.raftPartition != nil {
+		return dp.raftPartition.GetConsistencyMode()
+	}
+	return dp.config.Mode
 }
 
 func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {

@@ -454,7 +454,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqRateLimit)
 	metaNodeReadDirLimitNum := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReadDirLimitNum)
 	dataNodeFlushFDInterval := atomic.LoadUint32(&m.cluster.cfg.DataNodeFlushFDInterval)
-	dataNodeFlushFDParallelismOnDiskKey := atomic.LoadUint64(&m.cluster.cfg.DataNodeFlushFDParallelismOnDisk)
+	dataNodeFlushFDParallelismOnDisk := atomic.LoadUint64(&m.cluster.cfg.DataNodeFlushFDParallelismOnDisk)
+	dataPartitionConsistencyMode := proto.ConsistencyModeFromInt32(atomic.LoadInt32(&m.cluster.cfg.DataPartitionConsistencyMode))
 	ssdZoneRepairTaskCount := atomic.LoadUint64(&m.cluster.cfg.DataNodeRepairSSDZoneTaskCount)
 	if ssdZoneRepairTaskCount == 0 {
 		ssdZoneRepairTaskCount = defaultSSDZoneTaskLimit
@@ -475,7 +476,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metaRaftLogSize := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogSize)
 	metaRaftLogCap := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogCap)
 	normalExtentDeleteExpireTime := atomic.LoadUint64(&m.cluster.cfg.DataNodeNormalExtentDeleteExpire)
-	trashCleanDuartion := atomic.LoadInt32(&m.cluster.cfg.TrashCleanDurationEachTime)
+	trashCleanDuration := atomic.LoadInt32(&m.cluster.cfg.TrashCleanDurationEachTime)
 	trashCleanMaxCount := atomic.LoadInt32(&m.cluster.cfg.TrashItemCleanMaxCountEachTime)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
@@ -499,7 +500,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DataNodeRepairClusterTaskLimitOnDisk:   clusterRepairTaskCount,
 		DataNodeRepairSSDZoneTaskLimitOnDisk:   ssdZoneRepairTaskCount,
 		DataNodeFlushFDInterval:                dataNodeFlushFDInterval,
-		DataNodeFlushFDParallelismOnDisk:       dataNodeFlushFDParallelismOnDiskKey,
+		DataNodeFlushFDParallelismOnDisk:       dataNodeFlushFDParallelismOnDisk,
+		DataPartitionConsistencyMode: 			dataPartitionConsistencyMode,
 		DataNodeNormalExtentDeleteExpire:       normalExtentDeleteExpireTime,
 		DataNodeRepairTaskCountZoneLimit:       m.cluster.cfg.DataNodeRepairTaskCountZoneLimit,
 		DataNodeReqZoneRateLimitMap:            m.cluster.cfg.DataNodeReqZoneRateLimitMap,
@@ -542,7 +544,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		BitMapAllocatorMaxUsedFactor:           m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
 		BitMapAllocatorMinFreeFactor:           m.cluster.cfg.BitMapAllocatorMinFreeFactor,
 		TrashItemCleanMaxCountEachTime:         trashCleanMaxCount,
-		TrashCleanDurationEachTime:             trashCleanDuartion,
+		TrashCleanDurationEachTime:             trashCleanDuration,
 		DeleteMarkDelVolInterval:               m.cluster.cfg.DeleteMarkDelVolInterval,
 		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
 		ClientConnTimeoutUs:                    m.cluster.cfg.ClientNetConnTimeoutUs,
@@ -2297,6 +2299,17 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse and update data partition consistency mode if it specified.
+	if mode, specified, err := parseAndExtractDataPartitionConsistencyMode(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	} else if specified {
+		if err := m.cluster.setDataPartitionConsistencyMode(mode); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
 	var (
 		zone string
 		vol  string
@@ -2498,6 +2511,7 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
 	resp[dataNodeFlushFDIntervalKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeFlushFDInterval)
 	resp[dataNodeFlushFDParallelismOnDiskKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeFlushFDParallelismOnDisk)
+	resp[dataPartitionConsistencyModeKey] = fmt.Sprintf("%v", m.cluster.cfg.DataPartitionConsistencyMode)
 
 	resp[normalExtentDeleteExpireKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeNormalExtentDeleteExpire)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
@@ -4610,6 +4624,23 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		err = errors.NewErrorf("no valid parameters")
 		return
 	}
+	return
+}
+
+func parseAndExtractDataPartitionConsistencyMode(r *http.Request) (mode proto.ConsistencyMode, specified bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(dataPartitionConsistencyModeKey); value == "" {
+		return
+	}
+	specified = true
+	var parsed int64
+	if parsed, err = strconv.ParseInt(value, 10, 64); err != nil {
+		return
+	}
+	mode = proto.ConsistencyModeFromInt32(int32(parsed))
 	return
 }
 

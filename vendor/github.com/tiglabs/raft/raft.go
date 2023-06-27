@@ -778,8 +778,16 @@ func (s *raft) proposePromoteLearnerMemberChange(cc *proto.ConfChange, future *F
 	return
 }
 
+func (s *raft) setConsistencyMode(mode ConsistencyMode) {
+	s.raftFsm.setConsistencyMode(mode)
+}
+
+func (s *raft) getConsistencyMode() ConsistencyMode {
+	return s.raftFsm.getConsistencyMode()
+}
+
 func (s *raft) checkProposalACL(cmdType proto.EntryType) (allowed bool) {
-	allowed = !(((s.raftFsm.getRiskStatus().Equals(UnstableState) && s.raftFsm.consistencyMode.Equals(StrictMode)) || s.raftFsm.isCommittingPaused()) && cmdType == proto.EntryNormal)
+	allowed = !(((s.raftFsm.getRiskStatus().Equals(UnstableState) && s.raftFsm.getConsistencyMode().Equals(StrictMode)) || s.raftFsm.isCommittingPaused()) && cmdType == proto.EntryNormal)
 	return
 }
 

@@ -17,8 +17,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/cli/api"
-	"github.com/cubefs/cubefs/metanode"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -26,6 +24,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/cli/api"
+	"github.com/cubefs/cubefs/metanode"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -37,12 +38,14 @@ import (
 const (
 	cmdMetaPartitionUse   = "metapartition [COMMAND]"
 	cmdMetaPartitionShort = "Manage meta partition"
+	cmdMetaPartitionAlias = "mp"
 )
 
 func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdMetaPartitionUse,
-		Short: cmdMetaPartitionShort,
+		Use:     cmdMetaPartitionUse,
+		Short:   cmdMetaPartitionShort,
+		Aliases: []string{cmdMetaPartitionAlias},
 	}
 	cmd.AddCommand(
 		newMetaPartitionGetCmd(client),
@@ -69,6 +72,7 @@ const (
 	cmdCheckCorruptMetaPartitionShort   = "Check out corrupt meta partitions"
 	cmdResetMetaPartitionShort          = "Reset corrupt meta partition"
 	cmdMetaPartitionDecommissionShort   = "Decommission a replication of the meta partition to a new address"
+	cmdMetaPartitionDecommissionAlias   = "decom"
 	cmdMetaPartitionReplicateShort      = "Add a replication of the meta partition on a new address"
 	cmdMetaPartitionDeleteReplicaShort  = "Delete a replication of the meta partition on a fixed address"
 	cmdMetaPartitionAddLearnerShort     = "Add a learner of the meta partition on a new address"
@@ -318,9 +322,10 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var optStoreMode int
 	var cmd = &cobra.Command{
-		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID] [DestAddr]",
-		Short: cmdMetaPartitionDecommissionShort,
-		Args:  cobra.MinimumNArgs(2),
+		Use:     CliOpDecommission + " [ADDRESS] [META PARTITION ID] [DestAddr]",
+		Short:   cmdMetaPartitionDecommissionShort,
+		Aliases: []string{cmdMetaPartitionDecommissionAlias},
+		Args:    cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var destAddr string
 			if len(args) >= 3 {
@@ -828,10 +833,9 @@ func newMetaPartitionCheckSnapshot(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-
 func newMetaPartitionSelectMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 	var optStoreMode int
-	var info	*proto.SelectMetaNodeInfo
+	var info *proto.SelectMetaNodeInfo
 	var cmd = &cobra.Command{
 		Use:   "chooseReplace [ADDRESS] [META PARTITION ID]",
 		Short: "get the new node addr replace the specify replica",
@@ -946,7 +950,7 @@ func validateMetaDataCrcResult(r []*proto.MetaDataCRCSumInfo, hosts []string) {
 	baseTreeType := metanode.DentryType
 	treeCnt := len(r[0].CntSet)
 	for index := 0; index < treeCnt; index++ {
-		treeType :=  metanode.TreeType(index + int(baseTreeType))
+		treeType := metanode.TreeType(index + int(baseTreeType))
 		if ok := validateCnt(index, r, hosts); !ok {
 			stdout("%s skip validate crc sum\n", treeType.String())
 			continue
@@ -1039,7 +1043,7 @@ func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
 						r *proto.InodesCRCSumInfo
 						e error
 					)
-					switch optInodeTreeType{
+					switch optInodeTreeType {
 					case 0:
 						r, e = metaHttpClient.GetInodesCrcSum(pid)
 					case 1:
@@ -1223,7 +1227,7 @@ func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
 					continue
 				}
 				for bitMapOffset := 0; bitMapOffset <= 63; bitMapOffset++ {
-					if inodeInuseBitMap[index] & (uint64(1) << bitMapOffset) != 0 {
+					if inodeInuseBitMap[index]&(uint64(1)<<bitMapOffset) != 0 {
 						inodeInuse = append(inodeInuse, uint64(index*64+bitMapOffset)+partition.Start)
 					}
 				}
