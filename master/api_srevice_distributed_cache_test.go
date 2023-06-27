@@ -21,7 +21,7 @@ func TestCreateFlashGroup(t *testing.T) {
 		}
 		flashGroupIDs = append(flashGroupIDs, fgView.ID)
 	}
-	if !assert.Equal(t,count, len(flashGroupIDs), "expect count:%v but get:%v", count, len(flashGroupIDs)) {
+	if !assert.Equal(t, count, len(flashGroupIDs), "expect count:%v but get:%v", count, len(flashGroupIDs)) {
 		return
 	}
 	err := checkFlashGroupsStatus(flashGroupIDs, proto.FlashGroupStatus_Inactive, false)
@@ -103,7 +103,7 @@ func TestSetFlashGroup(t *testing.T) {
 	fgIDs := flashGroupIDs
 	expectStatus := proto.FlashGroupStatus_Active
 	err = setFlashGroup(fgIDs, expectStatus, false)
-	if !assert.NoErrorf(t, err, "setFlashGroup fgIDs:%v setStatus:%v, err:%v", fgIDs, expectStatus, err){
+	if !assert.NoErrorf(t, err, "setFlashGroup fgIDs:%v setStatus:%v, err:%v", fgIDs, expectStatus, err) {
 		return
 	}
 	expectStatus = proto.FlashGroupStatus_Inactive
@@ -157,18 +157,7 @@ func TestFlashNodeDecommission_unused(t *testing.T) {
 
 func TestFlashGroupAddFlashNode_givenAddr(t *testing.T) {
 	var err error
-	var fgID uint64
-	var groupsView proto.FlashGroupsAdminView
-	groupsView, err = mc.AdminAPI().ListFlashGroups(true, true)
-	assert.NoError(t, err)
-	if len(groupsView.FlashGroups) == 0 {
-		var groupView proto.FlashGroupAdminView
-		groupView, err = mc.AdminAPI().CreateFlashGroup("")
-		assert.NoError(t, err)
-		fgID = groupView.ID
-	} else {
-		fgID = groupsView.FlashGroups[0].ID
-	}
+	fgID := flashGroupIDs[0]
 	err = checkFlashGroupAddGivenFlashNode(1, fgID, mfs1Addr)
 	if !assert.NoError(t, err) {
 		return
@@ -241,10 +230,9 @@ func TestFlashGroup(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.NotZerof(t, reply.Code, "reqURL:%v exptct 0 but get reply.Code:%v ", reqURL, reply.Code){
+	if !assert.NotZerof(t, reply.Code, "reqURL:%v exptct 0 but get reply.Code:%v ", reqURL, reply.Code) {
 		return
 	}
-
 
 	reqURL = fmt.Sprintf("%v/flashGroup/get?id=wrong", hostAddr)
 	reply, err = processReqURL(reqURL, t)
@@ -289,7 +277,7 @@ func TestFlashNodeDecommission_used(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	msg := fmt.Sprintf("expect flashnodeAddr:%v, but get:%v", flashNodeAddr, *nodeInfo)
+	msg := fmt.Sprintf("expect flashnodeAddr:%v fgID:%v, but get:%v", flashNodeAddr, fgID, *nodeInfo)
 	if !assert.Equal(t, flashNodeAddr, nodeInfo.Addr, msg) || !assert.Equal(t, fgID, nodeInfo.FlashGroupID, msg) {
 		return
 	}
@@ -329,7 +317,9 @@ func TestFlashGroupAddFlashNode_givenZone(t *testing.T) {
 	}
 	fgID := flashGroupIDs[0]
 	err := checkFlashGroupAddGivenZoneFlashNode(fgID, 2, testZone2)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 }
 
 func checkFlashGroupAddGivenZoneFlashNode(fgID uint64, count int, zoneName string) (err error) {

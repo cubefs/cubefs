@@ -3724,7 +3724,7 @@ func TestSetFlashNode(t *testing.T) {
 	testAddr := testCases[0].NodeAddr
 	flashNodeViewInfo, err := mc.NodeAPI().GetFlashNode(testAddr)
 	if !assert.NoError(t, err) {
-			return
+		return
 	}
 
 	if !assert.Equalf(t, defaultFlashNodeOnlineState, flashNodeViewInfo.IsEnable, "expect defaultFlashNodeOnlineState:%v", defaultFlashNodeOnlineState) {
@@ -3740,6 +3740,10 @@ func TestSetFlashNode(t *testing.T) {
 	}
 
 	assert.Equalf(t, false, flashNodeViewInfo.IsEnable, "expect isEnable:false")
+	err = mc.NodeAPI().SetFlashNodeState(testAddr, "true")
+	if !assert.NoError(t, err) {
+		return
+	}
 }
 
 func TestUpdateVolCacheConfig(t *testing.T) {
