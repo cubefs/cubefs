@@ -55,6 +55,16 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 						pathInfo.FullPath, quotaInfo.QuotaId)
 					return
 				}
+
+				if proto.IsAncestor(pathInfo.FullPath, quotaPathInfo.FullPath) {
+					err = errors.NewErrorf("Nested directories found: %s and %s", pathInfo.FullPath, quotaPathInfo.FullPath)
+					return
+				}
+
+				if proto.IsAncestor(quotaPathInfo.FullPath, pathInfo.FullPath) {
+					err = errors.NewErrorf("Nested directories found: %s and %s", pathInfo.FullPath, quotaPathInfo.FullPath)
+					return
+				}
 			}
 		}
 	}

@@ -297,7 +297,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 create_dentry:
 	status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode, quotaIds)
 	if err != nil {
-		if status == statusOpDirQuota {
+		if status == statusOpDirQuota || status == statusNoSpace {
 			mw.iunlink(mp, info.Inode)
 			mw.ievict(mp, info.Inode)
 		}
@@ -854,6 +854,34 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 			tx.SetOnCommit(job)
 		}
 	}
+	// TODO
+	// job = func() {
+	// 	var inodes []uint64
+	// 	inodes = append(inodes, srcInode)
+	// 	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
+	// 	if err != nil {
+	// 		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
+	// 	}
+
+	// 	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
+	// 	if err != nil {
+	// 		log.LogErrorf("rename_ll: get dst partent inode [%v] quota fail [%v]", dstParentID, err)
+	// 	}
+
+	// 	if mapHaveSameKeys(srcQuotaInfos, destQuotaInfos) {
+	// 		return
+	// 	}
+
+	// 	for quotaId := range srcQuotaInfos {
+	// 		mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
+	// 	}
+
+	// 	for quotaId, info := range destQuotaInfos {
+	// 		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
+	// 		mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
+	// 	}
+	// }
+	// tx.SetOnCommit(job)
 	return nil
 }
 
@@ -986,31 +1014,31 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			}
 		}
 	}
+	// TODO
+	// var inodes []uint64
+	// inodes = append(inodes, inode)
+	// srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
+	// if err != nil {
+	// 	log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
+	// }
 
-	var inodes []uint64
-	inodes = append(inodes, inode)
-	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
-	if err != nil {
-		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
-	}
+	// destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
+	// if err != nil {
+	// 	log.LogErrorf("rename_ll: get dst partent inode [%v] quota fail [%v]", dstParentID, err)
+	// }
 
-	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
-	if err != nil {
-		log.LogErrorf("rename_ll: get dst partent inode [%v] quota fail [%v]", dstParentID, err)
-	}
+	// if mapHaveSameKeys(srcQuotaInfos, destQuotaInfos) {
+	// 	return nil
+	// }
 
-	if mapHaveSameKeys(srcQuotaInfos, destQuotaInfos) {
-		return nil
-	}
+	// for quotaId := range srcQuotaInfos {
+	// 	mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
+	// }
 
-	for quotaId := range srcQuotaInfos {
-		mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
-	}
-
-	for quotaId, info := range destQuotaInfos {
-		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
-		mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
-	}
+	// for quotaId, info := range destQuotaInfos {
+	// 	log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
+	// 	mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
+	// }
 
 	return nil
 }
