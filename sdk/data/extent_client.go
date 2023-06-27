@@ -145,10 +145,14 @@ type ExtentClient struct {
 	extentMergeIno     []uint64
 	extentMergeChan    chan struct{}
 	ExtentMergeSleepMs uint64
+
+	prepareCh chan *PrepareRequest
 }
 
 const (
-	NoUseTinyExtent = -1
+	NoUseTinyExtent   = -1
+	PrepareWorkerNum  = 5
+	PrepareReqChanCap = 1024
 )
 
 // NewExtentClient returns a new extent client.
@@ -179,6 +183,9 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	if client.dataWrapper.EnableRemoteCache() {
 		client.dataWrapper.initRemoteCache()
 	}
+	client.prepareCh = make(chan *PrepareRequest, PrepareReqChanCap)
+	client.wg.Add(1)
+	go client.DoPrepare()
 
 	client.streamerConcurrentMap = InitConcurrentStreamerMap()
 	client.insertExtentKey = config.OnInsertExtentKey
@@ -294,7 +301,8 @@ func (client *ExtentClient) EvictStream(ctx context.Context, inode uint64) error
 		return err
 	}
 
-	s.done <- struct{}{}
+	//s.done <- struct{}{}
+	close(s.done)
 	s.wg.Wait()
 	return nil
 }
@@ -783,4 +791,39 @@ func (c *ExtentClient) GetInodeBloomStatus(ino uint64) bool {
 		return false
 	}
 	return bloomfilter.CheckUint64Exist(cacheBloom, ino)
+}
+
+func (c *ExtentClient) DoPrepare() {
+	defer c.wg.Done()
+
+	workerWg := sync.WaitGroup{}
+	for i := 0; i < PrepareWorkerNum; i++ {
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			for {
+				select {
+				case <-c.stopC:
+					return
+				case req := <-c.prepareCh:
+					c.servePrepareRequest(req)
+				}
+			}
+		}()
+	}
+	workerWg.Wait()
+}
+
+func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRequest) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogWarnf("servePrepareRequest: panic occurs, stack(%v)", string(debug.Stack()))
+		}
+	}()
+	s := c.GetStreamer(prepareReq.inode)
+	if s == nil {
+		log.LogWarnf("servePrepareRequest: streamer is nil, prepare request: %v)", prepareReq)
+		return
+	}
+	s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek)
 }

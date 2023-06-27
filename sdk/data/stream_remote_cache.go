@@ -25,8 +25,16 @@ import (
 )
 
 type PrepareRequest struct {
-	ctx context.Context
-	ek  *proto.ExtentKey
+	ctx   context.Context
+	inode uint64
+	ek    *proto.ExtentKey
+}
+
+func (pr *PrepareRequest) String() string {
+	if pr == nil {
+		return ""
+	}
+	return fmt.Sprintf("PrepareRequest{ino: %v, ek: %v}", pr.inode, pr.ek)
 }
 
 func (s *Streamer) enableRemoteCache() bool {
@@ -43,30 +51,14 @@ func (s *Streamer) enableCacheAutoPrepare() bool {
 	return s.enableRemoteCache()
 }
 
-func (s *Streamer) DoPrepare() {
-	s.prepareCh = make(chan *PrepareRequest, 1024)
-
-	s.wg.Add(1)
-	go s.servePrepare()
-}
-
-func (s *Streamer) servePrepare() {
-	defer s.wg.Done()
-	for {
-		select {
-		case req := <-s.prepareCh:
-			s.prepareRemoteCache(req.ctx, req.ek)
-		case <-s.done:
-			return
-		}
+func (s *Streamer) sendToPrepareChan(req *PrepareRequest) {
+	select {
+	case s.client.prepareCh <- req:
+	default:
+		log.LogWarnf("sendToPrepareChan: chan is full, discard req(%v)", req)
 	}
 }
 
-func (s *Streamer) sendToPrepareChan(req *PrepareRequest) {
-	s.prepareCh <- req
-}
-
-// todo: async
 func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey) {
 	cReadRequests, err := s.prepareCacheRequests(ek.FileOffset, uint64(ek.Size), nil)
 	if err != nil {
