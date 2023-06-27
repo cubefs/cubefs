@@ -184,11 +184,11 @@ func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *common.Packet,
 			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
 			return
 		}
-		//err = common.CheckReadReplyValid(reqPacket, replyPacket)
-		//if err != nil {
-		//	log.LogWarnf("getReadReply: failed to checkReadReplyValid, err(%v)", err)
-		//	return
-		//}
+		if replyPacket.ResultCode != proto.OpOk {
+			err = fmt.Errorf("ResultCode NOK (%v)", replyPacket.ResultCode)
+			log.LogWarnf("getReadReply: ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
+			return
+		}
 		copy(req.Data[readBytes:], replyPacket.Data)
 		readBytes += int(replyPacket.Size)
 	}
