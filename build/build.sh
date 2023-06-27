@@ -8,7 +8,11 @@ BuildDependsLibPath=${BuildPath}/lib
 BuildDependsIncludePath=${BuildPath}/include
 VendorPath=${RootPath}/vendor
 DependsPath=${RootPath}/depends
+use_clang=$(echo ${CC} | grep "clang" | grep -v "grep")
 cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lstdc++"
+if [ "${use_clang}" != "" ]; then 
+    cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lc++"
+fi
 cgo_cflags="-I${BuildDependsIncludePath}"
 MODFLAGS=""
 gomod=${2:-"on"}
@@ -59,10 +63,6 @@ if [ -e /sys/fs/cgroup/cpu ] ; then
 fi
 NPROC=${NPROC:-"1"}
 
-GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64"
-#cgo_cflags=""
-#cgo_ldflags="-lstdc++ -lm"
-
 case $(uname -s | tr 'A-Z' 'a-z') in
     "linux"|"darwin")
         ;;
@@ -104,6 +104,9 @@ build_bzip2() {
 
     if [ ! -d ${BuildOutPath}/bzip2-bzip2-${BZIP2_VER} ]; then
         tar -zxf ${DependsPath}/bzip2-bzip2-${BZIP2_VER}.tar.gz -C ${BuildOutPath}
+        if [ "${use_clang}" != "" ]; then
+            sed -i '18d' ${BuildOutPath}/bzip2-bzip2-${BZIP2_VER}/Makefile
+        fi
     fi
 
     echo "build bzip2..."
@@ -194,14 +197,19 @@ build_rocksdb() {
         sed -i '1069s/newf/\&newf/' rocksdb-${ROCKSDB_VER}/db/db_impl/db_impl_compaction_flush.cc
         sed -i '1161s/newf/\&newf/' rocksdb-${ROCKSDB_VER}/db/db_impl/db_impl_compaction_flush.cc
         sed -i '412s/pair/\&pair/' rocksdb-${ROCKSDB_VER}/options/options_parser.cc
+        sed -i '63s/std::mutex/mutable std::mutex/' rocksdb-${ROCKSDB_VER}/util/channel.h
         popd
     fi
 
     echo "build rocksdb..."
     pushd ${BuildOutPath}/rocksdb-${ROCKSDB_VER}
-    CCMAJOR=`gcc -dumpversion | awk -F. '{print $1}'`
-    if [ ${CCMAJOR} -ge 9 ]; then
-        FLAGS="-Wno-error=deprecated-copy -Wno-error=pessimizing-move"
+    if [ "${use_clang}" != "" ]; then
+        FLAGS="-Wno-error=deprecated-copy -Wno-error=pessimizing-move -Wno-error=shadow -Wno-error=unused-but-set-variable"
+    else
+        CCMAJOR=`gcc -dumpversion | awk -F. '{print $1}'`
+        if [ ${CCMAJOR} -ge 9 ]; then
+            FLAGS="-Wno-error=deprecated-copy -Wno-error=pessimizing-move"
+        fi
     fi
     PORTABLE=1 make EXTRA_CXXFLAGS="-fPIC ${FLAGS} -DZLIB -DBZIP2 -DSNAPPY -DLZ4 -DZSTD -I${BuildDependsIncludePath}" static_lib
     if [ $? -ne 0 ]; then
