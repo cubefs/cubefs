@@ -89,6 +89,7 @@ module.exports = [
             'maintenance/capacity.md',
             'maintenance/zone.md',
             'maintenance/log.md',
+            'maintenance/atomicity.md',
             'maintenance/code.md',
             'maintenance/upgrade.md',
         ]
