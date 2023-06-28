@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -75,6 +76,21 @@ func (c *client) DiskInfo(ctx context.Context, host string, args *DiskStatArgs) 
 	return
 }
 
+// ShardPartialRepairArgs only RS code can use the partial repair,
+type ShardPartialRepairArgs struct {
+	Bid           proto.BlobID          `json:"bid"`
+	Size          int64                 `json:"size"`
+	CodeMode      codemode.CodeMode     `json:"code_mode"`
+	Sources       []proto.VunitLocation `json:"sources"`
+	IoType        IOType                `json:"io_type"`
+	SurvivalIndex []int                 `json:"survival_index"` // help the repair engine to find right matrix
+	BadIdx        int                   `json:"bad_idxes"`      // only support single broken disk
+}
+
+func (s *ShardPartialRepairArgs) IsValid() bool {
+	return s.CodeMode.IsValid() && proto.CheckVunitLocations(s.Sources)
+}
+
 type StorageAPI interface {
 	String(ctx context.Context, host string) string
 	IsOnline(ctx context.Context, host string) bool
@@ -106,4 +122,5 @@ type StorageAPI interface {
 type WorkerAPI interface {
 	RepairShard(ctx context.Context, host string, args *proto.ShardRepairTask) (err error)
 	WorkerStats(ctx context.Context, host string) (ret WorkerStats, err error)
+	ShardPartialRepair(ctx context.Context, host string, args *ShardPartialRepairArgs) (ret *ShardPartialRepairRet, err error)
 }
