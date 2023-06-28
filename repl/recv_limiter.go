@@ -21,9 +21,9 @@ type RecvLimiter struct {
 	packet *rate.Limiter
 }
 
-func NewRecvLimiter(recvLimiter *rate.Limiter, packetLimiter *rate.Limiter) *RecvLimiter {
+func NewRecvLimiter(flowLimiter *rate.Limiter, packetLimiter *rate.Limiter) *RecvLimiter {
 	return &RecvLimiter{
-		flow:   recvLimiter,
+		flow:   flowLimiter,
 		packet: packetLimiter,
 	}
 }
