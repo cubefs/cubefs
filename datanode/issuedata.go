@@ -43,6 +43,7 @@ type dataRef struct {
 	ref  int
 }
 
+// innerError 类型是 IssueProcessor 内部使用的错误类型，用来对检查及修复数据时发生的错误进行收敛归类，以分辨提取数据时是无数据还是被拒绝。
 type innerError int
 
 const (
@@ -108,6 +109,11 @@ func (f *IssueFragment) DecodeFrom(b []byte) error {
 	return nil
 }
 
+// IssueProcessor 是用于系统级宕机引起的数据检查及损坏修复的处理器。
+// 它具备以下几个功能:
+// 1. 注册可能有损坏的数据区域
+// 2. 判断给定数据区域是否在已注册的疑似损坏数据区域内
+// 3. 检查并尝试修复疑似被损坏的数据区域.
 type IssueProcessor struct {
 	path           string
 	partitionID    uint64
@@ -296,7 +302,7 @@ func (p *IssueProcessor) checkAndFixFragments(fragments []*IssueFragment) error 
 			}
 		case ErrCannotFixFragment:
 			// 该数据片段无法修复，进行报警
-			log.LogCriticalf("checkAndFixFragments: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
+			log.LogCriticalf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
 			exporter.Warning(fmt.Sprintf("CAN NOT FIX BROKEN EXTENT!\n"+
 				"Found issue data fragment cause server fault and can not fix it.\n"+
 				"Partition: %v\n"+
@@ -305,7 +311,7 @@ func (p *IssueProcessor) checkAndFixFragments(fragments []*IssueFragment) error 
 				"Size: %v",
 				p.partitionID, fragment.extentID, fragment.offset, fragment.size))
 		default:
-			log.LogErrorf("checkAndFixFragments: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix temporary and will be retry later", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
+			log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix temporary and will be retry later", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
 		}
 	}
 	return nil
@@ -324,7 +330,7 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) error {
 		localCrc  uint32
 	)
 	if localData, err = p.fetchLocal(extentID, offset, fragment.size); err != nil {
-		log.LogErrorf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch local data failed: %v",
+		log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch local data failed: %v",
 			p.partitionID, extentID, offset, size, err)
 		return ErrPendingFixFragment
 	}
@@ -360,30 +366,30 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) error {
 				// 本地数据与可信副本数据存在差异，使用可信副本数据覆盖本地数据。
 				if err = p.storage.Write(context.Background(), extentID, int64(offset), int64(size), remoteData, remoteCrc, storage.RandomWriteType, true); err != nil {
 					// 覆盖本地数据时出错，延迟修复
-					log.LogErrorf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) failed: %v", p.partitionID, extentID, offset, size, localCrc, remoteCrc, err)
+					log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) failed: %v", p.partitionID, extentID, offset, size, localCrc, remoteCrc, err)
 					return ErrPendingFixFragment
 				}
-				log.LogWarnf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) success", p.partitionID, extentID, offset, size, localCrc, remoteCrc)
+				log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) success", p.partitionID, extentID, offset, size, localCrc, remoteCrc)
 				return nil
 			}
 			// 本地数据和可信副本数据一致，不需要修改。直接通知上层数据完成修复。
-			log.LogWarnf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) no need to fix cause CRC same with safety remote(%v)", p.partitionID, extentID, offset, size, remote)
+			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) no need to fix cause CRC same with safety remote(%v)", p.partitionID, extentID, offset, size, remote)
 			return nil
 		case fetchErr == nil && len(remoteData) == 0, fetchErr == innerErrorFetchDoData:
-			log.LogWarnf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) does not fetched enough data from remote(%v) ", p.partitionID, extentID, offset, size, remote)
+			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) does not fetched enough data from remote(%v) ", p.partitionID, extentID, offset, size, remote)
 			noDataErrorCnt++
 		case fetchErr == innerErrorFetchRejected:
-			log.LogWarnf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch data rejected by remote(%v)", p.partitionID, extentID, offset, size, remote)
+			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch data rejected by remote(%v)", p.partitionID, extentID, offset, size, remote)
 			disableErrorCnt++
 		default:
-			log.LogWarnf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch data failed from remote(%v): %v", p.partitionID, extentID, offset, size, remote, fetchErr)
+			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch data failed from remote(%v): %v", p.partitionID, extentID, offset, size, remote, fetchErr)
 			otherErrorCnt++
 		}
 	}
 	switch {
 	case noDataErrorCnt == len(remoteHosts):
 		// 除本地外的所有副本均汇报无该段数据，则认定本地数据无需修复
-		log.LogWarnf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) no need to fix cause all remote report no exists", p.partitionID, extentID, offset, size)
+		log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) no need to fix cause all remote report no exists", p.partitionID, extentID, offset, size)
 		return nil
 	case otherErrorCnt > 0:
 		// 存在暂时无法响应的副本, 延迟重试
@@ -450,15 +456,15 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) error {
 				// 仅在目标数据非空洞且有效长度超过本地数据的情况下进行修复
 				if err = p.storage.Write(context.Background(), extentID, int64(offset), int64(size), ref.data[:size], crc, storage.RandomWriteType, true); err != nil {
 					// 覆盖本地数据时出错，延迟修复
-					log.LogErrorf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) failed: %v", p.partitionID, extentID, offset, size, localCrc, crc, err)
+					log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) failed: %v", p.partitionID, extentID, offset, size, localCrc, crc, err)
 					return ErrPendingFixFragment
 				}
 			}
-			log.LogWarnf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) skip fix cause quorum version same as local or empty.", p.partitionID, extentID, offset, size)
+			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) skip fix cause quorum version same as local or empty.", p.partitionID, extentID, offset, size)
 			return nil
 		}
 	}
-	log.LogErrorf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not determine correct data by quorum",
+	log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not determine correct data by quorum",
 		p.partitionID, extentID, offset, size)
 	return ErrCannotFixFragment
 }

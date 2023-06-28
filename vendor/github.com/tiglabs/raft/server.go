@@ -436,6 +436,34 @@ func (rs *RaftServer) GetEntries(id uint64, startIndex uint64, maxSize uint64) (
 	return
 }
 
+func (rs *RaftServer) GetConsistencyMode(id uint64) (mode ConsistencyMode, err error) {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if !ok {
+		err = ErrRaftNotExists
+		return
+	}
+
+	mode = raft.getConsistencyMode()
+	return
+}
+
+func (rs *RaftServer) SetConsistencyMode(id uint64, mode ConsistencyMode) (err error) {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if !ok {
+		err = ErrRaftNotExists
+		return
+	}
+
+	raft.setConsistencyMode(mode)
+	return
+}
+
 func (rs *RaftServer) sendHeartbeat() {
 	// key: sendto nodeId; value: range ids
 	nodes := make(map[uint64]proto.HeartbeatContext)

@@ -17,8 +17,7 @@ package raftstore
 import (
 	"fmt"
 
-	"github.com/tiglabs/raft"
-
+	cfsproto "github.com/cubefs/cubefs/proto"
 	"github.com/tiglabs/raft/proto"
 )
 
@@ -72,17 +71,6 @@ func (f GetStartIndexFunc) Get(firstIndex, lastIndex uint64) (startIndex uint64)
 	return
 }
 
-type ConsistencyMode raft.ConsistencyMode
-
-func (m ConsistencyMode) toRaftConsistencyMode() raft.ConsistencyMode {
-	return raft.ConsistencyMode(m)
-}
-
-const (
-	StandardMode = ConsistencyMode(raft.StandardMode)
-	StrictMode   = ConsistencyMode(raft.StrictMode)
-)
-
 // PartitionConfig defines the configuration properties for the partitions.
 type PartitionConfig struct {
 	ID          uint64
@@ -104,7 +92,7 @@ type PartitionConfig struct {
 	WALContinuityCheck bool
 	WALContinuityFix   bool
 
-	Mode ConsistencyMode
+	Mode cfsproto.ConsistencyMode
 
 	StorageListener StorageListener
 }

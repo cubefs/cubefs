@@ -144,6 +144,7 @@ const (
 	volBatchDelInodeCntKey              = "batchDelInodeCnt"
 	volDelInodeIntervalKey              = "delInodeInterval"
 	dataNodeFlushFDParallelismOnDiskKey = "dataNodeFlushFDParallelismOnDisk"
+	dataPartitionConsistencyModeKey     = "dataPartitionConsistencyMode"
 	umpCollectWayKey                    = "umpCollectWay"
 	umpJmtpAddrKey                      = "umpJmtpAddr"
 	umpJmtpBatchKey                     = "umpJmtpBatch"

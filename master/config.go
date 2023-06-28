@@ -114,6 +114,7 @@ type clusterConfig struct {
 	DataNodeFlushFDInterval             uint32
 	DataNodeFlushFDParallelismOnDisk    uint64
 	DataNodeNormalExtentDeleteExpire    uint64
+	DataPartitionConsistencyMode        int32
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64

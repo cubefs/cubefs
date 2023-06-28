@@ -543,6 +543,7 @@ type LimitInfo struct {
 	MetaNodeDumpWaterLevel           uint64
 	DataNodeFlushFDInterval          uint32
 	DataNodeFlushFDParallelismOnDisk uint64
+	DataPartitionConsistencyMode     ConsistencyMode
 
 	MonitorSummarySec uint64
 	MonitorReportSec  uint64
@@ -1232,6 +1233,7 @@ type RateLimitInfo struct {
 	FlashNodeVolRate                 int64
 	DataNodeFlushFDInterval          int64
 	DataNodeFlushFDParallelismOnDisk int64
+	DataPartitionConsistencyMode     int32
 	DNNormalExtentDeleteExpire       int64
 	ClientReadVolRate                int64
 	ClientWriteVolRate               int64
@@ -1492,3 +1494,38 @@ type ClientClusterConf struct {
 	RemoteCacheBoostEnable bool
 	NetConnTimeoutUs       int64
 }
+type ConsistencyMode uint32
+
+func (c ConsistencyMode) String() string {
+	switch c {
+	case StandardMode:
+		return "Standard"
+	case StrictMode:
+		return "Strict"
+	default:
+	}
+	return "Unknown"
+}
+
+func (c ConsistencyMode) Valid() bool {
+	switch c {
+	case StandardMode, StrictMode:
+		return true
+	default:
+	}
+	return false
+}
+
+func (c ConsistencyMode) Int32() int32 {
+	return int32(c)
+}
+
+func ConsistencyModeFromInt32(v int32) ConsistencyMode {
+	return ConsistencyMode(v)
+}
+
+const (
+	StandardMode ConsistencyMode = iota
+	StrictMode
+)
+

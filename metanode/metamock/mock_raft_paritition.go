@@ -2,6 +2,7 @@ package metamock
 
 import (
 	"context"
+	cfsproto "github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/tiglabs/raft"
@@ -128,4 +129,12 @@ func (m MockPartition) SetWALFileCacheCapacity(capacity int) {
 
 func (m MockPartition) GetWALFileCacheCapacity() int {
 	return 0
+}
+
+func (m MockPartition) SetConsistencyMode(mode cfsproto.ConsistencyMode) {
+	return
+}
+
+func (m MockPartition) GetConsistencyMode() cfsproto.ConsistencyMode {
+	return cfsproto.StandardMode
 }

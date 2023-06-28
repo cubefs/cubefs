@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"time"
 
+	cfsproto "github.com/cubefs/cubefs/proto"
+
 	"github.com/tiglabs/raft/util"
 
 	"github.com/tiglabs/raft/storage/wal"
@@ -102,6 +104,10 @@ type Partition interface {
 	SetWALFileCacheCapacity(capacity int)
 
 	GetWALFileCacheCapacity() int
+
+	SetConsistencyMode(mode cfsproto.ConsistencyMode)
+
+	GetConsistencyMode() cfsproto.ConsistencyMode
 }
 
 // Default implementation of the Partition interface.
@@ -287,6 +293,16 @@ func (p *partition) Start() (err error) {
 		peers = append(peers, peerAddress.Peer)
 	}
 	var applied = p.config.GetStartIndex.Get(fi, li)
+	var consistencyMode = func() raft.ConsistencyMode {
+		switch p.config.Mode {
+		case cfsproto.StandardMode:
+			return raft.StandardMode
+		case cfsproto.StrictMode:
+			return raft.StrictMode
+		default:
+		}
+		return raft.StandardMode
+	}()
 	p.rc = &raft.RaftConfig{
 		ID:           p.config.ID,
 		Peers:        peers,
@@ -298,8 +314,9 @@ func (p *partition) Start() (err error) {
 		Learners:     p.config.Learners,
 		StrictHS:     p.config.StrictHS,
 		StartCommit:  p.config.StartCommit,
-		Mode:         p.config.Mode.toRaftConsistencyMode(),
+		Mode:         consistencyMode,
 	}
+
 	if ln := p.config.StorageListener; ln != nil {
 		var (
 			lo, hi uint64
@@ -387,6 +404,51 @@ func (p *partition) GetWALFileCacheCapacity() (capacity int) {
 		}
 	}
 	return
+}
+
+func (p *partition) SetConsistencyMode(mode cfsproto.ConsistencyMode) {
+	if p != nil && p.config != nil {
+		if p.config.Mode == mode {
+			return
+		}
+		p.config.Mode = mode
+		if p.raft != nil {
+			var convertMode = func(mode cfsproto.ConsistencyMode) raft.ConsistencyMode {
+				switch mode {
+				case cfsproto.StandardMode:
+					return raft.StandardMode
+				case cfsproto.StrictMode:
+					return raft.StrictMode
+				default:
+				}
+				return raft.StandardMode
+			}
+			_ = p.raft.SetConsistencyMode(p.id, convertMode(mode))
+		}
+	}
+}
+
+func (p *partition) GetConsistencyMode() cfsproto.ConsistencyMode {
+	if p != nil {
+		if p.raft != nil {
+			var mode, err = p.raft.GetConsistencyMode(p.id)
+			if err != nil {
+				return cfsproto.StandardMode
+			}
+			var convert = func(mode raft.ConsistencyMode) cfsproto.ConsistencyMode {
+				switch mode {
+				case raft.StandardMode:
+					return cfsproto.StandardMode
+				case raft.StrictMode:
+					return cfsproto.StrictMode
+				default:
+				}
+				return cfsproto.StandardMode
+			}
+			return convert(mode)
+		}
+	}
+	return cfsproto.StandardMode
 }
 
 func newPartition(cfg *PartitionConfig, raft *raft.RaftServer, walPath string) Partition {

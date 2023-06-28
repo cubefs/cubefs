@@ -2,6 +2,7 @@ package mock
 
 import (
 	"context"
+	cfsproto "github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/tiglabs/raft"
@@ -102,6 +103,14 @@ func (m mockRaftPartition) SetWALFileCacheCapacity(capacity int) {
 
 func (m mockRaftPartition) GetWALFileCacheCapacity() int {
 	return m.cfg.WALFileCacheCapacity
+}
+
+func (m mockRaftPartition) SetConsistencyMode(mode cfsproto.ConsistencyMode) {
+	return
+}
+
+func (m mockRaftPartition) GetConsistencyMode() cfsproto.ConsistencyMode {
+	return cfsproto.StandardMode
 }
 
 type mockRaftStore struct {

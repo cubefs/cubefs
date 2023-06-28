@@ -142,6 +142,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	metadata.LastUpdateTime = dp.lastUpdateTime
 	metadata.IsCatchUp = dp.isCatchUp
 	metadata.NeedServerFaultCheck = dp.needServerFaultCheck
+	metadata.ConsistencyMode = dp.config.Mode
 
 	if metadata.CreateTime == "" {
 		metadata.CreateTime = time.Now().Format(TimeLayout)

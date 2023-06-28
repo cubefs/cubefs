@@ -27,12 +27,14 @@ import (
 const (
 	cmdMetaNodeUse   = "metanode [COMMAND]"
 	cmdMetaNodeShort = "Manage meta nodes"
+	cmdMetaNodeAlias = "mn"
 )
 
 func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   cmdMetaNodeUse,
-		Short: cmdMetaNodeShort,
+		Use:     cmdMetaNodeUse,
+		Short:   cmdMetaNodeShort,
+		Aliases: []string{cmdMetaNodeAlias},
 	}
 	cmd.AddCommand(
 		newMetaNodeListCmd(client),

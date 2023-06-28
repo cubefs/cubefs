@@ -78,6 +78,7 @@ type DataPartitionMetadata struct {
 	LastTruncateID          uint64
 	LastUpdateTime          int64
 	VolumeHAType            proto.CrossRegionHAType
+	ConsistencyMode         proto.ConsistencyMode
 
 	// 该BOOL值表示Partition是否已经就绪，该值默认值为false，
 	// 新创建的DP成员为默认值，表示未完成第一次Raft恢复，Raft未就绪。
@@ -101,7 +102,8 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 			md.LastUpdateTime == other.LastUpdateTime &&
 			md.VolumeHAType == other.VolumeHAType) &&
 			md.IsCatchUp == other.IsCatchUp &&
-			md.NeedServerFaultCheck == other.NeedServerFaultCheck
+			md.NeedServerFaultCheck == other.NeedServerFaultCheck &&
+			md.ConsistencyMode == other.ConsistencyMode
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {
@@ -361,6 +363,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		CreationType:  meta.DataPartitionCreateType,
 
 		VolHAType: meta.VolumeHAType,
+		Mode:      meta.ConsistencyMode,
 	}
 	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
@@ -569,6 +572,10 @@ func (dp *DataPartition) IsRaftLeader() (addr string, ok bool) {
 		}
 	}
 	return
+}
+
+func (dp *DataPartition) IsRaftStarted() bool {
+	return dp.raftPartition != nil
 }
 
 func (dp *DataPartition) IsLocalAddress(addr string) bool {

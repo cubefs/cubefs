@@ -121,6 +121,7 @@ func (m *DataNode) updateNodeBaseInfo() {
 	m.space.SetForceFlushFDInterval(limitInfo.DataNodeFlushFDInterval)
 	m.space.SetSyncWALOnUnstableEnableState(limitInfo.DataSyncWALOnUnstableEnableState)
 	m.space.SetForceFlushFDParallelismOnDisk(limitInfo.DataNodeFlushFDParallelismOnDisk)
+	m.space.SetPartitionConsistencyMode(limitInfo.DataPartitionConsistencyMode)
 
 	m.space.SetNormalExtentDeleteExpireTime(limitInfo.DataNodeNormalExtentDeleteExpire)
 	if statistics.StatisticsModule != nil {
