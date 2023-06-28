@@ -230,7 +230,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnCacheBcache:     s.bc.Put,
 		OnEvictBcache:     s.bc.Evict,
 
-		DisableMetaCache: DisableMetaCache,
+		DisableMetaCache:             DisableMetaCache,
+		MinWriteAbleDataPartitionCnt: opt.MinWriteAbleDataPartitionCnt,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)

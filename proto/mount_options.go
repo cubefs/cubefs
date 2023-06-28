@@ -69,6 +69,7 @@ const (
 
 	EnableAudit
 	LocallyProf
+	MinWriteAbleDataPartitionCnt
 	MaxMountOption
 )
 
@@ -153,7 +154,13 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheBatchCnt] = MountOption{"bcacheBatchCnt", "The block cache get meta count", "", int64(100000)}
 	opts[BcacheCheckIntervalS] = MountOption{"bcacheCheckIntervalS", "The block cache check interval", "", int64(300)}
 	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", false}
+<<<<<<< HEAD
 	opts[RequestTimeout] = MountOption{"requestTimeout", "The Request Expiration Time", "", int64(0)}
+=======
+	opts[MinWriteAbleDataPartitionCnt] = MountOption{"minWriteAbleDataPartitionCnt",
+		"Min writeable data partition count retained int dpSelector when update DataPartitionsView from master",
+		"", int64(10)}
+>>>>>>> 2580a21... feat(master, client): optimize data partition status management:
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -179,8 +186,8 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			if opts[i].cmdlineValue != "" {
 				opts[i].value = parseInt64(opts[i].cmdlineValue)
 			} else {
-				if value, present := cfg.CheckAndGetString(opts[i].keyword); present {
-					opts[i].value = parseInt64(value)
+				if present := cfg.HasKey(opts[i].keyword); present {
+					opts[i].value = cfg.GetInt64(opts[i].keyword)
 				} else {
 					opts[i].value = v
 				}
@@ -309,4 +316,5 @@ type MountOptions struct {
 	MaxStreamerLimit        int64
 	EnableAudit             bool
 	RequestTimeout          int64
+	MinWriteAbleDataPartitionCnt int
 }
