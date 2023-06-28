@@ -398,12 +398,11 @@ func (dbInfo *RocksDbInfo) accessDb() error {
 	}
 
 	dbInfo.mutex.RLock()
-
 	if atomic.LoadUint32(&dbInfo.state) != dbOpenedSt {
+		dbInfo.mutex.RUnlock()
 		log.LogErrorf("[RocksDB Op] can not access db, db is not opened. Cur state:%v", dbInfo.state)
 		return accessDBError
 	}
-
 	return nil
 }
 
