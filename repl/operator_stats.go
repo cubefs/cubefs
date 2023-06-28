@@ -178,10 +178,10 @@ func (s *OperatorStatsSample) GetDropFlow() uint64 {
 }
 
 func (s *OperatorStatsSample) GetDropPacketRate() float64 {
-	if s.GetDequePacket() == 0 {
+	if s.GetDropPacket() == 0 {
 		return 0
 	}
-	return float64(s.GetDequePacket()) / float64(s.GetDequePacket()+s.GetEnquePacket())
+	return float64(s.GetDropPacket()) / float64(s.GetDropPacket()+s.GetEnquePacket())
 }
 
 func (s *OperatorStatsSample) GetDropFlowRate() float64 {

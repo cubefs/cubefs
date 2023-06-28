@@ -309,7 +309,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	addrs := cfg.GetSlice(proto.MasterAddr)
-	if len(addrs) == 0 {
+	if len(cfg.GetSlice(proto.MasterAddr)) == 0 {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
 	masters := make([]string, 0, len(addrs))
