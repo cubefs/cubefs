@@ -23,6 +23,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
+
 	"github.com/golang/mock/gomock"
 	"github.com/klauspost/reedsolomon"
 
@@ -43,6 +45,23 @@ func testWithAllMode(t *testing.T, testFunc func(t *testing.T, mode codemode.Cod
 	for _, mode := range codemode.GetAllCodeModes() {
 		testFunc(t, mode)
 	}
+}
+
+func genPartialPlan(vid proto.Vid, mode codemode.CodeMode, badIdx int) (surviveIdxes []int, plan VunitLocations) {
+	modeInfo := mode.Tactic()
+	for i := 0; i < modeInfo.N+1; i++ {
+		if i == badIdx {
+			continue
+		}
+		vuid, _ := proto.NewVuid(vid, uint8(i), 1)
+		plan = append(plan, proto.VunitLocation{
+			Vuid:   vuid,
+			Host:   "127.0.0.1:xxxx",
+			DiskID: 1,
+		})
+		surviveIdxes = append(surviveIdxes, i)
+	}
+	return
 }
 
 func genMockVol(vid proto.Vid, mode codemode.CodeMode) []proto.VunitLocation {
@@ -69,11 +88,12 @@ func genMockBytes(letter byte, size int64) []byte {
 }
 
 type MockGetter struct {
-	mu       sync.Mutex
-	vunits   map[proto.Vuid]*mockVunit
-	failVuid map[proto.Vuid]error
-	bids     []proto.BlobID
-	sizes    []int64
+	mu          sync.Mutex
+	vunits      map[proto.Vuid]*mockVunit
+	failVuid    map[proto.Vuid]error
+	bids        []proto.BlobID
+	sizes       []int64
+	partialData map[proto.BlobID][]byte
 }
 
 func NewMockGetter(replicas []proto.VunitLocation, mode codemode.CodeMode) *MockGetter {
@@ -235,9 +255,48 @@ func (getter *MockGetter) GetShard(ctx context.Context, location proto.VunitLoca
 	return ioutil.NopCloser(reader), crc, err
 }
 
-// todo need realize @zongchao
-func (getter *MockGetter) GetPartialShards(ctx context.Context, partials client.PartialShards, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error) {
-	return nil, 0, nil
+func (getter *MockGetter) GetPartialShards(ctx context.Context, partials api.ShardPartialRepairArgs) []client.ShardResponse {
+	getter.mu.Lock()
+	defer getter.mu.Unlock()
+	var ret []client.ShardResponse
+	for _, location := range partials.Sources {
+		shardResponse := client.ShardResponse{}
+		vuid := location.Vuid
+		if err, ok := getter.failVuid[vuid]; ok {
+			shardResponse.Err = err
+			ret = append(ret, shardResponse)
+			continue
+		}
+		reader, crc, err := getter.vunits[vuid].getShard(partials.Bid)
+		shardResponse.Body = io.NopCloser(reader)
+		shardResponse.Crc32 = crc
+		shardResponse.Err = err
+		ret = append(ret, shardResponse)
+	}
+	return ret
+}
+
+func (getter *MockGetter) ShardPartialRepair(ctx context.Context, host string, args *api.ShardPartialRepairArgs) (ret *api.ShardPartialRepairRet, err error) {
+	getter.mu.Lock()
+	defer getter.mu.Unlock()
+	shardNum := args.CodeMode.GetShardNum()
+	blobData := make([][]byte, shardNum)
+	encoder, err := workutils.GetEncoder(args.CodeMode)
+	if err != nil {
+		return nil, err
+	}
+	for _, location := range args.Sources {
+		vuid := location.Vuid
+		idx := vuid.Index()
+		blobData[idx] = getter.vunits[vuid].shards[args.Bid]
+	}
+	err = encoder.PartialReconstruct(blobData, args.SurvivalIndex, []int{args.BadIdx})
+	if err != nil {
+		return nil, err
+	}
+	return &api.ShardPartialRepairRet{
+		Data: blobData[args.BadIdx],
+	}, nil
 }
 
 func (getter *MockGetter) MarkDelete(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) {
