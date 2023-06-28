@@ -542,7 +542,7 @@ func (s *Server) rebuildFuseContext(fs FS, fuseContext *FuseContext) {
 		sn := s.node[ch.NodeID]
 		if node, ok := sn.node.(NodeOpener); ok {
 			// create streamers for chubaofs
-			if hdl, err = node.Open(nil, nil, nil); err != nil {
+			if hdl, err = node.Open(context.Background(), &fuse.OpenRequest{}, &fuse.OpenResponse{}); err != nil {
 				cfslog.LogErrorf("rebuildFuseContext: failed to open handle. ino(%d): %v\n", sn.inode, err)
 				continue
 			}
