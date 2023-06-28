@@ -20,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -170,6 +171,34 @@ func repairIdxsEqual(idxs1, idxs2 []int) bool {
 	return true
 }
 
+func TestShardRepairer_ShardPartialRepair(t *testing.T) {
+	mode := codemode.EC12P9
+	// codeInfo := codemode.EC12P9.Tactic()
+	replicas := genMockVol(1, mode)
+	bids := []proto.BlobID{1}
+	sizes := []int64{1025}
+	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	badIdx := 4
+	surviveIndex, plan := genPartialPlan(1, mode, badIdx)
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     4 * 1024,
+		MigrateBufCapacity: 100,
+		RepairBufSize:      2 * 1024,
+		RepairBufCapacity:  100,
+	})
+	repairer := NewShardRepairer(getter)
+	_, err := repairer.ShardPartialRepair(context.Background(), api.ShardPartialRepairArgs{
+		Size:          1025,
+		Bid:           1,
+		CodeMode:      mode,
+		Sources:       plan,
+		BadIdx:        badIdx,
+		SurvivalIndex: surviveIndex,
+		IoType:        2,
+	})
+	require.NoError(t, err)
+}
+
 func TestShardRepair(t *testing.T) {
 	testWithAllMode(t, testShardRepair)
 }
@@ -197,7 +226,7 @@ func testShardRepair(t *testing.T, mode codemode.CodeMode) {
 		Bid:      1,
 		CodeMode: mode,
 		Sources:  replicas,
-		BadIdxs:  []uint8{0, 1},
+		BadIdxes: []uint8{0, 1},
 	}
 	err := repairer.RepairShard(context.Background(), task)
 	require.NoError(t, err)
@@ -265,10 +294,10 @@ func testShardRepair2(t *testing.T, mode codemode.CodeMode) {
 		Bid:      1,
 		CodeMode: mode,
 		Sources:  replicas,
-		BadIdxs:  []uint8{0, 1},
+		BadIdxes: []uint8{0, 1},
 	}
 	for _, replica := range replicas {
-		if contains(int(replica.Vuid.Index()), sliceUint8ToInt(task.BadIdxs)) {
+		if contains(int(replica.Vuid.Index()), sliceUint8ToInt(task.BadIdxes)) {
 			continue
 		}
 		getter.Delete(context.Background(), replica.Vuid, 1)
@@ -301,28 +330,28 @@ func testCheckOrphanShard(t *testing.T, mode codemode.CodeMode) {
 		Bid:      1,
 		CodeMode: mode,
 		Sources:  replicas,
-		BadIdxs:  []uint8{0, 1},
+		BadIdxes: []uint8{0, 1},
 	}
 
 	repairer := NewShardRepairer(getter)
 
-	isOrphanShard := repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxs))
+	isOrphanShard := repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxes))
 	require.Equal(t, false, isOrphanShard)
 
 	for _, replica := range replicas {
-		if contains(int(replica.Vuid.Index()), sliceUint8ToInt(task.BadIdxs)) {
+		if contains(int(replica.Vuid.Index()), sliceUint8ToInt(task.BadIdxes)) {
 			continue
 		}
 		getter.Delete(context.Background(), replica.Vuid, 1)
 	}
-	isOrphanShard = repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxs))
+	isOrphanShard = repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxes))
 	require.Equal(t, true, isOrphanShard)
 
 	getter.Delete(context.Background(), replicas[0].Vuid, 1)
-	isOrphanShard = repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxs))
+	isOrphanShard = repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxes))
 	require.Equal(t, true, isOrphanShard)
 
 	getter.Delete(context.Background(), replicas[0].Vuid, 1)
-	isOrphanShard = repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxs))
+	isOrphanShard = repairer.checkOrphanShard(context.Background(), task.Sources, task.Bid, sliceUint8ToInt(task.BadIdxes))
 	require.Equal(t, true, isOrphanShard)
 }

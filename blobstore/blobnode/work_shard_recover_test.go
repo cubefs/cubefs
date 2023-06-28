@@ -108,7 +108,7 @@ func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, 
 		bidInfos = append(bidInfos, &ele)
 	}
 
-	repair := NewShardRecover(replicas, mode, bidInfos, getter, 3, proto.TaskTypeShardRepair)
+	repair := NewShardRecover(replicas, mode, bidInfos, getter, 3, proto.TaskTypeShardRepair, false)
 	return repair, bidInfos, getter, replicas
 }
 
@@ -182,6 +182,61 @@ func testRepairByGlobalStripe(t *testing.T, mode codemode.CodeMode) {
 	}
 	testCheckData(t, repair, getter, badi)
 	repair.ReleaseBuf()
+}
+
+func TestShardRecover_PartialRepair_RS(t *testing.T) {
+	for _, mode := range []codemode.CodeMode{codemode.EC6P6, codemode.EC12P9, codemode.EC15P12} {
+		testShardPartialRepair(t, mode)
+	}
+}
+
+func testShardPartialRepair(t *testing.T, mode codemode.CodeMode) {
+	repair, bidInfos, getter, _ := InitMockRepair(mode)
+	repair.enablePartial = true
+	idxs := repair.locations.Indexes()
+	ctx := context.Background()
+	err := repair.allocBuf(ctx, idxs)
+	require.NoError(t, err)
+	badi := []uint8{8}
+	err = repair.partialRepairBids(ctx, GetBids(bidInfos), repairStripe{
+		locations: repair.locations,
+		n:         repair.codeMode.T().N,
+		m:         repair.codeMode.T().M,
+		badIdxes:  badi,
+	})
+	require.NoError(t, err)
+	testCheckData(t, repair, getter, badi)
+	failBids := repair.collectFailBids(GetBids(bidInfos), badi)
+	require.Len(t, failBids, 0)
+	// repair failed
+	repair, bidInfos, getter, _ = InitMockRepair(mode)
+	repair.enablePartial = true
+	getter.setFail(repair.locations[9].Vuid, errors.New("fake error"))
+	getter.setFail(repair.locations[1].Vuid, errors.New("fake error"))
+	getter.setFail(repair.locations[2].Vuid, errors.New("fake error"))
+	idxs = repair.locations.Indexes()
+	err = repair.allocBuf(ctx, idxs)
+	require.NoError(t, err)
+	err = repair.partialRepairBids(ctx, GetBids(bidInfos), repairStripe{
+		locations: repair.locations,
+		n:         repair.codeMode.T().N,
+		m:         repair.codeMode.T().M,
+		badIdxes:  badi,
+	})
+	require.NoError(t, err)
+	failBids = repair.collectFailBids(GetBids(bidInfos), badi)
+	require.Len(t, failBids, len(GetBids(bidInfos))-1)
+	repair.ReleaseBuf()
+}
+
+func TestGetRepairPlan(t *testing.T) {
+	repair, _, _, _ := InitMockRepair(codemode.EC6P6)
+
+	dl, pl := repair.getPartialPlan(8, repair.codeMode.T().N+2)
+	require.Equal(t, repair.codeMode.T().N+2, len(dl)+len(pl))
+
+	dl, pl = repair.getPartialPlan(8, 12)
+	require.NotEqual(t, 12, len(dl)+len(pl))
 }
 
 func TestRecoverLocalReplicaShards(t *testing.T) {
@@ -381,7 +436,7 @@ func TestRecoverShards2(t *testing.T) {
 func TestLocalStripes(t *testing.T) {
 	mode := codemode.EC6P10L2
 	replicas := genMockVol(1, mode)
-	repair := NewShardRecover(replicas, mode, nil, nil, 4, proto.TaskTypeShardRepair)
+	repair := NewShardRecover(replicas, mode, nil, nil, 4, proto.TaskTypeShardRepair, false)
 	for idx, replica := range replicas {
 		require.Equal(t, idx, int(replica.Vuid.Index()))
 	}
