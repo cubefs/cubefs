@@ -282,19 +282,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("Err:port must string")
 	}
 	s.port = port
-
-	/*for _, ip := range cfg.GetSlice(proto.MasterAddr) {
-		MasterClient.AddNode(ip.(string))
-	}*/
-
-	updateInterval := cfg.GetInt(configNameResolveInterval)
-	if updateInterval <= 0 || updateInterval > 60 {
-		log.LogWarnf("name resolving interval[1-60] is set to default: %v", DefaultNameResolveInterval)
-		updateInterval = DefaultNameResolveInterval
-	}
-
-	addrs := cfg.GetSlice(proto.MasterAddr)
-	if len(addrs) == 0 {
+	if len(cfg.GetSlice(proto.MasterAddr)) == 0 {
 		return fmt.Errorf("Err:masterAddr unavalid")
 	}
 	for _, ip := range cfg.GetSlice(proto.MasterAddr) {
