@@ -32,6 +32,8 @@ var (
 	gConnPool = util.NewConnectPool()
 )
 
+const sampleDuration = 1 * time.Second
+
 // ReplProtocol defines the struct of the replication protocol.
 // 1. ServerConn reads a packet from the client socket, and analyzes the addresses of the followers.
 // 2. After the preparation, the packet is send to toBeProcessedCh. If failure happens, send it to the response channel.
@@ -61,9 +63,13 @@ type ReplProtocol struct {
 	getSmuxConn func(addr string) (c net.Conn, err error)
 	putSmuxConn func(conn net.Conn, force bool)
 
-	isError     int32
-	replId      int64
-	recvLimiter *RecvLimiter
+	isError int32
+	replId  int64
+
+	operatorStats       OperatorStats
+	recvLimiter         *RecvLimiter
+	sampleDone          chan interface{}
+	recvLimiterAdjuster func(recvLimiter *RecvLimiter, sample *OperatorStatsSample)
 }
 
 type FollowerTransport struct {
@@ -189,7 +195,8 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) {
 }
 
 func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
-	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error, recvLimiter *RecvLimiter) *ReplProtocol {
+	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error,
+	recvLimiter *RecvLimiter, recvLimiterAdjuster func(recvLimiter *RecvLimiter, sample *OperatorStatsSample)) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
 	rp.ackCh = make(chan struct{}, RequestChanSize)
@@ -204,6 +211,11 @@ func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
 	rp.exited = ReplRuning
 	rp.replId = proto.GenerateRequestID()
 	rp.recvLimiter = recvLimiter
+	rp.recvLimiterAdjuster = recvLimiterAdjuster
+	if rp.recvLimiterAdjuster != nil {
+		rp.sampleDone = make(chan interface{})
+		go rp.startOperatorSample()
+	}
 	go rp.OperatorAndForwardPktGoRoutine()
 	go rp.ReceiveResponseFromFollowersGoRoutine()
 	go rp.writeResponseToClientGoRroutine()
@@ -308,6 +320,20 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 	return
 }
 
+func (rp *ReplProtocol) startOperatorSample() {
+	for {
+		select {
+		case <-rp.sampleDone:
+			return
+		default:
+			// sample process will block current goroutine
+			// we not need to sleep, it will not cause busy loop
+			sample := rp.operatorStats.Sample(sampleDuration, rp.toBeProcessedCh)
+			rp.recvLimiterAdjuster(rp.recvLimiter, sample)
+		}
+	}
+}
+
 // OperatorAndForwardPktGoRoutine reads packets from the to-be-processed channel and writes responses to the client.
 // 1. Read a packet from toBeProcessCh, and determine if it needs to be forwarded or not. If the answer is no, then
 // 	  process the packet locally and put it into responseCh.
@@ -332,6 +358,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 					rp.putAck()
 				}
 			}
+			rp.operatorStats.OnDeque(uint64(request.Size+request.ArgLen), len(rp.toBeProcessedCh) == 0)
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
@@ -580,8 +607,10 @@ func (rp *ReplProtocol) putResponse(reply *Packet) (err error) {
 func (rp *ReplProtocol) putToBeProcess(request *Packet) (err error) {
 	select {
 	case rp.toBeProcessedCh <- request:
+		rp.operatorStats.OnEnque(uint64(request.Size + request.ArgLen))
 		return
 	default:
+		rp.operatorStats.OnDrop(uint64(request.Size + request.ArgLen))
 		return fmt.Errorf("toBeProcessedCh Chan has full (%v)", len(rp.toBeProcessedCh))
 	}
 }

@@ -15,6 +15,7 @@
 package repl_test
 
 import (
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -30,6 +31,7 @@ func TestOperatorSampleTest(t *testing.T) {
 	go func() {
 		wg.Wait()
 		stats.OnEnque(100)
+		stats.OnDrop(50)
 		time.Sleep(1 * time.Second)
 		stats.OnDeque(100, true)
 	}()
@@ -44,6 +46,10 @@ func TestOperatorSampleTest(t *testing.T) {
 	t.Logf("Wait Time:\t%v", sample.GetWaitTime())
 	t.Logf("Sample Duration:\t%v", sample.GetSampleDuration())
 	t.Logf("Util:\t%.1f", sample.GetUtil()*100)
+	t.Logf("Drop Packet:\t%v", sample.GetDequePacket())
+	t.Logf("Drop Flow:\t%v", sample.GetDropFlow())
+	t.Logf("Drop Packet Percent:\t%.1f", sample.GetDropPacketPercent()*100)
+	t.Logf("Drop Flow Percent:\t%.1f", sample.GetDropFlowPercent()*100)
 	if sample.GetQueueCapacity() != 2048 {
 		t.Errorf("queue capacity should equal with 0, but get %v", sample.GetQueueCapacity())
 	}
@@ -62,7 +68,13 @@ func TestOperatorSampleTest(t *testing.T) {
 	if sample.GetDequePacket() != 1 {
 		t.Errorf("deque packet should equal with 1, but get %v", sample.GetDequePacket())
 	}
-	if sample.GetUtil() > 0.5 {
-		t.Errorf("util should less than or equal with 0.5, but get %v", sample.GetUtil())
+	if math.Abs(sample.GetUtil()-0.5) > 0.01 {
+		t.Errorf("util should equal with 0.5, but get %v", sample.GetUtil())
+	}
+	if sample.GetDropPacket() != 1 {
+		t.Errorf("drop packet should equal with 1, but get %v", sample.GetDropPacket())
+	}
+	if sample.GetDropFlow() != 50 {
+		t.Errorf("drop flow should equal with 50, but get %v", sample.GetDropFlow())
 	}
 }
