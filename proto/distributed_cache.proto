@@ -1,4 +1,4 @@
-// protoc --proto_path=./vendor/:./proto/  --gofast_out=./proto/   admin.proto
+// protoc --proto_path=./vendor/:./proto/  --gofast_out=./proto/   distributed_cache.proto
 syntax = "proto3";
 package proto;
 
