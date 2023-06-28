@@ -584,6 +584,9 @@ func (rp *ReplProtocol) cleanResource() {
 	rp.packetList = nil
 	rp.followerConnects = nil
 	rp.packetListLock.Unlock()
+	if rp.sampleDone != nil {
+		close(rp.sampleDone)
+	}
 }
 
 func (rp *ReplProtocol) deletePacket(reply *Packet, e *list.Element) (success bool) {
