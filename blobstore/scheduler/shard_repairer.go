@@ -399,7 +399,7 @@ func (mgr *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volu
 		Bid:      repairMsg.Bid,
 		CodeMode: volInfo.CodeMode,
 		Sources:  volInfo.VunitLocations,
-		BadIdxs:  repairMsg.BadIdx,
+		BadIdxes: repairMsg.BadIdx,
 		Reason:   repairMsg.Reason,
 	}
 

@@ -20,7 +20,6 @@ import (
 	"sync"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -29,18 +28,10 @@ import (
 
 var defaultFirstStartBid = proto.BlobID(0)
 
-// PartialShards define the params which partial reconstruct data need
-type PartialShards struct {
-	mode             codemode.CodeMode
-	bid              proto.BlobID
-	azParticipants   []proto.VunitLocation // participant vuid in one az which part in reconstruct
-	participantIndex []int                 // all participants index for reconstruct data
-}
-
 type ShardResponse struct {
-	body  io.ReadCloser
-	crc32 uint32
-	err   error
+	Body  io.ReadCloser
+	Crc32 uint32
+	Err   error
 }
 
 // IBlobNode define the interface of blobnode used for worker
@@ -50,7 +41,8 @@ type IBlobNode interface {
 	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*ShardInfo, err error)
 	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error)
 	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error)
-	GetPartialShards(ctx context.Context, partials PartialShards, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error)
+	GetPartialShards(ctx context.Context, partials api.ShardPartialRepairArgs) []ShardResponse
+	ShardPartialRepair(ctx context.Context, host string, args *api.ShardPartialRepairArgs) (ret *api.ShardPartialRepairRet, err error)
 }
 
 // BlobNodeClient blobnode client
@@ -175,21 +167,28 @@ func (c *BlobNodeClient) PutShard(ctx context.Context, location proto.VunitLocat
 	return
 }
 
-func (c *BlobNodeClient) GetPartialShards(ctx context.Context, partials PartialShards, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error) {
+func (c *BlobNodeClient) ShardPartialRepair(ctx context.Context, host string, args *api.ShardPartialRepairArgs) (ret *api.ShardPartialRepairRet, err error) {
+	pSpan := trace.SpanFromContextSafe(ctx)
+	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "ShardPartialRepair", pSpan.TraceID())
+	return c.cli.ShardPartialRepair(ctx, host, args)
+}
+
+func (c *BlobNodeClient) GetPartialShards(ctx context.Context, args api.ShardPartialRepairArgs) []ShardResponse {
 	span := trace.SpanFromContextSafe(ctx)
-	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "GetPartialShard", span.TraceID())
+	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "GetPartialShards", span.TraceID())
 	var wg sync.WaitGroup
-	shardRes := make([]ShardResponse, 0, len(partials.azParticipants))
-	wg.Add(len(partials.azParticipants))
-	for i := range partials.azParticipants {
-		location := partials.azParticipants[i]
-		go func() {
+	shardRes := make([]ShardResponse, len(args.Sources))
+	wg.Add(len(args.Sources))
+	for i := range args.Sources {
+		location := args.Sources[i]
+		go func(idx int) {
 			defer wg.Done()
-			data, crc, err := c.cli.GetShard(ctx, location.Host, &api.GetShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: partials.bid, Type: ioType})
-			shardRes = append(shardRes, ShardResponse{data, crc, err})
-		}()
+			data, crc, err := c.cli.GetShard(ctx, location.Host,
+				&api.GetShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: args.Bid, Type: args.IoType})
+			shardRes[idx] = ShardResponse{data, crc, err}
+		}(i)
 	}
 	wg.Wait()
 
-	return
+	return shardRes
 }

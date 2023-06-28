@@ -107,7 +107,7 @@ func (w *MigrateWorker) ExecTasklet(ctx context.Context, tasklet Tasklet) *WorkE
 	sourceLocation := w.t.Sources
 	mode := w.t.CodeMode
 	shardRecover := NewShardRecover(sourceLocation, mode, tasklet.bids, w.bolbNodeCli,
-		w.downloadShardConcurrency, w.t.TaskType)
+		w.downloadShardConcurrency, w.t.TaskType, false)
 	defer shardRecover.ReleaseBuf()
 
 	return MigrateBids(ctx,

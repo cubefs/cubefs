@@ -193,8 +193,10 @@ type ShardRepairTask struct {
 	Bid      BlobID            `json:"bid"`
 	CodeMode codemode.CodeMode `json:"code_mode"`
 	Sources  []VunitLocation   `json:"sources"`
-	BadIdxs  []uint8           `json:"bad_idxs"` // TODO: BadIdxes
+	BadIdxes []uint8           `json:"bad_idxes"`
 	Reason   string            `json:"reason"`
+
+	EnableAssist bool `json:"enable_assist"`
 }
 
 func (task *ShardRepairTask) IsValid() bool {
