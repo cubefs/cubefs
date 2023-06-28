@@ -23,8 +23,10 @@ type OperatorStats struct {
 	lock               sync.RWMutex
 	flowEnqueCounter   uint64
 	flowDequeCounter   uint64
+	flowDropCounter    uint64
 	packetEnqueCounter uint64
 	packetDequeCounter uint64
+	packetDropCounter  uint64
 	waitTime           time.Duration
 	firstEnqueTime     time.Time
 	lastDequeTime      time.Time
@@ -33,8 +35,10 @@ type OperatorStats struct {
 type OperatorStatsSnapshot struct {
 	FlowEnqueCounter   uint64
 	FlowDequeCounter   uint64
+	FlowDropCounter    uint64
 	PacketEnqueCounter uint64
 	PacketDequeCounter uint64
+	PacketDropCounter  uint64
 	WaitTime           time.Duration
 	SnapshotTime       time.Time
 }
@@ -56,6 +60,13 @@ func (s *OperatorStats) OnEnque(flow uint64) {
 	if s.firstEnqueTime == zeroTime {
 		s.firstEnqueTime = now
 	}
+}
+
+func (s *OperatorStats) OnDrop(flow uint64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.flowDropCounter += flow
+	s.packetDropCounter += 1
 }
 
 func (s *OperatorStats) OnDeque(flow uint64, last bool) {
@@ -90,8 +101,10 @@ func (s *OperatorStats) GetSnapshot() *OperatorStatsSnapshot {
 	snapshot := &OperatorStatsSnapshot{
 		FlowEnqueCounter:   s.flowDequeCounter,
 		FlowDequeCounter:   s.flowDequeCounter,
+		FlowDropCounter:    s.flowDropCounter,
 		PacketEnqueCounter: s.packetEnqueCounter,
 		PacketDequeCounter: s.packetDequeCounter,
+		PacketDropCounter:  s.packetDropCounter,
 		WaitTime:           waitTime,
 		SnapshotTime:       now,
 	}
@@ -154,4 +167,20 @@ func (s *OperatorStatsSample) GetQueueLength() int {
 
 func (s *OperatorStatsSample) GetQueueCapacity() int {
 	return s.queueCapacity
+}
+
+func (s *OperatorStatsSample) GetDropPacket() uint64 {
+	return s.second.PacketDropCounter - s.first.PacketDropCounter
+}
+
+func (s *OperatorStatsSample) GetDropFlow() uint64 {
+	return s.second.FlowDropCounter - s.first.FlowDropCounter
+}
+
+func (s *OperatorStatsSample) GetDropPacketPercent() float64 {
+	return float64(s.GetDequePacket()) / float64(s.GetDequePacket()+s.GetEnquePacket())
+}
+
+func (s *OperatorStatsSample) GetDropFlowPercent() float64 {
+	return float64(s.GetDropFlow()) / float64(s.GetDropFlow()+s.GetEnqueFlow())
 }
