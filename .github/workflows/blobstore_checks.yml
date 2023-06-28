@@ -1,0 +1,36 @@
+name: BlobStore-Checks
+
+on:
+  push:
+    paths:
+        - 'blobstore/**.go'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+        - 'blobstore/**'
+
+permissions:
+  contents: read
+
+jobs:
+  GolangFormat:
+    name: format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Go code format with gofumpt
+        run: |
+          docker/run_docker.sh --bsgofumpt
+
+  GolangCI-Lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: run golangci-lint
+        run: |
+          docker/run_docker.sh --bsgolint

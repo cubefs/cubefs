@@ -454,5 +454,28 @@ services:
                 set -e;
                 mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin &&
                 cd /go/src/github.com/cubefs/cubefs && make testcover
-        networks:
-            extnetwork:
+
+    bs_gofumpt:
+        image: cubefs/cbfs-base:1.0-golang-1.17.13
+        volumes:
+            - ../:/go/src/github.com/cubefs/cubefs
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                cd /go/src/github.com/cubefs/cubefs/blobstore &&
+                go vet -trimpath ./... &&
+                /go/bin/gofumpt -l -w . && git diff --exit-code
+
+    bs_golint:
+        image: cubefs/cbfs-base:1.0-golang-1.17.13
+        volumes:
+            - ../:/go/src/github.com/cubefs/cubefs
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                cd /go/src/github.com/cubefs/cubefs/blobstore &&
+                /go/bin/golangci-lint run --timeout 10m --issues-exit-code=1 -D errcheck -E bodyclose ./...
