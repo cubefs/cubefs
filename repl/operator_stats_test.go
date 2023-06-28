@@ -48,8 +48,8 @@ func TestOperatorSampleTest(t *testing.T) {
 	t.Logf("Util:\t%.1f", sample.GetUtil()*100)
 	t.Logf("Drop Packet:\t%v", sample.GetDequePacket())
 	t.Logf("Drop Flow:\t%v", sample.GetDropFlow())
-	t.Logf("Drop Packet Percent:\t%.1f", sample.GetDropPacketPercent()*100)
-	t.Logf("Drop Flow Percent:\t%.1f", sample.GetDropFlowPercent()*100)
+	t.Logf("Drop Packet Percent:\t%.1f", sample.GetDropPacketRate()*100)
+	t.Logf("Drop Flow Percent:\t%.1f", sample.GetDropFlowRate()*100)
 	if sample.GetQueueCapacity() != 2048 {
 		t.Errorf("queue capacity should equal with 0, but get %v", sample.GetQueueCapacity())
 	}

@@ -57,7 +57,7 @@ func (s *OperatorStats) OnEnque(flow uint64) {
 	s.flowEnqueCounter += flow
 	s.packetEnqueCounter += 1
 	var zeroTime time.Time
-	if s.firstEnqueTime == zeroTime {
+	if s.firstEnqueTime == zeroTime || (s.lastDequeTime != zeroTime && s.lastDequeTime.After(zeroTime)) {
 		s.firstEnqueTime = now
 	}
 }
@@ -99,7 +99,7 @@ func (s *OperatorStats) GetSnapshot() *OperatorStatsSnapshot {
 		waitTime += duration
 	}
 	snapshot := &OperatorStatsSnapshot{
-		FlowEnqueCounter:   s.flowDequeCounter,
+		FlowEnqueCounter:   s.flowEnqueCounter,
 		FlowDequeCounter:   s.flowDequeCounter,
 		FlowDropCounter:    s.flowDropCounter,
 		PacketEnqueCounter: s.packetEnqueCounter,
@@ -177,14 +177,14 @@ func (s *OperatorStatsSample) GetDropFlow() uint64 {
 	return s.second.FlowDropCounter - s.first.FlowDropCounter
 }
 
-func (s *OperatorStatsSample) GetDropPacketPercent() float64 {
+func (s *OperatorStatsSample) GetDropPacketRate() float64 {
 	if s.GetDequePacket() == 0 {
 		return 0
 	}
 	return float64(s.GetDequePacket()) / float64(s.GetDequePacket()+s.GetEnquePacket())
 }
 
-func (s *OperatorStatsSample) GetDropFlowPercent() float64 {
+func (s *OperatorStatsSample) GetDropFlowRate() float64 {
 	if s.GetDequeFlow() == 0 {
 		return 0
 	}
