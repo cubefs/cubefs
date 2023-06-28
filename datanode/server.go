@@ -64,10 +64,10 @@ const (
 	DefaultRaftDir             = "raft"
 	DefaultRaftLogsToRetain    = 10 // Count of raft logs per data partition
 	DefaultDiskMaxErr          = 1
-	DefaultDiskRetainMin       = 5 * util.GB   // GB
-	DefaultNameResolveInterval = 1             // minutes
-	DefaultRecvLimit           = 100 * util.MB // MB
-	DefaultPacketLimit         = repl.RequestChanSize
+	DefaultDiskRetainMin       = 5 * util.GB    // GB
+	DefaultNameResolveInterval = 1              // minutes
+	DefaultRecvFlowLimit       = 1024 * util.GB // MB
+	DefaultRecvPacketLimit     = 1024 * util.MB
 )
 
 const (
@@ -85,7 +85,6 @@ const (
 	ConfigKeyRaftReplica   = "raftReplica"     // string
 	CfgTickInterval        = "tickInterval"    // int
 	CfgRaftRecvBufSize     = "raftRecvBufSize" // int
-	ConfigKeyRecvFlowLimit = "recvFlowLimit"   // int
 
 	ConfigKeyDiskPath = "diskPath" // string
 
@@ -131,7 +130,6 @@ type DataNode struct {
 	tickInterval    int
 	raftRecvBufSize int
 	startTime       int64
-	recvFlowLimiter *rate.Limiter
 
 	tcpListener net.Listener
 	stopC       chan bool
@@ -285,10 +283,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	s.port = port
 
-	// recv limiter
-	recvLimit := cfg.GetInt64WithDefault(ConfigKeyRecvFlowLimit, DefaultRecvLimit)
-	s.recvFlowLimiter = rate.NewLimiter(rate.Limit(recvLimit), int(recvLimit))
-	log.LogDebugf("action[parseConfig] using flow speed limit %v MB per second", recvLimit/util.MB)
 	/*for _, ip := range cfg.GetSlice(proto.MasterAddr) {
 		MasterClient.AddNode(ip.(string))
 	}*/
@@ -616,13 +610,29 @@ func (s *DataNode) stopTCPService() (err error) {
 	return
 }
 
+func (s *DataNode) recvLimiterAdjust(limiter *repl.RecvLimiter, sample *repl.OperatorStatsSample) {
+	builder := strings.Builder{}
+	builder.WriteString(fmt.Sprintf("Operator Util:\t%.2f\n", sample.GetUtil()*100))
+	builder.WriteString(fmt.Sprintf("Operator Drop Packet Percent:\t%.2f\n", sample.GetDropPacketRate()*100))
+	builder.WriteString(fmt.Sprintf("Operator Queue Length:\t%v\n", sample.GetQueueLength()))
+	builder.WriteString(fmt.Sprintf("Operator Queue Capacity:\t%v\n", sample.GetQueueCapacity()))
+	builder.WriteString(fmt.Sprintf("Operator Sample Duration:\t%v\n", sample.GetSampleDuration()))
+	builder.WriteString(fmt.Sprintf("Operator Wait Time:\t%v\n", sample.GetWaitTime()))
+	builder.WriteString(fmt.Sprintf("Operator Enque Packet:\t%v\n", sample.GetEnquePacket()))
+	builder.WriteString(fmt.Sprintf("Operator Deque Packet:\t%v\n", sample.GetDequePacket()))
+	builder.WriteString(fmt.Sprintf("Operator Enque Flow:\t%v\n", sample.GetEnqueFlow()))
+	builder.WriteString(fmt.Sprintf("Operator Deque Flow:\t%v\n", sample.GetDequeFlow()))
+	log.LogInfof(builder.String())
+	// adjust receive limiter in here
+}
+
 func (s *DataNode) serveConn(conn net.Conn) {
 	space := s.space
 	space.Stats().AddConnection()
 	c, _ := conn.(*net.TCPConn)
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
-	packetProcessor := repl.NewReplProtocol(conn, s.Prepare, s.OperatePacket, s.Post, repl.NewRecvLimiter(s.recvFlowLimiter, rate.NewLimiter(DefaultPacketLimit, DefaultPacketLimit)))
+	packetProcessor := repl.NewReplProtocol(conn, s.Prepare, s.OperatePacket, s.Post, repl.NewRecvLimiter(rate.NewLimiter(DefaultRecvFlowLimit, DefaultRecvFlowLimit), rate.NewLimiter(DefaultRecvPacketLimit, DefaultRecvPacketLimit)), s.recvLimiterAdjust)
 	packetProcessor.ServerConn()
 	space.Stats().RemoveConnection()
 }
@@ -699,7 +709,7 @@ func (s *DataNode) serveSmuxConn(conn net.Conn) {
 }
 
 func (s *DataNode) serveSmuxStream(stream *smux.Stream) {
-	packetProcessor := repl.NewReplProtocol(stream, s.Prepare, s.OperatePacket, s.Post, repl.NewRecvLimiter(s.recvFlowLimiter, rate.NewLimiter(DefaultPacketLimit, DefaultPacketLimit)))
+	packetProcessor := repl.NewReplProtocol(stream, s.Prepare, s.OperatePacket, s.Post, repl.NewRecvLimiter(rate.NewLimiter(DefaultRecvFlowLimit, DefaultRecvFlowLimit), rate.NewLimiter(DefaultRecvPacketLimit, DefaultRecvPacketLimit)), s.recvLimiterAdjust)
 	if s.enableSmuxConnPool {
 		packetProcessor.SetSmux(s.getRepairConnFunc, s.putRepairConnFunc)
 	}
