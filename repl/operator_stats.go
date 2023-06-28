@@ -178,9 +178,15 @@ func (s *OperatorStatsSample) GetDropFlow() uint64 {
 }
 
 func (s *OperatorStatsSample) GetDropPacketPercent() float64 {
+	if s.GetDequePacket() == 0 {
+		return 0
+	}
 	return float64(s.GetDequePacket()) / float64(s.GetDequePacket()+s.GetEnquePacket())
 }
 
 func (s *OperatorStatsSample) GetDropFlowPercent() float64 {
+	if s.GetDequeFlow() == 0 {
+		return 0
+	}
 	return float64(s.GetDropFlow()) / float64(s.GetDropFlow()+s.GetEnqueFlow())
 }
