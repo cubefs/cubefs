@@ -256,6 +256,21 @@ func (mr *MockStorageAPIMockRecorder) SetChunkReadwrite(arg0, arg1, arg2 interfa
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetChunkReadwrite", reflect.TypeOf((*MockStorageAPI)(nil).SetChunkReadwrite), arg0, arg1, arg2)
 }
 
+// ShardPartialRepair mocks base method.
+func (m *MockStorageAPI) ShardPartialRepair(arg0 context.Context, arg1 string, arg2 *blobnode.ShardPartialRepairArgs) (*blobnode.ShardPartialRepairRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShardPartialRepair", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*blobnode.ShardPartialRepairRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ShardPartialRepair indicates an expected call of ShardPartialRepair.
+func (mr *MockStorageAPIMockRecorder) ShardPartialRepair(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardPartialRepair", reflect.TypeOf((*MockStorageAPI)(nil).ShardPartialRepair), arg0, arg1, arg2)
+}
+
 // Stat mocks base method.
 func (m *MockStorageAPI) Stat(arg0 context.Context, arg1 string) ([]*blobnode.DiskInfo, error) {
 	m.ctrl.T.Helper()

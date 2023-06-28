@@ -18,6 +18,7 @@ import (
 	"math"
 	"runtime"
 	"sync"
+	"sort"
 
 	"github.com/klauspost/cpuid/v2"
 )
@@ -1714,17 +1715,12 @@ func (r *reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []
 	}
 
 	// Make Sure that survivalIdx and badIdx is Incremental
-	for i := 1; i < len(survivalIdx); i++ {
-		if survivalIdx[i] <= survivalIdx[i-1] {
-			return ErrIndexNotIncremental
-		}
-	}
-
-	for i := 1; i < len(badIdx); i++ {
-		if badIdx[i] <= badIdx[i-1] {
-			return ErrIndexNotIncremental
-		}
-	}
+	sort.Slice(survivalIdx, func(i, j int) bool {
+		return survivalIdx[i] <= survivalIdx[j]
+	})
+	sort.Slice(badIdx, func(i, j int) bool {
+		return badIdx[i] <= badIdx[j]
+	})
 
 	// Quick check: are all of the shards present?  If so, there's
 	// nothing to do.
@@ -1749,15 +1745,6 @@ func (r *reedSolomon) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []
 	for _, idx := range badIdx {
 		badIdxMap[idx] = 1
 	}
-
-	// Check if shards in shards[][] are all in survivalIdx[]
-	//for i := 0; i < r.totalShards; i++ {
-	//	if len(shards[i]) != 0 {
-	//		if _, ok := survivalIdxMap[i]; ok == false {
-	//			return ErrShardsNotSurvival
-	//		}
-	//	}
-	//}
 
 	// Attempt to get the cached inverted matrix out of the tree
 	// based on the indices of the invalid rows.

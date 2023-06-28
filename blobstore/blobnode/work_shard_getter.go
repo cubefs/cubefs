@@ -55,8 +55,8 @@ type ShardInfoWithCrc struct {
 }
 
 // GetSingleVunitNormalBids returns single volume unit bids info
-func GetSingleVunitNormalBids(ctx context.Context, cli client.IBlobNode, replica proto.VunitLocation) (bids []*ShardInfoWithCrc, err error) {
-	shards, err := cli.ListShards(ctx, replica)
+func GetSingleVunitNormalBids(ctx context.Context, cli client.IBlobNode, location proto.VunitLocation) (bids []*ShardInfoWithCrc, err error) {
+	shards, err := cli.ListShards(ctx, location)
 	if err != nil {
 		return nil, err
 	}
@@ -82,19 +82,19 @@ type ReplicaBidsRet struct {
 }
 
 // GetReplicasBids returns locations bids info
-func GetReplicasBids(ctx context.Context, cli client.IBlobNode, replicas VunitLocations) map[proto.Vuid]*ReplicaBidsRet {
+func GetReplicasBids(ctx context.Context, cli client.IBlobNode, locations VunitLocations) map[proto.Vuid]*ReplicaBidsRet {
 	result := make(map[proto.Vuid]*ReplicaBidsRet)
 	wg := sync.WaitGroup{}
 	var mu sync.Mutex
-	for idx := range replicas {
-		replica := replicas[idx]
-		vuid := replica.Vuid
+	for idx := range locations {
+		location := locations[idx]
+		vuid := location.Vuid
 		wg.Add(1)
 		_, tmpCtx := trace.StartSpanFromContext(ctx, "ListShard")
 
 		go func() {
 			defer wg.Done()
-			bids, err := cli.ListShards(tmpCtx, replica)
+			bids, err := cli.ListShards(tmpCtx, location)
 			bidMap := make(map[proto.BlobID]*client.ShardInfo, len(bids))
 			for _, bid := range bids {
 				bidMap[bid.Bid] = bid
@@ -128,11 +128,11 @@ func MergeBids(replicasBids map[proto.Vuid]*ReplicaBidsRet) []*ShardInfoSimple {
 }
 
 // GetRecoverableBids returns bench mark bids
-func GetRecoverableBids(ctx context.Context, cli client.IBlobNode, replicas VunitLocations,
+func GetRecoverableBids(ctx context.Context, cli client.IBlobNode, locations VunitLocations,
 	mode codemode.CodeMode, badIdxs []uint8) (bidInfos []*ShardInfoSimple, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	globalReplicas := replicas.IntactGlobalSet(mode, badIdxs)
+	globalReplicas := locations.IntactGlobalSet(mode, badIdxs)
 	replicasBids := GetReplicasBids(ctx, cli, globalReplicas)
 
 	wellCnt := 0
@@ -173,7 +173,7 @@ func GetRecoverableBids(ctx context.Context, cli client.IBlobNode, replicas Vuni
 		if markDel {
 			workutils.DroppedBidRecorderInst().Write(
 				ctx,
-				replicas[0].Vuid.Vid(),
+				locations[0].Vuid.Vid(),
 				bidInfo.Bid,
 				"mark deleted",
 			)
@@ -188,7 +188,7 @@ func GetRecoverableBids(ctx context.Context, cli client.IBlobNode, replicas Vuni
 		if notExistCnt > allowFailCnt(mode) {
 			workutils.DroppedBidRecorderInst().Write(
 				ctx,
-				replicas[0].Vuid.Vid(),
+				locations[0].Vuid.Vid(),
 				bidInfo.Bid,
 				fmt.Sprintf("can't recover:notExist %d exist %d", notExistCnt, existStatus.ExistCnt()),
 			)
@@ -196,7 +196,7 @@ func GetRecoverableBids(ctx context.Context, cli client.IBlobNode, replicas Vuni
 		}
 
 		span.Errorf("unexpect when get benchmark bids: vid[%d], bid[%d], existCnt[%d], notExistCnt[%d], allowFailCnt[%d]",
-			replicas[0].Vuid.Vid(), bidInfo.Bid, existStatus.ExistCnt(), notExistCnt, allowFailCnt(mode))
+			locations[0].Vuid.Vid(), bidInfo.Bid, existStatus.ExistCnt(), notExistCnt, allowFailCnt(mode))
 		return nil, ErrUnexpected
 	}
 

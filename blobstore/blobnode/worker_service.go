@@ -200,6 +200,34 @@ func (s *WorkerService) ShardRepair(c *rpc.Context) {
 	c.RespondError(err)
 }
 
+// ShardPartialRepair merging traffic from the same data center
+func (s *WorkerService) ShardPartialRepair(c *rpc.Context) {
+	args := bnapi.ShardPartialRepairArgs{}
+	if err := c.ParseArgs(&args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+
+	if !args.IsValid() {
+		span.Errorf("get partial shard param is illegal: args[%+v]", args)
+		c.RespondError(errcode.ErrInvalidParam)
+		return
+	}
+	span.Debugf("accept ShardPartialRepair request, args: %v", args)
+
+	ret, err := s.shardRepairer.ShardPartialRepair(ctx, args)
+	if err != nil {
+		span.Errorf("shard partial repair failed, err: %v", err)
+		c.RespondError(err)
+		return
+	}
+
+	c.RespondJSON(ret)
+}
+
 // WorkerStats returns worker_service stats
 func (s *WorkerService) WorkerStats(c *rpc.Context) {
 	c.RespondJSON(s.taskRunnerMgr.TaskStats())

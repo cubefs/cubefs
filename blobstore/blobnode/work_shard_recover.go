@@ -17,6 +17,7 @@ package blobnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"math/rand"
@@ -45,7 +46,7 @@ var (
 	errEcVerifyFailed       = errors.New("ec verify failed")
 	errShardSizeNotMatch    = errors.New("shard data size not match")
 	errBufNotEnough         = errors.New("buf space not enough")
-	errInvalidReplicas      = errors.New("invalid volume replicas")
+	errInvalidLocations     = errors.New("invalid volume locations")
 	errInvalidCodeMode      = errors.New("invalid codeMode ")
 )
 
@@ -121,8 +122,8 @@ func (stripe *repairStripe) genDownloadPlans() []downloadPlan {
 	}
 
 	for _, location := range stripeLocations {
-		replicaIdx := location.Vuid.Index()
-		if _, ok := badMap[replicaIdx]; !ok {
+		locationIdx := location.Vuid.Index()
+		if _, ok := badMap[locationIdx]; !ok {
 			normalLocations = append(normalLocations, location)
 		}
 	}
@@ -150,8 +151,9 @@ type repairStripe struct {
 // duties：repair shard data
 // if get shard data directly fail,
 // for global stripe chunks(N+M) will do next step
-//   step1:repair use local stripe ,if success return
-//   step2 repair use global stripe
+//   step1: repair use local stripe ,if success return
+//   step2: use partial repair(just for RS code_mode to reduce Cross-AZ traffic), if success return
+//   step3: repair use global stripe
 // for local stripe chunks(L) will do next step
 //   step1:repair use local stripe ,if success return
 //   step2:repair other global chunks in same az use global stripe
@@ -168,6 +170,10 @@ type repairStripe struct {
 // usage：
 // first call RecoverShards to repair shard
 // then call GetShard to get assign shard data
+
+const (
+	defaultPartialThreshold = 1
+)
 
 type shard struct {
 	data []byte
@@ -392,11 +398,15 @@ type ShardRecover struct {
 	ioType                   blobnode.IOType
 	taskType                 proto.TaskType
 	ds                       *downloadStatus
+	partialData              map[proto.BlobID][]byte // repair intermediate state data
+	enablePartial            bool
+	partialThreshold         int
 }
 
 // NewShardRecover returns shard recover
 func NewShardRecover(locations VunitLocations, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
 	shardGetter client.IBlobNode, vunitShardGetConcurrency int, taskType proto.TaskType,
+	enableAssist bool,
 ) *ShardRecover {
 	if vunitShardGetConcurrency <= 0 {
 		vunitShardGetConcurrency = defaultGetConcurrency
@@ -413,6 +423,9 @@ func NewShardRecover(locations VunitLocations, mode codemode.CodeMode, bidInfos 
 		taskType:                 taskType,
 		vunitShardGetConcurrency: vunitShardGetConcurrency,
 		ds:                       newDownloadStatus(),
+		partialData:              make(map[proto.BlobID][]byte),
+		enablePartial:            enableAssist,
+		partialThreshold:         defaultPartialThreshold,
 	}
 	return &repair
 }
@@ -421,7 +434,7 @@ func NewShardRecover(locations VunitLocations, mode codemode.CodeMode, bidInfos 
 func (r *ShardRecover) RecoverShards(ctx context.Context, repairIdxs []uint8, direct bool) error {
 	span := trace.SpanFromContextSafe(ctx)
 	if !r.locations.IsValid() {
-		return errInvalidReplicas
+		return errInvalidLocations
 	}
 
 	// direct download shard
@@ -501,19 +514,19 @@ func (r *ShardRecover) directGetShard(ctx context.Context, repairBids []proto.Bl
 	if allocBufErr != nil {
 		return nil, allocBufErr
 	}
-	replicas := make(VunitLocations, len(repairIdxs))
+	locations := make(VunitLocations, len(repairIdxs))
 	for i, idx := range repairIdxs {
-		replicas[i] = r.locations[idx]
+		locations[i] = r.locations[idx]
 	}
 
-	r.download(ctx, repairBids, replicas)
+	r.download(ctx, repairBids, locations)
 	failBids = r.collectFailBids(repairBids, repairIdxs)
 	span.Infof("end direct get shard: failBids len[%d], allocBufErr[%+v]", len(failBids), allocBufErr)
 
 	return failBids, allocBufErr
 }
 
-func (r *ShardRecover) recoverByLocalStripe(ctx context.Context, repairBids []proto.BlobID, repairIdxs []uint8) (err error) {
+func (r *ShardRecover) recoverByLocalStripe(ctx context.Context, failBids []proto.BlobID, repairIdxs []uint8) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start recover by local stripe: repairIdxs[%+v]", repairIdxs)
 
@@ -534,7 +547,7 @@ func (r *ShardRecover) recoverByLocalStripe(ctx context.Context, repairBids []pr
 		if err != nil {
 			return
 		}
-		err = r.repairStripe(ctx, repairBids, rStripe)
+		err = r.repairStripe(ctx, failBids, rStripe)
 		if err != nil {
 			return err
 		}
@@ -543,7 +556,7 @@ func (r *ShardRecover) recoverByLocalStripe(ctx context.Context, repairBids []pr
 	return
 }
 
-func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []proto.BlobID, repairIdxs []uint8) (err error) {
+func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, failBids []proto.BlobID, repairIdxs []uint8) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start recoverByGlobalStripe: repairIdxs[%+v]", repairIdxs)
 
@@ -572,7 +585,20 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []p
 	if err != nil {
 		return
 	}
-	err = r.repairStripe(ctx, repairBids, stripe)
+	// if enable partial, repair within az
+	if r.needPartialRepair(repairIdxs) {
+		err = r.partialRepairBids(ctx, failBids, stripe)
+		if err == nil {
+			newFailBids := r.collectFailBids(failBids, repairIdxs)
+			if len(newFailBids) == 0 {
+				span.Debugf("shard repair by partial success, bids[%v]", newFailBids)
+				return
+			}
+			failBids = newFailBids
+		}
+		span.Warnf("shard partial repair failed, err: %v，continue  use global repair", err)
+	}
+	err = r.repairStripe(ctx, failBids, stripe)
 	if err != nil {
 		return
 	}
@@ -580,14 +606,18 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, repairBids []p
 	return
 }
 
+func (r *ShardRecover) needPartialRepair(badIdxes []uint8) bool {
+	return r.enablePartial && len(badIdxes) < 2 &&
+		r.codeMode.Tactic().CodeType == codemode.ReedSolomon && r.codeMode.T().AZCount > 1
+}
+
 func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.BlobID, stripe repairStripe) (err error) {
 	// step1:gen download plans for repair
 	span := trace.SpanFromContextSafe(ctx)
-
 	downloadPlans := stripe.genDownloadPlans()
 	span.Infof("start repairStripe: downloadPlans len[%d], len(repairBids)[%d]", len(downloadPlans), len(repairBids))
 	failBids := repairBids
-	// step2:download data according download plans and repair data
+	// step2: download data according download plans and repair data
 	for _, plan := range downloadPlans {
 		r.download(ctx, failBids, plan.locations)
 		err = r.repair(ctx, failBids, stripe)
@@ -602,14 +632,200 @@ func (r *ShardRecover) repairStripe(ctx context.Context, repairBids []proto.Blob
 	return err
 }
 
-func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, replicas VunitLocations) {
+func (r *ShardRecover) partialRepairBids(ctx context.Context, repairBids []proto.BlobID,
+	stripe repairStripe) (err error) {
+	badIdx := int(stripe.badIdxes[0])
+	// generate repair plan, direct download plan and partial download plan
+	downPlan, partialPlan := r.getPartialPlan(badIdx, stripe.n)
+	if len(downPlan)+len(partialPlan) < stripe.n {
+		return fmt.Errorf("bid[%v]can not be repaired", repairBids)
+	}
+	surviveIndex := make([]int, stripe.n)
+	idx := 0
+	for _, location := range downPlan {
+		surviveIndex[idx] = int(location.Vuid.Index())
+		idx++
+	}
+	for _, location := range partialPlan {
+		surviveIndex[idx] = int(location.Vuid.Index())
+		idx++
+	}
+	failedBids := repairBids
+	r.download(ctx, failedBids, downPlan)
+	r.partialDownload(ctx, failedBids, &blobnode.ShardPartialRepairArgs{
+		CodeMode:      r.codeMode,
+		IoType:        r.ioType,
+		SurvivalIndex: surviveIndex,
+		BadIdx:        badIdx,
+		Sources:       partialPlan,
+	})
+	return r.partialRepair(ctx, failedBids, downPlan, surviveIndex, []int{badIdx})
+}
+
+func (r *ShardRecover) partialRepair(ctx context.Context, failedBids []proto.BlobID,
+	locations VunitLocations, surviveIndex []int, badIndex []int) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	encoder, err := workutils.GetEncoder(r.codeMode)
+	if err != nil {
+		span.Errorf("get encoder failed for code_mode[%s]", r.codeMode.String())
+		return err
+	}
+	for _, bid := range failedBids {
+		span.Debugf("start repair: bid[%d]", bid)
+		if len(r.partialData[bid]) == 0 {
+			continue
+		}
+		blobShards := make([][]byte, r.codeMode.GetShardNum())
+		var badIdxOfVunits []uint8
+		badIdxOfVunits, err = r.getDownloadData(bid, blobShards, locations)
+		if err != nil {
+			span.Errorf("get data failed from buffer, bid[%v], err[%s]", bid, err.Error())
+			return err
+		}
+		if len(badIdxOfVunits) != 0 {
+			span.Warnf("get shard failed, bid[%v]", bid)
+			continue
+		}
+
+		bdIdx := badIndex[0]
+		blobShards[bdIdx], _ = r.chunksShardsBuf[bdIdx].getShardBuf(bid)
+		err = encoder.PartialReconstruct(blobShards, surviveIndex, badIndex)
+		if err != nil {
+			span.Errorf("partial repair failed, bid[%v], err[%s]", bid, err.Error())
+			return err
+		}
+
+		for i := 0; i < len(r.partialData[bid]); i++ {
+			blobShards[bdIdx][i] ^= r.partialData[bid][i]
+		}
+		err = r.chunksShardsBuf[bdIdx].setShardBuf(ctx, bid, blobShards[bdIdx])
+		if err != nil {
+			span.Errorf("unexpect error when set shard buf: idx[%d], bid[%d], err[%+v]", bdIdx, bid, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ShardRecover) getDownloadData(bid proto.BlobID, data [][]byte, locations VunitLocations) ([]uint8, error) {
+	var badIdxOfVunits []uint8
+	var err error
+	for i := 0; i < len(locations); i++ {
+		vuid := locations[i].Vuid
+		idx := vuid.Index()
+		if !r.chunksShardsBuf[idx].shardIsOk(bid) {
+			badIdxOfVunits = append(badIdxOfVunits, idx)
+			continue
+		}
+		data[idx], err = r.chunksShardsBuf[idx].getShardBuf(bid)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return badIdxOfVunits, nil
+}
+
+func (r *ShardRecover) partialDownload(ctx context.Context, failedBids []proto.BlobID,
+	args *blobnode.ShardPartialRepairArgs) {
+	var wg sync.WaitGroup
+	var lock sync.Mutex
+	span := trace.SpanFromContextSafe(ctx)
+
+	bidSize := make(map[proto.BlobID]int64, len(r.repairBidsReadOnly))
+	for _, bidInfo := range r.repairBidsReadOnly {
+		bidSize[bidInfo.Bid] = bidInfo.Size
+	}
+	for i, bid := range failedBids {
+		if bidSize[bid] == 0 {
+			continue
+		}
+		wg.Add(1)
+		arg := &blobnode.ShardPartialRepairArgs{
+			Bid:           bid,
+			Size:          bidSize[bid],
+			CodeMode:      args.CodeMode,
+			Sources:       args.Sources,
+			IoType:        r.ioType,
+			SurvivalIndex: args.SurvivalIndex,
+			BadIdx:        args.BadIdx,
+		}
+		go func(j int) {
+			defer wg.Done()
+			partialRepairRet, err := r.shardGetter.ShardPartialRepair(ctx, arg.Sources[j].Host, arg)
+			if err != nil {
+				span.Errorf("shard partial repair failed to host[%s]", arg.Sources[j].Host)
+				return
+			}
+			if len(partialRepairRet.BadIdxes) != 0 {
+				for _, idx := range partialRepairRet.BadIdxes {
+					r.ds.forbiddenDownload(r.locations[idx].Vuid)
+				}
+				return
+			}
+			lock.Lock()
+			r.partialData[arg.Bid] = partialRepairRet.Data
+			lock.Unlock()
+		}(i % len(arg.Sources))
+	}
+	wg.Wait()
+}
+
+func (r *ShardRecover) getPartialPlan(badIdx, n int) (dl, pl VunitLocations) {
+	tactic := r.codeMode.Tactic()
+	layoutByAZ := tactic.GetECLayoutByAZ()
+	surviveLocation := make([][]proto.VunitLocation, len(layoutByAZ))
+	indexToLocations := make(map[uint8]proto.VunitLocation, r.codeMode.GetShardNum())
+	for _, location := range r.locations {
+		idx := location.Vuid.Index()
+		indexToLocations[idx] = location
+	}
+	workAz := -1
+	for i, azIdxes := range layoutByAZ {
+		for _, idx := range azIdxes {
+			if idx == badIdx {
+				workAz = i
+				continue
+			}
+			surviveLocation[i] = append(surviveLocation[i], r.locations[idx])
+		}
+	}
+
+	dl = append(dl, surviveLocation[workAz]...)
+	need := n - len(surviveLocation[workAz])
+	numAz := len(surviveLocation)
+	az := (workAz + 1) % numAz
+	num := len(surviveLocation[az])
+	if num >= need {
+		pl = append(pl, surviveLocation[az][:need]...)
+		return
+	}
+	pl = append(pl, surviveLocation[az]...)
+	need -= num
+	for need != 0 {
+		az = (az + 1) % numAz
+		if az == workAz {
+			break
+		}
+		num = len(surviveLocation[az])
+		if num >= need {
+			dl = append(dl, surviveLocation[az][:need]...)
+			return
+		}
+		dl = append(dl, surviveLocation[az]...)
+		need -= num
+	}
+	return
+}
+
+func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, locations VunitLocations) {
 	wg := sync.WaitGroup{}
-	tp := taskpool.New(len(replicas), len(replicas))
-	for _, replica := range replicas {
+	tp := taskpool.New(len(locations), len(locations))
+	for _, location := range locations {
 		wg.Add(1)
 		pSpan := trace.SpanFromContextSafe(ctx)
 		_, ctxTmp := trace.StartSpanFromContextWithTraceID(context.Background(), "downloadShard", pSpan.TraceID())
-		rep := replica
+		rep := location
 		tp.Run(func() {
 			defer wg.Done()
 			r.downloadReplShards(ctxTmp, rep, repairBids)
@@ -619,12 +835,12 @@ func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, 
 	tp.Close()
 }
 
-func (r *ShardRecover) downloadReplShards(ctx context.Context, replica proto.VunitLocation, repairBids []proto.BlobID) {
+func (r *ShardRecover) downloadReplShards(ctx context.Context, location proto.VunitLocation, repairBids []proto.BlobID) {
 	span := trace.SpanFromContextSafe(ctx)
-	vuid := replica.Vuid
+	vuid := location.Vuid
 
 	if !r.ds.needDownload(vuid) {
-		span.Infof("skip download: replica[%+v], idx[%d]", replica, vuid.Index())
+		span.Infof("skip download: location[%+v], idx[%d]", location, vuid.Index())
 		return
 	}
 
@@ -639,14 +855,14 @@ func (r *ShardRecover) downloadReplShards(ctx context.Context, replica proto.Vun
 		downloadBid := bid
 		tp.Run(func() {
 			defer wg.Done()
-			err := r.downloadShard(ctx, replica, downloadBid)
+			err := r.downloadShard(ctx, location, downloadBid)
 			if err == nil {
 				return
 			}
 
-			span.Errorf("download shard: replica[%+v],index[%d], bid[%d], err[%+v]", replica, replica.Vuid.Index(), downloadBid, err)
+			span.Errorf("download shard: location[%+v],index[%d], bid[%d], err[%+v]", location, location.Vuid.Index(), downloadBid, err)
 			if AllShardsCanNotDownload(err) {
-				span.Infof("all shards can not download, so cancel download: replica[%+v]", replica)
+				span.Infof("all shards can not download, so cancel download: location[%+v]", location)
 				cancel()
 			}
 		})
@@ -656,29 +872,29 @@ func (r *ShardRecover) downloadReplShards(ctx context.Context, replica proto.Vun
 	span.Infof("finish downloadSingle: vuid[%d], idx[%d]", vuid, vuid.Index())
 }
 
-func (r *ShardRecover) downloadShard(ctx context.Context, replica proto.VunitLocation, bid proto.BlobID) error {
+func (r *ShardRecover) downloadShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	select {
 	case <-ctx.Done():
-		span.Infof("download cancel: replica[%+v],  bid[%d]", replica, bid)
+		span.Infof("download cancel: location[%+v],  bid[%d]", location, bid)
 		return nil
 	default:
-		data, crc1, err := r.shardGetter.GetShard(ctx, replica, bid, r.ioType)
-		r.ds.downloaded(replica.Vuid)
+		data, crc1, err := r.shardGetter.GetShard(ctx, location, bid, r.ioType)
+		r.ds.downloaded(location.Vuid)
 		if err != nil {
-			span.Errorf("download failed: replica[%+v], bid[%d], err[%+v]", replica, bid, err)
+			span.Errorf("download failed: location[%+v], bid[%d], err[%+v]", location, bid, err)
 			return err
 		}
 
-		err = r.chunksShardsBuf[replica.Vuid.Index()].PutShard(bid, data)
+		err = r.chunksShardsBuf[location.Vuid.Index()].PutShard(bid, data)
 		data.Close()
 		if err == errBidNotFoundInBuf {
 			span.Errorf("unexpect put shard failed: err[%+v]", err)
 			return err
 		}
 		if err == errBufHasData {
-			bufCrc, _ := r.chunksShardsBuf[replica.Vuid.Index()].ShardCrc32(bid)
+			bufCrc, _ := r.chunksShardsBuf[location.Vuid.Index()].ShardCrc32(bid)
 			if bufCrc != crc1 {
 				span.Errorf("data conflict crc32 not match: bid[%d], bufCrc[%d], crc1[%d]", bid, bufCrc, crc1)
 				return errCrcNotMatch
@@ -687,13 +903,13 @@ func (r *ShardRecover) downloadShard(ctx context.Context, replica proto.VunitLoc
 		}
 
 		if err != nil {
-			span.Errorf("blob put shard to buf failed: replica[%+v], bid[%d], err[%+v]", replica, bid, err)
+			span.Errorf("blob put shard to buf failed: location[%+v], bid[%d], err[%+v]", location, bid, err)
 			return err
 		}
 
-		crc2, _ := r.chunksShardsBuf[replica.Vuid.Index()].ShardCrc32(bid)
+		crc2, _ := r.chunksShardsBuf[location.Vuid.Index()].ShardCrc32(bid)
 		if crc1 != crc2 {
-			span.Errorf("shard crc32 not match: replica[%+v], bid[%d], crc1[%d], crc2[%d]", replica, bid, crc1, crc2)
+			span.Errorf("shard crc32 not match: location[%+v], bid[%d], crc1[%d], crc2[%d]", location, bid, crc1, crc2)
 			return errCrcNotMatch
 		}
 		return nil
@@ -817,6 +1033,10 @@ func (r *ShardRecover) collectFailBids(repairBids []proto.BlobID, repairIdxs []u
 			}
 
 			if !r.chunksShardsBuf[idx].shardIsOk(bid) {
+				failBids = append(failBids, bid)
+				break
+			}
+			if r.enablePartial && r.partialData[bid] == nil && !r.chunksShardsBuf[idx].ShardSizeIsZero(bid) {
 				failBids = append(failBids, bid)
 				break
 			}

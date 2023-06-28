@@ -77,3 +77,11 @@ func (b *BufPool) GetRepairBuf() ([]byte, error) {
 func (b *BufPool) Put(buf []byte) error {
 	return b.bufPool.Put(buf)
 }
+
+func (b *BufPool) GetRepairBufSize() int {
+	return b.repairBufSize
+}
+
+func (b *BufPool) GetBufBySize(size int) ([]byte, error) {
+	return b.bufPool.Alloc(size)
+}

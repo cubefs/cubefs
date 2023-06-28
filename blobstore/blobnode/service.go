@@ -121,6 +121,7 @@ func NewHandler(service *Service) *rpc.Router {
 
 	r.Handle(http.MethodPost, "/shard/repair", service.WorkerService.ShardRepair, rpc.OptArgsBody())
 	r.Handle(http.MethodGet, "/worker/stats", service.WorkerService.WorkerStats)
+	r.Handle(http.MethodPost, "/shard/partial/repair", service.WorkerService.ShardPartialRepair, rpc.OptArgsBody())
 
 	return r
 }

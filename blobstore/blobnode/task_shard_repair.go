@@ -17,6 +17,7 @@ package blobnode
 import (
 	"bytes"
 	"context"
+	"io"
 	"sync"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -75,12 +76,12 @@ func NewShardRepairer(cli client.IBlobNode) *ShardRepairer {
 }
 
 // RepairShard repair shard data
-func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.ShardRepairTask) error {
+func (r *ShardRepairer) RepairShard(ctx context.Context, task *proto.ShardRepairTask) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	shardInfos := repairer.listShardsInfo(ctx, task.Sources, task.Bid)
+	shardInfos := r.listShardsInfo(ctx, task.Sources, task.Bid)
 	// check missed shard has repaired
-	badIdxs := sliceUint8ToInt(task.BadIdxs)
+	badIdxs := sliceUint8ToInt(task.BadIdxes)
 	repaired, err := hasRepaired(shardInfos, badIdxs)
 	if err != nil {
 		return err
@@ -99,11 +100,12 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 		return nil
 	}
 
-	span.Infof("start recover blob: bid[%d], badIdx[%+v]", task.Bid, task.BadIdxs)
+	span.Infof("start recover blob: bid[%d], badIdx[%+v]", task.Bid, task.BadIdxes)
 	bidInfos := []*ShardInfoSimple{{Bid: task.Bid, Size: shardSize}}
-	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos, repairer.cli, 1, proto.TaskTypeShardRepair)
+	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos,
+		r.cli, 1, proto.TaskTypeShardRepair, task.EnableAssist)
 	defer shardRecover.ReleaseBuf()
-	err = shardRecover.RecoverShards(ctx, task.BadIdxs, false)
+	err = shardRecover.RecoverShards(ctx, task.BadIdxes, false)
 	if err != nil {
 		span.Errorf("recover blob failed: err[%+v]", err)
 		return err
@@ -123,7 +125,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			err = repairer.cli.PutShard(ctx, dstLocation, task.Bid, shardSize, bytes.NewReader(data), api.ShardRepairIO)
+			err = r.cli.PutShard(ctx, dstLocation, task.Bid, shardSize, bytes.NewReader(data), api.ShardRepairIO)
 			retErrs[i] = err
 		}(badi)
 	}
@@ -137,12 +139,82 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 		}
 	}
 
-	orphanedShard := repairer.checkOrphanShard(ctx, task.Sources, task.Bid, badIdxs)
+	orphanedShard := r.checkOrphanShard(ctx, task.Sources, task.Bid, badIdxs)
 	if orphanedShard {
 		span.Warnf("blob is orphan shard: bid[%d], badIdxs[%+v]", task.Bid, badIdxs)
 		err = errcode.ErrOrphanShard
 	}
 	return err
+}
+
+// ShardPartialRepair repair within az
+func (r *ShardRepairer) ShardPartialRepair(ctx context.Context, arg api.ShardPartialRepairArgs) (ret *api.ShardPartialRepairRet, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("start shard partial repair, args[%v]", arg)
+
+	shards := r.cli.GetPartialShards(ctx, arg)
+	numShard := arg.CodeMode.GetShardNum()
+	shardData := make([][]byte, numShard)
+
+	defer func() {
+		// release source
+		for _, shard := range shards {
+			if shard.Body != nil {
+				io.Copy(io.Discard, shard.Body)
+				shard.Body.Close()
+			}
+		}
+	}()
+	// check err
+	ret = &api.ShardPartialRepairRet{}
+	for idx, shard := range shards {
+		location := arg.Sources[idx]
+		if shard.Err != nil {
+			span.Warnf("read chunk[%v] data failed from disk[%v], host[%s], err: %v",
+				location.Vuid, location.DiskID, location.Host, shard.Err)
+			ret.BadIdxes = append(ret.BadIdxes, arg.SurvivalIndex[idx])
+		}
+	}
+	if len(ret.BadIdxes) != 0 {
+		return ret, nil
+	}
+	bufferSize := len(arg.Sources) * int(arg.Size)
+	buffer, err := workutils.TaskBufPool.GetBufBySize(bufferSize)
+	if err != nil {
+		span.Errorf("alloc buf failed: err[%+v]", err)
+		return nil, err
+	}
+	defer workutils.TaskBufPool.Put(buffer)
+
+	start := 0
+	// read data from reader
+	for idx, shard := range shards {
+		location := arg.Sources[idx]
+		vIdx := location.Vuid.Index()
+		shardData[vIdx] = buffer[start : start+int(arg.Size)]
+		n, errRead := io.ReadFull(shard.Body, shardData[vIdx])
+		if errRead != nil || n != int(arg.Size) {
+			span.Errorf("read data from body failed, err: %v", errRead)
+			err = errShardDataNotPrepared
+			return nil, err
+		}
+		start = start + int(arg.Size)
+	}
+
+	encoder, err := workutils.GetEncoder(arg.CodeMode)
+	if err != nil {
+		span.Errorf("get encoder failed: code_mode[%s], err[%+v]", arg.CodeMode.String(), err)
+		return nil, err
+	}
+
+	// partial reconstruct in az
+	if err = encoder.PartialReconstruct(shardData, arg.SurvivalIndex, []int{arg.BadIdx}); err != nil {
+		span.Errorf("partial reconstruct failed, err: %v", err)
+		return nil, err
+	}
+	ret.Data = shardData[arg.BadIdx]
+	span.Debugf("shard partial repair success, args[%v]", arg)
+	return ret, nil
 }
 
 func hasRepaired(shardInfos []*ShardInfoEx, repairIdxs []int) (bool, error) {
@@ -226,11 +298,11 @@ func getRepairShards(ctx context.Context, shardInfos []*ShardInfoEx, mode codemo
 // so will appear the case that the repair shard exist only in a blob which we called orphan shard
 // to resolve this problem,we check whether the shard is an orphan shard when repair shard finish
 // and simply record the shard in a table for troubleshooting
-func (repairer *ShardRepairer) checkOrphanShard(ctx context.Context, repls []proto.VunitLocation, bid proto.BlobID, badIdxs []int) bool {
+func (r *ShardRepairer) checkOrphanShard(ctx context.Context, repls []proto.VunitLocation, bid proto.BlobID, badIdxs []int) bool {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start check orphan shard: bid[%d], badIdxs[%+v]", bid, badIdxs)
 
-	shardInfos := repairer.listShardsInfo(ctx, repls, bid)
+	shardInfos := r.listShardsInfo(ctx, repls, bid)
 	for idx, shardInfo := range shardInfos {
 		if contains(idx, badIdxs) {
 			continue
@@ -243,21 +315,21 @@ func (repairer *ShardRepairer) checkOrphanShard(ctx context.Context, repls []pro
 	return true
 }
 
-func (repairer *ShardRepairer) listShardsInfo(ctx context.Context, repls []proto.VunitLocation, bid proto.BlobID) []*ShardInfoEx {
+func (r *ShardRepairer) listShardsInfo(ctx context.Context, repls []proto.VunitLocation, bid proto.BlobID) []*ShardInfoEx {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start list shards info: bid[%d], locations len[%d]", bid, len(repls))
 
 	shardInfos := make([]*ShardInfoEx, len(repls))
 	wg := sync.WaitGroup{}
-	for i, replica := range repls {
-		location := replica
+	for i, location := range repls {
+		l := location
 		idx := i
 		span.Infof("stat shard: location[%+v], idx[%d]", location, idx)
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			info, err := repairer.cli.StatShard(ctx, location, bid)
+			info, err := r.cli.StatShard(ctx, l, bid)
 			shardInfos[idx] = &ShardInfoEx{err: err, info: info}
 		}()
 	}
