@@ -73,61 +73,66 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			}
 			metaNodeProfPort := client.MetaNodeProfPort
 
-			if !proto.IsDbBack {
-				resp, err := http.Get(fmt.Sprintf("http://%s:%d/getInode?pid=%d&ino=%d", addr, metaNodeProfPort, mpId, ino))
-				if err != nil {
-					errout("get inode info failed:\n%v\n", err)
-					return
-				}
-				all, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					errout("read inode info failed:\n%v\n", err)
-					return
-				}
-				value := make(map[string]interface{})
-				err = json.Unmarshal(all, &value)
-				if err != nil {
-					errout("unmarshal inode info failed:\n%v\n", err)
-					return
-				}
-				if value["msg"] != "Ok" {
-					errout("get inode info failed:\n%v\n", value["msg"])
-					return
-				}
-				data := value["data"].(map[string]interface{})
-				dataInfo := data["info"].(map[string]interface{})
-				inodeInfoView := &proto.InodeInfoView{
-					Ino:         uint64(dataInfo["ino"].(float64)),
-					PartitionID: mpId,
-					At:          dataInfo["at"].(string),
-					Ct:          dataInfo["ct"].(string),
-					Mt:          dataInfo["mt"].(string),
-					Nlink:       uint64(dataInfo["nlink"].(float64)),
-					Size:        uint64(dataInfo["sz"].(float64)),
-					Gen:         uint64(dataInfo["gen"].(float64)),
-					Gid:         uint64(dataInfo["gid"].(float64)),
-					Uid:         uint64(dataInfo["uid"].(float64)),
-					Mode:        uint64(dataInfo["mode"].(float64)),
-				}
-				stdout("Summary of inode  :\n%s\n", formatInodeInfoView(inodeInfoView))
+			resp, err := http.Get(fmt.Sprintf("http://%s:%d/getInode?pid=%d&ino=%d", addr, metaNodeProfPort, mpId, ino))
+			if err != nil {
+				errout("get inode info failed:\n%v\n", err)
+				return
 			}
+			all, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				errout("read inode info failed:\n%v\n", err)
+				return
+			}
+			value := make(map[string]interface{})
+			err = json.Unmarshal(all, &value)
+			if err != nil {
+				errout("unmarshal inode info failed:\n%v\n", err)
+				return
+			}
+			if value["msg"] != "Ok" {
+				errout("get inode info from partition(%v) failed:\n%v\n", mpId, value["msg"])
+				return
+			}
+			data := value["data"].(map[string]interface{})
+			dataInfo := data["info"].(map[string]interface{})
+			gid := float64(0)
+			uid := float64(0)
+			if !proto.IsDbBack {
+				gid = dataInfo["gid"].(float64)
+				uid = dataInfo["uid"].(float64)
+
+			}
+			inodeInfoView := &proto.InodeInfoView{
+				Ino:         uint64(dataInfo["ino"].(float64)),
+				PartitionID: mpId,
+				At:          dataInfo["at"].(string),
+				Ct:          dataInfo["ct"].(string),
+				Mt:          dataInfo["mt"].(string),
+				Nlink:       uint64(dataInfo["nlink"].(float64)),
+				Size:        uint64(dataInfo["sz"].(float64)),
+				Gen:         uint64(dataInfo["gen"].(float64)),
+				Gid:         uint64(gid),
+				Uid:         uint64(uid),
+				Mode:        uint64(dataInfo["mode"].(float64)),
+			}
+			stdout("Summary of inode  :\n%s\n", formatInodeInfoView(inodeInfoView))
 
 			// getExtentsByInode
 			path := "getExtentsByInode"
 			if proto.IsDbBack {
 				path = "getExtents"
 			}
-			resp, err := http.Get(fmt.Sprintf("http://%s:%d/%s?pid=%d&ino=%d", addr, metaNodeProfPort, path, mpId, ino))
+			resp, err = http.Get(fmt.Sprintf("http://%s:%d/%s?pid=%d&ino=%d", addr, metaNodeProfPort, path, mpId, ino))
 			if err != nil {
 				errout("get inode extents failed:\n%v\n", err)
 				return
 			}
-			all, err := ioutil.ReadAll(resp.Body)
+			all, err = ioutil.ReadAll(resp.Body)
 			if err != nil {
 				errout("read inode extents failed:\n%v\n", err)
 				return
 			}
-			value := make(map[string]interface{})
+			value = make(map[string]interface{})
 			err = json.Unmarshal(all, &value)
 			if err != nil {
 				errout("unmarshal inode extents failed:\n%s\n%v\n", string(all), err)

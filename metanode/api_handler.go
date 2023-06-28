@@ -1274,12 +1274,12 @@ func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request) {
 	)
 	err = snap.Range(InodeType, func(item interface{}) (bool, error) {
 		inode := item.(*Inode)
-		inode.AccessTime = 0
 		var inodeBinary []byte
 		inodeBinary, err = inode.MarshalV2()
 		if err != nil {
 			return false, err
 		}
+		binary.BigEndian.PutUint64(inodeBinary[AccessTimeOffset:AccessTimeOffset+8], 0)
 		inodes = append(inodes, inode.Inode)
 		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(inodeBinary[0:]))
 		if _, err = crc.Write(inodeBinary); err != nil {
@@ -1904,15 +1904,15 @@ func (m *MetaNode) getAllDeletedInodesCrcSum(w http.ResponseWriter, r *http.Requ
 	)
 	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
 		delIno := item.(*DeletedINode)
-		delIno.Inode.AccessTime = 0
-		var binary []byte
-		binary, err = delIno.Marshal()
+		var delInodeBinary []byte
+		delInodeBinary, err = delIno.Marshal()
 		if err != nil {
 			return false, err
 		}
+		binary.BigEndian.PutUint64(delInodeBinary[AccessTimeOffset:AccessTimeOffset+8], 0)
 		delInodes = append(delInodes, delIno.Inode.Inode)
-		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(binary[0:]))
-		if _, err = crc.Write(binary); err != nil {
+		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(delInodeBinary[0:]))
+		if _, err = crc.Write(delInodeBinary); err != nil {
 			return false, fmt.Errorf("crc sum write failed:%v", err)
 		}
 		return true, nil

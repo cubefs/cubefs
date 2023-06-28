@@ -17,7 +17,9 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"io"
 )
@@ -449,6 +451,11 @@ func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *In
 		}
 
 		if inode != nil {
+			if enableBitMapAllocator, _ := mp.manager.getBitMapAllocatorEnableFlag(mp.config.VolName); enableBitMapAllocator {
+				exporter.WarningRocksdbError(fmt.Sprintf("action[internalCleanDeletedInode] clusterID[%s] " +
+					"volumeName[%s] partitionID[%v] confict inode[%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+					mp.config.PartitionId, inode.Inode))
+			}
 			//exist in inode tree, skip clear bitmap
 			log.LogDebugf("[internalCleanDeletedInode] partitionID(%v) ino(%v) exist in inode tree",
 				mp.config.PartitionId, ino.Inode)

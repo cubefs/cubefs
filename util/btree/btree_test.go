@@ -17,6 +17,7 @@ package btree
 import (
 	"flag"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"reflect"
 	"sort"
@@ -782,4 +783,119 @@ func BenchmarkDeleteAndRestore(b *testing.B) {
 			}
 		}
 	})
+}
+
+type inode struct {
+	ID    uint64
+	Nlink int
+}
+
+func (i *inode) Less(than Item) bool {
+	ino, ok := than.(*inode)
+	return ok && i.ID < ino.ID
+}
+
+func (i *inode) Copy() Item {
+	return &inode{
+		ID:    i.ID,
+		Nlink: i.Nlink,
+	}
+}
+
+const (
+	nodeTestCount  = 1000
+	nodeTotalCount = 2560000
+	interval       = 5
+)
+
+func TestBtree_NodeSplit(t *testing.T) {
+	tree := New(DefaultFreeListSize)
+	for index := 0; index < nodeTestCount; index++ {
+		ino := &inode{
+			ID:    uint64(index*interval),
+			Nlink: 2,
+		}
+		tree.ReplaceOrInsert(ino)
+	}
+
+	snapTree := tree.Clone()
+
+	for index := 0; index < nodeTotalCount; index++ {
+		ino := &inode{
+			ID:    uint64(index),
+			Nlink: 3,
+		}
+		if tree.Get(ino) != nil {
+			continue
+		}
+		tree.ReplaceOrInsert(ino)
+	}
+
+	for index := 0; index < nodeTestCount; index++ {
+		item := tree.CopyGet(&inode{ID: uint64(index*interval)})
+		item.(*inode).Nlink++
+	}
+
+	snapTree.AscendRange(nil, nil, func(i Item) bool {
+		if !assert.Equal(t, 2, i.(*inode).Nlink) {
+			t.Errorf("Snap tree mismatch, ID:%v, Nlink(expect:2, actual:%v)\n", i.(*inode).ID, i.(*inode).Nlink)
+		}
+		return true
+	})
+
+	tree.AscendRange(nil, nil, func(i Item) bool {
+		if !assert.Equal(t, 3, i.(*inode).Nlink) {
+			t.Errorf("Origin tree mismatch, ID:%v, Nlink(expect:3, actual:%v)\n", i.(*inode).ID, i.(*inode).Nlink)
+		}
+		return true
+	})
+
+}
+
+func TestBtree_NodeMerge(t *testing.T) {
+	tree := New(DefaultFreeListSize)
+	for index := 0; index < nodeTotalCount; index++ {
+		ino := &inode{
+			ID:    uint64(index),
+			Nlink: 2,
+		}
+		tree.ReplaceOrInsert(ino)
+	}
+
+	snapTree := tree.Clone()
+
+	for index := 0; index < nodeTotalCount - nodeTestCount; index++ {
+		if tree.Get(&inode{ID: uint64(index)}) == nil {
+			continue
+		}
+		tree.Delete(&inode{
+			ID:    uint64(index),
+		})
+	}
+
+	for index := nodeTotalCount - nodeTestCount; index < nodeTotalCount; index++ {
+		ino := &inode{
+			ID:    uint64(index),
+		}
+		item := tree.CopyGet(ino)
+		if item == nil {
+			continue
+		}
+		item.(*inode).Nlink++
+	}
+
+	snapTree.AscendRange(nil, nil, func(i Item) bool {
+		if !assert.Equal(t, 2, i.(*inode).Nlink) {
+			t.Errorf("Snap tree mismatch, ID:%v, Nlink(expect:2, actual:%v)\n", i.(*inode).ID, i.(*inode).Nlink)
+		}
+		return true
+	})
+
+	tree.AscendRange(nil, nil, func(i Item) bool {
+		if !assert.Equal(t, 3, i.(*inode).Nlink) {
+			t.Errorf("Origin tree mismatch, ID:%v, Nlink(expect:3, actual:%v)\n", i.(*inode).ID, i.(*inode).Nlink)
+		}
+		return true
+	})
+
 }

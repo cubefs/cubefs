@@ -1673,7 +1673,10 @@ func (mp *metaPartition) clearAllocatorIno(inodeID uint64) {
 }
 
 func (mp *metaPartition) updateStatus() {
-	mp.status = proto.ReadWrite
+	if mp.status == proto.Unknown || mp.status == proto.Unavailable {
+		//对于上次状态为未知和不可用的分片先重置状态为read write
+		mp.status = proto.ReadWrite
+	}
 	if addr, _ := mp.IsLeader(); addr == "" || mp.IsRaftHang() {
 		mp.status = proto.Unavailable
 		return

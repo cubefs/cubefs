@@ -89,13 +89,13 @@ func isRetryError(err error) bool {
 	return false
 }
 
-func recoverRocksDBPanic() error {
+func recoverRocksDBPanic() {
 	if err := recover(); err != nil {
 		log.LogCriticalf("recover panic, stack: %v", string(debug.Stack()))
 		exporter.WarningRocksdbError("recover rocksdb panic")
-		return fmt.Errorf("recover rocksdb panic")
+		return
 	}
-	return nil
+	return
 }
 
 type RocksDbInfo struct {
@@ -423,9 +423,7 @@ func (dbInfo *RocksDbInfo) OpenSnap() *gorocksdb.Snapshot {
 }
 
 func (dbInfo *RocksDbInfo) ReleaseSnap(snap *gorocksdb.Snapshot) {
-	defer func() {
-		_ = recoverRocksDBPanic()
-	}()
+	defer recoverRocksDBPanic()
 
 	if snap == nil {
 		return
@@ -440,9 +438,7 @@ func (dbInfo *RocksDbInfo) ReleaseSnap(snap *gorocksdb.Snapshot) {
 }
 
 func (dbInfo *RocksDbInfo) RangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
-	defer func() {
-		err = recoverRocksDBPanic()
-	}()
+	defer recoverRocksDBPanic()
 	if snap == nil {
 		return fmt.Errorf("invalid snapshot")
 	}
@@ -459,9 +455,7 @@ func (dbInfo *RocksDbInfo) RangeWithSnap(start, end []byte, snap *gorocksdb.Snap
 }
 
 func (dbInfo *RocksDbInfo) RangeWithSnapByPrefix(prefix, start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) ( err error) {
-	defer func() {
-		err = recoverRocksDBPanic()
-	}()
+	defer recoverRocksDBPanic()
 	if snap == nil {
 		return fmt.Errorf("invalid snapshot")
 	}
@@ -479,9 +473,7 @@ func (dbInfo *RocksDbInfo) RangeWithSnapByPrefix(prefix, start, end []byte, snap
 }
 
 func (dbInfo *RocksDbInfo) DescRangeWithSnap(start, end []byte, snap *gorocksdb.Snapshot, cb func(k, v []byte) (bool, error)) (err error) {
-	defer func() {
-		err = recoverRocksDBPanic()
-	}()
+	defer recoverRocksDBPanic()
 	if snap == nil {
 		return fmt.Errorf("invalid snapshot")
 	}
@@ -499,9 +491,7 @@ func (dbInfo *RocksDbInfo) DescRangeWithSnap(start, end []byte, snap *gorocksdb.
 }
 
 func (dbInfo *RocksDbInfo) Range(start, end []byte, cb func(k, v []byte) (bool, error)) (err error) {
-	defer func() {
-		err = recoverRocksDBPanic()
-	}()
+	defer recoverRocksDBPanic()
 	if err = dbInfo.accessDb(); err != nil {
 		return
 	}
@@ -517,9 +507,7 @@ func (dbInfo *RocksDbInfo) Range(start, end []byte, cb func(k, v []byte) (bool, 
 }
 
 func (dbInfo *RocksDbInfo) DescRange(start, end []byte, cb func(k, v []byte) (bool, error)) (err error) {
-	defer func() {
-		err = recoverRocksDBPanic()
-	}()
+	defer recoverRocksDBPanic()
 	if err = dbInfo.accessDb(); err != nil {
 		return err
 	}
@@ -535,8 +523,8 @@ func (dbInfo *RocksDbInfo) DescRange(start, end []byte, cb func(k, v []byte) (bo
 }
 
 func (dbInfo *RocksDbInfo) GetBytes(key []byte) (bytes []byte, err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] GetBytes failed, error:%v", err)
 		}
@@ -575,8 +563,8 @@ func (dbInfo *RocksDbInfo) HasKey(key []byte) (bool, error) {
 }
 
 func (dbInfo *RocksDbInfo) Put(key, value []byte) (err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] Put failed, error:%v", err)
 		}
@@ -607,8 +595,8 @@ func (dbInfo *RocksDbInfo) Put(key, value []byte) (err error) {
 }
 
 func (dbInfo *RocksDbInfo) Del(key []byte) (err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] Del failed, error:%v", err)
 		}
@@ -681,8 +669,8 @@ func (dbInfo *RocksDbInfo) DelItemToBatch(handle interface{}, key []byte) (err e
 }
 
 func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] CommitBatchAndRelease failed, err:%v", err)
 		}
@@ -721,8 +709,8 @@ func (dbInfo *RocksDbInfo) CommitBatchAndRelease(handle interface{}) (err error)
 }
 
 func (dbInfo *RocksDbInfo) HandleBatchCount(handle interface{}) (count int, err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] CommitBatchAndRelease failed, err:%v", err)
 		}
@@ -742,8 +730,8 @@ func (dbInfo *RocksDbInfo) HandleBatchCount(handle interface{}) (count int, err 
 }
 
 func (dbInfo *RocksDbInfo) CommitBatch(handle interface{}) (err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] CommitBatch failed, err:%v", err)
 		}
@@ -781,8 +769,8 @@ func (dbInfo *RocksDbInfo) CommitBatch(handle interface{}) (err error) {
 }
 
 func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{}) (err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] ReleaseBatchHandle failed, err:%v", err)
 		}
@@ -807,8 +795,8 @@ func (dbInfo *RocksDbInfo) ReleaseBatchHandle(handle interface{}) (err error) {
 }
 
 func (dbInfo *RocksDbInfo) ClearBatchWriteHandle(handle interface{}) (err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] ClearBatchWriteHandle failed, err:%v", err)
 		}
@@ -828,8 +816,8 @@ func (dbInfo *RocksDbInfo) ClearBatchWriteHandle(handle interface{}) (err error)
 }
 
 func (dbInfo *RocksDbInfo) Flush() (err error) {
+	defer recoverRocksDBPanic()
 	defer func() {
-		err = recoverRocksDBPanic()
 		if err != nil {
 			log.LogErrorf("[RocksDB Op] ClearBatchWriteHandle failed, err:%v", err)
 		}
