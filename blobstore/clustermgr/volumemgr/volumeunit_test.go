@@ -162,9 +162,9 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 	{
 		// success case
 		vol := mockVolumeMgr.all.getVol(2)
-		vol.lock.Lock()
-		vol.vUnits[0].nextEpoch = 2
-		vol.lock.Unlock()
+		vol.RunTask(func() {
+			vol.vUnits[0].nextEpoch = 2
+		})
 		err := mockVolumeMgr.PreUpdateVolumeUnit(context.Background(), &clustermgr.UpdateVolumeArgs{
 			OldVuid:   proto.EncodeVuid(proto.EncodeVuidPrefix(2, 0), 1),
 			NewVuid:   proto.EncodeVuid(proto.EncodeVuidPrefix(2, 0), 2),
@@ -199,11 +199,11 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, len(beforeUnits), 30)
 
-		volInfo := mockVolumeMgr.all.getVol(3)
-		volInfo.lock.Lock()
-		volInfo.vUnits[0].epoch = 2
-		volInfo.vUnits[0].nextEpoch = 2
-		volInfo.lock.Unlock()
+		vol := mockVolumeMgr.all.getVol(3)
+		vol.RunTask(func() {
+			vol.vUnits[0].epoch = 2
+			vol.vUnits[0].nextEpoch = 2
+		})
 
 		// success case, vid=1 volume status=active
 		err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(3, 0), 2), 2)
@@ -256,11 +256,11 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 		mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(false, errors.New("err"))
 		mockVolumeMgr.diskMgr = mockDiskMgr
 
-		volInfo := mockVolumeMgr.all.getVol(11)
-		volInfo.lock.Lock()
-		volInfo.vUnits[0].epoch = 2
-		volInfo.vUnits[0].nextEpoch = 2
-		volInfo.lock.Unlock()
+		vol := mockVolumeMgr.all.getVol(11)
+		vol.RunTask(func() {
+			vol.vUnits[0].epoch = 2
+			vol.vUnits[0].nextEpoch = 2
+		})
 
 		err := mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(11, 0), 2), 2)
 		require.Error(t, err)
@@ -274,11 +274,11 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 		mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, errors.New("err"))
 		mockVolumeMgr.diskMgr = mockDiskMgr
 
-		volInfo := mockVolumeMgr.all.getVol(12)
-		volInfo.lock.Lock()
-		volInfo.vUnits[0].epoch = 2
-		volInfo.vUnits[0].nextEpoch = 2
-		volInfo.lock.Unlock()
+		vol := mockVolumeMgr.all.getVol(12)
+		vol.RunTask(func() {
+			vol.vUnits[0].epoch = 2
+			vol.vUnits[0].nextEpoch = 2
+		})
 		err := mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(proto.EncodeVuidPrefix(12, 0), 2), 2)
 		require.Error(t, err)
 	}
@@ -303,9 +303,9 @@ func TestVolumeMgr_applyChunkSetCompact(t *testing.T) {
 		Compacting: true,
 	}
 	vol2 := mockVolumeMgr.all.getVol(args2.Vuid.Vid())
-	vol2.lock.Lock()
-	vol2.vUnits[args2.Vuid.Index()].vuInfo.Compacting = true
-	vol2.lock.Unlock()
+	vol2.RunTask(func() {
+		vol2.vUnits[args2.Vuid.Index()].vuInfo.Compacting = true
+	})
 	err = mockVolumeMgr.applyChunkSetCompact(context.Background(), args2)
 	require.NoError(t, err)
 
@@ -347,15 +347,15 @@ func TestVolumeMgr_applyDiskWritableChange(t *testing.T) {
 	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	vol, err := mockVolumeMgr.GetVolumeInfo(ctx, vuidPrefix1.Vid())
+	volInfo, err := mockVolumeMgr.GetVolumeInfo(ctx, vuidPrefix1.Vid())
 	require.NoError(t, err)
-	require.Equal(t, vol.HealthScore, 0)
+	require.Equal(t, volInfo.HealthScore, 0)
 
-	volInfo := mockVolumeMgr.all.getVol(vuidPrefix1.Vid())
-	volInfo.lock.Lock()
-	volInfo.vUnits[vuidPrefix1.Index()].epoch = 2
-	volInfo.vUnits[vuidPrefix1.Index()].nextEpoch = 2
-	volInfo.lock.Unlock()
+	vol := mockVolumeMgr.all.getVol(vuidPrefix1.Vid())
+	vol.RunTask(func() {
+		vol.vUnits[vuidPrefix1.Index()].epoch = 2
+		vol.vUnits[vuidPrefix1.Index()].nextEpoch = 2
+	})
 	err = mockVolumeMgr.applyUpdateVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix1, 2), 29)
 	require.NoError(t, err)
 

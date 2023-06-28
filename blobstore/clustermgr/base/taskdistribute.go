@@ -59,3 +59,7 @@ func (t *TaskDistribution) startWorker() {
 		}()
 	}
 }
+
+func (t *TaskDistribution) PoolSize() int {
+	return len(t.chs)
+}

@@ -50,6 +50,7 @@ const (
 	defaultCheckExpiredVolumeIntervalS = 60
 	defaultFlushIntervalS              = 600
 	defaultApplyConcurrency            = 20
+	defaultVolumeConcurrency           = 200
 	defaultMinAllocatableVolumeCount   = 5
 	defaultVolumeSliceMapNum           = 10
 	defaultListVolumeMaxCount          = 2000
@@ -128,6 +129,7 @@ type VolumeMgr struct {
 	lastTaskIdMap sync.Map
 	dirty         atomic.Value
 	applyTaskPool *base.TaskDistribution
+	volTaskPool   *base.TaskDistribution
 
 	createVolChan chan struct{}
 	closeLoopChan chan struct{}
@@ -152,10 +154,11 @@ func (v *VolumeMgr) GetVolumeInfo(ctx context.Context, vid proto.Vid) (ret *cm.V
 	if vol == nil {
 		return nil, ErrVolumeNotExist
 	}
-	vol.lock.RLock()
-	volInfo := vol.ToVolumeInfo()
-	vol.lock.RUnlock()
-	return &volInfo, nil
+	vol.RunTask(func() {
+		volInfo := vol.ToVolumeInfo()
+		ret = &volInfo
+	})
+	return ret, nil
 }
 
 func (v *VolumeMgr) ListVolumeInfo(ctx context.Context, args *cm.ListVolumeArgs) (ret []*cm.VolumeInfo, err error) {
@@ -177,10 +180,10 @@ func (v *VolumeMgr) ListVolumeInfo(ctx context.Context, args *cm.ListVolumeArgs)
 		if vol == nil {
 			return nil, ErrVolumeNotExist
 		}
-		vol.lock.RLock()
-		volInfo := vol.ToVolumeInfo()
-		vol.lock.RUnlock()
-		ret = append(ret, &volInfo)
+		vol.RunTask(func() {
+			volInfo := vol.ToVolumeInfo()
+			ret = append(ret, &volInfo)
+		})
 	}
 
 	return ret, nil
@@ -193,10 +196,10 @@ func (v *VolumeMgr) ListVolumeInfoV2(ctx context.Context, status proto.VolumeSta
 		if vol == nil {
 			return nil, ErrVolumeNotExist
 		}
-		vol.lock.RLock()
-		volInfo := vol.ToVolumeInfo()
-		vol.lock.RUnlock()
-		ret = append(ret, &volInfo)
+		vol.RunTask(func() {
+			volInfo := vol.ToVolumeInfo()
+			ret = append(ret, &volInfo)
+		})
 	}
 	return ret, nil
 }
@@ -208,17 +211,17 @@ func (v *VolumeMgr) ListAllocatedVolume(ctx context.Context, host string, mode c
 	var allcoVolumes []cm.AllocVolumeInfo
 	volumes := v.allocator.LisAllocatedVolumesByHost(host)
 	for _, volume := range volumes {
-		volume.lock.RLock()
-		if volume.volInfoBase.CodeMode == mode && volume.canRetain(v.FreezeThreshold, v.RetainThreshold) {
-			volInfo := volume.ToVolumeInfo()
-			allocVol := cm.AllocVolumeInfo{
-				VolumeInfo: volInfo,
-				Token:      volume.token.tokenID,
-				ExpireTime: volume.token.expireTime,
+		volume.RunTask(func() {
+			if volume.volInfoBase.CodeMode == mode && volume.canRetain(v.FreezeThreshold, v.RetainThreshold) {
+				volInfo := volume.ToVolumeInfo()
+				allocVol := cm.AllocVolumeInfo{
+					VolumeInfo: volInfo,
+					Token:      volume.token.tokenID,
+					ExpireTime: volume.token.expireTime,
+				}
+				allcoVolumes = append(allcoVolumes, allocVol)
 			}
-			allcoVolumes = append(allcoVolumes, allocVol)
-		}
-		volume.lock.RUnlock()
+		})
 	}
 
 	ret = &cm.AllocatedVolumeInfos{
@@ -247,23 +250,21 @@ func (v *VolumeMgr) PreRetainVolume(ctx context.Context, tokens []string, host s
 			errCnt++
 			continue
 		}
-
-		vol.lock.RLock()
-		if vol.token == nil || vol.token.tokenID != tok {
-			vol.lock.RUnlock()
-			// each volume has a tokenID, one tokenID mismatch do not affect other volume
-			span.Errorf("volume not alloc,can not alloc:%d", vid)
-			errCnt++
-			continue
-		}
-		if vol.canRetain(v.FreezeThreshold, v.RetainThreshold) {
-			retainVolume := cm.RetainVolume{
-				Token:      tok,
-				ExpireTime: time.Now().UnixNano() + int64(time.Duration(v.RetainTimeS)*time.Second),
+		vol.RunTask(func() {
+			if vol.token == nil || vol.token.tokenID != tok {
+				// each volume has a tokenID, one tokenID mismatch do not affect other volume
+				span.Errorf("volume not alloc,can not alloc:%d", vid)
+				errCnt++
+				return
 			}
-			retainVolumes = append(retainVolumes, retainVolume)
-		}
-		vol.lock.RUnlock()
+			if vol.canRetain(v.FreezeThreshold, v.RetainThreshold) {
+				retainVolume := cm.RetainVolume{
+					Token:      tok,
+					ExpireTime: time.Now().UnixNano() + int64(time.Duration(v.RetainTimeS)*time.Second),
+				}
+				retainVolumes = append(retainVolumes, retainVolume)
+			}
+		})
 	}
 
 	// when errCnt > 0 report retain error metric to alert
@@ -297,11 +298,11 @@ func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, cou
 		if !isAllocSucc {
 			for _, vid := range preAllocVids {
 				volume := v.all.getVol(vid)
-				volume.lock.RLock()
-				if volume.canInsert() {
-					v.allocator.Insert(volume, volume.volInfoBase.CodeMode)
-				}
-				volume.lock.RUnlock()
+				volume.RunTask(func() {
+					if volume.canInsert() {
+						v.allocator.Insert(volume, volume.volInfoBase.CodeMode)
+					}
+				})
 			}
 			// send create volume channel when alloc failed
 			select {
@@ -359,11 +360,11 @@ func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, cou
 	for _, vid := range preAllocVids {
 		if !allocatedVidM[vid] {
 			volume := v.all.getVol(vid)
-			volume.lock.RLock()
-			if volume.canInsert() {
-				v.allocator.Insert(volume, volume.volInfoBase.CodeMode)
-			}
-			volume.lock.RUnlock()
+			volume.RunTask(func() {
+				if volume.canInsert() {
+					v.allocator.Insert(volume, volume.volInfoBase.CodeMode)
+				}
+			})
 		}
 	}
 
@@ -405,20 +406,26 @@ func (v *VolumeMgr) LockVolume(ctx context.Context, vid proto.Vid) error {
 		span.Errorf("volume not found, vid: %d", vid)
 		return apierrors.ErrVolumeNotExist
 	}
-
-	vol.lock.RLock()
-	status := vol.getStatus()
-	// volume already locked
-	if status == proto.VolumeStatusLock {
-		vol.lock.RUnlock()
-		return nil
+	var (
+		status         proto.VolumeStatus
+		err            error
+		alreadyProcess bool
+	)
+	vol.RunTask(func() {
+		status = vol.getStatus()
+		// volume already locked
+		if status == proto.VolumeStatusLock {
+			alreadyProcess = true
+			return
+		}
+		if !vol.canLock() {
+			span.Warnf("can't lock volume, volume %d, current status(%d)", vid, status)
+			err = apierrors.ErrLockNotAllow
+		}
+	})
+	if alreadyProcess || err != nil {
+		return err
 	}
-	if !vol.canLock() {
-		vol.lock.RUnlock()
-		span.Warnf("can't lock volume, volume %d, current status(%d)", vid, status)
-		return apierrors.ErrLockNotAllow
-	}
-	vol.lock.RUnlock()
 
 	param := ChangeVolStatusCtx{
 		Vid:      vid,
@@ -438,9 +445,9 @@ func (v *VolumeMgr) LockVolume(ctx context.Context, vid proto.Vid) error {
 		return apierrors.ErrRaftPropose
 	}
 
-	vol.lock.RLock()
-	status = vol.getStatus()
-	vol.lock.RUnlock()
+	vol.RunTask(func() {
+		status = vol.getStatus()
+	})
 
 	if status != proto.VolumeStatusLock {
 		span.Errorf("volume %d status(%d) is not locked", vid, status)
@@ -458,20 +465,26 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid) error {
 		span.Errorf("volume not found, vid: %d", vid)
 		return apierrors.ErrVolumeNotExist
 	}
+	var (
+		status         proto.VolumeStatus
+		err            error
+		alreadyProcess bool
+	)
+	vol.RunTask(func() {
+		status = vol.getStatus()
+		if status == proto.VolumeStatusUnlocking || status == proto.VolumeStatusIdle {
+			alreadyProcess = true
+			return
+		}
 
-	vol.lock.RLock()
-	status := vol.getStatus()
-	if status == proto.VolumeStatusUnlocking || status == proto.VolumeStatusIdle {
-		vol.lock.RUnlock()
-		return nil
+		if status == proto.VolumeStatusActive {
+			span.Warnf("can't unlock volume, volume %d, current status(%d)", vid, vol.getStatus())
+			err = apierrors.ErrUnlockNotAllow
+		}
+	})
+	if alreadyProcess || err != nil {
+		return err
 	}
-
-	if status == proto.VolumeStatusActive {
-		vol.lock.RUnlock()
-		span.Warnf("can't unlock volume, volume %d, current status(%d)", vid, vol.getStatus())
-		return apierrors.ErrUnlockNotAllow
-	}
-	vol.lock.RUnlock()
 
 	param := ChangeVolStatusCtx{
 		Vid:      vid,
@@ -503,23 +516,27 @@ func (v *VolumeMgr) ReleaseVolume(ctx context.Context, args *cm.ReleaseVolumes) 
 			span.Errorf("apply release volume,vid %d not exist", vid)
 			return nil
 		}
-		// already been processed, then just return success
-		vol.lock.RLock()
-		if vol.getStatus() == status {
-			vol.lock.RUnlock()
+		var alreadyProcess, canSetIdle, canSetSealed bool
+		vol.RunTask(func() {
+			// already been processed, then just return success
+			if vol.getStatus() == status {
+				alreadyProcess = true
+				return
+			}
+			if status == proto.VolumeStatusIdle && !vol.canSetIdle() {
+				canSetIdle = false
+				span.Warnf("volume can't be set idle, current status is %d,vid is %d", vol.getStatus(), vol.vid)
+				return
+			}
+			if status == proto.VolumeStatusSealed && !vol.canSetSealed() {
+				canSetSealed = false
+				span.Warnf("volume can't be set sealed, current status is %d,vid is %d", vol.getStatus(), vol.vid)
+				return
+			}
+		})
+		if alreadyProcess || !canSetIdle || !canSetSealed {
 			return nil
 		}
-		if status == proto.VolumeStatusIdle && !vol.canSetIdle() {
-			span.Warnf("volume can't be set idle, current status is %d,vid is %d", vol.getStatus(), vol.vid)
-			vol.lock.RUnlock()
-			return nil
-		}
-		if status == proto.VolumeStatusSealed && !vol.canSetSealed() {
-			span.Warnf("volume can't be set sealed, current status is %d,vid is %d", vol.getStatus(), vol.vid)
-			vol.lock.RUnlock()
-			return nil
-		}
-		vol.lock.RUnlock()
 
 		param := ChangeVolStatusCtx{
 			Vid:      vid,
@@ -564,20 +581,26 @@ func (v *VolumeMgr) SetVolumeSealed(ctx context.Context, vid proto.Vid) error {
 		span.Errorf("volume not found, vid: %d", vid)
 		return apierrors.ErrVolumeNotExist
 	}
-
-	vol.lock.RLock()
-	status := vol.getStatus()
-	if status == proto.VolumeStatusSealed {
-		vol.lock.RUnlock()
-		return nil
+	var (
+		status         proto.VolumeStatus
+		err            error
+		alreadyProcess bool
+	)
+	vol.RunTask(func() {
+		status = vol.getStatus()
+		if status == proto.VolumeStatusSealed {
+			alreadyProcess = true
+			return
+		}
+		// if scheduler mark vol to sealed, the status must be idle
+		if status != proto.VolumeStatusIdle {
+			span.Warnf("can't set volume %d sealed, current status(%d) not idle", vid, vol.getStatus())
+			err = apierrors.ErrSetVolumeSealedNotAllow
+		}
+	})
+	if alreadyProcess || err != nil {
+		return err
 	}
-	// if scheduler mark vol to sealed, the status must be idle
-	if status != proto.VolumeStatusIdle {
-		vol.lock.RUnlock()
-		span.Warnf("can't set volume %d sealed, current status(%d) not idle", vid, vol.getStatus())
-		return apierrors.ErrSetVolumeSealedNotAllow
-	}
-	vol.lock.RUnlock()
 
 	param := ChangeVolStatusCtx{
 		Vid:      vid,
@@ -597,9 +620,9 @@ func (v *VolumeMgr) SetVolumeSealed(ctx context.Context, vid proto.Vid) error {
 		return apierrors.ErrRaftPropose
 	}
 
-	vol.lock.RLock()
-	status = vol.volInfoBase.Status
-	vol.lock.RUnlock()
+	vol.RunTask(func() {
+		status = vol.getStatus()
+	})
 
 	if status != proto.VolumeStatusSealed {
 		span.Errorf("volume %d status(%d) is not set sealed", vid, status)
@@ -616,20 +639,26 @@ func (v *VolumeMgr) SetVolumeIdle(ctx context.Context, vid proto.Vid) error {
 		span.Errorf("volume not found, vid: %d", vid)
 		return apierrors.ErrVolumeNotExist
 	}
-
-	vol.lock.RLock()
-	status := vol.getStatus()
-	if status == proto.VolumeStatusIdle {
-		vol.lock.RUnlock()
-		return nil
+	var (
+		status         proto.VolumeStatus
+		err            error
+		alreadyProcess bool
+	)
+	vol.RunTask(func() {
+		status = vol.getStatus()
+		if status == proto.VolumeStatusIdle {
+			alreadyProcess = true
+			return
+		}
+		// if scheduler mark vol to idle, the status must be sealed
+		if status != proto.VolumeStatusSealed {
+			span.Warnf("can't set volume %d idle, current status(%d) not sealed", vid, vol.getStatus())
+			err = apierrors.ErrCodeSetVolumeIdleNotAllow
+		}
+	})
+	if alreadyProcess || err != nil {
+		return err
 	}
-	// if scheduler mark vol to idle, the status must be sealed
-	if status != proto.VolumeStatusSealed {
-		vol.lock.RUnlock()
-		span.Warnf("can't set volume %d idle, current status(%d) not sealed", vid, vol.getStatus())
-		return apierrors.ErrCodeSetVolumeIdleNotAllow
-	}
-	vol.lock.RUnlock()
 
 	param := ChangeVolStatusCtx{
 		Vid:      vid,
@@ -675,8 +704,12 @@ func (v *VolumeMgr) applyRetainVolume(ctx context.Context, retainVolTokens []cm.
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start apply retain volume, retain tokens  is %#v", retainVolTokens)
 
+	var (
+		vid proto.Vid
+		err error
+	)
 	for _, retainVol := range retainVolTokens {
-		_, vid, err := proto.DecodeToken(retainVol.Token)
+		_, vid, err = proto.DecodeToken(retainVol.Token)
 		if err != nil {
 			span.Errorf("token:%s decode error", retainVol.Token)
 			return errors.Info(ErrInvalidToken, "decode retain token failed").Detail(ErrInvalidToken)
@@ -687,30 +720,30 @@ func (v *VolumeMgr) applyRetainVolume(ctx context.Context, retainVolTokens []cm.
 			span.Errorf("vid is nil,:%s decode error", retainVol.Token)
 			return errors.Info(ErrVolumeNotExist, "get volume failed").Detail(ErrVolumeNotExist)
 		}
-
-		vol.lock.Lock()
-		if vol.token == nil {
-			vol.lock.Unlock()
-			span.Errorf("volume not alloc,can not alloc:%d", vid)
-			return ErrVolumeNotAlloc
-		}
-
-		tokenRecord := &volumedb.TokenRecord{
-			Vid:        vid,
-			TokenID:    retainVol.Token,
-			ExpireTime: retainVol.ExpireTime,
-		}
-		err = v.volumeTbl.PutToken(vid, tokenRecord)
-		if err != nil {
-			vol.lock.Unlock()
-			return errors.Info(err, "put token failed").Detail(err)
-		}
-		vol.token.expireTime = tokenRecord.ExpireTime
-		vol.lock.Unlock()
+		vol.RunTask(func() {
+			if vol.token == nil {
+				span.Errorf("volume not alloc,can not alloc:%d", vid)
+				err = ErrVolumeNotAlloc
+				return
+			}
+			tokenRecord := &volumedb.TokenRecord{
+				Vid:        vid,
+				TokenID:    retainVol.Token,
+				ExpireTime: retainVol.ExpireTime,
+			}
+			err = v.volumeTbl.PutToken(vid, tokenRecord)
+			if err != nil {
+				err = errors.Info(err, "put token failed").Detail(err)
+				return
+			}
+			vol.token.expireTime = tokenRecord.ExpireTime
+		})
+	}
+	if err != nil {
+		return err
 	}
 
 	span.Debugf("finish apply retain volume")
-
 	return nil
 }
 
@@ -733,42 +766,37 @@ func (v *VolumeMgr) applyAllocVolume(ctx context.Context, vid proto.Vid, host st
 		}
 	}()
 
-	volume.lock.Lock()
+	volume.RunTask(func() {
+		allocatableScoreThreshold := volume.getScoreThreshold()
+		// when propose data, volume status may change , check to ensure volume can alloc,
+		if !volume.canAlloc(v.AllocatableSize, allocatableScoreThreshold) {
+			span.Warnf("volume can not alloc,volume info is %+v", volume.volInfoBase)
+			return
+		}
 
-	allocatableScoreThreshold := volume.getScoreThreshold()
-	// when propose data, volume status may change , check to ensure volume can alloc,
-	if !volume.canAlloc(v.AllocatableSize, allocatableScoreThreshold) {
-		span.Warnf("volume can not alloc,volume info is %+v", volume.volInfoBase)
-		volume.lock.Unlock()
-		return
-	}
-
-	token := &token{
-		vid:        volume.vid,
-		tokenID:    proto.EncodeToken(host, volume.vid),
-		expireTime: expireTime,
-	}
-	volume.token = token
-	// set volume status into active, it'll call change status event function
-	volume.setStatus(ctx, proto.VolumeStatusActive)
-	volRecord := volume.ToRecord()
-	tokenRecord := token.ToTokenRecord()
-	err = v.volumeTbl.PutVolumeAndToken([]*volumedb.VolumeRecord{volRecord}, []*volumedb.TokenRecord{tokenRecord})
-	if err != nil {
-		volume.lock.Unlock()
-		err = errors.Info(err, "put volume and tokenID in db error").Detail(err)
-		return
-	}
-	volInfo := volume.ToVolumeInfo()
-	ret = cm.AllocVolumeInfo{
-		VolumeInfo: volInfo,
-		Token:      volume.token.tokenID,
-		ExpireTime: volume.token.expireTime,
-	}
-
-	volume.lock.Unlock()
-
-	span.Debugf("finish apply alloc volume,vid is %d", vid)
+		token := &token{
+			vid:        volume.vid,
+			tokenID:    proto.EncodeToken(host, volume.vid),
+			expireTime: expireTime,
+		}
+		volume.token = token
+		// set volume status into active, it'll call change status event function
+		volume.setStatus(ctx, proto.VolumeStatusActive)
+		volRecord := volume.ToRecord()
+		tokenRecord := token.ToTokenRecord()
+		err = v.volumeTbl.PutVolumeAndToken([]*volumedb.VolumeRecord{volRecord}, []*volumedb.TokenRecord{tokenRecord})
+		if err != nil {
+			err = errors.Info(err, "put volume and tokenID in db error").Detail(err)
+			return
+		}
+		volInfo := volume.ToVolumeInfo()
+		ret = cm.AllocVolumeInfo{
+			VolumeInfo: volInfo,
+			Token:      volume.token.tokenID,
+			ExpireTime: volume.token.expireTime,
+		}
+		span.Debugf("finish apply alloc volume,vid is %d", vid)
+	})
 
 	return
 }
@@ -776,61 +804,56 @@ func (v *VolumeMgr) applyAllocVolume(ctx context.Context, vid proto.Vid, host st
 func (v *VolumeMgr) applyExpireVolume(ctx context.Context, vids []proto.Vid) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start apply expire volume, vids is %#v", vids)
-
 	for _, vid := range vids {
 		vol := v.all.getVol(vid)
 		if vol == nil {
 			span.Errorf("apply expired volume,vid %d not exist", vid)
 			return ErrVolumeNotExist
 		}
-		// already been proceed, then just return success
-		vol.lock.Lock()
-		if vol.getStatus() == proto.VolumeStatusSealed {
-			vol.lock.Unlock()
-			continue
-		}
-		// double check if expired
-		if !vol.isExpired() {
-			vol.lock.Unlock()
-			continue
-		}
-
-		span.Debugf("volume info:  %#v expired,token is %#v", vol.volInfoBase, vol.token)
-		// set volume status idle, it'll call volume status change event function
-		vol.setStatus(ctx, proto.VolumeStatusSealed)
-		volRecord := vol.ToRecord()
-		err = v.volumeTbl.PutVolumeRecord(volRecord)
+		vol.RunTask(func() {
+			// already been proceed, then just return success
+			if vol.getStatus() == proto.VolumeStatusSealed {
+				return
+			}
+			// double check if expired
+			if !vol.isExpired() {
+				return
+			}
+			span.Debugf("volume info:  %#v expired,token is %#v", vol.volInfoBase, vol.token)
+			// set volume status idle, it'll call volume status change event function
+			vol.setStatus(ctx, proto.VolumeStatusSealed)
+			volRecord := vol.ToRecord()
+			err = v.volumeTbl.PutVolumeRecord(volRecord)
+		})
 		if err != nil {
-			vol.lock.Unlock()
-			return err
+			return
 		}
-		vol.lock.Unlock()
 	}
 
 	span.Debugf("finish apply expire volume, vids is %#v", vids)
 	return
 }
 
-func (v *VolumeMgr) applyAdminUpdateVolume(ctx context.Context, volInfo *cm.VolumeInfoBase) error {
+func (v *VolumeMgr) applyAdminUpdateVolume(ctx context.Context, volInfo *cm.VolumeInfoBase) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	vol := v.all.getVol(volInfo.Vid)
 	if vol == nil {
 		span.Errorf("apply admin update volume,vid %d not exist", volInfo.Vid)
 		return ErrVolumeNotExist
 	}
-	vol.lock.Lock()
-	vol.volInfoBase.Used = volInfo.Used
-	vol.volInfoBase.Total = volInfo.Total
-	vol.setFree(ctx, volInfo.Free)
-	vol.setStatus(ctx, volInfo.Status)
-	vol.setHealthScore(ctx, volInfo.HealthScore)
-	volRecord := vol.ToRecord()
-	err := v.volumeTbl.PutVolumeRecord(volRecord)
-	vol.lock.Unlock()
+	vol.RunTask(func() {
+		vol.volInfoBase.Used = volInfo.Used
+		vol.volInfoBase.Total = volInfo.Total
+		vol.setFree(ctx, volInfo.Free)
+		vol.setStatus(ctx, volInfo.Status)
+		vol.setHealthScore(ctx, volInfo.HealthScore)
+		volRecord := vol.ToRecord()
+		err = v.volumeTbl.PutVolumeRecord(volRecord)
+	})
 	return err
 }
 
-func (v *VolumeMgr) applyAdminUpdateVolumeUnit(ctx context.Context, unitInfo *cm.AdminUpdateUnitArgs) error {
+func (v *VolumeMgr) applyAdminUpdateVolumeUnit(ctx context.Context, unitInfo *cm.AdminUpdateUnitArgs) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	vol := v.all.getVol(unitInfo.Vuid.Vid())
 	if vol == nil {
@@ -838,34 +861,32 @@ func (v *VolumeMgr) applyAdminUpdateVolumeUnit(ctx context.Context, unitInfo *cm
 		return ErrVolumeNotExist
 	}
 	index := unitInfo.Vuid.Index()
-	vol.lock.RLock()
-	if int(index) >= len(vol.vUnits) {
-		span.Errorf("apply admin update volume unit,index:%d over vuids length ", index)
-		vol.lock.RUnlock()
-		return ErrVolumeUnitNotExist
-	}
-	vol.lock.RUnlock()
+	vol.RunTask(func() {
+		if int(index) >= len(vol.vUnits) {
+			span.Errorf("apply admin update volume unit,index:%d over vuids length ", index)
+			err = ErrVolumeUnitNotExist
+			return
+		}
+		if proto.IsValidEpoch(unitInfo.Epoch) {
+			vol.vUnits[index].epoch = unitInfo.Epoch
+			vol.vUnits[index].vuInfo.Vuid = proto.EncodeVuid(vol.vUnits[index].vuidPrefix, unitInfo.Epoch)
+		}
+		if proto.IsValidEpoch(unitInfo.NextEpoch) {
+			vol.vUnits[index].nextEpoch = unitInfo.NextEpoch
+		}
+		var diskInfo *blobnode.DiskInfo
+		diskInfo, err = v.diskMgr.GetDiskInfo(ctx, unitInfo.DiskID)
+		if err != nil {
+			return
+		}
+		vol.vUnits[index].vuInfo.DiskID = diskInfo.DiskID
+		vol.vUnits[index].vuInfo.Host = diskInfo.Host
+		vol.vUnits[index].vuInfo.Compacting = unitInfo.Compacting
 
-	vol.lock.Lock()
-	if proto.IsValidEpoch(unitInfo.Epoch) {
-		vol.vUnits[index].epoch = unitInfo.Epoch
-		vol.vUnits[index].vuInfo.Vuid = proto.EncodeVuid(vol.vUnits[index].vuidPrefix, unitInfo.Epoch)
-	}
-	if proto.IsValidEpoch(unitInfo.NextEpoch) {
-		vol.vUnits[index].nextEpoch = unitInfo.NextEpoch
-	}
-	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, unitInfo.DiskID)
-	if err != nil {
-		vol.lock.Unlock()
-		return err
-	}
-	vol.vUnits[index].vuInfo.DiskID = diskInfo.DiskID
-	vol.vUnits[index].vuInfo.Host = diskInfo.Host
-	vol.vUnits[index].vuInfo.Compacting = unitInfo.Compacting
+		unitRecord := vol.vUnits[index].ToVolumeUnitRecord()
+		err = v.volumeTbl.PutVolumeUnit(unitInfo.Vuid.VuidPrefix(), unitRecord)
+	})
 
-	unitRecord := vol.vUnits[index].ToVolumeUnitRecord()
-	err = v.volumeTbl.PutVolumeUnit(unitInfo.Vuid.VuidPrefix(), unitRecord)
-	vol.lock.Unlock()
 	return err
 }
 
@@ -972,7 +993,7 @@ func (v *VolumeMgr) loop() {
 
 // refreshHealth use for refreshing volume healthScore
 // healthScore only correspond with writable volumeUnit num
-func (v *VolumeMgr) refreshHealth(ctx context.Context, vid proto.Vid) error {
+func (v *VolumeMgr) refreshHealth(ctx context.Context, vid proto.Vid) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	vol := v.all.getVol(vid)
 	if vol == nil {
@@ -981,33 +1002,35 @@ func (v *VolumeMgr) refreshHealth(ctx context.Context, vid proto.Vid) error {
 	health := 0
 	badCount := 0
 
-	vol.lock.RLock()
-	for _, vu := range vol.vUnits {
-		if vu.vuInfo.Compacting {
-			span.Debugf("disk chunk is compacting, bad index increase. disk_id: %d, vuid: %d", vu.vuInfo.DiskID, vu.vuInfo.Vuid)
-			badCount++
-			continue
+	vol.RunTask(func() {
+		for _, vu := range vol.vUnits {
+			if vu.vuInfo.Compacting {
+				span.Debugf("disk chunk is compacting, bad index increase. disk_id: %d, vuid: %d", vu.vuInfo.DiskID, vu.vuInfo.Vuid)
+				badCount++
+				continue
+			}
+			var writable bool
+			writable, err = v.diskMgr.IsDiskWritable(ctx, vu.vuInfo.DiskID)
+			if err != nil {
+				return
+			}
+			if !writable {
+				span.Debugf("disk is not writable, bad index increase. disk_id: %d", vu.vuInfo.DiskID)
+				badCount++
+			}
 		}
-		writable, err := v.diskMgr.IsDiskWritable(ctx, vu.vuInfo.DiskID)
-		if err != nil {
-			vol.lock.RUnlock()
-			return err
-		}
-		if !writable {
-			span.Debugf("disk is not writable, bad index increase. disk_id: %d", vu.vuInfo.DiskID)
-			badCount++
-		}
-	}
-	vol.lock.RUnlock()
+		health -= badCount
+		vol.setHealthScore(ctx, health)
+	})
 
-	health -= badCount
-	vol.lock.Lock()
-	vol.setHealthScore(ctx, health)
-	vol.lock.Unlock()
-	return nil
+	return err
 }
 
 func (v *VolumeMgr) getModeUnitCount(mode codemode.CodeMode) int {
 	unitCount := v.codeMode[mode].tactic.N + v.codeMode[mode].tactic.M + v.codeMode[mode].tactic.L
 	return unitCount
+}
+
+func getVolumeIdx(vid proto.Vid, concurrency uint32) int {
+	return int(uint32(vid) % concurrency)
 }

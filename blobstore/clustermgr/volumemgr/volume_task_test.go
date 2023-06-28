@@ -66,6 +66,7 @@ func TestTaskProc(t *testing.T) {
 		all:            newShardedVolumes(8),
 		diskMgr:        diskmgr,
 		blobNodeClient: dnClient,
+		volTaskPool:    base.NewTaskDistribution(defaultVolumeConcurrency, 1),
 	}
 
 	allocConfig := allocConfig{
@@ -117,6 +118,7 @@ func TestTaskProc(t *testing.T) {
 			CodeMode: 1,
 			Status:   proto.VolumeStatusIdle,
 		},
+		taskPool: volMgr.volTaskPool,
 	}
 	volMgr.all.putVol(vol)
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")

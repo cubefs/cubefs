@@ -49,6 +49,7 @@ type VolumeMgrConfig struct {
 
 	VolumeSliceMapNum            uint32 `json:"volume_slice_map_num"`
 	ApplyConcurrency             uint32 `json:"apply_concurrency"`
+	VolumeConcurrency            uint32 `json:"volume_concurrency"`
 	MinAllocableVolumeCount      int    `json:"min_allocable_volume_count"`
 	AllocatableDiskLoadThreshold int    `json:"allocatable_disk_load_threshold"`
 	AllocFactor                  int    `json:"alloc_factor"`
@@ -82,6 +83,9 @@ func (c *VolumeMgrConfig) checkAndFix() {
 	}
 	if c.ApplyConcurrency == 0 {
 		c.ApplyConcurrency = defaultApplyConcurrency
+	}
+	if c.VolumeConcurrency == 0 {
+		c.VolumeConcurrency = defaultVolumeConcurrency
 	}
 	if c.MinAllocableVolumeCount <= 0 {
 		c.MinAllocableVolumeCount = defaultMinAllocatableVolumeCount
@@ -136,6 +140,7 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr diskmgr.DiskMgrAPI, scopeMgr sco
 		codeMode:        make(map[codemode.CodeMode]codeModeConf),
 		taskMgr:         newTaskManager(10),
 		applyTaskPool:   base.NewTaskDistribution(int(conf.ApplyConcurrency), 1),
+		volTaskPool:     base.NewTaskDistribution(int(conf.VolumeConcurrency), 1),
 		diskMgr:         diskMgr,
 		scopeMgr:        scopeMgr,
 		configMgr:       configMgr,
@@ -225,6 +230,7 @@ func (v *VolumeMgr) loadVolume(ctx context.Context) error {
 			vid:         volRecord.Vid,
 			vUnits:      volumeUnits,
 			volInfoBase: volInfo,
+			taskPool:    v.volTaskPool,
 		}
 		tokenRecord, _ := v.volumeTbl.GetToken(volRecord.Vid)
 		if tokenRecord != nil {

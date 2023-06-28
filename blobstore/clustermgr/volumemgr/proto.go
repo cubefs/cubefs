@@ -21,6 +21,7 @@ import (
 	"time"
 
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -36,7 +37,7 @@ type volume struct {
 	volInfoBase   cm.VolumeInfoBase
 	token         *token
 	smallestVUIdx uint8
-	lock          sync.RWMutex
+	taskPool      *base.TaskDistribution
 }
 
 func (vol *volume) ToRecord() *volumedb.VolumeRecord {
@@ -153,6 +154,17 @@ func (vol *volume) isValid() bool {
 func (vol *volume) getScoreThreshold() int {
 	scoreThreshold := vol.volInfoBase.CodeMode.Tactic().PutQuorum - vol.volInfoBase.CodeMode.GetShardNum()
 	return scoreThreshold
+}
+
+func (vol *volume) RunTask(task func()) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	taskIdx := getVolumeIdx(vol.vid, uint32(vol.taskPool.PoolSize()))
+	vol.taskPool.Run(taskIdx, func() {
+		defer wg.Done()
+		task()
+	})
+	wg.Wait()
 }
 
 // internal volume unit struct

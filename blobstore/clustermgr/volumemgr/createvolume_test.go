@@ -174,7 +174,7 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 			args := &CreateVolumeCtx{}
 			err := args.Decode(proposeInfo.Data)
 			require.NoError(t, err)
-			volume, err := args.ToVolume(ctx)
+			volume, err := args.ToVolume(ctx, mockVolumeMgr.volTaskPool)
 			require.NoError(t, err)
 			err = mockVolumeMgr.applyInitCreateVolume(ctx, volume)
 			require.NoError(t, err)

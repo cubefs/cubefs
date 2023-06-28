@@ -52,6 +52,7 @@ var (
 		IDC:                          []string{"z0", "z1", "z2"},
 		RetainTimeS:                  100,
 		ApplyConcurrency:             10,
+		VolumeConcurrency:            100,
 		FlushIntervalS:               100,
 		VolumeSliceMapNum:            32,
 		MinAllocableVolumeCount:      0,
@@ -290,6 +291,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 		IDC:                         []string{"z0", "z1", "z2"},
 		RetainTimeS:                 100,
 		ApplyConcurrency:            10,
+		VolumeConcurrency:           100,
 		FlushIntervalS:              100,
 		VolumeSliceMapNum:           32,
 		CheckExpiredVolumeIntervalS: 1,
@@ -332,9 +334,9 @@ func Test_NewVolumeMgr(t *testing.T) {
 
 	// wait check expired volume,set volume1 expired
 	vol1 := mockVolumeMgr.all.getVol(1)
-	vol1.lock.Lock()
-	vol1.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
-	vol1.lock.Unlock()
+	vol1.RunTask(func() {
+		vol1.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
+	})
 
 	// test exec task
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeLock)
@@ -679,9 +681,9 @@ func TestVolumeMgr_PreRetainVolume(t *testing.T) {
 		"127.0.0.1:8080;5",
 	}
 	vol5 := mockVolumeMgr.all.getVol(proto.Vid(5))
-	vol5.lock.Lock()
-	vol5.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
-	vol5.lock.Unlock()
+	vol5.RunTask(func() {
+		vol5.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
+	})
 	ret, err = mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
 	require.NoError(t, err)
 	require.Nil(t, ret)
@@ -740,16 +742,16 @@ func TestVolumeMgr_applyExpireVolume(t *testing.T) {
 	require.Equal(t, proto.VolumeStatusActive, vol3.volInfoBase.Status)
 	require.Equal(t, proto.VolumeStatusActive, vol5.volInfoBase.Status)
 
-	vol1.lock.Lock()
-	vol1.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
-	vol1.lock.Unlock()
-	vol3.lock.Lock()
-	vol3.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
-	vol3.lock.Unlock()
-	vol5.lock.Lock()
-	vol5.volInfoBase.Status = proto.VolumeStatusIdle
-	vol5.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
-	vol5.lock.Unlock()
+	vol1.RunTask(func() {
+		vol1.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
+	})
+	vol3.RunTask(func() {
+		vol3.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
+	})
+	vol5.RunTask(func() {
+		vol5.volInfoBase.Status = proto.VolumeStatusIdle
+		vol1.token.expireTime = time.Now().Add(-10 * time.Second).UnixNano()
+	})
 
 	err := mockVolumeMgr.applyExpireVolume(ctx, []proto.Vid{1, 3, 5})
 	require.NoError(t, err)
@@ -904,9 +906,9 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 	err = mockVolumeMgr.UnlockVolume(context.Background(), 55)
 	require.Error(t, err)
 
-	vol2.lock.Lock()
-	vol2.volInfoBase.Status = proto.VolumeStatusLock
-	vol2.lock.Unlock()
+	vol2.RunTask(func() {
+		vol2.volInfoBase.Status = proto.VolumeStatusLock
+	})
 	err = mockVolumeMgr.UnlockVolume(context.Background(), 2)
 	require.NoError(t, err)
 

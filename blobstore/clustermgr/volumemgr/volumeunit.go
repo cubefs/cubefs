@@ -49,7 +49,7 @@ func (v *VolumeMgr) ListVolumeUnitInfo(ctx context.Context, args *cmapi.ListVolu
 	return ret, nil
 }
 
-func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmapi.AllocVolumeUnit, error) {
+func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (vu *cmapi.AllocVolumeUnit, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	vid := vuid.Vid()
 	vol := v.all.getVol(vid)
@@ -58,13 +58,17 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 	}
 
 	index := vuid.Index()
-	vol.lock.RLock()
-	if index >= uint8(len(vol.vUnits)) {
-		vol.lock.RUnlock()
-		return nil, ErrVolumeUnitNotExist
+	nextEpoch := uint32(0)
+	vol.RunTask(func() {
+		if index >= uint8(len(vol.vUnits)) {
+			err = ErrVolumeUnitNotExist
+			return
+		}
+		nextEpoch = vol.vUnits[index].nextEpoch + 1
+	})
+	if err != nil {
+		return nil, err
 	}
-	nextEpoch := vol.vUnits[index].nextEpoch + 1
-	vol.lock.RUnlock()
 
 	pendingVuidKey := uuid.New().String()
 	v.pendingEntries.Store(pendingVuidKey, proto.Vuid(0))
@@ -87,12 +91,12 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 
 	excludes := make([]proto.DiskID, 0)
 	targetDiskID := proto.DiskID(0)
-	vol.lock.RLock()
-	targetDiskID = vol.vUnits[vuid.Index()].vuInfo.DiskID
-	for _, vu := range vol.vUnits {
-		excludes = append(excludes, vu.vuInfo.DiskID)
-	}
-	vol.lock.RUnlock()
+	vol.RunTask(func() {
+		targetDiskID = vol.vUnits[vuid.Index()].vuInfo.DiskID
+		for _, vu := range vol.vUnits {
+			excludes = append(excludes, vu.vuInfo.DiskID)
+		}
+	})
 
 	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, targetDiskID)
 	if err != nil {
@@ -115,41 +119,47 @@ func (v *VolumeMgr) PreUpdateVolumeUnit(ctx context.Context, args *cmapi.UpdateV
 		return ErrVolumeNotExist
 	}
 
-	vol.lock.RLock()
-	defer vol.lock.RUnlock()
+	vol.RunTask(func() {
+		unit := vol.vUnits[args.OldVuid.Index()]
+		if (proto.EncodeVuid(unit.vuidPrefix, unit.epoch) != args.OldVuid &&
+			proto.EncodeVuid(unit.vuidPrefix, unit.epoch) != args.NewVuid) ||
+			unit.nextEpoch < args.OldVuid.Epoch() {
+			span.Errorf("volume's vuid is %v", proto.EncodeVuid(unit.vuidPrefix, unit.epoch))
+			err = ErrOldVuidNotMatch
+			return
+		}
+		if proto.EncodeVuid(unit.vuidPrefix, unit.nextEpoch) != args.NewVuid {
+			span.Errorf("volume's vuid is %v", proto.EncodeVuid(unit.vuidPrefix, unit.nextEpoch))
+			err = ErrNewVuidNotMatch
+			return
+		}
+		// idempotent retry update volume unit, return success, and do not stat chunk from data node
+		if proto.EncodeVuid(unit.vuidPrefix, unit.epoch) == args.NewVuid {
+			err = ErrRepeatUpdateUnit
+			return
+		}
+		var diskInfo *blobnode.DiskInfo
+		diskInfo, err = v.diskMgr.GetDiskInfo(ctx, args.NewDiskID)
+		if err != nil {
+			span.Errorf("new diskID:%v not exist", args.NewDiskID)
+			err = apierrors.ErrCMDiskNotFound
+			return
+		}
+		var chunkInfo *blobnode.ChunkInfo
+		chunkInfo, err = v.blobNodeClient.StatChunk(ctx, diskInfo.Host, &blobnode.StatChunkArgs{DiskID: args.NewDiskID, Vuid: args.NewVuid})
+		if err != nil {
+			span.Errorf("stat blob node chunk, disk id[%d], vuid[%d] failed: %s", args.NewDiskID, args.NewVuid, err.Error())
+			err = apierrors.ErrStatChunkFailed
+			return
+		}
+		if chunkInfo == nil || chunkInfo.DiskID != args.NewDiskID {
+			span.Errorf("new diskID:%v not match", args.NewDiskID)
+			err = ErrNewDiskIDNotMatch
+			return
+		}
+	})
 
-	unit := vol.vUnits[args.OldVuid.Index()]
-	if (proto.EncodeVuid(unit.vuidPrefix, unit.epoch) != args.OldVuid &&
-		proto.EncodeVuid(unit.vuidPrefix, unit.epoch) != args.NewVuid) ||
-		unit.nextEpoch < args.OldVuid.Epoch() {
-		span.Errorf("volume's vuid is %v", proto.EncodeVuid(unit.vuidPrefix, unit.epoch))
-		return ErrOldVuidNotMatch
-	}
-	if proto.EncodeVuid(unit.vuidPrefix, unit.nextEpoch) != args.NewVuid {
-		span.Errorf("volume's vuid is %v", proto.EncodeVuid(unit.vuidPrefix, unit.nextEpoch))
-		return ErrNewVuidNotMatch
-	}
-	// idempotent retry update volume unit, return success, and do not stat chunk from data node
-	if proto.EncodeVuid(unit.vuidPrefix, unit.epoch) == args.NewVuid {
-		return ErrRepeatUpdateUnit
-	}
-
-	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, args.NewDiskID)
-	if err != nil {
-		span.Errorf("new diskID:%v not exist", args.NewDiskID)
-		return apierrors.ErrCMDiskNotFound
-	}
-	chunkInfo, err := v.blobNodeClient.StatChunk(ctx, diskInfo.Host, &blobnode.StatChunkArgs{DiskID: args.NewDiskID, Vuid: args.NewVuid})
-	if err != nil {
-		span.Errorf("stat blob node chunk, disk id[%d], vuid[%d] failed: %s", args.NewDiskID, args.NewVuid, err.Error())
-		return apierrors.ErrStatChunkFailed
-	}
-	if chunkInfo == nil || chunkInfo.DiskID != args.NewDiskID {
-		span.Errorf("new diskID:%v not match", args.NewDiskID)
-		return ErrNewDiskIDNotMatch
-	}
-
-	return nil
+	return err
 }
 
 // ReleaseVolumeUnit release old volumeUnit's old chunk
@@ -181,41 +191,38 @@ func (v *VolumeMgr) applyUpdateVolumeUnit(ctx context.Context, newVuid proto.Vui
 	if int(index) > len(vol.vUnits) {
 		return ErrNewVuidNotMatch
 	}
+	var alreadyProcess, isOldEpoch bool
+	vol.RunTask(func() {
+		if vol.vUnits[index].vuInfo.Vuid == newVuid {
+			alreadyProcess = true
+			return
+		}
+		// when apply wal log happened, the next epoch of volume unit in db may larger than args new vuid's epoch
+		// just return nil in this situation
+		if vol.vUnits[index].nextEpoch > newVuid.Epoch() {
+			isOldEpoch = true
+			span.Debugf("vol nextEpoch: %d bigger than newVuid Epoch : %d", vol.vUnits[index].nextEpoch, newVuid.Epoch())
+			return
+		}
+		var diskInfo *blobnode.DiskInfo
+		diskInfo, err = v.diskMgr.GetDiskInfo(ctx, newDiskID)
+		if err != nil {
+			span.Errorf("get diskInfo failed,diskID is %d", newDiskID)
+			return
+		}
 
-	vol.lock.Lock()
+		vol.vUnits[index].epoch = newVuid.Epoch()
+		vol.vUnits[index].vuInfo.DiskID = newDiskID
+		vol.vUnits[index].vuInfo.Host = diskInfo.Host
+		vol.vUnits[index].vuInfo.Compacting = false
+		vol.vUnits[index].vuInfo.Vuid = newVuid
+		unitRecord := vol.vUnits[index].ToVolumeUnitRecord()
+		err = v.volumeTbl.UpdateVolumeUnit(unitRecord.VuidPrefix, unitRecord)
+	})
 
-	if vol.vUnits[index].vuInfo.Vuid == newVuid {
-		vol.lock.Unlock()
-		return nil
+	if alreadyProcess || isOldEpoch || err != nil {
+		return
 	}
-
-	// when apply wal log happened, the next epoch of volume unit in db may larger than args new vuid's epoch
-	// just return nil in this situation
-	if vol.vUnits[index].nextEpoch > newVuid.Epoch() {
-		span.Debugf("vol nextEpoch: %d bigger than newVuid Epoch : %d", vol.vUnits[index].nextEpoch, newVuid.Epoch())
-		vol.lock.Unlock()
-		return nil
-	}
-	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, newDiskID)
-	if err != nil {
-		span.Errorf("get diskInfo failed,diskID is %d", newDiskID)
-		vol.lock.Unlock()
-		return err
-	}
-
-	vol.vUnits[index].epoch = newVuid.Epoch()
-	vol.vUnits[index].vuInfo.DiskID = newDiskID
-	vol.vUnits[index].vuInfo.Host = diskInfo.Host
-	vol.vUnits[index].vuInfo.Compacting = false
-	vol.vUnits[index].vuInfo.Vuid = newVuid
-
-	unitRecord := vol.vUnits[index].ToVolumeUnitRecord()
-	err = v.volumeTbl.UpdateVolumeUnit(unitRecord.VuidPrefix, unitRecord)
-	if err != nil {
-		vol.lock.Unlock()
-		return err
-	}
-	vol.lock.Unlock()
 
 	// refresh health
 	err = v.refreshHealth(ctx, vol.vid)
@@ -240,21 +247,28 @@ func (v *VolumeMgr) applyAllocVolumeUnit(ctx context.Context, args *allocVolumeU
 	}
 
 	idx := args.Vuid.Index()
-	vol.lock.Lock()
-	// concurrent alloc volume unit or wal log replay, do nothing and return
-	if vol.vUnits[idx].nextEpoch >= args.NextEpoch {
-		vol.lock.Unlock()
+	var (
+		newVuid    proto.Vuid
+		isOldEpoch bool
+	)
+	vol.RunTask(func() {
+		// concurrent alloc volume unit or wal log replay, do nothing and return
+		if vol.vUnits[idx].nextEpoch >= args.NextEpoch {
+			isOldEpoch = true
+			return
+		}
+		vol.vUnits[idx].nextEpoch = args.NextEpoch
+		vuRecord := vol.vUnits[idx].ToVolumeUnitRecord()
+		err = v.volumeTbl.PutVolumeUnit(args.Vuid.VuidPrefix(), vuRecord)
+		if err != nil {
+			return
+		}
+		newVuid = proto.EncodeVuid(args.Vuid.VuidPrefix(), vol.vUnits[idx].nextEpoch)
+	})
+
+	if isOldEpoch || err != nil {
 		return
 	}
-	vol.vUnits[idx].nextEpoch = args.NextEpoch
-	vuRecord := vol.vUnits[idx].ToVolumeUnitRecord()
-	err = v.volumeTbl.PutVolumeUnit(args.Vuid.VuidPrefix(), vuRecord)
-	if err != nil {
-		vol.lock.Unlock()
-		return err
-	}
-	newVuid := proto.EncodeVuid(args.Vuid.VuidPrefix(), vol.vUnits[idx].nextEpoch)
-	vol.lock.Unlock()
 
 	// set pending entry in current process context
 	if _, ok := v.pendingEntries.Load(args.PendingVuidKey); ok {
@@ -278,35 +292,40 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 			continue
 		}
 		idx := chunk.Vuid.Index()
-		vol.lock.Lock()
-		// in some case, the report vuid epoch may not equal epoch in cm, like balance, we should just ignore it and do not modify
-		if vol.vUnits[idx].vuInfo.Vuid != chunk.Vuid {
-			vol.lock.Unlock()
+		var vuidMisMatch bool
+		vol.RunTask(func() {
+			// in some case, the report vuid epoch may not equal epoch in cm, like balance, we should just ignore it and do not modify
+			if vol.vUnits[idx].vuInfo.Vuid != chunk.Vuid {
+				vuidMisMatch = true
+				return
+			}
+
+			vol.vUnits[idx].vuInfo.Free = chunk.Free
+			vol.vUnits[idx].vuInfo.Used = chunk.Used
+			vol.vUnits[idx].vuInfo.Total = chunk.Total
+
+			dataChunkNum := uint64(v.codeMode[vol.volInfoBase.CodeMode].tactic.N)
+			volFree := vol.vUnits[idx].vuInfo.Free * dataChunkNum
+			volUsed := vol.vUnits[idx].vuInfo.Used * dataChunkNum
+			volTotal := vol.vUnits[idx].vuInfo.Total * dataChunkNum
+
+			// use the minimum free size as volume free
+			if vol.volInfoBase.Free > volFree {
+				vol.volInfoBase.Used = volUsed
+				vol.volInfoBase.Total = volTotal
+				vol.smallestVUIdx = idx
+				vol.setFree(ctx, volFree)
+			} else {
+				// ensure volume free size and use size can be update after shard delete or compaction
+				vol.volInfoBase.Used = vol.vUnits[vol.smallestVUIdx].vuInfo.Used * dataChunkNum
+				vol.volInfoBase.Total = vol.vUnits[vol.smallestVUIdx].vuInfo.Total * dataChunkNum
+				vol.setFree(ctx, vol.vUnits[vol.smallestVUIdx].vuInfo.Free*dataChunkNum)
+			}
+		})
+
+		if vuidMisMatch {
 			continue
 		}
-
-		vol.vUnits[idx].vuInfo.Free = chunk.Free
-		vol.vUnits[idx].vuInfo.Used = chunk.Used
-		vol.vUnits[idx].vuInfo.Total = chunk.Total
-
-		dataChunkNum := uint64(v.codeMode[vol.volInfoBase.CodeMode].tactic.N)
-		volFree := vol.vUnits[idx].vuInfo.Free * dataChunkNum
-		volUsed := vol.vUnits[idx].vuInfo.Used * dataChunkNum
-		volTotal := vol.vUnits[idx].vuInfo.Total * dataChunkNum
-
-		// use the minimum free size as volume free
-		if vol.volInfoBase.Free > volFree {
-			vol.volInfoBase.Used = volUsed
-			vol.volInfoBase.Total = volTotal
-			vol.smallestVUIdx = idx
-			vol.setFree(ctx, volFree)
-		} else {
-			// ensure volume free size and use size can be update after shard delete or compaction
-			vol.volInfoBase.Used = vol.vUnits[vol.smallestVUIdx].vuInfo.Used * dataChunkNum
-			vol.volInfoBase.Total = vol.vUnits[vol.smallestVUIdx].vuInfo.Total * dataChunkNum
-			vol.setFree(ctx, vol.vUnits[vol.smallestVUIdx].vuInfo.Free*dataChunkNum)
-		}
-		vol.lock.Unlock()
 
 		// put on dirty volumes and flush asynchronously
 		dirty := v.dirty.Load().(*shardedVolumes)
@@ -326,23 +345,27 @@ func (v *VolumeMgr) applyChunkSetCompact(ctx context.Context, args *cmapi.SetCom
 	}
 
 	index := args.Vuid.Index()
+	var alreadyProcess bool
+	vol.RunTask(func() {
+		if index >= uint8(len(vol.vUnits)) || vol.vUnits[index].vuidPrefix != args.Vuid.VuidPrefix() {
+			err = ErrVolumeUnitNotExist
+			return
+		}
+		if vol.vUnits[args.Vuid.Index()].vuInfo.Compacting == args.Compacting {
+			alreadyProcess = true
+			return
+		}
 
-	vol.lock.Lock()
-	if index >= uint8(len(vol.vUnits)) || vol.vUnits[index].vuidPrefix != args.Vuid.VuidPrefix() {
-		vol.lock.Unlock()
-		return ErrVolumeUnitNotExist
-	}
-	if vol.vUnits[args.Vuid.Index()].vuInfo.Compacting == args.Compacting {
-		vol.lock.Unlock()
-		return nil
-	}
+		vol.vUnits[args.Vuid.Index()].vuInfo.Compacting = args.Compacting
+		err = v.volumeTbl.PutVolumeUnit(args.Vuid.VuidPrefix(), vol.vUnits[args.Vuid.Index()].ToVolumeUnitRecord())
+		if err != nil {
+			err = errors.Info(err, "put volume unit failed").Detail(err)
+			return
+		}
+	})
 
-	vol.vUnits[args.Vuid.Index()].vuInfo.Compacting = args.Compacting
-
-	err = v.volumeTbl.PutVolumeUnit(args.Vuid.VuidPrefix(), vol.vUnits[args.Vuid.Index()].ToVolumeUnitRecord())
-	vol.lock.Unlock()
-	if err != nil {
-		return errors.Info(err, "put volume unit failed").Detail(err)
+	if alreadyProcess || err != nil {
+		return
 	}
 
 	// refresh volume health

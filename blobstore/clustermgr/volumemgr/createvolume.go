@@ -217,24 +217,27 @@ func (v *VolumeMgr) applyCreateVolume(ctx context.Context, vol *volume) error {
 	if v.all.getVol(vol.vid) != nil {
 		return nil
 	}
-
-	vol.lock.Lock()
-	defer vol.lock.Unlock()
-	// set volume status into idle
-	vol.setStatus(ctx, proto.VolumeStatusIdle)
-
-	unitRecords := volumeUnitsToVolumeUnitRecords(vol.vUnits)
-	volumeRecord := vol.ToRecord()
-	// delete transited table firstly, put volume and volume units secondly.
-	// it's idempotent when wal log replay
-	if err := v.transitedTbl.DeleteVolumeAndUnits(volumeRecord, unitRecords); err != nil {
-		return errors.Info(err, fmt.Sprintf("delete volume [%+v] and  units[%+v] from transited table failed", volumeRecord, unitRecords)).Detail(err)
-	}
-	if err := v.volumeTbl.PutVolumeAndVolumeUnit([]*volumedb.VolumeRecord{volumeRecord}, [][]*volumedb.VolumeUnitRecord{unitRecords}); err != nil {
-		return errors.Info(err, fmt.Sprintf("put volume[%+v] and volume unit[%+v] into volume table failed", volumeRecord, unitRecords)).Detail(err)
+	var err error
+	vol.RunTask(func() {
+		// set volume status into idle
+		vol.setStatus(ctx, proto.VolumeStatusIdle)
+		unitRecords := volumeUnitsToVolumeUnitRecords(vol.vUnits)
+		volumeRecord := vol.ToRecord()
+		// delete transited table firstly, put volume and volume units secondly.
+		// it's idempotent when wal log replay
+		if err = v.transitedTbl.DeleteVolumeAndUnits(volumeRecord, unitRecords); err != nil {
+			err = errors.Info(err, fmt.Sprintf("delete volume [%+v] and  units[%+v] from transited table failed", volumeRecord, unitRecords)).Detail(err)
+			return
+		}
+		if err = v.volumeTbl.PutVolumeAndVolumeUnit([]*volumedb.VolumeRecord{volumeRecord}, [][]*volumedb.VolumeUnitRecord{unitRecords}); err != nil {
+			err = errors.Info(err, fmt.Sprintf("put volume[%+v] and volume unit[%+v] into volume table failed", volumeRecord, unitRecords)).Detail(err)
+			return
+		}
+	})
+	if err != nil {
+		return err
 	}
 	v.all.putVol(vol)
-
 	return nil
 }
 

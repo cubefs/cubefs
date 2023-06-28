@@ -64,7 +64,7 @@ func (c *CreateVolumeCtx) Decode(raw []byte) error {
 	return json.Unmarshal(raw, c)
 }
 
-func (c *CreateVolumeCtx) ToVolume(ctx context.Context) (*volume, error) {
+func (c *CreateVolumeCtx) ToVolume(ctx context.Context, pool *base.TaskDistribution) (*volume, error) {
 	vUnits := make([]*volumeUnit, len(c.VuInfos))
 	for i, vuInfo := range c.VuInfos {
 		vUnits[i] = &volumeUnit{
@@ -78,6 +78,7 @@ func (c *CreateVolumeCtx) ToVolume(ctx context.Context) (*volume, error) {
 		vid:         c.Vid,
 		vUnits:      vUnits,
 		volInfoBase: c.VolInfo,
+		taskPool:    pool,
 	}
 	return vol, nil
 }
@@ -175,7 +176,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 				wg.Done()
 				continue
 			}
-			volume, err := args.ToVolume(ctx)
+			volume, err := args.ToVolume(ctx, v.volTaskPool)
 			if err != nil {
 				errs[idx] = errors.Info(err, "transform create volume context into volume failed, create volume context: ", args).Detail(err)
 				wg.Done()
@@ -369,7 +370,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 				wg.Done()
 				continue
 			}
-			volume, err := args.ToVolume(ctx)
+			volume, err := args.ToVolume(ctx, v.volTaskPool)
 			if err != nil {
 				errs[idx] = errors.Info(err, "transform create volume context into volume failed, create volume context: ", args).Detail(err)
 				wg.Done()
@@ -440,9 +441,10 @@ func (v *VolumeMgr) Flush(ctx context.Context) error {
 		default:
 		}
 
-		vol.lock.RLock()
-		err = v.volumeTbl.PutVolumeAndVolumeUnit([]*volumedb.VolumeRecord{vol.ToRecord()}, [][]*volumedb.VolumeUnitRecord{volumeUnitsToVolumeUnitRecords(vol.vUnits)})
-		vol.lock.RUnlock()
+		vol.RunTask(func() {
+			unitRecords := volumeUnitsToVolumeUnitRecords(vol.vUnits)
+			err = v.volumeTbl.PutVolumeAndVolumeUnit([]*volumedb.VolumeRecord{vol.ToRecord()}, [][]*volumedb.VolumeUnitRecord{unitRecords})
+		})
 		retErr = err
 		return
 	})
