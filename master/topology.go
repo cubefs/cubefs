@@ -1212,15 +1212,6 @@ func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []
 	return
 }
 
-func (ns *nodeSet) dataNodeCount() int {
-	var count int
-	ns.dataNodes.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return count
-}
-
 func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
 	return getAvailHosts(ns.dataNodes, excludeHosts, replicaNum, selectDataNode)
 }
