@@ -16,6 +16,17 @@ RUN  mkdir -p /tmp/ltp /opt/ltp && cd /tmp/ltp \
 RUN apt-get install -y sudo python3 python3-pip
 RUN pip3 install boto3 unittest2 requests
 
+# install go tools for code format checking
+RUN go env -w GOPROXY="https://goproxy.cn,direct" GOFLAGS="-insecure"
+RUN go install mvdan.cc/gofumpt@v0.2.1
+RUN go install golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow@latest
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
+RUN rm -rf /go/pkg/
+
+# prepare env cgo flags
+RUN go env -w CGO_CFLAGS="-I/go/src/github.com/cubefs/cubefs/build/include"
+RUN go env -w CGO_LDFLAGS="-L/go/src/github.com/cubefs/cubefs/build/lib -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lstdc++"
+
 # cleanup environment
 RUN apt-get install -y jq fuse \
         && rm -rf /var/lib/apt/lists/* \
