@@ -77,7 +77,7 @@ func isColdVolExtentDelErr(p *repl.Packet) bool {
 	return false
 }
 
-func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn, limiter *repl.RecvLimiter) (err error) {
+func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 	var (
 		tpLabels map[string]string
 		tpObject *exporter.TimePointCount

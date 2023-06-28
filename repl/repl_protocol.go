@@ -54,9 +54,9 @@ type ReplProtocol struct {
 	followerConnects map[string]*FollowerTransport
 	lock             sync.RWMutex
 
-	prepareFunc  func(p *Packet) error                                       // prepare packet
-	operatorFunc func(p *Packet, c net.Conn, recvLimiter *RecvLimiter) error // operator
-	postFunc     func(p *Packet) error                                       // post-processing packet
+	prepareFunc  func(p *Packet) error             // prepare packet
+	operatorFunc func(p *Packet, c net.Conn) error // operator
+	postFunc     func(p *Packet) error             // post-processing packet
 
 	getSmuxConn func(addr string) (c net.Conn, err error)
 	putSmuxConn func(conn net.Conn, force bool)
@@ -189,7 +189,7 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) {
 }
 
 func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
-	operatorFunc func(p *Packet, c net.Conn, recvLimiter *RecvLimiter) error, postFunc func(p *Packet) error, recvLimiter *RecvLimiter) *ReplProtocol {
+	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error, recvLimiter *RecvLimiter) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
 	rp.ackCh = make(chan struct{}, RequestChanSize)
@@ -319,7 +319,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 		select {
 		case request := <-rp.toBeProcessedCh:
 			if !request.IsForwardPacket() {
-				rp.operatorFunc(request, rp.sourceConn, rp.recvLimiter)
+				rp.operatorFunc(request, rp.sourceConn)
 				rp.putResponse(request)
 			} else {
 				index, err := rp.sendRequestToAllFollowers(request)
@@ -328,7 +328,7 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 					rp.putResponse(request)
 				} else {
 					rp.pushPacketToList(request)
-					rp.operatorFunc(request, rp.sourceConn, rp.recvLimiter)
+					rp.operatorFunc(request, rp.sourceConn)
 					rp.putAck()
 				}
 			}
