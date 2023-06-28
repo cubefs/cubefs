@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
+
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -44,6 +46,10 @@ func getDefaultConfig() WorkerConfig {
 
 type mBlobNodeCli struct{}
 
+func (m *mBlobNodeCli) ShardPartialRepair(ctx context.Context, host string, args *bnapi.ShardPartialRepairArgs) (ret *bnapi.ShardPartialRepairRet, err error) {
+	return nil, nil
+}
+
 func (m *mBlobNodeCli) StatChunk(ctx context.Context, location proto.VunitLocation) (ci *client.ChunkInfo, err error) {
 	return
 }
@@ -64,8 +70,8 @@ func (m *mBlobNodeCli) PutShard(ctx context.Context, location proto.VunitLocatio
 	return
 }
 
-func (m *mBlobNodeCli) GetPartialShards(ctx context.Context, partials client.PartialShards, ioType bnapi.IOType) (body io.ReadCloser, crc32 uint32, err error) {
-	return nil, 0, nil
+func (m *mBlobNodeCli) GetPartialShards(ctx context.Context, partials bnapi.ShardPartialRepairArgs) []client.ShardResponse {
+	return nil
 }
 
 type mockScheCli struct {
@@ -144,6 +150,7 @@ func newMockWorkService(t *testing.T) (*Service, *mockScheCli) {
 		shardRepairLimit: count.New(1),
 		schedulerCli:     schedulerCli,
 		blobNodeCli:      blobnodeCli,
+		shardRepairer:    NewShardRepairer(blobnodeCli),
 
 		taskRunnerMgr:  NewTaskRunnerMgr("z0", getDefaultConfig().WorkerConfigMeter, NewMockMigrateWorker, schedulerCli, schedulerCli),
 		inspectTaskMgr: NewInspectTaskMgr(1, blobnodeCli, schedulerCli),
@@ -166,8 +173,22 @@ func TestServiceAPI(t *testing.T) {
 		err := workerCli.RepairShard(context.Background(), workerServer.URL, tc.args)
 		require.Equal(t, tc.code, rpc.DetectStatusCode(err))
 	}
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     4 * 1024,
+		MigrateBufCapacity: 100,
+		RepairBufSize:      2 * 1024,
+		RepairBufCapacity:  100,
+	})
+	_, source := genPartialPlan(1, codemode.EC15P12, 8)
+	_, err := workerCli.ShardPartialRepair(context.Background(), workerServer.URL, &bnapi.ShardPartialRepairArgs{
+		CodeMode: codemode.EC15P12,
+		Bid:      1,
+		BadIdx:   8,
+		Sources:  source,
+	})
+	require.Error(t, err)
 
-	_, err := workerCli.WorkerStats(context.Background(), workerServer.URL)
+	_, err = workerCli.WorkerStats(context.Background(), workerServer.URL)
 	require.NoError(t, err)
 }
 
