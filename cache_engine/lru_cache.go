@@ -147,37 +147,24 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	})
 	newCb := value.(*CacheBlock)
 	c.alloc += newCb.allocSize
-	// remove oldest
-	if c.lru.Len() > c.size {
+
+	toEvicts := make(map[interface{}]interface{}, 0)
+	for c.lru.Len() > c.size || c.alloc > c.maxAlloc {
 		ent := c.lru.Back()
 		if ent != nil {
-			log.LogWarnf("delete(%s) on len:%v max:%v", ent.Value.(*entry).key, c.lru.Len(), c.size)
-			e := c.deleteElement(ent)
-			err = c.onDelete(e)
-			if err != nil {
-				c.Unlock()
-				return n, err
-			}
-			c.evictsN++
-			n++
-		}
-	}
-	for c.alloc > c.maxAlloc {
-		ent := c.lru.Back()
-		if ent != nil {
-			log.LogWarnf("delete(%s) on allocSize:%v max:%v", ent.Value.(*entry).key, c.alloc, c.maxAlloc)
-			e := c.deleteElement(ent)
-			err = c.onDelete(e)
-			if err != nil {
-				c.Unlock()
-				return n, err
-			}
+			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
 			c.evictsN++
 			n++
 		}
 	}
 	c.Unlock()
-	return n, err
+	for k, e := range toEvicts {
+		_ = c.onDelete(e)
+		if log.IsWarnEnabled() {
+			log.LogWarnf("delete(%s) on lru full, len(%d) alloc(%d) max(%d)", k, c.lru.Len(), c.alloc, c.maxAlloc)
+		}
+	}
+	return n, nil
 }
 
 // Get

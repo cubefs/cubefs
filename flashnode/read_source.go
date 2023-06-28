@@ -68,7 +68,9 @@ func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc 
 	for i := 0; i < ExtentReadMaxRetry; i++ {
 		retryCount++
 		for _, addr := range hosts {
-			log.LogWarnf("extentReadWithRetry: try addr(%v) reqPacket(%v)", addr, reqPacket)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("extentReadWithRetry: try addr(%v) reqPacket(%v)", addr, reqPacket)
+			}
 			readBytes, err = sendReadCmdToDataPartition(addr, reqPacket, afterReadFunc)
 			if err == nil {
 				return

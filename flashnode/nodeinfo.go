@@ -93,3 +93,14 @@ func (f *FlashNode) updateZoneVolLimiter(limitInfo *proto.LimitInfo) {
 		f.volLimiterMap = tmpVolLimiterMap
 	}
 }
+
+func (f *FlashNode) volLimitAllow(vol string) bool {
+	if len(f.volLimitMap) == 0 {
+		return true
+	}
+	limiter, ok := f.volLimiterMap[vol]
+	if !ok {
+		return true
+	}
+	return limiter.Allow()
+}

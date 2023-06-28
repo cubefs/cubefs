@@ -23,7 +23,7 @@ const (
 	moduleName = "flashnode"
 
 	NodeLatestVersion                 = proto.BaseVersion
-	LruCacheDefaultCapacity           = 102400
+	LruCacheDefaultCapacity           = 400000
 	CacheReqWriteTimeoutMilliSec      = 500
 	CacheReqReadTimeoutMilliSec       = 500
 	CacheReqConnectionTimeoutMilliSec = 500

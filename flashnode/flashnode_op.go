@@ -38,17 +38,19 @@ func (f *FlashNode) preHandle(conn net.Conn, p *Packet) error {
 		}
 	}
 	// request rate limit for entire flash node
-	if p.Opcode == proto.OpCacheRead && f.nodeLimit != 0 {
-		if !f.nodeLimiter.Allow() {
-			err := errors.NewErrorf("flashnode request is limited(%d)", f.nodeLimit)
-			metric := exporter.NewModuleTP("NodeReqLimit")
-			if log.IsWarnEnabled() {
-				log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
-			}
-			metric.Set(nil)
-			return err
-		}
+	if !(p.Opcode == proto.OpCacheRead && f.nodeLimit != 0) {
+		return nil
 	}
+	if !f.nodeLimiter.Allow() {
+		err := errors.NewErrorf("flashnode request is limited(%d)", f.nodeLimit)
+		metric := exporter.NewModuleTP("NodeReqLimit")
+		if log.IsWarnEnabled() {
+			log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
+		}
+		metric.Set(nil)
+		return err
+	}
+
 	return nil
 }
 
@@ -103,24 +105,18 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 	if req, err = UnMarshalPacketToCacheRead(p); err != nil {
 		return
 	}
-	if len(f.volLimitMap) > 0 {
-		limiter, ok := f.volLimiterMap[req.CacheRequest.Volume]
-		if ok {
-			if !limiter.Allow() {
-				err = errors.NewErrorf("volume(%s) request is limited(%d)", req.CacheRequest.Volume, f.volLimitMap[req.CacheRequest.Volume])
-				if log.IsWarnEnabled() {
-					log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
-				}
-				metric := exporter.NewModuleTP("VolReqLimit")
-				p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-				_ = respondToClient(conn, p)
-				err = nil
-				metric.Set(nil)
-				return
-			}
+	if !f.volLimitAllow(req.CacheRequest.Volume) {
+		err = errors.NewErrorf("volume(%s) request is limited(%d)", req.CacheRequest.Volume, f.volLimitMap[req.CacheRequest.Volume])
+		if log.IsWarnEnabled() {
+			log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
 		}
+		metric := exporter.NewModuleTP("VolReqLimit")
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		_ = respondToClient(conn, p)
+		err = nil
+		metric.Set(nil)
+		return
 	}
-
 	if block, err = f.cacheEngine.GetCacheBlock(req.CacheRequest.Volume, req.CacheRequest.Inode, req.CacheRequest.FixedFileOffset, req.CacheRequest.Version); err != nil {
 		if block, err = f.cacheEngine.CreateBlock(req.CacheRequest); err != nil {
 			return err
@@ -311,26 +307,14 @@ func respondToClient(conn net.Conn, p *Packet) (err error) {
 }
 
 func (f *FlashNode) contextMaker() {
-	var cancel context.CancelFunc
-	var oldC context.CancelFunc
 	t := time.NewTicker(proto.ReadCacheTimeout * time.Second)
 	f.currentCtx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second*2)
 	defer t.Stop()
 	for {
 		select {
 		case <-t.C:
-			f.currentCtx, cancel = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second*2)
-			if oldC != nil {
-				oldC()
-			}
-			oldC = cancel
+			f.currentCtx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second*2)
 		case <-f.stopCh:
-			if oldC != nil {
-				oldC()
-			}
-			if cancel != nil {
-				cancel()
-			}
 			return
 		}
 	}
