@@ -44,6 +44,16 @@ run_format() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml run format
 }
 
+run_bsgofumpt() {
+    prepare
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run bs_gofumpt
+}
+
+run_bsgolint() {
+    prepare
+    docker-compose -f ${RootPath}/docker/docker-compose.yml run bs_golint
+}
+
 # build
 build() {
     prepare
@@ -135,6 +145,12 @@ for opt in ${ARGS[*]} ; do
         -f|--format)
             cmd=run_format
             ;;
+        --bsgofumpt)
+            cmd=run_bsgofumpt
+            ;;
+        --bsgolint)
+            cmd=run_bsgolint
+            ;;
         -clean|--clean)
             cmd=clean
             ;;
@@ -186,6 +202,8 @@ case "-$cmd" in
     -run_test) run_unit_test ;;
     -run_format) run_format ;;
     -run_scenariotest) run_scenariotest ;;
+    -run_bsgofumpt) run_bsgofumpt ;;
+    -run_bsgolint) run_bsgolint ;;
     -clean) clean ;;
     *) help ;;
 esac
