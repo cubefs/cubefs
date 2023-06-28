@@ -113,7 +113,8 @@ type ExtentConfig struct {
 	OnCacheBcache     CacheBcacheFunc
 	OnEvictBcache     EvictBacheFunc
 
-	DisableMetaCache bool
+	DisableMetaCache             bool
+	MinWriteAbleDataPartitionCnt int
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -224,7 +225,9 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
 	limit := 0
 retry:
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload)
+
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
+		config.MinWriteAbleDataPartitionCnt)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)
