@@ -57,6 +57,7 @@ const (
 	commonVolName = "commonVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
+	testZone3     = "zone3"
 
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
@@ -727,7 +728,7 @@ func TestAddMetaReplica(t *testing.T) {
 		return
 	}
 	msAddr := "127.0.0.1:8009"
-	addMetaServer(msAddr, testZone2)
+	addMetaServer(msAddr, testZone3)
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)
