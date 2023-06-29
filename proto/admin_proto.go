@@ -276,6 +276,7 @@ const (
 	FlashNodeVolRateKey          = "flashNodeVolRate"
 	DataNodeReqVolPartRateKey    = "dataNodeReqVolPartRate"
 	DataNodeReqVolOpPartRateKey  = "dataNodeReqVolOpPartRate"
+	DataNodeMarkDeleteRateKey    = "markDeleteRate"
 	DpTimeoutCntThreshold        = "dpTimeoutCntThreshold"
 )
 
@@ -1226,6 +1227,7 @@ type RateLimitInfo struct {
 	MetaNodeReqOpRate                int64
 	DataNodeRepairTaskCount          int64
 	DataNodeRepairTaskSSDZone        int64
+	DataNodeMarkDeleteRate           int64
 	DataNodeReqRate                  int64
 	DataNodeReqOpRate                int64
 	DataNodeReqVolOpRate             int64

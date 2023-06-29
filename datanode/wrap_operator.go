@@ -344,6 +344,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+	DeleteLimiterWait()
 	remote := c.RemoteAddr().String()
 	partition := p.Object.(*DataPartition)
 	if p.ExtentType == proto.TinyExtentType {
@@ -1583,7 +1584,10 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 	if err = p.ReadFromConn(conn, forwardToRaftLeaderTimeOut); err != nil {
 		return
 	}
-
+	if p.ResultCode != proto.OpOk {
+		err = errors.NewErrorf("forwardToRaftLeader error msg: %v", p.GetOpMsgWithReqAndResult())
+		return
+	}
 	return
 }
 

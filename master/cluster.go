@@ -3578,7 +3578,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, val.(uint64))
 	}
 	oldDeleteLimitRate := atomic.LoadUint64(&c.cfg.DataNodeDeleteLimitRate)
-	if val, ok := params[nodeMarkDeleteRateKey]; ok {
+	if val, ok := params[proto.DataNodeMarkDeleteRateKey]; ok {
 		atomic.StoreUint64(&c.cfg.DataNodeDeleteLimitRate, val.(uint64))
 	}
 	oldRepairTaskCount := atomic.LoadUint64(&c.cfg.DataNodeRepairTaskCount)

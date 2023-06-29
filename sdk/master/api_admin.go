@@ -739,6 +739,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.DataNodeRepairTaskZoneCount >= 0 {
 		request.addParam("dataNodeRepairTaskZoneCount", strconv.FormatInt(info.DataNodeRepairTaskZoneCount, 10))
 	}
+	if info.DataNodeMarkDeleteRate >= 0 {
+		request.addParam("markDeleteRate", strconv.FormatInt(info.DataNodeMarkDeleteRate, 10))
+	}
 	if info.DataNodeReqRate >= 0 {
 		request.addParam("dataNodeReqRate", strconv.FormatInt(info.DataNodeReqRate, 10))
 	}
