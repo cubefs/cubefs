@@ -22,7 +22,7 @@ on:
       # - '**.md'
 
 jobs:
-  ci-tests:
+  ci-test-unit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -41,15 +41,15 @@ jobs:
         with:
           files: ./coverage.txt
 
-  ci-scenario:
+  ci-test-s3:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Scenario tests
+      - name: S3 tests
         run: |
-          docker/run_docker.sh --scenariotest
+          docker/run_docker.sh --s3test
 
       - name: Pack docker_data
         if: ${{ always() }}
