@@ -6,7 +6,7 @@ export GO111MODULE=off
 
 echo -n 'Building CubeFS ... '
 
-if [ "$1"x = "-scenario"x ]; then
+if [ "$1"x = "-s3"x ]; then
     pushd /go/src/github.com/cubefs/cubefs
     make server
     make client

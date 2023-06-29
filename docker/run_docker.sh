@@ -63,9 +63,9 @@ build() {
 }
 
 # build
-build_scenario() {
+build_s3() {
     prepare
-    ${compose} run build bash -c "/bin/bash /cfs/script/build.sh -scenario"
+    ${compose} run build bash -c "/bin/bash /cfs/script/build.sh -s3"
 }
 
 # start server
@@ -83,7 +83,7 @@ start_monitor() {
     ${compose} up -d monitor
 }
 
-start_scenariotest() {
+start_s3test() {
     ${compose} run client
 }
 
@@ -91,10 +91,10 @@ start_ltptest() {
     ${compose} run client bash -c "/cfs/script/start.sh -ltp"
 }
 
-run_scenariotest() {
-    build_scenario
+run_s3test() {
+    build_s3
     start_servers
-    start_scenariotest
+    start_s3test
     clean
 }
 
@@ -129,8 +129,8 @@ for opt in ${ARGS[*]} ; do
         -l|--ltptest)
             cmd=run_ltptest
             ;;
-        -n|--scenariotest)
-            cmd=run_scenariotest
+        -n|--s3test)
+            cmd=run_s3test
             ;;
         -r|--run)
             cmd=run
@@ -203,7 +203,7 @@ case "-$cmd" in
     -run_ltptest) run_ltptest ;;
     -run_test) run_unit_test ;;
     -run_format) run_format ;;
-    -run_scenariotest) run_scenariotest ;;
+    -run_s3test) run_s3test ;;
     -run_bsgofumpt) run_bsgofumpt ;;
     -run_bsgolint) run_bsgolint ;;
     -clean) clean ;;
