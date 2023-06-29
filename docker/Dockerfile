@@ -17,11 +17,8 @@ RUN apt-get install -y sudo python3 python3-pip
 RUN pip3 install boto3 unittest2 requests
 
 # install go tools for code format checking
-RUN go env -w GOPROXY="https://goproxy.cn,direct" GOFLAGS="-insecure"
-RUN go install mvdan.cc/gofumpt@v0.2.1
-RUN go install golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow@latest
-RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
-RUN rm -rf /go/pkg/
+RUN wget --no-check-certificate https://ocs-cn-north1.heytapcs.com/cubefs/github/ci/go_bin.tar.gz
+RUN tar -zxf go_bin.tar.gz -C /go/
 
 # prepare env cgo flags
 RUN go env -w CGO_CFLAGS="-I/go/src/github.com/cubefs/cubefs/build/include"
