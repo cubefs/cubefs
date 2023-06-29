@@ -37,13 +37,7 @@ type testRespData struct {
 	Result string `json:"result"`
 }
 
-var (
-	server *httptest.Server
-	tmpDir string
-	lc     LogCloser
-)
-
-func initServer(t *testing.T) {
+func initServer(t *testing.T) (server *httptest.Server, tmpDir string, lc LogCloser) {
 	moduleName := "TESTMOULE"
 	tracer := trace.NewTracer(moduleName)
 	trace.SetGlobalTracer(tracer)
@@ -56,12 +50,17 @@ func initServer(t *testing.T) {
 	ah, lc, err = Open(moduleName, &Config{
 		LogDir: tmpDir, ChunkBits: 29,
 		KeywordsFilter: []string{"Get"},
+		MetricConfig: PrometheusConfig{
+			Idc: moduleName,
+		},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, ah)
 	require.NotNil(t, lc)
 
 	bussinessHandler := func(w http.ResponseWriter, req *http.Request) {
+		_, err := ioutil.ReadAll(req.Body)
+		require.NoError(t, err)
 		w.Header().Set("testh1", "testh1value")
 		w.Header().Set("Content-Type", rpc.MIMEJSON)
 		w.WriteHeader(http.StatusOK)
@@ -74,22 +73,59 @@ func initServer(t *testing.T) {
 	}
 
 	server = httptest.NewServer(http.HandlerFunc(entryHandler))
+	return server, tmpDir, lc
 }
 
-func close() {
-	server.Close()
-	os.RemoveAll(tmpDir)
-	lc.Close()
+func initNoContentLengthServer(t *testing.T) (server *httptest.Server, tmpDir string, lc LogCloser) {
+	moduleName := "TESTNOCONTENTLENGTHMOULE"
+	tracer := trace.NewTracer(moduleName)
+	trace.SetGlobalTracer(tracer)
+
+	tmpDir = os.TempDir() + "/test-NoContentLength-log" + strconv.FormatInt(time.Now().Unix(), 10) + strconv.Itoa(rand.Intn(100000))
+	err := os.Mkdir(tmpDir, 0o755)
+	require.NoError(t, err)
+
+	var ah rpc.ProgressHandler
+	ah, lc, err = Open(moduleName, &Config{
+		LogDir: tmpDir, ChunkBits: 29,
+		MetricConfig: PrometheusConfig{
+			Idc: moduleName,
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, ah)
+	require.NotNil(t, lc)
+
+	noContentLengthHandler := func(w http.ResponseWriter, req *http.Request) {
+		buffered, err := ioutil.ReadAll(req.Body)
+		require.NoError(t, err)
+		bodySize := req.Body.(*reqBodyReadCloser).bodyRead
+		readSting := string(buffered[:bodySize])
+		w.Header().Set("Content-Type", rpc.MIMEJSON)
+		w.WriteHeader(http.StatusOK)
+		data, err := json.Marshal(testRespData{Result: readSting})
+		require.NoError(t, err)
+		w.Write(data)
+	}
+	entryHandler := func(w http.ResponseWriter, req *http.Request) {
+		ah.Handler(w, req, noContentLengthHandler)
+	}
+
+	server = httptest.NewServer(http.HandlerFunc(entryHandler))
+	return server, tmpDir, lc
 }
 
 func TestOpen(t *testing.T) {
-	initServer(t)
-	defer close()
+	server, tmpDir, lc := initServer(t)
+	defer func() {
+		server.Close()
+		os.RemoveAll(tmpDir)
+		lc.Close()
+	}()
 
 	url := server.URL
 	client := http.DefaultClient
 
-	// test keywords filter
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	require.NoError(t, err)
 	resp, err := client.Do(req)
@@ -130,6 +166,32 @@ func TestOpen(t *testing.T) {
 	dirEntries, err = open.ReadDir(-1)
 	require.NoError(t, err)
 	require.Greater(t, len(dirEntries), 0)
+}
+
+func TestNoContentLength(t *testing.T) {
+	server, tmpDir, lc := initNoContentLengthServer(t)
+	defer func() {
+		server.Close()
+		os.RemoveAll(tmpDir)
+		lc.Close()
+	}()
+
+	url := server.URL
+	client := http.DefaultClient
+
+	body := strings.NewReader("{\"test1\":\"test1value\"}")
+	req, err := http.NewRequest(http.MethodPost, url, body)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	b, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	respData := &testRespData{}
+	err = json.Unmarshal(b, respData)
+	require.NoError(t, err)
+	require.Equal(t, "{\"test1\":\"test1value\"}", respData.Result)
+	resp.Body.Close()
 }
 
 func TestBodylimit(t *testing.T) {
