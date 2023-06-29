@@ -17,6 +17,7 @@ package auditlog
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -35,6 +36,18 @@ const (
 	maxReadBodyBuffLength     = 2048
 	defaultFileChunkBits      = 29
 )
+
+type reqBodyReadCloser struct {
+	bodyRead int64
+
+	io.ReadCloser
+}
+
+func (reqBody *reqBodyReadCloser) Read(p []byte) (n int, err error) {
+	n, err = reqBody.ReadCloser.Read(p)
+	reqBody.bodyRead += int64(n)
+	return
+}
 
 type jsonAuditlog struct {
 	module       string
@@ -178,7 +191,12 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 			w.WriteHeader(597)
 		}
 	}()
+
+	rc := &reqBodyReadCloser{ReadCloser: req.Body}
+	req.Body = rc
 	f(_w, req)
+	bodySize := rc.bodyRead
+	decodeReq.Header["BodySize"] = bodySize
 
 	endTime := time.Now().UnixNano() / 1000
 	b := j.logPool.Get().(*bytes.Buffer)
