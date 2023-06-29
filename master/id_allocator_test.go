@@ -16,11 +16,12 @@ package master
 
 import "testing"
 
-func TestClientAllocate(t *testing.T) {
-	allocator := newIDAllocator(server.rocksDBStore, server.partition)
+const idallocTestCount = 1010
+
+func SelfIncreaseIdAllocTest(t *testing.T, allocator *IDAllocator, allocFunc func() (uint64, error)) {
 	var id uint64
-	for i := 0; i != 1010; i++ {
-		newId, err := allocator.allocateClientID()
+	for i := 0; i != idallocTestCount; i++ {
+		newId, err := allocFunc()
 		if err != nil {
 			t.Errorf("failed to allocate id %v", err.Error())
 		}
@@ -31,7 +32,7 @@ func TestClientAllocate(t *testing.T) {
 		id = newId
 	}
 	allocator.restore()
-	newId, err := allocator.allocateClientID()
+	newId, err := allocFunc()
 	if err != nil {
 		t.Errorf("failed to allocate id %v", err.Error())
 	}
@@ -39,4 +40,29 @@ func TestClientAllocate(t *testing.T) {
 		t.Errorf("id should be uniqued and self-increased")
 	}
 	t.Logf("new id is %v", newId)
+}
+
+func TestIdAlloc(t *testing.T) {
+	allocator := newIDAllocator(server.rocksDBStore, server.partition)
+	t.Logf("testing client id alloc")
+	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
+		return allocator.allocateClientID()
+	})
+	t.Logf("testing common id alloc")
+	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
+		return allocator.allocateCommonID()
+	})
+	t.Logf("testing data partition id alloc")
+	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
+		return allocator.allocateDataPartitionID()
+	})
+	t.Logf("testing meta partition id alloc")
+	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
+		return allocator.allocateMetaPartitionID()
+	})
+	t.Logf("testing quota id alloc")
+	SelfIncreaseIdAllocTest(t, allocator, func() (uint64, error) {
+		id, err := allocator.allocateQuotaID()
+		return uint64(id), err
+	})
 }
