@@ -72,8 +72,6 @@ type Streamer struct {
 	pendingPacketList []*common.Packet
 
 	bloomStatus bool
-	prepareCh   chan *PrepareRequest
-	prepareOnce sync.Once
 }
 
 // NewStreamer returns a new streamer.

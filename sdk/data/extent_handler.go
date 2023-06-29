@@ -558,12 +558,10 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	}
 
 	if ek.PartitionId > 0 && eh.stream.enableCacheAutoPrepare() {
-		eh.stream.prepareOnce.Do(func() {
-			eh.stream.DoPrepare()
-		})
 		prepareReq := &PrepareRequest{
-			ctx: ctx,
-			ek:  ek,
+			ctx:   ctx,
+			ek:    ek,
+			inode: eh.stream.inode,
 		}
 		eh.stream.sendToPrepareChan(prepareReq)
 		//eh.stream.prepareRemoteCache(ctx, ek)

@@ -664,12 +664,10 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	log.LogDebugf("doROW: inode %v, total %v, oriReq %v, newEK %v", s.inode, total, oriReq, newEK)
 
 	if s.enableCacheAutoPrepare() {
-		s.prepareOnce.Do(func() {
-			s.DoPrepare()
-		})
 		prepareReq := &PrepareRequest{
-			ctx: ctx,
-			ek:  newEK,
+			ctx:   ctx,
+			ek:    newEK,
+			inode: s.inode,
 		}
 		s.sendToPrepareChan(prepareReq)
 		//s.prepareRemoteCache(ctx, newEK)
