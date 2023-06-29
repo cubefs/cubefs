@@ -99,7 +99,7 @@ func (verMgr *VolVersionManager) loadMultiVersion(c *Cluster, val []byte) (err e
 }
 
 func (verMgr *VolVersionManager) CommitVer() (ver *proto.VolVersionInfo) {
-	log.LogDebugf("action[CommitVer] vol %v %v", verMgr.vol.Name, verMgr)
+	log.LogDebugf("action[CommitVer] op %v vol %v %v", verMgr.prepareCommit.op, verMgr.vol.Name, verMgr)
 	if verMgr.prepareCommit.op == proto.CreateVersionPrepare {
 		ver = verMgr.prepareCommit.prepareInfo
 		commitVer := &proto.VolVersionInfo{

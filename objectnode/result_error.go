@@ -136,7 +136,6 @@ var (
 	LifeCycleRulesLessThenOne           = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "At least one lifecycle rule must be specified.", StatusCode: http.StatusBadRequest}
 	LifeCycleAtLeastOneAction           = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "At least one action must be specified in a lifecycle rule.", StatusCode: http.StatusBadRequest}
 	LifeCycleRulesInvalid               = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "Lifecycle rule is invalid.", StatusCode: http.StatusBadRequest}
-	NoSuchLifecycleConfiguration        = &ErrorCode{ErrorCode: "NoSuchLifecycleConfiguration", ErrorMessage: "The lifecycle configuration does not exist.", StatusCode: http.StatusNotFound}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {
