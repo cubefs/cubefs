@@ -24,69 +24,71 @@ EOF
     exit 0
 }
 
+compose="docker-compose --env-file ${RootPath}/docker/run_docker.env -f ${RootPath}/docker/docker-compose.yml"
+
 
 clean() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml down
+    ${compose} down
 }
 
 prepare() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run prepare
+    ${compose} run prepare
 }
 
 # unit test
 run_unit_test() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run unit_test
+    ${compose} run unit_test
 }
 
 # go format
 run_format() {
     prepare
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run format
+    ${compose} run format
 }
 
 run_bsgofumpt() {
     prepare
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run bs_gofumpt
+    ${compose} run bs_gofumpt
 }
 
 run_bsgolint() {
     prepare
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run bs_golint
+    ${compose} run bs_golint
 }
 
 # build
 build() {
     prepare
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run build
+    ${compose} run build
 }
 
 # build
 build_scenario() {
     prepare
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run build bash -c "/bin/bash /cfs/script/build.sh -scenario"
+    ${compose} run build bash -c "/bin/bash /cfs/script/build.sh -scenario"
 }
 
 # start server
 start_servers() {
     isDiskAvailable $DiskPath
     mkdir -p ${DiskPath}/disk/{1..4}
-    docker-compose -f ${RootPath}/docker/docker-compose.yml up -d servers
+    ${compose} up -d servers
 }
 
 start_client() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start_client.sh ; /bin/bash"
+    ${compose} run client bash -c "/cfs/script/start_client.sh ; /bin/bash"
 }
 
 start_monitor() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml up -d monitor
+    ${compose} up -d monitor
 }
 
 start_scenariotest() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run client
+    ${compose} run client
 }
 
 start_ltptest() {
-    docker-compose -f ${RootPath}/docker/docker-compose.yml run client bash -c "/cfs/script/start.sh -ltp"
+    ${compose} run client bash -c "/cfs/script/start.sh -ltp"
 }
 
 run_scenariotest() {
