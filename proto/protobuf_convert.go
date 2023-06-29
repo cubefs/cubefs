@@ -22,7 +22,7 @@ func (from *PartitionReportPb) ConvertToView() *PartitionReport {
 		IsLeader:        from.IsLeader,
 		ExtentCount:     int(from.ExtentCount),
 		NeedCompare:     from.NeedCompare,
-		IsLearner:       from.IsLeader,
+		IsLearner:       from.IsLearner,
 		LastUpdateTime:  from.LastUpdateTime,
 		IsRecover:       from.IsRecover,
 	}
@@ -73,7 +73,7 @@ func (from *MetaPartitionReportPb) ConvertToView() *MetaPartitionReport {
 		DentryCnt:         from.DentryCnt,
 		DelInodeCnt:       from.DelInodeCnt,
 		DelDentryCnt:      from.DelDentryCnt,
-		IsLearner:         from.IsLeader,
+		IsLearner:         from.IsLearner,
 		ExistMaxInodeID:   from.ExistMaxInodeID,
 		StoreMode:         StoreMode(from.StoreMode),
 		ApplyId:           from.ApplyId,
