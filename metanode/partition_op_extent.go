@@ -129,7 +129,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 
 	// extent key verSeq not set value since marshal will not include verseq
 	// use inode verSeq instead
-	inoParm.verSeq = mp.verSeq
+	inoParm.setVer(mp.verSeq)
 	inoParm.Extents.Append(ext)
 	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) verSeq (%v)", req.Inode, req.PartitionID, mp.verSeq)
 

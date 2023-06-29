@@ -83,6 +83,9 @@ const (
 
 	AdminSetConLcNodeNum  = "/admin/setConLcNodeNum"
 	AdminGetAllLcNodeInfo = "/admin/getAllLcNodeInfo"
+
+	AdminLcNode = "/admin/lcnode"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -621,46 +624,12 @@ type MetaNodeHeartbeatResponse struct {
 	CpuUtil              float64 `json:"cpuUtil"`
 }
 
-type S3ScanTaskInfo struct {
-	Id        string
-	RoutineId int64
-}
-
-type S3ScanInfo struct {
-	S3ScanTaskInfo
-	S3TaskStatistics
-}
-
-type DelVerTaskInfo struct {
-	Id string
-}
-
-type SnapshotScanInfo struct {
-	DelVerTaskInfo
-	SnapshotStatistics
-}
-
 // LcNodeHeartbeatResponse defines the response to the lc node heartbeat.
 type LcNodeHeartbeatResponse struct {
-	S3ScanningTasks       map[string]*S3ScanInfo
-	SnapshotScanningTasks map[string]*SnapshotScanInfo
 	Status                uint8
 	Result                string
-}
-
-func (r *LcNodeHeartbeatResponse) IsLcNodeIdle() bool {
-	return len(r.S3ScanningTasks) == 0 && len(r.SnapshotScanningTasks) == 0
-}
-
-type LcNodeStatInfo struct {
-	Addr string
-	Busy bool
-}
-
-type LcNodeInfoResponse struct {
-	MaxConcurrentLcNodeNum int
-	RunningLcNodeNum       int
-	Infos                  []*LcNodeStatInfo
+	LcScanningTasks       map[string]*LcNodeRuleTaskResponse
+	SnapshotScanningTasks map[string]*SnapshotVerDelTaskResponse
 }
 
 // DeleteFileRequest defines the request to delete a file.
