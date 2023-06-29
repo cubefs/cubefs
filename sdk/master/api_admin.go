@@ -853,9 +853,8 @@ func (api *AdminAPI) GetVerList(volName string) (verList *proto.VolVersionInfoLi
 	return
 }
 
-func (api *AdminAPI) SetBucketLifecycle(req *proto.SetBucketLifecycleRequest) (err error) {
+func (api *AdminAPI) SetBucketLifecycle(req *proto.LcConfiguration) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.SetBucketLifecycle)
-
 	var encoded []byte
 	if encoded, err = json.Marshal(req); err != nil {
 		return
@@ -866,7 +865,6 @@ func (api *AdminAPI) SetBucketLifecycle(req *proto.SetBucketLifecycleRequest) (e
 	}
 	return
 }
-
 func (api *AdminAPI) GetBucketLifecycle(volume string) (lcConf *proto.LcConfiguration, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.GetBucketLifecycle)
 	request.addParam("name", volume)
@@ -880,13 +878,11 @@ func (api *AdminAPI) GetBucketLifecycle(volume string) (lcConf *proto.LcConfigur
 	}
 	return
 }
-
 func (api *AdminAPI) DelBucketLifecycle(volume string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DeleteBucketLifecycle)
 	request.addParam("name", volume)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
-
 	return
 }

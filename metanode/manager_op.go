@@ -1574,32 +1574,6 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	return
 }
 
-func (m *metadataManager) opMetaBatchInodeExpirationGet(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
-	req := &proto.BatchInodeGetExpirationRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return
-	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return
-	}
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-	err = mp.InodeExpirationGetBatch(req, p)
-	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opMetaBatchInodeGet] req: %d - %v, resp: %v, "+
-		"body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
 func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &proto.BatchInodeGetRequest{}

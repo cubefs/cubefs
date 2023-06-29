@@ -106,7 +106,7 @@ func unmarshalTaskResponse(task *proto.AdminTask) (err error) {
 	case proto.OpLcNodeHeartbeat:
 		response = &proto.LcNodeHeartbeatResponse{}
 	case proto.OpLcNodeScan:
-		response = &proto.RuleTaskResponse{}
+		response = &proto.LcNodeRuleTaskResponse{}
 	case proto.OpLcNodeSnapshotVerDel:
 		response = &proto.SnapshotVerDelTaskResponse{}
 

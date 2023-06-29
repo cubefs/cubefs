@@ -94,7 +94,9 @@ type Cluster struct {
 	ac                           *authSDK.AuthClient
 	authenticate                 bool
 	s3LcMgr                      *s3LifecycleManager
+	lcNodes                      sync.Map
 	lcMgr                        *lifecycleManager
+	snapshotMgr                  *snapshotDelManager
 }
 
 type followerReadManager struct {
@@ -332,6 +334,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.dentryCountNotEqualMP = new(sync.Map)
 	c.lcMgr = newLifecycleManager()
 	c.lcMgr.cluster = c
+	c.snapshotMgr = newSnapshotManager()
+	c.snapshotMgr.cluster = c
 	return
 }
 
@@ -354,8 +358,8 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDecommissionDataNode()
 	c.scheduleToCheckDecommissionDisk()
 	c.scheduleToCheckDataReplicas()
-	c.scheduleToScanS3Expiration()
-	c.scheduleToDelSnapshotVer()
+	c.scheduleToLcScan()
+	c.scheduleToSnapshotScanDelVer()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -439,38 +443,6 @@ func (c *Cluster) scheduleToCheckDataPartitions() {
 				c.checkDataPartitions()
 			}
 			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
-}
-
-func (c *Cluster) scheduleToScanS3Expiration() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.scanS3Expiration()
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToScanS3Expiration))
-		}
-	}()
-}
-
-func (c *Cluster) scheduleToDelSnapshotVer() {
-	//make sure resume all the processing ver deleting tasks before checking
-	waitTime := time.Second * defaultIntervalToCheck
-	waited := false
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				if !waited {
-					log.LogInfof("wait for %v seconds once after becoming leader to make sure all the ver deleting tasks are resumed",
-						waitTime)
-					time.Sleep(waitTime)
-					waited = true
-				}
-				c.getDeletingSnapshotVer()
-				c.checkSnapshotStrategy()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
 		}
 	}()
 }
@@ -568,52 +540,6 @@ func (c *Cluster) checkDataPartitions() {
 		if c.checkAutoCreateDataPartition {
 			vol.checkAutoDataPartitionCreation(c)
 		}
-	}
-}
-
-func (c *Cluster) scanS3Expiration() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("scanS3Expiration occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"scanS3Expiration occurred panic")
-		}
-	}()
-
-	c.lcMgr.rescheduleScanRoutine()
-
-}
-
-func (c *Cluster) getDeletingSnapshotVer() {
-	if c.partition != nil && c.partition.IsRaftLeader() {
-		vols := c.allVols()
-		for volName, vol := range vols {
-			volVerInfoList := vol.VersionMgr.getVersionList()
-			for _, volVerInfo := range volVerInfoList.VerList {
-				if volVerInfo.Status == proto.VersionDeleting {
-					verInfo := &LcVerInfo{
-						VerInfo: proto.VerInfo{
-							VolName: volName,
-							VerSeq:  volVerInfo.Ver,
-						},
-						dTime: volVerInfo.DelTime,
-					}
-					c.lcMgr.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
-				}
-			}
-		}
-	} else {
-		log.LogWarnf("getDeletingSnapshotVer: master is not leader")
-	}
-}
-
-func (c *Cluster) checkSnapshotStrategy() {
-	vols := c.allVols()
-	for _, vol := range vols {
-		if !proto.IsHot(vol.VolType) {
-			continue
-		}
-		vol.VersionMgr.checkSnapshotStrategy()
 	}
 }
 
@@ -758,19 +684,11 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 func (c *Cluster) checkLcNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
 	diedNodes := make([]string, 0)
-
-	var currentRunningLcnodesNum uint64 = 0
-	c.lcMgr.lcNodes.Range(func(addr, lcNode interface{}) bool {
+	c.lcNodes.Range(func(addr, lcNode interface{}) bool {
 		node := lcNode.(*LcNode)
 		node.checkLiveness()
 		if !node.IsActive {
 			log.LogInfof("checkLcNodeHeartbeat: lcnode(%v) is inactive", node.Addr)
-			diedNodes = append(diedNodes, node.Addr)
-			return true
-		}
-		currentRunningLcnodesNum++
-		if currentRunningLcnodesNum > c.cfg.MaxConcurrentLcNodes {
-			log.LogInfof("checkLcNodeHeartbeat: max concurrent lcnodes reached, lcnode(%v) is prepare to step down", node.Addr)
 			diedNodes = append(diedNodes, node.Addr)
 			return true
 		}
@@ -1781,7 +1699,7 @@ func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 }
 
 func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
-	value, ok := c.lcMgr.lcNodes.Load(addr)
+	value, ok := c.lcNodes.Load(addr)
 	if !ok {
 		err = errors.Trace(lcNodeNotFound(addr), "%v not found", addr)
 		return
@@ -3283,7 +3201,7 @@ func (c *Cluster) allMasterNodes() (masterNodes []proto.NodeView) {
 }
 
 func (c *Cluster) lcNodeCount() (len int) {
-	c.lcMgr.lcNodes.Range(func(key, value interface{}) bool {
+	c.lcNodes.Range(func(key, value interface{}) bool {
 		len++
 		return true
 	})
@@ -3617,25 +3535,6 @@ func (c *Cluster) setMaxConcurrentLcNodes(count uint64) (err error) {
 	return
 }
 
-func (c *Cluster) getAllLcNodeInfo() (rsp *proto.LcNodeInfoResponse, err error) {
-
-	rsp = &proto.LcNodeInfoResponse{
-		MaxConcurrentLcNodeNum: int(c.cfg.MaxConcurrentLcNodes),
-		RunningLcNodeNum:       c.lcNodeCount(),
-		Infos:                  make([]*proto.LcNodeStatInfo, 0),
-	}
-
-	c.lcMgr.lcNodes.Range(func(addr, value interface{}) bool {
-		ln := &proto.LcNodeStatInfo{
-			Addr: addr.(string),
-			Busy: c.lcMgr.lnStates.IsNodeBusy(addr.(string)),
-		}
-		rsp.Infos = append(rsp.Infos, ln)
-		return true
-	})
-	return
-}
-
 func (c *Cluster) clearVols() {
 	c.volMutex.Lock()
 	defer c.volMutex.Unlock()
@@ -3856,15 +3755,6 @@ func (c *Cluster) checkDecommissionDisk() {
 				}
 			}
 		}
-		return true
-	})
-}
-
-func (c *Cluster) clearLcNodes() {
-	c.lcMgr.lcNodes.Range(func(key, value interface{}) bool {
-		lcNode := value.(*LcNode)
-		c.lcMgr.lcNodes.Delete(key)
-		lcNode.clean()
 		return true
 	})
 }
@@ -4126,45 +4016,33 @@ func (c *Cluster) delLcNode(nodeAddr string) (err error) {
 }
 
 func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
-
 	var ln *LcNode
-	if node, ok := c.lcMgr.lcNodes.Load(nodeAddr); ok {
-		ln = node.(*LcNode)
+	if value, ok := c.lcNodes.Load(nodeAddr); ok {
+		ln = value.(*LcNode)
+		log.LogInfof("action[addLcNode] already add nodeAddr: %v, id: %v", nodeAddr, ln.ID)
 		return ln.ID, nil
 	}
-
 	ln = newLcNode(nodeAddr, c.Name)
-	// allocate dataNode id
+	// allocate LcNode id
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
 		goto errHandler
 	}
 	ln.ID = id
-	log.LogInfof("action[addLcNode] lcnode id[%v]", id)
-	c.lcMgr.lnMutex.Lock()
-
-	if c.lcNodeCount() >= int(c.cfg.MaxConcurrentLcNodes) {
-		c.lcMgr.lnMutex.Unlock()
-		err = errors.New("max concurrent LcNodes reached!")
-		goto errHandler
-	}
-
+	log.LogInfof("action[addLcNode] allocateCommonID: %v", id)
 	if err = c.syncAddLcNode(ln); err != nil {
-		c.lcMgr.lnMutex.Unlock()
 		goto errHandler
 	}
-	c.lcMgr.lcNodes.Store(nodeAddr, ln)
-	c.lcMgr.lnMutex.Unlock()
-
-	log.LogInfof("action[addLcNode],clusterID[%v] lcNodeAddr:%v",
-		c.Name, nodeAddr)
-
-	c.lcMgr.lnStates.Lock()
-	delete(c.lcMgr.lnStates.workingNodes, nodeAddr)
-	c.lcMgr.lnStates.idleNodes[nodeAddr] = nodeAddr
-	c.lcMgr.lnStates.Unlock()
-	log.LogInfof("action[addLcNode], lcnode(%v) is set idle", nodeAddr)
+	c.lcNodes.Store(nodeAddr, ln)
+	c.lcMgr.lcNodeStatus.Lock()
+	delete(c.lcMgr.lcNodeStatus.workingNodes, nodeAddr)
+	c.lcMgr.lcNodeStatus.idleNodes[nodeAddr] = nodeAddr
+	c.lcMgr.lcNodeStatus.Unlock()
+	c.snapshotMgr.lcNodeStatus.Lock()
+	delete(c.snapshotMgr.lcNodeStatus.workingNodes, nodeAddr)
+	c.snapshotMgr.lcNodeStatus.idleNodes[nodeAddr] = nodeAddr
+	c.snapshotMgr.lcNodeStatus.Unlock()
+	log.LogInfof("action[addLcNode], clusterID[%v], lcNodeAddr: %v, id: %v, add idleNodes", c.Name, nodeAddr, ln.ID)
 	return
-
 errHandler:
 	err = fmt.Errorf("action[addLcNode],clusterID[%v] lcNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
@@ -4172,12 +4050,142 @@ errHandler:
 	return
 }
 
-func (c *Cluster) SetBucketLifecycle(req *proto.SetBucketLifecycleRequest) error {
+func (c *Cluster) getAllLcNodeInfo() (rsp *LcNodeInfoResponse, err error) {
+	rsp = &LcNodeInfoResponse{
+		Infos: make([]*LcNodeStatInfo, 0),
+	}
+	c.lcNodes.Range(func(addr, value interface{}) bool {
+		t := c.lcMgr.lcNodeStatus.getWorkingTask(addr.(string))
+		var TaskId string
+		if t != nil {
+			TaskId = t.(*proto.RuleTask).Id
+		}
+		ln := &LcNodeStatInfo{
+			Addr:   addr.(string),
+			TaskId: TaskId,
+		}
+		rsp.Infos = append(rsp.Infos, ln)
+		return true
+	})
+	rsp.LcConfigurations = c.lcMgr.lcConfigurations
+	rsp.LcRuleTaskStatus = c.lcMgr.lcRuleTaskStatus
+	return
+}
+
+func (c *Cluster) clearLcNodes() {
+	c.lcNodes.Range(func(key, value interface{}) bool {
+		lcNode := value.(*LcNode)
+		c.lcNodes.Delete(key)
+		lcNode.clean()
+		return true
+	})
+}
+
+func (c *Cluster) delLcNode(nodeAddr string) (err error) {
+	t := c.lcMgr.lcNodeStatus.removeNode(nodeAddr)
+	c.lcMgr.lcRuleTaskStatus.redoTask(t.(*proto.RuleTask))
+	t = c.snapshotMgr.lcNodeStatus.removeNode(nodeAddr)
+	c.snapshotMgr.volVerInfos.RedoProcessingVerInfo(t.(string))
+	lcNode, err := c.lcNode(nodeAddr)
+	if err != nil {
+		log.LogErrorf("action[delLcNode], clusterID:%v, lcNodeAddr:%v, load err:%v ", c.Name, nodeAddr, err)
+		return
+	}
+	if err = c.syncDeleteLcNode(lcNode); err != nil {
+		log.LogErrorf("action[delLcNode], clusterID:%v, lcNodeAddr:%v syncDeleteLcNode err:%v ", c.Name, nodeAddr, err)
+		return
+	}
+	val, loaded := c.lcNodes.LoadAndDelete(nodeAddr)
+	log.LogInfof("action[delLcNode], clusterID:%v, lcNodeAddr:%v, LoadAndDelete result val:%v, loaded:%v", c.Name, nodeAddr, val, loaded)
+	return
+}
+
+func (c *Cluster) scheduleToLcScan() {
+	go func() {
+		for {
+			now := time.Now()
+			next := now.Add(time.Hour * 24)
+			next = time.Date(next.Year(), next.Month(), next.Day(), 1, 0, 0, 0, next.Location())
+			t := time.NewTimer(next.Sub(now))
+			<-t.C
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.startLcScan()
+			}
+		}
+	}()
+}
+
+func (c *Cluster) startLcScan() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("startLcScan occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"startLcScan occurred panic")
+		}
+	}()
+	c.lcMgr.startLcScan()
+}
+
+func (c *Cluster) scheduleToSnapshotScanDelVer() {
+	c.snapshotMgr.Start()
+	//make sure resume all the processing ver deleting tasks before checking
+	waitTime := time.Second * defaultIntervalToCheck
+	waited := false
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				if !waited {
+					log.LogInfof("wait for %v seconds once after becoming leader to make sure all the ver deleting tasks are resumed",
+						waitTime)
+					time.Sleep(waitTime)
+					waited = true
+				}
+				c.getDeletingSnapshotVer()
+				c.checkSnapshotStrategy()
+			}
+			time.Sleep(time.Second * defaultIntervalToCheck)
+		}
+	}()
+}
+
+func (c *Cluster) getDeletingSnapshotVer() {
+	if c.partition != nil && c.partition.IsRaftLeader() {
+		vols := c.allVols()
+		for volName, vol := range vols {
+			volVerInfoList := vol.VersionMgr.getVersionList()
+			for _, volVerInfo := range volVerInfoList.VerList {
+				if volVerInfo.Status == proto.VersionDeleting {
+					verInfo := &LcVerInfo{
+						VerInfo: proto.VerInfo{
+							VolName: volName,
+							VerSeq:  volVerInfo.Ver,
+						},
+						dTime: volVerInfo.DelTime,
+					}
+					c.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
+				}
+			}
+		}
+	} else {
+		log.LogWarnf("getDeletingSnapshotVer: master is not leader")
+	}
+}
+
+func (c *Cluster) checkSnapshotStrategy() {
+	vols := c.allVols()
+	for _, vol := range vols {
+		if !proto.IsHot(vol.VolType) {
+			continue
+		}
+		vol.VersionMgr.checkSnapshotStrategy()
+	}
+}
+
+func (c *Cluster) SetBucketLifecycle(req *proto.LcConfiguration) error {
 	lcConf := &proto.LcConfiguration{
 		VolName: req.VolName,
 		Rules:   req.Rules,
 	}
-
 	if c.lcMgr.GetS3BucketLifecycle(req.VolName) != nil {
 		if err := c.syncUpdateLcConf(lcConf); err != nil {
 			err = fmt.Errorf("action[SetS3BucketLifecycle],clusterID[%v] vol:%v err:%v ", c.Name, lcConf.VolName, err.Error())
@@ -4191,30 +4199,24 @@ func (c *Cluster) SetBucketLifecycle(req *proto.SetBucketLifecycleRequest) error
 			Warn(c.Name, err.Error())
 		}
 	}
-
 	_ = c.lcMgr.SetS3BucketLifecycle(lcConf)
 	log.LogInfof("action[SetS3BucketLifecycle],clusterID[%v] vol:%v", c.Name, lcConf.VolName)
 	return nil
 }
-
 func (c *Cluster) GetBucketLifecycle(VolName string) (lcConf *proto.LcConfiguration) {
-
 	lcConf = c.lcMgr.GetS3BucketLifecycle(VolName)
-	log.LogInfof("action[GetS3BucketLifecycle],clusterID[%v] vol:%v", c.Name, lcConf.VolName)
+	log.LogInfof("action[GetS3BucketLifecycle],clusterID[%v] vol:%v", c.Name, VolName)
 	return
 }
-
 func (c *Cluster) DelBucketLifecycle(VolName string) {
 	lcConf := &proto.LcConfiguration{
 		VolName: VolName,
 	}
-
 	if err := c.syncDeleteLcConf(lcConf); err != nil {
 		err = fmt.Errorf("action[DelS3BucketLifecycle],clusterID[%v] vol:%v err:%v ", c.Name, VolName, err.Error())
 		log.LogError(errors.Stack(err))
 		Warn(c.Name, err.Error())
 	}
-
 	c.lcMgr.DelS3BucketLifecycle(VolName)
 	log.LogInfof("action[DelS3BucketLifecycle],clusterID[%v] vol:%v", c.Name, VolName)
 	return

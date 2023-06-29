@@ -83,6 +83,11 @@ const (
 	Metrics3LcTotalDirScanned        = "s3Lc_Total_DirS_canned"
 	Metrics3LcTotalExpired           = "s3Lc_Total_Expired"
 	Metrics3LcAbortedMultipartUpload = "s3Lc_Aborted_Multipart_Upload"
+	MetricLcNodesCount               = "lc_nodes_count"
+	MetricLcTotalScanned             = "lc_total_scanned"
+	MetricLcTotalFileScanned         = "lc_total_file_scanned"
+	MetricLcTotalDirScanned          = "lc_total_dirs_scanned"
+	MetricLcTotalExpired             = "lc_total_expired"
 )
 
 var WarnMetrics *warningMetrics
@@ -137,14 +142,12 @@ type monitorMetrics struct {
 	inconsistentMps               map[string]string
 	nodesetIds                    map[uint64]string
 
-	lcNodesCount               *exporter.Gauge
-	lcNodesConcurrentCount     *exporter.Gauge
-	s3LcTotalScanned           *exporter.GaugeVec
-	s3LcTotalFileScanned       *exporter.GaugeVec
-	s3LcTotalDirScanned        *exporter.GaugeVec
-	s3LcTotalExpired           *exporter.GaugeVec
-	s3LcAbortedMultipartUpload *exporter.GaugeVec
-	s3VolNames                 map[string]struct{}
+	lcNodesCount       *exporter.Gauge
+	lcVolNames         map[string]struct{}
+	lcTotalScanned     *exporter.GaugeVec
+	lcTotalFileScanned *exporter.GaugeVec
+	lcTotalDirScanned  *exporter.GaugeVec
+	lcTotalExpired     *exporter.GaugeVec
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -154,7 +157,7 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 		nodesetInactiveDataNodesCount: make(map[uint64]int64),
 		nodesetInactiveMetaNodesCount: make(map[uint64]int64),
 		inconsistentMps:               make(map[string]string),
-		s3VolNames:                    make(map[string]struct{}),
+		lcVolNames:                    make(map[string]struct{}),
 	}
 }
 
@@ -459,11 +462,11 @@ func (mm *monitorMetrics) start() {
 	mm.nodesetDpReplicaCount = exporter.NewGaugeVec(MetricNodesetDpReplicaCount, "", []string{"nodeset"})
 	mm.lcNodesConcurrentCount = exporter.NewGauge(MetricLcNodesConcurrentCount)
 
-	mm.s3LcTotalScanned = exporter.NewGaugeVec(Metrics3LcTotalScanned, "", []string{"volName", "type"})
-	mm.s3LcTotalFileScanned = exporter.NewGaugeVec(Metrics3LcTotalFileScanned, "", []string{"volName", "type"})
-	mm.s3LcTotalDirScanned = exporter.NewGaugeVec(Metrics3LcTotalDirScanned, "", []string{"volName", "type"})
-	mm.s3LcTotalExpired = exporter.NewGaugeVec(Metrics3LcTotalExpired, "", []string{"volName", "type"})
-	mm.s3LcAbortedMultipartUpload = exporter.NewGaugeVec(Metrics3LcAbortedMultipartUpload, "", []string{"volName", "type"})
+	mm.lcNodesCount = exporter.NewGauge(MetricLcNodesCount)
+	mm.lcTotalScanned = exporter.NewGaugeVec(MetricLcTotalScanned, "", []string{"volName", "type"})
+	mm.lcTotalFileScanned = exporter.NewGaugeVec(MetricLcTotalFileScanned, "", []string{"volName", "type"})
+	mm.lcTotalDirScanned = exporter.NewGaugeVec(MetricLcTotalDirScanned, "", []string{"volName", "type"})
+	mm.lcTotalExpired = exporter.NewGaugeVec(MetricLcTotalExpired, "", []string{"volName", "type"})
 	go mm.statMetrics()
 }
 
@@ -534,6 +537,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setInactiveMetaNodesCountMetric()
 	mm.setIdleLcNodesCount()
 	mm.setS3LcMetrics()
+	mm.setLcMetrics()
 }
 
 func (mm *monitorMetrics) setMpAndDpMetrics() {
@@ -754,10 +758,6 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 	}
 }
 
-func (mm *monitorMetrics) setIdleLcNodesCount() {
-	mm.lcNodesConcurrentCount.Set(float64(mm.cluster.cfg.MaxConcurrentLcNodes))
-}
-
 func (mm *monitorMetrics) setInactiveMetaNodesCountMetric() {
 	var inactiveMetaNodesCount int64
 
@@ -875,46 +875,38 @@ func (mm *monitorMetrics) clearInconsistentMps() {
 }
 
 func (mm *monitorMetrics) deleteS3LcVolMetric(volName string) {
-	mm.s3LcTotalScanned.DeleteLabelValues(volName, "total")
-	mm.s3LcTotalFileScanned.DeleteLabelValues(volName, "file")
-	mm.s3LcTotalDirScanned.DeleteLabelValues(volName, "dir")
-	mm.s3LcTotalExpired.DeleteLabelValues(volName, "expired")
-	mm.s3LcAbortedMultipartUpload.DeleteLabelValues(volName, "aborted")
+	mm.lcTotalScanned.DeleteLabelValues(volName, "total")
+	mm.lcTotalFileScanned.DeleteLabelValues(volName, "file")
+	mm.lcTotalDirScanned.DeleteLabelValues(volName, "dir")
+	mm.lcTotalExpired.DeleteLabelValues(volName, "expired")
 }
 
-func (mm *monitorMetrics) setS3LcMetrics() {
-	lcScan := mm.cluster.lcMgr.getScanRoutine()
-	if lcScan != nil {
-		volumeScanStatistics := make(map[string]proto.S3TaskStatistics, 0)
-		lcScan.RLock()
-		for _, rst := range lcScan.RuleStatus.Results {
-			key := rst.Volume + "[" + rst.Prefix + "]"
-			if _, ok := volumeScanStatistics[key]; ok && rst.Done {
-				volumeScanStatistics[key] = proto.S3TaskStatistics{}
-			} else {
-				volumeScanStatistics[key] = rst.S3TaskStatistics
-			}
+func (mm *monitorMetrics) setLcMetrics() {
+	lcTaskStatus := mm.cluster.lcMgr.lcRuleTaskStatus
+	volumeScanStatistics := make(map[string]proto.LcNodeRuleTaskStatistics, 0)
+	lcTaskStatus.RLock()
+	for _, r := range lcTaskStatus.Results {
+		key := r.Volume + "[" + r.RuleId + "]"
+		if _, ok := volumeScanStatistics[key]; ok && r.Done {
+			volumeScanStatistics[key] = proto.LcNodeRuleTaskStatistics{}
+		} else {
+			volumeScanStatistics[key] = r.LcNodeRuleTaskStatistics
 		}
-		lcScan.RUnlock()
-
-		for vol, stat := range volumeScanStatistics {
-			key := stat.Volume + "[" + stat.Prefix + "]"
-			mm.s3VolNames[key] = struct{}{}
-			mm.s3LcTotalScanned.SetWithLabelValues(float64(stat.TotalInodeScannedNum), vol, "total")
-			mm.s3LcTotalFileScanned.SetWithLabelValues(float64(stat.FileScannedNum), vol, "file")
-			mm.s3LcTotalDirScanned.SetWithLabelValues(float64(stat.DirScannedNum), vol, "dir")
-			mm.s3LcTotalExpired.SetWithLabelValues(float64(stat.ExpiredNum), vol, "expired")
-			mm.s3LcAbortedMultipartUpload.SetWithLabelValues(float64(stat.AbortedIncompleteMultipartNum), vol, "aborted")
-		}
-
 	}
-
+	lcTaskStatus.RUnlock()
+	for key, stat := range volumeScanStatistics {
+		mm.lcVolNames[key] = struct{}{}
+		mm.lcTotalScanned.SetWithLabelValues(float64(stat.TotalInodeScannedNum), key, "total")
+		mm.lcTotalFileScanned.SetWithLabelValues(float64(stat.FileScannedNum), key, "file")
+		mm.lcTotalDirScanned.SetWithLabelValues(float64(stat.DirScannedNum), key, "dir")
+		mm.lcTotalExpired.SetWithLabelValues(float64(stat.ExpiredNum), key, "expired")
+	}
 }
 
-func (mm *monitorMetrics) clearS3LcMetrics() {
-	for vol := range mm.s3VolNames {
+func (mm *monitorMetrics) clearLcMetrics() {
+	for vol := range mm.lcVolNames {
 		mm.deleteS3LcVolMetric(vol)
-		delete(mm.s3VolNames, vol)
+		delete(mm.lcVolNames, vol)
 	}
 }
 
@@ -1027,6 +1019,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearInconsistentMps()
 	mm.clearNodesetMetrics()
 	mm.clearS3LcMetrics()
+	mm.clearLcMetrics()
 
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
@@ -1048,5 +1041,4 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.ReplicaMissingDPCount.Set(0)
 	mm.MpMissingLeaderCount.Set(0)
 	mm.DpMissingLeaderCount.Set(0)
-	mm.lcNodesConcurrentCount.Set(0)
 }

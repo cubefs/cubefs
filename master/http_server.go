@@ -409,11 +409,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AddLcNode).
 		HandlerFunc(m.addLcNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminSetConLcNodeNum).
-		HandlerFunc(m.setConLcNodeNum)
-	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminGetAllLcNodeInfo).
-		HandlerFunc(m.getAllLcNodeInfo)
+		Path(proto.AdminLcNode).
+		HandlerFunc(m.lcnodeInfo)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
