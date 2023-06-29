@@ -72,7 +72,7 @@ var vre = regexp.MustCompile("^v[0-9]+$")
 
 type ReqHeader struct {
 	ContentLength string `json:"Content-Length"`
-	BodySize      int64  `json:"bs"` // body size
+	BodySize      int64  `json:"BodySize"` // body size
 	RawQuery      string `json:"RawQuery"`
 	Host          string `json:"Host"`
 	Token         *Token `json:"Token"`
@@ -353,10 +353,6 @@ func (a *RequestRow) ReqLength() (reqLength int64) {
 	reqHeader := a.getReqHeader()
 	if reqHeader == nil {
 		return
-	}
-	reqLength, _ = strconv.ParseInt(reqHeader.ContentLength, 10, 64)
-	if reqLength > 0 {
-		return reqLength
 	}
 	return reqHeader.BodySize
 }
