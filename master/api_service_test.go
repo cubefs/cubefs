@@ -728,7 +728,8 @@ func TestAddMetaReplica(t *testing.T) {
 		t.Error("no meta partition")
 		return
 	}
-	addMetaServer(mms8Addr, testZone3)
+	msAddr := "127.0.0.1:8009"
+	addMetaServer(msAddr, testZone3)
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, mms8Addr)
