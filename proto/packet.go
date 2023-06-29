@@ -102,9 +102,6 @@ const (
 	OpMetaExtentAddWithCheck uint8 = 0x3A // Append extent key with discard extents check
 	OpMetaReadDirLimit       uint8 = 0x3D
 
-	//Operations: LcNode -> MetaNode
-	OpMetaBatchInodeExpirationGet uint8 = 0x3E
-
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition           uint8 = 0x40
 	OpMetaNodeHeartbeat             uint8 = 0x41
@@ -412,6 +409,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpQuotaCreateDentry"
 	case OpMetaDeleteDentry:
 		m = "OpMetaDeleteDentry"
+	case OpMetaBatchDeleteDentry:
+		m = "OpMetaBatchDeleteDentry"
 	case OpMetaOpen:
 		m = "OpMetaOpen"
 	case OpMetaReleaseOpen:

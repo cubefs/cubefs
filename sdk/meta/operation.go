@@ -879,6 +879,56 @@ func (mw *MetaWrapper) canDeleteInode(mp *MetaPartition, info *proto.InodeInfo, 
 
 	return true, nil
 }
+func (mw *MetaWrapper) batchddelete(wg *sync.WaitGroup, mp *MetaPartition, parentID uint64, dens []proto.Dentry, respCh chan *proto.BatchDeleteDentryResponse) {
+	defer wg.Done()
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("batchddelete", err, bgTime, 1)
+	}()
+	req := &proto.BatchDeleteDentryRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		ParentID:    parentID,
+		Dens:        dens,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchDeleteDentry
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("batchddelete: req(%v) err(%v)", *req, err)
+		return
+	}
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("batchddelete: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("batchddelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	resp := new(proto.BatchDeleteDentryResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("batchddelete: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	resp.ParentID = parentID
+	select {
+	case respCh <- resp:
+	default:
+	}
+	log.LogDebugf("batchddelete success: packet(%v) mp(%v) req(%v) resp(%v)", packet, mp, *req, *resp)
+	return
+}
 
 func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, verSeq uint64) (status int, inode uint64, mode uint32, err error) {
 	bgTime := stat.BeginStat()
@@ -991,67 +1041,6 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64) (sta
 		return
 	}
 	return statusOK, resp.Info, nil
-}
-
-func (mw *MetaWrapper) batchExpriratrionGet(wg *sync.WaitGroup, mp *MetaPartition, dentries []*proto.ScanDentry, cond *proto.InodeExpireCondition, respCh chan []*proto.ExpireInfo) {
-	defer wg.Done()
-	var (
-		err error
-	)
-
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("batchExpriratrionGet", err, bgTime, 1)
-	}()
-
-	req := &proto.BatchInodeGetExpirationRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Dentries:    dentries,
-		Cond:        cond,
-	}
-
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaBatchInodeExpirationGet
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		return
-	}
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
-	}()
-
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
-	}
-
-	status := parseStatus(packet.ResultCode)
-	if status != statusOK {
-		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		return
-	}
-
-	resp := new(proto.BatchInodeGetExpirationResponse)
-	err = packet.UnmarshalData(resp)
-	if err != nil {
-		log.LogErrorf("batchIget: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
-		return
-	}
-
-	if len(resp.ExpirationResults) == 0 {
-		return
-	}
-
-	select {
-	case respCh <- resp.ExpirationResults:
-	default:
-	}
 }
 
 func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {

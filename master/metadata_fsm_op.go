@@ -442,18 +442,6 @@ func newNodeSetGrpValue(nset *nodeSetGroup) (nsv *domainNodeSetGrpValue) {
 	return
 }
 
-type lcNodeValue struct {
-	ID   uint64
-	Addr string
-}
-
-func newLcNodeValue(lcNode *LcNode) *lcNodeValue {
-	return &lcNodeValue{
-		ID:   lcNode.ID,
-		Addr: lcNode.Addr,
-	}
-}
-
 // RaftCmd defines the Raft commands.
 type RaftCmd struct {
 	Op uint32 `json:"op"`
@@ -1540,7 +1528,6 @@ func (c *Cluster) startDecommissionListTraverse() (err error) {
 	return
 }
 
-// key=#ln#id#Addr,value = json.Marshal(lnv)
 func (c *Cluster) syncAddLcNode(ln *LcNode) (err error) {
 	return c.syncPutLcNodeInfo(opSyncAddLcNode, ln)
 }
@@ -1556,7 +1543,7 @@ func (c *Cluster) syncUpdateLcNode(ln *LcNode) (err error) {
 func (c *Cluster) syncPutLcNodeInfo(opType uint32, ln *LcNode) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
-	metadata.K = lcNodePrefix + strconv.FormatUint(ln.ID, 10) + keySeparator + ln.Addr
+	metadata.K = lcNodePrefix + ln.Addr
 	lnv := newLcNodeValue(ln)
 	metadata.V, err = json.Marshal(lnv)
 	if err != nil {
@@ -1565,35 +1552,40 @@ func (c *Cluster) syncPutLcNodeInfo(opType uint32, ln *LcNode) (err error) {
 	return c.submit(metadata)
 }
 
+type lcNodeValue struct {
+	ID   uint64
+	Addr string
+}
+
+func newLcNodeValue(lcNode *LcNode) *lcNodeValue {
+	return &lcNodeValue{
+		ID:   lcNode.ID,
+		Addr: lcNode.Addr,
+	}
+}
+
 func (c *Cluster) loadLcNodes() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(lcNodePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadLcNodes],err:%v", err.Error())
 		return err
 	}
-
+	log.LogInfof("action[loadLcNodes], result count %v", len(result))
 	for _, value := range result {
 		lnv := &lcNodeValue{}
 		if err = json.Unmarshal(value, lnv); err != nil {
 			err = fmt.Errorf("action[loadLcNodes],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-
+		log.LogInfof("action[loadLcNodes], load lcNode[%v], lcNodeID[%v]", lnv.Addr, lnv.ID)
 		lcNode := newLcNode(lnv.Addr, c.Name)
 		lcNode.ID = lnv.ID
-		oldln, ok := c.lcMgr.lcNodes.Load(lcNode.Addr)
-		if ok {
-			if oldln.(*LcNode).ID <= lcNode.ID {
-				continue
-			}
-		}
-		c.lcMgr.lcNodes.Store(lcNode.Addr, lcNode)
-		log.LogInfof("action[loadLcNodes],lcNode[%v],lcNodeID[%v]", lcNode.Addr, lcNode.ID)
+		c.lcNodes.Store(lcNode.Addr, lcNode)
+		log.LogInfof("action[loadLcNodes], store lcNode[%v], lcNodeID[%v]", lcNode.Addr, lcNode.ID)
 	}
 	return
 }
 
-// key=#lcConf#volName,value = json.Marshal(lcConf)
 func (c *Cluster) syncAddLcConf(lcConf *bsProto.LcConfiguration) (err error) {
 	return c.syncPutLcConfInfo(opSyncAddLcConf, lcConf)
 }
@@ -1630,7 +1622,6 @@ func (c *Cluster) loadLcConfs() (err error) {
 			err = fmt.Errorf("action[loadLcConfs],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-
 		_ = c.lcMgr.SetS3BucketLifecycle(lcConf)
 		log.LogInfof("action[loadLcConfs],vol[%v]", lcConf.VolName)
 	}
