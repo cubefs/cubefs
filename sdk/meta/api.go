@@ -369,45 +369,6 @@ func (mw *MetaWrapper) BatchGetExpiredMultipart(prefix string, days int) (expire
 	return
 }
 
-func (mw *MetaWrapper) BatchInodeExpirationGet(dentries []*proto.ScanDentry, cond *proto.InodeExpireCondition) []*proto.ExpireInfo {
-	var wg sync.WaitGroup
-
-	batchInfos := make([]*proto.ExpireInfo, 0)
-	resp := make(chan []*proto.ExpireInfo, BatchIgetRespBuf)
-	candidates := make(map[uint64][]*proto.ScanDentry)
-
-	// Target partition does not have to be very accurate.
-	for _, d := range dentries {
-		mp := mw.getPartitionByInode(d.Inode)
-		if mp == nil {
-			continue
-		}
-		if _, ok := candidates[mp.PartitionID]; !ok {
-			candidates[mp.PartitionID] = make([]*proto.ScanDentry, 0, 256)
-		}
-		candidates[mp.PartitionID] = append(candidates[mp.PartitionID], d)
-	}
-
-	for id, ds := range candidates {
-		mp := mw.getPartitionByID(id)
-		if mp == nil {
-			continue
-		}
-		wg.Add(1)
-		go mw.batchExpriratrionGet(&wg, mp, ds, cond, resp)
-	}
-
-	go func() {
-		wg.Wait()
-		close(resp)
-	}()
-
-	for infos := range resp {
-		batchInfos = append(batchInfos, infos...)
-	}
-	return batchInfos
-}
-
 func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -682,6 +643,59 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 	}
 
 	return info, err
+}
+
+func (mw *MetaWrapper) BatchDelete_ll(dentries []*proto.ScanDentry) {
+	mw.batchDelete_ll(dentries)
+}
+
+func (mw *MetaWrapper) batchDelete_ll(dentries []*proto.ScanDentry) {
+	pidDentries := make(map[uint64][]proto.Dentry)
+	for _, d := range dentries {
+		if _, ok := pidDentries[d.ParentId]; !ok {
+			pidDentries[d.ParentId] = make([]proto.Dentry, 0, 256)
+		}
+		pidDentries[d.ParentId] = append(pidDentries[d.ParentId], proto.Dentry{
+			Name:  d.Name,
+			Inode: d.Inode,
+			Type:  d.Type,
+		})
+	}
+	respCh := make(chan *proto.BatchDeleteDentryResponse, BatchIgetRespBuf)
+	var wg sync.WaitGroup
+	for pid, ds := range pidDentries {
+		parentMP := mw.getPartitionByInode(pid)
+		if parentMP == nil {
+			continue
+		}
+		wg.Add(1)
+		go mw.batchddelete(&wg, parentMP, pid, ds, respCh)
+	}
+	go func() {
+		wg.Wait()
+		close(respCh)
+	}()
+	for resp := range respCh {
+		parentID := resp.ParentID
+		for _, r := range resp.Items {
+			if r.Status == proto.OpOk {
+				mp := mw.getPartitionByInode(r.Inode)
+				if mp == nil {
+					log.LogErrorf("batchDelete_ll: No inode partition, ino(%v)", r.Inode)
+					continue
+				}
+				status, info, err := mw.iunlink(mp, r.Inode, mw.Client.GetLatestVer(), 0)
+				if err != nil || status != statusOK {
+					continue
+				}
+				if mw.EnableSummary {
+					go func() {
+						mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
+					}()
+				}
+			}
+		}
+	}
 }
 
 /*

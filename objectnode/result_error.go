@@ -131,11 +131,6 @@ var (
 	InvalidMaxPartNumber                = &ErrorCode{"InvalidRequest", "the total part numbers exceed limit.", http.StatusBadRequest}
 	InvalidMinPartNumber                = &ErrorCode{"InvalidRequest", "you must specify at least one part.", http.StatusBadRequest}
 	DiskQuotaExceeded                   = &ErrorCode{"DiskQuotaExceeded", "Disk Quota Exceeded.", http.StatusBadRequest}
-	LifeCycleRulesGreaterThen1K         = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "The number of lifecycle rules must not exceed the allowed limit of 1000 rules.", StatusCode: http.StatusBadRequest}
-	LifeCycleRulesLessThenOne           = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "At least one lifecycle rule must be specified.", StatusCode: http.StatusBadRequest}
-	LifeCycleAtLeastOneAction           = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "At least one action must be specified in a lifecycle rule.", StatusCode: http.StatusBadRequest}
-	LifeCycleRulesInvalid               = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "Lifecycle rule is invalid.", StatusCode: http.StatusBadRequest}
-	NoSuchLifecycleConfiguration        = &ErrorCode{ErrorCode: "NoSuchLifecycleConfiguration", ErrorMessage: "The lifecycle configuration does not exist.", StatusCode: http.StatusNotFound}
 )
 
 func HttpStatusErrorCode(code int) *ErrorCode {

@@ -92,8 +92,6 @@ type (
 
 	// Client -> MetaNode
 	GetUniqIDResp = proto.GetUniqIDResponse
-	// Client -> MetaNode
-	InodeGetExpirationReqBatch = proto.BatchInodeGetExpirationRequest
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail

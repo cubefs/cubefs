@@ -1,4 +1,4 @@
-// Copyright 2018 The Chubao Authors.
+// Copyright 2023 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 package master
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -66,22 +65,21 @@ func (lcNode *LcNode) createHeartbeatTask(masterAddr string) (task *proto.AdminT
 	return
 }
 
-func (lcNode *LcNode) createLcScanTask(routineId int64, rTask *proto.RuleTask, masterAddr string) (task *proto.AdminTask) {
-	request := &proto.RuleTaskRequest{
+func (lcNode *LcNode) createLcScanTask(masterAddr string, ruleTask *proto.RuleTask) (task *proto.AdminTask) {
+	request := &proto.LcNodeRuleTaskRequest{
 		MasterAddr: masterAddr,
-		Task:       rTask,
-		RoutineID:  routineId,
+		LcNodeAddr: lcNode.Addr,
+		Task:       ruleTask,
 	}
-
-	reqID := fmt.Sprintf("%v_%v", routineId, rTask.Id)
-	task = proto.NewAdminTaskEx(proto.OpLcNodeScan, lcNode.Addr, request, reqID)
+	task = proto.NewAdminTaskEx(proto.OpLcNodeScan, lcNode.Addr, request, ruleTask.Id)
 	return
 }
 
-func (lcNode *LcNode) createSnapshotVerDelTask(sTask *proto.SnapshotVerDelTask, masterAddr string) (task *proto.AdminTask) {
+func (lcNode *LcNode) createSnapshotVerDelTask(masterAddr string, sTask *proto.SnapshotVerDelTask) (task *proto.AdminTask) {
 
 	request := &proto.SnapshotVerDelTaskRequest{
 		MasterAddr: masterAddr,
+		LcNodeAddr: lcNode.Addr,
 		Task:       sTask,
 	}
 	task = proto.NewAdminTaskEx(proto.OpLcNodeSnapshotVerDel, lcNode.Addr, request, request.Task.Key())
