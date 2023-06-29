@@ -255,7 +255,7 @@ run_test() {
     echo -n "${TPATH}"
 #    go test $MODFLAGS -ldflags "${LDFlags}" -cover ./master
 
-    go test -cover -v -coverprofile=cover.output $(go list ./... | grep -v depends | grep -v master) | tee cubefs_unittest.output
+    go test -cover -v -coverprofile=cover.output $(go list ./... | grep -v depends) | tee cubefs_unittest.output
     ret=$?
     popd >/dev/null
     exit $ret
@@ -266,7 +266,7 @@ run_test_cover() {
     export JENKINS_TEST=1
     ulimit -n 65536
     echo -n "${TPATH}"
-    go test -trimpath -covermode=count --coverprofile coverage.txt $(go list ./... | grep -v depends | grep -v master)
+    go test -trimpath -covermode=count --coverprofile coverage.txt $(go list ./... | grep -v depends)
     ret=$?
     popd >/dev/null
     exit $ret
