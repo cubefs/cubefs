@@ -488,7 +488,8 @@ type DeleteDentryResponse struct {
 
 // BatchDeleteDentryResponse defines the response to the request of deleting a dentry.
 type BatchDeleteDentryResponse struct {
-	Items []*struct {
+	ParentID uint64 `json:"pino"`
+	Items    []*struct {
 		Inode  uint64 `json:"ino"`
 		Status uint8  `json:"status"`
 	} `json:"items"`

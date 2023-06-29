@@ -143,7 +143,6 @@ type OpInode interface {
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error)
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet) (err error)
-	InodeExpirationGetBatch(req *InodeGetExpirationReqBatch, p *Packet) (err error)
 }
 
 type OpExtend interface {
