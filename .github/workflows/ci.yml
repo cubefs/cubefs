@@ -22,46 +22,70 @@ on:
       # - '**.md'
 
 jobs:
-  ci-test-unit:
+  build-rocksdb:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
-
-      - name: Check gofmt
+      
+      - name: build rocksdb
         run: |
           docker/run_docker.sh --format
 
-      - name: Unit tests
+      - name: package rocksdb
         run: |
-          docker/run_docker.sh --test
-
-      - name: Upload codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage.txt
-
-  ci-test-s3:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: S3 tests
-        run: |
-          docker/run_docker.sh --s3test
-
-      - name: Pack docker_data
-        if: ${{ always() }}
-        run: |
-            pushd docker
-            sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
+            pushd build
+            sudo tar -czvf rocksdb_lib.tar.gz include/* lib/*
             popd
 
-      - name: Upload docker_data.tar.gz
+      - name: Upload rocksdb_lib.tar.gz
         if: ${{ always() }}
         uses: actions/upload-artifact@v3
         with:
-          name: docker_data
-          path: docker/docker_data.tar.gz
+          name: rocksdb_lib
+          path: build/rocksdb_lib.tar.gz
           retention-days: 7
+
+          # ci-test-unit:
+          #   runs-on: ubuntu-latest
+          #   steps:
+          #     - name: Checkout repo
+          #       uses: actions/checkout@v3
+
+          #     - name: Check gofmt
+          #       run: |
+          #         docker/run_docker.sh --format
+
+          #     - name: Unit tests
+          #       run: |
+          #         docker/run_docker.sh --test
+
+          #     - name: Upload codecov
+          #       uses: codecov/codecov-action@v3
+          #       with:
+          #         files: ./coverage.txt
+
+          # ci-test-s3:
+          #   runs-on: ubuntu-latest
+          #   steps:
+          #     - name: Checkout repo
+          #       uses: actions/checkout@v3
+
+          #     - name: S3 tests
+          #       run: |
+          #         docker/run_docker.sh --s3test
+
+          #     - name: Pack docker_data
+          #       if: ${{ always() }}
+          #       run: |
+          #           pushd docker
+          #           sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
+          #           popd
+
+          #     - name: Upload docker_data.tar.gz
+          #       if: ${{ always() }}
+          #       uses: actions/upload-artifact@v3
+          #       with:
+          #         name: docker_data
+          #         path: docker/docker_data.tar.gz
+          #         retention-days: 7
