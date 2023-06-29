@@ -533,6 +533,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetAllZones).
 		HandlerFunc(m.listZone)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetAllNodeSets).
+		HandlerFunc(m.listNodeSets)
 
 	// Quota
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

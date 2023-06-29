@@ -158,6 +158,7 @@ const (
 	GetTopologyView = "/topo/get"
 	UpdateZone      = "/zone/update"
 	GetAllZones     = "/zone/list"
+	GetAllNodeSets  = "/nodeSet/list"
 
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"

@@ -268,6 +268,45 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
 }
 
+func (m *Server) listNodeSets(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetAllNodeSets))
+	defer func() {
+		doStatAndMetric(proto.GetAllNodeSets, metric, nil, nil)
+	}()
+
+	nodeSetStats := make([]*proto.NodeSetStat, 0)
+
+	zones := m.cluster.t.getAllZones()
+	for _, zone := range zones {
+		nsc := zone.getAllNodeSet()
+		for _, ns := range nsc {
+			nsStat := &proto.NodeSetStat{
+				ID:          ns.ID,
+				Capacity:    ns.Capacity,
+				Zone:        zone.name,
+				DataNodeNum: ns.dataNodeLen(),
+				MetaNodeNum: ns.metaNodeLen(),
+			}
+			ns.dataNodes.Range(func(key, value interface{}) bool {
+				dataNode := value.(*DataNode)
+				nsStat.DataTotal += dataNode.Total
+				nsStat.DataUsed += dataNode.Used
+				nsStat.DataAvail += dataNode.Total - dataNode.Used
+				return true
+			})
+			ns.metaNodes.Range(func(key, value interface{}) bool {
+				metaNode := value.(*MetaNode)
+				nsStat.MetaTotal += metaNode.Total
+				nsStat.MetaUsed += metaNode.Used
+				nsStat.MetaAvail += metaNode.Total - metaNode.Used
+				return true
+			})
+			nodeSetStats = append(nodeSetStats, nsStat)
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(nodeSetStats))
+}
+
 func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminClusterStat))
 	defer func() {

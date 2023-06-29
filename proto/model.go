@@ -176,6 +176,20 @@ type ZoneNodesStat struct {
 	WritableNodes int
 }
 
+type NodeSetStat struct {
+	ID          uint64
+	Capacity    int
+	Zone        string
+	MetaNodeNum int
+	DataNodeNum int
+	DataTotal   uint64
+	DataUsed    uint64
+	DataAvail   uint64
+	MetaTotal   uint64
+	MetaUsed    uint64
+	MetaAvail   uint64
+}
+
 type NodeStatInfo struct {
 	TotalGB     uint64
 	UsedGB      uint64

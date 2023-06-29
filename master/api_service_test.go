@@ -632,7 +632,7 @@ func TestDataPartitionDecommission(t *testing.T) {
 //	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
 //	process(reqURL, t)
 //}
-//
+
 func TestGetMetaPartitions(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientMetaPartitions, commonVolName)
 	process(reqURL, t)
@@ -994,6 +994,12 @@ func TestDeleteUser(t *testing.T) {
 
 func TestListUsersOfVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}
+
+func TestListNodeSets(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetAllNodeSets)
 	fmt.Println(reqURL)
 	process(reqURL, t)
 }
