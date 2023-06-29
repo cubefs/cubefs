@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/url"
@@ -330,4 +331,65 @@ func ValidateCacheExpires(expires string) bool {
 
 func IsSymlink(mode os.FileMode) bool {
 	return mode&os.ModeSymlink > 0
+}
+
+type LoopLimiter struct {
+	maxCount int
+	curCount int
+	ctx      context.Context
+	cancel   func()
+}
+
+func (c *LoopLimiter) NextLoop() bool {
+	if c.maxCount == 0 || c.curCount < c.maxCount {
+		if c.ctx != nil {
+			select {
+			case <-c.ctx.Done():
+				return false
+			default:
+			}
+		}
+		c.curCount++
+		return true
+	}
+	return false
+}
+
+func (c *LoopLimiter) Current() int {
+	return c.curCount
+}
+
+func (c *LoopLimiter) Release() {
+	if c.cancel != nil {
+		c.cancel()
+	}
+}
+
+func NewLoopLimiter(maxLoopCount int) *LoopLimiter {
+	const noLoopElapseLimit time.Duration = 0
+	return NewLoopLimiterWithMaxElapse(maxLoopCount, noLoopElapseLimit)
+}
+
+func NewLoopLimiterWithMaxElapse(maxLoopCount int, maxLoopElapse time.Duration) *LoopLimiter {
+	var (
+		ctx    context.Context = nil
+		cancel func()          = nil
+	)
+	if maxLoopElapse > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), maxLoopElapse)
+	}
+	return &LoopLimiter{
+		maxCount: maxLoopCount,
+		curCount: 0,
+		ctx:      ctx,
+		cancel:   cancel,
+	}
+}
+
+func HandleLoop(limiter *LoopLimiter, f func() bool) {
+	for limiter.NextLoop() {
+		if !f() {
+			break
+		}
+	}
 }

@@ -1205,6 +1205,7 @@ func (v *Volume) loadXAttrs(inode uint64) (metadata map[string]string, err error
 	return
 }
 
+// Deprecated: use FileReader instead.
 func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) (int, error) {
 	var err error
 
@@ -1280,6 +1281,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) (i
 	return totalWriteNumBytes, nil
 }
 
+// Deprecated: use FileReader instead.
 func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (int, error) {
 	var err error
 
@@ -1294,26 +1296,28 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (i
 	return v.ReadInode(ino, writer, offset, size)
 }
 
-func (v *Volume) ObjectMeta(path string, targetRedirect bool) (info *FSFileInfo, err error) {
+func (v *Volume) FileInfo(path string, targetRedirect bool) (info *FSFileInfo, err error) {
+	return v.__fileInfo(path, targetRedirect)
+}
+
+func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo, err error) {
 
 	// process path
 	var inode uint64
 	var mode os.FileMode
 	var inoInfo *proto.InodeInfo
 
-	var retry = 0
-	for {
+	for limiter := NewLoopLimiter(MaxRetry); limiter.NextLoop(); {
 		if _, inode, _, mode, err = v.recursiveLookupTarget(path, targetRedirect); err != nil {
 			return
 		}
 
 		inoInfo, err = v.mw.InodeGet_ll(context.Background(), inode)
-		if err == syscall.ENOENT && retry < MaxRetry {
-			retry++
+		if err == syscall.ENOENT {
 			continue
 		}
 		if err != nil {
-			log.LogErrorf("ObjectMeta: get inode fail: volume(%v) path(%v) inode(%v) retry(%v) err(%v)", v.name, path, inode, retry, err)
+			log.LogErrorf("FileInfo: get inode fail: volume(%v) path(%v) inode(%v) loop(%v) err(%v)", v.name, path, inode, limiter.Current(), err)
 			return
 		}
 		break
@@ -1330,7 +1334,7 @@ func (v *Volume) ObjectMeta(path string, targetRedirect bool) (info *FSFileInfo,
 
 	var xAttrs map[string]string
 	if xAttrs, err = v.loadXAttrs(inode); err != nil {
-		log.LogErrorf("ObjectMeta: load user-defined metadata fail: volume(%v) inode(%v) path(%v) err(%v)",
+		log.LogErrorf("FileInfo: load user-defined metadata fail: volume(%v) inode(%v) path(%v) err(%v)",
 			v.name, inode, path, err)
 		return
 	}
@@ -1369,10 +1373,10 @@ func (v *Volume) ObjectMeta(path string, targetRedirect bool) (info *FSFileInfo,
 	if !mode.IsDir() && (!etagValue.Valid() || etagValue.TS.Before(inoInfo.ModifyTime)) {
 		// The ETag is invalid or outdated then generate a new ETag and make update.
 		if etagValue, err = v.updateETag(inoInfo.Inode, int64(inoInfo.Size), inoInfo.ModifyTime); err != nil {
-			log.LogErrorf("ObjectMeta: update ETag fail: volume(%v) path(%v) inode(%v) err(%v)",
+			log.LogErrorf("FileInfo: update ETag fail: volume(%v) path(%v) inode(%v) err(%v)",
 				v.name, path, inoInfo.Inode, err)
 		}
-		log.LogDebugf("ObjectMeta: update ETag: volume(%v) path(%v) inode(%v) etagValue(%v)",
+		log.LogDebugf("FileInfo: update ETag: volume(%v) path(%v) inode(%v) etagValue(%v)",
 			v.name, path, inoInfo.Inode, etagValue)
 	}
 
@@ -1390,6 +1394,33 @@ func (v *Volume) ObjectMeta(path string, targetRedirect bool) (info *FSFileInfo,
 		Expires:      expires,
 		Metadata:     metadata,
 		Tagging:      tagging,
+	}
+	return
+}
+
+func (v *Volume) FileReader(path string, targetRedirect bool) (reader *FSFileReader, err error) {
+	return v.__fileReader(path, targetRedirect)
+}
+
+func (v *Volume) __fileReader(path string, targetRedirect bool) (reader *FSFileReader, err error) {
+	var info *FSFileInfo
+	for limiter := NewLoopLimiter(MaxRetry); limiter.NextLoop(); {
+		if info, err = v.__fileInfo(path, targetRedirect); err != nil {
+			return
+		}
+		reader, err = NewFSFileReader(v.name, info, v.ec)
+		if err == syscall.ENOENT {
+			if log.IsWarnEnabled() {
+				log.LogWarnf("FileReader: init file reader got unexpected ENOENT error, maybe get and put in concurrent: volume(%v) path(%v) inode(%v) retry loop(%v)",
+					v.name, path, info.Inode, limiter.Current())
+			}
+			continue
+		}
+		if err != nil {
+			log.LogErrorf("FileReader: init file reader failed: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, info.Inode, err)
+			return
+		}
+		break
 	}
 	return
 }
@@ -2141,40 +2172,26 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}()
 
 	// operation at source object
-	var (
-		sInode     uint64
-		sMode      os.FileMode
-		sInodeInfo *proto.InodeInfo
-	)
-	if _, sInode, _, sMode, err = sv.recursiveLookupTarget(sourcePath, true); err != nil {
-		log.LogErrorf("CopyFile: look up source path fail, source path(%v) err(%v)", sourcePath, err)
-		return
-	}
-	if sInodeInfo, err = sv.mw.InodeGet_ll(context.Background(), sInode); err != nil {
-		log.LogErrorf("CopyFile: get source path inode info fail, source path(%v) err(%v)", sourcePath, err)
-		return
-	}
-	if sInodeInfo.Size > MaxCopyObjectSize {
-		log.LogErrorf("CopyFile: copy source path file size greater than 5GB, source path(%v), target path(%v)", sourcePath, targetPath)
-		return nil, syscall.EFBIG
-	}
-	if err = sv.ec.OpenStream(sInode, false, false); err != nil {
-		log.LogErrorf("CopyFile: open source path stream fail, source path(%v) source path inode(%v) err(%v)",
-			sourcePath, sInode, err)
+	var sFileReader *FSFileReader // File reader for source
+	if sFileReader, err = sv.FileReader(sourcePath, true); err != nil {
+		log.LogErrorf("CopyFile: init file reader for source path(%v) failed: %v", sourcePath, err)
 		return
 	}
 	defer func() {
-		if closeErr := sv.ec.CloseStream(context.Background(), sInode); closeErr != nil {
-			log.LogErrorf("CopyFile: close source path stream fail: source path(%v) source path inode(%v) err(%v)",
-				sourcePath, sInode, closeErr)
+		if closeErr := sFileReader.Close(); closeErr != nil && log.IsWarnEnabled() {
+			log.LogWarnf("CopyFile: close file read for source failed: %v", closeErr)
 		}
 	}()
-	if currFileSize, _, _ := sv.ec.FileSize(sInode); currFileSize < sInodeInfo.Size {
-		if err = sv.ec.RefreshExtentsCache(context.Background(), sInode); err != nil {
-			log.LogErrorf("CopyFile: refresh extents cache for source stream fail, source volume (%v), source path(%v), source inode(%v), error(%v)",
-				sv.Name(), sourcePath, sInode, err)
-			return
-		}
+
+	var (
+		sFileInfo = sFileReader.FileInfo()
+		sInode    = sFileInfo.Inode
+		sMode     = sFileInfo.Mode
+	)
+
+	if sFileInfo.Size > MaxCopyObjectSize {
+		log.LogErrorf("CopyFile: copy source path file size greater than 5GB, source path(%v), target path(%v)", sourcePath, targetPath)
+		return nil, syscall.EFBIG
 	}
 
 	// if source path is same with target path, just reset file metadata
@@ -2229,7 +2246,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			log.LogInfof("CopyFile: target path is equal with source path, replace metadata, source path(%v) target path(%v) opt(%v)",
 				sourcePath, targetPath, opt)
 		}
-		return sv.ObjectMeta(sourcePath, true)
+		return sv.FileInfo(sourcePath, true)
 	}
 
 	// operation at target object
@@ -2321,7 +2338,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 
 	// write data to invisibleTempDataInode from source object
 	var (
-		fileSize    = sInodeInfo.Size
+		fileSize    = sFileInfo.Size
 		md5Hash     = md5.New()
 		md5Value    string
 		readN       int
@@ -2334,13 +2351,13 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	)
 	for {
 		readSize = len(buf)
-		if (fileSize - readOffset) <= 0 {
+		if (fileSize - int64(readOffset)) <= 0 {
 			break
 		}
-		if int(fileSize-readOffset) < len(buf) {
-			readSize = int(fileSize - readOffset)
+		if int(fileSize-int64(readOffset)) < len(buf) {
+			readSize = int(fileSize - int64(readOffset))
 		}
-		readN, _, err = sv.ec.Read(context.Background(), sInode, buf, readOffset, readSize)
+		readN, _, err = sFileReader.Read(buf, readOffset, readSize)
 		if err != nil && err != io.EOF {
 			return
 		}

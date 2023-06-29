@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	MaxRetry = 3
+	MaxRetry = 5
 
 	GetLocalIPMaxRetry      = 10
 	GetLocalIPRetryInterval = time.Second * 5
@@ -177,8 +177,8 @@ const (
 )
 
 const (
-	DefaultFileMode = 0644
-	DefaultDirMode  = DefaultFileMode | os.ModeDir
+	DefaultFileMode = 0666
+	DefaultDirMode  = 0777 | os.ModeDir
 )
 
 const (

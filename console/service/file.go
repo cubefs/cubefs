@@ -245,7 +245,7 @@ func (fs *FileService) fileMeta(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return volume.ObjectMeta(args.Path, false)
+	return volume.FileInfo(args.Path, false)
 }
 
 func (fs *FileService) signURL(ctx context.Context, args struct {
@@ -325,15 +325,19 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 		return err
 	}
 
-	meta, err := volume.ObjectMeta(path, true)
+	reader, err := volume.FileReader(path, true)
 	if err != nil {
 		return err
 	}
 
-	writer.Header().Set("Content-Type", "application/octet-stream")
-	writer.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
+	defer func() {
+		_ = reader.Close()
+	}()
 
-	if _, err := volume.ReadFile(path, writer, 0, uint64(meta.Size)); err != nil {
+	writer.Header().Set("Content-Type", "application/octet-stream")
+	writer.Header().Set("Content-Length", strconv.FormatInt(reader.FileInfo().Size, 10))
+
+	if _, err := reader.WriteTo(writer, 0, uint64(reader.FileInfo().Size)); err != nil {
 		return err
 	}
 

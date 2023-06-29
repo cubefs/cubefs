@@ -156,8 +156,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	responseContentDisposition := r.URL.Query().Get(ParamResponseContentDisposition)
 
 	// get object meta
-	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(param.Object(), true)
+	var fileReader *FSFileReader
+	fileReader, err = vol.FileReader(param.Object(), true)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -167,11 +167,22 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		log.LogErrorf("getObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
+		log.LogErrorf("getObjectHandler: init file reader fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
 		errorCode = InternalErrorCode(err)
 		return
 	}
+
+	defer func() {
+		if closeErr := fileReader.Close(); closeErr != nil {
+			if log.IsWarnEnabled() {
+				log.LogWarnf("getObjectHandler: close file reader failed: requestId(%v) volume(%v) path(%v) err(%v)",
+					GetRequestID(r), vol.Name(), param.Object(), err)
+			}
+		}
+	}()
+
+	var fileInfo = fileReader.FileInfo()
 
 	// parse request header
 	match := r.Header.Get(HeaderNameIfMatch)
@@ -342,8 +353,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var num int
-	num, err = vol.ReadInode(fileInfo.Inode, w, offset, size)
+	var num int64
+	num, err = fileReader.WriteTo(w, offset, size)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -396,7 +407,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(param.Object(), true)
+	fileInfo, err = vol.FileInfo(param.Object(), true)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -768,7 +779,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.ObjectMeta(sourceObject, true)
+	fileInfo, err = vol.FileInfo(sourceObject, true)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
