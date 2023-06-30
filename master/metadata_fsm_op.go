@@ -411,9 +411,11 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 }
 
 type nodeSetValue struct {
-	ID       uint64
-	Capacity int
-	ZoneName string
+	ID               uint64
+	Capacity         int
+	ZoneName         string
+	DataNodeSelector string
+	MetaNodeSelector string
 }
 
 type domainNodeSetGrpValue struct {
@@ -440,9 +442,11 @@ func newZoneDomainValue() (ev *zoneDomainValue) {
 }
 func newNodeSetValue(nset *nodeSet) (nsv *nodeSetValue) {
 	nsv = &nodeSetValue{
-		ID:       nset.ID,
-		Capacity: nset.Capacity,
-		ZoneName: nset.zoneName,
+		ID:               nset.ID,
+		Capacity:         nset.Capacity,
+		ZoneName:         nset.zoneName,
+		DataNodeSelector: nset.GetDataNodeSelector(),
+		MetaNodeSelector: nset.GetMetaNodeSelector(),
 	}
 	return
 }
@@ -938,6 +942,12 @@ func (c *Cluster) loadZoneValue() (err error) {
 		zone.QosIopsWLimit = cv.QosIopsWLimit
 		zone.QosFlowWLimit = cv.QosFlowWLimit
 		zone.QosIopsRLimit = cv.QosIopsRLimit
+		if zone.GetDataNodesetSelector() != cv.DataNodesetSelector {
+			zone.dataNodesetSelector = NewNodesetSelector(cv.DataNodesetSelector, DataNodeType)
+		}
+		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
+			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
+		}
 		log.LogInfof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
 			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit)
 		zone.loadDataNodeQosLimit()
@@ -1071,6 +1081,12 @@ func (c *Cluster) loadNodeSets() (err error) {
 		ns := newNodeSet(c, nsv.ID, cap, nsv.ZoneName)
 		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
 		ns.UpdateDecommissionDiskFactor(c.DecommissionDiskFactor)
+		if nsv.DataNodeSelector != "" && ns.GetDataNodeSelector() != nsv.DataNodeSelector {
+			ns.SetDataNodeSelector(nsv.DataNodeSelector)
+		}
+		if nsv.MetaNodeSelector != "" && ns.GetMetaNodeSelector() != nsv.MetaNodeSelector {
+			ns.SetMetaNodeSelector(nsv.MetaNodeSelector)
+		}
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)

@@ -14,7 +14,6 @@ func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
 	dn.Total = 1024 * util.GB
 	dn.Used = 10 * util.GB
 	dn.AvailableSpace = 1024 * util.GB
-	dn.Carry = 0.9
 	dn.ReportTime = time.Now()
 	dn.isActive = true
 	dn.NodeSetID = ns.ID

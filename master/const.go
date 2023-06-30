@@ -23,22 +23,24 @@ import (
 
 // Keys in the request
 const (
-	addrKey               = "addr"
-	diskPathKey           = "disk"
-	nameKey               = "name"
-	idKey                 = "id"
-	countKey              = "count"
-	startKey              = "start"
-	enableKey             = "enable"
-	thresholdKey          = "threshold"
-	dirQuotaKey           = "dirQuota"
-	dirLimitKey           = "dirSizeLimit"
-	dataPartitionSizeKey  = "size"
-	metaPartitionCountKey = "mpCount"
-	volCapacityKey        = "capacity"
-	volTypeKey            = "volType"
-	cacheRuleKey          = "cacheRuleKey"
-	emptyCacheRuleKey     = "emptyCacheRule"
+	addrKey                = "addr"
+	diskPathKey            = "disk"
+	nameKey                = "name"
+	idKey                  = "id"
+	countKey               = "count"
+	startKey               = "start"
+	enableKey              = "enable"
+	thresholdKey           = "threshold"
+	dirQuotaKey            = "dirQuota"
+	dirLimitKey            = "dirSizeLimit"
+	dataPartitionSizeKey   = "size"
+	metaPartitionCountKey  = "mpCount"
+	volCapacityKey         = "capacity"
+	volTypeKey             = "volType"
+	cacheRuleKey           = "cacheRuleKey"
+	emptyCacheRuleKey      = "emptyCacheRule"
+	dataNodesetSelectorKey = "dataNodesetSelector"
+	metaNodesetSelectorKey = "metaNodesetSelector"
 
 	forceDelVolKey             = "forceDelVol"
 	ebsBlkSizeKey              = "ebsBlkSize"
@@ -324,4 +326,12 @@ const (
 	quotaPrefix      = keySeparator + "quota" + keySeparator
 	lcNodePrefix     = keySeparator + lcNodeAcronym + keySeparator
 	lcConfPrefix     = keySeparator + lcConfigurationAcronym + keySeparator
+)
+
+// selector enum
+type NodeType int
+
+const (
+	DataNodeType = NodeType(0)
+	MetaNodeType = NodeType(iota)
 )

@@ -731,7 +731,6 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", dn.ID))
 	sb.WriteString(fmt.Sprintf("  Address             : %v\n", formatAddr(dn.Addr, dn.DomainAddr)))
-	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", dn.Carry))
 	sb.WriteString(fmt.Sprintf("  Allocated ratio     : %v\n", dn.UsageRatio))
 	sb.WriteString(fmt.Sprintf("  Allocated           : %v\n", formatSize(dn.Used)))
 	sb.WriteString(fmt.Sprintf("  Available           : %v\n", formatSize(dn.AvailableSpace)))
@@ -764,7 +763,6 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", mn.ID))
 	sb.WriteString(fmt.Sprintf("  Address             : %v\n", formatAddr(mn.Addr, mn.DomainAddr)))
-	sb.WriteString(fmt.Sprintf("  Carry               : %v\n", mn.Carry))
 	sb.WriteString(fmt.Sprintf("  Threshold           : %v\n", mn.Threshold))
 	sb.WriteString(fmt.Sprintf("  MaxMemAvailWeight   : %v\n", formatSize(mn.MaxMemAvailWeight)))
 	sb.WriteString(fmt.Sprintf("  Allocated           : %v\n", formatSize(mn.Used)))
@@ -817,8 +815,11 @@ func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 
 func formatZoneView(zv *proto.ZoneView) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("Zone Name:   %v\n", zv.Name))
-	sb.WriteString(fmt.Sprintf("Status:      %v\n", zv.Status))
+	sb.WriteString(fmt.Sprintf("Zone Name:        %v\n", zv.Name))
+	sb.WriteString(fmt.Sprintf("Status:           %v\n", zv.Status))
+	sb.WriteString("Nodeset Selector:\n")
+	sb.WriteString(fmt.Sprintf("       Data:%v\n", zv.DataNodesetSelector))
+	sb.WriteString(fmt.Sprintf("       Meta:%v\n", zv.MetaNodesetSelector))
 	sb.WriteString(fmt.Sprintf("\n"))
 	for index, ns := range zv.NodeSet {
 		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
