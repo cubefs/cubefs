@@ -456,6 +456,7 @@ type metaPartition struct {
 	uidManager             *UidManager
 	xattrLock              sync.Mutex
 	mqMgr                  *MetaQuotaManager
+	nonIdempotent          sync.RWMutex
 }
 
 func (mp *metaPartition) acucumRebuildStart() {
