@@ -189,10 +189,19 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 		usedInfo = value.(proto.QuotaUsedInfo)
 		if value, isFind := mqMgr.statisticBase.Load(key.(uint32)); isFind {
 			baseInfo := value.(proto.QuotaUsedInfo)
+			log.LogDebugf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v] baseInfo [%v]", mqMgr.mpID,
+				key.(uint32), usedInfo, baseInfo)
 			usedInfo.Add(&baseInfo)
+			if usedInfo.UsedFiles < 0 {
+				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+				usedInfo.UsedFiles = 0
+			}
+			if usedInfo.UsedBytes < 0 {
+				log.LogWarnf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+				usedInfo.UsedBytes = 0
+			}
 		}
 		mqMgr.statisticBase.Store(key.(uint32), usedInfo)
-		log.LogDebugf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
 		return true
 	})
 	mqMgr.statisticTemp = new(sync.Map)
@@ -203,10 +212,9 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 			UsedInfo: usedInfo,
 		}
 		infos = append(infos, reportInfo)
-		log.LogDebugf("[getQuotaReportInfos] statisticTemp mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
+		log.LogDebugf("[getQuotaReportInfos] statisticBase mp [%v] key [%v] usedInfo [%v]", mqMgr.mpID, key.(uint32), usedInfo)
 		return true
 	})
-	log.LogDebugf("[getQuotaReportInfos] end infos [%v]", infos)
 	return
 }
 
@@ -269,6 +277,6 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 		baseInfo.UsedFiles += files
 		mqMgr.statisticRebuildTemp.Store(quotaId, baseInfo)
 	}
-	log.LogDebugf("updateUsedInfo baseInfo [%v]", baseInfo)
+	log.LogDebugf("updateUsedInfo quotaId [%v] baseInfo [%v]", quotaId, baseInfo)
 	return
 }
