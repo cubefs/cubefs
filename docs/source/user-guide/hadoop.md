@@ -21,8 +21,8 @@ The current CubeFS Hadoop does not support file permission management of HDFS.
 
 ```shell
 git clone https://github.com/cubefs/cubefs.git
-cd libsdk
-sh build.sh
+cd cubefs
+make libsdk
 ```
 
 ::: warning Note
