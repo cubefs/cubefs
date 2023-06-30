@@ -254,7 +254,6 @@ run_test() {
     ulimit -n 65536
     echo -n "${TPATH}"
 #    go test $MODFLAGS -ldflags "${LDFlags}" -cover ./master
-
     go test -cover -v -coverprofile=cover.output $(go list ./... | grep -v depends | grep -v master) | tee cubefs_unittest.output
     ret=$?
     popd >/dev/null
