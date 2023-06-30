@@ -1228,6 +1228,7 @@ func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) 
 // Zone stores all the zone related information
 type Zone struct {
 	name                string
+	nodesetSelector     NodesetSelector
 	setIndexForDataNode int
 	setIndexForMetaNode int
 	status              int
@@ -1242,11 +1243,12 @@ type Zone struct {
 	sync.RWMutex
 }
 type zoneValue struct {
-	Name          string
-	QosIopsRLimit uint64
-	QosIopsWLimit uint64
-	QosFlowRLimit uint64
-	QosFlowWLimit uint64
+	Name            string
+	QosIopsRLimit   uint64
+	QosIopsWLimit   uint64
+	QosFlowRLimit   uint64
+	QosFlowWLimit   uint64
+	NodesetSelector string
 }
 
 func newZone(name string) (zone *Zone) {
@@ -1255,6 +1257,7 @@ func newZone(name string) (zone *Zone) {
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
+	zone.nodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName)
 	return
 }
 
@@ -1273,11 +1276,12 @@ func printZonesName(zones []*Zone) string {
 
 func (zone *Zone) getFsmValue() *zoneValue {
 	return &zoneValue{
-		Name:          zone.name,
-		QosIopsRLimit: zone.QosIopsRLimit,
-		QosIopsWLimit: zone.QosIopsWLimit,
-		QosFlowRLimit: zone.QosFlowRLimit,
-		QosFlowWLimit: zone.QosFlowWLimit,
+		Name:            zone.name,
+		QosIopsRLimit:   zone.QosIopsRLimit,
+		QosIopsWLimit:   zone.QosIopsWLimit,
+		QosFlowRLimit:   zone.QosFlowRLimit,
+		QosFlowWLimit:   zone.QosFlowWLimit,
+		NodesetSelector: zone.nodesetSelector.GetName(),
 	}
 }
 

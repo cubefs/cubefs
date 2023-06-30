@@ -878,6 +878,9 @@ func (c *Cluster) loadZoneValue() (err error) {
 		zone.QosIopsWLimit = cv.QosIopsWLimit
 		zone.QosFlowWLimit = cv.QosFlowWLimit
 		zone.QosIopsRLimit = cv.QosIopsRLimit
+		if zone.nodesetSelector.GetName() != cv.NodesetSelector {
+			zone.nodesetSelector = NewNodesetSelector(cv.NodesetSelector)
+		}
 		log.LogInfof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
 			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit)
 		zone.loadDataNodeQosLimit()
