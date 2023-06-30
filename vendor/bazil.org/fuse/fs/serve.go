@@ -3,6 +3,7 @@
 package fs // import "bazil.org/fuse/fs"
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
@@ -12,18 +13,14 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
-
-	cfslog "github.com/cubefs/cubefs/util/log"
-	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
-)
-
-import (
-	"bytes"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fuseutil"
+	cfslog "github.com/cubefs/cubefs/util/log"
+	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -668,22 +665,22 @@ func (sn *serveNode) attr(ctx context.Context, attr *fuse.Attr) error {
 }
 
 type serveHandle struct {
-	handle   	Handle
-	readData 	[]byte
-	nodeID   	fuse.NodeID
-	dirData		*dirPlusData
+	handle   Handle
+	readData []byte
+	nodeID   fuse.NodeID
+	dirData  *dirPlusData
 	sync.Mutex
 }
 
 type dirPlusData struct {
-	dirs	 	[]*DirentPlus
-	dirPlusOff	int				// already read index
-	entryValid	time.Duration
+	dirs       []*DirentPlus
+	dirPlusOff int // already read index
+	entryValid time.Duration
 }
 
 func initDirPlusData(proto fuse.Protocol, dirs []*DirentPlus, entryValid time.Duration) *dirPlusData {
 	entryOutSize := int64(fuse.EntryOutSize(proto))
-	lastOff	:= int64(0)
+	lastOff := int64(0)
 	for _, dir := range dirs {
 		dir.EndOff = lastOff + entryOutSize + fuse.DirentSize + int64((len(dir.Dirent.Name)+7)&^7)
 		lastOff = dir.EndOff
@@ -732,8 +729,10 @@ func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) 
 
 	if id, ok := c.nodeRef[node.NodeID()]; ok {
 		sn := c.node[id]
-		sn.refs++
-		return id, sn.generation
+		if sn.node.Mode()^node.Mode()&syscall.S_IFMT == 0 {
+			sn.refs++
+			return id, sn.generation
+		}
 	}
 
 	sn := &serveNode{inode: inode, node: node, refs: 1}
@@ -801,9 +800,11 @@ func (c *Server) dropNode(id fuse.NodeID, n uint64) (forget bool) {
 	if snode.refs == 0 {
 		snode.wg.Wait()
 		c.node[id] = nil
-		delete(c.nodeRef, snode.node.NodeID())
 		c.freeNode = append(c.freeNode, id)
-		return true
+		if curNodeID, exist := c.nodeRef[snode.node.NodeID()]; exist && curNodeID == id {
+			delete(c.nodeRef, snode.node.NodeID())
+			return true
+		}
 	}
 	return false
 }
@@ -1500,9 +1501,9 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 				}
 
 				var data []byte
-				for pos := shandle.dirData.dirPlusOff+1; pos < len(shandle.dirData.dirs); pos++ {
+				for pos := shandle.dirData.dirPlusOff + 1; pos < len(shandle.dirData.dirs); pos++ {
 					dir := shandle.dirData.dirs[pos]
-					if dir.EndOff > r.Offset + int64(r.Size) {
+					if dir.EndOff > r.Offset+int64(r.Size) {
 						break
 					}
 					lookupResp := &fuse.LookupResponse{EntryValid: shandle.dirData.entryValid}

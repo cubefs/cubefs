@@ -66,8 +66,8 @@ func NewDir(s *Super, i *proto.InodeInfo) fs.Node {
 	}
 }
 
-// Attr set the attributes of a directory.
-func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+// Getattr get the attributes of a directory.
+func (d *Dir) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
 
 	ino := d.info.Inode
 	info, err := d.super.InodeGet(ctx, ino)
@@ -75,8 +75,13 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
 		return ParseError(err)
 	}
-	fillAttr(info, a)
-	log.LogDebugf("TRACE Attr: inode(%v)", info)
+	fillAttr(info, &resp.Attr)
+	log.LogDebugf("TRACE Getattr: inode(%v)", info)
+	return nil
+}
+
+func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+	fillAttr(d.info, a)
 	return nil
 }
 

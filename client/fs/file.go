@@ -60,31 +60,42 @@ func NewFile(s *Super, i *proto.InodeInfo) fs.Node {
 	return &File{super: s, info: i}
 }
 
-// Attr sets the attributes of a file.
-func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+// Getattr gets the attributes of a file.
+func (f *File) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
 
 	ino := f.info.Inode
 	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
 		if err == fuse.ENOENT {
-			a.Inode = ino
+			resp.Attr.Inode = ino
 			return nil
 		}
 		return ParseError(err)
 	}
 
-	fillAttr(info, a)
+	fillAttr(info, &resp.Attr)
 	fileSize, gen := f.fileSize(ctx, ino)
-	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)
 	if gen >= info.Generation {
-		a.Size = uint64(fileSize)
+		resp.Attr.Size = uint64(fileSize)
 	}
 	if proto.IsSymlink(info.Mode) {
-		a.Size = uint64(len(info.Target))
+		resp.Attr.Size = uint64(len(info.Target))
 	}
 
-	log.LogDebugf("TRACE Attr: inode(%v) attr(%v)", info, a)
+	log.LogDebugf("TRACE Getattr: inode(%v) attr(%v) fileSize(%v) gen(%v)", info, resp.Attr, fileSize, gen)
+	return nil
+}
+
+func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	fillAttr(f.info, a)
+	fileSize, gen := f.fileSize(ctx, f.info.Inode)
+	if gen >= f.info.Generation {
+		a.Size = uint64(fileSize)
+	}
+	if proto.IsSymlink(f.info.Mode) {
+		a.Size = uint64(len(f.info.Target))
+	}
 	return nil
 }
 
