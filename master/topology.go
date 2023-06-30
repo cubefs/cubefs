@@ -307,8 +307,6 @@ func (nsgm *DomainManager) checkExcludeZoneState() {
 	for zoneNm := range nsgm.excludeZoneListDomain {
 		if value, ok := nsgm.c.t.zoneMap.Load(zoneNm); ok {
 			zone := value.(*Zone)
-			log.LogInfof("action[checkExcludeZoneState] zone name[%v],status[%v], index for datanode[%v],index for metanode[%v]",
-				zone.name, zone.status, zone.setIndexForDataNode, zone.setIndexForMetaNode)
 			if nsgm.excludeZoneUseRatio == 0 || nsgm.excludeZoneUseRatio > 1 {
 				nsgm.excludeZoneUseRatio = defaultDomainUsageThreshold
 			}
@@ -1228,9 +1226,8 @@ func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) 
 // Zone stores all the zone related information
 type Zone struct {
 	name                string
-	nodesetSelector     NodesetSelector
-	setIndexForDataNode int
-	setIndexForMetaNode int
+	dataNodesetSelector NodesetSelector
+	metaNodesetSelector NodesetSelector
 	status              int
 	dataNodes           *sync.Map
 	metaNodes           *sync.Map
@@ -1243,12 +1240,13 @@ type Zone struct {
 	sync.RWMutex
 }
 type zoneValue struct {
-	Name            string
-	QosIopsRLimit   uint64
-	QosIopsWLimit   uint64
-	QosFlowRLimit   uint64
-	QosFlowWLimit   uint64
-	NodesetSelector string
+	Name                string
+	QosIopsRLimit       uint64
+	QosIopsWLimit       uint64
+	QosFlowRLimit       uint64
+	QosFlowWLimit       uint64
+	DataNodesetSelector string
+	MetaNodesetSelector string
 }
 
 func newZone(name string) (zone *Zone) {
@@ -1257,7 +1255,8 @@ func newZone(name string) (zone *Zone) {
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
-	zone.nodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName)
+	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName)
+	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName)
 	return
 }
 
@@ -1276,12 +1275,13 @@ func printZonesName(zones []*Zone) string {
 
 func (zone *Zone) getFsmValue() *zoneValue {
 	return &zoneValue{
-		Name:            zone.name,
-		QosIopsRLimit:   zone.QosIopsRLimit,
-		QosIopsWLimit:   zone.QosIopsWLimit,
-		QosFlowRLimit:   zone.QosFlowRLimit,
-		QosFlowWLimit:   zone.QosFlowWLimit,
-		NodesetSelector: zone.nodesetSelector.GetName(),
+		Name:                zone.name,
+		QosIopsRLimit:       zone.QosIopsRLimit,
+		QosIopsWLimit:       zone.QosIopsWLimit,
+		QosFlowRLimit:       zone.QosFlowRLimit,
+		QosFlowWLimit:       zone.QosFlowWLimit,
+		DataNodesetSelector: zone.dataNodesetSelector.GetName(),
+		MetaNodesetSelector: zone.metaNodesetSelector.GetName(),
 	}
 }
 
@@ -1483,25 +1483,8 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
 
-	for i := 0; i < len(nset); i++ {
-
-		if zone.setIndexForDataNode >= len(nset) {
-			zone.setIndexForDataNode = 0
-		}
-
-		ns = nset[zone.setIndexForDataNode]
-		zone.setIndexForDataNode++
-
-		if containsID(excludeNodeSets, ns.ID) {
-
-			continue
-		}
-
-		if ns.canWriteForDataNode(int(replicaNum)) {
-
-			return
-		}
-	}
+	zone.dataNodesetSelector.SetCandidates(nset)
+	ns, err = zone.dataNodesetSelector.Select(excludeNodeSets, replicaNum)
 
 	log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
 		nset.Len(), excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateDataPartition)
@@ -1517,19 +1500,8 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
 
-	for i := 0; i < len(nset); i++ {
-		if zone.setIndexForMetaNode >= len(nset) {
-			zone.setIndexForMetaNode = 0
-		}
-		ns = nset[zone.setIndexForMetaNode]
-		zone.setIndexForMetaNode++
-		if containsID(excludeNodeSets, ns.ID) {
-			continue
-		}
-		if ns.canWriteForMetaNode(int(replicaNum)) {
-			return
-		}
-	}
+	zone.metaNodesetSelector.SetCandidates(nset)
+	ns, err = zone.metaNodesetSelector.Select(excludeNodeSets, replicaNum)
 
 	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
 		zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))

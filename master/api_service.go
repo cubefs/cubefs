@@ -93,10 +93,11 @@ func newNodeSetView(dataNodeLen, metaNodeLen int) *NodeSetView {
 
 // ZoneView define the view of zone
 type ZoneView struct {
-	Name            string
-	Status          string
-	NodesetSelector string
-	NodeSet         map[uint64]*NodeSetView
+	Name                string
+	Status              string
+	DataNodesetSelector string
+	MetaNodesetSelector string
+	NodeSet             map[uint64]*NodeSetView
 }
 
 func newZoneView(name string) *ZoneView {
@@ -210,7 +211,8 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
-		cv.NodesetSelector = zone.nodesetSelector.GetName()
+		cv.DataNodesetSelector = zone.dataNodesetSelector.GetName()
+		cv.MetaNodesetSelector = zone.metaNodesetSelector.GetName()
 		tv.Zones = append(tv.Zones, cv)
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
@@ -277,7 +279,8 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
-		cv.NodesetSelector = zone.nodesetSelector.GetName()
+		cv.DataNodesetSelector = zone.dataNodesetSelector.GetName()
+		cv.MetaNodesetSelector = zone.metaNodesetSelector.GetName()
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))

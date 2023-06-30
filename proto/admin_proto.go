@@ -907,10 +907,11 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 
 // ZoneView define the view of zone
 type ZoneView struct {
-	Name            string
-	Status          string
-	NodesetSelector string
-	NodeSet         map[uint64]*NodeSetView
+	Name                string
+	Status              string
+	DataNodesetSelector string
+	MetaNodesetSelector string
+	NodeSet             map[uint64]*NodeSetView
 }
 
 type NodeSetView struct {
