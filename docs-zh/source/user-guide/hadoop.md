@@ -21,8 +21,8 @@ CubeFS兼容Hadoop FileSystem接口协议，用户可以使用CubeFS来替换Had
 
 ```shell
 git clone https://github.com/cubefs/cubefs.git
-cd libsdk
-sh build.sh
+cd cubefs
+make libsdk
 ```
 
 ::: warning 注意
