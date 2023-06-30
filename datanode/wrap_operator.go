@@ -1569,7 +1569,10 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 	if err = p.ReadFromConn(conn, forwardToRaftLeaderTimeOut); err != nil {
 		return
 	}
-
+	if p.ResultCode != proto.OpOk {
+		err = errors.NewErrorf("forwardToRaftLeader error msg: %v", p.GetOpMsgWithReqAndResult())
+		return
+	}
 	return
 }
 
