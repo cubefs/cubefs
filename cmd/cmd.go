@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/ecnode"
 	"github.com/cubefs/cubefs/flashnode"
 	"github.com/cubefs/cubefs/schedulenode/compact"
+	"github.com/cubefs/cubefs/schedulenode/rebalance"
 	"github.com/cubefs/cubefs/schedulenode/scheduler"
 	"github.com/cubefs/cubefs/schedulenode/smart"
 	syslog "log"
@@ -80,6 +81,7 @@ const (
 	RoleDataAgent = "dataAgent"
 	RoleCodec     = "codecnode"
 	RoleEc        = "ecnode"
+	RoleReBalance = "rebalance"
 )
 
 const (
@@ -97,6 +99,7 @@ const (
 	ModuleDataAgent = "dataAgent"
 	ModuleCodec     = "codecNode"
 	ModuleEc        = "ecNode"
+	ModuleReBalance = "rebalance"
 )
 
 const (
@@ -256,6 +259,9 @@ func run() error {
 	case RoleEc:
 		server = ecnode.NewServer()
 		module = ModuleEc
+	case RoleReBalance:
+		server = rebalance.NewReBalanceWorker()
+		module = ModuleReBalance
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)
