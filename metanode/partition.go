@@ -848,7 +848,17 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		loadFunc := f
 		i := idx
 		go func() {
-			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.LogWarnf("action[LoadSnapshot] recovered when load partition partition: %v, failed: %v",
+						mp.config.PartitionId, r)
+
+					errs[i] = errors.NewErrorf("%v", r)
+				}
+
+				wg.Done()
+			}()
+
 			if i == 2 { //loadExtend must be executed after loadInode
 				return
 			}
