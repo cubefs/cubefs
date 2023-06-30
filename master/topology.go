@@ -1484,11 +1484,14 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	defer zone.nsLock.Unlock()
 
 	zone.dataNodesetSelector.SetCandidates(nset)
-	ns, err = zone.dataNodesetSelector.Select(excludeNodeSets, replicaNum)
+	ns, err = zone.dataNodesetSelector.Select(excludeNodeSets, replicaNum, DataNodesetSelect)
 
-	log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
-		nset.Len(), excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateDataPartition)
-	return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+	if err != nil {
+		log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
+			nset.Len(), excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateDataPartition)
+		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+	}
+	return ns, nil
 }
 
 func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
@@ -1501,11 +1504,14 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	defer zone.nsLock.Unlock()
 
 	zone.metaNodesetSelector.SetCandidates(nset)
-	ns, err = zone.metaNodesetSelector.Select(excludeNodeSets, replicaNum)
+	ns, err = zone.metaNodesetSelector.Select(excludeNodeSets, replicaNum, MetaNodesetSelect)
 
-	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
-		zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))
-	return nil, proto.ErrNoNodeSetToCreateMetaPartition
+	if err != nil {
+		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
+			zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))
+		return nil, proto.ErrNoNodeSetToCreateMetaPartition
+	}
+	return ns, nil
 }
 
 func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {

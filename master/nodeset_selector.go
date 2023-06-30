@@ -27,10 +27,17 @@ const WeightRoundRobinNodesetSelectorName = "WeightRoundRobin"
 
 const DefaultNodesetSelectorName = RoundRobinNodesetSelectorName
 
+type NodesetSelectMode int
+
+const (
+	DataNodesetSelect = NodesetSelectMode(0)
+	MetaNodesetSelect = NodesetSelectMode(iota)
+)
+
 type NodesetSelector interface {
 	GetName() string
 
-	Select(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error)
+	Select(excludeNodeSets []uint64, replicaNum uint8, mode NodesetSelectMode) (ns *nodeSet, err error)
 
 	SetCandidates(nsc nodeSetCollection)
 }
@@ -45,7 +52,7 @@ func (s *RoundRobinNodesetSelector) SetCandidates(nsc nodeSetCollection) {
 	s.Candidates = nsc
 }
 
-func (s *RoundRobinNodesetSelector) Select(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+func (s *RoundRobinNodesetSelector) Select(excludeNodeSets []uint64, replicaNum uint8, mode NodesetSelectMode) (ns *nodeSet, err error) {
 	nset := s.Candidates
 	for i := 0; i < len(nset); i++ {
 
@@ -60,8 +67,17 @@ func (s *RoundRobinNodesetSelector) Select(excludeNodeSets []uint64, replicaNum 
 			continue
 		}
 
-		if ns.canWriteForDataNode(int(replicaNum)) {
-			return
+		switch mode {
+		case DataNodesetSelect:
+			if ns.canWriteForDataNode(int(replicaNum)) {
+				return
+			}
+		case MetaNodesetSelect:
+			if ns.canWriteForMetaNode(int(replicaNum)) {
+				return
+			}
+		default:
+			panic(errors.New("unknow select mode"))
 		}
 	}
 

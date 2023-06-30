@@ -732,7 +732,9 @@ func formatZoneView(zv *proto.ZoneView) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("Zone Name:        %v\n", zv.Name))
 	sb.WriteString(fmt.Sprintf("Status:           %v\n", zv.Status))
-	sb.WriteString(fmt.Sprintf("Nodeset Selector: %v\n", zv.NodesetSelector))
+	sb.WriteString("Nodeset Selector:\n")
+	sb.WriteString(fmt.Sprintf("       Data:%v\n", zv.DataNodesetSelector))
+	sb.WriteString(fmt.Sprintf("       Meta:%v\n", zv.MetaNodesetSelector))
 	sb.WriteString(fmt.Sprintf("\n"))
 	for index, ns := range zv.NodeSet {
 		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
