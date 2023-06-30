@@ -5,7 +5,7 @@
 [![LICENSE](https://img.shields.io/github/license/cubefs/cubefs.svg)](https://github.com/cubefs/cubefs/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cubefs/cubefs)](https://goreportcard.com/report/github.com/cubefs/cubefs)
-[![Docs](https://readthedocs.org/projects/cubefs/badge/?version=latest)](https://cubefs.io/docs/master/overview/introduction.html)
+[![Docs](https://img.shields.io/badge/docs-latest-green.svg)](https://cubefs.io/docs/master/overview/introduction.html)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
 [![Codecov](https://img.shields.io/codecov/c/github/cubefs/cubefs?style=flat-square&logo=codecov)](https://codecov.io/gh/cubefs/cubefs)
 [![Release](https://img.shields.io/github/v/release/cubefs/cubefs.svg?color=161823&style=flat-square&logo=smartthings)](https://github.com/cubefs/cubefs/releases)
