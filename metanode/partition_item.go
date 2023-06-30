@@ -188,6 +188,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 	si.cursor = mp.GetCursor()
 
+	mp.nonIdempotent.Lock()
 	si.inodeTree = mp.inodeTree.GetTree()
 	si.dentryTree = mp.dentryTree.GetTree()
 	si.extendTree = mp.extendTree.GetTree()
@@ -195,6 +196,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
 	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
 	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
+	mp.nonIdempotent.Unlock()
 
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
