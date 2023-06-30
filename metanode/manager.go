@@ -351,7 +351,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
 
 			if isExpiredPartition(fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions) {
-				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete him manually",
+				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
 				newName := path.Join(m.rootDir, ExpiredPartitionPrefix+fileInfo.Name())
@@ -362,6 +362,18 @@ func (m *metadataManager) loadPartitions() (err error) {
 			wg.Add(1)
 			go func(fileName string) {
 				var errload error
+
+				defer func() {
+					if r := recover(); r != nil {
+						log.LogWarnf("action[loadPartitions] recovered when load partition, skip it,"+
+							" partition: %s, error: %s, failed: %v", fileName, errload, r)
+						syslog.Printf("load meta partition %v fail: %v", fileName, r)
+					} else if errload != nil {
+						log.LogWarnf("action[loadPartitions] failed to load partition, skip it, partition: %s, error: %s",
+							fileName, errload)
+					}
+				}()
+
 				defer wg.Done()
 				if len(fileName) < 10 {
 					log.LogWarnf("ignore unknown partition dir: %s", fileName)
@@ -371,7 +383,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 				partitionId := fileName[len(partitionPrefix):]
 				id, errload = strconv.ParseUint(partitionId, 10, 64)
 				if errload != nil {
-					log.LogWarnf("ignore path: %s,not partition", partitionId)
+					log.LogWarnf("action[loadPartitions] ignore path: %s, not partition", partitionId)
 					return
 				}
 
@@ -401,12 +413,12 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 				partition := NewMetaPartition(partitionConfig, m)
 				if partition == nil {
-					log.LogErrorf("loadPartitions: NewMetaPartition is nil")
+					log.LogErrorf("action[loadPartitions]: NewMetaPartition is nil")
 					return
 				}
 				errload = m.attachPartition(id, partition)
 				if errload != nil {
-					log.LogErrorf("load partition id=%d failed: %s.",
+					log.LogErrorf("action[loadPartitions] load partition id=%d failed: %s.",
 						id, errload.Error())
 				}
 			}(fileInfo.Name())
