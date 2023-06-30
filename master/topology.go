@@ -307,8 +307,6 @@ func (nsgm *DomainManager) checkExcludeZoneState() {
 	for zoneNm := range nsgm.excludeZoneListDomain {
 		if value, ok := nsgm.c.t.zoneMap.Load(zoneNm); ok {
 			zone := value.(*Zone)
-			log.LogInfof("action[checkExcludeZoneState] zone name[%v],status[%v], index for datanode[%v],index for metanode[%v]",
-				zone.name, zone.status, zone.setIndexForDataNode, zone.setIndexForMetaNode)
 			if nsgm.excludeZoneUseRatio == 0 || nsgm.excludeZoneUseRatio > 1 {
 				nsgm.excludeZoneUseRatio = defaultDomainUsageThreshold
 			}
@@ -946,6 +944,11 @@ type nodeSet struct {
 	decommissionDataPartitionList  *DecommissionDataPartitionList
 	decommissionParallelLimit      int32
 	decommissionDiskParallelFactor float64
+	nodeSelectLock                 sync.Mutex
+	dataNodeSelectorLock           sync.RWMutex
+	dataNodeSelector               NodeSelector
+	metaNodeSelectorLock           sync.RWMutex
+	metaNodeSelector               NodeSelector
 	sync.RWMutex
 	manualDecommissionDiskList        *DecommissionDiskList
 	autoDecommissionDiskList          *DecommissionDiskList
@@ -975,9 +978,35 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		autoDecommissionDiskList:          NewDecommissionDiskList(),
 		doneDecommissionDiskListTraverse:  make(chan struct{}, 1),
 		startDecommissionDiskListTraverse: make(chan struct{}, 1),
+		dataNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
+		metaNodeSelector:                  NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
 	}
 	go ns.traverseDecommissionDisk(c)
 	return ns
+}
+
+func (ns *nodeSet) GetDataNodeSelector() string {
+	ns.dataNodeSelectorLock.RLock()
+	defer ns.dataNodeSelectorLock.RUnlock()
+	return ns.dataNodeSelector.GetName()
+}
+
+func (ns *nodeSet) SetDataNodeSelector(name string) {
+	ns.dataNodeSelectorLock.Lock()
+	defer ns.dataNodeSelectorLock.Unlock()
+	ns.dataNodeSelector = NewNodeSelector(name, DataNodeType)
+}
+
+func (ns *nodeSet) GetMetaNodeSelector() string {
+	ns.metaNodeSelectorLock.RLock()
+	defer ns.metaNodeSelectorLock.RUnlock()
+	return ns.metaNodeSelector.GetName()
+}
+
+func (ns *nodeSet) SetMetaNodeSelector(name string) {
+	ns.metaNodeSelectorLock.Lock()
+	defer ns.metaNodeSelectorLock.Unlock()
+	ns.metaNodeSelector = NewNodeSelector(name, MetaNodeType)
 }
 
 func (ns *nodeSet) metaNodeLen() (count int) {
@@ -1386,32 +1415,32 @@ func (ns *nodeSet) dataNodeCount() int {
 	return count
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
-	return getAvailHosts(ns.dataNodes, excludeHosts, replicaNum, selectDataNode)
-}
-
 // Zone stores all the zone related information
 type Zone struct {
-	name                string
-	setIndexForDataNode int
-	setIndexForMetaNode int
-	status              int
-	dataNodes           *sync.Map
-	metaNodes           *sync.Map
-	nodeSetMap          map[uint64]*nodeSet
-	nsLock              sync.RWMutex
+	name                    string
+	dataNodesetSelectorLock sync.RWMutex
+	dataNodesetSelector     NodesetSelector
+	metaNodesetSelectorLock sync.RWMutex
+	metaNodesetSelector     NodesetSelector
+	status                  int
+	dataNodes               *sync.Map
+	metaNodes               *sync.Map
+	nodeSetMap              map[uint64]*nodeSet
+	nsLock                  sync.RWMutex
+	QosIopsRLimit           uint64
+	QosIopsWLimit           uint64
+	QosFlowRLimit           uint64
+	QosFlowWLimit           uint64
+	sync.RWMutex
+}
+type zoneValue struct {
+	Name                string
 	QosIopsRLimit       uint64
 	QosIopsWLimit       uint64
 	QosFlowRLimit       uint64
 	QosFlowWLimit       uint64
-	sync.RWMutex
-}
-type zoneValue struct {
-	Name          string
-	QosIopsRLimit uint64
-	QosIopsWLimit uint64
-	QosFlowRLimit uint64
-	QosFlowWLimit uint64
+	DataNodesetSelector string
+	MetaNodesetSelector string
 }
 
 func newZone(name string) (zone *Zone) {
@@ -1420,6 +1449,8 @@ func newZone(name string) (zone *Zone) {
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
+	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeType)
+	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
 	return
 }
 
@@ -1436,13 +1467,39 @@ func printZonesName(zones []*Zone) string {
 	return str
 }
 
+func (zone *Zone) GetDataNodesetSelector() string {
+	zone.dataNodesetSelectorLock.RLock()
+	defer zone.dataNodesetSelectorLock.RUnlock()
+	return zone.dataNodesetSelector.GetName()
+}
+
+func (zone *Zone) SetDataNodesetSelector(name string) {
+	zone.dataNodesetSelectorLock.Lock()
+	defer zone.dataNodesetSelectorLock.Unlock()
+	zone.dataNodesetSelector = NewNodesetSelector(name, DataNodeType)
+}
+
+func (zone *Zone) GetMetaNodesetSelector() string {
+	zone.metaNodesetSelectorLock.RLock()
+	defer zone.metaNodesetSelectorLock.RUnlock()
+	return zone.metaNodesetSelector.GetName()
+}
+
+func (zone *Zone) SetMetaNodeSelector(name string) {
+	zone.metaNodesetSelectorLock.Lock()
+	defer zone.metaNodesetSelectorLock.Unlock()
+	zone.metaNodesetSelector = NewNodesetSelector(name, MetaNodeType)
+}
+
 func (zone *Zone) getFsmValue() *zoneValue {
 	return &zoneValue{
-		Name:          zone.name,
-		QosIopsRLimit: zone.QosIopsRLimit,
-		QosIopsWLimit: zone.QosIopsWLimit,
-		QosFlowRLimit: zone.QosFlowRLimit,
-		QosFlowWLimit: zone.QosFlowWLimit,
+		Name:                zone.name,
+		QosIopsRLimit:       zone.QosIopsRLimit,
+		QosIopsWLimit:       zone.QosIopsWLimit,
+		QosFlowRLimit:       zone.QosFlowRLimit,
+		QosFlowWLimit:       zone.QosFlowWLimit,
+		DataNodesetSelector: zone.GetDataNodesetSelector(),
+		MetaNodesetSelector: zone.GetMetaNodesetSelector(),
 	}
 }
 
@@ -1645,30 +1702,18 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
+	// we need a read lock to block the modify of nodeset selector
+	zone.dataNodesetSelectorLock.RLock()
+	defer zone.dataNodesetSelectorLock.RUnlock()
 
-	for i := 0; i < len(nset); i++ {
+	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
 
-		if zone.setIndexForDataNode >= len(nset) {
-			zone.setIndexForDataNode = 0
-		}
-
-		ns = nset[zone.setIndexForDataNode]
-		zone.setIndexForDataNode++
-
-		if containsID(excludeNodeSets, ns.ID) {
-
-			continue
-		}
-
-		if ns.canWriteForDataNode(int(replicaNum)) {
-
-			return
-		}
+	if err != nil {
+		log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
+			nset.Len(), excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateDataPartition)
+		return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
 	}
-
-	log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
-		nset.Len(), excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateDataPartition)
-	return nil, errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+	return ns, nil
 }
 
 func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
@@ -1679,24 +1724,17 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
+	// we need a read lock to block the modify of nodeset selector
+	zone.metaNodesetSelectorLock.RLock()
+	defer zone.metaNodesetSelectorLock.RUnlock()
+	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
 
-	for i := 0; i < len(nset); i++ {
-		if zone.setIndexForMetaNode >= len(nset) {
-			zone.setIndexForMetaNode = 0
-		}
-		ns = nset[zone.setIndexForMetaNode]
-		zone.setIndexForMetaNode++
-		if containsID(excludeNodeSets, ns.ID) {
-			continue
-		}
-		if ns.canWriteForMetaNode(int(replicaNum)) {
-			return
-		}
+	if err != nil {
+		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
+			zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))
+		return nil, proto.ErrNoNodeSetToCreateMetaPartition
 	}
-
-	log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
-		zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))
-	return nil, proto.ErrNoNodeSetToCreateMetaPartition
+	return ns, nil
 }
 
 func (zone *Zone) canWriteForDataNode(replicaNum uint8) (can bool) {
@@ -1858,6 +1896,22 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 	}
 
 	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
+}
+
+func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {
+	needSync := false
+	if dataNodesetSelector != "" && dataNodesetSelector != zone.GetDataNodesetSelector() {
+		needSync = true
+		zone.SetDataNodesetSelector(dataNodesetSelector)
+	}
+	if metaNodesetSelector != "" && metaNodesetSelector != zone.GetMetaNodesetSelector() {
+		needSync = true
+		zone.SetMetaNodeSelector(metaNodesetSelector)
+	}
+	if !needSync {
+		return nil
+	}
+	return cluster.sycnPutZoneInfo(zone)
 }
 
 func (zone *Zone) updateDataNodeQosLimit(cluster *Cluster, qosParam *qosArgs) error {

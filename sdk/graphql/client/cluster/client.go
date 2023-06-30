@@ -43,7 +43,6 @@ type PartitionReport struct {
 
 type metaNode struct {
 	Addr                      string
-	Carry                     float64
 	ID                        uint64
 	IsActive                  bool
 	MaxMemAvailWeight         uint64
@@ -89,7 +88,6 @@ type DataNode struct {
 	Addr                      string
 	AvailableSpace            uint64
 	BadDisks                  []string
-	Carry                     float64
 	DataPartitionCount        uint32
 	DataPartitionReports      []PartitionReport
 	ID                        uint64
