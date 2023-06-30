@@ -730,8 +730,9 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 
 func formatZoneView(zv *proto.ZoneView) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("Zone Name:   %v\n", zv.Name))
-	sb.WriteString(fmt.Sprintf("Status:      %v\n", zv.Status))
+	sb.WriteString(fmt.Sprintf("Zone Name:        %v\n", zv.Name))
+	sb.WriteString(fmt.Sprintf("Status:           %v\n", zv.Status))
+	sb.WriteString(fmt.Sprintf("Nodeset Selector: %v\n", zv.NodesetSelector))
 	sb.WriteString(fmt.Sprintf("\n"))
 	for index, ns := range zv.NodeSet {
 		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
