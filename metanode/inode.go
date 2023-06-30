@@ -312,6 +312,47 @@ func InodeMergeUnmarshal(raw []byte) (*InodeMerge, error) {
 	return im, nil
 }
 
+func (i *Inode) innerEncodeBinary(data []byte) {
+	offset := 0
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(BaseInodeKeyLen))
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], i.Inode)
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(i.Extents.Len()*proto.ExtentLength+BaseInodeValueLen+len(i.LinkTarget)))
+	offset += Uint32Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], i.Type)
+	offset += Uint32Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], i.Uid)
+	offset += Uint32Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], i.Gid)
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], i.Size)
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], i.Generation)
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(i.CreateTime))
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(i.AccessTime))
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(i.ModifyTime))
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(len(i.LinkTarget)))
+	offset += Uint32Size
+	copy(data[offset:offset+len(i.LinkTarget)], i.LinkTarget)
+	offset += len(i.LinkTarget)
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], i.NLink)
+	offset += Uint32Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(i.Flag))
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], i.Reserved)
+	offset += Uint64Size
+	i.Extents.Range(func(ek proto.ExtentKey) bool {
+		ek.EncodeBinary(data[offset : offset+proto.ExtentLength])
+		offset += proto.ExtentLength
+		return offset < len(data)
+	})
+}
+
 func (i *Inode) MarshalV2() (result []byte, err error) {
 	i.Lock()
 	defer i.Unlock()
@@ -320,44 +361,7 @@ func (i *Inode) MarshalV2() (result []byte, err error) {
 		i.Extents = se.NewSortedExtents()
 	}
 	result = make([]byte, BaseInodeLen+len(i.LinkTarget)+i.Extents.Len()*proto.ExtentLength)
-	offset := 0
-	binary.BigEndian.PutUint32(result[0:4], uint32(BaseInodeKeyLen))
-	offset += 4
-	binary.BigEndian.PutUint64(result[offset:offset+8], i.Inode)
-	offset += 8
-	binary.BigEndian.PutUint32(result[offset:offset+4], uint32(i.Extents.Len()*proto.ExtentLength+BaseInodeValueLen+len(i.LinkTarget)))
-	offset += 4
-	binary.BigEndian.PutUint32(result[offset:offset+4], i.Type)
-	offset += 4
-	binary.BigEndian.PutUint32(result[offset:offset+4], i.Uid)
-	offset += 4
-	binary.BigEndian.PutUint32(result[offset:offset+4], i.Gid)
-	offset += 4
-	binary.BigEndian.PutUint64(result[offset:offset+8], i.Size)
-	offset += 8
-	binary.BigEndian.PutUint64(result[offset:offset+8], i.Generation)
-	offset += 8
-	binary.BigEndian.PutUint64(result[offset:offset+8], uint64(i.CreateTime))
-	offset += 8
-	binary.BigEndian.PutUint64(result[offset:offset+8], uint64(i.AccessTime))
-	offset += 8
-	binary.BigEndian.PutUint64(result[offset:offset+8], uint64(i.ModifyTime))
-	offset += 8
-	binary.BigEndian.PutUint32(result[offset:offset+4], uint32(len(i.LinkTarget)))
-	offset += 4
-	copy(result[offset:offset+len(i.LinkTarget)], i.LinkTarget)
-	offset += len(i.LinkTarget)
-	binary.BigEndian.PutUint32(result[offset:offset+4], i.NLink)
-	offset += 4
-	binary.BigEndian.PutUint32(result[offset:offset+4], uint32(i.Flag))
-	offset += 4
-	binary.BigEndian.PutUint64(result[offset:offset+8], i.Reserved)
-	offset += 8
-	i.Extents.Range(func(ek proto.ExtentKey) bool {
-		ek.EncodeBinary(result[offset : offset+proto.ExtentLength])
-		offset += proto.ExtentLength
-		return offset < len(result)
-	})
+	i.innerEncodeBinary(result)
 	return result, nil
 }
 
@@ -474,6 +478,28 @@ func (i *Inode) UnmarshalValueV2(ctx context.Context, raw []byte) (err error) {
 		return
 	}
 	return nil
+}
+
+func (i *Inode) EncodeBinary(data []byte) (dataLen int, err error) {
+	i.RLock()
+	defer i.RUnlock()
+
+	if i.Extents == nil {
+		i.Extents = se.NewSortedExtents()
+	}
+	dataLen = BaseInodeLen+len(i.LinkTarget)+i.Extents.Len()*proto.ExtentLength
+	if len(data) < dataLen {
+		err = fmt.Errorf("date len %v less than inode len %v", len(data), dataLen)
+		return
+	}
+	i.innerEncodeBinary(data)
+	return
+}
+
+func (i *Inode) BinaryDataLen() int {
+	i.RLock()
+	defer i.RUnlock()
+	return BaseInodeLen+len(i.LinkTarget)+i.Extents.Len()*proto.ExtentLength
 }
 
 // Unmarshal unmarshals the inodeBatch.

@@ -5,6 +5,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
 	"time"
@@ -198,4 +199,22 @@ func TestDeletedDentry_Less2(t *testing.T) {
 		t.Errorf("den: %v, end: %v", den, end)
 		t.FailNow()
 	}
+}
+
+func TestDeletedDentry_EncodeBinary(t *testing.T) {
+	delDentryExpect := newDeletedDentry(&Dentry{
+		ParentId: 10,
+		Name:     "f1",
+		Inode:    100,
+		Type:     460,
+	}, ts, "127.0.0.1")
+	data := make([]byte, delDentryExpect.BinaryDataLen())
+	_, _ = delDentryExpect.EncodeBinary(data)
+
+	delDentry := new(DeletedDentry)
+	if err := delDentry.Unmarshal(data); err != nil {
+		t.Errorf("unmarshal failed:%v", err)
+	}
+
+	assert.Equal(t, delDentryExpect, delDentry)
 }

@@ -163,6 +163,23 @@ func TestDeletedINode_Marshal(t *testing.T) {
 	compareTestInode(dino, newdino, t)
 }
 
+func TestDeletedINode_EncodeBinary(t *testing.T) {
+	delInodeExpect := NewDeletedInode(mockINode(1), ts)
+	dataLen := delInodeExpect.BinaryDataLen()
+	data := make([]byte, dataLen)
+	if _, err := delInodeExpect.EncodeBinary(data); err != nil {
+		t.Errorf("deleted inode encode binary failed:%v", err)
+		return
+	}
+
+	delInode := new(DeletedINode)
+	if err := delInode.Unmarshal(context.Background(), data); err != nil {
+		t.Errorf("deleted inode unmarshal failed:%v", err)
+		return
+	}
+	compareTestInode(delInodeExpect, delInode, t)
+}
+
 func compareTestInode(ino1 *DeletedINode, ino2 *DeletedINode, t *testing.T) {
 	if ino1.NLink != ino2.NLink {
 		t.Errorf("ino1: %v, ino2: %v", ino1, ino2)

@@ -1,6 +1,7 @@
 package metanode
 
 import (
+	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
 )
@@ -43,4 +44,22 @@ func TestDentry_V2Marshal(t *testing.T){
 	}else{
 		t.Errorf("error: len:%d src=[%v] res=[%v] kv=[%v]\n",len(raw), d, dentryRestore, dentrgKV)
 	}
+}
+
+func TestDentry_EncodeBinary(t *testing.T) {
+	expectDentry := &Dentry{
+		ParentId: 123,
+		Name:     "dentry_test",
+		Inode:    16797219,
+		Type:     2147484141,
+	}
+	data := make([]byte, expectDentry.BinaryDataLen())
+	_, _ = expectDentry.EncodeBinary(data)
+
+	dentry := new(Dentry)
+	if err := dentry.Unmarshal(data); err != nil {
+		t.Errorf("unmarshal failed:%v", err)
+		return
+	}
+	assert.Equal(t, expectDentry, dentry)
 }

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/unit"
 	"time"
+	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -243,6 +244,10 @@ const (
 
 	defBitMapAllocatorMaxUsedFactorForAvailable = 0.9
 	defBitMapAllocatorMinFreeFactorForAvailable = 0.4
+
+	defDumpSnapPreAllocatedMemSize = 4 * unit.MB
+	Uint32Size                     = int(unsafe.Sizeof(uint32(0)))
+	Uint64Size                     = int(unsafe.Sizeof(uint64(0)))
 )
 
 const (

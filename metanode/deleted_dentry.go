@@ -10,6 +10,9 @@ import (
 )
 
 const (
+	BaseDeletedDentryLen       = 52
+	BaseDeletedDentryKeyLen    = 20
+	BaseDeletedDentryValueLen  = 24
 	DentryNameAppendTimeFormat = "20060102150405.000000"
 )
 
@@ -281,6 +284,52 @@ func (dd *DeletedDentry) UnmarshalValue(val []byte) (err error) {
 		dd.From = string(fromBytes)
 	}
 
+	return
+}
+
+func (dd *DeletedDentry) DeletedDentryKeyLen() int {
+	return BaseDeletedDentryKeyLen + len(dd.Name)
+}
+
+func (dd *DeletedDentry) DeletedDentryValueLen() int {
+	return BaseDeletedDentryValueLen + len(dd.From)
+}
+
+func (dd *DeletedDentry) BinaryDataLen() int {
+	return BaseDeletedDentryLen + len(dd.Name) + len(dd.From)
+}
+
+func (dd *DeletedDentry) EncodeBinary(data []byte) (dataLen int, err error) {
+	dataLen = dd.BinaryDataLen()
+	if len(data) < dataLen {
+		err = fmt.Errorf("data len %v less than deleted dentry len %v", len(data), dataLen)
+		return
+	}
+
+	offset := 0
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(dd.DeletedDentryKeyLen()))
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], dd.ParentId)
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(dd.Timestamp))
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(len(dd.Name)))
+	offset += Uint32Size
+	copy(data[offset:offset+len(dd.Name)], dd.Name)
+	offset += len(dd.Name)
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(dd.DeletedDentryValueLen()))
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], dd.Inode)
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], dd.Type)
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(dd.Timestamp))
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(len(dd.From)))
+	offset += Uint32Size
+	if len(dd.From) > 0 {
+		copy(data[offset:offset+len(dd.From)], dd.From)
+	}
 	return
 }
 

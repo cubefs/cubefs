@@ -5,11 +5,18 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"io"
 	"reflect"
 
 	"github.com/cubefs/cubefs/util/log"
 	se "github.com/cubefs/cubefs/util/sortedextent"
+)
+
+const (
+	BaseDeletedInodeLen      = 101
+	BaseDeletedInodeValueLen = 85
+	DeletedInodeKeyLen       = 8
 )
 
 type DeletedINodeBatch []*DeletedINode
@@ -63,6 +70,8 @@ func (di *DeletedINode) Less(than BtreeItem) bool {
 }
 
 func (di *DeletedINode) Copy() BtreeItem {
+	di.RLock()
+	defer di.RUnlock()
 	newIno := new(DeletedINode)
 	newIno.Inode.Inode = di.Inode.Inode
 	newIno.Type = di.Type
@@ -87,6 +96,8 @@ func (di *DeletedINode) Copy() BtreeItem {
 }
 
 func (di *DeletedINode) buildInode() (ino *Inode) {
+	di.RLock()
+	defer di.RUnlock()
 	ino = new(Inode)
 	ino.Inode = di.Inode.Inode
 	ino.Type = di.Type
@@ -132,6 +143,8 @@ func (di *DeletedINode) setExpired() {
 }
 
 func (di *DeletedINode) String() string {
+	di.RLock()
+	defer di.RUnlock()
 	buff := bytes.NewBuffer(nil)
 	buff.Grow(128)
 	buff.WriteString("DeletedInode{")
@@ -190,7 +203,7 @@ func (di *DeletedINode) MarshalValue() (val []byte) {
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(64)
 	di.RLock()
-	di.RUnlock()
+	defer di.RUnlock()
 	if err = binary.Write(buff, binary.BigEndian, &di.Type); err != nil {
 		panic(err)
 	}
@@ -374,6 +387,86 @@ func (di *DeletedINode) UnmarshalValue(ctx context.Context, val []byte) (err err
 		return
 	}
 
+	return
+}
+
+func (di *DeletedINode) BinaryDataLen() int {
+	di.RLock()
+	defer di.RUnlock()
+	return BaseDeletedInodeLen+len(di.LinkTarget)+di.Extents.Len()*proto.ExtentLength
+}
+
+func (di *DeletedINode) EncodeBinary(data []byte) (dataLen int, err error) {
+	di.RLock()
+	defer di.RUnlock()
+
+	dataLen = BaseDeletedInodeLen+len(di.LinkTarget)+di.Extents.Len()*proto.ExtentLength
+	if len(data) < dataLen {
+		err = fmt.Errorf("data len %v less than deleted inode len %v", len(data), dataLen)
+		return
+	}
+	di.innerEncodeBinary(data)
+	return
+}
+
+func (di *DeletedINode) innerEncodeBinary(data []byte) {
+	offset := 0
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(DeletedInodeKeyLen))
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], di.Inode.Inode)
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(di.Extents.Len()*proto.ExtentLength+BaseDeletedInodeValueLen+len(di.LinkTarget)))
+	offset += Uint32Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], di.Type)
+	offset += Uint32Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], di.Uid)
+	offset += Uint32Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], di.Gid)
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], di.Size)
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], di.Generation)
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(di.CreateTime))
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(di.AccessTime))
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(di.ModifyTime))
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(len(di.LinkTarget)))
+	offset += Uint32Size
+	copy(data[offset:offset+len(di.LinkTarget)], di.LinkTarget)
+	offset += len(di.LinkTarget)
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], di.NLink)
+	offset += Uint32Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(di.Flag))
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], di.Reserved)
+	offset += Uint64Size
+
+	var extDataLen uint32
+	if di.Extents != nil {
+		extDataLen = uint32(di.Extents.Len()*proto.ExtentLength)
+		binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], extDataLen)
+		offset += Uint32Size
+		di.Extents.Range(func(ek proto.ExtentKey) bool {
+			ek.EncodeBinary(data[offset : offset+proto.ExtentLength])
+			offset += proto.ExtentLength
+			return offset < len(data)
+		})
+	} else {
+		extDataLen = 0
+		binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], extDataLen)
+		offset += Uint32Size
+	}
+
+	binary.BigEndian.PutUint64(data[offset:offset+8], uint64(di.Timestamp))
+	offset += Uint64Size
+	if di.IsExpired {
+		data[offset]=1
+	} else {
+		data[offset]=0
+	}
 	return
 }
 

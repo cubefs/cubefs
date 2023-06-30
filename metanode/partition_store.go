@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	mmap "github.com/edsrzf/mmap-go"
 	"hash/crc32"
@@ -648,36 +649,37 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, e
 		fp.Close()
 	}()
 
-	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
+	data := make([]byte, defDumpSnapPreAllocatedMemSize)
 	if err = sm.snap.Range(InodeType, func(item interface{}) (bool, error) {
 		inode := item.(*Inode)
-		var data []byte
-		if data, err = inode.MarshalV2(); err != nil {
+		dataLen := 0
+		for retryCnt := 2; retryCnt > 0; retryCnt-- {
+			dataLen, err = inode.EncodeBinary(data[Uint32Size:])
+			if err == nil {
+				break
+			}
+			data = make([]byte, dataLen*2)
+		}
+		if err != nil {
 			return false, err
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+		binary.BigEndian.PutUint32(data[:Uint32Size], uint32(dataLen))
+		if _, err = fp.Write(data[:dataLen+Uint32Size]); err != nil {
 			return false, err
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false, err
-		}
-		// set body
-		if _, err = fp.Write(data); err != nil {
-			return false, err
-		}
-		if _, err = sign.Write(data); err != nil {
+		if _, err = sign.Write(data[:dataLen+Uint32Size]); err != nil {
 			return false, err
 		}
 		return true, nil
 	}); err != nil {
-		log.LogErrorf("storeInode: store failed:%v", err)
+		msg := fmt.Sprintf("storInode: partitionID(%v) store failed: %v", mp.config.PartitionId, err)
+		log.LogErrorf(msg)
+		exporter.WarningCritical(msg)
 		return
 	}
 	crc = sign.Sum32()
-	log.LogInfof("storeInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
+	log.LogInfof("storeInode: store complete: partitionID(%v) volume(%v) numInodes(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(InodeType), crc)
 	return
 }
@@ -694,35 +696,37 @@ func (mp *metaPartition) storeDeletedInode(rootDir string,
 		err = fp.Sync()
 		fp.Close()
 	}()
-	lenBuf := make([]byte, 4)
+	data := make([]byte, defDumpSnapPreAllocatedMemSize)
 	sign := crc32.NewIEEE()
 	if err = sm.snap.Range(DelInodeType, func(item interface{}) (bool, error) {
 		delInode := item.(*DeletedINode)
-		var data []byte
-		if data, err = delInode.Marshal(); err != nil {
+		dataLen := 0
+		for retryCnt := 2; retryCnt > 0; retryCnt-- {
+			dataLen, err = delInode.EncodeBinary(data[Uint32Size:])
+			if err == nil {
+				break
+			}
+			data = make([]byte, dataLen*2)
+		}
+		if err != nil {
 			return false, err
 		}
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+		binary.BigEndian.PutUint32(data[:Uint32Size], uint32(dataLen))
+		if _, err = fp.Write(data[:dataLen+Uint32Size]); err != nil {
 			return false, err
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false, err
-		}
-		// set body
-		if _, err = fp.Write(data); err != nil {
-			return false, err
-		}
-		if _, err = sign.Write(data); err != nil {
+		if _, err = sign.Write(data[:dataLen+Uint32Size]); err != nil {
 			return false, err
 		}
 		return true, nil
 	}); err != nil {
-		log.LogErrorf("storeDeletedInode: store failed:%v", err)
+		msg := fmt.Sprintf("storeDeletedInode: partitionID(%v) store failed: %v", mp.config.PartitionId, err)
+		log.LogErrorf(msg)
+		exporter.WarningCritical(msg)
 		return
 	}
 	crc = sign.Sum32()
-	log.LogInfof("storeDeletedInode: store complete: partitoinID(%v) volume(%v) numInodes(%v) crc(%v)",
+	log.LogInfof("storeDeletedInode: store complete: partitionID(%v) volume(%v) numInodes(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DelInodeType), crc)
 	return
 }
@@ -738,35 +742,37 @@ func (mp *metaPartition) storeDeletedDentry(rootDir string, sm *storeMsg) (crc u
 		err = fp.Sync()
 		fp.Close()
 	}()
-	lenBuf := make([]byte, 4)
+	data := make([]byte, defDumpSnapPreAllocatedMemSize)
 	sign := crc32.NewIEEE()
 	if err = sm.snap.Range(DelDentryType, func(item interface{}) (bool, error) {
 		delDentry := item.(*DeletedDentry)
-		var data []byte
-		if data, err = delDentry.Marshal(); err != nil {
+		dataLen := 0
+		for retryCnt := 2; retryCnt > 0; retryCnt-- {
+			dataLen, err = delDentry.EncodeBinary(data[Uint32Size:])
+			if err == nil {
+				break
+			}
+			data = make([]byte, dataLen*2)
+		}
+		if err != nil {
 			return false, err
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+		binary.BigEndian.PutUint32(data[:Uint32Size], uint32(dataLen))
+		if _, err = fp.Write(data[:dataLen+Uint32Size]); err != nil {
 			return false, err
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
+		if _, err = sign.Write(data[:dataLen+Uint32Size]); err != nil {
 			return false, err
-		}
-		if _, err = fp.Write(data); err != nil {
-			return false, err
-		}
-		if _, err = sign.Write(data); err != nil {
-			return false,err
 		}
 		return true, nil
 	}); err != nil {
-		log.LogErrorf("storeDeletedDentry: store failed:%v", err)
+		msg := fmt.Sprintf("storeDeletedDentry: partitionID(%v) store failed: %v", mp.config.PartitionId, err)
+		log.LogErrorf(msg)
+		exporter.WarningCritical(msg)
 		return
 	}
 	crc = sign.Sum32()
-	log.LogInfof("storeDeletedDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
+	log.LogInfof("storeDeletedDentry: store complete: partitionID(%v) volume(%v) numDentries(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DelDentryType), crc)
 	return
 }
@@ -784,35 +790,38 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		// TODO Unhandled errors
 		fp.Close()
 	}()
-	lenBuf := make([]byte, 4)
+
+	data := make([]byte, defDumpSnapPreAllocatedMemSize)
 	sign := crc32.NewIEEE()
 	if err = sm.snap.Range(DentryType, func(item interface{}) (bool, error) {
 		dentry := item.(*Dentry)
-		var data []byte
-		if data, err = dentry.MarshalV2(); err != nil {
+		dataLen := 0
+		for retryCnt := 2; retryCnt > 0; retryCnt-- {
+			dataLen, err = dentry.EncodeBinary(data[Uint32Size:])
+			if err == nil {
+				break
+			}
+			data = make([]byte, dataLen*2)
+		}
+		if err != nil {
 			return false, err
 		}
-		// set length
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
-		if _, err = fp.Write(lenBuf); err != nil {
+		binary.BigEndian.PutUint32(data[:Uint32Size], uint32(dataLen))
+		if _, err = fp.Write(data[:dataLen+Uint32Size]); err != nil {
 			return false, err
 		}
-		if _, err = sign.Write(lenBuf); err != nil {
-			return false, err
-		}
-		if _, err = fp.Write(data); err != nil {
-			return false, err
-		}
-		if _, err = sign.Write(data); err != nil {
+		if _, err = sign.Write(data[:dataLen+Uint32Size]); err != nil {
 			return false, err
 		}
 		return true, nil
 	}); err != nil {
-		log.LogErrorf("storeDentry: store failed:%v", err)
+		msg := fmt.Sprintf("storeDentry: partitionID(%v) store failed: %v", mp.config.PartitionId, err)
+		log.LogErrorf(msg)
+		exporter.WarningCritical(msg)
 		return
 	}
 	crc = sign.Sum32()
-	log.LogInfof("storeDentry: store complete: partitoinID(%v) volume(%v) numDentries(%v) crc(%v)",
+	log.LogInfof("storeDentry: store complete: partitionID(%v) volume(%v) numDentries(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DentryType), crc)
 	return
 }
