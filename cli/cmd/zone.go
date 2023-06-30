@@ -35,13 +35,15 @@ func newZoneCmd(client *sdk.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newZoneListCmd(client),
 		newZoneInfoCmd(client),
+		newZoneUpdateCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdZoneListShort = "List cluster zones"
-	cmdZoneInfoShort = "Show zone information"
+	cmdZoneListShort   = "List cluster zones"
+	cmdZoneInfoShort   = "Show zone information"
+	cmdZoneUpdateShort = "Update zone settings"
 )
 
 func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
@@ -112,5 +114,33 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			return validZones(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	return cmd
+}
+
+func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
+	enable := true
+	dataNodesetSelector := ""
+	metaNodesetSelector := ""
+	var cmd = &cobra.Command{
+		Use:   CliOpUpdate + " [NAME]",
+		Short: cmdZoneUpdateShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error: %v\n", err)
+				}
+			}()
+			zoneName := args[0]
+			if err = client.AdminAPI().UpdateZone(zoneName, enable, dataNodesetSelector, metaNodesetSelector); err != nil {
+				return
+			}
+			stdout(fmt.Sprintf("Zone %v has been update successfully!\n", zoneName))
+		},
+	}
+	cmd.Flags().BoolVar(&enable, "enable", true, "Enable of disable specify zone")
+	cmd.Flags().StringVar(&dataNodesetSelector, "dataNodesetSelector", "", "Set the nodeset select policy(datanode) for specify zone")
+	cmd.Flags().StringVar(&metaNodesetSelector, "metaNodesetSelector", "", "Set the nodeset select policy(metanode) for specify zone")
 	return cmd
 }

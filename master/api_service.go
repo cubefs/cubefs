@@ -96,9 +96,11 @@ func newNodeSetView(dataNodeLen, metaNodeLen int) *NodeSetView {
 
 // ZoneView define the view of zone
 type ZoneView struct {
-	Name    string
-	Status  string
-	NodeSet map[uint64]*NodeSetView
+	Name                string
+	Status              string
+	DataNodesetSelector string
+	MetaNodesetSelector string
+	NodeSet             map[uint64]*NodeSetView
 }
 
 func newZoneView(name string) *ZoneView {
@@ -238,6 +240,8 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
+		cv.DataNodesetSelector = zone.GetDataNodesetSelector()
+		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
 		tv.Zones = append(tv.Zones, cv)
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
@@ -276,6 +280,8 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, err := extractStatus(r)
+	dataNodeSelector := extractDataNodesetSelector(r)
+	metaNodeSelector := extractMetaNodesetSelector(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -289,6 +295,11 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		zone.setStatus(normalZone)
 	} else {
 		zone.setStatus(unavailableZone)
+	}
+	err = zone.updateNodesetSelector(m.cluster, dataNodeSelector, metaNodeSelector)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update zone status to [%v] successfully", status)))
 }
@@ -304,6 +315,8 @@ func (m *Server) listZone(w http.ResponseWriter, r *http.Request) {
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
+		cv.DataNodesetSelector = zone.GetDataNodesetSelector()
+		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
 		zoneViews = append(zoneViews, cv)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(zoneViews))
@@ -2450,7 +2463,6 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		IsWriteAble:               dataNode.isWriteAble(),
 		UsageRatio:                dataNode.UsageRatio,
 		SelectedTimes:             dataNode.SelectedTimes,
-		Carry:                     dataNode.Carry,
 		DataPartitionReports:      dataNode.DataPartitionReports,
 		DataPartitionCount:        dataNode.DataPartitionCount,
 		NodeSetID:                 dataNode.NodeSetID,
@@ -2934,7 +2946,6 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				IsWriteAble:        node.isWriteAble(),
 				UsageRatio:         node.UsageRatio,
 				SelectedTimes:      node.SelectedTimes,
-				Carry:              node.Carry,
 				DataPartitionCount: node.DataPartitionCount,
 				NodeSetID:          node.NodeSetID,
 			}
@@ -2962,7 +2973,6 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				Used:               node.Used,
 				Ratio:              node.Ratio,
 				SelectCount:        node.SelectCount,
-				Carry:              node.Carry,
 				Threshold:          node.Threshold,
 				ReportTime:         node.ReportTime,
 				MetaPartitionCount: node.MetaPartitionCount,
@@ -3872,7 +3882,6 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		Used:                      metaNode.Used,
 		Ratio:                     metaNode.Ratio,
 		SelectCount:               metaNode.SelectCount,
-		Carry:                     metaNode.Carry,
 		Threshold:                 metaNode.Threshold,
 		ReportTime:                metaNode.ReportTime,
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
