@@ -102,6 +102,19 @@ func (api *AdminAPI) ListZones() (zoneViews []*proto.ZoneView, err error) {
 	}
 	return
 }
+
+func (api *AdminAPI) UpdateZone(name string, enable bool, dataNodesetSelector string, metaNodesetSelector string) (err error) {
+	var request = newAPIRequest(http.MethodPost, proto.UpdateZone)
+	request.params["name"] = name
+	request.params["enable"] = strconv.FormatBool(enable)
+	request.params["dataNodesetSelector"] = dataNodesetSelector
+	request.params["metaNodesetSelector"] = metaNodesetSelector
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (api *AdminAPI) Topo() (topo *proto.TopologyView, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetTopologyView)

@@ -251,6 +251,8 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, err := extractStatus(r)
+	dataNodeSelector := extractDataNodesetSelector(r)
+	metaNodeSelector := extractMetaNodesetSelector(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -264,6 +266,11 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		zone.setStatus(normalZone)
 	} else {
 		zone.setStatus(unavailableZone)
+	}
+	err = zone.updateNodesetSelector(m.cluster, dataNodeSelector, metaNodeSelector)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update zone status to [%v] successfully", status)))
 }

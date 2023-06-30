@@ -1675,6 +1675,22 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 	return ns.getAvailMetaNodeHosts(excludeHosts, replicaNum)
 }
 
+func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {
+	needSync := false
+	if dataNodesetSelector != "" && dataNodesetSelector != zone.dataNodesetSelector.GetName() {
+		needSync = true
+		zone.dataNodesetSelector = NewNodesetSelector(dataNodesetSelector)
+	}
+	if metaNodesetSelector != "" && metaNodesetSelector != zone.metaNodesetSelector.GetName() {
+		needSync = true
+		zone.metaNodesetSelector = NewNodesetSelector(metaNodesetSelector)
+	}
+	if !needSync {
+		return nil
+	}
+	return cluster.sycnPutZoneInfo(zone)
+}
+
 func (zone *Zone) updateDataNodeQosLimit(cluster *Cluster, qosParam *qosArgs) error {
 	var err error
 	if qosParam.flowRVal > 0 {

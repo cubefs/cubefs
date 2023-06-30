@@ -914,6 +914,14 @@ func extractStatus(r *http.Request) (status bool, err error) {
 	return
 }
 
+func extractDataNodesetSelector(r *http.Request) string {
+	return r.FormValue(dataNodesetSelectorKey)
+}
+
+func extractMetaNodesetSelector(r *http.Request) string {
+	return r.FormValue(metaNodesetSelectorKey)
+}
+
 func extractFollowerRead(r *http.Request) (followerRead bool, exist bool, err error) {
 	var value string
 	if value = r.FormValue(followerReadKey); value == "" {
