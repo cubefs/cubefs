@@ -1,6 +1,6 @@
-# What is CubeFS
+# Introduction
 
-## Introduction
+## What is CubeFS ?
 
 CubeFS is a next-generation cloud-native storage product that is currently an incubating open-source project hosted by the [Cloud Native Computing Foundation](https://www.cncf.io/projects/cubefs/) (CNCF). It is compatible with various data access protocols such as S3, POSIX, and HDFS, and supports two storage engines - multiple replicas and erasure coding. It provides users with multiple features such as multi-tenancy, multi-AZ deployment, and cross-regional replication, and is widely used in scenarios such as big data, AI, container platforms, databases, middleware storage and computing separation, data sharing and data protection.
 
@@ -8,7 +8,7 @@ CubeFS is a next-generation cloud-native storage product that is currently an in
     <source src="https://ocs-cn-north1.heytapcs.com/cubefs/community/video1657061611.mp4" type="video/mp4">
 </video>
 
-## Features
+## Why CubeFS ?
 
 ### Multi-protocol
 
@@ -51,9 +51,9 @@ CubeFS supports multi-level caching to optimize small file access and supports m
 
 Based on the [CSI plugin](../user-guide/k8s.md), CubeFS can be quickly used on Kubernetes.
 
-## Use Cases
+## Application Scenarios
 
-As a cloud-native distributed storage platform, CubeFS provides multiple access protocols, so it has a wide range of use cases. Below are some typical use cases:
+As a cloud-native distributed storage platform, CubeFS provides multiple access protocols, so it has a wide range of use cases. Below are some typical cases:
 
 ### Big Data Analytics
 
