@@ -23,10 +23,30 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const (
-	selectDataNode = 0
-	selectMetaNode = 1
-)
+const RoundRobinNodeSelectorName = "RoundRobin"
+
+const CarryWeightNodeSelectorName = "CarryWeight"
+
+const AvailableSpaceFirstNodeSelectorName = "AvailableSpaceFirst"
+
+const DefaultNodeSelectorName = CarryWeightNodeSelectorName
+
+func (ns *nodeSet) getNodes(nodeType NodeType) *sync.Map {
+	switch nodeType {
+	case DataNodeType:
+		return ns.dataNodes
+	case MetaNodeType:
+		return ns.metaNodes
+	default:
+		panic("unknown node type")
+	}
+}
+
+type NodeSelector interface {
+	GetName() string
+
+	Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error)
+}
 
 type weightedNode struct {
 	Carry  float64
@@ -37,7 +57,6 @@ type weightedNode struct {
 
 // Node defines an interface that needs to be implemented by weightedNode
 type Node interface {
-	SetCarry(carry float64)
 	SelectNodeForWrite()
 	GetID() uint64
 	GetAddr() string
@@ -58,113 +77,140 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func (nodes SortedWeightedNodes) setNodeCarry(availCarryCount, replicaNum int) {
-	if availCarryCount >= replicaNum {
-		return
-	}
-	for availCarryCount < replicaNum {
-		availCarryCount = 0
-		for _, nt := range nodes {
-			carry := nt.Carry + nt.Weight
-			if carry > 10.0 {
-				carry = 10.0
-			}
-			nt.Carry = carry
-			nt.Ptr.SetCarry(carry)
-			if carry > 1.0 {
-				availCarryCount++
-			}
-		}
+func canAllocPartition(node interface{}, nodeType NodeType) bool {
+	switch nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		return dataNode.canAlloc() && dataNode.canAllocDp()
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		return metaNode.isWritable()
+	default:
+		panic("unknown node type")
 	}
 }
 
-func (ns *nodeSet) getMetaNodeMaxTotal() (maxTotal uint64) {
-	ns.metaNodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*MetaNode)
-		if metaNode.Total > maxTotal {
-			maxTotal = metaNode.Total
-		}
-		return true
-	})
-	return
+func getNodeAddr(node interface{}, nodeType NodeType) string {
+	switch nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		return dataNode.Addr
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		return metaNode.Addr
+	default:
+		panic("unknown node type")
+	}
 }
 
-type GetMaxTotal func(nodes *sync.Map) (maxTotal uint64)
-
-func getMetaNodeMaxTotal(metaNodes *sync.Map) (maxTotal uint64) {
-	metaNodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*MetaNode)
-		if metaNode.Total > maxTotal {
-			maxTotal = metaNode.Total
-		}
-		return true
-	})
-	return
+func selectNodeForWrite(node interface{}, nodeType NodeType) {
+	switch nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		dataNode.SelectNodeForWrite()
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		metaNode.SelectNodeForWrite()
+	default:
+		panic("unknown node type")
+	}
 }
 
-func getDataNodeMaxTotal(dataNodes *sync.Map) (maxTotal uint64) {
-	dataNodes.Range(func(key, value interface{}) bool {
+func getNodeId(node interface{}, nodeType NodeType) uint64 {
+	switch nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		return dataNode.ID
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		return metaNode.ID
+	default:
+		panic("unknown node type")
+	}
+}
+
+type CarryWeightNodeSelector struct {
+	nodeType NodeType
+
+	carry map[uint64]float64
+}
+
+func (s *CarryWeightNodeSelector) GetName() string {
+	return CarryWeightNodeSelectorName
+}
+
+func (s *CarryWeightNodeSelector) prepareCarryForDataNodes(nodes *sync.Map, total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		if dataNode.ToBeOffline == true {
-			return true
-		}
-		if dataNode.Total > maxTotal {
-			maxTotal = dataNode.Total
+		if _, ok := s.carry[dataNode.ID]; !ok {
+			// use available space to calculate initial weight
+			s.carry[dataNode.ID] = float64(dataNode.AvailableSpace) / float64(total)
 		}
 		return true
 	})
-	return
 }
 
-type GetCarryNodes func(maxTotal uint64, excludeHosts []string, nodes *sync.Map) (weightedNodes SortedWeightedNodes, availCount int)
-
-func getAllCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
-	log.LogInfof("getAllCarryMetaNodes")
-	nodes = make(SortedWeightedNodes, 0)
-	metaNodes.Range(func(key, value interface{}) bool {
-		log.LogInfof("getAllCarryMetaNodes [%v] ", key)
+func (s *CarryWeightNodeSelector) prepareCarryForMetaNodes(nodes *sync.Map, total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if contains(excludeHosts, metaNode.Addr) == true {
-			log.LogInfof("metaNode [%v] is excludeHosts", metaNode.Addr)
-			return true
+		if _, ok := s.carry[metaNode.ID]; !ok {
+			// use available space to calculate initial weight
+			s.carry[metaNode.ID] = float64(metaNode.Total-metaNode.Used) / float64(total)
 		}
-		if metaNode.isWritable() == false {
-			log.LogInfof("metaNode [%v] is not writeable", metaNode.Addr)
-			return true
-		}
-		if metaNode.isCarryNode() == true {
-			log.LogInfof("metaNode [%v] is CarryNode", metaNode.Addr)
-			availCount++
-		}
-		nt := new(weightedNode)
-		nt.Carry = metaNode.Carry
-		if metaNode.Used < 0 {
-			nt.Weight = 1.0
-		} else {
-			nt.Weight = (float64)(maxTotal-metaNode.Used) / (float64)(maxTotal)
-		}
-		nt.Ptr = metaNode
-		nodes = append(nodes, nt)
-		log.LogInfof("getAllCarryMetaNodes append [%v] ", nt.ID)
 		return true
 	})
+}
 
+func (s *CarryWeightNodeSelector) prepareCarry(nodes *sync.Map, total uint64) {
+	switch s.nodeType {
+	case DataNodeType:
+		s.prepareCarryForDataNodes(nodes, total)
+	case MetaNodeType:
+		s.prepareCarryForMetaNodes(nodes, total)
+	default:
+	}
+}
+
+func (s *CarryWeightNodeSelector) getTotalMaxForDataNodes(nodes *sync.Map) (total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(*DataNode)
+		if dataNode.Total > total {
+			total = dataNode.Total
+		}
+		return true
+	})
 	return
 }
 
-func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
+func (s *CarryWeightNodeSelector) getTotalMaxForMetaNodes(nodes *sync.Map) (total uint64) {
+	nodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if metaNode.Total > total {
+			total = metaNode.Total
+		}
+		return true
+	})
+	return
+}
+
+func (s *CarryWeightNodeSelector) getTotalMax(nodes *sync.Map) (total uint64) {
+	switch s.nodeType {
+	case DataNodeType:
+		total = s.getTotalMaxForDataNodes(nodes)
+	case MetaNodeType:
+		total = s.getTotalMaxForMetaNodes(nodes)
+	}
+	return
+}
+
+func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHosts []string, dataNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
 	nodeTabs = make(SortedWeightedNodes, 0)
 	dataNodes.Range(func(key, value interface{}) bool {
-
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) {
-			log.LogInfof("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
-			log.LogDebugf("contains return")
 			return true
 		}
 		if !dataNode.canAllocDp() {
-			log.LogInfof("dataNode [%v] is not writeable, offline %v, dpCnt %d", dataNode.Addr, dataNode.ToBeOffline, dataNode.DataPartitionCount)
-			log.LogDebugf("isWritable return")
 			return true
 		}
 
@@ -172,67 +218,116 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 			log.LogInfof("dataNode [%v] is overSold", dataNode.Addr)
 			return true
 		}
-		if dataNode.isAvailCarryNode() {
+		if s.carry[dataNode.ID] >= 1.0 {
 			availCount++
 		}
 
 		nt := new(weightedNode)
-		nt.Carry = dataNode.Carry
-
-		if dataNode.AvailableSpace < 0 {
-			nt.Weight = 0.0
-		} else {
-			nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)
-		}
-
+		nt.Carry = s.carry[dataNode.ID]
+		nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)
 		nt.Ptr = dataNode
 		nodeTabs = append(nodeTabs, nt)
-
 		return true
 	})
-
 	return
 }
 
-func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selectType int) (newHosts []string, peers []proto.Peer, err error) {
-	var (
-		maxTotalFunc      GetMaxTotal
-		getCarryNodesFunc GetCarryNodes
-	)
+func (s *CarryWeightNodeSelector) getCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
+	nodes = make(SortedWeightedNodes, 0)
+	metaNodes.Range(func(key, value interface{}) bool {
+		metaNode := value.(*MetaNode)
+		if contains(excludeHosts, metaNode.Addr) {
+			return true
+		}
+		if !metaNode.isWritable() {
+			return true
+		}
+		if s.carry[metaNode.ID] >= 1.0 {
+			availCount++
+		}
+		nt := new(weightedNode)
+		nt.Carry = s.carry[metaNode.ID]
+		nt.Weight = (float64)(maxTotal-metaNode.Used) / (float64)(maxTotal)
+		nt.Ptr = metaNode
+		nodes = append(nodes, nt)
+		return true
+	})
+	return
+}
+
+func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, excludeHosts []string) (SortedWeightedNodes, int) {
+	switch s.nodeType {
+	case DataNodeType:
+		return s.getCarryDataNodes(maxTotal, excludeHosts, nset.dataNodes)
+	case MetaNodeType:
+		return s.getCarryMetaNodes(maxTotal, excludeHosts, nset.metaNodes)
+	default:
+		panic("unknown node type")
+	}
+}
+
+func (s *CarryWeightNodeSelector) setNodeCarry(nodes SortedWeightedNodes, availCarryCount, replicaNum int) {
+	if availCarryCount >= replicaNum {
+		return
+	}
+	for availCarryCount < replicaNum {
+		availCarryCount = 0
+		for _, nt := range nodes {
+			carry := nt.Carry + nt.Weight
+			// limit the max value of weight
+			// prevent subsequent selections make node overloading
+			if carry > 10.0 {
+				carry = 10.0
+			}
+			nt.Carry = carry
+			s.carry[nt.Ptr.GetID()] = carry
+			if carry > 1.0 {
+				availCarryCount++
+			}
+		}
+	}
+}
+
+func (s *CarryWeightNodeSelector) selectNodeForWrite(node Node) {
+	node.SelectNodeForWrite()
+	// decrease node weight
+	s.carry[node.GetID()] -= 1.0
+}
+
+func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+	nodes := ns.getNodes(s.nodeType)
+	total := s.getTotalMax(nodes)
+	// prepare carry for every nodes
+	s.prepareCarry(nodes, total)
 	orderHosts := make([]string, 0)
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
+	// if replica == 0, return
 	if replicaNum == 0 {
 		return
 	}
-	switch selectType {
-	case selectDataNode:
-		maxTotalFunc = getDataNodeMaxTotal
-		getCarryNodesFunc = getAvailCarryDataNodeTab
-	case selectMetaNode:
-		maxTotalFunc = getMetaNodeMaxTotal
-		getCarryNodesFunc = getAllCarryMetaNodes
-	default:
-		return nil, nil, fmt.Errorf("invalid selectType[%v]", selectType)
-	}
-	maxTotal := maxTotalFunc(nodes)
-	weightedNodes, count := getCarryNodesFunc(maxTotal, excludeHosts, nodes)
+	// if we cannot get enough writable nodes, return error
+	weightedNodes, count := s.getCarryNodes(ns, total, excludeHosts)
 	if len(weightedNodes) < replicaNum {
 		err = fmt.Errorf("action[getAvailHosts] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			replicaNum, len(weightedNodes))
 		return
 	}
-	weightedNodes.setNodeCarry(count, replicaNum)
+	// create enough carry nodes
+	// we say a node is "carry node", whent its carry >= 1.0
+	s.setNodeCarry(weightedNodes, count, replicaNum)
+	// sort nodes by weight
 	sort.Sort(weightedNodes)
-
+	// pick first N nodes
 	for i := 0; i < replicaNum; i++ {
 		node := weightedNodes[i].Ptr
-		node.SelectNodeForWrite()
+		s.selectNodeForWrite(node)
 		orderHosts = append(orderHosts, node.GetAddr())
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
 	}
 	log.LogInfof("action[getAvailHosts] peers[%v]", peers)
+	// reshuffle for primary-backup replication
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
 		err = fmt.Errorf("action[getAvailHosts] err:%v  orderHosts is nil", err.Error())
 		return
@@ -240,6 +335,210 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	return
 }
 
+func NewCarryWeightNodeSelector(nodeType NodeType) *CarryWeightNodeSelector {
+	return &CarryWeightNodeSelector{
+		carry:    make(map[uint64]float64),
+		nodeType: nodeType,
+	}
+}
+
+type AvailableSpaceFirstNodeSelector struct {
+	nodeType NodeType
+}
+
+func (s *AvailableSpaceFirstNodeSelector) getNodeAvailableSpace(node interface{}) uint64 {
+	switch s.nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		return dataNode.AvailableSpace
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		return metaNode.Total - metaNode.Used
+	default:
+		panic("unkown node type")
+	}
+}
+
+func (s *AvailableSpaceFirstNodeSelector) GetName() string {
+	return AvailableSpaceFirstNodeSelectorName
+}
+
+func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+	newHosts = make([]string, 0)
+	peers = make([]proto.Peer, 0)
+	// if replica == 0, return
+	if replicaNum == 0 {
+		return
+	}
+	orderHosts := make([]string, 0)
+	nodes := ns.getNodes(s.nodeType)
+	sortedNodes := make([]interface{}, 0)
+	nodes.Range(func(key, value interface{}) bool {
+		sortedNodes = append(sortedNodes, value)
+		return true
+	})
+	// if we cannot get enough nodes, return error
+	if len(sortedNodes) < replicaNum {
+		err = fmt.Errorf("action[%v::getAvailHosts] no enough hosts,replicaNum:%v  MatchNodeCount:%v  ",
+			s.GetName(), replicaNum, len(sortedNodes))
+		return
+	}
+	// sort nodes by available space
+	sort.Slice(sortedNodes, func(i, j int) bool {
+		return s.getNodeAvailableSpace(sortedNodes[i]) > s.getNodeAvailableSpace(sortedNodes[j])
+	})
+	nodeIndex := 0
+	// pick first N nodes
+	for i := 0; i < replicaNum && nodeIndex < len(sortedNodes); i++ {
+		selectedIndex := len(sortedNodes)
+		// loop until we get a writable node
+		for nodeIndex < len(sortedNodes) {
+			node := sortedNodes[nodeIndex]
+			nodeIndex += 1
+			if canAllocPartition(node, s.nodeType) {
+				if excludeHosts == nil || !contains(excludeHosts, getNodeAddr(node, s.nodeType)) {
+					selectedIndex = nodeIndex - 1
+					break
+				}
+			}
+		}
+		// if we get a writable node, append it to host list
+		if selectedIndex != len(sortedNodes) {
+			node := sortedNodes[selectedIndex]
+			selectNodeForWrite(node, s.nodeType)
+			orderHosts = append(orderHosts, getNodeAddr(node, s.nodeType))
+			peer := proto.Peer{ID: getNodeId(node, s.nodeType), Addr: getNodeAddr(node, s.nodeType)}
+			peers = append(peers, peer)
+		}
+	}
+	// if we cannot get enough writable nodes, return error
+	if len(orderHosts) < replicaNum {
+		err = fmt.Errorf("action[%v::getAvailHosts] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+			s.GetName(), replicaNum, len(orderHosts))
+		return
+	}
+	log.LogInfof("action[%v::getAvailHosts] peers[%v]", s.GetName(), peers)
+	// reshuffle for primary-backup replication
+	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
+		err = fmt.Errorf("action[%v::getAvailHosts] err:%v  orderHosts is nil", s.GetName(), err.Error())
+		return
+	}
+	return
+}
+
+func NewAvailableSpaceFirstNodeSelector(nodeType NodeType) *AvailableSpaceFirstNodeSelector {
+	return &AvailableSpaceFirstNodeSelector{
+		nodeType: nodeType,
+	}
+}
+
+type RoundRobinNodeSelector struct {
+	index int
+
+	nodeType NodeType
+}
+
+func (s *RoundRobinNodeSelector) GetName() string {
+	return RoundRobinNodeSelectorName
+}
+
+func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+	newHosts = make([]string, 0)
+	peers = make([]proto.Peer, 0)
+	// if replica == 0, return
+	if replicaNum == 0 {
+		return
+	}
+	orderHosts := make([]string, 0)
+	nodes := ns.getNodes(s.nodeType)
+	sortedNodes := make([]interface{}, 0)
+	nodes.Range(func(key, value interface{}) bool {
+		sortedNodes = append(sortedNodes, value)
+		return true
+	})
+	// if we cannot get enough nodes, return error
+	if len(sortedNodes) < replicaNum {
+		err = fmt.Errorf("action[%v::getAvailHosts] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+			s.GetName(), replicaNum, len(sortedNodes))
+		return
+	}
+	// sort nodes by id, so we can get a node list that is as stable as possible
+	sort.Slice(sortedNodes, func(i, j int) bool {
+		return getNodeId(sortedNodes[i], s.nodeType) < getNodeId(sortedNodes[j], s.nodeType)
+	})
+	nodeIndex := 0
+	// pick first N nodes
+	for i := 0; i < replicaNum && nodeIndex < len(sortedNodes); i++ {
+		selectedIndex := len(sortedNodes)
+		// loop until we get a writable node
+		for nodeIndex < len(sortedNodes) {
+			node := sortedNodes[(nodeIndex+s.index)%len(sortedNodes)]
+			nodeIndex += 1
+			if canAllocPartition(node, s.nodeType) {
+				if excludeHosts == nil || !contains(excludeHosts, getNodeAddr(node, s.nodeType)) {
+					selectedIndex = nodeIndex - 1
+					break
+				}
+			}
+		}
+		// if we get a writable node, append it to host list
+		if selectedIndex != len(sortedNodes) {
+			node := sortedNodes[(selectedIndex+s.index)%len(sortedNodes)]
+			orderHosts = append(orderHosts, getNodeAddr(node, s.nodeType))
+			selectNodeForWrite(node, s.nodeType)
+			peer := proto.Peer{ID: getNodeId(node, s.nodeType), Addr: getNodeAddr(node, s.nodeType)}
+			peers = append(peers, peer)
+		}
+	}
+	// if we cannot get enough writable nodes, return error
+	if len(orderHosts) < replicaNum {
+		err = fmt.Errorf("action[%v::getAvailHosts] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+			s.GetName(), replicaNum, len(orderHosts))
+		return
+	}
+	// move the index of selector
+	s.index += nodeIndex
+	log.LogInfof("action[%v::getAvailHosts] peers[%v]", s.GetName(), peers)
+	// reshuffle for primary-backup replication
+	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
+		err = fmt.Errorf("action[%v::getAvailHosts] err:%v  orderHosts is nil", s.GetName(), err.Error())
+		return
+	}
+	return
+}
+
+func NewRoundRobinNodeSelector(nodeType NodeType) *RoundRobinNodeSelector {
+	return &RoundRobinNodeSelector{
+		nodeType: nodeType,
+	}
+}
+
+func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
+	switch name {
+	case RoundRobinNodeSelectorName:
+		return NewRoundRobinNodeSelector(nodeType)
+	case CarryWeightNodeSelectorName:
+		return NewCarryWeightNodeSelector(nodeType)
+	case AvailableSpaceFirstNodeSelectorName:
+		return NewAvailableSpaceFirstNodeSelector(nodeType)
+	}
+	return NewCarryWeightNodeSelector(nodeType)
+}
+
 func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
-	return getAvailHosts(ns.metaNodes, excludeHosts, replicaNum, selectMetaNode)
+	ns.nodeSelectLock.Lock()
+	defer ns.nodeSelectLock.Unlock()
+	// we need a read lock to block the modify of node selector
+	ns.metaNodeSelectorLock.RLock()
+	defer ns.metaNodeSelectorLock.RUnlock()
+	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum)
+}
+
+func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+	ns.nodeSelectLock.Lock()
+	defer ns.nodeSelectLock.Unlock()
+	// we need a read lock to block the modify of node selector
+	ns.dataNodeSelectorLock.Lock()
+	defer ns.dataNodeSelectorLock.Unlock()
+	return ns.dataNodeSelector.Select(ns, excludeHosts, replicaNum)
 }

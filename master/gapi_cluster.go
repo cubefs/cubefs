@@ -303,8 +303,8 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 	for _, zone := range zones {
 		cv := newZoneView(zone.name)
 		cv.Status = zone.getStatusToString()
-		cv.DataNodesetSelector = zone.dataNodesetSelector.GetName()
-		cv.MetaNodesetSelector = zone.metaNodesetSelector.GetName()
+		cv.DataNodesetSelector = zone.GetDataNodesetSelector()
+		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
 		tv.Zones = append(tv.Zones, cv)
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
@@ -403,7 +403,6 @@ func (s *ClusterService) dataNodeListTest(ctx context.Context, args struct {
 			RWMutex:        sync.RWMutex{},
 			UsageRatio:     1,
 			SelectedTimes:  2,
-			Carry:          3,
 		})
 	}
 

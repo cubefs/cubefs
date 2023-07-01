@@ -16,7 +16,6 @@ package master
 
 import (
 	"fmt"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,7 +43,6 @@ type DataNode struct {
 	sync.RWMutex              `graphql:"-"`
 	UsageRatio                float64           // used / total space
 	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
-	Carry                     float64           // carry is a factor used in cacluate the node's weight
 	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.PartitionReport
 	DataPartitionCount        uint32
@@ -75,7 +73,6 @@ type DataNode struct {
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode = new(DataNode)
-	dataNode.Carry = rand.Float64()
 	dataNode.Total = 1
 	dataNode.Addr = addr
 	dataNode.ZoneName = zoneName
@@ -212,13 +209,6 @@ func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
 	return
 }
 
-func (dataNode *DataNode) isAvailCarryNode() (ok bool) {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
-
-	return dataNode.Carry >= 1
-}
-
 func (dataNode *DataNode) GetID() uint64 {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
@@ -231,20 +221,12 @@ func (dataNode *DataNode) GetAddr() string {
 	return dataNode.Addr
 }
 
-// SetCarry implements "SetCarry" in the Node interface
-func (dataNode *DataNode) SetCarry(carry float64) {
-	dataNode.Lock()
-	defer dataNode.Unlock()
-	dataNode.Carry = carry
-}
-
 // SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
 func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.UsageRatio = float64(dataNode.Used) / float64(dataNode.Total)
 	dataNode.SelectedTimes++
-	dataNode.Carry = dataNode.Carry - 1.0
 }
 
 func (dataNode *DataNode) clean() {

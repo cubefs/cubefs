@@ -115,6 +115,10 @@ type RoundRobinNodesetSelector struct {
 }
 
 func (s *RoundRobinNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+	// sort nodesets by id, so we can get a node list that is as stable as possible
+	sort.Slice(nsc, func(i, j int) bool {
+		return nsc[i].ID < nsc[j].ID
+	})
 	for i := 0; i < len(nsc); i++ {
 
 		if s.index >= len(nsc) {
@@ -178,6 +182,7 @@ func (s *CarryWeightNodesetSelector) prepareCarry(nsc nodeSetCollection, total u
 	for _, nodeset := range nsc {
 		id := nodeset.ID
 		if _, ok := s.carrys[id]; !ok {
+			// use total available space to calculate initial weight
 			s.carrys[id] = float64(nodeset.getTotalAvailableSpaceOf(s.nodeType)) / float64(total)
 		}
 	}
@@ -185,10 +190,13 @@ func (s *CarryWeightNodesetSelector) prepareCarry(nsc nodeSetCollection, total u
 
 func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
 	total := s.getMaxTotal(nsc)
+	// prepare weight of evert nodesets
 	s.prepareCarry(nsc, total)
+	// sort nodesets by weight
 	sort.Slice(nsc, func(i, j int) bool {
 		return s.carrys[nsc[i].ID] > s.carrys[nsc[j].ID]
 	})
+	// pick the first nodeset than has N writable node
 	for i := 0; i < nsc.Len(); i++ {
 		nset := nsc[i]
 		if nset.canWriteFor(s.nodeType, int(replicaNum)) {
@@ -199,15 +207,18 @@ func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSe
 			break
 		}
 	}
+	// increase weight of other nodesets
 	for i := 1; i < nsc.Len(); i++ {
 		nset := nsc[i]
 		weight := float64(nset.getTotalAvailableSpaceOf(s.nodeType)) / float64(total)
 		s.carrys[nset.ID] += weight
+		// limit the max value of weight
 		if s.carrys[nset.ID] > 10.0 {
 			s.carrys[nset.ID] = 10.0
 		}
 	}
 	if ns != nil {
+		// deerase nodeset weight
 		s.carrys[ns.ID] -= 1.0
 		if s.carrys[ns.ID] < 0 {
 			s.carrys[ns.ID] = 0
@@ -241,9 +252,11 @@ func (s *AvailableSpaceFirstNodesetSelector) GetName() string {
 }
 
 func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+	// sort nodesets by available space
 	sort.Slice(nsc, func(i, j int) bool {
 		return nsc[i].getTotalAvailableSpaceOf(s.nodeType) > nsc[j].getTotalAvailableSpaceOf(s.nodeType)
 	})
+	// pick the first nodeset that has N writable nodes
 	for i := 0; i < nsc.Len(); i++ {
 		if nsc[i].canWriteFor(s.nodeType, int(replicaNum)) {
 			ns = nsc[i]

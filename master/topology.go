@@ -943,6 +943,11 @@ type nodeSet struct {
 	dataNodes                     *sync.Map
 	decommissionDataPartitionList *DecommissionDataPartitionList
 	decommissionParallelLimit     int32
+	nodeSelectLock                sync.Mutex
+	dataNodeSelectorLock          sync.RWMutex
+	dataNodeSelector              NodeSelector
+	metaNodeSelectorLock          sync.RWMutex
+	metaNodeSelector              NodeSelector
 	sync.RWMutex
 }
 
@@ -962,8 +967,34 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		dataNodes:                     new(sync.Map),
 		decommissionDataPartitionList: NewDecommissionDataPartitionList(c),
 		decommissionParallelLimit:     defaultDecommissionParallelLimit,
+		dataNodeSelector:              NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
+		metaNodeSelector:              NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
 	}
 	return ns
+}
+
+func (ns *nodeSet) GetDataNodeSelector() string {
+	ns.dataNodeSelectorLock.RLock()
+	defer ns.dataNodeSelectorLock.RUnlock()
+	return ns.dataNodeSelector.GetName()
+}
+
+func (ns *nodeSet) SetDataNodeSelector(name string) {
+	ns.dataNodeSelectorLock.Lock()
+	defer ns.dataNodeSelectorLock.Unlock()
+	ns.dataNodeSelector = NewNodeSelector(name, DataNodeType)
+}
+
+func (ns *nodeSet) GetMetaNodeSelector() string {
+	ns.metaNodeSelectorLock.RLock()
+	defer ns.metaNodeSelectorLock.RUnlock()
+	return ns.metaNodeSelector.GetName()
+}
+
+func (ns *nodeSet) SetMetaNodeSelector(name string) {
+	ns.metaNodeSelectorLock.Lock()
+	defer ns.metaNodeSelectorLock.Unlock()
+	ns.metaNodeSelector = NewNodeSelector(name, MetaNodeType)
 }
 
 func (ns *nodeSet) metaNodeLen() (count int) {
@@ -1219,24 +1250,22 @@ func (ns *nodeSet) dataNodeCount() int {
 	return count
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
-	return getAvailHosts(ns.dataNodes, excludeHosts, replicaNum, selectDataNode)
-}
-
 // Zone stores all the zone related information
 type Zone struct {
-	name                string
-	dataNodesetSelector NodesetSelector
-	metaNodesetSelector NodesetSelector
-	status              int
-	dataNodes           *sync.Map
-	metaNodes           *sync.Map
-	nodeSetMap          map[uint64]*nodeSet
-	nsLock              sync.RWMutex
-	QosIopsRLimit       uint64
-	QosIopsWLimit       uint64
-	QosFlowRLimit       uint64
-	QosFlowWLimit       uint64
+	name                    string
+	dataNodesetSelectorLock sync.RWMutex
+	dataNodesetSelector     NodesetSelector
+	metaNodesetSelectorLock sync.RWMutex
+	metaNodesetSelector     NodesetSelector
+	status                  int
+	dataNodes               *sync.Map
+	metaNodes               *sync.Map
+	nodeSetMap              map[uint64]*nodeSet
+	nsLock                  sync.RWMutex
+	QosIopsRLimit           uint64
+	QosIopsWLimit           uint64
+	QosFlowRLimit           uint64
+	QosFlowWLimit           uint64
 	sync.RWMutex
 }
 type zoneValue struct {
@@ -1273,6 +1302,30 @@ func printZonesName(zones []*Zone) string {
 	return str
 }
 
+func (zone *Zone) GetDataNodesetSelector() string {
+	zone.dataNodesetSelectorLock.RLock()
+	defer zone.dataNodesetSelectorLock.RUnlock()
+	return zone.dataNodesetSelector.GetName()
+}
+
+func (zone *Zone) SetDataNodesetSelector(name string) {
+	zone.dataNodesetSelectorLock.Lock()
+	defer zone.dataNodesetSelectorLock.Unlock()
+	zone.dataNodesetSelector = NewNodesetSelector(name, DataNodeType)
+}
+
+func (zone *Zone) GetMetaNodesetSelector() string {
+	zone.metaNodesetSelectorLock.RLock()
+	defer zone.metaNodesetSelectorLock.RUnlock()
+	return zone.metaNodesetSelector.GetName()
+}
+
+func (zone *Zone) SetMetaNodeSelector(name string) {
+	zone.metaNodesetSelectorLock.Lock()
+	defer zone.metaNodesetSelectorLock.Unlock()
+	zone.metaNodesetSelector = NewNodesetSelector(name, MetaNodeType)
+}
+
 func (zone *Zone) getFsmValue() *zoneValue {
 	return &zoneValue{
 		Name:                zone.name,
@@ -1280,8 +1333,8 @@ func (zone *Zone) getFsmValue() *zoneValue {
 		QosIopsWLimit:       zone.QosIopsWLimit,
 		QosFlowRLimit:       zone.QosFlowRLimit,
 		QosFlowWLimit:       zone.QosFlowWLimit,
-		DataNodesetSelector: zone.dataNodesetSelector.GetName(),
-		MetaNodesetSelector: zone.metaNodesetSelector.GetName(),
+		DataNodesetSelector: zone.GetDataNodesetSelector(),
+		MetaNodesetSelector: zone.GetMetaNodesetSelector(),
 	}
 }
 
@@ -1482,6 +1535,9 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
+	// we need a read lock to block the modify of nodeset selector
+	zone.dataNodesetSelectorLock.RLock()
+	defer zone.dataNodesetSelectorLock.RUnlock()
 
 	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
 
@@ -1501,7 +1557,9 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
-
+	// we need a read lock to block the modify of nodeset selector
+	zone.metaNodesetSelectorLock.RLock()
+	defer zone.metaNodesetSelectorLock.RUnlock()
 	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
 
 	if err != nil {
@@ -1675,13 +1733,13 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 
 func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector string, metaNodesetSelector string) error {
 	needSync := false
-	if dataNodesetSelector != "" && dataNodesetSelector != zone.dataNodesetSelector.GetName() {
+	if dataNodesetSelector != "" && dataNodesetSelector != zone.GetDataNodesetSelector() {
 		needSync = true
-		zone.dataNodesetSelector = NewNodesetSelector(dataNodesetSelector, DataNodeType)
+		zone.SetDataNodesetSelector(dataNodesetSelector)
 	}
-	if metaNodesetSelector != "" && metaNodesetSelector != zone.metaNodesetSelector.GetName() {
+	if metaNodesetSelector != "" && metaNodesetSelector != zone.GetMetaNodesetSelector() {
 		needSync = true
-		zone.metaNodesetSelector = NewNodesetSelector(metaNodesetSelector, MetaNodeType)
+		zone.SetMetaNodeSelector(metaNodesetSelector)
 	}
 	if !needSync {
 		return nil

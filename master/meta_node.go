@@ -15,7 +15,7 @@
 package master
 
 import (
-	"math/rand"
+	// "math/rand"
 	"sync"
 	"time"
 
@@ -38,7 +38,6 @@ type MetaNode struct {
 	Used                      uint64            `json:"UsedWeight"`
 	Ratio                     float64
 	SelectCount               uint64
-	Carry                     float64
 	Threshold                 float32
 	ReportTime                time.Time
 	metaPartitionInfos        []*proto.MetaPartitionReport
@@ -57,7 +56,6 @@ func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
 		Addr:     addr,
 		ZoneName: zoneName,
 		Sender:   newAdminTaskManager(addr, clusterID),
-		Carry:    rand.Float64(),
 	}
 	node.CpuUtil.Store(0)
 	return
@@ -79,19 +77,11 @@ func (metaNode *MetaNode) GetAddr() string {
 	return metaNode.Addr
 }
 
-// SetCarry implements the Node interface
-func (metaNode *MetaNode) SetCarry(carry float64) {
-	metaNode.Lock()
-	defer metaNode.Unlock()
-	metaNode.Carry = carry
-}
-
 // SelectNodeForWrite implements the Node interface
 func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 	metaNode.SelectCount++
-	metaNode.Carry = metaNode.Carry - 1.0
 }
 
 func (metaNode *MetaNode) isWritable() (ok bool) {
@@ -103,13 +93,6 @@ func (metaNode *MetaNode) isWritable() (ok bool) {
 		ok = true
 	}
 	return
-}
-
-// A carry node is the meta node whose carry is greater than one.
-func (metaNode *MetaNode) isCarryNode() (ok bool) {
-	metaNode.RLock()
-	defer metaNode.RUnlock()
-	return metaNode.Carry >= 1
 }
 
 func (metaNode *MetaNode) setNodeActive() {

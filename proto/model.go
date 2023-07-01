@@ -35,7 +35,6 @@ type MetaNodeInfo struct {
 	Used                      uint64 `json:"UsedWeight"`
 	Ratio                     float64
 	SelectCount               uint64
-	Carry                     float64
 	Threshold                 float32
 	ReportTime                time.Time
 	MetaPartitionCount        int
@@ -59,7 +58,6 @@ type DataNodeInfo struct {
 	IsWriteAble               bool
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
-	Carry                     float64 // carry is a factor used in cacluate the node's weight
 	DataPartitionReports      []*PartitionReport
 	DataPartitionCount        uint32
 	NodeSetID                 uint64
