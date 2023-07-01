@@ -1255,8 +1255,8 @@ func newZone(name string) (zone *Zone) {
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
-	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName)
-	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName)
+	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeType)
+	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
 	return
 }
 
@@ -1483,8 +1483,7 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
 
-	zone.dataNodesetSelector.SetCandidates(nset)
-	ns, err = zone.dataNodesetSelector.Select(excludeNodeSets, replicaNum, DataNodesetSelect)
+	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
 
 	if err != nil {
 		log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
@@ -1503,8 +1502,7 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
 
-	zone.metaNodesetSelector.SetCandidates(nset)
-	ns, err = zone.metaNodesetSelector.Select(excludeNodeSets, replicaNum, MetaNodesetSelect)
+	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
 
 	if err != nil {
 		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
@@ -1679,11 +1677,11 @@ func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector st
 	needSync := false
 	if dataNodesetSelector != "" && dataNodesetSelector != zone.dataNodesetSelector.GetName() {
 		needSync = true
-		zone.dataNodesetSelector = NewNodesetSelector(dataNodesetSelector)
+		zone.dataNodesetSelector = NewNodesetSelector(dataNodesetSelector, DataNodeType)
 	}
 	if metaNodesetSelector != "" && metaNodesetSelector != zone.metaNodesetSelector.GetName() {
 		needSync = true
-		zone.metaNodesetSelector = NewNodesetSelector(metaNodesetSelector)
+		zone.metaNodesetSelector = NewNodesetSelector(metaNodesetSelector, MetaNodeType)
 	}
 	if !needSync {
 		return nil

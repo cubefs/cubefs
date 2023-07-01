@@ -294,3 +294,11 @@ const (
 	volCachePrefix        = keySeparator + volNameAcronym + keySeparator
 	quotaPrefix           = keySeparator + "quota" + keySeparator
 )
+
+// selector enum
+type NodeType int
+
+const (
+	DataNodeType = NodeType(0)
+	MetaNodeType = NodeType(iota)
+)

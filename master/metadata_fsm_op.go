@@ -879,10 +879,10 @@ func (c *Cluster) loadZoneValue() (err error) {
 		zone.QosFlowWLimit = cv.QosFlowWLimit
 		zone.QosIopsRLimit = cv.QosIopsRLimit
 		if zone.dataNodesetSelector.GetName() != cv.DataNodesetSelector {
-			zone.dataNodesetSelector = NewNodesetSelector(cv.DataNodesetSelector)
+			zone.dataNodesetSelector = NewNodesetSelector(cv.DataNodesetSelector, DataNodeType)
 		}
 		if zone.metaNodesetSelector.GetName() != cv.MetaNodesetSelector {
-			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector)
+			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
 		}
 		log.LogInfof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
 			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit)
