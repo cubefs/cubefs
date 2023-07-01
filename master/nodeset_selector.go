@@ -198,12 +198,11 @@ func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSe
 	})
 	// pick the first nodeset than has N writable node
 	for i := 0; i < nsc.Len(); i++ {
-		nset := nsc[i]
-		if nset.canWriteFor(s.nodeType, int(replicaNum)) {
+		ns = nsc[i]
+		if ns.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, ns.ID) {
 			if i != 0 {
 				nsc[i], nsc[0] = nsc[0], nsc[i]
 			}
-			ns = nset
 			break
 		}
 	}
@@ -258,8 +257,8 @@ func (s *AvailableSpaceFirstNodesetSelector) Select(nsc nodeSetCollection, exclu
 	})
 	// pick the first nodeset that has N writable nodes
 	for i := 0; i < nsc.Len(); i++ {
-		if nsc[i].canWriteFor(s.nodeType, int(replicaNum)) {
-			ns = nsc[i]
+		ns = nsc[i]
+		if ns.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, ns.ID) {
 			return
 		}
 	}

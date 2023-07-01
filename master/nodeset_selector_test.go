@@ -14,7 +14,35 @@
 
 package master
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/cubefs/cubefs/util"
+)
+
+func writeNodeset(sb *strings.Builder, nset *nodeSet) {
+	sb.WriteString(fmt.Sprintf("Nodeset %v\n", nset.ID))
+	sb.WriteString(fmt.Sprintf("\tTotal Data Space:%v GB\n", nset.getDataNodeTotalSpace()/util.GB))
+	sb.WriteString(fmt.Sprintf("\tTotal Meta Space:%v GB\n", nset.getMetaNodeTotalSpace()/util.GB))
+	sb.WriteString(fmt.Sprintf("\tTotal Data Available Space:%v GB\n", nset.getDataNodeTotalAvailableSpace()/util.GB))
+	sb.WriteString(fmt.Sprintf("\tTotal Meta Available Space:%v GB\n", nset.getMetaNodeTotalAvailableSpace()/util.GB))
+}
+
+func printNodesetsOfZone(t *testing.T, zone *Zone) {
+	nsc := zone.getAllNodeSet()
+	for i := 0; i < nsc.Len(); i++ {
+		nset := nsc[i]
+		printNodeset(t, nset)
+	}
+}
+
+func printNodeset(t *testing.T, nset *nodeSet) {
+	sb := strings.Builder{}
+	writeNodeset(&sb, nset)
+	t.Logf(sb.String())
+}
 
 func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 	selectZone := testZone2
@@ -22,6 +50,7 @@ func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 	if err != nil {
 		t.Errorf("failed to get zone %v", err)
 	}
+	printNodesetsOfZone(t, zone)
 	nsc := zone.getAllNodeSet()
 	ns, err := selector.Select(nsc, nil, 1)
 	if err != nil {
@@ -33,6 +62,7 @@ func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 		t.Errorf("%v select a wrong nodeset", selector.GetName())
 	}
 	t.Logf("%v select nodeset %v", selector.GetName(), ns.ID)
+	printNodeset(t, ns)
 }
 
 func TestRoundRobinNodesetSelector(t *testing.T) {

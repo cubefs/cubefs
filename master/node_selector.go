@@ -90,40 +90,14 @@ func canAllocPartition(node interface{}, nodeType NodeType) bool {
 	}
 }
 
-func getNodeAddr(node interface{}, nodeType NodeType) string {
+func asNodeWrap(node interface{}, nodeType NodeType) Node {
 	switch nodeType {
 	case DataNodeType:
 		dataNode := node.(*DataNode)
-		return dataNode.Addr
+		return dataNode
 	case MetaNodeType:
 		metaNode := node.(*MetaNode)
-		return metaNode.Addr
-	default:
-		panic("unknown node type")
-	}
-}
-
-func selectNodeForWrite(node interface{}, nodeType NodeType) {
-	switch nodeType {
-	case DataNodeType:
-		dataNode := node.(*DataNode)
-		dataNode.SelectNodeForWrite()
-	case MetaNodeType:
-		metaNode := node.(*MetaNode)
-		metaNode.SelectNodeForWrite()
-	default:
-		panic("unknown node type")
-	}
-}
-
-func getNodeId(node interface{}, nodeType NodeType) uint64 {
-	switch nodeType {
-	case DataNodeType:
-		dataNode := node.(*DataNode)
-		return dataNode.ID
-	case MetaNodeType:
-		metaNode := node.(*MetaNode)
-		return metaNode.ID
+		return metaNode
 	default:
 		panic("unknown node type")
 	}
@@ -372,9 +346,9 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	}
 	orderHosts := make([]string, 0)
 	nodes := ns.getNodes(s.nodeType)
-	sortedNodes := make([]interface{}, 0)
+	sortedNodes := make([]Node, 0)
 	nodes.Range(func(key, value interface{}) bool {
-		sortedNodes = append(sortedNodes, value)
+		sortedNodes = append(sortedNodes, asNodeWrap(value, s.nodeType))
 		return true
 	})
 	// if we cannot get enough nodes, return error
@@ -396,7 +370,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 			node := sortedNodes[nodeIndex]
 			nodeIndex += 1
 			if canAllocPartition(node, s.nodeType) {
-				if excludeHosts == nil || !contains(excludeHosts, getNodeAddr(node, s.nodeType)) {
+				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
 				}
@@ -405,9 +379,9 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		// if we get a writable node, append it to host list
 		if selectedIndex != len(sortedNodes) {
 			node := sortedNodes[selectedIndex]
-			selectNodeForWrite(node, s.nodeType)
-			orderHosts = append(orderHosts, getNodeAddr(node, s.nodeType))
-			peer := proto.Peer{ID: getNodeId(node, s.nodeType), Addr: getNodeAddr(node, s.nodeType)}
+			node.SelectNodeForWrite()
+			orderHosts = append(orderHosts, node.GetAddr())
+			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 			peers = append(peers, peer)
 		}
 	}
@@ -451,9 +425,9 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 	}
 	orderHosts := make([]string, 0)
 	nodes := ns.getNodes(s.nodeType)
-	sortedNodes := make([]interface{}, 0)
+	sortedNodes := make([]Node, 0)
 	nodes.Range(func(key, value interface{}) bool {
-		sortedNodes = append(sortedNodes, value)
+		sortedNodes = append(sortedNodes, asNodeWrap(value, s.nodeType))
 		return true
 	})
 	// if we cannot get enough nodes, return error
@@ -464,7 +438,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 	}
 	// sort nodes by id, so we can get a node list that is as stable as possible
 	sort.Slice(sortedNodes, func(i, j int) bool {
-		return getNodeId(sortedNodes[i], s.nodeType) < getNodeId(sortedNodes[j], s.nodeType)
+		return sortedNodes[i].GetID() < sortedNodes[j].GetID()
 	})
 	nodeIndex := 0
 	// pick first N nodes
@@ -475,7 +449,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 			node := sortedNodes[(nodeIndex+s.index)%len(sortedNodes)]
 			nodeIndex += 1
 			if canAllocPartition(node, s.nodeType) {
-				if excludeHosts == nil || !contains(excludeHosts, getNodeAddr(node, s.nodeType)) {
+				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
 				}
@@ -484,9 +458,9 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 		// if we get a writable node, append it to host list
 		if selectedIndex != len(sortedNodes) {
 			node := sortedNodes[(selectedIndex+s.index)%len(sortedNodes)]
-			orderHosts = append(orderHosts, getNodeAddr(node, s.nodeType))
-			selectNodeForWrite(node, s.nodeType)
-			peer := proto.Peer{ID: getNodeId(node, s.nodeType), Addr: getNodeAddr(node, s.nodeType)}
+			orderHosts = append(orderHosts, node.GetAddr())
+			node.SelectNodeForWrite()
+			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 			peers = append(peers, peer)
 		}
 	}
