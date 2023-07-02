@@ -20,6 +20,9 @@ Here we draft the engineering roadmap of CubeFS as well as several major feature
 - User management, sharing, high-level APIs, FUSE on Android, et al. Not only in datacenters, but also for web and mobile devices. 
 
 
+## AI Search
 
+- keyword and semantic search on file names and file content
+- ChatCube
 
 
