@@ -63,4 +63,4 @@ var (
 )
 
 // SpanKindEnum represents common span types
-type SpanKindEnum ext.SpanKindEnum
+type SpanKindEnum = ext.SpanKindEnum

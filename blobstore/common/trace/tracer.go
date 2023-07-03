@@ -30,7 +30,6 @@ import (
 const (
 	defaultRootSpanName   = "defaultBlobnodeRootSpanName"
 	defaultMaxLogsPerSpan = 50
-	reqidKey              = "X-Reqid"
 )
 
 // ChildOf is the alias of opentracing.ChildOf
@@ -233,7 +232,7 @@ func StartSpanFromContextWithTraceID(ctx context.Context, operationName string, 
 // StartSpanFromHTTPHeaderSafe starts and return a Span with `operationName` and http.Request
 func StartSpanFromHTTPHeaderSafe(r *http.Request, operationName string) (Span, context.Context) {
 	spanCtx, _ := Extract(HTTPHeaders, HTTPHeadersCarrier(r.Header))
-	traceID := r.Header.Get(reqidKey)
+	traceID := r.Header.Get(RequestIDKey)
 	if traceID == "" {
 		return StartSpanFromContext(context.Background(), operationName, ext.RPCServerOption(spanCtx))
 	}

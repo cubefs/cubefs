@@ -72,5 +72,38 @@ func TestSpanPropagator(t *testing.T) {
 	_, err = defaultTexMapPropagator.Extract(HTTPHeadersCarrier(http.Header{}))
 	require.Error(t, err)
 
-	require.Equal(t, fieldKeyTraceID, GetTraceIDKey())
+	_, err = defaultTexMapPropagator.Extract(HTTPHeadersCarrier(http.Header{FieldKeySpanID: []string{"abcdefg"}}))
+	require.ErrorIs(t, err, ErrSpanContextCorrupted)
+	_, err = defaultTexMapPropagator.Extract(HTTPHeadersCarrier(http.Header{FieldKeySpanID: []string{"abcdeff"}}))
+	require.ErrorIs(t, err, ErrSpanContextCorrupted)
+
+	require.Equal(t, FieldKeyTraceID, GetTraceIDKey())
+}
+
+func TestSpanPropagateWith(t *testing.T) {
+	oldPrefixBaggage := PrefixBaggage
+	oldFieldKeyTraceID := FieldKeyTraceID
+	defer func() {
+		PrefixBaggage = oldPrefixBaggage
+		FieldKeyTraceID = oldFieldKeyTraceID
+	}()
+	PrefixBaggage = "test-bbb-"
+	FieldKeyTraceID = "xxx-traceid"
+
+	sci, err := defaultTexMapPropagator.Extract(HTTPHeadersCarrier(http.Header{
+		FieldKeySpanID: []string{"10000"},
+		"xxx-traceid":  []string{"Propagator-ID"},
+		"test-bbb-b1":  []string{"foo"},
+		"test-bbb-b2":  []string{"bar", "foo", "bar"},
+	}))
+	require.NoError(t, err)
+	sc := sci.(*SpanContext)
+
+	require.Equal(t, "Propagator-ID", sc.traceID)
+	require.Equal(t, ID(1<<16), sc.spanID)
+	require.Equal(t, 2, len(sc.baggage))
+	require.Equal(t, []string{"foo"}, sc.baggageItem("b1"))
+	require.Equal(t, []string{"bar", "foo", "bar"}, sc.baggageItem("b2"))
+
+	require.Equal(t, FieldKeyTraceID, GetTraceIDKey())
 }
