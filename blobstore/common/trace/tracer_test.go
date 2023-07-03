@@ -46,6 +46,10 @@ func TestExplicitTags(t *testing.T) {
 		"tag2K": "tag2V",
 	}
 
+	require.Equal(t, []string{"tag1K:tag1V", "tag2K:tag2V"}, tags.ToSlice())
+	_, err := tags.Marshal()
+	require.NoError(t, err)
+
 	span1 := tracer.StartSpan("testTags", tags)
 	defer span1.Finish()
 
@@ -158,7 +162,20 @@ func TestStartSpanFromHTTPHeaderSafe(t *testing.T) {
 	span, _ := StartSpanFromHTTPHeaderSafe(r, "http")
 	require.NotEqual(t, traceID, span.Context().(*SpanContext).traceID)
 
-	r.Header.Set(reqidKey, traceID)
+	r.Header.Set(RequestIDKey, traceID)
+	span, _ = StartSpanFromHTTPHeaderSafe(r, "http")
+	require.Equal(t, traceID, span.Context().(*SpanContext).traceID)
+
+	r.Header.Del(RequestIDKey)
+	oldRequestIDKey := RequestIDKey
+	defer func() {
+		RequestIDKey = oldRequestIDKey
+	}()
+	RequestIDKey = "test-rid"
+
+	span, _ = StartSpanFromHTTPHeaderSafe(r, "http")
+	require.NotEqual(t, traceID, span.Context().(*SpanContext).traceID)
+	r.Header.Set("test-rid", traceID)
 	span, _ = StartSpanFromHTTPHeaderSafe(r, "http")
 	require.Equal(t, traceID, span.Context().(*SpanContext).traceID)
 }
@@ -194,7 +211,7 @@ func TestInject(t *testing.T) {
 		}
 		return strings.ToUpper(s[:1]) + s[1:]
 	}
-	require.Equal(t, r.Header.Get(firstUpper(fieldKeyTraceID)), span1.Context().(*SpanContext).traceID)
+	require.Equal(t, r.Header.Get(firstUpper(FieldKeyTraceID)), span1.Context().(*SpanContext).traceID)
 
 	span2, ctx := StartSpanFromContext(context.Background(), "span2")
 	r = &http.Request{Header: http.Header{}}
@@ -202,6 +219,6 @@ func TestInject(t *testing.T) {
 	require.NoError(t, err)
 
 	span3, _ := StartSpanFromHTTPHeaderSafe(r, "span3")
-	require.Equal(t, r.Header.Get(firstUpper(fieldKeyTraceID)), span3.Context().(*SpanContext).traceID)
+	require.Equal(t, r.Header.Get(firstUpper(FieldKeyTraceID)), span3.Context().(*SpanContext).traceID)
 	require.Equal(t, span2.Context().(*SpanContext).traceID, span3.Context().(*SpanContext).traceID)
 }
