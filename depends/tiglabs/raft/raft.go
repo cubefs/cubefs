@@ -228,6 +228,10 @@ func (s *raft) runApply() {
 			switch cmd := apply.command.(type) {
 			case *proto.ConfChange:
 				resp, err = s.raftConfig.StateMachine.ApplyMemberChange(cmd, apply.index)
+				if cmd.Type == proto.ConfRemoveNode && err == nil {
+					s.raftFsm.mo.RemovePeer(s.raftFsm.id, cmd.Peer)
+				}
+
 			case []byte:
 				resp, err = s.raftConfig.StateMachine.Apply(cmd, apply.index)
 			}
