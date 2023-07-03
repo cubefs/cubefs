@@ -41,7 +41,7 @@ build_snappy() {
         mkdir -p ${SnappyBuildPath}
         echo "build snappy..."
         pushd ${SnappyBuildPath} >/dev/null
-        cmake ${SnappySrcPath} && make -j ${NPROC}  && echo "build snappy success" || {  echo "build snappy failed"; exit 1; }
+        cmake -DCMAKE_C_FLAGS="-w" -DCMAKE_CXX_FLAGS="-w" ${SnappySrcPath} && make -j ${NPROC}  && echo "build snappy success" || {  echo "build snappy failed"; exit 1; }
         popd >/dev/null
     fi
     cgo_cflags="${cgo_cflags} -I${SnappySrcPath}"
@@ -65,7 +65,7 @@ build_rocksdb() {
         echo "build rocksdb..."
         pushd ${RocksdbBuildPath} >/dev/null
         [ "-$LUA_PATH" != "-" ]  && unset LUA_PATH
-        make -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
+        make EXTRA_CFLAGS="-w" EXTRA_CXXFLAGS="-w" -j ${NPROC} static_lib  && echo "build rocksdb success" || {  echo "build rocksdb failed" ; exit 1; }
         popd >/dev/null
     fi
     cgo_cflags="${cgo_cflags} -I${RocksdbSrcPath}/include"

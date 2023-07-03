@@ -82,7 +82,7 @@ func (h *PingElapsedSortedHosts) GetSortedHosts() []string {
 
 func NewPingElapsedSortHosts(getHosts func() []string, getElapsed func(host string) (time.Duration, bool)) *PingElapsedSortedHosts {
 	return &PingElapsedSortedHosts{
-		getHosts: getHosts,
+		getHosts:   getHosts,
 		getElapsed: getElapsed,
 	}
 }
@@ -484,6 +484,11 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 	errMap := make(map[string]error)
 	for i := 0; i < StreamSendOverWriteMaxRetry; i++ {
 		for _, addr := range dp.Hosts {
+			ts, ok := dp.hostErrMap.Load(addr)
+			if ok && time.Now().UnixNano()-ts.(int64) <= HostErrOverwriteTimeout*1e9 {
+				log.LogWarnf("OverWrite: ignore addr(%v) reqPacket(%v)", addr, req)
+				continue
+			}
 			log.LogWarnf("OverWrite: try addr(%v) reqPacket(%v)", addr, req)
 			sc.currAddr = addr
 			err = dp.OverWriteToDataPartitionLeader(sc, req, reply)
@@ -804,7 +809,7 @@ func (dp *DataPartition) sortHostsByPingElapsed() []string {
 		var getHosts = func() []string {
 			return dp.Hosts
 		}
-		var getElapsed = func (host string) (time.Duration, bool) {
+		var getElapsed = func(host string) (time.Duration, bool) {
 			delay, ok := dp.ClientWrapper.HostsDelay.Load(host)
 			if !ok {
 				return 0, false

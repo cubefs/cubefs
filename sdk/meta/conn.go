@@ -79,7 +79,7 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		resp, needCheckRead, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 			if successAddr != "" && successAddr != addr {
-				mp.LeaderAddr=proto.NewAtomicString(successAddr)
+				mp.LeaderAddr = proto.NewAtomicString(successAddr)
 			}
 			return
 		}
@@ -108,7 +108,7 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 		resp, _, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 			if successAddr != "" && successAddr != addr {
-				mp.LeaderAddr=proto.NewAtomicString(successAddr)
+				mp.LeaderAddr = proto.NewAtomicString(successAddr)
 			}
 			return
 		}
@@ -177,6 +177,7 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 		errMap        map[int]error
 		start         time.Time
 		retryInterval time.Duration
+		failedAddr    string
 		needCheck     bool
 		j             int
 	)
@@ -191,8 +192,12 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 	start = time.Now()
 	retryInterval = SendRetryInterval
 
+	failedAddr = addr
 	for i := 0; i < SendRetryLimit; i++ {
 		for j, addr = range mp.Members {
+			if addr == failedAddr {
+				continue
+			}
 			resp, needCheck, err = mw.sendToHost(ctx, mp, req, addr)
 			if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
 				successAddr = addr

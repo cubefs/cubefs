@@ -139,15 +139,15 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		conn  *net.TCPConn
 		moved bool
 	)
-	reqPacket := common.NewCachePacket(ctx, inode, proto.OpCacheRead)
-	if err = reqPacket.MarshalDataPb(&req.CacheReadRequest); err != nil {
-		log.LogWarnf("FlashGroup Read: failed to MarshalData (%+v). err(%v)", req, err)
-		return
-	}
 	addr := fg.getFlashHost()
 	if addr == "" {
 		err = fmt.Errorf("getFlashHost failed: cannot find any available host")
 		log.LogErrorf("FlashGroup read failed: err(%v)", err)
+		return
+	}
+	reqPacket := common.NewCachePacket(ctx, inode, proto.OpCacheRead)
+	if err = reqPacket.MarshalDataPb(&req.CacheReadRequest); err != nil {
+		log.LogWarnf("FlashGroup Read: failed to MarshalData (%+v). err(%v)", req, err)
 		return
 	}
 	defer func() {
