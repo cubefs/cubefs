@@ -439,6 +439,46 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		txRbInodeTree  = NewBtree()
 		txRbDentryTree = NewBtree()
 	)
+
+	blockUntilStoreSnapshot := func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		log.LogWarnf("ApplySnapshot: start to block until store snapshot to disk, mp %d, appid %d", mp.config.PartitionId, appIndexID)
+		start := time.Now()
+
+		for {
+			select {
+			case <-ticker.C:
+				if time.Since(start) > time.Minute*20 {
+					msg := fmt.Sprintf("ApplySnapshot: wait store snapshot timeout after 20 minutes, mp %d, appId %d, storeId %d",
+						mp.config.PartitionId, appIndexID, mp.storedApplyId)
+					log.LogErrorf(msg)
+					err = fmt.Errorf(msg)
+					return
+				}
+
+				msg := fmt.Sprintf("ApplySnapshot: start check storedApplyId, mp %d appId %d, storeAppId %d, cost %s",
+					mp.config.PartitionId, appIndexID, mp.storedApplyId, time.Since(start).String())
+				if time.Since(start) > time.Minute {
+					log.LogWarnf("still block after one minute, msg %s", msg)
+				} else {
+					log.LogInfo(msg)
+				}
+
+				if mp.storedApplyId >= appIndexID {
+					log.LogWarnf("ApplySnapshot: store snapshot success, msg %s", msg)
+					return
+				}
+			case <-mp.stopC:
+				log.LogWarnf("ApplySnapshot: revice stop signal, exit now, partition(%d), applyId(%d)", mp.config.PartitionId, mp.applyID)
+				err = errors.New("server has been shutdown when block")
+				return
+			}
+		}
+
+	}
+
 	defer func() {
 		if err == io.EOF {
 			mp.applyID = appIndexID
@@ -470,6 +510,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			case mp.extReset <- struct{}{}:
 				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), txID(%v), cursor(%v)",
 					mp.config.PartitionId, mp.applyID, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), mp.config.Cursor)
+				blockUntilStoreSnapshot()
 				return
 			case <-mp.stopC:
 				log.LogWarnf("ApplySnapshot: revice stop signal, exit now, partition(%d), applyId(%d)", mp.config.PartitionId, mp.applyID)
