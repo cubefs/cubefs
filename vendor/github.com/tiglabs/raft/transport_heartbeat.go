@@ -17,6 +17,7 @@ package raft
 import (
 	"net"
 	"sync"
+	"time"
 
 	"github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
@@ -37,9 +38,18 @@ func newHeartbeatTransport(raftServer *RaftServer, config *TransportConfig) (*he
 		err      error
 	)
 
-	if listener, err = net.Listen("tcp", config.HeartbeatAddr); err != nil {
+	for i := 0; i < transportListenRetryMaxCount; i++ {
+		listener, err = net.Listen("tcp", config.HeartbeatAddr)
+		if err != nil {
+			time.Sleep(transportListenRetryInterval)
+			continue
+		}
+		break
+	}
+	if err != nil {
 		return nil, err
 	}
+
 	t := &heartbeatTransport{
 		config:     config,
 		raftServer: raftServer,

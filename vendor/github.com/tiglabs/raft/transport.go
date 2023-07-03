@@ -15,7 +15,14 @@
 package raft
 
 import (
+	"time"
+
 	"github.com/tiglabs/raft/proto"
+)
+
+const (
+	transportListenRetryMaxCount = 3
+	transportListenRetryInterval = time.Millisecond * 50
 )
 
 // Transport raft server transport

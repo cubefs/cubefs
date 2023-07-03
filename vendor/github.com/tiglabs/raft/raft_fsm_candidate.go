@@ -26,6 +26,9 @@ func (r *raftFsm) becomeCandidate() {
 	if r.state == stateLeader {
 		panic(AppPanicError(fmt.Sprintf("[raft->becomeCandidate][%v] invalid transition [leader -> candidate].", r.id)))
 	}
+	if r.maybeChangeState(UnstableState) && logger.IsEnableDebug() {
+		logger.Debug("raft[%v] change rist state to %v cause become candidate", r.id, UnstableState)
+	}
 
 	r.step = stepCandidate
 	r.reset(r.term+1, 0, false, false)
