@@ -431,6 +431,7 @@ type metaPartition struct {
 	config                 *MetaPartitionConfig
 	size                   uint64                // For partition all file size
 	applyID                uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	storedApplyId          uint64                // update after store snapshot to disk
 	dentryTree             *BTree                // btree for dentries
 	inodeTree              *BTree                // btree for inodes
 	extendTree             *BTree                // btree for inode extend (XAttr) management
@@ -914,7 +915,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
-	log.LogWarnf("metaPartition store apply %v", sm.applyIndex)
+	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
 	tmpDir := path.Join(mp.config.RootDir, snapshotDirTmp)
 	if _, err = os.Stat(tmpDir); err == nil {
 		// TODO Unhandled errors
@@ -951,7 +952,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		}
 		crcBuffer.WriteString(fmt.Sprintf("%d", crc))
 	}
-	log.LogWarnf("metaPartition store apply %v", sm.applyIndex)
+	log.LogWarnf("metaPartition %d store apply %v", mp.config.PartitionId, sm.applyIndex)
 	if err = mp.storeApplyID(tmpDir, sm); err != nil {
 		return
 	}
@@ -985,6 +986,11 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		return
 	}
 	err = os.RemoveAll(backupDir)
+	if err != nil {
+		return
+	}
+
+	mp.storedApplyId = sm.applyIndex
 	return
 }
 
