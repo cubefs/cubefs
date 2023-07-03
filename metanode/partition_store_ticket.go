@@ -54,7 +54,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		if err := mp.store(msg); err == nil {
 			// truncate raft log
 			if mp.raftPartition != nil {
-				log.LogWarnf("[startSchedule] partitionId=%d: nowAppID"+
+				log.LogWarnf("[startSchedule] start trunc, partitionId=%d: nowAppID"+
 					"=%d, applyID=%d", mp.config.PartitionId, curIndex,
 					msg.applyIndex)
 				mp.raftPartition.Truncate(curIndex)
