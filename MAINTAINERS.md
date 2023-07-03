@@ -6,11 +6,10 @@ Name | Email | Duty | Organization
 Haifeng Liu ([@bladehliu](https://github.com/bladehliu))| [bladehliu@qq.com](bladehliu@qq.com) | Project Lead, Sponsor, Software Architect | -
 Weilong Guo ([@awzhgw](https://github.com/awzhgw))| [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | - | [JD.com](https://www.jd.com/)
 Shuoran Liu ([@shuoranliu](https://github.com/shuoranliu)) | [shuoranliu@gmail.com](mailto:shuoranliu@gmail.com) | Client, SDK, Metadata, Community | [BEIKE](https://investors.ke.com/)
-Xiaochun HE ([@xiaochunhe](https://github.com/xiaochunhe)) | [626148589@qq.com](mailto:626148589@qq.com) | Client, Metadata, Data Storage, Community | [OPPO](https://www.oppo.com/en/)
+Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe)) | [626148589@qq.com](mailto:626148589@qq.com) | Client, Metadata, Data Storage, Community | [OPPO](https://www.oppo.com/en/)
 Hongyan Wang ([@jadewang198510](https://github.com/jadewang198510)) | [741773046@qq.com](mailto:741773046@qq.com) | Metadata, Data Storage, Community | [OPPO](https://www.oppo.com/en/)
 Tianjiong Zhang ([@tianjiongzhang](https://github.com/tianjiongzhang)) | [236556116@qq.com](mailto:236556116@qq.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
 Chi He([@bboyCH4](https://github.com/bboyCH4)) | [hechi1014@126.com](mailto:hechi1014@126.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
-Xiang Li ([@lixiang](https://github.com/lixiang)) | [960754123@qq.com](mailto:960754123@qq.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
 Mofei Zhang ([@mervinkid](https://github.com/mervinkid)) | [mofei2816@gmail.com](mailto:mofei2816@gmail.com) | Metadata, S3, Raft, Community | [JD.com](https://www.jd.com/)
 Hongyin Zhu ([@zhuhyc](https://github.com/zhuhyc)) | [zzhniy.163.niy@163.com](mailto:zzhniy.163.niy@163.com) | Resource Manager | [JD.com](https://www.jd.com/)
 Jianxing Zhao ([@znlstar](https://github.com/znlstar)) | [znlstar@163.com](mailto:znlstar@163.com) | Metadata | [JD.com](https://www.jd.com/)
@@ -31,13 +30,22 @@ Zhendong Li ([@lizhendong666](https://github.com/lizhendong666)) | [lizhendong66
 Xiaobo Yu ([@cessory](https://github.com/cessory)) | [yxbstorm@gmail.com](mailto:yxbstorm@gmail.com) | Blobstore, Community | [OPPO]
 Cloudstriff ([@Cloudstriff](https://github.com/Cloudstriff)) | [chenjiongwendao@qq.com](mailto:chenjiongwendao@qq.com) | Blobstore ClusterMgr, Access | [OPPO]
 Zongchao Hu ([@JasonHu520](https://github.com/JasonHu520)) | [hastyjason500@gmail.com](mailto:hastyjason500@gmail.com) | Blobstore Proxy | [OPPO]
-Qing Li ([@qingli](https://github.com/liqingqiya)) | [liqing.qiya@gmail.com](mailto:liqing.qiya@gmail.com) | Blobstore Blobnode | [OPPO]
-Zhihao Wang ([@Cresc](https://github.com/zhihao-wang)) | [wzh07@hotmail.com](mailto:liqing.qiya@gmail.com) | Blobstore Blobnode | [OPPO]
 pengtianyue ([@pengtianyue025](https://github.com/pengtianyue025)) | [pengtianyue025@gmail.com](mailto:pengtianyue025@gmail.com) | Blobstore Scheduler | [OPPO]
 slasher ([@sejust](https://github.com/sejust)) | [mcq.sejust@gmail.com](mailto:mcq.sejust@gmail.com) | Blobstore Access, Cli | [OPPO]
 Zhixiang Tang ([@xiangcai1215](https://github.com/xiangcai1215)) | [505892459@qq.com](mailto:505892459@qq.com) | Blobstore ClusterMgr, Access | [OPPO]
-
+baijiaruo ([@baijiaruo](https://github.com/baijiaruo)) | [505892459@qq.com](mailto:505892459@qq.com) | Resource Manager, Data Storage, Metadata,Community | [OPPO]
 
 [OPPO]:https://www.oppo.com/en/
 
 # Committers
+
+Name | Email | Duty | Organization
+--------|---|---|---
+Tao Li ([@tomscut](https://github.com/tomscut)) | [tomleescut@gmail.com](tomleescut@gmail.com) | Master, MetaNode , Blobstore | [BIGO] 
+Junhao Guo（[@M1eyu2018](https://github.com/M1eyu2018)）| [857037797@qq.com](857037797@qq.com) | Master, MetaNode, Client | [BIGO]
+Bingxing Liu（[@liubingxing](https://github.com/liubingxing)）| [liubbingxing@gmail.com](liubbingxing@gmail.com) | Master, MetaNode, Client | [BIGO]
+Xiang Li ([@lixiang](https://github.com/lixiang)) | [960754123@qq.com](mailto:960754123@qq.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
+Qing Li ([@qingli](https://github.com/liqingqiya)) | [liqing.qiya@gmail.com](mailto:liqing.qiya@gmail.com) | Blobstore Blobnode | [OPPO]
+Zhihao Wang ([@Cresc](https://github.com/zhihao-wang)) | [wzh07@hotmail.com](mailto:liqing.qiya@gmail.com) | Blobstore Blobnode | [OPPO]
+
+[BIGO]:https://www.bigo.tv/
