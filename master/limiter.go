@@ -35,14 +35,16 @@ func (vol *Vol) initUidSpaceManager(c *Cluster) {
 }
 
 func (uMgr *UidSpaceManager) addUid(uid uint32, size uint64) bool {
+	uMgr.Lock()
 	uMgr.uidInfo[uid] = &proto.UidSpaceInfo{
 		LimitSize: size,
 		VolName:   uMgr.volName,
 		Uid:       uid,
 		Enabled:   true,
 	}
-
 	uMgr.persist()
+	uMgr.Unlock()
+
 	uMgr.listAll()
 	return true
 }
@@ -63,11 +65,16 @@ func (uMgr *UidSpaceManager) removeUid(uid uint32) bool {
 }
 
 func (uMgr *UidSpaceManager) checkUid(uid uint32) (ok bool, uidInfo *proto.UidSpaceInfo) {
+	uMgr.RLock()
+	defer uMgr.RUnlock()
 	uidInfo, ok = uMgr.uidInfo[uid]
 	return
 }
 
 func (uMgr *UidSpaceManager) listAll() (rsp []*proto.UidSpaceInfo) {
+	uMgr.RLock()
+	defer uMgr.RUnlock()
+
 	log.LogDebugf("UidSpaceManager. listAll vol %v, info %v", uMgr.volName, len(uMgr.uidInfo))
 	for _, t := range uMgr.uidInfo {
 		log.LogDebugf("UidSpaceManager. listAll vol %v, uid %v, info %v", t.VolName, t.Uid, t)
@@ -111,6 +118,8 @@ func (uMgr *UidSpaceManager) load(c *Cluster, val []byte) (err error) {
 }
 
 func (uMgr *UidSpaceManager) getSpaceOp() (rsp []*proto.UidSpaceInfo) {
+	uMgr.RLock()
+	defer uMgr.RUnlock()
 	for _, info := range uMgr.uidInfo {
 		rsp = append(rsp, info)
 		log.LogDebugf("getSpaceOp. vol %v uid %v enabled %v", info.VolName, info.Uid, info.Limited)
