@@ -46,7 +46,15 @@ func newReplicateTransport(raftServer *RaftServer, config *TransportConfig) (*re
 		err      error
 	)
 
-	if listener, err = net.Listen("tcp", config.ReplicateAddr); err != nil {
+	for i := 0; i < transportListenRetryMaxCount; i++ {
+		listener, err = net.Listen("tcp", config.ReplicateAddr)
+		if err != nil {
+			time.Sleep(transportListenRetryInterval)
+			continue
+		}
+		break
+	}
+	if err != nil {
 		return nil, err
 	}
 	t := &replicateTransport{

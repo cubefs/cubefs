@@ -24,6 +24,9 @@ import (
 )
 
 func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
+	if r.maybeChangeState(UnstableState) && logger.IsEnableDebug() {
+		logger.Debug("raft[%v] change rist state to %v cause become follower", r.id, UnstableState)
+	}
 	r.step = stepFollower
 	r.reset(term, 0, false, false)
 	r.tick = r.tickElection

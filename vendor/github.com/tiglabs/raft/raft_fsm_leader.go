@@ -31,6 +31,9 @@ func (r *raftFsm) becomeLeader() {
 	if r.state == stateFollower {
 		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] invalid transition [follower -> leader].", r.id)))
 	}
+	if r.maybeChangeState(UnstableState) && logger.IsEnableDebug() {
+		logger.Debug("raft[%v] change rist state to %v cause become leader", r.id, UnstableState)
+	}
 	//_ = r.recoverCommit()
 	lasti := r.raftLog.lastIndex()
 	r.step = stepLeader
@@ -235,6 +238,9 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 }
 
 func (r *raftFsm) becomeElectionAck() {
+	if r.maybeChangeState(UnstableState) && logger.IsEnableDebug() {
+		logger.Debug("raft[%v] change rist state to %v cause become election ack", r.id, UnstableState)
+	}
 	r.acks = make(map[uint64]bool)
 	r.acks[r.config.NodeID] = true
 	if len(r.acks) >= r.quorum() {
