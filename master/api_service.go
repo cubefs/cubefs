@@ -274,10 +274,19 @@ func (m *Server) listNodeSets(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.GetAllNodeSets, metric, nil, nil)
 	}()
 
+	zones := m.cluster.t.getAllZones()
+
+	zoneName := r.FormValue(zoneNameKey)
+	exist := false
+
 	nodeSetStats := make([]*proto.NodeSetStat, 0)
 
-	zones := m.cluster.t.getAllZones()
 	for _, zone := range zones {
+		if zoneName != "" && zoneName != zone.name {
+			continue
+		}
+		exist = true
+
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
 			nsStat := &proto.NodeSetStat{
@@ -303,6 +312,10 @@ func (m *Server) listNodeSets(w http.ResponseWriter, r *http.Request) {
 			})
 			nodeSetStats = append(nodeSetStats, nsStat)
 		}
+	}
+	if zoneName != "" && !exist {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeZoneNotExists, Msg: fmt.Sprintf("zone [%v] not exist", zoneName)})
+		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(nodeSetStats))
 }

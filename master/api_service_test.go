@@ -1002,4 +1002,8 @@ func TestListNodeSets(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetAllNodeSets)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v", hostAddr, proto.GetAllNodeSets, testZone2)
+	fmt.Println(reqURL)
+	process(reqURL, t)
 }
