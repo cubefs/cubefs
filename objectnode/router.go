@@ -150,7 +150,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLocationAction)).
 			Methods(http.MethodGet).
 			Queries("location", "").
-			HandlerFunc(o.getBucketLocation)
+			HandlerFunc(o.getBucketLocationHandler)
 
 		// Get bucket policy
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicy.html
