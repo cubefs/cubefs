@@ -795,7 +795,6 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	retryFetchVolHATypeTimer := time.NewTimer(0)
 	retryFetchVolHATypeTimer.Stop()
 	persistDpLastUpdateTimer := time.NewTimer(time.Hour) //for persist dp lastUpdateTime
-	fixTinyExtentChTimer := time.NewTimer(time.Hour * 24)
 	var index int
 	for {
 
@@ -838,11 +837,6 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 		case <-persistDpLastUpdateTimer.C:
 			_ = dp.persistMetaDataOnly()
 			persistDpLastUpdateTimer.Reset(time.Hour)
-		case <-fixTinyExtentChTimer.C:
-			if dp.isLeader {
-				dp.ExtentStore().FixTinyExtentCh()
-			}
-			fixTinyExtentChTimer.Reset(time.Hour * 24)
 		}
 	}
 }

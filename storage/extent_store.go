@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"os"
 	"path"
 	"regexp"
@@ -141,7 +140,6 @@ type ExtentStore struct {
 	brokenTinyExtentC                 chan uint64 // broken tinyExtent channel
 	brokenTinyExtentMap               sync.Map
 	brokenTinyExtentMutex             sync.Mutex
-	lostTinyExtentsMap                sync.Map
 	blockSize                         int
 	partitionID                       uint64
 	verifyExtentFp                    *os.File
@@ -720,7 +718,6 @@ func (s *ExtentStore) GetBrokenTinyExtent() (extentID uint64, err error) {
 	select {
 	case extentID = <-s.brokenTinyExtentC:
 		s.brokenTinyExtentMap.Delete(extentID)
-		s.lostTinyExtentsMap.Delete(extentID)
 		return
 	default:
 		return 0, NoBrokenExtentError
@@ -1166,23 +1163,4 @@ func (s *ExtentStore) GetRealBlockCnt(extentID uint64) (block int64, err error) 
 	}
 	block = e.getRealBlockCnt()
 	return
-}
-
-func (s *ExtentStore) FixTinyExtentCh() {
-	lost := make([]uint64, 0)
-	s.lostTinyExtentsMap.Range(func(key, value interface{}) bool {
-		extent := key.(uint64)
-		lost = append(lost, extent)
-		return true
-	})
-	if len(lost) > 0 {
-		msg := fmt.Sprintf("partition[%v] found lost tiny extents[%v] and send to broken tiny extent chan", s.partitionID, lost)
-		exporter.Warning(msg)
-		s.SendAllToBrokenTinyExtentC(lost)
-	} else {
-		log.LogInfof("partition[%v] finish check and no lost tiny extents", s.partitionID)
-	}
-	for i := 1; i <= proto.TinyExtentCount; i++ {
-		s.lostTinyExtentsMap.Store(uint64(i), true)
-	}
 }
