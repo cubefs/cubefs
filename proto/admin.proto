@@ -237,6 +237,10 @@ message SimpleVolViewPb {
     uint32                    FinalVolStatus        = 83;
     uint32                    RenameConvertStatus   = 84;
     int64                     MarkDeleteTime        = 85;
+    bool                      RemoteCacheBoostEnable = 86;
+    string                    RemoteCacheBoostPath   = 87;
+    bool                      RemoteCacheAutoPrepare = 88;
+    int64                     RemoteCacheTTL         = 89;
 }
 
 message NodeStatInfoPb {
@@ -337,4 +341,5 @@ message ClusterViewPb {
     double                        BitMapAllocatorMinFreeFactor        = 54;
     bool                          DisableStrictVolZone                = 55;
     bool                          AutoUpdatePartitionReplicaNum       = 56;
+    repeated NodeView             FlashNodes                          = 57[(gogoproto.nullable) = false];
 }
