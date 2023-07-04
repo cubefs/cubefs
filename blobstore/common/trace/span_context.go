@@ -102,12 +102,7 @@ func (s *SpanContext) append(value string) {
 		s.baggage = map[string][]string{internalTrackLogKey: {value}}
 		return
 	}
-
-	if _, ok := s.baggage[internalTrackLogKey]; ok {
-		s.baggage[internalTrackLogKey] = append(s.baggage[internalTrackLogKey], value)
-		return
-	}
-	s.baggage[internalTrackLogKey] = []string{value}
+	s.baggage[internalTrackLogKey] = append(s.baggage[internalTrackLogKey], value)
 }
 
 func (s *SpanContext) baggageItem(key string) []string {
