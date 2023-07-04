@@ -99,8 +99,7 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var bytes []byte
-	bytes, err = ioutil.ReadAll(r.Body)
+	policyRaw, err := ioutil.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("putBucketPolicyHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		ec = &ErrorCode{
@@ -111,16 +110,30 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var policy *Policy
-	policy, err = storeBucketPolicy(bytes, vol)
+	policy, err := ParsePolicy(policyRaw)
 	if err != nil {
+		log.LogErrorf("putBucketPolicyHandler: parse policy fail: requestID(%v) policy(%v) err(%v)",
+			GetRequestID(r), string(policyRaw), err)
+		ec = &ErrorCode{
+			ErrorCode:    "InvalidPolicySyntax",
+			ErrorMessage: err.Error(),
+			StatusCode:   http.StatusBadRequest,
+		}
+		return
+	}
+	if _, err = policy.Validate(vol.name); err != nil {
+		log.LogErrorf("putBucketPolicyHandler: policy validate fail: requestID(%v) policy(%v) bucket(%v) err(%v)",
+			GetRequestID(r), policy, vol.name, err)
+		return
+	}
+	if err = storeBucketPolicy(vol, policyRaw); err != nil {
 		log.LogErrorf("putBucketPolicyHandler: store policy fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		ec = InternalErrorCode(err)
 		return
 	}
 
-	log.LogInfof("putBucketPolicyHandler: put bucket policy: requestID(%v) volume(%v) policy(%v)",
-		GetRequestID(r), param.Bucket(), policy)
+	vol.metaLoader.storePolicy(policy)
+	w.WriteHeader(http.StatusNoContent)
 
 	return
 }
@@ -137,7 +150,7 @@ func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Re
 
 	var param = ParseRequestParam(r)
 	if param.Bucket() == "" {
-		errorCode = NoSuchBucket
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume

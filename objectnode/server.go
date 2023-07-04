@@ -17,7 +17,6 @@ package objectnode
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"path"
 	"regexp"
@@ -146,8 +145,6 @@ type ObjectNode struct {
 	signatureIgnoredActions proto.Actions // signature ignored actions
 	disabledActions         proto.Actions // disabled actions
 
-	encodedRegion []byte
-
 	control common.Control
 }
 
@@ -252,8 +249,6 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 
 func (o *ObjectNode) updateRegion(region string) {
 	o.region = region
-	o.encodedRegion =
-		[]byte(fmt.Sprintf(fmt.Sprintf("<LocationConstraint>%s</LocationConstraint>", o.region)))
 }
 
 func handleStart(s common.Server, cfg *config.Config) (err error) {
