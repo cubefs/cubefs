@@ -20,8 +20,8 @@ package objectnode
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/access-policy-language-overview.html
 
 import (
+	"bytes"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"syscall"
@@ -34,7 +34,7 @@ import (
 
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/example-bucket-policies.html
 const (
-	BucketPolicyLimitSize = 20 * 1024 //Bucket policies are limited to 20KB
+	BucketPolicyLimitSize = 20 * 1024 // Bucket policies are limited to 20KB
 	maxStatementNum       = 10
 )
 
@@ -53,7 +53,7 @@ var (
 	ErrInvalidActionResourceCombination = &ErrorCode{ErrorCode: "InvalidActionResourceCombination", ErrorMessage: "Action does not apply to any resource in statement", StatusCode: http.StatusBadRequest}
 )
 
-//https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
+// https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
 
 type Policy struct {
 	Version    string      `json:"Version"`
@@ -65,34 +65,19 @@ func (p *Policy) IsEmpty() bool {
 	return len(p.Statements) == 0
 }
 
-// write bucket policy into store and update vol policy meta
-func storeBucketPolicy(bytes []byte, vol *Volume) (*Policy, error) {
-	policy := &Policy{}
-	err2 := json.Unmarshal(bytes, policy)
-	if err2 != nil {
-		log.LogErrorf("policy unmarshal err: %v", err2)
-		return nil, err2
+func ParsePolicy(data []byte) (*Policy, error) {
+	policy := new(Policy)
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(policy); err != nil {
+		return nil, err
 	}
-
-	// validate policy
-	ok, err3 := policy.Validate(vol.name)
-	if err3 != nil {
-		log.LogErrorf("policy validate err: %v", err2)
-		return nil, err3
-	}
-	if !ok {
-		return nil, errors.New("policy is invalid")
-	}
-
-	// put policy bytes into store
-	err4 := vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSPolicy, bytes)
-	if err4 != nil {
-		return nil, err4
-	}
-
-	vol.metaLoader.storePolicy(policy)
-
 	return policy, nil
+}
+
+func storeBucketPolicy(vol *Volume, policy []byte) error {
+	// put policy bytes into store
+	return vol.store.Put(vol.name, bucketRootPath, XAttrKeyOSSPolicy, policy)
 }
 
 func deleteBucketPolicy(vol *Volume) (err error) {

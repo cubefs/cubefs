@@ -41,6 +41,11 @@ func UnmarshalXMLEntity(bytes []byte, data interface{}) error {
 	return nil
 }
 
+type LocationResponse struct {
+	XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ LocationConstraint" json:"-"`
+	Location string   `xml:",chardata"`
+}
+
 type CopyObjectResult struct {
 	XMLName      xml.Name `xml:"CopyObjectResult"`
 	ETag         string   `xml:"ETag"`
