@@ -28,15 +28,28 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      - name: Find changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v37
+        with:
+          files: |
+            .github/**
+            docs/**
+            docs-zh/**
+            **.md
+
       - name: Check gofmt
+        if: steps.changed-files.outputs.only_changed != 'true'
         run: |
           docker/run_docker.sh --format
 
       - name: Unit tests
+        if: steps.changed-files.outputs.only_changed != 'true'
         run: |
           docker/run_docker.sh --test
 
       - name: Upload codecov
+        if: steps.changed-files.outputs.only_changed != 'true'
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage.txt
@@ -47,19 +60,30 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      - name: Find changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v37
+        with:
+          files: |
+            .github/**
+            docs/**
+            docs-zh/**
+            **.md
+
       - name: S3 tests
+        if: steps.changed-files.outputs.only_changed != 'true'
         run: |
           docker/run_docker.sh --s3test
 
       - name: Pack docker_data
-        if: ${{ always() }}
+        if: ${{ always() && steps.changed-files.outputs.only_changed != 'true' }}
         run: |
             pushd docker
             sudo tar --exclude='docker_data/datanode*/disk' --exclude='docker_data/disk' -czvf docker_data.tar.gz docker_data
             popd
 
       - name: Upload docker_data.tar.gz
-        if: ${{ always() }}
+        if: ${{ always() && steps.changed-files.outputs.only_changed != 'true' }}
         uses: actions/upload-artifact@v3
         with:
           name: docker_data
