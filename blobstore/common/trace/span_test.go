@@ -130,6 +130,14 @@ func TestSpan_TrackLog(t *testing.T) {
 
 	spanChild.AppendTrackLog("sleep3", time.Now(), nil)
 	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5", "sleep3"}, span.TrackLog())
+
+	msg := make([]byte, maxErrorLen+10)
+	for idx := range msg {
+		msg[idx] = 97
+	}
+	spanChild.AppendTrackLog("longError", time.Now(), errors.New(string(msg)))
+	except := "longError/" + string(msg[:maxErrorLen])
+	require.Equal(t, except, span.TrackLog()[len(span.TrackLog())-1])
 }
 
 func TestSpan_TrackLogWithDuration(t *testing.T) {
