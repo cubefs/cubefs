@@ -244,8 +244,40 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 
 // Get bucket location
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
-func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
-	_, _ = w.Write(o.encodedRegion)
+func (o *ObjectNode) getBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	param := ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+	if _, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getBucketLocationHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+
+	location := LocationResponse{Location: o.region}
+	response, err := MarshalXMLEntity(location)
+	if err != nil {
+		log.LogErrorf("getBucketLocationHandler: xml marshal fail: requestID(%v) location(%v) err(%v)",
+			GetRequestID(r), location, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/xml")
+	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
+	if _, err = w.Write(response); err != nil {
+		log.LogErrorf("getBucketLocationHandler: write response body fail: requestID(%v) body(%v) err(%v)",
+			GetRequestID(r), string(response), err)
+	}
+
 	return
 }
 
