@@ -306,11 +306,10 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	}
 	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
-	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
 	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
-		mp.extDelCh <- eks
 		return
 	}
+	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
 	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
 	mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)

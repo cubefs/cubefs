@@ -24,6 +24,38 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, inode *Inode, err error) {
+	iParm = NewInode(inodeId, 0)
+	status := mp.isOverQuota(inodeId, true, false)
+	if status != 0 {
+		log.LogErrorf("CheckQuota dir quota fail inode [%v] status [%v]", inodeId, status)
+		err = errors.New("CheckQuota dir quota is over quota")
+		reply := []byte(err.Error())
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
+
+	item := mp.inodeTree.Get(iParm)
+	if item == nil {
+		err = fmt.Errorf("inode[%v] not exist", iParm)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	inode = item.(*Inode)
+	mp.uidManager.acLock.Lock()
+	if mp.uidManager.getUidAcl(inode.Uid) {
+		log.LogWarnf("CheckQuota UidSpace.vol %v mp[%v] uid %v be set full", mp.uidManager.mpID, mp.uidManager.volName, inode.Uid)
+		mp.uidManager.acLock.Unlock()
+		status = proto.OpNoSpaceErr
+		err = errors.New("CheckQuota UidSpace is over quota")
+		reply := []byte(err.Error())
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
+	mp.uidManager.acLock.Unlock()
+	return
+}
+
 // ExtentAppend appends an extent.
 func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error) {
 	if !proto.IsHot(mp.volType) {
@@ -31,17 +63,11 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-
-	status := mp.isOverQuota(req.Inode, true, false)
-	if status != 0 {
-		log.LogErrorf("ExtentAppend fail inode [%v] status [%v]", req.Inode, status)
-		err = errors.New("ExtentAppend is over quota")
-		reply := []byte(err.Error())
-		p.PacketErrorWithBody(status, reply)
+	ino := NewInode(req.Inode, 0)
+	if _, _, err = mp.CheckQuota(req.Inode, p); err != nil {
+		log.LogErrorf("ExtentAppend fail status [%v]", err)
 		return
 	}
-
-	ino := NewInode(req.Inode, 0)
 	ext := req.Extent
 	ino.Extents.Append(ext)
 	val, err := ino.Marshal()
@@ -69,17 +95,17 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
-	ino := NewInode(req.Inode, 0)
+	var (
+		inoParm *Inode
+		i       *Inode
+	)
+	if inoParm, i, err = mp.CheckQuota(req.Inode, p); err != nil {
+		log.LogErrorf("ExtentAppendWithCheck CheckQuota fail err [%v]", err)
+		return
+	}
+
 	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
 	if proto.IsCold(mp.volType) {
-		item := mp.inodeTree.Get(ino)
-		if item == nil {
-			err = fmt.Errorf("inode[%v] not exist", ino)
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return
-		}
-		i := item.(*Inode)
-
 		i.RLock()
 		exist, idx := i.ObjExtents.FindOffsetExist(req.Extent.FileOffset)
 		if !exist {
@@ -98,13 +124,13 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	}
 
 	ext := req.Extent
-	ino.Extents.Append(ext)
+	inoParm.Extents.Append(ext)
 	//log.LogInfof("ExtentAppendWithCheck: ino(%v) ext(%v) discard(%v) eks(%v)", req.Inode, ext, req.DiscardExtents, ino.Extents.eks)
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
-		ino.Extents.eks = append(ino.Extents.eks, req.DiscardExtents...)
+		inoParm.Extents.eks = append(inoParm.Extents.eks, req.DiscardExtents...)
 	}
-	val, err := ino.Marshal()
+	val, err := inoParm.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -250,16 +276,12 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		return
 	}
 
-	status := mp.isOverQuota(req.Inode, true, false)
-	if status != 0 {
-		log.LogErrorf("BatchExtentAppend fail status [%v]", status)
-		err = errors.New("BatchExtentAppend is over quota")
-		reply := []byte(err.Error())
-		p.PacketErrorWithBody(status, reply)
+	var ino *Inode
+	if ino, _, err = mp.CheckQuota(req.Inode, p); err != nil {
+		log.LogErrorf("BatchExtentAppend fail err [%v]", err)
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
 	extents := req.Extents
 	for _, extent := range extents {
 		ino.Extents.Append(extent)
@@ -279,15 +301,13 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 }
 
 func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequest, p *Packet) (err error) {
-	status := mp.isOverQuota(req.Inode, true, false)
-	if status != 0 {
-		log.LogErrorf("BatchObjExtentAppend fail status [%v]", status)
-		err = errors.New("BatchObjExtentAppend is over quota")
-		reply := []byte(err.Error())
-		p.PacketErrorWithBody(status, reply)
+
+	var ino *Inode
+	if ino, _, err = mp.CheckQuota(req.Inode, p); err != nil {
+		log.LogErrorf("BatchObjExtentAppend fail status [%v]", err)
 		return
 	}
-	ino := NewInode(req.Inode, 0)
+
 	objExtents := req.Extents
 	for _, objExtent := range objExtents {
 		err = ino.ObjExtents.Append(objExtent)
