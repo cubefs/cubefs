@@ -1087,12 +1087,12 @@ func (s *raft) onFSMAskRollback(startIndex uint64) (n int, err error) {
 	}
 
 	var needRollbackEntries = filterNeedRollbackEntries(entries)
-	if num := len(needRollbackEntries); num > 0 {
+	if n = len(needRollbackEntries); n > 0 {
 		var (
 			from = needRollbackEntries[0].Index
-			to   = needRollbackEntries[num-1]
+			to   = needRollbackEntries[n-1].Index
 		)
-		for i := 0; i < num; i++ {
+		for i := 0; i < n; i++ {
 			var ent = needRollbackEntries[i]
 			var respond respondFunc = nil
 			if pending, exists := s.pending[ent.Index]; exists {
@@ -1113,7 +1113,7 @@ func (s *raft) onFSMAskRollback(startIndex uint64) (n int, err error) {
 			respond: nil,
 		}
 		if logger.IsEnableWarn() {
-			logger.Warn("raft[%v] prepare ask rollback for normal entries [from: %v, to: %v, num: %v]", s.raftConfig.ID, from, to, num)
+			logger.Warn("raft[%v] prepare ask rollback for normal entries [from: %v, to: %v, num: %v]", s.raftConfig.ID, from, to, n)
 		}
 	}
 	return
