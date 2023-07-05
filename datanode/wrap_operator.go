@@ -167,7 +167,6 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		return
 	}
 	err = partition.ExtentStore().Create(p.ExtentID, true)
-	partition.lastUpdateTime = time.Now().Unix()
 	return
 }
 
@@ -367,7 +366,6 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		p.PacketOkReply()
 	}
 
-	partition.lastUpdateTime = time.Now().Unix()
 	partition.monitorData[proto.ActionMarkDelete].UpdateData(0)
 	return
 }
@@ -399,7 +397,6 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		p.PacketOkReply()
 	}
 
-	partition.lastUpdateTime = time.Now().Unix()
 	partition.monitorData[proto.ActionBatchMarkDelete].UpdateData(uint64(len(exts)))
 	return
 }
@@ -454,7 +451,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			offset += currSize
 		}
 	}
-	partition.lastUpdateTime = time.Now().Unix()
 	s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 	return
 }
@@ -484,7 +480,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		return
 	}
 
-	partition.lastUpdateTime = time.Now().Unix()
 	if err == nil && p.ResultCode != proto.OpOk {
 		err = storage.TryAgainError
 		return

@@ -42,7 +42,12 @@ var (
 	RegexpDataPartitionDir, _ = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
 )
 
-const ExpiredPartitionPrefix = "expired_"
+const (
+	ExpiredPartitionPrefix = "expired_"
+
+	LatestFlushTimeFile     = "LATEST_FLUSH"
+	TempLatestFlushTimeFile = ".LATEST_FLUSH"
+)
 
 type FDLimit struct {
 	MaxFDLimit      uint64  // 触发强制FD淘汰策略的阈值
@@ -82,6 +87,8 @@ type Disk struct {
 	fdLimit FDLimit
 
 	forceFlushFDParallelism uint64 // 控制Flush文件句柄的并发度
+
+	latestFlushTimeOnInit int64 // Disk 实例初始化时加载到的该磁盘最近一次Flush数据的时间
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -101,8 +108,8 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, 
 	d.forceFlushFDParallelism = DefaultForceFlushFDParallelismOnDisk
 	d.computeUsage()
 	d.updateSpaceInfo()
+	d.latestFlushTimeOnInit, _ = d.loadLatestFlushTime()
 	d.startScheduler()
-	d.startFlushFPScheduler()
 	return
 }
 
@@ -513,7 +520,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 				}
 				partitionFullPath := path.Join(d.Path, filename)
 				startTime := time.Now()
-				if partition, loadErr = LoadDataPartition(partitionFullPath, d); loadErr != nil {
+				if partition, loadErr = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit); loadErr != nil {
 					msg := fmt.Sprintf("load partition(%v) failed: %v",
 						partitionFullPath, loadErr)
 					log.LogError(msg)
@@ -554,6 +561,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 	}()
 
 	loadWaitGroup.Wait()
+	d.startFlushFPScheduler()
 }
 
 // RestoreOnePartition restores the data partition.
@@ -602,7 +610,7 @@ func (d *Disk) RestoreOnePartition(visitor PartitionVisitor, partitionPath strin
 	}
 
 	startTime := time.Now()
-	if partition, err = LoadDataPartition(partitionFullPath, d); err != nil {
+	if partition, err = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit); err != nil {
 		msg := fmt.Sprintf("load partition(%v) failed: %v",
 			partitionFullPath, err)
 		log.LogError(msg)
@@ -729,8 +737,10 @@ func (d *Disk) evictExpiredExtentDeleteCache() {
 }
 
 func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
-	log.LogDebugf("action[forcePersistPartitions] disk(%v) partition count(%v) begin",
-		d.Path, len(partitions))
+	if log.IsDebugEnabled() {
+		log.LogDebugf("action[forcePersistPartitions] disk(%v) partition count(%v) begin",
+			d.Path, len(partitions))
+	}
 	pChan := make(chan *DataPartition, len(partitions))
 	for _, dp := range partitions {
 		pChan <- dp
@@ -744,6 +754,7 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 	if log.IsDebugEnabled() {
 		log.LogDebugf("disk[%v] start to force persist partitions [parallelism: %v]", d.Path, parallelism)
 	}
+	var flushTime = time.Now()
 	for i := uint64(0); i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
@@ -764,6 +775,53 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 	}
 	wg.Wait()
 	close(pChan)
-	log.LogDebugf("action[forcePersistPartitions] disk(%v) partition count(%v),failed count(%v) end",
-		d.Path, len(partitions), atomic.LoadInt64(&failedCount))
+	if atomic.LoadInt64(&failedCount) == 0 {
+		if err := d.persistLatestFlushTime(flushTime.Unix()); err != nil {
+			log.LogErrorf("disk[%v] persist latest flush time failed: %v", d.Path, err)
+		}
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("disk[%v] flush partitions: %v/%v, elapsed %v",
+			d.Path, len(partitions)-int(atomic.LoadInt64(&failedCount)), len(partitions), time.Now().Sub(flushTime))
+	}
+}
+
+func (d *Disk) persistLatestFlushTime(unix int64) (err error) {
+
+	tmpFilename := path.Join(d.Path, TempLatestFlushTimeFile)
+	tmpFile, err := os.OpenFile(tmpFilename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFilename)
+	}()
+	if _, err = tmpFile.WriteString(fmt.Sprintf("%d", unix)); err != nil {
+		return
+	}
+	if err = tmpFile.Sync(); err != nil {
+		return
+	}
+	err = os.Rename(tmpFilename, path.Join(d.Path, LatestFlushTimeFile))
+	log.LogInfof("disk[%v] persist latest flush time [unix: %v]", d.Path, unix)
+	return
+}
+
+func (d *Disk) loadLatestFlushTime() (unix int64, err error) {
+	var filename = path.Join(d.Path, LatestFlushTimeFile)
+	var (
+		fileBytes []byte
+	)
+	if fileBytes, err = ioutil.ReadFile(filename); err != nil {
+		if os.IsNotExist(err) {
+			err = nil
+		}
+		return
+	}
+	if _, err = fmt.Sscanf(string(fileBytes), "%d", &unix); err != nil {
+		err = nil
+		return
+	}
+	return
 }

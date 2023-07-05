@@ -53,8 +53,6 @@ const (
 	ApplyIndexFile                = "APPLY"
 	TempApplyIndexFile            = ".apply"
 	TimeLayout                    = "2006-01-02 15:04:05"
-	LatestFlushTimeFile           = "LATEST_FLUSH"
-	TempLatestFlushTimeFile       = ".LATEST_FLUSH"
 )
 
 type FaultOccurredCheckLevel uint8
@@ -76,7 +74,6 @@ type DataPartitionMetadata struct {
 	Learners                []proto.Learner
 	DataPartitionCreateType int
 	LastTruncateID          uint64
-	LastUpdateTime          int64
 	VolumeHAType            proto.CrossRegionHAType
 	ConsistencyMode         proto.ConsistencyMode
 
@@ -99,7 +96,6 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 			reflect.DeepEqual(md.Learners, other.Learners) &&
 			md.DataPartitionCreateType == other.DataPartitionCreateType &&
 			md.LastTruncateID == other.LastTruncateID &&
-			md.LastUpdateTime == other.LastUpdateTime &&
 			md.VolumeHAType == other.VolumeHAType) &&
 			md.IsCatchUp == other.IsCatchUp &&
 			md.NeedServerFaultCheck == other.NeedServerFaultCheck &&
@@ -251,7 +247,6 @@ type DataPartition struct {
 	loadExtentHeaderStatus        int
 	FullSyncTinyDeleteTime        int64
 	lastSyncTinyDeleteTime        int64
-	lastUpdateTime                int64
 	DataPartitionCreateType       int
 
 	monitorData []*statistics.MonitorData
@@ -295,10 +290,9 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 
 	// persist file metadata
 	dp.DataPartitionCreateType = request.CreateType
-	dp.lastUpdateTime = time.Now().Unix()
 	err = dp.persistMetaDataOnly()
 	disk.AddSize(uint64(dp.Size()))
-	if err = dp.initIssueProcessor(); err != nil {
+	if err = dp.initIssueProcessor(0); err != nil {
 		return
 	}
 	return
@@ -335,7 +329,7 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
-func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
+func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int64) (dp *DataPartition, err error) {
 	var (
 		metaFileData []byte
 	)
@@ -368,7 +362,6 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
 	}
-	dp.lastUpdateTime = meta.LastUpdateTime
 	// dp.PersistMetadata()
 	disk.space.AttachPartition(dp)
 
@@ -396,16 +389,16 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.persistedApplied = appliedID
 	dp.persistedMetadata = meta
 	dp.maybeUpdateFaultOccurredCheckLevel()
-	if err = dp.initIssueProcessor(); err != nil {
+	if err = dp.initIssueProcessor(latestFlushTimeUnix); err != nil {
 		return
 	}
 	return
 }
 
-func (dp *DataPartition) initIssueProcessor() (err error) {
+func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err error) {
 	var fragments []*IssueFragment
 	if dp.needServerFaultCheck {
-		if fragments, err = dp.scanIssueFragments(); err != nil {
+		if fragments, err = dp.scanIssueFragments(latestFlushTimeUnix); err != nil {
 			return
 		}
 	}
@@ -1034,7 +1027,6 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		if err != nil {
 			continue
 		}
-		dp.lastUpdateTime = time.Now().Unix()
 		//info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
 		info := storage.ExtentInfoBlock{storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
 		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
@@ -1368,18 +1360,14 @@ func (dp *DataPartition) ChangeCreateType(createType int) (err error) {
 	return
 }
 
-func (dp *DataPartition) scanIssueFragments() (fragments []*IssueFragment, err error) {
-	var unixTS int64
-	if unixTS, err = dp.readLatestFlushTime(); err != nil {
-		return
-	}
-	if unixTS == 0 {
+func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragments []*IssueFragment, err error) {
+	if latestFlushTimeUnix == 0 {
 		return
 	}
 	// 触发所有Extent必要元信息的加载或等待异步加载结束以在接下来的处理可以获得存储引擎中所有Extent的准确元信息。
 	dp.extentStore.Load()
 
-	var latestFlushTime = time.Unix(unixTS, 0)
+	var latestFlushTime = time.Unix(latestFlushTimeUnix, 0)
 	var safetyTime = latestFlushTime.Add(-time.Second)
 	// 对存储引擎中的所有数据块进行过滤，将有数据(Size > 0)且修改时间晚于最近一次Flush的Extent过滤出来进行接下来的检查和修复。
 	dp.extentStore.WalkExtentsInfo(func(info *storage.ExtentInfoBlock) {

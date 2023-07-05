@@ -37,8 +37,6 @@ func (dp *DataPartition) persist(status *WALApplyStatus) (err error) {
 	var release = dp.lockPersist()
 	defer release()
 
-	var flushTime = time.Now()
-
 	if status == nil {
 		status = dp.applyStatus.Snap()
 	}
@@ -56,10 +54,6 @@ func (dp *DataPartition) persist(status *WALApplyStatus) (err error) {
 	}
 
 	if err = dp.persistMetadata(status); err != nil {
-		return
-	}
-
-	if err = dp.persistLatestFlushTime(flushTime.Unix()); err != nil {
 		return
 	}
 
@@ -126,9 +120,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	tempFileName := path.Join(dp.path, TempMetadataFileName)
 
 	var metadata = new(DataPartitionMetadata)
-	if originData, err := ioutil.ReadFile(originFileName); err == nil {
-		_ = json.Unmarshal(originData, metadata)
-	}
+
 	sp := sortedPeers(dp.config.Peers)
 	sort.Sort(sp)
 	metadata.VolumeID = dp.config.VolName
@@ -139,7 +131,6 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	metadata.Learners = dp.config.Learners
 	metadata.DataPartitionCreateType = dp.DataPartitionCreateType
 	metadata.VolumeHAType = dp.config.VolHAType
-	metadata.LastUpdateTime = dp.lastUpdateTime
 	metadata.IsCatchUp = dp.isCatchUp
 	metadata.NeedServerFaultCheck = dp.needServerFaultCheck
 	metadata.ConsistencyMode = dp.config.Mode
@@ -182,46 +173,6 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	}
 	dp.persistedMetadata = metadata
 	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(newData))
-	return
-}
-
-func (dp *DataPartition) persistLatestFlushTime(unix int64) (err error) {
-
-	tmpFilename := path.Join(dp.Path(), TempLatestFlushTimeFile)
-	tmpFile, err := os.OpenFile(tmpFilename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0755)
-	if err != nil {
-		return
-	}
-	defer func() {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpFilename)
-	}()
-	if _, err = tmpFile.WriteString(fmt.Sprintf("%d", unix)); err != nil {
-		return
-	}
-	if err = tmpFile.Sync(); err != nil {
-		return
-	}
-	err = os.Rename(tmpFilename, path.Join(dp.Path(), LatestFlushTimeFile))
-	log.LogInfof("dp(%v) persistLatestFlushTime to (%v)", dp.partitionID, unix)
-	return
-}
-
-func (dp *DataPartition) readLatestFlushTime() (unix int64, err error) {
-	var filename = path.Join(dp.Path(), LatestFlushTimeFile)
-	var (
-		fileBytes []byte
-	)
-	if fileBytes, err = ioutil.ReadFile(filename); err != nil {
-		if os.IsNotExist(err) {
-			err = nil
-		}
-		return
-	}
-	if _, err = fmt.Sscanf(string(fileBytes), "%d", &unix); err != nil {
-		err = nil
-		return
-	}
 	return
 }
 
