@@ -12,7 +12,7 @@ Please refer to the release notes for the upgrade steps of each version.
 ```
 $ cfs-cli cluster freeze true
 ```
-
++ During the freeze period, new data partitions cannot be created for the volume, but it does not affect ongoing business processes.
 ## Notes
 - Confirm the startup configuration file and do not change important information such as the data directory and port in the configuration file.
     - For other parameter modifications in the configuration file, refer to the configuration instructions, release notes, etc.
