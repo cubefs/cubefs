@@ -40,6 +40,7 @@ type VolVarargs struct {
 	dpReplicaNum            uint8
 	enablePosixAcl          bool
 	dpReadOnlyWhenVolFull   bool
+	enableQuota             bool
 	enableTransaction       uint8
 	txTimeout               int64
 	txConflictRetryNum      int64
@@ -104,6 +105,7 @@ type Vol struct {
 	uidSpaceManager         *UidSpaceManager
 	volLock                 sync.RWMutex
 	quotaManager            *MasterQuotaManager
+	enableQuota             bool
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -132,6 +134,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.defaultPriority = vv.DefaultPriority
 	vol.domainId = vv.DomainId
 	vol.enablePosixAcl = vv.EnablePosixAcl
+	vol.enableQuota = vv.EnableQuota
 	vol.enableTransaction = vv.EnableTransaction
 	vol.txTimeout = vv.TxTimeout
 	vol.txConflictRetryNum = vv.TxConflictRetryNum
@@ -1222,6 +1225,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.authenticate = args.authenticate
 	vol.enablePosixAcl = args.enablePosixAcl
 	vol.DpReadOnlyWhenVolFull = args.dpReadOnlyWhenVolFull
+	vol.enableQuota = args.enableQuota
 	vol.enableTransaction = args.enableTransaction
 	vol.txTimeout = args.txTimeout
 	vol.txConflictRetryNum = args.txConflictRetryNum
@@ -1271,6 +1275,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		dpSelectorName:          vol.dpSelectorName,
 		dpSelectorParm:          vol.dpSelectorParm,
 		enablePosixAcl:          vol.enablePosixAcl,
+		enableQuota:             vol.enableQuota,
 		dpReplicaNum:            vol.dpReplicaNum,
 		enableTransaction:       vol.enableTransaction,
 		txTimeout:               vol.txTimeout,

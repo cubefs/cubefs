@@ -164,7 +164,7 @@ func (d Dentry) String() string {
 }
 
 // CreateInodeRequest defines the request to create an inode.
-type CreateInodeRequest struct {
+type QuotaCreateInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Mode        uint32   `json:"mode"`
@@ -172,6 +172,15 @@ type CreateInodeRequest struct {
 	Gid         uint32   `json:"gid"`
 	Target      []byte   `json:"tgt"`
 	QuotaIds    []uint32 `json:"qids"`
+}
+
+type CreateInodeRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Mode        uint32 `json:"mode"`
+	Uid         uint32 `json:"uid"`
+	Gid         uint32 `json:"gid"`
+	Target      []byte `json:"tgt"`
 }
 
 // CreateInodeResponse defines the response to the request of creating an inode.
@@ -336,7 +345,7 @@ type BatchEvictInodeRequest struct {
 }
 
 // CreateDentryRequest defines the request to create a dentry.
-type CreateDentryRequest struct {
+type QuotaCreateDentryRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	ParentID    uint64   `json:"pino"`
@@ -345,6 +354,16 @@ type CreateDentryRequest struct {
 	Mode        uint32   `json:"mode"`
 	QuotaIds    []uint32 `json:"qids"`
 }
+
+type CreateDentryRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	ParentID    uint64 `json:"pino"`
+	Inode       uint64 `json:"ino"`
+	Name        string `json:"name"`
+	Mode        uint32 `json:"mode"`
+}
+
 type TxPack interface {
 	GetInfo() string
 }

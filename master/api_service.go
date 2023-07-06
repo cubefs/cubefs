@@ -1841,6 +1841,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.txConflictRetryNum = req.txConflictRetryNum
 	newArgs.txConflictRetryInterval = req.txConflictRetryInterval
 	newArgs.txOpLimit = req.txOpLimit
+	newArgs.enableQuota = req.enableQuota
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
@@ -2184,6 +2185,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Capacity:                vol.Capacity,
 		FollowerRead:            vol.FollowerRead,
 		EnablePosixAcl:          vol.enablePosixAcl,
+		EnableQuota:             vol.enableQuota,
 		EnableTransaction:       proto.GetMaskString(vol.enableTransaction),
 		TxTimeout:               vol.txTimeout,
 		TxConflictRetryNum:      vol.txConflictRetryNum,
