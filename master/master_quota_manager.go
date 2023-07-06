@@ -210,31 +210,6 @@ func (mqMgr *MasterQuotaManager) deleteQuota(quotaId uint32) (err error) {
 	return
 }
 
-func (mqMgr *MasterQuotaManager) getQuotaInfoById(quotaId uint32) (quotaInfo *proto.QuotaInfo, err error) {
-	var isFind bool
-	mqMgr.RLock()
-	defer mqMgr.RUnlock()
-	if quotaInfo, isFind = mqMgr.IdQuotaInfoMap[quotaId]; isFind {
-		err = nil
-		return
-	} else {
-		err = errors.New("quota is exist.")
-	}
-	return
-}
-
-func (mqMgr *MasterQuotaManager) DeleteQuotaInfoById(quotaId uint32) {
-	mqMgr.Lock()
-	defer mqMgr.Unlock()
-
-	_, isFind := mqMgr.IdQuotaInfoMap[quotaId]
-	if isFind {
-		delete(mqMgr.IdQuotaInfoMap, quotaId)
-		log.LogInfof("DeleteQuotaInfoById delete quotaId [%v] success.", quotaId)
-	}
-	return
-}
-
 func (mqMgr *MasterQuotaManager) quotaUpdate(report *proto.MetaPartitionReport) {
 	var (
 		quotaInfo = &proto.QuotaInfo{}

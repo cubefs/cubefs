@@ -114,9 +114,6 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 	ino := NewInode(extend.GetInode(), 0)
 	item := inodeTree.Get(ino)
 	if item == nil {
-		_, isleader := mp.IsLeader()
-		log.LogDebugf("statisticExtendByStore mp [%v] leader [%v] inode [%v] is not exist.",
-			mp.config.PartitionId, isleader, extend.GetInode())
 		return
 	}
 	ino = item.(*Inode)
@@ -248,7 +245,7 @@ handleRsp:
 
 func (mp *metaPartition) getInodeQuotaIds(inode uint64) (quotaIds []uint32, err error) {
 	log.LogInfof("getInodeQuotaIds mp [%v] treeLen[%v]", mp.config.PartitionId, mp.extendTree.Len())
-	treeItem := mp.extendTree.CopyGet(NewExtend(inode))
+	treeItem := mp.extendTree.Get(NewExtend(inode))
 	if treeItem == nil {
 		return
 	}
@@ -290,12 +287,12 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
 	if treeItem == nil {
-		e = NewExtend(extend.inode)
-		mp.extendTree.ReplaceOrInsert(e, true)
+		mp.extendTree.ReplaceOrInsert(extend, true)
 	} else {
 		e = treeItem.(*Extend)
+		e.Merge(extend, true)
 	}
-	e.Merge(extend, true)
+
 	log.LogInfof("setInodeQuota Inode [%v] quota [%v] success.", inode, quotaIds)
 	return
 }
