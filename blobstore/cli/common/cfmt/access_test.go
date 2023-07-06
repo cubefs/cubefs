@@ -51,13 +51,13 @@ func TestParseLocation(t *testing.T) {
 		},
 	}
 
-	locx, err := cfmt.ParseLocation("")
+	_, err := cfmt.ParseLocation("")
 	require.Error(t, err)
 
 	_, err = cfmt.ParseLocation("xxxx")
 	require.Error(t, err)
 
-	locx, err = cfmt.ParseLocation("{}")
+	locx, err := cfmt.ParseLocation("{}")
 	require.NoError(t, err)
 	require.Equal(t, access.Location{}, locx)
 

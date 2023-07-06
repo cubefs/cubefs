@@ -462,7 +462,7 @@ func TestServerResponseWith(t *testing.T) {
 		resp := resp(router).ToResponse()
 		require.Equal(t, 204, resp.StatusCode)
 
-		err := ParseData(resp, nil)
+		err := parseData(resp, nil)
 		require.Error(t, err)
 	}
 	{
@@ -474,12 +474,12 @@ func TestServerResponseWith(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		var r marshalData
-		err := ParseData(resp, &r)
+		err := parseData(resp, &r)
 		require.NoError(t, err)
 		require.Equal(t, "rab oof", r.S)
 
 		resp.Body = io.NopCloser(bytes.NewBuffer(nil))
-		err = ParseData(resp, &r)
+		err = parseData(resp, &r)
 		require.Error(t, err)
 	}
 	{
@@ -491,7 +491,7 @@ func TestServerResponseWith(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		var r marshalToData
-		err := ParseData(resp, &r)
+		err := parseData(resp, &r)
 		require.NoError(t, err)
 		require.Equal(t, "oof rab", r.S)
 	}
@@ -504,7 +504,7 @@ func TestServerResponseWith(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		var r marshalToData
-		err := ParseData(resp, &r)
+		err := parseData(resp, &r)
 		require.Error(t, err)
 	}
 }

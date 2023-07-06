@@ -260,11 +260,7 @@ func (s *idcStorage) allocFromBlobNodeStorages(ctx context.Context, count int, t
 
 	for _, diskInfo := range excludes {
 		diskInfo.lock.RLock()
-		if excludeHosts == nil {
-			excludeHosts = map[string]bool{diskInfo.info.Host: true}
-		} else {
-			excludeHosts[diskInfo.info.Host] = true
-		}
+		excludeHosts[diskInfo.info.Host] = true
 		diskInfo.lock.RUnlock()
 	}
 
