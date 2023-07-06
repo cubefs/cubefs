@@ -159,6 +159,7 @@ const (
 // NewExtentClient returns a new extent client.
 func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
+	client.stopC = make(chan struct{})
 
 	if dataState != nil {
 		client.dataWrapper = RebuildDataPartitionWrapper(config.Volume, config.Masters, dataState)
@@ -233,7 +234,6 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	}
 	client.maxExtentNumPerAlignArea = config.MaxExtentNumPerAlignArea
 	client.forceAlignMerge = config.ForceAlignMerge
-	client.stopC = make(chan struct{})
 
 	client.extentMerge = config.ExtentMerge
 	if client.extentMerge {

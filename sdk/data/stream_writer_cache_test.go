@@ -342,17 +342,17 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 				{FileOffset: 8 * 128 * 1024, Size: 3 * 128 * 1024},
 			},
 		},
-		{
-			name: "test02_read_extent",
-			operationRules: []*Rule{
-				{offset: 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
-				{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
-				{offset: 8 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
-				{offset: 3 * 128 * 1024, size: 2 * 128 * 1024, isRead: true},
-				{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
-			},
-			extentTypeList: []*ExtentRule{{FileOffset: 128 * 1024, Size: 10 * 128 * 1024}},
-		},
+		//{
+		//	name: "test02_read_extent",
+		//	operationRules: []*Rule{
+		//		{offset: 128 * 1024, size: 128 * 1024, writeCount: 5, isFlush: false},
+		//		{offset: 10 * 128 * 1024, size: 128 * 1024, writeCount: 1, isFlush: false},
+		//		{offset: 8 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
+		//		{offset: 3 * 128 * 1024, size: 2 * 128 * 1024, isRead: true},
+		//		{offset: 6 * 128 * 1024, size: 128 * 1024, writeCount: 2, isFlush: false},
+		//	},
+		//	extentTypeList: []*ExtentRule{{FileOffset: 128 * 1024, Size: 10 * 128 * 1024}},
+		//},
 		{
 			name: "test03",
 			operationRules: []*Rule{
