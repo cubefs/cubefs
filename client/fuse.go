@@ -23,8 +23,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/cubefs/cubefs/blockcache/bcache"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"io/ioutil"
 	syslog "log"
 	"net"
@@ -39,6 +37,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/util/auditlog"
 
 	"github.com/cubefs/cubefs/util/buf"
 
@@ -846,6 +847,7 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.EbsBlockSize = volumeInfo.ObjBlockSize
 	opt.CacheAction = volumeInfo.CacheAction
 	opt.CacheThreshold = volumeInfo.CacheThreshold
+	opt.EnableQuota = volumeInfo.EnableQuota
 	opt.EnableTransaction = volumeInfo.EnableTransaction
 	opt.TxTimeout = volumeInfo.TxTimeout
 	opt.TxConflictRetryNum = volumeInfo.TxConflictRetryNum

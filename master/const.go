@@ -113,6 +113,7 @@ const (
 	fullPathKey                = "fullPath"
 	inodeKey                   = "inode"
 	quotaKey                   = "quotaId"
+	enableQuota                = "enableQuota"
 	dpDiscardKey               = "dpDiscard"
 	ignoreDiscardKey           = "ignoreDiscard"
 )

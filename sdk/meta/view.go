@@ -371,7 +371,15 @@ func (mw *MetaWrapper) updateQuotaInfoTick() {
 	for {
 		select {
 		case <-ticker.C:
-			mw.UpdateQuotaInfo()
+			var volumeInfo *proto.SimpleVolView
+			volumeInfo, err := mw.mc.AdminAPI().GetVolumeSimpleInfo(mw.volname)
+			if err != nil {
+				continue
+			}
+			mw.EnableQuota = volumeInfo.EnableQuota
+			if mw.EnableQuota {
+				mw.UpdateQuotaInfo()
+			}
 		case <-mw.closeCh:
 			return
 		}

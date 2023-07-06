@@ -29,11 +29,11 @@ type MetaQuotaManager struct {
 	statisticRebuildTemp *sync.Map // key quotaId, value proto.QuotaUsedInfo
 	statisticRebuildBase *sync.Map // key quotaId, value proto.QuotaUsedInfo
 	limitedMap           *sync.Map
-	enable               bool
 	rbuilding            bool
 	volName              string
 	rwlock               sync.RWMutex
 	mpID                 uint64
+	enable               bool
 }
 
 type MetaQuotaInode struct {
@@ -175,9 +175,29 @@ func (mqMgr *MetaQuotaManager) setQuotaHbInfo(infos []*proto.QuotaHeartBeatInfo)
 		if mqMgr.volName != info.VolName {
 			continue
 		}
+		mqMgr.enable = info.Enable
 		mqMgr.limitedMap.Store(info.QuotaId, info.LimitedInfo)
 		log.LogDebugf("mp [%v] quotaId [%v] limitedInfo [%v]", mqMgr.mpID, info.QuotaId, info.LimitedInfo)
 	}
+	mqMgr.limitedMap.Range(func(key, value interface{}) bool {
+		quotaId := key.(uint32)
+		found := false
+
+		for _, info := range infos {
+			if mqMgr.volName != info.VolName {
+				continue
+			}
+			if info.QuotaId == quotaId {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			mqMgr.limitedMap.Delete(quotaId)
+		}
+		return true
+	})
 	return
 }
 
@@ -206,9 +226,13 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 	})
 	mqMgr.statisticTemp = new(sync.Map)
 	mqMgr.statisticBase.Range(func(key, value interface{}) bool {
+		quotaId := key.(uint32)
+		if _, ok := mqMgr.limitedMap.Load(quotaId); !ok {
+			return true
+		}
 		usedInfo = value.(proto.QuotaUsedInfo)
 		reportInfo := &proto.QuotaReportInfo{
-			QuotaId:  key.(uint32),
+			QuotaId:  quotaId,
 			UsedInfo: usedInfo,
 		}
 		infos = append(infos, reportInfo)
@@ -232,12 +256,30 @@ func (mqMgr *MetaQuotaManager) statisticRebuildFin() {
 	mqMgr.statisticRebuildBase = new(sync.Map)
 	mqMgr.statisticRebuildTemp = new(sync.Map)
 	mqMgr.rbuilding = false
+	if log.EnableInfo() {
+		mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
+			quotaId := key.(uint32)
+			usedInfo := value.(proto.QuotaUsedInfo)
+			log.LogInfof("statisticRebuildFin statisticTemp  mp [%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
+			return true
+		})
+		mqMgr.statisticBase.Range(func(key, value interface{}) bool {
+			quotaId := key.(uint32)
+			usedInfo := value.(proto.QuotaUsedInfo)
+			log.LogInfof("statisticRebuildFin statisticBase  mp [%v] quotaId [%v] usedInfo [%v]", mqMgr.mpID, quotaId, usedInfo)
+			return true
+		})
+	}
 }
 
 func (mqMgr *MetaQuotaManager) IsOverQuota(size bool, files bool, quotaId uint32) (status uint8) {
 	var limitedInfo proto.QuotaLimitedInfo
 	mqMgr.rwlock.RLock()
 	defer mqMgr.rwlock.RUnlock()
+	if !mqMgr.enable {
+		log.LogInfof("IsOverQuota quota [%v] is disable.", quotaId)
+		return
+	}
 	value, isFind := mqMgr.limitedMap.Load(quotaId)
 	if isFind {
 		limitedInfo = value.(proto.QuotaLimitedInfo)
@@ -277,6 +319,6 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 		baseInfo.UsedFiles += files
 		mqMgr.statisticRebuildTemp.Store(quotaId, baseInfo)
 	}
-	log.LogDebugf("updateUsedInfo quotaId [%v] baseInfo [%v]", quotaId, baseInfo)
+	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v]", mqMgr.mpID, quotaId, baseInfo)
 	return
 }

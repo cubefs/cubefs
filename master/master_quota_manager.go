@@ -31,6 +31,7 @@ type MasterQuotaManager struct {
 	IdQuotaInfoMap map[uint32]*proto.QuotaInfo
 	vol            *Vol
 	c              *Cluster
+
 	sync.RWMutex
 }
 
@@ -255,11 +256,11 @@ func (mqMgr *MasterQuotaManager) quotaUpdate(report *proto.MetaPartitionReport) 
 		quotaInfo.UsedInfo.UsedFiles = 0
 		quotaInfo.UsedInfo.UsedBytes = 0
 	}
-	deleteQuotaIds := make([]uint32, 0, 0)
+	deleteQuotaIds := make(map[uint32]bool, 0)
 	for mpId, reportInfos := range mqMgr.MpQuotaInfoMap {
 		for _, info := range reportInfos {
 			if _, isFind := mqMgr.IdQuotaInfoMap[info.QuotaId]; !isFind {
-				deleteQuotaIds = append(deleteQuotaIds, info.QuotaId)
+				deleteQuotaIds[info.QuotaId] = true
 				continue
 			}
 			log.LogDebugf("[quotaUpdate] mpId [%v] quotaId [%v] reportinfo [%v]", mpId, info.QuotaId, info.UsedInfo)
@@ -295,6 +296,7 @@ func (mqMgr *MasterQuotaManager) getQuotaHbInfos() (infos []*proto.QuotaHeartBea
 		info.QuotaId = quotaId
 		info.LimitedInfo.LimitedFiles = quotaInfo.LimitedInfo.LimitedFiles
 		info.LimitedInfo.LimitedBytes = quotaInfo.LimitedInfo.LimitedBytes
+		info.Enable = mqMgr.vol.enableQuota
 		infos = append(infos, info)
 		log.LogDebugf("getQuotaHbInfos info %v", info)
 	}

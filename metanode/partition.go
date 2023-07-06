@@ -132,6 +132,7 @@ type OpInode interface {
 	TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet) (err error)
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error)
+	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -160,6 +161,7 @@ type OpDentry interface {
 	TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet) (err error)
 	TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet) (err error)
 	TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Packet) (err error)
+	QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, p *Packet) (err error)
 }
 
 type OpTransaction interface {
