@@ -116,6 +116,8 @@ const (
 	OpMetaBatchSetInodeQuota    uint8 = 0x50
 	OpMetaBatchDeleteInodeQuota uint8 = 0x51
 	OpMetaGetInodeQuota         uint8 = 0x52
+	OpQuotaCreateInode          uint8 = 0x53
+	OpQuotaCreateDentry         uint8 = 0x54
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition           uint8 = 0x60

@@ -288,6 +288,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("cacheRuleKey", vv.CacheRule)
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(vv.DpReadOnlyWhenVolFull))
 	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
+	request.addParam("enableQuota", strconv.FormatBool(vv.EnableQuota))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -352,7 +353,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
-	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64) (err error) {
+	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -376,6 +377,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, cross
 	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
 	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
+	request.addParam("enableQuota", optEnableQuota)
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
 	}
