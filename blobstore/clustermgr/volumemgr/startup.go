@@ -52,6 +52,8 @@ type VolumeMgrConfig struct {
 	AllocFactor                  int    `json:"alloc_factor"`
 	// the volume free size must big than AllocatableSize can alloc
 	AllocatableSize uint64 `json:"allocatable_size"`
+	// the number of volume partitions that can be allocated
+	ShardNum int `json:"shard_num"`
 
 	// the volume in Proxy which free size small than FreezeThreshold treat filled
 	FreezeThreshold  uint64            `json:"-"`
@@ -151,6 +153,7 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr diskmgr.DiskMgrAPI, scopeMgr sco
 		allocatableSize:              conf.AllocatableSize,
 		allocFactor:                  conf.AllocFactor,
 		allocatableDiskLoadThreshold: conf.AllocatableDiskLoadThreshold,
+		shardLen:                     conf.ShardNum,
 	}
 	volAllocator := newVolumeAllocator(allocConfig)
 	volumeMgr.allocator = volAllocator
