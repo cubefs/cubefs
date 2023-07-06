@@ -112,11 +112,7 @@ var defaultShouldRetry = func(code int, err error) bool {
 }
 
 func (c *lbClient) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
-	resp, err := c.doCtx(ctx, req)
-	if err != nil {
-		return resp, err
-	}
-	return resp, err
+	return c.doCtx(ctx, req)
 }
 
 func (c *lbClient) Form(ctx context.Context, method, url string, form map[string][]string) (resp *http.Response, err error) {
@@ -162,6 +158,7 @@ func (c *lbClient) DoWith(ctx context.Context, req *http.Request, ret interface{
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	err = serverCrcEncodeCheck(ctx, req, resp)
 	if err != nil {
 		return err
@@ -174,7 +171,7 @@ func (c *lbClient) GetWith(ctx context.Context, url string, ret interface{}) err
 	if err != nil {
 		return err
 	}
-	return ParseData(resp, ret)
+	return parseData(resp, ret)
 }
 
 func (c *lbClient) PutWith(ctx context.Context, url string, ret interface{}, params interface{}, opts ...Option) (err error) {
@@ -194,6 +191,7 @@ func (c *lbClient) PutWith(ctx context.Context, url string, ret interface{}, par
 	if err != nil {
 		return
 	}
+	defer resp.Body.Close()
 	err = serverCrcEncodeCheck(ctx, request, resp)
 	if err != nil {
 		return err
@@ -219,6 +217,7 @@ func (c *lbClient) PostWith(ctx context.Context, url string, ret interface{}, pa
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	// set Header and log errors
 	err = serverCrcEncodeCheck(ctx, request, resp)

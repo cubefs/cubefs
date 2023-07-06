@@ -184,7 +184,7 @@ func TestLbClient_Delete(t *testing.T) {
 	result := &ret{}
 	resp, err := client.Delete(ctx, "/get/name?id="+strconv.Itoa(122))
 	require.NoError(t, err)
-	err = ParseData(resp, result)
+	err = parseData(resp, result)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	client.Close()
@@ -337,7 +337,7 @@ func TestLbClient_Post(t *testing.T) {
 	check, err := client.Post(ctx, "", ret{Name: "test_lb_PostJSON"})
 	require.NoError(t, err)
 	client.Close()
-	err = ParseData(check, result)
+	err = parseData(check, result)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }

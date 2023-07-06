@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	urllib "net/url"
 	"strings"
@@ -158,6 +157,7 @@ func (c *client) DoWith(ctx context.Context, req *http.Request, ret interface{},
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	err = serverCrcEncodeCheck(ctx, req, resp)
 	if err != nil {
@@ -171,7 +171,7 @@ func (c *client) GetWith(ctx context.Context, url string, ret interface{}) error
 	if err != nil {
 		return err
 	}
-	return ParseData(resp, ret)
+	return parseData(resp, ret)
 }
 
 func (c *client) PutWith(ctx context.Context, url string, ret interface{}, params interface{}, opts ...Option) (err error) {
@@ -191,6 +191,7 @@ func (c *client) PutWith(ctx context.Context, url string, ret interface{}, param
 	if err != nil {
 		return
 	}
+	defer resp.Body.Close()
 	err = serverCrcEncodeCheck(ctx, request, resp)
 	if err != nil {
 		return err
@@ -216,6 +217,7 @@ func (c *client) PostWith(ctx context.Context, url string, ret interface{}, para
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	err = serverCrcEncodeCheck(ctx, request, resp)
 	if err != nil {
@@ -292,12 +294,14 @@ func (c *client) doWithCtx(ctx context.Context, req *http.Request) (resp *http.R
 	return
 }
 
-// ParseData parse response with data
+// parseData close response body in this package.
+func parseData(resp *http.Response, data interface{}) (err error) {
+	defer resp.Body.Close()
+	return ParseData(resp, data)
+}
+
+// ParseData parse response with data, close response body by yourself.
 func ParseData(resp *http.Response, data interface{}) (err error) {
-	defer func() {
-		io.Copy(ioutil.Discard, resp.Body)
-		resp.Body.Close()
-	}()
 	if resp.StatusCode/100 == 2 {
 		size := resp.ContentLength
 		if data != nil && size != 0 {
