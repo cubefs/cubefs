@@ -154,13 +154,10 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheBatchCnt] = MountOption{"bcacheBatchCnt", "The block cache get meta count", "", int64(100000)}
 	opts[BcacheCheckIntervalS] = MountOption{"bcacheCheckIntervalS", "The block cache check interval", "", int64(300)}
 	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", false}
-<<<<<<< HEAD
 	opts[RequestTimeout] = MountOption{"requestTimeout", "The Request Expiration Time", "", int64(0)}
-=======
 	opts[MinWriteAbleDataPartitionCnt] = MountOption{"minWriteAbleDataPartitionCnt",
 		"Min writeable data partition count retained int dpSelector when update DataPartitionsView from master",
 		"", int64(10)}
->>>>>>> 2580a21... feat(master, client): optimize data partition status management:
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -291,6 +288,7 @@ type MountOptions struct {
 	EnableXattr             bool
 	NearRead                bool
 	EnablePosixACL          bool
+	EnableQuota             bool
 	EnableTransaction       string
 	TxTimeout               int64
 	TxConflictRetryNum      int64

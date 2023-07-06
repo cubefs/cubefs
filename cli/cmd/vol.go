@@ -16,10 +16,11 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/cubefs/cubefs/util"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -131,6 +132,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLowWater int
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
+	var optEnableQuota string
 	var optTxMask string
 	var optTxTimeout uint32
 	var optTxConflictRetryNum int64
@@ -158,6 +160,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if optVolType != 1 && optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
 				followerRead = true
+			}
+			if optEnableQuota != "yes" {
+				optEnableQuota = "false"
 			}
 			dpReadOnlyWhenVolFull, _ := strconv.ParseBool(optDpReadOnlyWhenVolFull)
 			replicaNum, _ := strconv.Atoi(optReplicaNum)
@@ -206,7 +211,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
-				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval)
+				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -241,7 +246,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 1, "Specify timeout[Unit: minute] for transaction [1-60]")
 	cmd.Flags().Int64Var(&optTxConflictRetryNum, CliTxConflictRetryNum, 0, "Specify retry times for transaction conflict [1-100]")
 	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
-
+	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
 	return cmd
 }
 
@@ -273,6 +278,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optTxConflictRetryInterval int64
 	var optTxOpLimitVal int
 	var optReplicaNum string
+	var optEnableQuota string
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
 	var cmd = &cobra.Command{
@@ -364,6 +370,19 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
 			}
+
+			if optEnableQuota != "true" {
+				if vv.EnableQuota {
+					isChange = true
+					vv.EnableQuota = false
+				}
+			} else {
+				if !vv.EnableQuota {
+					isChange = true
+					vv.EnableQuota = true
+				}
+			}
+			confirmString.WriteString(fmt.Sprintf("  EnableQuota : %v\n", formatEnabledDisabled(vv.EnableQuota)))
 
 			//var maskStr string
 			if optTxMask != "" {
@@ -587,6 +606,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVar(&optTxForceReset, CliTxForceReset, false, "Reset transaction mask to the specified value of \"transaction-mask\"")
 	cmd.Flags().IntVar(&optTxOpLimitVal, CliTxOpLimit, 0, "Specify limitation[Unit: second] for transaction(default 0 unlimited)")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
+	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
 
 	return cmd
 

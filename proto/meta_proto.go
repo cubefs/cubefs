@@ -100,6 +100,7 @@ type QuotaHeartBeatInfo struct {
 	VolName     string
 	QuotaId     uint32
 	LimitedInfo QuotaLimitedInfo
+	Enable      bool
 }
 
 type MetaQuotaInfos struct {

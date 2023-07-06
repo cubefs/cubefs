@@ -104,7 +104,66 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 	return status, resp.Info, nil
 }
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32) (status int,
+func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32) (status int,
+	info *proto.InodeInfo, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("icreate", err, bgTime, 1)
+	}()
+
+	req := &proto.QuotaCreateInodeRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Mode:        mode,
+		Uid:         uid,
+		Gid:         gid,
+		Target:      target,
+		QuotaIds:    quotaIds,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpQuotaCreateInode
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("quotaIcreate: err(%v)", err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("quotaIcreate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("quotaIcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.CreateInodeResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("quotaIcreate: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	if resp.Info == nil {
+		err = errors.New(fmt.Sprintf("quotaIcreate: info is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
+		log.LogWarn(err)
+		return
+	}
+	log.LogDebugf("quotaIcreate: packet(%v) mp(%v) req(%v) info(%v)", packet, mp, *req, resp.Info)
+	return statusOK, resp.Info, nil
+}
+
+func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int,
 	info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -118,7 +177,6 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Uid:         uid,
 		Gid:         gid,
 		Target:      target,
-		QuotaIds:    quotaIds,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -451,8 +509,59 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 	return
 }
 
-func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
+func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
 	quotaIds []uint32) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("dcreate", err, bgTime, 1)
+	}()
+
+	if parentID == inode {
+		return statusExist, nil
+	}
+
+	req := &proto.QuotaCreateDentryRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		ParentID:    parentID,
+		Inode:       inode,
+		Name:        name,
+		Mode:        mode,
+		QuotaIds:    quotaIds,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpQuotaCreateDentry
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("quotaDcreate: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("quotaDcreate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if (status != statusOK) && (status != statusExist) {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	} else if status == statusExist {
+		log.LogWarnf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	}
+	log.LogDebugf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
+}
+
+func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -469,7 +578,6 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		Inode:       inode,
 		Name:        name,
 		Mode:        mode,
-		QuotaIds:    quotaIds,
 	}
 
 	packet := proto.NewPacketReqID()

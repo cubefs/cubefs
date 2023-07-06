@@ -250,6 +250,7 @@ type volValue struct {
 	CacheRule        string
 
 	EnablePosixAcl bool
+	EnableQuota    bool
 
 	EnableTransaction       uint8
 	TxTimeout               int64
@@ -292,6 +293,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DpSelectorParm:          vol.dpSelectorParm,
 		DefaultPriority:         vol.defaultPriority,
 		EnablePosixAcl:          vol.enablePosixAcl,
+		EnableQuota:             vol.enableQuota,
 		EnableTransaction:       vol.enableTransaction,
 		TxTimeout:               vol.txTimeout,
 		TxConflictRetryNum:      vol.txConflictRetryNum,

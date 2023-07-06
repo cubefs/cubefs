@@ -86,7 +86,6 @@ type MetaConfig struct {
 	OnAsyncTaskError AsyncTaskErrorFunc
 	EnableSummary    bool
 	MetaSendTimeout  int64
-	UpdateQuota      bool
 	//EnableTransaction uint8
 	//EnableTransaction bool
 }
@@ -147,6 +146,7 @@ type MetaWrapper struct {
 	TxTimeout               int64
 	TxConflictRetryNum      int64
 	TxConflictRetryInterval int64
+	EnableQuota             bool
 	QuotaInfoMap            map[uint32]*proto.QuotaInfo
 	QuotaLock               sync.RWMutex
 }
@@ -223,10 +223,8 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	if limit <= 0 && err != nil {
 		return nil, err
 	}
-	if config.UpdateQuota {
-		go mw.updateQuotaInfoTick()
-	}
 
+	go mw.updateQuotaInfoTick()
 	go mw.refresh()
 	return mw, nil
 }

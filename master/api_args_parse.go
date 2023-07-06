@@ -344,6 +344,7 @@ type updateVolReq struct {
 	replicaNum              int
 	coldArgs                *coldVolArgs
 	dpReadOnlyWhenVolFull   bool
+	enableQuota             bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -433,6 +434,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 	req.enableTransaction = txMask
+
+	if req.enableQuota, err = extractBoolWithDefault(r, enableQuota, vol.enableQuota); err != nil {
+		return
+	}
 
 	var txTimeout int64
 	if txTimeout, err = extractTxTimeout(r); err != nil {
@@ -602,6 +607,7 @@ type createVolReq struct {
 	volType                              int
 	enablePosixAcl                       bool
 	DpReadOnlyWhenVolFull                bool
+	enableQuota                          bool
 	enableTransaction                    uint8
 	txTimeout                            int64
 	txConflictRetryNum                   int64
@@ -762,6 +768,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 	req.txConflictRetryInterval = txConflictRetryInterval
+
+	if req.enableQuota, err = extractBoolWithDefault(r, enableQuota, false); err != nil {
+		return
+	}
 
 	return
 }

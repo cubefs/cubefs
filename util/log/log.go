@@ -525,6 +525,9 @@ func LogInfof(format string, v ...interface{}) {
 }
 
 func EnableInfo() bool {
+	if gLog == nil {
+		return false
+	}
 	return InfoLevel&gLog.level == gLog.level
 }
 
