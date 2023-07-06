@@ -230,7 +230,7 @@ func TestClient_Post(t *testing.T) {
 	result := &ret{}
 	resp, err := simpleClient.Post(ctx, testServer.URL+"/json", &ret{Name: "TestClient_Post"})
 	require.NoError(t, err)
-	err = ParseData(resp, result)
+	err = parseData(resp, result)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "TestClient_Post+Test", result.Name)
@@ -268,7 +268,7 @@ func TestClient_Put(t *testing.T) {
 	result := &ret{}
 	resp, err := simpleClient.Put(ctx, testServer.URL+"/json", &ret{Name: "TestClient_Put"})
 	require.NoError(t, err)
-	err = ParseData(resp, result)
+	err = parseData(resp, result)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "TestClient_Put+Test", result.Name)
@@ -325,7 +325,7 @@ func TestClient_ParseDataWithContentLengthZero(t *testing.T) {
 	require.NoError(t, err)
 	resp.StatusCode = 400
 	resp.ContentLength = 0
-	err = ParseData(resp, result)
+	err = parseData(resp, result)
 	require.Error(t, err)
 }
 
@@ -338,7 +338,7 @@ func TestClient_ParseData(t *testing.T) {
 	require.NoError(t, err)
 	resp.StatusCode = 400
 	resp.ContentLength = 12
-	err = ParseData(resp, result)
+	err = parseData(resp, result)
 	require.Error(t, err)
 }
 
@@ -360,7 +360,7 @@ func TestClient_ResponseClose(t *testing.T) {
 		&ret{Name: "TestClient_ResponseClose"})
 	require.NoError(t, err)
 	resp.Body.Close()
-	err = ParseData(resp, result)
+	err = parseData(resp, result)
 	require.Error(t, err)
 }
 
