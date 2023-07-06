@@ -59,6 +59,7 @@ var (
 			ModeName: codemode.EC15P12.Name(),
 			Enable:   true,
 		}},
+		ShardNum: 16,
 	}
 )
 
@@ -962,8 +963,8 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 			return nil
 		})
 		vids, diskLoad := mockVolumeMgr.allocator.PreAlloc(context.Background(), testCase.codemode, testCase.count)
-		require.Equal(t, len(vids), testCase.lenVids)
-		require.Equal(t, diskLoad, testCase.diskLoad)
+		require.Equal(t, testCase.lenVids, len(vids))
+		require.Equal(t, testCase.diskLoad, diskLoad)
 	}
 }
 
@@ -972,6 +973,7 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 	defer clean()
 
 	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(b))
+	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 	mockVolumeMgr.raftServer = mockRaftServer
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	mode := codemode.EC15P12
