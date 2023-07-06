@@ -16,7 +16,6 @@ package diskmgr
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
@@ -123,7 +122,7 @@ func TestAlloc(t *testing.T) {
 		// refresh cluster's disk space allocator
 		testDiskMgr.refresh(ctx)
 
-		t.Log(fmt.Sprintf("all disk length: %d", len(testDiskMgr.allDisks)))
+		t.Logf("all disk length: %d", len(testDiskMgr.allDisks))
 
 		// alloc from not enough space, alloc should return ErrNoEnoughSpace
 		for _, idc := range testIdcs {
@@ -235,7 +234,7 @@ func TestAllocWithSameHost(t *testing.T) {
 		testDiskMgr.RackAware = false
 		testDiskMgr.refresh(ctx)
 
-		t.Log(fmt.Sprintf("all disk length: %d", len(testDiskMgr.allDisks)))
+		t.Logf("all disk length: %d", len(testDiskMgr.allDisks))
 
 		// alloc from not enough space, alloc should return ErrNoEnoughSpace
 		for _, idc := range testIdcs {

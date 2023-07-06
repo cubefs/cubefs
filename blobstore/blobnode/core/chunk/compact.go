@@ -220,7 +220,6 @@ COMPACT:
 			if err != nil {
 				if err == core.ErrChunkScanEOF {
 					span.Infof("chunk %s scan finished", cs.ID())
-					err = nil
 					break COMPACT
 				} else {
 					span.Errorf("scan chunk meta(%s) failed: %v", cs.ID(), err)
