@@ -112,6 +112,47 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
+
+	item := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
+	if item == nil {
+		err = fmt.Errorf("parent inode not exists")
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		return
+	} else {
+		parIno := item.(*Inode)
+		quota := atomic.LoadUint32(&dirChildrenNumLimit)
+		if parIno.NLink >= quota {
+			err = fmt.Errorf("parent dir quota limitation reached")
+			p.PacketErrorWithBody(proto.OpDirQuota, []byte(err.Error()))
+			return
+		}
+	}
+
+	dentry := &Dentry{
+		ParentId: req.ParentID,
+		Name:     req.Name,
+		Inode:    req.Inode,
+		Type:     req.Mode,
+	}
+	val, err := dentry.Marshal()
+	if err != nil {
+		return
+	}
+	resp, err := mp.submit(opFSMCreateDentry, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.ResultCode = resp.(uint8)
+	return
+}
+
+func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, p *Packet) (err error) {
+	if req.ParentID == req.Inode {
+		err = fmt.Errorf("parentId is equal inodeId")
+		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		return
+	}
 	for _, quotaId := range req.QuotaIds {
 		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
 		if status != 0 {

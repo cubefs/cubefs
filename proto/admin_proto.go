@@ -823,6 +823,7 @@ type SimpleVolView struct {
 	CreateTime              string
 	EnableToken             bool
 	EnablePosixAcl          bool
+	EnableQuota             bool
 	EnableTransaction       string
 	TxTimeout               int64
 	TxConflictRetryNum      int64

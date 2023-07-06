@@ -109,6 +109,7 @@ const (
 	CliFlagMaxBytes            = "maxBytes"
 	CliFlagMaxConcurrencyInode = "maxConcurrencyInode"
 	CliFlagForceInode          = "forceInode"
+	CliFlagEnableQuota         = "enableQuota"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

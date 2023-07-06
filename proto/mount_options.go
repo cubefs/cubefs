@@ -156,7 +156,6 @@ func InitMountOptions(opts []MountOption) {
 	opts[MinWriteAbleDataPartitionCnt] = MountOption{"minWriteAbleDataPartitionCnt",
 		"Min writeable data partition count retained int dpSelector when update DataPartitionsView from master",
 		"", int64(10)}
-
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -286,6 +285,7 @@ type MountOptions struct {
 	EnableXattr                  bool
 	NearRead                     bool
 	EnablePosixACL               bool
+	EnableQuota                  bool
 	EnableTransaction            string
 	TxTimeout                    int64
 	TxConflictRetryNum           int64

@@ -118,7 +118,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
 		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
 		MetaSendTimeout: opt.MetaSendTimeout,
-		UpdateQuota:     true,
 		//EnableTransaction: opt.EnableTransaction,
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
@@ -127,6 +126,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
+	s.mw.EnableQuota = opt.EnableQuota
 
 	s.volname = opt.Volname
 	s.masters = opt.Master

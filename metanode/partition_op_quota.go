@@ -115,7 +115,7 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 	item := inodeTree.Get(ino)
 	if item == nil {
 		_, isleader := mp.IsLeader()
-		log.LogErrorf("statisticExtendByStore mp [%v] leader [%v] inode [%v] is not exist.",
+		log.LogDebugf("statisticExtendByStore mp [%v] leader [%v] inode [%v] is not exist.",
 			mp.config.PartitionId, isleader, extend.GetInode())
 		return
 	}

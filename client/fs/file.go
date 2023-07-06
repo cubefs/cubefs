@@ -415,6 +415,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}()
 
 	checkFunc := func() error {
+		if !f.super.mw.EnableQuota {
+			return nil
+		}
 		if ok := f.super.ec.UidIsLimited(req.Uid); ok {
 			return ParseError(syscall.ENOSPC)
 		}
