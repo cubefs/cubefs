@@ -242,10 +242,14 @@ func (mqMgr *MetaQuotaManager) getQuotaReportInfos() (infos []*proto.QuotaReport
 	return
 }
 
-func (mqMgr *MetaQuotaManager) statisticRebuildStart() {
+func (mqMgr *MetaQuotaManager) statisticRebuildStart() bool {
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
+	if !mqMgr.enable {
+		return false
+	}
 	mqMgr.rbuilding = true
+	return true
 }
 
 func (mqMgr *MetaQuotaManager) statisticRebuildFin() {
@@ -321,4 +325,8 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 	}
 	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v]", mqMgr.mpID, quotaId, baseInfo)
 	return
+}
+
+func (mqMgr *MetaQuotaManager) EnableQuota() bool {
+	return mqMgr.enable
 }
