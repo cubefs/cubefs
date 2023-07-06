@@ -1054,11 +1054,13 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	mp.mqMgr.statisticRebuildStart()
+	enableQuota := mp.mqMgr.statisticRebuildStart()
 	extendTree.Ascend(func(i BtreeItem) bool {
 		e := i.(*Extend)
 		var raw []byte
-		mp.statisticExtendByStore(e, sm.inodeTree)
+		if enableQuota {
+			mp.statisticExtendByStore(e, sm.inodeTree)
+		}
 		if raw, err = e.Bytes(); err != nil {
 			return false
 		}
@@ -1081,7 +1083,9 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	})
 	log.LogInfof("storeExtend: write data ok: partitoinID(%v) volume(%v) numInodes(%v) extends(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len())
-	mp.mqMgr.statisticRebuildFin()
+	if enableQuota {
+		mp.mqMgr.statisticRebuildFin()
+	}
 	if err != nil {
 		return
 	}

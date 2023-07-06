@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/iputil"
 
 	"golang.org/x/time/rate"
@@ -4703,6 +4704,12 @@ func (m *Server) CreateQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !vol.enableQuota {
+		err = errors.NewErrorf("vol %v disableQuota.", vol.Name)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
 	if quotaId, err = vol.quotaManager.createQuota(req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -4724,6 +4731,12 @@ func (m *Server) UpdateQuota(w http.ResponseWriter, r *http.Request) {
 	}
 	if vol, err = m.cluster.getVol(req.VolName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		return
+	}
+
+	if !vol.enableQuota {
+		err = errors.NewErrorf("vol %v disableQuota.", vol.Name)
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
