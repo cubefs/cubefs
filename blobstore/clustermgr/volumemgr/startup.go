@@ -16,7 +16,9 @@ package volumemgr
 
 import (
 	"context"
+	"math/rand"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
@@ -52,6 +54,8 @@ type VolumeMgrConfig struct {
 	AllocFactor                  int    `json:"alloc_factor"`
 	// the volume free size must big than AllocatableSize can alloc
 	AllocatableSize uint64 `json:"allocatable_size"`
+	// the number of volume partitions that can be allocated
+	ShardNum int `json:"shard_num"`
 
 	// the volume in Proxy which free size small than FreezeThreshold treat filled
 	FreezeThreshold  uint64            `json:"-"`
@@ -94,6 +98,9 @@ func (c *VolumeMgrConfig) checkAndFix() {
 	if c.AllocFactor <= 0 {
 		c.AllocFactor = defaultAllocFactor
 	}
+	if c.ShardNum <= 0 {
+		c.ShardNum = defaultShardNum
+	}
 }
 
 // NewVolumeMgr constructs a new volume manager.
@@ -118,7 +125,7 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr diskmgr.DiskMgrAPI, scopeMgr sco
 	if err != nil {
 		return nil, errors.Info(err, "parse volume reserve size failed").Detail(err)
 	}
-
+	rand.Seed(time.Now().UnixNano())
 	// initial volumeMgr
 	volumeMgr := &VolumeMgr{
 		all:             newShardedVolumes(conf.VolumeSliceMapNum),
@@ -151,6 +158,7 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr diskmgr.DiskMgrAPI, scopeMgr sco
 		allocatableSize:              conf.AllocatableSize,
 		allocFactor:                  conf.AllocFactor,
 		allocatableDiskLoadThreshold: conf.AllocatableDiskLoadThreshold,
+		shardNum:                     conf.ShardNum,
 	}
 	volAllocator := newVolumeAllocator(allocConfig)
 	volumeMgr.allocator = volAllocator

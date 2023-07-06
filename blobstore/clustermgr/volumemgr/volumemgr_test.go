@@ -59,6 +59,7 @@ var (
 			ModeName: codemode.EC15P12.Name(),
 			Enable:   true,
 		}},
+		ShardNum: defaultShardNum,
 	}
 )
 
@@ -962,8 +963,8 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 			return nil
 		})
 		vids, diskLoad := mockVolumeMgr.allocator.PreAlloc(context.Background(), testCase.codemode, testCase.count)
-		require.Equal(t, len(vids), testCase.lenVids)
-		require.Equal(t, diskLoad, testCase.diskLoad)
+		require.Equal(t, testCase.lenVids, len(vids))
+		require.Equal(t, testCase.diskLoad, diskLoad)
 	}
 }
 
@@ -972,6 +973,7 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 	defer clean()
 
 	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(b))
+	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 	mockVolumeMgr.raftServer = mockRaftServer
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	mode := codemode.EC15P12
@@ -1019,6 +1021,42 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 			require.Equal(b, len(ret.AllocVolumeInfos), 2)
 		}
 	})
+}
+
+func BenchmarkVolumeMgr_PreAllocVolume(b *testing.B) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	mode := codemode.EC15P12
+	testConfig.checkAndFix()
+	codeModes := make(map[codemode.CodeMode]codeModeConf)
+	for _, policy := range testConfig.CodeModePolicies {
+		codeMode := policy.ModeName.GetCodeMode()
+		modeConf := codeModeConf{
+			mode:      codeMode,
+			sizeRatio: policy.SizeRatio,
+			tactic:    codeMode.Tactic(),
+			enable:    policy.Enable,
+		}
+		codeModes[codeMode] = modeConf
+	}
+	allocConfig := allocConfig{
+		codeModes:                    codeModes,
+		allocatableSize:              testConfig.AllocatableSize,
+		allocFactor:                  testConfig.AllocFactor,
+		allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+		shardNum:                     testConfig.ShardNum,
+	}
+	volAllocator := newVolumeAllocator(allocConfig)
+	vols := generateVolume(mode, 200000, 1)
+	for _, vol := range vols {
+		if vol.volInfoBase.Status == proto.VolumeStatusIdle {
+			volAllocator.idles[mode].addAllocatable(vol)
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ret, _ := volAllocator.PreAlloc(ctx, mode, 2)
+		require.Equal(b, 2, len(ret))
+	}
 }
 
 func BenchmarkVolumeMgr_PreRetainVolume(b *testing.B) {

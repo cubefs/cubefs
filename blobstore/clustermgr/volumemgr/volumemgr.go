@@ -55,6 +55,7 @@ const (
 	defaultListVolumeMaxCount          = 2000
 	defaultAllocFactor                 = 5
 	defaultAllocatableSize             = 1 << 30
+	defaultShardNum                    = 16
 )
 
 // notify queue key definition
