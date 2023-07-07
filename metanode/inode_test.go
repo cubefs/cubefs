@@ -2,6 +2,7 @@ package metanode
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"
 
@@ -94,6 +95,38 @@ func TestInode_V2Marshal(t *testing.T) {
 	} else {
 		t.Errorf("Failed to test, error:len:%d \nsrc=[%v] res=\n[%v], expectRes=\n[%v]\n", len(raw), i, inodeRestore, inodeRestoreExpect)
 	}
+}
+
+func TestInode_EncodeBinary(t *testing.T) {
+	inodeExpect := &Inode{
+		Inode:      1,
+		Type:       2147484159,
+		Uid:        0,
+		Gid:        0,
+		Size:       0,
+		Generation: 1,
+		CreateTime: 1638191474,
+		AccessTime: 1640333705,
+		ModifyTime: 1638191474,
+		LinkTarget: []byte{1, 2, 3},
+		NLink:      5,
+		Flag:       0,
+		Reserved:   0,
+		Extents:    se.NewSortedExtents(),
+	}
+	var ctx = context.Background()
+	inodeExpect.Extents.Append(ctx, proto.ExtentKey{FileOffset: 0, PartitionId: 12, ExtentId: 1, ExtentOffset: 100, Size: 1000, CRC: 0}, inodeExpect.Inode)
+	inodeExpect.Extents.Append(ctx, proto.ExtentKey{FileOffset: 1000, PartitionId: 12, ExtentId: 2, ExtentOffset: 100, Size: 1000, CRC: 0}, inodeExpect.Inode)
+
+	data := make([]byte, inodeExpect.BinaryDataLen())
+	_, _ = inodeExpect.EncodeBinary(data)
+
+	inode := NewInode(0, 0)
+	if err := inode.Unmarshal(context.Background(), data); err != nil {
+		t.Fatalf("unmarshal failed:%v", err)
+		return
+	}
+	assert.Equal(t, inodeExpect, inode)
 }
 
 func TestInodeMergeMarshal(t *testing.T) {

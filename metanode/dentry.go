@@ -44,7 +44,7 @@ const (
 	BaseDentryKeyLen = 8
 	DentryValueLen  = 12
 	DentryKeyOffset = 4
-	BaseDentryLen   = 24
+	BaseDentryLen   = 28
 )
 
 type Dentry struct {
@@ -108,21 +108,24 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 	return
 }
 
-func (d *Dentry) MarshalV2() (result []byte, err error) {
+func (d *Dentry) innerEncodeBinary(data []byte) {
 	offset := 0
-	nameLen := len(d.Name)
-	result = make([]byte, 28+len(d.Name))
-	binary.BigEndian.PutUint32(result[:4], uint32(8 + nameLen))
-	offset += 4
-	binary.BigEndian.PutUint64(result[offset:offset+8], d.ParentId)
-	offset += 8
-	copy(result[offset:offset+nameLen], []byte(d.Name))
-	offset += nameLen
-	binary.BigEndian.PutUint32(result[offset: offset+4], 12)
-	offset += 4
-	binary.BigEndian.PutUint64(result[offset:offset+8], d.Inode)
-	offset += 8
-	binary.BigEndian.PutUint32(result[offset:offset+4], d.Type)
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(d.DentryKeyLen()))
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], d.ParentId)
+	offset += Uint64Size
+	copy(data[offset:offset+len(d.Name)], d.Name)
+	offset += len(d.Name)
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(DentryValueLen))
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], d.Inode)
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], d.Type)
+}
+
+func (d *Dentry) MarshalV2() (result []byte, err error) {
+	result = make([]byte, BaseDentryLen+len(d.Name))
+	d.innerEncodeBinary(result)
 	return
 }
 
@@ -174,6 +177,20 @@ func (d *Dentry) UnmarshalValueV2(value []byte) error{
 	d.Inode = binary.BigEndian.Uint64(value[0:8])
 	d.Type = binary.BigEndian.Uint32(value[8:12])
 	return nil
+}
+
+func (d *Dentry) BinaryDataLen() int {
+	return BaseDentryLen + len(d.Name)
+}
+
+func (d *Dentry) EncodeBinary(data []byte) (dataLen int, err error) {
+	dataLen = d.BinaryDataLen()
+	if len(data) < dataLen {
+		err = fmt.Errorf("data len %v less than dentry len %v", len(data), dataLen)
+		return
+	}
+	d.innerEncodeBinary(data)
+	return
 }
 
 // Marshal marshals the dentryBatch into a byte array.
