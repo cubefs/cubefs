@@ -90,7 +90,6 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 		(md != nil && other != nil && md.VolumeID == other.VolumeID &&
 			md.PartitionID == other.PartitionID &&
 			md.PartitionSize == other.PartitionSize &&
-			md.CreateTime == other.CreateTime &&
 			reflect.DeepEqual(md.Peers, other.Peers) &&
 			reflect.DeepEqual(md.Hosts, other.Hosts) &&
 			reflect.DeepEqual(md.Learners, other.Learners) &&
