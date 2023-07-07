@@ -4331,10 +4331,12 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		defer mp.RUnlock()
 		var replicas = make([]*proto.MetaReplicaInfo, len(mp.Replicas))
 		zones := make([]string, len(mp.Hosts))
+		nodeSets := make([]uint64, len(mp.Hosts))
 		for idx, host := range mp.Hosts {
 			metaNode, err := m.cluster.metaNode(host)
 			if err == nil {
 				zones[idx] = metaNode.ZoneName
+				nodeSets[idx] = metaNode.NodeSetID
 			}
 		}
 		for i := 0; i < len(replicas); i++ {
@@ -4365,6 +4367,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Hosts:         mp.Hosts,
 			Peers:         mp.Peers,
 			Zones:         zones,
+			NodeSets:      nodeSets,
 			MissNodes:     mp.MissNodes,
 			OfflinePeerID: mp.OfflinePeerID,
 			LoadResponse:  mp.LoadResponse,

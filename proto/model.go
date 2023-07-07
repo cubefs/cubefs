@@ -84,6 +84,7 @@ type MetaPartitionInfo struct {
 	Hosts         []string
 	Peers         []Peer
 	Zones         []string
+	NodeSets      []uint64
 	OfflinePeerID uint64
 	MissNodes     map[string]int64
 	LoadResponse  []*MetaPartitionLoadResponse
@@ -223,6 +224,7 @@ type DataPartitionInfo struct {
 	Hosts                    []string // host addresses
 	Peers                    []Peer
 	Zones                    []string
+	NodeSets                 []uint64
 	MissingNodes             map[string]int64 // key: address of the missing node, value: when the node is missing
 	VolName                  string
 	VolID                    uint64

@@ -432,6 +432,11 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 		sb.WriteString(fmt.Sprintf("  [%v]", zone))
 	}
 	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("NodeSets :\n"))
+	for _, nodeSet := range partition.NodeSets {
+		sb.WriteString(fmt.Sprintf("  [%v]", nodeSet))
+	}
+	sb.WriteString("\n")
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("MissingNodes :\n"))
 	for partitionHost, id := range partition.MissingNodes {
@@ -474,6 +479,11 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Zones :\n"))
 	for _, zone := range partition.Zones {
 		sb.WriteString(fmt.Sprintf("  [%v]", zone))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("NodeSets :\n"))
+	for _, nodeSet := range partition.NodeSets {
+		sb.WriteString(fmt.Sprintf("  [%v]", nodeSet))
 	}
 	sb.WriteString("\n")
 	sb.WriteString("\n")

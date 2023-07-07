@@ -921,10 +921,12 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 	}
 
 	zones := make([]string, len(partition.Hosts))
+	nodeSets := make([]uint64, len(partition.Hosts))
 	for idx, host := range partition.Hosts {
 		dataNode, err := c.dataNode(host)
 		if err == nil {
 			zones[idx] = dataNode.ZoneName
+			nodeSets[idx] = dataNode.NodeSetID
 		}
 	}
 
@@ -939,6 +941,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		Hosts:                    partition.Hosts,
 		Peers:                    partition.Peers,
 		Zones:                    zones,
+		NodeSets:                 nodeSets,
 		MissingNodes:             partition.MissingNodes,
 		VolName:                  partition.VolName,
 		VolID:                    partition.VolID,
