@@ -109,27 +109,27 @@ type badPartitionView = proto.BadPartitionView
 
 func (m *Server) setClusterInfo(w http.ResponseWriter, r *http.Request) {
 	var (
-		quota uint32
-		err   error
+		dirLimit uint32
+		err      error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetClusterInfo))
 	defer func() {
 		doStatAndMetric(proto.AdminSetClusterInfo, metric, err, nil)
 	}()
 
-	if quota, err = parseAndExtractDirQuota(r); err != nil {
+	if dirLimit, err = parseAndExtractDirLimit(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if quota < proto.MinDirChildrenNumLimit {
-		quota = proto.MinDirChildrenNumLimit
+	if dirLimit < proto.MinDirChildrenNumLimit {
+		dirLimit = proto.MinDirChildrenNumLimit
 	}
-	if err = m.cluster.setClusterInfo(quota); err != nil {
+	if err = m.cluster.setClusterInfo(dirLimit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dir quota(min:%v, max:%v) to %v successfully",
-		proto.MinDirChildrenNumLimit, math.MaxUint32, quota)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dir limit(min:%v, max:%v) to %v successfully",
+		proto.MinDirChildrenNumLimit, math.MaxUint32, dirLimit)))
 }
 
 // Set the threshold of the memory usage on each meta node.
