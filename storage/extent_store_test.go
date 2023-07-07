@@ -121,7 +121,7 @@ func TestExtentStore_PlaybackTinyDelete(t *testing.T) {
 	)
 
 	var store *ExtentStore
-	if store, err = NewExtentStore(baseTestPath.Path(), testPartitionID, testStoreSize, testStoreCacheCapacity, nil, false); err != nil {
+	if store, err = NewExtentStore(baseTestPath.Path(), testPartitionID, testStoreSize, testStoreCacheCapacity, nil, false, nil); err != nil {
 		t.Fatalf("init test store failed: %v", err)
 	}
 	// 准备小文件数据，向TinyExtent 1写入1024个小文件数据, 每个小文件size为1024.
@@ -192,7 +192,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 	var storage *ExtentStore
 	var err error
 	if storage, err = NewExtentStore(testPartitionPath, partitionID, storageSize, cacheCapacity,
-		func(event CacheEvent, e *Extent) {}, true); err != nil {
+		func(event CacheEvent, e *Extent) {}, true, nil); err != nil {
 		t.Fatalf("Create extent store failed: %v", err)
 		return
 	}
