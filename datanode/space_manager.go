@@ -119,9 +119,10 @@ func (manager *SpaceManager) Stop() {
 	wg.Add(1)
 	go func(c chan<- *DataPartition) {
 		defer wg.Done()
-		for _, partition := range manager.partitions {
+		manager.RangePartitions(func(partition *DataPartition) bool {
 			c <- partition
-		}
+			return true
+		}) // RangePartitions 方法内部采用局部读锁结构，既不会产生map线程安全问题由不会长时间占用锁.
 		close(c)
 	}(partitionC)
 
@@ -179,7 +180,7 @@ func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bo
 		return
 	}
 	manager.partitionMutex.RLock()
-	partitions := make([]*DataPartition, 0)
+	partitions := make([]*DataPartition, 0, len(manager.partitions)) // 直接申请足够长度避免append过程中无意义slice扩容引起的内存分配和拷贝
 	for _, dp := range manager.partitions {
 		partitions = append(partitions, dp)
 	}
