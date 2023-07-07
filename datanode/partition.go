@@ -474,7 +474,29 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		}
 	}
 
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, CacheCapacityPerPartition, cacheListener, isCreatePartition)
+	var (
+		umpKeyDiskIOWrite = fmt.Sprintf("diskwrite_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
+		umpKeyDiskIORead  = fmt.Sprintf("diskread_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
+	)
+
+	var ioInterceptor storage.IOInterceptor = func(io storage.IOType, do func()) {
+		var tp exporter.TP = nil
+		defer func() {
+			if tp != nil {
+				tp.Set(nil)
+			}
+		}()
+		switch io {
+		case storage.IOWrite:
+			tp = exporter.NewModuleTPUs(umpKeyDiskIOWrite)
+		case storage.IORead:
+			tp = exporter.NewModuleTPUs(umpKeyDiskIORead)
+		default:
+		}
+		do()
+	}
+
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, CacheCapacityPerPartition, cacheListener, isCreatePartition, ioInterceptor)
 	if err != nil {
 		return
 	}

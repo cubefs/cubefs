@@ -51,14 +51,16 @@ type Extent struct {
 	modified   int32
 	header     []byte
 	sync.Mutex
+
+	ioInterceptor IOInterceptor
 }
 
 // NewExtent create and returns a new extent instance.
-func NewExtent(name string, extentID uint64) *Extent {
+func NewExtent(name string, extentID uint64, ioi IOInterceptor) *Extent {
 	e := new(Extent)
 	e.extentID = extentID
 	e.filePath = name
-
+	e.ioInterceptor = ioi
 	return e
 }
 
@@ -165,7 +167,11 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 		return ParameterMismatchError
 	}
 
-	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
+	var doIO = func() {
+		_, err = e.file.WriteAt(data[:size], int64(offset))
+	}
+	e.ioInterceptor.intercept(IOWrite, doIO)
+	if err != nil {
 		return
 	}
 	if isSync {
@@ -203,7 +209,11 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkWriteParameter(offset, size, writeType); err != nil {
 		return
 	}
-	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
+	var doIO = func() {
+		_, err = e.file.WriteAt(data[:size], int64(offset))
+	}
+	e.ioInterceptor.intercept(IOWrite, doIO)
+	if err != nil {
 		return
 	}
 	blockNo := offset / unit.BlockSize
@@ -245,7 +255,11 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
-	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
+	var doIO = func() {
+		_, err = e.file.ReadAt(data[:size], offset)
+	}
+	e.ioInterceptor.intercept(IORead, doIO)
+	if err != nil {
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -254,7 +268,10 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 
 // ReadTiny read data from a tiny extent.
 func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
-	_, err = e.file.ReadAt(data[:size], offset)
+	var doIO = func() {
+		_, err = e.file.ReadAt(data[:size], offset)
+	}
+	e.ioInterceptor.intercept(IORead, doIO)
 	if isRepairRead && err == io.EOF {
 		err = nil
 	}

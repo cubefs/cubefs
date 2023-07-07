@@ -113,6 +113,24 @@ var (
 	}
 )
 
+type IOType int
+
+const (
+	IOWrite IOType = iota
+	IORead
+)
+
+type IOInterceptor func(io IOType, do func())
+
+func (i IOInterceptor) intercept(io IOType, do func()) {
+	if i != nil {
+		i(io, do)
+		return
+	}
+	do()
+	return
+}
+
 // ExtentStore defines fields used in the storage engine.
 // Packets smaller than 128K are stored in the "tinyExtent", a place to persist the small files.
 // packets larger than or equal to 128K are stored in the normal "extent", a place to persist large files.
@@ -147,6 +165,8 @@ type ExtentStore struct {
 	loadStatus                        int32
 	loadMux                           sync.Mutex
 	normalExtentDeleteMap             sync.Map
+
+	ioInterceptor IOInterceptor
 }
 
 func MkdirAll(name string) (err error) {
@@ -154,11 +174,12 @@ func MkdirAll(name string) (err error) {
 }
 
 func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
-	cacheCapacity int, ln CacheListener, isCreatePartition bool) (s *ExtentStore, err error) {
+	cacheCapacity int, ln CacheListener, isCreatePartition bool, ioi IOInterceptor) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionID = partitionID
 	s.infoStore = NewExtentInfoStore(partitionID)
+	s.ioInterceptor = ioi
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
@@ -252,7 +273,7 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 		err = ExtentExistsError
 		return err
 	}
-	e = NewExtent(name, extentID)
+	e = NewExtent(name, extentID, s.ioInterceptor)
 	e.header = make([]byte, unit.BlockHeaderSize)
 	err = e.InitToFS()
 	if err != nil {
@@ -899,7 +920,7 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
-	e = NewExtent(name, extentID)
+	e = NewExtent(name, extentID, s.ioInterceptor)
 	if err = e.RestoreFromFS(); err != nil {
 		err = fmt.Errorf("restore from file %v putCache %v system: %v", name, putCache, err)
 		return

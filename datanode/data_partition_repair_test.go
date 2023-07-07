@@ -3,16 +3,17 @@ package datanode
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/datanode/mock"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util/statistics"
 	"hash/crc32"
 	"os"
 	"path"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/datanode/mock"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/statistics"
 )
 
 const (
@@ -424,6 +425,6 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 	d := new(Disk)
 	d.repairTaskLimit = 10
 	partition.disk = d
-	partition.extentStore, err = storage.NewExtentStore(partition.path, partitionID, partitionSize, CacheCapacityPerPartition, nil, isCreatePartition)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, partitionID, partitionSize, CacheCapacityPerPartition, nil, isCreatePartition, nil)
 	return
 }
