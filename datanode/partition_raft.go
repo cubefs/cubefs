@@ -150,9 +150,11 @@ func (dp *DataPartition) startRaft() (err error) {
 		return
 	}
 
-	maxCommitID, err := dp.getMaxCommitID(context.Background())
-	if err != nil {
-		return
+	var maxCommitID uint64
+	if dp.isNeedFaultCheck() {
+		if maxCommitID, err = dp.getMaxCommitID(context.Background()); err != nil {
+			return
+		}
 	}
 
 	var fsm = &raftstore.FunctionalPartitionFsm{
