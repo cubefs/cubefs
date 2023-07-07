@@ -213,6 +213,9 @@ const (
 	AdminAddEcReplica            = "/ecReplica/add"
 	ClientEcPartitions           = "/client/ecPartitions"
 
+	//protobuf API
+	GetHeartbeatPbResponse = "/heartbeatPb/response"
+
 	//FlashNode API
 	AddFlashNode          = "/flashNode/add"
 	GetAllFlashNodes      = "/flashNode/getAllNodes"

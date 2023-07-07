@@ -41,10 +41,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask = &proto.AdminTask{
 			Request: req,
 		}
-		partitionsID []uint64
 	)
-	resp.ProfPort = m.metaNode.profPort
-	disks := m.metaNode.getDisks()
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
@@ -53,73 +50,19 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		goto end
 	}
 
-	for _, disk := range disks {
-		if disk.Status != diskusage.ReadWrite {
-			resp.Status = proto.TaskFailed
-			resp.Result = fmt.Sprintf("disk :%s status is not read write", disk.Path)
-			goto end
-		}
+	if adminTask.IsHeartBeatPbRequest {
+		m.responseHeartbeatPb(adminTask, remoteAddr)
+	} else {
+		m.responseHeartbeat(adminTask, remoteAddr)
 	}
-
-	// collect memory info
-	resp.Total = configTotalMem
-	resp.Used, err = m.metaNode.getProcessMemUsed()
-	if err != nil {
-		adminTask.Status = proto.TaskFailed
-		goto end
-	}
-	partitionsID = m.partitionIDs()
-	for _, partitionID := range partitionsID {
-		var partition MetaPartition
-		partition, err = m.getPartition(partitionID)
-		if err != nil {
-			//already del
-			continue
-		}
-		mConf := partition.GetBaseConfig()
-		partition.(*metaPartition).updateStatus()
-		var applyID, inodeCnt, dentryCnt, delInodeCnt, delDentryCnt uint64
-		snap := partition.(*metaPartition).GetSnapShot()
-		if snap != nil {
-			applyID = snap.ApplyID()
-			inodeCnt = snap.Count(InodeType)
-			dentryCnt = snap.Count(DentryType)
-			delInodeCnt = snap.Count(DelInodeType)
-			delDentryCnt = snap.Count(DelDentryType)
-			snap.Close()
-		}
-		mpr := &proto.MetaPartitionReport{
-			PartitionID:     mConf.PartitionId,
-			Start:           mConf.Start,
-			End:             mConf.End,
-			Status:          int(partition.(*metaPartition).status),
-			MaxInodeID:      mConf.Cursor,
-			VolName:         mConf.VolName,
-			InodeCnt:        inodeCnt,
-			DentryCnt:       dentryCnt,
-			DelInodeCnt:     delInodeCnt,
-			DelDentryCnt:    delDentryCnt,
-			IsLearner:       partition.IsLearner(),
-			ExistMaxInodeID: mConf.Cursor, //unUse
-			StoreMode:       mConf.StoreMode,
-			ApplyId:         applyID,
-			IsRecover:       partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
-			AllocatorInUseCnt: partition.(*metaPartition).inodeIDAllocator.GetUsed(),
-		}
-		if _, isLeader := partition.IsLeader(); isLeader {
-			mpr.IsLeader = true
-		}
-
-		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
-	}
-	resp.ZoneName = m.zoneName
-	resp.Status = proto.TaskSucceeds
-	resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStat()
-	resp.Version = MetaNodeLatestVersion
+	return
 end:
 	adminTask.Request = nil
 	adminTask.Response = resp
-	m.respondToMaster(adminTask)
+	if err = masterClient.NodeAPI().ResponseMetaNodeTask(adminTask); err != nil {
+		err = errors.Trace(err, "try respondToMaster failed")
+		log.LogError(err.Error())
+	}
 	data, _ := json.Marshal(resp)
 	log.LogInfof("%s [opMasterHeartbeat] req:%v; respAdminTask: %v, "+
 		"resp: %v", remoteAddr, req, adminTask, string(data))
@@ -2027,5 +1970,175 @@ func (m *metadataManager) opInodeMergeExtents(conn net.Conn, p *Packet, remoteAd
 	}
 	err = mp.MergeExtents(req, p)
 	_ = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) responseHeartbeatPb(adminTask *proto.AdminTask, remoteAddr string) {
+	var (
+		resp         = &proto.MetaNodeHeartbeatResponsePb{}
+		adminTaskPb  = &proto.HeartbeatAdminTaskPb{}
+		partitionsID []uint64
+		err          error
+	)
+	resp.ProfPort = m.metaNode.profPort
+	disks := m.metaNode.getDisks()
+	adminTaskPb = adminTask.ConvertToPb()
+	for _, disk := range disks {
+		if disk.Status != diskusage.ReadWrite {
+			resp.Status = proto.TaskFailed
+			resp.Result = fmt.Sprintf("disk :%s status is not read write", disk.Path)
+			goto end
+		}
+	}
+
+	// collect memory info
+	resp.Total = configTotalMem
+	resp.Used, err = m.metaNode.getProcessMemUsed()
+	if err != nil {
+		adminTask.Status = proto.TaskFailed
+		goto end
+	}
+	partitionsID = m.partitionIDs()
+	for _, partitionID := range partitionsID {
+		var partition MetaPartition
+		partition, err = m.getPartition(partitionID)
+		if err != nil {
+			//already del
+			continue
+		}
+		mConf := partition.GetBaseConfig()
+		partition.(*metaPartition).updateStatus()
+		var applyID, inodeCnt, dentryCnt, delInodeCnt, delDentryCnt uint64
+		snap := partition.(*metaPartition).GetSnapShot()
+		if snap != nil {
+			applyID = snap.ApplyID()
+			inodeCnt = snap.Count(InodeType)
+			dentryCnt = snap.Count(DentryType)
+			delInodeCnt = snap.Count(DelInodeType)
+			delDentryCnt = snap.Count(DelDentryType)
+			snap.Close()
+		}
+		mpr := &proto.MetaPartitionReportPb{
+			PartitionID:       mConf.PartitionId,
+			Start:             mConf.Start,
+			End:               mConf.End,
+			Status:            int32(partition.(*metaPartition).status),
+			MaxInodeID:        mConf.Cursor,
+			VolName:           mConf.VolName,
+			InodeCnt:          inodeCnt,
+			DentryCnt:         dentryCnt,
+			DelInodeCnt:       delInodeCnt,
+			DelDentryCnt:      delDentryCnt,
+			IsLearner:         partition.IsLearner(),
+			ExistMaxInodeID:   mConf.Cursor, //unUse
+			StoreMode:         uint32(mConf.StoreMode),
+			ApplyId:           applyID,
+			IsRecover:         partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
+			AllocatorInUseCnt: partition.(*metaPartition).inodeIDAllocator.GetUsed(),
+		}
+		if _, isLeader := partition.IsLeader(); isLeader {
+			mpr.IsLeader = true
+		}
+
+		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
+	}
+	resp.ZoneName = m.zoneName
+	resp.Status = proto.TaskSucceeds
+	resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStatPb()
+	resp.Version = MetaNodeLatestVersion
+end:
+	adminTaskPb.Request = nil
+	adminTaskPb.MetaNodeResponse = resp
+	if err = masterClient.NodeAPI().ResponseHeartBeatTaskPb(adminTaskPb); err != nil {
+		err = errors.Trace(err, "try respondToMaster failed")
+		log.LogError(err.Error())
+	}
+	data, _ := json.Marshal(resp)
+	log.LogInfof("%s [responseHeartbeatPb] respAdminTask: %v, "+
+		"resp: %v", remoteAddr, adminTask, string(data))
+	return
+}
+
+func (m *metadataManager) responseHeartbeat(adminTask *proto.AdminTask, remoteAddr string) {
+	var (
+		resp         = &proto.MetaNodeHeartbeatResponse{}
+		partitionsID []uint64
+		err          error
+	)
+	resp.ProfPort = m.metaNode.profPort
+	disks := m.metaNode.getDisks()
+	for _, disk := range disks {
+		if disk.Status != diskusage.ReadWrite {
+			resp.Status = proto.TaskFailed
+			resp.Result = fmt.Sprintf("disk :%s status is not read write", disk.Path)
+			goto end
+		}
+	}
+
+	// collect memory info
+	resp.Total = configTotalMem
+	resp.Used, err = m.metaNode.getProcessMemUsed()
+	if err != nil {
+		adminTask.Status = proto.TaskFailed
+		goto end
+	}
+	partitionsID = m.partitionIDs()
+	for _, partitionID := range partitionsID {
+		var partition MetaPartition
+		partition, err = m.getPartition(partitionID)
+		if err != nil {
+			//already del
+			continue
+		}
+		mConf := partition.GetBaseConfig()
+		partition.(*metaPartition).updateStatus()
+		var applyID, inodeCnt, dentryCnt, delInodeCnt, delDentryCnt uint64
+		snap := partition.(*metaPartition).GetSnapShot()
+		if snap != nil {
+			applyID = snap.ApplyID()
+			inodeCnt = snap.Count(InodeType)
+			dentryCnt = snap.Count(DentryType)
+			delInodeCnt = snap.Count(DelInodeType)
+			delDentryCnt = snap.Count(DelDentryType)
+			snap.Close()
+		}
+		mpr := &proto.MetaPartitionReport{
+			PartitionID:       mConf.PartitionId,
+			Start:             mConf.Start,
+			End:               mConf.End,
+			Status:            int(partition.(*metaPartition).status),
+			MaxInodeID:        mConf.Cursor,
+			VolName:           mConf.VolName,
+			InodeCnt:          inodeCnt,
+			DentryCnt:         dentryCnt,
+			DelInodeCnt:       delInodeCnt,
+			DelDentryCnt:      delDentryCnt,
+			IsLearner:         partition.IsLearner(),
+			ExistMaxInodeID:   mConf.Cursor, //unUse
+			StoreMode:         mConf.StoreMode,
+			ApplyId:           applyID,
+			IsRecover:         partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
+			AllocatorInUseCnt: partition.(*metaPartition).inodeIDAllocator.GetUsed(),
+		}
+		if _, isLeader := partition.IsLeader(); isLeader {
+			mpr.IsLeader = true
+		}
+
+		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
+	}
+	resp.ZoneName = m.zoneName
+	resp.Status = proto.TaskSucceeds
+	resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStat()
+	resp.Version = MetaNodeLatestVersion
+end:
+	adminTask.Request = nil
+	adminTask.Response = resp
+	if err = masterClient.NodeAPI().ResponseMetaNodeTask(adminTask); err != nil {
+		err = errors.Trace(err, "try respondToMaster failed")
+		log.LogError(err.Error())
+	}
+	data, _ := json.Marshal(resp)
+	log.LogInfof("%s [responseHeartbeat] respAdminTask: %v, "+
+		"resp: %v", remoteAddr, adminTask, string(data))
 	return
 }

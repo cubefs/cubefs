@@ -230,6 +230,10 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DataNodeValidateCRCReport).
 		HandlerFunc(m.handleDataNodeValidateCRCReport)
+	// heartBeat protobuf task response APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetHeartbeatPbResponse).
+		HandlerFunc(m.handleHeartbeatTaskPbResponse)
 
 	// meta partition management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

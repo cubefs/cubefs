@@ -58,6 +58,7 @@ const (
 	defaultPeriodToLoadAllDataPartitions       = 60 * 60 * 4 // how long we need to load all the data partitions on the master every time
 	defaultNumberOfDataPartitionsToLoad        = 50          // how many data partitions to load every time
 	defaultMetaPartitionTimeOutSec             = 10 * defaultIntervalToCheckHeartbeat
+	defaultMetaReplicaCheckStatusSec           = 3 * defaultIntervalToCheckHeartbeat
 	//DefaultMetaPartitionMissSec                         = 3600
 
 	defaultIntervalToAlarmMissingMetaPartition               = 10 * 60 // interval of checking if a replica is missing
