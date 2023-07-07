@@ -32,6 +32,7 @@ const (
 	enableKey             = "enable"
 	thresholdKey          = "threshold"
 	dirQuotaKey           = "dirQuota"
+	dirLimitKey           = "dirSizeLimit"
 	dataPartitionSizeKey  = "size"
 	metaPartitionCountKey = "mpCount"
 	volCapacityKey        = "capacity"

@@ -3078,9 +3078,9 @@ func (c *Cluster) getMetaPartitionCount() (count int) {
 	return count
 }
 
-func (c *Cluster) setClusterInfo(quota uint32) (err error) {
+func (c *Cluster) setClusterInfo(dirLimit uint32) (err error) {
 	oldLimit := c.cfg.DirChildrenNumLimit
-	atomic.StoreUint32(&c.cfg.DirChildrenNumLimit, quota)
+	atomic.StoreUint32(&c.cfg.DirChildrenNumLimit, dirLimit)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterInfo] err[%v]", err)
 		atomic.StoreUint32(&c.cfg.DirChildrenNumLimit, oldLimit)
