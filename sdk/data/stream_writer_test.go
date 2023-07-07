@@ -12,6 +12,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
@@ -75,7 +76,7 @@ func handleClientDataPartitions(w http.ResponseWriter, r *http.Request) {
 		PartitionID: 2,
 		Hosts:       []string{"127.0.0.1:9999", "127.0.0.1:9999", "127.0.0.1:9999"},
 		ReplicaNum:  3,
-		LeaderAddr: proto.NewAtomicString("127.0.0.1:9999"),
+		LeaderAddr:  proto.NewAtomicString("127.0.0.1:9999"),
 	}
 	dp3 := &proto.DataPartitionResponse{
 		PartitionID: 3,
@@ -276,6 +277,11 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 				extentSize: tt.fields.extentSize,
 				writeLock:  tt.fields.writeLock,
 			}
+			oldValue := MasterNoCacheAPIRetryTimeout
+			MasterNoCacheAPIRetryTimeout = 10 * time.Second
+			defer func() {
+				MasterNoCacheAPIRetryTimeout = oldValue
+			}()
 			if got := s.usePreExtentHandler(tt.args.offset, tt.args.size); got != tt.want {
 				t.Errorf("usePreExtentHandler() = %v, want %v, name %v", got, tt.want, tt.name)
 			}

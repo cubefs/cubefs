@@ -2,7 +2,7 @@ package master
 
 import (
 	"github.com/cubefs/cubefs/util/log"
-	"strings"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 
@@ -23,63 +23,66 @@ func TestDataPartitionAPI(t *testing.T) {
 		err = testMc.AdminAPI().CreateDataPartition(testVolName, testVolCount)
 		time.Sleep(time.Duration(1) * time.Second)
 	}
-	if err != nil {
-		t.Fatalf("CreateDataPartition failed, err %v", err)
+	if !assert.Nil(t, err) {
+		return
 	}
 
 	// get datanode info
 	var cv *proto.ClusterView
 	cv, err = testMc.AdminAPI().GetCluster()
-	if err != nil {
-		t.Fatalf("Get cluster failed: err(%v), cluster(%v)", err, cv)
+	if !assert.Nil(t, err) {
+		return
 	}
-	if len(cv.DataNodes) < 1 {
-		t.Fatalf("datanodes[] len < 1")
+	if !assert.GreaterOrEqual(t, len(cv.DataNodes), 1) {
+		return
 	}
+
 	nodes := cv.DataNodes
 	dps, err := testMc.ClientAPI().GetDataPartitions(testVolName)
-	if err != nil {
-		t.Error(err.Error())
+	if !assert.Nil(t, err) {
+		return
 	}
-	if len(dps.DataPartitions) == 0 {
-		t.Errorf("get datapartitions failed, the dataPartition count is 0")
+	if !assert.Greater(t, len(dps.DataPartitions), 0) {
+		return
 	}
+
 	testDataPartitionID := dps.DataPartitions[0].PartitionID
 
 	//Get Data Partition info
 	var dataPartitionInfo *proto.DataPartitionInfo
 	dataPartitionInfo, err = testMc.AdminAPI().GetDataPartition(testVolName, testDataPartitionID)
-	if err != nil {
-		t.Fatalf("GetDataPartition failed, err %v", err)
+	if !assert.Nil(t, err) {
+		return
 	}
+
 	replicas := dataPartitionInfo.Replicas
 
 	//Get a non-leader address
 	nonLeaderAddr := findNonLeaderAddr(replicas)
-	if nonLeaderAddr == "" {
-		t.Fatalf("do not find a non-leader addr")
+	if !assert.NotEqual(t, nonLeaderAddr, "") {
+		return
 	}
 
 	//Gets the new replica address
 	newAddr := findNewAddr(replicas, nodes)
-	if newAddr == "" {
-		t.Fatalf("do not find a new addr")
+	if !assert.NotEqual(t, newAddr, "") {
+		return
 	}
 
 	//Decommission Data Partition
 	wrongAddr := "127.0.0.1:9980"
 	err = testMc.AdminAPI().DecommissionDataPartition(testDataPartitionID, wrongAddr, "")
-	if err == nil {
-		t.Fatalf("expected err, but nil")
+	if !assert.NotNil(t, err) {
+		return
 	}
-	if !strings.Contains(err.Error(), "internal error") {
-		t.Fatalf("expected err: 'internal error', but it's not")
+	if !assert.Contains(t, err.Error(), "internal error") {
+		return
 	}
 
 	//Diagnose Data Partition
 	_, err = testMc.AdminAPI().DiagnoseDataPartition()
-	if err != nil {
-		t.Fatalf("DiagnoseDataPartition failed, err %v", err)
+	if !assert.Nil(t, err) {
+		return
 	}
 
 	//Delete Data Replica
@@ -87,8 +90,8 @@ func TestDataPartitionAPI(t *testing.T) {
 		err = testMc.AdminAPI().DeleteDataReplica(testDataPartitionID, nonLeaderAddr)
 		time.Sleep(time.Duration(1) * time.Second)
 	}
-	if err != nil {
-		t.Fatalf("DeleteDataReplica failed, err %v", err)
+	if !assert.Nil(t, err) {
+		return
 	}
 
 	//Add Data Replica
@@ -96,8 +99,8 @@ func TestDataPartitionAPI(t *testing.T) {
 		err = testMc.AdminAPI().AddDataReplica(testDataPartitionID, nonLeaderAddr, 0)
 		time.Sleep(time.Duration(1) * time.Second)
 	}
-	if err != nil {
-		t.Fatalf("AddDataReplica failed, err %v", err)
+	if !assert.Nil(t, err) {
+		return
 	}
 
 	//Add Data Learner
@@ -107,14 +110,14 @@ func TestDataPartitionAPI(t *testing.T) {
 		err = testMc.AdminAPI().AddDataLearner(testDataPartitionID, newAddr, autoPromote, threshold)
 		time.Sleep(time.Duration(1) * time.Second)
 	}
-	if err != nil {
-		t.Fatalf("AddDataLearner failed, err %v", err)
+	if !assert.Nil(t, err) {
+		return
 	}
 
 	//Promote Data Learner
 	err = testMc.AdminAPI().PromoteDataLearner(testDataPartitionID, newAddr)
-	if err != nil {
-		t.Fatalf("PromoteDataLearner failed, err %v", err)
+	if !assert.Nil(t, err) {
+		return
 	}
 
 	//Delete Data Replica
@@ -122,26 +125,26 @@ func TestDataPartitionAPI(t *testing.T) {
 		err = testMc.AdminAPI().DeleteDataReplica(testDataPartitionID, newAddr)
 		time.Sleep(time.Duration(1) * time.Second)
 	}
-	if err != nil {
-		t.Fatalf("DeleteDataReplica failed, err %v", err)
+	if !assert.Nil(t, err) {
+		return
 	}
 
 	//Reset Data Partition
 	err = testMc.AdminAPI().ResetDataPartition(testDataPartitionID)
-	if err == nil {
-		t.Fatalf("expected err, but nil")
+	if !assert.NotNil(t, err) {
+		return
 	}
-	if err.Error() != "live replica num more than half, can not be reset" {
-		t.Fatalf("expected err: 'live replica num more than half, can not be reset', but it's not")
+	if !assert.Equal(t, err.Error(), "live replica num more than half, can not be reset") {
+		return
 	}
 
 	//Manual Reset Data Partition
 	err = testMc.AdminAPI().ManualResetDataPartition(testDataPartitionID, wrongAddr)
-	if err == nil {
-		t.Fatalf("expected err, but nil")
+	if !assert.NotNil(t, err) {
+		return
 	}
-	if err.Error() != "data node not exists" {
-		t.Fatalf("expected err: 'data node not exists', but it's not")
+	if !assert.Equal(t, err.Error(), "data node not exists") {
+		return
 	}
 }
 

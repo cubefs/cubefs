@@ -50,7 +50,6 @@ const (
 	DeleteTinyRecordSize     = 24
 	UpdateCrcInterval        = 600
 	RepairInterval           = 10
-	ValidateCrcInterval      = 20 * RepairInterval
 	RandomWriteType          = 2
 	AppendWriteType          = 1
 	BaseExtentIDPersistStep  = 500
@@ -65,6 +64,7 @@ var (
 	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
 		return new(proto.File)
 	}}
+	ValidateCrcInterval = int64(20 * RepairInterval)
 )
 
 var (

@@ -251,7 +251,11 @@ func TestValidateCrc(t *testing.T) {
 	defer func() {
 		_ = os.RemoveAll(testBaseDir)
 	}()
-	time.Sleep(time.Second*storage.ValidateCrcInterval + 1)
+	storage.ValidateCrcInterval = 5
+	time.Sleep(time.Second*time.Duration(storage.ValidateCrcInterval) + 1)
+	defer func() {
+		storage.ValidateCrcInterval = int64(20 * storage.RepairInterval)
+	}()
 	testCases := []struct {
 		name  string
 		class int

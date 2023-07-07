@@ -190,87 +190,65 @@ func TestAllocZones(t *testing.T) {
 }
 
 func TestIDC(t *testing.T) {
-	topo := newTopology()
 	idc1Name := "TestIDC1"
 	idc2Name := "TestIDC2"
-	defer log.LogFlush()
-	idc1 := newIDC(idc1Name)
-	topo.putIDC(idc1)
-	idc2 := newIDC(idc2Name)
-	topo.putIDC(idc2)
-	idc, err := topo.getIDC(idc1Name)
-	assertErrNilOtherwiseFailNow(t, err)
-	if !assert.Equal(t, idc1Name, idc.Name) {
-		t.FailNow()
-	}
-
-	_, err = server.cluster.t.createIDC(idc1Name, server.cluster)
-	assertErrNilOtherwiseFailNow(t, err)
-	err = server.cluster.t.deleteIDC(idc1Name, server.cluster)
-	assertErrNilOtherwiseFailNow(t, err)
-	idc, err = server.cluster.t.getIDC(idc1Name)
-	if err == nil {
-		t.Errorf("idc: %v has been deleted, %v.", idc1Name, idc.Name)
-		t.FailNow()
-	}
-	view, err := server.cluster.t.getIDCView(idc1Name)
-	if err == nil {
-		t.Errorf("idc: %v has been deleted, %v.", idc1Name, idc.Name)
-		t.FailNow()
-	}
-
-	_, err = server.cluster.t.createIDC(idc1Name, server.cluster)
-	assertErrNilOtherwiseFailNow(t, err)
-	_, err = server.cluster.t.createIDC(idc2Name, server.cluster)
-	assertErrNilOtherwiseFailNow(t, err)
-
-	view, err = server.cluster.t.getIDCView(idc1Name)
-	assertErrNilOtherwiseFailNow(t, err)
-	if !assert.Equal(t, idc1Name, view.Name) {
-		t.FailNow()
-	}
-	if !assert.Zero(t, len(view.Zones)) {
-		t.FailNow()
-	}
-
-	// set thd idc info, idc: nil->idc1, MediumInit->HDD
-	err = server.cluster.setZoneIDC(testZone1, idc1Name, proto.MediumHDD)
-	assertErrNilOtherwiseFailNow(t, err)
-	zone1, err := server.cluster.t.getZone(testZone1)
-	assertErrNilOtherwiseFailNow(t, err)
-	if !assert.Equal(t, proto.MediumHDD, zone1.MType) {
-		t.FailNow()
-	}
-	if !assert.Equal(t, idc1Name, zone1.idcName) {
-		t.FailNow()
-	}
-
-	view, err = server.cluster.t.getIDCView(idc1Name)
-	assertErrNilOtherwiseFailNow(t, err)
-	if !assert.Equal(t, idc1Name, view.Name) {
-		t.FailNow()
-	}
-	if !assert.NotZero(t, len(view.Zones)) {
-		t.FailNow()
-	}
-	for name, mType := range view.Zones {
-		if !assert.Equal(t, testZone1, name) {
+	t.Run("put idc", func(t *testing.T) {
+		topo := newTopology()
+		defer log.LogFlush()
+		topo.putIDC(newIDC(idc1Name))
+		topo.putIDC(newIDC(idc2Name))
+		idc, err := topo.getIDC(idc1Name)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, idc1Name, idc.Name) {
 			t.FailNow()
 		}
-		if !assert.Equal(t, proto.MediumHDDName, mType) {
+	})
+	t.Run("del idc", func(t *testing.T) {
+		_, err := server.cluster.t.createIDC(idc1Name, server.cluster)
+		assertErrNilOtherwiseFailNow(t, err)
+		err = server.cluster.t.deleteIDC(idc1Name, server.cluster)
+		assertErrNilOtherwiseFailNow(t, err)
+		_, err = server.cluster.t.getIDC(idc1Name)
+		assertErrNotNilOtherwiseFailNow(t, err)
+		_, err = server.cluster.t.getIDCView(idc1Name)
+		assertErrNotNilOtherwiseFailNow(t, err)
+	})
+
+	t.Run("get idc view", func(t *testing.T) {
+		_, err := server.cluster.t.createIDC(idc1Name, server.cluster)
+		assertErrNilOtherwiseFailNow(t, err)
+		idcView, err := server.cluster.t.getIDCView(idc1Name)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, idc1Name, idcView.Name) {
 			t.FailNow()
 		}
-	}
-
-	views := server.cluster.t.getIDCViews()
-	if !assert.NotNil(t, views) {
-		t.FailNow()
-	}
-	for _, view := range views {
-		if views[0].Name != idc1Name {
-			continue
+		if !assert.Zero(t, len(idcView.Zones)) {
+			t.FailNow()
 		}
-		for name, mType := range view.Zones {
+	})
+
+	t.Run("set medium to hdd", func(t *testing.T) {
+		err := server.cluster.setZoneIDC(testZone1, idc1Name, proto.MediumHDD)
+		assertErrNilOtherwiseFailNow(t, err)
+		zone1, err := server.cluster.t.getZone(testZone1)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, proto.MediumHDD, zone1.MType) {
+			t.FailNow()
+		}
+		if !assert.Equal(t, idc1Name, zone1.idcName) {
+			t.FailNow()
+		}
+
+		// verify medium info by idc view
+		idcView, err := server.cluster.t.getIDCView(idc1Name)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, idc1Name, idcView.Name) {
+			t.FailNow()
+		}
+		if !assert.NotZero(t, len(idcView.Zones)) {
+			t.FailNow()
+		}
+		for name, mType := range idcView.Zones {
 			if !assert.Equal(t, testZone1, name) {
 				t.FailNow()
 			}
@@ -278,45 +256,71 @@ func TestIDC(t *testing.T) {
 				t.FailNow()
 			}
 		}
-	}
-	if !assert.NotZero(t, len(views)) {
-		t.FailNow()
-	}
-	// set thd idc info, HDD->SDD
-	err = server.cluster.setZoneIDC(testZone1, idc1Name, proto.MediumSSD)
-	assertErrNilOtherwiseFailNow(t, err)
-	zone1, err = server.cluster.t.getZone(testZone1)
-	assertErrNilOtherwiseFailNow(t, err)
-	if !assert.Equal(t, proto.MediumSSD, zone1.MType) {
-		t.FailNow()
-	}
-	if !assert.Equal(t, idc1Name, zone1.idcName) {
-		t.FailNow()
-	}
 
-	// set thd idc info, idc1->idc2
-	err = server.cluster.setZoneIDC(testZone1, idc2Name, proto.MediumInit)
-	assertErrNilOtherwiseFailNow(t, err)
-	zone1, err = server.cluster.t.getZone(testZone1)
-	assertErrNilOtherwiseFailNow(t, err)
-	if !assert.Equal(t, proto.MediumSSD, zone1.MType) {
-		t.FailNow()
-	}
-	if !assert.Equal(t, idc2Name, zone1.idcName) {
-		t.FailNow()
-	}
+		// verify medium info by idc views
+		views := server.cluster.t.getIDCViews()
+		if !assert.NotNil(t, views) {
+			t.FailNow()
+		}
+		for _, v := range views {
+			if views[0].Name != idc1Name {
+				continue
+			}
+			for name, mType := range v.Zones {
+				if !assert.Equal(t, testZone1, name) {
+					t.FailNow()
+				}
+				if !assert.Equal(t, proto.MediumHDDName, mType) {
+					t.FailNow()
+				}
+			}
+		}
+		if !assert.NotZero(t, len(views)) {
+			t.FailNow()
+		}
+	})
 
-	err = server.cluster.t.deleteIDC(idc2Name, server.cluster)
-	if !assert.Errorf(t, err, "idc: %v should not be deleted", idc2Name) {
-		t.FailNow()
-	}
-	_, err = server.cluster.t.getIDC(idc2Name)
-	assertErrNilOtherwiseFailNow(t, err)
+	t.Run("set hdd->ssd", func(t *testing.T) {
+		err := server.cluster.setZoneIDC(testZone1, idc1Name, proto.MediumSSD)
+		assertErrNilOtherwiseFailNow(t, err)
+		zone1, err := server.cluster.t.getZone(testZone1)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, proto.MediumSSD, zone1.MType) {
+			t.FailNow()
+		}
+		if !assert.Equal(t, idc1Name, zone1.idcName) {
+			t.FailNow()
+		}
+	})
 
-	err = server.cluster.t.deleteIDC(idc1Name, server.cluster)
-	assertErrNilOtherwiseFailNow(t, err)
-	_, err = server.cluster.t.getIDC(idc1Name)
-	if !assert.Error(t, err) {
-		t.FailNow()
-	}
+	t.Run("set idc1->idc2", func(t *testing.T) {
+		_, err := server.cluster.t.createIDC(idc2Name, server.cluster)
+		assertErrNilOtherwiseFailNow(t, err)
+		err = server.cluster.setZoneIDC(testZone1, idc2Name, proto.MediumInit)
+		assertErrNilOtherwiseFailNow(t, err)
+		zone1, err := server.cluster.t.getZone(testZone1)
+		assertErrNilOtherwiseFailNow(t, err)
+		if !assert.Equal(t, proto.MediumSSD, zone1.MType) {
+			t.FailNow()
+		}
+		if !assert.Equal(t, idc2Name, zone1.idcName) {
+			t.FailNow()
+		}
+	})
+
+	t.Run("del idc1 & idc2", func(t *testing.T) {
+		err := server.cluster.t.deleteIDC(idc2Name, server.cluster)
+		if !assert.Errorf(t, err, "idc: %v should not be deleted", idc2Name) {
+			t.FailNow()
+		}
+		_, err = server.cluster.t.getIDC(idc2Name)
+		assertErrNilOtherwiseFailNow(t, err)
+
+		err = server.cluster.t.deleteIDC(idc1Name, server.cluster)
+		assertErrNilOtherwiseFailNow(t, err)
+		_, err = server.cluster.t.getIDC(idc1Name)
+		if !assert.Error(t, err) {
+			t.FailNow()
+		}
+	})
 }

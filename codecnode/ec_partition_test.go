@@ -4,9 +4,11 @@ import (
 	"context"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/sdk/data"
 	"hash/crc32"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestEcPartition_NewEcPartition(t *testing.T) {
@@ -96,7 +98,6 @@ func TestEcPartition_Read(t *testing.T) {
 		fcs = newFakeCodecServer(t, TcpPort)
 	}
 	runHttp(t)
-
 	req := &proto.IssueMigrationTaskRequest{
 		Hosts: []string{
 			"127.0.0.1:" + TcpPort,
@@ -113,6 +114,11 @@ func TestEcPartition_Read(t *testing.T) {
 
 	needSize := 10
 	inbuf := make([]byte, needSize)
+	oldValue := data.MasterNoCacheAPIRetryTimeout
+	data.MasterNoCacheAPIRetryTimeout = 10 * time.Second
+	defer func() {
+		data.MasterNoCacheAPIRetryTimeout = oldValue
+	}()
 	if readSize, err := ecp.Read(context.Background(), 1025, inbuf, 0, needSize); err == nil && readSize == needSize {
 		t.Fatalf("Read success")
 	}

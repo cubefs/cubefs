@@ -65,8 +65,10 @@ func NewExtent(name string, extentID uint64) *Extent {
 // Close this extent and release FD.
 func (e *Extent) Close(sync bool) (err error) {
 	if sync {
-		if err = e.file.Sync(); err != nil {
-			return
+		if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
+			if err = e.file.Sync(); err != nil {
+				return
+			}
 		}
 	}
 	if err = e.file.Close(); err != nil {

@@ -533,7 +533,11 @@ func assertErrNilOtherwiseFailNow(t *testing.T, err error) {
 		assert.FailNow(t, err.Error())
 	}
 }
-
+func assertErrNotNilOtherwiseFailNow(t *testing.T, err error) {
+	if err == nil {
+		assert.FailNow(t, err.Error())
+	}
+}
 func TestUpdateVol(t *testing.T) {
 	capacity := 2000
 	reqURL := fmt.Sprintf("%v%v?name=%v&capacity=%v&authKey=%v",
@@ -3789,7 +3793,7 @@ func updateVolCacheConfig(volName, remoteCacheBoostPath string, remoteCacheBoost
 		buildAuthKey(vv.Owner),
 		vv.ZoneName,
 		fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), // MP Layout
-		strings.Join(vv.SmartRules, ","), // Smart Rules
+		strings.Join(vv.SmartRules, ","),                                            // Smart Rules
 		uint8(vv.OSSBucketPolicy),
 		uint8(vv.CrossRegionHAType),
 		vv.ExtentCacheExpireSec,
