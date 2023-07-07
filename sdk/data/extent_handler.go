@@ -369,6 +369,7 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 			cost, time.Since(time.Unix(0, packet.SendT)), packet)
 	}
 	err := reply.ReadFromConnNs(eh.conn, eh.stream.client.dataWrapper.connConfig.ReadTimeoutNs)
+	eh.dp.checkErrorIsTimeout(err)
 	if err != nil {
 		errmsg := fmt.Sprintf("ReadFromConn timeout(%vns) err(%v) costBeforeRecv(%v) costFromStart(%v) costFromSend(%v)",
 			eh.stream.client.dataWrapper.connConfig.ReadTimeoutNs, err.Error(), cost, time.Since(time.Unix(0, packet.StartT)),
@@ -376,10 +377,6 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 		eh.processReplyError(packet, errmsg)
 		eh.dp.RecordWrite(packet.StartT, true)
 		return
-	}
-	if v, ok := eh.stream.client.dataWrapper.partitions.Load(packet.PartitionID); ok {
-		dp := v.(*DataPartition)
-		dp.checkErrorIsTimeout(err)
 	}
 
 	eh.lastAccessTime = time.Now().Unix()
