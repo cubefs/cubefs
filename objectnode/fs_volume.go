@@ -667,7 +667,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	// This file has only inode but no dentry. In this way, this temporary file can be made invisible
 	// in the true sense. In order to avoid the adverse impact of other user operations on temporary data.
 	var invisibleTempDataInode *proto.InodeInfo
-	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
+	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
 		log.LogErrorf("PutObject: inode create fail: volume(%v) path(%v) err(%v)", v.name, path, err)
 		return
 	}
@@ -957,6 +957,19 @@ func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID str
 		extend[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
 	}
 
+	if v.mw.EnableQuota {
+		var parentId uint64
+		if parentId, err = v.recursiveMakeDirectory(path); err != nil {
+			log.LogErrorf("InitMultipart: recursive make dir fail: volume(%v) path(%v) multipartID(%v) err(%v)",
+				v.name, path, multipartID, err)
+			return
+		}
+
+		if v.mw.IsQuotaLimitedById(parentId, true, true) {
+			return "", syscall.ENOSPC
+		}
+	}
+
 	// Iterate all the meta partition to create multipart id
 	multipartID, err = v.mw.InitMultipart_ll(path, extend)
 	if err != nil {
@@ -980,7 +993,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 
 	// create temp file (inode only, invisible for user)
 	var tempInodeInfo *proto.InodeInfo
-	if tempInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
+	if tempInodeInfo, err = v.mw.InodeCreate_ll(0, DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
 		log.LogErrorf("WritePart: meta create inode fail: multipartID(%v) partID(%v) err(%v)",
 			multipartId, partId, err)
 		return nil, err
@@ -1121,9 +1134,16 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	parts := multipartInfo.Parts
 	sort.SliceStable(parts, func(i, j int) bool { return parts[i].ID < parts[j].ID })
 
+	var parentId uint64
+	if parentId, err = v.recursiveMakeDirectory(path); err != nil {
+		log.LogErrorf("CompleteMultipart: recursive make dir fail: volume(%v) path(%v) multipartID(%v) err(%v)",
+			v.name, path, multipartID, err)
+		return
+	}
+
 	// create inode for complete data
 	var completeInodeInfo *proto.InodeInfo
-	if completeInodeInfo, err = v.mw.InodeCreate_ll(DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
+	if completeInodeInfo, err = v.mw.InodeCreate_ll(parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
 		log.LogErrorf("CompleteMultipart: meta inode create fail: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 		return
@@ -1206,13 +1226,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	var (
 		pathItems = NewPathIterator(path).ToSlice()
 		filename  = pathItems[len(pathItems)-1].Name
-		parentId  uint64
 	)
-	if parentId, err = v.recursiveMakeDirectory(path); err != nil {
-		log.LogErrorf("CompleteMultipart: recursive make dir fail: volume(%v) path(%v) multipartID(%v) err(%v)",
-			v.name, path, multipartID, err)
-		return
-	}
 
 	var finalInode *proto.InodeInfo
 	if finalInode, err = v.mw.InodeGet_ll(completeInodeInfo.Inode); err != nil {
@@ -1308,7 +1322,21 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 			return
 		}
 		if readN > 0 {
-			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0, nil); err != nil {
+			checkFunc := func() error {
+				if !v.mw.EnableQuota {
+					return nil
+				}
+
+				if ok := v.ec.UidIsLimited(0); ok {
+					return syscall.ENOSPC
+				}
+
+				if v.mw.IsQuotaLimitedById(inode, true, false) {
+					return syscall.ENOSPC
+				}
+				return nil
+			}
+			if writeN, err = v.ec.Write(inode, offset, buf[:readN], 0, checkFunc); err != nil {
 				log.LogErrorf("streamWrite: data write tmp file fail, inode(%v) offset(%v) err(%v)", inode, offset, err)
 				exporter.Warning(fmt.Sprintf("write data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
 					v.name, inode, offset, readN, err))
@@ -2620,7 +2648,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	tLastName = pathItems[len(pathItems)-1].Name
 
 	// create target file inode and set target inode to be source file inode
-	if tInodeInfo, err = v.mw.InodeCreate_ll(uint32(sMode), 0, 0, nil, make([]uint64, 0)); err != nil {
+	if tInodeInfo, err = v.mw.InodeCreate_ll(tParentId, uint32(sMode), 0, 0, nil, make([]uint64, 0)); err != nil {
 		return
 	}
 	defer func() {

@@ -23,12 +23,12 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
 	if treeItem == nil {
-		e = NewExtend(extend.inode)
-		mp.extendTree.ReplaceOrInsert(e, true)
+		mp.extendTree.ReplaceOrInsert(extend, true)
 	} else {
 		e = treeItem.(*Extend)
+		e.Merge(extend, true)
 	}
-	e.Merge(extend, true)
+
 	return
 }
 
