@@ -1379,7 +1379,7 @@ func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32, atime
 	return nil
 }
 
-func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, target []byte, quotaIds []uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, target []byte, quotaIds []uint64) (*proto.InodeInfo, error) {
 	var (
 		status       int
 		err          error
@@ -1391,12 +1391,38 @@ func (mw *MetaWrapper) InodeCreate_ll(mode, uid, gid uint32, target []byte, quot
 	rwPartitions = mw.getRWPartitions()
 	length := len(rwPartitions)
 	epoch := atomic.AddUint64(&mw.epoch, 1)
-	for i := 0; i < length; i++ {
-		index := (int(epoch) + i) % length
-		mp = rwPartitions[index]
-		status, info, err = mw.icreate(mp, mode, uid, gid, target)
-		if err == nil && status == statusOK {
-			return info, nil
+	if mw.EnableQuota && parentID != 0 {
+		var quotaIds []uint32
+		parentMP := mw.getPartitionByInode(parentID)
+		if parentMP == nil {
+			log.LogErrorf("InodeCreate_ll: No parent partition, parentID(%v)", parentID)
+			return nil, syscall.ENOENT
+		}
+		quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+		if err != nil {
+			log.LogErrorf("InodeCreate_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
+			return nil, syscall.ENOENT
+		}
+		for quotaId := range quotaInfos {
+			quotaIds = append(quotaIds, quotaId)
+		}
+
+		for i := 0; i < length; i++ {
+			index := (int(epoch) + i) % length
+			mp = rwPartitions[index]
+			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds)
+			if err == nil && status == statusOK {
+				return info, nil
+			}
+		}
+	} else {
+		for i := 0; i < length; i++ {
+			index := (int(epoch) + i) % length
+			mp = rwPartitions[index]
+			status, info, err = mw.icreate(mp, mode, uid, gid, target)
+			if err == nil && status == statusOK {
+				return info, nil
+			}
 		}
 	}
 	return nil, syscall.ENOMEM
