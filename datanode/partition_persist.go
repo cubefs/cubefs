@@ -153,7 +153,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 		return
 	}
 	var tempFile *os.File
-	if tempFile, err = os.OpenFile(tempFileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
+	if tempFile, err = os.OpenFile(tempFileName, os.O_CREATE|os.O_RDWR|os.O_TRUNC|os.O_APPEND, 0666); err != nil {
 		return
 	}
 	defer func() {
