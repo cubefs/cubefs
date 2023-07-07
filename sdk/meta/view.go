@@ -428,3 +428,32 @@ func (mw *MetaWrapper) GetQuotaFullPaths() (fullPaths []string) {
 	}
 	return fullPaths
 }
+
+func (mw *MetaWrapper) IsQuotaLimitedById(inodeId uint64, size bool, files bool) bool {
+	mp := mw.getPartitionByInode(inodeId)
+	if mp == nil {
+		log.LogErrorf("IsQuotaLimitedById: inodeId(%v)", inodeId)
+		return true
+	}
+	quotaInfos, err := mw.getInodeQuota(mp, inodeId)
+	if err != nil {
+		log.LogErrorf("IsQuotaLimitedById: get parent quota fail, inodeId(%v) err(%v)", inodeId, err)
+		return true
+	}
+	for quotaId := range quotaInfos {
+		if info, isFind := mw.QuotaInfoMap[quotaId]; isFind {
+			if size && info.LimitedInfo.LimitedBytes {
+				log.LogDebugf("IsQuotaLimitedById quotaId [%v]", quotaId)
+				return true
+			}
+
+			if files && info.LimitedInfo.LimitedFiles {
+				log.LogDebugf("IsQuotaLimitedById quotaId [%v]", quotaId)
+				return true
+			}
+		}
+		log.LogDebugf("IsQuotaLimitedById false quota [%v]", quotaId)
+	}
+
+	return false
+}
