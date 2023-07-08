@@ -863,6 +863,11 @@ func extractNodeID(r *http.Request) (ID uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
+func extractNodesetID(r *http.Request) (ID uint64, err error) {
+	// nodeset id use same form key with node id
+	return extractNodeID(r)
+}
+
 func extractDiskPath(r *http.Request) (diskPath string, err error) {
 	if diskPath = r.FormValue(diskPathKey); diskPath == "" {
 		err = keyNotFound(diskPathKey)

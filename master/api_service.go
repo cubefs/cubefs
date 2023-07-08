@@ -2643,6 +2643,37 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 	return
 }
 
+func (m *Server) updateNodesetNodeSelector(zoneName string, nodesetId uint64, dataNodeSelector string, metaNodeSelector string) (err error) {
+	var ns *nodeSet
+	var ok bool
+	var value interface{}
+
+	if value, ok = m.cluster.t.zoneMap.Load(zoneName); !ok {
+		err = fmt.Errorf("zonename [%v] not found", zoneName)
+		return
+	}
+
+	zone := value.(*Zone)
+	if ns, ok = zone.nodeSetMap[nodesetId]; !ok {
+		err = fmt.Errorf("nodesetId [%v] not found", nodesetId)
+		return
+	}
+	needSync := false
+	if dataNodeSelector != "" && dataNodeSelector != ns.GetDataNodeSelector() {
+		ns.SetDataNodeSelector(dataNodeSelector)
+		needSync = true
+	}
+	if metaNodeSelector != "" && metaNodeSelector != ns.GetMetaNodeSelector() {
+		ns.SetMetaNodeSelector(metaNodeSelector)
+		needSync = true
+	}
+	if needSync {
+		m.cluster.syncUpdateNodeSet(ns)
+	}
+	log.LogInfof("action[updateNodesetNodeSelector] zonename %v nodeset %v dataNodeSelector %v metaNodeSelector %v", zoneName, nodesetId, dataNodeSelector, metaNodeSelector)
+	return
+}
+
 func (m *Server) setDpRdOnly(partitionID uint64, rdOnly bool) (err error) {
 
 	var dp *DataPartition
@@ -3081,6 +3112,41 @@ func (m *Server) updateNodeSetIdHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update node setid successfully")))
+}
+
+func (m *Server) updateNodeSetNodeSelector(w http.ResponseWriter, r *http.Request) {
+	var (
+		id       uint64
+		zoneName string
+		err      error
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateNodeSetNodeSelector))
+	defer func() {
+		doStatAndMetric(proto.AdminUpdateNodeSetNodeSelector, metric, err, nil)
+
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		}
+	}()
+
+	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
+		zoneName = DefaultZoneName
+	}
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if id, err = extractNodesetID(r); err != nil {
+		return
+	}
+	dataNodeSelector := r.FormValue(dataNodeSelectorKey)
+	metaNodeSelector := r.FormValue(metaNodeSelectorKey)
+
+	if err = m.updateNodesetNodeSelector(zoneName, id, dataNodeSelector, metaNodeSelector); err != nil {
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply("update nodeset selector successfully"))
 }
 
 // get metanode some interval params

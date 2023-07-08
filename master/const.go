@@ -40,6 +40,8 @@ const (
 	emptyCacheRuleKey      = "emptyCacheRule"
 	dataNodesetSelectorKey = "dataNodesetSelector"
 	metaNodesetSelectorKey = "metaNodesetSelector"
+	dataNodeSelectorKey    = "dataNodeSelector"
+	metaNodeSelectorKey    = "metaNodeSelector"
 
 	forceDelVolKey          = "forceDelVol"
 	ebsBlkSizeKey           = "ebsBlkSize"
