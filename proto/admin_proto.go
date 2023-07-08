@@ -60,6 +60,7 @@ const (
 	AdminGetIsDomainOn                        = "/admin/getIsDomainOn"
 	AdminUpdateNodeSetCapcity                 = "/admin/updateNodeSetCapcity"
 	AdminUpdateNodeSetId                      = "/admin/updateNodeSetId"
+	AdminUpdateNodeSetNodeSelector            = "/admin/updateNodeSetNodeSelector"
 	AdminUpdateDomainDataUseRatio             = "/admin/updateDomainDataRatio"
 	AdminUpdateZoneExcludeRatio               = "/admin/updateZoneExcludeRatio"
 	AdminSetNodeRdOnly                        = "/admin/setNodeRdOnly"
