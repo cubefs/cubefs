@@ -768,7 +768,6 @@ func (mr *MetaReplica) setLastReportTime() {
 }
 
 func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
-	log.LogWarnf("updateMetric mp:%v status:%v", mgr.PartitionID, mgr.Status)
 	mr.Status = (int8)(mgr.Status)
 	mr.IsLeader = mgr.IsLeader
 	mr.MaxInodeID = mgr.MaxInodeID
