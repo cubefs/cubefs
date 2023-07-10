@@ -173,7 +173,7 @@ func initLogName(module, dataDir string) (err error) {
 	} else {
 		return fmt.Errorf("warnLogDir dir not config")
 	}
-	if err = os.MkdirAll(UmpDataDir, 0666); err != nil {
+	if err = os.MkdirAll(UmpDataDir, 0755); err != nil {
 		return
 	}
 
