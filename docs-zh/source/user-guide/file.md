@@ -28,7 +28,7 @@ cfs-client -c client.json
     "owner":"test",
     "accessKey":"**********",
     "secretKey":"*********",
-    "masterAddr":"192.168.0.1",
+    "masterAddr":"192.168.0.1:17010",
     "rdonly":"false",
     "logDir":"/home/service/var/logs/cfs/log",
     "logLevel":"warn",

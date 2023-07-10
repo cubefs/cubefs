@@ -33,7 +33,7 @@ To ensure high availability of the service, at least 3 instances of the Master s
   "listen": "17010",
   "prof":"17020",
   "id":"1",
-  "peers": 1:127.0.0.1:17010,2:127.0.0.2:17010,3:127.0.0.3:17010",
+  "peers": "1:127.0.0.1:17010,2:127.0.0.2:17010,3:127.0.0.3:17010",
   "retainLogs":"20000",
   "logDir": "/cfs/master/log",
   "logLevel":"info",
