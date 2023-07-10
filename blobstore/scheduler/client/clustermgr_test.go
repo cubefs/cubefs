@@ -347,6 +347,18 @@ func TestClustermgrClient(t *testing.T) {
 		err := cli.DeleteMigrateTask(ctx, task1.TaskID)
 		require.NoError(t, err)
 	}
+	{ // kv over defaultListTaskNum
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Marker: "has"}, nil)
+		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).DoAndReturn(
+			func(_ context.Context, args *cmapi.ListKvOpts) (ret cmapi.ListKvRet, err error) {
+				if args.Marker != "has" {
+					return cmapi.ListKvRet{}, errMock
+				}
+				return cmapi.ListKvRet{Marker: ""}, nil
+			})
+		_, err := cli.ListAllMigrateTasks(ctx, proto.TaskTypeDiskRepair)
+		require.NoError(t, err)
+	}
 	{
 		// list all migrate tasks by disk_id
 		diskID := proto.DiskID(100)
