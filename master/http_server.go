@@ -31,18 +31,14 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func (m *Server) startHTTPService(modulename string, cfg *config.Config) (err error) {
+func (m *Server) startHTTPService() (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	m.registerAPIRoutes(router)
 
 	m.registerAPIMiddleware(router)
-	exporterPort, _ := strconv.ParseInt(m.port, 10, 64)
-	exporter.InitWithRouter(m.clusterName, modulename, cfg, router, exporterPort)
 	var listener net.Listener
 	if listener, err = net.Listen("tcp", colonSplit+m.port); err != nil {
 		return

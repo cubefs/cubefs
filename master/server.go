@@ -125,7 +125,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 
 	m.cluster.scheduleTask()
-	if err = m.startHTTPService(ModuleName, cfg); err != nil {
+	if err = m.startHTTPService(); err != nil {
 		return
 	}
 	exporter.Init(m.clusterName, ModuleName, "", cfg)
