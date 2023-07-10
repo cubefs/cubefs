@@ -287,7 +287,7 @@ func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 			return nil, errors.New(dir + " is not a directory")
 		}
 	}
-	_ = os.Chmod(dir, 0766)
+	_ = os.Chmod(dir, 0755)
 	logName := path.Join(dir, Audit_Module) + ".log"
 	audit := &Audit{
 		volName:          "",
