@@ -64,6 +64,12 @@ const (
 	ConfigKeyHBaseUrl = "hBaseUrl" // int
 )
 
+const (
+	CfgRegion = "region"
+	IDRegion  = "id"
+	CNRegion  = "cn"
+)
+
 // Config defines the struct of a configuration in general.
 type Config struct {
 	data map[string]interface{}
