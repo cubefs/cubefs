@@ -2,26 +2,29 @@
 
 ## 配置说明
 
-| 配置项               | 类型    | 描述                                               | 必需  |
-|-------------------|-------|--------------------------------------------------|-----|
-| role              | 字符串   | 进程角色： *MetaNode*                                 | 是   |
-| listen            | 字符串   | 监听和接受请求的端口                                       | 是   |
-| prof              | 字符串   | 调试和管理员API接口                                      | 是   |
-| logLevel          | 字符串   | 日志级别，默认: *error*                                 | 否   |
-| metadataDir       | 字符串   | 元数据快照存储目录                                        | 是   |
-| logDir            | 字符串   | 日志存储目录                                           | 是   |
-| raftDir           | 字符串   | raft wal日志目录                                     | 是   |
-| raftHeartbeatPort | 字符串   | raft心跳通信端口                                       | 是   |
-| raftReplicaPort   | 字符串   | raft数据传输端口                                       | 是   |
-| consulAddr        | 字符串   | prometheus注册接口                                   | 否   |
-| exporterPort      | 字符串   | prometheus获取监控数据端口                               | 否   |
-| masterAddr        | 字符串   | master服务地址                                       | 是   |
-| totalMem          | 字符串   | 最大可用内存，此值需高于master配置中metaNodeReservedMem的值，单位：字节 | 是   |
-| localIP           | 字符串   | 本机ip地址,如果不填写该选项，则使用和master通信的ip地址                | 否   |
-| zoneName          | 字符串   | 指定区域，默认分配至`default`区域                            | 否   |
-| deleteBatchCount  | int64 | 一次性批量删除多少inode节点，默认`500`                         | 否   |
-
-Properties
+| 配置项                 | 类型           | 描述                                               | 必需 |
+|---------------------|--------------|--------------------------------------------------|----|
+| role                | string       | 进程角色： *MetaNode*                                 | 是  |
+| listen              | string       | 监听和接受请求的端口                                       | 是  |
+| prof                | string       | 调试和管理员API接口                                      | 是  |
+| logLevel            | string       | 日志级别，默认: *error*                                 | 否  |
+| metadataDir         | string       | 元数据快照存储目录                                        | 是  |
+| logDir              | string       | 日志存储目录                                           | 是  |
+| raftDir             | string       | raft wal日志目录                                     | 是  |
+| raftHeartbeatPort   | string       | raft心跳通信端口                                       | 是  |
+| raftReplicaPort     | string       | raft数据传输端口                                       | 是  |
+| consulAddr          | string       | prometheus注册接口                                   | 否  |
+| exporterPort        | string       | prometheus获取监控数据端口                               | 否  |
+| masterAddr          | string slice | master服务地址                                       | 是  |
+| totalMem            | string       | 最大可用内存，此值需高于master配置中metaNodeReservedMem的值，单位：字节 | 是  |
+| memRatio            | string       | 最大可用内存占主机总内存的比例。若填写该项，则计算出的值将会覆盖`totalMem`配置项    | 否  |
+| localIP             | string       | 本机ip地址，如果不填写该选项，则使用和master通信的ip地址                | 否  |
+| bindIp              | bool         | 是否仅在本机ip上监听连接，默认`false`                          | 否  |
+| zoneName            | string       | 指定区域，默认分配至`default`区域                            | 否  |
+| deleteBatchCount    | int64        | 一次性批量删除多少inode节点，默认`500`                         | 否  |
+| tickInterval        | float64      | raft检查心跳和选举超时的间隔，单位毫秒，默认`300`                    | 否  |
+| raftRecvBufSize     | int          | raft接收缓冲区大小，单位：字节，默认`2048`                       | 否  |
+| nameResolveInterval | int          | raft节点地址解析间隔，单位：分钟，值应当介于[1-60]之间，默认`1`           | 否  |
 
 ## 配置示例
 
