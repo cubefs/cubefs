@@ -93,7 +93,7 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.fileSize = config.FileSize
 	writer.cacheThreshold = config.CacheThreshold
 	writer.dirty = false
-	writer.AllocateCache()
+	writer.allocateCache()
 	writer.limitManager = writer.ec.LimitManager
 
 	return
@@ -616,13 +616,22 @@ func (writer *Writer) CacheFileSize() int {
 }
 
 func (writer *Writer) FreeCache() {
+	if writer == nil {
+		return
+	}
 	if buf.CachePool == nil {
 		return
 	}
-	buf.CachePool.Put(writer.buf)
+	writer.once.Do(func() {
+		tmpBuf := writer.buf
+		writer.buf = nil
+		if tmpBuf != nil {
+			buf.CachePool.Put(tmpBuf)
+		}
+	})
 }
 
-func (writer *Writer) AllocateCache() {
+func (writer *Writer) allocateCache() {
 	if buf.CachePool == nil {
 		return
 	}
