@@ -8,6 +8,7 @@ Weilong Guo ([@awzhgw](https://github.com/awzhgw))| [guowl18702995996@gmail.com]
 Shuoran Liu ([@shuoranliu](https://github.com/shuoranliu)) | [shuoranliu@gmail.com](mailto:shuoranliu@gmail.com) | Client, SDK, Metadata, Community | [BEIKE](https://investors.ke.com/)
 Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe)) | [626148589@qq.com](mailto:626148589@qq.com) | Client, Metadata, Data Storage, Community | [OPPO](https://www.oppo.com/en/)
 Hongyan Wang ([@jadewang198510](https://github.com/jadewang198510)) | [741773046@qq.com](mailto:741773046@qq.com) | Metadata, Data Storage, Community | [OPPO](https://www.oppo.com/en/)
+Yao Hu([@baijiaruo](https://github.com/baijiaruo)) | [baijiaruo@126.com](mailto:baijiaruo@126.com) | Metadata, Data Storage, Community | [OPPO](https://www.oppo.com/en/)
 Tianjiong Zhang ([@tianjiongzhang](https://github.com/tianjiongzhang)) | [236556116@qq.com](mailto:236556116@qq.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
 Chi He([@bboyCH4](https://github.com/bboyCH4)) | [hechi1014@126.com](mailto:hechi1014@126.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
 Mofei Zhang ([@mervinkid](https://github.com/mervinkid)) | [mofei2816@gmail.com](mailto:mofei2816@gmail.com) | Metadata, S3, Raft, Community | [JD.com](https://www.jd.com/)
