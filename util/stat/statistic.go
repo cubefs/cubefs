@@ -100,7 +100,7 @@ func NewStatistic(dir, logModule string, logMaxSize int64, timeOutUs [MaxTimeout
 			return nil, errors.New(dir + " is not a directory")
 		}
 	}
-	_ = os.Chmod(dir, 0766)
+	_ = os.Chmod(dir, 0755)
 	logName := path.Join(dir, Stat_Module)
 	st := &Statistic{
 		logDir:        dir,
