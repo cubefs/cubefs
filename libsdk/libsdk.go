@@ -1307,17 +1307,20 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 			FileSize:        fileSize,
 			CacheThreshold:  c.cacheThreshold,
 		}
-
+		f.fileWriter.FreeCache()
 		switch flags & 0xff {
 		case syscall.O_RDONLY:
 			f.fileReader = blobstore.NewReader(clientConf)
+			f.fileWriter = nil
 		case syscall.O_WRONLY:
 			f.fileWriter = blobstore.NewWriter(clientConf)
+			f.fileReader = nil
 		case syscall.O_RDWR:
 			f.fileReader = blobstore.NewReader(clientConf)
 			f.fileWriter = blobstore.NewWriter(clientConf)
 		default:
 			f.fileWriter = blobstore.NewWriter(clientConf)
+			f.fileReader = nil
 		}
 	}
 	c.fdmap[fd] = f
@@ -1395,6 +1398,7 @@ func (c *client) openStream(f *file) {
 func (c *client) closeStream(f *file) {
 	_ = c.ec.CloseStream(f.ino)
 	_ = c.ec.EvictStream(f.ino)
+	f.fileWriter.FreeCache()
 	f.fileWriter = nil
 	f.fileReader = nil
 }
