@@ -97,7 +97,6 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			fReader = blobstore.NewReader(clientConf)
 		case syscall.O_WRONLY:
 			fWriter = blobstore.NewWriter(clientConf)
-
 		case syscall.O_RDWR:
 			fReader = blobstore.NewReader(clientConf)
 			fWriter = blobstore.NewWriter(clientConf)
@@ -255,15 +254,20 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			FileSize:        uint64(fileSize),
 			CacheThreshold:  f.super.CacheThreshold,
 		}
-
+		f.fWriter.FreeCache()
 		switch req.Flags & 0x0f {
 		case syscall.O_RDONLY:
 			f.fReader = blobstore.NewReader(clientConf)
+			f.fWriter = nil
 		case syscall.O_WRONLY:
 			f.fWriter = blobstore.NewWriter(clientConf)
+			f.fReader = nil
 		case syscall.O_RDWR:
 			f.fReader = blobstore.NewReader(clientConf)
 			f.fWriter = blobstore.NewWriter(clientConf)
+		default:
+			f.fWriter = blobstore.NewWriter(clientConf)
+			f.fReader = nil
 		}
 		log.LogDebugf("TRACE file open,ino(%v)  req.Flags(%v) reader(%v)  writer(%v)", ino, req.Flags, f.fReader, f.fWriter)
 	}
