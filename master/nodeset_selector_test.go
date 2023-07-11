@@ -49,17 +49,20 @@ func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 	zone, err := server.cluster.t.getZone(selectZone)
 	if err != nil {
 		t.Errorf("failed to get zone %v", err)
+		return
 	}
 	printNodesetsOfZone(t, zone)
 	nsc := zone.getAllNodeSet()
 	ns, err := selector.Select(nsc, nil, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodeset %v", selector.GetName(), err)
+		return
 	}
 	zone.nsLock.Lock()
 	defer zone.nsLock.Unlock()
 	if _, ok := zone.nodeSetMap[ns.ID]; !ok {
 		t.Errorf("%v select a wrong nodeset", selector.GetName())
+		return
 	}
 	t.Logf("%v select nodeset %v", selector.GetName(), ns.ID)
 	printNodeset(t, ns)

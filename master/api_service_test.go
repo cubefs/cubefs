@@ -778,10 +778,12 @@ func TestUpdateNodesetNodeSelector(t *testing.T) {
 	zone, err := server.cluster.t.getZone(testZone2)
 	if err != nil {
 		t.Errorf("failed to get zone, %v", err)
+		return
 	}
 	nsc := zone.getAllNodeSet()
 	if nsc.Len() == 0 {
 		t.Error("nodeset count could not be 0")
+		return
 	}
 	ns := nsc[0]
 	reqUrl := fmt.Sprintf("%v%v?zoneName=%v&id=%v", hostAddr, proto.AdminUpdateNodeSetNodeSelector, testZone2, ns.ID)
@@ -790,10 +792,12 @@ func TestUpdateNodesetNodeSelector(t *testing.T) {
 	process(updateDataSelectorUrl, t)
 	if ns.GetDataNodeSelector() != RoundRobinNodeSelectorName {
 		t.Errorf("failed to change data node selector")
+		return
 	}
 	process(updateMetaSelectorUrl, t)
 	if ns.GetMetaNodeSelector() != RoundRobinNodeSelectorName {
 		t.Errorf("failed to change meta node selector")
+		return
 	}
 	updateDataSelectorUrl = fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
 	updateMetaSelectorUrl = fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
@@ -805,10 +809,12 @@ func TestUpdateZoneNodesetSelector(t *testing.T) {
 	zone, err := server.cluster.t.getZone(testZone2)
 	if err != nil {
 		t.Errorf("failed to get zone, %v", err)
+		return
 	}
 	nsc := zone.getAllNodeSet()
 	if nsc.Len() == 0 {
 		t.Error("nodeset count could not be 0")
+		return
 	}
 	reqUrl := fmt.Sprintf("%v%v?name=%v&enable=1", hostAddr, proto.UpdateZone, testZone2)
 	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
@@ -825,6 +831,28 @@ func TestUpdateZoneNodesetSelector(t *testing.T) {
 	updateMetaSelectorUrl = fmt.Sprintf("%v&metaNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
 	process(updateDataSelectorUrl, t)
 	process(updateMetaSelectorUrl, t)
+}
+
+func TestUpdateZoneStatus(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UpdateZone, testZone2)
+	enableUrl := fmt.Sprintf("%v&enable=1", reqUrl)
+	disableUrl := fmt.Sprintf("%v&enable=0", reqUrl)
+	process(disableUrl, t)
+	if zone.getStatus() != unavailableZone {
+		t.Errorf("failed to update zone status")
+		return
+	}
+	process(enableUrl, t)
 }
 
 func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
