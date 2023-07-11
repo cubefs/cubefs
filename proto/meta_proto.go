@@ -109,7 +109,7 @@ type MetaQuotaInfos struct {
 }
 
 type MetaQuotaInfo struct {
-	RootInode bool
+	RootInode bool `json:"rid"`
 }
 
 type QuotaPathInfo struct {
