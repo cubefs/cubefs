@@ -25,7 +25,7 @@ import (
 const (
 	RootIno    = uint64(1)
 	SummaryKey = "cbfs.dir.summary"
-	QuotaKey   = "cbfs.dir.quota"
+	QuotaKey   = "qa"
 )
 
 const (
