@@ -944,10 +944,12 @@ func (mp *metaPartition) storeInode(rootDir string,
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	mp.acucumRebuildStart()
+
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
-		mp.acucumUidSizeByStore(ino)
+		if sm.uidRebuild {
+			mp.acucumUidSizeByStore(ino)
+		}
 
 		if data, err = ino.Marshal(); err != nil {
 			return false
@@ -972,7 +974,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 		}
 		return true
 	})
-	mp.acucumRebuildFin()
+	mp.acucumRebuildFin(sm.uidRebuild)
 	crc = sign.Sum32()
 	mp.size = size
 
@@ -1054,11 +1056,11 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-	enableQuota := mp.mqMgr.statisticRebuildStart()
+
 	extendTree.Ascend(func(i BtreeItem) bool {
 		e := i.(*Extend)
 		var raw []byte
-		if enableQuota {
+		if sm.quotaRebuild {
 			mp.statisticExtendByStore(e, sm.inodeTree)
 		}
 		if raw, err = e.Bytes(); err != nil {
@@ -1081,11 +1083,9 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 		}
 		return true
 	})
-	log.LogInfof("storeExtend: write data ok: partitoinID(%v) volume(%v) numInodes(%v) extends(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len())
-	if enableQuota {
-		mp.mqMgr.statisticRebuildFin()
-	}
+	log.LogInfof("storeExtend: write data ok: partitoinID(%v) volume(%v) numInodes(%v) extends(%v) quotaRebuild(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len(), sm.quotaRebuild)
+	mp.mqMgr.statisticRebuildFin(sm.quotaRebuild)
 	if err != nil {
 		return
 	}
