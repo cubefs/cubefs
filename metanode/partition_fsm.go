@@ -196,6 +196,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		txRbInodeTree := mp.txProcessor.txResource.txRbInodeTree.GetTree()
 		txRbDentryTree := mp.txProcessor.txResource.txRbDentryTree.GetTree()
 		txId := mp.txProcessor.txManager.txIdAlloc.getTransactionID()
+		quotaRebuild := mp.mqMgr.statisticRebuildStart()
+		uidRebuild := mp.acucumRebuildStart()
 		msg := &storeMsg{
 			command:        opFSMStoreTick,
 			applyIndex:     index,
@@ -207,7 +209,10 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			txTree:         txTree,
 			txRbInodeTree:  txRbInodeTree,
 			txRbDentryTree: txRbDentryTree,
+			quotaRebuild:   quotaRebuild,
+			uidRebuild:     uidRebuild,
 		}
+		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
 		mp.storeChan <- msg
 	case opFSMInternalDeleteInode:
 		err = mp.internalDelete(msg.V)

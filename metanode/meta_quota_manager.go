@@ -248,18 +248,28 @@ func (mqMgr *MetaQuotaManager) statisticRebuildStart() bool {
 	if !mqMgr.enable {
 		return false
 	}
+
+	if mqMgr.rbuilding {
+		return false
+	}
 	mqMgr.rbuilding = true
 	return true
 }
 
-func (mqMgr *MetaQuotaManager) statisticRebuildFin() {
+func (mqMgr *MetaQuotaManager) statisticRebuildFin(rebuild bool) {
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
+	mqMgr.rbuilding = false
+	if !rebuild {
+		mqMgr.statisticRebuildBase = new(sync.Map)
+		mqMgr.statisticRebuildTemp = new(sync.Map)
+		return
+	}
 	mqMgr.statisticBase = mqMgr.statisticRebuildBase
 	mqMgr.statisticTemp = mqMgr.statisticRebuildTemp
 	mqMgr.statisticRebuildBase = new(sync.Map)
 	mqMgr.statisticRebuildTemp = new(sync.Map)
-	mqMgr.rbuilding = false
+
 	if log.EnableInfo() {
 		mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
 			quotaId := key.(uint32)
@@ -301,6 +311,7 @@ func (mqMgr *MetaQuotaManager) IsOverQuota(size bool, files bool, quotaId uint32
 
 func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId uint32) {
 	var baseInfo proto.QuotaUsedInfo
+	var baseTemp proto.QuotaUsedInfo
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
 
@@ -314,16 +325,16 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 	if mqMgr.rbuilding {
 		value, isFind = mqMgr.statisticRebuildTemp.Load(quotaId)
 		if isFind {
-			baseInfo = value.(proto.QuotaUsedInfo)
+			baseTemp = value.(proto.QuotaUsedInfo)
 		} else {
-			baseInfo.UsedBytes = 0
-			baseInfo.UsedFiles = 0
+			baseTemp.UsedBytes = 0
+			baseTemp.UsedFiles = 0
 		}
-		baseInfo.UsedBytes += size
-		baseInfo.UsedFiles += files
-		mqMgr.statisticRebuildTemp.Store(quotaId, baseInfo)
+		baseTemp.UsedBytes += size
+		baseTemp.UsedFiles += files
+		mqMgr.statisticRebuildTemp.Store(quotaId, baseTemp)
 	}
-	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v]", mqMgr.mpID, quotaId, baseInfo)
+	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v] baseTemp [%v]", mqMgr.mpID, quotaId, baseInfo, baseTemp)
 	return
 }
 
