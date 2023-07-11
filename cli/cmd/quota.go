@@ -256,7 +256,7 @@ func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 				stdout("\nConfirm (yes/no)[yes]:")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
-				if userConfirm != "yes" && len(userConfirm) != 0 {
+				if userConfirm != "yes" {
 					stdout("Abort by user.\n")
 					return
 				}

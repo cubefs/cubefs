@@ -387,22 +387,31 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 	return
 }
 
-func (uMgr *UidManager) accumRebuildStart() {
+func (uMgr *UidManager) accumRebuildStart() bool {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildStart vol [%v] mp[%v]", uMgr.volName, uMgr.mpID)
+	log.LogDebugf("accumRebuildStart vol [%v] mp[%v] rbuilding [%v]", uMgr.volName, uMgr.mpID, uMgr.rbuilding)
+	if uMgr.rbuilding {
+		return false
+	}
 	uMgr.rbuilding = true
+	return true
 }
 
-func (uMgr *UidManager) accumRebuildFin() {
+func (uMgr *UidManager) accumRebuildFin(rebuild bool) {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildFin rebuild vol %v, mp:[%v],%v:%v", uMgr.volName, uMgr.mpID, uMgr.accumRebuildBase, uMgr.accumRebuildDelta)
+	log.LogDebugf("accumRebuildFin rebuild vol %v, mp:[%v],%v:%v, rebuild:[%v]", uMgr.volName, uMgr.mpID,
+		uMgr.accumRebuildBase, uMgr.accumRebuildDelta, rebuild)
+	uMgr.rbuilding = false
+	if !rebuild {
+		return
+	}
 	uMgr.accumBase = uMgr.accumRebuildBase
 	uMgr.accumDelta = uMgr.accumRebuildDelta
 	uMgr.accumRebuildBase = new(sync.Map)
 	uMgr.accumRebuildDelta = new(sync.Map)
-	uMgr.rbuilding = false
+
 }
 
 func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum *sync.Map) {
@@ -461,11 +470,11 @@ type metaPartition struct {
 	nonIdempotent          sync.RWMutex
 }
 
-func (mp *metaPartition) acucumRebuildStart() {
-	mp.uidManager.accumRebuildStart()
+func (mp *metaPartition) acucumRebuildStart() bool {
+	return mp.uidManager.accumRebuildStart()
 }
-func (mp *metaPartition) acucumRebuildFin() {
-	mp.uidManager.accumRebuildFin()
+func (mp *metaPartition) acucumRebuildFin(rebuild bool) {
+	mp.uidManager.accumRebuildFin(rebuild)
 }
 func (mp *metaPartition) acucumUidSizeByStore(ino *Inode) {
 	mp.uidManager.accumInoUidSize(ino, mp.uidManager.accumRebuildBase)
