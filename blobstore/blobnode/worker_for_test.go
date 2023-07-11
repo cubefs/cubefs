@@ -88,12 +88,11 @@ func genMockBytes(letter byte, size int64) []byte {
 }
 
 type MockGetter struct {
-	mu          sync.Mutex
-	vunits      map[proto.Vuid]*mockVunit
-	failVuid    map[proto.Vuid]error
-	bids        []proto.BlobID
-	sizes       []int64
-	partialData map[proto.BlobID][]byte
+	mu       sync.Mutex
+	vunits   map[proto.Vuid]*mockVunit
+	failVuid map[proto.Vuid]error
+	bids     []proto.BlobID
+	sizes    []int64
 }
 
 func NewMockGetter(replicas []proto.VunitLocation, mode codemode.CodeMode) *MockGetter {

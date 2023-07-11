@@ -103,7 +103,7 @@ func (r *ShardRepairer) RepairShard(ctx context.Context, task *proto.ShardRepair
 	span.Infof("start recover blob: bid[%d], badIdx[%+v]", task.Bid, task.BadIdxes)
 	bidInfos := []*ShardInfoSimple{{Bid: task.Bid, Size: shardSize}}
 	shardRecover := NewShardRecover(task.Sources, task.CodeMode, bidInfos,
-		r.cli, 1, proto.TaskTypeShardRepair, task.EnableAssist)
+		r.cli, 1, proto.TaskTypeShardRepair, task.EnablePartial)
 	defer shardRecover.ReleaseBuf()
 	err = shardRecover.RecoverShards(ctx, task.BadIdxes, false)
 	if err != nil {
@@ -182,7 +182,7 @@ func (r *ShardRepairer) ShardPartialRepair(ctx context.Context, arg api.ShardPar
 	buffer, err := workutils.TaskBufPool.GetBufBySize(bufferSize)
 	if err != nil {
 		span.Errorf("alloc buf failed: err[%+v]", err)
-		return nil, err
+		return nil, errcode.ErrShardPartialRepairFailed
 	}
 	defer workutils.TaskBufPool.Put(buffer)
 
@@ -195,8 +195,7 @@ func (r *ShardRepairer) ShardPartialRepair(ctx context.Context, arg api.ShardPar
 		n, errRead := io.ReadFull(shard.Body, shardData[vIdx])
 		if errRead != nil || n != int(arg.Size) {
 			span.Errorf("read data from body failed, err: %v", errRead)
-			err = errShardDataNotPrepared
-			return nil, err
+			return nil, errcode.ErrShardPartialRepairFailed
 		}
 		start = start + int(arg.Size)
 	}
@@ -204,13 +203,13 @@ func (r *ShardRepairer) ShardPartialRepair(ctx context.Context, arg api.ShardPar
 	encoder, err := workutils.GetEncoder(arg.CodeMode)
 	if err != nil {
 		span.Errorf("get encoder failed: code_mode[%s], err[%+v]", arg.CodeMode.String(), err)
-		return nil, err
+		return nil, errcode.ErrShardPartialRepairFailed
 	}
 
 	// partial reconstruct in az
 	if err = encoder.PartialReconstruct(shardData, arg.SurvivalIndex, []int{arg.BadIdx}); err != nil {
 		span.Errorf("partial reconstruct failed, err: %v", err)
-		return nil, err
+		return nil, errcode.ErrShardPartialRepairFailed
 	}
 	ret.Data = shardData[arg.BadIdx]
 	span.Debugf("shard partial repair success, args[%v]", arg)

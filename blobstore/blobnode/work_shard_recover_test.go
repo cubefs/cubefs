@@ -22,12 +22,12 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
+	"github.com/stretchr/testify/require"
 )
 
 func TestShardsBuf(t *testing.T) {
@@ -61,7 +61,7 @@ func TestShardsBuf(t *testing.T) {
 	}
 
 	_, err = shardsBuf.FetchShard(1)
-	require.EqualError(t, errShardDataNotPrepared, err.Error())
+	require.EqualError(t, errcode.ErrShardPartialRepairFailed, err.Error())
 
 	err = shardsBuf.PutShard(1, bytes.NewReader(genMockBytes('a', 1023)))
 	require.Error(t, err)
@@ -311,10 +311,8 @@ func TestRecoverShards(t *testing.T) {
 		tmpCombination[i] = uint8(i)
 	}
 	for i := 0; i < combinationCnt; i++ {
-		badi5 := make([]uint8, 0)
-		for _, e := range tmpCombination {
-			badi5 = append(badi5, e)
-		}
+		badi5 := make([]uint8, len(tmpCombination))
+		badi5 = append(badi5, tmpCombination...)
 		log.Println(badi5)
 		err = repair5.RecoverShards(ctx, badi5, false)
 		require.NoError(t, err)
@@ -492,7 +490,7 @@ func TestDownload(t *testing.T) {
 		for _, bid := range repairBids {
 			_, err := repair.GetShard(fail.Index(), bid)
 			require.Error(t, err)
-			require.EqualError(t, errShardDataNotPrepared, err.Error())
+			require.EqualError(t, errcode.ErrShardPartialRepairFailed, err.Error())
 		}
 	}
 
