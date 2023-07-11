@@ -117,6 +117,19 @@ func (api *AdminAPI) ListNodeSets(zoneName string) (nodeSetStats []*proto.NodeSe
 	}
 	return
 }
+func (api *AdminAPI) GetNodeSet(nodeSetId string) (nodeSetStatInfo *proto.NodeSetStatInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.GetNodeSet)
+	request.addParam("nodesetId", nodeSetId)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	nodeSetStatInfo = &proto.NodeSetStatInfo{}
+	if err = json.Unmarshal(buf, &nodeSetStatInfo); err != nil {
+		return
+	}
+	return
+}
 func (api *AdminAPI) Topo() (topo *proto.TopologyView, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.GetTopologyView)

@@ -1007,3 +1007,9 @@ func TestListNodeSets(t *testing.T) {
 	fmt.Println(reqURL)
 	process(reqURL, t)
 }
+
+func TestGetNodeSets(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?nodesetId=1", hostAddr, proto.GetNodeSet)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}

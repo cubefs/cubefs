@@ -45,6 +45,9 @@ type MasterCLientWithResolver struct {
 	stopC          chan struct{}
 }
 
+type IMasterClient interface {
+}
+
 type MasterClient struct {
 	sync.RWMutex
 	masters    []string

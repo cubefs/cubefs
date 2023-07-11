@@ -1,4 +1,4 @@
-// Copyright 2018 The CubeFS Authors.
+// Copyright 2023 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package cmd
 import (
 	"github.com/cubefs/cubefs/proto"
 	sdk "github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util"
 	"github.com/spf13/cobra"
 )
 
@@ -34,20 +33,21 @@ func newNodeSetCmd(client *sdk.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newNodeSetListCmd(client),
+		newNodeSetInfoCmd(client),
 	)
 	return cmd
 }
 
 const (
 	cmdNodeSetListShort = "List cluster nodeSets"
+	cmdGetNodeSetShort  = "Show nodeSet information"
 )
 
 func newNodeSetListCmd(client *sdk.MasterClient) *cobra.Command {
 	var zoneName string
 	var cmd = &cobra.Command{
-		Use:     CliOpList,
-		Short:   cmdNodeSetListShort,
-		Aliases: []string{"ls"},
+		Use:   CliOpList,
+		Short: cmdNodeSetListShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var nodeSetStats []*proto.NodeSetStat
 			var err error
@@ -59,18 +59,11 @@ func newNodeSetListCmd(client *sdk.MasterClient) *cobra.Command {
 			if nodeSetStats, err = client.AdminAPI().ListNodeSets(zoneName); err != nil {
 				return
 			}
-			zoneTablePattern := "%-4v %-4v %-10v %-8v %-8v %12v %12v %12v %12v %12v %12v\n"
-			stdout(zoneTablePattern, "ID", "Cap", "Zone", "MetaNum", "DataNum", "MetaTotal", "MetaUsed", "MetaAvail", "DataTotal", "DataUsed", "DataAvail")
-			zoneDataPattern := "%-4v %-4v %-10v %-8v %-8v %10.2fGB %10.2fGB %10.2fGB %10.2fGB %10.2fGB %10.2fGB\n"
+			zoneTablePattern := "%-6v %-6v %-12v %-10v %-10v\n"
+			stdout(zoneTablePattern, "ID", "Cap", "Zone", "MetaNum", "DataNum")
+			zoneDataPattern := "%-6v %-6v %-12v %-10v %-10v\n"
 			for _, nodeSet := range nodeSetStats {
-				stdout(zoneDataPattern, nodeSet.ID, nodeSet.Capacity, nodeSet.Zone, nodeSet.MetaNodeNum, nodeSet.DataNodeNum,
-					float64(nodeSet.MetaTotal)/float64(util.GB),
-					float64(nodeSet.MetaUsed)/float64(util.GB),
-					float64(nodeSet.MetaAvail)/float64(util.GB),
-					float64(nodeSet.DataTotal)/float64(util.GB),
-					float64(nodeSet.DataUsed)/float64(util.GB),
-					float64(nodeSet.DataAvail)/float64(util.GB),
-				)
+				stdout(zoneDataPattern, nodeSet.ID, nodeSet.Capacity, nodeSet.Zone, nodeSet.MetaNodeNum, nodeSet.DataNodeNum)
 			}
 			return
 		},
@@ -78,5 +71,31 @@ func newNodeSetListCmd(client *sdk.MasterClient) *cobra.Command {
 
 	cmd.Flags().StringVar(&zoneName, CliFlagZoneName, "", "List nodeSets in the specified zone")
 
+	return cmd
+}
+
+func newNodeSetInfoCmd(client *sdk.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpGet,
+		Short: cmdGetNodeSetShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var nodeSetStatInfo *proto.NodeSetStatInfo
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error: %v\n", err)
+				}
+			}()
+
+			nodeSetId := args[0]
+
+			if nodeSetStatInfo, err = client.AdminAPI().GetNodeSet(nodeSetId); err != nil {
+				return
+			}
+			stdout(formatNodeSetView(nodeSetStatInfo))
+			return
+		},
+	}
 	return cmd
 }

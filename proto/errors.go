@@ -16,7 +16,7 @@ package proto
 
 import "github.com/cubefs/cubefs/util/errors"
 
-//err
+// err
 var (
 	ErrSuc                    = errors.New("success")
 	ErrInternalError          = errors.New("internal error")
@@ -89,6 +89,7 @@ var (
 	ErrVolNoCacheAndRule                       = errors.New("vol has no cache and rule")
 	ErrNoAclPermission                         = errors.New("acl no permission")
 	ErrQuotaNotExists                          = errors.New("quota not exists")
+	ErrNodeSetNotExists                        = errors.New("node set not exists")
 )
 
 // http response error code and error message definitions
@@ -153,6 +154,7 @@ const (
 	ErrCodeInvalidSecretKey
 	ErrCodeIsOwner
 	ErrCodeZoneNumError
+	ErrCodeNodeSetNotExists
 )
 
 // Err2CodeMap error map to code
@@ -215,6 +217,7 @@ var Err2CodeMap = map[error]int32{
 	ErrInvalidSecretKey:                ErrCodeInvalidSecretKey,
 	ErrIsOwner:                         ErrCodeIsOwner,
 	ErrZoneNum:                         ErrCodeZoneNumError,
+	ErrNodeSetNotExists:                ErrCodeNodeSetNotExists,
 }
 
 func ParseErrorCode(code int32) error {
@@ -284,6 +287,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeInvalidSecretKey:                ErrInvalidSecretKey,
 	ErrCodeIsOwner:                         ErrIsOwner,
 	ErrCodeZoneNumError:                    ErrZoneNum,
+	ErrCodeNodeSetNotExists:                ErrNodeSetNotExists,
 }
 
 type GeneralResp struct {

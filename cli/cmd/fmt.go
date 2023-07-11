@@ -82,15 +82,15 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v"
+var nodeViewTableRowPatternForZone = "%-6v    %-65v    %-8v    %-8v"
 
-func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
+func formatNodeViewTableHeaderForZone() string {
+	return fmt.Sprintf(nodeViewTableRowPatternForZone, "ID", "ADDRESS", "WRITABLE", "STATUS")
 }
 
-func formatNodeView(view *proto.NodeView, tableRow bool) string {
+func formatNodeViewForZone(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
-		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
+		return fmt.Sprintf(nodeViewTableRowPatternForZone, view.ID, formatAddr(view.Addr, view.DomainAddr),
 			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
 	}
 	var sb = strings.Builder{}
@@ -99,6 +99,19 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
 	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
 	return sb.String()
+}
+
+func formatNodeViewTableHeaderForNodeSet() string {
+	return fmt.Sprintf("%-6v    %-65v    %-8v    %-8v    %-10v    %-10v    %-10v",
+		"ID", "ADDRESS", "WRITABLE", "STATUS", "TOTAL", "USED", "AVAIL")
+}
+
+func formatNodeViewForNodeSet(view *proto.NodeStatView) string {
+	return fmt.Sprintf("%-6v    %-65v    %-8v    %-8v    %-10v    %-10v    %-10v",
+		view.ID, formatAddr(view.Addr, view.DomainAddr), formatYesNo(view.IsWritable), formatNodeStatus(view.Status),
+		formatSize(view.Total),
+		formatSize(view.Used),
+		formatSize(view.Avail))
 }
 
 func formatSimpleVolView(svv *proto.SimpleVolView) string {
@@ -758,6 +771,43 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	return sb.String()
 }
 
+func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("NodeSet ID:   %v\n", ns.ID))
+	sb.WriteString(fmt.Sprintf("Capacity:      %v\n", ns.Capacity))
+	sb.WriteString(fmt.Sprintf("Zone:     %v\n", ns.Zone))
+	var dataTotal, dataUsed, dataAvail, metaTotal, metaUsed, metaAvail uint64
+	for _, dn := range ns.DataNodes {
+		dataTotal += dn.Total
+		dataUsed += dn.Used
+		dataAvail += dn.Avail
+	}
+	for _, mn := range ns.MetaNodes {
+		metaTotal += mn.Total
+		metaUsed += mn.Used
+		metaAvail += mn.Avail
+	}
+	sb.WriteString(fmt.Sprintf("DataTotal:     %v\n", formatSize(dataTotal)))
+	sb.WriteString(fmt.Sprintf("DataUsed:      %v\n", formatSize(dataUsed)))
+	sb.WriteString(fmt.Sprintf("DataAvail:     %v\n", formatSize(dataAvail)))
+	sb.WriteString(fmt.Sprintf("MetaTotal:     %v\n", formatSize(metaTotal)))
+	sb.WriteString(fmt.Sprintf("MetaUsed:      %v\n", formatSize(metaUsed)))
+	sb.WriteString(fmt.Sprintf("MetaAvail:     %v\n", formatSize(metaAvail)))
+	sb.WriteString(fmt.Sprintf("\n"))
+	sb.WriteString(fmt.Sprintf("DataNodes[%v]:\n", len(ns.DataNodes)))
+	sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewTableHeaderForNodeSet()))
+	for _, dn := range ns.DataNodes {
+		sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewForNodeSet(dn)))
+	}
+	sb.WriteString(fmt.Sprintf("\n"))
+	sb.WriteString(fmt.Sprintf("MetaNodes[%v]:\n", len(ns.MetaNodes)))
+	sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewTableHeaderForNodeSet()))
+	for _, mn := range ns.MetaNodes {
+		sb.WriteString(fmt.Sprintf("  %v\n", formatNodeViewForNodeSet(mn)))
+	}
+	return sb.String()
+}
+
 func formatZoneView(zv *proto.ZoneView) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("Zone Name:   %v\n", zv.Name))
@@ -766,15 +816,15 @@ func formatZoneView(zv *proto.ZoneView) string {
 	for index, ns := range zv.NodeSet {
 		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
 		sb.WriteString(fmt.Sprintf("  DataNodes[%v]:\n", ns.DataNodeLen))
-		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
+		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeaderForZone()))
 		for _, nv := range ns.DataNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
+			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewForZone(&nv, true)))
 		}
 		sb.WriteString(fmt.Sprintf("\n"))
 		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
-		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
+		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeaderForZone()))
 		for _, nv := range ns.MetaNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeView(&nv, true)))
+			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewForZone(&nv, true)))
 		}
 	}
 	return sb.String()

@@ -159,6 +159,7 @@ const (
 	UpdateZone      = "/zone/update"
 	GetAllZones     = "/zone/list"
 	GetAllNodeSets  = "/nodeSet/list"
+	GetNodeSet      = "/nodeSet/get"
 
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"

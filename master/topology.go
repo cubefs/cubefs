@@ -1093,10 +1093,30 @@ func (t *topology) getAllZones() (zones []*Zone) {
 	return
 }
 
+func (t *topology) getZoneByZoneName(zoneName string) (zone *Zone) {
+	t.zoneLock.RLock()
+	defer t.zoneLock.RUnlock()
+	if value, ok := t.zoneMap.Load(zoneName); ok {
+		zone = value.(*Zone)
+	}
+	return
+}
+
 func (t *topology) getZoneByIndex(index int) (zone *Zone) {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
 	return t.zones[index]
+}
+
+func (t *topology) getNodeSetByNodeSetId(nodeSetId uint64) (nodeSet *nodeSet, err error) {
+	zones := t.getAllZones()
+	for _, zone := range zones {
+		nodeSet, err = zone.getNodeSet(nodeSetId)
+		if err == nil {
+			return nodeSet, nil
+		}
+	}
+	return nil, errors.NewErrorf("set %v not found", nodeSetId)
 }
 
 func calculateDemandWriteNodes(zoneNum int, replicaNum int) (demandWriteNodes int) {

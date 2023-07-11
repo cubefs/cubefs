@@ -183,12 +183,25 @@ type NodeSetStat struct {
 	Zone        string
 	MetaNodeNum int
 	DataNodeNum int
-	DataTotal   uint64
-	DataUsed    uint64
-	DataAvail   uint64
-	MetaTotal   uint64
-	MetaUsed    uint64
-	MetaAvail   uint64
+}
+
+type NodeSetStatInfo struct {
+	ID        uint64
+	Capacity  int
+	Zone      string
+	MetaNodes []*NodeStatView
+	DataNodes []*NodeStatView
+}
+
+type NodeStatView struct {
+	Addr       string
+	Status     bool
+	DomainAddr string
+	ID         uint64
+	IsWritable bool
+	Total      uint64
+	Used       uint64
+	Avail      uint64
 }
 
 type NodeStatInfo struct {

@@ -214,6 +214,10 @@ func zoneNotFound(name string) (err error) {
 	return notFoundMsg(fmt.Sprintf("zone[%v]", name))
 }
 
+func nodeSetNotFound(id uint64) (err error) {
+	return notFoundMsg(fmt.Sprintf("nodeSet[%v]", id))
+}
+
 func dataNodeNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("data node[%v]", addr))
 }

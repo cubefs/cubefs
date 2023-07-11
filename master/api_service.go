@@ -274,19 +274,24 @@ func (m *Server) listNodeSets(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.GetAllNodeSets, metric, nil, nil)
 	}()
 
-	zones := m.cluster.t.getAllZones()
+	var zones []*Zone
 
+	// if zoneName is empty, list all nodeSets, otherwise list node sets in the specified zone
 	zoneName := r.FormValue(zoneNameKey)
-	exist := false
+	if zoneName == "" {
+		zones = m.cluster.t.getAllZones()
+	} else {
+		zone, err := m.cluster.t.getZone(zoneName)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeZoneNotExists, Msg: err.Error()})
+			return
+		}
+		zones = []*Zone{zone}
+	}
 
 	nodeSetStats := make([]*proto.NodeSetStat, 0)
 
 	for _, zone := range zones {
-		if zoneName != "" && zoneName != zone.name {
-			continue
-		}
-		exist = true
-
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
 			nsStat := &proto.NodeSetStat{
@@ -296,28 +301,73 @@ func (m *Server) listNodeSets(w http.ResponseWriter, r *http.Request) {
 				DataNodeNum: ns.dataNodeLen(),
 				MetaNodeNum: ns.metaNodeLen(),
 			}
-			ns.dataNodes.Range(func(key, value interface{}) bool {
-				dataNode := value.(*DataNode)
-				nsStat.DataTotal += dataNode.Total
-				nsStat.DataUsed += dataNode.Used
-				nsStat.DataAvail += dataNode.Total - dataNode.Used
-				return true
-			})
-			ns.metaNodes.Range(func(key, value interface{}) bool {
-				metaNode := value.(*MetaNode)
-				nsStat.MetaTotal += metaNode.Total
-				nsStat.MetaUsed += metaNode.Used
-				nsStat.MetaAvail += metaNode.Total - metaNode.Used
-				return true
-			})
 			nodeSetStats = append(nodeSetStats, nsStat)
 		}
 	}
-	if zoneName != "" && !exist {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeZoneNotExists, Msg: fmt.Sprintf("zone [%v] not exist", zoneName)})
+
+	sendOkReply(w, r, newSuccessHTTPReply(nodeSetStats))
+}
+
+func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetNodeSet))
+	defer func() {
+		doStatAndMetric(proto.GetNodeSet, metric, nil, nil)
+	}()
+
+	nodeSetStr := r.FormValue(nodesetIdKey)
+	if nodeSetStr == "" {
+		err := keyNotFound(nodesetIdKey)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(nodeSetStats))
+	nodeSetId, err := strconv.ParseUint(nodeSetStr, 10, 64)
+	if err != nil {
+		err = fmt.Errorf("invalid nodeSetId: %v", nodeSetStr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	ns, err := m.cluster.t.getNodeSetByNodeSetId(nodeSetId)
+	if err != nil {
+		err := nodeSetNotFound(nodeSetId)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNodeSetNotExists, Msg: err.Error()})
+		return
+	}
+
+	nsStat := &proto.NodeSetStatInfo{
+		ID:       ns.ID,
+		Capacity: ns.Capacity,
+		Zone:     ns.zoneName,
+	}
+	ns.dataNodes.Range(func(key, value interface{}) bool {
+		dn := value.(*DataNode)
+		nsStat.DataNodes = append(nsStat.DataNodes, &proto.NodeStatView{
+			Addr:       dn.Addr,
+			Status:     dn.isActive,
+			DomainAddr: dn.DomainAddr,
+			ID:         dn.ID,
+			IsWritable: dn.isWriteAble(),
+			Total:      dn.Total,
+			Used:       dn.Used,
+			Avail:      dn.Total - dn.Used,
+		})
+		return true
+	})
+	ns.metaNodes.Range(func(key, value interface{}) bool {
+		mn := value.(*MetaNode)
+		nsStat.MetaNodes = append(nsStat.MetaNodes, &proto.NodeStatView{
+			Addr:       mn.Addr,
+			Status:     mn.IsActive,
+			DomainAddr: mn.DomainAddr,
+			ID:         mn.ID,
+			IsWritable: mn.isWritable(),
+			Total:      mn.Total,
+			Used:       mn.Used,
+			Avail:      mn.Total - mn.Used,
+		})
+		return true
+	})
+
+	sendOkReply(w, r, newSuccessHTTPReply(nsStat))
 }
 
 func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {

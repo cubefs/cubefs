@@ -72,7 +72,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 				return view.MetaNodes[i].ID < view.MetaNodes[j].ID
 			})
 			stdout("[Meta nodes]\n")
-			stdout("%v\n", formatNodeViewTableHeader())
+			stdout("%v\n", formatNodeViewTableHeaderForZone())
 			for _, node := range view.MetaNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {
@@ -82,7 +82,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 					!strings.Contains(formatYesNo(node.IsWritable), optFilterWritable) {
 					continue
 				}
-				stdout("%v\n", formatNodeView(&node, true))
+				stdout("%v\n", formatNodeViewForZone(&node, true))
 			}
 		},
 	}
