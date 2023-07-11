@@ -250,12 +250,10 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	}
 
 	switch j.cfg.LogFormat {
-	case LogFormatText:
-		logBytes = auditLog.ToBytesWithTab(b)
 	case LogFormatJSON:
 		logBytes = auditLog.ToJson()
 	default:
-		logBytes = auditLog.ToBytesWithTab(b)
+		logBytes = b.Bytes() // *bytes.Buffer was filled with metricSender.Send
 	}
 	err = j.logFile.Log(logBytes)
 	if err != nil {
