@@ -199,7 +199,6 @@ func (m mapTaskRunner) removeStoppedRunner() {
 		}
 		log.Debugf("remain task: taskID[%s], state[%d]", task.taskID, task.state.state)
 	}
-	return
 }
 
 func (m mapTaskRunner) addTask(taskID string, runner *TaskRunner) error {

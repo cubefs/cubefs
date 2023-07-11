@@ -71,6 +71,7 @@ type ShardRepairConfig struct {
 
 	TaskPoolSize   int              `json:"task_pool_size"`
 	OrphanShardLog recordlog.Config `json:"orphan_shard_log"`
+	EnablePartial  bool             `json:"enable_partial"`
 }
 
 func (cfg *ShardRepairConfig) topics() []string {
@@ -394,11 +395,12 @@ func (mgr *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volu
 	workerHost := hosts[0]
 
 	task := proto.ShardRepairTask{
-		Bid:      repairMsg.Bid,
-		CodeMode: volInfo.CodeMode,
-		Sources:  volInfo.VunitLocations,
-		BadIdxes: repairMsg.BadIdx,
-		Reason:   repairMsg.Reason,
+		Bid:           repairMsg.Bid,
+		CodeMode:      volInfo.CodeMode,
+		Sources:       volInfo.VunitLocations,
+		BadIdxes:      repairMsg.BadIdx,
+		Reason:        repairMsg.Reason,
+		EnablePartial: mgr.cfg.EnablePartial,
 	}
 
 	err := mgr.blobnodeCli.RepairShard(ctx, workerHost, task)
