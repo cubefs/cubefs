@@ -134,6 +134,8 @@ var errCodeMap = map[int]string{
 	CodeOrphanShard:    "shard is an orphan",
 	CodeIllegalTask:    "illegal task",
 	CodeRequestLimited: "request limited",
+
+	CodeShardPartialRepairFailed: "shard partial repair failed",
 }
 
 // HTTPError make rpc.HTTPError

@@ -36,18 +36,17 @@ import (
 )
 
 var (
-	errShardDataNotPrepared = errors.New("shard data not prepared")
-	errBufHasData           = errors.New("buf already has data")
-	errBidNotFoundInBuf     = errors.New("bid not found in buffer")
-	errIllegalBuf           = errors.New("illegal buffer")
-	errBidCanNotRecover     = errors.New("bid can not recover")
-	errCrcNotMatch          = errors.New("data conflict crc32 not match")
-	errUnexpectedLength     = errors.New("length of locations is unexpected")
-	errEcVerifyFailed       = errors.New("ec verify failed")
-	errShardSizeNotMatch    = errors.New("shard data size not match")
-	errBufNotEnough         = errors.New("buf space not enough")
-	errInvalidLocations     = errors.New("invalid volume locations")
-	errInvalidCodeMode      = errors.New("invalid codeMode ")
+	errBufHasData        = errors.New("buf already has data")
+	errBidNotFoundInBuf  = errors.New("bid not found in buffer")
+	errIllegalBuf        = errors.New("illegal buffer")
+	errBidCanNotRecover  = errors.New("bid can not recover")
+	errCrcNotMatch       = errors.New("data conflict crc32 not match")
+	errUnexpectedLength  = errors.New("length of locations is unexpected")
+	errEcVerifyFailed    = errors.New("ec verify failed")
+	errShardSizeNotMatch = errors.New("shard data size not match")
+	errBufNotEnough      = errors.New("buf space not enough")
+	errInvalidLocations  = errors.New("invalid volume locations")
+	errInvalidCodeMode   = errors.New("invalid codeMode ")
 )
 
 const defaultGetConcurrency = 100
@@ -287,7 +286,7 @@ func (b *ShardsBuf) FetchShard(bid proto.BlobID) ([]byte, error) {
 		return b.shards[bid].data, nil
 	}
 	if !b.shards[bid].ok {
-		return nil, errShardDataNotPrepared
+		return nil, errcode.ErrShardPartialRepairFailed
 	}
 
 	return b.shards[bid].data, nil
@@ -406,7 +405,7 @@ type ShardRecover struct {
 // NewShardRecover returns shard recover
 func NewShardRecover(locations VunitLocations, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
 	shardGetter client.IBlobNode, vunitShardGetConcurrency int, taskType proto.TaskType,
-	enableAssist bool,
+	enablePartial bool,
 ) *ShardRecover {
 	if vunitShardGetConcurrency <= 0 {
 		vunitShardGetConcurrency = defaultGetConcurrency
@@ -424,7 +423,7 @@ func NewShardRecover(locations VunitLocations, mode codemode.CodeMode, bidInfos 
 		vunitShardGetConcurrency: vunitShardGetConcurrency,
 		ds:                       newDownloadStatus(),
 		partialData:              make(map[proto.BlobID][]byte),
-		enablePartial:            enableAssist,
+		enablePartial:            enablePartial,
 		partialThreshold:         defaultPartialThreshold,
 	}
 	return &repair
@@ -591,7 +590,7 @@ func (r *ShardRecover) recoverByGlobalStripe(ctx context.Context, failBids []pro
 		if err == nil {
 			newFailBids := r.collectFailBids(failBids, repairIdxs)
 			if len(newFailBids) == 0 {
-				span.Debugf("shard repair by partial success, bids[%v]", newFailBids)
+				span.Debugf("shard repair by partial success, bids[%v]", failBids)
 				return
 			}
 			failBids = newFailBids
@@ -1033,10 +1032,6 @@ func (r *ShardRecover) collectFailBids(repairBids []proto.BlobID, repairIdxs []u
 			}
 
 			if !r.chunksShardsBuf[idx].shardIsOk(bid) {
-				failBids = append(failBids, bid)
-				break
-			}
-			if r.enablePartial && r.partialData[bid] == nil && !r.chunksShardsBuf[idx].ShardSizeIsZero(bid) {
 				failBids = append(failBids, bid)
 				break
 			}

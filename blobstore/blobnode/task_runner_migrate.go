@@ -44,6 +44,7 @@ type MigrateWorker struct {
 	benchmarkBids            []*ShardInfoSimple
 	downloadShardConcurrency int
 	forbiddenDirectDownload  bool
+	enablePartial            bool
 }
 
 // MigrateTaskEx migrate task execution machine
@@ -79,6 +80,7 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 
 	if w.t.TaskType == proto.TaskTypeDiskRepair {
 		badIdxes = []uint8{w.t.SourceVuid.Index()}
+		w.enablePartial = w.t.EnablePartial
 	} else {
 		// balance and disk drop task need to ensure most chunks are in read-only state
 		if err := retry.Timed(3, 1000).On(func() error {
@@ -107,7 +109,7 @@ func (w *MigrateWorker) ExecTasklet(ctx context.Context, tasklet Tasklet) *WorkE
 	sourceLocation := w.t.Sources
 	mode := w.t.CodeMode
 	shardRecover := NewShardRecover(sourceLocation, mode, tasklet.bids, w.bolbNodeCli,
-		w.downloadShardConcurrency, w.t.TaskType, false)
+		w.downloadShardConcurrency, w.t.TaskType, w.enablePartial)
 	defer shardRecover.ReleaseBuf()
 
 	return MigrateBids(ctx,
