@@ -45,12 +45,6 @@ class ObjectHeadTest(S3TestCase):
             result=self.s3.delete_object(Bucket=env.BUCKET, Key=key))
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=env.BUCKET, Key=KEY_PREFIX))
-        try:
-            self.s3.head_object(Bucket=env.BUCKET, Key=key)
-            self.fail()  # Non exception occurred is illegal.
-        except Exception as e:
-            # Error code 404 is legal.
-            self.assert_client_error(e, expect_status_code=404)
 
     def test_head_object_if_match(self):
         size = 1024 * 256

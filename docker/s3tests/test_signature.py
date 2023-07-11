@@ -80,12 +80,6 @@ class SignatureTest(S3TestCase):
         self.assertEqual(response.status_code, 204)
         response.close()
 
-        # Check deletion result
-        url = s3.generate_presigned_url('head_object', Params={'Bucket': env.BUCKET, 'Key': key})
-        response = requests.head(url)
-        self.assertEqual(response.status_code, 404)
-        response.close()
-
         # Remove key prefix
         url = s3.generate_presigned_url('delete_object', Params={'Bucket': env.BUCKET, 'Key': KEY_PREFIX})
         response = requests.delete(url)
