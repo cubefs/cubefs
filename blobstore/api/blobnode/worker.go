@@ -19,11 +19,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"io"
 
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 type WorkerStats struct {
@@ -100,7 +100,7 @@ func (c *client) ShardPartialRepair(ctx context.Context, host string, args *Shar
 		return nil, errors.ErrIllegalArguments
 	}
 	urlStr := fmt.Sprintf("%v/shard/partial/repair", host)
-
+	ret = &ShardPartialRepairRet{}
 	err = c.PostWith(ctx, urlStr, ret, args)
 	return
 }
