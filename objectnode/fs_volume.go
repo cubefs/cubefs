@@ -677,9 +677,6 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			log.LogWarnf("PutObject: unlink temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, path, invisibleTempDataInode.Inode)
 			_, _ = v.mw.InodeUnlink_ll(invisibleTempDataInode.Inode)
-			log.LogWarnf("PutObject: evict temp inode: volume(%v) path(%v) inode(%v)",
-				v.name, path, invisibleTempDataInode.Inode)
-			_ = v.mw.Evict(invisibleTempDataInode.Inode)
 		}
 	}()
 
@@ -910,12 +907,6 @@ func (v *Volume) DeletePath(path string) (err error) {
 		objMetaCache.DeleteDentry(v.name, dentry.Key())
 		objMetaCache.DeleteAttr(v.name, ino)
 	}
-
-	log.LogWarnf("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
-	if err = v.mw.Evict(ino); err != nil {
-		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
-	}
-	err = nil
 	return
 }
 
@@ -1008,18 +999,12 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 			log.LogWarnf("WritePart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
 			_, _ = v.mw.InodeUnlink_ll(tempInodeInfo.Inode)
-			log.LogWarnf("WritePart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
-				v.name, path, multipartId, partId, tempInodeInfo.Inode)
-			_ = v.mw.Evict(tempInodeInfo.Inode)
 		}
 		// Delete the old inode and release the written data.
 		if exist {
 			log.LogWarnf("WritePart: unlink old part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, oldInode)
 			_, _ = v.mw.InodeUnlink_ll(oldInode)
-			log.LogWarnf("WritePart: evict old part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
-				v.name, path, multipartId, partId, oldInode)
-			_ = v.mw.Evict(oldInode)
 		}
 	}()
 
@@ -1097,24 +1082,19 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 			v.name, multipartID, path, err)
 		return
 	}
-	// release part data
-	for _, part := range multipartInfo.Parts {
-		log.LogWarnf("AbortMultipart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
-			v.name, path, multipartID, part.ID, part.Inode)
-		if _, err = v.mw.InodeUnlink_ll(part.Inode); err != nil {
-			log.LogErrorf("AbortMultipart: meta inode unlink fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
-				v.name, path, multipartID, part.ID, part.Inode, err)
+	// release part data asyncly
+	go func() {
+		for _, part := range multipartInfo.Parts {
+			log.LogWarnf("AbortMultipart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+				v.name, path, multipartID, part.ID, part.Inode)
+			if _, err = v.mw.InodeUnlink_ll(part.Inode); err != nil {
+				log.LogErrorf("AbortMultipart: meta inode unlink fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
+					v.name, path, multipartID, part.ID, part.Inode, err)
+			}
+			log.LogDebugf("AbortMultipart: multipart part data released: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
+				v.name, path, multipartID, part.ID, part.Inode)
 		}
-		log.LogWarnf("AbortMultipart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
-			v.name, path, multipartID, part.ID, part.Inode)
-		if err = v.mw.Evict(part.Inode); err != nil {
-			log.LogErrorf("AbortMultipart: meta inode evict fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
-				v.name, path, multipartID, part.ID, part.Inode, err)
-		}
-		log.LogDebugf("AbortMultipart: multipart part data released: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
-			v.name, path, multipartID, part.ID, part.Inode)
-	}
-
+	}()
 	if err = v.mw.RemoveMultipart_ll(path, multipartID); err != nil {
 		log.LogErrorf("AbortMultipart: meta abort multipart fail: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
@@ -1269,24 +1249,28 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		log.LogWarnf("CompleteMultipart: remove multipart fail: volume(%v) multipartID(%v) path(%v) err(%v)",
 			v.name, multipartID, path, err2)
 	}
-	// delete part inodes
-	for _, part := range parts {
-		log.LogWarnf("CompleteMultipart: destroy part inode: volume(%v) multipartID(%v) partID(%v) inode(%v)",
-			v.name, multipartID, part.ID, part.Inode)
-		if err2 = v.mw.InodeDelete_ll(part.Inode); err2 != nil {
-			log.LogWarnf("CompleteMultipart: delete part inode fail: volume(%v) multipartID(%v) part(%v) err(%v)",
-				v.name, multipartID, part, err2)
+
+	// handle temp metadata asyncly
+	go func() {
+		// delete part inodes
+		for _, part := range parts {
+			log.LogWarnf("CompleteMultipart: destroy part inode: volume(%v) multipartID(%v) partID(%v) inode(%v)",
+				v.name, multipartID, part.ID, part.Inode)
+			if err2 = v.mw.InodeDelete_ll(part.Inode); err2 != nil {
+				log.LogWarnf("CompleteMultipart: delete part inode fail: volume(%v) multipartID(%v) part(%v) err(%v)",
+					v.name, multipartID, part, err2)
+			}
 		}
-	}
-	// discard part inodes
-	for discardedInode, partNum := range discardedPartInodes {
-		log.LogWarnf("CompleteMultipart: discard part: volume(%v) multipartID(%v) partNum(%v) inode(%v)",
-			v.name, multipartID, partNum, discardedInode)
-		if _, err2 = v.mw.InodeUnlink_ll(discardedInode); err2 != nil {
-			log.LogWarnf("CompleteMultipart: unlink inode fail: volume(%v) multipartID(%v) inode(%v) err(%v)",
-				v.name, multipartID, discardedInode, err2)
+		// discard part inodes and data
+		for discardedInode, partNum := range discardedPartInodes {
+			log.LogWarnf("CompleteMultipart: discard part: volume(%v) multipartID(%v) partNum(%v) inode(%v)",
+				v.name, multipartID, partNum, discardedInode)
+			if _, err2 = v.mw.InodeUnlink_ll(discardedInode); err2 != nil {
+				log.LogWarnf("CompleteMultipart: unlink inode fail: volume(%v) multipartID(%v) inode(%v) err(%v)",
+					v.name, multipartID, discardedInode, err2)
+			}
 		}
-	}
+	}()
 
 	log.LogDebugf("CompleteMultipart: meta complete multipart: volume(%v) multipartID(%v) path(%v) parentID(%v) inode(%v) etagValue(%v)",
 		v.name, multipartID, path, parentId, finalInode.Inode, etagValue)
@@ -1425,6 +1409,11 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 		return
 	}
 
+	if oldInode == 0 {
+		log.LogWarnf("applyInodeToExistDentry: dentry update the same inode: inode(%v)", inode)
+		return
+	}
+
 	// unlink and evict old inode
 	log.LogWarnf("applyInodeToExistDentry: unlink inode: volume(%v) inode(%v)", v.name, oldInode)
 	if _, err = v.mw.InodeUnlink_ll(oldInode); err != nil {
@@ -1432,12 +1421,6 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 			v.name, oldInode, err)
 	}
 
-	log.LogWarnf("applyInodeToExistDentry: evict inode: volume(%v) inode(%v)", v.name, oldInode)
-	if err = v.mw.Evict(oldInode); err != nil {
-		log.LogWarnf("applyInodeToExistDentry: evict inode fail: volume(%v) inode(%v) err(%v)",
-			v.name, oldInode, err)
-	}
-	err = nil
 	return
 }
 
@@ -2657,9 +2640,6 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			log.LogWarnf("CopyFile: unlink target temp inode: volume(%v) path(%v) inode(%v) ",
 				v.name, targetPath, tInodeInfo.Inode)
 			_, _ = v.mw.InodeUnlink_ll(tInodeInfo.Inode)
-			log.LogWarnf("CopyFile: evict target temp inode: volume(%v) path(%v) inode(%v)",
-				v.name, targetPath, tInodeInfo.Inode)
-			_ = v.mw.Evict(tInodeInfo.Inode)
 		}
 	}()
 	if err = v.ec.OpenStream(tInodeInfo.Inode); err != nil {
