@@ -306,7 +306,9 @@ func (m *migratedDisks) list() (disks []*migratedDisk) {
 
 // MigrateConfig migrate config
 type MigrateConfig struct {
-	ClusterID proto.ClusterID `json:"-"` // fill in config.go
+	ClusterID     proto.ClusterID `json:"-"` // fill in config.go
+	EnablePartial bool            `json:"enable_partial"`
+
 	base.TaskCommonConfig
 }
 

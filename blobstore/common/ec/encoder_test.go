@@ -303,6 +303,7 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 
 	// test verify failed
 	ok, err := encoder.Verify(shards)
+	require.Error(t, err)
 	require.False(t, ok)
 
 	// reconstruct data and check
@@ -321,6 +322,7 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 		}
 		// check must be false when a shard broken
 		ok, err := encoder.Verify(shards)
+		require.Error(t, err)
 		require.False(t, ok)
 
 		azLayout := cfg.CodeMode.GetECLayoutByAZ()
@@ -385,6 +387,7 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 		}
 		// test verify failed
 		ok, err = encoder.Verify(shards)
+		require.Error(t, err)
 		require.False(t, ok)
 
 		err = encoder.Reconstruct(shards, badIdxs)
@@ -439,6 +442,7 @@ func testAzureLrcP1Encoder(t *testing.T, cm codemode.CodeMode) {
 		}
 		// test verify failed
 		ok, err = encoder.Verify(shards)
+		require.Error(t, err)
 		require.False(t, ok)
 
 		err = encoder.Reconstruct(shards, badIdxs)
@@ -596,6 +600,7 @@ func testReedSolomonPartialReconstruct(t *testing.T, cm codemode.CodeMode) {
 		}
 		// check must be false when a shard broken
 		ok, err := encoder.Verify(shards)
+		require.NoError(t, err)
 		require.False(t, ok)
 
 		err = encoder.Reconstruct(shards, []int{idx})
@@ -639,6 +644,7 @@ func testReedSolomonPartialReconstruct(t *testing.T, cm codemode.CodeMode) {
 				}
 			}
 			err = encoder.PartialReconstruct(tmpShards[:cfg.CodeMode.N+cfg.CodeMode.M], survivalIdx, []int{idx})
+			require.NoError(t, err)
 			for c := range partialData {
 				partialData[c] ^= tmpShards[idx][c]
 			}

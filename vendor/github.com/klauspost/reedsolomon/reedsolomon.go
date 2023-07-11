@@ -448,7 +448,7 @@ func buildXorMatrix(dataShards, totalShards int) (matrix, error) {
 //		 [1, 3,  5,  15],				[0,   0,   1,   0],
 //		 [1, 4, 16,  64],	 ----->     [0,   0,   0,   1],
 //		 [1, 5, 17,  85],				[1,   1,   1,   1],
-//		 [1, 6, 20, 120],				[1, 123, 166, 120],
+//		 [1, 6, 20, 120],				[1, 123, 166, 244],
 //		 [1, 7, 21, 107]]				[1,  82, 245, 167]]
 //
 // Then we use elementary transformations to get the jerasure style matrix

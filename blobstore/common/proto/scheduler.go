@@ -103,8 +103,9 @@ type MigrateTask struct {
 
 	Destination VunitLocation `json:"destination"` // destination volume unit location
 
-	Ctime string `json:"ctime"` // create time
-	MTime string `json:"mtime"` // modify time
+	Ctime         string `json:"ctime"`          // create time
+	MTime         string `json:"mtime"`          // modify time
+	EnablePartial bool   `json:"enable_partial"` // support partial repair
 
 	FinishAdvanceReason string `json:"finish_advance_reason"`
 	// task migrate chunk direct download first,if fail will recover chunk by ec repair
@@ -196,7 +197,7 @@ type ShardRepairTask struct {
 	BadIdxes []uint8           `json:"bad_idxes"`
 	Reason   string            `json:"reason"`
 
-	EnableAssist bool `json:"enable_assist"`
+	EnablePartial bool `json:"enable_partial"`
 }
 
 func (task *ShardRepairTask) IsValid() bool {
