@@ -216,7 +216,7 @@ func (s *WorkerService) ShardPartialRepair(c *rpc.Context) {
 		c.RespondError(errcode.ErrInvalidParam)
 		return
 	}
-	span.Debugf("accept ShardPartialRepair request, args: %v", args)
+	span.Infof("accept ShardPartialRepair request, args: %v", args)
 
 	ret, err := s.shardRepairer.ShardPartialRepair(ctx, args)
 	if err != nil {

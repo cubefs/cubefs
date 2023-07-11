@@ -454,6 +454,7 @@ func (mgr *DiskRepairMgr) prepareTask(t *proto.MigrateTask) error {
 	base.InsistOn(ctx, "repair prepare task update task tbl", func() error {
 		return mgr.clusterMgrCli.UpdateMigrateTask(ctx, t)
 	})
+	t.EnablePartial = mgr.cfg.EnablePartial
 
 	mgr.sendToWorkQueue(t)
 	return nil

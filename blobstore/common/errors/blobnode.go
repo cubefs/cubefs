@@ -56,6 +56,8 @@ const (
 	CodeOrphanShard    = 671
 	CodeIllegalTask    = 672
 	CodeRequestLimited = 673
+
+	CodeShardPartialRepairFailed = 690
 )
 
 var (
@@ -97,6 +99,8 @@ var (
 	ErrIllegalTask    = Error(CodeIllegalTask)
 	ErrDestReplicaBad = Error(CodeDestReplicaBad)
 	ErrRequestLimited = Error(CodeRequestLimited)
+
+	ErrShardPartialRepairFailed = Error(CodeShardPartialRepairFailed)
 )
 
 var ErrShardMayBeLost = errors.New("shard may be lost")
