@@ -801,6 +801,32 @@ func TestUpdateNodesetNodeSelector(t *testing.T) {
 	process(updateMetaSelectorUrl, t)
 }
 
+func TestUpdateZoneNodesetSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+	}
+	reqUrl := fmt.Sprintf("%v%v?name=%v&enable=1", hostAddr, proto.UpdateZone, testZone2)
+	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
+	process(updateDataSelectorUrl, t)
+	if zone.GetDataNodesetSelector() != CarryWeightNodesetSelectorName {
+		t.Errorf("failed to change data nodeset selector")
+	}
+	process(updateMetaSelectorUrl, t)
+	if zone.GetMetaNodesetSelector() != CarryWeightNodesetSelectorName {
+		t.Errorf("failed to change meta nodeset selector")
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v&dataNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v&metaNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
 func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
 	reader := bytes.NewReader(data)
 	req, err := http.NewRequest(http.MethodPost, reqURL, reader)
