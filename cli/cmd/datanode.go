@@ -109,7 +109,7 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("[Data node info]\n")
-			stdout(formatDataNodeDetail(datanodeInfo, false))
+			stdout("%v", formatDataNodeDetail(datanodeInfo, false))
 
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

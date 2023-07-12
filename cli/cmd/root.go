@@ -42,7 +42,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 			Args:  cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
 				if optShowVersion {
-					stdout(proto.DumpVersion("CLI"))
+					stdout("%v", proto.DumpVersion("CLI"))
 					return
 				}
 				if len(args) == 0 {

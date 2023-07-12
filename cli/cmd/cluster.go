@@ -79,7 +79,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 				errout("Error: %v\n", err)
 			}
 			stdout("[Cluster]\n")
-			stdout(formatClusterView(cv, cn, cp))
+			stdout("%v", formatClusterView(cv, cn, cp))
 			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
 				errout("Error: %v\n", err)
 			}
@@ -114,7 +114,7 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("[Cluster Status]\n")
-			stdout(formatClusterStat(cs))
+			stdout("%v", formatClusterStat(cs))
 			stdout("\n")
 		},
 	}

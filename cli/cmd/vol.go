@@ -589,7 +589,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			// ask user for confirm
 			if !optYes {
-				stdout(confirmString.String())
+				stdout("%v", confirmString.String())
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
