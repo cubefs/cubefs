@@ -63,7 +63,7 @@ ensure_node_writable() {
             # Check nodes
             awk '{print $2}' /tmp/cli_${node}_list | while read line
             do
-                if [[ ${line} != "ADDRESS" ]]; then
+                if [[ "${line}" != "ADDRESS" && "${line}" != "nodes]" ]]; then
                     addr=`echo "${line}" | sed -e "s/([^)]*)//g"`
                     echo "check ${node} ${addr}"
                     ${cli} ${node} info ${addr}
@@ -78,7 +78,7 @@ ensure_node_writable() {
     # Check nodes
     awk '{print $2}' /tmp/cli_${node}_list | while read line
     do
-        if [[ ${line} != "ADDRESS" ]]; then
+        if [[ "${line}" != "ADDRESS" && "${line}" != "nodes]" ]]; then
             addr=`echo "${line}" | sed -e "s/([^)]*)//g"`
             echo "check ${node} ${addr}"
             ${cli} ${node} info ${addr}

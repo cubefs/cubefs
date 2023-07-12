@@ -156,13 +156,13 @@ func (manager *SpaceManager) StartDiskSample() {
 }
 
 func (manager *SpaceManager) GetDiskUtils() map[string]float64 {
-	useds := make(map[string]float64)
+	utils := make(map[string]float64)
 	manager.diskMutex.RLock()
 	defer manager.diskMutex.RUnlock()
-	for device, used := range manager.diskUtils {
-		useds[device] = used.Load()
+	for device, util := range manager.diskUtils {
+		utils[device] = util.Load()
 	}
-	return useds
+	return utils
 }
 
 func (manager *SpaceManager) SetNodeID(nodeID uint64) {
