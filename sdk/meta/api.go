@@ -1413,6 +1413,9 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds)
 			if err == nil && status == statusOK {
 				return info, nil
+			} else if status == statusNoSpace {
+				log.LogErrorf("InodeCreate_ll status %v", status)
+				return nil, statusToErrno(status)
 			}
 		}
 	} else {
@@ -1422,6 +1425,9 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 			status, info, err = mw.icreate(mp, mode, uid, gid, target)
 			if err == nil && status == statusOK {
 				return info, nil
+			} else if status == statusNoSpace {
+				log.LogErrorf("InodeCreate_ll status %v", status)
+				return nil, statusToErrno(status)
 			}
 		}
 	}
