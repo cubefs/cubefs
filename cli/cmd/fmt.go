@@ -101,14 +101,15 @@ func formatNodeViewForZone(view *proto.NodeView, tableRow bool) string {
 	return sb.String()
 }
 
+var nodeViewTableRowPatternForNodeSet = "%-6v    %-65v    %-8v    %-8v    %-10v    %-10v    %-10v"
+
 func formatNodeViewTableHeaderForNodeSet() string {
-	return fmt.Sprintf("%-6v    %-65v    %-8v    %-8v    %-10v    %-10v    %-10v",
-		"ID", "ADDRESS", "WRITABLE", "STATUS", "TOTAL", "USED", "AVAIL")
+	return fmt.Sprintf(nodeViewTableRowPatternForNodeSet, "ID", "ADDRESS", "WRITABLE", "STATUS", "TOTAL", "USED", "AVAIL")
 }
 
 func formatNodeViewForNodeSet(view *proto.NodeStatView) string {
-	return fmt.Sprintf("%-6v    %-65v    %-8v    %-8v    %-10v    %-10v    %-10v",
-		view.ID, formatAddr(view.Addr, view.DomainAddr), formatYesNo(view.IsWritable), formatNodeStatus(view.Status),
+	return fmt.Sprintf(nodeViewTableRowPatternForNodeSet, view.ID, formatAddr(view.Addr, view.DomainAddr),
+		formatYesNo(view.IsWritable), formatNodeStatus(view.Status),
 		formatSize(view.Total),
 		formatSize(view.Used),
 		formatSize(view.Avail))
@@ -773,9 +774,9 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 
 func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("NodeSet ID:   %v\n", ns.ID))
+	sb.WriteString(fmt.Sprintf("NodeSet ID:    %v\n", ns.ID))
 	sb.WriteString(fmt.Sprintf("Capacity:      %v\n", ns.Capacity))
-	sb.WriteString(fmt.Sprintf("Zone:     %v\n", ns.Zone))
+	sb.WriteString(fmt.Sprintf("Zone:          %v\n", ns.Zone))
 	var dataTotal, dataUsed, dataAvail, metaTotal, metaUsed, metaAvail uint64
 	for _, dn := range ns.DataNodes {
 		dataTotal += dn.Total

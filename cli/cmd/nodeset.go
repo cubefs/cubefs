@@ -76,7 +76,7 @@ func newNodeSetListCmd(client *sdk.MasterClient) *cobra.Command {
 
 func newNodeSetInfoCmd(client *sdk.MasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   CliOpGet,
+		Use:   CliOpInfo,
 		Short: cmdGetNodeSetShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
