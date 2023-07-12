@@ -1,6 +1,7 @@
 package cfs
 
 import (
+	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/checktool/mdc"
@@ -45,7 +46,7 @@ func TestGetCFSNodeInfos(t *testing.T) {
 }
 
 func TestCheckCFSNodeLoadInfos(t *testing.T) {
-	cfsm := NewChubaoFSMonitor()
+	cfsm := NewChubaoFSMonitor(context.Background())
 	cfg, _ := config.LoadConfigFile(checktool.ReDirPath("cfg.json"))
 	cfsm.parseHighMemNodeWarnConfig(cfg)
 	cfsm.hosts = []*ClusterHost{{host: "cn.elasticdb.jd.local", isReleaseCluster: false}}

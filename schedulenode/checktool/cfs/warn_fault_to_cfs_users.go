@@ -17,6 +17,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckAndWarnFaultToUsers() {
 	for {
 		t := time.NewTimer(time.Duration(s.WarnFaultToUsersCheckInterval) * time.Second)
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-t.C:
 			s.checkAndWarnFaultToUsers()
 		}

@@ -86,6 +86,12 @@ func (s *ChubaoFSMonitor) scheduleToCheckDpPeerCorrupt() {
 	crontab := cron.New()
 	crontab.AddFunc("30 10,18 * * *", s.checkDpPeerCorrupt)
 	crontab.Start()
+	go func() {
+		select {
+		case <-s.ctx.Done():
+			crontab.Stop()
+		}
+	}()
 }
 
 func (s *ChubaoFSMonitor) checkDpPeerCorrupt() {

@@ -28,6 +28,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckMetaPartitionSplit() {
 	for {
 		t := time.NewTimer(30 * 60 * time.Second)
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-t.C:
 			s.checkMetaPartitionSplit()
 		}

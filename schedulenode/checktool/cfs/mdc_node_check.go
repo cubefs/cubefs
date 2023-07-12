@@ -20,6 +20,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckCFSHighIncreaseMemNodes() {
 	for {
 		t := time.NewTimer(10 * 60 * time.Second) // 单独的间隔时间
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-t.C:
 			s.checkCFSHighIncreaseMemNodes()
 		}

@@ -25,6 +25,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckZoneDiskUsedRatio() {
 	for {
 		t := time.NewTimer(time.Duration(s.scheduleInterval) * time.Second)
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-t.C:
 			s.checkZoneDiskUsedRatio()
 		}

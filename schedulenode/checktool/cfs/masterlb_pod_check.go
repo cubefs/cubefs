@@ -43,6 +43,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckMasterLbPodStatus(cfg *config.Config) {
 	for {
 		t := time.NewTimer(time.Duration(s.scheduleInterval) * time.Second)
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-t.C:
 			s.checkMasterLbPodStatus()
 		}

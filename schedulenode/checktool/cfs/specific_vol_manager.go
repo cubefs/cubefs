@@ -31,6 +31,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckSpecificVol() {
 	for {
 		t := time.NewTimer(defaultCheckSpecificVolInterval)
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-t.C:
 			s.checkSpecificVols()
 		}

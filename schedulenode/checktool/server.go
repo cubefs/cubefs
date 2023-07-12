@@ -1,12 +1,11 @@
 package checktool
 
 import (
+	"context"
 	"errors"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs"
-	"github.com/cubefs/cubefs/schedulenode/checktool/img"
-	"github.com/cubefs/cubefs/schedulenode/checktool/jfs"
 	"github.com/cubefs/cubefs/schedulenode/worker"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
@@ -15,10 +14,10 @@ import (
 
 type ChecktoolWorker struct {
 	worker.BaseWorker
-	vsm  *img.VolStoreMonitor
-	cfsm *cfs.ChubaoFSMonitor
-	jfsm *jfs.JFSMonitor
-	wg   sync.WaitGroup
+	cfsm   *cfs.ChubaoFSMonitor
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewChecktoolWorker() *ChecktoolWorker {
@@ -42,22 +41,14 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 
 	cw.StopC = make(chan struct{}, 0)
 	cw.TaskChan = make(chan *proto.Task, worker.DefaultTaskChanLength)
-	cw.cfsm = cfs.NewChubaoFSMonitor()
 	if err = cw.parseConfig(cfg); err != nil {
 		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
 		return
 	}
 
-	cw.vsm = img.NewVolStoreMonitor()
-	if err = cw.vsm.Start(cfg); err != nil {
-		return
-	}
-	cw.cfsm = cfs.NewChubaoFSMonitor()
+	cw.ctx, cw.cancel = context.WithCancel(context.Background())
+	cw.cfsm = cfs.NewChubaoFSMonitor(cw.ctx)
 	if err = cw.cfsm.Start(cfg); err != nil {
-		return
-	}
-	cw.jfsm = jfs.NewJFSMonitor()
-	if err = cw.jfsm.Start(cfg); err != nil {
 		return
 	}
 	return
@@ -68,6 +59,7 @@ func doShutdown(s common.Server) {
 	if !ok {
 		return
 	}
+	m.cancel()
 	close(m.StopC)
 }
 

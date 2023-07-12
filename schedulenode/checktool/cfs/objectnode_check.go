@@ -30,6 +30,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckObjectNodeAlive(cfg *config.Config) {
 	s.checkObjectNodeAlive()
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-ticker.C:
 			s.checkObjectNodeAlive()
 		}

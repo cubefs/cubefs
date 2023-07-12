@@ -20,6 +20,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckNodesAlive() {
 	s.checkNodesAlive()
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-ticker.C:
 			s.checkNodesAlive()
 		}

@@ -1,6 +1,7 @@
 package cfs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/checktool"
@@ -140,10 +141,10 @@ type ChubaoFSMonitor struct {
 	ignoreCheckMp                   bool
 	nodeRapidMemIncWarnThreshold    float64
 	nodeRapidMemIncreaseWarnRatio   float64
-	taskMap                         map[string]func(cluster string)
+	ctx                             context.Context
 }
 
-func NewChubaoFSMonitor() *ChubaoFSMonitor {
+func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
 	return &ChubaoFSMonitor{
 		metrics:                         make(map[string]*AlarmMetric, 0),
 		chubaoFSMasterNodes:             make(map[string][]string),
@@ -152,6 +153,7 @@ func NewChubaoFSMonitor() *ChubaoFSMonitor {
 		masterLbLastWarnInfo:            make(map[string]*MasterLBWarnInfo),
 		volNeedAllocateDPContinuedTimes: make(map[string]int),
 		WarnFaultToUsers:                make([]*WarnFaultToTargetUsers, 0),
+		ctx:                             ctx,
 	}
 }
 
@@ -241,6 +243,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckVol() {
 	for {
 		t := time.NewTimer(time.Duration(s.scheduleInterval) * time.Second)
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-t.C:
 			s.checkAvailSpaceAndVolsStatus()
 		}

@@ -17,6 +17,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckXBPTicket() {
 	t := time.NewTimer(time.Duration(s.scheduleInterval) * time.Second)
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-t.C:
 			s.checkXBPTicket()
 			t.Reset(time.Duration(s.scheduleInterval) * time.Second)
