@@ -41,11 +41,13 @@ check_cluster() {
         LeaderAddr=`cat /tmp/cli_cluster_info | grep -i "master leader" | awk '{print$4}'`
         if [[ "x$LeaderAddr" != "x" ]] ; then
             echo -e "\033[32mdone\033[0m"
+            cat /tmp/cli_cluster_info
             return
         fi
         sleep 1
     done
     echo -e "\033[31mfail\033[0m"
+    cat /tmp/cli_cluster_info
     exit 1
 }
 
@@ -57,12 +59,31 @@ ensure_node_writable() {
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
         if [[ ${res} -eq 4 ]]; then
             echo -e "\033[32mdone\033[0m"
+            cat /tmp/cli_${node}_list
+            # Check nodes
+            awk '{print $2}' /tmp/cli_${node}_list | while read line
+            do
+                if [[ ${line} != "ADDRESS" ]]; then
+                    addr=`echo "${line}" | sed -e "s/([^)]*)//g"`
+                    echo "check ${node} ${addr}"
+                    ${cli} ${node} info ${addr}
+                fi
+            done
             return
         fi
         sleep 1
     done
     echo -e "\033[31mfail\033[0m"
     cat /tmp/cli_${node}_list
+    # Check nodes
+    awk '{print $2}' /tmp/cli_${node}_list | while read line
+    do
+        if [[ ${line} != "ADDRESS" ]]; then
+            addr=`echo "${line}" | sed -e "s/([^)]*)//g"`
+            echo "check ${node} ${addr}"
+            ${cli} ${node} info ${addr}
+        fi
+    done
     exit 1
 }
 
