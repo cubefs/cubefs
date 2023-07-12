@@ -104,7 +104,7 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				err = fmt.Errorf("Zone[%v] not exists in cluster\n ", zoneName)
 				return
 			}
-			stdout(formatZoneView(zoneView))
+			stdout("%v", formatZoneView(zoneView))
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

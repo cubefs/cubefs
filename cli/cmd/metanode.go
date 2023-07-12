@@ -110,7 +110,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("[Meta node info]\n")
-			stdout(formatMetaNodeDetail(metanodeInfo, false))
+			stdout("%v", formatMetaNodeDetail(metanodeInfo, false))
 
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
