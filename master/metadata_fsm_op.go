@@ -1175,6 +1175,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 			dnv.ZoneName = DefaultZoneName
 		}
 		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
+		dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		dataNode.RdOnly = dnv.RdOnly
