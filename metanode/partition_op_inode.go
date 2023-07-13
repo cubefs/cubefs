@@ -259,13 +259,21 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 
 // DeleteInode deletes an inode.
 func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	val, err := ino.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
+	var r interface{}
+	var val []byte
+	if req.UniqID > 0 {
+		val = InodeOnceUnlinkMarshal(req)
+		r, err = mp.submit(opFSMUnlinkInodeOnce, val)
+	} else {
+		ino := NewInode(req.Inode, 0)
+		val, err = ino.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
+		r, err = mp.submit(opFSMUnlinkInode, val)
 	}
-	r, err := mp.submit(opFSMUnlinkInode, val)
+
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

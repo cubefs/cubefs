@@ -40,6 +40,7 @@ type storeMsg struct {
 	//txRollbackDentries map[string]*TxRollbackDentry
 	quotaRebuild bool
 	uidRebuild   bool
+	uniqChecker  *uniqChecker
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {

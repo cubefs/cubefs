@@ -36,6 +36,7 @@ import (
 const (
 	OpenRetryInterval = 5 * time.Millisecond
 	OpenRetryLimit    = 1000
+	maxUniqID         = 5000
 )
 
 const (

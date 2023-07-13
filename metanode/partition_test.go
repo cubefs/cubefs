@@ -61,6 +61,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		txTree:         mp.txProcessor.txManager.txTree,
 		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
 		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
+		uniqChecker:    mp.uniqChecker,
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
@@ -98,6 +99,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		txTree:         mp.txProcessor.txManager.txTree,
 		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
 		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
+		uniqChecker:    mp.uniqChecker,
 	}
 	err = mp.store(msg)
 	require.Nil(t, err)
