@@ -1,0 +1,94 @@
+name: Issues Check Inactive
+
+on:
+  schedule:
+    - cron: "17 13 * * *"
+
+# labels: inactive-one-week, inactive-one-month, inactive-three-month, inactive-one-year, inactive-two-year
+
+jobs:
+  check-inactive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check-inactive-one-week
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'check-inactive'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inactive-day: 7
+          inactive-label: 'inactive-one-week'
+          exclude-labels: 'inactive-one-month,inactive-three-month,inactive-one-year,inactive-two-year'
+
+      - name: check-inactive-one-month
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'check-inactive'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inactive-day: 30
+          labels: 'inactive-one-week'
+          inactive-label: 'inactive-one-month'
+
+      - name: check-inactive-three-month
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'check-inactive'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inactive-day: 90
+          labels: 'inactive-one-month'
+          inactive-label: 'inactive-three-month'
+
+      - name: check-inactive-one-year
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'check-inactive'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inactive-day: 365
+          labels: 'inactive-three-month'
+          inactive-label: 'inactive-one-year'
+
+      - name: check-inactive-two-year
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'check-inactive'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inactive-day: 730
+          labels: 'inactive-one-year'
+          inactive-label: 'inactive-two-year'
+
+
+      # remove repetitive labels
+      - name: remove-inactive-two-year
+        if: github.event.label.name == 'inactive-two-year'
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'remove-labels'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          labels: 'inactive-one-week,inactive-one-month,inactive-three-month,inactive-one-year'
+
+      - name: remove-inactive-one-year
+        if: github.event.label.name == 'inactive-one-year'
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'remove-labels'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          labels: 'inactive-one-week,inactive-one-month,inactive-three-month'
+
+      - name: remove-inactive-three-month
+        if: github.event.label.name == 'inactive-three-month'
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'remove-labels'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          labels: 'inactive-one-week,inactive-one-month'
+
+      - name: remove-inactive-one-month
+        if: github.event.label.name == 'inactive-one-month'
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: 'remove-labels'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          labels: 'inactive-one-week'
