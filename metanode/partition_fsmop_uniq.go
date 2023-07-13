@@ -16,8 +16,6 @@ package metanode
 
 import (
 	"encoding/binary"
-	"sync/atomic"
-
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -26,19 +24,20 @@ type fsmEvictUniqCheckerRequest struct {
 	UniqID uint64
 }
 
-func (mp *metaPartition) fsmUniqID(val []byte) (status uint8) {
-	var id uint64
-	id = binary.BigEndian.Uint64(val)
-	for {
-		cur := mp.GetUniqId()
-		if id <= cur {
-			break
-		}
-		if atomic.CompareAndSwapUint64(&mp.config.UniqId, cur, id) {
-			break
-		}
+type UniqIdResp struct {
+	Start  uint64
+	End    uint64
+	Status uint8
+}
+
+func (mp *metaPartition) fsmUniqID(val []byte) (resp *UniqIdResp) {
+	resp = &UniqIdResp{
+		Status: proto.OpOk,
 	}
-	return proto.OpOk
+
+	num := binary.BigEndian.Uint32(val)
+	resp.Start, resp.End = mp.allocateUniqID(num)
+	return resp
 }
 
 func (mp *metaPartition) fsmUniqCheckerEvict(req *fsmEvictUniqCheckerRequest) error {

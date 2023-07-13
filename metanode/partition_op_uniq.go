@@ -23,11 +23,9 @@ import (
 )
 
 func (mp *metaPartition) GetUniqID(p *Packet, num uint32) (err error) {
-	start, end := mp.allocateUniqID(num)
 
-	idBuf := make([]byte, 8)
-	binary.BigEndian.PutUint64(idBuf, end)
-
+	idBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(idBuf, num)
 	resp, err := mp.submit(opFSMUniqID, idBuf)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
@@ -38,9 +36,11 @@ func (mp *metaPartition) GetUniqID(p *Packet, num uint32) (err error) {
 		status = proto.OpErr
 		reply  []byte
 	)
-	if resp.(uint8) == proto.OpOk {
+
+	idResp := resp.(*UniqIdResp)
+	if idResp.Status == proto.OpOk {
 		resp := &GetUniqIDResp{
-			Start: start,
+			Start: idResp.Start,
 		}
 		status = proto.OpOk
 		reply, err = json.Marshal(resp)
