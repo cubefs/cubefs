@@ -87,83 +87,97 @@ type (
 	BatchEvictInodeReq = proto.BatchEvictInodeRequest
 	// Client -> MetaNode
 	SetattrRequest = proto.SetAttrRequest
+
+	// Client -> MetaNode
+	GetUniqIDResp = proto.GetUniqIDResponse
 )
 
+// op code should be fixed, order change will cause raft fsm log apply fail
 const (
-	opFSMCreateInode uint32 = iota
-	opFSMUnlinkInode
-	opFSMCreateDentry
-	opFSMDeleteDentry
-	opFSMDeletePartition
-	opFSMUpdatePartition
-	opFSMDecommissionPartition
-	opFSMExtentsAdd
-	opFSMStoreTick
-	startStoreTick
-	stopStoreTick
-	opFSMUpdateDentry
-	opFSMExtentTruncate
-	opFSMCreateLinkInode
-	opFSMEvictInode
-	opFSMInternalDeleteInode
-	opFSMSetAttr
-	opFSMInternalDelExtentFile
-	opFSMInternalDelExtentCursor
-	opExtentFileSnapshot
-	opFSMSetXAttr
-	opFSMRemoveXAttr
-	opFSMCreateMultipart
-	opFSMRemoveMultipart
-	opFSMAppendMultipart
-	opFSMSyncCursor
+	opFSMCreateInode             = 0
+	opFSMUnlinkInode             = 1
+	opFSMCreateDentry            = 2
+	opFSMDeleteDentry            = 3
+	opFSMDeletePartition         = 4
+	opFSMUpdatePartition         = 5
+	opFSMDecommissionPartition   = 6
+	opFSMExtentsAdd              = 7
+	opFSMStoreTick               = 8
+	startStoreTick               = 9
+	stopStoreTick                = 10
+	opFSMUpdateDentry            = 11
+	opFSMExtentTruncate          = 12
+	opFSMCreateLinkInode         = 13
+	opFSMEvictInode              = 14
+	opFSMInternalDeleteInode     = 15
+	opFSMSetAttr                 = 16
+	opFSMInternalDelExtentFile   = 17
+	opFSMInternalDelExtentCursor = 18
+	opExtentFileSnapshot         = 19
+	opFSMSetXAttr                = 20
+	opFSMRemoveXAttr             = 21
+	opFSMCreateMultipart         = 22
+	opFSMRemoveMultipart         = 23
+	opFSMAppendMultipart         = 24
+	opFSMSyncCursor              = 25
 
 	//supplement action
-	opFSMInternalDeleteInodeBatch
-	opFSMDeleteDentryBatch
-	opFSMUnlinkInodeBatch
-	opFSMEvictInodeBatch
+	opFSMInternalDeleteInodeBatch = 26
+	opFSMDeleteDentryBatch        = 27
+	opFSMUnlinkInodeBatch         = 28
+	opFSMEvictInodeBatch          = 29
 
-	opFSMExtentsAddWithCheck
+	opFSMExtentsAddWithCheck = 30
 
-	opFSMUpdateSummaryInfo
-	opFSMUpdateXAttr
-	opFSMObjExtentsAdd
+	opFSMUpdateSummaryInfo = 31
+	opFSMUpdateXAttr       = 32
+	opFSMObjExtentsAdd     = 33
 	// opFSMExtentsDel
-	opFSMExtentsEmpty
+	opFSMExtentsEmpty = 34
 
-	opFSMClearInodeCache
-	opFSMSentToChan
+	opFSMClearInodeCache = 35
+	opFSMSentToChan      = 36
 
 	// transaction
-	opFSMSyncTxID
-	opFSMTxCreateInode
-	opFSMTxCreateInodeQuota
-	opFSMTxCreateDentry
-	opFSMTxSetState
-	opFSMTxCommit
-	opFSMTxInodeCommit
-	opFSMTxDentryCommit
-	opFSMTxRollback
-	opFSMTxInodeRollback
-	opFSMTxDentryRollback
-	opFSMTxDeleteDentry
-	opFSMTxUnlinkInode
-	opFSMTxUpdateDentry
-	opFSMTxCreateLinkInode
+	opFSMSyncTxID           = 37
+	opFSMTxCreateInode      = 38
+	opFSMTxCreateInodeQuota = 39
+	opFSMTxCreateDentry     = 40
+	opFSMTxSetState         = 41
+	opFSMTxCommit           = 42
+	opFSMTxInodeCommit      = 43
+	opFSMTxDentryCommit     = 44
+	opFSMTxRollback         = 45
+	opFSMTxInodeRollback    = 46
+	opFSMTxDentryRollback   = 47
+	opFSMTxDeleteDentry     = 48
+	opFSMTxUnlinkInode      = 49
+	opFSMTxUpdateDentry     = 50
+	opFSMTxCreateLinkInode  = 51
 	// transaction snapshot
-	opFSMTxSnapshot
-	opFSMTxRbInodeSnapshot
-	opFSMTxRbDentrySnapshot
+	opFSMTxSnapshot         = 52
+	opFSMTxRbInodeSnapshot  = 53
+	opFSMTxRbDentrySnapshot = 54
 
 	//quota
-	opFSMCreateInodeQuota
-	opFSMSetInodeQuotaBatch
-	opFSMDeleteInodeQuotaBatch
+	opFSMCreateInodeQuota = 55
 
-	opFSMSnapFormatVersion
-	opFSMApplyId
-	opFSMTxId
-	opFSMCursor
+	opFSMSnapFormatVersion = 56
+	opFSMApplyId           = 57
+	opFSMTxId              = 58
+	opFSMCursor            = 59
+
+	// quota batch
+	opFSMSetInodeQuotaBatch    = 60
+	opFSMDeleteInodeQuotaBatch = 61
+
+	// uniq checker
+	opFSMUniqID              = 62
+	opFSMUniqIDSnap          = 63
+	opFSMUniqCheckerSnap     = 64
+	opFSMUniqCheckerEvict    = 65
+	opFSMUnlinkInodeOnce     = 66
+	opFSMCreateLinkInodeOnce = 67
 )
 
 var (

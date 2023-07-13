@@ -161,6 +161,9 @@ const (
 	OpMetaTxUpdateDentry uint8 = 0xAA
 	OpMetaTxLinkInode    uint8 = 0xAB
 
+	//Operations: Client -> MetaNode.
+	OpMetaGetUniqID uint8 = 0xAC
+
 	// Commons
 	OpNoSpaceErr         uint8 = 0xEE
 	OpDirQuota           uint8 = 0xF1
