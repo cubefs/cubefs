@@ -2073,3 +2073,37 @@ func (m *metadataManager) opMetaGetInodeQuota(conn net.Conn, p *Packet, remote s
 	log.LogInfof("[opMetaGetInodeQuota] get inode [%v] quota success.", req.Inode)
 	return
 }
+
+func (m *metadataManager) opMetaGetUniqID(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.GetUniqIDRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.GetUniqID(p, req.Num)
+	m.respondToClient(conn, p)
+	if err != nil {
+		log.LogErrorf("%s [opMetaGetUniqID] %s, "+
+			"response to client: %s", remoteAddr, err.Error(), p.GetResultMsg())
+	}
+	log.LogDebugf("%s [opMetaGetUniqID] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+
+}

@@ -249,6 +249,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opQuotaCreateInode(conn, p, remoteAddr)
 	case proto.OpQuotaCreateDentry:
 		err = m.opQuotaCreateDentry(conn, p, remoteAddr)
+	case proto.OpMetaGetUniqID:
+		err = m.opMetaGetUniqID(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -469,6 +471,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		Start:       request.Start,
 		End:         request.End,
 		Cursor:      request.Start,
+		UniqId:      0,
 		Peers:       request.Members,
 		RaftStore:   m.raftStore,
 		NodeId:      m.nodeId,
