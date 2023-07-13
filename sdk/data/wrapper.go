@@ -674,6 +674,13 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 			strings.Join(old.Hosts, ",") != strings.Join(dp.Hosts, ",") {
 			log.LogInfof("updateDataPartition: dp (%v) --> (%v)", old, dp)
 		}
+		if !isLeaderExist(old.GetLeaderAddr(), dp.Hosts) {
+			if dp.GetLeaderAddr() != "" {
+				old.LeaderAddr = proto.NewAtomicString(dp.GetLeaderAddr())
+			} else {
+				old.LeaderAddr = proto.NewAtomicString(dp.Hosts[0])
+			}
+		}
 		old.Status = dp.Status
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
@@ -700,13 +707,25 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 
 }
 
+func isLeaderExist(addr string, hosts []string) bool {
+	for _, host := range hosts {
+		if addr == host {
+			return true
+		}
+	}
+	return false
+}
+
 func (w *Wrapper) getDataPartitionByPid(partitionID uint64) (err error) {
 	var dpInfo *proto.DataPartitionInfo
 	start := time.Now()
 	for {
 		if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, partitionID); err == nil {
-			log.LogInfof("getDataPartitionByPid: pid(%v) vol(%v)", partitionID, w.volName)
-			break
+			if len(dpInfo.Hosts) > 0 {
+				log.LogInfof("getDataPartitionByPid: pid(%v) vol(%v)", partitionID, w.volName)
+				break
+			}
+			err = fmt.Errorf("master return empty host list")
 		}
 		if err != nil && time.Since(start) > MasterNoCacheAPIRetryTimeout {
 			log.LogWarnf("getDataPartitionByPid: err(%v) pid(%v) vol(%v) retry timeout(%v)", err, partitionID, w.volName, time.Since(start))
