@@ -106,42 +106,45 @@ var (
 )
 
 type ChubaoFSMonitor struct {
-	usedRatio                       float64
-	availSpaceRatio                 float64
-	readWriteDpRatio                float64
-	hosts                           []*ClusterHost
-	idHosts                         []*ClusterHost
-	minReadWriteCount               int64
-	lastWarnTime                    int64
-	scheduleInterval                int
-	clusterUsedRatio                float64
-	nlClusterUsedRatio              float64
-	metrics                         map[string]*AlarmMetric
-	chubaoFSMasterNodes             map[string][]string
-	badDiskXBPTickets               *sync.Map            //map[string]XBPTicketInfo
-	markDeleteVols                  map[string]time.Time // host#volName:lastWarnTime
-	offlineDataNodeMaxCountIn24Hour int
-	offlineDiskMaxCountIn24Hour     int
-	offlineDiskMinDuration          time.Duration
-	masterLbLastWarnInfo            map[string]*MasterLBWarnInfo
-	scheduleDpCheckInterval         int
-	scheduleMpCheckInterval         int
-	MinRWDPAndMPVols                []MinRWDPAndMPVolInfo
-	lastZoneDiskUsedRatioAlarmTime  time.Time
-	lastZoneDiskUsedRatioTelAlarm   time.Time
-	lastZoneDiskUsedRatioTelOpAlarm time.Time
-	lastRestartNodeTime             time.Time
-	RestartNodeMaxCountIn24Hour     int
-	highLoadNodeSolver              *ChubaoFSHighLoadNodeSolver
-	volNeedAllocateDPContinuedTimes map[string]int
-	WarnFaultToUsers                []*WarnFaultToTargetUsers
-	WarnFaultToUsersCheckInterval   int
-	sreDB                           *gorm.DB
-	metaNodeExportDiskUsedRatio     float64
-	ignoreCheckMp                   bool
-	nodeRapidMemIncWarnThreshold    float64
-	nodeRapidMemIncreaseWarnRatio   float64
-	ctx                             context.Context
+	usedRatio                               float64
+	availSpaceRatio                         float64
+	readWriteDpRatio                        float64
+	hosts                                   []*ClusterHost
+	idHosts                                 []*ClusterHost
+	minReadWriteCount                       int64
+	lastWarnTime                            int64
+	scheduleInterval                        int
+	clusterUsedRatio                        float64
+	nlClusterUsedRatio                      float64
+	metrics                                 map[string]*AlarmMetric
+	chubaoFSMasterNodes                     map[string][]string
+	badDiskXBPTickets                       *sync.Map            //map[string]XBPTicketInfo
+	markDeleteVols                          map[string]time.Time // host#volName:lastWarnTime
+	offlineDataNodeMaxCountIn24Hour         int
+	offlineDiskMaxCountIn24Hour             int
+	offlineDiskMinDuration                  time.Duration
+	masterLbLastWarnInfo                    map[string]*MasterLBWarnInfo
+	scheduleDpCheckInterval                 int
+	scheduleMpCheckInterval                 int
+	MinRWDPAndMPVols                        []MinRWDPAndMPVolInfo
+	lastZoneDataNodeDiskUsedRatioAlarmTime  time.Time
+	lastZoneDataNodeDiskUsedRatioTelAlarm   time.Time
+	lastZoneDataNodeDiskUsedRatioTelOpAlarm time.Time
+	lastZoneMetaNodeDiskUsedRatioAlarmTime  time.Time
+	lastZoneMetaNodeDiskUsedRatioTelAlarm   time.Time
+	lastZoneMetaNodeDiskUsedRatioTelOpAlarm time.Time
+	lastRestartNodeTime                     time.Time
+	RestartNodeMaxCountIn24Hour             int
+	highLoadNodeSolver                      *ChubaoFSHighLoadNodeSolver
+	volNeedAllocateDPContinuedTimes         map[string]int
+	WarnFaultToUsers                        []*WarnFaultToTargetUsers
+	WarnFaultToUsersCheckInterval           int
+	sreDB                                   *gorm.DB
+	metaNodeExportDiskUsedRatio             float64
+	ignoreCheckMp                           bool
+	nodeRapidMemIncWarnThreshold            float64
+	nodeRapidMemIncreaseWarnRatio           float64
+	ctx                                     context.Context
 }
 
 func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {

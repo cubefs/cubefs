@@ -64,7 +64,6 @@ type PeerReplicaService struct {
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckMpPeerCorrupt() {
-
 	crontab := cron.New()
 	crontab.AddFunc("00 09,17 * * *", s.checkMpPeerCorrupt)
 	crontab.Start()

@@ -1,6 +1,7 @@
 package cfs
 
 import (
+	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/config"
@@ -14,7 +15,7 @@ import (
 var cfsMonitor *ChubaoFSMonitor
 
 func init() {
-	cfsMonitor = NewChubaoFSMonitor()
+	cfsMonitor = NewChubaoFSMonitor(context.Background())
 }
 
 func TestExtractChubaoFSInfo(t *testing.T) {
@@ -60,7 +61,7 @@ func TestServerStart(t *testing.T) {
 }
 
 func TestScheduleToCheckXBPTicket(t *testing.T) {
-	cfsm := NewChubaoFSMonitor()
+	cfsm := NewChubaoFSMonitor(context.Background())
 	cfsm.hosts = append(cfsm.hosts, &ClusterHost{host: "192.168.168.110:49413", isReleaseCluster: false})
 	cfsm.scheduleInterval = 20
 	wg := new(sync.WaitGroup)
@@ -187,7 +188,7 @@ func TestCheckRaftStoppedReplica(t *testing.T) {
 }
 
 func TestCheckMetaNodeDiskStatByMDCInfoFromSre(t *testing.T) {
-	cfsm := NewChubaoFSMonitor()
+	cfsm := NewChubaoFSMonitor(context.Background())
 	cfg, _ := config.LoadConfigFile(checktool.ReDirPath("cfg.json"))
 	cfsm.parseSreDBConfig(cfg)
 	cfsm.metaNodeExportDiskUsedRatio = cfg.GetFloat(cfgKeyMetaNodeExportDiskUsedRatio)
@@ -205,7 +206,7 @@ func TestCheckMetaNodeDiskStatByMDCInfoFromSre(t *testing.T) {
 }
 
 func TestScheduleToCheckIDMetaNodeDiskStat(t *testing.T) {
-	cfsm := NewChubaoFSMonitor()
+	cfsm := NewChubaoFSMonitor(context.Background())
 	cfsm.scheduleToCheckIDMetaNodeDiskStat()
 }
 
