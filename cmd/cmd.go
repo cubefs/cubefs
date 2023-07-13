@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/convertnode"
 	"github.com/cubefs/cubefs/ecnode"
 	"github.com/cubefs/cubefs/flashnode"
+	"github.com/cubefs/cubefs/schedulenode/checktool"
 	"github.com/cubefs/cubefs/schedulenode/compact"
 	"github.com/cubefs/cubefs/schedulenode/rebalance"
 	"github.com/cubefs/cubefs/schedulenode/scheduler"
@@ -82,6 +83,7 @@ const (
 	RoleCodec     = "codecnode"
 	RoleEc        = "ecnode"
 	RoleReBalance = "rebalance"
+	RoleChecktool = "checktool"
 )
 
 const (
@@ -100,6 +102,7 @@ const (
 	ModuleCodec     = "codecNode"
 	ModuleEc        = "ecNode"
 	ModuleReBalance = "rebalance"
+	ModuleChecktool = "checktool"
 )
 
 const (
@@ -262,6 +265,10 @@ func run() error {
 	case RoleReBalance:
 		server = rebalance.NewReBalanceWorker()
 		module = ModuleReBalance
+	case RoleChecktool:
+		server = checktool.NewChecktoolWorker()
+		module = ModuleChecktool
+
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

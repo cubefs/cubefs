@@ -296,7 +296,7 @@ const (
 )
 
 const (
-	ScheduleConfigMigrateThresholdGlobalKey  = "*"
+	ScheduleConfigMigrateThresholdGlobalKey = "*"
 )
 
 type ScheduleConfig struct {
