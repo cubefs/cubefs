@@ -35,21 +35,23 @@ import (
 )
 
 const (
-	snapshotDir     = "snapshot"
-	snapshotDirTmp  = ".snapshot"
-	snapshotBackup  = ".snapshot_backup"
-	inodeFile       = "inode"
-	dentryFile      = "dentry"
-	extendFile      = "extend"
-	multipartFile   = "multipart"
-	txInfoFile      = "tx_info"
-	txRbInodeFile   = "tx_rb_inode"
-	txRbDentryFile  = "tx_rb_dentry"
-	applyIDFile     = "apply"
-	TxIDFile        = "transactionID"
-	SnapshotSign    = ".sign"
-	metadataFile    = "meta"
-	metadataFileTmp = ".meta"
+	snapshotDir        = "snapshot"
+	snapshotDirTmp     = ".snapshot"
+	snapshotBackup     = ".snapshot_backup"
+	inodeFile          = "inode"
+	dentryFile         = "dentry"
+	extendFile         = "extend"
+	multipartFile      = "multipart"
+	txInfoFile         = "tx_info"
+	txRbInodeFile      = "tx_rb_inode"
+	txRbDentryFile     = "tx_rb_dentry"
+	applyIDFile        = "apply"
+	TxIDFile           = "transactionID"
+	SnapshotSign       = ".sign"
+	metadataFile       = "meta"
+	metadataFileTmp    = ".meta"
+	uniqCheckerFile    = "uniqChecker"
+	uniqCheckerFileTmp = ".uniqChecker"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {
@@ -82,6 +84,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
 	mp.config.Cursor = mp.config.Start
+	mp.config.UniqId = 0
 
 	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
 	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
@@ -385,8 +388,13 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		return
 	}
 	var cursor uint64
+	var uniqId uint64
 	if strings.Contains(string(data), "|") {
-		_, err = fmt.Sscanf(string(data), "%d|%d", &mp.applyID, &cursor)
+		if len(strings.Split(string(data), "|")) == 3 {
+			_, err = fmt.Sscanf(string(data), "%d|%d|%d", &mp.applyID, &cursor, &uniqId)
+		} else {
+			_, err = fmt.Sscanf(string(data), "%d|%d", &mp.applyID, &cursor)
+		}
 	} else {
 		_, err = fmt.Sscanf(string(data), "%d", &mp.applyID)
 	}
@@ -395,11 +403,15 @@ func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 		return
 	}
 
-	if cursor > atomic.LoadUint64(&mp.config.Cursor) {
+	if cursor > mp.GetCursor() {
 		atomic.StoreUint64(&mp.config.Cursor, cursor)
 	}
-	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v)",
-		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename)
+	if uniqId > mp.GetUniqId() {
+		atomic.StoreUint64(&mp.config.UniqId, uniqId)
+	}
+
+	log.LogInfof("loadApplyID: load complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) uniqId(%v) filename(%v)",
+		mp.config.PartitionId, mp.config.VolName, mp.applyID, mp.config.Cursor, mp.config.UniqId, filename)
 	return
 }
 
@@ -658,6 +670,34 @@ func (mp *metaPartition) loadTxID(rootDir string) (err error) {
 	return
 }
 
+func (mp *metaPartition) loadUniqChecker(rootDir string) (err error) {
+	log.LogInfof("loadUniqChecker partition-%v begin", mp.config.PartitionId)
+	defer log.LogInfof("loadUniqChecker partition-%v complete", mp.config.PartitionId)
+	filename := path.Join(rootDir, uniqCheckerFile)
+	if _, err = os.Stat(filename); err != nil {
+		log.LogErrorf("loadUniqChecker get file %s err(%s)", filename, err)
+		err = nil
+		return
+	}
+
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		if err == os.ErrNotExist {
+			err = nil
+			return
+		}
+		log.LogErrorf("loadUniqChecker read file %s err(%s)", filename, err)
+		err = errors.NewErrorf("[loadUniqChecker] OpenFile: %v", err.Error())
+		return
+	}
+	if err = mp.uniqChecker.UnMarshal(data); err != nil {
+		log.LogErrorf("loadUniqChecker UnMarshal err(%s)", err)
+		err = errors.NewErrorf("[loadUniqChecker] Unmarshal: %v", err.Error())
+		return
+	}
+	return
+}
+
 func (mp *metaPartition) persistMetadata() (err error) {
 	if err = mp.config.checkMeta(); err != nil {
 		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
@@ -704,11 +744,13 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 		err = fp.Sync()
 		fp.Close()
 	}()
-	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, atomic.LoadUint64(&mp.config.Cursor))); err != nil {
+	cursor := mp.GetCursor()
+	uniqid := mp.GetUniqId()
+	if _, err = fp.WriteString(fmt.Sprintf("%d|%d|%d", sm.applyIndex, cursor, uniqid)); err != nil {
 		return
 	}
-	log.LogWarnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v)",
-		mp.config.PartitionId, mp.config.VolName, sm.applyIndex)
+	log.LogWarnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v) uniqId(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, cursor, uniqid)
 	return
 }
 
@@ -1164,5 +1206,38 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	crc = crc32.Sum32()
 	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, multipartTree.Len(), crc)
+	return
+}
+
+func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uint32, err error) {
+	filename := path.Join(rootDir, uniqCheckerFileTmp)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
+		O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		fp.Close()
+		os.Remove(filename)
+	}()
+
+	var data []byte
+	if data, crc, err = sm.uniqChecker.Marshal(); err != nil {
+		return
+	}
+
+	if _, err = fp.Write(data); err != nil {
+		return
+	}
+
+	if err = fp.Sync(); err != nil {
+		return
+	}
+	if err = os.Rename(filename, path.Join(rootDir, uniqCheckerFile)); err != nil {
+		return
+	}
+
+	log.LogInfof("storeUniqChecker: store complete: PartitionID(%v) volume(%v) crc(%v)",
+		mp.config.UniqId, mp.config.VolName, crc)
 	return
 }

@@ -322,10 +322,18 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 		stat.EndStat("iunlink", err, bgTime, 1)
 	}()
 
+	//use uniq id to dedup request
+	status, uniqID, err := mw.consumeUniqID(mp)
+	if err != nil || status != statusOK {
+		err = statusToErrno(status)
+		return
+	}
+
 	req := &proto.UnlinkInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
+		UniqID:      uniqID,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1328,10 +1336,18 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 		stat.EndStat("ilink", err, bgTime, 1)
 	}()
 
+	//use unique id to dedup request
+	status, uniqID, err := mw.consumeUniqID(mp)
+	if err != nil || status != statusOK {
+		err = statusToErrno(status)
+		return
+	}
+
 	req := &proto.LinkInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
+		UniqID:      uniqID,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -2535,5 +2551,69 @@ func (mw *MetaWrapper) revokeQuota(parentIno uint64, quotaId uint32, totalInodeC
 		*curInodeCount = 0
 		*inodes = (*inodes)[:0]
 	}
+	return
+}
+
+func (mw *MetaWrapper) consumeUniqID(mp *MetaPartition) (status int, uniqid uint64, err error) {
+	pid := mp.PartitionID
+	mw.uniqidRangeMutex.Lock()
+	defer mw.uniqidRangeMutex.Unlock()
+	id, ok := mw.uniqidRangeMap[pid]
+	if ok {
+		if id.cur < id.end {
+			status = statusOK
+			uniqid = id.cur
+			id.cur = id.cur + 1
+			return
+		}
+	}
+	status, start, err := mw.getUniqID(mp, maxUniqID)
+	if err != nil || status != statusOK {
+		return status, 0, err
+	}
+	uniqid = start
+	if ok {
+		id.cur = start + 1
+		id.end = start + maxUniqID
+	} else {
+		mw.uniqidRangeMap[pid] = &uniqidRange{start + 1, start + maxUniqID}
+	}
+	return
+}
+
+func (mw *MetaWrapper) getUniqID(mp *MetaPartition, num uint32) (status int, start uint64, err error) {
+	req := &proto.GetUniqIDRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Num:         num,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaGetUniqID
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		return
+	}
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("getUniqID: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		log.LogErrorf("getUniqID: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.GetUniqIDResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("getUniqID: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	start = resp.Start
 	return
 }

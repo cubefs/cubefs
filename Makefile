@@ -103,4 +103,9 @@ phony += testcover
 testcover:
 	@build/build.sh testcover
 
+phony += mock
+mock:
+	rm -rf metanode/mocktest
+	mockgen -source=raftstore/partition.go -package=raftstoremock -destination=metanode/mocktest/raftstore/partition.go
+
 .PHONY: $(phony)

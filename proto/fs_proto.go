@@ -253,6 +253,7 @@ type LinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	UniqID      uint64 `json:"uiq"`
 }
 
 // LinkInodeResponse defines the response to the request of linking an inode.
@@ -308,6 +309,7 @@ type UnlinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	UniqID      uint64 `json:"uid"` //for request dedup
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -860,4 +862,14 @@ type AppendMultipartResponse struct {
 	Status   uint8  `json:"status"`
 	Update   bool   `json:"update"`
 	OldInode uint64 `json:"oldinode"`
+}
+
+type GetUniqIDRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Num         uint32 `json:"num"`
+}
+
+type GetUniqIDResponse struct {
+	Start uint64 `json:"start"`
 }
