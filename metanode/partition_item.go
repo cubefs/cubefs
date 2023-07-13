@@ -19,8 +19,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"io/ioutil"
 	"os"
@@ -28,6 +26,9 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // MetaItem defines the structure of the metadata operations.
@@ -136,6 +137,7 @@ type MetaItemIterator struct {
 	fileRootDir       string
 	SnapFormatVersion uint32
 	applyID           uint64
+	uniqID            uint64
 	txId              uint64
 	cursor            uint64
 	inodeTree         *BTree
@@ -145,6 +147,7 @@ type MetaItemIterator struct {
 	txTree            *BTree
 	txRbInodeTree     *BTree
 	txRbDentryTree    *BTree
+	uniqChecker       *uniqChecker
 
 	filenames []string
 
@@ -161,6 +164,7 @@ const (
 	SiwKeyApplyId
 	SiwKeyTxId
 	SiwKeyCursor
+	SiwKeyUniqId
 )
 
 type SnapItemWrapper struct {
@@ -187,6 +191,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.applyID = mp.applyID
 	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 	si.cursor = mp.GetCursor()
+	si.uniqID = mp.GetUniqId()
 
 	mp.nonIdempotent.Lock()
 	si.inodeTree = mp.inodeTree.GetTree()
@@ -196,6 +201,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
 	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
 	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
+	si.uniqChecker = mp.uniqChecker.clone()
 	mp.nonIdempotent.Unlock()
 
 	si.dataCh = make(chan interface{})
@@ -269,8 +275,12 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			// process cursor
 			cursorWrapper := SnapItemWrapper{SiwKeyCursor, si.cursor}
 			produceItem(cursorWrapper)
-			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v)",
-				mp.config.PartitionId, si.applyID, si.txId, si.cursor)
+			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v)",
+				mp.config.PartitionId, si.applyID, si.txId, si.cursor, si.uniqID)
+
+			// process uniqId
+			uniqIdWrapper := SnapItemWrapper{SiwKeyUniqId, si.uniqID}
+			produceItem(uniqIdWrapper)
 		} else {
 			panic(fmt.Sprintf("invalid raftSyncSnapFormatVersione: %v", si.SnapFormatVersion))
 		}
@@ -325,6 +335,11 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			if checkClose() {
 				return
 			}
+		}
+
+		produceItem(si.uniqChecker)
+		if checkClose() {
+			return
 		}
 
 		// process extent del files
@@ -405,6 +420,11 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 			cursorBuf := make([]byte, 8)
 			binary.BigEndian.PutUint64(cursorBuf, cursor)
 			snap = NewMetaItem(opFSMCursor, typedItem.MarshalKey(), cursorBuf)
+		} else if typedItem.key == SiwKeyUniqId {
+			uniqId := typedItem.value.(uint64)
+			uniqIdBuf := make([]byte, 8)
+			binary.BigEndian.PutUint64(uniqIdBuf, uniqId)
+			snap = NewMetaItem(opFSMUniqIDSnap, typedItem.MarshalKey(), uniqIdBuf)
 		} else {
 			panic(fmt.Sprintf("MetaItemIterator.Next: unknown SnapItemWrapper key: %v", typedItem.key))
 		}
@@ -439,6 +459,14 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		snap = NewMetaItem(opFSMTxRbDentrySnapshot, []byte(typedItem.txDentryInfo.GetKey()), val)
 	case *fileData:
 		snap = NewMetaItem(opExtentFileSnapshot, []byte(typedItem.filename), typedItem.data)
+	case *uniqChecker:
+		var raw []byte
+		if raw, _, err = typedItem.Marshal(); err != nil {
+			si.err = err
+			si.Close()
+			return
+		}
+		snap = NewMetaItem(opFSMUniqCheckerSnap, nil, raw)
 	default:
 		panic(fmt.Sprintf("unknown item type: %v", reflect.TypeOf(item).Name()))
 	}
