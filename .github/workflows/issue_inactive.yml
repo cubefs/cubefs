@@ -2,7 +2,7 @@ name: Issues Check Inactive
 
 on:
   schedule:
-    - cron: "17 13 * * *"
+    - cron: "17 10 * * *"
 
 # labels: inactive-one-week, inactive-one-month, inactive-three-month, inactive-one-year, inactive-two-year
 
