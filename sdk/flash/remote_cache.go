@@ -261,12 +261,9 @@ func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
 func (rc *RemoteCache) ResetConnConfig(timeouts int64) {
 	config := rc.connConfig
 	if timeouts > 0 {
-		log.LogInfof("ResetConnConfig: %v", timeouts)
 		if timeouts != config.ReadTimeoutNs {
+			log.LogInfof("ResetConnConfig: from(%v) to new(%v)", config.ReadTimeoutNs, timeouts)
 			atomic.StoreInt64(&config.ReadTimeoutNs, timeouts)
-		}
-		if timeouts != config.WriteTimeoutNs {
-			atomic.StoreInt64(&config.WriteTimeoutNs, timeouts)
 		}
 	}
 }
