@@ -655,7 +655,11 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 					dataExtentMap[dp] = make(map[uint64]uint64)
 				}
 				for _, extent := range dpInfo.Files {
-					if (all || today.Unix()-int64(extent[storage.ModifyTime]) >= 604800) && extent[storage.FileID] > storage.MinNormalExtentID {
+					if !all && today.Unix()-int64(extent[storage.ModifyTime]) < 604800 {
+						continue
+					}
+					if (!proto.IsDbBack && extent[storage.FileID] > storage.MinNormalExtentID) ||
+						(proto.IsDbBack && extent[storage.FileID] < 50000000){
 						dataExtentMap[dp][extent[storage.FileID]] = extent[storage.Size]
 					}
 				}
@@ -692,6 +696,9 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 		return
 	}
 	for _, ek := range extents {
+		if (!proto.IsDbBack && proto.IsTinyExtent(ek.ExtentId)) || (proto.IsDbBack && ek.ExtentId >= 50000000) {
+			continue
+		}
 		_, ok := metaExtentMap[ek.PartitionId]
 		if !ok {
 			metaExtentMap[ek.PartitionId] = make(map[uint64]bool)
@@ -703,6 +710,7 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 	garbage := make(map[uint64][]uint64)
 	var total uint64
 	for dp := range dataExtentMap {
+		var dpGarbageBlockSize = uint64(0)
 		for extent, size := range dataExtentMap[dp] {
 			_, ok := metaExtentMap[dp]
 			if ok {
@@ -711,8 +719,10 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 			if !ok {
 				garbage[dp] = append(garbage[dp], extent)
 				total += size
+				dpGarbageBlockSize += size
 			}
 		}
+		stdout("garbageCheck, vol: %s, dp: %v garbage size: %d\n", vol, dp, dpGarbageBlockSize)
 	}
 
 	stdout("garbageCheck, vol: %s, garbage size: %d\n", vol, total)
@@ -799,7 +809,7 @@ func getExtentsByInodes(inodes []uint64, concurrency uint64, mps []*proto.MetaPa
 		go func() {
 			for ino := range inoCh {
 				mp := locateMpByInode(mps, ino)
-				mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], client.MetaNodeProfPort), false)
+				mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], client.MetaNodeProfPort), false, proto.IsDbBack)
 				re, tmpErr := mtClient.GetExtentKeyByInodeId(mp.PartitionID, ino)
 				if tmpErr != nil {
 					err = fmt.Errorf("get extents from inode err: %v, inode: %d", tmpErr, ino)

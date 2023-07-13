@@ -142,9 +142,10 @@ func (info XAttrInfo) String() string {
 
 // Dentry defines the dentry struct.
 type Dentry struct {
-	Name  string `json:"name"`
-	Inode uint64 `json:"ino"`
-	Type  uint32 `json:"type"`
+	ParentId uint64 `json:"pid"`
+	Name     string `json:"name"`
+	Inode    uint64 `json:"ino"`
+	Type     uint32 `json:"type"`
 }
 
 // String returns the string format of the dentry.
@@ -439,6 +440,11 @@ type GetExtentsResponse struct {
 	Generation uint64      `json:"gen"`
 	Size       uint64      `json:"sz"`
 	Extents    []ExtentKey `json:"eks"`
+}
+
+type GetExtentsResponseDBBack struct {
+	Inode   uint64
+	Extents []ExtentKey
 }
 
 const TruncateRequestVersion_1 = 1

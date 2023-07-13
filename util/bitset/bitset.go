@@ -13,6 +13,20 @@ func NewByteSliceBitSet() *ByteSliceBitSet {
 	return &ByteSliceBitSet{}
 }
 
+func NewByteSliceBitSetWithCap(cap int) *ByteSliceBitSet {
+	byteCount := 0
+	if cap%8 == 0 {
+		byteCount = cap/8
+	} else {
+		byteCount = cap/8 + 1
+	}
+	return &ByteSliceBitSet{
+		bytes:     make([]byte, byteCount),
+		wordInUse: 0,
+		cap:       byteCount*8,
+	}
+}
+
 func (bs *ByteSliceBitSet) String() string {
 	return fmt.Sprintf("byteSliceBitSet{%8b}", bs.bytes)
 }

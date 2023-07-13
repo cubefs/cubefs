@@ -39,6 +39,8 @@ const (
 	ConfigKeyLogLevel    = "logLevel"
 	ConfigKeyProfPort    = "prof"
 	ConfigKeyClusterAddr = "clusterAddr"
+	ConfigKeyClusterInfo = "clusters"
+	ConfigKeyExportDir   = "exportDir"
 
 	// mysql config key
 	ConfigKeyMysql       = "mysql"
@@ -62,6 +64,11 @@ const (
 	ConfigKeyEnableCrcWorker  = "enableCrcWorker"
 	// HBase config
 	ConfigKeyHBaseUrl = "hBaseUrl" // int
+
+	//notify config
+	ConfigKeyNotify = "notify"
+
+	ConfigKeyExtentMaxCountThreshold = "extentMaxCntThreshold"
 )
 
 const (
@@ -222,6 +229,19 @@ func (c *Config) GetJsonObjectBytes(key string) []byte {
 		return nil
 	}
 	return result
+}
+
+func (c *Config) GetJsonObjectSlice(key string) [][]byte {
+	s := c.GetSlice(key)
+	jsonObjectSlice := make([][]byte, 0, len(s))
+	for _, value := range s {
+		result, err := json.Marshal(value.(map[string]interface{}))
+		if err != nil {
+			return nil
+		}
+		jsonObjectSlice = append(jsonObjectSlice, result)
+	}
+	return jsonObjectSlice
 }
 
 // Check and get a string for the config key.
@@ -404,4 +424,11 @@ func NewHBaseConfig(hBaseHost string) *HBaseConfig {
 	return &HBaseConfig{
 		Host: hBaseHost,
 	}
+}
+
+type NotifyConfig struct {
+	URLToEmail    string `json:"urlToEmail"`
+	URLToDongDong string `json:"urlToDongDong"`
+	URLToCall     string `json:"urlToCall"`
+	Token         string `json:"token"`
 }

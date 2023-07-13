@@ -587,7 +587,7 @@ func checkMps(index int, volName string, mps []*proto.MetaPartitionView, client 
 				leaderNodeInfo.ProfPort = "9092"
 			}
 			leaderIpPort := strings.Split(leaderNodeInfo.Addr, ":")[0] + ":" + leaderNodeInfo.ProfPort
-			metaAdminApi := meta.NewMetaHttpClient(leaderIpPort, false)
+			metaAdminApi := meta.NewMetaHttpClient(leaderIpPort, false, false)
 			var inodeIds *proto.MpAllInodesId
 			if inodeIds, err = getMpInodeIds(mpInfo.PartitionID, metaAdminApi); err != nil {
 				stdout("Volume(%v) mpId(%v) leaderIpPort(%v) get MpInodeIds info failed:%v\n", volName, mp.PartitionID, leaderIpPort, err)

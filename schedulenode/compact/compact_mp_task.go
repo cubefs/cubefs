@@ -127,7 +127,7 @@ func (mp *CmpMpTask) ListAllIno() (err error) {
 		mp.State = proto.MPCmpGetCmpInodes
 	}()
 
-	metaAdminApi := meta.NewMetaHttpClient(mp.leader, false)
+	metaAdminApi := meta.NewMetaHttpClient(mp.leader, false, false)
 	resp, err := metaAdminApi.ListAllInodesId(mp.id, 0, 0, 0)
 	if err != nil {
 		return

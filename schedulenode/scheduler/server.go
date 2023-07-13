@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/schedulenode/blck"
 	"github.com/cubefs/cubefs/schedulenode/compact"
 	"github.com/cubefs/cubefs/schedulenode/crcworker"
+	"github.com/cubefs/cubefs/schedulenode/fsck"
+	"github.com/cubefs/cubefs/schedulenode/mdck"
+	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/smart"
 	"github.com/cubefs/cubefs/sdk/hbase"
 	"github.com/cubefs/cubefs/sdk/mysql"
@@ -60,6 +64,9 @@ const (
 	DefaultWorkerMaxTaskNumSmartVolume = 100
 	DefaultWorkerMaxTaskNumCompact     = 100
 	DefaultWorkerMaxTaskNumCrcWorker   = 100
+	DefaultWorkerMaxTaskNumFSCheck     = 5
+	DefaultWorkerMaxTaskNumBlockCheck  = 50
+	DefaultWorkerMaxTaskNumMDCheck     = 100
 )
 
 type ScheduleNode struct {
@@ -278,6 +285,10 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	wt = append(wt, proto.WorkerTypeSmartVolume)
 	wt = append(wt, proto.WorkerTypeCompact)
 	wt = append(wt, proto.WorkerTypeCheckCrc)
+	wt = append(wt, proto.WorkerTypeFSCheck)
+	wt = append(wt, proto.WorkerTypeBlockCheck)
+	wt = append(wt, proto.WorkerTypeMetaDataCrcCheck)
+	wt = append(wt, proto.WorkerTypeNormalExtentMistakeDelCheck)
 	s.workerTypes = wt
 
 	var smartVolumeWorker *smart.SmartVolumeWorker
@@ -300,6 +311,30 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		}
 		s.workers.Store(proto.WorkerTypeCheckCrc, crcWorker)
 	}
+	var fsckTaskSchedule *fsck.FSCheckTaskSchedule
+	if fsckTaskSchedule, err = fsck.NewFSCheckTaskSchedule(cfg); err != nil {
+		log.LogErrorf("[registerWorker] create fsck task schedule failed, err(%v)", err)
+		return
+	}
+	s.workers.Store(proto.WorkerTypeFSCheck, fsckTaskSchedule)
+	var blckTaskSchedule *blck.BlockCheckTaskSchedule
+	if blckTaskSchedule, err = blck.NewBlockCheckTaskSchedule(cfg); err != nil {
+		log.LogErrorf("[registerWorker] create blck task schedule failed, err(%v)", err)
+		return
+	}
+	s.workers.Store(proto.WorkerTypeBlockCheck, blckTaskSchedule)
+	var mdckTaskSchedule *mdck.MetaDataCheckTaskSchedule
+	if mdckTaskSchedule, err = mdck.NewMetaDataCheckTaskSchedule(cfg); err != nil {
+		log.LogErrorf("[registerWorker] create mdck task schedule failed, err(%v)", err)
+		return
+	}
+	s.workers.Store(proto.WorkerTypeMetaDataCrcCheck, mdckTaskSchedule)
+	var normalExtentCheckTaskSchedule *normalextentcheck.NormalExtentCheckTaskSchedule
+	if normalExtentCheckTaskSchedule, err = normalextentcheck.NewNormalExtentCheckTaskSchedule(cfg); err != nil {
+		log.LogErrorf("[registerWorker] create normal extent check task schedule failed, err(%v)", err)
+		return
+	}
+	s.workers.Store(proto.WorkerTypeNormalExtentMistakeDelCheck, normalExtentCheckTaskSchedule)
 	return
 }
 
@@ -585,6 +620,38 @@ func (s *ScheduleNode) startTaskCreator() {
 					dr = DefaultWorkerDuration
 				}
 				go s.taskCreator(proto.WorkerTypeCheckCrc, dr, cw.CreateTask)
+			case proto.WorkerTypeFSCheck:
+				fsckTaskSchedule := value.(*fsck.FSCheckTaskSchedule)
+				dr := fsckTaskSchedule.GetCreatorDuration()
+				if dr <= 0 {
+					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
+					dr = DefaultWorkerDuration
+				}
+				go s.taskCreator(proto.WorkerTypeFSCheck, dr, fsckTaskSchedule.CreateTask)
+			case proto.WorkerTypeBlockCheck:
+				blckTaskSchedule := value.(*blck.BlockCheckTaskSchedule)
+				dr := blckTaskSchedule.GetCreatorDuration()
+				if dr <= 0 {
+					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
+					dr = DefaultWorkerDuration
+				}
+				go s.taskCreator(proto.WorkerTypeBlockCheck, dr, blckTaskSchedule.CreateTask)
+			case proto.WorkerTypeMetaDataCrcCheck:
+				mdckTaskSchedule := value.(*mdck.MetaDataCheckTaskSchedule)
+				dr := mdckTaskSchedule.GetCreatorDuration()
+				if dr <= 0 {
+					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
+					dr = DefaultWorkerDuration
+				}
+				go s.taskCreator(proto.WorkerTypeMetaDataCrcCheck, dr, mdckTaskSchedule.CreateTask)
+			case proto.WorkerTypeNormalExtentMistakeDelCheck:
+				normalExtentCheckTaskSchedule := value.(*normalextentcheck.NormalExtentCheckTaskSchedule)
+				dr := normalExtentCheckTaskSchedule.GetCreatorDuration()
+				if dr <= 0 {
+					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
+					dr = DefaultWorkerDuration
+				}
+				go s.taskCreator(proto.WorkerTypeNormalExtentMistakeDelCheck, dr, normalExtentCheckTaskSchedule.CreateTask)
 
 			default:
 				log.LogWarnf("[startTaskCreator] unknown worker type, workerType(%v)", wt)
@@ -680,7 +747,9 @@ func (s *ScheduleNode) taskManager() {
 						if len(tasks) == 0 {
 							break
 						}
-						s.dispatchTaskToWorker(wt, tasks)
+						if abortDispatch := s.dispatchTaskToWorker(wt, tasks); abortDispatch {
+							break
+						}
 						offset += len(tasks)
 					}
 				}
@@ -847,7 +916,7 @@ func (s *ScheduleNode) removeTaskFromScheduleNode(wt proto.WorkerType, tasks []*
 	}
 }
 
-func (s *ScheduleNode) dispatchTaskToWorker(wt proto.WorkerType, tasks []*proto.Task) {
+func (s *ScheduleNode) dispatchTaskToWorker(wt proto.WorkerType, tasks []*proto.Task) (abortDispatch bool) {
 	metrics := exporter.NewModuleTP(proto.MonitorSchedulerDispatchTask)
 	defer metrics.Set(nil)
 
@@ -857,6 +926,7 @@ func (s *ScheduleNode) dispatchTaskToWorker(wt proto.WorkerType, tasks []*proto.
 	var worker *proto.WorkerNode
 	for _, task := range tasks {
 		if worker = s.getLowestPayloadWorker(wt); worker == nil {
+			abortDispatch = true
 			log.LogErrorf("[dispatchTaskToWorker] get lowest payload worker is empty, workerType(%v), cluster(%v), volName(%v), dpId(%v), taskId(%v)",
 				proto.WorkerTypeToName(wt), task.Cluster, task.VolName, task.DpId, task.TaskId)
 			return
@@ -873,6 +943,7 @@ func (s *ScheduleNode) dispatchTaskToWorker(wt proto.WorkerType, tasks []*proto.
 		task.WorkerAddr = worker.WorkerAddr
 		worker.AddTask(task)
 	}
+	return
 }
 
 func (s *ScheduleNode) getLowestPayloadWorker(wt proto.WorkerType) (worker *proto.WorkerNode) {
@@ -911,6 +982,12 @@ func (s *ScheduleNode) getWorkerMaxTaskNums(wt proto.WorkerType, workerAddr stri
 			taskNum = DefaultWorkerMaxTaskNumCompact
 		case proto.WorkerTypeCheckCrc:
 			taskNum = DefaultWorkerMaxTaskNumCrcWorker
+		case proto.WorkerTypeFSCheck:
+			taskNum = DefaultWorkerMaxTaskNumFSCheck
+		case proto.WorkerTypeBlockCheck, proto.WorkerTypeNormalExtentMistakeDelCheck:
+			taskNum = DefaultWorkerMaxTaskNumBlockCheck
+		case proto.WorkerTypeMetaDataCrcCheck:
+			taskNum = DefaultWorkerMaxTaskNumMDCheck
 		}
 	}
 	return
@@ -1100,6 +1177,8 @@ func getDefaultFlowControlValue(wt proto.WorkerType) int64 {
 		return DefaultFlowControlCompact
 	case proto.WorkerTypeCheckCrc:
 		return DefaultFlowControlCrcWorker
+	case proto.WorkerTypeFSCheck, proto.WorkerTypeBlockCheck, proto.WorkerTypeNormalExtentMistakeDelCheck, proto.WorkerTypeTinyExtentPunchHoleCheck, proto.WorkerTypeMetaDataCrcCheck:
+		return math.MaxInt64
 	default:
 		log.LogErrorf("[getDefaultFlowControlValue] invalid worker type, workerType(%v)", wt)
 		return 0

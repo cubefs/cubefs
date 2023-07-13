@@ -747,6 +747,40 @@ func CheckMPTaskExist(cluster, volumeName string, taskType int, mpId uint64) (re
 	return
 }
 
+func CheckTaskExist(cluster, volumeName string, taskType int) (exist bool, task *proto.Task, err error)  {
+	var rows *sql.Rows
+	sqlCmd := fmt.Sprintf("select %s from tasks where cluster_name = ? and vol_name = ? and task_type = ?", taskColumns())
+	rows, err = db.Query(sqlCmd, cluster, volumeName, taskType)
+	if rows == nil {
+		return
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	for rows.Next() {
+		task = &proto.Task{}
+		var ct string
+		var ut string
+		var createTime time.Time
+		var updateTime time.Time
+		err = rows.Scan(&task.TaskId, &task.TaskType, &task.Cluster, &task.VolName, &task.DpId, &task.MpId, &task.TaskInfo, &task.WorkerAddr, &task.Status, &task.ExceptionInfo, &ct, &ut)
+		if err != nil {
+			return
+		}
+		if createTime, err = FormatTime(ct); err != nil {
+			return
+		}
+		if updateTime, err = FormatTime(ut); err != nil {
+			return
+		}
+		task.CreateTime = createTime
+		task.UpdateTime = updateTime
+		return true, task, nil
+	}
+	return
+}
+
 func SelectTasks(cluster, volume string, dpId, mpId uint64, taskType, limit, offset int) (tasks []*proto.Task, err error) {
 	sqlCmd := fmt.Sprintf("select %s from tasks", taskColumns())
 	conditions := make([]string, 0)
@@ -812,6 +846,24 @@ func SelectTasks(cluster, volume string, dpId, mpId uint64, taskType, limit, off
 		t.CreateTime = createTime
 		t.UpdateTime = updateTime
 		tasks = append(tasks, t)
+	}
+	return
+}
+
+func SelectNotFinishedTaskCount(taskType proto.WorkerType, clusterID string) (count int, err error) {
+	var rows *sql.Rows
+	sqlCmd := fmt.Sprintf("select count(*) from tasks where task_type = ? and cluster_name = ?")
+	rows, err = db.Query(sqlCmd, taskType, clusterID)
+	if rows == nil {
+		return
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	for rows.Next() {
+		err = rows.Scan(&count)
+		return
 	}
 	return
 }

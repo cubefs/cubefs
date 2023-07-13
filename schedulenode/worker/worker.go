@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"time"
@@ -28,7 +29,15 @@ const (
 	DefaultLoadTaskPeriod     = 60 // 60秒load一次任务到worker
 	DefaultQuerySize          = 100
 	DefaultTaskSleepNextRetry = 720
+	DefaultMailToMember       = "lizhenzhen36@jd.com"
+	DefaultAlarmErps          = "lizhenzhen36"
 )
+
+type NotifyMember struct {
+	MailTo    []string
+	AlarmERPs []string
+	Calls     []string
+}
 
 type BaseWorker struct {
 	WorkerType    proto.WorkerType
@@ -39,9 +48,11 @@ type BaseWorker struct {
 	TaskChan      chan *proto.Task
 	WorkerConfig  *config.WorkerConfig
 	MysqlConfig   *config.MysqlConfig
+	NotifyConfig  *config.NotifyConfig
 	StopC         chan struct{}
 	Control       common.Control
 	NodeException bool // the flag that indicate current node is whether has exception, it can't pull new tasks and consume tasks if true
+	NotifyMembers *NotifyMember
 }
 
 func (b *BaseWorker) Sync() {
@@ -175,6 +186,16 @@ func (b *BaseWorker) ParseBaseConfig(cfg *config.Config) (err error) {
 		wtp = DefaultCreateDuration
 	}
 	b.WorkerConfig = config.NewWorkerConfig(int(whb), int(wp), int(wtp))
+
+	b.NotifyConfig = new(config.NotifyConfig)
+	notifyConfigBytes := cfg.GetJsonObjectBytes(config.ConfigKeyNotify)
+	if notifyConfigBytes == nil {
+		return fmt.Errorf("error: no notify config")
+	}
+	if err = json.Unmarshal(notifyConfigBytes, &b.NotifyConfig); err != nil {
+		return fmt.Errorf("error: parse notify config failed: %v", err)
+	}
+
 	return
 }
 
@@ -358,6 +379,15 @@ func (b *BaseWorker) UpdateTaskProcessing(taskId uint64, taskType proto.WorkerTy
 	return
 }
 
+func (b *BaseWorker) ContainTask(task *proto.Task, runningTasks []*proto.Task) (exist bool, existTask *proto.Task, err error) {
+	for _, t := range runningTasks {
+		if t.Cluster == task.Cluster && t.VolName == task.VolName && t.TaskType == task.TaskType {
+			return true, t, nil
+		}
+	}
+	return mysql.CheckTaskExist(task.Cluster, task.VolName, int(task.TaskType))
+}
+
 func (b *BaseWorker) ContainDPTask(task *proto.Task, runningTasks []*proto.Task) (exist bool, tf *proto.Task, err error) {
 	for _, t := range runningTasks {
 		if t.Cluster == task.Cluster && t.VolName == task.VolName && t.DpId == task.DpId {
@@ -374,6 +404,17 @@ func (b *BaseWorker) ContainMPTask(task *proto.Task, runningTasks []*proto.Task)
 		}
 	}
 	return mysql.CheckMPTaskExist(task.Cluster, task.VolName, int(task.TaskType), task.MpId)
+}
+
+func (b *BaseWorker) GetLatestFinishedTime(task *proto.Task) (finishedTime time.Time) {
+	finishedTime = time.Unix(0, 0)
+	historyTask, err := mysql.SelectLatestFinishFromTaskHistory(task.Cluster, task.VolName, 0, 0, int(task.TaskType))
+	if err != nil || historyTask == nil {
+		log.LogErrorf("GetLatestFinishedTime task[%v] history record not exist or get failed, err:%v, historyTask:%v",
+			task, err, historyTask)
+		return
+	}
+	return historyTask.CreateTime
 }
 
 func (b *BaseWorker) ContainMPTaskByWorkerNodes(task *proto.Task, wn []*proto.WorkerNode) (exist bool, tf *proto.Task, err error) {
@@ -458,4 +499,35 @@ func (b *BaseWorker) StoreTask(tasks []*proto.Task) {
 func (b *BaseWorker) RestoreTask(task *proto.Task) {
 	time.Sleep(time.Second * DefaultTaskSleepNextRetry)
 	b.TaskChan <- task
+}
+
+func (b *BaseWorker) UpdateNotifyMembers() {
+	if b.NotifyMembers == nil {
+		b.NotifyMembers = &NotifyMember{}
+	}
+	timer := time.NewTimer(0)
+	for {
+		select {
+		case <- b.StopC:
+			return
+		case <- timer.C:
+			timer.Reset(time.Hour * 1)
+			emailMembers, alarmMembers, callMembers, err := mysql.SelectNotifyMembers(b.WorkerType)
+			if err != nil {
+				log.LogErrorf("UpdateNotifyMembers select mail to members failed:%v", err)
+			}
+
+			b.NotifyMembers.MailTo = emailMembers
+			b.NotifyMembers.AlarmERPs = alarmMembers
+			b.NotifyMembers.Calls = callMembers
+
+			if len(b.NotifyMembers.MailTo) == 0 {
+				b.NotifyMembers.MailTo = []string{DefaultMailToMember}
+			}
+
+			if len(b.NotifyMembers.AlarmERPs) == 0 {
+				b.NotifyMembers.AlarmERPs = []string{DefaultAlarmErps}
+			}
+		}
+	}
 }

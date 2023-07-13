@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/metanode"
 
 	"github.com/cubefs/cubefs/proto"
@@ -672,7 +671,7 @@ func newMetaPartitionResetCursorCmd(client *master.MasterClient) *cobra.Command 
 			}
 			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
 
-			mtClient := meta.NewMetaHttpClient(ip, false)
+			mtClient := meta.NewMetaHttpClient(ip, false, false)
 			resp, err := mtClient.ResetCursor(partitionID, optCursorResetMode, optNewCursor, optForce)
 			if err != nil {
 				errout("get resp err:%s\n", err.Error())
@@ -724,7 +723,7 @@ func newMetaPartitionListAllInoCmd(client *master.MasterClient) *cobra.Command {
 			}
 			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
 
-			mtClient := meta.NewMetaHttpClient(ip, false)
+			mtClient := meta.NewMetaHttpClient(ip, false, false)
 			resp, err := mtClient.ListAllInodesId(partitionID, optMode, optStTime, optEndTime)
 			if err != nil {
 				errout("get resp err:%s\n", err.Error())
@@ -903,7 +902,7 @@ func newMetaDataChecksum(mc *master.MasterClient) *cobra.Command {
 						return
 					}
 					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
-					metaHttpClient := api.NewMetaHttpClient(addr, false)
+					metaHttpClient := meta.NewMetaHttpClient(addr, false, proto.IsDbBack)
 					r, e := metaHttpClient.GetMetaDataCrcSum(pid)
 					if e != nil {
 						errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
@@ -1038,7 +1037,7 @@ func newCheckInodeTree(mc *master.MasterClient) *cobra.Command {
 						return
 					}
 					addr := fmt.Sprintf("%s:%v", hostSplitArr[0], mc.MetaNodeProfPort)
-					metaHttpClient := api.NewMetaHttpClient(addr, false)
+					metaHttpClient := meta.NewMetaHttpClient(addr, false, proto.IsDbBack)
 					var (
 						r *proto.InodesCRCSumInfo
 						e error
@@ -1215,7 +1214,7 @@ func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
 
 			ip += ":" + strconv.Itoa(int(client.MetaNodeProfPort))
 
-			mtClient := meta.NewMetaHttpClient(ip, false)
+			mtClient := meta.NewMetaHttpClient(ip, false, false)
 			var inodeInuseBitMap []uint64
 			inodeInuseBitMap, err = mtClient.GetInuseInodes(partitionID)
 			if err != nil {

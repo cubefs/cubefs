@@ -70,6 +70,7 @@ type MasterClient struct {
 	FlashNodeProfPort      uint16
 	masterDomain           string
 	isMasterLBDomainClient bool
+	IsDbBack               bool
 
 	adminAPI  *AdminAPI
 	clientAPI *ClientAPI
@@ -198,7 +199,7 @@ func (c *MasterClient) serveRequest(r *request) (respData []byte, contentType st
 				c.setLeader(host)
 			}
 			contentType = resp.Header.Get("content-type")
-			if proto.IsDbBack && r.path != proto.AdminSetNodeInfo && r.path != proto.AdminGetLimitInfo {
+			if (c.IsDbBack || proto.IsDbBack) && r.path != proto.AdminSetNodeInfo && r.path != proto.AdminGetLimitInfo {
 				return respData, contentType, nil
 			}
 
@@ -235,7 +236,7 @@ func (c *MasterClient) serveRequest(r *request) (respData []byte, contentType st
 			return
 
 		default:
-			if proto.IsDbBack && stateCode == http.StatusBadRequest {
+			if (c.IsDbBack || proto.IsDbBack) && stateCode == http.StatusBadRequest {
 				return nil, "", fmt.Errorf(string(respData))
 			}
 			log.LogWarnf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
@@ -438,6 +439,17 @@ func NewMasterClientWithLBDomain(domainName string, useSSL bool) *MasterClient {
 	mc.clientAPI = &ClientAPI{mc: mc}
 	mc.nodeAPI = &NodeAPI{mc: mc}
 	mc.userAPI = &UserAPI{mc: mc}
+	return mc
+}
+
+func NewMasterClientForDbBackCluster(masters []string, useSSL bool) *MasterClient {
+	var mc = &MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout}
+	mc.ClientType = MASTER
+	mc.adminAPI = &AdminAPI{mc: mc}
+	mc.clientAPI = &ClientAPI{mc: mc}
+	mc.nodeAPI = &NodeAPI{mc: mc}
+	mc.userAPI = &UserAPI{mc: mc}
+	mc.IsDbBack = true
 	return mc
 }
 

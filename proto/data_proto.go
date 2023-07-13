@@ -1,5 +1,7 @@
 package proto
 
+import "time"
+
 const (
 	FileID = iota
 	Size
@@ -207,3 +209,20 @@ const (
 	DataNodeDiskReservedMinRatio = 0.01
 	DataNodeDiskReservedMaxRatio = 0.1
 )
+
+type FileInfo struct {
+	FileId  uint64    `json:"fileId"`
+	Inode   uint64    `json:"ino"`
+	Size    uint64    `json:"size"`
+	Crc     uint32    `json:"crc"`
+	Deleted bool      `json:"deleted"`
+	ModTime time.Time `json:"modTime"`
+	Source  string    `json:"src"`
+}
+
+type DataPartitionViewDbBack struct {
+	VolName   string      `json:"volname"`
+	ID        uint32      `json:"id"`
+	Files     []*FileInfo `json:"files"`
+	FileCount int         `json:"fileCount"`
+}

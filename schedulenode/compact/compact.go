@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	scheduleCommon "github.com/cubefs/cubefs/schedulenode/common"
 	"github.com/cubefs/cubefs/schedulenode/worker"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/mysql"
@@ -29,7 +30,7 @@ type CompactWorker struct {
 	clusterMap    map[string]*ClusterInfo
 	mcc           *metaNodeControlConfig
 	sync.RWMutex
-	concurrencyLimiter *concurrencyLimiter
+	concurrencyLimiter *scheduleCommon.ConcurrencyLimiter
 }
 
 type metaNodeControlConfig struct {
@@ -60,7 +61,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	cw.cvv = make(map[string]*proto.CompactVolumeView)
 	cw.clusterMap = make(map[string]*ClusterInfo)
 	cw.TaskChan = make(chan *proto.Task, worker.DefaultTaskChanLength)
-	cw.concurrencyLimiter = NewConcurrencyLimiter(DefaultMpConcurrency)
+	cw.concurrencyLimiter = scheduleCommon.NewConcurrencyLimiter(DefaultMpConcurrency)
 	if err = cw.parseConfig(cfg); err != nil {
 		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
 		return

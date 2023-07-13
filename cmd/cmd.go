@@ -23,8 +23,12 @@ import (
 	"github.com/cubefs/cubefs/ecnode"
 	"github.com/cubefs/cubefs/flashnode"
 	"github.com/cubefs/cubefs/schedulenode/checktool"
+	"github.com/cubefs/cubefs/schedulenode/blck"
 	"github.com/cubefs/cubefs/schedulenode/compact"
 	"github.com/cubefs/cubefs/schedulenode/crcworker"
+	"github.com/cubefs/cubefs/schedulenode/fsck"
+	"github.com/cubefs/cubefs/schedulenode/mdck"
+	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/rebalance"
 	"github.com/cubefs/cubefs/schedulenode/scheduler"
 	"github.com/cubefs/cubefs/schedulenode/smart"
@@ -234,7 +238,18 @@ func run() error {
 	case proto.RoleChecktool:
 		server = checktool.NewChecktoolWorker()
 		module = proto.ModuleChecktool
-
+	case proto.RoleFSCheck:
+		server = fsck.NewFSCheckWorker()
+		module = proto.ModuleFSCheck
+	case proto.RoleBlockCheck:
+		server = blck.NewBLockCheckWorker()
+		module = proto.ModuleBlockCheck
+	case proto.RoleNormalExtentCheck:
+		server = normalextentcheck.NewNormalExtentCheckWorker()
+		module = proto.ModuleNormalExtentCheck
+	case proto.RoleMetaDataCheck:
+		server = mdck.NewMetaDataCheckWorker()
+		module = proto.ModuleMetaDataCheck
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

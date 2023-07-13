@@ -173,7 +173,7 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 //dpIDs为空时获取vol全量的dp信息
 func (api *ClientAPI) GetDataPartitions(volName string, dpIDs []uint64) (view *proto.DataPartitionsView, err error) {
 	path := proto.ClientDataPartitions
-	if proto.IsDbBack {
+	if proto.IsDbBack || api.mc.IsDbBack {
 		path = proto.ClientDataPartitionsDbBack
 	}
 	var request = newAPIRequest(http.MethodGet, path)
