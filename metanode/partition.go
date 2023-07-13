@@ -76,6 +76,7 @@ type MetaPartitionConfig struct {
 	PartitionType int                 `json:"partition_type"`
 	Peers         []proto.Peer        `json:"peers"` // Peers information of the raftStore
 	Cursor        uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	UniqId        uint64              `json:"-"`
 	NodeId        uint64              `json:"-"`
 	RootDir       string              `json:"-"`
 	BeforeStart   func()              `json:"-"`
@@ -215,6 +216,7 @@ type OpPartition interface {
 	IsFollowerRead() bool
 	SetFollowerRead(bool)
 	GetCursor() uint64
+	GetUniqId() uint64
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
@@ -226,6 +228,7 @@ type OpPartition interface {
 	TryToLeader(groupID uint64) error
 	CanRemoveRaftMember(peer proto.Peer) error
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
+	GetUniqID(p *Packet, num uint32) (err error)
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -468,6 +471,7 @@ type metaPartition struct {
 	fileRange              []int64
 	mqMgr                  *MetaQuotaManager
 	nonIdempotent          sync.RWMutex
+	uniqChecker            *uniqChecker
 }
 
 func (mp *metaPartition) acucumRebuildStart() bool {
@@ -622,6 +626,8 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		mp.ebsClient = ebsClient
 	}
 
+	go mp.startCheckerEvict()
+
 	if err = mp.startRaft(); err != nil {
 		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
@@ -735,6 +741,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
+		uniqChecker:   newUniqChecker(),
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp
@@ -795,6 +802,11 @@ func (mp *metaPartition) GetPeers() (peers []string) {
 // GetCursor returns the cursor stored in the config.
 func (mp *metaPartition) GetCursor() uint64 {
 	return atomic.LoadUint64(&mp.config.Cursor)
+}
+
+// GetUniqId returns the uniqid stored in the config.
+func (mp *metaPartition) GetUniqId() uint64 {
+	return atomic.LoadUint64(&mp.config.UniqId)
 }
 
 // PersistMetadata is the wrapper of persistMetadata.
@@ -891,6 +903,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		return
 	}
 
+	if err = mp.loadUniqChecker(snapshotPath); err != nil {
+		return
+	}
+
 	if needLoadTxStuff {
 		if err = mp.loadTxID(snapshotPath); err != nil {
 			return
@@ -968,6 +984,9 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		return
 	}
 	if err = mp.storeTxID(tmpDir, sm); err != nil {
+		return
+	}
+	if _, err = mp.storeUniqChecker(tmpDir, sm); err != nil {
 		return
 	}
 	// write crc to file
@@ -1122,6 +1141,7 @@ func (mp *metaPartition) Reset() (err error) {
 	mp.inodeTree.Reset()
 	mp.dentryTree.Reset()
 	mp.config.Cursor = 0
+	mp.config.UniqId = 0
 	mp.applyID = 0
 	mp.txProcessor.Reset()
 
@@ -1285,7 +1305,28 @@ func (mp *metaPartition) storeSnapshotFiles() (err error) {
 		txTree:         NewBtree(),
 		txRbInodeTree:  NewBtree(),
 		txRbDentryTree: NewBtree(),
+		uniqChecker:    newUniqChecker(),
 	}
 
 	return mp.store(msg)
+}
+
+func (mp *metaPartition) startCheckerEvict() {
+	var timer = time.NewTimer(opCheckerInterval)
+	for {
+		select {
+		case <-timer.C:
+			if _, ok := mp.IsLeader(); ok {
+				left, evict, err := mp.uniqCheckerEvict()
+				if evict != 0 {
+					log.LogInfof("[uniqChecker] after doEvict partition-%d, left:%d, evict:%d, err:%v", mp.config.PartitionId, left, evict, err)
+				} else {
+					log.LogDebugf("[uniqChecker] after doEvict partition-%d, left:%d, evict:%d, err:%v", mp.config.PartitionId, left, evict, err)
+				}
+			}
+			timer.Reset(opCheckerInterval)
+		case <-mp.stopC:
+			return
+		}
+	}
 }

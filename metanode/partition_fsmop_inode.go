@@ -96,10 +96,10 @@ func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeRespon
 		return
 	}
 
-	return mp.fsmCreateLinkInode(txIno.Inode)
+	return mp.fsmCreateLinkInode(txIno.Inode, 0)
 }
 
-func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.CopyGet(ino)
@@ -112,8 +112,12 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	i.IncNLink()
 	resp.Msg = i
+	if !mp.uniqChecker.legalIn(uniqID) {
+		log.LogWarnf("fsmCreateLinkInode repeated, ino %v uniqID %v nlink %v", ino.Inode, uniqID, ino.GetNLink())
+		return
+	}
+	i.IncNLink()
 	return
 }
 
@@ -192,11 +196,11 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 		return
 	}
 
-	return mp.fsmUnlinkInode(txIno.Inode)
+	return mp.fsmUnlinkInode(txIno.Inode, 0)
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.CopyGet(ino)
@@ -211,6 +215,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 	}
 
 	resp.Msg = inode
+	if !mp.uniqChecker.legalIn(uniqID) {
+		log.LogWarnf("fsmUnlinkInode repeat, ino %v uniqID %v nlink %v", ino.Inode, uniqID, ino.GetNLink())
+		return
+	}
 
 	if inode.IsEmptyDir() {
 		mp.inodeTree.Delete(inode)
@@ -237,7 +245,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode) (resp *InodeResponse) {
 // fsmUnlinkInode delete the specified inode from inode tree.
 func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeResponse) {
 	for _, ino := range ib {
-		resp = append(resp, mp.fsmUnlinkInode(ino))
+		resp = append(resp, mp.fsmUnlinkInode(ino, 0))
 	}
 	return
 }

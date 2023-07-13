@@ -79,7 +79,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmUnlinkInode(ino)
+		resp = mp.fsmUnlinkInode(ino, 0)
+	case opFSMUnlinkInodeOnce:
+		inoOnce := InodeOnceUnmarshal(msg.V)
+		ino := NewInode(inoOnce.Inode, 0)
+		resp = mp.fsmUnlinkInode(ino, inoOnce.UniqID)
 	case opFSMUnlinkInodeBatch:
 		inodes, err := InodeBatchUnmarshal(msg.V)
 		if err != nil {
@@ -97,7 +101,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmCreateLinkInode(ino)
+		resp = mp.fsmCreateLinkInode(ino, 0)
+	case opFSMCreateLinkInodeOnce:
+		inoOnce := InodeOnceUnmarshal(msg.V)
+		ino := NewInode(inoOnce.Inode, 0)
+		resp = mp.fsmCreateLinkInode(ino, inoOnce.UniqID)
 	case opFSMEvictInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
@@ -198,6 +206,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		txId := mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 		quotaRebuild := mp.mqMgr.statisticRebuildStart()
 		uidRebuild := mp.acucumRebuildStart()
+		uniqChecker := mp.uniqChecker.clone()
 		msg := &storeMsg{
 			command:        opFSMStoreTick,
 			applyIndex:     index,
@@ -211,6 +220,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			txRbDentryTree: txRbDentryTree,
 			quotaRebuild:   quotaRebuild,
 			uidRebuild:     uidRebuild,
+			uniqChecker:    uniqChecker,
 		}
 		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
 		mp.storeChan <- msg
@@ -377,6 +387,14 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmDeleteInodeQuotaBatch(req)
+	case opFSMUniqID:
+		resp = mp.fsmUniqID(msg.V)
+	case opFSMUniqCheckerEvict:
+		req := &fsmEvictUniqCheckerRequest{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		err = mp.fsmUniqCheckerEvict(req)
 	}
 
 	return
@@ -435,6 +453,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		index          int
 		appIndexID     uint64
 		txID           uint64
+		uniqID         uint64
 		cursor         uint64
 		inodeTree      = NewBtree()
 		dentryTree     = NewBtree()
@@ -443,6 +462,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		txTree         = NewBtree()
 		txRbInodeTree  = NewBtree()
 		txRbDentryTree = NewBtree()
+		uniqChecker    = newUniqChecker()
 	)
 
 	blockUntilStoreSnapshot := func() {
@@ -487,6 +507,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	defer func() {
 		if err == io.EOF {
 			mp.applyID = appIndexID
+			mp.config.UniqId = uniqID
 			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
 			mp.inodeTree = inodeTree
 			mp.dentryTree = dentryTree
@@ -496,6 +517,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.txProcessor.txManager.txTree = txTree
 			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
 			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
+			mp.uniqChecker = uniqChecker
 
 			err = nil
 			// store message
@@ -503,18 +525,19 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				command:        opFSMStoreTick,
 				applyIndex:     mp.applyID,
 				txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
-				inodeTree:      mp.inodeTree,
-				dentryTree:     mp.dentryTree,
-				extendTree:     mp.extendTree,
-				multipartTree:  mp.multipartTree,
-				txTree:         mp.txProcessor.txManager.txTree,
-				txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
-				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
+				inodeTree:      mp.inodeTree.GetTree(),
+				dentryTree:     mp.dentryTree.GetTree(),
+				extendTree:     mp.extendTree.GetTree(),
+				multipartTree:  mp.multipartTree.GetTree(),
+				txTree:         mp.txProcessor.txManager.txTree.GetTree(),
+				txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree.GetTree(),
+				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree.GetTree(),
+				uniqChecker:    uniqChecker.clone(),
 			}
 			select {
 			case mp.extReset <- struct{}{}:
-				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), txID(%v), cursor(%v)",
-					mp.config.PartitionId, mp.applyID, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), mp.config.Cursor)
+				log.LogDebugf("ApplySnapshot: finish with EOF: partitionID(%v) applyID(%v), txID(%v), uniqID(%v), cursor(%v)",
+					mp.config.PartitionId, mp.applyID, mp.txProcessor.txManager.txIdAlloc.getTransactionID(), mp.config.UniqId, mp.config.Cursor)
 				blockUntilStoreSnapshot()
 				return
 			case <-mp.stopC:
@@ -579,6 +602,9 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		case opFSMCursor:
 			cursor = binary.BigEndian.Uint64(snap.V)
 			log.LogDebugf("ApplySnapshot: partitionID(%v) cursor:%v", mp.config.PartitionId, cursor)
+		case opFSMUniqIDSnap:
+			uniqID = binary.BigEndian.Uint64(snap.V)
+			log.LogDebugf("ApplySnapshot: partitionID(%v) uniqId:%v", mp.config.PartitionId, uniqID)
 		case opFSMCreateInode:
 			ino := NewInode(0, 0)
 
@@ -636,6 +662,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			}
 			log.LogDebugf("ApplySnapshot: write snap extent delete file: partitonID(%v) filename(%v).",
 				mp.config.PartitionId, fileName)
+		case opFSMUniqCheckerSnap:
+			if err = uniqChecker.UnMarshal(snap.V); err != nil {
+				log.LogErrorf("ApplyUniqChecker: write snap uniqChecker fail")
+				return
+			}
+			log.LogDebugf("ApplySnapshot: write snap uniqChecker")
+
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return
