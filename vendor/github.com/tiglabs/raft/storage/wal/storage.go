@@ -305,9 +305,6 @@ func (s *Storage) StoreHardState(st proto.HardState) error {
 }
 
 func (s *Storage) Flush() error {
-	if s.c.GetSync() {
-		return nil
-	}
 	if err := s.ls.Sync(); err != nil {
 		return err
 	}

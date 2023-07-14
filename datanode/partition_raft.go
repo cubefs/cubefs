@@ -30,6 +30,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/util/async"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
@@ -1048,44 +1050,44 @@ func (dp *DataPartition) getRemoteReplicaCommitID(ctx context.Context) (commitID
 }
 
 // Get all replica applied ids
-func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context, timeoutNs, readTimeoutNs int64) (appliedIDMap map[string]uint64, replyNum uint8) {
-	hosts := dp.getReplicaClone()
+func (dp *DataPartition) getAppliedIDFromReplica(ctx context.Context, hosts []string, timeoutNs, readTimeoutNs int64) (appliedIDMap map[string]uint64) {
 	if len(hosts) == 0 {
 		log.LogErrorf("action[getAllReplicaAppliedID] partition(%v) replicas is nil.", dp.partitionID)
 		return
 	}
 	appliedIDMap = make(map[string]uint64, len(hosts))
-	errSlice := make(map[string]error)
-	var (
-		wg   sync.WaitGroup
-		lock sync.Mutex
-	)
+	var futures = make(map[string]*async.Future) // host -> future
 	for _, host := range hosts {
-		wg.Add(1)
-		go func(curAddr string) {
+		if dp.IsLocalAddress(host) {
+			appliedIDMap[host] = dp.applyStatus.Applied()
+			continue
+		}
+		var future = async.NewFuture()
+		go func(future *async.Future, curAddr string) {
 			var appliedID uint64
 			var err error
-			defer wg.Done()
-			if dp.IsLocalAddress(curAddr) {
-				appliedID = dp.applyStatus.Applied()
-			} else {
-				appliedID, err = dp.getRemoteAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
-			}
-			ok := false
-			lock.Lock()
-			defer lock.Unlock()
+			appliedID, err = dp.getRemoteAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
 			if err != nil {
-				errSlice[curAddr] = err
-			} else {
-				appliedIDMap[curAddr] = appliedID
-				ok = true
+				future.Respond(nil, err)
+				return
 			}
-			log.LogDebugf("action[getAllReplicaAppliedID]: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, dp.partitionID)
-		}(host)
+			future.Respond(appliedID, nil)
+		}(future, host)
+		futures[host] = future
 	}
-	wg.Wait()
-	replyNum = uint8(len(hosts) - len(errSlice))
-	log.LogDebugf("action[getAllReplicaAppliedID]: get apply id from hosts[%v], pid[%v]", hosts, dp.partitionID)
+
+	for host, future := range futures {
+		resp, err := future.Response()
+		if err != nil {
+			log.LogWarnf("partition[%v] get applied ID from remote[%v] failed: %v", dp.partitionID, host, err)
+			continue
+		}
+		applied := resp.(uint64)
+		appliedIDMap[host] = applied
+		log.LogDebugf("partition[%v]: get applied ID [%v] from remote[%v] ", dp.partitionID, host, applied)
+	}
+
+	log.LogDebugf("partition[%v] get applied ID from all replications, hosts[%v], respond[%v]", dp.partitionID, hosts, appliedIDMap)
 	return
 }
 
@@ -1178,19 +1180,20 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 		return
 	}
 
-	allAppliedID, replyNum := dp.getAllReplicaAppliedID(ctx, proto.WriteDeadlineTime*1e9, 60*1e9)
-	if replyNum == 0 {
+	var replicas = dp.getReplicaClone()
+	var appliedIDs = dp.getAppliedIDFromReplica(ctx, replicas, proto.WriteDeadlineTime*1e9, 60*1e9)
+	if len(appliedIDs) == 0 {
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
 		return
 	}
-	if replyNum == uint8(len(dp.replicas)) { // update dp.minAppliedID when every member had replied
-		minAppliedID, _ = dp.findMinID(allAppliedID)
+	if len(appliedIDs) == len(replicas) { // update dp.minAppliedID when every member had replied
+		minAppliedID, _ = dp.findMinID(appliedIDs)
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMinID(%v) newMinID(%v) allAppliedID(%v)",
-			dp.partitionID, dp.applyStatus.Applied(), dp.minAppliedID, minAppliedID, allAppliedID)
+			dp.partitionID, dp.applyStatus.Applied(), dp.minAppliedID, minAppliedID, appliedIDs)
 		dp.broadcastMinAppliedID(ctx, minAppliedID)
 	}
 
-	maxAppliedID, _ = dp.findMaxID(allAppliedID)
+	maxAppliedID, _ = dp.findMaxID(appliedIDs)
 	log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
 		dp.partitionID, dp.applyStatus.Applied(), dp.maxAppliedID, maxAppliedID)
 	dp.maxAppliedID = maxAppliedID
