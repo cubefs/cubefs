@@ -80,6 +80,7 @@ const (
 	OpGetAllWatermarksV2             uint8 = 0x17
 	OpGetAllExtentInfo               uint8 = 0x18
 	OpTinyExtentAvaliRead            uint8 = 0x19
+	OpGetPersistedAppliedId          uint8 = 0x1a
 	OpEcTinyDelInfoRead                    = OpReadTinyDeleteRecord
 
 	// Operations: Client -> MetaNode.

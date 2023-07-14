@@ -229,7 +229,6 @@ type DataPartition struct {
 	serverFaultCheckLevel FaultOccurredCheckLevel
 	applyStatus           *WALApplyStatus
 	minAppliedID          uint64
-	maxAppliedID          uint64
 
 	repairC         chan struct{}
 	fetchVolHATypeC chan struct{}

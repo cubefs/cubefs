@@ -718,6 +718,10 @@ func (dp *DataPartition) GetAppliedID() (id uint64) {
 	return dp.applyStatus.Applied()
 }
 
+func (dp *DataPartition) GetPersistedAppliedID() (id uint64) {
+	return dp.persistedApplied
+}
+
 func (dp *DataPartition) SetConsistencyMode(mode proto.ConsistencyMode) {
 	if current := dp.config.Mode; current != mode {
 		dp.config.Mode = mode
@@ -830,6 +834,17 @@ func NewPacketToBroadcastMinAppliedID(ctx context.Context, partitionID uint64, m
 func NewPacketToGetAppliedID(ctx context.Context, partitionID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetAppliedId
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
+	return
+}
+
+// NewPacketToGetPersistedAppliedID returns a new packet to get the applied ID.
+func NewPacketToGetPersistedAppliedID(ctx context.Context, partitionID uint64) (p *repl.Packet) {
+	p = new(repl.Packet)
+	p.Opcode = proto.OpGetPersistedAppliedId
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GenerateRequestID()
@@ -1050,23 +1065,23 @@ func (dp *DataPartition) getRemoteReplicaCommitID(ctx context.Context) (commitID
 }
 
 // Get all replica applied ids
-func (dp *DataPartition) getAppliedIDFromReplica(ctx context.Context, hosts []string, timeoutNs, readTimeoutNs int64) (appliedIDMap map[string]uint64) {
+func (dp *DataPartition) getPersistedAppliedIDFromReplica(ctx context.Context, hosts []string, timeoutNs, readTimeoutNs int64) (appliedIDs map[string]uint64) {
 	if len(hosts) == 0 {
 		log.LogErrorf("action[getAllReplicaAppliedID] partition(%v) replicas is nil.", dp.partitionID)
 		return
 	}
-	appliedIDMap = make(map[string]uint64, len(hosts))
+	appliedIDs = make(map[string]uint64)
 	var futures = make(map[string]*async.Future) // host -> future
 	for _, host := range hosts {
 		if dp.IsLocalAddress(host) {
-			appliedIDMap[host] = dp.applyStatus.Applied()
+			appliedIDs[host] = dp.persistedApplied
 			continue
 		}
 		var future = async.NewFuture()
 		go func(future *async.Future, curAddr string) {
 			var appliedID uint64
 			var err error
-			appliedID, err = dp.getRemoteAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
+			appliedID, err = dp.getRemotePersistedAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
 			if err != nil {
 				future.Respond(nil, err)
 				return
@@ -1083,11 +1098,11 @@ func (dp *DataPartition) getAppliedIDFromReplica(ctx context.Context, hosts []st
 			continue
 		}
 		applied := resp.(uint64)
-		appliedIDMap[host] = applied
+		appliedIDs[host] = applied
 		log.LogDebugf("partition[%v]: get applied ID [%v] from remote[%v] ", dp.partitionID, host, applied)
 	}
 
-	log.LogDebugf("partition[%v] get applied ID from all replications, hosts[%v], respond[%v]", dp.partitionID, hosts, appliedIDMap)
+	log.LogDebugf("partition[%v] get applied ID from all replications, hosts[%v], respond[%v]", dp.partitionID, hosts, appliedIDs)
 	return
 }
 
@@ -1126,6 +1141,17 @@ func (dp *DataPartition) getRemoteAppliedID(ctx context.Context, target string, 
 	return
 }
 
+// Get target members' persisted applied id
+func (dp *DataPartition) getRemotePersistedAppliedID(ctx context.Context, target string, timeoutNs, readTimeoutNs int64) (appliedID uint64, err error) {
+	p := NewPacketToGetPersistedAppliedID(ctx, dp.partitionID)
+	if err = dp.sendTcpPacket(target, p, timeoutNs, readTimeoutNs); err != nil {
+		return
+	}
+	appliedID = binary.BigEndian.Uint64(p.Data[0:8])
+	log.LogDebugf("[getRemotePersistedAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)
+	return
+}
+
 func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet, timeout, readTimeout int64) (err error) {
 	var conn *net.TCPConn
 	start := time.Now().UnixNano()
@@ -1161,7 +1187,6 @@ func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet, timeout, r
 func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 	var (
 		minAppliedID uint64
-		maxAppliedID uint64
 	)
 
 	// Get the applied id by the leader
@@ -1181,23 +1206,17 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 	}
 
 	var replicas = dp.getReplicaClone()
-	var appliedIDs = dp.getAppliedIDFromReplica(ctx, replicas, proto.WriteDeadlineTime*1e9, 60*1e9)
-	if len(appliedIDs) == 0 {
+	var persistedAppliedIDs = dp.getPersistedAppliedIDFromReplica(ctx, replicas, proto.WriteDeadlineTime*1e9, 60*1e9)
+	if len(persistedAppliedIDs) == 0 {
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
 		return
 	}
-	if len(appliedIDs) == len(replicas) { // update dp.minAppliedID when every member had replied
-		minAppliedID, _ = dp.findMinID(appliedIDs)
+	if len(persistedAppliedIDs) == len(replicas) { // update dp.minAppliedID when every member had replied
+		minAppliedID, _ = dp.findMinID(persistedAppliedIDs)
 		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMinID(%v) newMinID(%v) allAppliedID(%v)",
-			dp.partitionID, dp.applyStatus.Applied(), dp.minAppliedID, minAppliedID, appliedIDs)
+			dp.partitionID, dp.applyStatus.Applied(), dp.minAppliedID, minAppliedID, persistedAppliedIDs)
 		dp.broadcastMinAppliedID(ctx, minAppliedID)
 	}
-
-	maxAppliedID, _ = dp.findMaxID(appliedIDs)
-	log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
-		dp.partitionID, dp.applyStatus.Applied(), dp.maxAppliedID, maxAppliedID)
-	dp.maxAppliedID = maxAppliedID
-
 	return
 }
 
