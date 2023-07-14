@@ -1,28 +1,35 @@
 # Roadmap
 
-Here we draft the engineering roadmap of CubeFS as well as several major features to do. 
+Here we list several todo items as per the main subsystems of Cubefs. 
 
+## Client
 
-## Datacenter Filesystem (FS)
+* Linux kernel client
+* FUSE kernel bypass
 
-- Multi-version snapshots for versioned data lake
-- Atomicity of metadata operations like rename
+## Object
 
+* life cycle and tiering
 
-## Object Storage (OS)
+## PCS
 
-- Richer APIs
-- Better integration with Kubernetes
+* CFA
+* Drive API
 
+## Data
 
-## Personal Cloud Storage (PS)
+* EC mutation
 
-- User management, sharing, high-level APIs, FUSE on Android, et al. Not only in datacenters, but also for web and mobile devices. 
+## Metadata
 
+* from in-memory to RAM + Disk
 
-## AI Search
+## Search
 
-- keyword and semantic search on file names and file content
-- ChatCube
+* auto index of document files, scalar + vector
+
+## Operations
+
+* GUI
 
 
