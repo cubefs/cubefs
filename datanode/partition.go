@@ -1399,6 +1399,15 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 				fragmentOffset uint64
 				fragmentSize   uint64
 			)
+			if proto.IsTinyExtent(extentID) {
+				var err error
+				if extentSize, err = dp.extentStore.TinyExtentGetFinfoSize(extentID); err != nil {
+					if log.IsWarnEnabled() {
+						log.LogWarnf("Partition(%v) can not get file info size for tiny Extent(%v): %v", dp.partitionID, extentID, err)
+						return
+					}
+				}
+			}
 			if extentSize%uint64(proto.PageSize) == 0 {
 				fragmentOffset = (extentSize/proto.PageSize - 1) * proto.PageSize
 			} else {

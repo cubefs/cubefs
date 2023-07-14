@@ -203,21 +203,39 @@ func (p *IssueProcessor) getIssueFragmentCount() int {
 	return len(p.fragments)
 }
 
-func (p *IssueProcessor) fetchLocal(extentID, offset, size uint64) ([]byte, error) {
-	var err error
+func (p *IssueProcessor) fetchLocal(extentID, offset, size uint64) (data []byte, err error) {
 	var buf = make([]byte, size)
-	if proto.IsTinyExtent(extentID) {
-		var newOffset int64
-		newOffset, _, err = p.storage.TinyExtentAvaliOffset(extentID, int64(offset))
-		if err != nil {
-			return nil, err
-		}
-		if newOffset > int64(offset) { // This page is a hole
-			return nil, innerErrorFetchDoData
-		}
-	}
-	if _, err = p.storage.Read(extentID, int64(offset), int64(size), buf, false); err != nil {
+	_, err = p.storage.Read(extentID, int64(offset), int64(size), buf, false)
+	switch {
+	case err == proto.ExtentNotFoundError, err == io.EOF, os.IsNotExist(err):
+		return nil, innerErrorFetchDoData
+	case err != nil:
 		return nil, err
+	default: // err == nil
+	}
+	return buf, nil
+}
+
+func (p *IssueProcessor) fetchLocalTiny(extentID, offset, size uint64) (data []byte, err error) {
+	var buf = make([]byte, size)
+	var newOffset int64
+	newOffset, _, err = p.storage.TinyExtentAvaliOffset(extentID, int64(offset))
+	switch {
+	case err == proto.ExtentNotFoundError, err == io.EOF, os.IsNotExist(err):
+		return nil, innerErrorFetchDoData
+	case err != nil:
+		return nil, err
+	case newOffset > int64(offset):
+		return nil, innerErrorFetchDoData
+	default: // err == nil
+	}
+	_, err = p.storage.Read(extentID, int64(offset), int64(size), buf, false)
+	switch {
+	case err == proto.ExtentNotFoundError, err == io.EOF, os.IsNotExist(err):
+		return nil, innerErrorFetchDoData
+	case err != nil:
+		return nil, err
+	default: // err == nil
 	}
 	return buf, nil
 }
@@ -329,11 +347,21 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) error {
 		localData []byte
 		localCrc  uint32
 	)
-	if localData, err = p.fetchLocal(extentID, offset, fragment.size); err != nil {
+	if proto.IsTinyExtent(extentID) {
+		localData, err = p.fetchLocalTiny(extentID, offset, fragment.size)
+	} else {
+		localData, err = p.fetchLocal(extentID, offset, fragment.size)
+	}
+	switch {
+	case err == innerErrorFetchDoData:
+		return nil // Local doest not exists specified extent or fragment, no need to fix.
+	case err != nil:
 		log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch local data failed: %v",
 			p.partitionID, extentID, offset, size, err)
 		return ErrPendingFixFragment
+	default:
 	}
+
 	if len(localData) != 0 {
 		localCrc = crc32.ChecksumIEEE(localData)
 	}
