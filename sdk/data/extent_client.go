@@ -182,7 +182,7 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	if client.metaWrapper != nil {
 		client.metaWrapper.RemoteCacheBloom = client.RemoteCacheBloom
 	}
-	if client.dataWrapper.EnableRemoteCache() {
+	if client.dataWrapper.IsCacheBoostEnabled() {
 		client.dataWrapper.initRemoteCache()
 	}
 	client.prepareCh = make(chan *PrepareRequest, PrepareReqChanCap)

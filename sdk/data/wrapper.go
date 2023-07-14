@@ -97,14 +97,15 @@ type Wrapper struct {
 	dpFollowerReadDelayConfig *proto.DpFollowerReadDelayConfig
 	dpLowestDelayHostWeight   int
 
-	clusterEnableCache     bool
-	connTimeoutUs          int64
-	enableRemoteCache      bool
-	cacheBoostPath         string
-	enableCacheAutoPrepare bool
-	cacheTTL               int64
-	remoteCache            *flash.RemoteCache
-	HostsDelay             sync.Map
+	oldCacheBoostStatus     bool
+	enableClusterCacheBoost bool
+	enableVolCacheBoost     bool
+	enableCacheAutoPrepare  bool
+	cacheBoostPath          string
+	cacheTTL                int64
+	cacheReadConnTimeoutUs  int64
+	remoteCache             *flash.RemoteCache
+	HostsDelay              sync.Map
 }
 
 type DataState struct {
@@ -236,19 +237,25 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	return
 }
 
-func (w *Wrapper) setClusterTimeoutUs(timeoutUs int64) {
+func (w *Wrapper) setClusterCacheReadConnTimeoutUs(timeoutUs int64) {
 	if timeoutUs <= 0 {
 		timeoutUs = ConnectTimeoutDataMs * int64(time.Microsecond)
 	}
-	w.connTimeoutUs = timeoutUs
+	w.cacheReadConnTimeoutUs = timeoutUs
 }
 
 func (w *Wrapper) setClusterBoostEnable(enableBoost bool) {
-	w.clusterEnableCache = enableBoost
+	w.oldCacheBoostStatus = w.IsCacheBoostEnabled()
+
+	oldEnableBoost := w.enableClusterCacheBoost
+	w.enableClusterCacheBoost = enableBoost
+	if oldEnableBoost != enableBoost {
+		log.LogInfof("setClusterBoostEnable: from old(%v) to new(%v)", oldEnableBoost, enableBoost)
+	}
 }
 
-func (w *Wrapper) EnableRemoteCache() bool {
-	return w.enableRemoteCache && w.clusterEnableCache
+func (w *Wrapper) IsCacheBoostEnabled() bool {
+	return w.enableClusterCacheBoost && w.enableVolCacheBoost
 }
 
 func (w *Wrapper) initRemoteCache() (err error) {
@@ -257,7 +264,7 @@ func (w *Wrapper) initRemoteCache() (err error) {
 		Volume:        w.volName,
 		Masters:       w.masters,
 		MW:            w.metaWrapper,
-		ConnTimeoutUs: w.connTimeoutUs,
+		ConnTimeoutUs: w.cacheReadConnTimeoutUs,
 	}
 	if w.remoteCache, err = flash.NewRemoteCache(cacheConfig); err != nil {
 		return
@@ -338,7 +345,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	if view.UmpCollectWay != exporter.UMPCollectMethodUnknown {
 		exporter.SetUMPCollectMethod(view.UmpCollectWay)
 	}
-	w.enableRemoteCache = view.RemoteCacheBoostEnable
+	w.enableVolCacheBoost = view.RemoteCacheBoostEnable
 	w.cacheBoostPath = view.RemoteCacheBoostPath
 	w.enableCacheAutoPrepare = view.RemoteCacheAutoPrepare
 	w.cacheTTL = view.RemoteCacheTTL
@@ -421,9 +428,10 @@ func (w *Wrapper) updateWithRecover() (err error) {
 		case <-w.stopC:
 			return
 		case <-ticker.C:
+			w.updateClientClusterView()
 			w.updateSimpleVolView()
 			w.updateDataPartition(false)
-			w.updateClientClusterView()
+
 
 			hostsLock.Lock()
 			retryHosts = w.retryHostsPingtime(retryHosts)
@@ -536,41 +544,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.ecEnable = view.EcEnable
 	}
 
-	enableOld := w.EnableRemoteCache()
-	if w.enableRemoteCache != view.RemoteCacheBoostEnable {
-		log.LogInfof("updateSimpleVolView: update RemoteCacheBoostEnable from old(%v) to new(%v)", w.enableRemoteCache, view.RemoteCacheBoostEnable)
-		w.enableRemoteCache = view.RemoteCacheBoostEnable
-	}
-
-	// remoteCache may be nil if the first initialization failed, it will not be set nil anymore even if remote cache is disabled
-	if w.EnableRemoteCache() && (!enableOld || w.remoteCache == nil) {
-		log.LogInfof("updateSimpleVolView: initRemoteCache, enableOld(%v) new(%v) isNil(%v)", enableOld, w.EnableRemoteCache(), w.remoteCache == nil)
-		if err = w.initRemoteCache(); err != nil {
-			log.LogErrorf("updateSimpleVolView: NewRemoteCache failed, [%v]", err)
-		}
-	} else if !w.EnableRemoteCache() && w.remoteCache != nil {
-		w.remoteCache.Stop()
-		log.LogInfof("updateSimpleVolView: stop remoteCache")
-	}
-
-	if w.cacheBoostPath != view.RemoteCacheBoostPath {
-		log.LogInfof("updateSimpleVolView: update RemoteCacheBoostPath from old(%v) to new(%v)", w.cacheBoostPath, view.RemoteCacheBoostPath)
-		w.cacheBoostPath = view.RemoteCacheBoostPath
-		if w.EnableRemoteCache() && w.remoteCache != nil && !w.remoteCache.ResetCacheBoostPathToBloom(w.cacheBoostPath) {
-			w.cacheBoostPath = ""
-		}
-	}
-
-	if w.enableCacheAutoPrepare != view.RemoteCacheAutoPrepare {
-		log.LogInfof("updateSimpleVolView: update RemoteCacheAutoPrepare from old(%v) to new(%v)", w.enableCacheAutoPrepare, view.RemoteCacheAutoPrepare)
-		w.enableCacheAutoPrepare = view.RemoteCacheAutoPrepare
-	}
-
-	if w.cacheTTL != view.RemoteCacheTTL {
-		log.LogInfof("updateSimpleVolView: update RemoteCacheTTL from old(%d) to new(%d)", w.cacheTTL, view.RemoteCacheTTL)
-		w.cacheTTL = view.RemoteCacheTTL
-	}
-
+	w.updateRemoteCacheConfig(view)
 	w.updateConnConfig(view.ConnConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
@@ -579,6 +553,50 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.dpLowestDelayHostWeight = view.FolReadHostWeight
 	}
 	return nil
+}
+
+func (w *Wrapper) updateRemoteCacheConfig(view *proto.SimpleVolView) {
+	if w.enableVolCacheBoost != view.RemoteCacheBoostEnable {
+		log.LogInfof("updateRemoteCacheConfig: RemoteCacheBoostEnable from old(%v) to new(%v)", w.enableVolCacheBoost, view.RemoteCacheBoostEnable)
+		w.enableVolCacheBoost = view.RemoteCacheBoostEnable
+	}
+	if w.oldCacheBoostStatus != w.IsCacheBoostEnabled() {
+		log.LogInfof("updateRemoteCacheConfig: enable from old(%v) to new(%v)", w.oldCacheBoostStatus, w.IsCacheBoostEnabled())
+	}
+	// remoteCache may be nil if the first initialization failed, it will not be set nil anymore even if remote cache is disabled
+	if w.IsCacheBoostEnabled() {
+		if !w.oldCacheBoostStatus || w.remoteCache == nil {
+			log.LogInfof("updateRemoteCacheConfig: initRemoteCache: enable(%v -> %v) remoteCache isNil(%v)", w.oldCacheBoostStatus, w.IsCacheBoostEnabled(), w.remoteCache == nil)
+			if err := w.initRemoteCache(); err != nil {
+				log.LogErrorf("updateRemoteCacheConfig: initRemoteCache failed, err: %v", err)
+			}
+		}
+	} else if w.oldCacheBoostStatus && w.remoteCache != nil {
+		w.remoteCache.Stop()
+		log.LogInfof("updateRemoteCacheConfig: stop remoteCache")
+	}
+
+	if w.cacheBoostPath != view.RemoteCacheBoostPath {
+		oldBoostPath := w.cacheBoostPath
+		w.cacheBoostPath = view.RemoteCacheBoostPath
+		if w.IsCacheBoostEnabled() && w.remoteCache != nil {
+			if !w.remoteCache.ResetCacheBoostPathToBloom(view.RemoteCacheBoostPath) {
+				w.cacheBoostPath = ""
+			}
+		}
+		log.LogInfof("updateRemoteCacheConfig: RemoteCacheBoostPath from old(%v) to want(%v), but(%v)", oldBoostPath, view.RemoteCacheBoostPath, w.cacheBoostPath)
+	}
+
+	if w.enableCacheAutoPrepare != view.RemoteCacheAutoPrepare {
+		log.LogInfof("updateRemoteCacheConfig: RemoteCacheAutoPrepare from old(%v) to new(%v)", w.enableCacheAutoPrepare, view.RemoteCacheAutoPrepare)
+		w.enableCacheAutoPrepare = view.RemoteCacheAutoPrepare
+	}
+
+	if w.cacheTTL != view.RemoteCacheTTL {
+		log.LogInfof("updateRemoteCacheConfig: RemoteCacheTTL from old(%d) to new(%d)", w.cacheTTL, view.RemoteCacheTTL)
+		w.cacheTTL = view.RemoteCacheTTL
+	}
+
 }
 
 func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
@@ -810,8 +828,8 @@ func (w *Wrapper) updateClientClusterView() (err error) {
 	exporter.SetUmpJMTPBatch(uint(cf.UmpJmtpBatch))
 
 	w.setClusterBoostEnable(cf.RemoteCacheBoostEnable)
-	w.setClusterTimeoutUs(cf.NetConnTimeoutUs)
-	if w.EnableRemoteCache() && w.remoteCache != nil {
+	w.setClusterCacheReadConnTimeoutUs(cf.NetConnTimeoutUs)
+	if w.IsCacheBoostEnabled() && w.remoteCache != nil {
 		w.remoteCache.ResetConnConfig(cf.NetConnTimeoutUs)
 	}
 	return

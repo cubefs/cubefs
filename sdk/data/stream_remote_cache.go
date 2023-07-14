@@ -38,7 +38,7 @@ func (pr *PrepareRequest) String() string {
 }
 
 func (s *Streamer) enableRemoteCache() bool {
-	if !s.client.dataWrapper.EnableRemoteCache() || s.client.dataWrapper.remoteCache == nil {
+	if !s.client.dataWrapper.IsCacheBoostEnabled() || s.client.dataWrapper.remoteCache == nil {
 		return false
 	}
 	return s.bloomStatus
