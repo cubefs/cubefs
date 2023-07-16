@@ -71,6 +71,11 @@ func GetMaskString(mask TxOpMask) (maskStr string) {
 	if mask == TxPause {
 		return "pause"
 	}
+
+	if mask&TxOpMaskAll == TxOpMaskAll {
+		return "all"
+	}
+
 	for k, v := range GTxMaskMap {
 		if k == "all" {
 			continue
@@ -238,19 +243,8 @@ func (info *TxInodeInfo) Unmarshal(raw []byte) (err error) {
 	return
 }
 
-func (info *TxInodeInfo) GetIno() uint64 {
-	return info.Ino
-}
-
 func (info *TxInodeInfo) GetKey() uint64 {
 	return info.Ino
-}
-
-func (info *TxInodeInfo) GetTxId() (string, error) {
-	if info.TxID == "" {
-		return "", errors.New("txID is not set")
-	}
-	return info.TxID, nil
 }
 
 func (info *TxInodeInfo) SetTxId(txID string) {
@@ -465,14 +459,15 @@ const (
 )
 
 type TransactionInfo struct {
-	TxID          string // "metapartitionId_atomicId", if empty, mp should be TM, otherwise it will be RM
-	TxType        uint32
-	TmID          int64
-	CreateTime    int64 //time.Now()
-	Timeout       int64 //minutes
-	State         int32
-	DoneTime      int64 // time.now()
-	RMFinish      bool  // used to check whether tx success on target rm.
+	TxID       string // "metapartitionId_atomicId", if empty, mp should be TM, otherwise it will be RM
+	TxType     uint32
+	TmID       int64
+	CreateTime int64 //time.Now()
+	Timeout    int64 //minutes
+	State      int32
+	DoneTime   int64 // time.now()
+	RMFinish   bool  // used to check whether tx success on target rm.
+	// once insert to txTree, not change inode & dentry ifo
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
 }
@@ -613,19 +608,8 @@ func (txInfo *TransactionInfo) String() string {
 }
 
 func (txInfo *TransactionInfo) GetCopy() *TransactionInfo {
-	newInfo := NewTransactionInfo(txInfo.Timeout, txInfo.TxType)
-	newInfo.TxID = txInfo.TxID
-	//newInfo.TxType = txInfo.TxType
-	newInfo.TmID = txInfo.TmID
-	newInfo.State = txInfo.State
-	newInfo.CreateTime = txInfo.CreateTime
-	for k, v := range txInfo.TxInodeInfos {
-		newInfo.TxInodeInfos[k] = v
-	}
-	for k, v := range txInfo.TxDentryInfos {
-		newInfo.TxDentryInfos[k] = v
-	}
-	return newInfo
+	newInfo := *txInfo
+	return &newInfo
 }
 
 func (txInfo *TransactionInfo) Marshal() (result []byte, err error) {
