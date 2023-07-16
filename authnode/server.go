@@ -16,6 +16,7 @@ package authnode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"io/ioutil"
 	syslog "log"
 	"net/http"
@@ -61,7 +62,7 @@ type Server struct {
 	leaderInfo   *LeaderInfo
 	config       *clusterConfig
 	cluster      *Cluster
-	rocksDBStore *raftstore.RocksDBStore
+	rocksDBStore *raftstore_db.RocksDBStore
 	raftStore    raftstore.RaftStore
 	fsm          *KeystoreFsm
 	partition    raftstore.Partition
@@ -191,7 +192,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(errors.Stack(err))
 		return
 	}
-	if m.rocksDBStore, err = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+	if m.rocksDBStore, err = raftstore_db.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		log.LogErrorf("Start: init RocksDB fail: err(%v)", err)
 		return
 	}

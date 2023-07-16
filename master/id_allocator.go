@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -31,7 +32,7 @@ type IDAllocator struct {
 	commonID        uint64
 	clientID        uint64
 	quotaID         uint32
-	store           *raftstore.RocksDBStore
+	store           *raftstore_db.RocksDBStore
 	partition       raftstore.Partition
 	dpIDLock        sync.RWMutex
 	mpIDLock        sync.RWMutex
@@ -39,7 +40,7 @@ type IDAllocator struct {
 	qaIDLock        sync.RWMutex
 }
 
-func newIDAllocator(store *raftstore.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
+func newIDAllocator(store *raftstore_db.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
 	alloc = new(IDAllocator)
 	alloc.store = store
 	alloc.partition = partition
