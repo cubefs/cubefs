@@ -17,6 +17,7 @@ package master
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
@@ -127,7 +128,7 @@ type Server struct {
 	config          *clusterConfig
 	cluster         *Cluster
 	user            *User
-	rocksDBStore    *raftstore.RocksDBStore
+	rocksDBStore    *raftstore_db.RocksDBStore
 	raftStore       raftstore.RaftStore
 	fsm             *MetadataFsm
 	partition       raftstore.Partition
@@ -153,7 +154,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 
-	if m.rocksDBStore, err = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+	if m.rocksDBStore, err = raftstore_db.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		return
 	}
 

@@ -17,6 +17,7 @@ package authnode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"io"
 	"strconv"
 	"strings"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/keystore"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -43,7 +43,7 @@ type raftApplySnapshotHandler func()
 
 // KeystoreFsm represents the finite state machine of a keystore
 type KeystoreFsm struct {
-	store               *raftstore.RocksDBStore
+	store               *raftstore_db.RocksDBStore
 	rs                  *raft.RaftServer
 	applied             uint64
 	retainLogs          uint64
@@ -59,7 +59,7 @@ type KeystoreFsm struct {
 	id             uint64       // current id of server
 }
 
-func newKeystoreFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *KeystoreFsm) {
+func newKeystoreFsm(store *raftstore_db.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *KeystoreFsm) {
 	fsm = new(KeystoreFsm)
 	fsm.store = store
 	fsm.rs = rs
