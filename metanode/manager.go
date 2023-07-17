@@ -80,7 +80,6 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 	labels[exporter.Vol] = ""
 
 	if p.Opcode == proto.OpMetaNodeHeartbeat || p.Opcode == proto.OpCreateMetaPartition {
-		// no partition info
 		return
 	}
 
@@ -106,6 +105,9 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	labels := m.getPacketLabels(p)
 	defer func() {
 		metric.SetWithLabels(err, labels)
+		if err != nil {
+			log.LogWarnf("HandleMetadataOperation output (%s), remote %s, err %s", p.String(), remoteAddr, err.Error())
+		}
 	}()
 
 	switch p.Opcode {
@@ -221,16 +223,14 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opTxCreateDentry(conn, p, remoteAddr)
 	case proto.OpTxCommit:
 		err = m.opTxCommit(conn, p, remoteAddr)
-	case proto.OpTxInodeCommit:
-		err = m.opTxInodeCommit(conn, p, remoteAddr)
-	case proto.OpTxDentryCommit:
-		err = m.opTxDentryCommit(conn, p, remoteAddr)
+	case proto.OpMetaTxCreate:
+		err = m.opTxCreate(conn, p, remoteAddr)
+	case proto.OpTxCommitRM:
+		err = m.opTxCommitRM(conn, p, remoteAddr)
+	case proto.OpTxRollbackRM:
+		err = m.opTxRollbackRM(conn, p, remoteAddr)
 	case proto.OpTxRollback:
 		err = m.opTxRollback(conn, p, remoteAddr)
-	case proto.OpTxInodeRollback:
-		err = m.opTxInodeRollback(conn, p, remoteAddr)
-	case proto.OpTxDentryRollback:
-		err = m.opTxDentryRollback(conn, p, remoteAddr)
 	case proto.OpMetaTxDeleteDentry:
 		err = m.opTxDeleteDentry(conn, p, remoteAddr)
 	case proto.OpMetaTxUnlinkInode:

@@ -108,7 +108,7 @@ func hasTxParams(r *http.Request) bool {
 	return false
 }
 
-func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
+func parseTxMask(r *http.Request, oldMask proto.TxOpMask) (mask proto.TxOpMask, err error) {
 
 	var maskStr string
 	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
@@ -331,7 +331,7 @@ type updateVolReq struct {
 	followerRead            bool
 	authenticate            bool
 	enablePosixAcl          bool
-	enableTransaction       uint8
+	enableTransaction       proto.TxOpMask
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
@@ -428,7 +428,7 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
-	var txMask uint8
+	var txMask proto.TxOpMask
 	if txMask, err = parseTxMask(r, vol.enableTransaction); err != nil {
 		return
 	}
@@ -606,8 +606,8 @@ type createVolReq struct {
 	volType                              int
 	enablePosixAcl                       bool
 	DpReadOnlyWhenVolFull                bool
+	enableTransaction                    proto.TxOpMask
 	enableQuota                          bool
-	enableTransaction                    uint8
 	txTimeout                            int64
 	txConflictRetryNum                   int64
 	txConflictRetryInterval              int64
@@ -744,7 +744,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	var txMask uint8
+	var txMask proto.TxOpMask
 	if txMask, err = parseTxMask(r, proto.TxOpMaskOff); err != nil {
 		return
 	}

@@ -168,12 +168,11 @@ type OpDentry interface {
 }
 
 type OpTransaction interface {
+	TxCreate(req *proto.TxCreateRequest, p *Packet) (err error)
+	TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) error
+	TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) error
 	TxCommit(req *proto.TxApplyRequest, p *Packet) (err error)
-	TxInodeCommit(req *proto.TxInodeApplyRequest, p *Packet) (err error)
-	TxDentryCommit(req *proto.TxDentryApplyRequest, p *Packet) (err error)
 	TxRollback(req *proto.TxApplyRequest, p *Packet) (err error)
-	TxInodeRollback(req *proto.TxInodeApplyRequest, p *Packet) (err error)
-	TxDentryRollback(req *proto.TxDentryApplyRequest, p *Packet) (err error)
 	TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error)
 }
 
@@ -1037,6 +1036,7 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 		cur := atomic.LoadUint64(&mp.config.Cursor)
 		end := mp.config.End
 		if cur >= end {
+			log.LogWarnf("nextInodeID: can't create inode again, cur %d, end %d", cur, end)
 			return 0, ErrInodeIDOutOfRange
 		}
 		newId := cur + 1
@@ -1283,11 +1283,12 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 
 func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) {
 	txInfo.TxID = mp.txProcessor.txManager.nextTxID()
-	txInfo.TmID = int64(mp.config.PartitionId)
-	txInfo.CreateTime = time.Now().UnixNano()
+
+	txInfo.CreateTime = time.Now().Unix()
 	txInfo.State = proto.TxStatePreCommit
 
 	ctx := context.Background()
+	// todo return opAgain
 	mp.txProcessor.txManager.opLimiter.Wait(ctx)
 }
 

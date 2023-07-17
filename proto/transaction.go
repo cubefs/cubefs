@@ -27,19 +27,6 @@ import (
 	"time"
 )
 
-//const (
-//	TxInodeType  int = 0
-//	TxDentryType int = 1
-//)
-//
-//type TxItemInfo interface {
-//	GetKey() string
-//	GetTxId() (string, error)
-//	SetTxId(txID string)
-//	SetTimeout(timeout uint)
-//	SetCreateTime(createTime int64)
-//}
-
 const (
 	DefaultTransactionTimeout      = 1  //minutes
 	MaxTransactionTimeout          = 60 //minutes
@@ -51,20 +38,24 @@ const (
 	//MaxReplaceholderTimeout   = MaxTransactionTimeout * 30 //seconds
 )
 
+type TxOpMask uint8
+
 const (
-	TxOpMaskOff     uint8 = 0x00
-	TxOpMaskCreate  uint8 = 0x01
-	TxOpMaskMkdir   uint8 = 0x02
-	TxOpMaskRemove  uint8 = 0x04
-	TxOpMaskRename  uint8 = 0x08
-	TxOpMaskMknod   uint8 = 0x10
-	TxOpMaskSymlink uint8 = 0x20
-	TxOpMaskLink    uint8 = 0x40
-	TxOpMaskAll     uint8 = 0x7F
-	TxPause         uint8 = 0xFF
+	TxOpMaskOff TxOpMask = 0x00
+	TxOpMaskAll TxOpMask = 0x7F
+	TxPause     TxOpMask = 0xFF
+)
+const (
+	TxOpMaskCreate TxOpMask = 0x01 << iota
+	TxOpMaskMkdir
+	TxOpMaskRemove
+	TxOpMaskRename
+	TxOpMaskMknod
+	TxOpMaskSymlink
+	TxOpMaskLink
 )
 
-var GTxMaskMap = map[string]uint8{
+var GTxMaskMap = map[string]TxOpMask{
 	"off":     TxOpMaskOff,
 	"create":  TxOpMaskCreate,
 	"mkdir":   TxOpMaskMkdir,
@@ -76,7 +67,7 @@ var GTxMaskMap = map[string]uint8{
 	"all":     TxOpMaskAll,
 }
 
-func GetMaskString(mask uint8) (maskStr string) {
+func GetMaskString(mask TxOpMask) (maskStr string) {
 	if mask == TxPause {
 		return "pause"
 	}
@@ -102,7 +93,7 @@ func txInvalidMask() (err error) {
 	return errors.New("transaction mask key value pair should be: enableTxMaskKey=[create|mkdir|remove|rename|mknod|symlink|link]\n enableTxMaskKey=off \n enableTxMaskKey=all")
 }
 
-func MaskContains(mask uint8, subMask uint8) bool {
+func MaskContains(mask TxOpMask, subMask TxOpMask) bool {
 	if mask != TxOpMaskOff && subMask == TxOpMaskOff {
 		return false
 	}
@@ -112,7 +103,7 @@ func MaskContains(mask uint8, subMask uint8) bool {
 	return true
 }
 
-func GetMaskFromString(maskStr string) (mask uint8, err error) {
+func GetMaskFromString(maskStr string) (mask TxOpMask, err error) {
 	if maskStr == "" {
 		err = txInvalidMask()
 		return
@@ -247,18 +238,11 @@ func (info *TxInodeInfo) Unmarshal(raw []byte) (err error) {
 	return
 }
 
-//func (info *TxInodeInfo) SetMpID(mpID uint64) {
-//	info.MpID = mpID
-//}
-
 func (info *TxInodeInfo) GetIno() uint64 {
 	return info.Ino
 }
 
 func (info *TxInodeInfo) GetKey() uint64 {
-	//if info.Ino == 0 {
-	//	return "", errors.New("ino is not set")
-	//}
 	return info.Ino
 }
 
@@ -413,9 +397,6 @@ func (info *TxDentryInfo) Unmarshal(raw []byte) (err error) {
 }
 
 func (info *TxDentryInfo) GetKey() string {
-	//if info.ParentId == 0 || info.Name == "" {
-	//	return "", errors.New("parentId or name is required")
-	//}
 	return strconv.FormatUint(info.ParentId, 10) + "_" + info.Name
 }
 
@@ -438,11 +419,6 @@ func (info *TxDentryInfo) SetCreateTime(createTime int64) {
 	info.CreateTime = createTime
 }
 
-//type StartTransactionRequest struct {
-//	timeout uint
-//	itemMap map[string]TxItemInfo
-//}
-
 const (
 	TxTypeUndefined uint32 = iota
 	TxTypeCreate
@@ -454,7 +430,7 @@ const (
 	TxTypeLink
 )
 
-func TxMaskToType(mask uint8) (txType uint32) {
+func TxMaskToType(mask TxOpMask) (txType uint32) {
 	switch mask {
 	case TxOpMaskOff:
 		txType = TxTypeUndefined
@@ -482,8 +458,9 @@ const (
 	TxStateInit int32 = iota
 	TxStatePreCommit
 	TxStateCommit
-	TxStateCommitDone
 	TxStateRollback
+	TxStateCommitDone
+	TxStateRollbackDone
 	TxStateFailed
 )
 
@@ -491,28 +468,100 @@ type TransactionInfo struct {
 	TxID          string // "metapartitionId_atomicId", if empty, mp should be TM, otherwise it will be RM
 	TxType        uint32
 	TmID          int64
-	CreateTime    int64 //time.Now().UnixNano()
+	CreateTime    int64 //time.Now()
 	Timeout       int64 //minutes
 	State         int32
-	DoneTime      int64
+	DoneTime      int64 // time.now()
+	RMFinish      bool  // used to check whether tx success on target rm.
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
 }
 
-// wait in case repeat request after commit.
-func (txInfo *TransactionInfo) IsDoneAndNoNeedWait(timeNow int64) (done bool) {
-	return txInfo.State == TxStateCommitDone && (timeNow-txInfo.DoneTime > 60)
+type TxMpInfo struct {
+	MpId          uint64
+	Members       string
+	TxInodeInfos  map[uint64]*TxInodeInfo
+	TxDentryInfos map[string]*TxDentryInfo
+}
+
+const InitInode = 0
+
+func (tx *TransactionInfo) SetCreateInodeId(ino uint64) {
+	inoIfo := tx.TxInodeInfos[InitInode]
+	inoIfo.Ino = ino
+	delete(tx.TxInodeInfos, InitInode)
+	tx.TxInodeInfos[ino] = inoIfo
+}
+
+func (tx *TransactionInfo) GroupByMp() map[uint64]*TxMpInfo {
+	txMap := make(map[uint64]*TxMpInfo)
+
+	for k, ifo := range tx.TxInodeInfos {
+		mpIfo, ok := txMap[ifo.MpID]
+		if !ok {
+			mpIfo = &TxMpInfo{
+				MpId:          ifo.MpID,
+				Members:       ifo.MpMembers,
+				TxInodeInfos:  make(map[uint64]*TxInodeInfo),
+				TxDentryInfos: make(map[string]*TxDentryInfo),
+			}
+			txMap[ifo.MpID] = mpIfo
+		}
+
+		mpIfo.TxInodeInfos[k] = ifo
+	}
+
+	for k, ifo := range tx.TxDentryInfos {
+		mpIfo, ok := txMap[ifo.MpID]
+		if !ok {
+			mpIfo = &TxMpInfo{
+				MpId:          ifo.MpID,
+				Members:       ifo.MpMembers,
+				TxInodeInfos:  make(map[uint64]*TxInodeInfo),
+				TxDentryInfos: make(map[string]*TxDentryInfo),
+			}
+			txMap[ifo.MpID] = mpIfo
+		}
+
+		mpIfo.TxDentryInfos[k] = ifo
+	}
+
+	return txMap
+}
+
+func (tx *TransactionInfo) IsDone() bool {
+	return tx.State == TxStateCommitDone || tx.State == TxStateRollbackDone
+}
+
+func (tx *TransactionInfo) CanDelete() bool {
+	if !tx.Finish() {
+		return false
+	}
+
+	if tx.DoneTime+tx.Timeout*2*60 < time.Now().Unix() {
+		return true
+	}
+	return false
+}
+
+func (tx *TransactionInfo) Finish() bool {
+	return tx.RMFinish
+}
+
+func (tx *TransactionInfo) SetFinish() {
+	tx.RMFinish = true
+	tx.DoneTime = time.Now().Unix()
+}
+
+func (txInfo *TransactionInfo) GetInfo() string {
+	return txInfo.String()
 }
 
 func (txInfo *TransactionInfo) IsExpired() (expired bool) {
-	now := time.Now().UnixNano()
-	if now < txInfo.CreateTime {
-		log.LogErrorf("IsExpired: transaction time out error, now[%v], CreateTime[%v]", now, txInfo.CreateTime)
-		return true
-	}
-	expired = txInfo.Timeout*60*1e9 <= now-txInfo.CreateTime
+	now := time.Now().Unix()
+	expired = txInfo.Timeout*60+txInfo.CreateTime < now
 	if expired {
-		log.LogDebugf("IsExpired: transaction [%v] is expired, now[%v], CreateTime[%v]", txInfo, now, txInfo.CreateTime)
+		log.LogWarnf("IsExpired: transaction [%v] is expired, now[%v], CreateTime[%v]", txInfo, now, txInfo.CreateTime)
 	}
 	return expired
 }
@@ -535,19 +584,21 @@ func NewTxInfoBItem(txId string) *TransactionInfo {
 	}
 }
 
+const initTmId = -1
+
 func NewTransactionInfo(timeout int64, txType uint32) *TransactionInfo {
 	return &TransactionInfo{
 		Timeout:       timeout,
 		TxInodeInfos:  make(map[uint64]*TxInodeInfo, 0),
 		TxDentryInfos: make(map[string]*TxDentryInfo, 0),
-		TmID:          -1,
+		TmID:          initTmId,
 		TxType:        txType,
 		State:         TxStateInit,
 	}
 }
 
 func (txInfo *TransactionInfo) IsInitialized() bool {
-	if txInfo.TxID != "" && txInfo.TmID != -1 {
+	if txInfo.TxID != "" {
 		return true
 	}
 	return false
@@ -605,6 +656,14 @@ func (txInfo *TransactionInfo) Marshal() (result []byte, err error) {
 	}
 
 	if err = binary.Write(buff, binary.BigEndian, &txInfo.State); err != nil {
+		return nil, err
+	}
+
+	if err = binary.Write(buff, binary.BigEndian, &txInfo.DoneTime); err != nil {
+		return nil, err
+	}
+
+	if err = binary.Write(buff, binary.BigEndian, &txInfo.RMFinish); err != nil {
 		return nil, err
 	}
 
@@ -674,6 +733,12 @@ func (txInfo *TransactionInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &txInfo.State); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &txInfo.DoneTime); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &txInfo.RMFinish); err != nil {
 		return
 	}
 

@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
@@ -41,67 +42,35 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 	}
 
 	var parIno *Inode
-	item := mp.inodeTree.CopyGet(NewInode(req.ParentID, 0))
+	item := mp.inodeTree.Get(NewInode(req.ParentID, 0))
 	if item == nil {
 		err = fmt.Errorf("parent inode not exists")
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
-	} else {
-		parIno = item.(*Inode)
-		quota := atomic.LoadUint32(&dirChildrenNumLimit)
-		if parIno.NLink >= quota {
-			err = fmt.Errorf("parent dir quota limitation reached")
-			p.PacketErrorWithBody(proto.OpDirQuota, []byte(err.Error()))
-			return
-		}
+	}
+
+	parIno = item.(*Inode)
+	quota := atomic.LoadUint32(&dirChildrenNumLimit)
+	if parIno.NLink >= quota {
+		err = fmt.Errorf("parent dir quota limitation reached")
+		p.PacketErrorWithBody(proto.OpDirQuota, []byte(err.Error()))
+		return
 	}
 
 	txInfo := req.TxInfo.GetCopy()
-
-	if !txInfo.IsInitialized() {
-		mp.initTxInfo(txInfo)
-	}
-
-	/*parIno := NewInode(req.ParentID, 0)
-	inoResp := mp.getInode(parIno)
-	if inoResp.Status != proto.OpOk {
-		p.PacketErrorWithBody(inoResp.Status, nil)
-		return
-	}*/
-
 	txDentry := NewTxDentry(req.ParentID, req.Name, req.Inode, req.Mode, parIno, txInfo)
-
 	val, err := txDentry.Marshal()
 	if err != nil {
 		return
 	}
+
 	status, err := mp.submit(opFSMTxCreateDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
 
-	var reply []byte
-	//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
-	var rstTxInfo *proto.TransactionInfo
-	if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-		rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
-	} else {
-		rstTxInfo = req.TxInfo
-	}
-
-	if status.(uint8) == proto.OpOk {
-		resp := &proto.TxCreateDentryResponse{
-			TxInfo: rstTxInfo,
-		}
-		reply, err = json.Marshal(resp)
-		if err != nil {
-			status = proto.OpErr
-			reply = []byte(err.Error())
-		}
-	}
-	p.PacketErrorWithBody(status.(uint8), reply)
-	//p.ResultCode = resp.(uint8)
+	p.ResultCode = status.(uint8)
 	return
 }
 
@@ -198,34 +167,31 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 
 func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet) (err error) {
 	txInfo := req.TxInfo.GetCopy()
-
-	if !txInfo.IsInitialized() {
-		mp.initTxInfo(txInfo)
-	}
-
 	den := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
 	}
+
 	dentry, status := mp.getDentry(den)
 	if status != proto.OpOk {
 		err = fmt.Errorf("dentry[%v] not exists", dentry)
+		log.LogWarn(err)
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
 	}
 
-	parIno := NewInode(req.ParentID, 0)
-	inoResp := mp.getInode(parIno)
-	if inoResp.Status != proto.OpOk {
-		err = fmt.Errorf("parIno[%v] not exists", parIno.Inode)
-		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
+	if dentry.Inode != req.Ino {
+		err = fmt.Errorf("target name ino is not right, par %d, name %s, want %d, got %d",
+			req.PartitionID, req.Name, req.Ino, dentry.Inode)
+		log.LogWarn(err)
+		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
 
 	txDentry := &TxDentry{
-		ParInode: inoResp.Msg,
-		Dentry:   dentry,
-		TxInfo:   txInfo,
+		//ParInode: inoResp.Msg,
+		Dentry: dentry,
+		TxInfo: txInfo,
 	}
 
 	val, err := txDentry.Marshal()
@@ -233,26 +199,19 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
+
 	r, err := mp.submit(opFSMTxDeleteDentry, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
+
 	retMsg := r.(*DentryResponse)
 	p.ResultCode = retMsg.Status
-	dentry = retMsg.Msg
 	if p.ResultCode == proto.OpOk {
 		var reply []byte
-		var rstTxInfo *proto.TransactionInfo
-		if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-			rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
-		} else {
-			rstTxInfo = req.TxInfo
-		}
-		//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
 		resp := &proto.TxDeleteDentryResponse{
-			Inode:  dentry.Inode,
-			TxInfo: rstTxInfo,
+			Inode: dentry.Inode,
 		}
 		reply, err = json.Marshal(resp)
 		p.PacketOkWithBody(reply)
@@ -362,20 +321,22 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 	}
 
 	txInfo := req.TxInfo.GetCopy()
-
-	if !txInfo.IsInitialized() {
-		mp.initTxInfo(txInfo)
-	}
-
 	newDentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
 		Inode:    req.Inode,
 	}
+
 	oldDentry, status := mp.getDentry(newDentry)
 	if status != proto.OpOk {
 		err = fmt.Errorf("oldDentry[%v] not exists", oldDentry)
 		p.PacketErrorWithBody(status, []byte(err.Error()))
+		return
+	}
+
+	if oldDentry.Inode != req.OldIno {
+		err = fmt.Errorf("oldDentry is alredy updated, req %v, old [%v]", req, oldDentry)
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	}
 
@@ -394,22 +355,15 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
+
 	msg := resp.(*DentryResponse)
 	p.ResultCode = msg.Status
 	if msg.Status == proto.OpOk {
 		var reply []byte
-		var rstTxInfo *proto.TransactionInfo
-		if req.TxInfo.TxID == "" && req.TxInfo.TmID == -1 {
-			rstTxInfo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
-		} else {
-			rstTxInfo = req.TxInfo
-		}
-		//rstTxInfo := mp.txProcessor.txManager.getTransaction(txInfo.TxID)
 		m := &proto.TxUpdateDentryResponse{
-			Inode:  msg.Msg.Inode,
-			TxInfo: rstTxInfo,
+			Inode: oldDentry.Inode,
 		}
-		reply, err = json.Marshal(m)
+		reply, _ = json.Marshal(m)
 		p.PacketOkWithBody(reply)
 	}
 	return

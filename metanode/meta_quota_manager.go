@@ -151,7 +151,7 @@ func (qInode *TxMetaQuotaInode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	log.LogDebugf("TxMetaQuotaInode Unmarshal inodeLen [%v] size [%v]", inodeBytes, len(raw))
-	qInode.txinode = NewTxInode("", 0, 0, 0, nil)
+	qInode.txinode = NewTxInode(0, 0, nil)
 	if err = qInode.txinode.Unmarshal(inodeBytes); err != nil {
 		return
 	}

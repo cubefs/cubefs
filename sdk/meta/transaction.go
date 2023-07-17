@@ -16,22 +16,12 @@ package meta
 
 import (
 	"errors"
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"sync"
-	"time"
 )
 
-//const (
-//	defaultTransactionTimeout = 5 //seconds
-//)
-
-//1.first metawrapper call with `Transaction` as a parameter,
-//if tmID is not set(tmID == -1), then try to register a transaction to the metapartitions,
-//the metapartition will become TM if transaction created successfully. and it will return txid.
-//metawrapper call will set tmID before returning
-//2.following metawrapper call with `Transaction` as a parameter, will only register rollback item,
-//and the metapartition will become RM
 type Transaction struct {
 	txInfo          *proto.TransactionInfo
 	Started         bool
@@ -41,10 +31,8 @@ type Transaction struct {
 	sync.RWMutex
 }
 
-func (tx *Transaction) setTxID(txID string) {
-	//tx.Lock()
-	//defer tx.Unlock()
-	tx.txInfo.TxID = txID
+func (tx *Transaction) SetTxID(clientId uint64) {
+	tx.txInfo.TxID = genTransactionId(clientId)
 }
 
 func (tx *Transaction) GetTxID() string {
@@ -53,10 +41,8 @@ func (tx *Transaction) GetTxID() string {
 	return tx.txInfo.TxID
 }
 
-func (tx *Transaction) setTmID(tmID int64) {
-	//tx.Lock()
-	//defer tx.Unlock()
-	tx.txInfo.TmID = tmID
+func (tx *Transaction) SetTmID(tmID uint64) {
+	tx.txInfo.TmID = int64(tmID)
 }
 
 func (tx *Transaction) AddInode(inode *proto.TxInodeInfo) error {
@@ -94,35 +80,6 @@ func NewTransaction(timeout int64, txType uint32) (tx *Transaction) {
 	}
 }
 
-// Start a transaction, make sure all the related TxItemInfo(dentry, inode) are added into Transaction
-// before invoking Start. `Start` will be invoked by every operation associated with transaction.
-// Depending on the state of the `Transaction`, it would register a Transaction in metapartition as TM
-// if `tmID` is not set, and set `tmID` to mpID after the registration,
-// or it would register an rollback item(`TxRollbackInode` or `TxRollbackDentry`) in following metapartions(RM) if `tmID` is already set
-/*
-func (tx *Transaction) Start(ino uint64) (txId string, err error) {
-	tx.RLock()
-	defer tx.RUnlock()
-	if tx.txInfo.TmID == -1 {
-		//mp := tx.mw.getPartitionByInode(ino)
-	} else {
-
-	}
-}
-*/
-
-func (tx *Transaction) OnStart() (status int, err error) {
-	tx.RLock()
-	defer tx.RUnlock()
-	now := time.Now().UnixNano()
-	if tx.Started && tx.txInfo.Timeout*1e9 <= now-tx.txInfo.CreateTime {
-		status = statusTxTimeout
-		err = errors.New("transaction already expired")
-		return
-	}
-	return statusOK, nil
-}
-
 func (tx *Transaction) OnExecuted(status int, respTxInfo *proto.TransactionInfo) {
 	tx.Lock()
 	defer tx.Unlock()
@@ -131,7 +88,7 @@ func (tx *Transaction) OnExecuted(status int, respTxInfo *proto.TransactionInfo)
 		if !tx.Started {
 			tx.Started = true
 		}
-		if tx.txInfo.TmID == -1 && respTxInfo != nil {
+		if tx.txInfo.TxID == "" && respTxInfo != nil {
 			tx.txInfo = respTxInfo
 		}
 	}
@@ -139,7 +96,6 @@ func (tx *Transaction) OnExecuted(status int, respTxInfo *proto.TransactionInfo)
 
 func (tx *Transaction) SetOnCommit(job func()) {
 	tx.onCommitFuncs = append(tx.onCommitFuncs, job)
-	//tx.onCommit = job
 }
 
 func (tx *Transaction) SetOnRollback(job func()) {
@@ -154,10 +110,10 @@ func (tx *Transaction) OnDone(err error, mw *MetaWrapper) (newErr error) {
 		return
 	}
 	if err != nil {
-		log.LogDebugf("OnDone: rollback")
+		log.LogDebugf("OnDone: rollback, tx %s", tx.txInfo.TxID)
 		tx.Rollback(mw)
 	} else {
-		log.LogDebugf("OnDone: commit")
+		log.LogDebugf("OnDone: commit, tx %s", tx.txInfo.TxID)
 		newErr = tx.Commit(mw)
 	}
 	return
@@ -169,13 +125,14 @@ func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
 	tmMP := mw.getPartitionByID(uint64(tx.txInfo.TmID))
 	if tmMP == nil {
 		log.LogErrorf("Transaction commit: No TM partition, TmID(%v), txID(%v)", tx.txInfo.TmID, tx.txInfo.TxID)
-		return
+		return fmt.Errorf("transaction commit: can't find target mp for tx, mpId %d", tx.txInfo.TmID)
 	}
 
 	req := &proto.TxApplyRequest{
 		TxID:        tx.txInfo.TxID,
 		TmID:        uint64(tx.txInfo.TmID),
 		TxApplyType: proto.TxCommit,
+		//TxInfo:      tx.txInfo,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -203,17 +160,15 @@ func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
 		return
 	}
 
-	/*if tx.onCommit != nil {
-		tx.onCommit()
-		log.LogDebugf("onCommit done")
-	}*/
-
 	for _, job := range tx.onCommitFuncs {
 		job()
 	}
 
-	log.LogDebugf("Transaction commit succesfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
-		tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
+	if log.EnableDebug() {
+		log.LogDebugf("Transaction commit succesfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
+			tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
+	}
+
 	return
 }
 
@@ -230,6 +185,7 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 		TxID:        tx.txInfo.TxID,
 		TmID:        uint64(tx.txInfo.TmID),
 		TxApplyType: proto.TxRollback,
+		//TxInfo:      tx.txInfo,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -256,15 +212,12 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 		return
 	}
 
-	/*if tx.onRollback != nil {
-		tx.onRollback()
-		log.LogDebugf("onRollback done")
-	}*/
-
 	for _, job := range tx.onRollbackFuncs {
 		job()
 	}
 
-	log.LogDebugf("Transaction Rollback succesfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
-		tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
+	if log.EnableDebug() {
+		log.LogDebugf("Transaction Rollback successfully: TmID(%v), txID(%v), packet(%v) mp(%v) req(%v) result(%v)",
+			tx.txInfo.TmID, tx.txInfo.TxID, packet, tmMP, *req, packet.GetResultMsg())
+	}
 }

@@ -278,8 +278,14 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if txID > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
 			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
 		}
+	case opFSMTxInit:
+		txInfo := proto.NewTxInfoBItem("")
+		if err = txInfo.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxInit(txInfo)
 	case opFSMTxCreateInode:
-		txIno := NewTxInode("", 0, 0, 0, nil)
+		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
@@ -310,57 +316,51 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCreateDentry(txDen, false)
+		resp = mp.fsmTxCreateDentry(txDen)
 	case opFSMTxSetState:
 		req := &proto.TxSetStateRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
 		resp = mp.fsmTxSetState(req)
+	case opFSMTxCommitRM:
+		req := &proto.TransactionInfo{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxCommitRM(req)
+	case opFSMTxRollbackRM:
+		req := &proto.TransactionInfo{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp = mp.fsmTxRollbackRM(req)
 	case opFSMTxCommit:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
 		resp = mp.fsmTxCommit(req.TxID)
-	case opFSMTxInodeCommit:
-		req := &proto.TxInodeApplyRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp = mp.fsmTxInodeCommit(req.TxID, req.Inode)
-	case opFSMTxDentryCommit:
-		req := &proto.TxDentryApplyRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp = mp.fsmTxDentryCommit(req.TxID, req.Pid, req.Name)
 	case opFSMTxRollback:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
 		resp = mp.fsmTxRollback(req.TxID)
-	case opFSMTxInodeRollback:
-		req := &proto.TxInodeApplyRequest{}
+	case opFSMTxDelete:
+		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxInodeRollback(req)
-	case opFSMTxDentryRollback:
-		req := &proto.TxDentryApplyRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp = mp.fsmTxDentryRollback(req)
+		resp = mp.fsmTxDelete(req.TxID)
 	case opFSMTxDeleteDentry:
 		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxDeleteDentry(txDen, false)
+		resp = mp.fsmTxDeleteDentry(txDen)
 	case opFSMTxUnlinkInode:
-		txIno := NewTxInode("", 0, 0, 0, nil)
+		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
@@ -373,7 +373,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmTxUpdateDentry(txUpdateDen)
 	case opFSMTxCreateLinkInode:
-		txIno := NewTxInode("", 0, 0, 0, nil)
+		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
@@ -711,7 +711,6 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	if mp.config.NodeId != leader {
 		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader)
 		exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader))
-		mp.txProcessor.txManager.Stop()
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
 		}
@@ -720,8 +719,6 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	mp.storeChan <- &storeMsg{
 		command: startStoreTick,
 	}
-
-	mp.txProcessor.txManager.Start()
 
 	log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
 	exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader))
