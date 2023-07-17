@@ -138,3 +138,25 @@ func (mp *metaPartition) fsmTxRollbackRM(txInfo *proto.TransactionInfo) (status 
 	ifo.SetFinish()
 	return proto.OpOk
 }
+
+func (mp *metaPartition) inodeInTx(inode uint64) uint8 {
+	inTx, txId := mp.txProcessor.txResource.isInodeInTransction(NewInode(inode, 0))
+	if inTx {
+		log.LogWarnf("inodeInTx: inode is in transaction, inode %d, txId %s", inode, txId)
+		return proto.OpTxConflictErr
+	}
+	return proto.OpOk
+}
+
+func (mp *metaPartition) dentryInTx(parIno uint64, name string) uint8 {
+	inTx, txId := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
+		ParentId: parIno,
+		Name:     name,
+	})
+
+	if inTx {
+		log.LogWarnf("inodeInTx: inode is in transaction, parent inode %d, name %s, txId %s", parIno, name, txId)
+		return proto.OpTxConflictErr
+	}
+	return proto.OpOk
+}

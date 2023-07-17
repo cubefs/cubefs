@@ -88,6 +88,7 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	}
 	resp, err = mc.send(req)
 	mw.putConn(mc, err)
+
 	if err == nil && !resp.ShouldRetry() {
 		goto out
 	}
