@@ -222,6 +222,11 @@ func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
 func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse {
 	result := make([]*DentryResponse, 0, len(db))
 	for _, dentry := range db {
+		status := mp.dentryInTx(dentry.ParentId, dentry.Name)
+		if status != proto.OpOk {
+			result = append(result, &DentryResponse{Status: status})
+			continue
+		}
 		result = append(result, mp.fsmDeleteDentry(dentry, true))
 	}
 	return result

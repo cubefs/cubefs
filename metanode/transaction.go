@@ -63,7 +63,7 @@ func (i *TxRollbackInode) Less(than btree.Item) bool {
 		return false
 	}
 
-	if i.txInodeInfo != nil {
+	if i.txInodeInfo != nil && ti.txInodeInfo != nil {
 		return i.txInodeInfo.Ino < ti.txInodeInfo.Ino
 	}
 
@@ -572,35 +572,6 @@ func (tm *TransactionManager) nextTxID() string {
 	txId := fmt.Sprintf("%d_%d", tm.txProcessor.mp.config.PartitionId, id)
 	log.LogDebugf("nextTxID: txId:%v", txId)
 	return txId
-}
-
-func (tm *TransactionManager) getTxInodeInfo(txID string, ino uint64) (info *proto.TxInodeInfo) {
-	tm.RLock()
-	defer tm.RUnlock()
-	var ok bool
-	txInfo := tm.getTransaction(txID)
-	if txInfo == nil {
-		return nil
-	}
-	if info, ok = txInfo.TxInodeInfos[ino]; !ok {
-		return nil
-	}
-	return
-}
-
-func (tm *TransactionManager) getTxDentryInfo(txID string, key string) (info *proto.TxDentryInfo) {
-	tm.RLock()
-	defer tm.RUnlock()
-	var ok bool
-
-	txInfo := tm.getTransaction(txID)
-	if txInfo == nil {
-		return nil
-	}
-	if info, ok = txInfo.TxDentryInfos[key]; !ok {
-		return nil
-	}
-	return
 }
 
 func (tm *TransactionManager) txInRMDone(txId string) bool {
@@ -1337,7 +1308,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 					tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, quotaId)
 				}
 			}
-			tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode)
+			tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode, 0)
 			tr.txProcessor.mp.fsmEvictInode(rbInode.inode)
 		}
 
@@ -1497,7 +1468,7 @@ func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string
 	// unlink parent inode
 	if rbDentry.rbType == TxAdd {
 		parInode := NewInode(pId, 0)
-		st := tr.txProcessor.mp.fsmUnlinkInode(parInode)
+		st := tr.txProcessor.mp.fsmUnlinkInode(parInode, 0)
 		if st.Status != proto.OpOk {
 			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode %v", txID, parInode)
 			return

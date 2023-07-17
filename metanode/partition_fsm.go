@@ -82,6 +82,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
+		status := mp.inodeInTx(ino.Inode)
+		if status != proto.OpOk {
+			resp = &InodeResponse{Status: status}
+			return
+		}
 		resp = mp.fsmUnlinkInode(ino, 0)
 	case opFSMUnlinkInodeOnce:
 		inoOnce := InodeOnceUnmarshal(msg.V)
@@ -104,6 +109,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
+		status := mp.inodeInTx(ino.Inode)
+		if status != proto.OpOk {
+			resp = &InodeResponse{Status: status}
+			return
+		}
 		resp = mp.fsmCreateLinkInode(ino, 0)
 	case opFSMCreateLinkInodeOnce:
 		inoOnce := InodeOnceUnmarshal(msg.V)
@@ -112,6 +122,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMEvictInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		status := mp.inodeInTx(ino.Inode)
+		if status != proto.OpOk {
+			resp = &InodeResponse{Status: status}
 			return
 		}
 		resp = mp.fsmEvictInode(ino)
@@ -133,12 +148,26 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
+
+		status := mp.dentryInTx(den.ParentId, den.Name)
+		if status != proto.OpOk {
+			resp = status
+			return
+		}
+
 		resp = mp.fsmCreateDentry(den, false)
 	case opFSMDeleteDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
+
+		status := mp.dentryInTx(den.ParentId, den.Name)
+		if status != proto.OpOk {
+			resp = status
+			return
+		}
+
 		resp = mp.fsmDeleteDentry(den, false)
 	case opFSMDeleteDentryBatch:
 		db, err := DentryBatchUnmarshal(msg.V)
@@ -151,6 +180,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
+
+		status := mp.dentryInTx(den.ParentId, den.Name)
+		if status != proto.OpOk {
+			resp = &DentryResponse{Status: status}
+			return
+		}
+
 		resp = mp.fsmUpdateDentry(den)
 	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
@@ -182,12 +218,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmExtentsEmpty(ino)
-	// case opFSMExtentsDel:
-	// 	ino := NewInode(0, 0)
-	// 	if err = ino.Unmarshal(msg.V); err != nil {
-	// 		return
-	// 	}
-	// 	resp = mp.fsmDelExtents(ino)
 	case opFSMClearInodeCache:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
