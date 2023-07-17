@@ -148,18 +148,17 @@ const (
 	OpMetaBatchEvictInode   uint8 = 0x93
 
 	//Transaction Operations: Client -> MetaNode.
-	OpMetaTxCreateInode  uint8 = 0xA0
-	OpMetaTxUnlinkInode  uint8 = 0xA1
-	OpMetaTxCreateDentry uint8 = 0xA2
-	OpTxCommit           uint8 = 0xA3
-	OpTxInodeCommit      uint8 = 0xA4
-	OpTxDentryCommit     uint8 = 0xA5
-	OpTxRollback         uint8 = 0xA6
-	OpTxInodeRollback    uint8 = 0xA7
-	OpTxDentryRollback   uint8 = 0xA8
-	OpMetaTxDeleteDentry uint8 = 0xA9
-	OpMetaTxUpdateDentry uint8 = 0xAA
-	OpMetaTxLinkInode    uint8 = 0xAB
+	OpMetaTxCreate       uint8 = 0xA0
+	OpMetaTxCreateInode  uint8 = 0xA1
+	OpMetaTxUnlinkInode  uint8 = 0xA2
+	OpMetaTxCreateDentry uint8 = 0xA3
+	OpTxCommit           uint8 = 0xA4
+	OpTxRollback         uint8 = 0xA5
+	OpTxCommitRM         uint8 = 0xA6
+	OpTxRollbackRM       uint8 = 0xA7
+	OpMetaTxDeleteDentry uint8 = 0xA8
+	OpMetaTxUpdateDentry uint8 = 0xA9
+	OpMetaTxLinkInode    uint8 = 0xAA
 
 	//Operations: Client -> MetaNode.
 	OpMetaGetUniqID uint8 = 0xAC
@@ -211,6 +210,7 @@ const (
 	OpTxSetStateErr           uint8 = 0xEB
 	OpTxCommitErr             uint8 = 0xEC
 	OpTxRollbackErr           uint8 = 0xED
+	OpTxUnknownOp             uint8 = 0xEE
 )
 
 const (
@@ -475,16 +475,14 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaTxCreateDentry"
 	case OpTxCommit:
 		m = "OpTxCommit"
-	case OpTxInodeCommit:
-		m = "OpTxInodeCommit"
-	case OpTxDentryCommit:
-		m = "OpTxDentryCommit"
+	case OpMetaTxCreate:
+		m = "OpMetaTxCreate"
 	case OpTxRollback:
 		m = "OpTxRollback"
-	case OpTxInodeRollback:
-		m = "OpTxInodeRollback"
-	case OpTxDentryRollback:
-		m = "OpTxDentryRollback"
+	case OpTxCommitRM:
+		m = "OpTxCommitRM"
+	case OpTxRollbackRM:
+		m = "OpTxRollbackRM"
 	case OpMetaTxDeleteDentry:
 		m = "OpMetaTxDeleteDentry"
 	case OpMetaTxUnlinkInode:

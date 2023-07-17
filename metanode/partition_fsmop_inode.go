@@ -38,11 +38,10 @@ func NewInodeResponse() *InodeResponse {
 // Create and inode and attach it to the inode tree.
 func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (status uint8) {
 	status = proto.OpOk
-	//1.if mpID == -1, register transaction in transaction manager
-	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
-	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
-	//}
-	//2.register rollback item
+	if mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID) {
+		log.LogWarnf("fsmTxCreateInode: tx is already finish. txId %s", txIno.TxInfo.TxID)
+		return proto.OpTxInfoNotExistErr
+	}
 
 	//inodeInfo := mp.txProcessor.txManager.getTxInodeInfo(txIno.TxInfo.TxID, txIno.Inode.Inode)
 	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
@@ -50,11 +49,18 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (st
 		status = proto.OpTxInodeInfoNotExistErr
 		return
 	}
+
 	rbInode := NewTxRollbackInode(txIno.Inode, quotaIds, inodeInfo, TxDelete)
-	if status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); status != proto.OpOk {
-		//status = proto.OpTxConflictErr
+	status = mp.txProcessor.txResource.addTxRollbackInode(rbInode)
+	if status != proto.OpOk {
 		return
 	}
+
+	defer func() {
+		if status != proto.OpOk {
+			mp.txProcessor.txResource.deleteTxRollbackInode(txIno.Inode.Inode, txIno.TxInfo.TxID)
+		}
+	}()
 	//3.insert inode in inode tree
 	return mp.fsmCreateInode(txIno.Inode)
 }
@@ -78,10 +84,11 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
-	//1.if mpID == -1, register transaction in transaction manager
-	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
-	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
-	//}
+	if mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID) {
+		log.LogWarnf("fsmTxCreateLinkInode: tx is already finish. txId %s", txIno.TxInfo.TxID)
+		resp.Status = proto.OpTxInfoNotExistErr
+		return
+	}
 
 	//2.register rollback item
 	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
@@ -90,11 +97,23 @@ func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeRespon
 		return
 	}
 
-	rbInode := NewTxRollbackInode(txIno.Inode, []uint32{}, inodeInfo, TxUpdate)
-	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); resp.Status != proto.OpOk {
-		//resp.Status = proto.OpTxConflictErr
+	rbInode := NewTxRollbackInode(txIno.Inode, []uint32{}, inodeInfo, TxDelete)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode)
+	if resp.Status == proto.OpExistErr {
+		resp.Status = proto.OpOk
+		resp.Msg = txIno.Inode
 		return
 	}
+
+	if resp.Status != proto.OpOk {
+		return
+	}
+
+	defer func() {
+		if resp.Status != proto.OpOk {
+			mp.txProcessor.txResource.deleteTxRollbackInode(txIno.Inode.Inode, txIno.TxInfo.TxID)
+		}
+	}()
 
 	return mp.fsmCreateLinkInode(txIno.Inode, 0)
 }
@@ -172,17 +191,12 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 
-	defer func() {
-		if txIno.TxInfo.TxType == proto.TxTypeRename && resp.Status == proto.OpOk {
-			mp.fsmEvictInode(txIno.Inode)
-		}
-	}()
+	if mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID) {
+		log.LogWarnf("fsmTxUnlinkInode: tx is already finish. txId %s", txIno.TxInfo.TxID)
+		resp.Status = proto.OpTxInfoNotExistErr
+		return
+	}
 
-	//1.if mpID == -1, register transaction in transaction manager
-	//if txIno.TxInfo.TxID != "" && txIno.TxInfo.TmID == -1 {
-	_ = mp.txProcessor.txManager.registerTransaction(txIno.TxInfo)
-	//}
-	//2.register rollback item
 	inodeInfo, ok := txIno.TxInfo.TxInodeInfos[txIno.Inode.Inode]
 	if !ok {
 		resp.Status = proto.OpTxInodeInfoNotExistErr
@@ -192,12 +206,31 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 	quotaIds, _ = mp.isExistQuota(txIno.Inode.Inode)
 
 	rbInode := NewTxRollbackInode(txIno.Inode, quotaIds, inodeInfo, TxAdd)
-	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode); resp.Status != proto.OpOk {
-		//resp.Status = proto.OpTxConflictErr
+	resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode)
+	if resp.Status == proto.OpExistErr {
+		resp.Status = proto.OpOk
+		return
+	}
+	if resp.Status != proto.OpOk {
 		return
 	}
 
-	return mp.fsmUnlinkInode(txIno.Inode, 0)
+	defer func() {
+		if resp.Status != proto.OpOk {
+			mp.txProcessor.txResource.deleteTxRollbackInode(txIno.Inode.Inode, txIno.TxInfo.TxID)
+		}
+	}()
+
+	resp = mp.fsmUnlinkInode(txIno.Inode, 0)
+	if resp.Status != proto.OpOk {
+		return
+	}
+
+	if txIno.TxInfo.TxType == proto.TxTypeRename {
+		mp.fsmEvictInode(txIno.Inode)
+	}
+
+	return
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.

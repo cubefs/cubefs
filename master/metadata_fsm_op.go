@@ -252,7 +252,7 @@ type volValue struct {
 	EnablePosixAcl bool
 	EnableQuota    bool
 
-	EnableTransaction       uint8
+	EnableTransaction       bsProto.TxOpMask
 	TxTimeout               int64
 	TxConflictRetryNum      int64
 	TxConflictRetryInterval int64

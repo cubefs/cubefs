@@ -145,11 +145,11 @@ const (
 	opFSMTxCreateDentry     = 40
 	opFSMTxSetState         = 41
 	opFSMTxCommit           = 42
-	opFSMTxInodeCommit      = 43
-	opFSMTxDentryCommit     = 44
+	opFSMTxCommitRM         = 43
+	opFSMTxRollbackRM       = 44
 	opFSMTxRollback         = 45
-	opFSMTxInodeRollback    = 46
-	opFSMTxDentryRollback   = 47
+	opFSMTxInit             = 46
+	opFSMTxDelete           = 47
 	opFSMTxDeleteDentry     = 48
 	opFSMTxUnlinkInode      = 49
 	opFSMTxUpdateDentry     = 50
