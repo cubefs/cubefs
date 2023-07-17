@@ -279,6 +279,11 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 // fsmUnlinkInode delete the specified inode from inode tree.
 func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeResponse) {
 	for _, ino := range ib {
+		status := mp.inodeInTx(ino.Inode)
+		if status != proto.OpOk {
+			resp = append(resp, &InodeResponse{Status: status})
+			continue
+		}
 		resp = append(resp, mp.fsmUnlinkInode(ino, 0))
 	}
 	return
@@ -522,6 +527,11 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 
 func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch) (resp []*InodeResponse) {
 	for _, ino := range ib {
+		status := mp.inodeInTx(ino.Inode)
+		if status != proto.OpOk {
+			resp = append(resp, &InodeResponse{Status: status})
+			return
+		}
 		resp = append(resp, mp.fsmEvictInode(ino))
 	}
 	return
