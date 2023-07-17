@@ -118,7 +118,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
 
-	kafkaClient := base.NewKafkaConsumer(conf.Kafka.BrokerList, time.Duration(conf.Kafka.CommitIntervalMs)*time.Millisecond, clusterMgrCli)
+	kafkaClient := base.NewKafkaConsumer(conf.Kafka.BrokerList, clusterMgrCli)
 	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli, kafkaClient)
 	if err != nil {
 		log.Errorf("new shard repair mgr: cfg[%+v], err[%w]", conf.ShardRepair, err)

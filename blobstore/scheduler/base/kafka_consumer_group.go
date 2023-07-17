@@ -18,15 +18,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
 
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
@@ -42,145 +39,32 @@ type KafkaConfig struct {
 	BrokerList []string
 }
 
-type PartitionOffset struct {
-	Topic     string
-	Partition int32
-
-	lock            sync.RWMutex
-	consumedOffset  int64
-	committedOffset int64
-}
-
-func (po *PartitionOffset) ConsumedOffset() int64 {
-	po.lock.RLock()
-	offset := po.consumedOffset
-	po.lock.RUnlock()
-	return offset
-}
-
-func (po *PartitionOffset) MarkConsume(offset int64) {
-	po.lock.Lock()
-	po.consumedOffset = offset
-	po.lock.Unlock()
-}
-
-func (po *PartitionOffset) MarkCommit(offset int64) {
-	po.lock.Lock()
-	po.committedOffset = offset
-	po.lock.Unlock()
-}
-
-func (po *PartitionOffset) NeedCommit() (ok bool) {
-	po.lock.RLock()
-	ok = po.consumedOffset != po.committedOffset
-	po.lock.RUnlock()
-	return
-}
-
-type ConsumerOffsetManager struct {
-	offsets map[int32]*PartitionOffset
-	locker  sync.RWMutex
-}
-
-func newConsumerOffsetManager() *ConsumerOffsetManager {
-	return &ConsumerOffsetManager{
-		offsets: make(map[int32]*PartitionOffset),
-	}
-}
-
-func (c *ConsumerOffsetManager) List() []*PartitionOffset {
-	c.locker.RLock()
-	pOffsets := make([]*PartitionOffset, 0)
-	for _, offset := range c.offsets {
-		pOffsets = append(pOffsets, offset)
-	}
-	c.locker.RUnlock()
-	return pOffsets
-}
-
-func (c *ConsumerOffsetManager) MarkConsumerOffset(partition int32, offset int64) {
-	c.locker.Lock()
-	c.offsets[partition].MarkConsume(offset)
-	c.locker.Unlock()
-}
-
-func (c *ConsumerOffsetManager) AddPartition(pOffset *PartitionOffset) {
-	c.locker.Lock()
-	c.offsets[pOffset.Partition] = pOffset
-	c.locker.Unlock()
-}
-
 type ConsumerPause interface {
 	Done() <-chan struct{}
 }
 
 type Consumer struct {
-	taskType proto.TaskType
-	topic    string
+	taskType     proto.TaskType
+	topic        string
+	maxBatchSize int
+	maxWaitTimeS int
 
-	ConsumeFn      func(msg *sarama.ConsumerMessage, consumerPause ConsumerPause) bool
-	offsetGetter   IConsumerOffset
-	offsetManager  *ConsumerOffsetManager
-	commitInterval time.Duration
+	ConsumeFn func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool
 	closer.Closer
 	consumerPause closer.Closer
 }
 
-func newConsumer(taskType proto.TaskType, commitInterval time.Duration, offsetGetter IConsumerOffset, topic string,
-	consumerFn func(msg *sarama.ConsumerMessage, consumerPause ConsumerPause) bool) *Consumer {
+func newConsumer(taskType proto.TaskType, topic string, maxBatchSize int, maxWaitTimeS int,
+	consumerFn func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool) *Consumer {
 	consumer := &Consumer{
-		taskType:       taskType,
-		topic:          topic,
-		ConsumeFn:      consumerFn,
-		offsetGetter:   offsetGetter,
-		commitInterval: commitInterval,
-		Closer:         closer.New(),
+		taskType:     taskType,
+		topic:        topic,
+		maxBatchSize: maxBatchSize,
+		maxWaitTimeS: maxWaitTimeS,
+		ConsumeFn:    consumerFn,
+		Closer:       closer.New(),
 	}
-	go consumer.run()
 	return consumer
-}
-
-func (consumer *Consumer) run() {
-	t := time.NewTicker(consumer.commitInterval)
-	defer t.Stop()
-
-	for {
-		select {
-		case <-t.C:
-			consumer.Commit()
-		case <-consumer.Done():
-			return
-		}
-	}
-}
-
-func (consumer *Consumer) Commit() {
-	if consumer.offsetManager == nil {
-		return
-	}
-	for _, pOffset := range consumer.offsetManager.List() {
-		if pOffset.NeedCommit() {
-			offset := pOffset.ConsumedOffset()
-			InsistOn(context.Background(), "set consumer offset failed", func() error {
-				return consumer.offsetGetter.SetConsumeOffset(consumer.taskType, pOffset.Topic, pOffset.Partition,
-					offset)
-			})
-			pOffset.MarkCommit(offset)
-		}
-	}
-}
-
-func (consumer *Consumer) markMessage(message *sarama.ConsumerMessage) {
-	consumer.offsetManager.MarkConsumerOffset(message.Partition, message.Offset)
-}
-
-func (consumer *Consumer) addPartitionOffset(partition int32, offset int64) {
-	consumer.offsetManager.AddPartition(&PartitionOffset{
-		Topic:           consumer.topic,
-		Partition:       partition,
-		committedOffset: offset,
-		consumedOffset:  offset,
-	})
 }
 
 func (consumer *Consumer) Setup(session sarama.ConsumerGroupSession) error {
@@ -189,30 +73,10 @@ func (consumer *Consumer) Setup(session sarama.ConsumerGroupSession) error {
 		span.Errorf("un support multiple topics: size[%+d]", len(session.Claims()))
 		return errors.New("un support multiple topics")
 	}
-	partitions, ok := session.Claims()[consumer.topic]
+	_, ok := session.Claims()[consumer.topic]
 	if !ok {
 		span.Errorf("not expect topic: expect[%s]", consumer.topic)
 		return errors.New("topic not exist")
-	}
-	consumer.offsetManager = newConsumerOffsetManager()
-	for _, partition := range partitions {
-		var (
-			offset int64
-			exist  = true
-		)
-		InsistOn(context.Background(), "get consumer offset failed", func() error {
-			var err error
-			offset, err = consumer.offsetGetter.GetConsumeOffset(consumer.taskType, consumer.topic, partition)
-			if rpc.DetectStatusCode(err) == http.StatusNotFound {
-				exist = false
-				err = nil
-			}
-			return err
-		})
-		if exist {
-			session.MarkOffset(consumer.topic, partition, offset+1, "")
-		}
-		consumer.addPartitionOffset(partition, offset)
 	}
 	consumer.consumerPause = closer.New()
 	span.Infof("setup consumer: [%+v]", session.Claims())
@@ -221,8 +85,6 @@ func (consumer *Consumer) Setup(session sarama.ConsumerGroupSession) error {
 
 func (consumer *Consumer) Cleanup(session sarama.ConsumerGroupSession) error {
 	span := trace.SpanFromContextSafe(session.Context())
-	consumer.Commit()
-	consumer.offsetManager = nil
 	span.Infof("cleanup consumer: [%+v]", session.Claims())
 	return nil
 }
@@ -236,29 +98,56 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 		consumer.consumerPause.Close()
 	}()
 
+	msgs := make([]*sarama.ConsumerMessage, 0, consumer.maxBatchSize)
+	idx := 0
 	for {
+		tk := time.NewTicker(time.Second * time.Duration(consumer.maxWaitTimeS)) // the batch is full, or the time come
+		var message *sarama.ConsumerMessage
 		select {
-		case message := <-claim.Messages():
+		case message = <-claim.Messages():
 			if message == nil {
 				span.Warnf("no message for consume and continue")
 				continue
 			}
-			// when session is done the message may not consumed
-			if success := consumer.ConsumeFn(message, consumer.consumerPause); !success {
-				span.Warnf("message not consume and return: topic[%s], partition[%d], offset[%d]",
-					message.Topic, message.Partition, message.Offset)
-				return nil
+			if idx >= consumer.maxBatchSize {
+				break
 			}
+			msgs = append(msgs, message)
 			session.MarkMessage(message, "")
-			consumer.markMessage(message)
+			idx++
+		case <-tk.C:
+			if len(msgs) == 0 {
+				continue
+			}
+			break
 		case <-session.Context().Done():
 			return nil
+		}
+
+		// when session is done the message may not consumed
+		if success := consumer.ConsumeFn(msgs, consumer.consumerPause); !success {
+			span.Warnf("message not consume and return: topic[%s], partition[%d], offset[%d]", message.Topic, message.Partition, message.Offset)
+			return nil
+		}
+		session.Commit()
+		idx = 0 // reset batch msg
+		msgs = make([]*sarama.ConsumerMessage, 0, consumer.maxBatchSize)
+		if message != nil {
+			msgs = append(msgs, message)
+			idx++
 		}
 	}
 }
 
+type KafkaConsumerCfg struct {
+	TaskType     proto.TaskType
+	Topic        string
+	MaxBatchSize int
+	MaxWaitTimeS int
+}
+
 type KafkaConsumer interface {
-	StartKafkaConsumer(taskType proto.TaskType, topic string, fn func(msg *sarama.ConsumerMessage, consumerPause ConsumerPause) bool) (GroupConsumer, error)
+	StartKafkaConsumer(cfg KafkaConsumerCfg, fn func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool) (GroupConsumer, error)
 }
 
 type kafkaClient struct {
@@ -287,15 +176,14 @@ func (cg *KafkaConsumerGroup) Stop() {
 	cg.span.Infof("stop kafka consumer: group[%s]", cg.group)
 }
 
-func NewKafkaConsumer(brokers []string, commitInterval time.Duration, offsetGetter IConsumerOffset) KafkaConsumer {
+func NewKafkaConsumer(brokers []string, offsetGetter IConsumerOffset) KafkaConsumer {
 	return &kafkaClient{
-		brokers:        brokers,
-		commitInterval: commitInterval,
-		offsetGetter:   offsetGetter,
+		brokers:      brokers,
+		offsetGetter: offsetGetter,
 	}
 }
 
-func (cli *kafkaClient) StartKafkaConsumer(taskType proto.TaskType, topic string, fn func(msg *sarama.ConsumerMessage,
+func (cli *kafkaClient) StartKafkaConsumer(cfg KafkaConsumerCfg, fn func(msg []*sarama.ConsumerMessage,
 	consumerPause ConsumerPause) bool) (GroupConsumer, error) {
 	config := sarama.NewConfig()
 	config.Version = kafka.DefaultKafkaVersion
@@ -303,8 +191,8 @@ func (cli *kafkaClient) StartKafkaConsumer(taskType proto.TaskType, topic string
 	config.Consumer.Offsets.AutoCommit.Enable = false
 	config.Consumer.Group.Rebalance.Retry.Max = 10
 
-	consumer := newConsumer(taskType, cli.commitInterval, cli.offsetGetter, topic, fn)
-	group := fmt.Sprintf("%s-%s", proto.ServiceNameScheduler, topic)
+	consumer := newConsumer(cfg.TaskType, cfg.Topic, cfg.MaxBatchSize, cfg.MaxWaitTimeS, fn)
+	group := fmt.Sprintf("%s-%s", proto.ServiceNameScheduler, cfg.Topic)
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), group)
 
@@ -316,7 +204,7 @@ func (cli *kafkaClient) StartKafkaConsumer(taskType proto.TaskType, topic string
 
 	go func() {
 		for {
-			if err := client.Consume(ctx, []string{topic}, consumer); err != nil {
+			if err := client.Consume(ctx, []string{cfg.Topic}, consumer); err != nil {
 				if err == sarama.ErrClosedConsumerGroup {
 					return
 				}

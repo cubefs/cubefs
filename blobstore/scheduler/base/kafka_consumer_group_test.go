@@ -16,12 +16,10 @@ package base
 
 import (
 	"fmt"
-	"sync"
-	"testing"
-	"time"
-
 	"github.com/Shopify/sarama"
 	"github.com/stretchr/testify/require"
+	"sync"
+	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -75,12 +73,16 @@ func TestConsumer(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1)
 
-		cli := NewKafkaConsumer([]string{broker.Addr()}, time.Second, newMockAccess(nil))
-		consumer, err := cli.StartKafkaConsumer(proto.TaskTypeShardRepair, testTopic,
-			func(msg *sarama.ConsumerMessage, consumerPause ConsumerPause) bool {
-				wg.Done()
-				return true
-			})
+		cli := NewKafkaConsumer([]string{broker.Addr()}, newMockAccess(nil))
+		consumer, err := cli.StartKafkaConsumer(KafkaConsumerCfg{
+			TaskType:     proto.TaskTypeShardRepair,
+			Topic:        testTopic,
+			MaxBatchSize: 1,
+			MaxWaitTimeS: 1,
+		}, func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool {
+			wg.Done()
+			return true
+		})
 		require.NoError(t, err)
 		wg.Wait()
 		consumer.Stop()
@@ -92,12 +94,16 @@ func TestConsumer(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1)
 
-		cli := NewKafkaConsumer([]string{broker.Addr()}, time.Second, newMockAccess(nil))
-		consumer, err := cli.StartKafkaConsumer(proto.TaskTypeBlobDelete, testTopic,
-			func(msg *sarama.ConsumerMessage, consumerPause ConsumerPause) bool {
-				wg.Done()
-				return false
-			})
+		cli := NewKafkaConsumer([]string{broker.Addr()}, newMockAccess(nil))
+		consumer, err := cli.StartKafkaConsumer(KafkaConsumerCfg{
+			TaskType:     proto.TaskTypeBlobDelete,
+			Topic:        testTopic,
+			MaxBatchSize: 2,
+			MaxWaitTimeS: 1,
+		}, func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool {
+			wg.Done()
+			return false
+		})
 		require.NoError(t, err)
 		wg.Wait()
 		consumer.Stop()

@@ -86,7 +86,11 @@ func newBlobDeleteMgr(t *testing.T) *BlobDeleteMgr {
 		delFailCounterByMin:    &counter.Counter{},
 
 		Closer: closer.New(),
-		cfg:    &BlobDeleteConfig{MessagePunishThreshold: defaultMessagePunishThreshold},
+		cfg: &BlobDeleteConfig{
+			MessagePunishThreshold: defaultMessagePunishThreshold,
+			MaxBatchSize:           defaultMaxBatchSize,
+			MaxWaitTimeS:           1,
+		},
 	}
 }
 
@@ -98,18 +102,17 @@ func TestBlobDeleteConsume(t *testing.T) {
 	defer commonCloser.Close()
 	{
 		// return invalid message
+		kafkaMsgs := make([]*sarama.ConsumerMessage, 2)
 		msg := proto.DeleteMsg{}
 		msgByte, _ := json.Marshal(msg)
 		kafkaMsg := &sarama.ConsumerMessage{
 			Value: msgByte,
 		}
-		success := mgr.Consume(kafkaMsg, commonCloser)
-		require.True(t, success)
-
-		kafkaMsg = &sarama.ConsumerMessage{
+		kafkaMsgs[0] = kafkaMsg
+		kafkaMsgs[1] = &sarama.ConsumerMessage{
 			Value: []byte("123"),
 		}
-		success = mgr.Consume(kafkaMsg, commonCloser)
+		success := mgr.Consume(kafkaMsgs, commonCloser)
 		require.True(t, success)
 	}
 	{
@@ -131,7 +134,8 @@ func TestBlobDeleteConsume(t *testing.T) {
 		kafkaMsg := &sarama.ConsumerMessage{
 			Value: msgByte,
 		}
-		success := mgr.Consume(kafkaMsg, commonCloser)
+		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+		success := mgr.Consume(kafkaMsgs, commonCloser)
 		require.True(t, success)
 		mgr.clusterTopology = oldClusterTopology
 	}
@@ -157,7 +161,8 @@ func TestBlobDeleteConsume(t *testing.T) {
 		kafkaMsg := &sarama.ConsumerMessage{
 			Value: msgByte,
 		}
-		success := mgr.Consume(kafkaMsg, commonCloser)
+		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+		success := mgr.Consume(kafkaMsgs, commonCloser)
 		require.True(t, success)
 		mgr.clusterTopology = oldClusterTopology
 		mgr.blobnodeCli = oldBlobNode
@@ -193,7 +198,8 @@ func TestBlobDeleteConsume(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 			closer.Close()
 		}()
-		success := mgr.Consume(kafkaMsg, closer)
+		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+		success := mgr.Consume(kafkaMsgs, closer)
 		require.False(t, success)
 		mgr.clusterTopology = oldClusterTopology
 	}
@@ -544,7 +550,7 @@ func TestNewDeleteMgr(t *testing.T) {
 	kafkaClient := NewMockKafkaConsumer(ctr)
 	consumer := NewMockGroupConsumer(ctr)
 	consumer.EXPECT().Stop().AnyTimes().Return()
-	kafkaClient.EXPECT().StartKafkaConsumer(any, any, any).AnyTimes().Return(consumer, nil)
+	kafkaClient.EXPECT().StartKafkaConsumer(any, any).AnyTimes().Return(consumer, nil)
 
 	mgr, err := NewBlobDeleteMgr(blobCfg, clusterTopology, switchMgr, blobnodeCli, kafkaClient)
 	require.NoError(t, err)

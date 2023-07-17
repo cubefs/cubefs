@@ -49,6 +49,8 @@ const (
 	defaultDeleteLogChunkSize     = uint(29)
 	defaultDeleteDelayH           = int64(72)
 	defaultDeleteNoDelay          = int64(0)
+	defaultMaxBatchSize           = 10
+	defaultMaxWaitTimeSec         = 2
 
 	defaultTickInterval   = uint32(1)
 	defaultHeartbeatTicks = uint32(30)
@@ -253,6 +255,7 @@ func (c *Config) fixShardRepairConfig() {
 	defaulter.LessOrEqual(&c.ShardRepair.OrphanShardLog.ChunkBits, defaultDeleteLogChunkSize)
 	defaulter.LessOrEqual(&c.ShardRepair.MessagePunishThreshold, defaultMessagePunishThreshold)
 	defaulter.LessOrEqual(&c.ShardRepair.MessagePunishTimeM, defaultMessagePunishTimeM)
+	defaulter.Equal(&c.ShardRepair.MaxBatchSize, 1)
 	c.ShardRepair.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
 	c.ShardRepair.Kafka.BrokerList = c.Kafka.BrokerList
 	c.ShardRepair.Kafka.TopicNormals = c.Kafka.Topics.ShardRepair
@@ -273,6 +276,8 @@ func (c *Config) fixBlobDeleteConfig() error {
 	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishTimeM, defaultMessagePunishTimeM)
 	defaulter.Equal(&c.BlobDelete.SafeDelayTimeH, defaultDeleteDelayH)
 	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
+	defaulter.Equal(&c.BlobDelete.MaxBatchSize, defaultMaxBatchSize)
+	defaulter.Equal(&c.BlobDelete.MaxWaitTimeS, defaultMaxWaitTimeSec)
 	c.BlobDelete.Kafka.BrokerList = c.Kafka.BrokerList
 	c.BlobDelete.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
 	c.BlobDelete.Kafka.TopicNormal = c.Kafka.Topics.BlobDelete

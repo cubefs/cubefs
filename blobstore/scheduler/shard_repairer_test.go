@@ -57,7 +57,7 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 	kafkaClient := NewMockKafkaConsumer(ctr)
 	consumer := NewMockGroupConsumer(ctr)
 	consumer.EXPECT().Stop().AnyTimes().Return()
-	kafkaClient.EXPECT().StartKafkaConsumer(any, any, any).AnyTimes().Return(consumer, nil)
+	kafkaClient.EXPECT().StartKafkaConsumer(any, any).AnyTimes().Return(consumer, nil)
 
 	orphanShardLog := mocks.NewMockRecordLogEncoder(ctr)
 	orphanShardLog.EXPECT().Encode(any).AnyTimes().Return(nil)
@@ -82,7 +82,11 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 		errStatsDistribution:    base.NewErrorStats(),
 		repairSuccessCounterMin: &counter.Counter{},
 		repairFailedCounterMin:  &counter.Counter{},
-		cfg:                     &ShardRepairConfig{MessagePunishThreshold: defaultMessagePunishThreshold},
+		cfg: &ShardRepairConfig{
+			MessagePunishThreshold: defaultMessagePunishThreshold,
+			MaxBatchSize:           1,
+			MaxWaitTimeS:           1,
+		},
 	}
 }
 
@@ -102,18 +106,21 @@ func TestConsumerShardRepairMsg(t *testing.T) {
 		kafkaMsg := &sarama.ConsumerMessage{
 			Value: []byte("123"),
 		}
-		require.True(t, mgr.Consume(kafkaMsg, commonCloser))
+		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
 
 		msg := proto.ShardRepairMsg{}
 		msgByte, _ := json.Marshal(msg)
 		kafkaMsg = &sarama.ConsumerMessage{
 			Value: msgByte,
 		}
-		require.True(t, mgr.Consume(kafkaMsg, commonCloser))
+		kafkaMsgs = []*sarama.ConsumerMessage{kafkaMsg}
+		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
 	}
 	{
 		// repair success
-		require.True(t, mgr.Consume(kafkaMsg, commonCloser))
+		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
 	}
 	{
 		// repair failed
@@ -121,14 +128,16 @@ func TestConsumerShardRepairMsg(t *testing.T) {
 		blobnode := NewMockBlobnodeAPI(ctr)
 		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errMock)
 		mgr.blobnodeCli = blobnode
-		require.True(t, mgr.Consume(kafkaMsg, commonCloser))
+		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
 		mgr.blobnodeCli = oldBlobnode
 	}
 	{
 		// consume undo
 		consuming := closer.New()
 		consuming.Close()
-		require.False(t, mgr.Consume(kafkaMsg, consuming))
+		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+		require.False(t, mgr.Consume(kafkaMsgs, consuming))
 	}
 	{
 		// repair success
@@ -240,7 +249,7 @@ func TestNewShardRepairMgr(t *testing.T) {
 	kafkaClient := NewMockKafkaConsumer(ctr)
 	consumer := NewMockGroupConsumer(ctr)
 	consumer.EXPECT().Stop().AnyTimes().Return()
-	kafkaClient.EXPECT().StartKafkaConsumer(any, any, any).AnyTimes().Return(consumer, nil)
+	kafkaClient.EXPECT().StartKafkaConsumer(any, any).AnyTimes().Return(consumer, nil)
 
 	mgr, err := NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient)
 	require.NoError(t, err)

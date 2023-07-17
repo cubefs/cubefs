@@ -71,6 +71,8 @@ type ShardRepairConfig struct {
 	MessagePunishTimeM     int `json:"message_punish_time_m"`
 
 	TaskPoolSize   int              `json:"task_pool_size"`
+	MaxBatchSize   int              `json:"max_batch_size"`
+	MaxWaitTimeS   int              `json:"max_wait_time_s"`
 	OrphanShardLog recordlog.Config `json:"orphan_shard_log"`
 }
 
@@ -212,8 +214,12 @@ func (mgr *ShardRepairMgr) startConsumer() error {
 		return nil
 	}
 	for _, topic := range mgr.cfg.topics() {
-		consumer, err := mgr.kafkaConsumerClient.StartKafkaConsumer(proto.TaskTypeShardRepair,
-			topic, mgr.Consume)
+		consumer, err := mgr.kafkaConsumerClient.StartKafkaConsumer(base.KafkaConsumerCfg{
+			TaskType:     proto.TaskTypeShardRepair,
+			Topic:        topic,
+			MaxBatchSize: mgr.cfg.MaxBatchSize,
+			MaxWaitTimeS: 1,
+		}, mgr.Consume)
 		if err != nil {
 			return err
 		}
@@ -253,7 +259,7 @@ func (mgr *ShardRepairMgr) GetErrorStats() (errStats []string, totalErrCnt uint6
 }
 
 // Consume consume kafka messages: if message is not consume will return false, otherwise return true
-func (mgr *ShardRepairMgr) Consume(msg *sarama.ConsumerMessage, consumerPause base.ConsumerPause) bool {
+func (mgr *ShardRepairMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause base.ConsumerPause) bool {
 	var (
 		repairMsg *proto.ShardRepairMsg
 		ret       shardRepairRet
@@ -288,6 +294,7 @@ func (mgr *ShardRepairMgr) Consume(msg *sarama.ConsumerMessage, consumerPause ba
 	}()
 
 	span = trace.SpanFromContextSafe(context.Background())
+	msg := msgs[0]
 	err := json.Unmarshal(msg.Value, &repairMsg)
 	if err != nil {
 		ret = shardRepairRet{
