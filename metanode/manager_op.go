@@ -83,6 +83,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			partition.SetTxInfo(req.TxInfo)
 			partition.setQuotaHbInfo(req.QuotaHbInfos)
 			mConf := partition.GetBaseConfig()
+
 			mpr := &proto.MetaPartitionReport{
 				PartitionID:      mConf.PartitionId,
 				Start:            mConf.Start,
@@ -97,6 +98,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				UidInfo:          partition.GetUidInfo(),
 				QuotaReportInfos: partition.getQuotaReportInfos(),
 			}
+			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
+
 			addr, isLeader := partition.IsLeader()
 			if addr == "" {
 				mpr.Status = proto.Unavailable

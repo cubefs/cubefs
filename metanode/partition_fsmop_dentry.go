@@ -154,6 +154,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 		resp.Status = proto.OpOk
 		return
 	}
+
 	if resp.Status != proto.OpOk {
 		return
 	}

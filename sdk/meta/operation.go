@@ -219,7 +219,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 func (mw *MetaWrapper) sendToMetaPartitionWithTx(mp *MetaPartition, req *proto.Packet) (packet *proto.Packet, err error) {
 	retryNum := int64(0)
 	for {
-		packet, err = mw.sendToMetaPartition(mp, packet)
+		packet, err = mw.sendToMetaPartition(mp, req)
 		if err != nil {
 			log.LogErrorf("sendToMetaPartitionWithTx: packet(%v) mp(%v) reqType(%v) err(%v)",
 				packet, mp, packet.GetOpMsg(), err)
@@ -1355,10 +1355,6 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64)
 	}
 
 	resp := new(proto.TxLinkInodeResponse)
-	//defer func() {
-	//	tx.OnExecuted(status, resp.TxInfo)
-	//}()
-
 	metric := exporter.NewTPCnt("OpMetaTxLinkInode")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})

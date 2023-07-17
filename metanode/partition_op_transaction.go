@@ -238,6 +238,20 @@ func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet) error 
 	return err
 }
 
+func (mp *metaPartition) TxGetCnt() (uint64, uint64, uint64) {
+	txCnt := mp.txProcessor.txManager.txTree.Len()
+	rbInoCnt := mp.txProcessor.txResource.txRbInodeTree.Len()
+	rbDenCnt := mp.txProcessor.txResource.txRbDentryTree.Len()
+	return uint64(txCnt), uint64(rbInoCnt), uint64(rbDenCnt)
+}
+
+func (mp *metaPartition) TxGetTree() (*BTree, *BTree, *BTree) {
+	tx := mp.txProcessor.txManager.txTree.GetTree()
+	rbIno := mp.txProcessor.txResource.txRbInodeTree.GetTree()
+	rbDen := mp.txProcessor.txResource.txRbDentryTree.GetTree()
+	return tx, rbIno, rbDen
+}
+
 func (mp *metaPartition) TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error) {
 	var status uint8
 

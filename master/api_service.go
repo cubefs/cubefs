@@ -4216,7 +4216,11 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		stat.InodeCount += mp.InodeCount
+		stat.TxCnt += mp.TxCnt
+		stat.TxRbInoCnt += mp.TxRbInoCnt
+		stat.TxRbDenCnt += mp.TxRbDenCnt
 	}
+
 	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
 	if proto.IsHot(vol.VolType) {
 		return
@@ -4246,6 +4250,9 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
 	mpView.FreeListLen = mp.FreeListLen
+	mpView.TxCnt = mp.TxCnt
+	mpView.TxRbInoCnt = mp.TxRbInoCnt
+	mpView.TxRbDenCnt = mp.TxRbDenCnt
 	mpView.IsRecover = mp.IsRecover
 	return
 }

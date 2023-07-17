@@ -60,6 +60,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDentry", m.getDentryHandler)
 	http.HandleFunc("/getDirectory", m.getDirectoryHandler)
 	http.HandleFunc("/getAllDentry", m.getAllDentriesHandler)
+	http.HandleFunc("/getAllTxInfo", m.getAllTxHandler)
 	http.HandleFunc("/getParams", m.getParamsHandler)
 	http.HandleFunc("/getSmuxStat", m.getSmuxStatHandler)
 	http.HandleFunc("/getRaftStatus", m.getRaftStatusHandler)
@@ -217,6 +218,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err := w.Write(data); err != nil {
+
 			log.LogErrorf("[getInodeHandler] response %s", err)
 		}
 	}()
@@ -527,6 +529,70 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	return
 }
 
+func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusOK, "")
+	shouldSkip := false
+	defer func() {
+		if !shouldSkip {
+			data, _ := resp.Marshal()
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllTxHandler] response %s", err)
+			}
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	buff := bytes.NewBufferString(`{"code": 200, "msg": "OK", "data":[`)
+	if _, err := w.Write(buff.Bytes()); err != nil {
+		return
+	}
+	buff.Reset()
+	var (
+		val       []byte
+		delimiter = []byte{',', '\n'}
+		//isFirst   = true
+	)
+
+	f := func(i BtreeItem) bool {
+		if _, err = w.Write(delimiter); err != nil {
+			return false
+		}
+
+		val, err = json.Marshal(i)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return false
+		}
+		if _, err = w.Write(val); err != nil {
+			return false
+		}
+		return true
+	}
+
+	txTree, rbInoTree, rbDenTree := mp.TxGetTree()
+	txTree.Ascend(f)
+	rbInoTree.Ascend(f)
+	rbDenTree.Ascend(f)
+
+	shouldSkip = true
+	buff.WriteString(`]}`)
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllTxHandler] response %s", err)
+	}
+	return
+}
 func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
