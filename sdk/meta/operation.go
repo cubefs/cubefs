@@ -29,18 +29,13 @@ import (
 
 // API implementations
 //
-
+// txIcreate create inode and tx together
 func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, gid uint32,
 	target []byte, quotaIds []uint32) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIcreate", err, bgTime, 1)
 	}()
-
-	/*status, err = tx.OnStart()
-	if status != statusOK || err != nil {
-		return
-	}*/
 
 	req := &proto.TxCreateInodeRequest{
 		VolName:     mw.volname,
@@ -98,8 +93,8 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		return
 	}
 
-	//tx.SetTxID(resp.TxInfo.TxID)
-	//tx.SetTmID(resp.TxInfo.TmID)
+	tx.Started = true
+	tx.txInfo = resp.TxInfo
 	log.LogDebugf("txIcreate: packet(%v) mp(%v) req(%v) info(%v) tx(%v)", packet, mp, *req, resp.Info, resp.TxInfo)
 	return status, resp.Info, nil
 }
@@ -262,13 +257,15 @@ func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uin
 				packet, mp, packet.GetOpMsg(), req.GetInfo(), packet.GetResultMsg(), err)
 			return
 		}
-	} else {
-		if status != statusOK {
-			err = errors.New(packet.GetResultMsg())
-			log.LogErrorf("SendTxPack: packet(%v) mp(%v) req(%v) txInfo(%v) result(%v)",
-				packet, mp, packet.GetOpMsg(), req.GetInfo(), packet.GetResultMsg())
-			return
-		}
+	} else if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("SendTxPack: packet(%v) mp(%v) req(%v) txInfo(%v) result(%v)",
+			packet, mp, packet.GetOpMsg(), req.GetInfo(), packet.GetResultMsg())
+		return
+	}
+
+	if resp == nil {
+		return
 	}
 
 	err = packet.UnmarshalData(resp)
@@ -293,10 +290,6 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 		TxInfo:      tx.txInfo,
 	}
 	resp := new(proto.TxUnlinkInodeResponse)
-	defer func() {
-		tx.OnExecuted(status, resp.TxInfo)
-	}()
-
 	metric := exporter.NewTPCnt("OpMetaTxUnlinkInode")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
@@ -307,11 +300,7 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 		log.LogErrorf("txIunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
-	if resp.Info == nil || resp.TxInfo == nil {
-		err = errors.New(fmt.Sprintf("txIunlink: TxInfo is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
-		log.LogWarn(err)
-		return
-	}
+
 	log.LogDebugf("txIunlink: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, resp.Info, nil
 }
@@ -481,38 +470,28 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		TxInfo:      tx.txInfo,
 	}
 
-	resp := new(proto.TxCreateDentryResponse)
-	defer func() {
-		tx.OnExecuted(status, resp.TxInfo)
-	}()
-
 	metric := exporter.NewTPCnt("OpMetaTxCreateDentry")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	statusCheckFunc := func(status int, packet *proto.Packet) (err error) {
-		if (status != statusOK) && (status != statusExist) {
-			err = errors.New(packet.GetResultMsg())
-			log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-			return
-		} else if status == statusExist {
-			log.LogWarnf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		}
-		return
-	}
+	//statusCheckFunc := func(status int, packet *proto.Packet) (err error) {
+	//	if (status != statusOK) && (status != statusExist) {
+	//		err = errors.New(packet.GetResultMsg())
+	//		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	//		return
+	//	} else if status == statusExist {
+	//		log.LogWarnf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	//	}
+	//	return
+	//}
 
 	var packet *proto.Packet
-	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxCreateDentry, mp, statusCheckFunc); err != nil {
+	if status, err, packet = mw.SendTxPack(req, nil, proto.OpMetaTxCreateDentry, mp, nil); err != nil {
 		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
-	if resp.TxInfo == nil {
-		err = errors.New(fmt.Sprintf("txDcreate: TxInfo is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
-		log.LogWarn(err)
-		return
-	}
 	log.LogDebugf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return
 }
@@ -619,7 +598,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	return
 }
 
-func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, newInode uint64) (status int, oldInode uint64, err error) {
+func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, newInode, oldIno uint64) (status int, oldInode uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txDupdate", err, bgTime, 1)
@@ -635,14 +614,11 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 		ParentID:    parentID,
 		Name:        name,
 		Inode:       newInode,
+		OldIno:      oldIno,
 		TxInfo:      tx.txInfo,
 	}
 
 	resp := new(proto.TxUpdateDentryResponse)
-	defer func() {
-		tx.OnExecuted(status, resp.TxInfo)
-	}()
-
 	metric := exporter.NewTPCnt("OpMetaTxUpdateDentry")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
@@ -651,12 +627,6 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 	var packet *proto.Packet
 	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxUpdateDentry, mp, nil); err != nil {
 		log.LogErrorf("txDupdate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		return
-	}
-
-	if resp.TxInfo == nil {
-		err = errors.New(fmt.Sprintf("txDupdate: TxInfo is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
-		log.LogWarn(err)
 		return
 	}
 
@@ -719,7 +689,79 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, err error) {
+func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("txCreateTX", err, bgTime, 1)
+	}()
+
+	tx.SetTmID(mp.PartitionID)
+
+	req := &proto.TxCreateRequest{
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		TransactionInfo: tx.txInfo,
+	}
+
+	resp := new(proto.TxCreateResponse)
+	metric := exporter.NewTPCnt("OpMetaTxCreate")
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	var packet *proto.Packet
+	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxCreate, mp, nil); err != nil {
+		log.LogErrorf("txCreateTX: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	if resp.TxInfo == nil {
+		err = fmt.Errorf("txCreateTX: create tx resp nil")
+		log.LogError(err)
+		return statusError, err
+	}
+
+	if log.EnableDebug() {
+		log.LogDebugf("txCreateTX: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	}
+
+	tx.txInfo = resp.TxInfo
+	tx.Started = true
+	return statusOK, nil
+}
+
+//func (mw *MetaWrapper) txPreCommit(tx *Transaction, mp *MetaPartition) (status int, err error) {
+//	bgTime := stat.BeginStat()
+//	defer func() {
+//		stat.EndStat("txPreCommit", err, bgTime, 1)
+//	}()
+//
+//	tx.txInfo.TmID = int64(mp.PartitionID)
+//	req := &proto.TxPreCommitRequest{
+//		VolName:         mw.volname,
+//		PartitionID:     mp.PartitionID,
+//		TransactionInfo: tx.txInfo,
+//	}
+//
+//	metric := exporter.NewTPCnt("OpTxPreCommit")
+//	defer func() {
+//		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+//	}()
+//
+//	var packet *proto.Packet
+//	if status, err, packet = mw.SendTxPack(req, nil, proto.OpTxPreCommit, mp, nil); err != nil {
+//		log.LogErrorf("txPreCommit: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+//		return
+//	}
+//
+//	if log.EnableDebug() {
+//		log.LogDebugf("txPreCommit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+//	}
+//
+//	return statusOK, nil
+//}
+
+func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, ino uint64, name string) (status int, inode uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txDdelete", err, bgTime, 1)
@@ -730,13 +772,11 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID ui
 		PartitionID: mp.PartitionID,
 		ParentID:    parentID,
 		Name:        name,
+		Ino:         ino,
 		TxInfo:      tx.txInfo,
 	}
 
 	resp := new(proto.TxDeleteDentryResponse)
-	defer func() {
-		tx.OnExecuted(status, resp.TxInfo)
-	}()
 
 	metric := exporter.NewTPCnt("OpMetaTxDeleteDentry")
 	defer func() {
@@ -748,11 +788,7 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID ui
 		log.LogErrorf("txDdelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
-	if resp.TxInfo == nil {
-		err = errors.New(fmt.Sprintf("txDdelete: TxInfo is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
-		log.LogWarn(err)
-		return
-	}
+
 	log.LogDebugf("txDdelete: packet(%v) mp(%v) req(%v) ino(%v)", packet, mp, *req, resp.Inode)
 	return statusOK, resp.Inode, nil
 }
@@ -1307,9 +1343,9 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64)
 	}
 
 	resp := new(proto.TxLinkInodeResponse)
-	defer func() {
-		tx.OnExecuted(status, resp.TxInfo)
-	}()
+	//defer func() {
+	//	tx.OnExecuted(status, resp.TxInfo)
+	//}()
 
 	metric := exporter.NewTPCnt("OpMetaTxLinkInode")
 	defer func() {
@@ -1321,12 +1357,10 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64)
 		log.LogErrorf("txIlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
-	if resp.Info == nil || resp.TxInfo == nil {
-		err = errors.New(fmt.Sprintf("txIlink: TxInfo is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
-		log.LogWarn(err)
-		return
+
+	if log.EnableDebug() {
+		log.LogDebugf("txIlink exit: packet(%v) mp(%v) req(%v) info(%v)", packet, mp, *req, resp.Info)
 	}
-	log.LogDebugf("txIlink exit: packet(%v) mp(%v) req(%v) info(%v)", packet, mp, *req, resp.Info)
 	return statusOK, resp.Info, nil
 }
 
