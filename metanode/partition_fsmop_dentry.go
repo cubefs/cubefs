@@ -95,8 +95,6 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		}
 	}
 
-	mp.nonIdempotent.RLock()
-	defer mp.nonIdempotent.RUnlock()
 	if item, ok := mp.dentryTree.ReplaceOrInsert(dentry, false); !ok {
 		//do not allow directories and files to overwrite each
 		// other when renaming
