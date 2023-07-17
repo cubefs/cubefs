@@ -46,6 +46,9 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		return
 	}
 
+	mp.nonIdempotent.Lock()
+	defer mp.nonIdempotent.Unlock()
+
 	switch msg.Op {
 	case opFSMCreateInode:
 		ino := NewInode(0, 0)
@@ -752,4 +755,8 @@ func (mp *metaPartition) submit(op uint32, data []byte) (resp interface{}, err e
 
 func (mp *metaPartition) uploadApplyID(applyId uint64) {
 	atomic.StoreUint64(&mp.applyID, applyId)
+}
+
+func (mp *metaPartition) getApplyID() (applyId uint64) {
+	return atomic.LoadUint64(&mp.applyID)
 }
