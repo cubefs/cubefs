@@ -182,9 +182,9 @@ func NewTxRollbackInode(inode *Inode, quotaIds []uint32, txInodeInfo *proto.TxIn
 }
 
 type TxRollbackDentry struct {
-	dentry       *Dentry
-	txDentryInfo *proto.TxDentryInfo
-	rbType       uint8 //Rollback Type
+	dentry       *Dentry             `json:"dentry""`
+	txDentryInfo *proto.TxDentryInfo `json:"txDentry""`
+	rbType       uint8               `json:"rbType"` //Rollback Type `
 }
 
 func (d *TxRollbackDentry) ToString() string {
@@ -350,7 +350,9 @@ func NewTransactionProcessor(mp *metaPartition) *TransactionProcessor {
 	txProcessor.txManager = NewTransactionManager(txProcessor)
 	txProcessor.txResource = NewTransactionResource(txProcessor)
 
-	go txProcessor.txManager.processExpiredTransactions()
+	if mp.config != nil {
+		go txProcessor.txManager.processExpiredTransactions()
+	}
 	return txProcessor
 }
 
@@ -380,7 +382,8 @@ func (tm *TransactionManager) processExpiredTransactions() {
 	log.LogInfof("processExpiredTransactions for mp[%v] started", mpId)
 	clearInterval := time.Second * 60
 	clearTimer := time.NewTimer(clearInterval)
-	txCheckTimer := time.NewTimer(time.Second)
+	txCheckVal := time.Second * 30
+	txCheckTimer := time.NewTimer(txCheckVal)
 
 	defer func() {
 		log.LogWarnf("processExpiredTransactions for mp[%v] exit", mpId)
@@ -413,11 +416,11 @@ func (tm *TransactionManager) processExpiredTransactions() {
 			log.LogDebugf("processExpiredTransactions: blacklist cleared, mp %d", mpId)
 		case <-txCheckTimer.C:
 			if tm.txProcessor.Pause() {
-				txCheckTimer.Reset(time.Second)
+				txCheckTimer.Reset(txCheckVal)
 				continue
 			}
 			tm.processTx()
-			txCheckTimer.Reset(time.Second)
+			txCheckTimer.Reset(txCheckVal)
 		}
 	}
 }
@@ -836,15 +839,16 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 		if mp.config.PartitionId == mpId {
 			pt := &Packet{*pkt}
 			go func() {
-				wg.Done()
+				defer wg.Done()
+				var err error
 				if op == proto.OpTxCommitRM {
-					mp.TxCommitRM(req, pt)
+					err = mp.TxCommitRM(req, pt)
 				} else {
-					mp.TxRollbackRM(req, pt)
+					err = mp.TxRollbackRM(req, pt)
 				}
 				statusCh <- pt.ResultCode
 				if pt.ResultCode != proto.OpOk {
-					log.LogWarnf("sendToRM: invoke TxCommitRM failed, ifo %v, pkt %s", txInfo, pkt.GetResultMsg())
+					log.LogWarnf("sendToRM: invoke TxCommitRM failed, ifo %v, pkt %s, err %v", txInfo, pt.GetResultMsg(), err)
 				}
 			}()
 			continue
