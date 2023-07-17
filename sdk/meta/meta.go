@@ -142,7 +142,7 @@ type MetaWrapper struct {
 	EnableSummary           bool
 	metaSendTimeout         int64
 	DirChildrenNumLimit     uint32
-	EnableTransaction       uint8
+	EnableTransaction       proto.TxOpMask
 	TxTimeout               int64
 	TxConflictRetryNum      int64
 	TxConflictRetryInterval int64
@@ -263,6 +263,10 @@ func (mw *MetaWrapper) Owner() string {
 	return mw.owner
 }
 
+func (mw *MetaWrapper) enableTx(mask proto.TxOpMask) bool {
+	return mw.EnableTransaction != proto.TxPause && mw.EnableTransaction&mask > 0
+}
+
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
 	return mw.ossSecure.AccessKey, mw.ossSecure.SecretKey
 }
@@ -326,6 +330,14 @@ func parseStatus(result uint8) (status int) {
 		status = statusError
 	}
 	return
+}
+
+func statusErrToErrno(status int, err error) error {
+	if status == statusOK && err != nil {
+		return syscall.EAGAIN
+	}
+
+	return statusToErrno(status)
 }
 
 func statusToErrno(status int) error {

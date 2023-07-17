@@ -41,7 +41,7 @@ type VolVarargs struct {
 	enablePosixAcl          bool
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
-	enableTransaction       uint8
+	enableTransaction       proto.TxOpMask
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
@@ -81,7 +81,7 @@ type Vol struct {
 	domainOn                bool
 	defaultPriority         bool // old default zone first
 	enablePosixAcl          bool
-	enableTransaction       uint8
+	enableTransaction       proto.TxOpMask
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64

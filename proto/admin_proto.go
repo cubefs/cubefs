@@ -467,7 +467,7 @@ type QuotaHeartBeatInfos struct {
 
 type TxInfo struct {
 	Volume     string
-	Mask       uint8
+	Mask       TxOpMask
 	OpLimitVal int
 }
 

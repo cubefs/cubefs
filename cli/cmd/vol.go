@@ -386,7 +386,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 
 			//var maskStr string
 			if optTxMask != "" {
-				var oldMask, newMask uint8
+				var oldMask, newMask proto.TxOpMask
 				oldMask, err = proto.GetMaskFromString(vv.EnableTransaction)
 				if err != nil {
 					return

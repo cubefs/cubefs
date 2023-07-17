@@ -33,41 +33,39 @@ func NewDentryResponse() *DentryResponse {
 	}
 }
 
-func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry, forceUpdate bool) (status uint8) {
-	//1.if mpID == -1, register transaction in transaction manager
-	//if txDentry.TxInfo.TxID != "" && txDentry.TxInfo.TmID == -1 {
-	_ = mp.txProcessor.txManager.registerTransaction(txDentry.TxInfo)
-	//}
-	//2.register rollback item
-	txDI := proto.NewTxDentryInfo("", txDentry.Dentry.ParentId, txDentry.Dentry.Name, 0)
+func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 
-	//txDenInfo := mp.txProcessor.txManager.getTxDentryInfo(txDentry.TxInfo.TxID, txDI.GetKey())
+	done := mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID)
+	if done {
+		log.LogWarnf("fsmTxUnlinkInode: tx is already finish. txId %s", txDentry.TxInfo.TxID)
+		status = proto.OpTxInfoNotExistErr
+		return
+	}
+
+	txDI := proto.NewTxDentryInfo("", txDentry.Dentry.ParentId, txDentry.Dentry.Name, 0)
 	txDenInfo, ok := txDentry.TxInfo.TxDentryInfos[txDI.GetKey()]
 	if !ok {
 		status = proto.OpTxDentryInfoNotExistErr
 		return
 	}
+
 	rbDentry := NewTxRollbackDentry(txDentry.Dentry, txDenInfo, TxDelete)
-	if status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); status != proto.OpOk {
-		//status = proto.OpTxConflictErr
+	status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	if status == proto.OpExistErr {
+		return proto.OpOk
+	}
+
+	if status != proto.OpOk {
 		return
 	}
 
-	//3. register rollback parent inode item
-	parInodeInfo, ok := txDentry.TxInfo.TxInodeInfos[txDentry.ParInode.Inode]
-	if !ok {
-		status = proto.OpTxInodeInfoNotExistErr
-		return
-	}
-	quotaIds, _ := mp.isExistQuota(txDentry.ParInode.Inode)
+	defer func() {
+		if status != proto.OpOk {
+			mp.txProcessor.txResource.deleteTxRollbackDentry(txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
+		}
+	}()
 
-	rbParInode := NewTxRollbackInode(txDentry.ParInode, quotaIds, parInodeInfo, TxUpdate)
-	if status = mp.txProcessor.txResource.addTxRollbackInode(rbParInode); status != proto.OpOk {
-		//status = proto.OpTxConflictErr
-		return
-	}
-
-	return mp.fsmCreateDentry(txDentry.Dentry, forceUpdate)
+	return mp.fsmCreateDentry(txDentry.Dentry, false)
 }
 
 // Insert a dentry into the dentry tree.
@@ -111,13 +109,13 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		}
 
 		status = proto.OpExistErr
-	} else {
-		if !forceUpdate {
-			parIno.IncNLink()
-			parIno.SetMtime()
-		}
+		return
 	}
 
+	if !forceUpdate {
+		parIno.IncNLink()
+		parIno.SetMtime()
+	}
 	return
 }
 
@@ -133,42 +131,50 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 	return dentry, status
 }
 
-func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry, checkInode bool) (resp *DentryResponse) {
+func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
+	if mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID) {
+		log.LogWarnf("fsmTxDeleteDentry: tx is already finish. txId %s", txDentry.TxInfo.TxID)
+		resp.Status = proto.OpTxInfoNotExistErr
+		return
+	}
 
-	//1.if mpID == -1, register transaction in transaction manager
-	//if txDentry.TxInfo.TxID != "" && txDentry.TxInfo.TmID == -1 {
-	_ = mp.txProcessor.txManager.registerTransaction(txDentry.TxInfo)
-	//}
-	//2.register rollback dentry item
-	txDI := proto.NewTxDentryInfo("", txDentry.Dentry.ParentId, txDentry.Dentry.Name, 0)
+	tmpDen := txDentry.Dentry
+	txDI := proto.NewTxDentryInfo("", tmpDen.ParentId, tmpDen.Name, 0)
 	txDenInfo, ok := txDentry.TxInfo.TxDentryInfos[txDI.GetKey()]
 	if !ok {
 		resp.Status = proto.OpTxDentryInfoNotExistErr
 		return
 	}
-	rbDentry := NewTxRollbackDentry(txDentry.Dentry, txDenInfo, TxAdd)
-	if resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); resp.Status != proto.OpOk {
-		//resp.Status = proto.OpTxConflictErr
+
+	rbDentry := NewTxRollbackDentry(tmpDen, txDenInfo, TxAdd)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	if resp.Status == proto.OpExistErr {
+		resp.Status = proto.OpOk
+		return
+	}
+	if resp.Status != proto.OpOk {
 		return
 	}
 
-	//3. register rollback parent inode item
-	parInodeInfo, ok := txDentry.TxInfo.TxInodeInfos[txDentry.ParInode.Inode]
-	if !ok {
-		resp.Status = proto.OpTxInodeInfoNotExistErr
+	defer func() {
+		if resp.Status != proto.OpOk {
+			mp.txProcessor.txResource.deleteTxRollbackDentry(txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
+		}
+	}()
+
+	item := mp.dentryTree.Get(tmpDen)
+	if item == nil || item.(*Dentry).Inode != tmpDen.Inode {
+		log.LogWarnf("fsmTxDeleteDentry: got wrong dentry, want %v, got %v", tmpDen, item)
+		resp.Status = proto.OpNotExistErr
 		return
 	}
-	quotaIds, _ := mp.isExistQuota(txDentry.ParInode.Inode)
 
-	rbParInode := NewTxRollbackInode(txDentry.ParInode, quotaIds, parInodeInfo, TxUpdate)
-	if resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbParInode); resp.Status != proto.OpOk {
-		//resp.Status = proto.OpTxConflictErr
-		return
-	}
-
-	return mp.fsmDeleteDentry(txDentry.Dentry, checkInode)
+	mp.dentryTree.Delete(tmpDen)
+	// parent link count not change
+	resp.Msg = item.(*Dentry)
+	return
 }
 
 // Delete dentry from the dentry tree.
@@ -224,27 +230,45 @@ func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse 
 func (mp *metaPartition) fsmTxUpdateDentry(txUpDateDentry *TxUpdateDentry) (resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	//1.if mpID == -1, register transaction in transaction manager
-	//if txDentry.TxInfo.TxID != "" && txDentry.TxInfo.TmID == -1 {
-	_ = mp.txProcessor.txManager.registerTransaction(txUpDateDentry.TxInfo)
-	//}
 
-	//2.register rollback item
-	txDI := proto.NewTxDentryInfo("", txUpDateDentry.OldDentry.ParentId, txUpDateDentry.OldDentry.Name, 0)
+	if mp.txProcessor.txManager.txInRMDone(txUpDateDentry.TxInfo.TxID) {
+		log.LogWarnf("fsmTxUpdateDentry: tx is already finish. txId %s", txUpDateDentry.TxInfo.TxID)
+		resp.Status = proto.OpTxInfoNotExistErr
+		return
+	}
 
-	//txDenInfo := mp.txProcessor.txManager.getTxDentryInfo(txDentry.TxInfo.TxID, txDI.GetKey())
+	newDen := txUpDateDentry.NewDentry
+	oldDen := txUpDateDentry.OldDentry
+
+	txDI := proto.NewTxDentryInfo("", oldDen.ParentId, oldDen.Name, 0)
 	txDenInfo, ok := txUpDateDentry.TxInfo.TxDentryInfos[txDI.GetKey()]
 	if !ok {
 		resp.Status = proto.OpTxDentryInfoNotExistErr
 		return
 	}
-	rbDentry := NewTxRollbackDentry(txUpDateDentry.OldDentry, txDenInfo, TxUpdate)
-	if resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry); resp.Status != proto.OpOk {
-		//resp.Status = proto.OpTxConflictErr
+
+	item := mp.dentryTree.CopyGet(oldDen)
+	if item == nil || item.(*Dentry).Inode != oldDen.Inode {
+		resp.Status = proto.OpNotExistErr
+		log.LogWarnf("fsmTxUpdateDentry: find dentry is not right, want %v, got %v", oldDen, item)
 		return
 	}
 
-	return mp.fsmUpdateDentry(txUpDateDentry.NewDentry)
+	rbDentry := NewTxRollbackDentry(txUpDateDentry.OldDentry, txDenInfo, TxUpdate)
+	resp.Status = mp.txProcessor.txResource.addTxRollbackDentry(rbDentry)
+	if resp.Status == proto.OpExistErr {
+		resp.Status = proto.OpOk
+		return
+	}
+
+	if resp.Status != proto.OpOk {
+		return
+	}
+
+	d := item.(*Dentry)
+	d.Inode, newDen.Inode = newDen.Inode, d.Inode
+	resp.Msg = newDen
+	return
 }
 
 func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (

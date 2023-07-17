@@ -14,33 +14,27 @@
 
 package metanode
 
-import "github.com/cubefs/cubefs/proto"
+import (
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+)
 
 func (mp *metaPartition) fsmTxRollback(txID string) (status uint8) {
-	//status = proto.OpOk
-	var err error
-	status, err = mp.txProcessor.txManager.rollbackTxInfo(txID)
-	if err == nil && status == proto.OpOk {
-		return
-	} else {
-		if err != nil && status == proto.OpTxInfoNotExistErr {
-			status = proto.OpOk
-			return
-		}
-		return status
-	}
+	status = mp.txProcessor.txManager.rollbackTxInfo(txID)
+	return
+}
+
+func (mp *metaPartition) fsmTxDelete(txID string) (status uint8) {
+	status = mp.txProcessor.txManager.deleteTxInfo(txID)
+	return
 }
 
 func (mp *metaPartition) fsmTxInodeRollback(req *proto.TxInodeApplyRequest) (status uint8) {
-	//status = proto.OpOk
-	//var err error
 	status, _ = mp.txProcessor.txResource.rollbackInode(req)
 	return
 }
 
 func (mp *metaPartition) fsmTxDentryRollback(req *proto.TxDentryApplyRequest) (status uint8) {
-	//status = proto.OpOk
-	//var err error
 	status, _ = mp.txProcessor.txResource.rollbackDentry(req)
 	return
 }
@@ -50,47 +44,97 @@ func (mp *metaPartition) fsmTxSetState(req *proto.TxSetStateRequest) (status uin
 	return
 }
 
+func (mp *metaPartition) fsmTxInit(txInfo *proto.TransactionInfo) (status uint8) {
+	status = proto.OpOk
+	err := mp.txProcessor.txManager.registerTransaction(txInfo)
+	if err != nil {
+		log.LogErrorf("fsmTxInit: register transaction failed, txInfo %s, err %s", txInfo.String(), err.Error())
+		return proto.OpTxInternalErr
+	}
+	return
+}
+
 func (mp *metaPartition) fsmTxCommit(txID string) (status uint8) {
-	//var err error
 	status, _ = mp.txProcessor.txManager.commitTxInfo(txID)
-	/*if err == nil && status == proto.OpOk {
-		return
-	} else {
-		if err != nil && status == proto.OpTxInfoNotExistErr {
-			status = proto.OpOk
-			return
-		}
-		return status
-	}*/
 	return
 }
 
 func (mp *metaPartition) fsmTxInodeCommit(txID string, inode uint64) (status uint8) {
 	//var err error
 	status, _ = mp.txProcessor.txResource.commitInode(txID, inode)
-	/*if err == nil && status == proto.OpOk {
-		return
-	} else {
-		if err != nil && status == proto.OpTxRbInodeNotExistErr {
-			status = proto.OpOk
-			return
-		}
-		return status
-	}*/
 	return
 }
 
 func (mp *metaPartition) fsmTxDentryCommit(txID string, pId uint64, name string) (status uint8) {
 	//var err error
 	status, _ = mp.txProcessor.txResource.commitDentry(txID, pId, name)
-	/*if err == nil && status == proto.OpOk {
-		return
-	} else {
-		if err != nil && status == proto.OpTxRbDentryNotExistErr {
-			status = proto.OpOk
-			return
-		}
-		return status
-	}*/
 	return
+}
+
+func (mp *metaPartition) fsmTxCommitRM(txInfo *proto.TransactionInfo) (status uint8) {
+	status = proto.OpOk
+	ifo := mp.txProcessor.txManager.copyGetTx(txInfo.TxID)
+	if ifo == nil || ifo.Finish() {
+		log.LogWarnf("fsmTxCommitRM: tx already commit or rollback before, tx %v, ifo %v", txInfo, ifo)
+		return
+	}
+
+	mpId := mp.config.PartitionId
+	for _, ifo := range txInfo.TxInodeInfos {
+		if ifo.MpID != mpId {
+			continue
+		}
+
+		mp.fsmTxInodeCommit(ifo.TxID, ifo.Ino)
+	}
+
+	for _, ifo := range txInfo.TxDentryInfos {
+		if ifo.MpID != mpId {
+			continue
+		}
+
+		mp.fsmTxDentryCommit(ifo.TxID, ifo.ParentId, ifo.Name)
+	}
+
+	ifo.SetFinish()
+	return proto.OpOk
+}
+
+func (mp *metaPartition) fsmTxRollbackRM(txInfo *proto.TransactionInfo) (status uint8) {
+	status = proto.OpOk
+	ifo := mp.txProcessor.txManager.copyGetTx(txInfo.TxID)
+	if ifo == nil || ifo.Finish() {
+		log.LogWarnf("fsmTxRollbackRM: tx already commit or rollback before, tx %v, ifo %v", txInfo, ifo)
+		return
+	}
+
+	mpId := mp.config.PartitionId
+	for _, ifo := range txInfo.TxInodeInfos {
+		if ifo.MpID != mpId {
+			continue
+		}
+
+		req := &proto.TxInodeApplyRequest{
+			TxID:  ifo.TxID,
+			Inode: ifo.Ino,
+		}
+		mp.fsmTxInodeRollback(req)
+	}
+
+	// delete from rb tree
+	for _, ifo := range txInfo.TxDentryInfos {
+		if ifo.MpID != mpId {
+			continue
+		}
+
+		req := &proto.TxDentryApplyRequest{
+			TxID: ifo.TxID,
+			Pid:  ifo.ParentId,
+			Name: ifo.Name,
+		}
+		mp.fsmTxDentryRollback(req)
+	}
+
+	ifo.SetFinish()
+	return proto.OpOk
 }

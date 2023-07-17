@@ -154,7 +154,7 @@ func (mp *metaPartition) deleteWorker() {
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
 				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
 				if inode.ShouldDelayDelete() || inTx {
-					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0", inode)
+					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0, inTx %v", inode, inTx)
 					delayDeleteInos = append(delayDeleteInos, ino)
 					continue
 				}
@@ -241,6 +241,11 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		ref := &Inode{Inode: ino}
 		inode, ok := mp.inodeTree.Get(ref).(*Inode)
 		if !ok {
+			continue
+		}
+
+		if !inode.ShouldDelete() {
+			log.LogWarnf("deleteMarkedInodes: inode should not be deleted, ino %s", inode.String())
 			continue
 		}
 

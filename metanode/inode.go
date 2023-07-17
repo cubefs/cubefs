@@ -81,17 +81,11 @@ type TxInode struct {
 	TxInfo *proto.TransactionInfo
 }
 
-func NewTxInode(mpAddr string, ino uint64, t uint32, mpID uint64, txInfo *proto.TransactionInfo) *TxInode {
+func NewTxInode(ino uint64, t uint32, txInfo *proto.TransactionInfo) *TxInode {
 	ti := &TxInode{
 		Inode:  NewInode(ino, t),
 		TxInfo: txInfo,
 	}
-
-	if ti.TxInfo != nil {
-		txInodeInfo := proto.NewTxInodeInfo(mpAddr, ino, mpID)
-		ti.TxInfo.TxInodeInfos[txInodeInfo.GetKey()] = txInodeInfo
-	}
-
 	return ti
 }
 
@@ -748,29 +742,3 @@ func (i *Inode) CopyTinyExtents() (delExtents []proto.ExtentKey) {
 	defer i.RUnlock()
 	return i.Extents.CopyTinyExtents()
 }
-
-// ReplaceExtents replace eks with curEks, delEks are which need to deleted.
-// func (i *Inode) ReplaceExtents(curEks []proto.ExtentKey, mtime int64) (delEks []proto.ExtentKey) {
-// 	i.Lock()
-// 	defer i.Unlock()
-// 	oldEks := i.Extents.eks
-// 	delEks = make([]proto.ExtentKey, len(oldEks)-len(curEks))
-// 	for _, key := range oldEks {
-// 		exist := false
-// 		for _, delKey := range curEks {
-// 			if key.FileOffset == delKey.FileOffset && key.ExtentId == delKey.ExtentId &&
-// 				key.ExtentOffset == delKey.ExtentOffset && key.PartitionId == delKey.PartitionId &&
-// 				key.Size == delKey.Size {
-// 				exist = true
-// 				break
-// 			}
-// 		}
-// 		if !exist {
-// 			delEks = append(delEks, key)
-// 		}
-// 	}
-// 	i.ModifyTime = mtime
-// 	i.Generation++
-// 	i.Extents.eks = curEks
-// 	return
-// }
