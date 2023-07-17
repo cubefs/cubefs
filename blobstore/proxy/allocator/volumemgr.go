@@ -467,6 +467,7 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 
 	needSwitch, err := info.needSwitchToBackup(int64(args.Fsize))
 	if err != nil {
+		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, true)
 		span.Errorf("no available volumes to alloc and current allocating from clustermgr")
 		return nil, err
 	}

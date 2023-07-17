@@ -416,6 +416,8 @@ func TestAllocVolumeFailed(t *testing.T) {
 		Excludes: nil,
 		Discards: nil,
 	}
+	vm.allocChs = make(map[codemode.CodeMode]chan *allocArgs)
+	vm.allocChs[codemode.EC6P6] = make(chan *allocArgs)
 	_, err = vm.allocVid(ctx, args)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errcode.ErrNoAvaliableVolume)
