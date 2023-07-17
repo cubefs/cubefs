@@ -83,4 +83,34 @@ func addCmdShard(cmd *grumble.Command) {
 			return nil
 		},
 	})
+
+	chunkCommand.AddCommand(&grumble.Command{
+		Name: "mark",
+		Help: "mark delete is dangerous operation, execute with caution",
+		Flags: func(f *grumble.Flags) {
+			blobnodeFlags(f)
+		},
+		Args: func(c *grumble.Args) {
+			c.Uint64("diskid", "disk id")
+			c.Uint64("vuid", "vuid")
+			c.Uint64("bid", "bid")
+		},
+		Run: func(c *grumble.Context) error {
+			cli := blobnode.New(&blobnode.Config{})
+			host := c.Flags.String("host")
+			args := blobnode.DeleteShardArgs{
+				DiskID: proto.DiskID(c.Args.Uint64("diskid")),
+				Vuid:   proto.Vuid(c.Args.Uint64("vuid")),
+				Bid:    proto.BlobID(c.Args.Uint64("bid")),
+			}
+			if !common.Confirm("to mark delete?") {
+				return nil
+			}
+			if err := cli.MarkDeleteShard(common.CmdContext(), host, &args); err != nil {
+				return err
+			}
+			fmt.Println("mark delete success")
+			return nil
+		},
+	})
 }
