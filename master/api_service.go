@@ -1235,6 +1235,57 @@ func (m *Server) setNodeToOfflineState(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
+func (m *Server) setNodeToOfflineStateByAddr(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		nodeType string
+		zoneName string
+		state    bool
+		body     []byte
+		addrList []string
+		addrMap  map[string]struct{}
+	)
+
+	addrMap = make(map[string]struct{})
+	metrics := exporter.NewModuleTP(proto.AdminSetNodeStateByAddrUmpKey)
+	defer func() { metrics.Set(err) }()
+
+	if nodeType, zoneName, state, err = parseRequestToSetNodeToOfflineStateByAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if body, err = readBodyFromRequest(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
+		return
+	}
+	if err = json.Unmarshal(body, &addrList); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
+		return
+	}
+	for _, addr := range addrList {
+		addrMap[addr] = struct{}{}
+	}
+
+	if nodeType == nodeTypeAll {
+		m.cluster.setDataNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		m.cluster.setMetaNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		m.cluster.setEcNodeToOfflineStateByAddr(addrMap, state, zoneName)
+	} else {
+		if nodeType == nodeTypeDataNode {
+			m.cluster.setDataNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		} else if nodeType == nodeTypeMetaNode {
+			m.cluster.setMetaNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		} else if nodeType == nodeTypeEcNode {
+			m.cluster.setEcNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		} else {
+			err = errors.New("setNodeToOfflineState unknown nodeType")
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
 func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64, nodeType, zoneName string, state bool, err error) {
 	var value string
 	if value = r.FormValue(startKey); value == "" {
@@ -1253,6 +1304,19 @@ func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64
 	if err != nil {
 		return
 	}
+	nodeType = r.FormValue(nodeTypeKey)
+	if !(nodeType == nodeTypeDataNode || nodeType == nodeTypeMetaNode || nodeType == nodeTypeAll) {
+		err = fmt.Errorf("nodeType must be dataNode or metaNode or all")
+		return
+	}
+	if zoneName, err = extractZoneName(r); err != nil {
+		return
+	}
+	state, err = strconv.ParseBool(r.FormValue(stateKey))
+	return
+}
+
+func parseRequestToSetNodeToOfflineStateByAddr(r *http.Request) (nodeType, zoneName string, state bool, err error) {
 	nodeType = r.FormValue(nodeTypeKey)
 	if !(nodeType == nodeTypeDataNode || nodeType == nodeTypeMetaNode || nodeType == nodeTypeAll) {
 		err = fmt.Errorf("nodeType must be dataNode or metaNode or all")

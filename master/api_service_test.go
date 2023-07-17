@@ -3945,3 +3945,40 @@ func TestSetRemoteCacheHandler(t *testing.T) {
 	}
 
 }
+
+func TestSetOfflineState(t *testing.T) {
+	var (
+		addrList []string
+		nodeType string
+		zoneName string
+		state    string
+		err      error
+	)
+	zoneName = "zone1"
+	state = "true"
+	nodeType = "all"
+	addrList = []string{
+		"127.0.0.1:9101",
+		"127.0.0.1:9102",
+		"127.0.0.1:8101",
+		"127.0.0.1:8102",
+		"127.0.0.1:10301",
+		"127.0.0.1:10302",
+	}
+	err = mc.AdminAPI().SetNodeToOfflineState(addrList, nodeType, zoneName, state)
+	assert.NoError(t, err)
+	for _, addr := range addrList {
+		if v, ok := server.cluster.dataNodes.Load(addr); ok {
+			node := v.(*DataNode)
+			assert.Equal(t, true, node.ToBeMigrated)
+		}
+		if v, ok := server.cluster.metaNodes.Load(addr); ok {
+			node := v.(*MetaNode)
+			assert.Equal(t, true, node.ToBeMigrated)
+		}
+		if v, ok := server.cluster.ecNodes.Load(addr); ok {
+			node := v.(*ECNode)
+			assert.Equal(t, true, node.ToBeMigrated)
+		}
+	}
+}

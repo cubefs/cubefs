@@ -1401,3 +1401,20 @@ func (api *AdminAPI) GetAllFlashNodes(getAllFlashNodes bool) (zoneFlashNodes map
 	}
 	return
 }
+
+// state: "true" or "false"
+func (api *AdminAPI) SetNodeToOfflineState(addrList []string, nodeType, zoneName, state string) (err error) {
+	var body []byte
+	if body, err = json.Marshal(addrList); err != nil {
+		return
+	}
+	var request = newAPIRequest(http.MethodPost, proto.AdminSetNodeStateByAddr)
+	request.addParam("nodeType", nodeType)
+	request.addParam("zoneName", zoneName)
+	request.addParam("state", state)
+	request.addBody(body)
+	if _, _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return nil
+}

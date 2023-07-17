@@ -398,6 +398,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminSetNodeState).
 		HandlerFunc(m.setNodeToOfflineState)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetNodeStateByAddr).
+		HandlerFunc(m.setNodeToOfflineStateByAddr)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminMergeNodeSet).
 		HandlerFunc(m.mergeNodeSet)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

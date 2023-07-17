@@ -4500,6 +4500,25 @@ func (c *Cluster) setDataNodeToOfflineState(startID, endID uint64, state bool, z
 	})
 }
 
+func (c *Cluster) setDataNodeToOfflineStateByAddr(addrMap map[string]struct{}, state bool, zoneName string) {
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		if _, ok := addrMap[node.Addr]; !ok {
+			return true
+		}
+		if node.ZoneName != zoneName {
+			return true
+		}
+		node.Lock()
+		node.ToBeMigrated = state
+		node.Unlock()
+		return true
+	})
+}
+
 func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, zoneName string) {
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		node, ok := value.(*MetaNode)
@@ -4507,6 +4526,25 @@ func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, z
 			return true
 		}
 		if node.ID < startID || node.ID > endID {
+			return true
+		}
+		if node.ZoneName != zoneName {
+			return true
+		}
+		node.Lock()
+		node.ToBeMigrated = state
+		node.Unlock()
+		return true
+	})
+}
+
+func (c *Cluster) setMetaNodeToOfflineStateByAddr(addrMap map[string]struct{}, state bool, zoneName string) {
+	c.metaNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+		if _, ok := addrMap[node.Addr]; !ok {
 			return true
 		}
 		if node.ZoneName != zoneName {

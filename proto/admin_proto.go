@@ -74,6 +74,7 @@ const (
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
 	AdminSetNodeState              = "/admin/setNodeState"
+	AdminSetNodeStateByAddr        = "/admin/setNodeStateByAddr"
 	AdminMergeNodeSet              = "/admin/mergeNodeSet"
 	AdminClusterAutoMergeNodeSet   = "/cluster/autoMergeNodeSet"
 	AdminApplyVolMutex             = "/vol/writeMutex/apply"
