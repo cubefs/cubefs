@@ -471,7 +471,7 @@ type metaPartition struct {
 	uidManager             *UidManager
 	xattrLock              sync.Mutex
 	mqMgr                  *MetaQuotaManager
-	nonIdempotent          sync.RWMutex
+	nonIdempotent          sync.Mutex
 	uniqChecker            *uniqChecker
 }
 
@@ -1110,7 +1110,7 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp.MaxInode = mp.GetCursor()
 	resp.InodeCount = uint64(mp.GetInodeTreeLen())
 	resp.DentryCount = uint64(mp.GetDentryTreeLen())
-	resp.ApplyID = mp.applyID
+	resp.ApplyID = mp.getApplyID()
 	if err != nil {
 		err = errors.Trace(err,
 			"[ResponseLoadMetaPartition] check snapshot")
