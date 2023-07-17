@@ -731,6 +731,7 @@ func (txInfo *TransactionInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	var dataLen uint32
+	txInfo.TxInodeInfos = map[uint64]*TxInodeInfo{}
 	for i := uint32(0); i < inodeNum; i++ {
 		if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 			return
@@ -747,6 +748,7 @@ func (txInfo *TransactionInfo) Unmarshal(raw []byte) (err error) {
 	}
 
 	var dentryNum uint32
+	txInfo.TxDentryInfos = map[string]*TxDentryInfo{}
 	if err = binary.Read(buff, binary.BigEndian, &dentryNum); err != nil {
 		return
 	}

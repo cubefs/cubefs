@@ -547,6 +547,9 @@ type MetaPartitionReport struct {
 	VolName          string
 	InodeCnt         uint64
 	DentryCnt        uint64
+	TxCnt            uint64
+	TxRbInoCnt       uint64
+	TxRbDenCnt       uint64
 	FreeListLen      uint64
 	UidInfo          []*UidReportSpaceInfo
 	QuotaReportInfos []*QuotaReportInfo
@@ -671,6 +674,9 @@ type MetaPartitionView struct {
 	InodeCount  uint64
 	DentryCount uint64
 	FreeListLen uint64
+	TxCnt       uint64
+	TxRbInoCnt  uint64
+	TxRbDenCnt  uint64
 	IsRecover   bool
 	Members     []string
 	LeaderAddr  string

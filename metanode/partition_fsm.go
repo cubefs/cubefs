@@ -309,7 +309,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
 		}
 	case opFSMTxInit:
-		txInfo := proto.NewTxInfoBItem("")
+		txInfo := proto.NewTransactionInfo(0, 0)
 		if err = txInfo.Unmarshal(msg.V); err != nil {
 			return
 		}
@@ -355,13 +355,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp = mp.fsmTxSetState(req)
 	case opFSMTxCommitRM:
 		req := &proto.TransactionInfo{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
+		if err = req.Unmarshal(msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmTxCommitRM(req)
 	case opFSMTxRollbackRM:
 		req := &proto.TransactionInfo{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
+		if err = req.Unmarshal(msg.V); err != nil {
 			return
 		}
 		resp = mp.fsmTxRollbackRM(req)
