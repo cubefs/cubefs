@@ -188,12 +188,11 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si = new(MetaItemIterator)
 	si.fileRootDir = mp.config.RootDir
 	si.SnapFormatVersion = mp.manager.metaNode.raftSyncSnapFormatVersion
-	si.applyID = mp.applyID
+	mp.nonIdempotent.Lock()
+	si.applyID = mp.getApplyID()
 	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 	si.cursor = mp.GetCursor()
 	si.uniqID = mp.GetUniqId()
-
-	mp.nonIdempotent.Lock()
 	si.inodeTree = mp.inodeTree.GetTree()
 	si.dentryTree = mp.dentryTree.GetTree()
 	si.extendTree = mp.extendTree.GetTree()
