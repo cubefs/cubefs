@@ -31,7 +31,7 @@ var mp2 *metaPartition
 var mp3 *metaPartition
 
 //var DirModeType uint32 = 2147484141
-var FileModeType uint32 = 420
+const FileModeType uint32 = 420
 
 const (
 	MemberAddrs = "127.0.0.1:17210,127.0.0.2:17210,127.0.0.3:17210"
@@ -82,33 +82,10 @@ func initMps(t *testing.T) {
 	mp1 = newMetaPartition(10001, &metadataManager{})
 	mp2 = newMetaPartition(10002, &metadataManager{})
 	mp3 = newMetaPartition(10003, &metadataManager{})
-
-	//txMgr := NewTransactionManager(nil)
-	//txRsc := NewTransactionResource(nil)
-	//ino := testCreateInode(nil, DirModeType)
-	//t.Logf("cursor %v create ino %v", mp.config.Cursor, ino)
 }
 
 func (i *Inode) Equal(inode *Inode) bool {
-	i.RLock()
-	if inode.Uid != i.Uid || inode.Gid != i.Gid || inode.Size != i.Size || inode.Generation != i.Generation ||
-		inode.CreateTime != i.CreateTime || inode.ModifyTime != i.ModifyTime || inode.AccessTime != i.AccessTime ||
-		inode.NLink != i.NLink || inode.Flag != i.Flag || inode.Reserved != i.Reserved {
-		return false
-	}
-	if !reflect.DeepEqual(inode.LinkTarget, i.LinkTarget) {
-		return false
-	}
-
-	if !reflect.DeepEqual(inode.Extents.eks, i.Extents.eks) {
-		return false
-	}
-
-	if !reflect.DeepEqual(inode.ObjExtents.eks, i.ObjExtents.eks) {
-		return false
-	}
-	i.RUnlock()
-	return true
+	return reflect.DeepEqual(i, inode)
 }
 
 func (i *TxRollbackInode) Equal(txRbInode *TxRollbackInode) bool {
@@ -124,16 +101,76 @@ func (i *TxRollbackInode) Equal(txRbInode *TxRollbackInode) bool {
 	return true
 }
 
-func TestRollbackInodeSerialization(t *testing.T) {
+func TestRollbackInodeLess(t *testing.T) {
+
+	inode := NewInode(101, 0)
 	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
-	inode := NewInode(inodeNum, FileModeType)
 	rbInode := NewTxRollbackInode(inode, []uint32{}, txInodeInfo, TxAdd)
+
+	rbInode2 := &TxRollbackInode{
+		inode: NewInode(100, 0),
+	}
+	assert.False(t, rbInode.Less(rbInode2))
+
+	rbInode2.txInodeInfo = proto.NewTxInodeInfo("", inodeNum+1, 0)
+	assert.True(t, rbInode.Less(rbInode2))
+}
+
+func TestRollbackInodeSerialization(t *testing.T) {
+	inode := &Inode{
+		Inode:      1024,
+		Gid:        11,
+		Uid:        10,
+		Size:       101,
+		Type:       0755,
+		Generation: 13,
+		CreateTime: 102,
+		AccessTime: 104,
+		ModifyTime: 107,
+		LinkTarget: []byte("link target"),
+		NLink:      7,
+		Flag:       1,
+		Reserved:   3,
+		Extents: NewSortedExtentsFromEks([]proto.ExtentKey{
+			{11, 12, 13, 0, 0, 0},
+		}),
+		ObjExtents: NewSortedObjExtents(),
+	}
+
+	ids := []uint32{11, 13}
+
+	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
+	rbInode := NewTxRollbackInode(inode, ids, txInodeInfo, TxAdd)
 	var data []byte
 	data, _ = rbInode.Marshal()
 
 	txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 	txRbInode.Unmarshal(data)
+
 	assert.True(t, rbInode.Equal(txRbInode))
+
+	inode.Inode = 1023
+	assert.False(t, rbInode.Equal(txRbInode))
+
+	cpRbInode := rbInode.Copy()
+	assert.True(t, rbInode.Equal(cpRbInode.(*TxRollbackInode)))
+}
+
+func TestTxRollbackDentry_Less(t *testing.T) {
+	rb1 := &TxRollbackDentry{
+		txDentryInfo: &proto.TxDentryInfo{ParentId: 1001, Name: "tt"},
+	}
+
+	rb2 := &TxRollbackDentry{
+		txDentryInfo: &proto.TxDentryInfo{ParentId: 1002, Name: "tt"},
+	}
+
+	assert.True(t, rb1.Less(rb2))
+
+	rb3 := &TxRollbackDentry{
+		txDentryInfo: &proto.TxDentryInfo{ParentId: 1001, Name: "ta"},
+	}
+	assert.False(t, rb1.Less(rb3))
 }
 
 func TestRollbackDentrySerialization(t *testing.T) {
@@ -151,6 +188,12 @@ func TestRollbackDentrySerialization(t *testing.T) {
 	txRbDentry := NewTxRollbackDentry(nil, nil, 0)
 	txRbDentry.Unmarshal(data)
 	assert.True(t, reflect.DeepEqual(rbDentry, txRbDentry))
+
+	txDentryInfo.MpMembers = "tttt"
+	assert.False(t, reflect.DeepEqual(rbDentry, txRbDentry))
+
+	cpDentryInfo := rbDentry.Copy()
+	assert.True(t, reflect.DeepEqual(rbDentry, cpDentryInfo.(*TxRollbackDentry)))
 }
 
 func TestNextTxID(t *testing.T) {
@@ -166,11 +209,15 @@ func TestNextTxID(t *testing.T) {
 func TestTxMgrOp(t *testing.T) {
 	initMps(t)
 	txInfo := proto.NewTransactionInfo(5, proto.TxTypeCreate)
+	assert.True(t, txInfo.State == proto.TxStateInit)
+
 	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
 	if !txInfo.IsInitialized() {
 		mp1.initTxInfo(txInfo)
 	}
+
+	assert.True(t, txInfo.State == proto.TxStatePreCommit)
 
 	txId := txInfo.TxID
 	txMgr := mp1.txProcessor.txManager
@@ -184,13 +231,6 @@ func TestTxMgrOp(t *testing.T) {
 	//get
 	gotTxInfo := txMgr.getTransaction(txId)
 	assert.Equal(t, txInfo, gotTxInfo)
-
-	//get Tx Inode Info
-	gotTxInodeInfo := txMgr.getTxInodeInfo(txId, inodeNum)
-	assert.True(t, nil == gotTxInodeInfo)
-
-	gotTxDentryInfo := txMgr.getTxDentryInfo(txId, txDentryInfo.GetKey())
-	assert.True(t, gotTxDentryInfo == txDentryInfo)
 
 	//rollback
 	txMgr.rollbackTxInfo(txId)
@@ -224,7 +264,7 @@ func TestTxRscOp(t *testing.T) {
 	status := txRsc.addTxRollbackInode(rbInode1)
 	assert.Equal(t, proto.OpOk, status)
 	status = txRsc.addTxRollbackInode(rbInode1)
-	assert.Equal(t, proto.OpOk, status)
+	assert.Equal(t, proto.OpExistErr, status)
 
 	inTx, _ := txRsc.isInodeInTransction(inode1)
 	assert.True(t, inTx)
@@ -433,65 +473,11 @@ func TestTxTreeRollback(t *testing.T) {
 	assert.Equal(t, expectedId, txId)
 	txMgr.registerTransaction(txInfo)
 
-	//txInfo.SetFinish()
-	//txInfo.DoneTime = time.Now().Unix() - 130
-	//txInfo.State = proto.TxStateCommitDone
-	//go txMgr.processExpiredTransactions()
-	//
-	//time.Sleep(2 * time.Second)
-	//assert.True(t, txMgr.txTree.Len() == 0)
-
 	txMgr.registerTransaction(txInfo)
 	txMgr.txProcessor.mask |= proto.TxPause
 	time.Sleep(2 * time.Second)
 	assert.True(t, txMgr.txTree.Len() == 1)
 }
-
-//func TestMultiStartExpireCheck(t *testing.T) {
-//	initMps(t)
-//
-//	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
-//	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
-//	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
-//	if !txInfo.IsInitialized() {
-//		mp1.initTxInfo(txInfo)
-//	}
-//
-//	txMgr := mp1.txProcessor.txManager
-//	wg := txMgr.Start()
-//	assert.True(t, wg != nil)
-//	assert.True(t, nil == txMgr.Start())
-//
-//	var exit int32
-//	go func() {
-//		wg.Wait()
-//		atomic.StoreInt32(&exit, 1)
-//	}()
-//
-//	cFunc := func(wgx *sync.WaitGroup) {
-//		txMgr.stopProcess()
-//		i := 1
-//		for {
-//			time.Sleep(time.Millisecond * 50)
-//			if atomic.LoadInt32(&exit) == 1 {
-//				wgx.Done()
-//				break
-//			}
-//			i++
-//			if i > 100 {
-//				wgx.Done()
-//				break
-//			}
-//		}
-//	}
-//	//time.Sleep(time.Second*5)
-//	var wg1 sync.WaitGroup
-//	wg1.Add(1)
-//	cFunc(&wg1)
-//
-//	wg1.Wait()
-//	assert.True(t, txMgr.started == false)
-//}
 
 func TestCheckTxLimit(t *testing.T) {
 	initMps(t)
