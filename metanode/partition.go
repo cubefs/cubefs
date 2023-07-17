@@ -174,6 +174,8 @@ type OpTransaction interface {
 	TxCommit(req *proto.TxApplyRequest, p *Packet) (err error)
 	TxRollback(req *proto.TxApplyRequest, p *Packet) (err error)
 	TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error)
+	TxGetCnt() (uint64, uint64, uint64)
+	TxGetTree() (*BTree, *BTree, *BTree)
 }
 
 // OpExtent defines the interface for the extent operations.

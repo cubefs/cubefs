@@ -187,6 +187,9 @@ type VolStatInfo struct {
 	CacheUsedRatio        string
 	EnableToken           bool
 	InodeCount            uint64
+	TxCnt                 uint64
+	TxRbInoCnt            uint64
+	TxRbDenCnt            uint64
 	DpReadOnlyWhenVolFull bool
 }
 

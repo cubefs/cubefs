@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -99,7 +100,10 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	log.LogInfof("HandleMetadataOperation input info op (%s), remote %s", p.String(), remoteAddr)
+	start := time.Now()
+	if log.EnableInfo() {
+		log.LogInfof("HandleMetadataOperation input info op (%s), data %s, remote %s", p.String(), string(p.Data), remoteAddr)
+	}
 
 	metric := exporter.NewTPCnt(p.GetOpMsg())
 	labels := m.getPacketLabels(p)
@@ -107,6 +111,12 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		metric.SetWithLabels(err, labels)
 		if err != nil {
 			log.LogWarnf("HandleMetadataOperation output (%s), remote %s, err %s", p.String(), remoteAddr, err.Error())
+			return
+		}
+
+		if log.EnableInfo() {
+			log.LogInfof("HandleMetadataOperation out (%s), result (%s), remote %s, cost %s", p.String(),
+				p.GetResultMsg(), remoteAddr, time.Since(start).String())
 		}
 	}()
 

@@ -146,7 +146,6 @@ func mockPartitionRaft(ctrl *gomock.Controller) *metaPartition {
 	raft := raftstoremock.NewMockPartition(ctrl)
 	idx := uint64(0)
 	raft.EXPECT().Submit(gomock.Any()).DoAndReturn(func(cmd []byte) (resp interface{}, err error) {
-		// Apply
 		idx++
 		return partition.Apply(cmd, idx)
 	}).AnyTimes()
