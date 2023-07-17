@@ -82,6 +82,14 @@ type Disk struct {
 	fdLimit FDLimit
 
 	forceFlushFDParallelism uint64 // 控制Flush文件句柄的并发度
+
+	// sfx compressible ssd attribute
+	isSfx              bool
+	devName            string
+	totalPhysicalSpace uint64 //total physical space .Byte
+	freePhysicalSpace  uint64 //free physical space .Byte
+	physicalUsedRatio  uint32 //physical space usage ratio
+	compressionRatio   uint32 //full disk compression ratio
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -99,6 +107,10 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, 
 	d.fdCount = 0
 	d.fdLimit = fdLimit
 	d.forceFlushFDParallelism = DefaultForceFlushFDParallelismOnDisk
+	d.isSfx, d.devName = GetDevCheckSfx(d.Path)
+	if !d.isSfx {
+		log.LogInfof("%s not on sfx csd\n", d.Path)
+	}
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.startScheduler()
@@ -205,6 +217,19 @@ func (d *Disk) computeUsage() (err error) {
 	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)",
 		d.Path, d.Total, d.Available, d.Used)
 
+	if d.isSfx {
+		var dStatus sfx_status
+		dStatus, err = GetSfxStatus(d.devName)
+		if err != nil {
+			return
+		}
+		d.totalPhysicalSpace = dStatus.totalPhysicalCapability
+		d.freePhysicalSpace = dStatus.freePhysicalCapability
+		d.physicalUsedRatio = dStatus.physicalUsageRatio
+		d.compressionRatio = dStatus.compRatio
+		log.LogDebugf("disk(%v) totalPhysicalSpace(%v) freePhysicalSpace(%v) physicalUsedRatio(%v) compressionRatio(%v)",
+			d.devName, d.totalPhysicalSpace, d.freePhysicalSpace, d.physicalUsedRatio, d.compressionRatio)
+	}
 	return
 }
 
