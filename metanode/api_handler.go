@@ -561,12 +561,31 @@ func (m *MetaNode) getAllTxHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		val       []byte
 		delimiter = []byte{',', '\n'}
-		//isFirst   = true
+		isFirst   = true
 	)
 
 	f := func(i BtreeItem) bool {
-		if _, err = w.Write(delimiter); err != nil {
-			return false
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false
+			}
+		} else {
+			isFirst = false
+		}
+
+		if ino, ok := i.(*TxRollbackInode); ok {
+			_, err = w.Write([]byte(ino.ToString()))
+			if err != nil {
+				return false
+			}
+			return true
+		}
+		if den, ok := i.(*TxRollbackDentry); ok {
+			_, err = w.Write([]byte(den.ToString()))
+			if err != nil {
+				return false
+			}
+			return true
 		}
 
 		val, err = json.Marshal(i)
