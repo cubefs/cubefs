@@ -26,12 +26,11 @@ import (
 )
 
 const (
-	defaultTopologyUpdateIntervalMin   = 1
-	defaultVolumeCacheUpdateIntervalS  = 10
-	defaultRetryHostsCnt               = 1
-	defaultClientTimeoutMs             = int64(1000)
-	defaultHostSyncIntervalMs          = int64(1000)
-	defaultKafkaOffsetCommitIntervalMs = 1000
+	defaultTopologyUpdateIntervalMin  = 1
+	defaultVolumeCacheUpdateIntervalS = 10
+	defaultRetryHostsCnt              = 1
+	defaultClientTimeoutMs            = int64(1000)
+	defaultHostSyncIntervalMs         = int64(1000)
 
 	defaultMaxDiskFreeChunkCnt = int64(1024)
 	defaultMinDiskFreeChunkCnt = int64(20)
@@ -49,6 +48,8 @@ const (
 	defaultDeleteLogChunkSize     = uint(29)
 	defaultDeleteDelayH           = int64(72)
 	defaultDeleteNoDelay          = int64(0)
+	defaultMaxBatchSize           = 10
+	defaultBatchIntervalSec       = 2
 
 	defaultTickInterval   = uint32(1)
 	defaultHeartbeatTicks = uint32(30)
@@ -128,7 +129,6 @@ type Topics struct {
 type KafkaConfig struct {
 	BrokerList             []string `json:"broker_list"`
 	Topics                 Topics   `json:"topics"`
-	CommitIntervalMs       int      `json:"commit_interval_ms"`
 	FailMsgSenderTimeoutMs int64    `json:"fail_msg_sender_timeout_ms"`
 }
 
@@ -207,7 +207,6 @@ func (c *Config) fixKafkaConfig() {
 	defaulter.Empty(&c.Kafka.Topics.BlobDelete, defaultBlobDeleteNormalTopic)
 	defaulter.Empty(&c.Kafka.Topics.BlobDeleteFailed, defaultBlobDeleteFailedTopic)
 	defaulter.Empty(&c.Kafka.Topics.ShardRepairFailed, defaultShardRepairFailedTopic)
-	defaulter.LessOrEqual(&c.Kafka.CommitIntervalMs, defaultKafkaOffsetCommitIntervalMs)
 	defaulter.LessOrEqual(&c.Kafka.FailMsgSenderTimeoutMs, defaultClientTimeoutMs)
 	if len(c.Kafka.Topics.ShardRepair) == 0 {
 		c.Kafka.Topics.ShardRepair = []string{defaultShardRepairNormalTopic, defaultShardRepairPriorityTopic}
@@ -273,6 +272,8 @@ func (c *Config) fixBlobDeleteConfig() error {
 	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishTimeM, defaultMessagePunishTimeM)
 	defaulter.Equal(&c.BlobDelete.SafeDelayTimeH, defaultDeleteDelayH)
 	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
+	defaulter.Equal(&c.BlobDelete.MaxBatchSize, defaultMaxBatchSize)
+	defaulter.Equal(&c.BlobDelete.BatchIntervalS, defaultBatchIntervalSec)
 	c.BlobDelete.Kafka.BrokerList = c.Kafka.BrokerList
 	c.BlobDelete.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
 	c.BlobDelete.Kafka.TopicNormal = c.Kafka.Topics.BlobDelete

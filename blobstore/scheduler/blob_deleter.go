@@ -172,6 +172,8 @@ type BlobDeleteConfig struct {
 	MessagePunishTimeM     int `json:"message_punish_time_m"`
 
 	TaskPoolSize    int              `json:"task_pool_size"`
+	MaxBatchSize    int              `json:"max_batch_size"`
+	BatchIntervalS  int              `json:"batch_interval_s"`
 	SafeDelayTimeH  int64            `json:"safe_delay_time_h"`
 	DeleteHourRange HourRange        `json:"delete_hour_range"`
 	DeleteLog       recordlog.Config `json:"delete_log"`
@@ -304,8 +306,12 @@ func (mgr *BlobDeleteMgr) startConsumer() error {
 		return nil
 	}
 	for _, topic := range mgr.cfg.topics() {
-		consumer, err := mgr.kafkaConsumerClient.StartKafkaConsumer(proto.TaskTypeBlobDelete,
-			topic, mgr.Consume)
+		consumer, err := mgr.kafkaConsumerClient.StartKafkaConsumer(base.KafkaConsumerCfg{
+			TaskType:     proto.TaskTypeBlobDelete,
+			Topic:        topic,
+			MaxBatchSize: mgr.cfg.MaxBatchSize,
+			MaxWaitTimeS: mgr.cfg.BatchIntervalS,
+		}, mgr.Consume)
 		if err != nil {
 			return err
 		}
@@ -345,64 +351,89 @@ func (mgr *BlobDeleteMgr) GetErrorStats() (errStats []string, totalErrCnt uint64
 }
 
 // Consume consume kafka message: if message is not consume will return false, otherwise return true
-func (mgr *BlobDeleteMgr) Consume(msg *sarama.ConsumerMessage, consumerPause base.ConsumerPause) (consumed bool) {
+func (mgr *BlobDeleteMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause base.ConsumerPause) (consumed bool) {
+	maxBatch := mgr.cfg.MaxBatchSize
+	if maxBatch > len(msgs) {
+		maxBatch = len(msgs)
+	}
 	var (
-		ret    delBlobRet
-		delMsg *proto.DeleteMsg
-		span   trace.Span
-		ctx    context.Context
+		rets    = make([]delBlobRet, maxBatch)
+		delMsgs = make([]*proto.DeleteMsg, maxBatch)
+		ctxs    = make([]context.Context, maxBatch)
 	)
-	defer func() {
-		switch ret.status {
+	defer mgr.handleResult(ctxs, rets, delMsgs, maxBatch)
+
+	span1 := trace.SpanFromContextSafe(context.Background())
+	span1.Debugf("start delete len[%d], msgs[%+v]", len(msgs), msgs)
+	wg := sync.WaitGroup{}
+	wg.Add(maxBatch)
+	for i, v := range msgs {
+		idx, msg := i, v
+		mgr.taskPool.Run(func() {
+			mgr.handleOneMsg(ctxs, rets, delMsgs, idx, msg, consumerPause)
+			wg.Done()
+		})
+	}
+
+	wg.Wait()
+	for _, v := range rets {
+		if v.status == DeleteStatusUndo {
+			return false
+		}
+	}
+	return true
+}
+
+func (mgr *BlobDeleteMgr) handleOneMsg(ctxs []context.Context, rets []delBlobRet, delMsgs []*proto.DeleteMsg,
+	i int, msg *sarama.ConsumerMessage, consumerPause base.ConsumerPause) {
+	_, ctxs[i] = trace.StartSpanFromContext(context.Background(), "BlobDeleteConsume")
+
+	err := json.Unmarshal(msg.Value, &delMsgs[i])
+	if err != nil {
+		rets[i] = delBlobRet{
+			status: DeleteStatusUnexpect,
+			err:    proto.ErrInvalidMsg,
+		}
+		return
+	}
+
+	if !delMsgs[i].IsValid() {
+		rets[i] = delBlobRet{
+			status: DeleteStatusUnexpect,
+			err:    proto.ErrInvalidMsg,
+		}
+		return
+	}
+
+	_, ctxs[i] = trace.StartSpanFromContextWithTraceID(ctxs[i], "BlobDeleteConsume", delMsgs[i].ReqId)
+	rets[i] = mgr.consume(ctxs[i], delMsgs[i], consumerPause)
+}
+
+func (mgr *BlobDeleteMgr) handleResult(ctxs []context.Context, rets []delBlobRet, delMsgs []*proto.DeleteMsg, maxBatch int) {
+	for i := 0; i < maxBatch; i++ {
+		span := trace.SpanFromContextSafe(ctxs[i])
+		switch rets[i].status {
 		case DeleteStatusDone:
-			span.Debugf("delete success: vid[%d], bid[%d]", delMsg.Vid, delMsg.Bid)
+			span.Debugf("delete success: vid[%d], bid[%d]", delMsgs[i].Vid, delMsgs[i].Bid)
 			mgr.delSuccessCounterByMin.Add()
 			mgr.delSuccessCounter.Inc()
 
 		case DeleteStatusFailed:
 			span.Warnf("delete failed and send msg to fail queue: vid[%d], bid[%d] retry[%d], err[%+v]",
-				delMsg.Vid, delMsg.Bid, delMsg.Retry, ret.err)
+				delMsgs[i].Vid, delMsgs[i].Bid, delMsgs[i].Retry, rets[i].err)
 			mgr.delFailCounter.Inc()
 			mgr.delFailCounterByMin.Add()
-			mgr.errStatsDistribution.AddFail(ret.err)
+			mgr.errStatsDistribution.AddFail(rets[i].err)
 
-			base.InsistOn(ctx, "deleter send2FailQueue", func() error {
-				return mgr.send2FailQueue(ctx, delMsg)
+			base.InsistOn(ctxs[i], "deleter send2FailQueue", func() error {
+				return mgr.send2FailQueue(ctxs[i], delMsgs[i])
 			})
 		case DeleteStatusUnexpect:
-			span.Warnf("unexpected result will ignore: msg[%+v], err[%+v]", delMsg, ret.err)
+			span.Warnf("unexpected result will ignore: msg[%+v], err[%+v]", delMsgs[i], rets[i].err)
 		case DeleteStatusUndo:
-			span.Warnf("delete message unconsume: msg[%+v]", delMsg)
+			span.Warnf("delete message unconsume: msg[%+v]", delMsgs[i])
 		}
-	}()
-	span = trace.SpanFromContextSafe(context.Background())
-
-	err := json.Unmarshal(msg.Value, &delMsg)
-	if err != nil {
-		ret = delBlobRet{
-			status: DeleteStatusUnexpect,
-			err:    proto.ErrInvalidMsg,
-		}
-		return true
 	}
-
-	if !delMsg.IsValid() {
-		ret = delBlobRet{
-			status: DeleteStatusUnexpect,
-			err:    proto.ErrInvalidMsg,
-		}
-		return true
-	}
-	span, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "BlobDeleteConsume", delMsg.ReqId)
-
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	mgr.taskPool.Run(func() {
-		ret = mgr.consume(ctx, delMsg, consumerPause)
-		wg.Done()
-	})
-	wg.Wait()
-	return ret.status != DeleteStatusUndo
 }
 
 func (mgr *BlobDeleteMgr) consume(ctx context.Context, delMsg *proto.DeleteMsg, consumerPause base.ConsumerPause) delBlobRet {
@@ -438,6 +469,7 @@ func (mgr *BlobDeleteMgr) consume(ctx context.Context, delMsg *proto.DeleteMsg, 
 		return delBlobRet{status: DeleteStatusFailed, err: errcode.ErrDiskBroken}
 	}
 
+	span.Debugf("start delete msg: [%+v]", delMsg)
 	if err := mgr.deleteWithCheckVolConsistency(ctx, delMsg); err != nil {
 		return delBlobRet{status: DeleteStatusFailed, err: err}
 	}
