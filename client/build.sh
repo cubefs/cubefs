@@ -91,7 +91,7 @@ build_client_dynamic() {
 
     # dynamic fuse client, for libc version >= 2.14
     go build -ldflags "${goflag}" -o ${bin}/cfs-client ${dir}/fuse/run_fuse_client.go ${dir}/fuse/prepare_lib.go
-    go build -ldflags "${goflag}" -linkshared -o ${bin}/cfs-client-inner ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go
+    go build -ldflags "${goflag} -r /usr/lib64" -linkshared -o ${bin}/cfs-client-inner ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go
 
     # static fuse client, for libc version < 2.14
     go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
