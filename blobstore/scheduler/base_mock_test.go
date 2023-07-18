@@ -8,7 +8,6 @@ import (
 	reflect "reflect"
 
 	sarama "github.com/Shopify/sarama"
-	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	base "github.com/cubefs/cubefs/blobstore/scheduler/base"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -37,18 +36,18 @@ func (m *MockKafkaConsumer) EXPECT() *MockKafkaConsumerMockRecorder {
 }
 
 // StartKafkaConsumer mocks base method.
-func (m *MockKafkaConsumer) StartKafkaConsumer(arg0 proto.TaskType, arg1 string, arg2 func(*sarama.ConsumerMessage, base.ConsumerPause) bool) (base.GroupConsumer, error) {
+func (m *MockKafkaConsumer) StartKafkaConsumer(arg0 base.KafkaConsumerCfg, arg1 func([]*sarama.ConsumerMessage, base.ConsumerPause) bool) (base.GroupConsumer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StartKafkaConsumer", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "StartKafkaConsumer", arg0, arg1)
 	ret0, _ := ret[0].(base.GroupConsumer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // StartKafkaConsumer indicates an expected call of StartKafkaConsumer.
-func (mr *MockKafkaConsumerMockRecorder) StartKafkaConsumer(arg0, arg1, arg2 interface{}) *gomock.Call {
+func (mr *MockKafkaConsumerMockRecorder) StartKafkaConsumer(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartKafkaConsumer", reflect.TypeOf((*MockKafkaConsumer)(nil).StartKafkaConsumer), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartKafkaConsumer", reflect.TypeOf((*MockKafkaConsumer)(nil).StartKafkaConsumer), arg0, arg1)
 }
 
 // MockGroupConsumer is a mock of GroupConsumer interface.
