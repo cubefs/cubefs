@@ -18,7 +18,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 	"sync"
 )
 
@@ -128,6 +130,15 @@ func (tx *Transaction) Commit(mw *MetaWrapper) (err error) {
 		return fmt.Errorf("transaction commit: can't find target mp for tx, mpId %d", tx.txInfo.TmID)
 	}
 
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("txCommit", err, bgTime, 1)
+	}()
+	metric := exporter.NewTPCnt("OpTxCommit")
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
 	req := &proto.TxApplyRequest{
 		TxID:        tx.txInfo.TxID,
 		TmID:        uint64(tx.txInfo.TmID),
@@ -181,6 +192,12 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 		return
 	}
 
+	var err error
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("txRollback", err, bgTime, 1)
+	}()
+
 	req := &proto.TxApplyRequest{
 		TxID:        tx.txInfo.TxID,
 		TmID:        uint64(tx.txInfo.TmID),
@@ -191,12 +208,17 @@ func (tx *Transaction) Rollback(mw *MetaWrapper) {
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpTxRollback
 	packet.PartitionID = tmMP.PartitionID
-	err := packet.MarshalData(req)
+	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogErrorf("Transaction Rollback: TmID(%v), txID(%v), req(%v) err(%v)",
 			tx.txInfo.TmID, tx.txInfo.TxID, *req, err)
 		return
 	}
+
+	metric := exporter.NewTPCnt("OpTxRollback")
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
 
 	packet, err = mw.sendToMetaPartition(tmMP, packet)
 	if err != nil {
