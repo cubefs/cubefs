@@ -217,7 +217,6 @@ func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) er
 }
 
 func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet) error {
-
 	status, err := mp.txProcessor.txManager.commitTx(req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))

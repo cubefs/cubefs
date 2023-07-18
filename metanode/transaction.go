@@ -382,7 +382,7 @@ func (tm *TransactionManager) processExpiredTransactions() {
 	log.LogInfof("processExpiredTransactions for mp[%v] started", mpId)
 	clearInterval := time.Second * 60
 	clearTimer := time.NewTimer(clearInterval)
-	txCheckVal := time.Second * 30
+	txCheckVal := time.Second * 3
 	txCheckTimer := time.NewTimer(txCheckVal)
 
 	defer func() {
@@ -401,7 +401,7 @@ func (tm *TransactionManager) processExpiredTransactions() {
 		}
 
 		if _, ok := tm.txProcessor.mp.IsLeader(); !ok && !test {
-			log.LogInfof("processExpiredTransactions: not leader sleep 1s, mp %d", mpId)
+			log.LogDebugf("processExpiredTransactions: not leader sleep 1s, mp %d", mpId)
 			time.Sleep(time.Second)
 			continue
 		}
