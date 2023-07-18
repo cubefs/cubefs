@@ -188,10 +188,10 @@ func (partition *DataPartition) createTaskToResetRaftMembers(newPeers []proto.Pe
 	return
 }
 
-func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, peers []proto.Peer, hosts []string, learners []proto.Learner, createType int, volumeHAType proto.CrossRegionHAType) (task *proto.AdminTask) {
+func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dataPartitionSize uint64, replicaNum uint8, peers []proto.Peer, hosts []string, learners []proto.Learner, createType int, volumeHAType proto.CrossRegionHAType) (task *proto.AdminTask) {
 
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
-		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), hosts, createType, learners, volumeHAType))
+		partition.VolName, partition.PartitionID, peers, int(dataPartitionSize), int(replicaNum), hosts, createType, learners, volumeHAType))
 	partition.resetTaskID(task)
 	return
 }

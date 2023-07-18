@@ -122,7 +122,7 @@ func (dp *DataPartition) handleRaftApplyMemberChange(confChange *raftproto.ConfC
 			return
 		}
 	}
-	dp.ProposeFetchVolHAType()
+	dp.proposeUpdateVolumeInfo()
 	return
 }
 
@@ -130,9 +130,13 @@ func (dp *DataPartition) handleRaftApplyMemberChange(confChange *raftproto.ConfC
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
 func (dp *DataPartition) handleRaftSnapshot(recoverNode uint64) (raftproto.Snapshot, error) {
-	snapIterator := NewItemIterator(dp.applyStatus.LastTruncate())
-	log.LogInfof("SendSnapShot PartitionID(%v) Snapshot lastTruncateID(%v) currentApplyID(%v)",
-		dp.partitionID, dp.applyStatus.LastTruncate(), dp.applyStatus.Applied())
+	var statusSnap = dp.applyStatus.Snap()
+	var snapshotIndex = statusSnap.NextTruncate()
+	snapIterator := NewItemIterator(snapshotIndex)
+	if log.IsInfoEnabled() {
+		log.LogInfof("partition[%v] [lastTruncate: %v, nextTruncate: %v, applied: %v] generate raft snapshot [index: %v] for peer[%v]",
+			dp.partitionID, statusSnap.LastTruncate(), statusSnap.NextTruncate(), statusSnap.Applied(), snapshotIndex, recoverNode)
+	}
 	return snapIterator, nil
 }
 

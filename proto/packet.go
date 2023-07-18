@@ -467,6 +467,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpDeleteFile"
 	case OpGetAppliedId:
 		m = "OpGetAppliedId"
+	case OpGetPersistedAppliedId:
+		m = "OpGetPersistedAppliedId"
 	case OpGetPartitionSize:
 		m = "OpGetPartitionSize"
 	case OpSyncWrite:

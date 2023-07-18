@@ -48,8 +48,8 @@ type LogStatus struct {
 }
 
 type PendingInfo struct {
-	Index      uint64
-	Type       string
+	Index uint64
+	Type  string
 }
 
 // Status raft status
@@ -71,6 +71,8 @@ type Status struct {
 	State             string // leader、follower、candidate
 	Replicas          map[uint64]*ReplicaStatus
 	Log               LogStatus
+	RistState         string
+	Mode              string
 }
 
 func (s *Status) String() string {

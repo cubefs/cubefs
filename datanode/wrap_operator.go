@@ -1056,9 +1056,8 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	minAppliedID := binary.BigEndian.Uint64(p.Data[0:8])
 	if minAppliedID > 0 {
-		partition.SetMinAppliedID(minAppliedID)
+		partition.AdvanceNextTruncate(minAppliedID)
 	}
-	log.LogDebugf("[handleBroadcastMinAppliedID] partition(%v) minAppliedID(%v)", partition.partitionID, minAppliedID)
 	p.PacketOkReply()
 	return
 }

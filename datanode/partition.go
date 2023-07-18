@@ -72,6 +72,7 @@ type DataPartitionMetadata struct {
 	Peers                   []proto.Peer
 	Hosts                   []string
 	Learners                []proto.Learner
+	ReplicaNum              int
 	DataPartitionCreateType int
 	LastTruncateID          uint64
 	VolumeHAType            proto.CrossRegionHAType
@@ -93,6 +94,7 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 			reflect.DeepEqual(md.Peers, other.Peers) &&
 			reflect.DeepEqual(md.Hosts, other.Hosts) &&
 			reflect.DeepEqual(md.Learners, other.Learners) &&
+			md.ReplicaNum == other.ReplicaNum &&
 			md.DataPartitionCreateType == other.DataPartitionCreateType &&
 			md.LastTruncateID == other.LastTruncateID &&
 			md.VolumeHAType == other.VolumeHAType) &&
@@ -228,10 +230,9 @@ type DataPartition struct {
 	needServerFaultCheck  bool
 	serverFaultCheckLevel FaultOccurredCheckLevel
 	applyStatus           *WALApplyStatus
-	minAppliedID          uint64
 
-	repairC         chan struct{}
-	fetchVolHATypeC chan struct{}
+	repairC            chan struct{}
+	updateVolInfoPropC chan struct{}
 
 	stopOnce  sync.Once
 	stopRaftC chan uint64
@@ -346,6 +347,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 		VolName:       meta.VolumeID,
 		PartitionSize: meta.PartitionSize,
 		PartitionID:   meta.PartitionID,
+		ReplicaNum:    meta.ReplicaNum,
 		Peers:         meta.Peers,
 		Hosts:         meta.Hosts,
 		Learners:      meta.Learners,
@@ -379,9 +381,17 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
-	if (len(dp.config.Hosts) > 3 && dp.config.VolHAType == proto.DefaultCrossRegionHAType) ||
-		(len(dp.config.Hosts) <= 3 && dp.config.VolHAType == proto.CrossRegionHATypeQuorum) {
-		dp.ProposeFetchVolHAType()
+
+	// 检查是否有需要更新Volume信息
+	var maybeNeedUpdateCrossRegionHAType = func() bool {
+		return (len(dp.config.Hosts) > 3 && dp.config.VolHAType == proto.DefaultCrossRegionHAType) ||
+			(len(dp.config.Hosts) <= 3 && dp.config.VolHAType == proto.CrossRegionHATypeQuorum)
+	}
+	var maybeNeedUpdateReplicaNum = func() bool {
+		return dp.config.ReplicaNum == 0 || len(dp.config.Hosts) != dp.config.ReplicaNum
+	}
+	if maybeNeedUpdateCrossRegionHAType() || maybeNeedUpdateReplicaNum() {
+		dp.proposeUpdateVolumeInfo()
 	}
 
 	dp.persistedApplied = appliedID
@@ -447,7 +457,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		partitionSize:           dpCfg.PartitionSize,
 		replicas:                make([]string, 0),
 		repairC:                 make(chan struct{}, 1),
-		fetchVolHATypeC:         make(chan struct{}, 1),
+		updateVolInfoPropC:      make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),
 		storeC:                  make(chan uint64, 128),
@@ -795,9 +805,9 @@ func (dp *DataPartition) Repair() {
 	}
 }
 
-func (dp *DataPartition) ProposeFetchVolHAType() {
+func (dp *DataPartition) proposeUpdateVolumeInfo() {
 	select {
-	case dp.fetchVolHATypeC <- struct{}{}:
+	case dp.updateVolInfoPropC <- struct{}{}:
 	default:
 	}
 }
@@ -805,8 +815,8 @@ func (dp *DataPartition) ProposeFetchVolHAType() {
 func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	repairTimer := time.NewTimer(time.Minute)
 	validateCRCTimer := time.NewTimer(DefaultIntervalDataPartitionValidateCRC)
-	retryFetchVolHATypeTimer := time.NewTimer(0)
-	retryFetchVolHATypeTimer.Stop()
+	retryUpdateVolInfoTimer := time.NewTimer(0)
+	retryUpdateVolInfoTimer.Stop()
 	persistDpLastUpdateTimer := time.NewTimer(time.Hour) //for persist dp lastUpdateTime
 	var index int
 	for {
@@ -839,13 +849,13 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 		case <-validateCRCTimer.C:
 			dp.runValidateCRC(ctx)
 			validateCRCTimer.Reset(DefaultIntervalDataPartitionValidateCRC)
-		case <-dp.fetchVolHATypeC:
-			if err := dp.fetchVolHATypeFromMaster(); err != nil {
-				retryFetchVolHATypeTimer.Reset(time.Minute)
+		case <-dp.updateVolInfoPropC:
+			if err := dp.updateVolumeInfoFromMaster(); err != nil {
+				retryUpdateVolInfoTimer.Reset(time.Minute)
 			}
-		case <-retryFetchVolHATypeTimer.C:
-			if err := dp.fetchVolHATypeFromMaster(); err != nil {
-				retryFetchVolHATypeTimer.Reset(time.Minute)
+		case <-retryUpdateVolInfoTimer.C:
+			if err := dp.updateVolumeInfoFromMaster(); err != nil {
+				retryUpdateVolInfoTimer.Reset(time.Minute)
 			}
 		case <-persistDpLastUpdateTimer.C:
 			_ = dp.persistMetaDataOnly()
@@ -854,13 +864,22 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	}
 }
 
-func (dp *DataPartition) fetchVolHATypeFromMaster() (err error) {
+func (dp *DataPartition) updateVolumeInfoFromMaster() (err error) {
 	var simpleVolView *proto.SimpleVolView
 	if simpleVolView, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(dp.volumeID); err != nil {
 		return
 	}
+	// Process CrossRegionHAType
+	var changed bool
 	if dp.config.VolHAType != simpleVolView.CrossRegionHAType {
 		dp.config.VolHAType = simpleVolView.CrossRegionHAType
+		changed = true
+	}
+	if dp.config.ReplicaNum != int(simpleVolView.DpReplicaNum) {
+		dp.config.ReplicaNum = int(simpleVolView.DpReplicaNum)
+		changed = true
+	}
+	if changed {
 		if err = dp.persistMetaDataOnly(); err != nil {
 			return
 		}

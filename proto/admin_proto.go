@@ -629,6 +629,7 @@ type CreateDataPartitionRequest struct {
 	PartitionType string
 	PartitionId   uint64
 	PartitionSize int
+	ReplicaNum    int
 	VolumeId      string
 	IsRandomWrite bool
 	Members       []Peer
