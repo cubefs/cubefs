@@ -588,7 +588,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 		tx.SetOnCommit(job)
 	}
 
-	return info, err
+	return info, preErr
 }
 
 /*

@@ -191,6 +191,12 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 
+	if proto.IsDir(txIno.Inode.Type) && txIno.TxInfo.TxType == proto.TxTypeRemove && txIno.Inode.NLink > 2 {
+		resp.Status = proto.OpNotEmpty
+		log.LogWarnf("fsmTxUnlinkInode: dir is not empty, can't remove it, txInode %v", txIno)
+		return
+	}
+
 	if mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID) {
 		log.LogWarnf("fsmTxUnlinkInode: tx is already finish. txId %s", txIno.TxInfo.TxID)
 		resp.Status = proto.OpTxInfoNotExistErr

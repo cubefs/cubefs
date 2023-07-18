@@ -55,6 +55,7 @@ const (
 	statusTxConflict
 	statusTxTimeout
 	statusUploadPartConflict
+	statusNotEmpty
 )
 
 const (
@@ -316,6 +317,8 @@ func parseStatus(result uint8) (status int) {
 		status = statusConflictExtents
 	case proto.OpDirQuota:
 		status = statusOpDirQuota
+	case proto.OpNotEmpty:
+		status = statusNotEmpty
 	case proto.OpNoSpaceErr:
 		status = statusNoSpace
 	case proto.OpTxInodeInfoNotExistErr:
@@ -347,6 +350,8 @@ func statusToErrno(status int) error {
 		return syscall.EAGAIN
 	case statusExist:
 		return syscall.EEXIST
+	case statusNotEmpty:
+		return syscall.ENOTEMPTY
 	case statusNoent:
 		return syscall.ENOENT
 	case statusFull:
