@@ -402,7 +402,7 @@ func (tm *TransactionManager) processExpiredTransactions() {
 
 		if _, ok := tm.txProcessor.mp.IsLeader(); !ok && !test {
 			log.LogDebugf("processExpiredTransactions: not leader sleep 1s, mp %d", mpId)
-			time.Sleep(time.Second)
+			time.Sleep(time.Second * 10)
 			continue
 		}
 
@@ -468,7 +468,7 @@ func (tm *TransactionManager) processTx() {
 			}
 
 			if log.EnableDebug() {
-				log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
+				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
 			}
 		}
 
@@ -482,7 +482,7 @@ func (tm *TransactionManager) processTx() {
 			}
 
 			if log.EnableDebug() {
-				log.LogWarnf("processExpiredTransactions: transaction (%v) expired, commit done", tx)
+				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, commit done", tx)
 			}
 		}
 
@@ -495,7 +495,7 @@ func (tm *TransactionManager) processTx() {
 				return
 			}
 			if log.EnableDebug() {
-				log.LogWarnf("processExpiredTransactions: transaction (%v) delTxFromRM, commit done", tx)
+				log.LogDebugf("processExpiredTransactions: transaction (%v) delTxFromRM, commit done", tx)
 			}
 		}
 
@@ -539,7 +539,7 @@ func (tm *TransactionManager) processTx() {
 			}
 
 			if log.EnableDebug() {
-				log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
+				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
 			}
 			get()
 			go rollbackFunc(false)
@@ -555,7 +555,7 @@ func (tm *TransactionManager) processTx() {
 			}
 
 			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) can't be deleted", tx)
+				log.LogDebugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
 			}
 			get()
 			go delFunc()
