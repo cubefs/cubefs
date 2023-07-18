@@ -118,7 +118,8 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
 
-	kafkaClient := base.NewKafkaConsumer(conf.Kafka.BrokerList, time.Duration(conf.Kafka.CommitIntervalMs)*time.Millisecond, clusterMgrCli)
+	offsetMgr := base.NewKafkaOffsetMgr()
+	kafkaClient := base.NewKafkaConsumer(conf.Kafka.BrokerList, offsetMgr)
 	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli, kafkaClient)
 	if err != nil {
 		log.Errorf("new shard repair mgr: cfg[%+v], err[%w]", conf.ShardRepair, err)
@@ -149,7 +150,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 		return
 	}
 
-	err = svr.NewKafkaMonitor(conf.ClusterID, clusterMgrCli)
+	err = svr.NewKafkaMonitor(conf.ClusterID, offsetMgr)
 	if err != nil {
 		log.Errorf("run kafka monitor failed: err[%w]", err)
 		return nil, err
