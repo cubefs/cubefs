@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/stretchr/testify/require"
@@ -26,9 +25,17 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
+const maxMsgCnt = 100
+
 func newMockBroker(t *testing.T) *sarama.MockBroker {
 	broker := sarama.NewMockBroker(t, 2)
 	group := fmt.Sprintf("%s-%s", proto.ServiceNameScheduler, testTopic)
+
+	mockFetchResponse := sarama.NewMockFetchResponse(t, 1)
+	msg := sarama.StringEncoder("foo")
+	for i := 0; i < maxMsgCnt; i++ {
+		mockFetchResponse.SetMessage(testTopic, 0, int64(i), msg)
+	}
 
 	broker.SetHandlerByMap(map[string]sarama.MockResponse{
 		"MetadataRequest": sarama.NewMockMetadataResponse(t).
@@ -36,7 +43,7 @@ func newMockBroker(t *testing.T) *sarama.MockBroker {
 			SetLeader(testTopic, 0, broker.BrokerID()),
 		"OffsetRequest": sarama.NewMockOffsetResponse(t).
 			SetOffset(testTopic, 0, sarama.OffsetOldest, 0).
-			SetOffset(testTopic, 0, sarama.OffsetNewest, 1),
+			SetOffset(testTopic, 0, sarama.OffsetNewest, maxMsgCnt),
 		"FindCoordinatorRequest": sarama.NewMockFindCoordinatorResponse(t).
 			SetCoordinator(sarama.CoordinatorGroup, group, broker),
 		"HeartbeatRequest": sarama.NewMockHeartbeatResponse(t),
@@ -57,30 +64,35 @@ func newMockBroker(t *testing.T) *sarama.MockBroker {
 		"OffsetFetchRequest": sarama.NewMockOffsetFetchResponse(t).SetOffset(
 			group, testTopic, 0, 0, "", sarama.ErrNoError,
 		).SetError(sarama.ErrNoError),
-		"FetchRequest": sarama.NewMockSequence(
-			sarama.NewMockFetchResponse(t, 1).
-				SetMessage(testTopic, 0, 0, sarama.StringEncoder("foo")).
-				SetMessage(testTopic, 0, 1, sarama.StringEncoder("bar")),
-			sarama.NewMockFetchResponse(t, 1),
-		),
+		"FetchRequest": mockFetchResponse,
 	})
 	return broker
 }
 
 func TestConsumer(t *testing.T) {
+	batchNum := 2
 	{
 		broker := newMockBroker(t)
 		defer broker.Close()
 
 		var wg sync.WaitGroup
-		wg.Add(1)
+		wg.Add(batchNum)
+		offset := int64(0)
 
-		cli := NewKafkaConsumer([]string{broker.Addr()}, time.Second, newMockAccess(nil))
-		consumer, err := cli.StartKafkaConsumer(proto.TaskTypeShardRepair, testTopic,
-			func(msg *sarama.ConsumerMessage, consumerPause ConsumerPause) bool {
-				wg.Done()
-				return true
-			})
+		cli := NewKafkaConsumer([]string{broker.Addr()}, newMockAccess(nil))
+		consumer, err := cli.StartKafkaConsumer(KafkaConsumerCfg{
+			TaskType:     proto.TaskTypeShardRepair,
+			Topic:        testTopic,
+			MaxBatchSize: maxMsgCnt / batchNum,
+			MaxWaitTimeS: 4,
+		}, func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool {
+			require.NotEqual(t, 0, len(msg))
+			require.Equal(t, offset, msg[0].Offset)
+			t.Logf("task:%s, msgs len=%d, msgs offset start=%v", proto.TaskTypeShardRepair, len(msg), msg[0].Offset) // offset:0, 50
+			offset += int64(maxMsgCnt / batchNum)
+			wg.Done()
+			return true
+		})
 		require.NoError(t, err)
 		wg.Wait()
 		consumer.Stop()
@@ -90,14 +102,21 @@ func TestConsumer(t *testing.T) {
 		defer broker.Close()
 
 		var wg sync.WaitGroup
-		wg.Add(1)
+		wg.Add(batchNum)
 
-		cli := NewKafkaConsumer([]string{broker.Addr()}, time.Second, newMockAccess(nil))
-		consumer, err := cli.StartKafkaConsumer(proto.TaskTypeBlobDelete, testTopic,
-			func(msg *sarama.ConsumerMessage, consumerPause ConsumerPause) bool {
-				wg.Done()
-				return false
-			})
+		cli := NewKafkaConsumer([]string{broker.Addr()}, newMockAccess(nil))
+		consumer, err := cli.StartKafkaConsumer(KafkaConsumerCfg{
+			TaskType:     proto.TaskTypeBlobDelete,
+			Topic:        testTopic,
+			MaxBatchSize: 8,
+			MaxWaitTimeS: 4,
+		}, func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool {
+			require.NotEqual(t, 0, len(msg))
+			require.Equal(t, int64(0), msg[0].Offset)
+			t.Logf("task:%s, msgs len=%d, msgs offset start=%v", proto.TaskTypeBlobDelete, len(msg), msg[0].Offset) // offset:0
+			wg.Done()
+			return false
+		})
 		require.NoError(t, err)
 		wg.Wait()
 		consumer.Stop()
