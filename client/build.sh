@@ -72,7 +72,7 @@ build_sdk_dynamic_impl() {
     if [ "$1" = "libcfssdk" ]; then
         libsdk_flag="-E main.main"
     fi
-    go build -ldflags "${goflag} ${libsdk_flag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/$1.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/dynamic.go
+    go build -ldflags "-r /usr/lib64 ${goflag} ${libsdk_flag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=plugin -linkshared -o ${bin}/$1.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/dynamic.go
 }
 
 build_sdk_dynamic() {
@@ -98,7 +98,7 @@ build_client_dynamic() {
 
     gcc ${gccflag} -std=c99 -fPIC -shared -DDYNAMIC_UPDATE -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
     g++ -std=c++11 ${gccflag} -fPIC -shared -DDYNAMIC_UPDATE -DCommitID=\"${CommitID}\" -o ${bin}/libcfsc.so ${dir}/bypass/client.c ${dir}/bypass/cache.c ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.c ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
-    go build -ldflags "${goflag}" -buildmode=plugin -linkshared -o ${bin}/libempty.so ${dir}/empty.go
+    go build -ldflags "${goflag} -r /usr/lib64 " -buildmode=plugin -linkshared -o ${bin}/libempty.so ${dir}/empty.go
 }
 
 build_client_nodynamic() {
