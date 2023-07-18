@@ -1043,8 +1043,10 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 
 	err = mp.ExtentsList(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opMetaExtentsList] req: %d - %v; resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	if log.EnableDebug() {
+		log.LogDebugf("%s [opMetaExtentsList] req: %d - %v; resp: %v, body: %s",
+			remoteAddr, p.GetReqID(), req, p.GetResultMsg(), log.TruncMsg(string(p.Data)))
+	}
 	return
 }
 

@@ -330,6 +330,18 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	return l, nil
 }
 
+func TruncMsg(msg string) string {
+	return TruncMsgWith(msg, 100)
+}
+
+func TruncMsgWith(msg string, size int) string {
+	if len(msg) < size {
+		return msg
+	}
+
+	return msg[0:size]
+}
+
 func OutputPid(logDir, role string) error {
 	pidFile := path.Join(logDir, fmt.Sprintf("%s.pid", role))
 	file, err := os.Create(pidFile)
