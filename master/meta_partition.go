@@ -411,6 +411,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setInodeCount()
 	mp.setDentryCount()
 	mp.setFreeListLen()
+	mp.SetTxCnt()
 	mp.removeMissingReplica(metaNode.Addr)
 	mp.setUidInfo(mgr)
 }
