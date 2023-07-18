@@ -165,6 +165,10 @@ const (
 	CliFlagInodeInuse          = "inodeInuse"
 	CliFlagCount               = "count"
 	CliFlagGroupSlots          = "slots"
+	CliOpSetNodeState          = "set_node_state"
+	CliFlagNodeType            = "nodeType"
+	CliFlagNodeState           = "nodeState"
+	CliFlagAddrList            = "addrList"
 
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

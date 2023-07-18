@@ -41,6 +41,7 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterSetClientPkgAddr(client),
 		newClusterSetRocksDBDiskThresholdCmd(client),
 		newClusterSetMemModeRocksDBDiskThresholdCmd(client),
+		newClusterSetNodeState(client),
 	)
 	return clusterCmd
 }
@@ -53,6 +54,7 @@ const (
 	cmdClusterExtentDelRocksDbShort = "Set extent del in rocksdb enable"
 	cmdClusterClientPkgAddr         = "Set URL for client pkg download"
 	cmdClusterEcUpdateShort         = "update ec config"
+	cmdCLusterSetNodeState          = "Set Node State"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -287,5 +289,32 @@ func newClusterEcUpdate(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optEcMaxScrubExtents, CliFlagEcMaxScrubExtents, 0, "Specify every disk concurrent scrub extents")
 	cmd.Flags().StringVar(&optEcScrubEnable, CliFlagEcScrubEnable, "", "Enable ec scrub ")
 	cmd.Flags().IntVar(&optMaxCodecConcurrent, CliFlagMaxCodecConcurrent, 0, "Specify every codecNode concurrent migrate dp")
+	return cmd
+}
+
+func newClusterSetNodeState(client *master.MasterClient) *cobra.Command {
+	var (
+		nodeType string
+		zoneName string
+		state    string
+		addrList []string
+		err      error
+	)
+
+	cmd := &cobra.Command{
+		Use:   CliOpSetNodeState,
+		Short: cmdCLusterSetNodeState,
+		Args:  cobra.MinimumNArgs(4),
+		Run: func(cmd *cobra.Command, args []string) {
+			if err = client.AdminAPI().SetNodeToOfflineState(addrList, nodeType, zoneName, state); err != nil {
+				errout("Failed: %v\n", err)
+			}
+		},
+	}
+
+	cmd.Flags().StringVar(&nodeType, CliFlagNodeType, "", "node type")
+	cmd.Flags().StringVar(&zoneName, CliFlagZoneName, "", "zone name")
+	cmd.Flags().StringVar(&state, CliFlagNodeState, "", "state")
+	cmd.Flags().StringSliceVar(&addrList, CliFlagAddrList, []string{}, "comma-separated list of addresses")
 	return cmd
 }
