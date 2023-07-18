@@ -507,7 +507,6 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 
@@ -551,7 +550,6 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 				p.LogMessage(p.GetOpMsg(), connect.RemoteAddr().String(), p.StartT, err))
 			log.LogErrorf(logContent)
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 	partition := p.Object.(*DataPartition)
@@ -799,7 +797,6 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	defer func() {
 		if err != nil {
 			request.PackErrorBody(ActionStreamReadTinyExtentRepair, err.Error())
-			request.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 	if !proto.IsTinyExtent(request.ExtentID) {
@@ -899,7 +896,6 @@ func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.C
 	defer func() {
 		if err != nil {
 			request.PackErrorBody(ActionStreamReadTinyExtentAvali, err.Error())
-			request.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 	if !proto.IsTinyExtent(request.ExtentID) {
@@ -993,7 +989,6 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamReadTinyDeleteRecord, err.Error())
-			p.WriteToConn(connect, proto.WriteDeadlineTime)
 		}
 	}()
 	partition := p.Object.(*DataPartition)

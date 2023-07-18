@@ -604,11 +604,11 @@ func (p *IssueProcessor) RemoveByRange(extentID, offset, size uint64) error {
 }
 
 func (p *IssueProcessor) removeExtent(extentID uint64) (removed bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if len(p.fragments) == 0 {
 		return
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	var i = 0
 	for i < len(p.fragments) {
 		if p.fragments[i].extentID != extentID {
@@ -629,11 +629,11 @@ func (p *IssueProcessor) removeExtent(extentID uint64) (removed bool) {
 }
 
 func (p *IssueProcessor) removeCovered(extentID, offset, size uint64) (removed bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if len(p.fragments) == 0 {
 		return
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	var i = 0
 	for i < len(p.fragments) {
 		if !p.fragments[i].Covered(extentID, offset, size) {

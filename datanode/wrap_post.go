@@ -21,12 +21,10 @@ import (
 )
 
 func (s *DataNode) Post(p *repl.Packet) error {
-	if p.IsMasterCommand() {
-		p.NeedReply = true
-	}
-	if p.IsReadOperation() {
-		p.NeedReply = false
-	}
+	// 标记稍后是否由复制协议自动回写响应包
+	// 除成功的读请求外，均需要复制协议回写响应。
+	// 处理成功的读请求回写响应在Operate阶段由相关处理函数处理，不需要复制协议回写响应。
+	p.NeedReply = !(p.IsReadOperation() && !p.IsErrPacket())
 	s.cleanupPkt(p)
 	s.addMetrics(p)
 	return nil
