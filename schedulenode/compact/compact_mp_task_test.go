@@ -33,8 +33,8 @@ func TestMpInitTask(t *testing.T) {
 	fmt.Printf("MpCmpTask name:%v", mpTask.GetTaskName())
 }
 
-func TestGetMpInfo(t *testing.T) {
-	time.Sleep(time.Minute * 2)
+func testGetMpInfo(t *testing.T) {
+	time.Sleep(time.Minute)
 	mpTask = NewMpCmpTask(task, masterClient, vol)
 	err := mpTask.GetMpInfo()
 	if err != nil {
@@ -46,8 +46,8 @@ func TestGetMpInfo(t *testing.T) {
 	}
 }
 
-func TestGetProfPort(t *testing.T) {
-	TestGetMpInfo(t)
+func testGetProfPort(t *testing.T) {
+	testGetMpInfo(t)
 	err := mpTask.GetProfPort()
 	if err != nil {
 		t.Fatalf("GetProfPort err(%v)", err)
@@ -59,7 +59,7 @@ func TestGetProfPort(t *testing.T) {
 }
 
 func TestListAllIno(t *testing.T) {
-	TestGetProfPort(t)
+	testGetProfPort(t)
 	err := mpTask.ListAllIno()
 	if err != nil {
 		t.Fatalf("ListAllIno err(%v)", err)
