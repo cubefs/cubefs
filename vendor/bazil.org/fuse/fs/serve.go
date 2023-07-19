@@ -729,7 +729,7 @@ func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) 
 
 	if id, ok := c.nodeRef[node.NodeID()]; ok {
 		sn := c.node[id]
-		if sn.node.Mode()^node.Mode()&syscall.S_IFMT == 0 {
+		if (sn.node.Mode()^node.Mode())&syscall.S_IFMT == 0 {
 			sn.refs++
 			return id, sn.generation
 		}
