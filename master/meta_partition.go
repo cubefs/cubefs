@@ -161,7 +161,7 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 	}
 }
 
-//canSplit caller must be add lock
+// canSplit caller must be add lock
 func (mp *MetaPartition) canSplit(end uint64) (err error) {
 	if end < mp.Start {
 		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
@@ -333,8 +333,8 @@ func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum 
 	mp.RLock()
 	defer mp.RUnlock()
 	if mp.ReplicaNum != replicaNum {
-		msg := fmt.Sprintf("FIX MetaPartition replicaNum clusterID[%v] vol[%v] replica num[%v],current num[%v]",
-			c.Name, volName, replicaNum, mp.ReplicaNum)
+		msg := fmt.Sprintf("FIX MetaPartition replicaNum clusterID[%v] vol[%v] mp[%v] expect replica num[%v],current num[%v]",
+			c.Name, volName, mp.PartitionID, replicaNum, mp.ReplicaNum)
 		Warn(c.Name, msg)
 	}
 }
@@ -1166,7 +1166,7 @@ var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *Me
 	return
 }
 
-//check if the meta partition needs to rebalance zone
+// check if the meta partition needs to rebalance zone
 func (mp *MetaPartition) needToRebalanceZone(c *Cluster, zoneList []string, volCrossRegionHAType proto.CrossRegionHAType) (isNeed bool, err error) {
 	var curZoneMap map[string]uint8
 	var curZoneList []string
