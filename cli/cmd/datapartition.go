@@ -275,20 +275,12 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 					datanodeAddr := fmt.Sprintf("%s:%d", strings.Split(p.Addr, ":")[0], client.DataNodeProfPort)
 					dataClient := http_client.NewDataClient(datanodeAddr, false)
 					//check dataPartition by dataNode api
-					for i := 0; i < 3; i++ {
-						if dnPartition, err = dataClient.GetPartitionFromNode(partitionID); err == nil {
-							break
-						}
-						time.Sleep(1 * time.Second)
-					}
+					dnPartition, err = dataClient.GetPartitionFromNode(partitionID)
 					if err != nil {
+						stdout(fmt.Sprintf("%v\n", formatDataPartitionRaftTableInfo(nil, p.ID, p.Addr)))
 						continue
 					}
-					if dnPartition.RaftStatus == nil {
-						stdout(fmt.Sprintf("%v raft is stopped\n", p.ID))
-						continue
-					}
-					stdout(fmt.Sprintf("%v\n", formatDataPartitionRaftTableInfo(dnPartition.RaftStatus)))
+					stdout(fmt.Sprintf("%v\n", formatDataPartitionRaftTableInfo(dnPartition, p.ID, p.Addr)))
 				}
 			}
 		},
@@ -990,32 +982,30 @@ func newDataPartitionCheckCommitCmd(client *master.MasterClient) *cobra.Command 
 		Short: cmdCheckCommitDataPartitionShort,
 		Long:  `if the follower lack too much raft log from leader, the raft may be hang, we should check and resolve it `,
 		Run: func(cmd *cobra.Command, args []string) {
-			if optSpecifyDP > 0 {
-				partition, err1 := client.AdminAPI().GetDataPartition("", optSpecifyDP)
-				if err1 != nil {
-					stdout("%v\n", err1)
-					return
-				}
-				for _, r := range partition.Replicas {
-					if r.IsLeader && time.Now().Unix()-r.ReportTime <= defaultNodeTimeOutSec {
-						isLack, lackID, active, next, firstIdx, err := checkDataPartitionCommit(r.Addr, partition.PartitionID)
-						if err != nil {
-							continue
-						}
-						if isLack {
-							var host string
-							for _, p := range partition.Peers {
-								if p.ID == lackID {
-									host = p.Addr
-								}
-							}
-							fmt.Printf("Volume,Partition,BadPeerID,BadHost,IsActive,Next,FirstIndex\n")
-							fmt.Printf("%v,%v,%v,%v,%v,%v,%v\n", partition.VolName, optSpecifyDP, lackID, host, active, next, firstIdx)
+			if optSpecifyDP == 0 {
+				checkCommit(client)
+				return
+			}
+			partition, err1 := client.AdminAPI().GetDataPartition("", optSpecifyDP)
+			if err1 != nil {
+				stdout("%v\n", err1)
+				return
+			}
+			for _, r := range partition.Replicas {
+				if r.IsLeader && time.Now().Unix()-r.ReportTime <= defaultNodeTimeOutSec {
+					isLack, lackID, active, next, firstIdx, err := checkDataPartitionCommit(r.Addr, partition.PartitionID)
+					if err != nil || !isLack {
+						continue
+					}
+					var host string
+					for _, p := range partition.Peers {
+						if p.ID == lackID {
+							host = p.Addr
 						}
 					}
+					fmt.Printf("Volume,Partition,BadPeerID,BadHost,IsActive,Next,FirstIndex\n")
+					fmt.Printf("%v,%v,%v,%v,%v,%v,%v\n", partition.VolName, optSpecifyDP, lackID, host, active, next, firstIdx)
 				}
-			} else {
-				checkCommit(client)
 			}
 		},
 	}
@@ -1220,18 +1210,16 @@ func checkCommit(client *master.MasterClient) (err error) {
 			for _, r := range partition.Replicas {
 				if r.IsLeader {
 					isLack, lackID, active, next, first, err2 := checkDataPartitionCommit(r.Addr, partition.PartitionID)
-					if err2 != nil {
+					if err2 != nil || !isLack {
 						continue
 					}
-					if isLack {
-						var host string
-						for _, p := range partition.Peers {
-							if p.ID == lackID {
-								host = p.Addr
-							}
+					var host string
+					for _, p := range partition.Peers {
+						if p.ID == lackID {
+							host = p.Addr
 						}
-						f.WriteString(fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v\n", vol.Name, id, lackID, host, active, next, first))
 					}
+					f.WriteString(fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v\n", vol.Name, id, lackID, host, active, next, first))
 				}
 			}
 			return true
@@ -1241,7 +1229,6 @@ func checkCommit(client *master.MasterClient) (err error) {
 	vols := loadSpecifiedVolumes("", "")
 	ids := loadSpecifiedPartitions()
 	rangeAllDataPartitions(20, vols, ids, volFunc, partitionFunc)
-
 	fmt.Println("scan finish, result has been saved to local file")
 	return
 }
@@ -1326,7 +1313,7 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 	var checkTiny bool
 	var cmd = &cobra.Command{
 		Use:   CliOpCheckReplica + " [DATA PARTITION ID]",
-		Short: cmdDataPartitionPromoteLearnerShort,
+		Short: cmdDataPartitionCheckReplicaShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			var partitionID uint64

@@ -247,6 +247,7 @@ type DataPartition struct {
 	FullSyncTinyDeleteTime        int64
 	lastSyncTinyDeleteTime        int64
 	DataPartitionCreateType       int
+	TinyDeleteRecover             bool
 
 	monitorData []*statistics.MonitorData
 
@@ -278,6 +279,7 @@ type DataPartitionViewInfo struct {
 	Learners             []proto.Learner           `json:"learners"`
 	IsFinishLoad         bool                      `json:"isFinishLoad"`
 	IsRecover            bool                      `json:"isRecover"`
+	TinyDeleteRecover    bool                      `json:"tinyDeleteRecover"`
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -373,6 +375,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 	dp.isCatchUp = meta.IsCatchUp
 	dp.needServerFaultCheck = meta.NeedServerFaultCheck
 	dp.serverFaultCheckLevel = CheckAllCommitID
+
 	if !dp.applyStatus.Init(appliedID, meta.LastTruncateID) {
 		err = fmt.Errorf("action[loadApplyIndex] illegal metadata, appliedID %v, lastTruncateID %v", appliedID, meta.LastTruncateID)
 		return
@@ -1103,7 +1106,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 	close(extentRepairTaskCh)
 	extentRepairWorkerWG.Wait()
 
-	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, dp.TinyDeleteRecover || time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
 
 	log.LogInfof("partition[%v] repaired %v extents, cost %v", dp.partitionID, validExtentsToBeRepaired, time.Now().Sub(startTime))
 }
@@ -1229,6 +1232,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			}
 		}
 	}
+	dp.TinyDeleteRecover = false
 }
 
 // ChangeRaftMember is a wrapper function of changing the raft member.
@@ -1364,6 +1368,7 @@ func (dp *DataPartition) getDataPartitionInfo() (dpInfo *DataPartitionViewInfo, 
 		Learners:             dp.config.Learners,
 		IsFinishLoad:         dp.ExtentStore().IsFinishLoad(),
 		IsRecover:            dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
+		TinyDeleteRecover:    dp.TinyDeleteRecover,
 	}
 	return
 }

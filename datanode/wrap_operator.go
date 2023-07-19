@@ -379,7 +379,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 
 	if err != nil {
 		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data(%v)", p.GetUniqueLogId(), err, string(p.Data)))
-		p.PackErrorBody(ActionMarkDelete, err.Error())
+		p.PackErrorBody(ActionBatchDeleteExtent, err.Error())
 	} else {
 		p.PacketOkReply()
 	}

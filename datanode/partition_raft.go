@@ -316,10 +316,12 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 func (dp *DataPartition) startRaftAfterRepair() {
 	var (
 		initPartitionSize, initMaxExtentID uint64
-		currLeaderPartitionSize            uint64
 		err                                error
 	)
 	timer := time.NewTimer(0)
+	if !dp.isLeader {
+		dp.TinyDeleteRecover = true
+	}
 	for {
 		select {
 		case <-timer.C:
@@ -339,7 +341,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 				log.LogDebugf("PartitionID(%v) leader started.", dp.partitionID)
 				return
 			}
-
+			ctx := context.Background()
 			// wait for dp.replicas to be updated
 			relicas := dp.getReplicaClone()
 			if len(relicas) == 0 {
@@ -348,33 +350,20 @@ func (dp *DataPartition) startRaftAfterRepair() {
 				continue
 			}
 			if initMaxExtentID == 0 || initPartitionSize == 0 {
-				initMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize(context.Background())
+				initMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize(ctx)
+				if err != nil {
+					log.LogErrorf("PartitionID(%v) get MaxExtentID  err(%v)", dp.partitionID, err)
+					timer.Reset(5 * time.Second)
+					continue
+				}
 			}
 
-			if err != nil {
-				log.LogErrorf("PartitionID(%v) get MaxExtentID  err(%v)", dp.partitionID, err)
+			if dp.isPartitionSizeRecover(ctx, initMaxExtentID, initPartitionSize) {
 				timer.Reset(5 * time.Second)
 				continue
 			}
 
-			// get the partition size from the primary and compare it with the loparal one
-			currLeaderPartitionSize, err = dp.getLeaderPartitionSize(context.Background(), initMaxExtentID)
-			if err != nil {
-				log.LogErrorf("PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
-				timer.Reset(5 * time.Second)
-				continue
-			}
-
-			if currLeaderPartitionSize < initPartitionSize {
-				initPartitionSize = currLeaderPartitionSize
-			}
-			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
-
-			log.LogInfof("startRaftAfterRepair PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
-				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
-
-			if initPartitionSize > localSize {
-				log.LogErrorf("PartitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
+			if dp.isTinyDeleteRecordRecover() {
 				timer.Reset(5 * time.Second)
 				continue
 			}
@@ -400,7 +389,42 @@ func (dp *DataPartition) startRaftAfterRepair() {
 	}
 }
 
-//startRaftAsync dp instance can start without raft, this enables remote request to get the dp basic info
+func (dp *DataPartition) isTinyDeleteRecordRecover() bool {
+	if !dp.TinyDeleteRecover {
+		return false
+	}
+	localTinyDeleteFileSize, err := dp.extentStore.LoadTinyDeleteFileOffset()
+	if err != nil {
+		log.LogErrorf("PartitionID(%v) tiny extent delete record wait snapshot recover, err:%v", dp.partitionID, err)
+		return true
+	}
+	log.LogErrorf("PartitionID(%v) tiny extent delete record wait snapshot recover, local(%v)", dp.partitionID, localTinyDeleteFileSize)
+	return true
+}
+
+func (dp *DataPartition) isPartitionSizeRecover(ctx context.Context, initMaxExtentID, initPartitionSize uint64) bool {
+	// get the partition size from the primary and compare it with the loparal one
+	currLeaderPartitionSize, err := dp.getLeaderPartitionSize(ctx, initMaxExtentID)
+	if err != nil {
+		log.LogErrorf("PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
+		return true
+	}
+	if currLeaderPartitionSize < initPartitionSize {
+		initPartitionSize = currLeaderPartitionSize
+	}
+	localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
+
+	log.LogInfof("startRaftAfterRepair PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
+		"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
+
+	if initPartitionSize > localSize {
+		log.LogErrorf("PartitionID(%v) partition data  wait snapshot recover, leader(%v) local(%v)", dp.partitionID, initPartitionSize, localSize)
+		return true
+	}
+	return false
+}
+
+// startRaftAsync dp instance can start without raft, this enables remote request to get the dp basic info
 func (dp *DataPartition) startRaftAsync() {
 	var err error
 	timer := time.NewTimer(0)
@@ -846,7 +870,7 @@ func NewPacketToGetPartitionSize(ctx context.Context, partitionID uint64) (p *re
 	return
 }
 
-// NewPacketToGetPartitionSize returns a new packet to get the partition size.
+// NewPacketToGetMaxExtentIDAndPartitionSIze returns a new packet to get the partition size.
 func NewPacketToGetMaxExtentIDAndPartitionSIze(ctx context.Context, partitionID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetMaxExtentIDAndPartitionSize

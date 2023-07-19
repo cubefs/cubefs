@@ -37,46 +37,6 @@ func TestMinuteMonitor(t *testing.T) {
 	return
 }
 
-func TestSecondMonitor(t *testing.T) {
-	metrics := make([]string, 0, 2)
-	metrics = append(metrics, "cpu_usage_percent")
-	metrics = append(metrics, "mem_usage_percent")
-	mdcApi := NewMDCOpenApi(AGGToken, metrics, CnSiteType)
-	//startTime := "1612146470"
-	//endTime := "1612146480"
-	endTime := time.Now().Unix()
-	startTime := endTime - 5
-	endTimeString := strconv.FormatInt(endTime, 10)
-	startTimeString := strconv.FormatInt(startTime, 10)
-	labels := make([]map[string]string, 0)
-	labels = append(labels, map[string]string{"ip": "11.42.106.21"})
-	labels = append(labels, map[string]string{"ip": "11.42.106.183"})
-	minuteMonitor, err := mdcApi.SecondMonitor(startTimeString, endTimeString, labels)
-	if err != nil {
-		t.Errorf("TestSecondMonitor err:%v", err)
-		return
-	}
-	fmt.Printf("metric:%s", minuteMonitor.ResponseData[0][0].MetricName)
-	return
-}
-
-func TestMinuteLatestMonitor(t *testing.T) {
-	metrics := make([]string, 0, 2)
-	metrics = append(metrics, "min_cpu_usage_percent")
-	metrics = append(metrics, "min_mem_usage_percent")
-	mdcApi := NewMDCOpenApi(MDCToken, metrics, CnSiteType)
-	labels := make([]map[string]string, 0)
-	labels = append(labels, map[string]string{"ip": "11.42.106.21"})
-	labels = append(labels, map[string]string{"ip": "11.42.106.183"})
-	minuteMonitor, err := mdcApi.MinuteLatestMonitor(labels)
-	if err != nil {
-		t.Errorf("TestMinuteLatestMonitor err:%v", err)
-		return
-	}
-	fmt.Printf("metric:%s", minuteMonitor.ResponseData[0][0].MetricName)
-	return
-}
-
 func TestAggregationQuery(t *testing.T) {
 	metrics := make([]string, 0, 1)
 	metrics = append(metrics, "net_dev_rx_bytes")

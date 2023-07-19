@@ -164,6 +164,7 @@ type ExtentStore struct {
 	hasAllocSpaceExtentIDOnVerfiyFile uint64
 	loadStatus                        int32
 	loadMux                           sync.Mutex
+	tinyExtentDeleteMutex             sync.Mutex
 	normalExtentDeleteMap             sync.Map
 
 	ioInterceptor IOInterceptor
@@ -792,9 +793,13 @@ func (s *ExtentStore) RecordTinyDelete(extentID uint64, offset, size int64) (err
 		return
 	}
 	if stat.Size()%DeleteTinyRecordSize != 0 {
-		needWriteEmpty := DeleteTinyRecordSize - (stat.Size() % DeleteTinyRecordSize)
-		data := make([]byte, needWriteEmpty)
-		s.tinyExtentDeleteFp.Write(data)
+		s.tinyExtentDeleteMutex.Lock()
+		if stat.Size()%DeleteTinyRecordSize != 0 {
+			needWriteEmpty := DeleteTinyRecordSize - (stat.Size() % DeleteTinyRecordSize)
+			data := make([]byte, needWriteEmpty)
+			s.tinyExtentDeleteFp.Write(data)
+		}
+		s.tinyExtentDeleteMutex.Unlock()
 	}
 	_, err = s.tinyExtentDeleteFp.Write(record)
 	if err != nil {
