@@ -37,6 +37,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -1504,7 +1505,8 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 	reader := v.getEbsReader(inode)
 	var n int
 	var rest uint64
-	var tmp = make([]byte, 2*v.ebsBlockSize)
+	var tmp = buf.ReadBufPool.Get().([]byte)
+	defer buf.ReadBufPool.Put(tmp)
 
 	for {
 		if rest = upper - offset; rest <= 0 {

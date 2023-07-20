@@ -219,7 +219,7 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = NoSuchUpload
 			return
 		}
-		if err == syscall.EAGAIN {
+		if err == syscall.EEXIST {
 			errorCode = ConflictUploadRequest
 			return
 		}
