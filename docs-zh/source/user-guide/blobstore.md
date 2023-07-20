@@ -185,6 +185,8 @@ nohup ./scheduler -f scheduler.conf &
      "broker_list": ["127.0.0.1:9092"]
    },
    "blob_delete": {
+     "max_batch_size": 10,
+     "batch_interval_s": 2,
      "delete_log": {
        "dir": "./run/delete_log"
      }
