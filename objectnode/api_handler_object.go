@@ -751,7 +751,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
 		return
 	}
-	acl, err := ParseACL(r, userInfo.UserID, false)
+	acl, err := ParseACL(r, userInfo.UserID, false, false)
 	if err != nil {
 		log.LogErrorf("copyObjectHandler: parse acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
 			GetRequestID(r), param.Bucket(), acl, err)
@@ -1236,7 +1236,7 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ACL
-	acl, err := ParseACL(r, userInfo.UserID, false)
+	acl, err := ParseACL(r, userInfo.UserID, false, false)
 	if err != nil {
 		log.LogErrorf("putObjectHandler: parse acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), acl, err)

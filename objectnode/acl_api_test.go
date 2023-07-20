@@ -58,7 +58,7 @@ func TestParseAcl_CannedAcl(t *testing.T) {
 	// private
 	req, _ := http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-acl", "private")
-	acp, err := ParseACL(req, "user", false)
+	acp, err := ParseACL(req, "user", false, false)
 	require.NoError(t, err)
 	require.Equal(t, "user", acp.Owner.Id)
 	require.Equal(t, "user", acp.Acl.Grants[0].Grantee.Id)
@@ -67,7 +67,7 @@ func TestParseAcl_CannedAcl(t *testing.T) {
 	// public-read
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-acl", "public-read")
-	acp, err = ParseACL(req, "user", false)
+	acp, err = ParseACL(req, "user", false, false)
 	require.NoError(t, err)
 	require.Equal(t, "user", acp.Owner.Id)
 	require.Equal(t, "user", acp.Acl.Grants[0].Grantee.Id)
@@ -80,7 +80,7 @@ func TestParseAcl_CannedAcl(t *testing.T) {
 	// public-read-write
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-acl", "public-read-write")
-	acp, err = ParseACL(req, "user", false)
+	acp, err = ParseACL(req, "user", false, false)
 	require.NoError(t, err)
 	require.Equal(t, "user", acp.Owner.Id)
 	require.Equal(t, "user", acp.Acl.Grants[0].Grantee.Id)
@@ -97,7 +97,7 @@ func TestParseAcl_CannedAcl(t *testing.T) {
 	// authenticated-read
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-acl", "authenticated-read")
-	acp, err = ParseACL(req, "user", false)
+	acp, err = ParseACL(req, "user", false, false)
 	require.NoError(t, err)
 	require.Equal(t, "user", acp.Owner.Id)
 	require.Equal(t, "user", acp.Acl.Grants[0].Grantee.Id)
@@ -117,7 +117,7 @@ func TestParseAcl_GrantAclHeader(t *testing.T) {
 	req.Header.Add("x-amz-grant-write-acp", "id=user5")
 	req.Header.Add("x-amz-grant-full-control", "id=user")
 
-	acp, err := ParseACL(req, "user", false)
+	acp, err := ParseACL(req, "user", false, false)
 	require.NoError(t, err)
 	_, err = xml.Marshal(acp)
 	require.NoError(t, err)
@@ -180,27 +180,27 @@ func TestParseAcl_GrantAclHeader(t *testing.T) {
 
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-grant-read", "")
-	_, err = ParseACL(req, "user", false)
+	_, err = ParseACL(req, "user", false, false)
 	require.EqualError(t, err, ErrMissingGrants.Error())
 
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-grant-read", "uri=http://acs.amazonaws.com/wrong/uri")
-	_, err = ParseACL(req, "user", false)
+	_, err = ParseACL(req, "user", false, false)
 	require.EqualError(t, err, ErrInvalidGroupUri.Error())
 
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-grant-read", "id=user1 id=user2")
-	_, err = ParseACL(req, "user", false)
+	_, err = ParseACL(req, "user", false, false)
 	require.EqualError(t, err, InvalidArgument.Error())
 
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-grant-read", "id=")
-	_, err = ParseACL(req, "user", false)
+	_, err = ParseACL(req, "user", false, false)
 	require.EqualError(t, err, InvalidArgument.Error())
 
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Add("x-amz-grant-read", "=user")
-	_, err = ParseACL(req, "user", false)
+	_, err = ParseACL(req, "user", false, false)
 	require.EqualError(t, err, InvalidArgument.Error())
 }
 
@@ -228,7 +228,7 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
 
-	acp, err := ParseACL(req, "user", true)
+	acp, err := ParseACL(req, "user", true, false)
 	require.NoError(t, err)
 
 	require.Equal(t, "user", acp.Owner.Id)
@@ -255,7 +255,7 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	// wrong xml format
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
-	_, err = ParseACL(req, "user", true)
+	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, ErrMalformedACL.Error())
 
 	aclExample = `<AccessControlPolicy>
@@ -275,7 +275,7 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	// both have no URI and ID
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
-	_, err = ParseACL(req, "user", true)
+	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, ErrMalformedACL.Error())
 
 	aclExample = `<AccessControlPolicy>
@@ -295,7 +295,7 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	// both have ID and URI
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
-	_, err = ParseACL(req, "user", true)
+	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, ErrMalformedACL.Error())
 
 	aclExample = `<AccessControlPolicy>
@@ -314,7 +314,7 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	// Group but gave an invalid URI
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
-	_, err = ParseACL(req, "user", true)
+	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, ErrInvalidGroupUri.Error())
 
 	aclExample = `<AccessControlPolicy>
@@ -334,7 +334,7 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	// CanonicalUser but given the URI
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
-	_, err = ParseACL(req, "user", true)
+	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, ErrMalformedACL.Error())
 
 	aclExample = `<AccessControlPolicy>
@@ -354,7 +354,7 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	// invalid type
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
-	_, err = ParseACL(req, "user", true)
+	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, ErrMalformedACL.Error())
 
 	aclExample = `<AccessControlPolicy>
@@ -373,14 +373,14 @@ func TestParseAcl_XmlBodyAcl(t *testing.T) {
 	// user is not owner
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
-	_, err = ParseACL(req, "user", true)
+	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, AccessDenied.Error())
 
 }
 
 func TestCreateDefaultACL(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
-	acp, err := ParseACL(req, "user", false)
+	acp, err := ParseACL(req, "user", false, true)
 	require.NoError(t, err)
 	require.Equal(t, "user", acp.Owner.Id)
 	require.Equal(t, "user", acp.Acl.Grants[0].Grantee.Id)
@@ -406,20 +406,20 @@ func TestConflictAcl(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
 	req.Header.Set("x-amz-acl", "private")
-	_, err := ParseACL(req, "user", true)
+	_, err := ParseACL(req, "user", true, false)
 	require.EqualError(t, err, ErrUnexpectedContent.Error())
 
 	// both have body acl and grant acl
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", strings.NewReader(aclExample))
 	req.ContentLength = int64(len(aclExample))
 	req.Header.Set("x-amz-grant-read", "id=user1")
-	_, err = ParseACL(req, "user", true)
+	_, err = ParseACL(req, "user", true, false)
 	require.EqualError(t, err, ErrUnexpectedContent.Error())
 
 	// both have canned acl and grant acl
 	req, _ = http.NewRequest("PUT", "http://bucket.s3.com?acl", nil)
 	req.Header.Set("x-amz-grant-read", "id=user1")
 	req.Header.Set("x-amz-acl", "public-read")
-	_, err = ParseACL(req, "user", false)
+	_, err = ParseACL(req, "user", false, false)
 	require.EqualError(t, err, ErrConflictAclHeader.Error())
 }

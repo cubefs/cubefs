@@ -96,7 +96,7 @@ func (o *ObjectNode) putBucketACLHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var acl *AccessControlPolicy
-	if acl, err = ParseACL(r, vol.owner, r.ContentLength > 0); err != nil {
+	if acl, err = ParseACL(r, vol.owner, r.ContentLength > 0, true); err != nil {
 		log.LogErrorf("putBucketACLHandler: parse acl fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.bucket, err)
 		return
@@ -204,7 +204,7 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 	if oldAcl != nil {
 		owner = oldAcl.GetOwner()
 	}
-	if acl, err = ParseACL(r, owner, r.ContentLength > 0); err != nil {
+	if acl, err = ParseACL(r, owner, r.ContentLength > 0, true); err != nil {
 		log.LogErrorf("putObjectACLHandler: parse acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), param.bucket, param.object, err)
 		return

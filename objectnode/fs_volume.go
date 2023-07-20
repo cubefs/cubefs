@@ -230,7 +230,7 @@ func (v *Volume) loadBucketACL() (acp *AccessControlPolicy, err error) {
 		return
 	}
 	acp = &AccessControlPolicy{}
-	if err = xml.Unmarshal(raw, acp); err != nil {
+	if err = json.Unmarshal(raw, acp); err != nil {
 		return
 	}
 	return
@@ -761,7 +761,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		attr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
 	}
 	if opt != nil && opt.ACL != nil {
-		attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+		attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
 	}
 
 	// If user-defined metadata have been specified, use extend attributes for storage.
@@ -954,7 +954,7 @@ func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID str
 	}
 	// If ACL have been specified, use extend attributes for storage.
 	if opt != nil && opt.ACL != nil {
-		extend[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+		extend[XAttrKeyOSSACL] = opt.ACL.Encode()
 	}
 
 	if v.mw.EnableQuota {
@@ -2560,7 +2560,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 				attr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
 			}
 			if opt != nil && opt.ACL != nil {
-				attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+				attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
 			}
 
 			// If user-defined metadata have been specified, use extend attributes for storage.
@@ -2794,7 +2794,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			targetAttr.XAttrs[key] = val
 		}
 		if opt != nil && opt.ACL != nil {
-			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
 		}
 		if err = v.mw.BatchSetXAttr_ll(tInodeInfo.Inode, targetAttr.XAttrs); err != nil {
 			log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr (%v)err(%v)",
@@ -2820,7 +2820,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			targetAttr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
 		}
 		if opt != nil && opt.ACL != nil {
-			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
 		}
 
 		// If user-defined metadata have been specified, use extend attributes for storage.
