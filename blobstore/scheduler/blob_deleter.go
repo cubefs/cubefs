@@ -121,6 +121,8 @@ type delShardRet struct {
 
 type delBlobRet struct {
 	status deleteStatus
+	delMsg *proto.DeleteMsg
+	ctx    context.Context
 	err    error
 }
 
@@ -356,21 +358,17 @@ func (mgr *BlobDeleteMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause 
 	if maxBatch > len(msgs) {
 		maxBatch = len(msgs)
 	}
-	var (
-		rets    = make([]delBlobRet, maxBatch)
-		delMsgs = make([]*proto.DeleteMsg, maxBatch)
-		ctxs    = make([]context.Context, maxBatch)
-	)
-	defer mgr.handleResult(ctxs, rets, delMsgs, maxBatch)
+	rets := make([]delBlobRet, maxBatch)
+	defer mgr.recordAllResult(rets, maxBatch)
 
-	span1 := trace.SpanFromContextSafe(context.Background())
-	span1.Debugf("start delete len[%d], msgs[%+v]", len(msgs), msgs)
+	span := trace.SpanFromContextSafe(context.Background())
+	span.Infof("start delete msgs len[%d]", len(msgs))
 	wg := sync.WaitGroup{}
 	wg.Add(maxBatch)
 	for i, v := range msgs {
 		idx, msg := i, v
 		mgr.taskPool.Run(func() {
-			mgr.handleOneMsg(ctxs, rets, delMsgs, idx, msg, consumerPause)
+			rets[idx] = mgr.handleOneMsg(msg, consumerPause)
 			wg.Done()
 		})
 	}
@@ -384,54 +382,55 @@ func (mgr *BlobDeleteMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause 
 	return true
 }
 
-func (mgr *BlobDeleteMgr) handleOneMsg(ctxs []context.Context, rets []delBlobRet, delMsgs []*proto.DeleteMsg,
-	i int, msg *sarama.ConsumerMessage, consumerPause base.ConsumerPause) {
-	_, ctxs[i] = trace.StartSpanFromContext(context.Background(), "BlobDeleteConsume")
+func (mgr *BlobDeleteMgr) handleOneMsg(msg *sarama.ConsumerMessage, consumerPause base.ConsumerPause) (ret delBlobRet) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "BlobDeleteConsume")
+	var delMsg *proto.DeleteMsg
+	ret.status = DeleteStatusUnexpect
+	defer func() {
+		ret.ctx = ctx
+		ret.delMsg = delMsg
+	}()
 
-	err := json.Unmarshal(msg.Value, &delMsgs[i])
+	err := json.Unmarshal(msg.Value, &delMsg)
 	if err != nil {
-		rets[i] = delBlobRet{
-			status: DeleteStatusUnexpect,
-			err:    proto.ErrInvalidMsg,
-		}
+		ret.err = err
+		return
+	}
+	if !delMsg.IsValid() {
+		ret.err = proto.ErrInvalidMsg
 		return
 	}
 
-	if !delMsgs[i].IsValid() {
-		rets[i] = delBlobRet{
-			status: DeleteStatusUnexpect,
-			err:    proto.ErrInvalidMsg,
-		}
-		return
-	}
-
-	_, ctxs[i] = trace.StartSpanFromContextWithTraceID(ctxs[i], "BlobDeleteConsume", delMsgs[i].ReqId)
-	rets[i] = mgr.consume(ctxs[i], delMsgs[i], consumerPause)
+	_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "BlobDeleteConsume", delMsg.ReqId)
+	return mgr.consume(ctx, delMsg, consumerPause)
 }
 
-func (mgr *BlobDeleteMgr) handleResult(ctxs []context.Context, rets []delBlobRet, delMsgs []*proto.DeleteMsg, maxBatch int) {
+func (mgr *BlobDeleteMgr) recordAllResult(rets []delBlobRet, maxBatch int) {
 	for i := 0; i < maxBatch; i++ {
-		span := trace.SpanFromContextSafe(ctxs[i])
+		ctx := rets[i].ctx
+		delMsg := rets[i].delMsg
+		span := trace.SpanFromContextSafe(ctx)
+
 		switch rets[i].status {
 		case DeleteStatusDone:
-			span.Debugf("delete success: vid[%d], bid[%d]", delMsgs[i].Vid, delMsgs[i].Bid)
+			span.Debugf("delete success: vid[%d], bid[%d]", delMsg.Vid, delMsg.Bid)
 			mgr.delSuccessCounterByMin.Add()
 			mgr.delSuccessCounter.Inc()
 
 		case DeleteStatusFailed:
 			span.Warnf("delete failed and send msg to fail queue: vid[%d], bid[%d] retry[%d], err[%+v]",
-				delMsgs[i].Vid, delMsgs[i].Bid, delMsgs[i].Retry, rets[i].err)
+				delMsg.Vid, delMsg.Bid, delMsg.Retry, rets[i].err)
 			mgr.delFailCounter.Inc()
 			mgr.delFailCounterByMin.Add()
 			mgr.errStatsDistribution.AddFail(rets[i].err)
 
-			base.InsistOn(ctxs[i], "deleter send2FailQueue", func() error {
-				return mgr.send2FailQueue(ctxs[i], delMsgs[i])
+			base.InsistOn(ctx, "deleter send2FailQueue", func() error {
+				return mgr.send2FailQueue(ctx, delMsg)
 			})
 		case DeleteStatusUnexpect:
-			span.Warnf("unexpected result will ignore: msg[%+v], err[%+v]", delMsgs[i], rets[i].err)
+			span.Warnf("unexpected result will ignore: msg[%+v], err[%+v]", delMsg, rets[i].err)
 		case DeleteStatusUndo:
-			span.Warnf("delete message unconsume: msg[%+v]", delMsgs[i])
+			span.Warnf("delete message unconsume: msg[%+v]", delMsg)
 		}
 	}
 }
@@ -469,7 +468,7 @@ func (mgr *BlobDeleteMgr) consume(ctx context.Context, delMsg *proto.DeleteMsg, 
 		return delBlobRet{status: DeleteStatusFailed, err: errcode.ErrDiskBroken}
 	}
 
-	span.Debugf("start delete msg: [%+v]", delMsg)
+	span.Debug("start delete msg")
 	if err := mgr.deleteWithCheckVolConsistency(ctx, delMsg); err != nil {
 		return delBlobRet{status: DeleteStatusFailed, err: err}
 	}
