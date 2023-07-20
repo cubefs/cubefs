@@ -37,6 +37,8 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	proto.InitBufferPool(0)
+
 	c.AddCommand(
 		newCheckCmd(),
 		newCleanCmd(),
