@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -241,8 +240,9 @@ func (mgr *ShardRepairMgr) consumerRunning() bool {
 }
 
 type shardRepairRet struct {
-	status shardRepairStatus
-	err    error
+	status    shardRepairStatus
+	repairMsg *proto.ShardRepairMsg
+	err       error
 }
 
 // GetTaskStats returns task stats
@@ -258,66 +258,66 @@ func (mgr *ShardRepairMgr) GetErrorStats() (errStats []string, totalErrCnt uint6
 
 // Consume consume kafka messages: if message is not consume will return false, otherwise return true
 func (mgr *ShardRepairMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause base.ConsumerPause) bool {
-	var (
-		repairMsg *proto.ShardRepairMsg
-		ret       shardRepairRet
-		span      trace.Span
-		ctx       context.Context
-	)
-	defer func() {
-		switch ret.status {
-		case ShardRepairStatusDone:
-			span.Debugf("repair success: vid[%d], bid[%d]", repairMsg.Vid, repairMsg.Bid)
-			mgr.repairSuccessCounter.Inc()
-			mgr.repairSuccessCounterMin.Add()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "ShardRepairConsume")
 
-		case ShardRepairStatusFailed:
-			span.Warnf("repair failed and send msg to fail queue: vid[%d], bid[%d], retry[%d], err[%+v]",
-				repairMsg.Vid, repairMsg.Bid, repairMsg.Retry, ret.err)
-			mgr.repairFailedCounter.Inc()
-			mgr.repairFailedCounterMin.Add()
-			mgr.errStatsDistribution.AddFail(ret.err)
+	for _, msg := range msgs {
+		rslt := mgr.handleOneMsg(ctx, msg, consumerPause)
+		mgr.recordOneResult(ctx, rslt)
 
-			base.InsistOn(ctx, "repairer send2FailQueue", func() error {
-				return mgr.send2FailQueue(ctx, repairMsg)
-			})
-		case ShardRepairStatusUnexpect, ShardRepairStatusOrphan:
-			mgr.repairFailedCounter.Inc()
-			mgr.repairFailedCounterMin.Add()
-			mgr.errStatsDistribution.AddFail(ret.err)
-			span.Warnf("unexpected result: msg[%+v], err[%+v]", repairMsg, ret.err)
-		case ShardRepairStatusUndo:
-			span.Warnf("repair message unconsume: msg[%+v]", repairMsg)
+		if rslt.status == ShardRepairStatusUndo {
+			return false
 		}
+	}
+	return true
+}
+
+func (mgr *ShardRepairMgr) handleOneMsg(ctx context.Context, msg *sarama.ConsumerMessage, consumerPause base.ConsumerPause) (ret shardRepairRet) {
+	var repairMsg *proto.ShardRepairMsg
+	ret.status = ShardRepairStatusUnexpect
+	defer func() {
+		ret.repairMsg = repairMsg
 	}()
 
-	span = trace.SpanFromContextSafe(context.Background())
-	msg := msgs[0]
 	err := json.Unmarshal(msg.Value, &repairMsg)
 	if err != nil {
-		ret = shardRepairRet{
-			status: ShardRepairStatusUnexpect,
-			err:    err,
-		}
-		return true
+		ret.err = err
+		return
 	}
 	if !repairMsg.IsValid() {
-		ret = shardRepairRet{
-			status: ShardRepairStatusUnexpect,
-			err:    proto.ErrInvalidMsg,
-		}
-		return true
+		ret.err = proto.ErrInvalidMsg
+		return
 	}
 
-	span, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "ShardRepairConsume", repairMsg.ReqId)
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	mgr.taskPool.Run(func() {
-		ret = mgr.consume(ctx, repairMsg, consumerPause)
-		wg.Done()
-	})
-	wg.Wait()
-	return ret.status != ShardRepairStatusUndo
+	_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "ShardRepairConsume", repairMsg.ReqId)
+	return mgr.consume(ctx, repairMsg, consumerPause)
+}
+
+func (mgr *ShardRepairMgr) recordOneResult(ctx context.Context, r shardRepairRet) {
+	span := trace.SpanFromContextSafe(ctx)
+	switch r.status {
+	case ShardRepairStatusDone:
+		span.Debugf("repair success: vid[%d], bid[%d]", r.repairMsg.Vid, r.repairMsg.Bid)
+		mgr.repairSuccessCounter.Inc()
+		mgr.repairSuccessCounterMin.Add()
+
+	case ShardRepairStatusFailed:
+		span.Warnf("repair failed and send msg to fail queue: vid[%d], bid[%d], retry[%d], err[%+v]",
+			r.repairMsg.Vid, r.repairMsg.Bid, r.repairMsg.Retry, r.err)
+		mgr.repairFailedCounter.Inc()
+		mgr.repairFailedCounterMin.Add()
+		mgr.errStatsDistribution.AddFail(r.err)
+
+		base.InsistOn(ctx, "repairer send2FailQueue", func() error {
+			return mgr.send2FailQueue(ctx, r.repairMsg)
+		})
+	case ShardRepairStatusUnexpect, ShardRepairStatusOrphan:
+		mgr.repairFailedCounter.Inc()
+		mgr.repairFailedCounterMin.Add()
+		mgr.errStatsDistribution.AddFail(r.err)
+		span.Warnf("unexpected result: msg[%+v], err[%+v]", r.repairMsg, r.err)
+	case ShardRepairStatusUndo:
+		span.Warnf("repair message unconsume: msg[%+v]", r.repairMsg)
+	}
 }
 
 func (mgr *ShardRepairMgr) consume(ctx context.Context, repairMsg *proto.ShardRepairMsg, consumerPause base.ConsumerPause) shardRepairRet {
