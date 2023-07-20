@@ -177,13 +177,11 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	if authKey, err = calculateAuthKey(userInfo.UserID); err != nil {
 		log.LogErrorf("deleteBucketHandler: calculate authKey fail: requestID(%v) volume(%v) authKey(%v) err(%v)",
 			GetRequestID(r), bucket, userInfo.UserID, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	if err = o.mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
 		log.LogErrorf("deleteBucketHandler: delete volume fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
 			GetRequestID(r), bucket, auth.accessKey, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("deleteBucketHandler: delete bucket success: requestID(%v) volume(%v) accessKey(%v)",
@@ -319,7 +317,6 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
@@ -332,7 +329,6 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	} else {
 		if encoded, err = MarshalXMLEntity(output); err != nil {
 			log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = InternalErrorCode(err)
 			return
 		}
 	}
@@ -386,7 +382,7 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, []byte(tagging.Encode()), false); err != nil {
-		errorCode = InternalErrorCode(err)
+		log.LogErrorf("putBucketTaggingHandler: SetXAttr fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
 	}
 
 	return
@@ -417,7 +413,6 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 	if err = vol.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("deleteBucketTaggingHandler: delete tagging xattr fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
