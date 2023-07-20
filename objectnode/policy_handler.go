@@ -20,8 +20,6 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -48,12 +46,12 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 	var policy *Policy
 	if policy, err = vol.metaLoader.loadPolicy(); err != nil {
-		ec = InternalErrorCode(err)
+		log.LogErrorf("getBucketPolicyHandler: load policy fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		return
 	}
 
 	if policy == nil {
-		err = proto.ErrVolPolicyNotExists
 		ec = NoSuchBucketPolicy
 		log.LogErrorf("getBucketPolicyHandler: NoSuchBucketPolicy, requestID(%v), err(%v), ec(%v)",
 			GetRequestID(r), err, ec)
@@ -63,11 +61,10 @@ func (o *ObjectNode) getBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	var policyData []byte
 	policyData, err = json.Marshal(policy)
 	if err != nil {
-		ec = InternalErrorCode(err)
 		return
 	}
 
-	_, _ = w.Write(policyData)
+	w.Write(policyData)
 
 	return
 }
@@ -94,19 +91,13 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if r.ContentLength > BucketPolicyLimitSize {
-		ec = MaxContentLength
+	policyRaw, err := ioutil.ReadAll(io.LimitReader(r.Body, BucketPolicyLimitSize+1))
+	if err != nil {
+		log.LogErrorf("putBucketPolicyHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
-
-	policyRaw, err := ioutil.ReadAll(r.Body)
-	if err != nil && err != io.EOF {
-		log.LogErrorf("putBucketPolicyHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		ec = &ErrorCode{
-			ErrorCode:    http.StatusText(http.StatusBadRequest),
-			ErrorMessage: err.Error(),
-			StatusCode:   http.StatusBadRequest,
-		}
+	if len(policyRaw) > BucketPolicyLimitSize {
+		ec = EntityTooLarge
 		return
 	}
 
@@ -128,7 +119,6 @@ func (o *ObjectNode) putBucketPolicyHandler(w http.ResponseWriter, r *http.Reque
 	}
 	if err = storeBucketPolicy(vol, policyRaw); err != nil {
 		log.LogErrorf("putBucketPolicyHandler: store policy fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		ec = InternalErrorCode(err)
 		return
 	}
 
@@ -163,7 +153,6 @@ func (o *ObjectNode) deleteBucketPolicyHandler(w http.ResponseWriter, r *http.Re
 	if err = deleteBucketPolicy(vol); err != nil {
 		log.LogErrorf("deleteBucketPolicyHandler: delete policy fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	vol.metaLoader.storePolicy(nil)

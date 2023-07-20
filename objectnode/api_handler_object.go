@@ -156,7 +156,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.LogErrorf("getObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -223,14 +222,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		partSize, partCount, rangeLower, rangeUpper, err = parsePartInfo(partNumberInt, uint64(fileInfo.Size))
+		partSize, partCount, rangeLower, rangeUpper = parsePartInfo(partNumberInt, uint64(fileInfo.Size))
 		log.LogDebugf("getObjectHandler: partNumber(%v) fileSize(%v) parsed: partSize(%d) partCount(%d) rangeLower(%d) rangeUpper(%d)",
 			partNumberInt, fileInfo.Size, partSize, partCount, rangeLower, rangeUpper)
-		if err != nil {
-			errorCode = InternalErrorCode(err)
-			return
-		}
-
 		if partNumberInt > partCount {
 			log.LogErrorf("getObjectHandler: partNumber(%d) > partCount(%d): requestID(%v) volume(%v) path(%v)",
 				partNumberInt, partCount, GetRequestID(r), param.Bucket(), param.Object())
@@ -383,7 +377,6 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = NoSuchKey
 			return
 		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -474,12 +467,8 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		partSize, partCount, rangeLower, rangeUpper, err := parsePartInfo(partNumberInt, uint64(fileInfo.Size))
+		partSize, partCount, rangeLower, rangeUpper := parsePartInfo(partNumberInt, uint64(fileInfo.Size))
 		log.LogDebugf("headObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
-		if err != nil {
-			errorCode = InternalErrorCode(err)
-			return
-		}
 		if partNumberInt > partCount {
 			log.LogErrorf("headObjectHandler: param partNumber(%d) is more then partCount(%d): requestID(%v)", partNumberInt, partCount, GetRequestID(r))
 			errorCode = NoSuchKey
@@ -774,7 +763,6 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = NoSuchKey
 			return
 		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -839,7 +827,6 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil && err != syscall.EINVAL && err != syscall.EFBIG {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	if err == syscall.EINVAL {
@@ -863,7 +850,6 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var bytes []byte
 	if bytes, err = MarshalXMLEntity(copyResult); err != nil {
 		log.LogErrorf("copyObjectHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -945,7 +931,6 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		log.LogErrorf("getBucketV1Handler: list files fail: requestID(%v) volume(%v) option(%v) err(%v)",
 			GetRequestID(r), vol.Name(), option, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	// The result of next list request should not include nextMarker.
@@ -1000,7 +985,6 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if bytes, err = MarshalXMLEntity(listBucketResult); err != nil {
 		log.LogErrorf("getBucketV1Handler: marshal result fail: requestID(%v) volume(%v) result(%v) err(%v)",
 			GetRequestID(r), vol.Name(), listBucketResult, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1010,7 +994,6 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("getBucketV1Handler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
 			GetRequestID(r), vol.Name(), string(bytes), err)
-		errorCode = InternalErrorCode(err)
 	}
 
 	return
@@ -1106,7 +1089,6 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		log.LogErrorf("getBucketV2Handler: list files fail, requestID(%v) volume(%v) option(%v) err(%v)",
 			GetRequestID(r), vol.Name(), option, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	// The result of next list request should not include continuationToken.
@@ -1168,7 +1150,6 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if bytes, err = MarshalXMLEntity(listBucketResult); err != nil {
 		log.LogErrorf("getBucketV2Handler: marshal result fail: requestID(%v) volume(%v) result(%v) err(%v)",
 			GetRequestID(r), vol.Name(), listBucketResult, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1178,7 +1159,6 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if _, err = w.Write(bytes); err != nil {
 		log.LogErrorf("getBucketV2Handler: write response body fail: requestID(%v) volume(%v) body(%v) err(%v)",
 			GetRequestID(r), vol.Name(), string(bytes), err)
-		errorCode = InternalErrorCode(err)
 	}
 	return
 }
@@ -1300,7 +1280,6 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = EntityTooSmall
 			return
 		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	// check content MD5
@@ -1355,7 +1334,6 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
 			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1394,7 +1372,6 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		log.LogErrorf("getObjectTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1405,7 +1382,6 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var encoded []byte
 	if encoded, err = MarshalXMLEntity(output); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1467,8 +1443,6 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
-		} else {
-			errorCode = InternalErrorCode(err)
 		}
 		return
 	}
@@ -1502,7 +1476,6 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	if err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: volume delete tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1563,7 +1536,6 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		}
 		log.LogErrorf("pubObjectXAttrHandler: volume set extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	return
@@ -1606,7 +1578,6 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		}
 		log.LogErrorf("getObjectXAttrHandler: get extend attribute fail: requestID(%v) volume(%v) object(%v) key(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), xattrKey, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	var response = GetXAttrOutput{
@@ -1619,7 +1590,6 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	if marshaled, err = MarshalXMLEntity(&response); err != nil {
 		log.LogErrorf("getObjectXAttrHandler: marshal response body fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	_, _ = w.Write(marshaled)
@@ -1662,7 +1632,6 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 		}
 		log.LogErrorf("deleteObjectXAttrHandler: delete extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	return
@@ -1700,7 +1669,6 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		}
 		log.LogErrorf("listObjectXAttrs: volume list extend attributes fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1711,7 +1679,6 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	if marshaled, err = MarshalXMLEntity(&response); err != nil {
 		log.LogErrorf("listObjectXAttrs: marshal response body fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	if _, err = w.Write(marshaled); err != nil {
@@ -1720,7 +1687,7 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, uint64, error) {
+func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, uint64) {
 	var partSize uint64
 	var partCount uint64
 	var rangeLower uint64
@@ -1742,7 +1709,7 @@ func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, 
 		rangeUpper = (partSize * partNumber) - 1
 	}
 	if partNumber > partCount {
-		return 0, 0, 0, 0, nil
+		return 0, 0, 0, 0
 	}
-	return partSize, partCount, rangeLower, rangeUpper, nil
+	return partSize, partCount, rangeLower, rangeUpper
 }
