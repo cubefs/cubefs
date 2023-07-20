@@ -249,17 +249,26 @@ func (s *serviceControllerImpl) GetServiceHost(ctx context.Context, name string)
 	lock := s.getServiceLock(name)
 	idx := 0
 
+	var lastHost string
 RETRY:
 
 	lock.RLock()
 	length := len(serviceList)
 	if length == 0 {
 		lock.RUnlock()
-		return "", errors.Newf("no any host of %s", name)
-	}
-	idx = rand.Intn(length)
 
+		span := trace.SpanFromContextSafe(ctx)
+		if lastHost == "" {
+			span.Errorf("no any host of %s", name)
+			return "", errors.Newf("no any host of %s", name)
+		}
+		span.Warnf("all host were punished of %s, return the last one %s", name, lastHost)
+		return lastHost, nil
+	}
+
+	idx = rand.Intn(length)
 	item := serviceList[idx]
+	lastHost = item.host
 	lock.RUnlock()
 
 	if !item.isPunish() {
@@ -273,7 +282,9 @@ RETRY:
 	if v == item {
 		serviceList = append(serviceList[:idx], serviceList[idx+1:]...)
 	}
-	s.serviceHosts[name].Store(serviceList)
+	if len(serviceList) > 0 {
+		s.serviceHosts[name].Store(serviceList)
+	}
 	lock.Unlock()
 
 	goto RETRY

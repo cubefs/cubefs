@@ -97,11 +97,11 @@ func (w *responseWriter) getBody() []byte {
 	return w.body[:w.n]
 }
 
-func (w *responseWriter) getStatusCode() []byte {
-	return []byte(strconv.Itoa(w.statusCode))
+func (w *responseWriter) getStatusCode() int {
+	return w.statusCode
 }
 
-func (w *responseWriter) getHeader() []byte {
+func (w *responseWriter) getHeader() M {
 	header := w.ResponseWriter.Header()
 	headerM := make(M)
 	for k := range header {
@@ -111,10 +111,7 @@ func (w *responseWriter) getHeader() []byte {
 			headerM[k] = header.Get(k)
 		}
 	}
-	if len(headerM) > 0 {
-		return headerM.Encode()
-	}
-	return nil
+	return headerM
 }
 
 func (w *responseWriter) getBodyWritten() int64 {

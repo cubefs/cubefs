@@ -149,7 +149,7 @@ func (cs *chunk) handleErrCompact(ctx context.Context, ncs core.ChunkAPI) {
 func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	ctx = bnapi.Setiotype(ctx, bnapi.CompactIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.CompactIO)
 
 	startBid := proto.InValidBlobID
 	replStg := cs.getStg()
@@ -220,7 +220,6 @@ COMPACT:
 			if err != nil {
 				if err == core.ErrChunkScanEOF {
 					span.Infof("chunk %s scan finished", cs.ID())
-					err = nil
 					break COMPACT
 				} else {
 					span.Errorf("scan chunk meta(%s) failed: %v", cs.ID(), err)

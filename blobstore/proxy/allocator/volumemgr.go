@@ -36,7 +36,7 @@ import (
 
 const (
 	defaultAllocVolsNum        = 1
-	defaultTotalThresholdRatio = 0.2
+	defaultTotalThresholdRatio = 0.1
 	defaultInitVolumeNum       = 4
 	defaultRetainVolumeNum     = 400
 
@@ -66,91 +66,130 @@ type modeInfo struct {
 	backup         *volumes
 	totalThreshold uint64
 
-	sync.RWMutex
+	lock sync.RWMutex
 }
 
 func (m *modeInfo) List(isBackUp bool) []*volume {
-	m.RLock()
-	defer m.RUnlock()
+	var res []*volume
+	m.lock.RLock()
 	if isBackUp {
-		return m.backup.List()
+		res = m.backup.List()
+		m.lock.RUnlock()
+		return res
 	}
-	return m.current.List()
+	res = m.current.List()
+	m.lock.RUnlock()
+	return res
 }
 
 func (m *modeInfo) ListAll() (res []*volume) {
-	m.RLock()
-	defer m.RUnlock()
+	m.lock.RLock()
 	c := m.current.List()
 	b := m.backup.List()
 	res = make([]*volume, len(c)+len(b))
-	copy(res, c[:])
-	copy(res[len(c):], b[:])
+	copy(res, c)
+	copy(res[len(c):], b)
+	m.lock.RUnlock()
 	return res
 }
 
 func (m *modeInfo) VolumeNum() int {
-	m.RLock()
-	defer m.RUnlock()
-	return m.backup.Len() + m.current.Len()
+	m.lock.RLock()
+	num := m.backup.Len() + m.current.Len()
+	m.lock.RUnlock()
+	return num
 }
 
 func (m *modeInfo) Delete(vid proto.Vid) {
-	m.RLock()
-	defer m.RUnlock()
+	m.lock.RLock()
 	if !m.current.Delete(vid) {
 		m.backup.Delete(vid)
 	}
+	m.lock.RUnlock()
 }
 
 func (m *modeInfo) Put(vol *volume, isBackUp bool) {
-	m.RLock()
-	defer m.RUnlock()
+	m.lock.RLock()
 	if isBackUp {
 		m.backup.Put(vol)
+		m.lock.RUnlock()
 		return
 	}
 	m.current.Put(vol)
+	m.lock.RUnlock()
 }
 
-func (m *modeInfo) Get(vid proto.Vid, isBackup bool) (*volume, bool) {
-	m.RLock()
-	defer m.RUnlock()
+func (m *modeInfo) Get(vid proto.Vid, isBackup bool) (res *volume, ok bool) {
+	m.lock.RLock()
 	if isBackup {
-		return m.backup.Get(vid)
+		res, ok = m.backup.Get(vid)
+		m.lock.RUnlock()
+		return
 	}
-	return m.current.Get(vid)
+	res, ok = m.current.Get(vid)
+	m.lock.RUnlock()
+	return
 }
 
-func (m *modeInfo) TotalFree() uint64 {
-	m.RLock()
-	defer m.RUnlock()
-	return m.backup.TotalFree() + m.current.TotalFree()
+func (m *modeInfo) TotalFree() int64 {
+	m.lock.RLock()
+	totalFree := m.backup.TotalFree() + m.current.TotalFree()
+	m.lock.RUnlock()
+	return totalFree
 }
 
-func (m *modeInfo) needSwitch2Backup(fSize uint64) bool {
-	m.RLock()
-	defer m.RUnlock()
-	return m.current.UpdateTotalFree(-fSize) < m.totalThreshold
+func (m *modeInfo) needSwitchToBackup(fSize int64) (bool, error) {
+	m.lock.RLock()
+	totalFree := m.current.UpdateTotalFree(-fSize)
+	if totalFree <= int64(m.totalThreshold) {
+		m.current.UpdateTotalFree(fSize)
+		if len(m.backup.List()) == 0 { // allocating from clusterMgr, can not switch to backup
+			m.lock.RUnlock()
+			return false, errcode.ErrNoAvaliableVolume
+		}
+		m.lock.RUnlock()
+		return true, nil
+	}
+	m.lock.RUnlock()
+	return false, nil
 }
 
-func (m *modeInfo) UpdateTotalFree(isBackup bool, free uint64) {
-	m.RLock()
-	defer m.RUnlock()
+func (m *modeInfo) getAvailableList(fsize int64, switchable bool) []*volume {
+	if !switchable {
+		return m.List(false)
+	}
+	m.lock.Lock()
+	totalFree := m.current.TotalFree()
+	if totalFree < int64(m.totalThreshold) || totalFree < fsize {
+		m.current = m.backup
+		m.backup = &volumes{}
+	}
+	if m.current.TotalFree() < fsize {
+		m.lock.Unlock()
+		return nil
+	}
+	m.current.UpdateTotalFree(-fsize)
+	vols := m.current.List()
+	m.lock.Unlock()
+	return vols
+}
+
+func (m *modeInfo) UpdateTotalFree(isBackup bool, free int64) {
+	m.lock.RLock()
 	if isBackup {
 		m.backup.UpdateTotalFree(free)
+		m.lock.RUnlock()
 		return
 	}
 	m.current.UpdateTotalFree(free)
+	m.lock.RUnlock()
 }
 
 func (m *modeInfo) dealDisCards(discards []proto.Vid) {
 	if len(discards) == 0 {
 		return
 	}
-
-	m.RLock()
-	defer m.RUnlock()
+	m.lock.RLock()
 	for _, vid := range discards {
 		vol, ok := m.current.Get(vid)
 		if ok {
@@ -164,6 +203,7 @@ func (m *modeInfo) dealDisCards(discards []proto.Vid) {
 			m.current.Delete(vid)
 		}
 	}
+	m.lock.RUnlock()
 }
 
 type allocArgs struct {
@@ -366,7 +406,7 @@ func (v *volumeMgr) getNextVid(ctx context.Context, vols []*volume, modeInfo *mo
 			return vols[idx].Vid, nil
 		}
 	}
-	return 0, errcode.ErrNoAvailableVolume
+	return 0, errcode.ErrNoAvaliableVolume
 }
 
 func (v *volumeMgr) modifySpace(ctx context.Context, volInfo *volume, modeInfo *modeInfo, args *proxy.AllocVolsArgs) bool {
@@ -407,47 +447,45 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 	}
 	vols, err := v.getAvailableVols(ctx, args)
 	if err != nil {
+		span.Errorf("get available volumes failed, current total free: %d, err: %v", info.current.TotalFree(), err)
 		return 0, err
 	}
 	span.Debugf("codeMode: %v, available volumes: %v", args.CodeMode, vols)
 	vid, err := v.getNextVid(ctx, vols, info, args)
 	if err != nil {
+		span.Errorf("get next vid failed, err: %v", err)
 		return 0, err
 	}
-
-	span.Debugf("codeMode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
-		info.current.TotalFree(), info.totalThreshold)
 
 	return vid, nil
 }
 
 func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsArgs) (vols []*volume, err error) {
+	span := trace.SpanFromContextSafe(ctx)
 	info := v.modeInfos[args.CodeMode]
 	info.dealDisCards(args.Discards)
 
-	switch2Backup := info.needSwitch2Backup(args.Fsize)
-	if switch2Backup {
-		info.Lock()
-		if info.current.TotalFree() < info.totalThreshold {
-			info.current = info.backup
-			info.backup = &volumes{}
-		}
-		info.Unlock()
+	needSwitch, err := info.needSwitchToBackup(int64(args.Fsize))
+	if err != nil {
+		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, true)
+		span.Errorf("no available volumes to alloc and current allocating from clustermgr")
+		return nil, err
 	}
+	vols = info.getAvailableList(int64(args.Fsize), needSwitch)
 
-	vols = info.List(false)
 	if len(vols) == 0 {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, false)
+		span.Errorf("no available volumes to alloc")
 		return nil, errcode.ErrNoAvaliableVolume
-	}
-
-	if switch2Backup {
-		info.UpdateTotalFree(false, -args.Fsize)
 	}
 
 	if len(info.List(true)) == 0 {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, true)
 	}
+
+	span.Debugf("codeMode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
+		info.current.TotalFree(), info.totalThreshold)
+
 	return vols, nil
 }
 
@@ -462,7 +500,7 @@ func (v *volumeMgr) allocNotify(ctx context.Context, mode codemode.CodeMode, cou
 	if _, ok := v.allocChs[mode]; ok {
 		select {
 		case v.allocChs[mode] <- applyArg:
-			span.Infof("allocNotify {codeMode %s count %v} success", mode.String(), count)
+			span.Infof("allocNotify {codeMode %s count %v, backup %v} success", mode.String(), count, isBackup)
 		default:
 			span.Infof("the codeMode %s is allocating volume, count: %d", mode.String(), count)
 		}
@@ -496,10 +534,10 @@ func (v *volumeMgr) allocVolumeLoop(mode codemode.CodeMode) {
 				CodeMode: args.codeMode,
 				Count:    requireCount,
 			}
-			span.Infof("allocVolumeLoop arguments: %+v", *allocArg)
+			span.Infof("allocVolumeLoop arguments: %+v, backup: %v", *allocArg, args.isBackup)
 			volumeRets, err := v.allocVolume(ctx, allocArg)
 			if err != nil {
-				span.Warnf("alloc volume failed, codeMode: %s, err: %v", mode.String(), err)
+				span.Warnf("alloc volume from clustermgr failed, codeMode: %s, err: %v", mode.String(), err)
 				time.Sleep(time.Duration(10) * time.Second)
 				args.isInit = false
 				continue

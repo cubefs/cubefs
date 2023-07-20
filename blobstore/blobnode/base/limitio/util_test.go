@@ -1,4 +1,4 @@
-// Copyright 2022 The CubeFS Authors.
+// Copyright 2023 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package blobnode
+package limitio
 
 import (
 	"context"
@@ -21,17 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetIoType(t *testing.T) {
-	ctx := context.TODO()
-
-	iotype := GetIoType(ctx)
-	require.Equal(t, NormalIO, iotype)
-
-	ctx0 := context.WithValue(ctx, _ioFlowStatKey, CompactIO)
-	iotype = GetIoType(ctx0)
-	require.Equal(t, CompactIO, iotype)
-
-	ctx1 := context.WithValue(ctx0, _ioFlowStatKey, DiskRepairIO)
-	iotype = GetIoType(ctx1)
-	require.Equal(t, DiskRepairIO, iotype)
+func TestIsLimitTrack(t *testing.T) {
+	ctx := context.Background()
+	SetLimitTrack(ctx)
+	flag := IsLimitTrack(ctx)
+	require.False(t, false, flag)
 }

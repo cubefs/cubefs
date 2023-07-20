@@ -123,6 +123,7 @@ type ClusterMgrAPI interface {
 //	for example:
 //		blob_delete-consume_offset-blob_delete-1
 //		shard_repair-consume_offset-shard_repair-2
+
 const (
 	_delimiter           = "-"
 	_migratingDiskPrefix = "migrating"
@@ -847,11 +848,12 @@ func (c *clustermgrClient) listAllMigrateTasks(ctx context.Context, prefix strin
 			Count:  defaultListTaskNum,
 			Marker: marker,
 		}
-		ret, marker, err := c.listMigrateTasks(ctx, taskType, args)
+		ret, newMarker, err := c.listMigrateTasks(ctx, taskType, args)
 		if err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, ret...)
+		marker = newMarker
 		if marker == defaultListTaskMarker {
 			break
 		}
