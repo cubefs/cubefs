@@ -1,0 +1,172 @@
+html,
+body {
+  font-size: 13px !important;
+  min-width: 960px;
+  overflow-x: initial !important;
+  font-family: pingfang SC, helvetica neue, arial, hiragino sans gb,
+    microsoft yahei ui, microsoft yahei, simsun, sans-serif;
+}
+
+body {
+  background-color: #f1f4f9;
+}
+
+li {
+  list-style: none;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  overflow-y: hidden;
+}
+//psa树搜索下拉框
+.servicetree-my-autocomplete {
+  width: auto !important;
+}
+.el-message__content {
+  white-space: pre-wrap;
+}
+.guide {
+  .driver-close-btn {
+    border-radius: 5px !important;
+  }
+}
+
+.el-button [class*='ion-'] + span {
+  margin-left: 5px;
+}
+
+.el-card {
+  margin-bottom: 20px;
+  .el-card.is-always-shadow {
+    box-shadow: none;
+  }
+}
+
+.el-table {
+  th {
+    background-color: #f8f8f9;
+    color: #404040;
+  }
+  th,
+  td {
+    text-align: center;
+  }
+}
+.el-card .el-tabs__item {
+  font-size: 13px;
+  line-height: 39px;
+  height: 39px;
+}
+.el-select {
+  width: 100%;
+}
+.el-popover__title {
+  color: #666;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f2f2f2;
+  font-size: 14px;
+}
+
+.el-table--mini,
+.el-table--small,
+.el-table__expand-icon {
+  font-size: 13px;
+}
+
+.el-table--small {
+  .el-button--text {
+    font-size: 13px;
+  }
+}
+
+:focus {
+  outline: none;
+}
+
+// $link-color: #00c9c9;
+$nomal-status: #67c23a;
+$warning-status: #e6a23c;
+$error-status: rgb(221, 125, 125);
+$link-color: #2fc29b;
+$link-hover-color: #2fc29b;
+
+a {
+  transition: color 0.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+  color: $link-color;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.ant-tag {
+  display: inline-block;
+  line-height: 20px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 4px;
+  border: 1px solid #d9d9d9;
+  background: #fafafa;
+  font-size: 12px;
+
+  &-normal {
+    color: #52c41a;
+    // background: #f6ffed;
+    border-color: #b7eb8f;
+  }
+
+  &-repaired {
+    color: #09c88f;
+    // background: #feffe6;
+    border-color: #10d197;
+  }
+
+  &-degrade,
+  &-replace,
+  &-repairing {
+    color: #fbc200;
+    // background: #feffe6;
+    border-color: #ffd032;
+  }
+
+  &-dropped {
+    color: #c5360b;
+    // background: #feffe6;
+    border-color: #ee5904;
+  }
+
+  &-crashed,
+  &-toRepair,
+  &-broken,
+  &-fail {
+    color: #f5222d;
+    // background: #fff1f0;
+    border-color: #ffa39e;
+  }
+}
+
+a:hover {
+  color: $link-hover-color;
+  text-decoration: underline;
+}
+
+.rw {
+  display: inline-block;
+  line-height: 20px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 4px;
+  background: #fafafa;
+  font-size: 12px;
+
+  &-readonly {
+    color: #fbc200;
+    background: #feffe6;
+  }
+
+  &-readwrite {
+    color: #52c41a;
+    background: #f6ffed;
+  }
+}

@@ -1,0 +1,34 @@
+@import './config';
+@import './mixins';
+@import './helper';
+@import './element/index.css';
+@import './element.scss';
+@import './admin';
+@import './icon.scss';
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-sizing: border-box;
+}
+
+body {
+  line-height: 1.1;
+  color: $text-color;
+  font-size: $base-text-size;
+  font-family: 'OPPOSansWeb 2.00';
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: $title-color;
+  margin-bottom: 10px;
+  font-weight: bold;
+}

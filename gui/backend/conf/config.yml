@@ -1,0 +1,19 @@
+server:
+  port: 6007
+  mode: dev
+  static_resource:
+    enable: true
+    relative_path: /portal
+    root_path: ./dist
+prefix:
+  api: /api/cubefs
+mysql:
+  host:  
+  port: 
+  slaveHost: 
+  slavePort: 
+  user: 
+  password: 
+  database: 
+  maxIdleConn: 20
+  MaxOpenConn: 300

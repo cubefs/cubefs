@@ -1,0 +1,331 @@
+// css helper
+@import './config.scss';
+
+// 空间辅助类， 例如 p-l-10 ->  padding-left: 10px
+$spacers: (
+  m: margin,
+  p: padding,
+);
+$directions: (
+  t: top,
+  r: right,
+  b: bottom,
+  l: left,
+);
+$sizes: 0 1 2 3 4 5 10 15 20 30 40 50;
+
+@each $k, $v in $spacers {
+  @each $kk in $sizes {
+    .#{$k}-#{$kk} {
+      #{$v}: $kk * 1px !important;
+    }
+    @each $kkk, $vv in $directions {
+      .#{$k}-#{$kkk}-#{$kk} {
+        #{$v}-#{$vv}: $kk * 1px !important;
+      }
+    }
+  }
+}
+
+// 颜色辅助类, 例如 bg-success ->  background-color: 成功主题色变量
+$color-types: (
+  success: $color-success,
+  warning: $color-warning,
+  danger: $color-danger,
+  info: $color-info,
+  theme: $theme-color,
+);
+$appearances: (
+  text: color,
+  bg: background-color,
+);
+@each $k, $v in $appearances {
+  @each $kk, $vv in $color-types {
+    .#{$k}-#{$kk} {
+      #{$v}: $vv !important;
+    }
+  }
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-column {
+  flex-direction: column;
+}
+
+.flex-nowrap {
+  flex-wrap: nowrap;
+}
+
+.flex-warp {
+  flex-wrap: wrap;
+}
+
+.flex-fill {
+  flex: 1 1 auto;
+}
+
+.flex-grow-1 {
+  flex-grow: 1;
+}
+
+.flex-shrink-0 {
+  flex-shrink: 0;
+}
+
+.justify-content-center {
+  display: flex;
+  justify-content: center;
+}
+
+.justify-content-between {
+  display: flex;
+  justify-content: space-between;
+}
+
+.justify-content-around {
+  display: flex;
+  justify-content: space-around;
+}
+
+.justify-content-end {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.flex-column-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.flex-row-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.inline-block {
+  display: inline-block;
+}
+
+.align-center {
+  text-align: center;
+}
+
+.fl-rt {
+  float: right;
+}
+
+.fl-lt {
+  float: left;
+}
+
+.mid-block {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 0 40px 0 40px;
+}
+
+.max-block {
+  margin: 0 auto;
+  padding: 0 40px 0 40px;
+}
+
+.sub-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #000;
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #000;
+  margin-bottom: 16px;
+  line-height: 24px;
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 24px;
+    background-color: #2fc29b;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+}
+
+.title-content {
+  font-size: 16px;
+  font-weight: 700;
+  color: #000;
+  line-height: 24px;
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 24px;
+    background-color: #2fc29b;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+}
+
+.border {
+  border-bottom: 1px solid #eff0f0;
+}
+
+.font-size-s {
+  font-size: 14px;
+}
+
+.pd-top-s {
+  padding-top: 10px;
+}
+
+.pd-top-xs {
+  padding-top: 5px;
+}
+
+.mg-m {
+  margin: 30px;
+}
+
+.mg-rt-s {
+  margin-right: 5px;
+}
+
+.mg-rt-m {
+  margin-right: 10px;
+}
+
+.mg-lf-s {
+  margin-left: 5px;
+}
+
+.mg-lf-m {
+  margin-left: 10px;
+}
+
+.mg-tp-s {
+  margin-top: 5px;
+}
+
+.mg-tp-m {
+  margin-top: 10px;
+}
+
+.mg-bt-s {
+  margin-bottom: 10px;
+}
+
+.mg-bt-m {
+  margin-bottom: 20px !important;
+}
+
+.primary-color {
+  color: #2fc29b;
+}
+
+.info-color {
+  color: $color-info;
+}
+
+.warning-color {
+  color: $color-warning;
+}
+
+.error-color {
+  color: #f24848;
+}
+
+.gray-color {
+  color: #cccccc;
+}
+
+.text-align-left {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  text-align: left;
+}
+
+.height-s {
+  height: 24px;
+}
+
+.line-height-20 {
+  line-height: 20px;
+}
+
+.line-height-m {
+  line-height: 32px;
+}
+
+.split {
+  color: #cccccc;
+  margin-left: 4px;
+  margin-right: 4px;
+}
+
+.link {
+  cursor: pointer;
+}
+
+.line {
+  &::after {
+    margin-top: 12px;
+    display: block;
+    height: 1px;
+    background: #ebeef5;
+    content: '';
+  }
+}
+
+.circle-icon::after {
+  text-align: left;
+  content: '●';
+  font-size: 14px;
+  font-style: initial;
+}
+
+.cursor-pointor {
+  cursor: pointer;
+}
+
+// 提示框样式
+.tips-block {
+  background-color: #fdece8;
+  color: #ed4014;
+  padding: 8px 16px;
+  border-radius: 4px;
+
+  p,
+  h1 {
+    color: #ed4014;
+  }
+
+  p {
+    line-height: 20px;
+  }
+}
+
+.text-blue {
+  color: rgb(64, 158, 255);
+}
+
+.text-green {
+  color: #2fc29b;
+}
+
+.text-yellow {
+  color: rgb(255, 153, 0);
+}
+
+.text-red {
+  color: #ed4014;
+}

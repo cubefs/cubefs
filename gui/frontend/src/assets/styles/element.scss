@@ -1,0 +1,80 @@
+// 由于使用运行时打包element.scss会导致开发模式非常慢，所以改为使用element在线生成css工具先直接生成css的方案
+
+// 所以每次更新element主题都需要去https://element.eleme.io/#/zh-CN/theme/preview先生成一套
+
+// @import './config.scss';
+
+// // https://element.eleme.io/#/zh-CN/component/custom-theme
+// // https://github.com/ElemeFE/element/blob/dev/packages/theme-chalk/src/common/var.scss
+// // 优先使用变量来定制element的主题
+
+// // 主题色
+// $--color-primary: $theme-color;
+// // 成功颜色
+// $--color-success: $color-success;
+// // 警告颜色
+// $--color-warning: $color-warning;
+// // 危险颜色
+// $--color-danger: $color-danger;
+// // 提示颜色
+// $--color-info: $color-info;
+
+// $--font-path: '~element-ui/lib/theme-chalk/fonts';
+
+// @import '~element-ui/packages/theme-chalk/src/index';
+
+// 变量覆盖不到的再用全局的样式覆盖。
+// 例如
+// .el-button {
+//   display: inline-block;
+// }
+
+.el-button [class*='ion-'] + span {
+  margin-left: 5px;
+}
+
+.el-card {
+  margin-bottom: 20px;
+  .el-card.is-always-shadow {
+    box-shadow: none;
+  }
+}
+
+.el-table {
+  th {
+    background-color: #f8f8f9;
+    color: #404040;
+  }
+  th,
+  td {
+    text-align: center;
+    font-weight: normal;
+  }
+}
+
+.el-message__content {
+  white-space: pre-wrap;
+}
+
+.el-select {
+  width: 100%;
+}
+.el-popover__title {
+  color: #666;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f2f2f2;
+  font-size: 14px;
+}
+
+:focus {
+  outline: none;
+}
+
+.el-tabs__nav-wrap::after {
+  height: 1px;
+}
+
+.el-tabs__active-bar {
+  height: 1px;
+}
+
