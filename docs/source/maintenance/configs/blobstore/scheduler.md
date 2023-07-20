@@ -222,6 +222,8 @@ Starting from version v3.3.0, it is supported to configure the data deletion tim
 * message_punish_time_m, punishment time, default 10 minutes
 * delete_log, directory for storing deletion logs, needs to be configured, chunkbits default is 29
 * delete_hour_range, supports configuring the deletion time period in 24-hour format. For example, the following configuration indicates that deletion requests will only be initiated during the time period between 1:00 a.m. and 3:00 a.m. If not configured, deletion will be performed all day.
+* max_batch_size, batch consumption size of kafka messages, default is 10. If the batch is full or the time interval is reached, consume the Kafka messages accumulated during this period
+* batch_interval_s, time interval for consuming kafka messages, default is 2s
 ```json
 {
   "task_pool_size": 400,
@@ -232,6 +234,8 @@ Starting from version v3.3.0, it is supported to configure the data deletion tim
     "from": 1,
     "to": 3
   },
+  "max_batch_size": 10,
+  "batch_interval_s": 2,
   "delete_log": {
     "dir": "/home/service/scheduler/_package/delete_log",
     "chunkbits": 29
