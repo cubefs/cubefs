@@ -145,6 +145,9 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 				span.Warnf("no message for consume and continue")
 				continue
 			}
+
+			span.Debugf("Message claimed: value[%s], timestamp[%v], topic[%s], partition[%d], offset[%d]",
+				string(message.Value), message.Timestamp, message.Topic, message.Partition, message.Offset)
 			msgs = append(msgs, message)
 			if len(msgs) < consumer.maxBatchSize {
 				continue
@@ -167,7 +170,7 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 		}
 		session.MarkMessage(lastMsg, "")
 		session.Commit()
-		consumer.updateLocalOffsetMgr(msgs)
+		consumer.updateLocalOffsetMgr(lastMsg)
 
 		// reset batch msgs and ticker
 		msgs = msgs[:0]
@@ -175,18 +178,10 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 	}
 }
 
-func (consumer *Consumer) updateLocalOffsetMgr(msgs []*sarama.ConsumerMessage) {
-	// map: partition -> offset
-	offsetMap := make(map[int32]int64)
-
-	// The offset in the same partition is sequential, and record the last offset in the same partition
-	for _, msg := range msgs {
-		offsetMap[msg.Partition] = msg.Offset
-	}
-
-	for partition, offset := range offsetMap {
-		consumer.offsetMgr.SetConsumeOffset(consumer.taskType, consumer.topic, partition, offset)
-	}
+// The current kafka framework is one partition per goroutine,  so msg is the last offset in this function ConsumeClaim
+// If the Kafka framework changes, make the corresponding modify here to get the last offset which at each partition
+func (consumer *Consumer) updateLocalOffsetMgr(msg *sarama.ConsumerMessage) {
+	consumer.offsetMgr.SetConsumeOffset(consumer.taskType, consumer.topic, msg.Partition, msg.Offset)
 }
 
 type KafkaConsumerCfg struct {
