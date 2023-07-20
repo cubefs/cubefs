@@ -15,6 +15,13 @@ const (
 	InvalidLimit         = 0
 )
 
+var ReadBufPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 32*1024)
+		return b
+	},
+}
+
 var tinyBuffersTotalLimit int64 = 4096
 var NormalBuffersTotalLimit int64
 var HeadBuffersTotalLimit int64

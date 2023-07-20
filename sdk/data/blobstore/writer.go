@@ -207,10 +207,11 @@ func (writer *Writer) cacheLevel2(wSlice *rwSlice) {
 
 func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h hash.Hash) (size uint64, err error) {
 	var (
-		buf         = make([]byte, 2*writer.blockSize)
+		tmp         = buf.ReadBufPool.Get().([]byte)
 		exec        = NewExecutor(writer.wConcurrency)
 		leftToWrite int
 	)
+	defer buf.ReadBufPool.Put(tmp)
 
 	writer.fileOffset = 0
 	writer.err = make(chan *wSliceErr)
@@ -268,7 +269,7 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 LOOP:
 	for {
 		position := 0
-		leftToWrite, err = reader.Read(buf)
+		leftToWrite, err = reader.Read(tmp)
 		if err != nil && err != io.EOF {
 			return
 		}
@@ -284,7 +285,7 @@ LOOP:
 
 			freeSize := writer.blockSize - len(writer.buf)
 			writeSize := util.Min(leftToWrite, freeSize)
-			writer.buf = append(writer.buf, buf[position:position+writeSize]...)
+			writer.buf = append(writer.buf, tmp[position:position+writeSize]...)
 			position += writeSize
 			leftToWrite -= writeSize
 			writer.fileOffset += writeSize

@@ -126,8 +126,8 @@ var (
 	objMetaCache     *ObjMetaCache
 	blockCache       *bcache.BcacheClient
 	ebsClient        *blobstore.BlobStoreClient
-	writeThreads     int = 4
-	readThreads      int = 4
+	writeThreads     = 4
+	readThreads      = 4
 	enableBlockcache bool
 )
 
@@ -262,26 +262,18 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	// Get cluster info from master
-
 	var ci *proto.ClusterInfo
 	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
 		return
 	}
 	o.updateRegion(ci.Cluster)
 	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
-	ebsClient, err = blobstore.NewEbsClient(access.Config{
-		ConnMode: access.NoLimitConnMode,
-		Consul: api.Config{
-			Address: ci.EbsAddr,
-		},
-		//ServicePath:    ci.ServicePath,
-		MaxSizePutOnce: MaxSizePutOnce,
-		Logger: &access.Logger{
-			Filename: path.Join(cfg.GetString("logDir"), "ebs.log"),
-		},
-	})
-
-	if err != nil {
+	if ci.EbsAddr != "" {
+		err = newEbsClient(ci, cfg)
+		if err != nil {
+			log.LogWarnf("handleStart: new ebsClient err(%v)", err)
+			return err
+		}
 		wt := cfg.GetInt(ebsWriteThreads)
 		if wt != 0 {
 			writeThreads = wt
@@ -303,6 +295,20 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 
 	log.LogInfo("object subsystem start success")
 	return
+}
+
+func newEbsClient(ci *proto.ClusterInfo, cfg *config.Config) (err error) {
+	ebsClient, err = blobstore.NewEbsClient(access.Config{
+		ConnMode: access.NoLimitConnMode,
+		Consul: api.Config{
+			Address: ci.EbsAddr,
+		},
+		MaxSizePutOnce: MaxSizePutOnce,
+		Logger: &access.Logger{
+			Filename: path.Join(cfg.GetString("logDir"), "ebs.log"),
+		},
+	})
+	return err
 }
 
 func handleShutdown(s common.Server) {

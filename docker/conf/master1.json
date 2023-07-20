@@ -13,7 +13,5 @@
   "logDir": "/cfs/log",
   "walDir": "/cfs/data/wal",
   "storeDir": "/cfs/data/store",
-  "metaNodeReservedMem": "67108864",
-  "ebsAddr": "10.177.40.215:8500",
-  "ebsServicePath": "access"
+  "metaNodeReservedMem": "67108864"
 }
