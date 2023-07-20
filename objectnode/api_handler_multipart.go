@@ -213,21 +213,9 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var fsFileInfo *FSFileInfo
 	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body); err != nil {
+		err = handleWritePartErr(err)
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
-		if err == syscall.ENOENT {
-			errorCode = NoSuchUpload
-			return
-		}
-		if err == syscall.EEXIST {
-			errorCode = ConflictUploadRequest
-			return
-		}
-		if err == io.ErrUnexpectedEOF {
-			errorCode = EntityTooSmall
-			return
-		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	// check content MD5
@@ -307,7 +295,6 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	}
 	if err != nil {
 		log.LogErrorf("partCopyHandler: get fileMeta fail: requestId(%v) srcVol(%v) path(%v) err(%v)", GetRequestID(r), srcBucket, srcObject, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	errorCode = CheckConditionInHeader(r, srcFileInfo)
@@ -334,24 +321,10 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	// step5: upload part by copy
 	var fsFileInfo *FSFileInfo
 	fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), reader)
-	if err == syscall.ENOENT {
-		errorCode = NoSuchUpload
-		return
-	}
-	if err == syscall.EAGAIN {
-		errorCode = ConflictUploadRequest
-		return
-	}
-	if err == io.ErrUnexpectedEOF {
-		log.LogWarnf("partCopyHandler: write part fail cause unexpected EOF: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
-		errorCode = EntityTooSmall
-		return
-	}
 	if err != nil {
+		err = handleWritePartErr(err)
 		log.LogErrorf("partCopyHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("partCopyHandler: write part success: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) fsFileInfo(%+v)",
@@ -361,6 +334,19 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	cpr := NewS3CopyPartResult(Etag, fsFileInfo.CreateTime.UTC().Format(time.RFC3339))
 	w.Write([]byte(cpr.String()))
 	return
+}
+
+func handleWritePartErr(err error) error {
+	if err == syscall.ENOENT {
+		return NoSuchUpload
+	}
+	if err == syscall.EEXIST {
+		return ConflictUploadRequest
+	}
+	if err == io.ErrUnexpectedEOF {
+		return EntityTooSmall
+	}
+	return err
 }
 
 // List parts
@@ -436,7 +422,6 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = NoSuchUpload
 			return
 		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("listPartsHandler: Volume list parts, "+
@@ -468,7 +453,6 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 	if bytes, marshalError = MarshalXMLEntity(listPartsResult); marshalError != nil {
 		log.LogErrorf("listPartsHandler: marshal result fail, requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -483,9 +467,9 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultipartUploadRequest, multipartInfo *proto.MultipartInfo) (
-	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, errCode *ErrorCode) {
+	discardedPartInodes map[uint64]uint16, committedPartInfo *proto.MultipartInfo, err error) {
 	if len(reqParts.Parts) <= 0 {
-		errCode = InvalidPart
+		err = InvalidPart
 		log.LogErrorf("checkReqParts: upload part is empty: requestID(%v) volume(%v)", GetRequestID(param.r), param.Bucket())
 		return
 	}
@@ -524,17 +508,17 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 
 	for idx, reqPart := range reqParts.Parts {
 		if reqPart.PartNumber > len(multipartInfo.Parts) {
-			errCode = InvalidPart
+			err = InvalidPart
 			return
 		}
 		if multipartInfo.Parts[reqPart.PartNumber-1].Size < MinPartSizeBytes && idx < len(reqParts.Parts)-1 {
-			errCode = EntityTooSmall
+			err = EntityTooSmall
 			return
 		}
 		if eTag, existed := uploadedInfo[uint16(reqPart.PartNumber)]; !existed {
 			log.LogErrorf("checkReqParts: request part not existed: requestID(%v) volume(%v) part(%v)",
 				GetRequestID(param.r), param.Bucket(), reqPart)
-			errCode = InvalidPart
+			err = InvalidPart
 			return
 		} else {
 			reqEtag := reqPart.ETag
@@ -544,7 +528,7 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 			if eTag != reqEtag {
 				log.LogErrorf("checkReqParts: part(%v) md5 not matched: requestID(%v) volume(%v) reqETag(%v) eTag(%v)",
 					reqPart.PartNumber, GetRequestID(param.r), param.Bucket(), reqEtag, eTag)
-				errCode = InvalidPart
+				err = InvalidPart
 				return
 			}
 		}
@@ -597,7 +581,6 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	requestBytes, err = ioutil.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("completeMultipartUploadHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	multipartUploadRequest := &CompleteMultipartUploadRequest{}
@@ -643,12 +626,11 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 			errorCode = ObjectModeConflict
 			return
 		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
-	discardedInods, committedPartInfo, errorCode := o.checkReqParts(param, multipartUploadRequest, multipartInfo)
-	if errorCode != nil {
+	discardedInods, committedPartInfo, err := o.checkReqParts(param, multipartUploadRequest, multipartInfo)
+	if err != nil {
 		log.LogWarnf("CompleteMultipart: checkReqParts err requestID(%v) path(%v) err(%v)", GetRequestID(r), param.object, errorCode)
 		return
 	}
@@ -660,7 +642,6 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 			errorCode = ObjectModeConflict
 			return
 		}
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("completeMultipartUploadHandler: complete multipart: requestID(%v) volume(%v) key(%v) uploadID(%v) fileInfo(%v)",
@@ -677,7 +658,6 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(completeResult); marshalError != nil {
 		log.LogErrorf("completeMultipartUploadHandler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), marshalError)
-		errorCode = InternalErrorCode(marshalError)
 		return
 	}
 
@@ -727,16 +707,16 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 
 	// Abort multipart upload
 	err = vol.AbortMultipart(param.Object(), uploadId)
-	if err != nil && err != syscall.ENOENT {
-		log.LogErrorf("abortMultipartUploadHandler: Volume abort multipart fail, requestID(%v) uploadID(%v) err(%v)", GetRequestID(r), uploadId, err)
-		errorCode = InternalErrorCode(err)
-		return
-	}
 	if err == syscall.ENOENT {
 		log.LogWarnf("abortMultipartUploadHandler: Volume abort multipart fail, requestID(%v) uploadID(%v) err(%v)", GetRequestID(r), uploadId, err)
 		errorCode = NoSuchUpload
 		return
 	}
+	if err != nil {
+		log.LogErrorf("abortMultipartUploadHandler: Volume abort multipart fail, requestID(%v) uploadID(%v) err(%v)", GetRequestID(r), uploadId, err)
+		return
+	}
+
 	log.LogDebugf("abortMultipartUploadHandler: Volume abort multipart, requestID(%v) uploadID(%v) path(%v)", GetRequestID(r), uploadId, param.Object())
 	w.WriteHeader(http.StatusNoContent)
 	return
@@ -823,7 +803,6 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 	var marshalError error
 	if bytes, marshalError = MarshalXMLEntity(listUploadsResult); marshalError != nil {
 		log.LogErrorf("listMultipartUploadsHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(marshalError)
 		return
 	}
 
