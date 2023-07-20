@@ -220,6 +220,8 @@ v3.3.0版本开始支持配置数据删除时间段。
 * message_punish_time_m，惩罚时间，默认10分钟
 * delete_log，删除日志保留目录，需要配置，chunkbits默认为29
 * delete_hour_range，支持配置删除时间段，24小时制，比如以下配置表示凌晨1点到3点中间时间段才会发起删除请求，如果不配置默认全天删除
+* max_batch_size, 批量消费kafka消息的大小，默认10; 如果batch大小已满或已经达到时间间隔，则消费在此期间累积的Kafka消息
+* batch_interval_s, 消费kafka消息的最大间隔，默认2秒
 ```json
 {
   "task_pool_size": 400,
@@ -230,6 +232,8 @@ v3.3.0版本开始支持配置数据删除时间段。
     "from": 1,
     "to": 3
   },
+  "max_batch_size": 10,
+  "batch_interval_s": 2,
   "delete_log": {
     "dir": "/home/service/scheduler/_package/delete_log",
     "chunkbits": 29
