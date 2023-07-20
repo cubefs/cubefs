@@ -17,6 +17,7 @@ package objectnode
 // https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"net/http"
 
@@ -43,33 +44,33 @@ var (
 )
 
 type Grantee struct {
-	Xmlxsi      string `xml:"xmlns:xsi,attr"`
-	Xmlns       string `xml:"xsi,attr"`
-	XsiType     string `xml:"xsi:type,attr"`
-	Type        string `xml:"type,attr"`
-	Id          string `xml:"ID,omitempty"`
-	URI         string `xml:"URI,omitempty"`
-	DisplayName string `xml:"DisplayName,omitempty"`
+	Xmlxsi      string `xml:"xmlns:xsi,attr" json:"xmlns,omitempty"`
+	Xmlns       string `xml:"xsi,attr" json:"xsi,omitempty"`
+	XsiType     string `xml:"xsi:type,attr" json:"xsi_type,omitempty"`
+	Type        string `xml:"type,attr" json:"t"`
+	Id          string `xml:"ID,omitempty" json:"i,omitempty"`
+	URI         string `xml:"URI,omitempty" json:"u,omitempty"`
+	DisplayName string `xml:"DisplayName,omitempty" json:"d,omitempty"`
 }
 
 type Grant struct {
-	Grantee    Grantee `xml:"Grantee,omitempty"`
-	Permission string  `xml:"Permission,omitempty"`
+	Grantee    Grantee `xml:"Grantee,omitempty" json:"g"`
+	Permission string  `xml:"Permission,omitempty" json:"p"`
 }
 
 type AccessControlList struct {
-	Grants []Grant `xml:"Grant,omitempty"`
+	Grants []Grant `xml:"Grant,omitempty" json:"gs"`
 }
 
 type Owner struct {
-	Id          string `xml:"ID"`
-	DisplayName string `xml:"DisplayName"`
+	Id          string `xml:"ID" json:"i"`
+	DisplayName string `xml:"DisplayName" json:"d,omitempty"`
 }
 
 type AccessControlPolicy struct {
-	Xmlns string            `xml:"xmlns,attr"`
-	Owner Owner             `xml:"Owner,omitempty"`
-	Acl   AccessControlList `xml:"AccessControlList,omitempty"`
+	Xmlns string            `xml:"xmlns,attr" json:"x,omitempty"`
+	Owner Owner             `xml:"Owner,omitempty" json:"o,omitempty"`
+	Acl   AccessControlList `xml:"AccessControlList,omitempty" json:"a,omitempty"`
 }
 
 func (g *Grantee) isValid() error {
@@ -217,11 +218,15 @@ func (acp *AccessControlPolicy) SetAuthenticatedRead(ownerId string) {
 func (acp *AccessControlPolicy) XmlMarshal() ([]byte, error) {
 	var grants []Grant
 	for _, g := range acp.Acl.Grants {
+		if g.Grantee.Xmlns == "" {
+			g.Grantee.Xmlns = XMLNS
+		}
 		g.Grantee.Xmlxsi = g.Grantee.Xmlns
 		g.Grantee.XsiType = g.Grantee.Type
 		grants = append(grants, g)
 	}
 	acp.Acl.Grants = grants
+	acp.Xmlns = "http://s3.amazonaws.com/doc/2006-03-01/"
 	data, err := xml.Marshal(acp)
 	if err != nil {
 		return nil, err
@@ -229,10 +234,23 @@ func (acp *AccessControlPolicy) XmlMarshal() ([]byte, error) {
 	return append([]byte(xml.Header), data...), nil
 }
 
-func (acp *AccessControlPolicy) XmlEncode() string {
-	data, err := xml.Marshal(acp)
+func (acp *AccessControlPolicy) RemoveAttr() {
+	var grants []Grant
+	for _, g := range acp.Acl.Grants {
+		g.Grantee.Xmlxsi = ""
+		g.Grantee.XsiType = ""
+		g.Grantee.Xmlns = ""
+		grants = append(grants, g)
+	}
+	acp.Xmlns = ""
+	acp.Acl.Grants = grants
+}
+
+func (acp *AccessControlPolicy) Encode() string {
+	acp.RemoveAttr()
+	data, err := json.Marshal(acp)
 	if err != nil {
-		log.LogWarnf("acl xml marshal failed: %v", err)
+		log.LogWarnf("acl json marshal failed: %v", err)
 	}
 	return string(data)
 }

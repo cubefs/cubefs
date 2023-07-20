@@ -108,7 +108,7 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 	}
 	// Check ACL
 	var acl *AccessControlPolicy
-	acl, err = ParseACL(r, userInfo.UserID, false)
+	acl, err = ParseACL(r, userInfo.UserID, false, false)
 	if err != nil {
 		log.LogErrorf("createMultipleUploadHandler: parse acl fail: requestID(%v) acl(%+v) err(%v)",
 			GetRequestID(r), acl, err)
