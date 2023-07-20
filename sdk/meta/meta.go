@@ -360,7 +360,7 @@ func statusToErrno(status int) error {
 	case statusTxTimeout:
 		return syscall.EAGAIN
 	case statusUploadPartConflict:
-		return syscall.EAGAIN
+		return syscall.EEXIST
 	default:
 	}
 	return syscall.EIO

@@ -21,6 +21,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,13 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/gorilla/mux"
 )
+
+const (
+	DefaultMinBucketLength = 3
+	DefaultMaxBucketLength = 63
+)
+
+var regexBucketName = regexp.MustCompile(`^[0-9a-z][-0-9a-z]+[0-9a-z]$`)
 
 // Head bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
@@ -49,6 +57,11 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	if bucket == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+
+	if !IsValidBucketName(bucket, DefaultMinBucketLength, DefaultMaxBucketLength) {
 		errorCode = InvalidBucketName
 		return
 	}
@@ -104,7 +117,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), bucket, auth.accessKey, err)
 		return
 	}
-	w.Header()[HeaderNameLocation] = []string{bucket}
+	w.Header().Set(HeaderNameLocation, "/"+bucket)
 
 	vol, err1 := o.vm.VolumeWithoutBlacklist(bucket)
 	if err1 != nil {
@@ -431,4 +444,14 @@ func (o *ObjectNode) getUserInfoByAccessKeyV2(accessKey string) (userInfo *proto
 		err = InvalidAccessKeyId
 	}
 	return
+}
+
+func IsValidBucketName(bucketName string, minBucketLength, maxBucketLength int) bool {
+	if len(bucketName) < minBucketLength || len(bucketName) > maxBucketLength {
+		return false
+	}
+	if !regexBucketName.MatchString(bucketName) {
+		return false
+	}
+	return true
 }
