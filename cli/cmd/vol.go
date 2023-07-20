@@ -371,15 +371,18 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
 			}
 
-			if optEnableQuota != "true" {
-				if vv.EnableQuota {
-					isChange = true
-					vv.EnableQuota = false
+			if optEnableQuota != "" {
+				if optEnableQuota == "false" {
+					if vv.EnableQuota {
+						isChange = true
+						vv.EnableQuota = false
+					}
 				}
-			} else {
-				if !vv.EnableQuota {
-					isChange = true
-					vv.EnableQuota = true
+				if optEnableQuota == "true" {
+					if !vv.EnableQuota {
+						isChange = true
+						vv.EnableQuota = true
+					}
 				}
 			}
 			confirmString.WriteString(fmt.Sprintf("  EnableQuota : %v\n", formatEnabledDisabled(vv.EnableQuota)))
@@ -606,7 +609,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVar(&optTxForceReset, CliTxForceReset, false, "Reset transaction mask to the specified value of \"transaction-mask\"")
 	cmd.Flags().IntVar(&optTxOpLimitVal, CliTxOpLimit, 0, "Specify limitation[Unit: second] for transaction(default 0 unlimited)")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
-	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
+	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 
 	return cmd
 
