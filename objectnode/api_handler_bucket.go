@@ -94,7 +94,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var acl *AccessControlPolicy
-	if acl, err = ParseACL(r, userInfo.UserID, false); err != nil {
+	if acl, err = ParseACL(r, userInfo.UserID, false, false); err != nil {
 		log.LogErrorf("createBucketHandler: parse acl fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
@@ -115,11 +115,13 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), bucket, err1)
 		return
 	}
-	if err1 = putBucketACL(vol, acl); err1 != nil {
-		log.LogWarnf("createBucketHandler: put acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
-			GetRequestID(r), bucket, acl, err1)
+	if acl != nil {
+		if err1 = putBucketACL(vol, acl); err1 != nil {
+			log.LogWarnf("createBucketHandler: put acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
+				GetRequestID(r), bucket, acl, err1)
+		}
+		vol.metaLoader.storeACL(acl)
 	}
-	vol.metaLoader.storeACL(acl)
 
 	return
 }

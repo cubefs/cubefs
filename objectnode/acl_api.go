@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"io"
 	"net/http"
@@ -44,7 +45,7 @@ func IsApiSupportByObjectAcl(apiName proto.Action) bool {
 	return false
 }
 
-func ParseACL(req *http.Request, owner string, hasBodyAcl bool) (acl *AccessControlPolicy, err error) {
+func ParseACL(req *http.Request, owner string, hasBodyAcl, needDefault bool) (acl *AccessControlPolicy, err error) {
 	cannedAcl, hasCannedAcl := req.Header[XAmzAcl]
 	hasGrantAcl := hasGrantAclHeader(req.Header)
 	if err = hasConflictAcl(hasCannedAcl, hasGrantAcl, hasBodyAcl); err != nil {
@@ -58,7 +59,10 @@ func ParseACL(req *http.Request, owner string, hasBodyAcl bool) (acl *AccessCont
 	case hasBodyAcl:
 		acl, err = ParseAclFromRequestBody(req.Body, owner)
 	default:
-		return CreateDefaultACL(owner), nil
+		if needDefault {
+			return CreateDefaultACL(owner), nil
+		}
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
@@ -172,7 +176,8 @@ func addGrants(acl *AccessControlPolicy, grants []grant, permission string) {
 }
 
 func putBucketACL(vol *Volume, acp *AccessControlPolicy) error {
-	data, err := xml.Marshal(acp)
+	acp.RemoveAttr()
+	data, err := json.Marshal(acp)
 	if err != nil {
 		return err
 	}
@@ -187,7 +192,7 @@ func getObjectACL(vol *Volume, path string, needDefault bool) (*AccessControlPol
 	var acp *AccessControlPolicy
 	data := xAttr.Get(XAttrKeyOSSACL)
 	if len(data) > 0 {
-		err = xml.Unmarshal(data, &acp)
+		err = json.Unmarshal(data, &acp)
 	} else if needDefault {
 		acp = CreateDefaultACL(vol.owner)
 	}
@@ -195,7 +200,8 @@ func getObjectACL(vol *Volume, path string, needDefault bool) (*AccessControlPol
 }
 
 func putObjectACL(vol *Volume, path string, acp *AccessControlPolicy) error {
-	data, err := xml.Marshal(acp)
+	acp.RemoveAttr()
+	data, err := json.Marshal(acp)
 	if err != nil {
 		return err
 	}
