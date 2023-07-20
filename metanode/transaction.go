@@ -759,13 +759,16 @@ func (tm *TransactionManager) delTxFromRM(txId string) (status uint8, err error)
 	}
 
 	resp, err := tm.txProcessor.mp.submit(opFSMTxDelete, val)
-	status = resp.(uint8)
-	if err != nil || status != proto.OpOk {
+	if err != nil {
 		log.LogWarnf("delTxFromRM: delTxFromRM transaction[%v] failed, err[%v]", txId, err)
 		return proto.OpTxCommitErr, err
 	}
 
-	log.LogDebugf("delTxFromRM: tx[%v] is deleted successfully", txId)
+	status = resp.(uint8)
+	if log.EnableDebug() {
+		log.LogDebugf("delTxFromRM: tx[%v] is deleted successfully, status (%s)", txId, proto.GetStatusStr(status))
+	}
+
 	return
 }
 

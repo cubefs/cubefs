@@ -501,6 +501,12 @@ func (p *Packet) GetOpMsg() (m string) {
 	return
 }
 
+func GetStatusStr(status uint8) string {
+	pkt := &Packet{}
+	pkt.ResultCode = status
+	return pkt.GetResultMsg()
+}
+
 // GetResultMsg returns the result message.
 func (p *Packet) GetResultMsg() (m string) {
 	if p == nil {

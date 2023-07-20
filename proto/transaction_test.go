@@ -15,7 +15,8 @@ func TestGetMaskFromString(t *testing.T) {
 		{TxPause, "pause"},
 		{TxOpMaskAll, "all"},
 		{TxOpMaskOff, "off"},
-		{TxOpMaskCreate | TxOpMaskRename, "create|rename"},
+		{TxOpMaskCreate, "create"},
+		{TxOpMaskRename, "rename"},
 	}
 
 	for _, c := range cs {
