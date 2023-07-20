@@ -6429,11 +6429,10 @@ func extractGetAllFlashNodes(r *http.Request) (status bool) {
 	return
 }
 
-
 // handle metanode datanode heartbeat protobuf info.
 func (m *Server) handleHeartbeatTaskPbResponse(w http.ResponseWriter, r *http.Request) {
 	body, err := readBodyFromRequest(r)
-	metrics := exporter.NewModuleTP(proto.GetHeartbeatPbResponse)
+	metrics := exporter.NewModuleTP(proto.HeartbeatTaskPbResponseUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
