@@ -58,14 +58,12 @@ func TestAccessControlPolicyXml(t *testing.T) {
 	require.Equal(t, "CanonicalUser", result.Acl.Grants[0].Grantee.Type)
 	require.Equal(t, "", result.Acl.Grants[0].Grantee.URI)
 	require.Equal(t, "display-id1-name", result.Acl.Grants[0].Grantee.DisplayName)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", result.Acl.Grants[0].Grantee.Xmlns)
 
 	require.Equal(t, "READ", result.Acl.Grants[1].Permission)
 	require.Equal(t, "", result.Acl.Grants[1].Grantee.Id)
 	require.Equal(t, "Group", result.Acl.Grants[1].Grantee.Type)
 	require.Equal(t, "http://acs.amazonaws.com/groups/global/AllUsers", result.Acl.Grants[1].Grantee.URI)
 	require.Equal(t, "", result.Acl.Grants[1].Grantee.DisplayName)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", result.Acl.Grants[1].Grantee.Xmlns)
 }
 
 func TestAccessControlPolicyXml_NoGrantIDAndURI(t *testing.T) {
@@ -244,7 +242,6 @@ func TestSetPrivate(t *testing.T) {
 	require.Equal(t, "", acp.Acl.Grants[0].Grantee.URI)
 	require.Equal(t, "", acp.Acl.Grants[0].Grantee.DisplayName)
 	require.Equal(t, "CanonicalUser", acp.Acl.Grants[0].Grantee.Type)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", acp.Acl.Grants[0].Grantee.Xmlns)
 }
 
 func TestSetPublicRead(t *testing.T) {
@@ -257,14 +254,12 @@ func TestSetPublicRead(t *testing.T) {
 	require.Equal(t, "", acp.Acl.Grants[0].Grantee.URI)
 	require.Equal(t, "", acp.Acl.Grants[0].Grantee.DisplayName)
 	require.Equal(t, "CanonicalUser", acp.Acl.Grants[0].Grantee.Type)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", acp.Acl.Grants[0].Grantee.Xmlns)
 
 	require.Equal(t, "READ", acp.Acl.Grants[1].Permission)
 	require.Equal(t, "", acp.Acl.Grants[1].Grantee.Id)
 	require.Equal(t, "http://acs.amazonaws.com/groups/global/AllUsers", acp.Acl.Grants[1].Grantee.URI)
 	require.Equal(t, "", acp.Acl.Grants[1].Grantee.DisplayName)
 	require.Equal(t, "Group", acp.Acl.Grants[1].Grantee.Type)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", acp.Acl.Grants[1].Grantee.Xmlns)
 }
 
 func TestSetPublicReadWrite(t *testing.T) {
@@ -277,21 +272,18 @@ func TestSetPublicReadWrite(t *testing.T) {
 	require.Equal(t, "", acp.Acl.Grants[0].Grantee.URI)
 	require.Equal(t, "", acp.Acl.Grants[0].Grantee.DisplayName)
 	require.Equal(t, "CanonicalUser", acp.Acl.Grants[0].Grantee.Type)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", acp.Acl.Grants[0].Grantee.Xmlns)
 
 	require.Equal(t, "READ", acp.Acl.Grants[1].Permission)
 	require.Equal(t, "", acp.Acl.Grants[1].Grantee.Id)
 	require.Equal(t, "http://acs.amazonaws.com/groups/global/AllUsers", acp.Acl.Grants[1].Grantee.URI)
 	require.Equal(t, "", acp.Acl.Grants[1].Grantee.DisplayName)
 	require.Equal(t, "Group", acp.Acl.Grants[1].Grantee.Type)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", acp.Acl.Grants[1].Grantee.Xmlns)
 
 	require.Equal(t, "WRITE", acp.Acl.Grants[2].Permission)
 	require.Equal(t, "", acp.Acl.Grants[2].Grantee.Id)
 	require.Equal(t, "http://acs.amazonaws.com/groups/global/AllUsers", acp.Acl.Grants[2].Grantee.URI)
 	require.Equal(t, "", acp.Acl.Grants[2].Grantee.DisplayName)
 	require.Equal(t, "Group", acp.Acl.Grants[2].Grantee.Type)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", acp.Acl.Grants[2].Grantee.Xmlns)
 }
 
 func TestSetAuthenticatedRead(t *testing.T) {
@@ -304,14 +296,12 @@ func TestSetAuthenticatedRead(t *testing.T) {
 	require.Equal(t, "", acp.Acl.Grants[0].Grantee.URI)
 	require.Equal(t, "", acp.Acl.Grants[0].Grantee.DisplayName)
 	require.Equal(t, "CanonicalUser", acp.Acl.Grants[0].Grantee.Type)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", acp.Acl.Grants[0].Grantee.Xmlns)
 
 	require.Equal(t, "READ", acp.Acl.Grants[1].Permission)
 	require.Equal(t, "", acp.Acl.Grants[1].Grantee.Id)
 	require.Equal(t, "http://acs.amazonaws.com/groups/global/AuthenticatedUsers", acp.Acl.Grants[1].Grantee.URI)
 	require.Equal(t, "", acp.Acl.Grants[1].Grantee.DisplayName)
 	require.Equal(t, "Group", acp.Acl.Grants[1].Grantee.Type)
-	require.Equal(t, "http://www.w3.org/2001/XMLSchema-instance", acp.Acl.Grants[1].Grantee.Xmlns)
 }
 
 func TestAccessControlPolicy_FULL_CONTROL(t *testing.T) {

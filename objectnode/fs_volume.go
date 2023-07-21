@@ -233,6 +233,7 @@ func (v *Volume) loadBucketACL() (acp *AccessControlPolicy, err error) {
 	}
 	acp = &AccessControlPolicy{}
 	if err = json.Unmarshal(raw, acp); err != nil {
+		err = xml.Unmarshal(raw, acp)
 		return
 	}
 	return

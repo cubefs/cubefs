@@ -176,7 +176,6 @@ func addGrants(acl *AccessControlPolicy, grants []grant, permission string) {
 }
 
 func putBucketACL(vol *Volume, acp *AccessControlPolicy) error {
-	acp.RemoveAttr()
 	data, err := json.Marshal(acp)
 	if err != nil {
 		return err
@@ -192,7 +191,9 @@ func getObjectACL(vol *Volume, path string, needDefault bool) (*AccessControlPol
 	var acp *AccessControlPolicy
 	data := xAttr.Get(XAttrKeyOSSACL)
 	if len(data) > 0 {
-		err = json.Unmarshal(data, &acp)
+		if err = json.Unmarshal(data, &acp); err != nil {
+			err = xml.Unmarshal(data, &acp)
+		}
 	} else if needDefault {
 		acp = CreateDefaultACL(vol.owner)
 	}
@@ -200,7 +201,6 @@ func getObjectACL(vol *Volume, path string, needDefault bool) (*AccessControlPol
 }
 
 func putObjectACL(vol *Volume, path string, acp *AccessControlPolicy) error {
-	acp.RemoveAttr()
 	data, err := json.Marshal(acp)
 	if err != nil {
 		return err
