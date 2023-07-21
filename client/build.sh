@@ -144,7 +144,11 @@ if [[ ${pack_libs} -eq 1 ]]; then
     fi
 
     echo "pack libs, generate cfs-client-libs.tar.gz ..."
+    go build -buildmode=plugin -linkshared -o ${bin}/libempty_tmp.so ${dir}/empty.go
     cd ${bin}
+    chmod a+rx libempty_tmp.so
+    libstd=`ldd libempty_tmp.so |grep libstd.so |awk '{print $3}'`
+    \rm libempty_tmp.so
     versionID=`./cfs-client-static -v | grep Version: | awk '{print $2}'`
     version_regex="^[0-9]+\.[0-9]+\.[0-9]+$"
     if ! [[ ${versionID} =~ ${version_regex} ]]; then
@@ -156,8 +160,8 @@ if [[ ${pack_libs} -eq 1 ]]; then
     echo "${versionID}  Version" >> checkfile
     tar -zcvf ${libTarName} libcfssdk.so libcfsc.so checkfile
 
-    libstd=`ldd libcfssdk.so |grep libstd.so |awk '{print $3}'`
     cp -f ${libstd} libstd.so
+    chmod a+rx libstd.so
     md5sum libcfssdk.so > checkfile
     md5sum libstd.so >> checkfile
     md5sum cfs-client-inner >> checkfile

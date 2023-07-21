@@ -761,7 +761,7 @@ services:
             - ./bin/libcfsc.so:/usr/lib64/libcfsc.so:ro
             - ./bin/libcfsclient.so:/usr/lib64/libcfsclient.so:ro
             - ./bin/libempty.so:/usr/lib64/libempty.so:ro
-            - /usr/local/go/pkg/linux_amd64_dynlink/libstd.so:/usr/lib64/libstd.so:ro
+            - ./bin/libstd.so:/usr/lib64/libstd.so:ro
             - ./conf/hosts:/etc/hosts:ro
             - ./conf/client.json:/cfs/conf/client.json
             - ./conf/bypass.ini:/usr/lib64/bypass.ini:ro
