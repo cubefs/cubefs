@@ -141,15 +141,19 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 		return nil, syscall.ENOENT
 	}
 
-	quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
-	if err != nil {
-		log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
-		return nil, syscall.ENOENT
-	}
 	var quotaIds []uint32
-	for quotaId := range quotaInfos {
-		quotaIds = append(quotaIds, quotaId)
+	if mw.EnableQuota {
+		quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+		if err != nil {
+			log.LogErrorf("Create_ll: get parent quota fail, parentID(%v) err(%v)", parentID, err)
+			return nil, syscall.ENOENT
+		}
+
+		for quotaId := range quotaInfos {
+			quotaIds = append(quotaIds, quotaId)
+		}
 	}
+
 	rwPartitions = mw.getRWPartitions()
 	length := len(rwPartitions)
 	var tx *Transaction
@@ -1219,17 +1223,6 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (info *p
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err = mw.iget(parentMP, parentID)
-	if err != nil || status != statusOK {
-		return nil, statusErrToErrno(status, err)
-	}
-
-	quota := atomic.LoadUint32(&mw.DirChildrenNumLimit)
-	if info.Nlink >= quota {
-		log.LogErrorf("txLink: parent inode's nlink quota reached, parentID(%v)", parentID)
-		return nil, syscall.EDQUOT
-	}
-
 	mp := mw.getPartitionByInode(ino)
 	if mp == nil {
 		log.LogErrorf("txLink: No target inode partition, ino(%v)", ino)
@@ -1261,17 +1254,18 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (info *p
 	})
 
 	funcs = append(funcs, func() (int, error) {
-		quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
-		if err != nil {
-			log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, err)
-			return statusError, syscall.ENOENT
-		}
-
 		var quotaIds []uint32
-		for quotaId := range quotaInfos {
-			quotaIds = append(quotaIds, quotaId)
-		}
+		if mw.EnableQuota {
+			quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
+			if err != nil {
+				log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, err)
+				return statusError, syscall.ENOENT
+			}
 
+			for quotaId := range quotaInfos {
+				quotaIds = append(quotaIds, quotaId)
+			}
+		}
 		status, err = mw.txDcreate(tx, parentMP, parentID, name, ino, info.Mode, quotaIds)
 		return status, err
 	})
