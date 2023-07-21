@@ -10,6 +10,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/cubefs/cubefs/badge)](https://securityscorecards.dev/viewer/?uri=github.com/cubefs/cubefs)
 [![Codecov](https://img.shields.io/codecov/c/github/cubefs/cubefs?style=flat-square&logo=codecov)](https://codecov.io/gh/cubefs/cubefs)
 [![Artifact HUB](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/cubefs)](https://artifacthub.io/packages/helm/cubefs/cubefs)
+[![CLOMonitor](https://img.shields.io/endpoint?url=https://clomonitor.io/api/projects/cncf/chubao-fs/badge)](https://clomonitor.io/projects/cncf/chubao-fs)
 [![Release](https://img.shields.io/github/v/release/cubefs/cubefs.svg?color=161823&style=flat-square&logo=smartthings)](https://github.com/cubefs/cubefs/releases)
 [![Tag](https://img.shields.io/github/v/tag/cubefs/cubefs.svg?color=ee8936&logo=fitbit&style=flat-square)](https://github.com/cubefs/cubefs/tags)
 
