@@ -1077,6 +1077,10 @@ func (dp *DataPartition) getPersistedAppliedIDFromReplicas(ctx context.Context, 
 				return
 			}
 			// TODO: 以下为版本过度而设计的兼容逻辑，由于获取PersistedAppliedID为新增接口，为避免在灰度过程中无法正常进行WAL的Truncate调度。 请在下一个版本移除。
+			if log.IsWarnEnabled() {
+				log.LogWarnf("partition[%v] get persisted applied ID failed cause remote [%v] respond result code [%v], try to get current applied ID.",
+					dp.partitionID, curAddr, repl.ErrorUnknownOp.Error())
+			}
 			appliedID, err = dp.getRemoteAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
 			if err != nil {
 				future.Respond(nil, err)
