@@ -35,7 +35,7 @@ const (
 	DefaultTxConflictRetryInterval = 20   //ms
 	MaxTxConflictRetryInterval     = 1000 //ms
 	MinTxConflictRetryInterval     = 10   //ms
-	//MaxReplaceholderTimeout   = MaxTransactionTimeout * 30 //seconds
+	DefaultTxDeleteTime            = 120
 )
 
 type TxOpMask uint8
@@ -533,7 +533,7 @@ func (tx *TransactionInfo) CanDelete() bool {
 		return false
 	}
 
-	if tx.DoneTime+tx.Timeout*2*60 < time.Now().Unix() {
+	if tx.DoneTime+DefaultTxDeleteTime < time.Now().Unix() {
 		return true
 	}
 	return false
