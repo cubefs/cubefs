@@ -122,12 +122,13 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 				" use last valid selector. Please change dpSelector config through master.",
 				w.dpSelectorName, w.dpSelectorParm, w.quorum, err)
 		} else {
+			_ = newDpSelector.Refresh(partitions)
 			w.Lock()
 			log.LogInfof("refreshDpSelector: change dpSelector to [%v %v %v]", w.dpSelectorName, w.dpSelectorParm, w.quorum)
 			w.dpSelector = newDpSelector
 			w.dpSelectorChanged = false
-			dpSelector = newDpSelector
 			w.Unlock()
+			return
 		}
 	}
 
