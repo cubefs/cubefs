@@ -28,6 +28,10 @@ const (
 	selectEcNode   = 2
 )
 
+var (
+	selectorLock sync.Mutex
+)
+
 type weightedNode struct {
 	Carry  float64
 	Weight float64
@@ -191,6 +195,9 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 }
 
 func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selectType int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
+	if replicaNum == 0 {
+		return
+	}
 	var (
 		maxTotalFunc      GetMaxTotal
 		getCarryNodesFunc GetCarryNodes
@@ -198,9 +205,6 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	orderHosts := make([]string, 0)
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
-	if replicaNum == 0 {
-		return
-	}
 	switch selectType {
 	case selectDataNode:
 		maxTotalFunc = getDataNodeMaxTotal
@@ -211,6 +215,8 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	default:
 		return nil, nil, fmt.Errorf("invalid selectType[%v]", selectType)
 	}
+	selectorLock.Lock()
+	defer selectorLock.Unlock()
 	maxTotal := maxTotalFunc(nodes, storeMode)
 	if maxTotal == 0 {
 		err = fmt.Errorf("action[getAvailHosts] maxTotal is zero")
