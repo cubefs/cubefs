@@ -22,6 +22,9 @@ on:
       # - 'docs-zh/**'
       # - '**.md'
 
+permissions:
+  contents: read
+
 jobs:
   ci-test-unit:
     runs-on: ubuntu-latest
