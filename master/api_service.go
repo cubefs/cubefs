@@ -6234,6 +6234,34 @@ func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(cf))
 }
 
+func (m *Server) setNodeSetCapacity(w http.ResponseWriter, r *http.Request) {
+	var (
+		capacityStr string
+		capacity    int
+		err         error
+	)
+	metrics := exporter.NewModuleTP(proto.AdminSetClientPkgAddrUmpKey)
+	defer func() { metrics.Set(err) }()
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if capacityStr = r.FormValue(proto.NodeSetCapacityKey); capacityStr == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: keyNotFound(proto.NodeSetCapacityKey).Error()})
+		return
+	}
+	if capacity, err = strconv.Atoi(capacityStr); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: unmatchedKey(proto.NodeSetCapacityKey).Error()})
+		return
+	}
+	if err = m.cluster.setNodeSetCapacity(capacity); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeSetCapacity to %d successfully", capacity)))
+	m.cluster.checkMergeZoneNodeset()
+}
+
 func parseRequestToSetCompactVol(r *http.Request) (name, compactTag, authKey string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

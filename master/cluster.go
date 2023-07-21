@@ -5539,6 +5539,23 @@ func (c *Cluster) setClientPkgAddr(addr string) (err error) {
 	return
 }
 
+func (c *Cluster) setNodeSetCapacity(capacity int) (err error) {
+	if capacity < 64 {
+		err = proto.ErrInvalidNodeSetCapacity
+		log.LogErrorf("action[setNodeSetCapacity] err[%v]", err)
+		return
+	}
+	oldCapacity := c.cfg.nodeSetCapacity
+	c.cfg.nodeSetCapacity = capacity
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setNodeSetCapacity] err[%v]", err)
+		c.cfg.nodeSetCapacity = oldCapacity
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func checkForceRowAndCompact(vol *Vol, forceRowChange, compactTagChange bool) (err error) {
 	if forceRowChange && !compactTagChange {
 		if !vol.ForceROW && vol.compactTag == proto.CompactOpen {

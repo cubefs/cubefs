@@ -1418,3 +1418,13 @@ func (api *AdminAPI) SetNodeToOfflineState(addrList []string, nodeType, zoneName
 	}
 	return nil
 }
+
+func (api *AdminAPI) SetNodeSetCapacity(capacity int) (result string, err error) {
+	var data []byte
+	var req = newAPIRequest(http.MethodPost, proto.AdminSetNodeSetCapacity)
+	req.addParam(proto.NodeSetCapacityKey, strconv.Itoa(capacity))
+	if data, _, err = api.mc.serveRequest(req); err != nil {
+		return
+	}
+	return string(data), nil
+}

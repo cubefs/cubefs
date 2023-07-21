@@ -88,6 +88,7 @@ const (
 	AdminGetClientPkgAddr          = "/clientPkgAddr/get"
 	AdminSetVolChildMaxCnt         = "/vol/setChildMaxCnt"
 	AdminCheckVolPartitionReplica  = "/vol/checkReplica"
+	AdminSetNodeSetCapacity        = "/admin/nodeSetCapacity/set"
 
 	AdminSmartVolList = "/admin/smartVol/list"
 
@@ -283,6 +284,7 @@ const (
 	DataNodeReqVolOpPartRateKey  = "dataNodeReqVolOpPartRate"
 	DataNodeMarkDeleteRateKey    = "markDeleteRate"
 	DpTimeoutCntThreshold        = "dpTimeoutCntThreshold"
+	NodeSetCapacityKey           = "nodeSetCapacity"
 )
 
 const (

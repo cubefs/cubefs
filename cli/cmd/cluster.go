@@ -42,6 +42,7 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 		newClusterSetRocksDBDiskThresholdCmd(client),
 		newClusterSetMemModeRocksDBDiskThresholdCmd(client),
 		newClusterSetNodeState(client),
+		newClusterSetNodeSetCapacity(client),
 	)
 	return clusterCmd
 }
@@ -55,6 +56,7 @@ const (
 	cmdClusterClientPkgAddr         = "Set URL for client pkg download"
 	cmdClusterEcUpdateShort         = "update ec config"
 	cmdCLusterSetNodeState          = "Set Node State"
+	cmdClusterSetNodeSetCapacity    = "Set nodeSet capacity"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -316,5 +318,26 @@ func newClusterSetNodeState(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&zoneName, CliFlagZoneName, "", "zone name")
 	cmd.Flags().StringVar(&state, CliFlagNodeState, "", "state")
 	cmd.Flags().StringSliceVar(&addrList, CliFlagAddrList, []string{}, "comma-separated list of addresses")
+	return cmd
+}
+
+func newClusterSetNodeSetCapacity(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpSetNodeSetCapacity,
+		Short: cmdClusterSetNodeSetCapacity,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var capacity int
+			var capacityStr = args[0]
+			if capacity, err = strconv.Atoi(capacityStr); err != nil {
+				errout("Failed: %v\n", err)
+			}
+			if _, err = client.AdminAPI().SetNodeSetCapacity(capacity); err != nil {
+				errout("Failed: %v\n", err)
+			}
+			stdout("NodeSetCapacity is set to %d.\n", capacity)
+		},
+	}
 	return cmd
 }

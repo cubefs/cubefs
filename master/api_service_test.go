@@ -3982,3 +3982,23 @@ func TestSetOfflineState(t *testing.T) {
 		}
 	}
 }
+
+func TestSetNodeSetCapacity(t *testing.T) {
+	cv, _ := mc.AdminAPI().GetCluster()
+	fmt.Println(cv.NodeSetCapacity)
+	t.Run("test update setNodeCapacity", func(t *testing.T) {
+		_, err := mc.AdminAPI().SetNodeSetCapacity(512)
+		assert.NoError(t, err)
+		assert.Equal(t, 512, server.cluster.cfg.nodeSetCapacity)
+	})
+	t.Run("test invalid setNodeCapacity: 60", func(t *testing.T) {
+		_, err := mc.AdminAPI().SetNodeSetCapacity(60)
+		assert.Error(t, err)
+		assert.Equal(t, 512, server.cluster.cfg.nodeSetCapacity)
+	})
+	t.Run("test invalid setNodeCapacity: -1", func(t *testing.T) {
+		_, err := mc.AdminAPI().SetNodeSetCapacity(-1)
+		assert.Error(t, err)
+		assert.Equal(t, 512, server.cluster.cfg.nodeSetCapacity)
+	})
+}
