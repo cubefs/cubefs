@@ -37,6 +37,8 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		stat.EndStat("txIcreate", err, bgTime, 1)
 	}()
 
+	tx.SetTmID(mp.PartitionID)
+
 	req := &proto.TxCreateInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,

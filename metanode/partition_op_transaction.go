@@ -137,7 +137,7 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 
 	if status.(uint8) != proto.OpOk {
 		p.ResultCode = status.(uint8)
-		return nil, fmt.Errorf("init tx by raft failed, %v", status)
+		return nil, fmt.Errorf("init tx by raft failed, %v", proto.GetStatusStr(p.ResultCode))
 	}
 
 	ifo = mp.txProcessor.txManager.getTransaction(txInfo.TxID)
