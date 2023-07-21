@@ -11,6 +11,9 @@ on:
     branches:
       - release-*
 
+permissions:
+  contents: read
+
 jobs:
   release-tests:
     name: ci-release-tests
