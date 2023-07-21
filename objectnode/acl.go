@@ -44,9 +44,8 @@ var (
 )
 
 type Grantee struct {
-	Xmlxsi      string `xml:"xmlns:xsi,attr" json:"xmlns,omitempty"`
-	Xmlns       string `xml:"xsi,attr" json:"xsi,omitempty"`
-	XsiType     string `xml:"xsi:type,attr" json:"xsi_type,omitempty"`
+	Xmlxsi      string `xml:"xmlns:xsi,attr" json:"-"`
+	XsiType     string `xml:"xsi:type,attr" json:"-"`
 	Type        string `xml:"type,attr" json:"t"`
 	Id          string `xml:"ID,omitempty" json:"i,omitempty"`
 	URI         string `xml:"URI,omitempty" json:"u,omitempty"`
@@ -68,7 +67,7 @@ type Owner struct {
 }
 
 type AccessControlPolicy struct {
-	Xmlns string            `xml:"xmlns,attr" json:"x,omitempty"`
+	Xmlns string            `xml:"xmlns,attr" json:"-"`
 	Owner Owner             `xml:"Owner,omitempty" json:"o,omitempty"`
 	Acl   AccessControlList `xml:"AccessControlList,omitempty" json:"a,omitempty"`
 }
@@ -186,7 +185,6 @@ func (acp *AccessControlPolicy) AddGrant(idUri, granteeType, permission string) 
 	default:
 		return
 	}
-	g.Grantee.Xmlns = XMLNS
 	g.Permission = permission
 	acp.Acl.Grants = append(acp.Acl.Grants, g)
 }
@@ -218,15 +216,12 @@ func (acp *AccessControlPolicy) SetAuthenticatedRead(ownerId string) {
 func (acp *AccessControlPolicy) XmlMarshal() ([]byte, error) {
 	var grants []Grant
 	for _, g := range acp.Acl.Grants {
-		if g.Grantee.Xmlns == "" {
-			g.Grantee.Xmlns = XMLNS
-		}
-		g.Grantee.Xmlxsi = g.Grantee.Xmlns
+		g.Grantee.Xmlxsi = XMLSI
 		g.Grantee.XsiType = g.Grantee.Type
 		grants = append(grants, g)
 	}
 	acp.Acl.Grants = grants
-	acp.Xmlns = "http://s3.amazonaws.com/doc/2006-03-01/"
+	acp.Xmlns = XMLNS
 	data, err := xml.Marshal(acp)
 	if err != nil {
 		return nil, err
@@ -234,20 +229,7 @@ func (acp *AccessControlPolicy) XmlMarshal() ([]byte, error) {
 	return append([]byte(xml.Header), data...), nil
 }
 
-func (acp *AccessControlPolicy) RemoveAttr() {
-	var grants []Grant
-	for _, g := range acp.Acl.Grants {
-		g.Grantee.Xmlxsi = ""
-		g.Grantee.XsiType = ""
-		g.Grantee.Xmlns = ""
-		grants = append(grants, g)
-	}
-	acp.Xmlns = ""
-	acp.Acl.Grants = grants
-}
-
 func (acp *AccessControlPolicy) Encode() string {
-	acp.RemoveAttr()
 	data, err := json.Marshal(acp)
 	if err != nil {
 		log.LogWarnf("acl json marshal failed: %v", err)
