@@ -43,6 +43,7 @@ if [[ $? -eq 0 ]]; then
     mv bin/libcfssdk_cshared.so /go/src/github.com/cubefs/cubefs/docker/bin/libcfssdk_cshared.so;
     mv bin/libcfsclient.so /go/src/github.com/cubefs/cubefs/docker/bin/libcfsclient.so;
     mv bin/libempty.so /go/src/github.com/cubefs/cubefs/docker/bin/libempty.so;
+    mv /usr/local/go/pkg/linux_amd64_dynlink/libstd.so /go/src/github.com/cubefs/cubefs/docker/bin/libstd.so;
     if [ "${build_opt}"x = "test"x ]; then
         mv bin/test-bypass /go/src/github.com/cubefs/cubefs/docker/bin/test-bypass;
     fi
