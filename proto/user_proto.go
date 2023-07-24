@@ -172,6 +172,23 @@ func (policy *UserPolicy) IsAuthorized(volume, subdir string, action Action) boo
 	return false
 }
 
+func (policy *UserPolicy) IsAuthorizedS3(volume string) bool {
+	policy.mu.RLock()
+	defer policy.mu.RUnlock()
+	if len(policy.OwnVols) > 0 {
+		for _, v := range policy.OwnVols {
+			if v == volume {
+				return true
+			}
+		}
+	}
+	_, exist := policy.AuthorizedVols[volume]
+	if exist {
+		return true
+	}
+	return false
+}
+
 func (policy *UserPolicy) AddOwnVol(volume string) {
 	policy.mu.Lock()
 	defer policy.mu.Unlock()
