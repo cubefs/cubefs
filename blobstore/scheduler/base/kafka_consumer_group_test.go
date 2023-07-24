@@ -79,7 +79,7 @@ func TestConsumer(t *testing.T) {
 		wg.Add(batchNum)
 		offset := int64(0)
 
-		cli := NewKafkaConsumer([]string{broker.Addr()}, newMockAccess(nil))
+		cli := NewKafkaConsumer([]string{broker.Addr()})
 		consumer, err := cli.StartKafkaConsumer(KafkaConsumerCfg{
 			TaskType:     proto.TaskTypeShardRepair,
 			Topic:        testTopic,
@@ -104,7 +104,7 @@ func TestConsumer(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(batchNum)
 
-		cli := NewKafkaConsumer([]string{broker.Addr()}, newMockAccess(nil))
+		cli := NewKafkaConsumer([]string{broker.Addr()})
 		consumer, err := cli.StartKafkaConsumer(KafkaConsumerCfg{
 			TaskType:     proto.TaskTypeBlobDelete,
 			Topic:        testTopic,
