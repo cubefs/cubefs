@@ -15,12 +15,10 @@
 package base
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/Shopify/sarama"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
@@ -47,27 +45,4 @@ func newBroker(t *testing.T) *sarama.MockBroker {
 	})
 
 	return broker
-}
-
-type mockAccess struct {
-	offsets map[string]int64
-	err     error
-}
-
-func newMockAccess(err error) *mockAccess {
-	return &mockAccess{
-		offsets: make(map[string]int64),
-		err:     err,
-	}
-}
-
-func (m *mockAccess) SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) error {
-	key := fmt.Sprintf("%s_%d", topic, partition)
-	m.offsets[key] = offset
-	return m.err
-}
-
-func (m *mockAccess) GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (int64, error) {
-	key := fmt.Sprintf("%s_%d", topic, partition)
-	return m.offsets[key], m.err
 }
