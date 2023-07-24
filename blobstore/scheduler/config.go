@@ -44,7 +44,8 @@ const (
 	defaultTaskPoolSize           = 10
 	defaultDeleteHourRangeTo      = 24
 	defaultMessagePunishThreshold = 3
-	defaultMessagePunishTimeM     = 10
+	defaultMessagePunishTimeM     = 4
+	defaultSlowDownTimeS          = 3
 	defaultDeleteLogChunkSize     = uint(29)
 	defaultDeleteDelayH           = int64(72)
 	defaultDeleteNoDelay          = int64(0)
@@ -270,6 +271,7 @@ func (c *Config) fixBlobDeleteConfig() error {
 	defaulter.LessOrEqual(&c.BlobDelete.DeleteLog.ChunkBits, defaultDeleteLogChunkSize)
 	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishThreshold, defaultMessagePunishThreshold)
 	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishTimeM, defaultMessagePunishTimeM)
+	defaulter.LessOrEqual(&c.BlobDelete.MessageSlowDownTimeS, defaultSlowDownTimeS)
 	defaulter.Equal(&c.BlobDelete.SafeDelayTimeH, defaultDeleteDelayH)
 	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
 	defaulter.Equal(&c.BlobDelete.MaxBatchSize, defaultMaxBatchSize)
