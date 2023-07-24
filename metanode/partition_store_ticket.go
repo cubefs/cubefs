@@ -25,22 +25,20 @@ import (
 )
 
 type storeMsg struct {
-	command       uint32
-	applyIndex    uint64
-	txId          uint64
-	inodeTree     *BTree
-	dentryTree    *BTree
-	extendTree    *BTree
-	multipartTree *BTree
-	txTree        *BTree
-	//transactions       map[string]*proto.TransactionInfo
-	txRbInodeTree *BTree
-	//txRollbackInodes   map[uint64]*TxRollbackInode
+	command        uint32
+	applyIndex     uint64
+	txId           uint64
+	inodeTree      *BTree
+	dentryTree     *BTree
+	extendTree     *BTree
+	multipartTree  *BTree
+	txTree         *BTree
+	txRbInodeTree  *BTree
 	txRbDentryTree *BTree
-	//txRollbackDentries map[string]*TxRollbackDentry
-	quotaRebuild bool
-	uidRebuild   bool
-	uniqChecker  *uniqChecker
+	quotaRebuild   bool
+	uidRebuild     bool
+	uniqId         uint64
+	uniqChecker    *uniqChecker
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {

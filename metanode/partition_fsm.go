@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"os"
 	"path"
@@ -581,6 +582,10 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		}
 		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 	}()
+
+	var leaderSnapFormatVer uint32
+	leaderSnapFormatVer = math.MaxUint32
+
 	for {
 		data, err = iter.Next()
 		if err != nil {
@@ -600,6 +605,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				log.LogInfof("ApplySnapshot: snap.UnmarshalBinary failed in index=0, partitionID(%v), assuming snapshot format version_0",
 					mp.config.PartitionId)
 				index++
+				leaderSnapFormatVer = SnapFormatVersion_0
 				continue
 			}
 
@@ -608,24 +614,28 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			return
 		}
 
-		if index == 0 && snap.Op != opFSMSnapFormatVersion {
-			// check whether the snapshot format matches
-			log.LogWarnf("ApplySnapshot: snapshot format not match, partitionID(%v), index:%v, expect snap.Op:%v, actual snap.Op:%v",
-				mp.config.PartitionId, index, opFSMSnapFormatVersion, snap.Op)
-			//TODO: should return error here? or whether return error by a new config?
+		if index == 0 {
+			if snap.Op != opFSMSnapFormatVersion {
+				// check whether the snapshot format matches, if snap.UnmarshalBinary has no err for index 0, it should be opFSMSnapFormatVersion
+				err = fmt.Errorf("ApplySnapshot: snapshot format not match, partitionID(%v), index:%v, expect snap.Op:%v, actual snap.Op:%v",
+					mp.config.PartitionId, index, opFSMSnapFormatVersion, snap.Op)
+				log.LogWarn(err.Error())
+				return
+			}
+
+			// check whether the snapshot format version number matches
+			leaderSnapFormatVer = binary.BigEndian.Uint32(snap.V)
+			if leaderSnapFormatVer != mp.manager.metaNode.raftSyncSnapFormatVersion {
+				log.LogWarnf("ApplySnapshot: snapshot format not match, partitionID(%v), index:%v, expect ver:%v, actual ver:%v",
+					mp.config.PartitionId, index, mp.manager.metaNode.raftSyncSnapFormatVersion, leaderSnapFormatVer)
+			}
+
+			index++
+			continue
 		}
 
 		index++
 		switch snap.Op {
-		case opFSMSnapFormatVersion:
-			// check whether the snapshot format version number matches
-			var snapFormatVer uint32
-			snapFormatVer = binary.BigEndian.Uint32(snap.V)
-			if snapFormatVer != mp.manager.metaNode.raftSyncSnapFormatVersion {
-				log.LogWarnf("ApplySnapshot: snapshot format not match, partitionID(%v), index:%v, expect ver:%v, actual ver:%v",
-					mp.config.PartitionId, index, mp.manager.metaNode.raftSyncSnapFormatVersion, snapFormatVer)
-				//TODO: should return error here? or whether return error by a new config?
-			}
 		case opFSMApplyId:
 			appIndexID = binary.BigEndian.Uint64(snap.V)
 			log.LogDebugf("ApplySnapshot: partitionID(%v) appIndexID:%v", mp.config.PartitionId, appIndexID)
@@ -703,8 +713,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			log.LogDebugf("ApplySnapshot: write snap uniqChecker")
 
 		default:
-			err = fmt.Errorf("unknown op=%d", snap.Op)
-			return
+			if leaderSnapFormatVer != math.MaxUint32 && leaderSnapFormatVer > mp.manager.metaNode.raftSyncSnapFormatVersion {
+				log.LogWarnf("ApplySnapshot: unknown op=%d, leaderSnapFormatVer:%v, mySnapFormatVer:%v, skip it",
+					snap.Op, leaderSnapFormatVer, mp.manager.metaNode.raftSyncSnapFormatVersion)
+			} else {
+				err = fmt.Errorf("unknown Op=%d", snap.Op)
+				return
+			}
 		}
 	}
 }
