@@ -680,7 +680,7 @@ func (m *metadataManager) opTxMetaUnlinkInode(conn net.Conn, p *Packet, remoteAd
 	}
 	err = mp.TxUnlinkInode(req, p)
 	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opTxMetaUnlinkInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
