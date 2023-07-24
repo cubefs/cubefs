@@ -837,8 +837,11 @@ func (mp *metaPartition) parseCrcFromFile() ([]uint32, error) {
 	return crcs, nil
 }
 
-const CRC_NUM_BEFORE_CUBEFS_V3_2_2 int = 4
-const CRC_NUM_SINCE_CUBEFS_V3_2_2 int = 7
+const (
+	CRC_COUNT_BASIC      int = 4
+	CRC_COUNT_TX_STUFF   int = 7
+	CRC_COUNT_UINQ_STUFF int = 8
+)
 
 func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	crcs, err := mp.parseCrcFromFile()
@@ -849,22 +852,28 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	var loadFuncs = []func(rootDir string, crc uint32) error{
 		mp.loadInode,
 		mp.loadDentry,
-		mp.loadExtend,
+		nil, //loading quota info from extend requires mp.loadInode() has been completed, so skip mp.loadExtend() here
 		mp.loadMultipart,
 	}
 
-	var needLoadTxStuff bool
+	crc_count := len(crcs)
+	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF {
+		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
+		return ErrSnapshotCrcMismatch
+	}
+
 	//handle compatibility in upgrade scenarios
-	if len(crcs) == CRC_NUM_BEFORE_CUBEFS_V3_2_2 {
-		needLoadTxStuff = false
-	} else if len(crcs) == CRC_NUM_SINCE_CUBEFS_V3_2_2 {
+	needLoadTxStuff := false
+	needLoadUniqStuff := false
+	if crc_count >= CRC_COUNT_TX_STUFF {
 		needLoadTxStuff = true
 		loadFuncs = append(loadFuncs, mp.loadTxInfo)
 		loadFuncs = append(loadFuncs, mp.loadTxRbInode)
 		loadFuncs = append(loadFuncs, mp.loadTxRbDentry)
-	} else {
-		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
-		return ErrSnapshotCrcMismatch
+	}
+	if crc_count == CRC_COUNT_UINQ_STUFF {
+		needLoadUniqStuff = true
+		loadFuncs = append(loadFuncs, mp.loadUniqChecker)
 	}
 
 	errs := make([]error, len(loadFuncs))
@@ -872,6 +881,11 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	wg.Add(len(loadFuncs))
 	for idx, f := range loadFuncs {
 		loadFunc := f
+		if f == nil {
+			wg.Done()
+			continue
+		}
+
 		i := idx
 		go func() {
 			defer func() {
@@ -885,9 +899,6 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 				wg.Done()
 			}()
 
-			if i == 2 { //loadExtend must be executed after loadInode
-				return
-			}
 			errs[i] = loadFunc(snapshotPath, crcs[i])
 		}()
 	}
@@ -904,12 +915,14 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		return
 	}
 
-	if err = mp.loadUniqChecker(snapshotPath); err != nil {
-		return
-	}
-
 	if needLoadTxStuff {
 		if err = mp.loadTxID(snapshotPath); err != nil {
+			return
+		}
+	}
+
+	if needLoadUniqStuff {
+		if err = mp.loadUniqID(snapshotPath); err != nil {
 			return
 		}
 	}
@@ -969,6 +982,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeTxInfo,
 		mp.storeTxRbInode,
 		mp.storeTxRbDentry,
+		mp.storeUniqChecker,
 	}
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
@@ -987,9 +1001,10 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	if err = mp.storeTxID(tmpDir, sm); err != nil {
 		return
 	}
-	if _, err = mp.storeUniqChecker(tmpDir, sm); err != nil {
+	if err = mp.storeUniqID(tmpDir, sm); err != nil {
 		return
 	}
+
 	// write crc to file
 	if err = ioutil.WriteFile(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0775); err != nil {
 		return
@@ -1308,6 +1323,7 @@ func (mp *metaPartition) storeSnapshotFiles() (err error) {
 		txTree:         NewBtree(),
 		txRbInodeTree:  NewBtree(),
 		txRbDentryTree: NewBtree(),
+		uniqId:         mp.GetUniqId(),
 		uniqChecker:    newUniqChecker(),
 	}
 
