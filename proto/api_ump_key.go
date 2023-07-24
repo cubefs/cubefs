@@ -45,6 +45,7 @@ const (
 	AdminSetNodeInfoUmpKey                      = "admin_setNodeInfo"
 	AdminGetNodeInfoUmpKey                      = "admin_getNodeInfo"
 	AdminSetNodeStateUmpKey                     = "admin_setNodeState"
+	AdminSetNodeStateByAddrUmpKey               = "admin_setNodeStateByAddr"
 	AdminMergeNodeSetUmpKey                     = "admin_mergeNodeSet"
 	AdminClusterAutoMergeNodeSetUmpKey          = "cluster_autoMergeNodeSet"
 	AdminApplyVolMutexUmpKey                    = "vol_writeMutex_apply"

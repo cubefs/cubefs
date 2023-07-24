@@ -1037,6 +1037,25 @@ func (c *Cluster) setEcNodeToOfflineState(startID, endID uint64, state bool, zon
 	})
 }
 
+func (c *Cluster) setEcNodeToOfflineStateByAddr(addrMap map[string]struct{}, state bool, zoneName string) {
+	c.ecNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*ECNode)
+		if !ok {
+			return true
+		}
+		if _, ok := addrMap[node.Addr]; !ok {
+			return true
+		}
+		if node.ZoneName != zoneName {
+			return true
+		}
+		node.Lock()
+		node.ToBeMigrated = state
+		node.Unlock()
+		return true
+	})
+}
+
 func (c *Cluster) updateEcClusterInfo(ecScrubEnable bool, ecMaxScrubExtents, ecScrubPeriod, maxCodecConcurrent int) (err error) {
 	var (
 		oldEcScrubEnbale      bool

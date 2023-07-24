@@ -4500,6 +4500,25 @@ func (c *Cluster) setDataNodeToOfflineState(startID, endID uint64, state bool, z
 	})
 }
 
+func (c *Cluster) setDataNodeToOfflineStateByAddr(addrMap map[string]struct{}, state bool, zoneName string) {
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		if _, ok := addrMap[node.Addr]; !ok {
+			return true
+		}
+		if node.ZoneName != zoneName {
+			return true
+		}
+		node.Lock()
+		node.ToBeMigrated = state
+		node.Unlock()
+		return true
+	})
+}
+
 func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, zoneName string) {
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		node, ok := value.(*MetaNode)
@@ -4507,6 +4526,25 @@ func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, z
 			return true
 		}
 		if node.ID < startID || node.ID > endID {
+			return true
+		}
+		if node.ZoneName != zoneName {
+			return true
+		}
+		node.Lock()
+		node.ToBeMigrated = state
+		node.Unlock()
+		return true
+	})
+}
+
+func (c *Cluster) setMetaNodeToOfflineStateByAddr(addrMap map[string]struct{}, state bool, zoneName string) {
+	c.metaNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+		if _, ok := addrMap[node.Addr]; !ok {
 			return true
 		}
 		if node.ZoneName != zoneName {
@@ -5495,6 +5533,23 @@ func (c *Cluster) setClientPkgAddr(addr string) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClientPkgAddr] err[%v]", err)
 		c.cfg.ClientPkgAddr = oldAddr
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setNodeSetCapacity(capacity int) (err error) {
+	if capacity < 64 {
+		err = proto.ErrInvalidNodeSetCapacity
+		log.LogErrorf("action[setNodeSetCapacity] err[%v]", err)
+		return
+	}
+	oldCapacity := c.cfg.nodeSetCapacity
+	c.cfg.nodeSetCapacity = capacity
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setNodeSetCapacity] err[%v]", err)
+		c.cfg.nodeSetCapacity = oldCapacity
 		err = proto.ErrPersistenceByRaft
 		return
 	}

@@ -74,6 +74,7 @@ const (
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
 	AdminSetNodeState              = "/admin/setNodeState"
+	AdminSetNodeStateByAddr        = "/admin/setNodeStateByAddr"
 	AdminMergeNodeSet              = "/admin/mergeNodeSet"
 	AdminClusterAutoMergeNodeSet   = "/cluster/autoMergeNodeSet"
 	AdminApplyVolMutex             = "/vol/writeMutex/apply"
@@ -87,6 +88,7 @@ const (
 	AdminGetClientPkgAddr          = "/clientPkgAddr/get"
 	AdminSetVolChildMaxCnt         = "/vol/setChildMaxCnt"
 	AdminCheckVolPartitionReplica  = "/vol/checkReplica"
+	AdminSetNodeSetCapacity        = "/admin/nodeSetCapacity/set"
 
 	AdminSmartVolList = "/admin/smartVol/list"
 
@@ -282,6 +284,7 @@ const (
 	DataNodeReqVolOpPartRateKey  = "dataNodeReqVolOpPartRate"
 	DataNodeMarkDeleteRateKey    = "markDeleteRate"
 	DpTimeoutCntThreshold        = "dpTimeoutCntThreshold"
+	NodeSetCapacityKey           = "nodeSetCapacity"
 )
 
 const (

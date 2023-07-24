@@ -96,6 +96,7 @@ var (
 	ErrCompactTagUnknow                = errors.New("compact tag unknow")
 	ErrCompactTagForbidden             = errors.New("compact tag forbidden")
 	ErrCompactTagOpened                = errors.New("compact cannot be opened when force row is closed, Please open force row first")
+	ErrInvalidNodeSetCapacity          = errors.New("invalid nodeSetCapacity")
 
 	ErrOperationDisabled = errors.New("operation have been disabled")
 	ErrVolInCreation     = errors.New("vol is in creation")

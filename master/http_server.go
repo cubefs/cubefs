@@ -144,6 +144,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetClientPkgAddr).
 		HandlerFunc(m.getClientPkgAddr)
 	router.NewRoute().Methods(http.MethodGet).Path(proto.ClientConfCluster).HandlerFunc(m.getClientClusterConf)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetNodeSetCapacity).
+		HandlerFunc(m.setNodeSetCapacity)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -397,6 +400,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeState).
 		HandlerFunc(m.setNodeToOfflineState)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetNodeStateByAddr).
+		HandlerFunc(m.setNodeToOfflineStateByAddr)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminMergeNodeSet).
 		HandlerFunc(m.mergeNodeSet)
