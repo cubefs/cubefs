@@ -54,6 +54,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	msg := &storeMsg{
 		command:        1,
 		applyIndex:     0,
+		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
 		inodeTree:      mp.inodeTree,
 		dentryTree:     mp.dentryTree,
 		extendTree:     mp.extendTree,
@@ -61,6 +62,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		txTree:         mp.txProcessor.txManager.txTree,
 		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
 		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
+		uniqId:         mp.GetUniqId(),
 		uniqChecker:    mp.uniqChecker,
 	}
 	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
@@ -92,6 +94,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	msg = &storeMsg{
 		command:        1,
 		applyIndex:     0,
+		txId:           mp.txProcessor.txManager.txIdAlloc.getTransactionID(),
 		inodeTree:      mp.inodeTree,
 		dentryTree:     mp.dentryTree,
 		extendTree:     mp.extendTree,
@@ -99,6 +102,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 		txTree:         mp.txProcessor.txManager.txTree,
 		txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree,
 		txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree,
+		uniqId:         mp.GetUniqId(),
 		uniqChecker:    mp.uniqChecker,
 	}
 	err = mp.store(msg)
