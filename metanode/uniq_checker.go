@@ -91,39 +91,16 @@ func (checker *uniqChecker) Marshal() (buf []byte, crc uint32, err error) {
 		return
 	}
 	crc = sign.Sum32()
-	if err = binary.Write(buffer, binary.BigEndian, crc); err != nil {
-		return
-	}
 
 	buf = buffer.Bytes()
 	return
 }
 
 func (checker *uniqChecker) UnMarshal(data []byte) (err error) {
-	if len(data) < CrcUint32Size {
-		err = errors.New("invalid uniqChecker file")
+	if len(data) < checkerVersionSize {
+		err = errors.New("invalid uniqChecker file length")
 		log.LogErrorf("uniqChecker UnMarshal err(%v)", err)
 		return
-	}
-	crcBuff := bytes.NewBuffer(data[len(data)-CrcUint32Size:])
-	var crc uint32
-	if err = binary.Read(crcBuff, binary.BigEndian, &crc); err != nil {
-		log.LogErrorf("uniqChecker unmarshal crc err(%v)", err)
-		return
-	}
-
-	data = data[:len(data)-CrcUint32Size]
-	sign := crc32.NewIEEE()
-	if _, err = sign.Write(data); err != nil {
-		return
-	}
-	crcData := sign.Sum32()
-
-	if crcData != crc {
-		err = errors.New("crc check failed")
-		log.LogErrorf("uniqChecker err(%v), %d != %d", err, crcData, crc)
-		return
-
 	}
 
 	buff := bytes.NewBuffer(data)
