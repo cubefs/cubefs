@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -28,44 +27,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
-
-type IConsumerOffset interface {
-	GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (offset int64, err error)
-	SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) (err error)
-}
-
-type kafkaOffsetMgr struct {
-	offsetMap map[string]int64
-	lock      sync.RWMutex
-}
-
-func NewKafkaOffsetMgr() IConsumerOffset {
-	return &kafkaOffsetMgr{
-		offsetMap: make(map[string]int64),
-	}
-}
-
-func (m *kafkaOffsetMgr) genConsumerOffsetKey(taskType proto.TaskType, topic string, partition int32) string {
-	return fmt.Sprintf("%s-%s-%d", taskType, topic, partition)
-}
-
-func (m *kafkaOffsetMgr) GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (offset int64, err error) {
-	key := m.genConsumerOffsetKey(taskType, topic, partition)
-
-	m.lock.RLock()
-	offset = m.offsetMap[key]
-	m.lock.RUnlock()
-	return
-}
-
-func (m *kafkaOffsetMgr) SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) (err error) {
-	key := m.genConsumerOffsetKey(taskType, topic, partition)
-
-	m.lock.Lock()
-	m.offsetMap[key] = offset
-	m.lock.Unlock()
-	return nil
-}
 
 // KafkaConfig kafka config
 type KafkaConfig struct {
@@ -84,20 +45,17 @@ type Consumer struct {
 	maxWaitTimeS int
 
 	ConsumeFn func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool
-	offsetMgr IConsumerOffset
 	closer.Closer
 	consumerPause closer.Closer
 }
 
-func newConsumer(cfg KafkaConsumerCfg, offsetMgr IConsumerOffset,
-	consumerFn func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool) *Consumer {
+func newConsumer(cfg KafkaConsumerCfg, consumerFn func(msg []*sarama.ConsumerMessage, consumerPause ConsumerPause) bool) *Consumer {
 	consumer := &Consumer{
 		taskType:     cfg.TaskType,
 		topic:        cfg.Topic,
 		maxBatchSize: cfg.MaxBatchSize,
 		maxWaitTimeS: cfg.MaxWaitTimeS,
 		ConsumeFn:    consumerFn,
-		offsetMgr:    offsetMgr,
 		Closer:       closer.New(),
 	}
 	return consumer
@@ -126,17 +84,17 @@ func (consumer *Consumer) Cleanup(session sarama.ConsumerGroupSession) error {
 }
 
 func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	span := trace.SpanFromContextSafe(session.Context())
-
 	// should close consuming process when `session.Context()` is done
 	go func() {
 		<-session.Context().Done()
 		consumer.consumerPause.Close()
 	}()
 
+	span := trace.SpanFromContextSafe(session.Context())
 	tk := time.NewTicker(time.Second * time.Duration(consumer.maxWaitTimeS))
 	defer tk.Stop()
 	msgs := make([]*sarama.ConsumerMessage, 0, consumer.maxBatchSize)
+
 	for {
 		var message *sarama.ConsumerMessage
 		select {
@@ -170,18 +128,11 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 		}
 		session.MarkMessage(lastMsg, "")
 		session.Commit()
-		consumer.updateLocalOffsetMgr(lastMsg)
 
 		// reset batch msgs and ticker
 		msgs = msgs[:0]
 		tk.Reset(time.Second * time.Duration(consumer.maxWaitTimeS))
 	}
-}
-
-// The current kafka framework is one partition per goroutine,  so msg is the last offset in this function ConsumeClaim
-// If the Kafka framework changes, make the corresponding modify here to get the last offset which at each partition
-func (consumer *Consumer) updateLocalOffsetMgr(msg *sarama.ConsumerMessage) {
-	consumer.offsetMgr.SetConsumeOffset(consumer.taskType, consumer.topic, msg.Partition, msg.Offset)
 }
 
 type KafkaConsumerCfg struct {
@@ -196,8 +147,7 @@ type KafkaConsumer interface {
 }
 
 type kafkaClient struct {
-	brokers   []string
-	offsetMgr IConsumerOffset
+	brokers []string
 }
 
 type GroupConsumer interface {
@@ -220,10 +170,9 @@ func (cg *KafkaConsumerGroup) Stop() {
 	cg.span.Infof("stop kafka consumer: group[%s]", cg.group)
 }
 
-func NewKafkaConsumer(brokers []string, offsetMgr IConsumerOffset) KafkaConsumer {
+func NewKafkaConsumer(brokers []string) KafkaConsumer {
 	return &kafkaClient{
-		brokers:   brokers,
-		offsetMgr: offsetMgr,
+		brokers: brokers,
 	}
 }
 
@@ -235,7 +184,7 @@ func (cli *kafkaClient) StartKafkaConsumer(cfg KafkaConsumerCfg, fn func(msg []*
 	config.Consumer.Offsets.AutoCommit.Enable = false
 	config.Consumer.Group.Rebalance.Retry.Max = 10
 
-	consumer := newConsumer(cfg, cli.offsetMgr, fn)
+	consumer := newConsumer(cfg, fn)
 	group := fmt.Sprintf("%s-%s", proto.ServiceNameScheduler, cfg.Topic)
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), group)
