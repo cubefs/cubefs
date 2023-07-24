@@ -215,6 +215,10 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 	resp.Status = mp.txProcessor.txResource.addTxRollbackInode(rbInode)
 	if resp.Status == proto.OpExistErr {
 		resp.Status = proto.OpOk
+		item := mp.inodeTree.Get(txIno.Inode)
+		if item != nil {
+			resp.Msg = item.(*Inode)
+		}
 		return
 	}
 	if resp.Status != proto.OpOk {

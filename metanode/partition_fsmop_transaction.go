@@ -160,3 +160,21 @@ func (mp *metaPartition) dentryInTx(parIno uint64, name string) uint8 {
 	}
 	return proto.OpOk
 }
+
+func (mp *metaPartition) txInodeInRb(inode uint64, newTxId string) bool {
+
+	rbIno := mp.txProcessor.txResource.getTxRbInode(inode)
+	if rbIno != nil && rbIno.txInodeInfo.TxID == newTxId {
+		return true
+	}
+
+	return false
+}
+
+func (mp *metaPartition) txDentryInRb(parIno uint64, name, newTxId string) bool {
+	inTx, txId := mp.txProcessor.txResource.isDentryInTransction(&Dentry{
+		ParentId: parIno,
+		Name:     name,
+	})
+	return inTx && txId == newTxId
+}
