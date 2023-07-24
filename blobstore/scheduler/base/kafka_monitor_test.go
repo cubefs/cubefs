@@ -30,14 +30,11 @@ func TestNewKafkaTopicMonitor(t *testing.T) {
 		BrokerList: []string{broker.Addr()},
 	}
 
-	access := newMockAccess(nil)
-	monitor, err := NewKafkaTopicMonitor(proto.TaskTypeBlobDelete, 1, cfg, access, 0)
+	monitor, err := NewKafkaTopicMonitor(proto.TaskTypeBlobDelete, 1, cfg)
 	require.NoError(t, err)
-	go func() {
-		monitor.Run()
-	}()
+	require.NotNil(t, monitor.monitor)
 
 	cfg.BrokerList = []string{}
-	_, err = NewKafkaTopicMonitor(proto.TaskTypeBlobDelete, 1, cfg, access, 0)
+	_, err = NewKafkaTopicMonitor(proto.TaskTypeBlobDelete, 1, cfg)
 	require.Error(t, err)
 }

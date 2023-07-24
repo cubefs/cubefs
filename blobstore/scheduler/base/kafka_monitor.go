@@ -16,31 +16,24 @@ package base
 
 import (
 	"fmt"
-	"net/http"
-	"time"
 
 	"github.com/Shopify/sarama"
 
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 // KafkaTopicMonitor kafka monitor
 type KafkaTopicMonitor struct {
 	closer.Closer
-	taskType       proto.TaskType
-	topic          string
-	partitions     []int32
-	offsetAccessor IConsumerOffset
-	monitor        *kafka.Monitor
-	interval       time.Duration
+	taskType proto.TaskType
+	topic    string
+	monitor  *kafka.Monitor
 }
 
 // NewKafkaTopicMonitor returns kafka topic monitor
-func NewKafkaTopicMonitor(taskType proto.TaskType, clusterID proto.ClusterID, cfg *KafkaConfig, offsetAccessor IConsumerOffset, monitorIntervalS int) (*KafkaTopicMonitor, error) {
+func NewKafkaTopicMonitor(taskType proto.TaskType, clusterID proto.ClusterID, cfg *KafkaConfig) (*KafkaTopicMonitor, error) {
 	consumer, err := sarama.NewConsumer(cfg.BrokerList, defaultKafkaCfg())
 	if err != nil {
 		return nil, err
@@ -54,47 +47,15 @@ func NewKafkaTopicMonitor(taskType proto.TaskType, clusterID proto.ClusterID, cf
 	// create kafka monitor
 	monitor, err := kafka.NewKafkaMonitor(clusterID, proto.ServiceNameScheduler, cfg.BrokerList, cfg.Topic, partitions, kafka.DefaultIntervalSecs)
 	if err != nil {
-		return nil, fmt.Errorf("new kafka monitor: broker list[%v], topic[%v], parts[%v], error[%w]",
-			cfg.BrokerList, cfg.Topic, partitions, err)
+		return nil, fmt.Errorf("new kafka monitor: broker list[%v], topic[%v], parts[%v], error[%w]", cfg.BrokerList, cfg.Topic, partitions, err)
 	}
 
-	interval := time.Second * time.Duration(monitorIntervalS)
-	if interval <= 0 {
-		interval = time.Millisecond
-	}
 	return &KafkaTopicMonitor{
-		Closer:         closer.New(),
-		taskType:       taskType,
-		topic:          cfg.Topic,
-		partitions:     partitions,
-		offsetAccessor: offsetAccessor,
-		monitor:        monitor,
-		interval:       interval,
+		Closer:   closer.New(),
+		taskType: taskType,
+		topic:    cfg.Topic,
+		monitor:  monitor,
 	}, nil
-}
-
-// Run run kafka monitor
-func (m *KafkaTopicMonitor) Run() {
-	ticker := time.NewTicker(m.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			for _, partition := range m.partitions {
-				off, err := m.offsetAccessor.GetConsumeOffset(m.taskType, m.topic, partition)
-				if err != nil {
-					if rpc.DetectStatusCode(err) != http.StatusNotFound {
-						log.Errorf("get consume offset failed: err[%v]", err)
-					}
-					continue
-				}
-				m.monitor.SetConsumeOffset(off, partition)
-			}
-		case <-m.Closer.Done():
-			return
-		}
-	}
 }
 
 func (m *KafkaTopicMonitor) Close() {
