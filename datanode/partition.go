@@ -1157,6 +1157,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 	}
 
 	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
+		dp.TinyDeleteRecover = false
 		return
 	}
 
@@ -1177,6 +1178,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 	start := time.Now().Unix()
 	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
 		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
+			dp.TinyDeleteRecover = false
 			return
 		}
 		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
