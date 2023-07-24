@@ -184,14 +184,45 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error) {
 
 	txInfo := req.TxInfo.GetCopy()
+	var status uint8
+	var respIno *Inode
+
+	defer func() {
+		var reply []byte
+		if status == proto.OpOk {
+			resp := &proto.TxUnlinkInodeResponse{
+				Info: &proto.InodeInfo{},
+			}
+
+			replyInfo(resp.Info, respIno, make([]uint32, 0))
+			if reply, err = json.Marshal(resp); err != nil {
+				status = proto.OpErr
+				reply = []byte(err.Error())
+			}
+		}
+		p.PacketErrorWithBody(status, reply)
+	}()
+
 	ino := NewInode(req.Inode, 0)
 	inoResp := mp.getInode(ino)
 	if inoResp.Status != proto.OpOk {
+		if rbIno := mp.txInodeInRb(req.Inode, req.TxInfo.TxID); rbIno {
+			status = proto.OpOk
+			item := mp.inodeTree.Get(NewInode(req.Inode, 0))
+			if item != nil {
+				respIno = item.(*Inode)
+			}
+
+			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbIno %s", req, respIno.String())
+			return nil
+		}
+
 		err = fmt.Errorf("ino[%v] not exists", ino.Inode)
 		p.PacketErrorWithBody(inoResp.Status, []byte(err.Error()))
 		return
 	}
 
+	respIno = inoResp.Msg
 	ti := &TxInode{
 		Inode:  inoResp.Msg,
 		TxInfo: txInfo,
@@ -210,25 +241,10 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	}
 
 	msg := r.(*InodeResponse)
-	status := msg.Status
-	var reply []byte
-	if status == proto.OpOk {
-		resp := &proto.TxUnlinkInodeResponse{
-			Info: &proto.InodeInfo{},
-		}
-
-		ino := ti.Inode
-		if msg.Msg != nil {
-			ino = msg.Msg
-		}
-
-		replyInfo(resp.Info, ino, make([]uint32, 0))
-		if reply, err = json.Marshal(resp); err != nil {
-			status = proto.OpErr
-			reply = []byte(err.Error())
-		}
+	status = msg.Status
+	if msg.Msg != nil {
+		respIno = msg.Msg
 	}
-	p.PacketErrorWithBody(status, reply)
 	return
 }
 

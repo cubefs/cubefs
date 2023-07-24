@@ -172,9 +172,26 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		Name:     req.Name,
 	}
 
+	defer func() {
+		if p.ResultCode == proto.OpOk {
+			var reply []byte
+			resp := &proto.TxDeleteDentryResponse{
+				Inode: req.Ino,
+			}
+			reply, err = json.Marshal(resp)
+			p.PacketOkWithBody(reply)
+		}
+	}()
+
 	dentry, status := mp.getDentry(den)
 	if status != proto.OpOk {
-		err = fmt.Errorf("dentry[%v] not exists", dentry)
+		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
+			p.ResultCode = proto.OpOk
+			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
+			return
+		}
+
+		err = fmt.Errorf("dentry[%v] not exists", den)
 		log.LogWarn(err)
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
@@ -208,14 +225,6 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 
 	retMsg := r.(*DentryResponse)
 	p.ResultCode = retMsg.Status
-	if p.ResultCode == proto.OpOk {
-		var reply []byte
-		resp := &proto.TxDeleteDentryResponse{
-			Inode: dentry.Inode,
-		}
-		reply, err = json.Marshal(resp)
-		p.PacketOkWithBody(reply)
-	}
 	return
 }
 
@@ -321,14 +330,30 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 	}
 
 	txInfo := req.TxInfo.GetCopy()
+
+	defer func() {
+		if p.ResultCode == proto.OpOk {
+			var reply []byte
+			m := &proto.TxUpdateDentryResponse{
+				Inode: req.OldIno,
+			}
+			reply, _ = json.Marshal(m)
+			p.PacketOkWithBody(reply)
+		}
+	}()
+
 	newDentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
 		Inode:    req.Inode,
 	}
-
 	oldDentry, status := mp.getDentry(newDentry)
 	if status != proto.OpOk {
+		if mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID) {
+			p.ResultCode = proto.OpOk
+			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
+			return
+		}
 		err = fmt.Errorf("oldDentry[%v] not exists", oldDentry)
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
@@ -358,14 +383,6 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 
 	msg := resp.(*DentryResponse)
 	p.ResultCode = msg.Status
-	if msg.Status == proto.OpOk {
-		var reply []byte
-		m := &proto.TxUpdateDentryResponse{
-			Inode: oldDentry.Inode,
-		}
-		reply, _ = json.Marshal(m)
-		p.PacketOkWithBody(reply)
-	}
 	return
 }
 
