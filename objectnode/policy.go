@@ -210,9 +210,11 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 				subdir = r.URL.Query().Get(ParamPrefix)
 			}
 			// The bucket is not owned by request user who has not been authorized, so bucket policy should be checked.
-			if !isOwner && !userPolicy.IsAuthorized(param.Bucket(), subdir, param.Action()) {
-				log.LogDebugf("user policy check:  permission unknown url(%v) subdir(%v) requestID(%v) userID(%v) accessKey(%v) volume(%v) object(%v) action(%v) authorizedVols(%v)",
+			if !isOwner && userPolicy.IsAuthorizedS3(param.Bucket()) {
+				log.LogInfof("user policy check:  permission url(%v) subdir(%v) requestID(%v) userID(%v) accessKey(%v) volume(%v) object(%v) action(%v) authorizedVols(%v)",
 					r.URL, subdir, GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Object(), param.Action(), userPolicy.AuthorizedVols)
+				allowed = true
+				return
 			}
 		} else {
 			log.LogErrorf("user policy check: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
