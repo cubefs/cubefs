@@ -4,6 +4,9 @@ on:
   issues:
     types: [opened, edited]
 
+permissions:
+  issues: read|write
+
 jobs:
   similarity-analysis:
     runs-on: ubuntu-latest

@@ -6,9 +6,13 @@ on:
 
 # labels: inactive-one-week, inactive-one-month, inactive-three-month, inactive-one-year, inactive-two-year
 
+permissions:
+  issues: read|write
+
 jobs:
   check-inactive:
     runs-on: ubuntu-latest
+    if: false # disable
     steps:
       - name: check-inactive-one-week
         uses: actions-cool/issues-helper@v3
