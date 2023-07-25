@@ -504,7 +504,7 @@ func (ecNode *ECNode) isWriteAble() (ok bool) {
 	ecNode.RLock()
 	defer ecNode.RUnlock()
 
-	if ecNode.isActive == true && ecNode.AvailableSpace > 100*unit.GB && ecNode.ToBeOffline == false && ecNode.ToBeMigrated == false {
+	if ecNode.isActive == true && ecNode.AvailableSpace > 10*unit.GB && ecNode.ToBeOffline == false && ecNode.ToBeMigrated == false {
 		ok = true
 	}
 
