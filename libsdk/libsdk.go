@@ -1411,7 +1411,21 @@ func (c *client) truncate(f *file, size int) error {
 func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
 	if proto.IsHot(c.volType) {
 		c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
-		n, err = c.ec.Write(f.ino, offset, data, flags, nil)
+		checkFunc := func() error {
+			if !c.mw.EnableQuota {
+				return nil
+			}
+
+			if ok := c.ec.UidIsLimited(0); ok {
+				return syscall.ENOSPC
+			}
+
+			if c.mw.IsQuotaLimitedById(f.ino, true, false) {
+				return syscall.ENOSPC
+			}
+			return nil
+		}
+		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.id, f.ino), offset, data, flags)
 	}
