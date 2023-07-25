@@ -704,6 +704,8 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName, version string) (id uint64, er
 	if err = c.syncUpdateNodeSet(ns); err != nil {
 		goto errHandler
 	}
+	metaNode.ReportTime = time.Now()
+	metaNode.IsActive = true
 	c.t.putMetaNode(metaNode)
 	c.metaNodes.Store(nodeAddr, metaNode)
 	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
@@ -749,6 +751,8 @@ func (c *Cluster) addDataNode(nodeAddr, httpPort, zoneName, version string) (id 
 	if err = c.syncUpdateNodeSet(ns); err != nil {
 		goto errHandler
 	}
+	dataNode.ReportTime = time.Now()
+	dataNode.isActive = true
 	c.t.putDataNode(dataNode)
 	c.dataNodes.Store(nodeAddr, dataNode)
 	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeSetId[%v],capacity[%v]",
