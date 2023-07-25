@@ -811,12 +811,12 @@ func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status ui
 	}
 
 	resp, err := tm.txProcessor.mp.submit(opFSMTxCommit, val)
-	status = resp.(uint8)
-	if err != nil || status != proto.OpOk {
-		log.LogWarnf("commitTx: commit transaction[%v]  failed, err[%v]", txId, err)
+	if err != nil {
+		log.LogWarnf("commitTx: commit transaction[%v] failed, err[%v]", txId, err)
 		return proto.OpTxCommitErr, err
 	}
 
+	status = resp.(uint8)
 	log.LogDebugf("commitTx: tx[%v] is commited successfully", txId)
 
 	return
@@ -932,13 +932,14 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 	}
 
 	resp, err := tm.txProcessor.mp.submit(opFSMTxRollback, val)
-	status = resp.(uint8)
-	if err != nil || status != proto.OpOk {
+
+	if err != nil {
 		log.LogWarnf("commitTx: rollback transaction[%v]  failed, err[%v]", txId, err)
 		return proto.OpTxCommitErr, err
 	}
 
-	log.LogDebugf("commitTx: tx[%v] is rollback successfully", txId)
+	status = resp.(uint8)
+	log.LogDebugf("commitTx: tx[%v] is rollback successfully, msg %s", txId, proto.GetStatusStr(status))
 
 	return
 }
@@ -1184,13 +1185,13 @@ func (tr *TransactionResource) deleteTxRollbackInode(ino uint64, txId string) (s
 		return proto.OpTxRbInodeNotExistErr
 	}
 
-	if item.(*TxRollbackDentry).txDentryInfo.TxID != txId {
+	if item.(*TxRollbackInode).txInodeInfo.TxID != txId {
 		log.LogWarnf("deleteTxRollbackInode: rollback dentry is already been update by other, txId %s, item %v",
 			txId, item)
 		return proto.OpTxRbDentryNotExistErr
 	}
 
-	tr.txRbDentryTree.Delete(item)
+	tr.txRbInodeTree.Delete(item)
 	return proto.OpOk
 }
 
