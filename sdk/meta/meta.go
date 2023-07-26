@@ -93,16 +93,17 @@ type MetaConfig struct {
 
 type MetaWrapper struct {
 	sync.RWMutex
-	cluster         string
-	localIP         string
-	volname         string
-	ossSecure       *OSSSecure
-	volCreateTime   int64
-	owner           string
-	ownerValidation bool
-	mc              *masterSDK.MasterClient
-	ac              *authSDK.AuthClient
-	conns           *util.ConnectPool
+	cluster           string
+	localIP           string
+	volname           string
+	ossSecure         *OSSSecure
+	volCreateTime     int64
+	volDeleteLockTime int64
+	owner             string
+	ownerValidation   bool
+	mc                *masterSDK.MasterClient
+	ac                *authSDK.AuthClient
+	conns             *util.ConnectPool
 
 	// Callback handler for handling asynchronous task errors.
 	onAsyncTaskError AsyncTaskErrorFunc

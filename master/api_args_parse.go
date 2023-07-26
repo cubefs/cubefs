@@ -303,6 +303,20 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 	return val, nil
 }
 
+func extractInt64WithDefault(r *http.Request, key string, def int64) (val int64, err error) {
+
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.ParseInt(str, 10, 64); err != nil || val < 0 {
+		return 0, fmt.Errorf("parse [%s] is not valid int [%d], err %v", key, val, err)
+	}
+
+	return val, nil
+}
+
 func extractStrWithDefault(r *http.Request, key string, def string) (val string) {
 
 	if val = r.FormValue(key); val == "" {
@@ -329,6 +343,7 @@ type updateVolReq struct {
 	name                    string
 	authKey                 string
 	capacity                uint64
+	deleteLockTime          int64
 	followerRead            bool
 	authenticate            bool
 	enablePosixAcl          bool
@@ -422,6 +437,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	req.zoneName = extractStrWithDefault(r, zoneNameKey, vol.zoneName)
 
 	if req.capacity, err = extractUint64WithDefault(r, volCapacityKey, vol.Capacity); err != nil {
+		return
+	}
+
+	if req.deleteLockTime, err = extractInt64WithDefault(r, volDeleteLockTimeKey, vol.DeleteLockTime); err != nil {
 		return
 	}
 
@@ -592,6 +611,7 @@ type createVolReq struct {
 	mpCount                              int
 	dpReplicaNum                         uint8
 	capacity                             int
+	deleteLockTime                       int64
 	followerRead                         bool
 	authenticate                         bool
 	crossZone                            bool
@@ -697,6 +717,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 
 	// default capacity 120
 	if req.capacity, err = extractUint(r, volCapacityKey); err != nil {
+		return
+	}
+
+	if req.deleteLockTime, err = extractInt64WithDefault(r, volDeleteLockTimeKey, 0); err != nil {
 		return
 	}
 

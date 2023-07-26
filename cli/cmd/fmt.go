@@ -111,6 +111,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Authenticate                    : %v\n", formatEnabledDisabled(svv.Authenticate)))
 	sb.WriteString(fmt.Sprintf("  Capacity                        : %v GB\n", svv.Capacity))
 	sb.WriteString(fmt.Sprintf("  Create time                     : %v\n", svv.CreateTime))
+	sb.WriteString(fmt.Sprintf("  DeleteLockTime                  : %v\n", svv.DeleteLockTime))
 	sb.WriteString(fmt.Sprintf("  Cross zone                      : %v\n", formatEnabledDisabled(svv.CrossZone)))
 	sb.WriteString(fmt.Sprintf("  DefaultPriority                 : %v\n", svv.DefaultPriority))
 	sb.WriteString(fmt.Sprintf("  Dentry count                    : %v\n", svv.DentryCount))
