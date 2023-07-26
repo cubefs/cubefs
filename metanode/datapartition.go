@@ -47,6 +47,7 @@ func NewDataPartitionsView() *DataPartitionsView {
 type Vol struct {
 	sync.RWMutex
 	dataPartitionView map[uint64]*DataPartition
+	volDeleteLockTime int64
 }
 
 // NewVol returns a new volume instance.

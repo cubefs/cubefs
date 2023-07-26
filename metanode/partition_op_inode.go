@@ -233,6 +233,17 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	}
 
 	respIno = inoResp.Msg
+	createTime := respIno.CreateTime
+	deleteLockTime := mp.vol.volDeleteLockTime * 60 * 60
+	if deleteLockTime > 0 && createTime+deleteLockTime > time.Now().Unix() {
+		err = fmt.Errorf("the current Inode[%v] is still locked for deletion", req.Inode)
+		log.LogDebugf("TxUnlinkInode: the current Inode is still locked for deletion, inode(%v) createTime(%v) mw.volDeleteLockTime(%v) now(%v)", respIno.Inode, createTime, deleteLockTime, time.Now())
+		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
+		return
+	}
+
+	log.LogDebugf("TxUnlinkInode: the current Inode can be deleted, inode(%v) createTime(%v) mw.volDeleteLockTime(%v) now(%v)", respIno.Inode, createTime, deleteLockTime, time.Now())
+
 	ti := &TxInode{
 		Inode:  inoResp.Msg,
 		TxInfo: txInfo,

@@ -178,7 +178,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  Name                     : %v\n", volumeName)
 				stdout("  Owner                    : %v\n", userID)
 				stdout("  capacity                 : %v G\n", optCapacity)
-				stdout("  deleteLockTime           : %v s\n", optDeleteLockTime)
+				stdout("  deleteLockTime           : %v h\n", optDeleteLockTime)
 				stdout("  crossZone                : %v\n", crossZone)
 				stdout("  DefaultPriority          : %v\n", normalZonesFirst)
 				stdout("  description              : %v\n", optBusiness)
@@ -253,7 +253,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optTxConflictRetryNum, CliTxConflictRetryNum, 0, "Specify retry times for transaction conflict [1-100]")
 	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
-	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: second] for volume")
+	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
 
 	return cmd
 }
@@ -396,12 +396,12 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			confirmString.WriteString(fmt.Sprintf("  EnableQuota : %v\n", formatEnabledDisabled(vv.EnableQuota)))
 
-			if optDeleteLockTime > 0 {
+			if optDeleteLockTime >= 0 && optDeleteLockTime != vv.DeleteLockTime {
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v s -> %v s\n", vv.DeleteLockTime, optDeleteLockTime))
+				confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v h -> %v h\n", vv.DeleteLockTime, optDeleteLockTime))
 				vv.DeleteLockTime = optDeleteLockTime
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v s\n", vv.DeleteLockTime))
+				confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v h\n", vv.DeleteLockTime))
 			}
 
 			//var maskStr string
@@ -627,7 +627,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optTxOpLimitVal, CliTxOpLimit, 0, "Specify limitation[Unit: second] for transaction(default 0 unlimited)")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
-	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: second] for volume")
+	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
 
 	return cmd
 
