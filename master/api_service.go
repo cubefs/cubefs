@@ -1815,6 +1815,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.zoneName = req.zoneName
 	newArgs.description = req.description
 	newArgs.capacity = req.capacity
+	newArgs.deleteLockTime = req.deleteLockTime
 	newArgs.followerRead = req.followerRead
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
@@ -2186,6 +2187,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		MpCnt:                   len(vol.MetaPartitions),
 		DpCnt:                   len(vol.dataPartitions.partitionMap),
 		CreateTime:              time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		DeleteLockTime:          vol.DeleteLockTime,
 		Description:             vol.description,
 		DpSelectorName:          vol.dpSelectorName,
 		DpSelectorParm:          vol.dpSelectorParm,

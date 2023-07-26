@@ -232,6 +232,7 @@ type volValue struct {
 	OSSAccessKey    string
 	OSSSecretKey    string
 	CreateTime      int64
+	DeleteLockTime  int64
 	Description     string
 	DpSelectorName  string
 	DpSelectorParm  string
@@ -288,6 +289,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		OSSAccessKey:            vol.OSSAccessKey,
 		OSSSecretKey:            vol.OSSSecretKey,
 		CreateTime:              vol.createTime,
+		DeleteLockTime:          vol.DeleteLockTime,
 		Description:             vol.description,
 		DpSelectorName:          vol.dpSelectorName,
 		DpSelectorParm:          vol.dpSelectorParm,
