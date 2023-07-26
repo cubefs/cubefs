@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/log"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -230,6 +231,15 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err error) {
+	if req.InodeCreateTime > 0 {
+		if mp.vol.volDeleteLockTime > 0 && req.InodeCreateTime+mp.vol.volDeleteLockTime*60*60 > time.Now().Unix() {
+			err = errors.NewErrorf("the current Inode[%v] is still locked for deletion", req.Name)
+			log.LogDebugf("DeleteDentry: the current Inode is still locked for deletion, inode(%v) createTime(%v) mw.volDeleteLockTime(%v) now(%v)", req.Name, req.InodeCreateTime, mp.vol.volDeleteLockTime, time.Now().Unix())
+			p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
+			return
+		}
+	}
+
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,

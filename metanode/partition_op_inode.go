@@ -243,8 +243,6 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 		return
 	}
 
-	log.LogDebugf("TxUnlinkInode: the current Inode can be deleted, inode(%v) createTime(%v) mw.volDeleteLockTime(%v) now(%v)", respIno.Inode, createTime, deleteLockTime, time.Now())
-
 	ti := &TxInode{
 		Inode:  inoResp.Msg,
 		TxInfo: txInfo,

@@ -616,12 +616,13 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
  */
 func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
 	var (
-		status int
-		inode  uint64
-		mode   uint32
-		err    error
-		info   *proto.InodeInfo
-		mp     *MetaPartition
+		status          int
+		inode           uint64
+		mode            uint32
+		err             error
+		info            *proto.InodeInfo
+		mp              *MetaPartition
+		inodeCreateTime int64
 	)
 
 	parentMP := mw.getPartitionByInode(parentID)
@@ -665,6 +666,7 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 			mw.qc.Delete(inode)
 		}
 		if mw.volDeleteLockTime > 0 {
+			inodeCreateTime = info.CreateTime.Unix()
 			if ok, err := mw.canDeleteInode(mp, info, inode); !ok {
 				return nil, err
 			}
@@ -684,13 +686,14 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 			if err != nil || status != statusOK {
 				return nil, statusToErrno(status)
 			}
+			inodeCreateTime = info.CreateTime.Unix()
 			if ok, err := mw.canDeleteInode(mp, info, inode); !ok {
 				return nil, err
 			}
 		}
 	}
 
-	status, inode, err = mw.ddelete(parentMP, parentID, name)
+	status, inode, err = mw.ddelete(parentMP, parentID, name, inodeCreateTime)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			return nil, nil
@@ -990,7 +993,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	// delete dentry from src parent
-	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName)
+	status, _, err = mw.ddelete(srcParentMP, srcParentID, srcName, 0)
 	if err != nil {
 		log.LogErrorf("mw.ddelete(srcParentMP, srcParentID, %s) failed.", srcName)
 		return statusToErrno(status)
@@ -1000,7 +1003,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			e   error
 		)
 		if oldInode == 0 {
-			sts, _, e = mw.ddelete(dstParentMP, dstParentID, dstName)
+			sts, _, e = mw.ddelete(dstParentMP, dstParentID, dstName, 0)
 		} else {
 			sts, _, e = mw.dupdate(dstParentMP, dstParentID, dstName, oldInode)
 		}
