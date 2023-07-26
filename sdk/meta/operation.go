@@ -808,17 +808,18 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, err error) {
+func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, inodeCreateTime int64) (status int, inode uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ddelete", err, bgTime, 1)
 	}()
 
 	req := &proto.DeleteDentryRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		Name:        name,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		ParentID:        parentID,
+		Name:            name,
+		InodeCreateTime: inodeCreateTime,
 	}
 
 	packet := proto.NewPacketReqID()

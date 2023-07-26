@@ -456,10 +456,11 @@ type TxDeleteDentryResponse struct {
 
 // DeleteDentryRequest define the request tp delete a dentry.
 type DeleteDentryRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
-	Name        string `json:"name"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	ParentID        uint64 `json:"pino"`
+	Name            string `json:"name"`
+	InodeCreateTime int64  `json:"inodeCreateTime"`
 }
 
 type BatchDeleteDentryRequest struct {
