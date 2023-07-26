@@ -310,6 +310,10 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	log.LogDebugf("action[checkStatus], maxPartitionId:%v, mp id:%v, status:%v", maxPartitionID, mp.PartitionID, mp.Status)
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
 		allLiveReplicas := mp.getAllLiveReplicas()
+		// if mp is no leader,but all replica is alive,don't alarm
+		if len(allLiveReplicas) == int(mp.ReplicaNum) {
+			return
+		}
 		inactiveAddrs := mp.getInactiveAddrsFromLiveReplicas(allLiveReplicas)
 		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v, replicas:%v learnerNum:%v,replicas:%v,persistenceHosts:%v inactiveAddrs:%v",
 			mp.PartitionID, mp.Status, mp.ReplicaNum, len(mp.Replicas), mp.LearnerNum, len(allLiveReplicas), mp.Hosts, inactiveAddrs)
@@ -458,7 +462,7 @@ func (mp *MetaPartition) getInactiveAddrsFromLiveReplicas(liveReplicas []*MetaRe
 func (mp *MetaPartition) getAllLiveReplicas() (allLiveReplicas []*MetaReplica) {
 	allLiveReplicas = make([]*MetaReplica, 0)
 	for _, mr := range mp.Replicas {
-		if mr.isActive() {
+		if mr.isAlive() {
 			allLiveReplicas = append(allLiveReplicas, mr)
 		}
 	}
@@ -761,6 +765,10 @@ func (mr *MetaReplica) isActive() (active bool) {
 	}
 
 	return
+}
+
+func (mr *MetaReplica) isAlive() (active bool) {
+	return mr.metaNode.IsActive && time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
 }
 
 func (mr *MetaReplica) setLastReportTime() {
