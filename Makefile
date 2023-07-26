@@ -1,6 +1,6 @@
 # Cubefs Makefile
 #
-
+threads?=0
 RM := $(shell [ -x /bin/rm ] && echo "/bin/rm" || echo "/usr/bin/rm" )
 GOMOD=on
 default: all
@@ -12,34 +12,34 @@ phony += build server authtool client cli libsdk fsck fdstore preload bcache blo
 build: server authtool client cli libsdk fsck fdstore preload bcache blobstore
 
 server: 
-	@build/build.sh server $(GOMOD)
+	@build/build.sh server $(GOMOD) --threads=$(threads)
 
 blobstore:
-	@build/build.sh blobstore $(GOMOD)
+	@build/build.sh blobstore $(GOMOD) --threads=$(threads)
 
 client: 
-	@build/build.sh client $(GOMOD)
+	@build/build.sh client $(GOMOD) --threads=$(threads)
 
 authtool: 
-	@build/build.sh authtool $(GOMOD)
+	@build/build.sh authtool $(GOMOD) --threads=$(threads)
 
 cli: 
-	@build/build.sh cli $(GOMOD)
+	@build/build.sh cli $(GOMOD) --threads=$(threads)
 
 fsck: 
-	@build/build.sh fsck $(GOMOD)
+	@build/build.sh fsck $(GOMOD) --threads=$(threads)
 
 libsdk: 
-	@build/build.sh libsdk $(GOMOD)
+	@build/build.sh libsdk $(GOMOD) --threads=$(threads)
 
 fdstore: 
-	@build/build.sh fdstore $(GOMOD)
+	@build/build.sh fdstore $(GOMOD) --threads=$(threads)
 
 preload: 
-	@build/build.sh preload $(GOMOD)
+	@build/build.sh preload $(GOMOD) --threads=$(threads)
 
 bcache: 
-	@build/build.sh bcache $(GOMOD)
+	@build/build.sh bcache $(GOMOD) --threads=$(threads)
 
 phony += clean
 clean:
@@ -47,15 +47,15 @@ clean:
 
 phony += dist-clean
 dist-clean:
-	@build/build.sh dist_clean
+	@build/build.sh dist_clean --threads=$(threads)
 
 phony += test
 test:
-	@build/build.sh test $(GOMOD)
+	@build/build.sh test $(GOMOD) --threads=$(threads)
 
 phony += testcover
 testcover:
-	@build/build.sh testcover $(GOMOD)
+	@build/build.sh testcover $(GOMOD) --threads=$(threads)
 
 phony += mock
 mock:
