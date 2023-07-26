@@ -42,10 +42,15 @@ func (s *ChubaoFSMonitor) checkThenRestartNode(nodeAddr, host string) (err error
 		if strings.Contains(err.Error(), "exit") {
 			log.LogErrorf("action[checkThenRestartNode] NodeIp:%v sysUpTimeInstance err:%v", nodeIp, err)
 		} else {
+			if lastTime, ok := s.lastCheckStartTime[nodeAddr]; ok && time.Since(lastTime) < time.Hour {
+				return
+			}
+			s.lastCheckStartTime[nodeAddr] = time.Now()
 			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, fmt.Sprintf("IP:%v get sysUpTimeInstance failed", nodeIp))
 			return
 		}
 	}
+	delete(s.lastCheckStartTime, nodeAddr)
 	if err == nil && totalStartupTime < minRestartDuration {
 		err = fmt.Errorf("nodeIp:%v totalStartupTime:%v less than minRestartDuration:%v", nodeIp, totalStartupTime, minRestartDuration)
 		return

@@ -82,6 +82,7 @@ const (
 	minWarnFaultToUsersCheckInterval     = 60 * 5
 	defaultMaxPendQueueCount             = 0
 	defaultMaxAppliedIDDiffCount         = 100
+	defaultMaxOfflineFlashNodesIn24Hour  = 5
 )
 
 const (
@@ -134,6 +135,7 @@ type ChubaoFSMonitor struct {
 	lastZoneMetaNodeDiskUsedRatioTelAlarm   time.Time
 	lastZoneMetaNodeDiskUsedRatioTelOpAlarm time.Time
 	lastRestartNodeTime                     time.Time
+	lastCheckStartTime                      map[string]time.Time
 	RestartNodeMaxCountIn24Hour             int
 	highLoadNodeSolver                      *ChubaoFSHighLoadNodeSolver
 	volNeedAllocateDPContinuedTimes         map[string]int
@@ -156,6 +158,7 @@ func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
 		masterLbLastWarnInfo:            make(map[string]*MasterLBWarnInfo),
 		volNeedAllocateDPContinuedTimes: make(map[string]int),
 		WarnFaultToUsers:                make([]*WarnFaultToTargetUsers, 0),
+		lastCheckStartTime:              make(map[string]time.Time),
 		ctx:                             ctx,
 	}
 }

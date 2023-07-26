@@ -29,6 +29,7 @@ type ClusterHost struct {
 	lastTimeOfflineMetaNode       time.Time
 	lastTimeOfflineDataNode       time.Time
 	offlineDataNodesIn24Hour      map[string]time.Time
+	offlineFlashNodesIn24Hour     map[string]time.Time
 	inOfflineDiskDataNodes        map[string]time.Time
 	offlineDisksIn24Hour          map[string]time.Time
 	dataNodeBadDisk               map[string]time.Time
@@ -55,18 +56,19 @@ type ClusterHost struct {
 
 func newClusterHost(host string) *ClusterHost {
 	ch := &ClusterHost{
-		host:                     host,
-		deadMetaNodes:            make(map[string]*DeadNode, 0),
-		deadDataNodes:            make(map[string]*DeadNode, 0),
-		deadFlashNodes:           make(map[string]*DeadNode, 0),
-		dataNodeBadDisk:          make(map[string]time.Time, 0),
-		offlineDisksIn24Hour:     make(map[string]time.Time, 0),
-		offlineDataNodesIn24Hour: make(map[string]time.Time, 0),
-		inOfflineDiskDataNodes:   make(map[string]time.Time, 0),
-		badPartitionAppliedMap:   make(map[string]*PartitionApplied, 0),
-		badPartitionPendingMap:   make(map[string]map[string]*PartitionPending, 0),
-		inactiveNodesForCheckVol: make(map[string]bool),
-		nodeMemInfo:              make(map[string]float64),
+		host:                      host,
+		deadMetaNodes:             make(map[string]*DeadNode, 0),
+		deadDataNodes:             make(map[string]*DeadNode, 0),
+		deadFlashNodes:            make(map[string]*DeadNode, 0),
+		dataNodeBadDisk:           make(map[string]time.Time, 0),
+		offlineDisksIn24Hour:      make(map[string]time.Time, 0),
+		offlineDataNodesIn24Hour:  make(map[string]time.Time, 0),
+		offlineFlashNodesIn24Hour: make(map[string]time.Time, 0),
+		inOfflineDiskDataNodes:    make(map[string]time.Time, 0),
+		badPartitionAppliedMap:    make(map[string]*PartitionApplied, 0),
+		badPartitionPendingMap:    make(map[string]map[string]*PartitionPending, 0),
+		inactiveNodesForCheckVol:  make(map[string]bool),
+		nodeMemInfo:               make(map[string]float64),
 	}
 	ch.isReleaseCluster = isReleaseCluster(host)
 	return ch

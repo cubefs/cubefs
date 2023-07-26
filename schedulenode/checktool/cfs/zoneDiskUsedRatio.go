@@ -24,7 +24,7 @@ type PackAlarmInfo struct {
 }
 
 const (
-	usedRatioMinThresholdSSD   = 0.82
+	usedRatioMinThresholdSSD   = 0.83
 	usedRatioMinThresholdMysql = 0.75
 	usedRatioMaxThresholdMysql = 0.80
 	usedRatioMinThresholdOther = 0.75
