@@ -664,14 +664,13 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 			}
 			mw.qc.Delete(inode)
 		}
-		if mw.volDeleteLockTime != 0 {
+		if mw.volDeleteLockTime > 0 {
 			if ok, err := mw.canDeleteInode(mp, info, inode); !ok {
 				return nil, err
 			}
 		}
 	} else {
-		if mw.volDeleteLockTime != 0 {
-
+		if mw.volDeleteLockTime > 0 {
 			status, inode, _, err = mw.lookup(parentMP, parentID, name)
 			if err != nil || status != statusOK {
 				return nil, statusToErrno(status)
