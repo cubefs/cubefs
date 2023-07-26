@@ -453,18 +453,26 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 
 // CreateInodeLink creates an inode link (e.g., soft link).
 func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
-	ino := NewInode(req.Inode, 0)
-	val, err := ino.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
+	var r interface{}
+	var val []byte
+	if req.UniqID > 0 {
+		val = InodeOnceLinkMarshal(req)
+		r, err = mp.submit(opFSMCreateLinkInodeOnce, val)
+	} else {
+		ino := NewInode(req.Inode, 0)
+		val, err = ino.Marshal()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
+		r, err = mp.submit(opFSMCreateLinkInode, val)
 	}
-	resp, err := mp.submit(opFSMCreateLinkInode, val)
+
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}
-	retMsg := resp.(*InodeResponse)
+	retMsg := r.(*InodeResponse)
 	status := proto.OpNotExistErr
 	var reply []byte
 	if retMsg.Status == proto.OpOk {
