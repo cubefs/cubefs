@@ -304,7 +304,7 @@ func main() {
 	}
 
 	syslog.Printf("server start success, pid %d, role %s", os.Getpid(), role)
-
+	log.LogDisableStderrOutput()
 	err = log.OutputPid(logDir, role)
 	if err != nil {
 		log.LogFlush()
