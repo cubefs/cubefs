@@ -104,6 +104,7 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 
 		if status != proto.OpOk {
 			p.ResultCode = status
+			return
 		}
 	}
 

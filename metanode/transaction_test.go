@@ -132,7 +132,7 @@ func TestRollbackInodeSerialization(t *testing.T) {
 		Flag:       1,
 		Reserved:   3,
 		Extents: NewSortedExtentsFromEks([]proto.ExtentKey{
-			{11, 12, 13, 0, 0, 0},
+			{FileOffset: 11, PartitionId: 12, ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0},
 		}),
 		ObjExtents: NewSortedObjExtents(),
 	}
