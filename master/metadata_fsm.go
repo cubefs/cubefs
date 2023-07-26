@@ -197,6 +197,7 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		}
 	}
 	rocksdbOpened := true
+	removeDir := ""
 	// open temp rocksdb
 	tempDb, err := raftstore.NewRocksDBStore(recoveryDir, mf.store.GetLruCacheSize(), mf.store.GetWriteBufferSize())
 	if err != nil {
@@ -206,6 +207,13 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 	// close rocksdb
 	mf.store.Close()
 	rocksdbOpened = false
+	// remove by rename
+	removeDir, err = os.MkdirTemp("", "remove_by_rename")
+	if err != nil {
+		log.LogErrorf("failed to get temp dir %v", err.Error())
+		goto errHandler
+	}
+	removeDir = fmt.Sprintf("%s/remove", removeDir)
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	for err == nil {
 		bgTime := stat.BeginStat()
@@ -236,10 +244,15 @@ func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIter
 		goto errHandler
 	}
 	tempDb.Close()
-	// commit point
-	if err = os.RemoveAll(mf.store.GetDir()); err != nil {
+	// commit point, remove by rename
+	if err = os.Rename(mf.store.GetDir(), removeDir); err != nil {
 		goto errHandler
 	}
+	if err = os.RemoveAll(removeDir); err != nil {
+		err = nil
+		log.LogErrorf("failed to remove directory %v", err.Error())
+	}
+	// rename new dir to raft store dir
 	if err = os.Rename(tempDb.GetDir(), mf.store.GetDir()); err != nil {
 		goto errHandler
 	}
