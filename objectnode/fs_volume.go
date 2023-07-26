@@ -2548,6 +2548,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		OnInsertExtentKey: metaWrapper.InsertExtentKey,
 		OnGetExtents:      metaWrapper.GetExtents,
 		OnTruncate:        metaWrapper.Truncate,
+		MetaWrapper:       metaWrapper,
 	}
 	var extentClient *data.ExtentClient
 	if extentClient, err = data.NewExtentClient(extentConfig, nil); err != nil {
