@@ -87,7 +87,7 @@ build_zlib() {
     echo "build zlib..."
     pushd ${BuildOutPath}/zlib-${ZLIB_VER}
     CFLAGS='-fPIC' ./configure --static
-    make
+    make -j$1
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -111,7 +111,7 @@ build_bzip2() {
 
     echo "build bzip2..."
     pushd ${BuildOutPath}/bzip2-bzip2-${BZIP2_VER}
-    make CFLAGS='-fPIC -O2 -g -D_FILE_OFFSET_BITS=64'
+    make -j$1 CFLAGS='-fPIC -O2 -g -D_FILE_OFFSET_BITS=64'
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -132,7 +132,7 @@ build_lz4() {
 
     echo "build lz4..."
     pushd ${BuildOutPath}/lz4-${LZ4_VER}/lib
-    make CFLAGS='-fPIC -O2'
+    make -j$1 CFLAGS='-fPIC -O2'
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -153,7 +153,7 @@ build_zstd() {
 
     echo "build zstd..."
     pushd ${BuildOutPath}/zstd-${ZSTD_VER}/lib
-    make CFLAGS='-fPIC -O2'
+    make -j$1 CFLAGS='-fPIC -O2'
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -176,7 +176,7 @@ build_snappy() {
     echo "build snappy..."
     mkdir ${BuildOutPath}/snappy-${SNAPPY_VER}/build
     pushd ${BuildOutPath}/snappy-${SNAPPY_VER}/build
-    cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DSNAPPY_BUILD_TESTS=OFF .. && make
+    cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DSNAPPY_BUILD_TESTS=OFF .. && make -j$1
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -211,7 +211,8 @@ build_rocksdb() {
             FLAGS="-Wno-error=deprecated-copy -Wno-error=pessimizing-move"
         fi
     fi
-    PORTABLE=1 make EXTRA_CXXFLAGS="-fPIC ${FLAGS} -DZLIB -DBZIP2 -DSNAPPY -DLZ4 -DZSTD -I${BuildDependsIncludePath}" static_lib
+    PORTABLE=1 
+    make EXTRA_CXXFLAGS="-fPIC ${FLAGS} -DZLIB -DBZIP2 -DSNAPPY -DLZ4 -DZSTD -I${BuildDependsIncludePath}" -j$1 static_lib
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -235,12 +236,12 @@ init_gopath() {
 }
 
 pre_build() {
-    build_zlib
-    build_bzip2
-    build_lz4
-    build_zstd
-    build_snappy
-    build_rocksdb
+    build_zlib $1
+    build_bzip2 $1
+    build_lz4 $1
+    build_zstd $1
+    build_snappy $1
+    build_rocksdb $1
 
     export CGO_CFLAGS=${cgo_cflags}
     export CGO_LDFLAGS="${cgo_ldflags}"
@@ -340,7 +341,6 @@ build_fsck() {
 }
 
 build_snapshot() {
-    pre_build
     pushd $SrcPath >/dev/null
     echo -n "build cfs-snapshot	"
     go build $MODFLAGS -ldflags "${LDFlags}" -o ${BuildBinPath}/cfs-snapshot ${SrcPath}/snapshot/*.go  && echo "success" || echo "failed"
@@ -413,7 +413,33 @@ elif [ "${cmd}" == "clean" ]; then
     exit 0
 fi
 
-pre_build
+get_cpu_cores() {
+    cores=`cat /proc/cpuinfo | grep processor | wc -l`
+    return $cores
+}
+
+threads=0
+for para in $*
+do
+    check=`echo $para | grep "^--threads=" | wc -l`
+    if test $check -eq 1
+    then
+        check=`echo "$para" | grep "^--threads=[0-9]*[^0-9]\{1,\}" | wc -l`
+        if test $check -eq 0
+        then
+            threads=`echo "$para" | grep -o "[0-9]\{1,\}"`
+        fi
+    fi
+done
+
+if test $threads -eq 0
+then
+    get_cpu_cores
+    threads=`expr $? + 1`
+    threads=`expr $threads / 2`
+fi
+
+pre_build $threads
 
 case "$cmd" in
     "all")
