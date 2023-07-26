@@ -182,9 +182,9 @@ func NewTxRollbackInode(inode *Inode, quotaIds []uint32, txInodeInfo *proto.TxIn
 }
 
 type TxRollbackDentry struct {
-	dentry       *Dentry             `json:"dentry""`
-	txDentryInfo *proto.TxDentryInfo `json:"txDentry""`
-	rbType       uint8               `json:"rbType"` //Rollback Type `
+	dentry       *Dentry
+	txDentryInfo *proto.TxDentryInfo
+	rbType       uint8 //Rollback Type `
 }
 
 func (d *TxRollbackDentry) ToString() string {
@@ -873,10 +873,10 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 
 	updateStatus := func(st uint8) uint8 {
 		if st == proto.OpTxConflictErr || st == proto.OpTxInfoNotExistErr {
-			log.LogWarnf("sendToRM: might have already been committed, tx[%v]", txInfo)
+			log.LogWarnf("sendToRM: might have already been committed, tx[%v], status (%s)", txInfo, proto.GetStatusStr(st))
 			return proto.OpOk
 		} else if st == proto.OpTxRbInodeNotExistErr || st == proto.OpTxRbDentryNotExistErr {
-			log.LogWarnf("sendToRM: already done before or not add, tx[%v]", txInfo)
+			log.LogWarnf("sendToRM: already done before or not add, tx[%v], status (%s)", txInfo, proto.GetStatusStr(st))
 			return proto.OpOk
 		} else {
 			return st
@@ -1013,6 +1013,8 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 
 		status := newPkt.ResultCode
 		if status == proto.OpErr || status == proto.OpAgain {
+			log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status(%s)",
+				addr, newPkt.GetResultMsg(), string(p.Data), proto.GetStatusStr(status))
 			continue
 		}
 
@@ -1025,7 +1027,7 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 			return status
 		}
 
-		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s", addr, newPkt.GetResultMsg())
+		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s", addr, newPkt.GetResultMsg(), string(p.Data))
 		return status
 	}
 
@@ -1041,6 +1043,8 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 
 		status := newPkt.ResultCode
 		if status == proto.OpErr || status == proto.OpAgain {
+			log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status(%s)",
+				addr, newPkt.GetResultMsg(), string(p.Data), proto.GetStatusStr(status))
 			continue
 		}
 
@@ -1053,7 +1057,7 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 			return status
 		}
 
-		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s", addr, newPkt.GetResultMsg())
+		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s", addr, newPkt.GetResultMsg(), string(p.Data))
 		return status
 	}
 
