@@ -43,6 +43,7 @@ type VolumeView struct {
 	MetaPartitions []*MetaPartition
 	OSSSecure      *OSSSecure
 	CreateTime     int64
+	DeleteLockTime int64
 }
 
 type OSSSecure struct {
@@ -97,6 +98,7 @@ func (mw *MetaWrapper) fetchVolumeView() (view *VolumeView, err error) {
 			MetaPartitions: make([]*MetaPartition, len(volView.MetaPartitions)),
 			OSSSecure:      &OSSSecure{},
 			CreateTime:     volView.CreateTime,
+			DeleteLockTime: volView.DeleteLockTime,
 		}
 		if volView.OSSSecure != nil {
 			result.OSSSecure.AccessKey = volView.OSSSecure.AccessKey
@@ -199,6 +201,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	}
 	mw.ossSecure = view.OSSSecure
 	mw.volCreateTime = view.CreateTime
+	mw.volDeleteLockTime = view.DeleteLockTime
 
 	if len(rwPartitions) == 0 {
 		log.LogInfof("updateMetaPartition: no valid partitions")

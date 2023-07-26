@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -805,6 +806,41 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 	}
 	log.LogDebugf("ddelete: packet(%v) mp(%v) req(%v) ino(%v)", packet, mp, *req, resp.Inode)
 	return statusOK, resp.Inode, nil
+}
+
+func (mw *MetaWrapper) canDeleteInode(parentMP *MetaPartition, parentID uint64, name string) (can bool, err error) {
+	var (
+		status         int
+		ino            uint64
+		info           *proto.InodeInfo
+		mp             *MetaPartition
+		createTime     int64
+		deleteLockTime int64
+	)
+	status, ino, _, err = mw.lookup(parentMP, parentID, name)
+	if err != nil || status != statusOK {
+		return false, statusToErrno(status)
+	}
+	mp = mw.getPartitionByInode(ino)
+	if mp == nil {
+		log.LogErrorf("canDeleteInode: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, ino)
+		return false, syscall.EAGAIN
+	}
+	status, info, err = mw.iget(mp, ino)
+	if err != nil || status != statusOK {
+		log.LogErrorf("canDeleteInode: mp(%v) ino(%v) err(%v)", mp, ino, err)
+		return false, statusToErrno(status)
+	}
+	createTime = info.CreateTime.Unix()
+	deleteLockTime = mw.volDeleteLockTime
+
+	if deleteLockTime != 0 && createTime+deleteLockTime > time.Now().Unix() {
+		err = errors.NewErrorf("the current Inode[%v] is still locked for deletion", ino)
+		log.LogWarnf("canDeleteInode: mp(%v) ino(%v) err(%v)", mp, ino, err)
+		return false, syscall.EPERM
+	}
+
+	return true, nil
 }
 
 func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, mode uint32, err error) {

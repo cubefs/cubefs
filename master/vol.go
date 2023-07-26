@@ -31,6 +31,7 @@ type VolVarargs struct {
 	zoneName                string
 	description             string
 	capacity                uint64 //GB
+	deleteLockTime          int64  //s
 	followerRead            bool
 	authenticate            bool
 	dpSelectorName          string
@@ -95,6 +96,7 @@ type Vol struct {
 	createDpMutex           sync.RWMutex
 	createMpMutex           sync.RWMutex
 	createTime              int64
+	DeleteLockTime          int64
 	description             string
 	dpSelectorName          string
 	dpSelectorParm          string
@@ -130,6 +132,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
 	vol.createTime = vv.CreateTime
+	vol.DeleteLockTime = vv.DeleteLockTime
 	vol.description = vv.Description
 	vol.defaultPriority = vv.DefaultPriority
 	vol.domainId = vv.DomainId
@@ -790,7 +793,7 @@ func (vol *Vol) ebsUsedSpace() uint64 {
 }
 
 func (vol *Vol) updateViewCache(c *Cluster) {
-	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime, vol.CacheTTL, vol.VolType)
+	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime, vol.CacheTTL, vol.VolType, vol.DeleteLockTime)
 	view.SetOwner(vol.Owner)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
 	mpViews := vol.getMetaPartitionsView()
@@ -1221,6 +1224,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.zoneName = args.zoneName
 	vol.Capacity = args.capacity
+	vol.DeleteLockTime = args.deleteLockTime
 	vol.FollowerRead = args.followerRead
 	vol.authenticate = args.authenticate
 	vol.enablePosixAcl = args.enablePosixAcl
@@ -1270,6 +1274,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		zoneName:                vol.zoneName,
 		description:             vol.description,
 		capacity:                vol.Capacity,
+		deleteLockTime:          vol.DeleteLockTime,
 		followerRead:            vol.FollowerRead,
 		authenticate:            vol.authenticate,
 		dpSelectorName:          vol.dpSelectorName,
