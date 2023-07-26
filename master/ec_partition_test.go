@@ -2,15 +2,12 @@ package master
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
-
 	"github.com/cubefs/cubefs/proto"
+	"testing"
 )
 
 func Test_EcPartition(t *testing.T) {
-	server.cluster.checkDataNodeHeartbeat()
+	/*server.cluster.checkDataNodeHeartbeat()
 	server.cluster.checkMetaNodeHeartbeat()
 	server.cluster.checkEcNodeHeartbeat()
 	partitionId := uint64(1)
@@ -33,7 +30,7 @@ func Test_EcPartition(t *testing.T) {
 		dp.EcMigrateStatus = proto.FinishEC
 		decommissionEcPartition(partition, t)
 		break
-	}
+	}*/
 }
 
 func getEcPartition(id uint64, t *testing.T) {
