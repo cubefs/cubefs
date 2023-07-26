@@ -1224,8 +1224,14 @@ func formatTrashVolInfoTableRow(svv *proto.SimpleVolView, vi *proto.VolInfo) str
 
 var flashNodeViewTableRowPattern = "%-12v    %-12v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v"
 
+var flashNodeViewTableSimpleRowPattern = "%-12v    %-12v    %-18v    %-18v    %-18v    %-18v   %-18v    %-18v"
+
 func formatFlashNodeViewTableHeader() string {
 	return fmt.Sprintf(flashNodeViewTableRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "IsActive", "FlashGroupID", "HitRate", "Evicts", "Limit", "ReportTime", "IsEnable")
+}
+
+func formatFlashNodeSimpleViewTableHeader() string {
+	return fmt.Sprintf(flashNodeViewTableSimpleRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "IsActive", "FlashGroupID", "ReportTime", "IsEnable")
 }
 
 func formatFlashNodeDetail(fn *proto.FlashNodeViewInfo) string {
