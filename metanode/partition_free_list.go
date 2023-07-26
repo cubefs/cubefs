@@ -63,6 +63,14 @@ func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsVi
 		return
 	}
 	mp.vol.UpdatePartitions(convert(dataView))
+
+	volView, err := masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
+	if err != nil {
+		err = fmt.Errorf("updateVolWorker: get volumeinfo fail: volume(%v)  err(%v)", volName, err)
+		log.LogErrorf(err.Error())
+		return
+	}
+	mp.vol.volDeleteLockTime = volView.DeleteLockTime
 	return nil
 }
 
