@@ -2795,6 +2795,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		DefaultPriority:         req.normalZonesFirst,
 		DomainId:                req.domainId,
 		CreateTime:              createTime,
+		DeleteLockTime:          req.deleteLockTime,
 		Description:             req.description,
 		EnablePosixAcl:          req.enablePosixAcl,
 		EnableQuota:             req.enableQuota,

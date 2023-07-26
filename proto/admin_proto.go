@@ -689,6 +689,7 @@ type VolView struct {
 	DomainOn       bool
 	OSSSecure      *OSSSecure
 	CreateTime     int64
+	DeleteLockTime int64
 	CacheTTL       int
 	VolType        int
 }
@@ -701,11 +702,12 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
-func NewVolView(name string, status uint8, followerRead bool, createTime int64, cacheTTL int, volType int) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead bool, createTime int64, cacheTTL int, volType int, deleteLockTime int64) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.FollowerRead = followerRead
 	view.CreateTime = createTime
+	view.DeleteLockTime = deleteLockTime
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
@@ -827,6 +829,7 @@ type SimpleVolView struct {
 	DefaultPriority         bool
 	DomainOn                bool
 	CreateTime              string
+	DeleteLockTime          int64
 	EnableToken             bool
 	EnablePosixAcl          bool
 	EnableQuota             bool
