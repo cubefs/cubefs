@@ -410,7 +410,7 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 		partitionSize:           partitionSize,
 		replicas:                []string{host, host, host},
 		repairC:                 make(chan struct{}, 1),
-		fetchVolHATypeC:         make(chan struct{}, 1),
+		updateVolInfoPropC:      make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),
 		storeC:                  make(chan uint64, 128),

@@ -393,6 +393,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		NodeID:        manager.nodeID,
 		ClusterID:     manager.clusterID,
 		PartitionSize: request.PartitionSize,
+		ReplicaNum:    request.ReplicaNum,
 
 		VolHAType: request.VolumeHAType,
 	}

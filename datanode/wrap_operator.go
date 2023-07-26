@@ -117,6 +117,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleHeartbeatPacket(p)
 	case proto.OpGetAppliedId:
 		s.handlePacketToGetAppliedID(p)
+	case proto.OpGetPersistedAppliedId:
+		s.handlePacketToGetPersistedAppliedID(p)
 	case proto.OpDecommissionDataPartition:
 		s.handlePacketToDecommissionDataPartition(p)
 	case proto.OpAddDataPartitionRaftMember:
@@ -1054,9 +1056,8 @@ func (s *DataNode) handleBroadcastMinAppliedID(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
 	minAppliedID := binary.BigEndian.Uint64(p.Data[0:8])
 	if minAppliedID > 0 {
-		partition.SetMinAppliedID(minAppliedID)
+		partition.AdvanceNextTruncate(minAppliedID)
 	}
-	log.LogDebugf("[handleBroadcastMinAppliedID] partition(%v) minAppliedID(%v)", partition.partitionID, minAppliedID)
 	p.PacketOkReply()
 	return
 }
@@ -1069,6 +1070,16 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 	binary.BigEndian.PutUint64(buf, appliedID)
 	p.PacketOkWithBody(buf)
 	p.AddMesgLog(fmt.Sprintf("_AppliedID(%v)", appliedID))
+	return
+}
+
+func (s *DataNode) handlePacketToGetPersistedAppliedID(p *repl.Packet) {
+	partition := p.Object.(*DataPartition)
+	persistedAppliedID := partition.GetPersistedAppliedID()
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, persistedAppliedID)
+	p.PacketOkWithBody(buf)
+	p.AddMesgLog(fmt.Sprintf("_PersistedAppliedID(%v)", persistedAppliedID))
 	return
 }
 

@@ -1089,7 +1089,7 @@ errHandler:
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer,
 	hosts []string, learners []proto.Learner, createType int, volumeHAType proto.CrossRegionHAType) (
 	diskPath string, err error) {
-	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, learners, createType, volumeHAType)
+	task := dp.createTaskToCreateDataPartition(host, size, dp.ReplicaNum, peers, hosts, learners, createType, volumeHAType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return

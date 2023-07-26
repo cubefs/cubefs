@@ -30,6 +30,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/util/async"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
@@ -61,6 +63,7 @@ type dataPartitionCfg struct {
 	PartitionID   uint64              `json:"partition_id"`
 	PartitionSize int                 `json:"partition_size"`
 	Peers         []proto.Peer        `json:"peers"`
+	ReplicaNum    int                 `json:"replica_num"`
 	Hosts         []string            `json:"hosts"`
 	Learners      []proto.Learner     `json:"learners"`
 	NodeID        uint64              `json:"-"`
@@ -187,7 +190,7 @@ func (dp *DataPartition) startRaft() (err error) {
 	if err = dp.raftPartition.Start(); err != nil {
 		return
 	}
-	go dp.StartRaftLoggingSchedule()
+	go dp.startRaftWorker()
 	return
 }
 
@@ -260,13 +263,12 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer) error {
 	return fmt.Errorf("hasDownReplicasExcludePeer(%v) too much,so donnot offline(%v)", downReplicas, peer)
 }
 
-// StartRaftLoggingSchedule starts the task schedule as follows:
+// startRaftWorker starts the task schedule as follows:
 // 1. write the raft applied id into disk.
 // 2. collect the applied ids from raft members.
 // 3. based on the minimum applied id to cutoff and delete the saved raft log in order to free the disk space.
-func (dp *DataPartition) StartRaftLoggingSchedule() {
-	getAppliedIDTimer := time.NewTimer(time.Second * 1)
-	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
+func (dp *DataPartition) startRaftWorker() {
+	raftLogTruncateScheduleTimer := time.NewTimer(time.Second * 1)
 
 	log.LogDebugf("[startSchedule] hello DataPartition schedule")
 
@@ -274,37 +276,17 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 		select {
 		case <-dp.stopC:
 			log.LogDebugf("[startSchedule] stop partition(%v)", dp.partitionID)
-			getAppliedIDTimer.Stop()
-			truncateRaftLogTimer.Stop()
+			raftLogTruncateScheduleTimer.Stop()
 			return
 
 		case extentID := <-dp.stopRaftC:
 			dp.stopRaft()
 			log.LogErrorf("action[ExtentRepair] stop raft partition(%v)_%v", dp.partitionID, extentID)
 
-		case <-getAppliedIDTimer.C:
-			if dp.raftPartition != nil {
-				dp.updateMaxMinAppliedID(context.Background())
-			}
-			getAppliedIDTimer.Reset(time.Minute * 1)
+		case <-raftLogTruncateScheduleTimer.C:
+			dp.scheduleRaftWALTruncate(context.Background())
+			raftLogTruncateScheduleTimer.Reset(time.Minute * 1)
 
-		case <-truncateRaftLogTimer.C:
-			if dp.raftPartition == nil {
-				break
-			}
-			if minAppliedID, lastTruncateID, appliedID := dp.minAppliedID, dp.applyStatus.LastTruncate(), dp.applyStatus.Applied(); appliedID >= minAppliedID && minAppliedID > lastTruncateID { // Has changed
-				if snap, success := dp.applyStatus.AdvanceNextTruncate(minAppliedID); success {
-					if err := dp.persist(&snap); err != nil {
-						log.LogErrorf("partition(%v) scheduled persist all failed: %v", dp.partitionID, err)
-						truncateRaftLogTimer.Reset(time.Minute)
-						continue
-					}
-					truncateTo := snap.LastTruncate()
-					dp.raftPartition.Truncate(truncateTo)
-					log.LogInfof("partition(%v) scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, truncateTo)
-				}
-			}
-			truncateRaftLogTimer.Reset(time.Minute)
 		}
 	}
 }
@@ -732,12 +714,20 @@ func (dp *DataPartition) LoadAppliedID() (applied uint64, err error) {
 	return
 }
 
-func (dp *DataPartition) SetMinAppliedID(id uint64) {
-	dp.minAppliedID = id
+func (dp *DataPartition) AdvanceNextTruncate(id uint64) {
+	if snap, success := dp.applyStatus.AdvanceNextTruncate(id); success {
+		if log.IsInfoEnabled() {
+			log.LogInfof("partition[%v] advance truncate ID [last: %v, next: %v]", dp.partitionID, snap.LastTruncate(), snap.NextTruncate())
+		}
+	}
 }
 
 func (dp *DataPartition) GetAppliedID() (id uint64) {
 	return dp.applyStatus.Applied()
+}
+
+func (dp *DataPartition) GetPersistedAppliedID() (id uint64) {
+	return dp.persistedApplied
 }
 
 func (dp *DataPartition) SetConsistencyMode(mode proto.ConsistencyMode) {
@@ -852,6 +842,17 @@ func NewPacketToBroadcastMinAppliedID(ctx context.Context, partitionID uint64, m
 func NewPacketToGetAppliedID(ctx context.Context, partitionID uint64) (p *repl.Packet) {
 	p = new(repl.Packet)
 	p.Opcode = proto.OpGetAppliedId
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
+	return
+}
+
+// NewPacketToGetPersistedAppliedID returns a new packet to get the applied ID.
+func NewPacketToGetPersistedAppliedID(ctx context.Context, partitionID uint64) (p *repl.Packet) {
+	p = new(repl.Packet)
+	p.Opcode = proto.OpGetPersistedAppliedId
 	p.PartitionID = partitionID
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GenerateRequestID()
@@ -985,43 +986,45 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Contex
 	return
 }
 
-func (dp *DataPartition) broadcastMinAppliedID(ctx context.Context, minAppliedID uint64) (err error) {
+func (dp *DataPartition) broadcastRaftWALNextTruncateID(ctx context.Context, nextTruncateID uint64) (err error) {
 	replicas := dp.getReplicaClone()
 	if len(replicas) == 0 {
 		err = errors.Trace(err, " partition(%v) get replicas failed,replicas is nil. ", dp.partitionID)
 		log.LogErrorf(err.Error())
 		return
 	}
+	var wg = new(sync.WaitGroup)
 	for i := 0; i < len(replicas); i++ {
-		p := NewPacketToBroadcastMinAppliedID(ctx, dp.partitionID, minAppliedID)
 		target := replicas[i]
-		replicaHostParts := strings.Split(target, ":")
-		replicaHost := strings.TrimSpace(replicaHostParts[0])
-		if LocalIP == replicaHost {
-			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
-				dp.partitionID, LocalIP, replicaHost, dp.applyStatus.Applied())
-			dp.minAppliedID = minAppliedID
+		if dp.IsLocalAddress(target) {
+			dp.AdvanceNextTruncate(nextTruncateID)
 			continue
 		}
-		var conn *net.TCPConn
-		conn, err = gConnPool.GetConnect(target)
-		if err != nil {
-			return
-		}
-		defer gConnPool.PutConnect(conn, true)
-		err = p.WriteToConn(conn, proto.WriteDeadlineTime)
-		if err != nil {
-			return
-		}
-		err = p.ReadFromConn(conn, 60)
-		if err != nil {
-			return
-		}
-		gConnPool.PutConnect(conn, true)
-
-		log.LogDebugf("partition(%v) minAppliedID(%v)", dp.partitionID, minAppliedID)
+		wg.Add(1)
+		go func(target string) {
+			defer wg.Done()
+			p := NewPacketToBroadcastMinAppliedID(ctx, dp.partitionID, nextTruncateID)
+			var conn *net.TCPConn
+			conn, err = gConnPool.GetConnect(target)
+			if err != nil {
+				return
+			}
+			defer gConnPool.PutConnect(conn, true)
+			err = p.WriteToConn(conn, proto.WriteDeadlineTime)
+			if err != nil {
+				return
+			}
+			err = p.ReadFromConn(conn, 60)
+			if err != nil {
+				return
+			}
+			gConnPool.PutConnect(conn, true)
+			if log.IsInfoEnabled() {
+				log.LogInfof("partition[%v] broadcast raft WAL next truncate ID [%v] to replica[%v]", dp.partitionID, nextTruncateID, target)
+			}
+		}(target)
 	}
-
+	wg.Wait()
 	return
 }
 
@@ -1072,44 +1075,62 @@ func (dp *DataPartition) getRemoteReplicaCommitID(ctx context.Context) (commitID
 }
 
 // Get all replica applied ids
-func (dp *DataPartition) getAllReplicaAppliedID(ctx context.Context, timeoutNs, readTimeoutNs int64) (appliedIDMap map[string]uint64, replyNum uint8) {
-	hosts := dp.getReplicaClone()
+func (dp *DataPartition) getPersistedAppliedIDFromReplicas(ctx context.Context, hosts []string, timeoutNs, readTimeoutNs int64) (appliedIDs map[string]uint64) {
 	if len(hosts) == 0 {
 		log.LogErrorf("action[getAllReplicaAppliedID] partition(%v) replicas is nil.", dp.partitionID)
 		return
 	}
-	appliedIDMap = make(map[string]uint64, len(hosts))
-	errSlice := make(map[string]error)
-	var (
-		wg   sync.WaitGroup
-		lock sync.Mutex
-	)
+	appliedIDs = make(map[string]uint64)
+	var futures = make(map[string]*async.Future) // host -> future
 	for _, host := range hosts {
-		wg.Add(1)
-		go func(curAddr string) {
+		if dp.IsLocalAddress(host) {
+			appliedIDs[host] = dp.persistedApplied
+			continue
+		}
+		var future = async.NewFuture()
+		go func(future *async.Future, curAddr string) {
 			var appliedID uint64
 			var err error
-			defer wg.Done()
-			if dp.IsLocalAddress(curAddr) {
-				appliedID = dp.applyStatus.Applied()
-			} else {
-				appliedID, err = dp.getRemoteAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
+			appliedID, err = dp.getRemotePersistedAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
+			if err == nil {
+				future.Respond(appliedID, nil)
+				return
 			}
-			ok := false
-			lock.Lock()
-			defer lock.Unlock()
+			if !strings.Contains(err.Error(), repl.ErrorUnknownOp.Error()) {
+				future.Respond(nil, err)
+				return
+			}
+			// TODO: 以下为版本过度而设计的兼容逻辑，由于获取PersistedAppliedID为新增接口，为避免在灰度过程中无法正常进行WAL的Truncate调度。 请在下一个版本移除。
+			if log.IsWarnEnabled() {
+				log.LogWarnf("partition[%v] get persisted applied ID failed cause remote [%v] respond result code [%v], try to get current applied ID.",
+					dp.partitionID, curAddr, repl.ErrorUnknownOp.Error())
+			}
+			appliedID, err = dp.getRemoteAppliedID(ctx, curAddr, timeoutNs, readTimeoutNs)
 			if err != nil {
-				errSlice[curAddr] = err
-			} else {
-				appliedIDMap[curAddr] = appliedID
-				ok = true
+				future.Respond(nil, err)
+				return
 			}
-			log.LogDebugf("action[getAllReplicaAppliedID]: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, dp.partitionID)
-		}(host)
+			future.Respond(appliedID, nil)
+		}(future, host)
+		futures[host] = future
 	}
-	wg.Wait()
-	replyNum = uint8(len(hosts) - len(errSlice))
-	log.LogDebugf("action[getAllReplicaAppliedID]: get apply id from hosts[%v], pid[%v]", hosts, dp.partitionID)
+
+	for host, future := range futures {
+		resp, err := future.Response()
+		if err != nil {
+			log.LogWarnf("partition[%v] get applied ID from remote[%v] failed: %v", dp.partitionID, host, err)
+			continue
+		}
+		applied := resp.(uint64)
+		appliedIDs[host] = applied
+		if log.IsDebugEnabled() {
+			log.LogDebugf("partition[%v]: get applied ID [%v] from remote[%v] ", dp.partitionID, host, applied)
+		}
+	}
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("partition[%v] get applied ID from all replications, hosts[%v], respond[%v]", dp.partitionID, hosts, appliedIDs)
+	}
 	return
 }
 
@@ -1148,6 +1169,17 @@ func (dp *DataPartition) getRemoteAppliedID(ctx context.Context, target string, 
 	return
 }
 
+// Get target members' persisted applied id
+func (dp *DataPartition) getRemotePersistedAppliedID(ctx context.Context, target string, timeoutNs, readTimeoutNs int64) (appliedID uint64, err error) {
+	p := NewPacketToGetPersistedAppliedID(ctx, dp.partitionID)
+	if err = dp.sendTcpPacket(target, p, timeoutNs, readTimeoutNs); err != nil {
+		return
+	}
+	appliedID = binary.BigEndian.Uint64(p.Data[0:8])
+	log.LogDebugf("[getRemotePersistedAppliedID] partition(%v) remoteAppliedID(%v)", dp.partitionID, appliedID)
+	return
+}
+
 func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet, timeout, readTimeout int64) (err error) {
 	var conn *net.TCPConn
 	start := time.Now().UnixNano()
@@ -1180,11 +1212,12 @@ func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet, timeout, r
 }
 
 // Get all members' applied ids and find the minimum one
-func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
-	var (
-		minAppliedID uint64
-		maxAppliedID uint64
-	)
+func (dp *DataPartition) scheduleRaftWALTruncate(ctx context.Context) {
+	var minPersistedAppliedID uint64
+
+	if !dp.IsRaftStarted() {
+		return
+	}
 
 	// Get the applied id by the leader
 	_, isLeader := dp.IsRaftLeader()
@@ -1192,33 +1225,48 @@ func (dp *DataPartition) updateMaxMinAppliedID(ctx context.Context) {
 		return
 	}
 
-	// if leader has not applied the raft, no need to get others
-	if dp.applyStatus.Applied() == 0 {
+	var replicas = dp.getReplicaClone()
+
+	// Check replicas number
+	var replicaNum = dp.config.ReplicaNum
+	if len(replicas) != replicaNum {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("partition[%v] skips schedule raft WAL truncate cause replicas number illegal",
+				dp.partitionID)
+		}
 		return
 	}
-
-	// only update maxMinAppliedID if number of replica is odd when using raft
-	if len(dp.replicas)%2 == 0 {
+	var raftStatus = dp.raftPartition.Status()
+	if len(raftStatus.Replicas) != replicaNum {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("partition[%v] skips schedule raft WAL truncate cause replicas number illegal",
+				dp.partitionID)
+		}
 		return
 	}
+	for id, replica := range raftStatus.Replicas {
+		if strings.Contains(replica.State, "ReplicaStateSnapshot") {
+			if log.IsDebugEnabled() {
+				log.LogDebugf("partition[%v] skips schedule raft WAL truncate cause found replica [%v] in snapshot state",
+					dp.partitionID, id)
+			}
+			return
+		}
+	}
 
-	allAppliedID, replyNum := dp.getAllReplicaAppliedID(ctx, proto.WriteDeadlineTime*1e9, 60*1e9)
-	if replyNum == 0 {
-		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) Get appliedId failed!", dp.partitionID)
+	var persistedAppliedIDs = dp.getPersistedAppliedIDFromReplicas(ctx, replicas, proto.WriteDeadlineTime*1e9, 60*1e9)
+	if len(persistedAppliedIDs) == 0 {
+		log.LogDebugf("[scheduleRaftWALTruncate] PartitionID(%v) Get appliedId failed!", dp.partitionID)
 		return
 	}
-	if replyNum == uint8(len(dp.replicas)) { // update dp.minAppliedID when every member had replied
-		minAppliedID, _ = dp.findMinID(allAppliedID)
-		log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMinID(%v) newMinID(%v) allAppliedID(%v)",
-			dp.partitionID, dp.applyStatus.Applied(), dp.minAppliedID, minAppliedID, allAppliedID)
-		dp.broadcastMinAppliedID(ctx, minAppliedID)
+	if len(persistedAppliedIDs) == len(replicas) { // update dp.minPersistedAppliedID when every member had replied
+		minPersistedAppliedID, _ = dp.findMinID(persistedAppliedIDs)
+		if log.IsInfoEnabled() {
+			log.LogInfof("partition[%v] computed min persisted applied ID [%v] from replication group [%v]",
+				dp.partitionID, minPersistedAppliedID, persistedAppliedIDs)
+		}
+		dp.broadcastRaftWALNextTruncateID(ctx, minPersistedAppliedID)
 	}
-
-	maxAppliedID, _ = dp.findMaxID(allAppliedID)
-	log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
-		dp.partitionID, dp.applyStatus.Applied(), dp.maxAppliedID, maxAppliedID)
-	dp.maxAppliedID = maxAppliedID
-
 	return
 }
 

@@ -583,12 +583,20 @@ func (s *raft) run() {
 				if lasti, err := s.raftConfig.Storage.LastIndex(); err != nil {
 					logger.Error("raft[%v] truncate failed to get last index from storage: %v", s.raftFsm.id, err)
 				} else if lasti > s.config.RetainLogs {
-					maxIndex := util.Min(truncateTo, lasti-s.config.RetainLogs)
-					if err = s.raftConfig.Storage.Truncate(maxIndex); err != nil {
-						logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
+					truncateTo = util.Min(truncateTo, lasti-s.config.RetainLogs)
+					var firsti uint64
+					if firsti, err = s.raftConfig.Storage.FirstIndex(); err != nil {
+						logger.Error("raft[%v] truncate failed to get first index from storage: %v", s.raftFsm.id, err)
 						return
 					}
-					logger.Debug("raft[%v] truncate storage to %v", s.raftFsm.id, maxIndex)
+					if truncateTo >= firsti {
+						if err = s.raftConfig.Storage.Truncate(truncateTo); err != nil {
+							logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
+							return
+						}
+						logger.Debug("raft[%v] [firstindex: %v] truncate storage to %v", s.raftFsm.id, firsti, truncateTo)
+					}
+
 				}
 			}(truncIndex)
 
@@ -900,7 +908,7 @@ func (s *raft) isAllowPropose() bool {
 	return s.checkProposalACL(proto.EntryNormal)
 }
 
-func (s *raft) getRiskState() riskState {
+func (s *raft) getRiskState() RiskState {
 	return s.raftFsm.getRiskStatus()
 }
 
@@ -1183,6 +1191,8 @@ func (s *raft) getStatus() *Status {
 			FirstIndex: s.raftFsm.raftLog.firstIndex(),
 			LastIndex:  s.raftFsm.raftLog.lastIndex(),
 		},
+		RistState: s.raftFsm.riskState.String(),
+		Mode:      s.raftFsm.consistencyMode.String(),
 	}
 	if s.raftFsm.state == stateLeader {
 		st.Replicas = make(map[uint64]*ReplicaStatus)
@@ -1307,7 +1317,7 @@ func (s *raft) promoteLearner() {
 	}
 }
 
-func (s *raft) onFSMRiskStateChange(state riskState) {
+func (s *raft) onFSMRiskStateChange(state RiskState) {
 	if s.raftFsm.getRiskStatus().Equals(UnstableState) {
 		if s.config.SyncWALOnUnstable {
 			_ = s.flush(false)
