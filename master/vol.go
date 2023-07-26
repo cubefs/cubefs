@@ -31,7 +31,7 @@ type VolVarargs struct {
 	zoneName                string
 	description             string
 	capacity                uint64 //GB
-	deleteLockTime          int64  //s
+	deleteLockTime          int64  //h
 	followerRead            bool
 	authenticate            bool
 	dpSelectorName          string

@@ -603,6 +603,8 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
+	mp.vol.volDeleteLockTime = volumeInfo.DeleteLockTime
+
 	mp.volType = volumeInfo.VolType
 	var ebsClient *blobstore.BlobStoreClient
 	if clusterInfo.EbsAddr != "" && proto.IsCold(mp.volType) {

@@ -861,9 +861,9 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string) 
 func (mw *MetaWrapper) canDeleteInode(mp *MetaPartition, info *proto.InodeInfo, ino uint64) (can bool, err error) {
 
 	createTime := info.CreateTime.Unix()
-	deleteLockTime := mw.volDeleteLockTime
+	deleteLockTime := mw.volDeleteLockTime * 60 * 60
 
-	if deleteLockTime != 0 && createTime+deleteLockTime > time.Now().Unix() {
+	if deleteLockTime > 0 && createTime+deleteLockTime > time.Now().Unix() {
 		err = errors.NewErrorf("the current Inode[%v] is still locked for deletion", ino)
 		log.LogWarnf("canDeleteInode: mp(%v) ino(%v) err(%v)", mp, ino, err)
 		return false, syscall.EPERM
