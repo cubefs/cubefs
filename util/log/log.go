@@ -30,6 +30,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -261,6 +262,7 @@ type Log struct {
 	level          Level
 	rotate         *LogRotate
 	lastRolledTime time.Time
+	printStderr    int32
 }
 
 var (
@@ -278,9 +280,20 @@ var gLog *Log = nil
 
 var LogDir string
 
+func (l *Log) DisableStderrOutput() {
+	atomic.StoreInt32(&l.printStderr, 0)
+}
+
+func (l *Log) outputStderr(calldepth int, s string) {
+	if atomic.LoadInt32(&l.printStderr) != 0 {
+		log.Output(calldepth+1, s)
+	}
+}
+
 // InitLog initializes the log.
 func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 	l := new(Log)
+	l.printStderr = 1
 	dir = path.Join(dir, module)
 	l.dir = dir
 	LogDir = dir
@@ -484,6 +497,7 @@ func LogWarn(v ...interface{}) {
 	gLog.debugLogger.Output(2, s)
 	gLog.warnLogger.Output(2, s)
 	gLog.infoLogger.Output(2, s)
+	gLog.outputStderr(2, s)
 }
 
 // LogWarnf indicates the warnings with specific format.
@@ -499,6 +513,7 @@ func LogWarnf(format string, v ...interface{}) {
 	gLog.debugLogger.Output(2, s)
 	gLog.warnLogger.Output(2, s)
 	gLog.infoLogger.Output(2, s)
+	gLog.outputStderr(2, s)
 }
 
 // LogInfo indicates log the information. TODO explain
@@ -549,6 +564,7 @@ func LogError(v ...interface{}) {
 	gLog.debugLogger.Output(2, s)
 	gLog.infoLogger.Output(2, s)
 	gLog.errorLogger.Output(2, s)
+	gLog.outputStderr(2, s)
 }
 
 // LogErrorf logs the errors with the specified format.
@@ -564,6 +580,7 @@ func LogErrorf(format string, v ...interface{}) {
 	gLog.debugLogger.Output(2, s)
 	gLog.errorLogger.Print(s)
 	gLog.infoLogger.Output(2, s)
+	gLog.outputStderr(2, s)
 }
 
 // LogDebug logs the debug information.
@@ -604,6 +621,7 @@ func LogFatal(v ...interface{}) {
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
 	gLog.debugLogger.Output(2, s)
+	gLog.outputStderr(2, s)
 	gLog.errorLogger.Output(2, s)
 	gLog.infoLogger.Output(2, s)
 	gLog.Flush()
@@ -620,6 +638,7 @@ func LogFatalf(format string, v ...interface{}) {
 	gLog.debugLogger.Output(2, s)
 	gLog.errorLogger.Output(2, s)
 	gLog.infoLogger.Output(2, s)
+	gLog.outputStderr(2, s)
 	gLog.Flush()
 	os.Exit(1)
 }
@@ -632,6 +651,7 @@ func LogCritical(v ...interface{}) {
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
 	gLog.criticalLogger.Output(2, s)
+	gLog.outputStderr(2, s)
 }
 
 // LogFatalf logs the fatal errors with specified format.
@@ -642,6 +662,7 @@ func LogCriticalf(format string, v ...interface{}) {
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[4])
 	gLog.criticalLogger.Output(2, s)
+	gLog.outputStderr(2, s)
 }
 
 // LogRead
@@ -726,6 +747,12 @@ func LogWritef(format string, v ...interface{}) {
 func LogFlush() {
 	if gLog != nil {
 		gLog.Flush()
+	}
+}
+
+func LogDisableStderrOutput() {
+	if gLog != nil {
+		gLog.DisableStderrOutput()
 	}
 }
 
