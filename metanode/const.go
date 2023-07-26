@@ -160,16 +160,14 @@ const (
 	opFSMTxRbDentrySnapshot = 54
 
 	//quota
-	opFSMCreateInodeQuota = 55
+	opFSMCreateInodeQuota      = 55
+	opFSMSetInodeQuotaBatch    = 56
+	opFSMDeleteInodeQuotaBatch = 57
 
-	opFSMSnapFormatVersion = 56
-	opFSMApplyId           = 57
-	opFSMTxId              = 58
-	opFSMCursor            = 59
-
-	// quota batch
-	opFSMSetInodeQuotaBatch    = 60
-	opFSMDeleteInodeQuotaBatch = 61
+	opFSMSnapFormatVersion = 58
+	opFSMApplyId           = 59
+	opFSMTxId              = 60
+	opFSMCursor            = 61
 
 	// uniq checker
 	opFSMUniqID              = 62
