@@ -247,9 +247,8 @@ type DataPartition struct {
 	FullSyncTinyDeleteTime        int64
 	lastSyncTinyDeleteTime        int64
 	DataPartitionCreateType       int
-	TinyDeleteRecover             bool
-
-	monitorData []*statistics.MonitorData
+	finishPlayBackTinyDelete      bool
+	monitorData                   []*statistics.MonitorData
 
 	persistSync chan struct{}
 
@@ -279,7 +278,6 @@ type DataPartitionViewInfo struct {
 	Learners             []proto.Learner           `json:"learners"`
 	IsFinishLoad         bool                      `json:"isFinishLoad"`
 	IsRecover            bool                      `json:"isRecover"`
-	TinyDeleteRecover    bool                      `json:"tinyDeleteRecover"`
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -1124,7 +1122,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 	close(extentRepairTaskCh)
 	extentRepairWorkerWG.Wait()
 
-	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, dp.TinyDeleteRecover || time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
 
 	log.LogInfof("partition[%v] repaired %v extents, cost %v", dp.partitionID, validExtentsToBeRepaired, time.Now().Sub(startTime))
 }
@@ -1137,7 +1135,7 @@ type TinyDeleteRecord struct {
 
 type TinyDeleteRecordArr []TinyDeleteRecord
 
-func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repairTask *DataPartitionRepairTask, isFullSync bool) {
+func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repairTask *DataPartitionRepairTask, syncRecordFileOnly, isFullSync bool) {
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
@@ -1152,38 +1150,38 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 		dp.Disk().finishFixTinyDeleteRecord()
 	}()
 	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) "+
-		"leaderAddr(%v) ,lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v)",
+		"leaderAddr(%v) ,lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) syncRecordOnly(%v)",
 		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr,
-		dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync)
+		dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, syncRecordFileOnly)
 
 	defer func() {
 		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) "+
-			"err(%v), lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) isRealSync(%v)\",",
+			"err(%v), lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) isRealSync(%v) syncRecordOnly(%v)\",",
 			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err,
-			dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, isRealSync)
+			dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, isRealSync, syncRecordFileOnly)
 	}()
+	if !isFullSync && !syncRecordFileOnly && time.Now().Unix()-dp.lastSyncTinyDeleteTime < MinSyncTinyDeleteTime {
+		return
+	}
 	if !isFullSync {
-		if time.Now().Unix()-dp.lastSyncTinyDeleteTime < MinSyncTinyDeleteTime {
-			return
-		}
 		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
 			return
 		}
-
 	} else {
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
 
 	if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
-		dp.TinyDeleteRecover = false
 		return
 	}
 
-	if !isFullSync && repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
+	if !isFullSync && !syncRecordFileOnly && repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
 		return
 	}
 	isRealSync = true
-	dp.lastSyncTinyDeleteTime = time.Now().Unix()
+	if !syncRecordFileOnly {
+		dp.lastSyncTinyDeleteTime = time.Now().Unix()
+	}
 	p := repl.NewPacketToReadTinyDeleteRecord(ctx, dp.partitionID, localTinyDeleteFileSize)
 	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
 		return
@@ -1194,9 +1192,15 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 	}
 	store := dp.extentStore
 	start := time.Now().Unix()
+	defer func() {
+		if !syncRecordFileOnly || dp.finishPlayBackTinyDelete {
+			return
+		}
+		err = dp.ExtentStore().PlaybackTinyDelete()
+		dp.finishPlayBackTinyDelete = true
+	}()
 	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
 		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
-			dp.TinyDeleteRecover = false
 			return
 		}
 		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
@@ -1230,7 +1234,6 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			if !proto.IsTinyExtent(extentID) {
 				continue
 			}
-			DeleteLimiterWait()
 			dr := TinyDeleteRecord{
 				extentID: extentID,
 				offset:   offset,
@@ -1247,12 +1250,16 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 				if !proto.IsTinyExtent(dr.extentID) {
 					continue
 				}
-				log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, dr.extentID, dr.offset, dr.size)
-				store.MarkDelete(dr.extentID, int64(dr.offset), int64(dr.size))
+				if syncRecordFileOnly {
+					store.PersistTinyDeleteRecord(dr.extentID, int64(dr.offset), int64(dr.size))
+				} else {
+					DeleteLimiterWait()
+					log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, dr.extentID, dr.offset, dr.size)
+					store.MarkDelete(dr.extentID, int64(dr.offset), int64(dr.size))
+				}
 			}
 		}
 	}
-	dp.TinyDeleteRecover = false
 }
 
 // ChangeRaftMember is a wrapper function of changing the raft member.
@@ -1388,7 +1395,6 @@ func (dp *DataPartition) getDataPartitionInfo() (dpInfo *DataPartitionViewInfo, 
 		Learners:             dp.config.Learners,
 		IsFinishLoad:         dp.ExtentStore().IsFinishLoad(),
 		IsRecover:            dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
-		TinyDeleteRecover:    dp.TinyDeleteRecover,
 	}
 	return
 }

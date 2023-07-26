@@ -301,9 +301,6 @@ func (dp *DataPartition) startRaftAfterRepair() {
 		err                                error
 	)
 	timer := time.NewTimer(0)
-	if !dp.isLeader {
-		dp.TinyDeleteRecover = true
-	}
 	for {
 		select {
 		case <-timer.C:
@@ -345,11 +342,6 @@ func (dp *DataPartition) startRaftAfterRepair() {
 				continue
 			}
 
-			if dp.isTinyDeleteRecordRecover() {
-				timer.Reset(5 * time.Second)
-				continue
-			}
-
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 			if err = dp.persist(nil); err != nil {
@@ -369,19 +361,6 @@ func (dp *DataPartition) startRaftAfterRepair() {
 			return
 		}
 	}
-}
-
-func (dp *DataPartition) isTinyDeleteRecordRecover() bool {
-	if !dp.TinyDeleteRecover {
-		return false
-	}
-	localTinyDeleteFileSize, err := dp.extentStore.LoadTinyDeleteFileOffset()
-	if err != nil {
-		log.LogErrorf("PartitionID(%v) tiny extent delete record wait snapshot recover, err:%v", dp.partitionID, err)
-		return true
-	}
-	log.LogErrorf("PartitionID(%v) tiny extent delete record wait snapshot recover, local(%v)", dp.partitionID, localTinyDeleteFileSize)
-	return true
 }
 
 func (dp *DataPartition) isPartitionSizeRecover(ctx context.Context, initMaxExtentID, initPartitionSize uint64) bool {

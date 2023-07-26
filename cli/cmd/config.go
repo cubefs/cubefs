@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -192,11 +193,15 @@ func newConfigInfoCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
-			stdout(fmt.Sprintf("Config info:\n  %v\n", config.MasterAddr))
-			stdout(fmt.Sprintf("Monitor address:\n  %v\n", config.MonitorAddr))
-			stdout(fmt.Sprintf("MySQL Database Addr:\n  %s\n", config.ConvertNodeDBConfig.Path))
-			stdout(fmt.Sprintf("MySQL Database Name:\n  %s\n", config.ConvertNodeDBConfig.Dbname))
-			stdout(fmt.Sprintf("IsDbBack:\n  %v\n", config.IsDbBack))
+			stdout(fmt.Sprintf("Master         : %v\n", strings.Join(config.MasterAddr, ";")))
+			stdout(fmt.Sprintf("Monitor        : %v\n", config.MonitorAddr))
+			stdout(fmt.Sprintf("MySQL DB Addr  : %s\n", config.ConvertNodeDBConfig.Path))
+			stdout(fmt.Sprintf("MySQL DB Name  : %s\n", config.ConvertNodeDBConfig.Dbname))
+			stdout(fmt.Sprintf("Data Prof Port : %v\n", config.DataNodeProfPort))
+			stdout(fmt.Sprintf("Meta Prof Port : %v\n", config.MetaNodeProfPort))
+			stdout(fmt.Sprintf("Ec   Prof Port : %v\n", config.EcNodeProfPort))
+			stdout(fmt.Sprintf("Flash Prof Port: %v\n", config.FlashNodeProfPort))
+			stdout(fmt.Sprintf("IsDbBack       : %v\n", config.IsDbBack))
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")

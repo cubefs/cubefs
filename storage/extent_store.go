@@ -491,6 +491,23 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	return
 }
 
+// PersistTinyDeleteRecord marks the given extent as deleted.
+func (s *ExtentStore) PersistTinyDeleteRecord(extentID uint64, offset, size int64) (err error) {
+	ei, ok := s.getExtentInfoByExtentID(extentID)
+	if !ok {
+		err = proto.ExtentNotFoundError
+		return
+	}
+	if proto.IsTinyExtent(extentID) {
+		var e *Extent
+		if e, err = s.ExtentWithHeader(ei); err != nil {
+			return
+		}
+		return s.RecordTinyDelete(e.extentID, offset, size)
+	}
+	return
+}
+
 // Close closes the extent store.
 func (s *ExtentStore) Close() {
 	s.mutex.Lock()
@@ -1151,9 +1168,15 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 		readOff        int64 = 0
 		readN                = 0
 	)
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[PlaybackTinyDelete] partition(%v) err:%v", s.partitionID, err)
+		}
+	}()
 	if recordFileInfo, err = s.tinyExtentDeleteFp.Stat(); err != nil {
 		return
 	}
+	log.LogInfof("action[PlaybackTinyDelete] partition(%v) record file size(%v)", s.partitionID, recordFileInfo.Size())
 	for readOff = 0; readOff < recordFileInfo.Size(); readOff += DeleteTinyRecordSize {
 		readN, err = s.tinyExtentDeleteFp.ReadAt(recordData, readOff)
 		if err != nil {
@@ -1166,6 +1189,9 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 			return
 		}
 		extentID, offset, size := UnMarshalTinyExtent(recordData[:readN])
+		if !proto.IsTinyExtent(extentID) {
+			continue
+		}
 		ei, ok := s.getExtentInfoByExtentID(extentID)
 		if !ok {
 			continue

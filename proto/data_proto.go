@@ -36,7 +36,6 @@ type DNDataPartitionInfo struct {
 	Learners             []Learner         `json:"learners"`
 	IsFinishLoad         bool              `json:"isFinishLoad"`
 	IsRecover            bool              `json:"isRecover"`
-	TinyDeleteRecover    bool              `json:"tinyDeleteRecover"`
 }
 
 type BlockCrc struct {
