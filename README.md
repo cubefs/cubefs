@@ -6,7 +6,7 @@
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cubefs/cubefs)](https://goreportcard.com/report/github.com/cubefs/cubefs)
 [![Docs](https://img.shields.io/badge/docs-latest-green.svg)](https://cubefs.io/docs/master/overview/introduction.html)
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/6232)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/cubefs/cubefs/badge)](https://securityscorecards.dev/viewer/?uri=github.com/cubefs/cubefs)
 [![Codecov](https://img.shields.io/codecov/c/github/cubefs/cubefs?style=flat-square&logo=codecov)](https://codecov.io/gh/cubefs/cubefs)
 [![Artifact HUB](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/cubefs)](https://artifacthub.io/packages/helm/cubefs/cubefs)
