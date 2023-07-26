@@ -68,6 +68,7 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 	mpIfos := txInfo.GroupByMp()
 	statusCh := make(chan uint8, len(mpIfos))
 	wg := sync.WaitGroup{}
+	p.ResultCode = proto.OpOk
 
 	for mpId, ifo := range mpIfos {
 		if mp.config.PartitionId == mpId {
@@ -104,11 +105,9 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 
 		if status != proto.OpOk {
 			p.ResultCode = status
-			return
 		}
 	}
 
-	p.ResultCode = proto.OpOk
 	return
 }
 
