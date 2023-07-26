@@ -289,6 +289,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(vv.DpReadOnlyWhenVolFull))
 	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
 	request.addParam("enableQuota", strconv.FormatBool(vv.EnableQuota))
+	request.addParam("deleteLockTime", strconv.FormatInt(vv.DeleteLockTime, 10))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -350,7 +351,7 @@ func (api *AdminAPI) VolExpand(volName string, capacity uint64, authKey string) 
 	return
 }
 
-func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, crossZone, normalZonesFirst bool, business string,
+func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool, business string,
 	mpCount, replicaNum, size, volType int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string) (err error) {
@@ -358,6 +359,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, cross
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
 	request.addParam("capacity", strconv.FormatUint(capacity, 10))
+	request.addParam("deleteLockTime", strconv.FormatInt(deleteLockTime, 10))
 	request.addParam("crossZone", strconv.FormatBool(crossZone))
 	request.addParam("normalZonesFirst", strconv.FormatBool(normalZonesFirst))
 	request.addParam("description", business)
