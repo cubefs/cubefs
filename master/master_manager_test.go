@@ -2,13 +2,13 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"io/ioutil"
 	"net/http"
 	"testing"
 
 	rproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/raftstore"
 )
 
 func TestHandleLeaderChange(t *testing.T) {
@@ -71,8 +71,8 @@ func snapshotTest(t *testing.T) {
 	t.Logf("snapshot apply index[%v]\n", mdSnapshot.ApplyIndex())
 	s := &Server{}
 
-	var dbStore *raftstore.RocksDBStore
-	dbStore, err = raftstore.NewRocksDBStore("/tmp/cubefs/raft2", LRUCacheSize, WriteBufferSize)
+	var dbStore *raftstore_db.RocksDBStore
+	dbStore, err = raftstore_db.NewRocksDBStore("/tmp/cubefs/raft2", LRUCacheSize, WriteBufferSize)
 	if err != nil {
 		t.Fatalf("init rocks db store fail cause: %v", err)
 	}
