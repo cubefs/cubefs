@@ -737,7 +737,7 @@ func (tm *TransactionManager) setTransactionState(txId string, state int32) (sta
 	resp, err = tm.txProcessor.mp.submit(opFSMTxSetState, val)
 	if err != nil {
 		log.LogWarnf("setTransactionState: set transaction[%v] state to [%v] failed, err[%v]", txId, state, err)
-		return proto.OpTxSetStateErr, err
+		return proto.OpAgain, err
 	}
 	status = resp.(uint8)
 
@@ -761,7 +761,7 @@ func (tm *TransactionManager) delTxFromRM(txId string) (status uint8, err error)
 	resp, err := tm.txProcessor.mp.submit(opFSMTxDelete, val)
 	if err != nil {
 		log.LogWarnf("delTxFromRM: delTxFromRM transaction[%v] failed, err[%v]", txId, err)
-		return proto.OpTxCommitErr, err
+		return proto.OpAgain, err
 	}
 
 	status = resp.(uint8)
@@ -813,7 +813,7 @@ func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status ui
 	resp, err := tm.txProcessor.mp.submit(opFSMTxCommit, val)
 	if err != nil {
 		log.LogWarnf("commitTx: commit transaction[%v] failed, err[%v]", txId, err)
-		return proto.OpTxCommitErr, err
+		return proto.OpAgain, err
 	}
 
 	status = resp.(uint8)
@@ -935,7 +935,7 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 
 	if err != nil {
 		log.LogWarnf("commitTx: rollback transaction[%v]  failed, err[%v]", txId, err)
-		return proto.OpTxCommitErr, err
+		return proto.OpAgain, err
 	}
 
 	status = resp.(uint8)
