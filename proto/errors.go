@@ -93,6 +93,7 @@ var (
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
 	ErrNoNodeSetToUpdateDecommissionDiskFactor = errors.New("no node set available for updating decommission disk factor")
 	ErrNoNodeSetToQueryDecommissionDiskLimit   = errors.New("no node set available for query decommission disk limit")
+	ErrNodeSetNotExists                        = errors.New("node set not exists")
 )
 
 // http response error code and error message definitions
@@ -158,6 +159,7 @@ const (
 	ErrCodeIsOwner
 	ErrCodeZoneNumError
 	ErrCodeVersionOpError
+	ErrCodeNodeSetNotExists
 )
 
 // Err2CodeMap error map to code
@@ -221,6 +223,7 @@ var Err2CodeMap = map[error]int32{
 	ErrIsOwner:                         ErrCodeIsOwner,
 	ErrZoneNum:                         ErrCodeZoneNumError,
 	ErrCodeVersionOp:                   ErrCodeVersionOpError,
+	ErrNodeSetNotExists:                ErrCodeNodeSetNotExists,
 }
 
 func ParseErrorCode(code int32) error {
@@ -291,6 +294,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeIsOwner:                         ErrIsOwner,
 	ErrCodeZoneNumError:                    ErrZoneNum,
 	ErrCodeVersionOpError:                  ErrCodeVersionOp,
+	ErrCodeNodeSetNotExists:                ErrNodeSetNotExists,
 }
 
 type GeneralResp struct {
