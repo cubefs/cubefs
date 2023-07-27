@@ -58,6 +58,7 @@ type Wrapper struct {
 	sync.RWMutex
 	clusterName           string
 	volName               string
+	zoneName              string
 	masters               []string
 	umpJmtpAddr           string
 	volNotExistCount      int32
@@ -85,7 +86,10 @@ type Wrapper struct {
 	crossRegionHostLatency sync.Map // key: host, value: ping time
 	quorum                 int
 
-	connConfig *proto.ConnConfig
+	connConfig        *proto.ConnConfig
+	volConnConfig     *proto.ConnConfig
+	zoneConnConfig    *proto.ConnConfig
+	clusterConnConfig *proto.ConnConfig
 
 	schedulerClient        *scheduler.SchedulerClient
 	dpMetricsReportDomain  string
@@ -103,7 +107,7 @@ type Wrapper struct {
 	enableCacheAutoPrepare  bool
 	cacheBoostPath          string
 	cacheTTL                int64
-	cacheReadConnTimeoutUs  int64
+	cacheReadTimeoutMs      int64
 	remoteCache             *flash.RemoteCache
 	HostsDelay              sync.Map
 }
@@ -117,6 +121,33 @@ type DataState struct {
 	ClusterView      *proto.ClientClusterConf
 }
 
+type connConfigLevel uint8
+
+const (
+	defaultConfig connConfigLevel = iota
+	volumeConfig
+	zoneConfig
+	clusterConfig
+)
+
+func (level *connConfigLevel) String() string {
+	if level == nil {
+		return ""
+	}
+	switch *level {
+	case defaultConfig:
+		return "default"
+	case volumeConfig:
+		return "volume"
+	case zoneConfig:
+		return "zone"
+	case clusterConfig:
+		return "cluster"
+	default:
+		return "undefined config level"
+	}
+}
+
 // NewDataPartitionWrapper returns a new data partition wrapper.
 func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err error) {
 	w = new(Wrapper)
@@ -127,12 +158,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	w.volName = volName
 	w.partitions = new(sync.Map)
 	w.HostsStatus = make(map[string]bool)
-	w.connConfig = &proto.ConnConfig{
-		IdleTimeoutSec:   IdleConnTimeoutData,
-		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
-		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
-		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
-	}
+	w.SetDefaultConnConfig()
 	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
 		EnableReport:      false,
 		ReportIntervalSec: defaultMetricReportSec,
@@ -184,12 +210,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w.volName = volName
 	w.partitions = new(sync.Map)
 	w.HostsStatus = make(map[string]bool)
-	w.connConfig = &proto.ConnConfig{
-		IdleTimeoutSec:   IdleConnTimeoutData,
-		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
-		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
-		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
-	}
+	w.SetDefaultConnConfig()
 	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
 		EnableReport:      false,
 		ReportIntervalSec: defaultMetricReportSec,
@@ -206,13 +227,14 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w.followerRead = view.FollowerRead
 	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
+	w.zoneName = view.ZoneName
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
 	w.crossRegionHAType = view.CrossRegionHAType
 	w.quorum = view.Quorum
 	w.ecEnable = view.EcEnable
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
-	w.updateConnConfig(view.ConnConfig)
+	w.updateConnConfig(view.ConnConfig, defaultConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 	w.initDpSelector()
@@ -237,11 +259,11 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	return
 }
 
-func (w *Wrapper) setClusterCacheReadConnTimeoutUs(timeoutUs int64) {
-	if timeoutUs <= 0 {
-		timeoutUs = ConnectTimeoutDataMs * int64(time.Microsecond)
+func (w *Wrapper) setClusterCacheReadConnTimeoutMs(timeoutMs int64) {
+	if timeoutMs <= 0 {
+		return
 	}
-	w.cacheReadConnTimeoutUs = timeoutUs
+	w.cacheReadTimeoutMs = timeoutMs
 }
 
 func (w *Wrapper) setClusterBoostEnable(enableBoost bool) {
@@ -264,7 +286,7 @@ func (w *Wrapper) initRemoteCache() (err error) {
 		Volume:        w.volName,
 		Masters:       w.masters,
 		MW:            w.metaWrapper,
-		ConnTimeoutUs: w.cacheReadConnTimeoutUs,
+		ReadTimeoutMs: w.cacheReadTimeoutMs,
 	}
 	if w.remoteCache, err = flash.NewRemoteCache(cacheConfig); err != nil {
 		return
@@ -336,6 +358,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.followerRead = view.FollowerRead
 	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
+	w.zoneName = view.ZoneName
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
 	w.crossRegionHAType = view.CrossRegionHAType
@@ -349,16 +372,16 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.cacheBoostPath = view.RemoteCacheBoostPath
 	w.enableCacheAutoPrepare = view.RemoteCacheAutoPrepare
 	w.cacheTTL = view.RemoteCacheTTL
-	w.updateConnConfig(view.ConnConfig)
+	w.updateConnConfig(view.ConnConfig, volumeConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) enableWriteCache(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v) dpFolReadDelayConfig(%v)",
+		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v) dpFolReadDelayConfig(%v) connConfig(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead, view.ForceROW, view.EnableWriteCache, view.CreateTime, view.DpSelectorName, view.DpSelectorParm,
-		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig)
+		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig, view.ConnConfig)
 	return nil
 }
 
@@ -509,6 +532,11 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 		w.nearRead = view.NearRead
 	}
 
+	if w.zoneName != view.ZoneName {
+		log.LogInfof("updateSimpleVolView: update zoneName from old(%v) to new(%v)", w.zoneName, view.ZoneName)
+		w.zoneName = view.ZoneName
+	}
+
 	if exporter.GetUmpCollectMethod() != view.UmpCollectWay && view.UmpCollectWay != exporter.UMPCollectMethodUnknown {
 		log.LogInfof("updateSimpleVolView: update umpCollectWay from old(%v) to new(%v)", exporter.GetUmpCollectMethod(), view.UmpCollectWay)
 		exporter.SetUMPCollectMethod(view.UmpCollectWay)
@@ -546,7 +574,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	}
 
 	w.updateRemoteCacheConfig(view)
-	w.updateConnConfig(view.ConnConfig)
+	w.updateConnConfig(view.ConnConfig, volumeConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 	if w.dpLowestDelayHostWeight != view.FolReadHostWeight {
@@ -829,9 +857,19 @@ func (w *Wrapper) updateClientClusterView() (err error) {
 	exporter.SetUmpJMTPBatch(uint(cf.UmpJmtpBatch))
 
 	w.setClusterBoostEnable(cf.RemoteCacheBoostEnable)
-	w.setClusterCacheReadConnTimeoutUs(cf.NetConnTimeoutUs)
+	w.setClusterCacheReadConnTimeoutMs(cf.RemoteReadTimeoutMs)
 	if w.IsCacheBoostEnabled() && w.remoteCache != nil {
-		w.remoteCache.ResetConnConfig(cf.NetConnTimeoutUs * int64(time.Microsecond))
+		w.remoteCache.ResetConnConfig(cf.RemoteReadTimeoutMs * int64(time.Millisecond))
+	}
+
+	if len(cf.ZoneConnConfig) != 0 {
+		if clusterCfg, ok := cf.ZoneConnConfig[""]; ok {
+			w.updateConnConfig(&clusterCfg, clusterConfig)
+		}
+		zoneCfg := getVolZoneConnConfig(w.zoneName, cf.ZoneConnConfig)
+		if zoneCfg != nil {
+			w.updateConnConfig(zoneCfg, zoneConfig)
+		}
 	}
 	return
 }
@@ -885,15 +923,6 @@ func (w *Wrapper) SetMetaWrapper(metaWrapper *meta.MetaWrapper) {
 	w.metaWrapper = metaWrapper
 }
 
-func (w *Wrapper) SetConnConfig() {
-	w.connConfig = &proto.ConnConfig{
-		IdleTimeoutSec:   IdleConnTimeoutData,
-		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
-		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
-		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
-	}
-}
-
 func (w *Wrapper) SetDpFollowerReadDelayConfig(enableCollect bool, delaySummaryInterval int64) {
 	if w.dpFollowerReadDelayConfig == nil {
 		w.dpFollowerReadDelayConfig = &proto.DpFollowerReadDelayConfig{}
@@ -920,11 +949,59 @@ func (w *Wrapper) sortHostsByDistance(dpHosts []string) []string {
 	return nearHost
 }
 
-func (w *Wrapper) updateConnConfig(config *proto.ConnConfig) {
+func (w *Wrapper) SetDefaultConnConfig() {
+	w.connConfig = &proto.ConnConfig{
+		IdleTimeoutSec:   IdleConnTimeoutData,
+		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
+		WriteTimeoutNs:   WriteTimeoutData * int64(time.Second),
+		ReadTimeoutNs:    ReadTimeoutData * int64(time.Second),
+	}
+}
+
+func (w *Wrapper) updateConnConfig(config *proto.ConnConfig, level connConfigLevel) (isUpdate bool) {
 	if config == nil {
 		return
 	}
-	log.LogInfof("updateConnConfig: (%v)", config)
+	if config.ReadTimeoutNs == 0 && config.WriteTimeoutNs == 0 {
+		return
+	}
+	var changed = func(oldCfg, newCfg *proto.ConnConfig) bool {
+		if oldCfg == nil || oldCfg.ReadTimeoutNs != newCfg.ReadTimeoutNs || oldCfg.WriteTimeoutNs != newCfg.WriteTimeoutNs {
+			return true
+		}
+		return false
+	}
+	switch level {
+	case defaultConfig:
+		if changed(w.connConfig, config) {
+			goto doUpdate
+		}
+		return
+	case volumeConfig:
+		if changed(w.volConnConfig, config) {
+			w.volConnConfig = config
+			goto doUpdate
+		}
+		return
+	case zoneConfig:
+		if changed(w.zoneConnConfig, config) {
+			if w.volConnConfig == nil {
+				w.zoneConnConfig = config
+				goto doUpdate
+			}
+		}
+		return
+	case clusterConfig:
+		if changed(w.clusterConnConfig, config) {
+			if w.volConnConfig == nil && w.zoneConnConfig == nil {
+				w.clusterConnConfig = config
+				goto doUpdate
+			}
+		}
+		return
+	}
+doUpdate:
+	log.LogInfof("updateConnConfig: old(%v) new(%v) level(%s)", w.connConfig, config, level.String())
 	updateConnPool := false
 	if config.IdleTimeoutSec > 0 && config.IdleTimeoutSec != w.connConfig.IdleTimeoutSec {
 		w.connConfig.IdleTimeoutSec = config.IdleTimeoutSec
@@ -936,13 +1013,16 @@ func (w *Wrapper) updateConnConfig(config *proto.ConnConfig) {
 	}
 	if config.WriteTimeoutNs > 0 && config.WriteTimeoutNs != w.connConfig.WriteTimeoutNs {
 		atomic.StoreInt64(&w.connConfig.WriteTimeoutNs, config.WriteTimeoutNs)
+		isUpdate = true
 	}
 	if config.ReadTimeoutNs > 0 && config.ReadTimeoutNs != w.connConfig.ReadTimeoutNs {
 		atomic.StoreInt64(&w.connConfig.ReadTimeoutNs, config.ReadTimeoutNs)
+		isUpdate = true
 	}
 	if updateConnPool && StreamConnPool != nil {
 		StreamConnPool.UpdateTimeout(time.Duration(w.connConfig.IdleTimeoutSec)*time.Second, time.Duration(w.connConfig.ConnectTimeoutNs))
 	}
+	return updateConnPool || isUpdate
 }
 
 func (w *Wrapper) updateDpMetricsReportConfig(config *proto.DpMetricsReportConfig) {
@@ -996,4 +1076,30 @@ func handleUmpAlarm(cluster, vol, act, msg string) {
 	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
 	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
 	exporter.WarningBySpecialUMPKey(umpKeyVol, umpMsgVol)
+}
+
+func getVolZoneConnConfig(zones string, zonesCfg map[string]proto.ConnConfig) (cfg *proto.ConnConfig) {
+	log.LogInfof("getVolZoneConnConfig: zone(%v) configs(%v)", zones, zonesCfg)
+	var (
+		maxReadTimeout  int64
+		maxWriteTimeout int64
+	)
+	zoneList := strings.Split(zones, ",")
+	for _, zone := range zoneList {
+		if zoneCfg, ok := zonesCfg[zone]; ok {
+			if zoneCfg.ReadTimeoutNs > maxReadTimeout {
+				maxReadTimeout = zoneCfg.ReadTimeoutNs
+			}
+			if zoneCfg.WriteTimeoutNs > maxWriteTimeout {
+				maxWriteTimeout = zoneCfg.WriteTimeoutNs
+			}
+		}
+	}
+	if maxReadTimeout == 0 && maxWriteTimeout == 0 {
+		return nil
+	}
+	return &proto.ConnConfig{
+		ReadTimeoutNs:  maxReadTimeout,
+		WriteTimeoutNs: maxWriteTimeout,
+	}
 }

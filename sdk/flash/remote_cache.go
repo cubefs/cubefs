@@ -48,7 +48,7 @@ const (
 	pingCount            = 3
 	pingTimeout          = 50 * time.Millisecond
 	IdleConnTimeoutData  = 30
-	ConnectTimeoutDataMs = 500
+	ConnectTimeoutDataMs = 200
 
 	RefreshFlashNodesInterval  = time.Minute
 	RefreshHostLatencyInterval = 15 * time.Minute
@@ -74,7 +74,7 @@ type CacheConfig struct {
 	MW      *meta.MetaWrapper
 
 	SameZoneWeight int
-	ConnTimeoutUs  int64 // 读写超时
+	ReadTimeoutMs  int64
 }
 
 type RemoteCache struct {
@@ -94,7 +94,7 @@ type RemoteCache struct {
 	cacheBloom  *bloom.BloomFilter
 
 	sameZoneWeight int
-	connTimeoutUs  int64
+	readTimeoutMs  int64
 }
 
 func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
@@ -110,16 +110,16 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 	} else {
 		rc.sameZoneWeight = config.SameZoneWeight
 	}
-	if config.ConnTimeoutUs <= 0 {
-		rc.connTimeoutUs = ConnectTimeoutDataMs * int64(time.Microsecond)
+	if config.ReadTimeoutMs <= 0 {
+		rc.readTimeoutMs = ConnectTimeoutDataMs
 	} else {
-		rc.connTimeoutUs = config.ConnTimeoutUs
+		rc.readTimeoutMs = config.ReadTimeoutMs
 	}
 	rc.connConfig = &proto.ConnConfig{
 		IdleTimeoutSec:   IdleConnTimeoutData,
 		ConnectTimeoutNs: ConnectTimeoutDataMs * int64(time.Millisecond),
-		ReadTimeoutNs:    rc.connTimeoutUs * int64(time.Microsecond),
-		WriteTimeoutNs:   rc.connTimeoutUs * int64(time.Microsecond),
+		ReadTimeoutNs:    rc.readTimeoutMs * int64(time.Millisecond),
+		WriteTimeoutNs:   rc.readTimeoutMs * int64(time.Millisecond),
 	}
 
 	err := rc.updateFlashGroups()
@@ -200,15 +200,15 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 		conn  *net.TCPConn
 		moved bool
 	)
-	reqPacket := common.NewCachePacket(ctx, inode, proto.OpCachePrepare)
-	if err = reqPacket.MarshalDataPb(req); err != nil {
-		log.LogWarnf("FlashGroup Prepare: failed to MarshalData (%+v). err(%v)", req, err)
-		return
-	}
 	addr := fg.getFlashHost()
 	if addr == "" {
 		err = fmt.Errorf("getFlashHost failed: can not find host")
 		log.LogErrorf("FlashGroup prepare failed: err(%v)", err)
+		return
+	}
+	reqPacket := common.NewCachePacket(ctx, inode, proto.OpCachePrepare)
+	if err = reqPacket.MarshalDataPb(req); err != nil {
+		log.LogWarnf("FlashGroup Prepare: failed to MarshalData (%v), err(%v)", req, err)
 		return
 	}
 	defer func() {
@@ -262,7 +262,7 @@ func (rc *RemoteCache) ResetConnConfig(timeoutNs int64) {
 	config := rc.connConfig
 	if timeoutNs > 0 {
 		if timeoutNs != config.ReadTimeoutNs {
-			log.LogInfof("ResetConnConfig: from(%v) to new(%v)", config.ReadTimeoutNs, timeoutNs)
+			log.LogInfof("ResetConnConfig: old(%v) new(%v)", rc.connConfig.ReadTimeoutNs, timeoutNs)
 			atomic.StoreInt64(&config.ReadTimeoutNs, timeoutNs)
 		}
 	}

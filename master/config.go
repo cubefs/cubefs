@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 
+	bsProto "github.com/cubefs/cubefs/proto"
+
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/tiglabs/raft/proto"
 )
@@ -165,6 +167,8 @@ type clusterConfig struct {
 	ClientReqRecordsReservedCount       int32
 	ClientReqRecordsReservedMin         int32
 	ClientReqRemoveDup                  bool //default false, disable remove dup
+	RemoteReadConnTimeoutMs             int64
+	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -202,6 +206,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DeleteEKRecordFilesMaxSize = 0 // use meta node default value 60MB 10files
 	cfg.MetaRaftLogSize = 0            //use meta node config value
 	cfg.MetaRaftLogCap = 0             // use meta node config value
+	cfg.ZoneNetConnConfig = make(map[string]bsProto.ConnConfig)
 	return
 }
 

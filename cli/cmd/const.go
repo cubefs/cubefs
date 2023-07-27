@@ -130,6 +130,8 @@ const (
 	CliFlagFollReadHostWeight     = "set-host-weight"
 	CliFlagEnableRemoveDup        = "enableRemoveDup"
 	CliFlagDelRemoteCachePath     = "delRemoteCacheBoostPath"
+	CliFlagReadConnTimeout        = "readConnTimeout"
+	CliFlagWriteConnTimeout       = "writeConnTimeout"
 
 	CliOpRollBack              = "rollback"
 	CliOpGetCanEcDel           = "get-can-del"

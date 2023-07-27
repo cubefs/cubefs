@@ -463,7 +463,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
 	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod, trashCleanDuration, trashCleanMaxCount int32,
 	enableBitMapAllocator bool, remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool,
-	remoteCacheTTL int64, enableRemoveDupReq bool) (err error) {
+	remoteCacheTTL int64, enableRemoveDupReq bool, readConnTimeout, writeConnTimeout int64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -508,6 +508,8 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("remoteCacheAutoPrepare", strconv.FormatBool(remoteCacheAutoPrepare))
 	request.addParam("remoteCacheTTL", strconv.FormatInt(remoteCacheTTL, 10))
 	request.addParam(proto.VolRemoveDupFlagKey, strconv.FormatBool(enableRemoveDupReq))
+	request.addParam("readConnTimeout", strconv.FormatInt(readConnTimeout, 10))
+	request.addParam("writeConnTimeout", strconv.FormatInt(writeConnTimeout, 10))
 	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -875,8 +877,14 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.RemoteCacheBoostEnableState == 0 || info.RemoteCacheBoostEnableState == 1 {
 		request.addParam(proto.RemoteCacheBoostEnableKey, strconv.FormatInt(info.RemoteCacheBoostEnableState, 10))
 	}
-	if info.ClientConnTimeoutUs >= 0 {
-		request.addParam(proto.NetConnTimeoutUsKey, strconv.FormatInt(info.ClientConnTimeoutUs, 10))
+	if info.RemoteReadConnTimeoutMs >= 0 {
+		request.addParam(proto.RemoteReadConnTimeoutKey, strconv.FormatInt(info.RemoteReadConnTimeoutMs, 10))
+	}
+	if info.ReadConnTimeoutMs >= 0 {
+		request.addParam(proto.ReadConnTimeoutMsKey, strconv.FormatInt(info.ReadConnTimeoutMs, 10))
+	}
+	if info.WriteConnTimeoutMs >= 0 {
+		request.addParam(proto.WriteConnTimeoutMsKey, strconv.FormatInt(info.WriteConnTimeoutMs, 10))
 	}
 	if mode := proto.ConsistencyModeFromInt32(info.DataPartitionConsistencyMode); mode.Valid() {
 		request.addParam("dataPartitionConsistencyMode", strconv.FormatInt(int64(mode.Int32()), 10))

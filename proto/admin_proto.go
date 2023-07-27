@@ -277,7 +277,9 @@ const (
 	TrashCleanDurationKey         = "trashItemCleanDuration"
 	DeleteMarkDelVolIntervalKey   = "deleteMarkDelVolInterval"
 	RemoteCacheBoostEnableKey     = "remoteCacheBoostEnable"
-	NetConnTimeoutUsKey           = "netConnTimeoutUs"
+	RemoteReadConnTimeoutKey      = "remoteReadTimeoutMs"
+	ReadConnTimeoutMsKey          = "readConnTimeoutMs"
+	WriteConnTimeoutMsKey         = "writeConnTimeoutMs"
 	FlashNodeRateKey              = "flashNodeRate"
 	FlashNodeVolRateKey           = "flashNodeVolRate"
 	DataNodeReqVolPartRateKey     = "dataNodeReqVolPartRate"
@@ -625,6 +627,8 @@ type LimitInfo struct {
 	DeleteMarkDelVolInterval int64
 	DpTimeoutCntThreshold    int
 	ClientConnTimeoutUs      int64
+	RemoteReadConnTimeout    int64
+	ZoneNetConnConfig        map[string]ConnConfig
 	FlashNodeLimitMap        map[string]uint64            //map[zone]
 	FlashNodeVolLimitMap     map[string]map[string]uint64 //map[zone]map[volume]
 
@@ -1330,6 +1334,9 @@ type RateLimitInfo struct {
 	ClientReqRecordsReservedCount    uint32
 	ClientReqRecordsReservedMin      uint32
 	ClientReqRemoveDupFlag           int32
+	RemoteReadConnTimeoutMs          int64
+	ReadConnTimeoutMs                int64
+	WriteConnTimeoutMs               int64
 }
 
 type ConvertMode uint8
@@ -1532,6 +1539,8 @@ type ClientClusterConf struct {
 
 	RemoteCacheBoostEnable bool
 	NetConnTimeoutUs       int64
+	RemoteReadTimeoutMs    int64
+	ZoneConnConfig         map[string]ConnConfig
 }
 type ConsistencyMode uint32
 

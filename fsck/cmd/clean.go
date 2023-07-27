@@ -29,8 +29,8 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/exporter/backend/ump"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/ump"
 )
 
 var gMetaWrapper *meta.MetaWrapper

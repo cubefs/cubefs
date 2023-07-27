@@ -128,6 +128,7 @@ type Vol struct {
 	RemoteCacheBoostEnable     bool
 	RemoteCacheAutoPrepare     bool
 	RemoteCacheTTL             int64
+	ConnConfig                 proto.ConnConfig
 	sync.RWMutex
 }
 
@@ -214,6 +215,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.ChildFileMaxCount = childFileMaxCnt
 	vol.BatchDelInodeCnt = batchDelInodeCnt
 	vol.DelInodeInterval = delInodeInterval
+	vol.ConnConfig = proto.ConnConfig{}
 	return
 }
 
@@ -312,6 +314,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.RemoteCacheAutoPrepare = vv.RemoteCacheAutoPrepare
 	vol.RemoteCacheTTL = vv.RemoteCacheTTL
 	vol.enableRemoveDupReq = vv.RemoveDupReqEnable
+	vol.ConnConfig = vv.ConnConfig
 	return vol
 }
 
@@ -1317,6 +1320,7 @@ func (vol *Vol) backupConfig() *Vol {
 		RemoteCacheBoostEnable:     vol.RemoteCacheBoostEnable,
 		RemoteCacheAutoPrepare:     vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:             vol.RemoteCacheTTL,
+		ConnConfig:                 vol.ConnConfig,
 	}
 }
 
@@ -1369,6 +1373,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.RemoteCacheAutoPrepare = backupVol.RemoteCacheAutoPrepare
 	vol.RemoteCacheTTL = backupVol.RemoteCacheTTL
 	vol.enableRemoveDupReq = backupVol.enableRemoveDupReq
+	vol.ConnConfig = backupVol.ConnConfig
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

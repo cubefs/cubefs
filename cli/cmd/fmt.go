@@ -205,6 +205,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable: %v\n", svv.RemoteCacheBoostEnable))
 	sb.WriteString(fmt.Sprintf("  RemoteCacheAutoPrepare: %v\n", svv.RemoteCacheAutoPrepare))
 	sb.WriteString(fmt.Sprintf("  RemoteCacheTTL        : %v\n", svv.RemoteCacheTTL))
+	sb.WriteString(fmt.Sprintf("  ReadConnTimeout       : %v ms\n", svv.ConnConfig.ReadTimeoutNs/int64(time.Millisecond)))
+	sb.WriteString(fmt.Sprintf("  WriteConnTimeout      : %v ms\n", svv.ConnConfig.WriteTimeoutNs/int64(time.Millisecond)))
 	return sb.String()
 }
 

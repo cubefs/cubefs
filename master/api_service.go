@@ -563,11 +563,12 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		TrashCleanDurationEachTime:             trashCleanDuration,
 		DeleteMarkDelVolInterval:               m.cluster.cfg.DeleteMarkDelVolInterval,
 		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
-		ClientConnTimeoutUs:                    m.cluster.cfg.ClientNetConnTimeoutUs,
 		DpTimeoutCntThreshold:                  int(dpTimeoutCntThreshold),
 		ClientReqRecordsReservedCount:          clientReqRecordsReservedCount,
 		ClientReqRecordsReservedMin:            clientReqRecordsReservedMin,
 		ClientReqRemoveDupFlag:                 m.cluster.cfg.ClientReqRemoveDup,
+		RemoteReadConnTimeout:                  m.cluster.cfg.RemoteReadConnTimeoutMs,
+		ZoneNetConnConfig:                      m.cluster.cfg.ZoneNetConnConfig,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1790,6 +1791,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		batchDelInodeCnt      uint32
 		delInodeInterval      uint32
 		umpCollectWay         exporter.UMPCollectMethod
+		connConfig            proto.ConnConfig
 
 		trashCleanDuration     int32
 		trashItemCleanMaxCount int32
@@ -1922,10 +1924,16 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	connConfig, err = parseConnConfigToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
-		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight,
+		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -2231,6 +2239,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:         vol.RemoteCacheTTL,
 		EnableRemoveDupReq:     vol.enableRemoveDupReq,
+		ConnConfig:             &vol.ConnConfig,
 	}
 }
 
@@ -3864,6 +3873,35 @@ func parseDefaultDelInodeIntervalToUpdateVol(r *http.Request, vol *Vol) (delInod
 	return
 }
 
+func parseConnConfigToUpdateVol(r *http.Request, vol *Vol) (config proto.ConnConfig, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	config = proto.ConnConfig{}
+	readTimeoutNs := vol.ConnConfig.ReadTimeoutNs
+	writeTimeoutNs := vol.ConnConfig.WriteTimeoutNs
+
+	readStr := r.FormValue(volReadConnTimeoutKey)
+	if readStr != "" {
+		readTimeoutNs, err = strconv.ParseInt(readStr, 10, 64)
+		if err != nil {
+			return
+		}
+	}
+	writeStr := r.FormValue(volWriteConnTimeoutKey)
+	if writeStr != "" {
+		writeTimeoutNs, err = strconv.ParseInt(writeStr, 10, 64)
+		if err != nil {
+			return
+		}
+	}
+	config.ReadTimeoutNs = readTimeoutNs
+	config.WriteTimeoutNs = writeTimeoutNs
+	return
+}
+
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
@@ -4699,8 +4737,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
-		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.NetConnTimeoutUsKey, proto.DpTimeoutCntThreshold,
-		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey}
+		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
+		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return
@@ -6231,7 +6269,8 @@ func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 		UmpJmtpAddr:            m.cluster.cfg.UmpJmtpAddr,
 		UmpJmtpBatch:           m.cluster.cfg.UmpJmtpBatch,
 		RemoteCacheBoostEnable: m.cluster.cfg.RemoteCacheBoostEnable,
-		NetConnTimeoutUs:       m.cluster.cfg.ClientNetConnTimeoutUs,
+		RemoteReadTimeoutMs:    m.cluster.cfg.RemoteReadConnTimeoutMs,
+		ZoneConnConfig:         m.cluster.cfg.ZoneNetConnConfig,
 	}
 	cf.DataNodes = m.cluster.allDataNodes()
 	cf.EcNodes = m.cluster.allEcNodes()
