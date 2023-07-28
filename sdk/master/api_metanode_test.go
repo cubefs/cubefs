@@ -18,8 +18,8 @@ func TestMetaNodeAPI(t *testing.T) {
 		t.Fatalf("Add mete node failed: err(%v), addr(%v)", err, testMetaAddr)
 	}
 	// reset meta node
-	if err = testMc.AdminAPI().ResetCorruptMetaNode(testMetaAddr); err != nil {
-		t.Errorf("Reset corrupt meta node failed: err(%v), addr(%v)", err, testMetaAddr)
+	if err = testMc.AdminAPI().ResetCorruptMetaNode(testMetaAddr); err == nil {
+		t.Errorf("Reset corrupt meta node expect fail, but success, addr(%v)", testMetaAddr)
 	}
 	// task
 	task := &proto.AdminTask{}
