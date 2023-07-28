@@ -21,7 +21,7 @@ import (
 	"log"
 	"os"
 	"path"
-	"strconv"
+	"strings"
 )
 
 const (
@@ -55,7 +55,9 @@ func LoadConfigFile(filename string) (*Config, error) {
 // LoadConfigString loads config information from a JSON string.
 func LoadConfigString(s string) *Config {
 	result := newConfig()
-	err := json.Unmarshal([]byte(s), &result.data)
+	decoder := json.NewDecoder(strings.NewReader(s))
+	decoder.UseNumber()
+	err := decoder.Decode(&result.data)
 	if err != nil {
 		log.Fatalf("error parsing config string %s: %s", s, err)
 	}
@@ -66,7 +68,9 @@ func (c *Config) parse(fileName string) error {
 	jsonFileBytes, err := ioutil.ReadFile(fileName)
 	c.Raw = jsonFileBytes
 	if err == nil {
-		err = json.Unmarshal(jsonFileBytes, &c.data)
+		decoder := json.NewDecoder(strings.NewReader(string(jsonFileBytes)))
+		decoder.UseNumber()
+		err = decoder.Decode(&c.data)
 	}
 	return err
 }
@@ -94,8 +98,12 @@ func (c *Config) GetFloat(key string) float64 {
 	if !present {
 		return -1
 	}
-	if result, isFloat := x.(float64); isFloat {
-		return result
+	if result, isNumber := x.(json.Number); isNumber {
+		number, err := result.Float64()
+		if err != nil {
+			return 0
+		}
+		return number
 	}
 	return 0
 }
@@ -128,14 +136,7 @@ func (c *Config) GetBool(key string) bool {
 
 // GetInt returns a int value for the config key.
 func (c *Config) GetInt(key string) int {
-	x, present := c.data[key]
-	if !present {
-		return 0
-	}
-	if result, isInt := x.(int); isInt {
-		return result
-	}
-	return 0
+	return int(c.GetInt64(key))
 }
 
 // GetInt64 returns a int64 value for the config key.
@@ -144,17 +145,12 @@ func (c *Config) GetInt64(key string) int64 {
 	if !present {
 		return 0
 	}
-	if result, isInt := x.(int64); isInt {
-		return result
-	}
-	if result, isFloat := x.(float64); isFloat {
-		return int64(result)
-	}
-	if result, isString := x.(string); isString {
-		r, err := strconv.ParseInt(result, 10, 64)
-		if err == nil {
-			return r
+	if result, isNumber := x.(json.Number); isNumber {
+		number, err := result.Int64()
+		if err != nil {
+			return 0
 		}
+		return number
 	}
 	return 0
 }
