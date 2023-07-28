@@ -199,8 +199,8 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 				status = proto.OpErr
 				reply = []byte(err.Error())
 			}
+			p.PacketErrorWithBody(status, reply)
 		}
-		p.PacketErrorWithBody(status, reply)
 	}()
 
 	ino := NewInode(req.Inode, 0)
@@ -213,6 +213,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 				respIno = item.(*Inode)
 			}
 
+			p.ResultCode = status
 			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbIno %s", req, respIno.String())
 			return nil
 		}
@@ -245,6 +246,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	if msg.Msg != nil {
 		respIno = msg.Msg
 	}
+	p.ResultCode = status
 	return
 }
 
