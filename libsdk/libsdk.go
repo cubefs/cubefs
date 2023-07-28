@@ -128,6 +128,7 @@ var (
 	statusEMFILE  = errorToStatus(syscall.EMFILE)
 	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
 	statusEISDIR  = errorToStatus(syscall.EISDIR)
+	statusENOSPC  = errorToStatus(syscall.ENOSPC)
 )
 var once sync.Once
 
@@ -622,6 +623,9 @@ func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 
 	n, err := c.write(f, int(off), buffer, flags)
 	if err != nil {
+		if err == syscall.ENOSPC {
+			return C.ssize_t(statusENOSPC)
+		}
 		return C.ssize_t(statusEIO)
 	}
 
