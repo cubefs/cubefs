@@ -428,9 +428,9 @@ func (tm *TransactionManager) processExpiredTransactions() {
 func (tm *TransactionManager) processTx() {
 	mpId := tm.txProcessor.mp.config.PartitionId
 	start := time.Now()
-	log.LogInfof("processTx: mp %v mask %v", mpId, proto.GetMaskString(tm.txProcessor.mask))
+	log.LogDebugf("processTx: mp %v mask %v", mpId, proto.GetMaskString(tm.txProcessor.mask))
 	defer func() {
-		log.LogInfof("processTx: mp %d total cost %s", mpId, time.Since(start).String())
+		log.LogDebugf("processTx: mp %d total cost %s", mpId, time.Since(start).String())
 	}()
 
 	limitCh := make(chan struct{}, 32)
@@ -780,8 +780,8 @@ func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status ui
 		return
 	}
 
-	if tx.IsDone() {
-		status = proto.OpTxInfoNotExistErr
+	if tx.State == proto.TxStateCommitDone {
+		status = proto.OpOk
 		log.LogWarnf("commitTx: tx[%v] is already commit", txId)
 		return
 	}
@@ -902,9 +902,9 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 		return
 	}
 
-	if tx.IsDone() {
+	if tx.State == proto.TxStateRollbackDone {
 		status = proto.OpOk
-		log.LogWarnf("commitTx: tx[%v] is already commit", txId)
+		log.LogWarnf("commitTx: tx[%v] is already rollback", txId)
 		return
 	}
 
@@ -1080,6 +1080,12 @@ func (tm *TransactionManager) txSetState(req *proto.TxSetStateRequest) (status u
 		return
 	}
 	txInfo := item.(*proto.TransactionInfo)
+
+	if req.State == proto.TxStateCommit && txInfo.State == proto.TxStateCommitDone {
+		log.LogWarnf("txSetState: tx is already success before set commit state, tx %v", txInfo)
+		status = proto.OpOk
+		return
+	}
 
 	if req.State < proto.TxStateCommit || req.State > proto.TxStateFailed {
 		status = proto.OpTxSetStateErr
