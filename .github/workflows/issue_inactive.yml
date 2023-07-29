@@ -7,7 +7,7 @@ on:
 # labels: inactive-one-week, inactive-one-month, inactive-three-month, inactive-one-year, inactive-two-year
 
 permissions:
-  issues: read|write
+  issues: write
 
 jobs:
   check-inactive:

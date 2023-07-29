@@ -5,7 +5,7 @@ on:
     types: [opened, edited]
 
 permissions:
-  issues: read|write
+  issues: write
 
 jobs:
   similarity-analysis:
