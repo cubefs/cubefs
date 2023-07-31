@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -1301,15 +1300,17 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 	})
 }
 
-func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) {
+func (mp *metaPartition) initTxInfo(txInfo *proto.TransactionInfo) error {
 	txInfo.TxID = mp.txProcessor.txManager.nextTxID()
 
 	txInfo.CreateTime = time.Now().Unix()
 	txInfo.State = proto.TxStatePreCommit
 
-	ctx := context.Background()
-	// todo return opAgain
-	mp.txProcessor.txManager.opLimiter.Wait(ctx)
+	if mp.txProcessor.txManager.opLimiter.Allow() {
+		return nil
+	}
+
+	return fmt.Errorf("tx create is limited")
 }
 
 func (mp *metaPartition) storeSnapshotFiles() (err error) {

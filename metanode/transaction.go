@@ -862,7 +862,8 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 			defer wg.Done()
 			status := tm.txSendToMpWithAddrs(members, pkt)
 			if status != proto.OpOk {
-				log.LogWarnf("sendToRM: send to rm failed, addr %s, pkt %s", members, string(pkt.Data))
+				log.LogWarnf("sendToRM: send to rm failed, addr %s, pkt %s, status %s",
+					members, string(pkt.Data), proto.GetStatusStr(status))
 			}
 			statusCh <- status
 		}()
@@ -1027,7 +1028,8 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 			return status
 		}
 
-		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s", addr, newPkt.GetResultMsg(), string(p.Data))
+		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status %s",
+			addr, newPkt.GetResultMsg(), string(p.Data), proto.GetStatusStr(status))
 		return status
 	}
 
@@ -1057,11 +1059,13 @@ func (tm *TransactionManager) txSendToMpWithAddrs(addrStr string, p *proto.Packe
 			return status
 		}
 
-		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s", addr, newPkt.GetResultMsg(), string(p.Data))
+		log.LogWarnf("txSendToMpWithAddrs: sendPacketToMp failed, addr %s, msg %s, data %s, status %s",
+			addr, newPkt.GetResultMsg(), string(p.Data), proto.GetStatusStr(status))
 		return status
 	}
 
-	log.LogWarnf("txSendToMpWithAddrs: after retry still failed, return opAgain, pkt %s, addrs %v, err %v", string(p.Data), addrs, err)
+	log.LogWarnf("txSendToMpWithAddrs: after retry still failed, return opAgain, pkt %s, addrs %v, err %v, status %s",
+		string(p.Data), addrs, err, proto.GetStatusStr(status))
 	return proto.OpAgain
 }
 
