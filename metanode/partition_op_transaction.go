@@ -87,7 +87,8 @@ func (mp *metaPartition) txInitToRm(txInfo *proto.TransactionInfo, p *Packet) {
 			defer wg.Done()
 			status := mp.txProcessor.txManager.txSendToMpWithAddrs(members, pkt)
 			if status != proto.OpOk {
-				log.LogWarnf("txInitRm: send to rm failed, addr %s, pkt %s", members, string(pkt.Data))
+				log.LogWarnf("txInitRm: send to rm failed, addr %s, pkt %s, status %s",
+					members, string(pkt.Data), proto.GetStatusStr(status))
 			}
 			statusCh <- status
 		}()
@@ -121,7 +122,12 @@ func canRetry(status uint8) bool {
 
 func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *proto.TransactionInfo, err error) {
 	if uint64(txInfo.TmID) == mp.config.PartitionId {
-		mp.initTxInfo(txInfo)
+		err = mp.initTxInfo(txInfo)
+		if err != nil {
+			log.LogWarnf("init tx limited, ifo %v", txInfo)
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return
+		}
 	}
 
 	val, err := txInfo.Marshal()
