@@ -214,7 +214,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 			}
 
 			p.ResultCode = status
-			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbIno %s", req, respIno.String())
+			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbIno %v", req, respIno)
 			return nil
 		}
 
