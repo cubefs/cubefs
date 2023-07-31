@@ -485,18 +485,14 @@ func TestCheckTxLimit(t *testing.T) {
 	//txMgr.Start()
 	txMgr.setLimit(10)
 	txMgr.opLimiter.SetBurst(1)
-	var i int
-	st := time.Now().UnixNano() / 1e6
-	for i < 2 {
-		txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
-		txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
-		txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
-		mp1.initTxInfo(txInfo)
-		i++
-	}
-	et := time.Now().UnixNano() / 1e6
-	t.Logf("st %v et %v", st, et)
-	assert.True(t, et-st >= 100)
+	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
+	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
+	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
+	err := mp1.initTxInfo(txInfo)
+	assert.NoError(t, err)
+
+	err = mp1.initTxInfo(txInfo)
+	assert.Error(t, err)
 }
 
 func TestGetTxHandler(t *testing.T) {
