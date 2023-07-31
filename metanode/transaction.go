@@ -316,7 +316,6 @@ type TransactionProcessor struct {
 func (p *TransactionProcessor) Reset() {
 	p.txManager.Reset()
 	p.txResource.Reset()
-	p.mp = nil
 }
 
 func (p *TransactionProcessor) Pause() bool {
@@ -371,7 +370,6 @@ func (tm *TransactionManager) Reset() {
 	tm.txIdAlloc.Reset()
 	tm.txTree.Reset()
 	tm.opLimiter.SetLimit(0)
-	tm.txProcessor = nil
 	tm.Unlock()
 }
 
