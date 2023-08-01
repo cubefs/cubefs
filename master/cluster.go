@@ -92,6 +92,7 @@ type Cluster struct {
 	lcMgr                        *lifecycleManager
 	snapshotMgr                  *snapshotDelManager
 	DecommissionDiskFactor       float64
+	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
 }
 
 type followerReadManager struct {
@@ -331,6 +332,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.lcMgr.cluster = c
 	c.snapshotMgr = newSnapshotManager()
 	c.snapshotMgr.cluster = c
+	c.S3ApiQosQuota = new(sync.Map)
 	return
 }
 

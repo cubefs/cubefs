@@ -224,6 +224,11 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
+
+	// s3 qos api
+	S3QoSSet    = "/s3/qos/set"
+	S3QoSGet    = "/s3/qos/get"
+	S3QoSDelete = "/s3/qos/delete"
 )
 
 var GApiInfo map[string]string = map[string]string{

@@ -68,6 +68,13 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	var userInfo *proto.UserInfo
 	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
 		log.LogErrorf("createMultipleUploadHandler: get user info fail: requestID(%v) accessKey(%v) err(%v)",
@@ -75,20 +82,14 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// system metadata
-	// Get the requested content-type.
-	// In addition to being used to manage data types, it is used to distinguish
-	// whether the request is to create a directory.
+	// metadata
 	contentType := r.Header.Get(ContentType)
-	// Get request header : content-disposition
 	contentDisposition := r.Header.Get(ContentDisposition)
-	// Get request header : Cache-Control
 	cacheControl := r.Header.Get(CacheControl)
 	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
 		errorCode = InvalidCacheArgument
 		return
 	}
-	// Get request header : Expires
 	expires := r.Header.Get(Expires)
 	if len(expires) > 0 && !ValidateCacheExpires(expires) {
 		errorCode = InvalidCacheArgument
@@ -197,6 +198,17 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		requestMD5 = hex.EncodeToString(decoded)
 	}
 
+	// Verify ContentLength
+	length := GetContentLength(r)
+	if length > SinglePutLimit {
+		errorCode = EntityTooLarge
+		return
+	}
+	if length < 0 {
+		errorCode = MissingContentLength
+		return
+	}
+
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("uploadPartHandler: load volume fail: requestID(%v) err(%v)",
@@ -216,8 +228,22 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	// Flow Control
+	var reader io.Reader
+	if length > DefaultFlowLimitSize {
+		reader = rateLimit.GetReader(vol.owner, param.apiName, r.Body)
+	} else {
+		reader = r.Body
+	}
 	var fsFileInfo *FSFileInfo
-	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body); err != nil {
+	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), reader); err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
 		if err == syscall.ENOENT {
@@ -289,6 +315,13 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// step2: extract params from req
 	srcBucket, srcObject, _, err := extractSrcBucketKey(r)
 	if err != nil {
@@ -335,9 +368,14 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		writer.CloseWithError(err)
 	}()
 
-	// step5: upload part by copy
-	var fsFileInfo *FSFileInfo
-	fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), reader)
+	// step5: upload part by copy and flow control
+	var rd io.Reader
+	if copyLength > DefaultFlowLimitSize {
+		rd = rateLimit.GetReader(vol.owner, param.apiName, reader)
+	} else {
+		rd = reader
+	}
+	fsFileInfo, err := vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), rd)
 	if err != nil {
 		log.LogErrorf("uploadPartCopyHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
@@ -429,6 +467,13 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	fsParts, nextMarker, isTruncated, err := vol.ListParts(param.Object(), uploadId, maxPartsInt, partNoMarkerInt)
 	if err != nil {
@@ -583,6 +628,13 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// get uploaded part info in request
 	var requestBytes []byte
 	requestBytes, err = ioutil.ReadAll(r.Body)
@@ -705,6 +757,13 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// Abort multipart upload
 	if err = vol.AbortMultipart(param.Object(), uploadId); err != nil {
 		log.LogErrorf("abortMultipartUploadHandler: abort multipart fail: requestID(%v) uploadID(%v) err(%v)",
@@ -765,6 +824,13 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	fsUploads, nextKeyMarker, nextUploadIdMarker, IsTruncated, prefixes, err := vol.ListMultipartUploads(prefix, delimiter, keyMarker, uploadIdMarker, maxUploadsInt)
 	if err != nil {

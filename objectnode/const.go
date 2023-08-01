@@ -84,6 +84,8 @@ const (
 	XAmzSecurityToken               = "X-Amz-Security-Token"
 	XAmzObjectLockMode              = "X-Amz-Object-Lock-Mode"
 	XAmzObjectLockRetainUntilDate   = "X-Amz-Object-Lock-Retain-Until-Date"
+
+	HeaderNameXAmzDecodedContentLength = "x-amz-decoded-content-length"
 )
 
 const (
@@ -127,9 +129,10 @@ const (
 )
 
 const (
-	MaxKeys    = 1000
-	MaxParts   = 1000
-	MaxUploads = 1000
+	MaxKeys        = 1000
+	MaxParts       = 1000
+	MaxUploads     = 1000
+	SinglePutLimit = 5 * 1 << 30 // 5G
 )
 
 const (
