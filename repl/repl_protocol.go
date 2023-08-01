@@ -816,8 +816,9 @@ func (rp *ReplProtocol) putResponse(reply *Packet) (err error) {
 	case rp.responseCh <- reply:
 		return
 	default:
-		err = fmt.Errorf("request(%v) response Chan has full (%v) ", reply.GetUniqueLogId(), len(rp.responseCh))
-		log.LogErrorf(err.Error())
+		_ = rp.postFunc(reply)
+		msg := fmt.Sprintf("request(%v) response Chan is full(%v)", reply.GetUniqueLogId(), len(rp.responseCh))
+		exporter.WarningCritical(msg)
 		return err
 	}
 }
@@ -827,7 +828,8 @@ func (rp *ReplProtocol) putToBeProcess(request *Packet) (err error) {
 	case rp.toBeProcessedCh <- request:
 		return
 	default:
-		msg := fmt.Sprintf("request(%v) toBeProcessedCh Chan is full(%v)", request.GetUniqueLogId(), len(rp.toBeProcessedCh))
+		_ = rp.postFunc(request)
+		msg := fmt.Sprintf("request(%v) toBeProcessed Chan is full(%v)", request.GetUniqueLogId(), len(rp.toBeProcessedCh))
 		exporter.WarningCritical(msg)
 		return err
 	}

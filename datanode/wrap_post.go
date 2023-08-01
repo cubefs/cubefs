@@ -65,11 +65,4 @@ func (s *DataNode) addMetrics(p *repl.Packet) {
 		return
 	}
 	p.AfterTp()
-	if p.Object == nil {
-		return
-	}
-	partition := p.Object.(*DataPartition)
-	if partition == nil {
-		return
-	}
 }
