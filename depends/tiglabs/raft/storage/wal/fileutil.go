@@ -17,6 +17,7 @@ package wal
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 )
@@ -86,15 +87,15 @@ func listLogEntryFiles(path string) (fnames []logFileName, err error) {
 
 // 退化版本的预分配空间
 func fallocDegraded(f *os.File, sizeInBytes int64) error {
-	curOff, err := f.Seek(0, os.SEEK_CUR)
+	curOff, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return err
 	}
-	size, err := f.Seek(sizeInBytes, os.SEEK_END)
+	size, err := f.Seek(sizeInBytes, io.SeekEnd)
 	if err != nil {
 		return err
 	}
-	if _, err = f.Seek(curOff, os.SEEK_SET); err != nil {
+	if _, err = f.Seek(curOff, io.SeekStart); err != nil {
 		return err
 	}
 	if sizeInBytes > size {
