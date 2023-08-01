@@ -37,7 +37,7 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 
 	done := mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID)
 	if done {
-		log.LogWarnf("fsmTxUnlinkInode: tx is already finish. txId %s", txDentry.TxInfo.TxID)
+		log.LogWarnf("fsmTxCreateDentry: tx is already finish. txId %s", txDentry.TxInfo.TxID)
 		status = proto.OpTxInfoNotExistErr
 		return
 	}
