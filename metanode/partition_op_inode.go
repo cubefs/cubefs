@@ -194,10 +194,12 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 				Info: &proto.InodeInfo{},
 			}
 
-			replyInfo(resp.Info, respIno, make([]uint32, 0))
-			if reply, err = json.Marshal(resp); err != nil {
-				status = proto.OpErr
-				reply = []byte(err.Error())
+			if respIno != nil {
+				replyInfo(resp.Info, respIno, make([]uint32, 0))
+				if reply, err = json.Marshal(resp); err != nil {
+					status = proto.OpErr
+					reply = []byte(err.Error())
+				}
 			}
 			p.PacketErrorWithBody(status, reply)
 		}
