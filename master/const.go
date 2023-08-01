@@ -280,6 +280,9 @@ const (
 	opSyncSetQuota     uint32 = 0x41
 	opSyncDeleteQuota  uint32 = 0x42
 	opSyncMulitVersion uint32 = 0x53
+
+	opSyncS3QosSet    uint32 = 0x60
+	opSyncS3QosDelete uint32 = 0x61
 )
 
 const (
@@ -298,6 +301,7 @@ const (
 	domainAcronym          = "zoneDomain"
 	apiLimiterAcronym      = "al"
 	lcConfigurationAcronym = "lc"
+	S3QoS                  = "s3qos"
 	maxDataPartitionIDKey  = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey  = keySeparator + "max_mp_id"
 	maxCommonIDKey         = keySeparator + "max_common_id"
@@ -331,6 +335,7 @@ const (
 	quotaPrefix      = keySeparator + "quota" + keySeparator
 	lcNodePrefix     = keySeparator + lcNodeAcronym + keySeparator
 	lcConfPrefix     = keySeparator + lcConfigurationAcronym + keySeparator
+	S3QoSPrefix      = keySeparator + S3QoS + keySeparator
 )
 
 // selector enum

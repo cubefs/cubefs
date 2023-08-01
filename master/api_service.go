@@ -5921,6 +5921,7 @@ func (m *Server) handleLcNodeTaskResponse(w http.ResponseWriter, r *http.Request
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
 	m.cluster.handleLcNodeTaskResponse(tr.OperatorAddr, tr)
 }
+
 func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	var (
 		bytes []byte
@@ -5942,6 +5943,7 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	_ = m.cluster.SetBucketLifecycle(&req)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("PutBucketLifecycleConfiguration successful ")))
 }
+
 func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	var (
 		err    error
@@ -5962,6 +5964,7 @@ func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(lcConf))
 }
+
 func (m *Server) DelBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	var (
 		err  error
@@ -5980,6 +5983,7 @@ func (m *Server) DelBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
+
 func (m *Server) lcnodeInfo(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -6006,4 +6010,183 @@ func (m *Server) lcnodeInfo(w http.ResponseWriter, r *http.Request) {
 	default:
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "invalid op"})
 	}
+}
+
+func (m *Server) S3QosSet(w http.ResponseWriter, r *http.Request) {
+	var (
+		param = &proto.S3QosRequest{}
+		err   error
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.S3QoSSet))
+	defer func() {
+		doStatAndMetric(proto.S3QoSSet, metric, err, nil)
+	}()
+
+	if err = parseS3QosReq(r, param); err != nil {
+		log.LogErrorf("[S3QosSet] parse fail err [%v]", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if !isS3QosConfigValid(param) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "s3 qos param err"})
+		return
+	}
+
+	// set s3 qos quota
+	if param.Quota != 0 {
+		if strings.ToLower(param.Uid) == proto.DefaultUid {
+			param.Uid = proto.DefaultUid
+		}
+		param.Api = strings.ToLower(param.Api)
+		metadata := new(RaftCmd)
+		metadata.Op = opSyncS3QosSet
+		key := param.Api + keySeparator + param.Uid + keySeparator + param.Type
+		metadata.K = S3QoSPrefix + key
+		metadata.V = []byte(strconv.FormatUint(param.Quota, 10))
+
+		// raft sync
+		if err = m.cluster.submit(metadata); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		// memory cache
+		m.cluster.S3ApiQosQuota.Store(metadata.K, param.Quota)
+	}
+
+	// set s3 node num
+	if param.Nodes != 0 {
+		metadata := new(RaftCmd)
+		metadata.Op = opSyncS3QosSet
+		key := proto.S3Nodes
+		metadata.K = S3QoSPrefix + key
+		metadata.V = []byte(strconv.FormatUint(param.Nodes, 10))
+		// raft sync
+		if err = m.cluster.submit(metadata); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		// memory cache
+		m.cluster.S3ApiQosQuota.Store(metadata.K, param.Nodes)
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+func (m *Server) S3QosGet(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.S3QoSGet))
+	defer func() {
+		doStatAndMetric(proto.S3QoSGet, metric, err, nil)
+	}()
+
+	apiLimitConf := make(map[string]*proto.UserLimitConf, 0)
+	s3QosResponse := proto.S3QoSResponse{
+		ApiLimitConf: apiLimitConf,
+	}
+	// memory cache
+	m.cluster.S3ApiQosQuota.Range(func(key, value interface{}) bool {
+		k := key.(string)
+		v := value.(uint64)
+		api, uid, limitType, nodeNumKey, err := parseS3QoSKey(k)
+		if err != nil {
+			log.LogErrorf("[S3QosGet] parseS3QoSKey err [%v]", err)
+			return true
+		}
+		if nodeNumKey != "" {
+			s3QosResponse.Nodes = v
+			return true
+		}
+		if _, ok := apiLimitConf[api]; !ok {
+			bandWidthQuota := make(map[string]uint64, 0)
+			qpsQuota := make(map[string]uint64, 0)
+			concurrentQuota := make(map[string]uint64, 0)
+			userLimitConf := &proto.UserLimitConf{
+				BandWidthQuota:  bandWidthQuota,
+				QPSQuota:        qpsQuota,
+				ConcurrentQuota: concurrentQuota,
+			}
+			apiLimitConf[api] = userLimitConf
+		}
+		switch limitType {
+		case proto.FlowLimit:
+			apiLimitConf[api].BandWidthQuota[uid] = v
+		case proto.QPSLimit:
+			apiLimitConf[api].QPSQuota[uid] = v
+		case proto.ConcurrentLimit:
+			apiLimitConf[api].ConcurrentQuota[uid] = v
+		}
+		return true
+	})
+
+	log.LogDebugf("[S3QosGet] s3qosInfoMap %+v", s3QosResponse)
+	sendOkReply(w, r, newSuccessHTTPReply(s3QosResponse))
+}
+
+func (m *Server) S3QosDelete(w http.ResponseWriter, r *http.Request) {
+	var (
+		param = &proto.S3QosRequest{}
+		err   error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.S3QoSDelete))
+	defer func() {
+		doStatAndMetric(proto.S3QoSDelete, metric, err, nil)
+	}()
+
+	if err = parseS3QosReq(r, param); err != nil {
+		log.LogErrorf("[S3QosSet] parse fail err [%v]", err)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if !isS3QosConfigValid(param) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "s3 qos param err"})
+		return
+	}
+
+	if strings.ToLower(param.Uid) == proto.DefaultUid {
+		param.Uid = proto.DefaultUid
+	}
+	param.Api = strings.ToLower(param.Api)
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncS3QosDelete
+	key := param.Api + keySeparator + param.Uid + keySeparator + param.Type
+	metadata.K = S3QoSPrefix + key
+
+	// raft sync
+	if err = m.cluster.submit(metadata); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	// memory cache
+	m.cluster.S3ApiQosQuota.Delete(metadata.K)
+
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
+func parseS3QoSKey(key string) (api, uid, limitType, nodes string, err error) {
+	s3qosInfo := strings.TrimPrefix(key, S3QoSPrefix)
+	strs := strings.Split(s3qosInfo, keySeparator)
+	if len(strs) == 3 {
+		return strs[0], strs[1], strs[2], "", nil
+	}
+	if len(strs) == 1 && strs[0] == proto.S3Nodes {
+		return "", "", "", strs[0], nil
+	}
+	return "", "", "", "", errors.New("unexpected key")
+}
+
+func isS3QosConfigValid(param *proto.S3QosRequest) bool {
+
+	if param.Type != proto.FlowLimit && param.Type != proto.QPSLimit && param.Type != proto.ConcurrentLimit {
+		return false
+	}
+
+	if proto.IsS3PutApi(param.Api) {
+		return false
+	}
+
+	return true
 }
