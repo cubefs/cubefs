@@ -714,6 +714,8 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 		return
 	}
 
+	err = mp.UpdateDentry(req, p)
+
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
