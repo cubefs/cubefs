@@ -66,6 +66,14 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// parse http range option
 	var (
 		revRange    bool
@@ -274,7 +282,15 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		size = rangeUpper - rangeLower + 1
 		w.WriteHeader(http.StatusPartialContent)
 	}
-	err = vol.readFile(fileInfo.Inode, uint64(fileInfo.Size), param.Object(), w, offset, size)
+
+	// Flow Control
+	var writer io.Writer
+	if size > DefaultFlowLimitSize {
+		writer = rateLimit.GetResponseWriter(vol.owner, param.apiName, w)
+	} else {
+		writer = w
+	}
+	err = vol.readFile(fileInfo.Inode, uint64(fileInfo.Size), param.Object(), writer, offset, size)
 	if err != nil {
 		log.LogErrorf("getObjectHandler: read file fail: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
@@ -373,6 +389,13 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// get object meta
 	var fileInfo *FSFileInfo
@@ -628,6 +651,11 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		objectKeys = append(objectKeys, object.Key)
 		log.LogWarnf("deleteObjectsHandler: delete path: requestID(%v) remote(%v) volume(%v) path(%v)",
 			GetRequestID(r), getRequestIP(r), vol.Name(), object.Key)
+		// QPS and Concurrency Limit
+		rateLimit := o.AcquireRateLimiter()
+		if err = rateLimit.AcquireLimitResource(vol.owner, DELETE_OBJECT); err != nil {
+			return
+		}
 		if err1 := vol.DeletePath(object.Key); err1 != nil {
 			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
 				GetRequestID(r), vol.Name(), object.Key, err1)
@@ -641,6 +669,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 				GetRequestID(r), vol.Name(), object.Key)
 			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
 		}
+		rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 	}
 
 	deleteResult := DeleteResult{
@@ -711,6 +740,13 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// client can reset these system metadata: Content-Type, Content-Disposition
 	contentType := r.Header.Get(ContentType)
 	contentDisposition := r.Header.Get(ContentDisposition)
@@ -774,6 +810,14 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
 		}
+		return
+	}
+	if fileInfo.Size > SinglePutLimit {
+		errorCode = EntityTooLarge
+		return
+	}
+	if fileInfo.Size > SinglePutLimit {
+		errorCode = EntityTooLarge
 		return
 	}
 
@@ -896,6 +940,14 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// get options
 	marker := r.URL.Query().Get(ParamMarker)
 	prefix := r.URL.Query().Get(ParamPrefix)
@@ -1023,6 +1075,13 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// get options
 	prefix := r.URL.Query().Get(ParamPrefix)
@@ -1212,6 +1271,13 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// Check 'x-amz-tagging' header
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
 	var tagging *Tagging
@@ -1240,6 +1306,17 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.LogErrorf("putObjectHandler: parse acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), acl, err)
+		return
+	}
+
+	// Verify ContentLength
+	length := GetContentLength(r)
+	if length > SinglePutLimit {
+		errorCode = EntityTooLarge
+		return
+	}
+	if length < 0 {
+		errorCode = MissingContentLength
 		return
 	}
 
@@ -1279,7 +1356,15 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ObjectLock:   objetLock,
 	}
 	var startPut = time.Now()
-	if fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt); err != nil {
+
+	// Flow Control
+	var reader io.Reader
+	if length > DefaultFlowLimitSize {
+		reader = rateLimit.GetReader(vol.owner, param.apiName, r.Body)
+	} else {
+		reader = r.Body
+	}
+	if fsFileInfo, err = vol.PutObject(param.Object(), reader, opt); err != nil {
 		log.LogErrorf("putObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
 		err = handlePutObjectErr(err)
@@ -1362,6 +1447,13 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// Audit deletion
 	log.LogInfof("Audit: delete object: requestID(%v) remote(%v) volume(%v) path(%v)",
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object())
@@ -1401,6 +1493,14 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: get volume XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
@@ -1449,6 +1549,13 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 			GetRequestID(r), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
@@ -1509,6 +1616,14 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 			GetRequestID(r), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	if err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: volume delete tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
@@ -1532,16 +1647,24 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		errorCode = InvalidBucketName
 		return
 	}
+	if len(param.Object()) == 0 {
+		errorCode = InvalidKey
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("pubObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		return
 	}
-	if len(param.Object()) == 0 {
-		errorCode = InvalidKey
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
 		return
 	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
 		errorCode = &ErrorCode{
@@ -1590,16 +1713,24 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		errorCode = InvalidBucketName
 		return
 	}
+	if len(param.Object()) == 0 {
+		errorCode = InvalidKey
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		return
 	}
-	if len(param.Object()) == 0 {
-		errorCode = InvalidKey
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
 		return
 	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	var xattrKey string
 	if xattrKey = param.GetVar(ParamKey); len(xattrKey) == 0 {
 		errorCode = InvalidArgument
@@ -1645,16 +1776,24 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 		errorCode = InvalidBucketName
 		return
 	}
+	if len(param.Object()) == 0 {
+		errorCode = InvalidKey
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		return
 	}
-	if len(param.Object()) == 0 {
-		errorCode = InvalidKey
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
 		return
 	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	var xattrKey string
 	if xattrKey = param.GetVar(ParamKey); len(xattrKey) == 0 {
 		errorCode = InvalidArgument
@@ -1686,16 +1825,23 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 		errorCode = InvalidBucketName
 		return
 	}
+	if len(param.Object()) == 0 {
+		errorCode = InvalidKey
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("listObjectXAttrs: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		return
 	}
-	if len(param.Object()) == 0 {
-		errorCode = InvalidKey
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
 		return
 	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	var keys []string
 	if keys, err = vol.ListXAttrs(param.object); err != nil {
@@ -1809,4 +1955,15 @@ func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, 
 		return 0, 0, 0, 0, nil
 	}
 	return partSize, partCount, rangeLower, rangeUpper, nil
+}
+
+func GetContentLength(r *http.Request) int64 {
+	dcl := r.Header.Get(HeaderNameXAmzDecodedContentLength)
+	if dcl != "" {
+		length, err := strconv.ParseInt(dcl, 10, 64)
+		if err == nil {
+			return length
+		}
+	}
+	return r.ContentLength
 }

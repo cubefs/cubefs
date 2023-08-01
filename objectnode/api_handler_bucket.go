@@ -52,7 +52,6 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		errorCode = InvalidBucketName
 		return
 	}
-
 	if vol, _ := o.vm.VolumeWithoutBlacklist(bucket); vol != nil {
 		log.LogInfof("createBucketHandler: duplicated bucket name: requestID(%v) bucket(%v)", GetRequestID(r), bucket)
 		errorCode = BucketAlreadyOwnedByYou
@@ -65,6 +64,13 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), param.AccessKey(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(userInfo.UserID, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(userInfo.UserID, param.apiName)
 
 	// get LocationConstraint if any
 	contentLenStr := r.Header.Get(ContentLength)
@@ -146,13 +152,20 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), bucket, param.AccessKey(), err)
 		return
 	}
-
 	var vol *Volume
 	if vol, err = o.getVol(bucket); err != nil {
 		log.LogErrorf("deleteBucketHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), bucket, err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	if !vol.IsEmpty() {
 		errorCode = BucketNotEmpty
 		return
@@ -191,12 +204,19 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	}()
 
 	param := ParseRequestParam(r)
-	userInfo, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
-	if err != nil {
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.accessKey); err != nil {
 		log.LogErrorf("listBucketsHandler: get user info fail: requestID(%v) accessKey(%v) err(%v)",
 			GetRequestID(r), param.AccessKey(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(userInfo.UserID, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(userInfo.UserID, param.apiName)
 
 	type bucket struct {
 		XMLName      xml.Name `xml:"Bucket"`
@@ -247,16 +267,24 @@ func (o *ObjectNode) getBucketLocationHandler(w http.ResponseWriter, r *http.Req
 		o.errorResponse(w, r, err, errorCode)
 	}()
 
+	var vol *Volume
 	param := ParseRequestParam(r)
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
 	}
-	if _, err = o.getVol(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketLocationHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	location := LocationResponse{Location: o.region}
 	response, err := MarshalXMLEntity(location)
@@ -292,6 +320,13 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr(bucketRootPath, XAttrKeyOSSTagging); err != nil {
@@ -338,6 +373,13 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	var body []byte
 	if body, err = ioutil.ReadAll(r.Body); err != nil {
@@ -394,6 +436,13 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 			GetRequestID(r), param.Bucket(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	if err = vol.DeleteXAttr(bucketRootPath, XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("deleteBucketTaggingHandler: delete tagging xattr fail: requestID(%v) volume(%v) err(%v)",

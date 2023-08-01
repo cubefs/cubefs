@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/reloadconf"
 
 	"github.com/gorilla/mux"
 )
@@ -121,10 +122,12 @@ const (
 
 // Default of configuration value
 const (
-	defaultListen               = "80"
-	defaultCacheRefreshInterval = 10 * 60
-	defaultMaxDentryCacheNum    = 1000000
-	defaultMaxInodeAttrCacheNum = 1000000
+	defaultListen                = "80"
+	defaultCacheRefreshInterval  = 10 * 60
+	defaultMaxDentryCacheNum     = 1000000
+	defaultMaxInodeAttrCacheNum  = 1000000
+	defaultS3QoSReloadIntervalMs = 300 * 1000
+	defaultS3QoSConfName         = "s3qosInfo.conf"
 	// ebs
 	MaxSizePutOnce = int64(1) << 23
 )
@@ -157,7 +160,9 @@ type ObjectNode struct {
 	disabledActions         proto.Actions // disabled actions
 	stsNotAllowedActions    proto.Actions // actions that are not accessible to STS users
 
-	control common.Control
+	control    common.Control
+	rateLimit  RateLimiter
+	limitMutex sync.RWMutex
 }
 
 func (o *ObjectNode) Start(cfg *config.Config) (err error) {
@@ -309,6 +314,17 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		if rt != 0 {
 			readThreads = rt
 		}
+	}
+	// s3 api qos info
+	reloadConf := &reloadconf.ReloadConf{
+		ConfName:      defaultS3QoSConfName,
+		ReloadMs:      defaultS3QoSReloadIntervalMs,
+		RequestRemote: o.requestRemote,
+	}
+
+	err = reloadconf.StartReload(reloadConf, o.Reload)
+	if err != nil {
+		log.LogWarnf("handleStart: GetS3QoSInfo err(%v)", err)
 	}
 
 	// start rest api

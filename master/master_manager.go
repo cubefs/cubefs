@@ -226,6 +226,12 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfo("action[loadLcNodes] end")
 	syslog.Println("action[loadMetadata] end")
+
+	log.LogInfo("action[loadS3QoSInfo] begin")
+	if err = m.cluster.loadS3ApiQosInfo(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadS3QoSInfo] end")
 }
 
 func (m *Server) clearMetadata() {
