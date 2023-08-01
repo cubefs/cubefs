@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -111,7 +112,7 @@ func GetLog(w http.ResponseWriter, r *http.Request) {
 }
 
 func tailn(line int, file *os.File) (data []string, err error) {
-	fileLen, err := file.Seek(0, os.SEEK_END)
+	fileLen, err := file.Seek(0, io.SeekEnd)
 	if err != nil {
 		return
 	}
@@ -126,7 +127,7 @@ func tailn(line int, file *os.File) (data []string, err error) {
 			currSize = fileLen
 		}
 
-		_, err = file.Seek(-currSize, os.SEEK_CUR)
+		_, err = file.Seek(-currSize, io.SeekCurrent)
 		if err != nil {
 			return
 		}
@@ -164,7 +165,7 @@ func tailn(line int, file *os.File) (data []string, err error) {
 		}
 		lastStr = string(buff[:last])
 
-		fileLen, err = file.Seek(-currSize, os.SEEK_CUR)
+		fileLen, err = file.Seek(-currSize, io.SeekCurrent)
 
 		if fileLen <= 0 {
 			break
