@@ -599,7 +599,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 // CreateInodeLink creates an inode link (e.g., soft link).
 func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
-
+	ino.setVer(mp.verSeq)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -687,7 +687,7 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 // SetAttr set the inode attributes.
 func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error) {
 	if mp.verSeq != 0 {
-		req.VerSeq = mp.verSeq
+		req.VerSeq = mp.GetVerSeq()
 		reqData, err = json.Marshal(req)
 		if err != nil {
 			log.LogErrorf("setattr: marshal err(%v)", err)
