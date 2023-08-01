@@ -34,6 +34,7 @@ module.exports = [
         children: [
             'maintenance/env.md',
             'maintenance/tool.md',
+            'maintenance/gui.md',
             {
                 text: '服务管理命令',
                 children: [
