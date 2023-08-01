@@ -548,13 +548,19 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 	funcs := make([]func() (int, error), 0)
 
 	funcs = append(funcs, func() (int, error) {
-		status, inode, err = mw.txDdelete(tx, parentMP, parentID, inode, name)
-		return status, err
+		var newSt int
+		var newErr error
+
+		newSt, _, newErr = mw.txDdelete(tx, parentMP, parentID, inode, name)
+		return newSt, newErr
 	})
 
 	funcs = append(funcs, func() (int, error) {
-		status, info, err = mw.txIunlink(tx, mp, inode)
-		return status, err
+		var newSt int
+		var newErr error
+
+		newSt, info, newErr = mw.txIunlink(tx, mp, inode)
+		return newSt, newErr
 	})
 
 	// 2. prepare transaction
@@ -764,16 +770,20 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		}
 
 		funcs = append(funcs, func() (int, error) {
-			status, _, err := mw.txDupdate(tx, dstParentMP, dstParentID, dstName, srcInode, dstInode)
-			return status, err
+			var newSt int
+			var newErr error
+			newSt, _, newErr = mw.txDupdate(tx, dstParentMP, dstParentID, dstName, srcInode, dstInode)
+			return newSt, newErr
 		})
 
 		funcs = append(funcs, func() (int, error) {
-			status, _, err := mw.txIunlink(tx, oldInodeMP, dstInode)
-			if status == statusNoent {
+			var newSt int
+			var newErr error
+			newSt, _, newErr = mw.txIunlink(tx, oldInodeMP, dstInode)
+			if newSt == statusNoent {
 				return statusOK, nil
 			}
-			return status, err
+			return newSt, newErr
 		})
 
 		if log.EnableDebug() {
@@ -782,8 +792,11 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		}
 	} else if status == statusNoent {
 		funcs = append(funcs, func() (int, error) {
-			status, err := mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{})
-			return status, err
+			var newSt int
+			var newErr error
+
+			newSt, newErr = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{})
+			return newSt, newErr
 		})
 
 	} else {
@@ -792,8 +805,10 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 
 	//var inode uint64
 	funcs = append(funcs, func() (int, error) {
-		status, _, err := mw.txDdelete(tx, srcParentMP, srcParentID, srcInode, srcName)
-		return status, err
+		var newSt int
+		var newErr error
+		newSt, _, newErr = mw.txDdelete(tx, srcParentMP, srcParentID, srcInode, srcName)
+		return newSt, newErr
 	})
 
 	if log.EnableDebug() {
@@ -1274,16 +1289,22 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (info *p
 	funcs := make([]func() (int, error), 0)
 
 	funcs = append(funcs, func() (int, error) {
-		status, info, err = mw.txIlink(tx, mp, ino)
-		return status, err
+		var newSt int
+		var newErr error
+		newSt, info, newErr = mw.txIlink(tx, mp, ino)
+		return newSt, newErr
 	})
 
 	funcs = append(funcs, func() (int, error) {
+		var newSt int
+		var newErr error
 		var quotaIds []uint32
+		var ifo *proto.InodeInfo
+
 		if mw.EnableQuota {
-			quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
-			if err != nil {
-				log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, err)
+			quotaInfos, newErr := mw.getInodeQuota(parentMP, parentID)
+			if newErr != nil {
+				log.LogErrorf("link: get parent quota fail, parentID(%v) err(%v)", parentID, newErr)
 				return statusError, syscall.ENOENT
 			}
 
@@ -1291,8 +1312,14 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64) (info *p
 				quotaIds = append(quotaIds, quotaId)
 			}
 		}
-		status, err = mw.txDcreate(tx, parentMP, parentID, name, ino, info.Mode, quotaIds)
-		return status, err
+
+		newSt, ifo, newErr = mw.iget(mp, ino)
+		if newErr != nil || newSt != statusOK {
+			return newSt, newErr
+		}
+
+		newSt, newErr = mw.txDcreate(tx, parentMP, parentID, name, ino, ifo.Mode, quotaIds)
+		return newSt, newErr
 	})
 
 	// 2. prepare transaction
