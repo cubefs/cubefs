@@ -1472,6 +1472,27 @@ func (c *Cluster) loadQuota() (err error) {
 	return
 }
 
+// load s3api qos info to memory cache
+func (c *Cluster) loadS3ApiQosInfo() (err error) {
+
+	keyPrefix := S3QoSPrefix
+	result, err := c.fsm.store.SeekForPrefix([]byte(keyPrefix))
+	if err != nil {
+		err = fmt.Errorf("loadS3ApiQosInfo get failed, err [%v]", err)
+		return err
+	}
+
+	for key, value := range result {
+		s3qosQuota, err := strconv.ParseUint(string(value), 10, 64)
+		if err != nil {
+			return err
+		}
+		log.LogDebugf("loadS3ApiQosInfo key[%v] value[%v]", key, s3qosQuota)
+		c.S3ApiQosQuota.Store(key, s3qosQuota)
+	}
+	return
+}
+
 func (c *Cluster) addBadDataPartitionIdMap(dp *DataPartition) {
 	if !dp.IsDecommissionRunning() {
 		return

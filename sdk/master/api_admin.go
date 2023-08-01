@@ -944,3 +944,11 @@ func (api *AdminAPI) DelBucketLifecycle(volume string) (err error) {
 	}
 	return
 }
+
+func (api *AdminAPI) GetS3QoSInfo() (data []byte, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.S3QoSGet)
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}

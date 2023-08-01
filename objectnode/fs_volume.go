@@ -366,16 +366,18 @@ func (v *Volume) IsEmpty() bool {
 
 func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err error) {
 	var inode uint64
+	var notUseCache bool
 
 	if objMetaCache != nil {
 		var retry = 0
 		for {
-			if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
+			if _, inode, _, _, err = v.recursiveLookupTarget(path, notUseCache); err != nil {
 				return v.getXAttr(path, key)
 			}
 
 			_, err = v.mw.InodeGet_ll(inode)
 			if err == syscall.ENOENT && retry < MaxRetry {
+				notUseCache = true
 				retry++
 				continue
 			}
@@ -465,15 +467,17 @@ func (v *Volume) listXAttrs(path string) (keys []string, err error) {
 
 func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 	var inode uint64
+	var notUseCache bool
 
 	if objMetaCache != nil {
 		var retry = 0
 		for {
-			if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
+			if _, inode, _, _, err = v.recursiveLookupTarget(path, notUseCache); err != nil {
 				return v.listXAttrs(path)
 			}
 			_, err = v.mw.InodeGet_ll(inode)
 			if err == syscall.ENOENT && retry < MaxRetry {
+				notUseCache = true
 				retry++
 				continue
 			}
@@ -873,7 +877,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 	var ino uint64
 	var name string
 	var mode os.FileMode
-	parent, ino, name, mode, err = v.recursiveLookupTarget(path)
+	parent, ino, name, mode, err = v.recursiveLookupTarget(path, false)
 	if err != nil {
 		// An unexpected error occurred
 		return
@@ -912,7 +916,6 @@ func (v *Volume) DeletePath(path string) (err error) {
 		return
 	}
 
-	// Evict inode
 	if err = v.ec.EvictStream(ino); err != nil {
 		log.LogWarnf("DeletePath EvictStream: path(%v) inode(%v)", path, ino)
 	}
@@ -922,6 +925,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 	deleteAttrCache(parent, v.name)
 
 	log.LogWarnf("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
+	// Evict inode
 	if err = v.mw.Evict(ino); err != nil {
 		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
 	}
@@ -1634,7 +1638,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) er
 
 	var ino uint64
 	var mode os.FileMode
-	if _, ino, _, mode, err = v.recursiveLookupTarget(path); err != nil {
+	if _, ino, _, mode, err = v.recursiveLookupTarget(path, false); err != nil {
 		return err
 	}
 
@@ -1656,15 +1660,16 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 	var mode os.FileMode
 	var inoInfo *proto.InodeInfo
 	var retry = 0
-
+	var notUseCache bool
 	for {
-		if _, inode, _, mode, err = v.recursiveLookupTarget(path); err != nil {
+		if _, inode, _, mode, err = v.recursiveLookupTarget(path, notUseCache); err != nil {
 			log.LogErrorf("ObjectMeta: recursive look up path fail: volume(%v) path(%v) err(%v)",
 				v.name, path, err)
 			return
 		}
 		inoInfo, err = v.mw.InodeGet_ll(inode)
 		if err == syscall.ENOENT && retry < MaxRetry {
+			notUseCache = true
 			retry++
 			continue
 		}
@@ -1687,19 +1692,18 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 	if objMetaCache != nil {
 		attrItem, needRefresh := objMetaCache.GetAttr(v.name, inode)
 		if attrItem == nil || needRefresh {
-			log.LogDebugf("ObjectMeta: get attr in cache failed: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
+			log.LogDebugf("ObjectMeta: get attr in cache miss: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
 				v.name, inode, attrItem, needRefresh)
 			xattr, err = v.mw.XAttrGetAll_ll(inode)
 			if err != nil {
 				log.LogErrorf("ObjectMeta:  XAttrGetAll_ll fail, volume(%v) inode(%v) path(%v) err(%v)",
 					v.name, inode, path, err)
 				return
-			} else {
-				attrItem = &AttrItem{
-					XAttrInfo: *xattr,
-				}
-				objMetaCache.PutAttr(v.name, attrItem)
 			}
+			attrItem = &AttrItem{
+				XAttrInfo: *xattr,
+			}
+			objMetaCache.PutAttr(v.name, attrItem)
 		} else {
 			xattr = &proto.XAttrInfo{
 				XAttrs: attrItem.XAttrs,
@@ -1795,7 +1799,7 @@ func (v *Volume) Close() error {
 // ENOENT:
 // 		0x2 ENOENT No such file or directory. A component of a specified
 // 		pathname did not exist, or the pathname was an empty string.
-func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
+func (v *Volume) recursiveLookupTarget(path string, notUseCache bool) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
 	parent = rootIno
 	var pathIterator = NewPathIterator(path)
 	if !pathIterator.HasNext() {
@@ -1805,7 +1809,7 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 
 	cacheUsed := false
 
-	if objMetaCache != nil {
+	if objMetaCache != nil && !notUseCache {
 		for pathIterator.HasNext() {
 			var pathItem = pathIterator.Next()
 			var curIno uint64
@@ -2577,7 +2581,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		sInodeInfo *proto.InodeInfo
 	)
 
-	if _, sInode, sName, sMode, err = sv.recursiveLookupTarget(sourcePath); err != nil {
+	if _, sInode, sName, sMode, err = sv.recursiveLookupTarget(sourcePath, false); err != nil {
 		log.LogErrorf("CopyFile: look up source path fail, source path(%v) err(%v)", sourcePath, err)
 		return
 	}
@@ -2670,21 +2674,20 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	// operation at target object
 	var (
 		tMode      os.FileMode
-		tInode     uint64
 		oldtInode  uint64
 		tInodeInfo *proto.InodeInfo
 		tParentId  uint64
 		pathItems  []PathItem
 		tLastName  string
 	)
-	if _, oldtInode, _, tMode, err = v.recursiveLookupTarget(targetPath); err != nil && err != syscall.ENOENT {
+	if _, oldtInode, _, tMode, err = v.recursiveLookupTarget(targetPath, false); err != nil && err != syscall.ENOENT {
 		log.LogErrorf("CopyFile: look up target path failed, target path(%v), err(%v)", targetPath, err)
 		return
 	}
 	// if target file existed, check target file mode is whether same with source file
 	if err != syscall.ENOENT && tMode.IsDir() != sMode.IsDir() {
 		log.LogErrorf("CopyFile: target path existed and target path mode not same with source path, "+
-			"target path(%v), target inode(%v), source path(%v), source inode(%v)", targetPath, tInode, sourcePath, sInode)
+			"target path(%v), target inode(%v), source path(%v), source inode(%v)", targetPath, oldtInode, sourcePath, sInode)
 		return nil, syscall.EINVAL
 	}
 	// if source file mode is directory, return OK, and need't create target directory
@@ -2951,17 +2954,8 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}
 
 	// force updating dentry and attrs in cache
-	if objMetaCache != nil {
-		dentry := &DentryItem{
-			Dentry: metanode.Dentry{
-				ParentId: tParentId,
-				Name:     tLastName,
-				Inode:    tInodeInfo.Inode,
-				Type:     DefaultFileMode,
-			},
-		}
-		objMetaCache.PutDentry(v.name, dentry)
-	}
+	updateDentryCache(tParentId, tInodeInfo.Inode, DefaultFileMode, tLastName, v.name)
+	putAttrCache(targetAttr, v.name)
 
 	return
 }

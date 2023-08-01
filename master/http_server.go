@@ -731,6 +731,16 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.QuotaListAll).
 		HandlerFunc(m.ListQuotaAll)
 
+	// S3 API QoS Manager
+	router.NewRoute().Methods(http.MethodPut, http.MethodPost).
+		Path(proto.S3QoSSet).
+		HandlerFunc(m.S3QosSet)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.S3QoSGet).
+		HandlerFunc(m.S3QosGet)
+	router.NewRoute().Methods(http.MethodDelete, http.MethodPost).
+		Path(proto.S3QoSDelete).
+		HandlerFunc(m.S3QosDelete)
 }
 
 func (m *Server) registerHandler(router *mux.Router, model string, schema *graphql.Schema) {
