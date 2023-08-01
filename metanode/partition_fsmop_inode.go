@@ -139,7 +139,7 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *In
 		log.LogWarnf("fsmCreateLinkInode repeated, ino %v uniqID %v nlink %v", ino.Inode, uniqID, ino.GetNLink())
 		return
 	}
-	i.IncNLink(mp.verSeq)
+	i.IncNLink(ino.getVer())
 	return
 }
 
