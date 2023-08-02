@@ -344,6 +344,15 @@ func (mw *MetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
 		}
 		return nil, statusToErrno(status)
 	}
+	if mw.EnableQuota {
+		if len(info.QuotaInfos) != 0 && proto.IsDir(info.Mode) {
+			var qinfo QuotaCacheInfo
+			qinfo.quotaInfos = make(map[uint32]*proto.MetaQuotaInfo)
+			qinfo.quotaInfos = info.QuotaInfos
+			qinfo.inode = inode
+			mw.qc.Put(inode, &qinfo)
+		}
+	}
 	log.LogDebugf("InodeGet_ll: info(%v)", info)
 	return info, nil
 }
@@ -653,6 +662,7 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 					return nil, syscall.EACCES
 				}
 			}
+			mw.qc.Delete(inode)
 		}
 		if mw.volDeleteLockTime != 0 {
 			if ok, err := mw.canDeleteInode(mp, info, inode); !ok {
