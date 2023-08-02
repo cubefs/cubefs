@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -52,7 +53,7 @@ func TestLog(t *testing.T) {
 		return
 	}
 
-	InitLog("/tmp/cfs", "cfs", DebugLevel, nil)
+	InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimit)
 	for i := 0; i < 10; i++ {
 		LogDebugf("[debug] current time %v.", time.Now())
 		LogWarnf("[warn] current time %v.", time.Now())
@@ -73,6 +74,63 @@ func TestLog(t *testing.T) {
 	_, err = os.Stat(logFilePath3)
 	if err != nil {
 		t.Errorf("expect file[%v] exists but err is [%v]", logFilePath3, err)
+		return
+	}
+}
+
+func prepareTestLeftSpaceLimit(dir string, logFileName string) (diskSpaceLeft int, logFilePath string, err error) {
+	go func() {
+		http.ListenAndServe(":10000", nil)
+	}()
+
+	_, err = os.Stat(dir)
+	if os.IsNotExist(err) {
+		os.MkdirAll(dir, 0755)
+	}
+
+	logFilePath = path.Join(dir, logFileName)
+	if err = createFile(logFilePath, false); err != nil {
+		return 0, "", err
+	}
+
+	fs := syscall.Statfs_t{}
+	syscall.Statfs(dir, &fs)
+	diskSpaceLeft = int(fs.Bavail * uint64(fs.Bsize))
+	return diskSpaceLeft, logFilePath, nil
+}
+
+func TestLogLeftSpaceLimit01(t *testing.T) {
+	dir := path.Join("/tmp/cfs", "cfs")
+	logFileName := "cfs_info.log.old"
+	diskSpaceLeft, logFilePath, err := prepareTestLeftSpaceLimit(dir, logFileName)
+	if err != nil {
+		t.Errorf("create file[%v] err[%v]", logFilePath, err)
+	}
+	InitLog("/tmp/cfs", "cfs", DebugLevel, nil, diskSpaceLeft/1024/1024-1)
+
+	time.Sleep(200 * time.Millisecond)
+
+	_, err = os.Stat(logFilePath)
+	if os.IsNotExist(err) {
+		t.Errorf("expect file[%v] exist but err is [%v]", logFilePath, err)
+		return
+	}
+}
+
+func TestLogLeftSpaceLimit02(t *testing.T) {
+	dir := path.Join("/tmp/cfs", "cfs")
+	logFileName := "cfs_info.log.old"
+	diskSpaceLeft, logFilePath, err := prepareTestLeftSpaceLimit(dir, logFileName)
+	if err != nil {
+		t.Errorf("create file[%v] err[%v]", logFilePath, err)
+	}
+
+	InitLog("/tmp/cfs", "cfs", DebugLevel, nil, diskSpaceLeft/1024/1024+1)
+
+	time.Sleep(200 * time.Millisecond)
+	_, err = os.Stat(logFilePath)
+	if !os.IsNotExist(err) {
+		t.Errorf("expect file[%v] doesn't exist but err is [%v]", logFilePath, err)
 		return
 	}
 }

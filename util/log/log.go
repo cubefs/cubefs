@@ -278,7 +278,7 @@ var gLog *Log = nil
 var LogDir string
 
 // InitLog initializes the log.
-func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
+func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLimit int) (*Log, error) {
 	l := new(Log)
 	dir = path.Join(dir, module)
 	l.dir = dir
@@ -299,13 +299,16 @@ func InitLog(dir, module string, level Level, rotate *LogRotate) (*Log, error) {
 			return nil, fmt.Errorf("[InitLog] stats disk space: %s",
 				err.Error())
 		}
-		var minRatio float64
+		var minLogLeftSpaceLimit float64
 		if float64(fs.Bavail*uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize))*DefaultHeadRatio {
-			minRatio = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+			minLogLeftSpaceLimit = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
 		} else {
-			minRatio = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+			minLogLeftSpaceLimit = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
 		}
-		rotate.SetHeadRoomMb(int64(math.Min(minRatio, DefaultHeadRoom)))
+
+		minLogLeftSpaceLimit = math.Max(minLogLeftSpaceLimit, float64(logLeftSpaceLimit))
+
+		rotate.SetHeadRoomMb(int64(math.Min(minLogLeftSpaceLimit, DefaultHeadRoom)))
 
 		minRollingSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
 		if minRollingSize < DefaultMinRollingSize {
@@ -493,7 +496,6 @@ func LogWarn(v ...interface{}) {
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[2])
 	gLog.warnLogger.Output(2, s)
-	gLog.infoLogger.Output(2, s)
 }
 
 // LogWarnf indicates the warnings with specific format.
@@ -507,7 +509,6 @@ func LogWarnf(format string, v ...interface{}) {
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[2])
 	gLog.warnLogger.Output(2, s)
-	gLog.infoLogger.Output(2, s)
 }
 
 // LogInfo indicates log the information. TODO explain
@@ -553,7 +554,6 @@ func LogError(v ...interface{}) {
 	}
 	s := fmt.Sprintln(v...)
 	s = gLog.SetPrefix(s, levelPrefixes[3])
-	gLog.infoLogger.Output(2, s)
 	gLog.errorLogger.Output(2, s)
 }
 
@@ -568,7 +568,6 @@ func LogErrorf(format string, v ...interface{}) {
 	s := fmt.Sprintf(format, v...)
 	s = gLog.SetPrefix(s, levelPrefixes[3])
 	gLog.errorLogger.Print(s)
-	gLog.infoLogger.Output(2, s)
 }
 
 // LogDebug logs the debug information.
