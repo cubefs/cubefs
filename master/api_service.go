@@ -3787,9 +3787,7 @@ func parseCacheToUpdateVol(r *http.Request, vol *Vol) (remoteCacheBoostPath stri
 		return
 	}
 	remoteCacheBoostPath = r.FormValue(remoteCacheBoostPathKey)
-	if remoteCacheBoostPath == "" {
-		remoteCacheBoostPath = vol.RemoteCacheBoostPath
-	}
+
 
 	remoteCacheBoostEnableStr := r.FormValue(remoteCacheBoostEnableKey)
 	if remoteCacheBoostEnableStr == "" {

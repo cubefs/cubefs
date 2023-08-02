@@ -367,6 +367,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optRemoteCacheAutoPrepare string
 		optRemoteCacheTTL         int64
 		optEnableRemoveDup        string
+		optDelRemoteCacheBoostPath   string
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -642,13 +643,27 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  compact             : %v\n", vv.CompactTag))
 			}
+
 			if optRemoteCacheBoostPath != "" {
 				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v -> %v\n", vv.RemoteCacheBoostPath, optRemoteCacheBoostPath))
-				vv.RemoteCacheBoostPath = optRemoteCacheBoostPath
-			} else {
+				newRule := getNewRemoteCacheRules(vv.RemoteCacheBoostPath, optRemoteCacheBoostPath)
+				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v -> %v\n", vv.RemoteCacheBoostPath, newRule))
+				vv.RemoteCacheBoostPath = newRule
+			}
+
+			if optDelRemoteCacheBoostPath != "" {
+				isChange = true
+				newRule := delRemoteCacheRules(vv.RemoteCacheBoostPath, optDelRemoteCacheBoostPath,)
+				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v -> %v\n", vv.RemoteCacheBoostPath, newRule))
+				vv.RemoteCacheBoostPath = newRule
+			}
+
+			if optRemoteCacheBoostPath == "" && optDelRemoteCacheBoostPath == "" {
 				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v\n", vv.RemoteCacheBoostPath))
 			}
+
+
+
 			if optRemoteCacheBoostEnable != "" {
 				isChange = true
 				var enable bool
@@ -657,9 +672,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				}
 				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable    : %v -> %v\n", formatEnabledDisabled(vv.RemoteCacheBoostEnable), formatEnabledDisabled(enable)))
 				vv.RemoteCacheBoostEnable = enable
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable    : %v\n", formatEnabledDisabled(vv.RemoteCacheBoostEnable)))
 			}
+
 			if optRemoteCacheAutoPrepare != "" {
 				isChange = true
 				var enable bool
@@ -822,11 +836,12 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableBitMapAllocator, CliFlagBitMapAllocatorSt, "", "enable/disable bit map allocator")
 	cmd.Flags().Int32Var(&optTrashCleanDuration, CliFlagTrashCleanDuration, -1, "Trash clean duration, unit:min")
 	cmd.Flags().Int32Var(&optTrashCleanMaxCount, CliFlagTrashCleanMaxCount, -1, "Trash clean max count")
-	cmd.Flags().StringVar(&optRemoteCacheBoostPath, CliFlagRemoteCacheBoostPath, "", "cache boost path")
+	cmd.Flags().StringVar(&optRemoteCacheBoostPath, CliFlagRemoteCacheBoostPath, "", "cache boost path rules,example dir1,dir2,dir3")
 	cmd.Flags().StringVar(&optRemoteCacheBoostEnable, CliFlagRemoteCacheBoostEnable, "", "enable cache boost")
 	cmd.Flags().StringVar(&optRemoteCacheAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "enable cache auto prepare")
 	cmd.Flags().Int64Var(&optRemoteCacheTTL, CliFlagRemoteCacheTTL, 0, "Cache TTL")
 	cmd.Flags().StringVar(&optEnableRemoveDup, CliFlagEnableRemoveDup, "", "Enable remove dup")
+	cmd.Flags().StringVar(&optDelRemoteCacheBoostPath, CliFlagDelRemoteCachePath, "", "del cache boost path rules")
 	return cmd
 }
 
@@ -2346,4 +2361,46 @@ func newVolForceDeleteCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
+}
+
+func getNewRemoteCacheRules(oldRuleStr, setRuleStr string) (newRuleStr string) {
+	if oldRuleStr == "" {
+		newRuleStr = setRuleStr
+		return
+	}
+	newRuleStr = oldRuleStr
+	oldRules := strings.Split(oldRuleStr, ",")
+	setRules := strings.Split(setRuleStr, ",")
+	for _, setRule :=  range setRules {
+		if ruleIsExist(oldRules, setRule) {//去重
+			continue
+		}
+		newRuleStr = fmt.Sprintf("%v,%v",newRuleStr, setRule)
+	}
+	return
+}
+
+func ruleIsExist(checkRules []string, checkRule string) bool {
+	for _, rule := range checkRules {
+		if strings.Compare(rule, checkRule) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func delRemoteCacheRules(oldRuleStr, delRuleStr string) (newRuleStr string) {
+	oldRule := strings.Split(oldRuleStr, ",")
+	delRules := strings.Split(delRuleStr, ",")
+	for _, rule := range oldRule {
+		if ruleIsExist(delRules, rule) {
+			continue
+		}
+		if newRuleStr == "" {
+			newRuleStr = rule
+			continue
+		}
+		newRuleStr = fmt.Sprintf("%v,%v", newRuleStr, rule)
+	}
+	return
 }
