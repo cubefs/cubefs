@@ -1,16 +1,15 @@
 # 单机部署
 
 ## 拉取代码
-``` bash
+```bash
 # 如该步骤已完成可跳过
 $ git clone https://github.com/cubefs/cubefs.git
 ```
-## 部署
 
-### 脚本部署
+## 部署基础集群
 
-#### 部署基础集群
 CubeFS 支持使用脚本一键部署基础集群，包含组件`Master`、`MetaNode`、`DataNode`，步骤如下：
+
 ```bash
 cd ./cubefs
 # 编译
@@ -25,7 +24,9 @@ sh ./shell/depoly.sh /home/data bond0
   + 能使用`ifconfig`
   + 内存4G以上
   + `/home/data`对应磁盘剩余空间20G以上
-+ 查看集群状态
+
+## 查看集群是否正常启动
+
 ```bash
 ./build/bin/cfs-cli cluster info
 [Cluster]
@@ -42,7 +43,39 @@ sh ./shell/depoly.sh /home/data bond0
 ...
 ```
 
-#### 部署对象网关
+::: tip 提示
+基础集群提供分布式存储的基础功能，但通常不直接对外提供服务，需要通过**客户端（Client）**或者**对象网关（ObjectNode）**等方式访问。这里以客户端方式访问为例。
+:::
+
+## 创建卷
+
+```bash
+./build/bin/cfs-cli volume create ltptest ltp
+# 查看卷信息
+./build/bin/cfs-cli volume info ltptest
+```
+
+## 启动客户端并挂载卷
+
+```bash
+./build/bin/cfs-client -c /home/data/conf/client.conf
+```
+
+## 验证文件系统挂载
+
+`/home/cfs/client/mnt`即为挂载点，执行命令`df -h`如果有如下类似输出则代表挂载成功
+```bash
+df -h
+Filesystem      Size  Used Avail Use% Mounted on
+udev            3.9G     0  3.9G   0% /dev
+tmpfs           796M   82M  714M  11% /run
+/dev/sda1        98G   48G   45G  52% /
+tmpfs           3.9G   11M  3.9G   1% /dev/shm
+cubefs-ltptest   10G     0   10G   0% /home/cfs/client/mnt
+...
+```
+
+## 部署对象网关（可选）
 
 ::: tip 提示
 可选章节，如果需要使用对象存储服务，则需要部署对象网关（ObjectNode）
@@ -50,13 +83,19 @@ sh ./shell/depoly.sh /home/data bond0
 
 参考[使用对象存储章节](../user-guide/objectnode.md)
 
-#### 部署纠删码子系统
+## 停止集群
++ 使用脚本将会stop server和挂载点
+```bash
+sh ./shell/stop.sh
+```
+
+## 部署纠删码子系统（可选）
 
 ::: tip 提示
-可选章节，如果需要使用纠删码卷则需要部署
+以下为可选章节，如果需要使用纠删码卷则需要部署
 :::
 
-``` bash
+```bash
 $> cd cubefs/blobstore
 $> ./run.sh --consul
 ...
@@ -66,82 +105,33 @@ $>
 
 纠删码子系统部署成功之后，修改Master配置文件中的`ebsAddr`配置项（[更多配置参考](../maintenance/configs/master.md)），配置为Access节点注册的Consul地址，默认为`http://localhost:8500`
 
-#### 停止集群
-+ 使用脚本将会stop server和挂载点
-```bash
-sh ./shell/stop.sh
-```
-
-### docker 部署
-
-#### 部署基础集群
-在docker目录下，run_docker.sh工具用来方便运行CubeFS docker-compose试用集群，包含`Master`、`MetaNode`、`DataNode`与`ObjectNode`组件。
+## 启动blobstore-cli
 
 ::: tip 提示
-请确保已经安装docker和docker-compose，并在执行docker部署前确保防火墙关闭，避免权限问题导致容器启动失败。
+纠删码子系统（Blobstore）提供了单独交互式命令行管理工具，当前该工具暂时未集成至cfs-cli，后续会集成。
 :::
 
-执行下面的命令，可创建一个最小的CubeFS集群。
+blobstore-cli 可以方便的管理纠删码子系统, 用 help 可以查看帮助信息。这里仅介绍验证纠删码系统本身的正确性。
 
-::: warning 注意
-`/data/disk`是数据根目录，至少需要10GB大小空闲空间。
-:::
+
+基于默认配置，启动命令行工具 `blobstore-cli` ，详细使用参考[BLOBSTORE-CLI工具使用指南](../maintenance/tool.md)
+```bash
+$> cd ./cubefs
+$>./build/bin/blobstore/blobstore-cli -c blobstore/cli/cli/cli.conf # 采用默认配置启动cli 工具进入命令行
+```
+
+## 验证纠删码子系统
 
 ```bash
-$ docker/run_docker.sh -r -d /data/disk
-```
+# 上传文件，成功后会返回一个location，（-d 参数为文件实际内容）
+$> access put -v -d "test -data-"
+# 返回结果
+#"code_mode":11是clustermgr配置文件中制定的编码模式，11就是EC3P3编码模式
+{"cluster_id":1,"code_mode":11,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}
 
-客户端启动成功后，在客户端docker容器中使用`mount`命令检查目录挂载状态：
+# 下载文件，用上述得到的location作为参数（-l），即可下载文件内容
+$> access get -v -l '{"cluster_id":1,"code_mode":11,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
 
-```bash
-$ mount | grep cubefs
-```
-
-在浏览器中打开`http://127.0.0.1:3000`，使用`admin/123456`登录，可查看CubeFS的grafana监控指标界面。
-
-或者使用下面的命令分步运行:
-
-```bash
-$ docker/run_docker.sh -b
-$ docker/run_docker.sh -s -d /data/disk
-$ docker/run_docker.sh -c
-$ docker/run_docker.sh -m
-```
-
-更多命令请参考帮助:
-
-```bash
-$ docker/run_docker.sh -h
-```
-监控的Prometheus和Grafana相关配置位于`docker/monitor`目录下。
-
-
-#### 部署纠删码子系统
-
-::: warning 注意
-纠删码docker方式部署暂未与其他模块（如Master）统一，该章节目前仅用于体验纠删码子系统本身功能，后续完善
-:::
-
-支持以下docker镜像部署方式：
-
-- 远端拉取构建【`推荐`】
-
-``` bash
-$> docker pull cubefs/cubefs:blobstore-v3.2.0 # 拉取镜像
-$> docker run cubefs/cubefs:blobstore-v3.2.0 # 运行镜像
-$> docker container ls # 查看运行中的容器
-   CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS               NAMES
-   76100321156b        blobstore:v3.2.0                       "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
-$> docker exec -it thirsty_kare /bin/bash # 进入容器
-```
-
-- 本地脚本编译构建
-
-``` bash
-$> cd blobstore
-$> ./run_docker.sh -b # 编译构建
-&> Successfully built 0b29fda1cd22
-   Successfully tagged blobstore:v3.2.0
-$> ./run_docker.sh -r # 运行镜像
-$> ... # 后续步骤同拉取构建
+# 删除文件，用上述location作为参数（-l）；删除文件需要手动确认
+$> access del -v -l '{"cluster_id":1,"code_mode":11,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
 ```

@@ -12,10 +12,10 @@ module.exports = [
         children: [
             'deploy/requirement.md',
             'deploy/node.md',
+            'deploy/docker.md',
             'deploy/manual-deploy.md',
             'deploy/yum.md',
             'deploy/k8s.md',
-            'deploy/verify.md',
         ]
     },
     {
