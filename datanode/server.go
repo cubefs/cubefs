@@ -255,7 +255,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	return
 }
 
-//parseSysStartTime maybeServerFaultOccurred is set true only in these two occasions:
+// parseSysStartTime maybeServerFaultOccurred is set true only in these two occasions:
 // system power off, then restart
 // kill -9 the program, then reboot or power off, then restart
 func (s *DataNode) parseSysStartTime() (err error) {
@@ -471,6 +471,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/repairExtentBatch", s.repairExtentBatch)
 	http.HandleFunc("/extentCrc", s.getExtentCrc)
 	http.HandleFunc("/resetFaultOccurredCheckLevel", s.resetFaultOccurredCheckLevel)
+	http.HandleFunc("/sfxStatus", s.getSfxStatus)
 }
 
 func (s *DataNode) startTCPService() (err error) {
