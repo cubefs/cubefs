@@ -105,8 +105,14 @@ func TestLogLeftSpaceLimit01(t *testing.T) {
 	diskSpaceLeft, logFilePath, err := prepareTestLeftSpaceLimit(dir, logFileName)
 	if err != nil {
 		t.Errorf("create file[%v] err[%v]", logFilePath, err)
+		return
 	}
-	InitLog("/tmp/cfs", "cfs", DebugLevel, nil, diskSpaceLeft/1024/1024-1)
+	log, err := InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimit)
+	if err != nil {
+		t.Errorf("init log err[%v]", err)
+		return
+	}
+	log.rotate.SetHeadRoomMb(int64(diskSpaceLeft/1024/1024 - 1))
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -123,9 +129,15 @@ func TestLogLeftSpaceLimit02(t *testing.T) {
 	diskSpaceLeft, logFilePath, err := prepareTestLeftSpaceLimit(dir, logFileName)
 	if err != nil {
 		t.Errorf("create file[%v] err[%v]", logFilePath, err)
+		return
 	}
 
-	InitLog("/tmp/cfs", "cfs", DebugLevel, nil, diskSpaceLeft/1024/1024+1)
+	log, err := InitLog("/tmp/cfs", "cfs", DebugLevel, nil, DefaultLogLeftSpaceLimit)
+	if err != nil {
+		t.Errorf("init log err[%v]", err)
+		return
+	}
+	log.rotate.SetHeadRoomMb(int64(diskSpaceLeft/1024/1024 + 1))
 
 	time.Sleep(200 * time.Millisecond)
 	_, err = os.Stat(logFilePath)
