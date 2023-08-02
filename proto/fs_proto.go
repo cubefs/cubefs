@@ -74,18 +74,18 @@ func IsAncestor(parent, child string) bool {
 
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
-	Inode      uint64    `json:"ino"`
-	Mode       uint32    `json:"mode"`
-	Nlink      uint32    `json:"nlink"`
-	Size       uint64    `json:"sz"`
-	Uid        uint32    `json:"uid"`
-	Gid        uint32    `json:"gid"`
-	Generation uint64    `json:"gen"`
-	ModifyTime time.Time `json:"mt"`
-	CreateTime time.Time `json:"ct"`
-	AccessTime time.Time `json:"at"`
-	Target     []byte    `json:"tgt"`
-	QuotaIds   []uint32  `json:"qids"`
+	Inode      uint64                    `json:"ino"`
+	Mode       uint32                    `json:"mode"`
+	Nlink      uint32                    `json:"nlink"`
+	Size       uint64                    `json:"sz"`
+	Uid        uint32                    `json:"uid"`
+	Gid        uint32                    `json:"gid"`
+	Generation uint64                    `json:"gen"`
+	ModifyTime time.Time                 `json:"mt"`
+	CreateTime time.Time                 `json:"ct"`
+	AccessTime time.Time                 `json:"at"`
+	Target     []byte                    `json:"tgt"`
+	QuotaInfos map[uint32]*MetaQuotaInfo `json:"qifs"`
 	expiration int64
 }
 
@@ -120,7 +120,7 @@ func (info *InodeInfo) SetExpiration(e int64) {
 // String returns the string format of the inode.
 func (info *InodeInfo) String() string {
 	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v) QuotaIds(%v)",
-		info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation, info.QuotaIds)
+		info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation, info.QuotaInfos)
 }
 
 type XAttrInfo struct {

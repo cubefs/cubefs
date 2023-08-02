@@ -67,6 +67,8 @@ const (
 	 * i.e. only one force update request is allowed every 5 sec.
 	 */
 	MinForceUpdateMetaPartitionsInterval = 5
+	DefaultQuotaExpiration               = 120 * time.Second
+	MaxQuotaCache                        = 10000
 )
 
 type AsyncTaskErrorFunc func(err error)
@@ -155,6 +157,8 @@ type MetaWrapper struct {
 	// uniqidRange for request dedup
 	uniqidRangeMap   map[uint64]*uniqidRange
 	uniqidRangeMutex sync.Mutex
+
+	qc *QuotaCache
 }
 
 type uniqidRange struct {
@@ -207,7 +211,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
 	//mw.EnableTransaction = config.EnableTransaction
 	mw.uniqidRangeMap = make(map[uint64]*uniqidRange, 0)
-
+	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	limit := 0
 
 	for limit < MaxMountRetryLimit {
