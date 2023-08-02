@@ -282,7 +282,7 @@ var gLog *Log = nil
 var LogDir string
 
 // InitLog initializes the log.
-func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLimit int) (*Log, error) {
+func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLimit int64) (*Log, error) {
 	l := new(Log)
 	dir = path.Join(dir, module)
 	l.dir = dir
@@ -745,10 +745,14 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		fs := syscall.Statfs_t{}
 		if err := syscall.Statfs(logDir, &fs); err != nil {
 			LogErrorf("check disk space: %s", err.Error())
+			time.Sleep(DefaultRollingInterval)
 			continue
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
 		diskSpaceLeft -= l.rotate.headRoom * 1024 * 1024
+		if diskSpaceLeft <= 0 {
+			LogDebugf("logLeftSpaceLimit has been reached, need to clear %v Mb of Space", (-diskSpaceLeft)/1024/1024)
+		}
 		err := l.removeLogFile(logDir, diskSpaceLeft, module)
 		if err != nil {
 			time.Sleep(DefaultRollingInterval)
@@ -791,6 +795,7 @@ func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (
 	var needDelFiles RolledFile
 	for _, info := range fInfos {
 		if DeleteFileFilter(info, diskSpaceLeft, module) {
+			LogDebugf("%v will be put into needDelFiles", info.Name())
 			needDelFiles = append(needDelFiles, info)
 		}
 	}
