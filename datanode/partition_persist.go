@@ -57,8 +57,6 @@ func (dp *DataPartition) persist(status *WALApplyStatus) (err error) {
 		return
 	}
 
-	dp.truncateRaftWAL(status)
-
 	return
 }
 
@@ -145,8 +143,8 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 		metadata.CreateTime = time.Now().Format(TimeLayout)
 	}
 
-	if snap != nil && snap.LastTruncate() > metadata.LastTruncateID {
-		metadata.LastTruncateID = snap.LastTruncate()
+	if snap != nil && snap.Truncated() > metadata.LastTruncateID {
+		metadata.LastTruncateID = snap.Truncated()
 	} else if dp.persistedMetadata != nil {
 		metadata.LastTruncateID = dp.persistedMetadata.LastTruncateID
 	}
@@ -180,12 +178,6 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	dp.persistedMetadata = metadata
 	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(newData))
 	return
-}
-
-func (dp *DataPartition) truncateRaftWAL(status *WALApplyStatus) {
-	if status != nil && status.LastTruncate() > 0 && dp.raftPartition != nil {
-		dp.raftPartition.Truncate(status.LastTruncate())
-	}
 }
 
 func (dp *DataPartition) forceFlushAllFD() (cnt int) {

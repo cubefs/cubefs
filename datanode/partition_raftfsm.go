@@ -130,12 +130,12 @@ func (dp *DataPartition) handleRaftApplyMemberChange(confChange *raftproto.ConfC
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
 func (dp *DataPartition) handleRaftSnapshot(recoverNode uint64) (raftproto.Snapshot, error) {
-	var statusSnap = dp.applyStatus.Snap()
-	var snapshotIndex = statusSnap.NextTruncate()
+	var as = dp.applyStatus.Snap()
+	var snapshotIndex = as.Truncated() + 1
 	snapIterator := NewItemIterator(snapshotIndex)
 	if log.IsInfoEnabled() {
-		log.LogInfof("partition[%v] [lastTruncate: %v, nextTruncate: %v, applied: %v] generate raft snapshot [index: %v] for peer[%v]",
-			dp.partitionID, statusSnap.LastTruncate(), statusSnap.NextTruncate(), statusSnap.Applied(), snapshotIndex, recoverNode)
+		log.LogInfof("partition[%v] [applied: %v, truncated: %v] generate raft snapshot [index: %v] for peer[%v]",
+			dp.partitionID, as.Applied(), as.Truncated(), snapshotIndex, recoverNode)
 	}
 	return snapIterator, nil
 }
@@ -240,7 +240,7 @@ func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
 
 func (dp *DataPartition) advanceApplyID(applyID uint64) {
 	if snap, success := dp.applyStatus.AdvanceApplied(applyID); !success {
-		log.LogWarnf("Partition(%v) advance apply ID failed, curApplied[%v] curLastTruncate[%v]", dp.partitionID, snap.Applied(), snap.LastTruncate())
+		log.LogWarnf("Partition(%v) advance apply ID failed, curApplied[%v]", dp.partitionID, snap.Applied())
 	}
 	if !dp.isCatchUp {
 		dp.isCatchUp = true

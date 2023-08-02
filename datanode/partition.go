@@ -127,18 +127,17 @@ func (sp sortedPeers) Swap(i, j int) {
 }
 
 type WALApplyStatus struct {
-	applied      uint64
-	lastTruncate uint64
-	nextTruncate uint64
+	applied   uint64
+	truncated uint64
 
 	mu sync.RWMutex
 }
 
-func (s *WALApplyStatus) Init(applied, lastTruncate uint64) (success bool) {
+func (s *WALApplyStatus) Init(applied, truncated uint64) (success bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if applied == 0 || (applied != 0 && applied >= lastTruncate) {
-		s.applied, s.lastTruncate = applied, lastTruncate
+	if applied == 0 || (applied != 0 && applied >= truncated) {
+		s.applied, s.truncated = applied, truncated
 		success = true
 	}
 	return
@@ -147,14 +146,13 @@ func (s *WALApplyStatus) Init(applied, lastTruncate uint64) (success bool) {
 func (s *WALApplyStatus) AdvanceApplied(id uint64) (snap WALApplyStatus, success bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.applied < id && s.lastTruncate <= id {
+	if s.applied < id && s.truncated <= id {
 		s.applied = id
 		success = true
 	}
 	snap = WALApplyStatus{
-		applied:      s.applied,
-		lastTruncate: s.lastTruncate,
-		nextTruncate: s.nextTruncate,
+		applied:   s.applied,
+		truncated: s.truncated,
 	}
 	return
 }
@@ -165,43 +163,32 @@ func (s *WALApplyStatus) Applied() uint64 {
 	return s.applied
 }
 
-func (s *WALApplyStatus) AdvanceNextTruncate(id uint64) (snap WALApplyStatus, success bool) {
+func (s *WALApplyStatus) AdvanceTruncated(id uint64) (snap WALApplyStatus, success bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.lastTruncate < id && s.nextTruncate < id && id <= s.applied {
-		if s.nextTruncate != 0 && s.nextTruncate > s.lastTruncate {
-			s.lastTruncate = s.nextTruncate
-		}
-		s.nextTruncate = id
+	if s.truncated < id && id <= s.applied {
+		s.truncated = id
 		success = true
 	}
 	snap = WALApplyStatus{
-		applied:      s.applied,
-		lastTruncate: s.lastTruncate,
-		nextTruncate: s.nextTruncate,
+		applied:   s.applied,
+		truncated: s.truncated,
 	}
 	return
 }
 
-func (s *WALApplyStatus) NextTruncate() uint64 {
+func (s *WALApplyStatus) Truncated() uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.nextTruncate
-}
-
-func (s *WALApplyStatus) LastTruncate() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.lastTruncate
+	return s.truncated
 }
 
 func (s *WALApplyStatus) Snap() *WALApplyStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return &WALApplyStatus{
-		applied:      s.applied,
-		lastTruncate: s.lastTruncate,
-		nextTruncate: s.nextTruncate,
+		applied:   s.applied,
+		truncated: s.truncated,
 	}
 }
 
