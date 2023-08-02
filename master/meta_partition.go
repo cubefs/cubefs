@@ -216,11 +216,15 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 		return
 	}
 
+	vol.createMpMutex.Lock()
+	defer vol.createMpMutex.Unlock()
+
 	curMaxPartitionID := vol.maxPartitionID()
 	if mp.PartitionID != curMaxPartitionID {
 		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return
 	}
+
 	mp.Lock()
 	defer mp.Unlock()
 	if _, err = mp.getMetaReplicaLeader(); err != nil {

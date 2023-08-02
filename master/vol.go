@@ -311,6 +311,8 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	if count > defaultMaxInitMetaPartitionCount {
 		count = defaultMaxInitMetaPartitionCount
 	}
+
+	vol.createMpMutex.Lock()
 	for index := 0; index < count; index++ {
 		if index != 0 {
 			start = end + 1
@@ -324,6 +326,8 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 			break
 		}
 	}
+	vol.createMpMutex.Unlock()
+
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	if len(vol.MetaPartitions) != count {
@@ -1125,8 +1129,6 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, me
 }
 
 func (vol *Vol) createMetaPartition(c *Cluster, start, end uint64) (err error) {
-	vol.createMpMutex.Lock()
-	defer vol.createMpMutex.Unlock()
 	var mp *MetaPartition
 	if mp, err = vol.doCreateMetaPartition(c, start, end); err != nil {
 		return
