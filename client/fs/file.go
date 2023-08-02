@@ -374,7 +374,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	ino := f.info.Inode
 	reqlen := len(req.Data)
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
-		ino, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaIds, req)
+		ino, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
 	if proto.IsHot(f.super.volType) {
 		filesize, _ := f.fileSize(ino)
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
@@ -424,7 +424,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if ok := f.super.ec.UidIsLimited(req.Uid); ok {
 			return ParseError(syscall.ENOSPC)
 		}
-		if limited := f.super.mw.IsQuotaLimited(f.info.QuotaIds); limited {
+		var quotaIds []uint32
+		for quotaId := range f.info.QuotaInfos {
+			quotaIds = append(quotaIds, quotaId)
+		}
+		if limited := f.super.mw.IsQuotaLimited(quotaIds); limited {
 			return ParseError(syscall.ENOSPC)
 		}
 		return nil
