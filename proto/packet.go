@@ -333,12 +333,16 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "IntraGroupNetErr"
 	case OpMetaCreateInode:
 		m = "OpMetaCreateInode"
+	case OpQuotaCreateInode:
+		m = "OpQuotaCreateInode"
 	case OpMetaUnlinkInode:
 		m = "OpMetaUnlinkInode"
 	case OpMetaBatchUnlinkInode:
 		m = "OpMetaBatchUnlinkInode"
 	case OpMetaCreateDentry:
 		m = "OpMetaCreateDentry"
+	case OpQuotaCreateDentry:
+		m = "OpQuotaCreateDentry"
 	case OpMetaDeleteDentry:
 		m = "OpMetaDeleteDentry"
 	case OpMetaOpen:
