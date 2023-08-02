@@ -312,7 +312,7 @@ func main() {
 	//use uber automaxprocs: get real cpu number to k8s pod"
 
 	level := parseLogLevel(opt.Loglvl)
-	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil)
+	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil, log.DefaultLogLeftSpaceLimit)
 	if err != nil {
 		err = errors.NewErrorf("Init log dir fail: %v\n", err)
 		fmt.Println(err)

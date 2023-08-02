@@ -17,12 +17,13 @@ package log
 const (
 	// DefaultRollingSize Specifies at what size to roll the output log at
 	// Units: byte
-	DefaultRollingSize    = 5 * 1024 * 1024 * 1024
+	DefaultRollingSize    = 1 * 1024 * 1024 * 1024
 	DefaultMinRollingSize = 200 * 1024 * 1024
 	// DefaultHeadRoom The tolerance for the log space limit (in megabytes)
 	DefaultHeadRoom = 50 * 1024
 	// DefaultHeadRatio The disk reserve space ratio
-	DefaultHeadRatio = 0.2
+	DefaultHeadRatio         = 0.2
+	DefaultLogLeftSpaceLimit = 5 * 1024
 )
 
 // A log can be rotated by the size or time.

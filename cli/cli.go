@@ -81,7 +81,7 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 
 func main() {
 	var err error
-	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil)
+	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
 	defer log.LogFlush()
 	if err = runCLI(); err != nil {
 		log.LogFlush()
