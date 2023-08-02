@@ -25,6 +25,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -159,7 +160,12 @@ func main() {
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
-	logLeftSpaceLimit := cfg.GetInt(ConfigKeyLogLeftSpaceLimit)
+	logLeftSpaceLimitStr := cfg.GetString(ConfigKeyLogLeftSpaceLimit)
+	logLeftSpaceLimit, err := strconv.ParseInt(logLeftSpaceLimitStr, 10, 64)
+	if err != nil || logLeftSpaceLimit == 0 {
+		log.LogErrorf("logLeftSpaceLimit is not a legal int value: %v", err.Error())
+		logLeftSpaceLimit = log.DefaultLogLeftSpaceLimit
+	}
 
 	// Init server instance with specified role configuration.
 	var (
@@ -209,10 +215,6 @@ func main() {
 		level = log.CriticalLevel
 	default:
 		level = log.ErrorLevel
-	}
-
-	if logLeftSpaceLimit == 0 {
-		logLeftSpaceLimit = log.DefaultLogLeftSpaceLimit
 	}
 
 	_, err = log.InitLog(logDir, module, level, nil, logLeftSpaceLimit)
