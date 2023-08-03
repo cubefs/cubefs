@@ -2443,7 +2443,10 @@ func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64) (quotaInfo
 		PartitionId: mp.PartitionID,
 		Inode:       inode,
 	}
-
+	qcInfo := mw.qc.Get(inode)
+	if qcInfo != nil {
+		return qcInfo.quotaInfos, nil
+	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaGetInodeQuota
 	packet.PartitionID = mp.PartitionID
@@ -2478,6 +2481,11 @@ func (mw *MetaWrapper) getInodeQuota(mp *MetaPartition, inode uint64) (quotaInfo
 		return
 	}
 	quotaInfos = resp.MetaQuotaInfoMap
+	var qinfo QuotaCacheInfo
+	qinfo.quotaInfos = make(map[uint32]*proto.MetaQuotaInfo)
+	qinfo.quotaInfos = quotaInfos
+	qinfo.inode = inode
+	mw.qc.Put(inode, &qinfo)
 	log.LogDebugf("getInodeQuota: req(%v) resp(%v) err(%v)", *req, *resp, err)
 	return
 }
