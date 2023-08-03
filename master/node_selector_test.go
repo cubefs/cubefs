@@ -23,6 +23,8 @@ import (
 	"github.com/cubefs/cubefs/util"
 )
 
+const loopNodeSelectorTestCount = 100
+
 func writeDataNode(sb *strings.Builder, node *DataNode) {
 	sb.WriteString(fmt.Sprintf("Data Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
@@ -137,19 +139,19 @@ func getFirstMetaNodeForTest(t *testing.T, selectZone string) (node *MetaNode) {
 	return
 }
 
-func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *DataNode) {
+func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *DataNode) *DataNode {
 	selectZone := testZone2
 	zone, err := server.cluster.t.getZone(selectZone)
 	if err != nil {
 		t.Errorf("failed to get zone %v", err)
-		return
+		return nil
 	}
 	t.Log("List nodesets of zone")
 	printNodesetsOfZone(t, zone)
 	nsc := zone.getAllNodeSet()
 	if nsc.Len() == 0 {
 		t.Errorf("nodeset count could not be 0")
-		return
+		return nil
 	}
 	nset := nsc[0]
 	t.Logf("List datanodes of nodeset %v", nset.ID)
@@ -157,14 +159,14 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 	_, peer, err := selector.Select(nset, nil, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
-		return
+		return nil
 	}
 	t.Log("List selected nodes:")
 	for i := 0; i < len(peer); i++ {
 		nodeVal, ok := nset.dataNodes.Load(peer[i].Addr)
 		if !ok {
 			t.Errorf("%v select wrong node", selector.GetName())
-			return
+			return nil
 		}
 		node := nodeVal.(*DataNode)
 		printDataNode(t, node)
@@ -172,21 +174,22 @@ func DataNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Dat
 	nodeVal, ok := nset.dataNodes.Load(peer[0].Addr)
 	if !ok {
 		t.Errorf("%v failed to select nodes", selector.GetName())
-		return
+		return nil
 	}
 	node := nodeVal.(*DataNode)
 	if expectedNode != nil && node.ID != expectedNode.ID {
 		t.Errorf("%v select wrong node, expected: %v actually: %v", selector.GetName(), expectedNode.ID, node.ID)
-		return
+		return nil
 	}
+	return node
 }
 
-func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *MetaNode) {
+func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *MetaNode) *MetaNode {
 	selectZone := testZone2
 	zone, err := server.cluster.t.getZone(selectZone)
 	if err != nil {
 		t.Errorf("failed to get zone %v", err)
-		return
+		return nil
 	}
 	t.Log("List nodesets of zone")
 	printNodesetsOfZone(t, zone)
@@ -197,14 +200,14 @@ func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Met
 	_, peer, err := selector.Select(nset, nil, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodes %v", selector.GetName(), err)
-		return
+		return nil
 	}
 	t.Log("List selected nodes:")
 	for i := 0; i < len(peer); i++ {
 		nodeVal, ok := nset.metaNodes.Load(peer[i].Addr)
 		if !ok {
 			t.Errorf("%v select wrong node", selector.GetName())
-			return
+			return nil
 		}
 		node := nodeVal.(*MetaNode)
 		printMetaNode(t, node)
@@ -212,27 +215,58 @@ func MetaNodeSelectorTest(t *testing.T, selector NodeSelector, expectedNode *Met
 	nodeVal, ok := nset.metaNodes.Load(peer[0].Addr)
 	if !ok {
 		t.Errorf("%v failed to select nodes", selector.GetName())
-		return
+		return nil
 	}
 	node := nodeVal.(*MetaNode)
 	if expectedNode != nil && node.ID != expectedNode.ID {
 		t.Errorf("%v select wrong node, expected: %v actually: %v", selector.GetName(), expectedNode.ID, node.ID)
-		return
+		return nil
 	}
+	return node
+}
+
+func printNodeSelectTimes(t *testing.T, times map[uint64]int) {
+	sb := strings.Builder{}
+	for id, time := range times {
+		sb.WriteString(fmt.Sprintf("Node %v select times %v\n", id, time))
+	}
+	t.Log(sb.String())
 }
 
 func TestCarryWeightNodeSelector(t *testing.T) {
 	// get first node
 	dataNode := getFirstDataNodeForTest(t, testZone2)
 	metaNode := getFirstMetaNodeForTest(t, testZone2)
-
+	dataSelectTimes := make(map[uint64]int)
+	metaSelectTimes := make(map[uint64]int)
 	// prepare for datanode
 	tmp := dataNode.AvailableSpace
 	dataNode.Total += dataNode.AvailableSpace
 	dataNode.AvailableSpace *= 2
 	// select test
 	selector := NewCarryWeightNodeSelector(DataNodeType)
-	DataNodeSelectorTest(t, selector, dataNode)
+	for i := 0; i != loopNodeSelectorTestCount; i++ {
+		expected := dataNode
+		if i != 0 {
+			expected = nil
+		}
+		node := DataNodeSelectorTest(t, selector, expected)
+		if node == nil {
+			return
+		}
+		count, _ := dataSelectTimes[node.ID]
+		count += 1
+		dataSelectTimes[node.ID] = count
+	}
+	t.Logf("%v data node select times:\n", selector.GetName())
+	printNodeSelectTimes(t, dataSelectTimes)
+	count, _ := dataSelectTimes[dataNode.ID]
+	for _, c := range dataSelectTimes {
+		if count < c {
+			t.Errorf("%v failed to select data nodes", selector.GetName())
+			return
+		}
+	}
 	// restore status
 	dataNode.Total -= tmp
 	dataNode.AvailableSpace = tmp
@@ -242,7 +276,89 @@ func TestCarryWeightNodeSelector(t *testing.T) {
 	metaNode.Total *= 2
 	// select test
 	selector = NewCarryWeightNodeSelector(MetaNodeType)
-	MetaNodeSelectorTest(t, selector, metaNode)
+	for i := 0; i != loopNodeSelectorTestCount; i++ {
+		expected := metaNode
+		if i != 0 {
+			expected = nil
+		}
+		node := MetaNodeSelectorTest(t, selector, expected)
+		if node == nil {
+			return
+		}
+		count, _ := metaSelectTimes[node.ID]
+		count += 1
+		metaSelectTimes[node.ID] = count
+	}
+	t.Logf("%v meta node select times:\n", selector.GetName())
+	printNodeSelectTimes(t, metaSelectTimes)
+	count, _ = metaSelectTimes[metaNode.ID]
+	for _, c := range metaSelectTimes {
+		if count < c {
+			t.Errorf("%v failed to select meta nodes", selector.GetName())
+			return
+		}
+	}
+	// restore status
+	metaNode.Total = tmp
+}
+
+func TestTicketNodeSelector(t *testing.T) {
+	// get first node
+	dataNode := getFirstDataNodeForTest(t, testZone2)
+	metaNode := getFirstMetaNodeForTest(t, testZone2)
+	dataSelectTimes := make(map[uint64]int)
+	metaSelectTimes := make(map[uint64]int)
+	// prepare for datanode
+	tmp := dataNode.AvailableSpace
+	dataNode.Total += dataNode.AvailableSpace
+	dataNode.AvailableSpace *= 2
+	// select test
+	selector := NewTicketNodeSelector(DataNodeType)
+	for i := 0; i != loopNodeSelectorTestCount; i++ {
+		node := DataNodeSelectorTest(t, selector, nil)
+		if node == nil {
+			return
+		}
+		count, _ := dataSelectTimes[node.ID]
+		count += 1
+		dataSelectTimes[node.ID] = count
+	}
+	t.Logf("%v data node select times:\n", selector.GetName())
+	printNodeSelectTimes(t, dataSelectTimes)
+	count, _ := dataSelectTimes[dataNode.ID]
+	for _, c := range dataSelectTimes {
+		if count < c {
+			t.Errorf("%v failed to select data nodes", selector.GetName())
+			return
+		}
+	}
+	// restore status
+	dataNode.Total -= tmp
+	dataNode.AvailableSpace = tmp
+
+	// prepare for metanode
+	tmp = metaNode.Total
+	metaNode.Total *= 2
+	// select test
+	selector = NewTicketNodeSelector(MetaNodeType)
+	for i := 0; i != loopNodeSelectorTestCount; i++ {
+		node := MetaNodeSelectorTest(t, selector, nil)
+		if node == nil {
+			return
+		}
+		count, _ := metaSelectTimes[node.ID]
+		count += 1
+		metaSelectTimes[node.ID] = count
+	}
+	t.Logf("%v meta node select times:\n", selector.GetName())
+	printNodeSelectTimes(t, metaSelectTimes)
+	count, _ = metaSelectTimes[metaNode.ID]
+	for _, c := range metaSelectTimes {
+		if count < c {
+			t.Errorf("%v failed to select meta nodes", selector.GetName())
+			return
+		}
+	}
 	// restore status
 	metaNode.Total = tmp
 }
@@ -259,12 +375,16 @@ func TestRoundRobinNodeSelector(t *testing.T) {
 	selector := NewRoundRobinNodeSelector(DataNodeType)
 	for i, node := range dataNodes {
 		t.Logf("Select DataNode Round %v", i)
-		DataNodeSelectorTest(t, selector, node)
+		if DataNodeSelectorTest(t, selector, node) == nil {
+			return
+		}
 	}
 	selector = NewRoundRobinNodeSelector(MetaNodeType)
 	for i, node := range metaNodes {
 		t.Logf("Select MetaNode Round %v", i)
-		MetaNodeSelectorTest(t, selector, node)
+		if MetaNodeSelectorTest(t, selector, node) == nil {
+			return
+		}
 	}
 }
 
@@ -279,7 +399,9 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 	dataNode.AvailableSpace *= 2
 	// select test
 	selector := NewAvailableSpaceFirstNodeSelector(DataNodeType)
-	DataNodeSelectorTest(t, selector, dataNode)
+	if DataNodeSelectorTest(t, selector, dataNode) == nil {
+		return
+	}
 	// restore status
 	dataNode.Total -= tmp
 	dataNode.AvailableSpace = tmp
@@ -289,7 +411,9 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 	metaNode.Total *= 2
 	// select test
 	selector = NewAvailableSpaceFirstNodeSelector(MetaNodeType)
-	MetaNodeSelectorTest(t, selector, metaNode)
+	if MetaNodeSelectorTest(t, selector, metaNode) == nil {
+		return
+	}
 	// restore status
 	metaNode.Total = tmp
 }
