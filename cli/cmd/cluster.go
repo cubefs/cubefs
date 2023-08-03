@@ -56,6 +56,7 @@ const (
 	nodeAutoRepairRateKey         = "autoRepairRate"
 	nodeMaxDpCntLimit             = "maxDpCntLimit"
 	cmdForbidMpDecommission       = "forbid meta partition decommission"
+	cmdClusterUpdateSelector      = "update cluster node selector and nodeset selector"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
@@ -195,6 +196,10 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 
 func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor, opMaxDpCntLimit string
+	dataNodesetSelector := ""
+	metaNodesetSelector := ""
+	dataNodeSelector := ""
+	metaNodeSelector := ""
 	var cmd = &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -208,7 +213,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}()
 
-			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs, optAutoRepairRate, optLoadFactor, opMaxDpCntLimit); err != nil {
+			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
+				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit,
+				dataNodesetSelector, metaNodesetSelector,
+				dataNodeSelector, metaNodeSelector); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -220,7 +228,10 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
 	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
-
+	cmd.Flags().StringVar(&dataNodesetSelector, CliFlagDataNodesetSelector, "", "Set the nodeset select policy(datanode) for cluster")
+	cmd.Flags().StringVar(&metaNodesetSelector, CliFlagMetaNodesetSelector, "", "Set the nodeset select policy(metanode) for cluster")
+	cmd.Flags().StringVar(&dataNodeSelector, CliFlagDataNodeSelector, "", "Set the node select policy(datanode) for cluster")
+	cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for cluster")
 	return cmd
 }
 

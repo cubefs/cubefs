@@ -1229,6 +1229,26 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[clusterCreateTimeKey] = value
 	}
 
+	if value = extractDataNodesetSelector(r); value != "" {
+		noParams = false
+		params[dataNodesetSelectorKey] = value
+	}
+
+	if value = extractMetaNodesetSelector(r); value != "" {
+		noParams = false
+		params[metaNodesetSelectorKey] = value
+	}
+
+	if value = extractDataNodeSelector(r); value != "" {
+		noParams = false
+		params[dataNodeSelectorKey] = value
+	}
+
+	if value = extractMetaNodeSelector(r); value != "" {
+		noParams = false
+		params[metaNodeSelectorKey] = value
+	}
+
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)
 		return

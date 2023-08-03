@@ -34,7 +34,7 @@ func writeDataNode(sb *strings.Builder, node *DataNode) {
 func writeMetaNode(sb *strings.Builder, node *MetaNode) {
 	sb.WriteString(fmt.Sprintf("Meta Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
-	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", node.Total-node.Used/util.MB))
+	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", (node.Total-node.Used)/util.MB))
 }
 
 func printDataNode(t *testing.T, node *DataNode) {
