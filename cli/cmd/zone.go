@@ -121,6 +121,8 @@ func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 	enable := true
 	dataNodesetSelector := ""
 	metaNodesetSelector := ""
+	dataNodeSelector := ""
+	metaNodeSelector := ""
 	var cmd = &cobra.Command{
 		Use:   CliOpUpdate + " [NAME]",
 		Short: cmdZoneUpdateShort,
@@ -133,7 +135,7 @@ func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 				}
 			}()
 			zoneName := args[0]
-			if err = client.AdminAPI().UpdateZone(zoneName, enable, dataNodesetSelector, metaNodesetSelector); err != nil {
+			if err = client.AdminAPI().UpdateZone(zoneName, enable, dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector); err != nil {
 				return
 			}
 			stdout(fmt.Sprintf("Zone %v has been update successfully!\n", zoneName))
@@ -142,5 +144,7 @@ func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVar(&enable, "enable", true, "Enable of disable specify zone")
 	cmd.Flags().StringVar(&dataNodesetSelector, "dataNodesetSelector", "", "Set the nodeset select policy(datanode) for specify zone")
 	cmd.Flags().StringVar(&metaNodesetSelector, "metaNodesetSelector", "", "Set the nodeset select policy(metanode) for specify zone")
+	cmd.Flags().StringVar(&dataNodeSelector, "dataNodeSelector", "", "Set the node select policy(datanode) for specify zone")
+	cmd.Flags().StringVar(&metaNodeSelector, "metaNodeSelector", "", "Set the node select policy(metanode) for specify zone")
 	return cmd
 }

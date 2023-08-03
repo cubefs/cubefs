@@ -1006,6 +1006,14 @@ func extractMetaNodesetSelector(r *http.Request) string {
 	return r.FormValue(metaNodesetSelectorKey)
 }
 
+func extractDataNodeSelector(r *http.Request) string {
+	return r.FormValue(dataNodeSelectorKey)
+}
+
+func extractMetaNodeSelector(r *http.Request) string {
+	return r.FormValue(metaNodeSelectorKey)
+}
+
 func extractFollowerRead(r *http.Request) (followerRead bool, exist bool, err error) {
 	var value string
 	if value = r.FormValue(followerReadKey); value == "" {

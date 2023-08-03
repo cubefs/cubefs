@@ -832,6 +832,55 @@ func TestUpdateZoneNodesetSelector(t *testing.T) {
 	process(updateMetaSelectorUrl, t)
 }
 
+func TestUpdateZoneNodeSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v?name=%v&enable=1", hostAddr, proto.UpdateZone, testZone2)
+	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	failed := false
+	func() {
+		zone.nsLock.RLock()
+		defer zone.nsLock.RUnlock()
+		for _, ns := range zone.nodeSetMap {
+			if ns.GetDataNodeSelector() != TicketNodeSelectorName {
+				t.Errorf("failed to change data nodeset selector")
+				failed = true
+			}
+		}
+	}()
+	if failed {
+		return
+	}
+	process(updateMetaSelectorUrl, t)
+	func() {
+		zone.nsLock.RLock()
+		defer zone.nsLock.RUnlock()
+		for _, ns := range zone.nodeSetMap {
+			if ns.GetMetaNodeSelector() != TicketNodeSelectorName {
+				t.Errorf("failed to change data nodeset selector")
+				failed = true
+			}
+		}
+	}()
+	if failed {
+		return
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
 func TestUpdateZoneStatus(t *testing.T) {
 	zone, err := server.cluster.t.getZone(testZone2)
 	if err != nil {
