@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 set -e
 
@@ -28,8 +28,13 @@ genMaster()
 {
   echo "start gen master$1.conf"
   masterDir="${baseDir}/master${1}"
-  sed "s/_id_/${1}/g" ${tplDir}/master.tpl | sed "s/_ip_/${2}/g" | sed "s/_peers_/${peers}/g" |sed "s|_dir_|${masterDir}|g" > ${confDir}/master$1.conf
-  echo "gen master$1.conf success"
+  confFile="${confDir}/master$1.conf"
+  if [ ! -f "$confFile" ]; then
+    sed "s/_id_/${1}/g" ${tplDir}/master.tpl | sed "s/_ip_/${2}/g" | sed "s/_peers_/${peers}/g" | sed "s|_dir_|${masterDir}|g" > "$confFile"
+    echo "gen master$1.conf success"
+  else
+    echo "master$1.conf already exists, skipping generation"
+  fi
 } 
 
 genMaster 1 $ip1
@@ -48,8 +53,13 @@ genData()
     mkdir -p $dataDir/disk
   fi
 
-  sed "s/_ip_/${2}/g" ${tplDir}/data.tpl | sed "s|_dir_|${dataDir}|g" | sed "s|_master_addr_|${masterAddr}|g" > ${confDir}/data$1.conf
-  echo "gen $data$1.conf success"
+  confFile="${confDir}/data$1.conf"
+  if [ ! -f "$confFile" ]; then
+    sed "s/_ip_/${2}/g" ${tplDir}/data.tpl | sed "s|_dir_|${dataDir}|g" | sed "s|_master_addr_|${masterAddr}|g" > "$confFile"
+    echo "gen data$1.conf success"
+  else
+    echo "data$1.conf already exists, skipping generation"
+  fi
 }
 
 genData 1 $ip1
@@ -62,8 +72,13 @@ genMeta()
 {
   echo "start gen meta$1.conf"
   metaDir=$baseDir/meta$1
-  sed "s/_ip_/${2}/g" ${tplDir}/meta.tpl | sed "s|_dir_|${metaDir}|g" | sed "s|_master_addr_|${masterAddr}|g" > ${confDir}/meta$1.conf
-  echo "gen meta$1.conf success"
+  confFile="${confDir}/meta$1.conf"
+  if [ ! -f "$confFile" ]; then
+    sed "s/_ip_/${2}/g" ${tplDir}/meta.tpl | sed "s|_dir_|${metaDir}|g" | sed "s|_master_addr_|${masterAddr}|g" > "$confFile"
+    echo "gen meta$1.conf success"
+  else
+    echo "meta$1.conf already exists, skipping generation"
+  fi
 }
 
 genMeta 1 $ip1
@@ -79,6 +94,11 @@ if [ ! -d "$mntDir" ]; then
 fi
 
 
+confFile="${confDir}/client.conf"
 echo "start gen client.conf"
-sed "s/_master_host_/${masterHost}/g" ${tplDir}/client.tpl | sed "s|_dir_|${baseDir}|g" > ${confDir}/client.conf
-echo "gen client.conf success"
+if [ ! -f "$confFile" ]; then
+  sed "s/_master_host_/${masterHost}/g" ${tplDir}/client.tpl | sed "s|_dir_|${baseDir}|g" > "$confFile"
+  echo "gen client.conf success"
+else
+  echo "client.conf already exists, skipping generation"
+fi
