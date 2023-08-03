@@ -615,7 +615,7 @@ func (api *AdminAPI) SetMetaNodeThreshold(threshold float64) (err error) {
 	return
 }
 
-func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit string) (err error) {
+func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
 	request.addParam("batchCount", batchCount)
 	request.addParam("markDeleteRate", markDeleteRate)
@@ -623,7 +623,10 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	request.addParam("autoRepairRate", autoRepairRate)
 	request.addParam("loadFactor", loadFactor)
 	request.addParam("maxDpCntLimit", maxDpCntLimit)
-
+	request.addParam("dataNodesetSelector", dataNodesetSelector)
+	request.addParam("metaNodesetSelector", metaNodesetSelector)
+	request.addParam("dataNodeSelector", dataNodeSelector)
+	request.addParam("metaNodeSelector", metaNodeSelector)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
