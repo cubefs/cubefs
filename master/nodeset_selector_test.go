@@ -82,6 +82,13 @@ func TestCarryWeightNodesetSelector(t *testing.T) {
 	NodesetSelectorTest(t, selector)
 }
 
+func TestTicketNodesetSelector(t *testing.T) {
+	selector := NewTicketNodesetSelector(DataNodeType)
+	NodesetSelectorTest(t, selector)
+	selector = NewTicketNodesetSelector(MetaNodeType)
+	NodesetSelectorTest(t, selector)
+}
+
 func TestAvailableSpaceFirstNodesetSelector(t *testing.T) {
 	selector := NewAvailableSpaceFirstNodesetSelector(DataNodeType)
 	NodesetSelectorTest(t, selector)
