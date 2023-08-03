@@ -131,12 +131,14 @@ func (api *AdminAPI) GetNodeSet(nodeSetId string) (nodeSetStatInfo *proto.NodeSe
 	return
 }
 
-func (api *AdminAPI) UpdateZone(name string, enable bool, dataNodesetSelector string, metaNodesetSelector string) (err error) {
+func (api *AdminAPI) UpdateZone(name string, enable bool, dataNodesetSelector string, metaNodesetSelector string, dataNodeSelector string, metaNodeSelector string) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UpdateZone)
 	request.params["name"] = name
 	request.params["enable"] = strconv.FormatBool(enable)
 	request.params["dataNodesetSelector"] = dataNodesetSelector
 	request.params["metaNodesetSelector"] = metaNodesetSelector
+	request.params["dataNodeSelector"] = dataNodeSelector
+	request.params["metaNodeSelector"] = metaNodeSelector
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return err
 	}
