@@ -236,7 +236,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: cubefs-sc
+  storageClassName: cfs-sc
 ```
 
 `storageClassName` needs to be consistent with the `name` attribute in the `metadata` of the StorageClass created just now. This will create a storage volume based on the parameters defined in `cubefs-sc`.
@@ -289,7 +289,7 @@ spec:
         app: cfs-csi-demo-pod
     spec:
       nodeSelector:
-        cubefs-csi-node: enabled
+        component.cubefs.io/csi: enabled
       containers:
         - name: cfs-csi-demo
           image: nginx:1.17.9
