@@ -280,8 +280,10 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, err := extractStatus(r)
-	dataNodeSelector := extractDataNodesetSelector(r)
-	metaNodeSelector := extractMetaNodesetSelector(r)
+	dataNodesetSelector := extractDataNodesetSelector(r)
+	metaNodesetSelector := extractMetaNodesetSelector(r)
+	dataNodeSelector := extractDataNodeSelector(r)
+	metaNodeSelector := extractMetaNodeSelector(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -296,7 +298,12 @@ func (m *Server) updateZone(w http.ResponseWriter, r *http.Request) {
 	} else {
 		zone.setStatus(unavailableZone)
 	}
-	err = zone.updateNodesetSelector(m.cluster, dataNodeSelector, metaNodeSelector)
+	err = zone.updateNodesetSelector(m.cluster, dataNodesetSelector, metaNodesetSelector)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	err = m.updateZoneNodeSelector(zone.name, dataNodeSelector, metaNodeSelector)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2814,7 +2821,39 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 	return
 }
 
-func (m *Server) updateNodesetNodeSelector(zoneName string, nodesetId uint64, dataNodeSelector string, metaNodeSelector string) (err error) {
+func (m *Server) updateZoneNodeSelector(zoneName string, dataNodesetSelector string, metaNodesetSelector string) (err error) {
+	var ok bool
+	var value interface{}
+
+	if value, ok = m.cluster.t.zoneMap.Load(zoneName); !ok {
+		err = fmt.Errorf("zonename [%v] not found", zoneName)
+		return
+	}
+
+	zone := value.(*Zone)
+	zone.nsLock.RLock()
+	defer zone.nsLock.RUnlock()
+	for _, ns := range zone.nodeSetMap {
+		needSync := false
+		if dataNodesetSelector != "" && dataNodesetSelector != ns.GetDataNodeSelector() {
+			ns.SetDataNodeSelector(dataNodesetSelector)
+			needSync = true
+		}
+		if metaNodesetSelector != "" && metaNodesetSelector != ns.GetMetaNodeSelector() {
+			ns.SetMetaNodeSelector(metaNodesetSelector)
+			needSync = true
+		}
+		if needSync {
+			err = m.cluster.syncUpdateNodeSet(ns)
+			if err != nil {
+				return
+			}
+		}
+	}
+	return
+}
+
+func (m *Server) updateZoneNodesetNodeSelector(zoneName string, nodesetId uint64, dataNodesetSelector string, metaNodesetSelector string) (err error) {
 	var ns *nodeSet
 	var ok bool
 	var value interface{}
@@ -2830,18 +2869,21 @@ func (m *Server) updateNodesetNodeSelector(zoneName string, nodesetId uint64, da
 		return
 	}
 	needSync := false
-	if dataNodeSelector != "" && dataNodeSelector != ns.GetDataNodeSelector() {
-		ns.SetDataNodeSelector(dataNodeSelector)
+	if dataNodesetSelector != "" && dataNodesetSelector != ns.GetDataNodeSelector() {
+		ns.SetDataNodeSelector(dataNodesetSelector)
 		needSync = true
 	}
-	if metaNodeSelector != "" && metaNodeSelector != ns.GetMetaNodeSelector() {
-		ns.SetMetaNodeSelector(metaNodeSelector)
+	if metaNodesetSelector != "" && metaNodesetSelector != ns.GetMetaNodeSelector() {
+		ns.SetMetaNodeSelector(metaNodesetSelector)
 		needSync = true
 	}
 	if needSync {
-		m.cluster.syncUpdateNodeSet(ns)
+		err = m.cluster.syncUpdateNodeSet(ns)
+		if err != nil {
+			return
+		}
 	}
-	log.LogInfof("action[updateNodesetNodeSelector] zonename %v nodeset %v dataNodeSelector %v metaNodeSelector %v", zoneName, nodesetId, dataNodeSelector, metaNodeSelector)
+	log.LogInfof("action[updateNodesetNodeSelector] zonename %v nodeset %v dataNodeSelector %v metaNodeSelector %v", zoneName, nodesetId, dataNodesetSelector, metaNodesetSelector)
 	return
 }
 
@@ -3310,10 +3352,10 @@ func (m *Server) updateNodeSetNodeSelector(w http.ResponseWriter, r *http.Reques
 	if id, err = extractNodesetID(r); err != nil {
 		return
 	}
-	dataNodeSelector := r.FormValue(dataNodeSelectorKey)
+	dataNodeSelector := extractDataNodeSelector(r)
 	metaNodeSelector := r.FormValue(metaNodeSelectorKey)
 
-	if err = m.updateNodesetNodeSelector(zoneName, id, dataNodeSelector, metaNodeSelector); err != nil {
+	if err = m.updateZoneNodesetNodeSelector(zoneName, id, dataNodeSelector, metaNodeSelector); err != nil {
 		return
 	}
 
