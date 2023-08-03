@@ -267,19 +267,20 @@ func (mp *metaPartition) TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err 
 		txInfo = item.(*proto.TransactionInfo)
 		status = proto.OpOk
 	} else {
-		status = proto.OpNotExistErr
+		status = proto.OpTxInfoNotExistErr
 	}
 
 	var reply []byte
-	resp := &proto.TxGetInfoResponse{
-		TxInfo: txInfo,
+	if status == proto.OpOk {
+		resp := &proto.TxGetInfoResponse{
+			TxInfo: txInfo,
+		}
+		reply, err = json.Marshal(resp)
+		if err != nil {
+			status = proto.OpErr
+			reply = []byte(err.Error())
+		}
 	}
-	reply, err = json.Marshal(resp)
-	if err != nil {
-		status = proto.OpErr
-		reply = []byte(err.Error())
-	}
-
 	p.PacketErrorWithBody(status, reply)
 	return err
 }

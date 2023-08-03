@@ -255,8 +255,9 @@ type TxDentryApplyRequest struct {
 }
 
 type TxGetInfoRequest struct {
-	TxID string `json:"txid"`
-	Pid  uint64 `json:"pid"`
+	VolName string `json:"vol"`
+	TxID    string `json:"txid"`
+	Pid     uint64 `json:"pid"`
 }
 
 type TxGetInfoResponse struct {
