@@ -58,8 +58,8 @@ func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 		t.Errorf("%v failed to select nodeset %v", selector.GetName(), err)
 		return
 	}
-	zone.nsLock.Lock()
-	defer zone.nsLock.Unlock()
+	zone.nsLock.RLock()
+	defer zone.nsLock.RUnlock()
 	if _, ok := zone.nodeSetMap[ns.ID]; !ok {
 		t.Errorf("%v select a wrong nodeset", selector.GetName())
 		return
