@@ -20,3 +20,6 @@ blobstore/bin/
 /build/lib/
 /cover.output
 /cubefs_unittest.output
+.log
+blobstore/run/logs
+build/run
