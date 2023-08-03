@@ -297,7 +297,7 @@ func (s *TicketNodesetSelector) GetTicket(nsc nodeSetCollection, excludeNodeSets
 	for i := 0; i < len(nsc); i++ {
 		nset := nsc[i]
 		if nset.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, nset.ID) {
-			total += nset.getTotalSpaceOf(s.nodeType)
+			total += nset.getTotalAvailableSpaceOf(s.nodeType)
 		}
 	}
 	ticket := uint64(0)
@@ -312,7 +312,7 @@ func (s *TicketNodesetSelector) GetNodesetByTicket(ticket uint64, nsc nodeSetCol
 	for i := 0; i < len(nsc); i++ {
 		nset := nsc[i]
 		if nset.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, nset.ID) {
-			total += nset.getTotalSpaceOf(s.nodeType)
+			total += nset.getTotalAvailableSpaceOf(s.nodeType)
 			if ticket <= total {
 				ns = nset
 				return

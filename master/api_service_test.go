@@ -1143,3 +1143,80 @@ func TestGetNodeSets(t *testing.T) {
 	fmt.Println(reqURL)
 	process(reqURL, t)
 }
+
+func TestUpdateClusterNodeSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	updateDataSelectorUrl := fmt.Sprintf("%v?dataNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v?metaNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	failed := false
+	func() {
+		zone.nsLock.RLock()
+		defer zone.nsLock.RUnlock()
+		for _, ns := range zone.nodeSetMap {
+			if ns.GetDataNodeSelector() != TicketNodeSelectorName {
+				t.Errorf("failed to change data nodeset selector")
+				failed = true
+			}
+		}
+	}()
+	if failed {
+		return
+	}
+	process(updateMetaSelectorUrl, t)
+	func() {
+		zone.nsLock.RLock()
+		defer zone.nsLock.RUnlock()
+		for _, ns := range zone.nodeSetMap {
+			if ns.GetMetaNodeSelector() != TicketNodeSelectorName {
+				t.Errorf("failed to change data nodeset selector")
+				failed = true
+			}
+		}
+	}()
+	if failed {
+		return
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v?dataNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v?metaNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
+func TestUpdateClusterNodesetSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	updateDataSelectorUrl := fmt.Sprintf("%v?dataNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v?metaNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
+	process(updateDataSelectorUrl, t)
+	if zone.GetDataNodesetSelector() != CarryWeightNodesetSelectorName {
+		t.Errorf("failed to change data nodeset selector")
+	}
+	process(updateMetaSelectorUrl, t)
+	if zone.GetMetaNodesetSelector() != CarryWeightNodesetSelectorName {
+		t.Errorf("failed to change meta nodeset selector")
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v?dataNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v?metaNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}

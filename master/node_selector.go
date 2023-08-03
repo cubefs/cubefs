@@ -514,10 +514,10 @@ func (s *TicketNodeSelector) GetTicket(nodes []Node, excludeHosts []string, sele
 		switch s.nodeType {
 		case MetaNodeType:
 			n := nodes[i].(*MetaNode)
-			total += n.Total
+			total += n.Total - n.Used
 		case DataNodeType:
 			n := nodes[i].(*DataNode)
-			total += n.Total
+			total += n.AvailableSpace
 		default:
 			panic("unkown node type")
 		}
@@ -538,10 +538,10 @@ func (s *TicketNodeSelector) GetNodeByTicket(ticket uint64, nodes []Node, exclud
 		switch s.nodeType {
 		case MetaNodeType:
 			n := nodes[i].(*MetaNode)
-			total += n.Total
+			total += n.Total - n.Used
 		case DataNodeType:
 			n := nodes[i].(*DataNode)
-			total += n.Total
+			total += n.AvailableSpace
 		default:
 			panic("unkown node type")
 		}
@@ -583,12 +583,10 @@ func (s *TicketNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaN
 		if node == nil {
 			break
 		}
-		if !contains(orderHosts, node.GetAddr()) {
-			orderHosts = append(orderHosts, node.GetAddr())
-			node.SelectNodeForWrite()
-			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
-			peers = append(peers, peer)
-		}
+		orderHosts = append(orderHosts, node.GetAddr())
+		node.SelectNodeForWrite()
+		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
+		peers = append(peers, peer)
 	}
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < replicaNum {
