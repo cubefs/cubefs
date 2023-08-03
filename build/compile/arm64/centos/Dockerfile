@@ -1,4 +1,4 @@
-FROM centos:7.5.1804
+FROM centos:7.5.1804@sha256:7a45e4a1efbaafc1d9aa89925b6fdb33288a96d35ea0581412316e2f0ad3720a
 
 MAINTAINER cubefs
 
