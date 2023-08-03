@@ -79,10 +79,6 @@ func (l *rateLimiter) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 func (l *rateLimiter) doWithLimit(n int) (err error) {
-	err = l.doWithSingleLimit(l.iopsLimiter, 1)
-	if err != nil {
-		return
-	}
 	return l.doWithSingleLimit(l.bpsLimiter, n)
 }
 

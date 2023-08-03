@@ -27,11 +27,11 @@ func TestGetIoType(t *testing.T) {
 	iotype := GetIoType(ctx)
 	require.Equal(t, NormalIO, iotype)
 
-	ctx0 := context.WithValue(ctx, _ioFlowStatKey, CompactIO)
+	ctx0 := context.WithValue(ctx, _ioFlowStatKey, BackgroundIO)
 	iotype = GetIoType(ctx0)
-	require.Equal(t, CompactIO, iotype)
+	require.Equal(t, BackgroundIO, iotype)
 
-	ctx1 := context.WithValue(ctx0, _ioFlowStatKey, DiskRepairIO)
+	ctx1 := context.WithValue(ctx0, _ioFlowStatKey, BackgroundIO)
 	iotype = GetIoType(ctx1)
-	require.Equal(t, DiskRepairIO, iotype)
+	require.Equal(t, BackgroundIO, iotype)
 }

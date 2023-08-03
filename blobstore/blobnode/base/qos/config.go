@@ -19,6 +19,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 
+	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/priority"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
@@ -27,18 +28,20 @@ import (
 const (
 	MaxIops      = 1000 * 1000 // 1000k
 	MaxBandwidth = 2 << 30     // 1GB/s
+	defaultFator = 0.9         // limit threshold 90%
 )
 
 type Config struct {
 	DiskBandwidthMBPS int64           `json:"disk_bandwidth_MBPS"`
-	DiskIOPS          int64           `json:"disk_iops"`
-	LevelConfigs      LevelConfig     `json:"flow_conf"`
+	LevelConfigs      LevelConfig     `json:"-"`
 	DiskViewer        iostat.IOViewer `json:"-"`
 	StatGetter        flow.StatGetter `json:"-"`
+	BackgroundMBPS    int64           `json:"background_MBPS"`
+	ReadQueueLen      int             `json:"-"`
+	WriteQueueLen     int             `json:"-"`
 }
 
 type ParaConfig struct {
-	Iops      int64   `json:"iops"`
 	Bandwidth int64   `json:"bandwidth_MBPS"`
 	Factor    float64 `json:"factor"`
 }
@@ -47,7 +50,6 @@ type Threshold struct {
 	sync.RWMutex
 	ParaConfig
 	DiskBandwidth int64
-	DiskIOPS      int64
 }
 
 type LevelConfig map[string]ParaConfig
@@ -58,7 +60,6 @@ func (t *Threshold) reset(level string, c Config) {
 	para.Bandwidth *= humanize.MiByte
 	c.DiskBandwidthMBPS *= humanize.MiByte
 	t.ParaConfig = para
-	t.DiskIOPS = c.DiskIOPS
 	t.DiskBandwidth = c.DiskBandwidthMBPS
 	t.Unlock()
 }
@@ -66,11 +67,8 @@ func (t *Threshold) reset(level string, c Config) {
 func InitAndFixParaConfig(raw ParaConfig) (para ParaConfig, err error) {
 	para = raw
 
-	if para.Iops < 0 || para.Bandwidth < 0 || para.Factor < 0 {
+	if para.Bandwidth < 0 || para.Factor < 0 {
 		return para, ErrWrongConfig
-	}
-	if para.Iops == 0 {
-		para.Iops = MaxIops
 	}
 	if para.Bandwidth == 0 {
 		para.Bandwidth = MaxBandwidth
@@ -80,6 +78,23 @@ func InitAndFixParaConfig(raw ParaConfig) (para ParaConfig, err error) {
 	}
 
 	return para, nil
+}
+
+func InitAndFixQosConfig(raw *Config) {
+	if raw.BackgroundMBPS > raw.DiskBandwidthMBPS {
+		raw.BackgroundMBPS = raw.DiskBandwidthMBPS
+	}
+
+	raw.LevelConfigs = LevelConfig{
+		blobnode.NormalIO.String(): ParaConfig{
+			Bandwidth: raw.DiskBandwidthMBPS,
+			Factor:    defaultFator,
+		},
+		blobnode.BackgroundIO.String(): ParaConfig{
+			Bandwidth: raw.BackgroundMBPS,
+			Factor:    defaultFator,
+		},
+	}
 }
 
 func initConfig(conf *Config) (err error) {

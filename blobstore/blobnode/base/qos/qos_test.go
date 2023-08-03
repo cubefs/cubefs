@@ -18,24 +18,24 @@ func TestNewQosManager(t *testing.T) {
 	ctx := context.Background()
 	conf := Config{
 		DiskBandwidthMBPS: 1000,
-		DiskIOPS:          1000,
 		LevelConfigs: map[string]ParaConfig{
-			"level1": {
-				Iops:      100,
-				Bandwidth: 100,
+			"normal": {
+				Bandwidth: 200,
 				Factor:    0.8,
 			},
-			"level2": {
-				Iops:      100,
+			"background": {
 				Bandwidth: 100,
 				Factor:    0.8,
 			},
 		},
-		DiskViewer: nil,
-		StatGetter: nil,
+		DiskViewer:    nil,
+		StatGetter:    nil,
+		ReadQueueLen:  100,
+		WriteQueueLen: 100,
 	}
-	qos, err := NewQosManager(conf)
+	qos, err := NewIoQueueQos(conf)
 	require.NoError(t, err)
+	defer qos.Close()
 
 	f, err := ioutil.TempFile(os.TempDir(), "TestQos")
 	require.NoError(t, err)
@@ -70,15 +70,12 @@ func TestNewQosManager(t *testing.T) {
 func TestThresholdReset(t *testing.T) {
 	conf := Config{
 		DiskBandwidthMBPS: 1000,
-		DiskIOPS:          1000,
 		LevelConfigs: map[string]ParaConfig{
-			"level1": {
-				Iops:      100,
-				Bandwidth: 100,
+			"normal": {
+				Bandwidth: 200,
 				Factor:    0.8,
 			},
-			"level2": {
-				Iops:      100,
+			"background": {
 				Bandwidth: 100,
 				Factor:    0.8,
 			},
@@ -89,16 +86,13 @@ func TestThresholdReset(t *testing.T) {
 
 	threshold := &Threshold{
 		ParaConfig: ParaConfig{
-			Iops:      5,
 			Bandwidth: 5,
 			Factor:    0.1,
 		},
-		DiskIOPS:      conf.DiskIOPS,
 		DiskBandwidth: conf.DiskBandwidthMBPS,
 	}
 
-	threshold.reset("level1", conf)
-	require.Equal(t, int64(100), threshold.Iops)
+	threshold.reset("background", conf)
 	require.Equal(t, int64(100*humanize.MiByte), threshold.Bandwidth)
 	require.Equal(t, 0.8, threshold.Factor)
 }

@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const (
@@ -100,6 +101,10 @@ type DiskStorage struct {
 
 	CreateAt     int64
 	LastUpdateAt int64
+
+	// io schedulers
+	writePool taskpool.IoPool
+	readPool  taskpool.IoPool
 }
 
 func (ds *DiskStorage) IsRegister() bool {
@@ -165,6 +170,10 @@ func (ds *DiskStorage) Close(ctx context.Context) {
 
 		ds.closed = true
 	}()
+
+	ds.writePool.Close()
+	ds.readPool.Close()
+	ds.dataQos.Close()
 }
 
 func (ds *DiskStorage) DiskInfo() (info bnapi.DiskInfo) {
@@ -320,7 +329,7 @@ func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid,
 	}
 
 	// create chunk storage
-	cs, err = chunk.NewChunkStorage(ctx, ds.DataPath, vm, func(option *core.Option) {
+	cs, err = chunk.NewChunkStorage(ctx, ds.DataPath, vm, dsw.readPool, dsw.writePool, func(option *core.Option) {
 		option.CreateDataIfMiss = true
 		option.DB = ds.SuperBlock.db
 		option.Conf = ds.Conf
@@ -483,11 +492,15 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	conf.DataQos.DiskViewer = diskView
 	conf.DataQos.StatGetter = dataios
 
-	dataQos, err := qos.NewQosManager(conf.DataQos)
+	dataQos, err := qos.NewIoQueueQos(conf.DataQos)
 	if err != nil {
 		span.Errorf("Failed new io qos, err:%v", err)
 		return nil, err
 	}
+
+	// setting pools
+	writePool := taskpool.NewIoPool(2, conf.WriteThreadCnt, conf.WriteQueueLen)
+	readPool := taskpool.NewIoPool(1, conf.ReadThreadCnt, conf.ReadQueueLen)
 
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,
@@ -504,6 +517,8 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		dataQos:          dataQos,
 		CreateAt:         dm.Ctime,
 		LastUpdateAt:     dm.Mtime,
+		writePool:        writePool,
+		readPool:         readPool,
 	}
 
 	if err = ds.fillDiskUsage(ctx); err != nil {
@@ -639,7 +654,7 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 				return err
 			}
 		}
-		cs, err := chunk.NewChunkStorage(ctx, ds.DataPath, vm, func(o *core.Option) {
+		cs, err := chunk.NewChunkStorage(ctx, ds.DataPath, vm, ds.readPool, ds.writePool, func(o *core.Option) {
 			o.Conf = ds.Conf
 			o.DB = sb.db
 			o.Disk = dsw
@@ -917,7 +932,7 @@ func (ds *DiskStorage) cleanReleasedChunks() (err error) {
 	span.Debugf("come in CleanChunks.")
 
 	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.InternalIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	protectionPeriod := time.Duration(ds.Conf.ChunkReleaseProtectionM)
 	now := time.Now().UnixNano()

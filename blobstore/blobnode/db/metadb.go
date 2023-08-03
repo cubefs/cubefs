@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"golang.org/x/time/rate"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -418,11 +419,11 @@ func newMetaDB(dirpath string, config MetaConfig) (md *metadb, err error) {
 
 	for priority, name := range priLevels {
 		para, exist := config.MetaQos[name]
-		if !exist || para.Iops <= 0 {
+		if !exist || para.Bandwidth <= 0 {
 			// No flow control by default without configuration
 			continue
 		}
-		controller := rate.NewLimiter(rate.Limit(para.Iops), 2*int(para.Iops))
+		controller := rate.NewLimiter(rate.Limit(para.Bandwidth*humanize.MiByte), 2*int(para.Bandwidth*humanize.MiByte))
 		md.limiter[priority] = controller
 	}
 

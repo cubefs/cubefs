@@ -55,10 +55,9 @@ type LevelManager struct {
 // Note: iopsLimiter and bpsLimiter can be left unconfigured.
 // levelQos Control adaptive threshold
 type levelQos struct {
-	bpsLimiter  *rate.Limiter
-	iopsLimiter *rate.Limiter
-	diskStat    iostat.IOViewer
-	threshold   *Threshold
+	bpsLimiter *rate.Limiter
+	diskStat   iostat.IOViewer
+	threshold  *Threshold
 	closer.Closer
 }
 
@@ -99,7 +98,7 @@ func (l *levelQos) updateCapacity() {
 	defer ticker.Stop()
 
 	updatefn := func() {
-		if l.diskStat == nil || (l.iopsLimiter == nil && l.bpsLimiter == nil) {
+		if l.diskStat == nil || l.bpsLimiter == nil {
 			return
 		}
 
@@ -107,19 +106,6 @@ func (l *levelQos) updateCapacity() {
 		wstat := l.diskStat.WriteStat()
 
 		bps := rstat.Bps + wstat.Bps
-		iops := rstat.Iops + wstat.Iops
-
-		if l.iopsLimiter != nil {
-			deepIops := int(float64(l.threshold.Iops) * l.threshold.Factor)
-			// iops is not in deep limit but disk real load is over threshold, will reset to deep limit threshold
-			if l.iopsLimiter.Burst() == 2*int(l.threshold.Iops) && iops > uint64(l.threshold.DiskIOPS) {
-				resetLimiter(l.iopsLimiter, deepIops)
-			}
-			// iops is in deep limit but disk real load is below threshold, will reset to original limit threshold
-			if l.iopsLimiter.Burst() != 2*int(l.threshold.Iops) && iops < uint64(l.threshold.DiskIOPS) {
-				resetLimiter(l.iopsLimiter, int(l.threshold.Iops))
-			}
-		}
 
 		if l.bpsLimiter != nil {
 			deepBps := int(float64(l.threshold.Bandwidth) * l.threshold.Factor)
@@ -165,7 +151,6 @@ func NewLevelQos(threshold *Threshold, diskStat iostat.IOViewer) *levelQos {
 		threshold: threshold,
 		Closer:    closer.New(),
 	}
-	qos.iopsLimiter = rate.NewLimiter(rate.Limit(threshold.Iops), 2*int(threshold.Iops))
 	qos.bpsLimiter = rate.NewLimiter(rate.Limit(threshold.Bandwidth), 2*int(threshold.Bandwidth))
 	go qos.updateCapacity()
 	return qos
@@ -186,11 +171,9 @@ func NewLevelQosMgr(conf Config, diskStat iostat.IOViewer) (*LevelManager, error
 		}
 		threshold := &Threshold{
 			ParaConfig: ParaConfig{
-				Iops:      para.Iops,
 				Bandwidth: para.Bandwidth,
 				Factor:    para.Factor,
 			},
-			DiskIOPS:      conf.DiskIOPS,
 			DiskBandwidth: conf.DiskBandwidthMBPS,
 		}
 		threshold.DiskBandwidth = threshold.DiskBandwidth * humanize.MiByte
@@ -203,6 +186,5 @@ func NewLevelQosMgr(conf Config, diskStat iostat.IOViewer) (*LevelManager, error
 
 func (l *levelQos) ChangeLevelQos(level string, conf Config) {
 	l.threshold.reset(level, conf)
-	resetLimiter(l.iopsLimiter, int(l.threshold.Iops))
 	resetLimiter(l.bpsLimiter, int(l.threshold.Bandwidth))
 }

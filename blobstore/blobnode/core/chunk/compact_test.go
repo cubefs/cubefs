@@ -166,8 +166,9 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 			BlockBufferSize:       64 * 1024,
 		},
 	}
-	ioQos, _ := qos.NewQosManager(qos.Config{})
-	chunk, err := NewChunkStorage(ctx, dataPath, vm, func(option *core.Option) {
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 200, WriteQueueLen: 200})
+	defer ioQos.Close()
+	chunk, err := NewChunkStorage(ctx, dataPath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = dbHandler
 		option.CreateDataIfMiss = true

@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
 const (
@@ -43,6 +44,9 @@ const (
 	DefaultMetricReportIntervalS        = 30              // 30 Sec
 	DefaultBlockBufferSize              = 64 * 1024       // 64k
 	DefaultCompactEmptyRateThreshold    = float64(0.8)    // 80% rate
+	defaultWriteThreadCnt               = 4
+	defaultReadThreadCnt                = 4
+	defaultIOQueueLength                = 128
 )
 
 // Config for disk
@@ -77,6 +81,10 @@ type RuntimeConfig struct {
 	MetricReportIntervalS        int64   `json:"metric_report_interval_S"`
 	BlockBufferSize              int64   `json:"block_buffer_size"`
 	EnableDataInspect            bool    `json:"enable_data_inspect"`
+	WriteThreadCnt               int     `json:"write_thread_cnt"`
+	ReadThreadCnt                int     `json:"read_thread_cnt"`
+	WriteQueueLen                int     `json:"write_queue_len"`
+	ReadQueueLen                 int     `json:"read_queue_len"`
 
 	DataQos qos.Config `json:"data_qos"`
 }
@@ -167,6 +175,14 @@ func InitConfig(conf *Config) error {
 	if conf.BlockBufferSize <= 0 {
 		conf.BlockBufferSize = DefaultBlockBufferSize
 	}
+
+	defaulter.LessOrEqual(&conf.WriteThreadCnt, defaultWriteThreadCnt)
+	defaulter.LessOrEqual(&conf.ReadThreadCnt, defaultReadThreadCnt)
+	defaulter.LessOrEqual(&conf.WriteQueueLen, defaultIOQueueLength)
+	defaulter.LessOrEqual(&conf.ReadQueueLen, defaultIOQueueLength)
+	conf.DataQos.ReadQueueLen = conf.ReadQueueLen
+	conf.DataQos.WriteQueueLen = conf.WriteQueueLen
+	qos.InitAndFixQosConfig(&conf.DataQos)
 
 	return nil
 }
