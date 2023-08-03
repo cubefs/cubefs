@@ -238,7 +238,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: cubefs-sc
+  storageClassName: cfs-sc
 ```
 
 `storageClassName` 需要和刚刚创建的StorageClass的 `metadata` 中的name属性保持一致。这样就会根据 `cubefs-sc` 中定义的参数来创建存储卷。
@@ -293,7 +293,7 @@ spec:
         app: cfs-csi-demo-pod
     spec:
       nodeSelector:
-        cubefs-csi-node: enabled
+        component.cubefs.io/csi: enabled
       containers:
         - name: cfs-csi-demo
           image: nginx:1.17.9
