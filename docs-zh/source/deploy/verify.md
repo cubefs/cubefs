@@ -8,12 +8,41 @@
 如果有部署纠删码模块像创建纠删码卷，请参考[创建卷章节](../user-guide/volume.md)
 :::
 
+`cfs-cli` 读配置文件`~/.cfs-cli.json`. 示例`cfs-cli.json`内容如下
+
+```json
+{
+  "masterAddr": [
+    "127.0.0.1:17010",
+    "127.0.0.2:17010",
+    "127.0.0.3:17010"
+  ],
+  "timeout": 60
+}
+```
+
 ```bash
-./build/bin/cfs-cli volume create ltptest ltp
+./build/bin/cfs-cli volume create ltptest ltptest
 # 查看卷信息
 ./build/bin/cfs-cli volume info ltptest
 ```
 ### 启动客户端
+
+- 准备客户端配置文件. 示例 `client.conf`如下
+
+```json
+{
+  "mountPoint": "/home/cfs/client/mnt",
+  "volName": "ltptest",
+  "owner": "ltptest",
+  "masterAddr": "127.0.0.1:17010,127.0.0.2:17010,127.0.0.3:17010",
+  "logDir": "/cfs/client/log",
+  "logLevel": "info",
+  "profPort": "27510"
+}
+```
+
+注意`volName`和`owner`必须与刚才用`cfs-cli`创建卷时指定值相同。
 
 - 启动客户端
 ```bash

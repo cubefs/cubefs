@@ -8,13 +8,43 @@
 If you have deployed the erasure coding module to create an erasure coding volume, please refer to the [Volume Creation](../user-guide/volume.md) section.
 :::
 
+`cfs-cli` reads config file `~/.cfs-cli.json`. Example `cfs-cli.json`:
+
+```json
+{
+  "masterAddr": [
+    "127.0.0.1:17010",
+    "127.0.0.2:17010",
+    "127.0.0.3:17010"
+  ],
+  "timeout": 60
+}
+```
+
 ```bash
-./build/bin/cfs-cli volume create ltptest ltp
+./build/bin/cfs-cli volume create ltptest ltptest
 # View volume information
 ./build/bin/cfs-cli volume info ltptest
 ```
 
 ### Start the Client
+
+
+- Prepare client config file. Example `client.conf`:
+
+```json
+{
+  "mountPoint": "/home/cfs/client/mnt",
+  "volName": "ltptest",
+  "owner": "ltptest",
+  "masterAddr": "127.0.0.1:17010,127.0.0.2:17010,127.0.0.3:17010",
+  "logDir": "/cfs/client/log",
+  "logLevel": "info",
+  "profPort": "27510"
+}
+```
+
+Note that `volName` and `owner` must match with the volume created by `cfs-cli`.
 
 - Start the client
 ```bash
