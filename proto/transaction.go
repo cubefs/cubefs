@@ -36,6 +36,7 @@ const (
 	MaxTxConflictRetryInterval     = 1000 //ms
 	MinTxConflictRetryInterval     = 10   //ms
 	DefaultTxDeleteTime            = 120
+	ClearOrphanTxTime              = 3600
 )
 
 type TxOpMask uint8
@@ -470,6 +471,7 @@ type TransactionInfo struct {
 	// once insert to txTree, not change inode & dentry ifo
 	TxInodeInfos  map[uint64]*TxInodeInfo
 	TxDentryInfos map[string]*TxDentryInfo
+	LastCheckTime int64
 }
 
 type TxMpInfo struct {
@@ -537,6 +539,25 @@ func (tx *TransactionInfo) CanDelete() bool {
 		return true
 	}
 	return false
+}
+
+func (tx *TransactionInfo) NeedClearOrphan() bool {
+	if tx.Finish() {
+		return false
+	}
+
+	now := time.Now().Unix()
+	if tx.CreateTime+ClearOrphanTxTime > now {
+		return false
+	}
+
+	// try to check every 1 minutes to avoid too many request
+	if now-tx.LastCheckTime < 60 {
+		return false
+	}
+
+	tx.LastCheckTime = now
+	return true
 }
 
 func (tx *TransactionInfo) Finish() bool {

@@ -497,19 +497,36 @@ func (tm *TransactionManager) processTx() {
 			}
 		}
 
+		clearOrphan := func() {
+			defer put()
+			tm.clearOrphanTx(tx)
+			if log.EnableDebug() {
+				log.LogDebugf("processExpiredTransactions: transaction (%v) clearOrphanTx", tx)
+			}
+		}
+
 		if tx.TmID != int64(mpId) {
-			if !tx.CanDelete() {
+			if tx.CanDelete() {
 				if log.EnableDebug() {
-					log.LogDebugf("processExpiredTransactions: RM transaction (%v) is ongoing", tx)
+					log.LogDebugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
 				}
+				get()
+				go delFunc()
+				return true
+			}
+
+			if tx.NeedClearOrphan() {
+				if log.EnableDebug() {
+					log.LogDebugf("processExpiredTransactions: orphan transaction (%v) can be clear", tx)
+				}
+				get()
+				go clearOrphan()
 				return true
 			}
 
 			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
+				log.LogDebugf("processExpiredTransactions: RM transaction (%v) is ongoing", tx)
 			}
-			get()
-			go delFunc()
 			return true
 		}
 
@@ -767,6 +784,45 @@ func (tm *TransactionManager) delTxFromRM(txId string) (status uint8, err error)
 		log.LogDebugf("delTxFromRM: tx[%v] is deleted successfully, status (%s)", txId, proto.GetStatusStr(status))
 	}
 
+	return
+}
+
+func (tm *TransactionManager) clearOrphanTx(tx *proto.TransactionInfo) {
+	log.LogWarnf("clearOrphanTx: start to clearOrphanTx, tx %v", tx)
+	// check txInfo whether exist in tm
+	req := &proto.TxGetInfoRequest{
+		Pid:  uint64(tx.TmID),
+		TxID: tx.TxID,
+	}
+
+	pkt, err := buildTxPacket(req, req.Pid, proto.OpMetaTxGet)
+	if err != nil {
+		return
+	}
+
+	mps := tx.GroupByMp()
+	tmpMp, ok := mps[req.Pid]
+	if !ok {
+		log.LogErrorf("clearOrphanTx: can't get tm Mp info from tx, tx %v", tx)
+		return
+	}
+
+	status := tm.txSendToMpWithAddrs(tmpMp.Members, pkt)
+	if status != proto.OpTxInfoNotExistErr {
+		log.LogWarnf("clearOrphanTx: tx is still exist, tx %v, status %s", tx, proto.GetStatusStr(status))
+		return
+	}
+
+	log.LogWarnf("clearOrphanTx: find tx in tm already not exist, start clear it from rm, tx %v", tx)
+
+	aReq := &proto.TxApplyRMRequest{
+		PartitionID:     req.Pid,
+		TransactionInfo: tx,
+	}
+	newPkt := &Packet{}
+	err = tm.txProcessor.mp.TxRollbackRM(aReq, newPkt)
+	log.LogWarnf("clearOrphanTx: finally rollback tx in rm, tx %v, status %s, err %v",
+		tx, newPkt.GetResultMsg(), err)
 	return
 }
 
