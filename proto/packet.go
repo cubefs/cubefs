@@ -159,6 +159,7 @@ const (
 	OpMetaTxDeleteDentry uint8 = 0xA8
 	OpMetaTxUpdateDentry uint8 = 0xA9
 	OpMetaTxLinkInode    uint8 = 0xAA
+	OpMetaTxGet          uint8 = 0xAB
 
 	//Operations: Client -> MetaNode.
 	OpMetaGetUniqID uint8 = 0xAC
@@ -495,6 +496,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaTxUpdateDentry"
 	case OpMetaTxLinkInode:
 		m = "OpMetaTxLinkInode"
+	case OpMetaTxGet:
+		m = "OpMetaTxGet"
 	case OpMetaBatchSetInodeQuota:
 		m = "OpMetaBatchSetInodeQuota"
 	case OpMetaBatchDeleteInodeQuota:
