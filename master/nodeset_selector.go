@@ -15,7 +15,9 @@
 package master
 
 import (
+	"math/rand"
 	"sort"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -26,6 +28,8 @@ const RoundRobinNodesetSelectorName = "RoundRobin"
 const CarryWeightNodesetSelectorName = "CarryWeight"
 
 const AvailableSpaceFirstNodesetSelectorName = "AvailableSpaceFirst"
+
+const TicketNodesetSelectorName = "Ticket"
 
 const DefaultNodesetSelectorName = RoundRobinNodeSelectorName
 
@@ -279,12 +283,81 @@ func NewAvailableSpaceFirstNodesetSelector(nodeType NodeType) *AvailableSpaceFir
 	}
 }
 
+type TicketNodesetSelector struct {
+	nodeType NodeType
+	random   *rand.Rand
+}
+
+func (s *TicketNodesetSelector) GetName() string {
+	return TicketNodesetSelectorName
+}
+
+func (s *TicketNodesetSelector) GetTicket(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) uint64 {
+	total := uint64(0)
+	for i := 0; i < len(nsc); i++ {
+		nset := nsc[i]
+		if nset.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, nset.ID) {
+			total += nset.getTotalSpaceOf(s.nodeType)
+		}
+	}
+	ticket := uint64(0)
+	if total != 0 {
+		ticket = s.random.Uint64() % total
+	}
+	return ticket
+}
+
+func (s *TicketNodesetSelector) GetNodesetByTicket(ticket uint64, nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet) {
+	total := uint64(0)
+	for i := 0; i < len(nsc); i++ {
+		nset := nsc[i]
+		if nset.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, nset.ID) {
+			total += nset.getTotalSpaceOf(s.nodeType)
+			if ticket <= total {
+				ns = nset
+				return
+			}
+		}
+	}
+	return
+}
+
+func (s *TicketNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+	// sort nodesets by id, so we can get a node list that is as stable as possible
+	sort.Slice(nsc, func(i, j int) bool {
+		return nsc[i].ID < nsc[j].ID
+	})
+	ticket := s.GetTicket(nsc, excludeNodeSets, replicaNum)
+	ns = s.GetNodesetByTicket(ticket, nsc, excludeNodeSets, replicaNum)
+	if ns != nil {
+		return
+	}
+	switch s.nodeType {
+	case DataNodeType:
+		err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+	case MetaNodeType:
+		err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+	default:
+		panic("unknow node type")
+	}
+	return
+}
+
+func NewTicketNodesetSelector(nodeType NodeType) *TicketNodesetSelector {
+	return &TicketNodesetSelector{
+		nodeType: nodeType,
+		random:   rand.New(rand.NewSource(time.Now().Unix())),
+	}
+}
+
 func NewNodesetSelector(name string, nodeType NodeType) NodesetSelector {
 	switch name {
 	case CarryWeightNodesetSelectorName:
 		return NewCarryWeightNodesetSelector(nodeType)
 	case RoundRobinNodesetSelectorName:
 		return NewRoundRobinNodesetSelector(nodeType)
+	case TicketNodesetSelectorName:
+		return NewTicketNodesetSelector(nodeType)
 	case AvailableSpaceFirstNodesetSelectorName:
 		return NewAvailableSpaceFirstNodesetSelector(nodeType)
 	}
