@@ -240,9 +240,7 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		ioview := flow.NewDiskViewer(ioFlowStat)
 		conf.DiskConfig.DataQos = qos.Config{
 			DiskBandwidthMBPS: 20,
-			DiskIOPS:          2,
-			LevelConfigs: qos.LevelConfig{"level0": qos.ParaConfig{
-				Iops:      2,
+			LevelConfigs: qos.LevelConfig{"normal": qos.ParaConfig{
 				Bandwidth: 20,
 				Factor:    0.5,
 			}},
@@ -255,9 +253,7 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		ioview := flow.NewDiskViewer(ioFlowStat)
 		conf.DiskConfig.DataQos = qos.Config{
 			DiskBandwidthMBPS: 1,
-			DiskIOPS:          100,
-			LevelConfigs: qos.LevelConfig{"level0": qos.ParaConfig{
-				Iops:      100,
+			LevelConfigs: qos.LevelConfig{"normal": qos.ParaConfig{
 				Bandwidth: 1,
 				Factor:    0.5,
 			}},

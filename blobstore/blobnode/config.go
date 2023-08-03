@@ -220,8 +220,6 @@ func (s *Service) reloadDiskConf(ctx context.Context, args *bnapi.ConfigReloadAr
 	switch args.Key {
 	case "disk_bandwidth_MBPS":
 		qosConf.DiskBandwidthMBPS = value
-	case "disk_iops":
-		qosConf.DiskIOPS = value
 	default:
 		return ErrNotSupportKey
 	}
@@ -249,8 +247,6 @@ func (s *Service) reloadLevelConf(ctx context.Context, args *bnapi.ConfigReloadA
 	switch item {
 	case "bandwidth_MBPS":
 		paraConf.Bandwidth = value
-	case "iops":
-		paraConf.Iops = value
 	case "factor":
 		factor, err := strconv.ParseFloat(args.Value, 64)
 		if err != nil {

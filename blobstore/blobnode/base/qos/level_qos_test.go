@@ -51,11 +51,9 @@ func TestQoSControllerReader(t *testing.T) {
 	iom[0] = ioStat
 	input := Threshold{
 		DiskBandwidth: 10 * 1024 * 1024,
-		DiskIOPS:      1000,
 
 		ParaConfig: ParaConfig{
 			Bandwidth: 2 << 20,
-			Iops:      512,
 		},
 	}
 	diskIO := flow.NewDiskViewer(iom)
@@ -97,11 +95,9 @@ func TestQoSControllerReaderAt(t *testing.T) {
 		iom[0] = ioStat
 		input := Threshold{
 			DiskBandwidth: 10 * 1024 * 1024,
-			DiskIOPS:      100,
 
 			ParaConfig: ParaConfig{
 				Bandwidth: 2 << 20,
-				Iops:      512,
 			},
 		}
 		diskIO := flow.NewDiskViewer(iom)
@@ -145,11 +141,9 @@ func TestBpsLimitControllerWriter(t *testing.T) {
 		iom[0] = ioStat
 		input := Threshold{
 			DiskBandwidth: 10 * 1024 * 1024,
-			DiskIOPS:      100,
 
 			ParaConfig: ParaConfig{
 				Bandwidth: 2 << 20,
-				Iops:      512,
 			},
 		}
 		diskIO := flow.NewDiskViewer(iom)
@@ -191,11 +185,9 @@ func TestBpsLimitControllerWriterAt(t *testing.T) {
 	iom[0] = ioStat
 	input := Threshold{
 		DiskBandwidth: 10 * 1024 * 1024,
-		DiskIOPS:      100,
 
 		ParaConfig: ParaConfig{
 			Bandwidth: 2 << 20,
-			Iops:      512,
 		},
 	}
 	diskIO := flow.NewDiskViewer(iom)

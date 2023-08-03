@@ -20,9 +20,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/mergetask"
-	"github.com/stretchr/testify/require"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 func TestBlobFile_Op(t *testing.T) {
@@ -46,7 +49,11 @@ func TestBlobFile_Op(t *testing.T) {
 	// create
 	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
 
-	ef := blobFile{f, syncWorker, nil}
+	ctr := gomock.NewController(t)
+	ioPool := taskpool.NewMockIoPool(ctr)
+	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).AnyTimes()
+	ioPool.EXPECT().WaitDone(gomock.Any()).AnyTimes()
+	ef := blobFile{f, 1, syncWorker, nil, nil, nil}
 	log.Info(ef.Name())
 	fd := ef.Fd()
 	require.NotNil(t, fd)

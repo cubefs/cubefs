@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -35,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const (
@@ -74,9 +76,14 @@ func TestNewChunkStorage(t *testing.T) {
 		Mtime:   time.Now().UnixNano(),
 		Status:  bnapi.ChunkStatusNormal,
 	}
+	ctr := gomock.NewController(t)
+	ioPool := taskpool.NewMockIoPool(ctr)
+	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).AnyTimes()
+	ioPool.EXPECT().WaitDone(gomock.Any()).AnyTimes()
 
-	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(context.TODO(), datapath, vm, func(option *core.Option) {
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2})
+	defer ioQos.Close()
+	cs, err := NewChunkStorage(context.TODO(), datapath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -136,8 +143,9 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2})
+	defer ioQos.Close()
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -258,8 +266,9 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2})
+	defer ioQos.Close()
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -374,8 +383,9 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2})
+	defer ioQos.Close()
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -482,8 +492,9 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 		Mtime:   time.Now().UnixNano(),
 		Status:  bnapi.ChunkStatusNormal,
 	}
-	ioQos, _ := qos.NewQosManager(qos.Config{})
-	cs, err := NewChunkStorage(ctx, datapath, vm, func(option *core.Option) {
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2})
+	defer ioQos.Close()
+	cs, err := NewChunkStorage(ctx, datapath, vm, nil, nil, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = metadb
 		option.CreateDataIfMiss = true
@@ -513,4 +524,5 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 	}
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&cnt))
+	ioQos.Close()
 }

@@ -342,7 +342,7 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	err = cs.MarkDelete(ctx, args.Bid)
@@ -413,7 +413,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	err = cs.Delete(ctx, args.Bid)

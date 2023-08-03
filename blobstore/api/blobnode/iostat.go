@@ -16,8 +16,6 @@ package blobnode
 
 import (
 	"context"
-
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 // key is unexported and used for context.Context
@@ -30,26 +28,14 @@ const (
 type IOType uint64
 
 const (
-	NormalIO      IOType = iota // From: external: user io: read/write
-	ShardRepairIO               // From: external: shard repair
-	DiskRepairIO                // From: external: disk repair
-	MigrateIO                   // From: external: chunk transfer, drop, manualMigrate
-	CompactIO                   // From: internal: chunk compact
-	DeleteIO                    // From: external: delete io
-	InternalIO                  // From: internal: io, such rubbish clean, batch delete
-	InspectIO                   // From: internal: inspect io
+	NormalIO     IOType = iota // From: external: user io: read/write
+	BackgroundIO               // From: external: background io: shard repair;disk repair, delete, compact;balance, drop, manual migrate; internal, inspect
 	IOTypeMax
 )
 
 var IOtypemap = [...]string{
 	"normal",
-	"shardRepair",
-	"diskRepair",
-	"migrate",
-	"compact",
-	"delete",
-	"internal",
-	"inspect",
+	"background",
 }
 
 var _ = IOtypemap[IOTypeMax-1]
@@ -60,6 +46,10 @@ func (it IOType) IsValid() bool {
 
 func (it IOType) String() string {
 	return IOtypemap[it]
+}
+
+func (it IOType) IsHighLevel() bool {
+	return it == NormalIO
 }
 
 func GetIoType(ctx context.Context) IOType {
@@ -74,13 +64,6 @@ func SetIoType(ctx context.Context, iot IOType) context.Context {
 	return context.WithValue(ctx, _ioFlowStatKey, iot)
 }
 
-func Task2IOType(t proto.TaskType) IOType {
-	switch t {
-	case proto.TaskTypeShardRepair:
-		return ShardRepairIO
-	case proto.TaskTypeDiskRepair:
-		return DiskRepairIO
-	default:
-		return MigrateIO
-	}
+func Task2IOType() IOType {
+	return BackgroundIO
 }

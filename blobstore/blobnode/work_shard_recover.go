@@ -402,7 +402,7 @@ func NewShardRecover(replicas Vunits, mode codemode.CodeMode, bidInfos []*ShardI
 	if vunitShardGetConcurrency <= 0 {
 		vunitShardGetConcurrency = defaultGetConcurrency
 	}
-	ioType := blobnode.Task2IOType(taskType)
+	ioType := blobnode.Task2IOType()
 
 	repair := ShardRecover{
 		replicas:                 replicas,
