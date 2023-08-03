@@ -15,7 +15,6 @@
 package master
 
 import (
-	// "math/rand"
 	"sync"
 	"time"
 
