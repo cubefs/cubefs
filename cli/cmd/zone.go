@@ -142,9 +142,9 @@ func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&enable, "enable", true, "Enable of disable specify zone")
-	cmd.Flags().StringVar(&dataNodesetSelector, "dataNodesetSelector", "", "Set the nodeset select policy(datanode) for specify zone")
-	cmd.Flags().StringVar(&metaNodesetSelector, "metaNodesetSelector", "", "Set the nodeset select policy(metanode) for specify zone")
-	cmd.Flags().StringVar(&dataNodeSelector, "dataNodeSelector", "", "Set the node select policy(datanode) for specify zone")
-	cmd.Flags().StringVar(&metaNodeSelector, "metaNodeSelector", "", "Set the node select policy(metanode) for specify zone")
+	cmd.Flags().StringVar(&dataNodesetSelector, CliFlagDataNodesetSelector, "", "Set the nodeset select policy(datanode) for specify zone")
+	cmd.Flags().StringVar(&metaNodesetSelector, CliFlagMetaNodesetSelector, "", "Set the nodeset select policy(metanode) for specify zone")
+	cmd.Flags().StringVar(&dataNodeSelector, CliFlagDataNodeSelector, "", "Set the node select policy(datanode) for specify zone")
+	cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for specify zone")
 	return cmd
 }
