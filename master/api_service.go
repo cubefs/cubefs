@@ -2700,6 +2700,14 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	dataNodesetSelector := extractDataNodesetSelector(r)
+	metaNodesetSelector := extractMetaNodesetSelector(r)
+	dataNodeSelector := extractDataNodeSelector(r)
+	metaNodeSelector := extractMetaNodeSelector(r)
+	if err = m.updateClusterSelector(dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeinfo params %v successfully", params)))
 
 }
@@ -2878,6 +2886,22 @@ func (m *Server) updateZoneNodesetNodeSelector(zoneName string, nodesetId uint64
 		}
 	}
 	log.LogInfof("action[updateNodesetNodeSelector] zonename %v nodeset %v dataNodeSelector %v metaNodeSelector %v", zoneName, nodesetId, dataNodesetSelector, metaNodesetSelector)
+	return
+}
+
+func (m *Server) updateClusterSelector(dataNodesetSelector string, metaNodesetSelector string, dataNodeSelector string, metaNodeSelector string) (err error) {
+	m.cluster.t.zoneMap.Range(func(key, value interface{}) bool {
+		zone := value.(*Zone)
+		err = zone.updateNodesetSelector(m.cluster, dataNodesetSelector, metaNodesetSelector)
+		if err != nil {
+			return false
+		}
+		err = m.updateZoneNodeSelector(zone.name, dataNodeSelector, metaNodeSelector)
+		if err != nil {
+			return false
+		}
+		return true
+	})
 	return
 }
 
