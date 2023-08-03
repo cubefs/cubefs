@@ -349,6 +349,38 @@ func (m *metadataManager) opTxCreate(conn net.Conn, p *Packet,
 	return
 }
 
+func (m *metadataManager) opTxGet(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.TxGetInfoRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+
+	mp, err := m.getPartition(req.Pid)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.TxGetInfo(req, p)
+	m.respondToClient(conn, p)
+
+	if log.EnableDebug() {
+		log.LogDebugf("%s [opTxGet] req: %d - %v, resp: %v, body: %s",
+			remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	}
+	return
+}
+
 func (m *metadataManager) opTxCommitRM(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	req := &proto.TxApplyRMRequest{}

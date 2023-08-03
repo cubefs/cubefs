@@ -236,6 +236,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opTxCommit(conn, p, remoteAddr)
 	case proto.OpMetaTxCreate:
 		err = m.opTxCreate(conn, p, remoteAddr)
+	case proto.OpMetaTxGet:
+		err = m.opTxGet(conn, p, remoteAddr)
 	case proto.OpTxCommitRM:
 		err = m.opTxCommitRM(conn, p, remoteAddr)
 	case proto.OpTxRollbackRM:
