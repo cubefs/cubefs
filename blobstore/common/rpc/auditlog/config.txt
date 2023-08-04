@@ -1,0 +1,25 @@
+{
+	  "must_not": [
+	    {"match": [{"path": "my_service"}]},
+	    {"range": [{"start_time": {"gte": "16894926383996679"}}]}
+	  ],
+	  "must": [
+	    {"term": [
+					{
+					"module": "RPC",
+					"method": "GET"
+					}
+				]
+		},
+		{"regexp": [{"req_header":"^.*$"}]},
+		{"match": [{"path": "get", "req_header": "gzip"}]},
+	    {"bool": {
+	      "should": [
+	        {"term": [{"status_code": 404},
+					  {"status_code": 200},
+					  {"status_code": 403,"resp_length": 19}]
+			}
+	      ]
+	    }}
+	  ]
+	}
