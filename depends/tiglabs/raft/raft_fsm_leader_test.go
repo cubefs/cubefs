@@ -466,12 +466,12 @@ func TestLeaderAppResp(t *testing.T) {
 		sm.becomeLeader()
 		sm.readMessages()
 		sm.Step(&proto.Message{
-			From:        2,
-			Type:        proto.RespMsgAppend,
-			Index:       tt.index,
-			Term:        sm.term,
-			Reject:      tt.reject,
-			RejectIndex: tt.index},
+			From:       2,
+			Type:       proto.RespMsgAppend,
+			Index:      tt.index,
+			Term:       sm.term,
+			Reject:     tt.reject,
+			RejectHint: tt.index},
 		)
 
 		p := sm.replicas[2]

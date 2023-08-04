@@ -127,6 +127,7 @@ func (ms *MemoryStorage) Entries(lo, hi uint64, maxSize uint64) (entries []*prot
 	return retEnts[:limit], false, nil
 }
 
+// StoreEntries equal etcd raft append
 func (ms *MemoryStorage) StoreEntries(entries []*proto.Entry) error {
 	if len(entries) == 0 {
 		return nil
