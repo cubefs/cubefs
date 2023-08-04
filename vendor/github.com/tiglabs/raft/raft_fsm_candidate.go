@@ -85,6 +85,9 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 
 	case proto.RespMsgVote:
 		r.maybeUpdateReplica(m.From, m.Index, m.Commit)
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] received vote response [index: %v, commit: %v, reject: %v] from [%v]", r.id, m.Index, m.Commit, m.Reject, m.From)
+		}
 		gr := r.poll(m.From, !m.Reject)
 		quorum := r.quorum()
 		if logger.IsEnableDebug() {
@@ -109,7 +112,7 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 func (r *raftFsm) isCommitReady() bool {
 	if r.raftLog.committed < r.startCommit {
 		if logger.IsEnableWarn() {
-			logger.Warn("[raft->Step][%v] cannot campaign at term %d since current raftLog commit %d is less than start commit %d.", r.id, r.term, r.raftLog.committed, r.startCommit)
+			logger.Warn("raft[%v] cannot campaign at term %d since current raftLog commit %d is less than start commit %d.", r.id, r.term, r.raftLog.committed, r.startCommit)
 		}
 		return false
 	}
@@ -134,7 +137,7 @@ func (r *raftFsm) campaign(force bool) {
 		}
 		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->campaign][%v logterm: %d, index: %d] sent vote request to %v at term %d.", r.id, lt, li, id, r.term)
+			logger.Debug("raft[%v] [logterm: %d, index: %d] sent vote request to %v at term %d.", r.id, lt, li, id, r.term)
 		}
 
 		m := proto.GetMessage()

@@ -317,9 +317,6 @@ func (s *raft) runApply() {
 				}
 				continue
 			}
-			if logger.IsEnableDebug() {
-				logger.Debug("raft[%v] ask rollback for entry [index: %v], FSM returns valid command", s.config.NodeID, askRollback.index)
-			}
 			var rollback = new(proto.Rollback)
 			rollback.Index = askRollback.index
 			rollback.Data = command

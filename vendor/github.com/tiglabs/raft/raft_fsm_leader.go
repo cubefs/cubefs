@@ -51,7 +51,7 @@ func (r *raftFsm) becomeLeader() {
 	}
 	nconf := numOfPendingConf(ents)
 	if nconf > 1 {
-		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] unexpected double uncommitted config entry.", r.id)))
+		panic(AppPanicError(fmt.Sprintf("raft[%v] unexpected %v uncommitted config entries.", r.id, nconf)))
 	}
 	if nconf == 1 {
 		r.pendingConf = true
@@ -108,7 +108,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 
 	case proto.ReqMsgVote:
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->stepLeader][%v logterm: %d, index: %d, vote: %v] rejected vote from %v [logterm: %d, index: %d] at term %d",
+			logger.Debug("raft[%v] [logterm: %d, index: %d, vote: %v] rejected vote from %v [logterm: %d, index: %d] at term %d",
 				r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
 		}
 		nmsg := proto.GetMessage()
@@ -125,7 +125,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 	pr, prOk := r.replicas[m.From]
 	if !prOk {
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->stepLeader][%v] no progress available for %v.", r.id, m.From)
+			logger.Debug("raft[%v] no progress available for %v.", r.id, m.From)
 		}
 		return
 	}
@@ -136,7 +136,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 
 		if m.Reject {
 			if logger.IsEnableDebug() {
-				logger.Debug("raft[%v] received msgApp rejection(lastindex: %d) from %v for index %d.", r.id, m.RejectIndex, m.From, m.Index)
+				logger.Debug("raft[%v] received message append rejection [rejectindex: %d] from %v for index %d.", r.id, m.RejectIndex, m.From, m.Index)
 			}
 			if pr.maybeDecrTo(m.Index, m.RejectIndex, m.Commit) {
 				if pr.state == replicaStateReplicate {
@@ -196,7 +196,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 			nmsg.SetCtx(m.Ctx())
 			r.send(nmsg)
 		}
-		logger.Debug("[raft][%v] LeaseMsgOffline at term[%d] leader[%d].", r.id, r.term, r.leader)
+		logger.Debug("raft[%v] lease offline at term[%d] leader[%d].", r.id, r.term, r.leader)
 		r.becomeFollower(m.Ctx(), r.term, NoLeader)
 		proto.ReturnMessage(m)
 		return
@@ -208,7 +208,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 
 		if m.Reject {
 			if logger.IsEnableWarn() {
-				logger.Warn("raft[%v] send snapshot to [%v] failed.", r.id, m.From)
+				logger.Warn("raft[%v] received snapshot rejection from [%v].", r.id, m.From)
 			}
 			pr.snapshotFailure()
 			pr.becomeProbe()
@@ -363,7 +363,7 @@ func (r *raftFsm) tickHeartbeat() {
 			if logger.IsEnableWarn() {
 				logger.Warn("raft[%v] stepped down to follower since quorum is not active.", r.id)
 			}
-			logger.Debug("[raft][%v] heartbeat election timeout at term[%d] leader[%d].", r.id, r.term, r.leader)
+			logger.Debug("raft[%v] heartbeat election timeout at term[%d] leader[%d].", r.id, r.term, r.leader)
 			r.becomeFollower(nil, r.term, NoLeader)
 		}
 	}
@@ -532,20 +532,20 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 	if pr.next < fi || errt != nil || erre != nil {
 		if !pr.active {
 			if logger.IsEnableDebug() {
-				logger.Debug("[raft->sendAppend][%v]ignore sending snapshot to %v since it is not recently active.", r.id, to)
+				logger.Debug("raft[%v] ignore sending snapshot to %v since it is not recently active.", r.id, to)
 			}
 			return
 		}
 
 		snapshot, err := r.sm.Snapshot(pr.peer.ID)
 		if err != nil {
-			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: %v",
+			panic(AppPanicError(fmt.Sprintf("raft[%v] failed to send snapshot to %v because snapshot is unavailable, error is: %v",
 				r.id, to, err)))
 		}
 		var snapApplyIndex = snapshot.ApplyIndex()
 		if snapApplyIndex < fi-1 {
 			if logger.IsEnableWarn() {
-				logger.Warn("[raft->sendAppend][%v] snapshot apply index [%v] less than first index [%v] - 1, change to [%v]", r.id, snapApplyIndex, fi, fi-1)
+				logger.Warn("raft[%v] snapshot apply index [%v] less than first index [%v] - 1, change to [%v]", r.id, snapApplyIndex, fi, fi-1)
 			}
 			snapApplyIndex = fi - 1
 		}
@@ -557,7 +557,7 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 		snapMeta := proto.SnapshotMeta{Index: snapApplyIndex, Peers: make([]proto.Peer, 0, len(r.replicas)), Learners: make([]proto.Learner, 0), SnapV: snapshot.Version()}
 		m.SetCtx(ctx)
 		if snapTerm, err := r.raftLog.term(snapMeta.Index); err != nil {
-			panic(AppPanicError(fmt.Sprintf("[raft->sendAppend][%v]failed to send snapshot to %v because snapshot is unavailable, error is: \r\n%v", r.id, to, err)))
+			panic(AppPanicError(fmt.Sprintf("raft[%v] failed to send snapshot to %v because snapshot is unavailable, error is: \r\n%v", r.id, to, err)))
 		} else {
 			snapMeta.Term = snapTerm
 		}
@@ -572,7 +572,7 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 		pr.becomeSnapshot(snapMeta.Index)
 
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->sendAppend][%v][firstindex: %d, commit: %d] sent snapshot[index: %d, term: %d] to [%v][%s]",
+			logger.Debug("raft[%v] [firstindex: %d, commit: %d] sent snapshot [index: %d, term: %d] to [%v][%s]",
 				r.id, fi, r.raftLog.committed, snapMeta.Index, snapMeta.Term, to, pr)
 		}
 	} else {
@@ -594,7 +594,7 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 			case replicaStateProbe:
 				pr.pause()
 			default:
-				errMsg := fmt.Sprintf("[repl->sendAppend][%v] is sending append in unhandled state %s.", r.id, pr.state)
+				errMsg := fmt.Sprintf("raft[%v] is sending append in unhandled state %s.", r.id, pr.state)
 				logger.Error(errMsg)
 				panic(AppPanicError(errMsg))
 			}

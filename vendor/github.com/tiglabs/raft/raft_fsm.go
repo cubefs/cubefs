@@ -263,23 +263,23 @@ func (r *raftFsm) Step(m *proto.Message) {
 		if r.state != stateLeader && r.promotable() {
 			ents, err := r.raftLog.slice(r.raftLog.applied+1, r.raftLog.committed+1, noLimit)
 			if err != nil {
-				errMsg := fmt.Sprintf("[raft->Step][%v]unexpected error getting unapplied entries:[%v]", r.id, err)
+				errMsg := fmt.Sprintf("raft[%v] unexpected error getting unapplied entries: [%v]", r.id, err)
 				logger.Error(errMsg)
 				panic(AppPanicError(errMsg))
 			}
 			if n := numOfPendingConf(ents); n != 0 && r.raftLog.committed > r.raftLog.applied {
 				if logger.IsEnableWarn() {
-					logger.Warn("[raft->Step][%v] cannot campaign at term %d since there are still %d pending configuration changes to apply.", r.id, r.term, n)
+					logger.Warn("raft[%v] cannot campaign at term %d since there are still %d pending configuration changes to apply.", r.id, r.term, n)
 				}
 				return
 			}
 
 			if logger.IsEnableDebug() {
-				logger.Debug("[raft->Step][%v] is starting a new election at term[%d].", r.id, r.term)
+				logger.Debug("raft[%v] is starting a new election at term[%d].", r.id, r.term)
 			}
 			r.campaign(m.ForceVote)
 		} else if logger.IsEnableDebug() && r.state == stateLeader {
-			logger.Debug("[raft->Step][%v] ignoring LocalMsgHup because already leader.", r.id)
+			logger.Debug("raft[%v] ignoring LocalMsgHup because already leader.", r.id)
 		}
 		return
 	}
@@ -289,7 +289,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 		// local message
 	case m.Term > r.term:
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->Step][%v term: %d] received a [%s] message with higher term from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
+			logger.Debug("raft[%v] [term: %d] received a [%s] message with higher term from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
 		}
 		lead := m.From
 		if m.Type == proto.ReqMsgVote {
@@ -297,7 +297,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 			inLease := r.config.LeaseCheck && r.state == stateFollower && r.leader != NoLeader
 			if r.leader != m.From && inLease && !m.ForceVote {
 				if logger.IsEnableWarn() {
-					logger.Warn("[raft->Step][%v logterm: %d, index: %d, vote: %v] ignored vote from %v [logterm: %d, index: %d] at term %d: lease is not expired.",
+					logger.Warn("raft[%v] [logterm: %d, index: %d, vote: %v] ignored vote from %v [logterm: %d, index: %d] at term %d: lease is not expired.",
 						r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
 				}
 
@@ -313,7 +313,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 
 	case m.Term < r.term:
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->Step][%v term: %d] ignored a %s message with lower term from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
+			logger.Debug("raft[%v] [term: %d] ignored a %s message with lower term from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
 		}
 		return
 	}
@@ -322,7 +322,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 
 func (r *raftFsm) loadState(state proto.HardState) error {
 	if state.Commit < r.raftLog.committed || state.Commit > r.raftLog.lastIndex() {
-		return fmt.Errorf("[raft->loadState][%v] state.commit %d is out of range [%d, %d]", r.id, state.Commit, r.raftLog.committed, r.raftLog.lastIndex())
+		return fmt.Errorf("raft[%v] state.commit %d is out of range [%d, %d]", r.id, state.Commit, r.raftLog.committed, r.raftLog.lastIndex())
 	}
 
 	r.term = state.Term
@@ -583,7 +583,7 @@ func (r *raftFsm) checkSnapshot(meta proto.SnapshotMeta) bool {
 
 func (r *raftFsm) restore(meta proto.SnapshotMeta) {
 	if logger.IsEnableWarn() {
-		logger.Warn("raft [%v, commit: %d, lastindex: %d, lastterm: %d] starts to restore snapshot [index: %d,term:%d]",
+		logger.Warn("raft[%v] [commit: %d, lastindex: %d, lastterm: %d] starts to restore snapshot [index: %d, term:%d]",
 			r.id, r.raftLog.committed, r.raftLog.lastIndex(), r.raftLog.lastTerm(), meta.Index, meta.Term)
 	}
 
