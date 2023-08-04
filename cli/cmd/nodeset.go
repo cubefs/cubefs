@@ -34,13 +34,15 @@ func newNodeSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newNodeSetListCmd(client),
 		newNodeSetInfoCmd(client),
+		newNodeSetUpdateCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdNodeSetListShort = "List cluster nodeSets"
-	cmdGetNodeSetShort  = "Show nodeSet information"
+	cmdNodeSetListShort   = "List cluster nodeSets"
+	cmdGetNodeSetShort    = "Show nodeSet information"
+	cmdUpdateNodeSetShort = "Update nodeSet"
 )
 
 func newNodeSetListCmd(client *master.MasterClient) *cobra.Command {
@@ -93,9 +95,37 @@ func newNodeSetInfoCmd(client *master.MasterClient) *cobra.Command {
 			if nodeSetStatInfo, err = client.AdminAPI().GetNodeSet(nodeSetId); err != nil {
 				return
 			}
-			stdout(formatNodeSetView(nodeSetStatInfo))
+			stdout("%v", formatNodeSetView(nodeSetStatInfo))
 			return
 		},
 	}
+	return cmd
+}
+
+func newNodeSetUpdateCmd(client *master.MasterClient) *cobra.Command {
+	dataNodeSelector := ""
+	metaNodeSelector := ""
+	var cmd = &cobra.Command{
+		Use:   CliOpUpdate,
+		Short: cmdUpdateNodeSetShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error: %v\n", err)
+				}
+			}()
+
+			nodeSetId := args[0]
+			if err = client.AdminAPI().UpdateNodeSet(nodeSetId, dataNodeSelector, metaNodeSelector); err != nil {
+				return
+			}
+			stdout("success to update nodeset %v\n", nodeSetId)
+			return
+		},
+	}
+	cmd.Flags().StringVar(&dataNodeSelector, "dataNodeSelector", "", "Set the node select policy(datanode) for specify nodeset")
+	cmd.Flags().StringVar(&metaNodeSelector, "metaNodeSelector", "", "Set the node select policy(metanode) for specify nodeset")
 	return cmd
 }

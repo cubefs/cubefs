@@ -15,8 +15,9 @@
 package proto
 
 import (
-	"github.com/cubefs/cubefs/util"
 	"time"
+
+	"github.com/cubefs/cubefs/util"
 )
 
 // api
@@ -192,6 +193,7 @@ const (
 	GetAllZones     = "/zone/list"
 	GetAllNodeSets  = "/nodeSet/list"
 	GetNodeSet      = "/nodeSet/get"
+	UpdateNodeSet   = "/nodeSet/update"
 
 	// Header keys
 	SkipOwnerValidation = "Skip-Owner-Validation"

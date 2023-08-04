@@ -789,9 +789,11 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 
 func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf("NodeSet ID:    %v\n", ns.ID))
-	sb.WriteString(fmt.Sprintf("Capacity:      %v\n", ns.Capacity))
-	sb.WriteString(fmt.Sprintf("Zone:          %v\n", ns.Zone))
+	sb.WriteString(fmt.Sprintf("NodeSet ID:       %v\n", ns.ID))
+	sb.WriteString(fmt.Sprintf("Capacity:         %v\n", ns.Capacity))
+	sb.WriteString(fmt.Sprintf("Zone:             %v\n", ns.Zone))
+	sb.WriteString(fmt.Sprintf("DataNodeSelector: %v\n", ns.DataNodeSelector))
+	sb.WriteString(fmt.Sprintf("MetaNodeSelector: %v\n", ns.MetaNodeSelector))
 	var dataTotal, dataUsed, dataAvail, metaTotal, metaUsed, metaAvail uint64
 	for _, dn := range ns.DataNodes {
 		dataTotal += dn.Total

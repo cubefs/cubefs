@@ -395,9 +395,11 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nsStat := &proto.NodeSetStatInfo{
-		ID:       ns.ID,
-		Capacity: ns.Capacity,
-		Zone:     ns.zoneName,
+		ID:               ns.ID,
+		Capacity:         ns.Capacity,
+		Zone:             ns.zoneName,
+		DataNodeSelector: ns.GetDataNodeSelector(),
+		MetaNodeSelector: ns.GetMetaNodeSelector(),
 	}
 	ns.dataNodes.Range(func(key, value interface{}) bool {
 		dn := value.(*DataNode)
@@ -429,6 +431,50 @@ func (m *Server) getNodeSet(w http.ResponseWriter, r *http.Request) {
 	})
 
 	sendOkReply(w, r, newSuccessHTTPReply(nsStat))
+}
+
+func (m *Server) updateNodeSet(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.UpdateNodeSet))
+	defer func() {
+		doStatAndMetric(proto.UpdateNodeSet, metric, nil, nil)
+	}()
+	nodeSetStr := r.FormValue(nodesetIdKey)
+	if nodeSetStr == "" {
+		err := keyNotFound(nodesetIdKey)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	nodeSetId, err := strconv.ParseUint(nodeSetStr, 10, 64)
+	if err != nil {
+		err = fmt.Errorf("invalid nodeSetId: %v", nodeSetStr)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	ns, err := m.cluster.t.getNodeSetByNodeSetId(nodeSetId)
+	if err != nil {
+		err := nodeSetNotFound(nodeSetId)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeNodeSetNotExists, Msg: err.Error()})
+		return
+	}
+	dataNodeSelector := extractDataNodeSelector(r)
+	metaNodeSelector := extractMetaNodeSelector(r)
+	needSync := false
+	if dataNodeSelector != "" && dataNodeSelector != ns.GetDataNodeSelector() {
+		ns.SetDataNodeSelector(dataNodeSelector)
+		needSync = true
+	}
+	if metaNodeSelector != "" && metaNodeSelector != ns.GetMetaNodeSelector() {
+		ns.SetMetaNodeSelector(metaNodeSelector)
+		needSync = true
+	}
+	if needSync {
+		err = m.cluster.syncUpdateNodeSet(ns)
+		if err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
 func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
@@ -2823,7 +2869,7 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 	return
 }
 
-func (m *Server) updateZoneNodeSelector(zoneName string, dataNodesetSelector string, metaNodesetSelector string) (err error) {
+func (m *Server) updateZoneNodeSelector(zoneName string, dataNodeSelector string, metaNodeSelector string) (err error) {
 	var ok bool
 	var value interface{}
 
@@ -2837,12 +2883,12 @@ func (m *Server) updateZoneNodeSelector(zoneName string, dataNodesetSelector str
 	defer zone.nsLock.RUnlock()
 	for _, ns := range zone.nodeSetMap {
 		needSync := false
-		if dataNodesetSelector != "" && dataNodesetSelector != ns.GetDataNodeSelector() {
-			ns.SetDataNodeSelector(dataNodesetSelector)
+		if dataNodeSelector != "" && dataNodeSelector != ns.GetDataNodeSelector() {
+			ns.SetDataNodeSelector(dataNodeSelector)
 			needSync = true
 		}
-		if metaNodesetSelector != "" && metaNodesetSelector != ns.GetMetaNodeSelector() {
-			ns.SetMetaNodeSelector(metaNodesetSelector)
+		if metaNodeSelector != "" && metaNodeSelector != ns.GetMetaNodeSelector() {
+			ns.SetMetaNodeSelector(metaNodeSelector)
 			needSync = true
 		}
 		if needSync {
