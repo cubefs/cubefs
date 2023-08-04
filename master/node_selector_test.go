@@ -16,9 +16,13 @@ package master
 
 import (
 	"fmt"
+	"math"
+	"math/rand"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/util"
 )
@@ -416,4 +420,127 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 	}
 	// restore status
 	metaNode.Total = tmp
+}
+
+func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nodeSet) {
+	ns = &nodeSet{
+		ID:               1,
+		Capacity:         4,
+		zoneName:         testZone1,
+		metaNodes:        new(sync.Map),
+		dataNodes:        new(sync.Map),
+		dataNodeSelector: NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
+		metaNodeSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
+	}
+	for i := 0; i < count; i++ {
+		space := initTotal + uint64(i)*grow
+		node := &DataNode{
+			ID:             uint64(i),
+			Addr:           fmt.Sprintf("Datanode: %v", i),
+			Total:          space,
+			AvailableSpace: space,
+			isActive:       true,
+		}
+		ns.putDataNode(node)
+	}
+	return
+}
+
+func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nodeSet) {
+	ns = &nodeSet{
+		ID:               1,
+		Capacity:         4,
+		zoneName:         testZone1,
+		metaNodes:        new(sync.Map),
+		dataNodes:        new(sync.Map),
+		dataNodeSelector: NewNodeSelector(DefaultNodeSelectorName, DataNodeType),
+		metaNodeSelector: NewNodeSelector(DefaultNodeSelectorName, MetaNodeType),
+	}
+	for i := 0; i < count; i++ {
+		space := initTotal + uint64(i)*grow
+		node := &MetaNode{
+			ID:                uint64(i),
+			Addr:              fmt.Sprintf("Metanode: %v", i),
+			Used:              0,
+			Total:             space,
+			IsActive:          true,
+			MaxMemAvailWeight: math.MaxUint64,
+		}
+		ns.putMetaNode(node)
+	}
+	return
+}
+
+func nodeSelectorBench(selector NodeSelector, nset *nodeSet, onSelect func(addr string)) (map[uint64]int, error) {
+	times := make(map[uint64]int)
+	for i := 0; i < loopNodeSelectorTestCount; i++ {
+		_, peers, err := selector.Select(nset, nil, 1)
+		if err != nil {
+			return nil, err
+		}
+		peer := peers[0]
+		count, _ := times[peer.ID]
+		count += 1
+		times[peer.ID] = count
+		if onSelect != nil {
+			onSelect(peer.Addr)
+		}
+	}
+	return times, nil
+}
+
+func dataNodeSelectorBench(t *testing.T, selector NodeSelector) error {
+	nset := prepareDataNodesForBench(4, 100*util.GB, 100*util.GB)
+	random := rand.New(rand.NewSource(time.Now().Unix()))
+	times, err := nodeSelectorBench(selector, nset, func(addr string) {
+		val, _ := nset.dataNodes.Load(addr)
+		node := val.(*DataNode)
+		node.AvailableSpace -= uint64(random.Float64() * util.GB * 10)
+	})
+	if err != nil {
+		t.Errorf("%v failed to Bench %v", selector.GetName(), err)
+		return err
+	}
+	printNodeSelectTimes(t, times)
+	nset.dataNodes.Range(func(key, value interface{}) bool {
+		node := value.(*DataNode)
+		printDataNode(t, node)
+		return true
+	})
+	return nil
+}
+
+func metaNodeSelectorBench(t *testing.T, selector NodeSelector) error {
+	nset := prepareMetaNodesForBench(4, 100*util.GB, 100*util.GB)
+	random := rand.New(rand.NewSource(time.Now().Unix()))
+	times, err := nodeSelectorBench(selector, nset, func(addr string) {
+		val, _ := nset.metaNodes.Load(addr)
+		node := val.(*MetaNode)
+		node.Used += uint64(random.Float64() * util.GB * 10)
+	})
+	if err != nil {
+		t.Errorf("%v failed to Bench %v", selector.GetName(), err)
+		return err
+	}
+	printNodeSelectTimes(t, times)
+	nset.metaNodes.Range(func(key, value interface{}) bool {
+		node := value.(*MetaNode)
+		printMetaNode(t, node)
+		return true
+	})
+	return nil
+}
+
+func TestBenchTicketNodeSelector(t *testing.T) {
+	selector := NewTicketNodeSelector(DataNodeType)
+	dataNodeSelectorBench(t, selector)
+	selector = NewTicketNodeSelector(MetaNodeType)
+	metaNodeSelectorBench(t, selector)
+}
+
+func TestBenchCarryWeightNodeSelector(t *testing.T) {
+	selector := NewCarryWeightNodeSelector(DataNodeType)
+	dataNodeSelectorBench(t, selector)
+	selector = NewCarryWeightNodeSelector(MetaNodeType)
+	metaNodeSelectorBench(t, selector)
 }
