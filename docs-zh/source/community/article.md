@@ -25,6 +25,7 @@
 
 ## 技术揭秘
 
+- [CubeFS技术揭秘 ｜元数据子系统设计](https://mp.weixin.qq.com/s/03SUN3EsbHRC19R6GHQUdA)，2023-08-01，ZhiXiang Tang
 - [CubeFS原创方案丨原生HDFS协议访问支持](https://mp.weixin.qq.com/s/vw9O9ssHIWDIozjYkoy8IA) , 2023-05-31, Tianjiong,Zhang
 - [CubeFS原创方案 | 卷级别流控方案](https://mp.weixin.qq.com/s/ytBvK3MazOzm3uDtzRBwaw) ，2023-04-13，存储团队@OPPO
 - [CubeFS源码解读 | Data Partition 及副本的状态管理](https://mp.weixin.qq.com/s/ICpXE3e1Vu497hmvUyzI5Q) ，2023-04-06，存储团队@OPPO
