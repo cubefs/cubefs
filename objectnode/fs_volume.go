@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -1493,7 +1494,6 @@ func (v *Volume) readFile(inode, inodeSize uint64, path string, writer io.Writer
 }
 
 func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) error {
-	var err error
 	var upper = size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
@@ -1515,7 +1515,11 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 			readSize = int(rest)
 		}
 		tmp = tmp[:readSize]
-		n, err = reader.Read(ctx, tmp, int(offset), readSize)
+		off, err := safeConvertUint64ToInt(offset)
+		if err != nil {
+			return err
+		}
+		n, err = reader.Read(ctx, tmp, off, readSize)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, inode, offset, size, err)
@@ -1538,7 +1542,6 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 }
 
 func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) error {
-	var err error
 	var upper = size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
@@ -1555,7 +1558,11 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 		if uint64(readSize) > rest {
 			readSize = int(rest)
 		}
-		n, err = v.ec.Read(inode, tmp, int(offset), readSize)
+		off, err := safeConvertUint64ToInt(offset)
+		if err != nil {
+			return err
+		}
+		n, err = v.ec.Read(inode, tmp, off, readSize)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, inode, offset, size, err)
@@ -3026,4 +3033,30 @@ func (v *Volume) getEbsReader(ino uint64) (reader *blobstore.Reader) {
 	reader = blobstore.NewReader(clientConf)
 	log.LogDebugf("getEbsReader: reader(%v) ", reader)
 	return
+}
+
+func safeConvertUint64ToInt(num uint64) (int, error) {
+	str := strconv.FormatUint(num, 10)
+	parsed, err := strconv.ParseInt(str, 10, 0)
+	if err != nil {
+		return 0, err
+	}
+	return int(parsed), nil
+}
+
+func safeConvertInt64ToUint64(num int64) (uint64, error) {
+	str := strconv.FormatInt(num, 10)
+	parsed, err := strconv.ParseUint(str, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return parsed, nil
+}
+
+func safeConvertStrToUint16(str string) (uint16, error) {
+	parsed, err := strconv.ParseUint(str, 10, 16)
+	if err != nil {
+		return 0, err
+	}
+	return uint16(parsed), nil
 }

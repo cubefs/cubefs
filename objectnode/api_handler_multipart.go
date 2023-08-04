@@ -178,8 +178,8 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var partNumberInt uint64
-	if partNumberInt, err = strconv.ParseUint(partNumber, 10, 64); err != nil {
+	var partNumberInt uint16
+	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil {
 		log.LogErrorf("uploadPartHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
 			GetRequestID(r), partNumber, err)
 		errorCode = InvalidArgument
@@ -211,8 +211,9 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), err)
 		return
 	}
+
 	var fsFileInfo *FSFileInfo
-	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), r.Body); err != nil {
+	if fsFileInfo, err = vol.WritePart(param.Object(), uploadId, partNumberInt, r.Body); err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, err)
 		if err == syscall.ENOENT {
@@ -266,8 +267,8 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		errorCode = InvalidArgument
 		return
 	}
-	var partNumberInt uint64
-	if partNumberInt, err = strconv.ParseUint(partNumber, 10, 64); err != nil {
+	var partNumberInt uint16
+	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil {
 		log.LogErrorf("uploadPartCopyHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
 			GetRequestID(r), partNumber, err)
 		errorCode = InvalidArgument
@@ -321,9 +322,21 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 	if errorCode != nil {
 		return
 	}
+	size, err := safeConvertInt64ToUint64(srcFileInfo.Size)
+	if err != nil {
+		return
+	}
+	fb, err := safeConvertInt64ToUint64(firstByte)
+	if err != nil {
+		return
+	}
+	cl, err := safeConvertInt64ToUint64(copyLength)
+	if err != nil {
+		return
+	}
 	reader, writer := io.Pipe()
 	go func() {
-		err = srcVol.readFile(srcFileInfo.Inode, uint64(srcFileInfo.Size), srcObject, writer, uint64(firstByte), uint64(copyLength))
+		err = srcVol.readFile(srcFileInfo.Inode, size, srcObject, writer, fb, cl)
 		if err != nil {
 			log.LogErrorf("partCopyHandler: read srcObj err(%v): requestId(%v) srcVol(%v) path(%v)",
 				err, GetRequestID(r), srcBucket, srcObject)
@@ -333,7 +346,7 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 
 	// step5: upload part by copy
 	var fsFileInfo *FSFileInfo
-	fsFileInfo, err = vol.WritePart(param.Object(), uploadId, uint16(partNumberInt), reader)
+	fsFileInfo, err = vol.WritePart(param.Object(), uploadId, partNumberInt, reader)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchUpload
 		return
@@ -455,8 +468,8 @@ func (o *ObjectNode) listPartsHandler(w http.ResponseWriter, r *http.Request) {
 		Key:          param.Object(),
 		UploadId:     uploadId,
 		StorageClass: StorageClassStandard,
-		NextMarker:   int(nextMarker),
-		MaxParts:     int(maxPartsInt),
+		NextMarker:   nextMarker,
+		MaxParts:     maxPartsInt,
 		IsTruncated:  isTruncated,
 		Parts:        parts,
 		Owner:        bucketOwner,
@@ -813,7 +826,7 @@ func (o *ObjectNode) listMultipartUploadsHandler(w http.ResponseWriter, r *http.
 		NextUploadIdMarker: nextUploadIdMarker,
 		Delimiter:          delimiter,
 		Prefix:             prefix,
-		MaxUploads:         int(maxUploadsInt),
+		MaxUploads:         maxUploadsInt,
 		IsTruncated:        IsTruncated,
 		Uploads:            uploads,
 		CommonPrefixes:     commonPrefixes,
