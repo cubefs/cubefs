@@ -618,22 +618,19 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		var mc = master.NewMasterClientFromString(opt.Master, false)
 		t := time.NewTicker(UpdateConfInterval)
 		defer t.Stop()
-		for {
-			select {
-			case <-t.C:
-				log.LogDebugf("UpdateVolConf: load conf from master")
-
-				var volumeInfo *proto.SimpleVolView
-				volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
-				if err != nil {
-					return
-				}
-				super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
-				if proto.IsCold(opt.VolType) {
-					super.CacheAction = volumeInfo.CacheAction
-					super.CacheThreshold = volumeInfo.CacheThreshold
-					super.EbsBlockSize = volumeInfo.ObjBlockSize
-				}
+		for range t.C {
+			log.LogDebugf("UpdateVolConf: load conf from master")
+			var volumeInfo *proto.SimpleVolView
+			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+			if err != nil {
+				log.LogErrorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
+				continue
+			}
+			super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
+			if proto.IsCold(opt.VolType) {
+				super.CacheAction = volumeInfo.CacheAction
+				super.CacheThreshold = volumeInfo.CacheThreshold
+				super.EbsBlockSize = volumeInfo.ObjBlockSize
 			}
 		}
 	}()
