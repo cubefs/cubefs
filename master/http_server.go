@@ -707,6 +707,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetNodeSet).
 		HandlerFunc(m.getNodeSet)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.UpdateNodeSet).
+		HandlerFunc(m.updateNodeSet)
 
 	// Quota
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
