@@ -408,6 +408,8 @@ func (uMgr *UidManager) accumRebuildFin(rebuild bool) {
 		uMgr.accumRebuildBase, uMgr.accumRebuildDelta, rebuild)
 	uMgr.rbuilding = false
 	if !rebuild {
+		uMgr.accumRebuildBase = new(sync.Map)
+		uMgr.accumRebuildDelta = new(sync.Map)
 		return
 	}
 	uMgr.accumBase = uMgr.accumRebuildBase
