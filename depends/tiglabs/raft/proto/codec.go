@@ -184,7 +184,7 @@ func (m *Message) Encode(w io.Writer) error {
 	} else {
 		buf[7] = 0
 	}
-	binary.BigEndian.PutUint64(buf[8:], m.RejectIndex)
+	binary.BigEndian.PutUint64(buf[8:], m.RejectHint)
 	binary.BigEndian.PutUint64(buf[16:], m.ID)
 	binary.BigEndian.PutUint64(buf[24:], m.From)
 	binary.BigEndian.PutUint64(buf[32:], m.To)
@@ -246,7 +246,7 @@ func (m *Message) Decode(r *util.BufferReader) error {
 		m.Type = MsgType(datas[1])
 		m.ForceVote = (datas[2] == 1)
 		m.Reject = (datas[3] == 1)
-		m.RejectIndex = binary.BigEndian.Uint64(datas[4:])
+		m.RejectHint = binary.BigEndian.Uint64(datas[4:])
 		m.ID = binary.BigEndian.Uint64(datas[12:])
 		m.From = binary.BigEndian.Uint64(datas[20:])
 		m.To = binary.BigEndian.Uint64(datas[28:])

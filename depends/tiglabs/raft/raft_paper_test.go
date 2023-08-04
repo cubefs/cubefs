@@ -620,7 +620,7 @@ func TestFollowerCheckMsgApp(t *testing.T) {
 		// todo  this is diff from etcd raft, because tiglab raft has commited in (replica) which not in etcd raft (Progress)
 		// so this test case in tiglab raft, not use findConflictByTerm func, which wrejectHint should 1 and logTerm=0
 		wmsgs := []proto.Message{
-			{ID: r.id, From: 1, To: 2, Type: proto.RespMsgAppend, Term: 2, Index: tt.windex, Reject: tt.wreject, RejectIndex: tt.wrejectHint, LogTerm: 0, Commit: 1},
+			{ID: r.id, From: 1, To: 2, Type: proto.RespMsgAppend, Term: 2, Index: tt.windex, Reject: tt.wreject, RejectHint: tt.wrejectHint, LogTerm: 0, Commit: 1},
 		}
 		msgs[0].Entries = nil
 		if !reflect.DeepEqual(msgs, wmsgs) {

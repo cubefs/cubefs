@@ -16,10 +16,12 @@
 package raft
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 )
 
 func (r *raftFsm) becomeFollower(term, lead uint64) {
@@ -174,13 +176,30 @@ func (r *raftFsm) handleAppendEntries(m *proto.Message) {
 			logger.Debug("raft[%v logterm: %d, index: %d] rejected msgApp [logterm: %d, index: %d] from %v",
 				r.id, r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(m.Index)), m.Index, m.LogTerm, m.Index, m.From)
 		}
+		// Return a hint to the leader about the maximum index and term that the
+		// two logs could be divergent at. Do this by searching through the
+		// follower's log for the maximum (index, term) pair with a term <= the
+		// MsgApp's LogTerm and an index <= the MsgApp's Index. This can help
+		// skip all indexes in the follower's uncommitted tail with terms
+		// greater than the MsgApp's LogTerm.
+		//
+		// See the other caller for findConflictByTerm (in stepLeader) for a much
+		// more detailed explanation of this mechanism.
+		hintIndex := util.Min(m.Index, r.raftLog.lastIndex())
+		hintIndex = r.raftLog.findConflictByTerm(hintIndex, m.LogTerm)
+		hintTerm, err := r.raftLog.term(hintIndex)
+		if err != nil {
+			panic(fmt.Sprintf("term(%d) must be valid, but got %v", hintIndex, err))
+		}
+
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgAppend
 		nmsg.To = m.From
 		nmsg.Index = m.Index
 		nmsg.Commit = r.raftLog.committed
 		nmsg.Reject = true
-		nmsg.RejectIndex = r.raftLog.lastIndex()
+		nmsg.LogTerm = hintTerm
+		nmsg.RejectHint = hintIndex
 		r.send(nmsg)
 	}
 }

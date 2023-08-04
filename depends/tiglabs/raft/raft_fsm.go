@@ -192,8 +192,9 @@ func (r *raftFsm) StopFsm() {
 	for _, r := range r.replicas {
 		peers = append(peers, r.peer)
 	}
-
-	r.mo.RemovePartition(r.id, peers)
+	if r.mo != nil {
+		r.mo.RemovePartition(r.id, peers)
+	}
 	close(r.stopCh)
 }
 
