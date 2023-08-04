@@ -17,11 +17,12 @@ package raft
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	stor "github.com/cubefs/cubefs/depends/tiglabs/raft/storage"
 	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	stor "github.com/cubefs/cubefs/depends/tiglabs/raft/storage"
 )
 
 type connem struct {
@@ -1513,394 +1514,271 @@ func TestDisruptiveFollowerPreVote(t *testing.T) {
 	}
 }
 
-//func TestReadOnlyOptionSafe(t *testing.T) {
-//	a := newTestRaftFsm(10, 1,
-//		newTestRaftConfig(1, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
-//	b := newTestRaftFsm(10, 1,
-//		newTestRaftConfig(2, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
-//	c := newTestRaftFsm(10, 1,
-//		newTestRaftConfig(3, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
-//
-//	nt := newNetwork(a, b, c)
-//	b.randElectionTick+=1
-//	for i := 0; i < b.randElectionTick; i++ {
-//		b.tick()
-//	}
-//	nt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgHup})
-//
-//	if a.state != stateLeader {
-//		t.Fatalf("state = %s, want %v", a.state, stateLeader)
-//	}
-//
-//	tests := []struct {
-//		sm        *raftFsm
-//		proposals int
-//		wri       uint64
-//		wctx      []byte
-//	}{
-//		{a, 10, 11, []byte("ctx1")},
-//		{b, 10, 21, []byte("ctx2")},
-//		{c, 10, 31, []byte("ctx3")},
-//		{a, 10, 41, []byte("ctx4")},
-//		{b, 10, 51, []byte("ctx5")},
-//		{c, 10, 61, []byte("ctx6")},
-//	}
-//
-//	for i, tt := range tests {
-//		for j := 0; j < tt.proposals; j++ {
-//			nt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgProp, Entries: []*proto.Entry{{}}})
-//		}
-//
-//		nt.send(proto.Message{From: tt.sm.id, To: tt.sm.id, Type: proto.MsgReadIndex, Entries: []*proto.Entry{{Data: tt.wctx}}})
-//
-//		r := tt.sm
-//		if len(r.readStates) == 0 {
-//			t.Errorf("#%d: len(readStates) = 0, want non-zero", i)
-//		}
-//		rs := r.readStates[0]
-//		if rs.Index != tt.wri {
-//			t.Errorf("#%d: readIndex = %d, want %d", i, rs.Index, tt.wri)
-//		}
-//
-//		if !bytes.Equal(rs.RequestCtx, tt.wctx) {
-//			t.Errorf("#%d: requestCtx = %v, want %v", i, rs.RequestCtx, tt.wctx)
-//		}
-//		r.readStates = nil
-//	}
-//}
-//
-//func TestReadOnlyOptionLease(t *testing.T) {
-//	a := newTestRaftFsm(10, 1,
-//		newTestRaftConfig(1, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
-//	b := newTestRaftFsm(10, 1,
-//		newTestRaftConfig(2, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
-//	c := newTestRaftFsm(10, 1,
-//		newTestRaftConfig(3, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
-//	a.readOnly.option = ReadOnlyLeaseBased
-//	b.readOnly.option = ReadOnlyLeaseBased
-//	c.readOnly.option = ReadOnlyLeaseBased
-//	a.config.LeaseCheck = true
-//	b.config.LeaseCheck = true
-//	c.config.LeaseCheck = true
-//
-//	nt := newNetwork(a, b, c)
-//	b.randElectionTick += 1
-//
-//	for i := 0; i < b.randElectionTick; i++ {
-//		b.tick()
-//	}
-//	nt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgHup})
-//
-//	if a.state != stateLeader {
-//		t.Fatalf("state = %s, want %v", a.state, stateLeader)
-//	}
-//
-//	tests := []struct {
-//		sm        *raftFsm
-//		proposals int
-//		wri       uint64
-//		wctx      []byte
-//	}{
-//		{a, 10, 11, []byte("ctx1")},
-//		{b, 10, 21, []byte("ctx2")},
-//		{c, 10, 31, []byte("ctx3")},
-//		{a, 10, 41, []byte("ctx4")},
-//		{b, 10, 51, []byte("ctx5")},
-//		{c, 10, 61, []byte("ctx6")},
-//	}
-//
-//	for i, tt := range tests {
-//		for j := 0; j < tt.proposals; j++ {
-//			nt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgProp, Entries: []*proto.Entry{{}}})
-//		}
-//
-//		nt.send(proto.Message{From: tt.sm.id, To: tt.sm.id, Type: proto.MsgReadIndex, Entries: []*proto.Entry{{Data: tt.wctx}}})
-//
-//		r := tt.sm
-//		rs := r.readStates[0]
-//		if rs.Index != tt.wri {
-//			t.Errorf("#%d: readIndex = %d, want %d", i, rs.Index, tt.wri)
-//		}
-//
-//		if !bytes.Equal(rs.RequestCtx, tt.wctx) {
-//			t.Errorf("#%d: requestCtx = %v, want %v", i, rs.RequestCtx, tt.wctx)
-//		}
-//		r.readStates = nil
-//	}
-//}
-//
-//// TestReadOnlyForNewLeader ensures that a leader only accepts MsgReadIndex message
-//// when it commits at least one log entry at it term.
-//func TestReadOnlyForNewLeader(t *testing.T) {
-//	nodeConfigs := []struct {
-//		id           uint64
-//		committed    uint64
-//		applied      uint64
-//		compactIndex uint64
-//	}{
-//		{1, 1, 1, 0},
-//		{2, 2, 2, 2},
-//		{3, 2, 2, 2},
-//	}
-//	peers := make([]stateMachine, 0)
-//	for _, c := range nodeConfigs {
-//		storage := newTestMemoryStorage(withPeers(1, 2, 3))
-//		storage.Append([]*proto.Entry{{Index: 1, Term: 1}, {Index: 2, Term: 1}})
-//		storage.SetHardState(proto.HardState{Term: 1, Commit: c.committed})
-//		if c.compactIndex != 0 {
-//			storage.Compact(c.compactIndex)
-//		}
-//		cfg := newTestConfig(c.id, 10, 1, storage)
-//		cfg.Applied = c.applied
-//		raft := newRaft(cfg)
-//		peers = append(peers, raft)
-//	}
-//	nt := newNetwork(peers...)
-//
-//	// Drop MsgApp to forbid peer a to commit any log entry at its term after it becomes leader.
-//	nt.ignore(proto.MsgApp)
-//	// Force peer a to become leader.
-//	nt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgHup})
-//
-//	sm := nt.peers[1].(*raft)
-//	if sm.state != stateLeader {
-//		t.Fatalf("state = %s, want %v", sm.state, stateLeader)
-//	}
-//
-//	// Ensure peer a drops read only request.
-//	var windex uint64 = 4
-//	wctx := []byte("ctx")
-//	nt.send(proto.Message{From: 1, To: 1, Type: proto.MsgReadIndex, Entries: []*proto.Entry{{Data: wctx}}})
-//	if len(sm.readStates) != 0 {
-//		t.Fatalf("len(readStates) = %d, want zero", len(sm.readStates))
-//	}
-//
-//	nt.recover()
-//
-//	// Force peer a to commit a log entry at its term
-//	for i := 0; i < sm.heartbeatTimeout; i++ {
-//		sm.tick()
-//	}
-//	nt.send(proto.Message{From: 1, To: 1, Type: proto.LocalMsgProp, Entries: []*proto.Entry{{}}})
-//	if sm.raftLog.committed != 4 {
-//		t.Fatalf("committed = %d, want 4", sm.raftLog.committed)
-//	}
-//	lastLogTerm := sm.raftLog.zeroTermOnErrCompacted(sm.raftLog.term(sm.raftLog.committed))
-//	if lastLogTerm != sm.term {
-//		t.Fatalf("last log term = %d, want %d", lastLogTerm, sm.term)
-//	}
-//
-//	// Ensure peer a processed postponed read only request after it committed an entry at its term.
-//	if len(sm.readStates) != 1 {
-//		t.Fatalf("len(readStates) = %d, want 1", len(sm.readStates))
-//	}
-//	rs := sm.readStates[0]
-//	if rs.Index != windex {
-//		t.Fatalf("readIndex = %d, want %d", rs.Index, windex)
-//	}
-//	if !bytes.Equal(rs.RequestCtx, wctx) {
-//		t.Fatalf("requestCtx = %v, want %v", rs.RequestCtx, wctx)
-//	}
-//
-//	// Ensure peer a accepts read only request after it committed an entry at its term.
-//	nt.send(proto.Message{From: 1, To: 1, Type: proto.MsgReadIndex, Entries: []*proto.Entry{{Data: wctx}}})
-//	if len(sm.readStates) != 2 {
-//		t.Fatalf("len(readStates) = %d, want 2", len(sm.readStates))
-//	}
-//	rs = sm.readStates[1]
-//	if rs.Index != windex {
-//		t.Fatalf("readIndex = %d, want %d", rs.Index, windex)
-//	}
-//	if !bytes.Equal(rs.RequestCtx, wctx) {
-//		t.Fatalf("requestCtx = %v, want %v", rs.RequestCtx, wctx)
-//	}
-//}
-//
-//func TestLeaderAppResp(t *testing.T) {
-//	// initial progress: match = 0; next = 3
-//	tests := []struct {
-//		index  uint64
-//		reject bool
-//		// progress
-//		wmatch uint64
-//		wnext  uint64
-//		// message
-//		wmsgNum    int
-//		windex     uint64
-//		wcommitted uint64
-//	}{
-//		{3, true, 0, 3, 0, 0, 0},  // stale resp; no replies
-//		{2, true, 0, 2, 1, 1, 0},  // denied resp; leader does not commit; decrease next and send probing msg
-//		{2, false, 2, 4, 2, 2, 2}, // accept resp; leader commits; broadcast with commit index
-//		{0, false, 0, 3, 0, 0, 0}, // ignore heartbeat replies
-//	}
-//
-//	for i, tt := range tests {
-//		// sm term is 1 after it becomes the leader.
-//		// thus the last log term must be 1 to be committed.
-//		sm := newTestRaftFsm(10, 1,
-//			newTestRaftConfig(1, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
-//		sm.raftLog = &raftLog{
-//			storage:  &MemoryStorage{ents: []*proto.Entry{{}, {Index: 1, Term: 0}, {Index: 2, Term: 1}}},
-//			unstable: unstable{offset: 3},
-//		}
-//		sm.becomeCandidate()
-//		sm.becomeLeader()
-//		sm.readMessages()
-//		sm.Step(proto.Message{From: 2, Type: proto.RespMsgAppend, Index: tt.index, Term: sm.term, Reject: tt.reject, RejectHint: tt.index})
-//
-//		p := sm.prs.Progress[2]
-//		if p.Match != tt.wmatch {
-//			t.Errorf("#%d match = %d, want %d", i, p.Match, tt.wmatch)
-//		}
-//		if p.Next != tt.wnext {
-//			t.Errorf("#%d next = %d, want %d", i, p.Next, tt.wnext)
-//		}
-//
-//		msgs := sm.readMessages()
-//
-//		if len(msgs) != tt.wmsgNum {
-//			t.Errorf("#%d msgNum = %d, want %d", i, len(msgs), tt.wmsgNum)
-//		}
-//		for j, msg := range msgs {
-//			if msg.Index != tt.windex {
-//				t.Errorf("#%d.%d index = %d, want %d", i, j, msg.Index, tt.windex)
-//			}
-//			if msg.Commit != tt.wcommitted {
-//				t.Errorf("#%d.%d commit = %d, want %d", i, j, msg.Commit, tt.wcommitted)
-//			}
-//		}
-//	}
-//}
-//
-//// TestBcastBeat is when the leader receives a heartbeat tick, it should
-//// send a MsgHeartbeat with m.Index = 0, m.LogTerm=0 and empty entries.
-//func TestBcastBeat(t *testing.T) {
-//	offset := uint64(1000)
-//	// make a state machine with log.offset = 1000
-//	s := proto.Snapshot{
-//		Metadata: proto.SnapshotMetadata{
-//			Index:     offset,
-//			Term:      1,
-//			ConfState: proto.ConfState{Voters: []uint64{1, 2, 3}},
-//		},
-//	}
-//	storage := NewMemoryStorage()
-//	storage.ApplySnapshot(s)
-//	sm := newTestRaft(1, 10, 1, storage)
-//	sm.term = 1
-//
-//	sm.becomeCandidate()
-//	sm.becomeLeader()
-//	for i := 0; i < 10; i++ {
-//		mustAppendEntry(sm, proto.Entry{Index: uint64(i) + 1})
-//	}
-//	// slow follower
-//	sm.prs.Progress[2].Match, sm.prs.Progress[2].Next = 5, 6
-//	// normal follower
-//	sm.prs.Progress[3].Match, sm.prs.Progress[3].Next = sm.raftLog.lastIndex(), sm.raftLog.lastIndex()+1
-//
-//	sm.Step(proto.Message{Type: proto.MsgBeat})
-//	msgs := sm.readMessages()
-//	if len(msgs) != 2 {
-//		t.Fatalf("len(msgs) = %v, want 2", len(msgs))
-//	}
-//	wantCommitMap := map[uint64]uint64{
-//		2: min(sm.raftLog.committed, sm.prs.Progress[2].Match),
-//		3: min(sm.raftLog.committed, sm.prs.Progress[3].Match),
-//	}
-//	for i, m := range msgs {
-//		if m.Type != proto.ReqMsgHeartBeat {
-//			t.Fatalf("#%d: type = %v, want = %v", i, m.Type, proto.ReqMsgHeartBeat)
-//		}
-//		if m.Index != 0 {
-//			t.Fatalf("#%d: prevIndex = %d, want %d", i, m.Index, 0)
-//		}
-//		if m.LogTerm != 0 {
-//			t.Fatalf("#%d: prevTerm = %d, want %d", i, m.LogTerm, 0)
-//		}
-//		if wantCommitMap[m.To] == 0 {
-//			t.Fatalf("#%d: unexpected to %d", i, m.To)
-//		} else {
-//			if m.Commit != wantCommitMap[m.To] {
-//				t.Fatalf("#%d: commit = %d, want %d", i, m.Commit, wantCommitMap[m.To])
-//			}
-//			delete(wantCommitMap, m.To)
-//		}
-//		if len(m.Entries) != 0 {
-//			t.Fatalf("#%d: len(entries) = %d, want 0", i, len(m.Entries))
-//		}
-//	}
-//}
-//
-//// TestRecvMsgBeat tests the output of the state machine when receiving MsgBeat
-//func TestRecvMsgBeat(t *testing.T) {
-//	tests := []struct {
-//		state fsmState
-//		wMsg  int
-//	}{
-//		{stateLeader, 2},
-//		// candidate and follower should ignore MsgBeat
-//		{stateCandidate, 0},
-//		{stateFollower, 0},
-//	}
-//
-//	for i, tt := range tests {
-//		sm := newTestRaftFsm(10, 1,
-//			newTestRaftConfig(1, withStorage(stor.DefaultMemoryStorage()), withPeers(1, 2, 3)))
-//		sm.raftLog = &raftLog{storage: &MemoryStorage{ents: []*proto.Entry{{}, {Index: 1, Term: 0}, {Index: 2, Term: 1}}}}
-//		sm.term = 1
-//		sm.state = tt.state
-//		switch tt.state {
-//		case stateFollower:
-//			sm.step = stepFollower
-//		case stateCandidate:
-//			sm.step = stepCandidate
-//		case stateLeader:
-//			sm.step = stepLeader
-//		}
-//		sm.Step(proto.Message{From: 1, To: 1, Type: proto.MsgBeat})
-//
-//		msgs := sm.readMessages()
-//		if len(msgs) != tt.wMsg {
-//			t.Errorf("%d: len(msgs) = %d, want %d", i, len(msgs), tt.wMsg)
-//		}
-//		for _, m := range msgs {
-//			if m.Type != proto.ReqMsgHeartBeat {
-//				t.Errorf("%d: msg.type = %v, want %v", i, m.Type, proto.ReqMsgHeartBeat)
-//			}
-//		}
-//	}
-//}
-//
-//func TestLeaderIncreaseNext(t *testing.T) {
-//	previousEnts := []*proto.Entry{{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3}}
-//	tests := []struct {
-//		// progress
-//		state tracker.fsmState
-//		next  uint64
-//
-//		wnext uint64
-//	}{
-//		// state replicate, optimistically increase next
-//		// previous entries + noop entry + propose + 1
-//		{tracker.StateReplicate, 2, uint64(len(previousEnts) + 1 + 1 + 1)},
-//		// state probe, not optimistically increase next
-//		{tracker.StateProbe, 2, 2},
-//	}
-//
-//	for i, tt := range tests {
-//		sm := newTestRaft(1, 10, 1, newTestMemoryStorage(withPeers(1, 2)))
-//		sm.raftLog.append(previousEnts...)
-//		sm.becomeCandidate()
-//		sm.becomeLeader()
-//		sm.prs.Progress[2].State = tt.state
-//		sm.prs.Progress[2].Next = tt.next
-//		sm.Step(proto.Message{From: 1, To: 1, Type: proto.LocalMsgProp, Entries: []*proto.Entry{{Data: []byte("somedata")}}})
-//
-//		p := sm.prs.Progress[2]
-//		if p.Next != tt.wnext {
-//			t.Errorf("#%d next = %d, want %d", i, p.Next, tt.wnext)
-//		}
-//	}
-//}
+func TestFastLogRejection(t *testing.T) {
+	tests := []struct {
+		leaderLog       []*proto.Entry // Logs on the leader
+		followerLog     []*proto.Entry // Logs on the follower
+		rejectHintTerm  uint64         // Expected term included in rejected MsgAppResp.
+		rejectHintIndex uint64         // Expected index included in rejected MsgAppResp.
+		nextAppendTerm  uint64         // Expected term when leader appends after rejected.
+		nextAppendIndex uint64         // Expected index when leader appends after rejected.
+	}{
+		// This case tests that leader can find the conflict index quickly.
+		// Firstly leader appends (type=MsgApp,index=7,logTerm=4, entries=...);
+		// After rejected leader appends (type=MsgApp,index=3,logTerm=2).
+		{
+			leaderLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 2, Index: 2},
+				{Term: 2, Index: 3},
+				{Term: 4, Index: 4},
+				{Term: 4, Index: 5},
+				{Term: 4, Index: 6},
+				{Term: 4, Index: 7},
+			},
+			followerLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 2, Index: 2},
+				{Term: 2, Index: 3},
+				{Term: 3, Index: 4},
+				{Term: 3, Index: 5},
+				{Term: 3, Index: 6},
+				{Term: 3, Index: 7},
+				{Term: 3, Index: 8},
+				{Term: 3, Index: 9},
+				{Term: 3, Index: 10},
+				{Term: 3, Index: 11},
+			},
+			rejectHintTerm:  3,
+			rejectHintIndex: 7,
+			nextAppendTerm:  2,
+			nextAppendIndex: 3,
+		},
+		// This case tests that leader can find the conflict index quickly.
+		// Firstly leader appends (type=MsgApp,index=8,logTerm=5, entries=...);
+		// After rejected leader appends (type=MsgApp,index=4,logTerm=3).
+		{
+			leaderLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 2, Index: 2},
+				{Term: 2, Index: 3},
+				{Term: 3, Index: 4},
+				{Term: 4, Index: 5},
+				{Term: 4, Index: 6},
+				{Term: 4, Index: 7},
+				{Term: 5, Index: 8},
+			},
+			followerLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 2, Index: 2},
+				{Term: 2, Index: 3},
+				{Term: 3, Index: 4},
+				{Term: 3, Index: 5},
+				{Term: 3, Index: 6},
+				{Term: 3, Index: 7},
+				{Term: 3, Index: 8},
+				{Term: 3, Index: 9},
+				{Term: 3, Index: 10},
+				{Term: 3, Index: 11},
+			},
+			rejectHintTerm:  3,
+			rejectHintIndex: 8,
+			nextAppendTerm:  3,
+			nextAppendIndex: 4,
+		},
+		// This case tests that follower can find the conflict index quickly.
+		// Firstly leader appends (type=MsgApp,index=4,logTerm=1, entries=...);
+		// After rejected leader appends (type=MsgApp,index=1,logTerm=1).
+		{
+			leaderLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 1, Index: 2},
+				{Term: 1, Index: 3},
+				{Term: 1, Index: 4},
+			},
+			followerLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 2, Index: 2},
+				{Term: 2, Index: 3},
+				{Term: 4, Index: 4},
+			},
+			rejectHintTerm:  1,
+			rejectHintIndex: 1,
+			nextAppendTerm:  1,
+			nextAppendIndex: 1,
+		},
+		// This case is similar to the previous case. However, this time, the
+		// leader has a longer uncommitted log tail than the follower.
+		// Firstly leader appends (type=MsgApp,index=6,logTerm=1, entries=...);
+		// After rejected leader appends (type=MsgApp,index=1,logTerm=1).
+		{
+			leaderLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 1, Index: 2},
+				{Term: 1, Index: 3},
+				{Term: 1, Index: 4},
+				{Term: 1, Index: 5},
+				{Term: 1, Index: 6},
+			},
+			followerLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 2, Index: 2},
+				{Term: 2, Index: 3},
+				{Term: 4, Index: 4},
+			},
+			rejectHintTerm:  1,
+			rejectHintIndex: 1,
+			nextAppendTerm:  1,
+			nextAppendIndex: 1,
+		},
+		// This case is similar to the previous case. However, this time, the
+		// follower has a longer uncommitted log tail than the leader.
+		// Firstly leader appends (type=MsgApp,index=4,logTerm=1, entries=...);
+		// After rejected leader appends (type=MsgApp,index=1,logTerm=1).
+		{
+			leaderLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 1, Index: 2},
+				{Term: 1, Index: 3},
+				{Term: 1, Index: 4},
+			},
+			followerLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 2, Index: 2},
+				{Term: 2, Index: 3},
+				{Term: 4, Index: 4},
+				{Term: 4, Index: 5},
+				{Term: 4, Index: 6},
+			},
+			rejectHintTerm:  1,
+			rejectHintIndex: 1,
+			nextAppendTerm:  1,
+			nextAppendIndex: 1,
+		},
+		// An normal case that there are no log conflicts.
+		// Firstly leader appends (type=MsgApp,index=5,logTerm=5, entries=...);
+		// After rejected leader appends (type=MsgApp,index=4,logTerm=4).
+		{
+			leaderLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 1, Index: 2},
+				{Term: 1, Index: 3},
+				{Term: 4, Index: 4},
+				{Term: 5, Index: 5},
+			},
+			followerLog: []*proto.Entry{
+				{Term: 1, Index: 1},
+				{Term: 1, Index: 2},
+				{Term: 1, Index: 3},
+				{Term: 4, Index: 4},
+			},
+			rejectHintTerm:  4,
+			rejectHintIndex: 4,
+			nextAppendTerm:  4,
+			nextAppendIndex: 4,
+		},
+		// Test case from example comment in stepLeader (on leader).
+		{
+			leaderLog: []*proto.Entry{
+				{Term: 2, Index: 1},
+				{Term: 5, Index: 2},
+				{Term: 5, Index: 3},
+				{Term: 5, Index: 4},
+				{Term: 5, Index: 5},
+				{Term: 5, Index: 6},
+				{Term: 5, Index: 7},
+				{Term: 5, Index: 8},
+				{Term: 5, Index: 9},
+			},
+			followerLog: []*proto.Entry{
+				{Term: 2, Index: 1},
+				{Term: 4, Index: 2},
+				{Term: 4, Index: 3},
+				{Term: 4, Index: 4},
+				{Term: 4, Index: 5},
+				{Term: 4, Index: 6},
+			},
+			rejectHintTerm:  4,
+			rejectHintIndex: 6,
+			nextAppendTerm:  2,
+			nextAppendIndex: 1,
+		},
+		// Test case from example comment in handleAppendEntries (on follower).
+		{
+			leaderLog: []*proto.Entry{
+				{Term: 2, Index: 1},
+				{Term: 2, Index: 2},
+				{Term: 2, Index: 3},
+				{Term: 2, Index: 4},
+				{Term: 2, Index: 5},
+			},
+			followerLog: []*proto.Entry{
+				{Term: 2, Index: 1},
+				{Term: 4, Index: 2},
+				{Term: 4, Index: 3},
+				{Term: 4, Index: 4},
+				{Term: 4, Index: 5},
+				{Term: 4, Index: 6},
+				{Term: 4, Index: 7},
+				{Term: 4, Index: 8},
+			},
+			nextAppendTerm:  2,
+			nextAppendIndex: 1,
+			rejectHintTerm:  2,
+			rejectHintIndex: 1,
+		},
+	}
+
+	for i, test := range tests {
+		t.Run("", func(t *testing.T) {
+			s1 := stor.DefaultMemoryStorage()
+			s1.StoreEntries(test.leaderLog)
+			n1 := newTestRaftFsm(10, 1,
+				newTestRaftConfig(1, withStorage(s1), withPeers(1, 2)))
+			s2 := stor.DefaultMemoryStorage()
+			s2.StoreEntries(test.followerLog)
+			n2 := newTestRaftFsm(10, 1,
+				newTestRaftConfig(2, withStorage(s2), withPeers(1, 2)))
+
+			n1.becomeCandidate()
+			n1.becomeLeader()
+
+			n2.Step(&proto.Message{From: 1, To: 2, Term: n1.term, Type: proto.ReqMsgHeartBeat})
+			// CubeFS not response heartbeat in raft node, so need let leader step RespMsgHeartBeat
+			n1.Step(&proto.Message{From: 2, To: 1, Term: n2.term, Type: proto.RespMsgHeartBeat})
+			msgs := n1.readMessages()
+			if len(msgs) != 1 {
+				t.Errorf("can't read 1 message from peer 1")
+			}
+			if msgs[0].Type != proto.ReqMsgAppend {
+				t.Errorf("can't read append from peer 1")
+			}
+			n2.Step(&msgs[0])
+			msgs = n2.readMessages()
+			if len(msgs) != 1 {
+				t.Errorf("can't read 1 message from peer 2")
+			}
+			if msgs[0].Type != proto.RespMsgAppend {
+				t.Errorf("can't read append response from peer 2")
+			}
+			if !msgs[0].Reject {
+				t.Errorf("expected rejected append response from peer 2")
+			}
+			if msgs[0].LogTerm != test.rejectHintTerm {
+				t.Fatalf("#%d expected hint log term = %d, but got %d", i, test.rejectHintTerm, msgs[0].LogTerm)
+			}
+			if msgs[0].RejectHint != test.rejectHintIndex {
+				t.Fatalf("#%d expected hint index = %d, but got %d", i, test.rejectHintIndex, msgs[0].RejectHint)
+			}
+
+			n1.Step(&msgs[0])
+			msgs = n1.readMessages()
+			if msgs[0].LogTerm != test.nextAppendTerm {
+				t.Fatalf("#%d expected log term = %d, but got %d", i, test.nextAppendTerm, msgs[0].LogTerm)
+			}
+			if msgs[0].Index != test.nextAppendIndex {
+				t.Fatalf("#%d expected index = %d, but got %d", i, test.nextAppendIndex, msgs[0].Index)
+			}
+		})
+	}
+}

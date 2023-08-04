@@ -112,9 +112,110 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 		if m.Reject {
 			if logger.IsEnableDebug() {
 				logger.Debug("raft[%v, %v, %v, %v] received msgApp rejection(lastindex: %d) from %v for index %d commit %v. replica info [%v,%v,%v,%v]",
-					r.id, r.raftLog.firstIndex(), r.raftLog.lastIndex(), r.raftLog.committed, m.RejectIndex, m.From, m.Index, m.Commit, pr.state, pr.next, pr.committed, pr.match)
+					r.id, r.raftLog.firstIndex(), r.raftLog.lastIndex(), r.raftLog.committed, m.RejectHint, m.From, m.Index, m.Commit, pr.state, pr.next, pr.committed, pr.match)
 			}
-			if pr.maybeDecrTo(m.Index, m.RejectIndex, m.Commit) {
+			nextProbeIdx := m.RejectHint
+			if m.LogTerm > 0 {
+				// If the follower has an uncommitted log tail, we would end up
+				// probing one by one until we hit the common prefix.
+				//
+				// For example, if the leader has:
+				//
+				//   idx        1 2 3 4 5 6 7 8 9
+				//              -----------------
+				//   term (L)   1 3 3 3 5 5 5 5 5
+				//   term (F)   1 1 1 1 2 2
+				//
+				// Then, after sending an append anchored at (idx=9,term=5) we
+				// would receive a RejectHint of 6 and LogTerm of 2. Without the
+				// code below, we would try an append at index 6, which would
+				// fail again.
+				//
+				// However, looking only at what the leader knows about its own
+				// log and the rejection hint, it is clear that a probe at index
+				// 6, 5, 4, 3, and 2 must fail as well:
+				//
+				// For all of these indexes, the leader's log term is larger than
+				// the rejection's log term. If a probe at one of these indexes
+				// succeeded, its log term at that index would match the leader's,
+				// i.e. 3 or 5 in this example. But the follower already told the
+				// leader that it is still at term 2 at index 9, and since the
+				// log term only ever goes up (within a log), this is a contradiction.
+				//
+				// At index 1, however, the leader can draw no such conclusion,
+				// as its term 1 is not larger than the term 2 from the
+				// follower's rejection. We thus probe at 1, which will succeed
+				// in this example. In general, with this approach we probe at
+				// most once per term found in the leader's log.
+				//
+				// There is a similar mechanism on the follower (implemented in
+				// handleAppendEntries via a call to findConflictByTerm) that is
+				// useful if the follower has a large divergent uncommitted log
+				// tail[1], as in this example:
+				//
+				//   idx        1 2 3 4 5 6 7 8 9
+				//              -----------------
+				//   term (L)   1 3 3 3 3 3 3 3 7
+				//   term (F)   1 3 3 4 4 5 5 5 6
+				//
+				// Naively, the leader would probe at idx=9, receive a rejection
+				// revealing the log term of 6 at the follower. Since the leader's
+				// term at the previous index is already smaller than 6, the leader-
+				// side optimization discussed above is ineffective. The leader thus
+				// probes at index 8 and, naively, receives a rejection for the same
+				// index and log term 5. Again, the leader optimization does not improve
+				// over linear probing as term 5 is above the leader's term 3 for that
+				// and many preceding indexes; the leader would have to probe linearly
+				// until it would finally hit index 3, where the probe would succeed.
+				//
+				// Instead, we apply a similar optimization on the follower. When the
+				// follower receives the probe at index 8 (log term 3), it concludes
+				// that all of the leader's log preceding that index has log terms of
+				// 3 or below. The largest index in the follower's log with a log term
+				// of 3 or below is index 3. The follower will thus return a rejection
+				// for index=3, log term=3 instead. The leader's next probe will then
+				// succeed at that index.
+				//
+				// [1]: more precisely, if the log terms in the large uncommitted
+				// tail on the follower are larger than the leader's. At first,
+				// it may seem unintuitive that a follower could even have such
+				// a large tail, but it can happen:
+				//
+				// 1. Leader appends (but does not commit) entries 2 and 3, crashes.
+				//   idx        1 2 3 4 5 6 7 8 9
+				//              -----------------
+				//   term (L)   1 2 2     [crashes]
+				//   term (F)   1
+				//   term (F)   1
+				//
+				// 2. a follower becomes leader and appends entries at term 3.
+				//              -----------------
+				//   term (x)   1 2 2     [down]
+				//   term (F)   1 3 3 3 3
+				//   term (F)   1
+				//
+				// 3. term 3 leader goes down, term 2 leader returns as term 4
+				//    leader. It commits the log & entries at term 4.
+				//
+				//              -----------------
+				//   term (L)   1 2 2 2
+				//   term (x)   1 3 3 3 3 [down]
+				//   term (F)   1
+				//              -----------------
+				//   term (L)   1 2 2 2 4 4 4
+				//   term (F)   1 3 3 3 3 [gets probed]
+				//   term (F)   1 2 2 2 4 4 4
+				//
+				// 4. the leader will now probe the returning follower at index
+				//    7, the rejection points it at the end of the follower's log
+				//    which is at a higher log term than the actually committed
+				//    log.
+				nextProbeIdx = r.raftLog.findConflictByTerm(m.RejectHint, m.LogTerm)
+			}
+			if pr.maybeDecrTo(m.Index, nextProbeIdx, m.Commit) {
+				if logger.IsEnableDebug() {
+					logger.Debug("%x decreased progress of %x to [%s]", r.id, m.From, pr)
+				}
 				if pr.state == replicaStateReplicate {
 					pr.becomeProbe()
 				}

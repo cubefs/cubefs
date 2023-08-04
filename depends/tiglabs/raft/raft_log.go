@@ -355,3 +355,33 @@ func limitSize(ents []*proto.Entry, maxSize uint64) []*proto.Entry {
 	}
 	return ents[:limit]
 }
+
+// findConflictByTerm takes an (index, term) pair (indicating a conflicting log
+// entry on a leader/follower during an append) and finds the largest index in
+// log l with a term <= `term` and an index <= `index`. If no such index exists
+// in the log, the log's first index is returned.
+//
+// The index provided MUST be equal to or less than l.lastIndex(). Invalid
+// inputs log a warning and the input index is returned.
+func (l *raftLog) findConflictByTerm(index uint64, term uint64) uint64 {
+	if li := l.lastIndex(); index > li {
+		// NB: such calls should not exist, but since there is a straightfoward
+		// way to recover, do it.
+		//
+		// It is tempting to also check something about the first index, but
+		// there is odd behavior with peers that have no log, in which case
+		// lastIndex will return zero and firstIndex will return one, which
+		// leads to calls with an index of zero into this method.
+		logger.Warn("index(%d) is out of range [0, lastIndex(%d)] in findConflictByTerm",
+			index, li)
+		return index
+	}
+	for {
+		logTerm, err := l.term(index)
+		if logTerm <= term || err != nil {
+			break
+		}
+		index--
+	}
+	return index
+}
