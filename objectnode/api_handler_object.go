@@ -265,14 +265,18 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object content
 	var offset = rangeLower
-	var size = uint64(fileInfo.Size)
+	size, err := safeConvertInt64ToUint64(fileInfo.Size)
+	fileSize := size
+	if err != nil {
+		return
+	}
 	if isRangeRead || len(partNumber) > 0 {
 		size = rangeUpper - rangeLower + 1
 	}
 	if isRangeRead {
 		w.WriteHeader(http.StatusPartialContent)
 	}
-	err = vol.readFile(fileInfo.Inode, uint64(fileInfo.Size), param.Object(), w, offset, size)
+	err = vol.readFile(fileInfo.Inode, fileSize, param.Object(), w, offset, size)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return

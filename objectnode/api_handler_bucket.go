@@ -104,10 +104,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), bucket, auth.accessKey, err)
 		return
 	}
-	//todo parse body
-	//w.Header()[HeaderNameLocation] = []string{o.region}
-	w.Header()[HeaderNameLocation] = []string{"/" + bucket}
-	w.Header()[HeaderNameConnection] = []string{"close"}
+	w.Header()[HeaderNameLocation] = []string{bucket}
 
 	vol, err1 := o.vm.VolumeWithoutBlacklist(bucket)
 	if err1 != nil {
