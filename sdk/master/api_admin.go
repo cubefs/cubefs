@@ -131,6 +131,17 @@ func (api *AdminAPI) GetNodeSet(nodeSetId string) (nodeSetStatInfo *proto.NodeSe
 	return
 }
 
+func (api *AdminAPI) UpdateNodeSet(nodeSetId string, dataNodeSelector string, metaNodeSelector string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.UpdateNodeSet)
+	request.addParam("nodesetId", nodeSetId)
+	request.addParam("dataNodeSelector", dataNodeSelector)
+	request.addParam("metaNodeSelector", metaNodeSelector)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (api *AdminAPI) UpdateZone(name string, enable bool, dataNodesetSelector string, metaNodesetSelector string, dataNodeSelector string, metaNodeSelector string) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UpdateZone)
 	request.params["name"] = name
