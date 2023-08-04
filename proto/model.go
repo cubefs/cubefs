@@ -198,11 +198,13 @@ type NodeSetStat struct {
 }
 
 type NodeSetStatInfo struct {
-	ID        uint64
-	Capacity  int
-	Zone      string
-	MetaNodes []*NodeStatView
-	DataNodes []*NodeStatView
+	ID               uint64
+	Capacity         int
+	Zone             string
+	MetaNodes        []*NodeStatView
+	DataNodes        []*NodeStatView
+	DataNodeSelector string
+	MetaNodeSelector string
 }
 
 type NodeStatView struct {
