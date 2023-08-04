@@ -218,6 +218,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
 
+	m.config.DisableAutoCreate = cfg.GetBoolWithDefault(disableAutoCreate, false)
+	syslog.Printf("get disableAutoCreate cfg %v", m.config.DisableAutoCreate)
+
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
