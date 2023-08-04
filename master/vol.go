@@ -498,7 +498,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	)
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep)
-		if doSplit {
+		if doSplit && !c.cfg.DisableAutoCreate {
 			nextStart := mp.MaxInodeID + metaPartitionInodeIdStep
 			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]",
 				c.Name, vol.Name, mp.PartitionID, mp.Start, mp.MaxInodeID, metaPartitionInodeIdStep, nextStart))
@@ -546,6 +546,13 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeIdStep uin
 		Warn(c.Name, msg)
 		return
 	}
+
+	if c.cfg.DisableAutoCreate {
+		log.LogWarnf("action[checkSplitMetaPartition] vol[%v], mp [%v] disable auto create meta partition",
+			vol.Name, partition.PartitionID)
+		return
+	}
+
 	end := partition.MaxInodeID + metaPartitionInodeIdStep
 	if err := vol.splitMetaPartition(c, partition, end, metaPartitionInodeIdStep); err != nil {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
@@ -699,6 +706,22 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
 	if time.Since(vol.dataPartitions.lastAutoCreateTime) < time.Minute {
+		return
+	}
+
+	if c.cfg.DisableAutoCreate {
+		// if disable auto create, once alloc size is over capacity, not allow to create new dp
+		allocSize := uint64(len(vol.dataPartitions.partitions)) * vol.dataPartitionSize
+		totalSize := vol.capacity() * util.GB
+		if allocSize > totalSize {
+			return
+		}
+
+		if vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
+			c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false)
+			log.LogWarnf("autoCreateDataPartitions: readWrite less than 10, alloc new 10 partitions, vol %s", vol.Name)
+		}
+
 		return
 	}
 
