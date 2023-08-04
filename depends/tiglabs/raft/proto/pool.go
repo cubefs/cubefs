@@ -36,7 +36,7 @@ var (
 func GetMessage() *Message {
 	msg := msgPool.Get().(*Message)
 	msg.Reject = false
-	msg.RejectIndex = 0
+	msg.RejectHint = 0
 	msg.ID = 0
 	msg.From = 0
 	msg.To = 0

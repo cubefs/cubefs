@@ -101,7 +101,7 @@ type Message struct {
 	Type         MsgType
 	ForceVote    bool
 	Reject       bool
-	RejectIndex  uint64
+	RejectHint   uint64
 	ID           uint64
 	From         uint64
 	To           uint64
@@ -116,9 +116,9 @@ type Message struct {
 }
 
 func (m *Message) ToString() (mesg string) {
-	return fmt.Sprintf("Mesg:[%v] type(%v) ForceVote(%v) Reject(%v) RejectIndex(%v) "+
+	return fmt.Sprintf("Mesg:[%v] type(%v) ForceVote(%v) Reject(%v) RejectHint(%v) "+
 		"From(%v) To(%v) Term(%v) LogTrem(%v) Index(%v) Commit(%v)", m.ID, m.Type.String(), m.ForceVote,
-		m.Reject, m.RejectIndex, m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit)
+		m.Reject, m.RejectHint, m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit)
 }
 
 type ConfChange struct {
