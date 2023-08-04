@@ -98,7 +98,6 @@ func (sm *testStateMachine) ApplySnapshot(peers []proto.Peer, iter proto.SnapIte
 
 func (sm *testStateMachine) HandleLeaderChange(leader uint64) {
 	sm.leader = leader
-	fmt.Println("xiangcai handler change")
 	if leader != 0 {
 		select {
 		case sm.changeLeaderC <- struct{}{}:
