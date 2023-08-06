@@ -2096,16 +2096,20 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// qos upload may called by client init,thus use qosEnable param to identify it weather need to calc by master
-
+	var clientInfo *proto.ClientReportLimitInfo
 	if qosEnable, _ := strconv.ParseBool(qosEnableStr); qosEnable {
-		if clientInfo, err := parseQosInfo(r); err == nil {
+		if clientInfo, err = parseQosInfo(r); err == nil {
 			log.LogDebugf("action[qosUpload] cliInfoMgrMap [%v],clientInfo id[%v] clientInfo.Host %v, enable %v", clientInfo.ID, clientInfo.Host, r.RemoteAddr, qosEnable)
 			if clientInfo.ID == 0 {
 				if limit, err = vol.qosManager.init(m.cluster, clientInfo.Host); err != nil {
 					sendErrReply(w, r, newErrHTTPReply(err))
+					return
 				}
-			} else if limit, err = vol.qosManager.HandleClientQosReq(clientInfo, clientInfo.ID); err != nil {
+				clientInfo.ID = limit.ID
+			}
+			if limit, err = vol.qosManager.HandleClientQosReq(clientInfo, clientInfo.ID); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
+				return
 			}
 		} else {
 			log.LogInfof("action[qosUpload] qosEnableStr:[%v] err [%v]", qosEnableStr, err)
