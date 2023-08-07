@@ -18,6 +18,16 @@ drwxr-xr-x 6 root root     4096 Jul 27 17:27 dist
 ```
 
 ## 1.2 配置<br>
+配置文件里面数据库的密码不能是明文，需要加密。加密方式：<br>
+```
+./cfs-gui  -e  password
+```
+#示例
+```
+./cfs-gui  -e  111111
+v6NEbIgCdJAYDqLiDE9UMA==
+```
+
 配置文件config.yml说明：<br>
 ```
 server:
@@ -35,7 +45,7 @@ mysql:
   slaveHost: xxxxxx   //mysql 只读域名，没有的话可以填读写域名
   slavePort: xxxxxx   //mysql 只读域名的端口，没有的话可以填读写域名的端口
   user: xxxxxx   //mysql  用户名
-  password: xxxxxx   //mysql  密码
+  password: xxxxxx   //mysql  密码（此处不能是明文密码，需要先加密）
   database: xxxxxx   //mysql  数据库名
   maxIdleConn: 20
   MaxOpenConn: 300
@@ -241,6 +251,4 @@ b. 有“创建用户”权限的账户在“用户管理”->“添加用户”
 ## 2.11 集群事件<br>
 ### 2.11.1 纠删码后台任务<br>
 ![image](./pic/gui/2.11.1.png)<br>
-
-
 
