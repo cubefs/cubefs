@@ -56,7 +56,7 @@ type bcacheConfig struct {
 	Mode      uint32
 	CacheSize int64
 	FreeRatio float32
-	Limit     int
+	Limit     uint32
 }
 
 type bcacheStore struct {
@@ -293,13 +293,11 @@ func (s *bcacheStore) parserConf(cfg *config.Config) (*bcacheConfig, error) {
 	if cacheDir == "" {
 		return nil, errors.NewErrorf("cacheDir is required.")
 	}
-	if v, err := strconv.Atoi(blockSize); err == nil {
+	if v, err := strconv.ParseUint(blockSize, 10, 32); err == nil {
 		bconf.BlockSize = uint32(v)
-
 	}
-	if v, err := strconv.Atoi(cacheLimit); err == nil {
-		bconf.Limit = v
-
+	if v, err := strconv.ParseUint(cacheLimit, 10, 32); err == nil {
+		bconf.Limit = uint32(v)
 	}
 	if v, err := strconv.ParseFloat(cacheFree, 32); err == nil {
 		bconf.FreeRatio = float32(v)

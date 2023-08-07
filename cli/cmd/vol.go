@@ -327,7 +327,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			if optReplicaNum != "" {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v -> %v \n", vv.DpReplicaNum, optReplicaNum))
-				replicaNum, _ := strconv.Atoi(optReplicaNum)
+				replicaNum, _ := strconv.ParseUint(optReplicaNum, 10, 8)
 				vv.DpReplicaNum = uint8(replicaNum)
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v \n", vv.Description))
