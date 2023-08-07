@@ -608,6 +608,7 @@ func loadDockerIPList() (err error) {
 	for {
 		buf, _, err = o.ReadLine()
 		if err == io.EOF {
+			err = nil
 			break
 		}
 		//todo regex ip

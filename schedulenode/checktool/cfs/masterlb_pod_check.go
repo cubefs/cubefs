@@ -88,19 +88,21 @@ func (s *ChubaoFSMonitor) checkPodsStatusOfAppAndAlarm(systemName, appName, host
 			systemName, appName, totalPodsCounts, notRunningPodIps)
 		checktool.WarnBySpecialUmpKey(UMPKeyMasterLbPodStatus, msg)
 	} else {
+		log.LogWarnf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v",
+			systemName, appName, totalPodsCounts, notRunningPodIps)
 		// 连续minMasterLBWarnCount次再执行普通告警, 每次告警时间间隔十分钟
-		masterLBWarnInfo.ContinuedTimes++
-		if time.Since(masterLBWarnInfo.LastWarnTime) >= time.Minute*5 && masterLBWarnInfo.ContinuedTimes >= minMasterLBWarnCount {
-			masterLBWarnInfo.LastWarnTime = time.Now()
-			masterLBWarnInfo.ContinuedTimes = 0
-			msg := fmt.Sprintf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v",
-				systemName, appName, totalPodsCounts, notRunningPodIps)
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
-		} else {
-			msg := fmt.Sprintf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v, masterLBWarnInfo:%v",
-				systemName, appName, totalPodsCounts, notRunningPodIps, *masterLBWarnInfo)
-			log.LogInfo(msg)
-		}
+		//masterLBWarnInfo.ContinuedTimes++
+		//if time.Since(masterLBWarnInfo.LastWarnTime) >= time.Minute*5 && masterLBWarnInfo.ContinuedTimes >= minMasterLBWarnCount {
+		//	masterLBWarnInfo.LastWarnTime = time.Now()
+		//	masterLBWarnInfo.ContinuedTimes = 0
+		//	msg := fmt.Sprintf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v",
+		//		systemName, appName, totalPodsCounts, notRunningPodIps)
+		//	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		//} else {
+		//	msg := fmt.Sprintf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v, masterLBWarnInfo:%v",
+		//		systemName, appName, totalPodsCounts, notRunningPodIps, *masterLBWarnInfo)
+		//	log.LogInfo(msg)
+		//}
 	}
 }
 
