@@ -284,7 +284,7 @@ func (c *clusterControllerImpl) loadWithConsul() error {
 		clusterKey := filepath.Base(pair.Key)
 		span.Debug("found cluster", clusterKey)
 
-		clusterID, err := strconv.Atoi(clusterKey)
+		clusterID, err := strconv.ParseUint(clusterKey, 10, 32)
 		if err != nil {
 			span.Warn("invalid cluster id", clusterKey, err)
 			continue
