@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"strconv"
@@ -80,6 +81,10 @@ func newConfigSetCmd() *cobra.Command {
 				}
 			}()
 			tmp, _ := strconv.Atoi(optTimeout)
+			if tmp > math.MaxUint16 {
+				stdout(fmt.Sprintf("Please reset timeout. Input less than math.MaxUint16\n"))
+				return
+			}
 			timeOut := uint16(tmp)
 			if optMasterHosts == "" {
 				stdout(fmt.Sprintf("Please set addr. Input 'cfs-cli config set -h' for help.\n"))
