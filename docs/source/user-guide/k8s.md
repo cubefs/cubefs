@@ -52,10 +52,10 @@ $ cd cubefs-csi
 
 #### Create CSI RBAC
 
-The content of cfs-rbac.yaml does not need to be modified. It mainly declares the role of the CSI component and the corresponding permissions, so execute the following command directly:
+The content of csi-rbac.yaml does not need to be modified. It mainly declares the role of the CSI component and the corresponding permissions, so execute the following command directly:
 
 ``` bash
-$ kubectl apply -f deploy/cfs-rbac.yaml
+$ kubectl apply -f deploy/csi-rbac.yaml
 ```
 
 #### Create StorageClass
