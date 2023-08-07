@@ -85,12 +85,12 @@ func extractTxConflictRetryInterval(r *http.Request) (interval int64, err error)
 }
 
 func extractTxOpLimitInterval(r *http.Request, volLimit int) (limit int, err error) {
-	var txLimit uint64
-	if txLimit, err = extractUint64WithDefault(r, txOpLimitKey, uint64(volLimit)); err != nil {
+	var txLimit int
+	if txLimit, err = extractUintWithDefault(r, txOpLimitKey, volLimit); err != nil {
 		return
 	}
 
-	limit = int(txLimit)
+	limit = txLimit
 	return
 }
 
@@ -525,18 +525,13 @@ func parseRequestToSetApiQpsLimit(r *http.Request) (name string, limit uint32, t
 		return
 	}
 
-	var tmp uint64
-	if tmp, err = extractUint64(r, Limit); err != nil {
+	if limit, err = extractUint32(r, Limit); err != nil {
 		return
 	}
 
-	limit = uint32(tmp)
-
-	if tmp, err = extractUint64(r, TimeOut); err != nil {
+	if timeout, err = extractUint32(r, TimeOut); err != nil {
 		return
 	}
-
-	timeout = uint32(tmp)
 
 	if timeout == 0 {
 		err = fmt.Errorf("timeout(seconds) args must be larger than 0")
@@ -1279,6 +1274,20 @@ func extractUint64(r *http.Request, key string) (val uint64, err error) {
 	}
 
 	return val, nil
+}
+
+func extractUint32(r *http.Request, key string) (val uint32, err error) {
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return 0, nil
+	}
+
+	var tmp uint64
+	if tmp, err = strconv.ParseUint(str, 10, 32); err != nil || val < 0 {
+		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
+	}
+
+	return uint32(tmp), nil
 }
 
 func extractPositiveUint64(r *http.Request, key string) (val uint64, err error) {
