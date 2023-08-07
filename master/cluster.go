@@ -2953,7 +2953,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		ZoneName:                req.zoneName,
 		DataPartitionSize:       dataPartitionSize,
 		Capacity:                uint64(req.capacity),
-		DpReplicaNum:            uint8(req.dpReplicaNum),
+		DpReplicaNum:            req.dpReplicaNum,
 		ReplicaNum:              defaultReplicaNum,
 		FollowerRead:            req.followerRead,
 		Authenticate:            req.authenticate,
