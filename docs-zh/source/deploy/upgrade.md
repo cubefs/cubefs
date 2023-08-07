@@ -1,4 +1,4 @@
-# 系统升级
+# 集群升级
 
 ::: warning 注意
 各个版本的升级步骤请参考[release notes](https://github.com/cubefs/cubefs/releases)

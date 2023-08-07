@@ -10,12 +10,27 @@ module.exports = [
     {
         text: 'Quick Start',
         children: [
-            'deploy/requirement.md',
-            'deploy/node.md',
-            'deploy/manual-deploy.md',
+            'quick-start/requirement.md',
+            'quick-start/node.md',
+            'quick-start/manual-deploy.md',
+            'quick-start/verify.md',
+        ]
+    },
+    {
+        text: 'Cluster Deployment',
+        children: [
+            'deploy/env.md',
             'deploy/yum.md',
             'deploy/k8s.md',
-            'deploy/verify.md',
+            {
+                text: 'Monitoring and Visualization',
+                children: [
+                    'maintenance/metrics/metrics.md',
+                    'maintenance/metrics/collect.md',
+                    'maintenance/metrics/view.md',
+                ]
+            },
+            'deploy/upgrade.md',
         ]
     },
     {
@@ -27,15 +42,28 @@ module.exports = [
             'user-guide/blobstore.md',
             'user-guide/hadoop.md',
             'user-guide/k8s.md',
+            'user-guide/fuse.md',
+            'user-guide/atomicity.md',
+            'user-guide/quota.md',
+            'user-guide/qos.md',
+            {
+                text: 'Performance Optimization',
+                children: [
+                    'user-guide/optimization/fuse.md',
+                    'user-guide/optimization/cache.md',
+                ]
+            },
         ]
     },
     {
         text: 'Operation Guide',
         children: [
-            'maintenance/env.md',
-            'maintenance/tool.md',
+            'maintenance/capacity.md',
+            'maintenance/zone.md',
+            'maintenance/log.md',
+            'maintenance/code.md',
             {
-                text: 'Service Management Commands',
+                text: 'Service Management',
                 children: [
                     'maintenance/admin-api/master/cluster.md',
                     'maintenance/admin-api/master/metanode.md',
@@ -46,8 +74,6 @@ module.exports = [
                     'maintenance/admin-api/master/management.md',
                     'maintenance/admin-api/master/user.md',
                     'maintenance/admin-api/master/failureDomain.md',
-                    'maintenance/admin-api/master/qos.md',
-                    'maintenance/admin-api/master/quota.md',
                     'maintenance/admin-api/metanode/partition.md',
                     'maintenance/admin-api/metanode/inode.md',
                     'maintenance/admin-api/metanode/dentry.md',
@@ -59,7 +85,7 @@ module.exports = [
                 ]
             },
             {
-                text: 'Service Configuration Introduction',
+                text: 'Configuration Management',
                 children: [
                     'maintenance/configs/master.md',
                     'maintenance/configs/metanode.md',
@@ -73,25 +99,23 @@ module.exports = [
                     'maintenance/configs/blobstore/proxy.md',
                     'maintenance/configs/blobstore/blobnode.md',
                     'maintenance/configs/blobstore/scheduler.md',
+                    'maintenance/configs/config.md',
                 ]
             },
             {
-                text: 'Monitoring and Visualization Configuration',
+                text: 'Troubleshooting',
                 children: [
-                    'maintenance/metrics/metrics.md',
-                    'maintenance/metrics/collect.md',
-                    'maintenance/metrics/view.md',
+                    'maintenance/troubleshoot/strategy.md',
+                    'maintenance/troubleshoot/case.md',
                 ]
             },
-            'maintenance/config.md',
-            'maintenance/diskerr.md',
-            'maintenance/fuse.md',
-            'maintenance/capacity.md',
-            'maintenance/zone.md',
-            'maintenance/log.md',
-            'maintenance/atomicity.md',
-            'maintenance/code.md',
-            'maintenance/upgrade.md',
+        ]
+    },
+    {
+        text: 'Tools',
+        children: [
+            'tools/gui.md',
+            'tools/cli.md',
         ]
     },
     {

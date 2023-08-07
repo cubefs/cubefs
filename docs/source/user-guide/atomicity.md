@@ -1,4 +1,4 @@
-# Atomic management
+# Support Atomicity
 
 CubeFS supports atomic operation. After turning on the atomic function, the metadata atomicity of the file operation is met, and the metadata uses the final consistency, that is, the metadata modification of the file operation is ether successfully committed, or rolled back.
 
