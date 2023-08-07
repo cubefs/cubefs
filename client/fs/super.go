@@ -101,6 +101,8 @@ var (
 const (
 	BlobWriterIdleTimeoutPeriod = 10
 	DefaultTaskPoolSize         = 30
+	PathKey                     = "path"
+	PrefixKey                   = "prefix"
 )
 
 // NewSuper returns a new Super.
@@ -496,13 +498,13 @@ func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {
 		auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	logPath := r.FormValue("path")
+	logPath := r.FormValue(PathKey)
 	if logPath == "" {
 		err = fmt.Errorf("path cannot be empty")
 		auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	prefix := r.FormValue("prefix")
+	prefix := r.FormValue(PrefixKey)
 	if prefix == "" {
 		err = fmt.Errorf("prefix cannot be empty")
 		auditlog.BuildFailureResp(w, http.StatusBadRequest, err.Error())

@@ -37,6 +37,8 @@ const (
 	EnableAuditLogReqPath     = "/auditlog/enable"
 	DisableAuditLogReqPath    = "/auditlog/disable"
 	SetAuditLogBufSizeReqPath = "/auditlog/setbufsize"
+	PathKey                   = "path"
+	PrefixKey                 = "prefix"
 )
 
 var DefaultTimeOutUs = [3]uint32{100000, 500000, 1000000}
@@ -169,13 +171,13 @@ func EnableAuditLog(w http.ResponseWriter, r *http.Request) {
 		BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	logPath := r.FormValue("path")
+	logPath := r.FormValue(PathKey)
 	if logPath == "" {
 		err = fmt.Errorf("path cannot be empty")
 		BuildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	prefix := r.FormValue("prefix")
+	prefix := r.FormValue(PrefixKey)
 	if prefix == "" {
 		err = fmt.Errorf("prefix cannot be empty")
 		BuildFailureResp(w, http.StatusBadRequest, err.Error())
