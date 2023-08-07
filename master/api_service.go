@@ -2588,13 +2588,13 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 	if dstNs, ok = zone.nodeSetMap[destNodesetId]; !ok {
 		return fmt.Errorf("%v destNodesetId not found", destNodesetId)
 	}
-	if uint32(nodeType) == TypeDataPartition {
+	if nodeType == uint64(TypeDataPartition) {
 		value, ok = zone.dataNodes.Load(addr)
 		if !ok {
 			return fmt.Errorf("addr %v not found", addr)
 		}
 		nsId = value.(*DataNode).NodeSetID
-	} else if uint32(nodeType) == TypeMetaPartition {
+	} else if nodeType == uint64(TypeMetaPartition) {
 		value, ok = zone.metaNodes.Load(addr)
 		if !ok {
 			return fmt.Errorf("addr %v not found", addr)
