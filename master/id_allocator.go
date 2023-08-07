@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -141,7 +142,13 @@ func (alloc *IDAllocator) restoreMaxQuotaID() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore maxQuotaID,err:%v ", err.Error()))
 	}
-	alloc.quotaID = uint32(maxQuotaID)
+
+	if maxQuotaID > 0 && maxQuotaID <= math.MaxInt32 {
+		alloc.quotaID = uint32(maxQuotaID)
+	} else {
+		alloc.quotaID = math.MaxInt32
+	}
+
 	log.LogInfof("action[restoreMaxCommonID] maxQuotaID[%v]", alloc.quotaID)
 }
 

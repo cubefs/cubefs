@@ -590,7 +590,7 @@ type createVolReq struct {
 	owner                                string
 	size                                 int
 	mpCount                              int
-	dpReplicaNum                         int
+	dpReplicaNum                         uint8
 	capacity                             int
 	followerRead                         bool
 	authenticate                         bool
@@ -682,9 +682,14 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.dpReplicaNum, err = extractUint(r, replicaNumKey); err != nil {
+	var parsedDpReplicaNum int
+	if parsedDpReplicaNum, err = extractUint(r, replicaNumKey); err != nil {
 		return
 	}
+	if parsedDpReplicaNum < 0 || parsedDpReplicaNum > math.MaxUint8 {
+		return fmt.Errorf("invalid arg dpReplicaNum: %v", parsedDpReplicaNum)
+	}
+	req.dpReplicaNum = uint8(parsedDpReplicaNum)
 
 	if req.size, err = extractUintWithDefault(r, dataPartitionSizeKey, 120); err != nil {
 		return
@@ -1239,14 +1244,16 @@ func extractName(r *http.Request) (name string, err error) {
 
 func extractUint(r *http.Request, key string) (val int, err error) {
 	var str string
+	var valParsed int64
 	if str = r.FormValue(key); str == "" {
 		return 0, nil
 	}
 
-	if val, err = strconv.Atoi(str); err != nil || val < 0 {
+	if valParsed, err = strconv.ParseInt(str, 10, 32); err != nil || val < 0 {
 		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
 	}
 
+	val = int(valParsed)
 	return val, nil
 }
 
@@ -1477,7 +1484,13 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 		err = keyNotFound(decommissionLimit)
 		return
 	}
-	return strconv.ParseUint(value, 10, 64)
+
+	limit, err = strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 func parseSetConfigParam(r *http.Request) (key string, value string, err error) {

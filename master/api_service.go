@@ -314,7 +314,7 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	var (
-		uid     uint64
+		uid     uint32
 		err     error
 		volName string
 		vol     *Vol
@@ -343,7 +343,7 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if op != util.UidLimitList {
-		if uid, err = extractUint64(r, UIDKey); err != nil {
+		if uid, err = extractUint32(r, UIDKey); err != nil {
 			err = keyNotFound(UIDKey)
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
@@ -367,12 +367,12 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	ok = true
 	switch op {
 	case util.UidGetLimit:
-		ok, uidInfo = vol.uidSpaceManager.checkUid(uint32(uid))
+		ok, uidInfo = vol.uidSpaceManager.checkUid(uid)
 		uidList = append(uidList, uidInfo)
 	case util.AclAddIP:
-		ok = vol.uidSpaceManager.addUid(uint32(uid), capSize)
+		ok = vol.uidSpaceManager.addUid(uid, capSize)
 	case util.AclDelIP:
-		ok = vol.uidSpaceManager.removeUid(uint32(uid))
+		ok = vol.uidSpaceManager.removeUid(uid)
 	case util.AclListIP:
 		uidList = vol.uidSpaceManager.listAll()
 	}
@@ -857,7 +857,8 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName            string
 		value              string
-		period, triggerCnt uint64
+		parsed             uint64
+		period, triggerCnt uint32
 		err                error
 		vol                *Vol
 	)
@@ -875,16 +876,18 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if value = r.FormValue(ClientReqPeriod); value != "" {
-		if period, err = strconv.ParseUint(value, 10, 64); err != nil || period == 0 {
+		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || period == 0 {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of peroid")))
 			return
 		}
+		period = uint32(parsed)
 	}
 	if value = r.FormValue(ClientTriggerCnt); value != "" {
-		if triggerCnt, err = strconv.ParseUint(value, 10, 64); err != nil || triggerCnt == 0 {
+		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || triggerCnt == 0 {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of triggerCnt")))
 			return
 		}
+		triggerCnt = uint32(parsed)
 	}
 	if err = vol.updateClientParam(m.cluster, period, triggerCnt); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -979,28 +982,6 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 	log.LogInfof("action[parseRequestQos] result %v", qosParam)
 
 	return
-}
-
-func (m *Server) QosUpdateMagnify(w http.ResponseWriter, r *http.Request) {
-	var (
-		volName     string
-		err         error
-		vol         *Vol
-		magnifyArgs *qosArgs
-	)
-	if volName, err = extractName(r); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	if vol, err = m.cluster.getVol(volName); err == nil {
-		if magnifyArgs, err = parseRequestQos(r, true, false); err == nil {
-			_ = vol.volQosUpdateMagnify(m.cluster, magnifyArgs)
-			sendOkReply(w, r, newSuccessHTTPReply("success"))
-			return
-		}
-	}
-	sendErrReply(w, r, newErrHTTPReply(err))
 }
 
 // flowRVal, flowWVal take MB as unit
@@ -1758,14 +1739,16 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (err error) {
 	var (
-		replicaNum int
+		replicaNumInt64 int64
+		replicaNum      int
 	)
 
 	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
-		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
+		if replicaNumInt64, err = strconv.ParseInt(replicaNumStr, 10, 8); err != nil {
 			err = unmatchedKey(replicaNumKey)
 			return
 		}
+		replicaNum = int(replicaNumInt64)
 	} else {
 		replicaNum = int(vol.dpReplicaNum)
 	}
@@ -2030,7 +2013,7 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("low(%d) or high water(%d) can't be large than 90, low than 0", args.cacheLowWater, args.cacheHighWater)
 	}
 
-	if req.dpReplicaNum > m.cluster.dataNodeCount() {
+	if int(req.dpReplicaNum) > m.cluster.dataNodeCount() {
 		return fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
 	}
 
