@@ -145,6 +145,9 @@ func Base64Decode(encodedText string) (text []byte, err error) {
 func EncodeMessage(plaintext []byte, key []byte) (message string, err error) {
 	var cipher []byte
 
+	if len(plaintext) > MaxAllocSize {
+		return "too max packet", fmt.Errorf("too max packet len %v", len(plaintext))
+	}
 	// 8 for random number; 16 for md5 hash
 	buffer := make([]byte, RandomNumberSize+CheckSumSize+len(plaintext))
 
