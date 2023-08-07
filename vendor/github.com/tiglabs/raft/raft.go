@@ -299,7 +299,7 @@ func (s *raft) runApply() {
 				command []byte
 				err     error
 			)
-			command, err = s.raftConfig.StateMachine.AskRollback(askRollback.data)
+			command, err = s.raftConfig.StateMachine.AskRollback(askRollback.data, askRollback.index)
 
 			if err != nil {
 				logger.Warn("raft[%v] ask rollback for entry [index: %v], FSM returns error: %v", s.config.NodeID, askRollback.index, err)

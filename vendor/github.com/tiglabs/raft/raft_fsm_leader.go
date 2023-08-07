@@ -73,8 +73,17 @@ func (r *raftFsm) becomeLeader() {
 			})
 			mmi = matches[0]
 		}
+		var rsi = mmi + 1
+		if rsi < r.raftLog.firstIndex() {
+			rsi = r.raftLog.firstIndex()
+		}
 
-		r.maybeAskRollback(mmi + 1)
+		if logger.IsEnableWarn() {
+			logger.Warn("raft[%v] [firstindex: %v, lastindex: %v, commited: %v] computed rollback start index [%v], replicas: %v",
+				r.id, r.raftLog.firstIndex(), r.raftLog.lastIndex(), r.raftLog.committed, rsi, r.replicas)
+		}
+
+		r.maybeAskRollback(rsi)
 	}
 
 	r.appendEntry(&proto.Entry{Term: r.term, Index: lasti + 1, Data: nil})

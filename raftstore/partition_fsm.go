@@ -28,7 +28,7 @@ type FunctionalPartitionFsm struct {
 	ApplyFunc              func(command []byte, index uint64) (interface{}, error)
 	ApplyMemberChangeFunc  func(confChange *proto.ConfChange, index uint64) (interface{}, error)
 	SnapshotFunc           func(recoverNode uint64) (proto.Snapshot, error)
-	AskRollbackFunc        func(original []byte) (rollback []byte, err error)
+	AskRollbackFunc        func(original []byte, index uint64) (rollback []byte, err error)
 	ApplySnapshotFunc      func(peers []proto.Peer, iter proto.SnapIterator, snapV uint32) error
 	HandleFatalEventFunc   func(err *raft.FatalError)
 	HandleLeaderChangeFunc func(leader uint64)
@@ -55,9 +55,9 @@ func (f *FunctionalPartitionFsm) Snapshot(recoverNode uint64) (proto.Snapshot, e
 	return nil, nil
 }
 
-func (f *FunctionalPartitionFsm) AskRollback(original []byte) (rollback []byte, err error) {
+func (f *FunctionalPartitionFsm) AskRollback(original []byte, index uint64) (rollback []byte, err error) {
 	if f != nil && f.AskRollbackFunc != nil {
-		return f.AskRollbackFunc(original)
+		return f.AskRollbackFunc(original, index)
 	}
 	return nil, nil
 }

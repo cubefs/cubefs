@@ -196,8 +196,8 @@ func (dp *DataPartition) handleRaftLeaderChange(leader uint64) {
 	}
 }
 
-func (dp *DataPartition) handleRaftAskRollback(original []byte) (rollback []byte, err error) {
-	if len(original) == 0 {
+func (dp *DataPartition) handleRaftAskRollback(original []byte, index uint64) (rollback []byte, err error) {
+	if index <= dp.applyStatus.Applied() || len(original) == 0 {
 		return
 	}
 	var opItem *rndWrtOpItem

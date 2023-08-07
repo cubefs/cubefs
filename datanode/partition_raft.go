@@ -1234,10 +1234,10 @@ func (dp *DataPartition) scheduleRaftWALTruncate(ctx context.Context) {
 		return
 	}
 	for id, replica := range raftStatus.Replicas {
-		if strings.Contains(replica.State, "ReplicaStateSnapshot") {
+		if strings.Contains(replica.State, "ReplicaStateSnapshot") || replica.Match < raftStatus.Log.FirstIndex {
 			if log.IsDebugEnabled() {
-				log.LogDebugf("partition[%v] skips schedule raft WAL truncate cause found replica [%v] in snapshot state",
-					dp.partitionID, id)
+				log.LogDebugf("partition[%v] skips schedule raft WAL truncate cause found replica %v[%v] not in ready state",
+					dp.partitionID, id, replica)
 			}
 			return
 		}
