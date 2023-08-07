@@ -2,7 +2,7 @@
 ## Configuration Description
 
 | Parameter    | Type         | Description                                                                                                           | Required |
-|--------------|--------------|-----------------------------------------------------------------------------------------------------------------------|----------|
+|:--------------|:--------------|:-----------------------------------------------------------------------------------------------------------------------|:----------|
 | role         | string       | Process role, must be set to `objectnode`                                                                             | Yes      |
 | listen       | string       | Port number for HTTP service listening. Format: `PORT` , default: `80`                   | Yes      |
 | domains      | string slice | Configure domain names for S3-compatible interfaces to support DNS-style access to resources. Format: `DOMAIN`        | No       |

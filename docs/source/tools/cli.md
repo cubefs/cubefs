@@ -214,8 +214,6 @@ Currently, the blobstore-cli of the erasure coding subsystem is not perfect enou
 
 #### Compilation and Configuration
 
-Compile the CLI tool of the erasure coding subsystem with `make cli`.
-
 Use `./bin/blobstore-cli -c cli/cli/cli.conf` to start the command-line tool. `-c cli/cli/cli.conf` is an optional configuration item, which mainly configures some commonly used variables, such as the access discovery address of the access layer service and the clustermgr service address.
 
 ```json

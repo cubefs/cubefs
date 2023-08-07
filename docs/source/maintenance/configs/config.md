@@ -38,10 +38,10 @@ The currently supported log levels for `log-level` are `debug, info, warn, error
 
 ### Adjusting Erasure Coding Log Levels
 
-This method is supported by all modules of the erasure coding system. [Refer to the details](./admin-api/blobstore/base.md).
+This method is supported by all modules of the erasure coding system. [Refer to the details](../admin-api/blobstore/base.md).
 
 | Level | Value |
-|-------|-------|
+|:-------|:-------|
 | Debug | 0     |
 | Info  | 1     |
 | Warn  | 2     |
@@ -79,4 +79,4 @@ It is not recommended to modify the ports of DataNode/MetaNode. Because DataNode
 
 ### Other Erasure Coding Configuration Modifications
 
-Please refer to the [Service Configuration Introduction](./configs/blobstore/base.md) section.
+Please refer to the [Service Configuration Introduction](blobstore/base.md) section.

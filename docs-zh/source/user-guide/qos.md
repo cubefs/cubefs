@@ -1,4 +1,4 @@
-# QOS管理
+# QoS管理
 
 ::: warning 注意
 QOS为v3.2.1版本新增feature

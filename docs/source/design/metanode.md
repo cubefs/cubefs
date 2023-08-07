@@ -29,3 +29,6 @@ It is worth mentioning that metadata operations may cause orphan inodes, which m
 
 - First, the metadata node ensures high availability through Raft, and can quickly recover after a single point of failure.
 - Secondly, the client ensures retries within a certain period of time.
+
+## More Details
+For more details, please refer to [CubeFS Storage Technology Revealed | Metadata Design]()/blog/case/Secret_of_CubeFS_Technology_Metadata_Subsystem_Design.html

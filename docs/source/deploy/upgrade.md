@@ -1,4 +1,4 @@
-# System Upgrade
+# Cluster Upgrade
 
 ::: warning Note
 Please refer to the release notes for the upgrade steps of each version.

@@ -1,4 +1,4 @@
-# Node or Disk Failure
+# Common Troubleshooting Methods
 
 ## DataNode
 
