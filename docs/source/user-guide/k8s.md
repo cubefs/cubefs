@@ -353,4 +353,4 @@ The PVC is bound to a PV, and the name of the bound PV is the name of the underl
 
 ### CubeFS Volume Management
 
-Please refer to the [cubefs cli tool usage guide](../maintenance/tool.md).
+Please refer to the [cubefs cli tool usage guide](../tools/cli.md).

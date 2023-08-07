@@ -207,112 +207,6 @@ Flags：
     -y, --yes                               #跳过所有问题并设置回答为"yes"
 ```
 
-### quota管理
-::: warning 注意
-目录配额管理为v3.3.0版本新增feature
-:::
-#### create quota
-``` bash
-create paths quota
-
-Usage:
-  cfs-cli quota create [volname] [fullpath1,fullpath2] [flags]
-
-Flags:
-  -h, --help            help for create
-      --maxBytes uint   Specify quota max bytes (default 18446744073709551615)
-      --maxFiles uint   Specify quota max files (default 18446744073709551615)
-```
-创建quota需要指定卷名一个或多个path目录。
-注意：path之间不能重复，以及嵌套。
-
-#### apply quota
-``` bash
-apply quota
-
-Usage:
-  cfs-cli quota apply [volname] [quotaId] [flags]
-
-Flags:
-  -h, --help                       help for apply
-      --maxConcurrencyInode uint   max concurrency set Inodes (default 1000)
-```
-apply quota需要指定卷名以及quotaId，这个接口在创建quota后执行，目的是让quota目录下（包括quota目录自身）的已有文件和目录该quotaId生效。整个创建quota的流程先执行quota create，然后执行quota apply命令。
-注意：如果quota目录下的文件数量很多，则该接口返回时间会比较长
-#### revoke quota
-``` bash
-revoke quota
-
-Usage:
-  cfs-cli quota revoke [volname] [quotaId] [flags]
-
-Flags:
-      --forceInode uint            force revoke quota inode
-  -h, --help                       help for revoke
-      --maxConcurrencyInode uint   max concurrency delete Inodes (default 1000)
-```
-revoke quota需要指定卷名以及quotaId，这个接口在准备删除quota的时候执行，目的是让quota目录下的（包括quota目录自身）的已有文件和目录该quotaId失效。整个删除quota的流程先执行quota revoke，然后通过quota list查询确认USEDFILES和USEDBYTES的值为0，再进行quota delete操作。
-#### delete quota
-``` bash
-delete path quota
-
-Usage:
-  cfs-cli quota delete [volname] [quotaId] [flags]
-
-Flags:
-  -h, --help   help for delete
-  -y, --yes    Do not prompt to clear the quota of inodes
-```
-delete quota需要指定卷名以及quotaId
-#### update quota
-``` bash
-update path quota
-
-Usage:
-  cfs-cli quota update [volname] [quotaId] [flags]
-
-Flags:
-  -h, --help            help for update
-      --maxBytes uint   Specify quota max bytes
-      --maxFiles uint   Specify quota max files
-
-```
-update quota需要指定卷名以及quotaId，目前可以更新的值只有maxBytes和maxFiles
-#### list quota
-``` bash
-list volname all quota
-
-Usage:
-  cfs-cli quota list [volname] [flags]
-
-Flags:
-  -h, --help   help for list
-
-```
-list quota需要指定卷名，遍历出所有该卷的quota信息
-#### listAll quota
-``` bash
-list all volname has quota
-
-Usage:
-  cfs-cli quota listAll [flags]
-
-Flags:
-  -h, --help   help for listAll
-```
-不带任何参数，遍历出所有带quota的卷信息
-#### getInode
-``` bash
-get inode quotaInfo
-
-Usage:
-  cfs-cli quota getInode [volname] [inode] [flags]
-
-Flags:
-  -h, --help   help for getInode
-
-```
-查看具体的某个inode是否带有quota信息
 
 ### 纠删码子系统管理
 
@@ -325,7 +219,6 @@ Flags:
 
 #### 编译及配置
 
-通过 `make cli` 编译得到纠删码子系统的CLI工具。
 
 `./bin/blobstore-cli -c cli/cli/cli.conf` 启动命令行工具；其中 `-c cli/cli/cli.conf`
 是可选配置项，主要配置一些常用变量，

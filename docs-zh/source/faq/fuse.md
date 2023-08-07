@@ -3,7 +3,7 @@
 ## 內存及性能优化相关
 
 - Fuse客户端占用内存过高，超过了2GB，对其他业务影响过大
-  - 离线修改：在配置文件中设置readRate和writeRate参数，重启客户端，[详情请参考](../maintenance/config.md)
+  - 离线修改：在配置文件中设置readRate和writeRate参数，重启客户端，[详情请参考](../maintenance/configs/config.md)
   - 在线修改：`http://{clientIP}:{profPort} /rate/set?write=800&read=800`
 - Fuse客户端性能优化，[请参考Fuse优化](../maintenance/fuse.md)
 

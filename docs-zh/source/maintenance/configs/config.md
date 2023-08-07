@@ -36,10 +36,10 @@ curl -v "http://127.0.0.1:{profPort}/loglevel/set?level={log-level}"
 
 ### 调整纠删码日志等级
 
-纠删码系统的所有模块均支持此方式，[详情参考](./admin-api/blobstore/base.md)
+纠删码系统的所有模块均支持此方式，[详情参考](../admin-api/blobstore/base.md)
 
 | 级别    | 值   |
-|-------|-----|
+|:-------|:-----|
 | Debug | 0   |
 | Info  | 1   | 
 | Warn  | 2   | 
@@ -78,4 +78,4 @@ MetaNode配置文件的totalMem指元数据节点可用总内存大小。当Meta
 
 ### 纠删码其他配置修改
 
-请参考[服务配置介绍章节](./configs/blobstore/base.md)
+请参考[配置管理章节](blobstore/base.md)

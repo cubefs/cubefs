@@ -1,15 +1,15 @@
-# Quota Management
+# Directory File Count and Quota Management
 
 ::: warning Note
 Quota management is a new feature added in v3.2.1.
 :::
 
-## Directory and File Quota
+## Limit on the Number of Files in a Single Directory
 
-Limits the number of child files or directories under a single directory to avoid excessive memory usage in the metadata partition where the parent directory is located, which can cause uneven memory usage on the metadata node and easily lead to OOM on the metadata node.
+Limits the number of files or directories within a single directory to avoid the occurrence of excessively large directories, which could exhaust the resources of MP nodes.
 
-- The default quota for the number of children in each directory is 20 million, which can be configured with a minimum value of 1 million and no upper limit. If the number of children created under a single directory exceeds the quota, the creation fails.
-- The configured quota value takes effect on the entire cluster and is persisted on the master.
+- The default limit for the number of children in each directory is 20 million, which can be configured with a minimum value of 1 million and no upper limit. If the number of children created under a single directory exceeds the limit, the creation fails.
+- The configured limit value takes effect on the entire cluster and is persisted on the master.
 - Full support requires upgrading the client, metadata node, and master to version 3.2.1.
 
 ### Set Quota

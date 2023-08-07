@@ -4,7 +4,7 @@
 CubeFS uses **JSON** as the format of the configuration file.
 
 | Configuration Item                  | Type   | Description                                                                                                                                | Required | Default Value |
-|-------------------------------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------|
+|:-------------------------------------|:--------|:--------------------------------------------------------------------------------------------------------------------------------------------|:----------|:---------------|
 | role                                | string | The role of the process, the value can only be master                                                                                      | Yes      |               |
 | ip                                  | string | Host IP address                                                                                                                            | Yes      |               |
 | listen                              | string | Port number on which the HTTP service listens                                                                                              | Yes      |               |

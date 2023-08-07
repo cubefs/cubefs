@@ -1,4 +1,4 @@
-# Replica Subsystem
+# Multiple Replica Subsystem
 
 ![Data Subsystem Architecture](../pic/data-subsystem.png)
 

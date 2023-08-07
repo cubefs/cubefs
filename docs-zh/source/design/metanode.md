@@ -28,3 +28,6 @@
 值得一提的是，元数据操作有可能会导致孤儿inode，即只有inode但是没有对应的dentry。为了减少这种情况的发生，
 - 首先，元数据节点通过Raft保证高可用，单点故障后可以迅速恢复
 - 其次，客户端保证在一定时间内进行重试
+
+## 更多详情
+更多详情请查看[CubeFS存储技术揭秘|元数据设计](/zh/blog/case/Secret_of_CubeFS_Technology_Metadata_Subsystem_Design)

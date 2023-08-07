@@ -358,4 +358,4 @@ PVC 会与一个 PV 进行绑定，而这个绑定的 PV 名称就是底下 cube
 
 ### CubeFS卷管理
 
-可以参考 [cubefs cli 工具使用指南](../maintenance/tool.md)
+可以参考 [cubefs cli 工具使用指南](../tools/cli.md)
