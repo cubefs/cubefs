@@ -238,7 +238,7 @@ func CreateClientX(cert *[]byte) (client *http.Client, err error) {
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				RootCAs:            caCertPool,
-				InsecureSkipVerify: true,
+				InsecureSkipVerify: false,
 			},
 		},
 	}
