@@ -213,15 +213,17 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 	ino := NewInode(req.Inode, 0)
 	inoResp := mp.getInode(ino)
 	if inoResp.Status != proto.OpOk {
-		if rbIno := mp.txInodeInRb(req.Inode, req.TxInfo.TxID); rbIno {
+		if rbIno := mp.txInodeInRb(req.Inode, req.TxInfo.TxID); rbIno != nil {
+			respIno = rbIno.inode
 			status = proto.OpOk
+
 			item := mp.inodeTree.Get(NewInode(req.Inode, 0))
 			if item != nil {
 				respIno = item.(*Inode)
 			}
 
 			p.ResultCode = status
-			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbIno %v", req, respIno)
+			log.LogWarnf("TxUnlinkInode: inode is already unlink before, req %v, rbIno %v, item %v", req, respIno, item)
 			return nil
 		}
 

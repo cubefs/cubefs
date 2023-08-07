@@ -161,14 +161,14 @@ func (mp *metaPartition) dentryInTx(parIno uint64, name string) uint8 {
 	return proto.OpOk
 }
 
-func (mp *metaPartition) txInodeInRb(inode uint64, newTxId string) bool {
+func (mp *metaPartition) txInodeInRb(inode uint64, newTxId string) (rbInode *TxRollbackInode) {
 
 	rbIno := mp.txProcessor.txResource.getTxRbInode(inode)
 	if rbIno != nil && rbIno.txInodeInfo.TxID == newTxId {
-		return true
+		return rbIno
 	}
 
-	return false
+	return nil
 }
 
 func (mp *metaPartition) txDentryInRb(parIno uint64, name, newTxId string) bool {
