@@ -101,6 +101,10 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 		break
 	}
 
+	if err != nil {
+		return
+	}
+
 	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
 		return
 	}
