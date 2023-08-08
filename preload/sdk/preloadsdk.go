@@ -41,7 +41,7 @@ import (
 type LimitParameters struct {
 	TraverseDirConcurrency int64
 	PreloadFileConcurrency int64
-	ReadBlockConcurrency   int64
+	ReadBlockConcurrency   int32
 	PreloadFileSizeLimit   int64
 	ClearFileConcurrency   int64
 }

@@ -42,7 +42,7 @@ func (id MultipartID) PartitionID() (pID uint64, found bool) {
 		mpStart        int
 		mpEnd          int
 		flag           string
-		length         uint64
+		length         int64
 		appendInfo     []rune
 		mpIdString     string
 		delimiterIndex int
@@ -54,7 +54,7 @@ func (id MultipartID) PartitionID() (pID uint64, found bool) {
 		return
 	}
 	flag = string(appendInfo[1 : multipartIDFlagLength+1])
-	length, err = strconv.ParseUint(flag, 10, 64)
+	length, err = strconv.ParseInt(flag, 10, 32)
 	if err != nil {
 		return 0, false
 	}
