@@ -163,7 +163,7 @@ Example `objectnode.json`, as follows:
     "domains": [
         "object.cfs.local"
     ],
-    "listen": 17410,
+    "listen": "17410",
     "masterAddr": [
        "127.0.0.1:17010",
        "127.0.0.2:17010",
