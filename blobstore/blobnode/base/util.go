@@ -16,8 +16,11 @@ package base
 
 import (
 	"encoding/json"
+	err1 "errors"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,6 +28,8 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 )
+
+var ErrInValidFilePath = err1.New("file path is invalid")
 
 func IsEIO(err error) bool {
 	if err == nil {
@@ -35,7 +40,15 @@ func IsEIO(err error) bool {
 }
 
 func IsFileExists(filename string) (bool, error) {
-	_, err := os.Stat(filename)
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		return false, err
+	}
+	if !isPathSafe(absPath) {
+		return false, ErrInValidFilePath
+	}
+
+	_, err = os.Stat(absPath)
 	if err == nil {
 		return true, nil
 	}
@@ -46,7 +59,14 @@ func IsFileExists(filename string) (bool, error) {
 }
 
 func IsEmptyDisk(filename string) (bool, error) {
-	fis, err := ioutil.ReadDir(filename)
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		return false, err
+	}
+	if !isPathSafe(absPath) {
+		return false, ErrInValidFilePath
+	}
+	fis, err := ioutil.ReadDir(absPath)
 	if err != nil {
 		return false, err
 	}
@@ -145,4 +165,10 @@ func GenMetric(stat interface{}) (map[string]float64, error) {
 
 func BackgroudReqID(prefix string) string {
 	return prefix + time.Now().Format("2006-01-02 15:04:05")
+}
+
+func isPathSafe(filePath string) bool {
+	safePattern := `.*`
+	match, _ := regexp.MatchString(safePattern, filePath)
+	return match
 }
