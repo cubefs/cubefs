@@ -147,8 +147,14 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vol := r.FormValue(volKey)
-	if vol != "" && vol != c.volName {
-		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume %s is not expected to update", c.volName))
+	if vol != c.volName {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("volume %s is not valid, current volume is %s", vol, c.volName))
+		return
+	}
+
+	owner := r.FormValue(ownerKey)
+	if owner != c.owner {
+		buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("owner %s is not valid", owner))
 		return
 	}
 

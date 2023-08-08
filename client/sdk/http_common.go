@@ -35,6 +35,7 @@ const (
 
 	aliveKey     = "alive"
 	volKey       = "vol"
+	ownerKey     = "owner"
 	inoKey       = "ino"
 	clientKey    = "client" // ip:port
 	versionKey   = "version"
@@ -192,6 +193,9 @@ func checkVersionID(checkMap map[string]string, enableReadDirPlus bool) error {
 
 func downloadClientPkg(mc *master.MasterClient, fileName, downloadPath string) (err error) {
 	addr, err := mc.ClientAPI().GetClientPkgAddr()
+	if err == nil && addr == "" {
+		err = fmt.Errorf("Can't get package address")
+	}
 	if err != nil {
 		return err
 	}

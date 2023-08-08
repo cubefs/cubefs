@@ -22,6 +22,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -36,6 +37,7 @@ const (
 	FunctionTpType          = "FunctionTp"
 	HostNameFile            = "/proc/sys/kernel/hostname"
 	MaxLogSize              = 1024 * 1024 * 10
+	checkFileExistsTicket   = 1 * time.Minute
 )
 
 var (
@@ -116,6 +118,32 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 	lw.logSize = 0
 
 	return
+}
+
+func (lw *LogWrite) backGroundCheckFileExist() {
+	defer wg.Done()
+	var (
+		err   error
+		logFp *os.File
+	)
+	ticker := time.NewTicker(checkFileExistsTicket)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-lw.stopC:
+			return
+		case <-ticker.C:
+			if _, err = os.Stat(lw.logName); err == nil || !os.IsNotExist(err) {
+				continue
+			}
+			if logFp, err = os.OpenFile(lw.logName, LogFileOpt, 0777); err != nil {
+				continue
+			}
+			os.Chmod(lw.logName, 0777)
+			lw.logFp.Close()
+			lw.logFp = logFp
+		}
+	}
 }
 
 //func (lw *LogWrite) backGroupWriteForGroupByTP() {
@@ -237,7 +265,7 @@ func GetLocalIpAddr() (localAddr string, err error) {
 }
 
 func backGroudWriteLog() {
-	wg.Add(3)
+	wg.Add(6)
 	//go FunctionTpLogWrite.backGroundWrite(FunctionTpType)
 	//go SystemAliveLogWrite.backGroundWrite(SystemAliveType)
 	//go BusinessAlarmLogWrite.backGroundWrite(BusinessAlarmType)
@@ -245,6 +273,9 @@ func backGroudWriteLog() {
 	go FunctionTpLogWrite.backGroupWriteForGroupByTPV629()
 	go SystemAliveLogWrite.backGroupAliveWriteV629()
 	go BusinessAlarmLogWrite.backGroupBusinessWriteV629()
+	go FunctionTpLogWrite.backGroundCheckFileExist()
+	go SystemAliveLogWrite.backGroundCheckFileExist()
+	go BusinessAlarmLogWrite.backGroundCheckFileExist()
 }
 
 func stopLogWriter() {

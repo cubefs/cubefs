@@ -550,7 +550,9 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 
 	// metric
 	c.initUmpKeys()
-	exporter.Init(mw.Cluster(), gClientManager.moduleName, "", nil)
+	// different vols write logs to different ump files, otherwise logs may be lost while rotating
+	umpModuleName := fmt.Sprintf("%v_%v_%v", mw.Cluster(), c.volName, gClientManager.moduleName)
+	exporter.Init(mw.Cluster(), umpModuleName, "", nil)
 
 	// version
 	startVersionReporter(mw.Cluster(), c.volName, masters)

@@ -232,7 +232,9 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	}
 	gClient.fsConn = fsConn
 
-	exporter.Init(gClient.super.ClusterName(), gClient.moduleName, "", cfg)
+	// different vols write logs to different ump files, otherwise logs may be lost while rotating
+	umpModuleName := fmt.Sprintf("%v_%v_%v", gClient.super.ClusterName(), gClient.super.VolName(), gClient.moduleName)
+	exporter.Init(gClient.super.ClusterName(), umpModuleName, "", cfg)
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)

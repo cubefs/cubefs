@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 
@@ -228,7 +229,9 @@ func (s *Streamer) server() {
 			s.traversed = 0
 		case <-s.done:
 			s.abort()
-			log.LogDebugf("done server: evict, ino(%v)", s.inode)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("done server: evict, ino(%v)", s.inode)
+			}
 			return
 		case <-t.C:
 			s.traverse()
@@ -246,7 +249,9 @@ func (s *Streamer) server() {
 
 					// fail the remaining requests in such case
 					s.clearRequests()
-					log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
+					if log.IsDebugEnabled() {
+						log.LogDebugf("done server: no requests for a long time, ino(%v)", s.inode)
+					}
 					return
 				}
 				s.streamerMap.Unlock()
@@ -474,10 +479,14 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 			err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 			break
 		}
-		log.LogDebugf("writeToExtent: inode %v packet %v total %v currSize %v", s.inode, packet, total, currSize)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("writeToExtent: inode %v packet %v total %v currSize %v", s.inode, packet, total, currSize)
+		}
 		total += currSize
 	}
-	log.LogDebugf("writeToExtent: inode %v oriReq %v dp %v extID %v total %v direct %v", s.inode, oriReq, dp, extID, total, direct)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("writeToExtent: inode %v oriReq %v dp %v extID %v total %v direct %v", s.inode, oriReq, dp, extID, total, direct)
+	}
 	return
 }
 
@@ -587,7 +596,10 @@ func (s *Streamer) writeToExtentSpecificOffset(ctx context.Context, oriReq *Exte
 }
 
 func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool) (total int, err error) {
+	tpObject := exporter.NewModuleTP("row")
+
 	defer func() {
+		tpObject.Set(err)
 		if err != nil {
 			log.LogWarnf("doROW: total %v, oriReq %v, err %v", total, oriReq, err)
 		}
@@ -621,7 +633,9 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 		return
 	}
 
-	log.LogDebugf("doROW: inode %v, total %v, oriReq %v, newEK %v", s.inode, total, oriReq, newEK)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("doROW: inode %v, total %v, oriReq %v, newEK %v", s.inode, total, oriReq, newEK)
+	}
 
 	if s.enableCacheAutoPrepare() {
 		prepareReq := &PrepareRequest{
@@ -876,7 +890,9 @@ func (s *Streamer) traverse() (err error) {
 		}
 		eh := element.Value.(*ExtentHandler)
 
-		log.LogDebugf("Streamer traverse begin: eh(%v)", eh)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Streamer traverse begin: eh(%v)", eh)
+		}
 		if eh.getStatus() >= ExtentStatusClosed {
 			// handler can be in different status such as close, recovery, and error,
 			// and therefore there can be packet that has not been flushed yet.
@@ -899,7 +915,9 @@ func (s *Streamer) traverse() (err error) {
 			}
 			eh.setClosed()
 		}
-		log.LogDebugf("Streamer traverse end: eh(%v)", eh)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Streamer traverse end: eh(%v)", eh)
+		}
 	}
 
 	if s.status >= StreamerError && s.dirtylist.Len() == 0 {
@@ -937,7 +955,9 @@ func (s *Streamer) closeOpenHandler(ctx context.Context) (err error) {
 
 func (s *Streamer) open() {
 	s.refcnt++
-	log.LogDebugf("open: streamer(%v) refcnt(%v)", s, s.refcnt)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("open: streamer(%v) refcnt(%v)", s, s.refcnt)
+	}
 }
 
 func (s *Streamer) release(ctx context.Context, mustRelease bool) error {

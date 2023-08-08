@@ -57,7 +57,7 @@ type Super struct {
 	enableXattr              bool
 	noBatchGetInodeOnReaddir bool
 	rootIno                  uint64
-	readDirPlus 		 	 bool
+	readDirPlus              bool
 
 	delProcessPath []string
 	wg             sync.WaitGroup
@@ -67,8 +67,8 @@ type Super struct {
 }
 
 type SuperState struct {
-	RootIno 			uint64
-	EnableReadDirPlus	bool
+	RootIno           uint64
+	EnableReadDirPlus bool
 }
 
 // Functions that Super needs to implement
@@ -412,4 +412,8 @@ func (s *Super) UmpJmtpAddr() string {
 
 func (s *Super) EnableReadDirPlus() bool {
 	return s.readDirPlus
+}
+
+func (s *Super) Owner() string {
+	return s.owner
 }

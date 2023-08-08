@@ -483,12 +483,8 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 	startTime := time.Now()
 	errMap := make(map[string]error)
 	for i := 0; i < StreamSendOverWriteMaxRetry; i++ {
-		for _, addr := range dp.Hosts {
-			ts, ok := dp.hostErrMap.Load(addr)
-			if ok && time.Now().UnixNano()-ts.(int64) <= HostErrOverwriteTimeout*1e9 {
-				log.LogWarnf("OverWrite: ignore addr(%v) reqPacket(%v)", addr, req)
-				continue
-			}
+		hosts := sortByStatus(dp, sc.currAddr)
+		for _, addr := range hosts {
 			log.LogWarnf("OverWrite: try addr(%v) reqPacket(%v)", addr, req)
 			sc.currAddr = addr
 			err = dp.OverWriteToDataPartitionLeader(sc, req, reply)
