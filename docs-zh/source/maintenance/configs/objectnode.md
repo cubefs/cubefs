@@ -4,7 +4,7 @@
 | 参数           | 类型           | 描述                                                              | 必需  |
 |--------------|--------------|-----------------------------------------------------------------|-----|
 | role         | string       | 进程角色，必须设置为 `objectnode`                                         | 是   |
-| listen       | string       | http服务监听的IP地址和端口号. 格式: `IP:PORT` 或者 `:PORT`, 默认: `:80`          | 是   |
+| listen       | string       | http服务监听的端口号. 格式: `PORT` , 默认: `80`          | 是   |
 | domains      | string slice | 为S3兼容接口配置域名以支持DNS风格访问资源，格式: `DOMAIN`                            | 否   |
 | logDir       | string       | 日志存放路径                                                          | 是   |
 | logLevel     | string       | 日志级别，默认: `error`                                                | 否   |
