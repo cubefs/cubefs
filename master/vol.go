@@ -140,7 +140,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.ecDataPartitions = newEcDataPartitionCache(vol)
-	if dpReplicaNum < defaultReplicaNum {
+	if dpReplicaNum < defaultReplicaNum && dpReplicaNum != twoReplicaNum {
 		dpReplicaNum = defaultReplicaNum
 	}
 	vol.dpReplicaNum = dpReplicaNum

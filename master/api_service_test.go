@@ -4003,3 +4003,169 @@ func TestSetNodeSetCapacity(t *testing.T) {
 		assert.Equal(t, 512, server.cluster.cfg.nodeSetCapacity)
 	})
 }
+
+func TestNewTwoDpReplicaZone(t *testing.T) {
+	var (
+		volName = "TwoDpReplicaZone2"
+		err     error
+	)
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
+		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+		return
+	}
+	time.Sleep(time.Minute)
+	vol, err := server.cluster.getVol(volName)
+	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+		return
+	}
+	for _, dp := range vol.dataPartitions.partitions {
+		printDpNodeSet(dp, t)
+	}
+}
+
+func TestDecommissionTwoDpReplicaZone(t *testing.T) {
+	var (
+		volName = "TwoDpReplicaZone1"
+		err     error
+	)
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
+		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+		return
+	}
+	time.Sleep(time.Minute)
+	vol, err := server.cluster.getVol(volName)
+	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+		return
+	}
+	for _, dp := range vol.dataPartitions.partitions {
+		printDpNodeSet(dp, t)
+	}
+	t.Run("decommission", func(t *testing.T) {
+		dp := vol.dataPartitions.partitions[0]
+		offlineAddr := dp.Hosts[0]
+		err = mc.AdminAPI().DecommissionDataPartition(dp.PartitionID, offlineAddr, "")
+		assert.NoError(t, err)
+		printDpNodeSet(dp, t)
+	})
+	t.Run("create dp", func(t *testing.T) {
+		createDataPartition(vol, 2, t)
+	})
+	t.Run("decommission no leader", func(t *testing.T) {
+		dp := vol.dataPartitions.partitions[1]
+		var offlineAddr string
+		for _, replica := range dp.Replicas {
+			if replica.IsLeader {
+				offlineAddr = replica.Addr
+			}
+		}
+		assert.NotEqual(t, "", offlineAddr)
+		dataNode, err := server.cluster.dataNode(offlineAddr)
+		assert.NoError(t, err)
+		dataNode.isActive = false
+		//err = server.cluster.decommissionDataPartition(offlineAddr, dp, getTargetAddressForDataPartitionDecommission, "", testZone2, "", false)
+		err = mc.AdminAPI().DecommissionDataPartition(dp.PartitionID, offlineAddr, "")
+		assert.NoError(t, err)
+		printDpNodeSet(dp, t)
+		dataNode.isActive = true
+	})
+	t.Run("decommission no available", func(t *testing.T) {
+		dp := vol.dataPartitions.partitions[2]
+		var offlineAddr string
+		var remainAddr string
+		offlineAddr = dp.Hosts[0]
+		remainAddr = dp.Hosts[1]
+		assert.NotEqual(t, "", offlineAddr)
+		assert.NotEqual(t, "", remainAddr)
+		dataNode, err := server.cluster.dataNode(remainAddr)
+		assert.NoError(t, err)
+		dataNode.isActive = false
+		//err = server.cluster.decommissionDataPartition(offlineAddr, dp, getTargetAddressForDataPartitionDecommission, "", testZone2, "", false)
+		err = mc.AdminAPI().DecommissionDataPartition(dp.PartitionID, offlineAddr, "")
+		assert.Error(t, err)
+		printDpNodeSet(dp, t)
+		dataNode.isActive = true
+	})
+	t.Run("decommission with addr", func(t *testing.T) {
+		dp := vol.dataPartitions.partitions[3]
+		nodes := []string{mds3Addr, mds4Addr, mds5Addr}
+		var dstAddr string
+		for _, node := range nodes {
+			if !contains(dp.Hosts, node) {
+				dstAddr = node
+				break
+			}
+		}
+		err = server.cluster.decommissionDataPartition(dp.Hosts[0], dp, getTargetAddressForDataPartitionDecommission, "", testZone2, dp.Hosts[0], false)
+		assert.Error(t, err)
+		err = server.cluster.decommissionDataPartition(dp.Hosts[0], dp, getTargetAddressForDataPartitionDecommission, "", testZone2, dp.Hosts[1], false)
+		assert.Error(t, err)
+		err = server.cluster.decommissionDataPartition(dp.Hosts[1], dp, getTargetAddressForDataPartitionDecommission, "", testZone2, dp.Hosts[0], false)
+		assert.Error(t, err)
+		err = server.cluster.decommissionDataPartition(dp.Hosts[1], dp, getTargetAddressForDataPartitionDecommission, "", testZone2, dp.Hosts[1], false)
+		assert.Error(t, err)
+		err = server.cluster.decommissionDataPartition(dp.Hosts[0], dp, getTargetAddressForDataPartitionDecommission, "", testZone2, dstAddr, false)
+		assert.NoError(t, err)
+	})
+	t.Run("decommission invalid addr", func(t *testing.T) {
+		dp := vol.dataPartitions.partitions[4]
+		err = mc.AdminAPI().DecommissionDataPartition(dp.PartitionID, "", "")
+		assert.Error(t, err)
+		err = mc.AdminAPI().DecommissionDataPartition(dp.PartitionID, mds3Addr, mms1Addr)
+		assert.Error(t, err)
+		err = mc.AdminAPI().DecommissionDataPartition(dp.PartitionID, mds1Addr, mds3Addr)
+		assert.Error(t, err)
+	})
+}
+
+func TestDecommissionDisk(t *testing.T) {
+	var (
+		volName = "TwoDpReplicaZone2"
+		err     error
+	)
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
+		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+		return
+	}
+	time.Sleep(time.Minute)
+	vol, err := server.cluster.getVol(volName)
+	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+		return
+	}
+	dp := vol.dataPartitions.partitions[0]
+	host := dp.Replicas[0].Addr
+	diskPath := dp.Replicas[0].DiskPath
+	err = mc.NodeAPI().DataNodeDiskDecommission(host, diskPath)
+	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+		return
+	}
+
+}
+
+func printDpNodeSet(dp *DataPartition, t *testing.T) {
+	var zone *Zone
+	nsMap := make(map[string]uint64)
+	for _, z := range server.cluster.t.zones {
+		if z.name == testZone2 {
+			zone = z
+			break
+		}
+	}
+	for id, ns := range zone.nodeSetMap {
+		ns.dataNodes.Range(func(key, value interface{}) bool {
+			node := value.(*DataNode)
+			nsMap[node.Addr] = id
+			return true
+		})
+	}
+	fmt.Printf("in dp: %v:\n", dp.PartitionID)
+	for _, addr := range dp.Hosts {
+		if id, ok := nsMap[addr]; !ok {
+			t.Fatal("none nodeSet error")
+		} else {
+			fmt.Printf("replica %v in nodeSet %v\n", addr, id)
+		}
+	}
+}
