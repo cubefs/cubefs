@@ -2554,13 +2554,14 @@ func (m *Server) updateExcludeZoneUseRatio(ratio float64) (err error) {
 }
 func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType uint64, addr string) (err error) {
 	var (
-		nsId     uint64
-		dstNs    *nodeSet
-		srcNs    *nodeSet
-		ok       bool
-		value    interface{}
-		metaNode *MetaNode
-		dataNode *DataNode
+		nsId           uint64
+		dstNs          *nodeSet
+		srcNs          *nodeSet
+		ok             bool
+		value          interface{}
+		metaNode       *MetaNode
+		dataNode       *DataNode
+		nodeTypeUint32 uint32
 	)
 	defer func() {
 		log.LogInfof("action[updateNodesetId] step out")
@@ -2611,7 +2612,12 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 
 	// the nodeset capcity not enlarged if node be added,capacity can be adjust by
 	// AdminUpdateNodeSetCapcity
-	if uint32(nodeType) == TypeDataPartition {
+	if nodeType <= math.MaxUint32 {
+		nodeTypeUint32 = uint32(nodeType)
+	} else {
+		nodeTypeUint32 = math.MaxUint32
+	}
+	if nodeTypeUint32 == TypeDataPartition {
 		if value, ok = srcNs.dataNodes.Load(addr); !ok {
 			return fmt.Errorf("addr not found in srcNs.dataNodes")
 		}
@@ -2825,7 +2831,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 	return nsgStat
 }
 
-func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType int, rdOnly bool, err error) {
+func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType uint32, rdOnly bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2877,19 +2883,20 @@ func parseSetDpRdOnlyParam(r *http.Request) (dpId uint64, rdOnly bool, err error
 	return
 }
 
-func parseNodeType(r *http.Request) (nodeType int, err error) {
+func parseNodeType(r *http.Request) (nodeType uint32, err error) {
 	var val string
+	var nodeTypeUint64 uint64
 	if val = r.FormValue(nodeTypeKey); val == "" {
 		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", nodeTypeKey)
 		return
 	}
 
-	if nodeType, err = strconv.Atoi(val); err != nil {
+	if nodeTypeUint64, err = strconv.ParseUint(val, 10, 32); err != nil {
 		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not number, err %s", nodeTypeKey, err.Error())
 		return
 	}
-
-	if nodeType != int(TypeDataPartition) && nodeType != int(TypeMetaPartition) {
+	nodeType = uint32(nodeTypeUint64)
+	if nodeType != TypeDataPartition && nodeType != TypeMetaPartition {
 		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be %d or %d", nodeTypeKey, TypeDataPartition, TypeMetaPartition)
 		return
 	}
@@ -2900,7 +2907,7 @@ func parseNodeType(r *http.Request) (nodeType int, err error) {
 func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		addr     string
-		nodeType int
+		nodeType uint32
 		rdOnly   bool
 		err      error
 	)
@@ -2917,7 +2924,7 @@ func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.LogInfof("[setNodeRdOnlyHandler] set node %s to rdOnly(%v)", addr, rdOnly)
 
-	err = m.setNodeRdOnly(addr, uint32(nodeType), rdOnly)
+	err = m.setNodeRdOnly(addr, nodeType, rdOnly)
 	if err != nil {
 		log.LogErrorf("[setNodeRdOnlyHandler] set node %s to rdOnly %v, err (%s)", addr, rdOnly, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3736,7 +3743,7 @@ func parseUintParam(r *http.Request, key string) (num int, err error) {
 		return
 	}
 
-	numVal, err := strconv.ParseUint(val, 10, 64)
+	numVal, err := strconv.ParseInt(val, 10, 32)
 	if err != nil {
 		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", key, val, err.Error())
 		return

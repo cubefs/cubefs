@@ -118,7 +118,7 @@ func (api *AdminAPI) Topo() (topo *proto.TopologyView, err error) {
 func (api *AdminAPI) GetDataPartition(volName string, partitionID uint64) (partition *proto.DataPartitionInfo, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetDataPartition)
-	request.addParam("id", strconv.Itoa(int(partitionID)))
+	request.addParam("id", fmt.Sprintf("%v", partitionID))
 	request.addParam("name", volName)
 	if buf, err = api.mc.serveRequest(request); err != nil {
 		return
