@@ -3788,7 +3788,6 @@ func parseCacheToUpdateVol(r *http.Request, vol *Vol) (remoteCacheBoostPath stri
 	}
 	remoteCacheBoostPath = r.FormValue(remoteCacheBoostPathKey)
 
-
 	remoteCacheBoostEnableStr := r.FormValue(remoteCacheBoostEnableKey)
 	if remoteCacheBoostEnableStr == "" {
 		remoteCacheBoostEnable = vol.RemoteCacheBoostEnable
@@ -4895,7 +4894,7 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPR
 
 func getEncodeType(r *http.Request) string {
 	encodeType := r.Header.Get(proto.AcceptFormat)
-	if encodeType == "" {
+	if encodeType != proto.ProtobufType {
 		encodeType = proto.JsonType
 	}
 	return encodeType
