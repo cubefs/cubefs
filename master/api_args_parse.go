@@ -165,7 +165,7 @@ func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64,
 	return
 }
 
-func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err error) {
+func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, mediaType uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -174,6 +174,9 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, zoneName string, err err
 	}
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
+	}
+	if mediaType, err = extractMediaType(r); err != nil {
+		return
 	}
 	return
 }
@@ -2151,5 +2154,17 @@ func parseRequestToResetDpRestoreStatus(r *http.Request) (dpId uint64, err error
 		return
 	}
 	dpId, err = extractDataPartitionID(r)
+	return
+}
+
+func extractMediaType(r *http.Request) (mediaType uint32, err error) {
+	var value string
+	if value = r.FormValue(mediaTypeKey); value == "" {
+		mediaType = proto.MediaType_Unspecified
+		return
+	}
+
+	parsedMediaType, err := strconv.ParseUint(value, 10, 32)
+	mediaType = uint32(parsedMediaType)
 	return
 }

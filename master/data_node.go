@@ -43,8 +43,8 @@ type DataNode struct {
 	LastUpdateTime            time.Time
 	isActive                  bool
 	sync.RWMutex              `graphql:"-"`
-	UsageRatio                float64           // used / total space
-	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
+	UsageRatio                float64 // used / total space
+	SelectedTimes             uint64 // number times that this datanode has been selected as the location for a data partition.
 	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.DataPartitionReport
 	DataPartitionCount        uint32
@@ -74,9 +74,10 @@ type DataNode struct {
 	DecommissionDpTotal       int
 	DecommissionSyncMutex     sync.Mutex
 	BackupDataPartitions      []proto.BackupDataPartitionInfo
+	MediaType                 uint32
 }
 
-func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
+func newDataNode(addr, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
 	dataNode = new(DataNode)
 	dataNode.Total = 1
 	dataNode.Addr = addr
@@ -89,6 +90,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode.SetIoUtils(make(map[string]float64))
 	dataNode.AllDisks = make([]string, 0)
 	dataNode.ReportTime = time.Now()
+	dataNode.MediaType = mediaType
 	return
 }
 
