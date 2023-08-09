@@ -70,6 +70,7 @@ type DataNodeInfo struct {
 	MaxDpCntLimit             uint32             `json:"maxDpCntLimit"`
 	CpuUtil                   float64            `json:"cpuUtil"`
 	IoUtils                   map[string]float64 `json:"ioUtil"`
+	MediaType                 uint32
 }
 
 // MetaPartition defines the structure of a meta partition
