@@ -25,5 +25,6 @@
     "192.168.0.13:17010"
   ],
   "enableSmuxConnPool": true,
-  "enableLogPanicHook": true
+  "enableLogPanicHook": true,
+  "mediaType": 1
 }

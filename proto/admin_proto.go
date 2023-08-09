@@ -1295,3 +1295,24 @@ type RecoverBadDiskRequest struct {
 type DeleteBackupDirectoriesRequest struct {
 	DiskPath string
 }
+
+//data node hardware media type
+const (
+	MediaType_Unspecified uint32 = 0
+	MediaType_SSD         uint32 = 1
+	MediaType_HDD         uint32 = 2
+)
+
+var mediaTypeStringMap = map[uint32]string{
+	MediaType_Unspecified: "Unspecified",
+	MediaType_SSD:         "SSD",
+	MediaType_HDD:         "HDD",
+}
+
+func MediaTypeString(mediaType uint32) (value string) {
+	value, ok := mediaTypeStringMap[mediaType]
+	if !ok {
+		value = "InvalidValue"
+	}
+	return
+}
