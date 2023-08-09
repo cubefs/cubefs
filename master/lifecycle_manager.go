@@ -66,19 +66,18 @@ func newLifecycleManager() *lifecycleManager {
 }
 
 func (lcMgr *lifecycleManager) startLcScan() {
-	tasks := lcMgr.genEnabledRuleTasks()
+	// stop if already scanning
+	if lcMgr.scanning() {
+		log.LogWarnf("rescheduleScanRoutine: scanning is not completed, lcRuleTaskStatus(%v)", lcMgr.lcRuleTaskStatus)
+		return
+	}
 
+	tasks := lcMgr.genEnabledRuleTasks()
 	if len(tasks) <= 0 {
 		log.LogDebugf("startLcScan: no enabled lifecycle rule task to schedule!")
 		return
 	} else {
 		log.LogDebugf("startLcScan: %v lifecycle rule tasks to schedule!", len(tasks))
-	}
-
-	// stop if already scanning
-	if lcMgr.scanning() {
-		log.LogWarnf("rescheduleScanRoutine: scanning is not completed, lcRuleTaskStatus(%v)", lcMgr.lcRuleTaskStatus)
-		return
 	}
 
 	// start scan init
@@ -179,7 +178,9 @@ func (lcMgr *lifecycleManager) scheduleLcScanProcess() {
 			if !ok {
 				log.LogErrorf("nodeAddr(%v) is not available for scanning!", nodeAddr)
 				t := lcMgr.lcNodeStatus.removeNode(nodeAddr)
-				lcMgr.lcRuleTaskStatus.redoTask(t.(*proto.RuleTask))
+				if t != nil {
+					lcMgr.lcRuleTaskStatus.redoTask(t.(*proto.RuleTask))
+				}
 				continue
 			}
 			node := val.(*LcNode)
