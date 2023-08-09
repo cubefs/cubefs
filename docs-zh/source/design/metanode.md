@@ -30,4 +30,4 @@
 - 其次，客户端保证在一定时间内进行重试
 
 ## 更多详情
-更多详情请查看[CubeFS存储技术揭秘|元数据设计](/zh/blog/case/Secret_of_CubeFS_Technology_Metadata_Subsystem_Design)
+更多详情请查看[CubeFS存储技术揭秘|元数据设计](/zh/blog/case/Secret_of_CubeFS_Technology_Metadata_Subsystem_Design.html)
