@@ -688,7 +688,7 @@ func (mw *MetaWrapper) batchDelete_ll(dentries []*proto.ScanDentry) {
 					log.LogErrorf("batchDelete_ll: No inode partition, ino(%v)", r.Inode)
 					continue
 				}
-				status, info, err := mw.iunlink(mp, r.Inode, mw.Client.GetLatestVer(), 0)
+				status, info, err := mw.iunlink(mp, r.Inode, 0, 0)
 				if err != nil || status != statusOK {
 					continue
 				}
