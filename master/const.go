@@ -292,7 +292,7 @@ const (
 	zoneAcronym            = "zone"
 	domainAcronym          = "zoneDomain"
 	apiLimiterAcronym      = "al"
-	lcConfigurationAcronym = "lcConf"
+	lcConfigurationAcronym = "lc"
 	maxDataPartitionIDKey  = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey  = keySeparator + "max_mp_id"
 	maxCommonIDKey         = keySeparator + "max_common_id"
