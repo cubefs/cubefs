@@ -31,4 +31,4 @@ It is worth mentioning that metadata operations may cause orphan inodes, which m
 - Secondly, the client ensures retries within a certain period of time.
 
 ## More Details
-For more details, please refer to [CubeFS Storage Technology Revealed | Metadata Design]()/blog/case/Secret_of_CubeFS_Technology_Metadata_Subsystem_Design.html
+For more details, please refer to [CubeFS Storage Technology Revealed | Metadata Design](/blog/case/Secret_of_CubeFS_Technology_Metadata_Subsystem_Design.html)
