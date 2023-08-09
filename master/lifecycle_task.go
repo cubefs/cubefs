@@ -64,9 +64,8 @@ func (c *Cluster) handleLcNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 		response := task.Response.(*proto.LcNodeRuleTaskResponse)
 		err = c.handleLcNodeLcScanResp(req, response)
 	case proto.OpLcNodeSnapshotVerDel:
-		req := task.Request.(*proto.SnapshotVerDelTaskRequest)
 		response := task.Response.(*proto.SnapshotVerDelTaskResponse)
-		err = c.handleLcNodeSnapshotScanResp(req, response)
+		err = c.handleLcNodeSnapshotScanResp(task.OperatorAddr, response)
 	default:
 		err = fmt.Errorf(fmt.Sprintf("lc unknown operate code %v", task.OpCode))
 		goto errHandler
@@ -195,8 +194,13 @@ errHandler:
 	return
 }
 
-func (c *Cluster) handleLcNodeSnapshotScanResp(req *proto.SnapshotVerDelTaskRequest, resp *proto.SnapshotVerDelTaskResponse) (err error) {
-	c.snapshotMgr.lcNodeStatus.releaseNode(req.LcNodeAddr)
+func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.SnapshotVerDelTaskResponse) (err error) {
+	log.LogDebugf("action[handleLcNodeSnapshotScanResp] lcnode(%v), resp id(%v) Enter", nodeAddr, resp.ID)
+	defer func() {
+		log.LogDebugf("action[handleLcNodeSnapshotScanResp] lcnode(%v), resp id(%v) Exit", nodeAddr, resp.ID)
+	}()
+
+	c.snapshotMgr.lcNodeStatus.releaseNode(nodeAddr)
 
 	if resp.Status == proto.TaskFailed {
 		c.snapshotMgr.volVerInfos.RedoProcessingVerInfo(resp.ID)
@@ -206,7 +210,7 @@ func (c *Cluster) handleLcNodeSnapshotScanResp(req *proto.SnapshotVerDelTaskRequ
 		vol, err = c.getVol(resp.VolName)
 		if err != nil {
 			log.LogErrorf("action[handleLcNodeSnapshotScanResp] snapshot task(%v) scanning completed by %v, results(%v), volume(%v) is not found",
-				resp.ID, req.LcNodeAddr, resp, resp.VolName)
+				resp.ID, nodeAddr, resp, resp.VolName)
 			return
 		} else {
 			_ = vol.VersionMgr.DelVer(resp.VerSeq)
@@ -215,5 +219,7 @@ func (c *Cluster) handleLcNodeSnapshotScanResp(req *proto.SnapshotVerDelTaskRequ
 		//2. mark done for snapshotMgr
 		c.snapshotMgr.volVerInfos.RemoveProcessingVerInfo(resp.ID)
 	}
+
+	log.LogInfof("action[handleLcNodeSnapshotScanResp] scanning completed, resp(%v)", resp)
 	return
 }
