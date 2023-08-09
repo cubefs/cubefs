@@ -58,8 +58,8 @@ const (
 	authenticateKey            = "authenticate"
 	akKey                      = "ak"
 	keywordsKey                = "keywords"
-	zoneNameKey                = "zoneName"
 	nodesetIdKey               = "nodesetId"
+	zoneNameKey                = "zoneName"
 	crossZoneKey               = "crossZone"
 	normalZonesFirstKey        = "normalZonesFirst"
 	userKey                    = "user"
@@ -119,6 +119,7 @@ const (
 	ignoreDiscardKey           = "ignoreDiscard"
 	verSeqKey                  = "verSeq"
 	Periodic                   = "periodic"
+	mediaTypeKey               = "mediaType"
 )
 
 const (

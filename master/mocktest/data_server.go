@@ -68,7 +68,7 @@ func (mds *MockDataServer) register() {
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
-		nodeID, err = mds.mc.NodeAPI().AddDataNode(mds.TcpAddr, mds.zoneName)
+		nodeID, err = mds.mc.NodeAPI().AddDataNode(mds.TcpAddr, mds.zoneName, proto.MediaType_HDD)
 		if err == nil {
 			break
 		}

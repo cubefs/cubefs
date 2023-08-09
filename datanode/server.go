@@ -108,6 +108,8 @@ const (
 
 	//rate limit control enable
 	ConfigDiskQosEnable = "diskQosEnable" //bool
+
+	ConfigMediaType = "mediaType" //SDD or HDD
 )
 
 const cpuSampleDuration = 1 * time.Second
@@ -161,6 +163,8 @@ type DataNode struct {
 
 	cpuUtil        atomicutil.Float64
 	cpuSamplerDone chan struct{}
+
+	mediaType uint32
 }
 
 type verOp2Phase struct {
@@ -327,9 +331,22 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	s.metricsDegrade = cfg.GetInt64(CfgMetricsDegrade)
 
+	mediaType := cfg.GetInt64(ConfigMediaType)
+	switch uint32(mediaType) {
+	case proto.MediaType_SSD:
+		s.mediaType = proto.MediaType_SSD
+	case proto.MediaType_HDD:
+		s.mediaType = proto.MediaType_HDD
+	default:
+		s.mediaType = proto.MediaType_Unspecified
+		err = fmt.Errorf("parseConfig: invalid mediaType[%v]", mediaType)
+		return err
+	}
+
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
+	log.LogDebugf("action[parseConfig] load mediaType(%v).", s.mediaType)
 	return
 }
 
@@ -492,7 +509,7 @@ func (s *DataNode) register(cfg *config.Config) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.zoneName); err != nil {
+			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.zoneName, s.mediaType); err != nil {
 				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)

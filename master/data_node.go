@@ -71,9 +71,10 @@ type DataNode struct {
 	DpCntLimit                DpCountLimiter     `json:"-"` // max count of data partition in a data node
 	CpuUtil                   atomicutil.Float64 `json:"-"`
 	ioUtils                   atomic.Value       `json:"-"`
+	MediaType                 uint32
 }
 
-func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
+func newDataNode(addr, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
 	dataNode = new(DataNode)
 	dataNode.Carry = rand.Float64()
 	dataNode.Total = 1
@@ -87,6 +88,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode.DpCntLimit = newDpCountLimiter(nil)
 	dataNode.CpuUtil.Store(0)
 	dataNode.SetIoUtils(make(map[string]float64))
+	dataNode.MediaType = mediaType
 	return
 }
 

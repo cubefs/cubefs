@@ -955,7 +955,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64) (id uint64, err error) {
+func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, mediaType uint32) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
@@ -967,7 +967,7 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 		return dataNode.ID, nil
 	}
 
-	dataNode = newDataNode(nodeAddr, zoneName, c.Name)
+	dataNode = newDataNode(nodeAddr, zoneName, c.Name, mediaType)
 	dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
@@ -992,7 +992,8 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 	}
 	dataNode.ID = id
 	dataNode.NodeSetID = ns.ID
-	log.LogInfof("action[addDataNode] datanode id[%v] zonename [%v] add node to nodesetid[%v]", id, zoneName, ns.ID)
+	log.LogInfof("action[addDataNode] datanode id[%v] zonename[%v] MediaType[%v] add node to nodesetid[%v]",
+		id, zoneName, dataNode.MediaType, ns.ID)
 	if err = c.syncAddDataNode(dataNode); err != nil {
 		goto errHandler
 	}

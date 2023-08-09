@@ -354,6 +354,7 @@ type dataNodeValue struct {
 	DecommissionTerm         uint64
 	DecommissionCompleteTime int64
 	ToBeOffline              bool
+	MediaType                uint32
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -373,6 +374,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionTerm:         dataNode.DecommissionTerm,
 		DecommissionCompleteTime: dataNode.DecommissionCompleteTime,
 		ToBeOffline:              dataNode.ToBeOffline,
+		MediaType:                dataNode.MediaType,
 	}
 }
 
@@ -1216,7 +1218,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		if dnv.ZoneName == "" {
 			dnv.ZoneName = DefaultZoneName
 		}
-		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
+		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name, dnv.MediaType)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		dataNode.RdOnly = dnv.RdOnly
@@ -1239,7 +1241,8 @@ func (c *Cluster) loadDataNodes() (err error) {
 			}
 		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
-		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v]", dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID)
+		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],MediaType[%v]",
+			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.MediaType)
 	}
 	return
 }
