@@ -167,7 +167,9 @@ func (m *snapshotDelManager) process() {
 			if !ok {
 				log.LogErrorf("nodeAddr(%v) is not available for scanning!", nodeAddr)
 				t := m.lcNodeStatus.removeNode(nodeAddr)
-				m.volVerInfos.RedoProcessingVerInfo(t.(string))
+				if t != nil {
+					m.volVerInfos.RedoProcessingVerInfo(t.(string))
+				}
 				continue
 			}
 			task := &proto.SnapshotVerDelTask{

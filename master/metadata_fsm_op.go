@@ -1642,7 +1642,7 @@ func (c *Cluster) syncUpdateLcConf(lcConf *bsProto.LcConfiguration) (err error) 
 func (c *Cluster) syncPutLcConfInfo(opType uint32, lcConf *bsProto.LcConfiguration) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
-	metadata.K = lcConfPrefix + lcConf.VolName + keySeparator
+	metadata.K = lcConfPrefix + lcConf.VolName
 	metadata.V, err = json.Marshal(lcConf)
 	if err != nil {
 		return errors.New(err.Error())
