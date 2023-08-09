@@ -140,10 +140,6 @@ func newSnapshotManager() *snapshotDelManager {
 	return snapshotMgr
 }
 
-func (m *snapshotDelManager) Start() {
-	go m.process()
-}
-
 func (m *snapshotDelManager) process() {
 	for {
 		select {

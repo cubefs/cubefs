@@ -87,7 +87,7 @@ func (lcMgr *lifecycleManager) startLcScan() {
 	lcMgr.lcNodeStatus.workingNodes = make(map[string]interface{})
 	lcMgr.lcRuleTaskStatus.ToBeScanned = append(lcMgr.lcRuleTaskStatus.ToBeScanned, tasks...)
 
-	go lcMgr.scheduleLcScanProcess()
+	go lcMgr.process()
 }
 
 // generate tasks for every bucket
@@ -147,8 +147,8 @@ func exist(node string, nodes []string) bool {
 	return false
 }
 
-func (lcMgr *lifecycleManager) scheduleLcScanProcess() {
-	log.LogInfof("start scheduleLcScanProcess, rule num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
+func (lcMgr *lifecycleManager) process() {
+	log.LogInfof("lifecycleManager process start, rule num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
 	now := time.Now()
 	lcMgr.lcRuleTaskStatus.StartTime = &now
 	for lcMgr.scanning() {
@@ -191,7 +191,7 @@ func (lcMgr *lifecycleManager) scheduleLcScanProcess() {
 	}
 	now = time.Now()
 	lcMgr.lcRuleTaskStatus.EndTime = &now
-	log.LogInfof("finish scheduleLcScanProcess, lcRuleTaskStatus results(%v)", lcMgr.lcRuleTaskStatus.Results)
+	log.LogInfof("lifecycleManager process finish, lcRuleTaskStatus results(%v)", lcMgr.lcRuleTaskStatus.Results)
 }
 
 func (lcMgr *lifecycleManager) notifyIdleLcNode() {
@@ -337,6 +337,7 @@ type LcNodeInfoResponse struct {
 	Infos            []*LcNodeStatInfo
 	LcConfigurations map[string]*proto.LcConfiguration
 	LcRuleTaskStatus *lcRuleTaskStatus
+	SnapshotInfos    *VolVerInfos
 }
 
 //-----------------------------------------------

@@ -37,7 +37,7 @@ const (
 type LcScanner struct {
 	ID            string
 	Volume        string
-	mw            *meta.MetaWrapper
+	mw            MetaWrapper
 	lcnode        *LcNode
 	adminTask     *proto.AdminTask
 	rule          *proto.Rule

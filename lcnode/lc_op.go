@@ -38,7 +38,8 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 	var (
 		req  = &proto.HeartBeatRequest{}
 		resp = &proto.LcNodeHeartbeatResponse{
-			LcScanningTasks: make(map[string]*proto.LcNodeRuleTaskResponse, 0),
+			LcScanningTasks:       make(map[string]*proto.LcNodeRuleTaskResponse, 0),
+			SnapshotScanningTasks: make(map[string]*proto.SnapshotVerDelTaskResponse, 0),
 		}
 		adminTask = &proto.AdminTask{
 			Request: req,
@@ -76,7 +77,7 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 				ID: scanner.ID,
 				SnapshotStatistics: proto.SnapshotStatistics{
 					VerInfo: proto.VerInfo{
-						VolName: scanner.getTaskVolName(),
+						VolName: scanner.Volume,
 						VerSeq:  scanner.getTaskVerSeq(),
 					},
 					TotalInodeNum:   atomic.LoadInt64(&scanner.currentStat.TotalInodeNum),
@@ -178,9 +179,14 @@ func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet) (err error) {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		adminTask.Response = resp
-		_ = l.respondToMaster(adminTask)
-	} else {
-		err = l.startSnapshotScan(adminTask)
+		l.respondToMaster(adminTask)
+		return
 	}
+
+	if err = l.startSnapshotScan(adminTask); err != nil {
+		l.respondToMaster(adminTask)
+		return
+	}
+
 	return
 }
