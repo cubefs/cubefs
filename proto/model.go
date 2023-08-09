@@ -78,6 +78,7 @@ type DataNodeInfo struct {
 	IoUtils                               map[string]float64 `json:"ioUtil"`
 	DecommissionedDisk                    []string
 	BackupDataPartitions                  []uint64
+	MediaType                             uint32
 }
 
 // MetaPartition defines the structure of a meta partition

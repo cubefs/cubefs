@@ -2782,6 +2782,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr  string
 		zoneName  string
+		mediaType uint32
 		id        uint64
 		err       error
 		nodesetId uint64
@@ -2791,7 +2792,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AddDataNode, metric, err, nil)
 	}()
 
-	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, mediaType, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2808,7 +2809,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, nodesetId); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, nodesetId, mediaType); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2866,6 +2867,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		DecommissionedDisk:                    dataNode.getDecommissionedDisks(),
 		BackupDataPartitions:                  dataNode.getBackupDataPartitionIDs(),
 		PersistenceDataPartitionsWithDiskPath: m.cluster.getAllDataPartitionWithDiskPathByDataNode(nodeAddr),
+		MediaType:                             dataNode.MediaType,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -4474,7 +4476,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AddMetaNode, metric, err, nil)
 	}()
 
-	if nodeAddr, zoneName, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, zoneName, _, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
