@@ -150,6 +150,7 @@ const (
 	trashIntervalKey                = "trashInterval"
 	accessTimeIntervalKey           = "accessTimeValidInterval"
 	enablePersistAccessTimeKey      = "enablePersistAccessTime"
+	mediaTypeKey                    = "mediaType"
 )
 
 const (
