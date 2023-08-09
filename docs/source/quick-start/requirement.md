@@ -11,7 +11,7 @@ Before setting up the cluster, please prepare the following components in advanc
 | bzip2-devel | 1.0.6 or above      | Yes                                   |
 | zlib-devel  | 1.2.7 or above      | Yes                                   |
 | mvn         | 3.8.4 or above      | Yes                                   |
-| Go          | 1.16 or above       | Yes                                   |
+| Go          | 1.17 or above       | Yes                                   |
 | kafka       | 1.x or above        | Yes(Deploying erasure code subsystem) |
 | consul      | 1.1x or above       | Yes(Deploying erasure code subsystem) |
 
