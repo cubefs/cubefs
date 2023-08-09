@@ -941,12 +941,12 @@ func (s *raft) maybeChange(respErr bool) {
 		if logger.IsEnableWarn() {
 			if s.raftFsm.leader != NoLeader {
 				if preLeader == NoLeader {
-					logger.Warn("raft:[%v] elected leader %v at term %d.", s.raftFsm.id, s.raftFsm.leader, s.raftFsm.term)
+					logger.Warn("raft[%v] elected leader %v at term %d.", s.raftFsm.id, s.raftFsm.leader, s.raftFsm.term)
 				} else {
-					logger.Warn("raft:[%v] changed leader from %v to %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.leader, s.raftFsm.term)
+					logger.Warn("raft[%v] changed leader from %v to %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.leader, s.raftFsm.term)
 				}
 			} else {
-				logger.Warn("raft:[%v] lost leader %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.term)
+				logger.Warn("raft[%v] lost leader %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.term)
 			}
 		}
 

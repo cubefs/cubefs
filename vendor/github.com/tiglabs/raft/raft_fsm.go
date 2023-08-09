@@ -322,7 +322,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 
 func (r *raftFsm) loadState(state proto.HardState) error {
 	if state.Commit < r.raftLog.committed || state.Commit > r.raftLog.lastIndex() {
-		return fmt.Errorf("raft[%v] state.commit %d is out of range [%d, %d]", r.id, state.Commit, r.raftLog.committed, r.raftLog.lastIndex())
+		return fmt.Errorf("raft[%v] [localState] state.commit %d is out of range [%d, %d]", r.id, state.Commit, r.raftLog.committed, r.raftLog.lastIndex())
 	}
 
 	r.term = state.Term

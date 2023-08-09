@@ -37,6 +37,8 @@ const (
 	Lmicroseconds                 // microsecond resolution: 01:23:23.123123.  assumes Ltime.
 	Llongfile                     // full file name and line number: /a/b/c/d.go:23
 	Lshortfile                    // final file name element and line number: d.go:23. overrides Llongfile
+	Llongmethod
+	Lshortmethod
 	LstdFlags     = Ldate | Ltime // initial values for the standard logger
 
 	LogFileNameDateFormat = "200601021504"
@@ -100,7 +102,7 @@ func itoa(buf *[]byte, i int, wid int) {
 	*buf = append(*buf, b[bp:]...)
 }
 
-func (l *logWriter) formatHeader(buf *[]byte, t time.Time, file string, line int) {
+func (l *logWriter) formatHeader(buf *[]byte, t time.Time, method, file string, line int) {
 	*buf = append(*buf, l.prefix...)
 	if l.flag&(Ldate|Ltime|Lmicroseconds) != 0 {
 		if l.flag&Ldate != 0 {
@@ -142,14 +144,29 @@ func (l *logWriter) formatHeader(buf *[]byte, t time.Time, file string, line int
 		itoa(buf, line, -1)
 		*buf = append(*buf, ": "...)
 	}
+	if l.flag&(Lshortmethod|Llongmethod) != 0 {
+		if l.flag&Lshortmethod != 0 {
+			short := method
+			for i := len(method) - 1; i > 0; i-- {
+				if method[i] == '/' {
+					short = method[i+1:]
+					break
+				}
+			}
+			method = short
+		}
+		*buf = append(*buf, '[')
+		*buf = append(*buf, method...)
+		*buf = append(*buf, "] "...)
+	}
 }
 
-func (l *logWriter) output(s string, file string, line int, now time.Time) error {
+func (l *logWriter) output(s string, method, file string, line int, now time.Time) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	l.buf = l.buf[:0]
-	l.formatHeader(&l.buf, now, file, line)
+	l.formatHeader(&l.buf, now, method, file, line)
 	l.buf = append(l.buf, s...)
 	if len(s) > 0 && s[len(s)-1] != '\n' {
 		l.buf = append(l.buf, '\n')
@@ -235,6 +252,7 @@ var levels = []string{
 type entity struct {
 	msg  string
 	now  time.Time
+	method string
 	file string
 	line int
 }
@@ -300,7 +318,7 @@ func GetFileLogger() *Log {
 }
 
 func (l *Log) initLog(logDir, module string) error {
-	logOpt := Lshortfile | LstdFlags | Lmicroseconds
+	logOpt := Lshortfile | LstdFlags | Lmicroseconds | Lshortmethod
 	if logDir == "" {
 		l.debug = newLogWriter(os.Stdout, "", logOpt)
 		l.info = newLogWriter(os.Stdout, "", logOpt)
@@ -390,69 +408,82 @@ func (l *Log) IsEnableTrace() bool {
 
 func (l *Log) Output(calldepth int, s string, sync bool) {
 	now := time.Now()
+	var method string
 	var file string
 	var line int
 	var ok bool
-	if l.flag&(Lshortfile|Llongfile) != 0 {
-		_, file, line, ok = runtime.Caller(calldepth)
+	if l.flag&(Lshortfile|Llongfile|Lshortmethod|Llongmethod) != 0 {
+		var pc uintptr
+		pc, file, line, ok = runtime.Caller(calldepth)
 		if !ok {
 			file = "???"
 			line = 0
 		}
+		if l.flag&(Lshortmethod|Llongmethod) != 0 {
+			if !ok {
+				method = "???"
+			} else {
+				if f := runtime.FuncForPC(pc); f != nil {
+					method = f.Name()
+				} else {
+					method = "???"
+				}
+			}
+		}
 	}
 	if sync {
-		l.printMsg(s, file, line, now)
+		l.printMsg(s, method, file, line, now)
 	} else {
-		l.putMsg(s, file, line, now)
+		l.putMsg(s, method, file, line, now)
 	}
 }
 
-func (l *Log) putMsg(msg string, file string, line int, now time.Time) {
-	l.entityCh <- &entity{msg: msg, file: file, line: line, now: now}
+func (l *Log) putMsg(msg string, method, file string, line int, now time.Time) {
+	l.entityCh <- &entity{msg: msg, method: method, file: file, line: line, now: now}
 }
 
 func (l *Log) loopMsg() {
 	for entity := range l.entityCh {
-		l.printMsg(entity.msg, entity.file, entity.line, entity.now)
+		l.printMsg(entity.msg, entity.method, entity.file, entity.line, entity.now)
 	}
 }
 
-func (l *Log) printMsg(msg string, file string, line int, now time.Time) {
+func (l *Log) printMsg(msg string, method, file string, line int, now time.Time) {
 	switch l.level {
 	case TraceLevel:
 		switch msg[1] {
 		case 'I', 'W', 'E', 'F':
-			l.debug.output(msg, file, line, now)
+			l.debug.output(msg, method, file, line, now)
 		}
 	case DebugLevel:
 		switch msg[1] {
 		case 'I', 'W', 'E', 'F':
-			l.debug.output(msg, file, line, now)
+			l.debug.output(msg, method, file, line, now)
 		}
 	case InfoLevel:
 		switch msg[1] {
 		case 'W', 'E', 'F':
-			l.info.output(msg, file, line, now)
+			l.info.output(msg, method, file, line, now)
 		}
 	case WarnLevel:
 		switch msg[1] {
 		case 'E', 'F':
-			l.warn.output(msg, file, line, now)
+			l.warn.output(msg, method, file, line, now)
 		}
 	}
 	switch msg[1] {
 	case 'T':
-		l.debug.output(msg, file, line, now)
+		l.debug.output(msg, method, file, line, now)
 	case 'D':
-		l.debug.output(msg, file, line, now)
+		l.debug.output(msg, method, file, line, now)
 	case 'I':
-		l.info.output(msg, file, line, now)
+		l.info.output(msg, method, file, line, now)
 	case 'W':
-		l.warn.output(msg, file, line, now)
+		l.warn.output(msg, method, file, line, now)
 	case 'E':
-		l.err.output(msg, file, line, now)
+		l.err.output(msg, method, file, line, now)
 	case 'F':
-		l.err.output(msg, file, line, now)
+		l.err.output(msg, method, file, line, now)
 	}
 }
 

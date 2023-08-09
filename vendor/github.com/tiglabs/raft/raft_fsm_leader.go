@@ -89,7 +89,7 @@ func (r *raftFsm) becomeLeader() {
 	r.appendEntry(&proto.Entry{Term: r.term, Index: lasti + 1, Data: nil})
 
 	if logger.IsEnableDebug() {
-		logger.Debug("raft[%v] became leader [node: %v] at term %d", r.id, r.config.NodeID, r.term)
+		logger.Debug("raft[%v] [nodeID: %v] became leader at term %d", r.id, r.config.NodeID, r.term)
 	}
 }
 
