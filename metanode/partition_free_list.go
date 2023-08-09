@@ -19,6 +19,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -227,7 +228,9 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)", mp.config.PartitionId, r))
+			stack := string(debug.Stack())
+			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)\nstack:%v",
+				mp.config.PartitionId, r, stack))
 		}
 	}()
 
@@ -247,7 +250,9 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			continue
 		}
 
-		log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] inode.Extents %v, ino verlist %v", mp.config.PartitionId, ino, inode.Extents, inode.multiSnap.multiVersions)
+		log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] inode.Extents: %v, ino verList: %v",
+			mp.config.PartitionId, ino, inode.Extents, inode.GetMultiVerString())
+
 		if inode.getLayerLen() > 1 {
 			log.LogErrorf("deleteMarkedInodes. mp %v inode [%v] verlist len %v should not drop",
 				mp.config.PartitionId, ino, inode.getLayerLen())

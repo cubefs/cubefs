@@ -87,6 +87,14 @@ type Inode struct {
 	multiSnap *InodeMultiSnap
 }
 
+func (i *Inode) GetMultiVerString() string {
+	if i.multiSnap == nil {
+		return "nil"
+	}
+
+	return fmt.Sprintf("%v", i.multiSnap.multiVersions)
+}
+
 func (i *Inode) RangeMultiVer(visitor func(idx int, info *Inode) bool) {
 	if i.multiSnap == nil {
 		return
@@ -175,9 +183,9 @@ func (i *Inode) getTailVerInList() (verSeq uint64, found bool) {
 
 // freelist clean inode get all exist extents info, deal special case for split key
 func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*proto.ExtentKey) {
+	log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp %v inode [%v] inode.Extents: %v, ino verList: %v",
+		mpID, inode.Inode, inode.Extents, inode.GetMultiVerString())
 
-	log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp %v inode [%v] inode.Extents %v, ino verlist %v",
-		mpID, inode.Inode, inode.Extents, inode.multiSnap.multiVersions)
 	extInfo = make(map[uint64][]*proto.ExtentKey)
 
 	if inode.getLayerLen() > 0 {
