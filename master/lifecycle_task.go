@@ -133,7 +133,9 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 	} else {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle for LcScanningTasks", nodeAddr)
 		task := c.lcMgr.lcNodeStatus.releaseNode(nodeAddr)
-		c.lcMgr.lcRuleTaskStatus.deleteScanningTask(task.(*proto.RuleTask))
+		if task != nil {
+			c.lcMgr.lcRuleTaskStatus.deleteScanningTask(task.(*proto.RuleTask))
+		}
 		c.lcMgr.notifyIdleLcNode()
 	}
 
@@ -178,7 +180,9 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 	} else {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle for SnapshotScanningTasks", nodeAddr)
 		task := c.snapshotMgr.lcNodeStatus.releaseNode(nodeAddr)
-		c.snapshotMgr.volVerInfos.RemoveProcessingVerInfo(task.(string))
+		if task != nil {
+			c.snapshotMgr.volVerInfos.RemoveProcessingVerInfo(task.(string))
+		}
 		c.snapshotMgr.notifyIdleLcNode()
 	}
 

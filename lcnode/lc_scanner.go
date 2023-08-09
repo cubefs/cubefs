@@ -43,8 +43,8 @@ type LcScanner struct {
 	rule          *proto.Rule
 	dirChan       *unboundedchan.UnboundedChan
 	fileChan      *unboundedchan.UnboundedChan
-	fileRPoll     *routinepool.RoutinePool
 	dirRPoll      *routinepool.RoutinePool
+	fileRPoll     *routinepool.RoutinePool
 	batchDentries *proto.BatchDentries
 	currentStat   *proto.LcNodeRuleTaskStatistics
 	limiter       *rate.Limiter
@@ -347,7 +347,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, cond *proto.ExpirationC
 
 	now := s.now.Unix()
 	if cond.Days > 0 {
-		if now-inode.ModifyTime.Unix() < int64(cond.Days*24*60*60) {
+		if now-inode.CreateTime.Unix() < int64(cond.Days*24*60*60) {
 			return false
 		}
 	}

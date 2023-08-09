@@ -4164,9 +4164,13 @@ func (c *Cluster) clearLcNodes() {
 
 func (c *Cluster) delLcNode(nodeAddr string) (err error) {
 	t := c.lcMgr.lcNodeStatus.removeNode(nodeAddr)
-	c.lcMgr.lcRuleTaskStatus.redoTask(t.(*proto.RuleTask))
+	if t != nil {
+		c.lcMgr.lcRuleTaskStatus.redoTask(t.(*proto.RuleTask))
+	}
 	t = c.snapshotMgr.lcNodeStatus.removeNode(nodeAddr)
-	c.snapshotMgr.volVerInfos.RedoProcessingVerInfo(t.(string))
+	if t != nil {
+		c.snapshotMgr.volVerInfos.RedoProcessingVerInfo(t.(string))
+	}
 	lcNode, err := c.lcNode(nodeAddr)
 	if err != nil {
 		log.LogErrorf("action[delLcNode], clusterID:%v, lcNodeAddr:%v, load err:%v ", c.Name, nodeAddr, err)
