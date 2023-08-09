@@ -65,8 +65,8 @@ const (
 	authenticateKey            = "authenticate"
 	akKey                      = "ak"
 	keywordsKey                = "keywords"
-	zoneNameKey                = "zoneName"
 	nodesetIdKey               = "nodesetId"
+	zoneNameKey                = "zoneName"
 	crossZoneKey               = "crossZone"
 	normalZonesFirstKey        = "normalZonesFirst"
 	userKey                    = "user"
@@ -131,6 +131,7 @@ const (
 	Periodic                   = "periodic"
 	DecommissionType           = "decommissionType"
 	decommissionDiskFactor     = "decommissionDiskFactor"
+	mediaTypeKey               = "mediaType"
 )
 
 const (
