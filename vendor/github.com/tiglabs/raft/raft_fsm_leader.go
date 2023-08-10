@@ -60,27 +60,30 @@ func (r *raftFsm) becomeLeader() {
 	if r.consistencyMode.Equals(StrictMode) {
 		// Find min valid match value of replicas
 		var matches = make([]uint64, 0, len(r.replicas))
+		var committeds = make([]uint64, 0, len(r.replicas))
 		for _, r := range r.replicas {
 			if r.match != 0 {
 				matches = append(matches, r.match)
 			}
+			if r.committed != 0 {
+				committeds = append(committeds, r.committed)
+			}
 		}
 		// Minimum match index
-		var mmi uint64 = 0
+		var minmatch, maxcommitted uint64 = 0, r.raftLog.committed
 		if len(matches) > 0 {
-			sort.SliceStable(matches, func(i, j int) bool {
-				return matches[i] < matches[j]
-			})
-			mmi = matches[0]
+			sort.Sort(util.Uint64Slice(matches))
+			minmatch = matches[0]
 		}
-		var rsi = mmi + 1
-		if rsi < r.raftLog.firstIndex() {
-			rsi = r.raftLog.firstIndex()
+		if len(committeds) > 0 {
+			sort.Sort(sort.Reverse(util.Uint64Slice(committeds)))
+			maxcommitted = committeds[0]
 		}
+		var rsi = uint64(math.Max(float64(minmatch), float64(maxcommitted))) + 1
 
 		if logger.IsEnableWarn() {
-			logger.Warn("raft[%v] [firstindex: %v, lastindex: %v, commited: %v] computed rollback start index [%v], replicas: %v",
-				r.id, r.raftLog.firstIndex(), r.raftLog.lastIndex(), r.raftLog.committed, rsi, r.replicas)
+			logger.Warn("raft[%v] [firstindex: %v, lastindex: %v, committed: %v] computed rollback start index [%v] [minmatch: %v, maxcommitted: %v], replicas: %v",
+				r.id, r.raftLog.firstIndex(), r.raftLog.lastIndex(), r.raftLog.committed, rsi, minmatch, maxcommitted, replicas(r.replicas))
 		}
 
 		r.maybeAskRollback(rsi)
@@ -436,6 +439,7 @@ func (r *raftFsm) calcInStableStateReplicates() (stables, total int) {
 		total++
 		if id == r.config.NodeID || (replica.state != replicaStateSnapshot && replica.active && replica.lastActive.After(stableLastActiveDeadline)) {
 			stables++
+			continue
 		}
 	}
 	return

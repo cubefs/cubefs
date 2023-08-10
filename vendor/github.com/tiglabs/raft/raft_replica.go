@@ -17,6 +17,8 @@ package raft
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tiglabs/raft/proto"
@@ -32,9 +34,9 @@ type replica struct {
 	paused, active, pending             bool
 	match, next, committed, pendingSnap uint64
 
-	lastActive 	time.Time
-	isLearner	bool
-	promConfig  *proto.PromoteConfig
+	lastActive time.Time
+	isLearner  bool
+	promConfig *proto.PromoteConfig
 }
 
 func newReplica(peer proto.Peer, maxInflight int) *replica {
@@ -147,6 +149,19 @@ func (r *replica) isPaused() bool {
 func (r *replica) String() string {
 	return fmt.Sprintf("next = %d, match = %d, commit = %d, state = %s, waiting = %v, pendingSnapshot = %d, isLearner = %v, pmConfig = %v",
 		r.next, r.match, r.committed, r.state, r.isPaused(), r.pendingSnap, r.isLearner, r.promConfig)
+}
+
+type replicas map[uint64]*replica
+
+func (r replicas) String() string {
+	var sb = strings.Builder{}
+	for id, re := range r {
+		if sb.Len() > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(strconv.FormatUint(id, 10) + ":" + "[" + re.String() + "]")
+	}
+	return sb.String()
 }
 
 // inflight is the replication sliding window,avoid overflowing that sending buffer.

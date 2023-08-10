@@ -85,9 +85,6 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 
 	case proto.RespMsgVote:
 		r.maybeUpdateReplica(m.From, m.Index, m.Commit)
-		if logger.IsEnableDebug() {
-			logger.Debug("raft[%v] received vote response [index: %v, commit: %v, reject: %v] from [%v]", r.id, m.Index, m.Commit, m.Reject, m.From)
-		}
 		gr := r.poll(m.From, !m.Reject)
 		quorum := r.quorum()
 		if logger.IsEnableDebug() {
