@@ -125,7 +125,7 @@ func (c *client) GetShard(ctx context.Context, host string, args *GetShardArgs) 
 	}
 
 	if resp.Header.Get("CRC") != "" {
-		crc, err := strconv.Atoi(resp.Header.Get("CRC"))
+		crc, err := strconv.ParseUint(resp.Header.Get("CRC"), 10, 32)
 		if err != nil {
 			return nil, proto.InvalidCrc32, err
 		}
@@ -183,7 +183,7 @@ func (c *client) RangeGetShard(ctx context.Context, host string, args *RangeGetS
 	}
 
 	if resp.Header.Get("CRC") != "" {
-		crc, err := strconv.Atoi(resp.Header.Get("CRC"))
+		crc, err := strconv.ParseUint(resp.Header.Get("CRC"), 10, 32)
 		if err != nil {
 			return nil, proto.InvalidCrc32, err
 		}

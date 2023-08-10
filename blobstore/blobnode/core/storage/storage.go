@@ -16,7 +16,9 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"io"
+	"math"
 	"sync/atomic"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -101,6 +103,9 @@ func (stg *storage) ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *co
 }
 
 func (stg *storage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.Reader, err error) {
+	if from > math.MaxUint32 || to > math.MaxUint32 {
+		return nil, errors.New("invalid form or to")
+	}
 	rc, err = stg.data.Read(ctx, b, uint32(from), uint32(to))
 	if err != nil {
 		return nil, err
