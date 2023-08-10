@@ -260,8 +260,8 @@ func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uin
 
 	packet, err = mw.sendToMetaPartitionWithTx(mp, packet)
 	if err != nil {
-		log.LogErrorf("SendTxPack: packet(%v) mp(%v) reqType(%v) txInfo(%v) err(%v)",
-			packet, mp, packet.GetOpMsg(), req.GetInfo(), err)
+		log.LogErrorf("SendTxPack: packet(%v) mp(%v) txInfo(%v) err(%v)",
+			packet, mp, req.GetInfo(), err)
 		return
 	}
 
