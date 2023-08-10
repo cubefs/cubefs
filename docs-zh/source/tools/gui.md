@@ -57,7 +57,16 @@ mysql:
 
 # 二、 使用方法<br>
 ## 2.1 注册、修改密码、登录<br>
-### 2.1.1 注册账号<br>
+## 2.1.1 url拼接<br>
+```
+http://{{ ip }}:{{ server.port }}/{{ server.static_resource.relative_path }}
+```
+示例：<br>
+如果部署的机器为192.168.10.10且server.port和server.static_resource.relative_path用默认配置<br>
+```
+http://192.168.10.10:6007/portal
+```
+### 2.1.2 注册账号<br>
 账号：只能包含数字、大写字母、小写字母、下划线<br>
 密码：密码长度大于等于8小于等于16<br>
 密码只能包含数字、大写字母、小写字母、特殊字符（~!@#$%^&*_.?），且至少两种类型以上<br>
@@ -66,11 +75,11 @@ mysql:
 ![image](./pic/gui/2.1.1_2.png)<br>
 ![image](./pic/gui/2.1.1_3.png)<br>
 
-### 2.1.2 修改密码<br>
+### 2.1.3 修改密码<br>
 ![image](./pic/gui/2.1.2_1.png)<br>
 ![image](./pic/gui/2.1.2_2.png)<br>
 
-### 2.1.3 登录<br>
+### 2.1.4 登录<br>
 ![image](./pic/gui/2.1.3.png)<br>
 
 ## 2.2 上架集群、修改集群<br>
@@ -251,4 +260,5 @@ b. 有“创建用户”权限的账户在“用户管理”->“添加用户”
 ## 2.11 集群事件<br>
 ### 2.11.1 纠删码后台任务<br>
 ![image](./pic/gui/2.11.1.png)<br>
+
 
