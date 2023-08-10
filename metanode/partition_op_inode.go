@@ -49,7 +49,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	return true
 }
 
-func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo) (resp *proto.TxCreateInodeResponse) {
+func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uint32]*proto.MetaQuotaInfo) (resp *proto.TxCreateInodeResponse) {
 	inoInfo := &proto.InodeInfo{
 		Inode:      inode.Inode,
 		Mode:       inode.Type,
@@ -61,6 +61,7 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo) (resp *proto.TxCre
 		ModifyTime: time.Unix(inode.ModifyTime, 0),
 		CreateTime: time.Unix(inode.CreateTime, 0),
 		AccessTime: time.Unix(inode.AccessTime, 0),
+		QuotaInfos: quotaInfos,
 		Target:     nil,
 	}
 	if length := len(inode.LinkTarget); length > 0 {
@@ -734,7 +735,13 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	}
 
 	if resp == proto.OpOk {
-		resp := txReplyInfo(txIno.Inode, createResp.TxInfo)
+		quotaInfos := make(map[uint32]*proto.MetaQuotaInfo)
+		for _, quotaId := range req.QuotaIds {
+			quotaInfos[quotaId] = &proto.MetaQuotaInfo{
+				RootInode: false,
+			}
+		}
+		resp := txReplyInfo(txIno.Inode, createResp.TxInfo, quotaInfos)
 		status = proto.OpOk
 		reply, err = json.Marshal(resp)
 		if err != nil {
