@@ -891,7 +891,7 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 }
 
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
-	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
+	name := path.Join(s.dataPath, fmt.Sprintf("%v", extentID))
 	e = NewExtentInCore(name, extentID)
 	if err = e.RestoreFromFS(); err != nil {
 		err = fmt.Errorf("restore from file %v putCache %v system: %v", name, putCache, err)
