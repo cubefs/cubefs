@@ -53,10 +53,10 @@ $ cd cubefs-csi
 
 #### 创建 CSI RBAC
 
-cfs-rbac.yaml 内容基本不用动，里面主要声明 CSI 组件的角色和对应的权限，所以直接执行如下命令：
+csi-rbac.yaml 内容基本不用动，里面主要声明 CSI 组件的角色和对应的权限，所以直接执行如下命令：
 
 ``` bash
-$ kubectl apply -f deploy/cfs-rbac.yaml
+$ kubectl apply -f deploy/csi-rbac.yaml
 ```
 
 #### 创建 StorageClass
