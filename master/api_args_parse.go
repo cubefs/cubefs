@@ -1273,7 +1273,7 @@ func extractUint(r *http.Request, key string) (val int, err error) {
 		return 0, nil
 	}
 
-	if valParsed, err = strconv.ParseInt(str, 10, 32); err != nil || val < 0 {
+	if valParsed, err = strconv.ParseInt(str, 10, 32); err != nil || valParsed < 0 {
 		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
 	}
 
