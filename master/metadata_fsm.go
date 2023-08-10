@@ -205,8 +205,7 @@ func (mf *MetadataFsm) delKeyAndPutIndex(key string, cmdMap map[string][]byte) (
 	return mf.store.DeleteKeyAndPutIndex(key, cmdMap, true)
 }
 
-
-func (mf *MetadataFsm) AskRollback(original []byte) (rollback []byte, err error) {
+func (mf *MetadataFsm) AskRollback(_ []byte, _ uint64) (rollback []byte, err error) {
 	// Do nothing.
 	return nil, nil
 }

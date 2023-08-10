@@ -299,7 +299,7 @@ func (s *raft) runApply() {
 				command []byte
 				err     error
 			)
-			command, err = s.raftConfig.StateMachine.AskRollback(askRollback.data)
+			command, err = s.raftConfig.StateMachine.AskRollback(askRollback.data, askRollback.index)
 
 			if err != nil {
 				logger.Warn("raft[%v] ask rollback for entry [index: %v], FSM returns error: %v", s.config.NodeID, askRollback.index, err)
@@ -316,9 +316,6 @@ func (s *raft) runApply() {
 					askRollback.respond(nil, nil)
 				}
 				continue
-			}
-			if logger.IsEnableDebug() {
-				logger.Debug("raft[%v] ask rollback for entry [index: %v], FSM returns valid command", s.config.NodeID, askRollback.index)
 			}
 			var rollback = new(proto.Rollback)
 			rollback.Index = askRollback.index
@@ -944,12 +941,12 @@ func (s *raft) maybeChange(respErr bool) {
 		if logger.IsEnableWarn() {
 			if s.raftFsm.leader != NoLeader {
 				if preLeader == NoLeader {
-					logger.Warn("raft:[%v] elected leader %v at term %d.", s.raftFsm.id, s.raftFsm.leader, s.raftFsm.term)
+					logger.Warn("raft[%v] elected leader %v at term %d.", s.raftFsm.id, s.raftFsm.leader, s.raftFsm.term)
 				} else {
-					logger.Warn("raft:[%v] changed leader from %v to %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.leader, s.raftFsm.term)
+					logger.Warn("raft[%v] changed leader from %v to %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.leader, s.raftFsm.term)
 				}
 			} else {
-				logger.Warn("raft:[%v] lost leader %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.term)
+				logger.Warn("raft[%v] lost leader %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.term)
 			}
 		}
 

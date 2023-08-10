@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	errNotExists 	= errors.New("Key not exists.")
+	errNotExists = errors.New("Key not exists.")
 )
 
 const NoCheckLinear = "none"
@@ -121,7 +121,7 @@ func (ms *memoryStatemachine) ApplyMemberChange(confChange *proto.ConfChange, in
 	return nil, nil
 }
 
-func (ms *memoryStatemachine) AskRollback(original []byte) (rollback []byte, err error) {
+func (ms *memoryStatemachine) AskRollback(original []byte, _ uint64) (rollback []byte, err error) {
 	ms.RLock()
 	defer ms.RUnlock()
 

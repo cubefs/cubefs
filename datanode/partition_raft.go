@@ -693,12 +693,22 @@ func (dp *DataPartition) LoadAppliedID() (applied uint64, err error) {
 	return
 }
 
-func (dp *DataPartition) AdvanceNextTruncate(id uint64) {
-	if snap, success := dp.applyStatus.AdvanceNextTruncate(id); success {
-		if log.IsInfoEnabled() {
-			log.LogInfof("partition[%v] advance truncate ID [last: %v, next: %v]", dp.partitionID, snap.LastTruncate(), snap.NextTruncate())
+func (dp *DataPartition) TruncateRaftWAL(id uint64) (err error) {
+	if dp.raftPartition != nil {
+		var release = dp.lockPersist()
+		defer release()
+		if snap, success := dp.applyStatus.AdvanceTruncated(id); success {
+			if err = dp.persistMetadata(&snap); err != nil {
+				log.LogErrorf("partition[%v] persisted metadata before truncate raft WAL failed: %v", dp.partitionID, id)
+				return
+			}
+			dp.raftPartition.Truncate(snap.Truncated())
+			if log.IsInfoEnabled() {
+				log.LogInfof("partition[%v] advance Raft WAL truncate to [%v]", dp.partitionID, id)
+			}
 		}
 	}
+	return
 }
 
 func (dp *DataPartition) GetAppliedID() (id uint64) {
@@ -965,7 +975,7 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Contex
 	return
 }
 
-func (dp *DataPartition) broadcastRaftWALNextTruncateID(ctx context.Context, nextTruncateID uint64) (err error) {
+func (dp *DataPartition) broadcastTruncateRaftWAL(ctx context.Context, truncateID uint64) (err error) {
 	replicas := dp.getReplicaClone()
 	if len(replicas) == 0 {
 		err = errors.Trace(err, " partition(%v) get replicas failed,replicas is nil. ", dp.partitionID)
@@ -976,13 +986,13 @@ func (dp *DataPartition) broadcastRaftWALNextTruncateID(ctx context.Context, nex
 	for i := 0; i < len(replicas); i++ {
 		target := replicas[i]
 		if dp.IsLocalAddress(target) {
-			dp.AdvanceNextTruncate(nextTruncateID)
+			dp.TruncateRaftWAL(truncateID)
 			continue
 		}
 		wg.Add(1)
 		go func(target string) {
 			defer wg.Done()
-			p := NewPacketToBroadcastMinAppliedID(ctx, dp.partitionID, nextTruncateID)
+			p := NewPacketToBroadcastMinAppliedID(ctx, dp.partitionID, truncateID)
 			var conn *net.TCPConn
 			conn, err = gConnPool.GetConnect(target)
 			if err != nil {
@@ -999,7 +1009,7 @@ func (dp *DataPartition) broadcastRaftWALNextTruncateID(ctx context.Context, nex
 			}
 			gConnPool.PutConnect(conn, true)
 			if log.IsInfoEnabled() {
-				log.LogInfof("partition[%v] broadcast raft WAL next truncate ID [%v] to replica[%v]", dp.partitionID, nextTruncateID, target)
+				log.LogInfof("partition[%v] broadcast raft WAL next truncate ID [%v] to replica[%v]", dp.partitionID, truncateID, target)
 			}
 		}(target)
 	}
@@ -1224,10 +1234,10 @@ func (dp *DataPartition) scheduleRaftWALTruncate(ctx context.Context) {
 		return
 	}
 	for id, replica := range raftStatus.Replicas {
-		if strings.Contains(replica.State, "ReplicaStateSnapshot") {
+		if strings.Contains(replica.State, "ReplicaStateSnapshot") || replica.Match < raftStatus.Log.FirstIndex {
 			if log.IsDebugEnabled() {
-				log.LogDebugf("partition[%v] skips schedule raft WAL truncate cause found replica [%v] in snapshot state",
-					dp.partitionID, id)
+				log.LogDebugf("partition[%v] skips schedule raft WAL truncate cause found replica %v[%v] not in ready state",
+					dp.partitionID, id, replica)
 			}
 			return
 		}
@@ -1244,7 +1254,7 @@ func (dp *DataPartition) scheduleRaftWALTruncate(ctx context.Context) {
 			log.LogInfof("partition[%v] computed min persisted applied ID [%v] from replication group [%v]",
 				dp.partitionID, minPersistedAppliedID, persistedAppliedIDs)
 		}
-		dp.broadcastRaftWALNextTruncateID(ctx, minPersistedAppliedID)
+		dp.broadcastTruncateRaftWAL(ctx, minPersistedAppliedID)
 	}
 	return
 }

@@ -522,7 +522,7 @@ func (p *IssueProcessor) loadIssueFragments() (err error) {
 	var buf = make([]byte, issueFragmentBinaryLength)
 	var n int
 	for {
-		n, err = bufR.Read(buf)
+		n, err = io.ReadFull(bufR, buf)
 		if err == io.EOF {
 			err = nil
 			break

@@ -207,7 +207,7 @@ func (r *raftFsm) handleAppendEntries(m *proto.Message) {
 		r.send(nmsg)
 	} else {
 		if logger.IsEnableDebug() {
-			logger.Debug("raft[%v logterm: %d, index: %d] rejected msgApp [logterm: %d, index: %d] from %v",
+			logger.Debug("raft[%v] [logterm: %d, index: %d] rejected message append [logterm: %d, index: %d] from %v",
 				r.id, r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(m.Index)), m.Index, m.LogTerm, m.Index, m.From)
 		}
 		nmsg := proto.GetMessage()
