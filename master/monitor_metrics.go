@@ -16,16 +16,17 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//metrics
+// metrics
 const (
 	StatPeriod                 = time.Minute * time.Duration(1)
 	MetricDataNodesUsedGB      = "dataNodes_used_GB"
@@ -65,6 +66,15 @@ const (
 	MetricMpMissingLeaderCount     = "mp_missing_Leader_count"
 	MetricDataNodesetInactiveCount = "data_nodeset_inactive_count"
 	MetricMetaNodesetInactiveCount = "meta_nodeset_inactive_count"
+
+	MetricNodesetMetaTotalGB    = "nodeset_meta_total_GB"
+	MetricNodesetMetaUsedGB     = "nodeset_meta_used_GB"
+	MetricNodesetMetaUsageRadio = "nodeset_meta_usage_ratio"
+	MetricNodesetDataTotalGB    = "nodeset_data_total_GB"
+	MetricNodesetDataUsedGB     = "nodeset_data_used_GB"
+	MetricNodesetDataUsageRadio = "nodeset_data_usage_ratio"
+	MetricNodesetMpReplicaCount = "nodeset_mp_replica_count"
+	MetricNodesetDpReplicaCount = "nodeset_dp_replica_count"
 )
 
 var WarnMetrics *warningMetrics
@@ -103,12 +113,21 @@ type monitorMetrics struct {
 	masterNoLeader           *exporter.Gauge
 	masterNoCache            *exporter.GaugeVec
 	masterSnapshot           *exporter.Gauge
+	nodesetMetaTotal         *exporter.GaugeVec
+	nodesetMetaUsed          *exporter.GaugeVec
+	nodesetMetaUsageRatio    *exporter.GaugeVec
+	nodesetDataTotal         *exporter.GaugeVec
+	nodesetDataUsed          *exporter.GaugeVec
+	nodesetDataUsageRatio    *exporter.GaugeVec
+	nodesetMpReplicaCount    *exporter.GaugeVec
+	nodesetDpReplicaCount    *exporter.GaugeVec
 
 	volNames                      map[string]struct{}
 	badDisks                      map[string]string
 	nodesetInactiveDataNodesCount map[uint64]int64
 	nodesetInactiveMetaNodesCount map[uint64]int64
 	inconsistentMps               map[string]string
+	nodesetIds                    map[uint64]string
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -211,7 +230,7 @@ func (m *warningMetrics) deleteMissingDp(missingDpAddrSet addrSet, clusterName, 
 	log.LogDebugf("action[deleteMissingDp] delete: dpId(%v), addr(%v)", dpId, addr)
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uint64, report bool) {
 	m.dpMissingReplicaMutex.Lock()
 	defer m.dpMissingReplicaMutex.Unlock()
@@ -231,7 +250,7 @@ func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uin
 	m.dpMissingReplicaInfo[id][addr] = voidVal
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) CleanObsoleteDpMissing(clusterName string, dp *DataPartition) {
 	m.dpMissingReplicaMutex.Lock()
 	defer m.dpMissingReplicaMutex.Unlock()
@@ -256,7 +275,7 @@ func (m *warningMetrics) CleanObsoleteDpMissing(clusterName string, dp *DataPart
 	}
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, report bool) {
 	if clusterName != m.cluster.Name {
 		return
@@ -303,7 +322,7 @@ func (m *warningMetrics) deleteMissingMp(missingMpAddrSet addrSet, clusterName, 
 	log.LogDebugf("action[deleteMissingMp] delete: mpId(%v), addr(%v)", mpId, addr)
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uint64, report bool) {
 	m.mpMissingReplicaMutex.Lock()
 	defer m.mpMissingReplicaMutex.Unlock()
@@ -324,7 +343,7 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 	m.mpMissingReplicaInfo[id][addr] = voidVal
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) CleanObsoleteMpMissing(clusterName string, mp *MetaPartition) {
 	m.mpMissingReplicaMutex.Lock()
 	defer m.mpMissingReplicaMutex.Unlock()
@@ -346,7 +365,7 @@ func (m *warningMetrics) CleanObsoleteMpMissing(clusterName string, mp *MetaPart
 	}
 }
 
-//leader only
+// leader only
 func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, report bool) {
 	if clusterName != m.cluster.Name {
 		return
@@ -410,6 +429,15 @@ func (mm *monitorMetrics) start() {
 	mm.masterSnapshot = exporter.NewGauge(MetricMasterSnapshot)
 	mm.masterNoLeader = exporter.NewGauge(MetricMasterNoLeader)
 	mm.masterNoCache = exporter.NewGaugeVec(MetricMasterNoCache, "", []string{"volName"})
+
+	mm.nodesetMetaTotal = exporter.NewGaugeVec(MetricNodesetMetaTotalGB, "", []string{"nodeset"})
+	mm.nodesetMetaUsed = exporter.NewGaugeVec(MetricNodesetMetaUsedGB, "", []string{"nodeset"})
+	mm.nodesetMetaUsageRatio = exporter.NewGaugeVec(MetricNodesetMetaUsageRadio, "", []string{"nodeset"})
+	mm.nodesetDataTotal = exporter.NewGaugeVec(MetricNodesetDataTotalGB, "", []string{"nodeset"})
+	mm.nodesetDataUsed = exporter.NewGaugeVec(MetricNodesetDataUsedGB, "", []string{"nodeset"})
+	mm.nodesetDataUsageRatio = exporter.NewGaugeVec(MetricNodesetDataUsageRadio, "", []string{"nodeset"})
+	mm.nodesetMpReplicaCount = exporter.NewGaugeVec(MetricNodesetMpReplicaCount, "", []string{"nodeset"})
+	mm.nodesetDpReplicaCount = exporter.NewGaugeVec(MetricNodesetDpReplicaCount, "", []string{"nodeset"})
 	go mm.statMetrics()
 }
 
@@ -473,6 +501,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setInactiveDataNodesCountMetric()
 	mm.setInactiveMetaNodesCountMetric()
 	mm.setMpAndDpMetrics()
+	mm.setNodesetMetrics()
 }
 
 func (mm *monitorMetrics) setMpAndDpMetrics() {
@@ -823,6 +852,87 @@ func (mm *monitorMetrics) clearDiskErrMetrics() {
 		mm.diskError.DeleteLabelValues(v, k)
 	}
 }
+
+func (mm *monitorMetrics) setNodesetMetrics() {
+	deleteNodesetIds := make(map[uint64]string)
+	for k, v := range mm.nodesetIds {
+		deleteNodesetIds[k] = v
+	}
+	mm.nodesetIds = make(map[uint64]string)
+
+	zones := mm.cluster.t.getAllZones()
+	for _, zone := range zones {
+		nodeSets := zone.getAllNodeSet()
+		for _, nodeset := range nodeSets {
+			var metaTotal, metaUsed, dataTotal, dataUsed uint64
+			var mpReplicasCount, dpReplicasCount int
+			nodeset.metaNodes.Range(func(key, value interface{}) bool {
+				metaNode := value.(*MetaNode)
+				metaTotal += metaNode.Total
+				metaUsed += metaNode.Used
+				mpReplicasCount += metaNode.MetaPartitionCount
+				return true
+			})
+			nodeset.dataNodes.Range(func(ney, value interface{}) bool {
+				dataNode := value.(*DataNode)
+				dataTotal += dataNode.Total
+				dataUsed += dataNode.Used
+				dpReplicasCount += int(dataNode.DataPartitionCount)
+				return true
+			})
+
+			nodesetId := strconv.FormatUint(nodeset.ID, 10)
+
+			mm.nodesetIds[nodeset.ID] = nodesetId
+			delete(deleteNodesetIds, nodeset.ID)
+
+			mm.nodesetMetaTotal.SetWithLabelValues(float64(metaTotal)/util.GB, nodesetId)
+			mm.nodesetMetaUsed.SetWithLabelValues(float64(metaUsed)/util.GB, nodesetId)
+			mm.nodesetDataTotal.SetWithLabelValues(float64(dataTotal)/util.GB, nodesetId)
+			mm.nodesetDataUsed.SetWithLabelValues(float64(dataUsed)/util.GB, nodesetId)
+
+			if metaTotal == 0 {
+				mm.nodesetMetaUsageRatio.SetWithLabelValues(0, nodesetId)
+			} else {
+				mm.nodesetMetaUsageRatio.SetWithLabelValues(float64(metaUsed)/float64(metaTotal), nodesetId)
+			}
+			if dataTotal == 0 {
+				mm.nodesetDataUsageRatio.SetWithLabelValues(0, nodesetId)
+			} else {
+				mm.nodesetDataUsageRatio.SetWithLabelValues(float64(dataUsed)/float64(dataTotal), nodesetId)
+			}
+
+			mm.nodesetMpReplicaCount.SetWithLabelValues(float64(mpReplicasCount), nodesetId)
+			mm.nodesetDpReplicaCount.SetWithLabelValues(float64(dpReplicasCount), nodesetId)
+		}
+	}
+
+	for _, v := range deleteNodesetIds {
+		mm.deleteNodesetMetric(v)
+	}
+}
+
+func (mm *monitorMetrics) deleteNodesetMetric(nodesetId string) {
+	mm.nodesetMetaTotal.DeleteLabelValues(nodesetId)
+	mm.nodesetMetaUsed.DeleteLabelValues(nodesetId)
+	mm.nodesetMetaUsageRatio.DeleteLabelValues(nodesetId)
+	mm.nodesetDataTotal.DeleteLabelValues(nodesetId)
+	mm.nodesetDataUsed.DeleteLabelValues(nodesetId)
+	mm.nodesetDataUsageRatio.DeleteLabelValues(nodesetId)
+	mm.nodesetMpReplicaCount.DeleteLabelValues(nodesetId)
+	mm.nodesetDpReplicaCount.DeleteLabelValues(nodesetId)
+}
+
+func (mm *monitorMetrics) clearNodesetMetrics() {
+	zones := mm.cluster.t.getAllZones()
+	for _, zone := range zones {
+		nodeSets := zone.getAllNodeSet()
+		for _, nodeset := range nodeSets {
+			mm.deleteNodesetMetric(strconv.FormatUint(nodeset.ID, 10))
+		}
+	}
+}
+
 func (mm *monitorMetrics) resetFollowerMetrics() {
 	mm.masterNoCache.GaugeVec.Reset()
 	mm.masterNoLeader.Set(0)
@@ -835,6 +945,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearInactiveMetaNodesCountMetric()
 	mm.clearInactiveDataNodesCountMetric()
 	mm.clearInconsistentMps()
+	mm.clearNodesetMetrics()
 
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
