@@ -114,6 +114,9 @@ func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err e
 		if err == syscall.EDQUOT || err == syscall.ENOSPC {
 			ec = DiskQuotaExceeded
 		}
+		if err == syscall.EPERM {
+			ec = FileDeleteLock
+		}
 		if ec1, ok := err.(*ErrorCode); ok && ec == nil {
 			ec = ec1
 		}
