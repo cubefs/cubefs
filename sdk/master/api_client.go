@@ -30,6 +30,17 @@ func (d Decoder) Decode(raw []byte) ([]byte, error) {
 	return d(raw)
 }
 
+type IClientAPI interface {
+	GetVolume(volName string, authKey string) (vv *proto.VolView, err error)
+	GetVolumeWithoutAuthKey(volName string) (vv *proto.VolView, err error)
+	GetVolumeWithAuthnode(volName string, authKey string, token string, decoder Decoder) (vv *proto.VolView, err error)
+	GetVolumeStat(volName string) (info *proto.VolStatInfo, err error)
+	GetMetaPartition(partitionID uint64) (partition *proto.MetaPartitionInfo, err error)
+	GetMetaPartitions(volName string) (views []*proto.MetaPartitionView, err error)
+	GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error)
+	GetPreLoadDataPartitions(volName string) (view *proto.DataPartitionsView, err error)
+}
+
 type ClientAPI struct {
 	mc *MasterClient
 }

@@ -32,7 +32,7 @@ const (
 	cmdVolShort = "Manage cluster volumes"
 )
 
-func newVolCmd(client *master.MasterClient) *cobra.Command {
+func newVolCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:     cmdVolUse,
 		Short:   cmdVolShort,
@@ -57,7 +57,7 @@ const (
 	cmdVolListShort = "List cluster volumes"
 )
 
-func newVolListCmd(client *master.MasterClient) *cobra.Command {
+func newVolListCmd(client master.IMasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
 		Use:     CliOpList,
@@ -111,7 +111,7 @@ const (
 	cmdVolDefaultDpReadOnlyWhenVolFull = "false"
 )
 
-func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
+func newVolCreateCmd(client master.IMasterClient) *cobra.Command {
 	var optCapacity uint64
 	var optCrossZone string
 	var optNormalZonesFirst string
@@ -263,7 +263,7 @@ const (
 	cmdVolUpdateShort = "Update configuration of the volume"
 )
 
-func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
+func newVolUpdateCmd(client master.IMasterClient) *cobra.Command {
 	var optDescription string
 	var optCacheRule string
 	var optZoneName string
@@ -642,7 +642,7 @@ const (
 	cmdVolInfoShort = "Show volume information"
 )
 
-func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
+func newVolInfoCmd(client master.IMasterClient) *cobra.Command {
 	var (
 		optMetaDetail bool
 		optDataDetail bool
@@ -720,7 +720,7 @@ const (
 	cmdVolDeleteShort = "Delete a volume from cluster"
 )
 
-func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
+func newVolDeleteCmd(client master.IMasterClient) *cobra.Command {
 	var (
 		optYes bool
 	)
@@ -775,7 +775,7 @@ const (
 	cmdVolTransferShort = "Transfer volume to another user. (Change owner of volume)"
 )
 
-func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
+func newVolTransferCmd(client master.IMasterClient) *cobra.Command {
 	var optYes bool
 	var optForce bool
 	var cmd = &cobra.Command{
@@ -840,7 +840,7 @@ const (
 	cmdVolAddDPCmdShort = "Create and add more data partition to a volume"
 )
 
-func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
+func newVolAddDPCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
 		Short: cmdVolAddDPCmdShort,
@@ -883,12 +883,12 @@ const (
 	cmdShrinkVolCmdShort = "Shrink capacity of a volume"
 )
 
-func newVolExpandCmd(client *master.MasterClient) *cobra.Command {
+func newVolExpandCmd(client master.IMasterClient) *cobra.Command {
 	volClient := NewVolumeClient(OpExpandVol, client)
 	return newVolSetCapacityCmd(CliOpExpand, cmdExpandVolCmdShort, volClient)
 }
 
-func newVolShrinkCmd(client *master.MasterClient) *cobra.Command {
+func newVolShrinkCmd(client master.IMasterClient) *cobra.Command {
 	volClient := NewVolumeClient(OpShrinkVol, client)
 	return newVolSetCapacityCmd(CliOpShrink, cmdShrinkVolCmdShort, volClient)
 }

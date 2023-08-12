@@ -45,6 +45,18 @@ type MasterCLientWithResolver struct {
 	stopC          chan struct{}
 }
 
+type IMasterClient interface {
+	AddNode(address string)
+	Leader() (addr string)
+	AdminAPI() IAdminAPI
+	ClientAPI() IClientAPI
+	NodeAPI() INodeAPI
+	UserAPI() IUserAPI
+	SetLeader(addr string)
+	SetTimeout(timeout uint16)
+	Nodes() (nodes []string)
+}
+
 type MasterClient struct {
 	sync.RWMutex
 	masters    []string
@@ -80,19 +92,19 @@ func (c *MasterClient) Leader() (addr string) {
 	return
 }
 
-func (c *MasterClient) AdminAPI() *AdminAPI {
+func (c *MasterClient) AdminAPI() IAdminAPI {
 	return c.adminAPI
 }
 
-func (c *MasterClient) ClientAPI() *ClientAPI {
+func (c *MasterClient) ClientAPI() IClientAPI {
 	return c.clientAPI
 }
 
-func (c *MasterClient) NodeAPI() *NodeAPI {
+func (c *MasterClient) NodeAPI() INodeAPI {
 	return c.nodeAPI
 }
 
-func (c *MasterClient) UserAPI() *UserAPI {
+func (c *MasterClient) UserAPI() IUserAPI {
 	return c.userAPI
 }
 

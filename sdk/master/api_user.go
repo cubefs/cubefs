@@ -11,6 +11,22 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
+type IUserAPI interface {
+	CreateUser(param *proto.UserCreateParam) (userInfo *proto.UserInfo, err error)
+	DeleteUser(userID string) (err error)
+	UpdateUser(param *proto.UserUpdateParam) (userInfo *proto.UserInfo, err error)
+	GetAKInfo(accesskey string) (userInfo *proto.UserInfo, err error)
+	AclOperation(volName string, localIP string, op uint32) (aclInfo *proto.AclRsp, err error)
+	UidOperation(volName string, uid string, op uint32, val string) (uidInfo *proto.UidSpaceRsp, err error)
+	GetUserInfo(userID string) (userInfo *proto.UserInfo, err error)
+	UpdatePolicy(param *proto.UserPermUpdateParam) (userInfo *proto.UserInfo, err error)
+	RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *proto.UserInfo, err error)
+	DeleteVolPolicy(vol string) (err error)
+	TransferVol(param *proto.UserTransferVolParam) (userInfo *proto.UserInfo, err error)
+	ListUsers(keywords string) (users []*proto.UserInfo, err error)
+	ListUsersOfVol(vol string) (users []string, err error)
+}
+
 type UserAPI struct {
 	mc *MasterClient
 }

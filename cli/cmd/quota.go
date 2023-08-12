@@ -53,7 +53,7 @@ const (
 	cmdQuotaDefaultMaxBytes = math.MaxUint64
 )
 
-func newQuotaCmd(client *master.MasterClient) *cobra.Command {
+func newQuotaCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:     cmdQuotaUse,
 		Short:   cmdQuotaShort,
@@ -74,7 +74,7 @@ func newQuotaCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
+func newQuotaCreateCmd(client master.IMasterClient) *cobra.Command {
 	var maxFiles uint64
 	var maxBytes uint64
 
@@ -155,7 +155,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
+func newQuotaListCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdQuotaListUse,
 		Short: cmdQuotaListShort,
@@ -181,7 +181,7 @@ func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newQuotaListAllCmd(client *master.MasterClient) *cobra.Command {
+func newQuotaListAllCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdQuotaListAllUse,
 		Short: cmdQuotaListAllShort,
@@ -204,7 +204,7 @@ func newQuotaListAllCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
+func newQuotaUpdateCmd(client master.IMasterClient) *cobra.Command {
 	var maxFiles uint64
 	var maxBytes uint64
 
@@ -240,7 +240,7 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newQuotaDelete(client *master.MasterClient) *cobra.Command {
+func newQuotaDelete(client master.IMasterClient) *cobra.Command {
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdQuotaDeleteUse,
@@ -272,7 +272,7 @@ func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
+func newQuotaGetInode(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdQuotaGetInodeUse,
 		Short: cmdQuotaGetInodeShort,
@@ -308,7 +308,7 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
+func newQuotaApplyCmd(client master.IMasterClient) *cobra.Command {
 	var maxConcurrencyInode uint64
 	var cmd = &cobra.Command{
 		Use:   cmdQuotaApplyUse,
@@ -354,7 +354,7 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
+func newQuotaRevokeCmd(client master.IMasterClient) *cobra.Command {
 	var maxConcurrencyInode uint64
 	var forceInode uint64
 	var cmd = &cobra.Command{

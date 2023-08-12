@@ -22,6 +22,19 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
+type INodeAPI interface {
+	AddDataNode(serverAddr string, zoneName string) (id uint64, err error)
+	AddMetaNode(serverAddr string, zoneName string) (id uint64, err error)
+	GetDataNode(serverHost string) (node *proto.DataNodeInfo, err error)
+	GetMetaNode(serverHost string) (node *proto.MetaNodeInfo, err error)
+	ResponseMetaNodeTask(task *proto.AdminTask) (err error)
+	ResponseDataNodeTask(task *proto.AdminTask) (err error)
+	DataNodeDecommission(nodeAddr string, count int) (err error)
+	MetaNodeDecommission(nodeAddr string, count int) (err error)
+	MetaNodeMigrate(srcAddr string, targetAddr string, count int) (err error)
+	DataNodeMigrate(srcAddr string, targetAddr string, count int) (err error)
+}
+
 type NodeAPI struct {
 	mc *MasterClient
 }

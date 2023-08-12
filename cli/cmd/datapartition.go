@@ -28,7 +28,7 @@ const (
 	cmdDataPartitionShort = "Manage data partition"
 )
 
-func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
+func newDataPartitionCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdDataPartitionUse,
 		Short: cmdDataPartitionShort,
@@ -53,7 +53,7 @@ const (
 	cmdDataPartitionGetDiscardShort    = "Display all discard data partitions"
 )
 
-func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
+func newDataPartitionGetCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [DATA PARTITION ID]",
 		Short: cmdDataPartitionGetShort,
@@ -81,7 +81,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
+func newListCorruptDataPartitionCmd(client master.IMasterClient) *cobra.Command {
 	var ignoreDiscardDp bool
 
 	var cmd = &cobra.Command{
@@ -244,7 +244,7 @@ The "reset" command will be released in next version`,
 	return cmd
 }
 
-func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
+func newDataPartitionDecommissionCmd(client master.IMasterClient) *cobra.Command {
 	var raftForceDel bool
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
@@ -281,7 +281,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 	return cmd
 }
 
-func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
+func newDataPartitionReplicateCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpReplicate + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionReplicateShort,
@@ -315,7 +315,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Command {
+func newDataPartitionDeleteReplicaCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpDelReplica + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDeleteReplicaShort,
@@ -349,7 +349,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 	return cmd
 }
 
-func newDataPartitionGetDiscardCmd(client *master.MasterClient) *cobra.Command {
+func newDataPartitionGetDiscardCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpGetDiscard,
 		Short: cmdDataPartitionGetDiscardShort,

@@ -26,7 +26,7 @@ const (
 	cmdZoneShort = "Manage zone"
 )
 
-func newZoneCmd(client *sdk.MasterClient) *cobra.Command {
+func newZoneCmd(client sdk.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdZoneUse,
 		Short: cmdZoneShort,
@@ -44,7 +44,7 @@ const (
 	cmdZoneInfoShort = "Show zone information"
 )
 
-func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
+func newZoneListCmd(client sdk.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdZoneListShort,
@@ -71,7 +71,7 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
+func newZoneInfoCmd(client sdk.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [NAME]",
 		Short: cmdZoneInfoShort,

@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -29,7 +30,7 @@ const (
 	dpMigrateMax                = 50
 )
 
-func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
+func newDataNodeCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliResourceDataNode,
 		Short: cmdDataNodeShort,
@@ -49,7 +50,7 @@ const (
 	cmdDataNodeDecommissionInfoShort = "decommission partitions in a data node to others"
 )
 
-func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
+func newDataNodeListCmd(client master.IMasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
 	var cmd = &cobra.Command{
@@ -90,7 +91,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
+func newDataNodeInfoCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeInfoShort,
@@ -122,7 +123,7 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
+func newDataNodeDecommissionCmd(client master.IMasterClient) *cobra.Command {
 	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
@@ -138,7 +139,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			nodeAddr = args[0]
 			if optCount < 0 {
-				stdout("Migrate dp count should >= 0\n")
+				err = fmt.Errorf("Migrate dp count should >= 0\n")
 				return
 			}
 			if err = client.NodeAPI().DataNodeDecommission(nodeAddr, optCount); err != nil {
@@ -158,7 +159,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
+func newDataNodeMigrateCmd(client master.IMasterClient) *cobra.Command {
 	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
@@ -175,7 +176,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			src = args[0]
 			dst = args[1]
 			if optCount > dpMigrateMax || optCount <= 0 {
-				stdout("Migrate dp count should between [1-50]\n")
+				err = fmt.Errorf("Migrate dp count should between [1-50]\n")
 				return
 			}
 

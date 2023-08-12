@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -29,7 +30,7 @@ const (
 	mpMigrateMax     = 15
 )
 
-func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
+func newMetaNodeCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdMetaNodeUse,
 		Short: cmdMetaNodeShort,
@@ -50,7 +51,7 @@ const (
 	cmdMetaNodeMigrateInfoShort      = "Migrate partitions from a meta node to the other node"
 )
 
-func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
+func newMetaNodeListCmd(client master.IMasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
 	var cmd = &cobra.Command{
@@ -91,7 +92,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
+func newMetaNodeInfoCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdMetaNodeInfoShort,
@@ -122,7 +123,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 	}
 	return cmd
 }
-func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
+func newMetaNodeDecommissionCmd(client master.IMasterClient) *cobra.Command {
 	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
@@ -138,7 +139,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			nodeAddr = args[0]
 			if optCount < 0 {
-				stdout("Migrate mp count should >= 0\n")
+				err = fmt.Errorf("Migrate mp count should >= 0\n")
 				return
 			}
 			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount); err != nil {
@@ -157,7 +158,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "MetaNode delete mp count")
 	return cmd
 }
-func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
+func newMetaNodeMigrateCmd(client master.IMasterClient) *cobra.Command {
 	var optCount int
 	var cmd = &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
@@ -174,7 +175,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			src = args[0]
 			dst = args[1]
 			if optCount > mpMigrateMax || optCount <= 0 {
-				stdout("Migrate mp count should between [1-15]\n")
+				err = fmt.Errorf("Migrate mp count should between [1-15]\n")
 				return
 			}
 			if err = client.NodeAPI().MetaNodeMigrate(src, dst, optCount); err != nil {

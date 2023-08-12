@@ -28,7 +28,7 @@ const (
 	cmdUserShort = "Manage cluster users"
 )
 
-func newUserCmd(client *master.MasterClient) *cobra.Command {
+func newUserCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdUserUse,
 		Short: cmdUserShort,
@@ -50,7 +50,7 @@ const (
 	cmdUserCreateShort = "Create a new user"
 )
 
-func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
+func newUserCreateCmd(client master.IMasterClient) *cobra.Command {
 	var optPassword string
 	var optAccessKey string
 	var optSecretKey string
@@ -140,7 +140,7 @@ const (
 	cmdUserUpdateShort = "Update information about specified user"
 )
 
-func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
+func newUserUpdateCmd(client master.IMasterClient) *cobra.Command {
 	var optAccessKey string
 	var optSecretKey string
 	var optUserType string
@@ -226,7 +226,7 @@ const (
 	cmdUserDeleteShort = "Delete specified user"
 )
 
-func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
+func newUserDeleteCmd(client master.IMasterClient) *cobra.Command {
 	var optYes bool
 	//var optForce bool
 	var cmd = &cobra.Command{
@@ -275,7 +275,7 @@ const (
 	cmdUserInfoShort = "Show detail information about specified user"
 )
 
-func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
+func newUserInfoCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   cmdUserInfoUse,
 		Short: cmdUserInfoShort,
@@ -311,7 +311,7 @@ const (
 	cmdUserPermShort = "Setup volume permission for a user"
 )
 
-func newUserPermCmd(client *master.MasterClient) *cobra.Command {
+func newUserPermCmd(client master.IMasterClient) *cobra.Command {
 	var subdir string
 	var cmd = &cobra.Command{
 		Use:   cmdUserPermUse,
@@ -390,7 +390,7 @@ const (
 	cmdUserListShort = "List cluster users"
 )
 
-func newUserListCmd(client *master.MasterClient) *cobra.Command {
+func newUserListCmd(client master.IMasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
 		Use:     CliOpList,

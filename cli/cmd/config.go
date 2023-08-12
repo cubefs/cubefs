@@ -87,12 +87,12 @@ func newConfigSetCmd() *cobra.Command {
 			}
 			timeOut := uint16(tmp)
 			if optMasterHosts == "" {
-				stdout(fmt.Sprintf("Please set addr. Input 'cfs-cli config set -h' for help.\n"))
+				err = fmt.Errorf("please set addr. Input 'cfs-cli config set -h' for help")
 				return
 			}
 
 			if timeOut == 0 {
-				stdout(fmt.Sprintf("timeOut %v is invalid.\n", timeOut))
+				err = fmt.Errorf("timeOut %v is invalid", timeOut)
 				return
 			}
 
@@ -116,8 +116,7 @@ func newConfigInfoCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := LoadConfig()
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				OsExitWithLogFlush()
+				errout("Error: %v\n", err)
 			}
 			printConfigInfo(config)
 		},

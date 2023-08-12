@@ -25,7 +25,7 @@ func validVols(client, complete interface{}) []string {
 		vols      []*proto.VolInfo
 		err       error
 	)
-	clientSdk := client.(*sdk.MasterClient)
+	clientSdk := client.(sdk.IMasterClient)
 	completeStr := complete.(string)
 	if vols, err = clientSdk.AdminAPI().ListVols(completeStr); err != nil {
 		errout("Error: %v\n", err)
@@ -36,7 +36,7 @@ func validVols(client, complete interface{}) []string {
 	return validVols
 }
 
-func validDataNodes(client *sdk.MasterClient, toComplete string) []string {
+func validDataNodes(client sdk.IMasterClient, toComplete string) []string {
 	var (
 		validDataNodes []string
 		clusterView    *proto.ClusterView
@@ -52,7 +52,7 @@ func validDataNodes(client *sdk.MasterClient, toComplete string) []string {
 	return validDataNodes
 }
 
-func validMetaNodes(client *sdk.MasterClient, toComplete string) []string {
+func validMetaNodes(client sdk.IMasterClient, toComplete string) []string {
 	var (
 		validMetaNodes []string
 		clusterView    *proto.ClusterView
@@ -67,7 +67,7 @@ func validMetaNodes(client *sdk.MasterClient, toComplete string) []string {
 	return validMetaNodes
 }
 
-func validUsers(client *sdk.MasterClient, toComplete string) []string {
+func validUsers(client sdk.IMasterClient, toComplete string) []string {
 	var (
 		validUsers []string
 		users      []*proto.UserInfo
@@ -82,7 +82,7 @@ func validUsers(client *sdk.MasterClient, toComplete string) []string {
 	return validUsers
 }
 
-func validZones(client *sdk.MasterClient, toComplete string) []string {
+func validZones(client sdk.IMasterClient, toComplete string) []string {
 	var (
 		validZones []string
 		zones      []*proto.ZoneView

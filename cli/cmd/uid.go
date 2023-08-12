@@ -1,3 +1,17 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package cmd
 
 import (
@@ -25,7 +39,7 @@ const (
 	uidAll = "all"
 )
 
-func newUidCmd(client *master.MasterClient) *cobra.Command {
+func newUidCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:     cmdUidUse,
 		Short:   cmdUidShort,
@@ -41,17 +55,14 @@ func newUidCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newUidAddCmd(client *master.MasterClient) *cobra.Command {
+func newUidAddCmd(client master.IMasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
 		Use:     CliUidAdd,
 		Short:   cmdUidAddShort,
 		Aliases: []string{"add"},
+		Args:    cobra.MinimumNArgs(3),
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) < 3 {
-				stdout("example:cfs-cli uid add volName uid size\n")
-				return
-			}
 			var err error
 			defer func() {
 				if err != nil {
@@ -69,7 +80,7 @@ func newUidAddCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newUidListCmd(client *master.MasterClient) *cobra.Command {
+func newUidListCmd(client master.IMasterClient) *cobra.Command {
 	var (
 		optKeyword string
 		uidListAll bool
@@ -78,11 +89,8 @@ func newUidListCmd(client *master.MasterClient) *cobra.Command {
 		Use:     cliUidListShort,
 		Short:   cmdUidListShort,
 		Aliases: []string{"list"},
+		Args:    cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) == 0 {
-				stdout("need volume name\n")
-				return
-			}
 			if len(args) == 2 {
 				if args[1] == uidAll {
 					uidListAll = true
@@ -113,18 +121,14 @@ func newUidListCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newUidDelCmd(client *master.MasterClient) *cobra.Command {
+func newUidDelCmd(client master.IMasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
 		Use:     CliUidDel,
 		Short:   cmdUidDelShort,
 		Aliases: []string{"del"},
+		Args:    cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) <= 1 {
-				stdout("USAGE:./cfs-cli uid uidDel volName\n")
-				return
-			}
-
 			var err error
 			defer func() {
 				if err != nil {
@@ -142,18 +146,14 @@ func newUidDelCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newUidCheckCmd(client *master.MasterClient) *cobra.Command {
+func newUidCheckCmd(client master.IMasterClient) *cobra.Command {
 	var optKeyword string
 	var cmd = &cobra.Command{
 		Use:     CliUidCheck,
 		Short:   cmdUidCheckShort,
 		Aliases: []string{"check"},
+		Args:    cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) <= 1 {
-				stdout("USAGE:./cfs-cli uid uidCheck volName\n")
-				return
-			}
-
 			var err error
 			defer func() {
 				if err != nil {

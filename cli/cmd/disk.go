@@ -1,10 +1,25 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package cmd
 
 import (
+	"sort"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
-	"sort"
 )
 
 const (
@@ -12,7 +27,7 @@ const (
 	cmdDiskShort = "Manage cluster disks"
 )
 
-func newDiskCmd(client *master.MasterClient) *cobra.Command {
+func newDiskCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:     cmdDiskUse,
 		Short:   cmdDiskShort,
@@ -29,7 +44,7 @@ const (
 	cmdCheckBadDisksShort = "Check and list unhealthy disks"
 )
 
-func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
+func newListBadDiskCmd(client master.IMasterClient) *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckBadDisksShort,
