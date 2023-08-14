@@ -499,7 +499,8 @@ int real_rmdir(const char *pathname) {
     char *path = get_cfs_path(pathname);
     int re;
     if(g_hook && path != NULL) {
-        if(strlen(g_client_info.replicate_path) > 0) {
+        bool is_root = (strlen(path) == 0 || (strlen(path) == 1 && path[0] == '/'));
+        if(!is_root && strlen(g_client_info.replicate_path) > 0) {
             char *local_path = cat_path(g_client_info.replicate_path, path);
             re = libc_rmdir(local_path);
             free(local_path);
@@ -1048,7 +1049,8 @@ int real_unlinkat(int dirfd, const char *pathname, int flags) {
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
     if(g_hook && is_cfs) {
-        if(strlen(g_client_info.replicate_path) > 0) {
+        bool is_root = (path != NULL && (strlen(path) == 0 || (strlen(path) == 1 && path[0] == '/')));
+        if(!is_root && strlen(g_client_info.replicate_path) > 0) {
             re = libc_unlinkat(dirfd, local_path != NULL ? local_path : pathname, flags);
             if(re < 0) {
                 goto log;
@@ -2312,17 +2314,11 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
 
     off_t offset = 0;
     size_t size = 0;
-    ssize_t re = -1, re_cache = 0;
+    ssize_t re = -1, re_cache = 0, re_local = 0;
 
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        if(strlen(g_client_info.replicate_path) > 0) {
-            re = libc_write(fd, buf, count);
-            if(re < 0) {
-                goto log;
-            }
-        }
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2343,6 +2339,15 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
         if(re > 0) {
             f->pos += re;
             size = update_inode_size(f->inode_info, f->pos);
+        } else {
+            goto log;
+        }
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re_local = libc_write(fd, buf, count);
+            if(re_local != re) {
+                re = re_local;
+                goto log;
+            }
         }
     } else {
         #ifdef _CFS_DEBUG
@@ -2357,7 +2362,7 @@ log:
     const char *fd_path = get_fd_path(fd);
     clock_gettime(CLOCK_REALTIME, &stop);
     long time = (stop.tv_sec - start.tv_sec)*1000000000 + stop.tv_nsec - start.tv_nsec;
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, time:%d\n", __func__, is_cfs, fd, fd_path, count, offset, size, re, re_cache, time/1000);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, re_local:%d time:%d\n", __func__, is_cfs, fd, fd_path, count, offset, size, re, re_cache, re_local, time/1000);
     #endif
     return re;
 }

@@ -292,9 +292,14 @@ func (eh *ExtentHandler) sender() {
 				eh.setRecovery()
 			}
 			packet.SendT = time.Now().UnixNano()
+
+			var p string
+			if log.IsDebugEnabled() {
+				p = packet.String()
+			}
 			eh.reply <- packet
 			if log.IsDebugEnabled() {
-				log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
+				log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%s)", eh, p)
 			}
 
 		case <-eh.doneSender:
