@@ -32,7 +32,7 @@ cfs-client -c client.json
     "rdonly":"false",
     "logDir":"/home/service/var/logs/cfs/log",
     "logLevel":"warn",
-    "profPort":"192.168.1.1"
+    "profPort":"17410"
 }
 ```
 
