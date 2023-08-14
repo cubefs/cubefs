@@ -42,7 +42,7 @@ func TestActionHolder_Wait_WithoutAnyOverlap(t *testing.T) {
 	}))
 }
 
-func TestActionHolder_Wait_WithOverlap(t *testing.T) {
+func TestActionHolder_Wait_WithOverlap_1(t *testing.T) {
 	var holder = NewActionHolder()
 	holder.Register(100, &__extentAction{
 		ExtentID: 10,
@@ -55,6 +55,30 @@ func TestActionHolder_Wait_WithOverlap(t *testing.T) {
 		Size:     512,
 	})
 	var ctx, _ = context.WithTimeout(context.Background(), time.Second)
+	assert.NotNil(t, holder.Wait(ctx, &__extentAction{
+		ExtentID: 10,
+		Offset:   512,
+		Size:     1024,
+	}))
+}
+
+func TestActionHolder_Wait_WithOverlap_2(t *testing.T) {
+	var holder = NewActionHolder()
+	holder.Register(100, &__extentAction{
+		ExtentID: 10,
+		Offset:   1024,
+		Size:     1024,
+	})
+	var ctx, _ = context.WithTimeout(context.Background(), time.Second*2)
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		holder.Register(101, &__extentAction{
+			ExtentID: 10,
+			Offset:   0,
+			Size:     1024,
+		})
+		holder.Unregister(100)
+	}()
 	assert.NotNil(t, holder.Wait(ctx, &__extentAction{
 		ExtentID: 10,
 		Offset:   512,

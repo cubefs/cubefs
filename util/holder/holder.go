@@ -37,13 +37,27 @@ func (h *__entry) wait(ctx context.Context) (err error) {
 	return
 }
 
+type waitFunc func(ctx context.Context) error
+
 type ActionHolder struct {
 	lst *list.List
 	mu  sync.RWMutex
 }
 
 func (h *ActionHolder) Wait(ctx context.Context, act Action) (err error) {
-	var wait func(ctx context.Context) error = nil
+	for {
+		if wait := h.findWait(act); wait != nil {
+			if err = wait(ctx); err != nil {
+				return
+			}
+			continue
+		}
+		break
+	}
+	return
+}
+
+func (h *ActionHolder) findWait(act Action) (wait waitFunc) {
 	h.mu.RLock()
 	for e := h.lst.Back(); e != nil; e = e.Prev() {
 		if entry := e.Value.(*__entry); entry.overlap(act) {
@@ -52,9 +66,6 @@ func (h *ActionHolder) Wait(ctx context.Context, act Action) (err error) {
 		}
 	}
 	h.mu.RUnlock()
-	if wait != nil {
-		err = wait(ctx)
-	}
 	return
 }
 
