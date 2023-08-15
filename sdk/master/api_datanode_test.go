@@ -18,8 +18,8 @@ func TestDataNodeAPI(t *testing.T) {
 		t.Fatalf("Add data node failed: err(%v), addr(%v)", err, testNodeAddr)
 	}
 	// reset datanode
-	if err = testMc.AdminAPI().ResetCorruptDataNode(testNodeAddr); err != nil {
-		t.Errorf("Reset corrupt data node failed: err(%v), addr(%v)", err, testNodeAddr)
+	if err = testMc.AdminAPI().ResetCorruptDataNode(testNodeAddr); err == nil {
+		t.Errorf("Reset corrupt data node expect fail, but success, addr(%v)", testNodeAddr)
 	}
 	// task
 	task := &proto.AdminTask{}

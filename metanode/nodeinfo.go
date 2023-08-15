@@ -104,6 +104,8 @@ var (
 
 	RocksDBModeMaxFsUsedPercent  uint64 = DefaultRocksDBModeMaxFsUsedPercent
 	MemModeMaxFsUsedPercent      uint64 = DefaultMemModeMaxFsUsedFactorPercent
+
+	enableRemoveDupReq = defaultEnableRemoveDupReq
 )
 
 func DeleteBatchCount() uint64 {
@@ -323,6 +325,30 @@ func (m *MetaNode) getBitMapAllocatorMinFreeFactor() float64 {
 	return factor
 }
 
+func (m *MetaNode) setRequestRecordsReservedCount(cnt int32) {
+	if cnt == 0 || cnt == reqRecordMaxCount.Load() {
+		return
+	}
+	log.LogInfof("setRequestRecordsReservedCount, old cnt:%v, new cnt:%v", reqRecordMaxCount.Load(), cnt)
+	reqRecordMaxCount.Store(cnt)
+}
+
+func (m *MetaNode) setRequestRecordsReservedMin(min int32) {
+	if min == 0 || min == reqRecordReserveMin.Load() {
+		return
+	}
+	log.LogInfof("setRequestRecordsReservedMin, old min:%v, new min:%v", reqRecordReserveMin.Load(), min)
+	reqRecordReserveMin.Store(min)
+}
+
+func (m *MetaNode) setRemoveDupReqFlag(enableState bool) {
+	if enableState == enableRemoveDupReq {
+		return
+	}
+	log.LogInfof("setRemoveDupReqFlag, enableRemoveDupReq: %v ==> %v", enableRemoveDupReq, enableState)
+	enableRemoveDupReq = enableState
+}
+
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
@@ -383,6 +409,9 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.updateRaftParamFromMaster(int(limitInfo.MetaRaftLogSize), int(limitInfo.MetaRaftCap))
 	m.updateSyncWALOnUnstableEnableState(limitInfo.MetaSyncWALOnUnstableEnableState)
 	m.updateBitMapAllocatorConf(limitInfo)
+	m.setRequestRecordsReservedCount(limitInfo.ClientReqRecordsReservedCount)
+	m.setRequestRecordsReservedMin(limitInfo.ClientReqRecordsReservedMin)
+	m.setRemoveDupReqFlag(limitInfo.ClientReqRemoveDupFlag)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

@@ -35,9 +35,9 @@ const (
 type stepFunc func(r *raftFsm, m *proto.Message)
 type tickFunc func()
 
-type riskState int
+type RiskState int
 
-func (s riskState) String() string {
+func (s RiskState) String() string {
 	switch s {
 	case UnstableState:
 		return "Unstable"
@@ -47,18 +47,18 @@ func (s riskState) String() string {
 	return "Unknown"
 }
 
-func (s riskState) Equals(o riskState) bool {
+func (s RiskState) Equals(o RiskState) bool {
 	return s == o
 }
 
 const (
-	UnstableState riskState = iota
+	UnstableState RiskState = iota
 	StableState
 )
 
-type riskStateListener func(state riskState)
+type riskStateListener func(state RiskState)
 
-func (f riskStateListener) changeTo(state riskState) {
+func (f riskStateListener) changeTo(state RiskState) {
 	if f != nil {
 		f(state)
 	}
@@ -99,7 +99,7 @@ type raftFsm struct {
 	tick        tickFunc
 	stopCh      chan struct{}
 
-	riskState     riskState
+	riskState     RiskState
 	riskStateLn   riskStateListener
 	askRollbackLn askRollbackListener
 	startCommit   uint64
@@ -122,7 +122,7 @@ func (r *raftFsm) getReplicas() (m string) {
 	return m
 }
 
-func (r *raftFsm) getRiskStatus() riskState {
+func (r *raftFsm) getRiskStatus() RiskState {
 	return r.riskState
 }
 
@@ -624,7 +624,7 @@ func (r *raftFsm) registerAskRollbackListener(f askRollbackListener) {
 	r.askRollbackLn = f
 }
 
-func (r *raftFsm) maybeChangeState(state riskState) bool {
+func (r *raftFsm) maybeChangeState(state RiskState) bool {
 	if r.riskState != state {
 		r.riskState = state
 		r.riskStateLn.changeTo(state)

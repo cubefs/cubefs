@@ -32,9 +32,14 @@ const (
 	ReadDirPlusVersion = "4.2.0"
 
 	/*
+	MetaNode: retry op remove dup
+	*/
+	RemoveDupReq = "4.3.0"
+
+	/*
 
 	*/
-	BaseVersion = "4.2.0"
+	BaseVersion = "4.3.0"
 )
 
 var (

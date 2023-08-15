@@ -1,11 +1,16 @@
 package metanode
 
 import (
+	"encoding/json"
 	"fmt"
+	"hash/crc32"
+	"math"
+	"math/rand"
 	"os"
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -32,11 +37,19 @@ func createInode(t, uid, gid uint32, mp *metaPartition) (ino uint64, err error) 
 }
 
 func extentAppend(ino uint64, extent proto.ExtentKey, leader *metaPartition) (err error) {
+	rand.Seed(time.Now().UnixMilli())
 	reqAppendExtent := &proto.AppendExtentKeyRequest{
 		Inode:  ino,
 		Extent: extent,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
 	packet := &Packet{}
+	packet.Data, _ = json.Marshal(reqAppendExtent)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if err = leader.ExtentAppend(reqAppendExtent, packet); err != nil || packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf("extent append failed, err:%v, resultCode:%v", err, packet.ResultCode)
 		return
@@ -175,11 +188,16 @@ func TestMetaPartition_ExtentAppendCase01(t *testing.T) {
 }
 
 func batchExtentAppend(ino uint64, eks []proto.ExtentKey, leader *metaPartition) (err error) {
+	rand.Seed(time.Now().UnixNano())
 	reqBatchExtentAppend := &proto.AppendExtentKeysRequest{
 		Inode:   ino,
 		Extents: eks,
 	}
 	packet := &Packet{}
+	packet.Data, _ = json.Marshal(reqBatchExtentAppend)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if err = leader.BatchExtentAppend(reqBatchExtentAppend, packet); err != nil || packet.ResultCode != proto.OpOk {
 		return fmt.Errorf("batch extent append failed, err:%v, resultCode:%v", err, packet.ResultCode)
 	}
@@ -293,11 +311,20 @@ func TestMetaPartition_ListExtentCase01(t *testing.T) {
 }
 
 func extentInsert(ino uint64, extent proto.ExtentKey, mp *metaPartition) (err error) {
+	rand.Seed(time.Now().Unix())
 	req := &proto.InsertExtentKeyRequest{
 		Inode:  ino,
 		Extent: extent,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 	}
 	packet := &Packet{}
+
+	packet.Data, _ = json.Marshal(req)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
 	if err = mp.ExtentInsert(req, packet); err != nil || packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf("extent insert failed, err:%v, resultCode:%v", err, packet.ResultCode)
 		return

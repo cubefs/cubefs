@@ -200,14 +200,14 @@ func GenCacheBlockKey(volume string, inode, offset uint64, version uint32) strin
 	return volume + "/" + strconv.FormatUint(inode, 10) + "#" + strconv.FormatUint(offset, 10) + "#" + strconv.FormatUint(uint64(version), 10)
 }
 
-func (c *CacheEngine) GetCacheBlock(volume string, inode, offset uint64, version uint32) (block *CacheBlock, err error) {
+func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, version uint32, size uint64) (block *CacheBlock, err error) {
 	key := GenCacheBlockKey(volume, inode, offset, version)
 	lock := c.getCacheLock(key)
 	lock.RLock()
 	defer lock.RUnlock()
 	if value, getErr := c.lruCache.Get(key); getErr == nil {
 		block = value.(*CacheBlock)
-		c.monitorFunc(volume, proto.ActionCacheHit, uint64(block.allocSize))
+		c.monitorFunc(volume, proto.ActionCacheHit, size)
 		return
 	}
 	c.monitorFunc(volume, proto.ActionCacheMiss, 0)
@@ -239,7 +239,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	var key = GenCacheBlockKey(volume, inode, fixedOffset, version)
 	lock := c.getCacheLock(key)
 	lock.Lock()
-	if value, getErr := c.lruCache.Get(key); getErr == nil {
+	if value, get := c.lruCache.Peek(key); get {
 		lock.Unlock()
 		block = value.(*CacheBlock)
 		return

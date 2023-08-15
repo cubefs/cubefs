@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/exporter"
 	"golang.org/x/net/context"
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -33,10 +34,17 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 		return
 	}
 
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("SetXAttr: dup req, req:%v, client req info:%v", req, clientReqInfo)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), []byte(req.Value))
 
-	resp, err = mp.putExtend(p.Ctx(), opFSMSetXAttr, p.RemoteWithReqID(), extend)
+	resp, err = mp.putExtend(p.Ctx(), opFSMSetXAttr, p.RemoteWithReqID(), extend, clientReqInfo)
 	if  err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -141,9 +149,16 @@ func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (
 		return
 	}
 
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("RemoveXAttr: dup req:%v, previousRespCode:%v", clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), nil)
-	resp, err = mp.putExtend(p.Ctx(), opFSMRemoveXAttr, p.RemoteWithReqID(), extend)
+	resp, err = mp.putExtend(p.Ctx(), opFSMRemoveXAttr, p.RemoteWithReqID(), extend, clientReqInfo)
 	if  err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -196,11 +211,11 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	return
 }
 
-func (mp *metaPartition) putExtend(ctx context.Context, op uint32, remote string, extend *Extend) (resp interface{}, err error) {
+func (mp *metaPartition) putExtend(ctx context.Context, op uint32, remote string, extend *Extend, clientReqInfo *RequestInfo) (resp interface{}, err error) {
 	var marshaled []byte
 	if marshaled, err = extend.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.submit(ctx, op, remote, marshaled)
+	resp, err = mp.submit(ctx, op, remote, marshaled, clientReqInfo)
 	return
 }

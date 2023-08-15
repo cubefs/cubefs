@@ -152,7 +152,8 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 					pr.becomeReplicate()
 				case pr.state == replicaStateSnapshot && pr.needSnapshotAbort():
 					if logger.IsEnableWarn() {
-						logger.Warn("raft[%v] snapshot aborted, resumed sending replication messages to %v.", r.id, m.From)
+						logger.Warn("raft[%v] [firstindex: %v, commit: %v] snapshot aborted, resumed sending replication messages to [%v][%v].",
+							r.id, r.raftLog.firstIndex(), r.raftLog.committed, m.From, pr)
 					}
 					pr.becomeProbe()
 				case pr.state == replicaStateReplicate:

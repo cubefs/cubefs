@@ -427,7 +427,7 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 		return ParseError(err)
 	}
 	value := info.Get(name)
-	if pos > 0 {
+	if pos > 0 && pos < uint32(len(value))  {
 		value = value[pos:]
 	}
 	if size > 0 && size < uint32(len(value)) {

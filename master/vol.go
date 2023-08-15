@@ -115,6 +115,7 @@ type Vol struct {
 	VMPsToPartitionMap         map[uint64]uint64 `graphql:"-"`
 	LastSelectReuseMPID        uint64
 	EnableBitMapAllocator      bool
+	enableRemoveDupReq         bool //for remove dup client retry operation
 	CleanTrashDurationEachTime int32
 	TrashCleanMaxCountEachTime int32
 	NewVolName                 string
@@ -310,6 +311,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.RemoteCacheBoostEnable = vv.RemoteCacheBoostEnable
 	vol.RemoteCacheAutoPrepare = vv.RemoteCacheAutoPrepare
 	vol.RemoteCacheTTL = vv.RemoteCacheTTL
+	vol.enableRemoveDupReq = vv.RemoveDupReqEnable
 	return vol
 }
 
@@ -1308,6 +1310,7 @@ func (vol *Vol) backupConfig() *Vol {
 		DelInodeInterval:           vol.DelInodeInterval,
 		UmpCollectWay:              vol.UmpCollectWay,
 		EnableBitMapAllocator:      vol.EnableBitMapAllocator,
+		enableRemoveDupReq:         vol.enableRemoveDupReq,
 		CleanTrashDurationEachTime: vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCountEachTime: vol.TrashCleanMaxCountEachTime,
 		RemoteCacheBoostPath:       vol.RemoteCacheBoostPath,
@@ -1365,6 +1368,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.RemoteCacheBoostEnable = backupVol.RemoteCacheBoostEnable
 	vol.RemoteCacheAutoPrepare = backupVol.RemoteCacheAutoPrepare
 	vol.RemoteCacheTTL = backupVol.RemoteCacheTTL
+	vol.enableRemoveDupReq = backupVol.enableRemoveDupReq
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

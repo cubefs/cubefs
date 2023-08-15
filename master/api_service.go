@@ -337,6 +337,9 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MetaRaftLogCap:                      m.cluster.cfg.MetaRaftLogCap,
 		BitMapAllocatorMaxUsedFactor:        m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
 		BitMapAllocatorMinFreeFactor:        m.cluster.cfg.BitMapAllocatorMinFreeFactor,
+		ClientReqRecordsReservedCount:       m.cluster.cfg.ClientReqRecordsReservedCount,
+		ClientReqRecordsReservedMin:         m.cluster.cfg.ClientReqRecordsReservedMin,
+		ClientReqRemoveDupFlag:              m.cluster.cfg.ClientReqRemoveDup,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -493,6 +496,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	trashCleanDuration := atomic.LoadInt32(&m.cluster.cfg.TrashCleanDurationEachTime)
 	trashCleanMaxCount := atomic.LoadInt32(&m.cluster.cfg.TrashItemCleanMaxCountEachTime)
 	dpTimeoutCntThreshold := atomic.LoadInt32(&m.cluster.cfg.DpTimeoutCntThreshold)
+	clientReqRecordsReservedCount := atomic.LoadInt32(&m.cluster.cfg.ClientReqRecordsReservedCount)
+	clientReqRecordsReservedMin := atomic.LoadInt32(&m.cluster.cfg.ClientReqRecordsReservedMin)
 	m.cluster.cfg.reqRateLimitMapMutex.Lock()
 	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
 	if dataNodeZoneName != "" {
@@ -564,6 +569,9 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
 		ClientConnTimeoutUs:                    m.cluster.cfg.ClientNetConnTimeoutUs,
 		DpTimeoutCntThreshold:                  int(dpTimeoutCntThreshold),
+		ClientReqRecordsReservedCount:          clientReqRecordsReservedCount,
+		ClientReqRecordsReservedMin:            clientReqRecordsReservedMin,
+		ClientReqRemoveDupFlag:                 m.cluster.cfg.ClientReqRemoveDup,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1235,6 +1243,57 @@ func (m *Server) setNodeToOfflineState(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
+func (m *Server) setNodeToOfflineStateByAddr(w http.ResponseWriter, r *http.Request) {
+	var (
+		err      error
+		nodeType string
+		zoneName string
+		state    bool
+		body     []byte
+		addrList []string
+		addrMap  map[string]struct{}
+	)
+
+	addrMap = make(map[string]struct{})
+	metrics := exporter.NewModuleTP(proto.AdminSetNodeStateByAddrUmpKey)
+	defer func() { metrics.Set(err) }()
+
+	if nodeType, zoneName, state, err = parseRequestToSetNodeToOfflineStateByAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if body, err = readBodyFromRequest(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
+		return
+	}
+	if err = json.Unmarshal(body, &addrList); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeReadBodyError, Msg: err.Error()})
+		return
+	}
+	for _, addr := range addrList {
+		addrMap[addr] = struct{}{}
+	}
+
+	if nodeType == nodeTypeAll {
+		m.cluster.setDataNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		m.cluster.setMetaNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		m.cluster.setEcNodeToOfflineStateByAddr(addrMap, state, zoneName)
+	} else {
+		if nodeType == nodeTypeDataNode {
+			m.cluster.setDataNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		} else if nodeType == nodeTypeMetaNode {
+			m.cluster.setMetaNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		} else if nodeType == nodeTypeEcNode {
+			m.cluster.setEcNodeToOfflineStateByAddr(addrMap, state, zoneName)
+		} else {
+			err = errors.New("setNodeToOfflineState unknown nodeType")
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
+}
+
 func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64, nodeType, zoneName string, state bool, err error) {
 	var value string
 	if value = r.FormValue(startKey); value == "" {
@@ -1253,6 +1312,19 @@ func parseRequestToSetNodeToOfflineState(r *http.Request) (startID, endID uint64
 	if err != nil {
 		return
 	}
+	nodeType = r.FormValue(nodeTypeKey)
+	if !(nodeType == nodeTypeDataNode || nodeType == nodeTypeMetaNode || nodeType == nodeTypeAll) {
+		err = fmt.Errorf("nodeType must be dataNode or metaNode or all")
+		return
+	}
+	if zoneName, err = extractZoneName(r); err != nil {
+		return
+	}
+	state, err = strconv.ParseBool(r.FormValue(stateKey))
+	return
+}
+
+func parseRequestToSetNodeToOfflineStateByAddr(r *http.Request) (nodeType, zoneName string, state bool, err error) {
 	nodeType = r.FormValue(nodeTypeKey)
 	if !(nodeType == nodeTypeDataNode || nodeType == nodeTypeMetaNode || nodeType == nodeTypeAll) {
 		err = fmt.Errorf("nodeType must be dataNode or metaNode or all")
@@ -1700,6 +1772,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		description          string
 		extentCacheExpireSec int64
 		enableWriteCache     bool
+		enableRemoveDupReq   bool
 
 		vol *Vol
 
@@ -1761,7 +1834,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
 	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache,
-		enableBitMapAllocator, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+		enableBitMapAllocator, enableRemoveDupReq, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1858,8 +1931,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
-		enableBitMapAllocator,
-		remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL); err != nil {
+		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2162,6 +2234,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		RemoteCacheBoostEnable: vol.RemoteCacheBoostEnable,
 		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:         vol.RemoteCacheTTL,
+		EnableRemoveDupReq:     vol.enableRemoveDupReq,
 	}
 }
 
@@ -3407,7 +3480,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 }
 
 func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair,
-	forceROW, volWriteMutexEnable, enableWriteCache, enableBitMapAllocator bool, err error) {
+	forceROW, volWriteMutexEnable, enableWriteCache, enableBitMapAllocator, volRemoveDupReqEnable bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -3480,6 +3553,15 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 		}
 	} else {
 		enableBitMapAllocator = vol.EnableBitMapAllocator
+	}
+
+	if volRemoveDupReqEnableStr := r.FormValue(proto.VolRemoveDupFlagKey); volRemoveDupReqEnableStr != "" {
+		if volRemoveDupReqEnable, err = strconv.ParseBool(volRemoveDupReqEnableStr); err != nil {
+			err = unmatchedKey(proto.VolRemoveDupFlagKey)
+			return
+		}
+	} else {
+		volRemoveDupReqEnable = vol.enableRemoveDupReq
 	}
 	return
 }
@@ -4632,7 +4714,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
-		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.NetConnTimeoutUsKey, proto.DpTimeoutCntThreshold}
+		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.NetConnTimeoutUsKey, proto.DpTimeoutCntThreshold,
+		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return
@@ -4644,7 +4727,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey, proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey}
+	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey,
+		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return
@@ -5159,7 +5243,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
+				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5194,7 +5278,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
+				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5223,7 +5307,7 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator)
+			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
@@ -6170,6 +6254,34 @@ func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(cf))
 }
 
+func (m *Server) setNodeSetCapacity(w http.ResponseWriter, r *http.Request) {
+	var (
+		capacityStr string
+		capacity    int
+		err         error
+	)
+	metrics := exporter.NewModuleTP(proto.AdminSetClientPkgAddrUmpKey)
+	defer func() { metrics.Set(err) }()
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if capacityStr = r.FormValue(proto.NodeSetCapacityKey); capacityStr == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: keyNotFound(proto.NodeSetCapacityKey).Error()})
+		return
+	}
+	if capacity, err = strconv.Atoi(capacityStr); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: unmatchedKey(proto.NodeSetCapacityKey).Error()})
+		return
+	}
+	if err = m.cluster.setNodeSetCapacity(capacity); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set nodeSetCapacity to %d successfully", capacity)))
+	m.cluster.checkMergeZoneNodeset()
+}
+
 func parseRequestToSetCompactVol(r *http.Request) (name, compactTag, authKey string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -6429,11 +6541,10 @@ func extractGetAllFlashNodes(r *http.Request) (status bool) {
 	return
 }
 
-
 // handle metanode datanode heartbeat protobuf info.
 func (m *Server) handleHeartbeatTaskPbResponse(w http.ResponseWriter, r *http.Request) {
 	body, err := readBodyFromRequest(r)
-	metrics := exporter.NewModuleTP(proto.GetHeartbeatPbResponse)
+	metrics := exporter.NewModuleTP(proto.HeartbeatTaskPbResponseUmpKey)
 	defer func() { metrics.Set(err) }()
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})

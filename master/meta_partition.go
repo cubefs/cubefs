@@ -161,7 +161,7 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 	}
 }
 
-//canSplit caller must be add lock
+// canSplit caller must be add lock
 func (mp *MetaPartition) canSplit(end uint64) (err error) {
 	if end < mp.Start {
 		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
@@ -310,6 +310,10 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	log.LogDebugf("action[checkStatus], maxPartitionId:%v, mp id:%v, status:%v", maxPartitionID, mp.PartitionID, mp.Status)
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
 		allLiveReplicas := mp.getAllLiveReplicas()
+		// if mp is no leader,but all replica is alive,don't alarm
+		if len(allLiveReplicas) == int(mp.ReplicaNum) {
+			return
+		}
 		inactiveAddrs := mp.getInactiveAddrsFromLiveReplicas(allLiveReplicas)
 		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v, replicas:%v learnerNum:%v,replicas:%v,persistenceHosts:%v inactiveAddrs:%v",
 			mp.PartitionID, mp.Status, mp.ReplicaNum, len(mp.Replicas), mp.LearnerNum, len(allLiveReplicas), mp.Hosts, inactiveAddrs)
@@ -333,8 +337,8 @@ func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum 
 	mp.RLock()
 	defer mp.RUnlock()
 	if mp.ReplicaNum != replicaNum {
-		msg := fmt.Sprintf("FIX MetaPartition replicaNum clusterID[%v] vol[%v] replica num[%v],current num[%v]",
-			c.Name, volName, replicaNum, mp.ReplicaNum)
+		msg := fmt.Sprintf("FIX MetaPartition replicaNum clusterID[%v] vol[%v] mp[%v] expect replica num[%v],current num[%v]",
+			c.Name, volName, mp.PartitionID, replicaNum, mp.ReplicaNum)
 		Warn(c.Name, msg)
 	}
 }
@@ -458,7 +462,7 @@ func (mp *MetaPartition) getInactiveAddrsFromLiveReplicas(liveReplicas []*MetaRe
 func (mp *MetaPartition) getAllLiveReplicas() (allLiveReplicas []*MetaReplica) {
 	allLiveReplicas = make([]*MetaReplica, 0)
 	for _, mr := range mp.Replicas {
-		if mr.isActive() {
+		if mr.isAlive() {
 			allLiveReplicas = append(allLiveReplicas, mr)
 		}
 	}
@@ -761,6 +765,10 @@ func (mr *MetaReplica) isActive() (active bool) {
 	}
 
 	return
+}
+
+func (mr *MetaReplica) isAlive() (active bool) {
+	return mr.metaNode.IsActive && time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
 }
 
 func (mr *MetaReplica) setLastReportTime() {
@@ -1166,7 +1174,7 @@ var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *Me
 	return
 }
 
-//check if the meta partition needs to rebalance zone
+// check if the meta partition needs to rebalance zone
 func (mp *MetaPartition) needToRebalanceZone(c *Cluster, zoneList []string, volCrossRegionHAType proto.CrossRegionHAType) (isNeed bool, err error) {
 	var curZoneMap map[string]uint8
 	var curZoneList []string

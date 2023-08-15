@@ -18,6 +18,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/iputil"
+	"hash/crc32"
 	"net"
 	"strings"
 
@@ -46,6 +48,80 @@ func (p *Packet) Remote() string {
 
 func (p *Packet) RemoteWithReqID() string {
 	return fmt.Sprintf("%s_%v", p.remote, p.ReqID)
+}
+
+//for meta retry op
+func (p *Packet) FillClientRequestPacket(reqObj interface{}) (err error) {
+	if p.CRC != 0 {
+		//already fill
+		return
+	}
+
+	var (
+		clientIPUint32 uint32
+		remoteIP       string
+	)
+	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+	if parts := strings.Split(p.remote, ":"); len(parts) >= 1 {
+		remoteIP = parts[0]
+	}
+	if clientIPUint32, err = iputil.ConvertIPStrToUnit32(remoteIP); err != nil {
+		return
+	}
+	switch p.Opcode {
+	case proto.OpMetaLinkInode:
+		req := reqObj.(*LinkInodeReq)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaUnlinkInode:
+		req := reqObj.(*UnlinkInoReq)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaSetattr:
+		req := reqObj.(*SetattrRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaExtentsInsert:
+		req := reqObj.(*proto.InsertExtentKeyRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaTruncate:
+		req := reqObj.(*ExtentsTruncateReq)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaSetXAttr:
+		req := reqObj.(*proto.SetXAttrRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaRemoveXAttr:
+		req := reqObj.(*proto.RemoveXAttrRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaExtentsAdd:
+		req := reqObj.(*proto.AppendExtentKeyRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaBatchExtentsAdd:
+		req := reqObj.(*proto.AppendExtentKeysRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaCreateDentry:
+		req := reqObj.(*proto.CreateDentryRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaDeleteDentry:
+		req := reqObj.(*proto.DeleteDentryRequest)
+		req.ClientIP = clientIPUint32
+	default:
+	}
+	return
+}
+
+func (p *Packet) ResetPackageData(req interface{}) {
+	if p.IsNeedRemoveDupOperation() {
+		_ = p.MarshalData(req)
+	}
+	return
+}
+
+func (p *Packet) IsNeedRemoveDupOperation() bool {
+	if p.Opcode == proto.OpMetaExtentsInsert || p.Opcode == proto.OpMetaExtentsAdd || p.Opcode == proto.OpMetaLinkInode ||
+		p.Opcode == proto.OpMetaUnlinkInode || p.Opcode == proto.OpMetaBatchExtentsAdd || p.Opcode == proto.OpMetaSetattr ||
+		p.Opcode == proto.OpMetaTruncate || p.Opcode == proto.OpMetaSetXAttr || p.Opcode == proto.OpMetaRemoveXAttr ||
+		p.Opcode == proto.OpMetaCreateDentry || p.Opcode == proto.OpMetaDeleteDentry {
+		return true
+	}
+	return false
 }
 
 func NewPacket(ctx context.Context) *Packet {

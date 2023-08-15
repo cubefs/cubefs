@@ -57,6 +57,8 @@ func (dp *DataPartition) persist(status *WALApplyStatus) (err error) {
 		return
 	}
 
+	dp.truncateRaftWAL(status)
+
 	return
 }
 
@@ -107,7 +109,7 @@ func (dp *DataPartition) persistAppliedID(snap *WALApplyStatus) (err error) {
 		return
 	}
 	err = os.Rename(tmpFilename, path.Join(dp.Path(), ApplyIndexFile))
-	log.LogInfof("dp(%v) persistAppliedID to (%v)", dp.partitionID, newAppliedIndex)
+	log.LogInfof("partition[%v] persisted appliedID [prev: %v, new: %v]", dp.partitionID, dp.persistedApplied, newAppliedIndex)
 	dp.persistedApplied = newAppliedIndex
 	return
 }
@@ -126,6 +128,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	metadata.VolumeID = dp.config.VolName
 	metadata.PartitionID = dp.config.PartitionID
 	metadata.PartitionSize = dp.config.PartitionSize
+	metadata.ReplicaNum = dp.config.ReplicaNum
 	metadata.Peers = dp.config.Peers
 	metadata.Hosts = dp.config.Hosts
 	metadata.Learners = dp.config.Learners
@@ -177,6 +180,12 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	dp.persistedMetadata = metadata
 	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(newData))
 	return
+}
+
+func (dp *DataPartition) truncateRaftWAL(status *WALApplyStatus) {
+	if status != nil && status.LastTruncate() > 0 && dp.raftPartition != nil {
+		dp.raftPartition.Truncate(status.LastTruncate())
+	}
 }
 
 func (dp *DataPartition) forceFlushAllFD() (cnt int) {

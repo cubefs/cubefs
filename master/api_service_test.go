@@ -1747,7 +1747,7 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	// update to cross region vol
 	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false, false,
 		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
-		"", false, false, 0)
+		"", false, false, 0, false)
 	if !assert.NoErrorf(t, err, "UpdateVolume err:%v", err) {
 		return
 	}
@@ -3900,7 +3900,8 @@ func updateVolCacheConfig(volName, remoteCacheBoostPath string, remoteCacheBoost
 		remoteCacheBoostPath,
 		remoteCacheBoostEnable,
 		remoteCacheAutoPrepare,
-		remoteCacheTTL)
+		remoteCacheTTL,
+		false)
 	if err != nil {
 		return
 	}
@@ -3944,4 +3945,61 @@ func TestSetRemoteCacheHandler(t *testing.T) {
 		t.Errorf("remoteCacheEnableState expect:true,real:%v", limitInfo.RemoteCacheBoostEnable)
 	}
 
+}
+
+func TestSetOfflineState(t *testing.T) {
+	var (
+		addrList []string
+		nodeType string
+		zoneName string
+		state    string
+		err      error
+	)
+	zoneName = "zone1"
+	state = "true"
+	nodeType = "all"
+	addrList = []string{
+		"127.0.0.1:9101",
+		"127.0.0.1:9102",
+		"127.0.0.1:8101",
+		"127.0.0.1:8102",
+		"127.0.0.1:10301",
+		"127.0.0.1:10302",
+	}
+	err = mc.AdminAPI().SetNodeToOfflineState(addrList, nodeType, zoneName, state)
+	assert.NoError(t, err)
+	for _, addr := range addrList {
+		if v, ok := server.cluster.dataNodes.Load(addr); ok {
+			node := v.(*DataNode)
+			assert.Equal(t, true, node.ToBeMigrated)
+		}
+		if v, ok := server.cluster.metaNodes.Load(addr); ok {
+			node := v.(*MetaNode)
+			assert.Equal(t, true, node.ToBeMigrated)
+		}
+		if v, ok := server.cluster.ecNodes.Load(addr); ok {
+			node := v.(*ECNode)
+			assert.Equal(t, true, node.ToBeMigrated)
+		}
+	}
+}
+
+func TestSetNodeSetCapacity(t *testing.T) {
+	cv, _ := mc.AdminAPI().GetCluster()
+	fmt.Println(cv.NodeSetCapacity)
+	t.Run("test update setNodeCapacity", func(t *testing.T) {
+		_, err := mc.AdminAPI().SetNodeSetCapacity(512)
+		assert.NoError(t, err)
+		assert.Equal(t, 512, server.cluster.cfg.nodeSetCapacity)
+	})
+	t.Run("test invalid setNodeCapacity: 60", func(t *testing.T) {
+		_, err := mc.AdminAPI().SetNodeSetCapacity(60)
+		assert.Error(t, err)
+		assert.Equal(t, 512, server.cluster.cfg.nodeSetCapacity)
+	})
+	t.Run("test invalid setNodeCapacity: -1", func(t *testing.T) {
+		_, err := mc.AdminAPI().SetNodeSetCapacity(-1)
+		assert.Error(t, err)
+		assert.Equal(t, 512, server.cluster.cfg.nodeSetCapacity)
+	})
 }

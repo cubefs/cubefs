@@ -29,7 +29,7 @@ const (
 	IntervalToUpdateReplica       = 600 // interval to update the replica
 	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
 	NumOfFilesToRecoverInParallel = 8   // number of files to be recovered simultaneously
-	RaftLogRecoverInAdvance       = 5 // Partition启动时回放日志提前量
+	RaftLogRecoverInAdvance       = 5   // Partition启动时回放日志提前量
 )
 
 // Network protocol
@@ -59,6 +59,7 @@ const (
 	ActionStreamRead                      = "ActionStreamRead"
 	ActionCreateExtent                    = "ActionCreateExtent:"
 	ActionMarkDelete                      = "ActionMarkDelete:"
+	ActionBatchDeleteExtent               = "ActionBatchDeleteExtent"
 	ActionGetAllExtentWatermarks          = "ActionGetAllExtentWatermarks:"
 	ActionGetAllExtentWatermarksV2        = "ActionGetAllExtentWatermarksV2:"
 	ActionGetAllExtentInfo                = "ActionGetAllExtentInfo:"
@@ -134,8 +135,8 @@ const (
 )
 
 const (
-	errorConnRefusedMsg = "connection refused"
-	errorIOTimeoutMsg     = "i/o timeout"
+	errorConnRefusedMsg      = "connection refused"
+	errorIOTimeoutMsg        = "i/o timeout"
 	errorGetConnectMsg       = "get connection failed"
 	errorPartitionRecoverMsg = "partition is recovering"
 )

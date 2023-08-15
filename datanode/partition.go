@@ -72,6 +72,7 @@ type DataPartitionMetadata struct {
 	Peers                   []proto.Peer
 	Hosts                   []string
 	Learners                []proto.Learner
+	ReplicaNum              int
 	DataPartitionCreateType int
 	LastTruncateID          uint64
 	VolumeHAType            proto.CrossRegionHAType
@@ -93,6 +94,7 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 			reflect.DeepEqual(md.Peers, other.Peers) &&
 			reflect.DeepEqual(md.Hosts, other.Hosts) &&
 			reflect.DeepEqual(md.Learners, other.Learners) &&
+			md.ReplicaNum == other.ReplicaNum &&
 			md.DataPartitionCreateType == other.DataPartitionCreateType &&
 			md.LastTruncateID == other.LastTruncateID &&
 			md.VolumeHAType == other.VolumeHAType) &&
@@ -228,11 +230,9 @@ type DataPartition struct {
 	needServerFaultCheck  bool
 	serverFaultCheckLevel FaultOccurredCheckLevel
 	applyStatus           *WALApplyStatus
-	minAppliedID          uint64
-	maxAppliedID          uint64
 
-	repairC         chan struct{}
-	fetchVolHATypeC chan struct{}
+	repairC            chan struct{}
+	updateVolInfoPropC chan struct{}
 
 	stopOnce  sync.Once
 	stopRaftC chan uint64
@@ -247,8 +247,8 @@ type DataPartition struct {
 	FullSyncTinyDeleteTime        int64
 	lastSyncTinyDeleteTime        int64
 	DataPartitionCreateType       int
-
-	monitorData []*statistics.MonitorData
+	finishPlayBackTinyDelete      bool
+	monitorData                   []*statistics.MonitorData
 
 	persistSync chan struct{}
 
@@ -347,6 +347,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 		VolName:       meta.VolumeID,
 		PartitionSize: meta.PartitionSize,
 		PartitionID:   meta.PartitionID,
+		ReplicaNum:    meta.ReplicaNum,
 		Peers:         meta.Peers,
 		Hosts:         meta.Hosts,
 		Learners:      meta.Learners,
@@ -373,6 +374,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 	dp.isCatchUp = meta.IsCatchUp
 	dp.needServerFaultCheck = meta.NeedServerFaultCheck
 	dp.serverFaultCheckLevel = CheckAllCommitID
+
 	if !dp.applyStatus.Init(appliedID, meta.LastTruncateID) {
 		err = fmt.Errorf("action[loadApplyIndex] illegal metadata, appliedID %v, lastTruncateID %v", appliedID, meta.LastTruncateID)
 		return
@@ -380,9 +382,17 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
-	if (len(dp.config.Hosts) > 3 && dp.config.VolHAType == proto.DefaultCrossRegionHAType) ||
-		(len(dp.config.Hosts) <= 3 && dp.config.VolHAType == proto.CrossRegionHATypeQuorum) {
-		dp.ProposeFetchVolHAType()
+
+	// 检查是否有需要更新Volume信息
+	var maybeNeedUpdateCrossRegionHAType = func() bool {
+		return (len(dp.config.Hosts) > 3 && dp.config.VolHAType == proto.DefaultCrossRegionHAType) ||
+			(len(dp.config.Hosts) <= 3 && dp.config.VolHAType == proto.CrossRegionHATypeQuorum)
+	}
+	var maybeNeedUpdateReplicaNum = func() bool {
+		return dp.config.ReplicaNum == 0 || len(dp.config.Hosts) != dp.config.ReplicaNum
+	}
+	if maybeNeedUpdateCrossRegionHAType() || maybeNeedUpdateReplicaNum() {
+		dp.proposeUpdateVolumeInfo()
 	}
 
 	dp.persistedApplied = appliedID
@@ -448,7 +458,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		partitionSize:           dpCfg.PartitionSize,
 		replicas:                make([]string, 0),
 		repairC:                 make(chan struct{}, 1),
-		fetchVolHATypeC:         make(chan struct{}, 1),
+		updateVolInfoPropC:      make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),
 		storeC:                  make(chan uint64, 128),
@@ -796,9 +806,9 @@ func (dp *DataPartition) Repair() {
 	}
 }
 
-func (dp *DataPartition) ProposeFetchVolHAType() {
+func (dp *DataPartition) proposeUpdateVolumeInfo() {
 	select {
-	case dp.fetchVolHATypeC <- struct{}{}:
+	case dp.updateVolInfoPropC <- struct{}{}:
 	default:
 	}
 }
@@ -806,8 +816,8 @@ func (dp *DataPartition) ProposeFetchVolHAType() {
 func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	repairTimer := time.NewTimer(time.Minute)
 	validateCRCTimer := time.NewTimer(DefaultIntervalDataPartitionValidateCRC)
-	retryFetchVolHATypeTimer := time.NewTimer(0)
-	retryFetchVolHATypeTimer.Stop()
+	retryUpdateVolInfoTimer := time.NewTimer(0)
+	retryUpdateVolInfoTimer.Stop()
 	persistDpLastUpdateTimer := time.NewTimer(time.Hour) //for persist dp lastUpdateTime
 	var index int
 	for {
@@ -840,13 +850,13 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 		case <-validateCRCTimer.C:
 			dp.runValidateCRC(ctx)
 			validateCRCTimer.Reset(DefaultIntervalDataPartitionValidateCRC)
-		case <-dp.fetchVolHATypeC:
-			if err := dp.fetchVolHATypeFromMaster(); err != nil {
-				retryFetchVolHATypeTimer.Reset(time.Minute)
+		case <-dp.updateVolInfoPropC:
+			if err := dp.updateVolumeInfoFromMaster(); err != nil {
+				retryUpdateVolInfoTimer.Reset(time.Minute)
 			}
-		case <-retryFetchVolHATypeTimer.C:
-			if err := dp.fetchVolHATypeFromMaster(); err != nil {
-				retryFetchVolHATypeTimer.Reset(time.Minute)
+		case <-retryUpdateVolInfoTimer.C:
+			if err := dp.updateVolumeInfoFromMaster(); err != nil {
+				retryUpdateVolInfoTimer.Reset(time.Minute)
 			}
 		case <-persistDpLastUpdateTimer.C:
 			_ = dp.persistMetaDataOnly()
@@ -855,13 +865,22 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	}
 }
 
-func (dp *DataPartition) fetchVolHATypeFromMaster() (err error) {
+func (dp *DataPartition) updateVolumeInfoFromMaster() (err error) {
 	var simpleVolView *proto.SimpleVolView
 	if simpleVolView, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(dp.volumeID); err != nil {
 		return
 	}
+	// Process CrossRegionHAType
+	var changed bool
 	if dp.config.VolHAType != simpleVolView.CrossRegionHAType {
 		dp.config.VolHAType = simpleVolView.CrossRegionHAType
+		changed = true
+	}
+	if dp.config.ReplicaNum != int(simpleVolView.DpReplicaNum) {
+		dp.config.ReplicaNum = int(simpleVolView.DpReplicaNum)
+		changed = true
+	}
+	if changed {
 		if err = dp.persistMetaDataOnly(); err != nil {
 			return
 		}
@@ -1103,7 +1122,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 	close(extentRepairTaskCh)
 	extentRepairWorkerWG.Wait()
 
-	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
 
 	log.LogInfof("partition[%v] repaired %v extents, cost %v", dp.partitionID, validExtentsToBeRepaired, time.Now().Sub(startTime))
 }
@@ -1116,7 +1135,7 @@ type TinyDeleteRecord struct {
 
 type TinyDeleteRecordArr []TinyDeleteRecord
 
-func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repairTask *DataPartitionRepairTask, isFullSync bool) {
+func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repairTask *DataPartitionRepairTask, syncRecordFileOnly, isFullSync bool) {
 	var (
 		localTinyDeleteFileSize int64
 		err                     error
@@ -1131,24 +1150,23 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 		dp.Disk().finishFixTinyDeleteRecord()
 	}()
 	log.LogInfof(ActionSyncTinyDeleteRecord+" start PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) "+
-		"leaderAddr(%v) ,lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v)",
+		"leaderAddr(%v) ,lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) syncRecordOnly(%v)",
 		dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr,
-		dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync)
+		dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, syncRecordFileOnly)
 
 	defer func() {
 		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) "+
-			"err(%v), lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) isRealSync(%v)\",",
+			"err(%v), lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) isRealSync(%v) syncRecordOnly(%v)\",",
 			dp.partitionID, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err,
-			dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, isRealSync)
+			dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, isRealSync, syncRecordFileOnly)
 	}()
+	if !isFullSync && !syncRecordFileOnly && time.Now().Unix()-dp.lastSyncTinyDeleteTime < MinSyncTinyDeleteTime {
+		return
+	}
 	if !isFullSync {
-		if time.Now().Unix()-dp.lastSyncTinyDeleteTime < MinSyncTinyDeleteTime {
-			return
-		}
 		if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
 			return
 		}
-
 	} else {
 		dp.FullSyncTinyDeleteTime = time.Now().Unix()
 	}
@@ -1157,11 +1175,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 		return
 	}
 
-	if !isFullSync && repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
+	if !isFullSync && !syncRecordFileOnly && repairTask.LeaderTinyDeleteRecordFileSize-localTinyDeleteFileSize < MinTinyExtentDeleteRecordSyncSize {
 		return
 	}
 	isRealSync = true
-	dp.lastSyncTinyDeleteTime = time.Now().Unix()
+	if !syncRecordFileOnly {
+		dp.lastSyncTinyDeleteTime = time.Now().Unix()
+	}
 	p := repl.NewPacketToReadTinyDeleteRecord(ctx, dp.partitionID, localTinyDeleteFileSize)
 	if conn, err = gConnPool.GetConnect(repairTask.LeaderAddr); err != nil {
 		return
@@ -1172,6 +1192,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 	}
 	store := dp.extentStore
 	start := time.Now().Unix()
+	defer func() {
+		if !syncRecordFileOnly || dp.finishPlayBackTinyDelete {
+			return
+		}
+		err = dp.ExtentStore().PlaybackTinyDelete()
+		dp.finishPlayBackTinyDelete = true
+	}()
 	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
 		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 			return
@@ -1207,7 +1234,6 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 			if !proto.IsTinyExtent(extentID) {
 				continue
 			}
-			DeleteLimiterWait()
 			dr := TinyDeleteRecord{
 				extentID: extentID,
 				offset:   offset,
@@ -1224,8 +1250,13 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 				if !proto.IsTinyExtent(dr.extentID) {
 					continue
 				}
-				log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, dr.extentID, dr.offset, dr.size)
-				store.MarkDelete(dr.extentID, int64(dr.offset), int64(dr.size))
+				if syncRecordFileOnly {
+					store.PersistTinyDeleteRecord(dr.extentID, int64(dr.offset), int64(dr.size))
+				} else {
+					DeleteLimiterWait()
+					log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, dr.extentID, dr.offset, dr.size)
+					store.MarkDelete(dr.extentID, int64(dr.offset), int64(dr.size))
+				}
 			}
 		}
 	}

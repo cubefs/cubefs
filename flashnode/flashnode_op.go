@@ -117,7 +117,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 		metric.Set(nil)
 		return
 	}
-	if block, err = f.cacheEngine.GetCacheBlock(req.CacheRequest.Volume, req.CacheRequest.Inode, req.CacheRequest.FixedFileOffset, req.CacheRequest.Version); err != nil {
+	if block, err = f.cacheEngine.GetCacheBlockForRead(req.CacheRequest.Volume, req.CacheRequest.Inode, req.CacheRequest.FixedFileOffset, req.CacheRequest.Version, req.Size_); err != nil {
 		if block, err = f.cacheEngine.CreateBlock(req.CacheRequest); err != nil {
 			return err
 		}

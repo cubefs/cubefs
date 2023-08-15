@@ -190,6 +190,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  BitMapAllocator      : %v\n", formatEnabledDisabled(svv.EnableBitMapAllocator)))
 	sb.WriteString(fmt.Sprintf("  TrashCleanDuration   : %v\n", svv.TrashCleanDuration))
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCount   : %v\n", svv.TrashCleanMaxCount))
+	sb.WriteString(fmt.Sprintf("  RemoveDupReq         : %v\n", formatEnabledDisabled(svv.EnableRemoveDupReq)))
 	if svv.NewVolName == "" && svv.OldVolName == "" && svv.RenameConvertStatus == 0 {
 		sb.WriteString(fmt.Sprintf("  rename convert status: No Rename Operation\n"))
 	} else {
@@ -997,19 +998,29 @@ func formatIdcInfoTableRow(name string, zones string) string {
 	return fmt.Sprintf(idcQueryTablePattern, name, zones)
 }
 
-var raftInfoTableHeader = "%-6v     %-8v    %-10v     %-10v   %-10v      %-10v    %-10v    %-8v    %-16v    %-10v"
-var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "ISLEADER", "COMMIT", "INDEX", "APPLIED", "LOGFIRST", "LOGLAST", "PENDQUE", "STATE", "STOPED")
+var raftInfoTableHeader = "%-6v     %-18v    %-9v    %-15v     %-10v     %-10v   %-10v      %-10v    %-10v    %-8v    %-16v    %-10v"
+var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "ADDRESS", "IS_LEADER", "TINY_DEL_SIZE", "COMMIT", "INDEX", "APPLIED", "LOG_FIRST", "LOG_LAST", "PEND_QUE", "STATE", "STOPED")
 
-func formatDataPartitionRaftTableInfo(raft *proto.Status) string {
+func formatDataPartitionRaftTableInfo(dnView *proto.DNDataPartitionInfo, nodeId uint64, addr string) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, raft.NodeID, raft.Leader == raft.NodeID, raft.Commit, raft.Index, raft.Applied, raft.Log.FirstIndex, raft.Log.LastIndex, raft.PendQueue, raft.State, raft.Stopped))
+	if dnView == nil {
+		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
+		return sb.String()
+	}
+	if dnView.RaftStatus == nil {
+		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", dnView.TinyDeleteRecordSize, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
+		return sb.String()
+	}
+	isLeader := dnView.RaftStatus.Leader == dnView.RaftStatus.NodeID
+	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, isLeader, dnView.TinyDeleteRecordSize, dnView.RaftStatus.Commit, dnView.RaftStatus.Index, dnView.RaftStatus.Applied,
+		dnView.RaftStatus.Log.FirstIndex, dnView.RaftStatus.Log.LastIndex, dnView.RaftStatus.PendQueue, dnView.RaftStatus.State, dnView.RaftStatus.Stopped))
 	return sb.String()
 }
 
-var ecReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-6v    %-6v    %-6v    %-10v    %-8v"
+var ecReplicaTableRowPattern = "%-18v    %-6v    %-6v    %-10v    %-10v    %-6v    %-12v    %-8v"
 
 func formatEcReplicaTableHeader() string {
-	return fmt.Sprintf(ecReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "FILECOUNT", "STATUS", "REPORT TIME", "HTTPPORT")
+	return fmt.Sprintf(ecReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "IS_LEADER", "FILE_COUNT", "STATUS", "REPORT_TIME", "HTTPPORT")
 }
 
 func formatEcReplica(indentation string, replica *proto.EcReplica, rowTable bool) string {
@@ -1214,8 +1225,14 @@ func formatTrashVolInfoTableRow(svv *proto.SimpleVolView, vi *proto.VolInfo) str
 
 var flashNodeViewTableRowPattern = "%-12v    %-12v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v    %-18v"
 
+var flashNodeViewTableSimpleRowPattern = "%-12v    %-12v    %-18v    %-18v    %-18v    %-18v   %-18v    %-18v"
+
 func formatFlashNodeViewTableHeader() string {
 	return fmt.Sprintf(flashNodeViewTableRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "IsActive", "FlashGroupID", "HitRate", "Evicts", "Limit", "ReportTime", "IsEnable")
+}
+
+func formatFlashNodeSimpleViewTableHeader() string {
+	return fmt.Sprintf(flashNodeViewTableSimpleRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "IsActive", "FlashGroupID", "ReportTime", "IsEnable")
 }
 
 func formatFlashNodeDetail(fn *proto.FlashNodeViewInfo) string {

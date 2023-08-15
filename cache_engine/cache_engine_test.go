@@ -142,7 +142,7 @@ func TestTTL(t *testing.T) {
 				offset += 1024
 			}
 			time.Sleep(time.Duration(ttl/2) * time.Second)
-			_, err = ce.GetCacheBlock(fmt.Sprintf("%s_%d", t.Name(), index), inode, fixedOffset, version)
+			_, err = ce.GetCacheBlockForRead(fmt.Sprintf("%s_%d", t.Name(), index), inode, fixedOffset, version, 0)
 			if err != nil {
 				t.Errorf("test[%v] expect get cacheBlock[%v] success, but error:%v", t.Name(), cb.blockKey, err)
 				return
@@ -154,7 +154,7 @@ func TestTTL(t *testing.T) {
 	//waiting all elements in lruCache expired
 	time.Sleep(time.Duration(ttl/2) * time.Second)
 	//get foot expired key, it won't be moved to front
-	_, err = ce.GetCacheBlock(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version)
+	_, err = ce.GetCacheBlockForRead(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version, 0)
 	if err == nil {
 		t.Errorf("test[%v] expect get cacheBlock[%v] fail, but success, lruCacheCap(%v) lruCacheLen(%v)", t.Name(), GenCacheBlockKey(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version), lruCap, ce.lruCache.Len())
 		return

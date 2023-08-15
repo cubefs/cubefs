@@ -48,6 +48,7 @@ const (
 	metadataFileTmp   = ".meta"
 	inodeDeletedFile  = "inode_deleted"
 	dentryDeletedFile = "dentry_deleted"
+	requestRecordFile = "request_record"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {
@@ -412,7 +413,7 @@ func (mp *metaPartition) loadDentry(rootDir string) (err error) {
 			}
 		}
 		var status uint8
-		status, err = mp.fsmCreateDentry(handler, dentry, true)
+		status, err = mp.fsmCreateDentry(handler, dentry, true, nil)
 		if err != nil {
 			err = errors.NewErrorf("[loadDentry] createDentry, dentry: %v, err: %v", dentry, err)
 			return
@@ -465,7 +466,7 @@ func (mp *metaPartition) loadExtend(rootDir string) error {
 		}
 		log.LogDebugf("loadExtend: new extend from bytes: partitionID（%v) volume(%v) inode(%v)",
 			mp.config.PartitionId, mp.config.VolName, extend.inode)
-		_, _ = mp.fsmSetXAttr(handler, extend)
+		_, _ = mp.fsmSetXAttr(handler, extend, nil)
 		offset += int(numBytes)
 	}
 	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
@@ -524,6 +525,51 @@ func (mp *metaPartition) loadMultipart(rootDir string) error {
 	}
 	log.LogInfof("loadMultipart: load complete: partitionID(%v) numMultiparts(%v) filename(%v)",
 		mp.config.PartitionId, numMultiparts, filename)
+	return nil
+}
+
+func (mp *metaPartition) loadRequestRecords(rootDir string) (err error) {
+	filename := path.Join(rootDir, requestRecordFile)
+	if _, err = os.Stat(filename); err != nil {
+		return nil
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = fp.Close()
+	}()
+	var mem mmap.MMap
+	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
+		return err
+	}
+	defer func() {
+		_ = mem.Unmap()
+	}()
+	var offset, n int
+	// read number of extends
+	var requestRecordCount uint64
+	requestRecordCount, n = binary.Uvarint(mem)
+	requestInfos := make(RequestInfoBatch, 0, requestRecordCount)
+	offset += n
+	for i := uint64(0); i < requestRecordCount; i++ {
+		// read length
+		var numBytes uint64
+		numBytes, n = binary.Uvarint(mem[offset:])
+		offset += n
+		reqInfo := &RequestInfo{}
+		if err = reqInfo.Unmarshal(mem[offset : offset+int(numBytes)]); err != nil {
+			log.LogErrorf("loadRequestRecords, unmarshal failed:%v", err)
+			return
+		}
+		requestInfos = append(requestInfos, reqInfo)
+		log.LogDebugf("loadRequestRecords: unmarshal req info from bytes: partitionID（%v) reqInfo(%v)", mp.config.PartitionId, reqInfo)
+		offset += int(numBytes)
+	}
+	mp.reqRecords = InitRequestRecords(requestInfos)
+	log.LogInfof("loadRequestRecords: load complete: partitionID(%v) reqRecordCount(%v) filename(%v)",
+		mp.config.PartitionId, requestRecordCount, filename)
 	return nil
 }
 
@@ -953,5 +999,67 @@ func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint3
 	crc = crc32.Sum32()
 	log.LogInfof("storeMultipart: store complete: partitoinID(%v) volume(%v) numMultiparts(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(MultipartType), crc)
+	return
+}
+
+func (mp *metaPartition) storeRequestInfo(rootDir string, sm *storeMsg) (crc uint32, err error) {
+	var fp = path.Join(rootDir, requestRecordFile)
+	var f *os.File
+	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		closeErr := f.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	var writer = bufio.NewWriterSize(f, 4*1024*1024)
+	var crc32 = crc32.NewIEEE()
+	var varintTmp = make([]byte, binary.MaxVarintLen64)
+	var n int
+	// write number of extends
+	n = binary.PutUvarint(varintTmp, sm.reqTree.Count())
+	if _, err = writer.Write(varintTmp[:n]); err != nil {
+		return
+	}
+	if _, err = crc32.Write(varintTmp[:n]); err != nil {
+		return
+	}
+	sm.reqTree.Ascend(func(i BtreeItem) bool {
+		requestInfo := i.(*RequestInfo)
+		data := requestInfo.MarshalBinary()
+		// write length
+		n = binary.PutUvarint(varintTmp, uint64(len(data)))
+		if _, err = writer.Write(varintTmp[:n]); err != nil {
+			return false
+		}
+		if _, err = crc32.Write(varintTmp[:n]); err != nil {
+			return false
+		}
+		// write raw
+		if _, err = writer.Write(data); err != nil {
+			return false
+		}
+		if _, err = crc32.Write(data); err != nil {
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		log.LogErrorf("storeRequestInfo: store failed:%v", err)
+		return
+	}
+
+	if err = writer.Flush(); err != nil {
+		return
+	}
+	if err = f.Sync(); err != nil {
+		return
+	}
+	crc = crc32.Sum32()
+	log.LogInfof("storeRequestInfo: store complete: partitoinID(%v) volume(%v) requestRecords(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, sm.reqTree.Count(), crc)
 	return
 }

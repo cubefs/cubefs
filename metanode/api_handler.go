@@ -123,6 +123,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getBitInuse", m.getBitInuse)
 	http.HandleFunc("/getInoAllocatorInfo", m.getInodeAllocatorStat)
 	http.HandleFunc("/checkFreeList", m.checkFreelist)
+	http.HandleFunc("/getReqRecords", m.getRequestRecords)
+	http.HandleFunc("/getReqRecordsInRocksDB", m.getRequestRecordsInRocksDB)
 	return
 }
 
@@ -222,6 +224,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["status"] = partition.status
 	msg["cleanTrashItemMaxDurationEachTime"] = partition.getCleanTrashItemMaxDurationEachTime()
 	msg["cleanTrashItemMaxCountEachTime"] = partition.getCleanTrashItemMaxCountEachTime()
+	msg["enableRemoveDupReq"] = partition.removeDupClientReqEnableState()
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -932,6 +935,8 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"bitMapAllocatorMinFreeFactor":      m.getBitMapAllocatorMinFreeFactor(),
 		"cleanTrashItemMaxDurationEachTime": nodeInfo.CleanTrashItemMaxDurationEachTime,
 		"cleanTrashItemMaxCountEachTime":    nodeInfo.CleanTrashItemMaxCountEachTime,
+		"clientReqRecordsReserveCount":      reqRecordMaxCount.Load(),
+		"clientReqRecordsReserveMin":        reqRecordReserveMin.Load(),
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -2634,4 +2639,119 @@ func (m *MetaNode) checkFreelist(w http.ResponseWriter, r *http.Request) {
 		Count:              len(unexpectFreeInodes),
 		UnExpectFreeInodes: unexpectFreeInodes,
 	}
+}
+func (m *MetaNode) getRequestRecords(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getRequestRecords] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	count := mp.(*metaPartition).reqRecords.Count()
+	records := make([]*RequestInfo, 0, count)
+
+	mp.(*metaPartition).reqRecords.RangeList(func(req *RequestInfo) bool {
+		records = append(records, req)
+		return true
+	})
+	resp.Data = &struct {
+		Count   int            `json:"count"`
+		Records []*RequestInfo `json:"records"`
+	}{
+		Count:   count,
+		Records: records,
+	}
+	return
+}
+
+func (m *MetaNode) getRequestRecordsInRocksDB(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		pid uint64
+		mp  MetaPartition
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getRequestRecordsInRocksDB] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if pid, err = strconv.ParseUint(r.FormValue("pid"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	if mp, err = m.metadataManager.GetPartition(pid); err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	metapartition := mp.(*metaPartition)
+	if metapartition.HasMemStore() {
+		resp.Msg = fmt.Sprintf("mem mode meta partition")
+		return
+	}
+
+	dbSnap := metapartition.db.OpenSnap()
+	if dbSnap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("open db snap failed")
+		return
+	}
+
+	reqRecords := make(RequestInfoBatch, 0)
+	startKey := []byte{byte(ReqRecordsTable)}
+	endKey := []byte{byte(ReqRecordsTable + 1)}
+	err = metapartition.db.RangeWithSnap(startKey, endKey, dbSnap, func(k, v []byte) (bool, error) {
+		batchRecords, e := UnmarshalBatchRequestInfo(v)
+		if e != nil {
+			return false, e
+		}
+		reqRecords = append(reqRecords, batchRecords...)
+		return true, nil
+	})
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	count := len(reqRecords)
+	resp.Data = &struct {
+		Count   int            `json:"count"`
+		Records []*RequestInfo `json:"records"`
+	}{
+		Count:   count,
+		Records: reqRecords,
+	}
+	return
 }

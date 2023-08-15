@@ -704,6 +704,8 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName, version string) (id uint64, er
 	if err = c.syncUpdateNodeSet(ns); err != nil {
 		goto errHandler
 	}
+	metaNode.ReportTime = time.Now()
+	metaNode.IsActive = true
 	c.t.putMetaNode(metaNode)
 	c.metaNodes.Store(nodeAddr, metaNode)
 	log.LogInfof("action[addMetaNode],clusterID[%v] metaNodeAddr:%v,nodeSetId[%v],capacity[%v]",
@@ -749,6 +751,8 @@ func (c *Cluster) addDataNode(nodeAddr, httpPort, zoneName, version string) (id 
 	if err = c.syncUpdateNodeSet(ns); err != nil {
 		goto errHandler
 	}
+	dataNode.ReportTime = time.Now()
+	dataNode.isActive = true
 	c.t.putDataNode(dataNode)
 	c.dataNodes.Store(nodeAddr, dataNode)
 	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeSetId[%v],capacity[%v]",
@@ -1089,7 +1093,7 @@ errHandler:
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer,
 	hosts []string, learners []proto.Learner, createType int, volumeHAType proto.CrossRegionHAType) (
 	diskPath string, err error) {
-	task := dp.createTaskToCreateDataPartition(host, size, peers, hosts, learners, createType, volumeHAType)
+	task := dp.createTaskToCreateDataPartition(host, size, dp.ReplicaNum, peers, hosts, learners, createType, volumeHAType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
@@ -2942,7 +2946,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
 	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod,
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
-	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64) (err error) {
+	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
+	enableRemoveDupReq bool) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3076,6 +3081,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.TrashCleanInterval = trashCleanInterval
 	vol.BatchDelInodeCnt = batchDelInodeCnt
 	vol.DelInodeInterval = delInodeInterval
+	vol.enableRemoveDupReq = enableRemoveDupReq
 	if isSmart && !vol.isSmart {
 		vol.smartEnableTime = time.Now().Unix()
 	}
@@ -3866,6 +3872,21 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.DpTimeoutCntThreshold, int32(val.(int64)))
 	}
 
+	oldClientReqReservedCount := atomic.LoadInt32(&c.cfg.ClientReqRecordsReservedCount)
+	if val, ok := params[proto.ClientReqRecordReservedCntKey]; ok {
+		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedCount, int32(val.(int64)))
+	}
+
+	oldClientReqReservedMin := atomic.LoadInt32(&c.cfg.ClientReqRecordsReservedMin)
+	if val, ok := params[proto.ClientReqRecordReservedMinKey]; ok {
+		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, int32(val.(int64)))
+	}
+
+	oldClientReqRemoveDup := c.cfg.ClientReqRemoveDup
+	if val, ok := params[proto.ClientReqRemoveDupFlagKey]; ok {
+		c.cfg.ClientReqRemoveDup = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3912,6 +3933,9 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.DpTimeoutCntThreshold, oldDpTimeoutCntThreshold)
 		c.cfg.RemoteCacheBoostEnable = oldRemoteCacheBoostEnable
 		atomic.StoreInt64(&c.cfg.ClientNetConnTimeoutUs, oldClientNetConnTimeout)
+		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedCount, oldClientReqReservedCount)
+		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, oldClientReqReservedMin)
+		c.cfg.ClientReqRemoveDup = oldClientReqRemoveDup
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -4500,6 +4524,25 @@ func (c *Cluster) setDataNodeToOfflineState(startID, endID uint64, state bool, z
 	})
 }
 
+func (c *Cluster) setDataNodeToOfflineStateByAddr(addrMap map[string]struct{}, state bool, zoneName string) {
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		if _, ok := addrMap[node.Addr]; !ok {
+			return true
+		}
+		if node.ZoneName != zoneName {
+			return true
+		}
+		node.Lock()
+		node.ToBeMigrated = state
+		node.Unlock()
+		return true
+	})
+}
+
 func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, zoneName string) {
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		node, ok := value.(*MetaNode)
@@ -4507,6 +4550,25 @@ func (c *Cluster) setMetaNodeToOfflineState(startID, endID uint64, state bool, z
 			return true
 		}
 		if node.ID < startID || node.ID > endID {
+			return true
+		}
+		if node.ZoneName != zoneName {
+			return true
+		}
+		node.Lock()
+		node.ToBeMigrated = state
+		node.Unlock()
+		return true
+	})
+}
+
+func (c *Cluster) setMetaNodeToOfflineStateByAddr(addrMap map[string]struct{}, state bool, zoneName string) {
+	c.metaNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+		if _, ok := addrMap[node.Addr]; !ok {
 			return true
 		}
 		if node.ZoneName != zoneName {
@@ -5495,6 +5557,23 @@ func (c *Cluster) setClientPkgAddr(addr string) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClientPkgAddr] err[%v]", err)
 		c.cfg.ClientPkgAddr = oldAddr
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setNodeSetCapacity(capacity int) (err error) {
+	if capacity < 64 {
+		err = proto.ErrInvalidNodeSetCapacity
+		log.LogErrorf("action[setNodeSetCapacity] err[%v]", err)
+		return
+	}
+	oldCapacity := c.cfg.nodeSetCapacity
+	c.cfg.nodeSetCapacity = capacity
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setNodeSetCapacity] err[%v]", err)
+		c.cfg.nodeSetCapacity = oldCapacity
 		err = proto.ErrPersistenceByRaft
 		return
 	}

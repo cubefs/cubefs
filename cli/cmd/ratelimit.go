@@ -276,6 +276,17 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DpTimeoutCntThreshold >= 0 {
 				msg += fmt.Sprintf("DP Timeout Continuous Count  : %v, ", info.DpTimeoutCntThreshold)
 			}
+			if info.ClientReqRecordsReservedCount > 0 {
+				msg += fmt.Sprintf("Client Req Reserved Count    : %d, ", info.ClientReqRecordsReservedCount)
+			}
+			if info.ClientReqRecordsReservedMin > 0 {
+				msg += fmt.Sprintf("Client Req Reserved Min      : %d, ", info.ClientReqRecordsReservedMin)
+			}
+			if info.ClientReqRemoveDupFlag == 0 {
+				msg += fmt.Sprintf("Client Req Remove Dup        : disable, ")
+			} else if info.ClientReqRemoveDupFlag == 1 {
+				msg += fmt.Sprintf("Client Req Remove Dup        : enable, ")
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -347,6 +358,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int32Var(&info.DataPartitionConsistencyMode, "dataPartitionConsistencyMode", -1, fmt.Sprintf("cluster consistency mode for data partitions [%v:%v, %v:%v] ",
 		proto.StandardMode.Int32(), proto.StandardMode.String(), proto.StrictMode.Int32(), proto.StrictMode.String()))
 	cmd.Flags().IntVar(&info.DpTimeoutCntThreshold, "dpTimeoutCntThreshold", -1, "continuous timeout count to exclude dp")
+	cmd.Flags().Uint32Var(&info.ClientReqRecordsReservedCount, "clientReqReservedCount", 0, "client req records reserved count")
+	cmd.Flags().Uint32Var(&info.ClientReqRecordsReservedMin, "clientReqReservedMin", 0, "client req records reserved min")
+	cmd.Flags().Int32Var(&info.ClientReqRemoveDupFlag, "clientReqRemoveDupFlag", -1, "client req remove dup flag")
 	return cmd
 }
 
@@ -415,5 +429,8 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  ClientConnTimeoutUs              : %v(us)\n", info.ClientConnTimeoutUs))
 	sb.WriteString(fmt.Sprintf("  DataPartitionConsistencyMode     : %v", info.DataPartitionConsistencyMode.String()))
 	sb.WriteString(fmt.Sprintf("  DpTimeoutCntThreshold            : %v\n", info.DpTimeoutCntThreshold))
+	sb.WriteString(fmt.Sprintf("  RemoveDupReq                     : %v\n", formatEnabledDisabled(info.ClientReqRemoveDupFlag)))
+	sb.WriteString(fmt.Sprintf("  ReqRecordsReservedMin            : %v\n", info.ClientReqRecordsReservedMin))
+	sb.WriteString(fmt.Sprintf("  ReqRecordsReservedCount          : %v\n", info.ClientReqRecordsReservedCount))
 	return sb.String()
 }

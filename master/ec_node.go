@@ -504,7 +504,7 @@ func (ecNode *ECNode) isWriteAble() (ok bool) {
 	ecNode.RLock()
 	defer ecNode.RUnlock()
 
-	if ecNode.isActive == true && ecNode.AvailableSpace > 100*unit.GB && ecNode.ToBeOffline == false && ecNode.ToBeMigrated == false {
+	if ecNode.isActive == true && ecNode.AvailableSpace > 10*unit.GB && ecNode.ToBeOffline == false && ecNode.ToBeMigrated == false {
 		ok = true
 	}
 
@@ -1025,6 +1025,25 @@ func (c *Cluster) setEcNodeToOfflineState(startID, endID uint64, state bool, zon
 			return true
 		}
 		if node.ID < startID || node.ID > endID {
+			return true
+		}
+		if node.ZoneName != zoneName {
+			return true
+		}
+		node.Lock()
+		node.ToBeMigrated = state
+		node.Unlock()
+		return true
+	})
+}
+
+func (c *Cluster) setEcNodeToOfflineStateByAddr(addrMap map[string]struct{}, state bool, zoneName string) {
+	c.ecNodes.Range(func(key, value interface{}) bool {
+		node, ok := value.(*ECNode)
+		if !ok {
+			return true
+		}
+		if _, ok := addrMap[node.Addr]; !ok {
 			return true
 		}
 		if node.ZoneName != zoneName {

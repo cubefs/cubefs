@@ -254,10 +254,16 @@ func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64)
 	} else {
 		inoPtr.IncNLink()
 	}
-	_, ok, err = mp.inodeTree.Create(dbHandle, inoPtr, false)
-	if err != nil || !ok {
+	var existIno *Inode
+	existIno, ok, err = mp.inodeTree.Create(dbHandle, inoPtr, false)
+	if err != nil {
 		log.LogErrorf("[recoverDeletedInode], failed to add inode to inodeTree, inode: (%v), error: (%v)", inoPtr, err)
 		resp.Status = proto.OpErr
+		return
+	}
+	if !ok {
+		log.LogErrorf("[recoverDeletedInode], failed to add inode to inodeTree, inode exist, inode(%v) existIno(%v)", inoPtr, existIno)
+		resp.Status = proto.OpExistErr
 		return
 	}
 	if _, err = mp.inodeDeletedTree.Delete(dbHandle, dino.Inode.Inode); err != nil {

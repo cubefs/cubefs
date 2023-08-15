@@ -200,6 +200,8 @@ func (c *Cluster) addFlashNode(nodeAddr, zoneName, version string) (id uint64, e
 	if err = c.syncAddFlashNode(flashNode); err != nil {
 		goto errHandler
 	}
+	flashNode.ReportTime = time.Now()
+	flashNode.IsActive = true
 	c.flashNodeTopo.putFlashNode(flashNode)
 	log.LogInfof("action[addFlashNode],clusterID[%v] Addr:%v ZoneName:%v success",
 		c.Name, nodeAddr, zoneName)
@@ -428,10 +430,10 @@ func (c *Cluster) loadFlashNodes() (err error) {
 
 func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr      string
-		state         bool
-		flashNode     *FlashNode
-		err           error
+		nodeAddr  string
+		state     bool
+		flashNode *FlashNode
+		err       error
 	)
 	metrics := exporter.NewModuleTP(proto.SetFlashNodeUmpKey)
 	defer func() { metrics.Set(err) }()

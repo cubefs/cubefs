@@ -91,7 +91,7 @@ build_client_dynamic() {
 
     # dynamic fuse client, for libc version >= 2.14
     go build -ldflags "${goflag}" -o ${bin}/cfs-client ${dir}/fuse/run_fuse_client.go ${dir}/fuse/prepare_lib.go
-    go build -ldflags "${goflag}" -linkshared -o ${bin}/cfs-client-inner ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go
+    go build -ldflags "${goflag} -r /usr/lib64" -linkshared -o ${bin}/cfs-client-inner ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go
 
     # static fuse client, for libc version < 2.14
     go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
@@ -144,7 +144,11 @@ if [[ ${pack_libs} -eq 1 ]]; then
     fi
 
     echo "pack libs, generate cfs-client-libs.tar.gz ..."
+    go build -buildmode=plugin -linkshared -o ${bin}/libempty_tmp.so ${dir}/empty.go
     cd ${bin}
+    chmod a+rx libempty_tmp.so
+    libstd=`ldd libempty_tmp.so |grep libstd.so |awk '{print $3}'`
+    \rm libempty_tmp.so
     versionID=`./cfs-client-static -v | grep Version: | awk '{print $2}'`
     version_regex="^[0-9]+\.[0-9]+\.[0-9]+$"
     if ! [[ ${versionID} =~ ${version_regex} ]]; then
@@ -156,8 +160,8 @@ if [[ ${pack_libs} -eq 1 ]]; then
     echo "${versionID}  Version" >> checkfile
     tar -zcvf ${libTarName} libcfssdk.so libcfsc.so checkfile
 
-    libstd=`ldd libcfssdk.so |grep libstd.so |awk '{print $3}'`
     cp -f ${libstd} libstd.so
+    chmod a+rx libstd.so
     md5sum libcfssdk.so > checkfile
     md5sum libstd.so >> checkfile
     md5sum cfs-client-inner >> checkfile

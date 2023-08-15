@@ -486,22 +486,81 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 
 // Getxattr has not been implemented yet.
 func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+	ino := d.info.Inode
+	name := req.Name
+	size := req.Size
+	pos := req.Position
+	info, err := d.super.mw.XAttrGet_ll(ctx, ino, name)
+	if err != nil {
+		log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	value := info.Get(name)
+	if pos > 0 && pos < uint32(len(value)) {
+		value = value[pos:]
+	}
+	if size > 0 && size < uint32(len(value)) {
+		value = value[:size]
+	}
+	resp.Xattr = value
+	log.LogDebugf("TRACE GetXattr: ino(%v) name(%v)", ino, name)
+	return nil
 }
 
 // Listxattr has not been implemented yet.
 func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+	ino := d.info.Inode
+	_ = req.Size     // ignore currently
+	_ = req.Position // ignore currently
+
+	keys, err := d.super.mw.XAttrsList_ll(ctx, ino)
+	if err != nil {
+		log.LogErrorf("ListXattr: ino(%v) err(%v)", ino, err)
+		return ParseError(err)
+	}
+	for _, key := range keys {
+		resp.Append(key)
+	}
+	log.LogDebugf("TRACE Listxattr: ino(%v)", ino)
+	return nil
 }
 
 // Setxattr has not been implemented yet.
 func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+	ino := d.info.Inode
+	name := req.Name
+	value := req.Xattr
+	// TODO： implement flag to improve compatible (Mofei Zhang)
+	if err := d.super.mw.XAttrSet_ll(ctx, ino, []byte(name), []byte(value)); err != nil {
+		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
+	return nil
 }
 
 // Removexattr has not been implemented yet.
 func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
-	return fuse.ENOSYS
+	if !d.super.enableXattr {
+		return fuse.ENOSYS
+	}
+	ino := d.info.Inode
+	name := req.Name
+	if err := d.super.mw.XAttrDel_ll(ctx, ino, name); err != nil {
+		log.LogErrorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
+		return ParseError(err)
+	}
+	log.LogDebugf("TRACE RemoveXattr: ino(%v) name(%v)", ino, name)
+	return nil
 }
 
 func contains(arr []string, element string) (ok bool) {

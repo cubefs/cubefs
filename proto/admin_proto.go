@@ -74,6 +74,7 @@ const (
 	AdminSetNodeInfo               = "/admin/setNodeInfo"
 	AdminGetNodeInfo               = "/admin/getNodeInfo"
 	AdminSetNodeState              = "/admin/setNodeState"
+	AdminSetNodeStateByAddr        = "/admin/setNodeStateByAddr"
 	AdminMergeNodeSet              = "/admin/mergeNodeSet"
 	AdminClusterAutoMergeNodeSet   = "/cluster/autoMergeNodeSet"
 	AdminApplyVolMutex             = "/vol/writeMutex/apply"
@@ -87,6 +88,7 @@ const (
 	AdminGetClientPkgAddr          = "/clientPkgAddr/get"
 	AdminSetVolChildMaxCnt         = "/vol/setChildMaxCnt"
 	AdminCheckVolPartitionReplica  = "/vol/checkReplica"
+	AdminSetNodeSetCapacity        = "/admin/nodeSetCapacity/set"
 
 	AdminSmartVolList = "/admin/smartVol/list"
 
@@ -248,40 +250,45 @@ const (
 )
 
 const (
-	RocksDBDiskReservedSpaceKey  = "rocksDBDiskReservedSpace"
-	LogMaxMB                     = "logMaxMB"
-	MetaRockDBWalFileMaxMB       = "metaRockDBWalFileMaxMB"
-	MetaRocksDBWalMemMaxMB       = "metaRocksDBWalMemMaxMB"
-	MetaRocksDBLogMaxMB          = "metaRocksDBLogMaxMB"
-	MetaRocksLogReservedDay      = "metaRocksLogReservedDay"
-	MetaRocksLogReservedCnt      = "metaRocksLogReservedCnt"
-	MetaRocksWalFlushIntervalKey = "metaRocksWalFlushInterval"
-	MetaRocksDisableFlushWalKey  = "metaRocksDisableFlushWal"
-	MetaRocksWalTTLKey           = "metaRocksWalTTL"
-	ChildFileMaxCountKey         = "childFileMaxCount"
-	NameKey                      = "name"
-	MetaDelEKRecordFileMaxMB     = "metaDelEKRecordFileMaxMB"
-	MetaTrashCleanIntervalKey    = "metaTrashCleanInterval"
-	MetaRaftLogSizeKey           = "metaRaftLogSize"
-	MetaRaftLogCapKey            = "metaRaftLogCap"
-	MetaSyncWalEnableStateKey    = "metaWalSyncEnableState"
-	DataSyncWalEnableStateKey    = "dataWalSyncEnableState"
-	DisableStrictVolZoneKey      = "disableStrictVolZone"
-	AutoUpPartitionReplicaNumKey = "autoUpdatePartitionReplicaNum"
-	EnableBitMapAllocatorKey     = "enableBitMapAllocator"
-	AllocatorMaxUsedFactorKey    = "allocatorMaxUsedFactor"
-	AllocatorMinFreeFactorKey    = "allocatorMinFreeFactor"
-	TrashItemCleanMaxCountKey    = "trashItemCleanMaxCount"
-	TrashCleanDurationKey        = "trashItemCleanDuration"
-	DeleteMarkDelVolIntervalKey  = "deleteMarkDelVolInterval"
-	RemoteCacheBoostEnableKey    = "remoteCacheBoostEnable"
-	NetConnTimeoutUsKey          = "netConnTimeoutUs"
-	FlashNodeRateKey             = "flashNodeRate"
-	FlashNodeVolRateKey          = "flashNodeVolRate"
-	DataNodeReqVolPartRateKey    = "dataNodeReqVolPartRate"
-	DataNodeReqVolOpPartRateKey  = "dataNodeReqVolOpPartRate"
-	DataNodeMarkDeleteRateKey    = "markDeleteRate"
-	DpTimeoutCntThreshold        = "dpTimeoutCntThreshold"
+	RocksDBDiskReservedSpaceKey   = "rocksDBDiskReservedSpace"
+	LogMaxMB                      = "logMaxMB"
+	MetaRockDBWalFileMaxMB        = "metaRockDBWalFileMaxMB"
+	MetaRocksDBWalMemMaxMB        = "metaRocksDBWalMemMaxMB"
+	MetaRocksDBLogMaxMB           = "metaRocksDBLogMaxMB"
+	MetaRocksLogReservedDay       = "metaRocksLogReservedDay"
+	MetaRocksLogReservedCnt       = "metaRocksLogReservedCnt"
+	MetaRocksWalFlushIntervalKey  = "metaRocksWalFlushInterval"
+	MetaRocksDisableFlushWalKey   = "metaRocksDisableFlushWal"
+	MetaRocksWalTTLKey            = "metaRocksWalTTL"
+	ChildFileMaxCountKey          = "childFileMaxCount"
+	NameKey                       = "name"
+	MetaDelEKRecordFileMaxMB      = "metaDelEKRecordFileMaxMB"
+	MetaTrashCleanIntervalKey     = "metaTrashCleanInterval"
+	MetaRaftLogSizeKey            = "metaRaftLogSize"
+	MetaRaftLogCapKey             = "metaRaftLogCap"
+	MetaSyncWalEnableStateKey     = "metaWalSyncEnableState"
+	DataSyncWalEnableStateKey     = "dataWalSyncEnableState"
+	DisableStrictVolZoneKey       = "disableStrictVolZone"
+	AutoUpPartitionReplicaNumKey  = "autoUpdatePartitionReplicaNum"
+	EnableBitMapAllocatorKey      = "enableBitMapAllocator"
+	AllocatorMaxUsedFactorKey     = "allocatorMaxUsedFactor"
+	AllocatorMinFreeFactorKey     = "allocatorMinFreeFactor"
+	TrashItemCleanMaxCountKey     = "trashItemCleanMaxCount"
+	TrashCleanDurationKey         = "trashItemCleanDuration"
+	DeleteMarkDelVolIntervalKey   = "deleteMarkDelVolInterval"
+	RemoteCacheBoostEnableKey     = "remoteCacheBoostEnable"
+	NetConnTimeoutUsKey           = "netConnTimeoutUs"
+	FlashNodeRateKey              = "flashNodeRate"
+	FlashNodeVolRateKey           = "flashNodeVolRate"
+	DataNodeReqVolPartRateKey     = "dataNodeReqVolPartRate"
+	DataNodeReqVolOpPartRateKey   = "dataNodeReqVolOpPartRate"
+	DataNodeMarkDeleteRateKey     = "markDeleteRate"
+	DpTimeoutCntThreshold         = "dpTimeoutCntThreshold"
+	NodeSetCapacityKey            = "nodeSetCapacity"
+	ClientReqRecordReservedCntKey = "reqReservedCount"
+	ClientReqRecordReservedMinKey = "reqReservedMin"
+	ClientReqRemoveDupFlagKey     = "reqRemoveDupKey"
+	VolRemoveDupFlagKey           = "volRemoveDupReqKey"
 )
 
 const (
@@ -622,6 +629,10 @@ type LimitInfo struct {
 	ClientConnTimeoutUs      int64
 	FlashNodeLimitMap        map[string]uint64            //map[zone]
 	FlashNodeVolLimitMap     map[string]map[string]uint64 //map[zone]map[volume]
+
+	ClientReqRecordsReservedCount int32
+	ClientReqRecordsReservedMin   int32
+	ClientReqRemoveDupFlag        bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -629,6 +640,7 @@ type CreateDataPartitionRequest struct {
 	PartitionType string
 	PartitionId   uint64
 	PartitionSize int
+	ReplicaNum    int
 	VolumeId      string
 	IsRandomWrite bool
 	Members       []Peer
@@ -1190,6 +1202,7 @@ type SimpleVolView struct {
 	RemoteCacheBoostPath   string
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
+	EnableRemoveDupReq     bool
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1218,6 +1231,7 @@ type VolInfo struct {
 	BatchInodeDelCnt              uint32
 	DelInodeInterval              uint32
 	EnableBitMapAllocator         bool
+	EnableRemoveDupReq            bool
 	CleanTrashMaxDurationEachTime int32
 	CleanTrashMaxCountEachTime    int32
 }
@@ -1225,7 +1239,7 @@ type VolInfo struct {
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
 	remainingDays uint32, childFileMaxCnt uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
 	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32,
-	cleanTrashDurationEachTime, cleanTrashCountEachTime int32, enableBitMapAllocator bool) *VolInfo {
+	cleanTrashDurationEachTime, cleanTrashCountEachTime int32, enableBitMapAllocator bool, enableRemoveDupReq bool) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
@@ -1252,6 +1266,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		EnableBitMapAllocator:         enableBitMapAllocator,
 		CleanTrashMaxCountEachTime:    cleanTrashCountEachTime,
 		CleanTrashMaxDurationEachTime: cleanTrashDurationEachTime,
+		EnableRemoveDupReq:            enableRemoveDupReq,
 	}
 }
 
@@ -1316,6 +1331,9 @@ type RateLimitInfo struct {
 	RemoteCacheBoostEnableState      int64
 	ClientConnTimeoutUs              int64
 	DpTimeoutCntThreshold            int
+	ClientReqRecordsReservedCount    uint32
+	ClientReqRecordsReservedMin      uint32
+	ClientReqRemoveDupFlag           int32
 }
 
 type ConvertMode uint8

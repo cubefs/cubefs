@@ -218,14 +218,29 @@ func (cv *ClusterView) checkFlashNodeAlive(host *ClusterHost) {
 	log.LogWarnf("action[checkFlashNodeAlive] %v has %v inactive flash nodes", host.host, len(inactiveFlashNodes))
 	msg := fmt.Sprintf("%v has %v inactive flash nodes,some of which have been inactive for five minutes,", host, inactiveLen)
 	host.doProcessAlarm(host.deadFlashNodes, msg, flashNodeType)
-	for _, fn := range inactiveFlashNodes {
-		flashNodeView, err := getFlashNode(host, fn.Addr)
-		if err != nil {
-			return
-		}
-		//offlineBadFlashNode(host)
-		if time.Since(flashNodeView.ReportTime) > 30*time.Minute {
-			offlineFlashNode(host, flashNodeView.Addr)
+	if len(inactiveFlashNodes) <= defaultMaxOfflineFlashNodesIn24Hour {
+		for _, fn := range inactiveFlashNodes {
+			flashNodeView, err := getFlashNode(host, fn.Addr)
+			if err != nil {
+				return
+			}
+
+			// 清理超过24小时的记录
+			for key, t := range host.offlineFlashNodesIn24Hour {
+				if time.Since(t) > 24*time.Hour {
+					delete(host.offlineFlashNodesIn24Hour, key)
+				}
+			}
+
+			if time.Since(flashNodeView.ReportTime) < 30*time.Minute {
+				continue
+			}
+
+			if len(host.offlineFlashNodesIn24Hour) <= defaultMaxOfflineFlashNodesIn24Hour {
+				host.offlineFlashNodesIn24Hour[flashNode.Addr] = time.Now()
+				log.LogDebugf("action[checkFlashNodeAlive] offlineFlashNodesIn24Hour:%v", host.offlineFlashNodesIn24Hour)
+				offlineFlashNode(host, flashNodeView.Addr)
+			}
 		}
 	}
 }
@@ -315,6 +330,7 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 						if isSSD(host.host, zoneName) {
 							offlineDataNode(host, dataNodeView.Addr)
 							delete(host.inOfflineDiskDataNodes, dataNodeView.Addr)
+							delete(s.lastCheckStartTime, dataNodeView.Addr)
 							continue
 						}
 						if _, ok = host.inOfflineDiskDataNodes[dataNodeView.Addr]; ok {
@@ -336,6 +352,7 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 							}
 							offlineDataNode(host, dataNodeView.Addr)
 							delete(host.inOfflineDiskDataNodes, dataNodeView.Addr)
+							delete(s.lastCheckStartTime, dataNodeView.Addr)
 						}
 					}
 				}
@@ -898,7 +915,7 @@ func (ch *ClusterHost) doWarnInactiveNodesBySpecialUMPKey() {
 			}
 		}
 	}
-	if inactiveDataNodeCount == 1 && inactiveMetaNodeCount == 1 && ch.host != "cn.elasticdb.jd.local" {
+	if inactiveDataNodeCount <= 1 && inactiveMetaNodeCount <= 1 && ch.host != "cn.elasticdb.jd.local" {
 		return
 	}
 	sb := new(strings.Builder)

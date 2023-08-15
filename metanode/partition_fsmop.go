@@ -54,7 +54,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 
 			ctx := context.Background()
 			// put first root inode
-			resp, err := mp.submit(ctx, opFSMCreateInode, "", data)
+			resp, err := mp.submit(ctx, opFSMCreateInode, "", data, nil)
 			if err != nil {
 				log.LogFatalf("[initInode] raft sync: %s", err.Error())
 			}
@@ -463,5 +463,37 @@ func (mp *metaPartition) IsEquareCreateMetaPartitionRequst(request *proto.Create
 		return fmt.Errorf("exsit unavali Partition(%v) partitionLearners(%v) requestLearners(%v)", mp.config.PartitionId, mp.config.Learners, request.Learners)
 	}
 
+	return
+}
+
+func (mp *metaPartition) evictExpiredRequestRecords(dbWriteHandle interface{}, evictTimestamp int64) {
+	var err error
+	mp.reqRecords.EvictByTime(evictTimestamp)
+	if mp.HasRocksDBStore() {
+		startKey, endKey := []byte{byte(ReqRecordsTable)}, []byte{byte(ReqRecordsTable + 1)}
+		dbSnap := mp.db.OpenSnap()
+		if dbSnap == nil{
+			log.LogErrorf("evictExpiredRequestRecords genSnap failed, partitionID(%v), error:%v",
+				mp.config.PartitionId, err)
+			return
+		}
+
+		if err = mp.db.RangeWithSnap(startKey, endKey, dbSnap, func(k, v []byte) (bool, error) {
+			if len(k) != requestInfoRocksDBKeyLen {
+				return false, fmt.Errorf("error key len:%v", len(k))
+			}
+			if int64(binary.BigEndian.Uint64(k[1:requestInfoRocksDBKeyLen])) > evictTimestamp {
+				return false, nil
+			}
+			if err = mp.db.DelItemToBatch(dbWriteHandle, k); err != nil {
+				return false, err
+			}
+			return true, nil
+		}); err != nil {
+			log.LogErrorf("evictExpiredRequestRecords addDeleteItem to batchWriteHandle failed, partitionID(%v), error:%v",
+				mp.config.PartitionId, err)
+		}
+	}
+	log.LogDebugf("evictExpiredRequestRecords, evict timestamp:%v", evictTimestamp)
 	return
 }

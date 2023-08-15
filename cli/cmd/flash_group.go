@@ -143,12 +143,12 @@ func newFlashGroupCreateCmd(client *master.MasterClient) *cobra.Command {
 
 func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		flashGroupID   uint64
-		showFlashNodes bool
+		flashGroupID uint64
+		showHitRate  bool
 	)
 	var cmd = &cobra.Command{
-		Use:   CliOpInfo + " [FlashGroupID]  [ShowFlashNodes] ",
-		Short: "get flash group by id",
+		Use:   CliOpInfo + " [FlashGroupID]  [showHitRate ture/false] ",
+		Short: "get flash group by id, default don't show hit rate",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
@@ -157,6 +157,7 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
+
 			flashGroupID, err = strconv.ParseUint(args[0], 10, 64)
 			if err != nil {
 				return
@@ -171,17 +172,16 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 			})
 			stdout(formatFlashGroupDetail(fgView))
 
-			if len(args) <= 1 {
-				return
+			if len(args) > 1 {
+				showHitRate, _ = strconv.ParseBool(args[1])
 			}
-			if showFlashNodes, err = strconv.ParseBool(args[1]); err != nil {
-				return
-			}
-			if showFlashNodes != true {
-				return
-			}
+
 			stdout("[Flash nodes]\n")
-			stdout("%v\n", formatFlashNodeViewTableHeader())
+			if showHitRate {
+				stdout("%v\n", formatFlashNodeViewTableHeader())
+			} else {
+				stdout("%v\n", formatFlashNodeSimpleViewTableHeader())
+			}
 			var row string
 			for _, flashNodeViewInfos := range fgView.ZoneFlashNodes {
 				for _, fn := range flashNodeViewInfos {
@@ -190,7 +190,7 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 						evicts  = "N/A"
 						limit   = "N/A"
 					)
-					if fn.IsActive && fn.IsEnable {
+					if fn.IsActive && fn.IsEnable && showHitRate {
 						stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
 						if err1 == nil {
 							hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
@@ -198,8 +198,13 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 							limit = strconv.FormatUint(stat.NodeLimit, 10)
 						}
 					}
-					row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
-						formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
+					if showHitRate {
+						row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
+							formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
+					} else {
+						row = fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
+							formatYesNo(fn.IsActive), fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
+					}
 					stdout("%v\n", row)
 				}
 			}

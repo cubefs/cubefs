@@ -29,6 +29,7 @@ type MulItems struct {
 	DeletedInodeBatches  DeletedINodeBatch
 	DeletedDentryBatches DeletedDentryBatch
 	DelExtents           DelExtentBatch
+	RequestBatches       RequestInfoBatch
 }
 
 // MarshalKey marshals the exporterKey to bytes.
@@ -145,6 +146,20 @@ func (i *MulItems) Marshal() (k []byte, err error) {
 			return
 		}
 	}
+
+	//request:len+data
+	if err = binary.Write(buff, binary.BigEndian, uint32(len(i.RequestBatches))); err != nil {
+		return
+	}
+	for _, reqInfo := range i.RequestBatches {
+		bs = reqInfo.MarshalBinary()
+		if err = binary.Write(buff,binary.BigEndian, uint32(len(bs))); err != nil {
+			return
+		}
+		if _, err = buff.Write(bs); err != nil {
+			return
+		}
+	}
 	return buff.Bytes(), nil
 }
 
@@ -159,6 +174,7 @@ func MulItemsUnmarshal(ctx context.Context, raw []byte, snapV SnapshotVersion) (
 		deletedInodeBatchLen  uint32
 		deletedDentryBatchLen uint32
 		delExtentLen          uint32
+		requestInfoLen        uint32
 		dataLen               uint32
 		extend                *Extend
 	)
@@ -296,6 +312,29 @@ func MulItemsUnmarshal(ctx context.Context, raw []byte, snapV SnapshotVersion) (
 		delExtentBatch = append(delExtentBatch, ekInfo)
 	}
 
+	var requestInfoBatch RequestInfoBatch
+	if snapV >= BatchSnapshotV3 {
+		// unmarshal request info
+		if err = binary.Read(buff, binary.BigEndian, &requestInfoLen); err != nil {
+			return
+		}
+		requestInfoBatch = make(RequestInfoBatch, 0, int(requestInfoLen))
+		for j := 0; j < int(requestInfoLen); j++ {
+			if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
+				return
+			}
+			data := make([]byte, int(dataLen))
+			if _, err = buff.Read(data); err != nil {
+				return
+			}
+			requestInfo := &RequestInfo{}
+			if err = requestInfo.Unmarshal(data); err != nil {
+				return
+			}
+			requestInfoBatch = append(requestInfoBatch, requestInfo)
+		}
+	}
+
 	result = &MulItems{
 		InodeBatches:         inodeBatchesLenResult,
 		DentryBatches:        dentryBatchResult,
@@ -304,6 +343,7 @@ func MulItemsUnmarshal(ctx context.Context, raw []byte, snapV SnapshotVersion) (
 		DeletedInodeBatches:  deletedInodeBatchesResult,
 		DeletedDentryBatches: deletedDentryBatchesResult,
 		DelExtents:           delExtentBatch,
+		RequestBatches:       requestInfoBatch,
 	}
 	return
 }

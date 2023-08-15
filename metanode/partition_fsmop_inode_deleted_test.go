@@ -7,6 +7,9 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/jacobsa/daemonize"
+	"hash/crc32"
+	"math"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -105,12 +108,20 @@ func TestMetaPartition_mvToDeletedInodeTree(t *testing.T) {
 			}
 			mp.inodeTree = mockInodeTreeByStoreMode(t, test.storeMode, rocksTree)
 
+			rand.Seed(time.Now().UnixMilli())
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
 				NoTrash:     false,
+				ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+				ClientStartTime: time.Now().Unix(),
+				ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 			}
 			var p = &Packet{}
+			p.Data, _ = json.Marshal(unlinkInodeReq)
+			p.Size = uint32(len(p.Data))
+			p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+			p.ReqID = rand.Int63n(math.MaxInt64)
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
 				t.Errorf("unlink inode failed:%v", err)
 				t.FailNow()
@@ -178,12 +189,20 @@ func TestMetaPartition_RecoverDeletedInodeCase01(t *testing.T) {
 			ino1 := NewInode(10, proto.Mode(os.ModeDir))
 			t.Logf("ino1:%v", ino1)
 
+			rand.Seed(time.Now().UnixMilli())
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
 				NoTrash:     false,
+				ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+				ClientStartTime: time.Now().Unix(),
+				ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 			}
 			var p = &Packet{}
+			p.Data, _ = json.Marshal(unlinkInodeReq)
+			p.Size = uint32(len(p.Data))
+			p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+			p.ReqID = rand.Int63n(math.MaxInt64)
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
 				t.Errorf("unlink inode failed:%v", err)
 				t.FailNow()
@@ -357,12 +376,20 @@ func TestMetaPartition_RecoverDeletedInodeCase02(t *testing.T) {
 			ino1 := NewInode(10, proto.Mode(os.ModeDir))
 			t.Logf("ino1:%v", ino1)
 
+			rand.Seed(time.Now().UnixMilli())
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
 				NoTrash:     false,
+				ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+				ClientStartTime: time.Now().Unix(),
+				ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 			}
 			var p = &Packet{}
+			p.Data, _ = json.Marshal(unlinkInodeReq)
+			p.Size = uint32(len(p.Data))
+			p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+			p.ReqID = rand.Int63n(math.MaxInt64)
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
 				t.Errorf("unlink inode failed:%v", err)
 				t.FailNow()
@@ -558,12 +585,20 @@ func TestMetaPartition_CleanDeletedInodeCase01(t *testing.T) {
 			ino1 := NewInode(10, proto.Mode(os.ModeDir))
 			t.Logf("ino1:%v", ino1)
 
+			rand.Seed(time.Now().UnixMilli())
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
 				NoTrash:     false,
+				ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+				ClientStartTime: time.Now().Unix(),
+				ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 			}
 			var p = &Packet{}
+			p.Data, _ = json.Marshal(unlinkInodeReq)
+			p.Size = uint32(len(p.Data))
+			p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+			p.ReqID = rand.Int63n(math.MaxInt64)
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
 				t.Errorf("unlink inode failed:%v", err)
 				t.FailNow()
@@ -745,12 +780,20 @@ func TestMetaPartition_CleanDeletedInodeCase02(t *testing.T) {
 			ino1 := NewInode(10, proto.Mode(os.ModeDir))
 			t.Logf("ino1:%v", ino1)
 
+			rand.Seed(time.Now().UnixMilli())
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
 				NoTrash:     false,
+				ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+				ClientStartTime: time.Now().Unix(),
+				ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 			}
 			var p = &Packet{}
+			p.Data, _ = json.Marshal(unlinkInodeReq)
+			p.Size = uint32(len(p.Data))
+			p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+			p.ReqID = rand.Int63n(math.MaxInt64)
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
 				t.Errorf("unlink inode failed:%v", err)
 				t.FailNow()
@@ -839,12 +882,20 @@ func TestMetaPartition_BatchCleanDeletedInode(t *testing.T) {
 			mp.inodeTree = mockInodeTreeByStoreMode(t, test.storeMode, rocksTree)
 			mp.freeList = newFreeList()
 
+			rand.Seed(time.Now().UnixMilli())
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
 				NoTrash:     false,
+				ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+				ClientStartTime: time.Now().Unix(),
+				ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 			}
 			var p = &Packet{}
+			p.Data, _ = json.Marshal(unlinkInodeReq)
+			p.Size = uint32(len(p.Data))
+			p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+			p.ReqID = rand.Int63n(math.MaxInt64)
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
 				t.Errorf("unlink inode failed:%v", err)
 				t.FailNow()
@@ -959,12 +1010,20 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase01(t *testing.T) {
 			mp.inodeTree = mockInodeTreeByStoreMode(t, test.storeMode, rocksTree)
 			mp.freeList = newFreeList()
 
+			rand.Seed(time.Now().UnixMilli())
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
 				NoTrash:     false,
+				ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+				ClientStartTime: time.Now().Unix(),
+				ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 			}
 			var p = &Packet{}
+			p.Data, _ = json.Marshal(unlinkInodeReq)
+			p.Size = uint32(len(p.Data))
+			p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+			p.ReqID = rand.Int63n(math.MaxInt64)
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
 				t.Errorf("unlink inode failed:%v", err)
 				t.FailNow()
@@ -1097,12 +1156,20 @@ func TestMetaPartition_BatchCleanExpiredDeletedInodeCase02(t *testing.T) {
 			mp.inodeTree = mockInodeTreeByStoreMode(t, test.storeMode, rocksTree)
 			mp.freeList = newFreeList()
 
+			rand.Seed(time.Now().UnixMilli())
 			unlinkInodeReq := &UnlinkInoReq{
 				PartitionID: 1,
 				Inode:       10,
 				NoTrash:     false,
+				ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+				ClientStartTime: time.Now().Unix(),
+				ClientID:        uint64(rand.Int63n(math.MaxInt64)),
 			}
 			var p = &Packet{}
+			p.Data, _ = json.Marshal(unlinkInodeReq)
+			p.Size = uint32(len(p.Data))
+			p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+			p.ReqID = rand.Int63n(math.MaxInt64)
 			if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
 				t.Errorf("unlink inode failed:%v", err)
 				t.FailNow()
