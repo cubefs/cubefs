@@ -772,7 +772,6 @@ func (mp *metaPartition) loadMultiVer(rootDir string) (err error) {
 	for _, info := range verList {
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, &proto.VolVersionInfo{
 			Ver:     info.Ver,
-			Ctime:   info.Ctime,
 			DelTime: info.DelTime,
 			Status:  info.Status,
 		})
