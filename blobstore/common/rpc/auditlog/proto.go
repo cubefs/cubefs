@@ -14,7 +14,10 @@
 
 package auditlog
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 const (
 	LogFormatText = "text"
@@ -29,6 +32,8 @@ type Config struct {
 	ChunkBits uint `json:"chunkbits"`
 	// BodyLimit negative means no body-cache, 0 means default buffer size.
 	BodyLimit int `json:"bodylimit"`
+	// NoLogBody means no 2xx response body
+	NoLogBody bool `json:"no_log_body"`
 	// rotate new audit log file every start time
 	RotateNew     bool   `json:"rotate_new"`
 	LogFileSuffix string `json:"log_file_suffix"`
@@ -57,10 +62,14 @@ var _ LogCloser = noopLogCloser{}
 func (noopLogCloser) Close() error     { return nil }
 func (noopLogCloser) Log([]byte) error { return nil }
 
-type MetricSender interface {
-	Send(raw []byte) error
+type Sender interface {
+	Send(ctx context.Context, data string) error
 }
 
 type Decoder interface {
 	DecodeReq(req *http.Request) *DecodedReq
+}
+
+type ExtraWriter interface {
+	ExtraWrite(key string, val interface{})
 }

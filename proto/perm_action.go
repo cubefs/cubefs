@@ -115,6 +115,10 @@ const (
 	OSSPutBucketTaggingAction    Action = OSSActionPrefix + "PutBucketTagging"
 	OSSDeleteBucketTaggingAction Action = OSSActionPrefix + "DeleteBucketTagging"
 
+	// Bucket logging actions
+	OSSGetBucketLoggingAction Action = OSSActionPrefix + "GetBucketLogging"
+	OSSPutBucketLoggingAction Action = OSSActionPrefix + "PutBucketLogging"
+
 	// Bucket lifecycle actions
 	OSSGetBucketLifecycleAction                 Action = OSSActionPrefix + "GetBucketLifecycle"    // unsupported
 	OSSPutBucketLifecycleAction                 Action = OSSActionPrefix + "PutBucketLifecycle"    // unsupported
@@ -250,6 +254,8 @@ var (
 		OSSGetBucketReplicationAction,
 		OSSPutBucketReplicationAction,
 		OSSDeleteBucketReplicationAction,
+		OSSGetBucketLoggingAction,
+		OSSPutBucketLoggingAction,
 		OSSOptionsObjectAction,
 		OSSGetFederationTokenAction,
 

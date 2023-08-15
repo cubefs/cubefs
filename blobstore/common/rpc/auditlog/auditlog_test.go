@@ -15,6 +15,7 @@
 package auditlog
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -223,10 +224,9 @@ func Benchmark_RowParser(b *testing.B) {
 			`"Trace-Log":["PROXY","a_0_r_19_w_2","ACCESS:22"],"Trace-Tags":["http.method:POST"],"X-Ack-Crc-Encoded":"1"}`,
 		"199", "22348",
 	}, "\t")
-	buff := []byte(line)
 	sender := NewPrometheusSender(PrometheusConfig{Idc: "Benchmark_RowParser" + strconv.Itoa(rand.Intn(100000))})
 	b.ResetTimer()
 	for ii := 0; ii < b.N; ii++ {
-		sender.Send(buff)
+		sender.Send(context.Background(), line)
 	}
 }

@@ -26,10 +26,12 @@ type ossMetaLoader interface {
 	loadACL() (p *AccessControlPolicy, err error)
 	loadCORS() (cors *CORSConfiguration, err error)
 	loadObjectLock() (config *ObjectLockConfig, err error)
+	loadLogging() (logging *Logging, err error)
 	storePolicy(p *Policy)
 	storeACL(p *AccessControlPolicy)
 	storeCORS(cors *CORSConfiguration)
 	storeObjectLock(config *ObjectLockConfig)
+	storeLogging(logging *Logging)
 	setSynced()
 }
 
@@ -46,14 +48,16 @@ type cacheMetaLoader struct {
 
 // OSSMeta is bucket policy and ACL metadata.
 type OSSMeta struct {
-	policy     *Policy
-	acl        *AccessControlPolicy
-	corsConfig *CORSConfiguration
-	lockConfig *ObjectLockConfig
-	policyLock sync.RWMutex
-	aclLock    sync.RWMutex
-	corsLock   sync.RWMutex
-	objectLock sync.RWMutex
+	policy      *Policy
+	acl         *AccessControlPolicy
+	corsConfig  *CORSConfiguration
+	lockConfig  *ObjectLockConfig
+	logging     *Logging
+	policyLock  sync.RWMutex
+	aclLock     sync.RWMutex
+	corsLock    sync.RWMutex
+	objectLock  sync.RWMutex
+	loggingLock sync.RWMutex
 }
 
 func (c *cacheMetaLoader) loadPolicy() (p *Policy, err error) {
@@ -156,6 +160,31 @@ func (c *cacheMetaLoader) storeObjectLock(config *ObjectLockConfig) {
 	return
 }
 
+func (c *cacheMetaLoader) loadLogging() (logging *Logging, err error) {
+	c.om.loggingLock.RLock()
+	logging = c.om.logging
+	c.om.loggingLock.RUnlock()
+	if logging == nil && atomic.LoadInt32(c.synced) == 0 {
+		ret, err, _ := c.sf.Do(XAttrKeyOSSLogging, func() (interface{}, error) {
+			c, err := c.sml.loadLogging()
+			return c, err
+		})
+		if err != nil {
+			return nil, err
+		}
+		logging = ret.(*Logging)
+		c.storeLogging(logging)
+	}
+	return
+}
+
+func (c *cacheMetaLoader) storeLogging(logging *Logging) {
+	c.om.loggingLock.Lock()
+	c.om.logging = logging
+	c.om.loggingLock.Unlock()
+	return
+}
+
 func (c *cacheMetaLoader) setSynced() {
 	atomic.StoreInt32(c.synced, 1)
 }
@@ -183,5 +212,11 @@ func (s *strictMetaLoader) loadObjectLock() (o *ObjectLockConfig, err error) {
 }
 
 func (s *strictMetaLoader) storeObjectLock(cors *ObjectLockConfig) {}
+
+func (s *strictMetaLoader) loadLogging() (*Logging, error) {
+	return s.v.loadBucketLogging()
+}
+
+func (s *strictMetaLoader) storeLogging(logging *Logging) {}
 
 func (s *strictMetaLoader) setSynced() {}

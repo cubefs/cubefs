@@ -179,6 +179,13 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Queries("tagging", "").
 			HandlerFunc(o.getBucketTaggingHandler)
 
+		// Get bucket logging
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLogging.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLoggingAction)).
+			Methods(http.MethodGet).
+			Queries("logging", "").
+			HandlerFunc(o.getBucketLoggingHandler)
+
 		// Get bucket encryption
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketEncryption.html
 		// Notes: unsupported operation
@@ -407,6 +414,13 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Methods(http.MethodPut).
 			Queries("tagging", "").
 			HandlerFunc(o.putBucketTaggingHandler)
+
+		// Put bucket logging
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLogging.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketLoggingAction)).
+			Methods(http.MethodPut).
+			Queries("logging", "").
+			HandlerFunc(o.putBucketLoggingHandler)
 
 		// Put bucket encryption
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketEncryption.html

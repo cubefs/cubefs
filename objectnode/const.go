@@ -149,6 +149,7 @@ const (
 	XAttrKeyOSSLock         = "oss:lock"
 	XAttrKeyOSSCacheControl = "oss:cache"
 	XAttrKeyOSSExpires      = "oss:expires"
+	XAttrKeyOSSLogging      = "oss:logging"
 
 	// Deprecated
 	XAttrKeyOSSETagDeprecated = "oss:tag"

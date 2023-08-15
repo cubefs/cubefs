@@ -17,6 +17,7 @@ package objectnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path"
 	"regexp"
@@ -24,6 +25,9 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -35,6 +39,12 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+func init() {
+	trace.PrefixBaggage = "x-object-baggage-"
+	trace.FieldKeyTraceID = "x-object-trace-id"
+	trace.FieldKeySpanID = "x-object-span-id"
+}
 
 // Configuration items that act on the ObjectNode.
 const (
@@ -112,6 +122,30 @@ const (
 	configMaxDentryCacheNum    = "maxDentryCacheNum"
 	configMaxInodeAttrCacheNum = "maxInodeAttrCacheNum"
 
+	// Map type configuration item, used to configure ObjectNode to support audit log function. For detailed
+	// parameters, see the auditlog.Config structure.
+	// Example:
+	// 		{
+	// 			"auditLog": {
+	// 				"logdir": "./run/auditlog/object/",
+	// 				"chunkbits": 29
+	// 			}
+	// 		}
+	configAuditLog = "auditLog"
+
+	// Map type configuration item, used to configure ObjectNode to save detailed access records for the
+	// requests made to a bucket.
+	// Example:
+	// 		{
+	// 			"logging": {
+	// 				"topic": "logging_topic",
+	//				"timeout_ms": 1000,
+	// 				"broker_list": ["127.0.0.1:9092"],
+	// 				"enable_consume": false
+	// 			}
+	// 		}
+	configLogging = "logging"
+
 	// enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"
 	// define thread numbers for writing and reading ebs
@@ -152,6 +186,8 @@ type ObjectNode struct {
 	state      uint32
 	wg         sync.WaitGroup
 	userStore  UserInfoStore
+	handler    rpc.ProgressHandler
+	closes     []func() error // close other resources after http server closed
 
 	signatureIgnoredActions proto.Actions // signature ignored actions
 	disabledActions         proto.Actions // disabled actions
@@ -230,6 +266,25 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	// parse logging config
+	var loggingMgr LoggingManager
+	if rawLogging := cfg.GetValue(configLogging); rawLogging != nil {
+		if loggingMgr, err = o.newLoggingMgr(rawLogging); err != nil {
+			err = fmt.Errorf("invalid %v configuration: %v", configLogging, err)
+			return
+		}
+		log.LogInfof("loadConfig: setup config: %v(%v)", configLogging, rawLogging)
+	}
+
+	// parse auditLog config
+	if rawAuditLog := cfg.GetValue(configAuditLog); rawAuditLog != nil {
+		if err = o.setAuditLog(rawAuditLog, loggingMgr); err != nil {
+			err = fmt.Errorf("invalid %v configuration: %v", configAuditLog, err)
+			return
+		}
+		log.LogInfof("loadConfig: setup config: %v(%v)", configAuditLog, rawAuditLog)
+	}
+
 	// parse strict config
 	strict := cfg.GetBool(configStrict)
 	log.LogInfof("loadConfig: strict: %v", strict)
@@ -273,6 +328,36 @@ func (o *ObjectNode) updateRegion(region string) {
 	o.region = region
 }
 
+func (o *ObjectNode) setAuditLog(raw interface{}, sender auditlog.Sender) error {
+	var cfg auditlog.Config
+	if err := ParseJSONEntity(raw, &cfg); err != nil {
+		return err
+	}
+
+	handler, file, err := auditlog.Open("OBJECT", &cfg, sender)
+	if err != nil {
+		return err
+	}
+	o.handler = handler
+	o.closes = append(o.closes, file.Close)
+
+	return nil
+}
+
+func (o *ObjectNode) newLoggingMgr(raw interface{}) (mgr LoggingManager, err error) {
+	var cfg LoggingConfig
+	if err = ParseJSONEntity(raw, &cfg); err != nil {
+		return
+	}
+	mgr, err = NewLoggingManager(o, cfg)
+	if err == nil {
+		mgr.Start()
+		o.closes = append(o.closes, mgr.Close)
+	}
+
+	return
+}
+
 func handleStart(s common.Server, cfg *config.Config) (err error) {
 	o, ok := s.(*ObjectNode)
 	if !ok {
@@ -282,8 +367,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	if err = o.loadConfig(cfg); err != nil {
 		return
 	}
-	// Get cluster info from master
-
+	// get cluster info from master
 	var ci *proto.ClusterInfo
 	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
 		return
@@ -300,7 +384,6 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 			Filename: path.Join(cfg.GetString("logDir"), "ebs.log"),
 		},
 	})
-
 	if err != nil {
 		wt := cfg.GetInt(ebsWriteThreads)
 		if wt != 0 {
@@ -311,7 +394,6 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 			readThreads = rt
 		}
 	}
-
 	// start rest api
 	if err = o.startMuxRestAPI(); err != nil {
 		log.LogInfof("handleStart: start rest api fail: err(%v)", err)
@@ -330,13 +412,14 @@ func handleShutdown(s common.Server) {
 	if !ok {
 		return
 	}
-	o.shutdownRestAPI()
+	o.shutdown()
 }
 
 func (o *ObjectNode) startMuxRestAPI() (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	o.registerApiRouters(router)
 	router.Use(
+		o.auditLogMiddleware,
 		o.expectMiddleware,
 		o.traceMiddleware,
 		o.corsMiddleware,
@@ -360,10 +443,13 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	return
 }
 
-func (o *ObjectNode) shutdownRestAPI() {
+func (o *ObjectNode) shutdown() {
 	if o.httpServer != nil {
 		_ = o.httpServer.Shutdown(context.Background())
 		o.httpServer = nil
+	}
+	for _, f := range o.closes {
+		_ = f()
 	}
 }
 

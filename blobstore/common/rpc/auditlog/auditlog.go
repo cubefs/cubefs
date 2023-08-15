@@ -50,10 +50,10 @@ func (reqBody *reqBodyReadCloser) Read(p []byte) (n int, err error) {
 }
 
 type jsonAuditlog struct {
-	module       string
-	decoder      Decoder
-	metricSender MetricSender
-	logFile      LogCloser
+	module  string
+	decoder Decoder
+	senders []Sender
+	logFile LogCloser
 
 	logPool  sync.Pool
 	bodyPool sync.Pool
@@ -110,7 +110,7 @@ func (a *AuditLog) ToJson() (b []byte) {
 	return
 }
 
-func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser, err error) {
+func Open(module string, cfg *Config, senders ...Sender) (ph rpc.ProgressHandler, logFile LogCloser, err error) {
 	if cfg.BodyLimit < 0 {
 		cfg.BodyLimit = 0
 	} else if cfg.BodyLimit == 0 {
@@ -138,11 +138,14 @@ func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser
 		}
 	}
 
+	metricSender := NewPrometheusSender(cfg.MetricConfig)
+	senders = append(senders, metricSender)
+
 	return &jsonAuditlog{
-		module:       module,
-		decoder:      &defaultDecoder{},
-		metricSender: NewPrometheusSender(cfg.MetricConfig),
-		logFile:      logFile,
+		module:  module,
+		decoder: &defaultDecoder{},
+		senders: senders,
+		logFile: logFile,
 
 		logPool: sync.Pool{
 			New: func() interface{} {
@@ -171,7 +174,9 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 		module:         j.module,
 		body:           j.bodyPool.Get().([]byte),
 		bodyLimit:      j.cfg.BodyLimit,
+		noLogBody:      j.cfg.NoLogBody,
 		span:           span,
+		statusCode:     200,
 		startTime:      time.Now(),
 		ResponseWriter: w,
 	}
@@ -243,7 +248,10 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	auditLog.RespLength = _w.getBodyWritten()
 	auditLog.Duration = endTime - startTime/1000
 
-	j.metricSender.Send(auditLog.ToBytesWithTab(b))
+	logString := string(auditLog.ToBytesWithTab(b))
+	for _, sender := range j.senders {
+		sender.Send(ctx, logString)
+	}
 
 	if j.logFile == nil || (len(j.cfg.KeywordsFilter) > 0 && defaultLogFilter(req, j.cfg.KeywordsFilter)) {
 		return
@@ -253,7 +261,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	case LogFormatJSON:
 		logBytes = auditLog.ToJson()
 	default:
-		logBytes = b.Bytes() // *bytes.Buffer was filled with metricSender.Send
+		logBytes = b.Bytes()
 	}
 	err = j.logFile.Log(logBytes)
 	if err != nil {
@@ -272,4 +280,13 @@ func defaultLogFilter(r *http.Request, words []string) bool {
 		}
 	}
 	return false
+}
+
+// ExtraWrite provides extra response header writes to the ResponseWriter.
+func ExtraWrite(w http.ResponseWriter, key string, val interface{}) {
+	ew, ok := w.(ExtraWriter)
+	if !ok {
+		return
+	}
+	ew.ExtraWrite(key, val)
 }

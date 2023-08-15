@@ -31,6 +31,7 @@ const (
 	ContextKeyBucket        = "bucket"
 	ContextKeyObject        = "object"
 	ContextKeyUid           = "uid"
+	ContextKeyOwner         = "owner"
 	ContextKeyAccessKey     = "access_key"
 )
 

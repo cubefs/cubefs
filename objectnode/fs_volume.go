@@ -196,6 +196,13 @@ func (v *Volume) loadOSSMeta() {
 		return
 	}
 	v.metaLoader.storeObjectLock(objectlock)
+
+	var logging *Logging
+	if logging, err = v.loadBucketLogging(); err != nil {
+		return
+	}
+	v.metaLoader.storeLogging(logging)
+
 	v.metaLoader.setSynced()
 }
 
@@ -272,6 +279,19 @@ func (v *Volume) loadObjectLock() (configuration *ObjectLockConfig, err error) {
 		return
 	}
 	return configuration, nil
+}
+
+func (v *Volume) loadBucketLogging() (logging *Logging, err error) {
+	raw, err := v.store.Get(v.name, bucketRootPath, XAttrKeyOSSLogging)
+	if err != nil {
+		return
+	}
+	logging = new(Logging)
+	if len(raw) == 0 {
+		return
+	}
+	err = json.Unmarshal(raw, logging)
+	return
 }
 
 func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {

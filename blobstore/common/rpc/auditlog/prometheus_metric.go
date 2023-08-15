@@ -15,6 +15,7 @@
 package auditlog
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
@@ -102,8 +103,7 @@ func NewPrometheusSender(conf PrometheusConfig) (ps *PrometheusSender) {
 }
 
 // Send inherit from Sender
-func (ps *PrometheusSender) Send(raw []byte) error {
-	line := string(raw)
+func (ps *PrometheusSender) Send(ctx context.Context, line string) error {
 	ps.parseLine(line, ps.hostname)
 	return nil
 }

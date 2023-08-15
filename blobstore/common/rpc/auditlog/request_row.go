@@ -50,6 +50,7 @@ type LogEntry interface {
 	Code() string
 	Method() string
 	Path() string
+	ReqTime() int64
 	RespTime() int64 // 100ns
 	RespLength() int64
 	ReqLength() int64
@@ -60,8 +61,14 @@ type LogEntry interface {
 	XRespCode() string
 	// ReqParams returns params of request, including params in raw query and body
 	ReqParams() string
+	RawQuery() string
 	Uid() uint32
 	ApiName() string
+	Referer() string
+	Bucket() string
+	Requester() string
+	Owner() string
+	XRemoteIP() string
 }
 
 func ErrInValidFieldCnt(msg string) error {
@@ -81,6 +88,8 @@ type ReqHeader struct {
 	XSrc          string `json:"X-Src"`
 	IP            string `json:"IP"`
 	UA            string `json:"User-Agent"`
+	Referer       string `json:"Referer"`
+	XForwardedFor string `json:"X-Forwarded-For"`
 }
 
 type Token struct {
@@ -110,6 +119,8 @@ type RespHeader struct {
 	BatchOps          map[string]int64 `json:"batchOps"`
 	PreDelSize        map[string]int64 `json:"preDelSize"`
 	PreDelArchiveSize map[string]int64 `json:"preDelArchiveSize"`
+	Requester         string           `json:"requester"`
+	Owner             string           `json:"owner"`
 	OUid              uint32           `json:"ouid"` // owner uid
 	RsInfo            *RsInfo          `json:"rs-info"`
 	XRespCode         string           `json:"X-Resp-Code"` // return from dora
@@ -180,6 +191,22 @@ func (a *RequestRow) Uid() uint32 {
 		return reqToken.Uid
 	}
 	return 0
+}
+
+func (a *RequestRow) Requester() string {
+	respHeader := a.getRespHeader()
+	if respHeader == nil {
+		return ""
+	}
+	return respHeader.Requester
+}
+
+func (a *RequestRow) Owner() string {
+	respHeader := a.getRespHeader()
+	if respHeader == nil {
+		return ""
+	}
+	return respHeader.Owner
 }
 
 func (a *RequestRow) RespToken() *Token {
@@ -289,6 +316,25 @@ func (a *RequestRow) RemoteIp() string {
 		}
 	}
 	return ""
+}
+
+func (a *RequestRow) XRemoteIP() string {
+	reqHeader := a.getReqHeader()
+	if reqHeader != nil {
+		if reqHeader.XForwardedFor != "" {
+			return strings.TrimSpace(reqHeader.XForwardedFor)
+		}
+		return a.RemoteIp()
+	}
+	return ""
+}
+
+func (a *RequestRow) Referer() string {
+	reqHeader := a.getReqHeader()
+	if reqHeader == nil {
+		return ""
+	}
+	return reqHeader.Referer
 }
 
 func (a *RequestRow) ReqCdn() string {

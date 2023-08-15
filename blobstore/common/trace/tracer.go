@@ -234,9 +234,9 @@ func StartSpanFromHTTPHeaderSafe(r *http.Request, operationName string) (Span, c
 	spanCtx, _ := Extract(HTTPHeaders, HTTPHeadersCarrier(r.Header))
 	traceID := r.Header.Get(RequestIDKey)
 	if traceID == "" {
-		return StartSpanFromContext(context.Background(), operationName, ext.RPCServerOption(spanCtx))
+		return StartSpanFromContext(r.Context(), operationName, ext.RPCServerOption(spanCtx))
 	}
-	return StartSpanFromContextWithTraceID(context.Background(), operationName, traceID, ext.RPCServerOption(spanCtx))
+	return StartSpanFromContextWithTraceID(r.Context(), operationName, traceID, ext.RPCServerOption(spanCtx))
 }
 
 // ContextWithSpan returns a new `context.Context` that holds a reference to
