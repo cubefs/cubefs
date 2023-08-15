@@ -4859,7 +4859,7 @@ func (m *Server) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		force, _ = strconv.ParseBool(value)
 	}
 
-	if ver, err = vol.VersionMgr.createVer2PhaseTask(m.cluster, uint64(time.Now().Unix()), proto.CreateVersion, force); err != nil {
+	if ver, err = vol.VersionMgr.createVer2PhaseTask(m.cluster, uint64(time.Now().UnixMicro()), proto.CreateVersion, force); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: err.Error()})
 		return
 	}
