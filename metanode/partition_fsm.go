@@ -431,7 +431,6 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		}
 		newVer := &proto.VolVersionInfo{
 			Status: proto.VersionNormal,
-			Ctime:  time.Now(),
 			Ver:    opData.VerSeq,
 		}
 		mp.verSeq = opData.VerSeq

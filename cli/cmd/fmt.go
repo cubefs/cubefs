@@ -209,9 +209,10 @@ func formatUidInfoTableRow(uidInfo *proto.UidSpaceInfo) string {
 		uidInfo.Uid, time.Unix(uidInfo.CTime, 0).Format(time.RFC1123), uidInfo.Enabled, uidInfo.Limited, uidInfo.LimitSize, uidInfo.UsedSize)
 }
 
-func formatVerInfoTableRow(vi *proto.VolVersionInfo) string {
+func formatVerInfoTableRow(verInfo *proto.VolVersionInfo) string {
 	return fmt.Sprintf(volumeVersionPattern,
-		vi.Ver, vi.Ctime.Local().Format(time.RFC1123), vi.Status, "")
+		verInfo.Ver, time.UnixMicro(int64(verInfo.Ver)).Local().Format(time.RFC1123), verInfo.Status, "")
+
 }
 
 var (
