@@ -554,12 +554,12 @@ func (w *Wrapper) updateCheckVerList(volName string, verReadSeq uint64) error {
 			verReadSeq = 0
 		}
 		for _, ver := range verList.VerList {
-			log.LogInfof("action[updateCheckVerList] ver %v,%v,%v", ver.Ver, ver.Status, ver.Ctime)
+			log.LogInfof("action[updateCheckVerList] ver %v,%v", ver.Ver, ver.Status)
 			if ver.Ver == verReadSeq {
 				if ver.Status != proto.VersionNormal {
 					return fmt.Errorf("action[updateCheckVerList] status %v not right", ver.Status)
 				}
-				log.LogInfof("action[updateCheckVerList] get ver %v,%v,%v", ver.Ver, ver.Status, ver.Ctime)
+				log.LogInfof("action[updateCheckVerList] get ver %v,%v", ver.Ver, ver.Status)
 				return nil
 			}
 		}

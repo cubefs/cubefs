@@ -341,9 +341,8 @@ type DiscardDataPartitionInfos struct {
 }
 
 type VolVersionInfo struct {
-	Ver     uint64
-	Ctime   time.Time
-	DelTime time.Time
+	Ver     uint64 // unixMicro of createTime used as version
+	DelTime int64
 	Status  uint8 // building,normal,deleted,abnormal
 }
 
