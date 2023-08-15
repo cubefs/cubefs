@@ -58,7 +58,7 @@ type Partition interface {
 	ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (resp interface{}, err error)
 
 	// ResetMember reset members directly with no submit, be carefully calling this method. It is used only when dead replicas > live ones and can no longer be alive
-	ResetMember(peers []proto.Peer, context []byte) (err error)
+	ResetMember(peers []proto.Peer, learners []proto.Learner, context []byte) (err error)
 	// Stop removes the raft partition from raft server and shuts down this partition.
 	Stop() error
 
@@ -132,8 +132,9 @@ func (p *partition) ChangeMember(changeType proto.ConfChangeType, peer proto.Pee
 	return
 }
 
-func (p *partition) ResetMember(peers []proto.Peer, context []byte) (err error) {
-	err = p.raft.ResetMember(p.id, peers, context)
+func (p *partition) ResetMember(peers []proto.Peer, learners []proto.Learner, context []byte) (err error) {
+	var future = p.raft.ResetMember(p.id, peers, learners, context)
+	_, err = future.Response()
 	return
 }
 

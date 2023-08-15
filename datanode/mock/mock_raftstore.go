@@ -2,6 +2,7 @@ package mock
 
 import (
 	"context"
+
 	cfsproto "github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/raftstore"
@@ -30,7 +31,7 @@ func (m mockRaftPartition) ChangeMember(changeType proto.ConfChangeType, peer pr
 	return nil, err
 }
 
-func (m mockRaftPartition) ResetMember(peers []proto.Peer, context []byte) (err error) {
+func (m mockRaftPartition) ResetMember(peers []proto.Peer, learners []proto.Learner, context []byte) (err error) {
 	return nil
 }
 

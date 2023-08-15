@@ -70,6 +70,7 @@ type Status struct {
 	RestoringSnapshot bool
 	State             string // leader、follower、candidate
 	Replicas          map[uint64]*ReplicaStatus
+	Peers             []uint64
 	Log               LogStatus
 	RistState         string
 	Mode              string

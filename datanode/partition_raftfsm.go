@@ -213,8 +213,8 @@ func (dp *DataPartition) handleRaftAskRollback(original []byte, index uint64) (r
 		return
 	}
 	rollback, err = MarshalRandWriteRaftLog(opItem.opcode, opItem.extentID, opItem.offset, opItem.size, buf, crc)
-	log.LogWarnf("partition [id: %v, disk: %v] handle ask rollback [extent: %v, offset: %v, size: %v], CRC[%v -> %v]",
-		dp.partitionID, dp.disk.Path, opItem.extentID, opItem.offset, opItem.size, opItem.crc, crc)
+	log.LogWarnf("partition[%v] [disk: %v] handle ask rollback [index: %v, extent: %v, offset: %v, size: %v], CRC[%v -> %v]",
+		dp.partitionID, dp.disk.Path, index, opItem.extentID, opItem.offset, opItem.size, opItem.crc, crc)
 	return
 }
 

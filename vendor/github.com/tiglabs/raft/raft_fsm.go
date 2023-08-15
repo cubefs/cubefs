@@ -16,6 +16,7 @@
 package raft
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -394,51 +395,29 @@ func (r *raftFsm) applyConfChange(cc *proto.ConfChange) {
 			r.addPeer(cc.Peer, true, req.ChangeLearner.PromConfig)
 		}
 	}
+	if logger.IsEnableWarn() {
+		logger.Warn("raft[%v] FSM applied conf change [type: %v, peer: %v]", r.id, cc.Type, cc.Peer)
+	}
 }
-func (r *raftFsm) applyResetPeer(rp *proto.ResetPeers) {
+func (r *raftFsm) maybeResetPeer(rp *proto.ResetPeers) error {
 	if r.state == stateLeader && r.pendingConf == true {
-		logger.Warn("raft[%v] applyResetPeer waiting current conf change", r.id)
-		return
+		logger.Warn("raft[%v] waiting pending conf change", r.id)
+		return ErrRetryLater
 	}
-	if len(rp.NewPeers) == 0 {
+	if len(rp.Peers) == 0 {
 		logger.Warn("raft[%v] ignore reset to empty peers", r.id)
-		return
+		return ErrIllegalPeers
 	}
-	if len(rp.NewPeers) == len(r.replicas) {
-		var flag bool
-		for _, peer := range rp.NewPeers {
-			replica, ok := r.replicas[peer.ID]
-			if !ok {
-				flag = true
-				logger.Info("raft[%v] ignore reset peer[%v], current[%v]", r.id, peer.String(), replica.peer.String())
-				break
-			}
-			if replica.peer.PeerID != peer.PeerID {
-				if logger.IsEnableInfo() {
-					logger.Info("raft[%v] ignore reset peer[%v], current[%v]", r.id, peer.String(), replica.peer.String())
-				}
-				return
-			}
-		}
-		if !flag {
-			logger.Info("raft[%v] applyResetPeer no change", r.id)
-			return
-		}
+	r.replicas = make(map[uint64]*replica)
+	for _, peer := range rp.Peers {
+		r.replicas[peer.ID] = newReplica(peer, 0)
 	}
-	//todo: support reset peer which is not in replicas
-	for _, replica := range r.replicas {
-		var flag bool
-		for _, peer := range rp.NewPeers {
-			if replica.peer.ID == peer.ID {
-				flag = true
-			}
-		}
-		if !flag {
-			delete(r.replicas, replica.peer.ID)
-		}
+	for _, learner := range rp.Learners {
+		r.replicas[learner.ID].isLearner = true
+		r.replicas[learner.ID].promConfig = learner.PromConfig
 	}
-	r.reset(r.term+1, 0, false, false)
-	r.acks = nil
+	r.becomeFollower(context.Background(), r.term+1, NoLeader)
+	return nil
 }
 
 func (r *raftFsm) addPeer(peer proto.Peer, isLearner bool, promConfig *proto.PromoteConfig) {
@@ -644,6 +623,9 @@ func (r *raftFsm) setMinimumCommitIndex(mci uint64) {
 func (r *raftFsm) maybeUpdateReplica(id, match, committed uint64) {
 	if re, exist := r.replicas[id]; exist {
 		re.maybeUpdate(match, committed)
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] update replica %v[%v]", r.id, id, re)
+		}
 	}
 }
 

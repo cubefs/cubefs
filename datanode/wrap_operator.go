@@ -1356,13 +1356,6 @@ func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
 			return
 		}
 	}
-	var peers []raftProto.Peer
-	for _, peer := range req.NewPeers {
-		peers = append(peers, raftProto.Peer{ID: peer.ID})
-	}
-	if err = dp.ResetRaftMember(peers, reqData); err != nil {
-		return
-	}
 	if isUpdated, err = dp.resetRaftNode(req); err != nil {
 		return
 	}
