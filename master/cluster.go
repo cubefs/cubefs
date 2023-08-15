@@ -4306,7 +4306,7 @@ func (c *Cluster) getDeletingSnapshotVer() {
 							VolName: volName,
 							VerSeq:  volVerInfo.Ver,
 						},
-						dTime: volVerInfo.DelTime,
+						dTime: time.UnixMicro(volVerInfo.DelTime),
 					}
 					c.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
 				}
