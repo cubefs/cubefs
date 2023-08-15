@@ -395,6 +395,9 @@ func (s *raft) runApply() {
 
 func (s *raft) run() {
 	defer func() {
+		if s.containsUpdate() {
+			s.persist()
+		}
 		s.doStop()
 		s.resetPending(ErrStopped)
 		s.raftFsm.readOnly.reset(ErrStopped)
@@ -506,7 +509,7 @@ func (s *raft) run() {
 				}
 				s.maybeChange(respErr)
 			} else if logger.IsEnableWarn() && m.Type != proto.RespMsgHeartBeat {
-				logger.Warn("[raft][%v term: %d] ignored a %s message without the replica from [%v term: %d].", s.raftFsm.id, s.raftFsm.term, m.Type, m.From, m.Term)
+				logger.Warn("raft[%v] [term: %d] ignored a %s message without the replica from [%v term: %d].", s.raftFsm.id, s.raftFsm.term, m.Type, m.From, m.Term)
 			}
 
 		case snapReq := <-s.snapRecvc:
@@ -598,7 +601,6 @@ func (s *raft) run() {
 		case truncIndex := <-s.truncatec:
 			func(truncateTo uint64) {
 				defer util.HandleCrash(fmt.Sprintf("raft[%v]->truncateTo", s.raftFsm.id))
-
 				if lasti, err := s.raftConfig.Storage.LastIndex(); err != nil {
 					logger.Error("raft[%v] truncate failed to get last index from storage: %v", s.raftFsm.id, err)
 				} else if lasti > s.config.RetainLogs {
@@ -608,12 +610,13 @@ func (s *raft) run() {
 						logger.Error("raft[%v] truncate failed to get first index from storage: %v", s.raftFsm.id, err)
 						return
 					}
-					if truncateTo >= firsti {
+					committed := s.raftFsm.raftLog.committed
+					if truncateTo >= firsti && truncateTo >= committed {
 						if err = s.raftConfig.Storage.Truncate(truncateTo); err != nil {
 							logger.Error("raft[%v] truncate failed,error is: %v", s.raftFsm.id, err)
 							return
 						}
-						logger.Debug("raft[%v] [firstindex: %v] truncate storage to %v", s.raftFsm.id, firsti, truncateTo)
+						logger.Debug("raft[%v] [firstindex: %v, lastindex: %v, committed: %v] truncate storage to %v", s.raftFsm.id, firsti, lasti, committed, truncateTo)
 					}
 
 				}
@@ -1140,7 +1143,7 @@ func (s *raft) onFSMAskRollback(startIndex uint64) (n int, err error) {
 			respond: nil,
 		}
 		if logger.IsEnableWarn() {
-			logger.Warn("raft[%v] prepare ask rollback for normal entries [from: %v, to: %v, num: %v]", s.raftConfig.ID, from, to, n)
+			logger.Warn("raft[%v] [lastindex: %v, committed: %v] prepare ask rollback for normal entries [from: %v, to: %v, num: %v]", s.raftConfig.ID, s.raftFsm.raftLog.lastIndex(), s.raftFsm.raftLog.committed, from, to, n)
 		}
 	}
 	return
@@ -1386,7 +1389,7 @@ func (s *raft) maybeResumeCommitting(pr *proposal, curMaxIndex uint64) bool {
 	if pr.cmdType == proto.EntryRollback && len(pr.data) == 0 {
 		s.raftFsm.setMinimumCommitIndex(curMaxIndex)
 		if logger.IsEnableDebug() {
-			logger.Debug("raft[%v] set minimum commit index to %v (auto resume committing), current committed %v", s.raftConfig.ID, curMaxIndex, s.raftFsm.raftLog.committed)
+			logger.Debug("raft[%v] [lastindex: %v, committed: %v] set minimum commit index to %v (auto resume committing), current committed %v", s.raftConfig.ID, s.raftFsm.raftLog.lastIndex(), s.raftFsm.raftLog.committed, curMaxIndex)
 		}
 		return true
 	}
