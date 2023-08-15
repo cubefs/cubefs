@@ -2523,7 +2523,7 @@ func (mw *MetaWrapper) applyQuota(parentIno uint64, quotaId uint32, totalInodeCo
 			return err
 		}
 		entryNum := uint64(len(entries))
-		if entryNum == 0 {
+		if entryNum == 0 || (from != "" && entryNum == 1) {
 			break
 		}
 
@@ -2583,7 +2583,7 @@ func (mw *MetaWrapper) revokeQuota(parentIno uint64, quotaId uint32, totalInodeC
 			return err
 		}
 		entryNum := uint64(len(entries))
-		if entryNum == 0 {
+		if entryNum == 0 || (from != "" && entryNum == 1) {
 			break
 		}
 
