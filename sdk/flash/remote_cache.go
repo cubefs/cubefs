@@ -126,7 +126,7 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 	if err != nil {
 		return nil, err
 	}
-	rc.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, rc.connConfig.IdleTimeoutSec, rc.connConfig.ConnectTimeoutNs)
+	rc.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(rc.connConfig.IdleTimeoutSec)*time.Second, time.Duration(rc.connConfig.ConnectTimeoutNs))
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
 
 	rc.wg.Add(1)
@@ -258,12 +258,12 @@ func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
 	return rc.cacheBloom
 }
 
-func (rc *RemoteCache) ResetConnConfig(timeouts int64) {
+func (rc *RemoteCache) ResetConnConfig(timeoutNs int64) {
 	config := rc.connConfig
-	if timeouts > 0 {
-		if timeouts != config.ReadTimeoutNs {
-			log.LogInfof("ResetConnConfig: from(%v) to new(%v)", config.ReadTimeoutNs, timeouts)
-			atomic.StoreInt64(&config.ReadTimeoutNs, timeouts)
+	if timeoutNs > 0 {
+		if timeoutNs != config.ReadTimeoutNs {
+			log.LogInfof("ResetConnConfig: from(%v) to new(%v)", config.ReadTimeoutNs, timeoutNs)
+			atomic.StoreInt64(&config.ReadTimeoutNs, timeoutNs)
 		}
 	}
 }

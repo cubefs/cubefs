@@ -17,23 +17,24 @@ package flashnode
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
+	"net"
+	"strings"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-	"hash/crc32"
-	"net"
-	"strings"
-	"time"
 )
 
 const (
 	ExtentReadMaxRetry      = 3
 	ExtentReadTimeoutSec    = 3
 	ExtentReadSleepInterval = 100 * time.Millisecond
-	IdleConnTimeoutData     = 30
-	ConnectTimeoutDataMs    = 500
+	IdleConnTimeoutData     = 30 * time.Second
+	ConnectTimeoutData      = 500 * time.Millisecond
 )
 
 var extentReaderConnPool *connpool.ConnectPool
@@ -42,7 +43,7 @@ type ReadSource struct {
 }
 
 func NewReadSource() *ReadSource {
-	extentReaderConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutData, ConnectTimeoutDataMs*int64(time.Millisecond))
+	extentReaderConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutData, ConnectTimeoutData)
 	return &ReadSource{}
 }
 

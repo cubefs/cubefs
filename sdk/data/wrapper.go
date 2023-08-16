@@ -163,7 +163,7 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 
 	err = nil
 	StreamConnPoolInitOnce.Do(func() {
-		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
+		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(w.connConfig.IdleTimeoutSec)*time.Second, time.Duration(w.connConfig.ConnectTimeoutNs))
 	})
 
 	w.wg.Add(4)
@@ -225,7 +225,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w._updateDataNodeStatus(dataState.ClusterView)
 
 	StreamConnPoolInitOnce.Do(func() {
-		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
+		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(w.connConfig.IdleTimeoutSec)*time.Second, time.Duration(w.connConfig.ConnectTimeoutNs))
 	})
 
 	w.wg.Add(4)
@@ -431,7 +431,6 @@ func (w *Wrapper) updateWithRecover() (err error) {
 			w.updateClientClusterView()
 			w.updateSimpleVolView()
 			w.updateDataPartition(false)
-
 
 			hostsLock.Lock()
 			retryHosts = w.retryHostsPingtime(retryHosts)
@@ -830,7 +829,7 @@ func (w *Wrapper) updateClientClusterView() (err error) {
 	w.setClusterBoostEnable(cf.RemoteCacheBoostEnable)
 	w.setClusterCacheReadConnTimeoutUs(cf.NetConnTimeoutUs)
 	if w.IsCacheBoostEnabled() && w.remoteCache != nil {
-		w.remoteCache.ResetConnConfig(cf.NetConnTimeoutUs)
+		w.remoteCache.ResetConnConfig(cf.NetConnTimeoutUs * int64(time.Microsecond))
 	}
 	return
 }
@@ -940,7 +939,7 @@ func (w *Wrapper) updateConnConfig(config *proto.ConnConfig) {
 		atomic.StoreInt64(&w.connConfig.ReadTimeoutNs, config.ReadTimeoutNs)
 	}
 	if updateConnPool && StreamConnPool != nil {
-		StreamConnPool.UpdateTimeout(w.connConfig.IdleTimeoutSec, w.connConfig.ConnectTimeoutNs)
+		StreamConnPool.UpdateTimeout(time.Duration(w.connConfig.IdleTimeoutSec)*time.Second, time.Duration(w.connConfig.ConnectTimeoutNs))
 	}
 }
 

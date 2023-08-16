@@ -29,14 +29,14 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//const
+// const
 const (
 	// the maximum number of tasks that can be handled each time
 	MaxTaskNum = 30
 
 	TaskWorkerInterval = time.Second * time.Duration(2)
-	idleConnTimeout    = 90 //seconds
-	connectTimeout     = 10 //seconds
+	idleConnTimeout    = 90 * time.Second
+	connectTimeout     = 10 * time.Second
 )
 
 // AdminTaskManager sends administration commands to the metaNode or dataNode.
@@ -58,7 +58,7 @@ func newAdminTaskManager(targetAddr, targetZone, clusterID string) (sender *Admi
 		clusterID:  clusterID,
 		TaskMap:    make(map[string]*proto.AdminTask),
 		exitCh:     make(chan struct{}, 1),
-		connPool:   connpool.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout*1000),
+		connPool:   connpool.NewConnectPoolWithTimeout(idleConnTimeout, connectTimeout),
 	}
 	go sender.process()
 

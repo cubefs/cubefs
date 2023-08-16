@@ -166,8 +166,8 @@ type MetaWrapper struct {
 	InfiniteRetry    bool
 	RemoteCacheBloom RemoteCacheBloomFunc
 
-	ClientID		uint64
-	StartTime		int64
+	ClientID  uint64
+	StartTime int64
 }
 
 type MetaState struct {
@@ -181,7 +181,7 @@ type MetaState struct {
 	View              *proto.VolView
 }
 
-//the ticket from authnode
+// the ticket from authnode
 type Ticket struct {
 	ID         string `json:"client_id"`
 	SessionKey string `json:"session_key"`
@@ -259,7 +259,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		}
 		break
 	}
-	mw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
+	mw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(mw.connConfig.IdleTimeoutSec)*time.Second, time.Duration(mw.connConfig.ConnectTimeoutNs))
 
 	mw.wg.Add(2)
 	go mw.refresh()
@@ -335,7 +335,7 @@ func RebuildMetaWrapper(config *MetaConfig, metaState *MetaState) *MetaWrapper {
 		}
 	}
 
-	mw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
+	mw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(mw.connConfig.IdleTimeoutSec)*time.Second, time.Duration(mw.connConfig.ConnectTimeoutNs))
 
 	mw.wg.Add(2)
 	go mw.refresh()
@@ -582,7 +582,7 @@ func (mw *MetaWrapper) updateConnConfig(config *proto.ConnConfig) {
 		atomic.StoreInt64(&mw.connConfig.ReadTimeoutNs, config.ReadTimeoutNs)
 	}
 	if updateConnPool && mw.conns != nil {
-		mw.conns.UpdateTimeout(mw.connConfig.IdleTimeoutSec, mw.connConfig.ConnectTimeoutNs)
+		mw.conns.UpdateTimeout(time.Duration(mw.connConfig.IdleTimeoutSec)*time.Second, time.Duration(mw.connConfig.ConnectTimeoutNs))
 	}
 }
 

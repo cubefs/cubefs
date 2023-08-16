@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/http_client"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -26,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	sdk "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/storage"
@@ -1722,7 +1722,7 @@ func checkVolExtentCrc(c *sdk.MasterClient, vol string, tiny bool, validateStep 
 		return
 	}
 	log.LogInfof("vol:%s dp count:%v\n", vol, len(dataPartitionsView.DataPartitions))
-	data.StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, 30, int64(1*time.Second))
+	data.StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, 30*time.Second, time.Second)
 	wg := new(sync.WaitGroup)
 	for _, dataPartition := range dataPartitionsView.DataPartitions {
 		wg.Add(1)
