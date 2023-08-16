@@ -15,7 +15,7 @@ jobs:
     if: false # disable
     steps:
       - name: check-inactive-one-week
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'check-inactive'
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -24,7 +24,7 @@ jobs:
           exclude-labels: 'inactive-one-month,inactive-three-month,inactive-one-year,inactive-two-year'
 
       - name: check-inactive-one-month
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'check-inactive'
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -33,7 +33,7 @@ jobs:
           inactive-label: 'inactive-one-month'
 
       - name: check-inactive-three-month
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'check-inactive'
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -42,7 +42,7 @@ jobs:
           inactive-label: 'inactive-three-month'
 
       - name: check-inactive-one-year
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'check-inactive'
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -51,7 +51,7 @@ jobs:
           inactive-label: 'inactive-one-year'
 
       - name: check-inactive-two-year
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'check-inactive'
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -63,7 +63,7 @@ jobs:
       # remove repetitive labels
       - name: remove-inactive-two-year
         if: github.event.label.name == 'inactive-two-year'
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'remove-labels'
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -72,7 +72,7 @@ jobs:
 
       - name: remove-inactive-one-year
         if: github.event.label.name == 'inactive-one-year'
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'remove-labels'
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -81,7 +81,7 @@ jobs:
 
       - name: remove-inactive-three-month
         if: github.event.label.name == 'inactive-three-month'
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'remove-labels'
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -90,7 +90,7 @@ jobs:
 
       - name: remove-inactive-one-month
         if: github.event.label.name == 'inactive-one-month'
-        uses: actions-cool/issues-helper@v3
+        uses: actions-cool/issues-helper@25379ae1ea683ac484497214db131ab8f003a52b # v3.5.1
         with:
           actions: 'remove-labels'
           token: ${{ secrets.GITHUB_TOKEN }}
