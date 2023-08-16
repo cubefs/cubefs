@@ -639,9 +639,6 @@ func (mp *MetaPartition) tryToChangeLeaderByHost(host string) (err error) {
 	if err != nil {
 		return
 	}
-	if err != nil {
-		return
-	}
 	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
 		return
 	}
