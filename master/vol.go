@@ -293,6 +293,17 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 	return
 }
 
+func (vol *Vol) getRWMetaPartitionNum() (num uint64) {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	for _, mp := range vol.MetaPartitions {
+		if mp.Status == proto.ReadWrite {
+			num++
+		}
+	}
+	return
+}
+
 func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
 	return vol.dataPartitions.updateResponseCache(false, 0, vol.VolType)
 }
@@ -516,18 +527,36 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	c.addMetaNodeTasks(tasks)
 }
 
-func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeIdStep uint64) {
+func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint64) {
 	maxPartitionID := vol.maxPartitionID()
-
-	vol.mpsLock.RLock()
-	partition, ok := vol.MetaPartitions[maxPartitionID]
-	if !ok {
-		vol.mpsLock.RUnlock()
+	maxMP, err := vol.metaPartition(maxPartitionID)
+	if err != nil {
 		return
 	}
-	vol.mpsLock.RUnlock()
+	// Any of the following conditions will trigger max mp split
+	// 1. The memory of the metanode which max mp belongs to reaches the threshold
+	// 2. The number of inodes managed by max mp reaches the threshold(0.75)
+	// 3. The number of RW mp is less than 2
+	maxMPInodeUsedRatio := float64(maxMP.MaxInodeID-maxMP.Start) / float64(metaPartitionInodeStep)
+	RWMPNum := vol.getRWMetaPartitionNum()
+	if maxMP.memUsedReachThreshold(c.Name, vol.Name) || RWMPNum < lowerLimitRWMetaPartition ||
+		maxMPInodeUsedRatio > metaPartitionInodeUsageThreshold {
+		end := maxMP.MaxInodeID + metaPartitionInodeStep/4
+		if RWMPNum < lowerLimitRWMetaPartition {
+			end = maxMP.MaxInodeID + metaPartitionInodeStep
+		}
+		if err := vol.splitMetaPartition(c, maxMP, end, metaPartitionInodeStep); err != nil {
+			msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta maxMP[%v] failed,err[%v]\n",
+				maxMP.PartitionID, err)
+			Warn(c.Name, msg)
+		}
+		log.LogDebugf("volume[%v] split MaxMP, RWMPNum[%d] maxMPInodeUsedRatio[%.2f]", vol.Name, RWMPNum, maxMPInodeUsedRatio)
+	}
+	return
+}
 
-	liveReplicas := partition.getLiveReplicas()
+func (mp *MetaPartition) memUsedReachThreshold(clusterName, volName string) bool {
+	liveReplicas := mp.getLiveReplicas()
 	foundReadonlyReplica := false
 	var readonlyReplica *MetaReplica
 	for _, replica := range liveReplicas {
@@ -537,28 +566,16 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeIdStep uin
 			break
 		}
 	}
-	if !foundReadonlyReplica {
-		return
+	if !foundReadonlyReplica || readonlyReplica == nil {
+		return false
 	}
 	if readonlyReplica.metaNode.isWritable() {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition] vol[%v],max meta parition[%v] status is readonly\n",
-			vol.Name, partition.PartitionID)
-		Warn(c.Name, msg)
-		return
+			volName, mp.PartitionID)
+		Warn(clusterName, msg)
+		return false
 	}
-
-	if c.cfg.DisableAutoCreate {
-		log.LogWarnf("action[checkSplitMetaPartition] vol[%v], mp [%v] disable auto create meta partition",
-			vol.Name, partition.PartitionID)
-		return
-	}
-
-	end := partition.MaxInodeID + metaPartitionInodeIdStep
-	if err := vol.splitMetaPartition(c, partition, end, metaPartitionInodeIdStep); err != nil {
-		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
-			partition.PartitionID, err)
-		Warn(c.Name, msg)
-	}
+	return true
 }
 
 func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
