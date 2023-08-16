@@ -1,0 +1,54 @@
+name: Enhancement request
+description: As a developer, I want to make an enhancement for CubeFS
+title: "[Enhancement]: "
+labels: [enhancement]
+assignees:
+  - xiaochunhe
+  - leonrayang
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to request/suggest an enhancement for CubeFS!
+
+  - type: input
+    id: contact
+    attributes:
+      label: Contact Details
+      description: How can we get in touch with you if we need more info?
+      placeholder: your.email@example.com
+    validations:
+      required: false
+
+  - type: checkboxes
+    attributes:
+      label: Is there an existing issue for this?
+      description: Please search to see if an issue related to this already exists.
+      options:
+      - label: I have searched all the existing issues
+        required: true
+
+  - type: textarea
+    attributes:
+      label: What would you like to be added?
+      description: A concise description of what you're expecting/suggesting.
+      placeholder: |
+        I would like to suggest/request a feature that's like...
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Why is this needed?
+      description: A concise description of the reason/motivation
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Anything else?
+      description: |
+        Links? References? Screenshots? Anything that will give us more context about this!
+    validations:
+      required: false
