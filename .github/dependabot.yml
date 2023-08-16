@@ -18,3 +18,68 @@ updates:
     # Check for updates once a week
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+
+  - package-ecosystem: gomod
+    directory: /autofs
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /blobstore
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /build/compile/arm64
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /build/compile/arm64/centos
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /build/compile/arm64/gcc4
+    schedule:
+      interval: daily
+
+  - package-ecosystem: gomod
+    directory: /depends/jacobsa/fuse
+    schedule:
+      interval: daily
+
+  - package-ecosystem: gomod
+    directory: /depends/spf13/cobra
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: daily
+
+  - package-ecosystem: pip
+    directory: /docker/s3tests
+    schedule:
+      interval: daily
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /vendor/golang.org/x/net/http2
+    schedule:
+      interval: daily
+
+  - package-ecosystem: maven
+    directory: /java
+    schedule:
+      interval: daily
