@@ -352,6 +352,9 @@ build_libsdk() {
     pushd $SrcPath >/dev/null
     echo -n "build libsdk: libcfs.so       "
     CGO_ENABLED=1 go build $MODFLAGS -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/libsdk/*.go && echo "success" || echo "failed"
+
+    echo -n "build libsdk: libcfs.a       "
+    CGO_ENABLED=1 go build $MODFLAGS -gcflags=all=-trimpath="$SrcPath" -asmflags=all=-trimpath="$SrcPath" -ldflags="${LDFlags}" -buildmode c-archive -o "$TargetFile" "$SrcPath/libsdk/"*.go && echo "success" || echo "failed"
     popd >/dev/null
 
     pushd $SrcPath/java >/dev/null

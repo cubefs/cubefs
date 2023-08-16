@@ -11,7 +11,7 @@
 #define GO_CGO_EXPORT_PROLOGUE_H
 
 #ifndef GO_CGO_GOSTRING_TYPEDEF
-typedef struct { const char *p; ptrdiff_t n; } _GoString_;
+typedef struct { const char *p; ptrdiff_t n; } GoString;
 #endif
 
 #endif
@@ -21,8 +21,9 @@ typedef struct { const char *p; ptrdiff_t n; } _GoString_;
 
 #line 17 "libsdk.go"
 
-
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <string.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -104,16 +105,6 @@ typedef float GoFloat32;
 typedef double GoFloat64;
 typedef float _Complex GoComplex64;
 typedef double _Complex GoComplex128;
-
-/*
-  static assertion to make sure the file is being used on architecture
-  at least with matching size of GoInt.
-*/
-typedef char _check_for_64_bit_pointer_matching_GoInt[sizeof(void*)==64/8 ? 1:-1];
-
-#ifndef GO_CGO_GOSTRING_TYPEDEF
-typedef _GoString_ GoString;
-#endif
 typedef void *GoMap;
 typedef void *GoChan;
 typedef struct { void *t; void *v; } GoInterface;
