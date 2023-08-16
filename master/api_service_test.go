@@ -54,9 +54,11 @@ const (
 	mms5Addr      = "127.0.0.1:8105"
 	mms6Addr      = "127.0.0.1:8106"
 	mms7Addr      = "127.0.0.1:8107"
+	mms8Addr      = "127.0.0.1:8108"
 	commonVolName = "commonVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
+	testZone3     = "zone3"
 
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
@@ -726,15 +728,14 @@ func TestAddMetaReplica(t *testing.T) {
 		t.Error("no meta partition")
 		return
 	}
-	msAddr := "127.0.0.1:8009"
-	addMetaServer(msAddr, testZone2)
+	addMetaServer(mms8Addr, testZone3)
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
-	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, mms8Addr)
 	process(reqURL, t)
 	partition.RLock()
-	if !contains(partition.Hosts, msAddr) {
-		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, msAddr)
+	if !contains(partition.Hosts, mms8Addr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, mms8Addr)
 		partition.RUnlock()
 		return
 	}
@@ -749,7 +750,7 @@ func TestRemoveMetaReplica(t *testing.T) {
 		return
 	}
 	partition.IsRecover = false
-	msAddr := "127.0.0.1:8009"
+	msAddr := mms8Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
 	process(reqURL, t)
 	partition.RLock()

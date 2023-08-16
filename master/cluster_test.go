@@ -335,12 +335,12 @@ func TestBalanceMetaPartition(t *testing.T) {
 	nodeSetM := make(map[uint64]struct{})
 	// get all metaNodes
 	sortNodes := server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
-	require.Equal(t, len(sortNodes.nodes), 6)
+	require.Equal(t, len(sortNodes.nodes), 7)
 
 	// get noeExist zone metaNodes, should has 0 node
 	zoneM["noeExist"] = struct{}{}
 	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
-	require.Equal(t, len(sortNodes.nodes), 0)
+	require.Nil(t, sortNodes)
 
 	// get testZone2 metaNodes, should has 4 node
 	zoneM[testZone2] = struct{}{}
