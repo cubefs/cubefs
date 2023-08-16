@@ -87,6 +87,8 @@ const (
 	defaultIntervalToScanS3Expiration                  = 12 * 3600
 	defaultMaxConcurrentLcNodes                        = 3
 	defaultIntervalToCheckDelVerTaskExpiration         = 3
+	metaPartitionInodeUsageThreshold           float64 = 0.75 // inode usage threshold on a meta partition
+	lowerLimitRWMetaPartition                          = 2    // lower limit of RW meta partition
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
