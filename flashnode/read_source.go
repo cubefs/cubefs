@@ -31,7 +31,7 @@ import (
 const (
 	ExtentReadMaxRetry      = 3
 	ExtentReadTimeoutSec    = 3
-	ExtentReadSleepInterval = 1
+	ExtentReadSleepInterval = 100 * time.Millisecond
 	IdleConnTimeoutData     = 30
 	ConnectTimeoutDataMs    = 500
 )
