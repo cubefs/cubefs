@@ -1,7 +1,7 @@
 # Using Erasure Coding System
 
 ::: tip Note
-For a quick experience, please refer to [Single-Node Deployment](../deploy/node.md).
+For a quick experience, please refer to [Single-Node Mode](../quick-start/node.md).
 :::
 
 ## Compilation and Building
@@ -411,7 +411,7 @@ The reference configuration is as follows: `clustermgr-learner.conf`:
 
 ## Upload Testing
 
-> Refer to [CLI Deployment Verification](../deploy/verify.md) for details.
+> Refer to [Quick Use](../tools/cli.md) for details.
 
 ## Modifying Master Configuration
 

@@ -1,4 +1,4 @@
-# CLI Verification
+# Quick Use
 
 ## Verify File System Mounting
 
