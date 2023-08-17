@@ -1318,7 +1318,7 @@ func (dp *DataPartition) ResetRaftMember(peers []raftProto.Peer, context []byte)
 	if dp.raftPartition == nil {
 		return fmt.Errorf("raft instance not ready")
 	}
-	err = dp.raftPartition.ResetMember(peers, context)
+	err = dp.raftPartition.ResetMember(peers, nil, context)
 	return
 }
 

@@ -53,7 +53,7 @@ func (m MockPartition) ChangeMember(changeType proto.ConfChangeType, peer proto.
 	panic("implement me")
 }
 
-func (m MockPartition) ResetMember(peers []proto.Peer, context []byte) (err error) {
+func (m MockPartition) ResetMember(peers []proto.Peer, learners []proto.Learner, context []byte) (err error) {
 	panic("implement me")
 }
 

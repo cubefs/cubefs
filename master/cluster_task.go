@@ -603,7 +603,13 @@ func (c *Cluster) resetMetaPartitionRaftMember(mp *MetaPartition, newPeers []pro
 	for _, peer := range newPeers {
 		newHosts = append(newHosts, peer.Addr)
 	}
-	if err = mp.persistToRocksDB("resetMetaPartitionRaftMember", mp.volName, newHosts, newPeers, mp.Learners, c); err != nil {
+	newLearners := make([]proto.Learner, 0)
+	for _, learner := range mp.Learners {
+		if contains(newHosts, learner.Addr) {
+			newLearners = append(newLearners, learner)
+		}
+	}
+	if err = mp.persistToRocksDB("resetMetaPartitionRaftMember", mp.volName, newHosts, newPeers, newLearners, c); err != nil {
 		return
 	}
 	return

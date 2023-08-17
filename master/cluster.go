@@ -2423,7 +2423,13 @@ func (c *Cluster) resetDataPartitionRaftMember(dp *DataPartition, newPeers []pro
 	for _, peer := range newPeers {
 		newHosts = append(newHosts, peer.Addr)
 	}
-	if err = dp.update("resetDataPartitionRaftMember", dp.VolName, newPeers, newHosts, dp.Learners, c); err != nil {
+	newLearners := make([]proto.Learner, 0)
+	for _, learner := range dp.Learners {
+		if contains(newHosts, learner.Addr) {
+			newLearners = append(newLearners, learner)
+		}
+	}
+	if err = dp.update("resetDataPartitionRaftMember", dp.VolName, newPeers, newHosts, newLearners, c); err != nil {
 		return
 	}
 	log.LogInfof("action[resetDataPartitionRaftMember] vol[%v], data partition[%v], newPeers[%v], err[%v]", dp.VolName, dp.PartitionID, newPeers, err)

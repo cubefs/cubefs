@@ -230,7 +230,8 @@ type ConfChangeLearnerReq struct {
 	ChangeLearner Learner `json:"learner"`
 }
 type ResetPeers struct {
-	NewPeers []Peer
+	Peers    []Peer
+	Learners []Learner
 	Context  []byte
 }
 

@@ -27,7 +27,7 @@ var (
 	ErrStopped         = errors.New("raft is already shutdown.")
 	ErrSnapping        = errors.New("raft is doing snapshot.")
 	ErrRetryLater      = errors.New("retry later")
-	ErrPeersEmpty      = errors.New("peers are nil or empty")
+	ErrIllegalPeers    = errors.New("illegal peers")
 	ErrLearnerNotReady = errors.New("raft learner is not ready.")
 	ErrUnmarshal       = errors.New("json unmarshl error")
 	ErrFullChannel     = errors.New("channel is full.")

@@ -568,6 +568,16 @@ func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRe
 			}
 		}
 	}
+
+	var peers []raftproto.Peer
+	for _, peer := range req.NewPeers {
+		peers = append(peers, raftproto.Peer{ID: peer.ID})
+	}
+	if err = dp.ResetRaftMember(peers, nil); err != nil {
+		log.LogErrorf("partition[%v] reset raft member to %v failed: %v", dp.partitionID, peers, err)
+		return
+	}
+
 	newHosts = make([]string, len(newHostIndexes))
 	newPeers = make([]proto.Peer, len(newPeerIndexes))
 	newLearners = make([]proto.Learner, len(newLearnerIndexes))
@@ -595,6 +605,12 @@ func (dp *DataPartition) resetRaftNode(req *proto.ResetDataPartitionRaftMemberRe
 	dp.replicasLock.Unlock()
 	log.LogInfof("Finish ResetRaftNode  PartitionID(%v) nodeID(%v) newHosts(%v)  do RaftLog(%v) ",
 		req.PartitionId, dp.config.NodeID, newHosts, string(data))
+
+	release := dp.lockPersist()
+	defer release()
+	if err = dp.persistMetadata(nil); err != nil {
+		return
+	}
 	return
 }
 

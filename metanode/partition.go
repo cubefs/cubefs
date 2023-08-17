@@ -1169,7 +1169,7 @@ func (mp *metaPartition) ResetMember(peers []raftproto.Peer, context []byte) (er
 	if mp.raftPartition == nil {
 		return errors.NewErrorf("partition [%d] is not start", mp.config.PartitionId)
 	}
-	err = mp.raftPartition.ResetMember(peers, context)
+	err = mp.raftPartition.ResetMember(peers, nil, context)
 	return
 }
 
@@ -1746,7 +1746,7 @@ func (mp *metaPartition) updateStatus() {
 
 	//default 0.9
 	bitmapMaxUsedFactor := mp.manager.metaNode.getBitMapAllocatorMaxUsedFactor()
-	bitmapMaxUsedCountForAvailable := float64(proto.DefaultMetaPartitionInodeIDStep)*bitmapMaxUsedFactor
+	bitmapMaxUsedCountForAvailable := float64(proto.DefaultMetaPartitionInodeIDStep) * bitmapMaxUsedFactor
 	if mp.inodeIDAllocator.GetUsed() > uint64(bitmapMaxUsedCountForAvailable) {
 		mp.status = proto.ReadOnly
 		return
@@ -1754,7 +1754,7 @@ func (mp *metaPartition) updateStatus() {
 
 	//default 0.4
 	bitmapMinFreeFactor := mp.manager.metaNode.getBitMapAllocatorMinFreeFactor()
-	bitmapMinFreeCountForAvailable := float64(proto.DefaultMetaPartitionInodeIDStep)*bitmapMinFreeFactor
+	bitmapMinFreeCountForAvailable := float64(proto.DefaultMetaPartitionInodeIDStep) * bitmapMinFreeFactor
 	if mp.inodeIDAllocator.GetFree() > uint64(bitmapMinFreeCountForAvailable) {
 		mp.status = proto.ReadWrite
 		return
@@ -1770,7 +1770,7 @@ func (mp *metaPartition) recordRequest(req *RequestInfo, respCode uint8) {
 	mp.reqRecords.Update(req)
 }
 
-func (mp *metaPartition) persistRequestInfoToRocksDB(dbWriteHandle interface{}, req *RequestInfo){
+func (mp *metaPartition) persistRequestInfoToRocksDB(dbWriteHandle interface{}, req *RequestInfo) {
 	if req == nil || !req.EnableRemoveDupReq || mp.HasMemStore() {
 		log.LogDebugf("persistRequestInfoToRocksDB: partitionID(%v), reqInfo(%v) is nil or disable remove dup or mem store mode",
 			mp.config.PartitionId, req)

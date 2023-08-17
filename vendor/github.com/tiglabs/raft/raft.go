@@ -61,6 +61,13 @@ type entryRequest struct {
 	onlyCommit bool
 }
 
+type resetPeerRequest struct {
+	future   *Future
+	peers    []proto.Peer
+	learners []proto.Learner
+	context  []byte
+}
+
 type softState struct {
 	leader uint64
 	term   uint64
@@ -157,6 +164,7 @@ type raft struct {
 	flushc            chan *Future
 	readIndexC        chan *Future
 	statusc           chan chan *Status
+	resetPeersc       chan *resetPeerRequest
 	entryRequestC     chan *entryRequest
 	readyc            chan struct{}
 	propReadyc        chan struct{}
@@ -199,6 +207,7 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		truncatec:     make(chan uint64, 1),
 		flushc:        make(chan *Future, 1),
 		readIndexC:    make(chan *Future, 256),
+		resetPeersc:   make(chan *resetPeerRequest, 1),
 		statusc:       make(chan chan *Status, 1),
 		entryRequestC: make(chan *entryRequest, 16),
 		tickc:         make(chan struct{}, 64),
@@ -573,6 +582,19 @@ func (s *raft) run() {
 				logger.Error("raft[%v] flush storage failed: %v", err)
 			}
 			f.respond(nil, err)
+		case req := <-s.resetPeersc:
+			peers, learners, context := req.peers, req.learners, req.context
+			err := s.raftFsm.maybeResetPeer(&proto.ResetPeers{Peers: peers, Learners: learners, Context: context})
+			if err != nil {
+				req.future.respond(nil, err)
+			} else {
+				var prev = s.peerState.get()
+				s.peerState.replace(peers)
+				req.future.respond(nil, nil)
+				if logger.IsEnableWarn() {
+					logger.Warn("raft[%v] reset peers from %v to %v", s.raftFsm.id, prev, s.peerState.get())
+				}
+			}
 		case truncIndex := <-s.truncatec:
 			func(truncateTo uint64) {
 				defer util.HandleCrash(fmt.Sprintf("raft[%v]->truncateTo", s.raftFsm.id))
@@ -1183,6 +1205,7 @@ func (s *raft) getStatus() *Status {
 		}(),
 		RecvQueue: len(s.recvc),
 		AppQueue:  len(s.applyc),
+		Peers:     s.peerState.get(),
 		Stopped:   stopped,
 		Log: LogStatus{
 			FirstIndex: s.raftFsm.raftLog.firstIndex(),
@@ -1236,6 +1259,20 @@ func (s *raft) readIndex(future *Future) {
 	case <-s.stopc:
 		future.respond(nil, ErrStopped)
 	case s.readIndexC <- future:
+	}
+}
+
+func (s *raft) resetPeer(future *Future, peers []proto.Peer, learners []proto.Learner, context []byte) {
+	var req = &resetPeerRequest{
+		future:   future,
+		peers:    peers,
+		learners: learners,
+		context:  context,
+	}
+	select {
+	case <-s.stopc:
+		future.respond(nil, ErrStopped)
+	case s.resetPeersc <- req:
 	}
 }
 
