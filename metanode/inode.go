@@ -755,7 +755,6 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	if i.ObjExtents == nil {
 		i.ObjExtents = NewSortedObjExtents()
 	}
-	log.LogInfof("action[UnmarshalInodeValue] inode %v Reserved %v", i.Inode, i.Reserved)
 
 	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
 	v2 := i.Reserved&V2EnableColdInodeFlag > 0

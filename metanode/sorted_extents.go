@@ -58,13 +58,12 @@ func (se *SortedExtents) MarshalBinary(v3 bool) ([]byte, error) {
 }
 
 func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, splitMap *sync.Map) {
-	var ek proto.ExtentKey
-
 	se.Lock()
 	defer se.Unlock()
 
 	buf := bytes.NewBuffer(data)
 	for {
+		var ek proto.ExtentKey
 		if buf.Len() == 0 {
 			break
 		}
@@ -73,7 +72,6 @@ func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, split
 		}
 		// Don't use se.Append here, since we need to retain the raw ek order.
 		se.eks = append(se.eks, ek)
-		log.LogDebugf("UnmarshalBinary. ek %v", ek)
 		if ek.IsSplit() {
 			if splitMap == nil {
 				splitMap = new(sync.Map)
