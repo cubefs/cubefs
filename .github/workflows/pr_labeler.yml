@@ -1,0 +1,99 @@
+name: Pull Request Labeler
+on:
+  pull_request:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+        with:
+          fetch-depth: 0
+
+      - name: Count changed lines
+        id: changed-lines
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            })
+              
+            const additions = pullRequest.additions
+            const deletions = pullRequest.deletions
+            const changes = additions + deletions
+              
+            return changes
+
+      - name: Get modified files
+        id: modified-files
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            })
+            const rootDirs = [...new Set(pullRequest.map(f => f.filename.split('/')[0]))].join(' ')
+            return rootDirs
+
+      - name: Label Pull Request
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            let labels = [];
+            
+            // Label Size
+            const count = ${{ steps.changed-lines.outputs.result }}
+            if (count < 30) {
+              labels.push('size/tiny')
+            } else if (count < 100) {
+              labels.push('size/small')
+            } else if (count < 500) {
+              labels.push('size/medium')
+            } else {
+              labels.push('size/large')
+            }
+            
+            // Label Components
+            const changedFiles = ${{ steps.modified-files.outputs.result }}.split(' ')
+            const components = ['blobstore', 'cli', 'client', 'console', 'datanode', 'master', 'metanode', 'objectnode']
+            labels.push(...changedFiles.filter(file => components.includes(file)).map(component => `component/${component}`))
+            
+            // Start Set Labels
+            const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            })
+            
+            const existingLabels = currentLabels
+              .filter(l => l.name.startsWith('size/') || l.name.startsWith('component/'))
+              .map(l => l.name)
+            
+            const labelsToAdd = labels.filter(label => !existingLabels.includes(label))
+            const labelsToRemove = existingLabels.filter(label => !labels.includes(label))
+            
+            for (const labelToRemove of labelsToRemove) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: labelToRemove
+              })
+            }
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: labelsToAdd
+            })
