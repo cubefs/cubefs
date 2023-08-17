@@ -130,10 +130,11 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	}
 
 	dentry := &Dentry{
-		ParentId: req.ParentID,
-		Name:     req.Name,
-		Inode:    req.Inode,
-		Type:     req.Mode,
+		ParentId:  req.ParentID,
+		Name:      req.Name,
+		Inode:     req.Inode,
+		Type:      req.Mode,
+		multiSnap: NewDentrySnap(mp.GetVerSeq()),
 	}
 	val, err := dentry.Marshal()
 	if err != nil {

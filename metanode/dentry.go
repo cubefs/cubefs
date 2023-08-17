@@ -520,9 +520,6 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 	buff := bytes.NewBuffer(make([]byte, 0))
 	buff.Grow(int(keyLen + valLen + 8))
 
-	//log.LogInfof("action[dentry.Marshal] dentry name %v inode %v parent %v seq %v keyLen  %v valLen %v total len %v",
-	//	d.Name, d.Inode, d.ParentId, d.VerSeq, keyLen, valLen, int(keyLen+valLen+8))
-
 	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
 		return
 	}
@@ -668,7 +665,7 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 func (d *Dentry) MarshalValue() (k []byte) {
 
 	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(20 + d.getSnapListLen()*20)
+	buff.Grow(28 + d.getSnapListLen()*20)
 	if err := binary.Write(buff, binary.BigEndian, &d.Inode); err != nil {
 		panic(err)
 	}
@@ -677,6 +674,11 @@ func (d *Dentry) MarshalValue() (k []byte) {
 	}
 	seq := d.getSeqFiled()
 	if err := binary.Write(buff, binary.BigEndian, &seq); err != nil {
+		panic(err)
+	}
+
+	verCnt := uint32(d.getSnapListLen())
+	if err := binary.Write(buff, binary.BigEndian, &verCnt); err != nil {
 		panic(err)
 	}
 
@@ -696,7 +698,6 @@ func (d *Dentry) MarshalValue() (k []byte) {
 	}
 
 	k = buff.Bytes()
-	log.LogDebugf("action[MarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", d.Name, d.Inode, d.ParentId, len(k))
 	return
 }
 
@@ -706,19 +707,21 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 		return
 	}
 	err = binary.Read(buff, binary.BigEndian, &d.Type)
-	log.LogDebugf("action[UnmarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", d.Name, d.Inode, d.ParentId, len(val))
-	if len(val) >= 20 {
+
+	if len(val) >= 28 {
 		var seq uint64
 		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
 			return
 		}
-		if seq > 0 {
-			d.multiSnap = NewDentrySnap(seq)
+
+		d.multiSnap = NewDentrySnap(seq)
+
+		verCnt := uint32(0)
+		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
+			return
 		}
-		if (len(val)-20)%20 != 0 {
-			return fmt.Errorf("action[UnmarshalSnapshotValue] left len %v after divide by dentry len", len(val)-20)
-		}
-		for i := 0; i < (len(val)-20)/20; i++ {
+
+		for i := 0; i < int(verCnt); i++ {
 			//todo(leonchang) name and parentid should be removed to reduce space
 			den := &Dentry{
 				Name:     d.Name,
@@ -737,8 +740,8 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 				den.multiSnap = NewDentrySnap(seq)
 			}
 			d.multiSnap.dentryList = append(d.multiSnap.dentryList, den)
-			log.LogDebugf("action[UnmarshalValue] dentry name %v, inode %v, parent inode %v, val len %v", den.Name, den.Inode, den.ParentId, len(val))
 		}
 	}
+
 	return
 }
