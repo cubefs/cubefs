@@ -25,9 +25,9 @@ module.exports = [
             {
                 text: 'Monitoring and Visualization',
                 children: [
-                    'maintenance/metrics/metrics.md',
-                    'maintenance/metrics/collect.md',
-                    'maintenance/metrics/view.md',
+                    'deploy/metrics/metrics.md',
+                    'deploy/metrics/collect.md',
+                    'deploy/metrics/view.md',
                 ]
             },
             'deploy/upgrade.md',
@@ -42,7 +42,6 @@ module.exports = [
             'user-guide/blobstore.md',
             'user-guide/hadoop.md',
             'user-guide/k8s.md',
-            'user-guide/fuse.md',
             'user-guide/atomicity.md',
             'user-guide/quota.md',
             'user-guide/qos.md',
