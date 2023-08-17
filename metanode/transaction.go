@@ -664,7 +664,8 @@ func (tm *TransactionManager) registerTransaction(txInfo *proto.TransactionInfo)
 	}
 
 	if info := tm.getTransaction(txInfo.TxID); info != nil {
-		return fmt.Errorf("tx is already exist, txId %s, info %v", txInfo.TxID, info.String())
+		log.LogWarnf("tx is already exist, txId %s, info %v", txInfo.TxID, info.String())
+		return nil
 	}
 
 	tm.addTxInfo(txInfo)
