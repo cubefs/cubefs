@@ -258,7 +258,9 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 
 		if mp.verSeq == 0 {
 			item = mp.dentryTree.Delete(denParm)
-			denFound = item.(*Dentry)
+			if item != nil {
+				denFound = item.(*Dentry)
+			}
 		} else {
 			item = mp.dentryTree.Get(denParm)
 			if item != nil {
