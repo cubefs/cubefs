@@ -15,22 +15,23 @@
 package flashnode
 
 import (
-	"github.com/cubefs/cubefs/proto"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 const (
 	moduleName = "flashnode"
 
-	NodeLatestVersion                 = proto.BaseVersion
-	LruCacheDefaultCapacity           = 400000
-	CacheReqWriteTimeoutMilliSec      = 500
-	CacheReqReadTimeoutMilliSec       = 500
-	CacheReqConnectionTimeoutMilliSec = 500
-	UpdateRateLimitInfoInterval       = 60 * time.Second
-	ServerTimeOut                     = 60 * 5
-	ConnectPoolIdleConnTimeoutSec     = 60
-	DefaultBurst                      = 512
+	NodeLatestVersion            = proto.BaseVersion
+	LruCacheDefaultCapacity      = 400000
+	CacheReqWriteTimeoutMilliSec = 500
+	CacheReqReadTimeoutMilliSec  = 500
+	CacheReqConnectionTimeout    = 500 * time.Millisecond
+	UpdateRateLimitInfoInterval  = 60 * time.Second
+	ServerTimeOut                = 60 * 5
+	ConnectPoolIdleConnTimeout   = 60 * time.Second
+	DefaultBurst                 = 512
 )
 
 // Configuration keys

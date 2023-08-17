@@ -17,6 +17,12 @@ package flashnode
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/cache_engine"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -30,11 +36,6 @@ import (
 	"github.com/cubefs/cubefs/util/statinfo"
 	"github.com/cubefs/cubefs/util/statistics"
 	"golang.org/x/time/rate"
-	"net"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -102,7 +103,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	f.initLimiter()
-	f.connPool = connpool.NewConnectPoolWithTimeout(ConnectPoolIdleConnTimeoutSec, CacheReqConnectionTimeoutMilliSec)
+	f.connPool = connpool.NewConnectPoolWithTimeout(ConnectPoolIdleConnTimeout, CacheReqConnectionTimeout)
 	if err = f.registerAPIHandler(); err != nil {
 		return
 	}
