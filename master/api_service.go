@@ -4958,10 +4958,10 @@ func (m *Server) GetAllVersionInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	if !proto.IsHot(vol.VolType) {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: "vol need be hot one"})
-		return
-	}
+	//if !proto.IsHot(vol.VolType) {
+	//	sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: "vol need be hot one"})
+	//	return
+	//}
 
 	verList = vol.VersionMgr.getVersionList()
 
