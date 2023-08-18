@@ -792,7 +792,6 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	defer Buffers.Put(header)
 	var n int
 	if n, err = io.ReadFull(c, header); err != nil {
-		log.LogErrorf("ReadFromConnWithVer. read header fail %v", err)
 		return
 	}
 	if n != util.PacketHeaderSize {
