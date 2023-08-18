@@ -26,7 +26,6 @@ type RepairExtentInfo struct {
 type RepairPersist struct {
 	MasterAddr              string
 	checkFailedFd           *os.File
-	failedExtentsFd         *os.File
 	singleBadNormalExtentFd *os.File
 	multiBadNormalExtentsFd *os.File
 	singleBadTinyExtentFd   *os.File
@@ -146,15 +145,15 @@ func (rp *RepairPersist) PersistResult() {
 	}
 }
 
-func NewRepairPersist(master string) (rp *RepairPersist) {
+func NewRepairPersist(dir, master string) (rp *RepairPersist) {
 	rp = new(RepairPersist)
 	rp.MasterAddr = master
 	rp.RepairPersistCh = make(chan RepairExtentInfo, 1024)
-	rp.checkFailedFd, _ = os.OpenFile(fmt.Sprintf("checkFailed_%v.csv", strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.singleBadNormalExtentFd, _ = os.OpenFile(fmt.Sprintf("single_bad_normal_extents_%v", strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.multiBadNormalExtentsFd, _ = os.OpenFile(fmt.Sprintf("multi_bad_tiny_extents_%v", strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.singleBadTinyExtentFd, _ = os.OpenFile(fmt.Sprintf("single_bad_tiny_extents_%v", strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.multiBadTinyExtentsFd, _ = os.OpenFile(fmt.Sprintf("multi_bad_tiny_extents_%v", strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.checkFailedFd, _ = os.OpenFile(fmt.Sprintf("%v/checkFailed_%v.csv", dir, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.singleBadNormalExtentFd, _ = os.OpenFile(fmt.Sprintf("%v/single_bad_normal_extents_%v", dir, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.multiBadNormalExtentsFd, _ = os.OpenFile(fmt.Sprintf("%v/multi_bad_tiny_extents_%v", dir, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.singleBadTinyExtentFd, _ = os.OpenFile(fmt.Sprintf("%v/single_bad_tiny_extents_%v", dir, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.multiBadTinyExtentsFd, _ = os.OpenFile(fmt.Sprintf("%v/multi_bad_tiny_extents_%v", dir, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	return
 }
 

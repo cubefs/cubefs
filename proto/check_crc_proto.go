@@ -15,14 +15,13 @@ type CheckCrcTaskInfo struct {
 	RepairType    RepairType `json:"repair_type"`
 	CheckTiny     bool       `json:"check_tiny"`
 	NodeAddress   string     `json:"node_address"`
-	Frequency     Frequency  `json:"frequency"`
 }
 
 type Filter struct {
-	VolFilter         string `json:"vol_filter"`
-	VolExcludeFilter  string `json:"vol_exclude_filter"`
-	ZoneFilter        string `json:"zone_filter"`
-	ZoneExcludeFilter string `json:"zone_exclude_filter"`
+	VolFilter         []string `json:"vol_filter"`
+	VolExcludeFilter  []string `json:"vol_exclude_filter"`
+	ZoneFilter        []string `json:"zone_filter"`
+	ZoneExcludeFilter []string `json:"zone_exclude_filter"`
 }
 type Frequency struct {
 	Interval     uint32 `json:"interval"`

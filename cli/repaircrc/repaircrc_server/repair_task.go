@@ -36,9 +36,6 @@ const (
 func NewRepairTask() *RepairCrcTask {
 	return &RepairCrcTask{
 		CheckCrcTaskInfo: proto.CheckCrcTaskInfo{
-			Frequency: proto.Frequency{
-				Interval: defaultIntervalHour,
-			},
 			Filter: proto.Filter{},
 		},
 		ClusterInfo: new(ClusterInfo),

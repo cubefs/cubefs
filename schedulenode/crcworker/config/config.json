@@ -1,0 +1,21 @@
+{
+  "role": "crcworker",
+  "prof": "17421",
+  "logDir": "/export/Logs/chubaoio/crcworker/",
+  "logLevel": "debug",
+  "mysql": {
+    "url": "192.168.0.1",
+    "userName": "root",
+    "passFile": "/export/App/crcworker/important.propertie",
+    "database": "crcworker_test",
+    "port": 3306
+  },
+  "outputDir": "/export/App/crcworker/output/",
+  "umpPrefix": "schedule_test",
+  "hBaseUrl": "test.hbase.domain",
+  "clusterAddr": {
+    "test-cluster":[
+      "192.168.0.11:80"
+    ]
+  }
+}

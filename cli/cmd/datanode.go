@@ -20,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -299,7 +300,9 @@ func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 			}
 			nodeAddr = args[0]
 			var checkEngine *data_check.CheckEngine
+			outputDir, _ := os.Getwd()
 			checkEngine, err = data_check.NewCheckEngine(
+				outputDir,
 				client,
 				checkTiny,
 				false,

@@ -4,7 +4,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
-	"strings"
 	"sync"
 	"time"
 )
@@ -37,7 +36,7 @@ type CheckEngine struct {
 	checkedExtentsMap *sync.Map
 }
 
-func NewCheckEngine(mc *master.MasterClient, tinyOnly, tinyInUse bool, concurrency uint64, checkType int,
+func NewCheckEngine(outputDir string, mc *master.MasterClient, tinyOnly, tinyInUse bool, concurrency uint64, checkType int,
 	modifyTimeMin, modifyTimeMax string, specifyInodes, specifyDps []uint64, path string, isStop func() bool) (checkEngine *CheckEngine, err error) {
 	var modifyTimestampMin, modifyTimestampMax time.Time
 	if modifyTimestampMin, err = parseTime(modifyTimeMin); err != nil {
@@ -63,7 +62,7 @@ func NewCheckEngine(mc *master.MasterClient, tinyOnly, tinyInUse bool, concurren
 		path:    path,
 		isStop:  isStop,
 	}
-	checkEngine.repairPersist = NewRepairPersist(checkEngine.cluster)
+	checkEngine.repairPersist = NewRepairPersist(outputDir, checkEngine.cluster)
 	go checkEngine.repairPersist.PersistResult()
 	checkEngine.onFail = checkEngine.repairPersist.persistFailed
 	return
@@ -89,7 +88,7 @@ func parseTime(timeStr string) (t time.Time, err error) {
 	return
 }
 
-func ExecuteVolumeTask(id int64, concurrency uint32, filter proto.Filter, mc *master.MasterClient, modifyMin, modifyMax string, stopFunc func() bool) (err error) {
+func ExecuteVolumeTask(outputDir string, id int64, concurrency uint32, filter proto.Filter, mc *master.MasterClient, modifyMin, modifyMax string, stopFunc func() bool) (err error) {
 	var (
 		checkEngine *CheckEngine
 		checkVols   []string
@@ -106,6 +105,7 @@ func ExecuteVolumeTask(id int64, concurrency uint32, filter proto.Filter, mc *ma
 		return
 	}
 	checkEngine, err = NewCheckEngine(
+		outputDir,
 		mc,
 		false,
 		false,
@@ -128,7 +128,7 @@ func ExecuteVolumeTask(id int64, concurrency uint32, filter proto.Filter, mc *ma
 	return
 }
 
-func ExecuteDataNodeTask(id int64, concurrency uint32, node string, mc *master.MasterClient, modifyMin string, checkTiny bool) (err error) {
+func ExecuteDataNodeTask(outputDir string, id int64, concurrency uint32, node string, mc *master.MasterClient, modifyMin string, checkTiny bool) (err error) {
 	var checkEngine *CheckEngine
 	defer func() {
 		if err != nil {
@@ -136,6 +136,7 @@ func ExecuteDataNodeTask(id int64, concurrency uint32, node string, mc *master.M
 		}
 	}()
 	checkEngine, err = NewCheckEngine(
+		outputDir,
 		mc,
 		checkTiny,
 		false,
@@ -162,11 +163,7 @@ func ExecuteDataNodeTask(id int64, concurrency uint32, node string, mc *master.M
 func getVolsByFilter(mc *master.MasterClient, filter proto.Filter) (vols []string, err error) {
 	var volsInfo []*proto.VolInfo
 	for i := 1; i < 20; i++ {
-		if filter.VolFilter != "" {
-			volsInfo, err = mc.AdminAPI().ListVols(filter.VolFilter)
-		} else {
-			volsInfo, err = mc.AdminAPI().ListVols("")
-		}
+		volsInfo, err = mc.AdminAPI().ListVols("")
 		if err == nil {
 			break
 		}
@@ -180,16 +177,28 @@ func getVolsByFilter(mc *master.MasterClient, filter proto.Filter) (vols []strin
 		if e != nil {
 			return vols, e
 		}
-		if filter.VolExcludeFilter != "" && strings.Contains(v.Name, filter.VolExcludeFilter) {
+		if len(filter.VolFilter) > 0 && !include(v.Name, filter.VolFilter) {
 			continue
 		}
-		if filter.ZoneFilter != "" && !strings.Contains(volume.ZoneName, filter.ZoneFilter) {
+		if len(filter.VolExcludeFilter) > 0 && include(v.Name, filter.VolExcludeFilter) {
 			continue
 		}
-		if filter.ZoneExcludeFilter != "" && strings.Contains(volume.ZoneName, filter.ZoneExcludeFilter) {
+		if len(filter.ZoneFilter) > 0 && !include(volume.ZoneName, filter.ZoneFilter) {
+			continue
+		}
+		if len(filter.ZoneExcludeFilter) > 0 && include(volume.ZoneName, filter.ZoneExcludeFilter) {
 			continue
 		}
 		vols = append(vols, v.Name)
 	}
 	return
+}
+
+func include(val string, strs []string) bool {
+	for _, s := range strs {
+		if s == val {
+			return true
+		}
+	}
+	return false
 }

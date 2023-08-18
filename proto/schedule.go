@@ -15,6 +15,7 @@ const (
 	RoleCompactWorker       = "compact"
 	RoleDPReBalanceWorker   = "dpReBalance"
 	RoleDiskReBalanceWorker = "diskReBalance"
+	RoleCrcWorker           = "crcworker"
 )
 
 const (
@@ -93,7 +94,7 @@ var workerTypeMap = map[WorkerType]string{
 	WorkerTypeCompact:       "compact",
 	WorkerTypeDPReBalance:   "dpRebalance",
 	WorkerTypeDiskReBalance: "diskRebalance",
-	WorkerTypeCheckCrc:      "checkCrc",
+	WorkerTypeCheckCrc:      "crcworker",
 }
 
 func WorkerTypeToName(wt WorkerType) string {

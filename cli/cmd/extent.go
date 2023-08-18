@@ -394,7 +394,9 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 			if fromFile {
 				vols = util.LoadSpecifiedVolumes(volFilter, volExcludeFilter)
 			}
+			outputDir, _ := os.Getwd()
 			checkEngine, err = data_check.NewCheckEngine(
+				outputDir,
 				client,
 				tinyOnly,
 				tinyInUse,

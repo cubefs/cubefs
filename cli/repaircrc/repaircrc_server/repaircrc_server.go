@@ -12,7 +12,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -209,7 +211,16 @@ func (s *RepairServer) handleAddTask(w http.ResponseWriter, r *http.Request) {
 		if t.ClusterInfo.Master == task.ClusterInfo.Master && t.RepairType == task.RepairType {
 			switch t.RepairType {
 			case proto.RepairVolume:
-				if t.Filter.VolFilter == task.Filter.VolFilter {
+				sort.Strings(task.Filter.VolFilter)
+				sort.Strings(t.Filter.VolFilter)
+				sort.Strings(task.Filter.VolExcludeFilter)
+				sort.Strings(t.Filter.VolExcludeFilter)
+				sort.Strings(task.Filter.ZoneFilter)
+				sort.Strings(t.Filter.ZoneFilter)
+				sort.Strings(task.Filter.ZoneExcludeFilter)
+				sort.Strings(t.Filter.ZoneExcludeFilter)
+				if strings.Join(t.Filter.VolFilter, ",") == strings.Join(task.Filter.VolFilter, ",") && strings.Join(t.Filter.VolExcludeFilter, ",") == strings.Join(task.Filter.VolExcludeFilter, ",") &&
+					strings.Join(t.Filter.ZoneFilter, ",") == strings.Join(task.Filter.ZoneFilter, ",") && strings.Join(t.Filter.ZoneExcludeFilter, ",") == strings.Join(task.Filter.ZoneExcludeFilter, ",") {
 					buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("already has duplicate task: %v", t.TaskId))
 					return
 				}
@@ -307,13 +318,14 @@ func executeTask(t *RepairCrcTask) {
 	defer timer.Stop()
 	timer.Reset(time.Second)
 	var count uint32
+	outputDir, _ := os.Getwd()
 	for {
 		select {
 		case <-timer.C:
 			log.LogInfof("executeTask begin, taskID:%v", t.TaskId)
 			switch t.RepairType {
 			case proto.RepairVolume:
-				_ = data_check.ExecuteVolumeTask(t.TaskId, t.Concurrency, t.Filter, t.mc, t.ModifyTimeMin, t.ModifyTimeMax, func() bool {
+				_ = data_check.ExecuteVolumeTask(outputDir, t.TaskId, t.Concurrency, t.Filter, t.mc, t.ModifyTimeMin, t.ModifyTimeMax, func() bool {
 					select {
 					case <-t.stopC:
 						return true
@@ -322,7 +334,7 @@ func executeTask(t *RepairCrcTask) {
 					}
 				})
 			case proto.RepairDataNode:
-				_ = data_check.ExecuteDataNodeTask(t.TaskId, t.Concurrency, t.NodeAddress, t.mc, t.ModifyTimeMin, t.CheckTiny)
+				_ = data_check.ExecuteDataNodeTask(outputDir, t.TaskId, t.Concurrency, t.NodeAddress, t.mc, t.ModifyTimeMin, t.CheckTiny)
 			}
 			count++
 			if t.Frequency.ExecuteCount > 0 && count >= t.Frequency.ExecuteCount {

@@ -22,9 +22,9 @@ import (
 	"github.com/cubefs/cubefs/convertnode"
 	"github.com/cubefs/cubefs/ecnode"
 	"github.com/cubefs/cubefs/flashnode"
-	"github.com/cubefs/cubefs/schedulenode/checkcrc"
 	"github.com/cubefs/cubefs/schedulenode/checktool"
 	"github.com/cubefs/cubefs/schedulenode/compact"
+	"github.com/cubefs/cubefs/schedulenode/crcworker"
 	"github.com/cubefs/cubefs/schedulenode/rebalance"
 	"github.com/cubefs/cubefs/schedulenode/scheduler"
 	"github.com/cubefs/cubefs/schedulenode/smart"
@@ -80,7 +80,7 @@ const (
 	RoleSchedule  = "schedulenode"
 	RoleSmart     = "smartvolume"
 	RoleCompact   = "compact"
-	RoleCheckCrc = "checkcrc"
+	RoleCrcWorker = "crcworker"
 	RoleCodec     = "codecnode"
 	RoleEc        = "ecnode"
 	RoleReBalance = "rebalance"
@@ -99,7 +99,7 @@ const (
 	ModuleSchedule  = "scheduleNode"
 	ModuleSmart     = "smartVolume"
 	ModuleCompact   = "compact"
-	ModuleCheckCrc = "checkcrc"
+	ModuleCrcWorker = "crcworker"
 	ModuleCodec     = "codecNode"
 	ModuleEc        = "ecNode"
 	ModuleReBalance = "rebalance"
@@ -257,9 +257,9 @@ func run() error {
 	case RoleCompact:
 		server = compact.NewCompactWorker()
 		module = ModuleCompact
-	case RoleCheckCrc:
-		server = checkcrc.NewCrcWorker()
-		module = ModuleCheckCrc
+	case RoleCrcWorker:
+		server = crcworker.NewCrcWorker()
+		module = ModuleCrcWorker
 	case RoleCodec:
 		server = codecnode.NewServer()
 		module = ModuleCodec

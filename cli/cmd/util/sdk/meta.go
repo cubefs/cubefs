@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"strings"
 	"sync"
@@ -40,16 +41,16 @@ func GetFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, c
 	for i := 0; i < int(concurrency); i++ {
 		go func() {
 			for mp := range ch {
-				var inos map[uint64]*proto.MetaInode
 				if mp.LeaderAddr == "" {
 					fmt.Printf("mp[%v] no leader\n", mp.PartitionID)
 					wg.Done()
 					return
 				}
+				var inos *proto.MpAllInodesId
 				mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], metaProf), false)
-				inos, err = mtClient.GetAllInodes(mp.PartitionID)
+				inos, err = mtClient.ListAllInodesId(mp.PartitionID, 0, modifyTimeMin, modifyTimeMax)
 				if err != nil {
-					fmt.Printf("get inodes error: %v, mp: %d\n", err, mp.PartitionID)
+					log.LogError("get inodes error: %v, mp: %d\n", err, mp.PartitionID)
 					if exit {
 						os.Exit(0)
 					}
@@ -57,17 +58,8 @@ func GetFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, c
 					return
 				}
 				mu.Lock()
-				for _, ino := range inos {
-					if !proto.IsRegular(ino.Type) {
-						continue
-					}
-					if modifyTimeMin > 0 && ino.ModifyTime < modifyTimeMin {
-						continue
-					}
-					if modifyTimeMax > 0 && ino.ModifyTime > modifyTimeMax {
-						continue
-					}
-					inodes = append(inodes, ino.Inode)
+				for _, ino := range inos.Inodes {
+					inodes = append(inodes, ino)
 				}
 				mu.Unlock()
 				wg.Done()
