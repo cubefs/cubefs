@@ -42,7 +42,7 @@ func (s *ChubaoFSMonitor) checkObjectNodeAlive() {
 	var err error
 	startTime := time.Now()
 	log.LogInfof("checkObjectNodeAlive start")
-	jdosAPI := jdos.NewJDOSOpenApi(SysNameCFS, ObjectNodeAppName, jdos.OnlineSite, jdos.Erp, jdos.OnlineToken)
+	jdosAPI := jdos.NewJDOSOpenApi(SysNameCFS, ObjectNodeAppName, s.jdosUrl, s.jdosErp, s.jdosToken)
 	var groups jdos.Groups
 	if groups, err = jdosAPI.GetAllGroupsDetails(); err != nil {
 		log.LogErrorf("get all ObjectNode groups details failed: %v", err)
@@ -90,7 +90,7 @@ func (s *ChubaoFSMonitor) checkObjectNodeAlive() {
 }
 
 func (s *ChubaoFSMonitor) checkObjectNodeAliveByGroup(group *jdos.Group) (badPodIps []string, totalPods int, err error) {
-	api := jdos.NewJDOSOpenApi(SysNameCFS, ObjectNodeAppName, jdos.OnlineSite, jdos.Erp, jdos.OnlineToken)
+	api := jdos.NewJDOSOpenApi(SysNameCFS, ObjectNodeAppName, s.jdosUrl, s.jdosErp, s.jdosToken)
 	var pods jdos.Pods
 	if pods, err = api.GetGroupAllPods(group.GroupName); err != nil {
 		return

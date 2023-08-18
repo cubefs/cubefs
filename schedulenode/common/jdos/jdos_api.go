@@ -15,13 +15,7 @@ import (
 
 const (
 	pageSizeParam   = "pageSize"
-	pageSizeValue   = 1000                            //最大不能超过1000
-	JCDOnlineSite   = "http://api.jcd-gateway.jd.com" // 行云部署open api前缀
-	Erp             = "org.imgsupport"
-	OnlineToken     = "3464713a-b5ca-435e-a6de-704fd6f84acd"
-	OnlineSite      = JCDOnlineSite //"http://api.jdos.jd.com"
-	TestToken       = "2f54b7da-60ac-436a-acca-758e78f39b5a"
-	TestSite        = "http://api-test.jdos.jd.com"
+	pageSizeValue   = 1000 //最大不能超过1000
 	LbStatusActivce = "active"
 )
 
@@ -105,9 +99,9 @@ type GroupConfigPerfParam struct {
 	WriteBps interface{} `json:"writeBps"`
 }
 
-//容器状态 :部署中(Pending,ContainerCreating),运行中(Running),正在停止(Terminating),
-//容器退出(SignalOrExitCode),错误(Failed,Error),镜像拉取失败(ImagePullBackOff,ErrImagePull),
-//其余状态表示:部署等待处理
+// 容器状态 :部署中(Pending,ContainerCreating),运行中(Running),正在停止(Terminating),
+// 容器退出(SignalOrExitCode),错误(Failed,Error),镜像拉取失败(ImagePullBackOff,ErrImagePull),
+// 其余状态表示:部署等待处理
 type Pod struct {
 	PodName         string    `json:"podName"`
 	Status          string    `json:"status"`
@@ -177,7 +171,7 @@ func NewJDOSOpenApi(systemName, appName, site, erp, token string) (jApi *OpenApi
 	return
 }
 
-//分组服务接口-查询应用下对应的所有分组详情(含有region信息)
+// 分组服务接口-查询应用下对应的所有分组详情(含有region信息)
 func (jAPi *OpenApi) GetAllGroupsDetails() (jGroups Groups, err error) {
 	var data []byte
 	reqUrl := fmt.Sprintf("%v/api/v2/apps/%v/groups", jAPi.site, jAPi.appName)
@@ -193,7 +187,7 @@ func (jAPi *OpenApi) GetAllGroupsDetails() (jGroups Groups, err error) {
 	return
 }
 
-//分组服务接口-查询应用下对应的所有分组名称(含有region信息,去掉了一些详细信息)
+// 分组服务接口-查询应用下对应的所有分组名称(含有region信息,去掉了一些详细信息)
 func (jAPi *OpenApi) GetAllGroupsNames() (jGroupNames GroupNames, err error) {
 	var data []byte
 	reqUrl := fmt.Sprintf("%v/api/v2/apps/%v/groups", jAPi.site, jAPi.appName)
@@ -209,7 +203,7 @@ func (jAPi *OpenApi) GetAllGroupsNames() (jGroupNames GroupNames, err error) {
 	return
 }
 
-//分组服务接口-查询分组详情
+// 分组服务接口-查询分组详情
 func (jAPi *OpenApi) GetGroupDetails(groupName string) (jGroup *Group, err error) {
 	var data []byte
 	reqUrl := fmt.Sprintf("%v/api/v2/apps/%v/groups/%v", jAPi.site, jAPi.appName, groupName)
@@ -225,7 +219,7 @@ func (jAPi *OpenApi) GetGroupDetails(groupName string) (jGroup *Group, err error
 	return
 }
 
-//集群管理-查询集群中的所有pod
+// 集群管理-查询集群中的所有pod
 func (jAPi *OpenApi) GetGroupAllPods(groupName string) (jDOSPods Pods, err error) {
 	var data []byte
 	reqUrl := fmt.Sprintf("%v/api/v2/apps/%v/groups/%v/cluster/pods", jAPi.site, jAPi.appName, groupName)
@@ -242,7 +236,7 @@ func (jAPi *OpenApi) GetGroupAllPods(groupName string) (jDOSPods Pods, err error
 	return
 }
 
-//负载均衡接口-获取该应用下所有的lb信息
+// 负载均衡接口-获取该应用下所有的lb信息
 func (jAPi *OpenApi) GetAllLbs() (jDOSLbs Lbs, err error) {
 	var data []byte
 	url := fmt.Sprintf("%v/api/v2/apps/%v/loadBalances", jAPi.site, jAPi.appName)

@@ -70,6 +70,9 @@ const (
 	cfgKeyDPPendQueueAlarmThreshold      = "dpPendQueueAlarmThreshold"
 	cfgKeyMPPendQueueAlarmThreshold      = "mpPendQueueAlarmThreshold"
 	cfgKeySreDbConfigDSNPort             = "sreDbConfig"
+	cfgKeyJdosToken                      = "jdosToken"
+	cfgKeyJdosURl                        = "jdosURL"
+	cfgKeyJdosErp                        = "jdosErp"
 	cfgKeyMetaNodeExportDiskUsedRatio    = "metaNodeExportDiskUsedRatio"
 	cfgKeyIgnoreCheckMP                  = "ignoreCheckMP"
 	cfgKeyNodeRapidMemIncWarnThreshold   = "nodeRapidMemIncWarnThreshold"
@@ -146,6 +149,9 @@ type ChubaoFSMonitor struct {
 	ignoreCheckMp                           bool
 	nodeRapidMemIncWarnThreshold            float64
 	nodeRapidMemIncreaseWarnRatio           float64
+	jdosToken                               string
+	jdosUrl                                 string
+	jdosErp                                 string
 	ctx                                     context.Context
 }
 
@@ -379,6 +385,10 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		s.metaNodeExportDiskUsedRatio = minMetaNodeExportDiskUsedRatio
 	}
 	s.ignoreCheckMp = cfg.GetBool(cfgKeyIgnoreCheckMP)
+	if err = loadDockerIPList(); err != nil {
+		return
+	}
+	s.parseJdosToken(cfg)
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
 		",offlineDataNodeMaxCountIn24Hour[%v],offlineDiskMaxCountIn24Hour[%v],offlineDiskMinDuration[%v],  mpCheckInterval[%v], dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v]\n",
 		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio, s.offlineDataNodeMaxCountIn24Hour,
@@ -422,6 +432,12 @@ func (s *ChubaoFSMonitor) updateMaxPendQueueAndMaxAppliedIDDiffCountByConfig(cfg
 	}
 	fmt.Printf("hosts:%v dpMaxPendQueueCount:%v dpMaxAppliedIDDiffCount:%v mpMaxPendQueueCount:%v mpMaxAppliedIDDiffCount:%v dpPendQueueAlarmThreshold:%v mpPendQueueAlarmThreshold:%v\n",
 		s.hosts, dpMaxPendQueueCount, dpMaxAppliedIDDiffCount, mpMaxPendQueueCount, mpMaxAppliedIDDiffCount, dpPendQueueAlarmThreshold, mpPendQueueAlarmThreshold)
+}
+
+func (s *ChubaoFSMonitor) parseJdosToken(cfg *config.Config) {
+	s.jdosToken = cfg.GetString(cfgKeyJdosToken)
+	s.jdosUrl = cfg.GetString(cfgKeyJdosURl)
+	s.jdosErp = cfg.GetString(cfgKeyJdosErp)
 }
 
 func (s *ChubaoFSMonitor) parseSreDBConfig(cfg *config.Config) {

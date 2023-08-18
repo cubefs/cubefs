@@ -66,7 +66,7 @@ func (s *ChubaoFSMonitor) checkMasterLbPodStatus() {
 }
 
 func (s *ChubaoFSMonitor) checkPodsStatusOfAppAndAlarm(systemName, appName, host string, threshold float32) {
-	totalPodsCounts, notRunningPodIps, err := checkPodsStatFromJDOS(systemName, appName, host)
+	totalPodsCounts, notRunningPodIps, err := checkPodsStatFromJDOS(systemName, appName, host, s)
 	if err != nil {
 		log.LogErrorf("action[checkPodsStatusOfAppAndAlarm] err:%v", err)
 		return
@@ -104,9 +104,9 @@ func (s *ChubaoFSMonitor) checkPodsStatusOfAppAndAlarm(systemName, appName, host
 	}
 }
 
-func checkPodsStatFromJDOS(systemName, appName, host string) (totalPodsCount int, notRunningPodIps []string, err error) {
+func checkPodsStatFromJDOS(systemName, appName, host string, s *ChubaoFSMonitor) (totalPodsCount int, notRunningPodIps []string, err error) {
 	notRunningPodIps = make([]string, 0)
-	jdosOpenApi := jdos.NewJDOSOpenApi(systemName, appName, jdos.OnlineSite, jdos.Erp, jdos.OnlineToken)
+	jdosOpenApi := jdos.NewJDOSOpenApi(systemName, appName, s.jdosUrl, s.jdosErp, s.jdosToken)
 	groupsDetails, err := jdosOpenApi.GetAllGroupsDetails()
 	if err != nil {
 		return
