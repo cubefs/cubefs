@@ -1,6 +1,7 @@
 package auditlog
 
 import (
+	"container/heap"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -11,10 +12,42 @@ import (
 )
 
 type Query struct {
-	Must    []map[string]interface{} `json:"must"`
-	MustNot []map[string]interface{} `json:"must_not"`
-	Should  []map[string]interface{} `json:"should"`
-	Minimum int                      `json:"minimum_should_match"`
+	Must     []map[string]interface{} `json:"must"`
+	MustNot  []map[string]interface{} `json:"must_not"`
+	Should   []map[string]interface{} `json:"should"`
+	priority int
+	index    int
+}
+
+type PriorityQueue []*Query
+
+func (pq PriorityQueue) Len() int { return len(pq) }
+
+func (pq PriorityQueue) Less(i, j int) bool {
+	return pq[i].priority > pq[j].priority
+}
+
+func (pq PriorityQueue) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+	pq[i].index = i
+	pq[j].index = j
+}
+
+func (pq *PriorityQueue) Push(x interface{}) {
+	n := len(*pq)
+	item := x.(*Query)
+	item.index = n
+	*pq = append(*pq, item)
+}
+
+func (pq *PriorityQueue) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil
+	item.index = -1
+	*pq = old[0 : n-1]
+	return item
 }
 
 type Log struct {
@@ -32,6 +65,55 @@ type Log struct {
 	Duration   int64  `json:"duration"`
 }
 
+var priorityQueue PriorityQueue
+
+func (filter Query) Init() {
+	queryList := make([]*Query, 0)
+	var index int = 0
+	for _, clause := range filter.Must {
+		tem := new(Query)
+		tt := make([]map[string]interface{}, 0)
+		tt = append(tt, clause)
+		tem.Must = tt
+		tem.priority = 0
+		tem.index = index
+		index++
+		queryList = append(queryList, tem)
+	}
+	for _, clause := range filter.MustNot {
+		tem := new(Query)
+		tt := make([]map[string]interface{}, 1)
+		tt = append(tt, clause)
+		tem.MustNot = tt
+		tem.priority = 0
+		tem.index = index
+		index++
+		queryList = append(queryList, tem)
+	}
+	if filter.Should == nil {
+		tem := new(Query)
+		tem.Should = filter.Should
+		tem.priority = 0
+		tem.index = index
+		index++
+		queryList = append(queryList, tem)
+	}
+	priorityQueue = PriorityQueue(queryList)
+	heap.Init(&priorityQueue)
+}
+
+func FilterLogWithPriority(log Log) bool {
+	lenPriorityQueue := priorityQueue.Len()
+	for i := 0; i < lenPriorityQueue; i++ {
+		if FilterLog(log, *priorityQueue[i]) == false {
+			priorityQueue[i].priority += 1
+			heap.Fix(&priorityQueue, i)
+			return false
+		}
+	}
+	return true
+}
+
 func FilterLog(log Log, filter Query) bool {
 	for _, clause := range filter.Must {
 		for key, valueList := range clause {
@@ -39,7 +121,7 @@ func FilterLog(log Log, filter Query) bool {
 			case "term":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						if !isEqual(logFieldValue(log, field), val) {
 							return false
 						}
@@ -48,7 +130,7 @@ func FilterLog(log Log, filter Query) bool {
 			case "match":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						if !strings.Contains(logFieldValue(log, field).(string), val.(string)) {
 							return false
 						}
@@ -57,7 +139,7 @@ func FilterLog(log Log, filter Query) bool {
 			case "range":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						rangeMap := val.(map[string]interface{})
 						fieldVal := logFieldValue(log, field).(int64)
 						_, ok1 := rangeMap["gte"]
@@ -87,7 +169,7 @@ func FilterLog(log Log, filter Query) bool {
 			case "regexp":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						reg, err := regexp.Compile(val.(string))
 						if err != nil {
 							fmt.Printf("正则表达式错误 %s = %v\n", field, val)
@@ -123,7 +205,7 @@ func FilterLog(log Log, filter Query) bool {
 			case "term":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						if isEqual(logFieldValue(log, field), val) {
 							return false
 						}
@@ -132,7 +214,7 @@ func FilterLog(log Log, filter Query) bool {
 			case "match":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						if strings.Contains(logFieldValue(log, field).(string), val.(string)) {
 							return false
 						}
@@ -141,7 +223,7 @@ func FilterLog(log Log, filter Query) bool {
 			case "range":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						rangeMap := val.(map[string]interface{})
 						fieldVal := logFieldValue(log, field).(int64)
 						_, ok1 := rangeMap["gte"]
@@ -182,7 +264,7 @@ func FilterLog(log Log, filter Query) bool {
 			case "regexp":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						reg, err := regexp.Compile(val.(string))
 						if err != nil {
 							fmt.Printf("正则表达式错误 %s = %v\n", field, val)
@@ -219,7 +301,7 @@ A:
 			case "term":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						if isEqual(logFieldValue(log, field), val) {
 							break A
 						}
@@ -228,7 +310,7 @@ A:
 			case "match":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						if strings.Contains(logFieldValue(log, field).(string), val.(string)) {
 							break A
 						}
@@ -237,7 +319,7 @@ A:
 			case "range":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						rangeMap := val.(map[string]interface{})
 						fieldVal := logFieldValue(log, field).(int64)
 						_, ok1 := rangeMap["gte"]
@@ -278,7 +360,7 @@ A:
 			case "regexp":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fmt.Printf("Filtering by %s = %v\n", field, val)
+						//fmt.Printf("Filtering by %s = %v\n", field, val)
 						reg, err := regexp.Compile(val.(string))
 						if err != nil {
 							fmt.Printf("正则表达式错误 %s = %v\n", field, val)
