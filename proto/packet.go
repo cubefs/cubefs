@@ -573,6 +573,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaGetInodeQuota"
 	case OpStopDataPartitionRepair:
 		m = "OpStopDataPartitionRepair"
+	default:
+		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
 	return
 }
