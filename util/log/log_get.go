@@ -17,8 +17,8 @@ package log
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
