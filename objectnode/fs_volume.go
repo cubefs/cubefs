@@ -329,16 +329,7 @@ func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool)
 
 	err = v.mw.XAttrSet_ll(inode, []byte(key), data)
 	if err == nil {
-		if objMetaCache != nil {
-			attrItem := &AttrItem{
-				XAttrInfo: proto.XAttrInfo{
-					Inode:  inode,
-					XAttrs: make(map[string]string, 0),
-				},
-			}
-			attrItem.XAttrs[key] = string(data)
-			objMetaCache.MergeAttr(v.name, attrItem)
-		}
+		updateAttrCache(inode, key, string(data), v.name)
 	}
 
 	return err
@@ -401,50 +392,44 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 		var attr *proto.XAttrInfo
 		attrItem, needRefresh := objMetaCache.GetAttr(v.name, inode)
 		if attrItem == nil || needRefresh {
-			log.LogDebugf("GetXAttr: get attr in cache failed: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
+			log.LogDebugf("GetXAttr: get attr in cache miss: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
 				v.name, inode, attrItem, needRefresh)
 			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
 				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 				return v.getXAttr(path, key)
-			} else {
-				attrItem = &AttrItem{
-					XAttrInfo: *attr,
-				}
-				objMetaCache.PutAttr(v.name, attrItem)
-				val, ok := attr.XAttrs[key]
-				if !ok {
-					log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
-					return v.getXAttr(path, key)
-				} else {
-					info.XAttrs[key] = val
-					return
-				}
 			}
-		} else {
-			val, ok := attrItem.XAttrs[key]
+			attrItem = &AttrItem{
+				XAttrInfo: *attr,
+			}
+			objMetaCache.PutAttr(v.name, attrItem)
+			val, ok := attr.XAttrs[key]
 			if !ok {
-				if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
-					log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
-					return v.getXAttr(path, key)
-				} else {
-					val, ok := attr.XAttrs[key]
-					if !ok {
-						log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
-						return v.getXAttr(path, key)
-					} else {
-						info.XAttrs[key] = val
-						return
-					}
-				}
-			} else {
-				info.XAttrs[key] = val
-				return
+				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
+				return v.getXAttr(path, key)
 			}
+			info.XAttrs[key] = val
+			return
 		}
-
-	} else {
-		return v.getXAttr(path, key)
+		val, ok := attrItem.XAttrs[key]
+		if !ok {
+			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
+				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
+				return v.getXAttr(path, key)
+			}
+			val, ok := attr.XAttrs[key]
+			if !ok {
+				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
+				return v.getXAttr(path, key)
+			}
+			info.XAttrs[key] = val
+			return
+		}
+		info.XAttrs[key] = val
+		return
 	}
+
+	return v.getXAttr(path, key)
+
 }
 
 func (v *Volume) DeleteXAttr(path string, key string) (err error) {
@@ -482,11 +467,9 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 	if objMetaCache != nil {
 		var retry = 0
 		for {
-
 			if _, inode, _, _, err = v.recursiveLookupTarget(path); err != nil {
 				return v.listXAttrs(path)
 			}
-
 			_, err = v.mw.InodeGet_ll(inode)
 			if err == syscall.ENOENT && retry < MaxRetry {
 				retry++
@@ -499,33 +482,31 @@ func (v *Volume) ListXAttrs(path string) (keys []string, err error) {
 			break
 		}
 
+		var attr *proto.XAttrInfo
 		attrItem, needRefresh := objMetaCache.GetAttr(v.name, inode)
 		if attrItem == nil || needRefresh {
-			log.LogDebugf("ListXAttrs: get attr in cache failed: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
+			log.LogDebugf("ListXAttrs: get attr in cache miss: volume(%v) inode(%v) attrItem(%v), needRefresh(%v)",
 				v.name, inode, attrItem, needRefresh)
-			if attr, err := v.mw.XAttrGetAll_ll(inode); err != nil {
+			if attr, err = v.mw.XAttrGetAll_ll(inode); err != nil {
 				log.LogErrorf("XAttrGetAll_ll: meta get xattr fail: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, inode, err)
 				return v.listXAttrs(path)
-			} else {
-				attrItem = &AttrItem{
-					XAttrInfo: *attr,
-				}
-				objMetaCache.PutAttr(v.name, attrItem)
-				for key := range attr.XAttrs {
-					keys = append(keys, key)
-				}
 			}
-		} else {
-			for key := range attrItem.XAttrs {
+			attrItem = &AttrItem{
+				XAttrInfo: *attr,
+			}
+			objMetaCache.PutAttr(v.name, attrItem)
+			for key := range attr.XAttrs {
 				keys = append(keys, key)
 			}
+			return
 		}
-
-	} else {
-		return v.listXAttrs(path)
+		for key := range attrItem.XAttrs {
+			keys = append(keys, key)
+		}
+		return
 	}
+	return v.listXAttrs(path)
 
-	return
 }
 
 func (v *Volume) OSSSecure() (accessKey, secretKey string) {
@@ -826,18 +807,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	// force updating dentry and attrs in cache
-	if objMetaCache != nil {
-		dentry := &DentryItem{
-			Dentry: metanode.Dentry{
-				ParentId: parentId,
-				Name:     lastPathItem.Name,
-				Inode:    invisibleTempDataInode.Inode,
-				Type:     DefaultFileMode,
-			},
-		}
-		objMetaCache.PutDentry(v.name, dentry)
-		objMetaCache.PutAttr(v.name, attr)
-	}
+	updateDentryCache(parentId, invisibleTempDataInode.Inode, DefaultFileMode, lastPathItem.Name, v.name)
+	putAttrCache(attr, v.name)
 
 	return fsInfo, nil
 }
@@ -944,16 +915,9 @@ func (v *Volume) DeletePath(path string) (err error) {
 		log.LogWarnf("DeletePath EvictStream: path(%v) inode(%v)", path, ino)
 	}
 
-	var dentry = &DentryItem{
-		Dentry: metanode.Dentry{
-			ParentId: parent,
-			Name:     name,
-		},
-	}
-	if objMetaCache != nil {
-		objMetaCache.DeleteDentry(v.name, dentry.Key())
-		objMetaCache.DeleteAttr(v.name, ino)
-	}
+	// delete objectnode meta cache
+	deleteDentryCache(parent, name, v.name)
+	deleteAttrCache(parent, v.name)
 
 	log.LogWarnf("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
 	if err = v.mw.Evict(ino); err != nil {
@@ -1304,6 +1268,12 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	}
 
 	attrs := make(map[string]string)
+	attrItem := &AttrItem{
+		XAttrInfo: proto.XAttrInfo{
+			Inode:  completeInodeInfo.Inode,
+			XAttrs: attrs,
+		},
+	}
 	attrs[XAttrKeyOSSETag] = etagValue.Encode()
 	// set user modified system metadata, self defined metadata and tag
 	extend := multipartInfo.Extend
@@ -1356,6 +1326,10 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			}
 		}
 	}()
+
+	// force updating dentry and attrs in cache
+	updateDentryCache(parentId, completeInodeInfo.Inode, DefaultFileMode, filename, v.name)
+	putAttrCache(attrItem, v.name)
 
 	log.LogDebugf("CompleteMultipart: meta complete multipart: volume(%v) multipartID(%v) path(%v) parentID(%v) inode(%v) etagValue(%v)",
 		v.name, multipartID, path, parentId, finalInode.Inode, etagValue)
@@ -1827,7 +1801,6 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 			var pathItem = pathIterator.Next()
 			var curIno uint64
 			var curMode uint32
-
 			dentry := &DentryItem{
 				Dentry: metanode.Dentry{
 					ParentId: parent,
@@ -1836,40 +1809,24 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 			}
 			var needRefresh bool
 			dentry, needRefresh = objMetaCache.GetDentry(v.name, dentry.Key())
+			// cache not found or cache expired or filemode not match
 			if dentry == nil || needRefresh || os.FileMode(dentry.Type).IsDir() != pathItem.IsDirectory {
-				log.LogDebugf("recursiveLookupTarget: get dentry in cache failed: volume(%v) dentry(%v) needRefresh(%v)",
+				log.LogDebugf("recursiveLookupTarget: dentry cache miss: volume(%v) dentry(%v) needRefresh(%v)",
 					v.name, dentry, needRefresh)
 				curIno, curMode, err = v.mw.Lookup_ll(parent, pathItem.Name)
-				if err != nil && err != syscall.ENOENT {
+				if err != nil {
 					log.LogErrorf("recursiveLookupPath: lookup fail, parentID(%v) name(%v) fail err(%v)",
 						parent, pathItem.Name, err)
-					if cacheUsed {
-						break
-					} else {
+					if !cacheUsed {
 						return
 					}
+					break
 				}
-				if err == syscall.ENOENT {
-					if cacheUsed {
-						break
-					} else {
-						return
-					}
-				}
-
-				// force updating dentry in cache
-				dentryNew := &DentryItem{
-					Dentry: metanode.Dentry{
-						ParentId: parent,
-						Name:     pathItem.Name,
-						Inode:    curIno,
-						Type:     curMode,
-					},
-				}
-				objMetaCache.PutDentry(v.name, dentryNew)
-
-				log.LogDebugf("recursiveLookupPath: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
+				log.LogDebugf("recursiveLookupPath: lookup item from meta: parentID(%v) inode(%v) name(%v) mode(%v)",
 					parent, curIno, pathItem.Name, os.FileMode(curMode))
+				// force updating dentry in cache
+				updateDentryCache(parent, curIno, curMode, pathItem.Name, v.name)
+
 				// Check file mode
 				if os.FileMode(curMode).IsDir() != pathItem.IsDirectory {
 					err = syscall.ENOENT
@@ -1896,6 +1853,7 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 				break
 			}
 		}
+		// no error occurs in recursiveLookup with cache
 		if err == nil {
 			return
 		}
@@ -1918,30 +1876,12 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 			return
 		}
 		if err == syscall.ENOENT {
-			if objMetaCache != nil {
-				dentry := &DentryItem{
-					Dentry: metanode.Dentry{
-						ParentId: parent,
-						Name:     pathItem.Name,
-					},
-				}
-				objMetaCache.DeleteDentry(v.name, dentry.Key())
-			}
+			deleteDentryCache(parent, pathItem.Name, v.name)
 			return
 		}
 
 		// force updating dentry in cache
-		if objMetaCache != nil {
-			dentry := &DentryItem{
-				Dentry: metanode.Dentry{
-					ParentId: parent,
-					Name:     pathItem.Name,
-					Inode:    curIno,
-					Type:     curMode,
-				},
-			}
-			objMetaCache.PutDentry(v.name, dentry)
-		}
+		updateDentryCache(parent, curIno, curMode, pathItem.Name, v.name)
 
 		log.LogDebugf("recursiveLookupPath: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
 			parent, curIno, pathItem.Name, os.FileMode(curMode))
@@ -1962,10 +1902,61 @@ func (v *Volume) recursiveLookupTarget(path string) (parent uint64, ino uint64, 
 	return
 }
 
-func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
+func updateDentryCache(parentId, ino uint64, curMode uint32, dentryName, volName string) {
+	if objMetaCache != nil {
+		dentry := &DentryItem{
+			Dentry: metanode.Dentry{
+				ParentId: parentId,
+				Name:     dentryName,
+				Inode:    ino,
+				Type:     curMode,
+			},
+		}
+		objMetaCache.PutDentry(volName, dentry)
+	}
+}
+
+func deleteDentryCache(parent uint64, dentryName, volName string) {
+	if objMetaCache != nil {
+		dentry := &DentryItem{
+			Dentry: metanode.Dentry{
+				ParentId: parent,
+				Name:     dentryName,
+			},
+		}
+		objMetaCache.DeleteDentry(volName, dentry.Key())
+	}
+}
+
+func putAttrCache(attr *AttrItem, volName string) {
+	if objMetaCache != nil {
+		objMetaCache.PutAttr(volName, attr)
+	}
+}
+
+func updateAttrCache(inode uint64, key, value, volName string) {
+	if objMetaCache != nil {
+		attrItem := &AttrItem{
+			XAttrInfo: proto.XAttrInfo{
+				Inode:  inode,
+				XAttrs: make(map[string]string, 0),
+			},
+		}
+		attrItem.XAttrs[key] = value
+		objMetaCache.MergeAttr(volName, attrItem)
+	}
+}
+
+func deleteAttrCache(inode uint64, volName string) {
+	if objMetaCache != nil {
+		objMetaCache.DeleteAttr(volName, inode)
+	}
+}
+
+func (v *Volume) recursiveMakeDirectory(path string) (partentIno uint64, err error) {
 	// in case of any mv or rename operation within refresh interval of dentry item in cache,
 	// recursiveMakeDirectory don't look up cache, and will force update dentry item
-	ino = rootIno
+	partentIno = rootIno
 	var pathIterator = NewPathIterator(path)
 	if !pathIterator.HasNext() {
 		err = syscall.ENOENT
@@ -1978,22 +1969,22 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 		}
 		var curIno uint64
 		var curMode uint32
-		curIno, curMode, err = v.mw.Lookup_ll(ino, pathItem.Name)
+		curIno, curMode, err = v.mw.Lookup_ll(partentIno, pathItem.Name)
 		if err != nil && err != syscall.ENOENT {
 			log.LogErrorf("recursiveMakeDirectory: lookup fail, parentID(%v) name(%v) fail err(%v)",
-				ino, pathItem.Name, err)
+				partentIno, pathItem.Name, err)
 			return
 		}
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
-			info, err = v.mw.Create_ll(ino, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil)
+			info, err = v.mw.Create_ll(partentIno, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil)
 			if err != nil && err == syscall.EEXIST {
-				existInode, mode, e := v.mw.Lookup_ll(ino, pathItem.Name)
+				existInode, mode, e := v.mw.Lookup_ll(partentIno, pathItem.Name)
 				if e != nil {
 					return
 				}
 				if os.FileMode(mode).IsDir() {
-					ino, err = existInode, nil
+					partentIno, err = existInode, nil
 					continue
 				}
 			}
@@ -2004,25 +1995,16 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 		}
 
 		// force updating dentry in cache
-		if objMetaCache != nil {
-			dentry := &DentryItem{
-				Dentry: metanode.Dentry{
-					ParentId: ino,
-					Name:     pathItem.Name,
-					Inode:    curIno,
-					Type:     curMode,
-				},
-			}
-			objMetaCache.PutDentry(v.name, dentry)
-		}
+		updateDentryCache(partentIno, curIno, curMode, pathItem.Name, v.name)
 		log.LogDebugf("recursiveMakeDirectory: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
-			ino, curIno, pathItem.Name, os.FileMode(curMode))
+			partentIno, curIno, pathItem.Name, os.FileMode(curMode))
+
 		// Check file mode
 		if os.FileMode(curMode).IsDir() != pathItem.IsDirectory {
 			err = syscall.EINVAL
 			return
 		}
-		ino = curIno
+		partentIno = curIno
 	}
 	return
 }
