@@ -16,19 +16,20 @@ package objectnode
 
 import (
 	"container/list"
-	"github.com/cubefs/cubefs/metanode"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/metanode"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type AccessStat struct {
-	accssNum uint64
-	miss     uint64
-	validHit uint64
+	accessNum uint64
+	miss      uint64
+	validHit  uint64
 }
 
 type AttrItem struct {
@@ -46,7 +47,7 @@ type VolumeInodeAttrsCache struct {
 	cache       map[uint64]*list.Element
 	lruList     *list.List
 	maxElements int64
-	aStat       AccessStat
+	accessStat  AccessStat
 }
 
 func NewVolumeInodeAttrsCache(maxElements int64) *VolumeInodeAttrsCache {
@@ -64,22 +65,21 @@ func (vac *VolumeInodeAttrsCache) SetMaxElements(maxElements int64) {
 	vac.maxElements = maxElements
 }
 
-func (vac *VolumeInodeAttrsCache) Put(attr *AttrItem) {
+func (vac *VolumeInodeAttrsCache) putAttr(attr *AttrItem) {
 	vac.Lock()
 	defer vac.Unlock()
 
 	old, ok := vac.cache[attr.Inode]
 	if ok {
-		oldAttrs := old.Value.(*AttrItem)
-		log.LogDebugf("replace old attrs: inode(%v) attr(%v)"+
-			"with new ones: attr(%v)", attr.Inode, oldAttrs, attr)
+		oldAttr := old.Value.(*AttrItem)
+		log.LogDebugf("replace old attr: inode(%v) attr(%v) with new attr(%v)", attr.Inode, oldAttr, attr)
 
 		vac.lruList.Remove(old)
 		delete(vac.cache, attr.Inode)
 	}
 
 	if int64(vac.lruList.Len()) > vac.maxElements {
-		vac.evict(vac.maxElements - int64(vac.lruList.Len()))
+		vac.evictAttr(int64(vac.lruList.Len()) - vac.maxElements)
 	}
 
 	element := vac.lruList.PushFront(attr)
@@ -87,7 +87,7 @@ func (vac *VolumeInodeAttrsCache) Put(attr *AttrItem) {
 	vac.cache[attr.Inode] = element
 }
 
-func (vac *VolumeInodeAttrsCache) Merge(attr *AttrItem) {
+func (vac *VolumeInodeAttrsCache) mergeAttr(attr *AttrItem) {
 	vac.RLock()
 	old, ok := vac.cache[attr.Inode]
 	if ok {
@@ -101,19 +101,19 @@ func (vac *VolumeInodeAttrsCache) Merge(attr *AttrItem) {
 	}
 	vac.RUnlock()
 
-	vac.Put(attr)
+	vac.putAttr(attr)
 
 }
 
-func (vac *VolumeInodeAttrsCache) Get(inode uint64) *AttrItem {
+func (vac *VolumeInodeAttrsCache) getAttr(inode uint64) *AttrItem {
 	var miss bool
 	defer func() {
 		vac.Lock()
-		vac.aStat.accssNum++
+		vac.accessStat.accessNum++
 		if miss {
-			vac.aStat.miss++
+			vac.accessStat.miss++
 		} else {
-			vac.aStat.validHit++
+			vac.accessStat.validHit++
 		}
 		vac.Unlock()
 	}()
@@ -121,22 +121,23 @@ func (vac *VolumeInodeAttrsCache) Get(inode uint64) *AttrItem {
 	vac.RLock()
 	element, ok := vac.cache[inode]
 	if !ok {
-		log.LogDebugf("VolumeInodeAttrsCache Get failed: inode(%v)", inode)
+		log.LogDebugf("cache Get inode(%v) attr not found", inode)
 		miss = true
 		vac.RUnlock()
 		return nil
 	}
-
-	item := element.Value.(*AttrItem)
+	attrs := element.Value.(*AttrItem)
 	vac.RUnlock()
+
 	vac.Lock()
 	vac.lruList.MoveToFront(element)
 	vac.Unlock()
-	log.LogDebugf("VolumeInodeAttrsCache Get: inode(%v) attrs(%v)", inode, item)
-	return item
+
+	log.LogDebugf("cache Get inode(%v) attrs(%v)", inode, attrs)
+	return attrs
 }
 
-func (vac *VolumeInodeAttrsCache) Delete(inode uint64) {
+func (vac *VolumeInodeAttrsCache) deleteAttr(inode uint64) {
 	vac.Lock()
 	defer vac.Unlock()
 
@@ -149,23 +150,23 @@ func (vac *VolumeInodeAttrsCache) Delete(inode uint64) {
 	}
 }
 
-func (vac *VolumeInodeAttrsCache) DeleteWithKey(inode uint64, key string) {
+func (vac *VolumeInodeAttrsCache) deleteAttrWithKey(inode uint64, key string) {
 	vac.Lock()
-
 	var attr *AttrItem
 	element, ok := vac.cache[inode]
 	if ok {
 		attr = element.Value.(*AttrItem)
-		log.LogDebugf("delete key: %v in attr of inode(%v) ", key, inode)
+		log.LogDebugf("delete key: %v in attrs of inode(%v) ", key, inode)
 		delete(attr.XAttrs, key)
 	}
 	vac.Unlock()
+
 	if attr != nil {
-		vac.Put(attr)
+		vac.putAttr(attr)
 	}
 }
 
-func (vac *VolumeInodeAttrsCache) evict(evictNum int64) {
+func (vac *VolumeInodeAttrsCache) evictAttr(evictNum int64) {
 	if evictNum <= 0 {
 		return
 	}
@@ -185,11 +186,10 @@ func (vac *VolumeInodeAttrsCache) TotalNum() int {
 }
 
 func (vac *VolumeInodeAttrsCache) GetAccessStat() (accssNum, validHit, miss uint64) {
-	return vac.aStat.accssNum, vac.aStat.validHit, vac.aStat.miss
+	return vac.accessStat.accessNum, vac.accessStat.validHit, vac.accessStat.miss
 }
 
 //type DentryItem metanode.Dentry
-
 type DentryItem struct {
 	metanode.Dentry
 	UpdateTime int64
@@ -203,7 +203,7 @@ func (di *DentryItem) GetUpdateTime() int64 {
 	return di.UpdateTime
 }
 
-//VolumeDentryCache accelerates translating from Amazon S3 path to posix-compatible file system metadata within a volume
+//VolumeDentryCache accelerates translating S3 path to posix-compatible file system metadata within a volume
 type VolumeDentryCache struct {
 	sync.RWMutex
 	cache       map[string]*list.Element
@@ -221,21 +221,21 @@ func NewVolumeDentryCache(maxElements int64) *VolumeDentryCache {
 	return vdc
 }
 
-func (vdc *VolumeDentryCache) SetMaxElements(maxElements int64) {
+func (vdc *VolumeDentryCache) setMaxElements(maxElements int64) {
 	vdc.Lock()
 	defer vdc.Unlock()
 	vdc.maxElements = maxElements
 }
 
-func (vdc *VolumeDentryCache) Put(dentry *DentryItem) {
+func (vdc *VolumeDentryCache) putDentry(dentry *DentryItem) {
 	vdc.Lock()
 	defer vdc.Unlock()
 	key := dentry.Key()
 	old, ok := vdc.cache[key]
 	if ok {
 		oldDentry := old.Value.(*DentryItem)
-		log.LogDebugf("replace old dentry: parentID(%v) inode(%v) "+
-			"name(%v) mode(%v) with new ones: parentID(%v) inode(%v) name(%v) mode(%v)",
+		log.LogDebugf("replace old dentry: parentID(%v) inode(%v) name(%v) mode(%v) "+
+			"with new one: parentID(%v) inode(%v) name(%v) mode(%v)",
 			oldDentry.ParentId, oldDentry.Inode, oldDentry.Name, os.FileMode(oldDentry.Type),
 			dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type))
 
@@ -244,7 +244,7 @@ func (vdc *VolumeDentryCache) Put(dentry *DentryItem) {
 	}
 
 	if int64(vdc.lruList.Len()) > vdc.maxElements {
-		vdc.evict(vdc.maxElements - int64(vdc.lruList.Len()))
+		vdc.evictDentry(int64(vdc.lruList.Len()) - vdc.maxElements)
 	}
 
 	element := vdc.lruList.PushFront(dentry)
@@ -252,11 +252,11 @@ func (vdc *VolumeDentryCache) Put(dentry *DentryItem) {
 	vdc.cache[key] = element
 }
 
-func (vdc *VolumeDentryCache) Get(key string) *DentryItem {
+func (vdc *VolumeDentryCache) getDentry(key string) *DentryItem {
 	var miss bool
 	defer func() {
 		vdc.Lock()
-		vdc.aStat.accssNum++
+		vdc.aStat.accessNum++
 		if miss {
 			vdc.aStat.miss++
 		} else {
@@ -281,7 +281,7 @@ func (vdc *VolumeDentryCache) Get(key string) *DentryItem {
 	return item
 }
 
-func (vdc *VolumeDentryCache) Delete(key string) {
+func (vdc *VolumeDentryCache) deleteDentry(key string) {
 	vdc.Lock()
 	defer vdc.Unlock()
 
@@ -294,7 +294,7 @@ func (vdc *VolumeDentryCache) Delete(key string) {
 	}
 }
 
-func (vdc *VolumeDentryCache) evict(evictNum int64) {
+func (vdc *VolumeDentryCache) evictDentry(evictNum int64) {
 	if evictNum <= 0 {
 		return
 	}
@@ -314,113 +314,107 @@ func (vdc *VolumeDentryCache) TotalNum() int {
 }
 
 func (vdc *VolumeDentryCache) GetAccessStat() (accssNum, validHit, miss uint64) {
-	return vdc.aStat.accssNum, vdc.aStat.validHit, vdc.aStat.miss
+	return vdc.aStat.accessNum, vdc.aStat.validHit, vdc.aStat.miss
 }
 
 type ObjMetaCache struct {
 	sync.RWMutex
-	vdCache         map[string]*VolumeDentryCache
-	vaCache         map[string]*VolumeInodeAttrsCache
-	maxDentryNum    int64
-	maxInodeAttrNum int64
-	refreshInterval uint64 //seconds
+	volumeDentryCache     map[string]*VolumeDentryCache     // volume --> VolumeDentryCache
+	volumeInodeAttrsCache map[string]*VolumeInodeAttrsCache // volume --> VolumeInodeAttrsCache
+	maxDentryNum          int64                             // maxDentryNum that all volume share
+	maxInodeAttrNum       int64                             // maxInodeAttrNum that all volume share
+	refreshIntervalSec    uint64                            // dentry/attr cache expiration time
 }
 
 func NewObjMetaCache(maxDentryNum, maxInodeAttrNum int64, refreshInterval uint64) *ObjMetaCache {
-	omCache := &ObjMetaCache{
-		vdCache:         make(map[string]*VolumeDentryCache),
-		vaCache:         make(map[string]*VolumeInodeAttrsCache),
-		maxDentryNum:    maxDentryNum,
-		maxInodeAttrNum: maxInodeAttrNum,
-		refreshInterval: refreshInterval,
+	omc := &ObjMetaCache{
+		volumeDentryCache:     make(map[string]*VolumeDentryCache),
+		volumeInodeAttrsCache: make(map[string]*VolumeInodeAttrsCache),
+		maxDentryNum:          maxDentryNum,
+		maxInodeAttrNum:       maxInodeAttrNum,
+		refreshIntervalSec:    refreshInterval,
 	}
-	return omCache
+	return omc
 }
 
 func (omc *ObjMetaCache) PutAttr(volume string, item *AttrItem) {
 	omc.Lock()
-	vac, exist := omc.vaCache[volume]
+	vac, exist := omc.volumeInodeAttrsCache[volume]
 	if !exist {
-		volumeNum := len(omc.vaCache)
+		volumeNum := len(omc.volumeInodeAttrsCache)
 		avgMaxNum := omc.maxInodeAttrNum / (int64(volumeNum) + 1)
 		vac = NewVolumeInodeAttrsCache(avgMaxNum)
 
-		omc.vaCache[volume] = vac
-		for _, v := range omc.vaCache {
+		omc.volumeInodeAttrsCache[volume] = vac
+		for _, v := range omc.volumeInodeAttrsCache {
 			v.SetMaxElements(avgMaxNum)
 		}
-		log.LogDebugf("NewVolumeInodeAttrsCache: volume(%v), volumeNum(%v), avgMaxNum(%v)",
-			volume, volumeNum, avgMaxNum)
+		log.LogDebugf("NewVolumeInodeAttrsCache: volume(%v), volumeNum(%v), avgMaxNum(%v)", volume, volumeNum, avgMaxNum)
 	}
 	omc.Unlock()
 
-	vac.Put(item)
+	vac.putAttr(item)
 	log.LogDebugf("ObjMetaCache PutAttr: volume(%v) attr(%v)", volume, item)
 }
 
 func (omc *ObjMetaCache) MergeAttr(volume string, item *AttrItem) {
 	omc.Lock()
-	vac, exist := omc.vaCache[volume]
+	vac, exist := omc.volumeInodeAttrsCache[volume]
 	if !exist {
-		volumeNum := len(omc.vaCache)
+		volumeNum := len(omc.volumeInodeAttrsCache)
 		avgMaxNum := omc.maxInodeAttrNum / (int64(volumeNum) + 1)
 		vac = NewVolumeInodeAttrsCache(avgMaxNum)
 
-		omc.vaCache[volume] = vac
-		for _, v := range omc.vaCache {
+		omc.volumeInodeAttrsCache[volume] = vac
+		for _, v := range omc.volumeInodeAttrsCache {
 			v.SetMaxElements(avgMaxNum)
 		}
-		log.LogDebugf("NewVolumeInodeAttrsCache: volume(%v), volumeNum(%v), avgMaxNum(%v)",
-			volume, volumeNum, avgMaxNum)
+		log.LogDebugf("NewVolumeInodeAttrsCache: volume(%v), volumeNum(%v), avgMaxNum(%v)", volume, volumeNum, avgMaxNum)
 	}
 	omc.Unlock()
-	log.LogDebugf("ObjMetaCache MergeAttr: volume(%v) attr(%v)",
-		volume, item)
-	vac.Merge(item)
+	log.LogDebugf("ObjMetaCache MergeAttr: volume(%v) attr(%v)", volume, item)
+	vac.mergeAttr(item)
 }
 
 func (omc *ObjMetaCache) GetAttr(volume string, inode uint64) (attr *AttrItem, needRefresh bool) {
 	omc.RLock()
-	vac, exist := omc.vaCache[volume]
+	vac, exist := omc.volumeInodeAttrsCache[volume]
 	omc.RUnlock()
 	if !exist {
-		log.LogDebugf("ObjMetaCache GetAttr: fail, volume(%v) inode(%v) ",
-			volume, inode)
+		log.LogDebugf("ObjMetaCache GetAttr: fail, volume(%v) inode(%v) ", volume, inode)
 		return nil, false
 	}
 
-	attr = vac.Get(inode)
+	attr = vac.getAttr(inode)
 	if attr == nil {
 		return nil, false
-	} else {
-		log.LogDebugf("ObjMetaCache GetAttr: volume(%v) inode(%v) attr(%v)",
-			volume, inode, attr)
-		return attr, attr.UpdateTime+int64(omc.refreshInterval) <= time.Now().Unix()
 	}
+	log.LogDebugf("ObjMetaCache GetAttr: volume(%v) inode(%v) attr(%v)", volume, inode, attr)
+	return attr, attr.UpdateTime+int64(omc.refreshIntervalSec) <= time.Now().Unix()
 }
 
 func (omc *ObjMetaCache) DeleteAttr(volume string, inode uint64) {
 	omc.RLock()
-	vac, exist := omc.vaCache[volume]
+	vac, exist := omc.volumeInodeAttrsCache[volume]
 	omc.RUnlock()
 	if !exist {
 		return
 	}
 
 	log.LogDebugf("ObjMetaCache DeleteAttr: volume(%v), inode(%v)", volume, inode)
-	vac.Delete(inode)
+	vac.deleteAttr(inode)
 }
 
 func (omc *ObjMetaCache) DeleteAttrWithKey(volume string, inode uint64, key string) {
 	omc.RLock()
-	vac, exist := omc.vaCache[volume]
+	vac, exist := omc.volumeInodeAttrsCache[volume]
 	omc.RUnlock()
 	if !exist {
 		return
 	}
 
 	log.LogDebugf("ObjMetaCache DeleteAttr: volume(%v), inode(%v)", volume, inode)
-	vac.DeleteWithKey(inode, key)
+	vac.deleteAttrWithKey(inode, key)
 }
 
 func (omc *ObjMetaCache) TotalAttrNum() int {
@@ -428,7 +422,7 @@ func (omc *ObjMetaCache) TotalAttrNum() int {
 	var vacs []*VolumeInodeAttrsCache
 
 	omc.RLock()
-	for _, vac := range omc.vaCache {
+	for _, vac := range omc.volumeInodeAttrsCache {
 		vacs = append(vacs, vac)
 	}
 	omc.RUnlock()
@@ -440,94 +434,53 @@ func (omc *ObjMetaCache) TotalAttrNum() int {
 	return total
 }
 
-/*
-func (omc *ObjMetaCache) RecursiveLookupTarget(volume, path string) (dentry *DentryItem) {
-	parent := rootIno
-	var pathIterator = NewPathIterator(path)
-	if !pathIterator.HasNext() {
-		return nil
-	}
-	for pathIterator.HasNext() {
-		var pathItem = pathIterator.Next()
-
-		dentry = &DentryItem{
-			Dentry: metanode.Dentry{
-				ParentId: parent,
-				Name:     pathItem.Name,
-			},
-		}
-
-		dentry = omc.GetDentry(volume, dentry.Key())
-		if dentry == nil {
-			log.LogDebugf("cache recursiveLookupPath: lookup fail, parentID(%v) name(%v) fail",
-				parent, pathItem.Name)
-			return
-		}
-
-		log.LogDebugf("cache recursiveLookupPath: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
-			dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type))
-		// Check file mode
-		if os.FileMode(dentry.Type).IsDir() != pathItem.IsDirectory {
-			return nil
-		}
-		if pathIterator.HasNext() {
-			parent = dentry.Inode
-			continue
-		}
-		break
-	}
-	return
-}*/
-
 func (omc *ObjMetaCache) PutDentry(volume string, item *DentryItem) {
 	omc.Lock()
-	vdc, exist := omc.vdCache[volume]
+	vdc, exist := omc.volumeDentryCache[volume]
 	if !exist {
-		volumeNum := len(omc.vdCache)
+		volumeNum := len(omc.volumeDentryCache)
 		avgMaxNum := omc.maxDentryNum / (int64(volumeNum) + 1)
 		vdc = NewVolumeDentryCache(avgMaxNum)
 
-		omc.vdCache[volume] = vdc
-		for _, v := range omc.vdCache {
-			v.SetMaxElements(avgMaxNum)
+		omc.volumeDentryCache[volume] = vdc
+		for _, v := range omc.volumeDentryCache {
+			v.setMaxElements(avgMaxNum)
 		}
-		log.LogDebugf("NewVolumeDentryCache: volume(%v), volumeNum(%v), avgMaxNum(%v)",
-			volume, volumeNum, avgMaxNum)
+		log.LogDebugf("NewVolumeDentryCache: volume(%v), volumeNum(%v), avgMaxNum(%v)", volume, volumeNum, avgMaxNum)
 	}
 	omc.Unlock()
 
-	vdc.Put(item)
+	vdc.putDentry(item)
 	log.LogDebugf("ObjMetaCache PutDentry: volume(%v), DentryItem(%v)", volume, item)
 }
 
 func (omc *ObjMetaCache) GetDentry(volume string, key string) (dentry *DentryItem, needRefresh bool) {
 	omc.RLock()
-	vdc, exist := omc.vdCache[volume]
+	vdc, exist := omc.volumeDentryCache[volume]
 	omc.RUnlock()
 	if !exist {
 		return nil, false
 	}
 
-	dentry = vdc.Get(key)
+	dentry = vdc.getDentry(key)
 	if dentry == nil {
 		return nil, false
-	} else {
-		log.LogDebugf("ObjMetaCache GetDentry: volume(%v), key(%v), dentry:(%v)", volume, key, dentry)
-		return dentry, dentry.UpdateTime+int64(omc.refreshInterval) <= time.Now().Unix()
 	}
+	log.LogDebugf("ObjMetaCache GetDentry: volume(%v), key(%v), dentry:(%v)", volume, key, dentry)
+	return dentry, dentry.UpdateTime+int64(omc.refreshIntervalSec) <= time.Now().Unix()
 
 }
 
 func (omc *ObjMetaCache) DeleteDentry(volume string, key string) {
 	omc.RLock()
-	vdc, exist := omc.vdCache[volume]
+	vdc, exist := omc.volumeDentryCache[volume]
 	omc.RUnlock()
 	if !exist {
 		return
 	}
 
 	log.LogDebugf("ObjMetaCache DeleteDentry: volume(%v), key(%v)", volume, key)
-	vdc.Delete(key)
+	vdc.deleteDentry(key)
 }
 
 func (omc *ObjMetaCache) TotalDentryNum() int {
@@ -535,7 +488,7 @@ func (omc *ObjMetaCache) TotalDentryNum() int {
 	var vdcs []*VolumeDentryCache
 
 	omc.RLock()
-	for _, vdc := range omc.vdCache {
+	for _, vdc := range omc.volumeDentryCache {
 		vdcs = append(vdcs, vdc)
 	}
 	omc.RUnlock()
