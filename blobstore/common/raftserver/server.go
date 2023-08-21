@@ -118,6 +118,10 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 	}
 	lastIndex, _ := store.LastIndex()
 	firstIndex, _ := store.FirstIndex()
+	hs, _, err := store.InitialState()
+	if err != nil {
+		return nil, err
+	}
 
 	log.Infof("load raft wal success, total: %dus, firstIndex: %d, lastIndex: %d, members: %+v",
 		time.Since(begin).Microseconds(), firstIndex, lastIndex, cfg.Members)
@@ -137,6 +141,9 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 	rs.tr = NewTransport(cfg.ListenPort, rs)
 	for _, m := range cfg.Members {
 		rs.addMember(m)
+	}
+	if hs.Commit < cfg.Applied {
+		cfg.Applied = hs.Commit
 	}
 	raftCfg.Applied = cfg.Applied
 	store.SetApplied(cfg.Applied)

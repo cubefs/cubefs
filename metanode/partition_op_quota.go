@@ -243,27 +243,25 @@ handleRsp:
 	return
 }
 
-func (mp *metaPartition) getInodeQuotaIds(inode uint64) (quotaIds []uint32, err error) {
-	log.LogInfof("getInodeQuotaIds mp [%v] treeLen[%v]", mp.config.PartitionId, mp.extendTree.Len())
+func (mp *metaPartition) getInodeQuotaInfos(inode uint64) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
+	log.LogInfof("getInodeQuotaInfos mp [%v] treeLen[%v]", mp.config.PartitionId, mp.extendTree.Len())
 	treeItem := mp.extendTree.Get(NewExtend(inode))
 	if treeItem == nil {
 		return
 	}
 	extend := treeItem.(*Extend)
-	var quotaInfos = &proto.MetaQuotaInfos{
+	var info = &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
 	value, exist := extend.Get([]byte(proto.QuotaKey))
 	if exist {
-		if err = json.Unmarshal(value, &quotaInfos.QuotaInfoMap); err != nil {
+		if err = json.Unmarshal(value, &info.QuotaInfoMap); err != nil {
 			log.LogErrorf("getInodeQuota inode [%v] Unmarshal quotaInfos fail [%v]", inode, err)
 			return
 		}
-		for k := range quotaInfos.QuotaInfoMap {
-			quotaIds = append(quotaIds, k)
-		}
+		quotaInfos = info.QuotaInfoMap
 	}
-	log.LogInfof("getInodeQuotaIds inode [%v] quotaIds [%v] exist [%v]", inode, quotaIds, exist)
+	log.LogInfof("getInodeQuotaInfos inode [%v] quotaInfos [%v] exist [%v]", inode, quotaInfos, exist)
 	return
 }
 

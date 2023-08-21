@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"os"
 	"path"
@@ -82,6 +83,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
+		status := mp.inodeInTx(ino.Inode)
+		if status != proto.OpOk {
+			resp = &InodeResponse{Status: status}
+			return
+		}
 		resp = mp.fsmUnlinkInode(ino, 0)
 	case opFSMUnlinkInodeOnce:
 		inoOnce := InodeOnceUnmarshal(msg.V)
@@ -104,6 +110,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
+		status := mp.inodeInTx(ino.Inode)
+		if status != proto.OpOk {
+			resp = &InodeResponse{Status: status}
+			return
+		}
 		resp = mp.fsmCreateLinkInode(ino, 0)
 	case opFSMCreateLinkInodeOnce:
 		inoOnce := InodeOnceUnmarshal(msg.V)
@@ -112,6 +123,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMEvictInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		status := mp.inodeInTx(ino.Inode)
+		if status != proto.OpOk {
+			resp = &InodeResponse{Status: status}
 			return
 		}
 		resp = mp.fsmEvictInode(ino)
@@ -133,12 +149,26 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
+
+		status := mp.dentryInTx(den.ParentId, den.Name)
+		if status != proto.OpOk {
+			resp = status
+			return
+		}
+
 		resp = mp.fsmCreateDentry(den, false)
 	case opFSMDeleteDentry:
 		den := &Dentry{}
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
+
+		status := mp.dentryInTx(den.ParentId, den.Name)
+		if status != proto.OpOk {
+			resp = status
+			return
+		}
+
 		resp = mp.fsmDeleteDentry(den, false)
 	case opFSMDeleteDentryBatch:
 		db, err := DentryBatchUnmarshal(msg.V)
@@ -151,6 +181,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
+
+		status := mp.dentryInTx(den.ParentId, den.Name)
+		if status != proto.OpOk {
+			resp = &DentryResponse{Status: status}
+			return
+		}
+
 		resp = mp.fsmUpdateDentry(den)
 	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
@@ -182,12 +219,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmExtentsEmpty(ino)
-	// case opFSMExtentsDel:
-	// 	ino := NewInode(0, 0)
-	// 	if err = ino.Unmarshal(msg.V); err != nil {
-	// 		return
-	// 	}
-	// 	resp = mp.fsmDelExtents(ino)
 	case opFSMClearInodeCache:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
@@ -278,8 +309,14 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if txID > mp.txProcessor.txManager.txIdAlloc.getTransactionID() {
 			mp.txProcessor.txManager.txIdAlloc.setTransactionID(txID)
 		}
+	case opFSMTxInit:
+		txInfo := proto.NewTransactionInfo(0, 0)
+		if err = txInfo.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxInit(txInfo)
 	case opFSMTxCreateInode:
-		txIno := NewTxInode("", 0, 0, 0, nil)
+		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
@@ -310,57 +347,51 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxCreateDentry(txDen, false)
+		resp = mp.fsmTxCreateDentry(txDen)
 	case opFSMTxSetState:
 		req := &proto.TxSetStateRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
 		resp = mp.fsmTxSetState(req)
+	case opFSMTxCommitRM:
+		req := &proto.TransactionInfo{}
+		if err = req.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxCommitRM(req)
+	case opFSMTxRollbackRM:
+		req := &proto.TransactionInfo{}
+		if err = req.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmTxRollbackRM(req)
 	case opFSMTxCommit:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
 		resp = mp.fsmTxCommit(req.TxID)
-	case opFSMTxInodeCommit:
-		req := &proto.TxInodeApplyRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp = mp.fsmTxInodeCommit(req.TxID, req.Inode)
-	case opFSMTxDentryCommit:
-		req := &proto.TxDentryApplyRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp = mp.fsmTxDentryCommit(req.TxID, req.Pid, req.Name)
 	case opFSMTxRollback:
 		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
 		resp = mp.fsmTxRollback(req.TxID)
-	case opFSMTxInodeRollback:
-		req := &proto.TxInodeApplyRequest{}
+	case opFSMTxDelete:
+		req := &proto.TxApplyRequest{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
 			return
 		}
-		resp = mp.fsmTxInodeRollback(req)
-	case opFSMTxDentryRollback:
-		req := &proto.TxDentryApplyRequest{}
-		if err = json.Unmarshal(msg.V, req); err != nil {
-			return
-		}
-		resp = mp.fsmTxDentryRollback(req)
+		resp = mp.fsmTxDelete(req.TxID)
 	case opFSMTxDeleteDentry:
 		txDen := NewTxDentry(0, "", 0, 0, nil, nil)
 		if err = txDen.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmTxDeleteDentry(txDen, false)
+		resp = mp.fsmTxDeleteDentry(txDen)
 	case opFSMTxUnlinkInode:
-		txIno := NewTxInode("", 0, 0, 0, nil)
+		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
@@ -373,7 +404,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmTxUpdateDentry(txUpdateDen)
 	case opFSMTxCreateLinkInode:
-		txIno := NewTxInode("", 0, 0, 0, nil)
+		txIno := NewTxInode(0, 0, nil)
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
@@ -551,6 +582,10 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		}
 		log.LogErrorf("ApplySnapshot: stop with error: partitionID(%v) err(%v)", mp.config.PartitionId, err)
 	}()
+
+	var leaderSnapFormatVer uint32
+	leaderSnapFormatVer = math.MaxUint32
+
 	for {
 		data, err = iter.Next()
 		if err != nil {
@@ -570,6 +605,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				log.LogInfof("ApplySnapshot: snap.UnmarshalBinary failed in index=0, partitionID(%v), assuming snapshot format version_0",
 					mp.config.PartitionId)
 				index++
+				leaderSnapFormatVer = SnapFormatVersion_0
 				continue
 			}
 
@@ -578,24 +614,28 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			return
 		}
 
-		if index == 0 && snap.Op != opFSMSnapFormatVersion {
-			// check whether the snapshot format matches
-			log.LogWarnf("ApplySnapshot: snapshot format not match, partitionID(%v), index:%v, expect snap.Op:%v, actual snap.Op:%v",
-				mp.config.PartitionId, index, opFSMSnapFormatVersion, snap.Op)
-			//TODO: should return error here? or whether return error by a new config?
+		if index == 0 {
+			if snap.Op != opFSMSnapFormatVersion {
+				// check whether the snapshot format matches, if snap.UnmarshalBinary has no err for index 0, it should be opFSMSnapFormatVersion
+				err = fmt.Errorf("ApplySnapshot: snapshot format not match, partitionID(%v), index:%v, expect snap.Op:%v, actual snap.Op:%v",
+					mp.config.PartitionId, index, opFSMSnapFormatVersion, snap.Op)
+				log.LogWarn(err.Error())
+				return
+			}
+
+			// check whether the snapshot format version number matches
+			leaderSnapFormatVer = binary.BigEndian.Uint32(snap.V)
+			if leaderSnapFormatVer != mp.manager.metaNode.raftSyncSnapFormatVersion {
+				log.LogWarnf("ApplySnapshot: snapshot format not match, partitionID(%v), index:%v, expect ver:%v, actual ver:%v",
+					mp.config.PartitionId, index, mp.manager.metaNode.raftSyncSnapFormatVersion, leaderSnapFormatVer)
+			}
+
+			index++
+			continue
 		}
 
 		index++
 		switch snap.Op {
-		case opFSMSnapFormatVersion:
-			// check whether the snapshot format version number matches
-			var snapFormatVer uint32
-			snapFormatVer = binary.BigEndian.Uint32(snap.V)
-			if snapFormatVer != mp.manager.metaNode.raftSyncSnapFormatVersion {
-				log.LogWarnf("ApplySnapshot: snapshot format not match, partitionID(%v), index:%v, expect ver:%v, actual ver:%v",
-					mp.config.PartitionId, index, mp.manager.metaNode.raftSyncSnapFormatVersion, snapFormatVer)
-				//TODO: should return error here? or whether return error by a new config?
-			}
 		case opFSMApplyId:
 			appIndexID = binary.BigEndian.Uint64(snap.V)
 			log.LogDebugf("ApplySnapshot: partitionID(%v) appIndexID:%v", mp.config.PartitionId, appIndexID)
@@ -673,8 +713,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			log.LogDebugf("ApplySnapshot: write snap uniqChecker")
 
 		default:
-			err = fmt.Errorf("unknown op=%d", snap.Op)
-			return
+			if leaderSnapFormatVer != math.MaxUint32 && leaderSnapFormatVer > mp.manager.metaNode.raftSyncSnapFormatVersion {
+				log.LogWarnf("ApplySnapshot: unknown op=%d, leaderSnapFormatVer:%v, mySnapFormatVer:%v, skip it",
+					snap.Op, leaderSnapFormatVer, mp.manager.metaNode.raftSyncSnapFormatVersion)
+			} else {
+				err = fmt.Errorf("unknown Op=%d", snap.Op)
+				return
+			}
 		}
 	}
 }
@@ -711,7 +756,6 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	if mp.config.NodeId != leader {
 		log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader)
 		exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become unleader nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId, leader))
-		mp.txProcessor.txManager.Stop()
 		mp.storeChan <- &storeMsg{
 			command: stopStoreTick,
 		}
@@ -720,8 +764,6 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	mp.storeChan <- &storeMsg{
 		command: startStoreTick,
 	}
-
-	mp.txProcessor.txManager.Start()
 
 	log.LogDebugf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader)
 	exporter.Warning(fmt.Sprintf("[metaPartition] pid: %v HandleLeaderChange become leader conn %v, nodeId: %v, leader: %v", mp.config.PartitionId, serverPort, mp.config.NodeId, leader))

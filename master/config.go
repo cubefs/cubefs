@@ -46,6 +46,7 @@ const (
 	cfgDomainBuildAsPossible            = "faultDomainBuildAsPossible"
 	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
+	disableAutoCreate                   = "disableAutoCreate"
 )
 
 //default value
@@ -123,6 +124,7 @@ type clusterConfig struct {
 	DirChildrenNumLimit                 uint32
 	MetaPartitionInodeIdStep            uint64
 	MaxQuotaNumPerVol                   int
+	DisableAutoCreate                   bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

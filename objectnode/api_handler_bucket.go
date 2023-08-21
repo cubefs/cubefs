@@ -21,6 +21,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,13 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/gorilla/mux"
 )
+
+const (
+	DefaultMinBucketLength = 3
+	DefaultMaxBucketLength = 63
+)
+
+var regexBucketName = regexp.MustCompile(`^[0-9a-z][-0-9a-z]+[0-9a-z]$`)
 
 // Head bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
@@ -49,6 +57,11 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	if bucket == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+
+	if !IsValidBucketName(bucket, DefaultMinBucketLength, DefaultMaxBucketLength) {
 		errorCode = InvalidBucketName
 		return
 	}
@@ -94,7 +107,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var acl *AccessControlPolicy
-	if acl, err = ParseACL(r, userInfo.UserID, false); err != nil {
+	if acl, err = ParseACL(r, userInfo.UserID, false, false); err != nil {
 		log.LogErrorf("createBucketHandler: parse acl fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
@@ -104,10 +117,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), bucket, auth.accessKey, err)
 		return
 	}
-	//todo parse body
-	//w.Header()[HeaderNameLocation] = []string{o.region}
-	w.Header()[HeaderNameLocation] = []string{"/" + bucket}
-	w.Header()[HeaderNameConnection] = []string{"close"}
+	w.Header().Set(HeaderNameLocation, "/"+bucket)
 
 	vol, err1 := o.vm.VolumeWithoutBlacklist(bucket)
 	if err1 != nil {
@@ -115,11 +125,13 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), bucket, err1)
 		return
 	}
-	if err1 = putBucketACL(vol, acl); err1 != nil {
-		log.LogWarnf("createBucketHandler: put acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
-			GetRequestID(r), bucket, acl, err1)
+	if acl != nil {
+		if err1 = putBucketACL(vol, acl); err1 != nil {
+			log.LogWarnf("createBucketHandler: put acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
+				GetRequestID(r), bucket, acl, err1)
+		}
+		vol.metaLoader.storeACL(acl)
 	}
-	vol.metaLoader.storeACL(acl)
 
 	return
 }
@@ -165,13 +177,11 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	if authKey, err = calculateAuthKey(userInfo.UserID); err != nil {
 		log.LogErrorf("deleteBucketHandler: calculate authKey fail: requestID(%v) volume(%v) authKey(%v) err(%v)",
 			GetRequestID(r), bucket, userInfo.UserID, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	if err = o.mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
 		log.LogErrorf("deleteBucketHandler: delete volume fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
 			GetRequestID(r), bucket, auth.accessKey, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	log.LogDebugf("deleteBucketHandler: delete bucket success: requestID(%v) volume(%v) accessKey(%v)",
@@ -307,7 +317,6 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	var xattrInfo *proto.XAttrInfo
 	if xattrInfo, err = vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
@@ -320,7 +329,6 @@ func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	} else {
 		if encoded, err = MarshalXMLEntity(output); err != nil {
 			log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = InternalErrorCode(err)
 			return
 		}
 	}
@@ -374,7 +382,7 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, []byte(tagging.Encode()), false); err != nil {
-		errorCode = InternalErrorCode(err)
+		log.LogErrorf("putBucketTaggingHandler: SetXAttr fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
 	}
 
 	return
@@ -405,7 +413,6 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 	if err = vol.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("deleteBucketTaggingHandler: delete tagging xattr fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -434,4 +441,14 @@ func (o *ObjectNode) getUserInfoByAccessKeyV2(accessKey string) (userInfo *proto
 		err = InvalidAccessKeyId
 	}
 	return
+}
+
+func IsValidBucketName(bucketName string, minBucketLength, maxBucketLength int) bool {
+	if len(bucketName) < minBucketLength || len(bucketName) > maxBucketLength {
+		return false
+	}
+	if !regexBucketName.MatchString(bucketName) {
+		return false
+	}
+	return true
 }

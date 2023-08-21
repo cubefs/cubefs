@@ -28,11 +28,11 @@ The example configuration file is as follows:
     "owner":"test",
     "accessKey":"**********",
     "secretKey":"*********",
-    "masterAddr":"192.168.0.1",
+    "masterAddr":"192.168.0.1:17010",
     "rdonly":"false",
     "logDir":"/home/service/var/logs/cfs/log",
     "logLevel":"warn",
-    "profPort":"192.168.1.1"
+    "profPort":"17410"
 }
 ```
 

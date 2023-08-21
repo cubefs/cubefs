@@ -373,7 +373,6 @@ func accessAuthServer() {
 			if res, err = resp.KeyInfo.DumpJSONStr(); err != nil {
 				panic(err)
 			}
-			fmt.Printf(res + "\n")
 		}
 
 	case AddRaftNode:

@@ -312,7 +312,7 @@ func main() {
 	//use uber automaxprocs: get real cpu number to k8s pod"
 
 	level := parseLogLevel(opt.Loglvl)
-	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil)
+	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil, log.DefaultLogLeftSpaceLimit)
 	if err != nil {
 		err = errors.NewErrorf("Init log dir fail: %v\n", err)
 		fmt.Println(err)
@@ -618,22 +618,19 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		var mc = master.NewMasterClientFromString(opt.Master, false)
 		t := time.NewTicker(UpdateConfInterval)
 		defer t.Stop()
-		for {
-			select {
-			case <-t.C:
-				log.LogDebugf("UpdateVolConf: load conf from master")
-
-				var volumeInfo *proto.SimpleVolView
-				volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
-				if err != nil {
-					return
-				}
-				super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
-				if proto.IsCold(opt.VolType) {
-					super.CacheAction = volumeInfo.CacheAction
-					super.CacheThreshold = volumeInfo.CacheThreshold
-					super.EbsBlockSize = volumeInfo.ObjBlockSize
-				}
+		for range t.C {
+			log.LogDebugf("UpdateVolConf: load conf from master")
+			var volumeInfo *proto.SimpleVolView
+			volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(opt.Volname)
+			if err != nil {
+				log.LogErrorf("UpdateVolConf: get vol info from master failed, err %s", err.Error())
+				continue
+			}
+			super.SetTransaction(volumeInfo.EnableTransaction, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
+			if proto.IsCold(opt.VolType) {
+				super.CacheAction = volumeInfo.CacheAction
+				super.CacheThreshold = volumeInfo.CacheThreshold
+				super.EbsBlockSize = volumeInfo.ObjBlockSize
 			}
 		}
 	}()
@@ -647,10 +644,10 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		fuse.MaxReadahead(MaxReadAhead),
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
-		fuse.FSName("cubefs-" + opt.Volname),
+		fuse.FSName(opt.FileSystemName),
 		fuse.Subtype("cubefs"),
 		fuse.LocalVolume(),
-		fuse.VolumeName("cubefs-" + opt.Volname),
+		fuse.VolumeName(opt.FileSystemName),
 		fuse.RequestTimeout(opt.RequestTimeout)}
 
 	if opt.Rdonly {
@@ -758,6 +755,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableAudit = GlobalMountOptions[proto.EnableAudit].GetBool()
 	opt.RequestTimeout = GlobalMountOptions[proto.RequestTimeout].GetInt64()
 	opt.MinWriteAbleDataPartitionCnt = int(GlobalMountOptions[proto.MinWriteAbleDataPartitionCnt].GetInt64())
+	opt.FileSystemName = GlobalMountOptions[proto.FileSystemName].GetString()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
@@ -766,6 +764,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if opt.BuffersTotalLimit < 0 {
 		return nil, errors.New(fmt.Sprintf("invalid fields, BuffersTotalLimit(%v) must larger or equal than 0", opt.BuffersTotalLimit))
 	}
+
+	if opt.FileSystemName == "" {
+		opt.FileSystemName = "cubefs-" + opt.Volname
+	}
+
 	return opt, nil
 }
 

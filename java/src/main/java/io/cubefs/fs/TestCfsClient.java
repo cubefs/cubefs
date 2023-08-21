@@ -1,6 +1,12 @@
 package io.cubefs.fs;
 
 import java.io.FileNotFoundException;
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.Base64;
 
 public class TestCfsClient {
     public static void main(String[] args) throws FileNotFoundException {
@@ -57,21 +63,27 @@ public class TestCfsClient {
             // verify md5sum
             byte[] toVerify = new byte[(int) readByte];
             System.arraycopy(buf, 0, toVerify, 0, (int) readByte);
-
-            StringBuilder sb = new StringBuilder();
-            java.security.MessageDigest md5 = null;
+            String key = "MySecretKey";
+            String strToVerify  = new String(toVerify, StandardCharsets.UTF_8);
+            //StringBuilder sb = new StringBuilder();
+            //java.security.MessageDigest md5 = null;
             try {
-                md5 = java.security.MessageDigest.getInstance("MD5");
-                md5.update(toVerify);
-            } catch (java.security.NoSuchAlgorithmException e) {
-            }
-            if (md5 != null) {
-                for (byte b : md5.digest()) {
-                    sb.append(String.format("%02x", b));
-                }
+                 byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+                 MessageDigest sha = MessageDigest.getInstance("SHA-256");
+                 keyBytes = sha.digest(keyBytes);
+                 keyBytes = Arrays.copyOf(keyBytes, 16);
+
+                 SecretKeySpec secretKeySpec = new SecretKeySpec(keyBytes, "AES");
+                 Cipher cipher = Cipher.getInstance("AES");
+                 cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+
+                  byte[] encryptedBytes = cipher.doFinal(strToVerify.getBytes(StandardCharsets.UTF_8));
+                  String encryptedString = Base64.getEncoder().encodeToString(encryptedBytes);
+                  System.out.println("md5: " + encryptedString);
+            } catch (Exception e) {
+                e.printStackTrace();
             }
 
-            System.out.println("md5: " + sb.toString());
 
             mnt.close(fd);
         } else if (args[0].equals("write")) {

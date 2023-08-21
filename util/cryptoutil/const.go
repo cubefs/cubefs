@@ -21,4 +21,5 @@ const (
 	CheckSumSize        = 16
 	MessageOffset       = CheckSumOffset + CheckSumSize
 	MessageMetaDataSize = RandomNumberSize + CheckSumSize
+	MaxAllocSize        = 50 * 1024 * 1024
 )

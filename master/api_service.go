@@ -314,7 +314,7 @@ func (m *Server) clusterStat(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	var (
-		uid     uint64
+		uid     uint32
 		err     error
 		volName string
 		vol     *Vol
@@ -343,7 +343,7 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if op != util.UidLimitList {
-		if uid, err = extractUint64(r, UIDKey); err != nil {
+		if uid, err = extractUint32(r, UIDKey); err != nil {
 			err = keyNotFound(UIDKey)
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
@@ -367,12 +367,12 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 	ok = true
 	switch op {
 	case util.UidGetLimit:
-		ok, uidInfo = vol.uidSpaceManager.checkUid(uint32(uid))
+		ok, uidInfo = vol.uidSpaceManager.checkUid(uid)
 		uidList = append(uidList, uidInfo)
 	case util.AclAddIP:
-		ok = vol.uidSpaceManager.addUid(uint32(uid), capSize)
+		ok = vol.uidSpaceManager.addUid(uid, capSize)
 	case util.AclDelIP:
-		ok = vol.uidSpaceManager.removeUid(uint32(uid))
+		ok = vol.uidSpaceManager.removeUid(uid)
 	case util.AclListIP:
 		uidList = vol.uidSpaceManager.listAll()
 	}
@@ -857,7 +857,8 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 	var (
 		volName            string
 		value              string
-		period, triggerCnt uint64
+		parsed             uint64
+		period, triggerCnt uint32
 		err                error
 		vol                *Vol
 	)
@@ -875,16 +876,19 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if value = r.FormValue(ClientReqPeriod); value != "" {
-		if period, err = strconv.ParseUint(value, 10, 64); err != nil || period == 0 {
+		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || parsed == 0 {
+			log.LogErrorf("hytemp error %v", err)
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of peroid")))
 			return
 		}
+		period = uint32(parsed)
 	}
 	if value = r.FormValue(ClientTriggerCnt); value != "" {
-		if triggerCnt, err = strconv.ParseUint(value, 10, 64); err != nil || triggerCnt == 0 {
+		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || parsed == 0 {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of triggerCnt")))
 			return
 		}
+		triggerCnt = uint32(parsed)
 	}
 	if err = vol.updateClientParam(m.cluster, period, triggerCnt); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -979,28 +983,6 @@ func parseRequestQos(r *http.Request, isMagnify bool, isEnableIops bool) (qosPar
 	log.LogInfof("action[parseRequestQos] result %v", qosParam)
 
 	return
-}
-
-func (m *Server) QosUpdateMagnify(w http.ResponseWriter, r *http.Request) {
-	var (
-		volName     string
-		err         error
-		vol         *Vol
-		magnifyArgs *qosArgs
-	)
-	if volName, err = extractName(r); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	if vol, err = m.cluster.getVol(volName); err == nil {
-		if magnifyArgs, err = parseRequestQos(r, true, false); err == nil {
-			_ = vol.volQosUpdateMagnify(m.cluster, magnifyArgs)
-			sendOkReply(w, r, newSuccessHTTPReply("success"))
-			return
-		}
-	}
-	sendErrReply(w, r, newErrHTTPReply(err))
 }
 
 // flowRVal, flowWVal take MB as unit
@@ -1758,14 +1740,16 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (err error) {
 	var (
-		replicaNum int
+		replicaNumInt64 int64
+		replicaNum      int
 	)
 
 	if replicaNumStr := r.FormValue(replicaNumKey); replicaNumStr != "" {
-		if replicaNum, err = strconv.Atoi(replicaNumStr); err != nil {
+		if replicaNumInt64, err = strconv.ParseInt(replicaNumStr, 10, 8); err != nil {
 			err = unmatchedKey(replicaNumKey)
 			return
 		}
+		replicaNum = int(replicaNumInt64)
 	} else {
 		replicaNum = int(vol.dpReplicaNum)
 	}
@@ -1832,6 +1816,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.zoneName = req.zoneName
 	newArgs.description = req.description
 	newArgs.capacity = req.capacity
+	newArgs.deleteLockTime = req.deleteLockTime
 	newArgs.followerRead = req.followerRead
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
@@ -2030,7 +2015,7 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("low(%d) or high water(%d) can't be large than 90, low than 0", args.cacheLowWater, args.cacheHighWater)
 	}
 
-	if req.dpReplicaNum > m.cluster.dataNodeCount() {
+	if int(req.dpReplicaNum) > m.cluster.dataNodeCount() {
 		return fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
 	}
 
@@ -2111,16 +2096,18 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// qos upload may called by client init,thus use qosEnable param to identify it weather need to calc by master
-
+	var clientInfo *proto.ClientReportLimitInfo
 	if qosEnable, _ := strconv.ParseBool(qosEnableStr); qosEnable {
-		if clientInfo, err := parseQosInfo(r); err == nil {
+		if clientInfo, err = parseQosInfo(r); err == nil {
 			log.LogDebugf("action[qosUpload] cliInfoMgrMap [%v],clientInfo id[%v] clientInfo.Host %v, enable %v", clientInfo.ID, clientInfo.Host, r.RemoteAddr, qosEnable)
 			if clientInfo.ID == 0 {
 				if limit, err = vol.qosManager.init(m.cluster, clientInfo.Host); err != nil {
 					sendErrReply(w, r, newErrHTTPReply(err))
 					return
 				}
-			} else if limit, err = vol.qosManager.HandleClientQosReq(clientInfo, clientInfo.ID); err != nil {
+				clientInfo.ID = limit.ID
+			}
+			if limit, err = vol.qosManager.HandleClientQosReq(clientInfo, clientInfo.ID); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -2201,6 +2188,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		MpCnt:                   len(vol.MetaPartitions),
 		DpCnt:                   len(vol.dataPartitions.partitionMap),
 		CreateTime:              time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		DeleteLockTime:          vol.DeleteLockTime,
 		Description:             vol.description,
 		DpSelectorName:          vol.dpSelectorName,
 		DpSelectorParm:          vol.dpSelectorParm,
@@ -2567,13 +2555,14 @@ func (m *Server) updateExcludeZoneUseRatio(ratio float64) (err error) {
 }
 func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType uint64, addr string) (err error) {
 	var (
-		nsId     uint64
-		dstNs    *nodeSet
-		srcNs    *nodeSet
-		ok       bool
-		value    interface{}
-		metaNode *MetaNode
-		dataNode *DataNode
+		nsId           uint64
+		dstNs          *nodeSet
+		srcNs          *nodeSet
+		ok             bool
+		value          interface{}
+		metaNode       *MetaNode
+		dataNode       *DataNode
+		nodeTypeUint32 uint32
 	)
 	defer func() {
 		log.LogInfof("action[updateNodesetId] step out")
@@ -2588,13 +2577,13 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 	if dstNs, ok = zone.nodeSetMap[destNodesetId]; !ok {
 		return fmt.Errorf("%v destNodesetId not found", destNodesetId)
 	}
-	if uint32(nodeType) == TypeDataPartition {
+	if nodeType == uint64(TypeDataPartition) {
 		value, ok = zone.dataNodes.Load(addr)
 		if !ok {
 			return fmt.Errorf("addr %v not found", addr)
 		}
 		nsId = value.(*DataNode).NodeSetID
-	} else if uint32(nodeType) == TypeMetaPartition {
+	} else if nodeType == uint64(TypeMetaPartition) {
 		value, ok = zone.metaNodes.Load(addr)
 		if !ok {
 			return fmt.Errorf("addr %v not found", addr)
@@ -2624,7 +2613,12 @@ func (m *Server) updateNodesetId(zoneName string, destNodesetId uint64, nodeType
 
 	// the nodeset capcity not enlarged if node be added,capacity can be adjust by
 	// AdminUpdateNodeSetCapcity
-	if uint32(nodeType) == TypeDataPartition {
+	if nodeType <= math.MaxUint32 {
+		nodeTypeUint32 = uint32(nodeType)
+	} else {
+		nodeTypeUint32 = math.MaxUint32
+	}
+	if nodeTypeUint32 == TypeDataPartition {
 		if value, ok = srcNs.dataNodes.Load(addr); !ok {
 			return fmt.Errorf("addr not found in srcNs.dataNodes")
 		}
@@ -2838,7 +2832,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 	return nsgStat
 }
 
-func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType int, rdOnly bool, err error) {
+func parseSetNodeRdOnlyParam(r *http.Request) (addr string, nodeType uint32, rdOnly bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2890,19 +2884,20 @@ func parseSetDpRdOnlyParam(r *http.Request) (dpId uint64, rdOnly bool, err error
 	return
 }
 
-func parseNodeType(r *http.Request) (nodeType int, err error) {
+func parseNodeType(r *http.Request) (nodeType uint32, err error) {
 	var val string
+	var nodeTypeUint64 uint64
 	if val = r.FormValue(nodeTypeKey); val == "" {
 		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is empty", nodeTypeKey)
 		return
 	}
 
-	if nodeType, err = strconv.Atoi(val); err != nil {
+	if nodeTypeUint64, err = strconv.ParseUint(val, 10, 32); err != nil {
 		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not number, err %s", nodeTypeKey, err.Error())
 		return
 	}
-
-	if nodeType != int(TypeDataPartition) && nodeType != int(TypeMetaPartition) {
+	nodeType = uint32(nodeTypeUint64)
+	if nodeType != TypeDataPartition && nodeType != TypeMetaPartition {
 		err = fmt.Errorf("parseSetNodeRdOnlyParam %s is not legal, must be %d or %d", nodeTypeKey, TypeDataPartition, TypeMetaPartition)
 		return
 	}
@@ -2913,7 +2908,7 @@ func parseNodeType(r *http.Request) (nodeType int, err error) {
 func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		addr     string
-		nodeType int
+		nodeType uint32
 		rdOnly   bool
 		err      error
 	)
@@ -2930,7 +2925,7 @@ func (m *Server) setNodeRdOnlyHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.LogInfof("[setNodeRdOnlyHandler] set node %s to rdOnly(%v)", addr, rdOnly)
 
-	err = m.setNodeRdOnly(addr, uint32(nodeType), rdOnly)
+	err = m.setNodeRdOnly(addr, nodeType, rdOnly)
 	if err != nil {
 		log.LogErrorf("[setNodeRdOnlyHandler] set node %s to rdOnly %v, err (%s)", addr, rdOnly, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3749,7 +3744,7 @@ func parseUintParam(r *http.Request, key string) (num int, err error) {
 		return
 	}
 
-	numVal, err := strconv.ParseUint(val, 10, 64)
+	numVal, err := strconv.ParseInt(val, 10, 32)
 	if err != nil {
 		err = fmt.Errorf("parseUintParam %s-%s is not legal, err %s", key, val, err.Error())
 		return
@@ -4251,7 +4246,11 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		stat.InodeCount += mp.InodeCount
+		stat.TxCnt += mp.TxCnt
+		stat.TxRbInoCnt += mp.TxRbInoCnt
+		stat.TxRbDenCnt += mp.TxRbDenCnt
 	}
+
 	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
 	if proto.IsHot(vol.VolType) {
 		return
@@ -4281,6 +4280,9 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
 	mpView.FreeListLen = mp.FreeListLen
+	mpView.TxCnt = mp.TxCnt
+	mpView.TxRbInoCnt = mp.TxRbInoCnt
+	mpView.TxRbDenCnt = mp.TxRbDenCnt
 	mpView.IsRecover = mp.IsRecover
 	return
 }
@@ -4310,10 +4312,12 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		defer mp.RUnlock()
 		var replicas = make([]*proto.MetaReplicaInfo, len(mp.Replicas))
 		zones := make([]string, len(mp.Hosts))
+		nodeSets := make([]uint64, len(mp.Hosts))
 		for idx, host := range mp.Hosts {
 			metaNode, err := m.cluster.metaNode(host)
 			if err == nil {
 				zones[idx] = metaNode.ZoneName
+				nodeSets[idx] = metaNode.NodeSetID
 			}
 		}
 		for i := 0; i < len(replicas); i++ {
@@ -4344,6 +4348,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Hosts:         mp.Hosts,
 			Peers:         mp.Peers,
 			Zones:         zones,
+			NodeSets:      nodeSets,
 			MissNodes:     mp.MissNodes,
 			OfflinePeerID: mp.OfflinePeerID,
 			LoadResponse:  mp.LoadResponse,

@@ -48,7 +48,8 @@ const (
 )
 
 const (
-	XMLNS              = "http://www.w3.org/2001/XMLSchema-instance"
+	XMLNS              = "http://s3.amazonaws.com/doc/2006-03-01/"
+	XMLSI              = "http://www.w3.org/2001/XMLSchema-instance"
 	GroupAllUser       = "http://acs.amazonaws.com/groups/global/AllUsers"
 	GroupAuthenticated = "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
 )

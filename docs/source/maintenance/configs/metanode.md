@@ -3,7 +3,7 @@
 ## Configuration Description
 
 | Configuration Item  | Type         | Description                                                                                                                                                | Required |
-|---------------------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+|:---------------------|:--------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------|
 | role                | string       | Process role: *MetaNode*                                                                                                                                   | Yes      |
 | listen              | string       | Port for listening and accepting requests                                                                                                                  | Yes      |
 | prof                | string       | Debugging and administrator API interface                                                                                                                  | Yes      |

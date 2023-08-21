@@ -127,8 +127,8 @@ type ListPartsResult struct {
 	Owner            *BucketOwner `xml:"Owner"`
 	StorageClass     string       `xml:"StorageClass"`
 	PartNumberMarker int          `xml:"PartNumberMarker"`
-	NextMarker       int          `xml:"NextPartNumberMarker"`
-	MaxParts         int          `xml:"MaxParts"`
+	NextMarker       uint64       `xml:"NextPartNumberMarker"`
+	MaxParts         uint64       `xml:"MaxParts"`
 	IsTruncated      bool         `xml:"IsTruncated"`
 	Parts            []*Part      `xml:"Parts"`
 }
@@ -147,7 +147,7 @@ type ListUploadsResult struct {
 	NextUploadIdMarker string          `xml:"NextUploadIdMarker"`
 	Delimiter          string          `xml:"Delimiter"`
 	Prefix             string          `xml:"Prefix"`
-	MaxUploads         int             `xml:"MaxUploads"`
+	MaxUploads         uint64          `xml:"MaxUploads"`
 	IsTruncated        bool            `xml:"IsTruncated"`
 	Uploads            []*Upload       `xml:"Uploads"`
 	CommonPrefixes     []*CommonPrefix `xml:"CommonPrefixes"`

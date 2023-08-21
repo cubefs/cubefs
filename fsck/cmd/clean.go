@@ -105,7 +105,7 @@ func Clean(opt string) error {
 
 	ump.InitUmp("fsck", "")
 
-	_, err := log.InitLog("fscklog", "fsck", log.InfoLevel, nil)
+	_, err := log.InitLog("fscklog", "fsck", log.InfoLevel, nil, log.DefaultLogLeftSpaceLimit)
 	if err != nil {
 		return fmt.Errorf("Init log failed: %v", err)
 	}

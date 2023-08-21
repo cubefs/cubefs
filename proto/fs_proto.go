@@ -74,18 +74,18 @@ func IsAncestor(parent, child string) bool {
 
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
-	Inode      uint64    `json:"ino"`
-	Mode       uint32    `json:"mode"`
-	Nlink      uint32    `json:"nlink"`
-	Size       uint64    `json:"sz"`
-	Uid        uint32    `json:"uid"`
-	Gid        uint32    `json:"gid"`
-	Generation uint64    `json:"gen"`
-	ModifyTime time.Time `json:"mt"`
-	CreateTime time.Time `json:"ct"`
-	AccessTime time.Time `json:"at"`
-	Target     []byte    `json:"tgt"`
-	QuotaIds   []uint32  `json:"qids"`
+	Inode      uint64                    `json:"ino"`
+	Mode       uint32                    `json:"mode"`
+	Nlink      uint32                    `json:"nlink"`
+	Size       uint64                    `json:"sz"`
+	Uid        uint32                    `json:"uid"`
+	Gid        uint32                    `json:"gid"`
+	Generation uint64                    `json:"gen"`
+	ModifyTime time.Time                 `json:"mt"`
+	CreateTime time.Time                 `json:"ct"`
+	AccessTime time.Time                 `json:"at"`
+	Target     []byte                    `json:"tgt"`
+	QuotaInfos map[uint32]*MetaQuotaInfo `json:"qifs"`
 	expiration int64
 }
 
@@ -120,7 +120,7 @@ func (info *InodeInfo) SetExpiration(e int64) {
 // String returns the string format of the inode.
 func (info *InodeInfo) String() string {
 	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v) QuotaIds(%v)",
-		info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation, info.QuotaIds)
+		info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation, info.QuotaInfos)
 }
 
 type XAttrInfo struct {
@@ -188,6 +188,22 @@ type CreateInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+type TxCreateRequest struct {
+	VolName          string `json:"vol"`
+	PartitionID      uint64 `json:"pid"`
+	*TransactionInfo `json:"tx"`
+}
+
+type TxCreateResponse struct {
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
+type TxApplyRMRequest struct {
+	VolName          string `json:"vol"`
+	PartitionID      uint64 `json:"pid"`
+	*TransactionInfo `json:"tx"`
+}
+
 // TxCreateInodeRequest defines the request to create an inode with transaction info.
 type TxCreateInodeRequest struct {
 	VolName     string           `json:"vol"`
@@ -209,7 +225,6 @@ type TxCreateInodeResponse struct {
 const (
 	TxCommit int = 1 << iota
 	TxRollback
-	//TxPreCommit
 )
 
 type TxApplyRequest struct {
@@ -240,8 +255,9 @@ type TxDentryApplyRequest struct {
 }
 
 type TxGetInfoRequest struct {
-	TxID string `json:"txid"`
-	Pid  uint64 `json:"pid"`
+	VolName string `json:"vol"`
+	TxID    string `json:"txid"`
+	Pid     uint64 `json:"pid"`
 }
 
 type TxGetInfoResponse struct {
@@ -273,8 +289,7 @@ func (tx *TxLinkInodeRequest) GetInfo() string {
 }
 
 type TxLinkInodeResponse struct {
-	Info   *InodeInfo       `json:"info"`
-	TxInfo *TransactionInfo `json:"tx"`
+	Info *InodeInfo `json:"info"`
 }
 
 type ClearInodeCacheRequest struct {
@@ -409,7 +424,8 @@ type TxUpdateDentryRequest struct {
 	PartitionID uint64           `json:"pid"`
 	ParentID    uint64           `json:"pino"`
 	Name        string           `json:"name"`
-	Inode       uint64           `json:"ino"` // new inode number
+	Inode       uint64           `json:"ino"`    // new inode number
+	OldIno      uint64           `json:"oldIno"` // new inode number
 	TxInfo      *TransactionInfo `json:"tx"`
 }
 
@@ -418,8 +434,7 @@ func (tx *TxUpdateDentryRequest) GetInfo() string {
 }
 
 type TxUpdateDentryResponse struct {
-	Inode  uint64           `json:"ino"` // old inode number
-	TxInfo *TransactionInfo `json:"tx"`
+	Inode uint64 `json:"ino"` // old inode number
 }
 
 type TxDeleteDentryRequest struct {
@@ -427,6 +442,7 @@ type TxDeleteDentryRequest struct {
 	PartitionID uint64           `json:"pid"`
 	ParentID    uint64           `json:"pino"`
 	Name        string           `json:"name"`
+	Ino         uint64           `json:"ino"`
 	TxInfo      *TransactionInfo `json:"tx"`
 }
 
@@ -435,16 +451,16 @@ func (tx *TxDeleteDentryRequest) GetInfo() string {
 }
 
 type TxDeleteDentryResponse struct {
-	Inode  uint64           `json:"ino"`
-	TxInfo *TransactionInfo `json:"tx"`
+	Inode uint64 `json:"ino"`
 }
 
 // DeleteDentryRequest define the request tp delete a dentry.
 type DeleteDentryRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
-	Name        string `json:"name"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	ParentID        uint64 `json:"pino"`
+	Name            string `json:"name"`
+	InodeCreateTime int64  `json:"inodeCreateTime"`
 }
 
 type BatchDeleteDentryRequest struct {

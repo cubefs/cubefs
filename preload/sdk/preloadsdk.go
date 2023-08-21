@@ -41,7 +41,7 @@ import (
 type LimitParameters struct {
 	TraverseDirConcurrency int64
 	PreloadFileConcurrency int64
-	ReadBlockConcurrency   int64
+	ReadBlockConcurrency   int32
 	PreloadFileSizeLimit   int64
 	ClearFileConcurrency   int64
 }
@@ -88,7 +88,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 	}
 
 	if config.LogDir != "" {
-		log.InitLog(config.LogDir, "preload", convertLogLevel(config.LogLevel), nil)
+		log.InitLog(config.LogDir, "preload", convertLogLevel(config.LogLevel), nil, log.DefaultLogLeftSpaceLimit)
 		stat.NewStatistic(config.LogDir, "preload", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 

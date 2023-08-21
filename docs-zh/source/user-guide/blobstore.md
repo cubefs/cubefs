@@ -1,7 +1,7 @@
 # 使用纠删码系统
 
 ::: tip 提示
-快速体验请看[单机部署](../deploy/node.md)
+快速体验请看[单机部署](../quick-start/node.md)
 :::
 
 ## 编译构建
@@ -408,7 +408,7 @@ learner节点一般用于数据备份，故障恢复
 
 ## 上传测试
 
-> 可参考[CLI部署验证](../deploy/verify.md)
+> 可参考[CLI使用](../deploy/verify.md)
 
 ## 修改Master配置支持纠删码
 

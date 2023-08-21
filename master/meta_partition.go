@@ -37,6 +37,9 @@ type MetaReplica struct {
 	MaxInodeID  uint64
 	InodeCount  uint64
 	DentryCount uint64
+	TxCnt       uint64
+	TxRbInoCnt  uint64
+	TxRbDenCnt  uint64
 	FreeListLen uint64
 	ReportTime  int64
 	Status      int8 // unavailable, readOnly, readWrite
@@ -53,6 +56,9 @@ type MetaPartition struct {
 	InodeCount       uint64
 	DentryCount      uint64
 	FreeListLen      uint64
+	TxCnt            uint64
+	TxRbInoCnt       uint64
+	TxRbDenCnt       uint64
 	Replicas         []*MetaReplica
 	LeaderReportTime int64
 	ReplicaNum       uint8
@@ -210,11 +216,15 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 		return
 	}
 
+	vol.createMpMutex.Lock()
+	defer vol.createMpMutex.Unlock()
+
 	curMaxPartitionID := vol.maxPartitionID()
 	if mp.PartitionID != curMaxPartitionID {
 		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return
 	}
+
 	mp.Lock()
 	defer mp.Unlock()
 	if _, err = mp.getMetaReplicaLeader(); err != nil {
@@ -405,6 +415,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setInodeCount()
 	mp.setDentryCount()
 	mp.setFreeListLen()
+	mp.SetTxCnt()
 	mp.removeMissingReplica(metaNode.Addr)
 	mp.setUidInfo(mgr)
 }
@@ -628,9 +639,6 @@ func (mp *MetaPartition) tryToChangeLeaderByHost(host string) (err error) {
 	if err != nil {
 		return
 	}
-	if err != nil {
-		return
-	}
 	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
 		return
 	}
@@ -736,6 +744,9 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.MaxInodeID = mgr.MaxInodeID
 	mr.InodeCount = mgr.InodeCnt
 	mr.DentryCount = mgr.DentryCnt
+	mr.TxCnt = mgr.TxCnt
+	mr.TxRbInoCnt = mgr.TxRbInoCnt
+	mr.TxRbDenCnt = mgr.TxRbDenCnt
 	mr.FreeListLen = mgr.FreeListLen
 	mr.dataSize = mgr.Size
 	mr.setLastReportTime()
@@ -856,6 +867,22 @@ func (mp *MetaPartition) setFreeListLen() {
 		}
 	}
 	mp.FreeListLen = freeListLen
+}
+
+func (mp *MetaPartition) SetTxCnt() {
+	var txCnt, rbInoCnt, rbDenCnt uint64
+	for _, r := range mp.Replicas {
+		if r.TxCnt > txCnt {
+			txCnt = r.TxCnt
+		}
+		if r.TxRbInoCnt > rbInoCnt {
+			rbInoCnt = r.TxRbInoCnt
+		}
+		if r.TxRbDenCnt > rbDenCnt {
+			rbDenCnt = r.TxRbDenCnt
+		}
+	}
+	mp.TxCnt, mp.TxRbInoCnt, mp.TxRbDenCnt = txCnt, rbInoCnt, rbDenCnt
 }
 
 func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {

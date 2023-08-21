@@ -185,13 +185,9 @@ func (s *Service) RegisterAdminHandler() {
 	})
 
 	profile.HandleFunc(http.MethodPost, "/access/stream/controller/alg/:alg", func(c *rpc.Context) {
-		algInt, err := strconv.Atoi(c.Param.ByName("alg"))
+		algInt, err := strconv.ParseUint(c.Param.ByName("alg"), 10, 32)
 		if err != nil {
 			c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
-			return
-		}
-		if algInt < 0 {
-			c.RespondWith(http.StatusBadRequest, "", []byte("invalid algorithm"))
 			return
 		}
 

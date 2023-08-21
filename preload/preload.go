@@ -43,7 +43,7 @@ func main() {
 	travereDirConcurrency, _ := strconv.ParseInt(cfg.GetString("traverseDirConcurrency"), 10, 64)
 	preloadFileConcurrency, _ := strconv.ParseInt(cfg.GetString("preloadFileConcurrency"), 10, 64)
 	preloadFileSizeLimit, _ := strconv.ParseInt(cfg.GetString("preloadFileSizeLimit"), 10, 64)
-	readBlockConcurrency, _ := strconv.ParseInt(cfg.GetString("readBlockConcurrency"), 10, 64)
+	readBlockConcurrency, _ := strconv.ParseInt(cfg.GetString("readBlockConcurrency"), 10, 32)
 	clearFileConcurrency, _ := strconv.ParseInt(cfg.GetString("clearFileConcurrency"), 10, 64)
 	buffersTotalLimit, _ := strconv.ParseInt(cfg.GetString("buffersTotalLimit"), 10, 64)
 	replicaNum, _ := strconv.ParseInt(cfg.GetString("replicaNum"), 10, 64)
@@ -68,7 +68,7 @@ func main() {
 		ProfPort: cfg.GetString("prof"),
 		LimitParam: sdk.LimitParameters{TraverseDirConcurrency: travereDirConcurrency,
 			PreloadFileConcurrency: preloadFileConcurrency,
-			ReadBlockConcurrency:   readBlockConcurrency,
+			ReadBlockConcurrency:   int32(readBlockConcurrency),
 			PreloadFileSizeLimit:   preloadFileSizeLimit,
 			ClearFileConcurrency:   clearFileConcurrency},
 	}

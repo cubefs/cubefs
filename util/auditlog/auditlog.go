@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -269,32 +271,50 @@ func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	AdtMutex.Lock()
 	defer AdtMutex.Unlock()
 
+	absPath, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isPathSafe(absPath) {
+		return nil, errors.New("Invalid file path")
+	}
+
+	absLogModule, err := filepath.Abs(logModule)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isPathSafe(absLogModule) {
+		return nil, errors.New("Invalid file path")
+	}
+
 	if gAdt != nil {
 		return gAdt, nil
 	}
-	if dir == "" || logModule == "" || logMaxSize <= 0 {
+	if absPath == "" || absLogModule == "" || logMaxSize <= 0 {
 		errInfo := fmt.Sprintf("InitAudit failed with params: dir(%v) logModule(%v) logMaxSize(%v)",
-			dir, logModule, logMaxSize)
+			absPath, absLogModule, logMaxSize)
 		return nil, errors.New(errInfo)
 	}
 	host, ip := getAddr()
-	dir = path.Join(dir, logModule)
-	fi, err := os.Stat(dir)
+	absPath = path.Join(absPath, absLogModule)
+	fi, err := os.Stat(absPath)
 	if err != nil {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(absPath, 0755)
 	} else {
 		if !fi.IsDir() {
-			return nil, errors.New(dir + " is not a directory")
+			return nil, errors.New(absPath + " is not a directory")
 		}
 	}
-	_ = os.Chmod(dir, 0755)
-	logName := path.Join(dir, Audit_Module) + ".log"
+	_ = os.Chmod(absPath, 0755)
+	logName := path.Join(absPath, Audit_Module) + ".log"
 	audit := &Audit{
 		volName:          "",
 		hostName:         host,
 		ipAddr:           ip,
-		logDir:           dir,
-		logModule:        logModule,
+		logDir:           absPath,
+		logModule:        absLogModule,
 		logMaxSize:       logMaxSize,
 		logFileName:      logName,
 		writerBufSize:    DefaultAuditLogBufSize,
@@ -529,4 +549,10 @@ func (a *Audit) shiftFiles() error {
 	}
 
 	return a.newWriterSize(a.writerBufSize)
+}
+
+func isPathSafe(filePath string) bool {
+	safePattern := `^[a-zA-Z0-9\-_/]+$`
+	match, _ := regexp.MatchString(safePattern, filePath)
+	return match
 }

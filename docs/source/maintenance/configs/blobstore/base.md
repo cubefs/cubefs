@@ -11,6 +11,7 @@ The basic configuration is shared by each module and mainly includes server port
     "rotate_new": "whether to enable a new log file for each restart, true or false",
     "log_file_suffix": "log file suffix, for example `.log`",
     "backup": "number of files to keep, not set or 0 means no limit",
+    "log_format": "Use text or JSON format, with text format being the default",
     "metric_config": {
       "idc": "IDC number",
       "service": "service name",
