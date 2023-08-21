@@ -104,13 +104,13 @@ const (
 	configObjMetaCache = "enableObjMetaCache"
 	// Example:
 	//		{
-	//			"cacheRefreshInterval": 600
+	//			"cacheRefreshIntervalSec": 600
 	//			"maxDentryCacheNum": 10000000
 	//			"maxInodeAttrCacheNum": 10000000
 	//		}
-	configCacheRefreshInterval = "cacheRefreshInterval"
-	configMaxDentryCacheNum    = "maxDentryCacheNum"
-	configMaxInodeAttrCacheNum = "maxInodeAttrCacheNum"
+	configCacheRefreshIntervalSec = "cacheRefreshIntervalSec"
+	configMaxDentryCacheNum       = "maxDentryCacheNum"
+	configMaxInodeAttrCacheNum    = "maxInodeAttrCacheNum"
 
 	// enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"
@@ -123,8 +123,8 @@ const (
 const (
 	defaultListen               = "80"
 	defaultCacheRefreshInterval = 10 * 60
-	defaultMaxDentryCacheNum    = 10000000
-	defaultMaxInodeAttrCacheNum = 10000000
+	defaultMaxDentryCacheNum    = 1000000
+	defaultMaxInodeAttrCacheNum = 1000000
 	// ebs
 	MaxSizePutOnce = int64(1) << 23
 )
@@ -241,24 +241,23 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse inode cache
 	cacheEnable := cfg.GetBool(configObjMetaCache)
 	if cacheEnable {
-
-		cacheRefreshInterval := uint64(cfg.GetInt64(configCacheRefreshInterval))
+		cacheRefreshInterval := uint64(cfg.GetInt64(configCacheRefreshIntervalSec))
 		if cacheRefreshInterval <= 0 {
 			cacheRefreshInterval = defaultCacheRefreshInterval
 		}
 
 		maxDentryCacheNum := cfg.GetInt64(configMaxDentryCacheNum)
-		if maxDentryCacheNum < defaultMaxDentryCacheNum {
+		if maxDentryCacheNum <= 0 {
 			maxDentryCacheNum = defaultMaxDentryCacheNum
 		}
 
 		maxInodeAttrCacheNum := cfg.GetInt64(configMaxInodeAttrCacheNum)
-		if maxInodeAttrCacheNum < defaultMaxInodeAttrCacheNum {
+		if maxInodeAttrCacheNum <= 0 {
 			maxInodeAttrCacheNum = defaultMaxInodeAttrCacheNum
 		}
 		objMetaCache = NewObjMetaCache(maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
-		log.LogInfof("loadConfig: enableObjMetaCache: %v, maxDentryCacheNum: %v, maxInodeAttrCacheNum: %v"+
-			", cacheRefreshInterval: %v", cacheEnable, maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
+		log.LogDebugf("loadConfig: enableObjMetaCache, maxDentryCacheNum: %v, maxInodeAttrCacheNum: %v"+
+			", cacheRefreshIntervalSec: %v", maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
 	}
 
 	enableBlockcache = cfg.GetBool(enableBcache)
