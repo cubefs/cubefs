@@ -334,6 +334,9 @@ func stepPreCandidate(r *raftFsm, m *proto.Message) {
 		return
 
 	case proto.ReqMsgAppend:
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] at term:%v, in step preCandidate receive append msg[term:%d,logTerm:%d,index:%d],", r.id, r.term, m.Term, m.LogTerm, m.Index)
+		}
 		r.becomeFollower(r.term, m.From)
 		r.handleAppendEntries(m)
 		proto.ReturnMessage(m)

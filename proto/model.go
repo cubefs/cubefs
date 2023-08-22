@@ -124,6 +124,34 @@ type ClusterView struct {
 	MasterNodes          []NodeView
 	MetaNodes            []NodeView
 	DataNodes            []NodeView
+	PartitionStatus      *MasterStatus
+}
+
+type MasterStatus struct {
+	ID                uint64
+	NodeID            uint64
+	Leader            uint64
+	Term              uint64
+	Index             uint64
+	Commit            uint64
+	Applied           uint64
+	Vote              uint64
+	Stopped           bool
+	RestoringSnapshot bool
+	State             string
+	Replicas          []*ReplicaStatus
+}
+
+type ReplicaStatus struct {
+	Match       uint64
+	Commit      uint64
+	Next        uint64
+	State       string
+	Snapshoting bool
+	Paused      bool
+	Active      bool
+	LastActive  time.Time
+	Inflight    int
 }
 
 // ClusterNode defines the structure of a cluster node

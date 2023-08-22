@@ -664,6 +664,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		VolStatInfo:          make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:      make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:  make([]proto.BadPartitionView, 0),
+		PartitionStatus:      m.getStatus(),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -684,6 +685,37 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv.BadMetaPartitionIDs = m.cluster.getBadMetaPartitionsView()
 
 	sendOkReply(w, r, newSuccessHTTPReply(cv))
+}
+
+func (m *Server) getStatus() *proto.MasterStatus {
+	st := m.partition.Status()
+	status := &proto.MasterStatus{
+		ID:                st.ID,
+		NodeID:            st.NodeID,
+		Leader:            st.Leader,
+		Index:             st.Index,
+		Commit:            st.Commit,
+		Applied:           st.Applied,
+		Vote:              st.Vote,
+		Stopped:           st.Stopped,
+		RestoringSnapshot: st.RestoringSnapshot,
+		State:             st.State,
+	}
+	for _, v := range st.Replicas {
+		rpl := &proto.ReplicaStatus{
+			Match:       v.Match,
+			Commit:      v.Commit,
+			Next:        v.Next,
+			State:       v.State,
+			Snapshoting: v.Snapshoting,
+			Paused:      v.Paused,
+			Active:      v.Active,
+			LastActive:  v.LastActive,
+			Inflight:    v.Inflight,
+		}
+		status.Replicas = append(status.Replicas, rpl)
+	}
+	return status
 }
 
 func (m *Server) getApiList(w http.ResponseWriter, r *http.Request) {
