@@ -17,7 +17,6 @@ package master
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -118,12 +117,9 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 	if !isEqual {
 		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			inodeMaxInodeStr := strconv.FormatUint(lr.MaxInode, 10)
-			inodeCountStr := strconv.FormatUint(lr.InodeCount, 10)
-			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
-			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] maxInode[" + inodeMaxInodeStr + "] maxInodeCnt[" + inodeCountStr + "],"
+			lrMsg := fmt.Sprintf(msg+lr.Addr, "applyId[%d],committedId[%d],maxInode[%d],InodeCnt[%d]", lr.ApplyID, lr.CommittedID, lr.MaxInode, lr.InodeCount)
+			Warn(c.Name, lrMsg)
 		}
-		Warn(c.Name, msg)
 		if !maxInodeEqual {
 			c.inodeCountNotEqualMP.Store(mp.PartitionID, mp)
 		}
@@ -158,11 +154,9 @@ func (mp *MetaPartition) checkDentryCount(c *Cluster) (isEqual bool) {
 	if !isEqual {
 		msg := fmt.Sprintf("dentry count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			dentryCountStr := strconv.FormatUint(lr.DentryCount, 10)
-			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
-			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] dentryCount[" + dentryCountStr + "],"
+			lrMsg := fmt.Sprintf(msg+lr.Addr, "applyId[%d],committedId[%d],dentryCount[%d]", lr.ApplyID, lr.CommittedID, lr.DentryCount)
+			Warn(c.Name, lrMsg)
 		}
-		Warn(c.Name, msg)
 		c.dentryCountNotEqualMP.Store(mp.PartitionID, mp)
 	} else {
 		if _, ok := c.dentryCountNotEqualMP.Load(mp.PartitionID); ok {
