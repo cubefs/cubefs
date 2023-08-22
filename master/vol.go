@@ -543,7 +543,8 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 				maxMP.PartitionID, err)
 			Warn(c.Name, msg)
 		}
-		log.LogDebugf("volume[%v] split MaxMP, RWMPNum[%d] maxMPInodeUsedRatio[%.2f]", vol.Name, RWMPNum, maxMPInodeUsedRatio)
+		log.LogDebugf("volume[%v] split MaxMP[%v], MaxInodeID[%d] Start[%d] RWMPNum[%d] maxMPInodeUsedRatio[%.2f]",
+			vol.Name, maxPartitionID, maxMP.MaxInodeID, maxMP.Start, RWMPNum, maxMPInodeUsedRatio)
 	}
 	return
 }
