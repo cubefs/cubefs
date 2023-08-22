@@ -45,6 +45,28 @@ type rwSlice struct {
 	Data         []byte
 	extentKey    proto.ExtentKey
 	objExtentKey proto.ObjExtentKey
+	empty        bool
+}
+
+func (reader *Reader) NewRwSlice(index int, rOffset uint64, rSize uint32, objExtentKey *proto.ObjExtentKey) *rwSlice {
+	rs := new(rwSlice)
+	rs.rOffset = rOffset
+	rs.rSize = rSize
+	rs.Data = make([]byte, rs.rSize)
+
+	if objExtentKey != nil {
+		rs.index = index
+		rs.fileOffset = objExtentKey.FileOffset
+		rs.size = uint32(objExtentKey.Size)
+		rs.objExtentKey = *objExtentKey
+		reader.buildExtentKey(rs)
+	} else {
+		rs.empty = true
+		for i := range rs.Data {
+			rs.Data[i] = 0
+		}
+	}
+	return rs
 }
 
 func (s rwSlice) String() string {
@@ -155,20 +177,32 @@ func (reader *Reader) Read(ctx context.Context, buf []byte, offset int, size int
 	if err != nil {
 		return 0, err
 	}
+
+	emptySliceNum := 0
+	for _, rs := range rSlices {
+		if rs.empty {
+			emptySliceNum += 1
+		}
+	}
 	sliceSize := len(rSlices)
-	if sliceSize > 0 {
-		reader.wg.Add(sliceSize)
-		pool := New(reader.readConcurrency, sliceSize)
+	nonEmptySliceSize := len(rSlices) - emptySliceNum
+	if nonEmptySliceSize > 0 {
+		reader.wg.Add(nonEmptySliceSize)
+		reader.err = make(chan error, nonEmptySliceSize)
+
+		pool := New(reader.readConcurrency, nonEmptySliceSize)
 		defer pool.Close()
-		reader.err = make(chan error, sliceSize)
 		for _, rs := range rSlices {
+			if rs.empty {
+				continue
+			}
 			pool.Execute(rs, func(param *rwSlice) {
 				reader.readSliceRange(ctx, param)
 			})
 		}
 
 		reader.wg.Wait()
-		for i := 0; i < sliceSize; i++ {
+		for i := 0; i < nonEmptySliceSize; i++ {
 			if err, ok := <-reader.err; !ok || err != nil {
 				return 0, err
 			}
@@ -194,20 +228,16 @@ func (reader *Reader) prepareEbsSlice(offset int, size uint32) ([]*rwSlice, erro
 		return nil, syscall.EIO
 	}
 	chunks := make([]*rwSlice, 0)
-	endflag := false
-	selected := false
 
 	reader.once.Do(func() {
 		reader.refreshEbsExtents()
 	})
-	fileSize, valid := reader.fileSize()
-	reader.fileLength = fileSize
-	log.LogDebugf("TRACE blobStore prepareEbsSlice Enter. ino(%v)  fileSize(%v) ", reader.ino, fileSize)
-	if !valid {
+	if !reader.valid {
 		log.LogErrorf("Reader: invoke fileSize fail. ino(%v)  offset(%v) size(%v)", reader.ino, offset, size)
 		return nil, syscall.EIO
 	}
-	log.LogDebugf("TRACE blobStore prepareEbsSlice. ino(%v)  offset(%v) size(%v)", reader.ino, offset, size)
+	fileSize := reader.fileLength
+	log.LogDebugf("TRACE blobStore prepareEbsSlice Enter. ino(%v) fileSize(%v) offset(%v) size(%v)", reader.ino, fileSize, offset, size)
 	if uint64(offset) >= fileSize {
 		return nil, io.EOF
 	}
@@ -217,32 +247,60 @@ func (reader *Reader) prepareEbsSlice(offset int, size uint32) ([]*rwSlice, erro
 		size = uint32(fileSize - uint64(offset))
 	}
 	end := uint64(offset + int(size))
+	log.LogDebugf("TRACE blobStore prepareEbsSlice. ino(%v) fileSize(%v) offset(%v) size(%v) start(%v) end(%v)", reader.ino, fileSize, offset, size, start, end)
 	for index, oek := range reader.objExtentKeys {
-		rs := &rwSlice{}
-		if oek.FileOffset <= start && start < oek.FileOffset+(oek.Size) {
-			rs.index = index
-			rs.fileOffset = oek.FileOffset
-			rs.size = uint32(oek.Size)
-			rs.rOffset = start - oek.FileOffset
-			rs.rSize = uint32(oek.FileOffset + oek.Size - start)
-			selected = true
+		ekStart := oek.FileOffset
+		ekEnd := oek.FileOffset + oek.Size
+
+		if start < ekStart {
+			if end <= ekStart {
+				break
+			} else if end < ekEnd {
+				// add hole (start, ekStart)
+				rs := reader.NewRwSlice(-1, 0, uint32(ekStart-start), nil)
+				chunks = append(chunks, rs)
+				// add non-hole (ekStart, end)
+				rs = reader.NewRwSlice(index, 0, uint32(end-ekStart), &oek)
+				chunks = append(chunks, rs)
+				start = end
+				break
+			} else {
+				// add hole (start, ekStart)
+				rs := reader.NewRwSlice(-1, 0, uint32(ekStart-start), nil)
+				chunks = append(chunks, rs)
+
+				// add non-hole (ekStart, ekEnd)
+				rs = reader.NewRwSlice(index, 0, uint32(ekEnd-ekStart), &oek)
+				chunks = append(chunks, rs)
+
+				start = ekEnd
+				continue
+			}
+		} else if start < ekEnd {
+			if end <= ekEnd {
+				// add non-hole (start, end)
+				rs := reader.NewRwSlice(index, start-ekStart, uint32(end-start), &oek)
+				chunks = append(chunks, rs)
+				start = end
+				break
+			} else {
+				// add non-hole (start, ekEnd), start = ekEnd
+				rs := reader.NewRwSlice(index, start-ekStart, uint32(ekEnd-start), &oek)
+				chunks = append(chunks, rs)
+				start = ekEnd
+				continue
+			}
+		} else {
+			continue
 		}
-		if end <= oek.FileOffset+oek.Size {
-			rs.rSize = uint32(end - start)
-			selected = true
-			endflag = true
-		}
-		if selected {
-			rs.objExtentKey = oek
-			reader.buildExtentKey(rs)
-			rs.Data = make([]byte, rs.rSize)
-			start = oek.FileOffset + oek.Size
-			chunks = append(chunks, rs)
-			log.LogDebugf("TRACE blobStore prepareEbsSlice. ino(%v)  offset(%v) size(%v) rwSlice(%v)", reader.ino, offset, size, rs)
-		}
-		if endflag {
-			break
-		}
+	}
+	if start < end {
+		// add hole (start, end)
+		rs := reader.NewRwSlice(-1, start, uint32(end-start), nil)
+		chunks = append(chunks, rs)
+	}
+	for _, rs := range chunks {
+		log.LogDebugf("TRACE blobStore prepareEbsSlice. ino(%v)  offset(%v) size(%v) rwSlice(%v)", reader.ino, offset, size, rs)
 	}
 	log.LogDebugf("TRACE blobStore prepareEbsSlice Exit. ino(%v)  offset(%v) size(%v) rwSlices(%v)", reader.ino, offset, size, chunks)
 	return chunks, nil
@@ -411,7 +469,7 @@ func (reader *Reader) needCacheL1() bool {
 }
 
 func (reader *Reader) refreshEbsExtents() {
-	_, _, eks, oeks, err := reader.mw.GetObjExtents(reader.ino)
+	_, size, eks, oeks, err := reader.mw.GetObjExtents(reader.ino)
 	if err != nil {
 		reader.valid = false
 		log.LogErrorf("TRACE blobStore refreshEbsExtents error. ino(%v)  err(%v) ", reader.ino, err)
@@ -420,6 +478,7 @@ func (reader *Reader) refreshEbsExtents() {
 	reader.valid = true
 	reader.extentKeys = eks
 	reader.objExtentKeys = oeks
+	reader.fileLength = size
 	log.LogDebugf("TRACE blobStore refreshEbsExtents ok. extentKeys(%v)  objExtentKeys(%v) ", reader.extentKeys, reader.objExtentKeys)
 }
 

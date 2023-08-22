@@ -461,12 +461,12 @@ func MockGetObjExtentsTrue(m *meta.MetaWrapper, inode uint64) (gen uint64, size 
 		objEks = append(objEks, proto.ObjExtentKey{Size: uint64(100), FileOffset: uint64(expectedFileSize)})
 		expectedFileSize += size
 	}
-	return 1, 1, nil, objEks, nil
+	return 1, 500, nil, objEks, nil
 }
 
 func MockGetObjExtentsFalse(m *meta.MetaWrapper, inode uint64) (gen uint64, size uint64,
 	extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
-	return 1, 1, nil, nil, errors.New("Get objEks failed")
+	return 1, 0, nil, nil, errors.New("Get objEks failed")
 }
 
 func MockEbscReadTrue(ebsc *BlobStoreClient, ctx context.Context, volName string,

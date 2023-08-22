@@ -115,6 +115,12 @@ func TestWriter_doBufferWrite_(t *testing.T) {
 		{111111, make([]byte, 1000000), 1000000},
 		{1111111, make([]byte, 5000000), 5000000},
 	}
+	mw := &meta.MetaWrapper{}
+	err := gohook.HookMethod(mw, "GetObjExtents", MockGetObjExtentsNull, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))
+	}
+	writer.mw = mw
 	var flag int
 	flag |= proto.FlagsAppend
 	var fileSize int
@@ -128,6 +134,10 @@ func TestWriter_doBufferWrite_(t *testing.T) {
 	if writer.CacheFileSize() != fileSize {
 		t.Fatalf("write fail. fileSize is correct. fileSize:(%v),expect:(%v)", writer.CacheFileSize(), fileSize)
 	}
+}
+
+func MockGetObjExtentsNull(mw *meta.MetaWrapper, inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, objExtents []proto.ObjExtentKey, err error) {
+	return 0, 0, nil, nil, nil
 }
 
 func TestWriter_prepareWriteSlice(t *testing.T) {
