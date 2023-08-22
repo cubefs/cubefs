@@ -437,9 +437,11 @@ func (w *Wrapper) updateWithRecover() (err error) {
 			hostsLock.Unlock()
 
 		case <-refreshLatency.C:
-			hostsLock.Lock()
-			retryHosts = w.updateHostsPingtime()
-			hostsLock.Unlock()
+			if w.IsCacheBoostEnabled() {
+				hostsLock.Lock()
+				retryHosts = w.updateHostsPingtime()
+				hostsLock.Unlock()
+			}
 
 			refreshLatency.Reset(RefreshHostLatencyInterval)
 		}

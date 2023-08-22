@@ -776,30 +776,6 @@ func (this *HostDelay) Less(that *HostDelay) bool {
 	return this.delay < that.delay
 }
 
-func (dp *DataPartition) sortHostsByPingtime() []string {
-	var (
-		items  = make([]*HostDelay, 0)
-		sorted = make([]string, 0)
-	)
-	for _, host := range dp.Hosts {
-		var item *HostDelay
-		if delay, ok := dp.ClientWrapper.HostsDelay.Load(host); ok {
-			item = &HostDelay{host, delay.(time.Duration)}
-		} else {
-			item = &HostDelay{host, time.Duration(0)}
-		}
-		items = append(items, item)
-	}
-
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].Less(items[j])
-	})
-	for _, item := range items {
-		sorted = append(sorted, item.host)
-	}
-	return sorted
-}
-
 func (dp *DataPartition) sortHostsByPingElapsed() []string {
 	if dp.pingElapsedSortedHosts == nil {
 		var getHosts = func() []string {
