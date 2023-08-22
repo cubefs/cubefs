@@ -813,3 +813,8 @@ func (mp *metaPartition) uploadApplyID(applyId uint64) {
 func (mp *metaPartition) getApplyID() (applyId uint64) {
 	return atomic.LoadUint64(&mp.applyID)
 }
+
+func (mp *metaPartition) getCommittedID() (committedId uint64) {
+	status := mp.raftPartition.Status()
+	return status.Commit
+}
