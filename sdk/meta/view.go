@@ -204,7 +204,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	mw.volDeleteLockTime = view.DeleteLockTime
 
 	if len(rwPartitions) == 0 {
-		log.LogInfof("updateMetaPartition: no valid partitions")
+		log.LogInfof("updateMetaPartition: no rw partitions")
 		return nil
 	}
 
