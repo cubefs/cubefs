@@ -16,16 +16,17 @@ package meta
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
 	authSDK "github.com/cubefs/cubefs/sdk/auth"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auth"
@@ -142,6 +143,7 @@ type MetaWrapper struct {
 	// Allocated to trigger and throttle instant partition updates
 	forceUpdate             chan struct{}
 	forceUpdateLimit        *rate.Limiter
+	singleflight            singleflight.Group
 	EnableSummary           bool
 	metaSendTimeout         int64
 	DirChildrenNumLimit     uint32

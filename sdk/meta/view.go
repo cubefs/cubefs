@@ -201,7 +201,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	mw.volCreateTime = view.CreateTime
 
 	if len(rwPartitions) == 0 {
-		log.LogInfof("updateMetaPartition: no valid partitions")
+		log.LogInfof("updateMetaPartition: no rw partitions")
 		return nil
 	}
 
