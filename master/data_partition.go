@@ -1055,6 +1055,12 @@ func (partition *DataPartition) IsMarkDecommission() bool {
 	return partition.GetDecommissionStatus() == markDecommission
 }
 
+func (partition *DataPartition) IsDoingDecommission() bool {
+	decommStatus := partition.GetDecommissionStatus()
+
+	return (decommStatus > DecommissionInitial && decommStatus < DecommissionSuccess)
+}
+
 func (partition *DataPartition) TryToDecommission(c *Cluster) bool {
 	if !partition.IsMarkDecommission() {
 		log.LogWarnf("action[TryToDecommission] failed dp[%v] status expected markDecommission[%v]\n",
