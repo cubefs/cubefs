@@ -1245,6 +1245,7 @@ func (mp *metaPartition) ResponseLoadMetaPartition(p *Packet) (err error) {
 	resp.InodeCount = uint64(mp.GetInodeTreeLen())
 	resp.DentryCount = uint64(mp.GetDentryTreeLen())
 	resp.ApplyID = mp.getApplyID()
+	resp.CommittedID = mp.getCommittedID()
 	if err != nil {
 		err = errors.Trace(err,
 			"[ResponseLoadMetaPartition] check snapshot")
