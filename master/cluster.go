@@ -1277,6 +1277,10 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 					continue
 				}
 
+				if dp.IsDoingDecommission() {
+					continue
+				}
+
 				tempSizeDiff := math.Abs(float64(replica.Used) - repSizeSentry)
 				if tempSizeDiff > repSizeDiff {
 					repSizeDiff = tempSizeDiff
