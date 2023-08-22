@@ -471,6 +471,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/repairExtentBatch", s.repairExtentBatch)
 	http.HandleFunc("/extentCrc", s.getExtentCrc)
 	http.HandleFunc("/resetFaultOccurredCheckLevel", s.resetFaultOccurredCheckLevel)
+	http.HandleFunc("/sfxStatus", s.getSfxStatus)
 }
 
 func (s *DataNode) startTCPService() (err error) {
