@@ -49,6 +49,8 @@ const (
 	ChannelLen             = 100
 	BatchSize              = 200
 	MaxGoroutineNum        = 5
+	InodeFullMaxRetryTime  = 2
+	ForceUpdateRWMP        = "ForceUpdateRWMP"
 )
 
 func mapHaveSameKeys(m1, m2 map[uint32]*proto.MetaQuotaInfo) bool {
@@ -245,9 +247,12 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		log.LogErrorf("Create_ll: parent inode's nlink quota reached, parentID(%v)", parentID)
 		return nil, syscall.EDQUOT
 	}
+
+get_rwmp:
 	rwPartitions = mw.getRWPartitions()
 	length := len(rwPartitions)
 	epoch := atomic.AddUint64(&mw.epoch, 1)
+	retryTime := 0
 	var quotaIds []uint32
 	if mw.EnableQuota {
 		quotaInfos, err := mw.getInodeQuota(parentMP, parentID)
@@ -265,6 +270,17 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds)
 			if err == nil && status == statusOK {
 				goto create_dentry
+			} else if status == statusFull {
+				if retryTime >= InodeFullMaxRetryTime {
+					break
+				}
+				retryTime++
+				log.LogWarnf("Mp(%v) inode is full, trigger rwmp get and retry(%v)", mp, retryTime)
+				mw.singleflight.Do(ForceUpdateRWMP, func() (interface{}, error) {
+					mw.triggerAndWaitForceUpdate()
+					return nil, nil
+				})
+				goto get_rwmp
 			} else if status == statusNoSpace {
 				log.LogErrorf("Create_ll status %v", status)
 				return nil, statusToErrno(status)
@@ -277,12 +293,22 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 			status, info, err = mw.icreate(mp, mode, uid, gid, target)
 			if err == nil && status == statusOK {
 				goto create_dentry
+			} else if status == statusFull {
+				if retryTime >= InodeFullMaxRetryTime {
+					break
+				}
+				retryTime++
+				log.LogWarnf("Mp(%v) inode is full, trigger rwmp get and retry(%v)", mp, retryTime)
+				mw.singleflight.Do(ForceUpdateRWMP, func() (interface{}, error) {
+					mw.triggerAndWaitForceUpdate()
+					return nil, nil
+				})
+				goto get_rwmp
 			} else if status == statusNoSpace {
 				log.LogErrorf("Create_ll status %v", status)
 				return nil, statusToErrno(status)
 			}
 		}
-
 	}
 	return nil, syscall.ENOMEM
 create_dentry:
@@ -1723,9 +1749,11 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 		rwPartitions []*MetaPartition
 	)
 
+get_rwmp:
 	rwPartitions = mw.getRWPartitions()
 	length := len(rwPartitions)
 	epoch := atomic.AddUint64(&mw.epoch, 1)
+	retryTime := 0
 	if mw.EnableQuota && parentID != 0 {
 		var quotaIds []uint32
 		parentMP := mw.getPartitionByInode(parentID)
@@ -1741,13 +1769,23 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 		for quotaId := range quotaInfos {
 			quotaIds = append(quotaIds, quotaId)
 		}
-
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
 			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds)
 			if err == nil && status == statusOK {
 				return info, nil
+			} else if status == statusFull {
+				if retryTime >= InodeFullMaxRetryTime {
+					break
+				}
+				retryTime++
+				log.LogWarnf("Mp(%v) inode is full, trigger rwmp get and retry(%v)", mp, retryTime)
+				mw.singleflight.Do(ForceUpdateRWMP, func() (interface{}, error) {
+					mw.triggerAndWaitForceUpdate()
+					return nil, nil
+				})
+				goto get_rwmp
 			} else if status == statusNoSpace {
 				log.LogErrorf("InodeCreate_ll status %v", status)
 				return nil, statusToErrno(status)
@@ -1760,6 +1798,17 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 			status, info, err = mw.icreate(mp, mode, uid, gid, target)
 			if err == nil && status == statusOK {
 				return info, nil
+			} else if status == statusFull {
+				if retryTime >= InodeFullMaxRetryTime {
+					break
+				}
+				retryTime++
+				log.LogWarnf("Mp(%v) inode is full, trigger rwmp get and retry(%v)", mp, retryTime)
+				mw.singleflight.Do(ForceUpdateRWMP, func() (interface{}, error) {
+					mw.triggerAndWaitForceUpdate()
+					return nil, nil
+				})
+				goto get_rwmp
 			} else if status == statusNoSpace {
 				log.LogErrorf("InodeCreate_ll status %v", status)
 				return nil, statusToErrno(status)
