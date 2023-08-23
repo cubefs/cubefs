@@ -185,11 +185,6 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		exporterPort = 17510
 	}
 
-	if len(consulAddr) <= 0 {
-		log.LogInfo("consul addr is empty, use default, consul.ums.oppo.local ")
-		consulAddr = "consul.ums.oppo.local"
-	}
-
 	if exporterPort != int64(0) && len(consulAddr) > 0 {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
