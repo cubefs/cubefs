@@ -18,9 +18,10 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -68,19 +69,24 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cn *proto.ClusterNodeInfo
 			var cp *proto.ClusterIP
 			var clusterPara map[string]string
+			defer func() {
+				if err != nil {
+					errout("Error: %v\n", err)
+				}
+			}()
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
-				errout("Error: %v\n", err)
+				return
 			}
 			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
-				errout("Error: %v\n", err)
+				return
 			}
 			if cp, err = client.AdminAPI().GetClusterIP(); err != nil {
-				errout("Error: %v\n", err)
+				return
 			}
 			stdout("[Cluster]\n")
 			stdout(formatClusterView(cv, cn, cp))
 			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
-				errout("Error: %v\n", err)
+				return
 			}
 
 			stdout(fmt.Sprintf("  BatchCount         : %v\n", clusterPara[nodeDeleteBatchCountKey]))

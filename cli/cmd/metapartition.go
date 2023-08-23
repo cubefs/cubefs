@@ -16,11 +16,13 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
+
+	"github.com/spf13/cobra"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 )
 
 const (
@@ -273,6 +275,9 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
 			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address); err != nil {
 				return
 			}
@@ -305,6 +310,9 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
 			if err = client.AdminAPI().AddMetaReplica(partitionID, address); err != nil {
 				return
 			}

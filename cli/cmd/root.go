@@ -19,10 +19,11 @@ import (
 	"os"
 	"path"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/spf13/cobra"
 )
 
 const (

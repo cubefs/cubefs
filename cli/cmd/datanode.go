@@ -15,12 +15,14 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -138,7 +140,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			nodeAddr = args[0]
 			if optCount < 0 {
-				stdout("Migrate dp count should >= 0\n")
+				err = fmt.Errorf("Migrate dp count should >= 0\n")
 				return
 			}
 			if err = client.NodeAPI().DataNodeDecommission(nodeAddr, optCount); err != nil {
@@ -175,7 +177,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			src = args[0]
 			dst = args[1]
 			if optCount > dpMigrateMax || optCount <= 0 {
-				stdout("Migrate dp count should between [1-50]\n")
+				err = fmt.Errorf("Migrate dp count should between [1-50]\n")
 				return
 			}
 
