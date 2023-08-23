@@ -46,10 +46,11 @@ module.exports = [
             'user-guide/quota.md',
             'user-guide/qos.md',
             {
-                text: '性能优化',
+                text: '优化',
                 children: [
                     'user-guide/optimization/fuse.md',
                     'user-guide/optimization/cache.md',
+                    'user-guide/optimization/autofs.md',
                 ]
             },
         ]
