@@ -31,6 +31,11 @@ FUSE's solution is the writeback cache, which means that small writes are writte
 
 However, in actual production, we found that the writeback cache feature is very limited in its effectiveness. The reason is that the write operation that uses the write cache triggers the kernel's balance dirty page process, causing the write operation, which should have a very short response time, to still wait for a long time to return, especially when the write length is small.
 
+## Live Upgrade
+Online live upgrade，while  the old client is still running, the new client will communicate with it to take over the control of all fuse requests.
+
+![LiveUpgrade](./pic/client-live-upgrade.png)
+
 ## Client Warm-up
 
 To improve the read efficiency of the erasure-coded volume, the client can cache the data of the erasure-coded subsystem to the replica subsystem through the warm-up function. The cached content in the replica subsystem will be automatically deleted after the warm-up TTL expires.
