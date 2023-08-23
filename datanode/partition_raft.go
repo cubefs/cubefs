@@ -1313,7 +1313,7 @@ func (dp *DataPartition) listenStoredRaftLogEntry(entry *raftproto.Entry) {
 	}
 
 	if command != nil && len(command) > 0 {
-		if opItem, err := UnmarshalRandWriteRaftLog(entry.Data); err == nil && opItem.opcode == proto.OpRandomWrite {
+		if opItem, err := UnmarshalRandWriteRaftLog(entry.Data, false); err == nil && opItem.opcode == proto.OpRandomWrite {
 			dp.actionHolder.Register(entry.Index, &extentAction{
 				extentID: opItem.extentID,
 				offset:   opItem.offset,
