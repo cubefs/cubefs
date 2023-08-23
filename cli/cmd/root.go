@@ -86,13 +86,15 @@ func stdout(format string, a ...interface{}) {
 	_, _ = fmt.Fprintf(os.Stdout, format, a...)
 }
 
+var erroutHandler = OsExitWithLogFlush
+
 func errout(format string, a ...interface{}) {
 	log.LogErrorf(format, a...)
 	_, _ = fmt.Fprintf(os.Stderr, format, a...)
-	OsExitWithLogFlush()
+	erroutHandler(format, a)
 }
 
-func OsExitWithLogFlush() {
+func OsExitWithLogFlush(_ string, _ ...interface{}) {
 	log.LogFlush()
 	os.Exit(1)
 }

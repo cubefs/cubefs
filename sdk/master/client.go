@@ -56,6 +56,8 @@ type MasterClient struct {
 	clientAPI *ClientAPI
 	nodeAPI   *NodeAPI
 	userAPI   *UserAPI
+
+	client *http.Client
 }
 
 func (c *MasterClient) ReplaceMasterAddresses(addrs []string) {
@@ -107,6 +109,13 @@ func (c *MasterClient) SetLeader(addr string) {
 func (c *MasterClient) SetTimeout(timeout uint16) {
 	c.Lock()
 	c.timeout = time.Duration(timeout) * time.Second
+	c.Unlock()
+}
+
+// Change the http client
+func (c *MasterClient) SetHttpClient(client *http.Client) {
+	c.Lock()
+	c.client = client
 	c.Unlock()
 }
 
@@ -209,7 +218,7 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 }
 
 func (c *MasterClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
-	client := http.DefaultClient
+	client := c.client
 	reader := bytes.NewReader(reqData)
 	if header["isTimeOut"] != "" {
 		var isTimeOut bool
@@ -273,7 +282,7 @@ func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) str
 
 func NewMasterCLientWithResolver(masters []string, useSSL bool, updateInverval int) *MasterCLientWithResolver {
 	mc := &MasterCLientWithResolver{
-		MasterClient:   MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout},
+		MasterClient:   MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout, client: http.DefaultClient},
 		updateInverval: updateInverval,
 		stopC:          make(chan struct{}, 0),
 	}
@@ -356,7 +365,7 @@ func (mc *MasterCLientWithResolver) Stop() {
 
 // NewMasterHelper returns a new MasterClient instance.
 func NewMasterClient(masters []string, useSSL bool) *MasterClient {
-	var mc = &MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout}
+	var mc = &MasterClient{masters: masters, useSSL: useSSL, timeout: requestTimeout, client: http.DefaultClient}
 	mc.adminAPI = &AdminAPI{mc: mc}
 	mc.clientAPI = &ClientAPI{mc: mc}
 	mc.nodeAPI = &NodeAPI{mc: mc}
