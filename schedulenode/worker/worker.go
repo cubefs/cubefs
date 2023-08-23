@@ -327,7 +327,7 @@ func (b *BaseWorker) AddTask(task *proto.Task) (taskId uint64, err error) {
 	taskId, err = mysql.AddTask(task)
 	if err != nil {
 		log.LogErrorf("[AddTask] add task to failed, err(%v), task(%v)", err, task.String())
-		alarmKey := fmt.Sprintf("Add %s task to database failed", proto.WorkerTypeToName(task.TaskType))
+		alarmKey := fmt.Sprintf("%s.%s.%s", proto.RoleScheduleNode, proto.WorkerTypeToName(task.TaskType), "AddTaskToDataBaseFailed")
 		alarmInfo := fmt.Sprintf("Add %s task to database failed, errInfo: %s", proto.WorkerTypeToName(task.TaskType), err.Error())
 		exporter.WarningBySpecialUMPKey(alarmKey, alarmInfo)
 		return
@@ -402,8 +402,8 @@ func (b *BaseWorker) consumeTaskBase(consumeFunc func(task *proto.Task) (bool, e
 			go func() {
 				restore, err := consumeFunc(task)
 				if err != nil {
-					alarmKey := fmt.Sprintf("%s worker consume task failed", proto.WorkerTypeToName(task.TaskType))
-					alarmInfo := fmt.Sprintf("consume task failed, taskInfo(%v)", task.String())
+					alarmKey := fmt.Sprintf("%s.%s.%s", proto.RoleScheduleNode, proto.WorkerTypeToName(task.TaskType), "ConsumeTskFailed")
+					alarmInfo := fmt.Sprintf("consume task failed, taskId(%v), taskType(%v), taskInfo(%v)", task.TaskId, proto.WorkerTypeToName(task.TaskType), task.String())
 					log.LogErrorf("[consumeTaskBase] alarmInfo(%v), error(%v)", alarmInfo, err.Error())
 					exporter.WarningBySpecialUMPKey(alarmKey, alarmInfo)
 
