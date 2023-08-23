@@ -32,7 +32,7 @@ FUSE's solution is the writeback cache, which means that small writes are writte
 However, in actual production, we found that the writeback cache feature is very limited in its effectiveness. The reason is that the write operation that uses the write cache triggers the kernel's balance dirty page process, causing the write operation, which should have a very short response time, to still wait for a long time to return, especially when the write length is small.
 
 ## Live Upgrade
-On line live upgrade，when old client is still running, new client will communicate with old client to take over the control of all  fuse requests.
+On line live upgrade，when old client is still running, new client will communicate with old client to take over the control of all fuse requests.
 
 ![LiveUpgrade](./pic/client-live-upgrade.png)
 
