@@ -1,0 +1,146 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+package cmd
+
+import (
+	"fmt"
+	"net/http"
+	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/cubefs/cubefs/sdk/master"
+)
+
+const (
+	cliTestAddr     = "127.0.0.1:16517"
+	ContentTypeJSON = "application/json"
+)
+
+type testErrorRecorder struct {
+	errorMessages []string
+}
+
+func (t *testErrorRecorder) Write(p []byte) (n int, err error) {
+	t.errorMessages = append(t.errorMessages, string(p))
+	return len(p), nil
+}
+
+func (t *testErrorRecorder) RecordedError() error {
+	if len(t.errorMessages) > 0 {
+		return fmt.Errorf("%v", t.errorMessages[0])
+	}
+	return nil
+}
+
+func defaultHeader() http.Header {
+	header := http.Header{}
+	header.Set("Content-Type", ContentTypeJSON)
+	return header
+}
+
+type cliTestRunner struct {
+	masterClient *master.MasterClient
+	command      []string
+	recorder     *testErrorRecorder
+}
+
+func newCliTestRunner() *cliTestRunner {
+	mc := master.NewMasterClient([]string{cliTestAddr}, false)
+	mc.SetTimeout(1)
+	tr := &cliTestRunner{
+		masterClient: mc,
+	}
+	tr.setupTestErrorRecorder()
+	return tr
+}
+
+func (c *cliTestRunner) setHttpClient(client *http.Client) *cliTestRunner {
+	c.masterClient.SetHttpClient(client)
+	return c
+}
+
+func (c *cliTestRunner) setCommand(args ...string) *cliTestRunner {
+	c.command = args
+	return c
+}
+
+func (c *cliTestRunner) setupMockCommands() *cobra.Command {
+	cfsRootCmd := NewRootCmd(c.masterClient)
+	cfsRootCmd.CFSCmd.AddCommand(GenClusterCfgCmd)
+	return cfsRootCmd.CFSCmd
+}
+
+func (c *cliTestRunner) setupTestErrorRecorder() {
+	recorder := &testErrorRecorder{}
+	erroutHandler = func(format string, args ...interface{}) {
+		_, _ = fmt.Fprintf(recorder, format, args...)
+	}
+	c.recorder = recorder
+}
+
+func (c *cliTestRunner) testRun(args ...string) (err error) {
+	cfsCli := c.setupMockCommands()
+	cfsCli.SetArgs(args)
+	err = cfsCli.Execute()
+	if err != nil {
+		return err
+	}
+	return c.recorder.RecordedError()
+}
+
+type TestCase struct {
+	name      string
+	args      []string
+	expectErr bool
+}
+
+func (c *cliTestRunner) runTestCases(t *testing.T, testCases []*TestCase) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			args := append(c.command, tc.args...)
+			err := c.testRun(args...)
+			if tc.expectErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestRootCmd(t *testing.T) {
+	testCases := []*TestCase{
+		{
+			name:      "no command",
+			args:      []string{},
+			expectErr: false,
+		},
+		{
+			name:      "help command",
+			args:      []string{"help"},
+			expectErr: false,
+		},
+		{
+			name:      "version command",
+			args:      []string{"--version"},
+			expectErr: false,
+		},
+	}
+
+	r := newCliTestRunner()
+	r.runTestCases(t, testCases)
+}
