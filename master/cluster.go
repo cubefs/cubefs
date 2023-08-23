@@ -3772,11 +3772,17 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		dataNode.markDecommissionSuccess(c)
 		return
 	}
+
 	//recode dp count in each disk
 	dpToDecommissionByDisk := make(map[string]int)
 	//find respond disk
 	for _, dp := range toBeOffLinePartitions {
 		disk := dp.getReplicaDisk(dataNode.Addr)
+		if disk == "" {
+			log.LogWarnf("action[TryDecommissionDataNode] ignore dp [%v] on dataNode[%v]with empty disk",
+				dp.PartitionID, dataNode.Addr)
+			continue
+		}
 		dpToDecommissionByDisk[disk]++
 	}
 	left := len(toBeOffLinePartitions)
@@ -3789,14 +3795,18 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		if left-dpCnt >= 0 {
 			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dpCnt, false, ManualDecommission)
 			if err != nil {
+				log.LogWarnf("action[TryDecommissionDataNode] %v failed", err)
 				continue
 			}
+			dataNode.DecommissionDpTotal += dpCnt
 			left = left - dpCnt
 		} else {
 			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, left, false, ManualDecommission)
 			if err != nil {
+				log.LogWarnf("action[TryDecommissionDataNode] %v failed", err)
 				continue
 			}
+			dataNode.DecommissionDpTotal += left
 			left = 0
 		}
 		decommissionDiskList = append(decommissionDiskList, disk)
@@ -3814,7 +3824,6 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	//avoid alloc dp on this node
 	dataNode.ToBeOffline = true
 	dataNode.DecommissionDiskList = decommissionDiskList
-	dataNode.DecommissionDpTotal = len(toBeOffLinePartitions)
 	log.LogInfof("action[TryDecommissionDataNode] try decommission disk[%v] from dataNode[%s] "+
 		"raftForce [%v] to dst [%v] DecommissionDpTotal[%v]",
 		decommissionDiskList, dataNode.Addr, dataNode.DecommissionRaftForce,

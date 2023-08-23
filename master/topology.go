@@ -1020,7 +1020,6 @@ func (ns *nodeSet) metaNodeLen() (count int) {
 }
 
 func (ns *nodeSet) startDecommissionSchedule() {
-	log.LogDebugf("action[startDecommissionSchedule] ns[%v]", ns.ID)
 	ns.decommissionDataPartitionList.startTraverse()
 	ns.startDecommissionDiskListTraverse <- struct{}{}
 }
@@ -1160,9 +1159,9 @@ func (ns *nodeSet) removeAutoDecommissionDisk(dd *DecommissionDisk) {
 func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	//wait for loading all decommissionDisk when reload metadata
+	log.LogInfof("action[traverseDecommissionDisk]wait %v", ns.ID)
 	<-ns.startDecommissionDiskListTraverse
-	log.LogDebugf("traverseDecommissionDisk start %v",
-		ns.ID)
+	log.LogInfof("action[traverseDecommissionDisk] traverseDecommissionDisk start %v", ns.ID)
 	defer t.Stop()
 	for {
 		select {
@@ -2058,16 +2057,17 @@ func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetD
 
 func (zone *Zone) startDecommissionListTraverse(c *Cluster) (err error) {
 	nodeSets := zone.getAllNodeSet()
-
-	if nodeSets == nil {
-		log.LogWarnf("Nodeset form %v is nil", zone.name)
-		return proto.ErrNoNodeSetToDecommission
+	log.LogDebugf("startDecommissionListTraverse nodeSets len %v ", len(nodeSets))
+	if len(nodeSets) == 0 {
+		log.LogWarnf("action[startDecommissionListTraverse] Nodeset form %v is nil", zone.name)
+		return nil
 	}
 
 	for _, ns := range nodeSets {
+		log.LogInfof("action[startDecommissionListTraverse] ns[%v] from zone %v", ns.ID, zone.name)
 		ns.startDecommissionSchedule()
 	}
-	log.LogInfof("All nodeset from %v start decommission schedule", zone.name)
+	log.LogInfof("action[startDecommissionListTraverse] All nodeset from %v start decommission schedule", zone.name)
 	return
 }
 

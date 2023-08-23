@@ -1454,7 +1454,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		vol.dataPartitions.put(dp)
 		c.addBadDataPartitionIdMap(dp)
 		//add to nodeset decommission list
-		dp.addToDecommissionList(c)
+		go dp.addToDecommissionList(c)
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v] ", vol.Name, dp.PartitionID)
 	}
 	return
@@ -1565,6 +1565,7 @@ func (c *Cluster) loadDecommissionDiskList() (err error) {
 
 		dd := ddv.Restore()
 		c.DecommissionDisks.Store(dd.GenerateKey(), dd)
+		dd.SetDecommissionStatus(markDecommission)
 		c.addDecommissionDiskToNodeset(dd)
 		log.LogInfof("action[loadDecommissionDiskList],decommissionDisk[%v] type %v dst[%v] status[%v] raftForce[%v]"+
 			"dpTotal[%v] term[%v]",
@@ -1576,7 +1577,9 @@ func (c *Cluster) loadDecommissionDiskList() (err error) {
 
 func (c *Cluster) startDecommissionListTraverse() (err error) {
 	zones := c.t.getAllZones()
+	log.LogDebugf("startDecommissionListTraverse zones len %v", len(zones))
 	for _, zone := range zones {
+		log.LogDebugf("startDecommissionListTraverse zone %v ", zone.name)
 		err = zone.startDecommissionListTraverse(c)
 		if err != nil {
 			return
