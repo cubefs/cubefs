@@ -86,6 +86,14 @@ umount -l /path/to/mountPoint
 
 `/path/to/mountPoint` is the mount path in the client configuration file.
 
+## Live Upgrade or hot restart 
+```bash
+cfs-client -c fuse.json -r -p 27510
+```
+Before live-upgrading, old cfs-client is running with profPort 27510. 
+`-r` restore FUSE instead of mounting.
+`-p 27510` tells new cfs-client to communicate with old cfs-client through port 27510.
+
 ## Enabling Level 1 Cache
 
 The local read cache service deployed on the user client is not recommended for scenarios where the data set has modified writes and requires strong consistency. After deploying the cache, the client needs to add the following mount parameters, and the cache will take effect after remounting.
