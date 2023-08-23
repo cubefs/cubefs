@@ -84,6 +84,7 @@ type Super struct {
 	bcacheFilterFiles   string
 	bcacheCheckInterval int64
 	bcacheBatchCnt      int64
+	enableReadAhead     bool
 
 	readThreads  int
 	writeThreads int
@@ -208,6 +209,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.enableBcache = opt.EnableBcache
 	s.readThreads = int(opt.ReadThreads)
 	s.writeThreads = int(opt.WriteThreads)
+	s.enableReadAhead = opt.EnableReadAhead
 
 	if s.enableBcache {
 		s.bc = bcache.NewBcacheClient()

@@ -90,6 +90,7 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			FileCache:       false,
 			FileSize:        i.Size,
 			CacheThreshold:  s.CacheThreshold,
+			EnableReadAhead: s.enableReadAhead,
 		}
 		log.LogDebugf("Trace NewFile:flag(%v). clientConf(%v)", flag, clientConf)
 
@@ -254,6 +255,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			FileCache:       false,
 			FileSize:        uint64(fileSize),
 			CacheThreshold:  f.super.CacheThreshold,
+			EnableReadAhead: f.super.enableReadAhead,
 		}
 		f.fWriter.FreeCache()
 		switch req.Flags & 0x0f {
@@ -288,6 +290,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	defer func() {
 		stat.EndStat("Release", err, bgTime, 1)
 		f.fWriter.FreeCache()
+		f.fReader.FreeReadAheadBuf()
 		if DisableMetaCache {
 			f.super.ic.Delete(ino)
 		}
