@@ -34,6 +34,26 @@ However, in actual production, we found that the writeback cache feature is very
 ## Live Upgrade
 Online live upgrade，while  the old client is still running, the new client will communicate with it to take over the control of all fuse requests.
 
+Allows to upgrade fuse client without umounting. The following
+stes are executed to achieve that:
+
+1. stop reading more requests from /dev/fuse
+2. save context
+   
+    Context saves information of inodes/files, which are still in use (open
+    or not evicted) between fuse client and fuse kernel module.
+3. save file descriptor of /dev/fuse
+   
+    Use Unix Domain Socket to transmit fd.
+4. old client exits and new client starts
+5. restore context
+   
+    New client tries to restore context instead of really mounting fuse.
+6. restore file descriptor of /dev/fuse
+   
+    New client keep reading pending requests.
+
+
 ![LiveUpgrade](./pic/client-live-upgrade.png)
 
 ## Client Warm-up
