@@ -4006,7 +4006,7 @@ func TestSetNodeSetCapacity(t *testing.T) {
 
 func TestNewTwoDpReplicaZone(t *testing.T) {
 	var (
-		volName = "TwoDpReplicaZone2"
+		volName = "TestNewTwoDpReplicaZone"
 		err     error
 	)
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
@@ -4121,7 +4121,7 @@ func TestDecommissionTwoDpReplicaZone(t *testing.T) {
 
 func TestDecommissionDisk(t *testing.T) {
 	var (
-		volName = "TwoDpReplicaZone2"
+		volName = "TwoDpReplica4TestDecommissionDisk"
 		err     error
 	)
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
@@ -4157,7 +4157,7 @@ func TestDecommissionDisk(t *testing.T) {
 
 func TestDecommissionDataNode(t *testing.T) {
 	var (
-		volName = "TwoDpReplicaZone2"
+		volName = "TwoDpReplica4TestDecommissionDataNode"
 		err     error
 	)
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,

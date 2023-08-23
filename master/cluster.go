@@ -1695,21 +1695,11 @@ func (c *Cluster) decommissionTwoReplicaDataPartition(offlineAddr string, dp *Da
 		return
 	}
 	time.Sleep(time.Second * 2)
-
+	_ = c.removeDataPartitionRaftOnly(dp, proto.Peer{ID: oldNode.ID, Addr: oldNode.Addr})
 	if oldNode.isActive {
-		var newDataPartitions = make([]uint64, 0)
 		if err = c.deleteDataReplica(dp, oldNode, false); err != nil {
 			return
 		}
-		for _, pid := range oldNode.PersistenceDataPartitions {
-			if pid != dp.PartitionID {
-				newDataPartitions = append(newDataPartitions, pid)
-			}
-		}
-		oldNode.Lock()
-		oldNode.PersistenceDataPartitions = newDataPartitions
-		oldNode.Unlock()
-		_ = c.removeDataPartitionRaftOnly(dp, proto.Peer{ID: oldNode.ID, Addr: oldNode.Addr})
 	}
 
 	if err = c.addDataReplica(dp, addAddr, false); err != nil {
