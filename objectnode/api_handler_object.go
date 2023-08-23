@@ -941,7 +941,7 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// The result of next list request should not include nextMarker.
-	if result.Truncated {
+	if result.Truncated && len(result.Files) != 0 {
 		result.NextMarker = result.Files[len(result.Files)-1].Path
 	}
 
