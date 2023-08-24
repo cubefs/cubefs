@@ -65,6 +65,7 @@ const (
 	defaultMetaPartitionMemUsageThreshold            float32 = 0.75    // memory usage threshold on a meta partition
 	defaultMaxMetaPartitionCountOnEachNode                   = 10000
 	defaultReplicaNum                                        = 3
+	twoReplicaNum                                            = 2
 	defaultDiffSpaceUsage                                    = 10 * 1024 * 1024 * 1024
 	defaultCrossZoneNum                                      = 3
 	defaultExtentCacheExpireSec                              = 60

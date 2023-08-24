@@ -1553,6 +1553,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		msg             string
 		isLearner       bool
 		pmConfig        *proto.PromoteConfig
+		vol             *Vol
 	)
 	dp.offlineMutex.Lock()
 	dp.isOffline = true
@@ -1562,6 +1563,15 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		dp.isOffline = false
 		dp.offlineMutex.Unlock()
 	}()
+	if vol, err = c.getVol(dp.VolName); err != nil {
+		goto errHandler
+	}
+	if vol.dpReplicaNum == 2 {
+		if err = c.decommissionTwoReplicaDataPartition(offlineAddr, dp, chooseDataHostFunc, destZoneName, destAddr, strictMode); err != nil {
+			goto errHandler
+		}
+		return
+	}
 	excludeNodeSets = make([]uint64, 0)
 	if destAddr != "" {
 		if err = c.validateDecommissionDataPartition(dp, offlineAddr, true); err != nil {
@@ -1621,6 +1631,96 @@ errHandler:
 	}
 	return
 }
+
+func (c *Cluster) decommissionTwoReplicaDataPartition(offlineAddr string, dp *DataPartition, chooseDataHostFunc ChooseDataHostFunc, destZoneName string, destAddr string, strictMode bool) (err error) {
+	var (
+		oldNode         *DataNode
+		remainNode      *DataNode
+		oldAddr         string
+		remainAddr      string
+		addAddr         string
+		oldReplica      *DataReplica
+		excludeNodeSets []uint64
+	)
+	excludeNodeSets = make([]uint64, 0)
+	if destAddr != "" {
+		if err = c.validateDecommissionDataPartition(dp, offlineAddr, true); err != nil {
+			return
+		}
+		if _, err = c.dataNode(offlineAddr); err != nil {
+			return
+		}
+		if contains(dp.Hosts, destAddr) {
+			err = fmt.Errorf("destinationAddr[%v] must be a new data node addr,oldHosts[%v]", destAddr, dp.Hosts)
+			return
+		}
+		if _, err = c.dataNode(destAddr); err != nil {
+			return
+		}
+		oldAddr = offlineAddr
+		addAddr = destAddr
+	} else {
+		if oldAddr, addAddr, err = chooseDataHostFunc(c, offlineAddr, dp, excludeNodeSets, destZoneName, true); err != nil {
+			return
+		}
+	}
+	oldReplica, _ = dp.getReplica(oldAddr)
+	if oldNode, err = c.dataNode(offlineAddr); err != nil {
+		return
+	}
+
+	var newPeer []proto.Peer
+	for _, peer := range dp.Peers {
+		if peer.Addr == oldAddr {
+			continue
+		}
+		newPeer = append(newPeer, peer)
+		remainAddr = peer.Addr
+	}
+	if len(newPeer) != 1 {
+		return fmt.Errorf("try to reset peer failed[new peer num is expected to be 1 but got %v]", len(newPeer))
+	}
+	if remainNode, err = c.dataNode(remainAddr); err != nil {
+		return
+	}
+	for _, peer := range dp.Peers {
+		if peer.Addr == oldAddr {
+			continue
+		}
+		if err = c.resetDataPartitionRaftMember(dp, newPeer, peer.Addr); err != nil {
+			return
+		}
+	}
+	if err = dp.tryToChangeLeader(c, remainNode); err != nil {
+		return
+	}
+	time.Sleep(time.Second * 2)
+	_ = c.removeDataPartitionRaftOnly(dp, proto.Peer{ID: oldNode.ID, Addr: oldNode.Addr})
+	if oldNode.isActive {
+		if err = c.deleteDataReplica(dp, oldNode, false); err != nil {
+			return
+		}
+	}
+
+	if err = c.addDataReplica(dp, addAddr, false); err != nil {
+		return
+	}
+
+	dp.Lock()
+	dp.Status = proto.ReadOnly
+	dp.isRecover = true
+	dp.modifyTime = time.Now().Unix()
+	c.syncUpdateDataPartition(dp)
+	dp.Unlock()
+	if strictMode {
+		c.putMigratedDataPartitionIDs(oldReplica, oldAddr, dp.PartitionID)
+	} else {
+		c.putBadDataPartitionIDs(oldReplica, oldAddr, dp.PartitionID)
+	}
+	go c.syncDataPartitionReplicasToDataNode(dp)
+	return
+}
+
 func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 	var (
 		zoneList             []string
@@ -2123,21 +2223,43 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 	if vol, err = c.getVol(dp.VolName); err != nil {
 		return
 	}
-
-	replicaNum := vol.dpReplicaNum
-	if vol.DPConvertMode == proto.IncreaseReplicaNum && vol.dpReplicaNum == maxQuorumVolDataPartitionReplicaNum {
-		replicaNum = dp.ReplicaNum
-		if replicaNum < defaultReplicaNum {
-			replicaNum = defaultReplicaNum
+	if vol.dpReplicaNum > 2 {
+		replicaNum := vol.dpReplicaNum
+		if vol.DPConvertMode == proto.IncreaseReplicaNum && vol.dpReplicaNum == maxQuorumVolDataPartitionReplicaNum {
+			replicaNum = dp.ReplicaNum
+			if replicaNum < defaultReplicaNum {
+				replicaNum = defaultReplicaNum
+			}
 		}
-	}
-	if err = dp.hasMissingOneReplica(offlineAddr, int(replicaNum)); err != nil {
-		return
-	}
+		if err = dp.hasMissingOneReplica(offlineAddr, int(replicaNum)); err != nil {
+			return
+		}
 
-	// if the partition can be offline or not
-	if err = dp.canBeOffLine(offlineAddr, isManuel); err != nil {
-		return
+		// if the partition can be offline or not
+		if err = dp.canBeOffLine(offlineAddr, isManuel); err != nil {
+			return
+		}
+	} else if vol.dpReplicaNum == 2 {
+		if len(dp.Replicas) != 2 || len(dp.Peers) != 2 || len(dp.Hosts) != 2 {
+			err = fmt.Errorf("vol[%v] has two replica limit, but dp[%v] has less or more than two Replicas, replicas[%v], peers[%v], hosts[%v]",
+				vol.Name, dp.PartitionID, dp.Replicas, dp.Peers, dp.Hosts)
+			return
+		}
+		aliveNodeCount := 0
+		aliveNodes := dp.availableDataReplicas()
+		for _, node := range aliveNodes {
+			if node.Addr != offlineAddr {
+				aliveNodeCount++
+			}
+		}
+		if aliveNodeCount < 1 {
+			err = fmt.Errorf("vol[%v], data partition[%v] offline dataNode[%v], but the alive dataNode is less than 1",
+				vol.Name, dp.PartitionID, offlineAddr)
+		}
+
+		if len(dp.Learners) != 0 {
+			err = fmt.Errorf("vol[%v] has two replica limit, but dp[%v] has %v leaners[%v]", vol.Name, dp.PartitionID, len(dp.Learners), dp.Learners)
+		}
 	}
 
 	if dp.isRecover && !dp.isLatestReplica(offlineAddr) {
