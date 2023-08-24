@@ -1138,7 +1138,7 @@ func TestDentryVerMarshal(t *testing.T) {
 
 	den2 := &Dentry{}
 	den2.Unmarshal(val)
-	t.Logf("seq, %v %v,parent %v", den1.getVerSeq(),den2.getVerSeq(), den2.ParentId)
+	t.Logf("seq, %v %v,parent %v", den1.getVerSeq(), den2.getVerSeq(), den2.ParentId)
 	assert.True(t, den1.getVerSeq() == den2.getVerSeq())
 	assert.True(t, reflect.DeepEqual(den1, den2))
 }
