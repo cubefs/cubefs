@@ -275,7 +275,7 @@ func (d *TxRollbackDentry) Copy() btree.Item {
 }
 
 func (d *TxRollbackDentry) Marshal() (result []byte, err error) {
-	buff := bytes.NewBuffer(make([]byte, 0, 256))
+	buff := bytes.NewBuffer(make([]byte, 0, 512))
 	bs, err := d.dentry.Marshal()
 	if err != nil {
 		return nil, err
@@ -287,6 +287,9 @@ func (d *TxRollbackDentry) Marshal() (result []byte, err error) {
 		return nil, err
 	}
 
+	log.LogDebugf("TxRollbackDentry Marshal dentry %v", d.dentry)
+
+	log.LogDebugf("TxRollbackDentry Marshal txDentryInfo %v", d.ToString())
 	bs, err = d.txDentryInfo.Marshal()
 	if err != nil {
 		return nil, err
@@ -318,6 +321,7 @@ func (d *TxRollbackDentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
+	log.LogDebugf("TxRollbackDentry Unmarshal len %v", dataLen)
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -327,6 +331,9 @@ func (d *TxRollbackDentry) Unmarshal(raw []byte) (err error) {
 	if err = dentry.Unmarshal(data); err != nil {
 		return
 	}
+
+	log.LogDebugf("TxRollbackDentry Unmarshal dentry %v", dentry)
+
 	d.dentry = dentry
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
@@ -354,6 +361,7 @@ func (d *TxRollbackDentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &d.rbPlaceholderTimestamp); err != nil {
 		return
 	}
+	log.LogDebugf("TxRollbackDentry Unmarshal txDentryInfo %v", d.ToString())
 	return
 }
 
