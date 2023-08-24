@@ -82,6 +82,6 @@ func (lcNode *LcNode) createSnapshotVerDelTask(masterAddr string, sTask *proto.S
 		LcNodeAddr: lcNode.Addr,
 		Task:       sTask,
 	}
-	task = proto.NewAdminTaskEx(proto.OpLcNodeSnapshotVerDel, lcNode.Addr, request, request.Task.Key())
+	task = proto.NewAdminTaskEx(proto.OpLcNodeSnapshotVerDel, lcNode.Addr, request, request.Task.Id)
 	return
 }

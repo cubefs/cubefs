@@ -4144,16 +4144,24 @@ errHandler:
 	return
 }
 
+type LcNodeStatInfo struct {
+	Addr   string
+	TaskId string
+}
+
+type LcNodeInfoResponse struct {
+	Infos               []*LcNodeStatInfo
+	LcConfigurations    map[string]*proto.LcConfiguration
+	LcRuleTaskStatus    *lcRuleTaskStatus
+	LcSnapshotVerStatus *lcSnapshotVerStatus
+}
+
 func (c *Cluster) getAllLcNodeInfo() (rsp *LcNodeInfoResponse, err error) {
 	rsp = &LcNodeInfoResponse{
 		Infos: make([]*LcNodeStatInfo, 0),
 	}
 	c.lcNodes.Range(func(addr, value interface{}) bool {
-		t := c.lcMgr.lcNodeStatus.getWorkingTask(addr.(string))
-		var TaskId string
-		if t != nil {
-			TaskId = t.(*proto.RuleTask).Id
-		}
+		TaskId := c.lcMgr.lcNodeStatus.workingNodes[addr.(string)]
 		ln := &LcNodeStatInfo{
 			Addr:   addr.(string),
 			TaskId: TaskId,
@@ -4163,7 +4171,7 @@ func (c *Cluster) getAllLcNodeInfo() (rsp *LcNodeInfoResponse, err error) {
 	})
 	rsp.LcConfigurations = c.lcMgr.lcConfigurations
 	rsp.LcRuleTaskStatus = c.lcMgr.lcRuleTaskStatus
-	rsp.SnapshotInfos = c.snapshotMgr.volVerInfos
+	rsp.LcSnapshotVerStatus = c.snapshotMgr.lcSnapshotTaskStatus
 	return
 }
 
@@ -4177,14 +4185,9 @@ func (c *Cluster) clearLcNodes() {
 }
 
 func (c *Cluster) delLcNode(nodeAddr string) (err error) {
-	t := c.lcMgr.lcNodeStatus.removeNode(nodeAddr)
-	if t != nil {
-		c.lcMgr.lcRuleTaskStatus.redoTask(t.(*proto.RuleTask))
-	}
-	t = c.snapshotMgr.lcNodeStatus.removeNode(nodeAddr)
-	if t != nil {
-		c.snapshotMgr.volVerInfos.RedoProcessingVerInfo(t.(string))
-	}
+	c.lcMgr.lcRuleTaskStatus.RedoTask(c.lcMgr.lcNodeStatus.RemoveNode(nodeAddr))
+	c.snapshotMgr.lcSnapshotTaskStatus.RedoTask(c.snapshotMgr.lcNodeStatus.RemoveNode(nodeAddr))
+
 	lcNode, err := c.lcNode(nodeAddr)
 	if err != nil {
 		log.LogErrorf("action[delLcNode], clusterID:%v, lcNodeAddr:%v, load err:%v ", c.Name, nodeAddr, err)
@@ -4249,7 +4252,7 @@ func (c *Cluster) scheduleToSnapshotDelVerScan() {
 
 func (c *Cluster) getSnapshotDelVer() {
 	if c.partition == nil || !c.partition.IsRaftLeader() {
-		log.LogWarn("getDeletingSnapshotVer: master is not leader")
+		log.LogWarn("getSnapshotDelVer: master is not leader")
 		return
 	}
 
@@ -4258,18 +4261,18 @@ func (c *Cluster) getSnapshotDelVer() {
 		volVerInfoList := vol.VersionMgr.getVersionList()
 		for _, volVerInfo := range volVerInfoList.VerList {
 			if volVerInfo.Status == proto.VersionDeleting {
-				verInfo := &LcVerInfo{
-					VerInfo: proto.VerInfo{
-						VolName: volName,
-						VerSeq:  volVerInfo.Ver,
-					},
-					dTime: time.UnixMicro(volVerInfo.DelTime),
+				task := &proto.SnapshotVerDelTask{
+					Id:             fmt.Sprintf("%s:%d", volName, volVerInfo.Ver),
+					VolName:        volName,
+					VolVersionInfo: volVerInfo,
 				}
-				c.snapshotMgr.volVerInfos.AddVerInfo(verInfo)
+				c.snapshotMgr.lcSnapshotTaskStatus.AddVerInfo(task)
 			}
 		}
 	}
-	log.LogDebug("getDeletingSnapshotVer finish")
+	log.LogDebug("getSnapshotDelVer AddVerInfo finish")
+	c.snapshotMgr.lcSnapshotTaskStatus.DeleteOldResult()
+	log.LogDebug("getSnapshotDelVer DeleteOldResult finish")
 }
 
 func (c *Cluster) checkSnapshotStrategy() {

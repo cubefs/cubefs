@@ -76,10 +76,8 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 			info := &proto.SnapshotVerDelTaskResponse{
 				ID: scanner.ID,
 				SnapshotStatistics: proto.SnapshotStatistics{
-					VerInfo: proto.VerInfo{
-						VolName: scanner.Volume,
-						VerSeq:  scanner.getTaskVerSeq(),
-					},
+					VolName:         scanner.Volume,
+					VerSeq:          scanner.getTaskVerSeq(),
 					TotalInodeNum:   atomic.LoadInt64(&scanner.currentStat.TotalInodeNum),
 					FileNum:         atomic.LoadInt64(&scanner.currentStat.FileNum),
 					DirNum:          atomic.LoadInt64(&scanner.currentStat.DirNum),

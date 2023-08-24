@@ -1,23 +1,8 @@
 package proto
 
 import (
-	"fmt"
 	"time"
 )
-
-type VerInfo struct {
-	VolName string
-	VerSeq  uint64
-}
-
-func (vi *VerInfo) Key() string {
-	return fmt.Sprintf("%s_%d", vi.VolName, vi.VerSeq)
-}
-
-//snapshot version delete
-type SnapshotVerDelTask struct {
-	VerInfo
-}
 
 type SnapshotVerDelTaskRequest struct {
 	MasterAddr string
@@ -25,20 +10,28 @@ type SnapshotVerDelTaskRequest struct {
 	Task       *SnapshotVerDelTask
 }
 
-type SnapshotStatistics struct {
-	VerInfo
-	TotalInodeNum   int64
-	FileNum         int64
-	DirNum          int64
-	ErrorSkippedNum int64
+type SnapshotVerDelTask struct {
+	Id             string
+	VolName        string
+	UpdateTime     int64
+	VolVersionInfo *VolVersionInfo
 }
 
 type SnapshotVerDelTaskResponse struct {
-	ID string
-	SnapshotStatistics
+	ID        string
 	StartTime *time.Time
 	EndTime   *time.Time
 	Done      bool
 	Status    uint8
 	Result    string
+	SnapshotStatistics
+}
+
+type SnapshotStatistics struct {
+	VolName         string
+	VerSeq          uint64
+	TotalInodeNum   int64
+	FileNum         int64
+	DirNum          int64
+	ErrorSkippedNum int64
 }
