@@ -26,6 +26,11 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	BackGroundEvictDurFactor    = 2
+	BackGroundEvictMaxNumFactor = 5
+)
+
 type AccessStat struct {
 	accessNum uint64
 	miss      uint64
@@ -34,11 +39,14 @@ type AccessStat struct {
 
 type AttrItem struct {
 	proto.XAttrInfo
-	UpdateTime int64
+	expiredTime int64
 }
 
-func (attr *AttrItem) GetUpdateTime() int64 {
-	return attr.UpdateTime
+func (attr *AttrItem) IsExpired() bool {
+	if attr.expiredTime < time.Now().Unix() {
+		return true
+	}
+	return false
 }
 
 //VolumeInodeAttrsCache caches Attrs for Inodes
@@ -79,11 +87,10 @@ func (vac *VolumeInodeAttrsCache) putAttr(attr *AttrItem) {
 	}
 
 	if int64(vac.lruList.Len()) > vac.maxElements {
-		vac.evictAttr(int64(vac.lruList.Len()) - vac.maxElements)
+		vac.evictAttr(int64(vac.lruList.Len())-vac.maxElements, false)
 	}
 
 	element := vac.lruList.PushFront(attr)
-	attr.UpdateTime = time.Now().Unix()
 	vac.cache[attr.Inode] = element
 }
 
@@ -166,7 +173,7 @@ func (vac *VolumeInodeAttrsCache) deleteAttrWithKey(inode uint64, key string) {
 	}
 }
 
-func (vac *VolumeInodeAttrsCache) evictAttr(evictNum int64) {
+func (vac *VolumeInodeAttrsCache) evictAttr(evictNum int64, backGround bool) {
 	if evictNum <= 0 {
 		return
 	}
@@ -174,8 +181,10 @@ func (vac *VolumeInodeAttrsCache) evictAttr(evictNum int64) {
 	for i := int64(0); i < evictNum; i++ {
 		element := vac.lruList.Back()
 		attr := element.Value.(*AttrItem)
-		vac.lruList.Remove(element)
-		delete(vac.cache, attr.Inode)
+		if !backGround || (backGround && attr.IsExpired()) {
+			vac.lruList.Remove(element)
+			delete(vac.cache, attr.Inode)
+		}
 	}
 }
 
@@ -192,15 +201,18 @@ func (vac *VolumeInodeAttrsCache) GetAccessStat() (accssNum, validHit, miss uint
 //type DentryItem metanode.Dentry
 type DentryItem struct {
 	metanode.Dentry
-	UpdateTime int64
+	expiredTime int64
 }
 
 func (di *DentryItem) Key() string {
 	return strconv.FormatUint(di.ParentId, 10) + pathSep + di.Name
 }
 
-func (di *DentryItem) GetUpdateTime() int64 {
-	return di.UpdateTime
+func (di *DentryItem) IsExpired() bool {
+	if di.expiredTime < time.Now().Unix() {
+		return true
+	}
+	return false
 }
 
 //VolumeDentryCache accelerates translating S3 path to posix-compatible file system metadata within a volume
@@ -244,11 +256,10 @@ func (vdc *VolumeDentryCache) putDentry(dentry *DentryItem) {
 	}
 
 	if int64(vdc.lruList.Len()) > vdc.maxElements {
-		vdc.evictDentry(int64(vdc.lruList.Len()) - vdc.maxElements)
+		vdc.evictDentry(int64(vdc.lruList.Len())-vdc.maxElements, false)
 	}
 
 	element := vdc.lruList.PushFront(dentry)
-	dentry.UpdateTime = time.Now().Unix()
 	vdc.cache[key] = element
 }
 
@@ -294,16 +305,17 @@ func (vdc *VolumeDentryCache) deleteDentry(key string) {
 	}
 }
 
-func (vdc *VolumeDentryCache) evictDentry(evictNum int64) {
+func (vdc *VolumeDentryCache) evictDentry(evictNum int64, backGround bool) {
 	if evictNum <= 0 {
 		return
 	}
-
 	for i := int64(0); i < evictNum; i++ {
 		element := vdc.lruList.Back()
 		dentry := element.Value.(*DentryItem)
-		vdc.lruList.Remove(element)
-		delete(vdc.cache, dentry.Key())
+		if !backGround || (backGround && dentry.IsExpired()) {
+			vdc.lruList.Remove(element)
+			delete(vdc.cache, dentry.Key())
+		}
 	}
 }
 
@@ -334,7 +346,37 @@ func NewObjMetaCache(maxDentryNum, maxInodeAttrNum int64, refreshInterval uint64
 		maxInodeAttrNum:       maxInodeAttrNum,
 		refreshIntervalSec:    refreshInterval,
 	}
+
+	go omc.backGroundEvictItem()
 	return omc
+}
+
+func (omc *ObjMetaCache) backGroundEvictItem() {
+	t := time.NewTicker(time.Duration(BackGroundEvictDurFactor*omc.refreshIntervalSec) * time.Second)
+	defer t.Stop()
+
+	for range t.C {
+		log.LogDebugf("ObjMetaCache: start backGround evict")
+		start := time.Now()
+		omc.RLock()
+		for _, vac := range omc.volumeInodeAttrsCache {
+			vac.Lock()
+			evictNum := len(vac.cache) / BackGroundEvictMaxNumFactor
+			vac.evictAttr(int64(evictNum), true)
+			vac.Unlock()
+		}
+
+		for _, vdc := range omc.volumeDentryCache {
+			vdc.Lock()
+			evictNum := len(vdc.cache) / BackGroundEvictMaxNumFactor
+			vdc.evictDentry(int64(evictNum), true)
+			vdc.Unlock()
+		}
+
+		elapsed := time.Since(start)
+		log.LogDebugf("ObjMetaCache: finish backGround evict, dentryCache, cost(%d)ms", elapsed.Milliseconds())
+		omc.RUnlock()
+	}
 }
 
 func (omc *ObjMetaCache) PutAttr(volume string, item *AttrItem) {
@@ -353,6 +395,7 @@ func (omc *ObjMetaCache) PutAttr(volume string, item *AttrItem) {
 	}
 	omc.Unlock()
 
+	item.expiredTime = time.Now().Unix() + int64(omc.refreshIntervalSec)
 	vac.putAttr(item)
 	log.LogDebugf("ObjMetaCache PutAttr: volume(%v) attr(%v)", volume, item)
 }
@@ -390,7 +433,7 @@ func (omc *ObjMetaCache) GetAttr(volume string, inode uint64) (attr *AttrItem, n
 		return nil, false
 	}
 	log.LogDebugf("ObjMetaCache GetAttr: volume(%v) inode(%v) attr(%v)", volume, inode, attr)
-	return attr, attr.UpdateTime+int64(omc.refreshIntervalSec) <= time.Now().Unix()
+	return attr, attr.IsExpired()
 }
 
 func (omc *ObjMetaCache) DeleteAttr(volume string, inode uint64) {
@@ -450,6 +493,7 @@ func (omc *ObjMetaCache) PutDentry(volume string, item *DentryItem) {
 	}
 	omc.Unlock()
 
+	item.expiredTime = time.Now().Unix() + int64(omc.refreshIntervalSec)
 	vdc.putDentry(item)
 	log.LogDebugf("ObjMetaCache PutDentry: volume(%v), DentryItem(%v)", volume, item)
 }
@@ -467,7 +511,7 @@ func (omc *ObjMetaCache) GetDentry(volume string, key string) (dentry *DentryIte
 		return nil, false
 	}
 	log.LogDebugf("ObjMetaCache GetDentry: volume(%v), key(%v), dentry:(%v)", volume, key, dentry)
-	return dentry, dentry.UpdateTime+int64(omc.refreshIntervalSec) <= time.Now().Unix()
+	return dentry, dentry.IsExpired()
 
 }
 
