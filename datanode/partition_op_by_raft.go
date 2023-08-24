@@ -302,16 +302,11 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	var (
 		resp interface{}
 	)
-	log.LogDebugf("action[RandomWriteSubmit] [%v] before submit", dp.partitionID)
-	if resp, err = dp.Put(nil, val); err != nil {
-		pkg.ResultCode = resp.(uint8)
-		log.LogErrorf("action[RandomWriteSubmit] submit error %v", err)
+	resp, err = dp.Put(nil, val)
+	pkg.ResultCode, _ = resp.(uint8)
+	if err != nil {
+		log.LogErrorf("action[RandomWriteSubmit] submit err %v", err)
 		return
 	}
-
-	pkg.ResultCode = resp.(uint8)
-
-	log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.ResultCode)
-
 	return
 }

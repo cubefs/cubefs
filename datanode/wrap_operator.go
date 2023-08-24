@@ -837,13 +837,13 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 			partition.verSeq = p.VerSeq
 		}
 	}
-	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v before raft submit", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq)
+
 	err = partition.RandomWriteSubmit(p)
 	if !shallDegrade {
 		s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 		partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 	}
-	log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v err %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID, err)
+
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
 		err = raft.ErrNotLeader
 		log.LogErrorf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v err %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID, err)
