@@ -82,21 +82,21 @@ errHandler:
 }
 
 func (c *Cluster) handleLcNodeLcScanResp(req *proto.LcNodeRuleTaskRequest, resp *proto.LcNodeRuleTaskResponse) (err error) {
-	log.LogDebugf("action[handleLcNodeLcScanResp] Rule(%v) in task(%v) Enter", req.Task.Rule.ID, req.Task.Id)
+	log.LogDebugf("action[handleLcNodeLcScanResp] lcnode(%v) RuleId(%v) in task(%v) Enter", req.LcNodeAddr, req.Task.Rule.ID, resp.ID)
 	defer func() {
-		log.LogDebugf("action[handleLcNodeLcScanResp] Rule(%v) in task(%v) Exit", req.Task.Rule.ID, req.Task.Id)
+		log.LogDebugf("action[handleLcNodeLcScanResp] lcnode(%v) RuleId(%v) in task(%v) Exit", req.LcNodeAddr, req.Task.Rule.ID, resp.ID)
 	}()
 
-	c.lcMgr.lcNodeStatus.releaseNode(req.LcNodeAddr)
+	c.lcMgr.lcNodeStatus.ReleaseNode(req.LcNodeAddr)
 
 	if resp.Status == proto.TaskFailed {
-		c.lcMgr.lcRuleTaskStatus.redoTask(req.Task)
+		c.lcMgr.lcRuleTaskStatus.RedoTask(resp.ID)
 	} else {
-		c.lcMgr.lcRuleTaskStatus.finishTask(req.Task, resp)
+		c.lcMgr.lcRuleTaskStatus.DeleteScanningTask(resp.ID)
+		c.lcMgr.lcRuleTaskStatus.AddResult(resp)
 	}
 
-	log.LogInfof("action[handleLcNodeLcScanResp] task(%v) scanning completed, current rule(%v), vol(%v), results(%v).",
-		req.Task.Id, req.Task.Rule.ID, req.Task.VolName, resp)
+	log.LogInfof("action[handleLcNodeLcScanResp] scanning completed, resp(%v)", resp)
 	return
 }
 
@@ -131,57 +131,41 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 		}
 	} else {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle for LcScanningTasks", nodeAddr)
-		task := c.lcMgr.lcNodeStatus.releaseNode(nodeAddr)
-		if task != nil {
-			c.lcMgr.lcRuleTaskStatus.deleteScanningTask(task.(*proto.RuleTask))
-		}
+		c.lcMgr.lcRuleTaskStatus.DeleteScanningTask(c.lcMgr.lcNodeStatus.ReleaseNode(nodeAddr))
 		c.lcMgr.notifyIdleLcNode()
 	}
 
 	//handle SnapshotScanningTasks
 	if len(resp.SnapshotScanningTasks) != 0 {
 		for _, taskRsp := range resp.SnapshotScanningTasks {
-			c.snapshotMgr.volVerInfos.Lock()
-			c.snapshotMgr.volVerInfos.TaskResults[taskRsp.ID] = taskRsp
+			c.snapshotMgr.lcSnapshotTaskStatus.Lock()
+			c.snapshotMgr.lcSnapshotTaskStatus.TaskResults[taskRsp.ID] = taskRsp
 
-			if pInfo, ok := c.snapshotMgr.volVerInfos.ProcessingVerInfos[taskRsp.ID]; ok {
-				pInfo.updateTime = time.Now()
+			//update processing status
+			if pInfo, ok := c.snapshotMgr.lcSnapshotTaskStatus.ProcessingVerInfos[taskRsp.ID]; ok {
+				pInfo.UpdateTime = time.Now().UnixMicro()
 				log.LogDebugf("action[handleLcNodeHeartbeatResp], snapshot scan taskid(%v) update time",
 					taskRsp.ID)
 			} else {
-				//in case of master restart or leader changing, resume processing status
-				if vol, err := c.getVol(taskRsp.VolName); err == nil {
-					volVerInfoList := vol.VersionMgr.getVersionList()
-					for _, volVerInfo := range volVerInfoList.VerList {
-						if volVerInfo.Ver == taskRsp.VerSeq && volVerInfo.Status == proto.VersionDeleting {
-							pInfo := &ProcessingVerInfo{
-								LcVerInfo: LcVerInfo{
-									VerInfo: proto.VerInfo{
-										VolName: taskRsp.VolName,
-										VerSeq:  taskRsp.VerSeq,
-									},
-									dTime: time.Unix(volVerInfo.DelTime, 0),
-								},
-								updateTime: time.Now(),
-							}
-							c.snapshotMgr.volVerInfos.ProcessingVerInfos[taskRsp.ID] = pInfo
-							log.LogInfof("action[handleLcNodeHeartbeatResp], task (%v)  processing status is resumed",
-								taskRsp.ID)
-						}
-					}
-				} else {
-					log.LogErrorf("action[handleLcNodeHeartbeatResp], snapshot scan vol(%v) not found", taskRsp.VolName)
+				c.snapshotMgr.lcSnapshotTaskStatus.ProcessingVerInfos[taskRsp.ID] = &proto.SnapshotVerDelTask{
+					Id:         fmt.Sprintf("%s:%d", taskRsp.VolName, taskRsp.VerSeq),
+					VolName:    taskRsp.VolName,
+					UpdateTime: time.Now().UnixMicro(),
+					VolVersionInfo: &proto.VolVersionInfo{
+						Ver:    taskRsp.VerSeq,
+						Status: proto.VersionDeleting,
+					},
 				}
+				log.LogWarnf("action[handleLcNodeHeartbeatResp], snapshot scan taskid(%v) not in processing, add it",
+					taskRsp.ID)
 			}
-			c.snapshotMgr.volVerInfos.Unlock()
-			log.LogDebugf("action[handleLcNodeHeartbeatResp], SnapshotScanningTasks rsp(%v)", taskRsp)
+
+			c.snapshotMgr.lcSnapshotTaskStatus.Unlock()
+			log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode(%v) scanning SnapshotScanningTasks rsp(%v)", nodeAddr, taskRsp)
 		}
 	} else {
 		log.LogDebugf("action[handleLcNodeHeartbeatResp], lcNode[%v] is idle for SnapshotScanningTasks", nodeAddr)
-		task := c.snapshotMgr.lcNodeStatus.releaseNode(nodeAddr)
-		if task != nil {
-			c.snapshotMgr.volVerInfos.RemoveProcessingVerInfo(task.(string))
-		}
+		c.snapshotMgr.lcSnapshotTaskStatus.DeleteScanningTask(c.snapshotMgr.lcNodeStatus.ReleaseNode(nodeAddr))
 		c.snapshotMgr.notifyIdleLcNode()
 	}
 
@@ -195,15 +179,15 @@ errHandler:
 }
 
 func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.SnapshotVerDelTaskResponse) (err error) {
-	log.LogDebugf("action[handleLcNodeSnapshotScanResp] lcnode(%v), resp id(%v) Enter", nodeAddr, resp.ID)
+	log.LogDebugf("action[handleLcNodeSnapshotScanResp] lcnode(%v), task(%v) Enter", nodeAddr, resp.ID)
 	defer func() {
-		log.LogDebugf("action[handleLcNodeSnapshotScanResp] lcnode(%v), resp id(%v) Exit", nodeAddr, resp.ID)
+		log.LogDebugf("action[handleLcNodeSnapshotScanResp] lcnode(%v), task(%v) Exit", nodeAddr, resp.ID)
 	}()
 
-	c.snapshotMgr.lcNodeStatus.releaseNode(nodeAddr)
+	c.snapshotMgr.lcNodeStatus.ReleaseNode(nodeAddr)
 
 	if resp.Status == proto.TaskFailed {
-		c.snapshotMgr.volVerInfos.RedoProcessingVerInfo(resp.ID)
+		c.snapshotMgr.lcSnapshotTaskStatus.RedoTask(resp.ID)
 	} else {
 		//1.mark done for VersionMgr
 		var vol *Vol
@@ -217,7 +201,8 @@ func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.Snap
 		}
 
 		//2. mark done for snapshotMgr
-		c.snapshotMgr.volVerInfos.RemoveProcessingVerInfo(resp.ID)
+		c.snapshotMgr.lcSnapshotTaskStatus.DeleteScanningTask(resp.ID)
+		c.snapshotMgr.lcSnapshotTaskStatus.AddResult(resp)
 	}
 
 	log.LogInfof("action[handleLcNodeSnapshotScanResp] scanning completed, resp(%v)", resp)
