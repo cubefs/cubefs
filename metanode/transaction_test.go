@@ -144,6 +144,9 @@ func TestRollbackDentrySerialization(t *testing.T) {
 
 	txRbDentry := NewTxRollbackDentry(nil, nil, 0)
 	txRbDentry.Unmarshal(data)
+
+	assert.True(t, reflect.DeepEqual(rbDentry.dentry, txRbDentry.dentry))
+	assert.True(t, reflect.DeepEqual(rbDentry.txDentryInfo, txRbDentry.txDentryInfo))
 	assert.True(t, reflect.DeepEqual(rbDentry, txRbDentry))
 }
 

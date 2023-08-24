@@ -661,44 +661,37 @@ func (d *Dentry) UnmarshalKey(k []byte) (err error) {
 	return
 }
 
-// MarshalValue marshals the exporterKey to bytes.
-func (d *Dentry) MarshalValue() (k []byte) {
+func (d *Dentry) MarshalValue() []byte {
+	buff := bytes.NewBuffer(nil)
+	buff.Grow(24 + d.getSnapListLen()*20)
 
-	buff := bytes.NewBuffer(make([]byte, 0))
-	buff.Grow(28 + d.getSnapListLen()*20)
-	if err := binary.Write(buff, binary.BigEndian, &d.Inode); err != nil {
-		panic(err)
-	}
-	if err := binary.Write(buff, binary.BigEndian, &d.Type); err != nil {
-		panic(err)
-	}
-	seq := d.getSeqFiled()
-	if err := binary.Write(buff, binary.BigEndian, &seq); err != nil {
-		panic(err)
-	}
-
-	verCnt := uint32(d.getSnapListLen())
-	if err := binary.Write(buff, binary.BigEndian, &verCnt); err != nil {
-		panic(err)
-	}
-
-	if d.getSnapListLen() > 0 {
-		for _, dd := range d.multiSnap.dentryList {
-			if err := binary.Write(buff, binary.BigEndian, &dd.Inode); err != nil {
-				panic(err)
-			}
-			if err := binary.Write(buff, binary.BigEndian, &dd.Type); err != nil {
-				panic(err)
-			}
-			seq = dd.getSeqFiled()
-			if err := binary.Write(buff, binary.BigEndian, &seq); err != nil {
-				panic(err)
-			}
+	writeBinary := func(data interface{}) {
+		if err := binary.Write(buff, binary.BigEndian, data); err != nil {
+			panic(err)
 		}
 	}
 
-	k = buff.Bytes()
-	return
+	writeBinary(&d.Inode)
+	writeBinary(&d.Type)
+	seq := d.getSeqFiled()
+	if seq == 0 {
+		return buff.Bytes()
+	}
+	writeBinary(&seq)
+
+	verCnt := uint32(d.getSnapListLen())
+	writeBinary(&verCnt)
+
+	if d.getSnapListLen() > 0 {
+		for _, dd := range d.multiSnap.dentryList {
+			writeBinary(&dd.Inode)
+			writeBinary(&dd.Type)
+			seq = dd.getSeqFiled()
+			writeBinary(&seq)
+		}
+	}
+
+	return buff.Bytes()
 }
 
 func (d *Dentry) UnmarshalValue(val []byte) (err error) {
@@ -706,9 +699,11 @@ func (d *Dentry) UnmarshalValue(val []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &d.Inode); err != nil {
 		return
 	}
-	err = binary.Read(buff, binary.BigEndian, &d.Type)
+	if err = binary.Read(buff, binary.BigEndian, &d.Type); err != nil {
+		return
+	}
 
-	if len(val) >= 28 {
+	if len(val) >= 24 {
 		var seq uint64
 		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
 			return
