@@ -350,7 +350,6 @@ begin:
 	for _, req := range requests {
 		var writeSize int
 		if req.ExtentKey != nil {
-			writeSize, err = s.doOverwrite(req, direct)
 			if s.client.bcacheEnable {
 				cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, uint64(req.FileOffset))
 				if _, ok := s.inflightEvictL1cache.Load(cacheKey); !ok {
