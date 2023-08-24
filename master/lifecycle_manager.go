@@ -32,35 +32,14 @@ type lifecycleManager struct {
 	exitCh           chan struct{}
 }
 
-type lcNodeStatus struct {
-	sync.RWMutex
-	idleNodes    map[string]string      //ip:ip
-	workingNodes map[string]interface{} //ip:task
-}
-
-type lcRuleTaskStatus struct {
-	sync.RWMutex
-	Scanned     []*proto.RuleTask
-	Scanning    []*proto.RuleTask
-	ToBeScanned []*proto.RuleTask
-	Results     map[string]*proto.LcNodeRuleTaskResponse
-	StartTime   *time.Time
-	EndTime     *time.Time
-}
-
 func newLifecycleManager() *lifecycleManager {
 	log.LogInfof("action[newLifecycleManager] construct")
 	lcMgr := &lifecycleManager{
 		lcConfigurations: make(map[string]*proto.LcConfiguration),
-		lcNodeStatus: &lcNodeStatus{
-			workingNodes: make(map[string]interface{}),
-			idleNodes:    make(map[string]string),
-		},
-		lcRuleTaskStatus: &lcRuleTaskStatus{
-			Results: make(map[string]*proto.LcNodeRuleTaskResponse),
-		},
-		idleLcNodeCh: make(chan struct{}),
-		exitCh:       make(chan struct{}),
+		lcNodeStatus:     NewLcNodeStatus(),
+		lcRuleTaskStatus: NewLcRuleTaskStatus(),
+		idleLcNodeCh:     make(chan struct{}),
+		exitCh:           make(chan struct{}),
 	}
 	return lcMgr
 }
@@ -81,11 +60,11 @@ func (lcMgr *lifecycleManager) startLcScan() {
 	}
 
 	// start scan init
-	lcMgr.lcRuleTaskStatus = &lcRuleTaskStatus{
-		Results: make(map[string]*proto.LcNodeRuleTaskResponse),
+	lcMgr.lcNodeStatus.workingNodes = make(map[string]string)
+	lcMgr.lcRuleTaskStatus = NewLcRuleTaskStatus()
+	for _, r := range tasks {
+		lcMgr.lcRuleTaskStatus.ToBeScanned[r.Id] = r
 	}
-	lcMgr.lcNodeStatus.workingNodes = make(map[string]interface{})
-	lcMgr.lcRuleTaskStatus.ToBeScanned = append(lcMgr.lcRuleTaskStatus.ToBeScanned, tasks...)
 
 	go lcMgr.process()
 }
@@ -123,7 +102,7 @@ func (lcMgr *lifecycleManager) scanning() bool {
 			workingNodes := lcMgr.lcNodeStatus.workingNodes
 			var node string
 			for nodeAddr, t := range workingNodes {
-				if task.Id == t.(*proto.RuleTask).Id {
+				if task.Id == t {
 					node = nodeAddr
 				}
 			}
@@ -155,35 +134,40 @@ func (lcMgr *lifecycleManager) process() {
 		log.LogDebugf("wait idleLcNodeCh... ToBeScanned num(%v), Scanning num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned), len(lcMgr.lcRuleTaskStatus.Scanning))
 		select {
 		case <-lcMgr.exitCh:
-			log.LogDebug("exitCh notified")
+			log.LogInfo("exitCh notified, lifecycleManager process exit")
 			return
 		case <-lcMgr.idleLcNodeCh:
 			log.LogDebug("idleLcNodeCh notified")
 
-			// get ToBeScanned task
-			task := lcMgr.lcRuleTaskStatus.getOneToBeScannedTask()
-			if task == nil {
-				log.LogWarn("no ToBeScanned task")
+			// ToBeScanned -> Scanning
+			taskId := lcMgr.lcRuleTaskStatus.GetOneTask()
+			if taskId == "" {
+				log.LogWarn("lcRuleTaskStatus.GetOneTask, no task")
 				continue
 			}
 
-			// get idle lcnode
-			nodeAddr := lcMgr.lcNodeStatus.getOneIdleNode(task)
+			// idleNodes -> workingNodes
+			nodeAddr := lcMgr.lcNodeStatus.GetIdleNode(taskId)
 			if nodeAddr == "" {
-				log.LogWarn("no idle lcnode")
+				log.LogWarn("no idle lcnode, redo task")
+				lcMgr.lcRuleTaskStatus.RedoTask(taskId)
 				continue
 			}
 
 			val, ok := lcMgr.cluster.lcNodes.Load(nodeAddr)
 			if !ok {
-				log.LogErrorf("nodeAddr(%v) is not available for scanning!", nodeAddr)
-				t := lcMgr.lcNodeStatus.removeNode(nodeAddr)
-				if t != nil {
-					lcMgr.lcRuleTaskStatus.redoTask(t.(*proto.RuleTask))
-				}
+				log.LogErrorf("lcNodes.Load, nodeAddr(%v) is not available, redo task", nodeAddr)
+				lcMgr.lcRuleTaskStatus.RedoTask(lcMgr.lcNodeStatus.RemoveNode(nodeAddr))
 				continue
 			}
+
 			node := val.(*LcNode)
+			task := lcMgr.lcRuleTaskStatus.GetTaskFromScanning(taskId) // task can not be nil
+			if task == nil {
+				log.LogErrorf("task is nil, release node(%v)", nodeAddr)
+				lcMgr.lcNodeStatus.ReleaseNode(nodeAddr)
+				continue
+			}
 			adminTask := node.createLcScanTask(lcMgr.cluster.masterAddr(), task)
 			lcMgr.cluster.addLcNodeTasks([]*proto.AdminTask{adminTask})
 			log.LogDebugf("add lifecycle scan task(%v) to lcnode(%v)", *task, nodeAddr)
@@ -232,112 +216,133 @@ func (lcMgr *lifecycleManager) DelS3BucketLifecycle(VolName string) {
 	delete(lcMgr.lcConfigurations, VolName)
 }
 
-func (rs *lcRuleTaskStatus) getOneToBeScannedTask() (task *proto.RuleTask) {
-	rs.Lock()
-	defer rs.Unlock()
-	if len(rs.ToBeScanned) > 0 {
-		task = rs.ToBeScanned[0]
-		rs.ToBeScanned = rs.ToBeScanned[1:]
-		rs.Scanning = append(rs.Scanning, task)
-	}
-	return
+//-----------------------------------------------
+
+type OpLcNode interface {
+	GetIdleNode(taskId string) (nodeAddr string)
+	RemoveNode(nodeAddr string) (taskId string)
+	ReleaseNode(nodeAddr string) (taskId string)
 }
 
-func (rs *lcRuleTaskStatus) redoTask(task *proto.RuleTask) {
-	rs.Lock()
-	defer rs.Unlock()
-	if task != nil {
-		for i := 0; i < len(rs.Scanning); i++ {
-			if rs.Scanning[i].Id == task.Id {
-				rs.Scanning = append(rs.Scanning[:i], rs.Scanning[i+1:]...)
-				break
-			}
-		}
-		rs.ToBeScanned = append(rs.ToBeScanned, task)
-	}
-	return
+type lcNodeStatus struct {
+	sync.RWMutex
+	idleNodes    map[string]string //ip:ip
+	workingNodes map[string]string //ip:taskId
 }
 
-func (rs *lcRuleTaskStatus) finishTask(task *proto.RuleTask, resp *proto.LcNodeRuleTaskResponse) {
-	rs.Lock()
-	defer rs.Unlock()
-	if task != nil {
-		for i := 0; i < len(rs.Scanning); i++ {
-			if rs.Scanning[i].Id == task.Id {
-				rs.Scanning = append(rs.Scanning[:i], rs.Scanning[i+1:]...)
-				break
-			}
-		}
-		rs.Scanned = append(rs.Scanned, task)
-		rs.Results[resp.ID] = resp
+func NewLcNodeStatus() *lcNodeStatus {
+	return &lcNodeStatus{
+		idleNodes:    make(map[string]string),
+		workingNodes: make(map[string]string),
 	}
-	return
 }
 
-func (rs *lcRuleTaskStatus) deleteScanningTask(task *proto.RuleTask) {
-	rs.Lock()
-	defer rs.Unlock()
-	if task != nil {
-		for i := 0; i < len(rs.Scanning); i++ {
-			if rs.Scanning[i].Id == task.Id {
-				rs.Scanning = append(rs.Scanning[:i], rs.Scanning[i+1:]...)
-				break
-			}
-		}
-	}
-	return
-}
-
-func (ns *lcNodeStatus) getOneIdleNode(task interface{}) (nodeAddr string) {
+func (ns *lcNodeStatus) GetIdleNode(taskId string) (nodeAddr string) {
 	ns.Lock()
 	defer ns.Unlock()
-	if len(ns.idleNodes) > 0 {
-		for n := range ns.idleNodes {
-			nodeAddr = n
-			delete(ns.idleNodes, nodeAddr)
-			ns.workingNodes[nodeAddr] = task
-			return
-		}
+	if len(ns.idleNodes) == 0 {
+		return
+	}
+
+	for n := range ns.idleNodes {
+		nodeAddr = n
+		delete(ns.idleNodes, nodeAddr)
+		ns.workingNodes[nodeAddr] = taskId
+		return
 	}
 	return
 }
 
-func (ns *lcNodeStatus) removeNode(nodeAddr string) (task interface{}) {
+func (ns *lcNodeStatus) RemoveNode(nodeAddr string) (taskId string) {
 	ns.Lock()
 	defer ns.Unlock()
-	task = ns.workingNodes[nodeAddr]
+	taskId = ns.workingNodes[nodeAddr]
 	delete(ns.idleNodes, nodeAddr)
 	delete(ns.workingNodes, nodeAddr)
 	return
 }
 
-func (ns *lcNodeStatus) releaseNode(nodeAddr string) (task interface{}) {
+func (ns *lcNodeStatus) ReleaseNode(nodeAddr string) (taskId string) {
 	ns.Lock()
 	defer ns.Unlock()
-	task = ns.workingNodes[nodeAddr]
+	taskId = ns.workingNodes[nodeAddr]
 	delete(ns.workingNodes, nodeAddr)
 	ns.idleNodes[nodeAddr] = nodeAddr
-	return task
-}
-
-func (ns *lcNodeStatus) getWorkingTask(nodeAddr string) (task interface{}) {
-	ns.RLock()
-	defer ns.RUnlock()
-	return ns.workingNodes[nodeAddr]
-}
-
-//----------------------------------------------
-
-type LcNodeStatInfo struct {
-	Addr   string
-	TaskId string
-}
-
-type LcNodeInfoResponse struct {
-	Infos            []*LcNodeStatInfo
-	LcConfigurations map[string]*proto.LcConfiguration
-	LcRuleTaskStatus *lcRuleTaskStatus
-	SnapshotInfos    *VolVerInfos
+	return
 }
 
 //-----------------------------------------------
+
+type OpLcTask interface {
+	GetOneTask() (taskId string)
+	RedoTask(taskId string)
+	DeleteScanningTask(taskId string)
+}
+
+type lcRuleTaskStatus struct {
+	sync.RWMutex
+	ToBeScanned map[string]*proto.RuleTask
+	Scanning    map[string]*proto.RuleTask
+	Results     map[string]*proto.LcNodeRuleTaskResponse
+	StartTime   *time.Time
+	EndTime     *time.Time
+}
+
+func NewLcRuleTaskStatus() *lcRuleTaskStatus {
+	return &lcRuleTaskStatus{
+		ToBeScanned: make(map[string]*proto.RuleTask),
+		Scanning:    make(map[string]*proto.RuleTask),
+		Results:     make(map[string]*proto.LcNodeRuleTaskResponse),
+	}
+}
+
+func (rs *lcRuleTaskStatus) GetOneTask() (taskId string) {
+	rs.Lock()
+	defer rs.Unlock()
+	if len(rs.ToBeScanned) == 0 {
+		return
+	}
+
+	for k, v := range rs.ToBeScanned {
+		taskId = k
+		rs.Scanning[k] = v
+		delete(rs.ToBeScanned, k)
+		return
+	}
+	return
+}
+
+func (rs *lcRuleTaskStatus) RedoTask(taskId string) {
+	rs.Lock()
+	defer rs.Unlock()
+	if taskId == "" {
+		return
+	}
+
+	if task, ok := rs.Scanning[taskId]; ok {
+		rs.ToBeScanned[taskId] = task
+		delete(rs.Scanning, taskId)
+	}
+}
+
+func (rs *lcRuleTaskStatus) DeleteScanningTask(taskId string) {
+	rs.Lock()
+	defer rs.Unlock()
+	if taskId == "" {
+		return
+	}
+
+	delete(rs.Scanning, taskId)
+}
+
+func (rs *lcRuleTaskStatus) AddResult(resp *proto.LcNodeRuleTaskResponse) {
+	rs.Lock()
+	defer rs.Unlock()
+	rs.Results[resp.ID] = resp
+}
+
+func (rs *lcRuleTaskStatus) GetTaskFromScanning(taskId string) *proto.RuleTask {
+	rs.Lock()
+	defer rs.Unlock()
+	return rs.Scanning[taskId]
+}
