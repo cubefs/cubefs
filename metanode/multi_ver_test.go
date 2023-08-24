@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"math"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -1119,4 +1120,47 @@ func testSnapshotDeletion(t *testing.T, topFirst bool) {
 func TestSnapshotDeletion(t *testing.T) {
 	testSnapshotDeletion(t, true)
 	testSnapshotDeletion(t, false)
+}
+
+func TestDentryVerMarshal(t *testing.T) {
+	initMp(t)
+	mp.verSeq = 10
+	den1 := &Dentry{
+		ParentId:  1,
+		Name:      "txt",
+		Inode:     10,
+		multiSnap: NewDentrySnap(mp.GetVerSeq()),
+	}
+	val, err := den1.Marshal()
+	if err != nil {
+		return
+	}
+
+	den2 := &Dentry{}
+	den2.Unmarshal(val)
+	t.Logf("seq, %v %v,parent %v", den1.getVerSeq(),den2.getVerSeq(), den2.ParentId)
+	assert.True(t, den1.getVerSeq() == den2.getVerSeq())
+	assert.True(t, reflect.DeepEqual(den1, den2))
+}
+
+func TestInodeVerMarshal(t *testing.T) {
+	initMp(t)
+	var topSeq uint64 = 10
+	var sndSeq uint64 = 2
+	mp.verSeq = 100000
+	ino1 := NewInode(10, 5)
+	ino1.setVer(topSeq)
+	ino1_1 := NewInode(10, 5)
+	ino1_1.setVer(sndSeq)
+
+	ino1.multiSnap.multiVersions = append(ino1.multiSnap.multiVersions, ino1_1)
+	v1, _ := ino1.Marshal()
+
+	ino2 := NewInode(0, 0)
+	ino2.Unmarshal(v1)
+
+	assert.True(t, ino2.getVer() == topSeq)
+	assert.True(t, ino2.getLayerLen() == ino1.getLayerLen())
+	assert.True(t, ino2.getLayerVer(0) == sndSeq)
+	assert.True(t, reflect.DeepEqual(ino1, ino2))
 }
