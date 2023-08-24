@@ -1957,11 +1957,11 @@ func (m *BadPartitionView) GetPartitionID() uint64 {
 
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
-	Addr       string `protobuf:"bytes,1,opt,name=Addr,proto3" json:"Addr,omitempty"`
-	Status     bool   `protobuf:"varint,2,opt,name=Status,proto3" json:"Status,omitempty"`
-	ID         uint64 `protobuf:"varint,3,opt,name=ID,proto3" json:"ID,omitempty"`
-	IsWritable bool   `protobuf:"varint,4,opt,name=IsWritable,proto3" json:"IsWritable,omitempty"`
-	Version    string `protobuf:"bytes,5,opt,name=Version,proto3" json:"Version,omitempty"`
+	Addr       string `protobuf:"bytes,1,opt,name=Addr,proto3" `
+	Status     bool   `protobuf:"varint,2,opt,name=Status,proto3" `
+	ID         uint64 `protobuf:"varint,3,opt,name=ID,proto3" `
+	IsWritable bool   `protobuf:"varint,4,opt,name=IsWritable,proto3" `
+	Version    string `protobuf:"bytes,5,opt,name=Version,proto3" `
 }
 
 func (m *NodeView) Reset()         { *m = NodeView{} }
