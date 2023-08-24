@@ -46,6 +46,8 @@ import (
 const (
 	rootIno               = proto.RootIno
 	OSSMetaUpdateDuration = time.Duration(time.Second * 30)
+
+	defaultMultipartPartMode = 0
 )
 
 // AsyncTaskErrorFunc is a callback method definition for asynchronous tasks when an error occurs.
@@ -768,7 +770,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 
 	// create temp file (inode only, invisible for user)
 	var tempInodeInfo *proto.InodeInfo
-	if tempInodeInfo, err = v.mw.InodeCreate_ll(context.Background(), DefaultFileMode, 0, 0, nil); err != nil {
+	if tempInodeInfo, err = v.mw.InodeCreate_ll(context.Background(), defaultMultipartPartMode, 0, 0, nil); err != nil {
 		log.LogErrorf("WritePart: meta create inode fail: multipartID(%v) partID(%v) err(%v)",
 			multipartId, partId, err)
 		return nil, err
