@@ -768,8 +768,8 @@ func (s *ScheduleNode) exceptionTaskManager() {
 						for _, task := range tasks {
 							taskIds = append(taskIds, strconv.FormatUint(task.TaskId, 10))
 						}
-						alarmKey := "have tasks that not modified for a long time"
-						alarmInfo := fmt.Sprintf("have tasks that not modified for a long time, taskIds(%v)", strings.Join(taskIds, ","))
+						alarmKey := fmt.Sprintf("%s.%s.%s", proto.RoleScheduleNode, proto.WorkerTypeToName(wt), "exceptionTasks")
+						alarmInfo := fmt.Sprintf("have tasks that not modified for a long time, taskType(%s), taskIds(%v)", proto.WorkerTypeToName(wt), strings.Join(taskIds, ","))
 						log.LogErrorf("[exceptionTaskManager] %v", alarmInfo)
 						exporter.WarningBySpecialUMPKey(alarmKey, alarmInfo)
 
