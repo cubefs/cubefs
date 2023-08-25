@@ -91,8 +91,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmUnlinkInode(ino, 0)
 	case opFSMUnlinkInodeOnce:
-		inoOnce := InodeOnceUnmarshal(msg.V)
+		var inoOnce *InodeOnce
+		if inoOnce, err = InodeOnceUnmarshal(msg.V); err != nil {
+			return
+		}
 		ino := NewInode(inoOnce.Inode, 0)
+		ino.setVer(inoOnce.VerSeq)
 		resp = mp.fsmUnlinkInode(ino, inoOnce.UniqID)
 	case opFSMUnlinkInodeBatch:
 		inodes, err := InodeBatchUnmarshal(msg.V)
@@ -118,7 +122,10 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmCreateLinkInode(ino, 0)
 	case opFSMCreateLinkInodeOnce:
-		inoOnce := InodeOnceUnmarshal(msg.V)
+		var inoOnce *InodeOnce
+		if inoOnce, err = InodeOnceUnmarshal(msg.V); err != nil {
+			return
+		}
 		ino := NewInode(inoOnce.Inode, 0)
 		resp = mp.fsmCreateLinkInode(ino, inoOnce.UniqID)
 	case opFSMEvictInode:
