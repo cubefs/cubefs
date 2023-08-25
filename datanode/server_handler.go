@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -121,7 +122,10 @@ func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter, r *http.Request) {
  */
 func (s *DataNode) releasePartitions(w http.ResponseWriter, r *http.Request) {
 	const (
-		paramAuthKey = "key"
+		paramAuthKey     = "key"
+		paramKeepTimeSec = "keepTimeSec"
+
+		defaultKeepTImeSec = 60 * 60 * 24 // 24 Hours
 	)
 	var (
 		successVols []string
@@ -142,6 +146,21 @@ func (s *DataNode) releasePartitions(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	var keepTimeSec = defaultKeepTImeSec
+	if keepTimeSecVal := r.FormValue(paramKeepTimeSec); len(keepTimeSecVal) > 0 {
+		if pared, err := strconv.Atoi(keepTimeSecVal); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse param %v failed: %v", paramKeepTimeSec, err))
+			return
+		} else {
+			keepTimeSec = pared
+		}
+	}
+
+	// Format: expired_datapartition_{ID}_{Capacity}_{Timestamp}
+	// Regexp: ^expired_datapartition_(\d)+_(\d)+_(\d)+$
+	var regexpExpiredPartitionDirName = regexp.MustCompile("^expired_datapartition_(\\d)+_(\\d)+_(\\d)+$")
+	var keepTimeDuring = time.Second * time.Duration(keepTimeSec)
+	var now = time.Now()
 
 	for _, d := range s.space.disks {
 		fList, err := ioutil.ReadDir(d.Path)
@@ -154,7 +173,18 @@ func (s *DataNode) releasePartitions(w http.ResponseWriter, r *http.Request) {
 			if !fInfo.IsDir() {
 				continue
 			}
-			if !strings.HasPrefix(fInfo.Name(), "expired_") {
+			var filename = fInfo.Name()
+			if !regexpExpiredPartitionDirName.MatchString(filename) {
+				continue
+			}
+			var parts = strings.Split(filename, "_")
+			var timestamp uint64
+			if timestamp, err = strconv.ParseUint(parts[len(parts)-1], 10, 64); err != nil {
+				failedVols = append(failedVols, d.Path+":"+fInfo.Name())
+				continue
+			}
+			var expiredTime = time.Unix(int64(timestamp), 0)
+			if expiredTime.Add(keepTimeDuring).After(now) {
 				continue
 			}
 			err = os.RemoveAll(d.Path + "/" + fInfo.Name())
