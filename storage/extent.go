@@ -482,7 +482,7 @@ const (
 )
 
 // DeleteTiny deletes a tiny extent.
-func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
+func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 	if int(offset)%PageSize != 0 {
 		return false, ParameterMismatchError
 	}
