@@ -16,7 +16,7 @@ package proto
 
 import "github.com/cubefs/cubefs/util/errors"
 
-//err
+// err
 var (
 	ErrSuc                    = errors.New("success")
 	ErrInternalError          = errors.New("internal error")
@@ -63,6 +63,7 @@ var (
 	ErrDuplicateKey                            = errors.New("duplicate key")
 	ErrAccessKeyNotExists                      = errors.New("access key not exists")
 	ErrInvalidTicket                           = errors.New("invalid ticket")
+	ErrInvalidClientIDKey                      = errors.New("invalid clientIDKey")
 	ErrExpiredTicket                           = errors.New("expired ticket")
 	ErrMasterAPIGenRespError                   = errors.New("master API generate response error")
 	ErrDuplicateUserID                         = errors.New("duplicate user id")
@@ -133,6 +134,7 @@ const (
 	ErrCodeAuthReqRedirectError
 	ErrCodeAccessKeyNotExists
 	ErrCodeInvalidTicket
+	ErrCodeInvalidClientIDKey
 	ErrCodeExpiredTicket
 	ErrCodeMasterAPIGenRespError
 	ErrCodeDuplicateUserID
@@ -196,6 +198,7 @@ var Err2CodeMap = map[error]int32{
 	ErrAuthOSCapsOpGenRespError:        ErrCodeAuthOSCapsOpGenRespError,
 	ErrAccessKeyNotExists:              ErrCodeAccessKeyNotExists,
 	ErrInvalidTicket:                   ErrCodeInvalidTicket,
+	ErrInvalidClientIDKey:              ErrCodeInvalidClientIDKey,
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
 	ErrDuplicateUserID:                 ErrCodeDuplicateUserID,
@@ -265,6 +268,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeAuthOSCapsOpGenRespError:        ErrAuthOSCapsOpGenRespError,
 	ErrCodeAccessKeyNotExists:              ErrAccessKeyNotExists,
 	ErrCodeInvalidTicket:                   ErrInvalidTicket,
+	ErrCodeInvalidClientIDKey:              ErrInvalidClientIDKey,
 	ErrCodeExpiredTicket:                   ErrExpiredTicket,
 	ErrCodeMasterAPIGenRespError:           ErrMasterAPIGenRespError,
 	ErrCodeDuplicateUserID:                 ErrDuplicateUserID,

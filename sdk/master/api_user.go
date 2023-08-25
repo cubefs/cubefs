@@ -15,8 +15,9 @@ type UserAPI struct {
 	mc *MasterClient
 }
 
-func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) CreateUser(param *proto.UserCreateParam, clientIDKey string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserCreate)
+	request.addParam("clientIDKey", clientIDKey)
 	var reqBody []byte
 	if reqBody, err = json.Marshal(param); err != nil {
 		return
@@ -33,17 +34,19 @@ func (api *UserAPI) CreateUser(param *proto.UserCreateParam) (userInfo *proto.Us
 	return
 }
 
-func (api *UserAPI) DeleteUser(userID string) (err error) {
+func (api *UserAPI) DeleteUser(userID string, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserDelete)
 	request.addParam("user", userID)
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *UserAPI) UpdateUser(param *proto.UserUpdateParam) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) UpdateUser(param *proto.UserUpdateParam, clientIDKey string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserUpdate)
+	request.addParam("clientIDKey", clientIDKey)
 	var reqBody []byte
 	if reqBody, err = json.Marshal(param); err != nil {
 		return
@@ -129,8 +132,9 @@ func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err er
 	return
 }
 
-func (api *UserAPI) UpdatePolicy(param *proto.UserPermUpdateParam) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) UpdatePolicy(param *proto.UserPermUpdateParam, clientIDKey string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserUpdatePolicy)
+	request.addParam("clientIDKey", clientIDKey)
 	var reqBody []byte
 	if reqBody, err = json.Marshal(param); err != nil {
 		return
@@ -147,8 +151,9 @@ func (api *UserAPI) UpdatePolicy(param *proto.UserPermUpdateParam) (userInfo *pr
 	return
 }
 
-func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam, clientIDKey string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserRemovePolicy)
+	request.addParam("clientIDKey", clientIDKey)
 	var reqBody []byte
 	if reqBody, err = json.Marshal(param); err != nil {
 		return
@@ -165,17 +170,19 @@ func (api *UserAPI) RemovePolicy(param *proto.UserPermRemoveParam) (userInfo *pr
 	return
 }
 
-func (api *UserAPI) DeleteVolPolicy(vol string) (err error) {
+func (api *UserAPI) DeleteVolPolicy(vol, clientIDKey string) (err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserDeleteVolPolicy)
 	request.addParam("name", vol)
+	request.addParam("clientIDKey", clientIDKey)
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return
 }
 
-func (api *UserAPI) TransferVol(param *proto.UserTransferVolParam) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) TransferVol(param *proto.UserTransferVolParam, clientIDKey string) (userInfo *proto.UserInfo, err error) {
 	var request = newAPIRequest(http.MethodPost, proto.UserTransferVol)
+	request.addParam("clientIDKey", clientIDKey)
 	var reqBody []byte
 	if reqBody, err = json.Marshal(param); err != nil {
 		return

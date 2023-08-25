@@ -74,6 +74,7 @@ type MetaNode struct {
 	connectionCnt             int64
 	clusterUuid               string
 	clusterUuidEnable         bool
+	serviceIDKey              string
 
 	control common.Control
 }
@@ -214,6 +215,8 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	if deleteBatchCount > 1 {
 		updateDeleteBatchCount(uint64(deleteBatchCount))
 	}
+
+	m.serviceIDKey = cfg.GetString(cfgServiceIDKey)
 
 	total, _, err := util.GetMemInfo()
 	if err != nil {
@@ -461,7 +464,7 @@ func (m *MetaNode) register() (err error) {
 			step++
 		}
 		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress, m.zoneName); err != nil {
+		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.zoneName, m.serviceIDKey); err != nil {
 			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue
