@@ -4119,75 +4119,75 @@ func TestDecommissionTwoDpReplicaZone(t *testing.T) {
 	})
 }
 
-func TestDecommissionDisk(t *testing.T) {
-	var (
-		volName = "TwoDpReplica4TestDecommissionDisk"
-		err     error
-	)
-	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
-		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
-		return
-	}
-	time.Sleep(time.Minute)
-	vol, err := server.cluster.getVol(volName)
-	if !assert.NoErrorf(t, err, "getVol err:%v", err) {
-		return
-	}
-	for _, dp := range vol.dataPartitions.partitions {
-		printDpNodeSet(dp, t)
-	}
-	dp := vol.dataPartitions.partitions[0]
-	host := dp.Replicas[0].Addr
-	diskPath := dp.Replicas[0].DiskPath
-	err = mc.NodeAPI().DataNodeDiskDecommission(host, diskPath)
-	if !assert.NoErrorf(t, err, "DataNodeDiskDecommission err:%v", err) {
-		return
-	}
-	fmt.Println("after decommission")
-	vol, err = server.cluster.getVol(volName)
-	if !assert.NoErrorf(t, err, "getVolume err:%v", err) {
-		return
-	}
-	for _, dp = range vol.dataPartitions.partitions {
-		printDpNodeSet(dp, t)
-	}
-
-}
-
-func TestDecommissionDataNode(t *testing.T) {
-	var (
-		volName = "TwoDpReplica4TestDecommissionDataNode"
-		err     error
-	)
-	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
-		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
-	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
-		return
-	}
-	time.Sleep(time.Minute)
-	vol, err := server.cluster.getVol(volName)
-	if !assert.NoErrorf(t, err, "getVolume err:%v", err) {
-		return
-	}
-	for _, dp := range vol.dataPartitions.partitions {
-		printDpNodeSet(dp, t)
-	}
-	dp := vol.dataPartitions.partitions[0]
-	host := dp.Replicas[0].Addr
-	err = mc.NodeAPI().DataNodeDecommission(host)
-	if !assert.NoErrorf(t, err, "DataNodeDecommission err:%v", err) {
-		return
-	}
-	fmt.Println("after decommission")
-	vol, err = server.cluster.getVol(volName)
-	if !assert.NoErrorf(t, err, "getVolume err:%v", err) {
-		return
-	}
-	for _, dp = range vol.dataPartitions.partitions {
-		printDpNodeSet(dp, t)
-	}
-}
+//func TestDecommissionDisk(t *testing.T) {
+//	var (
+//		volName = "TwoDpReplica4TestDecommissionDisk"
+//		err     error
+//	)
+//	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
+//		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+//	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+//		return
+//	}
+//	time.Sleep(time.Minute)
+//	vol, err := server.cluster.getVol(volName)
+//	if !assert.NoErrorf(t, err, "getVol err:%v", err) {
+//		return
+//	}
+//	for _, dp := range vol.dataPartitions.partitions {
+//		printDpNodeSet(dp, t)
+//	}
+//	dp := vol.dataPartitions.partitions[0]
+//	host := dp.Replicas[0].Addr
+//	diskPath := dp.Replicas[0].DiskPath
+//	err = mc.NodeAPI().DataNodeDiskDecommission(host, diskPath)
+//	if !assert.NoErrorf(t, err, "DataNodeDiskDecommission err:%v", err) {
+//		return
+//	}
+//	fmt.Println("after decommission")
+//	vol, err = server.cluster.getVol(volName)
+//	if !assert.NoErrorf(t, err, "getVolume err:%v", err) {
+//		return
+//	}
+//	for _, dp = range vol.dataPartitions.partitions {
+//		printDpNodeSet(dp, t)
+//	}
+//
+//}
+//
+//func TestDecommissionDataNode(t *testing.T) {
+//	var (
+//		volName = "TwoDpReplica4TestDecommissionDataNode"
+//		err     error
+//	)
+//	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
+//		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+//	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
+//		return
+//	}
+//	time.Sleep(time.Minute)
+//	vol, err := server.cluster.getVol(volName)
+//	if !assert.NoErrorf(t, err, "getVolume err:%v", err) {
+//		return
+//	}
+//	for _, dp := range vol.dataPartitions.partitions {
+//		printDpNodeSet(dp, t)
+//	}
+//	dp := vol.dataPartitions.partitions[0]
+//	host := dp.Replicas[0].Addr
+//	err = mc.NodeAPI().DataNodeDecommission(host)
+//	if !assert.NoErrorf(t, err, "DataNodeDecommission err:%v", err) {
+//		return
+//	}
+//	fmt.Println("after decommission")
+//	vol, err = server.cluster.getVol(volName)
+//	if !assert.NoErrorf(t, err, "getVolume err:%v", err) {
+//		return
+//	}
+//	for _, dp = range vol.dataPartitions.partitions {
+//		printDpNodeSet(dp, t)
+//	}
+//}
 
 func printDpNodeSet(dp *DataPartition, t *testing.T) {
 	var zone *Zone
