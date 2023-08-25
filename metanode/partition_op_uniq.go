@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
@@ -85,16 +86,19 @@ func (mp *metaPartition) uniqCheckerEvict() (left int, evict int, err error) {
 }
 
 var inodeOnceSize = 16
+var newInodeOnceSize = 24
 
 type InodeOnce struct {
 	UniqID uint64
 	Inode  uint64 // Inode ID
+	VerSeq uint64
 }
 
 func (i *InodeOnce) Marshal() (val []byte) {
-	val = make([]byte, inodeOnceSize)
+	val = make([]byte, newInodeOnceSize)
 	binary.BigEndian.PutUint64(val[0:8], i.UniqID)
 	binary.BigEndian.PutUint64(val[8:16], i.Inode)
+	binary.BigEndian.PutUint64(val[16:24], i.VerSeq)
 	return val
 }
 
@@ -102,6 +106,7 @@ func InodeOnceUnlinkMarshal(req *UnlinkInoReq) []byte {
 	inoOnce := &InodeOnce{
 		UniqID: req.UniqID,
 		Inode:  req.Inode,
+		VerSeq: req.VerSeq,
 	}
 	return inoOnce.Marshal()
 }
@@ -114,12 +119,15 @@ func InodeOnceLinkMarshal(req *LinkInodeReq) []byte {
 	return inoOnce.Marshal()
 }
 
-func InodeOnceUnmarshal(val []byte) *InodeOnce {
-	i := &InodeOnce{}
-	if len(val) != inodeOnceSize {
-		return i
+func InodeOnceUnmarshal(val []byte) (i *InodeOnce, err error) {
+	i = &InodeOnce{}
+	if len(val) < inodeOnceSize {
+		return i, fmt.Errorf("size incorrect")
 	}
 	i.UniqID = binary.BigEndian.Uint64(val[0:8])
 	i.Inode = binary.BigEndian.Uint64(val[8:16])
-	return i
+	if len(val) == 24 {
+		i.VerSeq = binary.BigEndian.Uint64(val[16:24])
+	}
+	return
 }
