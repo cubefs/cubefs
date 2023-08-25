@@ -29,8 +29,7 @@ import (
 )
 
 const (
-	applyChCapacity = 512
-	applyChLength   = 400
+	applyChCapacity = 128
 )
 
 type RaftServer interface {
@@ -54,32 +53,33 @@ type RaftServer interface {
 type apply struct {
 	entries  []pb.Entry
 	snapshot pb.Snapshot
-	notifyc  chan struct{}
 }
 
 type raftServer struct {
-	cfg            Config
-	proposeTimeout time.Duration
-	tickInterval   time.Duration
-	snapTimeout    time.Duration
-	lead           uint64
-	n              raft.Node
-	shotter        *snapshotter
-	store          *raftStorage
-	idGen          *Generator
-	sm             StateMachine
-	readNotifier   atomic.Value
-	notifiers      sync.Map
-	tr             Transport
-	applyWait      WaitTime
-	propc          chan propose
-	readStateC     chan raft.ReadState
-	applyc         chan apply
-	snapshotC      chan Snapshot
-	snapMsgc       chan pb.Message
-	readwaitc      chan struct{}
-	stopc          chan struct{}
-	once           sync.Once
+	cfg                Config
+	proposeTimeout     time.Duration
+	tickInterval       time.Duration
+	snapTimeout        time.Duration
+	lead               uint64
+	n                  raft.Node
+	shotter            *snapshotter
+	store              *raftStorage
+	idGen              *Generator
+	sm                 StateMachine
+	readNotifier       atomic.Value
+	notifiers          sync.Map
+	tr                 Transport
+	applyWait          WaitTime
+	leaderChangeMu     sync.RWMutex
+	leaderChangeClosed bool
+	leaderChangeC      chan struct{}
+	readStateC         chan raft.ReadState
+	applyc             chan apply
+	snapshotC          chan Snapshot
+	snapMsgc           chan pb.Message
+	readwaitc          chan struct{}
+	stopc              chan struct{}
+	once               sync.Once
 }
 
 func NewRaftServer(cfg *Config) (RaftServer, error) {
@@ -93,21 +93,22 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 	proposeTimeout := time.Duration(cfg.ProposeTimeout) * time.Second
 	snapTimeout := time.Duration(cfg.SnapshotTimeout) * time.Second
 	rs := &raftServer{
-		cfg:            *cfg,
-		proposeTimeout: proposeTimeout,
-		tickInterval:   tickInterval,
-		snapTimeout:    snapTimeout,
-		shotter:        newSnapshotter(cfg.MaxSnapConcurrency, snapTimeout),
-		idGen:          NewGenerator(cfg.NodeId, time.Now()),
-		sm:             cfg.SM,
-		applyWait:      NewTimeList(),
-		propc:          make(chan propose, 512),
-		readStateC:     make(chan raft.ReadState, 64),
-		applyc:         make(chan apply, applyChCapacity),
-		snapshotC:      make(chan Snapshot),
-		snapMsgc:       make(chan pb.Message, cfg.MaxSnapConcurrency),
-		readwaitc:      make(chan struct{}),
-		stopc:          make(chan struct{}),
+		cfg:                *cfg,
+		proposeTimeout:     proposeTimeout,
+		tickInterval:       tickInterval,
+		snapTimeout:        snapTimeout,
+		shotter:            newSnapshotter(cfg.MaxSnapConcurrency, snapTimeout),
+		idGen:              NewGenerator(cfg.NodeId, time.Now()),
+		sm:                 cfg.SM,
+		applyWait:          NewTimeList(),
+		leaderChangeClosed: false,
+		leaderChangeC:      make(chan struct{}, 1),
+		readStateC:         make(chan raft.ReadState, 64),
+		applyc:             make(chan apply, applyChCapacity),
+		snapshotC:          make(chan Snapshot),
+		snapMsgc:           make(chan pb.Message, cfg.MaxSnapConcurrency),
+		readwaitc:          make(chan struct{}, 1),
+		stopc:              make(chan struct{}),
 	}
 	rs.readNotifier.Store(newReadIndexNotifier())
 
@@ -123,7 +124,7 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 		return nil, err
 	}
 
-	log.Infof("load raft wal success, total: %dus, firstIndex: %d, lastIndex: %d, members: %+v",
+	log.Infof("load raft wal success, total: %dus, firstIndex: %d, lastIndex: %d, members: %v",
 		time.Since(begin).Microseconds(), firstIndex, lastIndex, cfg.Members)
 
 	rs.store = store
@@ -151,7 +152,6 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 
 	go rs.raftStart()
 	go rs.raftApply()
-	go rs.run()
 	go rs.linearizableReadLoop()
 	return rs, nil
 }
@@ -172,31 +172,23 @@ func (s *raftServer) Propose(ctx context.Context, data []byte) (err error) {
 }
 
 func (s *raftServer) propose(ctx context.Context, id uint64, entryType pb.EntryType, data []byte) (err error) {
-	pr := propose{
-		nr:        newNotifier(),
-		id:        id,
-		entryType: entryType,
-		b:         data,
-	}
+	nr := newNotifier()
+	s.notifiers.Store(id, nr)
+	var cancel context.CancelFunc
 
-	s.notifiers.Store(id, pr.nr)
+	if _, ok := ctx.Deadline(); !ok {
+		ctx, cancel = context.WithTimeout(ctx, s.proposeTimeout)
+		defer cancel()
+	}
 	defer func() {
 		s.notifiers.Delete(id)
 	}()
-
-	ctx, cancel := context.WithTimeout(ctx, s.proposeTimeout)
-	defer cancel()
-	select {
-	case s.propc <- pr:
-	case <-ctx.Done():
-		err = ctx.Err()
-		return
-	case <-s.stopc:
-		err = ErrStopped
+	msg := pb.Message{Type: pb.MsgProp, Entries: []pb.Entry{{Type: entryType, Data: data}}}
+	if err = s.n.Step(ctx, msg); err != nil {
 		return
 	}
 
-	return pr.nr.wait(ctx, s.stopc)
+	return nr.wait(ctx, s.stopc)
 }
 
 func (s *raftServer) IsLeader() bool {
@@ -204,8 +196,11 @@ func (s *raftServer) IsLeader() bool {
 }
 
 func (s *raftServer) ReadIndex(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, s.proposeTimeout)
-	defer cancel()
+	var cancel context.CancelFunc
+	if _, ok := ctx.Deadline(); !ok {
+		ctx, cancel = context.WithTimeout(ctx, s.proposeTimeout)
+		defer cancel()
+	}
 	// wait for read state notification
 	nr := s.readNotifier.Load().(*readIndexNotifier)
 	select {
@@ -297,10 +292,6 @@ func (s *raftServer) Truncate(index uint64) error {
 	return s.store.Truncate(index)
 }
 
-func (s *raftServer) campaign(ctx context.Context) error {
-	return s.n.Campaign(ctx)
-}
-
 func (s *raftServer) notify(id uint64, err error) {
 	val, hit := s.notifiers.Load(id)
 	if !hit {
@@ -322,31 +313,20 @@ func (s *raftServer) deleteSnapshot(name string) {
 }
 
 func (s *raftServer) raftApply() {
-	var notifies []chan struct{}
 	for {
 		select {
 		case ap := <-s.applyc:
 			entries := ap.entries
 			snap := ap.snapshot
-			notifies = append(notifies, ap.notifyc)
 			n := len(s.applyc)
-			// if applyc length bigger than 80% of applyChCapacity, record the length in log
-			if n > applyChLength {
-				log.Warnf("applyc capacity is %d,now length is:%d, over %d", applyChCapacity, n, applyChLength)
-			}
 			for i := 0; i < n && raft.IsEmptySnap(snap); i++ {
 				ap = <-s.applyc
 				entries = append(entries, ap.entries...)
 				snap = ap.snapshot
-				notifies = append(notifies, ap.notifyc)
 			}
 			s.applyEntries(entries)
 			s.applySnapshotFinish(snap)
 			s.applyWait.Trigger(s.store.Applied())
-			for _, notifyc := range notifies {
-				<-notifyc
-			}
-			notifies = notifies[0:0]
 		case snapMsg := <-s.snapMsgc:
 			go s.processSnapshotMessage(snapMsg)
 		case snap := <-s.snapshotC:
@@ -503,10 +483,20 @@ func (s *raftServer) raftStart() {
 					if m, ok := s.store.GetMember(rd.SoftState.Lead); ok {
 						leaderHost = m.Host
 					}
+					if rd.SoftState.Lead == raft.None {
+						s.leaderChangeMu.Lock()
+						s.leaderChangeC = make(chan struct{}, 1)
+						s.leaderChangeClosed = false
+						s.leaderChangeMu.Unlock()
+					} else {
+						if !s.leaderChangeClosed {
+							close(s.leaderChangeC)
+							s.leaderChangeClosed = true
+						}
+					}
 					s.sm.LeaderChange(rd.SoftState.Lead, leaderHost)
 				}
 			}
-			isLeader := s.IsLeader()
 
 			if len(rd.ReadStates) != 0 {
 				select {
@@ -518,11 +508,9 @@ func (s *raftServer) raftStart() {
 				}
 			}
 
-			notifyc := make(chan struct{}, 1)
 			ap := apply{
 				entries:  rd.CommittedEntries,
 				snapshot: rd.Snapshot,
-				notifyc:  notifyc,
 			}
 
 			select {
@@ -530,10 +518,7 @@ func (s *raftServer) raftStart() {
 			case <-s.stopc:
 				return
 			}
-
-			if isLeader {
-				s.tr.Send(s.processMessages(rd.Messages))
-			}
+			s.tr.Send(s.processMessages(rd.Messages))
 
 			if len(rd.Entries) > 0 {
 				err := s.store.SaveEntries(rd.Entries)
@@ -545,28 +530,6 @@ func (s *raftServer) raftStart() {
 				if err := s.store.SaveHardState(rd.HardState); err != nil {
 					log.Panicf("save raft hardstate error: %v", err)
 				}
-			}
-
-			if !isLeader {
-				msgs := s.processMessages(rd.Messages)
-				notifyc <- struct{}{}
-				waitApply := false
-				for _, ent := range rd.CommittedEntries {
-					if ent.Type == pb.EntryConfChange {
-						waitApply = true
-						break
-					}
-				}
-				if waitApply {
-					select {
-					case notifyc <- struct{}{}:
-					case <-s.stopc:
-						return
-					}
-				}
-				s.tr.Send(msgs)
-			} else {
-				notifyc <- struct{}{}
 			}
 
 			s.n.Advance()
@@ -601,105 +564,71 @@ func (s *raftServer) processMessages(ms []pb.Message) []pb.Message {
 	return ms
 }
 
-func (s *raftServer) run() {
-	timeout := s.proposeTimeout
-	for {
+func (s *raftServer) readIndexOnce() error {
+	ctx, cancel := context.WithTimeout(context.Background(), s.proposeTimeout)
+	defer cancel()
+	readId := strconv.AppendUint([]byte{}, s.idGen.Next(), 10)
+	s.leaderChangeMu.RLock()
+	leaderChangeC := s.leaderChangeC
+	s.leaderChangeMu.RUnlock()
+	select {
+	case <-leaderChangeC:
+	case <-s.stopc:
+		return ErrStopped
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	err := s.n.ReadIndex(ctx, readId)
+	if err != nil {
+		log.Errorf("read index error: %v", err)
+		return err
+	}
+
+	done := false
+	var rs raft.ReadState
+	for !done {
 		select {
+		case rs = <-s.readStateC:
+			done = bytes.Equal(rs.RequestCtx, readId)
+			if !done {
+				log.Warn("ignored out-of-date read index response")
+			}
+		case <-ctx.Done():
+			log.Warnf("raft read index timeout, the length of applyC is %d", len(s.applyc))
+			return ctx.Err()
 		case <-s.stopc:
-			return
-		case pr := <-s.propc:
-			var nrs []notifier
-			msg := pb.Message{Type: pb.MsgProp, Entries: []pb.Entry{{Type: pr.entryType, Data: pr.b}}}
-			nrs = append(nrs, pr.nr)
-			for i := 0; i < 64; i++ {
-				var done bool
-				select {
-				case pr = <-s.propc:
-					msg.Entries = append(msg.Entries, pb.Entry{Type: pr.entryType, Data: pr.b})
-					nrs = append(nrs, pr.nr)
-				default:
-					done = true
-				}
-				if done {
-					break
-				}
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			if err := s.n.Step(ctx, msg); err != nil {
-				for _, nr := range nrs {
-					nr.notify(err)
-				}
-			}
-			cancel()
+			return ErrStopped
 		}
 	}
+	if s.store.Applied() < rs.Index {
+		select {
+		case <-s.applyWait.Wait(rs.Index):
+		case <-s.stopc:
+			return ErrStopped
+		}
+	}
+	return nil
 }
 
 func (s *raftServer) linearizableReadLoop() {
-	var rs raft.ReadState
-	timeout := s.proposeTimeout
-
 	for {
-		readId := strconv.AppendUint([]byte{}, s.idGen.Next(), 10)
 		select {
 		case <-s.readwaitc:
 		case <-s.stopc:
 			return
 		}
-
 		nextnr := newReadIndexNotifier()
 		nr := s.readNotifier.Load().(*readIndexNotifier)
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		err := s.n.ReadIndex(ctx, readId)
-		if err != nil {
-			cancel()
-			nr.Notify(err)
-			s.readNotifier.Store(nextnr)
-			continue
-		}
-
-		var (
-			done      bool
-			isTimeout bool
-		)
-
-		for !done {
-			select {
-			case rs = <-s.readStateC:
-				done = bytes.Equal(rs.RequestCtx, readId)
-				if !done {
-					log.Warn("ignored out-of-date read index response")
-				}
-			case <-ctx.Done():
-				done = true
-				isTimeout = true
-				nr.Notify(ErrTimeout)
-				log.Warnf("the length of applyC is %d", len(s.applyc))
-			case <-s.stopc:
-				cancel()
-				nr.Notify(ErrStopped)
-				s.readNotifier.Store(nextnr)
-				return
-			}
-		}
-		cancel()
-		if isTimeout {
-			s.readNotifier.Store(nextnr)
-			continue
-		}
-
-		if s.store.Applied() < rs.Index {
-			select {
-			case <-s.applyWait.Wait(rs.Index):
-			case <-s.stopc:
-				nr.Notify(ErrStopped)
-				s.readNotifier.Store(nextnr)
-				return
+		var err error
+		for {
+			err = s.readIndexOnce()
+			if err == nil || err == ErrStopped {
+				break
 			}
 		}
 
-		nr.Notify(nil)
+		nr.Notify(err)
 		s.readNotifier.Store(nextnr)
 	}
 }
