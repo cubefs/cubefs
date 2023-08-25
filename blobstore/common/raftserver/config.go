@@ -27,9 +27,7 @@ type Config struct {
 	WalDir     string `json:"raft_wal_dir"`
 	WalSync    bool   `json:"raft_wal_sync"`
 
-	// TickIntervalMs is the milliseconds interval only configure in testing cases.
-	TickIntervalMs int `json:"-"`
-
+	TickIntervalMs int `json:"-"` // for test
 	// TickInterval is the interval of timer which check heartbeat and election timeout.
 	// The default value is 2s.
 	TickInterval int `json:"tick_interval"`

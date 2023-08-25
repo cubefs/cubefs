@@ -225,13 +225,6 @@ func (msgs raftMsgs) Decode(r io.Reader) (raftMsgs, error) {
 	return msgs, nil
 }
 
-type propose struct {
-	id        uint64
-	nr        notifier
-	entryType pb.EntryType
-	b         []byte
-}
-
 type snapshot struct {
 	st     Snapshot
 	meta   SnapshotMeta
