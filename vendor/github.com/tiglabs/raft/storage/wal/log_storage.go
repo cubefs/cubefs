@@ -28,6 +28,10 @@ import (
 	"github.com/tiglabs/raft/proto"
 )
 
+const (
+	defaultTestDepth = 3
+)
+
 type logEntryStorage struct {
 	s *Storage
 
@@ -60,6 +64,10 @@ func openLogStorage(dir string, s *Storage) (*logEntryStorage, error) {
 
 	// open
 	if err := ls.open(); err != nil {
+		return nil, err
+	}
+
+	if err := ls.test(defaultTestDepth); err != nil {
 		return nil, err
 	}
 
@@ -162,9 +170,40 @@ func (ls *logEntryStorage) LastIndex() uint64 {
 	return ls.last.LastIndex()
 }
 
+// test 用于检查存储日志文件完整性
+func (ls *logEntryStorage) test(depth int) (err error) {
+	var num = int(math.Min(float64(len(ls.logfiles)), float64(depth+1)))
+	if num <= 1 {
+		return
+	}
+	var si = len(ls.logfiles) - num
+	var lfs = ls.logfiles[si:]
+
+	var lf *logEntryFile
+	if lf, err = ls.get(lfs[0]); err != nil {
+		return
+	}
+	var pli = lf.LastIndex() // last index of previous log entry file
+	for i := 1; i < len(lfs); i++ {
+		if lfs[i].index != pli+1 {
+			err = fmt.Errorf("log file discontinuity between %v and %v", lfs[i-1].String(), lfs[i].String())
+			return
+		}
+		if lf, err = ls.get(lfs[i]); err != nil {
+			return
+		}
+		if lf.FirstIndex() != lfs[i].index {
+			err = fmt.Errorf("log file (%v) index mismatch with firstindex (%v)", lfs[i].String(), lf.FirstIndex())
+			return
+		}
+		pli = lf.LastIndex()
+	}
+	return
+}
+
 func (ls *logEntryStorage) Entries(lo, hi uint64, maxSize uint64) (entries []*proto.Entry, isCompact bool, err error) {
 	if lo > ls.LastIndex() {
-		err = fmt.Errorf("entries's hi(%d) is out of bound lastindex(%d)", hi, ls.LastIndex())
+		err = fmt.Errorf("entries's lo(%d) is larger than lastindex(%d)", lo, ls.LastIndex())
 		return
 	}
 
