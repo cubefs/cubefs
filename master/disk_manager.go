@@ -58,9 +58,6 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		if err != nil {
 			return true
 		}
-		if len(partition.Replicas) == 0 {
-			return true
-		}
 		replicaNum := vol.dpReplicaNum
 		if vol.DPConvertMode == proto.IncreaseReplicaNum && vol.dpReplicaNum == maxQuorumVolDataPartitionReplicaNum {
 			replicaNum = partition.ReplicaNum
@@ -68,7 +65,13 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				replicaNum = defaultReplicaNum
 			}
 		}
-		if partition.isDataCatchUp() && partition.allReplicaHasRecovered() && len(partition.Replicas) >= int(replicaNum) {
+		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(replicaNum) {
+			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+				unrecoverPartitionIDs[partitionID] = partition.modifyTime
+			}
+			return true
+		}
+		if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) && partition.allReplicaHasRecovered() {
 			partition.RLock()
 			if partition.isRecover {
 				partition.isRecover = false
@@ -81,13 +84,11 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				unrecoverPartitionIDs[partitionID] = partition.modifyTime
 			}
 		}
-
 		return true
 	})
 	if len(unrecoverPartitionIDs) != 0 {
 		Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs))
 	}
-
 }
 
 // Add replica for the partition whose replica number is less than replicaNum
@@ -96,10 +97,7 @@ func (c *Cluster) checkFulfillDataReplica() {
 		partitionID := value.(uint64)
 		//badDiskAddr: '127.0.0.1:17210:/data1'
 		badAddr := getAddrFromDecommissionDataPartitionKey(key.(string))
-		isPushBackToBadIDs := c.fulfillDataReplica(partitionID, badAddr)
-		if !isPushBackToBadIDs {
-			c.BadDataPartitionIds.Delete(key)
-		}
+		_ = c.fulfillDataReplica(partitionID, badAddr)
 		return true
 	})
 
@@ -128,7 +126,7 @@ func (c *Cluster) fulfillDataReplica(partitionID uint64, badAddr string) (isPush
 	partition.offlineMutex.Lock()
 	defer partition.offlineMutex.Unlock()
 
-	if len(partition.Replicas) >= int(partition.ReplicaNum) || len(partition.Hosts) >= int(partition.ReplicaNum) {
+	if len(partition.Replicas) >= int(partition.ReplicaNum) || len(partition.Hosts) >= int(partition.ReplicaNum) || len(partition.Replicas) > len(partition.Hosts) {
 		return
 	}
 	//Not until the learners promote strategy is enhanced to guarantee peers consistency, can we add more learners at the same time.

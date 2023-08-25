@@ -183,14 +183,15 @@ const (
 )
 
 const (
-	deleteIllegalReplicaErr       = "deleteIllegalReplicaErr "
-	addMissingReplicaErr          = "addMissingReplicaErr "
-	checkDataPartitionDiskErr     = "checkDataPartitionDiskErr  "
-	dataNodeOfflineErr            = "dataNodeOfflineErr "
-	diskOfflineErr                = "diskOfflineErr "
-	diskAutoOfflineErr            = "diskAutoOfflineErr "
-	handleDataPartitionOfflineErr = "handleDataPartitionOffLineErr "
-	balanceDataPartitionZoneErr   = "balanceDataPartitionZoneErr "
+	deleteIllegalReplicaErr                       = "deleteIllegalReplicaErr "
+	addMissingReplicaErr                          = "addMissingReplicaErr "
+	checkDataPartitionDiskErr                     = "checkDataPartitionDiskErr  "
+	dataNodeOfflineErr                            = "dataNodeOfflineErr "
+	diskOfflineErr                                = "diskOfflineErr "
+	diskAutoOfflineErr                            = "diskAutoOfflineErr "
+	handleDataPartitionOfflineErr                 = "handleDataPartitionOffLineErr "
+	offlineDataPartitionByCheckReplicationTaskErr = "offlineDataPartitionByCheckReplicationTaskErr "
+	balanceDataPartitionZoneErr                   = "balanceDataPartitionZoneErr "
 )
 
 const (

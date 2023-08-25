@@ -285,6 +285,7 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 		Warn(c.Name, msg)
 		dn, _ := c.dataNode(excessAddr)
 		if dn != nil {
+			c.removeDataPartitionRaftOnly(partition, proto.Peer{ID: dn.ID, Addr: dn.Addr})
 			c.deleteDataReplica(partition, dn, false)
 		}
 	}
@@ -302,6 +303,9 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
 		Warn(c.Name, msg)
+		if partition.ReplicaNum == 2 && partition.isRecover && time.Now().Unix()-partition.lastOfflineTime > defaultDecommissionDuration {
+			c.decommissionDataPartition(lackAddr, partition, getTargetAddressForDataPartitionDecommission, offlineDataPartitionByCheckReplicationTaskErr, "", "", false)
+		}
 		return
 	}
 
