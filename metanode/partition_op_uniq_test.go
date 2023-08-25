@@ -28,7 +28,7 @@ func TestInodeOnce(t *testing.T) {
 	}
 
 	val := ino.Marshal()
-	ino2 := InodeOnceUnmarshal(val)
+	ino2, _ := InodeOnceUnmarshal(val)
 	if *ino2 != *ino {
 		t.Fatal("inode once unmarshal failed")
 	}

@@ -467,7 +467,7 @@ func (s *ExtentStore) DumpExtents() (extInfos SortedExtentInfos) {
 	return
 }
 
-func (s *ExtentStore) tinyDelete(extentID uint64, offset, size int64) (err error) {
+func (s *ExtentStore) punchDelete(extentID uint64, offset, size int64) (err error) {
 	e, err := s.extentWithHeaderByExtentID(extentID)
 	if err != nil {
 		return nil
@@ -478,7 +478,7 @@ func (s *ExtentStore) tinyDelete(extentID uint64, offset, size int64) (err error
 	var (
 		hasDelete bool
 	)
-	if hasDelete, err = e.DeleteTiny(offset, size); err != nil {
+	if hasDelete, err = e.punchDelete(offset, size); err != nil {
 		return
 	}
 	if hasDelete {
@@ -512,7 +512,7 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	if IsTinyExtent(extentID) || funcNeedPunchDel() {
 		log.LogDebugf("action[MarkDelete] extentID %v offset %v size %v ei(size %v snapshotSize %v)",
 			extentID, offset, size, ei.Size, ei.SnapshotDataOff)
-		return s.tinyDelete(extentID, offset, size)
+		return s.punchDelete(extentID, offset, size)
 	}
 
 	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
