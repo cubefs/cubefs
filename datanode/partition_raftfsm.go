@@ -49,7 +49,7 @@ func (dp *DataPartition) handleRaftApply(command []byte, index uint64) (resp int
 		dp.actionHolder.Unregister(index)
 	}()
 	var opItem *rndWrtOpItem
-	if opItem, err = UnmarshalRandWriteRaftLog(command); err != nil {
+	if opItem, err = UnmarshalRandWriteRaftLog(command, true); err != nil {
 		resp = proto.OpErr
 		return
 	}
@@ -201,7 +201,7 @@ func (dp *DataPartition) handleRaftAskRollback(original []byte, index uint64) (r
 		return
 	}
 	var opItem *rndWrtOpItem
-	if opItem, err = UnmarshalRandWriteRaftLog(original); err != nil {
+	if opItem, err = UnmarshalRandWriteRaftLog(original, false); err != nil {
 		return
 	}
 	defer func() {
@@ -209,10 +209,10 @@ func (dp *DataPartition) handleRaftAskRollback(original []byte, index uint64) (r
 	}()
 	var buf = make([]byte, opItem.size)
 	var crc uint32
-	if crc, err = dp.extentStore.Read(opItem.extentID, opItem.offset, opItem.size, buf, false); err != nil {
+	if crc, err = dp.extentStore.Read(opItem.extentID, opItem.offset, opItem.size, buf[:opItem.size], false); err != nil {
 		return
 	}
-	rollback, err = MarshalRandWriteRaftLog(opItem.opcode, opItem.extentID, opItem.offset, opItem.size, buf, crc)
+	rollback, err = MarshalRandWriteRaftLog(opItem.opcode, opItem.extentID, opItem.offset, opItem.size, buf[:opItem.size], crc)
 	log.LogWarnf("partition[%v] [disk: %v] handle ask rollback [index: %v, extent: %v, offset: %v, size: %v], CRC[%v -> %v]",
 		dp.partitionID, dp.disk.Path, index, opItem.extentID, opItem.offset, opItem.size, opItem.crc, crc)
 	return

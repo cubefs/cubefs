@@ -39,7 +39,7 @@ func TestUnmarshalRandWriteRaftLog(t *testing.T) {
 		t.FailNow()
 	}
 
-	newOpItem,err:=UnmarshalRandWriteRaftLog(oldMarshalResult)
+	newOpItem,err:=UnmarshalRandWriteRaftLog(oldMarshalResult, true)
 	if err!=nil {
 		t.Logf("UnMarshalRandWriteRaftLog Item(%v) failed (%v)",item,err)
 		t.FailNow()
@@ -68,7 +68,7 @@ func TestUnmarshalRandWriteRaftLogV3(t *testing.T) {
 		t.FailNow()
 	}
 
-	newOpItem,err:=UnmarshalRandWriteRaftLog(oldMarshalResult)
+	newOpItem,err:=UnmarshalRandWriteRaftLog(oldMarshalResult, true)
 	if err!=nil {
 		t.Logf("UnMarshalRandWriteRaftLog Item(%v) failed (%v)",item,err)
 		t.FailNow()
