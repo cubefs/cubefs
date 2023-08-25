@@ -1,4 +1,4 @@
-## Cfsauto
+# Cfsauto
 
 Autofs[1] is a program that automatically mounts specified directories as needed. It operates based on a kernel module to achieve efficiency and can manage both local directories and network shares simultaneously. These automatically mounted points are only mounted when accessed and will be unmounted after a certain period of inactivity. This on-demand behavior saves bandwidth and provides higher performance compared to static mounts managed by `/etc/fstab`. While autofs is the control script, it is the automount command (daemon) that actually performs the automatic mounting.
 
