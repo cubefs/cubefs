@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -103,10 +104,26 @@ func Init(role string, cfg *config.Config) {
 
 	namespace = AppName + "_" + role
 	addr := fmt.Sprintf(":%d", port)
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.LogError("exporter tcp listen error: ", err)
-		return
+	var l net.Listener
+	var err error
+	timeout := time.Now().Add(time.Second * 10)
+	for {
+		if l, err = net.Listen("tcp", addr); err == nil {
+			break
+		}
+
+		if time.Now().After(timeout) {
+			log.LogErrorf("exporter tcp listen port(%v) timeout", exporterPort)
+			return
+		}
+
+		if strings.Contains(err.Error(), "bind: address already in use") {
+			log.LogInfof("address %v is still in use", addr)
+		} else {
+			log.LogError("exporter tcp listen error: ", err)
+			return
+		}
+		runtime.Gosched()
 	}
 
 	exporterPort = int64(l.Addr().(*net.TCPAddr).Port)
