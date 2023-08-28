@@ -16,6 +16,9 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/cli/cmd/data_check"
+	"github.com/cubefs/cubefs/cli/cmd/util"
+	atomic2 "go.uber.org/atomic"
 	"os"
 	"sort"
 	"strconv"
@@ -1226,8 +1229,8 @@ func checkCommit(client *master.MasterClient) (err error) {
 		})
 		f.Sync()
 	}
-	vols := loadSpecifiedVolumes("", "")
-	ids := loadSpecifiedPartitions()
+	vols := util.LoadSpecifiedVolumes("", "")
+	ids := util.LoadSpecifiedPartitions()
 	rangeAllDataPartitions(20, vols, ids, volFunc, partitionFunc)
 	fmt.Println("scan finish, result has been saved to local file")
 	return
@@ -1263,53 +1266,11 @@ func checkDataPartitionCommit(leader string, pid uint64) (lack bool, lackID uint
 	return
 }
 
-func checkDataPartitionRelica(c *master.MasterClient, partitionID uint64, checkType int, specTime time.Time, ch chan RepairExtentInfo, checkTiny bool) (failedExtents []uint64, err error) {
-	var (
-		dpMasterInfo  *proto.DataPartitionInfo
-		dpDNInfo      *proto.DNDataPartitionInfo
-		checkedExtent *sync.Map
-	)
-	checkedExtent = new(sync.Map)
-	failedExtents = make([]uint64, 0)
-	dpMasterInfo, err = c.AdminAPI().GetDataPartition("", partitionID)
-	if err != nil {
-		log.LogErrorf("GetDataPartition PartitionId(%v) err(%v)\n", partitionID, err)
-		return
-	}
-
-	dpDNInfo, err = getDataPartitionInfo(dpMasterInfo.Hosts[0], c.DataNodeProfPort, partitionID)
-	if err != nil {
-		log.LogErrorf("GetDataPartition In DataNode PartitionId(%v) err(%v)\n", partitionID, err)
-		return
-	}
-
-	for _, ekTmp := range dpDNInfo.Files {
-		if int64(ekTmp[proto.ExtentInfoModifyTime]) < specTime.Unix() || ekTmp[proto.ExtentInfoSize] == 0 {
-			continue
-		}
-		ek := proto.ExtentKey{
-			FileOffset:   0,
-			PartitionId:  partitionID,
-			ExtentId:     ekTmp[proto.ExtentInfoFileID],
-			ExtentOffset: 0,
-			Size:         uint32(ekTmp[proto.ExtentInfoSize]),
-		}
-		if _, ok := checkedExtent.LoadOrStore(fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId), true); ok {
-			continue
-		}
-		err1 := checkExtentReplicaInfo(c, dpMasterInfo.Replicas, &ek, 0, dpMasterInfo.VolName, checkType, ch, checkTiny)
-		if err1 != nil {
-			failedExtents = append(failedExtents, ek.ExtentId)
-		}
-	}
-	return
-}
-
 func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command {
-	var optCheckType int
 	var fromFile bool
 	var fromTime string
 	var ids []uint64
+	var modifyTimestampMin time.Time
 	var checkTiny bool
 	var cmd = &cobra.Command{
 		Use:   CliOpCheckReplica + " [DATA PARTITION ID]",
@@ -1318,7 +1279,7 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 			var err error
 			var partitionID uint64
 			if fromFile {
-				ids = loadSpecifiedPartitions()
+				ids = util.LoadSpecifiedPartitions()
 			} else {
 				if len(args) < 1 {
 					stdout("please input partition id")
@@ -1331,17 +1292,12 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 				}
 				ids = append(ids, partitionID)
 			}
-			var minParsedTime time.Time
-			minParsedTime, err = parseTime(fromTime)
-			if err != nil {
-				stdout("%v\n", err)
+			if modifyTimestampMin, err = parseTime(fromTime); err != nil {
 				return
 			}
-			rp := NewRepairPersist(client.Nodes()[0])
-			go rp.PersistResult()
-
 			limitCh := make(chan bool, 50)
 			wg := sync.WaitGroup{}
+			dpCounter := atomic2.Int64{}
 			for _, id := range ids {
 				limitCh <- true
 				wg.Add(1)
@@ -1349,14 +1305,18 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 					defer func() {
 						wg.Done()
 						<-limitCh
-						rp.dpCounter.Add(1)
-						log.LogInfof("check data partition(%v) finish, progress(%d/%d)", pid, rp.dpCounter.Load(), len(ids))
+						dpCounter.Add(1)
+						log.LogInfof("check data partition(%v) finish, progress(%d/%d)", pid, dpCounter.Load(), len(ids))
 					}()
-					checkDataPartitionRelica(client, pid, optCheckType, minParsedTime, rp.RCh, checkTiny)
+					var dpMasterInfo *proto.DataPartitionInfo
+					dpMasterInfo, err = client.AdminAPI().GetDataPartition("", pid)
+					if err != nil {
+						return
+					}
+					_, _ = data_check.CheckDataPartitionReplica(dpMasterInfo, client, modifyTimestampMin, nil, checkTiny)
 				}(id)
 			}
 			wg.Wait()
-			rp.Close()
 			stdout("finish data partition replica crc check")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -1367,7 +1327,6 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 		},
 	}
 	cmd.Flags().BoolVar(&fromFile, "from-file", false, "check partitions from file, file name:`ids`, format:`partition`")
-	cmd.Flags().IntVar(&optCheckType, "check-type", 0, "specify check type : 0 all, 1 crc, 2 md5, 3 block")
 	cmd.Flags().StringVar(&fromTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, format:yyyy-mm-dd hh:mm:ss")
 	cmd.Flags().BoolVar(&checkTiny, "check-tiny", false, "check tiny extent")
 	return cmd

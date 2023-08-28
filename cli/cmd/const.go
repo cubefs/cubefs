@@ -158,6 +158,7 @@ const (
 	CliResourceEcNode          = "ecnode"
 	CliResourceCodecnodeNode   = "codecnode"
 	CliOpCheckReplica          = "check-replica"
+	CliOpResetLogLevel         = "reset-loglevel"
 	CliOpVolTrashCleanInterval = "trash-clean-interval"
 	CliOpVolMaxChildrenCnt     = "max-children-cnt"
 	CliOpVolBatchDelInodeCnt   = "batch-del-inode-cnt"

@@ -3,6 +3,8 @@ package repaircrc_server
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/cli/cmd/data_check"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
@@ -10,7 +12,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,12 +32,13 @@ type RepairServer struct {
 }
 
 type TaskMeta struct {
-	TaskList   []*RepairCrcTask  `json:"task_list"`
+	TaskList []*RepairCrcTask `json:"task_list"`
 }
 
 func NewServer() *RepairServer {
 	return &RepairServer{}
 }
+
 const (
 	StateStandby uint32 = iota
 	StateStart
@@ -43,9 +48,10 @@ const (
 )
 
 const (
-	repairTaskFile  = "task.json"
+	repairTaskFile = "task.json"
 	maxTaskIDFile  = "MAX_TASK_ID"
 )
+
 // Shutdown shuts down the current data node.
 func (s *RepairServer) Shutdown() {
 	if atomic.CompareAndSwapUint32(&s.state, StateRunning, StateShutdown) {
@@ -63,13 +69,7 @@ func (s *RepairServer) Sync() {
 		s.wg.Wait()
 	}
 }
-const (
-	checkTypeExtentReplica = 0
-	checkTypeExtentLength  = 1
-	checkTypeExtentCrc     = 2
-	checkTypeInodeEk       = 3
-	checkTypeInodeNlink    = 4
-)
+
 // Workflow of starting up a data node.
 func (s *RepairServer) DoStart(cfg *config.Config) (err error) {
 	if atomic.CompareAndSwapUint32(&s.state, StateStandby, StateStart) {
@@ -210,12 +210,21 @@ func (s *RepairServer) handleAddTask(w http.ResponseWriter, r *http.Request) {
 	for _, t := range s.repairTaskMap {
 		if t.ClusterInfo.Master == task.ClusterInfo.Master && t.RepairType == task.RepairType {
 			switch t.RepairType {
-			case RepairVolume:
-				if t.Filter.VolFilter == task.Filter.VolFilter {
+			case proto.RepairVolume:
+				sort.Strings(task.Filter.VolFilter)
+				sort.Strings(t.Filter.VolFilter)
+				sort.Strings(task.Filter.VolExcludeFilter)
+				sort.Strings(t.Filter.VolExcludeFilter)
+				sort.Strings(task.Filter.ZoneFilter)
+				sort.Strings(t.Filter.ZoneFilter)
+				sort.Strings(task.Filter.ZoneExcludeFilter)
+				sort.Strings(t.Filter.ZoneExcludeFilter)
+				if strings.Join(t.Filter.VolFilter, ",") == strings.Join(task.Filter.VolFilter, ",") && strings.Join(t.Filter.VolExcludeFilter, ",") == strings.Join(task.Filter.VolExcludeFilter, ",") &&
+					strings.Join(t.Filter.ZoneFilter, ",") == strings.Join(task.Filter.ZoneFilter, ",") && strings.Join(t.Filter.ZoneExcludeFilter, ",") == strings.Join(task.Filter.ZoneExcludeFilter, ",") {
 					buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("already has duplicate task: %v", t.TaskId))
 					return
 				}
-			case RepairDataNode:
+			case proto.RepairDataNode:
 				if t.NodeAddress == task.NodeAddress {
 					buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("already has duplicate task: %v", t.TaskId))
 					return
@@ -225,7 +234,7 @@ func (s *RepairServer) handleAddTask(w http.ResponseWriter, r *http.Request) {
 	}
 	s.lock.RUnlock()
 	s.addTask(task)
-	s.PersistMetadata()
+	s.persistMetadata()
 	s.PersistTaskID()
 	s.taskReceiverCh <- task
 	buildSuccessResp(w, fmt.Sprintf("add task %v success", task.TaskId))
@@ -233,8 +242,8 @@ func (s *RepairServer) handleAddTask(w http.ResponseWriter, r *http.Request) {
 
 func (s *RepairServer) handleDelTask(w http.ResponseWriter, r *http.Request) {
 	var (
-		err       error
-		taskID    uint64
+		err    error
+		taskID uint64
 	)
 	taskStr := r.FormValue("task")
 	if taskID, err = strconv.ParseUint(taskStr, 10, 64); err != nil {
@@ -242,7 +251,7 @@ func (s *RepairServer) handleDelTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.stopTask(int64(taskID))
-	s.PersistMetadata()
+	s.persistMetadata()
 	buildSuccessResp(w, fmt.Sprintf("delete task %v success", taskID))
 }
 
@@ -280,10 +289,10 @@ func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string
 func (s *RepairServer) scheduleToRepairCrc() {
 	for {
 		select {
-		case task := <- s.taskReceiverCh:
+		case task := <-s.taskReceiverCh:
 			log.LogInfof("scheduleToRepairCrc, task:%v", task.TaskId)
-			go s.executeTask(task)
-		case <- s.stopC:
+			go executeTask(task)
+		case <-s.stopC:
 			return
 		}
 	}
@@ -291,7 +300,7 @@ func (s *RepairServer) scheduleToRepairCrc() {
 
 type RepairTaskFunc func() (err error)
 
-func (s *RepairServer) executeTask(t *RepairCrcTask) {
+func executeTask(t *RepairCrcTask) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -309,22 +318,30 @@ func (s *RepairServer) executeTask(t *RepairCrcTask) {
 	defer timer.Stop()
 	timer.Reset(time.Second)
 	var count uint32
+	outputDir, _ := os.Getwd()
 	for {
 		select {
-		case <- timer.C:
+		case <-timer.C:
 			log.LogInfof("executeTask begin, taskID:%v", t.TaskId)
 			switch t.RepairType {
-			case RepairVolume:
-				t.executeVolumeTask()
-			case RepairDataNode:
-				t.executeDataNodeTask()
+			case proto.RepairVolume:
+				_ = data_check.ExecuteVolumeTask(outputDir, t.TaskId, t.Concurrency, t.Filter, t.mc, t.ModifyTimeMin, t.ModifyTimeMax, func() bool {
+					select {
+					case <-t.stopC:
+						return true
+					default:
+						return false
+					}
+				})
+			case proto.RepairDataNode:
+				_ = data_check.ExecuteDataNodeTask(outputDir, t.TaskId, t.Concurrency, t.NodeAddress, t.mc, t.ModifyTimeMin, t.CheckTiny)
 			}
 			count++
 			if t.Frequency.ExecuteCount > 0 && count >= t.Frequency.ExecuteCount {
 				return
 			}
 			timer.Reset(time.Duration(t.Frequency.Interval) * time.Hour)
-		case <- t.stopC:
+		case <-t.stopC:
 			return
 		}
 	}
@@ -346,7 +363,7 @@ func (s *RepairServer) stopTask(id int64) {
 	delete(s.repairTaskMap, id)
 }
 
-func (s *RepairServer) PersistMetadata() (err error) {
+func (s *RepairServer) persistMetadata() (err error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	var metadata = new(TaskMeta)
@@ -379,11 +396,11 @@ func (s *RepairServer) PersistMetadata() (err error) {
 	if err = os.Rename(tmpFile, taskFile); err != nil {
 		return
 	}
-	log.LogInfof("PersistMetadata data(%v)", string(newData))
+	log.LogInfof("persistMetadata data(%v)", string(newData))
 	return
 }
 
-func (s *RepairServer) PersistTaskID() (err error){
+func (s *RepairServer) PersistTaskID() (err error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	tmpFile := s.taskDir + "/." + maxTaskIDFile
@@ -407,6 +424,6 @@ func (s *RepairServer) PersistTaskID() (err error){
 	if err = os.Rename(tmpFile, taskFile); err != nil {
 		return
 	}
-	log.LogInfof("PersistMetadata max task id(%v)", strconv.FormatUint(uint64(s.maxTaskId.Load()), 10))
+	log.LogInfof("PersistTaskID max task id(%v)", strconv.FormatUint(uint64(s.maxTaskId.Load()), 10))
 	return
 }

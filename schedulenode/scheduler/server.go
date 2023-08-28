@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/compact"
+	"github.com/cubefs/cubefs/schedulenode/crcworker"
 	"github.com/cubefs/cubefs/schedulenode/smart"
 	"github.com/cubefs/cubefs/sdk/hbase"
 	"github.com/cubefs/cubefs/sdk/mysql"
@@ -52,11 +53,13 @@ const (
 const (
 	DefaultFlowControlSmartVolume = 100
 	DefaultFlowControlCompact     = 1000
+	DefaultFlowControlCrcWorker   = 1000
 )
 
 const (
 	DefaultWorkerMaxTaskNumSmartVolume = 100
 	DefaultWorkerMaxTaskNumCompact     = 100
+	DefaultWorkerMaxTaskNumCrcWorker   = 100
 )
 
 type ScheduleNode struct {
@@ -274,6 +277,7 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	wt := make([]proto.WorkerType, 0)
 	wt = append(wt, proto.WorkerTypeSmartVolume)
 	wt = append(wt, proto.WorkerTypeCompact)
+	wt = append(wt, proto.WorkerTypeCheckCrc)
 	s.workerTypes = wt
 
 	var smartVolumeWorker *smart.SmartVolumeWorker
@@ -286,8 +290,14 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
 		return
 	}
+	var crcWorker *crcworker.CrcWorker
+	if crcWorker, err = crcworker.NewCrcWorkerForScheduler(); err != nil {
+		log.LogErrorf("[registerWorker] create crc worker failed, err(%v)", err)
+		return
+	}
 	s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
 	s.workers.Store(proto.WorkerTypeCompact, compactWorker)
+	s.workers.Store(proto.WorkerTypeCheckCrc, crcWorker)
 	return
 }
 
@@ -565,6 +575,14 @@ func (s *ScheduleNode) startTaskCreator() {
 					dr = DefaultWorkerDuration
 				}
 				go s.taskCreator(proto.WorkerTypeCompact, dr, cw.CreateTask)
+			case proto.WorkerTypeCheckCrc:
+				cw := value.(*crcworker.CrcWorker)
+				dr := cw.GetCreatorDuration()
+				if dr <= 0 {
+					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
+					dr = DefaultWorkerDuration
+				}
+				go s.taskCreator(proto.WorkerTypeCheckCrc, dr, cw.CreateTask)
 
 			default:
 				log.LogWarnf("[startTaskCreator] unknown worker type, workerType(%v)", wt)
@@ -889,6 +907,8 @@ func (s *ScheduleNode) getWorkerMaxTaskNums(wt proto.WorkerType, workerAddr stri
 			taskNum = DefaultWorkerMaxTaskNumSmartVolume
 		case proto.WorkerTypeCompact:
 			taskNum = DefaultWorkerMaxTaskNumCompact
+		case proto.WorkerTypeCheckCrc:
+			taskNum = DefaultWorkerMaxTaskNumCrcWorker
 		}
 	}
 	return
@@ -1076,6 +1096,8 @@ func getDefaultFlowControlValue(wt proto.WorkerType) int64 {
 		return DefaultFlowControlSmartVolume
 	case proto.WorkerTypeCompact:
 		return DefaultFlowControlCompact
+	case proto.WorkerTypeCheckCrc:
+		return DefaultFlowControlCrcWorker
 	default:
 		log.LogErrorf("[getDefaultFlowControlValue] invalid worker type, workerType(%v)", wt)
 		return 0

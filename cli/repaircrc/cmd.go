@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/cubefs/cubefs/cli/cmd/data_check"
 	syslog "log"
 	"net"
 	"net/http"
@@ -22,9 +23,10 @@ var (
 	configFile = flag.String("c", "", "config file path")
 )
 var (
-	configKeyLogDir   = "logDir"
-	configKeyLogLevel = "logLevel"
-	configKeyProfPort = "prof"
+	configKeyLogDir    = "logDir"
+	configKeyLogLevel  = "logLevel"
+	configKeyProfPort  = "prof"
+	configKeyUmpPrefix = "umpPrefix"
 )
 
 func main() {
@@ -39,7 +41,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
-
+	umpPrefix := cfg.GetString(configKeyUmpPrefix)
+	if umpPrefix != "" {
+		data_check.UmpWarnKey = umpPrefix + "_" + data_check.UmpWarnKey
+	}
 	logDir := cfg.GetString(configKeyLogDir)
 	logLevel := cfg.GetString(configKeyLogLevel)
 	profPort := cfg.GetString(configKeyProfPort)
@@ -72,7 +77,7 @@ func run() error {
 	}
 	defer log.LogFlush()
 
-	exporter.Init("check_crc", "jdos_chubaofs-node", "", cfg)
+	exporter.Init("check_crc_cluster", "check_crc", "", cfg)
 
 	var profNetListener net.Listener = nil
 	if profPort != "" {

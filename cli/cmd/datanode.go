@@ -16,16 +16,14 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/cli/cmd/data_check"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/spf13/cobra"
+	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/http_client"
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -47,6 +45,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newResetDataNodeCmd(client),
 		newStopMigratingByDataNode(client),
 		newCheckReplicaByDataNodeCmd(client),
+		newResetDataNodeLogLevelCmd(client),
 	)
 	return cmd
 }
@@ -59,6 +58,7 @@ const (
 	cmdResetDataNodeShort                = "Reset corrupt data partitions related to this node"
 	cmdStopMigratingEcByDataNode         = "stop migrating task by data node"
 	cmdCheckReplicaByDataNodeShort       = "Check all normal extents which in this data node"
+	cmdResetLogLevelShort                = "reset loglevel to error on all datanode"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -299,7 +299,25 @@ func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 				limitRate = 200
 			}
 			nodeAddr = args[0]
-			CheckDataNodeCrc(nodeAddr, client, uint64(limitRate), optCheckType, fromTime, checkTiny)
+			var checkEngine *data_check.CheckEngine
+			outputDir, _ := os.Getwd()
+			checkEngine, err = data_check.NewCheckEngine(
+				outputDir,
+				client,
+				checkTiny,
+				false,
+				uint64(limitRate),
+				optCheckType,
+				fromTime,
+				"",
+				make([]uint64, 0),
+				make([]uint64, 0),
+				"",
+				func() bool {
+					return false
+				})
+			defer checkEngine.Close()
+			_ = checkEngine.CheckDataNodeCrc(nodeAddr)
 			stdout("finish datanode replica crc check")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -316,6 +334,45 @@ func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
+func newResetDataNodeLogLevelCmd(client *master.MasterClient) *cobra.Command {
+	var resetNum uint64
+	var resetInterval int
+	var cmd = &cobra.Command{
+		Use:   CliOpResetLogLevel,
+		Short: cmdResetLogLevelShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout("reset loglevel failed: %v\n", err)
+				}
+			}()
+			if resetNum < 1 {
+				resetNum = 1
+			}
+			if resetInterval < 1 {
+				resetInterval = 1
+			}
+
+			tick := time.NewTicker(time.Second)
+			for {
+				select {
+				case <-tick.C:
+					resetDataNodeLogLevel(client)
+					resetNum--
+					if resetNum == 0 {
+						return
+					}
+					tick.Reset(time.Hour * time.Duration(resetInterval))
+				}
+			}
+		},
+	}
+	cmd.Flags().Uint64Var(&resetNum, "num", 1, "specify execute count of reset, max:unlimited")
+	cmd.Flags().IntVar(&resetInterval, "interval", 6, "specify interval between reset, max:48")
+	return cmd
+}
+
 func parseTime(timeStr string) (t time.Time, err error) {
 	if timeStr != "" {
 		t, err = time.Parse("2006-01-02 15:04:05", timeStr)
@@ -324,135 +381,6 @@ func parseTime(timeStr string) (t time.Time, err error) {
 		}
 	} else {
 		t = time.Unix(0, 0)
-	}
-	return
-}
-
-func CheckDataNodeCrc(nodeAddr string, c *master.MasterClient, limitRate uint64, optCheckType int, fromTime string, checkTiny bool) (err error) {
-	var (
-		minParsedTime time.Time
-		dpCount       int
-	)
-	defer func() {
-		if err != nil {
-			fmt.Printf("CheckDataNodeCrc error:%v\n", err)
-		}
-	}()
-	log.LogInfof("CheckDataNodeCrc begin, datanode:%v", nodeAddr)
-	minParsedTime, err = parseTime(fromTime)
-	if err != nil {
-		return
-	}
-	rp := NewRepairPersist(c.Nodes()[0])
-	go rp.PersistResult()
-	defer rp.Close()
-	dr, err := newDataNodeRepair(nodeAddr, c, limitRate, minParsedTime)
-	if err != nil {
-		return
-	}
-	wg := sync.WaitGroup{}
-	dpCh := make(chan uint64, 1000)
-	for _, dp := range dr.datanodeInfo.PersistenceDataPartitions {
-		if idExist(dp, dr.excludeDPs) {
-			continue
-		}
-		dpCount++
-	}
-	wg.Add(dpCount)
-	go func() {
-		for _, dp := range dr.datanodeInfo.PersistenceDataPartitions {
-			if idExist(dp, dr.excludeDPs) {
-				continue
-			}
-			dpCh <- dp
-		}
-		close(dpCh)
-	}()
-
-	for i := 0; i < int(limitRate); i++ {
-		go func() {
-			for dp := range dpCh {
-				dr.doRepairPartition(dp, rp, optCheckType, checkTiny)
-				wg.Done()
-			}
-		}()
-	}
-	wg.Wait()
-	log.LogInfof("CheckDataNodeCrc end, datanode:%v", nodeAddr)
-	return
-}
-
-type dataNodeRepair struct {
-	nodeAddr      string
-	persistDps    []uint64
-	datanodeInfo  *proto.DataNodeInfo
-	diskMap       map[string]chan bool
-	excludeDPs    []uint64
-	client        *master.MasterClient
-	minParsedTime time.Time
-}
-
-func newDataNodeRepair(nodeAddr string, c *master.MasterClient, limitRate uint64, minParsedTime time.Time) (dr *dataNodeRepair, err error) {
-	dr = new(dataNodeRepair)
-	dr.nodeAddr = nodeAddr
-	dr.minParsedTime = minParsedTime
-	if dr.datanodeInfo, err = c.NodeAPI().GetDataNode(nodeAddr); err != nil {
-		return
-	}
-	dr.client = c
-	dr.excludeDPs = loadSpecifiedPartitions()
-	return
-}
-
-func (dr *dataNodeRepair) doRepairPartition(dp uint64, rp *RepairPersist, optCheckType int, checkTiny bool) {
-	var (
-		err           error
-		failedExtents []uint64
-	)
-	defer func() {
-		rp.dpCounter.Add(1)
-		log.LogInfof(" check datanode:%v dp:%v end, progress:(%d/%d)", dr.nodeAddr, dp, rp.dpCounter.Load(), len(dr.persistDps))
-		if err != nil {
-			log.LogErrorf(" check datanode:%v dp:%v end, progress:(%d/%d), err:%v", dr.nodeAddr, dp, rp.dpCounter.Load(), len(dr.persistDps), err)
-		}
-	}()
-	if failedExtents, err = checkDataPartitionRelica(dr.client, dp, optCheckType, dr.minParsedTime, rp.RCh, checkTiny); err != nil {
-		rp.persistFailedDp(dp)
-	} else if len(failedExtents) > 0 {
-		rp.persistFailedExtents(dp, failedExtents)
-	} else {
-		log.LogInfof(" check datanode:%v dp:%v finish\n", dr.nodeAddr, dp)
-	}
-}
-
-func getDiskPath(nodeAddr string, prof uint16, dp uint64) (diskPath string, err error) {
-	var dpDnInfo *proto.DNDataPartitionInfo
-	dpDnInfo, err = getDataPartitionInfo(nodeAddr, prof, dp)
-	if err != nil || dpDnInfo.RaftStatus == nil || dpDnInfo.RaftStatus.Stopped == true {
-		err = fmt.Errorf("RaftStatus is Stopped PartitionId(%v) err(%v)\n", dp, err)
-		return
-	}
-	diskPath = strings.Split(dpDnInfo.Path, "/datapartition")[0]
-	return
-}
-func getDataPartitionInfo(nodeAddr string, prof uint16, dp uint64) (dn *proto.DNDataPartitionInfo, err error) {
-	datanodeAddr := fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], prof)
-	dataClient := http_client.NewDataClient(datanodeAddr, false)
-	dn, err = dataClient.GetPartitionFromNode(dp)
-	return
-}
-func getDataNodeDiskMap(nodeAddr string, prof uint16, limit uint64) (diskMap map[string]chan bool, err error) {
-	datanodeAddr := fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], prof)
-	dataClient := http_client.NewDataClient(datanodeAddr, false)
-
-	diskInfo, err := dataClient.GetDisks()
-	if err != nil {
-		log.LogErrorf("err:%v", err)
-	}
-
-	diskMap = make(map[string]chan bool, len(diskInfo.Disks))
-	for _, d := range diskInfo.Disks {
-		diskMap[d.Path] = make(chan bool, limit)
 	}
 	return
 }
