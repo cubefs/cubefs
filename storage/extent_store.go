@@ -592,8 +592,8 @@ func (s *ExtentStore) GetTinyExtentOffset(extentID uint64) (watermark int64, err
 		return
 	}
 	watermark = int64(einfo.Size)
-	if watermark%PageSize != 0 {
-		watermark = watermark + (PageSize - watermark%PageSize)
+	if watermark%util.PageSize != 0 {
+		watermark = watermark + (util.PageSize - watermark%util.PageSize)
 	}
 
 	return
