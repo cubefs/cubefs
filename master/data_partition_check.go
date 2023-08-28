@@ -334,6 +334,9 @@ func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err e
 			break
 		}
 	}
+	if partition.ReplicaNum >= 2 && len(partition.Hosts) < int(partition.ReplicaNum) {
+		return "", nil
+	}
 	return
 }
 
