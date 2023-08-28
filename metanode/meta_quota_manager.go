@@ -341,3 +341,14 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 func (mqMgr *MetaQuotaManager) EnableQuota() bool {
 	return mqMgr.enable
 }
+
+func (mqMgr *MetaQuotaManager) getUsedInfoForTest(quotaId uint32) (size int64, files int64) {
+	mqMgr.rwlock.Lock()
+	defer mqMgr.rwlock.Unlock()
+	var baseInfo proto.QuotaUsedInfo
+	value, isFind := mqMgr.statisticTemp.Load(quotaId)
+	if isFind {
+		baseInfo = value.(proto.QuotaUsedInfo)
+	}
+	return baseInfo.UsedBytes, baseInfo.UsedFiles
+}
