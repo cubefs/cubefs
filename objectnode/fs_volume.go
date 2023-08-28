@@ -898,7 +898,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 			return
 		}
 	}
-	log.LogWarnf("DeletePath: delete: volume(%v) path(%v) inode(%v)", v.name, path, ino)
+	log.LogInfof("DeletePath: delete: volume(%v) path(%v) inode(%v)", v.name, path, ino)
 
 	// delete dentry with condition when objectlock is open
 	if objetLock != nil {
@@ -919,7 +919,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 	deleteDentryCache(parent, name, v.name)
 	deleteAttrCache(parent, v.name)
 
-	log.LogWarnf("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
+	log.LogInfof("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
 	if err = v.mw.Evict(ino); err != nil {
 		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
 	}
