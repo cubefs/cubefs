@@ -89,12 +89,13 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *Packet, remoteAddr st
 
 func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	var (
-		block *cache_engine.CacheBlock
-		req   *proto.CacheReadRequest
+		block  *cache_engine.CacheBlock
+		req    *proto.CacheReadRequest
+		volume string
 	)
 	defer func() {
 		if err != nil {
-			logContent := fmt.Sprintf("action[opCacheRead] %v.",
+			logContent := fmt.Sprintf("action[opCacheRead] volume:[%v], logMsg:%v.", volume,
 				p.LogMessage(p.GetOpMsg(), remoteAddr, p.StartT, err))
 			log.LogErrorf(logContent)
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -105,8 +106,9 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 	if req, err = UnMarshalPacketToCacheRead(p); err != nil {
 		return
 	}
-	if !f.volLimitAllow(req.CacheRequest.Volume) {
-		err = errors.NewErrorf("volume(%s) request is limited(%d)", req.CacheRequest.Volume, f.volLimitMap[req.CacheRequest.Volume])
+	volume = req.CacheRequest.Volume
+	if !f.volLimitAllow(volume) {
+		err = errors.NewErrorf("volume(%s) request is limited(%d)", volume, f.volLimitMap[volume])
 		if log.IsWarnEnabled() {
 			log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
 		}
@@ -117,7 +119,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 		metric.Set(nil)
 		return
 	}
-	if block, err = f.cacheEngine.GetCacheBlockForRead(req.CacheRequest.Volume, req.CacheRequest.Inode, req.CacheRequest.FixedFileOffset, req.CacheRequest.Version, req.Size_); err != nil {
+	if block, err = f.cacheEngine.GetCacheBlockForRead(volume, req.CacheRequest.Inode, req.CacheRequest.FixedFileOffset, req.CacheRequest.Version, req.Size_); err != nil {
 		if block, err = f.cacheEngine.CreateBlock(req.CacheRequest); err != nil {
 			return err
 		}
@@ -126,7 +128,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 	if err = f.doStreamReadRequest(ctx, conn, req, p, block); err != nil {
 		return
 	}
-	f.recordMonitorAction(req.CacheRequest.Volume, proto.ActionCacheRead, req.Size_)
+	f.recordMonitorAction(volume, proto.ActionCacheRead, req.Size_)
 	return
 }
 
@@ -178,7 +180,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
 			}
-			logContent := fmt.Sprintf("action[doStreamReadRequest] %v.",
+			logContent := fmt.Sprintf("action[doStreamReadRequest] volume:[%v] %v.", req.CacheRequest.Volume,
 				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
 			log.LogErrorf(logContent)
 			return
@@ -188,7 +190,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		if currReadSize == unit.ReadBlockSize {
 			proto.Buffers.Put(reply.Data)
 		}
-		logContent := fmt.Sprintf("action[doStreamReadRequest] %v.",
+		logContent := fmt.Sprintf("action[doStreamReadRequest] volume:[%v] %v.", req.CacheRequest.Volume,
 			reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
 		log.LogReadf(logContent)
 	}
@@ -198,10 +200,10 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 
 func (f *FlashNode) opPrepare(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	var req *proto.CachePrepareRequest
-
+	var volume string
 	defer func() {
 		if err != nil {
-			logContent := fmt.Sprintf("action[opPrepare] %v.", p.LogMessage(p.GetOpMsg(), remoteAddr, p.StartT, err))
+			logContent := fmt.Sprintf("action[opPrepare] volume:[%v] %v.", volume, p.LogMessage(p.GetOpMsg(), remoteAddr, p.StartT, err))
 			log.LogErrorf(logContent)
 		}
 	}()
@@ -213,7 +215,7 @@ func (f *FlashNode) opPrepare(conn net.Conn, p *Packet, remoteAddr string) (err 
 	}
 	p.PacketOkReply()
 	_ = respondToClient(conn, p)
-
+	volume = req.CacheRequest.Volume
 	if err = f.cacheEngine.PrepareCache(reqID, req.CacheRequest); err != nil {
 		return err
 	}
@@ -221,9 +223,9 @@ func (f *FlashNode) opPrepare(conn net.Conn, p *Packet, remoteAddr string) (err 
 		f.dispatchRequestToFollowers(req)
 	}
 	if len(req.CacheRequest.Sources) == 0 {
-		f.recordMonitorAction(req.CacheRequest.Volume, proto.ActionCachePrepare, 0)
+		f.recordMonitorAction(volume, proto.ActionCachePrepare, 0)
 	} else {
-		f.recordMonitorAction(req.CacheRequest.Volume, proto.ActionCachePrepare, req.CacheRequest.Sources[len(req.CacheRequest.Sources)-1].FileOffset&(proto.CACHE_BLOCK_SIZE-1))
+		f.recordMonitorAction(volume, proto.ActionCachePrepare, req.CacheRequest.Sources[len(req.CacheRequest.Sources)-1].FileOffset&(proto.CACHE_BLOCK_SIZE-1))
 	}
 	return
 }

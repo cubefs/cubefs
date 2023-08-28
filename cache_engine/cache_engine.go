@@ -309,7 +309,7 @@ func (c *CacheEngine) SendToPrepareTaskCh(reqID int64, req *proto.CacheRequest) 
 	select {
 	case c.cachePrepareTaskCh <- t:
 	default:
-		log.LogWarnf("action[SendToPrepareTaskCh] chan has been full")
+		log.LogWarnf("action[SendToPrepareTaskCh] cachePrepareTaskCh has been full")
 	}
 }
 
