@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -26,8 +27,8 @@ type Packet struct {
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
-func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
-	p := new(Packet)
+func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet, invalid bool) {
+	p = new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
 	p.ExtentType = proto.NormalExtentType
@@ -35,16 +36,42 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	if storage.IsTinyExtent(ext.ExtentId) {
 		p.ExtentType = proto.TinyExtentType
 	}
-
-	p.Data, _ = json.Marshal(ext)
-	p.Size = uint32(len(p.Data))
-
+	log.LogDebugf("NewPacketToDeleteExtent. ext %v", ext)
 	if ext.IsSplit() {
+		var (
+			newOff  = ext.ExtentOffset
+			newSize = ext.Size
+		)
+		if int(ext.ExtentOffset)%util.PageSize != 0 {
+			log.LogDebugf("NewPacketToDeleteExtent. ext %v", ext)
+			newOff = ext.ExtentOffset + util.PageSize - ext.ExtentOffset%util.PageSize
+			if ext.Size <= uint32(newOff-ext.ExtentOffset) {
+				invalid = true
+				log.LogDebugf("NewPacketToDeleteExtent. ext %v invalid to punch hole newOff %v",
+					ext, newOff)
+				return
+			}
+			newSize = ext.Size - uint32(newOff-ext.ExtentOffset)
+		}
+
+		if newSize%util.PageSize != 0 {
+			newSize = newSize - newSize%util.PageSize
+		}
+
+		if newSize == 0 {
+			invalid = true
+			log.LogDebugf("NewPacketToDeleteExtent. ext %v invalid to punch hole", ext)
+			return
+		}
+		ext.Size = newSize
+		ext.ExtentOffset = newOff
 		log.LogDebugf("ext [%v] delete be set split flag", ext)
 		p.Opcode = proto.OpSplitMarkDelete
 	} else {
 		log.LogDebugf("ext [%v] delete normal ext", ext)
 	}
+	p.Data, _ = json.Marshal(ext)
+	p.Size = uint32(len(p.Data))
 	p.ExtentID = ext.ExtentId
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
@@ -55,7 +82,7 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) *Packet {
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
 
-	return p
+	return
 }
 
 // NewPacketToBatchDeleteExtent returns a new packet to batch delete the extent.

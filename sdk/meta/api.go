@@ -1462,8 +1462,11 @@ func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extent
 
 	resp, err := mw.getExtents(mp, inode)
 	if err != nil {
-		log.LogErrorf("GetExtents: ino(%v) err(%v) status(%v)", inode, err, resp.Status)
-		return 0, 0, nil, statusToErrno(resp.Status)
+		if resp != nil {
+			err = statusToErrno(resp.Status)
+		}
+		log.LogErrorf("GetExtents: ino(%v) err(%v)", inode, err)
+		return 0, 0, nil, err
 	}
 	extents = resp.Extents
 	gen = resp.Generation
@@ -1488,21 +1491,6 @@ func (mw *MetaWrapper) GetObjExtents(inode uint64) (gen uint64, size uint64, ext
 	log.LogDebugf("GetObjExtents: ino(%v) gen(%v) size(%v) extents(%v) objextents(%v)", inode, gen, size, extents, objExtents)
 	return gen, size, extents, objExtents, nil
 }
-
-// func (mw *MetaWrapper) DelExtentKeys(inode uint64, eks []proto.ExtentKey) error {
-// 	mp := mw.getPartitionByInode(inode)
-// 	if mp == nil {
-// 		return syscall.ENOENT
-// 	}
-
-// 	status, err := mw.delExtentKey(mp, inode, eks)
-// 	if err != nil || status != statusOK {
-// 		log.LogErrorf("DelExtentKeys: inode(%v) eks(%v)err(%v) status(%v)", inode, eks, err, status)
-// 		return statusToErrno(status)
-// 	}
-// 	log.LogDebugf("DelExtentKeys: ino(%v) eks(%v)", inode, eks)
-// 	return nil
-// }
 
 func (mw *MetaWrapper) Truncate(inode, size uint64) error {
 	mp := mw.getPartitionByInode(inode)

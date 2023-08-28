@@ -18,6 +18,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"net"
 	"regexp"
 	"strings"
@@ -46,6 +47,12 @@ const (
 	BlockHeaderSize     = 4096
 	SyscallTryMaxTimes  = 3
 	PacketHeaderVerSize = 65
+)
+
+const (
+	PageSize          = 4 * util.KB
+	FallocFLKeepSize  = 1
+	FallocFLPunchHole = 2
 )
 
 const (
