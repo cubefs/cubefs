@@ -11,9 +11,12 @@ import (
 	"net"
 	"os"
 	"path"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/async"
 
 	"github.com/cubefs/cubefs/util/exporter"
 
@@ -186,6 +189,19 @@ func (p *IssueProcessor) worker() {
 			pendingTimer.Reset(time.Second * 10)
 		}
 	}
+}
+
+func (p *IssueProcessor) handleWorkerPanic(i interface{}) {
+	// Worker 发生panic，进行报警
+	var callstack = string(debug.Stack())
+	log.LogCriticalf("IssueProcessor: Partition(%v) fix worker occurred panic and stopped: %v\n"+
+		"Callstack: %v\n", p.partitionID, i, callstack)
+	exporter.Warning(fmt.Sprintf("ISSUE PROCESSOR WORKER PANIC!\n"+
+		"Fix worker occurred panic and stopped:\n"+
+		"Partition: %v\n"+
+		"Message  : %v\n",
+		p.partitionID, i))
+	return
 }
 
 func (p *IssueProcessor) copyIssueFragments() []*IssueFragment {
@@ -730,7 +746,7 @@ func NewIssueProcessor(partitionID uint64, path string, storage *storage.ExtentS
 	}
 
 	if p.getIssueFragmentCount() > 0 {
-		go p.worker()
+		async.RunWorker(p.worker, p.handleWorkerPanic)
 	}
 	return p, nil
 }
