@@ -736,6 +736,9 @@ func (dp *DataPartition) GetPersistedAppliedID() (id uint64) {
 }
 
 func (dp *DataPartition) SetConsistencyMode(mode proto.ConsistencyMode) {
+	if mode == proto.StrictMode && dp.config.ReplicaNum < StrictModeMinReplicaNum {
+		mode = proto.StandardMode
+	}
 	if current := dp.config.Mode; current != mode {
 		dp.config.Mode = mode
 		if dp.raftPartition != nil {
