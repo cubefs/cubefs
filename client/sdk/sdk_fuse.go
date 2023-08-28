@@ -233,8 +233,8 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	gClient.fsConn = fsConn
 
 	// different vols write logs to different ump files, otherwise logs may be lost while rotating
-	umpModuleName := fmt.Sprintf("%v_%v_%v", gClient.super.ClusterName(), gClient.super.VolName(), gClient.moduleName)
-	exporter.Init(gClient.super.ClusterName(), umpModuleName, "", cfg)
+	umpFilePrefix := fmt.Sprintf("%v_%v_%v", gClient.super.ClusterName(), gClient.super.VolName(), gClient.moduleName)
+	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(gClient.super.ClusterName()).WithModule(gClient.moduleName).WithUmpFilePrefix(umpFilePrefix))
 
 	// report client version
 	var masters = strings.Split(opt.Master, meta.HostsSeparator)

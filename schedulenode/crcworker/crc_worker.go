@@ -122,7 +122,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		s.outputDir = defaultOutputDir
 	}
 	// init ump monitor and alarm module
-	exporter.Init(proto.RoleScheduleNode, proto.RoleCrcWorker, "", nil)
+	exporter.Init(exporter.NewOption().WithCluster(proto.RoleScheduleNode).WithModule(proto.RoleCrcWorker))
 
 	if err = s.initWorker(); err != nil {
 		return

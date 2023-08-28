@@ -15,6 +15,7 @@
 package exporter
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -22,7 +23,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter/backend/prom"
 	"github.com/cubefs/cubefs/util/exporter/backend/ump"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/gorilla/mux"
 )
 
 type UMPCollectMethod = ump.CollectMethod
@@ -34,11 +34,8 @@ const (
 )
 
 const (
-	PromHandlerPattern = "/metrics" // prometheus handler
-
-	ConfigKeyExporterEnable = "exporterEnable" //exporter enable
-	ConfigKeyExporterPort   = "exporterPort"   //exporter port
-	ConfigKeyConsulAddr     = "consulAddr"     //consul addr
+	ConfigKeyExporterPort = "exporterPort" //exporter port
+	ConfigKeyConsulAddr   = "consulAddr"   //consul addr
 
 	umpAppName = "jdos_chubaofs-node"
 )
@@ -56,66 +53,96 @@ var (
 	umpEnabled, promEnabled bool
 )
 
+type Option struct {
+	Cluster       string
+	Module        string
+	Zone          string
+	UmpFilePrefix string
+	ExporterPort  int64
+	ConsulAddr    string
+}
+
+func (o *Option) WithCluster(cluster string) *Option {
+	o.Cluster = cluster
+	return o
+}
+
+func (o *Option) WithModule(module string) *Option {
+	o.Module = module
+	return o
+}
+
+func (o *Option) WithZone(zone string) *Option {
+	o.Zone = zone
+	return o
+}
+
+func (o *Option) WithUmpFilePrefix(prefix string) *Option {
+	o.UmpFilePrefix = prefix
+	return o
+}
+
+func (o *Option) WithExporterPort(port int64) *Option {
+	o.ExporterPort = port
+	return o
+}
+
+func (o *Option) WithConsulAddr(addr string) *Option {
+	o.ConsulAddr = addr
+	return o
+}
+
+func (o *Option) String() string {
+	return fmt.Sprintf("cluster = %v, module = %v, zone = %v, umpfileprefix = %v, exporterport = %v, consuladdr = %v",
+		o.Cluster, o.Module, o.Zone, o.UmpFilePrefix, o.ExporterPort, o.ConsulAddr)
+}
+
+func NewOption() *Option {
+	return new(Option)
+}
+
+func NewOptionFromConfig(cfg *config.Config) *Option {
+	var opt = NewOption()
+	if cfg != nil {
+		opt.ExporterPort = cfg.GetInt64(ConfigKeyExporterPort)
+		opt.ConsulAddr = cfg.GetString(ConfigKeyConsulAddr)
+	}
+	return opt
+}
+
 // Init initializes the exporter.
-func Init(cluster, module, zone string, cfg *config.Config) {
+func Init(opt *Option) {
 
-	clusterName = replaceSpace(cluster)
-	moduleName = replaceSpace(module)
-	zoneName = replaceSpace(zone)
+	defer func() {
+		log.LogInfof("exporter inited with option(%v)", opt)
+	}()
 
-	if err := ump.InitUmp(module, umpAppName); err == nil {
+	clusterName = replaceSpace(opt.Cluster)
+	moduleName = replaceSpace(opt.Module)
+	zoneName = replaceSpace(opt.Zone)
+
+	var umpFilePrefix string
+	if umpFilePrefix = replaceSpace(opt.UmpFilePrefix); umpFilePrefix == "" {
+		umpFilePrefix = moduleName
+	}
+	if err := ump.InitUmp(umpFilePrefix, umpAppName); err == nil {
 		umpEnabled = true
 	}
 
-	if cfg == nil {
-		log.LogInfof("skip init prometheus exporter cause no valid extend configure have been specified")
-		return
-	}
-
-	port := cfg.GetInt64(ConfigKeyExporterPort)
-	if port == 0 {
+	if opt.ExporterPort == 0 {
 		log.LogInfof("skip init prometheus exporter cause exporter port is not configured")
 		return
 	}
 
-	prom.InitProm(cluster, module, port)
+	prom.InitProm(clusterName, moduleName, opt.ExporterPort)
 	promEnabled = true
 
-	consulAddress := cfg.GetString(ConfigKeyConsulAddr)
-
-	if len(consulAddress) == 0 {
+	if len(opt.ConsulAddr) == 0 {
 		log.LogInfof("skip consul registration cause configured consul address is illegal.")
 		return
 	}
 
-	prom.RegisterConsul(consulAddress)
-}
-
-// Init initializes the exporter.
-func InitWithRouter(cluster, module string, cfg *config.Config, router *mux.Router, exporterPort int64) {
-	clusterName = cluster
-	moduleName = module
-
-	if err := ump.InitUmp(module, umpAppName); err == nil {
-		umpEnabled = true
-	}
-
-	prom.InitPromWithRouter(cluster, module, exporterPort, router)
-	promEnabled = true
-
-	if cfg == nil {
-		log.LogInfof("skip init prometheus exporter cause no valid extend configure have been specified")
-		return
-	}
-
-	consulAddress := cfg.GetString(ConfigKeyConsulAddr)
-
-	if len(consulAddress) == 0 {
-		log.LogInfof("skip consul registration cause configured consul address is illegal.")
-		return
-	}
-
-	prom.RegisterConsul(consulAddress)
+	prom.RegisterConsul(opt.ConsulAddr)
 }
 
 func SetCluster(cluster string) {

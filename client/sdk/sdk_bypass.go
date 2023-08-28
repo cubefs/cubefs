@@ -551,8 +551,8 @@ func (c *client) start(first_start bool, sdkState *SDKState) (err error) {
 	// metric
 	c.initUmpKeys()
 	// different vols write logs to different ump files, otherwise logs may be lost while rotating
-	umpModuleName := fmt.Sprintf("%v_%v_%v", mw.Cluster(), c.volName, gClientManager.moduleName)
-	exporter.Init(mw.Cluster(), umpModuleName, "", nil)
+	umpFilePrefix := fmt.Sprintf("%v_%v_%v", mw.Cluster(), c.volName, gClientManager.moduleName)
+	exporter.Init(exporter.NewOption().WithCluster(mw.Cluster()).WithModule(gClientManager.moduleName).WithUmpFilePrefix(umpFilePrefix))
 
 	// version
 	startVersionReporter(mw.Cluster(), c.volName, masters)
