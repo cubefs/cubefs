@@ -651,13 +651,13 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		if err = rateLimit.AcquireLimitResource(vol.owner, DELETE_OBJECT); err != nil {
 			return
 		}
-		if err = vol.DeletePath(object.Key); err != nil {
+		if err1 := vol.DeletePath(object.Key); err1 != nil {
 			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
-				GetRequestID(r), vol.Name(), object.Key, err)
-			if err != AccessDenied {
-				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "InternalError", Message: err.Error()})
+				GetRequestID(r), vol.Name(), object.Key, err1)
+			if err1 != AccessDenied {
+				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "InternalError", Message: err1.Error()})
 			} else {
-				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "AccessDenied", Message: err.Error()})
+				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "AccessDenied", Message: err1.Error()})
 			}
 		} else {
 			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)",
