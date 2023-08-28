@@ -104,7 +104,7 @@ func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
 		return
 	}
 
-	if err = fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
+	if err = fallocate(int(s.verifyExtentFp.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize,
 		int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize); err != nil {
 		return
 	}
@@ -115,7 +115,7 @@ func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
 			return
 		}
 		log.LogDebugf("DeleteBlockCrc. dp %v idx %v extentID %v offset %v", s.partitionID, idx, extentID, int64(util.BlockHeaderSize*extentID))
-		if err = fallocate(int(fp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
+		if err = fallocate(int(fp.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize,
 			int64(util.BlockHeaderSize*extentID), util.BlockHeaderSize); err != nil {
 			return
 		}

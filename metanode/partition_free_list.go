@@ -391,8 +391,14 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 			err.Error(), ext.String())
 		return
 	}
-
-	p := NewPacketToDeleteExtent(dp, ext)
+	var (
+		p       *Packet
+		invalid bool
+	)
+	if p, invalid = NewPacketToDeleteExtent(dp, ext); invalid {
+		p.ResultCode = proto.OpOk
+		return
+	}
 	if err = p.WriteToConn(conn); err != nil {
 		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
 			err.Error())
