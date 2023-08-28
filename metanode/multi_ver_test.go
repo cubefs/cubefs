@@ -3,6 +3,7 @@ package metanode
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
@@ -1163,4 +1164,30 @@ func TestInodeVerMarshal(t *testing.T) {
 	assert.True(t, ino2.getLayerLen() == ino1.getLayerLen())
 	assert.True(t, ino2.getLayerVer(0) == sndSeq)
 	assert.True(t, reflect.DeepEqual(ino1, ino2))
+}
+
+func TestSplitKey(t *testing.T) {
+	dp := &DataPartition{
+		PartitionID: 10,
+		Hosts:       []string{"192.168.0.1", "192.168.0.2", "192.168.0.3"},
+	}
+	ext := &proto.ExtentKey{
+		ExtentId:     28,
+		ExtentOffset: 10,
+		Size:         util.PageSize,
+		SnapInfo: &proto.ExtSnapInfo{
+			IsSplit: true,
+		},
+	}
+	_, invalid := NewPacketToDeleteExtent(dp, ext)
+	assert.True(t, invalid == true)
+
+	ext.ExtentOffset = 0
+	_, invalid = NewPacketToDeleteExtent(dp, ext)
+	assert.True(t, invalid == false)
+
+	ext.ExtentOffset = 10
+	ext.Size = 2 * util.PageSize
+	_, invalid = NewPacketToDeleteExtent(dp, ext)
+	assert.True(t, invalid == false)
 }
