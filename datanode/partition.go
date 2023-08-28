@@ -471,8 +471,9 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 	}
 
 	var (
-		umpKeyDiskIOWrite = fmt.Sprintf("diskwrite_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
-		umpKeyDiskIORead  = fmt.Sprintf("diskread_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
+		umpKeyDiskIOWrite  = fmt.Sprintf("diskwrite_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
+		umpKeyDiskIORead   = fmt.Sprintf("diskread_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
+		umpKeyDiskIODelete = fmt.Sprintf("diskdelete_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
 	)
 
 	var ioInterceptor storage.IOInterceptor = func(io storage.IOType, do func()) {
@@ -487,6 +488,8 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 			tp = exporter.NewModuleTPUs(umpKeyDiskIOWrite)
 		case storage.IORead:
 			tp = exporter.NewModuleTPUs(umpKeyDiskIORead)
+		case storage.IODelete:
+			tp = exporter.NewModuleTPUs(umpKeyDiskIODelete)
 		default:
 		}
 		do()

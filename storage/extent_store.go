@@ -118,6 +118,7 @@ type IOType int
 const (
 	IOWrite IOType = iota
 	IORead
+	IODelete
 )
 
 type IOInterceptor func(io IOType, do func())
@@ -480,7 +481,11 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 	}
 	s.cache.Del(extentID)
 	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
-	if err = os.Remove(extentFilePath); err != nil {
+	var doIO = func() {
+		err = os.Remove(extentFilePath)
+	}
+	s.ioInterceptor.intercept(IODelete, doIO)
+	if err != nil {
 		return
 	}
 	s.PersistenceHasDeleteExtent(extentID)
