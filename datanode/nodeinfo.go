@@ -56,6 +56,8 @@ var (
 		proto.OpStreamFollowerRead: true,
 		proto.OpWrite:              true,
 		proto.OpRandomWrite:        true,
+		proto.OpBatchDeleteExtent:  true,
+		proto.OpMarkDelete:         true,
 	}
 	// all partitions of a given volume
 	volumePartMap = make(map[string]map[uint64]bool)

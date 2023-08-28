@@ -332,7 +332,6 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
-	DeleteLimiterWait()
 	remote := c.RemoteAddr().String()
 	partition := p.Object.(*DataPartition)
 	if p.ExtentType == proto.TinyExtentType {
