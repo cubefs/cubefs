@@ -3673,6 +3673,8 @@ func (c *Cluster) checkDecommissionDataNode() {
 			//if only decommission part of data partitions, do not remove the datanode
 			if len(partitions) != 0 {
 				if time.Now().Sub(time.Unix(dataNode.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
+					log.LogWarnf("action[checkDecommissionDataNode] dataNode %v decommission completed, "+
+						"but has dp left, so only reset decommission status", dataNode.Addr)
 					dataNode.resetDecommissionStatus()
 				}
 				return true
@@ -3776,10 +3778,15 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		if disk == "" {
 			log.LogWarnf("action[TryDecommissionDataNode] ignore dp [%v] on dataNode[%v]with empty disk",
 				dp.PartitionID, dataNode.Addr)
+			if dp.IsDecommissionSuccess() {
+				dp.ResetDecommissionStatus()
+				c.syncUpdateDataPartition(dp)
+			}
 			continue
 		}
 		dpToDecommissionByDisk[disk]++
 	}
+	decommissionDpTotal := 0
 	left := len(toBeOffLinePartitions)
 	decommissionDiskList := make([]string, 0)
 	for disk, dpCnt := range dpToDecommissionByDisk {
@@ -3793,7 +3800,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 				log.LogWarnf("action[TryDecommissionDataNode] %v failed", err)
 				continue
 			}
-			dataNode.DecommissionDpTotal += dpCnt
+			decommissionDpTotal += dpCnt
 			left = left - dpCnt
 		} else {
 			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, left, false, ManualDecommission)
@@ -3801,7 +3808,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 				log.LogWarnf("action[TryDecommissionDataNode] %v failed", err)
 				continue
 			}
-			dataNode.DecommissionDpTotal += left
+			decommissionDpTotal += left
 			left = 0
 		}
 		decommissionDiskList = append(decommissionDiskList, disk)
@@ -3819,6 +3826,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	//avoid alloc dp on this node
 	dataNode.ToBeOffline = true
 	dataNode.DecommissionDiskList = decommissionDiskList
+	dataNode.DecommissionDpTotal = decommissionDpTotal
 	log.LogInfof("action[TryDecommissionDataNode] try decommission disk[%v] from dataNode[%s] "+
 		"raftForce [%v] to dst [%v] DecommissionDpTotal[%v]",
 		decommissionDiskList, dataNode.Addr, dataNode.DecommissionRaftForce,
@@ -4012,6 +4020,15 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		return
 	}
 	for _, dp := range badPartitions {
+		//dp with decommission success cannot be reset during master load metadata
+		if dp.IsDecommissionSuccess() && dp.DecommissionTerm == disk.DecommissionTerm {
+			log.LogInfof("action[TryDecommissionDisk] reset dp [%v] decommission status for disk %v:%v",
+				dp.PartitionID, disk.SrcAddr, disk.DiskPath)
+			dp.ResetDecommissionStatus()
+			c.syncUpdateDataPartition(dp)
+			disk.DecommissionDpTotal -= 1
+			continue
+		}
 		if !dp.MarkDecommissionStatus(node.Addr, disk.DstAddr, disk.DiskPath, disk.DecommissionRaftForce, disk.DecommissionTerm, c) {
 			continue
 		}
