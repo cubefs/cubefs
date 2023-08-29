@@ -118,6 +118,7 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 
 		// filter expired disk
 		if disk.isExpire() {
+			span.Warnf("diskId:%d,in node:%s path:%s is expired", disk.diskID, disk.info.Host, disk.info.Path)
 			disk.lock.RUnlock()
 			diskStatInfosM[idc].Expired += 1
 			continue
