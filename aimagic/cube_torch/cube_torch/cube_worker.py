@@ -7,6 +7,7 @@ import asyncio
 import builtins
 import json
 import logging
+import os
 import queue
 import random
 import time
@@ -155,23 +156,20 @@ def _copy_worker_loop_for_localdisk(dataset_id, wait_read_train_file_queue, even
             continue
 
 
-def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr, event):
+def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr, worker_num, event):
     cube_prefetch_addr = prefetch_addr
     storage_seesion = requests.Session()
-    index_list = []
     while not event.is_set():
         try:
             copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
-            index_list.append(copy_file_indexs)
-            if len(index_list) >= 1:
-                _post_to_storage_async(index_list, cube_prefetch_addr, storage_seesion)
-                index_list = []
+            _post_to_storage([copy_file_indexs],cube_prefetch_addr, storage_seesion)
         except queue.Empty:
             continue
         except KeyboardInterrupt:
             return
         except Exception as e:
             continue
+
 
 
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
