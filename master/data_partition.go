@@ -1016,7 +1016,7 @@ const (
 )
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64, c *Cluster) bool {
-	if !partition.canMarkDecommission() {
+	if !partition.canMarkDecommission(term) {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:status[%v]",
 			partition.PartitionID, partition.GetDecommissionStatus())
 		return false
@@ -1219,7 +1219,7 @@ errHandler:
 	if partition.DecommissionNeedRollback {
 		partition.SetDecommissionStatus(DecommissionFail)
 	}
-	msg = fmt.Sprintf("clusterID[%v] vol[%v] partitionID:%v  on Node:%v  "+
+	msg = fmt.Sprintf("clusterID[%v] vol[%v] partitionID[%v]  on Node:%v  "+
 		"to newHost:%v Err:%v, PersistenceHosts:%v ,retry %v,status %v, isRecover %v SingleDecommissionStatus[%v]"+
 		" DecommissionNeedRollback[%v]",
 		c.Name, partition.VolName, partition.PartitionID, srcAddr, targetAddr, err.Error(),
@@ -1356,7 +1356,11 @@ func (partition *DataPartition) checkConsumeToken() bool {
 }
 
 // only mark stop status or initial
-func (partition *DataPartition) canMarkDecommission() bool {
+func (partition *DataPartition) canMarkDecommission(term uint64) bool {
+	//dp may not be reset decommission status from last decommission
+	if partition.DecommissionTerm != term {
+		return true
+	}
 	status := partition.GetDecommissionStatus()
 	if status == DecommissionInitial ||
 		status == DecommissionPause ||
@@ -1546,7 +1550,7 @@ errHandler:
 	if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
 		partition.SetDecommissionStatus(DecommissionFail)
 	}
-	log.LogDebugf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
+	log.LogWarnf("action[TryAcquireDecommissionToken] clusterID[%v] vol[%v] partitionID[%v]"+
 		" retry [%v] status [%v] DecommissionDstAddrSpecify [%v] DecommissionDstAddr [%v] failed",
 		c.Name, partition.VolName, partition.PartitionID, partition.DecommissionRetry, partition.GetDecommissionStatus(),
 		partition.DecommissionDstAddrSpecify, partition.DecommissionDstAddr)
