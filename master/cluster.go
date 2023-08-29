@@ -1558,6 +1558,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 	dp.offlineMutex.Lock()
 	dp.isOffline = true
 	dp.lastOfflineTime = time.Now().Unix()
+	needPostProcess := false
 	defer func() {
 		dp.lastOfflineTime = time.Now().Unix()
 		dp.isOffline = false
@@ -1567,10 +1568,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 		goto errHandler
 	}
 	if vol.dpReplicaNum == 2 {
-		if err = c.decommissionTwoReplicaDataPartition(offlineAddr, dp, chooseDataHostFunc, destZoneName, destAddr, strictMode); err != nil {
-			goto errHandler
-		}
-		return
+		return c.decommissionTwoReplicaDataPartition(offlineAddr, dp, chooseDataHostFunc, destZoneName, destAddr, strictMode)
 	}
 	excludeNodeSets = make([]uint64, 0)
 	if destAddr != "" {
@@ -1594,6 +1592,7 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 			goto errHandler
 		}
 	}
+	needPostProcess = true
 	dpReplica, _ = dp.getReplica(oldAddr)
 	if isLearner, pmConfig, err = c.removeDataReplica(dp, oldAddr, false, strictMode); err != nil {
 		goto errHandler
@@ -1607,27 +1606,16 @@ func (c *Cluster) decommissionDataPartition(offlineAddr string, dp *DataPartitio
 			goto errHandler
 		}
 	}
-	dp.Lock()
-	dp.Status = proto.ReadOnly
-	dp.isRecover = true
-	dp.modifyTime = time.Now().Unix()
-	c.syncUpdateDataPartition(dp)
-	dp.Unlock()
-	if strictMode {
-		c.putMigratedDataPartitionIDs(dpReplica, oldAddr, dp.PartitionID)
-	} else {
-		c.putBadDataPartitionIDs(dpReplica, oldAddr, dp.PartitionID)
-	}
-	// update latest version of replica member info to all partition replica member
-	go c.syncDataPartitionReplicasToDataNode(dp)
-	return
 errHandler:
-	msg = errMsg + fmt.Sprintf("clusterID[%v] partitionID:%v  on Node:%v  "+
-		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
-		c.Name, dp.PartitionID, oldAddr, addAddr, err, dp.Hosts)
+	if needPostProcess {
+		c.postProcessDecommissionDataPartition(dp, dpReplica, oldAddr)
+	}
 	if err != nil {
+		msg = errMsg + fmt.Sprintf("decommission data partition failed,clusterID[%v] partitionID:%v  offlineAddr:%v  "+
+			"newAddr:%v  PersistenceHosts:%v  Err:%v  ",
+			c.Name, dp.PartitionID, oldAddr, addAddr, dp.Hosts, err)
 		Warn(c.Name, msg)
-		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
+		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", dp.VolName, dp.PartitionID, err.Error())
 	}
 	return
 }
@@ -1640,36 +1628,38 @@ func (c *Cluster) decommissionTwoReplicaDataPartition(offlineAddr string, dp *Da
 		remainAddr      string
 		addAddr         string
 		oldReplica      *DataReplica
+		msg             string
 		excludeNodeSets []uint64
+		newPeer         []proto.Peer
 	)
 	excludeNodeSets = make([]uint64, 0)
+	needPostProcess := false
 	if destAddr != "" {
 		if err = c.validateDecommissionDataPartition(dp, offlineAddr, true); err != nil {
-			return
+			goto errHandler
 		}
 		if _, err = c.dataNode(offlineAddr); err != nil {
-			return
+			goto errHandler
 		}
 		if contains(dp.Hosts, destAddr) {
 			err = fmt.Errorf("destinationAddr[%v] must be a new data node addr,oldHosts[%v]", destAddr, dp.Hosts)
-			return
+			goto errHandler
 		}
 		if _, err = c.dataNode(destAddr); err != nil {
-			return
+			goto errHandler
 		}
 		oldAddr = offlineAddr
 		addAddr = destAddr
 	} else {
 		if oldAddr, addAddr, err = chooseDataHostFunc(c, offlineAddr, dp, excludeNodeSets, destZoneName, true); err != nil {
-			return
+			goto errHandler
 		}
 	}
 	oldReplica, _ = dp.getReplica(oldAddr)
 	if oldNode, err = c.dataNode(offlineAddr); err != nil {
-		return
+		goto errHandler
 	}
 
-	var newPeer []proto.Peer
 	for _, peer := range dp.Peers {
 		if peer.Addr == oldAddr {
 			continue
@@ -1678,47 +1668,60 @@ func (c *Cluster) decommissionTwoReplicaDataPartition(offlineAddr string, dp *Da
 		remainAddr = peer.Addr
 	}
 	if len(newPeer) != 1 {
-		return fmt.Errorf("try to reset peer failed[new peer num is expected to be 1 but got %v]", len(newPeer))
+		err = fmt.Errorf("try to reset peer failed[new peer num is expected to be 1 but got %v]", len(newPeer))
+		goto errHandler
 	}
 	if remainNode, err = c.dataNode(remainAddr); err != nil {
-		return
+		goto errHandler
 	}
+	needPostProcess = true
 	for _, peer := range dp.Peers {
 		if peer.Addr == oldAddr {
 			continue
 		}
 		if err = c.resetDataPartitionRaftMember(dp, newPeer, peer.Addr); err != nil {
-			return
+			goto errHandler
 		}
 	}
 	if err = dp.tryToChangeLeader(c, remainNode); err != nil {
-		return
+		goto errHandler
 	}
 	time.Sleep(time.Second * 2)
-	_ = c.removeDataPartitionRaftOnly(dp, proto.Peer{ID: oldNode.ID, Addr: oldNode.Addr})
+	if err = c.removeDataPartitionRaftOnly(dp, proto.Peer{ID: oldNode.ID, Addr: oldNode.Addr}); err != nil {
+		goto errHandler
+	}
 	if oldNode.isActive {
 		if err = c.deleteDataReplica(dp, oldNode, false); err != nil {
-			return
+			goto errHandler
 		}
 	}
 
 	if err = c.addDataReplica(dp, addAddr, false); err != nil {
-		return
+		goto errHandler
 	}
+errHandler:
+	if needPostProcess {
+		c.postProcessDecommissionDataPartition(dp, oldReplica, oldAddr)
+	}
+	if err != nil {
+		msg = fmt.Sprintf("decommission data partition failed,clusterID[%v] partitionID:%v  offlineAddr:%v  "+
+			"newAddr:%v  PersistenceHosts:%v  Err:%v  ",
+			c.Name, dp.PartitionID, oldAddr, addAddr, dp.Hosts, err)
+		Warn(c.Name, msg)
+		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", dp.VolName, dp.PartitionID, err.Error())
+	}
+	return
+}
 
+func (c *Cluster) postProcessDecommissionDataPartition(dp *DataPartition, oldReplica *DataReplica, oldAddr string) {
 	dp.Lock()
 	dp.Status = proto.ReadOnly
 	dp.isRecover = true
 	dp.modifyTime = time.Now().Unix()
 	c.syncUpdateDataPartition(dp)
 	dp.Unlock()
-	if strictMode {
-		c.putMigratedDataPartitionIDs(oldReplica, oldAddr, dp.PartitionID)
-	} else {
-		c.putBadDataPartitionIDs(oldReplica, oldAddr, dp.PartitionID)
-	}
+	c.putBadDataPartitionIDs(oldReplica, oldAddr, dp.PartitionID)
 	go c.syncDataPartitionReplicasToDataNode(dp)
-	return
 }
 
 func (partition *DataPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
