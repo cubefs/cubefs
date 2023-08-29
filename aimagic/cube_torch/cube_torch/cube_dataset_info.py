@@ -109,7 +109,6 @@ class CubeDataSetInfo:
             self.train_file_name_list = file_name_lists
         else:
             self.train_file_name_list = [file_name_lists]
-        print("train filename list is {}".format(self.train_file_name_list))
 
     def get_cube_prefetch_thread_cnt(self):
         return 1
