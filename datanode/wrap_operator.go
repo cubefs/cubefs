@@ -592,6 +592,8 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		dataBuffer = make([]byte, needReplySize)
 	}
 
+	var isStrictModeEnabled = partition.GetConsistencyMode() == proto.StrictMode
+
 	for {
 		if needReplySize <= 0 {
 			break
@@ -614,8 +616,10 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 					tp.Set(storeErr)
 				}()
 			}
-			if storeErr = partition.checkAndWaitForPendingActionApplied(reply.ExtentID, offset, int64(currReadSize)); storeErr != nil {
-				return storeErr
+			if isStrictModeEnabled {
+				if storeErr = partition.checkAndWaitForPendingActionApplied(reply.ExtentID, offset, int64(currReadSize)); storeErr != nil {
+					return storeErr
+				}
 			}
 			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead)
 			return storeErr

@@ -124,6 +124,7 @@ const (
 	DiskForceEvictFDRatio              = 0.25
 	CacheCapacityPerPartition          = 256
 	DiskLoadPartitionParallelism       = 10
+	StrictModeMinReplicaNum            = 3 // 允许启用Strict模式的最少副本数量。
 )
 
 // data partition validate crc
