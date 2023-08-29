@@ -36,7 +36,6 @@ func TestInodeOnce(t *testing.T) {
 
 func TestAllocateUniqId(t *testing.T) {
 	mp := metaPartition{config: &MetaPartitionConfig{UniqId: 0}}
-
 	s, e := mp.allocateUniqID(1)
 	if s != 1 || e != 1 {
 		t.Errorf("allocateUniqID failed: %v, %v", s, e)
@@ -53,7 +52,6 @@ func TestDoEvit(t *testing.T) {
 	defer mockCtrl.Finish()
 	mp := mockPartitionRaft(mockCtrl)
 	checker := mp.uniqChecker
-
 	mp.uniqCheckerEvict()
 	if checker.inQue.len() != 0 || len(checker.op) != 0 {
 		t.Errorf("failed, inQue %v, op %v", checker.inQue.len(), len(checker.op))
@@ -151,6 +149,10 @@ func mockPartitionRaft(ctrl *gomock.Controller) *metaPartition {
 	raft.EXPECT().Submit(gomock.Any()).DoAndReturn(func(cmd []byte) (resp interface{}, err error) {
 		idx++
 		return partition.Apply(cmd, idx)
+	}).AnyTimes()
+
+	raft.EXPECT().LeaderTerm().DoAndReturn(func() (uint64, uint64) {
+		return 1, 1
 	}).AnyTimes()
 
 	partition.raftPartition = raft
