@@ -77,7 +77,7 @@ func run() error {
 	}
 	defer log.LogFlush()
 
-	exporter.Init("check_crc_cluster", "check_crc", "", cfg)
+	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster("check_crc_cluster").WithModule("check_ctc"))
 
 	var profNetListener net.Listener = nil
 	if profPort != "" {

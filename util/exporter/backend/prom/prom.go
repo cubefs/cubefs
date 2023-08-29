@@ -24,8 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -91,28 +89,6 @@ func InitProm(cluster, role string, port int64) {
 		<-stopC
 		server.Shutdown(context.Background())
 	}()
-
-	collect()
-	log.LogInfof("prometheus exporter [cluster: %v, role: %v, exporterPort: %v] inited.", clustername, modulename, exporterPort)
-}
-
-// Init initializes the exporter.
-func InitPromWithRouter(cluster, role string, port int64, router *mux.Router) {
-
-	if cluster == "" || role == "" || router == nil {
-		return
-	}
-
-	clustername = cluster
-	modulename = role
-	exporterPort = port
-
-	router.NewRoute().Name("metrics").
-		Methods(http.MethodGet).
-		Path(defaultHandlerPattern).
-		Handler(promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
-			Timeout: 5 * time.Second,
-		}))
 
 	collect()
 	log.LogInfof("prometheus exporter [cluster: %v, role: %v, exporterPort: %v] inited.", clustername, modulename, exporterPort)

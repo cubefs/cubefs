@@ -109,7 +109,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	go f.startUpdateScheduler()
 
-	exporter.Init(f.clusterId, moduleName, f.zoneName, cfg)
+	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(f.clusterId).WithModule(moduleName).WithZone(f.zoneName))
 	if err = f.startTcpServer(); err != nil {
 		return
 	}
