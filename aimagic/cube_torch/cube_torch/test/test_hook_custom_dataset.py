@@ -10,9 +10,7 @@ os.environ["CubeFS_ROOT_DIR"] = "/home/guowl/testdata"
 os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '1222321321'
 os.environ['localIP'] = "127.0.0.1"
 
-os.environ['CubeFS_CACHE_DIR'] = '/dev/shm/test'
-# os.environ['Cube_USE_DISK'] = 'true'
-os.environ['CubeFS_CACHE_SIZE'] = '127374010'
+
 
 
 class CustomDataSet(Dataset):
@@ -23,7 +21,7 @@ class CustomDataSet(Dataset):
         self.imglist = self.read_file(imglist)
         self.titlelist = self.read_file(titlelist)
 
-    def filename_list(self):
+    def train_data_list(self):
         return [self.imglist, self.titlelist]
 
     def read_file(self, filename):
@@ -71,6 +69,7 @@ def start_worker_test_Dataset(i):
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
+            time.sleep(1)
         epoch += 1
 
 

@@ -74,6 +74,8 @@ class CubeDataSetInfo:
             return samples_path
         if hasattr(dataset, 'train_data_list'):
             return dataset.train_data_list()
+        raise ValueError("Invalid dataset{} because the custom dataset does not implement "
+                         "the train_data_list method or it is not a pytorch dataset supported by CubeTorch.".format(dataset))
 
 
     def _concatDataSet_get_samples(self, dataset):
@@ -107,8 +109,7 @@ class CubeDataSetInfo:
             self.train_file_name_list = file_name_lists
         else:
             self.train_file_name_list = [file_name_lists]
-        if len(self.train_file_name_list) == 0:
-            raise ValueError("dataset:{} cannot get filename_list func or samples attr")
+        print("train filename list is {}".format(self.train_file_name_list))
 
     def get_cube_prefetch_thread_cnt(self):
         return 1
