@@ -89,6 +89,28 @@ def _post_to_storage(index_list, notify_storage_addr, storage_seesion):
         return
 
 
+def _register_pid_to_storage(pids, register_storage_pid_addr):
+    try:
+        if register_storage_pid_addr == "":
+            return
+        data = json.dumps(pids)
+        requests.post(register_storage_pid_addr, data, timeout=1)
+    except Exception as e:
+        print('url{} _post_to_storage error{} pids{} '.format(register_storage_pid_addr, e, pids))
+        return
+
+
+def _unregister_pid_to_storage(pids, unregister_storage_addr):
+    try:
+        if unregister_storage_addr == "":
+            return
+        data = json.dumps(pids)
+        requests.post(unregister_storage_addr, data, timeout=1)
+    except Exception as e:
+        print('url{} _post_to_storage error{} pids{} '.format(unregister_storage_addr, e, pids))
+        return
+
+
 def get_cube_dataset_info_on_worker(dataset_id):
     from cube_torch import get_manager
     manager = get_manager()

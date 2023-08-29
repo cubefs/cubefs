@@ -60,23 +60,23 @@ class CubeDataSetInfo:
             raise ValueError("{} set is not a number exception{} ".format(CubeFS_QUEUE_SIZE_ON_WORKER, e))
 
     def get_dataset_samples(self, dataset):
-        if isinstance(dataset,datasets.DatasetFolder):
+        if isinstance(dataset, datasets.DatasetFolder):
             samples = dataset.samples
             return [s[0] for s in samples]
-        if isinstance(dataset,datasets.VOCDetection):
+        if isinstance(dataset, datasets.VOCDetection):
             return dataset.images
-        if isinstance(dataset,datasets.CocoDetection):
-            samples_len=dataset.__len__()
-            samples_path=[]
-            for i in range (samples_len):
-                path=dataset.coco.loadImgs(i)[0]["file_name"]
+        if isinstance(dataset, datasets.CocoDetection):
+            samples_len = dataset.__len__()
+            samples_path = []
+            for i in range(samples_len):
+                path = dataset.coco.loadImgs(i)[0]["file_name"]
                 samples_path.append(os.path.join(dataset.root, path))
             return samples_path
         if hasattr(dataset, 'train_data_list'):
             return dataset.train_data_list()
         raise ValueError("Invalid dataset{} because the custom dataset does not implement "
-                         "the train_data_list method or it is not a pytorch dataset supported by CubeTorch.".format(dataset))
-
+                         "the train_data_list method or it is not a pytorch dataset supported by CubeTorch.".format(
+            dataset))
 
     def _concatDataSet_get_samples(self, dataset):
         file_name_lists = []
@@ -115,3 +115,9 @@ class CubeDataSetInfo:
 
     def get_cube_queue_size_on_worker(self):
         return self.cubefs_queue_size_on_worker
+
+    def get_register_pid_addr(self):
+        return ""
+
+    def get_unregister_pid_addr(self):
+        return ""

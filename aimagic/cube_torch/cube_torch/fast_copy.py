@@ -1,5 +1,6 @@
-import os.path
 import os
+import os.path
+
 
 def copyfileobj(fsrc, fdst, length=128 * 1024):
     while 1:
@@ -26,6 +27,3 @@ def do_copy(message):
         return
     except Exception as e:
         pass
-
-
-

@@ -1,15 +1,14 @@
 import os
-
+import cube_torch
 import torch
 import torch.multiprocessing as mp
-import torchtext
 from torch.utils.data import ConcatDataset
 from torchvision import datasets, transforms
-import cube_torch
 
 os.environ["CubeFS_ROOT_DIR"] = "/home/guowl/testdata"
 os.environ['localIP'] = "127.0.0.1"
-os.environ['CubeFS_QUEUE_SIZE_ON_WORKER']='10'
+os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '10'
+
 
 def start_worker_test_concatDataset(i):
     traindir = "/home/guowl/testdata"

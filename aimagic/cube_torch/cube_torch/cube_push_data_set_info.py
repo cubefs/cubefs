@@ -18,6 +18,8 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         super().__init__(cube_loader)
         self.prefetch_file_url = ""
         self.prefetch_read_url = ""
+        self.register_pid_addr = ""
+        self.prof_port = ""
 
         self.local_ip = os.environ.get(LOCAL_IP)
         self.cube_prefetch_ttl = 30
@@ -40,10 +42,18 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         t.daemon = True
         t.start()
         dataset_id = id(cube_loader.dataset)
+        self.register_pid_addr = "http://127.0.0.1:{}/register/pid".format(self.prof_port)
+        self.unregister_pid_addr = "http://127.0.0.1:{}/unregister/pid".format(self.prof_port)
         get_manager().__dict__[dataset_id] = self
 
     def get_cube_prefetch_addr(self):
         return self.prefetch_read_url
+
+    def get_register_pid_addr(self):
+        return self.register_pid_addr
+
+    def get_unregister_pid_addr(self):
+        return self.unregister_pid_addr
 
     def check_evn(self):
         if self.cubefs_root_dir is None:
@@ -65,11 +75,11 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                 cube_info = json.load(f)
                 if 'prof' not in cube_info:
                     raise ValueError(".cube_info {} cannot find prof info".format(cube_info_file))
-                port = cube_info['prof']
-                if type(port) is not int:
+                self.prof_port = cube_info['prof']
+                if type(self.prof_port) is not int:
                     raise ValueError(".cube_info {} not set prof prof info".format(cube_info_file))
-                self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(port)
-                self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read".format(port)
+                self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
+                self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read".format(self.prof_port)
         except Exception as e:
             raise e
 

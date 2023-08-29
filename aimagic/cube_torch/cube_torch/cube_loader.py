@@ -36,7 +36,8 @@ from torch.utils.data.sampler import (
 )
 
 from cube_torch import get_manager, CubeDiskDataSetInfo, CubePushDataSetInfo
-from cube_torch.cube_worker import _worker_loop, _copy_worker_loop_for_post_client, _copy_worker_loop_for_localdisk
+from cube_torch.cube_worker import _worker_loop, _copy_worker_loop_for_post_client, _copy_worker_loop_for_localdisk, \
+    _register_pid_to_storage, _unregister_pid_to_storage
 
 Cube_USE_DISK = 'Cube_USE_DISK'
 
@@ -452,6 +453,8 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._workers_done_event = multiprocessing_context.Event()
         self.cube_dataset_info = loader.cube_dataset_info
         self._index_queues = []
+        self._register_pid_addr = loader.cube_dataset_info.get_register_pid_addr()
+        self._unregister_pid_addr = loader.cube_dataset_info.get_unregister_pid_addr()
         self._workers = []
         self._is_use_disk = loader.is_use_disk
         self.wait_read_train_file_queue = loader.wait_read_train_file_queue
@@ -485,6 +488,9 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             w.start()
             self._index_queues.append(index_queue)
             self._workers.append(w)
+
+        if not self._is_use_disk:
+            self.regiester_worker_pid()
 
         if self._pin_memory:
             self._pin_memory_thread_done_event = threading.Event()
@@ -521,6 +527,18 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         _utils.signal_handling._set_SIGCHLD_handler()
         self._worker_pids_set = True
         self._reset(loader, first_iter=True)
+
+    def regiester_worker_pid(self):
+        pids = []
+        for w in self._workers:
+            pids.append(w.pid)
+        _register_pid_to_storage(pids, self._register_pid_addr)
+
+    def unregiester_worker_pid(self):
+        pids = []
+        for w in self._workers:
+            pids.append(w.pid)
+        _unregister_pid_to_storage(pids, self._unregister_pid_addr)
 
     def _loop_preload_threads(self, event):
         while not event.set():
@@ -847,6 +865,10 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             return
         # Normal exit when last reference is gone / iterator is depleted.
         # See (1) and the second half of the note.
+
+        if not self._is_use_disk:
+            self.unregiester_worker_pid()
+
         if not self._shutdown:
             self._shutdown = True
             try:
