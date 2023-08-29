@@ -1,0 +1,10 @@
+{
+    "role": "aimagic",
+    "prof": "7092",
+    "logLevel": "debug",
+    "logDir": "/export/App/training_platform/aimagic/logs",
+    "access_key": "GiqsCHBtpYRAgUrH",
+    "secert_key": "5h6izFuOAk4uYof5jB0WdjJ1Yt7h2d8Z",
+    "endpoint": "http://sparkobject-yfrh1.chubaofs.svc.rh01.n.jd.local",
+    "max_cache_size": 214748364800
+}

@@ -1,0 +1,1 @@
+nohup python3 imagenet_main.py -a efficientnet_b7 --dist-url 'tcp://127.0.0.1:12345' --dist-backend 'nccl' --multiprocessing-distributed --world-size 1 --rank 0 /mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/AD_MM_data/100million/baibing --epoch 50000 -b 1024  > chubao_imagenet_7200w.log &
