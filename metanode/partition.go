@@ -783,12 +783,17 @@ func (mp *metaPartition) IsFollowerRead() (ok bool) {
 	if mp.raftPartition == nil {
 		return false
 	}
-	if mp.raftPartition.Status() == nil ||
-		mp.raftPartition.Status().RestoringSnapshot == true ||
-		mp.raftPartition.Status().Applied == 0 {
+
+	if !mp.isFollowerRead {
 		return false
 	}
-	return mp.isFollowerRead
+
+	status := mp.raftPartition.Status()
+	if status == nil || status.RestoringSnapshot || status.Applied == 0 {
+		return false
+	}
+
+	return true
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
