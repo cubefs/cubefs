@@ -2131,9 +2131,6 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 			id, value.PartitionID, value.GetDecommissionStatus())
 		return
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
 	//prepare status reset to mark status to retry again
 	if value.GetDecommissionStatus() == DecommissionPrepare {
 		value.SetDecommissionStatus(markDecommission)
@@ -2142,13 +2139,15 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 	if _, ok := l.cacheMap[value.PartitionID]; ok {
 		return
 	}
+	l.mu.Lock()
 	elm := l.decommissionList.PushBack(value)
 	l.cacheMap[value.PartitionID] = elm
+	l.mu.Unlock()
 	//restore from rocksdb
 	if value.checkConsumeToken() {
 		value.TryAcquireDecommissionToken(c)
 	}
-	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v]",
+	log.LogInfof("action[DecommissionDataPartitionListPut] ns[%v] add dp[%v] status[%v] isRecover[%v]",
 		id, value.PartitionID, value.GetDecommissionStatus(), value.isRecover)
 }
 
@@ -2183,16 +2182,20 @@ func (l *DecommissionDataPartitionList) updateMaxParallel(maxParallel int32) {
 
 func (l *DecommissionDataPartitionList) acquireDecommissionToken(id uint64) bool {
 	if atomic.LoadInt32(&l.parallelLimit) == 0 {
-		atomic.AddInt32(&l.curParallel, 1)
+		l.mu.Lock()
+		l.runningMap[id] = struct{}{}
+		atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
+		l.mu.Unlock()
 		return true
 	}
 	if atomic.LoadInt32(&l.curParallel) >= atomic.LoadInt32(&l.parallelLimit) {
 		return false
 	}
-	atomic.AddInt32(&l.curParallel, 1)
+
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	l.runningMap[id] = struct{}{}
+	atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
+	l.mu.Unlock()
 	return true
 }
 
@@ -2203,9 +2206,7 @@ func (l *DecommissionDataPartitionList) releaseDecommissionToken(id uint64) {
 		return
 	}
 	delete(l.runningMap, id)
-	if atomic.LoadInt32(&l.curParallel) > 0 {
-		atomic.AddInt32(&l.curParallel, -1)
-	}
+	atomic.StoreInt32(&l.curParallel, int32(len(l.runningMap)))
 }
 
 func (l *DecommissionDataPartitionList) GetAllDecommissionDataPartitions() (collection []*DataPartition) {

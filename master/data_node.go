@@ -339,6 +339,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 			progress += diskProgress
 		} else {
 			successDiskNum++ //disk with DecommissionSuccess will be removed from cache
+			progress += float64(1)
 		}
 
 	}
@@ -387,6 +388,13 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		return DecommissionFail, progress
 	}
 	dataNode.SetDecommissionStatus(DecommissionRunning)
+	if debug {
+		log.LogInfof("action[updateDecommissionStatus] dataNode[%v] progress[%v] totalNum[%v] "+
+			"partitionIds %v  FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
+			"stopNum[%v] stopPartitionIds %v ",
+			dataNode.Addr, progress, len(partitions), partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
+			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
+	}
 	return DecommissionRunning, progress
 }
 
