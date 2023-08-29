@@ -270,6 +270,29 @@ func (a *volumeAllocator) VolumeStatusLockCallback(ctx context.Context, vol *vol
 	return nil
 }
 
+// volume status change event callback,
+// sealed change should delete from allocator's idle head or delete from allocated head
+// no need care volume previous status is idle or active
+func (a *volumeAllocator) VolumeStatusSealedCallback(ctx context.Context, vol *volume) error {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("vid: %d set status sealed callback, status is %d", vol.vid, vol.volInfoBase.Status)
+
+	// delete from idle
+	a.idles[vol.volInfoBase.CodeMode].delete(vol.vid)
+
+	// delete from active
+	if vol.token != nil {
+		host, _, err := proto.DecodeToken(vol.token.tokenID)
+		if err != nil {
+			span.Errorf("decode token error,%s", vol.token.String())
+			return err
+		}
+		a.removeAllocatedVolumes(vol.vid, host)
+	}
+
+	return nil
+}
+
 // Insert a volume into volume allocator's idles head
 // please ensure that this volume must be idle status
 func (a *volumeAllocator) Insert(v *volume, mode codemode.CodeMode) {

@@ -168,6 +168,8 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr diskmgr.DiskMgrAPI, scopeMgr sco
 	defaultVolumeNotifyQueue.Add(volStatusNottifyKeyPrefix+proto.VolumeStatusActive.String(), volAllocator.VolumeStatusActiveCallback)
 	// lock status volume will call volume allocator.VolumeStatusLockCallback
 	defaultVolumeNotifyQueue.Add(volStatusNottifyKeyPrefix+proto.VolumeStatusLock.String(), volAllocator.VolumeStatusLockCallback)
+	// sealed status volume will call allocator.VolumeStatusSealedCallback
+	defaultVolumeNotifyQueue.Add(volStatusNottifyKeyPrefix+proto.VolumeStatusLock.String(), volAllocator.VolumeStatusSealedCallback)
 	// volume free size or volume health change will call volume allocator.VolumeFreeHealthCallback
 	defaultVolumeNotifyQueue.Add(VolFreeHealthChangeNotifyKey, volAllocator.VolumeFreeHealthCallback)
 
