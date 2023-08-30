@@ -293,15 +293,19 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 	return
 }
 
-func (vol *Vol) getRWMetaPartitionNum() (num uint64) {
+func (vol *Vol) getRWMetaPartitionNum() (num uint64, isHeartBeatDone bool) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
+		if !mp.heartBeatDone {
+			log.LogInfof("The mp[%v] of vol[%v] is not done", mp.PartitionID, vol.Name)
+			return num, false
+		}
 		if mp.Status == proto.ReadWrite {
 			num++
 		}
 	}
-	return
+	return num, true
 }
 
 func (vol *Vol) getDataPartitionsView() (body []byte, err error) {
@@ -500,7 +504,6 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
 	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
-	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
 	maxPartitionID := vol.maxPartitionID()
 	mps := vol.cloneMetaPartitionMap()
 	var (
@@ -525,6 +528,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 	}
 	c.addMetaNodeTasks(tasks)
+	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
 }
 
 func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint64) {
@@ -538,7 +542,11 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 	// 2. The number of inodes managed by max mp reaches the threshold(0.75)
 	// 3. The number of RW mp is less than 2
 	maxMPInodeUsedRatio := float64(maxMP.MaxInodeID-maxMP.Start) / float64(metaPartitionInodeStep)
-	RWMPNum := vol.getRWMetaPartitionNum()
+	RWMPNum, isHeartBeatDone := vol.getRWMetaPartitionNum()
+	if !isHeartBeatDone {
+		log.LogDebugf("Not all volume[%s] mp heartbeat is done, skip mp split", vol.Name)
+		return
+	}
 	if maxMP.memUsedReachThreshold(c.Name, vol.Name) || RWMPNum < lowerLimitRWMetaPartition ||
 		maxMPInodeUsedRatio > metaPartitionInodeUsageThreshold {
 		end := maxMP.MaxInodeID + metaPartitionInodeStep/4
