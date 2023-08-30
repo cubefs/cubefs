@@ -15,6 +15,8 @@
 package objectnode
 
 import (
+	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"net/url"
 	"regexp"
@@ -39,6 +41,16 @@ func UnmarshalXMLEntity(bytes []byte, data interface{}) error {
 		return err
 	}
 	return nil
+}
+
+func ParseJSONEntity(raw interface{}, entity interface{}) error {
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(entity)
 }
 
 type LocationResponse struct {

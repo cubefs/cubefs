@@ -17,6 +17,7 @@ package objectnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path"
 	"regexp"
@@ -24,6 +25,9 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -36,6 +40,12 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+func init() {
+	trace.PrefixBaggage = "x-object-baggage-"
+	trace.FieldKeyTraceID = "x-object-trace-id"
+	trace.FieldKeySpanID = "x-object-span-id"
+}
 
 // Configuration items that act on the ObjectNode.
 const (
@@ -94,6 +104,27 @@ const (
 	//			]
 	//		}
 	configSTSNotAllowedActions = "stsNotAllowedActions"
+
+	// Map type configuration item, used to configure ObjectNode to support audit log feature. For detailed
+	// parameters, see the AuditLogConfig structure.
+	// Example:
+	// 		{
+	// 			"auditLog": {
+	// 				"local": {
+	// 					"logdir": "./run/auditlog/object/",
+	// 					"no_2xx_body": true
+	// 				},
+	// 				"kafka": {
+	// 					"cubefs": {
+	//						"enable": true,
+	// 						"topic": "audit_log_topic",
+	// 						"brokers": "192.168.80.130:9095,192.168.80.131:9095,192.168.80.132:9095"
+	// 					}
+	// 				},
+	//				...
+	// 			}
+	// 		}
+	configAuditLog = "auditLog"
 
 	// ObjMetaCache takes each path hierarchy of the path-like S3 object key as the cache key,
 	// and map it to the corresponding posix-compatible inode
@@ -158,6 +189,11 @@ type ObjectNode struct {
 	state      uint32
 	wg         sync.WaitGroup
 	userStore  UserInfoStore
+
+	localAuditHandler rpc.ProgressHandler
+	externalAudit     *ExternalAudit
+
+	closes []func() // close other resources after http server closed
 
 	signatureIgnoredActions proto.Actions // signature ignored actions
 	disabledActions         proto.Actions // disabled actions
@@ -238,6 +274,15 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	// parse auditLog config
+	if rawAuditLog := cfg.GetValue(configAuditLog); rawAuditLog != nil {
+		if err = o.setAuditLog(rawAuditLog); err != nil {
+			err = fmt.Errorf("invalid %v configuration: %v", configAuditLog, err)
+			return
+		}
+		log.LogInfof("loadConfig: setup config: %v(%v)", configAuditLog, rawAuditLog)
+	}
+
 	// parse strict config
 	strict := cfg.GetBool(configStrict)
 	log.LogInfof("loadConfig: strict: %v", strict)
@@ -278,6 +323,47 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 
 func (o *ObjectNode) updateRegion(region string) {
 	o.region = region
+}
+
+func (o *ObjectNode) setAuditLog(raw interface{}) error {
+	var conf AuditLogConfig
+	if err := ParseJSONEntity(raw, &conf); err != nil {
+		return err
+	}
+	// set the local audit log
+	if conf.Local != nil {
+		ah, lf, err := auditlog.Open("OBJECT", conf.Local)
+		if err != nil {
+			return err
+		}
+		if lf != nil {
+			o.closes = append(o.closes, func() { lf.Close() })
+		}
+		o.localAuditHandler = ah
+	}
+	// set the external audit log
+	o.externalAudit = NewExternalAudit()
+	for id, cfg := range conf.Kafka {
+		if cfg.Enable {
+			ak, err := NewKafkaAudit(id, cfg)
+			if err != nil {
+				return err
+			}
+			o.externalAudit.AddLoggers(ak)
+		}
+	}
+	for id, cfg := range conf.Webhook {
+		if cfg.Enable {
+			aw, err := NewWebhookAudit(id, cfg)
+			if err != nil {
+				return err
+			}
+			o.externalAudit.AddLoggers(aw)
+		}
+	}
+	o.closes = append(o.closes, func() { o.externalAudit.Close() })
+
+	return nil
 }
 
 func handleStart(s common.Server, cfg *config.Config) (err error) {
@@ -358,17 +444,18 @@ func handleShutdown(s common.Server) {
 	if !ok {
 		return
 	}
-	o.shutdownRestAPI()
+	o.shutdown()
 }
 
 func (o *ObjectNode) startMuxRestAPI() (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	o.registerApiRouters(router)
 	router.Use(
+		o.auditMiddleware,
 		o.expectMiddleware,
 		o.traceMiddleware,
-		o.corsMiddleware,
 		o.authMiddleware,
+		o.corsMiddleware,
 		o.policyCheckMiddleware,
 		o.contentMiddleware,
 	)
@@ -388,10 +475,14 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	return
 }
 
-func (o *ObjectNode) shutdownRestAPI() {
+func (o *ObjectNode) shutdown() {
 	if o.httpServer != nil {
 		_ = o.httpServer.Shutdown(context.Background())
 		o.httpServer = nil
+	}
+	// close other resources after http server closed
+	for _, f := range o.closes {
+		f()
 	}
 }
 
