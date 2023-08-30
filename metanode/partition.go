@@ -770,8 +770,7 @@ func (mp *metaPartition) IsFollowerRead() (ok bool) {
 		return false
 	}
 
-	status := mp.raftPartition.Status()
-	if status == nil || status.RestoringSnapshot || status.Applied == 0 {
+	if mp.raftPartition.IsRestoring() {
 		return false
 	}
 

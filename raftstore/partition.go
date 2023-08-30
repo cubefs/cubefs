@@ -49,6 +49,9 @@ type Partition interface {
 	// Status returns the current raft status.
 	Status() (status *PartitionStatus)
 
+	// Much faster then status().RestoringSnapshot.
+	IsRestoring() bool
+
 	// LeaderTerm returns the current term of leader in the raft group. TODO what is term?
 	LeaderTerm() (leaderID, term uint64)
 
@@ -108,6 +111,10 @@ func (p *partition) Delete() (err error) {
 	}
 	err = os.RemoveAll(p.walPath)
 	return
+}
+
+func (p *partition) IsRestoring() bool {
+	return p.raft.IsRestoring(p.id)
 }
 
 // Status returns the current raft status.
