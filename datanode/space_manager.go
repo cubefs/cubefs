@@ -396,6 +396,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		ReplicaNum:    request.ReplicaNum,
 		VerSeq:        request.VerSeq,
 		CreateType:    request.CreateType,
+		Forbidden:     false,
 	}
 	log.LogInfof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
 		dpCfg.PartitionID, dpCfg.Peers, request.Members)
@@ -452,11 +453,11 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	stat.Unlock()
 
 	response.ZoneName = s.zoneName
-	response.PartitionReports = make([]*proto.PartitionReport, 0)
+	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
 	space := s.space
 	space.RangePartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
-		vr := &proto.PartitionReport{
+		vr := &proto.DataPartitionReport{
 			VolName:                    partition.volumeID,
 			PartitionID:                uint64(partition.partitionID),
 			PartitionStatus:            partition.Status(),

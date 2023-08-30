@@ -18,6 +18,7 @@ import (
 	"net"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -25,6 +26,66 @@ const (
 	ForceClosedConnect = true
 	NoClosedConnect    = false
 )
+
+var (
+	ErrForbiddenMetaPartition = errors.New("meta partition is forbidden")
+)
+
+func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
+	if !mp.IsForbidden() {
+		return false
+	}
+	switch reqOp {
+	case
+		// dentry
+		proto.OpMetaCreateDentry,
+		proto.OpMetaTxCreateDentry,
+		proto.OpQuotaCreateDentry,
+		proto.OpMetaDeleteDentry,
+		proto.OpMetaTxDeleteDentry,
+		proto.OpMetaBatchDeleteDentry,
+		proto.OpMetaUpdateDentry,
+		proto.OpMetaTxUpdateDentry,
+		// extend
+		proto.OpMetaUpdateXAttr,
+		proto.OpMetaSetXAttr,
+		proto.OpMetaBatchSetXAttr,
+		proto.OpMetaRemoveXAttr,
+		// extent
+		proto.OpMetaTruncate,
+		proto.OpMetaExtentsAdd,
+		proto.OpMetaExtentAddWithCheck,
+		proto.OpMetaObjExtentAdd,
+		proto.OpMetaBatchObjExtentsAdd,
+		proto.OpMetaBatchExtentsAdd,
+		proto.OpMetaExtentsDel,
+		// inode
+		proto.OpMetaCreateInode,
+		proto.OpQuotaCreateInode,
+		proto.OpMetaTxUnlinkInode,
+		proto.OpMetaUnlinkInode,
+		proto.OpMetaBatchUnlinkInode,
+		proto.OpMetaTxLinkInode,
+		proto.OpMetaLinkInode,
+		proto.OpMetaEvictInode,
+		proto.OpMetaBatchEvictInode,
+		proto.OpMetaSetattr,
+		proto.OpMetaBatchDeleteInode,
+		proto.OpMetaClearInodeCache,
+		proto.OpMetaTxCreateInode,
+		// multipart
+		proto.OpAddMultipartPart,
+		proto.OpRemoveMultipart,
+		proto.OpCreateMultipart,
+		//quota
+		proto.OpMetaBatchSetInodeQuota,
+		proto.OpMetaBatchDeleteInodeQuota:
+
+		return true
+	default:
+		return false
+	}
+}
 
 // The proxy is used during the leader change. When a leader of a partition changes, the proxy forwards the request to
 // the new leader.
@@ -37,6 +98,14 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		reqID      = p.ReqID
 		reqOp      = p.Opcode
 	)
+
+	// check forbidden
+	if m.IsForbiddenOp(mp, reqOp) {
+		err = ErrForbiddenMetaPartition
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return false
+	}
 
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		return

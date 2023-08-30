@@ -469,7 +469,6 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 }
 
 func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequest, p *Packet) (err error) {
-
 	var ino *Inode
 	if ino, _, err = mp.CheckQuota(req.Inode, p); err != nil {
 		log.LogErrorf("BatchObjExtentAppend fail status [%v]", err)

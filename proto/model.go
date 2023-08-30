@@ -59,7 +59,7 @@ type DataNodeInfo struct {
 	IsWriteAble               bool
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
-	DataPartitionReports      []*PartitionReport
+	DataPartitionReports      []*DataPartitionReport
 	DataPartitionCount        uint32
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
@@ -90,6 +90,7 @@ type MetaPartitionInfo struct {
 	OfflinePeerID uint64
 	MissNodes     map[string]int64
 	LoadResponse  []*MetaPartitionLoadResponse
+	Forbidden     bool
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -267,6 +268,7 @@ type DataPartitionInfo struct {
 	SingleDecommissionAddr   string
 	RdOnly                   bool
 	IsDiscard                bool
+	Forbidden                bool
 }
 
 // FileInCore define file in data partition

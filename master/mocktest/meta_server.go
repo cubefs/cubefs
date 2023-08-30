@@ -168,6 +168,17 @@ func (mms *MockMetaServer) handleTryToLeader(conn net.Conn, p *proto.Packet, adm
 	return
 }
 
+func (mms *MockMetaServer) CheckVolPartition(name string, forbidden bool) bool {
+	mms.RLock()
+	defer mms.RUnlock()
+	for _, mp := range mms.partitions {
+		if mp.VolName == name && mp.IsForbidden() != forbidden {
+			return false
+		}
+	}
+	return true
+}
+
 func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
 	defer func() {
 		if err != nil {
@@ -212,6 +223,16 @@ func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Pac
 	return
 }
 
+func (mms *MockMetaServer) checkForbiddenVolume(volNames []string, mp *MockMetaPartition) {
+	for _, volName := range volNames {
+		if mp.VolName == volName {
+			mp.SetForbidden(true)
+			return
+		}
+	}
+	mp.SetForbidden(false)
+}
+
 // Handle OpHeartbeat packet.
 func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
 	// For ack to master
@@ -237,6 +258,7 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 	// every partition used
 	mms.RLock()
 	for id, partition := range mms.partitions {
+		mms.checkForbiddenVolume(req.ForbiddenVols, partition)
 		mpr := &proto.MetaPartitionReport{
 			PartitionID: id,
 			Start:       partition.Start,

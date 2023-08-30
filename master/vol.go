@@ -109,6 +109,7 @@ type Vol struct {
 	quotaManager            *MasterQuotaManager
 	enableQuota             bool
 	VersionMgr              *VolVersionManager
+	Forbidden               bool
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -196,6 +197,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	if vol.txConflictRetryInterval == 0 {
 		vol.txConflictRetryInterval = proto.DefaultTxConflictRetryInterval
 	}
+	vol.Forbidden = vv.Forbidden
 	return vol
 }
 
@@ -670,7 +672,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 
 	vol.setStatus(normal)
 	log.LogInfof("action[autoCreateDataPartitions] vol[%v] before autoCreateDataPartitions", vol.Name)
-	if !c.DisableAutoAllocate {
+	if !c.DisableAutoAllocate && !vol.Forbidden {
 		vol.autoCreateDataPartitions(c)
 	}
 }
@@ -1156,7 +1158,7 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, 
 }
 
 func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64) (err error) {
-	if c.DisableAutoAllocate {
+	if c.DisableAutoAllocate || vol.Forbidden {
 		return
 	}
 

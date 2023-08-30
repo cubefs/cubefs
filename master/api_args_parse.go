@@ -1024,6 +1024,13 @@ func parseAndExtractStatus(r *http.Request) (status bool, err error) {
 	return extractStatus(r)
 }
 
+func parseAndExtractForbidden(r *http.Request) (forbidden bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	return extractForbidden(r)
+}
+
 func extractStatus(r *http.Request) (status bool, err error) {
 	var value string
 	if value = r.FormValue(enableKey); value == "" {
@@ -1031,6 +1038,18 @@ func extractStatus(r *http.Request) (status bool, err error) {
 		return
 	}
 	if status, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
+func extractForbidden(r *http.Request) (forbidden bool, err error) {
+	var value string
+	if value = r.FormValue(forbiddenKey); value == "" {
+		err = keyNotFound(forbiddenKey)
+		return
+	}
+	if forbidden, err = strconv.ParseBool(value); err != nil {
 		return
 	}
 	return

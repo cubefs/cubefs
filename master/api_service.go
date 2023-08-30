@@ -200,6 +200,48 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set DisableAutoAllocate to %v successfully", status)))
 }
 
+func (m *Server) forbidVolume(w http.ResponseWriter, r *http.Request) {
+	var (
+		status bool
+		name   string
+		err    error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolForbidden))
+	defer func() {
+		doStatAndMetric(proto.AdminVolForbidden, metric, err, nil)
+		if err != nil {
+			log.LogErrorf("set volume forbidden failed, error: %v", err)
+		} else {
+			log.LogInfof("set volume forbidden to (%v) success", status)
+		}
+	}()
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if status, err = parseAndExtractForbidden(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	vol, err := m.cluster.getVol(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	oldForbiden := vol.Forbidden
+	vol.Forbidden = status
+	defer func() {
+		if err != nil {
+			vol.Forbidden = oldForbiden
+		}
+	}()
+	if err = m.cluster.syncUpdateVol(vol); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume forbidden to (%v) success", status)))
+}
+
 func (m *Server) setupForbidMetaPartitionDecommission(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
@@ -2391,6 +2433,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		CacheRule:               vol.CacheRule,
 		PreloadCapacity:         vol.getPreloadCapacity(),
 		LatestVer:               vol.VersionMgr.getLatestVer(),
+		Forbidden:               vol.Forbidden,
 	}
 
 	vol.uidSpaceManager.RLock()
@@ -2961,7 +3004,6 @@ func (m *Server) setDpRdOnly(partitionID uint64, rdOnly bool) (err error) {
 	dp.RdOnly = rdOnly
 	m.cluster.syncUpdateDataPartition(dp)
 	dp.RUnlock()
-
 	return
 }
 
@@ -4732,6 +4774,13 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				MaxInode:    mp.Replicas[i].MaxInodeID,
 			}
 		}
+		forbidden := true
+		vol, err := m.cluster.getVol(mp.volName)
+		if err == nil {
+			forbidden = vol.Forbidden
+		} else {
+			log.LogErrorf("action[getMetaPartition]failed to get volume %v, err %v", mp.volName, err)
+		}
 		var mpInfo = &proto.MetaPartitionInfo{
 			PartitionID:   mp.PartitionID,
 			Start:         mp.Start,
@@ -4751,6 +4800,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			MissNodes:     mp.MissNodes,
 			OfflinePeerID: mp.OfflinePeerID,
 			LoadResponse:  mp.LoadResponse,
+			Forbidden:     forbidden,
 		}
 		return mpInfo
 	}

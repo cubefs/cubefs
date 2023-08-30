@@ -49,6 +49,7 @@ type dataPartitionCfg struct {
 	ReplicaNum    int
 	VerSeq        uint64 `json:"ver_seq"`
 	CreateType    int
+	Forbidden     bool
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {

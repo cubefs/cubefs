@@ -1,6 +1,8 @@
 package mocktest
 
 import (
+	"sync/atomic"
+
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -10,6 +12,19 @@ type MockDataPartition struct {
 	total            int
 	used             uint64
 	VolName          string
+	Forbidden        int32
+}
+
+func (md *MockDataPartition) IsForbidden() bool {
+	return atomic.LoadInt32(&md.Forbidden) != 0
+}
+
+func (md *MockDataPartition) SetForbidden(status bool) {
+	val := 0
+	if status {
+		val = 1
+	}
+	atomic.StoreInt32(&md.Forbidden, int32(val))
 }
 
 type MockMetaPartition struct {
@@ -21,6 +36,7 @@ type MockMetaPartition struct {
 	VolName     string
 	Members     []proto.Peer
 	Replicas    []*MockMetaReplica
+	Forbidden   int32
 }
 
 // MockMetaReplica defines the replica of a meta partition
@@ -46,4 +62,16 @@ func (mm *MockMetaPartition) isLeaderMetaNode(addr string) bool {
 	}
 
 	return false
+}
+
+func (mm *MockMetaPartition) IsForbidden() bool {
+	return atomic.LoadInt32(&mm.Forbidden) != 0
+}
+
+func (mm *MockMetaPartition) SetForbidden(status bool) {
+	val := 0
+	if status {
+		val = 1
+	}
+	atomic.StoreInt32(&mm.Forbidden, int32(val))
 }

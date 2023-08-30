@@ -213,7 +213,6 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 }
 
 func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error) {
-
 	txInfo := req.TxInfo.GetCopy()
 	var status uint8
 	var respIno *Inode

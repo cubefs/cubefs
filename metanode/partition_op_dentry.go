@@ -249,7 +249,6 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 			return
 		}
 	}
-
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
@@ -289,7 +288,6 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 
 // DeleteDentry deletes a dentry.
 func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error) {
-
 	db := make(DentryBatch, 0, len(req.Dens))
 
 	for _, d := range req.Dens {
