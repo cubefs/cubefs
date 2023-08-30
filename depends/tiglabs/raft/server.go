@@ -222,7 +222,7 @@ func (rs *RaftServer) IsRestoring(id uint64) bool {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
 	if raft, ok := rs.rafts[id]; ok {
-		return raft.restoringSnapshot.Get() || raft.applied() == 0
+		return raft.restoringSnapshot.Get() && raft.applied() == 0
 	}
 	return true
 }
