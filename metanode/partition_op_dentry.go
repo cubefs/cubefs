@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/log"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
