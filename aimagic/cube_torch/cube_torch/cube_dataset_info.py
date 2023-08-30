@@ -6,8 +6,8 @@ from torchvision import datasets
 
 CubeFS_ROOT_DIR = 'CubeFS_ROOT_DIR'
 CubeFS_QUEUE_SIZE_ON_WORKER = 'CubeFS_QUEUE_SIZE_ON_WORKER'
-Min_QUEUE_SIZE_ON_WORKER = 10
-Max_QUEUE_SIZE_ON_WORKER = 30
+Min_QUEUE_SIZE_ON_WORKER = 5
+Max_QUEUE_SIZE_ON_WORKER = 10
 
 
 def split_and_zip_2d_array(arr):

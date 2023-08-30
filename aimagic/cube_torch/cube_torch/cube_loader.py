@@ -465,14 +465,24 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             cubefs_cache_dir = self.cube_dataset_info.get_cubefs_cache_dir()
             cubefs_root_dir = self.cube_dataset_info.get_cubefs_root_dir()
 
-        self._start_loop_get_index=False
-        self._preload_index_event = threading.Event()
-        self._preload_index_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker())
-        self._preload_index_thread = threading.Thread(
-            target=self._loop_preload_threads, args=(self._preload_index_event,)
+        self._start_loop_get_index = False
+        self._storage_event = threading.Event()
+        self._loadindex_event = threading.Event()
+
+        self._preload_index_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker() * 3)
+        self._loadindex_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker())
+
+        self._storage_thread = threading.Thread(
+            target=self._notify_storage_func, args=(self._storage_event,)
         )
-        self._preload_index_thread.daemon = True
-        self._preload_index_thread.start()
+        self._storage_thread.daemon = True
+        self._storage_thread.start()
+
+        self._loadindex_thread = threading.Thread(
+            target=self._loadindex_func, args=(self._storage_event,)
+        )
+        self._loadindex_thread.daemon = True
+        self._loadindex_thread.start()
 
         for i in range(self._num_workers):
             index_queue = multiprocessing_context.Queue()
@@ -543,7 +553,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             pids.append(w.pid)
         _unregister_pid_to_storage(pids, self._unregister_pid_addr)
 
-    def _loop_preload_threads(self, event):
+    def _notify_storage_func(self, event):
         while not event.set():
             try:
                 if not self._start_loop_get_index:
@@ -551,10 +561,26 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     continue
                 index = self._next_index()
                 self.wait_read_train_file_queue.put(index)
-                self._preload_index_queue.put(index,block=True)
+                self._preload_index_queue.put(index)
+            except StopIteration:
+                event.set()
+                self._preload_index_queue.put(None)
+                return
+
+    def _loadindex_func(self, event):
+        while not event.set():
+            try:
+                if not self._start_loop_get_index:
+                    time.sleep(0.01)
+                    continue
+                index = self._preload_index_queue.get()
+                if index is None:
+                    break
+                self._loadindex_queue.put(index)
             except StopIteration:
                 event.set()
                 return
+        event.set()
 
     def _reset(self, loader, first_iter=False):
         print("pid{} start reset{}".format(os.getpid(), datetime.datetime.now()))
@@ -818,7 +844,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         assert self._tasks_outstanding < self._prefetch_factor * self._num_workers
         if self._send_idx >= self._sampler_iter_len:
             return
-        index = self._preload_index_queue.get()
+        index = self._loadindex_queue.get()
         for _ in range(self._num_workers):  # find the next active worker, if any
             worker_queue_idx = next(self._worker_queue_idx_cycle)
             if self._workers_status[worker_queue_idx]:
@@ -895,8 +921,11 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     self._pin_memory_thread.join()
                     self._worker_result_queue.cancel_join_thread()
                     self._worker_result_queue.close()
-                self._preload_index_event.set()
-                self._preload_index_thread.join()
+                self._storage_event.set()
+                self._storage_thread.join()
+
+                self._loadindex_event.set()
+                self._loadindex_thread.join()
 
                 # Exit workers now.
                 self._workers_done_event.set()
