@@ -49,6 +49,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
 		newVolAddDPCmd(client),
+		newVolSetForbiddenCmd(client),
 		newVolSetAuditLogCmd(client),
 	)
 	return cmd
@@ -957,6 +958,39 @@ func newVolSetAuditLogCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Volume audit log has been set successfully, please wait few minutes for the settings to take effect.\n")
+		},
+	}
+	return cmd
+}
+
+var (
+	cmdVolSetForbiddenUse   = "set-forbidden [VOLUME] [FORBIDDEN]"
+	cmdVolSetForbiddenShort = "Set the forbidden property for volume"
+)
+
+func newVolSetForbiddenCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   cmdVolSetForbiddenUse,
+		Short: cmdVolSetForbiddenShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var name = args[0]
+			var settingStr = args[1]
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error: %v\n", err)
+				}
+			}()
+			forbidden, err := strconv.ParseBool(settingStr)
+			if err != nil {
+				return
+			}
+			if err = client.AdminAPI().SetVolumeForbidden(name, forbidden); err != nil {
+				return
+			}
+			stdout("Volume forbidden property has been set successfully, please wait few minutes for the settings to take effect.\n")
+			return
 		},
 	}
 	return cmd

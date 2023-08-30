@@ -41,6 +41,7 @@ const (
 	AdminUpdateVol                            = "/vol/update"
 	AdminVolShrink                            = "/vol/shrink"
 	AdminVolExpand                            = "/vol/expand"
+	AdminVolForbidden                         = "/vol/forbidden"
 	AdminVolEnableAuditLog                    = "/vol/auditlog"
 	AdminCreateVol                            = "/admin/createVol"
 	AdminGetVol                               = "/admin/getVol"
@@ -498,6 +499,7 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
+	ForbiddenVols    []string
 	DisableAuditVols []string
 }
 
@@ -707,6 +709,7 @@ type VolView struct {
 	DeleteLockTime int64
 	CacheTTL       int
 	VolType        int
+	Forbidden      bool
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -872,6 +875,7 @@ type SimpleVolView struct {
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
 	TrashInterval    int64
+	Forbidden        bool
 	DisableAuditLog  bool
 }
 

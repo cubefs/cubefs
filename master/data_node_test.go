@@ -11,7 +11,11 @@ func TestDataNode(t *testing.T) {
 	// /dataNode/add and /dataNode/response processed by mock data server
 	var err error
 	addr := "127.0.0.1:9096"
-	addDataServer(addr, DefaultZoneName)
+	func() {
+		mockServerLock.Lock()
+		defer mockServerLock.Unlock()
+		mockDataServers = append(mockDataServers, addDataServer(addr, DefaultZoneName))
+	}()
 	server.cluster.checkDataNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	getDataNodeInfo(addr, t)

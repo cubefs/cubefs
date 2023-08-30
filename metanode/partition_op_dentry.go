@@ -17,9 +17,10 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
@@ -270,7 +271,6 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 			return
 		}
 	}
-
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
