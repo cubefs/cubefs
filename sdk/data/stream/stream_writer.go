@@ -572,9 +572,10 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 			return
 		}
 	} else {
-		discards := s.extents.Append(extKey, true)
-		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards); err != nil {
-			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
+		// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
+		discards := s.extents.Append(extKey, false)
+		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache); err != nil {
+			log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
 		// adjust the handler key to last direct write one

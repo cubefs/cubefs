@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -82,6 +83,8 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
 
 	ino := NewInode(1, 0)
+	ino.StorageClass = proto.MediaType_HDD
+	ino.HybridCouldExtents.sortedEks = NewSortedExtents()
 	mp.inodeTree.ReplaceOrInsert(ino, true)
 	dentry := &Dentry{ParentId: 0, Name: "/", Inode: 1}
 	mp.dentryTree.ReplaceOrInsert(dentry, true)

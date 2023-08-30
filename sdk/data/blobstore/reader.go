@@ -387,6 +387,14 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 	}
 
 	if reader.needCacheL2() {
+		streamer := reader.ec.GetStreamer(reader.ino)
+		if streamer == nil {
+			log.LogWarnf("[asyncCache(L2)] streamer for ino %v is nil ", reader.ino)
+			return
+		} else {
+			//for get cache key in future
+			streamer.WorkAsCache()
+		}
 		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil)
 		log.LogDebugf("TRACE blobStore asyncCache(L2) Exit. cacheKey=%v", cacheKey)
 		return

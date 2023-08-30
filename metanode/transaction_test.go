@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-//var manager = &metadataManager{}
+// var manager = &metadataManager{}
 var mp1 *metaPartition
 var mp2 *metaPartition
 var mp3 *metaPartition
@@ -117,25 +117,28 @@ func TestRollbackInodeLess(t *testing.T) {
 
 func TestRollbackInodeSerialization(t *testing.T) {
 	inode := &Inode{
-		Inode:      1024,
-		Gid:        11,
-		Uid:        10,
-		Size:       101,
-		Type:       0755,
-		Generation: 13,
-		CreateTime: 102,
-		AccessTime: 104,
-		ModifyTime: 107,
-		LinkTarget: []byte("link target"),
-		NLink:      7,
-		Flag:       1,
-		Reserved:   3,
-		Extents: NewSortedExtentsFromEks([]proto.ExtentKey{
-			{FileOffset: 11, PartitionId: 12, ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0},
-		}),
-		ObjExtents: NewSortedObjExtents(),
+		Inode:              1024,
+		Gid:                11,
+		Uid:                10,
+		Size:               101,
+		Type:               0755,
+		Generation:         13,
+		CreateTime:         102,
+		AccessTime:         104,
+		ModifyTime:         107,
+		LinkTarget:         []byte("link target"),
+		NLink:              7,
+		Flag:               1,
+		Reserved:           3,
+		Extents:            NewSortedExtents(),
+		StorageClass:       proto.MediaType_HDD,
+		HybridCouldExtents: NewSortedHybridCloudExtents(),
+		//Extents: NewSortedExtentsFromEks([]proto.ExtentKey{
+		//	{FileOffset: 11, PartitionId: 12, ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0},
+		//}),
+		//ObjExtents: NewSortedObjExtents(),
 	}
-
+	inode.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12, ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
 	ids := []uint32{11, 13}
 
 	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
@@ -145,7 +148,6 @@ func TestRollbackInodeSerialization(t *testing.T) {
 
 	txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 	txRbInode.Unmarshal(data)
-
 	assert.True(t, rbInode.Equal(txRbInode))
 
 	inode.Inode = 1023

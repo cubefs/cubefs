@@ -115,7 +115,6 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
 	}
-
 	if err = w.GetSimpleVolView(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -216,6 +215,7 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 	w.dpSelectorParm = view.DpSelectorParm
 	w.volType = view.VolType
 	w.EnablePosixAcl = view.EnablePosixAcl
+
 	w.UpdateUidsView(view)
 
 	log.LogDebugf("GetSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+

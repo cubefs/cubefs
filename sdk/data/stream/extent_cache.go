@@ -67,8 +67,8 @@ func NewExtentCache(inode uint64) *ExtentCache {
 	}
 }
 
-func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) error {
-	gen, size, extents, err := getExtents(inode)
+func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc, isCache bool) error {
+	gen, size, extents, err := getExtents(inode, isCache)
 	if err != nil {
 		return err
 	}
@@ -79,12 +79,12 @@ func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) 
 }
 
 // Refresh refreshes the extent cache.
-func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc) error {
+func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc, isCache bool) error {
 	if cache.root.Len() > 0 {
 		return nil
 	}
 
-	gen, size, extents, err := getExtents(inode)
+	gen, size, extents, err := getExtents(inode, isCache)
 	if err != nil {
 		return err
 	}

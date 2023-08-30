@@ -131,6 +131,7 @@ func (mw *MetaWrapper) updateClusterInfo() (err error) {
 		info.Cluster, info.Ip, mw.volname)
 	mw.cluster = info.Cluster
 	mw.localIP = info.Ip
+
 	return
 }
 
@@ -160,6 +161,7 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
 		return
 	}
+	atomic.StoreUint32(&mw.DefaultMediaType, info.DefaultMediaType)
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)

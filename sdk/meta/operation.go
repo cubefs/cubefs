@@ -49,6 +49,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		Target:      target,
 		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
+		StorageType: mw.DefaultMediaType,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -118,6 +119,7 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 		Gid:         gid,
 		Target:      target,
 		QuotaIds:    quotaIds,
+		StorageType: mw.DefaultMediaType,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -177,6 +179,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Uid:         uid,
 		Gid:         gid,
 		Target:      target,
+		StorageType: mw.DefaultMediaType,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -1220,7 +1223,8 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 	return statusOK, resp.Children, nil
 }
 
-func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey, discard []proto.ExtentKey, isSplit bool) (status int, err error) {
+func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey,
+	discard []proto.ExtentKey, isSplit bool, isCache bool) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("appendExtentKey", err, bgTime, 1)
@@ -1233,6 +1237,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		Extent:         extent,
 		DiscardExtents: discard,
 		IsSplit:        isSplit,
+		IsCache:        isCache,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1263,7 +1268,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	return status, err
 }
 
-func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (resp *proto.GetExtentsResponse, err error) {
+func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool) (resp *proto.GetExtentsResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getExtents", err, bgTime, 1)
@@ -1274,6 +1279,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64) (resp *proto.
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		VerSeq:      mw.VerReadSeq,
+		IsCache:     isCache,
 	}
 
 	packet := proto.NewPacketReqID()
