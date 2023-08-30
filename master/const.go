@@ -40,6 +40,7 @@ const (
 	volTypeKey            = "volType"
 	cacheRuleKey          = "cacheRuleKey"
 	emptyCacheRuleKey     = "emptyCacheRule"
+	forbiddenKey          = "forbidden"
 
 	forceDelVolKey             = "forceDelVol"
 	ebsBlkSizeKey              = "ebsBlkSize"
