@@ -482,8 +482,20 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		discardExtentKey []proto.ExtentKey
 	)
 	oldSize := int64(fsmIno.Size)
-	eks := ino.Extents.CopyExtents()
-
+	//get eks from inoParm, so do not need transform from HybridCouldExtents
+	var (
+		eks     []proto.ExtentKey
+		isCache bool
+	)
+	if len(ino.Extents.eks) != 0 {
+		isCache = true
+		eks = ino.Extents.CopyExtents()
+	} else {
+		isCache = false
+		eks = ino.HybridCouldExtents.sortedEks.(*SortedExtents).CopyExtents()
+	}
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v, isCache %v",
+		fsmIno.Inode, fsmIno.getLayerLen(), eks, isCache)
 	if len(eks) < 1 {
 		return
 	}
@@ -507,6 +519,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		discardExtents:   discardExtentKey,
 		volType:          mp.volType,
 		multiVersionList: mp.multiVersionList,
+		isCache:          isCache,
 	}
 
 	if !isSplit {
@@ -525,6 +538,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 			mp.extDelCh <- eks[:1]
 		}
 	} else {
+		//TODO: support hybrid-cloud
 		// only the ek itself will be moved to level before
 		// ino verseq be set with mp ver before submit in case other mp be updated while on flight, which will lead to
 		// inconsistent between raft pairs
@@ -563,7 +577,8 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 		return
 	}
 
-	eks := ino.ObjExtents.CopyExtents()
+	//eks := ino.ObjExtents.CopyExtents()
+	eks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents).CopyExtents()
 	err := inode.AppendObjExtents(eks, ino.ModifyTime)
 
 	// if err is not nil, means obj eks exist overlap.
