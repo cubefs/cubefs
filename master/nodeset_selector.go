@@ -192,42 +192,76 @@ func (s *CarryWeightNodesetSelector) prepareCarry(nsc nodeSetCollection, total u
 	}
 }
 
+func (s *CarryWeightNodesetSelector) getAvailNodesets(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (newNsc nodeSetCollection) {
+	newNsc = make(nodeSetCollection, 0, nsc.Len())
+	for i := 0; i < nsc.Len(); i++ {
+		ns := nsc[i]
+		if ns.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, ns.ID) {
+			newNsc = append(newNsc, ns)
+		}
+	}
+	return
+}
+
+func (s *CarryWeightNodesetSelector) getCarryCount(nsc nodeSetCollection) (count int) {
+	for i := 0; i < nsc.Len(); i++ {
+		ns := nsc[i]
+		if s.carrys[ns.ID] >= 1.0 {
+			count += 1
+		}
+	}
+	return
+}
+
+func (s *CarryWeightNodesetSelector) setNodesetCarry(nsc nodeSetCollection, total uint64) int {
+	count := s.getCarryCount(nsc)
+	for count < 1 {
+		count = 0
+		for i := 0; i < nsc.Len(); i++ {
+			nset := nsc[i]
+			weight := float64(nset.getTotalAvailableSpaceOf(s.nodeType)) / float64(total)
+			s.carrys[nset.ID] += weight
+			if s.carrys[nset.ID] >= 1.0 {
+				count += 1
+			}
+			// limit the max value of weight
+			if s.carrys[nset.ID] > 10.0 {
+				s.carrys[nset.ID] = 10.0
+			}
+		}
+	}
+	return count
+}
+
 func (s *CarryWeightNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
 	total := s.getMaxTotal(nsc)
 	// prepare weight of evert nodesets
 	s.prepareCarry(nsc, total)
+	nsc = s.getAvailNodesets(nsc, excludeNodeSets, replicaNum)
+	avaliCount := 0
+	if len(nsc) < 1 {
+		goto err
+	}
+	avaliCount = s.setNodesetCarry(nsc, total)
 	// sort nodesets by weight
 	sort.Slice(nsc, func(i, j int) bool {
 		return s.carrys[nsc[i].ID] > s.carrys[nsc[j].ID]
 	})
 	// pick the first nodeset than has N writable node
-	for i := 0; i < nsc.Len(); i++ {
+	for i := 0; i < avaliCount; i++ {
 		ns = nsc[i]
 		if ns.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, ns.ID) {
-			if i != 0 {
-				nsc[i], nsc[0] = nsc[0], nsc[i]
-			}
 			break
 		}
 	}
-	// increase weight of other nodesets
-	for i := 1; i < nsc.Len(); i++ {
-		nset := nsc[i]
-		weight := float64(nset.getTotalAvailableSpaceOf(s.nodeType)) / float64(total)
-		s.carrys[nset.ID] += weight
-		// limit the max value of weight
-		if s.carrys[nset.ID] > 10.0 {
-			s.carrys[nset.ID] = 10.0
-		}
-	}
 	if ns != nil {
-		// deerase nodeset weight
-		s.carrys[ns.ID] -= 1.0
-		if s.carrys[ns.ID] < 0 {
-			s.carrys[ns.ID] = 0
+		if !ns.canWriteFor(s.nodeType, int(replicaNum)) || containsID(excludeNodeSets, ns.ID) {
+			goto err
 		}
-		return
+		s.carrys[ns.ID] -= 1.0
 	}
+	return
+err:
 	switch s.nodeType {
 	case DataNodeType:
 		err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
