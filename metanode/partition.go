@@ -92,6 +92,7 @@ type MetaPartitionConfig struct {
 	AfterStop     func()              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
 	ConnPool      *util.ConnectPool   `json:"-"`
+	Forbidden     bool                `json:"forbidden"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -265,6 +266,8 @@ type MetaPartition interface {
 	LoadSnapshot(path string) error
 	ForceSetMetaPartitionToLoadding()
 	ForceSetMetaPartitionToFininshLoad()
+	IsForbidden() bool
+	SetForbidden(status bool)
 }
 
 type UidManager struct {
@@ -503,6 +506,14 @@ type metaPartition struct {
 	versionLock            sync.Mutex
 }
 
+func (mp *metaPartition) IsForbidden() bool {
+	return mp.config.Forbidden
+}
+
+func (mp *metaPartition) SetForbidden(status bool) {
+	mp.config.Forbidden = status
+}
+
 func (mp *metaPartition) acucumRebuildStart() bool {
 	return mp.uidManager.accumRebuildStart()
 }
@@ -524,7 +535,6 @@ func (mp *metaPartition) getVerList() []*proto.VolVersionInfo {
 }
 
 func (mp *metaPartition) checkAndUpdateVerList(verSeq uint64) (err error) {
-
 	mp.multiVersionList.Lock()
 	defer mp.multiVersionList.Unlock()
 

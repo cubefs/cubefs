@@ -708,7 +708,7 @@ func (partition *DataPartition) update(action, volName string, newPeers []proto.
 	return
 }
 
-func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode *DataNode, c *Cluster) {
+func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, dataNode *DataNode, c *Cluster) {
 
 	if !partition.hasHost(dataNode.Addr) {
 		return
@@ -967,6 +967,14 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		}
 	}
 
+	forbidden := true
+	vol, err := c.getVol(partition.VolName)
+	if err == nil {
+		forbidden = vol.Forbidden
+	} else {
+		log.LogErrorf("action[buildDpInfo]failed to get volume %v, err %v", partition.VolName, err)
+	}
+
 	return &proto.DataPartitionInfo{
 		PartitionID:              partition.PartitionID,
 		PartitionTTL:             partition.PartitionTTL,
@@ -988,6 +996,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		FilesWithMissingReplica:  partition.FilesWithMissingReplica,
 		IsDiscard:                partition.IsDiscard,
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
+		Forbidden:                forbidden,
 	}
 }
 

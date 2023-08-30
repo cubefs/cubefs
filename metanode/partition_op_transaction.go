@@ -17,9 +17,10 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"sync"
 )
 
 func (mp *metaPartition) TxCreate(req *proto.TxCreateRequest, p *Packet) error {

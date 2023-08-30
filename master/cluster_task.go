@@ -408,7 +408,7 @@ func (c *Cluster) deleteMetaPartition(partition *MetaPartition, removeMetaNode *
 	partition.Unlock()
 	_, err = removeMetaNode.Sender.syncSendAdminTask(task)
 	if err != nil {
-		log.LogErrorf("action[deleteMetaPartition] vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
+		log.LogErrorf("action[deleteMetaPartition] vol[%v],meta partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 	}
 	return nil
 }
@@ -663,14 +663,16 @@ func (c *Cluster) doLoadDataPartition(dp *DataPartition) {
 	dp.resetFilesWithMissingReplica()
 	loadTasks := dp.createLoadTasks()
 	c.addDataNodeTasks(loadTasks)
+	success := false
 	for i := 0; i < timeToWaitForResponse; i++ {
 		if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) {
+			success = true
 			break
 		}
 		time.Sleep(time.Second)
 	}
 
-	if dp.checkLoadResponse(c.cfg.DataPartitionTimeOutSec) == false {
+	if !success {
 		return
 	}
 
@@ -1072,7 +1074,7 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 }
 
 /*if node report data partition infos,so range data partition infos,then update data partition info*/
-func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.PartitionReport) {
+func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.DataPartitionReport) {
 	for _, vr := range dps {
 		if vr == nil {
 			continue

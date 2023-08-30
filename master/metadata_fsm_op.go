@@ -153,6 +153,7 @@ type dataPartitionValue struct {
 	DecommissionNeedRollback       bool
 	RecoverStartTime               int64
 	RecoverLastConsumeTime         float64
+	Forbidden                      bool
 }
 
 func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
@@ -282,6 +283,7 @@ type volValue struct {
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
 	IopsRMagnify, IopsWMagnify, FlowRMagnify, FlowWMagnify uint32
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
+	Forbidden                                              bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -343,6 +345,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		ClientHitTriggerCnt: vol.qosManager.ClientHitTriggerCnt,
 
 		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
+		Forbidden:             vol.Forbidden,
 	}
 
 	return
@@ -624,12 +627,20 @@ func (c *Cluster) syncDeleteDataPartition(dp *DataPartition) (err error) {
 	return c.putDataPartitionInfo(opSyncDeleteDataPartition, dp)
 }
 
-func (c *Cluster) putDataPartitionInfo(opType uint32, dp *DataPartition) (err error) {
-	metadata := new(RaftCmd)
+func (c *Cluster) buildDataPartitionRaftCmd(opType uint32, dp *DataPartition) (metadata *RaftCmd, err error) {
+	metadata = new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = dataPartitionPrefix + strconv.FormatUint(dp.VolID, 10) + keySeparator + strconv.FormatUint(dp.PartitionID, 10)
 	dpv := newDataPartitionValue(dp)
 	metadata.V, err = json.Marshal(dpv)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) putDataPartitionInfo(opType uint32, dp *DataPartition) (err error) {
+	metadata, err := c.buildDataPartitionRaftCmd(opType, dp)
 	if err != nil {
 		return
 	}
@@ -677,13 +688,21 @@ func (c *Cluster) sycnPutZoneInfo(zone *Zone) error {
 	return c.submit(metadata)
 }
 
-func (c *Cluster) syncPutVolInfo(opType uint32, vol *Vol) (err error) {
-	metadata := new(RaftCmd)
+func (c *Cluster) buildVolInfoRaftCmd(opType uint32, vol *Vol) (metadata *RaftCmd, err error) {
+	metadata = new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = volPrefix + strconv.FormatUint(vol.ID, 10)
 	vv := newVolValue(vol)
 	if metadata.V, err = json.Marshal(vv); err != nil {
-		return errors.New(err.Error())
+		return nil, errors.New(err.Error())
+	}
+	return
+}
+
+func (c *Cluster) syncPutVolInfo(opType uint32, vol *Vol) (err error) {
+	metadata, err := c.buildVolInfoRaftCmd(opType, vol)
+	if err != nil {
+		return
 	}
 	return c.submit(metadata)
 }

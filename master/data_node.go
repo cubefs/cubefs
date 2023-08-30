@@ -44,7 +44,7 @@ type DataNode struct {
 	UsageRatio                float64           // used / total space
 	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
 	TaskManager               *AdminTaskManager `graphql:"-"`
-	DataPartitionReports      []*proto.PartitionReport
+	DataPartitionReports      []*proto.DataPartitionReport
 	DataPartitionCount        uint32
 	TotalPartitionSize        uint64
 	NodeSetID                 uint64
@@ -262,6 +262,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 	request.QosIopsWriteLimit = dataNode.QosIopsWLimit
 	request.QosFlowReadLimit = dataNode.QosFlowRLimit
 	request.QosFlowWriteLimit = dataNode.QosFlowWLimit
+
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return
 }

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -45,6 +46,7 @@ type MockDataServer struct {
 	partitions                      []*MockDataPartition
 	zoneName                        string
 	mc                              *master.MasterClient
+	sync.RWMutex
 }
 
 func NewMockDataServer(addr string, zoneName string) *MockDataServer {
@@ -163,6 +165,17 @@ func (mds *MockDataServer) handleTryToLeader(conn net.Conn, p *proto.Packet, adm
 	return
 }
 
+func (mds *MockDataServer) CheckVolPartition(name string, forbidden bool) bool {
+	mds.RLock()
+	defer mds.RUnlock()
+	for _, dp := range mds.partitions {
+		if dp.VolName == name && dp.IsForbidden() != forbidden {
+			return false
+		}
+	}
+	return true
+}
+
 func (mds *MockDataServer) handleDecommissionDataPartition(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
 	defer func() {
 		if err != nil {
@@ -183,6 +196,8 @@ func (mds *MockDataServer) handleDecommissionDataPartition(conn net.Conn, p *pro
 		return
 	}
 	partitions := make([]*MockDataPartition, 0)
+	mds.RLock()
+	defer mds.RUnlock()
 	for index, dp := range mds.partitions {
 		if dp.PartitionID == req.PartitionId {
 			partitions = append(partitions, mds.partitions[:index]...)
@@ -220,14 +235,38 @@ func (mds *MockDataServer) handleCreateDataPartition(conn net.Conn, p *proto.Pac
 		total:       req.PartitionSize,
 		used:        defaultUsedSize,
 	}
+	mds.Lock()
+	defer mds.Unlock()
 	mds.partitions = append(mds.partitions, partition)
 	return
+}
+
+func (mds *MockDataServer) checkVolumeForbidden(volNames []string, dp *MockDataPartition) {
+	for _, volName := range volNames {
+		if volName == dp.VolName {
+			dp.SetForbidden(true)
+			return
+		}
+	}
+	dp.SetForbidden(false)
 }
 
 // Handle OpHeartbeat packet.
 func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, task *proto.AdminTask) (err error) {
 	responseAckOKToMaster(conn, pkg, nil)
 	response := &proto.DataNodeHeartbeatResponse{}
+	req := &proto.HeartBeatRequest{}
+	reqData, err := json.Marshal(task.Request)
+	if err != nil {
+		response.Status = proto.TaskFailed
+		response.Result = err.Error()
+		goto end
+	}
+	if err = json.Unmarshal(reqData, req); err != nil {
+		response.Status = proto.TaskFailed
+		response.Result = err.Error()
+		goto end
+	}
 	response.Status = proto.TaskSucceeds
 	response.Used = 5 * util.GB
 	response.Total = 1024 * util.GB
@@ -238,10 +277,12 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	response.RemainingCapacity = 800 * util.GB
 
 	response.ZoneName = mds.zoneName
-	response.PartitionReports = make([]*proto.PartitionReport, 0)
+	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
 
+	mds.RLock()
 	for _, partition := range mds.partitions {
-		vr := &proto.PartitionReport{
+		mds.checkVolumeForbidden(req.ForbiddenVols, partition)
+		vr := &proto.DataPartitionReport{
 			PartitionID:     partition.PartitionID,
 			PartitionStatus: proto.ReadWrite,
 			Total:           120 * util.GB,
@@ -254,8 +295,10 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 		}
 		response.PartitionReports = append(response.PartitionReports, vr)
 	}
+	mds.RUnlock()
 
 	task.Response = response
+end:
 	if err = mds.mc.NodeAPI().ResponseDataNodeTask(task); err != nil {
 		return
 	}
@@ -288,11 +331,13 @@ func (mds *MockDataServer) handleLoadDataPartition(conn net.Conn, pkg *proto.Pac
 	response.PartitionSnapshot = buildSnapshot()
 	response.Status = proto.TaskSucceeds
 	var partition *MockDataPartition
+	mds.RLock()
 	for _, partition = range mds.partitions {
 		if partition.PartitionID == partitionID {
 			break
 		}
 	}
+	mds.RUnlock()
 	if partition == nil {
 		return
 	}

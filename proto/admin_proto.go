@@ -44,6 +44,7 @@ const (
 	AdminUpdateVol                            = "/vol/update"
 	AdminVolShrink                            = "/vol/shrink"
 	AdminVolExpand                            = "/vol/expand"
+	AdminVolForbidden                         = "/vol/forbidden"
 	AdminCreateVol                            = "/admin/createVol"
 	AdminGetVol                               = "/admin/getVol"
 	AdminClusterFreeze                        = "/cluster/freeze"
@@ -584,10 +585,11 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
+	ForbiddenVols []string
 }
 
-// PartitionReport defines the partition report.
-type PartitionReport struct {
+// DataPartitionReport defines the partition report.
+type DataPartitionReport struct {
 	VolName                    string
 	PartitionID                uint64
 	PartitionStatus            int
@@ -620,7 +622,7 @@ type DataNodeHeartbeatResponse struct {
 	MaxCapacity         uint64 // maximum capacity to create partition
 	StartTime           int64
 	ZoneName            string
-	PartitionReports    []*PartitionReport
+	PartitionReports    []*DataPartitionReport
 	Status              uint8
 	Result              string
 	BadDisks            []string
@@ -811,6 +813,7 @@ type VolView struct {
 	DeleteLockTime int64
 	CacheTTL       int
 	VolType        int
+	Forbidden      bool
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -975,8 +978,9 @@ type SimpleVolView struct {
 	CacheRule        string
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
-	// multi version snapsho t
+	// multi version snapshot
 	LatestVer uint64
+	Forbidden bool
 }
 
 type NodeSetInfo struct {

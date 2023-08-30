@@ -635,6 +635,14 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 		node := dataNode.(*DataNode)
 		node.checkLiveness()
 		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable)
+		hbReq := task.Request.(*proto.HeartBeatRequest)
+		c.volMutex.RLock()
+		defer c.volMutex.RUnlock()
+		for _, vol := range c.vols {
+			if vol.Forbidden {
+				hbReq.ForbiddenVols = append(hbReq.ForbiddenVols, vol.Name)
+			}
+		}
 		tasks = append(tasks, task)
 		return true
 	})
@@ -655,6 +663,9 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 		for _, vol := range c.vols {
 			if vol.FollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
+			}
+			if vol.Forbidden {
+				hbReq.ForbiddenVols = append(hbReq.ForbiddenVols, vol.Name)
 			}
 
 			spaceInfo := vol.uidSpaceManager.getSpaceOp()
@@ -1321,6 +1332,11 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool) (e
 		if c.DisableAutoAllocate {
 			log.LogWarn("disable auto allocate dataPartition")
 			return fmt.Errorf("cluster is disable auto allocate dataPartition")
+		}
+
+		if vol.Forbidden {
+			log.LogWarn("disable auto allocate dataPartition by forbidden volume")
+			return fmt.Errorf("volume is forbidden")
 		}
 
 		if _, err = c.createDataPartition(vol.Name, nil); err != nil {
@@ -2650,6 +2666,7 @@ func (c *Cluster) updateDataPartitionOfflinePeerIDWithLock(dp *DataPartition, pe
 	}
 	return
 }
+
 func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err error) {
 
 	dp.Lock()
