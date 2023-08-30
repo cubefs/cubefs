@@ -61,6 +61,22 @@ func (p *RequestParam) AccessKey() string {
 	return p.accessKey
 }
 
+func (p *RequestParam) API() string {
+	return p.apiName
+}
+
+func (p *RequestParam) Owner() string {
+	return p.vars[ContextKeyOwner]
+}
+
+func (p *RequestParam) Requester() string {
+	return p.vars[ContextKeyRequester]
+}
+
+func (p *RequestParam) RequestID() string {
+	return p.vars[ContextKeyRequestID]
+}
+
 func ParseRequestParam(r *http.Request) *RequestParam {
 	p := new(RequestParam)
 	p.r = r

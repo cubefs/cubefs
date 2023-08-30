@@ -44,6 +44,7 @@ const (
 	Connection         = "Connection"
 	Signature          = "Signature"
 	Origin             = "Origin"
+	UserAgent          = "User-Agent"
 
 	AccessControlRequestMethod    = "Access-Control-Request-Method"
 	AccessControlRequestHeaders   = "Access-Control-Request-Headers"

@@ -17,7 +17,60 @@ package objectnode
 import (
 	"net/http"
 	"strconv"
+	"time"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 )
+
+type ResponseStater struct {
+	StatusCode     int
+	Written        int64
+	StartTime      time.Time
+	hasWroteHeader bool
+
+	http.ResponseWriter
+}
+
+func NewResponseStater(w http.ResponseWriter) *ResponseStater {
+	return &ResponseStater{
+		ResponseWriter: w,
+		StatusCode:     http.StatusOK,
+		StartTime:      time.Now().UTC(),
+	}
+}
+
+func (w *ResponseStater) Header() http.Header {
+	return w.ResponseWriter.Header()
+}
+
+func (w *ResponseStater) Write(b []byte) (int, error) {
+	if !w.hasWroteHeader {
+		w.WriteHeader(http.StatusOK)
+		w.hasWroteHeader = true
+	}
+	n, err := w.ResponseWriter.Write(b)
+	w.Written += int64(n)
+
+	return n, err
+}
+
+func (w *ResponseStater) WriteHeader(code int) {
+	if w.hasWroteHeader {
+		return
+	}
+	w.StatusCode = code
+	w.ResponseWriter.WriteHeader(code)
+	w.hasWroteHeader = true
+}
+
+func (w *ResponseStater) ExtraHeader() http.Header {
+	h := make(http.Header)
+	if eh, ok := w.ResponseWriter.(auditlog.ResponseExtraHeader); ok {
+		h = eh.ExtraHeader()
+	}
+
+	return h
+}
 
 func writeResponse(w http.ResponseWriter, code int, response []byte, mime string) {
 	if mime != "" {
