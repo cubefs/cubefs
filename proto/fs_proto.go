@@ -80,20 +80,21 @@ func IsAncestor(parent, child string) bool {
 
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
-	Inode      uint64                    `json:"ino"`
-	Mode       uint32                    `json:"mode"`
-	Nlink      uint32                    `json:"nlink"`
-	Size       uint64                    `json:"sz"`
-	Uid        uint32                    `json:"uid"`
-	Gid        uint32                    `json:"gid"`
-	Generation uint64                    `json:"gen"`
-	ModifyTime time.Time                 `json:"mt"`
-	CreateTime time.Time                 `json:"ct"`
-	AccessTime time.Time                 `json:"at"`
-	Target     []byte                    `json:"tgt"`
-	QuotaInfos map[uint32]*MetaQuotaInfo `json:"qifs"`
-	VerSeq     uint64                    `json:"seq"`
-	expiration int64
+	Inode        uint64                    `json:"ino"`
+	Mode         uint32                    `json:"mode"`
+	Nlink        uint32                    `json:"nlink"`
+	Size         uint64                    `json:"sz"`
+	Uid          uint32                    `json:"uid"`
+	Gid          uint32                    `json:"gid"`
+	Generation   uint64                    `json:"gen"`
+	ModifyTime   time.Time                 `json:"mt"`
+	CreateTime   time.Time                 `json:"ct"`
+	AccessTime   time.Time                 `json:"at"`
+	Target       []byte                    `json:"tgt"`
+	QuotaInfos   map[uint32]*MetaQuotaInfo `json:"qifs"`
+	VerSeq       uint64                    `json:"seq"`
+	expiration   int64
+	StorageClass uint32 `json:"storageClass"`
 }
 
 type SimpleExtInfo struct {
@@ -206,6 +207,7 @@ type QuotaCreateInodeRequest struct {
 	Target      []byte   `json:"tgt"`
 	QuotaIds    []uint32 `json:"qids"`
 	RequestExtend
+	StorageType uint32 `json:"storageType"`
 }
 
 type CreateInodeRequest struct {
@@ -216,6 +218,7 @@ type CreateInodeRequest struct {
 	Gid         uint32 `json:"gid"`
 	Target      []byte `json:"tgt"`
 	RequestExtend
+	StorageType uint32 `json:"storageType"`
 }
 
 // CreateInodeResponse defines the response to the request of creating an inode.
@@ -250,6 +253,7 @@ type TxCreateInodeRequest struct {
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
 	RequestExtend
+	StorageType uint32 `json:"storageType"`
 }
 
 // TxCreateInodeResponse defines the response with transaction info to the request of creating an inode.
@@ -667,6 +671,7 @@ type AppendExtentKeyWithCheckRequest struct {
 	DiscardExtents []ExtentKey `json:"dek"`
 	VerSeq         uint64      `json:"seq"`
 	IsSplit        bool
+	IsCache        bool
 }
 
 // AppendObjExtentKeyRequest defines the request to append an obj extent key.
@@ -684,6 +689,7 @@ type GetExtentsRequest struct {
 	Inode       uint64 `json:"ino"`
 	VerSeq      uint64 `json:"seq"`
 	VerAll      bool
+	IsCache     bool
 }
 
 // GetObjExtentsResponse defines the response to the request of getting obj extents.

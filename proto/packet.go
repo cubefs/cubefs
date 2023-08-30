@@ -242,6 +242,9 @@ const (
 	OpVersionOperation uint8 = 0xD5
 	OpSplitMarkDelete  uint8 = 0xD6
 	OpTryOtherExtent   uint8 = 0xD7
+
+	//hybirdCloud
+	OpDismatchMediaType uint8 = 0xD8
 )
 
 const (
