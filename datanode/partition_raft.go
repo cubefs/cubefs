@@ -47,6 +47,7 @@ type dataPartitionCfg struct {
 	NodeID        uint64              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
 	ReplicaNum    int
+	Forbidden     bool
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {

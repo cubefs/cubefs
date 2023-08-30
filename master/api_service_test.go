@@ -74,7 +74,35 @@ var cfsUser *proto.UserInfo
 
 var mockServerLock sync.Mutex
 
+var mockDataServers []*mocktest.MockDataServer
+
 var mockMetaServers []*mocktest.MockMetaServer
+
+func rangeMockDataServers(fun func(*mocktest.MockDataServer) bool) (count int, passed int) {
+	mockServerLock.Lock()
+	defer mockServerLock.Unlock()
+	count = len(mockDataServers)
+	for _, mds := range mockDataServers {
+		passed += 1
+		if !fun(mds) {
+			return
+		}
+	}
+	return
+}
+
+func rangeMockMetaServers(fun func(*mocktest.MockMetaServer) bool) (count int, passed int) {
+	mockServerLock.Lock()
+	defer mockServerLock.Unlock()
+	count = len(mockMetaServers)
+	for _, mms := range mockMetaServers {
+		passed += 1
+		if !fun(mms) {
+			return
+		}
+	}
+	return
+}
 
 func createDefaultMasterServerForTest() *Server {
 
@@ -100,12 +128,13 @@ func createDefaultMasterServerForTest() *Server {
 		panic(err)
 	}
 	//add data node
-	addDataServer(mds1Addr, testZone1)
-	addDataServer(mds2Addr, testZone1)
-	addDataServer(mds3Addr, testZone2)
-	addDataServer(mds4Addr, testZone2)
-	addDataServer(mds5Addr, testZone2)
-	addDataServer(mds6Addr, testZone2)
+	mockDataServers = make([]*mocktest.MockDataServer, 0)
+	mockDataServers = append(mockDataServers, addDataServer(mds1Addr, testZone1))
+	mockDataServers = append(mockDataServers, addDataServer(mds2Addr, testZone1))
+	mockDataServers = append(mockDataServers, addDataServer(mds3Addr, testZone2))
+	mockDataServers = append(mockDataServers, addDataServer(mds4Addr, testZone2))
+	mockDataServers = append(mockDataServers, addDataServer(mds5Addr, testZone2))
+	mockDataServers = append(mockDataServers, addDataServer(mds6Addr, testZone2))
 
 	// add meta node
 	mockMetaServers = make([]*mocktest.MockMetaServer, 0)
@@ -224,9 +253,10 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	return server, nil
 }
 
-func addDataServer(addr, zoneName string) {
+func addDataServer(addr, zoneName string) *mocktest.MockDataServer {
 	mds := mocktest.NewMockDataServer(addr, zoneName)
 	mds.Start()
+	return mds
 }
 
 func addMetaServer(addr, zoneName string) *mocktest.MockMetaServer {
@@ -689,7 +719,11 @@ func TestSetNodeMaxDpCntLimit(t *testing.T) {
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	dsAddr := mds7Addr
-	addDataServer(dsAddr, "zone2")
+	func() {
+		mockServerLock.Lock()
+		defer mockServerLock.Unlock()
+		mockDataServers = append(mockDataServers, addDataServer(dsAddr, "zone2"))
+	}()
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
@@ -735,7 +769,11 @@ func TestAddMetaReplica(t *testing.T) {
 		t.Error("no meta partition")
 		return
 	}
-	addMetaServer(mms8Addr, testZone3)
+	func() {
+		mockServerLock.Lock()
+		defer mockServerLock.Unlock()
+		mockMetaServers = append(mockMetaServers, addMetaServer(mms8Addr, testZone3))
+	}()
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, mms8Addr)
@@ -1006,19 +1044,6 @@ func TestListUsersOfVol(t *testing.T) {
 	process(reqURL, t)
 }
 
-func rangeMockMetaServers(fun func(*mocktest.MockMetaServer) bool) (count int, passed int) {
-	mockServerLock.Lock()
-	defer mockServerLock.Unlock()
-	count = len(mockMetaServers)
-	for _, mms := range mockMetaServers {
-		passed += 1
-		if !fun(mms) {
-			return
-		}
-	}
-	return
-}
-
 const (
 	volPartitionCheckTimeout = 60
 )
@@ -1065,4 +1090,75 @@ func TestVolumeEnableAuditLog(t *testing.T) {
 	process(enableUrl, t)
 	require.False(t, vol.DisableAuditLog)
 	require.True(t, checkVolAuditLog(name, true))
+}
+
+func checkVolForbidden(name string, forbidden bool) (success bool) {
+	dataChecker := func(mdp *mocktest.MockDataPartition) bool {
+		return mdp.IsForbidden() == forbidden
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
+		okCount := 0
+		count, _ := rangeMockDataServers(func(mds *mocktest.MockDataServer) bool {
+			if mds.CheckVolPartition(name, dataChecker) {
+				okCount += 1
+			}
+			return true
+		})
+		if count == okCount {
+			success = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !success {
+		return
+	}
+	success = false
+	metaChecker := func(mmp *mocktest.MockMetaPartition) bool {
+		return mmp.IsForbidden() == forbidden
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
+		okCount := 0
+		count, _ := rangeMockMetaServers(func(mms *mocktest.MockMetaServer) bool {
+			if mms.CheckVolPartition(name, metaChecker) {
+				okCount += 1
+			}
+			return true
+		})
+		if count == okCount {
+			success = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return
+}
+
+func TestForbiddenVolume(t *testing.T) {
+	name := "forbiddenVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminVolForbidden)
+	forbidUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, forbiddenKey)
+	unforbidUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, forbiddenKey)
+	process(forbidUrl, t)
+	ok := checkVolForbidden(vol.Name, vol.Forbidden)
+	if !ok {
+		t.Errorf("failed to forbid volume, check timeout")
+		return
+	}
+	process(unforbidUrl, t)
+	ok = checkVolForbidden(vol.Name, vol.Forbidden)
+	if !ok {
+		t.Errorf("failed to unforbid volume, check timeout")
+		return
+	}
 }

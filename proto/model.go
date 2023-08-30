@@ -88,6 +88,7 @@ type MetaPartitionInfo struct {
 	OfflinePeerID uint64
 	MissNodes     map[string]int64
 	LoadResponse  []*MetaPartitionLoadResponse
+	Forbidden     bool
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -227,6 +228,7 @@ type DataPartitionInfo struct {
 	SingleDecommissionAddr   string
 	RdOnly                   bool
 	IsDiscard                bool
+	Forbidden                bool
 }
 
 // FileInCore define file in data partition

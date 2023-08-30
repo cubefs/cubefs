@@ -88,6 +88,7 @@ type MetaPartitionConfig struct {
 	AfterStop     func()              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
 	ConnPool      *util.ConnectPool   `json:"-"`
+	Forbidden     bool                `json:"forbidden"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -247,6 +248,8 @@ type MetaPartition interface {
 	ForceSetMetaPartitionToFininshLoad()
 	IsEnableAuditLog() bool
 	SetEnableAuditLog(status bool)
+	IsForbidden() bool
+	SetForbidden(status bool)
 	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
 }
 
@@ -491,6 +494,14 @@ func (mp *metaPartition) IsEnableAuditLog() bool {
 
 func (mp *metaPartition) SetEnableAuditLog(status bool) {
 	mp.enableAuditLog = status
+}
+
+func (mp *metaPartition) IsForbidden() bool {
+	return mp.config.Forbidden
+}
+
+func (mp *metaPartition) SetForbidden(status bool) {
+	mp.config.Forbidden = status
 }
 
 func (mp *metaPartition) acucumRebuildStart() bool {

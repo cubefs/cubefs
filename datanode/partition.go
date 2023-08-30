@@ -138,6 +138,14 @@ type DataPartition struct {
 	persistMetaMutex              sync.RWMutex
 }
 
+func (dp *DataPartition) IsForbidden() bool {
+	return dp.config.Forbidden
+}
+
+func (dp *DataPartition) SetForbidden(status bool) {
+	dp.config.Forbidden = status
+}
+
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
 	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
