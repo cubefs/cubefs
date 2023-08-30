@@ -930,6 +930,14 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		}
 	}
 
+	forbidden := true
+	vol, err := c.getVol(partition.VolName)
+	if err == nil {
+		forbidden = vol.Forbidden
+	} else {
+		log.LogErrorf("action[buildDpInfo]failed to get volume %v, err %v", partition.VolName, err)
+	}
+
 	return &proto.DataPartitionInfo{
 		PartitionID:              partition.PartitionID,
 		PartitionTTL:             partition.PartitionTTL,
@@ -952,6 +960,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		SingleDecommissionStatus: partition.SingleDecommissionStatus,
 		SingleDecommissionAddr:   partition.SingleDecommissionAddr,
 		IsDiscard:                partition.IsDiscard,
+		Forbidden:                forbidden,
 	}
 }
 
