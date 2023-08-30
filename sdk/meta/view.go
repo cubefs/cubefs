@@ -159,6 +159,7 @@ const DefaultTrashInterval int64 = 10
 
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	var info *proto.VolStatInfo
+
 	if info, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
 		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
 		return
@@ -170,6 +171,7 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 		info.UsedSize = info.TotalSize
 	}
 
+	atomic.StoreUint32(&mw.DefaultMediaType, info.DefaultMediaType)
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
