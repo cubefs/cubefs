@@ -763,11 +763,15 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			if _, err = io.ReadFull(buff, extBytes); err != nil {
 				return
 			}
-			if i.multiSnap == nil {
-				i.multiSnap = NewMultiSnap(0)
-			}
-			if err, i.multiSnap.ekRefMap = i.Extents.UnmarshalBinary(extBytes, v3); err != nil {
+			var ekRef *sync.Map
+			if err, ekRef = i.Extents.UnmarshalBinary(extBytes, v3); err != nil {
 				return
+			}
+			if ekRef != nil {
+				if i.multiSnap == nil {
+					i.multiSnap = NewMultiSnap(0)
+				}
+				i.multiSnap.ekRefMap = ekRef
 			}
 		}
 	} else {
