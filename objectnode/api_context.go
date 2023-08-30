@@ -30,7 +30,8 @@ const (
 	ContextKeyErrorMessage  = "error_message"
 	ContextKeyBucket        = "bucket"
 	ContextKeyObject        = "object"
-	ContextKeyUid           = "uid"
+	ContextKeyRequester     = "requester"
+	ContextKeyOwner         = "owner"
 	ContextKeyAccessKey     = "access_key"
 )
 

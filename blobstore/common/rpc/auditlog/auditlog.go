@@ -171,7 +171,9 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 		module:         j.module,
 		body:           j.bodyPool.Get().([]byte),
 		bodyLimit:      j.cfg.BodyLimit,
+		noLogBody:      j.cfg.NoLogBody,
 		span:           span,
+		statusCode:     http.StatusOK,
 		startTime:      time.Now(),
 		ResponseWriter: w,
 	}
@@ -272,4 +274,11 @@ func defaultLogFilter(r *http.Request, words []string) bool {
 		}
 	}
 	return false
+}
+
+// ExtraWrite provides extra response header writes to the ResponseWriter.
+func ExtraWrite(w http.ResponseWriter, m map[string]interface{}) {
+	if ew, ok := w.(ExtraWriter); ok {
+		ew.ExtraWrite(m)
+	}
 }
