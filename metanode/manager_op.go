@@ -46,6 +46,18 @@ func (m *metadataManager) checkFollowerRead(volNames []string, partition MetaPar
 	return
 }
 
+func (m *metadataManager) checkForbiddenVolume(volNames []string, partition MetaPartition) {
+	volName := partition.GetBaseConfig().VolName
+	for _, name := range volNames {
+		if name == volName {
+			partition.SetForbidden(true)
+			return
+		}
+	}
+	partition.SetForbidden(false)
+	return
+}
+
 func (m *metadataManager) checkDisableAuditLogVolume(volNames []string, partition MetaPartition) {
 	volName := partition.GetBaseConfig().VolName
 	for _, name := range volNames {
@@ -92,6 +104,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 
 		m.Range(func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
+			m.checkForbiddenVolume(req.ForbiddenVols, partition)
 			m.checkDisableAuditLogVolume(req.DisableAuditVols, partition)
 			partition.SetUidLimit(req.UidLimitInfo)
 			partition.SetTxInfo(req.TxInfo)

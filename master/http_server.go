@@ -193,6 +193,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminClusterFreeze).
 		HandlerFunc(m.setupAutoAllocation)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminVolForbidden).
+		HandlerFunc(m.forbidVolume)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminVolEnableAuditLog).
 		HandlerFunc(m.setEnableAuditLogForVolume)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
