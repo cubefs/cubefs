@@ -37,6 +37,10 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+var (
+	ErrForbiddenDataPartition = errors.New("the data partition is forbidden")
+)
+
 func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	labels := make(map[string]string)
 	labels[exporter.Vol] = ""
@@ -213,6 +217,19 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	return
 }
 
+func (s *DataNode) checkVolumeForbidden(volNames []string) {
+	s.space.RangePartitions(func(partition *DataPartition) bool {
+		for _, volName := range volNames {
+			if volName == partition.volumeID {
+				partition.SetForbidden(true)
+				return true
+			}
+		}
+		partition.SetForbidden(false)
+		return true
+	})
+}
+
 // Handle OpCreateDataPartition packet.
 func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 	var (
@@ -286,6 +303,10 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 					request.EnableDiskQos,
 					s.diskQosEnable)
 			}
+
+			// set volume forbidden
+			s.checkVolumeForbidden(request.ForbiddenVols)
+
 			s.diskQosEnableFromMaster = request.EnableDiskQos
 
 			var needUpdate bool
@@ -460,6 +481,10 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+	// NOTE: we cannot prevent mark delete
+	// even the partition is forbidden, because
+	// the inode already be deleted in meta partition
+	// if we prevent it, we will get "orphan extents"
 	var exts []*proto.ExtentKey
 	err = json.Unmarshal(p.Data, &exts)
 	store := partition.ExtentStore()
@@ -504,6 +529,10 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}()
 
 	partition := p.Object.(*DataPartition)
+	if partition.IsForbidden() {
+		err = ErrForbiddenDataPartition
+		return
+	}
 	shallDegrade := p.ShallDegrade()
 	if !shallDegrade {
 		metricPartitionIOLabels = GetIoMetricLabels(partition, "write")
@@ -602,7 +631,10 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
-
+	if partition.IsForbidden() {
+		err = ErrForbiddenDataPartition
+		return
+	}
 	// cache or preload partition not support raft and repair.
 	if !partition.isNormalType() {
 		err = raft.ErrStopped
