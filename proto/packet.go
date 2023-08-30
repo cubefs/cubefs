@@ -268,6 +268,9 @@ const (
 	OpMetaInodeAccessTimeGet uint8 = 0xB2
 
 	OpReachMaxExtentsErr uint8 = 0xB3
+
+	//hybirdCloud
+	OpDismatchMediaType uint8 = 0xD8
 )
 
 const (

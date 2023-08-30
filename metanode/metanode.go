@@ -46,6 +46,7 @@ var (
 	smuxPool              *util.SmuxConnectPool
 	smuxPoolCfg           = util.DefaultSmuxConnPoolConfig()
 	clusterEnableSnapshot bool
+	defaultMediaType      uint64
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -337,6 +338,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 	if err = masterClient.Start(); err != nil {
 		return err
+	}
+	defaultMediaType, _ = strconv.ParseUint(cfg.GetString(cfgDefaultMediaType), 10, 64)
+	if defaultMediaType == 0 {
+		log.LogWarnf("bad DefaultMediaType config %v", defaultMediaType)
 	}
 	err = m.validConfig()
 	return

@@ -59,8 +59,8 @@ func init() {
 
 type (
 	SplitExtentKeyFunc  func(parentInode, inode uint64, key proto.ExtentKey) error
-	AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) (int, error)
-	GetExtentsFunc      func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
+	AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey, isCache bool) (int, error)
+	GetExtentsFunc      func(inode uint64, isCache bool) (uint64, uint64, []proto.ExtentKey, error)
 	TruncateFunc        func(inode, size uint64, fullPath string) error
 	EvictIcacheFunc     func(inode uint64)
 	LoadBcacheFunc      func(key string, buf []byte, offset uint64, size uint32) (int, error)

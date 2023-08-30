@@ -133,6 +133,20 @@ func (se *SortedObjExtents) Size() uint64 {
 	return se.eks[last-1].FileOffset + se.eks[last-1].Size
 }
 
+func (se *SortedObjExtents) LayerSize() (layerSize uint64) {
+	se.RLock()
+	defer se.RUnlock()
+
+	last := len(se.eks)
+	if last <= 0 {
+		return 0
+	}
+	for _, ek := range se.eks {
+		layerSize += ek.Size
+	}
+	return
+}
+
 func (se *SortedObjExtents) Range(f func(ek proto.ObjExtentKey) bool) {
 	se.RLock()
 	defer se.RUnlock()

@@ -567,9 +567,15 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	} else {
 		discards := s.extents.Append(extKey, true)
 		var st int
-		if st, err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards); err != nil {
+		if st, err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache); err != nil {
 			status = int32(st)
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
+			//=======
+			//		// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
+			//		discards := s.extents.Append(extKey, false)
+			//		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache); err != nil {
+			//			log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
+			//>>>>>>> ac89f9770 (feature(metanod,client): [hybrid cloud] 1. inode supprot hybrid-clound 2.client read/write support hybrid-clound)
 			return
 		}
 		log.LogDebugf("action[doDirectWriteByAppend] handler fileoffset %v size %v key %v", s.handler.fileOffset, s.handler.size, s.handler.key)

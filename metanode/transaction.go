@@ -962,7 +962,6 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 
 func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status uint8, err error) {
 	status = proto.OpOk
-
 	tx := tm.getTransaction(txId)
 	if tx == nil {
 		log.LogWarnf("commitTx: tx[%v] not found, already success", txId)
@@ -1360,6 +1359,7 @@ func (tr *TransactionResource) addTxRollbackDentry(rbDentry *TxRollbackDentry) (
 	return proto.OpOk
 }
 
+// TODO support hybrid
 func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (status uint8, err error) {
 	status = proto.OpOk
 	mp := tr.txProcessor.mp
