@@ -196,6 +196,8 @@ func (mds *MockDataServer) handleDecommissionDataPartition(conn net.Conn, p *pro
 		return
 	}
 	partitions := make([]*MockDataPartition, 0)
+	mds.RLock()
+	defer mds.RUnlock()
 	for index, dp := range mds.partitions {
 		if dp.PartitionID == req.PartitionId {
 			partitions = append(partitions, mds.partitions[:index]...)
@@ -239,10 +241,32 @@ func (mds *MockDataServer) handleCreateDataPartition(conn net.Conn, p *proto.Pac
 	return
 }
 
+func (mds *MockDataServer) checkVolumeForbidden(volNames []string, dp *MockDataPartition) {
+	for _, volName := range volNames {
+		if volName == dp.VolName {
+			dp.SetForbidden(true)
+			return
+		}
+	}
+	dp.SetForbidden(false)
+}
+
 // Handle OpHeartbeat packet.
 func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, task *proto.AdminTask) (err error) {
 	responseAckOKToMaster(conn, pkg, nil)
 	response := &proto.DataNodeHeartbeatResponse{}
+	req := &proto.HeartBeatRequest{}
+	reqData, err := json.Marshal(task.Request)
+	if err != nil {
+		response.Status = proto.TaskFailed
+		response.Result = err.Error()
+		goto end
+	}
+	if err = json.Unmarshal(reqData, req); err != nil {
+		response.Status = proto.TaskFailed
+		response.Result = err.Error()
+		goto end
+	}
 	response.Status = proto.TaskSucceeds
 	response.Used = 5 * util.GB
 	response.Total = 1024 * util.GB
@@ -255,7 +279,9 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	response.ZoneName = mds.zoneName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
 
+	mds.RLock()
 	for _, partition := range mds.partitions {
+		mds.checkVolumeForbidden(req.ForbiddenVols, partition)
 		vr := &proto.PartitionReport{
 			PartitionID:     partition.PartitionID,
 			PartitionStatus: proto.ReadWrite,
@@ -269,8 +295,10 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 		}
 		response.PartitionReports = append(response.PartitionReports, vr)
 	}
+	mds.RUnlock()
 
 	task.Response = response
+end:
 	if err = mds.mc.NodeAPI().ResponseDataNodeTask(task); err != nil {
 		return
 	}
@@ -303,11 +331,13 @@ func (mds *MockDataServer) handleLoadDataPartition(conn net.Conn, pkg *proto.Pac
 	response.PartitionSnapshot = buildSnapshot()
 	response.Status = proto.TaskSucceeds
 	var partition *MockDataPartition
+	mds.RLock()
 	for _, partition = range mds.partitions {
 		if partition.PartitionID == partitionID {
 			break
 		}
 	}
+	mds.RUnlock()
 	if partition == nil {
 		return
 	}
