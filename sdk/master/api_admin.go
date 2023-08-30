@@ -391,6 +391,15 @@ func (api *AdminAPI) SetVolumeForbidden(volName string, forbidden bool) (err err
 	_, err = api.mc.serveRequest(request)
 	return
 }
+func (api *AdminAPI) SetVolumeForbidden(volName string, forbidden bool) (err error) {
+	request := newAPIRequest(http.MethodGet, proto.AdminVolForbidden)
+	request.addParam("name", volName)
+	request.addParam("forbidden", strconv.FormatBool(forbidden))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
 
 func (api *AdminAPI) SetVolumeAuditLog(volName string, enable bool) (err error) {
 	request := newRequest(post, proto.AdminVolEnableAuditLog).Header(api.h)
