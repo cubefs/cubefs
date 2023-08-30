@@ -95,6 +95,7 @@ type InodeInfo struct {
 	VerSeq            uint64                    `json:"seq"`
 	expiration        int64
 	PersistAccessTime time.Time `json:"pat"`
+	StorageClass      uint32    `json:"storageClass"`
 }
 
 type SimpleExtInfo struct {
@@ -207,6 +208,7 @@ type QuotaCreateInodeRequest struct {
 	Target      []byte   `json:"tgt"`
 	QuotaIds    []uint32 `json:"qids"`
 	RequestExtend
+	StorageType uint32 `json:"storageType"`
 }
 
 type CreateInodeRequest struct {
@@ -217,6 +219,7 @@ type CreateInodeRequest struct {
 	Gid         uint32 `json:"gid"`
 	Target      []byte `json:"tgt"`
 	RequestExtend
+	StorageType uint32 `json:"storageType"`
 }
 
 // CreateInodeResponse defines the response to the request of creating an inode.
@@ -251,6 +254,7 @@ type TxCreateInodeRequest struct {
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
 	RequestExtend
+	StorageType uint32 `json:"storageType"`
 }
 
 // TxCreateInodeResponse defines the response with transaction info to the request of creating an inode.
@@ -670,6 +674,7 @@ type AppendExtentKeyWithCheckRequest struct {
 	DiscardExtents []ExtentKey `json:"dek"`
 	VerSeq         uint64      `json:"seq"`
 	IsSplit        bool
+	IsCache        bool
 }
 
 // AppendObjExtentKeyRequest defines the request to append an obj extent key.
@@ -687,6 +692,7 @@ type GetExtentsRequest struct {
 	Inode       uint64 `json:"ino"`
 	VerSeq      uint64 `json:"seq"`
 	VerAll      bool
+	IsCache     bool
 }
 
 // GetObjExtentsResponse defines the response to the request of getting obj extents.

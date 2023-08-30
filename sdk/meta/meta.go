@@ -183,6 +183,7 @@ type MetaWrapper struct {
 	LastVerSeq        uint64
 	Client            wrapper.SimpleClientInfo
 	IsSnapshotEnabled bool
+	DefaultMediaType  uint32
 }
 
 type uniqidRange struct {
