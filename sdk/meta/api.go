@@ -15,7 +15,6 @@
 package meta
 
 import (
-	"errors"
 	"fmt"
 	syslog "log"
 	"math"
@@ -30,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -1378,7 +1378,7 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 		oldInfo, _ = mw.InodeGet_ll(inode)
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, nil, true)
+	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false)
 	if err != nil || status != statusOK {
 		log.LogErrorf("SplitExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
 		return statusToErrno(status)
@@ -1400,7 +1400,13 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 }
 
 // Used as a callback by stream sdk
-func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey, discard []proto.ExtentKey) error {
+func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey,
+	discard []proto.ExtentKey, isCache bool) error {
+	mediaType := mw.GetMediaType()
+	if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD && isCache != true {
+		return errors.New(fmt.Sprintf("Current media type %v isCache %v do not support AppendExtentKey",
+			mw.DefaultMediaType, isCache))
+	}
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
@@ -1410,7 +1416,7 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		oldInfo, _ = mw.InodeGet_ll(inode)
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, discard, false)
+	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache)
 	if err != nil || status != statusOK {
 		log.LogErrorf("MetaWrapper AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return statusToErrno(status)
@@ -1433,6 +1439,11 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 
 // AppendExtentKeys append multiple extent key into specified inode with single request.
 func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey) error {
+	mediaType := mw.GetMediaType()
+	if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD {
+		return errors.New(fmt.Sprintf("Current media type %v do not support AppendExtentKeys",
+			mw.DefaultMediaType))
+	}
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
@@ -1463,13 +1474,19 @@ func (mw *MetaWrapper) AppendObjExtentKeys(inode uint64, eks []proto.ObjExtentKe
 	return nil
 }
 
-func (mw *MetaWrapper) GetExtents(inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) GetExtents(inode uint64, isCache bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
+	//mediaType := mw.GetMediaType()
+	//if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD {
+	//	return 0, 0, nil, errors.New(fmt.Sprintf("Current media type %v do not support GetExtents",
+	//		mw.DefaultMediaType))
+	//}
+
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	resp, err := mw.getExtents(mp, inode)
+	resp, err := mw.getExtents(mp, inode, isCache)
 	if err != nil {
 		if resp != nil {
 			err = statusToErrno(resp.Status)
@@ -2509,4 +2526,8 @@ func (mw *MetaWrapper) RevokeQuota_ll(parentIno uint64, quotaId uint32, maxConcu
 	var curInodeCount uint64
 	err = mw.revokeQuota(parentIno, quotaId, &numInodes, &curInodeCount, &inodes, maxConcurrencyInode, true)
 	return
+}
+
+func (mw *MetaWrapper) GetMediaType() uint32 {
+	return atomic.LoadUint32(&mw.DefaultMediaType)
 }
