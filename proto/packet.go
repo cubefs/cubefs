@@ -242,6 +242,9 @@ const (
 	// multiVersion to dp/mp
 	OpVersionOperation uint8 = 0xD5
 	OpSplitMarkDelete  uint8 = 0xD6
+
+	//hybirdCloud
+	OpDismatchMediaType uint8 = 0xD7
 )
 
 const (

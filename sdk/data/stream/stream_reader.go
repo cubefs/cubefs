@@ -54,6 +54,7 @@ type Streamer struct {
 	pendingCache         chan bcacheKey
 	verSeq               uint64
 	needUpdateVer        int32
+	isCache              bool
 }
 
 type bcacheKey struct {
@@ -92,14 +93,14 @@ func (s *Streamer) String() string {
 // TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents() error {
 	if s.client.disableMetaCache || !s.needBCache {
-		return s.extents.RefreshForce(s.inode, s.client.getExtents)
+		return s.extents.RefreshForce(s.inode, s.client.getExtents, s.isCache)
 	}
 
-	return s.extents.Refresh(s.inode, s.client.getExtents)
+	return s.extents.Refresh(s.inode, s.client.getExtents, s.isCache)
 }
 
 func (s *Streamer) GetExtentsForce() error {
-	return s.extents.RefreshForce(s.inode, s.client.getExtents)
+	return s.extents.RefreshForce(s.inode, s.client.getExtents, s.isCache)
 }
 
 // GetExtentReader returns the extent reader.
@@ -311,4 +312,8 @@ func (s *Streamer) exceedBlockSize(size uint32) bool {
 		return true
 	}
 	return false
+}
+
+func (s *Streamer) WorkAsCache() {
+	s.isCache = true
 }

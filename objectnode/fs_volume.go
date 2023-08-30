@@ -1221,7 +1221,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		var completeExtentKeys = make([]proto.ExtentKey, 0)
 		for _, part := range parts {
 			var eks []proto.ExtentKey
-			if _, _, eks, err = v.mw.GetExtents(part.Inode); err != nil {
+			if _, _, eks, err = v.mw.GetExtents(part.Inode, false); err != nil {
 				log.LogErrorf("CompleteMultipart: meta get extents fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, part.ID, part.Inode, err)
 				return
@@ -3168,13 +3168,13 @@ func (v *Volume) referenceExtentKey(oldInode, inode uint64) (bool, error) {
 
 	}
 	// hot volume
-	_, _, oldExtents, err := v.mw.GetExtents(oldInode)
+	_, _, oldExtents, err := v.mw.GetExtents(oldInode, false)
 	if err != nil {
 		log.LogErrorf("referenceExtentKey: meta get oldInode extents fail: volume(%v) inode(%v) err(%v)",
 			v.name, oldInode, err)
 		return false, err
 	}
-	_, _, extents, err := v.mw.GetExtents(inode)
+	_, _, extents, err := v.mw.GetExtents(inode, false)
 	if err != nil {
 		log.LogErrorf("referenceExtentKey: meta get inode objextents fail: volume(%v) inode(%v) err(%v)",
 			v.name, inode, err)

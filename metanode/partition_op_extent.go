@@ -109,18 +109,25 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
+	//TODO:if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
 	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
-	if proto.IsCold(mp.volType) {
+	//if proto.IsCold(mp.volType) {
+	if req.IsCache {
 		i.RLock()
-		exist, idx := i.ObjExtents.FindOffsetExist(req.Extent.FileOffset)
+		if i.HybridCouldExtents.sortedEks == nil {
+			i.HybridCouldExtents.sortedEks = NewSortedObjExtents()
+
+		}
+		ObjExtents := i.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+		exist, idx := ObjExtents.FindOffsetExist(req.Extent.FileOffset)
 		if !exist {
 			i.RUnlock()
 			err = fmt.Errorf("ebs's objextent not exist with offset[%v]", req.Extent.FileOffset)
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
-		if i.ObjExtents.eks[idx].Size != uint64(req.Extent.Size) {
-			err = fmt.Errorf("ebs's objextent size[%v] isn't equal to the append size[%v]", i.ObjExtents.eks[idx].Size, req.Extent.Size)
+		if ObjExtents.eks[idx].Size != uint64(req.Extent.Size) {
+			err = fmt.Errorf("ebs's objextent size[%v] isn't equal to the append size[%v]", ObjExtents.eks[idx].Size, req.Extent.Size)
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			i.RUnlock()
 			return
@@ -133,12 +140,23 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	// extent key verSeq not set value since marshal will not include verseq
 	// use inode verSeq instead
 	inoParm.setVer(mp.verSeq)
-	inoParm.Extents.Append(ext)
+	//TODO:
+	if req.IsCache {
+		inoParm.Extents.Append(ext)
+	} else {
+		inoParm.HybridCouldExtents.sortedEks = NewSortedExtents()
+		inoParm.HybridCouldExtents.sortedEks.(*SortedExtents).Append(ext)
+	}
 	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) verSeq (%v)", req.Inode, req.PartitionID, mp.verSeq)
 
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
-		inoParm.Extents.eks = append(inoParm.Extents.eks, req.DiscardExtents...)
+		if req.IsCache {
+			inoParm.Extents.eks = append(inoParm.Extents.eks, req.DiscardExtents...)
+		} else {
+			extents := inoParm.HybridCouldExtents.sortedEks.(*SortedExtents)
+			extents.eks = append(extents.eks, req.DiscardExtents...)
+		}
 	}
 	val, err := inoParm.Marshal()
 	if err != nil {
@@ -388,11 +406,18 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		reply  []byte
 		status = retMsg.Status
 	)
+	if ino.StorageClass != proto.MediaType_SSD && ino.StorageClass != proto.MediaType_HDD && req.IsCache != true {
+		status = proto.OpErr
+		reply = []byte(fmt.Sprintf("ino storage type %v IsCache %v do not support ExtentsList",
+			ino.StorageClass, req.IsCache))
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
 
 	if status == proto.OpOk {
 		resp := &proto.GetExtentsResponse{}
-		log.LogInfof("action[ExtentsList] inode %v request verseq %v ino ver %v extent size %v ino.Size %v ino %v hist len %v",
-			req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
+		log.LogInfof("action[ExtentsList] inode %v request verseq %v ino ver %v ino.Size %v ino %v hist len %v",
+			req.Inode, req.VerSeq, ino.getVer(), ino.Size, ino, ino.getLayerLen())
 
 		if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
 			mp.GetExtentByVer(ino, req, resp)
@@ -403,15 +428,35 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 				resp.Size = vIno.Size
 			}
 		} else {
-			ino.DoReadFunc(func() {
-				resp.Generation = ino.Generation
-				resp.Size = ino.Size
-				ino.Extents.Range(func(ek proto.ExtentKey) bool {
-					resp.Extents = append(resp.Extents, ek)
-					log.LogInfof("action[ExtentsList] append ek %v", ek)
-					return true
+			if req.IsCache {
+				ino.DoReadFunc(func() {
+					resp.Generation = ino.Generation
+					resp.Size = ino.Size
+					ino.Extents.Range(func(ek proto.ExtentKey) bool {
+						resp.Extents = append(resp.Extents, ek)
+						log.LogInfof("action[ExtentsList] append ek %v", ek)
+						return true
+					})
 				})
-			})
+			} else {
+				ino.DoReadFunc(func() {
+					resp.Generation = ino.Generation
+					resp.Size = ino.Size
+					//ino.Extents.Range(func(ek proto.ExtentKey) bool {
+					//	resp.Extents = append(resp.Extents, ek)
+					//	log.LogInfof("action[ExtentsList] append ek %v", ek)
+					//	return true
+					//})
+					if ino.HybridCouldExtents.sortedEks != nil {
+						extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
+						extents.Range(func(ek proto.ExtentKey) bool {
+							resp.Extents = append(resp.Extents, ek)
+							log.LogInfof("action[ExtentsList] append ek %v", ek)
+							return true
+						})
+					}
+				})
+			}
 		}
 		if req.VerAll {
 			resp.LayerInfo = retMsg.Msg.getAllLayerEks()
@@ -437,18 +482,34 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 		status = retMsg.Status
 	)
 	if status == proto.OpOk {
+		if ino.StorageClass != proto.MediaType_EBS {
+			status = proto.OpDismatchMediaType
+			reply = []byte(fmt.Sprintf("Dismatch storage type, current storage type is %s",
+				proto.MediaTypeString(ino.StorageClass)))
+			p.PacketErrorWithBody(status, reply)
+			return
+		}
 		resp := &proto.GetObjExtentsResponse{}
 		ino.DoReadFunc(func() {
 			resp.Generation = ino.Generation
 			resp.Size = ino.Size
+			//cache ek
 			ino.Extents.Range(func(ek proto.ExtentKey) bool {
 				resp.Extents = append(resp.Extents, ek)
 				return true
 			})
-			ino.ObjExtents.Range(func(ek proto.ObjExtentKey) bool {
-				resp.ObjExtents = append(resp.ObjExtents, ek)
-				return true
-			})
+			//from SortedHybridCloudExtents
+			if ino.HybridCouldExtents.sortedEks != nil {
+				objEks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+				objEks.Range(func(ek proto.ObjExtentKey) bool {
+					resp.ObjExtents = append(resp.ObjExtents, ek)
+					return true
+				})
+			}
+			//ino.ObjExtents.Range(func(ek proto.ObjExtentKey) bool {
+			//	resp.ObjExtents = append(resp.ObjExtents, ek)
+			//	return true
+			//})
 		})
 
 		reply, err = json.Marshal(resp)
@@ -481,6 +542,11 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		return
 	}
 	i := item.(*Inode)
+	if i.StorageClass != proto.MediaType_HDD && i.StorageClass != proto.MediaType_SSD {
+		err = fmt.Errorf("inode %v storage type do not support tuncate operation %v ", req.Inode, i.StorageClass)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	status := mp.isOverQuota(req.Inode, req.Size > i.Size, false)
 	if status != 0 {
 		log.LogErrorf("ExtentsTruncate fail status [%v]", status)
@@ -521,9 +587,16 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		return
 	}
 
+	if !ino.storeInReplicaSystem() {
+		err = fmt.Errorf("ino %v storage type %v donot support BatchExtentAppend", ino.Inode, ino.StorageClass)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
 	extents := req.Extents
+	ino.HybridCouldExtents.sortedEks = NewSortedExtents()
 	for _, extent := range extents {
-		ino.Extents.Append(extent)
+		ino.HybridCouldExtents.sortedEks.(*SortedExtents).Append(extent)
 	}
 	val, err := ino.Marshal()
 	if err != nil {
@@ -545,10 +618,16 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 		log.LogErrorf("BatchObjExtentAppend fail status [%v]", err)
 		return
 	}
-
+	if ino.StorageClass != proto.MediaType_EBS {
+		err = errors.New(fmt.Sprintf("ino StorageClass %v donot support BatchObjExtentAppend", ino.StorageClass))
+		log.LogErrorf("BatchObjExtentAppend fail [%v]", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	objExtents := req.Extents
+	ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()
 	for _, objExtent := range objExtents {
-		err = ino.ObjExtents.Append(objExtent)
+		err = ino.HybridCouldExtents.sortedEks.(*SortedObjExtents).Append(objExtent)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return

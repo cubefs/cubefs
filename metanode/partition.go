@@ -278,6 +278,7 @@ type MetaPartition interface {
 	ForceSetMetaPartitionToFininshLoad()
 	IsForbidden() bool
 	SetForbidden(status bool)
+	GetStorageTypes() []uint32
 }
 
 type UidManager struct {
@@ -516,6 +517,7 @@ type metaPartition struct {
 	multiVersionList       *proto.VolVersionInfoList
 	versionLock            sync.Mutex
 	verUpdateChan          chan []byte
+	storageTypes           []uint32
 }
 
 func (mp *metaPartition) IsForbidden() bool {
@@ -602,14 +604,15 @@ func (mp *metaPartition) updateSize() {
 			select {
 			case <-timer.C:
 				size := uint64(0)
-
+				storageTypes := make([]uint32, 0)
 				mp.inodeTree.GetTree().Ascend(func(item BtreeItem) bool {
 					inode := item.(*Inode)
 					size += inode.Size
+					storageTypes = append(storageTypes, inode.StorageClass)
 					return true
 				})
-
 				mp.size = size
+				mp.storageTypes = uniqueUint32Slice(storageTypes)
 				log.LogDebugf("[updateSize] update mp(%d) size(%d) success,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len())
 			case <-mp.stopC:
 				log.LogDebugf("[updateSize] stop update mp(%d) size,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
@@ -617,6 +620,20 @@ func (mp *metaPartition) updateSize() {
 			}
 		}
 	}()
+}
+
+func uniqueUint32Slice(input []uint32) []uint32 {
+	uniqueMap := make(map[uint32]bool)
+	uniqueSlice := []uint32{}
+
+	for _, num := range input {
+		if !uniqueMap[num] {
+			uniqueMap[num] = true
+			uniqueSlice = append(uniqueSlice, num)
+		}
+	}
+
+	return uniqueSlice
 }
 
 func (mp *metaPartition) ForceSetMetaPartitionToLoadding() {
@@ -1748,4 +1765,8 @@ func (mp *metaPartition) startCheckerEvict() {
 			return
 		}
 	}
+}
+
+func (mp *metaPartition) GetStorageTypes() []uint32 {
+	return mp.storageTypes
 }

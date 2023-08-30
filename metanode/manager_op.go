@@ -115,6 +115,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				FreeListLen:      uint64(partition.GetFreeListLen()),
 				UidInfo:          partition.GetUidInfo(),
 				QuotaReportInfos: partition.getQuotaReportInfos(),
+				StorageTypes:     partition.GetStorageTypes(),
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 

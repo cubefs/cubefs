@@ -70,6 +70,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.QuotaInfos = quotaInfos
+	info.StorageClass = ino.StorageClass
 	return true
 }
 
@@ -123,6 +124,15 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	ino.Gid = req.Gid
 	ino.setVer(mp.verSeq)
 	ino.LinkTarget = req.Target
+	ino.StorageClass = req.StorageType
+	if ino.StorageClass == proto.MediaType_SSD || ino.StorageClass == proto.MediaType_HDD {
+		ino.HybridCouldExtents.sortedEks = NewSortedExtents()
+	} else if ino.StorageClass == proto.MediaType_EBS {
+		ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()
+	} else {
+		p.PacketErrorWithBody(proto.OpErr, []byte(fmt.Sprintf("storage type %v not support", ino.StorageClass)))
+		return
+	}
 
 	val, err := ino.Marshal()
 	if err != nil {
@@ -174,6 +184,7 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
+	ino.StorageClass = req.StorageType
 
 	for _, quotaId := range req.QuotaIds {
 		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
@@ -338,6 +349,8 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		log.LogErrorf("action[UnlinkInode] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
+	} else {
+		ino.StorageClass = item.(*Inode).StorageClass
 	}
 
 	if req.UniqID > 0 {
@@ -884,6 +897,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	txIno.Inode.Uid = req.Uid
 	txIno.Inode.Gid = req.Gid
 	txIno.Inode.LinkTarget = req.Target
+	txIno.Inode.StorageClass = req.StorageType
 
 	if log.EnableDebug() {
 		log.LogDebugf("NewTxInode: TxInode: %v", txIno)
