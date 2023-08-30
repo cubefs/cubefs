@@ -69,6 +69,7 @@ type MetaPartition struct {
 	uidInfo          []*proto.UidReportSpaceInfo
 	EqualCheckPass   bool
 	VerSeq           uint64
+	heartBeatDone    bool
 
 	sync.RWMutex
 }
@@ -411,6 +412,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setFreeListLen()
 	mp.removeMissingReplica(metaNode.Addr)
 	mp.setUidInfo(mgr)
+	mp.setHeartBeatDone()
 }
 
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
@@ -833,6 +835,11 @@ func (mp *MetaPartition) setMaxInodeID() {
 		}
 	}
 	mp.MaxInodeID = maxUsed
+}
+
+// Caller should call mp.lock and mp.unlock when use it.
+func (mp *MetaPartition) setHeartBeatDone() {
+	mp.heartBeatDone = true
 }
 
 func (mp *MetaPartition) setInodeCount() {
