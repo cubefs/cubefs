@@ -271,6 +271,12 @@ func (o *ObjectNode) Reload(data []byte) error {
 	}
 	apiLimitConf := s3QosResponse.ApiLimitConf
 	s3NodeNum := s3QosResponse.Nodes
+	if s3NodeNum == 0 {
+		o.limitMutex.Lock()
+		o.rateLimit = &NullRateLimit{}
+		o.limitMutex.Unlock()
+		return nil
+	}
 	for _, userLimitConf := range apiLimitConf {
 		for uid, bandWidthQuota := range userLimitConf.BandWidthQuota {
 			quota := bandWidthQuota / s3NodeNum
