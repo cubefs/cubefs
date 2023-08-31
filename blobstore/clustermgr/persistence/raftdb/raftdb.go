@@ -20,8 +20,8 @@ type RaftDB struct {
 	kvs kvstore.KVStore
 }
 
-func OpenRaftDB(path string, isSync bool, dbOpts ...kvstore.DbOptions) (*RaftDB, error) {
-	db, err := kvstore.OpenDB(path, isSync, dbOpts...)
+func OpenRaftDB(path string, dbOpts ...kvstore.DbOptions) (*RaftDB, error) {
+	db, err := kvstore.OpenDB(path, dbOpts...)
 	if err != nil {
 		return nil, err
 	}

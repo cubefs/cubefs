@@ -73,9 +73,7 @@ func addMember(c *grumble.Context) error {
 		return fmt.Errorf("member type is invalid")
 	}
 	memType = memberType == 1
-	raftDb, err := raftdb.OpenRaftDB(path, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = false
-	})
+	raftDb, err := raftdb.OpenRaftDB(path)
 	if err != nil {
 		return fmt.Errorf("open db failed, err: %v", err)
 	}
@@ -116,9 +114,7 @@ func addMember(c *grumble.Context) error {
 func listInfo(c *grumble.Context) error {
 	path := c.Args.String("path")
 
-	raftDb, err := raftdb.OpenRaftDB(path, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = true
-	})
+	raftDb, err := raftdb.OpenRaftDB(path, kvstore.WithReadonly(true))
 	if err != nil {
 		return fmt.Errorf("open db failed, err: %v", err)
 	}

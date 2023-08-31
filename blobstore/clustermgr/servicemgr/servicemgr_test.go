@@ -34,7 +34,7 @@ func TestServiceMgr(t *testing.T) {
 	tmpDBPath := "/tmp/tmpservicenormaldb" + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpDBPath)
 
-	db, err := normaldb.OpenNormalDB(tmpDBPath, false)
+	db, err := normaldb.OpenNormalDB(tmpDBPath)
 	require.NoError(t, err)
 	defer db.Close()
 	serviceTbl := normaldb.OpenServiceTable(db)
@@ -74,7 +74,7 @@ func TestServiceMgr_Apply(t *testing.T) {
 	tmpDBPath := "/tmp/tmpservicenormaldb" + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpDBPath)
 
-	db, err := normaldb.OpenNormalDB(tmpDBPath, false)
+	db, err := normaldb.OpenNormalDB(tmpDBPath)
 	require.NoError(t, err)
 	defer db.Close()
 	serviceTbl := normaldb.OpenServiceTable(db)

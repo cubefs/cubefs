@@ -152,9 +152,7 @@ func cmdListAllDB(c *grumble.Context) error {
 }
 
 func openNormalDB(path string, readonly bool) (*normaldb.NormalDB, error) {
-	db, err := normaldb.OpenNormalDB(path, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = readonly
-	})
+	db, err := normaldb.OpenNormalDB(path, kvstore.WithReadonly(readonly))
 	if err != nil {
 		return nil, fmt.Errorf("open db failed, err: %s", err.Error())
 	}

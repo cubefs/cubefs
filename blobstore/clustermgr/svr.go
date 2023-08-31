@@ -93,10 +93,9 @@ type Config struct {
 	Readonly                 bool                      `json:"readonly"`
 	VolumeMgrConfig          volumemgr.VolumeMgrConfig `json:"volume_mgr_config"`
 	DBPath                   string                    `json:"db_path"`
+	DBCacheSize              uint64                    `json:"db_cache_size"`
 	NormalDBPath             string                    `json:"normal_db_path"`
-	NormalDBOption           kvstore.RocksDBOption     `json:"normal_db_option"`
 	KvDBPath                 string                    `json:"kv_db_path"`
-	KvDBOption               kvstore.RocksDBOption     `json:"kv_db_option"`
 	CodeModePolicies         []codemode.Policy         `json:"code_mode_policies"`
 	ClusterCfg               map[string]interface{}    `json:"cluster_config"`
 	RaftConfig               RaftConfig                `json:"raft_config"`
@@ -113,11 +112,10 @@ type Config struct {
 }
 
 type RaftConfig struct {
-	RaftDBPath       string                `json:"raft_db_path"`
-	RaftDBOption     kvstore.RocksDBOption `json:"raft_db_option"`
-	SnapshotPatchNum int                   `json:"snapshot_patch_num"`
-	ServerConfig     raftserver.Config     `json:"server_config"`
-	RaftNodeConfig   base.RaftNodeConfig   `json:"raft_node_config"`
+	RaftDBPath       string              `json:"raft_db_path"`
+	SnapshotPatchNum int                 `json:"snapshot_patch_num"`
+	ServerConfig     raftserver.Config   `json:"server_config"`
+	RaftNodeConfig   base.RaftNodeConfig `json:"raft_node_config"`
 }
 
 type Service struct {
@@ -181,27 +179,19 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	// db initial: normal/volume/raft
-	normalDB, err := normaldb.OpenNormalDB(cfg.NormalDBPath, false, func(option *kvstore.RocksDBOption) {
-		*option = cfg.NormalDBOption
-	})
+	normalDB, err := normaldb.OpenNormalDB(cfg.NormalDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open normal database failed, err: %v", err)
 	}
-	volumeDB, err := volumedb.Open(cfg.VolumeMgrConfig.VolumeDBPath, false, func(option *kvstore.RocksDBOption) {
-		*option = cfg.VolumeMgrConfig.VolumeDBOption
-	})
+	volumeDB, err := volumedb.Open(cfg.VolumeMgrConfig.VolumeDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open volume database failed, err: %v", err)
 	}
-	raftDB, err := raftdb.OpenRaftDB(cfg.RaftConfig.RaftDBPath, false, func(option *kvstore.RocksDBOption) {
-		*option = cfg.RaftConfig.RaftDBOption
-	})
+	raftDB, err := raftdb.OpenRaftDB(cfg.RaftConfig.RaftDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open raft database failed, err: %v", err)
 	}
-	kvDB, err := kvdb.Open(cfg.KvDBPath, false, func(option *kvstore.RocksDBOption) {
-		*option = cfg.KvDBOption
-	})
+	kvDB, err := kvdb.Open(cfg.KvDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatal("open kv database failed,err:%v", err)
 	}
@@ -452,11 +442,6 @@ func (c *Config) checkAndFix() (err error) {
 	if c.RaftConfig.SnapshotPatchNum == 0 {
 		c.RaftConfig.SnapshotPatchNum = 64
 	}
-
-	c.NormalDBOption.CreateIfMissing = true
-	c.VolumeMgrConfig.VolumeDBOption.CreateIfMissing = true
-	c.RaftConfig.RaftDBOption.CreateIfMissing = true
-	c.KvDBOption.CreateIfMissing = true
 
 	if c.NormalDBPath == "" {
 		c.NormalDBPath = c.DBPath + "/normaldb"

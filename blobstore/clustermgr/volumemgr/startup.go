@@ -38,8 +38,7 @@ type VolumeMgrConfig struct {
 	LocalHost      string          `json:"local_host"`
 	BlobNodeConfig blobnode.Config `json:"blob_node_config"`
 	// volume database path,include volumeTbl vuidTbl tokenTbl indexTbl taskTbl
-	VolumeDBPath   string                `json:"volume_db_path"`
-	VolumeDBOption kvstore.RocksDBOption `json:"volume_db_option"`
+	VolumeDBPath string `json:"volume_db_path"`
 	// retain successful volume add another  retainTimeS second
 	RetainTimeS                 int `json:"retain_time_s"`
 	RetainThreshold             int `json:"retain_threshold"`
