@@ -36,7 +36,7 @@ func TestNewKvMgr(t *testing.T) {
 	tmpKvDBPath := "/tmp/tmpKvDBPath" + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpKvDBPath)
 
-	kvDB, _ := kvdb.Open(tmpKvDBPath, false)
+	kvDB, _ := kvdb.Open(tmpKvDBPath)
 	kvMgr, err := NewKvMgr(kvDB)
 	require.NoError(t, err)
 
@@ -97,7 +97,7 @@ func TestKvMgr_Apply(t *testing.T) {
 	tmpKvDBPath := "/tmp/tmpKvDBPath" + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpKvDBPath)
 
-	kvDB, _ := kvdb.Open(tmpKvDBPath, false)
+	kvDB, _ := kvdb.Open(tmpKvDBPath)
 	kvMgr, err := NewKvMgr(kvDB)
 	require.NoError(t, err)
 

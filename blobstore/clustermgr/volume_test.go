@@ -475,12 +475,12 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 		units     = [][]*volumedb.VolumeUnitRecord{}
 		volumes   = []*volumedb.VolumeRecord{}
 	)
-	volumeDB, err := volumedb.Open(volumeDBPath, false)
+	volumeDB, err := volumedb.Open(volumeDBPath)
 	if err != nil {
 		return err
 	}
 	defer volumeDB.Close()
-	normalDB, err := normaldb.OpenNormalDB(NormalDBPath, false)
+	normalDB, err := normaldb.OpenNormalDB(NormalDBPath)
 	if err != nil {
 		return err
 	}

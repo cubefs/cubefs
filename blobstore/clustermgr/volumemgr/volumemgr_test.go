@@ -77,9 +77,9 @@ func initMockVolumeMgr(t testing.TB) (*VolumeMgr, func()) {
 		}
 	}()
 
-	volumeDB, err := volumedb.Open(volumeDBPPath, false)
+	volumeDB, err := volumedb.Open(volumeDBPPath)
 	require.NoError(t, err)
-	normalDB, err := normaldb.OpenNormalDB(normalDBPath, false)
+	normalDB, err := normaldb.OpenNormalDB(normalDBPath)
 	require.NoError(t, err)
 
 	volTable, err := volumedb.OpenVolumeTable(volumeDB.KVStore)
@@ -249,10 +249,10 @@ func Test_NewVolumeMgr(t *testing.T) {
 	defer initialVolumeStatusStat()
 	defer os.RemoveAll(dir)
 
-	volumeDB, err := volumedb.Open(volumeDBPPath, false)
+	volumeDB, err := volumedb.Open(volumeDBPPath)
 	require.NoError(t, err)
 	defer volumeDB.Close()
-	normalDB, err := normaldb.OpenNormalDB(normalDBPath, false)
+	normalDB, err := normaldb.OpenNormalDB(normalDBPath)
 	require.NoError(t, err)
 	defer normalDB.Close()
 

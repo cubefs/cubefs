@@ -35,7 +35,6 @@ import (
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
-	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -150,8 +149,8 @@ func TestChunkReport2(t *testing.T) {
 			Rack: "testRack",
 		},
 		Disks: []core.Config{
-			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{RocksdbOption: kvstore.RocksDBOption{WriteBufferSize: 1024}}},
-			{BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{RocksdbOption: kvstore.RocksDBOption{WriteBufferSize: 1024}}},
+			{BaseConfig: core.BaseConfig{Path: path1, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
+			{BaseConfig: core.BaseConfig{Path: path2, AutoFormat: true, MaxChunks: 700}, MetaConfig: db.MetaConfig{}},
 		},
 		Clustermgr:             cc,
 		HeartbeatIntervalSec:   600,

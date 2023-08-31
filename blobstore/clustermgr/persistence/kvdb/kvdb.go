@@ -27,8 +27,8 @@ type KvDB struct {
 	kvstore.KVStore
 }
 
-func Open(path string, isSync bool, dbOpts ...kvstore.DbOptions) (*KvDB, error) {
-	db, err := kvstore.OpenDBWithCF(path, isSync, kvCFs, dbOpts...)
+func Open(path string, dbOpts ...kvstore.DbOptions) (*KvDB, error) {
+	db, err := kvstore.OpenDBWithCF(path, kvCFs, dbOpts...)
 	if err != nil {
 		return nil, err
 	}

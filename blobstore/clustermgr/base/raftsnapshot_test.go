@@ -62,11 +62,11 @@ func TestSnapshot(t *testing.T) {
 	os.MkdirAll(tmpNormalDBPat2, 0o755)
 	defer os.RemoveAll(tmpNormalDBPat2)
 
-	normalDB1, err := normaldb.OpenNormalDB(tmpNormalDBPat1, false)
+	normalDB1, err := normaldb.OpenNormalDB(tmpNormalDBPat1)
 	require.NoError(t, err)
 	defer normalDB1.Close()
 
-	normalDB2, err := normaldb.OpenNormalDB(tmpNormalDBPat2, false)
+	normalDB2, err := normaldb.OpenNormalDB(tmpNormalDBPat2)
 	require.NoError(t, err)
 	defer normalDB2.Close()
 
@@ -100,7 +100,7 @@ func TestSnapshot(t *testing.T) {
 		tmpDBPath := "/tmp/tmpraftdb" + strconv.Itoa(rand.Intn(1000000000))
 		os.MkdirAll(tmpDBPath, 0o755)
 		defer os.RemoveAll(tmpDBPath)
-		raftDB, err := raftdb.OpenRaftDB(tmpDBPath, false)
+		raftDB, err := raftdb.OpenRaftDB(tmpDBPath)
 		require.NoError(t, err)
 		defer raftDB.Close()
 
@@ -121,11 +121,11 @@ func TestSnapshot(t *testing.T) {
 		applyNormalDBPat2 := "/tmp/tmpsnapshotnormaldb2" + strconv.Itoa(rand.Intn(1000000000))
 		defer os.RemoveAll(applyNormalDBPat2)
 
-		applyNormalDB1, err := normaldb.OpenNormalDB(applyNormalDBPat1, false)
+		applyNormalDB1, err := normaldb.OpenNormalDB(applyNormalDBPat1)
 		require.NoError(t, err)
 		defer applyNormalDB1.Close()
 
-		applyNormalDB2, err := normaldb.OpenNormalDB(applyNormalDBPat2, false)
+		applyNormalDB2, err := normaldb.OpenNormalDB(applyNormalDBPat2)
 		require.NoError(t, err)
 		defer applyNormalDB2.Close()
 
