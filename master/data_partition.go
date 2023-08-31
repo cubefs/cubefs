@@ -864,13 +864,20 @@ func (partition *DataPartition) isDataCatchUp() (ok bool) {
 	return minus < unit.GB
 }
 
-func (partition *DataPartition) allReplicaHasRecovered() (ok bool) {
+func (partition *DataPartition) allReplicaHasRecovered() bool {
 	partition.RLock()
 	defer partition.RUnlock()
+	replicaMap := make(map[string]*DataReplica, 0)
 	for _, replica := range partition.Replicas {
+		replicaMap[replica.Addr] = replica
+	}
+	for _, host := range partition.Hosts {
+		replica, exist := replicaMap[host]
+		if !exist {
+			return false
+		}
 		if replica.IsRecover == true {
-			ok = false
-			return
+			return false
 		}
 	}
 	return true

@@ -1398,9 +1398,16 @@ func (mp *MetaPartition) getLearnerHosts() (learnerHosts []string) {
 func (mp *MetaPartition) allReplicaHasRecovered() bool {
 	mp.RLock()
 	defer mp.RUnlock()
-
+	replicaMap := make(map[string]*MetaReplica, 0)
 	for _, mpReplica := range mp.Replicas {
-		if mpReplica.IsRecover {
+		replicaMap[mpReplica.Addr] = mpReplica
+	}
+	for _, host := range mp.Hosts {
+		replica, ok := replicaMap[host]
+		if !ok {
+			return false
+		}
+		if replica.IsRecover {
 			return false
 		}
 	}
