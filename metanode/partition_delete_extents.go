@@ -460,7 +460,7 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 		}
 
 		if needDel {
-			if err = mp.doDeleteMarkedInodes(context.Background(), &ek.ExtentKey); err != nil {
+			if err = mp.doDeleteMarkedInodes(context.Background(), &proto.InodeExtentKey{ExtentKey: ek.ExtentKey, Inode: ek.InodeId}); err != nil {
 				retryList.PushBack(ek)
 				log.LogWarnf("[cleanExpiredExtents] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())
@@ -1024,7 +1024,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 				panic(err)
 			}
 			// delete dataPartition
-			if err = mp.doDeleteMarkedInodes(context.Background(), &ek); err != nil {
+			if err = mp.doDeleteMarkedInodes(context.Background(), &proto.InodeExtentKey{ExtentKey: ek, Inode: 0}); err != nil {
 				eks := make([]proto.MetaDelExtentKey, 0)
 				eks = append(eks, *ek.ConvertToMetaDelEk(0, 0, 0))
 				if !strings.Contains(err.Error(), "NotExistErr") {

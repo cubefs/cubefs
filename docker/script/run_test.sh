@@ -296,9 +296,15 @@ run_unit_test() {
     popd > /dev/null
     pass_num=`grep "PASS:" ${test_output_file} | wc -l`
     fail_num=`grep "FAIL:" ${test_output_file} | wc -l`
+    skip_num=`grep "SKIP:" ${test_output_file} | wc -l`
     total_num=`expr ${pass_num} + ${fail_num}`
-    echo "Unit test complete returns ${ret}: ${pass_num}/${total_num} passed."
-    egrep "FAIL:|PASS:" ${test_output_file}
+    echo "Unit test complete returns ${ret}: PASS ${pass_num}, FAIL ${fail_num}, SKIP ${skip_num}, TOTAL ${total_num}"
+    if [[ $skip_num -ne 0 ]]; then
+      grep "SKIP:" ${test_output_file}
+    fi
+    if [[ $fail_num -ne 0 ]]; then
+      grep "FAIL:" ${test_output_file}
+    fi
     if [[ $ret -ne 0 ]]; then
         echo -e "Unit test: \033[32mFAIL\033[0m"
         exit $ret

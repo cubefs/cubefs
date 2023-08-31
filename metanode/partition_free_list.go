@@ -194,7 +194,7 @@ func (mp *metaPartition) deleteWorker() {
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.ExtentKey,
+func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.InodeExtentKey,
 	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
@@ -207,7 +207,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 	//wait all Partition do BatchDeleteExtents fininsh
 	for partitionID, extents := range partitionDeleteExtents {
 		wg.Add(1)
-		go func(partitionID uint64, extents []*proto.ExtentKey) {
+		go func(partitionID uint64, extents []*proto.InodeExtentKey) {
 			perr := mp.doBatchDeleteExtentsByPartition(ctx, partitionID, extents)
 			lock.Lock()
 			occurErrors[partitionID] = perr
@@ -307,7 +307,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
 	//shouldRePushToFreeList := make([]*Inode, 0)
 	allDeleteExtents := make(map[string]uint64)
-	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
+	deleteExtentsByPartition := make(map[uint64][]*proto.InodeExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		var inodeVal *Inode
@@ -340,17 +340,16 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 		mp.recordInodeDeleteEkInfo(inodeVal)
 
 		inodeVal.Extents.Range(func(ek proto.ExtentKey) bool {
-			ext := &ek
-			_, ok := allDeleteExtents[ext.GetExtentKey()]
+			_, ok := allDeleteExtents[ek.GetExtentKey()]
 			if !ok {
-				allDeleteExtents[ext.GetExtentKey()] = ino
+				allDeleteExtents[ek.GetExtentKey()] = ino
 			}
-			exts, ok := deleteExtentsByPartition[ext.PartitionId]
+			exts, ok := deleteExtentsByPartition[ek.PartitionId]
 			if !ok {
-				exts = make([]*proto.ExtentKey, 0)
+				exts = make([]*proto.InodeExtentKey, 0)
 			}
-			exts = append(exts, ext)
-			deleteExtentsByPartition[ext.PartitionId] = exts
+			exts = append(exts, &proto.InodeExtentKey{ExtentKey: ek, Inode: inodeVal.Inode})
+			deleteExtentsByPartition[ek.PartitionId] = exts
 			return true
 		})
 		allInodes = append(allInodes, inodeVal)
@@ -428,7 +427,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg 
 	return
 }
 
-func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.ExtentKey) (err error) {
+func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.InodeExtentKey) (err error) {
 	// get the data node view
 	dp := mp.vol.GetPartition(ext.PartitionId)
 	if dp == nil {
@@ -482,7 +481,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Ex
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.ExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.InodeExtentKey) (err error) {
 	// get the data node view
 	dp := mp.vol.GetPartition(partitionID)
 	if dp == nil {
@@ -553,7 +552,7 @@ func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
 	}
 }
 
-func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPartition, ext *proto.ExtentKey) (err error) {
+func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPartition, ext *proto.InodeExtentKey) (err error) {
 	// delete the data node
 	conn, err := mp.config.ConnPool.GetConnect(dp.EcHosts[0])
 
@@ -590,7 +589,7 @@ func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPar
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteEcExtentsByPartition(ctx context.Context, dp *DataPartition, exts []*proto.ExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteEcExtentsByPartition(ctx context.Context, dp *DataPartition, exts []*proto.InodeExtentKey) (err error) {
 	var (
 		conn *net.TCPConn
 	)

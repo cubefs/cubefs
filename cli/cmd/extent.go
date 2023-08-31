@@ -6,6 +6,17 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"math"
+	"os"
+	"path"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/cli/cmd/data_check"
 	"github.com/cubefs/cubefs/cli/cmd/util"
 	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
@@ -19,16 +30,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/spf13/cobra"
-	"io"
-	"io/ioutil"
-	"math"
-	"os"
-	"path"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -713,7 +714,7 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 					dataExtentMap[dp] = make(map[uint64]uint64)
 				}
 				for _, extent := range dpInfo.Files {
-					if (all || today.Unix()-int64(extent[storage.ModifyTime]) >= 604800) && extent[storage.FileID] > storage.MinExtentID {
+					if (all || today.Unix()-int64(extent[storage.ModifyTime]) >= 604800) && extent[storage.FileID] > storage.MinNormalExtentID {
 						dataExtentMap[dp][extent[storage.FileID]] = extent[storage.Size]
 					}
 				}
@@ -816,12 +817,13 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 		PartitionID: partitionId,
 		Hosts:       partition.Hosts,
 	}
-	eks := make([]*proto.ExtentKey, len(extents))
+	eks := make([]*proto.InodeExtentKey, len(extents))
 	for i := 0; i < len(extents); i++ {
-		eks[i] = &proto.ExtentKey{
+		ek := proto.ExtentKey{
 			PartitionId: partitionId,
 			ExtentId:    extents[i],
 		}
+		eks[i] = &proto.InodeExtentKey{ExtentKey: ek}
 	}
 	packet := metanode.NewPacketToBatchDeleteExtent(context.Background(), dp, eks)
 	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {

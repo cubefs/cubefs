@@ -1000,22 +1000,31 @@ func formatIdcInfoTableRow(name string, zones string) string {
 	return fmt.Sprintf(idcQueryTablePattern, name, zones)
 }
 
-var raftInfoTableHeader = "%-6v     %-18v    %-9v    %-15v     %-10v     %-10v   %-10v      %-10v    %-10v    %-8v    %-16v    %-10v"
-var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "ADDRESS", "IS_LEADER", "TINY_DEL_SIZE", "COMMIT", "INDEX", "APPLIED", "LOG_FIRST", "LOG_LAST", "PEND_QUE", "STATE", "STOPED")
+var raftInfoTableHeader = "%-6v  %-18v  %-9v  %-14v  %-15v  %-10v  %-10v  %-10v  %-10v  %-10v  %-8v  %-16v  %-10v  %-v"
+var dataPartitionRaftTableHeaderInfo = fmt.Sprintf(raftInfoTableHeader, "ID", "ADDRESS", "IS_LEADER", "BASE_EXTENT_ID", "TINY_DEL_SIZE", "COMMIT", "INDEX", "APPLIED", "LOG_FIRST", "LOG_LAST", "PEND_QUE", "STATE", "STOPED", "PEERS")
 
 func formatDataPartitionRaftTableInfo(dnView *proto.DNDataPartitionInfo, nodeId uint64, addr string) string {
 	var sb = strings.Builder{}
 	if dnView == nil {
-		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
+		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
 		return sb.String()
 	}
 	if dnView.RaftStatus == nil {
-		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", dnView.TinyDeleteRecordSize, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
+		sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, "N/A", dnView.BaseExtentID, dnView.TinyDeleteRecordSize, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
 		return sb.String()
 	}
 	isLeader := dnView.RaftStatus.Leader == dnView.RaftStatus.NodeID
-	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, isLeader, dnView.TinyDeleteRecordSize, dnView.RaftStatus.Commit, dnView.RaftStatus.Index, dnView.RaftStatus.Applied,
-		dnView.RaftStatus.Log.FirstIndex, dnView.RaftStatus.Log.LastIndex, dnView.RaftStatus.PendQueue, dnView.RaftStatus.State, dnView.RaftStatus.Stopped))
+	var formatRaftPeers = func(peers []uint64) string {
+		return strings.Join(func() []string {
+			ret := make([]string, 0, len(peers))
+			for _, peer := range peers {
+				ret = append(ret, strconv.FormatUint(peer, 10))
+			}
+			return ret
+		}(), ",")
+	}
+	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, isLeader, dnView.BaseExtentID, dnView.TinyDeleteRecordSize, dnView.RaftStatus.Commit, dnView.RaftStatus.Index, dnView.RaftStatus.Applied,
+		dnView.RaftStatus.Log.FirstIndex, dnView.RaftStatus.Log.LastIndex, dnView.RaftStatus.PendQueue, dnView.RaftStatus.State, dnView.RaftStatus.Stopped, formatRaftPeers(dnView.RaftStatus.Peers)))
 	return sb.String()
 }
 

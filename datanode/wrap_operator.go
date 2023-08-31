@@ -105,6 +105,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToGetAllWatermarks(p)
 	case proto.OpGetAllWatermarksV2:
 		s.handlePacketToGetAllWatermarksV2(p)
+	case proto.OpGetAllWatermarksV3:
+		s.handlePacketToGetAllWatermarksV3(p)
 	case proto.OpGetAllExtentInfo:
 		s.handlePacketToGetAllExtentInfo(p)
 	case proto.OpCreateDataPartition:
@@ -168,7 +170,13 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		err = storage.BrokenDiskError
 		return
 	}
-	err = partition.ExtentStore().Create(p.ExtentID, true)
+
+	var inode uint64
+	if p.Size >= 8 {
+		inode = binary.BigEndian.Uint64(p.Data[0:8])
+	}
+
+	err = partition.ExtentStore().Create(p.ExtentID, inode, true)
 	return
 }
 
@@ -335,17 +343,29 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	remote := c.RemoteAddr().String()
 	partition := p.Object.(*DataPartition)
 	if p.ExtentType == proto.TinyExtentType {
-		ext := new(proto.TinyExtentDeleteRecord)
-		err = json.Unmarshal(p.Data, ext)
-		if err == nil {
+		ext := new(proto.InodeExtentKey)
+		if err = json.Unmarshal(p.Data, ext); err == nil && proto.IsTinyExtent(ext.ExtentId) {
 			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size, remote)
-			_ = partition.MarkDelete(p.ExtentID, ext.ExtentOffset, uint64(ext.Size))
+			if err = partition.MarkDelete(ext.ExtentId, 0, ext.ExtentOffset, uint64(ext.Size)); err != nil && log.IsWarnEnabled() {
+				log.LogWarnf("partition[%v] mark delete tiny extent[id: %v, offset: %v, size: %v] failed: %v",
+					partition.ID(), ext.ExtentId, ext.ExtentOffset, ext.Size, err)
+			}
 		}
 	} else {
+		var inode uint64
+		if p.Size > 0 && len(p.Data) > 0 {
+			ext := new(proto.InodeExtentKey)
+			if unmarshalErr := json.Unmarshal(p.Data, ext); unmarshalErr == nil {
+				inode = ext.Inode
+			}
+		}
 		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v) from(%v)",
 			p.PartitionID, p.ExtentID, remote)
-		_ = partition.MarkDelete(p.ExtentID, 0, 0)
+		if err = partition.MarkDelete(p.ExtentID, inode, 0, 0); err != nil && log.IsWarnEnabled() {
+			log.LogWarnf("partition[%v] mark delete extent[id: %v, inode: %v] failed: %v",
+				partition.ID(), p.ExtentID, inode, err)
+		}
 	}
 	_ = partition.RemoveIssueExtent(p.ExtentID)
 	if err != nil {
@@ -365,14 +385,14 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	)
 	remote := c.RemoteAddr().String()
 	partition := p.Object.(*DataPartition)
-	var exts []*proto.ExtentKey
+	var exts []*proto.InodeExtentKey
 	err = json.Unmarshal(p.Data[0:p.Size], &exts)
 	if err == nil {
 		for _, ext := range exts {
 			DeleteLimiterWait()
 			log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, ext.ExtentId, ext.ExtentOffset, ext.Size, remote)
-			_ = partition.MarkDelete(ext.ExtentId, ext.ExtentOffset, uint64(ext.Size))
+			_ = partition.MarkDelete(ext.ExtentId, ext.Inode, ext.ExtentOffset, uint64(ext.Size))
 			_ = partition.RemoveIssueExtent(p.ExtentID)
 		}
 	}
@@ -734,6 +754,51 @@ func (s *DataNode) handlePacketToGetAllWatermarksV2(p *repl.Packet) {
 	if err != nil {
 		return
 	}
+	p.PacketOkWithBody(data)
+	return
+}
+
+func (s *DataNode) handlePacketToGetAllWatermarksV3(p *repl.Packet) {
+	var (
+		err        error
+		watermarks []byte
+	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionGetAllExtentWatermarksV3, err.Error())
+		}
+	}()
+	partition := p.Object.(*DataPartition)
+	store := partition.ExtentStore()
+	if p.ExtentType == proto.NormalExtentType {
+		if !store.IsFinishLoad() {
+			err = storage.PartitionIsLoaddingErr
+			return
+		}
+		_, watermarks, err = store.GetAllWatermarksWithByteArr(p.ExtentType, storage.NormalExtentFilter())
+	} else {
+		var extentIDs = make([]uint64, 0, len(p.Data)/8)
+		var extentID uint64
+		var reader = bytes.NewReader(p.Data)
+		for {
+			err = binary.Read(reader, binary.BigEndian, &extentID)
+			if err == io.EOF {
+				err = nil
+				break
+			}
+			if err != nil {
+				return
+			}
+			extentIDs = append(extentIDs, extentID)
+		}
+		_, watermarks, err = store.GetAllWatermarksWithByteArr(p.ExtentType, storage.TinyExtentFilter(extentIDs))
+	}
+	if err != nil {
+		return
+	}
+	var data = make([]byte, len(watermarks)+8)
+	binary.BigEndian.PutUint64(data[:8], store.GetBaseExtentID())
+	copy(data[8:], watermarks)
 	p.PacketOkWithBody(data)
 	return
 }
@@ -1363,7 +1428,7 @@ func (s *DataNode) handlePacketToResetDataPartitionRaftMember(p *repl.Packet) {
 	}
 	if isUpdated {
 		if err = dp.ChangeCreateType(proto.NormalCreateDataPartition); err != nil {
-			log.LogErrorf("handlePacketToResetDataPartitionRaftMember dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
+			log.LogErrorf("handlePacketToResetDataPartitionRaftMember dp(%v) PersistMetadata err(%v).", dp.ID(), err)
 			return
 		}
 	}
@@ -1504,7 +1569,7 @@ func (s *DataNode) handlePacketToDataPartitionTryToLeader(p *repl.Packet) {
 	if dp.raftPartition.IsRaftLeader() {
 		return
 	}
-	err = dp.raftPartition.TryToLeader(dp.partitionID)
+	err = dp.raftPartition.TryToLeader(dp.ID())
 	return
 }
 
@@ -1653,7 +1718,7 @@ func (s *DataNode) rateLimit(p *repl.Packet, c *net.TCPConn) {
 	// request rate limit of each data partition for volume
 	partRateLimiterMap, ok := reqVolPartRateLimiterMap[partition.volumeID]
 	if ok {
-		limiter, ok = partRateLimiterMap[partition.partitionID]
+		limiter, ok = partRateLimiterMap[partition.ID()]
 		if ok {
 			limiter.Wait(ctx)
 		}
@@ -1664,7 +1729,7 @@ func (s *DataNode) rateLimit(p *repl.Packet, c *net.TCPConn) {
 	if ok {
 		partRateLimiterMap, ok = opPartRateLimiterMap[p.Opcode]
 		if ok {
-			limiter, ok = partRateLimiterMap[partition.partitionID]
+			limiter, ok = partRateLimiterMap[partition.ID()]
 			if ok {
 				limiter.Wait(ctx)
 			}

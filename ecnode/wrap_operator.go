@@ -116,7 +116,7 @@ func (e *EcNode) handleEcTinyDeletePacket(p *repl.Packet, c net.Conn) {
 	}
 	log.LogDebugf("handleEcMarkDeletePacket PartitionID(%v)_Extent(%v) from (%v)",
 		p.PartitionID, p.ExtentID, remote)
-	ext := new(proto.TinyExtentDeleteRecord)
+	ext := new(proto.InodeExtentKey)
 	if err = json.Unmarshal(p.Data, ext); err != nil {
 		return
 	}
@@ -338,7 +338,7 @@ func (e *EcNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		p.PartitionID, p.ExtentID, remote)
 
 	if p.ExtentType == proto.TinyExtentType {
-		ext := new(proto.TinyExtentDeleteRecord)
+		ext := new(proto.InodeExtentKey)
 		if err = json.Unmarshal(p.Data, ext); err != nil {
 			return
 		}

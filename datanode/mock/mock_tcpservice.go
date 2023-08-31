@@ -22,7 +22,7 @@ const (
 )
 
 var (
-	ReplyGetAllWatermarksV2Err                  = false
+	SupportedGetAllWatermarksVersion            = 3
 	ReplyGetRemoteExtentInfoForValidateCRCCount = 3
 )
 var letterRunes = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -86,6 +86,8 @@ func (m *MockTcp) serveConn(conn net.Conn) (err error) {
 		m.handleGetAllWatermarks(p, conn)
 	case proto.OpGetAllWatermarksV2:
 		m.handleGetAllWatermarksV2(p, conn)
+	case proto.OpGetAllWatermarksV3:
+		m.handleGetAllWatermarksV3(p, conn)
 	case proto.OpExtentRepairRead:
 		m.handleExtentRepairReadPacket(p, conn)
 	case proto.OpTinyExtentRepairRead:
@@ -151,6 +153,12 @@ func (m *MockTcp) handleGetAllWatermarksV2(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+
+	if SupportedGetAllWatermarksVersion < 2 {
+		_ = replyData(p, 0, []byte(repl.ErrorUnknownOp.Error()), proto.OpErr, c)
+		return
+	}
+
 	var data []byte
 	if p.ExtentType == proto.NormalExtentType {
 		normalExtentCount := RemoteNormalExtentCount
@@ -204,14 +212,77 @@ func (m *MockTcp) handleGetAllWatermarksV2(p *repl.Packet, c net.Conn) {
 		}
 		data = data[:index]
 	}
-	if !ReplyGetAllWatermarksV2Err {
-		if err = replyData(p, 0, data, proto.OpOk, c); err != nil {
-			fmt.Printf("replyData err: %v", err)
+	if err = replyData(p, 0, data, proto.OpOk, c); err != nil {
+		fmt.Printf("replyData err: %v", err)
+	}
+	p.PacketOkReply()
+}
+
+func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
+	var (
+		err error
+	)
+
+	if SupportedGetAllWatermarksVersion < 3 {
+		_ = replyData(p, 0, []byte(repl.ErrorUnknownOp.Error()), proto.OpErr, c)
+		return
+	}
+
+	var data []byte
+	if p.ExtentType == proto.NormalExtentType {
+		normalExtentCount := RemoteNormalExtentCount
+		data = make([]byte, 16*normalExtentCount)
+		index := 0
+		for i := 0; i < normalExtentCount-1; i++ {
+			ei := &proto.ExtentInfoBlock{
+				uint64(i + 65),
+				uint64(i+65) * 1024,
+			}
+			binary.BigEndian.PutUint64(data[index:index+8], ei[storage.FileID])
+			index += 8
+			binary.BigEndian.PutUint64(data[index:index+8], ei[storage.Size])
+			index += 8
 		}
+		ei := &proto.ExtentInfoBlock{
+			LocalCreateExtentId,
+			LocalCreateExtentId * 1024,
+		}
+		binary.BigEndian.PutUint64(data[index:index+8], ei[storage.FileID])
+		index += 8
+		binary.BigEndian.PutUint64(data[index:index+8], ei[storage.Size])
+		index += 8
+		data = data[:index]
 	} else {
-		if err = replyData(p, 0, data, proto.OpErr, c); err != nil {
-			fmt.Printf("replyData err: %v", err)
+		var extentIDs = make([]uint64, 0, len(p.Data)/8)
+		var extentID uint64
+		var reader = bytes.NewReader(p.Data)
+		for {
+			err = binary.Read(reader, binary.BigEndian, &extentID)
+			if err == io.EOF {
+				err = nil
+				break
+			}
+			if err != nil {
+				return
+			}
+			extentIDs = append(extentIDs, extentID)
 		}
+		data = make([]byte, 16*len(extentIDs))
+		index := 0
+		for _, eid := range extentIDs {
+			ei := &proto.ExtentInfoBlock{
+				eid,
+				eid * 1024,
+			}
+			binary.BigEndian.PutUint64(data[index:index+8], ei[storage.FileID])
+			index += 8
+			binary.BigEndian.PutUint64(data[index:index+8], ei[storage.Size])
+			index += 8
+		}
+		data = data[:index]
+	}
+	if err = replyData(p, 0, append(make([]byte, 8), data...), proto.OpOk, c); err != nil {
+		fmt.Printf("replyData err: %v", err)
 	}
 	p.PacketOkReply()
 }

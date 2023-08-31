@@ -320,7 +320,7 @@ func TestEcNode_handleMarkDeletePacket(t *testing.T) {
 
 	p = FakeCreatePacket(ep, proto.OpEcTinyDelete, fakeNode.fakeTinyExtentId)
 	p.ExtentType = proto.TinyExtentType
-	ext := new(proto.TinyExtentDeleteRecord)
+	ext := new(proto.InodeExtentKey)
 	ext.ExtentId = fakeNode.fakeTinyExtentId
 	ext.ExtentOffset = 0
 	ext.PartitionId = ep.PartitionID

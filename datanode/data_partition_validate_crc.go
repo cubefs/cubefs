@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/http_client"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/http_client"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
@@ -47,7 +48,7 @@ func (dp *DataPartition) runValidateCRC(ctx context.Context) {
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
-	if !dp.isLeader {
+	if !dp.leaderState.isLeader() {
 		return
 	}
 

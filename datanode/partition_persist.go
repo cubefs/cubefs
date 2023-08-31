@@ -46,7 +46,7 @@ func (dp *DataPartition) persist(status *WALApplyStatus, useFlushExtentsRateLimi
 	if useFlushExtentsRateLimiter {
 		flushExtentsLimitRater = dp.disk.createFlushExtentsRater(atomic.LoadUint64(&dp.disk.forceFlushFDParallelism))
 	}
-	dp.forceFlushAllFD(flushExtentsLimitRater)
+	_ = dp.forceFlushAllFD(flushExtentsLimitRater)
 
 	if dp.raftPartition != nil {
 		if err = dp.raftPartition.FlushWAL(false); err != nil {
@@ -185,6 +185,6 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	return
 }
 
-func (dp *DataPartition) forceFlushAllFD(limiter *rate.Limiter) (cnt int) {
+func (dp *DataPartition) forceFlushAllFD(limiter *rate.Limiter) (error error) {
 	return dp.extentStore.Flush(limiter)
 }

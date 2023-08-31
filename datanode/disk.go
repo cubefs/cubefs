@@ -117,7 +117,7 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, 
 	d.latestFlushTimeOnInit, _ = d.loadLatestFlushTime()
 	d.startScheduler()
 	async.RunWorker(d.flushDeleteScheduler, func(i interface{}) {
-		log.LogCritical("Disk[%v] flush delete scheduler occurred panic: %v", path, i)
+		log.LogCriticalf("Disk[%v] flush delete scheduler occurred panic: %v", path, i)
 	})
 	return
 }
@@ -469,7 +469,7 @@ func (d *Disk) updateSpaceInfo() (err error) {
 // AttachDataPartition adds a data partition to the partition map.
 func (d *Disk) AttachDataPartition(dp *DataPartition) {
 	d.Lock()
-	d.partitionMap[dp.partitionID] = dp
+	d.partitionMap[dp.ID()] = dp
 	d.Unlock()
 
 	d.computeUsage()
@@ -478,7 +478,7 @@ func (d *Disk) AttachDataPartition(dp *DataPartition) {
 // DetachDataPartition removes a data partition from the partition map.
 func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.Lock()
-	delete(d.partitionMap, dp.partitionID)
+	delete(d.partitionMap, dp.ID())
 	d.Unlock()
 
 	d.computeUsage()
@@ -507,7 +507,7 @@ func (d *Disk) DataPartitionList() (partitionIDs []uint64) {
 	defer d.Unlock()
 	partitionIDs = make([]uint64, 0, len(d.partitionMap))
 	for _, dp := range d.partitionMap {
-		partitionIDs = append(partitionIDs, dp.partitionID)
+		partitionIDs = append(partitionIDs, dp.ID())
 	}
 	return
 }

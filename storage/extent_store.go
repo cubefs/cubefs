@@ -20,7 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"golang.org/x/time/rate"
+	"math"
 	"os"
 	"path"
 	"regexp"
@@ -28,6 +28,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"hash/crc32"
 	"io"
@@ -46,15 +48,15 @@ const (
 	TinyDeleteFileOpt        = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TinyExtDeletedFileName   = "TINYEXTENT_DELETE"
 	NormalExtDeletedFileName = "NORMALEXTENT_DELETE"
+	InodeIndexFileName       = "INODE_INDEX"
 	MaxExtentCount           = 20000
-	MinExtentID              = 1024
+	MinNormalExtentID        = 1024
 	DeleteTinyRecordSize     = 24
 	UpdateCrcInterval        = 600
 	RepairInterval           = 10
 	RandomWriteType          = 2
 	AppendWriteType          = 1
 	BaseExtentIDPersistStep  = 500
-	BaseExtentIDSyncStep     = 400
 
 	LoadInProgress int32 = 0
 	LoadFinish     int32 = 1
@@ -86,9 +88,9 @@ type ExtentFilter func(info *ExtentInfoBlock) bool
 // Filters
 var (
 	NormalExtentFilter = func() ExtentFilter {
-		now := time.Now()
+		nowUnix := time.Now().Unix()
 		return func(ei *ExtentInfoBlock) bool {
-			return !proto.IsTinyExtent(ei[FileID]) && now.Unix()-int64(ei[ModifyTime]) > RepairInterval && ei[Size] > 0
+			return !proto.IsTinyExtent(ei[FileID]) && nowUnix-int64(ei[ModifyTime]) > RepairInterval && ei[Size] > 0
 		}
 	}
 
@@ -107,9 +109,9 @@ var (
 	}
 
 	ExtentFilterForValidateCRC = func() ExtentFilter {
-		now := time.Now()
+		nowUnix := time.Now().Unix()
 		return func(ei *ExtentInfoBlock) bool {
-			return now.Unix()-int64(ei[ModifyTime]) > ValidateCrcInterval && ei[Size] > 0
+			return nowUnix-int64(ei[ModifyTime]) > ValidateCrcInterval && ei[Size] > 0
 		}
 	}
 )
@@ -140,11 +142,12 @@ func (i IOInterceptor) intercept(io IOType, do func()) {
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
 type ExtentStore struct {
-	dataPath                 string
-	baseExtentID             uint64 // TODO what is baseExtentID
-	baseExtentIDPersistCount uint64
+	dataPath              string
+	baseExtentID          uint64 // TODO what is baseExtentID
+	baseExtentIDPersistMu sync.Mutex
 	//extentInfoMap                     sync.Map // map that stores all the extent information
 	infoStore                         *ExtentInfoStore
+	inodeIndex                        *inodeIndex
 	extentCnt                         int64
 	cache                             *ExtentCache // extent cache
 	mutex                             sync.Mutex
@@ -207,6 +210,9 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	if s.normalExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, NormalExtDeletedFileName), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
 		return
 	}
+	if s.inodeIndex, err = openInodeIndex(path.Join(s.dataPath, InodeIndexFileName)); err != nil {
+		return
+	}
 
 	s.cache = NewExtentCache(cacheCapacity, time.Minute*5, ln)
 	if err = s.initBaseFileID(); err != nil {
@@ -252,7 +258,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 		file.Name = strconv.FormatUint(ei[FileID], 10)
 		file.Size = uint32(ei[Size])
 		file.Modified = int64(ei[ModifyTime])
-		file.Crc = uint32(atomic.LoadUint64(&ei[Crc]))
+		file.Crc = uint32(ei[Crc])
 		files = append(files, file)
 	}
 	tinyExtentSnapshot = s.getTinyExtentInfo()
@@ -269,7 +275,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 }
 
 // Create creates an extent.
-func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
+func (s *ExtentStore) Create(extentID, inode uint64, putCache bool) (err error) {
 	var e *Extent
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	if s.HasExtent(extentID) {
@@ -284,15 +290,23 @@ func (s *ExtentStore) Create(extentID uint64, putCache bool) (err error) {
 	}
 	if putCache {
 		s.cache.Put(e)
+		defer func() {
+			if err != nil {
+				s.cache.Del(extentID)
+			}
+		}()
 	} else {
 		defer func() {
 			_ = e.Close(false)
 		}()
 	}
-	s.infoStore.Create(extentID)
+	if err = s.inodeIndex.Put(extentID, inode); err != nil {
+		return
+	}
+	s.infoStore.Create(extentID, inode)
 	s.infoStore.Update(extentID, 0, uint64(time.Now().Unix()), 0)
 	atomic.AddInt64(&s.extentCnt, 1)
-	_ = s.UpdateBaseExtentID(extentID)
+	_ = s.AdvanceBaseExtentID(extentID)
 	return
 }
 
@@ -321,8 +335,8 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extentID, isExtent = s.ExtentID(name); !isExtent {
 			continue
 		}
-		s.infoStore.Create(extentID)
 		if proto.IsTinyExtent(extentID) {
+			s.infoStore.Create(extentID, 0)
 			name := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
 			info, statErr := os.Stat(name)
 			if statErr != nil {
@@ -335,18 +349,20 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 				watermark = watermark + (PageSize - watermark%PageSize)
 			}
 			s.infoStore.Update(extentID, uint64(watermark), uint64(info.ModTime().Unix()), 0)
+		} else {
+			var inode uint64
+			if inode, err = s.inodeIndex.Get(extentID); err != nil {
+				return
+			}
+			s.infoStore.Create(extentID, inode)
+			if extentID > baseFileID {
+				baseFileID = extentID
+			}
 		}
 		atomic.AddInt64(&s.extentCnt, 1)
-		if !proto.IsTinyExtent(extentID) && extentID > baseFileID {
-			baseFileID = extentID
-		}
 	}
-	if baseFileID < MinExtentID {
-		baseFileID = MinExtentID
-	}
-	baseFileID += BaseExtentAddNumOnInitExtentStore
-	atomic.StoreUint64(&s.baseExtentID, baseFileID)
-	if err = s.PersistenceBaseExtentID(baseFileID); err != nil {
+	baseFileID = uint64(math.Max(float64(MinNormalExtentID), float64(baseFileID))) + BaseExtentAddNumOnInitExtentStore
+	if err = s.AdvanceBaseExtentID(baseFileID); err != nil {
 		return
 	}
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
@@ -467,7 +483,7 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 }
 
 // MarkDelete marks the given extent as deleted.
-func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
+func (s *ExtentStore) MarkDelete(extentID, inode uint64, offset, size int64) (err error) {
 	ei, ok := s.getExtentInfoByExtentID(extentID)
 	if !ok {
 		err = proto.ExtentNotFoundError
@@ -479,6 +495,9 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 			return
 		}
 		return s.tinyDelete(e, offset, size)
+	}
+	if inode != 0 && ei[Inode] != 0 && inode != ei[Inode] {
+		return NewParameterMismatchErr(fmt.Sprintf("inode mismatch: expected %v, actual %v", ei[Inode], inode))
 	}
 	s.cache.Del(extentID)
 	extentFilePath := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
@@ -676,7 +695,7 @@ func (s *ExtentStore) initTinyExtent() (err error) {
 	var extentID uint64
 
 	for extentID = proto.TinyExtentStartID; extentID < proto.TinyExtentStartID+proto.TinyExtentCount; extentID++ {
-		err = s.Create(extentID, false)
+		err = s.Create(extentID, 0, false)
 		if err == nil || strings.Contains(err.Error(), syscall.EEXIST.Error()) || err == ExtentExistsError {
 			err = nil
 			s.brokenTinyExtentC <- extentID
@@ -864,8 +883,10 @@ func (s *ExtentStore) LoadExtentWaterMark(extentID uint64) (size int64, err erro
 // this function generates an unique extentID within the current partition.
 // This function can only be called by the leader.
 func (s *ExtentStore) NextExtentID() (extentID uint64, err error) {
+	s.baseExtentIDPersistMu.Lock()
 	extentID = atomic.AddUint64(&s.baseExtentID, 1)
-	err = s.PersistenceBaseExtentID(extentID)
+	err = s.persistenceBaseExtentID(extentID)
+	s.baseExtentIDPersistMu.Unlock()
 	return
 }
 
@@ -881,17 +902,25 @@ func (s *ExtentStore) getExtentKey(extent uint64) string {
 	return fmt.Sprintf("extent %v_%v", s.partitionID, extent)
 }
 
-// UpdateBaseExtentID updates the base extent ID.
-func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
+// AdvanceBaseExtentID updates the base extent ID.
+func (s *ExtentStore) AdvanceBaseExtentID(id uint64) (err error) {
 	if proto.IsTinyExtent(id) {
 		return
 	}
-	if id > atomic.LoadUint64(&s.baseExtentID) {
-		atomic.StoreUint64(&s.baseExtentID, id)
-		err = s.PersistenceBaseExtentID(atomic.LoadUint64(&s.baseExtentID))
+	s.baseExtentIDPersistMu.Lock()
+	for {
+		current := atomic.LoadUint64(&s.baseExtentID)
+		if id <= current {
+			s.baseExtentIDPersistMu.Unlock()
+			return
+		}
+		if atomic.CompareAndSwapUint64(&s.baseExtentID, current, id) {
+			break
+		}
 	}
+	err = s.persistenceBaseExtentID(id)
+	s.baseExtentIDPersistMu.Unlock()
 	s.PreAllocSpaceOnVerfiyFile(atomic.LoadUint64(&s.baseExtentID))
-
 	return
 }
 
@@ -1003,8 +1032,9 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 	}()
 
 	needUpdateCrcExtents := make([]*ExtentInfoBlock, 0)
+	var nowUnix = time.Now().Unix()
 	s.infoStore.Range(func(extentID uint64, ei *ExtentInfoBlock) {
-		if !proto.IsTinyExtent(ei[FileID]) && time.Now().Unix()-int64(ei[ModifyTime]) > UpdateCrcInterval &&
+		if !proto.IsTinyExtent(ei[FileID]) && nowUnix-int64(ei[ModifyTime]) > UpdateCrcInterval &&
 			ei[Size] > 0 && ei[Crc] == 0 {
 			needUpdateCrcExtents = append(needUpdateCrcExtents, ei)
 		}
@@ -1141,6 +1171,10 @@ func (s *ExtentStore) GetStoreUsedSize() (used int64) {
 	return
 }
 
+func (s *ExtentStore) GetBaseExtentID() uint64 {
+	return atomic.LoadUint64(&s.baseExtentID)
+}
+
 func (s *ExtentStore) EvictExpiredCache() {
 	s.cache.EvictExpired()
 }
@@ -1150,8 +1184,15 @@ func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
 }
 
 // Flush 强制下刷存储引擎当前所有打开的FD，保证这些FD的数据在内核PageCache里的脏页全部回写.
-func (s *ExtentStore) Flush(limiter *rate.Limiter) (cnt int) {
-	return s.cache.Flush(limiter)
+func (s *ExtentStore) Flush(limiter *rate.Limiter) (err error) {
+	if err = s.inodeIndex.Flush(); err != nil {
+		return
+	}
+	if err = s.metadataFp.Sync(); err != nil {
+		return
+	}
+	s.cache.Flush(limiter)
+	return
 }
 
 func (s *ExtentStore) EvictExpiredNormalExtentDeleteCache(expireTime int64) {

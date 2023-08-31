@@ -16,15 +16,16 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/cli/cmd/data_check"
-	"github.com/cubefs/cubefs/cli/cmd/util"
-	atomic2 "go.uber.org/atomic"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/cli/cmd/data_check"
+	"github.com/cubefs/cubefs/cli/cmd/util"
+	atomic2 "go.uber.org/atomic"
 
 	"github.com/cubefs/cubefs/sdk/http_client"
 
@@ -439,7 +440,7 @@ The "reset" command will be released in next version`,
 					sb.WriteString(fmt.Sprintf("cfs-cli datapartition add-replica %v %v\n", partition.PartitionID, lackAddr[0]))
 				}
 				if optEnableAutoFullfill && canAutoRepair {
-					stdoutGreen("     Auto Repair Begin:")
+					stdoutGreen("     Auto proposeRepair Begin:")
 					if err = client.AdminAPI().AddDataReplica(partition.PartitionID, lackAddr[0], 0); err != nil {
 						stdoutRed(fmt.Sprintf("%v err:%v", "     Failed.", err))
 						continue

@@ -113,12 +113,12 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		if partition.GetExtentCount() >= storage.MaxExtentCount*3 {
 			return fmt.Errorf("addExtentInfo partition %v has reached maxExtentId", p.PartitionID)
 		}
-		p.ExtentID, err = store.NextExtentID()
+		p.ExtentID, err = partition.AllocateExtentID()
 		if err != nil {
 			return fmt.Errorf("addExtentInfo partition %v alloc NextExtentId error %v", p.PartitionID, err)
 		}
 	} else if p.IsLeaderPacket() && p.IsMarkDeleteExtentOperation() && p.IsTinyExtentType() {
-		record := new(proto.TinyExtentDeleteRecord)
+		record := new(proto.InodeExtentKey)
 		if err := json.Unmarshal(p.Data[:p.Size], record); err != nil {
 			return fmt.Errorf("addExtentInfo failed %v", err.Error())
 		}

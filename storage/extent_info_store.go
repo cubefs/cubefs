@@ -18,15 +18,16 @@ const (
 	Size
 	Crc
 	ModifyTime
+	Inode
 )
 
-type ExtentInfoBlock [4]uint64
-
-var EmptyExtentBlock = ExtentInfoBlock{}
+type ExtentInfoBlock [5]uint64
 
 func (eiBlock ExtentInfoBlock) String() string {
-	return fmt.Sprintf("%v_%v_%v_%v", eiBlock[FileID], eiBlock[Size], eiBlock[Crc], eiBlock[ModifyTime])
+	return fmt.Sprintf("%v_%v_%v_%v_%v", eiBlock[FileID], eiBlock[Size], eiBlock[Crc], eiBlock[ModifyTime], eiBlock[Inode])
 }
+
+var EmptyExtentBlock = ExtentInfoBlock{}
 
 // ExtentInfoStore for GC optimization
 type ExtentInfoStore struct {
@@ -107,7 +108,7 @@ func (ms *ExtentInfoStore) NormalUsed() uint64 {
 	return ms.normalUsed
 }
 
-func (ms *ExtentInfoStore) Create(extentID uint64) {
+func (ms *ExtentInfoStore) Create(extentID, inode uint64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	if proto.IsTinyExtent(extentID) && ms.tinyExtents[extentID] == EmptyExtentBlock {
@@ -119,6 +120,7 @@ func (ms *ExtentInfoStore) Create(extentID uint64) {
 	if _, ok := ms.normalIndex[extentID]; !ok {
 		var info = ExtentInfoBlock{}
 		info[FileID] = extentID
+		info[Inode] = inode
 		ms.normalExtents = append(ms.normalExtents, info)
 		ms.normalIndex[extentID] = uint64(len(ms.normalExtents) - 1)
 	}

@@ -2,7 +2,6 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"os"
 	"path"
 	"reflect"
@@ -11,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 var disk *Disk
@@ -347,7 +348,7 @@ func TestForceExitRaftStore(t *testing.T) {
 	disk.ForceExitRaftStore()
 	for _, partition := range disk.partitionMap {
 		if partition.partitionStatus != proto.Unavailable {
-			t.Fatalf("disk ForceExitRaftStore mismatch, pId:%v partitionStatus except:%v, actual:%v", partition.partitionID, proto.Unavailable, partition.partitionStatus)
+			t.Fatalf("disk ForceExitRaftStore mismatch, pId:%v partitionStatus except:%v, actual:%v", partition.ID(), proto.Unavailable, partition.partitionStatus)
 		}
 	}
 }

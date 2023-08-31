@@ -490,7 +490,7 @@ func (r *ExtentReleasor) processRecordFile(rf recordFileName) (err error) {
 			return
 		}
 		// 忽略执行删除时的错误
-		_ = r.storage.MarkDelete(record.extent, int64(record.offset), int64(record.size))
+		_ = r.storage.MarkDelete(record.extent, record.ino, int64(record.offset), int64(record.size))
 	}
 	return
 }

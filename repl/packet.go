@@ -497,6 +497,17 @@ func NewPacketToGetAllWatermarksV2(ctx context.Context, partitionID uint64, exte
 	return
 }
 
+func NewPacketToGetAllWatermarksV3(ctx context.Context, partitionID uint64, extentType uint8) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = proto.OpGetAllWatermarksV3
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	p.ExtentType = extentType
+	p.SetCtx(ctx)
+	return
+}
+
 func NewPacketToReadTinyDeleteRecord(ctx context.Context, partitionID uint64, offset int64) (p *Packet) {
 	p = new(Packet)
 	p.Opcode = proto.OpReadTinyDeleteRecord

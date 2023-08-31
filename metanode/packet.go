@@ -131,7 +131,7 @@ func NewPacket(ctx context.Context) *Packet {
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
-func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.ExtentKey) *Packet {
+func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.InodeExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
@@ -139,9 +139,9 @@ func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.
 	p.PartitionID = uint64(dp.PartitionID)
 	if proto.IsTinyExtent(ext.ExtentId) {
 		p.ExtentType = proto.TinyExtentType
-		p.Data, _ = json.Marshal(ext)
-		p.Size = uint32(len(p.Data))
 	}
+	p.Data, _ = json.Marshal(ext)
+	p.Size = uint32(len(p.Data))
 	p.ExtentID = ext.ExtentId
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
@@ -153,7 +153,7 @@ func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.
 }
 
 // NewPacketToBatchDeleteExtent returns a new packet to batch delete the extent.
-func NewPacketToBatchDeleteExtent(ctx context.Context, dp *DataPartition, exts []*proto.ExtentKey) *Packet {
+func NewPacketToBatchDeleteExtent(ctx context.Context, dp *DataPartition, exts []*proto.InodeExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpBatchDeleteExtent
@@ -206,7 +206,7 @@ func NewPacketToChangeLeader(ctx context.Context, mpID uint64) *Packet {
 }
 
 // NewPacketToDeleteEcExtent returns a new packet to delete the extent.
-func NewPacketToDeleteEcExtent(ctx context.Context, dp *DataPartition, ext *proto.ExtentKey) *Packet {
+func NewPacketToDeleteEcExtent(ctx context.Context, dp *DataPartition, ext *proto.InodeExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
@@ -228,7 +228,7 @@ func NewPacketToDeleteEcExtent(ctx context.Context, dp *DataPartition, ext *prot
 }
 
 // NewPacketToBatchDeleteEcExtent returns a new packet to batch delete the extent.
-func NewPacketToBatchDeleteEcExtent(ctx context.Context, dp *DataPartition, exts []*proto.ExtentKey) *Packet {
+func NewPacketToBatchDeleteEcExtent(ctx context.Context, dp *DataPartition, exts []*proto.InodeExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpBatchDeleteExtent

@@ -36,6 +36,7 @@ type DNDataPartitionInfo struct {
 	Learners             []Learner         `json:"learners"`
 	IsFinishLoad         bool              `json:"isFinishLoad"`
 	IsRecover            bool              `json:"isRecover"`
+	BaseExtentID         uint64			   `json:"baseExtentID"`
 }
 
 type BlockCrc struct {

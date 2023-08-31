@@ -344,7 +344,7 @@ func (m *DataNode) getVolPartMap() map[string]map[uint64]bool {
 			partMap = make(map[uint64]bool)
 			volPartMap[dp.volumeID] = partMap
 		}
-		partMap[dp.partitionID] = true
+		partMap[dp.ID()] = true
 		return true
 	})
 	return volPartMap

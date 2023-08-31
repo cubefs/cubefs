@@ -427,6 +427,7 @@ type Status struct {
 	State             string // leader、follower、candidate
 	Replicas          map[uint64]*ReplicaStatus
 	Log               *LogStatus
+	Peers             []uint64
 }
 type LogStatus struct {
 	FirstIndex uint64

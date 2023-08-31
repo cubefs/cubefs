@@ -231,7 +231,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 				if extentID, err = storage.NextExtentID(); err != nil {
 					return
 				}
-				if err = storage.Create(extentID, true); err != nil {
+				if err = storage.Create(extentID, 0, true); err != nil {
 					return
 				}
 				var offset int64 = 0
@@ -278,7 +278,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 					return
 				}
 				for _, eib := range eibs {
-					_ = storage.MarkDelete(eib[FileID], 0, 0)
+					_ = storage.MarkDelete(eib[FileID], 0, 0, 0)
 				}
 			}
 		}(future, ctx, cancel)

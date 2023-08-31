@@ -81,6 +81,7 @@ const (
 	OpGetAllExtentInfo               uint8 = 0x18
 	OpTinyExtentAvaliRead            uint8 = 0x19
 	OpGetPersistedAppliedId          uint8 = 0x1a
+	OpGetAllWatermarksV3             uint8 = 0x1b
 	OpEcTinyDelInfoRead                    = OpReadTinyDeleteRecord
 
 	// Operations: Client -> MetaNode.
@@ -385,6 +386,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpGetAllWatermarks"
 	case OpGetAllWatermarksV2:
 		m = "OpGetAllWatermarksV2"
+	case OpGetAllWatermarksV3:
+		m = "OpGetAllWatermarksV3"
 	case OpNotifyReplicasToRepair:
 		m = "OpNotifyReplicasToRepair"
 	case OpExtentRepairRead:
@@ -901,7 +904,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 func (p *Packet) getPacketCommonLog(remoteAddr string) (m string) {
 	m = fmt.Sprintf("RemoteAddr(%v)_Req(%v)_Partition(%v)_", remoteAddr, p.ReqID, p.PartitionID)
 	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
-		ext := new(TinyExtentDeleteRecord)
+		ext := new(InodeExtentKey)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
 			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_Size(%v)_Opcode(%v)",
@@ -920,7 +923,7 @@ func (p *Packet) getPacketCommonLog(remoteAddr string) (m string) {
 			m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		}
 		return
-	} else if p.Opcode == OpGetAllWatermarks || p.Opcode == OpGetAllWatermarksV2 {
+	} else if p.Opcode == OpGetAllWatermarks || p.Opcode == OpGetAllWatermarksV2 || p.Opcode == OpGetAllWatermarksV3 {
 		m += fmt.Sprintf("Opcode(%v)_RepairExtentType(%v)_", p.GetOpMsg(), p.ExtentType)
 		return
 	}

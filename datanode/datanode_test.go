@@ -4,6 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
+	"net"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/cubefs/cubefs/datanode/mock"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
@@ -12,12 +19,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/jacobsa/daemonize"
-	"hash/crc32"
-	"net"
-	"os"
-	"strings"
-	"testing"
-	"time"
 )
 
 var fakeNode *fakeDataNode
@@ -273,7 +274,7 @@ func (fdn *fakeDataNode) fakeCreateExtent(dp *DataPartition, t *testing.T, exten
 			Magic:       proto.ProtoMagic,
 			ReqID:       proto.GenerateRequestID(),
 			Opcode:      proto.OpCreateExtent,
-			PartitionID: dp.partitionID,
+			PartitionID: dp.ID(),
 			StartT:      time.Now().UnixNano(),
 			ExtentID:    extentId,
 		},
@@ -308,7 +309,7 @@ func (fdn *fakeDataNode) prepareTestData(t *testing.T, dp *DataPartition, extent
 			Magic:       proto.ProtoMagic,
 			ReqID:       proto.GenerateRequestID(),
 			Opcode:      proto.OpWrite,
-			PartitionID: dp.partitionID,
+			PartitionID: dp.ID(),
 			ExtentID:    extentId,
 			Size:        uint32(size),
 			CRC:         crc,

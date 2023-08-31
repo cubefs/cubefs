@@ -483,7 +483,7 @@ func (c *Cluster) repairDataPartition(wg sync.WaitGroup) {
 						return
 					}
 					log.LogInfof("action[repairDataPartition] clusterID[%v] vol[%v] data partition[%v] "+
-						"Repair success, task type[%v]", c.Name, dp.VolName, dp.PartitionID, task.RType)
+						"proposeRepair success, task type[%v]", c.Name, dp.VolName, dp.PartitionID, task.RType)
 				default:
 					err = fmt.Errorf("action[repairDataPartition] unknown repair task type")
 					return
@@ -518,7 +518,7 @@ func (c *Cluster) repairMetaPartition(wg sync.WaitGroup) {
 						return
 					}
 					log.LogInfof("action[repairMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
-						"Repair success, task type[%v]", c.Name, mp.volName, mp.PartitionID, task.RType)
+						"proposeRepair success, task type[%v]", c.Name, mp.volName, mp.PartitionID, task.RType)
 				default:
 					err = fmt.Errorf("action[repairMetaPartition] unknown repair task type")
 					return

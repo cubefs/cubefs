@@ -356,13 +356,10 @@ func (k *ExtentKey) Equal(k1 *ExtentKey) bool {
 		k.CRC == k1.CRC
 }
 
-type TinyExtentDeleteRecord struct {
-	FileOffset   uint64
-	PartitionId  uint64
-	ExtentId     uint64
-	ExtentOffset uint64
-	Size         uint32
-	CRC          uint32
+// InodeExtentKey 继承自ExtentKey, 扩展了ExtentKey对应的Inode信息
+type InodeExtentKey struct {
+	ExtentKey
+	Inode uint64
 }
 
 const (

@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -197,6 +198,36 @@ func NewWALApplyStatus() *WALApplyStatus {
 	return &WALApplyStatus{}
 }
 
+type leaderState struct {
+	val int32
+}
+
+func (s *leaderState) isLeader() bool {
+	return atomic.LoadInt32(&s.val) > 0
+}
+
+func (s *leaderState) isLeaderReady() bool {
+	return atomic.LoadInt32(&s.val) == 2
+}
+
+func (s *leaderState) markLeader() bool {
+	return atomic.CompareAndSwapInt32(&s.val, 0, 1)
+}
+
+func (s *leaderState) markLeaderReady() bool {
+	return atomic.CompareAndSwapInt32(&s.val, 1, 2)
+}
+
+func (s *leaderState) markNotLeader() {
+	atomic.StoreInt32(&s.val, 0)
+}
+
+func newLeaderState() *leaderState {
+	return &leaderState{
+		val: 0,
+	}
+}
+
 type DataPartition struct {
 	clusterID       string
 	volumeID        string
@@ -206,7 +237,7 @@ type DataPartition struct {
 	replicas        []string // addresses of the replicas
 	replicasLock    sync.RWMutex
 	disk            *Disk
-	isLeader        bool
+	leaderState     *leaderState
 	isRaftLeader    bool
 	path            string
 	used            int
@@ -220,12 +251,13 @@ type DataPartition struct {
 	serverFaultCheckLevel FaultOccurredCheckLevel
 	applyStatus           *WALApplyStatus
 
-	repairC            chan struct{}
-	updateVolInfoPropC chan struct{}
+	repairPropC              chan struct{}
+	updateReplicasPropC      chan struct{}
+	updateVolInfoPropC       chan struct{}
+	latestPropUpdateReplicas int64 // 记录最近一次申请更新Replicas信息的时间戳，单位为秒
 
 	stopOnce  sync.Once
 	stopRaftC chan uint64
-	storeC    chan uint64
 	stopC     chan bool
 
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
@@ -267,6 +299,7 @@ type DataPartitionViewInfo struct {
 	Learners             []proto.Learner           `json:"learners"`
 	IsFinishLoad         bool                      `json:"isFinishLoad"`
 	IsRecover            bool                      `json:"isRecover"`
+	BaseExtentID         uint64                    `json:"baseExtentID"`
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
@@ -283,6 +316,25 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	if err = dp.initIssueProcessor(0); err != nil {
 		return
 	}
+	return
+}
+
+func (dp *DataPartition) ID() uint64 {
+	return dp.partitionID
+}
+
+func (dp *DataPartition) AllocateExtentID() (id uint64, err error) {
+	if dp.config.VolHAType == proto.CrossRegionHATypeQuorum && dp.leaderState.isLeaderReady() {
+		// 为了保证ExtentID不会重复分配, quorum类型复制组(异地多活)仅在当前实例是Replicas Leader
+		// 且完成了baseExtentID对齐(LeaderReady)状态下允许分配ExtentID。
+		err = proto.ErrOperationDisabled
+		if !dp.leaderState.isLeader() {
+			// 复制组可能发生变化, 当前实例可能变更为Leader, 触发更新Replicas信息
+			dp.proposeUpdateReplicas()
+		}
+		return
+	}
+	id, err = dp.extentStore.NextExtentID()
 	return
 }
 
@@ -448,12 +500,13 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		disk:                    disk,
 		path:                    dataPath,
 		partitionSize:           dpCfg.PartitionSize,
+		leaderState:             newLeaderState(),
 		replicas:                make([]string, 0),
-		repairC:                 make(chan struct{}, 1),
+		repairPropC:             make(chan struct{}, 1),
+		updateReplicasPropC:     make(chan struct{}, 1),
 		updateVolInfoPropC:      make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),
-		storeC:                  make(chan uint64, 128),
 		snapshot:                make([]*proto.File, 0),
 		partitionStatus:         proto.ReadWrite,
 		config:                  dpCfg,
@@ -565,7 +618,9 @@ func (dp *DataPartition) replicasInit() {
 	if dp.config.Hosts != nil && len(dp.config.Hosts) >= 1 {
 		leaderAddr := strings.Split(dp.config.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
-			dp.isLeader = true
+			if dp.leaderState.markLeader() {
+				dp.proposeRepair()
+			}
 		}
 	}
 }
@@ -723,8 +778,8 @@ func (dp *DataPartition) Delete() {
 	_ = os.RemoveAll(dp.Path())
 }
 
-func (dp *DataPartition) MarkDelete(extentID, offset, size uint64) (err error) {
-	err = dp.extentReleasor.MarkDelete(context.Background(), 0, extentID, offset, size)
+func (dp *DataPartition) MarkDelete(extentID, inode, offset, size uint64) (err error) {
+	err = dp.extentReleasor.MarkDelete(context.Background(), inode, extentID, offset, size)
 	return
 }
 
@@ -810,9 +865,26 @@ func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
 
-func (dp *DataPartition) Repair() {
+func (dp *DataPartition) proposeRepair() {
 	select {
-	case dp.repairC <- struct{}{}:
+	case dp.repairPropC <- struct{}{}:
+	default:
+	}
+}
+
+func (dp *DataPartition) proposeUpdateReplicas() {
+	// 控制申请更新Replicas信息的间隔
+	var prev = atomic.LoadInt64(&dp.latestPropUpdateReplicas)
+	var now = time.Now().Unix()
+	if now-prev < IntervalToProposeUpdateReplica {
+		return
+	}
+	if !atomic.CompareAndSwapInt64(&dp.latestPropUpdateReplicas, prev, now) {
+		return
+	}
+	log.LogWarnf("DP[%v] trigger update replicas, previous %v", dp.partitionID, time.Unix(prev, 0))
+	select {
+	case dp.updateReplicasPropC <- struct{}{}:
 	default:
 	}
 }
@@ -838,13 +910,23 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 			repairTimer.Stop()
 			validateCRCTimer.Stop()
 			return
+		case <-dp.updateReplicasPropC:
+			becomesLeader, err := dp.updateReplicas(true)
+			if err != nil {
+				log.LogWarnf("DP(%v) force update replicas failed: %v", dp.partitionID, err)
+				continue
+			}
+			if becomesLeader {
+				// 触发修复
+				dp.proposeRepair()
+			}
 
-		case <-dp.repairC:
+		case <-dp.repairPropC:
 			repairTimer.Stop()
 			log.LogDebugf("partition(%v) execute manual data repair for all extent", dp.partitionID)
 			dp.ExtentStore().MoveAllToBrokenTinyExtentC(proto.TinyExtentCount)
-			dp.runRepair(ctx, proto.TinyExtentType, false)
-			dp.runRepair(ctx, proto.NormalExtentType, false)
+			dp.runRepair(ctx, proto.TinyExtentType)
+			dp.runRepair(ctx, proto.NormalExtentType)
 			repairTimer.Reset(time.Minute)
 		case <-repairTimer.C:
 			index++
@@ -852,10 +934,14 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 			if index >= math.MaxUint32 {
 				index = 0
 			}
+			if _, err := dp.updateReplicas(false); err != nil {
+				log.LogWarnf("DP[%v] update replicas failed: %v", dp.partitionID, err)
+				continue
+			}
 			if index%2 == 0 {
-				dp.runRepair(ctx, proto.TinyExtentType, true)
+				dp.runRepair(ctx, proto.TinyExtentType)
 			} else {
-				dp.runRepair(ctx, proto.NormalExtentType, true)
+				dp.runRepair(ctx, proto.NormalExtentType)
 			}
 			repairTimer.Reset(time.Minute)
 		case <-validateCRCTimer.C:
@@ -953,19 +1039,13 @@ func (dp *DataPartition) String() (m string) {
 }
 
 // runRepair launches the repair of extents.
-func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8, fetchReplicas bool) {
+func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8) {
 
 	/*	if dp.partitionStatus == proto.Unavailable {
 		return
 	}*/
-	if fetchReplicas {
-		if err := dp.updateReplicas(false); err != nil {
-			log.LogErrorf("action[runRepair] partition(%v) err(%v).", dp.partitionID, err)
-			return
-		}
-	}
 
-	if !dp.isLeader {
+	if !dp.leaderState.isLeader() {
 		return
 	}
 	if dp.extentStore.BrokenTinyExtentCnt() == 0 {
@@ -974,11 +1054,10 @@ func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8, fetchR
 	dp.repair(ctx, extentType)
 }
 
-func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
+func (dp *DataPartition) updateReplicas(isForce bool) (becomesLeader bool, err error) {
 	if !isForce && time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
 		return
 	}
-	dp.isLeader = false
 	isLeader, replicas, err := dp.fetchReplicasFromMaster()
 	if err != nil {
 		return
@@ -989,7 +1068,12 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from(%v) to(%v).",
 			dp.partitionID, dp.replicas, replicas)
 	}
-	dp.isLeader = isLeader
+	switch {
+	case isLeader && dp.leaderState.markLeader():
+		becomesLeader = true
+	case !isLeader:
+		dp.leaderState.markNotLeader()
+	}
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
 	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v)", dp.partitionID))
@@ -1046,97 +1130,6 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 		response.PartitionSnapshot = dp.SnapShot()
 	}
 	return
-}
-
-// DoExtentStoreRepairOnFollowerDisk performs the repairs of the extent store.
-// 1. when the extent size is smaller than the max size on the record, start to repair the missing part.
-// 2. if the extent does not even exist, create the extent first, and then repair.
-func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataPartitionRepairTask) {
-	store := dp.extentStore
-	for _, extentInfo := range repairTask.ExtentsToBeCreated {
-		if proto.IsTinyExtent(extentInfo[storage.FileID]) {
-			continue
-		}
-
-		if !proto.IsTinyExtent(extentInfo[storage.FileID]) && !dp.ExtentStore().IsFinishLoad() {
-			continue
-		}
-		if store.IsRecentDelete(extentInfo[storage.FileID]) {
-			continue
-		}
-		if store.HasExtent(uint64(extentInfo[storage.FileID])) {
-			//info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size} todo
-			info := storage.ExtentInfoBlock{storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
-			repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
-			continue
-		}
-		if !AutoRepairStatus {
-			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
-			continue
-		}
-		err := store.Create(uint64(extentInfo[storage.FileID]), true)
-		if err != nil {
-			continue
-		}
-		//info := &storage.ExtentInfo{Source: extentInfo.Source, FileID: extentInfo.FileID, Size: extentInfo.Size}
-		info := storage.ExtentInfoBlock{storage.FileID: extentInfo[storage.FileID], storage.Size: extentInfo[storage.Size]}
-		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
-	}
-
-	localAddr := fmt.Sprintf("%v:%v", LocalIP, LocalServerPort)
-	allReplicas := dp.getReplicaClone()
-
-	// 使用生产消费模型并行修复Extent。
-	var startTime = time.Now()
-
-	// 内部数据结构，用于包裹修复Extent相关必要信息
-	type __ExtentRepairTask struct {
-		ExtentInfo storage.ExtentInfoBlock
-		Sources    []string
-	}
-
-	var syncTinyDeleteRecordOnly = dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition
-	var extentRepairTaskCh = make(chan *__ExtentRepairTask, len(repairTask.ExtentsToBeRepaired))
-	var extentRepairWorkerWG = new(sync.WaitGroup)
-	for i := 0; i < NumOfFilesToRecoverInParallel; i++ {
-		extentRepairWorkerWG.Add(1)
-		go func() {
-			defer extentRepairWorkerWG.Done()
-			for {
-				var task = <-extentRepairTaskCh
-				if task == nil {
-					return
-				}
-				dp.doStreamExtentFixRepairOnFollowerDisk(context.Background(), task.ExtentInfo, task.Sources)
-			}
-		}()
-	}
-	var validExtentsToBeRepaired int
-	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-		if store.IsRecentDelete(extentInfo[storage.FileID]) || !store.HasExtent(extentInfo[storage.FileID]) {
-			continue
-		}
-		majorSource := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
-		sources := make([]string, 0, len(allReplicas))
-		sources = append(sources, majorSource)
-		for _, replica := range allReplicas {
-			if replica == majorSource || replica == localAddr {
-				continue
-			}
-			sources = append(sources, replica)
-		}
-		extentRepairTaskCh <- &__ExtentRepairTask{
-			ExtentInfo: extentInfo,
-			Sources:    sources,
-		}
-		validExtentsToBeRepaired++
-	}
-	close(extentRepairTaskCh)
-	extentRepairWorkerWG.Wait()
-
-	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, syncTinyDeleteRecordOnly, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
-
-	log.LogInfof("partition[%v] repaired %v extents, cost %v", dp.partitionID, validExtentsToBeRepaired, time.Now().Sub(startTime))
 }
 
 type TinyDeleteRecord struct {
@@ -1267,7 +1260,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 				} else {
 					DeleteLimiterWait()
 					log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, dr.extentID, dr.offset, dr.size)
-					store.MarkDelete(dr.extentID, int64(dr.offset), int64(dr.size))
+					store.MarkDelete(dr.extentID, 0, int64(dr.offset), int64(dr.size))
 				}
 			}
 		}
@@ -1317,7 +1310,6 @@ func (dp *DataPartition) SyncReplicaHosts(replicas []string) {
 	if len(replicas) == 0 {
 		return
 	}
-	dp.isLeader = false
 	var leader bool // Whether current instance is the leader member.
 	if len(replicas) >= 1 {
 		leaderAddr := replicas[0]
@@ -1327,14 +1319,20 @@ func (dp *DataPartition) SyncReplicaHosts(replicas []string) {
 		}
 	}
 	dp.replicasLock.Lock()
-	dp.isLeader = leader
+
+	switch {
+	case leader && dp.leaderState.markLeader():
+		dp.proposeRepair()
+	case !leader:
+		dp.leaderState.markNotLeader()
+	}
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
 	dp.replicasLock.Unlock()
 	log.LogInfof("partition(%v) synchronized replica hosts from master [replicas:(%v), leader: %v]",
 		dp.partitionID, strings.Join(replicas, ","), leader)
 	if leader {
-		dp.Repair()
+		dp.proposeRepair()
 	}
 }
 
@@ -1407,6 +1405,7 @@ func (dp *DataPartition) getDataPartitionInfo() (dpInfo *DataPartitionViewInfo, 
 		Learners:             dp.config.Learners,
 		IsFinishLoad:         dp.ExtentStore().IsFinishLoad(),
 		IsRecover:            dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
+		BaseExtentID:         dp.ExtentStore().GetBaseExtentID(),
 	}
 	return
 }

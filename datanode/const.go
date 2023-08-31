@@ -26,10 +26,11 @@ const (
 )
 
 const (
-	IntervalToUpdateReplica       = 600 // interval to update the replica
-	IntervalToUpdatePartitionSize = 60  // interval to update the partition size
-	NumOfFilesToRecoverInParallel = 8   // number of files to be recovered simultaneously
-	RaftLogRecoverInAdvance       = 5   // Partition启动时回放日志提前量
+	IntervalToUpdateReplica        = 600 // interval to update the replica
+	IntervalToUpdatePartitionSize  = 60  // interval to update the partition size
+	IntervalToProposeUpdateReplica = 60  // 每分钟只允许触发一次主动更新replicas信息的请求
+	NumOfFilesToRecoverInParallel  = 8   // number of files to be recovered simultaneously
+	RaftLogRecoverInAdvance        = 5   // Partition启动时回放日志提前量
 )
 
 // Network protocol
@@ -62,6 +63,7 @@ const (
 	ActionBatchDeleteExtent               = "ActionBatchDeleteExtent"
 	ActionGetAllExtentWatermarks          = "ActionGetAllExtentWatermarks:"
 	ActionGetAllExtentWatermarksV2        = "ActionGetAllExtentWatermarksV2:"
+	ActionGetAllExtentWatermarksV3        = "ActionGetAllExtentWatermarksV3:"
 	ActionGetAllExtentInfo                = "ActionGetAllExtentInfo:"
 	ActionWrite                           = "ActionWrite:"
 	ActionRepair                          = "ActionRepair:"

@@ -222,9 +222,9 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 	visitor = func(dp *DataPartition) {
 		manager.partitionMutex.Lock()
 		defer manager.partitionMutex.Unlock()
-		if _, has := manager.partitions[dp.partitionID]; !has {
-			manager.partitions[dp.partitionID] = dp
-			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
+		if _, has := manager.partitions[dp.ID()]; !has {
+			manager.partitions[dp.ID()] = dp
+			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.ID())
 		}
 	}
 	if _, err = manager.GetDisk(path); err != nil {
@@ -261,10 +261,10 @@ func (manager *SpaceManager) StartPartitions() {
 			defer wg.Done()
 			if err = dp.Start(); err != nil {
 				manager.partitionMutex.Lock()
-				delete(manager.partitions, dp.partitionID)
+				delete(manager.partitions, dp.ID())
 				manager.partitionMutex.Unlock()
 				dp.Disk().DetachDataPartition(dp)
-				msg := fmt.Sprintf("partition [id: %v, disk: %v] start failed: %v", dp.partitionID, dp.Disk().Path, err)
+				msg := fmt.Sprintf("partition [id: %v, disk: %v] start failed: %v", dp.ID(), dp.Disk().Path, err)
 				log.LogErrorf(msg)
 				exporter.Warning(msg)
 			}
@@ -371,7 +371,7 @@ func (manager *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
 func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
 	manager.partitionMutex.Lock()
 	defer manager.partitionMutex.Unlock()
-	manager.partitions[dp.partitionID] = dp
+	manager.partitions[dp.ID()] = dp
 }
 
 // DetachDataPartition removes a data partition from the partition map.
@@ -419,7 +419,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		return
 	}
 	manager.partitionMutex.Lock()
-	manager.partitions[dp.partitionID] = dp
+	manager.partitions[dp.ID()] = dp
 	manager.partitionMutex.Unlock()
 	return
 }
@@ -455,9 +455,9 @@ func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partit
 	err = d.RestoreOnePartition(func(dp *DataPartition) {
 		manager.partitionMutex.Lock()
 		defer manager.partitionMutex.Unlock()
-		if _, has := manager.partitions[dp.partitionID]; !has {
-			manager.partitions[dp.partitionID] = dp
-			log.LogDebugf("action[reloadPartition] put partition(%v) to manager.", dp.partitionID)
+		if _, has := manager.partitions[dp.ID()]; !has {
+			manager.partitions[dp.ID()] = dp
+			log.LogDebugf("action[reloadPartition] put partition(%v) to manager.", dp.ID())
 		}
 	}, partitionPath)
 	if err != nil {
@@ -483,7 +483,7 @@ func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partit
 errDeal:
 	manager.DetachDataPartition(partitionID)
 	partition.Disk().DetachDataPartition(partition)
-	msg := fmt.Sprintf("partition [id: %v, disk: %v] start failed: %v", partition.partitionID, partition.Disk().Path, err)
+	msg := fmt.Sprintf("partition [id: %v, disk: %v] start failed: %v", partition.ID(), partition.Disk().Path, err)
 	log.LogErrorf(msg)
 	exporter.Warning(msg)
 	return
@@ -535,7 +535,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.PartitionReport{
 			VolName:         partition.volumeID,
-			PartitionID:     uint64(partition.partitionID),
+			PartitionID:     partition.ID(),
 			PartitionStatus: partition.Status(),
 			Total:           uint64(partition.Size()),
 			Used:            uint64(partition.Used()),
@@ -681,7 +681,7 @@ func (s *DataNode) buildHeartBeatResponsePb(response *proto.DataNodeHeartbeatRes
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.PartitionReportPb{
 			VolName:         partition.volumeID,
-			PartitionID:     partition.partitionID,
+			PartitionID:     partition.ID(),
 			PartitionStatus: int32(partition.Status()),
 			Total:           uint64(partition.Size()),
 			Used:            uint64(partition.Used()),

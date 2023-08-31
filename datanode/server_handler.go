@@ -230,7 +230,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			NeedServerFaultCheck  bool                    `json:"needServerFaultCheck"`
 			ServerFaultCheckLevel FaultOccurredCheckLevel `json:"serverFaultCheckLevel"`
 		}{
-			ID:                    dp.partitionID,
+			ID:                    dp.ID(),
 			Size:                  dp.Size(),
 			Used:                  dp.Used(),
 			Status:                dp.Status(),
@@ -659,7 +659,7 @@ func (s *DataNode) stopPartitionById(partitionID uint64) (err error) {
 		err = fmt.Errorf("partition[%d] not exist", partitionID)
 		return
 	}
-	partition.Disk().space.DetachDataPartition(partition.partitionID)
+	partition.Disk().space.DetachDataPartition(partition.ID())
 	partition.Disk().DetachDataPartition(partition)
 	partition.Stop()
 	return nil
