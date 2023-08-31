@@ -33,7 +33,7 @@ func initVolumeDB() {
 	volumeDBPath += strconv.Itoa(rand.Intn(20000))
 
 	var err error
-	volumeDB, err = Open(volumeDBPath, false)
+	volumeDB, err = Open(volumeDBPath)
 	if err != nil {
 		log.Error("open db error")
 	}
@@ -56,13 +56,13 @@ func closeVolumeDB() {
 
 func TestVolumeDB(t *testing.T) {
 	volumeDBPath = ""
-	_, err := Open(volumeDBPath, false)
+	_, err := Open(volumeDBPath)
 	require.Error(t, err)
 }
 
 func TestVolumeDB_GetAllCfNames(t *testing.T) {
 	volumeDBPath = ""
-	db, err := Open(volumeDBPath, false)
+	db, err := Open(volumeDBPath)
 	require.Error(t, err)
 	db.GetAllCfNames()
 

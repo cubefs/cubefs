@@ -77,7 +77,7 @@ func TestRaftNode(t *testing.T) {
 	tmpDBPath := "/tmp/tmpraftdb" + strconv.Itoa(rand.Intn(1000000000))
 	os.MkdirAll(tmpDBPath, 0o755)
 	defer os.RemoveAll(tmpDBPath)
-	raftDB, err := raftdb.OpenRaftDB(tmpDBPath, false)
+	raftDB, err := raftdb.OpenRaftDB(tmpDBPath)
 	require.NoError(t, err)
 	defer raftDB.Close()
 

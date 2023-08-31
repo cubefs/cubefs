@@ -17,7 +17,6 @@ package db
 import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/priority"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
-	rdb "github.com/cubefs/cubefs/blobstore/common/kvstore"
 )
 
 const (
@@ -28,14 +27,14 @@ const (
 )
 
 type MetaConfig struct {
-	MetaRootPrefix     string            `json:"meta_root_prefix"`
-	SupportInline      bool              `json:"support_inline"`
-	TinyFileThresholdB int               `json:"tinyfile_threshold_B"`
-	Sync               bool              `json:"sync"`
-	BatchProcessCount  int64             `json:"batch_process_count"`
-	WritePriRatio      float64           `json:"write_pri_ratio"`
-	MetaQos            qos.LevelConfig   `json:"meta_qos"`
-	RocksdbOption      rdb.RocksDBOption `json:"rocksdb_option"`
+	MetaRootPrefix     string          `json:"meta_root_prefix"`
+	SupportInline      bool            `json:"support_inline"`
+	TinyFileThresholdB int             `json:"tinyfile_threshold_B"`
+	Sync               bool            `json:"sync"`
+	BatchProcessCount  int64           `json:"batch_process_count"`
+	WritePriRatio      float64         `json:"write_pri_ratio"`
+	MetaQos            qos.LevelConfig `json:"meta_qos"`
+	LRUCacheSize       uint64          `json:"cache_size"`
 }
 
 func initConfig(conf *MetaConfig) error {
@@ -61,12 +60,8 @@ func initConfig(conf *MetaConfig) error {
 		conf.WritePriRatio = 0.95
 	}
 
-	if conf.RocksdbOption.WriteBufferSize <= 0 {
-		conf.RocksdbOption.WriteBufferSize = DefaultWriteBufferSize
-	}
-
-	if conf.RocksdbOption.LRUCache <= 0 {
-		conf.RocksdbOption.LRUCache = DefaultLRUCache
+	if conf.LRUCacheSize == 0 {
+		conf.LRUCacheSize = DefaultLRUCache
 	}
 
 	return nil
