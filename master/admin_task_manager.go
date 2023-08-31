@@ -252,7 +252,7 @@ func (sender *AdminTaskManager) syncSendAdminTaskWithRetry(task *proto.AdminTask
 			err = errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
 			continue
 		}
-		if err = packet.ReadFromConn(conn, proto.SyncSendTaskDeadlineTime); err != nil {
+		if err = packet.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
 			err = errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
 			continue
 		}

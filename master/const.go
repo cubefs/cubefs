@@ -280,7 +280,7 @@ const (
 	volLowCapThresholdForReservedTrashSpace                = 20 * 1024 // GB
 	volLowCapMaxCapacityRatioForReservedTrashSpace         = 2
 	defaultFlashNodeOnlineState                            = true
-	maxRetryTimes                                          = 3
+	maxRetryTimes                                          = 2
 )
 
 const (
