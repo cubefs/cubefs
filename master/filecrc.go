@@ -88,12 +88,10 @@ func (fc *FileInCore) needCrcRepair(liveReplicas []*DataReplica, getInfoCallback
 			return
 		}
 		if fm.ApplyID == baseApplyId && fm.getFileCrc() != baseCrc {
-			needRepair = true
-			return
-		}
-		if fm.ApplyID != baseApplyId && fm.getFileCrc() == baseCrc {
 			log.LogErrorf("needCrcRepair. getInfoCallback %v, extent %v, applyID(%v:%v), crc %v",
 				getInfoCallback(), fc.Name, fm.ApplyID, baseApplyId, baseCrc)
+			needRepair = true
+			return
 		}
 	}
 	return
