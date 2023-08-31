@@ -130,7 +130,6 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 	err = request.err
 	write = request.writeBytes
 	writeRequestPool.Put(request)
-	log.LogDebugf("action[IssueWriteRequest] requst done!")
 	return
 }
 
@@ -138,9 +137,7 @@ func (s *Streamer) IssueFlushRequest() error {
 	request := flushRequestPool.Get().(*FlushRequest)
 	request.done = make(chan struct{}, 1)
 	s.request <- request
-	log.LogDebugf("action[IssueFlushRequest] wait")
 	<-request.done
-	log.LogDebugf("action[IssueFlushRequest] done")
 	err := request.err
 	flushRequestPool.Put(request)
 	return err
@@ -315,7 +312,6 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 	if flags&proto.FlagsSyncWrite != 0 {
 		direct = true
 	}
-	log.LogDebugf("action[steamer.write] inode %v offset %v size %v", s.inode, offset, size)
 begin:
 	if flags&proto.FlagsAppend != 0 {
 		filesize, _ := s.extents.Size()
@@ -360,12 +356,9 @@ begin:
 					}(cacheKey)
 				}
 			}
-
 			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v]",
 				s.inode, s.verSeq, req.ExtentKey.GetSeq(), req.ExtentKey)
-
 			if req.ExtentKey.GetSeq() == s.verSeq {
-				log.LogDebugf("action[streamer.write] over write extent key (%v)", req.ExtentKey)
 				writeSize, err = s.doOverwrite(req, direct)
 				if err == proto.ErrCodeVersionOp {
 					log.LogDebugf("action[streamer.write] write need version update")
@@ -750,7 +743,6 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, che
 		}
 		for i := 0; i < MaxNewHandlerRetry; i++ {
 			if s.handler == nil {
-				log.LogDebugf("doAppendWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
 				s.handler = NewExtentHandler(s, offset, storeMode, 0)
 				s.dirty = false
 			} else if s.handler.storeMode != storeMode {
@@ -766,10 +758,6 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, che
 				}
 				break
 			}
-
-			log.LogDebugf("doAppendWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
-				s.inode, offset, size, storeMode, err)
-
 			s.closeOpenHandler()
 		}
 	} else {
@@ -783,8 +771,6 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, che
 			}
 		}
 
-		log.LogDebugf("doAppendWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
-			s.inode, offset, size, storeMode, err)
 		err = s.closeOpenHandler()
 	}
 
@@ -797,7 +783,6 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, che
 	_ = s.extents.Append(ek, false)
 	total = size
 
-	log.LogDebugf("doAppendWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
 	return
 }
 

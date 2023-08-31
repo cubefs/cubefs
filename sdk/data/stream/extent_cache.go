@@ -17,7 +17,6 @@ package stream
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util"
-	"runtime/debug"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
@@ -263,7 +262,6 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 	}
 
 	cache.root.ReplaceOrInsert(ek)
-	log.LogDebugf("ExtentCache ReplaceOrInsert: ino(%v) ek(%v) ", cache.inode, ek)
 	if sync {
 		cache.gen++
 		discardExtents = make([]proto.ExtentKey, 0, cache.discard.Len())
@@ -281,15 +279,6 @@ func (cache *ExtentCache) Append(ek *proto.ExtentKey, sync bool) (discardExtents
 
 	log.LogDebugf("ExtentCache Append: ino(%v) sync(%v) ek(%v) local discard(%v) discardExtents(%v), seq(%v)",
 		cache.inode, sync, ek, discard, discardExtents, ek.GetSeq())
-	//	log.LogDebugf("ExtentCache Append stack[%v]", string(debug.Stack()))
-
-	log.LogDebugf("stack:%v", string(debug.Stack()))
-	cache.root.Descend(func(i btree.Item) bool {
-		ek := i.(*proto.ExtentKey)
-		// skip if the start offset matches with the given offset
-		log.LogDebugf("action[Append.LoopPrint.Exit] inode %v ek [%v]", cache.inode, ek.String())
-		return true
-	})
 	return
 }
 
@@ -515,7 +504,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 	cache.root.DescendLessOrEqual(pivot, func(i btree.Item) bool {
 		ek := i.(*proto.ExtentKey)
 		lower.FileOffset = ek.FileOffset
-		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] ek [%v], pivot[%v]", ek, pivot)
+		// log.LogDebugf("action[ExtentCache.PrepareWriteRequests] ek [%v], pivot[%v]", ek, pivot)
 		return false
 	})
 
@@ -524,7 +513,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 		ekStart := int(ek.FileOffset)
 		ekEnd := int(ek.FileOffset) + int(ek.Size)
 
-		log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
+		// log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v) ekStart(%v) ekEnd(%v)", cache.inode, start, end, ekStart, ekEnd)
 
 		if start <= ekStart {
 			if end <= ekStart {
@@ -563,7 +552,7 @@ func (cache *ExtentCache) PrepareWriteRequests(offset, size int, data []byte) []
 		}
 	})
 
-	log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
+	// log.LogDebugf("PrepareWriteRequests: ino(%v) start(%v) end(%v)", cache.inode, start, end)
 	if start < end {
 		// add hole (start, end)
 		req := NewExtentRequest(start, end-start, data[start-offset:end-offset], nil)
