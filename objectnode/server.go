@@ -318,6 +318,9 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	err = reloadconf.StartReload(reloadConf, o.Reload)
 	if err != nil {
 		log.LogWarnf("handleStart: GetS3QoSInfo err(%v)", err)
+		o.limitMutex.Lock()
+		o.rateLimit = &NullRateLimit{}
+		o.limitMutex.Unlock()
 	}
 
 	// start rest api
