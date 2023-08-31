@@ -23,7 +23,6 @@ func collectHistogram() {
 		m := <-HistogramCh
 		metric := m.Metric()
 		metric.Observe(m.val / 1000)
-		log.LogDebugf("collect metric %v", m)
 	}
 }
 

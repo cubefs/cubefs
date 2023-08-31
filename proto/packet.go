@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strconv"
@@ -764,7 +763,7 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
 		headSize = util.PacketHeaderVerSize
 	}
-	log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
+	//log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
 	header, err := Buffers.Get(headSize)
 	if err != nil {
 		header = make([]byte, headSize)
@@ -774,12 +773,9 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	p.MarshalHeader(header)
 	if _, err = c.Write(header); err == nil {
-		log.LogDebugf("packet opcode %v header size %v extentype %v size %v", p.Opcode, headSize, p.ExtentType, len(header))
 		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
-			log.LogDebugf("packet opcode %v header size %v extentype %v arg size %v", p.Opcode, headSize, p.ExtentType, p.ArgLen)
 			if p.Data != nil && p.Size != 0 {
 				_, err = c.Write(p.Data[:p.Size])
-				log.LogDebugf("packet opcode %v header size %v extentype %v data size %v", p.Opcode, headSize, p.ExtentType, p.Size)
 			}
 		}
 	}
@@ -819,8 +815,6 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	if err = p.UnmarshalHeader(header); err != nil {
 		return
 	}
-
-	log.LogDebugf("action[ReadFromConnWithVer] verseq %v", p.VerSeq)
 
 	if p.ExtentType&MultiVersionFlag > 0 {
 		ver := make([]byte, 8)

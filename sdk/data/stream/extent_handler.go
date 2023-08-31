@@ -267,9 +267,6 @@ func (eh *ExtentHandler) sender() {
 				eh.setRecovery()
 			}
 			eh.reply <- packet
-
-			log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
-
 		case <-eh.doneSender:
 			eh.setClosed()
 			log.LogDebugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
@@ -326,8 +323,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		eh.processReplyError(packet, err.Error())
 		return
 	}
-
-	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
 
 	if reply.ResultCode != proto.OpOk {
 		if reply.ResultCode != proto.ErrCodeVersionOpError {
