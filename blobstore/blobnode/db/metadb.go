@@ -377,9 +377,7 @@ func newRocksDB(path string, conf MetaConfig) (db rdb.KVStore, err error) {
 		return nil, ErrShardMetaNotDir
 	}
 
-	db, err = rdb.OpenDB(path, conf.Sync, func(option *rdb.RocksDBOption) {
-		*option = conf.RocksdbOption
-	})
+	db, err = rdb.OpenDB(path, rdb.WithCatchSize(conf.LRUCacheSize))
 	if err != nil {
 		return
 	}

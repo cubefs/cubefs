@@ -58,7 +58,7 @@ var (
 func initTestDiskMgr(t *testing.T) (d *DiskMgr, closeFunc func()) {
 	var err error
 	testTmpDBPath := "/tmp/tmpdiskmgrnormaldb" + strconv.Itoa(rand.Intn(10000000000))
-	testDB, err := normaldb.OpenNormalDB(testTmpDBPath, false)
+	testDB, err := normaldb.OpenNormalDB(testTmpDBPath)
 	require.NoError(t, err)
 
 	ctrl := gomock.NewController(t)

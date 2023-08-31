@@ -267,9 +267,7 @@ func cmdUpdateVolumeUnit(c *grumble.Context) error {
 }
 
 func openVolumeDB(path string, readonly bool) (*volumedb.VolumeDB, error) {
-	db, err := volumedb.Open(path, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = readonly
-	})
+	db, err := volumedb.Open(path, kvstore.WithReadonly(readonly))
 	if err != nil {
 		return nil, fmt.Errorf("open db failed, err: %s", err.Error())
 	}
@@ -285,9 +283,7 @@ func openVolumeTable(db *volumedb.VolumeDB) (*volumedb.VolumeTable, error) {
 }
 
 func openKvDB(path string, readonly bool) (*kvdb.KvDB, error) {
-	db, err := kvdb.Open(path, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = readonly
-	})
+	db, err := kvdb.Open(path, kvstore.WithReadonly(readonly))
 	if err != nil {
 		return nil, fmt.Errorf("open db failed, err: %s", err.Error())
 	}

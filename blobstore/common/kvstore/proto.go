@@ -15,9 +15,9 @@
 package kvstore
 
 type KVStorage interface {
-	Put(kv KV, opts ...OpOption) error
-	Get(key []byte, opts ...OpOption) ([]byte, error)
-	Delete(key []byte, opts ...OpOption) error
+	Put(kv KV) error
+	Get(key []byte) ([]byte, error)
+	Delete(key []byte) error
 	NewWriteBatch() *WriteBatch
 	DeleteBatch(keys [][]byte, safe bool) error
 	WriteBatch(kvs []KV, safe bool) error

@@ -47,8 +47,8 @@ type VolumeDB struct {
 	kvstore.KVStore
 }
 
-func Open(path string, isSync bool, dbOpts ...kvstore.DbOptions) (*VolumeDB, error) {
-	db, err := kvstore.OpenDBWithCF(path, isSync, volumeCfs, dbOpts...)
+func Open(path string, dbOpts ...kvstore.DbOptions) (*VolumeDB, error) {
+	db, err := kvstore.OpenDBWithCF(path, volumeCfs, dbOpts...)
 	if err != nil {
 		log.Errorf("create volumeTbl error:%v", err)
 		return nil, err

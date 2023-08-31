@@ -36,7 +36,7 @@ func initKvDB() {
 	kvDBPath += strconv.Itoa(rand.Intn(20000))
 
 	var err error
-	kvDB, err = Open(kvDBPath, false)
+	kvDB, err = Open(kvDBPath)
 	if err != nil {
 		log.Error("open db error")
 	}

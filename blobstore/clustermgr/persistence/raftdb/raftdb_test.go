@@ -26,7 +26,7 @@ import (
 func TestRaftDB(t *testing.T) {
 	tmpDBPath := "/tmp/tmpraftdb" + strconv.Itoa(rand.Intn(1000000000))
 
-	raftDB, err := OpenRaftDB(tmpDBPath, false)
+	raftDB, err := OpenRaftDB(tmpDBPath)
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpDBPath)
 

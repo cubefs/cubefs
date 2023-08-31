@@ -35,7 +35,7 @@ func TestDb(t *testing.T) {
 	err = os.MkdirAll(path, 0o755)
 	require.NoError(t, err)
 
-	db, err := OpenDB(path, false)
+	db, err := OpenDB(path)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -86,7 +86,7 @@ func TestTable(t *testing.T) {
 	require.NoError(t, err)
 
 	{
-		db, err := OpenDBWithCF(path, false, []string{tableName1, tableName2})
+		db, err := OpenDBWithCF(path, []string{tableName1, tableName2})
 		require.NoError(t, err)
 
 		t1 := db.Table(tableName1)
@@ -126,7 +126,7 @@ func TestTable(t *testing.T) {
 	}
 
 	{
-		db, err := OpenDBWithCF(path, false, []string{tableName1, tableName2})
+		db, err := OpenDBWithCF(path, []string{tableName1, tableName2})
 		require.NoError(t, err)
 
 		t1 := db.Table(tableName1)
@@ -190,7 +190,7 @@ func TestTableBatchOP(t *testing.T) {
 	err = os.MkdirAll(path, 0o755)
 	require.NoError(t, err)
 
-	db, err := OpenDBWithCF(path, false, []string{tableName1, tableName2})
+	db, err := OpenDBWithCF(path, []string{tableName1, tableName2})
 	require.NoError(t, err)
 
 	t1 := db.Table(tableName1)
@@ -219,7 +219,7 @@ func TestDbBatchOP(t *testing.T) {
 	err = os.MkdirAll(path, 0o755)
 	require.NoError(t, err)
 
-	db, err := OpenDB(path, false)
+	db, err := OpenDB(path)
 	require.NoError(t, err)
 	defer db.Close()
 

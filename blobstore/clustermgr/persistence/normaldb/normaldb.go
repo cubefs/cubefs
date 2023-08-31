@@ -44,8 +44,8 @@ type NormalDB struct {
 	kvstore.KVStore
 }
 
-func OpenNormalDB(path string, isSync bool, dbOpts ...kvstore.DbOptions) (*NormalDB, error) {
-	db, err := kvstore.OpenDBWithCF(path, isSync, normalDBCfs, dbOpts...)
+func OpenNormalDB(path string, dbOpts ...kvstore.DbOptions) (*NormalDB, error) {
+	db, err := kvstore.OpenDBWithCF(path, normalDBCfs, dbOpts...)
 	if err != nil {
 		return nil, err
 	}
