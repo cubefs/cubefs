@@ -334,12 +334,18 @@ func stepPreCandidate(r *raftFsm, m *proto.Message) {
 		return
 
 	case proto.ReqMsgAppend:
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] PreCandidate receive append in term %d; become follower.", r.id, r.term)
+		}
 		r.becomeFollower(r.term, m.From)
 		r.handleAppendEntries(m)
 		proto.ReturnMessage(m)
 		return
 
 	case proto.ReqMsgHeartBeat:
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] PreCandidate receive heartbeat in term %d; become follower.", r.id, r.term)
+		}
 		r.becomeFollower(r.term, m.From)
 		return
 
