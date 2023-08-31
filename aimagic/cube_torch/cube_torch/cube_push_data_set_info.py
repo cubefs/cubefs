@@ -88,13 +88,35 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         match = re.match(pattern, address)
         return match is not None
 
-    def start_write_train_file_list(self):
+    def load_train_name_check_consistency(self,train_name,train_data):
+        def read_file_lines(filename):
+            lines = []
+            with open(filename, 'r') as file:
+                for line in file:
+                    lines.append(line.strip())
+            return lines
+        train_lines=read_file_lines(train_name)
+
+        def compare_arrays(array1, array2):
+            if array1 == array2:
+                return True
+            else:
+                return False
+
+        consistency=compare_arrays(train_data,train_lines)
+        print("train_name:{} consistency is {}".format(train_name,consistency))
+        return consistency
+
+    def start_write_train_file_list(self,check_consistency):
         train_file_list = []
         for idx, train_data in enumerate(self.train_file_name_list):
             train_data_len = len(train_data)
             train_name = '{}/{}_{}.txt'.format(self.dataset_dir, train_data_len, idx)
             self._write_train_list(train_name, train_data)
             train_file_list.append((train_name, train_data_len))
+            if check_consistency and not self.load_train_name_check_consistency(train_name,train_data):
+                raise ValueError("train_file_name:{} consistency check failed".format(train_name))
+
         self.cube_prefetch_file_list = train_file_list
         print("write_cube_train_files set cube_prefetch_files is {}".format(self.cube_prefetch_file_list))
         return self.cube_prefetch_file_list
@@ -105,7 +127,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         if self.train_file_name_list is None or len(self.train_file_name_list) == 0:
             return
 
-        self.cube_prefetch_file_list = self.start_write_train_file_list()
+        self.cube_prefetch_file_list = self.start_write_train_file_list(False)
         print("write_cube_train_files set cube_prefetch_files is {}".format(self.cube_prefetch_file_list))
         return self.cube_prefetch_file_list
 
@@ -159,13 +181,13 @@ class CubePushDataSetInfo(CubeDataSetInfo):
             for i in range(num_batches):
                 start_index = i * batch_size
                 end_index = (i + 1) * batch_size
-                if end_index >= len(train_data) - 1:
-                    end_index = len(train_data) - 1
+                if end_index >= len(train_data):
+                    end_index = len(train_data)
                 batch_array = train_data[start_index:end_index]
                 if len(batch_array) == 0:
                     continue
                 f.write('\n'.join(batch_array))
-                if i < num_batches - 1:
+                if i< num_batches:
                     f.write('\n')
 
         os.rename(tmp_file_name, train_name)
