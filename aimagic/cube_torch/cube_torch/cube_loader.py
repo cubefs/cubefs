@@ -554,14 +554,21 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         _unregister_pid_to_storage(pids, self._unregister_pid_addr)
 
     def _notify_storage_func(self, event):
+        cnt=0
+        _max_loading_queue_size=self.cube_dataset_info.get_cube_queue_size_on_worker()
         while not event.set():
             try:
                 if not self._start_loop_get_index:
                     time.sleep(0.01)
                     continue
+                cnt+=1
                 index = self._next_index()
                 self.wait_read_train_file_queue.put(index)
                 self._preload_index_queue.put(index)
+                if self._loadindex_queue.qsize()<_max_loading_queue_size-1:
+                    print("pid:{} cnt:{} wait_read_train_file_queue_size:{} _preload_index_queue_size:{} "
+                          "_loadding_index_queue_size:{}".format(os.getpid(),cnt,self.wait_read_train_file_queue.qsize(),
+                          self._preload_index_queue.qsize(),self._loadindex_queue.qsize()))
             except StopIteration:
                 event.set()
                 self._preload_index_queue.put(None)

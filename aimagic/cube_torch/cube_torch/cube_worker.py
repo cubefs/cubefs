@@ -192,7 +192,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         _worker_info = WorkerInfo(id=worker_id, num_workers=num_workers,
                                   seed=seed, dataset=dataset)
 
-        from torch.utils.data import _DatasetKind
+        from cube_torch.cube_fetcher import _DatasetKind
 
         init_exception = None
 
@@ -271,3 +271,5 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
     if done_event.is_set():
         data_queue.cancel_join_thread()
         data_queue.close()
+
+
