@@ -284,8 +284,13 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
 		Warn(c.Name, msg)
 		dn, _ := c.dataNode(excessAddr)
-		if dn != nil {
-			c.removeDataPartitionRaftOnly(partition, proto.Peer{ID: dn.ID, Addr: dn.Addr})
+		if dn != nil && dn.isActive {
+			partition.RLock()
+			leaderAddr := partition.getLeaderAddr()
+			partition.RUnlock()
+			if leaderAddr != "" {
+				c.removeDataPartitionRaftOnly(partition, proto.Peer{ID: dn.ID, Addr: dn.Addr})
+			}
 			c.deleteDataReplica(partition, dn, false)
 		}
 	}
