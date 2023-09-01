@@ -11,6 +11,8 @@ The PSC is responsible for organizing the entire response including internal com
 The initial PSC will consist of volunteers who have been involved in the initial discussion:
 
 - Xiaochun He (**[@xiaochunhe](https://github.com/xiaochunhe)**)
+- Liang Chang (**[@leonrayang](https://github.com/leonrayang)**)
+- Yao Hu (**[@baijiaruo](https://github.com/baijiaruo)**)
 - Weilong Guo (**[@awzhgw](https://github.com/awzhgw)**)
 - Liying Zhang (**[@Vivian7755](https://github.com/Vivian7755)**)
 - Mofei Zhang (**[@mervinkid](https://github.com/mervinkid)**)
