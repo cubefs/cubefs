@@ -1074,6 +1074,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		Sources    []string
 	}
 
+	var syncTinyDeleteRecordOnly = dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition
 	var extentRepairTaskCh = make(chan *__ExtentRepairTask, len(repairTask.ExtentsToBeRepaired))
 	var extentRepairWorkerWG = new(sync.WaitGroup)
 	for i := 0; i < NumOfFilesToRecoverInParallel; i++ {
@@ -1112,7 +1113,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 	close(extentRepairTaskCh)
 	extentRepairWorkerWG.Wait()
 
-	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
+	dp.doStreamFixTinyDeleteRecord(context.Background(), repairTask, syncTinyDeleteRecordOnly, time.Now().Unix()-dp.FullSyncTinyDeleteTime > MaxFullSyncTinyDeleteTime)
 
 	log.LogInfof("partition[%v] repaired %v extents, cost %v", dp.partitionID, validExtentsToBeRepaired, time.Now().Sub(startTime))
 }
