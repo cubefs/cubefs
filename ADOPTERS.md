@@ -36,3 +36,4 @@ This page contains a list of organizations who are using CubeFS in production or
 | [DADA](https://about.imdada.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Club Factory](https://www.wholeeprime.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [Nanjing University](https://www.nju.edu.cn/en/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
+| [PSBC](https://www.psbc.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
