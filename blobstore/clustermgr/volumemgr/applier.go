@@ -456,6 +456,7 @@ func (v *VolumeMgr) Flush(ctx context.Context) error {
 
 // Switch manager work when leader change
 func (v *VolumeMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }
 
 func (v *VolumeMgr) getTaskIdx(vid proto.Vid) int {

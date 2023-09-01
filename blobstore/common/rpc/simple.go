@@ -273,6 +273,7 @@ func (c *client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 }
 
 func (c *client) Close() {
+	// Do nothing to close.
 }
 
 func (c *client) doWithCtx(ctx context.Context, req *http.Request) (resp *http.Response, err error) {

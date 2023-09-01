@@ -109,6 +109,7 @@ func (t *KvMgr) Flush(ctx context.Context) error {
 
 // Switch manager work when leader change
 func (t *KvMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }
 
 func (t *KvMgr) getTaskIdx(key string) int {

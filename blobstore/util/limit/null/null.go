@@ -25,4 +25,4 @@ func New() limit.Limiter {
 
 func (l nullLimit) Running() int                      { return -1 }
 func (l nullLimit) Acquire(keys ...interface{}) error { return nil }
-func (l nullLimit) Release(keys ...interface{})       {}
+func (l nullLimit) Release(keys ...interface{})       { _ = struct{}{} }

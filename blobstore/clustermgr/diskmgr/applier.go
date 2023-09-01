@@ -254,6 +254,7 @@ func (d *DiskMgr) Flush(ctx context.Context) error {
 
 // DiskMgr do nothing when leader change
 func (d *DiskMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }
 
 func (d *DiskMgr) getTaskIdx(diskID proto.DiskID) int {
