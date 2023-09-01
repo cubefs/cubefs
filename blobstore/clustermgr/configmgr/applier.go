@@ -80,4 +80,5 @@ func (v *ConfigMgr) Flush(ctx context.Context) error {
 
 // Switch manager work when leader change
 func (v *ConfigMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }

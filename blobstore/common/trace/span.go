@@ -191,13 +191,19 @@ func (s *spanImpl) SetTag(key string, value interface{}) opentracing.Span {
 }
 
 // Deprecated: use LogFields or LogKV (not implements)
-func (s *spanImpl) LogEvent(event string) {}
+func (s *spanImpl) LogEvent(event string) {
+	// Deprecated: explaining why this function is empty.
+}
 
 // Deprecated: use LogFields or LogKV (not implements)
-func (s *spanImpl) LogEventWithPayload(event string, payload interface{}) {}
+func (s *spanImpl) LogEventWithPayload(event string, payload interface{}) {
+	// Deprecated: explaining why this function is empty.
+}
 
 // Deprecated: use LogFields or LogKV (not implements)
-func (s *spanImpl) Log(data opentracing.LogData) {}
+func (s *spanImpl) Log(data opentracing.LogData) {
+	// Deprecated: explaining why this function is empty.
+}
 
 // OperationName returns operationName for span
 func (s *spanImpl) OperationName() string {

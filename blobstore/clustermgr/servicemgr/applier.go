@@ -159,4 +159,5 @@ func (s *ServiceMgr) Flush(ctx context.Context) error {
 }
 
 func (s *ServiceMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }
