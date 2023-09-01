@@ -1616,12 +1616,13 @@ func (s *DataNode) rateLimit(p *repl.Packet, c *net.TCPConn) {
 	if !isRateLimitOn {
 		return
 	}
-
-	// ignore rate limit if request is from cluster internal nodes
-	addrSlice := strings.Split(c.RemoteAddr().String(), ":")
-	_, isInternal := clusterMap[addrSlice[0]]
-	if isInternal {
-		return
+	if !p.IsMarkDeleteExtentOperation() && !p.IsBatchDeleteExtentOperation() {
+		// ignore rate limit if request is from cluster internal nodes
+		addrSlice := strings.Split(c.RemoteAddr().String(), ":")
+		_, isInternal := clusterMap[addrSlice[0]]
+		if isInternal {
+			return
+		}
 	}
 
 	ctx := context.Background()

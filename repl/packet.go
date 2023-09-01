@@ -768,6 +768,10 @@ func (p *Packet) IsMarkDeleteExtentOperation() bool {
 	return p.Opcode == proto.OpMarkDelete
 }
 
+func (p *Packet) IsBatchDeleteExtentOperation() bool {
+	return p.Opcode == proto.OpBatchDeleteExtent
+}
+
 func (p *Packet) IsBroadcastMinAppliedID() bool {
 	return p.Opcode == proto.OpBroadcastMinAppliedID
 }
