@@ -31,7 +31,7 @@ func VolumeInfoJoin(vol *clustermgr.VolumeInfo, prefix string) string {
 // VolumeInfoF volume info
 func VolumeInfoF(vol *clustermgr.VolumeInfo) []string {
 	if vol == nil {
-		return []string{" <nil> "}
+		return nilStrings[:]
 	}
 	usedC := common.ColorizeUint64(vol.Used, vol.Total)
 	freeC := common.ColorizeUint64Free(vol.Free, vol.Total)
@@ -63,7 +63,7 @@ func ClusterInfoJoin(info *clustermgr.ClusterInfo, prefix string) string {
 // ClusterInfoF cluster info
 func ClusterInfoF(info *clustermgr.ClusterInfo) []string {
 	if info == nil {
-		return []string{" <nil> "}
+		return nilStrings[:]
 	}
 	avaiC := common.ColorizeInt64(-info.Available, info.Capacity)
 	vals := make([]string, 0, 8)

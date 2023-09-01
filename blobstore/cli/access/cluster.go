@@ -72,7 +72,7 @@ func showClusters(c *grumble.Context) error {
 		path := cmapi.GetConsulClusterPath(region)
 		pairs, _, err := cli.KV().List(path, nil)
 		if err != nil {
-			fmt.Println("\terror:", err)
+			fmt.Println("\tlist error:", err)
 			continue
 		}
 
@@ -82,7 +82,7 @@ func showClusters(c *grumble.Context) error {
 			clusterInfo := &cmapi.ClusterInfo{}
 			err := common.Unmarshal(pair.Value, clusterInfo)
 			if err != nil {
-				fmt.Println("\terror:", err)
+				fmt.Println("\tjson error:", err)
 				continue
 			}
 
@@ -111,7 +111,7 @@ func showClusterWithConfig() error {
 		client := config.NewCluster(clusterID, nil, "")
 		stat, err := client.Stat(context.Background())
 		if err != nil {
-			fmt.Println("\terror:", err)
+			fmt.Println("\tstat error:", err)
 			continue
 		}
 

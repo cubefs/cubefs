@@ -471,13 +471,14 @@ func (a *RequestRow) XlogsTime(names []string) (msSpeedTotal uint64) {
 
 // apiWithParams returns api information with maxApiLevel( default 2).
 func apiWithParams(service, method, path, host, params string, maxApiLevel int) (api string) {
+	const unknown = ".unknown"
 	if service == "" || method == "" {
 		return "unknown.unknown"
 	}
 	stype := strings.ToLower(service)
 	fields := strings.Split(strings.ToLower(path), "/")
 	if len(fields) <= 1 {
-		return stype + ".unknown"
+		return stype + unknown
 	}
 
 	firstPath := fields[1]
@@ -493,7 +494,7 @@ func apiWithParams(service, method, path, host, params string, maxApiLevel int) 
 		return stype + ".v2-tune." + strings.Join(fields[firstPathIndex+1:], ".")
 	}
 	if !isValidApi(firstPath) {
-		return stype + ".unknown"
+		return stype + unknown
 	}
 
 	api = firstPath
@@ -503,11 +504,11 @@ func apiWithParams(service, method, path, host, params string, maxApiLevel int) 
 		length := len(fields)
 		for level <= maxApiLevel && index < length {
 			api += "." + fields[index]
-			level += 1
-			index += 1
+			level++
+			index++
 		}
 		if !isValidMultiPathApi(api) {
-			return stype + ".unknown"
+			return stype + unknown
 		}
 	}
 

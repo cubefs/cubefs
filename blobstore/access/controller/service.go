@@ -259,7 +259,7 @@ RETRY:
 
 		span := trace.SpanFromContextSafe(ctx)
 		if lastHost == "" {
-			span.Errorf("no any host of %s", name)
+			span.Errorf("no any service host of %s", name)
 			return "", errors.Newf("no any host of %s", name)
 		}
 		span.Warnf("all host were punished of %s, return the last one %s", name, lastHost)

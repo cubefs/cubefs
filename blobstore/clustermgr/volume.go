@@ -47,7 +47,7 @@ func (s *Service) VolumeGet(c *rpc.Context) {
 	span.Debugf("accept VolumeGet request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
+		span.Errorf("get read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}
@@ -72,7 +72,7 @@ func (s *Service) VolumeList(c *rpc.Context) {
 	span.Debugf("accept VolumeList request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
+		span.Errorf("list read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}
@@ -134,7 +134,7 @@ func (s *Service) VolumeAllocatedList(c *rpc.Context) {
 	span.Debugf("accept VolumeAllocatedList request, request ip is %v", args.Host)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
+		span.Errorf("list allocated read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}
@@ -181,14 +181,14 @@ func (s *Service) VolumeUpdate(c *rpc.Context) {
 	}
 	data, err := json.Marshal(args)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("update json marshal failed, args: %v, error: %v", args, err)
 		c.RespondError(apierrors.ErrCMUnexpect)
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeUpdateVolumeUnit, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Errorf("raft propose error:%v", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -216,14 +216,14 @@ func (s *Service) VolumeRetain(c *rpc.Context) {
 
 	data, err := json.Marshal(retainVolumes)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", retainVolumes, err)
+		span.Errorf("retain json marshal failed, args: %v, error: %v", retainVolumes, err)
 		c.RespondError(apierrors.ErrCMUnexpect)
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeRetainVolume, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Errorf("raft propose error:%v", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -286,7 +286,7 @@ func (s *Service) VolumeUnitList(c *rpc.Context) {
 	span.Debugf("accept VolumeUnitList request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
+		span.Errorf("list units read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}
@@ -338,7 +338,7 @@ func (s *Service) ChunkReport(c *rpc.Context) {
 	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeChunkReport, writer.Bytes(), base.ProposeContext{ReqID: span.TraceID()})
 	err := s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Errorf("raft propose error:%v", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -368,14 +368,14 @@ func (s *Service) ChunkSetCompact(c *rpc.Context) {
 
 	data, err := json.Marshal(args)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("set compact json marshal failed, args: %v, error: %v", args, err)
 		c.RespondError(apierrors.ErrCMUnexpect)
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeChunkSetCompact, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -414,14 +414,14 @@ func (s *Service) AdminUpdateVolume(c *rpc.Context) {
 
 	data, err := json.Marshal(volume)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("admin update json marshal failed, args: %v, error: %v", args, err)
 		c.RespondError(apierrors.ErrCMUnexpect)
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeAdminUpdateVolume, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -458,14 +458,14 @@ func (s *Service) AdminUpdateVolumeUnit(c *rpc.Context) {
 
 	data, err := json.Marshal(args)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("update unit json marshal failed, args: %v, error: %v", args, err)
 		c.RespondError(err)
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeAdminUpdateVolumeUnit, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Errorf("raft propose failed, err:%v ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -482,7 +482,7 @@ func (s *Service) V2VolumeList(c *rpc.Context) {
 	span.Debugf("accept V2VolumeList request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
+		span.Errorf("list v2 read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}

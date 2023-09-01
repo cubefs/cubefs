@@ -53,7 +53,7 @@ func addCmdChunk(cmd *grumble.Command) {
 		Help: "show stat of chunk",
 		Flags: func(f *grumble.Flags) {
 			blobnodeFlags(f)
-			f.UintL("diskid", 1, "disk id")
+			f.UintL("diskid", 1, "disk id to stat")
 			f.UintL("vuid", 1, "vuid")
 		},
 		Run: func(c *grumble.Context) error {
@@ -77,7 +77,7 @@ func addCmdChunk(cmd *grumble.Command) {
 		Help: "list of chunks",
 		Flags: func(f *grumble.Flags) {
 			blobnodeFlags(f)
-			f.UintL("diskid", 1, "disk id")
+			f.UintL("diskid", 1, "disk id to list")
 		},
 		Run: func(c *grumble.Context) error {
 			cli := blobnode.New(&blobnode.Config{})
@@ -97,7 +97,7 @@ func addCmdChunk(cmd *grumble.Command) {
 		Help: "create chunk",
 		Flags: func(f *grumble.Flags) {
 			blobnodeFlags(f)
-			f.UintL("diskid", 1, "disk id")
+			f.UintL("diskid", 1, "disk id to create")
 			f.UintL("vuid", 101, "vuid")
 			f.Int64L("chunksize", 1024, "chunk size")
 		},

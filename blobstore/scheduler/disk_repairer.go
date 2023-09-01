@@ -148,8 +148,8 @@ func (mgr *DiskRepairMgr) clearJunkTasksWhenLoading(ctx context.Context, tasks [
 			span.Errorf("has junk task but the disk is not repaired: disk_id[%d], task_id[%s]", task.SourceDiskID, task.TaskID)
 			return errcode.ErrUnexpectMigrationTask
 		}
-		span.Warnf("delete junk task: task_id[%s]", task.TaskID)
-		base.InsistOn(ctx, "delete junk task", func() error {
+		span.Warnf("loading delete junk task: task_id[%s]", task.TaskID)
+		base.InsistOn(ctx, " loading delete junk task", func() error {
 			return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
 		})
 	}
@@ -717,8 +717,8 @@ func (mgr *DiskRepairMgr) checkAndClearJunkTasks() {
 		if len(tasks) != 0 {
 			span.Warnf("clear junk tasks of repaired disk: disk_id[%d], tasks size[%d]", disk.diskID, len(tasks))
 			for _, task := range tasks {
-				span.Warnf("delete junk task: task_id[%s]", task.TaskID)
-				base.InsistOn(ctx, "delete junk task", func() error {
+				span.Warnf("check and delete junk task: task_id[%s]", task.TaskID)
+				base.InsistOn(ctx, "chek and delete junk task", func() error {
 					return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
 				})
 			}

@@ -56,7 +56,7 @@ func addCmdBackground(cmd *grumble.Command) {
 		Help:     "show status of a background task switch",
 		LongHelp: "Show status of a specific background task type, currently supported: " + BackgroundTaskTypeString,
 		Args: func(a *grumble.Args) {
-			a.String("task", "background task type")
+			a.String("task", "background task type to status")
 		},
 		Run: cmdListBackgroundStatus,
 		Flags: func(f *grumble.Flags) {
@@ -69,7 +69,7 @@ func addCmdBackground(cmd *grumble.Command) {
 		Help:     "enable background task",
 		LongHelp: "Enable a specific background task type, currently supported: " + BackgroundTaskTypeString,
 		Args: func(a *grumble.Args) {
-			a.String("task", "background task type")
+			a.String("task", "background task type to enable")
 		},
 		Flags: clusterFlags,
 		Run: func(c *grumble.Context) error {
@@ -81,7 +81,7 @@ func addCmdBackground(cmd *grumble.Command) {
 		Help:     "disable background task",
 		LongHelp: "Disable a specific background task type, currently supported: " + BackgroundTaskTypeString,
 		Args: func(a *grumble.Args) {
-			a.String("task", "background task type")
+			a.String("task", "background task type to disable")
 		},
 		Flags: clusterFlags,
 		Run: func(c *grumble.Context) error {

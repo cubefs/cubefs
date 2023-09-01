@@ -183,7 +183,7 @@ func (d *DiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*DiskInfoRecord,
 	count := opt.Count
 	for ; count > 0 && iter.Valid(); iter.Next() {
 		if iter.Err() != nil {
-			return nil, errors.Info(iter.Err(), "disk table iterate failed")
+			return nil, errors.Info(iter.Err(), "list disk table iterate failed")
 		}
 		if iter.Key().Size() != 0 && iter.Value().Size() != 0 {
 			// index iterate mode, we should check if iterate to the end
@@ -201,7 +201,7 @@ func (d *DiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*DiskInfoRecord,
 			if err != nil {
 				iter.Key().Free()
 				iter.Value().Free()
-				return nil, errors.Info(err, "disk table iterate failed")
+				return nil, errors.Info(err, "list disk table iterate failed")
 			}
 
 			// two part of detail filter
@@ -358,7 +358,7 @@ func (d *DiskTable) listDisksByDiskTbl(marker proto.DiskID, count int) ([]*DiskI
 
 	for i := 1; iter.Valid(); iter.Next() {
 		if iter.Err() != nil {
-			return nil, errors.Info(iter.Err(), "disk table iterate failed")
+			return nil, errors.Info(iter.Err(), "list by disk table iterate failed")
 		}
 		info, err := decodeDiskInfoRecord(iter.Value().Data())
 		if err != nil {

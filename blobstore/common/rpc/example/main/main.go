@@ -66,7 +66,7 @@ func main() {
 		log.Info("meta server is running at:", c.BindAddr)
 		go func() {
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Panic("server exits:", err)
+				log.Panic("meta server exits:", err)
 			}
 		}()
 	}
@@ -80,7 +80,7 @@ func main() {
 		log.Info("file server is running at:", c.BindAddr)
 		go func() {
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Panic("server exits:", err)
+				log.Panic("file server exits:", err)
 			}
 		}()
 	}
@@ -94,7 +94,7 @@ func main() {
 		log.Info("app server is running at:", c.BindAddr)
 		go func() {
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Panic("server exits:", err)
+				log.Panic("app server exits:", err)
 			}
 		}()
 	}

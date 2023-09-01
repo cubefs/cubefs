@@ -255,7 +255,6 @@ func (s *Service) Put(c *rpc.Context) {
 
 	span.Debugf("accept /put request args:%+v", args)
 	if !args.IsValid() {
-		span.Debugf("invalid args:%+v", args)
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
@@ -306,7 +305,6 @@ func (s *Service) PutAt(c *rpc.Context) {
 
 	span.Debugf("accept /putat request args:%+v", args)
 	if !args.IsValid() {
-		span.Debugf("invalid args:%+v", args)
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
@@ -362,7 +360,6 @@ func (s *Service) Alloc(c *rpc.Context) {
 
 	span.Debugf("accept /alloc request args:%+v", args)
 	if !args.IsValid() {
-		span.Debugf("invalid args:%+v", args)
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
@@ -401,7 +398,6 @@ func (s *Service) Get(c *rpc.Context) {
 
 	span.Debugf("accept /get request args:%+v", args)
 	if !args.IsValid() || !verifyCrc(&args.Location) {
-		span.Debugf("invalid args:%+v", args)
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
@@ -559,7 +555,6 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 
 	span.Debugf("accept /deleteblob request args:%+v", args)
 	if !args.IsValid() {
-		span.Debugf("invalid args:%+v", args)
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
