@@ -337,14 +337,12 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, ekR
 
 	if len(se.eks) <= 0 {
 		se.eks = append(se.eks, ek)
-		log.LogInfof("action[AppendWithCheck] eks empty copy directly")
 		return
 	}
 
 	lastKey := se.eks[len(se.eks)-1]
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
 		se.eks = append(se.eks, ek)
-		log.LogInfof("action[AppendWithCheck] eks do append cleanly and directly")
 		if lastKey.IsSequenceWithDiffSeq(&ek) {
 			storeEkSplit(inodeID, ekRefMap, &lastKey)
 			storeEkSplit(inodeID, ekRefMap, &ek)

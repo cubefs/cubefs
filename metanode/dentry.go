@@ -130,8 +130,6 @@ func (d *Dentry) isEffective(verSeq uint64) bool {
 }
 
 func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
-
-	log.LogInfof("action[getDentryFromVerList] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, d.getVerSeq(), d.Inode, d.Name)
 	if verSeq == 0 || (verSeq >= d.getVerSeq() && !isInitSnapVer(verSeq)) {
 		if d.isDeleted() {
 			log.LogDebugf("action[getDentryFromVerList] tmp dentry %v, is deleted, seq %v", d, d.getVerSeq())
@@ -153,12 +151,10 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 		if d.multiSnap.dentryList[denListLen-1].getVerSeq() != 0 || d.multiSnap.dentryList[denListLen-1].isDeleted() {
 			return nil, 0
 		}
-		log.LogDebugf("action[getDentryFromVerList] return dentry %v seq %v", den, den.getVerSeq())
 		return den, denListLen
 	}
 
 	for id, lDen := range d.multiSnap.dentryList {
-		log.LogDebugf("action[getDentryFromVerList] den in ver list %v, is delete %v, seq %v", lDen, lDen.isDeleted(), lDen.getVerSeq())
 		if verSeq < lDen.getVerSeq() {
 			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil, request seq %v, history ver seq %v", lDen, verSeq, lDen.getVerSeq())
 		} else {
@@ -166,7 +162,6 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 				log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil due to latest is deleted", lDen)
 				return
 			}
-			log.LogDebugf("action[getDentryFromVerList] den in ver list %v got", lDen)
 			return lDen, id + 1
 		}
 	}

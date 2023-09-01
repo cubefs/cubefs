@@ -281,7 +281,7 @@ func TestRaftServer(t *testing.T) {
 	}
 
 	// is leader
-	for i, _ := range servers[0].rafts {
+	for i := range servers[0].rafts {
 		isLeader := servers[0].IsLeader(i)
 		require.True(t, isLeader)
 	}
