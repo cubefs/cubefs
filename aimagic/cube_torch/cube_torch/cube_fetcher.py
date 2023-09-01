@@ -1,7 +1,9 @@
 import os
 
+import torch
 from torch.utils.data._utils.fetch import _BaseDatasetFetcher
 
+from cube_torch import get_manager
 
 
 class _DatasetKind(object):
@@ -9,9 +11,9 @@ class _DatasetKind(object):
     Iterable = 1
 
     @staticmethod
-    def create_fetcher(kind, dataset, auto_collation, collate_fn, drop_last):
+    def create_fetcher(kind, dataset, auto_collation, collate_fn, drop_last,use_batch_download):
         if kind == _DatasetKind.Map:
-            return _MapDatasetFetcher(dataset, auto_collation, collate_fn, drop_last)
+            return _MapDatasetFetcher(dataset, auto_collation, collate_fn, drop_last,use_batch_download)
         else:
             return _IterableDatasetFetcher(dataset, auto_collation, collate_fn, drop_last)
 
@@ -52,6 +54,8 @@ class _MapDatasetFetcher(_BaseDatasetFetcher):
         super(_MapDatasetFetcher, self).__init__(
             dataset, auto_collation, collate_fn, drop_last
         )
+        manager=get_manager()
+        self.cube_batch_downloader=manager.cube_batch_downloader
 
     def fetch(self, possibly_batched_index):
         if self.auto_collation:

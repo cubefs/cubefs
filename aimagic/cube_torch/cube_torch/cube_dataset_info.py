@@ -121,3 +121,6 @@ class CubeDataSetInfo:
 
     def get_unregister_pid_addr(self):
         return ""
+
+    def get_batch_download_addr(self):
+        return ""

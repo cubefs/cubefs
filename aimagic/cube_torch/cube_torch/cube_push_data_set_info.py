@@ -44,6 +44,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         dataset_id = id(cube_loader.dataset)
         self.register_pid_addr = "http://127.0.0.1:{}/register/pid".format(self.prof_port)
         self.unregister_pid_addr = "http://127.0.0.1:{}/unregister/pid".format(self.prof_port)
+        self.batch_download_addr="http://127.0.0.1:{}/batchdownload".format(self.prof_port)
         get_manager().__dict__[dataset_id] = self
 
     def get_cube_prefetch_addr(self):
@@ -162,9 +163,9 @@ class CubePushDataSetInfo(CubeDataSetInfo):
             try:
                 response = self.storage_seesion.get(url, timeout=1)
                 if response.status_code != 200:
-                    raise ValueError("url{} error{}".format(url, response.text))
+                    raise ValueError("batch_download_addr{} error{}".format(url, response.text))
             except Exception as e:
-                raise ValueError("url{} error{}".format(url, e))
+                raise ValueError("batch_download_addr{} error{}".format(url, e))
 
     def _write_train_list(self, train_name, train_data):
         if os.path.exists(train_name + ".tmp"):
@@ -192,3 +193,6 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
         os.rename(tmp_file_name, train_name)
         return train_name
+
+    def get_batch_download_addr(self):
+        return self.batch_download_addr
