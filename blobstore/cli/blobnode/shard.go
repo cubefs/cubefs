@@ -36,7 +36,7 @@ func addCmdShard(cmd *grumble.Command) {
 		Help: "shard stat",
 		Flags: func(f *grumble.Flags) {
 			blobnodeFlags(f)
-			f.UintL("diskid", 1, "disk id")
+			f.UintL("diskid", 1, "disk id to stat")
 			f.UintL("vuid", 1, "vuid")
 			f.UintL("bid", 1, "bid")
 		},
@@ -62,7 +62,7 @@ func addCmdShard(cmd *grumble.Command) {
 		Help: "get shard",
 		Flags: func(f *grumble.Flags) {
 			blobnodeFlags(f)
-			f.UintL("diskid", 1, "disk id")
+			f.UintL("diskid", 1, "disk id to get")
 			f.UintL("vuid", 1, "vuid")
 			f.UintL("bid", 1, "bid")
 		},
@@ -91,7 +91,7 @@ func addCmdShard(cmd *grumble.Command) {
 			blobnodeFlags(f)
 		},
 		Args: func(c *grumble.Args) {
-			c.Uint64("diskid", "disk id")
+			c.Uint64("diskid", "disk id to mark")
 			c.Uint64("vuid", "vuid")
 			c.Uint64("bid", "bid")
 		},

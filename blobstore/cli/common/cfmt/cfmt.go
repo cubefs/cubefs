@@ -16,7 +16,6 @@
 //
 // function *F make the pointer struct value to []string
 // function *Join []string into string with profix each line, sep is '\n'
-//
 package cfmt
 
 import (
@@ -26,6 +25,8 @@ import (
 
 	"github.com/dustin/go-humanize"
 )
+
+var nilStrings = []string{" <nil> "}
 
 func joinWithPrefix(prefix string, vals []string) string {
 	if len(prefix) > 0 {

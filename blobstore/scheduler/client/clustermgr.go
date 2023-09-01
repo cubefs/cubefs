@@ -514,7 +514,7 @@ func (c *clustermgrClient) ListDiskVolumeUnits(ctx context.Context, diskID proto
 
 	diskInfo, err := c.client.DiskInfo(ctx, diskID)
 	if err != nil {
-		span.Errorf("get disk info failed: disk_id[%d], err[%+v]", diskID, err)
+		span.Errorf("list volume unit, get disk info failed: disk_id[%d], err[%+v]", diskID, err)
 		return nil, err
 	}
 
@@ -576,7 +576,7 @@ func (c *clustermgrClient) listAllDisks(ctx context.Context, status proto.DiskSt
 		}
 		selectDisks, selectMarker, err := c.listDisk(ctx, args)
 		if err != nil {
-			span.Errorf("list disk failed: err[%+v]", err)
+			span.Errorf("list all disk failed: err[%+v]", err)
 			return nil, err
 		}
 
@@ -602,7 +602,7 @@ func (c *clustermgrClient) listDisks(ctx context.Context, status proto.DiskStatu
 		}
 		selectDisks, selectMarker, err := c.listDisk(ctx, args)
 		if err != nil {
-			span.Errorf("list disk failed: err[%+v]", err)
+			span.Errorf("list disks failed: err[%+v]", err)
 			return nil, err
 		}
 
@@ -693,7 +693,7 @@ func (c *clustermgrClient) SetDiskDropped(ctx context.Context, diskID proto.Disk
 
 	info, err := c.client.DiskInfo(ctx, diskID)
 	if err != nil {
-		span.Errorf("get disk info failed: disk_id[%d], err[%+v]", diskID, err)
+		span.Errorf("set disk dropped, get disk info failed: disk_id[%d], err[%+v]", diskID, err)
 		return err
 	}
 
@@ -831,7 +831,7 @@ func (c *clustermgrClient) listMigrateTasks(ctx context.Context, taskType proto.
 			return nil, marker, err
 		}
 		if task.TaskType != taskType {
-			span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
+			span.Errorf("list task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
 			continue
 		}
 		tasks = append(tasks, task)
@@ -883,7 +883,7 @@ func (c *clustermgrClient) GetMigratingDisk(ctx context.Context, taskType proto.
 		return nil, err
 	}
 	if meta.TaskType != taskType {
-		span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, meta.TaskType)
+		span.Errorf("get task type is invalid: expected[%s], actual[%s]", taskType, meta.TaskType)
 		return meta, errcode.ErrIllegalTaskType
 	}
 	if meta.Disk.DiskID != diskID {
@@ -919,7 +919,7 @@ func (c *clustermgrClient) ListMigratingDisks(ctx context.Context, taskType prot
 				return nil, err
 			}
 			if task.TaskType != taskType {
-				span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
+				span.Errorf("list disks task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
 				continue
 			}
 			disks = append(disks, task)

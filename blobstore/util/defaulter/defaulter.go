@@ -83,7 +83,7 @@ func equalZero(val reflect.Value, typ reflect.Kind) bool {
 	case reflect.Float32, reflect.Float64:
 		return math.Float64bits(val.Float()) == 0
 	default:
-		panic("unsupported type " + typ.String())
+		panic("equal zero unsupported type " + typ.String())
 	}
 }
 
@@ -96,7 +96,7 @@ func lessZero(val reflect.Value, typ reflect.Kind) bool {
 	case reflect.Float32, reflect.Float64:
 		return val.Float() < -1e-9
 	default:
-		panic("unsupported type " + typ.String())
+		panic("less zero unsupported type " + typ.String())
 	}
 }
 
@@ -109,6 +109,6 @@ func lessOrEqualZero(val reflect.Value, typ reflect.Kind) bool {
 	case reflect.Float32, reflect.Float64:
 		return val.Float() < 1e-9
 	default:
-		panic("unsupported type " + typ.String())
+		panic("less or equal zero unsupported type " + typ.String())
 	}
 }

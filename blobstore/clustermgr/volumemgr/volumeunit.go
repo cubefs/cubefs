@@ -174,7 +174,7 @@ func (v *VolumeMgr) applyUpdateVolumeUnit(ctx context.Context, newVuid proto.Vui
 
 	vol := v.all.getVol(newVuid.Vid())
 	if vol == nil {
-		span.Errorf("vid:%d get volume is nil ", newVuid.Vid())
+		span.Errorf("update vid:%d get volume is nil ", newVuid.Vid())
 		return ErrVolumeNotExist
 	}
 	index := newVuid.Index()
@@ -235,7 +235,7 @@ func (v *VolumeMgr) applyAllocVolumeUnit(ctx context.Context, args *allocVolumeU
 
 	vol := v.all.getVol(args.Vuid.Vid())
 	if vol == nil {
-		span.Errorf("vid:%d get volume is nil ", args.Vuid.Vid())
+		span.Errorf("alloc vid:%d get volume is nil ", args.Vuid.Vid())
 		return ErrVolumeNotExist
 	}
 
@@ -321,7 +321,7 @@ func (v *VolumeMgr) applyChunkSetCompact(ctx context.Context, args *cmapi.SetCom
 
 	vol := v.all.getVol(args.Vuid.Vid())
 	if vol == nil {
-		span.Errorf("vid:%d get volume is nil ", args.Vuid.Vid())
+		span.Errorf("chunkset vid:%d get volume is nil ", args.Vuid.Vid())
 		return ErrVolumeNotExist
 	}
 

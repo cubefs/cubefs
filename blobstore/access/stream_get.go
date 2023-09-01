@@ -502,7 +502,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 			span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
 			return shardResult
 		}
-		span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), errors.Detail(err))
+		span.Warnf("rpc read %s on %s: %s", blob.ID(), vuid.ID(), errors.Detail(err))
 		return shardResult
 	}
 	defer body.Close()
@@ -516,7 +516,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	_, err = io.ReadFull(body, buf[shardOffset:shardOffset+shardReadSize])
 	if err != nil {
 		h.memPool.Put(buf)
-		span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
+		span.Warnf("io read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
 		return shardResult
 	}
 

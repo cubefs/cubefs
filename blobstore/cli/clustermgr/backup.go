@@ -40,6 +40,10 @@ import (
 )
 
 const (
+	timeFormat = "2006-01-02"
+)
+
+const (
 	volumeDBPathName = "snapshot-volumedb"
 	normalDBPathName = "snapshot-normaldb"
 	raftDBPathName   = "snapshot-raftdb"
@@ -159,7 +163,7 @@ func cmdDumpSnapshot(c *grumble.Context) error {
 		log.Fatalf("parse snapshot index failed: %s", err.Error())
 	}
 
-	date := time.Now().Format("2006-01-02")
+	date := time.Now().Format(timeFormat)
 	tmpNormalDBPath := dbPath + "/" + date + "/" + normalDBPathName
 	tmpVolumeDBPath := dbPath + "/" + date + "/" + volumeDBPathName
 	tmpRaftDBPath := dbPath + "/" + date + "/" + raftDBPathName
@@ -244,7 +248,7 @@ func cmdDumpSnapshot(c *grumble.Context) error {
 	}
 	backups := make([]string, 0)
 	for i := range backupDirFiless {
-		if _, err := time.Parse("2006-01-02", backupDirFiless[i].Name()); err == nil {
+		if _, err := time.Parse(timeFormat, backupDirFiless[i].Name()); err == nil {
 			log.Infof("name: %s", backupDirFiless[i].Name())
 			backups = append(backups, backupDirFiless[i].Name())
 		}
@@ -255,7 +259,7 @@ func cmdDumpSnapshot(c *grumble.Context) error {
 		oldestT := time.Now()
 		oldestBackup := ""
 		for i := range backups {
-			t, err := time.Parse("2006-01-02", backups[i])
+			t, err := time.Parse(timeFormat, backups[i])
 			if err == nil && t.Before(oldestT) {
 				oldestT = t
 				oldestBackup = backups[i]

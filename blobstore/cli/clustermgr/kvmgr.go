@@ -34,7 +34,7 @@ func addCmdKV(cmd *grumble.Command) {
 		Name: "get",
 		Help: "get by key",
 		Args: func(a *grumble.Args) {
-			a.String("key", "key name")
+			a.String("key", "key name to get")
 		},
 		Flags: func(f *grumble.Flags) {
 			clusterFlags(f)
@@ -55,7 +55,7 @@ func addCmdKV(cmd *grumble.Command) {
 		Name: "set",
 		Help: "set value to key",
 		Args: func(a *grumble.Args) {
-			a.String("key", "key name")
+			a.String("key", "key name to set")
 			a.String("value", "value of key, string")
 		},
 		Flags: clusterFlags,
@@ -71,7 +71,7 @@ func addCmdKV(cmd *grumble.Command) {
 		Name: "del",
 		Help: "del the key",
 		Args: func(a *grumble.Args) {
-			a.String("key", "key name")
+			a.String("key", "key name to delete")
 		},
 		Flags: clusterFlags,
 		Run: func(c *grumble.Context) error {

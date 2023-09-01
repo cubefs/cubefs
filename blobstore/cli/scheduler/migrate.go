@@ -65,7 +65,7 @@ func addCmdMigrateTask(cmd *grumble.Command) {
 		Run:  cmdListTask,
 		Flags: func(f *grumble.Flags) {
 			migrateFlags(f)
-			f.Uint64L(_diskID, 0, "disk id for which disk")
+			f.Uint64L(_diskID, 0, "disk id for which disk to list")
 			f.IntL(_count, 10, "the number you want to get")
 		},
 	})
@@ -84,7 +84,7 @@ func addCmdMigrateTask(cmd *grumble.Command) {
 		Run:  cmdGetMigratingProgress,
 		Flags: func(f *grumble.Flags) {
 			migrateFlags(f)
-			f.Uint64L(_diskID, 0, "disk id for which disk")
+			f.Uint64L(_diskID, 0, "disk id for which disk of progress")
 		},
 	})
 }
