@@ -387,7 +387,6 @@ func (mp *metaPartition) getDentryTree() *BTree {
 }
 
 func (mp *metaPartition) getDentryByVerSeq(dy *Dentry, verSeq uint64) (d *Dentry) {
-	log.LogInfof("action[getDentryFromVerList] verseq %v, tmp dentry %v, inode id %v, name %v", verSeq, dy.getSeqFiled(), dy.Inode, dy.Name)
 	d, _ = dy.getDentryFromVerList(verSeq)
 	return
 }

@@ -301,8 +301,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		}
 	}()
 
-	//log.LogDebugf("processReply enter: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
-
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
 		eh.discardPacket(packet)
@@ -388,22 +386,18 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	if err := eh.recoverPacket(packet); err != nil {
 		eh.discardPacket(packet)
 		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
-	} else {
-		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v)", eh, eh.recoverHandler, packet, errmsg)
 	}
 }
 
 func (eh *ExtentHandler) flush() (err error) {
 	eh.flushPacket()
 	eh.waitForFlush()
-	log.LogDebugf("flush.eh inode %v fileoffset %v, mod %v, key[%v] ", eh.inode, eh.fileOffset, eh.storeMode, eh.key)
 	err = eh.appendExtentKey()
 	if err != nil {
 		return
 	}
 
 	if eh.storeMode == proto.TinyExtentType {
-		log.LogWarnf("action[ExtentHandler.flush] tiny type not set close")
 		eh.setClosed()
 	}
 

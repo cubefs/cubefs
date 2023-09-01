@@ -473,7 +473,6 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		delExtents []proto.ExtentKey
 	)
 	status = proto.OpOk
-	log.LogInfof("fsmAppendExtentsWithCheck ino %v", ino.Inode)
 	item := mp.inodeTree.CopyGet(ino)
 
 	if item == nil {
@@ -482,7 +481,6 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	}
 
 	ino2 := item.(*Inode)
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v", ino2.Inode, ino2.getLayerLen())
 	if ino2.ShouldDelete() {
 		status = proto.OpNotExistErr
 		return
@@ -492,7 +490,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	)
 	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v", ino2.Inode, ino2.getLayerLen(), eks)
+
 	if len(eks) < 1 {
 		return
 	}
@@ -533,15 +531,10 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 
 	// conflict need delete eks[0], to clear garbage data
 	if status == proto.OpConflictExtentsErr {
-		log.LogInfof("action[fsmAppendExtentsWithCheck] OpConflictExtentsErr [%v]", eks[:1])
 		mp.extDelCh <- eks[:1]
 		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, eks[:1])
 		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", ino2.Inode, delExtents)
-
 	}
-
-	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v) isSplit(%v)",
-		ino2.Inode, eks[0], delExtents, discardExtentKey, status, isSplit)
 
 	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)

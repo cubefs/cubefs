@@ -834,7 +834,6 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 			log.LogFatalf("UnmarshalValue. %v", err)
 			return
 		}
-		log.LogInfof("action[UnmarshalValue] inode %v new seq %v verCnt %v", i.Inode, i.getVer(), verCnt)
 		for idx := int32(0); idx < verCnt; idx++ {
 			ino := &Inode{Inode: i.Inode}
 			ino.UnmarshalInodeValue(buff)
@@ -842,10 +841,10 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 				if i.multiSnap.ekRefMap == nil {
 					i.multiSnap.ekRefMap = new(sync.Map)
 				}
-				log.LogDebugf("UnmarshalValue. inode %v merge top layer multiSnap.ekRefMap with layer %v", i.Inode, idx)
+				//log.LogDebugf("UnmarshalValue. inode %v merge top layer multiSnap.ekRefMap with layer %v", i.Inode, idx)
 				proto.MergeSplitKey(i.Inode, i.multiSnap.ekRefMap, ino.multiSnap.ekRefMap)
 			}
-			log.LogInfof("action[UnmarshalValue] inode %v old seq %v hist len %v", ino.Inode, ino.getVer(), i.getLayerLen())
+			//log.LogDebugf("action[UnmarshalValue] inode %v old seq %v hist len %v", ino.Inode, ino.getVer(), i.getLayerLen())
 			i.multiSnap.multiVersions = append(i.multiSnap.multiVersions, ino)
 		}
 	}
