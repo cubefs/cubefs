@@ -94,6 +94,7 @@ func parseID(key string) (uint32, error) {
 		id = key[len(prefixKeyVolume):]
 	case strings.HasPrefix(key, prefixKeyDisk):
 		id = key[len(prefixKeyDisk):]
+	default:
 	}
 	if len(id) == 0 {
 		return 0, fmt.Errorf("invalid key %s", key)
@@ -187,6 +188,7 @@ func (c *cacher) Erase(ctx context.Context, key string) error {
 		c.volumeCache.Remove(proto.Vid(id))
 	case strings.HasPrefix(key, prefixKeyDisk):
 		c.diskCache.Remove(proto.DiskID(id))
+	default:
 	}
 	span.Warnf("to erase key:%s path:%s", key, c.DiskvFilename(key))
 	return c.diskv.Erase(key)

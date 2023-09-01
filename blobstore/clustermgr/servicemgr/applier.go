@@ -93,6 +93,7 @@ func (s *ServiceMgr) Apply(ctx context.Context, opTypes []int32, datas [][]byte,
 				}
 				errs[idx] = s.handleHeartbeat(taskCtx, arg.Name, arg.Host)
 			})
+		default:
 		}
 	}
 
@@ -150,6 +151,7 @@ func (s *ServiceMgr) Flush(ctx context.Context) error {
 			if err = s.tbl.Put(name, host, data); err != nil {
 				span.Panicf("put [moduleName: %s, host: %s] error: %v", name, host, err)
 			}
+		default:
 		}
 		return true
 	})

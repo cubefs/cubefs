@@ -70,6 +70,7 @@ func (s *Service) ApplyMemberChange(cc raftserver.ConfChange, index uint64) erro
 		if err := s.raftNode.RecordRaftMember(ctx, member, true); err != nil {
 			return err
 		}
+	default:
 	}
 	return s.raftNode.RecordApplyIndex(ctx, index, true)
 }

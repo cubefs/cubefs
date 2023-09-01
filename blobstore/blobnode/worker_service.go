@@ -65,8 +65,9 @@ func (meter *WorkerConfigMeter) concurrencyByType(taskType proto.TaskType) int {
 		return meter.DiskDropConcurrency
 	case proto.TaskTypeManualMigrate:
 		return meter.ManualMigrateConcurrency
+	default:
+		return 0
 	}
-	return 0
 }
 
 // WorkerConfig worker service config

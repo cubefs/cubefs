@@ -40,8 +40,9 @@ import (
 //  put empty shard to blobnode if file has been aligned.
 
 // Put put one object
-//     required: size, file size
-//     optional: hasher map to calculate hash.Hash
+//
+//	required: size, file size
+//	optional: hasher map to calculate hash.Hash
 func (h *Handler) Put(ctx context.Context, rc io.Reader, size int64,
 	hasherMap access.HasherMap) (*access.Location, error) {
 	span := trace.SpanFromContextSafe(ctx)
@@ -298,6 +299,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 						codeMode: volume.CodeMode,
 						vid:      vid,
 					}
+				default:
 				}
 
 				switch code {
@@ -337,6 +339,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 					h.punishDisk(ctx, clusterID, diskID, host, "NotFound")
 					span.Warnf("punish disk:%d volume:%d cos:blobnode/%d", diskID, vid, code)
 					return true, err
+				default:
 				}
 
 				// in timeout case and writtenNum is not satisfied with putQuorum, then should retry

@@ -87,8 +87,9 @@ func (status VolumeStatus) String() string {
 		return "lock"
 	case VolumeStatusUnlocking:
 		return "unlocking"
+	default:
+		return "unknown"
 	}
-	return "unknown"
 }
 
 const (
@@ -111,6 +112,7 @@ func IsSysConfigKey(key string) bool {
 	switch key {
 	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey:
 		return true
+	default:
+		return false
 	}
-	return false
 }

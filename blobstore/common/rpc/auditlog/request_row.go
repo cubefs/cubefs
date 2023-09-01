@@ -483,20 +483,17 @@ func apiWithParams(service, method, path, host, params string, maxApiLevel int) 
 	firstPath := fields[1]
 	firstPathIndex := 1
 
-	switch stype {
-	default:
-		if (vre.MatchString(firstPath) || firstPath == "admin") && len(fields) > 2 && fields[2] != "" {
-			firstPath = firstPath + "-" + fields[2]
-			firstPathIndex = 2
-		}
+	if (vre.MatchString(firstPath) || firstPath == "admin") && len(fields) > 2 && fields[2] != "" {
+		firstPath = firstPath + "-" + fields[2]
+		firstPathIndex = 2
+	}
 
-		// for defy api from apiserver
-		if firstPath == "v2-tune" {
-			return stype + ".v2-tune." + strings.Join(fields[firstPathIndex+1:], ".")
-		}
-		if !isValidApi(firstPath) {
-			return stype + ".unknown"
-		}
+	// for defy api from apiserver
+	if firstPath == "v2-tune" {
+		return stype + ".v2-tune." + strings.Join(fields[firstPathIndex+1:], ".")
+	}
+	if !isValidApi(firstPath) {
+		return stype + ".unknown"
 	}
 
 	api = firstPath

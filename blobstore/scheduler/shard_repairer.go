@@ -284,6 +284,7 @@ func (mgr *ShardRepairMgr) Consume(msg *sarama.ConsumerMessage, consumerPause ba
 			span.Warnf("unexpected result: msg[%+v], err[%+v]", repairMsg, ret.err)
 		case ShardRepairStatusUndo:
 			span.Warnf("repair message unconsume: msg[%+v]", repairMsg)
+		default:
 		}
 	}()
 

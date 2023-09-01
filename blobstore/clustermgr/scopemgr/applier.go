@@ -71,6 +71,7 @@ func (s *ScopeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte,
 			if err != nil {
 				return errors.Info(err, "apply commit failed, args: ", args).Detail(err)
 			}
+		default:
 		}
 	}
 
