@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -434,31 +435,32 @@ func (s *Super) ClosePrefetchWorker() {
 
 func (s *Super) PrefetchAddPath(w http.ResponseWriter, r *http.Request) {
 	if s.prefetchManager == nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("no prefetch thread\n"))
 		return
 	}
 	if err := r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	datasetCnt := r.FormValue("dataset_cnt")
 	if datasetCnt == "" {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("no dataset_cnt\n"))
 		return
 	}
 	path := r.FormValue("path")
 	if path == "" {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("no path\n"))
-		return
-	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		w.Write([]byte("path not exists\n"))
 		return
 	}
 	ttlStr := r.FormValue("ttl")
 	ttlMinute := int64(0)
 	if ttlStr != "" {
 		if minutes, err := strconv.ParseInt(ttlStr, 10, 64); err != nil || minutes < 0 {
+			w.WriteHeader(http.StatusForbidden)
 			w.Write([]byte(fmt.Sprintf("ttl must be a non-negative number representing the number of minutes before expiration\n")))
 			return
 		} else {
@@ -466,6 +468,7 @@ func (s *Super) PrefetchAddPath(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := s.prefetchManager.AddIndexFilepath(datasetCnt, path, ttlMinute); err != nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(fmt.Sprintf("add path(%v) err: %v\n", path, err)))
 		return
 	}
@@ -475,7 +478,7 @@ func (s *Super) PrefetchAddPath(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("Reading index path(%v).\n", path)))
 }
 
-func (s *Super) PrefetchIndex(w http.ResponseWriter, r *http.Request) {
+func (s *Super) PrefetchByIndex(w http.ResponseWriter, r *http.Request) {
 	var (
 		bytes	[]byte
 		err 	error
@@ -485,65 +488,121 @@ func (s *Super) PrefetchIndex(w http.ResponseWriter, r *http.Request) {
 		tpObject.Set(err)
 	}()
 	if s.prefetchManager == nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("no prefetch thread\n"))
 		return
 	}
 	if err = r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(err.Error()))
 		return
 	}
 	datasetCnt := r.FormValue("dataset_cnt")
 	if datasetCnt == "" {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("no dataset_cnt\n"))
 		return
 	}
 	bytes, err = ioutil.ReadAll(r.Body)
 	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
 		return
 	}
 	var batchArr [][]uint64
 	if err = json.Unmarshal(bytes, &batchArr); err != nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))
 		return
 	}
 
 	start := time.Now()
 	if log.IsDebugEnabled() {
-		log.LogDebugf("PrefetchIndex: datasetCnt(%v) batchArr(%v) enter", datasetCnt, batchArr)
+		log.LogDebugf("PrefetchByIndex: datasetCnt(%v) batchArr(%v) enter", datasetCnt, batchArr)
 	}
 	s.prefetchManager.PrefetchInodeInfo(datasetCnt, batchArr)
 	for _, indexArr := range batchArr {
 		for _, index := range indexArr {
 			if err = s.prefetchManager.PrefetchIndex(datasetCnt, index); err != nil {
+				w.WriteHeader(http.StatusForbidden)
 				w.Write([]byte(fmt.Sprintf("prefetch err[%v]\n", err)))
 				return
 			}
 		}
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("PrefetchIndex: datasetCnt(%v) batchArr(%v) end cost(%v)", datasetCnt, batchArr, time.Since(start))
+		log.LogDebugf("PrefetchByIndex: datasetCnt(%v) batchArr(%v) end cost(%v)", datasetCnt, batchArr, time.Since(start))
 	}
 	w.Write([]byte(fmt.Sprintf("prefetching index[%v].\n", batchArr)))
 }
 
-func (s *Super) PrefetchAppPid(w http.ResponseWriter, r *http.Request) {
+func (s *Super) PrefetchByPath(w http.ResponseWriter, r *http.Request) {
+	var (
+		bytes	[]byte
+		err 	error
+	)
+	tpObject := exporter.NewVolumeTP("PrefetchPathAPI", s.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
 	if s.prefetchManager == nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("no prefetch thread\n"))
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	bytes, err = ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
+		return
+	}
+	var batchArr [][]string
+	if err = json.Unmarshal(bytes, &batchArr); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))
+		return
+	}
+
+	for _, pathArr := range batchArr {
+		for _, filepath := range pathArr {
+			if err = s.prefetchManager.PrefetchByPath(filepath); err != nil {
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(fmt.Sprintf("prefetch err[%v]\n", err)))
+				return
+			}
+			if log.IsDebugEnabled() {
+				log.LogDebugf("PrefetchByPath: prefetch path(%v)", filepath)
+			}
+		}
+	}
+	w.Write([]byte("prefetching.\n"))
+}
+
+func (s *Super) RegisterAppPid(w http.ResponseWriter, r *http.Request) {
+	if s.prefetchManager == nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("no prefetch thread\n"))
 		return
 	}
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
 		return
 	}
 	var pidArr []int
 	if err = json.Unmarshal(bytes, &pidArr); err != nil {
+		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))
 		return
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("PrefetchAppPid: pidArr(%v)", pidArr)
+		log.LogDebugf("RegisterAppPid: pidArr(%v)", pidArr)
 	}
 	for _, pid := range pidArr {
 		s.prefetchManager.PutAppPid(uint32(pid))
@@ -551,9 +610,164 @@ func (s *Super) PrefetchAppPid(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("Set app pid (%v).\n", pidArr)))
 }
 
+func (s *Super) UnregisterAppPid(w http.ResponseWriter, r *http.Request) {
+	if s.prefetchManager == nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("no prefetch thread\n"))
+		return
+	}
+	bytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
+		return
+	}
+	var pidArr []int
+	if err = json.Unmarshal(bytes, &pidArr); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))
+		return
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("UnregisterAppPid: pidArr(%v)", pidArr)
+	}
+	for _, pid := range pidArr {
+		s.prefetchManager.DeleteAppPid(uint32(pid))
+	}
+	w.Write([]byte(fmt.Sprintf("Delete app pid (%v).\n", pidArr)))
+}
+
 func (s *Super) GeneratePrefetchCubeInfo(localIP string, port uint64) error {
 	if s.prefetchManager == nil {
 		return nil
 	}
 	return s.prefetchManager.GenerateCubeInfo(localIP, port)
+}
+
+func (s *Super) BatchDownload(w http.ResponseWriter, r *http.Request) {
+	var (
+		bytes	[]byte
+		err 	error
+	)
+	tpObject := exporter.NewVolumeTP("BatchDownloadAPI", s.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	if s.prefetchManager == nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("no prefetch thread\n"))
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	datasetCnt := r.FormValue("dataset_cnt")
+	if datasetCnt == "" {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("no dataset_cnt\n"))
+		return
+	}
+	bytes, err = ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
+		return
+	}
+	var (
+		batchArr   [][]uint64
+		batchInfos []*data.FileInfo
+	)
+	if err = json.Unmarshal(bytes, &batchArr); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))
+		return
+	}
+
+	start := time.Now()
+	if log.IsDebugEnabled() {
+		log.LogDebugf("BatchDownload: datasetCnt(%v) batchArr(%v) enter", datasetCnt, batchArr)
+	}
+	if batchInfos, err = s.prefetchManager.GetBatchFileInfos(batchArr, datasetCnt); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("prefetch err[%v]\n", err)))
+		return
+	}
+
+	respData := make([]byte, 16)
+	binary.BigEndian.PutUint64(respData[0:8], uint64(data.BatchDownloadV1))
+	binary.BigEndian.PutUint64(respData[8:16], uint64(len(batchInfos)))
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Write(respData)
+
+	respWriter := &data.BatchDownloadRespWriter{Writer: w}
+	for _, info := range batchInfos {
+		s.prefetchManager.DownloadData(info, respWriter)
+	}
+	respWriter.Wg.Wait()
+	if log.IsDebugEnabled() {
+		log.LogDebugf("BatchDownload: datasetCnt(%v) batchArr(%v) end cost(%v)", datasetCnt, batchArr, time.Since(start))
+	}
+	return
+}
+
+func (s *Super) BatchDownloadPath(w http.ResponseWriter, r *http.Request) {
+	var (
+		bytes	[]byte
+		err 	error
+	)
+	tpObject := exporter.NewVolumeTP("BatchDownloadPathAPI", s.volname)
+	defer func() {
+		tpObject.Set(err)
+	}()
+	if s.prefetchManager == nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("no prefetch thread\n"))
+		return
+	}
+	if err = r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	bytes, err = ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
+		return
+	}
+	var batchArr   [][]string
+	if err = json.Unmarshal(bytes, &batchArr); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))
+		return
+	}
+
+	start := time.Now()
+	if log.IsDebugEnabled() {
+		log.LogDebugf("BatchDownloadPath: batchArr(%v) enter", batchArr)
+	}
+	pathCount := 0
+	for _, batch := range batchArr {
+		pathCount += len(batch)
+	}
+
+	respData := make([]byte, 16)
+	binary.BigEndian.PutUint64(respData[0:8], uint64(data.BatchDownloadV1))
+	binary.BigEndian.PutUint64(respData[8:16], uint64(pathCount))
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Write(respData)
+
+	respWriter := &data.BatchDownloadRespWriter{Writer: w}
+	for _, batch := range batchArr {
+		for _, path := range batch {
+			s.prefetchManager.DownloadPath(path, respWriter)
+		}
+	}
+	respWriter.Wg.Wait()
+	if log.IsDebugEnabled() {
+		log.LogDebugf("BatchDownloadPath: batchArr(%v) end cost(%v)", batchArr, time.Since(start))
+	}
+	return
 }

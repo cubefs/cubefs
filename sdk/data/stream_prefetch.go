@@ -3,15 +3,19 @@ package data
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -19,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 const (
@@ -26,7 +31,11 @@ const (
 	CubeInfoFileName = ".cube_info"
 
 	DefaultIndexDentryExpiration = 60 * time.Minute
+
+	DownloadFileSizeThreshold = 2 * unit.MB
 )
+
+const BatchDownloadV1 = 0
 
 type CubeInfo struct {
 	Prof uint64 `json:"prof"`
@@ -38,12 +47,20 @@ type PrefetchManager struct {
 	ec               *ExtentClient
 	indexFileInfoMap sync.Map // key: index file path, value: *IndexInfo
 	indexInfoChan    chan *IndexInfo
-	filePathChan     chan string
+	filePathChan     chan *FileInfo
+	downloadChan     chan *DownloadFileInfo
 	appPid           sync.Map
 	dcacheMap        sync.Map // key: parent Inode ID, value: *IndexDentryInfo
 
+	metrics			 *PrefetchMetrics
+
 	wg     sync.WaitGroup
 	closeC chan struct{}
+}
+
+type PrefetchMetrics struct {
+	appReadCount	uint64
+	totalReadCount	uint64
 }
 
 type IndexInfo struct {
@@ -74,8 +91,9 @@ func (info *IndexDentryInfo) String() string {
 }
 
 type FileInfo struct {
-	path  string
-	inoID uint64
+	path  	string
+	inoID 	uint64
+	isAbs	bool
 }
 
 type DentryInfo struct {
@@ -84,13 +102,16 @@ type DentryInfo struct {
 }
 
 func NewPrefetchManager(ec *ExtentClient, volName, mountPoint string, prefetchThreads int64) *PrefetchManager {
+	InitReadBlockPool()
 	pManager := &PrefetchManager{
 		volName: 		volName,
 		mountPoint:     mountPoint,
 		ec:             ec,
 		closeC:         make(chan struct{}, 1),
 		indexInfoChan:  make(chan *IndexInfo, 1024),
-		filePathChan:   make(chan string, 10240000),
+		filePathChan:   make(chan *FileInfo, 10240000),
+		downloadChan:   make(chan *DownloadFileInfo, 10240000),
+		metrics: 		&PrefetchMetrics{0, 0},
 	}
 	for i := int64(0); i < prefetchThreads; i++ {
 		pManager.wg.Add(1)
@@ -150,22 +171,29 @@ func (pManager *PrefetchManager) backGroundPrefetchWorker(id int64) {
 	log.LogInfof("backGroundPrefetchWorker: start worker(%v)", id)
 
 	readData := make([]byte, 128*1024)
+	ctx := context.Background()
 	for {
 		select {
 		case <-pManager.closeC:
 			log.LogInfof("backGroundPrefetchWorker: close worker(%v)", id)
 			return
 
-		case filePath := <-pManager.filePathChan:
+		case fileInfo := <-pManager.filePathChan:
 			start := time.Now()
 			tpObject := exporter.NewVolumeTP("Prefetch", pManager.volName)
-			inoID, err := pManager.OsReadFile(path.Join(pManager.mountPoint, filePath), readData)
+			var absFilepath string
+			if fileInfo.isAbs {
+				absFilepath = fileInfo.path
+			} else {
+				absFilepath = path.Join(pManager.mountPoint, fileInfo.path)
+			}
+			err := pManager.OsReadFile(absFilepath, readData)
 			if err != nil {
-				log.LogWarnf("backGroundPrefetchWorker: ino(%v) path(%v) prefetch err(%v)", inoID, filePath, err)
+				log.LogWarnf("backGroundPrefetchWorker: ino(%v) path(%v) prefetch err(%v)", fileInfo.inoID, absFilepath, err)
 			}
 			tpObject.Set(err)
 			if log.IsDebugEnabled() {
-				log.LogDebugf("backGroundPrefetchWorker: id(%v) prefetch ino(%v) path(%v) cost(%v) pathChan(%v)", id, inoID, filePath, time.Since(start), len(pManager.filePathChan))
+				log.LogDebugf("backGroundPrefetchWorker: id(%v) prefetch ino(%v) path(%v) cost(%v) pathChan(%v)", id, fileInfo.inoID, absFilepath, time.Since(start), len(pManager.filePathChan))
 			}
 
 		case indexInfo := <-pManager.indexInfoChan:
@@ -177,6 +205,17 @@ func (pManager *PrefetchManager) backGroundPrefetchWorker(id int64) {
 				log.LogDebugf("backGroundPrefetchWorker: id(%v) read index(%v) cost(%v)", id, indexInfo, time.Since(start))
 			}
 
+		case dInfo := <-pManager.downloadChan:
+			start := time.Now()
+			tpObject := exporter.NewVolumeTP("Download", pManager.volName)
+			err := pManager.ReadData(ctx, dInfo)
+			if err != nil {
+				log.LogWarnf("backGroundPrefetchWorker: file(%v) get data err(%v)", dInfo, err)
+			}
+			tpObject.Set(err)
+			if log.IsDebugEnabled() {
+				log.LogDebugf("backGroundPrefetchWorker: id(%v) send file(%v) cost(%v)", id, dInfo, time.Since(start))
+			}
 		}
 	}
 }
@@ -203,7 +242,14 @@ func (pManager *PrefetchManager) cleanExpiredIndexInfo() {
 			log.LogInfof("cleanExpiredIndexInfo: stop")
 			return
 		case <-t1.C:
-			log.LogInfof("PrefetchManager: pathChan(%v)", len(pManager.filePathChan))
+			totalRead := atomic.SwapUint64(&pManager.metrics.totalReadCount, 0)
+			appRead := atomic.SwapUint64(&pManager.metrics.appReadCount, 0)
+			hitPercent := float64(100)
+			if totalRead != 0 {
+				hitPercent = float64(totalRead - appRead) / float64(totalRead) * 100
+			}
+			log.LogInfof("PrefetchManager: totalRead(%v) appRead(%v) hitCache(%.2f%%) pathChan(%v) batchDownloadChan(%v)",
+				totalRead, appRead, hitPercent, len(pManager.filePathChan), len(pManager.downloadChan))
 		case <-t.C:
 			pManager.indexFileInfoMap.Range(func(key, value interface{}) bool {
 				indexInfo := value.(*IndexInfo)
@@ -228,16 +274,12 @@ func (pManager *PrefetchManager) cleanExpiredIndexInfo() {
 	}
 }
 
-func (pManager *PrefetchManager) OsReadFile(filePath string, readData []byte) (ino uint64, err error) {
+func (pManager *PrefetchManager) OsReadFile(filePath string, readData []byte) (err error) {
 	var fh *os.File
 	if fh, err = os.Open(filePath); err != nil {
 		return
 	}
 	defer fh.Close()
-
-	//if fInfo, statErr := fh.Stat(); statErr == nil {
-	//	ino = fInfo.Sys().(*syscall.Stat_t).Ino
-	//}
 
 	for {
 		readSize, readErr := fh.Read(readData)
@@ -262,6 +304,10 @@ func (pManager *PrefetchManager) AddIndexFilepath(datasetCnt, path string, ttlMi
 		return nil
 	}
 
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		pManager.indexFileInfoMap.Delete(path)
+		return err
+	}
 	select {
 	case <-pManager.closeC:
 		return fmt.Errorf("Prefetch threads are closed")
@@ -454,14 +500,14 @@ func (pManager *PrefetchManager) PrefetchIndex(datasetCnt string, index uint64) 
 		}
 		fileInfo := fileInfoMap[index]
 		if fileInfo.path == "" {
-			log.LogWarnf("PrefetchIndex: filepath(%v) has no line(%v)", key, index)
+			log.LogWarnf("PrefetchByIndex: filepath(%v) has no line(%v)", key, index)
 			return true
 		}
 		select {
 		case <-pManager.closeC:
 			err = fmt.Errorf("Prefetch threads are closed")
 			return false
-		case pManager.filePathChan <- fileInfo.path:
+		case pManager.filePathChan <- fileInfo:
 			return true
 		}
 	})
@@ -503,6 +549,174 @@ func (pManager *PrefetchManager) PrefetchInodeInfo(datasetCnt string, batchArr [
 	}
 }
 
+func (pManager *PrefetchManager) PrefetchByPath(filepath string) (err error) {
+	fileInfo := &FileInfo{
+		path:  filepath,
+		isAbs: true,
+	}
+	select {
+	case <-pManager.closeC:
+		return fmt.Errorf("Prefetch threads are closed")
+	case pManager.filePathChan <- fileInfo:
+		return nil
+	}
+}
+
+type DownloadFileInfo struct {
+	absPath		string
+	fileInfo	*FileInfo
+	resp		*BatchDownloadRespWriter
+}
+
+func (d *DownloadFileInfo) String() string {
+	if d == nil {
+		return ""
+	}
+	return fmt.Sprintf("path(%v) info(%v)", d.absPath, d.fileInfo)
+}
+
+type BatchDownloadRespWriter struct {
+	sync.Mutex
+	Wg		sync.WaitGroup
+	Writer	io.Writer
+}
+
+func (resp *BatchDownloadRespWriter) write(data []byte) {
+	resp.Lock()
+	// todo err
+	resp.Writer.Write(data)
+	resp.Writer.(http.Flusher).Flush()
+	resp.Unlock()
+}
+func (pManager *PrefetchManager) GetBatchFileInfos(batchArr [][]uint64, datasetCnt string) (infos []*FileInfo, err error) {
+	for _, indexArr := range batchArr {
+		for _, index := range indexArr {
+			pManager.indexFileInfoMap.Range(func(key, value interface{}) bool {
+				if value.(*IndexInfo).datasetCnt != datasetCnt {
+					return true
+				}
+				fileInfoMap := value.(*IndexInfo).fileInfoMap
+				if index >= uint64(len(fileInfoMap)) {
+					return true
+				}
+				fileInfo := fileInfoMap[index]
+				if fileInfo.path == "" {
+					log.LogWarnf("PrefetchByIndex: filepath(%v) has no line(%v)", key, index)
+					return true
+				}
+				infos = append(infos, fileInfo)
+				return true
+			})
+		}
+	}
+	return
+}
+
+func (pManager *PrefetchManager) DownloadData(fileInfo *FileInfo, respData *BatchDownloadRespWriter) {
+	var noData []byte
+	dInfo := &DownloadFileInfo{
+		absPath:	path.Join(pManager.mountPoint, fileInfo.path),
+		fileInfo: 	fileInfo,
+		resp:     	respData,
+	}
+	respData.Wg.Add(1)
+	select {
+	case <-pManager.closeC:
+		if len(noData) == 0 {
+			noData = make([]byte, 16)
+			binary.BigEndian.PutUint64(noData[0:8], uint64(0))
+			binary.BigEndian.PutUint64(noData[8:16], uint64(0))
+		}
+		respData.write(noData)
+		log.LogWarnf("DownloadData: threads are closed")
+		respData.Wg.Done()
+	case pManager.downloadChan <- dInfo:
+	}
+	return
+}
+
+func (pManager *PrefetchManager) DownloadPath(filePath string, respData *BatchDownloadRespWriter) {
+	var noData []byte
+	dInfo := &DownloadFileInfo{
+		absPath:	filePath,
+		resp:   	respData,
+	}
+	respData.Wg.Add(1)
+	select {
+	case <-pManager.closeC:
+		if len(noData) == 0 {
+			noData = make([]byte, 16)
+			binary.BigEndian.PutUint64(noData[0:8], uint64(0))
+			binary.BigEndian.PutUint64(noData[8:16], uint64(0))
+		}
+		respData.write(noData)
+		log.LogWarnf("DownloadData: threads are closed")
+		respData.Wg.Done()
+	case pManager.downloadChan <- dInfo:
+	}
+	return
+}
+
+func (pManager *PrefetchManager) ReadData(ctx context.Context, dInfo *DownloadFileInfo) (err error) {
+	var (
+		content 	[]byte
+		readSize	int
+	)
+	defer func() {
+		filePath := dInfo.absPath
+		dataLen := 8 + len(filePath) + 8 + readSize
+		respData := GetBlockBuf(dataLen)
+		binary.BigEndian.PutUint64(respData[0:8], uint64(len(filePath)))
+		copy(respData[8:8+len(filePath)], filePath)
+		binary.BigEndian.PutUint64(respData[8+len(filePath):16+len(filePath)], uint64(readSize))
+		if readSize > 0 {
+			copy(respData[16+len(filePath):dataLen], content[:readSize])
+		}
+		if log.IsDebugEnabled() {
+			log.LogDebugf("ReadData: resp data len(%v) pathLen(%v) readSize(%v)", dataLen, len(filePath), readSize)
+		}
+		dInfo.resp.write(respData[:dataLen])
+		dInfo.resp.Wg.Done()
+
+		PutBlockBuf(respData)
+		if len(content) > 0 {
+			PutBlockBuf(content)
+		}
+	}()
+
+	var inodeID uint64
+	if dInfo.fileInfo == nil || dInfo.fileInfo.inoID == 0 {
+		var statInfo os.FileInfo
+		if statInfo, err = os.Stat(dInfo.absPath); err != nil {
+			return
+		}
+		inodeID = statInfo.Sys().(*syscall.Stat_t).Ino
+	} else {
+		inodeID = dInfo.fileInfo.inoID
+	}
+	if err = pManager.ec.OpenStream(inodeID, false); err != nil {
+		return
+	}
+	defer func() {
+		pManager.ec.CloseStream(ctx, inodeID)
+	}()
+
+	fileSize, _, valid := pManager.ec.FileSize(inodeID)
+	if !valid || fileSize == 0 || fileSize > DownloadFileSizeThreshold {
+		return fmt.Errorf("file size is (%v)", fileSize)
+	}
+
+	content = GetBlockBuf(int(fileSize))
+	if readSize, _, err = pManager.ec.Read(ctx, inodeID, content[:fileSize], 0, int(fileSize)); err != nil {
+		err = fmt.Errorf("read err(%v) offset(%v) size(%v) readBytes(%v)", err, 0, fileSize, readSize)
+		return
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("prefetchData: ino(%v) read size(%v)", inodeID, readSize)
+	}
+	return
+}
+
 func (pManager *PrefetchManager) PutAppPid(pid uint32) {
 	if pManager == nil {
 		return
@@ -515,12 +729,36 @@ func (pManager *PrefetchManager) PutAppPid(pid uint32) {
 	}
 }
 
+func (pManager *PrefetchManager) DeleteAppPid(pid uint32) {
+	if pManager == nil {
+		return
+	}
+	pManager.appPid.Delete(pid)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("DeleteAppPid: (%v)", pid)
+	}
+}
+
 func (pManager *PrefetchManager) ContainsAppPid(pid uint32) bool {
 	if pManager == nil {
 		return false
 	}
 	_, ok := pManager.appPid.Load(pid)
 	return ok
+}
+
+func (pManager *PrefetchManager) AddTotalReadCount() {
+	if pManager == nil {
+		return
+	}
+	atomic.AddUint64(&pManager.metrics.totalReadCount, 1)
+}
+
+func (pManager *PrefetchManager) AddAppReadCount() {
+	if pManager == nil {
+		return
+	}
+	atomic.AddUint64(&pManager.metrics.appReadCount, 1)
 }
 
 func copyString(s string) string {

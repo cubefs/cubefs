@@ -13,9 +13,7 @@
   "enableHTTPS": "false",
   "accessKey": "39bEF4RrAQgMj6RV",
   "secretKey": "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd",
-  "tracingSamplerType": "const",
-  "tracingSamplerParam": 1,
-  "tracingReportAddr": "192.168.0.151:6831",
-  "tracingFlag": true,
-  "readDirPlus": true
+  "readDirPlus": true,
+  "prefetchThread": 10,
+  "localIP": "127.0.0.1"
 }

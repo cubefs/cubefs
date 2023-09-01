@@ -2,9 +2,14 @@ package data
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"io/ioutil"
 	"math/rand"
+	"net/http"
 	"os"
 	"path"
 	"strconv"
@@ -14,30 +19,6 @@ import (
 
 	"github.com/cubefs/cubefs/util/log"
 )
-
-func TestPrefetch_GenerateCubeInfo(t *testing.T) {
-	_, ec, err := creatHelper(t)
-	assert.Equal(t, nil, err, "init err")
-	pManager := NewPrefetchManager(ec, ltptestVolume, "/cfs/mnt", 10)
-	defer func() {
-		pManager.Close()
-	}()
-	pprof := uint64(17777)
-	err = pManager.GenerateCubeInfo("127.0.0.1", pprof)
-	assert.Equal(t, nil, err, "generate err")
-	filePath := path.Join(pManager.mountPoint, CubeInfoDir, "127.0.0.1", CubeInfoFileName)
-	var fh *os.File
-	fh, err = os.Open(filePath)
-	assert.Equal(t, nil, err, "open(%v) err", filePath)
-	defer fh.Close()
-
-	b := make([]byte, 128*1024)
-	readSize, _ := fh.Read(b)
-	info := &CubeInfo{}
-	err = json.Unmarshal(b[:readSize], info)
-	assert.Equal(t, nil, err, "unmarshal err")
-	assert.Equal(t, pprof, info.Prof, "pprof not equal")
-}
 
 func TestPrefetch_Load_Prefetch(t *testing.T)  {
 	logDir := "/tmp/logs/cfs"
@@ -118,6 +99,9 @@ func TestPrefetch_AppPid(t *testing.T)  {
 	assert.Equal(t, true, pManager.ContainsAppPid(1000), "app pid")
 	assert.Equal(t, true, pManager.ContainsAppPid(2000), "app pid")
 	assert.Equal(t, false, pManager.ContainsAppPid(3000), "app pid")
+	pManager.DeleteAppPid(1000)
+	assert.Equal(t, false, pManager.ContainsAppPid(1000), "app pid")
+	assert.Equal(t, true, pManager.ContainsAppPid(2000), "app pid")
 }
 
 func createIndexFile(indexPath string, datasetCnt int) (dirIno uint64, err error) {
@@ -127,6 +111,9 @@ func createIndexFile(indexPath string, datasetCnt int) (dirIno uint64, err error
 		fh		*os.File
 	)
 	indexDir := path.Dir(indexPath)
+	if dirInfo, err = os.Stat(indexDir); os.IsExist(err) {
+		return dirInfo.Sys().(*syscall.Stat_t).Ino, nil
+	}
 	if err = os.MkdirAll(indexDir, 0777); err != nil {
 		return
 	}
@@ -167,4 +154,128 @@ func RandStringRunes(n int) []byte {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
 	return []byte(string(b))
+}
+
+func TestPrefetchReadByPath(t *testing.T)  {
+	profPort, err := getProfPort()
+	assert.Equal(t, nil, err, "get pprof port failed")
+	assert.NotEqual(t, uint64(0), profPort, "pprof port")
+
+	batchArr := [][]string{{"/cfs/mnt/TestPrefetch/file1","/cfs/mnt/TestPrefetch/file2","cfs"},{"/cfs/mnt/TestPrefetch/file3","/cfs/mnt/TestPrefetch/file4","/cfs/mnt/TestPrefetch/file0"}}
+	var reqBody []byte
+	reqBody, err = json.Marshal(batchArr)
+	assert.Equal(t, nil, err, "marshal err")
+
+	_, err = post(fmt.Sprintf("http://127.0.0.1:%v/prefetch/read/path", profPort), reqBody)
+	assert.Equal(t, nil, err, "post err")
+}
+
+func TestBatchDownload(t *testing.T)  {
+	profPort, err := getProfPort()
+	assert.Equal(t, nil, err, "get pprof port failed")
+	assert.NotEqual(t, uint64(0), profPort, "pprof port")
+
+	indexPath := "/cfs/mnt/TestPrefetch/index"
+	datasetCnt := 5
+	_, err = createIndexFile(indexPath, datasetCnt)
+	assert.Equal(t, nil, err, "createIndexFile err")
+	_, err = http.Get(fmt.Sprintf("http://127.0.0.1:%v/prefetch/pathAdd?path=%v&ttl=5&dataset_cnt=%v", profPort, indexPath, datasetCnt))
+	assert.Equal(t, nil, err, "add index path err")
+	time.Sleep(1 * time.Second)
+
+	batchArr := [][]uint64{{0,1,2},{3,4,5}}
+	var reqBody, res []byte
+	reqBody, err = json.Marshal(batchArr)
+	assert.Equal(t, nil, err, "marshal err")
+	res, err = post(fmt.Sprintf("http://127.0.0.1:%v/batchdownload?dataset_cnt=%v", profPort, datasetCnt), reqBody)
+	assert.Equal(t, nil, err, "post err")
+	assert.Equal(t, uint64(0), binary.BigEndian.Uint64(res[:8]), "version")
+	pathCount := binary.BigEndian.Uint64(res[8:16])
+	assert.Equal(t, uint64(5), pathCount, "count of path")
+	start := uint64(16)
+	for i := uint64(0); i < pathCount; i++ {
+		pathSize := binary.BigEndian.Uint64(res[start:start+8])
+		start += 8
+		fmt.Println("path: ", string(res[start:start+pathSize]))
+		start += pathSize
+		contentSize := binary.BigEndian.Uint64(res[start:start+8])
+		assert.Equal(t, uint64(10240), contentSize, "content size")
+		start += 8
+		start += contentSize
+	}
+}
+
+func getProfPort() (profPort uint64, err error) {
+	filePath := path.Join("/cfs/mnt", CubeInfoDir, "127.0.0.1", CubeInfoFileName)
+	var fh *os.File
+	fh, err = os.Open(filePath)
+	if err != nil {
+		return
+	}
+	defer fh.Close()
+
+	b := make([]byte, 128*1024)
+	readSize, _ := fh.Read(b)
+	info := &CubeInfo{}
+	err = json.Unmarshal(b[:readSize], info)
+	return info.Prof, err
+}
+
+func TestBatchDownloadPath(t *testing.T)  {
+	profPort, err := getProfPort()
+	assert.Equal(t, nil, err, "get pprof port failed")
+	assert.NotEqual(t, uint64(0), profPort, "pprof port")
+
+	batchArr := [][]string{{"/cfs/mnt/TestPrefetch/file1","/cfs/mnt/TestPrefetch/file2","cfs"},{"/cfs/mnt/TestPrefetch/file3","/cfs/mnt/TestPrefetch/file4","/cfs/mnt/TestPrefetch/file0"}}
+	var reqBody, res []byte
+	reqBody, err = json.Marshal(batchArr)
+	assert.Equal(t, nil, err, "marshal err")
+
+	res, err = post(fmt.Sprintf("http://127.0.0.1:%v/batchdownload/path", profPort), reqBody)
+	assert.Equal(t, nil, err, "post err")
+	assert.Equal(t, uint64(0), binary.BigEndian.Uint64(res[:8]), "version")
+	pathCount := binary.BigEndian.Uint64(res[8:16])
+	assert.Equal(t, uint64(6), pathCount, "count of path")
+	start := uint64(16)
+	for i := uint64(0); i < pathCount; i++ {
+		pathSize := binary.BigEndian.Uint64(res[start:start+8])
+		start += 8
+		filepath := string(res[start:start+pathSize])
+		fmt.Println("path: ", filepath)
+		start += pathSize
+		contentSize := binary.BigEndian.Uint64(res[start:start+8])
+		expectedSize := 10240
+		if filepath == "cfs" {
+			expectedSize = 0
+		}
+		assert.Equal(t, uint64(expectedSize), contentSize, "content size")
+		start += 8
+		start += contentSize
+	}
+}
+
+func post(reqURL string, data []byte) (res []byte, err error) {
+	var req *http.Request
+	reader := bytes.NewReader(data)
+	if req, err = http.NewRequest(http.MethodPost, reqURL, reader); err != nil {
+		return
+	}
+
+	var resp *http.Response
+	client := http.DefaultClient
+	client.Timeout = 5 * time.Second
+	if resp, err = client.Do(req); err != nil {
+		return
+	}
+
+	res, err = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+	if err != nil {
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("status code[%v]", resp.StatusCode)
+		return
+	}
+	return
 }

@@ -64,6 +64,8 @@ const (
 	PrefetchThread
 	LocalIP
 	StreamerSegCount
+	MaxBackground
+	CongestionThresh
 
 	MaxMountOption
 )
@@ -117,6 +119,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
 	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", false}
 	opts[ReadAheadSize] = MountOption{"readAheadSize", "Set the size of kernel read-ahead", "", int64(MaxReadAhead)}
+	opts[MaxBackground] = MountOption{"maxBackground", "Set the count of kernel background requests", "", int64(0)}
+	opts[CongestionThresh] = MountOption{"congestionThresh", "Set the congestion threshold of kernel background requests", "", int64(0)}
 
 	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
 	opts[ClientKey] = MountOption{"clientKey", "Client Key", "", ""}
@@ -283,4 +287,6 @@ type MountOptions struct {
 	PrefetchThread			 int64
 	LocalIP					 string
 	StreamerSegCount		 int64
+	MaxBackground			 int64
+	CongestionThresh		 int64
 }

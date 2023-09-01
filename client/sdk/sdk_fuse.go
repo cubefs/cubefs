@@ -79,8 +79,13 @@ const (
 	ControlCommandTracing      = "/tracing"
 
 	ControlPrefetchRead		   = "/prefetch/read"
+	ControlPrefetchReadPath	   = "/prefetch/read/path"
 	ControlPrefetchAddPath	   = "/prefetch/pathAdd"
 	ControlPrefetchAppPid	   = "/post/processID"
+	ControlRegisterPid	   	   = "/register/pid"
+	ControlUnregisterPid	   = "/unregister/pid"
+	ControlBatchDownload	   = "/batchdownload"
+	ControlBatchDownloadPath   = "/batchdownload/path"
 
 	Role                       = "Client"
 )
@@ -321,9 +326,14 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc(ControlCommandGetUmpCollectWay, GetUmpCollectWay)
 	http.HandleFunc(ControlCommandSetUmpCollectWay, SetUmpCollectWay)
 	http.HandleFunc(ControlAccessRoot, gClient.AccessRoot)
-	http.HandleFunc(ControlPrefetchRead, super.PrefetchIndex)
+	http.HandleFunc(ControlPrefetchRead, super.PrefetchByIndex)
+	http.HandleFunc(ControlPrefetchReadPath, super.PrefetchByPath)
 	http.HandleFunc(ControlPrefetchAddPath, super.PrefetchAddPath)
-	http.HandleFunc(ControlPrefetchAppPid, super.PrefetchAppPid)
+	http.HandleFunc(ControlPrefetchAppPid, super.RegisterAppPid)
+	http.HandleFunc(ControlRegisterPid, super.RegisterAppPid)
+	http.HandleFunc(ControlUnregisterPid, super.UnregisterAppPid)
+	http.HandleFunc(ControlBatchDownload, super.BatchDownload)
+	http.HandleFunc(ControlBatchDownloadPath, super.BatchDownloadPath)
 	var (
 		server *http.Server
 		lc     net.ListenConfig
@@ -384,6 +394,8 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	options := []fuse.MountOption{
 		fuse.AllowOther(),
 		fuse.MaxReadahead(uint32(opt.ReadAheadSize)),
+		fuse.MaxBackground(uint16(opt.MaxBackground)),
+		fuse.CongestionThresh(uint16(opt.CongestionThresh)),
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
 		fuse.EnableReadDirPlus(opt.EnableReadDirPlus),
@@ -491,6 +503,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if opt.ReadAheadSize > MaxReadAhead || opt.ReadAheadSize < 0 || opt.ReadAheadSize%4096 != 0 {
 		return nil, errors.New(fmt.Sprintf("the size of kernel read-ahead ranges from 0~512KB and must be divisible by 4096, invalid value: %v", opt.ReadAheadSize))
 	}
+	opt.MaxBackground = GlobalMountOptions[proto.MaxBackground].GetInt64()
+	opt.CongestionThresh = GlobalMountOptions[proto.CongestionThresh].GetInt64()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

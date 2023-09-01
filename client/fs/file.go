@@ -205,7 +205,9 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	defer func() {
 		tpObject1.Set(err)
 	}()
+	f.super.prefetchManager.AddTotalReadCount()
 	if f.super.prefetchManager.ContainsAppPid(req.Pid) {
+		f.super.prefetchManager.AddAppReadCount()
 		tpObjectPid := exporter.NewVolumeTPUs("AppRead_us", f.super.volname)
 		defer func() {
 			tpObjectPid.Set(err)
