@@ -373,6 +373,7 @@ func (mgr *BlobDeleteMgr) Consume(msg *sarama.ConsumerMessage, consumerPause bas
 			span.Warnf("unexpected result will ignore: msg[%+v], err[%+v]", delMsg, ret.err)
 		case DeleteStatusUndo:
 			span.Warnf("delete message unconsume: msg[%+v]", delMsg)
+		default:
 		}
 	}()
 	span = trace.SpanFromContextSafe(context.Background())

@@ -198,6 +198,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 				errs[idx] = d.adminUpdateDisk(ctx, args)
 				wg.Done()
 			})
+		default:
 		}
 	}
 	wg.Wait()

@@ -28,6 +28,7 @@ func (t VolumeTaskType) String() string {
 		return "lock"
 	case VolumeTaskTypeUnlock:
 		return "unlock"
+	default:
+		return "unknown"
 	}
-	return "unknown"
 }

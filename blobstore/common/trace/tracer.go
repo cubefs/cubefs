@@ -194,8 +194,9 @@ func (t *Tracer) Inject(sc opentracing.SpanContext, format interface{}, carrier 
 	switch format {
 	case TextMap, HTTPHeaders:
 		return defaultTexMapPropagator.Inject(s, carrier)
+	default:
+		return ErrUnsupportedFormat
 	}
-	return ErrUnsupportedFormat
 }
 
 // Extract implements Extract() method of opentracing.Tracer
@@ -203,8 +204,9 @@ func (t *Tracer) Extract(format interface{}, carrier interface{}) (opentracing.S
 	switch format {
 	case TextMap, HTTPHeaders:
 		return defaultTexMapPropagator.Extract(carrier)
+	default:
+		return nil, ErrUnsupportedFormat
 	}
-	return nil, ErrUnsupportedFormat
 }
 
 // Close releases all resources

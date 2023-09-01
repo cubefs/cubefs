@@ -376,6 +376,7 @@ func (s *raftServer) applyConfChange(entry pb.Entry) {
 		s.addMember(member)
 	case pb.ConfChangeRemoveNode:
 		s.removeMember(cc.NodeID)
+	default:
 	}
 	s.n.ApplyConfChange(cc)
 	if err := s.sm.ApplyMemberChange(ConfChange(cc), entry.Index); err != nil {
@@ -420,6 +421,7 @@ func (s *raftServer) applyEntries(entries []pb.Entry) {
 			pendinsDatas = append(pendinsDatas, data)
 			prIds = append(prIds, id)
 			lastIndex = ent.Index
+		default:
 		}
 	}
 

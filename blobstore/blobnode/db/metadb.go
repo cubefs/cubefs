@@ -310,6 +310,7 @@ func (md *metadb) doBatch(ctx context.Context, reqs []Request) (err error) {
 		case msgDelRange:
 			r := req.Data.(rdb.Range)
 			writeBatch.DeleteRange(r.Start, r.Limit)
+		default:
 		}
 	}
 

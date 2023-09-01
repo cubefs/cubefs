@@ -102,6 +102,7 @@ func (d *DiskMgr) refresh(ctx context.Context) {
 			diskStatInfosM[idc].Repaired += 1
 		case proto.DiskStatusDropped:
 			diskStatInfosM[idc].Dropped += 1
+		default:
 		}
 		if disk.dropping {
 			diskStatInfosM[idc].Dropping += 1
