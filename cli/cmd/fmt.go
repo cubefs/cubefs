@@ -111,6 +111,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Authenticate                    : %v\n", formatEnabledDisabled(svv.Authenticate)))
 	sb.WriteString(fmt.Sprintf("  Capacity                        : %v GB\n", svv.Capacity))
 	sb.WriteString(fmt.Sprintf("  Create time                     : %v\n", svv.CreateTime))
+	sb.WriteString(fmt.Sprintf("  DeleteLockTime                  : %v\n", svv.DeleteLockTime))
 	sb.WriteString(fmt.Sprintf("  Cross zone                      : %v\n", formatEnabledDisabled(svv.CrossZone)))
 	sb.WriteString(fmt.Sprintf("  DefaultPriority                 : %v\n", svv.DefaultPriority))
 	sb.WriteString(fmt.Sprintf("  Dentry count                    : %v\n", svv.DentryCount))
@@ -435,6 +436,11 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 		sb.WriteString(fmt.Sprintf("  [%v]", zone))
 	}
 	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("NodeSets :\n"))
+	for _, nodeSet := range partition.NodeSets {
+		sb.WriteString(fmt.Sprintf("  [%v]", nodeSet))
+	}
+	sb.WriteString("\n")
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("MissingNodes :\n"))
 	for partitionHost, id := range partition.MissingNodes {
@@ -477,6 +483,11 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Zones :\n"))
 	for _, zone := range partition.Zones {
 		sb.WriteString(fmt.Sprintf("  [%v]", zone))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("NodeSets :\n"))
+	for _, nodeSet := range partition.NodeSets {
+		sb.WriteString(fmt.Sprintf("  [%v]", nodeSet))
 	}
 	sb.WriteString("\n")
 	sb.WriteString("\n")

@@ -232,6 +232,7 @@ type volValue struct {
 	OSSAccessKey    string
 	OSSSecretKey    string
 	CreateTime      int64
+	DeleteLockTime  int64
 	Description     string
 	DpSelectorName  string
 	DpSelectorParm  string
@@ -252,7 +253,7 @@ type volValue struct {
 	EnablePosixAcl bool
 	EnableQuota    bool
 
-	EnableTransaction       uint8
+	EnableTransaction       bsProto.TxOpMask
 	TxTimeout               int64
 	TxConflictRetryNum      int64
 	TxConflictRetryInterval int64
@@ -288,6 +289,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		OSSAccessKey:            vol.OSSAccessKey,
 		OSSSecretKey:            vol.OSSSecretKey,
 		CreateTime:              vol.createTime,
+		DeleteLockTime:          vol.DeleteLockTime,
 		Description:             vol.description,
 		DpSelectorName:          vol.dpSelectorName,
 		DpSelectorParm:          vol.dpSelectorParm,
@@ -1355,7 +1357,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		}
 		vol, err1 := c.getVol(dpv.VolName)
 		if err1 != nil {
-			log.LogErrorf("action[loadDataPartitions] err:%v", err1.Error())
+			log.LogErrorf("action[loadDataPartitions] err:%v %v", dpv.VolName, err1.Error())
 			continue
 		}
 		if vol.ID != dpv.VolID {

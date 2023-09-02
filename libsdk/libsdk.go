@@ -128,6 +128,7 @@ var (
 	statusEMFILE  = errorToStatus(syscall.EMFILE)
 	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
 	statusEISDIR  = errorToStatus(syscall.EISDIR)
+	statusENOSPC  = errorToStatus(syscall.ENOSPC)
 )
 var once sync.Once
 
@@ -622,6 +623,9 @@ func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 
 	n, err := c.write(f, int(off), buffer, flags)
 	if err != nil {
+		if err == syscall.ENOSPC {
+			return C.ssize_t(statusENOSPC)
+		}
 		return C.ssize_t(statusEIO)
 	}
 
@@ -1146,7 +1150,7 @@ func (c *client) start() (err error) {
 			c.logLevel = "WARN"
 		}
 		level := parseLogLevel(c.logLevel)
-		log.InitLog(c.logDir, "libcfs", level, nil)
+		log.InitLog(c.logDir, "libcfs", level, nil, log.DefaultLogLeftSpaceLimit)
 		stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 	proto.InitBufferPool(int64(32768))
@@ -1407,7 +1411,21 @@ func (c *client) truncate(f *file, size int) error {
 func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
 	if proto.IsHot(c.volType) {
 		c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
-		n, err = c.ec.Write(f.ino, offset, data, flags, nil)
+		checkFunc := func() error {
+			if !c.mw.EnableQuota {
+				return nil
+			}
+
+			if ok := c.ec.UidIsLimited(0); ok {
+				return syscall.ENOSPC
+			}
+
+			if c.mw.IsQuotaLimitedById(f.ino, true, false) {
+				return syscall.ENOSPC
+			}
+			return nil
+		}
+		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.id, f.ino), offset, data, flags)
 	}

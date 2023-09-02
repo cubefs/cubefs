@@ -1097,6 +1097,7 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		log.LogWarnf("action[updateInodeIDRange] vol[%v] not found", mp.volName)
 		return
 	}
+
 	maxPartitionID := vol.maxPartitionID()
 	if mr.PartitionID < maxPartitionID {
 		return
@@ -1109,6 +1110,10 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		end = mr.MaxInodeID + metaPartitionInodeIdStep
 	}
 	log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
+	if c.cfg.DisableAutoCreate {
+		log.LogWarnf("updateInodeIDUpperBound: disable auto create meta partition, mp %d", mp.PartitionID)
+		return
+	}
 	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep); err != nil {
 		log.LogError(err)
 	}

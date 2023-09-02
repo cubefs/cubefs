@@ -17,6 +17,7 @@ package master
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
@@ -117,7 +118,7 @@ type Server struct {
 	config          *clusterConfig
 	cluster         *Cluster
 	user            *User
-	rocksDBStore    *raftstore.RocksDBStore
+	rocksDBStore    *raftstore_db.RocksDBStore
 	raftStore       raftstore.RaftStore
 	fsm             *MetadataFsm
 	partition       raftstore.Partition
@@ -143,7 +144,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 
-	if m.rocksDBStore, err = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+	if m.rocksDBStore, err = raftstore_db.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		return
 	}
 
@@ -216,6 +217,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
+
+	m.config.DisableAutoCreate = cfg.GetBoolWithDefault(disableAutoCreate, false)
+	syslog.Printf("get disableAutoCreate cfg %v", m.config.DisableAutoCreate)
 
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)

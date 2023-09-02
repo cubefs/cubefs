@@ -31,6 +31,7 @@ type VolVarargs struct {
 	zoneName                string
 	description             string
 	capacity                uint64 //GB
+	deleteLockTime          int64  //h
 	followerRead            bool
 	authenticate            bool
 	dpSelectorName          string
@@ -41,7 +42,7 @@ type VolVarargs struct {
 	enablePosixAcl          bool
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
-	enableTransaction       uint8
+	enableTransaction       proto.TxOpMask
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
@@ -81,7 +82,7 @@ type Vol struct {
 	domainOn                bool
 	defaultPriority         bool // old default zone first
 	enablePosixAcl          bool
-	enableTransaction       uint8
+	enableTransaction       proto.TxOpMask
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
@@ -95,6 +96,7 @@ type Vol struct {
 	createDpMutex           sync.RWMutex
 	createMpMutex           sync.RWMutex
 	createTime              int64
+	DeleteLockTime          int64
 	description             string
 	dpSelectorName          string
 	dpSelectorParm          string
@@ -130,6 +132,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.viewCache = make([]byte, 0)
 	vol.mpsCache = make([]byte, 0)
 	vol.createTime = vv.CreateTime
+	vol.DeleteLockTime = vv.DeleteLockTime
 	vol.description = vv.Description
 	vol.defaultPriority = vv.DefaultPriority
 	vol.domainId = vv.DomainId
@@ -308,6 +311,8 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	if count > defaultMaxInitMetaPartitionCount {
 		count = defaultMaxInitMetaPartitionCount
 	}
+
+	vol.createMpMutex.Lock()
 	for index := 0; index < count; index++ {
 		if index != 0 {
 			start = end + 1
@@ -321,6 +326,8 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 			break
 		}
 	}
+	vol.createMpMutex.Unlock()
+
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	if len(vol.MetaPartitions) != count {
@@ -491,7 +498,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	)
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep)
-		if doSplit {
+		if doSplit && !c.cfg.DisableAutoCreate {
 			nextStart := mp.MaxInodeID + metaPartitionInodeIdStep
 			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]",
 				c.Name, vol.Name, mp.PartitionID, mp.Start, mp.MaxInodeID, metaPartitionInodeIdStep, nextStart))
@@ -539,6 +546,13 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeIdStep uin
 		Warn(c.Name, msg)
 		return
 	}
+
+	if c.cfg.DisableAutoCreate {
+		log.LogWarnf("action[checkSplitMetaPartition] vol[%v], mp [%v] disable auto create meta partition",
+			vol.Name, partition.PartitionID)
+		return
+	}
+
 	end := partition.MaxInodeID + metaPartitionInodeIdStep
 	if err := vol.splitMetaPartition(c, partition, end, metaPartitionInodeIdStep); err != nil {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
@@ -695,6 +709,22 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		return
 	}
 
+	if c.cfg.DisableAutoCreate {
+		// if disable auto create, once alloc size is over capacity, not allow to create new dp
+		allocSize := uint64(len(vol.dataPartitions.partitions)) * vol.dataPartitionSize
+		totalSize := vol.capacity() * util.GB
+		if allocSize > totalSize {
+			return
+		}
+
+		if vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
+			c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false)
+			log.LogWarnf("autoCreateDataPartitions: readWrite less than 10, alloc new 10 partitions, vol %s", vol.Name)
+		}
+
+		return
+	}
+
 	if proto.IsCold(vol.VolType) {
 
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
@@ -790,7 +820,7 @@ func (vol *Vol) ebsUsedSpace() uint64 {
 }
 
 func (vol *Vol) updateViewCache(c *Cluster) {
-	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime, vol.CacheTTL, vol.VolType)
+	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime, vol.CacheTTL, vol.VolType, vol.DeleteLockTime)
 	view.SetOwner(vol.Owner)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
 	mpViews := vol.getMetaPartitionsView()
@@ -1122,8 +1152,6 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, me
 }
 
 func (vol *Vol) createMetaPartition(c *Cluster, start, end uint64) (err error) {
-	vol.createMpMutex.Lock()
-	defer vol.createMpMutex.Unlock()
 	var mp *MetaPartition
 	if mp, err = vol.doCreateMetaPartition(c, start, end); err != nil {
 		return
@@ -1221,6 +1249,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.zoneName = args.zoneName
 	vol.Capacity = args.capacity
+	vol.DeleteLockTime = args.deleteLockTime
 	vol.FollowerRead = args.followerRead
 	vol.authenticate = args.authenticate
 	vol.enablePosixAcl = args.enablePosixAcl
@@ -1270,6 +1299,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		zoneName:                vol.zoneName,
 		description:             vol.description,
 		capacity:                vol.Capacity,
+		deleteLockTime:          vol.DeleteLockTime,
 		followerRead:            vol.FollowerRead,
 		authenticate:            vol.authenticate,
 		dpSelectorName:          vol.dpSelectorName,

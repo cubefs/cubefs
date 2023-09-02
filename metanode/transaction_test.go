@@ -16,9 +16,8 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"reflect"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,8 +29,9 @@ import (
 var mp1 *metaPartition
 var mp2 *metaPartition
 var mp3 *metaPartition
-var DirModeType uint32 = 2147484141
-var FileModeType uint32 = 420
+
+//var DirModeType uint32 = 2147484141
+const FileModeType uint32 = 420
 
 const (
 	MemberAddrs = "127.0.0.1:17210,127.0.0.2:17210,127.0.0.3:17210"
@@ -41,6 +41,10 @@ const (
 	inodeNum3   = 1004
 	dentryName  = "parent"
 )
+
+func init() {
+	log.InitLog("/tmp/cfs/logs/", "test", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
+}
 
 func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPartition) {
 
@@ -68,41 +72,20 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPar
 	mp.config.End = 100000
 
 	mp.txProcessor = NewTransactionProcessor(mp)
+	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
 	return mp
 }
 
 func initMps(t *testing.T) {
 
+	test = true
 	mp1 = newMetaPartition(10001, &metadataManager{})
 	mp2 = newMetaPartition(10002, &metadataManager{})
 	mp3 = newMetaPartition(10003, &metadataManager{})
-
-	//txMgr := NewTransactionManager(nil)
-	//txRsc := NewTransactionResource(nil)
-	//ino := testCreateInode(nil, DirModeType)
-	//t.Logf("cursor %v create ino %v", mp.config.Cursor, ino)
 }
 
 func (i *Inode) Equal(inode *Inode) bool {
-	i.RLock()
-	if inode.Uid != i.Uid || inode.Gid != i.Gid || inode.Size != i.Size || inode.Generation != i.Generation ||
-		inode.CreateTime != i.CreateTime || inode.ModifyTime != i.ModifyTime || inode.AccessTime != i.AccessTime ||
-		inode.NLink != i.NLink || inode.Flag != i.Flag || inode.Reserved != i.Reserved {
-		return false
-	}
-	if !reflect.DeepEqual(inode.LinkTarget, i.LinkTarget) {
-		return false
-	}
-
-	if !reflect.DeepEqual(inode.Extents.eks, i.Extents.eks) {
-		return false
-	}
-
-	if !reflect.DeepEqual(inode.ObjExtents.eks, i.ObjExtents.eks) {
-		return false
-	}
-	i.RUnlock()
-	return true
+	return reflect.DeepEqual(i, inode)
 }
 
 func (i *TxRollbackInode) Equal(txRbInode *TxRollbackInode) bool {
@@ -118,16 +101,76 @@ func (i *TxRollbackInode) Equal(txRbInode *TxRollbackInode) bool {
 	return true
 }
 
-func TestRollbackInodeSerialization(t *testing.T) {
+func TestRollbackInodeLess(t *testing.T) {
+
+	inode := NewInode(101, 0)
 	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
-	inode := NewInode(inodeNum, FileModeType)
 	rbInode := NewTxRollbackInode(inode, []uint32{}, txInodeInfo, TxAdd)
+
+	rbInode2 := &TxRollbackInode{
+		inode: NewInode(100, 0),
+	}
+	assert.False(t, rbInode.Less(rbInode2))
+
+	rbInode2.txInodeInfo = proto.NewTxInodeInfo("", inodeNum+1, 0)
+	assert.True(t, rbInode.Less(rbInode2))
+}
+
+func TestRollbackInodeSerialization(t *testing.T) {
+	inode := &Inode{
+		Inode:      1024,
+		Gid:        11,
+		Uid:        10,
+		Size:       101,
+		Type:       0755,
+		Generation: 13,
+		CreateTime: 102,
+		AccessTime: 104,
+		ModifyTime: 107,
+		LinkTarget: []byte("link target"),
+		NLink:      7,
+		Flag:       1,
+		Reserved:   3,
+		Extents: NewSortedExtentsFromEks([]proto.ExtentKey{
+			{FileOffset: 11, PartitionId: 12, ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0},
+		}),
+		ObjExtents: NewSortedObjExtents(),
+	}
+
+	ids := []uint32{11, 13}
+
+	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)
+	rbInode := NewTxRollbackInode(inode, ids, txInodeInfo, TxAdd)
 	var data []byte
 	data, _ = rbInode.Marshal()
 
 	txRbInode := NewTxRollbackInode(nil, []uint32{}, nil, 0)
 	txRbInode.Unmarshal(data)
+
 	assert.True(t, rbInode.Equal(txRbInode))
+
+	inode.Inode = 1023
+	assert.False(t, rbInode.Equal(txRbInode))
+
+	cpRbInode := rbInode.Copy()
+	assert.True(t, rbInode.Equal(cpRbInode.(*TxRollbackInode)))
+}
+
+func TestTxRollbackDentry_Less(t *testing.T) {
+	rb1 := &TxRollbackDentry{
+		txDentryInfo: &proto.TxDentryInfo{ParentId: 1001, Name: "tt"},
+	}
+
+	rb2 := &TxRollbackDentry{
+		txDentryInfo: &proto.TxDentryInfo{ParentId: 1002, Name: "tt"},
+	}
+
+	assert.True(t, rb1.Less(rb2))
+
+	rb3 := &TxRollbackDentry{
+		txDentryInfo: &proto.TxDentryInfo{ParentId: 1001, Name: "ta"},
+	}
+	assert.False(t, rb1.Less(rb3))
 }
 
 func TestRollbackDentrySerialization(t *testing.T) {
@@ -145,6 +188,12 @@ func TestRollbackDentrySerialization(t *testing.T) {
 	txRbDentry := NewTxRollbackDentry(nil, nil, 0)
 	txRbDentry.Unmarshal(data)
 	assert.True(t, reflect.DeepEqual(rbDentry, txRbDentry))
+
+	txDentryInfo.MpMembers = "tttt"
+	assert.False(t, reflect.DeepEqual(rbDentry, txRbDentry))
+
+	cpDentryInfo := rbDentry.Copy()
+	assert.True(t, reflect.DeepEqual(rbDentry, cpDentryInfo.(*TxRollbackDentry)))
 }
 
 func TestNextTxID(t *testing.T) {
@@ -160,13 +209,17 @@ func TestNextTxID(t *testing.T) {
 func TestTxMgrOp(t *testing.T) {
 	initMps(t)
 	txInfo := proto.NewTransactionInfo(5, proto.TxTypeCreate)
+	assert.True(t, txInfo.State == proto.TxStateInit)
+
 	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
 	if !txInfo.IsInitialized() {
 		mp1.initTxInfo(txInfo)
 	}
-	txId := txInfo.TxID
 
+	assert.True(t, txInfo.State == proto.TxStatePreCommit)
+
+	txId := txInfo.TxID
 	txMgr := mp1.txProcessor.txManager
 
 	//register
@@ -179,17 +232,10 @@ func TestTxMgrOp(t *testing.T) {
 	gotTxInfo := txMgr.getTransaction(txId)
 	assert.Equal(t, txInfo, gotTxInfo)
 
-	//get Tx Inode Info
-	gotTxInodeInfo := txMgr.getTxInodeInfo(txId, inodeNum)
-	assert.True(t, nil == gotTxInodeInfo)
-
-	gotTxDentryInfo := txMgr.getTxDentryInfo(txId, txDentryInfo.GetKey())
-	assert.True(t, gotTxDentryInfo == txDentryInfo)
-
 	//rollback
 	txMgr.rollbackTxInfo(txId)
 	gotTxInfo = txMgr.getTransaction(txId)
-	assert.True(t, nil == gotTxInfo)
+	assert.True(t, gotTxInfo.IsDone())
 
 	//commit
 	status, _ := txMgr.commitTxInfo("dummy_txId")
@@ -218,7 +264,7 @@ func TestTxRscOp(t *testing.T) {
 	status := txRsc.addTxRollbackInode(rbInode1)
 	assert.Equal(t, proto.OpOk, status)
 	status = txRsc.addTxRollbackInode(rbInode1)
-	assert.Equal(t, proto.OpOk, status)
+	assert.Equal(t, proto.OpExistErr, status)
 
 	inTx, _ := txRsc.isInodeInTransction(inode1)
 	assert.True(t, inTx)
@@ -236,19 +282,19 @@ func TestTxRscOp(t *testing.T) {
 	}
 	txDentryInfo1.TxID = txMgr.nextTxID()
 	txDentryInfo1.Timeout = 5
-	txDentryInfo1.CreateTime = time.Now().UnixNano()
+	txDentryInfo1.CreateTime = time.Now().Unix()
 	rbDentry1 := NewTxRollbackDentry(dentry, txDentryInfo1, TxAdd)
 
 	txDentryInfo2 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo2.TxID = txMgr.nextTxID()
 	txDentryInfo2.Timeout = 5
-	txDentryInfo2.CreateTime = time.Now().UnixNano()
+	txDentryInfo2.CreateTime = time.Now().Unix()
 	rbDentry2 := NewTxRollbackDentry(dentry, txDentryInfo2, TxAdd)
 
 	status = txRsc.addTxRollbackDentry(rbDentry1)
 	assert.Equal(t, proto.OpOk, status)
 	status = txRsc.addTxRollbackDentry(rbDentry1)
-	assert.Equal(t, proto.OpOk, status)
+	assert.Equal(t, proto.OpExistErr, status)
 
 	inTx, _ = txRsc.isDentryInTransction(dentry)
 	assert.True(t, inTx)
@@ -304,7 +350,7 @@ func mockAddTxDentry(mp *metaPartition) *TxRollbackDentry {
 	txDentryInfo1 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo1.TxID = txMgr.nextTxID()
 	txDentryInfo1.Timeout = 5
-	txDentryInfo1.CreateTime = time.Now().UnixNano()
+	txDentryInfo1.CreateTime = time.Now().Unix()
 	dentry1 := &Dentry{
 		ParentId: pInodeNum,
 		Name:     dentryName,
@@ -332,7 +378,7 @@ func mockDeleteTxDentry(mp *metaPartition) *TxRollbackDentry {
 	txDentryInfo2 := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
 	txDentryInfo2.TxID = txMgr.nextTxID()
 	txDentryInfo2.Timeout = 5
-	txDentryInfo2.CreateTime = time.Now().UnixNano()
+	txDentryInfo2.CreateTime = time.Now().Unix()
 	rbDentry := NewTxRollbackDentry(dentry2, txDentryInfo2, TxAdd)
 	txRsc := mp.txProcessor.txResource
 	txRsc.addTxRollbackDentry(rbDentry)
@@ -411,13 +457,14 @@ func TestTxTreeRollback(t *testing.T) {
 	initMps(t)
 
 	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
-	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
+	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum+1, dentryName, 10001)
 	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
 	if !txInfo.IsInitialized() {
 		mp1.initTxInfo(txInfo)
 	}
-	txId := txInfo.TxID
 
+	txId := txInfo.TxID
+	txInfo.TmID = int64(mp1.config.PartitionId)
 	txMgr := mp1.txProcessor.txManager
 
 	//register
@@ -426,89 +473,32 @@ func TestTxTreeRollback(t *testing.T) {
 	assert.Equal(t, expectedId, txId)
 	txMgr.registerTransaction(txInfo)
 
-	txInfo.DoneTime = time.Now().Unix() - 70
-	txInfo.State = proto.TxStateCommitDone
-	go txMgr.processExpiredTransactions(nil)
-
-	time.Sleep(2 * time.Second)
-	assert.True(t, txMgr.txTree.Len() == 0)
-
 	txMgr.registerTransaction(txInfo)
 	txMgr.txProcessor.mask |= proto.TxPause
 	time.Sleep(2 * time.Second)
 	assert.True(t, txMgr.txTree.Len() == 1)
 }
 
-func TestMultiStartExpireCheck(t *testing.T) {
-	initMps(t)
-
-	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
-	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
-	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
-	if !txInfo.IsInitialized() {
-		mp1.initTxInfo(txInfo)
-	}
-
-	txMgr := mp1.txProcessor.txManager
-	wg := txMgr.Start()
-	assert.True(t, wg != nil)
-	assert.True(t, nil == txMgr.Start())
-
-	var exit int32
-	go func() {
-		wg.Wait()
-		atomic.StoreInt32(&exit, 1)
-	}()
-
-	cFunc := func(wgx *sync.WaitGroup) {
-		txMgr.stopProcess()
-		i := 1
-		for {
-			time.Sleep(time.Millisecond * 50)
-			if atomic.LoadInt32(&exit) == 1 {
-				wgx.Done()
-				break
-			}
-			i++
-			if i > 100 {
-				wgx.Done()
-				break
-			}
-		}
-	}
-	//time.Sleep(time.Second*5)
-	var wg1 sync.WaitGroup
-	wg1.Add(1)
-	cFunc(&wg1)
-
-	wg1.Wait()
-	assert.True(t, txMgr.started == false)
-}
-
 func TestCheckTxLimit(t *testing.T) {
 	initMps(t)
 	txMgr := mp1.txProcessor.txManager
-	txMgr.Start()
+	//txMgr.Start()
 	txMgr.setLimit(10)
 	txMgr.opLimiter.SetBurst(1)
-	var i int
-	st := time.Now().UnixNano() / 1e6
-	for i < 2 {
-		txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
-		txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
-		txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
-		mp1.initTxInfo(txInfo)
-		i++
-	}
-	et := time.Now().UnixNano() / 1e6
-	t.Logf("st %v et %v", st, et)
-	assert.True(t, et-st >= 100)
+	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
+	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)
+	txInfo.TxDentryInfos[txDentryInfo.GetKey()] = txDentryInfo
+	err := mp1.initTxInfo(txInfo)
+	assert.NoError(t, err)
+
+	err = mp1.initTxInfo(txInfo)
+	assert.Error(t, err)
 }
 
 func TestGetTxHandler(t *testing.T) {
 	initMps(t)
 	txMgr := mp1.txProcessor.txManager
-	txMgr.Start()
+	//txMgr.Start()
 
 	txInfo := proto.NewTransactionInfo(0, proto.TxTypeCreate)
 	txDentryInfo := proto.NewTxDentryInfo(MemberAddrs, pInodeNum, dentryName, 10001)

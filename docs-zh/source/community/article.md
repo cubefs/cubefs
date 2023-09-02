@@ -14,6 +14,9 @@
 
 ## 最佳实践
 
+- [纠删码技术在CubeFS的应用和实践](https://mp.weixin.qq.com/s/6jzHhNE9L7YmLzbh-n89Og)，2023-7-28，Yuan Zeng
+- [CubeFS在网易游戏业务实践](https://mp.weixin.qq.com/s/gSlvk3EnLfN2O6-PGID7JA)，2023-07-20，Rui Zhang
+- [CubeFS助力ClickHouse存算分离](https://mp.weixin.qq.com/s/ZEzFzP4uWP3NhbCf0tnsjA)，2023-07-13，Chao Yang
 - [集群开源监控方案](https://mp.weixin.qq.com/s/QtO-ORwdanATR9hXwp-YMQ) , 2023-06-06, Ke Zhang
 - [CubeFS Autofs 实践](https://mp.weixin.qq.com/s/Y-M1K9_5NkJGQVPbJIpJyA) ， 2023-05-16，Liangliang Tang
 - [与CubeFS共创未来：BIGO的实践与思考](https://mp.weixin.qq.com/s/X5c14U55O2g0bT3bxJWFbg) ，2023-05-05，刘冰星@BIGO
@@ -25,7 +28,10 @@
 
 ## 技术揭秘
 
+- [CubeFS"源"理解读｜纠删码之异步删除与数据修补](https://mp.weixin.qq.com/s/d3l3v2V5K-ifSDWdm9caTw)，2023-07-04，Tianyue Peng
+- [CubeFS"源"理解读 | Master模块之HTTP服务](https://mp.weixin.qq.com/s/rqmdSs-w0qgE5Ual4KgpmQ)，2023-06-15，Huocheng Wu
 - [CubeFS原创方案丨原生HDFS协议访问支持](https://mp.weixin.qq.com/s/vw9O9ssHIWDIozjYkoy8IA) , 2023-05-31, Tianjiong,Zhang
+- [CubeFS源码解读丨Master源码解读（一）Raft](https://mp.weixin.qq.com/s/zSEvxZ2HCaEYvvfY5HdK3Q)，2023-05-25，Huocheng Wu
 - [CubeFS原创方案 | 卷级别流控方案](https://mp.weixin.qq.com/s/ytBvK3MazOzm3uDtzRBwaw) ，2023-04-13，存储团队@OPPO
 - [CubeFS源码解读 | Data Partition 及副本的状态管理](https://mp.weixin.qq.com/s/ICpXE3e1Vu497hmvUyzI5Q) ，2023-04-06，存储团队@OPPO
 - [CubeFS源码解读 | 副本子系统](https://mp.weixin.qq.com/s/Ryw4BLlVoysX5jeNFLpdig) ，2023-03-23，存储团队@OPPO

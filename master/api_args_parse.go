@@ -85,12 +85,12 @@ func extractTxConflictRetryInterval(r *http.Request) (interval int64, err error)
 }
 
 func extractTxOpLimitInterval(r *http.Request, volLimit int) (limit int, err error) {
-	var txLimit uint64
-	if txLimit, err = extractUint64WithDefault(r, txOpLimitKey, uint64(volLimit)); err != nil {
+	var txLimit int
+	if txLimit, err = extractUintWithDefault(r, txOpLimitKey, volLimit); err != nil {
 		return
 	}
 
-	limit = int(txLimit)
+	limit = txLimit
 	return
 }
 
@@ -109,7 +109,7 @@ func hasTxParams(r *http.Request) bool {
 	return false
 }
 
-func parseTxMask(r *http.Request, oldMask uint8) (mask uint8, err error) {
+func parseTxMask(r *http.Request, oldMask proto.TxOpMask) (mask proto.TxOpMask, err error) {
 
 	var maskStr string
 	if maskStr = r.FormValue(enableTxMaskKey); maskStr == "" {
@@ -303,6 +303,20 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 	return val, nil
 }
 
+func extractInt64WithDefault(r *http.Request, key string, def int64) (val int64, err error) {
+
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return def, nil
+	}
+
+	if val, err = strconv.ParseInt(str, 10, 64); err != nil || val < 0 {
+		return 0, fmt.Errorf("parse [%s] is not valid int [%d], err %v", key, val, err)
+	}
+
+	return val, nil
+}
+
 func extractStrWithDefault(r *http.Request, key string, def string) (val string) {
 
 	if val = r.FormValue(key); val == "" {
@@ -329,10 +343,11 @@ type updateVolReq struct {
 	name                    string
 	authKey                 string
 	capacity                uint64
+	deleteLockTime          int64
 	followerRead            bool
 	authenticate            bool
 	enablePosixAcl          bool
-	enableTransaction       uint8
+	enableTransaction       proto.TxOpMask
 	txTimeout               int64
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
@@ -425,11 +440,15 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
+	if req.deleteLockTime, err = extractInt64WithDefault(r, volDeleteLockTimeKey, vol.DeleteLockTime); err != nil {
+		return
+	}
+
 	if req.enablePosixAcl, err = extractBoolWithDefault(r, enablePosixAclKey, vol.enablePosixAcl); err != nil {
 		return
 	}
 
-	var txMask uint8
+	var txMask proto.TxOpMask
 	if txMask, err = parseTxMask(r, vol.enableTransaction); err != nil {
 		return
 	}
@@ -525,18 +544,13 @@ func parseRequestToSetApiQpsLimit(r *http.Request) (name string, limit uint32, t
 		return
 	}
 
-	var tmp uint64
-	if tmp, err = extractUint64(r, Limit); err != nil {
+	if limit, err = extractUint32(r, Limit); err != nil {
 		return
 	}
 
-	limit = uint32(tmp)
-
-	if tmp, err = extractUint64(r, TimeOut); err != nil {
+	if timeout, err = extractUint32(r, TimeOut); err != nil {
 		return
 	}
-
-	timeout = uint32(tmp)
 
 	if timeout == 0 {
 		err = fmt.Errorf("timeout(seconds) args must be larger than 0")
@@ -595,8 +609,9 @@ type createVolReq struct {
 	owner                                string
 	size                                 int
 	mpCount                              int
-	dpReplicaNum                         int
+	dpReplicaNum                         uint8
 	capacity                             int
+	deleteLockTime                       int64
 	followerRead                         bool
 	authenticate                         bool
 	crossZone                            bool
@@ -607,8 +622,8 @@ type createVolReq struct {
 	volType                              int
 	enablePosixAcl                       bool
 	DpReadOnlyWhenVolFull                bool
+	enableTransaction                    proto.TxOpMask
 	enableQuota                          bool
-	enableTransaction                    uint8
 	txTimeout                            int64
 	txConflictRetryNum                   int64
 	txConflictRetryInterval              int64
@@ -687,9 +702,14 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.dpReplicaNum, err = extractUint(r, replicaNumKey); err != nil {
+	var parsedDpReplicaNum int
+	if parsedDpReplicaNum, err = extractUint(r, replicaNumKey); err != nil {
 		return
 	}
+	if parsedDpReplicaNum < 0 || parsedDpReplicaNum > math.MaxUint8 {
+		return fmt.Errorf("invalid arg dpReplicaNum: %v", parsedDpReplicaNum)
+	}
+	req.dpReplicaNum = uint8(parsedDpReplicaNum)
 
 	if req.size, err = extractUintWithDefault(r, dataPartitionSizeKey, 120); err != nil {
 		return
@@ -697,6 +717,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 
 	// default capacity 120
 	if req.capacity, err = extractUint(r, volCapacityKey); err != nil {
+		return
+	}
+
+	if req.deleteLockTime, err = extractInt64WithDefault(r, volDeleteLockTimeKey, 0); err != nil {
 		return
 	}
 
@@ -745,7 +769,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	var txMask uint8
+	var txMask proto.TxOpMask
 	if txMask, err = parseTxMask(r, proto.TxOpMaskOff); err != nil {
 		return
 	}
@@ -1244,14 +1268,16 @@ func extractName(r *http.Request) (name string, err error) {
 
 func extractUint(r *http.Request, key string) (val int, err error) {
 	var str string
+	var valParsed int64
 	if str = r.FormValue(key); str == "" {
 		return 0, nil
 	}
 
-	if val, err = strconv.Atoi(str); err != nil || val < 0 {
+	if valParsed, err = strconv.ParseInt(str, 10, 32); err != nil || valParsed < 0 {
 		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
 	}
 
+	val = int(valParsed)
 	return val, nil
 }
 
@@ -1279,6 +1305,20 @@ func extractUint64(r *http.Request, key string) (val uint64, err error) {
 	}
 
 	return val, nil
+}
+
+func extractUint32(r *http.Request, key string) (val uint32, err error) {
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return 0, nil
+	}
+
+	var tmp uint64
+	if tmp, err = strconv.ParseUint(str, 10, 32); err != nil || val < 0 {
+		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
+	}
+
+	return uint32(tmp), nil
 }
 
 func extractPositiveUint64(r *http.Request, key string) (val uint64, err error) {
@@ -1468,7 +1508,13 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 		err = keyNotFound(decommissionLimit)
 		return
 	}
-	return strconv.ParseUint(value, 10, 64)
+
+	limit, err = strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 func parseSetConfigParam(r *http.Request) (key string, value string, err error) {

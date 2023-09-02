@@ -277,9 +277,11 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v)",
 				mp.config.PartitionId, si.applyID, si.txId, si.cursor, si.uniqID)
 
-			// process uniqId
-			uniqIdWrapper := SnapItemWrapper{SiwKeyUniqId, si.uniqID}
-			produceItem(uniqIdWrapper)
+			if si.uniqID != 0 {
+				// process uniqId
+				uniqIdWrapper := SnapItemWrapper{SiwKeyUniqId, si.uniqID}
+				produceItem(uniqIdWrapper)
+			}
 		} else {
 			panic(fmt.Sprintf("invalid raftSyncSnapFormatVersione: %v", si.SnapFormatVersion))
 		}
@@ -334,11 +336,13 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			if checkClose() {
 				return
 			}
-		}
 
-		produceItem(si.uniqChecker)
-		if checkClose() {
-			return
+			if si.uniqID != 0 {
+				produceItem(si.uniqChecker)
+				if checkClose() {
+					return
+				}
+			}
 		}
 
 		// process extent del files

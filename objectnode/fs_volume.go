@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -37,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -230,7 +232,8 @@ func (v *Volume) loadBucketACL() (acp *AccessControlPolicy, err error) {
 		return
 	}
 	acp = &AccessControlPolicy{}
-	if err = xml.Unmarshal(raw, acp); err != nil {
+	if err = json.Unmarshal(raw, acp); err != nil {
+		err = xml.Unmarshal(raw, acp)
 		return
 	}
 	return
@@ -761,7 +764,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		attr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
 	}
 	if opt != nil && opt.ACL != nil {
-		attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+		attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
 	}
 
 	// If user-defined metadata have been specified, use extend attributes for storage.
@@ -954,7 +957,7 @@ func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID str
 	}
 	// If ACL have been specified, use extend attributes for storage.
 	if opt != nil && opt.ACL != nil {
-		extend[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+		extend[XAttrKeyOSSACL] = opt.ACL.Encode()
 	}
 
 	if v.mw.EnableQuota {
@@ -1493,7 +1496,6 @@ func (v *Volume) readFile(inode, inodeSize uint64, path string, writer io.Writer
 }
 
 func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) error {
-	var err error
 	var upper = size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
@@ -1504,7 +1506,8 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 	reader := v.getEbsReader(inode)
 	var n int
 	var rest uint64
-	var tmp = make([]byte, 2*v.ebsBlockSize)
+	var tmp = buf.ReadBufPool.Get().([]byte)
+	defer buf.ReadBufPool.Put(tmp)
 
 	for {
 		if rest = upper - offset; rest <= 0 {
@@ -1515,7 +1518,11 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 			readSize = int(rest)
 		}
 		tmp = tmp[:readSize]
-		n, err = reader.Read(ctx, tmp, int(offset), readSize)
+		off, err := safeConvertUint64ToInt(offset)
+		if err != nil {
+			return err
+		}
+		n, err = reader.Read(ctx, tmp, off, readSize)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, inode, offset, size, err)
@@ -1538,7 +1545,6 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 }
 
 func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, offset, size uint64) error {
-	var err error
 	var upper = size + offset
 	if upper > inodeSize {
 		upper = inodeSize - offset
@@ -1555,7 +1561,11 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 		if uint64(readSize) > rest {
 			readSize = int(rest)
 		}
-		n, err = v.ec.Read(inode, tmp, int(offset), readSize)
+		off, err := safeConvertUint64ToInt(offset)
+		if err != nil {
+			return err
+		}
+		n, err = v.ec.Read(inode, tmp, off, readSize)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, inode, offset, size, err)
@@ -2560,7 +2570,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 				attr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
 			}
 			if opt != nil && opt.ACL != nil {
-				attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+				attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
 			}
 
 			// If user-defined metadata have been specified, use extend attributes for storage.
@@ -2794,7 +2804,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			targetAttr.XAttrs[key] = val
 		}
 		if opt != nil && opt.ACL != nil {
-			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
 		}
 		if err = v.mw.BatchSetXAttr_ll(tInodeInfo.Inode, targetAttr.XAttrs); err != nil {
 			log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr (%v)err(%v)",
@@ -2820,7 +2830,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			targetAttr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
 		}
 		if opt != nil && opt.ACL != nil {
-			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.XmlEncode()
+			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
 		}
 
 		// If user-defined metadata have been specified, use extend attributes for storage.
@@ -3026,4 +3036,30 @@ func (v *Volume) getEbsReader(ino uint64) (reader *blobstore.Reader) {
 	reader = blobstore.NewReader(clientConf)
 	log.LogDebugf("getEbsReader: reader(%v) ", reader)
 	return
+}
+
+func safeConvertUint64ToInt(num uint64) (int, error) {
+	str := strconv.FormatUint(num, 10)
+	parsed, err := strconv.ParseInt(str, 10, 0)
+	if err != nil {
+		return 0, err
+	}
+	return int(parsed), nil
+}
+
+func safeConvertInt64ToUint64(num int64) (uint64, error) {
+	str := strconv.FormatInt(num, 10)
+	parsed, err := strconv.ParseUint(str, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return parsed, nil
+}
+
+func safeConvertStrToUint16(str string) (uint16, error) {
+	parsed, err := strconv.ParseUint(str, 10, 16)
+	if err != nil {
+		return 0, err
+	}
+	return uint16(parsed), nil
 }

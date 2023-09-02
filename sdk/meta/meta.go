@@ -55,6 +55,7 @@ const (
 	statusTxConflict
 	statusTxTimeout
 	statusUploadPartConflict
+	statusNotEmpty
 )
 
 const (
@@ -66,6 +67,8 @@ const (
 	 * i.e. only one force update request is allowed every 5 sec.
 	 */
 	MinForceUpdateMetaPartitionsInterval = 5
+	DefaultQuotaExpiration               = 120 * time.Second
+	MaxQuotaCache                        = 10000
 )
 
 type AsyncTaskErrorFunc func(err error)
@@ -92,16 +95,17 @@ type MetaConfig struct {
 
 type MetaWrapper struct {
 	sync.RWMutex
-	cluster         string
-	localIP         string
-	volname         string
-	ossSecure       *OSSSecure
-	volCreateTime   int64
-	owner           string
-	ownerValidation bool
-	mc              *masterSDK.MasterClient
-	ac              *authSDK.AuthClient
-	conns           *util.ConnectPool
+	cluster           string
+	localIP           string
+	volname           string
+	ossSecure         *OSSSecure
+	volCreateTime     int64
+	volDeleteLockTime int64
+	owner             string
+	ownerValidation   bool
+	mc                *masterSDK.MasterClient
+	ac                *authSDK.AuthClient
+	conns             *util.ConnectPool
 
 	// Callback handler for handling asynchronous task errors.
 	onAsyncTaskError AsyncTaskErrorFunc
@@ -142,7 +146,7 @@ type MetaWrapper struct {
 	EnableSummary           bool
 	metaSendTimeout         int64
 	DirChildrenNumLimit     uint32
-	EnableTransaction       uint8
+	EnableTransaction       proto.TxOpMask
 	TxTimeout               int64
 	TxConflictRetryNum      int64
 	TxConflictRetryInterval int64
@@ -153,6 +157,8 @@ type MetaWrapper struct {
 	// uniqidRange for request dedup
 	uniqidRangeMap   map[uint64]*uniqidRange
 	uniqidRangeMutex sync.Mutex
+
+	qc *QuotaCache
 }
 
 type uniqidRange struct {
@@ -205,7 +211,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
 	//mw.EnableTransaction = config.EnableTransaction
 	mw.uniqidRangeMap = make(map[uint64]*uniqidRange, 0)
-
+	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	limit := 0
 
 	for limit < MaxMountRetryLimit {
@@ -263,6 +269,10 @@ func (mw *MetaWrapper) Owner() string {
 	return mw.owner
 }
 
+func (mw *MetaWrapper) enableTx(mask proto.TxOpMask) bool {
+	return mw.EnableTransaction != proto.TxPause && mw.EnableTransaction&mask > 0
+}
+
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
 	return mw.ossSecure.AccessKey, mw.ossSecure.SecretKey
 }
@@ -312,6 +322,8 @@ func parseStatus(result uint8) (status int) {
 		status = statusConflictExtents
 	case proto.OpDirQuota:
 		status = statusOpDirQuota
+	case proto.OpNotEmpty:
+		status = statusNotEmpty
 	case proto.OpNoSpaceErr:
 		status = statusNoSpace
 	case proto.OpTxInodeInfoNotExistErr:
@@ -328,6 +340,14 @@ func parseStatus(result uint8) (status int) {
 	return
 }
 
+func statusErrToErrno(status int, err error) error {
+	if status == statusOK && err != nil {
+		return syscall.EAGAIN
+	}
+
+	return statusToErrno(status)
+}
+
 func statusToErrno(status int) error {
 	switch status {
 	case statusOK:
@@ -335,6 +355,8 @@ func statusToErrno(status int) error {
 		return syscall.EAGAIN
 	case statusExist:
 		return syscall.EEXIST
+	case statusNotEmpty:
+		return syscall.ENOTEMPTY
 	case statusNoent:
 		return syscall.ENOENT
 	case statusFull:
@@ -360,7 +382,7 @@ func statusToErrno(status int) error {
 	case statusTxTimeout:
 		return syscall.EAGAIN
 	case statusUploadPartConflict:
-		return syscall.EAGAIN
+		return syscall.EEXIST
 	default:
 	}
 	return syscall.EIO

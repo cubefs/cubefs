@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httputil"
 
@@ -92,14 +93,16 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 				if m.partition.IsRaftLeader() {
 					if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
 						log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
-						http.Error(w, "too many requests for api: "+r.URL.Path, http.StatusTooManyRequests)
+						errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
+						http.Error(w, errMsg, http.StatusTooManyRequests)
 						return
 					}
 				} else {
 					if m.cluster.apiLimiter.IsFollowerLimiter(r.URL.Path) {
 						if err := m.cluster.apiLimiter.Wait(r.URL.Path); err != nil {
 							log.LogWarnf("action[interceptor] too many requests, path[%v]", r.URL.Path)
-							http.Error(w, "too many requests for api: "+r.URL.Path, http.StatusTooManyRequests)
+							errMsg := fmt.Sprintf("too many requests for api: %s", html.EscapeString(r.URL.Path))
+							http.Error(w, errMsg, http.StatusTooManyRequests)
 							return
 						}
 					}

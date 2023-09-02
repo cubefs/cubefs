@@ -36,6 +36,7 @@ const (
 	dataPartitionSizeKey  = "size"
 	metaPartitionCountKey = "mpCount"
 	volCapacityKey        = "capacity"
+	volDeleteLockTimeKey  = "deleteLockTime"
 	volTypeKey            = "volType"
 	cacheRuleKey          = "cacheRuleKey"
 	emptyCacheRuleKey     = "emptyCacheRule"

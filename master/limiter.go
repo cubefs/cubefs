@@ -870,14 +870,9 @@ func (vol *Vol) volQosEnable(c *Cluster, enable bool) error {
 	return c.syncUpdateVol(vol)
 }
 
-func (vol *Vol) updateClientParam(c *Cluster, period, triggerCnt uint64) error {
-	vol.qosManager.ClientHitTriggerCnt = uint32(triggerCnt)
-	vol.qosManager.ClientReqPeriod = uint32(period)
-	return c.syncUpdateVol(vol)
-}
-
-func (vol *Vol) volQosUpdateMagnify(c *Cluster, magnifyArgs *qosArgs) error {
-	vol.qosManager.volUpdateMagnify(magnifyArgs)
+func (vol *Vol) updateClientParam(c *Cluster, period, triggerCnt uint32) error {
+	vol.qosManager.ClientHitTriggerCnt = triggerCnt
+	vol.qosManager.ClientReqPeriod = period
 	return c.syncUpdateVol(vol)
 }
 

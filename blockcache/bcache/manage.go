@@ -525,7 +525,7 @@ func NewDiskStore(dir string, cacheSize int64, config *bcacheConfig) *DiskStore 
 		mode:      config.Mode,
 		capacity:  cacheSize,
 		freeLimit: config.FreeRatio,
-		limit:     uint32(config.Limit),
+		limit:     config.Limit,
 	}
 	c.checkBuildCacheDir(dir)
 	return c

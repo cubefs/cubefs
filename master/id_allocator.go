@@ -16,11 +16,13 @@ package master
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -31,7 +33,7 @@ type IDAllocator struct {
 	commonID        uint64
 	clientID        uint64
 	quotaID         uint32
-	store           *raftstore.RocksDBStore
+	store           *raftstore_db.RocksDBStore
 	partition       raftstore.Partition
 	dpIDLock        sync.RWMutex
 	mpIDLock        sync.RWMutex
@@ -39,7 +41,7 @@ type IDAllocator struct {
 	qaIDLock        sync.RWMutex
 }
 
-func newIDAllocator(store *raftstore.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
+func newIDAllocator(store *raftstore_db.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
 	alloc = new(IDAllocator)
 	alloc.store = store
 	alloc.partition = partition
@@ -141,7 +143,13 @@ func (alloc *IDAllocator) restoreMaxQuotaID() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to restore maxQuotaID,err:%v ", err.Error()))
 	}
-	alloc.quotaID = uint32(maxQuotaID)
+
+	if maxQuotaID > 0 && maxQuotaID <= math.MaxInt32 {
+		alloc.quotaID = uint32(maxQuotaID)
+	} else {
+		alloc.quotaID = math.MaxInt32
+	}
+
 	log.LogInfof("action[restoreMaxCommonID] maxQuotaID[%v]", alloc.quotaID)
 }
 

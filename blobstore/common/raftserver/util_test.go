@@ -57,6 +57,11 @@ func TestNormalEntryDecode(t *testing.T) {
 	id, b := normalEntryDecode(data)
 	require.Equal(t, uint64(100), id)
 	require.Equal(t, []byte("123456"), b)
+
+	data = normalEntryEncode(99999999, []byte("some test data in raft server"))
+	id, b = normalEntryDecode(data)
+	require.Equal(t, uint64(99999999), id)
+	require.Equal(t, []byte("some test data in raft server"), b)
 }
 
 func TestProto(t *testing.T) {

@@ -3,6 +3,7 @@ package master
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -191,12 +192,16 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
 
+	if args.DpReplicaNum > math.MaxUint8 {
+		return nil, fmt.Errorf("invalid arg dpReplicaNum: %v", args.DpReplicaNum)
+	}
+
 	req := &createVolReq{
 		name:             args.Name,
 		owner:            args.Owner,
 		size:             int(args.DataPartitionSize),
 		mpCount:          int(args.MpCount),
-		dpReplicaNum:     int(args.DpReplicaNum),
+		dpReplicaNum:     uint8(args.DpReplicaNum),
 		capacity:         int(args.Capacity),
 		followerRead:     args.FollowerRead,
 		authenticate:     args.Authenticate,
