@@ -23,7 +23,6 @@ from torch.utils.data import ConcatDataset
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '100'
 os.environ['CubeFS_CACHE_DIR'] = '/dev/shm/test'
-# os.environ['Cube_USE_DISK'] = 'true'
 os.environ['CubeFS_CACHE_SIZE'] = '127374100000'
 os.environ['localIP'] = '11.163.35.34'
 

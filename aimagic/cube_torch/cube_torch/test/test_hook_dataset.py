@@ -8,6 +8,8 @@ from torchvision import datasets, transforms
 os.environ["CubeFS_ROOT_DIR"] = "/home/guowl/testdata"
 os.environ['localIP'] = "127.0.0.1"
 os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '10'
+os.environ['USE_BATCH_DOWNLOAD'] = '123'
+os.environ['TEST_ENV']='True'
 
 
 def start_worker_test_concatDataset(i):

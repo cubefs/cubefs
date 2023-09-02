@@ -10,6 +10,7 @@ from cube_torch import get_manager
 from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 
 LOCAL_IP = 'localIP'
+USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
 one_day = 60 * 60 * 12
 
 
@@ -20,11 +21,12 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prefetch_read_url = ""
         self.register_pid_addr = ""
         self.prof_port = ""
-
+        self._is_use_batch_download = os.environ.get(USE_BATCH_DOWNLOAD)
         self.local_ip = os.environ.get(LOCAL_IP)
         self.cube_prefetch_ttl = 30
         self.dataset_dir_prefix = ".cube_torch"
         self.check_evn()
+        self._dataset_cnt=cube_loader.real_sample_size
         self.dataset_config_dir = os.path.join(self.cubefs_root_dir, self.dataset_dir_prefix, self.local_ip)
         cube_info_file = os.path.join(self.dataset_config_dir, ".cube_info")
         if not os.path.exists(cube_info_file):
@@ -44,7 +46,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         dataset_id = id(cube_loader.dataset)
         self.register_pid_addr = "http://127.0.0.1:{}/register/pid".format(self.prof_port)
         self.unregister_pid_addr = "http://127.0.0.1:{}/unregister/pid".format(self.prof_port)
-        self.batch_download_addr="http://127.0.0.1:{}/batchdownload".format(self.prof_port)
+        self.batch_download_addr="http://127.0.0.1:{}/batchdownload?dataset_cnt={}".format(self.prof_port,self._dataset_cnt)
         get_manager().__dict__[dataset_id] = self
 
     def get_cube_prefetch_addr(self):
@@ -56,6 +58,9 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def get_unregister_pid_addr(self):
         return self.unregister_pid_addr
 
+    def is_use_batch_download(self):
+        return self._is_use_batch_download
+
     def check_evn(self):
         if self.cubefs_root_dir is None:
             raise ValueError("{} not set on os environ ".format(CubeFS_ROOT_DIR))
@@ -65,6 +70,11 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
         if not self.is_valid_ip(self.local_ip):
             raise ValueError("{} is not valid,please reset {} ".format(self.local_ip, LOCAL_IP))
+
+        if self._is_use_batch_download is not None:
+            self._is_use_batch_download = True
+        else:
+            self._is_use_batch_download=False
 
         self.check_cube_queue_size_on_worker()
         self._init_env_fininsh = True
@@ -80,7 +90,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                 if type(self.prof_port) is not int:
                     raise ValueError(".cube_info {} not set prof prof info".format(cube_info_file))
                 self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
-                self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read".format(self.prof_port)
+                self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,self._dataset_cnt)
         except Exception as e:
             raise e
 
@@ -159,7 +169,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def renew_ttl_on_prefetch_files(self):
         for train_name, dataset_cnt in self.cube_prefetch_file_list:
             url = "{}?path={}&ttl={}&dataset_cnt={}".format(self.prefetch_file_url, train_name, self.cube_prefetch_ttl,
-                                                            dataset_cnt)
+                                                            self._dataset_cnt)
             try:
                 response = self.storage_seesion.get(url, timeout=1)
                 if response.status_code != 200:

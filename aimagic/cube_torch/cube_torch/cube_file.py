@@ -5,15 +5,19 @@ from functools import wraps
 
 import torch
 
-from cube_torch.cube_batch_download import CubeBatchDownloader, init_cube_batch_downloader
+from cube_torch.cube_batch_download import init_cube_batch_downloader
 
-_cube_batch_downloader = None
+global_cube_batch_downloader = None
+builtins_open=builtins.open
 
+
+def set_global_cube_batch_downloader(downloader):
+    global global_cube_batch_downloader
+    global_cube_batch_downloader = downloader
 
 def intercept_open(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        print("intercepted open:{}".format(args))
         if args[1] == 'r' or args[1] == 'rb':
             return CubeFile(*args, **kwargs)
         return builtins.open(*args, **kwargs)
@@ -24,7 +28,6 @@ def intercept_open(func):
 def intercept_read(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        print("intercepted read")
         return func(*args, **kwargs)
 
     return wrapper
@@ -36,14 +39,14 @@ class CubeFile(io.FileIO):
         return self._name
 
     def __init__(self, filename, mode='r'):
-        global _cube_batch_downloader
-        self._cube_item = _cube_batch_downloader.get_cube_path_item(filename)
+        global global_cube_batch_downloader
+        self._cube_item = global_cube_batch_downloader.get_cube_path_item(filename)
         if self._cube_item is None:
             super().__init__(filename, mode)
             self._is_cube_item = False
         else:
             self._is_cube_item = True
-        self.name=filename
+        self.name = filename
 
     def __enter__(self):
         return self
@@ -129,7 +132,7 @@ class CubeFile(io.FileIO):
 def intercept_torch_load(func):
     def wrapper(*args, **kwargs):
         file_path = args[0]
-        cube_item=_cube_batch_downloader.get_cube_path_item(file_path)
+        cube_item = global_cube_batch_downloader.get_cube_path_item(file_path)
         if cube_item is None:
             result = func(*args, **kwargs)
         else:
@@ -141,9 +144,9 @@ def intercept_torch_load(func):
 
 
 if __name__ == '__main__':
-    _cube_batch_downloader, jpeg_files = init_cube_batch_downloader()
+    global_cube_batch_downloader, jpeg_files = init_cube_batch_downloader()
     title_path = '/home/guowl/testdata/1.bertids'
-    _cube_batch_downloader.add_cube_path_item(title_path)
+    global_cube_batch_downloader.add_cube_path_item(title_path)
     open = intercept_open(open)
     file_path = jpeg_files[0]
     with open(file_path, 'rb') as f:

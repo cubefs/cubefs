@@ -5,15 +5,12 @@ from torch.utils.data import ConcatDataset
 from torchvision import datasets
 
 CubeFS_ROOT_DIR = 'CubeFS_ROOT_DIR'
+TEST_ENV='TEST_ENV'
 CubeFS_QUEUE_SIZE_ON_WORKER = 'CubeFS_QUEUE_SIZE_ON_WORKER'
 Min_QUEUE_SIZE_ON_WORKER = 10
 Max_QUEUE_SIZE_ON_WORKER = 30
 
 
-def split_and_zip_2d_array(arr):
-    num_columns = len(arr[0])
-    result = list(zip(*arr))
-    return result
 
 
 def is_2d_array(obj):
@@ -31,12 +28,13 @@ class CubeDataSetInfo:
         self.cubefs_root_dir = os.environ.get(CubeFS_ROOT_DIR)
         self.cube_prefetch_file_list = []
         self.train_file_name_list = []
+        self._is_test_env=os.environ.get(TEST_ENV)
+        if self._is_test_env is not None:
+            self._is_test_env=True
+        else:
+            self._is_test_env = False
         self.stop_event = multiprocessing.Event()
         self._init_env_fininsh = False
-        self._use_disk = cube_loader.is_use_disk
-
-    def is_use_disk(self):
-        return self._use_disk
 
     def get_cubefs_root_dir(self):
         return self.cubefs_root_dir
@@ -124,3 +122,6 @@ class CubeDataSetInfo:
 
     def get_batch_download_addr(self):
         return ""
+
+    def is_test_env(self):
+        return self._is_test_env

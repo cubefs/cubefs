@@ -36,11 +36,10 @@ from torch.utils.data.sampler import (
     SequentialSampler,
 )
 
-from cube_torch import get_manager, CubeDiskDataSetInfo, CubePushDataSetInfo
-from cube_torch.cube_worker import _worker_loop, _copy_worker_loop_for_post_client, _copy_worker_loop_for_localdisk, \
-    _register_pid_to_storage, _unregister_pid_to_storage
-
-Cube_USE_DISK = 'Cube_USE_DISK'
+from cube_torch import get_manager, CubePushDataSetInfo
+from cube_torch.cube_batch_download import CubeBatchDownloader
+from cube_torch.cube_worker import _worker_loop, _copy_worker_loop_for_post_client, _register_pid_to_storage, \
+    _unregister_pid_to_storage, _notify_storage_preload_index
 
 
 class CubeDataLoader(Generic[T_co]):
@@ -194,60 +193,18 @@ class CubeDataLoader(Generic[T_co]):
 
         self._iterator = None
 
+        self.real_sample_size = len(self.dataset)
         self.check_worker_number_rationality()
         self.wait_read_train_file_queue = None
-        self._copy_worker_loop_events = []
-        self._copy_worker_loop_process = []
-
+        self._push_worker_loop_events = []
+        self._push_worker_loop_process = []
+        self.cubeBatchDownloader = None
         self.init_cube_dataset_info()
         torch.set_vital('Dataloader', 'enabled', 'True')  # type: ignore[attr-defined]
 
     def init_cube_dataset_info(self):
         self.cube_dataset_info = None
-        self.is_use_disk = False
-        manager = get_manager()
-        self.real_sample_size = len(self.dataset)
-        env_var = os.environ.get(Cube_USE_DISK)
-        if env_var is not None and env_var.lower() == "true":
-            self.is_use_disk = True
-        if self.is_use_disk:
-            self.cube_dataset_info = CubeDiskDataSetInfo(self)
-        else:
-            self.cube_dataset_info = CubePushDataSetInfo(self)
-
-        ctx = multiprocessing.get_context("fork")
-        dataset_id = id(self.dataset)
-        self.wait_read_train_file_queue = manager.Queue()
-        for i in range(1):
-            e = multiprocessing.Event()
-            if self.is_use_disk:
-                w = ctx.Process(target=_copy_worker_loop_for_localdisk, args=(
-                    dataset_id, self.wait_read_train_file_queue, e))
-                cubefs_cache_dir = self.cube_dataset_info.get_cubefs_cache_dir()
-                cubefs_root_dir = self.cube_dataset_info.get_cubefs_root_dir()
-                print("pid{} need worker_num{} cubefs_cache_dir{}"
-                      " cubefs_root_dir{} ".format(os.getpid(),
-                                                   self.num_workers,
-                                                   cubefs_cache_dir,
-                                                   cubefs_root_dir))
-            else:
-                prefetch_addr = "{}?dataset_cnt={}".format(self.cube_dataset_info.get_cube_prefetch_addr(),
-                                                           self.real_sample_size)
-                w = ctx.Process(target=_copy_worker_loop_for_post_client,
-                                args=(self.wait_read_train_file_queue, prefetch_addr, self.num_workers, e))
-                print("pid{} need worker_num{} prefetch_addr{} "
-                      " ".format(os.getpid(), self.num_workers, prefetch_addr))
-            w.daemon = True
-            w.start()
-            self._copy_worker_loop_process.append(w)
-            self._copy_worker_loop_events.append(e)
-
-    def __del__(self):
-        if self.is_use_disk:
-            for e in self._copy_worker_loop_events:
-                e.set()
-            for w in self._copy_worker_loop_process:
-                w.terminate()
+        self.cube_dataset_info = CubePushDataSetInfo(self)
 
     def _get_iterator(self) -> '_BaseDataLoaderIter':
         self.check_worker_number_rationality()
@@ -457,17 +414,15 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._register_pid_addr = loader.cube_dataset_info.get_register_pid_addr()
         self._unregister_pid_addr = loader.cube_dataset_info.get_unregister_pid_addr()
         self._workers = []
-        self._is_use_disk = loader.is_use_disk
-        self.wait_read_train_file_queue = loader.wait_read_train_file_queue
-        cubefs_cache_dir = ""
-        cubefs_root_dir = ""
-        if self._is_use_disk:
-            cubefs_cache_dir = self.cube_dataset_info.get_cubefs_cache_dir()
-            cubefs_root_dir = self.cube_dataset_info.get_cubefs_root_dir()
 
         self._start_loop_get_index = False
         self._storage_event = threading.Event()
         self._loadindex_event = threading.Event()
+        self._wait_train_index_queues = []
+        manager=get_manager()
+        for i in range(self._num_workers):
+            wait_train_index_queue = manager.Queue()
+            self._wait_train_index_queues.append(wait_train_index_queue)
 
         self._preload_index_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker() * 3)
         self._loadindex_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker())
@@ -494,15 +449,13 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                       self._worker_result_queue, self._workers_done_event,
                       self._auto_collation, self._collate_fn, self._drop_last,
                       self._base_seed, self._worker_init_fn, i, self._num_workers,
-                      self._persistent_workers, self._is_use_disk,
-                      cubefs_root_dir, cubefs_cache_dir))
+                      self._persistent_workers, self._wait_train_index_queues[i]))
             w.daemon = True
             w.start()
             self._index_queues.append(index_queue)
             self._workers.append(w)
 
-        if not self._is_use_disk:
-            self.regiester_worker_pid()
+        self.regiester_worker_pid()
 
         if self._pin_memory:
             self._pin_memory_thread_done_event = threading.Event()
@@ -553,22 +506,31 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             pids.append(w.pid)
         _unregister_pid_to_storage(pids, self._unregister_pid_addr)
 
+    def _get_worker_queue_idx(self):
+        for _ in range(self._num_workers):  # find the next active worker, if any
+            worker_queue_idx = next(self._worker_queue_idx_cycle)
+            if self._workers_status[worker_queue_idx]:
+                return worker_queue_idx
+            else:
+                return -1
+
     def _notify_storage_func(self, event):
-        cnt=0
-        _max_loading_queue_size=self.cube_dataset_info.get_cube_queue_size_on_worker()
+        cnt = 0
+        _max_loading_queue_size = self.cube_dataset_info.get_cube_queue_size_on_worker()
         while not event.set():
             try:
                 if not self._start_loop_get_index:
                     time.sleep(0.01)
                     continue
-                cnt+=1
+                cnt += 1
+                worker_queue_idx=self._get_worker_queue_idx()
+                if worker_queue_idx ==-1:
+                    time.sleep(0.01)
+                    continue
                 index = self._next_index()
-                self.wait_read_train_file_queue.put(index)
-                self._preload_index_queue.put(index)
-                if self._loadindex_queue.qsize()<_max_loading_queue_size-1:
-                    print("pid:{} cnt:{} wait_read_train_file_queue_size:{} _preload_index_queue_size:{} "
-                          "_loadding_index_queue_size:{}".format(os.getpid(),cnt,self.wait_read_train_file_queue.qsize(),
-                          self._preload_index_queue.qsize(),self._loadindex_queue.qsize()))
+                index_data = (worker_queue_idx, index)
+                self._wait_train_index_queues[worker_queue_idx].put(index_data)
+                self._preload_index_queue.put(index_data)
             except StopIteration:
                 event.set()
                 self._preload_index_queue.put(None)
@@ -580,10 +542,10 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                 if not self._start_loop_get_index:
                     time.sleep(0.01)
                     continue
-                index = self._preload_index_queue.get()
-                if index is None:
+                index_data = self._preload_index_queue.get()
+                if index_data is None:
                     break
-                self._loadindex_queue.put(index)
+                self._loadindex_queue.put(index_data)
             except StopIteration:
                 event.set()
                 return
@@ -592,6 +554,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
     def _reset(self, loader, first_iter=False):
         print("pid{} start reset{}".format(os.getpid(), datetime.datetime.now()))
         super()._reset(loader, first_iter)
+        self._worker_queue_idx_cycle = itertools.cycle(range(self._num_workers))
         if not self._start_loop_get_index:
             self._start_loop_get_index = True
 
@@ -612,7 +575,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         # the worker will be reset to available in the next epoch.
         self._workers_status = [True for i in range(self._num_workers)]
         # Reset the worker queue cycle so it resumes next epoch at worker 0
-        self._worker_queue_idx_cycle = itertools.cycle(range(self._num_workers))
+
         # We resume the prefetching in case it was enabled
         if not first_iter:
             for idx in range(self._num_workers):
@@ -851,13 +814,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         assert self._tasks_outstanding < self._prefetch_factor * self._num_workers
         if self._send_idx >= self._sampler_iter_len:
             return
-        index = self._loadindex_queue.get()
-        for _ in range(self._num_workers):  # find the next active worker, if any
-            worker_queue_idx = next(self._worker_queue_idx_cycle)
-            if self._workers_status[worker_queue_idx]:
-                break
-            else:
-                return
+        worker_queue_idx, index = self._loadindex_queue.get()
         self._index_queues[worker_queue_idx].put((self._send_idx, index))
         self._task_info[self._send_idx] = (worker_queue_idx,)
         self._tasks_outstanding += 1
@@ -907,8 +864,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         # Normal exit when last reference is gone / iterator is depleted.
         # See (1) and the second half of the note.
 
-        if not self._is_use_disk:
-            self.unregiester_worker_pid()
+        self.unregiester_worker_pid()
 
         if not self._shutdown:
             self._shutdown = True
