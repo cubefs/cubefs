@@ -10,7 +10,6 @@ from urllib3 import Retry
 from cube_torch import get_manager
 
 
-
 class CubeDownloadItem(io.BytesIO):
     def __init__(self, file_size, content, file_path):
         self._file_size = file_size
@@ -46,7 +45,6 @@ class CubeBatchDownloader:
     def parse_content(self, content):
         version = int.from_bytes(content[:8], byteorder='big')
         path_count = int.from_bytes(content[8:16], byteorder='big')
-        print(f'Path count: {path_count}')
         start = 16
         for i in range(path_count):
             path_size = int.from_bytes(content[start:start + 8], byteorder='big')
@@ -61,7 +59,7 @@ class CubeBatchDownloader:
                 cube_content_item = CubeDownloadItem(content_size, file_content, path)
                 self.cube_content_cache[path] = cube_content_item
             else:
-                print('Content is empty')
+                print('path:{}  content_size:{} Content is empty'.format(path,content_size))
 
     def encode_by_paths(self, path_list):
         content = b''
@@ -98,7 +96,11 @@ class CubeBatchDownloader:
     def get_cube_path_item(self, path):
         if self.cube_content_cache.get(path) is None:
             return None
-        return self.cube_content_cache.pop(path)
+        try:
+            item=self.cube_content_cache.pop(path)
+            return item
+        except Exception:
+            return None
 
     def add_cube_path_item(self, file_path):
         from cube_torch.cube_file import builtins_open
@@ -110,6 +112,8 @@ class CubeBatchDownloader:
     def add_cube_dataset(self, path_items):
         for item in path_items:
             self.add_cube_path_item(item)
+
+
 
 
 def init_cube_batch_downloader():

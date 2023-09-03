@@ -6,21 +6,37 @@ from functools import wraps
 import torch
 
 from cube_torch.cube_batch_download import init_cube_batch_downloader
+from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
 global_cube_batch_downloader = None
-builtins_open=builtins.open
+global_cube_rootdir_path = None
+builtins_open = builtins.open
 
 
 def set_global_cube_batch_downloader(downloader):
     global global_cube_batch_downloader
     global_cube_batch_downloader = downloader
 
+
+def set_global_cube_rootdir_path(rootdir):
+    global global_cube_rootdir_path
+    global_cube_rootdir_path = rootdir
+
+
+def is_prefix_cube_file(string):
+    global global_cube_rootdir_path
+    prefix_length = len(global_cube_rootdir_path)
+    return string[:prefix_length] == global_cube_rootdir_path
+
+
 def intercept_open(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if args[1] == 'r' or args[1] == 'rb':
-            return CubeFile(*args, **kwargs)
-        return builtins.open(*args, **kwargs)
+        if is_prefix_cube_file(args[0]):
+            result=CubeFile(*args, **kwargs)
+        else:
+            result=builtins_open(*args, **kwargs)
+        return result
 
     return wrapper
 
@@ -46,13 +62,14 @@ class CubeFile(io.FileIO):
             self._is_cube_item = False
         else:
             self._is_cube_item = True
+        CubeFileOpenInterceptor.add_count(self._is_cube_item)
         self.name = filename
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        super().close()
+        self.close()
 
     def close(self, *args, **kwargs):  # real signature unknown
         if self._is_cube_item:
@@ -132,7 +149,10 @@ class CubeFile(io.FileIO):
 def intercept_torch_load(func):
     def wrapper(*args, **kwargs):
         file_path = args[0]
+        global global_cube_batch_downloader
         cube_item = global_cube_batch_downloader.get_cube_path_item(file_path)
+        is_cache=cube_item is not None
+        CubeFileOpenInterceptor.add_count(is_cache)
         if cube_item is None:
             result = func(*args, **kwargs)
         else:

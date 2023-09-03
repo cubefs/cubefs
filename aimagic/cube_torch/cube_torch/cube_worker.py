@@ -7,12 +7,9 @@ import asyncio
 import builtins
 import json
 import logging
-import os
 import queue
 import random
-import threading
 import time
-from concurrent.futures.thread import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Union
 
@@ -21,8 +18,9 @@ import torch
 from torch._utils import ExceptionWrapper
 from torch.utils.data import _DatasetKind
 
-from cube_torch.cube_batch_download import CubeBatchDownloader
-from cube_torch.cube_file import intercept_open, intercept_torch_load, set_global_cube_batch_downloader
+from cube_torch.cube_file import intercept_open, intercept_torch_load, set_global_cube_batch_downloader, \
+    set_global_cube_rootdir_path
+from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
 logger = logging.getLogger(__name__)
 from torch.utils.data._utils.worker import WorkerInfo, _generate_state, HAS_NUMPY, _IterableDatasetStopIteration, \
@@ -129,6 +127,22 @@ def get_cube_dataset_info_on_worker(dataset_id):
             continue
 
 
+def get_cube_batch_download(dataset_id):
+    from cube_torch import get_manager
+    manager = get_manager()
+    key = get_cube_batch_downloader_key(dataset_id)
+    while True:
+        try:
+            downloader = manager.__dict__[key]
+            if downloader is None:
+                manager.refresh()
+                continue
+            return downloader
+        except Exception as e:
+            time.sleep(1)
+            continue
+
+
 def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr, event):
     cube_prefetch_addr = prefetch_addr
     storage_seesion = requests.Session()
@@ -144,23 +158,28 @@ def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr,
             continue
 
 
-def init_cube_batch_download_env(use_batch_download):
-    if use_batch_download:
-        builtins.open = intercept_open(open)
-        torch.load = intercept_torch_load(torch.load)
 
 
-def _notify_storage_preload_index(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download,
-                                  downloader, worker_id, event):
+
+
+def get_cube_batch_downloader_key(dataset_id):
+    return "{}_batch_downloader".format(dataset_id)
+
+
+def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, dataset_id, event):
     storage_seesion = requests.Session()
+    downloader = None
+    torch.set_num_threads(1)
+    if is_use_batch_download:
+        downloader=get_cube_batch_download(dataset_id)
     while not event.is_set():
         try:
-            worker_idx, copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
+            copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
             index_list = [copy_file_indexs]
             if is_use_batch_download:
                 downloader.batch_download_async(index_list)
             else:
-                _post_to_storage_async(index_list, cube_prefetch_addr, storage_seesion)
+                _post_to_storage(index_list, cube_prefetch_addr, storage_seesion)
         except queue.Empty:
             continue
         except KeyboardInterrupt:
@@ -169,40 +188,20 @@ def _notify_storage_preload_index(wait_read_train_file_queue, cube_prefetch_addr
             continue
 
 
-def start_notify_storage_thread(wait_read_train_file_queue, dataset_id, worker_id):
-    cube_dataset_info = get_cube_dataset_info_on_worker(dataset_id)
-    cube_prefetch_addr = cube_dataset_info.get_cube_prefetch_addr()
-    is_use_batch_download = cube_dataset_info.is_use_batch_download()
-    batch_download_addr = cube_dataset_info.get_batch_download_addr()
-    is_test_env = cube_dataset_info.is_test_env()
-    downloader = None
-    if is_use_batch_download:
-        init_cube_batch_download_env(is_use_batch_download)
-        downloader = CubeBatchDownloader(batch_download_addr)
-        if is_test_env:
-            for items in cube_dataset_info.get_train_file_name_lists():
-                downloader.add_cube_dataset(items)
-
-        set_global_cube_batch_downloader(downloader)
-    print("pid:{} dataset_id{} cube_prefetch_addr:{} "
-          "is_use_batch_download:{} cube_batch_downloader_addr:{}".format(os.getpid(), dataset_id, cube_prefetch_addr,
-                                                                          is_use_batch_download, downloader))
-    event = threading.Event()
-    notify_thread = threading.Thread(target=_notify_storage_preload_index, args=(wait_read_train_file_queue,
-                                                                                 cube_prefetch_addr,
-                                                                                 is_use_batch_download,
-                                                                                 downloader, worker_id, event))
-    notify_thread.daemon = True
-    notify_thread.start()
-    return event, notify_thread
-
-
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
                  auto_collation, collate_fn, drop_last, base_seed, init_fn, worker_id,
-                 num_workers, persistent_workers, wait_read_train_file_queue):
-    torch.set_num_threads(2)
+                 num_workers, persistent_workers, cube_root_dir, is_use_batch_download):
+    torch.set_num_threads(1)
+    if is_use_batch_download:
+        set_global_cube_rootdir_path(cube_root_dir)
+        CubeFileOpenInterceptor.set_params(cube_root_dir)
+        CubeFileOpenInterceptor.start_timer()
+        batch_downloader = get_cube_batch_download(id(dataset))
+        set_global_cube_batch_downloader(batch_downloader)
+        builtins.open = intercept_open(open)
+        torch.load = intercept_torch_load(torch.load)
+
     try:
-        storage_event, storage_thread = start_notify_storage_thread(wait_read_train_file_queue, id(dataset), worker_id)
         seed = base_seed + worker_id
         random.seed(seed)
         torch.manual_seed(seed)
@@ -284,9 +283,6 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
 
             data_queue.put((idx, data))
             del data, idx, index, r  # save memory
-
-        storage_event.set()
-        storage_thread.join(timeout=0.1)
 
     except KeyboardInterrupt:
         pass

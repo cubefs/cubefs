@@ -22,11 +22,11 @@ setup(
             'cube_batch_download.py',
             'cube_loader.py',
             'cube_file.py',
-            'cube_fetcher.py'
             'cube_worker.py',
             'cube_dataset_info.py',
             'NOTICE',
             'cube_push_data_set_info.py',
+            'cube_file_open_interceptor.py',
         ]
     }
 )

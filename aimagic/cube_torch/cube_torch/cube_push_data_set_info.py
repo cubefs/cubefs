@@ -206,3 +206,8 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_batch_download_addr(self):
         return self.batch_download_addr
+
+    def get_notify_storage_worker_num(self):
+        if self._is_use_batch_download:
+            return 4
+        return 1
