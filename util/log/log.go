@@ -110,6 +110,7 @@ type asyncWriter struct {
 	flushC      chan bool
 	rotateDay   chan struct{} // TODO rotateTime?
 	mu          sync.Mutex
+	rotateMu    sync.Mutex
 }
 
 func (writer *asyncWriter) flushScheduler() {
@@ -172,6 +173,7 @@ func (writer *asyncWriter) flushToFile() {
 	default:
 	}
 	flushLength := writer.flushTmp.Len()
+	writer.rotateMu.Lock()
 	if (writer.logSize+int64(flushLength)) >= writer.
 		rollingSize || isRotateDay {
 		oldFile := writer.fileName + "." + time.Now().Format(
@@ -187,6 +189,7 @@ func (writer *asyncWriter) flushToFile() {
 			}
 		}
 	}
+	writer.rotateMu.Unlock()
 	writer.logSize += int64(flushLength)
 	// TODO Unhandled errors
 	writer.file.Write(writer.flushTmp.Bytes())
