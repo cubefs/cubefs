@@ -101,7 +101,7 @@ func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
 					logger.Error(fmt.Sprintf("[heartbeatTransport] recive message from conn error, %s", err.Error()))
 					return
 				} else {
-					logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
+					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
 					t.raftServer.reciveMessage(msg)
 				}
 			}

@@ -441,7 +441,6 @@ func (rs *RaftServer) sendHeartbeat() {
 		msg.From = rs.config.NodeID
 		msg.To = to
 		msg.Context = proto.EncodeHBConext(ctx)
-		logger.Debug("send heartbeat msg[%v] to id:%d", msg, to)
 		rs.config.transport.Send(msg)
 	}
 }
