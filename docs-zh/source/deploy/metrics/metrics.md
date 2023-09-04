@@ -44,6 +44,14 @@ master模块上报的监控指标主要是关于集群内节点的健康状态�
 | cfs_master_vol_total_GB{volName="xx"}                  | 指定卷的容量带下                         |
 | cfs_master_vol_usage_ratio{volName="xx"}               | 指定卷的使用率                          |
 | cfs_master_vol_used_GB{volName="xx"}                   | 指定卷已用容量                          |
+| cfs_master_nodeset_data_total_GB{nodeset="xx"}         | 指定nodeset上的所有数据节点总空间之和           |
+| cfs_master_nodeset_data_usage_ratio{nodeset="xx"}      | 指定nodeset上的已使用数据空间比率             |
+| cfs_master_nodeset_data_used_GB{nodeset="xx"}          | 指定nodeset上的所有数据节点的可用空间之和         |
+| cfs_master_nodeset_dp_replica_count{nodeset="xx"}      | 指定nodeset上的数据分片数量                |
+| cfs_master_nodeset_meta_total_GB{nodeset="xx"}         | 指定nodeset上的所有元数据节点总空间之和          |
+| cfs_master_nodeset_meta_usage_ratio{nodeset="xx"}      | 指定nodeset上的已使用元数据空间比率            |
+| cfs_master_nodeset_meta_used_GB{nodeset="xx"}          | 指定nodeset上的所有元数据节点的可用空间之和        |
+| cfs_master_nodeset_mp_replica_count{nodeset="xx"}      | 指定nodeset上的元数据分片数量               |
 
 ## MetaNode
 
