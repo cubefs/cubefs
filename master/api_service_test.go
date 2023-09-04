@@ -1353,6 +1353,20 @@ func TestForbiddenVolume(t *testing.T) {
 	forbidUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, forbiddenKey)
 	unforbidUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, forbiddenKey)
 	process(forbidUrl, t)
+	dps := vol.cloneDataPartitionMap()
+	mps := vol.cloneMetaPartitionMap()
+	for _, dp := range dps {
+		if dp.Status == proto.ReadWrite {
+			t.Errorf("failed to set dp rd only")
+			return
+		}
+	}
+	for _, mp := range mps {
+		if mp.Status == proto.ReadWrite {
+			t.Errorf("failed to set mp rd only")
+			return
+		}
+	}
 	ok := checkVolForbidden(vol.Name, vol.Forbidden)
 	if !ok {
 		t.Errorf("failed to forbid volume, check timeout")
@@ -1363,5 +1377,17 @@ func TestForbiddenVolume(t *testing.T) {
 	if !ok {
 		t.Errorf("failed to unforbid volume, check timeout")
 		return
+	}
+	for _, dp := range dps {
+		if dp.Status != proto.ReadWrite {
+			t.Errorf("failed to set dp rd only")
+			return
+		}
+	}
+	for _, mp := range mps {
+		if mp.Status != proto.ReadWrite {
+			t.Errorf("failed to set mp rd only")
+			return
+		}
 	}
 }
