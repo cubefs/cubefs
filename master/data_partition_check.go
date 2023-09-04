@@ -26,7 +26,7 @@ import (
 )
 
 func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dpTimeOutSec int64, c *Cluster,
-	shouldDpInhibitWriteByVolFull bool) {
+	shouldDpInhibitWriteByVolFull bool, forbiddenVol bool) {
 	partition.Lock()
 	defer partition.Unlock()
 	var liveReplicas []*DataReplica
@@ -51,12 +51,18 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 			partition.hasEnoughAvailableSpace() &&
 			!shouldDpInhibitWriteByVolFull {
 
+			writable := false
 			if proto.IsNormalDp(partition.PartitionType) {
 				if partition.getLeaderAddr() != "" {
-					partition.Status = proto.ReadWrite
+					writable = true
 				}
 			} else {
 				// cold volume has no leader
+				writable = true
+			}
+			// if the volume is not forbidden
+			// set status to ReadWrite
+			if writable && !forbiddenVol {
 				partition.Status = proto.ReadWrite
 			}
 		}
