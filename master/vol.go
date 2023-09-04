@@ -388,12 +388,12 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		}
 
 		dp.checkReplicaStatus(c.cfg.DataPartitionTimeOutSec)
-		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, c, shouldDpInhibitWriteByVolFull)
+		dp.checkStatus(c.Name, true, c.cfg.DataPartitionTimeOutSec, c, shouldDpInhibitWriteByVolFull, vol.Forbidden)
 		dp.checkLeader(c.Name, c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 
-		if time.Now().Unix()-vol.createTime < defaultIntervalToCheckHeartbeat*3 {
+		if time.Now().Unix()-vol.createTime < defaultIntervalToCheckHeartbeat*3 && !vol.Forbidden {
 			dp.setReadWrite()
 		}
 
@@ -513,7 +513,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		err     error
 	)
 	for _, mp := range mps {
-		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep)
+		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden)
 		if doSplit && !c.cfg.DisableAutoCreate {
 			nextStart := mp.MaxInodeID + metaPartitionInodeIdStep
 			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]",
@@ -599,6 +599,16 @@ func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
 	return
 }
 
+func (vol *Vol) setMpRdOnly() {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	for _, mp := range vol.MetaPartitions {
+		if mp.Status != proto.Unavailable {
+			mp.Status = proto.ReadOnly
+		}
+	}
+}
+
 func (vol *Vol) cloneDataPartitionMap() (dps map[uint64]*DataPartition) {
 	vol.dataPartitions.RLock()
 	defer vol.dataPartitions.RUnlock()
@@ -607,6 +617,16 @@ func (vol *Vol) cloneDataPartitionMap() (dps map[uint64]*DataPartition) {
 		dps[dp.PartitionID] = dp
 	}
 	return
+}
+
+func (vol *Vol) setDpRdOnly() {
+	vol.dataPartitions.RLock()
+	defer vol.dataPartitions.RUnlock()
+	for _, dp := range vol.dataPartitions.partitionMap {
+		if dp.Status != proto.Unavailable {
+			dp.Status = proto.ReadOnly
+		}
+	}
 }
 
 func (vol *Vol) setStatus(status uint8) {
@@ -1158,7 +1178,12 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, 
 }
 
 func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64) (err error) {
-	if c.DisableAutoAllocate || vol.Forbidden {
+	if c.DisableAutoAllocate {
+		err = errors.NewErrorf("cluster auto allocate is disable")
+		return
+	}
+	if vol.Forbidden {
+		err = errors.NewErrorf("volume %v is forbidden", vol.Name)
 		return
 	}
 

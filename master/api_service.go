@@ -239,6 +239,12 @@ func (m *Server) forbidVolume(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	if status {
+		// set data partition status to write only
+		vol.setDpRdOnly()
+		// set meta partition status to read only
+		vol.setMpRdOnly()
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume forbidden to (%v) success", status)))
 }
 
