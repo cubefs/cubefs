@@ -290,7 +290,7 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64) (doSplit bool) {
+func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64, forbiddenVol bool) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
 
@@ -332,7 +332,7 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		}
 	}
 
-	if mp.PartitionID >= maxPartitionID && mp.Status == proto.ReadOnly {
+	if mp.PartitionID >= maxPartitionID && mp.Status == proto.ReadOnly && !forbiddenVol {
 		mp.Status = proto.ReadWrite
 	}
 
