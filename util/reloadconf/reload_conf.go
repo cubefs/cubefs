@@ -31,7 +31,7 @@ import (
 // ReloadConf loads remote configuration change dynamically
 type ReloadConf struct {
 	ConfName      string
-	ReloadMs      int
+	ReloadSec     int
 	RequestRemote func() ([]byte, error)
 
 	md5sum []byte
@@ -146,11 +146,11 @@ func StartReload(cfg *ReloadConf, reload func(data []byte) error) (err error) {
 		return
 	}
 
-	if cfg.ReloadMs == 0 {
+	if cfg.ReloadSec == 0 {
 		return
 	}
 	go func() {
-		dur := time.Duration(cfg.ReloadMs) * time.Millisecond
+		dur := time.Duration(cfg.ReloadSec) * time.Second
 		for range time.Tick(dur) {
 			err := cfg.reload(reload)
 			if err != nil {

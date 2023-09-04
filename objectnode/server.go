@@ -118,16 +118,19 @@ const (
 	// define thread numbers for writing and reading ebs
 	ebsWriteThreads = "bStoreWriteThreads"
 	ebsReadThreads  = "bStoreReadThreads"
+
+	// s3 QoS config refresh interval
+	s3QoSRefreshIntervalSec = "s3QoSRefreshIntervalSec"
 )
 
 // Default of configuration value
 const (
-	defaultListen                = "80"
-	defaultCacheRefreshInterval  = 10 * 60
-	defaultMaxDentryCacheNum     = 1000000
-	defaultMaxInodeAttrCacheNum  = 1000000
-	defaultS3QoSReloadIntervalMs = 300 * 1000
-	defaultS3QoSConfName         = "s3qosInfo.conf"
+	defaultListen                 = "80"
+	defaultCacheRefreshInterval   = 10 * 60
+	defaultMaxDentryCacheNum      = 1000000
+	defaultMaxInodeAttrCacheNum   = 1000000
+	defaultS3QoSReloadIntervalSec = 300
+	defaultS3QoSConfName          = "s3qosInfo.conf"
 	// ebs
 	MaxSizePutOnce = int64(1) << 23
 )
@@ -311,7 +314,7 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	// s3 api qos info
 	reloadConf := &reloadconf.ReloadConf{
 		ConfName:      defaultS3QoSConfName,
-		ReloadMs:      defaultS3QoSReloadIntervalMs,
+		ReloadSec:     cfg.GetIntWithDefault(s3QoSRefreshIntervalSec, defaultS3QoSReloadIntervalSec),
 		RequestRemote: o.requestRemote,
 	}
 
