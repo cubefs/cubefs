@@ -4,6 +4,7 @@ import os
 from functools import wraps
 
 import torch
+import xxhash as xxhash
 
 from cube_torch.cube_batch_download import init_cube_batch_downloader
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
@@ -49,6 +50,8 @@ def intercept_read(func):
     return wrapper
 
 
+
+
 class CubeFile(io.FileIO):
     @property
     def name(self):
@@ -69,11 +72,11 @@ class CubeFile(io.FileIO):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
+        pass
 
     def close(self, *args, **kwargs):  # real signature unknown
         if self._is_cube_item:
-            return self._cube_item.close(*args, **kwargs)
+            self._cube_item.close(*args, **kwargs)
         return super().close()
 
     def flush(self, *args, **kwargs):  # real signature unknown
@@ -166,7 +169,7 @@ def intercept_torch_load(func):
 if __name__ == '__main__':
     global_cube_batch_downloader, jpeg_files = init_cube_batch_downloader()
     title_path = '/home/guowl/testdata/1.bertids'
-    global_cube_batch_downloader.add_cube_path_item(title_path)
+    global_cube_batch_downloader.add_test_env_item(title_path)
     open = intercept_open(open)
     file_path = jpeg_files[0]
     with open(file_path, 'rb') as f:

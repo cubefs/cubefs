@@ -1,9 +1,12 @@
 import asyncio
+import ctypes
 import io
 import json
+import multiprocessing
 import os
 
 import requests
+import xxhash
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
@@ -28,10 +31,13 @@ class CubeDownloadItem(io.BytesIO):
 
 
 class CubeBatchDownloader:
-    def __init__(self, url):
+    def __init__(self, url,dataset_size:int =1000000):
         self.batch_download_addr = url
         manager = get_manager()
-        self.cube_content_cache = manager.dict()
+        self.dataset_size=dataset_size
+        self.cube_content_cache = multiprocessing.Array(ctypes.py_object, dataset_size)
+        for i in range(dataset_size):
+            self.cube_content_cache[i]=None
         manager.cube_batch_downloader = self
         self.storage_session = requests.Session()
         retry_strategy = Retry(
@@ -57,9 +63,18 @@ class CubeBatchDownloader:
                 file_content = content[start:start + content_size]
                 start += content_size
                 cube_content_item = CubeDownloadItem(content_size, file_content, path)
-                self.cube_content_cache[path] = cube_content_item
+                self.add_cube_item(cube_content_item)
             else:
                 print('path:{}  content_size:{} Content is empty'.format(path,content_size))
+
+    def add_cube_item(self,cube_item:CubeDownloadItem):
+        slot_idx = self.get_slot(cube_item._file_path)
+        slot_val=self.cube_content_cache[slot_idx]
+        if  slot_val is None:
+            slot_val = [cube_item]
+            self.cube_content_cache[slot_idx] = slot_val
+        else:
+            slot_val.append(cube_item)
 
     def encode_by_paths(self, path_list):
         content = b''
@@ -75,6 +90,10 @@ class CubeBatchDownloader:
             content += len(file_content).to_bytes(8, byteorder='big')
             content += file_content
         return content
+
+    def get_slot(self, text):
+        hash_value = xxhash.xxh64(text).hexdigest()
+        return int(hash_value,16)%self.dataset_size
 
     def batch_download(self, index_list):
         try:
@@ -94,30 +113,31 @@ class CubeBatchDownloader:
 
 
     def get_cube_path_item(self, path):
-        if self.cube_content_cache.get(path) is None:
+        slot_idx=self.get_slot(path)
+        slot_value=self.cube_content_cache[slot_idx]
+        if slot_value is None:
             return None
-        try:
-            item=self.cube_content_cache.pop(path)
-            return item
-        except Exception:
-            return None
+        for index,v in enumerate(slot_value):
+            if v._file_path==path:
+                return slot_value.pop(index)
+        return None
 
-    def add_cube_path_item(self, file_path):
+    def add_test_env_item(self, file_path):
         from cube_torch.cube_file import builtins_open
         with builtins_open(file_path, 'rb') as f:
             data = f.read()
             size = len(data)
-            self.cube_content_cache[file_path] = CubeDownloadItem(size, data, file_path)
+            item=CubeDownloadItem(size, data, file_path)
+            self.add_cube_item(item)
 
     def add_cube_dataset(self, path_items):
         for item in path_items:
-            self.add_cube_path_item(item)
+            self.add_test_env_item(item)
 
 
 
 
 def init_cube_batch_downloader():
-    cube_downloader = CubeBatchDownloader("http://127.0.0.1")
     data_dir = '/home/guowl/testdata/data0/n01440764/'
     jpg_files = []
     for root, dirs, files in os.walk(data_dir):
@@ -129,6 +149,7 @@ def init_cube_batch_downloader():
                     break
         if len(jpg_files) >= 30:
             break
+    cube_downloader = CubeBatchDownloader("http://127.0.0.1",len(jpg_files))
     content = cube_downloader.encode_by_paths(jpg_files)
     cube_downloader.parse_content(content)
     return cube_downloader, jpg_files

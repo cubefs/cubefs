@@ -218,7 +218,7 @@ class CubeDataLoader(Generic[T_co]):
         notify_storage_worker_num= cube_dataset_info.get_notify_storage_worker_num()
         downloader = None
         if is_use_batch_download:
-            downloader = CubeBatchDownloader(batch_download_addr)
+            downloader = CubeBatchDownloader(batch_download_addr,self.real_sample_size)
             if is_test_env:
                 for items in cube_dataset_info.get_train_file_name_lists():
                     downloader.add_cube_dataset(items)
@@ -889,9 +889,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             return
         # Normal exit when last reference is gone / iterator is depleted.
         # See (1) and the second half of the note.
-
         self.unregiester_worker_pid()
-
         if not self._shutdown:
             self._shutdown = True
             try:
@@ -911,13 +909,15 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     self._worker_result_queue.cancel_join_thread()
                     self._worker_result_queue.close()
                 self._storage_event.set()
-                self._storage_thread.join()
+                self._storage_thread.join(timeout=0.1)
 
                 self._loadindex_event.set()
-                self._loadindex_thread.join()
+                self._loadindex_thread.join(timeout=0.1)
 
                 # Exit workers now.
+
                 self._workers_done_event.set()
+
                 for worker_id in range(len(self._workers)):
                     # Get number of workers from `len(self._workers)` instead of
                     # `self._num_workers` in case we error before starting all
@@ -930,11 +930,12 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     # We should be able to join here, but in case anything went
                     # wrong, we set a timeout and if the workers fail to join,
                     # they are killed in the `finally` block.
-                    w.join(timeout=_utils.MP_STATUS_CHECK_INTERVAL)
+                    w.join(timeout=0.01)
 
                 for q in self._index_queues:
                     q.cancel_join_thread()
                     q.close()
+
             finally:
                 # Even though all this function does is putting into queues that
                 # we have called `cancel_join_thread` on, weird things can

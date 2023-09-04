@@ -10,11 +10,11 @@ import logging
 import queue
 import random
 import time
-from dataclasses import dataclass
 from typing import Union
 
 import requests
 import torch
+from dataclasses import dataclass
 from torch._utils import ExceptionWrapper
 from torch.utils.data import _DatasetKind
 
@@ -158,13 +158,8 @@ def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr,
             continue
 
 
-
-
-
-
 def get_cube_batch_downloader_key(dataset_id):
     return "{}_batch_downloader".format(dataset_id)
-
 
 def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, dataset_id, event):
     storage_seesion = requests.Session()
@@ -179,7 +174,7 @@ def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_bat
             if is_use_batch_download:
                 downloader.batch_download_async(index_list)
             else:
-                _post_to_storage(index_list, cube_prefetch_addr, storage_seesion)
+                _post_to_storage_async(index_list, cube_prefetch_addr, storage_seesion)
         except queue.Empty:
             continue
         except KeyboardInterrupt:
@@ -283,7 +278,6 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
 
             data_queue.put((idx, data))
             del data, idx, index, r  # save memory
-
     except KeyboardInterrupt:
         pass
 
