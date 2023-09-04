@@ -44,6 +44,14 @@ The monitoring metrics reported by the `Master` module mainly include the health
 | cfs_master_vol_total_GB{volName="xx"}                  | Capacity of the specified volume                                             |
 | cfs_master_vol_usage_ratio{volName="xx"}               | Usage rate of the specified volume                                           |
 | cfs_master_vol_used_GB{volName="xx"}                   | Used capacity of the specified volume                                        |
+| cfs_master_nodeset_data_total_GB{nodeset="xx"}         | The sum of the total space of all data nodes on the specified nodeset        |
+| cfs_master_nodeset_data_usage_ratio{nodeset="xx"}      | The used data space ratio on the specified nodeset                           |
+| cfs_master_nodeset_data_used_GB{nodeset="xx"}          | The sum of available space of all data nodes on the specified nodeset        |
+| cfs_master_nodeset_dp_replica_count{nodeset="xx"}      | The number of data partition replicas on the specified nodeset               |
+| cfs_master_nodeset_meta_total_GB{nodeset="xx"}         | The sum of the total space of all meta nodes on the specified nodeset        |
+| cfs_master_nodeset_meta_usage_ratio{nodeset="xx"}      | The used meta space ratio on the specified nodeset                           |
+| cfs_master_nodeset_meta_used_GB{nodeset="xx"}          | The sum of available space of all meta nodes on the specified nodeset        |
+| cfs_master_nodeset_mp_replica_count{nodeset="xx"}      | The number of meta partition replicas on the specified nodeset               |
 
 ## MetaNode
 

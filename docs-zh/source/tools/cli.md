@@ -20,7 +20,7 @@
 在 `cubefs/cli` 目录下，执行命令 `./cfs-cli --help` 或 `./cfs-cli -h`
 ，可获取CLI的帮助文档。
 
-CLI主要分为10类管理命令：
+CLI主要分为11类管理命令：
 
 | 命令                    | 描述         |
 |-----------------------|------------|
@@ -33,7 +33,8 @@ CLI主要分为10类管理命令：
 | cfs-cli completion    | 生成自动补全命令脚本 |
 | cfs-cli volume, vol   | 卷管理        |
 | cfs-cli user          | 用户管理       |
-|cfs-cli quota          | 目录配额管理   |
+| cfs-cli nodeset       | nodeset管理  |
+| cfs-cli quota         | 目录配额管理     |
 ### 集群管理
 
 ``` bash
@@ -205,6 +206,26 @@ Flags：
     --secret-key string                     #更新后的secret key取值
     --user-type string                      #更新后的用户类型，可选项为normal或admin
     -y, --yes                               #跳过所有问题并设置回答为"yes"
+```
+
+### nodeset管理
+``` bash
+./cfs-cli nodeset info [NODESET ID]                #获取nodeset [NODESET ID]的信息
+```
+
+``` bash
+./cfs-cli nodeset list                             #列出所有nodeset
+Flags:
+  -h, --help               help for list
+      --zone-name string   List nodeSets in the specified zone
+```
+
+``` bash
+./cfs-cli nodeset update [NODESET ID] [flags]      #更新nodeset [NODESET ID]的信息
+Flags:
+      --dataNodeSelector string   Set the node select policy(datanode) for specify nodeset
+  -h, --help                      help for update
+      --metaNodeSelector string   Set the node select policy(metanode) for specify nodeset
 ```
 
 

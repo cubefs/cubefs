@@ -16,7 +16,7 @@ At the same time, a configuration file named `.cfs-cli.json` will be generated i
 
 In the `cubefs/cli` directory, run the command `./cfs-cli --help` or `./cfs-cli -h` to get the CLI help document.
 
-The CLI is mainly divided into six types of management commands:
+The CLI is mainly divided into 11 types of management commands:
 
 | Command               | Description                                  |
 |-----------------------|----------------------------------------------|
@@ -29,6 +29,8 @@ The CLI is mainly divided into six types of management commands:
 | cfs-cli completion    | Generate automatic completion command script |
 | cfs-cli volume, vol   | Volume management                            |
 | cfs-cli user          | User management                              |
+| cfs-cli nodeset       | Nodeset management                           |
+| cfs-cli quota         | Quota management                             |
 
 ### Cluster Management
 
@@ -201,6 +203,26 @@ Flags：
     --secret-key string                     # The updated secret key value.
     --user-type string                      # The updated user type, optional values are normal or admin.
     -y, --yes                               # Skip all questions and set the answer to "yes".
+```
+
+### Nodeset Management
+``` bash
+./cfs-cli nodeset info [NODESET ID]                # Get information of nodeset [NODESET ID]
+```
+
+``` bash
+./cfs-cli nodeset list                             # Get a list of all nodesets
+Flags:
+  -h, --help               help for list
+      --zone-name string   List nodeSets in the specified zone
+```
+
+``` bash
+./cfs-cli nodeset update [NODESET ID] [flags]      # Update the information of nodeset [NODESET ID]
+Flags:
+      --dataNodeSelector string   Set the node select policy(datanode) for specify nodeset
+  -h, --help                      help for update
+      --metaNodeSelector string   Set the node select policy(metanode) for specify nodeset
 ```
 
 ### Erasure Coding Subsystem Management
