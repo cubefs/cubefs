@@ -384,6 +384,19 @@ type VolumeVerStrategy struct {
 	UTime       time.Time
 }
 
+func (v *VolumeVerStrategy) GetPeriodic() int {
+	return v.Periodic
+}
+
+func (v *VolumeVerStrategy) GetPeriodicSecond() int {
+	// return v.Periodic*24*3600
+	return v.Periodic * 3600
+}
+
+func (v *VolumeVerStrategy) TimeUp(curTime time.Time) bool {
+	return v.UTime.Add(time.Second * time.Duration(v.GetPeriodicSecond())).Before(curTime)
+}
+
 type VolumeVerInfo struct {
 	Name             string
 	VerSeq           uint64

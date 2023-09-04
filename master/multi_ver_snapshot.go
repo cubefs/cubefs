@@ -178,17 +178,17 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 	defer verMgr.Unlock()
 
 	log.LogDebugf("vol %v SetVerStrategy.keepCnt %v need in [1-%v], peroidic %v need in [1-%v], enable %v", verMgr.vol.Name,
-		strategy.KeepVerCnt, MaxSnapshotCount, strategy.Periodic, 24*7, strategy.Enable)
+		strategy.KeepVerCnt, MaxSnapshotCount, strategy.GetPeriodic(), 24*7, strategy.Enable)
 
 	if strategy.Enable == true {
-		if strategy.KeepVerCnt > MaxSnapshotCount || strategy.Periodic > 24*7 || strategy.KeepVerCnt < 0 || strategy.Periodic < 0 {
+		if strategy.KeepVerCnt > MaxSnapshotCount || strategy.GetPeriodic() > 24*7 || strategy.KeepVerCnt < 0 || strategy.GetPeriodic() < 0 {
 			return fmt.Errorf("SetVerStrategy.vol %v keepCnt %v need in [1-%v], peroidic %v need in [1-%v] not qualified",
-				verMgr.vol.Name, strategy.KeepVerCnt, MaxSnapshotCount, strategy.Periodic, 24*7)
+				verMgr.vol.Name, strategy.KeepVerCnt, MaxSnapshotCount, strategy.GetPeriodic(), 24*7)
 		}
 		if strategy.KeepVerCnt != 0 {
 			verMgr.strategy.KeepVerCnt = strategy.KeepVerCnt
 		}
-		if strategy.Periodic != 0 {
+		if strategy.GetPeriodic() != 0 {
 			verMgr.strategy.Periodic = strategy.Periodic
 		}
 		if isForce {
@@ -206,17 +206,17 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 func (verMgr *VolVersionManager) checkSnapshotStrategy() {
 	log.LogDebugf("checkSnapshotStrategy enter")
 	verMgr.RLock()
-	if verMgr.strategy.Periodic == 0 || verMgr.strategy.Enable == false { // strategy not be set
+	if verMgr.strategy.GetPeriodicSecond() == 0 || verMgr.strategy.Enable == false { // strategy not be set
 		verMgr.RUnlock()
 		return
 	}
 	verMgr.RUnlock()
 	curTime := time.Now()
-	if verMgr.strategy.UTime.Add(time.Minute * time.Duration(verMgr.strategy.Periodic)).Before(curTime) {
+	if verMgr.strategy.TimeUp(curTime) {
 		log.LogDebugf("checkSnapshotStrategy.vol %v try create snapshot", verMgr.vol.Name)
 		if _, err := verMgr.createVer2PhaseTask(verMgr.c, uint64(time.Now().UnixMicro()), proto.CreateVersion, verMgr.strategy.ForceUpdate); err != nil {
 			verEle := verMgr.multiVersionList[len(verMgr.multiVersionList)-1]
-			if int64(verEle.Ver)/1e6+int64(verMgr.strategy.Periodic*24*3600) < curTime.Unix() {
+			if int64(verEle.Ver)/1e6+int64(verMgr.strategy.GetPeriodicSecond()) < curTime.Unix() {
 				msg := fmt.Sprintf("[checkSnapshotStrategy] last version %v status %v for %v hours than 2times periodic", verEle.Ver, verEle.Status, 2*verMgr.strategy.Periodic)
 				Warn(verMgr.c.Name, msg)
 			}
@@ -234,9 +234,9 @@ func (verMgr *VolVersionManager) checkSnapshotStrategy() {
 		if verMgr.multiVersionList[0].Status != proto.VersionNormal {
 			log.LogDebugf("checkSnapshotStrategy.vol %v oldest ver %v status %v",
 				verMgr.vol.Name, verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status)
-			if verMgr.multiVersionList[0].DelTime+int64(verMgr.strategy.Periodic*24*3600) < curTime.Unix() {
+			if verMgr.multiVersionList[0].DelTime+int64(verMgr.strategy.GetPeriodicSecond()) < curTime.Unix() {
 				msg := fmt.Sprintf("[checkSnapshotStrategy] version %v in deleting status for %v hours than configure periodic [%v] hours",
-					verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status, verMgr.strategy.Periodic)
+					verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status, verMgr.strategy.GetPeriodic())
 				Warn(verMgr.c.Name, msg)
 			}
 			verMgr.RUnlock()
