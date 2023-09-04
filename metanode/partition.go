@@ -88,7 +88,7 @@ type MetaPartitionConfig struct {
 	AfterStop     func()              `json:"-"`
 	RaftStore     raftstore.RaftStore `json:"-"`
 	ConnPool      *util.ConnectPool   `json:"-"`
-	Forbidden     bool                `json:"forbidden"`
+	Forbidden     bool                `json:"-"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
