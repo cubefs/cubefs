@@ -206,7 +206,7 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList) 
 		if !exist {
 			err = fmt.Errorf("[checkVerList] vol %v mp %v not found %v in master list", mp.config.VolName, mp.config.PartitionId, info2.Ver)
 			exporter.Warning(err.Error())
-			log.LogError(err)
+			log.LogWarn(err)
 		}
 	}
 
