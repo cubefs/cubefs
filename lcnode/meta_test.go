@@ -22,7 +22,7 @@ func NewMockMetaWrapper() *MockMetaWrapper {
 	return &MockMetaWrapper{}
 }
 
-func (*MockMetaWrapper) ReadDirLimitByVer(parentID uint64, from string, limit uint64, verSeq uint64, is2nd bool) ([]proto.Dentry, error) {
+func (*MockMetaWrapper) ReadDirLimitForSnapShotClean(parentID uint64, from string, limit uint64, verSeq uint64, isDir bool) ([]proto.Dentry, error) {
 	return nil, nil
 }
 

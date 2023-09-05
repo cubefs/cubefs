@@ -677,18 +677,18 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	return
 }
 
-func (s *Streamer) ExistExtentNeedMoreWork(offset, size int) (find bool) {
+func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (find bool) {
 	storeMode := s.GetStoreMod(offset, size)
 
 	// && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset)  delete ??
 	if storeMode == proto.NormalExtentType && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset) {
 		if currentEK := s.extents.GetEndForAppendWrite(uint64(offset), s.verSeq, false); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
 			if currentEK.GetSeq() != s.verSeq {
-				log.LogDebugf("doAppendWrite. exist ek seq %v vs request seq %v", currentEK.GetSeq(), s.verSeq)
+				log.LogDebugf("tryInitExtentHandlerByLastEk. exist ek seq %v vs request seq %v", currentEK.GetSeq(), s.verSeq)
 				find = true
 			}
 
-			log.LogDebugf("doAppendWrite: found ek in ExtentCache, extent_id(%v) offset(%v) size(%v), ekoffset(%v) eksize(%v) exist ek seq %v vs request seq %v",
+			log.LogDebugf("tryInitExtentHandlerByLastEk: found ek in ExtentCache, extent_id(%v) offset(%v) size(%v), ekoffset(%v) eksize(%v) exist ek seq %v vs request seq %v",
 				currentEK.ExtentId, offset, size, currentEK.FileOffset, currentEK.Size, currentEK.GetSeq(), s.verSeq)
 			_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
 			if pidErr == nil {
@@ -709,13 +709,13 @@ func (s *Streamer) ExistExtentNeedMoreWork(offset, size int) (find bool) {
 				}
 				s.handler = handler
 				s.dirty = false
-				log.LogDebugf("doAppendWrite: currentEK.PartitionId(%v) found", currentEK.PartitionId)
+				log.LogDebugf("tryInitExtentHandlerByLastEk: currentEK.PartitionId(%v) found", currentEK.PartitionId)
 			} else {
-				log.LogDebugf("doAppendWrite: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
+				log.LogDebugf("tryInitExtentHandlerByLastEk: currentEK.PartitionId(%v) not found", currentEK.PartitionId)
 			}
 
 		} else {
-			log.LogDebugf("doAppendWrite: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
+			log.LogDebugf("tryInitExtentHandlerByLastEk: not found ek in ExtentCache, offset(%v) size(%v)", offset, size)
 		}
 	}
 
@@ -735,8 +735,8 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, che
 	log.LogDebugf("doAppendWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 	if proto.IsHot(s.client.volumeType) {
 		if checkExist {
-			if find := s.ExistExtentNeedMoreWork(offset, size); find {
-				log.LogDebugf("doAppendWrite enter: ino(%v) ExistExtentNeedMoreWork worked", s.inode)
+			if find := s.tryInitExtentHandlerByLastEk(offset, size); find {
+				log.LogDebugf("doAppendWrite enter: ino(%v) tryInitExtentHandlerByLastEk worked", s.inode)
 				status = StreamerRetry
 				return
 			}
