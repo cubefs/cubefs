@@ -711,14 +711,12 @@ func (dp *DataPartition) LoadAppliedID() (applied uint64, err error) {
 
 func (dp *DataPartition) TruncateRaftWAL(id uint64) (err error) {
 	if dp.raftPartition != nil {
-		var release = dp.lockPersist()
-		defer release()
-		if snap, success := dp.applyStatus.AdvanceTruncated(id); success {
-			if err = dp.persistMetadata(&snap); err != nil {
+		if _, success := dp.applyStatus.AdvanceTruncated(id); success {
+			if err = dp.persist(nil); err != nil {
 				log.LogErrorf("partition[%v] persisted metadata before truncate raft WAL failed: %v", dp.partitionID, id)
 				return
 			}
-			dp.raftPartition.Truncate(snap.Truncated())
+			dp.raftPartition.Truncate(id)
 			if log.IsInfoEnabled() {
 				log.LogInfof("partition[%v] advance Raft WAL truncate to [%v]", dp.partitionID, id)
 			}

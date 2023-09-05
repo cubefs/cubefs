@@ -33,6 +33,7 @@ func (dp *DataPartition) Flush() (err error) {
 // 3. 持久化Applied Index水位信息
 // 4. 持久化DP的META信息, 主要用于持久化和Applied Index对应的LastTruncateID。
 // 若status参数为nil，则会使用调用该方法时WALApplyStatus状态
+
 func (dp *DataPartition) persist(status *WALApplyStatus) (err error) {
 	var release = dp.lockPersist()
 	defer release()
