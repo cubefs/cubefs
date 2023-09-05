@@ -36,11 +36,11 @@ const (
 )
 
 var putApi = map[string]string{
-	PUT_OBJECT:       PUT,
-	COPY_OBJECT:      PUT,
-	POST_OBJECT:      PUT,
-	UPLOAD_PART:      PUT,
-	UPLOAD_PART_COPY: PUT,
+	strings.ToLower(PUT_OBJECT):       PUT,
+	strings.ToLower(COPY_OBJECT):      PUT,
+	strings.ToLower(POST_OBJECT):      PUT,
+	strings.ToLower(UPLOAD_PART):      PUT,
+	strings.ToLower(UPLOAD_PART_COPY): PUT,
 }
 
 var listApi = map[string]string{
