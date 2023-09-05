@@ -55,7 +55,7 @@ def start_worker_test_concatDataset(i):
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
-            time.sleep(1)
+            time.sleep(2)
         epoch += 1
 
 
