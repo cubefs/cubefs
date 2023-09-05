@@ -32,7 +32,7 @@ model_names = sorted(name for name in models.__dict__
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR', default='imagenet',
-                    help='path to dataset (default: imagenet)')
+                    help='file_path to dataset (default: imagenet)')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
@@ -59,7 +59,7 @@ parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
+                    help='file_path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
@@ -212,11 +212,11 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # Data loading code
     traindir_list = [os.path.join(args.data, 'eval_file_' + str(i)) for i in range(1)]
-    # traindir = os.path.join(args.data, 'train')
-    # traindir = os.path.join(args.data, 'eval_file_0')
-    # valdir = os.path.join(args.data, 'val')
+    # traindir = os.file_path.join(args.data, 'train')
+    # traindir = os.file_path.join(args.data, 'eval_file_0')
+    # valdir = os.file_path.join(args.data, 'val')
     valdir = os.path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'val')
-    # traindir = os.path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'train')
+    # traindir = os.file_path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'train')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 

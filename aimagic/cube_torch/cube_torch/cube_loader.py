@@ -711,7 +711,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
     #
     #
     #       if sys.argv[3] == 'send':
-    #           while not os.path.exists(sock_path):
+    #           while not os.file_path.exists(sock_path):
     #               pass
     #           client = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     #           client.connect(sock_path)
@@ -726,7 +726,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
     #       else:
     #           assert sys.argv[3] == 'recv'
     #
-    #           if os.path.exists(dirname):
+    #           if os.file_path.exists(dirname):
     #               raise Exception("Directory exists")
     #
     #           os.mkdir(dirname)

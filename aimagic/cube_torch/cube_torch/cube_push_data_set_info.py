@@ -38,7 +38,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.dataset_dir = "{}/{}".format(self.dataset_config_dir, ".dataset")
         if not os.path.exists(self.dataset_dir):
             os.makedirs(self.dataset_dir, exist_ok=True)
-        self.clean_old_dataset_file(self.dataset_dir)
+        # self.clean_old_dataset_file(self.dataset_dir)
         self.get_train_file_name_lists()
         t = threading.Thread(target=self._renew_ttl_loop, daemon=True)
         t.daemon = True
@@ -168,7 +168,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def renew_ttl_on_prefetch_files(self):
         for train_name, dataset_cnt in self.cube_prefetch_file_list:
-            url = "{}?path={}&ttl={}&dataset_cnt={}".format(self.prefetch_file_url, train_name, self.cube_prefetch_ttl,
+            url = "{}?file_path={}&ttl={}&dataset_cnt={}".format(self.prefetch_file_url, train_name, self.cube_prefetch_ttl,
                                                             self._dataset_cnt)
             try:
                 response = self.storage_seesion.get(url, timeout=1)
