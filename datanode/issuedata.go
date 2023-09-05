@@ -283,6 +283,9 @@ func (p *IssueProcessor) fetchRemote(host string, extentID, offset, size uint64,
 		}
 		return nil, errors.New(string(packet.Data[:packet.Size]))
 	}
+	if uint64(packet.Size) < size {
+		return nil, innerErrorFetchDoData
+	}
 	return packet.Data[:packet.Size], nil
 }
 
@@ -315,6 +318,9 @@ func (p *IssueProcessor) fetchRemoteTiny(host string, extentID, offset, size uin
 	}
 	if isEmptyResponse := len(packet.Arg) > 0 && packet.Arg[0] == EmptyResponse; isEmptyResponse {
 		return nil, nil
+	}
+	if uint64(packet.Size) < size {
+		return nil, innerErrorFetchDoData
 	}
 	return packet.Data[:packet.Size], nil
 }
