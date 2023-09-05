@@ -17,7 +17,7 @@ package lcnode
 import "github.com/cubefs/cubefs/proto"
 
 type MetaWrapper interface {
-	ReadDirLimitByVer(parentID uint64, from string, limit uint64, verSeq uint64, is2nd bool) ([]proto.Dentry, error)
+	ReadDirLimitForSnapShotClean(parentID uint64, from string, limit uint64, verSeq uint64, isDir bool) ([]proto.Dentry, error)
 	Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64) (*proto.InodeInfo, error)
 	Lookup_ll(parentID uint64, name string) (inode uint64, mode uint32, err error)
 	BatchInodeGet(inodes []uint64) []*proto.InodeInfo

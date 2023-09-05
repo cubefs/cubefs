@@ -35,8 +35,8 @@ const (
 )
 
 const (
-	FlagsVerDel int = 1 << iota
-	FlagsVerDelDir
+	FlagsSnapshotDel int = 1 << iota
+	FlagsSnapshotDelDir
 	FlagsVerAll
 )
 

@@ -203,18 +203,18 @@ func (s *SnapshotScanner) handlVerDelDepthFirst(dentry *proto.ScanDentry) {
 		done := false
 
 		for !done {
-			children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(defaultReadDirLimit), s.getTaskVerSeq(), onlyDir)
+			children, err = s.mw.ReadDirLimitForSnapShotClean(dentry.Inode, marker, uint64(defaultReadDirLimit), s.getTaskVerSeq(), onlyDir)
 			if err != nil && err != syscall.ENOENT {
-				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
+				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, s.getTaskVerSeq(), err)
 				return
 			}
-			log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimitByVer parent[%v] maker[%v] verSeq[%v] children[%v]",
+			log.LogDebugf("action[handlVerDelDepthFirst] ReadDirLimitForSnapShotClean parent[%v] maker[%v] verSeq[%v] children[%v]",
 				dentry.Inode, marker, s.getTaskVerSeq(), len(children))
 
 			if err == syscall.ENOENT {
 				done = true
-				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
+				log.LogErrorf("action[handlVerDelDepthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 					dentry.Inode, marker, s.getTaskVerSeq(), err)
 				break
 			}
@@ -317,18 +317,18 @@ func (s *SnapshotScanner) handlVerDelBreadthFirst(dentry *proto.ScanDentry) {
 	done := false
 
 	for !done {
-		children, err = s.mw.ReadDirLimitByVer(dentry.Inode, marker, uint64(defaultReadDirLimit), s.getTaskVerSeq(), false)
+		children, err = s.mw.ReadDirLimitForSnapShotClean(dentry.Inode, marker, uint64(defaultReadDirLimit), s.getTaskVerSeq(), false)
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("action[handlVerDelBreadthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
+			log.LogErrorf("action[handlVerDelBreadthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 				dentry.Inode, marker, s.getTaskVerSeq(), err)
 			return
 		}
-		log.LogDebugf("action[handlVerDelBreadthFirst] ReadDirLimitByVer parent[%v] maker[%v] verSeq[%v] children[%v]",
+		log.LogDebugf("action[handlVerDelBreadthFirst] ReadDirLimitForSnapShotClean parent[%v] maker[%v] verSeq[%v] children[%v]",
 			dentry.Inode, marker, s.getTaskVerSeq(), len(children))
 
 		if err == syscall.ENOENT {
 			done = true
-			log.LogErrorf("action[handlVerDelBreadthFirst] ReadDirLimitByVer failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
+			log.LogErrorf("action[handlVerDelBreadthFirst] ReadDirLimitForSnapShotClean failed, parent[%v] maker[%v] verSeq[%v] err[%v]",
 				dentry.Inode, marker, s.getTaskVerSeq(), err)
 			break
 		}

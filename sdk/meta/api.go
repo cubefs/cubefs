@@ -1328,7 +1328,7 @@ func (mw *MetaWrapper) ReadDir_ll(parentID uint64) ([]proto.Dentry, error) {
 }
 
 // Read limit count dentries with parentID, start from string
-func (mw *MetaWrapper) ReadDirLimitByVer(parentID uint64, from string, limit uint64, verSeq uint64, is2nd bool) ([]proto.Dentry, error) {
+func (mw *MetaWrapper) ReadDirLimitForSnapShotClean(parentID uint64, from string, limit uint64, verSeq uint64, idDir bool) ([]proto.Dentry, error) {
 	if verSeq == 0 {
 		verSeq = math.MaxUint64
 	}
@@ -1338,16 +1338,16 @@ func (mw *MetaWrapper) ReadDirLimitByVer(parentID uint64, from string, limit uin
 		return nil, syscall.ENOENT
 	}
 	var opt uint8
-	opt |= uint8(proto.FlagsVerDel)
-	if is2nd {
-		opt |= uint8(proto.FlagsVerDelDir)
+	opt |= uint8(proto.FlagsSnapshotDel)
+	if idDir {
+		opt |= uint8(proto.FlagsSnapshotDelDir)
 	}
 	status, children, err := mw.readDirLimit(parentMP, parentID, from, limit, verSeq, opt)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
 	for _, den := range children {
-		log.LogDebugf("ReadDirLimitByVer. get dentry %v", den)
+		log.LogDebugf("ReadDirLimitForSnapShotClean. get dentry %v", den)
 	}
 	return children, nil
 }
