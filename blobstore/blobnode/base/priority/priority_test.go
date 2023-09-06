@@ -21,11 +21,15 @@ import (
 )
 
 func TestGetpriority(t *testing.T) {
-	pri := GetPriority(10)
-	require.Equal(t, level4, pri)
-	require.Equal(t, "level4", pri.String())
+	pri := GetPriority(0)
+	require.Equal(t, normal, pri)
+	require.Equal(t, "normal", pri.String())
+
+	pri = GetPriority(10)
+	require.Equal(t, background, pri)
+	require.Equal(t, "background", pri.String())
 
 	pri = GetPriority(1)
-	require.Equal(t, level1, pri)
-	require.Equal(t, "level1", pri.String())
+	require.Equal(t, background, pri)
+	require.Equal(t, "background", pri.String())
 }

@@ -8,7 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
+	"github.com/cubefs/cubefs/blobstore/common/iostat"
 	"github.com/dustin/go-humanize"
+
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -16,89 +19,136 @@ import (
 
 func TestNewQosManager(t *testing.T) {
 	ctx := context.Background()
+	// statGet, _ := flow.NewIOFlowStat("110", true)
+	ioStat, _ := iostat.StatInit("", 0, true)
+	iom := &flow.IOFlowStat{}
+	iom[0] = ioStat
+	diskView := flow.NewDiskViewer(iom)
 	conf := Config{
-		DiskBandwidthMBPS: 1000,
-		DiskIOPS:          1000,
-		LevelConfigs: map[string]ParaConfig{
-			"level1": {
-				Iops:      100,
-				Bandwidth: 100,
-				Factor:    0.8,
-			},
-			"level2": {
-				Iops:      100,
-				Bandwidth: 100,
-				Factor:    0.8,
-			},
-		},
-		DiskViewer: nil,
-		StatGetter: nil,
+		DiskBandwidthMBPS: 200,
+		BackgroundMBPS:    1,
+		DiskViewer:        diskView,
+		StatGetter:        iom,
+		ReadQueueLen:      100,
+		WriteQueueLen:     100,
+		MaxWaitCount:      2 * 100,
 	}
-	qos, err := NewQosManager(conf)
+	qos, err := NewIoQueueQos(conf)
 	require.NoError(t, err)
+	defer qos.Close()
 
 	f, err := ioutil.TempFile(os.TempDir(), "TestQos")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
+	defer f.Close()
 
-	reader := strings.NewReader("test qos")
-	writer := qos.Writer(ctx, bnapi.NormalIO, f)
-	n, err := io.Copy(writer, reader)
-	require.Equal(t, int64(8), n)
-	require.NoError(t, err)
+	q, ok := qos.(*IoQueueQos)
+	require.True(t, ok)
 
-	rt := qos.ReaderAt(ctx, bnapi.NormalIO, f)
-	buf := make([]byte, 8)
-	_, err = rt.ReadAt(buf, 0)
-	require.NoError(t, err)
+	{
+		ok = q.TryAcquireIO(ctx, 1, WriteType)
+		require.True(t, ok)
+		defer q.ReleaseIO(1, WriteType)
+		reader := strings.NewReader("test qos")
+		writer := qos.Writer(ctx, bnapi.NormalIO, f)
+		n, err := io.Copy(writer, reader)
+		require.Equal(t, int64(8), n)
+		require.NoError(t, err)
+	}
 
-	wf, err := ioutil.TempFile(os.TempDir(), "TestQosReader")
-	require.NoError(t, err)
-	defer os.Remove(wf.Name())
-	r := qos.Reader(ctx, bnapi.NormalIO, f)
-	_, err = io.Copy(wf, r)
-	require.NoError(t, err)
-	wf.Close()
+	{
+		ok = q.TryAcquireIO(ctx, 1, ReadType)
+		require.True(t, ok)
+		defer q.ReleaseIO(1, ReadType)
+		rt := qos.ReaderAt(ctx, bnapi.NormalIO, f)
+		buf := make([]byte, 8)
+		_, err = rt.ReadAt(buf, 0)
+		require.NoError(t, err)
+	}
 
-	wt := qos.WriterAt(ctx, bnapi.NormalIO, f)
-	_, err = wt.WriteAt([]byte("hello"), 10)
-	require.NoError(t, err)
+	{
+		wf, err := ioutil.TempFile(os.TempDir(), "TestQosReader")
+		require.NoError(t, err)
+		defer os.Remove(wf.Name())
+		r := qos.Reader(ctx, bnapi.NormalIO, f)
+		_, err = io.Copy(wf, r)
+		require.NoError(t, err)
+		wf.Close()
+	}
 
-	f.Close()
+	{
+		wt := qos.WriterAt(ctx, bnapi.NormalIO, f)
+		_, err = wt.WriteAt([]byte("hello"), 10)
+		require.NoError(t, err)
+	}
+
+	{
+		require.Equal(t, int64(1*humanize.MiByte), q.conf.BackgroundMBPS)
+		conf.BackgroundMBPS = defaultBackgroundBandwidthMBPS
+		conf.DiskBandwidthMBPS = defaultMaxBandwidthMBPS
+		qos.ResetQosLimit(conf)
+		require.Equal(t, int64(defaultMaxBandwidthMBPS*humanize.MiByte), q.conf.DiskBandwidthMBPS)
+		require.Equal(t, int64(defaultBackgroundBandwidthMBPS*humanize.MiByte), q.conf.BackgroundMBPS)
+	}
 }
 
-func TestThresholdReset(t *testing.T) {
+func TestQosTryAcquire(t *testing.T) {
+	ctx := context.Background()
+	statGet, _ := flow.NewIOFlowStat("110", true)
+	diskView := flow.NewDiskViewer(statGet)
 	conf := Config{
-		DiskBandwidthMBPS: 1000,
-		DiskIOPS:          1000,
-		LevelConfigs: map[string]ParaConfig{
-			"level1": {
-				Iops:      100,
-				Bandwidth: 100,
-				Factor:    0.8,
-			},
-			"level2": {
-				Iops:      100,
-				Bandwidth: 100,
-				Factor:    0.8,
-			},
-		},
-		DiskViewer: nil,
-		StatGetter: nil,
+		DiskBandwidthMBPS: 100,
+		BackgroundMBPS:    10,
+		DiskViewer:        diskView,
+		StatGetter:        statGet,
+		ReadQueueLen:      2,
+		WriteQueueLen:     2,
+		MaxWaitCount:      2 * 2,
+	}
+	qos, err := NewIoQueueQos(conf)
+	require.NoError(t, err)
+	defer qos.Close()
+
+	f, err := ioutil.TempFile(os.TempDir(), "TestQos")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+	q, ok := qos.(*IoQueueQos)
+	require.True(t, ok)
+
+	{
+		for i := 0; i < q.conf.MaxWaitCount; i++ {
+			ok = q.TryAcquireIO(ctx, 1, WriteType)
+			require.True(t, ok)
+		}
+
+		ok = q.TryAcquireIO(ctx, 1, WriteType)
+		require.False(t, ok)
+
+		for i := 0; i < q.conf.MaxWaitCount; i++ {
+			q.ReleaseIO(1, WriteType)
+		}
 	}
 
-	threshold := &Threshold{
-		ParaConfig: ParaConfig{
-			Iops:      5,
-			Bandwidth: 5,
-			Factor:    0.1,
-		},
-		DiskIOPS:      conf.DiskIOPS,
-		DiskBandwidth: conf.DiskBandwidthMBPS,
-	}
+	{
+		ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
-	threshold.reset("level1", conf)
-	require.Equal(t, int64(100), threshold.Iops)
-	require.Equal(t, int64(100*humanize.MiByte), threshold.Bandwidth)
-	require.Equal(t, 0.8, threshold.Factor)
+		for i := 0; i < q.conf.WriteQueueLen; i++ {
+			ok = q.TryAcquireIO(ctx, 1, WriteType)
+			require.True(t, ok)
+		}
+
+		// discard ratio
+		success := 0
+		for i := 0; i < 100; i++ {
+			ok = q.TryAcquireIO(ctx, 1, WriteType)
+			if ok {
+				success++
+			}
+		}
+		ratio := float64(success) / 10
+		t.Logf("success ration:%f", ratio)
+		require.Less(t, ratio, 1.0)
+		require.Less(t, 0.0, ratio)
+	}
 }
