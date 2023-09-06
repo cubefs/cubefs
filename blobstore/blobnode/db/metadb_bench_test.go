@@ -104,7 +104,7 @@ func BenchmarkKVDB_DirectPut(b *testing.B) {
 				Key:   []byte(key),
 				Value: value[:],
 			}
-			err = md.DirectPut(ctx, kv)
+			err = md.Put(ctx, kv)
 			require.NoError(b, err)
 		}(i)
 	}
@@ -205,7 +205,7 @@ func BenchmarkKVDB_DirectDelete(b *testing.B) {
 				Key:   []byte(key),
 				Value: value[:],
 			}
-			err = md.DirectPut(ctx, kv)
+			err = md.Put(ctx, kv)
 			require.NoError(b, err)
 		}(i)
 	}
@@ -219,7 +219,7 @@ func BenchmarkKVDB_DirectDelete(b *testing.B) {
 		go func(i int) {
 			defer wg.Done()
 			key := fmt.Sprintf("%s-%d", string(expectedKey), i)
-			err = md.DirectDelete(ctx, []byte(key))
+			err = md.Delete(ctx, []byte(key))
 			require.NoError(b, err)
 		}(i)
 	}
