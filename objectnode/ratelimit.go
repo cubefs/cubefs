@@ -199,7 +199,6 @@ func (r *UserRateMgr) QPSLimitAllowed(uid string) (bool, time.Duration) {
 	}
 	log.LogDebugf("QPSLimit: defaultQPSLimit[%d] usrQPSLimit[%d] uid[%s]", defaultQPSLimit, usrQPSLimit, uid)
 	qpsLimit := r.QPSLimit.Acquire(uid, qpsQuota)
-	defer r.QPSLimit.Release(uid)
 
 	return !qpsLimit.Limit(), 0
 }
@@ -234,7 +233,6 @@ func (r *UserRateMgr) GetResponseWriter(uid string, w io.Writer) io.Writer {
 	log.LogDebugf("WriterFlowCtrl: defaultBandWidthLimit[%d] usrBandWidthLimit[%d] uid[%s]", defaultBandWidthLimit, usrBandWidthLimit, uid)
 	rate, _ := convertUint64ToInt(bandWidthQuota)
 	flowCtrl := r.BandWidthLimit.Acquire(uid, rate)
-	defer r.BandWidthLimit.Release(uid)
 	w = flowctrl.NewRateWriterWithCtrl(w, flowCtrl)
 
 	return w
@@ -253,7 +251,6 @@ func (r *UserRateMgr) GetReader(uid string, reader io.Reader) io.Reader {
 	log.LogDebugf("ReaderFlowCtrl: defaultBandWidthLimit[%d] usrBandWidthLimit[%d] uid[%s]", defaultBandWidthLimit, usrBandWidthLimit, uid)
 	rate, _ := convertUint64ToInt(bandWidthQuota)
 	flowCtrl := r.BandWidthLimit.Acquire(uid, rate)
-	defer r.BandWidthLimit.Release(uid)
 	reader = flowctrl.NewRateReaderWithCtrl(reader, flowCtrl)
 
 	return reader
