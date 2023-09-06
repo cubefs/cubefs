@@ -50,7 +50,7 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 			stdout("%v\n", formatBadDiskTableHeader())
 
 			sort.SliceStable(infos.BadDisks, func(i, j int) bool {
-				return infos.BadDisks[i].Address < infos.BadDisks[i].Address
+				return infos.BadDisks[i].Address < infos.BadDisks[j].Address
 			})
 			for _, disk := range infos.BadDisks {
 				stdout("%v\n", formatBadDiskInfoRow(disk))
