@@ -160,8 +160,8 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	c.Unlock()
 	for k, e := range toEvicts {
 		_ = c.onDelete(e)
-		if log.IsWarnEnabled() {
-			log.LogWarnf("delete(%s) on lru full, len(%d) alloc(%d) max(%d)", k, c.lru.Len(), c.alloc, c.maxAlloc)
+		if log.IsInfoEnabled() {
+			log.LogInfof("delete(%s) on lru full, len(%d) alloc(%d) max(%d)", k, c.lru.Len(), c.alloc, c.maxAlloc)
 		}
 	}
 	return n, nil
@@ -182,7 +182,9 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 			c.Unlock()
 			return v.value, nil
 		}
-		log.LogWarnf("delete(%s) on get", key)
+		if log.IsInfoEnabled() {
+			log.LogInfof("delete(%s) on get", key)
+		}
 		e := c.deleteElement(ent)
 		c.Unlock()
 		_ = c.onDelete(e)
@@ -222,7 +224,9 @@ func (c *fCache) EvictAll() {
 func (c *fCache) Evict(key interface{}) bool {
 	c.Lock()
 	if ent, ok := c.items[key]; ok {
-		log.LogWarnf("delete(%s) manually", key)
+		if log.IsInfoEnabled() {
+			log.LogInfof("delete(%s) manually", key)
+		}
 		e := c.deleteElement(ent)
 		c.Unlock()
 		_ = c.onDelete(e)

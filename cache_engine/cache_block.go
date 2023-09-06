@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -49,8 +50,8 @@ type CacheBlock struct {
 	rootPath    string
 	filePath    string
 	modifyTime  int64
-	usedSize    int64
-	allocSize   int64
+	usedSize    int64 //usedSize是真实数据位在缓存块最后的位置，如果后面是空洞，则usedSize<allocSize
+	allocSize   int64 //allocSize是按文件逻辑Size计算得到的对应缓存块的大小
 	blockKey    string
 	readSource  ReadExtentData
 	cacheStat   int32
@@ -135,7 +136,7 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 }
 
 // Read reads data from an extent.
-func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64) (crc uint32, err error) {
+func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64, printSource func() string) (crc uint32, err error) {
 	if err = cb.waitCacheReady(ctx); err != nil {
 		return
 	}
@@ -143,8 +144,14 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 		return 0, fmt.Errorf("invalid read, offset:%d, allocSize:%d, usedSize:%d", offset, cb.allocSize, cb.usedSize)
 	}
 	realSize := cb.usedSize - offset
-	if realSize > size {
+	if realSize >= size {
 		realSize = size
+	} else {
+		if log.IsWarnEnabled() {
+			if strings.HasPrefix(cb.blockKey, "dcc_3vol") {
+				log.LogWarnf("action[Read] overflow read, cache block:%v, offset:%d, size:%d, usedSize:%d, allocSize:%d, request: \n%v", cb.blockKey, offset, size, cb.usedSize, cb.allocSize, printSource())
+			}
+		}
 	}
 	if _, err = cb.file.ReadAt(data[:realSize], offset); err != nil {
 		return
@@ -196,9 +203,11 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 		go cb.prepareSource(ctx, cancel, &wg, sourceTaskCh)
 	}
 	var stop bool
+	var sb = strings.Builder{}
 	for _, s := range sources {
 		select {
 		case sourceTaskCh <- s:
+			sb.WriteString(fmt.Sprintf("dp(%v) extent(%v) offset(%v) size(%v) fileOffset(%v) hosts(%v)\n", s.PartitionID, s.ExtentID, s.ExtentOffset, s.Size_, s.FileOffset, strings.Join(s.Hosts, ",")))
 		case <-ctx.Done():
 			stop = true
 		}
@@ -212,6 +221,11 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	if ctx.Err() != nil {
 		cb.markClose()
 		return
+	}
+	if log.IsWarnEnabled() {
+		if strings.HasPrefix(cb.blockKey, "dcc_3vol") {
+			log.LogWarnf("action[Init], cache block:%v, sources:\n%v", cb.blockKey, sb.String())
+		}
 	}
 	cb.markReady()
 	return
@@ -242,9 +256,10 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, cancel context.CancelFu
 				return nil
 			}
 			if log.IsDebugEnabled() {
-				log.LogDebugf("action[prepareSource] write cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, localStart:%d", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, localStart)
+				log.LogDebugf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, localStart:%d", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, localStart)
 			}
 			if _, err = cb.readSource(task, writeCacheAfterRead); err != nil {
+				log.LogErrorf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, localStart:%d, readSource err:%v", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, localStart, err)
 				return
 			}
 		}

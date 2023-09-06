@@ -135,6 +135,11 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *Packet, block *cache_engine.CacheBlock) (err error) {
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("action[doStreamReadRequest] cache block(%v) err:%v", block.String(), err)
+		}
+	}()
 	for {
 		if needReplySize <= 0 {
 			break
@@ -156,7 +161,14 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 
 		err = func() error {
 			var storeErr error
-			reply.CRC, storeErr = block.Read(ctx, reply.Data[0:currReadSize], offset, int64(currReadSize))
+			reply.CRC, storeErr = block.Read(ctx, reply.Data[0:currReadSize], offset, int64(currReadSize), func() string {
+				var sb = strings.Builder{}
+				sb.WriteString(fmt.Sprintf("pReqID(%d) pSize(%d) pOff(%d) remote(%v) sources:\n", p.ReqID, req.Size_, req.Offset, conn.RemoteAddr()))
+				for _, source := range req.CacheRequest.Sources {
+					sb.WriteString(fmt.Sprintf("dp(%v) extent(%v) offset(%v) size(%v) fileOffset(%v) hosts(%v)\n", source.PartitionID, source.ExtentID, source.ExtentOffset, source.Size_, source.FileOffset, strings.Join(source.Hosts, ",")))
+				}
+				return sb.String()
+			})
 			return storeErr
 		}()
 		p.CRC = reply.CRC

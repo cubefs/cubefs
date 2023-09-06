@@ -17,6 +17,7 @@ package flashnode
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"hash/crc32"
 	"net"
 	"strings"
@@ -77,7 +78,9 @@ func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc 
 				return
 			}
 			errMap[addr] = err
-			log.LogWarnf("extentReadWithRetry: try addr(%v) failed! reqPacket(%v) err(%v)", addr, reqPacket, err)
+			if log.IsWarnEnabled() {
+				log.LogWarnf("extentReadWithRetry: try addr(%v) failed! reqPacket(%v) err(%v)", addr, reqPacket, err)
+			}
 			if strings.Contains(err.Error(), proto.ErrTmpfsNoSpace.Error()) {
 				break
 			}
@@ -159,6 +162,9 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc func
 			if e != nil {
 				return readBytes, e
 			}
+		}
+		if replyPacket.Size != uint32(bufSize) {
+			exporter.WarningCritical(fmt.Sprintf("action[getReadReply] reply size not valid, ReqID(%v) PartitionID(%v) Extent(%v) buffSize(%v) ReplySize(%v)", reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID, bufSize, replyPacket.Size))
 		}
 		readBytes += int(replyPacket.Size)
 	}
