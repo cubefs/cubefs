@@ -4,12 +4,34 @@ import (
 	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"strings"
 	"sync"
 )
+
+func LocateInode(inode uint64, client *master.MasterClient, vol string) (leader string, mpID uint64, err error) {
+	mps, err := client.ClientAPI().GetMetaPartitions(vol)
+	if err != nil {
+		fmt.Printf("get metapartitions failed:\n%v\n", err)
+		return "", 0, err
+	}
+	for _, mp := range mps {
+		if inode >= mp.Start && inode < mp.End {
+			leader = mp.LeaderAddr
+			mpID = mp.PartitionID
+			break
+		}
+	}
+	if leader == "" {
+		err = fmt.Errorf("mp[%v] no leader", mpID)
+		fmt.Printf("mp[%v] no leader:\n", mpID)
+		return
+	}
+	return
+}
 
 func GetFileInodesByMp(mps []*proto.MetaPartitionView, metaPartitionId uint64, concurrency uint64, modifyTimeMin int64, modifyTimeMax int64, metaProf uint16, exit bool) (inodes []uint64, err error) {
 	var (

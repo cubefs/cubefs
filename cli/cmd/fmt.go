@@ -1260,3 +1260,13 @@ func formatFlashGroupDetail(fg proto.FlashGroupAdminView) string {
 	sb.WriteString(fmt.Sprintf("  FlashNodeCount      : %v\n", fg.FlashNodeCount))
 	return sb.String()
 }
+
+var formatCacheBlockViewPattern = "%-12v     %-12v    %-10v     %-10v"
+
+func formatCacheBlockViewHeader() string {
+	return fmt.Sprintf(formatCacheBlockViewPattern, "FIXED_OFFSET", "END", "FLASH_GROUP", "SIZE")
+}
+
+func formatCacheBlockRow(offset, end, fg, size uint64) string {
+	return fmt.Sprintf(formatCacheBlockViewPattern, offset, end, fg, size)
+}

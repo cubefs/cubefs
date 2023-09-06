@@ -143,7 +143,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 		return 0, fmt.Errorf("invalid read, offset:%d, allocSize:%d, usedSize:%d", offset, cb.allocSize, cb.usedSize)
 	}
 	realSize := cb.usedSize - offset
-	if size < realSize {
+	if realSize > size {
 		realSize = size
 	}
 	if _, err = cb.file.ReadAt(data[:realSize], offset); err != nil {
