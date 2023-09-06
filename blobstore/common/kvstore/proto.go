@@ -18,6 +18,7 @@ type KVStorage interface {
 	Put(kv KV) error
 	Get(key []byte) ([]byte, error)
 	Delete(key []byte) error
+	DeleteRange(start, end []byte) error
 	NewWriteBatch() *WriteBatch
 	DeleteBatch(keys [][]byte, safe bool) error
 	WriteBatch(kvs []KV, safe bool) error

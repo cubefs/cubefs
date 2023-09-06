@@ -16,7 +16,6 @@ package disk
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -461,15 +460,6 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	sb.SetHandlerIOError(func(err error) {
 		conf.HandleIOError(context.Background(), dm.DiskID, err)
 	})
-
-	// io visualization: init meta io stat
-	metaios, err := flow.NewIOFlowStat(fmt.Sprintf("md_%v", dm.DiskID), conf.IOStatFileDryRun)
-	if err != nil {
-		span.Errorf("Failed new io flow stat, err:%v", err)
-		return nil, err
-	}
-
-	sb.SetIOStat(metaios)
 
 	// io visualization: init data io stat
 	dataios, err := flow.NewIOFlowStat(dm.DiskID.ToString(), conf.IOStatFileDryRun)

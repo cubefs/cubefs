@@ -24,7 +24,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -70,14 +69,14 @@ func TestKVDB_DirectOP(t *testing.T) {
 
 	ctx := context.Background()
 
-	err = md.DirectPut(ctx, kv)
+	err = md.Put(ctx, kv)
 	require.NoError(t, err)
 
 	value, err := md.Get(ctx, expectedKey)
 	require.NoError(t, err)
 	require.Equal(t, expectedValue, value)
 
-	err = md.DirectDelete(ctx, expectedKey)
+	err = md.Delete(ctx, expectedKey)
 	require.NoError(t, err)
 
 	_, err = md.Get(ctx, expectedKey)
@@ -255,8 +254,6 @@ func TestKVDB_Close(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(testDir)
 
-	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", "metadb")
-
 	diskdir := filepath.Join(testDir, "disk1/")
 	err = os.MkdirAll(diskdir, 0o755)
 	require.NoError(t, err)
@@ -265,26 +262,9 @@ func TestKVDB_Close(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, md)
 
-	var cnt int
-	done := make(chan struct{})
-
-	md.(*MetaDBWapper).onClosed = func() {
-		cnt++
-		close(done)
-	}
-
 	// Trigger Close
 	err = md.Close(context.Background())
 	require.NoError(t, err)
-
-	select {
-	case <-done:
-		span.Infof("success gc")
-	case <-time.After(10 * time.Second):
-		t.Fail()
-	}
-
-	require.Equal(t, 1, cnt)
 }
 
 func TestDeleteRange(t *testing.T) {

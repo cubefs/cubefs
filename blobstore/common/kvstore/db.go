@@ -467,6 +467,16 @@ func (s *instance) Delete(key []byte) (err error) {
 	return <-task.err
 }
 
+func (s *instance) DeleteRange(start, end []byte) error {
+	task := &writeTask{
+		typ:  rangeDeleteEvent,
+		data: rangeDelete{start, end},
+		err:  make(chan error, 1),
+	}
+	s.wchan <- task
+	return <-task.err
+}
+
 func (s *instance) DeleteBatch(keys [][]byte, safe bool) (err error) {
 	b := []batch{}
 	for _, key := range keys {

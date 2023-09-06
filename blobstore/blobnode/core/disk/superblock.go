@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
@@ -371,10 +370,6 @@ func (s *SuperBlock) DeleteChunk(ctx context.Context, id bnapi.ChunkId) (err err
 
 func (s *SuperBlock) SetHandlerIOError(handleIOError func(err error)) {
 	s.db.SetHandleIOError(handleIOError)
-}
-
-func (s *SuperBlock) SetIOStat(stat *flow.IOFlowStat) {
-	s.db.SetIOStat(stat)
 }
 
 func (s *SuperBlock) Close(ctx context.Context) error {
