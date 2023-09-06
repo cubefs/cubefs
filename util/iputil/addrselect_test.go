@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/stretchr/testify/require"
 )
 
 // from iputil.GetDistance
@@ -29,8 +30,5 @@ func commonPrefixLen(first net.IP, second net.IP) int {
 func TestCommonPrefixLength(t *testing.T) {
 	firstV6 := net.ParseIP("fe80::1")
 	secondV6 := net.ParseIP("fe80::2")
-	if commonPrefixLen(firstV6, secondV6) != 64 {
-		t.Errorf("fe80::1 & fe80::2 common prefix length should be 64")
-		return
-	}
+	require.Equal(t, 64, commonPrefixLen(firstV6, secondV6))
 }

@@ -15,19 +15,41 @@
 package util_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRandomString(t *testing.T) {
-	first := util.RandomString(256, util.UpperLetter|util.LowerLetter|util.Numeric)
-	second := util.RandomString(256, util.UpperLetter|util.LowerLetter|util.Numeric)
-	require.NotEqual(t, first, second)
+var stringsForSetTest = []string{
+	"Hello",
+	"World",
+	"1234",
 }
 
-func TestSubStr(t *testing.T) {
-	str := "abcd"
-	require.Equal(t, util.SubString(str, 1, 2), "b")
+func TestSet(t *testing.T) {
+	s := util.NewSet()
+	if s.Len() != 0 {
+		t.Errorf("set should be empty")
+		return
+	}
+	wg := &sync.WaitGroup{}
+	wg.Add(len(stringsForSetTest))
+	for _, v := range stringsForSetTest {
+		copyV := v
+		go func() {
+			s.Add(copyV)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	for _, v := range stringsForSetTest {
+		require.Equal(t, s.Has(v), true)
+	}
+	s.Clear()
+	require.Equal(t, s.Len(), 0)
+	s.Add(stringsForSetTest[0])
+	s.Remove(stringsForSetTest[0])
+	require.NotEqual(t, s.Has(stringsForSetTest[0]), true)
 }

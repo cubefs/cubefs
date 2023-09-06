@@ -18,13 +18,12 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/util/atomicutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAtomicFloat64(t *testing.T) {
 	f := atomicutil.Float64{}
 	testVal := float64(1.0)
 	f.Store(testVal)
-	if f.Load() != testVal {
-		t.Errorf("Atomic float64 should equal with %v but got %v", testVal, f.Load())
-	}
+	require.Equal(t, testVal, f.Load())
 }

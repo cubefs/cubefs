@@ -475,7 +475,7 @@ func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err er
 	return crc, err
 }
 
-// DeleteTiny deletes a stiny extent.
+// DeleteTiny deletes a tiny extent.
 func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 	log.LogDebugf("punchDelete extent %v offset %v, size %v", e, offset, size)
 	if int(offset)%util.PageSize != 0 {

@@ -19,6 +19,7 @@ import (
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFileBCachePool(t *testing.T) {
@@ -27,12 +28,13 @@ func TestFileBCachePool(t *testing.T) {
 	}
 	firstVal := buf.BCachePool.Get()
 	secondVal := buf.BCachePool.Get()
-	if len(firstVal) != len(secondVal) {
-		t.Errorf("Get() should return buffer with same length")
-		return
-	}
-	if &firstVal[0] == &secondVal[0] {
-		t.Errorf("two Get() should not return one buffer")
-		return
-	}
+	// check length
+	require.Equal(t, len(firstVal), len(secondVal))
+	// check address
+	require.NotSame(t, &firstVal[0], &secondVal[0])
+	oldAddr := &secondVal[0]
+	buf.BCachePool.Put(secondVal)
+	secondVal = buf.BCachePool.Get()
+	// check put and get
+	require.Same(t, oldAddr, &secondVal[0])
 }
