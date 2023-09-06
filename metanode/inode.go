@@ -1065,9 +1065,6 @@ func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolV
 
 	log.LogDebugf("action[unlinkTopLayer] need create version.ino %v withSeq %v not equal mp seq %v, verlist %v", ino, inode.getVer(), mpVer, verlist)
 	if proto.IsDir(inode.Type) { // dir is whole info but inode is partition,which is quit different
-		verlist.RLock()
-		defer verlist.RUnlock()
-
 		_, err := inode.getNextOlderVer(mpVer, verlist)
 		if err == nil {
 			log.LogDebugf("action[unlinkTopLayer] inode %v cann't get next older ver %v err %v", inode.Inode, mpVer, err)
@@ -1077,9 +1074,6 @@ func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolV
 		log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked, Dir create ver 1st layer", ino.Inode)
 		doMore = true
 	} else {
-		verlist.RLock()
-		defer verlist.RUnlock()
-
 		ver, err := inode.getNextOlderVer(mpVer, verlist)
 		if err != nil {
 			if err.Error() == "not found" {
