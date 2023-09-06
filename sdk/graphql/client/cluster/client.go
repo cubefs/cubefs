@@ -2,9 +2,13 @@ package cluster
 
 //auto generral by sdk/graphql general.go
 
-import "context"
-import "github.com/cubefs/cubefs/sdk/graphql/client"
-import "time"
+import (
+	"context"
+	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/graphql/client"
+)
 
 type ClusterClient struct {
 	*client.MasterGClient
@@ -168,7 +172,7 @@ func (c *ClusterClient) DecommissionDataNode(ctx context.Context, offLineAddr st
 
 	req.Var("offLineAddr", offLineAddr)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +369,7 @@ func (c *ClusterClient) ClusterView(ctx context.Context) (*ClusterView, error) {
 
 		}`)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +417,7 @@ func (c *ClusterClient) DataNodeList(ctx context.Context) ([]DataNode, error) {
 
 		}`)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +467,7 @@ func (c *ClusterClient) DataNodeListTest(ctx context.Context, num int64) ([]Data
 
 	req.Var("num", num)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +492,7 @@ func (c *ClusterClient) MasterList(ctx context.Context) ([]MasterInfo, error) {
 
 		}`)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +519,7 @@ func (c *ClusterClient) AddMetaNode(ctx context.Context, addr string, id uint64)
 	req.Var("addr", addr)
 	req.Var("id", id)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +546,7 @@ func (c *ClusterClient) AddRaftNode(ctx context.Context, addr string, id uint64)
 	req.Var("addr", addr)
 	req.Var("id", id)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -569,7 +573,7 @@ func (c *ClusterClient) DecommissionMetaPartition(ctx context.Context, nodeAddr 
 	req.Var("nodeAddr", nodeAddr)
 	req.Var("partitionID", partitionID)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -596,7 +600,7 @@ func (c *ClusterClient) RemoveRaftNode(ctx context.Context, addr string, id uint
 	req.Var("addr", addr)
 	req.Var("id", id)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -646,7 +650,7 @@ func (c *ClusterClient) DataNodeGet(ctx context.Context, addr string) (*DataNode
 
 	req.Var("addr", addr)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -670,7 +674,7 @@ func (c *ClusterClient) GetTopology(ctx context.Context) (*GeneralResp, error) {
 
 		}`)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -718,7 +722,7 @@ func (c *ClusterClient) MetaNodeGet(ctx context.Context, addr string) (*metaNode
 
 	req.Var("addr", addr)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -745,7 +749,7 @@ func (c *ClusterClient) DecommissionDisk(ctx context.Context, diskPath string, o
 	req.Var("diskPath", diskPath)
 	req.Var("offLineAddr", offLineAddr)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -771,7 +775,7 @@ func (c *ClusterClient) DecommissionMetaNode(ctx context.Context, offLineAddr st
 
 	req.Var("offLineAddr", offLineAddr)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -797,7 +801,7 @@ func (c *ClusterClient) LoadMetaPartition(ctx context.Context, partitionID uint6
 
 	req.Var("partitionID", partitionID)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -823,7 +827,7 @@ func (c *ClusterClient) ClusterFreeze(ctx context.Context, status bool) (*Genera
 
 	req.Var("status", status)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -869,7 +873,7 @@ func (c *ClusterClient) MetaNodeList(ctx context.Context) ([]metaNode, error) {
 
 		}`)
 
-	rep, err := c.Query(ctx, "/api/cluster", req)
+	rep, err := c.Query(ctx, proto.AdminClusterAPI, req)
 	if err != nil {
 		return nil, err
 	}

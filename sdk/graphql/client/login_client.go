@@ -5,11 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"net/http"
-	"strings"
+)
+
+const (
+	MIME_TYPE_JSON = "application/json; charset=utf-8"
 )
 
 type MasterGClient struct {
@@ -41,8 +46,8 @@ func (c *MasterGClient) ValidatePassword(ctx context.Context, userID string, pas
 		`,
 	}
 	req.header.Set(proto.UserKey, userID)
-	req.header.Set("Content-Type", "application/json; charset=utf-8")
-	req.header.Set("Accept", "application/json; charset=utf-8")
+	req.header.Set("Content-Type", MIME_TYPE_JSON)
+	req.header.Set("Accept", MIME_TYPE_JSON)
 
 	req.Var("userID", userID)
 	req.Var("password", password)
@@ -150,8 +155,8 @@ func NewRequest(ctx context.Context, query string) *Request {
 		req.header.Set(proto.HeadAuthorized, token.(string))
 	}
 
-	req.header.Set("Content-Type", "application/json; charset=utf-8")
-	req.header.Set("Accept", "application/json; charset=utf-8")
+	req.header.Set("Content-Type", MIME_TYPE_JSON)
+	req.header.Set("Accept", MIME_TYPE_JSON)
 	return req
 }
 

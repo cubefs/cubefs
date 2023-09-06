@@ -2,8 +2,12 @@ package user
 
 //auto generral by sdk/graphql general.go
 
-import "context"
-import "github.com/cubefs/cubefs/sdk/graphql/client"
+import (
+	"context"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/graphql/client"
+)
 
 type UserClient struct {
 	*client.MasterGClient
@@ -67,7 +71,7 @@ func (c *UserClient) DeleteUser(ctx context.Context, userID string) (*GeneralRes
 
 	req.Var("userID", userID)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +119,7 @@ func (c *UserClient) UpdateUser(ctx context.Context, accessKey string, descripti
 	req.Var("type", Type)
 	req.Var("userID", userID)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +163,7 @@ func (c *UserClient) GetUserInfo(ctx context.Context, userID string) (*UserInfo,
 
 	req.Var("userID", userID)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +190,7 @@ func (c *UserClient) TopNUser(ctx context.Context, n int32) ([]UserUseSpace, err
 
 	req.Var("n", n)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +235,7 @@ func (c *UserClient) ValidatePassword(ctx context.Context, password string, user
 	req.Var("password", password)
 	req.Var("userID", userID)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +284,7 @@ func (c *UserClient) CreateUser(ctx context.Context, accessKey string, descripti
 	req.Var("secretKey", secretKey)
 	req.Var("type", Type)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +329,7 @@ func (c *UserClient) RemoveUserPolicy(ctx context.Context, userID string, volume
 	req.Var("userID", userID)
 	req.Var("volume", volume)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +376,7 @@ func (c *UserClient) TransferUserVol(ctx context.Context, force bool, userDst st
 	req.Var("userSrc", userSrc)
 	req.Var("volume", volume)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +422,7 @@ func (c *UserClient) UpdateUserPolicy(ctx context.Context, policy []string, user
 	req.Var("userID", userID)
 	req.Var("volume", volume)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +466,7 @@ func (c *UserClient) GetUserAKInfo(ctx context.Context, accessKey string) (*User
 
 	req.Var("accessKey", accessKey)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +508,7 @@ func (c *UserClient) ListUserInfo(ctx context.Context) ([]UserInfo, error) {
 
 		}`)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}

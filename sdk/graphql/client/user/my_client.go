@@ -1,7 +1,11 @@
 package user
 
-import "context"
-import "github.com/cubefs/cubefs/sdk/graphql/client"
+import (
+	"context"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/graphql/client"
+)
 
 func (c *UserClient) GetUserInfoForLogin(ctx context.Context, userID string) (*UserInfo, error) {
 
@@ -23,7 +27,7 @@ func (c *UserClient) GetUserInfoForLogin(ctx context.Context, userID string) (*U
 
 	req.Var("userID", userID)
 
-	rep, err := c.Query(ctx, "/api/user", req)
+	rep, err := c.Query(ctx, proto.AdminUserAPI, req)
 	if err != nil {
 		return nil, err
 	}
