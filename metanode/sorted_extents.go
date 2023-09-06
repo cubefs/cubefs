@@ -328,10 +328,9 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 	return
 }
 
-func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, ekRefMap *sync.Map, discard []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
+func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, addRefFunc func(*proto.ExtentKey), discard []proto.ExtentKey) (deleteExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ek.FileOffset + uint64(ek.Size)
-	log.LogDebugf("action[AppendWithCheck] ek %v,start %v end %v", ek, ek.FileOffset, endOffset)
 	se.Lock()
 	defer se.Unlock()
 
@@ -339,13 +338,15 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, ekR
 		se.eks = append(se.eks, ek)
 		return
 	}
-
-	lastKey := se.eks[len(se.eks)-1]
+	idx := len(se.eks)-1
+	lastKey := &se.eks[idx]
+	log.LogDebugf("action[AppendWithCheck] ek %v,lastKey %v", ek, lastKey)
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
 		se.eks = append(se.eks, ek)
 		if lastKey.IsSequenceWithDiffSeq(&ek) {
-			storeEkSplit(inodeID, ekRefMap, &lastKey)
-			storeEkSplit(inodeID, ekRefMap, &ek)
+			se.eks[idx].SetSplit(true)
+			addRefFunc(lastKey)
+			addRefFunc(&ek)
 		}
 		return
 	}
@@ -384,7 +385,7 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, ekR
 		}
 	}
 
-	log.LogInfof("invalidExtents(%v) deleteExtents(%v) discardExtents(%v)", invalidExtents, deleteExtents, discard)
+	log.LogInfof("action[AppendWithCheck] invalidExtents(%v) deleteExtents(%v) discardExtents(%v)", invalidExtents, deleteExtents, discard)
 
 	if discard != nil {
 		if len(deleteExtents) != len(discard) {

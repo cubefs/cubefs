@@ -127,6 +127,16 @@ func (i *Inode) setVer(seq uint64) {
 	}
 }
 
+func (i *Inode) insertEkRefMap(ek *proto.ExtentKey) {
+	if i.multiSnap == nil {
+		i.multiSnap = NewMultiSnap(i.getVer())
+	}
+	if i.multiSnap.ekRefMap == nil {
+		i.multiSnap.ekRefMap = new(sync.Map)
+	}
+	storeEkSplit(i.Inode, i.multiSnap.ekRefMap, ek)
+}
+
 func (i *Inode) getEkRefMap() *sync.Map {
 	if i.multiSnap == nil {
 		return nil
@@ -1557,7 +1567,8 @@ func (i *Inode) AppendExtentWithCheck(
 	i.Lock()
 	defer i.Unlock()
 
-	delExtents, status = i.Extents.AppendWithCheck(i.Inode, ek, i.getEkRefMap(), discardExtents)
+	refFunc := func(key *proto.ExtentKey) { i.insertEkRefMap(key) }
+	delExtents, status = i.Extents.AppendWithCheck(i.Inode, ek, refFunc, discardExtents)
 	if status != proto.OpOk {
 		log.LogErrorf("action[AppendExtentWithCheck] status %v", status)
 		return
