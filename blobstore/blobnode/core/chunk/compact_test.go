@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -35,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 type diskMock struct {
@@ -166,8 +168,12 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 			BlockBufferSize:       64 * 1024,
 		},
 	}
-	ioQos, _ := qos.NewQosManager(qos.Config{})
-	chunk, err := NewChunkStorage(ctx, dataPath, vm, func(option *core.Option) {
+	ctr := gomock.NewController(t)
+	ioPool := taskpool.NewMockIoPool(ctr)
+	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).Do(func(taskId uint64, taskFn func()) { taskFn() }).AnyTimes()
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 200, WriteQueueLen: 200, MaxWaitCount: 400})
+	defer ioQos.Close()
+	chunk, err := NewChunkStorage(ctx, dataPath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = dbHandler
 		option.CreateDataIfMiss = true

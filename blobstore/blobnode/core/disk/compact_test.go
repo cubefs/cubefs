@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -32,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 func TestDiskStorage_StartCompact(t *testing.T) {
@@ -78,7 +80,10 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, func(option *core.Option) {
+	ctr := gomock.NewController(t)
+	ioPool := taskpool.NewMockIoPool(ctr)
+	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).AnyTimes()
+	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = db
 		option.CreateDataIfMiss = true
