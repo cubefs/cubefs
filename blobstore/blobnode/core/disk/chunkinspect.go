@@ -132,7 +132,7 @@ func (ds *DiskStorage) maybeCleanRubbishChunk(ctx context.Context, id bnapi.Chun
 	span := trace.SpanFromContextSafe(ctx)
 
 	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.InternalIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	span.Debugf("chunk:%s maybe rubbish, will confirm", id)
 

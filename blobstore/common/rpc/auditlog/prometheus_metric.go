@@ -40,6 +40,7 @@ type PrometheusConfig struct {
 	Tag     string `json:"tag"`
 	Team    string `json:"team"`
 
+	SetDefaultSwitch    bool            `json:"set_default_switch"`
 	EnableHttpMethod    bool            `json:"enable_http_method"`
 	DisableApi          bool            `json:"disable_api"`
 	EnableReqLengthCnt  bool            `json:"enable_req_length_cnt"`

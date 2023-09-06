@@ -239,14 +239,8 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		ioview := flow.NewDiskViewer(ioFlowStat)
 		conf.DiskConfig.DataQos = qos.Config{
 			DiskBandwidthMBPS: 20,
-			DiskIOPS:          2,
-			LevelConfigs: qos.LevelConfig{"level0": qos.ParaConfig{
-				Iops:      2,
-				Bandwidth: 20,
-				Factor:    0.5,
-			}},
-			DiskViewer: ioview,
-			StatGetter: ioFlowStat,
+			DiskViewer:        ioview,
+			StatGetter:        ioFlowStat,
 		}
 	}
 	if path == "bpslimit" {
@@ -254,14 +248,8 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		ioview := flow.NewDiskViewer(ioFlowStat)
 		conf.DiskConfig.DataQos = qos.Config{
 			DiskBandwidthMBPS: 1,
-			DiskIOPS:          100,
-			LevelConfigs: qos.LevelConfig{"level0": qos.ParaConfig{
-				Iops:      100,
-				Bandwidth: 1,
-				Factor:    0.5,
-			}},
-			DiskViewer: ioview,
-			StatGetter: ioFlowStat,
+			DiskViewer:        ioview,
+			StatGetter:        ioFlowStat,
 		}
 	}
 	service, err := NewService(conf)
