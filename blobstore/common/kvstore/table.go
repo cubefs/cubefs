@@ -82,6 +82,16 @@ func (t *table) Delete(key []byte) (err error) {
 	return <-task.err
 }
 
+func (t *table) DeleteRange(start, end []byte) (err error) {
+	task := &writeTask{
+		typ:  cfRangeDeleteEvent,
+		data: cfRangeDelete{t.cf, start, end},
+		err:  make(chan error, 1),
+	}
+	t.ins.wchan <- task
+	return <-task.err
+}
+
 func (t *table) Name() string {
 	return t.name
 }
