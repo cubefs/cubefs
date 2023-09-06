@@ -581,14 +581,21 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 	wg.Add(1)
 
 	go func() {
+		wgFin := false
+		wgDone := func() {
+			if !wgFin {
+				wg.Done()
+				wgFin = true
+			}
+		}
 		log.LogInfof("action[createVer2PhaseTask] verseq %v op %v enter wait schedule", verSeq, verMgr.prepareCommit.op)
 		defer func() {
 			log.LogDebugf("action[createVer2PhaseTask] status %v", verMgr.status)
 			log.LogInfof("action[createVer2PhaseTask] verseq %v op %v exit wait schedule", verSeq, verMgr.prepareCommit.op)
 			if err != nil {
-				wg.Done()
 				log.LogInfof("action[createVer2PhaseTask] verseq %v op %v exit schedule with err %v", verSeq, verMgr.prepareCommit.op, err)
 			}
+			wgDone()
 		}()
 		ticker := time.NewTicker(time.Second)
 		cnt := 0
@@ -604,7 +611,7 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 							return
 						}
 						verMgr.finishWork()
-						wg.Done()
+						wgDone()
 					} else {
 						verMgr.prepareCommit.reset(verMgr.vol.Name)
 						verMgr.prepareCommit.prepareInfo.Status = proto.VersionWorkingAbnormal
@@ -628,7 +635,7 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 						if vLen := len(verMgr.multiVersionList); vLen > 1 {
 							verRsp = verMgr.multiVersionList[vLen-2]
 						}
-						wg.Done()
+						wgDone()
 					} else {
 						verMgr.prepareCommit.prepareInfo.Status = proto.VersionWorkingAbnormal
 						log.LogInfof("action[createVer2PhaseTask] vol %v prepare error %v", verMgr.vol.Name, err)

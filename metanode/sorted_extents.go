@@ -338,7 +338,7 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 		se.eks = append(se.eks, ek)
 		return
 	}
-	idx := len(se.eks)-1
+	idx := len(se.eks) - 1
 	lastKey := &se.eks[idx]
 	log.LogDebugf("action[AppendWithCheck] ek %v,lastKey %v", ek, lastKey)
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
