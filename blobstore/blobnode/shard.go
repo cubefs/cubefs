@@ -334,6 +334,13 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	}
 	defer s.DeleteQpsLimitPerDisk.Release(perDiskLimitKey)
 
+	qos := ds.GetIoQos() // max io wait
+	if !qos.Allow() {
+		c.RespondError(bloberr.ErrOverload)
+		return
+	}
+	defer qos.Release()
+
 	err = cs.AllowModify()
 	if err != nil {
 		span.Warnf("ChunkStorage can not mark delete: %v", err)
@@ -342,7 +349,7 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	err = cs.MarkDelete(ctx, args.Bid)
@@ -396,6 +403,13 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	}
 	defer s.DeleteQpsLimitPerKey.Release(limitKey)
 
+	qos := ds.GetIoQos() // max io wait
+	if !qos.Allow() {
+		c.RespondError(bloberr.ErrOverload)
+		return
+	}
+	defer qos.Release()
+
 	perDiskLimitKey := cs.Disk().ID()
 	err = s.DeleteQpsLimitPerDisk.Acquire(perDiskLimitKey)
 	if err != nil {
@@ -413,7 +427,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	err = cs.Delete(ctx, args.Bid)

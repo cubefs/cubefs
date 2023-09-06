@@ -201,7 +201,7 @@ func TestMigrateExecTasklet(t *testing.T) {
 		}
 
 		for _, shard := range shards {
-			_, crc, err := getter.GetShard(context.Background(), replicas[badi], shard.Bid, api.InspectIO)
+			_, crc, err := getter.GetShard(context.Background(), replicas[badi], shard.Bid, api.BackgroundIO)
 			require.NoError(t, err)
 			require.Equal(t, crc, crcMap[shard.Bid])
 		}
@@ -224,7 +224,7 @@ func TestMigrateExecTasklet(t *testing.T) {
 		}
 
 		for _, shard := range shards {
-			_, crc, err := getter.GetShard(context.Background(), replicas[badi], shard.Bid, api.InspectIO)
+			_, crc, err := getter.GetShard(context.Background(), replicas[badi], shard.Bid, api.BackgroundIO)
 			require.NoError(t, err)
 			require.Equal(t, crc, crcMap[shard.Bid])
 		}
