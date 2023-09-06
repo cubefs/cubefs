@@ -249,9 +249,6 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 }
 
 func (s *CarryWeightNodeSelector) setNodeCarry(nodes SortedWeightedNodes, availCarryCount, replicaNum int) {
-	if availCarryCount >= replicaNum {
-		return
-	}
 	for availCarryCount < replicaNum {
 		availCarryCount = 0
 		for _, nt := range nodes {

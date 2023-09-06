@@ -21,13 +21,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRandomString(t *testing.T) {
-	first := util.RandomString(256, util.UpperLetter|util.LowerLetter|util.Numeric)
-	second := util.RandomString(256, util.UpperLetter|util.LowerLetter|util.Numeric)
-	require.NotEqual(t, first, second)
-}
+const testMpIDForMultiPart = 1
 
-func TestSubStr(t *testing.T) {
-	str := "abcd"
-	require.Equal(t, util.SubString(str, 1, 2), "b")
+func TestMultiPartID(t *testing.T) {
+	id := util.CreateMultipartID(testMpIDForMultiPart).String()
+	pid, found := util.MultipartIDFromString(id).PartitionID()
+	require.Equal(t, found, true)
+	require.EqualValues(t, pid, testMpIDForMultiPart)
 }

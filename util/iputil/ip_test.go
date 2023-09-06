@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetRealIp(t *testing.T) {
@@ -30,22 +31,13 @@ func TestGetRealIp(t *testing.T) {
 	// cubefs.io
 	ip := "13.250.168.211"
 	request.RemoteAddr = ip
-	if iputil.RealIP(request) != ip {
-		t.Errorf("should returns %v but got %v", request.RemoteAddr, iputil.RealIP(request))
-		return
-	}
+	require.Equal(t, iputil.RealIP(request), ip)
 	request.RemoteAddr = "192.168.0.1"
 	request.Header.Add("X-Forwarded-For", ip)
-	if iputil.RealIP(request) != ip {
-		t.Errorf("should returns %v but got %v", ip, iputil.RealIP(request))
-		return
-	}
+	require.Equal(t, iputil.RealIP(request), ip)
 	for k := range request.Header {
 		delete(request.Header, k)
 	}
 	request.Header.Add("X-Real-Ip", ip)
-	if iputil.RealIP(request) != ip {
-		t.Errorf("should returns %v but got %v", ip, iputil.RealIP(request))
-		return
-	}
+	require.Equal(t, iputil.RealIP(request), ip)
 }

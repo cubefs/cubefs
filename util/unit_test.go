@@ -18,15 +18,10 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/util"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsIpv4(t *testing.T) {
-	if !util.IsIPV4Addr("127.0.0.1:80") {
-		t.Errorf("127.0.0.1 is a ipv4 addr")
-		return
-	}
-	if util.IsIPV4("[1fff:0:a88:85a3::ac1f]:80") {
-		t.Errorf("1fff:0:a88:85a3::ac1f is not a ipv4 addr")
-		return
-	}
+	require.Equal(t, util.IsIPV4Addr("127.0.0.1:80"), true)
+	require.NotEqual(t, util.IsIPV4("[1fff:0:a88:85a3::ac1f]:80"), true)
 }

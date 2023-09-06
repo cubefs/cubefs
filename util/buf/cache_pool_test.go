@@ -12,22 +12,30 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package util_test
+package buf_test
 
 import (
 	"testing"
 
-	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRandomString(t *testing.T) {
-	first := util.RandomString(256, util.UpperLetter|util.LowerLetter|util.Numeric)
-	second := util.RandomString(256, util.UpperLetter|util.LowerLetter|util.Numeric)
-	require.NotEqual(t, first, second)
+func checkCachePool(t *testing.T, pool *buf.FileCachePool) {
+	first := pool.Get()
+	second := pool.Get()
+	require.Equal(t, len(first), len(second))
+	require.NotSame(t, &first[0], &second[0])
+	oldAddr := &second[0]
+	pool.Put(second)
+	second = pool.Get()
+	require.NotSame(t, &second[0], &first[0])
+	require.Same(t, oldAddr, &second[0])
 }
 
-func TestSubStr(t *testing.T) {
-	str := "abcd"
-	require.Equal(t, util.SubString(str, 1, 2), "b")
+func TestCachePool(t *testing.T) {
+	if buf.CachePool == nil {
+		buf.InitCachePool(8388608)
+	}
+	checkCachePool(t, buf.CachePool)
 }

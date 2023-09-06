@@ -19,33 +19,36 @@ import (
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/stretchr/testify/require"
 )
 
-func checkPool(t *testing.T, pool *buf.BufferPool, size int) (success bool) {
+const checkPoolLoopCount = buf.HeaderBufferPoolSize
+
+func checkPool(t *testing.T, pool *buf.BufferPool, size int) {
 	first, err := pool.Get(size)
-	if err != nil {
-		t.Errorf("failed to get buffer from pool %v", err)
-		return
-	}
+	require.NoError(t, err)
 	second, err := pool.Get(size)
-	if err != nil {
-		t.Errorf("failed to get buffer from pool %v", err)
-		return
-	}
-	if len(first) != len(second) {
-		t.Errorf("two buffer should have same length")
-		return
-	}
-	if len(first) != size {
-		t.Errorf("buffer length should be %v", size)
-		return
-	}
+	require.NoError(t, err)
+	// check size
+	require.Equal(t, len(first), len(second))
+	require.Equal(t, len(first), size)
 	if &first[0] == &second[0] {
 		t.Errorf("two Get() should not returns one buffer")
 		return
 	}
-	success = true
-	return
+	oldAddr := &second[0]
+	pool.Put(second)
+	success := false
+	for i := 0; i < checkPoolLoopCount; i++ {
+		second, err = pool.Get(size)
+		require.NoError(t, err)
+		require.NotSame(t, &second[0], &first[0])
+		if oldAddr == &second[0] {
+			success = true
+			break
+		}
+	}
+	require.Equal(t, true, success)
 }
 
 func TestBufferPool(t *testing.T) {
@@ -56,8 +59,6 @@ func TestBufferPool(t *testing.T) {
 		util.DefaultTinySizeLimit,
 	}
 	for _, size := range sizes {
-		if !checkPool(t, pool, size) {
-			return
-		}
+		checkPool(t, pool, size)
 	}
 }

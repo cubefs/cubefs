@@ -15,19 +15,22 @@
 package util_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRandomString(t *testing.T) {
-	first := util.RandomString(256, util.UpperLetter|util.LowerLetter|util.Numeric)
-	second := util.RandomString(256, util.UpperLetter|util.LowerLetter|util.Numeric)
-	require.NotEqual(t, first, second)
+func TestGetMemInfo(t *testing.T) {
+	total, used, err := util.GetMemInfo()
+	require.NoError(t, err)
+	require.NotEqual(t, total, 0)
+	require.LessOrEqual(t, used, total)
 }
 
-func TestSubStr(t *testing.T) {
-	str := "abcd"
-	require.Equal(t, util.SubString(str, 1, 2), "b")
+func TestGetProcessMemory(t *testing.T) {
+	used, err := util.GetProcessMemory(os.Getpid())
+	require.NoError(t, err)
+	require.NotEqual(t, 0, used)
 }
