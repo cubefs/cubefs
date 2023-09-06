@@ -84,7 +84,9 @@ def _post_to_storage(index_list, notify_storage_addr, storage_seesion):
         return
     try:
         data = json.dumps(index_list)
-        storage_seesion.post(notify_storage_addr, data, timeout=1)
+        response = storage_seesion.post(notify_storage_addr, data, timeout=1)
+        if response.status_code != 200:
+            raise ValueError("unavali request,response:{}".format(response.text))
     except Exception as e:
         print('_post_to_storage{} _post_to_storage error{} index_list{} '.format(notify_storage_addr, e, index_list))
         return
@@ -193,8 +195,8 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         CubeFileOpenInterceptor.start_timer()
         batch_downloader = get_cube_batch_download(id(dataset))
         set_global_cube_batch_downloader(batch_downloader)
-        builtins.open = intercept_open(open)
         torch.load = intercept_torch_load(torch.load)
+        builtins.open = intercept_open(open)
 
     try:
         seed = base_seed + worker_id

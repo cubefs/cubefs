@@ -7,7 +7,7 @@ from cube_torch.cube_batch_download import CubeBatchDownloader, CubeDownloadItem
 
 dataset_size=10000000
 
-downloader=CubeBatchDownloader("http://127.0.0.1",dataset_size)
+downloader=CubeBatchDownloader("http://127.0.0.1",100)
 
 file_size = 128 * 1024
 byte_array = bytearray(file_size)

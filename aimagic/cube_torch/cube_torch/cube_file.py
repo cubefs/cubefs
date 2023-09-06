@@ -34,22 +34,29 @@ def intercept_open(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if is_prefix_cube_file(args[0]):
-            result=CubeFile(*args, **kwargs)
+            result = CubeFile(*args, **kwargs)
         else:
-            result=builtins_open(*args, **kwargs)
+            result = builtins_open(*args, **kwargs)
         return result
 
     return wrapper
 
 
-def intercept_read(func):
+def intercept_torch_load(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        return func(*args, **kwargs)
+        file_path = args[0]
+        global global_cube_batch_downloader
+        cube_item = global_cube_batch_downloader.get_cube_path_item(file_path,is_free_memory=False)
+        is_cache = cube_item is not None
+        CubeFileOpenInterceptor.add_count(is_cache)
+        if cube_item is None:
+            result = func(*args, **kwargs)
+        else:
+            result = func(cube_item, **kwargs)
+        return result
 
     return wrapper
-
-
 
 
 class CubeFile(io.FileIO):
@@ -147,23 +154,6 @@ class CubeFile(io.FileIO):
     @name.setter
     def name(self, value):
         self._name = value
-
-
-def intercept_torch_load(func):
-    def wrapper(*args, **kwargs):
-        file_path = args[0]
-        global global_cube_batch_downloader
-        cube_item = global_cube_batch_downloader.get_cube_path_item(file_path)
-        is_cache=cube_item is not None
-        CubeFileOpenInterceptor.add_count(is_cache)
-        if cube_item is None:
-            result = func(*args, **kwargs)
-        else:
-            result = func(cube_item, **kwargs)
-        return result
-
-    return wrapper
-
 
 
 if __name__ == '__main__':

@@ -46,7 +46,11 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         dataset_id = id(cube_loader.dataset)
         self.register_pid_addr = "http://127.0.0.1:{}/register/pid".format(self.prof_port)
         self.unregister_pid_addr = "http://127.0.0.1:{}/unregister/pid".format(self.prof_port)
-        self.batch_download_addr="http://127.0.0.1:{}/batchdownload?dataset_cnt={}".format(self.prof_port,self._dataset_cnt)
+        self.batch_download_addr = "http://127.0.0.1:{}/batchdownload?dataset_cnt={}".format(self.prof_port,
+                                                                                             self._dataset_cnt)
+        self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
+        self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,
+                                                                                           self._dataset_cnt)
         get_manager().__dict__[dataset_id] = self
 
     def get_cube_prefetch_addr(self):
@@ -89,8 +93,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                 self.prof_port = cube_info['prof']
                 if type(self.prof_port) is not int:
                     raise ValueError(".cube_info {} not set prof prof info".format(cube_info_file))
-                self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
-                self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,self._dataset_cnt)
+
         except Exception as e:
             raise e
 
@@ -123,6 +126,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         for idx, train_data in enumerate(self.train_file_name_list):
             train_data_len = len(train_data)
             train_name = '{}/{}_{}.txt'.format(self.dataset_dir, train_data_len, idx)
+            print("write train_name is {}".format(train_name))
             self._write_train_list(train_name, train_data)
             train_file_list.append((train_name, train_data_len))
             if check_consistency and not self.load_train_name_check_consistency(train_name,train_data):
@@ -153,7 +157,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
             except KeyboardInterrupt:
                 return
             except Exception as e:
-                # print("_renew_ttl_loop expect {}".format(e))
+                print("_renew_ttl_loop expect {}".format(e))
                 time.sleep(10)
                 continue
 
@@ -168,14 +172,14 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def renew_ttl_on_prefetch_files(self):
         for train_name, dataset_cnt in self.cube_prefetch_file_list:
-            url = "{}?file_path={}&ttl={}&dataset_cnt={}".format(self.prefetch_file_url, train_name, self.cube_prefetch_ttl,
+            url = "{}?path={}&ttl={}&dataset_cnt={}".format(self.prefetch_file_url, train_name, self.cube_prefetch_ttl,
                                                             self._dataset_cnt)
             try:
                 response = self.storage_seesion.get(url, timeout=1)
                 if response.status_code != 200:
-                    raise ValueError("batch_download_addr{} error{}".format(url, response.text))
+                    raise ValueError("unavaliResponse{}".format(response.text))
             except Exception as e:
-                raise ValueError("batch_download_addr{} error{}".format(url, e))
+                raise ValueError("renew_ttl_on_prefetch_files {} error{}".format(url, e))
 
     def _write_train_list(self, train_name, train_data):
         if os.path.exists(train_name + ".tmp"):
@@ -209,5 +213,5 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_notify_storage_worker_num(self):
         if self._is_use_batch_download:
-            return 10
+            return 1
         return 1

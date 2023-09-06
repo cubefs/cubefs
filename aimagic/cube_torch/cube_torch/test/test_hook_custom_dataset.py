@@ -11,7 +11,7 @@ os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '1222321321'
 os.environ['localIP'] = "127.0.0.1"
 
-os.environ['USE_BATCH_DOWNLOAD'] = '123'
+os.environ['USE_BATCH_DOWNLOAD'] = 'true'
 os.environ['TEST_ENV'] = 'True'
 
 class CustomDataSet(Dataset):
