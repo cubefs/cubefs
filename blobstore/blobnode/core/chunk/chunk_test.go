@@ -88,7 +88,7 @@ func TestNewChunkStorage(t *testing.T) {
 	ioPool := taskpool.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).AnyTimes()
 
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2, MaxWaitCount: 4})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, MaxWaitCount: 4, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	cs, err := NewChunkStorage(context.TODO(), datapath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
@@ -151,7 +151,7 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	}
 
 	ioPool := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2, MaxWaitCount: 4})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, MaxWaitCount: 4, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
@@ -275,7 +275,7 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 	}
 
 	ioPool := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2, MaxWaitCount: 4})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, MaxWaitCount: 4, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
@@ -393,7 +393,7 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 	}
 
 	ioPool := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2, MaxWaitCount: 4})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, MaxWaitCount: 4, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
@@ -503,7 +503,7 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 	ioPool := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2, MaxWaitCount: 4})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, MaxWaitCount: 4, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf

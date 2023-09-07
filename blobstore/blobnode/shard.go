@@ -35,7 +35,6 @@ import (
 
 const (
 	ShardListPageLimit = 65536
-	BidBatchReadLimit  = 1024
 )
 
 /*
@@ -97,28 +96,6 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
-
-	start := time.Now()
-	limitKey := args.Bid
-	err = s.GetQpsLimitPerKey.Acquire(limitKey)
-	span.AppendTrackLog("lk.key", start, err)
-	if err != nil {
-		c.RespondError(bloberr.ErrOverload)
-		span.Warnf("shard get overload. args:%v err:%v", args, err)
-		return
-	}
-	defer s.GetQpsLimitPerKey.Release(limitKey)
-
-	start = time.Now()
-	limitDiskKey := cs.Disk().ID()
-	err = s.GetQpsLimitPerDisk.Acquire(limitDiskKey)
-	span.AppendTrackLog("lk.disk", start, err)
-	if err != nil {
-		c.RespondError(bloberr.ErrOverload)
-		span.Warnf("shard get overload. args:%v err:%v", args, err)
-		return
-	}
-	defer s.GetQpsLimitPerDisk.Release(limitDiskKey)
 
 	// build shard reader
 	shard := core.NewShardReader(args.Bid, args.Vuid, from, to, w)
@@ -503,18 +480,6 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		return
 	}
 
-	start := time.Now()
-
-	limitKey := cs.Disk().ID()
-	err = s.PutQpsLimitPerDisk.Acquire(limitKey)
-	span.AppendTrackLog("lk.disk", start, err)
-	if err != nil {
-		span.Errorf("shard put overload. args:%v err:%v", args, err)
-		c.RespondError(bloberr.ErrOverload)
-		return
-	}
-	defer s.PutQpsLimitPerDisk.Release(limitKey)
-
 	if !cs.HasEnoughSpace(args.Size) {
 		span.Errorf("cs has no enougn space. args:%v, chunk info:%v, disk:%v",
 			args, cs.ChunkInfo(ctx), cs.Disk().Stats())
@@ -524,7 +489,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 
 	shard := core.NewShardWriter(args.Bid, args.Vuid, uint32(args.Size), c.Request.Body)
 
-	start = time.Now()
+	start := time.Now()
 
 	err = cs.Write(ctx, shard)
 	span.AppendTrackLog("disk.put", start, err)

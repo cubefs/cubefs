@@ -122,7 +122,7 @@ func TestChunkData_Write(t *testing.T) {
 	}
 
 	ioPool := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 2, WriteQueueLen: 2, MaxWaitCount: 4})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, MaxWaitCount: 4, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPool, ioPool)
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 
 	concurrency := 10
 	ioPool := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: concurrency, WriteQueueLen: concurrency, MaxWaitCount: 2 * concurrency})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: concurrency, WriteQueueDepth: concurrency, MaxWaitCount: 2 * concurrency, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPool, ioPool)
 	require.NoError(t, err)
@@ -271,7 +271,7 @@ func TestChunkData_Delete(t *testing.T) {
 		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024},
 	}
 	ioPool := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 100, WriteQueueLen: 100, MaxWaitCount: 200})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 100, WriteQueueDepth: 100, MaxWaitCount: 200, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPool, ioPool)
 	require.NoError(t, err)

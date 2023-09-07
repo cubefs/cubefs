@@ -171,7 +171,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 	ctr := gomock.NewController(t)
 	ioPool := taskpool.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).Do(func(taskId uint64, taskFn func()) { taskFn() }).AnyTimes()
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueLen: 200, WriteQueueLen: 200, MaxWaitCount: 400})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 200, WriteQueueDepth: 200, MaxWaitCount: 400, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	chunk, err := NewChunkStorage(ctx, dataPath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
