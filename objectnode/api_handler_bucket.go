@@ -202,6 +202,14 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	log.LogInfof("deleteBucketHandler: delete bucket success: requestID(%v) volume(%v) accessKey(%v)",
 		GetRequestID(r), bucket, param.AccessKey())
 
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     BucketRemoved,
+		Bucket:   param.Bucket(),
+		Region:   o.region,
+	})
+
 	// release Volume from Volume manager
 	o.vm.Release(bucket)
 	w.WriteHeader(http.StatusNoContent)

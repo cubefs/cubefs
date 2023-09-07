@@ -735,6 +735,16 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 
 	writeSuccessResponseXML(w, response)
+
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectCreatedCompleteMultipartUpload,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+		FileInfo: fsFileInfo,
+	})
 	return
 }
 
