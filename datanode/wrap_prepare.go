@@ -17,13 +17,13 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"hash/crc32"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (s *DataNode) Prepare(p *repl.Packet) (err error) {
@@ -86,7 +86,7 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 	dp := s.space.Partition(p.PartitionID)
 	if dp == nil {
-		//err = proto.ErrDataPartitionNotExists
+		// err = proto.ErrDataPartitionNotExists
 		err = fmt.Errorf("data partition not exists %v", p.PartitionID)
 		return
 	}
