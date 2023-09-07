@@ -35,6 +35,7 @@ import (
 	"time"
 
 	blog "github.com/cubefs/cubefs/blobstore/util/log"
+	syslog "log"
 )
 
 type Level uint8
@@ -185,8 +186,14 @@ func (writer *asyncWriter) flushToFile() {
 					writer.file = fp
 					writer.logSize = 0
 					_ = os.Chmod(writer.fileName, 0666)
+				} else {
+					syslog.Printf("log rotate: openFile %v error: %v", writer.fileName, err)
 				}
+			} else {
+				syslog.Printf("log rotate: rename %v error: %v ", oldFile, err)
 			}
+		} else {
+			syslog.Printf("log rotate: lstat error: %v already exists", oldFile)
 		}
 	}
 	writer.rotateMu.Unlock()
