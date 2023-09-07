@@ -42,9 +42,6 @@ const (
 	DefaultChunkProtectionPeriodSec    = 48 * 60 * 60 // 48 hour
 	DefaultDiskStatusCheckIntervalSec  = 2 * 60       // 2 min
 
-	DefaultPutQpsLimitPerDisk    = 128
-	DefaultGetQpsLimitPerDisk    = 512
-	DefaultGetQpsLimitPerKey     = 64
 	DefaultDeleteQpsLimitPerDisk = 128
 )
 
@@ -75,9 +72,6 @@ type Config struct {
 	CleanExpiredStatIntervalSec int `json:"clean_expired_stat_interval_S"`
 	DiskStatusCheckIntervalSec  int `json:"disk_status_check_interval_S"`
 
-	PutQpsLimitPerDisk    int `json:"put_qps_limit_per_disk"`
-	GetQpsLimitPerDisk    int `json:"get_qps_limit_per_disk"`
-	GetQpsLimitPerKey     int `json:"get_qps_limit_per_key"`
 	DeleteQpsLimitPerDisk int `json:"delete_qps_limit_per_disk"`
 }
 
@@ -115,18 +109,6 @@ func configInit(config *Config) {
 		config.CleanExpiredStatIntervalSec = DefaultCleanExpiredStatIntervalSec
 	}
 
-	if config.PutQpsLimitPerDisk <= 0 {
-		config.PutQpsLimitPerDisk = DefaultPutQpsLimitPerDisk
-	}
-
-	if config.GetQpsLimitPerDisk == 0 {
-		config.GetQpsLimitPerDisk = DefaultGetQpsLimitPerDisk
-	}
-
-	if config.GetQpsLimitPerKey == 0 {
-		config.GetQpsLimitPerKey = DefaultGetQpsLimitPerKey
-	}
-
 	if config.DeleteQpsLimitPerDisk <= 0 {
 		config.DeleteQpsLimitPerDisk = DefaultDeleteQpsLimitPerDisk
 	}
@@ -135,7 +117,6 @@ func configInit(config *Config) {
 func (s *Service) changeLimit(ctx context.Context, c Config) {
 	span := trace.SpanFromContextSafe(ctx)
 	configInit(&c)
-	s.PutQpsLimitPerDisk.Reset(c.PutQpsLimitPerDisk)
 	s.DeleteQpsLimitPerDisk.Reset(c.DeleteQpsLimitPerDisk)
 	span.Info("hot reload limit config success.")
 }

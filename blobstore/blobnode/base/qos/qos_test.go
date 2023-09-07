@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
@@ -29,8 +30,9 @@ func TestNewQosManager(t *testing.T) {
 		BackgroundMBPS:    1,
 		DiskViewer:        diskView,
 		StatGetter:        iom,
-		ReadQueueLen:      100,
-		WriteQueueLen:     100,
+		ReadQueueDepth:    100,
+		WriteQueueDepth:   100,
+		WriteChanQueCnt:   2,
 		MaxWaitCount:      2 * 100,
 	}
 	qos, err := NewIoQueueQos(conf)
@@ -101,8 +103,9 @@ func TestQosTryAcquire(t *testing.T) {
 		BackgroundMBPS:    10,
 		DiskViewer:        diskView,
 		StatGetter:        statGet,
-		ReadQueueLen:      2,
-		WriteQueueLen:     2,
+		ReadQueueDepth:    2,
+		WriteQueueDepth:   2,
+		WriteChanQueCnt:   2,
 		MaxWaitCount:      2 * 2,
 	}
 	qos, err := NewIoQueueQos(conf)
@@ -133,7 +136,7 @@ func TestQosTryAcquire(t *testing.T) {
 	{
 		ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
-		for i := 0; i < q.conf.WriteQueueLen; i++ {
+		for i := 0; i < q.conf.WriteQueueDepth; i++ {
 			ok = q.TryAcquireIO(ctx, 1, WriteType)
 			require.True(t, ok)
 		}
@@ -151,4 +154,16 @@ func TestQosTryAcquire(t *testing.T) {
 		require.Less(t, ratio, 1.0)
 		require.Less(t, 0.0, ratio)
 	}
+}
+
+func TestDynamicDiscard(t *testing.T) {
+	rdQueDepth := 128
+	qos := newIoQosDiscard(rdQueDepth)
+	defer qos.Close()
+	require.Equal(t, int32(ratioDiscardLow), qos.discardRatio)
+
+	time.Sleep(time.Millisecond * 100)
+	qos.currentCnt = 128 * 2
+	time.Sleep(time.Millisecond * 1200)
+	require.Equal(t, int32(ratioDiscardMid), qos.discardRatio)
 }

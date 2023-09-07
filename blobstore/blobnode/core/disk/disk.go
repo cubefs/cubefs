@@ -101,7 +101,7 @@ type DiskStorage struct {
 	CreateAt     int64
 	LastUpdateAt int64
 
-	// io schedulers
+	// io pools
 	writePool taskpool.IoPool
 	readPool  taskpool.IoPool
 }
@@ -489,8 +489,8 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	}
 
 	// setting io pools
-	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, conf.WriteQueueLen)
-	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, conf.ReadQueueLen)
+	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, conf.WriteQueueDepth)
+	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, conf.ReadQueueDepth)
 
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,

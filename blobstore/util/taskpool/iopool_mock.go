@@ -56,17 +56,3 @@ func (mr *MockIoPoolMockRecorder) Submit(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Submit", reflect.TypeOf((*MockIoPool)(nil).Submit), arg0, arg1)
 }
-
-// TrySubmit mocks base method.
-func (m *MockIoPool) TrySubmit(arg0 uint64, arg1 func()) bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "TrySubmit", arg0, arg1)
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// TrySubmit indicates an expected call of TrySubmit.
-func (mr *MockIoPoolMockRecorder) TrySubmit(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TrySubmit", reflect.TypeOf((*MockIoPool)(nil).TrySubmit), arg0, arg1)
-}
