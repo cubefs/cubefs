@@ -12,6 +12,7 @@ from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 global_cube_batch_downloader = None
 global_cube_rootdir_path = None
 builtins_open = builtins.open
+builtins_torch_load = torch.load
 
 
 def set_global_cube_batch_downloader(downloader):
@@ -50,10 +51,10 @@ def intercept_torch_load(func):
         cube_item = global_cube_batch_downloader.get_cube_path_item(file_path,is_free_memory=False)
         is_cache = cube_item is not None
         CubeFileOpenInterceptor.add_count(is_cache)
-        if cube_item is None:
-            result = func(*args, **kwargs)
+        if not is_cache:
+            result = builtins_torch_load(*args, **kwargs)
         else:
-            result = func(cube_item, **kwargs)
+            result = builtins_torch_load(cube_item, **kwargs)
         return result
 
     return wrapper
@@ -83,7 +84,7 @@ class CubeFile(io.FileIO):
 
     def close(self, *args, **kwargs):  # real signature unknown
         if self._is_cube_item:
-            self._cube_item.close(*args, **kwargs)
+            return self._cube_item.close(*args, **kwargs)
         return super().close()
 
     def flush(self, *args, **kwargs):  # real signature unknown

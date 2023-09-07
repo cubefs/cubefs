@@ -18,7 +18,6 @@ import torch
 import torch.multiprocessing as multiprocessing
 import torch.utils.data.graph_settings
 from torch import _utils
-from torch._six import string_classes
 from torch._utils import ExceptionWrapper
 from torch.utils.data import _utils
 from torch.utils.data.dataloader import _BaseDataLoaderIter, _DatasetKind, _collate_fn_t, _worker_init_fn_t, T_co, \
@@ -218,7 +217,7 @@ class CubeDataLoader(Generic[T_co]):
         notify_storage_worker_num= cube_dataset_info.get_notify_storage_worker_num()
         downloader = None
         if is_use_batch_download:
-            downloader = CubeBatchDownloader(batch_download_addr,self.real_sample_size)
+            downloader = CubeBatchDownloader(batch_download_addr)
             if is_test_env:
                 for items in cube_dataset_info.get_train_file_name_lists():
                     downloader.add_cube_dataset(items)

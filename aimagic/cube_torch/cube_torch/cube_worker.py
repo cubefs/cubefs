@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from torch._utils import ExceptionWrapper
 from torch.utils.data import _DatasetKind
 
-from cube_torch.cube_file import intercept_open, intercept_torch_load, set_global_cube_batch_downloader, \
-    set_global_cube_rootdir_path
+from cube_torch.cube_file import intercept_open, set_global_cube_batch_downloader, \
+    set_global_cube_rootdir_path, intercept_torch_load
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
 logger = logging.getLogger(__name__)
@@ -195,8 +195,9 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         CubeFileOpenInterceptor.start_timer()
         batch_downloader = get_cube_batch_download(id(dataset))
         set_global_cube_batch_downloader(batch_downloader)
-        torch.load = intercept_torch_load(torch.load)
         builtins.open = intercept_open(open)
+        torch.load = intercept_torch_load(torch.load)
+
 
     try:
         seed = base_seed + worker_id

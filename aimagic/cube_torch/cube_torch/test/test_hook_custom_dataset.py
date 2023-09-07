@@ -8,7 +8,7 @@ from torch.utils.data import ConcatDataset, Dataset
 from torchvision import transforms
 
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
-os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '1222321321'
+os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '6'
 os.environ['localIP'] = "127.0.0.1"
 
 os.environ['USE_BATCH_DOWNLOAD'] = 'true'
@@ -55,7 +55,7 @@ def start_worker_test_concatDataset(i):
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
-            time.sleep(2)
+            # time.sleep(2)
         epoch += 1
 
 
@@ -68,7 +68,7 @@ def start_worker_test_Dataset(i):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=215, shuffle=True,
-        num_workers=2)
+        num_workers=1)
     epoch = 0
     while True:
         print("start epoch {} read data".format(epoch))
@@ -76,6 +76,7 @@ def start_worker_test_Dataset(i):
             print("i is {}, epoch {} ".format(i, epoch))
             time.sleep(1)
         epoch += 1
+        break
 
 
 if __name__ == '__main__':

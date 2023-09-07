@@ -40,10 +40,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
             os.makedirs(self.dataset_dir, exist_ok=True)
         # self.clean_old_dataset_file(self.dataset_dir)
         self.get_train_file_name_lists()
-        t = threading.Thread(target=self._renew_ttl_loop, daemon=True)
-        t.daemon = True
-        t.start()
-        dataset_id = id(cube_loader.dataset)
+
         self.register_pid_addr = "http://127.0.0.1:{}/register/pid".format(self.prof_port)
         self.unregister_pid_addr = "http://127.0.0.1:{}/unregister/pid".format(self.prof_port)
         self.batch_download_addr = "http://127.0.0.1:{}/batchdownload?dataset_cnt={}".format(self.prof_port,
@@ -51,6 +48,10 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
         self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,
                                                                                            self._dataset_cnt)
+        t = threading.Thread(target=self._renew_ttl_loop, daemon=True)
+        t.daemon = True
+        t.start()
+        dataset_id = id(cube_loader.dataset)
         get_manager().__dict__[dataset_id] = self
 
     def get_cube_prefetch_addr(self):
@@ -213,5 +214,5 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_notify_storage_worker_num(self):
         if self._is_use_batch_download:
-            return 1
+            return 4
         return 1

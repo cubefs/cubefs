@@ -1,12 +1,8 @@
 import asyncio
 import ctypes
-import io
 import json
 import multiprocessing
 import os
-import time
-from datetime import datetime
-from typing import Optional
 
 import requests
 import xxhash
@@ -16,29 +12,28 @@ from urllib3 import Retry
 from cube_torch import get_manager
 
 
-class CubeDownloadItemList(ctypes.Structure):
-    _fields_ = [("items", ctypes.py_object)]
+class CubeDownloadItem(ctypes.Structure):
+    _fields_ = [('path_ptr', ctypes.c_char_p),
+                ('path_size', ctypes.c_int),
+                ('content_ptr', ctypes.c_char_p),
+                ('content_size', ctypes.c_int)]
 
+    def get_path(self):
+        return ctypes.string_at(self.path_ptr, self.path_size).decode()
 
-class CubeDownloadItem(io.BytesIO):
+    def get_content(self):
+        return ctypes.string_at(self.content_ptr, self.content_size)
 
-    def __init__(self, file_path, file_size, file_content):
-        self.train_file_path = file_path
-        self.train_file_size = file_size
-        self.train_file_content = file_content
-        super().__init__(file_content)
+    def get_content_size(self):
+        return self.content_size
 
 
 class CubeBatchDownloader:
-    def __init__(self, url,dataset_cnt):
+    def __init__(self, url, dataset_size: int = 1000000000):
         self.batch_download_addr = url
         manager = get_manager()
-        self.dataset_size = dataset_cnt // 2
-        self.cube_content_cache = multiprocessing.Array(CubeDownloadItemList, self.dataset_size)
-        for i in range(self.dataset_size):
-            cube_item = CubeDownloadItemList()
-            cube_item.items = manager.list()
-            self.cube_content_cache[i] = cube_item
+        self.dataset_size = dataset_size
+        self.cube_content_cache=multiprocessing.Array(CubeDownloadItem,self.dataset_size)
         manager.cube_batch_downloader = self
         self.storage_session = requests.Session()
         retry_strategy = Retry(
@@ -50,33 +45,34 @@ class CubeBatchDownloader:
         self.storage_session.mount('http://', adapter)
 
     def parse_content(self, content):
+        content=bytearray(content)
+        ptr = (ctypes.c_char * len(content)).from_buffer(content)
         version = int.from_bytes(content[:8], byteorder='big')
         path_count = int.from_bytes(content[8:16], byteorder='big')
         start = 16
         for i in range(path_count):
-            path_size_size = int.from_bytes(content[start:start + 8], byteorder='big')
+            path_size = int.from_bytes(content[start:start + 8], byteorder='big')
             start += 8
-            file_path = content[start:start + path_size_size].decode()
-            start += path_size_size
-            file_size = int.from_bytes(content[start:start + 8], byteorder='big')
+            path_ptr=ptr[start:start+path_size]
+            start += path_size
+            content_size = int.from_bytes(content[start:start + 8], byteorder='big')
             start += 8
-            if file_size > 0:
-                file_content = content[start:start + file_size]
-                start += file_size
-                item = CubeDownloadItem(file_path, file_size, file_content)
+            if content_size > 0:
+                content_ptr = ptr[start:start + content_size]
+                start += content_size
+                item = CubeDownloadItem(path_ptr,path_size,content_ptr,content_size)
+                if i==0:
+                    print("path:{} item_content_ptr:{} content_ptr:{}".format(item.get_path(),item.content_ptr,content_ptr))
+                    print("i:{} path:{} content_size:{} content:{}".format(i,item.get_path(),item.get_content_size(),ctypes.string_at(item.content_ptr, content_size)))
                 self.add_cube_item(item)
-            else:
-                print('file_path:{}  content_size:{} Content is empty'.format(file_path, file_size))
 
-    def add_cube_item(self, item: CubeDownloadItem):
-        slot_idx = self.get_slot_idx(item.train_file_path)
-        slot_items=self.cube_content_cache[slot_idx].items
-        slot_items.append(item)
-        current_time = datetime.now()
-        formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S.%f")
-        print("||pid:{} time:{} add path:{} slot_idx:{} slot_idx_items_id:{} "
-              "len(slot_idx_items):{} ".format(os.getpid(), formatted_time,item.train_file_path,
-               slot_idx, id(slot_items), len(slot_items)))
+            else:
+                print('file_path:{}  content_size:{} Content is empty'.format(ctypes.string_at(path_ptr,path_size), content_size))
+
+    def add_cube_item(self,cube_item:CubeDownloadItem):
+        slot_idx = self.get_slot(cube_item.get_path())
+        self.cube_content_cache[slot_idx]=cube_item
+
 
     def encode_by_paths(self, path_list):
         content = b''
@@ -93,10 +89,9 @@ class CubeBatchDownloader:
             content += file_content
         return content
 
-    def get_slot_idx(self, text):
+    def get_slot(self, text):
         hash_value = xxhash.xxh64(text).hexdigest()
-        slot_idx = int(hash_value, 16) % self.dataset_size
-
+        slot_idx= int(hash_value, 16) % self.dataset_size
         return slot_idx
 
     def batch_download(self, index_list):
@@ -115,25 +110,12 @@ class CubeBatchDownloader:
         loop = asyncio.new_event_loop()
         loop.run_in_executor(None, self.batch_download, index_list)
 
-    def get_cube_path_item(self, file_path, is_free_memory: Optional[bool] = True):
-        slot_idx = self.get_slot_idx(file_path)
-        slot_items=self.cube_content_cache[slot_idx].items
-        current_time = datetime.now()
-        formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S.%f")
-        print("|| pid:{} time:{} file_path:{} slot_idx:{}  slot_idx_items_id:{} "
-              "len(slot_idx_items):{} is_free_memory:{}".format(os.getpid(),formatted_time,file_path,slot_idx,
-            id(slot_items),len(slot_items),is_free_memory))
-        data=None
-        for index,_ in  enumerate(slot_items):
-            item=slot_items[index]
-            print("find file_path:{} item:{} is same:{}".format(file_path,item.train_file_path,file_path==item.train_file_path))
-            if item.train_file_path == file_path:
-                if is_free_memory:
-                    data = slot_items.pop(index)
-                else:
-                    data=slot_items[index]
-                break
-        return data
+    def get_cube_path_item(self, file_path):
+        slot_idx=self.get_slot(file_path)
+        slot_value=self.cube_content_cache[slot_idx]
+        if slot_value.get_path()==file_path:
+            return slot_value
+        return None
 
 
     def add_test_env_item(self, file_path):
@@ -141,7 +123,7 @@ class CubeBatchDownloader:
         with builtins_open(file_path, 'rb') as f:
             data = f.read()
             size = len(data)
-            item = CubeDownloadItem(file_path, size, data)
+            item = CubeDownloadItem(file_path,size, data)
             self.add_cube_item(item)
 
     def add_cube_dataset(self, path_items):
@@ -161,7 +143,7 @@ def init_cube_batch_downloader():
                     break
         if len(jpg_files) >= 30:
             break
-    cube_downloader = CubeBatchDownloader("http://127.0.0.1")
+    cube_downloader = CubeBatchDownloader("http://127.0.0.1", len(jpg_files)*100)
     content = cube_downloader.encode_by_paths(jpg_files)
     cube_downloader.parse_content(content)
     return cube_downloader, jpg_files
@@ -173,7 +155,11 @@ if __name__ == '__main__':
         with open(path, 'rb') as f:
             file_content = f.read()
             item = cube_downloader.get_cube_path_item(path)
-            assert file_content == item.train_file_content
-            assert path == item.train_file_path
-            assert len(file_content) == item.train_file_size
+            if item is None:
+                continue
+            print("path is {} ,file_size:{} file_content is :{}".format(path,len(file_content),file_content))
+            print("item.get_content type: {}".format(item.get_content()))
+            assert file_content == item.get_content()
+            assert path == item.get_path()
+            assert len(file_content) == item.get_train_file_size()
             print("file_path:{} file_size:{} file_content is same".format(path, len(file_content)))
