@@ -459,13 +459,11 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 	}
 
 	log.LogInfof("action[fsmVersionOp] mp[%v] seq %v, op %v", mp.config.PartitionId, opData.VerSeq, opData.Op)
-
 	if opData.Op == proto.CreateVersionCommit {
 		cnt := len(mp.multiVersionList.VerList)
 		if cnt > 0 && mp.multiVersionList.VerList[cnt-1].Ver >= opData.VerSeq {
 			log.LogErrorf("action[MultiVersionOp] reqeust seq %v lessOrEqual last exist snapshot seq %v",
 				mp.multiVersionList.VerList[cnt-1].Ver, opData.VerSeq)
-			mp.verSeq = opData.VerSeq
 			return
 		}
 		newVer := &proto.VolVersionInfo{
@@ -490,6 +488,13 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 				break
 			}
 		}
+	} else if opData.Op == proto.SyncAllVersionList {
+		log.LogWarnf("action[fsmVersionOp] mp %v before update:with seq %v verlist %v",
+			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
+		mp.multiVersionList.VerList = opData.VerList
+		mp.verSeq = opData.VerSeq
+		log.LogWarnf("action[fsmVersionOp] mp %v after update:with seq %v verlist %v",
+			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
 	} else {
 		log.LogErrorf("action[fsmVersionOp] mp %v with seq %v process op type %v seq %v not found",
 			mp.config.PartitionId, mp.verSeq, opData.Op, opData.VerSeq)
