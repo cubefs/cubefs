@@ -141,7 +141,6 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 		}
 	}
 	go w.uploadFlowInfoByTick(client)
-	go w.updateSimpleVolViewByTick(client)
 	go w.update(client)
 	return
 }
@@ -235,28 +234,8 @@ func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 	}
 }
 
-// uid need get uids info by volView with high frequency, but if no uid works
-// use 1 minute is fine
-func (w *Wrapper) updateSimpleVolViewByTick(clientInfo SimpleClientInfo) {
-	ticker := time.NewTicker(10 * time.Second)
-	var tickCnt uint16
-	for {
-		select {
-		case <-ticker.C:
-			if len(w.Uids) == 0 && tickCnt%6 != 0 {
-				tickCnt++
-				continue
-			}
-			w.updateSimpleVolView(clientInfo)
-			tickCnt++
-		case <-w.stopC:
-			return
-		}
-	}
-}
-
 func (w *Wrapper) update(client SimpleClientInfo) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ticker.C:
