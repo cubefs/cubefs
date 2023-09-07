@@ -1147,11 +1147,14 @@ func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 			defer func() {
 				wg.Done()
 			}()
+			mp.RLock()
 			mr, err := mp.getMetaReplica(host)
 			if err != nil {
+				mp.RUnlock()
 				errChannel <- err
 				return
 			}
+			mp.RUnlock()
 			task := mr.createTaskToLoadMetaPartition(mp.PartitionID)
 			response, err := mr.metaNode.Sender.syncSendAdminTask(task)
 			if err != nil {

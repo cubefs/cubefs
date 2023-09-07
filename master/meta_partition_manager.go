@@ -55,6 +55,8 @@ func (c *Cluster) checkLoadMetaPartitions() {
 }
 
 func (mp *MetaPartition) checkSnapshot(clusterID string) {
+	mp.RLock()
+	defer mp.RUnlock()
 	if len(mp.LoadResponse) == 0 {
 		return
 	}
