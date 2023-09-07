@@ -211,7 +211,7 @@ type OpMultipart interface {
 
 // MultiVersion operation from master or client
 type OpMultiVersion interface {
-	MultiVersionOp(op uint8, verSeq uint64) (err error)
+	MultiVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo) (err error)
 	fsmVersionOp(reqData []byte) (err error)
 	GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
 	GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)

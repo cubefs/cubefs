@@ -258,6 +258,7 @@ const (
 	DeleteVersion        = 2
 	CreateVersionPrepare = 3
 	CreateVersionCommit  = 4
+	SyncAllVersionList   = 5
 )
 
 // stage of version building

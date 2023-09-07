@@ -2313,7 +2313,7 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 				return true
 			}
 			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do MultiVersionOp verseq %v", VolumeID, id, VerSeq)
-			if err = partition.MultiVersionOp(Op, VerSeq); err != nil {
+			if err = partition.MultiVersionOp(Op, VerSeq, nil); err != nil {
 				return false
 			}
 			return true
@@ -2363,6 +2363,9 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 		if (err != nil && !isOldClient) || mp.GetVerSeq() < p.VerSeq {
 			log.LogErrorf("checkmultiSnap.multiVersionstatus. err %v", err)
 			err = m.checkVolVerList() // no matter what happened. try complement update local seq as master's
+			if mp.GetVerSeq() < p.VerSeq {
+				log.LogErrorf("checkmultiSnap.multiVersionstatus. mp.GetVerSeq() %v, p.VerSeq %v", err, p.VerSeq)
+			}
 		}
 	}()
 	if (p.ExtentType&proto.MultiVersionFlag == 0) && mp.GetVerSeq() > 0 {

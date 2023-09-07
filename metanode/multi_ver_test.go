@@ -2,10 +2,12 @@ package metanode
 
 import (
 	"fmt"
+	raftstoremock "github.com/cubefs/cubefs/metanode/mocktest/raftstore"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"math"
 	"os"
@@ -77,7 +79,7 @@ func init() {
 	os.RemoveAll(logDir)
 
 	if _, err := log.InitLog(logDir, "metanode", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit); err != nil {
-		fmt.Println("Fatal: failed to start the chubaofs daemon - ", err)
+		fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
 		return
 	}
 	log.LogDebugf("action start")
@@ -1190,4 +1192,62 @@ func TestSplitKey(t *testing.T) {
 	ext.Size = 2 * util.PageSize
 	_, invalid = NewPacketToDeleteExtent(dp, ext)
 	assert.True(t, invalid == false)
+}
+func NewMetaPartitionForTest() *metaPartition {
+	mpC := &MetaPartitionConfig{
+		PartitionId: PartitionIdForTest,
+		VolName:     VolNameForTest,
+	}
+	partition := NewMetaPartition(mpC, nil).(*metaPartition)
+	partition.uniqChecker.keepTime = 1
+	partition.uniqChecker.keepOps = 0
+	partition.mqMgr = NewQuotaManager(VolNameForTest, 1)
+	return partition
+}
+
+func mockPartitionRaftForTest(ctrl *gomock.Controller) *metaPartition {
+	partition := NewMetaPartitionForTest()
+	raft := raftstoremock.NewMockPartition(ctrl)
+	idx := uint64(0)
+	raft.EXPECT().Submit(gomock.Any()).DoAndReturn(func(cmd []byte) (resp interface{}, err error) {
+		idx++
+		return partition.Apply(cmd, idx)
+	}).AnyTimes()
+	raft.EXPECT().LeaderTerm().Return(uint64(1), uint64(1)).AnyTimes()
+	partition.raftPartition = raft
+
+	return partition
+}
+
+func TestCheckVerList(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mp = mockPartitionRaftForTest(mockCtrl)
+
+	mp.multiVersionList = &proto.VolVersionInfoList{
+		VerList: []*proto.VolVersionInfo{
+			{Ver: 20, Status: proto.VersionNormal},
+			{Ver: 30, Status: proto.VersionNormal},
+			{Ver: 40, Status: proto.VersionNormal}},
+	}
+	masterList := &proto.VolVersionInfoList{
+		VerList: []*proto.VolVersionInfo{
+			{Ver: 20, Status: proto.VersionNormal},
+			{Ver: 30, Status: proto.VersionNormal},
+			{Ver: 40, Status: proto.VersionNormal},
+			{Ver: 50, Status: proto.VersionNormal}},
+	}
+
+	mp.checkVerList(masterList)
+	assert.True(t, mp.verSeq == 50)
+	assert.True(t, mp.multiVersionList.VerList[len(mp.multiVersionList.VerList)-1].Ver == 50)
+
+	masterList = &proto.VolVersionInfoList{
+		VerList: []*proto.VolVersionInfo{
+			{Ver: 20, Status: proto.VersionNormal},
+			{Ver: 40, Status: proto.VersionNormal}},
+	}
+	mp.checkVerList(masterList)
+	assert.True(t, mp.verSeq == 40)
+	assert.True(t, len(mp.multiVersionList.VerList) == 2)
 }

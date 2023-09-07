@@ -176,72 +176,90 @@ func (mp *metaPartition) SetTxInfo(info []*proto.TxInfo) {
 }
 
 type VerOpData struct {
-	Op     uint8
-	VerSeq uint64
+	Op      uint8
+	VerSeq  uint64
+	VerList []*proto.VolVersionInfo
 }
 
 func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList) (err error) {
+	mp.multiVersionList.RLock()
 
-	mp.multiVersionList.Lock()
-	defer mp.multiVersionList.Unlock()
-
-	log.LogDebugf("checkVerList vol %v mp %v mpVerlist %v", mp.config.VolName, mp.config.PartitionId, mp.multiVersionList.VerList)
-
-	verMapLocal := make(map[uint64]uint8)
-	for _, ver := range mp.multiVersionList.VerList {
-		verMapLocal[ver.Ver] = ver.Status
-	}
+	verMapLocal := make(map[uint64]*proto.VolVersionInfo)
 	verMapMaster := make(map[uint64]*proto.VolVersionInfo)
 	for _, ver := range masterListInfo.VerList {
 		verMapMaster[ver.Ver] = ver
 	}
 
+	var (
+		VerList    []*proto.VolVersionInfo
+		needUpdate bool
+	)
+
 	for _, info2 := range mp.multiVersionList.VerList {
 		log.LogDebugf("checkVerList. vol %v mp %v ver info %v", mp.config.VolName, mp.config.PartitionId, info2)
-		if info2.Status != proto.VersionNormal {
-			log.LogWarnf("checkVerList. vol %v mp %v ver %v status abnormal %v", mp.config.VolName, mp.config.PartitionId, info2.Ver, info2.Status)
+		vms, exist := verMapMaster[info2.Ver]
+		if !exist {
+			warn := fmt.Sprintf("[checkVerList] vol %v mp %v not found %v in master list", mp.config.VolName, mp.config.PartitionId, info2.Ver)
+			exporter.Warning(warn)
+			log.LogWarn(warn)
+			needUpdate = true
 			continue
 		}
-		_, exist := verMapMaster[info2.Ver]
-		if !exist {
-			err = fmt.Errorf("[checkVerList] vol %v mp %v not found %v in master list", mp.config.VolName, mp.config.PartitionId, info2.Ver)
-			exporter.Warning(err.Error())
-			log.LogWarn(err)
+		if info2.Status != proto.VersionNormal && info2.Status != vms.Status {
+			log.LogWarnf("checkVerList. vol %v mp %v ver %v status abnormal %v", mp.config.VolName, mp.config.PartitionId, info2.Ver, info2.Status)
+			info2.Status = vms.Status
+			needUpdate = true
 		}
+		VerList = append(VerList, info2)
+		verMapLocal[info2.Ver] = info2
 	}
+	mp.multiVersionList.RUnlock()
 
 	for _, vInfo := range masterListInfo.VerList {
-		log.LogDebugf("checkVerList. vol %v mp %v master info %v", mp.config.VolName, mp.config.PartitionId, vInfo)
 		if vInfo.Status != proto.VersionNormal {
+			log.LogDebugf("checkVerList. vol %v mp %v master info %v", mp.config.VolName, mp.config.PartitionId, vInfo)
 			continue
 		}
-		st, exist := verMapLocal[vInfo.Ver]
+		ver, exist := verMapLocal[vInfo.Ver]
 		if !exist {
-			mLen := len(mp.multiVersionList.VerList)
-			if mLen > 0 && vInfo.Ver > mp.multiVersionList.VerList[mLen-1].Ver {
-				expStr := fmt.Sprintf("checkVerList.vol %v mp %v not found %v in mp list and append version %v",
-					mp.config.VolName, mp.config.PartitionId, vInfo.Ver, vInfo)
-				log.LogWarnf("[checkVerList] vol %v", expStr)
-				exporter.Warning(expStr)
-				//	mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, vInfo)
-				//	mp.verSeq = vInfo.Ver
-			}
+			expStr := fmt.Sprintf("checkVerList.vol %v mp %v not found %v in mp list and append version %v",
+				mp.config.VolName, mp.config.PartitionId, vInfo.Ver, vInfo)
+			log.LogWarnf("[checkVerList] vol %v", expStr)
+			exporter.Warning(expStr)
+			VerList = append(VerList, vInfo)
+			needUpdate = true
 			continue
 		}
-		if st != proto.VersionNormal {
-			err = fmt.Errorf("checkVerList.vol %v mp %v ver %v inoraml.local status %v in mp volume list",
-				mp.config.VolName, mp.config.PartitionId, vInfo.Ver, st)
-			log.LogError(err)
+		if ver.Status != vInfo.Status {
+			warn := fmt.Sprintf("checkVerList.vol %v mp %v ver %v inoraml.local status %v update to %v",
+				mp.config.VolName, mp.config.PartitionId, vInfo.Status, vInfo.Ver, vInfo.Status)
+			log.LogWarn(warn)
+			ver.Status = vInfo.Status
+		}
+	}
+	if needUpdate {
+		var lastSeq uint64
+		sort.SliceStable(VerList, func(i, j int) bool {
+			if VerList[i].Ver < VerList[j].Ver {
+				lastSeq = VerList[j].Ver
+				return true
+			}
+			lastSeq = VerList[i].Ver
+			return false
+		})
+		if err = mp.MultiVersionOp(proto.SyncAllVersionList, lastSeq, VerList); err != nil {
+			return
 		}
 	}
 	return
 }
 
-func (mp *metaPartition) MultiVersionOp(op uint8, verSeq uint64) (err error) {
+func (mp *metaPartition) MultiVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo) (err error) {
 
 	verData := &VerOpData{
-		Op:     op,
-		VerSeq: verSeq,
+		Op:      op,
+		VerSeq:  verSeq,
+		VerList: verList,
 	}
 	data, _ := json.Marshal(verData)
 	_, err = mp.submit(opFSMVersionOp, data)
