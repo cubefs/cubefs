@@ -57,7 +57,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.diskList = make([]string, 0)
 	space.partitions = make(map[uint64]*DataPartition)
 	space.stats = NewStats(dataNode.zoneName)
-	space.stopC = make(chan bool, 0)
+	space.stopC = make(chan bool)
 	space.dataNode = dataNode
 	space.diskUtils = make(map[string]*atomicutil.Float64)
 	go space.statUpdateScheduler()

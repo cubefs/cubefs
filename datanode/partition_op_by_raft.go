@@ -160,14 +160,6 @@ func UnmarshalOldVersionRandWriteOpItem(raw []byte) (result *rndWrtOpItem, err e
 	return
 }
 
-func (dp *DataPartition) checkWriteErrs(errMsg string) (ignore bool) {
-	// file has been deleted when applying the raft log
-	if strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) || strings.Contains(errMsg, storage.ExtentNotFoundError.Error()) {
-		return true
-	}
-	return false
-}
-
 // CheckLeader checks if itself is the leader during read
 func (dp *DataPartition) CheckLeader(request *repl.Packet, connect net.Conn) (err error) {
 	//  and use another getRaftLeaderAddr() to return the actual address
@@ -200,7 +192,6 @@ func (si *ItemIterator) ApplyIndex() uint64 {
 
 // Close Closes the iterator.
 func (si *ItemIterator) Close() {
-	return
 }
 
 // Next returns the next item in the iterator.
