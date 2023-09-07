@@ -17,20 +17,18 @@ package datanode
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"hash/crc32"
 	"math"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util"
-
-	"fmt"
-	"hash/crc32"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -58,7 +56,6 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRec
 		extentFile.Source = source
 		task.extents[extentFile.FileID] = extentFile
 	}
-
 	return
 }
 
@@ -90,7 +87,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 		}
 	}
 
-	//fix dp replica index panic , using replica copy
+	// fix dp replica index panic , using replica copy
 	replica := dp.getReplicaCopy()
 	repairTasks := make([]*DataPartitionRepairTask, len(replica))
 	err := dp.buildDataPartitionRepairTask(repairTasks, extentType, tinyExtents, replica)
@@ -407,8 +404,8 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members []*DataPartitionRepairTask) (err error) {
 	p := repl.NewPacketToNotifyExtentRepair(dp.partitionID) // notify all the followers to repair
 	var conn *net.TCPConn
-	//target := dp.getReplicaAddr(index)
-	//fix repair case panic,may be dp's replicas is change
+	// target := dp.getReplicaAddr(index)
+	// fix repair case panic,may be dp's replicas is change
 	target := members[index].addr
 
 	p.Data, _ = json.Marshal(members[index])
@@ -456,16 +453,13 @@ func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) 
 	return
 }
 
-//const MaxRepairErrCnt = 1000
-
 // DoStreamExtentFixRepair executes the repair on the followers.
 func (dp *DataPartition) doStreamExtentFixRepair(wg *sync.WaitGroup, remoteExtentInfo *storage.ExtentInfo) {
 	defer wg.Done()
 
 	err := dp.streamRepairExtent(remoteExtentInfo)
-
 	if err != nil {
-		//only decommission repair need to check err cnt
+		// only decommission repair need to check err cnt
 		if dp.isDecommissionRecovering() {
 			atomic.AddUint64(&dp.recoverErrCnt, 1)
 			if atomic.LoadUint64(&dp.recoverErrCnt) >= dp.dataNode.GetDpMaxRepairErrCnt() {
@@ -539,9 +533,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 		return
 	}
 	currFixOffset := localExtentInfo.Size
-	var (
-		hasRecoverySize uint64
-	)
+	var hasRecoverySize uint64
 	var loopTimes uint64
 	for currFixOffset < remoteExtentInfo.Size {
 		if dp.stopRecover && dp.isDecommissionRecovering() {
@@ -604,7 +596,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			if reply.ArgLen == TinyExtentRepairReadResponseArgLen {
 				remoteAvaliSize = binary.BigEndian.Uint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen])
 			}
-			if reply.Arg != nil { //compact v1.2.0 recovery
+			if reply.Arg != nil { // compact v1.2.0 recovery
 				isEmptyResponse = reply.Arg[0] == EmptyResponse
 			}
 			if isEmptyResponse {
@@ -644,7 +636,6 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 
 	}
 	return
-
 }
 
 func intMin(a, b int) int {

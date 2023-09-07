@@ -19,13 +19,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
-
-	"hash/crc32"
-	"strings"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -38,9 +37,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-var (
-	ErrForbiddenDataPartition = errors.New("the data partition is forbidden")
-)
+var ErrForbiddenDataPartition = errors.New("the data partition is forbidden")
 
 func (s *DataNode) getPacketTpLabels(p *repl.Packet) map[string]string {
 	labels := make(map[string]string)
@@ -268,7 +265,6 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 }
 
 func (s *DataNode) commitCreateVersion(volumeID string, verSeq uint64) (err error) {
-
 	for _, dp := range s.space.partitions {
 		if dp.volumeID != volumeID {
 			continue
@@ -305,9 +301,7 @@ func (s *DataNode) commitCreateVersion(volumeID string, verSeq uint64) (err erro
 }
 
 func (s *DataNode) prepareCreateVersion(req *proto.MultiVersionOpRequest) (err error, opAagin bool) {
-	var (
-		ver2Phase *verOp2Phase
-	)
+	var ver2Phase *verOp2Phase
 	if value, ok := s.volUpdating.Load(req.VolumeID); ok {
 		ver2Phase = value.(*verOp2Phase)
 		if req.VerSeq < ver2Phase.verSeq {
@@ -451,7 +445,6 @@ func (s *DataNode) handleUpdateVerPacket(p *repl.Packet) {
 			return
 		}
 	}()
-
 }
 
 func (s *DataNode) checkVolumeForbidden(volNames []string) {
@@ -545,7 +538,6 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			return
 		}
 	}()
-
 }
 
 // Handle OpDeleteDataPartition packet.
@@ -580,15 +572,12 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 		log.LogErrorf("action[handlePacketToDeleteDataPartition] err(%v).", err)
 	}
 	log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v error(%v)", request.PartitionId, err))
-
 }
 
 // Handle OpLoadDataPartition packet.
 func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 	task := &proto.AdminTask{}
-	var (
-		err error
-	)
+	var err error
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionLoadDataPartition, err.Error())
@@ -602,9 +591,7 @@ func (s *DataNode) handlePacketToLoadDataPartition(p *repl.Packet) {
 }
 
 func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
-	var (
-		err error
-	)
+	var err error
 	request := &proto.LoadDataPartitionRequest{}
 	response := &proto.LoadDataPartitionResponse{}
 	if task.OpCode == proto.OpLoadDataPartition {
@@ -636,9 +623,7 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 
 // Handle OpMarkDelete packet.
 func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
-	var (
-		err error
-	)
+	var err error
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionBatchMarkDelete, err.Error())
@@ -673,9 +658,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 
 // Handle OpMarkDelete packet.
 func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
-	var (
-		err error
-	)
+	var err error
 	defer func() {
 		if err != nil {
 			log.LogErrorf(fmt.Sprintf("(%v) error(%v).", p.GetUniqueLogId(), err))
@@ -898,9 +881,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 }
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
-	var (
-		err error
-	)
+	var err error
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
@@ -924,9 +905,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 }
 
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
-	var (
-		err error
-	)
+	var err error
 	log.LogDebugf("handleExtentRepairReadPacket %v", p)
 	defer func() {
 		if err != nil {
@@ -1107,9 +1086,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 	}
 	avaliReplySize := uint64(needReplySize)
 
-	var (
-		newOffset, newEnd int64
-	)
+	var newOffset, newEnd int64
 	for {
 		if needReplySize <= 0 {
 			break
@@ -1123,9 +1100,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 			return
 		}
 		if newOffset > offset {
-			var (
-				replySize int64
-			)
+			var replySize int64
 			if replySize, err = s.writeEmptyPacketOnTinyExtentRepairRead(reply, newOffset, offset, connect); err != nil {
 				return
 			}
@@ -1166,9 +1141,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 }
 
 func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connect net.Conn) {
-	var (
-		err error
-	)
+	var err error
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamReadTinyDeleteRecord, err.Error())
@@ -1214,9 +1187,7 @@ func (s *DataNode) handlePacketToReadTinyDeleteRecordFile(p *repl.Packet, connec
 
 // Handle OpNotifyReplicasToRepair packet.
 func (s *DataNode) handlePacketToNotifyExtentRepair(p *repl.Packet) {
-	var (
-		err error
-	)
+	var err error
 	partition := p.Object.(*DataPartition)
 	mf := new(DataPartitionRepairTask)
 	err = json.Unmarshal(p.Data, mf)
@@ -1485,9 +1456,7 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 }
 
 func (s *DataNode) handlePacketToDataPartitionTryToLeader(p *repl.Packet) {
-	var (
-		err error
-	)
+	var err error
 
 	defer func() {
 		if err != nil {

@@ -16,9 +16,10 @@ package datanode
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"time"
 )
 
 const (

@@ -77,7 +77,6 @@ func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 
 // StartRaft start raft instance when data partition start or restore.
 func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
-
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return nil
@@ -173,7 +172,7 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 		if nodeID.NodeID == peer.ID {
 			continue
 		}
-		//check nodeID is valid
+		// check nodeID is valid
 		hasDownReplicasExcludePeer = append(hasDownReplicasExcludePeer, nodeID.NodeID)
 	}
 
@@ -201,7 +200,6 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 // 2. collect the applied ids from raft members.
 // 3. based on the minimum applied id to cutoff and delete the saved raft log in order to free the disk space.
 func (dp *DataPartition) StartRaftLoggingSchedule() {
-
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return
@@ -360,7 +358,6 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 
 // Add a raft node.
 func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
-
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return false, fmt.Errorf("addRaftNode (%v) not support", dp)
@@ -401,7 +398,6 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 
 // Delete a raft node.
 func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
-
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return false, fmt.Errorf("removeRaftNode (%v) not support", dp)
@@ -459,7 +455,7 @@ func (dp *DataPartition) removeRaftNode(req *proto.RemoveDataPartitionRaftMember
 
 func (dp *DataPartition) storeAppliedID(applyIndex uint64) (err error) {
 	filename := path.Join(dp.Path(), TempApplyIndexFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0755)
+	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -538,14 +534,14 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 		RaftHeartbetPort: s.raftHeartbeat,
 		RaftReplicaPort:  s.raftReplica,
 	}
-	var ok = false
+	ok := false
 	if ok, err = config.CheckOrStoreConstCfg(s.raftDir, config.DefaultConstConfigFile, &constCfg); !ok {
 		log.LogErrorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
 		return fmt.Errorf("constCfg check failed %v %v %v %v", s.raftDir, config.DefaultConstConfigFile, constCfg, err)
 	}
 
 	if _, err = os.Stat(s.raftDir); err != nil {
-		if err = os.MkdirAll(s.raftDir, 0755); err != nil {
+		if err = os.MkdirAll(s.raftDir, 0o755); err != nil {
 			err = errors.NewErrorf("create raft server dir: %s", err.Error())
 			log.LogErrorf("action[startRaftServer] cannot start raft server err(%v)", err)
 			return
@@ -655,14 +651,12 @@ func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID 
 
 // Get the partition size from the leader.
 func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64, err error) {
-	var (
-		conn *net.TCPConn
-	)
+	var conn *net.TCPConn
 
 	p := NewPacketToGetPartitionSize(dp.partitionID)
 	p.ExtentID = maxExtentID
 	target := dp.getReplicaAddr(0)
-	conn, err = gConnPool.GetConnect(target) //get remote connect
+	conn, err = gConnPool.GetConnect(target) // get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return
@@ -692,12 +686,10 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 }
 
 func (dp *DataPartition) getMaxExtentIDAndPartitionSize(target string) (maxExtentID, PartitionSize uint64, err error) {
-	var (
-		conn *net.TCPConn
-	)
+	var conn *net.TCPConn
 	p := NewPacketToGetMaxExtentIDAndPartitionSIze(dp.partitionID)
 
-	conn, err = gConnPool.GetConnect(target) //get remote connect
+	conn, err = gConnPool.GetConnect(target) // get remote connect
 	if err != nil {
 		err = errors.Trace(err, " partition(%v) get host(%v) connect", dp.partitionID, target)
 		return

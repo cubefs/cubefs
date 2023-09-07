@@ -18,9 +18,7 @@ const (
 	MaxRepairErrCnt = 1000
 )
 
-var (
-	nodeInfoStopC = make(chan struct{}, 0)
-)
+var nodeInfoStopC = make(chan struct{}, 0)
 
 func (m *DataNode) startUpdateNodeInfo() {
 	ticker := time.NewTicker(UpdateNodeInfoTicket)

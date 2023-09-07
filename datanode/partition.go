@@ -17,28 +17,26 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
 	"math"
+	"net"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"github.com/cubefs/cubefs/util"
-
-	"hash/crc32"
-	"net"
-	"sort"
 	"syscall"
+	"time"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -150,9 +148,9 @@ type DataPartition struct {
 	verSeqPrepare              uint64
 	verSeqCommitStatus         int8
 	multiVersionList           []*MetaMultiSnapshotInfo
-	decommissionRepairProgress float64 //record repair progress for decommission datapartition
+	decommissionRepairProgress float64 // record repair progress for decommission datapartition
 	stopRecover                bool
-	recoverErrCnt              uint64 //donot reset, if reach max err cnt, delete this dp
+	recoverErrCnt              uint64 // donot reset, if reach max err cnt, delete this dp
 }
 
 func (dp *DataPartition) IsForbidden() bool {
@@ -164,7 +162,6 @@ func (dp *DataPartition) SetForbidden(status bool) {
 }
 
 func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
-
 	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
 	}
@@ -174,7 +171,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	} else {
 		// init leaderSize to partitionSize
 		disk.updateDisk(uint64(request.LeaderSize))
-		//ensure heartbeat report  Recovering
+		// ensure heartbeat report  Recovering
 		dp.partitionStatus = proto.Recovering
 		go dp.StartRaftAfterRepair(false)
 	}
@@ -238,9 +235,7 @@ func (dp *DataPartition) ForceSetRaftRunning() {
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
 func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err error) {
-	var (
-		metaFileData []byte
-	)
+	var metaFileData []byte
 	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
 		return
 	}
@@ -548,7 +543,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		metaData     []byte
 	)
 	fileName := path.Join(dp.Path(), TempMetadataFileName)
-	if metadataFile, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0666); err != nil {
+	if metadataFile, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0o666); err != nil {
 		return
 	}
 	defer func() {
@@ -557,8 +552,8 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		os.Remove(fileName)
 	}()
 
-	//sp := sortedPeers(dp.config.Peers)
-	//sort.Sort(sp)
+	// sp := sortedPeers(dp.config.Peers)
+	// sort.Sort(sp)
 
 	md := &DataPartitionMetadata{
 		VolumeID:                dp.config.VolName,
@@ -583,6 +578,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 	err = os.Rename(fileName, path.Join(dp.Path(), DataPartitionMetadataFileName))
 	return
 }
+
 func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
@@ -628,7 +624,7 @@ func (dp *DataPartition) statusUpdate() {
 		status = proto.ReadOnly
 	}
 	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
-		//dp is still recovering
+		// dp is still recovering
 		if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
 			status = proto.Recovering
 		} else {
@@ -645,9 +641,7 @@ func parseFileName(filename string) (extentID uint64, isExtent bool) {
 	if isExtent = storage.RegexpExtentFile.MatchString(filename); !isExtent {
 		return
 	}
-	var (
-		err error
-	)
+	var err error
 	if extentID, err = strconv.ParseUint(filename, 10, 64); err != nil {
 		isExtent = false
 		return
@@ -778,9 +772,8 @@ func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
 
 // Fetch the replica information from the master.
 func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, err error) {
-
 	var partition *proto.DataPartitionInfo
-	var retry = 0
+	retry := 0
 	for {
 		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
 			retry++
@@ -983,7 +976,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			}
 			DeleteLimiterWait()
 			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
-			//log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
+			// log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
 			store.MarkDelete(extentID, int64(offset), int64(size))
 		}
 	}
@@ -997,7 +990,7 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.DataPartitionInfo
-	var retry = 0
+	retry := 0
 	for {
 		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
 			log.LogErrorf("action[canRemoveSelf] err[%v]", err)
@@ -1167,7 +1160,6 @@ func (dp *DataPartition) doExtentEvict(vv *proto.SimpleVolView) {
 			break
 		}
 	}
-
 }
 
 func (dp *DataPartition) startEvict() {
@@ -1248,27 +1240,27 @@ func getWithDefault(base, def int) int {
 }
 
 func (dp *DataPartition) StopDecommissionRecover(stop bool) {
-	//only work for decommission repair
+	// only work for decommission repair
 	if !dp.isDecommissionRecovering() {
 		log.LogWarnf("[StopDecommissionRecover]  dp(%d) is not in recovering status: type %d status %d",
 			dp.partitionID, dp.partitionType, dp.Status())
 		return
 	}
-	//for check timeout
+	// for check timeout
 	dp.stopRecover = stop
 	dp.PersistMetadata()
 }
 
 func (dp *DataPartition) isDecommissionRecovering() bool {
-	//decommission recover failed or success will set to normal
+	// decommission recover failed or success will set to normal
 	return dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition
-
 }
+
 func (dp *DataPartition) handleDecommissionRecoverFailed() {
 	if !dp.isDecommissionRecovering() {
 		return
 	}
-	//prevent status changing from  Unavailable to Recovering again in statusUpdate()
+	// prevent status changing from  Unavailable to Recovering again in statusUpdate()
 	dp.partitionType = proto.NormalCreateDataPartition
 	dp.partitionStatus = proto.Unavailable
 	log.LogWarnf("[handleDecommissionRecoverFailed]  dp(%d) recover failed reach max limit", dp.partitionID)

@@ -16,9 +16,11 @@ package datanode
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -26,11 +28,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"errors"
-	"os"
 	"syscall"
+	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -55,7 +54,7 @@ var (
 
 	LocalIP, serverPort string
 	gConnPool           = util.NewConnectPool()
-	//MasterClient        = masterSDK.NewMasterClient(nil, false)
+	// MasterClient        = masterSDK.NewMasterClient(nil, false)
 	MasterClient *masterSDK.MasterCLientWithResolver
 )
 
@@ -99,15 +98,15 @@ const (
 
 	CfgDiskRdonlySpace = "diskRdonlySpace" // int
 	// smux Config
-	ConfigKeyEnableSmuxClient  = "enableSmuxConnPool" //bool
-	ConfigKeySmuxPortShift     = "smuxPortShift"      //int
-	ConfigKeySmuxMaxConn       = "smuxMaxConn"        //int
-	ConfigKeySmuxStreamPerConn = "smuxStreamPerConn"  //int
-	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      //int
-	ConfigKeySmuxTotalStream   = "sumxTotalStream"    //int
+	ConfigKeyEnableSmuxClient  = "enableSmuxConnPool" // bool
+	ConfigKeySmuxPortShift     = "smuxPortShift"      // int
+	ConfigKeySmuxMaxConn       = "smuxMaxConn"        // int
+	ConfigKeySmuxStreamPerConn = "smuxStreamPerConn"  // int
+	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      // int
+	ConfigKeySmuxTotalStream   = "sumxTotalStream"    // int
 
-	//rate limit control enable
-	ConfigDiskQosEnable = "diskQosEnable" //bool
+	// rate limit control enable
+	ConfigDiskQosEnable = "diskQosEnable" // bool
 
 	ConfigServiceIDKey = "serviceIDKey"
 )
@@ -148,7 +147,7 @@ type DataNode struct {
 	metrics        *DataNodeMetrics
 	metricsDegrade int64
 	metricsCnt     uint64
-	volUpdating    sync.Map //map[string]*verOp2Phase
+	volUpdating    sync.Map // map[string]*verOp2Phase
 
 	control common.Control
 
@@ -213,11 +212,11 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.registerMetrics()
 	s.register(cfg)
 
-	//parse the smux config
+	// parse the smux config
 	if err = s.parseSmuxConfig(cfg); err != nil {
 		return
 	}
-	//connection pool must be created before initSpaceManager
+	// connection pool must be created before initSpaceManager
 	s.initConnPool()
 
 	// init limit
@@ -245,7 +244,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	//smux listening & smux connection pool
+	// smux listening & smux connection pool
 	if err = s.startSmuxService(cfg); err != nil {
 		return
 	}
@@ -349,6 +348,7 @@ func (s *DataNode) updateQosLimit() {
 		disk.updateQosLimiter()
 	}
 }
+
 func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
@@ -464,9 +464,7 @@ func parseDiskPath(pathStr string) (disks []string, err error) {
 // registers the data node on the master to report the information such as IsIPV4 address.
 // The startup of a data node will be blocked until the registration succeeds.
 func (s *DataNode) register(cfg *config.Config) {
-	var (
-		err error
-	)
+	var err error
 
 	timer := time.NewTimer(0)
 
@@ -522,7 +520,7 @@ type DataNodeInfo struct {
 }
 
 func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64, err error) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
+	convert := func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
 		result.PersistenceDataPartitions = node.PersistenceDataPartitions
@@ -770,7 +768,7 @@ func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 		}
 	}
 
-	//smux conn pool config
+	// smux conn pool config
 	if s.enableSmuxConnPool {
 		s.smuxConnPoolConfig = util.DefaultSmuxConnPoolConfig()
 		if maxBuffer > 0 {

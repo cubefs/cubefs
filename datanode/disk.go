@@ -165,7 +165,6 @@ func (d *Disk) PartitionCount() int {
 }
 
 func (d *Disk) CanWrite() bool {
-
 	if d.Status == proto.ReadWrite || !d.RejectWrite {
 		return true
 	}
@@ -303,7 +302,7 @@ const (
 
 func (d *Disk) checkDiskStatus() {
 	path := path.Join(d.Path, DiskStatusFile)
-	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0755)
+	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o755)
 	if err != nil {
 		d.triggerDiskError(err)
 		return
@@ -355,7 +354,6 @@ func (d *Disk) updateSpaceInfo() (err error) {
 
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
-
 	} else {
 		d.Status = proto.ReadWrite
 	}
@@ -441,7 +439,7 @@ func (d *Disk) isExpiredPartitionDir(filename string) (isExpiredPartitionDir boo
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
 func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
+	convert := func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
 		result.PersistenceDataPartitions = node.PersistenceDataPartitions
@@ -525,7 +523,6 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 			if visitor != nil {
 				visitor(dp)
 			}
-
 		}(partitionID, filename)
 	}
 
