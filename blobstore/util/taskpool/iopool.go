@@ -22,7 +22,6 @@ import (
 
 type IoPool interface {
 	Submit(taskId uint64, taskFn func())
-	TrySubmit(taskId uint64, taskFn func()) bool
 	Close()
 }
 
@@ -42,6 +41,7 @@ func NewWritePool(threadCnt, queueDepth int) IoPool {
 }
 
 func NewReadPool(threadCnt, queueDepth int) IoPool {
+	// Multiple $threadCnt share a same chan queue
 	return newCommonIoPool(1, threadCnt, queueDepth)
 }
 
@@ -66,7 +66,7 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int) *ioPoolSimple {
 				task.fn()
 				task.done <- struct{}{}
 			}
-			log.Warn("close io pool, exit")
+			log.Debug("close io pool")
 		}()
 	}
 	return pool
@@ -77,17 +77,6 @@ func (p *ioPoolSimple) Submit(taskId uint64, taskFn func()) {
 	p.queue[idx] <- task
 
 	<-task.done
-}
-
-func (p *ioPoolSimple) TrySubmit(taskId uint64, taskFn func()) bool {
-	idx, task := p.generateTask(taskId, taskFn)
-
-	select {
-	case p.queue[idx] <- task:
-		return true
-	default:
-		return false
-	}
 }
 
 func (p *ioPoolSimple) generateTask(taskId uint64, taskFn func()) (idx uint64, task *taskInfo) {
@@ -106,4 +95,5 @@ func (p *ioPoolSimple) Close() {
 		close(p.queue[i])
 	}
 	p.wg.Wait() // wait all io task done
+	log.Info("close all io pool, exit")
 }

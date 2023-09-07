@@ -44,9 +44,9 @@ const (
 	DefaultMetricReportIntervalS        = int64(300)            // 300 Sec
 	DefaultBlockBufferSize              = int64(64 * 1024)      // 64k
 	DefaultCompactEmptyRateThreshold    = float64(0.8)          // 80% rate
-	defaultWriteThreadCnt               = 4
-	defaultReadThreadCnt                = 2
-	defaultIOQueueLength                = 256
+	defaultWriteThreadCnt               = 2
+	defaultReadThreadCnt                = 1
+	defaultIOQueueDepth                 = 256
 )
 
 // Config for disk
@@ -84,8 +84,8 @@ type RuntimeConfig struct {
 	BlockBufferSize              int64   `json:"block_buffer_size"`
 	WriteThreadCnt               int     `json:"write_thread_cnt"`
 	ReadThreadCnt                int     `json:"read_thread_cnt"`
-	WriteQueueLen                int     `json:"write_queue_len"`
-	ReadQueueLen                 int     `json:"read_queue_len"`
+	WriteQueueDepth              int     `json:"write_queue_depth"`
+	ReadQueueDepth               int     `json:"read_queue_depth"`
 
 	DataQos qos.Config `json:"data_qos"`
 }
@@ -148,10 +148,11 @@ func InitConfig(conf *Config) error {
 
 	defaulter.LessOrEqual(&conf.WriteThreadCnt, defaultWriteThreadCnt)
 	defaulter.LessOrEqual(&conf.ReadThreadCnt, defaultReadThreadCnt)
-	defaulter.LessOrEqual(&conf.WriteQueueLen, defaultIOQueueLength)
-	defaulter.LessOrEqual(&conf.ReadQueueLen, defaultIOQueueLength)
-	conf.DataQos.ReadQueueLen = conf.ReadQueueLen
-	conf.DataQos.WriteQueueLen = conf.WriteQueueLen
+	defaulter.LessOrEqual(&conf.WriteQueueDepth, defaultIOQueueDepth)
+	defaulter.LessOrEqual(&conf.ReadQueueDepth, defaultIOQueueDepth)
+	conf.DataQos.ReadQueueDepth = conf.ReadQueueDepth
+	conf.DataQos.WriteQueueDepth = conf.WriteQueueDepth
+	conf.DataQos.WriteChanQueCnt = conf.WriteThreadCnt // $WriteChanQueCnt is equal to $WriteThreadCnt, one-to-one
 	qos.InitAndFixQosConfig(&conf.DataQos)
 
 	return nil
