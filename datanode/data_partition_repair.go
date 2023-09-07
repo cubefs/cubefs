@@ -158,7 +158,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 }
 
 func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, leaderTinyDeleteRecordFileSize int64, err error) {
-	localExtents := make([]*storage.ExtentInfo, 0)
+	var localExtents []*storage.ExtentInfo
 
 	if extentType == proto.NormalExtentType {
 		localExtents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
@@ -175,8 +175,7 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 	}
 	extents = make([]*storage.ExtentInfo, 0, len(localExtents))
 	for _, et := range localExtents {
-		newEt := storage.ExtentInfo{}
-		newEt = *et
+		newEt := *et
 		extents = append(extents, &newEt)
 	}
 	return
@@ -259,7 +258,6 @@ func (dp *DataPartition) moveToBrokenTinyExtentC(extentType uint8, extents []uin
 	if extentType == proto.TinyExtentType {
 		dp.extentStore.SendAllToBrokenTinyExtentC(extents)
 	}
-	return
 }
 
 func (dp *DataPartition) sendAllTinyExtentsToC(extentType uint8, availableTinyExtents, brokenTinyExtents []uint64) {
@@ -341,7 +339,7 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 			if repairTask == nil {
 				continue
 			}
-			if _, ok := repairTask.extents[extentID]; !ok && extentInfo.IsDeleted == false {
+			if _, ok := repairTask.extents[extentID]; !ok && !extentInfo.IsDeleted {
 				if storage.IsTinyExtent(extentID) {
 					continue
 				}

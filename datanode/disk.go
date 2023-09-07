@@ -39,10 +39,10 @@ import (
 
 var (
 	// RegexpDataPartitionDir validates the directory name of a data partition.
-	RegexpDataPartitionDir, _        = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
-	RegexpCachePartitionDir, _       = regexp.Compile("^cachepartition_(\\d)+_(\\d)+$")
-	RegexpPreLoadPartitionDir, _     = regexp.Compile("^preloadpartition_(\\d)+_(\\d)+$")
-	RegexpExpiredDataPartitionDir, _ = regexp.Compile("^expired_datapartition_(\\d)+_(\\d)+$")
+	RegexpDataPartitionDir, _        = regexp.Compile(`^datapartition_(\d)+_(\d)+$`)
+	RegexpCachePartitionDir, _       = regexp.Compile(`^cachepartition_(\d)+_(\d)+$`)
+	RegexpPreLoadPartitionDir, _     = regexp.Compile(`^preloadpartition_(\d)+_(\d)+$`)
+	RegexpExpiredDataPartitionDir, _ = regexp.Compile(`^expired_datapartition_(\d)+_(\d)+$`)
 )
 
 const (
@@ -336,7 +336,6 @@ func (d *Disk) triggerDiskError(err error) {
 		d.ForceExitRaftStore()
 		d.Status = proto.Unavailable
 	}
-	return
 }
 
 func (d *Disk) updateSpaceInfo() (err error) {
@@ -535,13 +534,11 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 			go func(toDeleteExpiredPartitions []string) {
 				ticker := time.NewTicker(ExpiredPartitionExistTime)
 				log.LogInfof("action[RestorePartition] delete expiredPartitions automatically start, toDeleteExpiredPartitions %v", toDeleteExpiredPartitions)
-				select {
-				case <-ticker.C:
-					d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
-					ticker.Stop()
-					log.LogInfof("action[RestorePartition] delete expiredPartitions automatically finish")
-					return
-				}
+
+				<-ticker.C
+				d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
+				ticker.Stop()
+				log.LogInfof("action[RestorePartition] delete expiredPartitions automatically finish")
 			}(notDeletedExpiredPartitionNames)
 		}
 	}

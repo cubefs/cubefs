@@ -24,11 +24,9 @@ import (
 	"os"
 	"path"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -70,20 +68,6 @@ type DataPartitionMetadata struct {
 	LastTruncateID          uint64
 	ReplicaNum              int
 	StopRecover             bool
-}
-
-type sortedPeers []proto.Peer
-
-func (sp sortedPeers) Len() int {
-	return len(sp)
-}
-
-func (sp sortedPeers) Less(i, j int) bool {
-	return sp[i].ID < sp[j].ID
-}
-
-func (sp sortedPeers) Swap(i, j int) {
-	sp[i], sp[j] = sp[j], sp[i]
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {
@@ -318,8 +302,8 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		partitionSize:           dpCfg.PartitionSize,
 		partitionType:           dpCfg.PartitionType,
 		replicas:                make([]string, 0),
-		stopC:                   make(chan bool, 0),
-		stopRaftC:               make(chan uint64, 0),
+		stopC:                   make(chan bool),
+		stopRaftC:               make(chan uint64),
 		storeC:                  make(chan uint64, 128),
 		snapshot:                make([]*proto.File, 0),
 		partitionStatus:         proto.ReadWrite,
@@ -353,9 +337,7 @@ func (dp *DataPartition) replicasInit() {
 	if dp.config.Hosts == nil {
 		return
 	}
-	for _, host := range dp.config.Hosts {
-		replicas = append(replicas, host)
-	}
+	replicas = append(replicas, dp.config.Hosts...)
 	dp.replicasLock.Lock()
 	dp.replicas = replicas
 	dp.replicasLock.Unlock()
@@ -415,8 +397,7 @@ func (dp *DataPartition) getReplicaCopy() []string {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
 
-	var tmpCopy []string
-	tmpCopy = make([]string, len(dp.replicas))
+	tmpCopy := make([]string, len(dp.replicas))
 	copy(tmpCopy, dp.replicas)
 
 	return tmpCopy
@@ -432,24 +413,6 @@ func (dp *DataPartition) getReplicaLen() int {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
 	return len(dp.replicas)
-}
-
-func (dp *DataPartition) needDeleteReplica(addr string) bool {
-	if dp.IsExsitReplica(addr) {
-		return true
-	}
-
-	if dp.config == nil {
-		return false
-	}
-
-	for _, h := range dp.config.Hosts {
-		if addr == h {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (dp *DataPartition) IsExsitReplica(addr string) bool {
@@ -497,7 +460,6 @@ func (dp *DataPartition) Stop() {
 		dp.extentStore.Close()
 		_ = dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
 	})
-	return
 }
 
 // Disk returns the disk instance.
@@ -551,9 +513,6 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		metadataFile.Close()
 		os.Remove(fileName)
 	}()
-
-	// sp := sortedPeers(dp.config.Peers)
-	// sort.Sort(sp)
 
 	md := &DataPartitionMetadata{
 		VolumeID:                dp.config.VolName,
@@ -635,37 +594,6 @@ func (dp *DataPartition) statusUpdate() {
 	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v, res:%v",
 		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), int(math.Min(float64(status), float64(dp.disk.Status))))
 	dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
-}
-
-func parseFileName(filename string) (extentID uint64, isExtent bool) {
-	if isExtent = storage.RegexpExtentFile.MatchString(filename); !isExtent {
-		return
-	}
-	var err error
-	if extentID, err = strconv.ParseUint(filename, 10, 64); err != nil {
-		isExtent = false
-		return
-	}
-	isExtent = true
-	return
-}
-
-func (dp *DataPartition) actualSize(path string, finfo os.FileInfo) (size int64) {
-	name := finfo.Name()
-	extentID, isExtent := parseFileName(name)
-	if !isExtent {
-		return 0
-	}
-	if storage.IsTinyExtent(extentID) {
-		stat := new(syscall.Stat_t)
-		err := syscall.Stat(fmt.Sprintf("%v/%v", path, finfo.Name()), stat)
-		if err != nil {
-			return finfo.Size()
-		}
-		return stat.Blocks * DiskSectorSize
-	}
-
-	return finfo.Size()
 }
 
 func (dp *DataPartition) computeUsage() {
@@ -755,19 +683,15 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 
 // Compare the fetched replica with the local one.
 func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
-	equals = true
 	if len(v1) == len(v2) {
 		for i := 0; i < len(v1); i++ {
 			if v1[i] != v2[i] {
-				equals = false
-				return
+				return false
 			}
 		}
-		equals = true
-		return
+		return true
 	}
-	equals = false
-	return
+	return false
 }
 
 // Fetch the replica information from the master.
@@ -787,9 +711,7 @@ func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []st
 		time.Sleep(10 * time.Second)
 	}
 
-	for _, host := range partition.Hosts {
-		replicas = append(replicas, host)
-	}
+	replicas = append(replicas, partition.Hosts...)
 	if partition.Hosts != nil && len(partition.Hosts) >= 1 {
 		leaderAddr := strings.Split(partition.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
@@ -1029,7 +951,6 @@ func (dp *DataPartition) getRepairConn(target string) (net.Conn, error) {
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
 	log.LogDebugf("action[putRepairConn], forceClose: %v", forceClose)
 	dp.dataNode.putRepairConnFunc(conn, forceClose)
-	return
 }
 
 func (dp *DataPartition) isNormalType() bool {

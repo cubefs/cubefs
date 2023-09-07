@@ -146,7 +146,6 @@ func (dp *DataPartition) stopRaft() {
 		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.partitionID)
 		dp.raftPartition.Stop()
 	}
-	return
 }
 
 func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error {
@@ -725,12 +724,6 @@ func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize() (maxExtentID, Pa
 	return dp.getMaxExtentIDAndPartitionSize(target)
 }
 
-// Get the MaxExtentID partition  from the leader.
-func (dp *DataPartition) getMemberExtentIDAndPartitionSize() (maxExtentID, PartitionSize uint64, err error) {
-	target := dp.getReplicaAddr(1)
-	return dp.getMaxExtentIDAndPartitionSize(target)
-}
-
 func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) {
 	for i := 0; i < dp.getReplicaLen(); i++ {
 		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
@@ -867,6 +860,4 @@ func (dp *DataPartition) updateMaxMinAppliedID() {
 	log.LogDebugf("[updateMaxMinAppliedID] PartitionID(%v) localID(%v) OK! oldMaxID(%v) newMaxID(%v)",
 		dp.partitionID, dp.appliedID, dp.maxAppliedID, maxAppliedID)
 	dp.maxAppliedID = maxAppliedID
-
-	return
 }
