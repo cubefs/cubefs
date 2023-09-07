@@ -31,7 +31,6 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
 )
 
 func noLimitClient() bnapi.StorageAPI {
@@ -875,8 +874,6 @@ func TestShardGetConcurrency(t *testing.T) {
 	client := noLimitClient()
 	ctx := context.TODO()
 
-	service.GetQpsLimitPerKey = keycount.New(1)
-
 	diskID := proto.DiskID(101)
 	vuid := proto.Vuid(2001)
 	bid := proto.BlobID(30001)
@@ -935,11 +932,8 @@ func TestShardGetConcurrency(t *testing.T) {
 
 	for i := 0; i < concurrency; i++ {
 		e := <-errChan
-		if e != nil {
-			return
-		}
+		require.NoError(t, e)
 	}
-	t.Fatalf("get shard concurrency limit failed")
 }
 
 func TestShardPutConcurrency(t *testing.T) {
@@ -949,8 +943,6 @@ func TestShardPutConcurrency(t *testing.T) {
 	host := runTestServer(service)
 	client := noLimitClient()
 	ctx := context.TODO()
-
-	service.PutQpsLimitPerDisk = keycount.New(1)
 
 	diskID := proto.DiskID(101)
 	vuid := proto.Vuid(2001)

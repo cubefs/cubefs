@@ -33,16 +33,16 @@ func TestIoPoolSimple(t *testing.T) {
 	{
 		n := 0
 		closePool := NewReadPool(1, 2)
-		ok := closePool.TrySubmit(1, func() {
+		go closePool.Submit(1, func() {
 			time.Sleep(time.Millisecond * 10)
 			n++
 		})
-		require.True(t, ok)
-		ok = closePool.TrySubmit(2, func() {
+		go closePool.Submit(2, func() {
 			time.Sleep(time.Millisecond * 10)
 			n++
 		})
-		require.True(t, ok)
+
+		time.Sleep(time.Second)
 		closePool.Close()
 		require.Equal(t, 2, n) // two task func
 	}

@@ -23,14 +23,15 @@ import (
 const (
 	defaultMaxBandwidthMBPS        = 1024
 	defaultBackgroundBandwidthMBPS = 10
-	defaultMaxWaitCount            = 512
+	defaultMaxWaitCount            = 1024
 )
 
 type Config struct {
 	StatGetter        flow.StatGetter `json:"-"` // Identify: a io flow
 	DiskViewer        iostat.IOViewer `json:"-"` // Identify: io viewer
-	ReadQueueLen      int             `json:"-"`
-	WriteQueueLen     int             `json:"-"`
+	ReadQueueDepth    int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
+	WriteQueueDepth   int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
+	WriteChanQueCnt   int             `json:"-"` // The number of chan queues, equal $chanCnt of write io pool
 	MaxWaitCount      int             `json:"max_wait_count"`
 	DiskBandwidthMBPS int64           `json:"disk_bandwidth_mbps"`
 	BackgroundMBPS    int64           `json:"background_mbps"`

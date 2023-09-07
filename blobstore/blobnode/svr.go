@@ -49,9 +49,6 @@ type Service struct {
 	Conf *Config
 
 	// limiter
-	PutQpsLimitPerDisk    limit.ResettableLimiter
-	GetQpsLimitPerDisk    limit.Limiter
-	GetQpsLimitPerKey     limit.Limiter
 	DeleteQpsLimitPerKey  limit.Limiter
 	DeleteQpsLimitPerDisk limit.ResettableLimiter
 	ChunkLimitPerVuid     limit.Limiter

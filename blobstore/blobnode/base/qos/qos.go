@@ -46,36 +46,44 @@ const (
 	ReadType IOTypeRW = iota
 	WriteType
 
-	writePoolCnt     = 2
-	reserve          = 2
 	percent          = 100
-	ratioQueueLow    = 50
-	ratioQueueMiddle = 75
+	ratioQueueLow    = 1
+	ratioQueueMiddle = 3
 	ratioDiscardLow  = 30
 	ratioDiscardMid  = 50
-	ratioDiscardHigh = 80
+	ratioDiscardHigh = 70
 )
 
-type IoQosInternal struct {
-	maxQueueDepth int32 // max queue depth
-	queueLen      int32 // current queue length
-	discardRatio  int32
-	rand          *rand.Rand
+type IoQosDiscard struct {
+	queueDepth   int32 // queue depth, const
+	currentCnt   int32 // current element cnt in queue, may be $queueDepth < $currentCnt < $maxWaitCnt
+	discardRatio int32
+	rand         *rand.Rand
 	closer.Closer
 }
 
-func newIoQosLimit(length int) *IoQosInternal {
-	qos := &IoQosInternal{
-		maxQueueDepth: int32(length),
-		discardRatio:  ratioDiscardLow,
-		rand:          rand.New(rand.NewSource(time.Now().UnixNano())),
-		Closer:        closer.New(),
+func newIoQosDiscard(depth int) *IoQosDiscard {
+	qos := &IoQosDiscard{
+		queueDepth:   int32(depth),
+		discardRatio: ratioDiscardLow,
+		rand:         rand.New(rand.NewSource(time.Now().UnixNano())),
+		Closer:       closer.New(),
 	}
-	go qos.adjustDiscardRatio()
+	go qos.adjustDiscardRatio() // dynamic adjust discard ratio
 	return qos
 }
 
-func (q *IoQosInternal) tryAcquire(ctx context.Context) bool {
+// $depth: equal $queueDepth of io pool. The number of elements in the queue
+// $cnt: The number of chan queues, equal $chanCnt of write io pool
+func newWriteIoQosLimit(depth int, cnt int) []*IoQosDiscard {
+	w := make([]*IoQosDiscard, cnt)
+	for i := range w {
+		w[i] = newIoQosDiscard(depth)
+	}
+	return w
+}
+
+func (q *IoQosDiscard) tryAcquire(ctx context.Context) bool {
 	ioType := bnapi.GetIoType(ctx)
 	if ioType.IsHighLevel() {
 		q.incCount()
@@ -84,40 +92,42 @@ func (q *IoQosInternal) tryAcquire(ctx context.Context) bool {
 	return q.allowLowLevel()
 }
 
-func (q *IoQosInternal) incCount() {
-	atomic.AddInt32(&q.queueLen, 1)
+func (q *IoQosDiscard) incCount() {
+	atomic.AddInt32(&q.currentCnt, 1)
 }
 
-func (q *IoQosInternal) decCount() {
-	atomic.AddInt32(&q.queueLen, -1)
+func (q *IoQosDiscard) decCount() {
+	atomic.AddInt32(&q.currentCnt, -1)
 }
 
-func (q *IoQosInternal) isNotFullLoad() bool {
-	return atomic.LoadInt32(&q.queueLen) < q.maxQueueDepth
+func (q *IoQosDiscard) isNotFullLoad() bool {
+	return atomic.LoadInt32(&q.currentCnt) < q.queueDepth
 }
 
-func (q *IoQosInternal) allowLowLevel() bool {
+func (q *IoQosDiscard) allowLowLevel() bool {
 	if q.isNotFullLoad() {
 		q.incCount()
 		return true
 	}
-
+	// If your score(rand.Intn) is lower than the threshold, return false and discard this IO
 	if q.rand.Intn(percent) < q.getDiscardRatio() {
 		return false
 	}
+
 	q.incCount()
 	return true
 }
 
-func (q *IoQosInternal) release() {
+func (q *IoQosDiscard) release() {
 	q.decCount()
 }
 
-func (q *IoQosInternal) getDiscardRatio() int {
+func (q *IoQosDiscard) getDiscardRatio() int {
 	return int(atomic.LoadInt32(&q.discardRatio))
 }
 
-func (q *IoQosInternal) adjustDiscardRatio() {
+// dynamic adjust discard ratio
+func (q *IoQosDiscard) adjustDiscardRatio() {
 	tk := time.NewTicker(time.Second)
 	defer tk.Stop()
 
@@ -128,7 +138,13 @@ func (q *IoQosInternal) adjustDiscardRatio() {
 			return
 		}
 
-		ratio := atomic.LoadInt32(&q.queueLen) * percent / q.maxQueueDepth / reserve
+		currentCnt := atomic.LoadInt32(&q.currentCnt)
+		if currentCnt < q.queueDepth {
+			continue
+		}
+
+		// adjust discard ratio, when $queueDepth <= $currentCnt <= $maxWaitCnt
+		ratio := (currentCnt - q.queueDepth) / q.queueDepth
 		switch {
 		case ratio < ratioQueueLow:
 			atomic.StoreInt32(&q.discardRatio, ratioDiscardLow)
@@ -140,31 +156,23 @@ func (q *IoQosInternal) adjustDiscardRatio() {
 	}
 }
 
-func newWriteIoQosLimit(length int) [writePoolCnt]*IoQosInternal {
-	w := [writePoolCnt]*IoQosInternal{
-		newIoQosLimit(length),
-		newIoQosLimit(length),
-	}
-	return w
-}
-
 type IoQueueQos struct {
-	bpsLimiters []*rate.Limiter
-	maxWaitCnt  chan struct{}
-	writeLimit  [writePoolCnt]*IoQosInternal
-	readLimit   *IoQosInternal
-	conf        Config
+	maxWaitCnt   int32           // const, max wait IO count
+	ioCnt        int32           // current IO count
+	bpsLimiters  []*rate.Limiter // limit bandwidth
+	readDiscard  *IoQosDiscard   // discard some low level IO
+	writeDiscard []*IoQosDiscard
+	conf         Config
 	closer.Closer
 }
 
 func NewIoQueueQos(conf Config) (Qos, error) {
-	maxWaitCnt := make(chan struct{}, conf.MaxWaitCount)
 	qos := &IoQueueQos{
-		maxWaitCnt: maxWaitCnt,
-		readLimit:  newIoQosLimit(conf.ReadQueueLen),
-		writeLimit: newWriteIoQosLimit(conf.WriteQueueLen),
-		conf:       conf,
-		Closer:     closer.New(),
+		maxWaitCnt:   int32(conf.MaxWaitCount),
+		readDiscard:  newIoQosDiscard(conf.ReadQueueDepth),
+		writeDiscard: newWriteIoQosLimit(conf.WriteQueueDepth, conf.WriteChanQueCnt),
+		conf:         conf,
+		Closer:       closer.New(),
 	}
 	qos.initBpsLimiters()
 
@@ -265,16 +273,15 @@ func (qos *IoQueueQos) Reader(ctx context.Context, ioType bnapi.IOType, reader i
 
 // whether beyond max wait num
 func (qos *IoQueueQos) Allow() bool {
-	select {
-	case qos.maxWaitCnt <- struct{}{}:
-		return true
-	default:
+	if atomic.AddInt32(&qos.ioCnt, 1) > qos.maxWaitCnt {
+		atomic.AddInt32(&qos.ioCnt, -1)
 		return false
 	}
+	return true
 }
 
 func (qos *IoQueueQos) Release() {
-	<-qos.maxWaitCnt
+	atomic.AddInt32(&qos.ioCnt, -1)
 }
 
 func (qos *IoQueueQos) TryAcquireIO(ctx context.Context, chunkId uint64, rwType IOTypeRW) bool {
@@ -285,10 +292,10 @@ func (qos *IoQueueQos) TryAcquireIO(ctx context.Context, chunkId uint64, rwType 
 	ret := false
 	switch rwType {
 	case WriteType:
-		idx := chunkId % uint64(len(qos.writeLimit))
-		ret = qos.writeLimit[idx].tryAcquire(ctx)
+		idx := chunkId % uint64(len(qos.writeDiscard))
+		ret = qos.writeDiscard[idx].tryAcquire(ctx)
 	case ReadType:
-		ret = qos.readLimit.tryAcquire(ctx)
+		ret = qos.readDiscard.tryAcquire(ctx)
 	}
 	return ret
 }
@@ -296,17 +303,17 @@ func (qos *IoQueueQos) TryAcquireIO(ctx context.Context, chunkId uint64, rwType 
 func (qos *IoQueueQos) ReleaseIO(chunkId uint64, rwType IOTypeRW) {
 	switch rwType {
 	case WriteType:
-		idx := chunkId % uint64(len(qos.writeLimit))
-		qos.writeLimit[idx].release()
+		idx := chunkId % uint64(len(qos.writeDiscard))
+		qos.writeDiscard[idx].release()
 	case ReadType:
-		qos.readLimit.release()
+		qos.readDiscard.release()
 	}
 	qos.Release()
 }
 
 func (qos *IoQueueQos) Close() {
-	qos.readLimit.Close()
-	for _, w := range qos.writeLimit {
+	qos.readDiscard.Close()
+	for _, w := range qos.writeDiscard {
 		w.Close()
 	}
 	qos.Closer.Close()
