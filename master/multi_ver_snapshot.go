@@ -146,7 +146,7 @@ func (verMgr *VolVersionManager) GenerateVer(verSeq uint64, op uint8) (err error
 
 	verMgr.prepareCommit.op = op
 	size := len(verMgr.multiVersionList)
-	if size > 0 && tm.Before(time.Unix(int64(verMgr.multiVersionList[size-1].Ver)/1e6, 0)) {
+	if size > 0 && !tm.After(time.Unix(int64(verMgr.multiVersionList[size-1].Ver)/1e6, 0)) {
 		verMgr.prepareCommit.prepareInfo.Ver = uint64(verMgr.multiVersionList[size-1].Ver) + 1
 		log.LogDebugf("action[GenerateVer] vol %v  use ver %v", verMgr.vol.Name, verMgr.prepareCommit.prepareInfo.Ver)
 	}
