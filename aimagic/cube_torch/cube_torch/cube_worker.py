@@ -163,12 +163,13 @@ def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr,
 def get_cube_batch_downloader_key(dataset_id):
     return "{}_batch_downloader".format(dataset_id)
 
+
 def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, dataset_id, event):
     storage_seesion = requests.Session()
     downloader = None
     torch.set_num_threads(1)
     if is_use_batch_download:
-        downloader=get_cube_batch_download(dataset_id)
+        downloader = get_cube_batch_download(dataset_id)
     while not event.is_set():
         try:
             copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
@@ -197,7 +198,6 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         set_global_cube_batch_downloader(batch_downloader)
         builtins.open = intercept_open(open)
         torch.load = intercept_torch_load(torch.load)
-
 
     try:
         seed = base_seed + worker_id

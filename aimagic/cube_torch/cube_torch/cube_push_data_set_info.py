@@ -26,7 +26,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.cube_prefetch_ttl = 30
         self.dataset_dir_prefix = ".cube_torch"
         self.check_evn()
-        self._dataset_cnt=cube_loader.real_sample_size
+        self._dataset_cnt = cube_loader.real_sample_size
         self.dataset_config_dir = os.path.join(self.cubefs_root_dir, self.dataset_dir_prefix, self.local_ip)
         cube_info_file = os.path.join(self.dataset_config_dir, ".cube_info")
         if not os.path.exists(cube_info_file):
@@ -38,19 +38,21 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.dataset_dir = "{}/{}".format(self.dataset_config_dir, ".dataset")
         if not os.path.exists(self.dataset_dir):
             os.makedirs(self.dataset_dir, exist_ok=True)
-        # self.clean_old_dataset_file(self.dataset_dir)
         self.get_train_file_name_lists()
 
         self.register_pid_addr = "http://127.0.0.1:{}/register/pid".format(self.prof_port)
         self.unregister_pid_addr = "http://127.0.0.1:{}/unregister/pid".format(self.prof_port)
-        self.batch_download_addr = "http://127.0.0.1:{}/batchdownload?dataset_cnt={}".format(self.prof_port,
-                                                                                             self._dataset_cnt)
         self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
         self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,
                                                                                            self._dataset_cnt)
-        t = threading.Thread(target=self._renew_ttl_loop, daemon=True)
-        t.daemon = True
-        t.start()
+
+        self.batch_download_addr = "http://127.0.0.1:{}/batchdownload/path".format(self.prof_port)
+
+        if not self.is_use_batch_download():
+            t = threading.Thread(target=self._renew_ttl_loop, daemon=True)
+            t.daemon = True
+            t.start()
+
         dataset_id = id(cube_loader.dataset)
         get_manager().__dict__[dataset_id] = self
 
@@ -62,6 +64,13 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_unregister_pid_addr(self):
         return self.unregister_pid_addr
+
+    def covert_index_list_to_filename(self, index_list):
+        train_file_name_lists = []
+        for index in index_list:
+            for train in self.train_list:
+                train_file_name_lists.append(train[index])
+        return train_file_name_lists
 
     def is_use_batch_download(self):
         return self._is_use_batch_download
@@ -79,7 +88,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         if self._is_use_batch_download is not None:
             self._is_use_batch_download = True
         else:
-            self._is_use_batch_download=False
+            self._is_use_batch_download = False
 
         self.check_cube_queue_size_on_worker()
         self._init_env_fininsh = True
@@ -103,14 +112,15 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         match = re.match(pattern, address)
         return match is not None
 
-    def load_train_name_check_consistency(self,train_name,train_data):
+    def load_train_name_check_consistency(self, train_name, train_data):
         def read_file_lines(filename):
             lines = []
             with open(filename, 'r') as file:
                 for line in file:
                     lines.append(line.strip())
             return lines
-        train_lines=read_file_lines(train_name)
+
+        train_lines = read_file_lines(train_name)
 
         def compare_arrays(array1, array2):
             if array1 == array2:
@@ -118,19 +128,19 @@ class CubePushDataSetInfo(CubeDataSetInfo):
             else:
                 return False
 
-        consistency=compare_arrays(train_data,train_lines)
-        print("train_name:{} consistency is {}".format(train_name,consistency))
+        consistency = compare_arrays(train_data, train_lines)
+        print("train_name:{} consistency is {}".format(train_name, consistency))
         return consistency
 
-    def start_write_train_file_list(self,check_consistency):
+    def start_write_train_file_list(self, check_consistency):
         train_file_list = []
-        for idx, train_data in enumerate(self.train_file_name_list):
+        for idx, train_data in enumerate(self.train_list):
             train_data_len = len(train_data)
             train_name = '{}/{}_{}.txt'.format(self.dataset_dir, train_data_len, idx)
             print("write train_name is {}".format(train_name))
             self._write_train_list(train_name, train_data)
             train_file_list.append((train_name, train_data_len))
-            if check_consistency and not self.load_train_name_check_consistency(train_name,train_data):
+            if check_consistency and not self.load_train_name_check_consistency(train_name, train_data):
                 raise ValueError("train_file_name:{} consistency check failed".format(train_name))
 
         self.cube_prefetch_file_list = train_file_list
@@ -140,7 +150,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def set_cube_prefetch_file_list_by_datasets(self):
         if len(self.cube_prefetch_file_list) != 0:
             return self.cube_prefetch_file_list
-        if self.train_file_name_list is None or len(self.train_file_name_list) == 0:
+        if self.train_list is None or len(self.train_list) == 0:
             return
 
         self.cube_prefetch_file_list = self.start_write_train_file_list(False)
@@ -203,7 +213,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                 if len(batch_array) == 0:
                     continue
                 f.write('\n'.join(batch_array))
-                if i< num_batches:
+                if i < num_batches:
                     f.write('\n')
 
         os.rename(tmp_file_name, train_name)
@@ -214,5 +224,5 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_notify_storage_worker_num(self):
         if self._is_use_batch_download:
-            return 4
+            return 2
         return 1

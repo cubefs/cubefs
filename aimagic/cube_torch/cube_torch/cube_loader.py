@@ -196,6 +196,7 @@ class CubeDataLoader(Generic[T_co]):
         self.check_worker_number_rationality()
         self.wait_read_train_file_queue = get_manager().Queue()
         self._push_worker_loop_events = []
+        self.is_use_batch_download =False
         self._dataset_id=id(self.dataset)
         self._push_worker_loop_process = []
         self.cubeBatchDownloader = None
@@ -211,27 +212,23 @@ class CubeDataLoader(Generic[T_co]):
         manager=get_manager()
         cube_dataset_info = self.cube_dataset_info
         cube_prefetch_addr = cube_dataset_info.get_cube_prefetch_addr()
-        is_use_batch_download = cube_dataset_info.is_use_batch_download()
+        self.is_use_batch_download = cube_dataset_info.is_use_batch_download()
         batch_download_addr = cube_dataset_info.get_batch_download_addr()
-        is_test_env = cube_dataset_info.is_test_env()
         notify_storage_worker_num= cube_dataset_info.get_notify_storage_worker_num()
         downloader = None
-        if is_use_batch_download:
+        if self.is_use_batch_download:
             downloader = CubeBatchDownloader(batch_download_addr)
-            if is_test_env:
-                for items in cube_dataset_info.get_train_file_name_lists():
-                    downloader.add_cube_dataset(items)
             manager.__dict__[get_cube_batch_downloader_key(self._dataset_id)]=downloader
         ctx = multiprocessing.get_context("fork")
         for i in range (notify_storage_worker_num):
             e=multiprocessing.Event()
-            w=ctx.Process(target=_loop_push_worker, args=(self.wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download,self._dataset_id, e))
+            w=ctx.Process(target=_loop_push_worker, args=(self.wait_read_train_file_queue, cube_prefetch_addr, self.is_use_batch_download ,self._dataset_id, e))
             w.daemon=True
             w.start()
             self._push_worker_loop_events.append(w)
             self._push_worker_loop_events.append(e)
         print("pid:{} cube_prefetch_addr:{} is_use_batch_download:{} "
-              "cube_batch_downloader_addr:{}".format(os.getpid(), cube_prefetch_addr,is_use_batch_download, downloader))
+              "cube_batch_downloader_addr:{}".format(os.getpid(), cube_prefetch_addr,self.is_use_batch_download , downloader))
 
     def __del__(self):
         if len(self._push_worker_loop_events) == 0:
@@ -253,17 +250,14 @@ class CubeDataLoader(Generic[T_co]):
     def multiprocessing_context(self, multiprocessing_context):
         if multiprocessing_context is not None:
             if self.num_workers > 0:
-                if isinstance(multiprocessing_context, string_classes):
+                if isinstance(multiprocessing_context, str):
                     valid_start_methods = multiprocessing.get_all_start_methods()
                     if multiprocessing_context not in valid_start_methods:
                         raise ValueError(
                             ('multiprocessing_context option '
                              'should specify a valid start method in {!r}, but got '
                              'multiprocessing_context={!r}').format(valid_start_methods, multiprocessing_context))
-                    # error: Argument 1 to "get_context" has incompatible type "Union[str, bytes]"; expected
-                    # "str"  [arg-type]
-                    multiprocessing_context = multiprocessing.get_context(
-                        multiprocessing_context)  # type: ignore[arg-type]
+                    multiprocessing_context = multiprocessing.get_context(multiprocessing_context)
 
                 if not isinstance(multiprocessing_context, python_multiprocessing.context.BaseContext):
                     raise TypeError(('multiprocessing_context option should be a valid context '
@@ -431,7 +425,6 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         assert self._num_workers > 0
         if self._num_workers < 8:
             self._num_workers = 8
-        assert self._prefetch_factor > 0
         if loader.multiprocessing_context is None:
             multiprocessing_context = multiprocessing
         else:
@@ -454,6 +447,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._storage_event = threading.Event()
         self._loadindex_event = threading.Event()
         self._wait_read_train_file_queue = loader.wait_read_train_file_queue
+        self.is_use_batch_download=loader.is_use_batch_download
         self._preload_index_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker() * 2)
         self._loadindex_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker())
 
@@ -548,7 +542,11 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     continue
                 cnt += 1
                 index = self._next_index()
-                self._wait_read_train_file_queue.put(index)
+                if self.is_use_batch_download:
+                    train_file_names = self.cube_dataset_info.covert_index_list_to_filename(index)
+                    self._wait_read_train_file_queue.put(train_file_names)
+                else:
+                    self._wait_read_train_file_queue.put(index)
                 self._preload_index_queue.put(index)
             except StopIteration:
                 event.set()

@@ -27,7 +27,7 @@ class CubeDataSetInfo:
         self.cubefs_queue_size_on_worker = os.environ.get(CubeFS_QUEUE_SIZE_ON_WORKER)
         self.cubefs_root_dir = os.environ.get(CubeFS_ROOT_DIR)
         self.cube_prefetch_file_list = []
-        self.train_file_name_list = []
+        self.train_list = []
         self._is_test_env=os.environ.get(TEST_ENV)
         if self._is_test_env is not None:
             self._is_test_env=True
@@ -95,8 +95,8 @@ class CubeDataSetInfo:
         return self.get_dataset_samples(dataset)
 
     def get_train_file_name_lists(self):
-        if len(self.train_file_name_list) != 0:
-            return self.train_file_name_list
+        if len(self.train_list) != 0:
+            return self.train_list
         loader = self.cube_loader
         dataset = loader.dataset
         if isinstance(dataset, ConcatDataset):
@@ -104,9 +104,9 @@ class CubeDataSetInfo:
         else:
             file_name_lists = self._signel_DataSet_get_samples(dataset)
         if is_2d_array(file_name_lists):
-            self.train_file_name_list = file_name_lists
+            self.train_list = file_name_lists
         else:
-            self.train_file_name_list = [file_name_lists]
+            self.train_list = [file_name_lists]
 
     def get_cube_prefetch_thread_cnt(self):
         return 1

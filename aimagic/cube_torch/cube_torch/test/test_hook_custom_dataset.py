@@ -1,24 +1,22 @@
 import os
 import time
-import cube_torch
 
+import cube_torch
 import torch
+from PIL import Image
 from torch import multiprocessing
 from torch.utils.data import ConcatDataset, Dataset
 from torchvision import transforms
 
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
-os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '6'
 os.environ['localIP'] = "127.0.0.1"
+# os.environ['USE_BATCH_DOWNLOAD'] = 'true'
 
-os.environ['USE_BATCH_DOWNLOAD'] = 'true'
-os.environ['TEST_ENV'] = 'True'
 
 class CustomDataSet(Dataset):
     def __init__(self):
-        super().__init__()
-        imglist = "0_1_10000.txt"
-        titlelist = "0_2_10000.txt"
+        imglist = "0_0_1w.txt"
+        titlelist = "0_0_title_1w.txt"
         self.imglist = self.read_file(imglist)
         self.titlelist = self.read_file(titlelist)
 
@@ -34,8 +32,10 @@ class CustomDataSet(Dataset):
         return len(self.imglist)
 
     def __getitem__(self, index):
-        with open(self.imglist[index], 'rb') as f:
-            data = f.read()
+        with open(self.imglist[index], "rb") as f:
+            img = Image.open(f)
+            img.convert("RGB")
+
         t = torch.load(self.titlelist[index])
         return t
 
@@ -49,13 +49,13 @@ def start_worker_test_concatDataset(i):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=215, shuffle=True,
-        num_workers=2)
+        num_workers=5)
     epoch = 0
     while True:
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
-            # time.sleep(2)
+            time.sleep(1)
         epoch += 1
 
 
@@ -74,7 +74,6 @@ def start_worker_test_Dataset(i):
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
-            time.sleep(1)
         epoch += 1
         break
 

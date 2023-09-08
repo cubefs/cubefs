@@ -4,9 +4,9 @@ import os
 from functools import wraps
 
 import torch
-import xxhash as xxhash
+import xxhash
 
-from cube_torch.cube_batch_download import init_cube_batch_downloader
+
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
 global_cube_batch_downloader = None
@@ -48,7 +48,7 @@ def intercept_torch_load(func):
     def wrapper(*args, **kwargs):
         file_path = args[0]
         global global_cube_batch_downloader
-        cube_item = global_cube_batch_downloader.get_cube_path_item(file_path,is_free_memory=False)
+        cube_item = global_cube_batch_downloader.get_cube_path_item(file_path)
         is_cache = cube_item is not None
         CubeFileOpenInterceptor.add_count(is_cache)
         if not is_cache:
@@ -158,6 +158,7 @@ class CubeFile(io.FileIO):
 
 
 if __name__ == '__main__':
+    from cube_torch.cube_batch_download import init_cube_batch_downloader
     global_cube_batch_downloader, jpeg_files = init_cube_batch_downloader()
     title_path = '/home/guowl/testdata/1.bertids'
     global_cube_batch_downloader.add_test_env_item(title_path)
