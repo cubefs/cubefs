@@ -4378,7 +4378,14 @@ func (c *Cluster) checkSnapshotStrategy() {
 		if !proto.IsHot(vol.VolType) {
 			continue
 		}
-		vol.VersionMgr.checkSnapshotStrategy()
+		vol.VersionMgr.RLock()
+		if vol.VersionMgr.strategy.GetPeriodicSecond() == 0 || vol.VersionMgr.strategy.Enable == false { // strategy not be set
+			vol.VersionMgr.RUnlock()
+			continue
+		}
+		vol.VersionMgr.RUnlock()
+		vol.VersionMgr.checkCreateStrategy()
+		vol.VersionMgr.checkDeleteStrategy()
 	}
 }
 
