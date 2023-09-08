@@ -317,7 +317,7 @@ func (c *CacheEngine) CreateBlock(req *proto.CacheRequest) (block *CacheBlock, e
 	if len(req.Sources) == 0 {
 		return nil, fmt.Errorf("no source data")
 	}
-	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req)); err != nil {
+	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources)); err != nil {
 		c.deleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
 		return nil, err
 	}

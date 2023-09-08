@@ -50,8 +50,8 @@ type CacheBlock struct {
 	rootPath    string
 	filePath    string
 	modifyTime  int64
-	usedSize    int64 //usedSize是真实数据位在缓存块最后的位置，如果后面是空洞，则usedSize<allocSize
-	allocSize   int64 //allocSize是按文件逻辑Size计算得到的对应缓存块的大小
+	usedSize    int64 //usedSize是缓存文件的真实Size
+	allocSize   int64 //allocSize是为了避免并发回源导致tmpfs满，而预先将所有source按照4K对齐后的Size之和，是逻辑值
 	blockKey    string
 	readSource  ReadExtentData
 	cacheStat   int32
@@ -159,6 +159,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64,
 	return
 }
 
+// todo: use end size to replace allocSize
 func (cb *CacheBlock) checkOffsetAndSize(offset, size int64) error {
 	if offset+size > cb.allocSize {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v allocSize:%d", offset, size, cb.allocSize))
@@ -296,8 +297,9 @@ func (cb *CacheBlock) markReady() {
 	close(cb.readyCh)
 }
 
-func computeAllocSize(req *proto.CacheRequest) (alloc uint64) {
-	for _, s := range req.Sources {
+// align AllocSize with PageSize-4KB
+func computeAllocSize(sources []*proto.DataSource) (alloc uint64) {
+	for _, s := range sources {
 		blockOffset := s.FileOffset & (proto.CACHE_BLOCK_SIZE - 1)
 		blockEnd := blockOffset + s.Size_ - 1
 		pageOffset := blockOffset / proto.PageSize
