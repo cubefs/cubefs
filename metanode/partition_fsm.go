@@ -448,6 +448,19 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	return
 }
 
+func (mp *metaPartition) runVersionOp() {
+	mp.verUpdateChan = make(chan []byte, 100)
+	for {
+		select {
+		case verData := <-mp.verUpdateChan:
+			mp.submit(opFSMVersionOp, verData)
+		case <-mp.stopC:
+			log.LogWarnf("runVersionOp exit!")
+			return
+		}
+	}
+}
+
 func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 	mp.multiVersionList.Lock()
 	defer mp.multiVersionList.Unlock()
@@ -462,7 +475,7 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 	if opData.Op == proto.CreateVersionCommit {
 		cnt := len(mp.multiVersionList.VerList)
 		if cnt > 0 && mp.multiVersionList.VerList[cnt-1].Ver >= opData.VerSeq {
-			log.LogErrorf("action[MultiVersionOp] reqeust seq %v lessOrEqual last exist snapshot seq %v",
+			log.LogErrorf("action[HandleVersionOp] reqeust seq %v lessOrEqual last exist snapshot seq %v",
 				mp.multiVersionList.VerList[cnt-1].Ver, opData.VerSeq)
 			return
 		}

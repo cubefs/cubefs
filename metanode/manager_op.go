@@ -2312,8 +2312,8 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 			if _, ok := partition.IsLeader(); !ok {
 				return true
 			}
-			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do MultiVersionOp verseq %v", VolumeID, id, VerSeq)
-			if err = partition.MultiVersionOp(Op, VerSeq, nil); err != nil {
+			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, id, VerSeq)
+			if err = partition.HandleVersionOp(Op, VerSeq, nil); err != nil {
 				return false
 			}
 			return true

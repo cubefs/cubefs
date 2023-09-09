@@ -17,12 +17,12 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"os"
 	"sort"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -247,14 +247,14 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList) 
 			lastSeq = VerList[i].Ver
 			return false
 		})
-		if err = mp.MultiVersionOp(proto.SyncAllVersionList, lastSeq, VerList); err != nil {
+		if err = mp.HandleVersionOp(proto.SyncAllVersionList, lastSeq, VerList); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (mp *metaPartition) MultiVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo) (err error) {
+func (mp *metaPartition) HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo) (err error) {
 
 	verData := &VerOpData{
 		Op:      op,
@@ -262,8 +262,13 @@ func (mp *metaPartition) MultiVersionOp(op uint8, verSeq uint64, verList []*prot
 		VerList: verList,
 	}
 	data, _ := json.Marshal(verData)
-	_, err = mp.submit(opFSMVersionOp, data)
 
+	select {
+	case mp.verUpdateChan <- data:
+		log.LogDebugf("mp %v verSeq %v op %v be pushed to queue", mp.config.PartitionId, verSeq, op)
+	default:
+		err = fmt.Errorf("mp %v version update channel full, verdata %v not be executed", mp.config.PartitionId, string(data))
+	}
 	return
 }
 

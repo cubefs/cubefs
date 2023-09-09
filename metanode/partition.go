@@ -211,7 +211,7 @@ type OpMultipart interface {
 
 // MultiVersion operation from master or client
 type OpMultiVersion interface {
-	MultiVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo) (err error)
+	HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo) (err error)
 	fsmVersionOp(reqData []byte) (err error)
 	GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
 	GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
@@ -504,6 +504,7 @@ type metaPartition struct {
 	verSeq                 uint64
 	multiVersionList       *proto.VolVersionInfoList
 	versionLock            sync.Mutex
+	verUpdateChan          chan []byte
 }
 
 func (mp *metaPartition) IsForbidden() bool {
@@ -649,6 +650,38 @@ func (mp *metaPartition) Stop() {
 	}
 }
 
+func (mp *metaPartition) versionInit(isCreate bool) (err error) {
+	var verList *proto.VolVersionInfoList
+	verList, err = masterClient.AdminAPI().GetVerList(mp.config.VolName)
+
+	if err != nil {
+		log.LogErrorf("action[onStart] GetVerList err[%v]", err)
+		return
+	}
+	if isCreate || len(mp.multiVersionList.VerList) == 0 {
+		for _, info := range verList.VerList {
+			if info.Status != proto.VersionNormal {
+				continue
+			}
+			mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
+		}
+
+		log.LogDebugf("action[onStart] verList %v", mp.multiVersionList.VerList)
+		if err = mp.storeInitMultiversion(); err != nil {
+			return
+		}
+	}
+
+	vlen := len(mp.multiVersionList.VerList)
+	if vlen > 0 {
+		mp.verSeq = mp.multiVersionList.VerList[vlen-1].Ver
+	}
+
+	go mp.runVersionOp()
+
+	return
+}
+
 func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	defer func() {
 		if err == nil {
@@ -677,7 +710,6 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	var (
 		volumeInfo *proto.SimpleVolView
-		verList    *proto.VolVersionInfoList
 	)
 	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
 		log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
@@ -685,29 +717,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 
 	mp.vol.volDeleteLockTime = volumeInfo.DeleteLockTime
-	verList, err = masterClient.AdminAPI().GetVerList(mp.config.VolName)
 
-	if err != nil {
-		log.LogErrorf("action[onStart] GetVerList err[%v]", err)
+	if err = mp.versionInit(isCreate); err != nil {
 		return
-	}
-	if isCreate || len(mp.multiVersionList.VerList) == 0 {
-		for _, info := range verList.VerList {
-			if info.Status != proto.VersionNormal {
-				continue
-			}
-			mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
-		}
-
-		log.LogDebugf("action[onStart] verList %v", mp.multiVersionList.VerList)
-		if err = mp.storeInitMultiversion(); err != nil {
-			return
-		}
-	}
-
-	vlen := len(mp.multiVersionList.VerList)
-	if vlen > 0 {
-		mp.verSeq = mp.multiVersionList.VerList[vlen-1].Ver
 	}
 
 	mp.volType = volumeInfo.VolType

@@ -275,6 +275,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	}
 	//log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
 	//	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
+
 	if err = request.resolveFollowersAddr(); err != nil {
 		err = rp.putResponse(request)
 		return
