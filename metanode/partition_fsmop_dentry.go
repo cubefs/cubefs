@@ -250,7 +250,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 				denFound = den
 				return mp.dentryTree.tree.Delete(den)
 			}
-			denFound, doMore, clean = den.deleteVerSnapshot(denParm.getSeqFiled(), mp.verSeq, mp.getVerList())
+			denFound, doMore, clean = den.deleteVerSnapshot(denParm.getSeqFiled(), mp.verSeq, mp.GetVerList())
 			return den
 		})
 	} else {
@@ -264,7 +264,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 		} else {
 			item = mp.dentryTree.Get(denParm)
 			if item != nil {
-				denFound, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.getSeqFiled(), mp.verSeq, mp.getVerList())
+				denFound, doMore, clean = item.(*Dentry).deleteVerSnapshot(denParm.getSeqFiled(), mp.verSeq, mp.GetVerList())
 			}
 		}
 	}

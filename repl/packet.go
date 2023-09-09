@@ -20,7 +20,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
-	"runtime/debug"
 	"strings"
 	"time"
 
@@ -296,11 +295,10 @@ var (
 )
 
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
-	log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+	log.LogDebugf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 	if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
-		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
@@ -319,7 +317,7 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.VerNotConsistentError.Error()) {
 		p.ResultCode = proto.ErrCodeVersionOpError
-		log.LogErrorf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
+		// log.LogDebugf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr

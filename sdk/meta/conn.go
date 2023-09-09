@@ -72,6 +72,7 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	} else {
 		sendTimeLimit = int(mw.metaSendTimeout) * 1000 // ms
 	}
+
 	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
 	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms", mw.metaSendTimeout, sendTimeLimit, delta)
 
@@ -94,12 +95,24 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	if mw.Client != nil { // compatible lcNode not init Client
 		lastSeq = mw.Client.GetLatestVer()
 	}
-	resp, err = mc.send(req, lastSeq)
-	mw.putConn(mc, err)
 
-	if err == nil && !resp.ShouldRetry() {
+sendWithList:
+	resp, err = mc.send(req, lastSeq)
+	if err == nil && !resp.ShouldRetry() && !resp.ShouldRetryWithVersionList() {
+		mw.putConn(mc, err)
 		goto out
 	}
+	if resp.ShouldRetryWithVersionList() {
+		// already send with list, must be a issue happened
+		if req.ExtentType&proto.VersionListFlag == proto.VersionListFlag {
+			mw.putConn(mc, err)
+			goto out
+		}
+		req.ExtentType |= proto.VersionListFlag
+		req.VerList = mw.Client.GetVerMgr().VerList
+		goto sendWithList
+	}
+	mw.putConn(mc, err)
 	log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 
 retry:
