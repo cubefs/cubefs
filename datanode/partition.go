@@ -131,8 +131,8 @@ type DataPartition struct {
 	verSeq                     uint64
 	verSeqPrepare              uint64
 	verSeqCommitStatus         int8
-	multiVersionList           []*MetaMultiSnapshotInfo
-	decommissionRepairProgress float64 // record repair progress for decommission datapartition
+	volVersionInfoList         *proto.VolVersionInfoList
+	decommissionRepairProgress float64 //record repair progress for decommission datapartition
 	stopRecover                bool
 	recoverErrCnt              uint64 // donot reset, if reach max err cnt, delete this dp
 }
@@ -311,6 +311,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		raftStatus:              RaftStatusStopped,
 		verSeq:                  dpCfg.VerSeq,
 		DataPartitionCreateType: dpCfg.CreateType,
+		volVersionInfoList:      &proto.VolVersionInfoList{},
 	}
 	atomic.StoreUint64(&partition.recoverErrCnt, 0)
 	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)

@@ -359,6 +359,13 @@ type VolVersionInfoList struct {
 	sync.RWMutex
 }
 
+func (v *VolVersionInfoList) GetLastVer() uint64 {
+	if len(v.VerList) == 0 {
+		return 0
+	}
+	return v.VerList[len(v.VerList)-1].Ver
+}
+
 type DecommissionDiskLimitDetail struct {
 	NodeSetId uint64
 	Limit     int

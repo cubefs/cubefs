@@ -299,3 +299,40 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 	}
 	return
 }
+
+func (dp *DataPartition) CheckRandomWriteVer(p *repl.Packet) (err error) {
+	log.LogDebugf("action[CheckRandomWriteVer] opcod %v seq %v dpid %v dpseq %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, dp.verSeq, p.ExtentID)
+	if dp.verSeq != p.VerSeq {
+		log.LogDebugf("action[CheckRandomWriteVer] opcod %v seq %v dpid %v dpseq %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, dp.verSeq, p.ExtentID)
+		if p.Opcode == proto.OpSyncRandomWrite || p.Opcode == proto.OpRandomWrite {
+			err = fmt.Errorf("volume enable mulit version")
+			log.LogErrorf("action[CheckRandomWriteVer] error %v", err)
+			return
+		}
+		if p.VerSeq < dp.verSeq {
+			p.ExtentType |= proto.MultiVersionFlag
+			p.ExtentType |= proto.VersionListFlag
+
+			if p.Opcode == proto.OpRandomWriteVer || p.Opcode == proto.OpSyncRandomWriteVer {
+				err = storage.VerNotConsistentError
+				log.LogDebugf("action[CheckRandomWriteVer] dp %v client verSeq[%v] small than dataPartiton ver[%v]",
+					dp.config.PartitionID, p.VerSeq, dp.verSeq)
+			}
+
+			p.VerSeq = dp.verSeq
+			dp.volVersionInfoList.RLock()
+			p.VerList = dp.volVersionInfoList.VerList
+			dp.volVersionInfoList.RUnlock()
+			log.LogDebugf("action[CheckRandomWriteVer] partitionId %v reqId %v verList %v seq %v", p.PartitionID, p.ReqID, p.VerList, p.VerSeq)
+			return
+		} else if p.VerSeq > dp.verSeq {
+			log.LogDebugf("action[CheckRandomWriteVer] partitionId %v reqId %v verList (%v) seq %v old one(%v)",
+				p.PartitionID, p.ReqID, p.VerList, p.VerSeq, dp.volVersionInfoList.VerList)
+			dp.verSeq = p.VerSeq
+			dp.volVersionInfoList.Lock()
+			dp.volVersionInfoList.VerList = p.VerList
+			dp.volVersionInfoList.Unlock()
+		}
+	}
+	return
+}

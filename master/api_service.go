@@ -2425,7 +2425,6 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		DeleteLockTime:          vol.DeleteLockTime,
 		Description:             vol.description,
 		DpSelectorName:          vol.dpSelectorName,
-		DpSelectorParm:          vol.dpSelectorParm,
 		DpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 		VolType:                 vol.VolType,
 		ObjBlockSize:            vol.EbsBlkSize,

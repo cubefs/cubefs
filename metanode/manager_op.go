@@ -2295,7 +2295,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 			if partition.GetVolName() != volName {
 				return true
 			}
-			if err = partition.checkVerList(info); err != nil {
+			if err = partition.checkVerList(info, false); err != nil {
 				log.LogErrorf("[checkVolVerList] volumeName %v err %v", volName, err)
 			}
 			return true
@@ -2313,7 +2313,7 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 				return true
 			}
 			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, id, VerSeq)
-			if err = partition.HandleVersionOp(Op, VerSeq, nil); err != nil {
+			if err = partition.HandleVersionOp(Op, VerSeq, nil, false); err != nil {
 				return false
 			}
 			return true
@@ -2358,32 +2358,45 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 }
 
 func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (err error) {
-	isOldClient := false
-	defer func() {
-		if (err != nil && !isOldClient) || mp.GetVerSeq() < p.VerSeq {
-			log.LogErrorf("checkmultiSnap.multiVersionstatus. err %v", err)
-			err = m.checkVolVerList() // no matter what happened. try complement update local seq as master's
-			if mp.GetVerSeq() < p.VerSeq {
-				log.LogErrorf("checkmultiSnap.multiVersionstatus. mp.GetVerSeq() %v, p.VerSeq %v", err, p.VerSeq)
-			}
-		}
-	}()
 	if (p.ExtentType&proto.MultiVersionFlag == 0) && mp.GetVerSeq() > 0 {
-		isOldClient = true
 		log.LogWarnf("action[checkmultiSnap.multiVersionstatus] vol %v mp ver %v, client use old ver before snapshot", mp.GetVolName(), mp.GetVerSeq())
 		return fmt.Errorf("client use old ver before snapshot")
 	}
-
 	// meta node do not need to check verSeq as strictly as datanode,file append or modAppendWrite on meta node is invisible to other files.
 	// only need to guarantee the verSeq wrote on meta nodes grow up linearly on client's angle
 	log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
 	if mp.GetVerSeq() >= p.VerSeq {
-		log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
-		p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
+		if mp.GetVerSeq() > p.VerSeq {
+			log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
+			p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
+			p.ExtentType |= proto.VersionListFlag
+			p.VerList = mp.GetVerList()
+		}
 		return
 	}
+	if p.IsVersionList() {
+		return mp.checkVerList(&proto.VolVersionInfoList{VerList: p.VerList}, true)
+	}
+	p.Opcode = proto.OpAgainVerionList
+	// need return and tell client
+	err = fmt.Errorf("vol %v req seq %v but not found commit status", mp.GetVolName(), p.VerSeq)
+	if value, ok := m.volUpdating.Load(mp.GetVolName()); ok {
+		ver2Phase := value.(*verOp2Phase)
+		if ver2Phase.isActiveReqToMaster {
+			return
+		}
+	}
 
-	volName := mp.GetVolName()
+	select {
+	case m.verUpdateChan <- mp.GetVolName():
+	default:
+		log.LogWarnf("channel is full, vol %v not be queued", mp.GetVolName())
+	}
+	return
+}
+
+func (m *metadataManager) checkAndPromoteVersion(volName string) (err error) {
+
 	log.LogInfof("action[checkmultiSnap.multiVersionstatus] volumeName %v", volName)
 	var info *proto.VolumeVerInfo
 	if value, ok := m.volUpdating.Load(volName); ok {
@@ -2445,45 +2458,46 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 	)
 	log.LogDebugf("action[opMultiVersionOp] volume %v op %v", req.VolumeID, req.Op)
 
-	go func() {
-		start := time.Now()
-		decode := json.NewDecoder(bytes.NewBuffer(data))
-		decode.UseNumber()
-		if err = decode.Decode(adminTask); err != nil {
-			resp.Status = proto.TaskFailed
-			resp.Result = err.Error()
-			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
+	start := time.Now()
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		resp.Status = proto.TaskFailed
+		resp.Result = err.Error()
+		log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
+		goto end
+	}
+
+	resp.Status = proto.TaskSucceeds
+	resp.VolumeID = req.VolumeID
+	resp.Addr = req.Addr
+	resp.VerSeq = req.VerSeq
+	resp.Op = req.Op
+
+	if req.Op == proto.CreateVersionPrepare {
+		if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
+			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err)
 			goto end
 		}
-
-		resp.Status = proto.TaskSucceeds
-		resp.VolumeID = req.VolumeID
-		resp.Addr = req.Addr
-		resp.VerSeq = req.VerSeq
-		resp.Op = req.Op
-
-		if req.Op == proto.CreateVersionPrepare {
-			if err, opAgain = m.prepareCreateVersion(req); err != nil || opAgain {
-				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err)
-				goto end
-			}
-		} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
-			if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op); err != nil {
-				log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
-				goto end
-			}
+	} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
+		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op); err != nil {
+			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
+			goto end
 		}
-	end:
-		if err != nil {
-			resp.Result = err.Error()
-		}
-		adminTask.Request = nil
-		adminTask.Response = resp
-		m.respondToMaster(adminTask)
-		data, _ := json.Marshal(resp)
+	}
+end:
+	if err != nil {
+		resp.Result = err.Error()
+	}
+	adminTask.Request = nil
+	adminTask.Response = resp
+	m.respondToMaster(adminTask)
+
+	if log.EnableInfo() {
+		rspData, _ := json.Marshal(resp)
 		log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
-			remoteAddr, p.String(), req, adminTask, string(data), time.Since(start).String())
-	}()
+			remoteAddr, p.String(), req, adminTask, string(rspData), time.Since(start).String())
+	}
 
 	return
 }

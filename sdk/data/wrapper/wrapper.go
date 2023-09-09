@@ -45,9 +45,10 @@ type SimpleClientInfo interface {
 	GetFlowInfo() (*proto.ClientReportLimitInfo, bool)
 	UpdateFlowInfo(limit *proto.LimitRsp2Client)
 	SetClientID(id uint64) error
-	UpdateLatestVer(verSeq uint64) error
+	UpdateLatestVer(verList *proto.VolVersionInfoList) error
 	GetReadVer() uint64
 	GetLatestVer() uint64
+	GetVerMgr() *proto.VolVersionInfoList
 }
 
 // Wrapper TODO rename. This name does not reflect what it is doing.
@@ -135,13 +136,17 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 	}
 
 	if verReadSeq > 0 {
-		if err = w.updateCheckVerList(volName, verReadSeq); err != nil {
+		var verList *proto.VolVersionInfoList
+		if verList, err = w.mc.AdminAPI().GetVerList(volName); err != nil {
+			return
+		}
+		if err = w.CheckReadVerSeq(volName, verReadSeq, verList); err != nil {
 			log.LogErrorf("NewDataPartitionWrapper: init Read with ver [%v] error [%v]", verReadSeq, err)
 			return
 		}
 	}
 	go w.uploadFlowInfoByTick(client)
-	go w.update(client)
+	go w.update()
 	return
 }
 
@@ -234,12 +239,12 @@ func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 	}
 }
 
-func (w *Wrapper) update(client SimpleClientInfo) {
+func (w *Wrapper) update() {
 	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ticker.C:
-			w.updateSimpleVolView(client)
+			w.updateSimpleVolView()
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
 			w.CheckPermission()
@@ -251,10 +256,10 @@ func (w *Wrapper) update(client SimpleClientInfo) {
 
 func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err error) {
 	var limitRsp *proto.LimitRsp2Client
-	log.LogInfof("action[UploadFlowInfo] tick!")
+
 	flowInfo, isNeedReport := clientInfo.GetFlowInfo()
 	if !isNeedReport {
-		log.LogInfof("action[UploadFlowInfo] no need report!")
+		log.LogDebugf("action[UploadFlowInfo] no need report!")
 		return nil
 	}
 
@@ -262,7 +267,7 @@ func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err er
 		log.LogWarnf("UpdateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
-	log.LogInfof("action[UploadFlowInfo] init %v get rsp id [%v]", init, limitRsp.ID)
+
 	if init {
 		if limitRsp.ID == 0 {
 			err = fmt.Errorf("init client get id 0")
@@ -285,7 +290,35 @@ func (w *Wrapper) CheckPermission() {
 	}
 }
 
-func (w *Wrapper) updateSimpleVolView(client SimpleClientInfo) (err error) {
+func (w *Wrapper) updateVerlist(client SimpleClientInfo) (err error) {
+
+	verList, err := w.mc.AdminAPI().GetVerList(w.volName)
+	if err != nil {
+		log.LogErrorf("CheckReadVerSeq: get cluster fail: err(%v)", err)
+		return err
+	}
+
+	if verList == nil {
+		msg := fmt.Sprintf("get verList nil, vol [%v] reqd seq [%v]", w.volName, w.verReadSeq)
+		log.LogErrorf("action[CheckReadVerSeq] %v", msg)
+		return fmt.Errorf("%v", msg)
+	}
+
+	if w.verReadSeq > 0 {
+		if err = w.CheckReadVerSeq(w.volName, w.verReadSeq, verList); err != nil {
+			log.LogFatalf("updateSimpleVolView: readSeq abnormal %v", err)
+		}
+		return
+	}
+
+	if err = client.UpdateLatestVer(verList); err != nil {
+		log.LogWarnf("updateSimpleVolView: UpdateLatestVer ver %v faile err %v", verList.GetLastVer(), err)
+		return
+	}
+	return
+}
+
+func (w *Wrapper) updateSimpleVolView() (err error) {
 	var view *proto.SimpleVolView
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
@@ -293,15 +326,6 @@ func (w *Wrapper) updateSimpleVolView(client SimpleClientInfo) (err error) {
 	}
 
 	w.UpdateUidsView(view)
-	if w.verReadSeq > 0 {
-		if err = w.updateCheckVerList(w.volName, w.verReadSeq); err != nil {
-			log.LogFatalf("updateSimpleVolView: readSeq abnormal %v", err)
-		}
-	} else {
-		if err = client.UpdateLatestVer(view.LatestVer); err != nil {
-			log.LogWarnf("updateSimpleVolView: UpdateLatestVer ver %v faile err %v", view.LatestVer, err)
-		}
-	}
 
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
 		log.LogDebugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",
@@ -505,46 +529,26 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	return dp, nil
 }
 
-func (w *Wrapper) updateCheckVerList(volName string, verReadSeq uint64) error {
+func (w *Wrapper) CheckReadVerSeq(volName string, verReadSeq uint64, verList *proto.VolVersionInfoList) error {
 	w.Lock.RLock()
 	defer w.Lock.RUnlock()
 
-	verList, err := w.mc.AdminAPI().GetVerList(volName)
-	if err != nil {
-		log.LogErrorf("updateCheckVerList: get cluster fail: err(%v)", err)
-		return err
-	}
+	log.LogInfof("action[CheckReadVerSeq] vol [%v] req seq [%v]", volName, verReadSeq)
 
-	if verList == nil {
-		msg := fmt.Sprintf("get verList nil, vol [%v] reqd seq [%v]", volName, verReadSeq)
-		log.LogErrorf("action[updateCheckVerList] %v", msg)
-		return fmt.Errorf("%v", msg)
+	if verReadSeq == math.MaxUint64 {
+		verReadSeq = 0
 	}
-
-	log.LogInfof("action[updateCheckVerList] vol [%v] req seq [%v]", volName, verReadSeq)
-
-	if verReadSeq > 0 && len(verList.VerList) == 0 {
-		msg := fmt.Sprintf("get verSeq [%v] failed,master not eable snapshot", verReadSeq)
-		log.LogErrorf("action[updateCheckVerList] %v", msg)
-		return fmt.Errorf("%v", msg)
-	}
-	if verReadSeq > 0 {
-		if verReadSeq == math.MaxUint64 {
-			verReadSeq = 0
-		}
-		for _, ver := range verList.VerList {
-			log.LogInfof("action[updateCheckVerList] ver %v,%v", ver.Ver, ver.Status)
-			if ver.Ver == verReadSeq {
-				if ver.Status != proto.VersionNormal {
-					return fmt.Errorf("action[updateCheckVerList] status %v not right", ver.Status)
-				}
-				log.LogInfof("action[updateCheckVerList] get ver %v,%v", ver.Ver, ver.Status)
-				return nil
+	for _, ver := range verList.VerList {
+		log.LogInfof("action[CheckReadVerSeq] ver %v,%v", ver.Ver, ver.Status)
+		if ver.Ver == verReadSeq {
+			if ver.Status != proto.VersionNormal {
+				return fmt.Errorf("action[CheckReadVerSeq] status %v not right", ver.Status)
 			}
+			log.LogInfof("action[CheckReadVerSeq] get ver %v,%v", ver.Ver, ver.Status)
+			return nil
 		}
-		return fmt.Errorf("not found read ver %v", verReadSeq)
 	}
-	return nil
+	return fmt.Errorf("not found read ver %v", verReadSeq)
 
 }
 

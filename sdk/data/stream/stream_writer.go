@@ -613,6 +613,11 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
+		reqPacket.VerSeq = s.client.multiVerMgr.latestVerSeq
+		reqPacket.VerList = s.client.multiVerMgr.verList.VerList
+		reqPacket.ExtentType |= proto.MultiVersionFlag
+		reqPacket.ExtentType |= proto.VersionListFlag
+
 		log.LogDebugf("action[doOverwrite] inode %v extentid %v,extentOffset %v(%v,%v,%v,%v) offset %v, streamer seq %v", s.inode, req.ExtentKey.ExtentId, reqPacket.ExtentOffset,
 			offset, ekFileOffset, total, ekExtOffset, offset, s.verSeq)
 		if direct {
@@ -646,7 +651,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 				log.LogWarnf("action[doOverwrite] verseq (%v) be updated to (%v) by datanode rsp", s.verSeq, replyPacket.VerSeq)
 				s.verSeq = replyPacket.VerSeq
 				s.extents.verSeq = s.verSeq
-				s.client.UpdateLatestVer(s.verSeq)
+				s.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: replyPacket.VerList})
 				return e, false
 			}
 

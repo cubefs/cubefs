@@ -80,7 +80,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 	log.LogInfof("action[repair] partition(%v) start.", dp.partitionID)
 
 	var tinyExtents []uint64 // unavailable extents
-	if extentType == proto.TinyExtentType {
+	if proto.IsTinyExtentType(extentType) {
 		tinyExtents = dp.brokenTinyExtents()
 		if len(tinyExtents) == 0 {
 			return
@@ -160,7 +160,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint64) (extents []*storage.ExtentInfo, leaderTinyDeleteRecordFileSize int64, err error) {
 	var localExtents []*storage.ExtentInfo
 
-	if extentType == proto.NormalExtentType {
+	if proto.IsNormalExtentType(extentType) {
 		localExtents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
 		localExtents, leaderTinyDeleteRecordFileSize, err = dp.extentStore.GetAllWatermarks(storage.TinyExtentFilter(tinyExtents))
@@ -185,7 +185,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 	target string) (extentFiles []*storage.ExtentInfo, err error) {
 	p := repl.NewPacketToGetAllWatermarks(dp.partitionID, extentType)
 	extentFiles = make([]*storage.ExtentInfo, 0)
-	if extentType == proto.TinyExtentType {
+	if proto.IsTinyExtentType(extentType) {
 		p.Data, err = json.Marshal(tinyExtents)
 		if err != nil {
 			err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) GetAllWatermarks", dp.partitionID)
@@ -255,13 +255,13 @@ func (dp *DataPartition) DoRepair(repairTasks []*DataPartitionRepairTask) {
 }
 
 func (dp *DataPartition) moveToBrokenTinyExtentC(extentType uint8, extents []uint64) {
-	if extentType == proto.TinyExtentType {
+	if proto.IsTinyExtentType(extentType) {
 		dp.extentStore.SendAllToBrokenTinyExtentC(extents)
 	}
 }
 
 func (dp *DataPartition) sendAllTinyExtentsToC(extentType uint8, availableTinyExtents, brokenTinyExtents []uint64) {
-	if extentType != proto.TinyExtentType {
+	if !proto.IsTinyExtentType(extentType) {
 		return
 	}
 	for _, extentID := range availableTinyExtents {

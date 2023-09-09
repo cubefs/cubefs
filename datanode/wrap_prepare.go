@@ -64,10 +64,10 @@ func (s *DataNode) Prepare(p *repl.Packet) (err error) {
 }
 
 func (s *DataNode) checkStoreMode(p *repl.Packet) (err error) {
-	if p.ExtentType == proto.TinyExtentType || p.ExtentType == proto.NormalExtentType {
-		return nil
+	if proto.IsTinyExtentType(p.ExtentType) || proto.IsNormalExtentType(p.ExtentType) {
+		return
 	}
-	log.LogErrorf("action[checkStoreMode] extent type %v", p.ExtentType)
+	log.LogErrorf("action[checkStoreMode] extent type11111 %v, %v, %v", p.ExtentType, proto.IsTinyExtentType(p.ExtentType), proto.IsNormalExtentType(p.ExtentType))
 	return ErrIncorrectStoreType
 }
 
@@ -114,7 +114,7 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 
 	log.LogDebugf("action[prepare.addExtentInfo] pack opcode (%v) p.IsLeaderPacket(%v) p (%v)", p.Opcode, p.IsLeaderPacket(), p)
 
-	if p.IsLeaderPacket() && p.IsTinyExtentType() && p.IsWriteOperation() {
+	if p.IsLeaderPacket() && proto.IsTinyExtentType(p.ExtentType) && p.IsWriteOperation() {
 		extentID, err = store.GetAvailableTinyExtent()
 		if err != nil {
 			return fmt.Errorf("addExtentInfo partition %v GetAvailableTinyExtent error %v", p.PartitionID, err.Error())
@@ -125,11 +125,11 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 			return fmt.Errorf("addExtentInfo partition %v  %v GetTinyExtentOffset error %v", p.PartitionID, extentID, err.Error())
 		}
 	} else if p.IsRandomWrite() {
-		if err = s.checkMultiVersionStatus(p.Object.(*DataPartition).volumeID); err != nil {
+		if err = partition.CheckRandomWriteVer(p); err != nil {
 			return err
 		}
 	} else if p.IsSnapshotModWriteAppendOperation() {
-		if p.IsTinyExtentType() {
+		if proto.IsTinyExtentType(p.ExtentType) {
 			extentID, err = store.GetAvailableTinyExtent()
 			if err != nil {
 				log.LogErrorf("err %v", err)
@@ -159,8 +159,8 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 			return fmt.Errorf("addExtentInfo partition %v allocCheckLimit NextExtentId error %v", p.PartitionID, err)
 		}
 	} else if p.IsLeaderPacket() &&
-		((p.IsMarkDeleteExtentOperation() && p.IsTinyExtentType()) ||
-			(p.IsMarkSplitExtentOperation() && !p.IsTinyExtentType())) {
+		((p.IsMarkDeleteExtentOperation() && proto.IsTinyExtentType(p.ExtentType)) ||
+			(p.IsMarkSplitExtentOperation() && !proto.IsTinyExtentType(p.ExtentType))) {
 
 		log.LogDebugf("addExtentInfo. packet opCode %v p.ExtentType %v", p.Opcode, p.ExtentType)
 

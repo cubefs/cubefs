@@ -181,7 +181,7 @@ type VerOpData struct {
 	VerList []*proto.VolVersionInfo
 }
 
-func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList) (err error) {
+func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList, sync bool) (err error) {
 	mp.multiVersionList.RLock()
 
 	verMapLocal := make(map[uint64]*proto.VolVersionInfo)
@@ -247,14 +247,14 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList) 
 			lastSeq = VerList[i].Ver
 			return false
 		})
-		if err = mp.HandleVersionOp(proto.SyncAllVersionList, lastSeq, VerList); err != nil {
+		if err = mp.HandleVersionOp(proto.SyncAllVersionList, lastSeq, VerList, sync); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (mp *metaPartition) HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo) (err error) {
+func (mp *metaPartition) HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo, sync bool) (err error) {
 
 	verData := &VerOpData{
 		Op:      op,
@@ -262,7 +262,10 @@ func (mp *metaPartition) HandleVersionOp(op uint8, verSeq uint64, verList []*pro
 		VerList: verList,
 	}
 	data, _ := json.Marshal(verData)
-
+	if sync {
+		_, err = mp.submit(opFSMVersionOp, data)
+		return
+	}
 	select {
 	case mp.verUpdateChan <- data:
 		log.LogDebugf("mp %v verSeq %v op %v be pushed to queue", mp.config.PartitionId, verSeq, op)

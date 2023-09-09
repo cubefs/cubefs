@@ -1238,7 +1238,7 @@ func TestCheckVerList(t *testing.T) {
 			{Ver: 50, Status: proto.VersionNormal}},
 	}
 
-	mp.checkVerList(masterList)
+	mp.checkVerList(masterList, false)
 	verData := <-mp.verUpdateChan
 	mp.submit(opFSMVersionOp, verData)
 
@@ -1251,11 +1251,23 @@ func TestCheckVerList(t *testing.T) {
 			{Ver: 40, Status: proto.VersionNormal}},
 	}
 
-	mp.checkVerList(masterList)
+	mp.checkVerList(masterList, false)
 	verData = <-mp.verUpdateChan
 	mp.submit(opFSMVersionOp, verData)
 
 	assert.True(t, mp.verSeq == 40)
 	assert.True(t, len(mp.multiVersionList.VerList) == 2)
 	mp.stop()
+}
+func checkStoreMode(t *testing.T, ExtentType uint8) (err error) {
+	if proto.IsTinyExtentType(ExtentType) || proto.IsNormalExtentType(ExtentType) {
+		return
+	}
+	t.Logf("action[checkStoreMode] extent type %v", ExtentType)
+	return fmt.Errorf("error")
+}
+func TestCheckMod(t *testing.T) {
+	var tp uint8 = 192
+	err := checkStoreMode(t, tp)
+	assert.True(t, err == nil)
 }
