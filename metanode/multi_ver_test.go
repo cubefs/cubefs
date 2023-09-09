@@ -1223,7 +1223,7 @@ func TestCheckVerList(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 	mp = mockPartitionRaftForTest(mockCtrl)
-
+	mp.verUpdateChan = make(chan []byte, 100)
 	mp.multiVersionList = &proto.VolVersionInfoList{
 		VerList: []*proto.VolVersionInfo{
 			{Ver: 20, Status: proto.VersionNormal},
@@ -1239,6 +1239,9 @@ func TestCheckVerList(t *testing.T) {
 	}
 
 	mp.checkVerList(masterList)
+	verData := <-mp.verUpdateChan
+	mp.submit(opFSMVersionOp, verData)
+
 	assert.True(t, mp.verSeq == 50)
 	assert.True(t, mp.multiVersionList.VerList[len(mp.multiVersionList.VerList)-1].Ver == 50)
 
@@ -1247,7 +1250,12 @@ func TestCheckVerList(t *testing.T) {
 			{Ver: 20, Status: proto.VersionNormal},
 			{Ver: 40, Status: proto.VersionNormal}},
 	}
+
 	mp.checkVerList(masterList)
+	verData = <-mp.verUpdateChan
+	mp.submit(opFSMVersionOp, verData)
+
 	assert.True(t, mp.verSeq == 40)
 	assert.True(t, len(mp.multiVersionList.VerList) == 2)
+	mp.stop()
 }

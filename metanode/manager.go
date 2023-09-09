@@ -88,6 +88,7 @@ type metadataManager struct {
 	cpuUtil              atomicutil.Float64
 	samplerDone          chan struct{}
 	volUpdating          *sync.Map //map[string]*verOp2Phase
+	verUpdateChan        chan []byte
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
