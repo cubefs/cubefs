@@ -41,8 +41,10 @@ func (arr BlockCrcArr) Len() int           { return len(arr) }
 func (arr BlockCrcArr) Less(i, j int) bool { return arr[i].BlockNo < arr[j].BlockNo }
 func (arr BlockCrcArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
-type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32) (err error)
-type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
+type (
+	UpdateCrcFunc    func(e *Extent, blockNo int, crc uint32) (err error)
+	GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
+)
 
 func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
 	log.LogDebugf("PersistenceBlockCrc. extent id %v blockNo %v blockCrc %v data path %v", e.extentID, blockNo, blockCrc, s.dataPath)
@@ -70,7 +72,7 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 				suffix := fIdx - i
 				dataPath := path.Join(s.dataPath, ExtCrcHeaderFileName+"_"+strconv.Itoa(suffix))
 				log.LogDebugf("PersistenceBlockCrc. idx %v try create path %v", fIdx-1, dataPath)
-				if fp, err = os.OpenFile(dataPath, os.O_CREATE|os.O_RDWR, 0666); err != nil {
+				if fp, err = os.OpenFile(dataPath, os.O_CREATE|os.O_RDWR, 0o666); err != nil {
 					log.LogDebugf("PersistenceBlockCrc. idx %v try create path %v err %v", fIdx, dataPath, err)
 					return
 				}
@@ -81,7 +83,7 @@ func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint3
 		}
 		if s.verifyExtentFpAppend[fIdx-1] == nil {
 			dataPath := path.Join(s.dataPath, ExtCrcHeaderFileName+"_"+strconv.Itoa(fIdx-1))
-			if fp, err = os.OpenFile(dataPath, os.O_CREATE|os.O_RDWR, 0666); err != nil {
+			if fp, err = os.OpenFile(dataPath, os.O_CREATE|os.O_RDWR, 0o666); err != nil {
 				return
 			}
 			s.verifyExtentFpAppend[fIdx-1] = fp
@@ -195,8 +197,6 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
 			prevAllocSpaceExtentID*util.BlockHeaderSize+size)
 	}
-
-	return
 }
 
 func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) {
@@ -235,5 +235,4 @@ func (s *ExtentStore) GetHasDeleteExtent() (extentDes []ExtentDeleted, err error
 		extentDes = append(extentDes, extent)
 		offset += 8
 	}
-
 }

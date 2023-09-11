@@ -17,7 +17,6 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"hash/crc32"
 	"io"
 	"math"
@@ -28,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -130,10 +130,7 @@ func (e *Extent) Close() (err error) {
 func (e *Extent) Exist() (exsit bool) {
 	_, err := os.Stat(e.filePath)
 	if err != nil {
-		if os.IsExist(err) {
-			return true
-		}
-		return false
+		return os.IsExist(err)
 	}
 	return true
 }
@@ -141,7 +138,7 @@ func (e *Extent) Exist() (exsit bool) {
 // InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
 // this operation will clear all data of exist entry file and initialize extent header data.
 func (e *Extent) InitToFS() (err error) {
-	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0666); err != nil {
+	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0o666); err != nil {
 		return err
 	}
 
@@ -192,7 +189,7 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 	}
 	log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
 	dataSize = util.ExtentSize
-	if holStart > dataStart { //data cann't move forward only hole include value util.ExtentSize
+	if holStart > dataStart { // data cann't move forward only hole include value util.ExtentSize
 		dataSize = holStart
 	}
 	log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
@@ -201,15 +198,13 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
 func (e *Extent) RestoreFromFS() (err error) {
-	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
+	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0o666); err != nil {
 		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
 			err = ExtentNotFoundError
 		}
 		return err
 	}
-	var (
-		info os.FileInfo
-	)
+	var info os.FileInfo
 	if info, err = e.file.Stat(); err != nil {
 		err = fmt.Errorf("stat file %v: %v", e.file.Name(), err)
 		return
@@ -493,7 +488,6 @@ func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 		return false, err
 	}
 	if newOffset-offset >= size {
-		hasDelete = true
 		return true, nil
 	}
 	log.LogDebugf("punchDelete offset %v size %v", offset, size)
@@ -520,7 +514,8 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 	log.LogDebugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
 		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
 	if isEmptyPacket {
-		finfo, err := e.file.Stat()
+		var finfo os.FileInfo
+		finfo, err = e.file.Stat()
 		if err != nil {
 			return err
 		}
