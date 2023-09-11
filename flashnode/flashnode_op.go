@@ -110,7 +110,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 	if !f.volLimitAllow(volume) {
 		err = errors.NewErrorf("volume(%s) request is limited(%d)", volume, f.volLimitMap[volume])
 		if log.IsWarnEnabled() {
-			log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), conn.RemoteAddr())
+			log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), remoteAddr)
 		}
 		metric := exporter.NewModuleTP("VolReqLimit")
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -135,6 +135,11 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *Packet, block *cache_engine.CacheBlock) (err error) {
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("action[doStreamReadRequest] cache block(%v) err:%v", block.String(), err)
+		}
+	}()
 	for {
 		if needReplySize <= 0 {
 			break

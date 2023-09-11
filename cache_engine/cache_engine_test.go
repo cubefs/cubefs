@@ -200,3 +200,91 @@ func TestLru(t *testing.T) {
 		}
 	}
 }
+
+func TestSparseFile(t *testing.T) {
+	lruCap := 10
+	rawData := make([]byte, 0)
+	for i := 0; uint64(i) < 128*unit.KB; i++ {
+		rawData = append(rawData, 'b')
+	}
+	var readSourceFunc = func(source *proto.DataSource, afterReadFunc func([]byte, int64) error) (readBytes int, err error) {
+		err = afterReadFunc(rawData, int64(source.Size_))
+		if err != nil {
+			return
+		}
+		return int(source.Size_), nil
+	}
+	ce, err := NewCacheEngine(testTmpFS, unit.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, readSourceFunc, func(volume string, action int, size uint64) {})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer func() {
+		err = ce.Stop()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	offset1 := uint64(proto.CACHE_BLOCK_SIZE*2 - 256*unit.KB)
+	size1 := uint64(128 * unit.KB)
+	offset2 := uint64(proto.CACHE_BLOCK_SIZE*2 - 256*unit.KB)
+	size2 := uint64(128 * unit.KB)
+	sources := []*proto.DataSource{
+		{
+			FileOffset:   offset1,
+			PartitionID:  1,
+			ExtentID:     1,
+			ExtentOffset: 0,
+			Size_:        size1,
+		},
+		{
+			FileOffset:   offset2,
+			PartitionID:  2,
+			ExtentID:     2,
+			ExtentOffset: 0,
+			Size_:        size2,
+		},
+	}
+	cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%s", t.Name(), "sparse"), 1, 0, 0, DefaultExpireTime, computeAllocSize(sources))
+	if assert.Error(t, err) {
+		return
+	}
+	for _, source := range sources {
+		localStart := int64(source.FileOffset)
+		writeCacheAfterRead := func(data []byte, size int64) error {
+			e := cb.WriteAt(data, localStart, size)
+			if e != nil {
+				return e
+			}
+			t.Logf("write source, offset:%v size:%v", localStart, size)
+			localStart += size
+			return nil
+		}
+		_, err = cb.readSource(source, writeCacheAfterRead)
+		if assert.Error(t, err) {
+			return
+		}
+	}
+	reader := make([]byte, unit.MB)
+	n, err := cb.Read(context.Background(), reader, 0, int64(offset2&(proto.CACHE_BLOCK_SIZE-1)+size2))
+	if assert.Error(t, err) {
+		return
+	}
+	if assert.NotEqual(t, n, offset2&(proto.CACHE_BLOCK_SIZE-1)+size2) {
+		return
+	}
+
+	for _, source := range sources {
+		reader1 := make([]byte, source.Size_)
+		n, err = cb.Read(context.Background(), reader, int64(source.FileOffset&(proto.CACHE_BLOCK_SIZE-1)), int64(source.Size_))
+		if assert.Error(t, err) {
+			return
+		}
+		if assert.NotEqual(t, n, source.Size_) {
+			return
+		}
+		if assert.NotEqual(t, reader1, rawData) {
+			return
+		}
+	}
+}

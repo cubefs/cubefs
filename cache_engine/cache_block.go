@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -49,8 +50,8 @@ type CacheBlock struct {
 	rootPath    string
 	filePath    string
 	modifyTime  int64
-	usedSize    int64
-	allocSize   int64
+	usedSize    int64 //usedSize是缓存文件的真实Size
+	allocSize   int64 //allocSize是为了避免并发回源导致tmpfs满，而预先将所有source按照4K对齐后的Size之和，是逻辑值
 	blockKey    string
 	readSource  ReadExtentData
 	cacheStat   int32
@@ -139,11 +140,11 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	if err = cb.waitCacheReady(ctx); err != nil {
 		return
 	}
-	if offset >= cb.allocSize || offset > cb.usedSize {
+	if offset >= cb.allocSize || offset > cb.usedSize || cb.usedSize == 0 {
 		return 0, fmt.Errorf("invalid read, offset:%d, allocSize:%d, usedSize:%d", offset, cb.allocSize, cb.usedSize)
 	}
 	realSize := cb.usedSize - offset
-	if size < realSize {
+	if realSize >= size {
 		realSize = size
 	}
 	if _, err = cb.file.ReadAt(data[:realSize], offset); err != nil {
@@ -152,6 +153,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	return
 }
 
+// todo: use end size to replace allocSize
 func (cb *CacheBlock) checkOffsetAndSize(offset, size int64) error {
 	if offset+size > cb.allocSize {
 		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v allocSize:%d", offset, size, cb.allocSize))
@@ -182,9 +184,10 @@ func (cb *CacheBlock) initFilePath() (err error) {
 }
 
 func (cb *CacheBlock) Init(sources []*proto.DataSource) {
+	var err error
 	metric := exporter.NewModuleTPUs("InitBlock")
 	defer func() {
-		metric.Set(nil)
+		metric.Set(err)
 	}()
 	//parallel read source data
 	sourceTaskCh := make(chan *proto.DataSource, 100)
@@ -196,9 +199,11 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 		go cb.prepareSource(ctx, cancel, &wg, sourceTaskCh)
 	}
 	var stop bool
+	var sb = strings.Builder{}
 	for _, s := range sources {
 		select {
 		case sourceTaskCh <- s:
+			sb.WriteString(fmt.Sprintf("dp(%v) extent(%v) offset(%v) size(%v) fileOffset(%v) hosts(%v)\n", s.PartitionID, s.ExtentID, s.ExtentOffset, s.Size_, s.FileOffset, strings.Join(s.Hosts, ",")))
 		case <-ctx.Done():
 			stop = true
 		}
@@ -208,8 +213,11 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	}
 	close(sourceTaskCh)
 	wg.Wait()
-
-	if ctx.Err() != nil {
+	if log.IsWarnEnabled() {
+		log.LogWarnf("action[Init], cache block:%v, sources:\n%v", cb.blockKey, sb.String())
+	}
+	err = ctx.Err()
+	if err != nil {
 		cb.markClose()
 		return
 	}
@@ -242,9 +250,10 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, cancel context.CancelFu
 				return nil
 			}
 			if log.IsDebugEnabled() {
-				log.LogDebugf("action[prepareSource] write cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, localStart:%d", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, localStart)
+				log.LogDebugf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, localStart:%d", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, localStart)
 			}
 			if _, err = cb.readSource(task, writeCacheAfterRead); err != nil {
+				log.LogErrorf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, localStart:%d, readSource err:%v", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, localStart, err)
 				return
 			}
 		}
@@ -281,8 +290,9 @@ func (cb *CacheBlock) markReady() {
 	close(cb.readyCh)
 }
 
-func computeAllocSize(req *proto.CacheRequest) (alloc uint64) {
-	for _, s := range req.Sources {
+// align AllocSize with PageSize-4KB
+func computeAllocSize(sources []*proto.DataSource) (alloc uint64) {
+	for _, s := range sources {
 		blockOffset := s.FileOffset & (proto.CACHE_BLOCK_SIZE - 1)
 		blockEnd := blockOffset + s.Size_ - 1
 		pageOffset := blockOffset / proto.PageSize

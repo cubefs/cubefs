@@ -178,7 +178,7 @@ func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (resp *GetMPInfoResp, err
 	return
 }
 
-func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*proto.MetaDentry, err error ) {
+func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*proto.MetaDentry, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
@@ -428,5 +428,39 @@ func (mc *MetaHttpClient) GetInuseInodes(mpId uint64) (inodeInuseBitMap []uint64
 		return
 	}
 	inodeInuseBitMap = respStruct.InoInuseBitMap
+	return
+}
+func (mc *MetaHttpClient) GetInode(mpId uint64, inode uint64) (inodeInfoView *proto.InodeInfoView, err error) {
+	req := newAPIRequest(http.MethodGet, "/getInode")
+	req.addParam("pid", fmt.Sprintf("%v", mpId))
+	req.addParam("ino", fmt.Sprintf("%v", inode))
+	respData, err := mc.serveRequest(req)
+	if err != nil {
+		return
+	}
+	var inodeInfo map[string]interface{}
+	if err = json.Unmarshal(respData, &inodeInfo); err != nil {
+		return
+	}
+	dataInfo := inodeInfo["info"].(map[string]interface{})
+	gid := float64(0)
+	uid := float64(0)
+	if !proto.IsDbBack {
+		gid = dataInfo["gid"].(float64)
+		uid = dataInfo["uid"].(float64)
+	}
+	inodeInfoView = &proto.InodeInfoView{
+		Ino:         uint64(dataInfo["ino"].(float64)),
+		PartitionID: mpId,
+		At:          dataInfo["at"].(string),
+		Ct:          dataInfo["ct"].(string),
+		Mt:          dataInfo["mt"].(string),
+		Nlink:       uint64(dataInfo["nlink"].(float64)),
+		Size:        uint64(dataInfo["sz"].(float64)),
+		Gen:         uint64(dataInfo["gen"].(float64)),
+		Gid:         uint64(gid),
+		Uid:         uint64(uid),
+		Mode:        uint64(dataInfo["mode"].(float64)),
+	}
 	return
 }

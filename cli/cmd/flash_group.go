@@ -2,14 +2,18 @@ package cmd
 
 import (
 	"fmt"
+	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/flash"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/spf13/cobra"
 	"math"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -30,6 +34,7 @@ func newFlashGroupCommand(client *master.MasterClient) *cobra.Command {
 		newFlashGroupRemoveCmd(client),
 		newFlashGroupAddFlashNodeCmd(client),
 		newFlashGroupRemoveFlashNodeCmd(client),
+		newFlashGroupSearchCmd(client),
 	)
 	return cmd
 }
@@ -378,5 +383,130 @@ func newFlashGroupRemoveFlashNodeCmd(client *master.MasterClient) *cobra.Command
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", fmt.Sprintf("remove flash node of given addr"))
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", fmt.Sprintf("remove flash node from given zone"))
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, fmt.Sprintf("remove given count flash node from zone"))
+	return cmd
+}
+
+func newFlashGroupSearchCmd(client *master.MasterClient) *cobra.Command {
+	var volume string
+	var inode uint64
+	var optShowHost bool
+	var optStart uint64
+	var optEnd uint64
+	var fgView proto.FlashGroupsAdminView
+	var err error
+	var cmd = &cobra.Command{
+		Use:   "search [volume] [inode]",
+		Short: "search flashGroup by inode offset",
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			volume = args[0]
+			if volume == "" {
+				err = fmt.Errorf("volume is empty")
+				return
+			}
+			inode, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+			fgView, err = client.AdminAPI().ListFlashGroups(true, true)
+			if err != nil {
+				return
+			}
+			slotsMap := make(map[uint32]uint64, 0)
+			slots := make([]uint32, 0)
+			for _, fg := range fgView.FlashGroups {
+				if fg.Status != proto.FlashGroupStatus_Active {
+					continue
+				}
+				for _, slot := range fg.Slots {
+					slotsMap[slot] = fg.ID
+					slots = append(slots, slot)
+				}
+			}
+			var leader string
+			var mpID uint64
+			var inodeInfoView *proto.InodeInfoView
+			leader, mpID, err = util_sdk.LocateInode(inode, client, volume)
+			if err != nil {
+				return
+			}
+			mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(leader, ":")[0], client.MetaNodeProfPort), false)
+			inodeInfoView, err = mtClient.GetInode(mpID, inode)
+			if err != nil {
+				return
+			}
+			if optEnd > inodeInfoView.Size || optEnd == 0 {
+				optEnd = inodeInfoView.Size
+			}
+			sort.Slice(slots, func(i, j int) bool {
+				return slots[i] < slots[j]
+			})
+			fmt.Printf("Volume:        %v\n", volume)
+			fmt.Printf("Inode:         %v\n", inode)
+			fmt.Printf("FileSize:      %v\n", inodeInfoView.Size)
+			fmt.Printf("StartOffset:   %v\n", optStart)
+			fmt.Printf("EndOffset:     %v\n", optEnd)
+			fmt.Printf("CacheBlocks:\n")
+			fmt.Printf("%v\n", formatCacheBlockViewHeader())
+			for off := optStart; off < optEnd; {
+				fixedOffset := off / proto.CACHE_BLOCK_SIZE * proto.CACHE_BLOCK_SIZE
+				size := uint64(proto.CACHE_BLOCK_SIZE)
+				if size > optEnd-fixedOffset {
+					size = optEnd - fixedOffset
+				}
+				slot := flash.ComputeCacheBlockSlot(volume, inode, fixedOffset)
+				var slotIndex int
+				for i, s := range slots {
+					if slot > s {
+						continue
+					}
+					slotIndex = i
+					break
+				}
+				var slotAfter uint32
+				var fgID uint64
+				slotAfter = slots[(slotIndex)%len(slots)]
+				fgID = slotsMap[slotAfter]
+				fmt.Printf("%v\n", formatCacheBlockRow(fixedOffset, fixedOffset+size, fgID, size))
+				off = fixedOffset + size
+				if !optShowHost {
+					continue
+				}
+				fg, e := client.AdminAPI().GetFlashGroup(fgID)
+				if e != nil {
+					fmt.Printf("getFlashGroup:%v err:%v\n", fgID, err)
+					continue
+				}
+				wg := sync.WaitGroup{}
+				for _, zfg := range fg.ZoneFlashNodes {
+					for _, flashNode := range zfg {
+						wg.Add(1)
+						go func(fv *proto.FlashNodeViewInfo) {
+							defer wg.Done()
+							stat, err1 := getFlashNodeStat(fv.Addr, client.FlashNodeProfPort)
+							if err1 != nil {
+								fmt.Printf("get addr:%v err:%v\n", fv.Addr, err)
+								return
+							}
+							for _, k := range stat.CacheStatus.Keys {
+								if strings.HasPrefix(k, fmt.Sprintf("%v/%v#%v", volume, inode, fixedOffset)) {
+									fmt.Printf("reportTime: %v, blockKey: %v, zone: %v, host: %v\n", fv.ReportTime.Format("2006-01-02 15:04:05"), k, fv.ZoneName, fv.Addr)
+								}
+							}
+						}(flashNode)
+					}
+				}
+				wg.Wait()
+			}
+		},
+	}
+	cmd.Flags().Uint64Var(&optStart, "start", 0, fmt.Sprintf("file start offset"))
+	cmd.Flags().Uint64Var(&optEnd, "end", 0, fmt.Sprintf("file end offset"))
+	cmd.Flags().BoolVar(&optShowHost, "show-host", false, fmt.Sprintf("show host info if cache block exist"))
 	return cmd
 }

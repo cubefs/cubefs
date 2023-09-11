@@ -3,14 +3,15 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
+	"github.com/cubefs/cubefs/proto"
+	sdk "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/spf13/cobra"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/cubefs/cubefs/proto"
-	sdk "github.com/cubefs/cubefs/sdk/master"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -39,81 +40,33 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				err        error
-				volumeName = args[0]
-				inodeStr   = args[1]
-				inode, _   = strconv.Atoi(inodeStr)
-				ino        = uint64(inode)
-				leader     string
-				mpId       uint64
+				err           error
+				leader        string
+				mpID          uint64
+				volumeName    = args[0]
+				inodeStr      = args[1]
+				inode, _      = strconv.Atoi(inodeStr)
+				ino           = uint64(inode)
+				result        []byte
+				resp          *http.Response
+				inodeInfoView *proto.InodeInfoView
 			)
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
 				}
 			}()
-			mps, err := client.ClientAPI().GetMetaPartitions(volumeName)
+			leader, mpID, err = util_sdk.LocateInode(ino, client, volumeName)
 			if err != nil {
-				errout("get metapartitions failed:\n%v\n", err)
-				return
-			}
-			for _, mp := range mps {
-				if ino >= mp.Start && ino < mp.End {
-					leader = mp.LeaderAddr
-					mpId = mp.PartitionID
-					break
-				}
-			}
-			if leader == "" {
-				errout("mp[%v] no leader:\n", mpId)
 				return
 			}
 			if addr == "" {
-				addr = strings.Split(leader, ":")[0]
+				addr = leader
 			}
-			metaNodeProfPort := client.MetaNodeProfPort
-
-			resp, err := http.Get(fmt.Sprintf("http://%s:%d/getInode?pid=%d&ino=%d", addr, metaNodeProfPort, mpId, ino))
+			mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], client.MetaNodeProfPort), false)
+			inodeInfoView, err = mtClient.GetInode(mpID, ino)
 			if err != nil {
-				errout("get inode info failed:\n%v\n", err)
 				return
-			}
-			all, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				errout("read inode info failed:\n%v\n", err)
-				return
-			}
-			value := make(map[string]interface{})
-			err = json.Unmarshal(all, &value)
-			if err != nil {
-				errout("unmarshal inode info failed:\n%v\n", err)
-				return
-			}
-			if value["msg"] != "Ok" {
-				errout("get inode info from partition(%v) failed:\n%v\n", mpId, value["msg"])
-				return
-			}
-			data := value["data"].(map[string]interface{})
-			dataInfo := data["info"].(map[string]interface{})
-			gid := float64(0)
-			uid := float64(0)
-			if !proto.IsDbBack {
-				gid = dataInfo["gid"].(float64)
-				uid = dataInfo["uid"].(float64)
-
-			}
-			inodeInfoView := &proto.InodeInfoView{
-				Ino:         uint64(dataInfo["ino"].(float64)),
-				PartitionID: mpId,
-				At:          dataInfo["at"].(string),
-				Ct:          dataInfo["ct"].(string),
-				Mt:          dataInfo["mt"].(string),
-				Nlink:       uint64(dataInfo["nlink"].(float64)),
-				Size:        uint64(dataInfo["sz"].(float64)),
-				Gen:         uint64(dataInfo["gen"].(float64)),
-				Gid:         uint64(gid),
-				Uid:         uint64(uid),
-				Mode:        uint64(dataInfo["mode"].(float64)),
 			}
 			stdout("Summary of inode  :\n%s\n", formatInodeInfoView(inodeInfoView))
 
@@ -122,20 +75,20 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			if proto.IsDbBack {
 				path = "getExtents"
 			}
-			resp, err = http.Get(fmt.Sprintf("http://%s:%d/%s?pid=%d&ino=%d", addr, metaNodeProfPort, path, mpId, ino))
+			resp, err = http.Get(fmt.Sprintf("http://%s:%d/%s?pid=%d&ino=%d", strings.Split(addr, ":")[0], client.MetaNodeProfPort, path, mpID, ino))
 			if err != nil {
 				errout("get inode extents failed:\n%v\n", err)
 				return
 			}
-			all, err = ioutil.ReadAll(resp.Body)
+			result, err = ioutil.ReadAll(resp.Body)
 			if err != nil {
 				errout("read inode extents failed:\n%v\n", err)
 				return
 			}
-			value = make(map[string]interface{})
-			err = json.Unmarshal(all, &value)
+			value := make(map[string]interface{})
+			err = json.Unmarshal(result, &value)
 			if err != nil {
-				errout("unmarshal inode extents failed:\n%s\n%v\n", string(all), err)
+				errout("unmarshal inode extents failed:\n%s\n%v\n", string(result), err)
 				return
 			}
 			var eks []interface{}
