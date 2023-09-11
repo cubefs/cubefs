@@ -1021,6 +1021,25 @@ func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolV
 		mpVer, ino, inode.getVer(), verlist)
 	status = proto.OpOk
 
+	delFunc := func() (done bool) {
+		if inode.NLink > 1 {
+			log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked, file link is %v", ino.Inode, inode.NLink)
+			inode.DecNLink()
+			doMore = false
+			return true
+		}
+		var dIno *Inode
+		if ext2Del, dIno = inode.getAndDelVer(ino.getVer(), mpVer, verlist); dIno == nil {
+			status = proto.OpNotExistErr
+			log.LogDebugf("action[unlinkTopLayer] ino %v", ino)
+			return true
+		}
+		log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked, File restore, multiSnap.ekRefMap %v", ino.Inode, inode.multiSnap.ekRefMap)
+		dIno.DecNLink() // dIno should be inode
+		doMore = true
+		return
+	}
+
 	// if topLayer verSeq is as same as mp, the current inode deletion only happen on the first layer
 	// or ddelete from client do deletion at top layer which should allow delete ionde with older version contrast to mp version
 	// because ddelete have two steps,1 is del dentry,2nd is unlink inode ,version may updated after 1st and before 2nd step, to
@@ -1039,27 +1058,13 @@ func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolV
 			ino, inode.getVer(), verlist, inode.multiSnap.ekRefMap)
 		// need restore
 		if !proto.IsDir(inode.Type) {
-			if inode.NLink > 1 {
-				log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked, file link is %v", ino.Inode, inode.NLink)
-				inode.DecNLink()
-				doMore = false
-				return
-			}
-			var dIno *Inode
-			if ext2Del, dIno = inode.getAndDelVer(ino.getVer(), mpVer, verlist); dIno == nil {
-				status = proto.OpNotExistErr
-				log.LogDebugf("action[unlinkTopLayer] ino %v", ino)
-				return
-			}
-			log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked, File restore, multiSnap.ekRefMap %v", ino.Inode, inode.multiSnap.ekRefMap)
-			dIno.DecNLink() // dIno should be inode
-			doMore = true
+			delFunc()
+			return
 		} else {
 			log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked, Dir", ino.Inode)
 			inode.DecNLink()
 			doMore = true
 		}
-
 		return
 	}
 
@@ -1077,8 +1082,8 @@ func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolV
 		ver, err := inode.getNextOlderVer(mpVer, verlist)
 		if err != nil {
 			if err.Error() == "not found" {
-				inode.DecNLink()
-				doMore = true
+				delFunc()
+				return
 			}
 			log.LogErrorf("action[unlinkTopLayer] inode %v cann't get next older ver %v err %v", inode.Inode, mpVer, err)
 			return
