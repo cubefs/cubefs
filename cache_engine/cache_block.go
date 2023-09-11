@@ -136,22 +136,16 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 }
 
 // Read reads data from an extent.
-func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64, printSource func() string) (crc uint32, err error) {
+func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64) (crc uint32, err error) {
 	if err = cb.waitCacheReady(ctx); err != nil {
 		return
 	}
-	if offset >= cb.allocSize || offset > cb.usedSize {
+	if offset >= cb.allocSize || offset > cb.usedSize || cb.usedSize == 0 {
 		return 0, fmt.Errorf("invalid read, offset:%d, allocSize:%d, usedSize:%d", offset, cb.allocSize, cb.usedSize)
 	}
 	realSize := cb.usedSize - offset
 	if realSize >= size {
 		realSize = size
-	} else {
-		if log.IsWarnEnabled() {
-			if strings.HasPrefix(cb.blockKey, "dcc_3vol") {
-				log.LogWarnf("action[Read] overflow read, cache block:%v, offset:%d, size:%d, usedSize:%d, allocSize:%d, request: \n%v", cb.blockKey, offset, size, cb.usedSize, cb.allocSize, printSource())
-			}
-		}
 	}
 	if _, err = cb.file.ReadAt(data[:realSize], offset); err != nil {
 		return
@@ -190,9 +184,10 @@ func (cb *CacheBlock) initFilePath() (err error) {
 }
 
 func (cb *CacheBlock) Init(sources []*proto.DataSource) {
+	var err error
 	metric := exporter.NewModuleTPUs("InitBlock")
 	defer func() {
-		metric.Set(nil)
+		metric.Set(err)
 	}()
 	//parallel read source data
 	sourceTaskCh := make(chan *proto.DataSource, 100)
@@ -218,15 +213,13 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	}
 	close(sourceTaskCh)
 	wg.Wait()
-
-	if ctx.Err() != nil {
+	if log.IsWarnEnabled() {
+		log.LogWarnf("action[Init], cache block:%v, sources:\n%v", cb.blockKey, sb.String())
+	}
+	err = ctx.Err()
+	if err != nil {
 		cb.markClose()
 		return
-	}
-	if log.IsWarnEnabled() {
-		if strings.HasPrefix(cb.blockKey, "dcc_3vol") {
-			log.LogWarnf("action[Init], cache block:%v, sources:\n%v", cb.blockKey, sb.String())
-		}
 	}
 	cb.markReady()
 	return

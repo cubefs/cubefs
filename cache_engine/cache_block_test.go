@@ -184,7 +184,7 @@ func TestReadCacheBlock(t *testing.T) {
 	assert.Nil(t, cacheBlock.WriteAt(bytes, offset, 1024))
 	cacheBlock.markReady()
 	bytesRead := make([]byte, 1024)
-	_, err := cacheBlock.Read(context.Background(), bytesRead, offset, 1024, func() string { return "" })
+	_, err := cacheBlock.Read(context.Background(), bytesRead, offset, 1024)
 	assert.Nil(t, err)
 	for i := 0; i < 1024; i++ {
 		assert.Equal(t, bytesRead[i], bytes[i])
@@ -225,7 +225,7 @@ func testParallelOperation(t *testing.T) {
 				bytesRead := make([]byte, 1024)
 				rand.Seed(time.Now().Unix())
 				offset := rand.Intn(int(cacheBlock.allocSize))
-				cacheBlock.Read(context.Background(), bytesRead, int64(offset), 1024, func() string { return "" })
+				cacheBlock.Read(context.Background(), bytesRead, int64(offset), 1024)
 			}
 		}
 	}()

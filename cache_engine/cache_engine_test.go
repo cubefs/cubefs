@@ -266,9 +266,7 @@ func TestSparseFile(t *testing.T) {
 		}
 	}
 	reader := make([]byte, unit.MB)
-	n, err := cb.Read(context.Background(), reader, 0, int64(offset2&(proto.CACHE_BLOCK_SIZE-1)+size2), func() string {
-		return ""
-	})
+	n, err := cb.Read(context.Background(), reader, 0, int64(offset2&(proto.CACHE_BLOCK_SIZE-1)+size2))
 	if assert.Error(t, err) {
 		return
 	}
@@ -278,9 +276,7 @@ func TestSparseFile(t *testing.T) {
 
 	for _, source := range sources {
 		reader1 := make([]byte, source.Size_)
-		n, err = cb.Read(context.Background(), reader, int64(source.FileOffset&(proto.CACHE_BLOCK_SIZE-1)), int64(source.Size_), func() string {
-			return ""
-		})
+		n, err = cb.Read(context.Background(), reader, int64(source.FileOffset&(proto.CACHE_BLOCK_SIZE-1)), int64(source.Size_))
 		if assert.Error(t, err) {
 			return
 		}
