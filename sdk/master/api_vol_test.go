@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -30,6 +31,7 @@ var (
 	testMc                      = NewMasterClient([]string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}, false)
 	testStoreMode               = 1
 	testMpLyout                 = "0,0"
+	readConnTimeout             = 3 * int64(time.Second)
 )
 
 func TestVolCreate(t *testing.T) {
@@ -63,7 +65,7 @@ func TestUpdateVol(t *testing.T) {
 	err := testMc.AdminAPI().UpdateVolume(testVolName, extentCap, testReplicas, testMpReplicas, trashDays, testStoreMode,
 		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
 		testMpLyout, "", 0, 0, 0, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
-		"", false, false, 0, false)
+		"", false, false, 0, false, readConnTimeout, readConnTimeout)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
 		t.FailNow()

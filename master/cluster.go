@@ -3073,7 +3073,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
-	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int,
+	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int, connConfig proto.ConnConfig,
 	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod,
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
@@ -3241,6 +3241,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.RemoteCacheBoostEnable = remoteCacheBoostEnable
 	vol.RemoteCacheAutoPrepare = remoteCacheAutoPrepare
 	vol.RemoteCacheTTL = remoteCacheTTL
+	vol.ConnConfig = connConfig
+
 	if err = c.syncUpdateVol(vol); err != nil {
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
@@ -3987,10 +3989,14 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[proto.RemoteCacheBoostEnableKey]; ok {
 		c.cfg.RemoteCacheBoostEnable = val.(bool)
 	}
+	oldRemoteReadConnTimeout := c.cfg.RemoteReadConnTimeoutMs
+	if val, ok := params[proto.RemoteReadConnTimeoutKey]; ok {
+		c.cfg.RemoteReadConnTimeoutMs = val.(int64)
+	}
 
-	oldClientNetConnTimeout := c.cfg.ClientNetConnTimeoutUs
-	if val, ok := params[proto.NetConnTimeoutUsKey]; ok {
-		c.cfg.ClientNetConnTimeoutUs = val.(int64)
+	err = c.setClusterConnConfig(params)
+	if err != nil {
+		return
 	}
 
 	oldDpTimeoutCntThreshold := atomic.LoadInt32(&c.cfg.DpTimeoutCntThreshold)
@@ -4057,14 +4063,71 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval
 		atomic.StoreInt32(&c.cfg.DpTimeoutCntThreshold, oldDpTimeoutCntThreshold)
 		c.cfg.RemoteCacheBoostEnable = oldRemoteCacheBoostEnable
-		atomic.StoreInt64(&c.cfg.ClientNetConnTimeoutUs, oldClientNetConnTimeout)
 		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedCount, oldClientReqReservedCount)
 		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, oldClientReqReservedMin)
 		c.cfg.ClientReqRemoveDup = oldClientReqRemoveDup
+		atomic.StoreInt64(&c.cfg.RemoteReadConnTimeoutMs, oldRemoteReadConnTimeout)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 	return
+}
+
+func (c *Cluster) setClusterConnConfig(params map[string]interface{}) (err error) {
+	// map[zoneName]proto.ConnConfig, cluster zoneName is ""
+	var (
+		newReadConnTimeoutMs  int64
+		newWriteConnTimeoutMs int64
+	)
+	if val, ok := params[proto.ReadConnTimeoutMsKey]; ok {
+		newReadConnTimeoutMs = val.(int64)
+	}
+	if val, ok := params[proto.WriteConnTimeoutMsKey]; ok {
+		newWriteConnTimeoutMs = val.(int64)
+	}
+	if newReadConnTimeoutMs > 0 || newWriteConnTimeoutMs > 0 {
+		newConfig := proto.ConnConfig{
+			ReadTimeoutNs:  newReadConnTimeoutMs * int64(time.Millisecond),
+			WriteTimeoutNs: newWriteConnTimeoutMs * int64(time.Millisecond),
+		}
+		if val, ok := params[zoneNameKey]; ok {
+			zone := val.(string)
+			if zone != "" {
+				err = proto.ErrZoneNotExists
+				for _, z := range c.t.getAllZones() {
+					if zone == z.name {
+						err = nil
+						break
+					}
+				}
+				if err != nil {
+					return
+				}
+			}
+			if oldCfg, ok := c.cfg.ZoneNetConnConfig[zone]; ok {
+				newConfig = oldCfg
+				if newWriteConnTimeoutMs > 0 {
+					newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
+				}
+				if newReadConnTimeoutMs > 0 {
+					newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
+				}
+			}
+			c.cfg.ZoneNetConnConfig[zone] = newConfig
+		} else {
+			if oldCfg, ok := c.cfg.ZoneNetConnConfig[""]; ok {
+				newConfig = oldCfg
+				if newWriteConnTimeoutMs > 0 {
+					newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
+				}
+				if newReadConnTimeoutMs > 0 {
+					newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
+				}
+			}
+			c.cfg.ZoneNetConnConfig[""] = newConfig
+		}
+	}
+	return nil
 }
 
 func (c *Cluster) setDataPartitionConsistencyMode(newMode proto.ConsistencyMode) (err error) {

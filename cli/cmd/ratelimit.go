@@ -261,8 +261,14 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			} else if info.RemoteCacheBoostEnableState == 1 {
 				msg += fmt.Sprintf("RemoteCacheBoostEnable       : enable, ")
 			}
-			if info.ClientConnTimeoutUs >= 0 {
-				msg += fmt.Sprintf("ClientConnTimeoutUs          : %v, ", info.ClientConnTimeoutUs)
+			if info.RemoteReadConnTimeoutMs >= 0 {
+				msg += fmt.Sprintf("RemoteReadConnTimeoutMs      : %v, ", info.RemoteReadConnTimeoutMs)
+			}
+			if info.ReadConnTimeoutMs >= 0 {
+				msg += fmt.Sprintf("ReadConnTimeoutMs            : %v, ", info.ReadConnTimeoutMs)
+			}
+			if info.WriteConnTimeoutMs >= 0 {
+				msg += fmt.Sprintf("WriteConnTimeoutMs           : %v, ", info.WriteConnTimeoutMs)
 			}
 			if mode := proto.ConsistencyModeFromInt32(info.DataPartitionConsistencyMode); mode.Valid() {
 				msg += fmt.Sprintf("DataPartitionConsistencyMode: %v", mode.String())
@@ -346,13 +352,15 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int32Var(&info.TrashCleanMaxCountEachTime, "trashCleanMaxCountEachTime", -1, "trash clean max count for each time")
 	cmd.Flags().Int64Var(&info.DeleteMarkDelVolInterval, "deleteMarkDelVolInterval", -1, "delete mark del vol interval, unit is seconds.")
 	cmd.Flags().Int64Var(&info.RemoteCacheBoostEnableState, "RemoteCacheBoostEnable", -1, "set cluster RemoteCacheBoostEnable, 0:disable, 1:enable")
-	cmd.Flags().Int64Var(&info.ClientConnTimeoutUs, "ClientConnTimeoutUs", -1, "set cluster client read/write connection timeout, unit: us")
 	cmd.Flags().Int32Var(&info.DataPartitionConsistencyMode, "dataPartitionConsistencyMode", -1, fmt.Sprintf("cluster consistency mode for data partitions [%v:%v, %v:%v] ",
 		proto.StandardMode.Int32(), proto.StandardMode.String(), proto.StrictMode.Int32(), proto.StrictMode.String()))
 	cmd.Flags().IntVar(&info.DpTimeoutCntThreshold, "dpTimeoutCntThreshold", -1, "continuous timeout count to exclude dp")
 	cmd.Flags().Uint32Var(&info.ClientReqRecordsReservedCount, "clientReqReservedCount", 0, "client req records reserved count")
 	cmd.Flags().Uint32Var(&info.ClientReqRecordsReservedMin, "clientReqReservedMin", 0, "client req records reserved min")
 	cmd.Flags().Int32Var(&info.ClientReqRemoveDupFlag, "clientReqRemoveDupFlag", -1, "client req remove dup flag")
+	cmd.Flags().Int64Var(&info.RemoteReadConnTimeoutMs, "RemoteReadConnTimeoutMs", -1, "set remoteCache client read/write connection timeout, unit: ms")
+	cmd.Flags().Int64Var(&info.ReadConnTimeoutMs, "ReadConnTimeoutMs", -1, "set zone or cluster(omit zone acts on cluster) read connection timeout, unit: ms")
+	cmd.Flags().Int64Var(&info.WriteConnTimeoutMs, "WriteConnTimeoutMs", -1, "set zone or cluster(omit zone acts on cluster) write connection timeout, unit: ms")
 	return cmd
 }
 
@@ -416,10 +424,12 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  DeleteMarkDelVolInterval         : %v(%v sec)\n", formatTimeInterval(info.DeleteMarkDelVolInterval), info.DeleteMarkDelVolInterval))
 	sb.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable           : %v\n", info.RemoteCacheBoostEnable))
 	sb.WriteString(fmt.Sprintf("  ClientConnTimeoutUs              : %v(us)\n", info.ClientConnTimeoutUs))
-	sb.WriteString(fmt.Sprintf("  DataPartitionConsistencyMode     : %v", info.DataPartitionConsistencyMode.String()))
+	sb.WriteString(fmt.Sprintf("  DataPartitionConsistencyMode     : %v\n", info.DataPartitionConsistencyMode.String()))
 	sb.WriteString(fmt.Sprintf("  DpTimeoutCntThreshold            : %v\n", info.DpTimeoutCntThreshold))
 	sb.WriteString(fmt.Sprintf("  RemoveDupReq                     : %v\n", formatEnabledDisabled(info.ClientReqRemoveDupFlag)))
 	sb.WriteString(fmt.Sprintf("  ReqRecordsReservedMin            : %v\n", info.ClientReqRecordsReservedMin))
 	sb.WriteString(fmt.Sprintf("  ReqRecordsReservedCount          : %v\n", info.ClientReqRecordsReservedCount))
+	sb.WriteString(fmt.Sprintf("  RemoteReadConnTimeoutMs          : %v(ms)\n", info.RemoteReadConnTimeout))
+	sb.WriteString(fmt.Sprintf("  ZoneNetConnConfig                : %v\n", info.ZoneNetConnConfig))
 	return sb.String()
 }

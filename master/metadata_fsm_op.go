@@ -102,10 +102,11 @@ type clusterValue struct {
 	TrashItemCleanMaxCountEachTime      int32
 	DeleteMarkDelVolInterval            int64
 	RemoteCacheBoostEnable              bool
-	ClientConnTimeoutUs                 int64
 	ClientReqRecordsReservedCount       int32
 	ClientReqRecordsReservedMin         int32
 	ClientReqRemoveDupFlag              bool
+	RemoteReadConnTimeoutMs             int64
+	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -178,10 +179,11 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		TrashCleanDurationEachTime:          c.cfg.TrashCleanDurationEachTime,
 		DeleteMarkDelVolInterval:            c.cfg.DeleteMarkDelVolInterval,
 		RemoteCacheBoostEnable:              c.cfg.RemoteCacheBoostEnable,
-		ClientConnTimeoutUs:                 c.cfg.ClientNetConnTimeoutUs,
 		ClientReqRecordsReservedCount:       c.cfg.ClientReqRecordsReservedCount,
 		ClientReqRecordsReservedMin:         c.cfg.ClientReqRecordsReservedMin,
 		ClientReqRemoveDupFlag:              c.cfg.ClientReqRemoveDup,
+		RemoteReadConnTimeoutMs:             c.cfg.RemoteReadConnTimeoutMs,
+		ZoneNetConnConfig:                   c.cfg.ZoneNetConnConfig,
 	}
 	return cv
 }
@@ -345,6 +347,7 @@ type volValue struct {
 	FinalVolStatus        uint8
 	RenameConvertStatus   bsProto.VolRenameConvertStatus
 	MarkDeleteTime        int64
+	ConnConfig            bsProto.ConnConfig
 
 	RemoteCacheBoostPath   string
 	RemoteCacheBoostEnable bool
@@ -430,6 +433,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		FinalVolStatus:        vol.FinalVolStatus,
 		RenameConvertStatus:   vol.RenameConvertStatus,
 		MarkDeleteTime:        vol.MarkDeleteTime,
+		ConnConfig:            vol.ConnConfig,
 
 		RemoteCacheBoostPath:   vol.RemoteCacheBoostPath,
 		RemoteCacheBoostEnable: vol.RemoteCacheBoostEnable,
@@ -1139,12 +1143,16 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		c.cfg.DeleteMarkDelVolInterval = cv.DeleteMarkDelVolInterval
 		c.cfg.RemoteCacheBoostEnable = cv.RemoteCacheBoostEnable
-		c.cfg.ClientNetConnTimeoutUs = cv.ClientConnTimeoutUs
 		if cv.ClientReqRecordsReservedCount != 0 {
 			atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedCount, cv.ClientReqRecordsReservedCount)
 		}
 		if cv.ClientReqRecordsReservedMin != 0 {
 			atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, cv.ClientReqRecordsReservedMin)
+		}
+		c.cfg.RemoteReadConnTimeoutMs = cv.RemoteReadConnTimeoutMs
+		c.cfg.ZoneNetConnConfig = cv.ZoneNetConnConfig
+		if c.cfg.ZoneNetConnConfig == nil {
+			c.cfg.ZoneNetConnConfig = make(map[string]bsProto.ConnConfig)
 		}
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)

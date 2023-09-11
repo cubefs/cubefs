@@ -369,6 +369,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optRemoteCacheTTL         int64
 		optEnableRemoveDup        string
 		optDelRemoteCacheBoostPath   string
+		optReadConnTimeoutMs      int64
+		optWriteConnTimeoutMs     int64
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -768,6 +770,22 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Remove dup req      : %v\n", vv.EnableRemoveDupReq))
 			}
 
+			if optReadConnTimeoutMs > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ReadConnTimeout     : %v ms -> %v ms\n", vv.ConnConfig.ReadTimeoutNs/int64(time.Millisecond), optReadConnTimeoutMs))
+				vv.ConnConfig.ReadTimeoutNs = optReadConnTimeoutMs * int64(time.Millisecond)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ReadConnTimeout     : %v ms\n", vv.ConnConfig.ReadTimeoutNs/int64(time.Millisecond)))
+			}
+
+			if optWriteConnTimeoutMs > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  WriteConnTimeout     : %v ms -> %v ms\n", vv.ConnConfig.WriteTimeoutNs/int64(time.Millisecond), optWriteConnTimeoutMs))
+				vv.ConnConfig.WriteTimeoutNs = optWriteConnTimeoutMs * int64(time.Millisecond)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  WriteConnTimeout     : %v ms\n", vv.ConnConfig.WriteTimeoutNs/int64(time.Millisecond)))
+			}
+
 			if err != nil {
 				return
 			}
@@ -792,7 +810,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
 				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
-				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL, vv.EnableRemoveDupReq,)
+				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL, vv.EnableRemoveDupReq, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs)
 			if err != nil {
 				return
 			}
@@ -843,6 +861,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRemoteCacheTTL, CliFlagRemoteCacheTTL, 0, "Cache TTL")
 	cmd.Flags().StringVar(&optEnableRemoveDup, CliFlagEnableRemoveDup, "", "Enable remove dup")
 	cmd.Flags().StringVar(&optDelRemoteCacheBoostPath, CliFlagDelRemoteCachePath, "", "del cache boost path rules")
+	cmd.Flags().Int64Var(&optReadConnTimeoutMs, CliFlagReadConnTimeout, 0, "set client read connection timeout, unit: ms")
+	cmd.Flags().Int64Var(&optWriteConnTimeoutMs, CliFlagWriteConnTimeout, 0, "set client write connection timeout, unit: ms")
 	return cmd
 }
 
