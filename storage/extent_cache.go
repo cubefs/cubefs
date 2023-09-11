@@ -74,9 +74,7 @@ func (cache *ExtentCache) Get(extentID uint64) (e *Extent, ok bool) {
 	}
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
-	var (
-		item *ExtentMapItem
-	)
+	var item *ExtentMapItem
 	if item, ok = cache.extentMap[extentID]; ok {
 		if !IsTinyExtent(extentID) {
 			cache.extentList.MoveToBack(item.element)
@@ -155,7 +153,6 @@ func (cache *ExtentCache) evict() {
 
 // Flush synchronizes the extent stored in the cache to the disk.
 func (cache *ExtentCache) Flush() {
-
 	cache.tinyLock.RLock()
 	for _, extent := range cache.tinyExtents {
 		extent.Flush()
