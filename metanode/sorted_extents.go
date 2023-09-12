@@ -148,14 +148,17 @@ func storeEkSplit(inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey) (id uint
 		return
 	}
 	log.LogDebugf("storeEkSplit inode %v mp %v extent id %v ek %v", inodeID, ek.PartitionId, ek.ExtentId, ek)
-	ek.SetSplit(true)
 	id = ek.PartitionId<<32 | ek.ExtentId
 	var v uint32
 	if val, ok := ekRef.Load(id); !ok {
+		if ek.IsSplit() {
+			log.LogErrorf("inode id %v ek %v already be set split", inodeID, ek)
+		}
 		v = 1
 	} else {
 		v = val.(uint32) + 1
 	}
+	ek.SetSplit(true)
 	ekRef.Store(id, v)
 	log.LogDebugf("storeEkSplit inode %v mp %v extent id %v.key %v, cnt %v", inodeID, ek.PartitionId, ek.ExtentId,
 		ek.PartitionId<<32|ek.ExtentId, v)
@@ -348,6 +351,25 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 			addRefFunc(lastKey)
 			addRefFunc(&ek)
 		}
+		return
+	}
+
+	if lastKey.FileOffset == ek.FileOffset &&
+		lastKey.PartitionId == ek.PartitionId &&
+		lastKey.ExtentOffset == ek.ExtentOffset && lastKey.Size < ek.Size &&
+		lastKey.GetSeq() < ek.GetSeq() {
+		if len(discard) > 0 {
+			status = proto.OpConflictExtentsErr
+			return
+		}
+		log.LogDebugf("action[AppendWithCheck] split append key %v", ek)
+		ek.FileOffset = lastKey.FileOffset + uint64(lastKey.Size)
+		ek.ExtentOffset = ek.ExtentOffset + uint64(lastKey.Size)
+		ek.Size = ek.Size - lastKey.Size
+		log.LogDebugf("action[AppendWithCheck] after split append key %v", ek)
+		addRefFunc(lastKey)
+		addRefFunc(&ek)
+		se.eks = append(se.eks, ek)
 		return
 	}
 

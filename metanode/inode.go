@@ -1582,7 +1582,7 @@ func (i *Inode) AppendExtentWithCheck(
 	volType int) (delExtents []proto.ExtentKey, status uint8) {
 
 	ek.SetSeq(mpVer)
-	log.LogDebugf("action[AppendExtentWithCheck] mpVer %v inode %v and ver %v,req ver %v,ek %v,hist len %v",
+	log.LogDebugf("action[AppendExtentWithCheck] mpVer %v inode %v and fsm ver %v,req ver %v,ek %v,hist len %v",
 		mpVer, i.Inode, i.getVer(), reqVer, ek, i.getLayerLen())
 
 	if mpVer != i.getVer() {
