@@ -457,3 +457,42 @@ and reference the following license:
 
 
 Modified work Copyright guoweilong .
+
+
+This project cube_torch follows the Apache License 2.0 license.
+Code References and Modifications
+Code referenced and modified from the PyTorch project:
+
+PyTorch project address: https://github.com/pytorch/pytorch
+PyTorch license: BSD-style license
+
+The CubeDataLoader class in cube_torch/cube_loader.py references and modifies the torch.utils.data.DataLoader class from PyTorch:
+
+Added a new initialization parameter to control batch size
+Optimized the logic for calculating sample indexes within batches
+Modified copyright information:
+Copyright (c) 2016- PyTorch Developer Group (original class)
+Copyright (c) 2023 guoweilong (modifications)
+
+The CubeMultiProcessingDataLoaderIter class in cube_torch/cube_loader.py references and modifies the torch.utils.data._MultiProcessingDataLoaderIter class from PyTorch:
+
+Added new logic for distributing to storage side
+Modified copyright information:
+
+Copyright (c) 2016- PyTorch Developer Group (original class)
+Copyright (c) 2023 guoweilong (modifications)
+
+The _worker_loop function in cube_torch/cube_worker.py references and modifies the _worker_loop function from torch.utils.data.dataloader._utils/worker.py in PyTorch:
+
+Improved process synchronization model
+Modified copyright information:
+
+Copyright (c) 2016- PyTorch Developer Group (original class)
+Copyright (c) 2022 guoweilong (modifications)
+
+Note:
+
+The above 3 classes and functions reference corresponding classes in the PyTorch project.
+Clearly explained each modification.
+Retained original copyright information and added copyright for modifications.
+Please contact me if any further confirmation is needed regarding code references or modifications.

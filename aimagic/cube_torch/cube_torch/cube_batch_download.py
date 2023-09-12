@@ -67,24 +67,22 @@ def c_void_p_to_string(c_void_p, size):
 
 
 
-class CubeDownloadItem(ctypes.Structure):
-    _fields_ = [('path_ptr', ctypes.c_void_p),
-                ('path_size', ctypes.c_int),
-                ('content_ptr', ctypes.c_void_p),
-                ('content_size', ctypes.c_int),
-                ('avali_time', ctypes.c_int)]
+class CubeDownloadItem:
+    def __init__(self,path_ptr,path_size,content_ptr,content_size):
+        self.path_ptr=path_ptr
+        self.path_size=path_size
+        self.content_ptr=content_ptr
+        self.content_size=content_size
 
     def get_path(self):
-        return c_void_p_to_string(self.path_ptr, self.path_size)
+        return self.path_ptr
 
     def get_content(self):
-        return c_void_p_to_bytes(self.content_ptr, self.content_size)
+        return self.content_ptr
 
     def get_content_size(self):
         return self.content_size
 
-    def is_avali_item(self):
-        return int(time.time()) - self.avali_time < 150
 
 
 class CubeBatchDownloader:
