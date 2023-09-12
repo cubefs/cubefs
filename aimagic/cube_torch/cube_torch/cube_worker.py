@@ -7,20 +7,20 @@ import asyncio
 import builtins
 import json
 import logging
-import os
 import queue
 import random
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Union
 
 import requests
 import torch
 from dataclasses import dataclass
 from torch._utils import ExceptionWrapper
+from torch.utils.data import _DatasetKind
 
-from cube_torch.cache_open_interceptor import CachedOpenInterceptor
-from cube_torch.fast_copy import do_copy
+from cube_torch.cube_file import intercept_open, set_global_cube_batch_downloader, \
+    set_global_cube_rootdir_path, intercept_torch_load
+from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
 logger = logging.getLogger(__name__)
 from torch.utils.data._utils.worker import WorkerInfo, _generate_state, HAS_NUMPY, _IterableDatasetStopIteration, \
@@ -84,9 +84,11 @@ def _post_to_storage(index_list, notify_storage_addr, storage_seesion):
         return
     try:
         data = json.dumps(index_list)
-        storage_seesion.post(notify_storage_addr, data, timeout=1)
+        response = storage_seesion.post(notify_storage_addr, data, timeout=1)
+        if response.status_code != 200:
+            raise ValueError("unavali request,response:{}".format(response.text))
     except Exception as e:
-        print('url{} _post_to_storage error{} index_list{} '.format(notify_storage_addr, e, index_list))
+        print('_post_to_storage{} _post_to_storage error{} index_list{} '.format(notify_storage_addr, e, index_list))
         return
 
 
@@ -97,7 +99,7 @@ def _register_pid_to_storage(pids, register_storage_pid_addr):
         data = json.dumps(pids)
         requests.post(register_storage_pid_addr, data, timeout=1)
     except Exception as e:
-        print('url{} _post_to_storage error{} pids{} '.format(register_storage_pid_addr, e, pids))
+        print('register_storage_pid_addr{} _post_to_storage error{} pids{} '.format(register_storage_pid_addr, e, pids))
         return
 
 
@@ -108,7 +110,7 @@ def _unregister_pid_to_storage(pids, unregister_storage_addr):
         data = json.dumps(pids)
         requests.post(unregister_storage_addr, data, timeout=1)
     except Exception as e:
-        print('url{} _post_to_storage error{} pids{} '.format(unregister_storage_addr, e, pids))
+        print('unregister_storage_addr{} _post_to_storage error{} pids{} '.format(unregister_storage_addr, e, pids))
         return
 
 
@@ -127,42 +129,29 @@ def get_cube_dataset_info_on_worker(dataset_id):
             continue
 
 
-def _copy_files(files, num_threads):
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
-        for file in files:
-            executor.submit(do_copy, file)
-
-
-def _copy_worker_loop_for_localdisk(dataset_id, wait_read_train_file_queue, event):
-    cube_dataset_info = get_cube_dataset_info_on_worker(dataset_id)
-    dst_prefix = cube_dataset_info.get_cubefs_cache_dir()
-    train_file_name_lists = cube_dataset_info.get_train_file_name_lists()
-    while not event.is_set():
+def get_cube_batch_download(dataset_id):
+    from cube_torch import get_manager
+    manager = get_manager()
+    key = get_cube_batch_downloader_key(dataset_id)
+    while True:
         try:
-            copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
-            tasks = []
-            for index in copy_file_indexs:
-                for train_name in train_file_name_lists:
-                    src = train_name[index]
-                    dst = "{}/{}".format(dst_prefix, src)
-                    task = (src, dst)
-                    tasks.append(task)
-            _copy_files(tasks, 100)
-        except queue.Empty:
-            continue
-        except KeyboardInterrupt:
-            return
+            downloader = manager.__dict__[key]
+            if downloader is None:
+                manager.refresh()
+                continue
+            return downloader
         except Exception as e:
+            time.sleep(1)
             continue
 
 
-def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr, worker_num, event):
+def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr, event):
     cube_prefetch_addr = prefetch_addr
     storage_seesion = requests.Session()
     while not event.is_set():
         try:
             copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
-            _post_to_storage([copy_file_indexs],cube_prefetch_addr, storage_seesion)
+            _post_to_storage([copy_file_indexs], cube_prefetch_addr, storage_seesion)
         except queue.Empty:
             continue
         except KeyboardInterrupt:
@@ -171,14 +160,45 @@ def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr,
             continue
 
 
+def get_cube_batch_downloader_key(dataset_id):
+    return "{}_batch_downloader".format(dataset_id)
+
+
+def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, dataset_id, event):
+    storage_seesion = requests.Session()
+    downloader = None
+    torch.set_num_threads(1)
+    if is_use_batch_download:
+        downloader = get_cube_batch_download(dataset_id)
+    while not event.is_set():
+        try:
+            copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
+            index_list = [copy_file_indexs]
+            if is_use_batch_download:
+                downloader.batch_download_async(index_list)
+            else:
+                _post_to_storage_async(index_list, cube_prefetch_addr, storage_seesion)
+        except queue.Empty:
+            continue
+        except KeyboardInterrupt:
+            return
+        except Exception as e:
+            continue
+
 
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
                  auto_collation, collate_fn, drop_last, base_seed, init_fn, worker_id,
-                 num_workers, persistent_workers, is_use_disk, cubefs_root_dir, cubefs_cache_dir):
-    if is_use_disk:
-        CachedOpenInterceptor.set_params(cubefs_root_dir, cubefs_cache_dir, is_use_disk)
-        builtins.open = CachedOpenInterceptor.open
+                 num_workers, persistent_workers, cube_root_dir, is_use_batch_download):
     torch.set_num_threads(1)
+    if is_use_batch_download:
+        set_global_cube_rootdir_path(cube_root_dir)
+        CubeFileOpenInterceptor.set_params(cube_root_dir)
+        CubeFileOpenInterceptor.start_timer()
+        batch_downloader = get_cube_batch_download(id(dataset))
+        set_global_cube_batch_downloader(batch_downloader)
+        builtins.open = intercept_open(open)
+        torch.load = intercept_torch_load(torch.load)
+
     try:
         seed = base_seed + worker_id
         random.seed(seed)
@@ -192,15 +212,14 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         _worker_info = WorkerInfo(id=worker_id, num_workers=num_workers,
                                   seed=seed, dataset=dataset)
 
-        from torch.utils.data import _DatasetKind
-
         init_exception = None
 
         try:
             if init_fn is not None:
                 init_fn(worker_id)
 
-            fetcher = _DatasetKind.create_fetcher(dataset_kind, dataset, auto_collation, collate_fn, drop_last)
+            fetcher = _DatasetKind.create_fetcher(dataset_kind, dataset,
+                                                  auto_collation, collate_fn, drop_last)
         except Exception:
             init_exception = ExceptionWrapper(
                 where="in DataLoader worker process {}".format(worker_id))
@@ -218,7 +237,6 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         # `iteration_end` is set, we skip all processing step and just wait for
         # `None`.
         iteration_end = False
-
         watchdog = ManagerWatchdog()
         fetch_batch_cnt = 0
         while watchdog.is_alive():
@@ -253,8 +271,6 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
                 try:
                     data = fetcher.fetch(index)
                     fetch_batch_cnt += 1
-                    if is_use_disk and fetch_batch_cnt % 20 == 0:
-                        CachedOpenInterceptor.print_hit_rate()
                 except Exception as e:
                     if isinstance(e, StopIteration) and dataset_kind == _DatasetKind.Iterable:
                         data = _IterableDatasetStopIteration(worker_id)

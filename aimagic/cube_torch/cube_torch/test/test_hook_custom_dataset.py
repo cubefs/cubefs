@@ -1,21 +1,22 @@
 import os
 import time
+
 import cube_torch
 import torch
+from PIL import Image
 from torch import multiprocessing
 from torch.utils.data import ConcatDataset, Dataset
 from torchvision import transforms
 
-os.environ["CubeFS_ROOT_DIR"] = "/home/guowl/testdata"
-os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '1222321321'
+os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['localIP'] = "127.0.0.1"
+# os.environ['USE_BATCH_DOWNLOAD'] = 'true'
 
 
 class CustomDataSet(Dataset):
     def __init__(self):
-        super().__init__()
-        imglist = "0_1_10000.txt"
-        titlelist = "0_2_10000.txt"
+        imglist = "0_0_1w.txt"
+        titlelist = "0_0_title_1w.txt"
         self.imglist = self.read_file(imglist)
         self.titlelist = self.read_file(titlelist)
 
@@ -31,7 +32,12 @@ class CustomDataSet(Dataset):
         return len(self.imglist)
 
     def __getitem__(self, index):
-        return self.imglist[index], self.titlelist[index]
+        with open(self.imglist[index], "rb") as f:
+            img = Image.open(f)
+            img.convert("RGB")
+
+        t = torch.load(self.titlelist[index])
+        return t
 
 
 def start_worker_test_concatDataset(i):
@@ -43,12 +49,13 @@ def start_worker_test_concatDataset(i):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=215, shuffle=True,
-        num_workers=2)
+        num_workers=5)
     epoch = 0
     while True:
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
+            time.sleep(1)
         epoch += 1
 
 
@@ -61,17 +68,17 @@ def start_worker_test_Dataset(i):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=215, shuffle=True,
-        num_workers=2)
+        num_workers=1)
     epoch = 0
     while True:
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
-            time.sleep(1)
         epoch += 1
+        break
 
 
 if __name__ == '__main__':
-    w = multiprocessing.Process(target=start_worker_test_Dataset, args=(1,))
+    w = multiprocessing.Process(target=start_worker_test_concatDataset, args=(1,))
     w.daemon = False
     w.start()

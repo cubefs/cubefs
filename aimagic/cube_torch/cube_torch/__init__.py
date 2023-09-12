@@ -13,7 +13,6 @@ def get_manager():
     return manager
 
 
-from cube_torch.cube_disk_data_set_info import CubeDiskDataSetInfo
 from cube_torch.cube_push_data_set_info import CubePushDataSetInfo
 from cube_torch.cube_loader import CubeDataLoader
 

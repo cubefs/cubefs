@@ -23,7 +23,6 @@ from torch.utils.data import ConcatDataset
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '100'
 os.environ['CubeFS_CACHE_DIR'] = '/dev/shm/test'
-# os.environ['Cube_USE_DISK'] = 'true'
 os.environ['CubeFS_CACHE_SIZE'] = '127374100000'
 os.environ['localIP'] = '11.163.35.34'
 
@@ -33,7 +32,7 @@ model_names = sorted(name for name in models.__dict__
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR', default='imagenet',
-                    help='path to dataset (default: imagenet)')
+                    help='file_path to dataset (default: imagenet)')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
@@ -60,7 +59,7 @@ parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
+                    help='file_path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
@@ -69,8 +68,8 @@ parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
                     help='node rank for distributed training')
-parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
-                    help='url used to set up distributed training')
+parser.add_argument('--dist-batch_download_addr', default='tcp://224.66.41.62:23456', type=str,
+                    help='batch_download_addr used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
@@ -213,11 +212,11 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # Data loading code
     traindir_list = [os.path.join(args.data, 'eval_file_' + str(i)) for i in range(1)]
-    # traindir = os.path.join(args.data, 'train')
-    # traindir = os.path.join(args.data, 'eval_file_0')
-    # valdir = os.path.join(args.data, 'val')
+    # traindir = os.file_path.join(args.data, 'train')
+    # traindir = os.file_path.join(args.data, 'eval_file_0')
+    # valdir = os.file_path.join(args.data, 'val')
     valdir = os.path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'val')
-    # traindir = os.path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'train')
+    # traindir = os.file_path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'train')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 

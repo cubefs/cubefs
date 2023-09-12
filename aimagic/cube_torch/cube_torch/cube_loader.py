@@ -18,7 +18,6 @@ import torch
 import torch.multiprocessing as multiprocessing
 import torch.utils.data.graph_settings
 from torch import _utils
-from torch._six import string_classes
 from torch._utils import ExceptionWrapper
 from torch.utils.data import _utils
 from torch.utils.data.dataloader import _BaseDataLoaderIter, _DatasetKind, _collate_fn_t, _worker_init_fn_t, T_co, \
@@ -36,11 +35,10 @@ from torch.utils.data.sampler import (
     SequentialSampler,
 )
 
-from cube_torch import get_manager, CubeDiskDataSetInfo, CubePushDataSetInfo
-from cube_torch.cube_worker import _worker_loop, _copy_worker_loop_for_post_client, _copy_worker_loop_for_localdisk, \
-    _register_pid_to_storage, _unregister_pid_to_storage
-
-Cube_USE_DISK = 'Cube_USE_DISK'
+from cube_torch import get_manager, CubePushDataSetInfo
+from cube_torch.cube_batch_download import CubeBatchDownloader
+from cube_torch.cube_worker import _worker_loop, _register_pid_to_storage, \
+    _unregister_pid_to_storage, _loop_push_worker, get_cube_batch_downloader_key
 
 
 class CubeDataLoader(Generic[T_co]):
@@ -194,60 +192,51 @@ class CubeDataLoader(Generic[T_co]):
 
         self._iterator = None
 
+        self.real_sample_size = len(self.dataset)
         self.check_worker_number_rationality()
-        self.wait_read_train_file_queue = None
-        self._copy_worker_loop_events = []
-        self._copy_worker_loop_process = []
-
+        self.wait_read_train_file_queue = get_manager().Queue()
+        self._push_worker_loop_events = []
+        self.is_use_batch_download =False
+        self._dataset_id=id(self.dataset)
+        self._push_worker_loop_process = []
+        self.cubeBatchDownloader = None
         self.init_cube_dataset_info()
         torch.set_vital('Dataloader', 'enabled', 'True')  # type: ignore[attr-defined]
 
     def init_cube_dataset_info(self):
         self.cube_dataset_info = None
-        self.is_use_disk = False
-        manager = get_manager()
-        self.real_sample_size = len(self.dataset)
-        env_var = os.environ.get(Cube_USE_DISK)
-        if env_var is not None and env_var.lower() == "true":
-            self.is_use_disk = True
-        if self.is_use_disk:
-            self.cube_dataset_info = CubeDiskDataSetInfo(self)
-        else:
-            self.cube_dataset_info = CubePushDataSetInfo(self)
+        self.cube_dataset_info = CubePushDataSetInfo(self)
+        self._start_notify_storage_worker()
 
+    def _start_notify_storage_worker(self):
+        manager=get_manager()
+        cube_dataset_info = self.cube_dataset_info
+        cube_prefetch_addr = cube_dataset_info.get_cube_prefetch_addr()
+        self.is_use_batch_download = cube_dataset_info.is_use_batch_download()
+        batch_download_addr = cube_dataset_info.get_batch_download_addr()
+        notify_storage_worker_num= cube_dataset_info.get_notify_storage_worker_num()
+        downloader = None
+        if self.is_use_batch_download:
+            downloader = CubeBatchDownloader(batch_download_addr)
+            manager.__dict__[get_cube_batch_downloader_key(self._dataset_id)]=downloader
         ctx = multiprocessing.get_context("fork")
-        dataset_id = id(self.dataset)
-        self.wait_read_train_file_queue = manager.Queue()
-        for i in range(1):
-            e = multiprocessing.Event()
-            if self.is_use_disk:
-                w = ctx.Process(target=_copy_worker_loop_for_localdisk, args=(
-                    dataset_id, self.wait_read_train_file_queue, e))
-                cubefs_cache_dir = self.cube_dataset_info.get_cubefs_cache_dir()
-                cubefs_root_dir = self.cube_dataset_info.get_cubefs_root_dir()
-                print("pid{} need worker_num{} cubefs_cache_dir{}"
-                      " cubefs_root_dir{} ".format(os.getpid(),
-                                                   self.num_workers,
-                                                   cubefs_cache_dir,
-                                                   cubefs_root_dir))
-            else:
-                prefetch_addr = "{}?dataset_cnt={}".format(self.cube_dataset_info.get_cube_prefetch_addr(),
-                                                           self.real_sample_size)
-                w = ctx.Process(target=_copy_worker_loop_for_post_client,
-                                args=(self.wait_read_train_file_queue, prefetch_addr, self.num_workers, e))
-                print("pid{} need worker_num{} prefetch_addr{} "
-                      " ".format(os.getpid(), self.num_workers, prefetch_addr))
-            w.daemon = True
+        for i in range (notify_storage_worker_num):
+            e=multiprocessing.Event()
+            w=ctx.Process(target=_loop_push_worker, args=(self.wait_read_train_file_queue, cube_prefetch_addr, self.is_use_batch_download ,self._dataset_id, e))
+            w.daemon=True
             w.start()
-            self._copy_worker_loop_process.append(w)
-            self._copy_worker_loop_events.append(e)
+            self._push_worker_loop_events.append(w)
+            self._push_worker_loop_events.append(e)
+        print("pid:{} cube_prefetch_addr:{} is_use_batch_download:{} "
+              "cube_batch_downloader_addr:{}".format(os.getpid(), cube_prefetch_addr,self.is_use_batch_download , downloader))
 
     def __del__(self):
-        if self.is_use_disk:
-            for e in self._copy_worker_loop_events:
-                e.set()
-            for w in self._copy_worker_loop_process:
-                w.terminate()
+        if len(self._push_worker_loop_events) == 0:
+            return
+        for i in range(self.num_workers):
+            self._push_worker_loop_events[i].set()
+            self._push_worker_loop_process[i].terminate()
+
 
     def _get_iterator(self) -> '_BaseDataLoaderIter':
         self.check_worker_number_rationality()
@@ -261,17 +250,14 @@ class CubeDataLoader(Generic[T_co]):
     def multiprocessing_context(self, multiprocessing_context):
         if multiprocessing_context is not None:
             if self.num_workers > 0:
-                if isinstance(multiprocessing_context, string_classes):
+                if isinstance(multiprocessing_context, str):
                     valid_start_methods = multiprocessing.get_all_start_methods()
                     if multiprocessing_context not in valid_start_methods:
                         raise ValueError(
                             ('multiprocessing_context option '
                              'should specify a valid start method in {!r}, but got '
                              'multiprocessing_context={!r}').format(valid_start_methods, multiprocessing_context))
-                    # error: Argument 1 to "get_context" has incompatible type "Union[str, bytes]"; expected
-                    # "str"  [arg-type]
-                    multiprocessing_context = multiprocessing.get_context(
-                        multiprocessing_context)  # type: ignore[arg-type]
+                    multiprocessing_context = multiprocessing.get_context(multiprocessing_context)
 
                 if not isinstance(multiprocessing_context, python_multiprocessing.context.BaseContext):
                     raise TypeError(('multiprocessing_context option should be a valid context '
@@ -439,7 +425,6 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         assert self._num_workers > 0
         if self._num_workers < 8:
             self._num_workers = 8
-        assert self._prefetch_factor > 0
         if loader.multiprocessing_context is None:
             multiprocessing_context = multiprocessing
         else:
@@ -457,22 +442,28 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._register_pid_addr = loader.cube_dataset_info.get_register_pid_addr()
         self._unregister_pid_addr = loader.cube_dataset_info.get_unregister_pid_addr()
         self._workers = []
-        self._is_use_disk = loader.is_use_disk
-        self.wait_read_train_file_queue = loader.wait_read_train_file_queue
-        cubefs_cache_dir = ""
-        cubefs_root_dir = ""
-        if self._is_use_disk:
-            cubefs_cache_dir = self.cube_dataset_info.get_cubefs_cache_dir()
-            cubefs_root_dir = self.cube_dataset_info.get_cubefs_root_dir()
 
-        self._start_loop_get_index=False
-        self._preload_index_event = threading.Event()
-        self._preload_index_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker())
-        self._preload_index_thread = threading.Thread(
-            target=self._loop_preload_threads, args=(self._preload_index_event,)
+        self._start_loop_get_index = False
+        self._storage_event = threading.Event()
+        self._loadindex_event = threading.Event()
+        self._wait_read_train_file_queue = loader.wait_read_train_file_queue
+        self.is_use_batch_download=loader.is_use_batch_download
+        self._preload_index_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker() * 2)
+        self._loadindex_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker())
+
+        self._storage_thread = threading.Thread(
+            target=self._notify_storage_func, args=(self._storage_event,)
         )
-        self._preload_index_thread.daemon = True
-        self._preload_index_thread.start()
+        self._storage_thread.daemon = True
+        self._storage_thread.start()
+
+        self._loadindex_thread = threading.Thread(
+            target=self._loadindex_func, args=(self._storage_event,)
+        )
+        self._loadindex_thread.daemon = True
+        self._loadindex_thread.start()
+        is_use_batch_download = self.cube_dataset_info.is_use_batch_download()
+        cube_root_dir = self.cube_dataset_info.get_cubefs_root_dir()
 
         for i in range(self._num_workers):
             index_queue = multiprocessing_context.Queue()
@@ -484,15 +475,13 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                       self._worker_result_queue, self._workers_done_event,
                       self._auto_collation, self._collate_fn, self._drop_last,
                       self._base_seed, self._worker_init_fn, i, self._num_workers,
-                      self._persistent_workers, self._is_use_disk,
-                      cubefs_root_dir, cubefs_cache_dir))
+                      self._persistent_workers, cube_root_dir, is_use_batch_download))
             w.daemon = True
             w.start()
             self._index_queues.append(index_queue)
             self._workers.append(w)
 
-        if not self._is_use_disk:
-            self.regiester_worker_pid()
+        self.regiester_worker_pid()
 
         if self._pin_memory:
             self._pin_memory_thread_done_event = threading.Event()
@@ -543,22 +532,46 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             pids.append(w.pid)
         _unregister_pid_to_storage(pids, self._unregister_pid_addr)
 
-    def _loop_preload_threads(self, event):
+    def _notify_storage_func(self, event):
+        cnt = 0
+        _max_loading_queue_size = self.cube_dataset_info.get_cube_queue_size_on_worker()
         while not event.set():
             try:
                 if not self._start_loop_get_index:
                     time.sleep(0.01)
                     continue
+                cnt += 1
                 index = self._next_index()
-                self.wait_read_train_file_queue.put(index)
-                self._preload_index_queue.put(index,block=True)
+                if self.is_use_batch_download:
+                    train_file_names = self.cube_dataset_info.covert_index_list_to_filename(index)
+                    self._wait_read_train_file_queue.put(train_file_names)
+                else:
+                    self._wait_read_train_file_queue.put(index)
+                self._preload_index_queue.put(index)
+            except StopIteration:
+                event.set()
+                self._preload_index_queue.put(None)
+                return
+
+    def _loadindex_func(self, event):
+        while not event.set():
+            try:
+                if not self._start_loop_get_index:
+                    time.sleep(0.01)
+                    continue
+                index = self._preload_index_queue.get()
+                if index is None:
+                    break
+                self._loadindex_queue.put(index)
             except StopIteration:
                 event.set()
                 return
+        event.set()
 
     def _reset(self, loader, first_iter=False):
         print("pid{} start reset{}".format(os.getpid(), datetime.datetime.now()))
         super()._reset(loader, first_iter)
+        self._worker_queue_idx_cycle = itertools.cycle(range(self._num_workers))
         if not self._start_loop_get_index:
             self._start_loop_get_index = True
 
@@ -579,7 +592,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         # the worker will be reset to available in the next epoch.
         self._workers_status = [True for i in range(self._num_workers)]
         # Reset the worker queue cycle so it resumes next epoch at worker 0
-        self._worker_queue_idx_cycle = itertools.cycle(range(self._num_workers))
+
         # We resume the prefetching in case it was enabled
         if not first_iter:
             for idx in range(self._num_workers):
@@ -695,7 +708,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
     #
     #
     #       if sys.argv[3] == 'send':
-    #           while not os.path.exists(sock_path):
+    #           while not os.file_path.exists(sock_path):
     #               pass
     #           client = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     #           client.connect(sock_path)
@@ -710,7 +723,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
     #       else:
     #           assert sys.argv[3] == 'recv'
     #
-    #           if os.path.exists(dirname):
+    #           if os.file_path.exists(dirname):
     #               raise Exception("Directory exists")
     #
     #           os.mkdir(dirname)
@@ -818,7 +831,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         assert self._tasks_outstanding < self._prefetch_factor * self._num_workers
         if self._send_idx >= self._sampler_iter_len:
             return
-        index = self._preload_index_queue.get()
+        index = self._loadindex_queue.get()
         for _ in range(self._num_workers):  # find the next active worker, if any
             worker_queue_idx = next(self._worker_queue_idx_cycle)
             if self._workers_status[worker_queue_idx]:
@@ -873,10 +886,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             return
         # Normal exit when last reference is gone / iterator is depleted.
         # See (1) and the second half of the note.
-
-        if not self._is_use_disk:
-            self.unregiester_worker_pid()
-
+        self.unregiester_worker_pid()
         if not self._shutdown:
             self._shutdown = True
             try:
@@ -895,11 +905,16 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     self._pin_memory_thread.join()
                     self._worker_result_queue.cancel_join_thread()
                     self._worker_result_queue.close()
-                self._preload_index_event.set()
-                self._preload_index_thread.join()
+                self._storage_event.set()
+                self._storage_thread.join(timeout=0.1)
+
+                self._loadindex_event.set()
+                self._loadindex_thread.join(timeout=0.1)
 
                 # Exit workers now.
+
                 self._workers_done_event.set()
+
                 for worker_id in range(len(self._workers)):
                     # Get number of workers from `len(self._workers)` instead of
                     # `self._num_workers` in case we error before starting all
@@ -912,11 +927,12 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     # We should be able to join here, but in case anything went
                     # wrong, we set a timeout and if the workers fail to join,
                     # they are killed in the `finally` block.
-                    w.join(timeout=_utils.MP_STATUS_CHECK_INTERVAL)
+                    w.join(timeout=0.01)
 
                 for q in self._index_queues:
                     q.cancel_join_thread()
                     q.close()
+
             finally:
                 # Even though all this function does is putting into queues that
                 # we have called `cancel_join_thread` on, weird things can
