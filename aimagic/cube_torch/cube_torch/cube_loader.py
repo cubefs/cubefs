@@ -37,6 +37,7 @@ from torch.utils.data.sampler import (
 
 from cube_torch import get_manager, CubePushDataSetInfo
 from cube_torch.cube_batch_download import CubeBatchDownloader
+from cube_torch.cube_shard_memory import ShardMemory
 from cube_torch.cube_worker import _worker_loop, _register_pid_to_storage, \
     _unregister_pid_to_storage, _loop_push_worker, get_cube_batch_downloader_key
 
@@ -216,8 +217,9 @@ class CubeDataLoader(Generic[T_co]):
         batch_download_addr = cube_dataset_info.get_batch_download_addr()
         notify_storage_worker_num= cube_dataset_info.get_notify_storage_worker_num()
         downloader = None
+        self.shard_memory=ShardMemory()
         if self.is_use_batch_download:
-            downloader = CubeBatchDownloader(batch_download_addr)
+            downloader = CubeBatchDownloader(batch_download_addr,self.shard_memory)
             manager.__dict__[get_cube_batch_downloader_key(self._dataset_id)]=downloader
         ctx = multiprocessing.get_context("fork")
         for i in range (notify_storage_worker_num):
