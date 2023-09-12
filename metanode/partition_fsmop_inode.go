@@ -480,15 +480,15 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		return
 	}
 
-	ino2 := item.(*Inode)
-	if ino2.ShouldDelete() {
+	fsmIno := item.(*Inode)
+	if fsmIno.ShouldDelete() {
 		status = proto.OpNotExistErr
 		return
 	}
 	var (
 		discardExtentKey []proto.ExtentKey
 	)
-	oldSize := int64(ino2.Size)
+	oldSize := int64(fsmIno.Size)
 	eks := ino.Extents.CopyExtents()
 
 	if len(eks) < 1 {
@@ -498,17 +498,17 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		discardExtentKey = eks[1:]
 	}
 
-	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks[:1]); status != proto.OpOk {
+	if status = mp.uidManager.addUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1]); status != proto.OpOk {
 		log.LogErrorf("fsmAppendExtentsWithCheck.addUidSpace status %v", status)
 		return
 	}
 
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] ino %v isSplit %v ek %v hist len %v", ino2.Inode, isSplit, eks[0], ino2.getLayerLen())
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] ino %v isSplit %v ek %v hist len %v", fsmIno.Inode, isSplit, eks[0], fsmIno.getLayerLen())
 	if !isSplit {
-		delExtents, status = ino2.AppendExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.getVer(), eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
+		delExtents, status = fsmIno.AppendExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.getVer(), eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
 		if status == proto.OpOk {
 			log.LogInfof("action[fsmAppendExtentsWithCheck] delExtents [%v]", delExtents)
-			ino2.DecSplitExts(delExtents)
+			fsmIno.DecSplitExts(delExtents)
 			mp.extDelCh <- delExtents
 		}
 		// conflict need delete eks[0], to clear garbage data
@@ -523,21 +523,21 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		// only the ek itself will be moved to level before
 		// ino verseq be set with mp ver before submit in case other mp be updated while on flight, which will lead to
 		// inconsistent between raft pairs
-		delExtents, status = ino2.SplitExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.getVer(), eks[0], ino.ModifyTime, mp.volType)
-		ino2.DecSplitExts(delExtents)
+		delExtents, status = fsmIno.SplitExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.getVer(), eks[0], ino.ModifyTime, mp.volType)
+		fsmIno.DecSplitExts(delExtents)
 		mp.extDelCh <- delExtents
-		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
+		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, delExtents)
 	}
 
 	// conflict need delete eks[0], to clear garbage data
 	if status == proto.OpConflictExtentsErr {
 		mp.extDelCh <- eks[:1]
-		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, eks[:1])
-		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", ino2.Inode, delExtents)
+		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1])
+		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", fsmIno.Inode, delExtents)
 	}
 
-	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
-	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
+	mp.updateUsedInfo(int64(fsmIno.Size)-oldSize, 0, fsmIno.Inode)
+	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", fsmIno.Inode, eks[0], delExtents, discardExtentKey, status)
 
 	return
 }
