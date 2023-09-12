@@ -22,7 +22,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//metrics
+// metrics
 const (
 	StatPeriod                 = time.Minute * time.Duration(1)
 	MetricDataNodesUsedGB      = "dataNodes_used_GB"

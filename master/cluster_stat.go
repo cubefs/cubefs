@@ -146,8 +146,9 @@ func (c *Cluster) updateDataNodeStatInfo() {
 	}
 	usedRate := float64(used) / float64(total)
 	if usedRate > spaceAvailableRate {
-		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add dataNode",
-			c.Name, usedRate, used, total))
+		msg := fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add dataNode",
+			c.Name, usedRate, used, total)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyCheckClusterSpace], msg)
 	}
 	c.dataNodeStatInfo.TotalGB = total / unit.GB
 	usedGB := used / unit.GB
@@ -185,8 +186,9 @@ func (c *Cluster) updateMetaNodeStatInfo() {
 	}
 	useRate := float64(used) / float64(total)
 	if useRate > spaceAvailableRate {
-		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add metaNode",
-			c.Name, useRate, used, total))
+		msg := fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add metaNode",
+			c.Name, useRate, used, total)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyCheckClusterSpace], msg)
 	}
 	c.metaNodeStatInfo.TotalGB = total / unit.GB
 	newUsed := used / unit.GB

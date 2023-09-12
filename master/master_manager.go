@@ -53,8 +53,9 @@ func (m *Server) doLeaderChange(leader uint64) {
 	m.reverseProxy = m.newReverseProxy()
 
 	if m.id == leader {
-		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
-			m.clusterName, m.leaderInfo.addr))
+		msg := fmt.Sprintf("clusterID[%v] leader is changed to %v",
+			m.clusterName, m.leaderInfo.addr)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyLeaderChanged], msg)
 		if oldLeaderAddr != m.leaderInfo.addr {
 			m.loadMetadata()
 			log.LogInfo("action[refreshUser] begin")
@@ -63,20 +64,23 @@ func (m *Server) doLeaderChange(leader uint64) {
 			}
 			log.LogInfo("action[refreshUser] end")
 			m.cluster.updateMetaLoadedTime()
-			Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader[%v] load metadata finished.",
-				m.clusterName, m.leaderInfo.addr))
+			msg = fmt.Sprintf("clusterID[%v] leader[%v] load metadata finished.",
+				m.clusterName, m.leaderInfo.addr)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyLeaderChanged], msg)
 		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.isLeader.Store(true)
 		m.metaReady.Store(true)
 	} else {
-		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
-			m.clusterName, m.leaderInfo.addr))
+		msg := fmt.Sprintf("clusterID[%v] leader is changed to %v",
+			m.clusterName, m.leaderInfo.addr)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyLeaderChanged], msg)
 		m.clearMetadata()
 		m.cluster.resetMetaLoadedTime()
-		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] follower[%v] clear metadata has finished.",
-			m.clusterName, m.ip))
+		msg = fmt.Sprintf("clusterID[%v] follower[%v] clear metadata has finished.",
+			m.clusterName, m.ip)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyLeaderChanged], msg)
 	}
 }
 
@@ -101,7 +105,7 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 		m.raftStore.DeleteNode(confChange.Peer.ID)
 		msg = fmt.Sprintf("clusterID[%v] peerID:%v,nodeAddr[%v] has been removed", m.clusterName, confChange.Peer.ID, addr)
 	}
-	Warn(m.clusterName, msg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyPeerChanged], msg)
 	return
 }
 

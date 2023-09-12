@@ -28,15 +28,15 @@ import (
 )
 
 const (
-	EcTaskMigrating               = 0
-	EcTaskRetry                   = 1
-	EcTaskFail                    = 2
-	EcMaxRetryTimes               = 3
-	EcMaxMigrateGoroutineSize     = 10
-	EcTimeMinute                  = 60
-	EcMigrateInterval             = time.Minute * 3
-	EcMigrateTimeOutInterval      = time.Minute * 5
-	EcRetryInterval               = time.Minute * 5
+	EcTaskMigrating           = 0
+	EcTaskRetry               = 1
+	EcTaskFail                = 2
+	EcMaxRetryTimes           = 3
+	EcMaxMigrateGoroutineSize = 10
+	EcTimeMinute              = 60
+	EcMigrateInterval         = time.Minute * 3
+	EcMigrateTimeOutInterval  = time.Minute * 5
+	EcRetryInterval           = time.Minute * 5
 )
 
 var (
@@ -104,7 +104,6 @@ func (c *Cluster) doScheduleMigrationEc() {
 
 func (c *Cluster) detectAllDataPartition() {
 	maxMigrateTaskSize := c.MaxCodecConcurrent * len(c.allActiveCodecNodes())
-
 
 	vols := c.allVols()
 	for _, vol := range vols {
@@ -351,11 +350,11 @@ func (c *Cluster) initMigrateTask(vol *Vol, ep *EcDataPartition, dp *DataPartiti
 func (c *Cluster) retryFailTask() {
 	var (
 		needUpdateTask *MigrateTask
-	    dataPartition *DataPartition
-	    ecPartition *EcDataPartition
-		codEcNode *CodecNode
-		vol       *Vol
-		err error
+		dataPartition  *DataPartition
+		ecPartition    *EcDataPartition
+		codEcNode      *CodecNode
+		vol            *Vol
+		err            error
 	)
 	for _, task := range migrateTaskList.GetRetryTask() {
 		if needUpdateTask != nil {
@@ -378,7 +377,7 @@ func (c *Cluster) retryFailTask() {
 				err = c.updateEcMigrateStatus(task.PartitionID, proto.MigrateFailed)
 				log.LogWarnf("partition(%v) updateStatus err(%v)", task.PartitionID, err)
 				msg := fmt.Sprintf(" datapartition(%v) migrateEc failed", task.PartitionID)
-				Warn(c.Name, msg)
+				WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdminTaskException], msg)
 				continue
 			}
 			task.ModifyTime = time.Now().Unix()
@@ -497,7 +496,6 @@ func (c *Cluster) finishEcMigrate(response *proto.CodecNodeMigrationResponse) (e
 		return
 	}
 
-
 	if response.Status == proto.TaskSucceeds {
 		if err = c.updateEcMigrateStatus(migrateTask.PartitionID, proto.FinishEC); err != nil {
 			return
@@ -545,7 +543,7 @@ func (c *Cluster) loadMigrateTask() (err error) {
 			continue
 		}
 		migrateTaskList.Push(&MigrateTask{migrate.Status, migrate.RetryTimes,
-			 migrate.VolName, migrate.PartitionID, migrate.CurrentExtentID, migrate.ModifyTime, migrate.CodecNode})
+			migrate.VolName, migrate.PartitionID, migrate.CurrentExtentID, migrate.ModifyTime, migrate.CodecNode})
 	}
 	return
 }
@@ -581,7 +579,6 @@ func (c *Cluster) ecMigrateById(partitionID uint64, test bool) (err error) {
 
 	var migrateTask *MigrateTask
 
-
 	var ecdp *EcDataPartition
 	if ecdp, err = c.createEcDataPartition(vol, dp); err != nil {
 		log.LogErrorf("migrate createEcPartition failed:%+v", err)
@@ -616,13 +613,13 @@ func (c *Cluster) ecMigrateById(partitionID uint64, test bool) (err error) {
 			if err = c.delMigrateTask(migrateTask); err != nil {
 				return
 			} */
-	}else {
+	} else {
 		migrateTask = &MigrateTask{
-			Status:        EcTaskMigrating,
-			VolName:       dp.VolName,
-			PartitionID:   partitionID,
-			ModifyTime:    time.Now().Unix(),
-			CodecNode:     codEcNode.Addr,
+			Status:      EcTaskMigrating,
+			VolName:     dp.VolName,
+			PartitionID: partitionID,
+			ModifyTime:  time.Now().Unix(),
+			CodecNode:   codEcNode.Addr,
 		}
 	}
 
@@ -644,7 +641,7 @@ func (c *Cluster) ecMigrateById(partitionID uint64, test bool) (err error) {
 	return
 }
 
-func (c *Cluster) delEcPartition(vol *Vol, ecDp *EcDataPartition) (err error){
+func (c *Cluster) delEcPartition(vol *Vol, ecDp *EcDataPartition) (err error) {
 	log.LogInfof("delEcPartition(%v)", ecDp.PartitionID)
 	for _, host := range ecDp.Hosts {
 		ecNode, err := c.ecNode(host)
@@ -693,7 +690,7 @@ func (c *Cluster) ecRollBack(partitionID uint64, needDelEc bool) (err error) {
 		return
 	}
 	if ecDp.EcMigrateStatus != proto.FinishEC || needDelEc {
-		migrateTaskList.Remove(ecDp.PartitionID)//stop migrating
+		migrateTaskList.Remove(ecDp.PartitionID) //stop migrating
 		err = c.delEcPartition(vol, ecDp)
 	}
 	log.LogDebugf("end EcRollback partition(%v)", partitionID)

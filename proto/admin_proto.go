@@ -89,6 +89,7 @@ const (
 	AdminSetVolChildMaxCnt         = "/vol/setChildMaxCnt"
 	AdminCheckVolPartitionReplica  = "/vol/checkReplica"
 	AdminSetNodeSetCapacity        = "/admin/nodeSetCapacity/set"
+	AdminGetBadNodes               = "/admin/getBadNodes"
 
 	AdminSmartVolList = "/admin/smartVol/list"
 

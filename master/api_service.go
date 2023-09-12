@@ -2718,7 +2718,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	Warn(m.clusterName, rstMsg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionDisk], rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -5213,6 +5213,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			MemStoreCnt:       memCnt,
 			RcokStoreCnt:      rocksCnt,
 			AllocatorInuseCnt: mp.InoAllocatorInuseCnt,
+			CreateTime:        mp.CreateTime,
 		}
 		return mpInfo
 	}
@@ -6276,6 +6277,29 @@ func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 	cf.EcNodes = m.cluster.allEcNodes()
 
 	sendOkReply(w, r, newSuccessHTTPReply(cf))
+}
+
+func (m *Server) getBadNodes(w http.ResponseWriter, r *http.Request) {
+	metaNodes := make([]proto.BadNodeView, 0)
+	m.cluster.metaNodes.Range(func(addr, node interface{}) bool {
+		mn, ok := node.(*MetaNode)
+		if !ok {
+			return true
+		}
+		metaNodes = append(metaNodes, proto.BadNodeView{ID: mn.ID, Addr: mn.Addr, Status: mn.IsActive, LastHeartbeatTime: mn.ReportTime})
+		return true
+	})
+	dataNodes := make([]proto.BadNodeView, 0)
+	m.cluster.dataNodes.Range(func(key, value any) bool {
+		dn, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		dataNodes = append(dataNodes, proto.BadNodeView{ID: dn.ID, Addr: dn.Addr, Status: dn.isActive, LastHeartbeatTime: dn.ReportTime})
+		return true
+	})
+	sendOkReply(w, r, newSuccessHTTPReply(append(metaNodes, dataNodes...)))
+	return
 }
 
 func (m *Server) setNodeSetCapacity(w http.ResponseWriter, r *http.Request) {

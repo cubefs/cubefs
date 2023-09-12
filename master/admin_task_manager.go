@@ -69,7 +69,8 @@ func (sender *AdminTaskManager) process() {
 	ticker := time.NewTicker(TaskWorkerInterval)
 	defer func() {
 		ticker.Stop()
-		Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] zone:%v addr:%v sender stop", sender.clusterID, sender.targetZone, sender.targetAddr))
+		msg := fmt.Sprintf("clusterID[%v] zone:%v addr:%v sender stop", sender.clusterID, sender.targetZone, sender.targetAddr)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyTaskManagerHasStop], msg)
 	}()
 	for {
 		select {
@@ -97,13 +98,12 @@ func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTa
 
 	for _, task := range sender.TaskMap {
 		if task.CheckTaskTimeOut() {
-			log.LogWarnf(fmt.Sprintf("clusterID[%v] %v has no response until time out",
-				sender.clusterID, task.ID))
+			msg := fmt.Sprintf("clusterID[%v] %v has no response until time out",
+				sender.clusterID, task.ID)
+			log.LogWarnf(msg)
 			if task.SendTime > 0 {
-				Warn(sender.clusterID, fmt.Sprintf("clusterID[%v] %v has no response until time out",
-					sender.clusterID, task.ID))
+				WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdminTaskException], msg)
 			}
-
 			// timed-out tasks will be deleted
 			delTasks = append(delTasks, task)
 		}
@@ -144,7 +144,8 @@ func (sender *AdminTaskManager) sendTasks(tasks []*proto.AdminTask) {
 		conn, err := sender.getConn()
 		if err != nil {
 			msg := fmt.Sprintf("clusterID[%v] get connection to zone:%v,addr:%v,err:%v", sender.clusterID, sender.targetZone, sender.targetAddr, errors.Stack(err))
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_sendTask", sender.clusterID, ModuleName), msg)
+			log.LogError(msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdminTaskException], msg)
 			sender.putConn(conn, true)
 			sender.updateTaskInfo(task, false)
 			break
@@ -199,36 +200,8 @@ func (sender *AdminTaskManager) sendAdminTask(task *proto.AdminTask, conn net.Co
 }
 
 func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
-	//log.LogInfof("action[syncSendAdminTask],task[%v]", task)
-	//packet, err = sender.buildPacket(task)
-	//if err != nil {
-	//	return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
-	//}
-	//conn, err := sender.getConn()
-	//if err != nil {
-	//	return nil, errors.Trace(err, "action[syncSendAdminTask get conn failed,task:%v]", task.ID)
-	//}
-	//defer func() {
-	//	if err == nil {
-	//		sender.putConn(conn, false)
-	//	} else {
-	//		sender.putConn(conn, true)
-	//	}
-	//}()
-	//if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-	//	return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
-	//}
-	//if err = packet.ReadFromConn(conn, proto.SyncSendTaskDeadlineTime); err != nil {
-	//	return nil, errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
-	//}
-	//if packet.ResultCode != proto.OpOk {
-	//	err = fmt.Errorf("remoteAddr[%v] result code[%v],msg[%v]", sender.targetAddr, packet.ResultCode, string(packet.Data))
-	//	log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
-	//	return
-	//}
-	//return packet, nil
 	for i := 0; i < maxRetryTimes; i++ {
-		packet, err = sender.syncSendAdminTaskWithRetry(task)
+		packet, err = sender.doSyncSendAdminTask(task)
 		if err == nil {
 			break
 		}
@@ -236,15 +209,15 @@ func (sender *AdminTaskManager) syncSendAdminTask(task *proto.AdminTask) (packet
 	return
 }
 
-func (sender *AdminTaskManager) syncSendAdminTaskWithRetry(task *proto.AdminTask) (packet *proto.Packet, err error) {
-	log.LogInfof("action[syncSendAdminTask],task[%v]", task)
+func (sender *AdminTaskManager) doSyncSendAdminTask(task *proto.AdminTask) (packet *proto.Packet, err error) {
+	log.LogInfof("action[doSyncSendAdminTask],task[%v]", task)
 	packet, err = sender.buildPacket(task)
 	if err != nil {
-		return nil, errors.Trace(err, "action[syncSendAdminTask build packet failed,task:%v]", task.ID)
+		return nil, errors.Trace(err, "action[doSyncSendAdminTask build packet failed,task:%v]", task.ID)
 	}
 	conn, err := sender.getConn()
 	if err != nil {
-		return nil, errors.Trace(err, "action[syncSendAdminTask get conn failed,task:%v]", task.ID)
+		return nil, errors.Trace(err, "action[doSyncSendAdminTask get conn failed,task:%v]", task.ID)
 	}
 	defer func() {
 		if err == nil {
@@ -254,14 +227,14 @@ func (sender *AdminTaskManager) syncSendAdminTaskWithRetry(task *proto.AdminTask
 		}
 	}()
 	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-		return nil, errors.Trace(err, "action[syncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
+		return nil, errors.Trace(err, "action[doSyncSendAdminTask],WriteToConn failed,task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
 	if err = packet.ReadFromConn(conn, proto.SyncSendTaskDeadlineTime); err != nil {
-		return nil, errors.Trace(err, "action[syncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
+		return nil, errors.Trace(err, "action[doSyncSendAdminTask],ReadFromConn failed task:%v,reqID[%v]", task.ID, packet.ReqID)
 	}
 	if packet.ResultCode != proto.OpOk {
 		err = fmt.Errorf("remoteAddr[%v] result code[%v],msg[%v]", sender.targetAddr, packet.ResultCode, string(packet.Data))
-		log.LogErrorf("action[syncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
+		log.LogErrorf("action[doSyncSendAdminTask],task:%v,reqID[%v],err[%v],", task.ID, packet.ReqID, err)
 		return
 	}
 	return packet, nil

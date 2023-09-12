@@ -608,7 +608,8 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) (writableMpCount int) {
 		if doSplit && mp.MaxInodeID != 0 {
 			nextStart := mp.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
 			if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
-				Warn(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err))
+				msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err)
+				WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
 			}
 		}
 
@@ -649,14 +650,14 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster) {
 	if readonlyReplica.metaNode.isWritable(readonlyReplica.StoreMode) {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition] vol[%v],max meta parition[%v] status is readonly\n",
 			vol.Name, partition.PartitionID)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
 		return
 	}
 	end := partition.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
 	if err := vol.splitMetaPartition(c, partition, end); err != nil {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
 			partition.PartitionID, err)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
 	}
 }
 
@@ -1107,8 +1108,9 @@ func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) 
 	}
 	cmdMap[updateMpRaftCmd.K] = updateMpRaftCmd
 	if nextMp, err = vol.doCreateMetaPartition(c, mp.End+1, defaultMaxMetaPartitionInodeID); err != nil {
-		Warn(c.Name, fmt.Sprintf("action[doSplitMetaPartition] clusterID[%v] partitionID[%v] create meta partition err[%v]",
-			c.Name, mp.PartitionID, err))
+		msg := fmt.Sprintf("action[doSplitMetaPartition] clusterID[%v] partitionID[%v] create meta partition err[%v]",
+			c.Name, mp.PartitionID, err)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
 		log.LogErrorf("action[doSplitMetaPartition] partitionID[%v] err[%v]", mp.PartitionID, err)
 		return
 	}
@@ -1246,6 +1248,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	default:
 		mp.Status = proto.ReadWrite
 	}
+	mp.CreateTime = time.Now().Unix()
 	log.LogInfof("action[doCreateMetaPartition] success,volName[%v],partition[%v]", vol.Name, partitionID)
 	return
 }

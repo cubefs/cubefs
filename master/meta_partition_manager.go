@@ -107,7 +107,7 @@ func (mp *MetaPartition) checkInodeCount(clusterID string) {
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
 			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] inodeCount[" + inodeCountStr + "],"
 		}
-		Warn(clusterID, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpValidateCrc], msg)
 	}
 }
 
@@ -128,7 +128,7 @@ func (mp *MetaPartition) checkDentryCount(clusterID string) {
 			applyIDStr := strconv.FormatUint(uint64(lr.ApplyID), 10)
 			msg = msg + lr.Addr + " applyId[" + applyIDStr + "] dentryCount[" + dentryCountStr + "],"
 		}
-		Warn(clusterID, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpValidateCrc], msg)
 	}
 }
 
@@ -187,7 +187,8 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		return true
 	})
 	if len(unrecoverMpIDs) != 0 {
-		Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs))
+		msg := fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpHasNotRecover], msg)
 	}
 }
 
@@ -319,7 +320,7 @@ func (vol *Vol) autoCreateMetaPartitions(c *Cluster) {
 		if err = vol.splitMetaPartition(c, mp, nextStart); err != nil {
 			msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]",
 				c.Name, vol.Name, mp.PartitionID, err)
-			Warn(c.Name, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
 		}
 	}
 }

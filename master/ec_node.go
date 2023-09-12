@@ -1153,7 +1153,7 @@ func (c *Cluster) updateVolEcInfo(name string, ecEnable bool, ecDataNum, ecParit
 errHandler:
 	err = fmt.Errorf("action[updateVolEcInfo], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateVolFailed], err.Error())
 	return
 }
 
@@ -1375,8 +1375,9 @@ func (c *Cluster) updateEcNodeStatInfo() {
 	}
 	usedRate := float64(used) / float64(total)
 	if usedRate > spaceAvailableRate {
-		Warn(c.Name, fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add ecNode",
-			c.Name, usedRate, used, total))
+		msg := fmt.Sprintf("clusterId[%v] space utilization reached [%v],usedSpace[%v],totalSpace[%v] please add ecNode",
+			c.Name, usedRate, used, total)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyCheckClusterSpace], msg)
 	}
 	c.ecNodeStatInfo.TotalGB = total / unit.GB
 	usedGB := used / unit.GB
@@ -1432,6 +1433,7 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 				"checkEcDiskRecoveryProgress occurred panic")
 		}
 	}()
+	unrecoverPartitionIDs := make(map[uint64]int64, 0)
 	c.BadEcPartitionIds.Range(func(key, value interface{}) bool {
 		partitionID := value.(uint64)
 		ep, err := c.getEcPartitionByID(partitionID)
@@ -1448,12 +1450,18 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 			ep.PanicHosts = make([]string, 0)
 			c.syncUpdateEcDataPartition(ep)
 			ep.RUnlock()
-			Warn(c.Name, fmt.Sprintf("action[checkEcDiskRecoveryProgress] clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
 			c.BadEcPartitionIds.Delete(key)
+		} else {
+			if time.Now().Unix()-ep.modifyTime > defaultUnrecoverableDuration {
+				unrecoverPartitionIDs[partitionID] = ep.modifyTime
+			}
 		}
 		return true
 	})
-
+	if len(unrecoverPartitionIDs) != 0 {
+		msg := fmt.Sprintf("action[checkEcDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpHasNotRecover], msg)
+	}
 }
 
 func (c *Cluster) decommissionEcDisk(ecNode *ECNode, badDiskPath string, badPartitions []*EcDataPartition) (err error) {
@@ -1481,7 +1489,7 @@ func (c *Cluster) decommissionEcDisk(ecNode *ECNode, badDiskPath string, badPart
 	}
 	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] disk[%v] OffLine success",
 		c.Name, ecNode.Addr, badDiskPath)
-	Warn(c.Name, msg)
+	log.LogWarn(msg)
 	return
 }
 

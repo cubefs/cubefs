@@ -37,7 +37,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		partition.Status = proto.ReadOnly
 		msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
 			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
-		Warn(clusterName, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpCheckStatus], msg)
 		return
 	}
 	if partition.IsManual {
@@ -69,7 +69,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 			partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts, liveHosts)
 		log.LogInfo(msg)
 		if time.Now().Unix()-partition.lastWarnTime > intervalToWarnDataPartition {
-			Warn(clusterName, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpCheckStatus], msg)
 			partition.lastWarnTime = time.Now().Unix()
 		}
 	}
@@ -90,7 +90,7 @@ func (partition *DataPartition) checkStatusOfCrossRegionQuorumVol(liveReplicas [
 		if masterRegionHosts, _, err = c.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(partition.Hosts); err != nil {
 			msg := fmt.Sprintf("action[checkStatusOfCrossRegionQuorumVol] partitionID[%v] hosts[%v],err[%v]",
 				partition.PartitionID, partition.Hosts, err)
-			Warn(c.Name, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpCheckStatus], msg)
 			return
 		}
 	}
@@ -173,7 +173,7 @@ func (partition *DataPartition) checkReplicaStatus(clusterName string, timeOutSe
 			}
 			if replica.loadFailedByDataNode(3 * timeOutSec) {
 				msg := fmt.Sprintf("cluster[%v],vol[%v],dp[%v],replica[%v] load failed by datanode", clusterName, partition.VolName, partition.PartitionID, replica.Addr)
-				Warn(clusterName, msg)
+				WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpCheckStatus], msg)
 			}
 		}
 	}
@@ -209,7 +209,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
 				clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
 			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpMissReplica], msg)
 		}
 	}
 
@@ -218,7 +218,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 			msg := fmt.Sprintf("action[checkMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
 				"miss time  > :%v  but server not exsit So Migrate", clusterID, partition.PartitionID, addr, dataPartitionMissSec)
 			msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpMissReplica], msg)
 		}
 	}
 }
@@ -282,7 +282,7 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+
 			" On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, partition.PartitionID, excessAddr, excessErr.Error(), partition.Hosts)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpIllegalReplica], msg)
 		dn, _ := c.dataNode(excessAddr)
 		if dn != nil && dn.isActive {
 			partition.RLock()
@@ -307,7 +307,7 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpMissReplica], msg)
 		if partition.ReplicaNum == 2 && partition.isRecover && time.Now().Unix()-partition.lastOfflineTime > defaultDecommissionDuration {
 			c.decommissionDataPartition(lackAddr, partition, getTargetAddressForDataPartitionDecommission, offlineDataPartitionByCheckReplicationTaskErr, "", "", false)
 		}
@@ -367,7 +367,8 @@ func (partition *DataPartition) missingReplicaAddress(dataPartitionSize uint64) 
 	return
 }
 
-func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsage uint64) {
+// todo if dp has not loaded finish,don't alarm it
+func (partition *DataPartition) checkReplicaSize(diffSpaceUsage uint64) {
 	if len(partition.Replicas) == 0 {
 		return
 	}
@@ -382,12 +383,13 @@ func (partition *DataPartition) checkReplicaSize(clusterID string, diffSpaceUsag
 			diff = temp
 		}
 	}
+
 	if diff > float64(diffSpaceUsage) && diff < float64(unit.DefaultDataPartitionSize) {
 		msg := fmt.Sprintf("action[checkReplicaSize] vol[%v],partition[%v] difference space usage [%v] larger than %v, ",
 			partition.VolName, partition.PartitionID, diff, diffSpaceUsage)
 		for _, dr := range partition.Replicas {
 			msg = msg + fmt.Sprintf("replica[%v],used[%v];", dr.Addr, dr.Used)
 		}
-		WarnBySpecialUMPKey(fmt.Sprintf("%v_%v_check_replica_size", clusterID, ModuleName), msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpReplicaSize], msg)
 	}
 }

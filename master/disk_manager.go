@@ -87,7 +87,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		return true
 	})
 	if len(unrecoverPartitionIDs) != 0 {
-		Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs))
+		msg := fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
 	}
 }
 
@@ -191,7 +192,7 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPa
 	}
 	msg = fmt.Sprintf("action[decommissionDisk],clusterID[%v] Node[%v] disk[%v] OffLine success",
 		c.Name, dataNode.Addr, badDiskPath)
-	Warn(c.Name, msg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionDisk], msg)
 	return
 }
 
@@ -228,7 +229,7 @@ func (c *Cluster) checkDecommissionBadDiskDataPartitions(dataNode *DataNode, bad
 	}
 	msg = fmt.Sprintf("action[checkDecommissionBadDiskDataPartitions],clusterID[%v] Node[%v] disk[%v] OffLine success",
 		c.Name, dataNode.Addr, badDiskPath)
-	Warn(c.Name, msg)
+	log.LogWarn(msg)
 	return
 }
 
@@ -244,7 +245,7 @@ func (c *Cluster) decommissionBadDiskDataPartitions(toBeOfflineDpChan <-chan *Ba
 		if len(successDpIds) != 0 || len(failedDpIds) != 0 {
 			rstMsg := fmt.Sprintf("decommissionBadDiskDataPartitions node[%v] disk[%v], successDpIds[%v] failedDpIds[%v]",
 				nodeAddr, diskPath, successDpIds, failedDpIds)
-			Warn(c.Name, rstMsg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpDecommissionFailed], rstMsg)
 		}
 	}()
 	for {

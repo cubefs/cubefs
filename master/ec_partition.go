@@ -518,7 +518,7 @@ func (c *Cluster) createEcDataPartition(vol *Vol, dp *DataPartition) (ecdp *EcDa
 errHandler:
 	err = fmt.Errorf("action[createEcDataPartition],clusterID[%v] vol[%v] Err:%v ", c.Name, vol.Name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpCreateFailed], err.Error())
 	return
 }
 
@@ -623,7 +623,7 @@ errHandler:
 		"Then Fix It on newHost:%v   Err:%v , PersistenceHosts:%v  ",
 		c.Name, ecdp.PartitionID, offlineAddr, newAddr, err, ecdp.Hosts)
 	if err != nil {
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpDecommissionFailed], msg)
 		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", ecdp.VolName, ecdp.PartitionID, err)
 	}
 	return
@@ -695,7 +695,8 @@ func (c *Cluster) loadEcPartitions() (err error) {
 			continue
 		}
 		if vol.ID != edpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadEcPartitions] has duplicate vol[%v],vol.ID[%v],edpv.VolID[%v]", edpv.VolName, vol.ID, edpv.VolID))
+			msg := fmt.Sprintf("action[loadEcPartitions] has duplicate vol[%v],vol.ID[%v],edpv.VolID[%v]", edpv.VolName, vol.ID, edpv.VolID)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyLoadClusterMetadata], msg)
 			continue
 		}
 		ep := newEcDataPartition(edpv.DataUnitsNum, edpv.ParityUnitsNum, edpv.MaxSripeUintSize, edpv.PartitionID, edpv.VolID, edpv.VolName)

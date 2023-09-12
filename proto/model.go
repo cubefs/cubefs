@@ -162,6 +162,7 @@ type MetaPartitionInfo struct {
 	MemStoreCnt       uint8
 	RcokStoreCnt      uint8
 	AllocatorInuseCnt uint64
+	CreateTime        int64
 }
 
 // InodeInfo define the information of inode
@@ -524,4 +525,11 @@ type EcPartitionDiagnosis struct {
 	InactiveEcNodes           []string
 	CorruptEcPartitionIDs     []uint64
 	LackReplicaEcPartitionIDs []uint64
+}
+
+type BadNodeView struct {
+	Addr              string
+	Status            bool
+	ID                uint64
+	LastHeartbeatTime time.Time
 }
