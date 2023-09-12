@@ -276,6 +276,7 @@ run_unit_test() {
             ./ecnode/... \
             ./storage/... \
             ./client/fs/... \
+            ./client/cache/... \
             ./sdk/data/... \
             ./sdk/meta/... \
             ./sdk/master/... \

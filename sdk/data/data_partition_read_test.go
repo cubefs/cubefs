@@ -245,7 +245,7 @@ func TestConsistenceRead(t *testing.T) {
 			leaderReadBytes, consisReadBytes, len(leadData), len(req.Data))
 	}
 	// close
-	streamer.done <- struct{}{}
+	close(streamer.done)
 	if err = ec.Close(context.Background()); err != nil {
 		t.Errorf("Close ExtentClient failed: err(%v) vol(%v)", err, ltptestVolume)
 	}

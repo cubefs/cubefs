@@ -61,6 +61,13 @@ func Max(a, b int) int {
 	return b
 }
 
+func MinUint64(a, b uint64) uint64 {
+	if a > b {
+		return b
+	}
+	return a
+}
+
 // IsIPV4 returns if it is IPV4 address.
 func IsIPV4(val interface{}) bool {
 	ip4Pattern := `((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)`

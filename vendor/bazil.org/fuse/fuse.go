@@ -1790,7 +1790,7 @@ var _ = Request(&ReadRequest{})
 
 func (r *ReadRequest) String() string {
 	//return fmt.Sprintf("Read [%s] %v %d @%#x dir=%v fl=%v lock=%d ffl=%v", &r.Header, r.Handle, r.Size, r.Offset, r.Dir, r.Flags, r.LockOwner, r.FileFlags)
-	return fmt.Sprintf("Read Size(%d) Offset(%d)", r.Size, r.Offset)
+	return fmt.Sprintf("Read [%s] Size(%d) Offset(%d)", &r.Header, r.Size, r.Offset)
 }
 
 // Respond replies to the request with the given response.
@@ -1800,18 +1800,19 @@ func (r *ReadRequest) Respond(resp *ReadResponse) {
 		buf = append(buf, resp.Data...)
 		r.respond(buf)
 	} else {
-		r.respond(resp.Data)
+		r.respond(resp.Data[:resp.ActualSize])
 		PutBlockBuf(resp.Data)
 	}
 }
 
 // A ReadResponse is the response to a ReadRequest.
 type ReadResponse struct {
-	Data []byte
+	Data 		[]byte
+	ActualSize	uint64
 }
 
 func (r *ReadResponse) String() string {
-	return fmt.Sprintf("Read %d", len(r.Data))
+	return fmt.Sprintf("Read actual size=%v, data buffer size=%d", r.ActualSize, len(r.Data))
 }
 
 type jsonReadResponse struct {

@@ -30,10 +30,12 @@ func Test_ReaddirPlus(t *testing.T) {
 	d := &Dir{super: s}
 	ctx := context.Background()
 	// create test dir
-	if d.info, err = s.mw.Create_ll(ctx, 1, "Test_ReaddirPlus", uint32(os.ModeDir), 0, 0, nil); err != nil {
+	var dInfo *proto.InodeInfo
+	if dInfo, err = s.mw.Create_ll(ctx, 1, "Test_ReaddirPlus", uint32(os.ModeDir), 0, 0, nil); err != nil {
 		t.Fatalf("Test_ReaddirPlus: create dir err(%v)", err)
 		return
 	}
+	d.info = *dInfo
 	// create file/dir under the folder
 	createInfos := make([]*createInfo, 0)
 	for i := int64(0); i < 3; i++ {

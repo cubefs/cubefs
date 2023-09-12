@@ -190,3 +190,11 @@ func ConvertIPStrToUnit32(ipAddr string) (value uint32, err error){
 	value = binary.BigEndian.Uint32(data)
 	return
 }
+
+func IsValidIP(ipAddr string) bool {
+	ip := net.ParseIP(ipAddr)
+	if ip != nil {
+		return true
+	}
+	return false
+}

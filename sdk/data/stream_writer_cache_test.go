@@ -540,7 +540,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 			fmt.Println("TestExtentHandler_PendingPacket: done create inode")
 
 			defer func() {
-				streamer.done <- struct{}{}
+				close(streamer.done)
 			}()
 
 			writeIndex := 0
@@ -670,7 +670,7 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T) {
 	localFile, _ := os.Create(localPath)
 
 	defer func() {
-		streamer.done <- struct{}{}
+		close(streamer.done)
 		mw.Delete_ll(context.Background(), 1, "TestStreamer_WriteFile_discontinuous", false)
 		log.LogFlush()
 		localFile.Close()

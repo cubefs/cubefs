@@ -2,6 +2,7 @@ package fuse
 
 import (
 	"sync"
+	cfslog "github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -70,7 +71,8 @@ func InitReadBlockPool() {
 
 func GetBlockBuf(size int) []byte {
 	var data []byte
-	switch size {
+	allocSize := computeAllocSize(size)
+	switch allocSize {
 	case PoolSize4K:
 		data = ReadBlockPool[0].Get().([]byte)
 	case PoolSize8K:
@@ -90,9 +92,30 @@ func GetBlockBuf(size int) []byte {
 	case PoolSize1024K:
 		data = ReadBlockPool[8].Get().([]byte)
 	default:
+		if cfslog.IsDebugEnabled() {
+			cfslog.LogDebugf("GetBlockBuf: make size(%v)", size)
+		}
 		data = make([]byte, OutHeaderSize+size)
 	}
 	return data
+}
+
+func computeAllocSize(size int) int {
+	if size <= PoolSize4K {
+		return PoolSize4K
+	} else if size <= PoolSize8K {
+		return PoolSize8K
+	} else if size <= PoolSize16K {
+		return PoolSize16K
+	} else if size <= PoolSize32K {
+		return PoolSize32K
+	} else if size <= PoolSize64K {
+		return PoolSize64K
+	} else if size <= PoolSize128K {
+		return PoolSize128K
+	} else {
+		return size
+	}
 }
 
 func PutBlockBuf(data []byte) {

@@ -21,7 +21,7 @@ import (
 
 // DentryCache defines the dentry cache.
 type DentryCache struct {
-	sync.Mutex
+	sync.RWMutex
 	cache               map[string]uint64
 	expiration          time.Time
 	dentryValidDuration time.Duration
@@ -55,13 +55,16 @@ func (dc *DentryCache) Get(name string) (uint64, bool) {
 		return 0, false
 	}
 
-	dc.Lock()
-	defer dc.Unlock()
+	dc.RLock()
 	if dc.expiration.Before(time.Now()) {
+		dc.RUnlock()
+		dc.Lock()
 		dc.cache = make(map[string]uint64)
+		dc.Unlock()
 		return 0, false
 	}
 	ino, ok := dc.cache[name]
+	dc.RUnlock()
 	return ino, ok
 }
 
@@ -77,5 +80,58 @@ func (dc *DentryCache) Delete(name string) {
 
 // Count gets the count of cache items.
 func (dc *DentryCache) Count() int {
+	if dc == nil || !dc.useCache {
+		return 0
+	}
+	dc.RLock()
+	defer dc.RUnlock()
+
 	return len(dc.cache)
+}
+
+func (dc *DentryCache) IsEmpty() bool {
+	if dc == nil || !dc.useCache {
+		return true
+	}
+	dc.RLock()
+	defer dc.RUnlock()
+
+	if len(dc.cache) == 0 {
+		return true
+	}
+	return false
+}
+
+func (dc *DentryCache) IsExpired() bool {
+	if dc == nil || !dc.useCache {
+		return false
+	}
+	dc.RLock()
+	defer dc.RUnlock()
+
+	if dc.expiration.Before(time.Now()) {
+		return true
+	}
+	return false
+}
+
+func (dc *DentryCache) Expiration() time.Time {
+	if dc == nil || !dc.useCache {
+		return time.Now()
+	}
+	dc.RLock()
+	defer dc.RUnlock()
+
+	return dc.expiration
+}
+
+func (dc *DentryCache) ResetExpiration(dentryValidDuration time.Duration) {
+	if dc == nil || !dc.useCache {
+		return
+	}
+	dc.Lock()
+	defer dc.Unlock()
+
+	dc.expiration = time.Now().Add(dentryValidDuration)
+	dc.dentryValidDuration = dentryValidDuration
 }

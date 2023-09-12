@@ -61,6 +61,9 @@ const (
 	UmpCollectWay
 	PidFile
 	EnableReadDirPlus
+	PrefetchThread
+	LocalIP
+	StreamerSegCount
 
 	MaxMountOption
 )
@@ -133,21 +136,15 @@ func InitMountOptions(opts []MountOption) {
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
 	opts[NoBatchGetInodeOnReaddir] = MountOption{"noBatchGetInodeOnReaddir", "Not batch get inode info when readdir", "", false}
-
-	//opts[AlignSize] = MountOption{"alignSize", "align size when extent merge", "", int64(4096)}
-	//opts[MaxExtentNumPerAlignArea] = MountOption{"maxExtentNumPerAlignArea", "max extent number per align area", "",
-	//	int64(12)}
-	//opts[ForceAlignMerge] = MountOption{"forceAlignMerge", "always merge extent when write at align region boundaries",
-	//	"", false}
 	opts[ExtentSize] = MountOption{"extentSize", "set extentSize for client", "", int64(0)}
 	opts[AutoFlush] = MountOption{"autoFlush", "set autoFlush for client", "", true}
 	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}
 	opts[UmpCollectWay] = MountOption{"umpCollectWay", "1: by file, 2: by jmtp client", "", int64(exporter.UMPCollectMethodFile)}
 	opts[PidFile] = MountOption{"pidFile", "pidFile absolute path", "", ""}
 	opts[EnableReadDirPlus] = MountOption{"readDirPlus", "readdir and get inode info to accelerate any future lookups in the same directory", "", false}
-	//	for i := 0; i < MaxMountOption; i++ {
-	//		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
-	//	}
+	opts[PrefetchThread] = MountOption{"prefetchThread", "start multiple threads to prefetch files", "", int64(0)}
+	opts[LocalIP] = MountOption{"localIP", "local IP address", "", ""}
+	opts[StreamerSegCount] = MountOption{"streamerSegCount", "The number of streamer segment map", "", int64(0)}
 }
 
 func ParseMountOptions(opts []MountOption, cfg *config.Config) {
@@ -274,9 +271,6 @@ type MountOptions struct {
 	MaxCPUs                  int64
 	EnableXattr              bool
 	NearRead                 bool
-	AlignSize                int64
-	MaxExtentNumPerAlignArea int64
-	ForceAlignMerge          bool
 	EnablePosixACL           bool
 	ExtentSize               int64
 	AutoFlush                bool
@@ -286,4 +280,7 @@ type MountOptions struct {
 	UmpCollectWay            int64
 	PidFile                  string
 	EnableReadDirPlus        bool
+	PrefetchThread			 int64
+	LocalIP					 string
+	StreamerSegCount		 int64
 }
