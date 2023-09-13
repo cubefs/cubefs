@@ -142,13 +142,6 @@ func (e *Extent) InitToFS() (err error) {
 		return err
 	}
 
-	defer func() {
-		if err != nil {
-			e.file.Close()
-			os.Remove(e.filePath)
-		}
-	}()
-
 	if IsTinyExtent(e.extentID) {
 		e.dataSize = 0
 		return
@@ -209,6 +202,7 @@ func (e *Extent) RestoreFromFS() (err error) {
 		err = fmt.Errorf("stat file %v: %v", e.file.Name(), err)
 		return
 	}
+
 	if IsTinyExtent(e.extentID) {
 		watermark := info.Size()
 		if watermark%util.PageSize != 0 {
@@ -308,8 +302,8 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	defer e.Unlock()
 	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
 	if IsAppendWrite(writeType) && e.dataSize != offset {
-		err = NewParameterMismatchErr(fmt.Sprintf("extent current size = %v write offset=%v write size=%v", e.dataSize, offset, size))
-		log.LogErrorf("action[Extent.Write] NewParameterMismatchErr path %v offset %v size %v writeType %v err %v", e.filePath,
+		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
+		log.LogErrorf("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
 			offset, size, writeType, err)
 		status = proto.OpTryOtherExtent
 		return
@@ -370,15 +364,13 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	}
 
 	if err = e.checkReadOffsetAndSize(offset, size); err != nil {
-		log.LogErrorf("action[Extent.Read] NewParameterMismatchErr offset %v size %v err %v",
-			offset, size, err)
+		log.LogErrorf("action[Extent.Read] offset %d size %d err %v", offset, size, err)
 		return
 	}
 
 	var rSize int
 	if rSize, err = e.file.ReadAt(data[:size], offset); err != nil {
-		log.LogErrorf("action[Extent.Read] NewParameterMismatchErr offset %v size %v err %v realsize %v",
-			offset, size, err, rSize)
+		log.LogErrorf("action[Extent.Read] offset %v size %v err %v realsize %v", offset, size, err, rSize)
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -392,34 +384,28 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 		err = nil
 	}
 	crc = crc32.ChecksumIEEE(data[:size])
-
 	return
 }
 
 func (e *Extent) checkReadOffsetAndSize(offset, size int64) error {
 	if (e.snapshotDataOff == util.ExtentSize && offset > e.Size()) ||
 		(e.snapshotDataOff > util.ExtentSize && uint64(offset) > e.snapshotDataOff) {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v snapshotDataOff=%v", offset, size, e.snapshotDataOff))
+		return newParameterError("offset=%d size=%d snapshotDataOff=%d", offset, size, e.snapshotDataOff)
 	}
 	return nil
 }
 
 func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64) error {
+	err := newParameterError("writeType=%d offset=%d size=%d", writeType, offset, size)
 	if IsAppendWrite(writeType) {
-		if offset+size > util.ExtentSize {
-			return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
+		if size == 0 || size > util.BlockSize ||
+			offset+size > util.ExtentSize || offset >= util.ExtentSize {
+			return err
 		}
-		if offset >= util.ExtentSize || size == 0 {
-			return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-		}
-
-		if size > util.BlockSize {
-			return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
-		}
-	} else if writeType == AppendRandomWriteType {
+	} else if IsAppendRandomWrite(writeType) {
 		log.LogDebugf("action[checkOffsetAndSize] offset %v size %v", offset, size)
 		if offset < util.ExtentSize || size == 0 {
-			return NewParameterMismatchErr(fmt.Sprintf("writeType=%v offset=%v size=%v", writeType, offset, size))
+			return err
 		}
 	}
 	return nil

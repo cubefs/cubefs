@@ -24,25 +24,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testTinyExtentID = 1
+const (
+	testTinyExtentID   = 1
+	testNormalExtentID = 65
 
-const testNormalExtentID = 65
+	dataStr  = "hello world"
+	dataSize = int64(len(dataStr))
+)
 
-func getTestExtentName(id uint64) (name string, err error) {
-	tmp, err := os.MkdirTemp("", "")
+func getTestPathExtentName(id uint64) (string, func(), error) {
+	dir, err := os.MkdirTemp(os.TempDir(), "cfs_storage_extent_")
 	if err != nil {
-		return
+		return "", nil, err
 	}
-	name = fmt.Sprintf("%v/%v", tmp, id)
-	return
-}
-
-func getTestTinyExtentName() (name string, err error) {
-	return getTestExtentName(testTinyExtentID)
-}
-
-func getTestNormalExtentName() (name string, err error) {
-	return getTestExtentName(testNormalExtentID)
+	return fmt.Sprintf("%s/%d", dir, id), func() { os.RemoveAll(dir) }, nil
 }
 
 func mockCrcPersist(t *testing.T, e *storage.Extent, blockNo int, blockCrc uint32) (err error) {
@@ -57,10 +52,11 @@ func getMockCrcPersist(t *testing.T) storage.UpdateCrcFunc {
 }
 
 func normalExtentRwTest(t *testing.T, e *storage.Extent) {
-	dataStr := "hello world"
 	data := []byte(dataStr)
+	_, err := e.Write(data, 0, 0, 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+	require.Error(t, err)
 	// append write
-	_, err := e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
 	require.NoError(t, err)
 	require.EqualValues(t, e.Size(), len(data))
 	_, err = e.Read(data, 0, int64(len(data)), false)
@@ -77,14 +73,20 @@ func normalExtentRwTest(t *testing.T, e *storage.Extent) {
 	_, err = e.Read(data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
+	_, err = e.Write(data, util.BlockSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
+	require.NoError(t, err)
+	_, err = e.Write(data, util.ExtentSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
+	require.NoError(t, err)
 	// TODO: append random write test
 }
 
 func tinyExtentRwTest(t *testing.T, e *storage.Extent) {
-	dataStr := "hello world"
 	data := []byte(dataStr)
+	// write oversize
+	_, err := e.Write(data, storage.ExtentMaxSize, dataSize, 0, storage.RandomWriteType, true, getMockCrcPersist(t), nil)
+	require.ErrorIs(t, err, storage.ExtentIsFullError)
 	// append write
-	_, err := e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+	_, err = e.Write(data, 0, int64(len(data)), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
 	require.NoError(t, err)
 	require.EqualValues(t, e.Size()%util.PageSize, 0)
 	_, err = e.Read(data, 0, int64(len(data)), false)
@@ -105,31 +107,37 @@ func tinyExtentRwTest(t *testing.T, e *storage.Extent) {
 
 func normalExtentCreateTest(t *testing.T, name string) {
 	e := storage.NewExtentInCore(name, testNormalExtentID)
+	t.Log("normal-extent:", e)
+	require.False(t, e.Exist())
 	err := e.InitToFS()
 	require.NoError(t, err)
 	defer e.Close()
 	normalExtentRwTest(t, e)
 }
 
-func tinyExtentCreateTest(t *testing.T, name string) {
-	e := storage.NewExtentInCore(name, testTinyExtentID)
-	err := e.InitToFS()
-	require.NoError(t, err)
-	defer e.Close()
-	tinyExtentRwTest(t, e)
-}
-
 func normalExtentRecoveryTest(t *testing.T, name string) {
 	e := storage.NewExtentInCore(name, testNormalExtentID)
 	require.Equal(t, e.Exist(), true)
+	t.Log("normal-extent:", e.String())
 	err := e.RestoreFromFS()
 	require.NoError(t, err)
 	defer e.Close()
-	dataStr := "hello world"
-	data := []byte(dataStr)
-	_, err = e.ReadTiny(data, 0, int64(len(data)), false)
-	require.NoError(t, err)
-	require.Equal(t, string(data), dataStr)
+	for _, offset := range []int64{0, util.BlockSize, util.ExtentSize} {
+		data := make([]byte, dataSize)
+		_, err = e.Read(data, offset, dataSize, false)
+		require.NoError(t, err)
+		require.Equal(t, string(data), dataStr)
+	}
+}
+
+func tinyExtentCreateTest(t *testing.T, name string) {
+	e := storage.NewExtentInCore(name, testTinyExtentID)
+	t.Log("tiny-extent:", e)
+	require.False(t, e.Exist())
+	require.ErrorIs(t, e.RestoreFromFS(), storage.ExtentNotFoundError)
+	require.NoError(t, e.InitToFS())
+	defer e.Close()
+	tinyExtentRwTest(t, e)
 }
 
 func tinyExtentRecoveryTest(t *testing.T, name string) {
@@ -138,8 +146,7 @@ func tinyExtentRecoveryTest(t *testing.T, name string) {
 	err := e.RestoreFromFS()
 	require.NoError(t, err)
 	defer e.Close()
-	dataStr := "hello world"
-	data := []byte(dataStr)
+	data := make([]byte, dataSize)
 	_, err = e.ReadTiny(data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
@@ -154,7 +161,6 @@ func tinyExtentRepairTest(t *testing.T, name string) {
 	err := e.RestoreFromFS()
 	require.NoError(t, err)
 	defer e.Close()
-	dataStr := "hello world"
 	data := []byte(dataStr)
 	size := e.Size()
 	err = e.TinyExtentRecover(nil, size, int64(len(data)), 0, true)
@@ -175,22 +181,18 @@ func tinyExtentRepairTest(t *testing.T, name string) {
 }
 
 func TestTinyExtent(t *testing.T) {
-	name, err := getTestTinyExtentName()
-	if err != nil {
-		t.Errorf("failed to get extent path")
-		return
-	}
+	name, clean, err := getTestPathExtentName(testTinyExtentID)
+	require.NoError(t, err)
+	defer clean()
 	tinyExtentCreateTest(t, name)
 	tinyExtentRecoveryTest(t, name)
 	tinyExtentRepairTest(t, name)
 }
 
 func TestNormalExtent(t *testing.T) {
-	name, err := getTestNormalExtentName()
-	if err != nil {
-		t.Errorf("failed to get extent path")
-		return
-	}
+	name, clean, err := getTestPathExtentName(testNormalExtentID)
+	require.NoError(t, err)
+	defer clean()
 	normalExtentCreateTest(t, name)
 	normalExtentRecoveryTest(t, name)
 }

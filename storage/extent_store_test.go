@@ -26,17 +26,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func getPathForExtentStoreTest() (path string, err error) {
-	path, err = os.MkdirTemp("", "")
+func getTestPathExtentStore() (string, func(), error) {
+	dir, err := os.MkdirTemp(os.TempDir(), "cfs_storage_extentstore_")
 	if err != nil {
-		return
+		return "", nil, err
 	}
-	path = fmt.Sprintf("%v/extents", path)
-	return
+	return fmt.Sprintf("%s/extents", dir), func() { os.RemoveAll(dir) }, nil
 }
 
 func extentStoreRwTest(t *testing.T, s *storage.ExtentStore, id uint64) {
-	dataStr := "hello world"
 	data := []byte(dataStr)
 	crc := crc32.ChecksumIEEE(data)
 	// append write
@@ -89,7 +87,6 @@ func extentStoreMarkDeleteNormalTest(t *testing.T, s *storage.ExtentStore, id ui
 func extentStoreMarkDeleteTinyTest(t *testing.T, s *storage.ExtentStore, id uint64) {
 	size, err := s.GetTinyExtentOffset(id)
 	require.NoError(t, err)
-	dataStr := "hello world"
 	data := []byte(dataStr)
 	require.NotEqualValues(t, size, 0)
 	// write second file to extent
@@ -143,8 +140,9 @@ func extentStoreLogicalTest(t *testing.T, s *storage.ExtentStore) {
 }
 
 func reopenExtentStoreTest(t *testing.T, dpType int) {
-	path, err := getPathForExtentStoreTest()
+	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
+	defer clean()
 	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
 	require.NoError(t, err)
 	defer s.Close()
@@ -152,7 +150,6 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 	require.NoError(t, err)
 	err = s.Create(id)
 	require.NoError(t, err)
-	dataStr := "hello world"
 	data := []byte(dataStr)
 	crc := crc32.ChecksumIEEE(data)
 	// write some data
@@ -189,11 +186,9 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 }
 
 func extentStoreTest(t *testing.T, dpType int) {
-	path, err := getPathForExtentStoreTest()
-	if err != nil {
-		t.Errorf("failed to get extent path, err %v", err)
-		return
-	}
+	path, clean, err := getTestPathExtentStore()
+	require.NoError(t, err)
+	defer clean()
 	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
 	require.NoError(t, err)
 	defer s.Close()
