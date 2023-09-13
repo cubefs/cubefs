@@ -38,7 +38,6 @@ var (
 	SnapshotNeedNewExtentError = errors.New("snapshot need new extent error")
 )
 
-func NewParameterMismatchErr(msg string) (err error) {
-	err = fmt.Errorf("parameter mismatch error: %s", msg)
-	return
+func newParameterError(format string, a ...interface{}) error {
+	return fmt.Errorf("parameter mismatch error: %s", fmt.Sprintf(format, a...))
 }
