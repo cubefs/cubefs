@@ -274,6 +274,13 @@ func (s *DataNode) parseSysStartTime() (err error) {
 		if err != nil {
 			return err
 		}
+		if len(bs) == 0 {
+			maybeServerFaultOccurred = false
+			if err = initSysStartTimeFile(); err != nil {
+				log.LogErrorf("parseSysStartTime set system start time has err:%v", err)
+			}
+			return err
+		}
 		localSysStart, err := strconv.ParseInt(strings.TrimSpace(string(bs)), 10, 64)
 		if err != nil {
 			return err
