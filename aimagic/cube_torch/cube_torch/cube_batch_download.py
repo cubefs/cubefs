@@ -8,20 +8,21 @@ import time
 
 import requests
 import torch
-import xxhash
 from PIL import Image
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
 from cube_torch import get_manager
 from cube_torch.cube_file import set_global_cube_rootdir_path
+from cube_torch.cube_shard_memory import ShardMemory
 
 
 class CubeStream(io.BytesIO):
-    def __init__(self, _fpath, _fcontent):
+    def __init__(self, _fpath, _fcontent, item_meta):
         self.file_path = _fpath
         self.content = _fcontent
         self.content_size = len(_fcontent)
+        self.item_meta = item_meta
         super().__init__(_fcontent)
 
     def get_path(self):
@@ -62,12 +63,13 @@ class CubeDownloadItem:
 
 
 class CubeBatchDownloader:
-    def __init__(self, url, shard_mem):
+    def __init__(self, url,cache_size):
         self.batch_download_addr = url
         manager = get_manager()
-        self.cube_content_cache = shard_mem
+        self.cube_content_cache = ShardMemory(cache_size)
         manager.cube_batch_downloader = self
         self.storage_session = requests.Session()
+        self.file_path_item_meta = manager.dict()
         retry_strategy = Retry(
             total=1,  # 最大重试次数
             backoff_factor=0.5,  # 重试之间的时间间隔因子
@@ -102,13 +104,15 @@ class CubeBatchDownloader:
                 start += content_size
                 item = CubeDownloadItem(file_path, file_content, current_time)
                 self.add_cube_item(item)
-                self.check_content(item)
             else:
-                print('file_path:{}  content_size:{} Content is empty'.format(ctypes.string_at(file_path, path_size),
-                                                                              content_size))
+                print('file_path:{}  content_size:{} Content is empty'.format(file_path,content_size))
 
     def add_cube_item(self, cube_item: CubeDownloadItem):
-        self.cube_content_cache.insert_cube_item(cube_item)
+        encode_data = cube_item.encode()
+        item_meta = self.cube_content_cache.insert_cube_item(cube_item.file_path, encode_data)
+        if item_meta is None:
+            return None
+        self.file_path_item_meta[cube_item.file_path] = item_meta
 
     def encode_by_paths(self, path_list):
         content = b''
@@ -131,10 +135,10 @@ class CubeBatchDownloader:
             response = self.storage_session.post(self.batch_download_addr, data=data)
             content = response.content
             if response.status_code != 200:
-                raise ValueError("unavalid http reponse code:{} response:{}".format(response.status_code, content))
+                raise ValueError("unavalid http reponse code:{} response:{}".format(response.status_code, response.text))
             self.parse_content(content)
         except Exception as e:
-            print('pid:{} url:{} Error:{} data:{}:'.format(os.getpid(), self.batch_download_addr, e, data[0][0]))
+            print('pid:{} url:{} Error:{} data:{}:'.format(os.getpid(), self.batch_download_addr, e, response.text))
             pass
 
     def batch_download_async(self, index_list):
@@ -143,10 +147,23 @@ class CubeBatchDownloader:
 
     def get_cube_path_item(self, file_path):
         try:
-            data = self.cube_content_cache.get_cube_item(file_path)
-            return data
+            if not file_path in self.file_path_item_meta:
+                return None
+            item_meta = self.file_path_item_meta.pop(file_path)
+            item = self.cube_content_cache.get_cube_item(file_path, item_meta)
+            if item is None:
+                return None
+            stream = CubeStream(item.file_path, item.file_content, item_meta)
+            return stream
         except Exception as e:
-            raise e
+            print("get file_path:{} Exception:{}".format(file_path, e))
+            return None
+
+    def delete_cube_item_shard_memory(self, stream):
+        try:
+            self.cube_content_cache.delete_cube_item_shard_memory(stream.file_path, stream.item_meta)
+        except Exception as e:
+            return
 
     def add_test_env_item(self, file_path):
         from cube_torch.cube_file import builtins_open
@@ -161,20 +178,18 @@ class CubeBatchDownloader:
 
 
 def init_cube_batch_downloader():
-    data_dir = '/home/guowl/testdata/data0/n01440764/'
+    data_dir = '/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/vlp/000/0'
     jpg_files = []
     for root, dirs, files in os.walk(data_dir):
         for file in files:
-            if file.endswith('.JPEG'):
+            if file.endswith('.jpg'):
                 file_path = os.path.join(root, file)
                 jpg_files.append(file_path)
                 if len(jpg_files) >= 100:
                     break
         if len(jpg_files) >= 100:
             break
-    from cube_torch.cube_shard_memory import ShardMemory
-    shard_memory = ShardMemory()
-    cube_downloader = CubeBatchDownloader("http://127.0.0.1", shard_memory)
+    cube_downloader = CubeBatchDownloader("http://127.0.0.1",2*1024*1024*1024)
     content = cube_downloader.encode_by_paths(jpg_files)
     cube_downloader.parse_content(content)
     return cube_downloader, jpg_files
@@ -196,6 +211,8 @@ def check_jpg_contents(jpg_files):
 if __name__ == '__main__':
     set_global_cube_rootdir_path("/mnt/cfs/chubaofs_tech_data-test")
     cube_downloader, jpg_files = init_cube_batch_downloader()
-    w = multiprocessing.Process(target=check_jpg_contents, args=(jpg_files,))
+    ctx = multiprocessing.get_context("fork")
+    w = ctx.Process(target=check_jpg_contents, args=(jpg_files,))
     w.daemon = False
     w.start()
+    w.join()

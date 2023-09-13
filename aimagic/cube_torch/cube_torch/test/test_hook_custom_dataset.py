@@ -1,6 +1,5 @@
 import os
 import time
-
 import cube_torch
 import torch
 from PIL import Image
