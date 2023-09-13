@@ -329,7 +329,7 @@ func (s *DataNode) commitCreateVersion(volumeID string, verSeq uint64) (err erro
 		return
 	}
 
-	log.LogWarnf("action[commitCreateVersion] vol %v not found %v", volumeID)
+	log.LogWarnf("action[commitCreateVersion] vol %v not found seq %v", volumeID, verSeq)
 	return
 }
 

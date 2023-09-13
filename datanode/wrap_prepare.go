@@ -67,7 +67,7 @@ func (s *DataNode) checkStoreMode(p *repl.Packet) (err error) {
 	if proto.IsTinyExtentType(p.ExtentType) || proto.IsNormalExtentType(p.ExtentType) {
 		return
 	}
-	log.LogErrorf("action[checkStoreMode] extent type11111 %v, %v, %v", p.ExtentType, proto.IsTinyExtentType(p.ExtentType), proto.IsNormalExtentType(p.ExtentType))
+	log.LogErrorf("action[checkStoreMode] dp [%v] reqId [%v] extent type %v", p.PartitionID, p.ReqID, p.ExtentType)
 	return ErrIncorrectStoreType
 }
 
