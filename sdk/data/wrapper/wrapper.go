@@ -146,7 +146,7 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 		}
 	}
 	go w.uploadFlowInfoByTick(client)
-	go w.update()
+	go w.update(client)
 	return
 }
 
@@ -239,7 +239,7 @@ func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 	}
 }
 
-func (w *Wrapper) update() {
+func (w *Wrapper) update(clientInfo SimpleClientInfo) {
 	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
@@ -248,6 +248,7 @@ func (w *Wrapper) update() {
 			w.updateDataPartition(false)
 			w.updateDataNodeStatus()
 			w.CheckPermission()
+			w.updateVerlist(clientInfo)
 		case <-w.stopC:
 			return
 		}

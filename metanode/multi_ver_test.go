@@ -244,12 +244,12 @@ func TestEkMarshal(t *testing.T) {
 			VerSeq: 123444,
 		},
 	}
-	id := storeEkSplit(0, ino.multiSnap.ekRefMap, ek)
+	id := storeEkSplit(0, 0, ino.multiSnap.ekRefMap, ek)
 	dpID, extID := proto.ParseFromId(id)
 	assert.True(t, dpID == ek.PartitionId)
 	assert.True(t, extID == ek.ExtentId)
 
-	ok, _ := ino.DecSplitEk(ek)
+	ok, _ := ino.DecSplitEk(mp.config.PartitionId, ek)
 	assert.True(t, ok == true)
 	log.LogDebugf("TestEkMarshal close")
 }
