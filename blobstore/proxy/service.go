@@ -18,20 +18,13 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/Shopify/sarama"
-
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/config"
-	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	alloc "github.com/cubefs/cubefs/blobstore/proxy/allocator"
 	"github.com/cubefs/cubefs/blobstore/proxy/cacher"
-	"github.com/cubefs/cubefs/blobstore/proxy/mq"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
-	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -46,58 +39,24 @@ const (
 var (
 	service *Service
 	conf    Config
-
-	// ErrIllegalTopic illegal topic
-	ErrIllegalTopic = errors.New("illegal topic")
-	ErrIllegalKafka = errors.New("illegal kafka version")
 )
-
-// MQConfig is mq config
-type MQConfig struct {
-	BlobDeleteTopic          string            `json:"blob_delete_topic"`
-	ShardRepairTopic         string            `json:"shard_repair_topic"`
-	ShardRepairPriorityTopic string            `json:"shard_repair_priority_topic"`
-	MsgSender                kafka.ProducerCfg `json:"msg_sender"`
-	Version                  string            `json:"version"`
-}
 
 type Config struct {
 	cmd.Config
-
-	alloc.BlobConfig
-	alloc.VolConfig
 	cacher.ConfigCache
 
+	Idc                string            `json:"idc"`
+	Host               string            `json:"host"`
+	ClusterID          proto.ClusterID   `json:"cluster_id"`
 	HeartbeatIntervalS uint32            `json:"heartbeat_interval_s"` // proxy heartbeat interval to ClusterManager
 	HeartbeatTicks     uint32            `json:"heartbeat_ticks"`
 	ExpiresTicks       uint32            `json:"expires_ticks"`
 	Clustermgr         clustermgr.Config `json:"clustermgr"`
-	MQ                 MQConfig          `json:"mq"`
-}
-
-func (c *Config) blobDeleteCfg() mq.BlobDeleteConfig {
-	return mq.BlobDeleteConfig{
-		Topic:        c.MQ.BlobDeleteTopic,
-		MsgSenderCfg: c.MQ.MsgSender,
-	}
-}
-
-func (c *Config) shardRepairCfg() mq.ShardRepairConfig {
-	return mq.ShardRepairConfig{
-		Topic:         c.MQ.ShardRepairTopic,
-		PriorityTopic: c.MQ.ShardRepairPriorityTopic,
-		MsgSenderCfg:  c.MQ.MsgSender,
-	}
 }
 
 type Service struct {
 	Config
 
-	// mq
-	shardRepairMgr mq.ShardRepairHandler
-	blobDeleteMgr  mq.BlobDeleteHandler
-	// allocator
-	volumeMgr alloc.VolumeMgr
 	// cacher
 	cacher cacher.Cacher
 }
@@ -126,29 +85,11 @@ func setUp() (*rpc.Router, []rpc.ProgressHandler) {
 	return NewHandler(service), nil
 }
 
-func tearDown() {
-	service.volumeMgr.Close()
-}
+func tearDown() {}
 
 func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
 	if err := cfg.checkAndFix(); err != nil {
 		log.Fatalf("init proxy failed, err: %s", err.Error())
-	}
-
-	// mq
-	blobDeleteMgr, err := mq.NewBlobDeleteMgr(cfg.blobDeleteCfg())
-	if err != nil {
-		log.Fatalf("fail to new blobDeleteMgr, error: %s", err.Error())
-	}
-	shardRepairMgr, err := mq.NewShardRepairMgr(cfg.shardRepairCfg())
-	if err != nil {
-		log.Fatalf("fail to new shardRepairMgr, error: %s", err.Error())
-	}
-
-	// allocator
-	volumeMgr, err := alloc.NewVolumeMgr(context.Background(), cfg.BlobConfig, cfg.VolConfig, cmcli)
-	if err != nil {
-		log.Fatalf("fail to new volumeMgr, error: %s", err.Error())
 	}
 
 	cacher, err := cacher.New(cfg.ClusterID, cfg.ConfigCache, cmcli)
@@ -169,40 +110,15 @@ func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
 	}
 
 	return &Service{
-		Config:         cfg,
-		volumeMgr:      volumeMgr,
-		cacher:         cacher,
-		shardRepairMgr: shardRepairMgr,
-		blobDeleteMgr:  blobDeleteMgr,
+		Config: cfg,
+		cacher: cacher,
 	}
 }
 
 func NewHandler(service *Service) *rpc.Router {
 	router := rpc.New()
-	rpc.RegisterArgsParser(&proxy.ListVolsArgs{}, "json")
 	rpc.RegisterArgsParser(&clustermgr.CacheVolumeArgs{}, "json")
 	rpc.RegisterArgsParser(&clustermgr.CacheDiskArgs{}, "json")
-	rpc.RegisterArgsParser(&proxy.DiscardVolsArgs{}, "json")
-
-	// POST /volume/alloc
-	// request  body:  json
-	// response body:  json
-	router.Handle(http.MethodPost, "/volume/alloc", service.Alloc, rpc.OptArgsBody())
-
-	// GET /volume/list?code_mode={code_mode}
-	router.Handle(http.MethodGet, "/volume/list", service.List, rpc.OptArgsQuery())
-
-	// POST /volume/discard
-	// request body: json
-	router.Handle(http.MethodPost, "/volume/discard", service.Discard, rpc.OptArgsBody())
-
-	// POST /repairmsg
-	// request body: json
-	router.Handle(http.MethodPost, "/repairmsg", service.SendRepairMessage, rpc.OptArgsBody())
-
-	// POST /deletemsg
-	// request body: json
-	router.Handle(http.MethodPost, "/deletemsg", service.SendDeleteMessage, rpc.OptArgsBody())
 
 	// GET /cache/volume/{vid}?flush={flush}&version={version}
 	// response body: json
@@ -216,25 +132,9 @@ func NewHandler(service *Service) *rpc.Router {
 }
 
 func (c *Config) checkAndFix() (err error) {
-	// check topic cfg
-	if c.MQ.BlobDeleteTopic == "" || c.MQ.ShardRepairTopic == "" || c.MQ.ShardRepairPriorityTopic == "" {
-		return ErrIllegalTopic
-	}
-
-	if c.MQ.BlobDeleteTopic == c.MQ.ShardRepairTopic || c.MQ.BlobDeleteTopic == c.MQ.ShardRepairPriorityTopic {
-		return ErrIllegalTopic
-	}
 	defaulter.Equal(&c.HeartbeatIntervalS, defaultHeartbeatIntervalS)
 	defaulter.Equal(&c.HeartbeatTicks, defaultHeartbeatTicks)
 	defaulter.Equal(&c.ExpiresTicks, defaultExpiresTicks)
 	defaulter.LessOrEqual(&c.Clustermgr.Config.ClientTimeoutMs, defaultTimeoutMS)
-	defaulter.LessOrEqual(&c.MQ.MsgSender.TimeoutMs, defaultTimeoutMS)
-	if c.MQ.Version != "" {
-		kafkaVersion, err := sarama.ParseKafkaVersion(c.MQ.Version)
-		if err != nil {
-			return ErrIllegalKafka
-		}
-		kafka.DefaultKafkaVersion = kafkaVersion
-	}
 	return nil
 }
