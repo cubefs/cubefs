@@ -3,7 +3,7 @@ package rebalance
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -12,7 +12,7 @@ import (
 type DNReBalanceController struct {
 	proto.DataNodeInfo
 	*master.MasterClient
-	dataClient *data.DataHttpClient
+	dataClient *http_client.DataClient
 
 	disks        map[string]*Disk
 	migratedDp   map[uint64]*proto.DataPartitionInfo // 已执行迁移程序的dp

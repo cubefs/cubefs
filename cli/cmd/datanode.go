@@ -279,8 +279,9 @@ func newStopMigratingByDataNode(client *master.MasterClient) *cobra.Command {
 func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	var limitRate int
 	var optCheckType int
-	var fromTime string
+	var extentModifyMinTime string
 	var checkTiny bool
+	var quickCheck bool
 	var cmd = &cobra.Command{
 		Use:   CliOpCheckReplica + " [ADDRESS]",
 		Short: cmdCheckReplicaByDataNodeShort,
@@ -301,23 +302,27 @@ func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 			nodeAddr = args[0]
 			var checkEngine *data_check.CheckEngine
 			outputDir, _ := os.Getwd()
-			checkEngine, err = data_check.NewCheckEngine(
-				outputDir,
-				client,
-				checkTiny,
-				false,
-				uint64(limitRate),
-				optCheckType,
-				fromTime,
-				"",
-				make([]uint64, 0),
-				make([]uint64, 0),
-				"",
-				func() bool {
-					return false
-				})
+			config := proto.CheckTaskInfo{
+				CheckMod: proto.NodeExtent,
+				Filter: proto.Filter{
+					NodeFilter: []string{
+						nodeAddr,
+					},
+					InodeFilter: make([]uint64, 0),
+					DpFilter:    make([]uint64, 0),
+				},
+				Concurrency:         uint32(limitRate),
+				ExtentModifyTimeMin: extentModifyMinTime,
+				QuickCheck:          quickCheck,
+				CheckTiny:           checkTiny,
+			}
+			checkEngine = data_check.NewCheckEngine(config, outputDir, client, optCheckType, "")
 			defer checkEngine.Close()
-			_ = checkEngine.CheckDataNodeCrc(nodeAddr)
+			err = checkEngine.Start()
+			if err != nil {
+				stdout(err.Error())
+				return
+			}
 			stdout("finish datanode replica crc check")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -328,9 +333,10 @@ func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&limitRate, "limit-rate", 10, "specify dp check limit rate, default:10, max:200")
-	cmd.Flags().IntVar(&optCheckType, "check-type", 0, "specify check type : 0 all, 1 crc, 2 md5, 3 block")
-	cmd.Flags().StringVar(&fromTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, format:yyyy-mm-dd hh:mm:ss")
-	cmd.Flags().BoolVar(&checkTiny, "check-tiny", false, "check tiny extent")
+	cmd.Flags().IntVar(&optCheckType, "check-type", 0, "specify check type : 0 crc, 1 inode ek num, 2 nlink")
+	cmd.Flags().StringVar(&extentModifyMinTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, format:yyyy-mm-dd hh:mm:ss")
+	cmd.Flags().BoolVar(&checkTiny, "tiny-only", false, "check tiny extent only")
+	cmd.Flags().BoolVar(&quickCheck, "quick-check", false, "quick check: check crc from meta data first, if not the same, then check md5")
 	return cmd
 }
 

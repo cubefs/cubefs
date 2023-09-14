@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"strings"
 )
@@ -18,6 +18,6 @@ func resetDataNodeLogLevel(client *master.MasterClient) {
 }
 
 func rangeResetLogLevel(profPort uint16, host string) {
-	clientHttp := data.NewDataHttpClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], profPort), false)
+	clientHttp := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], profPort), false)
 	clientHttp.SetLoglevel("error")
 }

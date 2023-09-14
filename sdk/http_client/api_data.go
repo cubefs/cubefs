@@ -50,6 +50,9 @@ func (dc *DataClient) ComputeExtentMd5(partitionID, extentID, offset, size uint6
 		Md5Sum      string `json:"md5"`
 	}{}
 	buf, err = dc.RequestHttp(http.MethodGet, "/computeExtentMd5", params)
+	if err != nil {
+		return
+	}
 	if err = json.Unmarshal(buf, &res); err != nil {
 		return
 	}
@@ -76,7 +79,7 @@ func (dc *DataClient) GetDisks() (diskInfo *proto.DataNodeDiskReport, err error)
 	return
 }
 
-//DataNode api
+// DataNode api
 func (dc *DataClient) GetPartitionsFromNode() (partitions *proto.DataPartitions, err error) {
 	var d []byte
 	for i := 0; i < 3; i++ {
@@ -283,9 +286,9 @@ func (dc *DataClient) RepairExtent(extent uint64, partitionPath string, partitio
 	return
 }
 
-//RepairExtentBatch
-//extent: split by '-'
-//path: /data6/datapartition_190_128849018880
+// RepairExtentBatch
+// extent: split by '-'
+// path: /data6/datapartition_190_128849018880
 func (dc *DataClient) RepairExtentBatch(extents, partitionPath string, partition uint64) (exts map[uint64]string, err error) {
 	params := make(map[string]string)
 	params["partition"] = strconv.FormatUint(partition, 10)
@@ -500,6 +503,34 @@ func (dc *DataClient) PlaybackPartitionTinyDelete(partition uint64) (err error) 
 		time.Sleep(time.Second)
 	}
 	if err != nil {
+		return
+	}
+	return
+}
+
+func (dc *DataClient) SetLoglevel(level string) (err error) {
+	params := make(map[string]string, 0)
+	params["level"] = level
+	_, err = dc.RequestHttp(http.MethodGet, "/loglevel/set", params)
+	return
+}
+
+func (dc *DataClient) GetPartitionRaftHardState(id uint64) (hs proto.HardState, err error) {
+	params := make(map[string]string)
+	params["partitionID"] = strconv.FormatUint(id, 10)
+	var d []byte
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/partitionRaftHardState", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	hs = proto.HardState{}
+	if err = json.Unmarshal(d, &hs); err != nil {
 		return
 	}
 	return

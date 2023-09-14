@@ -133,7 +133,7 @@ start_client() {
         if [[ $sta -eq 0 ]] ; then
 #            ok=1
 	          echo -e "\033[32m done\033[0m"
-            exit 0
+	          return
         fi
     done
     echo -e "\033[31m fail\033[0m"
@@ -142,9 +142,9 @@ start_client() {
 
 start_repair_server() {
     echo -n "Starting repair server   ... "
-    /cfs/bin/repair_server -c /cfs/conf/repair_server.json
-    echo -e "\033[31m fail\033[0m"
-    exit 1
+    nohup /cfs/bin/repair_server -c /cfs/conf/repair_server.json &
+	  echo -e "\033[32m done\033[0m"
+    exit 0
 }
 
 init_cli

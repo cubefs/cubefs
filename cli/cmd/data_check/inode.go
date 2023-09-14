@@ -13,36 +13,35 @@ func (checkEngine *CheckEngine) checkInodeCrc(inode uint64, mp *proto.MetaPartit
 	var (
 		err         error
 		extentsResp *proto.GetExtentsResponse
-		errCount    = 0
 		wg          sync.WaitGroup
 	)
 	mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], checkEngine.mnProf), false)
 	extentsResp, err = mtClient.GetExtentsByInode(mp.PartitionID, inode)
 	if err != nil {
-		checkEngine.onFail(CheckCrcFailInode, fmt.Sprintf("%v %v %v", checkEngine.currentVol, mp.PartitionID, inode))
+		checkEngine.onCheckFail(CheckFailInode, fmt.Sprintf("%v %v %v", checkEngine.currentVol, mp.PartitionID, inode))
 		log.LogErrorf("CheckFail-Inode, cluster:%s, vol:%s, inode: %d, err:%v", checkEngine.cluster, checkEngine.currentVol, inode, err)
 		return
 	}
 	log.LogInfof("begin check inode, cluster:%s, vol:%s, inode: %d, extent count: %d", checkEngine.cluster, checkEngine.currentVol, inode, len(extentsResp.Extents))
-	checkExtents := make([]proto.ExtentKey, 0)
+	checkEKs := make([]proto.ExtentKey, 0)
 	for _, ek := range extentsResp.Extents {
-		if len(checkEngine.specifyDps) > 0 && !idExist(ek.PartitionId, checkEngine.specifyDps) {
+		if len(checkEngine.config.Filter.DpFilter) > 0 && !proto.IncludeUint64(ek.PartitionId, checkEngine.config.Filter.DpFilter) {
 			continue
 		}
-		if (checkEngine.tinyOnly && proto.IsTinyExtent(ek.ExtentId)) || (!checkEngine.tinyOnly && !proto.IsTinyExtent(ek.ExtentId)) {
-			checkExtents = append(checkExtents, ek)
+		if (checkEngine.config.CheckTiny && proto.IsTinyExtent(ek.ExtentId)) || !checkEngine.config.CheckTiny {
+			checkEKs = append(checkEKs, ek)
 		}
 	}
 	ekCh := make(chan proto.ExtentKey)
-	wg.Add(len(checkExtents))
+	wg.Add(len(checkEKs))
 	go func() {
-		for _, ek := range checkExtents {
+		for _, ek := range checkEKs {
 			ekCh <- ek
 		}
 		close(ekCh)
 	}()
 	//extent may be duplicated in extentsResp.Extents
-	for i := 0; i < int(checkEngine.concurrency); i++ {
+	for i := 0; i < int(checkEngine.config.Concurrency); i++ {
 		go func(ino uint64) {
 			for ek := range ekCh {
 				checkEngine.checkInodeEkCrc(ek, ino)
@@ -51,7 +50,7 @@ func (checkEngine *CheckEngine) checkInodeCrc(inode uint64, mp *proto.MetaPartit
 		}(inode)
 	}
 	wg.Wait()
-	log.LogInfof("finish check, cluster:%s, vol:%s, inode: %d, err count: %d\n", checkEngine.cluster, checkEngine.currentVol, inode, errCount)
+	log.LogInfof("finish check, cluster:%s, vol:%s, inode: %d, extents len:%v\n", checkEngine.cluster, checkEngine.currentVol, inode, len(checkEKs))
 }
 
 func (checkEngine *CheckEngine) checkInodeEkCrc(ek proto.ExtentKey, ino uint64) {
@@ -59,19 +58,13 @@ func (checkEngine *CheckEngine) checkInodeEkCrc(ek proto.ExtentKey, ino uint64) 
 	var ekStr string
 	defer func() {
 		if err != nil {
-			checkEngine.onFail(CheckCrcFailExtent, fmt.Sprintf("%v %v %v", checkEngine.currentVol, ek.PartitionId, ek.ExtentId))
+			checkEngine.onCheckFail(CheckFailExtent, fmt.Sprintf("%v %v %v", checkEngine.currentVol, ek.PartitionId, ek.ExtentId))
 			log.LogErrorf("CheckFail-Extent, cluster:%s, dp:%v, extent:%v, err:%v", checkEngine.cluster, ek.PartitionId, ek.ExtentId, err)
 		}
 	}()
-	if !checkEngine.tinyOnly {
-		if checkEngine.tinyInUse {
-			ekStr = fmt.Sprintf("%d-%d-%d-%d", ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size)
-		} else {
-			ekStr = fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId)
-		}
-		if _, ok := checkEngine.checkedExtentsMap.LoadOrStore(ekStr, true); ok {
-			return
-		}
+	ekStr = fmt.Sprintf("%d-%d-%d-%d", ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size)
+	if _, ok := checkEngine.checkedExtentsMap.LoadOrStore(ekStr, true); ok {
+		return
 	}
 	var partition *proto.DataPartitionInfo
 	for j := 0; j == 0 || j < 3 && err != nil; j++ {
@@ -84,7 +77,23 @@ func (checkEngine *CheckEngine) checkInodeEkCrc(ek proto.ExtentKey, ino uint64) 
 		err = fmt.Errorf("partition not exists")
 		return
 	}
-	err = CheckExtentReplicaInfo(checkEngine.mc.Nodes()[0], checkEngine.mc.DataNodeProfPort, partition.Replicas, &ek, ino, checkEngine.currentVol, checkEngine.repairPersist.RepairPersistCh, checkEngine.tinyOnly)
+	log.LogDebugf("action[checkInodeEkCrc] cluster:%v, volume:%v, ino:%v, begin check extent key:%v", checkEngine.cluster, checkEngine.currentVol, ino, ek)
+	for _, h := range partition.Hosts {
+		if len(checkEngine.config.Filter.NodeFilter) > 0 && !proto.IncludeString(h, checkEngine.config.Filter.NodeFilter) {
+			log.LogDebugf("action[checkInodeEkCrc] cluster:%v, volume:%v, ino:%v, host:%v, skip extent key:%v by node filter:%v", checkEngine.cluster, checkEngine.currentVol, ino, h, ek, len(checkEngine.config.Filter.NodeFilter))
+			return
+		}
+		if len(checkEngine.config.Filter.NodeExcludeFilter) > 0 && proto.IncludeString(h, checkEngine.config.Filter.NodeExcludeFilter) {
+			log.LogDebugf("action[checkInodeEkCrc] cluster:%v, volume:%v, ino:%v, host:%v, skip extent key:%v by exclude node filter:%v", checkEngine.cluster, checkEngine.currentVol, ino, h, ek, len(checkEngine.config.Filter.NodeExcludeFilter))
+			return
+		}
+	}
+	var badExtentInfo BadExtentInfo
+	var badExtent bool
+	badExtent, badExtentInfo, err = CheckExtentKey(checkEngine.cluster, checkEngine.mc.DataNodeProfPort, partition.Replicas, &ek, ino, checkEngine.currentVol, checkEngine.config.QuickCheck)
+	if badExtent {
+		checkEngine.repairPersist.BadExtentCh <- badExtentInfo
+	}
 	return
 }
 
@@ -124,10 +133,10 @@ func (checkEngine *CheckEngine) checkInodes(mps []*proto.MetaPartitionView, inod
 		}
 		close(inoCh)
 	}()
-	for i := 0; i < int(checkEngine.concurrency); i++ {
+	for i := 0; i < int(checkEngine.config.Concurrency); i++ {
 		go func() {
 			for ino := range inoCh {
-				if checkEngine.isStop() {
+				if checkEngine.closed {
 					wg.Done()
 					continue
 				}

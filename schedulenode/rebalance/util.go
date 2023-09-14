@@ -3,17 +3,17 @@ package rebalance
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"strings"
 	"time"
 )
 
-func getDataHttpClient(nodeAddr, masterAddr string) *data.DataHttpClient {
+func getDataHttpClient(nodeAddr, masterAddr string) *http_client.DataClient {
 	strs := strings.Split(nodeAddr, ":")
 	host := strs[0]
 	port := getDataNodePProfPort(masterAddr)
-	return data.NewDataHttpClient(fmt.Sprintf("%s:%s", host, port), false)
+	return http_client.NewDataClient(fmt.Sprintf("%s:%s", host, port), false)
 }
 
 func getDataNodePProfPort(host string) (port string) {

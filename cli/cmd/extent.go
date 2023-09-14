@@ -31,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/spf13/cobra"
+	"regexp"
 )
 
 const (
@@ -40,14 +41,14 @@ const (
 	cmdExtentInfoShort          = "show extent info"
 	cmdExtentRepair             = "repair [partition] [extent(split by `-`)] [host]"
 	cmdExtentRepairShort        = "repair extent"
-	cmdCheckReplicaCrcUse       = "check-crc volumeName"
+	cmdCheckReplicaCrcUse       = "check-replica volumeName"
 	cmdCheckReplicaCrcShort     = "Check replica crc consistency"
 	cmdCheckEkNumUse            = "check-ek-num volumeName"
 	cmdCheckEkNumShort          = "Check inode extent key num between all hosts"
 	cmdCheckNlinkUse            = "check-nlink volumeName"
 	cmdCheckNlinkShort          = "Check inode nlink"
-	cmdSearchExtentUse          = "search volumeName"
-	cmdSearchExtentShort        = "Search extent key"
+	cmdSearchExtentUse          = "search"
+	cmdSearchExtentShort        = "Search extent key by dps and extents"
 	cmdCheckGarbageUse          = "check-garbage volumeName"
 	cmdCheckGarbageShort        = "Check garbage extents"
 	cmdCheckTinyExtentHoleUse   = "check-tiny-hole"
@@ -88,7 +89,6 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 }
 
 func newExtentGetCmd() *cobra.Command {
-	var checkRetry bool
 	var getMd5 bool
 	var cmd = &cobra.Command{
 		Use:   cmdExtentInfo,
@@ -153,71 +153,36 @@ func newExtentGetCmd() *cobra.Command {
 					minSize = extent[proto.ExtentInfoSize]
 				}
 			}
-			blockSize := 128
-			var wrongBlocks []int
-			if !proto.IsTinyExtent(extentID) {
-				stdout("wrongBlocks:\n")
-				if wrongBlocks, err = data_check.CheckExtentBlockCrc(dp.Replicas, client.DataNodeProfPort, partitionID, extentID); err != nil {
-					stdout("err: %v", err)
-					return
-				}
-				stdout("found: %v blocks at first scan(block size: %vKB), wrong block: %v\n", len(wrongBlocks), blockSize, wrongBlocks)
-				stdout("wrong offsets:")
-				for _, b := range wrongBlocks {
-					stdout("%v-%v,", b*128*1024, b*128*1024+128*1024)
-				}
-				stdout("\n")
-				if len(wrongBlocks) == 0 {
-					return
-				}
-				if !checkRetry {
-					return
-				}
-				if minSize == math.MaxUint64 {
-					return
-				}
-				stdout("begin retry check:\n")
-				ek := proto.ExtentKey{
-					Size:        uint32(minSize),
-					PartitionId: partitionID,
-					ExtentId:    extentID,
-				}
-				if wrongBlocks, err = data_check.RetryCheckBlockMd5(dp.Replicas, client.Nodes()[0], client.DataNodeProfPort, &ek, 0, 4, uint64(blockSize), wrongBlocks); err != nil {
-					return
-				}
-				if len(wrongBlocks) == 0 {
-					return
-				}
-				stdout("found: %v blocks at retry scan(block size: %vKB), wrong block index: %v\n", len(wrongBlocks), blockSize, wrongBlocks)
-				stdout("\n")
-				blockSize4K := 4
-				stdout("begin check %v block:\n", blockSize4K)
-				wrong4KBlocks := make([]int, 0)
-				for _, b := range wrongBlocks {
-					for i := 0; i < blockSize/blockSize4K; i++ {
-						wrong4KBlocks = append(wrong4KBlocks, b*blockSize/blockSize4K+i)
-					}
-				}
-				if wrong4KBlocks, err = data_check.RetryCheckBlockMd5(dp.Replicas, client.Nodes()[0], client.DataNodeProfPort, &ek, 0, 4, uint64(blockSize4K), wrong4KBlocks); err != nil {
-					return
-				}
-				if len(wrong4KBlocks) == 0 {
-					return
-				}
-				stdout("found: %v blocks at retry scan(block size: %vKB), wrong block index: %v\n", len(wrong4KBlocks), blockSize4K, wrong4KBlocks)
-				for _, b := range wrong4KBlocks {
-					var output string
-					if _, output, _, err = data_check.CheckExtentReplicaByBlock(dp.Replicas, client.Nodes()[0], client.DataNodeProfPort, &ek, uint32(b), 0, uint64(blockSize4K)); err != nil {
-						stdout("err: %v", err)
-						return
-					}
-					stdout(output)
-				}
+			if proto.IsTinyExtent(extentID) {
+				return
 			}
+			var wrongCrcBlocks []int
+			if wrongCrcBlocks, err = data_check.CheckBlockCrc(dp.Replicas, client.DataNodeProfPort, partitionID, extentID); err != nil {
+				stdout("err: %v", err)
+				return
+			}
+			if len(wrongCrcBlocks) == 0 {
+				return
+			}
+			stdout("found: %v wrong blocks at crc scan(block size: %vKB)\n", len(wrongCrcBlocks), data_check.DefaultCheckBlockKB)
+			stdout("wrong offsets:\n")
+			var start, end int
+			for i := 0; i < len(wrongCrcBlocks); {
+				start = wrongCrcBlocks[i]
+				for i+1 < len(wrongCrcBlocks) {
+					if wrongCrcBlocks[i+1]-wrongCrcBlocks[i] > 1 {
+						break
+					}
+					i++
+				}
+				end = wrongCrcBlocks[i]
+				i++
+				stdout("    BlockNo(%v-%v) Offset(%v-%v)\n", start, end+1, uint64(start)*128*1024, (uint64(end)+1)*128*1024)
+			}
+			stdout("\n")
 		},
 	}
-	cmd.Flags().BoolVar(&checkRetry, "check-retry", false, "check extent more times for accuracy")
-	cmd.Flags().BoolVar(&getMd5, "check-md5", false, "get extent md5 info")
+	cmd.Flags().BoolVar(&getMd5, "md5", false, "get extent md5 info in replica list")
 	return cmd
 }
 
@@ -345,19 +310,19 @@ func repairExtents(host string, partitionID uint64, extentIDs []uint64) {
 
 func newExtentCheckCmd(checkType int) *cobra.Command {
 	var (
-		use              string
-		short            string
-		specifyPath      string
-		inodeStr         string
-		tinyOnly         bool
-		tinyInUse        bool
-		concurrency      uint64
-		modifyTimeMin    string
-		modifyTimeMax    string
-		profPort         uint64
-		fromFile         bool
-		volFilter        string
-		volExcludeFilter string
+		use                 string
+		short               string
+		specifyPath         string
+		inodeStr            string
+		tinyOnly            bool
+		concurrency         uint64
+		extentModifyTimeMin string
+		extentModifyTimeMax string
+		inodeModifyTimeMin  string
+		inodeModifyTimeMax  string
+		fromFile            bool
+		nodeFilter          string
+		quickCheck          bool
 	)
 	if checkType == data_check.CheckTypeExtentCrc {
 		use = cmdCheckReplicaCrcUse
@@ -380,6 +345,7 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 				checkEngine   *data_check.CheckEngine
 				specifyInodes []uint64
 			)
+			ipReg := regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)+([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$`)
 			if len(inodeStr) > 0 {
 				inodeSlice := strings.Split(inodeStr, ",")
 				for _, inode := range inodeSlice {
@@ -390,34 +356,49 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 					specifyInodes = append(specifyInodes, uint64(ino))
 				}
 			}
-			ids := util.LoadSpecifiedPartitions()
 			vols := make([]string, 0)
-			vols = append(vols, args[0])
+			for _, v := range strings.Split(args[0], ",") {
+				if v == "" {
+					continue
+				}
+				vols = append(vols, v)
+			}
 			if fromFile {
-				vols = util.LoadSpecifiedVolumes(volFilter, volExcludeFilter)
+				vols = util.LoadSpecifiedVolumes()
+			}
+			nodes := make([]string, 0)
+			if nodeFilter != "" {
+				for _, node := range strings.Split(nodeFilter, ",") {
+					if node != "" && ipReg.MatchString(strings.Split(node, ":")[0]) {
+						nodes = append(nodes, node)
+					}
+				}
+			}
+			config := proto.CheckTaskInfo{
+				CheckMod: proto.VolumeInode,
+				Filter: proto.Filter{
+					VolFilter:   vols,
+					InodeFilter: specifyInodes,
+					NodeFilter:  nodes,
+				},
+				Concurrency:         uint32(concurrency),
+				CheckTiny:           tinyOnly,
+				ExtentModifyTimeMin: extentModifyTimeMin,
+				ExtentModifyTimeMax: extentModifyTimeMax,
+				InodeModifyTimeMin:  inodeModifyTimeMin,
+				InodeModifyTimeMax:  inodeModifyTimeMax,
+				QuickCheck:          quickCheck,
 			}
 			outputDir, _ := os.Getwd()
-			checkEngine, err = data_check.NewCheckEngine(
-				outputDir,
-				client,
-				tinyOnly,
-				tinyInUse,
-				concurrency,
-				data_check.CheckTypeExtentCrc,
-				modifyTimeMin,
-				modifyTimeMax,
-				specifyInodes,
-				ids,
-				specifyPath,
-				func() bool {
-					return false
-				})
+			checkEngine = data_check.NewCheckEngine(config, outputDir, client, checkType, specifyPath)
+			defer checkEngine.Close()
+			fmt.Printf("check start...\n")
+			err = checkEngine.Start()
 			if err != nil {
+				fmt.Printf("error:%v", err)
 				return
 			}
-			defer checkEngine.Close()
-			checkEngine.CheckVols(vols)
-			fmt.Printf("results saved in local file")
+			fmt.Printf("check finish and results saved in file: %v/%v\n", outputDir, "bad_extents_*")
 			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -431,14 +412,14 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 	cmd.Flags().StringVar(&specifyPath, "path", "", "path")
 	cmd.Flags().StringVar(&inodeStr, "inode", "", "comma separated inodes")
 	cmd.Flags().BoolVar(&tinyOnly, "tinyOnly", false, "check tiny extents only")
-	cmd.Flags().BoolVar(&tinyInUse, "tinyInUse", false, "check tiny extents in use")
 	cmd.Flags().Uint64Var(&concurrency, "concurrency", 1, "max concurrent checking meta partitions & inode & extent")
-	cmd.Flags().StringVar(&modifyTimeMin, "modifyTimeMin", "", "min modify time for inode")
-	cmd.Flags().StringVar(&modifyTimeMax, "modifyTimeMax", "", "max modify time for inode")
-	cmd.Flags().Uint64Var(&profPort, "profPort", 6007, "go pprof port")
-	cmd.Flags().BoolVar(&fromFile, "from-file", false, "repair vols from file[filename:vols]")
-	cmd.Flags().StringVar(&volFilter, "vol-filter", "", "check volume by filter")
-	cmd.Flags().StringVar(&volExcludeFilter, "vol-exclude-filter", "", "exclude volume by filter")
+	cmd.Flags().StringVar(&extentModifyTimeMin, "extentModifyTimeMin", "", "min modify time for extent")
+	cmd.Flags().StringVar(&extentModifyTimeMax, "extentModifyTimeMax", "", "max modify time for extent")
+	cmd.Flags().StringVar(&inodeModifyTimeMin, "inodeModifyTimeMin", "", "min modify time for inode")
+	cmd.Flags().StringVar(&inodeModifyTimeMax, "inodeModifyTimeMax", "", "max modify time for inode")
+	cmd.Flags().BoolVar(&fromFile, "from-file", false, "load volume filter from local file(filepath:{pwd}/vols, volume name line by line)")
+	cmd.Flags().StringVar(&nodeFilter, "node", "", "check by nodes, split by comma")
+	cmd.Flags().BoolVar(&quickCheck, "quick", false, "quick: check crc from meta data first, if not the same, then check md5")
 	return cmd
 }
 
@@ -562,7 +543,7 @@ func searchExtent(dps []uint64, extents []uint64, extentOffset uint, size uint, 
 						if size == 0 ||
 							(ek.ExtentOffset >= uint64(extentOffset) && ek.ExtentOffset < uint64(extentOffset+size)) ||
 							(ek.ExtentOffset+uint64(ek.Size) >= uint64(extentOffset) && ek.ExtentOffset+uint64(ek.Size) < uint64(extentOffset+size)) {
-							stdout("inode: %d, ek: %s\n", inode, ek)
+							stdout("vol:%v, inode: %d, ek: %s\n", vol, inode, ek)
 						}
 					}
 				}
@@ -644,7 +625,7 @@ func newTinyExtentCheckHoleCmd() *cobra.Command {
 			rServer := newRepairServer(autoRepair)
 			log.LogInfof("fix tiny extent for master: %v", client.Leader())
 
-			vols := util.LoadSpecifiedVolumes("", "")
+			vols := util.LoadSpecifiedVolumes()
 			ids := util.LoadSpecifiedPartitions()
 
 			if dpid > 0 {
@@ -947,19 +928,31 @@ func getExtentInfo(dp *proto.DataPartitionInfo, client *sdk.MasterClient) (exten
 	}
 	return
 }
+
 func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 	var partitionID uint64
 	var extentID uint64
-	var checkTiny bool
+	var offset, size uint64
 	var cmd = &cobra.Command{
-		Use:   CliOpCheck,
+		Use:   CliOpCheck + " [Partition] [Extent]",
 		Short: cmdCheckExtentReplicaShort,
+		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				stdout(err.Error())
+				return
+			}
+			extentID, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout(err.Error())
+				return
+			}
 			if partitionID == 0 || extentID == 0 {
 				stdout("invalid id, pid[%d], extent id[%d]\n", partitionID, extentID)
 				return
 			}
-
 			dpInfo, err := mc.AdminAPI().GetDataPartition("", partitionID)
 			if err != nil {
 				stdout("get data partitin[%d] failed :%v\n", partitionID, err.Error())
@@ -968,11 +961,53 @@ func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 
 			dpAddr := fmt.Sprintf("%s:%d", strings.Split(dpInfo.Hosts[0], ":")[0], mc.DataNodeProfPort)
 			dataClient := http_client.NewDataClient(dpAddr, false)
-			ekInfo, _ := dataClient.GetExtentInfo(partitionID, extentID)
-			ek := proto.ExtentKey{
-				PartitionId: partitionID, ExtentId: extentID, Size: uint32(ekInfo[proto.ExtentInfoSize]),
+			extentInfo, err := dataClient.GetExtentInfo(partitionID, extentID)
+			if err != nil {
+				stdout(err.Error())
+				return
 			}
-			data_check.CheckExtentReplicaInfo(mc.Nodes()[0], mc.DataNodeProfPort, dpInfo.Replicas, &ek, 0, dpInfo.VolName, nil, checkTiny)
+			if offset+size > extentInfo[proto.ExtentInfoSize] {
+				stdout("invalid offset and size, offset+size(%v)> extentSize(%v)\n", offset+size, extentInfo[proto.ExtentInfoSize])
+				return
+			}
+			ek := proto.ExtentKey{
+				PartitionId: partitionID,
+				ExtentId:    extentID,
+				Size:        uint32(extentInfo[proto.ExtentInfoSize]),
+			}
+			if ek.Size == 0 {
+				stdout("extent data is 0 in host[0], skip check\n")
+				return
+			}
+			if proto.IsTinyExtent(ek.ExtentId) {
+				if ek.Size < 4*unit.KB {
+					stdout("wrong tiny extent size:%v", ek)
+					return
+				}
+				ek.Size = ek.Size - 4*unit.KB
+				stdout("tiny extent is aligned to 4KB, the last 4KB is truncated for md5 check\n")
+			}
+			if size > 0 {
+				ek.ExtentOffset = offset
+				ek.Size = uint32(size)
+			}
+			if ek.Size <= 0 {
+				stdout("extent key size is 0, skip check\n")
+				return
+			}
+			stdout("extent check might cost a few seconds, waiting...\n")
+			badExtent, badExtentInfo, err := data_check.CheckExtentKey(mc.Nodes()[0], mc.DataNodeProfPort, dpInfo.Replicas, &ek, 0, dpInfo.VolName, false)
+			if err != nil {
+				stdout(err.Error())
+				return
+			}
+			if badExtent {
+				msg := fmt.Sprintf("found bad extent replica: pid(%v) eid(%v) badhost(%v) vol(%v) ino(%v) eOff(%v) fOff(%v) size(%v)\n",
+					badExtentInfo.PartitionID, badExtentInfo.ExtentID, badExtentInfo.Hosts, badExtentInfo.Volume, badExtentInfo.Inode, badExtentInfo.ExtentOffset, badExtentInfo.FileOffset, badExtentInfo.Size)
+				stdout(msg)
+				return
+			}
+			stdout("extent data is correct\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -981,9 +1016,8 @@ func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 			return validDataNodes(mc, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().Uint64Var(&partitionID, "pid", 0, "Specify partition id")
-	cmd.Flags().Uint64Var(&extentID, "eid", 0, "Specify extent id")
-	cmd.Flags().BoolVar(&checkTiny, "check-tiny", false, "check tiny extent")
+	cmd.Flags().Uint64Var(&size, "size", 0, "Specify size")
+	cmd.Flags().Uint64Var(&offset, "offset", 0, "Specify extent offset")
 	return cmd
 }
 

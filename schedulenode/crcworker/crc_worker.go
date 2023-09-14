@@ -15,10 +15,8 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/rogpeppe/go-internal/modfile"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const (
@@ -205,13 +203,15 @@ func newCheckVolumeCrcTask(cluster string, filter proto.Filter) (task *proto.Tas
 	task = new(proto.Task)
 	task.Cluster = cluster
 	task.TaskType = proto.WorkerTypeCheckCrc
-	crcTask := &proto.CheckCrcTaskInfo{
-		CheckTiny:     false,
-		Concurrency:   DefaultLimitLevel,
-		ModifyTimeMin: "",
-		ModifyTimeMax: "",
-		RepairType:    proto.RepairVolume,
-		NodeAddress:   "",
+	crcTask := &proto.CheckTaskInfo{
+		CheckTiny:           false,
+		Concurrency:         DefaultLimitLevel,
+		ExtentModifyTimeMin: "",
+		ExtentModifyTimeMax: "",
+		InodeModifyTimeMin:  "",
+		InodeModifyTimeMax:  "",
+		CheckMod:            proto.VolumeInode,
+		QuickCheck:          true,
 	}
 	crcTask.Filter = filter
 	crcTaskBytes, err := json.Marshal(crcTask)
@@ -220,10 +220,6 @@ func newCheckVolumeCrcTask(cluster string, filter proto.Filter) (task *proto.Tas
 	}
 	task.TaskInfo = string(crcTaskBytes)
 
-	return
-}
-
-func (s *CrcWorker) parseConfig(cfg *config.Config) (err error) {
 	return
 }
 
@@ -282,56 +278,29 @@ func (s *CrcWorker) ConsumeTask(task *proto.Task) (restore bool, err error) {
 	}
 	mc.MetaNodeProfPort = uint16(mnPortNum)
 
-	crcTaskInfo := proto.CheckCrcTaskInfo{}
+	crcTaskInfo := proto.CheckTaskInfo{}
 	err = json.Unmarshal([]byte(task.TaskInfo), &crcTaskInfo)
 	if err != nil {
 		return
 	}
-	if err = validTask(crcTaskInfo); err != nil {
+	if err = crcTaskInfo.IsValid(); err != nil {
 		return
 	}
-	switch crcTaskInfo.RepairType {
-	case proto.RepairVolume:
-		err = data_check.ExecuteVolumeTask(s.outputDir, int64(task.TaskId), crcTaskInfo.Concurrency, crcTaskInfo.Filter, mc, crcTaskInfo.ModifyTimeMin, crcTaskInfo.ModifyTimeMax, func() bool {
-			select {
-			case <-s.stopC:
-				return true
-			default:
-				return false
-			}
-		})
-	case proto.RepairDataNode:
-		err = data_check.ExecuteDataNodeTask(s.outputDir, int64(task.TaskId), crcTaskInfo.Concurrency, crcTaskInfo.NodeAddress, mc, crcTaskInfo.ModifyTimeMin, crcTaskInfo.CheckTiny)
-	}
-	return
-}
-
-func validTask(t proto.CheckCrcTaskInfo) (err error) {
-	re := regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)+([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$`)
-	if t.RepairType > proto.RepairVolume {
-		err = fmt.Errorf("repair type illegal")
-		return
-	}
-	if t.ModifyTimeMin != "" {
-		if _, err = time.Parse("2006-01-02 15:04:05", t.ModifyTimeMin); err != nil {
-			err = fmt.Errorf("modifyTimeMin illegal, err:%v", err)
-			return
+	var checkEngine *data_check.CheckEngine
+	checkEngine = data_check.NewCheckEngine(crcTaskInfo, s.outputDir, mc, data_check.CheckTypeExtentCrc, "")
+	defer checkEngine.Close()
+	go func() {
+		select {
+		case <-s.stopC:
+			checkEngine.Close()
 		}
-	}
-	if t.ModifyTimeMax != "" {
-		if _, err = time.Parse("2006-01-02 15:04:05", t.ModifyTimeMax); err != nil {
-			err = fmt.Errorf("modifyTimeMin illegal, err:%v", err)
-			return
-		}
-	}
-	if t.RepairType == proto.RepairDataNode && t.NodeAddress == "" {
-		err = fmt.Errorf("nodeAddress can not be empty when repair datanode")
+	}()
+	err = checkEngine.Start()
+	if err != nil {
 		return
 	}
-	if t.NodeAddress != "" && !re.MatchString(strings.Split(t.NodeAddress, ":")[0]) {
-		err = fmt.Errorf("nodeAddress illegal")
-		return
-	}
+	checkEngine.Reset()
+	checkEngine.CheckFailedVols()
 	return
 }
 

@@ -14,27 +14,30 @@ import (
 
 var UmpWarnKey = "check_crc_server"
 
-func (checkEngine *CheckEngine) CheckVols(vols []string) {
-	var err error
+func (checkEngine *CheckEngine) checkVols() (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("CheckVols error: %v", err)
 		}
 	}()
-	lastFailedVols, err := checkEngine.repairPersist.loadFailedVols()
+	//todo: deal with failed vols
+	_, err = checkEngine.repairPersist.loadFailedVols()
 	if err != nil {
 		return
 	}
-	if len(lastFailedVols) > 0 {
-
+	checkVols, err := getVolsByFilter(checkEngine.mc, checkEngine.config.Filter)
+	if err != nil {
+		return
 	}
-	for _, v := range vols {
-		if checkEngine.isStop() {
+
+	for _, v := range checkVols {
+		if checkEngine.closed {
 			break
 		}
 		checkEngine.currentVol = v
 		checkEngine.checkVol()
 	}
+	return
 }
 
 func (checkEngine *CheckEngine) CheckFailedVols() {
@@ -44,13 +47,14 @@ func (checkEngine *CheckEngine) CheckFailedVols() {
 			log.LogErrorf("CheckVols error: %v", err)
 		}
 	}()
+	fmt.Printf("check failed vols\n")
 	vols, err := checkEngine.repairPersist.loadFailedVols()
 	if err != nil {
 		return
 	}
 	checkEngine.repairPersist.refreshFailedFD()
 	for _, v := range vols {
-		if checkEngine.isStop() {
+		if checkEngine.closed {
 			break
 		}
 		checkEngine.currentVol = v
@@ -67,8 +71,9 @@ func (checkEngine *CheckEngine) CheckFailedVols() {
 
 func (checkEngine *CheckEngine) checkVol() {
 	var (
-		wg  sync.WaitGroup
-		err error
+		wg     sync.WaitGroup
+		inodes []uint64
+		err    error
 	)
 	defer func() {
 		if r := recover(); r != nil {
@@ -77,29 +82,28 @@ func (checkEngine *CheckEngine) checkVol() {
 			stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			log.LogCritical("%s%s\n", msg, stack)
 		}
-		log.LogInfof("finish check vol, cluster:%s, vol:%s, err:%v", checkEngine.cluster, checkEngine.currentVol, err)
+		log.LogInfof("finish check vol, cluster:%s, vol:%s", checkEngine.cluster, checkEngine.currentVol)
+		if err != nil {
+			checkEngine.onCheckFail(CheckFailVol, checkEngine.currentVol)
+			log.LogErrorf("CheckFail-Volume: %s, err:%v", checkEngine.currentVol, err)
+		}
 	}()
 	checkEngine.checkedExtentsMap = new(sync.Map)
 	log.LogInfof("begin check, cluster:%s, vol:%s, path:%v\n", checkEngine.cluster, checkEngine.currentVol, checkEngine.path)
 	mps, err := checkEngine.mc.ClientAPI().GetMetaPartitions(checkEngine.currentVol)
 	if err != nil {
-		checkEngine.onFail(CheckCrcFailVol, checkEngine.currentVol)
-		log.LogErrorf("CheckFail-Volume: %s, err:%v", checkEngine.currentVol, err)
 		return
 	}
-	if len(checkEngine.specifyInodes) == 0 && checkEngine.path != "" {
-		var inodes []uint64
+	if len(checkEngine.config.Filter.InodeFilter) == 0 && checkEngine.path != "" {
 		inodes, err = util_sdk.GetAllInodesByPath(checkEngine.mc.Nodes(), checkEngine.currentVol, checkEngine.path)
 		if err != nil {
-			checkEngine.onFail(CheckCrcFailVol, checkEngine.currentVol)
-			log.LogErrorf("CheckFail-Volume: %s, err:%v", checkEngine.currentVol, err)
 			return
 		}
 		checkEngine.checkInodes(mps, inodes)
 		return
 	}
-	if len(checkEngine.specifyInodes) > 0 {
-		checkEngine.checkInodes(mps, checkEngine.specifyInodes)
+	if len(checkEngine.config.Filter.InodeFilter) > 0 {
+		checkEngine.checkInodes(mps, checkEngine.config.Filter.InodeFilter)
 		return
 	}
 
@@ -112,10 +116,10 @@ func (checkEngine *CheckEngine) checkVol() {
 		close(mpCh)
 	}()
 
-	for i := 0; i < int(checkEngine.concurrency); i++ {
+	for i := 0; i < int(checkEngine.config.Concurrency); i++ {
 		go func() {
 			for mp := range mpCh {
-				if checkEngine.isStop() {
+				if checkEngine.closed {
 					wg.Done()
 					continue
 				}
@@ -132,16 +136,26 @@ func (checkEngine *CheckEngine) checkMp(mp uint64, mps []*proto.MetaPartitionVie
 	var err error
 	log.LogInfof("begin check meta partition, cluster:%s, vol:%s, mpId: %d", checkEngine.cluster, checkEngine.currentVol, mp)
 	defer func() {
-		log.LogInfof("finish check, cluster:%s, vol:%s, mpId: %d, err:%v", checkEngine.cluster, checkEngine.currentVol, mp, err)
+		if err != nil {
+			log.LogErrorf("finish check mp with error, cluster:%s, vol:%s, mpId: %d, err:%v", checkEngine.cluster, checkEngine.currentVol, mp, err)
+		}
+		log.LogInfof("finish check mp, cluster:%s, vol:%s, mpId: %d", checkEngine.cluster, checkEngine.currentVol, mp)
 	}()
 	if checkEngine.checkType == CheckTypeInodeNlink {
 		checkEngine.checkVolMpNlink(mps, mp)
 		return
 	}
-	mpInodes, err = util_sdk.GetFileInodesByMp(mps, mp, 1, checkEngine.modifyTimeMin.Unix(), checkEngine.modifyTimeMax.Unix(), checkEngine.mnProf, false)
+	inodeMin, err := parseTime(checkEngine.config.InodeModifyTimeMin)
 	if err != nil {
-		checkEngine.onFail(CheckCrcFailMp, fmt.Sprintf("%v %v", checkEngine.currentVol, mp))
-		log.LogErrorf("CheckFail-VolumeMp, vol:%s, mp:%v", checkEngine.currentVol, mp)
+		return
+	}
+	inodeMax, err := parseTime(checkEngine.config.InodeModifyTimeMax)
+	if err != nil {
+		return
+	}
+	mpInodes, err = util_sdk.GetFileInodesByMp(mps, mp, 1, inodeMin.Unix(), inodeMax.Unix(), checkEngine.mnProf, false)
+	if err != nil {
+		checkEngine.onCheckFail(CheckFailMp, fmt.Sprintf("%v %v", checkEngine.currentVol, mp))
 		return
 	}
 	if len(mpInodes) > 0 {
@@ -150,6 +164,14 @@ func (checkEngine *CheckEngine) checkMp(mp uint64, mps []*proto.MetaPartitionVie
 }
 
 func (checkEngine *CheckEngine) checkVolMpNlink(mps []*proto.MetaPartitionView, metaPartitionId uint64) {
+	inodeMin, err := parseTime(checkEngine.config.InodeModifyTimeMin)
+	if err != nil {
+		return
+	}
+	inodeMax, err := parseTime(checkEngine.config.InodeModifyTimeMax)
+	if err != nil {
+		return
+	}
 	for _, mp := range mps {
 		if metaPartitionId > 0 && mp.PartitionID != metaPartitionId {
 			continue
@@ -164,10 +186,10 @@ func (checkEngine *CheckEngine) checkVolMpNlink(mps []*proto.MetaPartitionView, 
 			}
 			nlinkMap := make(map[uint64]uint32)
 			for _, inode := range inodes {
-				if checkEngine.modifyTimeMin.Unix() > 0 && inode.ModifyTime < checkEngine.modifyTimeMin.Unix() {
+				if inodeMin.Unix() > 0 && inode.ModifyTime < inodeMin.Unix() {
 					continue
 				}
-				if checkEngine.modifyTimeMax.Unix() > 0 && inode.ModifyTime > checkEngine.modifyTimeMax.Unix() {
+				if inodeMax.Unix() > 0 && inode.ModifyTime > inodeMax.Unix() {
 					continue
 				}
 				nlinkMap[inode.Inode] = inode.NLink

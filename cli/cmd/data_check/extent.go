@@ -3,168 +3,206 @@ package data_check
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"math"
+	"math/rand"
 	"strings"
 	"time"
 )
 
-func CheckExtentReplicaInfo(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, rCh chan RepairExtentInfo, checkTiny bool) (err error) {
-	if checkTiny {
-		if proto.IsTinyExtent(ek.ExtentId) {
-			err = checkTinyExtentReplicaInfo(dnProf, dataReplicas, ek, ino, volume, rCh)
+type ErrorEntry struct {
+	BlockOffset uint64
+	BlockSize   uint64
+	ErrMessage  string
+	BadHosts    []string
+}
+
+func (entry *ErrorEntry) String() string {
+	return fmt.Sprintf("BlockOffset:%v, BlockSize:%v, ErrorMessage:\n%v", entry.BlockOffset, entry.BlockSize, entry.ErrMessage)
+}
+
+func CheckExtentKey(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, quickCheck bool) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
+	log.LogDebugf("action[CheckExtentKey] cluster:%v, volume:%v, ino:%v, ek:%v", cluster, volume, ino, ek)
+	if ek.Size > unit.GB*2 {
+		if !proto.IsTinyExtent(ek.ExtentId) {
+			log.LogErrorf("invalid size for normal extent:%v", ek)
+			return
 		}
+		badExtent, badExtentInfo, err = samplingCheckTinyExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
 		return
 	}
-	err = checkNormalExtentReplicaInfo(cluster, dnProf, dataReplicas, ek, ino, volume, rCh)
+	if proto.IsTinyExtent(ek.ExtentId) {
+		badExtent, badExtentInfo, err = fullCheckExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
+		return
+	}
+	if quickCheck {
+		badExtent, badExtentInfo, err = quickCheckExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
+		return
+	}
+	badExtent, badExtentInfo, err = fullCheckExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
 	return
 }
 
-func checkNormalExtentReplicaInfo(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, rCh chan RepairExtentInfo) (err error) {
-	blockSize := uint64(128)
-	blocksLengh := ek.Size / uint32(blockSize*unit.KB)
-	if ek.Size-blocksLengh*uint32(blockSize*unit.KB) > 0 {
+func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
+	if proto.IsTinyExtent(ek.ExtentId) {
+		return
+	}
+	var same bool
+	var wrongCrcBlocks []int
+	blocksLengh := ek.Size / uint32(DefaultCheckBlockKB*unit.KB)
+	if ek.Size-blocksLengh*uint32(DefaultCheckBlockKB*unit.KB) > 0 {
 		blocksLengh += 1
 	}
-	var output string
-	var same bool
-	var wrongBlocks []int
-	if wrongBlocks, err = CheckExtentBlockCrc(dataReplicas, dnProf, ek.PartitionId, ek.ExtentId); err != nil {
-		log.LogErrorf("checkNormalExtentReplicaInfo failed, cluster:%s, partition:%v, extent:%v, err:%v", cluster, ek.PartitionId, ek.ExtentId, err)
+	errEntryMap := make(map[int]*ErrorEntry, 0)
+	//先查128K块的CRC是否有不一致的，如果没有直接返回
+	if wrongCrcBlocks, err = CheckBlockCrc(dataReplicas, dnProf, ek.PartitionId, ek.ExtentId); err != nil {
+		log.LogErrorf("quickCheckExtent failed, cluster:%s, partition:%v, extent:%v, err:%v", cluster, ek.PartitionId, ek.ExtentId, err)
 		return
 	}
-	if len(wrongBlocks) == 0 {
-		log.LogInfof("action[checkNormalExtentReplicaInfo] cluster:%s partition:%v, extent:%v, inode:%v, check same at block crc check", cluster, ek.PartitionId, ek.ExtentId, ino)
+	if len(wrongCrcBlocks) == 0 {
+		log.LogInfof("action[quickCheckExtent] cluster:%s partition:%v, extent:%v, inode:%v, check same at block crc check", cluster, ek.PartitionId, ek.ExtentId, ino)
 		return
 	}
-	if len(wrongBlocks) > 100 {
+	//如果错误CRC块过多，直接查询整个extent,如果整个extent md5相同，直接返回即可
+	if len(wrongCrcBlocks) > 100 {
 		for i := 0; i < 5; i++ {
-			if _, output, same, err = checkExtentReplica(dnProf, dataReplicas, ek, "md5"); err != nil {
-				log.LogErrorf("checkNormalExtentReplicaInfo failed, cluster:%s, partition:%v, extent:%v, err:%v", cluster, ek.PartitionId, ek.ExtentId, err)
+			if _, _, same, err = checkExtentMd5(dnProf, dataReplicas, ek); err != nil {
+				log.LogErrorf("quickCheckExtent failed, cluster:%s, partition:%v, extent:%v, err:%v", cluster, ek.PartitionId, ek.ExtentId, err)
 				return
 			}
 			if same {
-				log.LogInfof("action[checkNormalExtentReplicaInfo] cluster:%s partition:%v, extent:%v, inode:%v, check same at md5 check", cluster, ek.PartitionId, ek.ExtentId, ino)
+				log.LogInfof("action[quickCheckExtent] cluster:%s partition:%v, extent:%v, inode:%v, check same at md5 check", cluster, ek.PartitionId, ek.ExtentId, ino)
 				return
 			}
 			time.Sleep(time.Second)
 		}
 	}
-	if wrongBlocks, err = RetryCheckBlockMd5(dataReplicas, cluster, dnProf, ek, ino, 10, blockSize, wrongBlocks); err != nil {
+	var wrongMd5Blocks []int
+	//继续查询每个CRC块的Md5
+	if wrongMd5Blocks, errEntryMap, err = retryCheckBlockMd5(dataReplicas, cluster, dnProf, ek, ino, 10, DefaultCheckBlockKB, wrongCrcBlocks); err != nil {
 		return
 	}
-	//print bad blocks
-	if len(wrongBlocks) != 0 {
-		addrMap := make(map[string]int, 0)
-		for _, b := range wrongBlocks {
-			var badAddrs []string
-			badAddrs, output, same, err = CheckExtentReplicaByBlock(dataReplicas, cluster, dnProf, ek, uint32(b), ino, blockSize)
-			if err != nil {
-				return
-			}
-			if same {
-				continue
-			}
-			for _, addr := range badAddrs {
-				if _, ok := addrMap[addr]; !ok {
-					addrMap[addr] = 0
-				}
-				addrMap[addr] += 1
-			}
-			log.LogWarnf("cluster:" + cluster + " " + output)
+	if len(wrongMd5Blocks) == 0 {
+		return
+	}
+
+	badExtent = true
+	repairHost := make([]string, 0)
+	repairHostMap := make(map[string]bool, 0)
+	for _, entry := range errEntryMap {
+		for _, h := range entry.BadHosts {
+			repairHostMap[h] = true
 		}
-		if len(addrMap) > 0 {
-			repairHost := make([]string, 0)
-			for k := range addrMap {
-				repairHost = append(repairHost, k)
-			}
-			if rCh != nil {
-				rCh <- RepairExtentInfo{
-					ExtentID:    ek.ExtentId,
-					PartitionID: ek.PartitionId,
-					Hosts:       repairHost,
-					Inode:       ino,
-					Volume:      volume,
-				}
-			} else {
-				if len(repairHost) == 1 {
-					log.LogWarnf("cluster:%s autoRepairExtent: %v %v %v %v %v", cluster, ek.PartitionId, ek.ExtentId, repairHost[0], ino, volume)
-				} else {
-					log.LogWarnf("cluster:%s canNotAutoRepairExtent: %v %v %v %v %v", cluster, ek.PartitionId, ek.ExtentId, repairHost, ino, volume)
-				}
-			}
-		}
+	}
+	for h := range repairHostMap {
+		repairHost = append(repairHost, h)
+	}
+	log.LogWarnf("cluster:%s found bad extent: pid(%v) eid(%v) eOff(%v) fOff(%v) size(%v) host(%v) ino(%v) vol(%v)",
+		cluster, ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.FileOffset, ek.Size, repairHost, ino, volume)
+	badExtentInfo = BadExtentInfo{
+		ExtentID:     ek.ExtentId,
+		PartitionID:  ek.PartitionId,
+		Hosts:        repairHost,
+		Inode:        ino,
+		Volume:       volume,
+		ExtentOffset: ek.ExtentOffset,
+		FileOffset:   ek.FileOffset,
+		Size:         uint64(ek.Size),
 	}
 	return
 }
 
-func checkTinyExtentReplicaInfo(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, rCh chan RepairExtentInfo) (err error) {
+func fullCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
 	var badAddrs []string
 	var output string
 	var same bool
 	for i := 0; i < 10; i++ {
-		if badAddrs, output, same, err = checkExtentReplica(dnProf, dataReplicas, ek, "md5"); err != nil {
-			log.LogErrorf("checkTinyExtentReplicaInfo failed, partition:%v, extent:%v, err:%v\n", ek.PartitionId, ek.ExtentId, err)
+		if badAddrs, output, same, err = checkExtentMd5(dnProf, dataReplicas, ek); err != nil {
+			log.LogErrorf("fullCheckExtent failed, cluster:%v, partition:%v, extent:%v, err:%v\n", cluster, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		if same {
-			log.LogInfof("action[checkTinyExtentReplicaInfo] partition:%v, extent:%v, inode:%v, check same at md5 check", ek.PartitionId, ek.ExtentId, ino)
+			log.LogInfof("action[fullCheckExtent], cluster:%v, partition:%v, extent:%v, inode:%v, check same at md5 check", cluster, ek.PartitionId, ek.ExtentId, ino)
 			return
 		}
 		time.Sleep(time.Second)
 	}
-	log.LogWarnf(output)
-	if len(badAddrs) > 0 {
-		repairHost := make([]string, 0)
-		for _, k := range badAddrs {
-			repairHost = append(repairHost, k)
-		}
-		if rCh != nil {
-			rCh <- RepairExtentInfo{
-				ExtentID:    ek.ExtentId,
-				PartitionID: ek.PartitionId,
-				Hosts:       repairHost,
-				Inode:       ino,
-				Volume:      volume,
-			}
-		} else {
-			if len(repairHost) == 1 {
-				log.LogWarnf("autoRepairExtent: %v %v %v %v %v\n", ek.PartitionId, ek.ExtentId, repairHost[0], ino, volume)
-			} else {
-				log.LogWarnf("canNotAutoRepairExtent: %v %v %v %v %v\n", ek.PartitionId, ek.ExtentId, repairHost, ino, volume)
-			}
-		}
+	if len(badAddrs) == 0 {
+		return
 	}
-
+	badExtent = true
+	log.LogWarnf("action[fullCheckExtent] found bad extent, output: \n%v", output)
+	badExtentInfo = BadExtentInfo{
+		ExtentID:     ek.ExtentId,
+		PartitionID:  ek.PartitionId,
+		Hosts:        badAddrs,
+		Inode:        ino,
+		Volume:       volume,
+		ExtentOffset: ek.ExtentOffset,
+		FileOffset:   ek.FileOffset,
+		Size:         uint64(ek.Size),
+	}
 	return
 }
 
-func RetryCheckBlockMd5(dataReplicas []*proto.DataReplica, cluster string, dnProf uint16, ek *proto.ExtentKey, ino uint64, retry int, blockSize uint64, wrongBlocks []int) (resultBlocks []int, err error) {
-	var (
-		same bool
-	)
-	for j := 0; j < retry; j++ {
-		newBlk := make([]int, 0)
-		for _, b := range wrongBlocks {
-			if _, _, same, err = CheckExtentReplicaByBlock(dataReplicas, cluster, dnProf, ek, uint32(b), ino, blockSize); err != nil {
-				return
-			} else if same {
-				continue
-			}
-			newBlk = append(newBlk, b)
-		}
-		wrongBlocks = newBlk
-		if len(wrongBlocks) == 0 {
-			break
-		}
-		time.Sleep(time.Second * 1)
+func samplingCheckTinyExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
+	if ek.Size < unit.GB*2 {
+		log.LogErrorf("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, invalid tiny extent size:%v", cluster, volume, ino, ek)
+		return
 	}
-	return wrongBlocks, nil
+	sample := uint32(128) * unit.KB
+	sampleN := 32
+	log.LogInfof("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, ek:%v", cluster, volume, ino, ek)
+	//ek is aligned to 4K, minus 4KB to avoid overflow
+	for i := 0; i < sampleN; i++ {
+		rand.Seed(time.Now().UnixNano())
+		offset := uint64(rand.Int63n(int64(ek.Size-sample))) + ek.ExtentOffset
+		newEk := &proto.ExtentKey{
+			Size:         sample,
+			ExtentOffset: offset,
+			PartitionId:  ek.PartitionId,
+			ExtentId:     ek.ExtentId,
+		}
+		log.LogDebugf("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, ek:%v", cluster, volume, ino, ek)
+		badExtent, badExtentInfo, err = fullCheckExtent(cluster, dnProf, dataReplicas, newEk, ino, volume)
+		if err != nil {
+			return
+		}
+		if badExtent {
+			return
+		}
+	}
+	return
 }
 
-func CheckExtentBlockCrc(dataReplicas []*proto.DataReplica, dnProf uint16, partitionId, extentId uint64) (wrongBlocks []int, err error) {
+func retryCheckBlockMd5(dataReplicas []*proto.DataReplica, cluster string, dnProf uint16, ek *proto.ExtentKey, ino uint64, retry int, blockSize uint64, wrongBlocks []int) (newBlocks []int, blockError map[int]*ErrorEntry, err error) {
+	for j := 0; j < retry; j++ {
+		blockError = make(map[int]*ErrorEntry)
+		newBlk := make([]int, 0)
+		for _, b := range wrongBlocks {
+			var errorEntry *ErrorEntry
+			if errorEntry, err = checkBlockMd5(dataReplicas, cluster, dnProf, ek, uint32(b), ino, blockSize); err != nil {
+				return
+			}
+			if errorEntry == nil {
+				continue
+			}
+			blockError[b] = errorEntry
+			log.LogWarnf("cluster:" + cluster + " " + errorEntry.ErrMessage)
+			newBlk = append(newBlk, b)
+		}
+		if len(newBlk) == 0 {
+			return nil, nil, nil
+		}
+		wrongBlocks = newBlk
+		time.Sleep(time.Second * 1)
+	}
+	return wrongBlocks, blockError, nil
+}
+
+func CheckBlockCrc(dataReplicas []*proto.DataReplica, dnProf uint16, partitionId, extentId uint64) (wrongBlocks []int, err error) {
 	var replicas = make([]struct {
 		partitionId uint64
 		extentId    uint64
@@ -177,7 +215,7 @@ func CheckExtentBlockCrc(dataReplicas []*proto.DataReplica, dnProf uint16, parti
 	wrongBlocks = make([]int, 0)
 	for idx, replica := range dataReplicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], dnProf)
-		dataClient := data.NewDataHttpClient(datanode, false)
+		dataClient := http_client.NewDataClient(datanode, false)
 
 		var extentBlocks []*proto.BlockCrc
 		extentBlocks, err = dataClient.GetExtentBlockCrc(partitionId, extentId)
@@ -207,7 +245,7 @@ func CheckExtentBlockCrc(dataReplicas []*proto.DataReplica, dnProf uint16, parti
 	return
 }
 
-func checkExtentReplica(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, mod string) (badAddrs []string, output string, same bool, err error) {
+func checkExtentMd5(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey) (badAddrs []string, output string, same bool, err error) {
 	var (
 		ok       bool
 		replicas = make([]struct {
@@ -222,34 +260,10 @@ func checkExtentReplica(dnProf uint16, dataReplicas []*proto.DataReplica, ek *pr
 	badAddrs = make([]string, 0)
 	for idx, replica := range dataReplicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], dnProf)
-		dataClient := data.NewDataHttpClient(datanode, false)
-		switch mod {
-		case "crc":
-			var extentInfo *proto.ExtentInfoBlock
-			//new version
-			extentInfo, err = dataClient.GetExtentInfo(ek.PartitionId, ek.ExtentId)
-			if err != nil {
-				log.LogErrorf("GetExtentInfo datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
-				return
-			}
-			extentMd5orCrc = fmt.Sprintf("%v", extentInfo[proto.ExtentInfoCrc])
-		case "md5":
-			var (
-				size   uint32
-				offset uint64
-			)
-			if proto.IsTinyExtent(ek.ExtentId) {
-				offset = ek.ExtentOffset
-				size = ek.Size
-			}
-			extentMd5orCrc, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, offset, uint64(size))
-			if err != nil {
-				log.LogErrorf("getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
-				return
-			}
-		default:
-			err = fmt.Errorf("wrong mod")
-			log.LogErrorf(err.Error())
+		dataClient := http_client.NewDataClient(datanode, false)
+		extentMd5orCrc, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, ek.ExtentOffset, uint64(ek.Size))
+		if err != nil {
+			log.LogErrorf("GetMd5OrCrc: datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		replicas[idx].partitionId = ek.PartitionId
@@ -268,18 +282,17 @@ func checkExtentReplica(dnProf uint16, dataReplicas []*proto.DataReplica, ek *pr
 	}
 	for _, r := range replicas {
 		addr := strings.Split(r.datanode, ":")[0] + ":6000"
-		msg := fmt.Sprintf("dp: %d, extent: %d, datanode: %s, %v: %s\n", r.partitionId, r.extentId, addr, mod, r.md5OrCrc)
 		if _, ok = md5Map[r.md5OrCrc]; ok && md5Map[r.md5OrCrc] > len(dataReplicas)/2 {
-			output += msg
+			output += fmt.Sprintf("dp: %d, extent: %d, datanode: %s, MD5: %s\n", r.partitionId, r.extentId, addr, r.md5OrCrc)
 		} else {
-			output += fmt.Sprintf("ERROR Extent %s", msg)
+			output += fmt.Sprintf("dp: %d, extent: %d, datanode: %s, MD5: %s, Error Replica\n", r.partitionId, r.extentId, addr, r.md5OrCrc)
 			badAddrs = append(badAddrs, addr)
 		}
 	}
 	return
 }
 
-func CheckExtentReplicaByBlock(dataReplicas []*proto.DataReplica, cluster string, dnProf uint16, ek *proto.ExtentKey, blockOffset uint32, inode, blockSize uint64) (badAddrs []string, output string, same bool, err error) {
+func checkBlockMd5(dataReplicas []*proto.DataReplica, cluster string, dnProf uint16, ek *proto.ExtentKey, blockOffset uint32, inode, blockSize uint64) (errorEntry *ErrorEntry, err error) {
 	var (
 		ok       bool
 		replicas = make([]struct {
@@ -293,7 +306,6 @@ func CheckExtentReplicaByBlock(dataReplicas []*proto.DataReplica, cluster string
 		md5Map    = make(map[string]int)
 		extentMd5 string
 	)
-	badAddrs = make([]string, 0)
 	size := uint32(blockSize * unit.KB)
 	offset := blockOffset * uint32(blockSize*unit.KB)
 	if size > ek.Size-offset {
@@ -301,12 +313,12 @@ func CheckExtentReplicaByBlock(dataReplicas []*proto.DataReplica, cluster string
 	}
 	for idx, replica := range dataReplicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], dnProf)
-		dataClient := data.NewDataHttpClient(datanode, false)
+		dataClient := http_client.NewDataClient(datanode, false)
 		for j := 0; j == 0 || j < 3 && err != nil; j++ {
 			extentMd5, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, uint64(offset), uint64(size))
 		}
 		if err != nil {
-			log.LogErrorf("CheckExtentReplicaByBlock, cluster:%s, getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", cluster, datanode, ek.PartitionId, ek.ExtentId, err)
+			log.LogErrorf("checkBlockMd5, cluster:%s, getExtentMd5 datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", cluster, datanode, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		replicas[idx].partitionId = ek.PartitionId
@@ -322,16 +334,22 @@ func CheckExtentReplicaByBlock(dataReplicas []*proto.DataReplica, cluster string
 		}
 	}
 	if len(md5Map) == 1 {
-		return nil, "", true, nil
+		return nil, nil
 	}
 
+	errorEntry = &ErrorEntry{
+		BlockOffset: uint64(blockOffset),
+		BlockSize:   blockSize,
+		ErrMessage:  "",
+		BadHosts:    make([]string, 0),
+	}
 	for _, r := range replicas {
 		msg := fmt.Sprintf("dp: %d, extent: %d, datanode: %s, inode:%v, offset:%v, size:%v, md5: %s\n", r.partitionId, r.extentId, r.datanode, inode, offset, size, r.md5)
 		if _, ok = md5Map[r.md5]; ok && md5Map[r.md5] > len(dataReplicas)/2 {
-			output += msg
+			errorEntry.ErrMessage += msg
 		} else {
-			output += fmt.Sprintf("ERROR ExtentBlock %s", msg)
-			badAddrs = append(badAddrs, strings.Split(r.datanode, ":")[0]+":6000")
+			errorEntry.ErrMessage += fmt.Sprintf("ERROR ExtentBlock %s", msg)
+			errorEntry.BadHosts = append(errorEntry.BadHosts, strings.Split(r.datanode, ":")[0]+":6000")
 		}
 	}
 	return

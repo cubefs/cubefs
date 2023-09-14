@@ -1230,7 +1230,7 @@ func checkCommit(client *master.MasterClient) (err error) {
 		})
 		f.Sync()
 	}
-	vols := util.LoadSpecifiedVolumes("", "")
+	vols := util.LoadSpecifiedVolumes()
 	ids := util.LoadSpecifiedPartitions()
 	rangeAllDataPartitions(20, vols, ids, volFunc, partitionFunc)
 	fmt.Println("scan finish, result has been saved to local file")
@@ -1271,8 +1271,8 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 	var fromFile bool
 	var fromTime string
 	var ids []uint64
-	var modifyTimestampMin time.Time
-	var checkTiny bool
+	var quickCheck bool
+	var extentModifyMin time.Time
 	var cmd = &cobra.Command{
 		Use:   CliOpCheckReplica + " [DATA PARTITION ID]",
 		Short: cmdDataPartitionCheckReplicaShort,
@@ -1293,7 +1293,7 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 				}
 				ids = append(ids, partitionID)
 			}
-			if modifyTimestampMin, err = parseTime(fromTime); err != nil {
+			if extentModifyMin, err = parseTime(fromTime); err != nil {
 				return
 			}
 			limitCh := make(chan bool, 50)
@@ -1314,7 +1314,7 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 					if err != nil {
 						return
 					}
-					_, _ = data_check.CheckDataPartitionReplica(dpMasterInfo, client, modifyTimestampMin, nil, checkTiny)
+					_, _ = data_check.CheckDataPartitionReplica(dpMasterInfo, client, extentModifyMin, nil, quickCheck)
 				}(id)
 			}
 			wg.Wait()
@@ -1329,6 +1329,6 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 	}
 	cmd.Flags().BoolVar(&fromFile, "from-file", false, "check partitions from file, file name:`ids`, format:`partition`")
 	cmd.Flags().StringVar(&fromTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, format:yyyy-mm-dd hh:mm:ss")
-	cmd.Flags().BoolVar(&checkTiny, "check-tiny", false, "check tiny extent")
+	cmd.Flags().BoolVar(&quickCheck, "quick-check", false, "quick check: check crc from meta data first, if not the same, then check md5")
 	return cmd
 }

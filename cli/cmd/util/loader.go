@@ -5,14 +5,15 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 )
 
 func LoadSpecifiedPartitions() (ids []uint64) {
 	ids = make([]uint64, 0)
 	buf := make([]byte, 2048)
-	var err error
-	idsF, _ := os.OpenFile("ids", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	idsF, err := os.Open("ids")
+	if err != nil {
+		return
+	}
 	defer idsF.Close()
 	o := bufio.NewReader(idsF)
 	for {
@@ -28,8 +29,8 @@ func LoadSpecifiedPartitions() (ids []uint64) {
 	return
 }
 
-func LoadSpecifiedVolumes(volFilter, volExcludeFilter string) (vols []string) {
-	volsF, err := os.OpenFile("vols", os.O_RDONLY, 0666)
+func LoadSpecifiedVolumes() (vols []string) {
+	volsF, err := os.Open("vols")
 	if err != nil {
 		return
 	}
@@ -41,16 +42,6 @@ func LoadSpecifiedVolumes(volFilter, volExcludeFilter string) (vols []string) {
 		buf, _, err = r.ReadLine()
 		if err == io.EOF {
 			break
-		}
-		if volFilter != "" {
-			if !strings.Contains(string(buf), volFilter) {
-				continue
-			}
-		}
-		if volExcludeFilter != "" {
-			if strings.Contains(string(buf), volExcludeFilter) {
-				continue
-			}
 		}
 		vols = append(vols, string(buf))
 	}

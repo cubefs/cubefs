@@ -208,6 +208,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	if svv.ConnConfig != nil {
 		sb.WriteString(fmt.Sprintf("  ReadConnTimeout       : %v ms\n", svv.ConnConfig.ReadTimeoutNs/int64(time.Millisecond)))
 		sb.WriteString(fmt.Sprintf("  WriteConnTimeout      : %v ms\n", svv.ConnConfig.WriteTimeoutNs/int64(time.Millisecond)))
+	} else {
+		sb.WriteString(fmt.Sprintf("  ReadConnTimeout       : %v ms\n", "N/A"))
+		sb.WriteString(fmt.Sprintf("  WriteConnTimeout      : %v ms\n", "N/A"))
 	}
 	sb.WriteString(fmt.Sprintf("  TruncateEKCountEveryTime: %v\n", svv.TruncateEKCountEveryTime))
 	return sb.String()
@@ -606,10 +609,10 @@ func formatTimeInterval(intervalSecond int64) string {
 	return d.String()
 }
 
-var dataReplicaTableRowPattern = "%-20v    %-12v    %-6v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v		%-8v"
+var dataReplicaTableRowPattern = "%-20v    %-12v    %-12v    %-6v    %-8v    %-8v    %-12v    %-10v    %-20v    %-8v		%-8v"
 
 func formatDataReplicaTableHeader() string {
-	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "USED", "TOTAL", "ISLEADER", "RECOVER", "FILECOUNT", "STATUS", "REPORT TIME", "ISLEARNER", "MEDIUM-TYPE")
+	return fmt.Sprintf(dataReplicaTableRowPattern, "ADDRESS", "DISK", "USED", "TOTAL", "ISLEADER", "RECOVER", "FILECOUNT", "STATUS", "REPORT TIME", "ISLEARNER", "MEDIUM-TYPE")
 }
 
 func formatDataReplica(human bool, indentation string, replica *proto.DataReplica, rowTable bool) string {
@@ -620,7 +623,7 @@ func formatDataReplica(human bool, indentation string, replica *proto.DataReplic
 		usedSize = strconv.FormatUint(replica.Used, 10)
 	}
 	if rowTable {
-		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, usedSize, formatSize(replica.Total),
+		return fmt.Sprintf(dataReplicaTableRowPattern, replica.Addr, replica.DiskPath, usedSize, formatSize(replica.Total),
 			replica.IsLeader, replica.IsRecover, replica.FileCount, formatDataPartitionStatus(replica.Status), formatTime(replica.ReportTime), replica.IsLearner, replica.MType)
 	}
 	var sb = strings.Builder{}

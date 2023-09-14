@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"io/ioutil"
 	"math"
 	"net"
@@ -35,7 +36,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
-	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/holder"
@@ -1149,7 +1149,7 @@ func (dp *DataPartition) getRemoteCommitID(target string) (commitID uint64, err 
 	}
 	profPort := dp.disk.space.dataNode.httpPort
 	httpAddr := fmt.Sprintf("%v:%v", strings.Split(target, ":")[0], profPort)
-	dataClient := data.NewDataHttpClient(httpAddr, false)
+	dataClient := http_client.NewDataClient(httpAddr, false)
 	var hardState proto.HardState
 	hardState, err = dataClient.GetPartitionRaftHardState(dp.partitionID)
 	if err != nil {

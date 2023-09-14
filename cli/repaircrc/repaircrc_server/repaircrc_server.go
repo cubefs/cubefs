@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/cli/cmd/data_check"
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
@@ -158,7 +157,7 @@ func (s *RepairServer) parseConfig(cfg *config.Config) (err error) {
 		bytes, _ := json.Marshal(t)
 		task := NewRepairTask()
 		json.Unmarshal(bytes, task)
-		if err = task.validTask(); err != nil {
+		if err = task.IsValid(); err != nil {
 			log.LogErrorf("illegal task: %v, err: %v", task.TaskId, err)
 			continue
 		}
@@ -201,34 +200,34 @@ func (s *RepairServer) handleAddTask(w http.ResponseWriter, r *http.Request) {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	err = task.validTask()
+	err = task.IsValid()
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	s.lock.RLock()
 	for _, t := range s.repairTaskMap {
-		if t.ClusterInfo.Master == task.ClusterInfo.Master && t.RepairType == task.RepairType {
-			switch t.RepairType {
-			case proto.RepairVolume:
-				sort.Strings(task.Filter.VolFilter)
-				sort.Strings(t.Filter.VolFilter)
-				sort.Strings(task.Filter.VolExcludeFilter)
-				sort.Strings(t.Filter.VolExcludeFilter)
-				sort.Strings(task.Filter.ZoneFilter)
-				sort.Strings(t.Filter.ZoneFilter)
-				sort.Strings(task.Filter.ZoneExcludeFilter)
-				sort.Strings(t.Filter.ZoneExcludeFilter)
-				if strings.Join(t.Filter.VolFilter, ",") == strings.Join(task.Filter.VolFilter, ",") && strings.Join(t.Filter.VolExcludeFilter, ",") == strings.Join(task.Filter.VolExcludeFilter, ",") &&
-					strings.Join(t.Filter.ZoneFilter, ",") == strings.Join(task.Filter.ZoneFilter, ",") && strings.Join(t.Filter.ZoneExcludeFilter, ",") == strings.Join(task.Filter.ZoneExcludeFilter, ",") {
-					buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("already has duplicate task: %v", t.TaskId))
-					return
-				}
-			case proto.RepairDataNode:
-				if t.NodeAddress == task.NodeAddress {
-					buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("already has duplicate task: %v", t.TaskId))
-					return
-				}
+		if t.ClusterInfo.Master == task.ClusterInfo.Master && t.CheckMod == task.CheckMod {
+			sort.Strings(task.Filter.VolFilter)
+			sort.Strings(t.Filter.VolFilter)
+			sort.Strings(task.Filter.VolExcludeFilter)
+			sort.Strings(t.Filter.VolExcludeFilter)
+			sort.Strings(task.Filter.ZoneFilter)
+			sort.Strings(t.Filter.ZoneFilter)
+			sort.Strings(task.Filter.ZoneExcludeFilter)
+			sort.Strings(t.Filter.ZoneExcludeFilter)
+			sort.Strings(task.Filter.NodeFilter)
+			sort.Strings(t.Filter.NodeFilter)
+			sort.Strings(task.Filter.NodeExcludeFilter)
+			sort.Strings(t.Filter.NodeExcludeFilter)
+			if strings.Join(t.Filter.VolFilter, ",") == strings.Join(task.Filter.VolFilter, ",") &&
+				strings.Join(t.Filter.VolExcludeFilter, ",") == strings.Join(task.Filter.VolExcludeFilter, ",") &&
+				strings.Join(t.Filter.ZoneFilter, ",") == strings.Join(task.Filter.ZoneFilter, ",") &&
+				strings.Join(t.Filter.ZoneExcludeFilter, ",") == strings.Join(task.Filter.ZoneExcludeFilter, ",") &&
+				strings.Join(t.Filter.NodeFilter, ",") == strings.Join(task.Filter.NodeFilter, ",") &&
+				strings.Join(t.Filter.NodeExcludeFilter, ",") == strings.Join(task.Filter.NodeExcludeFilter, ",") {
+				buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("already has duplicate task: %v", t.TaskId))
+				return
 			}
 		}
 	}
@@ -298,8 +297,6 @@ func (s *RepairServer) scheduleToRepairCrc() {
 	}
 }
 
-type RepairTaskFunc func() (err error)
-
 func executeTask(t *RepairCrcTask) {
 	var err error
 	defer func() {
@@ -317,27 +314,38 @@ func executeTask(t *RepairCrcTask) {
 	timer := time.NewTimer(time.Duration(t.Frequency.Interval) * time.Hour)
 	defer timer.Stop()
 	timer.Reset(time.Second)
-	var count uint32
+	var execCount uint32
 	outputDir, _ := os.Getwd()
 	for {
 		select {
 		case <-timer.C:
-			log.LogInfof("executeTask begin, taskID:%v", t.TaskId)
-			switch t.RepairType {
-			case proto.RepairVolume:
-				_ = data_check.ExecuteVolumeTask(outputDir, t.TaskId, t.Concurrency, t.Filter, t.mc, t.ModifyTimeMin, t.ModifyTimeMax, func() bool {
+			log.LogInfof("executeTask begin, taskID:%v, cluster:%v, execCount:%v", t.TaskId, t.ClusterInfo.Master, execCount)
+			var exec = func() {
+				defer func() {
+					if err != nil {
+						log.LogErrorf("execute task failed, taskID:%v, cluster:%v, execCount:%v, err:%v", t.TaskId, t.ClusterInfo.Master, execCount, err)
+					}
+				}()
+				var checkEngine *data_check.CheckEngine
+				checkEngine = data_check.NewCheckEngine(t.CheckTaskInfo, outputDir, t.mc, data_check.CheckTypeExtentCrc, "")
+				defer checkEngine.Close()
+				go func() {
 					select {
 					case <-t.stopC:
-						return true
-					default:
-						return false
+						checkEngine.Close()
 					}
-				})
-			case proto.RepairDataNode:
-				_ = data_check.ExecuteDataNodeTask(outputDir, t.TaskId, t.Concurrency, t.NodeAddress, t.mc, t.ModifyTimeMin, t.CheckTiny)
+				}()
+				err = checkEngine.Start()
+				if err != nil {
+					return
+				}
+				checkEngine.Reset()
+				checkEngine.CheckFailedVols()
 			}
-			count++
-			if t.Frequency.ExecuteCount > 0 && count >= t.Frequency.ExecuteCount {
+			exec()
+			log.LogInfof("executeTask end, taskID:%v, execCount:%v", t.TaskId, execCount)
+			execCount++
+			if t.Frequency.ExecuteCount > 0 && execCount >= t.Frequency.ExecuteCount {
 				return
 			}
 			timer.Reset(time.Duration(t.Frequency.Interval) * time.Hour)
@@ -345,7 +353,6 @@ func executeTask(t *RepairCrcTask) {
 			return
 		}
 	}
-
 }
 
 func (s *RepairServer) addTask(task *RepairCrcTask) {

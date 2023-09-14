@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 	"sync"
 	"time"
 )
@@ -26,74 +27,83 @@ func (checkEngine *CheckEngine) doRepairPartition(dp uint64, node string) {
 	if err != nil {
 		return
 	}
-	if failedExtents, err = CheckDataPartitionReplica(dpMasterInfo, checkEngine.mc, checkEngine.modifyTimeMin, checkEngine.repairPersist.RepairPersistCh, checkEngine.tinyOnly); err != nil {
-		checkEngine.onFail(CheckCrcFailDp, fmt.Sprintf("%v %v", dpMasterInfo.VolName, dp))
+	extentMin, err := parseTime(checkEngine.config.ExtentModifyTimeMin)
+	if err != nil {
+		return
+	}
+	if failedExtents, err = CheckDataPartitionReplica(dpMasterInfo, checkEngine.mc, extentMin, checkEngine.repairPersist.BadExtentCh, checkEngine.config.QuickCheck); err != nil {
+		checkEngine.onCheckFail(CheckFailDp, fmt.Sprintf("%v %v", dpMasterInfo.VolName, dp))
 		return
 	}
 	if len(failedExtents) > 0 {
 		for _, e := range failedExtents {
-			checkEngine.onFail(CheckCrcFailExtent, fmt.Sprintf("%v %v %v", dpMasterInfo.VolName, dp, e))
+			checkEngine.onCheckFail(CheckFailExtent, fmt.Sprintf("%v %v %v", dpMasterInfo.VolName, dp, e))
 		}
 		return
 	}
 }
 
-func (checkEngine *CheckEngine) CheckDataNodeCrc(node string) (err error) {
+func (checkEngine *CheckEngine) checkNode() (err error) {
 	var dpCount int
 	defer func() {
 		if err != nil {
-			fmt.Printf("CheckDataNodeCrc error:%v\n", err)
+			log.LogErrorf("checkNode error:%v\n", err)
 		}
 	}()
-	log.LogInfof("CheckDataNodeCrc begin, datanode:%v", node)
-	if err != nil {
-		return
-	}
-	var datanodeInfo *proto.DataNodeInfo
-	if datanodeInfo, err = checkEngine.mc.NodeAPI().GetDataNode(node); err != nil {
-		return
-	}
 	excludeDPs := util.LoadSpecifiedPartitions()
 	if err != nil {
 		return
 	}
-	wg := sync.WaitGroup{}
-	dpCh := make(chan uint64, 1000)
-	for _, dp := range datanodeInfo.PersistenceDataPartitions {
-		if idExist(dp, excludeDPs) {
-			continue
+	for _, node := range checkEngine.config.Filter.NodeFilter {
+		log.LogInfof("checkNode begin, datanode:%v", node)
+		if err != nil {
+			return
 		}
-		dpCount++
-	}
-	wg.Add(dpCount)
-	go func() {
+		var datanodeInfo *proto.DataNodeInfo
+		if datanodeInfo, err = checkEngine.mc.NodeAPI().GetDataNode(node); err != nil {
+			return
+		}
+
+		wg := sync.WaitGroup{}
+		dpCh := make(chan uint64, 1000)
 		for _, dp := range datanodeInfo.PersistenceDataPartitions {
 			if idExist(dp, excludeDPs) {
 				continue
 			}
-			dpCh <- dp
+			dpCount++
 		}
-		close(dpCh)
-	}()
-
-	for i := 0; i < int(checkEngine.concurrency); i++ {
+		wg.Add(dpCount)
 		go func() {
-			for dp := range dpCh {
-				checkEngine.doRepairPartition(dp, node)
-				wg.Done()
+			for _, dp := range datanodeInfo.PersistenceDataPartitions {
+				if idExist(dp, excludeDPs) {
+					continue
+				}
+				dpCh <- dp
 			}
+			close(dpCh)
 		}()
+
+		for i := 0; i < int(checkEngine.config.Concurrency); i++ {
+			go func() {
+				for dp := range dpCh {
+					checkEngine.doRepairPartition(dp, node)
+					wg.Done()
+				}
+			}()
+		}
+		wg.Wait()
+		log.LogInfof("checkNode end, datanode:%v", node)
 	}
-	wg.Wait()
-	log.LogInfof("CheckDataNodeCrc end, datanode:%v", node)
+
 	return
 }
 
-func CheckDataPartitionReplica(dpMasterInfo *proto.DataPartitionInfo, mc *master.MasterClient, modifyTimeMin time.Time, resultCh chan RepairExtentInfo, tinyOnly bool) (failedExtents []uint64, err error) {
+func CheckDataPartitionReplica(dpMasterInfo *proto.DataPartitionInfo, mc *master.MasterClient, extentModifyTimeMin time.Time, resultCh chan BadExtentInfo, quickCheck bool) (failedExtents []uint64, err error) {
 	var (
 		dpDNInfo      *proto.DNDataPartitionInfo
 		checkedExtent *sync.Map
 	)
+	var files []proto.ExtentInfoBlock
 	checkedExtent = new(sync.Map)
 	failedExtents = make([]uint64, 0)
 	defer func() {
@@ -101,14 +111,19 @@ func CheckDataPartitionReplica(dpMasterInfo *proto.DataPartitionInfo, mc *master
 			log.LogErrorf("CheckDataPartitionReplica failed, PartitionId(%v) err(%v)\n", dpMasterInfo.PartitionID, err)
 		}
 	}()
-
-	dpDNInfo, err = util_sdk.GetDataPartitionInfo(dpMasterInfo.Hosts[0], mc.DataNodeProfPort, dpMasterInfo.PartitionID)
-	if err != nil {
-		return
+	for _, h := range dpMasterInfo.Hosts {
+		dpDNInfo, err = util_sdk.GetDataPartitionInfo(h, mc.DataNodeProfPort, dpMasterInfo.PartitionID)
+		if err != nil {
+			return
+		}
+		files = append(files, dpDNInfo.Files...)
 	}
 
-	for _, ekTmp := range dpDNInfo.Files {
-		if int64(ekTmp[proto.ExtentInfoModifyTime]) < modifyTimeMin.Unix() || ekTmp[proto.ExtentInfoSize] == 0 {
+	for _, ekTmp := range files {
+		if int64(ekTmp[proto.ExtentInfoModifyTime]) < extentModifyTimeMin.Unix() || ekTmp[proto.ExtentInfoSize] == 0 {
+			continue
+		}
+		if _, ok := checkedExtent.LoadOrStore(ekTmp[proto.ExtentInfoFileID], true); ok {
 			continue
 		}
 		ek := proto.ExtentKey{
@@ -118,12 +133,15 @@ func CheckDataPartitionReplica(dpMasterInfo *proto.DataPartitionInfo, mc *master
 			ExtentOffset: 0,
 			Size:         uint32(ekTmp[proto.ExtentInfoSize]),
 		}
-		if _, ok := checkedExtent.LoadOrStore(fmt.Sprintf("%d-%d", ek.PartitionId, ek.ExtentId), true); ok {
-			continue
+		if proto.IsTinyExtent(ek.ExtentId) {
+			ek.Size = ek.Size - 4*unit.KB
 		}
-		err1 := CheckExtentReplicaInfo(mc.Nodes()[0], mc.DataNodeProfPort, dpMasterInfo.Replicas, &ek, 0, dpMasterInfo.VolName, resultCh, tinyOnly)
+		badExtent, badExtentInfo, err1 := CheckExtentKey(mc.Nodes()[0], mc.DataNodeProfPort, dpMasterInfo.Replicas, &ek, 0, dpMasterInfo.VolName, quickCheck)
 		if err1 != nil {
 			failedExtents = append(failedExtents, ek.ExtentId)
+		}
+		if badExtent {
+			resultCh <- badExtentInfo
 		}
 	}
 	return

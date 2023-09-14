@@ -4,7 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	data2 "github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/log"
 	"path"
 	"time"
@@ -125,7 +125,7 @@ func (rw *ReBalanceWorker) doReleaseDataNodePartitions(dataNodeHttpAddr, timeLoc
 	} else {
 		key = generateAuthKeyWithTimeZone(timeLocation)
 	}
-	dataHttpClient := data2.NewDataHttpClient(dataNodeHttpAddr, false)
+	dataHttpClient := http_client.NewDataClient(dataNodeHttpAddr, false)
 	_, err = dataHttpClient.ReleasePartitions(key)
 	if err != nil {
 		return fmt.Errorf("url[%v],err %v resp[%v]", reqURL, err, string(data))

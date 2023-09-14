@@ -1,6 +1,7 @@
 package data_check
 
 import (
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
@@ -14,58 +15,68 @@ const (
 	CheckTypeInodeNlink = 2
 )
 
+const (
+	DefaultCheckBlockKB = 128
+)
+
 type CheckEngine struct {
-	tinyOnly      bool
-	tinyInUse     bool
-	concurrency   uint64
-	checkType     int
-	specifyInodes []uint64
-	path          string
-	specifyDps    []uint64
-	modifyTimeMin time.Time
-	modifyTimeMax time.Time
+	config    proto.CheckTaskInfo
+	checkType int
+	path      string
 
 	currentVol        string
 	mc                *master.MasterClient
 	cluster           string
 	mnProf            uint16
 	dnProf            uint16
-	isStop            func() bool
-	repairPersist     *RepairPersist
-	onFail            func(uint32, string)
+	closed            bool
+	closeCh           chan bool
+	repairPersist     *BadExtentPersist
+	onCheckFail       func(uint32, string)
 	checkedExtentsMap *sync.Map
 }
 
-func NewCheckEngine(outputDir string, mc *master.MasterClient, tinyOnly, tinyInUse bool, concurrency uint64, checkType int,
-	modifyTimeMin, modifyTimeMax string, specifyInodes, specifyDps []uint64, path string, isStop func() bool) (checkEngine *CheckEngine, err error) {
-	var modifyTimestampMin, modifyTimestampMax time.Time
-	if modifyTimestampMin, err = parseTime(modifyTimeMin); err != nil {
-		return
-	}
-	if modifyTimestampMax, err = parseTime(modifyTimeMax); err != nil {
-		return
-	}
-	checkEngine = &CheckEngine{
-		tinyOnly:      tinyOnly,
-		tinyInUse:     tinyInUse,
-		concurrency:   concurrency,
-		checkType:     checkType,
-		modifyTimeMin: modifyTimestampMin,
-		modifyTimeMax: modifyTimestampMax,
-		specifyInodes: specifyInodes,
-		specifyDps:    specifyDps,
+type BadExtentInfo struct {
+	PartitionID  uint64
+	ExtentID     uint64
+	ExtentOffset uint64
+	FileOffset   uint64
+	Size         uint64
+	Hosts        []string
+	Inode        uint64
+	Volume       string
+}
 
-		mc:      mc,
-		cluster: mc.Nodes()[0],
-		mnProf:  mc.MetaNodeProfPort,
-		dnProf:  mc.DataNodeProfPort,
-		path:    path,
-		isStop:  isStop,
+func NewCheckEngine(config proto.CheckTaskInfo, outputDir string, mc *master.MasterClient, extentCheckType int, path string) (checkEngine *CheckEngine) {
+	checkEngine = &CheckEngine{
+		config:    config,
+		checkType: extentCheckType,
+		mc:        mc,
+		cluster:   mc.Nodes()[0],
+		mnProf:    mc.MetaNodeProfPort,
+		dnProf:    mc.DataNodeProfPort,
+		path:      path,
+		closed:    false,
+		closeCh:   make(chan bool, 1),
 	}
+
 	checkEngine.repairPersist = NewRepairPersist(outputDir, checkEngine.cluster)
 	go checkEngine.repairPersist.PersistResult()
-	checkEngine.onFail = checkEngine.repairPersist.persistFailed
+	checkEngine.onCheckFail = checkEngine.repairPersist.persistFailed
+	log.LogInfof("NewCheckEngine end")
 	return
+}
+
+func (checkEngine *CheckEngine) Start() (err error) {
+	log.LogInfof("CheckEngine started, Domain[%v], CheckType[%v], Config[%v]", checkEngine.cluster, checkEngine.checkType, checkEngine.config)
+	switch checkEngine.config.CheckMod {
+	case proto.NodeExtent:
+		return checkEngine.checkNode()
+	case proto.VolumeInode:
+		return checkEngine.checkVols()
+	default:
+		return fmt.Errorf("invalid check dimension")
+	}
 }
 
 func (checkEngine *CheckEngine) Reset() {
@@ -73,7 +84,11 @@ func (checkEngine *CheckEngine) Reset() {
 }
 
 func (checkEngine *CheckEngine) Close() {
+	if checkEngine.closeCh != nil {
+		close(checkEngine.closeCh)
+	}
 	checkEngine.repairPersist.Close()
+	checkEngine.closed = true
 }
 
 func parseTime(timeStr string) (t time.Time, err error) {
@@ -85,78 +100,6 @@ func parseTime(timeStr string) (t time.Time, err error) {
 	} else {
 		t = time.Unix(0, 0)
 	}
-	return
-}
-
-func ExecuteVolumeTask(outputDir string, id int64, concurrency uint32, filter proto.Filter, mc *master.MasterClient, modifyMin, modifyMax string, stopFunc func() bool) (err error) {
-	var (
-		checkEngine *CheckEngine
-		checkVols   []string
-	)
-	log.LogInfof("ExecuteVolumeTask begin, taskID:%v ", id)
-	defer func() {
-		if err != nil {
-			log.LogErrorf("ExecuteVolumeTask end, taskID:%v, err: %v", id, err)
-		}
-		log.LogInfof("ExecuteVolumeTask end, taskID:%v, err: %v", id, err)
-	}()
-	checkVols, err = getVolsByFilter(mc, filter)
-	if err != nil {
-		return
-	}
-	checkEngine, err = NewCheckEngine(
-		outputDir,
-		mc,
-		false,
-		false,
-		uint64(concurrency),
-		CheckTypeExtentCrc,
-		modifyMin,
-		modifyMax,
-		make([]uint64, 0),
-		make([]uint64, 0),
-		"",
-		stopFunc)
-	if err != nil {
-		return
-	}
-	defer checkEngine.Close()
-	checkEngine.CheckVols(checkVols)
-
-	checkEngine.Reset()
-	checkEngine.CheckFailedVols()
-	return
-}
-
-func ExecuteDataNodeTask(outputDir string, id int64, concurrency uint32, node string, mc *master.MasterClient, modifyMin string, checkTiny bool) (err error) {
-	var checkEngine *CheckEngine
-	defer func() {
-		if err != nil {
-			log.LogInfof("executeDataNodeTask end, taskID:%v, err:%v", id, err)
-		}
-	}()
-	checkEngine, err = NewCheckEngine(
-		outputDir,
-		mc,
-		checkTiny,
-		false,
-		uint64(concurrency),
-		CheckTypeExtentCrc,
-		modifyMin,
-		"",
-		make([]uint64, 0),
-		make([]uint64, 0),
-		"",
-		func() bool {
-			return false
-		})
-	if err != nil {
-		return
-	}
-	defer checkEngine.Close()
-	log.LogInfof("executeDataNodeTask begin, taskID:%v ", id)
-	err = checkEngine.CheckDataNodeCrc(node)
-	log.LogInfof("executeDataNodeTask end, taskID:%v ", id)
 	return
 }
 
@@ -173,32 +116,24 @@ func getVolsByFilter(mc *master.MasterClient, filter proto.Filter) (vols []strin
 	}
 	vols = make([]string, 0)
 	for _, v := range volsInfo {
+		if len(filter.VolFilter) > 0 && !proto.IncludeString(v.Name, filter.VolFilter) {
+			continue
+		}
+		if len(filter.VolExcludeFilter) > 0 && proto.IncludeString(v.Name, filter.VolExcludeFilter) {
+			continue
+		}
 		volume, e := mc.AdminAPI().GetVolumeSimpleInfo(v.Name)
 		if e != nil {
-			return vols, e
-		}
-		if len(filter.VolFilter) > 0 && !include(v.Name, filter.VolFilter) {
+			log.LogErrorf("get volume info failed, vol:%v, skip check this volume, err:%v", v.Name, err)
 			continue
 		}
-		if len(filter.VolExcludeFilter) > 0 && include(v.Name, filter.VolExcludeFilter) {
+		if len(filter.ZoneFilter) > 0 && !proto.IncludeString(volume.ZoneName, filter.ZoneFilter) {
 			continue
 		}
-		if len(filter.ZoneFilter) > 0 && !include(volume.ZoneName, filter.ZoneFilter) {
-			continue
-		}
-		if len(filter.ZoneExcludeFilter) > 0 && include(volume.ZoneName, filter.ZoneExcludeFilter) {
+		if len(filter.ZoneExcludeFilter) > 0 && proto.IncludeString(volume.ZoneName, filter.ZoneExcludeFilter) {
 			continue
 		}
 		vols = append(vols, v.Name)
 	}
 	return
-}
-
-func include(val string, strs []string) bool {
-	for _, s := range strs {
-		if s == val {
-			return true
-		}
-	}
-	return false
 }

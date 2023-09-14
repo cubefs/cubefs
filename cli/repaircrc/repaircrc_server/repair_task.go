@@ -6,11 +6,10 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"regexp"
 	"strings"
-	"time"
 )
 
 type RepairCrcTask struct {
-	proto.CheckCrcTaskInfo
+	proto.CheckTaskInfo
 	Frequency   *Frequency   `json:"frequency"`
 	TaskId      int64        `json:"task_id"`
 	ClusterInfo *ClusterInfo `json:"cluster_info"`
@@ -35,25 +34,34 @@ const (
 
 func NewRepairTask() *RepairCrcTask {
 	return &RepairCrcTask{
-		CheckCrcTaskInfo: proto.CheckCrcTaskInfo{
-			Filter: proto.Filter{},
+		CheckTaskInfo: proto.CheckTaskInfo{
+			Filter: proto.Filter{
+				VolFilter:         make([]string, 0),
+				VolExcludeFilter:  make([]string, 0),
+				ZoneFilter:        make([]string, 0),
+				ZoneExcludeFilter: make([]string, 0),
+				NodeFilter:        make([]string, 0),
+				NodeExcludeFilter: make([]string, 0),
+				InodeFilter:       make([]uint64, 0),
+				DpFilter:          make([]uint64, 0),
+			},
 		},
 		ClusterInfo: new(ClusterInfo),
 		stopC:       make(chan bool, 8),
 	}
 }
 
-func (t *RepairCrcTask) validTask() (err error) {
+func (t *RepairCrcTask) IsValid() (err error) {
 	if t.ClusterInfo.Master == "" || t.ClusterInfo.MnProf == 0 || t.ClusterInfo.DnProf == 0 {
 		err = fmt.Errorf("cluster info illegal")
 		return
 	}
-	re := regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)+([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$`)
-	if strings.Contains(t.ClusterInfo.Master, ":") && !re.MatchString(strings.Split(t.ClusterInfo.Master, ":")[0]) {
+	ipReg := regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)+([A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])$`)
+	if strings.Contains(t.ClusterInfo.Master, ":") && !ipReg.MatchString(strings.Split(t.ClusterInfo.Master, ":")[0]) {
 		err = fmt.Errorf("master address illegal")
 		return
 	}
-	if !strings.Contains(t.ClusterInfo.Master, ":") && !re.MatchString(t.ClusterInfo.Master) {
+	if !strings.Contains(t.ClusterInfo.Master, ":") && !ipReg.MatchString(t.ClusterInfo.Master) {
 		err = fmt.Errorf("master address illegal")
 		return
 	}
@@ -61,29 +69,5 @@ func (t *RepairCrcTask) validTask() (err error) {
 		err = fmt.Errorf("frequency info illegal")
 		return
 	}
-	if t.RepairType > proto.RepairVolume {
-		err = fmt.Errorf("repair type illegal")
-		return
-	}
-	if t.ModifyTimeMin != "" {
-		if _, err = time.Parse("2006-01-02 15:04:05", t.ModifyTimeMin); err != nil {
-			err = fmt.Errorf("modifyTimeMin illegal, err:%v", err)
-			return
-		}
-	}
-	if t.ModifyTimeMax != "" {
-		if _, err = time.Parse("2006-01-02 15:04:05", t.ModifyTimeMax); err != nil {
-			err = fmt.Errorf("modifyTimeMin illegal, err:%v", err)
-			return
-		}
-	}
-	if t.RepairType == proto.RepairDataNode && t.NodeAddress == "" {
-		err = fmt.Errorf("nodeAddress can not be empty when repair datanode")
-		return
-	}
-	if t.NodeAddress != "" && !re.MatchString(strings.Split(t.NodeAddress, ":")[0]) {
-		err = fmt.Errorf("nodeAddress illegal")
-		return
-	}
-	return
+	return t.CheckTaskInfo.IsValid()
 }
