@@ -208,7 +208,6 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 	if WarnMetrics != nil {
 		WarnMetrics.CleanObsoleteDpMissing(clusterID, partition)
 	}
-
 	WarnMetrics.dpMissingReplicaMutex.Lock()
 	replicaInfo, ok := WarnMetrics.dpMissingReplicaInfo[id]
 	if ok {
@@ -230,7 +229,6 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 		}
 	}
 	WarnMetrics.dpMissingReplicaMutex.Unlock()
-
 	if !proto.IsNormalDp(partition.PartitionType) {
 		return
 	}
