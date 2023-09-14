@@ -5,12 +5,10 @@ from torch.utils.data import ConcatDataset
 from torchvision import datasets
 
 CubeFS_ROOT_DIR = 'CubeFS_ROOT_DIR'
-TEST_ENV='TEST_ENV'
+TEST_ENV = 'TEST_ENV'
 CubeFS_QUEUE_SIZE_ON_WORKER = 'CubeFS_QUEUE_SIZE_ON_WORKER'
-Min_QUEUE_SIZE_ON_WORKER = 6
-Max_QUEUE_SIZE_ON_WORKER = 10
-
-
+Min_QUEUE_SIZE_ON_WORKER = 8
+Max_QUEUE_SIZE_ON_WORKER = 15
 
 
 def is_2d_array(obj):
@@ -28,9 +26,9 @@ class CubeDataSetInfo:
         self.cubefs_root_dir = os.environ.get(CubeFS_ROOT_DIR)
         self.cube_prefetch_file_list = []
         self.train_list = []
-        self._is_test_env=os.environ.get(TEST_ENV)
+        self._is_test_env = os.environ.get(TEST_ENV)
         if self._is_test_env is not None:
-            self._is_test_env=True
+            self._is_test_env = True
         else:
             self._is_test_env = False
         self.stop_event = multiprocessing.Event()

@@ -1,6 +1,5 @@
 import os
 import time
-
 import cube_torch
 import torch
 from PIL import Image
@@ -10,7 +9,7 @@ from torchvision import transforms
 
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['localIP'] = "127.0.0.1"
-# os.environ['USE_BATCH_DOWNLOAD'] = 'true'
+os.environ['USE_BATCH_DOWNLOAD'] = 'true'
 
 
 class CustomDataSet(Dataset):

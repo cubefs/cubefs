@@ -11,7 +11,6 @@ setup(
         'torch',
         'requests',
         'torchvision',
-        'xxhash',
     ],
     packages=['cube_torch'],
     package_data={

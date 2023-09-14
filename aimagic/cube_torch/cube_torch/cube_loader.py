@@ -196,8 +196,8 @@ class CubeDataLoader(Generic[T_co]):
         self.check_worker_number_rationality()
         self.wait_read_train_file_queue = get_manager().Queue()
         self._push_worker_loop_events = []
-        self.is_use_batch_download =False
-        self._dataset_id=id(self.dataset)
+        self.is_use_batch_download = False
+        self._dataset_id = id(self.dataset)
         self._push_worker_loop_process = []
         self.cubeBatchDownloader = None
         self.init_cube_dataset_info()
@@ -209,26 +209,29 @@ class CubeDataLoader(Generic[T_co]):
         self._start_notify_storage_worker()
 
     def _start_notify_storage_worker(self):
-        manager=get_manager()
+        manager = get_manager()
         cube_dataset_info = self.cube_dataset_info
         cube_prefetch_addr = cube_dataset_info.get_cube_prefetch_addr()
         self.is_use_batch_download = cube_dataset_info.is_use_batch_download()
         batch_download_addr = cube_dataset_info.get_batch_download_addr()
-        notify_storage_worker_num= cube_dataset_info.get_notify_storage_worker_num()
+        cache_size=cube_dataset_info.get_shared_memory_size()
+        notify_storage_worker_num = cube_dataset_info.get_notify_storage_worker_num()
         downloader = None
         if self.is_use_batch_download:
-            downloader = CubeBatchDownloader(batch_download_addr)
-            manager.__dict__[get_cube_batch_downloader_key(self._dataset_id)]=downloader
+            downloader = CubeBatchDownloader(batch_download_addr,cache_size)
+            manager.__dict__[get_cube_batch_downloader_key(self._dataset_id)] = downloader
         ctx = multiprocessing.get_context("fork")
-        for i in range (notify_storage_worker_num):
-            e=multiprocessing.Event()
-            w=ctx.Process(target=_loop_push_worker, args=(self.wait_read_train_file_queue, cube_prefetch_addr, self.is_use_batch_download ,self._dataset_id, e))
-            w.daemon=True
+        for i in range(notify_storage_worker_num):
+            e = multiprocessing.Event()
+            w = ctx.Process(target=_loop_push_worker, args=(
+                self.wait_read_train_file_queue, cube_prefetch_addr, self.is_use_batch_download, self._dataset_id, e))
+            w.daemon = True
             w.start()
             self._push_worker_loop_events.append(w)
             self._push_worker_loop_events.append(e)
         print("pid:{} cube_prefetch_addr:{} is_use_batch_download:{} "
-              "cube_batch_downloader_addr:{}".format(os.getpid(), cube_prefetch_addr,self.is_use_batch_download , downloader))
+              "cube_batch_downloader_addr:{}".format(os.getpid(), cube_prefetch_addr, self.is_use_batch_download,
+                                                     downloader))
 
     def __del__(self):
         if len(self._push_worker_loop_events) == 0:
@@ -236,7 +239,6 @@ class CubeDataLoader(Generic[T_co]):
         for i in range(self.num_workers):
             self._push_worker_loop_events[i].set()
             self._push_worker_loop_process[i].terminate()
-
 
     def _get_iterator(self) -> '_BaseDataLoaderIter':
         self.check_worker_number_rationality()
@@ -447,7 +449,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._storage_event = threading.Event()
         self._loadindex_event = threading.Event()
         self._wait_read_train_file_queue = loader.wait_read_train_file_queue
-        self.is_use_batch_download=loader.is_use_batch_download
+        self.is_use_batch_download = loader.is_use_batch_download
         self._preload_index_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker() * 2)
         self._loadindex_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker())
 
@@ -458,7 +460,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._storage_thread.start()
 
         self._loadindex_thread = threading.Thread(
-            target=self._loadindex_func, args=(self._storage_event,)
+            target=self._loadindex_func, args=(self._loadindex_event,)
         )
         self._loadindex_thread.daemon = True
         self._loadindex_thread.start()
@@ -534,7 +536,6 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
 
     def _notify_storage_func(self, event):
         cnt = 0
-        _max_loading_queue_size = self.cube_dataset_info.get_cube_queue_size_on_worker()
         while not event.set():
             try:
                 if not self._start_loop_get_index:
@@ -561,12 +562,11 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     continue
                 index = self._preload_index_queue.get()
                 if index is None:
+                    event.set()
                     break
                 self._loadindex_queue.put(index)
             except StopIteration:
-                event.set()
                 return
-        event.set()
 
     def _reset(self, loader, first_iter=False):
         print("pid{} start reset{}".format(os.getpid(), datetime.datetime.now()))
@@ -905,11 +905,11 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     self._pin_memory_thread.join()
                     self._worker_result_queue.cancel_join_thread()
                     self._worker_result_queue.close()
-                self._storage_event.set()
-                self._storage_thread.join(timeout=0.1)
 
+                self._storage_event.set()
                 self._loadindex_event.set()
-                self._loadindex_thread.join(timeout=0.1)
+                self._storage_thread.join()
+                self._loadindex_thread.join()
 
                 # Exit workers now.
 

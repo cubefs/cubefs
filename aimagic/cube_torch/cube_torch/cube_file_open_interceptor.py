@@ -5,7 +5,7 @@ import threading
 class CubeFileOpenInterceptor:
     _instance = None
     cube_root_dir = "/tmp"  # 数据目录
-    cube_cache_dir= "user memory"
+    cube_cache_dir = "user memory"
     _last_cycle_hit_count = 0  # 命中次数
     _last_cycle_miss_count = 0  # 未命中次数
     total_count = 0
@@ -23,10 +23,9 @@ class CubeFileOpenInterceptor:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         pass
 
-
     @staticmethod
     def set_params(cube_root_dir):
-        CubeFileOpenInterceptor.cube_root_dir=cube_root_dir
+        CubeFileOpenInterceptor.cube_root_dir = cube_root_dir
 
     @staticmethod
     def add_count(is_cache):
@@ -39,10 +38,10 @@ class CubeFileOpenInterceptor:
     def start_timer():
         def timer_callback():
             CubeFileOpenInterceptor.print_hit_rate()
-            timer = threading.Timer(60, timer_callback)
+            timer = threading.Timer(10, timer_callback)
             timer.start()
 
-        timer = threading.Timer(60, timer_callback)
+        timer = threading.Timer(10, timer_callback)
         timer.start()
 
     @staticmethod

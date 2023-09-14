@@ -1,11 +1,8 @@
 import builtins
 import io
-import os
 from functools import wraps
 
 import torch
-import xxhash
-
 
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
@@ -55,6 +52,7 @@ def intercept_torch_load(func):
             result = builtins_torch_load(*args, **kwargs)
         else:
             result = builtins_torch_load(cube_item, **kwargs)
+            global_cube_batch_downloader.delete_cube_item_shard_memory(cube_item)
         return result
 
     return wrapper
@@ -80,11 +78,17 @@ class CubeFile(io.FileIO):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        if self._is_cube_item:
+            global global_cube_batch_downloader
+            global_cube_batch_downloader.delete_cube_item_shard_memory(self._cube_item)
         pass
 
     def close(self, *args, **kwargs):  # real signature unknown
         if self._is_cube_item:
-            return self._cube_item.close(*args, **kwargs)
+            self._cube_item.close(*args, **kwargs)
+            global global_cube_batch_downloader
+            global_cube_batch_downloader.delete_cube_item_shard_memory(self._cube_item)
+            return
         return super().close()
 
     def flush(self, *args, **kwargs):  # real signature unknown
@@ -159,6 +163,7 @@ class CubeFile(io.FileIO):
 
 if __name__ == '__main__':
     from cube_torch.cube_batch_download import init_cube_batch_downloader
+
     global_cube_batch_downloader, jpeg_files = init_cube_batch_downloader()
     title_path = '/home/guowl/testdata/1.bertids'
     global_cube_batch_downloader.add_test_env_item(title_path)

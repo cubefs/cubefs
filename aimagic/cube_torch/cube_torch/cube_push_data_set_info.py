@@ -12,6 +12,8 @@ from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 LOCAL_IP = 'localIP'
 USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
 one_day = 60 * 60 * 12
+SHARED_MEMORY_SIZE='SHARED_MEMORY_SIZE'
+default_shared_memory_size=2*1024*1024*1024
 
 
 class CubePushDataSetInfo(CubeDataSetInfo):
@@ -20,8 +22,10 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prefetch_file_url = ""
         self.prefetch_read_url = ""
         self.register_pid_addr = ""
+        self.shared_memory_size=0
         self.prof_port = ""
         self._is_use_batch_download = os.environ.get(USE_BATCH_DOWNLOAD)
+        self.shared_memory_size=os.environ.get(SHARED_MEMORY_SIZE)
         self.local_ip = os.environ.get(LOCAL_IP)
         self.cube_prefetch_ttl = 30
         self.dataset_dir_prefix = ".cube_torch"
@@ -62,6 +66,9 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def get_register_pid_addr(self):
         return self.register_pid_addr
 
+    def get_shared_memory_size(self):
+        return self.shared_memory_size
+
     def get_unregister_pid_addr(self):
         return self.unregister_pid_addr
 
@@ -82,6 +89,17 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         if self.local_ip is None:
             raise ValueError("{} not set on os environ ".format(LOCAL_IP))
 
+        if self.shared_memory_size is None:
+            self.shared_memory_size=default_shared_memory_size
+
+        try:
+            shared_memory = int(self.shared_memory_size)
+        except Exception:
+            shared_memory=default_shared_memory_size
+
+        self.shared_memory_size=shared_memory
+
+
         if not self.is_valid_ip(self.local_ip):
             raise ValueError("{} is not valid,please reset {} ".format(self.local_ip, LOCAL_IP))
 
@@ -92,6 +110,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
         self.check_cube_queue_size_on_worker()
         self._init_env_fininsh = True
+        self.shared_memory_size=self.shared_memory_size//2
 
     def get_cube_client_post_info(self):
         cube_info_file = os.path.join(self.dataset_config_dir, ".cube_info")
@@ -224,5 +243,5 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_notify_storage_worker_num(self):
         if self._is_use_batch_download:
-            return 2
+            return 5
         return 1
