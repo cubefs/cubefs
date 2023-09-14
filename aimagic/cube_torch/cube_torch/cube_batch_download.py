@@ -63,7 +63,7 @@ class CubeDownloadItem:
 
 
 class CubeBatchDownloader:
-    def __init__(self, url,cache_size):
+    def __init__(self, url, cache_size):
         self.batch_download_addr = url
         manager = get_manager()
         self.cube_content_cache = ShardMemory(cache_size)
@@ -87,25 +87,31 @@ class CubeBatchDownloader:
         else:
             torch.load(item.get_path())
 
-    def parse_content(self, content):
-        version = int.from_bytes(content[:8], byteorder='big')
-        path_count = int.from_bytes(content[8:16], byteorder='big')
-        start = 16
-        current_time = int(time.time())
-        for i in range(path_count):
-            path_size = int.from_bytes(content[start:start + 8], byteorder='big')
+    def parse_content(self, url, content):
+        sum_content = len(content)
+        try:
+            start = 0
+            version = int.from_bytes(content[start:start + 8], byteorder='big')
             start += 8
-            file_path = content[start:start + path_size].decode()
-            start += path_size
-            content_size = int.from_bytes(content[start:start + 8], byteorder='big')
+            path_count = int.from_bytes(content[start:start + 8], byteorder='big')
             start += 8
-            if content_size > 0:
+            current_time = int(time.time())
+            for i in range(path_count):
+                if start >= sum_content:
+                    break
+                path_size = int.from_bytes(content[start:start + 8], byteorder='big')
+                start += 8
+                file_path = content[start:start + path_size].decode()
+                start += path_size
+                content_size = int.from_bytes(content[start:start + 8], byteorder='big')
+                start += 8
                 file_content = content[start:start + content_size]
                 start += content_size
                 item = CubeDownloadItem(file_path, file_content, current_time)
                 self.add_cube_item(item)
-            else:
-                print('file_path:{}  content_size:{} Content is empty'.format(file_path,content_size))
+
+        except Exception as e:
+            print("url:{} parse content error:{}".format(url, e))
 
     def add_cube_item(self, cube_item: CubeDownloadItem):
         encode_data = cube_item.encode()
@@ -132,13 +138,15 @@ class CubeBatchDownloader:
     def batch_download(self, index_list):
         try:
             data = json.dumps(index_list)
-            response = self.storage_session.post(self.batch_download_addr, data=data)
-            content = response.content
-            if response.status_code != 200:
-                raise ValueError("unavalid http reponse code:{} response:{}".format(response.status_code, response.text))
-            self.parse_content(content)
+            with requests.post(self.batch_download_addr, data=data, timeout=100) as response:
+                content = response.content
+                if response.status_code != 200:
+                    raise ValueError(
+                        "unavalid http reponse code:{} response:{}".format(response.status_code, response.text))
+                self.parse_content(self.batch_download_addr, content)
+                print("fininsh batch download :{}".format(self.batch_download_addr))
         except Exception as e:
-            print('pid:{} url:{} Error:{} data:{}:'.format(os.getpid(), self.batch_download_addr, e, response.text))
+            print('pid:{} url:{} Error:{} '.format(os.getpid(), self.batch_download_addr, e))
             pass
 
     def batch_download_async(self, index_list):
@@ -158,12 +166,6 @@ class CubeBatchDownloader:
         except Exception as e:
             print("get file_path:{} Exception:{}".format(file_path, e))
             return None
-
-    def delete_cube_item_shard_memory(self, stream):
-        try:
-            self.cube_content_cache.delete_cube_item_shard_memory(stream.file_path, stream.item_meta)
-        except Exception as e:
-            return
 
     def add_test_env_item(self, file_path):
         from cube_torch.cube_file import builtins_open
@@ -189,9 +191,9 @@ def init_cube_batch_downloader():
                     break
         if len(jpg_files) >= 100:
             break
-    cube_downloader = CubeBatchDownloader("http://127.0.0.1",2*1024*1024*1024)
+    cube_downloader = CubeBatchDownloader("http://127.0.0.1", 2 * 1024 * 1024 * 1024)
     content = cube_downloader.encode_by_paths(jpg_files)
-    cube_downloader.parse_content(content)
+    cube_downloader.parse_content("http://127.0.0.1", content)
     return cube_downloader, jpg_files
 
 

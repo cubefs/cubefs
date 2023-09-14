@@ -214,11 +214,11 @@ class CubeDataLoader(Generic[T_co]):
         cube_prefetch_addr = cube_dataset_info.get_cube_prefetch_addr()
         self.is_use_batch_download = cube_dataset_info.is_use_batch_download()
         batch_download_addr = cube_dataset_info.get_batch_download_addr()
-        cache_size=cube_dataset_info.get_shared_memory_size()
+        cache_size = cube_dataset_info.get_shared_memory_size()
         notify_storage_worker_num = cube_dataset_info.get_notify_storage_worker_num()
         downloader = None
         if self.is_use_batch_download:
-            downloader = CubeBatchDownloader(batch_download_addr,cache_size)
+            downloader = CubeBatchDownloader(batch_download_addr, cache_size)
             manager.__dict__[get_cube_batch_downloader_key(self._dataset_id)] = downloader
         ctx = multiprocessing.get_context("fork")
         for i in range(notify_storage_worker_num):

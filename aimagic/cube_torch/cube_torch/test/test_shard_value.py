@@ -1,5 +1,6 @@
 import multiprocessing
 
+
 def worker_func(counter, comparison_value):
     counter.value += 1
     result = counter.value + comparison_value.value
@@ -10,6 +11,7 @@ def worker_func(counter, comparison_value):
         print(f"Result ({result}) is less than comparison value ({comparison_value.value})")
     else:
         print(f"Result ({result}) is equal to comparison value ({comparison_value.value})")
+
 
 if __name__ == "__main__":
     counter = multiprocessing.Value("i", 0)  # 创建一个整数类型的共享值，并初始化为0

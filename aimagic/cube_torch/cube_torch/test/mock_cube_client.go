@@ -9,11 +9,35 @@ import (
 	"net/http"
 )
 
+type DownloadInfo struct {
+	fileName string
+	data     []byte
+	result   chan error
+}
 
+func NewDownloadInfo(fileName string) (di *DownloadInfo) {
+	di = new(DownloadInfo)
+	di.fileName = fileName
+	di.result = make(chan error, 1)
+	return di
+}
+
+var (
+	asyncReadCh = make(chan *DownloadInfo, 10000)
+)
+
+func asyncReadFile() {
+	for {
+		select {
+		case di := <-asyncReadCh:
+			var err error
+			di.data, err = ioutil.ReadFile(di.fileName)
+			di.result <- err
+		}
+	}
+}
 
 func batchDownloadHandler(w http.ResponseWriter, r *http.Request) {
-
-	// 解析请求 body
 	var train_paths [][]string
 	err := json.NewDecoder(r.Body).Decode(&train_paths)
 	if err != nil {
@@ -21,37 +45,67 @@ func batchDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
 	binary.Write(w, binary.BigEndian, uint64(1))
 	binary.Write(w, binary.BigEndian, uint64(len(train_paths[0])))
+	readDownloadInfos := make([]*DownloadInfo, 0)
 	for _, file_path := range train_paths[0] {
-		binary.Write(w, binary.BigEndian, uint64(len(file_path)))
-		w.Write([]byte(file_path))
-		path_data,path_err:=ioutil.ReadFile(file_path)
-		if path_err!=nil{
-			fmt.Println(fmt.Sprintf("file_path:%v readerror:%v", file_path,path_err))
+		di := NewDownloadInfo(file_path)
+		readDownloadInfos = append(readDownloadInfos, di)
+		asyncReadCh <- di
+	}
+
+	for _, di := range readDownloadInfos {
+		pathErr := <-di.result
+		if pathErr != nil {
+			fmt.Println(fmt.Sprintf("file_path:%v readerror:%v", di.fileName, pathErr))
 			continue
 		}
-		binary.Write(w, binary.BigEndian, uint64(len(path_data)))
-		w.Write(path_data)
-
+		err = binary.Write(w, binary.BigEndian, uint64(len(di.fileName)))
+		if err != nil {
+			fmt.Println(fmt.Sprintf("write error:%v", err))
+			break
+		}
+		_, err = w.Write([]byte(di.fileName))
+		if err != nil {
+			fmt.Println(fmt.Sprintf("write error:%v", err))
+			break
+		}
+		pathData := di.data
+		err = binary.Write(w, binary.BigEndian, uint64(len(pathData)))
+		if err != nil {
+			fmt.Println(fmt.Sprintf("write error:%v", err))
+			break
+		}
+		_, err = w.Write(pathData)
+		if err != nil {
+			fmt.Println(fmt.Sprintf("write error:%v", err))
+			break
+		}
+	}
+	if err == nil {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
 	}
 
 }
 
 var (
-	prof=flag.Int("prof",8001,"default prof port")
+	prof = flag.Int("prof", 8001, "default prof port")
 )
 
 func main() {
 
 	flag.Parse()
+	for i := 0; i < 10; i++ {
+		go asyncReadFile()
+	}
 	http.HandleFunc("/batchdownload/path", batchDownloadHandler)
 
-	fmt.Println(fmt.Sprintf("Starting server on port %v",*prof))
-	err:=http.ListenAndServe(fmt.Sprintf(":%v",*prof), nil)
-	if err!=nil{
-		fmt.Println(fmt.Sprintf("error listen %v",err))
+	fmt.Println(fmt.Sprintf("Starting server on port %v", *prof))
+	err := http.ListenAndServe(fmt.Sprintf(":%v", *prof), nil)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("error listen %v", err))
 	}
 
 }

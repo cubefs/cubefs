@@ -75,19 +75,19 @@ class _ResumeIteration(object):
     pass
 
 
-def _post_to_storage_async(index_list, notify_storage_addr, storage_seesion):
+def _post_to_storage_async(index_list, notify_storage_addr):
     loop = asyncio.new_event_loop()
-    loop.run_in_executor(None, _post_to_storage, index_list, notify_storage_addr, storage_seesion)
+    loop.run_in_executor(None, _post_to_storage, index_list, notify_storage_addr)
 
 
-def _post_to_storage(index_list, notify_storage_addr, storage_seesion):
+def _post_to_storage(index_list, notify_storage_addr):
     if len(index_list) == 0:
         return
     try:
         data = json.dumps(index_list)
-        response = storage_seesion.post(notify_storage_addr, data, timeout=1)
-        if response.status_code != 200:
-            raise ValueError("unavali request,response:{}".format(response.text))
+        with requests.post(notify_storage_addr, data, timeout=2) as response:
+            if response.status_code != 200:
+                raise ValueError("unavali request,response:{}".format(response.text))
     except Exception as e:
         print('_post_to_storage{} _post_to_storage error{} index_list{} '.format(notify_storage_addr, e, index_list))
         return
@@ -166,7 +166,6 @@ def get_cube_batch_downloader_key(dataset_id):
 
 
 def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, dataset_id, event):
-    storage_seesion = requests.Session()
     downloader = None
     torch.set_num_threads(1)
     if is_use_batch_download:
@@ -178,7 +177,7 @@ def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_bat
             if is_use_batch_download:
                 downloader.batch_download_async(index_list)
             else:
-                _post_to_storage_async(index_list, cube_prefetch_addr, storage_seesion)
+                _post_to_storage_async(index_list, cube_prefetch_addr)
         except queue.Empty:
             continue
         except KeyboardInterrupt:

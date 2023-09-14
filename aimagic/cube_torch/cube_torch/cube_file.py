@@ -52,7 +52,6 @@ def intercept_torch_load(func):
             result = builtins_torch_load(*args, **kwargs)
         else:
             result = builtins_torch_load(cube_item, **kwargs)
-            global_cube_batch_downloader.delete_cube_item_shard_memory(cube_item)
         return result
 
     return wrapper
@@ -78,16 +77,11 @@ class CubeFile(io.FileIO):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self._is_cube_item:
-            global global_cube_batch_downloader
-            global_cube_batch_downloader.delete_cube_item_shard_memory(self._cube_item)
         pass
 
     def close(self, *args, **kwargs):  # real signature unknown
         if self._is_cube_item:
             self._cube_item.close(*args, **kwargs)
-            global global_cube_batch_downloader
-            global_cube_batch_downloader.delete_cube_item_shard_memory(self._cube_item)
             return
         return super().close()
 

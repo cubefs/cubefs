@@ -11,9 +11,9 @@ from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 
 LOCAL_IP = 'localIP'
 USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
-one_day = 60 * 60 * 12
-SHARED_MEMORY_SIZE='SHARED_MEMORY_SIZE'
-default_shared_memory_size=2*1024*1024*1024
+one_day = 60 * 60 * 5
+SHARED_MEMORY_SIZE = 'SHARED_MEMORY_SIZE'
+default_shared_memory_size = 3 * 1024 * 1024 * 1024
 
 
 class CubePushDataSetInfo(CubeDataSetInfo):
@@ -22,10 +22,10 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prefetch_file_url = ""
         self.prefetch_read_url = ""
         self.register_pid_addr = ""
-        self.shared_memory_size=0
+        self.shared_memory_size = 0
         self.prof_port = ""
         self._is_use_batch_download = os.environ.get(USE_BATCH_DOWNLOAD)
-        self.shared_memory_size=os.environ.get(SHARED_MEMORY_SIZE)
+        self.shared_memory_size = os.environ.get(SHARED_MEMORY_SIZE)
         self.local_ip = os.environ.get(LOCAL_IP)
         self.cube_prefetch_ttl = 30
         self.dataset_dir_prefix = ".cube_torch"
@@ -90,15 +90,14 @@ class CubePushDataSetInfo(CubeDataSetInfo):
             raise ValueError("{} not set on os environ ".format(LOCAL_IP))
 
         if self.shared_memory_size is None:
-            self.shared_memory_size=default_shared_memory_size
+            self.shared_memory_size = default_shared_memory_size
 
         try:
             shared_memory = int(self.shared_memory_size)
         except Exception:
-            shared_memory=default_shared_memory_size
+            shared_memory = default_shared_memory_size
 
-        self.shared_memory_size=shared_memory
-
+        self.shared_memory_size = shared_memory
 
         if not self.is_valid_ip(self.local_ip):
             raise ValueError("{} is not valid,please reset {} ".format(self.local_ip, LOCAL_IP))
@@ -110,7 +109,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
         self.check_cube_queue_size_on_worker()
         self._init_env_fininsh = True
-        self.shared_memory_size=self.shared_memory_size//2
+        self.shared_memory_size = self.shared_memory_size // 2
 
     def get_cube_client_post_info(self):
         cube_info_file = os.path.join(self.dataset_config_dir, ".cube_info")
@@ -156,7 +155,6 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         for idx, train_data in enumerate(self.train_list):
             train_data_len = len(train_data)
             train_name = '{}/{}_{}.txt'.format(self.dataset_dir, train_data_len, idx)
-            print("write train_name is {}".format(train_name))
             self._write_train_list(train_name, train_data)
             train_file_list.append((train_name, train_data_len))
             if check_consistency and not self.load_train_name_check_consistency(train_name, train_data):
@@ -184,59 +182,62 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                     self.renew_ttl_on_prefetch_files()
                 self.clean_old_dataset_file(self.dataset_dir)
                 time.sleep(10)
-            except KeyboardInterrupt:
-                return
             except Exception as e:
                 print("_renew_ttl_loop expect {}".format(e))
                 time.sleep(10)
                 continue
 
     def clean_old_dataset_file(self, folder):
-        for filename in os.listdir(folder):
-            file_path = os.path.join(folder, filename)
-            if os.path.isfile(file_path):
-                stat = os.stat(file_path)
-                if time.time() - stat.st_atime > one_day:
-                    print(f'Deleting file {file_path} due to not accessed over a day')
-                    os.remove(file_path)
+        try:
+            for filename in os.listdir(folder):
+                file_path = os.path.join(folder, filename)
+                if os.path.isfile(file_path):
+                    stat = os.stat(file_path)
+                    if time.time() - stat.st_atime > one_day:
+                        print(f'Deleting file {file_path} due to not accessed over a day')
+                        os.remove(file_path)
+        except Exception as e:
+            raise ValueError("clean_old_dataset_file expection:{}".format(e))
 
     def renew_ttl_on_prefetch_files(self):
+
         for train_name, dataset_cnt in self.cube_prefetch_file_list:
             url = "{}?path={}&ttl={}&dataset_cnt={}".format(self.prefetch_file_url, train_name, self.cube_prefetch_ttl,
                                                             self._dataset_cnt)
             try:
-                response = self.storage_seesion.get(url, timeout=1)
-                if response.status_code != 200:
-                    raise ValueError("unavaliResponse{}".format(response.text))
+                with self.storage_seesion.get(url, timeout=1) as response:
+                    if response.status_code != 200:
+                        raise ValueError("unavaliResponse{}".format(response.text))
             except Exception as e:
                 raise ValueError("renew_ttl_on_prefetch_files {} error{}".format(url, e))
 
     def _write_train_list(self, train_name, train_data):
-        if os.path.exists(train_name + ".tmp"):
+        try:
+            if os.path.exists(train_name + ".tmp"):
+                return train_name
+            if os.path.exists(train_name):
+                return train_name
+            tmp_file_name = train_name + ".tmp"
+            batch_size = 3000
+            num_batches = len(train_data) // batch_size
+            if len(train_data) % batch_size != 0:
+                num_batches += 1
+            with open(tmp_file_name, "w") as f:
+                for i in range(num_batches):
+                    start_index = i * batch_size
+                    end_index = (i + 1) * batch_size
+                    if end_index >= len(train_data):
+                        end_index = len(train_data)
+                    batch_array = train_data[start_index:end_index]
+                    if len(batch_array) == 0:
+                        continue
+                    f.write('\n'.join(batch_array))
+                    if i < num_batches:
+                        f.write('\n')
+            os.rename(tmp_file_name, train_name)
             return train_name
-        if os.path.exists(train_name):
-            return train_name
-
-        tmp_file_name = train_name + ".tmp"
-        batch_size = 3000
-        num_batches = len(train_data) // batch_size
-        if len(train_data) % batch_size != 0:
-            num_batches += 1
-        with open(tmp_file_name, "w") as f:
-            for i in range(num_batches):
-                start_index = i * batch_size
-                end_index = (i + 1) * batch_size
-                if end_index >= len(train_data):
-                    end_index = len(train_data)
-                batch_array = train_data[start_index:end_index]
-                if len(batch_array) == 0:
-                    continue
-                f.write('\n'.join(batch_array))
-                if i < num_batches:
-                    f.write('\n')
-
-        os.rename(tmp_file_name, train_name)
-        return train_name
+        except Exception as e:
+            raise ValueError("pid:{} train_name:{} _write_train_list exception:{}".format(os.getpid(), train_name, e))
 
     def get_batch_download_addr(self):
         return self.batch_download_addr
