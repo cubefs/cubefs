@@ -115,7 +115,23 @@ module.exports = [
         text: 'Tools',
         children: [
             'tools/gui.md',
-            'tools/cli.md',
+            {
+                text: 'Using cfs-cli Tool',
+                children: [
+                    'tools/cfs-cli/overview.md',
+                    'tools/cfs-cli/cluster.md',
+                    'tools/cfs-cli/metanode.md',
+                    'tools/cfs-cli/datanode.md',
+                    'tools/cfs-cli/metapartition.md',
+                    'tools/cfs-cli/datapartition.md',
+                    'tools/cfs-cli/config.md',
+                    'tools/cfs-cli/volume.md',
+                    'tools/cfs-cli/user.md',
+                    'tools/cfs-cli/nodeset.md',
+                    'tools/cfs-cli/quota.md',
+                ]
+            },
+            'tools/blobstore-cli.md',
         ]
     },
     {
