@@ -160,7 +160,9 @@ func (partition *DataPartition) checkLeader(clusterID string, timeOut int64) {
 	if partition.getLeaderAddr() == "" {
 		report = true
 	}
-	WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, report)
+	if WarnMetrics != nil {
+		WarnMetrics.WarnDpNoLeader(clusterID, partition.PartitionID, report)
+	}
 	return
 }
 
@@ -186,15 +188,20 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 					clusterID, partition.PartitionID, replica.Addr, dataPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
 				//msg = msg + fmt.Sprintf(" decommissionDataPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, replica.Addr)
 				Warn(clusterID, msg)
-				WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, true)
+				if WarnMetrics != nil {
+					WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, true)
+				}
 			}
 		} else {
-			WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, false)
+			if WarnMetrics != nil {
+				WarnMetrics.WarnMissingDp(clusterID, replica.Addr, partition.PartitionID, false)
+			}
+
 		}
 	}
-
-	WarnMetrics.CleanObsoleteDpMissing(clusterID, partition)
-
+	if WarnMetrics != nil {
+		WarnMetrics.CleanObsoleteDpMissing(clusterID, partition)
+	}
 	if !proto.IsNormalDp(partition.PartitionType) {
 		return
 	}
