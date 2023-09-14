@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/unit"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -1418,8 +1419,7 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 			var (
 				extentID       = info[storage.FileID]
 				extentSize     = info[storage.Size]
-				fragmentOffset uint64
-				fragmentSize   uint64
+				extentOffset   = uint64(0)
 			)
 			if proto.IsTinyExtent(extentID) {
 				var err error
@@ -1429,17 +1429,14 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 						return
 					}
 				}
+				if extentSize > 128 * unit.MB {
+					extentOffset = extentSize - 128 * unit.MB
+				}
 			}
-			if extentSize%uint64(proto.PageSize) == 0 {
-				fragmentOffset = (extentSize/proto.PageSize - 1) * proto.PageSize
-			} else {
-				fragmentOffset = (extentSize / proto.PageSize) * proto.PageSize
-			}
-			fragmentSize = extentSize - fragmentOffset
 			fragments = append(fragments, &IssueFragment{
 				extentID: extentID,
-				offset:   fragmentOffset,
-				size:     fragmentSize,
+				offset:   extentOffset,
+				size:     extentSize,
 			})
 		}
 	})

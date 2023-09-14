@@ -8,61 +8,38 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"net"
 	"os"
 	"path"
 	"runtime/debug"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
-
-	"github.com/cubefs/cubefs/util/async"
-
-	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
-	"github.com/cubefs/cubefs/util/log"
-
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/async"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 var (
 	ErrIllegalFragmentLength    = errors.New("illegal issue data fragment length")
 	ErrBrokenIssueFragmentsFile = errors.New("broken issue fragments file")
 	ErrBrokenIssueFragmentData  = errors.New("broken issue fragment data")
-	ErrCannotFixFragment        = errors.New("can not fix issue fragment")
-	ErrPendingFixFragment       = errors.New("pending fix issue fragment")
 )
 
 const (
 	issueFragmentsFilename    = "ISSUE_FRAGMENTS"
 	issueFragmentsTmpFilename = ".ISSUE_FRAGMENTS"
 	issueFragmentBinaryLength = 28
+
+	fixedIssueFragmentsFilename = "FIXED_ISSUE_FRAGMENTS"
 )
-
-type dataRef struct {
-	data []byte
-	ref  int
-}
-
-// innerError 类型是 IssueProcessor 内部使用的错误类型，用来对检查及修复数据时发生的错误进行收敛归类，以分辨提取数据时是无数据还是被拒绝。
-type innerError int
-
-const (
-	innerErrorFetchDoData innerError = iota
-	innerErrorFetchRejected
-)
-
-func (i innerError) Error() string {
-	switch i {
-	case innerErrorFetchDoData:
-		return "inner error: fetch no data"
-	case innerErrorFetchRejected:
-		return "inner error: fetch rejected"
-	}
-	return "inner error: unknown"
-}
 
 type GetRemoteHostsFunc func() []string
 
@@ -154,7 +131,6 @@ func (p *IssueProcessor) lockPersist() (release func()) {
 }
 
 func (p *IssueProcessor) worker() {
-	var err error
 	var pendingTimer = time.NewTimer(0)
 	for p.getIssueFragmentCount() > 0 {
 		select {
@@ -179,12 +155,7 @@ func (p *IssueProcessor) worker() {
 				}())
 		}
 
-		err = p.checkAndFixFragments(p.copyIssueFragments())
-		if err != nil {
-			log.LogErrorf("IssueProcessor: Partition(%v) failed on check and fix fragments and will be retry after 30s. ", p.partitionID)
-			pendingTimer.Reset(time.Second * 30)
-			continue
-		}
+		p.checkAndFixFragments(p.copyIssueFragments())
 		if p.getIssueFragmentCount() > 0 {
 			pendingTimer.Reset(time.Second * 10)
 		}
@@ -219,128 +190,126 @@ func (p *IssueProcessor) getIssueFragmentCount() int {
 	return len(p.fragments)
 }
 
-func (p *IssueProcessor) fetchLocal(extentID, offset, size uint64) (data []byte, err error) {
-	var buf = make([]byte, size)
-	_, err = p.storage.Read(extentID, int64(offset), int64(size), buf, false)
-	switch {
-	case err == proto.ExtentNotFoundError, err == io.EOF, os.IsNotExist(err):
-		return nil, innerErrorFetchDoData
-	case err != nil:
-		return nil, err
-	default: // err == nil
+func (p *IssueProcessor) computeLocalCRC(fragment *IssueFragment) (crc uint32, err error) {
+	var (
+		extentID   = fragment.extentID
+		offset     = fragment.offset
+		size       = fragment.size
+		buf        = make([]byte, unit.BlockSize)
+		remain     = int64(size)
+		ieee       = crc32.NewIEEE()
+		readOffset = int64(offset)
+	)
+
+	for remain > 0 {
+		var readSize = int64(math.Min(float64(remain), float64(unit.BlockSize)))
+		_, err = p.storage.Read(extentID, int64(offset), readSize, buf[:readSize], false)
+		if err == proto.ExtentNotFoundError || os.IsNotExist(err) || err == io.EOF {
+			return 0, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+		if _, err = ieee.Write(buf[:readSize]); err != nil {
+			return 0, err
+		}
+		readOffset += readSize
+		remain -= readSize
 	}
-	return buf, nil
+	return ieee.Sum32(), nil
 }
 
-func (p *IssueProcessor) fetchLocalTiny(extentID, offset, size uint64) (data []byte, err error) {
-	var buf = make([]byte, size)
-	var newOffset int64
-	newOffset, _, err = p.storage.TinyExtentAvaliOffset(extentID, int64(offset))
-	switch {
-	case err == proto.ExtentNotFoundError, err == io.EOF, os.IsNotExist(err):
-		return nil, innerErrorFetchDoData
-	case err != nil:
-		return nil, err
-	case newOffset > int64(offset):
-		return nil, innerErrorFetchDoData
-	default: // err == nil
-	}
-	_, err = p.storage.Read(extentID, int64(offset), int64(size), buf, false)
-	switch {
-	case err == proto.ExtentNotFoundError, err == io.EOF, os.IsNotExist(err):
-		return nil, innerErrorFetchDoData
-	case err != nil:
-		return nil, err
-	default: // err == nil
-	}
-	return buf, nil
-}
+func (p *IssueProcessor) fetchRemoteDataToLocalFile(f *os.File, host string, extentID, offset, size uint64, force bool) (crc uint32, rejected bool, err error) {
 
-func (p *IssueProcessor) fetchRemote(host string, extentID, offset, size uint64, force bool) ([]byte, error) {
-	var err error
-	var packet = repl.NewExtentRepairReadPacket(nil, p.partitionID, extentID, int(offset), int(size), force)
+	var readOffset = int(offset)
+	var readSize = int(size)
+	var remain = int64(size)
+	request := repl.NewExtentRepairReadPacket(context.Background(), p.partitionID, extentID, readOffset, readSize, force)
+	if proto.IsTinyExtent(extentID) {
+		request = repl.NewTinyExtentRepairReadPacket(context.Background(), p.partitionID, extentID, readOffset, readSize, force)
+	}
 	var conn *net.TCPConn
-	conn, err = gConnPool.GetConnect(host)
-	if err != nil {
-		return nil, err
+	if conn, err = gConnPool.GetConnect(host); err != nil {
+		return
 	}
 	defer gConnPool.PutConnect(conn, true)
 
-	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-		return nil, err
+	if err = request.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
+		return
 	}
-	if err = packet.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-		return nil, err
-	}
-	if packet.ResultCode != proto.OpOk {
-		var msg = string(packet.Data[:packet.Size])
-		switch {
-		case strings.Contains(msg, proto.ExtentNotFoundError.Error()), strings.Contains(msg, io.EOF.Error()):
-			return nil, innerErrorFetchDoData
-		case strings.Contains(msg, proto.ErrOperationDisabled.Error()):
-			return nil, innerErrorFetchRejected
-		default:
+	var fileOffset int64 = 0
+
+	var buf = make([]byte, unit.BlockSize)
+	var getReplyDataBuffer = func(size uint32) []byte {
+		if int(size) > cap(buf) {
+			return make([]byte, size)
 		}
-		return nil, errors.New(string(packet.Data[:packet.Size]))
+		return buf[:size]
 	}
-	if uint64(packet.Size) < size {
-		return nil, innerErrorFetchDoData
+
+	var ieee = crc32.NewIEEE()
+	for remain > 0 {
+		reply := repl.NewPacket(context.Background())
+		if err = reply.ReadFromConnWithSpecifiedDataBuffer(conn, 60, getReplyDataBuffer); err != nil {
+			return
+		}
+
+		if reply.ResultCode != proto.OpOk {
+			var msg = string(reply.Data[:reply.Size])
+			switch {
+			case strings.Contains(msg, proto.ExtentNotFoundError.Error()), strings.Contains(msg, io.EOF.Error()):
+				return 0, false, nil
+			case strings.Contains(msg, proto.ErrOperationDisabled.Error()):
+				return 0, true, nil
+			default:
+			}
+			return 0, false, errors.New(msg)
+		}
+
+		// Write it to local extent file
+		var writeSize = int64(reply.Size)
+		if proto.IsTinyExtent(extentID) {
+			if isEmptyResponse := len(reply.Arg) > 0 && reply.Arg[0] == EmptyResponse; isEmptyResponse {
+				if reply.KernelOffset > 0 && reply.KernelOffset != uint64(crc32.ChecksumIEEE(reply.Arg)) {
+					return 0, false, errors.New("CRC mismatch")
+				}
+				writeSize = int64(binary.BigEndian.Uint64(reply.Arg[1:9]))
+				if err = f.Truncate(fileOffset + writeSize); err != nil {
+					return
+				}
+				for i := int64(0); i < writeSize; i++ {
+					if _, err = ieee.Write([]byte{0}); err != nil {
+						return 0, false, err
+					}
+				}
+				fileOffset += writeSize
+				remain -= writeSize
+				continue
+			}
+		}
+		if _, err = f.WriteAt(reply.Data[:reply.Size], fileOffset); err != nil {
+			return 0, false, err
+		}
+		if _, err = ieee.Write(reply.Data[:reply.Size]); err != nil {
+			return 0, false, err
+		}
+		fileOffset += int64(reply.Size)
+		remain -= int64(reply.Size)
 	}
-	return packet.Data[:packet.Size], nil
+	return ieee.Sum32(), false, nil
 }
 
-func (p *IssueProcessor) fetchRemoteTiny(host string, extentID, offset, size uint64, force bool) ([]byte, error) {
-	var err error
-	var packet = repl.NewTinyExtentRepairReadPacket(nil, p.partitionID, extentID, int(offset), int(size), force)
-	var conn *net.TCPConn
-	conn, err = gConnPool.GetConnect(host)
-	if err != nil {
-		return nil, err
-	}
-	defer gConnPool.PutConnect(conn, true)
-
-	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-		return nil, err
-	}
-	if err = packet.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-		return nil, err
-	}
-	if packet.ResultCode != proto.OpOk {
-		var msg = string(packet.Data[:packet.Size])
-		switch {
-		case strings.Contains(msg, proto.ExtentNotFoundError.Error()), strings.Contains(msg, io.EOF.Error()):
-			return nil, innerErrorFetchDoData
-		case strings.Contains(msg, proto.ErrOperationDisabled.Error()):
-			return nil, innerErrorFetchRejected
-		default:
-		}
-		return nil, errors.New(string(packet.Data[:packet.Size]))
-	}
-	if isEmptyResponse := len(packet.Arg) > 0 && packet.Arg[0] == EmptyResponse; isEmptyResponse {
-		return nil, nil
-	}
-	if uint64(packet.Size) < size {
-		return nil, innerErrorFetchDoData
-	}
-	return packet.Data[:packet.Size], nil
-}
-
-func (p *IssueProcessor) checkAndFixFragments(fragments []*IssueFragment) error {
-	var err error
+func (p *IssueProcessor) checkAndFixFragments(fragments []*IssueFragment) {
 	for _, fragment := range fragments {
 		if p.isStopped() {
-			return nil
+			return
 		}
-		err = p.checkAndFixFragment(fragment)
-		switch err {
-		case nil:
-			// 将修复成功和无法修复的片段移除待修复列表
-			if p.removeFragment(fragment) {
-				if err = p.persistIssueFragments(); err != nil {
-					return err
-				}
-			}
-		case ErrCannotFixFragment:
+		var success, err = p.checkAndFixFragment(fragment)
+		if err != nil {
+			log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix temporary and will be retry later", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
+			continue
+		}
+		if !success {
 			// 该数据片段无法修复，进行报警
 			log.LogCriticalf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
 			exporter.Warning(fmt.Sprintf("CAN NOT FIX BROKEN EXTENT!\n"+
@@ -350,173 +319,262 @@ func (p *IssueProcessor) checkAndFixFragments(fragments []*IssueFragment) error 
 				"Offset: %v\n"+
 				"Size: %v",
 				p.partitionID, fragment.extentID, fragment.offset, fragment.size))
-		default:
-			log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix temporary and will be retry later", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
+			continue
+		}
+		if p.removeFragment(fragment) {
+			if err = p.recordFixedFragment(fragment); err != nil {
+				log.LogWarnf("IssueProcessor: record fixed fragment failed: %v", err)
+			}
+			if err = p.persistIssueFragments(); err != nil {
+				log.LogErrorf("IssueProcessor: persist issue fragments failed: %v", err)
+			}
 		}
 	}
-	return nil
+	return
 }
 
-func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) error {
+// 使用可信副本策略对指定数据片段进行修复
+func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string, localCrc uint32, fragment *IssueFragment) (success bool, err error) {
 	var (
-		err error
-
-		extentID = fragment.extentID
-		offset   = fragment.offset
-		size     = fragment.size
+		extentID         = fragment.extentID
+		offset           = fragment.offset
+		size             = fragment.size
+		rejects          int
+		failures         int
+		tempFiles        = make([]*os.File, 0, len(hosts))
+		registerTempFile = func(f *os.File) {
+			tempFiles = append(tempFiles, f)
+		}
 	)
+
+	defer func() {
+		for _, tempFile := range tempFiles {
+			_ = tempFile.Close()
+			_ = os.Remove(tempFile.Name())
+		}
+	}()
+	for _, host := range hosts {
+		var tempFile *os.File
+		if tempFile, err = p.createRepairTmpFile(host, extentID, offset, size); err != nil {
+			return false, err
+		}
+		registerTempFile(tempFile)
+		var remoteCRC, rejected, fetchedErr = p.fetchRemoteDataToLocalFile(tempFile, host, extentID, offset, size, false)
+		if fetchedErr != nil {
+			failures++
+			continue
+		}
+		if rejected {
+			rejects++
+			continue
+		}
+		if remoteCRC == 0 {
+			continue
+		}
+		if remoteCRC != localCrc {
+			if err = p.applyTempFileToExtent(tempFile, extentID, offset, size); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
+	}
+	if failures > 0 {
+		// 存在失败远端，稍后重试
+		return false, errors.New("failure count larger than 0")
+	}
+	if rejects == 0 {
+		// 所有远端均汇报无数据, 无需修复
+		return true, nil
+	}
+	// 当前修复策略无法认定数据是否安全及进行修复, 由下一个策略继续处理
+	return false, nil
+}
+
+// 使用超半数版本策略对制定数据片段进行修复
+func (p *IssueProcessor) checkAndFixFragmentByQuorumVersionPolicy(hosts []string, localCrc uint32, fragment *IssueFragment) (success bool, err error) {
 	var (
-		localData []byte
-		localCrc  uint32
+		extentID         = fragment.extentID
+		offset           = fragment.offset
+		size             = fragment.size
+		failures         int
+		versions         = make(map[uint32][]*os.File) // crc -> temp files
+		tempFiles        = make([]*os.File, 0, len(hosts))
+		registerTempFile = func(f *os.File) {
+			tempFiles = append(tempFiles, f)
+		}
 	)
-	if proto.IsTinyExtent(extentID) {
-		localData, err = p.fetchLocalTiny(extentID, offset, fragment.size)
-	} else {
-		localData, err = p.fetchLocal(extentID, offset, fragment.size)
-	}
-	switch {
-	case err == innerErrorFetchDoData:
-		return nil // Local doest not exists specified extent or fragment, no need to fix.
-	case err != nil:
-		log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch local data failed: %v",
-			p.partitionID, extentID, offset, size, err)
-		return ErrPendingFixFragment
-	default:
-	}
 
-	if len(localData) != 0 {
-		localCrc = crc32.ChecksumIEEE(localData)
+	defer func() {
+		for _, tempFile := range tempFiles {
+			_ = tempFile.Close()
+			_ = os.Remove(tempFile.Name())
+		}
+	}()
+	// 从远端收集数据
+	for _, host := range hosts {
+		var tempFile *os.File
+		if tempFile, err = p.createRepairTmpFile(host, extentID, offset, size); err != nil {
+			return false, err
+		}
+		registerTempFile(tempFile)
+		var remoteCRC, _, fetchedErr = p.fetchRemoteDataToLocalFile(tempFile, host, extentID, offset, size, true)
+		if fetchedErr != nil {
+			failures++
+			continue
+		}
+		versions[remoteCRC] = append(versions[remoteCRC], tempFile)
 	}
-
-	// Step 1.
-	// 首先使用可信数据机制进行修复
-	// 可信数据机制，由于远端已经组织了对疑似损坏的数据的读请求，所以成功读到的任何一个副本数据都可以认为是正确的。
-	// 只需要和本地数据比较确认数据覆盖以及进行报警即可.
-	var remoteHosts = p.getRemoteHosts()
-	var (
-		noDataErrorCnt  int
-		disableErrorCnt int
-		otherErrorCnt   int
-	)
-	for _, remote := range remoteHosts {
-		var (
-			remoteData []byte
-			fetchErr   error
-		)
-		if proto.IsTinyExtent(fragment.extentID) {
-			remoteData, fetchErr = p.fetchRemoteTiny(remote, extentID, offset, size, false)
-		} else {
-			remoteData, fetchErr = p.fetchRemote(remote, extentID, offset, size, false)
-		}
-		switch {
-		case fetchErr == nil && len(remoteData) > 0:
-			// 成功获取到有效的可信副本数据
-			var remoteCrc = crc32.ChecksumIEEE(remoteData)
-			if remoteCrc != localCrc {
-				// 本地数据与可信副本数据存在差异，使用可信副本数据覆盖本地数据。
-				if err = p.storage.Write(context.Background(), extentID, int64(offset), int64(size), remoteData, remoteCrc, storage.RandomWriteType, true); err != nil {
-					// 覆盖本地数据时出错，延迟修复
-					log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) failed: %v", p.partitionID, extentID, offset, size, localCrc, remoteCrc, err)
-					return ErrPendingFixFragment
-				}
-				log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) success", p.partitionID, extentID, offset, size, localCrc, remoteCrc)
-				return nil
-			}
-			// 本地数据和可信副本数据一致，不需要修改。直接通知上层数据完成修复。
-			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) no need to fix cause CRC same with safety remote(%v)", p.partitionID, extentID, offset, size, remote)
-			return nil
-		case fetchErr == nil && len(remoteData) == 0, fetchErr == innerErrorFetchDoData:
-			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) does not fetched enough data from remote(%v) ", p.partitionID, extentID, offset, size, remote)
-			noDataErrorCnt++
-		case fetchErr == innerErrorFetchRejected:
-			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch data rejected by remote(%v)", p.partitionID, extentID, offset, size, remote)
-			disableErrorCnt++
-		default:
-			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fetch data failed from remote(%v): %v", p.partitionID, extentID, offset, size, remote, fetchErr)
-			otherErrorCnt++
-		}
-	}
-	switch {
-	case noDataErrorCnt == len(remoteHosts):
-		// 除本地外的所有副本均汇报无该段数据，则认定本地数据无需修复
-		log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) no need to fix cause all remote report no exists", p.partitionID, extentID, offset, size)
-		return nil
-	case otherErrorCnt > 0:
-		// 存在暂时无法响应的副本, 延迟重试
-		return ErrPendingFixFragment
-	default:
-	}
-
-	// Step 2.
-	// 所有副本均响应但均无法响应有效数据，进入Quorum比对数据机制，通过强制拉取副本数据并汇总复制组数据版本，比较出超半数版本，以超半数版本进行修复。
-	var dataRefs = make(map[uint32]*dataRef)
-	dataRefs[localCrc] = &dataRef{
-		data: localData,
-		ref:  1,
-	}
-	for _, remote := range remoteHosts {
-		var (
-			remoteData []byte
-			fetchErr   error
-		)
-		if proto.IsTinyExtent(fragment.extentID) {
-			remoteData, fetchErr = p.fetchRemoteTiny(remote, extentID, offset, size, true)
-		} else {
-			remoteData, fetchErr = p.fetchRemote(remote, extentID, offset, size, true)
-		}
-		switch {
-		case fetchErr == nil:
-		case fetchErr == innerErrorFetchDoData:
-			remoteData = nil
-		case fetchErr != nil:
-			return ErrPendingFixFragment
-		}
-		var remoteCrc uint32
-		if len(remoteData) > 0 {
-			remoteCrc = crc32.ChecksumIEEE(remoteData)
-		}
-		ref, found := dataRefs[remoteCrc]
-		if !found {
-			dataRefs[remoteCrc] = &dataRef{
-				data: remoteData,
-				ref:  1,
-			}
-		} else {
-			ref.ref++
-		}
-	}
-
-	log.LogWarnf("checkAndFixFragment: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) collected data ref: %v",
-		p.partitionID, extentID, offset, size, func() string {
-			var sb = strings.Builder{}
-			for crc, ref := range dataRefs {
-				if sb.Len() > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(fmt.Sprintf("CRC(%v)_Ref(%v)", crc, ref.ref))
-			}
-			return sb.String()
-		}())
-
-	var quorum = (len(remoteHosts)+1)/2 + 1
-	for crc, ref := range dataRefs {
-		if ref.ref >= quorum {
+	var quorum = (len(hosts)+1)/2 + 1
+	for crc, files := range versions {
+		if len(files) >= quorum {
 			// 找到了超半数版本, 使用该版本数据
 			if crc != 0 && crc != localCrc {
 				// 仅在目标数据非空洞且有效长度超过本地数据的情况下进行修复
-				if err = p.storage.Write(context.Background(), extentID, int64(offset), int64(size), ref.data[:size], crc, storage.RandomWriteType, true); err != nil {
+				if err = p.applyTempFileToExtent(files[0], extentID, offset, size); err != nil {
 					// 覆盖本地数据时出错，延迟修复
 					log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) failed: %v", p.partitionID, extentID, offset, size, localCrc, crc, err)
-					return ErrPendingFixFragment
+					return false, err
 				}
 			}
 			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) skip fix cause quorum version same as local or empty.", p.partitionID, extentID, offset, size)
-			return nil
+			return true, nil
 		}
 	}
 	log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not determine correct data by quorum",
 		p.partitionID, extentID, offset, size)
-	return ErrCannotFixFragment
+	return false, nil
+}
+
+func (p *IssueProcessor) applyTempFileToExtent(f *os.File, extentID, offset, size uint64) (err error) {
+
+	var (
+		tempFileOffset int64
+		extentOffset   = int64(offset)
+		buf            = make([]byte, unit.BlockSize)
+		remain         = int64(size)
+	)
+	for remain > 0 {
+		var readSize = remain
+		if proto.IsTinyExtent(extentID) {
+			var nextDataOff int64
+			if nextDataOff, err = p.getFileNextDataPos(f, tempFileOffset); err != nil {
+				return
+			}
+			if nextDataOff != tempFileOffset {
+				var holeSize = nextDataOff - tempFileOffset
+				remain -= holeSize
+				tempFileOffset += holeSize
+				extentOffset += holeSize
+				continue
+			}
+			var nextHoleOff int64
+			if nextHoleOff, err = p.getFileNextHolePos(f, tempFileOffset); err != nil {
+				return
+			}
+			if nextHoleOff != tempFileOffset {
+				readSize = int64(math.Min(float64(readSize), float64(nextHoleOff-tempFileOffset)))
+			}
+		}
+		readSize = int64(math.Min(float64(readSize), float64(unit.BlockSize)))
+		if _, err = f.ReadAt(buf[:readSize], tempFileOffset); err != nil {
+			return
+		}
+		var crc = crc32.ChecksumIEEE(buf[:readSize])
+		if err = p.storage.Write(context.Background(), extentID, extentOffset, readSize, buf[:readSize], crc, storage.RandomWriteType, true); err != nil {
+			return
+		}
+		remain -= readSize
+		tempFileOffset += readSize
+		extentOffset += readSize
+	}
+	return
+}
+
+func (p *IssueProcessor) getFileNextDataPos(f *os.File, offset int64) (nextDataOffset int64, err error) {
+	const (
+		SEEK_DATA = 3
+	)
+	nextDataOffset, err = f.Seek(offset, SEEK_DATA)
+	defer func() {
+		if err != nil && strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+			nextDataOffset = offset
+			err = nil
+		}
+	}()
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (p *IssueProcessor) getFileNextHolePos(f *os.File, offset int64) (nextHoleOffset int64, err error) {
+	const (
+		SEEK_HOLE = 4
+	)
+	nextHoleOffset, err = f.Seek(offset, SEEK_HOLE)
+	defer func() {
+		if err != nil && strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+			nextHoleOffset = offset
+			err = nil
+		}
+	}()
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (p *IssueProcessor) createRepairTmpFile(host string, extentID, offset, size uint64) (f *os.File, err error) {
+	var repairTempPath = path.Join(p.path, ".temp")
+	if err = os.MkdirAll(repairTempPath, 0777); err != nil {
+		return
+	}
+	var repairTempFilepath = path.Join(repairTempPath, fmt.Sprintf("%v_%v_%v_%v", extentID, offset, size, host))
+	if f, err = os.OpenFile(repairTempFilepath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666); err != nil {
+		return
+	}
+	return
+}
+
+func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) (success bool, err error) {
+	var localCrc uint32
+	localCrc, err = p.computeLocalCRC(fragment)
+	if err != nil {
+		log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) compute local CRC failed: %v",
+			p.partitionID, fragment.extentID, fragment.offset, fragment.size, err)
+		return false, err
+	}
+	if localCrc == 0 {
+		// 本地数据不存在, 跳过修复
+		return true, nil
+	}
+
+	type Policy struct {
+		name    string
+		handler func(hosts []string, localCrc uint32, fragment *IssueFragment) (success bool, err error)
+	}
+
+	var policies = []Policy{
+		{name: "TrustVersion", handler: p.checkAndFixFragmentByTrustVersionPolicy},
+		{name: "QuorumVersion", handler: p.checkAndFixFragmentByQuorumVersionPolicy},
+	}
+
+	var remoteHosts = p.getRemoteHosts()
+	for _, policy := range policies {
+		if success, err = policy.handler(remoteHosts, localCrc, fragment); err != nil {
+			log.LogErrorf("IssueProcessor: Policy(%v) fixes Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) failed: %v",
+				policy.name, fragment.extentID, fragment.offset, fragment.size, err)
+			return false, err
+		}
+		if success {
+			log.LogWarnf("IssueProcessor: Policy(%v) fixes Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) success",
+				policy.name, fragment.extentID, fragment.offset, fragment.size)
+			return true, nil
+		}
+	}
+
+	// 所有策略均无法修复目标
+	return false, nil
 }
 
 func (p *IssueProcessor) loadIssueFragments() (err error) {
@@ -604,6 +662,21 @@ func (p *IssueProcessor) persistIssueFragments() (err error) {
 	}
 	_ = tmpFile.Close()
 	err = os.Rename(tmpFilepath, originalFilepath)
+	return
+}
+
+func (p *IssueProcessor) recordFixedFragment(fragment *IssueFragment) (err error) {
+	var recordFilename = path.Join(p.path, fixedIssueFragmentsFilename)
+	var file *os.File
+	if file, err = os.OpenFile(recordFilename, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
+		return
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+	if _, err = file.Write([]byte(fmt.Sprintf("%v_%v_%v\n", fragment.extentID, fragment.offset, fragment.size))); err != nil {
+		return
+	}
 	return
 }
 
