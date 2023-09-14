@@ -1646,6 +1646,7 @@ func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err err
 }
 
 func (partition *DataPartition) needRollback(c *Cluster) bool {
+	log.LogDebugf("action[needRollback]dp[%v]DecommissionNeedRollbackTimes[%v]", partition.PartitionID, partition.DecommissionNeedRollbackTimes)
 	//failed by error except add replica or create dp or repair dp
 	if !partition.DecommissionNeedRollback {
 		return false
@@ -1656,11 +1657,22 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		return false
 	}
 	if partition.DecommissionNeedRollbackTimes >= defaultDecommissionRollbackLimit {
+		log.LogDebugf("action[needRollback]try add delete replica, dp[%v]DecommissionNeedRollbackTimes[%v]",
+			partition.PartitionID, partition.DecommissionNeedRollbackTimes)
+		err := c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
+		if err != nil {
+			log.LogWarnf("action[needRollback]dp[%v] rollback to del replica[%v] failed:%v",
+				partition.PartitionID, partition.DecommissionDstAddr, err.Error())
+		}
 		//recover decommission src replica
-		err := c.addDataReplica(partition, partition.DecommissionSrcAddr)
+		log.LogDebugf("action[needRollback]try add src replica, dp[%v]DecommissionNeedRollbackTimes[%v]",
+			partition.PartitionID, partition.DecommissionNeedRollbackTimes)
+		err = c.addDataReplica(partition, partition.DecommissionSrcAddr)
 		if err != nil {
 			log.LogWarnf("action[needRollback]dp[%v] recover decommission src replica failed", partition.PartitionID)
 		}
+		partition.ResetDecommissionStatus()
+		partition.SetDecommissionStatus(DecommissionFail)
 		return false
 	}
 	return true
