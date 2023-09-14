@@ -1709,6 +1709,8 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
 				partition.PartitionID, partition.DecommissionDstAddr, err)
 		}
+		partition.ResetDecommissionStatus()
+		partition.SetDecommissionStatus(DecommissionFail)
 		return false
 	}
 	return true

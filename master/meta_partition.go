@@ -550,8 +550,13 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 					"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 					clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 				Warn(clusterID, msg)
+<<<<<<< HEAD
 				// msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
 				// Warn(clusterID, msg)
+=======
+				//msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
+				//Warn(clusterID, msg)
+>>>>>>> cd393e231... bugfix(master):1.if no disk to decommission,datanode reset to initial 2. if dp reach max retry times, delete the added replica and add the source replica.
 				if WarnMetrics != nil {
 					WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
 				}
