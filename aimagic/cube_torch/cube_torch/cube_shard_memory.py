@@ -74,6 +74,8 @@ class SlotCache:
         content = bytes(data[item_offset:item_offset + file_content_size])
         item = CubeDownloadItem(actual_file_path, content, int(time.time()))
         self.shard_bytes_arr[offset:offset + 8] = self.default_avali_value
+
+
         return item
 
 

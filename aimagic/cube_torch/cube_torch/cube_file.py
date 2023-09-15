@@ -49,9 +49,9 @@ def intercept_torch_load(func):
         is_cache = cube_item is not None
         CubeFileOpenInterceptor.add_count(is_cache)
         if not is_cache:
-            result = builtins_torch_load(*args, **kwargs)
+            result = func(*args, **kwargs)
         else:
-            result = builtins_torch_load(cube_item, **kwargs)
+            result = func(cube_item, **kwargs)
         return result
 
     return wrapper

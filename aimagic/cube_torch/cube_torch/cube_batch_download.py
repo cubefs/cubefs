@@ -111,7 +111,7 @@ class CubeBatchDownloader:
                 self.add_cube_item(item)
 
         except Exception as e:
-            print("url:{} parse content error:{}".format(url, e))
+            print("url:{} parse content error:{} start:{} sum_content:{}".format(url, e,start,sum_content))
 
     def add_cube_item(self, cube_item: CubeDownloadItem):
         encode_data = cube_item.encode()
@@ -138,7 +138,7 @@ class CubeBatchDownloader:
     def batch_download(self, index_list):
         try:
             data = json.dumps(index_list)
-            with requests.post(self.batch_download_addr, data=data, timeout=100) as response:
+            with requests.post(self.batch_download_addr, data=data, timeout=100,headers={'Content-Type': 'application/octet-stream'}) as response:
                 content = response.content
                 if response.status_code != 200:
                     raise ValueError(

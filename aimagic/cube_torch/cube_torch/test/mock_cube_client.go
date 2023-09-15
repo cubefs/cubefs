@@ -44,6 +44,7 @@ func batchDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	w.Header().Set("Content-Type", "application/octet-stream")
 
 	binary.Write(w, binary.BigEndian, uint64(1))
 	binary.Write(w, binary.BigEndian, uint64(len(train_paths[0])))

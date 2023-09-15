@@ -47,7 +47,7 @@ def start_worker_test_concatDataset(i):
     train_dataset = ConcatDataset(datasets)
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=215, shuffle=True,
+        train_dataset, batch_size=20, shuffle=True,
         num_workers=5)
     epoch = 0
     while True:
