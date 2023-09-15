@@ -75,10 +75,10 @@ func NewRocksDBStoreAndRecovery(dir string, lruCacheSize, writeBufferSize int) (
 	if !fileutil.ExistDir(dir) && fileutil.ExistDir(recoverDir) {
 		// we move temp dir to rocksdb dir for commiting transaction
 		if err = os.Rename(recoverDir, dir); err != nil {
-			log.LogErrorf("failed to rename rocksdb recovery dir %v", err.Error())
+			log.LogErrorf("action[NewRocksDBStoreAndRecovery]failed to rename rocksdb recovery dir %v", err.Error())
 			return
 		}
-		log.LogDebug("recovery rocksdb success")
+		log.LogDebug("action[NewRocksDBStoreAndRecovery]recovery rocksdb success")
 	} else if err = os.MkdirAll(dir, os.ModePerm); err != nil {
 		return
 	}
