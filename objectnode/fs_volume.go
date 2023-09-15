@@ -24,6 +24,7 @@ import (
 	"hash"
 	"io"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -805,7 +806,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	// apply new inode to dentry
-	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
+	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode, false)
 	if err != nil {
 		log.LogErrorf("PutObject: apply new inode to dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 			parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
@@ -819,7 +820,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	return fsInfo, nil
 }
 
-func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) (err error) {
+func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64, isCompleteMultipart bool) (err error) {
 	var existMode uint32
 	_, existMode, err = v.mw.Lookup_ll(parentId, name) // exist object inode
 	if err != nil && err != syscall.ENOENT {
@@ -842,10 +843,10 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) 
 			err = syscall.EINVAL
 			return
 		}
-		// current implementation dosen't support object versioning, so uploading a object with a key already existed in bucket
+		// current implementation doesn't support object versioning, so uploading a object with a key already existed in bucket
 		// is implemented with replacing the old one instead.
 		// refer: https://docs.aws.amazon.com/AmazonS3/latest/userguide/upload-objects.html
-		if err = v.applyInodeToExistDentry(parentId, name, inode); err != nil {
+		if err = v.applyInodeToExistDentry(parentId, name, inode, isCompleteMultipart); err != nil {
 			log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 				parentId, name, inode, err)
 			return
@@ -1298,7 +1299,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	}
 
 	// apply new inode to dentry
-	if err = v.applyInodeToDEntry(parentId, filename, completeInodeInfo.Inode); err != nil {
+	if err = v.applyInodeToDEntry(parentId, filename, completeInodeInfo.Inode, true); err != nil {
 		log.LogErrorf("CompleteMultipart: apply inode to dentry fail: volume(%v) multipartID(%v) parentId(%v) "+
 			"fileName(%v) inode(%v) err(%v)", v.name, multipartID, parentId, filename, completeInodeInfo.Inode, err)
 		return
@@ -1465,7 +1466,7 @@ func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint6
 	return
 }
 
-func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uint64) (err error) {
+func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uint64, isCompleteMultipart bool) (err error) {
 	var oldInode uint64
 	oldInode, err = v.mw.DentryUpdate_ll(parentID, name, inode)
 	if err != nil {
@@ -1477,6 +1478,19 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 	if oldInode == 0 {
 		log.LogWarnf("applyInodeToExistDentry: dentry update the same inode: inode(%v)", inode)
 		return
+	}
+
+	// concurrent completeMultipart request: temporary data security check
+	if isCompleteMultipart {
+		isSameExtent, err := v.referenceExtentKey(oldInode, inode)
+		if err != nil {
+			return err
+		}
+		if isSameExtent {
+			log.LogWarnf("applyInodeToExistDentry: concurrent completeMultipart: parentID(%v) name(%v) inode(%v)",
+				parentID, name, inode)
+			return nil
+		}
 	}
 
 	// unlink and evict old inode
@@ -2947,7 +2961,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}
 
 	// apply new inode to dentry
-	err = v.applyInodeToDEntry(tParentId, tLastName, tInodeInfo.Inode)
+	err = v.applyInodeToDEntry(tParentId, tLastName, tInodeInfo.Inode, false)
 	if err != nil {
 		log.LogErrorf("CopyFile: apply inode to new dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
 			targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
@@ -3135,4 +3149,44 @@ func safeConvertStrToUint16(str string) (uint16, error) {
 		return 0, err
 	}
 	return uint16(parsed), nil
+}
+
+func (v *Volume) referenceExtentKey(oldInode, inode uint64) (bool, error) {
+	// cold volume
+	if proto.IsCold(v.volType) {
+		_, _, _, oldObjExtents, err := v.mw.GetObjExtents(oldInode)
+		if err != nil {
+			log.LogErrorf("referenceExtentKey: meta get oldInode objextents fail: volume(%v) inode(%v) err(%v)",
+				v.name, oldInode, err)
+			return false, err
+		}
+		_, _, _, objExtents, err := v.mw.GetObjExtents(inode)
+		if err != nil {
+			log.LogErrorf("referenceExtentKey: meta get inode objextents fail: volume(%v) inode(%v) err(%v)",
+				v.name, inode, err)
+			return false, err
+		}
+		if reflect.DeepEqual(oldObjExtents, objExtents) {
+			return true, nil
+		}
+		return false, nil
+
+	}
+	// hot volume
+	_, _, oldExtents, err := v.mw.GetExtents(oldInode)
+	if err != nil {
+		log.LogErrorf("referenceExtentKey: meta get oldInode extents fail: volume(%v) inode(%v) err(%v)",
+			v.name, oldInode, err)
+		return false, err
+	}
+	_, _, extents, err := v.mw.GetExtents(inode)
+	if err != nil {
+		log.LogErrorf("referenceExtentKey: meta get inode objextents fail: volume(%v) inode(%v) err(%v)",
+			v.name, inode, err)
+		return false, err
+	}
+	if reflect.DeepEqual(oldExtents, extents) {
+		return true, nil
+	}
+	return false, nil
 }
