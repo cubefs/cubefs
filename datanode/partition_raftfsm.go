@@ -117,7 +117,7 @@ func (dp *DataPartition) handleRaftApplyMemberChange(confChange *raftproto.ConfC
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.persist(nil); err != nil {
+		if err = dp.persist(nil, false); err != nil {
 			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
 			return
 		}

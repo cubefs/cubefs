@@ -3,10 +3,12 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/time/rate"
 	"io/ioutil"
 	"os"
 	"path"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -23,8 +25,7 @@ func (dp *DataPartition) lockPersist() (release func()) {
 }
 
 func (dp *DataPartition) Flush() (err error) {
-	err = dp.persist(nil)
-	return
+	return dp.persist(nil, true)
 }
 
 // Persist 方法会执行以下操作:
@@ -34,15 +35,18 @@ func (dp *DataPartition) Flush() (err error) {
 // 4. 持久化DP的META信息, 主要用于持久化和Applied Index对应的LastTruncateID。
 // 若status参数为nil，则会使用调用该方法时WALApplyStatus状态
 
-func (dp *DataPartition) persist(status *WALApplyStatus) (err error) {
+func (dp *DataPartition) persist(status *WALApplyStatus, useFlushExtentsRateLimiter bool) (err error) {
 	var release = dp.lockPersist()
 	defer release()
 
 	if status == nil {
 		status = dp.applyStatus.Snap()
 	}
-
-	dp.forceFlushAllFD()
+	var flushExtentsLimitRater *rate.Limiter
+	if useFlushExtentsRateLimiter {
+		flushExtentsLimitRater = dp.disk.createFlushExtentsRater(atomic.LoadUint64(&dp.disk.forceFlushFDParallelism))
+	}
+	dp.forceFlushAllFD(flushExtentsLimitRater)
 
 	if dp.raftPartition != nil {
 		if err = dp.raftPartition.FlushWAL(false); err != nil {
@@ -181,6 +185,6 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	return
 }
 
-func (dp *DataPartition) forceFlushAllFD() (cnt int) {
-	return dp.extentStore.Flush()
+func (dp *DataPartition) forceFlushAllFD(limiter *rate.Limiter) (cnt int) {
+	return dp.extentStore.Flush(limiter)
 }

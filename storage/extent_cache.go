@@ -16,7 +16,10 @@ package storage
 
 import (
 	"container/list"
+	"context"
+	"golang.org/x/time/rate"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -268,18 +271,30 @@ func (cache *ExtentCache) ForceEvict(ratio Ratio) {
 	}
 }
 
-func (cache *ExtentCache) Flush() (cnt int) {
+func (cache *ExtentCache) Flush(limiter *rate.Limiter) (cnt int) {
 	cache.lock.RLock()
 	var extents = make([]*Extent, cache.extentList.Len())
 	var i int
 	for element := cache.extentList.Front(); element != nil; element = element.Next() {
 		var extent = element.Value.(*Extent)
+		if atomic.LoadInt32(&extent.modified) != 1 {
+			continue
+		}
 		extents[i] = extent
 		i++
 	}
 	cache.lock.RUnlock()
 	for _, e := range extents[:i] {
+		if limiter != nil {
+			bufSize := int(atomic.LoadInt64(&e.bufferedSize))
+			burst := limiter.Burst()
+			if bufSize > burst {
+				bufSize = burst
+			}
+			limiter.WaitN(context.Background(), bufSize)
+		}
 		_ = e.Flush()
+		atomic.StoreInt64(&e.bufferedSize, 0)
 	}
 	cnt = i
 	return

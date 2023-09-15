@@ -152,20 +152,20 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	repl.SetConnectPool(gConnPool)
 	log.LogErrorf("doStart parseConfig finish")
 	s.register(cfg)
-	log.LogErrorf("doStart register fininsh")
+	log.LogErrorf("doStart register finish")
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
 
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
 		return
 	}
-	log.LogErrorf("doStart startRaftServer fininsh")
+	log.LogErrorf("doStart startRaftServer finish")
 
 	// create space manager (disk, partition, etc.)
 	if err = s.startSpaceManager(cfg); err != nil {
 		return
 	}
-	log.LogErrorf("doStart startSpaceManager fininsh")
+	log.LogErrorf("doStart startSpaceManager finish")
 
 	// check local partition compare with master ,if lack,then not start
 	if err = s.checkLocalPartitionMatchWithMaster(); err != nil {
@@ -173,19 +173,19 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		exporter.Warning(err.Error())
 		return
 	}
-	log.LogErrorf("doStart checkLocalPartitionMatchWithMaster fininsh")
+	log.LogErrorf("doStart checkLocalPartitionMatchWithMaster finish")
 
 	// start tcp listening
 	if err = s.startTCPService(); err != nil {
 		return
 	}
 
-	log.LogErrorf("doStart startTCPService fininsh")
+	log.LogErrorf("doStart startTCPService finish")
 
 	// Start all loaded data partitions which managed by space manager,
 	// this operation will start raft partitions belong to data partitions.
 	s.space.StartPartitions()
-	log.LogErrorf("doStart start dataPartition raft  fininsh")
+	log.LogErrorf("doStart start dataPartition raft  finish")
 	go s.space.AsyncLoadExtent()
 
 	go s.registerHandler()

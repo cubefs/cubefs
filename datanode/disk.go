@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	"golang.org/x/time/rate"
 	"io/ioutil"
 	"path"
 	"regexp"
@@ -244,6 +245,9 @@ func (d *Disk) startFlushFPScheduler() {
 				}
 				d.RUnlock()
 				d.forcePersistPartitions(partitions)
+				if flushFDSecond > 0 {
+					forceFlushFDTicker.Reset(time.Duration(flushFDSecond) * time.Second)
+				}
 			}
 			if d.maybeUpdateFlushFDInterval(flushFDSecond) {
 				log.LogDebugf("action[startFlushFPScheduler] disk(%v) update ticker from(%v) to (%v)", d.Path, flushFDSecond, d.space.flushFDIntervalSec)
@@ -780,10 +784,19 @@ func (d *Disk) forcePersistPartitions(partitions []*DataPartition) {
 			log.LogErrorf("disk[%v] persist latest flush time failed: %v", d.Path, err)
 		}
 	}
-	if log.IsDebugEnabled() {
-		log.LogDebugf("disk[%v] flush partitions: %v/%v, elapsed %v",
+	if log.IsWarnEnabled() {
+		log.LogWarnf("disk[%v] flush partitions: %v/%v, elapsed %v",
 			d.Path, len(partitions)-int(atomic.LoadInt64(&failedCount)), len(partitions), time.Now().Sub(flushTime))
 	}
+}
+
+func (d *Disk) createFlushExtentsRater(parallelism uint64) *rate.Limiter {
+	if parallelism <= 0 {
+		parallelism = DefaultForceFlushFDParallelismOnDisk
+	}
+	flushFDQps := parallelism * DefaultForceFlushDataSizeOnEachDisk
+	flushExtentsRater := rate.NewLimiter(rate.Limit(flushFDQps), int(flushFDQps))
+	return flushExtentsRater
 }
 
 func (d *Disk) persistLatestFlushTime(unix int64) (err error) {

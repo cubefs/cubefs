@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"golang.org/x/time/rate"
 	"os"
 	"path"
 	"regexp"
@@ -522,7 +523,7 @@ func (s *ExtentStore) Close() {
 	}
 
 	// Release cache
-	s.cache.Flush()
+	s.cache.Flush(nil)
 	s.cache.Close()
 	s.tinyExtentDeleteFp.Sync()
 	s.tinyExtentDeleteFp.Close()
@@ -1149,8 +1150,8 @@ func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
 }
 
 // Flush 强制下刷存储引擎当前所有打开的FD，保证这些FD的数据在内核PageCache里的脏页全部回写.
-func (s *ExtentStore) Flush() (cnt int) {
-	return s.cache.Flush()
+func (s *ExtentStore) Flush(limiter *rate.Limiter) (cnt int) {
+	return s.cache.Flush(limiter)
 }
 
 func (s *ExtentStore) EvictExpiredNormalExtentDeleteCache(expireTime int64) {

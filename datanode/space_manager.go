@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	"github.com/tiglabs/raft/util"
 	"sync"
 	"time"
 
@@ -73,7 +74,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 
 func (manager *SpaceManager) AsyncLoadExtent() {
 	log.LogErrorf("start AsyncLoadAllPartitions ")
-	const maxParallelism = 64
+	const maxParallelism = 16
 	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
 	wg := sync.WaitGroup{}
 	partitionC := make(chan *DataPartition, parallelism)
@@ -608,6 +609,7 @@ const (
 	MaxDiskRepairTaskLimit               = 256
 	DefaultForceFlushFDSecond            = 10
 	DefaultForceFlushFDParallelismOnDisk = 5
+	DefaultForceFlushDataSizeOnEachDisk  = util.MB
 )
 
 func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {

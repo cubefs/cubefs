@@ -307,7 +307,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 			err = nil
 			if dp.isLeader { // primary does not need to wait repair
 				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-				if err = dp.persist(nil); err != nil {
+				if err = dp.persist(nil, true); err != nil {
 					log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
 					continue
@@ -344,7 +344,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-			if err = dp.persist(nil); err != nil {
+			if err = dp.persist(nil, true); err != nil {
 				log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
@@ -712,7 +712,7 @@ func (dp *DataPartition) LoadAppliedID() (applied uint64, err error) {
 func (dp *DataPartition) TruncateRaftWAL(id uint64) (err error) {
 	if dp.raftPartition != nil {
 		if _, success := dp.applyStatus.AdvanceTruncated(id); success {
-			if err = dp.persist(nil); err != nil {
+			if err = dp.persist(nil, true); err != nil {
 				log.LogErrorf("partition[%v] persisted metadata before truncate raft WAL failed: %v", dp.partitionID, id)
 				return
 			}

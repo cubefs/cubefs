@@ -84,7 +84,7 @@ func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 	}
 	p.Object = dp
 	if p.IsWriteOperation() || p.IsCreateExtentOperation() {
-		if dp.Used() > dp.Size() * 2 {
+		if dp.Used() > dp.Size()*2 {
 			err = storage.NoSpaceError
 			return
 		}

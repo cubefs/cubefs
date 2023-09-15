@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"testing"
 )
+
 var disk *Disk
 
 func init() {
@@ -21,7 +22,7 @@ func init() {
 			ForceEvictRatio: DiskForceEvictFDRatio,
 		}
 		spaceManager = &SpaceManager{
-			repairTaskLimitOnDisk: 0,
+			repairTaskLimitOnDisk:          0,
 			fixTinyDeleteRecordLimitOnDisk: 0,
 			dataNode: &DataNode{
 				localServerAddr: localNodeAddress,
@@ -201,7 +202,7 @@ func TestDataPartitionList(t *testing.T) {
 	var partitionIds []uint64
 	disk.partitionMap = make(map[uint64]*DataPartition)
 	for i := 0; i < 100; i++ {
-		pId:= uint64(i)+1
+		pId := uint64(i) + 1
 		partitionIds = append(partitionIds, pId)
 		dp := &DataPartition{
 			partitionID: pId,
@@ -315,7 +316,7 @@ func TestRestoreOnePartition(t *testing.T) {
 	MasterClient.AdminAPI().MockCreateDataPartition(localNodeAddress, dpId)
 	initDataPartitionUnderFile(uint64(dpId), applyId, dpDir)
 	defer func() {
-		removeUnderFile(ExpiredPartitionPrefix+dpDir)
+		removeUnderFile(ExpiredPartitionPrefix + dpDir)
 		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
 	}()
 	_ = disk.RestoreOnePartition(visitor, dpDir)
@@ -369,7 +370,7 @@ func TestIncReadErrCnt(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	total := incParallelNum*incNum
+	total := incParallelNum * incNum
 	if disk.ReadErrCnt != uint64(total) {
 		t.Fatalf("disk ReadErrCnt mismatch, ReadErrCnt except:%v, actual:%v", total, disk.ReadErrCnt)
 	}
@@ -393,7 +394,7 @@ func TestIncWriteErrCnt(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	total := incParallelNum*incNum
+	total := incParallelNum * incNum
 	if disk.WriteErrCnt != uint64(total) {
 		t.Fatalf("disk WriteErrCnt mismatch, WriteErrCnt except:%v, actual:%v", total, disk.WriteErrCnt)
 	}
@@ -410,7 +411,7 @@ func TestCanFinTinyDeleteRecord(t *testing.T) {
 	var limit uint64 = 10
 	disk.fixTinyDeleteRecordLimit = limit
 	var i uint64
-	for ; i < limit * 2; i++ {
+	for ; i < limit*2; i++ {
 		if i < limit {
 			if !disk.canFinTinyDeleteRecord() {
 				t.Fatal("")

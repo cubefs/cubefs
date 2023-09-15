@@ -43,13 +43,14 @@ const (
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
 type Extent struct {
-	file       *os.File
-	filePath   string
-	extentID   uint64
-	modifyTime int64
-	dataSize   int64
-	modified   int32
-	header     []byte
+	file         *os.File
+	filePath     string
+	extentID     uint64
+	modifyTime   int64
+	dataSize     int64
+	modified     int32
+	bufferedSize int64
+	header       []byte
 	sync.Mutex
 
 	ioInterceptor IOInterceptor
@@ -196,6 +197,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	defer func() {
 		if err == nil {
 			atomic.StoreInt32(&e.modified, 1)
+			atomic.AddInt64(&e.bufferedSize, size)
 		}
 	}()
 	if proto.IsTinyExtent(e.extentID) {

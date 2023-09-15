@@ -684,7 +684,7 @@ func (dp *DataPartition) Stop() {
 		dp.issueProcessor.Stop()
 		dp.extentStore.Close()
 		dp.stopRaft()
-		if err := dp.persist(nil); err != nil {
+		if err := dp.persist(nil, true); err != nil {
 			log.LogErrorf("persist partition [%v] failed when stop: %v", dp.partitionID, err)
 		}
 	})
