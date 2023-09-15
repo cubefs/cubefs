@@ -148,7 +148,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 
-	if m.rocksDBStore, err = raftstore_db.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+	if m.rocksDBStore, err = raftstore_db.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		return
 	}
 
@@ -192,6 +192,9 @@ func (m *Server) Shutdown() {
 		}
 	}
 	stat.CloseStat()
+	if m.rocksDBStore != nil {
+		m.rocksDBStore.Close()
+	}
 	m.wg.Done()
 }
 
