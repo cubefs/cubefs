@@ -324,6 +324,13 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool, allowD
 		return
 	}
 
+	//store applyid
+	if err = partition.storeAppliedID(partition.appliedID); err != nil {
+		log.LogErrorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
+			partition.partitionID, partition.appliedID, err)
+		return
+	}
+
 	disk.AttachDataPartition(partition)
 	dp = partition
 

@@ -150,7 +150,7 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 	}
 }
 
-//canSplit caller must be add lock
+// canSplit caller must be add lock
 func (mp *MetaPartition) canSplit(end uint64, metaPartitionInodeIdStep uint64) (err error) {
 	if end < mp.Start {
 		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
@@ -550,9 +550,9 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 					"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 					clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
 				Warn(clusterID, msg)
-				//msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
-				//Warn(clusterID, msg)
-				WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
+				if WarnMetrics != nil {
+					WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
+				}
 			}
 
 		} else {
