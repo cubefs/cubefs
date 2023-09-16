@@ -218,13 +218,14 @@ class CubeDataLoader(Generic[T_co]):
         notify_storage_worker_num = cube_dataset_info.get_notify_storage_worker_num()
         downloader = None
         if self.is_use_batch_download:
-            downloader = CubeBatchDownloader(batch_download_addr, cache_size)
+            downloader = CubeBatchDownloader(batch_download_addr, cache_size, notify_storage_worker_num)
             manager.__dict__[get_cube_batch_downloader_key(self._dataset_id)] = downloader
         ctx = multiprocessing.get_context("fork")
         for i in range(notify_storage_worker_num):
             e = multiprocessing.Event()
             w = ctx.Process(target=_loop_push_worker, args=(
-                self.wait_read_train_file_queue, cube_prefetch_addr, self.is_use_batch_download, self._dataset_id, e))
+                self.wait_read_train_file_queue, cube_prefetch_addr, self.is_use_batch_download, self._dataset_id, e,
+                i))
             w.daemon = True
             w.start()
             self._push_worker_loop_events.append(w)
@@ -591,7 +592,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         # It does not mean that a worker is dead. In case of `_persistent_workers`,
         # the worker will be reset to available in the next epoch.
         self._workers_status = [True for i in range(self._num_workers)]
-        # Reset the worker queue cycle so it resumes next epoch at worker 0
+        # Reset the worker input_queue cycle so it resumes next epoch at worker 0
 
         # We resume the prefetching in case it was enabled
         if not first_iter:
@@ -780,7 +781,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             else:
                 # while condition is false, i.e., pin_memory_thread died.
                 raise RuntimeError('Pin memory thread exited unexpectedly')
-            # In this case, `self._data_queue` is a `queue.Queue`,. But we don't
+            # In this case, `self._data_queue` is a `input_queue.Queue`,. But we don't
             # need to call `.task_done()` because we don't use `.join()`.
         else:
             while True:
@@ -859,7 +860,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
 
         # Signal termination to that specific worker.
         q = self._index_queues[worker_id]
-        # Indicate that no more data will be put on this queue by the current
+        # Indicate that no more data will be put on this input_queue by the current
         # process.
         q.put(None)
 

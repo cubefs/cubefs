@@ -47,7 +47,7 @@ def start_worker_test_concatDataset(i):
     train_dataset = ConcatDataset(datasets)
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=20, shuffle=True,
+        train_dataset, batch_size=205, shuffle=True,
         num_workers=5)
     epoch = 0
     while True:
@@ -59,14 +59,9 @@ def start_worker_test_concatDataset(i):
 
 
 def start_worker_test_Dataset(i):
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
-
-    traindir = "/home/guowl/testdata/data0"
     train_dataset = CustomDataSet()
-
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=215, shuffle=True,
+        train_dataset, batch_size=20, shuffle=True,
         num_workers=1)
     epoch = 0
     while True:
@@ -78,6 +73,6 @@ def start_worker_test_Dataset(i):
 
 
 if __name__ == '__main__':
-    w = multiprocessing.Process(target=start_worker_test_concatDataset, args=(1,))
+    w = multiprocessing.Process(target=start_worker_test_Dataset, args=(1,))
     w.daemon = False
     w.start()

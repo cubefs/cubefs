@@ -165,7 +165,8 @@ def get_cube_batch_downloader_key(dataset_id):
     return "{}_batch_downloader".format(dataset_id)
 
 
-def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, dataset_id, event):
+def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, dataset_id, event,
+                      worker_idx):
     downloader = None
     torch.set_num_threads(1)
     if is_use_batch_download:
@@ -175,7 +176,7 @@ def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_bat
             copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
             index_list = [copy_file_indexs]
             if is_use_batch_download:
-                downloader.batch_download_async(index_list)
+                downloader.batch_download_async(index_list, worker_idx)
             else:
                 _post_to_storage_async(index_list, cube_prefetch_addr)
         except queue.Empty:

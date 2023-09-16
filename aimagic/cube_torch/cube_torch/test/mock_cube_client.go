@@ -45,7 +45,7 @@ func batchDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-
+	w.Header().Set("Transfer-Encoding", "chunked")
 	binary.Write(w, binary.BigEndian, uint64(1))
 	binary.Write(w, binary.BigEndian, uint64(len(train_paths[0])))
 	readDownloadInfos := make([]*DownloadInfo, 0)
@@ -55,6 +55,7 @@ func batchDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		asyncReadCh <- di
 	}
 
+	flusher, _ := w.(http.Flusher)
 	for _, di := range readDownloadInfos {
 		pathErr := <-di.result
 		if pathErr != nil {
@@ -82,11 +83,7 @@ func batchDownloadHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(fmt.Sprintf("write error:%v", err))
 			break
 		}
-	}
-	if err == nil {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusBadRequest)
+		flusher.Flush()
 	}
 
 }
