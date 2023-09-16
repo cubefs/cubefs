@@ -79,6 +79,7 @@ type Wrapper struct {
 	LocalIp     string
 
 	minWriteAbleDataPartitionCnt int
+	verConfReadSeq               uint64
 	verReadSeq                   uint64
 	client                       *SimpleClientInfo
 }
@@ -110,8 +111,6 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 		return
 	}
 
-	w.verReadSeq = verReadSeq
-
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
 		return
@@ -134,17 +133,18 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 	if err = w.updateDataNodeStatus(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
 	}
-
+	w.verConfReadSeq = verReadSeq
 	if verReadSeq > 0 {
 		var verList *proto.VolVersionInfoList
 		if verList, err = w.mc.AdminAPI().GetVerList(volName); err != nil {
 			return
 		}
-		if err = w.CheckReadVerSeq(volName, verReadSeq, verList); err != nil {
+		if verReadSeq, err = w.CheckReadVerSeq(volName, verReadSeq, verList); err != nil {
 			log.LogErrorf("NewDataPartitionWrapper: init Read with ver [%v] error [%v]", verReadSeq, err)
 			return
 		}
 	}
+	w.verReadSeq = verReadSeq
 	go w.uploadFlowInfoByTick(client)
 	go w.update(client)
 	return
@@ -306,7 +306,7 @@ func (w *Wrapper) updateVerlist(client SimpleClientInfo) (err error) {
 	}
 
 	if w.verReadSeq > 0 {
-		if err = w.CheckReadVerSeq(w.volName, w.verReadSeq, verList); err != nil {
+		if _, err = w.CheckReadVerSeq(w.volName, w.verConfReadSeq, verList); err != nil {
 			log.LogFatalf("updateSimpleVolView: readSeq abnormal %v", err)
 		}
 		return
@@ -530,27 +530,45 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	return dp, nil
 }
 
-func (w *Wrapper) CheckReadVerSeq(volName string, verReadSeq uint64, verList *proto.VolVersionInfoList) error {
+func (w *Wrapper) GetReadVerSeq() uint64 {
+	return w.verReadSeq
+}
+
+func (w *Wrapper) CheckReadVerSeq(volName string, verReadSeq uint64, verList *proto.VolVersionInfoList) (readReadVer uint64, err error) {
 	w.Lock.RLock()
 	defer w.Lock.RUnlock()
 
 	log.LogInfof("action[CheckReadVerSeq] vol [%v] req seq [%v]", volName, verReadSeq)
 
+	readReadVer = verReadSeq
 	if verReadSeq == math.MaxUint64 {
 		verReadSeq = 0
 	}
-	for _, ver := range verList.VerList {
+
+	var (
+		id     int
+		ver    *proto.VolVersionInfo
+		verLen = len(verList.VerList)
+	)
+	for id, ver = range verList.VerList {
+		if id == verLen-1 {
+			err = fmt.Errorf("action[CheckReadVerSeq] readReadVer %v not found", readReadVer)
+			break
+		}
 		log.LogInfof("action[CheckReadVerSeq] ver %v,%v", ver.Ver, ver.Status)
 		if ver.Ver == verReadSeq {
 			if ver.Status != proto.VersionNormal {
-				return fmt.Errorf("action[CheckReadVerSeq] status %v not right", ver.Status)
+				err = fmt.Errorf("action[CheckReadVerSeq] status %v not right", ver.Status)
+				return
 			}
-			log.LogInfof("action[CheckReadVerSeq] get ver %v,%v", ver.Ver, ver.Status)
-			return nil
+			readReadVer = verList.VerList[id+1].Ver - 1
+			log.LogInfof("action[CheckReadVerSeq] get read ver %v", readReadVer)
+			return
 		}
 	}
-	return fmt.Errorf("not found read ver %v", verReadSeq)
 
+	err = fmt.Errorf("not found read ver %v", verReadSeq)
+	return
 }
 
 // WarningMsg returns the warning message that contains the cluster name.

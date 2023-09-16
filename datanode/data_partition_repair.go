@@ -497,7 +497,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	}
 	localExtentInfo, err := store.Watermark(remoteExtentInfo.FileID)
 	if err != nil {
-		log.LogDebugf("streamRepairExtent local v% remote info %v", localExtentInfo, remoteExtentInfo)
+		log.LogDebugf("streamRepairExtent local %v remote info %v", localExtentInfo, remoteExtentInfo)
 		return errors.Trace(err, "streamRepairExtent Watermark error")
 	}
 	log.LogDebugf("streamRepairExtent dp %v remote info %v,local %v", dp.partitionID, remoteExtentInfo, localExtentInfo)
@@ -507,7 +507,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 	}
 
 	if localExtentInfo.Size >= remoteExtentInfo.Size && localExtentInfo.SnapshotDataOff >= remoteExtentInfo.SnapshotDataOff {
-		log.LogDebugf("streamRepairExtent local v% remote info %v", localExtentInfo, remoteExtentInfo)
+		log.LogDebugf("streamRepairExtent local %v remote info %v", localExtentInfo, remoteExtentInfo)
 		return nil
 	}
 

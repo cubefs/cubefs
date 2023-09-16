@@ -269,7 +269,7 @@ retry:
 	client.volumeName = config.Volume
 	client.bcacheEnable = config.BcacheEnable
 	client.bcacheDir = config.BcacheDir
-	client.multiVerMgr.verReadSeq = config.VerReadSeq
+	client.multiVerMgr.verReadSeq = client.dataWrapper.GetReadVerSeq()
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache

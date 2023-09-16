@@ -280,6 +280,7 @@ const (
 	VersionDeleted        = 2
 	VersionDeleting       = 3
 	VersionDeleteAbnormal = 4
+	VersionPrepare        = 5
 )
 
 const (
