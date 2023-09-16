@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/unit"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -32,19 +31,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util/holder"
-	"github.com/tiglabs/raft/storage/wal"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/holder"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/statistics"
+	"github.com/cubefs/cubefs/util/unit"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
+	"github.com/tiglabs/raft/storage/wal"
 )
 
 const (
@@ -54,6 +53,7 @@ const (
 	ApplyIndexFile                = "APPLY"
 	TempApplyIndexFile            = ".apply"
 	TimeLayout                    = "2006-01-02 15:04:05"
+	ExtentReleasorDirName         = "releasor"
 )
 
 type FaultOccurredCheckLevel uint8
@@ -211,6 +211,7 @@ type DataPartition struct {
 	path            string
 	used            int
 	extentStore     *storage.ExtentStore
+	extentReleasor  *storage.ExtentReleasor
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
 
@@ -500,6 +501,10 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 	if err != nil {
 		return
 	}
+
+	if partition.extentReleasor, err = storage.NewExtentReleasor(path.Join(partition.path, ExtentReleasorDirName), partition.extentStore, false, nil); err != nil {
+		return
+	}
 	rand.Seed(time.Now().UnixNano())
 	partition.FullSyncTinyDeleteTime = time.Now().Unix() + rand.Int63n(3600*24)
 	partition.lastSyncTinyDeleteTime = partition.FullSyncTinyDeleteTime
@@ -683,6 +688,9 @@ func (dp *DataPartition) Stop() {
 		}
 		// Close the store and raftstore.
 		dp.issueProcessor.Stop()
+		if dp.extentReleasor != nil {
+			dp.extentReleasor.Stop()
+		}
 		dp.extentStore.Close()
 		dp.stopRaft()
 		if err := dp.persist(nil, true); err != nil {
@@ -710,6 +718,15 @@ func (dp *DataPartition) Delete() {
 		log.LogWarnf("action[Delete] raft instance not ready! dp:%v", dp.config.PartitionID)
 	}
 	_ = os.RemoveAll(dp.Path())
+}
+
+func (dp *DataPartition) MarkDelete(extentID, offset, size uint64) (err error) {
+	err = dp.extentReleasor.Submit(context.Background(), 0, extentID, offset, size)
+	return
+}
+
+func (dp *DataPartition) FlushDelete() (err error) {
+	return dp.extentReleasor.Apply(1)
 }
 
 func (dp *DataPartition) Expired() {
@@ -1417,9 +1434,9 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 	dp.extentStore.WalkExtentsInfo(func(info *storage.ExtentInfoBlock) {
 		if info[storage.Size] > 0 && time.Unix(int64(info[storage.ModifyTime]), 0).After(safetyTime) {
 			var (
-				extentID       = info[storage.FileID]
-				extentSize     = info[storage.Size]
-				extentOffset   = uint64(0)
+				extentID     = info[storage.FileID]
+				extentSize   = info[storage.Size]
+				extentOffset = uint64(0)
 			)
 			if proto.IsTinyExtent(extentID) {
 				var err error
@@ -1429,8 +1446,8 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 						return
 					}
 				}
-				if extentSize > 128 * unit.MB {
-					extentOffset = extentSize - 128 * unit.MB
+				if extentSize > 128*unit.MB {
+					extentOffset = extentSize - 128*unit.MB
 				}
 			}
 			fragments = append(fragments, &IssueFragment{

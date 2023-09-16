@@ -16,8 +16,8 @@ package datanode
 
 import (
 	"fmt"
-	"golang.org/x/time/rate"
 	"io/ioutil"
+	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -27,13 +27,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/errors"
-
-	"github.com/cubefs/cubefs/storage"
-
-	"os"
+	"github.com/cubefs/cubefs/util/async"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -111,6 +110,9 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, 
 	d.updateSpaceInfo()
 	d.latestFlushTimeOnInit, _ = d.loadLatestFlushTime()
 	d.startScheduler()
+	async.RunWorker(d.flushDeleteScheduler, func(i interface{}) {
+		log.LogCritical("Disk[%v] flush delete scheduler occurred panic: %v", path, i)
+	})
 	return
 }
 
@@ -302,6 +304,52 @@ func (d *Disk) startScheduler() {
 			}
 		}
 	}()
+}
+
+func (d *Disk) flushDeleteScheduler() {
+	var (
+		flushDeleteTimer = time.NewTimer(0)
+	)
+	for {
+		select {
+		case <-flushDeleteTimer.C:
+			d.flushDelete()
+			flushDeleteTimer.Reset(time.Minute * 5)
+		}
+	}
+}
+
+func (d *Disk) flushDelete() {
+	d.RLock()
+	var partitionCh = make(chan *DataPartition, len(d.partitionMap))
+	for _, partition := range d.partitionMap {
+		partitionCh <- partition
+	}
+	d.RUnlock()
+	close(partitionCh)
+
+	var wg = new(sync.WaitGroup)
+	var worker = func() {
+		defer wg.Done()
+		var (
+			err       error
+			partition *DataPartition
+		)
+		for {
+			if partition = <-partitionCh; partition == nil {
+				return
+			}
+			if err = partition.FlushDelete(); err != nil {
+				log.LogErrorf("DP[%v] flush delete failed: %v", partition.partitionID, err)
+			}
+		}
+	}
+
+	for i := 0; i < DefaultDeletionConcurrencyOnDisk; i++ {
+		wg.Add(1)
+		async.RunWorker(worker)
+	}
+	wg.Wait()
 }
 
 func (d *Disk) autoComputeExtentCrc() {

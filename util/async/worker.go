@@ -4,12 +4,14 @@ type WorkerFunc func()
 
 type PanicHandler func(interface{})
 
-func RunWorker(f WorkerFunc, handler PanicHandler) {
+func RunWorker(f WorkerFunc, handlers ...PanicHandler) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				if handler != nil{
-					handler(r)
+				for _, handler := range handlers {
+					if handler != nil {
+						handler(r)
+					}
 				}
 			}
 		}()
