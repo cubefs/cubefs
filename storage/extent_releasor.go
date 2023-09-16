@@ -10,6 +10,8 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,9 +22,12 @@ import (
 )
 
 var (
-	regexpRecordFile          = regexp.MustCompile("^DeletionRecord.(\\d){10}(.current)*$")
-	recordFileTimestampLayout = "2006010215"
-	recordEncodedLength       = 36 // crc=4,ino=8,extent=8,offset=8,Size=8
+	regexpRecordFile                = regexp.MustCompile("^DeletionRecord.(\\d){10}.((current)|(\\d){4})$")
+	regexpRecordFileArchive         = regexp.MustCompile("^DeletionRecord.(\\d){10}.(\\d){4}$")
+	regexpRecordFileCurrent         = regexp.MustCompile("^DeletionRecord.(\\d){10}.current$")
+	recordFileTimestampLayout       = "2006010215"
+	recordEncodedLength             = 36 // crc=4,ino=8,extent=8,offset=8,Size=8
+	maxRecordsOfFile          int64 = 10240
 
 	ErrIllegalRecordLength     = errors.New("illegal DeletionRecord length")
 	ErrIllegalRecordData       = errors.New("illegal DeletionRecord data")
@@ -50,18 +55,28 @@ func (r recordFileName) valid() bool {
 }
 
 func (r recordFileName) isArchived() bool {
-	return len(strings.Split(string(r), ".")) == 2
+	return regexpRecordFileArchive.MatchString(string(r))
+}
+
+func (r recordFileName) archivedNo() int {
+	if r.isArchived() {
+		var no, _ = strconv.Atoi(strings.Split(string(r), ".")[2])
+		return no
+	}
+	return -1
 }
 
 func (r recordFileName) isCurrent() bool {
-	return len(strings.Split(string(r), ".")) == 3
+	return regexpRecordFileCurrent.MatchString(string(r))
 }
 
-func (r recordFileName) toArchive() recordFileName {
-	if r.isCurrent() {
-		return recordFileName(strings.Join(strings.Split(string(r), ".")[:2], "."))
+func (r recordFileName) toArchive(no int) recordFileName {
+	if r.valid() {
+		parts := strings.Split(string(r), ".")[:2]
+		parts = append(parts, fmt.Sprintf("%04d", no))
+		return recordFileName(strings.Join(parts, "."))
 	}
-	return r
+	return recordFileName("")
 }
 
 func (r recordFileName) original() string {
@@ -144,6 +159,7 @@ type ExtentReleasor struct {
 	archivesMu  sync.RWMutex
 	current     recordFileName
 	propc       chan *record
+	rotatec     chan *async.Future
 	stopc       chan struct{}
 	stopOnce    sync.Once
 	workerWg    sync.WaitGroup
@@ -169,6 +185,9 @@ func (r *ExtentReleasor) start() (err error) {
 	}
 	var archives = make([]recordFileName, 0)
 	var current recordFileName
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
 	for _, entry := range entries {
 		rfn, is := parseRecordFileName(entry.Name())
 		if !is {
@@ -179,7 +198,11 @@ func (r *ExtentReleasor) start() (err error) {
 				current = rfn
 				continue
 			}
-			archived := rfn.toArchive()
+			var no = 0
+			if len(archives) > 0 && archives[len(archives)-1].timestamp() == rfn.timestamp() {
+				no = archives[len(archives)-1].archivedNo() + 1
+			}
+			archived := rfn.toArchive(no)
 			oldpath := path.Join(r.path, rfn.original())
 			newpath := path.Join(r.path, archived.original())
 			if err = os.Rename(oldpath, newpath); err != nil {
@@ -202,9 +225,9 @@ func (r *ExtentReleasor) start() (err error) {
 	return
 }
 
-func (r *ExtentReleasor) openRecordFile(rfn recordFileName) (*os.File, error) {
+func (r *ExtentReleasor) openRecordFile(rfn recordFileName) (fp *os.File, records int64, err error) {
 	if !rfn.valid() {
-		return nil, ErrInvalidRecordFile
+		return nil, 0, ErrInvalidRecordFile
 	}
 	var filepath = path.Join(r.path, rfn.original())
 	var flag int
@@ -213,7 +236,16 @@ func (r *ExtentReleasor) openRecordFile(rfn recordFileName) (*os.File, error) {
 	} else {
 		flag = os.O_RDONLY
 	}
-	return os.OpenFile(filepath, flag, 0666)
+	var file *os.File
+	if file, err = os.OpenFile(filepath, flag, 0666); err != nil {
+		return nil, 0, err
+	}
+	var info os.FileInfo
+	if info, err = file.Stat(); err != nil {
+		return nil, 0, err
+	}
+	records = info.Size() / int64(recordEncodedLength)
+	return file, records, nil
 }
 
 func (r *ExtentReleasor) recordWorker() {
@@ -227,6 +259,7 @@ func (r *ExtentReleasor) recordWorker() {
 		err              error
 		currentFp        *os.File
 		currentWr        *bufio.Writer
+		currentRecords   int64
 		buf              = make([]byte, recordEncodedLength)
 		checkRotateTimer *time.Timer
 	)
@@ -240,23 +273,13 @@ func (r *ExtentReleasor) recordWorker() {
 		}
 	}()
 
-	if !r.current.valid() {
-		r.current = newRecordFileName(time.Now(), true)
-	}
-
-	if currentFp, err = r.openRecordFile(r.current); err != nil {
-		panic(fmt.Sprintf("open record file failed: %v", err))
-	}
-
-	currentWr = bufio.NewWriter(currentFp)
-
-	var checkRotate = func(ts time.Time) error {
+	var checkRotate = func(ts time.Time, force bool) error {
 		var err error
 		var prev recordFileName
 		if !r.current.valid() {
 			r.current = newRecordFileName(ts, true)
 		}
-		if ts.Sub(r.current.timestamp()) >= time.Hour {
+		if force || ts.Sub(r.current.timestamp()) >= time.Hour || currentRecords >= maxRecordsOfFile {
 			prev = r.current
 			if currentFp != nil {
 				if err = currentWr.Flush(); err != nil {
@@ -271,7 +294,13 @@ func (r *ExtentReleasor) recordWorker() {
 		}
 		if prev.valid() {
 			// 结转已触发
-			archived := prev.toArchive()
+			var no = 0
+			r.archivesMu.RLock()
+			if len(r.archives) > 0 && r.archives[len(r.archives)-1].timestamp() == prev.timestamp() {
+				no = r.archives[len(r.archives)-1].archivedNo() + 1
+			}
+			r.archivesMu.RUnlock()
+			archived := prev.toArchive(no)
 			if err = os.Rename(path.Join(r.path, prev.original()), path.Join(r.path, archived.original())); err != nil {
 				return err
 			}
@@ -280,7 +309,7 @@ func (r *ExtentReleasor) recordWorker() {
 			r.archivesMu.Unlock()
 		}
 		if currentFp == nil {
-			if currentFp, err = r.openRecordFile(r.current); err != nil {
+			if currentFp, currentRecords, err = r.openRecordFile(r.current); err != nil {
 				return err
 			}
 			currentWr = bufio.NewWriter(currentFp)
@@ -304,44 +333,58 @@ func (r *ExtentReleasor) recordWorker() {
 		return nil
 	}
 
-	var now = time.Now()
-	if err = checkRotate(now); err != nil {
+	var calcElapseToNextOnHourTime = func(t time.Time) time.Duration {
+		var (
+			secsInHour           int64 = 60 * 60
+			nextCheckRotateTsSec       = (t.Unix()/secsInHour + 1) * secsInHour
+			nextCheckRotateTime        = time.Unix(nextCheckRotateTsSec, 0)
+			elapse                     = nextCheckRotateTime.Sub(t)
+		)
+		return elapse
+	}
+
+	if err = checkRotate(time.Now(), false); err != nil {
 		panic(fmt.Sprintf("check rotate failed: %v", err))
 	}
 
 	// 计算距离下一个整小时还有多长时间, 并初始化负责唤起结转检查的定时器, 让下一个小时整点唤起结转检查.
-	var (
-		secsInHour           int64 = 60 * 60
-		nextCheckRotateTsSec       = (now.Unix()/secsInHour + 1) * secsInHour
-		nextCheckRotateTime        = time.Unix(nextCheckRotateTsSec, 0)
-		elapse                     = nextCheckRotateTime.Sub(now)
-	)
-	checkRotateTimer = time.NewTimer(elapse)
+	checkRotateTimer = time.NewTimer(calcElapseToNextOnHourTime(time.Now()))
 
 	for {
 		select {
 		case <-r.stopc:
 			return
+		case future := <-r.rotatec:
+			err = checkRotate(time.Now(), true)
+			future.Respond(nil, err)
 		case ts := <-checkRotateTimer.C:
-			if err = checkRotate(ts); err != nil {
+			if err = checkRotate(ts, false); err != nil {
 				panic(fmt.Sprintf("check rotate failed: %v", err))
 			}
-			checkRotateTimer.Reset(time.Hour)
+			checkRotateTimer.Reset(calcElapseToNextOnHourTime(time.Now()))
 		case record := <-r.propc:
 			// 每次批量处理尽可能多的记录，减少IO次数.
 			if err = writeRecord(record); err != nil {
 				panic(fmt.Sprintf("handle record failed: %v", err))
 			}
-			for i := 1; i < maxBatchSize; i++ {
+			currentRecords++
+			for i := 1; i < maxBatchSize && currentRecords < maxRecordsOfFile; i++ {
 				select {
 				case record := <-r.propc:
 					if err = writeRecord(record); err != nil {
 						panic(fmt.Sprintf("handle record failed: %v", err))
 					}
+					currentRecords++
 					continue
 				default:
 				}
 				break
+			}
+			if currentRecords >= maxRecordsOfFile {
+				if err = checkRotate(time.Now(), false); err != nil {
+					panic(fmt.Sprintf("check rotate failed: %v", err))
+				}
+				continue
 			}
 			if err = currentWr.Flush(); err != nil {
 				panic(fmt.Sprintf("handle record failed: %v", err))
@@ -478,7 +521,7 @@ func (r *ExtentReleasor) removeArchived(rf recordFileName) error {
 }
 
 func (r *ExtentReleasor) workerPanicHandler(i interface{}) {
-	log.LogCritical("ER[%v] occurred panic: %v", r.path, i)
+	log.LogCriticalf("ER[%v] occurred panic: %v", r.path, i)
 }
 
 func (r *ExtentReleasor) Submit(ctx context.Context, ino, extent, offset, size uint64) (err error) {
@@ -510,6 +553,20 @@ func (r *ExtentReleasor) Apply(maxArchives int) error {
 	return r.processArchives(maxArchives)
 }
 
+func (r *ExtentReleasor) Rotate() (err error) {
+	if r == nil {
+		return
+	}
+	future := async.NewFuture()
+	select {
+	case <-r.stopc:
+		return
+	case r.rotatec <- future:
+	}
+	_, err = future.Response()
+	return
+}
+
 func NewExtentReleasor(path string, storage *ExtentStore, autoApply bool, interceptor Interceptor) (releasor *ExtentReleasor, err error) {
 	if err = os.Mkdir(path, 0777); err != nil && !os.IsExist(err) {
 		return
@@ -518,6 +575,7 @@ func NewExtentReleasor(path string, storage *ExtentStore, autoApply bool, interc
 		path:        path,
 		storage:     storage,
 		propc:       make(chan *record, 128),
+		rotatec:     make(chan *async.Future, 1),
 		stopc:       make(chan struct{}),
 		interceptor: interceptor,
 		autoApply:   autoApply,
