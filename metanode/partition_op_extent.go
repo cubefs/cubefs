@@ -199,11 +199,15 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList, 
 		log.LogDebugf("checkVerList. vol %v mp %v ver info %v", mp.config.VolName, mp.config.PartitionId, info2)
 		vms, exist := verMapMaster[info2.Ver]
 		if !exist {
-			warn := fmt.Sprintf("[checkVerList] vol %v mp %v not found %v in master list", mp.config.VolName, mp.config.PartitionId, info2.Ver)
-			exporter.Warning(warn)
-			log.LogWarn(warn)
-			needUpdate = true
-			continue
+			// To mitigate the blocking risk caused by the confirmation of the prepare version and the master version,
+			// a version in the prepare phase is preliminarily considered as a valid version.
+			if info2.Status != proto.VersionPrepare {
+				warn := fmt.Sprintf("[checkVerList] vol %v mp %v not found %v in master list", mp.config.VolName, mp.config.PartitionId, info2.Ver)
+				exporter.Warning(warn)
+				log.LogWarn(warn)
+				needUpdate = true
+				continue
+			}
 		}
 		if info2.Status != proto.VersionNormal && info2.Status != vms.Status {
 			log.LogWarnf("checkVerList. vol %v mp %v ver %v status abnormal %v", mp.config.VolName, mp.config.PartitionId, info2.Ver, info2.Status)

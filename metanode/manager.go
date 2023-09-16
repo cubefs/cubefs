@@ -603,9 +603,11 @@ func (m *metadataManager) deletePartition(id uint64) (err error) {
 }
 
 // Range scans all the meta partitions.
-func (m *metadataManager) Range(f func(i uint64, p MetaPartition) bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+func (m *metadataManager) Range(needLock bool, f func(i uint64, p MetaPartition) bool) {
+	if needLock {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+	}
 	for k, v := range m.partitions {
 		if !f(k, v) {
 			return

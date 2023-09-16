@@ -21,6 +21,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -93,7 +94,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		// set cpu util and io used in here
 		resp.CpuUtil = m.cpuUtil.Load()
 
-		m.Range(func(id uint64, partition MetaPartition) bool {
+		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
 			m.checkForbiddenVolume(req.ForbiddenVols, partition)
 			partition.SetUidLimit(req.UidLimitInfo)
@@ -2278,7 +2279,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 	)
 
 	log.LogDebugf("checkVolVerList start")
-	m.Range(func(id uint64, partition MetaPartition) bool {
+	m.Range(false, func(id uint64, partition MetaPartition) bool {
 		volumeArr[partition.GetVolName()] = true
 		return true
 	})
@@ -2291,7 +2292,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 		}
 
 		log.LogDebugf("action[checkVolVerList] volumeName %v info %v", volName, info)
-		m.Range(func(id uint64, partition MetaPartition) bool {
+		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			if partition.GetVolName() != volName {
 				return true
 			}
@@ -2304,28 +2305,52 @@ func (m *metadataManager) checkVolVerList() (err error) {
 	return
 }
 
-func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op uint8) (err error) {
+func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op uint8, synchronize bool) (err error) {
 
 	log.LogWarnf("action[commitCreateVersion] volume %v seq %v", VolumeID, VerSeq)
-	m.Range(func(id uint64, partition MetaPartition) bool {
-		if partition.GetVolName() == VolumeID {
-			if _, ok := partition.IsLeader(); !ok {
-				return true
+
+	m.mu.RLock()
+	var wg sync.WaitGroup
+	wg.Add(len(m.partitions))
+	resultCh := make(chan error, len(m.partitions))
+	m.Range(false, func(id uint64, partition MetaPartition) bool {
+		go func() {
+			if partition.GetVolName() == VolumeID {
+				if _, ok := partition.IsLeader(); !ok {
+					wg.Done()
+					return
+				}
+				log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, id, VerSeq)
+				if err = partition.HandleVersionOp(Op, VerSeq, nil, synchronize); err != nil {
+					log.LogErrorf("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v err %v", VolumeID, id, VerSeq, err)
+					wg.Done()
+					resultCh <- err
+					return
+				}
 			}
-			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, id, VerSeq)
-			if err = partition.HandleVersionOp(Op, VerSeq, nil, false); err != nil {
-				return false
-			}
-			return true
-		}
+			wg.Done()
+			return
+		}()
 		return true
 	})
-	if err != nil {
-		log.LogErrorf("action[commitCreateVersion] %v mp  err %v do Decoder", VolumeID, err.Error())
-		return err
+	wg.Wait()
+	m.mu.RUnlock()
+
+	select {
+	case err = <-resultCh:
+		if err != nil {
+			close(resultCh)
+			return
+		}
+	default:
+		log.LogInfof("action[commitCreateVersion] volume %v do HandleVersionOp verseq %v finished", VolumeID, VerSeq)
 	}
 
 	if Op == proto.DeleteVersion {
+		return
+	}
+
+	if Op == proto.CreateVersionPrepare {
 		return
 	}
 
@@ -2430,7 +2455,7 @@ func (m *metadataManager) checkAndPromoteVersion(volName string) (err error) {
 				return
 			}
 			if info.VerPrepareStatus == proto.CreateVersionCommit {
-				if err = m.commitCreateVersion(volName, info.VerSeqPrepare, proto.CreateVersionCommit); err != nil {
+				if err = m.commitCreateVersion(volName, info.VerSeqPrepare, proto.CreateVersionCommit, false); err != nil {
 					log.LogErrorf("action[checkmultiSnap.multiVersionstatus] err %v", err)
 					return
 				}
@@ -2479,8 +2504,12 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err)
 			goto end
 		}
+		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, true); err != nil {
+			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
+			goto end
+		}
 	} else if req.Op == proto.CreateVersionCommit || req.Op == proto.DeleteVersion {
-		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op); err != nil {
+		if err = m.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, false); err != nil {
 			log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do commitCreateVersion", req.VolumeID, err.Error())
 			goto end
 		}
