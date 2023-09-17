@@ -70,7 +70,7 @@ type DiskInfo struct {
 
 func readConfig() (*Config, error) {
 
-	data, err := ioutil.ReadFile("config.yaml")
+	data, err := ioutil.ReadFile(ConfigFileName)
 	if err != nil {
 		log.Println("Unable to read configuration file:", err)
 		return nil, err
@@ -87,6 +87,11 @@ func readConfig() (*Config, error) {
 }
 
 func convertToJosn() error {
+
+	err := createFolder(ConfDir)
+	if err != nil {
+		return err
+	}
 	config, err := readConfig()
 	if err != nil {
 		return err

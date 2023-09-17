@@ -53,17 +53,6 @@ var startMasterCommand = &cobra.Command{
 	},
 }
 
-// func startALLFromDockerCompose() error {
-// 	scriptPath := "run_docker.sh"
-// 	args := []string{"-r", "-d", "/data/disk"}
-
-// 	err := runScript(scriptPath, args...)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	return nil
-// }
-
 var startFromDockerCompose = &cobra.Command{
 	Use:   "test",
 	Short: "start test for on node",
@@ -104,11 +93,7 @@ var startDatanodeCommand = &cobra.Command{
 		if cmd.Flags().Changed("ip") {
 			startDatanodeInSpecificNode(ip)
 			fmt.Println("start datanode in ", ip)
-			// if !cmd.Flags().Changed("disk") {
-			// 	fmt.Println("must have disk argument")
-			// 	os.Exit(1)
-			// }
-			// fmt.Println("disk:", datanodeDisk)
+
 		} else {
 			err := startAllDataNode()
 			if err != nil {

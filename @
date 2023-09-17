@@ -1,0 +1,77 @@
+"makefile and build.sh"
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Author:    leonrayang <chl696@sina.com>
+#
+# interactive rebase in progress; onto 683c7871
+# Last command done (1 command done):
+#    pick dd938e60 "makefile and build.sh"
+# No commands remaining.
+# You are currently rebasing branch 'master' on '683c7871'.
+#
+# Changes to be committed:
+#	modified:   deploy/cmd/cluster.go
+#	modified:   deploy/cmd/config.go
+#	modified:   deploy/cmd/datanode.go
+#	modified:   deploy/cmd/docker.go
+#	modified:   deploy/cmd/master.go
+#	modified:   deploy/cmd/metanode.go
+#	modified:   deploy/cmd/root.go
+#	modified:   deploy/cmd/ssh.go
+#	modified:   deploy/cmd/start.go
+#	modified:   deploy/cmd/start_docker_compose.go
+#	modified:   deploy/cmd/stop.go
+#	modified:   deploy/cmd/transform.go
+#	modified:   vendor/github.com/Shopify/sarama/Dockerfile.kafka
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/datadriven_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/quick_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/restore_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/joint_autoleave.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/joint_idempotency.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/joint_learners_next.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/joint_safety.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/simple_idempotency.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/simple_promote_demote.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/simple_safety.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/update.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/confchange/testdata/zero.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/diff_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/example_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/interaction_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/log_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/log_unstable_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/node_bench_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/node_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/quorum/bench_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/quorum/datadriven_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/quorum/quick_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/quorum/testdata/joint_commit.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/quorum/testdata/joint_vote.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/quorum/testdata/majority_commit.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/quorum/testdata/majority_vote.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/raft_flow_control_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/raft_paper_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/raft_snap_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/raft_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/raftpb/confstate_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/raftpb/raft_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/rawnode_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/storage_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/campaign.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/campaign_learner_must_vote.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/confchange_v1_add_single.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/confchange_v1_remove_leader.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/confchange_v2_add_double_auto.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/confchange_v2_add_double_implicit.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/confchange_v2_add_single_auto.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/confchange_v2_add_single_explicit.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/probe_and_replicate.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/testdata/snapshot_succeed_via_app_resp.txt
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/tracker/inflights_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/tracker/progress_test.go
+#	deleted:    vendor/go.etcd.io/etcd/raft/v3/util_test.go
+#	modified:   vendor/golang.org/x/net/http2/Dockerfile
+#	modified:   vendor/modules.txt
+#

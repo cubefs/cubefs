@@ -122,7 +122,7 @@ func startAllMaster() error {
 				dataDir = config.Master.Config.DataDir
 
 			}
-			err = transferConfigFileToRemote(confFilePath, dataDir+"/"+ConfDir, RemoteUser, data.IP)
+			err = transferConfigFileToRemote(confFilePath, dataDir+"/conf", RemoteUser, data.IP)
 			if err != nil {
 				return err
 			}
@@ -141,65 +141,6 @@ func startAllMaster() error {
 	log.Println("start all master services")
 	return nil
 }
-
-// func startAllMaster() error {
-
-// 	config, err := readConfig()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	for id, node := range config.DeployHostsList.Master.Hosts {
-// 		// peers := getMasterPeers(config)
-// 		// err := writeMaster(ClusterName, strconv.Itoa(id+1), node, config.Global.DataDir, config.Master.Config.Prof, peers)
-// 		// if err != nil {
-// 		// 	return err
-// 		// }
-
-// 		confFilePath := ConfDir + "/" + "master" + strconv.Itoa(id+1) + ".json"
-// 		if config.Master.Config.DataDir == "" {
-// 			err = transferDirectoryToRemote(confFilePath, config.Global.DataDir, RemoteUser, node)
-// 		} else {
-// 			err = transferDirectoryToRemote(confFilePath, config.Master.Config.DataDir, RemoteUser, node)
-// 		}
-
-// 		//err = transferDirectoryToRemote(confFilePath, config.Master.Config.DataDir, RemoteUser, node)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		err = checkAndDeleteContainerOnNode(RemoteUser, node, MasterName+strconv.Itoa(id+1))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		status, err := startMasterContainerOnNode(RemoteUser, node, MasterName+strconv.Itoa(id+1), config.Global.DataDir)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		log.Println(status)
-// 	}
-// 	log.Println("start all master services")
-// 	return nil
-// }
-
-// func stopAllMaster() error {
-// 	config, err := readConfig()
-// 	if err != nil {
-// 		log.Println(err)
-// 	}
-// 	for id, node := range config.DeployHostsList.Master.Hosts {
-// 		status, err := stopContainerOnNode(RemoteUser, node, MasterName+strconv.Itoa(id+1))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		log.Println(status)
-// 		status, err = rmContainerOnNode(RemoteUser, node, MasterName+strconv.Itoa(id+1))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		log.Println(status)
-// 	}
-// 	return nil
-// }
 
 func stopAllMaster() error {
 

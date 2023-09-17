@@ -94,12 +94,6 @@ var stopDatanodeCommand = &cobra.Command{
 	Long:  "",
 	Run: func(cmd *cobra.Command, args []string) {
 		if cmd.Flags().Changed("ip") {
-			// fmt.Println("stop datanode in ", ip)
-			// if !cmd.Flags().Changed("disk") {
-			// 	fmt.Println("must have disk argument")
-			// 	os.Exit(1)
-			// }
-			// fmt.Println("disk:", datanodeDisk)
 			stopDatanodeInSpecificNode(ip)
 			fmt.Println("stop datanode in ", ip)
 		} else {

@@ -33,19 +33,15 @@ func transferConfigFileToRemote(localFilePath string, remoteFilePath string, rem
 }
 
 func transferDirectoryToRemote(localFilePath string, remoteFilePath string, remoteUser string, remoteHost string) error {
-	// 打开本地文件
+
 	localFile, err := os.Open(localFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %s", err)
 	}
 	defer localFile.Close()
-	//递归的传输整个目录
+
 	cmd := exec.Command("scp", "-r", localFilePath, remoteUser+"@"+remoteHost+":"+remoteFilePath)
-	//output, _ := cmd.Output()
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	//fmt.Println(output)
-	//Execute Command
+
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("file %s transferred to %s@%s:%s failed", localFilePath, remoteUser, remoteHost, remoteFilePath)
@@ -55,18 +51,6 @@ func transferDirectoryToRemote(localFilePath string, remoteFilePath string, remo
 
 	return nil
 }
-
-// func main() {
-//     localFilePath := "/path/to/local/file.txt"
-//     remoteFilePath := "/path/to/remote/file.txt"
-//     remoteUser := "your-remote-user"
-//     remoteHost := "your-remote-host"
-
-//     err := transferFileToRemote(localFilePath, remoteFilePath, remoteUser, remoteHost)
-//     if err != nil {
-//         fmt.Printf("Failed to transfer file: %s\n", err)
-//     }
-// }
 
 func copyFolder(sourcePath, destinationPath string) error {
 	err := filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
@@ -119,3 +103,30 @@ func copyFolder(sourcePath, destinationPath string) error {
 // func main() {
 
 // }
+
+// ssh user@host 'mkdir -p /path/to/directory'
+func createRemoteFolder(nodeUser, node, folderPath string) error {
+	cmdStr := "mkdir -p " + folderPath
+	cmd := exec.Command("ssh", nodeUser+"@"+node, cmdStr)
+	_, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+func createFolder(folderPath string) error {
+	_, err := os.Stat(folderPath)
+	if os.IsNotExist(err) {
+		err := os.MkdirAll(folderPath, 0755)
+		if err != nil {
+			return err
+		}
+
+	} else if err != nil {
+		return err
+	} else {
+		return nil
+	}
+	return nil
+}

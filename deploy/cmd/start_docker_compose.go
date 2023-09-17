@@ -10,7 +10,7 @@ import (
 func startALLFromDockerCompose(disk string) error {
 	scriptPath := "../docker/run_docker.sh"
 	args := []string{"-r", "-d", disk}
-	err := os.Chmod(scriptPath, 0700) // 添加可执行权限
+	err := os.Chmod(scriptPath, 0700)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -23,14 +23,12 @@ func startALLFromDockerCompose(disk string) error {
 }
 
 func stopALLFromDockerCompose() error {
-	//切换到xxx目录下执行down命令
-	// 切换到指定目录
+
 	err := os.Chdir("../docker")
 	if err != nil {
 		return err
 	}
 
-	// 执行 down 命令
 	cmd := exec.Command("docker-compose", "down")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -54,7 +54,10 @@ var configCommand = &cobra.Command{
 	Short: "Loading configuration files into the cluster",
 	Long:  "Loading configuration files into the cluster",
 	Run: func(cmd *cobra.Command, args []string) {
-		convertToJosn()
+		err := convertToJosn()
+		if err != nil {
+			log.Println(err)
+		}
 	},
 }
 
@@ -72,18 +75,15 @@ func getCurrentIP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	//fmt.Println(hostname)
-	// Obtain the IP address of the host
+
 	addrs, err := net.LookupIP(hostname)
 	if err != nil {
 		return "", err
 	}
-	//fmt.Println(addrs)
 
-	// Select IPv4 address
 	for _, addr := range addrs {
 		if ipv4 := addr.To4(); ipv4 != nil {
-			//fmt.Println(ipv4.String())
+
 			return ipv4.String(), nil
 
 		}
@@ -92,10 +92,6 @@ func getCurrentIP() (string, error) {
 	return "", fmt.Errorf("IPv4 address not found")
 }
 
-// printTable prints a table of services.
-//
-// It takes in a slice of Service structs as a parameter.
-// It does not return anything.
 func printTable(services []Service) {
 	fmt.Println("Server Type  | Container Name | Node IP         | Status")
 	fmt.Println("-----------------------------------------------------")
@@ -104,14 +100,6 @@ func printTable(services []Service) {
 	}
 }
 
-// infoOfCluster retrieves information about the cluster.
-//
-// It reads the configuration, initializes a list of servers, and populates it with details about the master, metanode, and datanode servers.
-// The function then checks the status of each server by running the `containerStatus` function and updates the `Status` field accordingly.
-// Finally, it prints the table of server information and returns nil.
-//
-// Returns:
-// - error: An error if there was an issue reading the configuration.
 func infoOfCluster() error {
 	config, err := readConfig()
 	if err != nil {
@@ -184,15 +172,7 @@ func removeDuplicates(slice []string) []string {
 	return result
 }
 func initCluster() {
-	sourcePath := "../build/bin"
-	destinationPath := "bin"
 
-	err := copyFolder(sourcePath, destinationPath)
-	if err != nil {
-		fmt.Println("copy /build/bin to deploy failed：", err)
-	}
-
-	//cp cubefs/build/bin -> cubefs/deploy/bin
 	config, err := readConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -252,6 +232,12 @@ func initCluster() {
 			log.Printf("Successfully pulled mirror % s on node % s", config.Global.ContainerImage, node)
 		}
 
+		//create  dir
+		err = createRemoteFolder(RemoteUser, node, config.Global.DataDir)
+		//check firewall
+		if err != nil {
+			log.Println(err)
+		}
 		err = transferDirectoryToRemote(BinDir, config.Global.DataDir, RemoteUser, node)
 		if err != nil {
 			log.Println(err)
@@ -260,10 +246,12 @@ func initCluster() {
 		if err != nil {
 			log.Println(err)
 		}
-		//check fuse
-		//checkAndInstallFuse()
-
+		//create conf dir
+		err = createRemoteFolder(RemoteUser, node, config.Global.DataDir+"/conf")
 		//check firewall
+		if err != nil {
+			log.Println(err)
+		}
 		stopFirewall(RemoteUser, node)
 
 	}

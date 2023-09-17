@@ -117,7 +117,7 @@ func startAllDataNode() error {
 				return nil
 			}
 			confFilePath := ConfDir + "/" + file.Name()
-			err = transferConfigFileToRemote(confFilePath, dataDir+"/"+ConfDir, RemoteUser, data.LocalIP)
+			err = transferConfigFileToRemote(confFilePath, dataDir+"/conf", RemoteUser, data.LocalIP)
 			if err != nil {
 				return err
 			}
@@ -136,40 +136,6 @@ func startAllDataNode() error {
 
 	}
 
-	// masterAddr, err := getMasterAddrAndPort()
-	// if err != nil {
-	// 	return err
-	// }
-	// for id, node := range config.DeployHostsList.DataNode {
-
-	// 	disksInfo := []string{}
-	// 	diskMap := ""
-	// 	for _, info := range node.Disk {
-	// 		diskMap += " -v " + info.Path + ":/cfs" + info.Path
-	// 		//disksInfo = append(disksInfo, "/cfs"+info.Path+":"+info.Size)
-	// 	}
-	// 	disksInfo = append(disksInfo, diskMap)
-
-	// 	// err := writeDataNode(config.DataNode.Config.Listen, config.DataNode.Config.Prof, masterAddr, disksInfo)
-	// 	// if err != nil {
-	// 	// 	return err
-	// 	// }
-	// 	confFilePath := ConfDir + "/" + "datanode.json"
-	// 	err = transferConfigFileToRemote(confFilePath, dataDir+"/"+ConfDir, RemoteUser, node.Hosts)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	err = checkAndDeleteContainerOnNode(RemoteUser, node.Hosts, "datanode"+strconv.Itoa(id+1))
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	status, err := startDatanodeContainerOnNode(RemoteUser, node.Hosts, "datanode"+strconv.Itoa(id+1), dataDir, diskMap)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	log.Println(status)
-	// }
 	log.Println("start all datanode services")
 	return nil
 }
@@ -266,23 +232,3 @@ func stopAllDataNode() error {
 	}
 	return nil
 }
-
-// func stopAllDataNode() error {
-// 	config, err := readConfig()
-// 	if err != nil {
-// 		log.Println(err)
-// 	}
-// 	for id, node := range config.DeployHostsList.Master.Hosts {
-// 		status, err := stopContainerOnNode(RemoteUser, node, DataNodeName+strconv.Itoa(id+1))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		log.Println(status)
-// 		status, err = rmContainerOnNode(RemoteUser, node, DataNodeName+strconv.Itoa(id+1))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		log.Println(status)
-// 	}
-// 	return nil
-// }

@@ -63,7 +63,7 @@ func writeMetaNode(listen, prof, id, localIP string, masterAddrs []string) error
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile("conf/metanode"+id+".json", metaNodeData, 0644)
+	err = ioutil.WriteFile(ConfDir+"/metanode"+id+".json", metaNodeData, 0644)
 	if err != nil {
 		return err
 	}
@@ -105,31 +105,6 @@ func stopMetanodeInSpecificNode(node string) error {
 
 }
 
-// func stopMetanodeInSpecificNode(node string) error {
-// 	//获取该ip对应的容器名
-// 	config, err := readConfig()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	for id, n := range config.DeployHostsList.MetaNode.Hosts {
-// 		if node == n {
-// 			status, err := stopContainerOnNode(RemoteUser, node, MetaNodeName+strconv.Itoa(id+1))
-// 			if err != nil {
-// 				return err
-// 			}
-// 			log.Println(status)
-// 			status, err = rmContainerOnNode(RemoteUser, node, MetaNodeName+strconv.Itoa(id+1))
-// 			if err != nil {
-// 				return err
-// 			}
-// 			log.Println(status)
-// 		}
-
-// 	}
-// 	return nil
-
-// }
-
 func startMetanodeInSpecificNode(node string) error {
 	//找到对应ip的配置文件
 	config, err := readConfig()
@@ -157,7 +132,7 @@ func startMetanodeInSpecificNode(node string) error {
 
 				}
 				confFilePath := ConfDir + "/" + file.Name()
-				err = transferConfigFileToRemote(confFilePath, dataDir+"/"+ConfDir, RemoteUser, node)
+				err = transferConfigFileToRemote(confFilePath, dataDir+"/conf", RemoteUser, node)
 				if err != nil {
 					return err
 				}
@@ -179,43 +154,6 @@ func startMetanodeInSpecificNode(node string) error {
 
 	return nil
 }
-
-// func startMetanodeInSpecificNode(node string) error {
-// 	//要对执行ip启动的容器进行编号
-// 	config, err := readConfig()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	var dataDir string
-// 	if config.Master.Config.DataDir == "" {
-// 		dataDir = config.Global.DataDir
-// 	} else {
-// 		dataDir = config.Master.Config.DataDir
-// 	}
-// 	for id, n := range config.DeployHostsList.MetaNode.Hosts {
-// 		if n == node {
-// 			confFilePath := ConfDir + "/" + "metanode.json"
-
-// 			err = transferConfigFileToRemote(confFilePath, dataDir+"/"+ConfDir, RemoteUser, node)
-// 			if err != nil {
-// 				return err
-// 			}
-
-// 			err = checkAndDeleteContainerOnNode(RemoteUser, node, MetaNodeName+strconv.Itoa(id+1))
-// 			if err != nil {
-// 				return err
-// 			}
-// 			status, err := startMetanodeContainerOnNode(RemoteUser, node, MetaNodeName+strconv.Itoa(id+1), dataDir)
-// 			if err != nil {
-// 				return err
-// 			}
-// 			log.Println(status)
-// 			break
-// 		}
-// 	}
-// 	return nil
-// }
 
 func getMasterAddrAndPort() ([]string, error) {
 	config, err := readConfig()
@@ -272,68 +210,10 @@ func startAllMetaNode() error {
 		}
 	}
 
-	// confFilePath := ConfDir + "/" + "metanode.json"
-	// var dataDir string
-	// if config.Master.Config.DataDir == "" {
-	// 	dataDir = config.Global.DataDir
-	// } else {
-	// 	dataDir = config.Master.Config.DataDir
-	// }
-	// for id, node := range config.DeployHostsList.MetaNode.Hosts {
-	// 	err = transferConfigFileToRemote(confFilePath, dataDir+"/"+ConfDir, RemoteUser, node)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	err = checkAndDeleteContainerOnNode(RemoteUser, node, MetaNodeName+strconv.Itoa(id+1))
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	status, err := startMetanodeContainerOnNode(RemoteUser, node, MetaNodeName+strconv.Itoa(id+1), dataDir)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	log.Println(status)
-	// }
-
 	//Detect successful deployment
 	log.Println("start all metanode services")
 	return nil
 }
-
-// func startAllMetaNode() error {
-// 	config, err := readConfig()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	// masterAddr, err := getMasterAddrAndPort()
-// 	// if err != nil {
-// 	// 	return err
-// 	// }
-// 	for id, node := range config.DeployHostsList.MetaNode.Hosts {
-
-// 		// err := writeMetaNode(config.MetaNode.Config.Listen, config.MetaNode.Config.Prof, masterAddr)
-// 		// if err != nil {
-// 		// 	return err
-// 		// }
-// 		confFilePath := ConfDir + "/" + "metanode.json"
-// 		err = transferDirectoryToRemote(confFilePath, config.Global.DataDir+"/"+ConfDir, RemoteUser, node)
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		err = checkAndDeleteContainerOnNode(RemoteUser, node, MetaNodeName+strconv.Itoa(id+1))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		status, err := startMetanodeContainerOnNode(RemoteUser, node, MetaNodeName+strconv.Itoa(id+1), config.Global.DataDir)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		log.Println(status)
-// 	}
-// 	log.Println("start all metanode services")
-// 	return nil
-// }
 
 func stopAllMetaNode() error {
 

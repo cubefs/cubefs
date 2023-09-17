@@ -8,14 +8,6 @@ import (
 	"strings"
 )
 
-// stopContainerOnNode stops a Docker container on a specific node.
-//
-// It takes in the following parameters:
-// - nodeUser: the username of the node
-// - node: the IP address or hostname of the node
-// - containerName: the name of the container to stop
-//
-// It returns a string indicating the result of the operation and an error.
 func stopContainerOnNode(nodeUser, node, containerName string) (string, error) {
 	if ok, _ := checkContainerExistence(nodeUser, node, containerName); ok {
 		cmd := exec.Command("ssh", nodeUser+"@"+node, "docker stop ", containerName)
@@ -29,15 +21,6 @@ func stopContainerOnNode(nodeUser, node, containerName string) (string, error) {
 
 }
 
-// rmContainerOnNode removes a container from a given node.
-//
-// It takes the following parameters:
-// - nodeUser (string): the username used to connect to the node.
-// - node (string): the IP address or hostname of the node.
-// - containerName (string): the name of the container to be removed.
-//
-// It returns a string and an error. The string indicates the result of the removal
-// operation, and the error is non-nil if there was an error during the removal process.
 func rmContainerOnNode(nodeUser, node, containerName string) (string, error) {
 	if ok, _ := checkContainerExistence(nodeUser, node, containerName); ok {
 		cmd := exec.Command("ssh", nodeUser+"@"+node, "docker rm ", containerName)
@@ -116,16 +99,6 @@ func checkContainerExistence(nodeUser, node, containerName string) (bool, error)
 	return false, nil
 }
 
-// checkContainerExistence checks if a container with the given name exists on a specific node.
-//
-// Parameters:
-// - nodeUser: the SSH username for the node.
-// - node: the IP address or hostname of the node.
-// - containerName: the name of the container to check for existence.
-//
-// Returns:
-// - bool: true if the container exists, false otherwise.
-// - error: an error if there was a problem executing the SSH command.
 func checkAndDeleteContainerOnNode(nodeUser, node, containerName string) error {
 	if ok, _ := checkContainerExistence(nodeUser, node, containerName); ok {
 		log.Printf("container %s already exists on node %s", containerName, node)
@@ -143,7 +116,6 @@ func checkAndDeleteContainerOnNode(nodeUser, node, containerName string) error {
 	return nil
 }
 
-// 检查Docker是否安装并安装
 // Check if Docker is installed and installed
 func checkAndInstallDocker(nodeUser, node string) error {
 	// Check if Docker is installed
@@ -203,10 +175,6 @@ func checkAndStartDockerService(nodeUser, node string) error {
 func pullImageOnNode(nodeUser, node, imageName string) error {
 	// Remote execution of commands to pull images
 	cmd := exec.Command("ssh", nodeUser+"@"+node, "docker pull "+imageName)
-
-	//Set output to standard output and standard error output
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
 
 	err := cmd.Run()
 	if err != nil {

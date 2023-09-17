@@ -7,7 +7,6 @@ import (
 	"os/exec"
 )
 
-// 检查是否已存在私钥和公钥文件并生成SSH密钥对
 // Check if the private and public key files already exist and generate an SSH key pair
 func generateSSHKey() error {
 	// Check if the private and public key files already exist
