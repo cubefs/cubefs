@@ -33,10 +33,7 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 			if extend.verSeq < e.verSeq {
 				return fmt.Errorf("seq error assign %v but less than %v", extend.verSeq, e.verSeq)
 			}
-			e.multiVers = append(e.multiVers, &ExtentVal{
-				verSeq:  e.verSeq,
-				dataMap: e.dataMap,
-			})
+			e.multiVers = append(e.multiVers, e.Copy().(*Extend))
 			e.verSeq = extend.verSeq
 		}
 		e.Merge(extend, true)
@@ -57,10 +54,7 @@ func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (err error) {
 	}
 	// attr multi-ver copy all attr for simplify management
 	if e.verSeq > extend.verSeq {
-		e.multiVers = append(e.multiVers, &ExtentVal{
-			verSeq:  e.verSeq,
-			dataMap: e.dataMap,
-		})
+		e.multiVers = append(e.multiVers, e)
 		e.verSeq = extend.verSeq
 	}
 

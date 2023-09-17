@@ -503,7 +503,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
-			log.LogDebugf("action[doOverwriteByAppend] get replyPacket opcode %v resultCode %v", replyPacket.Opcode, replyPacket.ResultCode)
+			log.LogDebugf("action[doOverwriteByAppend] ino(%v) get replyPacket opcode %v resultCode %v", s.inode, replyPacket.Opcode, replyPacket.ResultCode)
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
 			}
