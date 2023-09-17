@@ -1434,9 +1434,11 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 	dp.extentStore.WalkExtentsInfo(func(info *storage.ExtentInfoBlock) {
 		if info[storage.Size] > 0 && time.Unix(int64(info[storage.ModifyTime]), 0).After(safetyTime) {
 			var (
-				extentID     = info[storage.FileID]
-				extentSize   = info[storage.Size]
-				extentOffset = uint64(0)
+				extentID   = info[storage.FileID]
+				extentSize = info[storage.Size]
+
+				fragOffset uint64 = 0
+				fragSize          = extentSize
 			)
 			if proto.IsTinyExtent(extentID) {
 				var err error
@@ -1447,14 +1449,25 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 					}
 				}
 				if extentSize > 128*unit.MB {
-					extentOffset = extentSize - 128*unit.MB
+					fragOffset = extentSize - 128*unit.MB
 				}
+				// 按512个字节对齐
+				if fragOffset%512 != 0 {
+					fragOffset = (fragOffset / 512) * 512
+				}
+				fragSize = extentSize - fragOffset
 			}
-			fragments = append(fragments, &IssueFragment{
-				extentID: extentID,
-				offset:   extentOffset,
-				size:     extentSize,
-			})
+			// 切成最大16MB的段
+			for subFragOffset := fragOffset; subFragOffset < extentSize; {
+				subFragSize := uint64(math.Min(float64(16*unit.MB), float64((fragOffset+fragSize)-subFragOffset)))
+				subFragOffset += subFragSize
+				fragments = append(fragments, &IssueFragment{
+					extentID: extentID,
+					offset:   subFragOffset,
+					size:     subFragSize,
+				})
+			}
+
 		}
 	})
 	return
