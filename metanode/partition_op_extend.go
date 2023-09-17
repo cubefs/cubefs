@@ -107,9 +107,10 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 	}
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		if value, exist := extend.Get([]byte(req.Key)); exist {
-			response.Value = string(value)
+		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+			if value, exist := extend.Get([]byte(req.Key)); exist {
+				response.Value = string(value)
+			}
 		}
 	}
 	var encoded []byte
@@ -131,10 +132,12 @@ func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (
 	}
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		for key, val := range extend.dataMap {
-			response.Attrs[key] = string(val)
+		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+			for key, val := range extend.dataMap {
+				response.Attrs[key] = string(val)
+			}
 		}
+
 	}
 	var encoded []byte
 	encoded, err = json.Marshal(response)
@@ -155,14 +158,17 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 	for _, inode := range req.Inodes {
 		treeItem := mp.extendTree.Get(NewExtend(inode))
 		if treeItem != nil {
-			extend := treeItem.(*Extend)
 			info := &proto.XAttrInfo{
 				Inode:  inode,
 				XAttrs: make(map[string]string),
 			}
-			for _, key := range req.Keys {
-				if val, exist := extend.Get([]byte(key)); exist {
-					info.XAttrs[key] = string(val)
+
+			var extend *Extend
+			if extend = treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+				for _, key := range req.Keys {
+					if val, exist := extend.Get([]byte(key)); exist {
+						info.XAttrs[key] = string(val)
+					}
 				}
 			}
 			response.XAttrs = append(response.XAttrs, info)
@@ -197,11 +203,12 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	}
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		extend.Range(func(key, value []byte) bool {
-			response.XAttrs = append(response.XAttrs, string(key))
-			return true
-		})
+		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+			extend.Range(func(key, value []byte) bool {
+				response.XAttrs = append(response.XAttrs, string(key))
+				return true
+			})
+		}
 	}
 	var encoded []byte
 	encoded, err = json.Marshal(response)

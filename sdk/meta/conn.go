@@ -102,7 +102,7 @@ sendWithList:
 		mw.putConn(mc, err)
 		goto out
 	}
-	if resp.ShouldRetryWithVersionList() {
+	if resp != nil && resp.ShouldRetryWithVersionList() {
 		// already send with list, must be a issue happened
 		if req.ExtentType&proto.VersionListFlag == proto.VersionListFlag {
 			mw.putConn(mc, err)

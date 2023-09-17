@@ -30,8 +30,26 @@ type Extend struct {
 	inode     uint64
 	dataMap   map[string][]byte
 	verSeq    uint64
-	multiVers []*ExtentVal
+	multiVers []*Extend
 	mu        sync.RWMutex
+}
+
+func (e *Extend) GetExtentByVersion(ver uint64) (extend *Extend) {
+	if ver == 0 {
+		return e
+	}
+	if isInitSnapVer(ver) {
+		if e.multiVers[0].verSeq != 0 {
+			return nil
+		}
+		return e.multiVers[0]
+	}
+	for i := len(e.multiVers) - 1; i >= 0; i-- {
+		if e.multiVers[i].verSeq <= ver {
+			return e.multiVers[i]
+		}
+	}
+	return
 }
 
 func NewExtend(inode uint64) *Extend {
@@ -72,6 +90,44 @@ func NewExtendFromBytes(raw []byte) (*Extend, error) {
 			return nil, err
 		}
 		ext.Put(k, v, 0)
+	}
+
+	if buffer.Len() > 0 {
+		// read verSeq
+		verSeq, err := binary.ReadUvarint(buffer)
+		if err != nil {
+			return nil, err
+		}
+		ext.verSeq = verSeq
+
+		// read number of multiVers
+		numMultiVers, err := binary.ReadUvarint(buffer)
+		if err != nil {
+			return nil, err
+		}
+		if numMultiVers > 0 {
+			// read each multiVers
+			ext.multiVers = make([]*Extend, numMultiVers)
+			for i := uint64(0); i < numMultiVers; i++ {
+				// read multiVers length
+				mvLen, err := binary.ReadUvarint(buffer)
+				if err != nil {
+					return nil, err
+				}
+				mvBytes := make([]byte, mvLen)
+				if _, err = buffer.Read(mvBytes); err != nil {
+					return nil, err
+				}
+
+				// recursively decode multiVers
+				mv, err := NewExtendFromBytes(mvBytes)
+				if err != nil {
+					return nil, err
+				}
+
+				ext.multiVers[i] = mv
+			}
+		}
 	}
 	return ext, nil
 }
@@ -175,12 +231,40 @@ func (e *Extend) Bytes() ([]byte, error) {
 		}
 	}
 
-	//if e.verSeq > 0 {
-	//	n = binary.PutUvarint(tmp, e.verSeq)
-	//	if _, err = buffer.Write(tmp[:n]); err != nil {
-	//		return nil, err
-	//	}
-	//}
+	if e.verSeq > 0 {
+		// write verSeq
+		verSeqBytes := make([]byte, binary.MaxVarintLen64)
+		verSeqLen := binary.PutUvarint(verSeqBytes, e.verSeq)
+		if _, err = buffer.Write(verSeqBytes[:verSeqLen]); err != nil {
+			return nil, err
+		}
+
+		// write number of multiVers
+		n = binary.PutUvarint(tmp, uint64(len(e.multiVers)))
+		if _, err = buffer.Write(tmp[:n]); err != nil {
+			return nil, err
+		}
+
+		// write each multiVers
+		for _, mv := range e.multiVers {
+			// write multiVers bytes
+			mvBytes, err := mv.Bytes()
+			if err != nil {
+				return nil, err
+			}
+			// write multiVers length
+			n = binary.PutUvarint(tmp, uint64(len(mvBytes)))
+			if _, err = buffer.Write(tmp[:n]); err != nil {
+				return nil, err
+			}
+			// write multiVers bytes
+			if _, err = buffer.Write(mvBytes); err != nil {
+				return nil, err
+			}
+		}
+
+		return buffer.Bytes(), nil
+	}
 	return buffer.Bytes(), nil
 }
 

@@ -1342,3 +1342,89 @@ func TestOpCommitVersion(t *testing.T) {
 		assert.True(t, mList[1].Status == proto.VersionNormal)
 	}
 }
+
+func TestExtendSerialization(t *testing.T) {
+	dataMap := map[string][]byte{
+		"key1": []byte("value1"),
+		"key2": []byte("value2"),
+	}
+	mv := &Extend{
+		inode:   123,
+		dataMap: dataMap,
+		verSeq:  456,
+	}
+
+	checkFunc := func() {
+		bytes, err := mv.Bytes()
+		if err != nil {
+			t.Errorf("Failed to serialize Extend: %v", err)
+		}
+
+		newExtend, err := NewExtendFromBytes(bytes)
+		if err != nil {
+			t.Errorf("Failed to deserialize Extend: %v", err)
+		}
+
+		if !reflect.DeepEqual(mv, newExtend) {
+			t.Errorf("Deserialized Extend does not match the original object")
+		}
+	}
+
+	checkFunc()
+
+	mv.multiVers = []*Extend{
+		{
+			inode:   789,
+			dataMap: map[string][]byte{"key3": []byte("value3")},
+			verSeq:  999,
+		},
+		{
+			inode:   789,
+			dataMap: map[string][]byte{"key4": []byte("value4")},
+			verSeq:  1999,
+		},
+	}
+	checkFunc()
+}
+
+func TestXAttrOperation(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mp = mockPartitionRaftForTest(mockCtrl)
+
+	mp.SetXAttr(&proto.SetXAttrRequest{Key: "test", Value: "value"}, &Packet{})
+	mp.SetXAttr(&proto.SetXAttrRequest{Key: "test1", Value: "value1"}, &Packet{})
+
+	testCreateVer()
+
+	// operation on top of snapshot version
+	err := mp.SetXAttr(&proto.SetXAttrRequest{Key: "test1", Value: "value2"}, &Packet{})
+	assert.True(t, err == nil)
+	packRsp := &Packet{}
+	mp.GetXAttr(&proto.GetXAttrRequest{Key: "test1", VerSeq: 0}, packRsp)
+	assert.True(t, packRsp.ResultCode == proto.OpOk)
+	resp := new(proto.GetXAttrResponse)
+	err = packRsp.UnmarshalData(resp)
+	assert.True(t, err == nil)
+	assert.True(t, resp.Value == "value2")
+
+	// remove test1 but it should exist in snapshot
+	err = mp.RemoveXAttr(&proto.RemoveXAttrRequest{Key: "test1"}, &Packet{})
+	assert.True(t, err == nil)
+
+	mp.GetXAttr(&proto.GetXAttrRequest{Key: "test1", VerSeq: 0}, packRsp)
+	assert.True(t, packRsp.ResultCode == proto.OpOk)
+	err = packRsp.UnmarshalData(resp)
+	assert.True(t, err == nil)
+	assert.True(t, resp.Value == "")
+
+	// get snapshot xattr the 0 version
+	packRsp = &Packet{}
+	mp.GetXAttr(&proto.GetXAttrRequest{Key: "test1", VerSeq: math.MaxUint64}, packRsp)
+	assert.True(t, packRsp.ResultCode == proto.OpOk)
+
+	resp = new(proto.GetXAttrResponse)
+	err = packRsp.UnmarshalData(resp)
+	assert.True(t, err == nil)
+	assert.True(t, resp.Value == "value1")
+}
