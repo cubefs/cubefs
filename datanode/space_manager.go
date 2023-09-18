@@ -16,9 +16,10 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/tiglabs/raft/util"
 	"sync"
 	"time"
+
+	"github.com/tiglabs/raft/util"
 
 	"github.com/cubefs/cubefs/util/exporter"
 
@@ -611,6 +612,7 @@ const (
 	DefaultForceFlushFDParallelismOnDisk = 5
 	DefaultForceFlushDataSizeOnEachDisk  = util.MB
 	DefaultDeletionConcurrencyOnDisk     = 2
+	DefaultIssueFixConcurrencyOnDisk     = 4
 )
 
 func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {

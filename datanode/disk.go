@@ -28,6 +28,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/concurrent"
+
 	"github.com/cubefs/cubefs/util/async"
 	"golang.org/x/time/rate"
 
@@ -90,6 +92,8 @@ type Disk struct {
 	forceFlushFDParallelism uint64 // 控制Flush文件句柄的并发度
 
 	latestFlushTimeOnInit int64 // Disk 实例初始化时加载到的该磁盘最近一次Flush数据的时间
+
+	issueFixConcurrentLimiter *concurrent.Limiter // 修复服务器故障导致的不安全数据的并发限制器
 }
 
 type PartitionVisitor func(dp *DataPartition)
@@ -107,6 +111,7 @@ func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, 
 	d.fdCount = 0
 	d.fdLimit = fdLimit
 	d.forceFlushFDParallelism = DefaultForceFlushFDParallelismOnDisk
+	d.issueFixConcurrentLimiter = concurrent.NewLimiter(DefaultIssueFixConcurrencyOnDisk)
 	d.computeUsage()
 	d.updateSpaceInfo()
 	d.latestFlushTimeOnInit, _ = d.loadLatestFlushTime()

@@ -114,14 +114,14 @@ func TestExtentReleasor(t *testing.T) {
 	assert.NotNil(t, releasor)
 
 	for i := 1; i <= 1024; i++ {
-		err = releasor.Submit(context.Background(), 0, uint64(i)+1024, 0, 0)
+		err = releasor.MarkDelete(context.Background(), 0, uint64(i)+1024, 0, 0)
 		assert.Nil(t, err)
 		if i%256 == 0 {
 			err = releasor.Rotate()
 			assert.Nil(t, err)
 		}
 	}
-	err = releasor.Apply(10)
+	err = releasor.FlushDelete(10)
 	assert.Nil(t, err)
 	releasor.Stop()
 }

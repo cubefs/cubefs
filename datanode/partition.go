@@ -413,7 +413,7 @@ func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err erro
 	var getHAType GetHATypeFunc = func() proto.CrossRegionHAType {
 		return dp.config.VolHAType
 	}
-	if dp.issueProcessor, err = NewIssueProcessor(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments); err != nil {
+	if dp.issueProcessor, err = NewIssueProcessor(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments, dp.disk.issueFixConcurrentLimiter); err != nil {
 		return
 	}
 	return
@@ -724,12 +724,12 @@ func (dp *DataPartition) Delete() {
 }
 
 func (dp *DataPartition) MarkDelete(extentID, offset, size uint64) (err error) {
-	err = dp.extentReleasor.Submit(context.Background(), 0, extentID, offset, size)
+	err = dp.extentReleasor.MarkDelete(context.Background(), 0, extentID, offset, size)
 	return
 }
 
 func (dp *DataPartition) FlushDelete() (err error) {
-	return dp.extentReleasor.Apply(1)
+	return dp.extentReleasor.FlushDelete(2)
 }
 
 func (dp *DataPartition) Expired() {

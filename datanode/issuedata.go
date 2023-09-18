@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/concurrent"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
@@ -106,6 +108,7 @@ type IssueProcessor struct {
 	persistSyncCh chan struct{}
 	stopCh        chan struct{}
 	stopOnce      sync.Once
+	fixLimiter    *concurrent.Limiter
 }
 
 func (p *IssueProcessor) Stop() {
@@ -546,6 +549,10 @@ func (p *IssueProcessor) createRepairTmpFile(host string, extentID, offset, size
 }
 
 func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) (success bool, err error) {
+	if p.fixLimiter != nil {
+		p.fixLimiter.Add()
+		defer p.fixLimiter.Done()
+	}
 	var localCrc uint32
 	localCrc, err = p.computeLocalCRC(fragment)
 	if err != nil {
@@ -808,7 +815,7 @@ func (p *IssueProcessor) FindOverlap(extentID, offset, size uint64) bool {
 	return false
 }
 
-func NewIssueProcessor(partitionID uint64, path string, storage *storage.ExtentStore, getRemotes GetRemotesFunc, getHAType GetHATypeFunc, fragments []*IssueFragment) (*IssueProcessor, error) {
+func NewIssueProcessor(partitionID uint64, path string, storage *storage.ExtentStore, getRemotes GetRemotesFunc, getHAType GetHATypeFunc, fragments []*IssueFragment, limiter *concurrent.Limiter) (*IssueProcessor, error) {
 	var p = &IssueProcessor{
 		partitionID:   partitionID,
 		path:          path,
@@ -817,6 +824,7 @@ func NewIssueProcessor(partitionID uint64, path string, storage *storage.ExtentS
 		getHAType:     getHAType,
 		persistSyncCh: make(chan struct{}, 1),
 		stopCh:        make(chan struct{}),
+		fixLimiter:    limiter,
 	}
 	var err error
 	if err = p.loadIssueFragments(); err != nil {

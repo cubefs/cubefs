@@ -164,7 +164,7 @@ type ExtentReleasor struct {
 	stopOnce    sync.Once
 	workerWg    sync.WaitGroup
 	interceptor Interceptor
-	autoApply   bool
+	autoFlush   bool
 	applyLockc  chan struct{}
 }
 
@@ -219,7 +219,7 @@ func (r *ExtentReleasor) start() (err error) {
 	r.current = current
 	r.workerWg.Add(1)
 	async.RunWorker(r.recordWorker, r.workerPanicHandler)
-	if r.autoApply {
+	if r.autoFlush {
 		async.RunWorker(r.autoApplyWorker, r.workerPanicHandler)
 	}
 	return
@@ -244,7 +244,14 @@ func (r *ExtentReleasor) openRecordFile(rfn recordFileName) (fp *os.File, record
 	if info, err = file.Stat(); err != nil {
 		return nil, 0, err
 	}
-	records = info.Size() / int64(recordEncodedLength)
+	var filesize = info.Size()
+	if filesize%int64(recordEncodedLength) != 0 {
+		filesize = (filesize / int64(recordEncodedLength)) * int64(recordEncodedLength)
+		if err = file.Truncate(filesize); err != nil {
+			return
+		}
+	}
+	records = filesize / int64(recordEncodedLength)
 	return file, records, nil
 }
 
@@ -524,7 +531,7 @@ func (r *ExtentReleasor) workerPanicHandler(i interface{}) {
 	log.LogCriticalf("ER[%v] occurred panic: %v", r.path, i)
 }
 
-func (r *ExtentReleasor) Submit(ctx context.Context, ino, extent, offset, size uint64) (err error) {
+func (r *ExtentReleasor) MarkDelete(ctx context.Context, ino, extent, offset, size uint64) (err error) {
 	if r == nil {
 		return ErrInvalidReleasorInstance
 	}
@@ -546,7 +553,7 @@ func (r *ExtentReleasor) Submit(ctx context.Context, ino, extent, offset, size u
 	return nil
 }
 
-func (r *ExtentReleasor) Apply(maxArchives int) error {
+func (r *ExtentReleasor) FlushDelete(maxArchives int) error {
 	if r == nil {
 		return nil
 	}
@@ -567,7 +574,7 @@ func (r *ExtentReleasor) Rotate() (err error) {
 	return
 }
 
-func NewExtentReleasor(path string, storage *ExtentStore, autoApply bool, interceptor Interceptor) (releasor *ExtentReleasor, err error) {
+func NewExtentReleasor(path string, storage *ExtentStore, autoFlush bool, interceptor Interceptor) (releasor *ExtentReleasor, err error) {
 	if err = os.Mkdir(path, 0777); err != nil && !os.IsExist(err) {
 		return
 	}
@@ -578,7 +585,7 @@ func NewExtentReleasor(path string, storage *ExtentStore, autoApply bool, interc
 		rotatec:     make(chan *async.Future, 1),
 		stopc:       make(chan struct{}),
 		interceptor: interceptor,
-		autoApply:   autoApply,
+		autoFlush:   autoFlush,
 		applyLockc:  make(chan struct{}, 1),
 	}
 	if err = r.start(); err != nil {
