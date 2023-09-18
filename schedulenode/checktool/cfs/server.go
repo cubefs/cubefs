@@ -59,7 +59,7 @@ const (
 	defaultMaxInactiveNodes                 = 2
 	defaultMaxOfflineDataNodes              = 3
 	defaultMaxOfflineDisks                  = 10
-	defaultMinOfflineDiskDuration           = time.Minute * 30
+	defaultMinOfflineDiskDuration           = time.Minute * 10
 	defaultMNDiskMinWarnSize                = GB * 20
 	defaultMNDiskMinWarnRatio               = 0.7
 	defaultMetaNodeUsedRatioMinThresholdSSD = 0.87

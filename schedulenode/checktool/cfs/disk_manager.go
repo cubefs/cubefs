@@ -56,6 +56,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 	newCheckedDataNodeBadDisk := make(map[string]time.Time, 0)
 	for _, badDiskOnNode := range cv.DataNodeBadDisks {
 		for _, badDisk := range badDiskOnNode.BadDiskPath {
+			log.LogDebugf("host:%v,badDisk%v,badDisk:%v", host.host, badDiskOnNode.Addr, badDisk)
 			dataNodeBadDiskKey := fmt.Sprintf("%s#%s", badDiskOnNode.Addr, badDisk)
 			newCheckedDataNodeBadDisk[dataNodeBadDiskKey] = time.Now()
 			if firstReportTime, ok := host.dataNodeBadDisk[dataNodeBadDiskKey]; ok {
@@ -66,6 +67,8 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 						delete(host.offlineDisksIn24Hour, key)
 					}
 				}
+				log.LogDebugf("host:%v,badDisk%v,badDisk:%v,firstReportTime:%v,len(host.offlineDisksIn24Hour):%v", host.host, badDiskOnNode.Addr,
+					badDisk, firstReportTime, len(host.offlineDisksIn24Hour))
 				if time.Since(firstReportTime) > s.offlineDiskMinDuration && len(host.offlineDisksIn24Hour) < s.offlineDiskMaxCountIn24Hour {
 					log.LogDebugf("action[doCheckDataNodeDiskError] host[%s] Addr[%s] badDisk[%s]", host, badDiskOnNode.Addr, badDisk)
 					// 控制单块盘的下线间隔时间

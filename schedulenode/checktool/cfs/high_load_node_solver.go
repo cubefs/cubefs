@@ -417,49 +417,49 @@ func (s *ChubaoFSHighLoadNodeSolver) SaveHighLoadNodeSolverRecord(nodeIloIp stri
 
 // DoRestartByPythonScript 负载高---》关机---》等60秒---》开机---》检查电源状态是否ON---》检查服务是否正常
 func DoRestartByPythonScript(nodeIp, nodeIloIp string, restartReason RestartReason) {
-	if _, ok := dockerIpMap[nodeIp]; ok {
-		return
-	}
-	var (
-		msg string
-		err error
-	)
-	defer func() {
-		if err != nil {
-			log.LogErrorf("action[DoRestartByPythonScript] nodeIp:%v nodeIloIp:%v err:%v", nodeIp, nodeIloIp, err)
-		}
-	}()
-	msg = fmt.Sprintf("RestartReason:%v nodeIp:%v nodeIloIp:%v will be restart", restartReason, nodeIp, nodeIloIp)
-	checktool.WarnBySpecialUmpKey(UMPCFSNodeRestartWarnKey, msg)
-	go recordBySre(nodeIp, restartReason)
-	if _, _, err = DoCMDByPythonScript(nodeIloIp, nodeIp, "soft", restartReason); err != nil {
-		msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_soft nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
-		log.LogErrorf(msg)
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
-		return
-	}
-	// wait 60s then power on, 重试几次，确保已经启动
-	time.Sleep(time.Second * 60)
-	if _, _, err = DoCMDByPythonScript(nodeIloIp, nodeIp, "on", restartReason); err != nil {
-		msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_on nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
-		log.LogErrorf(msg)
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
-	}
-	for i := 0; i < 3; i++ {
-		time.Sleep(time.Second * 60)
-		if CheckIsPowerOn(nodeIloIp, nodeIp, restartReason) {
-			log.LogWarnf("nodeIloIp:%v Power is on, need not start", nodeIloIp)
-			break
-		}
-		if _, _, err = DoCMDByPythonScript(nodeIloIp, nodeIp, "on", restartReason); err != nil {
-			//错误记录日志 直接重试开机，开机状态下重试不会有影响
-			msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_on nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
-			log.LogErrorf(msg)
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
-			continue
-		}
-	}
-	return
+	//if _, ok := dockerIpMap[nodeIp]; ok {
+	//	return
+	//}
+	//var (
+	//	msg string
+	//	err error
+	//)
+	//defer func() {
+	//	if err != nil {
+	//		log.LogErrorf("action[DoRestartByPythonScript] nodeIp:%v nodeIloIp:%v err:%v", nodeIp, nodeIloIp, err)
+	//	}
+	//}()
+	//msg = fmt.Sprintf("RestartReason:%v nodeIp:%v nodeIloIp:%v will be restart", restartReason, nodeIp, nodeIloIp)
+	//checktool.WarnBySpecialUmpKey(UMPCFSNodeRestartWarnKey, msg)
+	//go recordBySre(nodeIp, restartReason)
+	//if _, _, err = DoCMDByPythonScript(nodeIloIp, nodeIp, "soft", restartReason); err != nil {
+	//	msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_soft nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
+	//	log.LogErrorf(msg)
+	//	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	//	return
+	//}
+	//// wait 60s then power on, 重试几次，确保已经启动
+	//time.Sleep(time.Second * 60)
+	//if _, _, err = DoCMDByPythonScript(nodeIloIp, nodeIp, "on", restartReason); err != nil {
+	//	msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_on nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
+	//	log.LogErrorf(msg)
+	//	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	//}
+	//for i := 0; i < 3; i++ {
+	//	time.Sleep(time.Second * 60)
+	//	if CheckIsPowerOn(nodeIloIp, nodeIp, restartReason) {
+	//		log.LogWarnf("nodeIloIp:%v Power is on, need not start", nodeIloIp)
+	//		break
+	//	}
+	//	if _, _, err = DoCMDByPythonScript(nodeIloIp, nodeIp, "on", restartReason); err != nil {
+	//		//错误记录日志 直接重试开机，开机状态下重试不会有影响
+	//		msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_on nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
+	//		log.LogErrorf(msg)
+	//		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	//		continue
+	//	}
+	//}
+	//return
 }
 
 // CheckIsPowerOn
