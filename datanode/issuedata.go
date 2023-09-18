@@ -204,11 +204,15 @@ func (p *IssueProcessor) computeLocalCRC(fragment *IssueFragment) (crc uint32, e
 	for remain > 0 {
 		var readSize = int64(math.Min(float64(remain), float64(unit.BlockSize)))
 		_, err = p.storage.Read(extentID, int64(offset), readSize, buf[:readSize], false)
-		if err == proto.ExtentNotFoundError || os.IsNotExist(err) || err == io.EOF {
+		switch {
+		case err == proto.ExtentNotFoundError,
+			os.IsNotExist(err),
+			err == io.EOF,
+			err != nil && strings.Contains(err.Error(), "parameter mismatch"):
 			return 0, nil
-		}
-		if err != nil {
+		case err != nil:
 			return 0, err
+		default:
 		}
 		if _, err = ieee.Write(buf[:readSize]); err != nil {
 			return 0, err
@@ -257,7 +261,9 @@ func (p *IssueProcessor) fetchRemoteDataToLocalFile(f *os.File, host string, ext
 		if reply.ResultCode != proto.OpOk {
 			var msg = string(reply.Data[:reply.Size])
 			switch {
-			case strings.Contains(msg, proto.ExtentNotFoundError.Error()), strings.Contains(msg, io.EOF.Error()):
+			case strings.Contains(msg, proto.ExtentNotFoundError.Error()),
+				strings.Contains(msg, io.EOF.Error()),
+				strings.Contains(msg, "parameter mismatch"):
 				return 0, false, nil
 			case strings.Contains(msg, proto.ErrOperationDisabled.Error()):
 				return 0, true, nil
@@ -334,13 +340,13 @@ func (p *IssueProcessor) checkAndFixFragments(fragments []*IssueFragment) {
 }
 
 // 使用可信副本策略对指定数据片段进行修复
-func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string, localCrc uint32, fragment *IssueFragment) (success bool, err error) {
+func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error) {
 	var (
 		extentID         = fragment.extentID
 		offset           = fragment.offset
 		size             = fragment.size
 		rejects          int
-		failures         int
+		failures         []error
 		tempFiles        = make([]*os.File, 0, len(hosts))
 		registerTempFile = func(f *os.File) {
 			tempFiles = append(tempFiles, f)
@@ -356,12 +362,13 @@ func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string,
 	for _, host := range hosts {
 		var tempFile *os.File
 		if tempFile, err = p.createRepairTmpFile(host, extentID, offset, size); err != nil {
-			return false, err
+			return 0, false, err
 		}
 		registerTempFile(tempFile)
 		var remoteCRC, rejected, fetchedErr = p.fetchRemoteDataToLocalFile(tempFile, host, extentID, offset, size, false)
 		if fetchedErr != nil {
-			failures++
+			failures = append(failures, fmt.Errorf("fetch extent data (partition=%v, extent=%v, offset=%v, size=%v) from %v failed: %v",
+				p.partitionID, extentID, offset, size, host, fetchedErr))
 			continue
 		}
 		if rejected {
@@ -373,25 +380,25 @@ func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string,
 		}
 		if remoteCRC != localCrc {
 			if err = p.applyTempFileToExtent(tempFile, extentID, offset, size); err != nil {
-				return false, err
+				return 0, false, err
 			}
 		}
-		return true, nil
+		return remoteCRC, true, nil
 	}
-	if failures > 0 {
+	if len(failures) > 0 {
 		// 存在失败远端，稍后重试
-		return false, errors.New("failure count larger than 0")
+		return 0, false, failures[0]
 	}
 	if rejects == 0 {
 		// 所有远端均汇报无数据, 无需修复
-		return true, nil
+		return 0, true, nil
 	}
 	// 当前修复策略无法认定数据是否安全及进行修复, 由下一个策略继续处理
-	return false, nil
+	return 0, false, nil
 }
 
 // 使用超半数版本策略对制定数据片段进行修复
-func (p *IssueProcessor) checkAndFixFragmentByQuorumVersionPolicy(hosts []string, localCrc uint32, fragment *IssueFragment) (success bool, err error) {
+func (p *IssueProcessor) checkAndFixFragmentByQuorumVersionPolicy(hosts []string, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error) {
 	var (
 		extentID         = fragment.extentID
 		offset           = fragment.offset
@@ -414,7 +421,7 @@ func (p *IssueProcessor) checkAndFixFragmentByQuorumVersionPolicy(hosts []string
 	for _, host := range hosts {
 		var tempFile *os.File
 		if tempFile, err = p.createRepairTmpFile(host, extentID, offset, size); err != nil {
-			return false, err
+			return 0, false, err
 		}
 		registerTempFile(tempFile)
 		var remoteCRC, _, fetchedErr = p.fetchRemoteDataToLocalFile(tempFile, host, extentID, offset, size, true)
@@ -433,16 +440,16 @@ func (p *IssueProcessor) checkAndFixFragmentByQuorumVersionPolicy(hosts []string
 				if err = p.applyTempFileToExtent(files[0], extentID, offset, size); err != nil {
 					// 覆盖本地数据时出错，延迟修复
 					log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) fix CRC(%v -> %v) failed: %v", p.partitionID, extentID, offset, size, localCrc, crc, err)
-					return false, err
+					return 0, false, err
 				}
 			}
 			log.LogWarnf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) skip fix cause quorum version same as local or empty.", p.partitionID, extentID, offset, size)
-			return true, nil
+			return crc, true, nil
 		}
 	}
 	log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not determine correct data by quorum",
 		p.partitionID, extentID, offset, size)
-	return false, nil
+	return 0, false, nil
 }
 
 func (p *IssueProcessor) applyTempFileToExtent(f *os.File, extentID, offset, size uint64) (err error) {
@@ -551,7 +558,7 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) (success b
 
 	type Policy struct {
 		name    string
-		handler func(hosts []string, localCrc uint32, fragment *IssueFragment) (success bool, err error)
+		handler func(hosts []string, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error)
 	}
 
 	var policies = []Policy{
@@ -561,14 +568,15 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) (success b
 
 	var remoteHosts = p.getRemoteHosts()
 	for _, policy := range policies {
-		if success, err = policy.handler(remoteHosts, localCrc, fragment); err != nil {
+		var crc uint32
+		if crc, success, err = policy.handler(remoteHosts, localCrc, fragment); err != nil {
 			log.LogErrorf("IssueProcessor: Policy(%v) fixes Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) failed: %v",
-				policy.name, fragment.extentID, fragment.offset, fragment.size, err)
+				policy.name, p.partitionID, fragment.extentID, fragment.offset, fragment.size, err)
 			return false, err
 		}
 		if success {
-			log.LogWarnf("IssueProcessor: Policy(%v) fixes Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) success",
-				policy.name, fragment.extentID, fragment.offset, fragment.size)
+			log.LogWarnf("IssueProcessor: Policy(%v) fixed Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) success, CRC(%v -> %v)",
+				policy.name, p.partitionID, fragment.extentID, fragment.offset, fragment.size, localCrc, crc)
 			return true, nil
 		}
 	}

@@ -1460,12 +1460,12 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 			// 切成最大16MB的段
 			for subFragOffset := fragOffset; subFragOffset < extentSize; {
 				subFragSize := uint64(math.Min(float64(16*unit.MB), float64((fragOffset+fragSize)-subFragOffset)))
-				subFragOffset += subFragSize
 				fragments = append(fragments, &IssueFragment{
 					extentID: extentID,
 					offset:   subFragOffset,
 					size:     subFragSize,
 				})
+				subFragOffset += subFragSize
 			}
 
 		}
