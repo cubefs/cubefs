@@ -26,7 +26,7 @@ type rateLimitWrapper struct {
 	refCount int
 }
 
-func newRateLimitWrapper(rate uint64) *rateLimitWrapper {
+func newRateLimitWrapper(rate int) *rateLimitWrapper {
 	return &rateLimitWrapper{
 		r:        ratelimit.New(10*rate, 10*time.Second),
 		refCount: 0,
@@ -42,7 +42,7 @@ func NewKeyRateLimit() *KeyRateLimit {
 	return &KeyRateLimit{current: make(map[string]*rateLimitWrapper)}
 }
 
-func (k *KeyRateLimit) Acquire(key string, rate uint64) *ratelimit.RateLimiter {
+func (k *KeyRateLimit) Acquire(key string, rate int) *ratelimit.RateLimiter {
 
 	k.mutex.Lock()
 	limit, ok := k.current[key]

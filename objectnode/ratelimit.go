@@ -194,11 +194,16 @@ func (r *UserRateMgr) QPSLimitAllowed(uid string) (bool, time.Duration) {
 	defaultQPSLimit := r.UserLimitConf.QPSQuota[proto.DefaultUid]
 	usrQPSLimit := r.UserLimitConf.QPSQuota[uid]
 	qpsQuota := getUserLimitQuota(defaultQPSLimit, usrQPSLimit)
-	if qpsQuota == 0 {
+	qps, err := safeConvertUint64ToInt(qpsQuota)
+	if err != nil {
+		log.LogWarnf("QPSLimitAllowed: safeConvertUint64ToInt err[%v]", err)
+		return true, 0
+	}
+	if qps == 0 {
 		return true, 0
 	}
 	log.LogDebugf("QPSLimit: defaultQPSLimit[%d] usrQPSLimit[%d] uid[%s]", defaultQPSLimit, usrQPSLimit, uid)
-	qpsLimit := r.QPSLimit.Acquire(uid, qpsQuota)
+	qpsLimit := r.QPSLimit.Acquire(uid, qps)
 
 	return !qpsLimit.Limit(), 0
 }

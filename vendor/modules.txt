@@ -509,6 +509,9 @@ google.golang.org/protobuf/types/descriptorpb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
+# gopkg.in/bsm/ratelimit.v1 v1.0.0-20170922094635-f56db5e73a5e
+## explicit
+gopkg.in/bsm/ratelimit.v1
 # gopkg.in/go-playground/assert.v1 v1.2.1
 ## explicit
 # gopkg.in/go-playground/validator.v9 v9.31.0
