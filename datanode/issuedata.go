@@ -41,7 +41,8 @@ const (
 	fixedIssueFragmentsFilename = "FIXED_ISSUE_FRAGMENTS"
 )
 
-type GetRemoteHostsFunc func() []string
+type GetRemotesFunc func() []string
+type GetHATypeFunc func() proto.CrossRegionHAType
 
 type IssueFragment struct {
 	extentID uint64
@@ -95,15 +96,16 @@ func (f *IssueFragment) DecodeFrom(b []byte) error {
 // 2. 判断给定数据区域是否在已注册的疑似损坏数据区域内
 // 3. 检查并尝试修复疑似被损坏的数据区域.
 type IssueProcessor struct {
-	path           string
-	partitionID    uint64
-	fragments      []*IssueFragment
-	mu             sync.RWMutex
-	storage        *storage.ExtentStore
-	getRemoteHosts func() []string
-	persistSyncCh  chan struct{}
-	stopCh         chan struct{}
-	stopOnce       sync.Once
+	path          string
+	partitionID   uint64
+	fragments     []*IssueFragment
+	mu            sync.RWMutex
+	storage       *storage.ExtentStore
+	getRemotes    GetRemotesFunc
+	getHAType     GetHATypeFunc
+	persistSyncCh chan struct{}
+	stopCh        chan struct{}
+	stopOnce      sync.Once
 }
 
 func (p *IssueProcessor) Stop() {
@@ -340,7 +342,7 @@ func (p *IssueProcessor) checkAndFixFragments(fragments []*IssueFragment) {
 }
 
 // 使用可信副本策略对指定数据片段进行修复
-func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error) {
+func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string, haType proto.CrossRegionHAType, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error) {
 	var (
 		extentID         = fragment.extentID
 		offset           = fragment.offset
@@ -375,10 +377,10 @@ func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string,
 			rejects++
 			continue
 		}
-		if remoteCRC == 0 {
+		if remoteCRC == 0 && haType == proto.CrossRegionHATypeQuorum {
 			continue
 		}
-		if remoteCRC != localCrc {
+		if remoteCRC != 0 && remoteCRC != localCrc {
 			if err = p.applyTempFileToExtent(tempFile, extentID, offset, size); err != nil {
 				return 0, false, err
 			}
@@ -398,7 +400,7 @@ func (p *IssueProcessor) checkAndFixFragmentByTrustVersionPolicy(hosts []string,
 }
 
 // 使用超半数版本策略对制定数据片段进行修复
-func (p *IssueProcessor) checkAndFixFragmentByQuorumVersionPolicy(hosts []string, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error) {
+func (p *IssueProcessor) checkAndFixFragmentByQuorumVersionPolicy(hosts []string, haType proto.CrossRegionHAType, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error) {
 	var (
 		extentID         = fragment.extentID
 		offset           = fragment.offset
@@ -558,7 +560,7 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) (success b
 
 	type Policy struct {
 		name    string
-		handler func(hosts []string, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error)
+		handler func(hosts []string, haType proto.CrossRegionHAType, localCrc uint32, fragment *IssueFragment) (crc uint32, success bool, err error)
 	}
 
 	var policies = []Policy{
@@ -566,10 +568,11 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) (success b
 		{name: "QuorumVersion", handler: p.checkAndFixFragmentByQuorumVersionPolicy},
 	}
 
-	var remoteHosts = p.getRemoteHosts()
+	var remoteHosts = p.getRemotes()
+	var haType = p.getHAType()
 	for _, policy := range policies {
 		var crc uint32
-		if crc, success, err = policy.handler(remoteHosts, localCrc, fragment); err != nil {
+		if crc, success, err = policy.handler(remoteHosts, haType, localCrc, fragment); err != nil {
 			log.LogErrorf("IssueProcessor: Policy(%v) fixes Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) failed: %v",
 				policy.name, p.partitionID, fragment.extentID, fragment.offset, fragment.size, err)
 			return false, err
@@ -805,14 +808,15 @@ func (p *IssueProcessor) FindOverlap(extentID, offset, size uint64) bool {
 	return false
 }
 
-func NewIssueProcessor(partitionID uint64, path string, storage *storage.ExtentStore, getRemotes func() []string, fragments []*IssueFragment) (*IssueProcessor, error) {
+func NewIssueProcessor(partitionID uint64, path string, storage *storage.ExtentStore, getRemotes GetRemotesFunc, getHAType GetHATypeFunc, fragments []*IssueFragment) (*IssueProcessor, error) {
 	var p = &IssueProcessor{
-		partitionID:    partitionID,
-		path:           path,
-		storage:        storage,
-		getRemoteHosts: getRemotes,
-		persistSyncCh:  make(chan struct{}, 1),
-		stopCh:         make(chan struct{}),
+		partitionID:   partitionID,
+		path:          path,
+		storage:       storage,
+		getRemotes:    getRemotes,
+		getHAType:     getHAType,
+		persistSyncCh: make(chan struct{}, 1),
+		stopCh:        make(chan struct{}),
 	}
 	var err error
 	if err = p.loadIssueFragments(); err != nil {

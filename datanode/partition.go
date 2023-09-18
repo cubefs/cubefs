@@ -400,7 +400,7 @@ func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err erro
 			return
 		}
 	}
-	var getRemotes = func() []string {
+	var getRemotes GetRemotesFunc = func() []string {
 		var replicas = dp.getReplicaClone()
 		var remotes = make([]string, 0, len(replicas)-1)
 		for _, replica := range replicas {
@@ -410,7 +410,10 @@ func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err erro
 		}
 		return remotes
 	}
-	if dp.issueProcessor, err = NewIssueProcessor(dp.partitionID, dp.path, dp.extentStore, getRemotes, fragments); err != nil {
+	var getHAType GetHATypeFunc = func() proto.CrossRegionHAType {
+		return dp.config.VolHAType
+	}
+	if dp.issueProcessor, err = NewIssueProcessor(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments); err != nil {
 		return
 	}
 	return
