@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	"github.com/shirou/gopsutil/load"
 	"io/ioutil"
 	"os"
 	"path"
@@ -241,6 +242,15 @@ func (d *Disk) startFlushFPScheduler() {
 			select {
 			case <-forceFlushFDTicker.C:
 				if !gHasLoadDataPartition {
+					continue
+				}
+				avg, err := load.Avg()
+				if err != nil {
+					log.LogErrorf("action[startFlushFPScheduler] get host load value failed,err:%v", err)
+					continue
+				}
+				if avg.Load1 > 1000.0 {
+					log.LogErrorf("action[startFlushFPScheduler]  host load value larger than 1000")
 					continue
 				}
 				d.RLock()
