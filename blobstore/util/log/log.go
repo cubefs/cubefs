@@ -115,7 +115,8 @@ type Logger interface {
 	GetOutputLevel() Level
 	SetOutputLevel(logLevel Level)
 	SetOutput(w io.Writer)
-	Output(id string, lvl Level, calldepth int, s string) error
+	Output(id string, lvl Level, calldepth int, a ...interface{}) error
+	Outputf(id string, lvl Level, calldepth int, format string, a ...interface{}) error
 
 	// implement raft Logger with these two function
 	Warningf(format string, v ...interface{})

@@ -295,11 +295,11 @@ const (
 )
 
 func (s *spanImpl) output(lvl log.Level, v []interface{}) {
-	log.DefaultLogger.Output(s.String(), lvl, defaultCalldepth, fmt.Sprintln(v...))
+	log.DefaultLogger.Output(s.String(), lvl, defaultCalldepth, v...)
 }
 
 func (s *spanImpl) outputf(lvl log.Level, format string, v []interface{}) {
-	log.DefaultLogger.Output(s.String(), lvl, defaultCalldepth, fmt.Sprintf(format, v...))
+	log.DefaultLogger.Outputf(s.String(), lvl, defaultCalldepth, format, v...)
 }
 
 func (s *spanImpl) Println(v ...interface{})               { s.output(log.Linfo, v) }
