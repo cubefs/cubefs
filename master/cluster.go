@@ -3040,6 +3040,18 @@ func (c *Cluster) checkZoneName(name string,
 	return
 }
 
+func (c *Cluster) cleanCreateFailedVol(vol *Vol) (err error) {
+	log.LogErrorf("action[cleanCreateFailedVol] vol [%v]", vol.Name)
+
+	vol.Status = markDelete
+	if e := vol.deleteVolFromStore(c); e != nil {
+		log.LogWarnf("action[cleanCreateFailedVol] deleteVolFromStore failed, vol[%v] err[%v]", vol.Name, e)
+	}
+
+	c.deleteVol(vol.Name)
+	return
+}
+
 // Create a new volume.
 // By default we create 3 meta partitions and 10 data partitions during initialization.
 func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
@@ -3068,15 +3080,8 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
-
-		vol.Status = markDelete
-		if e := vol.deleteVolFromStore(c); e != nil {
-			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, e)
-		}
-
-		c.deleteVol(req.name)
-
-		err = fmt.Errorf("action[createVol] initMetaPartitions failed,err[%v]", err)
+		c.cleanCreateFailedVol(vol)
+		err = fmt.Errorf("action[createVol] initMetaPartitions failed, err[%v]", err)
 		goto errHandler
 	}
 
@@ -3091,7 +3096,8 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		}
 
 		if len(vol.dataPartitions.partitionMap) < defaultInitMetaPartitionCount {
-			err = fmt.Errorf("action[createVol]  initDataPartitions failed, less than %d", defaultInitMetaPartitionCount)
+			c.cleanCreateFailedVol(vol)
+			err = fmt.Errorf("action[createVol] initDataPartitions failed, less than %d", defaultInitMetaPartitionCount)
 			goto errHandler
 		}
 	}
@@ -3099,7 +3105,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
 
-	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
+	log.LogInfof("action[createVol] vol[%v], readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
 	return
 
 errHandler:
