@@ -1,4 +1,4 @@
-# RateLimit [![Build Status](https://travis-ci.org/bsm/ratelimit.png?branch=master)](https://travis-ci.org/bsm/ratelimit)
+# RateLimit [![Build Status](https://travis-ci.org/bsm/ratelimit.png?branch=master)](https://travis-ci.org/bsm/ratelimit) [![Documentation](https://godoc.org/github.com/bsm/ratelimit?status.svg)](http://godoc.org/github.com/bsm/ratelimit)
 
 Simple, thread-safe Go rate-limiter.
 Inspired by Antti Huima's algorithm on http://stackoverflow.com/a/668327
@@ -9,7 +9,7 @@ Inspired by Antti Huima's algorithm on http://stackoverflow.com/a/668327
 package main
 
 import (
-  "github.com/bsm/redeo"
+  "gopkg.in/bsm/ratelimit.v1"
   "log"
 )
 
