@@ -240,6 +240,9 @@ func (d *Disk) startFlushFPScheduler() {
 		for {
 			select {
 			case <-forceFlushFDTicker.C:
+				if !gHasLoadDataPartition {
+					continue
+				}
 				d.RLock()
 				var partitions = make([]*DataPartition, 0, len(d.partitionMap))
 				for _, partition := range d.partitionMap {
