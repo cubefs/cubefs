@@ -439,10 +439,10 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) (err error) {
 	wg := new(sync.WaitGroup)
 	for i := 1; i < len(members); i++ {
-		if members[i] == nil || !dp.IsExsitReplica(members[i].addr) {
+		if members[i] == nil || !dp.IsExistReplica(members[i].addr) {
 			if members[i] != nil {
 				log.LogInfof("notify extend repair is change ,index(%v),pid(%v),task_member_add(%v),IsExistReplica(%v)",
-					i, dp.partitionID, members[i].addr, dp.IsExsitReplica(members[i].addr))
+					i, dp.partitionID, members[i].addr, dp.IsExistReplica(members[i].addr))
 			}
 			continue
 		}
