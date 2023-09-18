@@ -421,7 +421,7 @@ func (dp *DataPartition) getReplicaLen() int {
 	return len(dp.replicas)
 }
 
-func (dp *DataPartition) IsExsitReplica(addr string) bool {
+func (dp *DataPartition) IsExistReplica(addr string) bool {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
 	for _, host := range dp.replicas {

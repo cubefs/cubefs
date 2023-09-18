@@ -1624,12 +1624,11 @@ func (c *Cluster) loadDecommissionDiskList() (err error) {
 
 		dd := ddv.Restore()
 		c.DecommissionDisks.Store(dd.GenerateKey(), dd)
-		dd.SetDecommissionStatus(markDecommission)
-		c.addDecommissionDiskToNodeset(dd)
 		log.LogInfof("action[loadDecommissionDiskList],decommissionDisk[%v] type %v dst[%v] status[%v] raftForce[%v]"+
 			"dpTotal[%v] term[%v]",
 			dd.GenerateKey(), dd.Type, dd.DstAddr, dd.GetDecommissionStatus(), dd.DecommissionRaftForce,
 			dd.DecommissionDpTotal, dd.DecommissionTerm)
+		c.addDecommissionDiskToNodeset(dd)
 	}
 	return
 }

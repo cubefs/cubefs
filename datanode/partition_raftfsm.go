@@ -66,17 +66,19 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			// related process.
 			updateWG := sync.WaitGroup{}
 			updateWG.Add(1)
-			defer updateWG.Done()
+
 			go func() {
-				updateWG.Wait()
-				if err = dp.updateReplicas(true); err != nil {
-					log.LogErrorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
-					return
-				}
+				defer updateWG.Done()
+				//may fetch old replica, e.g. 3-replica back to 2-replica for adding raft member not return
+				//if err = dp.updateReplicas(true); err != nil {
+				//	log.LogErrorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
+				//	return
+				//}
 				if dp.isLeader {
 					dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
 				}
 			}()
+			updateWG.Wait()
 		}
 	case raftproto.ConfRemoveNode:
 		req := &proto.RemoveDataPartitionRaftMemberRequest{}
