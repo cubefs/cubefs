@@ -370,9 +370,11 @@ const (
 	MediumSSD     MediumType = 1
 	MediumHDD     MediumType = 2
 	MediumEC      MediumType = 3
+	MediumSFX     MediumType = 4
 	MediumSSDName            = "ssd"
 	MediumHDDName            = "hdd"
 	MediumECName             = "ec"
+	MediumSFXName            = "sfx"
 )
 
 func StrToMediumType(str string) (mType MediumType, err error) {
@@ -383,6 +385,8 @@ func StrToMediumType(str string) (mType MediumType, err error) {
 		mType = MediumSSD
 	case MediumECName:
 		mType = MediumEC
+	case MediumSFXName:
+		mType = MediumSFX
 	default:
 		err = fmt.Errorf("invalid medium type: %v", str)
 	}
@@ -397,13 +401,15 @@ func (m MediumType) String() string {
 		return MediumSSDName
 	case MediumEC:
 		return MediumECName
+	case MediumSFX:
+		return MediumSFXName
 	default:
 		return "unknown"
 	}
 }
 
 func (m MediumType) Check() bool {
-	return m == MediumSSD || m == MediumHDD || m == MediumEC
+	return m == MediumSSD || m == MediumHDD || m == MediumEC || m== MediumSFX
 }
 
 type AtomicString struct {
@@ -819,6 +825,7 @@ type PartitionReport struct {
 	IsLearner       bool
 	LastUpdateTime  int64
 	IsRecover       bool // 表示当前恢复状态, true表示正在恢复, false表示恢复完成
+	IsSFX           bool
 }
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
@@ -847,6 +854,7 @@ type DiskInfo struct {
 	Status        int
 	Path          string
 	UsageRatio    float64
+	IsSFX		  bool
 }
 
 // MetaPartitionReport defines the meta partition report.

@@ -1240,3 +1240,37 @@ func (s *DataNode) resetFaultOccurredCheckLevel(w http.ResponseWriter, r *http.R
 	}
 	s.buildSuccessResp(w, "success")
 }
+
+func (s *DataNode) getSfxStatus(w http.ResponseWriter, r *http.Request) {
+	disks := make([]interface{}, 0)
+	for _, diskItem := range s.space.GetDisks() {
+		disk := &struct {
+			Path               string `json:"path"`
+			IsSfx              bool   `json:"IsSfx"`
+			DevName            string `json:"devName"`
+			TotalPhysicalSpace uint64 `json:"totalPhysicalSpace"`
+			FreePhysicalSpace  uint64 `json:"freePhysicalSpace"`
+			PhysicalUsedRatio  uint32 `json:"PhysicalUsedRatio"`
+			CompressionRatio   uint32 `json:"CompressionRatio"`
+		}{
+			Path:               diskItem.Path,
+			IsSfx:              diskItem.IsSfx,
+			DevName:            diskItem.devName,
+			TotalPhysicalSpace: diskItem.totalPhysicalSpace,
+			FreePhysicalSpace:  diskItem.freePhysicalSpace,
+			PhysicalUsedRatio:  diskItem.PhysicalUsedRatio,
+			CompressionRatio:   diskItem.CompressionRatio,
+		}
+		if disk.IsSfx {
+			disks = append(disks, disk)
+		}
+	}
+	diskReport := &struct {
+		Disks []interface{} `json:"disks"`
+		Zone  string        `json:"zone"`
+	}{
+		Disks: disks,
+		Zone:  s.zoneName,
+	}
+	s.buildSuccessResp(w, diskReport)
+}

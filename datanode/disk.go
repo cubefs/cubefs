@@ -150,6 +150,14 @@ type Disk struct {
 
 	monitorData  []*statistics.MonitorData
 	interceptors storage.IOInterceptors
+
+	// sfx compressible ssd attribute
+	IsSfx              bool
+	devName            string
+	totalPhysicalSpace uint64 //total physical space .Byte
+	freePhysicalSpace  uint64 //free physical space .Byte
+	PhysicalUsedRatio  uint32 //physical space usage ratio
+	CompressionRatio   uint32 //full disk compression ratio
 }
 
 type CheckExpired func(id uint64) bool
@@ -184,6 +192,11 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 	}
 
 	d.initInterceptors()
+
+	d.IsSfx, d.devName = GetDevCheckSfx(d.Path)
+	if !d.IsSfx {
+		log.LogInfof("%s not on sfx csd\n", d.Path)
+	}
 
 	if err = d.computeUsage(); err != nil {
 		return
@@ -332,8 +345,61 @@ func (d *Disk) finishRepairTask() {
 	}
 }
 
-// Compute the disk usage
 func (d *Disk) computeUsage() (err error) {
+	if d.IsSfx {
+		err = d.computeUsageOnSFXDevice()
+		return
+	}
+	err = d.computeUsageOnStdDevice()
+	return
+}
+
+func (d *Disk) computeUsageOnSFXDevice() (err error) {
+	d.RLock()
+	defer d.RUnlock()
+	if d.IsSfx {
+		var dStatus sfxStatus
+		dStatus, err = GetSfxStatus(d.devName)
+		if err != nil {
+			return
+		}
+		d.Total = dStatus.totalPhysicalCapability
+		available:=dStatus.freePhysicalCapability - d.ReservedSpace
+		if available < 0 {
+			available = 0
+		}
+		d.Available=available
+		used := int64(d.Total - d.Available)
+		if used < 0 {
+			used = 0
+		}
+		d.Used = uint64(used)
+
+		allocatedSize := uint64(0)
+		for _, dp := range d.partitionMap {
+			allocatedSize += uint64(dp.Size())
+		}
+		atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
+		unallocated := d.Total - allocatedSize
+		if unallocated < 0 {
+			unallocated = 0
+		}
+		if d.Available <= 0 {
+			d.RejectWrite = true
+		} else {
+			d.RejectWrite = false
+		}
+		d.Unallocated=unallocated
+		d.PhysicalUsedRatio = dStatus.physicalUsageRatio
+		d.CompressionRatio = dStatus.compRatio
+		log.LogDebugf("SfxDiskComputeUsage disk(%v) totalPhysicalSpace(%v) freePhysicalSpace(%v) PhysicalUsedRatio(%v) CompressionRatio(%v)",
+			d.devName, d.Total, d.Available, d.PhysicalUsedRatio, d.CompressionRatio)
+	}
+	return
+}
+
+// Compute the disk usage
+func (d *Disk) computeUsageOnStdDevice() (err error) {
 	fs := syscall.Statfs_t{}
 	if err = syscall.Statfs(d.Path, &fs); err != nil {
 		d.incReadErrCnt()

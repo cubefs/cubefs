@@ -536,6 +536,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			NeedCompare:     true,
 			IsLearner:       partition.IsRaftLearner(),
 			IsRecover:       partition.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
+			IsSFX:      	 partition.disk.IsSfx,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) isLearner(%v).",
 			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.IsLearner)
@@ -550,7 +551,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		if d.Total != 0 {
 			usageRatio = float64(d.Used) / float64(d.Total)
 		}
-		dInfo := &proto.DiskInfo{Total: d.Total, Used: d.Used, ReservedSpace: d.ReservedSpace, Status: d.Status, Path: d.Path, UsageRatio: usageRatio}
+		dInfo := &proto.DiskInfo{Total: d.Total, Used: d.Used, ReservedSpace: d.ReservedSpace, Status: d.Status, Path: d.Path, UsageRatio: usageRatio,IsSFX: d.IsSfx}
 		response.DiskInfos[d.Path] = dInfo
 		if d.Status == proto.Unavailable {
 			response.BadDisks = append(response.BadDisks, d.Path)
