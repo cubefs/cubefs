@@ -424,7 +424,7 @@ func (mp *metaPartition) InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err 
 			},
 		}
 		multiSnap := retMsg.Msg.multiSnap
-		if multiSnap.ekRefMap != nil {
+		if multiSnap != nil && multiSnap.ekRefMap != nil {
 			multiSnap.ekRefMap.Range(func(key, value interface{}) bool {
 				dpID, extID := proto.ParseFromId(key.(uint64))
 				resp.Info.SplitArr = append(resp.Info.SplitArr, proto.SimpleExtInfo{
