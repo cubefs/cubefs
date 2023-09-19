@@ -11,8 +11,13 @@ var Version bool
 const ClusterName = "cubeFS"
 const RemoteUser = "root"
 const ConfDir = "conf"
+<<<<<<< HEAD
 const ScriptDir = "../docker/script"
 const BinDir = "/cfs-deploy"
+=======
+const ScriptDir = "script"
+const BinDir = "cfs-deploy"
+>>>>>>> 71baf74047be24d9fafe404ff4407ffc21493bc7
 const BinVersion = "release-3.2.1"
 
 type ServerType string
