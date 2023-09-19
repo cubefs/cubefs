@@ -541,6 +541,8 @@ func (w *Wrapper) CheckReadVerSeq(volName string, verReadSeq uint64, verList *pr
 	log.LogInfof("action[CheckReadVerSeq] vol [%v] req seq [%v]", volName, verReadSeq)
 
 	readReadVer = verReadSeq
+	// Whether it is version 0 or any other version, there may be uncommitted versions between the requested version
+	// and the next official version. In this case, the data needs to be read.
 	if verReadSeq == math.MaxUint64 {
 		verReadSeq = 0
 	}

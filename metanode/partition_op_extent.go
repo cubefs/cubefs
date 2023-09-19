@@ -304,11 +304,6 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 			return true
 		})
 		ino.RangeMultiVer(func(idx int, snapIno *Inode) bool {
-			if reqVer > snapIno.getVer() {
-				log.LogInfof("action[GetExtentByVer] finish read ino %v readseq %v snapIno ino seq %v", ino.Inode, reqVer, snapIno.getVer())
-				return false
-			}
-
 			log.LogInfof("action[GetExtentByVer] read ino %v readseq %v snapIno ino seq %v", ino.Inode, reqVer, snapIno.getVer())
 			for _, ek := range snapIno.Extents.eks {
 				if reqVer >= ek.GetSeq() {
@@ -317,6 +312,10 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 				} else {
 					log.LogInfof("action[GetExtentByVer] not get extent ino %v readseq %v snapIno ino seq %v, exclude ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
 				}
+			}
+			if reqVer >= snapIno.getVer() {
+				log.LogInfof("action[GetExtentByVer] finish read ino %v readseq %v snapIno ino seq %v", ino.Inode, reqVer, snapIno.getVer())
+				return false
 			}
 			return true
 		})
