@@ -13,7 +13,7 @@ LOCAL_IP = 'localIP'
 USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
 one_day = 60 * 60 * 5
 SHARED_MEMORY_SIZE = 'SHARED_MEMORY_SIZE'
-default_shared_memory_size = 30 * 1024 * 1024 * 1024
+default_shared_memory_size = 3 * 1024 * 1024 * 1024
 
 
 class CubePushDataSetInfo(CubeDataSetInfo):

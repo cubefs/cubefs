@@ -19,9 +19,10 @@ from dataclasses import dataclass
 from torch._utils import ExceptionWrapper
 from torch.utils.data import _DatasetKind
 
-from cube_torch.cube_file import intercept_open, set_global_cube_batch_downloader, \
-    set_global_cube_rootdir_path, intercept_torch_load
+from cube_torch.cube_batch_download import CubeBatchDownloader
+from cube_torch.cube_file import set_global_cube_rootdir_path, InterceptionIO, set_global_interception_io
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
+from cube_torch.mem_manager import MemoryAllocater
 
 logger = logging.getLogger(__name__)
 from torch.utils.data._utils.worker import WorkerInfo, _generate_state, HAS_NUMPY, _IterableDatasetStopIteration, \
@@ -115,68 +116,18 @@ def _unregister_pid_to_storage(pids, unregister_storage_addr):
         return
 
 
-def get_cube_dataset_info_on_worker(dataset_id):
-    from cube_torch import get_manager
-    manager = get_manager()
-    while True:
-        try:
-            cube_dataset_info = manager.__dict__[dataset_id]
-            if cube_dataset_info is None:
-                manager.refresh()
-                continue
-            return cube_dataset_info
-        except Exception as e:
-            time.sleep(1)
-            continue
 
 
-def get_cube_batch_download(dataset_id):
-    from cube_torch import get_manager
-    manager = get_manager()
-    key = get_cube_batch_downloader_key(dataset_id)
-    while True:
-        try:
-            downloader = manager.__dict__[key]
-            if downloader is None:
-                manager.refresh()
-                continue
-            return downloader
-        except Exception as e:
-            time.sleep(1)
-            continue
-
-
-def _copy_worker_loop_for_post_client(wait_read_train_file_queue, prefetch_addr, event):
-    cube_prefetch_addr = prefetch_addr
-    storage_seesion = requests.Session()
-    while not event.is_set():
-        try:
-            copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
-            _post_to_storage([copy_file_indexs], cube_prefetch_addr, storage_seesion)
-        except queue.Empty:
-            continue
-        except KeyboardInterrupt:
-            return
-        except Exception as e:
-            continue
-
-
-def get_cube_batch_downloader_key(dataset_id):
-    return "{}_batch_downloader".format(dataset_id)
-
-
-def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, dataset_id, event,
-                      worker_idx):
-    downloader = None
+def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, downloader_info,event):
     torch.set_num_threads(1)
     if is_use_batch_download:
-        downloader = get_cube_batch_download(dataset_id)
+        downloader = CubeBatchDownloader(downloader_info)
     while not event.is_set():
         try:
             copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
             index_list = [copy_file_indexs]
             if is_use_batch_download:
-                downloader.batch_download_async(index_list, worker_idx)
+                downloader.batch_download_async(index_list)
             else:
                 _post_to_storage_async(index_list, cube_prefetch_addr)
         except queue.Empty:
@@ -187,18 +138,30 @@ def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_bat
             continue
 
 
+def _loop_allocate_mem_worker(total_memory,batch_download_workers,queues,event):
+    torch.set_num_threads(batch_download_workers)
+    mem_allocater=MemoryAllocater(total_memory,batch_download_workers,queues)
+    while not event.is_set():
+        for t in mem_allocater.allocate_memory_threads:
+            t.join()
+
+
+
+
+
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
                  auto_collation, collate_fn, drop_last, base_seed, init_fn, worker_id,
-                 num_workers, persistent_workers, cube_root_dir, is_use_batch_download):
+                 num_workers, persistent_workers, cube_root_dir, is_use_batch_download, downloader_info):
     torch.set_num_threads(1)
+    inception = None
     if is_use_batch_download:
         set_global_cube_rootdir_path(cube_root_dir)
         CubeFileOpenInterceptor.set_params(cube_root_dir)
         CubeFileOpenInterceptor.start_timer()
-        batch_downloader = get_cube_batch_download(id(dataset))
-        set_global_cube_batch_downloader(batch_downloader)
-        builtins.open = intercept_open(open)
-        torch.load = intercept_torch_load(torch.load)
+        inception = InterceptionIO(downloader_info[0], downloader_info[1],None)
+        builtins.open = inception.intercept_open(open)
+        torch.load = inception.intercept_torch_load(torch.load)
+        set_global_interception_io(inception)
 
     try:
         seed = base_seed + worker_id

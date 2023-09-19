@@ -1,8 +1,40 @@
-import multiprocessing
+import os
+import threading
+
+
+class MemoryAllocater:
+    def __init__(self, total_memory, batch_download_workers, queues):
+        self._total_memory = total_memory
+        self.allocate_memory_threads = []
+        self.mem_manager = MemoryManager(total_memory)
+        self.allocate_memory_event = []
+        self.batch_download_workers = batch_download_workers
+        self.queues = queues
+        for index in range(batch_download_workers):
+            e = threading.Event()
+            t = threading.Thread(target=self.background_allocate_memory, args=(index, e))
+            t.daemon = True
+            t.start()
+            self.allocate_memory_threads.append(t)
+            self.allocate_memory_event.append(e)
+
+    def background_allocate_memory(self, batch_download_idx, event):
+        input_queue = self.queues[batch_download_idx][0]
+        out_queue = self.queues[batch_download_idx][1]
+        while not event.is_set():
+            request = input_queue.get()
+            worker_idx, file_path, write_size = request
+            write_offset, size = self.mem_manager.allocate(write_size)
+            if write_offset is None:
+                response = (worker_idx, file_path, None, None)
+            else:
+                response = (worker_idx, file_path, write_offset, size)
+            out_queue.put(response)
+
 
 class MemoryManager:
     def __init__(self, total_memory):
-        self.lock=multiprocessing.Lock()
+        self.lock = threading.Lock()
         self.memory = [{'offset': 0, 'size': total_memory, 'used': False}]
         self.total_memory = total_memory
         self.total_free_memory = total_memory

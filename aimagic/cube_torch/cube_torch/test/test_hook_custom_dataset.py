@@ -1,12 +1,10 @@
 import os
 import time
-import cube_torch
 import torch
+import cube_torch
 from PIL import Image
 from torch import multiprocessing
 from torch.utils.data import ConcatDataset, Dataset
-from torchvision import transforms
-
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['localIP'] = "127.0.0.1"
 os.environ['USE_BATCH_DOWNLOAD'] = 'true'
