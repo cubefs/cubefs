@@ -55,7 +55,7 @@ func startMasterContainerOnNode(nodeUser, node, containerName, dataDir string) (
 	cmd := exec.Command("ssh", nodeUser+"@"+node,
 		"docker run -d --name "+containerName+
 			" -v "+dataDir+"/disk/"+containerName+"/data:/cfs/data"+
-			" -v "+dataDir+"/bin:/cfs/bin:ro"+
+			" -v "+dataDir+BinDir+":/cfs/bin:ro"+
 			" -v "+dataDir+"/disk/"+containerName+"/log:/cfs/log"+
 			" -v "+dataDir+"/conf/"+containerName+".json:/cfs/conf/master.json"+
 			" -v "+dataDir+"/script/start_master.sh:/cfs/script/start.sh"+
@@ -71,7 +71,7 @@ func startMetanodeContainerOnNode(nodeUser, node, containerName, dataDir string)
 	cmd := exec.Command("ssh", nodeUser+"@"+node,
 		"docker run -d --name "+containerName+
 			" -v "+dataDir+"/disk/"+containerName+"/data:/cfs/data"+
-			" -v "+dataDir+"/bin:/cfs/bin:ro"+
+			" -v "+dataDir+BinDir+":/cfs/bin:ro"+
 			" -v "+dataDir+"/disk/"+containerName+"/log:/cfs/log"+
 			" -v "+dataDir+"/conf/metanode.json:/cfs/conf/metanode.json"+
 			" -v "+dataDir+"/script/start_meta.sh:/cfs/script/start.sh"+
@@ -87,7 +87,7 @@ func startDatanodeContainerOnNode(nodeUser, node, containerName, dataDir, diskMa
 	cmd := exec.Command("ssh", nodeUser+"@"+node,
 		"docker run -d --name "+containerName+
 			" -v "+dataDir+"/disk/"+containerName+"/data:/cfs/data"+
-			" -v "+dataDir+"/bin:/cfs/bin:ro"+
+			" -v "+dataDir+BinDir+":/cfs/bin:ro"+
 			" -v "+dataDir+"/disk/"+containerName+"/log:/cfs/log"+
 			" -v "+dataDir+"/conf/datanode.json:/cfs/conf/datanode.json"+diskMap+
 			" -v "+dataDir+"/script/start_datanode.sh:/cfs/script/start.sh"+
