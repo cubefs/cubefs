@@ -1,0 +1,21 @@
+{
+  "clusterName": "cubeFS",
+  "id": "3",
+  "role": "master",
+  "ip": "10.1.0.46",
+  "listen": "17010",
+  "prof": "17020",
+  "heartbeatPort": "5901",
+  "replicaPort": "5902",
+  "peers": "1:10.1.0.44:17010,2:10.1.0.45:17010,3:10.1.0.46:17010",
+  "retainLogs": "20000",
+  "consulAddr": "http://192.168.0.101:8500",
+  "exporterPort": 9500,
+  "logLevel": "debug",
+  "logDir": "/cfs/log",
+  "walDir": "/cfs/data/wal",
+  "storeDir": "/cfs/data/store",
+  "metaNodeReservedMem": "67108864",
+  "ebsAddr": "10.177.40.215:8500",
+  "ebsServicePath": "access"
+}
