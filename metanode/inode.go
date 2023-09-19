@@ -854,6 +854,9 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 				//log.LogDebugf("UnmarshalValue. inode %v merge top layer multiSnap.ekRefMap with layer %v", i.Inode, idx)
 				proto.MergeSplitKey(i.Inode, i.multiSnap.ekRefMap, ino.multiSnap.ekRefMap)
 			}
+			if i.multiSnap == nil {
+				i.multiSnap = &InodeMultiSnap{}
+			}
 			//log.LogDebugf("action[UnmarshalValue] inode %v old seq %v hist len %v", ino.Inode, ino.getVer(), i.getLayerLen())
 			i.multiSnap.multiVersions = append(i.multiSnap.multiVersions, ino)
 		}
@@ -903,6 +906,9 @@ func (i *Inode) AppendObjExtents(eks []proto.ObjExtentKey, ct int64) (err error)
 }
 
 func (i *Inode) PrintAllVersionInfo() {
+	if i.multiSnap == nil {
+		return
+	}
 	log.LogInfof("action[PrintAllVersionInfo] inode [%v] verSeq [%v] hist len [%v]", i.Inode, i.getVer(), i.getLayerLen())
 	for id, info := range i.multiSnap.multiVersions {
 		log.LogInfof("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.getVer(), info)
@@ -1114,6 +1120,10 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 		return
 	}
 	// if any alive snapshot in mp dimension exist in seq scope from dino to next ascend neighbor, dio snapshot be keep or else drop
+	if inode.multiSnap == nil {
+		log.LogWarnf("action[dirUnlinkVerInlist] ino %v multiSnap should not be nil", inode)
+		inode.multiSnap = &InodeMultiSnap{}
+	}
 
 	mIdx := idxWithTopLayer - 1
 	if mIdx == 0 {
@@ -1245,7 +1255,9 @@ func (i *Inode) ShouldDelVer(mpVer uint64, delVer uint64) (ok bool, err error) {
 		}
 		return false, fmt.Errorf("not found")
 	}
-
+	if i.multiSnap == nil {
+		return false, fmt.Errorf("not found")
+	}
 	for _, inoVer := range i.multiSnap.multiVersions {
 		if inoVer.getVer() == delVer {
 			return true, nil
@@ -1439,6 +1451,9 @@ func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
 		i.Inode, mpVer, i.getVer(), i.getLayerLen())
 
 	i.Lock()
+	if i.multiSnap == nil {
+		i.multiSnap = &InodeMultiSnap{}
+	}
 	if i.getLayerVer(0) == nVer {
 		i.multiSnap.multiVersions[0] = ino
 	} else {
@@ -1462,7 +1477,18 @@ func (i *Inode) CreateVer(ver uint64) {
 	log.LogDebugf("action[CreateVer] inode %v create new version [%v] and store old one [%v], hist len [%v]",
 		i.Inode, ver, i.getVer(), i.getLayerLen())
 
+	if i.multiSnap == nil {
+		i.multiSnap = &InodeMultiSnap{}
+	}
 	i.multiSnap.multiVersions = append([]*Inode{ino}, i.multiSnap.multiVersions...)
+}
+func (i *Inode) buildMultiSnap() {
+	if i.multiSnap == nil {
+		i.multiSnap = &InodeMultiSnap{}
+	}
+	if i.multiSnap.ekRefMap == nil {
+		i.multiSnap.ekRefMap = new(sync.Map)
+	}
 }
 
 func (i *Inode) SplitExtentWithCheck(mpVer uint64, multiVersionList *proto.VolVersionInfoList,
@@ -1478,9 +1504,8 @@ func (i *Inode) SplitExtentWithCheck(mpVer uint64, multiVersionList *proto.VolVe
 	}
 	i.Lock()
 	defer i.Unlock()
-	if i.multiSnap.ekRefMap == nil {
-		i.multiSnap.ekRefMap = new(sync.Map)
-	}
+
+	i.buildMultiSnap()
 	delExtents, status = i.Extents.SplitWithCheck(i.Inode, ek, i.multiSnap.ekRefMap)
 	if status != proto.OpOk {
 		log.LogErrorf("action[SplitExtentWithCheck] status %v", status)
@@ -1539,7 +1564,9 @@ func (i *Inode) CreateLowerVersion(curVer uint64, verlist *proto.VolVersionInfoL
 
 	log.LogDebugf("action[CreateLowerVersion] inode %v create new version [%v] and store old one [%v], hist len [%v]",
 		i.Inode, ino, i.getVer(), i.getLayerLen())
-
+	if i.multiSnap == nil {
+		i.multiSnap = &InodeMultiSnap{}
+	}
 	i.multiSnap.multiVersions = append([]*Inode{ino}, i.multiSnap.multiVersions...)
 
 	return
@@ -1643,11 +1670,6 @@ func (i *Inode) DecSplitExts(delExtents interface{}) {
 			log.LogDebugf("DecSplitExts ek not split %v", ek)
 			continue
 		}
-		if i.multiSnap.ekRefMap == nil {
-			log.LogErrorf("DecSplitExts. multiSnap.ekRefMap is nil")
-			return
-		}
-
 		ok, last := i.DecSplitEk(ek)
 		if !ok {
 			log.LogErrorf("DecSplitExts. ek %v not found!", ek)
@@ -1663,8 +1685,9 @@ func (i *Inode) DecSplitExts(delExtents interface{}) {
 func (i *Inode) DecSplitEk(ext *proto.ExtentKey) (ok bool, last bool) {
 	log.LogDebugf("DecSplitEk inode %v dp %v extent id %v.key %v ext %v", i.Inode, ext.PartitionId, ext.ExtentId,
 		ext.PartitionId<<32|ext.ExtentId, ext)
-	if i.multiSnap == nil {
-		log.LogErrorf("DecSplitEk. inode %v snap point nil", i.Inode)
+
+	if i.multiSnap == nil || i.multiSnap.ekRefMap == nil {
+		log.LogErrorf("DecSplitEk. multiSnap %v", i.multiSnap)
 		return
 	}
 	if val, ok := i.multiSnap.ekRefMap.Load(ext.PartitionId<<32 | ext.ExtentId); !ok {
