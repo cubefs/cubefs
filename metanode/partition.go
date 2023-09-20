@@ -211,12 +211,12 @@ type OpMultipart interface {
 
 // MultiVersion operation from master or client
 type OpMultiVersion interface {
-	HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo) (err error)
+	HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo, sync bool) (err error)
 	fsmVersionOp(reqData []byte) (err error)
 	GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
 	GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
 	GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse)
-	checkVerList(info *proto.VolVersionInfoList) (err error)
+	checkVerList(info *proto.VolVersionInfoList, sync bool) (err error)
 }
 
 // OpMeta defines the interface for the metadata operations.
@@ -236,6 +236,7 @@ type OpMeta interface {
 type OpPartition interface {
 	GetVolName() (volName string)
 	GetVerSeq() uint64
+	GetVerList() []*proto.VolVersionInfo
 	IsLeader() (leaderAddr string, isLeader bool)
 	LeaderTerm() (leaderID, term uint64)
 	IsFollowerRead() bool
@@ -529,7 +530,7 @@ func (mp *metaPartition) acucumUidSizeByLoad(ino *Inode) {
 	mp.uidManager.accumInoUidSize(ino, mp.uidManager.accumBase)
 }
 
-func (mp *metaPartition) getVerList() []*proto.VolVersionInfo {
+func (mp *metaPartition) GetVerList() []*proto.VolVersionInfo {
 	mp.multiVersionList.RLock()
 	defer mp.multiVersionList.RUnlock()
 	return mp.multiVersionList.VerList
@@ -689,7 +690,6 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		}
 		mp.onStop()
 	}()
-	mp.multiVersionList = &proto.VolVersionInfoList{}
 	if err = mp.load(isCreate); err != nil {
 		err = errors.NewErrorf("[onStart] load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
@@ -861,20 +861,21 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 // NewMetaPartition creates a new meta partition with the specified configuration.
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
-		config:        conf,
-		dentryTree:    NewBtree(),
-		inodeTree:     NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
-		stopC:         make(chan bool),
-		storeChan:     make(chan *storeMsg, 100),
-		freeList:      newFreeList(),
-		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
-		extReset:      make(chan struct{}),
-		vol:           NewVol(),
-		manager:       manager,
-		uniqChecker:   newUniqChecker(),
-		verSeq:        conf.VerSeq,
+		config:           conf,
+		dentryTree:       NewBtree(),
+		inodeTree:        NewBtree(),
+		extendTree:       NewBtree(),
+		multipartTree:    NewBtree(),
+		stopC:            make(chan bool),
+		storeChan:        make(chan *storeMsg, 100),
+		freeList:         newFreeList(),
+		extDelCh:         make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		extReset:         make(chan struct{}),
+		vol:              NewVol(),
+		manager:          manager,
+		uniqChecker:      newUniqChecker(),
+		verSeq:           conf.VerSeq,
+		multiVersionList: &proto.VolVersionInfoList{},
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp

@@ -127,14 +127,14 @@ func (i *Inode) setVer(seq uint64) {
 	}
 }
 
-func (i *Inode) insertEkRefMap(ek *proto.ExtentKey) {
+func (i *Inode) insertEkRefMap(mpId uint64, ek *proto.ExtentKey) {
 	if i.multiSnap == nil {
 		i.multiSnap = NewMultiSnap(i.getVer())
 	}
 	if i.multiSnap.ekRefMap == nil {
 		i.multiSnap.ekRefMap = new(sync.Map)
 	}
-	storeEkSplit(i.Inode, i.multiSnap.ekRefMap, ek)
+	storeEkSplit(mpId, i.Inode, i.multiSnap.ekRefMap, ek)
 }
 
 func (i *Inode) getEkRefMap() *sync.Map {
@@ -216,7 +216,8 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64) (extInfo map[uint64][]*p
 					dOK  bool
 					last bool
 				)
-				if dOK, last = dIno.DecSplitEk(ext); !dOK {
+				log.LogDebugf("deleteMarkedInodes DecSplitEk mpID %v inode [%v]", mpID, inode.Inode)
+				if dOK, last = dIno.DecSplitEk(mpID, ext); !dOK {
 					return false
 				}
 				if !last {
@@ -854,6 +855,9 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 				//log.LogDebugf("UnmarshalValue. inode %v merge top layer multiSnap.ekRefMap with layer %v", i.Inode, idx)
 				proto.MergeSplitKey(i.Inode, i.multiSnap.ekRefMap, ino.multiSnap.ekRefMap)
 			}
+			if i.multiSnap == nil {
+				i.multiSnap = &InodeMultiSnap{}
+			}
 			//log.LogDebugf("action[UnmarshalValue] inode %v old seq %v hist len %v", ino.Inode, ino.getVer(), i.getLayerLen())
 			i.multiSnap.multiVersions = append(i.multiSnap.multiVersions, ino)
 		}
@@ -903,6 +907,9 @@ func (i *Inode) AppendObjExtents(eks []proto.ObjExtentKey, ct int64) (err error)
 }
 
 func (i *Inode) PrintAllVersionInfo() {
+	if i.multiSnap == nil {
+		return
+	}
 	log.LogInfof("action[PrintAllVersionInfo] inode [%v] verSeq [%v] hist len [%v]", i.Inode, i.getVer(), i.getLayerLen())
 	for id, info := range i.multiSnap.multiVersions {
 		log.LogInfof("action[PrintAllVersionInfo] layer [%v]  verSeq [%v] inode [%v]", id, info.getVer(), info)
@@ -930,7 +937,7 @@ func (i *Inode) MultiLayerClearExtByVer(layer int, dVerSeq uint64) (delExtents [
 	return
 }
 
-func (i *Inode) mergeExtentArr(extentKeysLeft []proto.ExtentKey, extentKeysRight []proto.ExtentKey) []proto.ExtentKey {
+func (i *Inode) mergeExtentArr(mpId uint64, extentKeysLeft []proto.ExtentKey, extentKeysRight []proto.ExtentKey) []proto.ExtentKey {
 	lCnt := len(extentKeysLeft)
 	rCnt := len(extentKeysRight)
 	sortMergedExts := make([]proto.ExtentKey, 0, lCnt+rCnt)
@@ -940,11 +947,11 @@ func (i *Inode) mergeExtentArr(extentKeysLeft []proto.ExtentKey, extentKeysRight
 		mLen := len(sortMergedExts)
 		if mLen > 0 && sortMergedExts[mLen-1].IsSequence(&(*keyArr)[pos]) {
 			sortMergedExts[mLen-1].Size += (*keyArr)[pos].Size
-			log.LogDebugf("mergeExtentArr. ek left %v right %v", sortMergedExts[mLen-1], (*keyArr)[pos])
+			log.LogDebugf("[mergeExtentArr] mpId[%v]. ek left %v right %v", mpId, sortMergedExts[mLen-1], (*keyArr)[pos])
 			if !sortMergedExts[mLen-1].IsSplit() || !(*keyArr)[pos].IsSplit() {
-				log.LogErrorf("ino %v ek merge left %v right %v not all split", i.Inode, sortMergedExts[mLen-1], (*keyArr)[pos])
+				log.LogErrorf("[mergeExtentArr] mpId[%v] ino %v ek merge left %v right %v not all split", mpId, i.Inode, sortMergedExts[mLen-1], (*keyArr)[pos])
 			}
-			i.DecSplitEk(&(*keyArr)[pos])
+			i.DecSplitEk(mpId, &(*keyArr)[pos])
 		} else {
 			sortMergedExts = append(sortMergedExts, (*keyArr)[pos])
 		}
@@ -975,11 +982,11 @@ func (i *Inode) mergeExtentArr(extentKeysLeft []proto.ExtentKey, extentKeysRight
 // Restore ext info to older version or deleted if no right version
 // The list(multiSnap.multiVersions) contains all point of modification on inode, each ext must belong to one layer.
 // Once the layer be deleted is top layer ver be changed to upper layer, or else the ext belongs is exclusive and can be dropped
-func (i *Inode) RestoreExts2NextLayer(delExtentsOrigin []proto.ExtentKey, curVer uint64, idx int) (delExtents []proto.ExtentKey, err error) {
-	log.LogInfof("action[RestoreMultiSnapExts] curVer [%v] delExtents size [%v] hist len [%v]", curVer, len(delExtentsOrigin), i.getLayerLen())
+func (i *Inode) RestoreExts2NextLayer(mpId uint64, delExtentsOrigin []proto.ExtentKey, curVer uint64, idx int) (delExtents []proto.ExtentKey, err error) {
+	log.LogInfof("action[RestoreMultiSnapExts] mpId [%v] curVer [%v] delExtents size [%v] hist len [%v]", mpId, curVer, len(delExtentsOrigin), i.getLayerLen())
 	// no version left.all old versions be deleted
 	if i.isEmptyVerList() {
-		log.LogWarnf("action[RestoreMultiSnapExts] restore have no old version left")
+		log.LogWarnf("action[RestoreMultiSnapExts] mpId [%v] inode [%v] restore have no old version left", mpId, i.Inode)
 		return delExtentsOrigin, nil
 	}
 	lastSeq := i.multiSnap.multiVersions[idx].getVer()
@@ -988,37 +995,37 @@ func (i *Inode) RestoreExts2NextLayer(delExtentsOrigin []proto.ExtentKey, curVer
 	for _, delExt := range delExtentsOrigin {
 		// curr deleting delExt with a seq larger than the next version's seq, it doesn't belong to any
 		// versions,so try to delete it
-		log.LogDebugf("action[RestoreMultiSnapExts] ext split [%v] with seq[%v] gSeq[%v] try to del.the last seq [%v], ek details[%v]",
-			delExt.IsSplit(), delExt.GetSeq(), curVer, lastSeq, delExt)
+		log.LogDebugf("action[RestoreMultiSnapExts] mpId [%v] inode [%v] ext split [%v] with seq[%v] gSeq[%v] try to del.the last seq [%v], ek details[%v]",
+			mpId, i.Inode, delExt.IsSplit(), delExt.GetSeq(), curVer, lastSeq, delExt)
 		if delExt.GetSeq() > lastSeq {
 			delExtents = append(delExtents, delExt)
 		} else {
-			log.LogInfof("action[RestoreMultiSnapExts] move to level 1 delExt [%v] specSnapExtent size [%v]", delExt, len(specSnapExtent))
+			log.LogInfof("action[RestoreMultiSnapExts] mpId [%v] inode [%v] move to level 1 delExt [%v] specSnapExtent size [%v]", mpId, i.Inode, delExt, len(specSnapExtent))
 			specSnapExtent = append(specSnapExtent, delExt)
 		}
 	}
 	if len(specSnapExtent) == 0 {
-		log.LogInfof("action[RestoreMultiSnapExts] no need to move to level 1")
+		log.LogInfof("action[RestoreMultiSnapExts] mpId [%v] inode [%v] no need to move to level 1", mpId, i.Inode)
 		return
 	}
 	if len(specSnapExtent) > 0 && i.isEmptyVerList() {
-		err = fmt.Errorf("inode %v error not found prev snapshot index", i.Inode)
-		log.LogErrorf("action[RestoreMultiSnapExts] %v", err)
+		err = fmt.Errorf("mpId [%v] inode %v error not found prev snapshot index", mpId, i.Inode)
+		log.LogErrorf("action[RestoreMultiSnapExts] mpId [%v] inode [%v] %v", mpId, i.Inode, err)
 		return
 	}
 
 	i.multiSnap.multiVersions[idx].Extents.Lock()
-	i.multiSnap.multiVersions[idx].Extents.eks = i.mergeExtentArr(i.multiSnap.multiVersions[idx].Extents.eks, specSnapExtent)
+	i.multiSnap.multiVersions[idx].Extents.eks = i.mergeExtentArr(mpId, i.multiSnap.multiVersions[idx].Extents.eks, specSnapExtent)
 	i.multiSnap.multiVersions[idx].Extents.Unlock()
 
 	return
 }
 
-func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
+func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
 	// if there's no snapshot itself, nor have snapshot after inode's ver then need unlink directly and make no snapshot
 	// just move to upper layer, the behavior looks like that the snapshot be dropped
-	log.LogDebugf("action[unlinkTopLayer] mpVer %v check if have snapshot depends on the deleitng ino %v (with no snapshot itself) found seq %v, verlist %v",
-		mpVer, ino, inode.getVer(), verlist)
+	log.LogDebugf("action[unlinkTopLayer] mpid [%v] mpVer %v check if have snapshot depends on the deleitng ino %v (with no snapshot itself) found seq %v, verlist %v",
+		mpId, mpVer, ino, inode.getVer(), verlist)
 	status = proto.OpOk
 
 	delFunc := func() (done bool) {
@@ -1029,7 +1036,7 @@ func (inode *Inode) unlinkTopLayer(ino *Inode, mpVer uint64, verlist *proto.VolV
 			return true
 		}
 		var dIno *Inode
-		if ext2Del, dIno = inode.getAndDelVer(ino.getVer(), mpVer, verlist); dIno == nil {
+		if ext2Del, dIno = inode.getAndDelVer(mpId, ino.getVer(), mpVer, verlist); dIno == nil {
 			status = proto.OpNotExistErr
 			log.LogDebugf("action[unlinkTopLayer] ino %v", ino)
 			return true
@@ -1114,6 +1121,10 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 		return
 	}
 	// if any alive snapshot in mp dimension exist in seq scope from dino to next ascend neighbor, dio snapshot be keep or else drop
+	if inode.multiSnap == nil {
+		log.LogWarnf("action[dirUnlinkVerInlist] ino %v multiSnap should not be nil", inode)
+		inode.multiSnap = &InodeMultiSnap{}
+	}
 
 	mIdx := idxWithTopLayer - 1
 	if mIdx == 0 {
@@ -1155,8 +1166,8 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 	return
 }
 
-func (inode *Inode) unlinkVerInList(ino *Inode, mpVer uint64, verlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
-	log.LogDebugf("action[unlinkVerInList] ino %v try search seq %v isdir %v", ino, ino.getVer(), proto.IsDir(inode.Type))
+func (inode *Inode) unlinkVerInList(mpId uint64, ino *Inode, mpVer uint64, verlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
+	log.LogDebugf("action[unlinkVerInList] mpId [%v] ino %v try search seq %v isdir %v", mpId, ino, ino.getVer(), proto.IsDir(inode.Type))
 	if proto.IsDir(inode.Type) { // snapshot dir deletion don't take link into consider, but considers the scope of snapshot contrast to verList
 		return inode.dirUnlinkVerInlist(ino, mpVer, verlist)
 	}
@@ -1182,7 +1193,7 @@ func (inode *Inode) unlinkVerInList(ino *Inode, mpVer uint64, verlist *proto.Vol
 		return
 	} else {
 		// don't unlink if no version satisfied
-		if ext2Del, dIno = inode.getAndDelVer(ino.getVer(), mpVer, verlist); dIno == nil {
+		if ext2Del, dIno = inode.getAndDelVer(mpId, ino.getVer(), mpVer, verlist); dIno == nil {
 			status = proto.OpNotExistErr
 			log.LogDebugf("action[unlinkVerInList] ino %v", ino)
 			return
@@ -1245,7 +1256,9 @@ func (i *Inode) ShouldDelVer(mpVer uint64, delVer uint64) (ok bool, err error) {
 		}
 		return false, fmt.Errorf("not found")
 	}
-
+	if i.multiSnap == nil {
+		return false, fmt.Errorf("not found")
+	}
 	for _, inoVer := range i.multiSnap.multiVersions {
 		if inoVer.getVer() == delVer {
 			return true, nil
@@ -1310,7 +1323,7 @@ func (ino *Inode) getInoByVer(verSeq uint64, equal bool) (i *Inode, idx int) {
 // 2. if have system layer between dVer and next older inode's layer(not exist is ok), drop dVer related exts and update ver
 // 3. else Restore to next inode's Layer
 
-func (i *Inode) getAndDelVer(dVer uint64, mpVer uint64, verlist *proto.VolVersionInfoList) (delExtents []proto.ExtentKey, ino *Inode) {
+func (i *Inode) getAndDelVer(mpId uint64, dVer uint64, mpVer uint64, verlist *proto.VolVersionInfoList) (delExtents []proto.ExtentKey, ino *Inode) {
 	var err error
 	verlist.RLock()
 	defer verlist.RUnlock()
@@ -1320,7 +1333,7 @@ func (i *Inode) getAndDelVer(dVer uint64, mpVer uint64, verlist *proto.VolVersio
 
 	// first layer need delete
 	if dVer == 0 {
-		if delExtents, err = i.RestoreExts2NextLayer(i.Extents.eks, mpVer, 0); err != nil {
+		if delExtents, err = i.RestoreExts2NextLayer(mpId, i.Extents.eks, mpVer, 0); err != nil {
 			log.LogErrorf("action[getAndDelVer] ino %v RestoreMultiSnapExts split error %v", i.Inode, err)
 			return
 		}
@@ -1393,7 +1406,7 @@ func (i *Inode) getAndDelVer(dVer uint64, mpVer uint64, verlist *proto.VolVersio
 			} else {
 				log.LogDebugf("action[getAndDelVer] ino %v ver %v nextVer %v step 3 ver ", i.Inode, mIno.getVer(), nVerSeq)
 				// 3. next layer exist. the deleted version and  next version are neighbor in verlist, thus need restore and delete
-				if delExtents, err = i.RestoreExts2NextLayer(mIno.Extents.eks, dVer, id+1); err != nil {
+				if delExtents, err = i.RestoreExts2NextLayer(mpId, mIno.Extents.eks, dVer, id+1); err != nil {
 					log.LogDebugf("action[getAndDelVer] ino %v RestoreMultiSnapExts split error %v", i.Inode, err)
 					return
 				}
@@ -1439,6 +1452,9 @@ func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
 		i.Inode, mpVer, i.getVer(), i.getLayerLen())
 
 	i.Lock()
+	if i.multiSnap == nil {
+		i.multiSnap = &InodeMultiSnap{}
+	}
 	if i.getLayerVer(0) == nVer {
 		i.multiSnap.multiVersions[0] = ino
 	} else {
@@ -1462,26 +1478,35 @@ func (i *Inode) CreateVer(ver uint64) {
 	log.LogDebugf("action[CreateVer] inode %v create new version [%v] and store old one [%v], hist len [%v]",
 		i.Inode, ver, i.getVer(), i.getLayerLen())
 
+	if i.multiSnap == nil {
+		i.multiSnap = &InodeMultiSnap{}
+	}
 	i.multiSnap.multiVersions = append([]*Inode{ino}, i.multiSnap.multiVersions...)
 }
-
-func (i *Inode) SplitExtentWithCheck(mpVer uint64, multiVersionList *proto.VolVersionInfoList,
-	reqVer uint64, ek proto.ExtentKey, ct int64, volType int) (delExtents []proto.ExtentKey, status uint8) {
-
-	var err error
-	ek.SetSeq(reqVer)
-	log.LogDebugf("action[SplitExtentWithCheck] inode %v,ver %v,ek %v,hist len %v", i.Inode, reqVer, ek, i.getLayerLen())
-
-	if reqVer != i.getVer() {
-		log.LogDebugf("action[SplitExtentWithCheck] CreateVer ver %v", reqVer)
-		i.CreateVer(reqVer)
+func (i *Inode) buildMultiSnap() {
+	if i.multiSnap == nil {
+		i.multiSnap = &InodeMultiSnap{}
 	}
-	i.Lock()
-	defer i.Unlock()
 	if i.multiSnap.ekRefMap == nil {
 		i.multiSnap.ekRefMap = new(sync.Map)
 	}
-	delExtents, status = i.Extents.SplitWithCheck(i.Inode, ek, i.multiSnap.ekRefMap)
+}
+
+func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.ExtentKey, status uint8) {
+
+	var err error
+	param.ek.SetSeq(param.reqVer)
+	log.LogDebugf("action[SplitExtentWithCheck] inode %v,ver %v,ek %v,hist len %v", i.Inode, param.reqVer, param.ek, i.getLayerLen())
+
+	if param.reqVer != i.getVer() {
+		log.LogDebugf("action[SplitExtentWithCheck] CreateVer ver %v", param.reqVer)
+		i.CreateVer(param.reqVer)
+	}
+	i.Lock()
+	defer i.Unlock()
+
+	i.buildMultiSnap()
+	delExtents, status = i.Extents.SplitWithCheck(param.mpId, i.Inode, param.ek, i.multiSnap.ekRefMap)
 	if status != proto.OpOk {
 		log.LogErrorf("action[SplitExtentWithCheck] status %v", status)
 		return
@@ -1490,17 +1515,17 @@ func (i *Inode) SplitExtentWithCheck(mpVer uint64, multiVersionList *proto.VolVe
 		return
 	}
 
-	if err = i.CreateLowerVersion(i.getVer(), multiVersionList); err != nil {
+	if err = i.CreateLowerVersion(i.getVer(), param.multiVersionList); err != nil {
 		return
 	}
 
-	if delExtents, err = i.RestoreExts2NextLayer(delExtents, mpVer, 0); err != nil {
+	if delExtents, err = i.RestoreExts2NextLayer(param.mpId, delExtents, param.mpVer, 0); err != nil {
 		log.LogErrorf("action[fsmAppendExtentWithCheck] ino %v RestoreMultiSnapExts split error %v", i.Inode, err)
 		return
 	}
-	if proto.IsHot(volType) {
+	if proto.IsHot(param.volType) {
 		i.Generation++
-		i.ModifyTime = ct
+		i.ModifyTime = param.ct
 	}
 
 	return
@@ -1539,35 +1564,41 @@ func (i *Inode) CreateLowerVersion(curVer uint64, verlist *proto.VolVersionInfoL
 
 	log.LogDebugf("action[CreateLowerVersion] inode %v create new version [%v] and store old one [%v], hist len [%v]",
 		i.Inode, ino, i.getVer(), i.getLayerLen())
-
+	if i.multiSnap == nil {
+		i.multiSnap = &InodeMultiSnap{}
+	}
 	i.multiSnap.multiVersions = append([]*Inode{ino}, i.multiSnap.multiVersions...)
 
 	return
 }
 
-func (i *Inode) AppendExtentWithCheck(
-	mpVer uint64,
-	multiVersionList *proto.VolVersionInfoList,
-	reqVer uint64,
-	ek proto.ExtentKey,
-	ct int64,
-	discardExtents []proto.ExtentKey,
-	volType int) (delExtents []proto.ExtentKey, status uint8) {
+type AppendExtParam struct {
+	mpId             uint64
+	mpVer            uint64
+	multiVersionList *proto.VolVersionInfoList
+	reqVer           uint64
+	ek               proto.ExtentKey
+	ct               int64
+	discardExtents   []proto.ExtentKey
+	volType          int
+}
 
-	ek.SetSeq(mpVer)
-	log.LogDebugf("action[AppendExtentWithCheck] mpVer %v inode %v and ver %v,req ver %v,ek %v,hist len %v",
-		mpVer, i.Inode, i.getVer(), reqVer, ek, i.getLayerLen())
+func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto.ExtentKey, status uint8) {
 
-	if mpVer != i.getVer() {
-		log.LogDebugf("action[AppendExtentWithCheck] ver %v inode ver %v", reqVer, i.getVer())
-		i.CreateVer(mpVer)
+	param.ek.SetSeq(param.mpVer)
+	log.LogDebugf("action[AppendExtentWithCheck] mpVer %v inode %v and fsm ver %v,req ver %v,ek %v,hist len %v",
+		param.mpVer, i.Inode, i.getVer(), param.reqVer, param.ek, i.getLayerLen())
+
+	if param.mpVer != i.getVer() {
+		log.LogDebugf("action[AppendExtentWithCheck] ver %v inode ver %v", param.reqVer, i.getVer())
+		i.CreateVer(param.mpVer)
 	}
 
 	i.Lock()
 	defer i.Unlock()
 
-	refFunc := func(key *proto.ExtentKey) { i.insertEkRefMap(key) }
-	delExtents, status = i.Extents.AppendWithCheck(i.Inode, ek, refFunc, discardExtents)
+	refFunc := func(key *proto.ExtentKey) { i.insertEkRefMap(param.mpId, key) }
+	delExtents, status = i.Extents.AppendWithCheck(i.Inode, param.ek, refFunc, param.discardExtents)
 	if status != proto.OpOk {
 		log.LogErrorf("action[AppendExtentWithCheck] status %v", status)
 		return
@@ -1576,22 +1607,22 @@ func (i *Inode) AppendExtentWithCheck(
 	// multi version take effect
 	if i.getVer() > 0 && len(delExtents) > 0 {
 		var err error
-		if err = i.CreateLowerVersion(i.getVer(), multiVersionList); err != nil {
+		if err = i.CreateLowerVersion(i.getVer(), param.multiVersionList); err != nil {
 			return
 		}
-		if delExtents, err = i.RestoreExts2NextLayer(delExtents, mpVer, 0); err != nil {
+		if delExtents, err = i.RestoreExts2NextLayer(param.mpId, delExtents, param.mpVer, 0); err != nil {
 			log.LogErrorf("action[AppendExtentWithCheck] RestoreMultiSnapExts err %v", err)
 			return nil, proto.OpErr
 		}
 	}
 
-	if proto.IsHot(volType) {
+	if proto.IsHot(param.volType) {
 		size := i.Extents.Size()
 		if i.Size < size {
 			i.Size = size
 		}
 		i.Generation++
-		i.ModifyTime = ct
+		i.ModifyTime = param.ct
 	}
 	return
 }
@@ -1634,55 +1665,56 @@ func (i *Inode) DecNLinkByVer(verSeq uint64) {
 	i.DecNLink()
 }
 
-func (i *Inode) DecSplitExts(delExtents interface{}) {
-	log.LogDebugf("DecSplitExts inode %v", i.Inode)
+func (i *Inode) DecSplitExts(mpId uint64, delExtents interface{}) {
+	log.LogDebugf("[DecSplitExts] mpId [%v] inode %v", mpId, i.Inode)
 	cnt := len(delExtents.([]proto.ExtentKey))
 	for id := 0; id < cnt; id++ {
 		ek := &delExtents.([]proto.ExtentKey)[id]
 		if !ek.IsSplit() {
-			log.LogDebugf("DecSplitExts ek not split %v", ek)
+			log.LogDebugf("[DecSplitExts] mpId [%v]  ek not split %v", mpId, ek)
 			continue
 		}
 		if i.multiSnap.ekRefMap == nil {
-			log.LogErrorf("DecSplitExts. multiSnap.ekRefMap is nil")
+			log.LogErrorf("[DecSplitExts] mpid [%v]. multiSnap.ekRefMap is nil", mpId)
 			return
 		}
 
-		ok, last := i.DecSplitEk(ek)
+		ok, last := i.DecSplitEk(mpId, ek)
 		if !ok {
-			log.LogErrorf("DecSplitExts. ek %v not found!", ek)
+			log.LogErrorf("[DecSplitExts] mpid [%v]. ek %v not found!", mpId, ek)
 			continue
 		}
 		if last {
-			log.LogDebugf("DecSplitExts ek %v split flag be unset to remove all content", ek)
+			log.LogDebugf("[DecSplitExts] mpid [%v] ek %v split flag be unset to remove all content", mpId, ek)
 			ek.SetSplit(false)
 		}
 	}
 }
 
-func (i *Inode) DecSplitEk(ext *proto.ExtentKey) (ok bool, last bool) {
-	log.LogDebugf("DecSplitEk inode %v dp %v extent id %v.key %v ext %v", i.Inode, ext.PartitionId, ext.ExtentId,
+func (i *Inode) DecSplitEk(mpId uint64, ext *proto.ExtentKey) (ok bool, last bool) {
+	log.LogDebugf("[DecSplitEk] mpId[%v] inode %v dp %v extent id %v.key %v ext %v", mpId, i.Inode, ext.PartitionId, ext.ExtentId,
 		ext.PartitionId<<32|ext.ExtentId, ext)
-	if i.multiSnap == nil {
-		log.LogErrorf("DecSplitEk. inode %v snap point nil", i.Inode)
+
+	if i.multiSnap == nil || i.multiSnap.ekRefMap == nil {
+		log.LogErrorf("DecSplitEk. multiSnap %v", i.multiSnap)
 		return
 	}
 	if val, ok := i.multiSnap.ekRefMap.Load(ext.PartitionId<<32 | ext.ExtentId); !ok {
-		log.LogErrorf("DecSplitEk. dp %v inode [%v] ext not found", ext.PartitionId, i.Inode)
+		log.LogErrorf("[DecSplitEk] mpId[%v]. dp %v inode [%v] ext not found", mpId, ext.PartitionId, i.Inode)
 		return false, false
 	} else {
 		if val.(uint32) == 0 {
-			log.LogErrorf("DecSplitEk. dp %v inode [%v] ek ref is zero!", ext.PartitionId, i.Inode)
+			log.LogErrorf("[DecSplitEk] mpId[%v]. dp %v inode [%v] ek ref is zero!", mpId, ext.PartitionId, i.Inode)
 			return false, false
 		}
 		if val.(uint32) == 1 {
-			log.LogDebugf("DecSplitEk inode %v dp %v extent id %v.key %v", i.Inode, ext.PartitionId, ext.ExtentId,
+			log.LogDebugf("[DecSplitEk] mpId[%v] inode %v dp %v extent id %v.key %v", mpId, i.Inode, ext.PartitionId, ext.ExtentId,
 				ext.PartitionId<<32|ext.ExtentId)
 			i.multiSnap.ekRefMap.Delete(ext.PartitionId<<32 | ext.ExtentId)
 			return true, true
 		}
 		i.multiSnap.ekRefMap.Store(ext.PartitionId<<32|ext.ExtentId, val.(uint32)-1)
-		log.LogDebugf("DecSplitEk. mp %v inode [%v] ek %v val %v", ext.PartitionId, i.Inode, ext, val.(uint32)-1)
+		log.LogDebugf("[DecSplitEk] mpId[%v]. mp %v inode [%v] ek %v val %v", mpId, ext.PartitionId, i.Inode, ext, val.(uint32)-1)
 		return true, false
 	}
 }

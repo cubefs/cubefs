@@ -64,10 +64,11 @@ type MetadataManagerConfig struct {
 }
 
 type verOp2Phase struct {
-	verSeq     uint64
-	verPrepare uint64
-	status     uint32
-	step       uint32
+	verSeq              uint64
+	verPrepare          uint64
+	status              uint32
+	step                uint32
+	isActiveReqToMaster bool
 	sync.Mutex
 }
 
@@ -86,9 +87,9 @@ type metadataManager struct {
 	curQuotaGoroutineNum int32
 	maxQuotaGoroutineNum int32
 	cpuUtil              atomicutil.Float64
-	samplerDone          chan struct{}
+	stopC                chan struct{}
 	volUpdating          *sync.Map //map[string]*verOp2Phase
-	verUpdateChan        chan []byte
+	verUpdateChan        chan string
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
@@ -324,15 +325,28 @@ func (m *metadataManager) Stop() {
 
 func (m *metadataManager) startCpuSample() {
 	// async sample cpu util
-	m.samplerDone = make(chan struct{})
 	go func() {
 		for {
 			select {
-			case <-m.samplerDone:
+			case <-m.stopC:
 				return
 			default:
 				used := loadutil.GetCpuUtilPercent(sampleDuration)
 				m.cpuUtil.Store(used)
+			}
+		}
+	}()
+}
+
+func (m *metadataManager) startSnapshotVersionPromote() {
+	m.verUpdateChan = make(chan string, 1000)
+	go func() {
+		for {
+			select {
+			case volName := <-m.verUpdateChan:
+				m.checkAndPromoteVersion(volName)
+			case <-m.stopC:
+				return
 			}
 		}
 	}()
@@ -345,8 +359,10 @@ func (m *metadataManager) onStart() (err error) {
 	if err != nil {
 		return
 	}
+	m.stopC = make(chan struct{})
 	// start sampler
 	m.startCpuSample()
+	m.startSnapshotVersionPromote()
 	return
 }
 
@@ -357,7 +373,7 @@ func (m *metadataManager) onStop() {
 			partition.Stop()
 		}
 		// stop sampler
-		close(m.samplerDone)
+		close(m.stopC)
 	}
 	return
 }
@@ -587,9 +603,11 @@ func (m *metadataManager) deletePartition(id uint64) (err error) {
 }
 
 // Range scans all the meta partitions.
-func (m *metadataManager) Range(f func(i uint64, p MetaPartition) bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+func (m *metadataManager) Range(needLock bool, f func(i uint64, p MetaPartition) bool) {
+	if needLock {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+	}
 	for k, v := range m.partitions {
 		if !f(k, v) {
 			return

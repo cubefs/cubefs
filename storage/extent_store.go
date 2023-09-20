@@ -596,14 +596,14 @@ func (s *ExtentStore) GetExtentSnapshotModOffset(extentID uint64, allocSize uint
 	}
 	log.LogDebugf("action[ExtentStore.GetExtentSnapshotModOffset] extId %v SnapshotDataOff %v", extentID, einfo.SnapshotDataOff)
 	// snapshot write may in sequence
-	//watermark = int64(einfo.SnapshotDataOff)
-	//if watermark%PageSize != 0 {
-	//	watermark = watermark + (PageSize - watermark%PageSize)
-	//}
+
 	if einfo.SnapPreAllocDataOff == 0 {
 		einfo.SnapPreAllocDataOff = einfo.SnapshotDataOff
 	}
 	watermark = int64(einfo.SnapPreAllocDataOff)
+	if watermark%util.PageSize != 0 {
+		watermark = watermark + (util.PageSize - watermark%util.PageSize)
+	}
 	einfo.SnapPreAllocDataOff += uint64(allocSize)
 
 	return
@@ -818,9 +818,8 @@ func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize u
 		if extentInfo.FileID > maxExtentID {
 			maxExtentID = extentInfo.FileID
 		}
-		totalSize += extentInfo.Size + uint64(extentInfo.SnapshotDataOff) - uint64(util.ExtentSize)
+		totalSize += extentInfo.Size + extentInfo.SnapshotDataOff - uint64(util.ExtentSize)
 	}
-
 	return maxExtentID, totalSize
 }
 
@@ -1066,7 +1065,7 @@ func (arr ExtentInfoArr) Less(i, j int) bool { return arr[i].FileID < arr[j].Fil
 func (arr ExtentInfoArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
 func (s *ExtentStore) BackendTask() {
-	// s.autoComputeExtentCrc()
+	s.autoComputeExtentCrc()
 	s.cleanExpiredNormalExtentDeleteCache()
 }
 

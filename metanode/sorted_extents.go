@@ -142,49 +142,52 @@ func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.Exten
 	return
 }
 
-func storeEkSplit(inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey) (id uint64) {
+func storeEkSplit(mpId uint64, inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey) (id uint64) {
 	if ekRef == nil {
-		log.LogErrorf("inodeID %v ekRef nil", inodeID)
+		log.LogErrorf("[storeEkSplit] mpId [%v] inodeID %v ekRef nil", mpId, inodeID)
 		return
 	}
-	log.LogDebugf("storeEkSplit inode %v mp %v extent id %v ek %v", inodeID, ek.PartitionId, ek.ExtentId, ek)
-	ek.SetSplit(true)
+	log.LogDebugf("[storeEkSplit] mpId [%v] inode %v mp %v extent id %v ek %v", mpId, inodeID, ek.PartitionId, ek.ExtentId, ek)
 	id = ek.PartitionId<<32 | ek.ExtentId
 	var v uint32
 	if val, ok := ekRef.Load(id); !ok {
+		if ek.IsSplit() {
+			log.LogErrorf("[storeEkSplit] mpId [%v]inode id %v ek %v already be set split", mpId, inodeID, ek)
+		}
 		v = 1
 	} else {
 		v = val.(uint32) + 1
 	}
+	ek.SetSplit(true)
 	ekRef.Store(id, v)
-	log.LogDebugf("storeEkSplit inode %v mp %v extent id %v.key %v, cnt %v", inodeID, ek.PartitionId, ek.ExtentId,
+	log.LogDebugf("[storeEkSplit] mpId [%v] inode %v mp %v extent id %v.key %v, cnt %v", mpId, inodeID, ek.PartitionId, ek.ExtentId,
 		ek.PartitionId<<32|ek.ExtentId, v)
 	return
 }
 
-func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey, ekRef *sync.Map) (delExtents []proto.ExtentKey, status uint8) {
+func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit proto.ExtentKey, ekRef *sync.Map) (delExtents []proto.ExtentKey, status uint8) {
 	status = proto.OpOk
 	endOffset := ekSplit.FileOffset + uint64(ekSplit.Size)
-	log.LogDebugf("SplitWithCheck. inode %v  ekSplit ek %v", inodeID, ekSplit)
+	log.LogDebugf("[SplitWithCheck] mpId [%v]. inode %v  ekSplit ek %v", mpId, inodeID, ekSplit)
 	se.Lock()
 	defer se.Unlock()
 
 	if len(se.eks) <= 0 {
-		log.LogErrorf("SplitWithCheck. inode %v eks empty cann't find ek [%v]", inodeID, ekSplit)
+		log.LogErrorf("[SplitWithCheck] mpId [%v]. inode %v eks empty cann't find ek [%v]", mpId, inodeID, ekSplit)
 		status = proto.OpArgMismatchErr
 		return
 	}
 	ekSplit.SetSplit(true)
 	lastKey := se.eks[len(se.eks)-1]
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ekSplit.FileOffset {
-		log.LogErrorf("SplitWithCheck. inode %v eks do split not found", inodeID)
+		log.LogErrorf("[SplitWithCheck] mpId [%v]. inode %v eks do split not found", mpId, inodeID)
 		status = proto.OpArgMismatchErr
 		return
 	}
 
 	firstKey := se.eks[0]
 	if firstKey.FileOffset >= endOffset {
-		log.LogErrorf("SplitWithCheck. inode %v eks do split not found", inodeID)
+		log.LogErrorf("[SplitWithCheck] mpId [%v]. inode %v eks do split not found", mpId, inodeID)
 		status = proto.OpArgMismatchErr
 		return
 	}
@@ -203,7 +206,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 
 	if startIndex == 0 {
 		status = proto.OpArgMismatchErr
-		log.LogErrorf("SplitWithCheck. inode %v should have no valid extent request [%v]", inodeID, ekSplit)
+		log.LogErrorf("[SplitWithCheck] mpId [%v]. inode %v should have no valid extent request [%v]", mpId, inodeID, ekSplit)
 		return
 	}
 
@@ -217,7 +220,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 	keySize := key.Size
 	key.AddModGen()
 	if !key.IsSplit() {
-		storeEkSplit(inodeID, ekRef, key)
+		storeEkSplit(mpId, inodeID, ekRef, key)
 	}
 
 	if ekSplit.FileOffset+uint64(ekSplit.Size) > key.FileOffset+uint64(key.Size) {
@@ -234,7 +237,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 	delKey := *key
 	delKey.ExtentOffset = key.ExtentOffset + (ekSplit.FileOffset - key.FileOffset)
 	delKey.Size = ekSplit.Size
-	storeEkSplit(inodeID, ekRef, &delKey)
+	storeEkSplit(mpId, inodeID, ekRef, &delKey)
 
 	if ekSplit.Size == 0 {
 		log.LogErrorf("SplitWithCheck. inode %v delKey %v,key %v, eksplit %v", inodeID, delKey, key, ekSplit)
@@ -262,7 +265,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 			keyBefore.Size += ekSplit.Size
 		} else {
 			se.eks = append(se.eks, ekSplit)
-			storeEkSplit(inodeID, ekRef, &ekSplit)
+			storeEkSplit(mpId, inodeID, ekRef, &ekSplit)
 		}
 
 		keyDup.FileOffset = keyDup.FileOffset + uint64(ekSplit.Size)
@@ -289,7 +292,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 			eks[0].Size += ekSplit.Size
 		} else {
 			se.eks = append(se.eks, ekSplit)
-			storeEkSplit(inodeID, ekRef, &ekSplit)
+			storeEkSplit(mpId, inodeID, ekRef, &ekSplit)
 		}
 
 		se.eks = append(se.eks, eks...)
@@ -303,7 +306,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 
 		se.eks = se.eks[:startIndex]
 		se.eks = append(se.eks, ekSplit)
-		storeEkSplit(inodeID, ekRef, &ekSplit)
+		storeEkSplit(mpId, inodeID, ekRef, &ekSplit)
 		mKey := &proto.ExtentKey{
 			FileOffset:   ekSplit.FileOffset + uint64(ekSplit.Size),
 			PartitionId:  key.PartitionId,
@@ -318,7 +321,7 @@ func (se *SortedExtents) SplitWithCheck(inodeID uint64, ekSplit proto.ExtentKey,
 			},
 		}
 		se.eks = append(se.eks, *mKey)
-		storeEkSplit(inodeID, ekRef, mKey)
+		storeEkSplit(mpId, inodeID, ekRef, mKey)
 
 		if keySize-key.Size-ekSplit.Size == 0 {
 			log.LogErrorf("SplitWithCheck. inode %v keySize %v,key %v, eksplit %v", inodeID, keySize, key, ekSplit)
@@ -348,6 +351,25 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 			addRefFunc(lastKey)
 			addRefFunc(&ek)
 		}
+		return
+	}
+
+	if lastKey.FileOffset == ek.FileOffset &&
+		lastKey.PartitionId == ek.PartitionId &&
+		lastKey.ExtentOffset == ek.ExtentOffset && lastKey.Size < ek.Size &&
+		lastKey.GetSeq() < ek.GetSeq() {
+		if len(discard) > 0 {
+			status = proto.OpConflictExtentsErr
+			return
+		}
+		log.LogDebugf("action[AppendWithCheck] split append key %v", ek)
+		ek.FileOffset = lastKey.FileOffset + uint64(lastKey.Size)
+		ek.ExtentOffset = ek.ExtentOffset + uint64(lastKey.Size)
+		ek.Size = ek.Size - lastKey.Size
+		log.LogDebugf("action[AppendWithCheck] after split append key %v", ek)
+		addRefFunc(lastKey)
+		addRefFunc(&ek)
+		se.eks = append(se.eks, ek)
 		return
 	}
 

@@ -124,6 +124,7 @@ type ExtentConfig struct {
 type MultiVerMgr struct {
 	verReadSeq   uint64 // verSeq in config used as snapshot read
 	latestVerSeq uint64 // newest verSeq from master for datanode write to check
+	verList      *proto.VolVersionInfoList
 	sync.RWMutex
 }
 
@@ -252,7 +253,7 @@ retry:
 	}
 
 	client.streamers = make(map[uint64]*Streamer)
-	client.multiVerMgr = &MultiVerMgr{}
+	client.multiVerMgr = &MultiVerMgr{verList: &proto.VolVersionInfoList{}}
 
 	client.appendExtentKey = config.OnAppendExtentKey
 	client.splitExtentKey = config.OnSplitExtentKey
@@ -268,7 +269,7 @@ retry:
 	client.volumeName = config.Volume
 	client.bcacheEnable = config.BcacheEnable
 	client.bcacheDir = config.BcacheDir
-	client.multiVerMgr.verReadSeq = config.VerReadSeq
+	client.multiVerMgr.verReadSeq = client.dataWrapper.GetReadVerSeq()
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
@@ -339,7 +340,11 @@ func (client *ExtentClient) GetLatestVer() uint64 {
 func (client *ExtentClient) GetReadVer() uint64 {
 	return atomic.LoadUint64(&client.multiVerMgr.verReadSeq)
 }
-func (client *ExtentClient) UpdateLatestVer(verSeq uint64) (err error) {
+func (client *ExtentClient) GetVerMgr() *proto.VolVersionInfoList {
+	return client.multiVerMgr.verList
+}
+func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (err error) {
+	verSeq := verList.GetLastVer()
 	if verSeq == 0 || verSeq <= atomic.LoadUint64(&client.multiVerMgr.latestVerSeq) {
 		return
 	}
@@ -351,6 +356,7 @@ func (client *ExtentClient) UpdateLatestVer(verSeq uint64) (err error) {
 
 	log.LogInfof("action[UpdateLatestVer] update verseq [%v] to [%v]", client.multiVerMgr.latestVerSeq, verSeq)
 	atomic.StoreUint64(&client.multiVerMgr.latestVerSeq, verSeq)
+	client.multiVerMgr.verList = verList
 
 	client.streamerLock.Lock()
 	defer client.streamerLock.Unlock()

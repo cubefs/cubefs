@@ -32,7 +32,7 @@ func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
 	p.ExtentType = proto.NormalExtentType
-	p.PartitionID = uint64(dp.PartitionID)
+	p.PartitionID = dp.PartitionID
 	if storage.IsTinyExtent(ext.ExtentId) {
 		p.ExtentType = proto.TinyExtentType
 	}

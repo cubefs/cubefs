@@ -5,7 +5,6 @@ package fs // import "github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"hash/fnv"
 	"io"
 	"log"
@@ -17,6 +16,8 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/cubefs/cubefs/proto"
 
 	"bytes"
 
@@ -1774,6 +1775,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.SetxattrRequest:
+		log.Println("SetxattrRequest")
 		n, ok := node.(NodeSetxattrer)
 		if !ok {
 			return fuse.ENOTSUP

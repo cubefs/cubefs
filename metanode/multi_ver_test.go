@@ -18,7 +18,7 @@ import (
 )
 
 var partitionId uint64 = 10
-var manager = &metadataManager{}
+var manager = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)}
 var mp *metaPartition
 
 //PartitionId   uint64              `json:"partition_id"`
@@ -244,12 +244,12 @@ func TestEkMarshal(t *testing.T) {
 			VerSeq: 123444,
 		},
 	}
-	id := storeEkSplit(0, ino.multiSnap.ekRefMap, ek)
+	id := storeEkSplit(0, 0, ino.multiSnap.ekRefMap, ek)
 	dpID, extID := proto.ParseFromId(id)
 	assert.True(t, dpID == ek.PartitionId)
 	assert.True(t, extID == ek.ExtentId)
 
-	ok, _ := ino.DecSplitEk(ek)
+	ok, _ := ino.DecSplitEk(mp.config.PartitionId, ek)
 	assert.True(t, ok == true)
 	log.LogDebugf("TestEkMarshal close")
 }
@@ -1213,6 +1213,11 @@ func mockPartitionRaftForTest(ctrl *gomock.Controller) *metaPartition {
 		idx++
 		return partition.Apply(cmd, idx)
 	}).AnyTimes()
+
+	raft.EXPECT().IsRaftLeader().DoAndReturn(func(cmd []byte) (resp interface{}, err error) {
+		return true, nil
+	}).AnyTimes()
+
 	raft.EXPECT().LeaderTerm().Return(uint64(1), uint64(1)).AnyTimes()
 	partition.raftPartition = raft
 
@@ -1238,7 +1243,7 @@ func TestCheckVerList(t *testing.T) {
 			{Ver: 50, Status: proto.VersionNormal}},
 	}
 
-	mp.checkVerList(masterList)
+	mp.checkVerList(masterList, false)
 	verData := <-mp.verUpdateChan
 	mp.submit(opFSMVersionOp, verData)
 
@@ -1251,11 +1256,175 @@ func TestCheckVerList(t *testing.T) {
 			{Ver: 40, Status: proto.VersionNormal}},
 	}
 
-	mp.checkVerList(masterList)
+	mp.checkVerList(masterList, false)
 	verData = <-mp.verUpdateChan
 	mp.submit(opFSMVersionOp, verData)
 
 	assert.True(t, mp.verSeq == 40)
 	assert.True(t, len(mp.multiVersionList.VerList) == 2)
 	mp.stop()
+}
+
+func checkStoreMode(t *testing.T, ExtentType uint8) (err error) {
+	if proto.IsTinyExtentType(ExtentType) || proto.IsNormalExtentType(ExtentType) {
+		return
+	}
+	t.Logf("action[checkStoreMode] extent type %v", ExtentType)
+	return fmt.Errorf("error")
+}
+
+func TestCheckMod(t *testing.T) {
+	var tp uint8 = 192
+	err := checkStoreMode(t, tp)
+	assert.True(t, err == nil)
+}
+
+func managerVersionPrepare(req *proto.MultiVersionOpRequest) (err error) {
+	if err, _ = manager.prepareCreateVersion(req); err != nil {
+		return
+	}
+	return manager.commitCreateVersion(req.VolumeID, req.VerSeq, req.Op, true)
+}
+
+func TestOpCommitVersion(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	for i := 1; i < 5; i++ {
+		mp = mockPartitionRaftForTest(mockCtrl)
+		mp.config.PartitionId = uint64(i)
+		mp.manager = manager
+		mp.manager.partitions[mp.config.PartitionId] = mp
+		mp.config.NodeId = 1
+	}
+
+	err := managerVersionPrepare(&proto.MultiVersionOpRequest{VolumeID: VolNameForTest, Op: proto.CreateVersionPrepare, VerSeq: 10000})
+	assert.True(t, err == nil)
+	for _, m := range manager.partitions {
+		mList := m.GetVerList()
+		assert.True(t, len(mList) == 1)
+		assert.True(t, mList[0].Ver == 10000)
+		assert.True(t, mList[0].Status == proto.VersionPrepare)
+	}
+	err = manager.commitCreateVersion(VolNameForTest, 10000, proto.CreateVersionPrepare, true)
+	assert.True(t, err == nil)
+	for _, m := range manager.partitions {
+		mList := m.GetVerList()
+		assert.True(t, len(mList) == 1)
+		assert.True(t, mList[0].Ver == 10000)
+		assert.True(t, mList[0].Status == proto.VersionPrepare)
+	}
+	err = managerVersionPrepare(&proto.MultiVersionOpRequest{VolumeID: VolNameForTest, Op: proto.CreateVersionPrepare, VerSeq: 5000})
+	assert.True(t, err != nil)
+	for _, m := range manager.partitions {
+		mList := m.GetVerList()
+		assert.True(t, len(mList) == 1)
+		assert.True(t, mList[0].Ver == 10000)
+		assert.True(t, mList[0].Status == proto.VersionPrepare)
+	}
+	err = managerVersionPrepare(&proto.MultiVersionOpRequest{VolumeID: VolNameForTest, Op: proto.CreateVersionPrepare, VerSeq: 20000})
+	assert.True(t, err == nil)
+	for _, m := range manager.partitions {
+		mList := m.GetVerList()
+		assert.True(t, len(mList) == 2)
+		assert.True(t, mList[0].Ver == 10000)
+		assert.True(t, mList[0].Status == proto.VersionPrepare)
+		assert.True(t, mList[1].Ver == 20000)
+		assert.True(t, mList[1].Status == proto.VersionPrepare)
+	}
+	err = manager.commitCreateVersion(VolNameForTest, 20000, proto.CreateVersionCommit, true)
+	assert.True(t, err == nil)
+	for _, m := range manager.partitions {
+		mList := m.GetVerList()
+		assert.True(t, len(mList) == 2)
+		assert.True(t, mList[0].Ver == 10000)
+		assert.True(t, mList[0].Status == proto.VersionPrepare)
+		assert.True(t, mList[1].Ver == 20000)
+		assert.True(t, mList[1].Status == proto.VersionNormal)
+	}
+}
+
+func TestExtendSerialization(t *testing.T) {
+	dataMap := map[string][]byte{
+		"key1": []byte("value1"),
+		"key2": []byte("value2"),
+	}
+	mv := &Extend{
+		inode:   123,
+		dataMap: dataMap,
+		verSeq:  456,
+	}
+
+	checkFunc := func() {
+		bytes, err := mv.Bytes()
+		if err != nil {
+			t.Errorf("Failed to serialize Extend: %v", err)
+		}
+
+		newExtend, err := NewExtendFromBytes(bytes)
+		if err != nil {
+			t.Errorf("Failed to deserialize Extend: %v", err)
+		}
+
+		if !reflect.DeepEqual(mv, newExtend) {
+			t.Errorf("Deserialized Extend does not match the original object")
+		}
+	}
+
+	checkFunc()
+
+	mv.multiVers = []*Extend{
+		{
+			inode:   789,
+			dataMap: map[string][]byte{"key3": []byte("value3")},
+			verSeq:  999,
+		},
+		{
+			inode:   789,
+			dataMap: map[string][]byte{"key4": []byte("value4")},
+			verSeq:  1999,
+		},
+	}
+	checkFunc()
+}
+
+func TestXAttrOperation(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mp = mockPartitionRaftForTest(mockCtrl)
+
+	mp.SetXAttr(&proto.SetXAttrRequest{Key: "test", Value: "value"}, &Packet{})
+	mp.SetXAttr(&proto.SetXAttrRequest{Key: "test1", Value: "value1"}, &Packet{})
+
+	testCreateVer()
+
+	// operation on top of snapshot version
+	err := mp.SetXAttr(&proto.SetXAttrRequest{Key: "test1", Value: "value2"}, &Packet{})
+	assert.True(t, err == nil)
+	packRsp := &Packet{}
+	mp.GetXAttr(&proto.GetXAttrRequest{Key: "test1", VerSeq: 0}, packRsp)
+	assert.True(t, packRsp.ResultCode == proto.OpOk)
+	resp := new(proto.GetXAttrResponse)
+	err = packRsp.UnmarshalData(resp)
+	assert.True(t, err == nil)
+	assert.True(t, resp.Value == "value2")
+
+	// remove test1 but it should exist in snapshot
+	err = mp.RemoveXAttr(&proto.RemoveXAttrRequest{Key: "test1"}, &Packet{})
+	assert.True(t, err == nil)
+
+	mp.GetXAttr(&proto.GetXAttrRequest{Key: "test1", VerSeq: 0}, packRsp)
+	assert.True(t, packRsp.ResultCode == proto.OpOk)
+	err = packRsp.UnmarshalData(resp)
+	assert.True(t, err == nil)
+	assert.True(t, resp.Value == "")
+
+	// get snapshot xattr the 0 version
+	packRsp = &Packet{}
+	mp.GetXAttr(&proto.GetXAttrRequest{Key: "test1", VerSeq: math.MaxUint64}, packRsp)
+	assert.True(t, packRsp.ResultCode == proto.OpOk)
+
+	resp = new(proto.GetXAttrResponse)
+	err = packRsp.UnmarshalData(resp)
+	assert.True(t, err == nil)
+	assert.True(t, resp.Value == "value1")
 }

@@ -23,7 +23,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
@@ -260,15 +259,33 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 	p.PacketOkWithBody([]byte(dp.Disk().Path))
 }
 
-func (s *DataNode) commitCreateVersion(volumeID string, verSeq uint64) (err error) {
-	for _, dp := range s.space.partitions {
-		if dp.volumeID != volumeID {
+func (s *DataNode) commitDelVersion(volumeID string, verSeq uint64) (err error) {
+	for _, partition := range s.space.partitions {
+		if partition.config.VolName != volumeID {
 			continue
 		}
-		dp.UpdateVersion(verSeq)
+		verListMgr := partition.volVersionInfoList
+		verListMgr.Lock()
+		for i, ver := range verListMgr.VerList {
+			if i == len(verListMgr.VerList)-1 {
+				log.LogWarnf("action[fsmVersionOp] mp[%v] seq %v, seqArray size %v newest ver %v",
+					partition.config.PartitionID, verSeq, len(verListMgr.VerList), ver.Ver)
+				break
+			}
+			if ver.Ver == verSeq {
+				log.LogInfof("action[fsmVersionOp] mp[%v] seq %v,seqArray size %v", partition.config.PartitionID, verSeq, len(verListMgr.VerList))
+				// mp.multiVersionList = append(mp.multiVersionList[:i], mp.multiVersionList[i+1:]...)
+				verListMgr.VerList = append(verListMgr.VerList[:i], verListMgr.VerList[i+1:]...)
+				break
+			}
+		}
+		verListMgr.Unlock()
 	}
-	log.LogInfof("action[commitCreateVersion] handle master version reqeust seq %v", verSeq)
+	return
+}
 
+func (s *DataNode) commitCreateVersion(volumeID string, verSeq uint64) (err error) {
+	log.LogInfof("action[commitCreateVersion] handle master version reqeust seq %v", verSeq)
 	if value, ok := s.volUpdating.Load(volumeID); ok {
 		ver2Phase := value.(*verOp2Phase)
 		log.LogWarnf("action[commitCreateVersion] try commit volume %v prepare seq %v with commit seq %v",
@@ -288,11 +305,31 @@ func (s *DataNode) commitCreateVersion(volumeID string, verSeq uint64) (err erro
 		ver2Phase.status = proto.VersionWorkingFinished
 		log.LogWarnf("action[commitCreateVersion] commit volume %v prepare seq %v with commit seq %v",
 			volumeID, ver2Phase.verPrepare, verSeq)
+		for _, partition := range s.space.partitions {
+			if partition.config.VolName != volumeID {
+				continue
+			}
+			partition.volVersionInfoList.Lock()
+			cnt := len(partition.volVersionInfoList.VerList)
+			if cnt > 0 && partition.volVersionInfoList.VerList[cnt-1].Ver >= verSeq {
+				log.LogWarnf("action[HandleVersionOp] reqeust seq %v lessOrEqual last exist snapshot seq %v",
+					partition.volVersionInfoList.VerList[cnt-1].Ver, verSeq)
+				partition.volVersionInfoList.Unlock()
+				continue
+			}
+			newVer := &proto.VolVersionInfo{
+				Status: proto.VersionNormal,
+				Ver:    verSeq,
+			}
+			partition.verSeq = verSeq
+			partition.volVersionInfoList.VerList = append(partition.volVersionInfoList.VerList, newVer)
+			partition.volVersionInfoList.Unlock()
+		}
+
 		return
 	}
 
-	err = fmt.Errorf("vol %v not found", volumeID)
-	log.LogErrorf("action[commitCreateVersion] err %v", err)
+	log.LogWarnf("action[commitCreateVersion] vol %v not found seq %v", volumeID, verSeq)
 	return
 }
 
@@ -323,58 +360,8 @@ func (s *DataNode) prepareCreateVersion(req *proto.MultiVersionOpRequest) (err e
 	return
 }
 
-func (s *DataNode) checkMultiVersionStatus(volName string) (err error) {
-	log.LogDebugf("action[checkMultiVersionStatus] volumeName %v", volName)
-	var info *proto.VolumeVerInfo
-	if value, ok := s.volUpdating.Load(volName); ok {
-		ver2Phase := value.(*verOp2Phase)
-
-		if atomic.LoadUint32(&ver2Phase.status) != proto.VersionWorkingAbnormal &&
-			atomic.LoadUint32(&ver2Phase.step) == proto.CreateVersionPrepare {
-
-			ver2Phase.Lock() // here trylock may be better after go1.18 adapted to compile
-			defer ver2Phase.Unlock()
-
-			// check again in case of sth already happened by other goroutine during be blocked by lock
-			if atomic.LoadUint32(&ver2Phase.status) == proto.VersionWorkingAbnormal ||
-				atomic.LoadUint32(&ver2Phase.step) != proto.CreateVersionPrepare {
-
-				log.LogWarnf("action[checkMultiVersionStatus] volumeName %v status %v step %v",
-					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
-				return
-			}
-
-			if info, err = MasterClient.AdminAPI().GetVerInfo(volName); err != nil {
-				log.LogErrorf("action[checkMultiVersionStatus] volumeName %v status %v step %v err %v",
-					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step), err)
-				return
-			}
-
-			log.LogDebugf("action[checkMultiVersionStatus] vol %v info %v", volName, info)
-
-			if info.VerSeqPrepare != ver2Phase.verPrepare {
-				atomic.StoreUint32(&ver2Phase.status, proto.VersionWorkingAbnormal)
-				err = fmt.Errorf("volumeName %v status %v step %v",
-					volName, atomic.LoadUint32(&ver2Phase.status), atomic.LoadUint32(&ver2Phase.step))
-				log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
-				return
-			}
-			if info.VerPrepareStatus == proto.VersionNormal {
-				if err = s.commitCreateVersion(info.Name, info.VerSeq); err != nil {
-					log.LogErrorf("action[checkMultiVersionStatus] err %v", err)
-					return
-				}
-			}
-		}
-	} else {
-		log.LogDebugf("action[checkMultiVersionStatus] volumeName %v not found", volName)
-	}
-	return
-}
-
 // Handle OpHeartbeat packet.
 func (s *DataNode) handleUpdateVerPacket(p *repl.Packet) {
-	log.LogWarnf("action[handleUpdateVerPacket] enter in p %v", p)
 	var err error
 	defer func() {
 		if err != nil {
@@ -390,57 +377,58 @@ func (s *DataNode) handleUpdateVerPacket(p *repl.Packet) {
 		log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
 		return
 	}
+	request := &proto.MultiVersionOpRequest{}
+	response := &proto.MultiVersionOpResponse{}
+	response.Op = task.OpCode
+	response.Status = proto.TaskSucceeds
 
-	log.LogWarnf("action[handleUpdateVerPacket] task %v", task)
-
-	go func() {
-		request := &proto.MultiVersionOpRequest{}
-		response := &proto.MultiVersionOpResponse{}
-		response.Op = task.OpCode
-		response.Status = proto.TaskSucceeds
-
-		if task.OpCode == proto.OpVersionOperation {
-			marshaled, _ := json.Marshal(task.Request)
-			if err = json.Unmarshal(marshaled, request); err != nil {
-				log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
-				response.Status = proto.TaskFailed
-				goto end
-			}
-
-			if request.Op == proto.CreateVersionPrepare {
-				if err, _ = s.prepareCreateVersion(request); err != nil {
-					log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
-					goto end
-				}
-			} else if request.Op == proto.CreateVersionCommit {
-				if err = s.commitCreateVersion(request.VolumeID, request.VerSeq); err != nil {
-					log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
-					goto end
-				}
-			}
-
-			response.VerSeq = request.VerSeq
-			response.Op = request.Op
-			response.Addr = request.Addr
-			response.VolumeID = request.VolumeID
-
-		} else {
-			err = fmt.Errorf("illegal opcode")
+	if task.OpCode == proto.OpVersionOperation {
+		marshaled, _ := json.Marshal(task.Request)
+		if err = json.Unmarshal(marshaled, request); err != nil {
 			log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
+			response.Status = proto.TaskFailed
 			goto end
 		}
-	end:
-		if err != nil {
-			response.Result = err.Error()
+
+		if request.Op == proto.CreateVersionPrepare {
+			if err, _ = s.prepareCreateVersion(request); err != nil {
+				log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
+				goto end
+			}
+		} else if request.Op == proto.CreateVersionCommit {
+			if err = s.commitCreateVersion(request.VolumeID, request.VerSeq); err != nil {
+				log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
+				goto end
+			}
+		} else if request.Op == proto.DeleteVersion {
+			if err = s.commitDelVersion(request.VolumeID, request.VerSeq); err != nil {
+				log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
+				goto end
+			}
 		}
-		task.Response = response
-		log.LogInfof("action[handleUpdateVerPacket] rsp to client,req vol %v, verseq %v, op %v", request.VolumeID, request.VerSeq, request.Op)
-		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
-			err = errors.Trace(err, "handleUpdateVerPacket to master failed.")
-			log.LogErrorf(err.Error())
-			return
-		}
-	}()
+
+		response.VerSeq = request.VerSeq
+		response.Op = request.Op
+		response.Addr = request.Addr
+		response.VolumeID = request.VolumeID
+
+	} else {
+		err = fmt.Errorf("illegal opcode")
+		log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
+		goto end
+	}
+end:
+	if err != nil {
+		response.Result = err.Error()
+	}
+	task.Response = response
+	log.LogInfof("action[handleUpdateVerPacket] rsp to client,req vol %v, verseq %v, op %v", request.VolumeID, request.VerSeq, request.Op)
+	if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
+		err = errors.Trace(err, "handleUpdateVerPacket to master failed.")
+		log.LogErrorf(err.Error())
+		return
+	}
+
 }
 
 func (s *DataNode) checkVolumeForbidden(volNames []string) {
@@ -633,7 +621,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	// even the partition is forbidden, because
 	// the inode already be deleted in meta partition
 	// if we prevent it, we will get "orphan extents"
-	if p.ExtentType == proto.TinyExtentType || p.Opcode == proto.OpSplitMarkDelete {
+	if proto.IsTinyExtentType(p.ExtentType) || p.Opcode == proto.OpSplitMarkDelete {
 		ext := new(proto.TinyExtentDeleteRecord)
 		err = json.Unmarshal(p.Data, ext)
 		if err == nil {
@@ -714,7 +702,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		return
 	}
 	store := partition.ExtentStore()
-	if p.ExtentType == proto.TinyExtentType {
+	if proto.IsTinyExtentType(p.ExtentType) {
 		if !shallDegrade {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
@@ -827,26 +815,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 	if !shallDegrade {
 		metricPartitionIOLabels = GetIoMetricLabels(partition, "randwrite")
 		partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
-	}
-
-	if partition.verSeq > 0 {
-		log.LogDebugf("action[handleRandomWritePacket] opcod %v seq %v dpid %v dpseq %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID)
-		if p.Opcode == proto.OpSyncRandomWrite || p.Opcode == proto.OpRandomWrite {
-			err = fmt.Errorf("volume enable mulit version")
-			log.LogErrorf("action[handleRandomWritePacket] error %v", err)
-			return
-		}
-		if p.VerSeq < partition.verSeq && (p.Opcode == proto.OpRandomWriteVer || p.Opcode == proto.OpSyncRandomWriteVer) {
-			p.ExtentType |= proto.MultiVersionFlag
-			err = storage.VerNotConsistentError
-			log.LogErrorf("action[handleRandomWritePacket] dp %v client verSeq[%v] small than dataPartiton ver[%v]",
-				partition.config.PartitionID, p.VerSeq, partition.verSeq)
-			p.VerSeq = partition.verSeq
-			return
-		} else if p.VerSeq > partition.verSeq {
-			log.LogDebugf("action[handleRandomWritePacket] dp %v client verSeq[%v] and update dp Seq[%v]", partition.config.PartitionID, p.VerSeq, partition.verSeq)
-			partition.verSeq = p.VerSeq
-		}
 	}
 
 	err = partition.RandomWriteSubmit(p)
@@ -1001,7 +969,7 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	)
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
-	if p.ExtentType == proto.NormalExtentType {
+	if proto.IsNormalExtentType(p.ExtentType) {
 		fInfoList, _, err = store.GetAllWatermarks(storage.NormalExtentFilter())
 	} else {
 		extents := make([]uint64, 0)

@@ -15,10 +15,12 @@
 package proto
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strconv"
@@ -202,6 +204,7 @@ const (
 	OpNotEmpty           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
 	OpTryOtherExtent     uint8 = 0xE0
+	OpAgainVerionList    uint8 = 0xEF
 
 	OpPing                  uint8 = 0xFF
 	OpMetaUpdateXAttr       uint8 = 0x3B
@@ -250,6 +253,7 @@ const (
 	GetAllWatermarksDeadLineTime              = 60
 	DefaultClusterLoadFactor          float64 = 10
 	MultiVersionFlag                          = 0x80
+	VersionListFlag                           = 0x40
 )
 
 // multi version operation
@@ -276,6 +280,7 @@ const (
 	VersionDeleted        = 2
 	VersionDeleting       = 3
 	VersionDeleteAbnormal = 4
+	VersionPrepare        = 5
 )
 
 const (
@@ -309,6 +314,15 @@ type Packet struct {
 	mesg               string
 	HasPrepare         bool
 	VerSeq             uint64 // only used in mod request to datanode
+	VerList            []*VolVersionInfo
+}
+
+func IsTinyExtentType(extentType uint8) bool {
+	return extentType&NormalExtentType != NormalExtentType
+}
+
+func IsNormalExtentType(extentType uint8) bool {
+	return extentType&NormalExtentType == NormalExtentType
 }
 
 // NewPacket returns a new packet.
@@ -346,15 +360,13 @@ func (p *Packet) String() string {
 
 // GetStoreType returns the store type.
 func (p *Packet) GetStoreType() (m string) {
-	switch p.ExtentType {
-	case TinyExtentType:
-		m = "TinyExtent"
-	case NormalExtentType:
-		m = "NormalExtent"
-	default:
-		m = "Unknown"
+	if IsNormalExtentType(p.ExtentType) {
+		return "NormalExtent"
+	} else if IsTinyExtentType(p.ExtentType) {
+		return "TinyExtent"
+	} else {
+		return "Unknown"
 	}
-	return
 }
 
 func (p *Packet) GetOpMsgWithReqAndResult() (m string) {
@@ -696,6 +708,13 @@ func (p *Packet) MarshalHeader(out []byte) {
 	return
 }
 
+func (p *Packet) IsVersionList() bool {
+	if p.ExtentType&VersionListFlag == VersionListFlag {
+		return true
+	}
+	return false
+}
+
 // UnmarshalHeader unmarshals the packet header.
 func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.Magic = in[0]
@@ -720,6 +739,56 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	// the ver param should read at the higher level directly
 	//if p.Opcode ==OpRandomWriteVer {
 
+	return nil
+}
+
+const verInfoCnt = 17
+
+func (p *Packet) MarshalVersionSlice() (data []byte, err error) {
+	items := p.VerList
+	cnt := len(items)
+	buff := bytes.NewBuffer(make([]byte, 0, 2*cnt*verInfoCnt))
+	if err := binary.Write(buff, binary.BigEndian, uint16(cnt)); err != nil {
+		return nil, err
+	}
+
+	for _, v := range items {
+		if err := binary.Write(buff, binary.BigEndian, v.Ver); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(buff, binary.BigEndian, v.DelTime); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(buff, binary.BigEndian, v.Status); err != nil {
+			return nil, err
+		}
+	}
+
+	return buff.Bytes(), nil
+}
+
+func (p *Packet) UnmarshalVersionSlice(cnt int, d []byte) error {
+	items := make([]*VolVersionInfo, 0)
+	buf := bytes.NewBuffer(d)
+	var err error
+
+	for idx := 0; idx < cnt; idx++ {
+		e := &VolVersionInfo{}
+		err = binary.Read(buf, binary.BigEndian, &e.Ver)
+		if err != nil {
+			return err
+		}
+		err = binary.Read(buf, binary.BigEndian, &e.DelTime)
+		if err != nil {
+			return err
+		}
+		err = binary.Read(buf, binary.BigEndian, &e.Status)
+		if err != nil {
+			return err
+		}
+		items = append(items, e)
+	}
+	p.VerList = items
 	return nil
 }
 
@@ -774,6 +843,19 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	p.MarshalHeader(header)
 	if _, err = c.Write(header); err == nil {
+		// write dir version info.
+		if p.IsVersionList() {
+			d, err1 := p.MarshalVersionSlice()
+			if err1 != nil {
+				log.LogErrorf("MarshalVersionSlice: marshal version ifo failed, err %s", err1.Error())
+				return err1
+			}
+
+			_, err = c.Write(d)
+			if err != nil {
+				return err
+			}
+		}
 		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
 			if p.Data != nil && p.Size != 0 {
 				_, err = c.Write(p.Data[:p.Size])
@@ -823,6 +905,27 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 			return
 		}
 		p.VerSeq = binary.BigEndian.Uint64(ver)
+	}
+
+	if p.IsVersionList() {
+		cntByte := make([]byte, 2)
+		if _, err = io.ReadFull(c, cntByte); err != nil {
+			return err
+		}
+		cnt := binary.BigEndian.Uint16(cntByte)
+		log.LogDebugf("action[ReadFromConnWithVer] op %s verseq %v, extType %d, cnt %d",
+			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
+		verData := make([]byte, cnt*verInfoCnt)
+		if _, err = io.ReadFull(c, verData); err != nil {
+			log.LogWarnf("ReadFromConnWithVer: read ver slice from conn failed, err %s", err.Error())
+			return err
+		}
+
+		err = p.UnmarshalVersionSlice(int(cnt), verData)
+		if err != nil {
+			log.LogWarnf("ReadFromConnWithVer: unmarshal ver slice failed, err %s", err.Error())
+			return err
+		}
 	}
 
 	if p.ArgLen > 0 {
@@ -953,7 +1056,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		return
 	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
-	if (p.Opcode == OpSplitMarkDelete || (p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete)) && len(p.Data) > 0 {
+	if p.Opcode == OpSplitMarkDelete || (IsTinyExtentType(p.ExtentType) && p.Opcode == OpMarkDelete) && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
@@ -984,7 +1087,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 
 func (p *Packet) setPacketPrefix() {
 	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
-	if (p.Opcode == OpSplitMarkDelete || (p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete)) && len(p.Data) > 0 {
+	if (p.Opcode == OpSplitMarkDelete || (IsTinyExtentType(p.ExtentType) && p.Opcode == OpMarkDelete)) && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
@@ -1029,6 +1132,11 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 	}
 
 	return
+}
+
+// ShallRetry returns if we should retry the packet.
+func (p *Packet) ShouldRetryWithVersionList() bool {
+	return p.ResultCode == OpAgainVerionList
 }
 
 // ShallRetry returns if we should retry the packet.

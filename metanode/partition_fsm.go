@@ -267,7 +267,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			quotaRebuild:   quotaRebuild,
 			uidRebuild:     uidRebuild,
 			uniqChecker:    uniqChecker,
-			multiVerList:   mp.getVerList(),
+			multiVerList:   mp.GetVerList(),
 		}
 		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
 		mp.storeChan <- msg
@@ -442,7 +442,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		err = mp.fsmUniqCheckerEvict(req)
 	case opFSMVersionOp:
-		resp = mp.fsmVersionOp(msg.V)
+		err = mp.fsmVersionOp(msg.V)
 	}
 
 	return
@@ -467,17 +467,49 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 
 	var opData VerOpData
 	if err = json.Unmarshal(reqData, &opData); err != nil {
-		log.LogErrorf("action[fsmVersionOp] unmarshal error %v", err)
+		log.LogErrorf("action[fsmVersionOp] mp[%v] unmarshal error %v", mp.config.PartitionId, err)
 		return
 	}
 
 	log.LogInfof("action[fsmVersionOp] mp[%v] seq %v, op %v", mp.config.PartitionId, opData.VerSeq, opData.Op)
-	if opData.Op == proto.CreateVersionCommit {
+	if opData.Op == proto.CreateVersionPrepare {
 		cnt := len(mp.multiVersionList.VerList)
-		if cnt > 0 && mp.multiVersionList.VerList[cnt-1].Ver >= opData.VerSeq {
-			log.LogErrorf("action[HandleVersionOp] reqeust seq %v lessOrEqual last exist snapshot seq %v",
-				mp.multiVersionList.VerList[cnt-1].Ver, opData.VerSeq)
-			return
+		if cnt > 0 {
+			lastVersion := mp.multiVersionList.VerList[cnt-1]
+			if lastVersion.Ver > opData.VerSeq {
+				err = fmt.Errorf("reqeust seq %v less than last exist snapshot seq %v",
+					opData.VerSeq, lastVersion.Ver)
+				log.LogErrorf("action[HandleVersionOp] createVersionPrepare err %v", err)
+				return
+			} else if lastVersion.Ver == opData.VerSeq {
+				log.LogWarnf("action[HandleVersionOp] CreateVersionPrepare request seq %v already exist status %v", opData.VerSeq, lastVersion.Status)
+				return
+			}
+		}
+		newVer := &proto.VolVersionInfo{
+			Status: proto.VersionPrepare,
+			Ver:    opData.VerSeq,
+		}
+		mp.verSeq = opData.VerSeq
+		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, newVer)
+
+		log.LogInfof("action[fsmVersionOp] mp[%v] seq %v, op %v, seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
+	} else if opData.Op == proto.CreateVersionCommit {
+		cnt := len(mp.multiVersionList.VerList)
+		if cnt > 0 {
+			if mp.multiVersionList.VerList[cnt-1].Ver > opData.VerSeq {
+				log.LogWarnf("action[HandleVersionOp] mp[%v] reqeust seq %v less than last exist snapshot seq %v", mp.config.PartitionId,
+					mp.multiVersionList.VerList[cnt-1].Ver, opData.VerSeq)
+				return
+			}
+			if mp.multiVersionList.VerList[cnt-1].Ver == opData.VerSeq {
+				if mp.multiVersionList.VerList[cnt-1].Status != proto.VersionPrepare {
+					log.LogWarnf("action[HandleVersionOp] reqeust seq %v Equal last exist snapshot seq %v but with status %v",
+						mp.multiVersionList.VerList[cnt-1].Ver, opData.VerSeq, mp.multiVersionList.VerList[cnt-1].Status)
+				}
+				mp.multiVersionList.VerList[cnt-1].Status = proto.VersionNormal
+				return
+			}
 		}
 		newVer := &proto.VolVersionInfo{
 			Status: proto.VersionNormal,
@@ -648,7 +680,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				txRbInodeTree:  mp.txProcessor.txResource.txRbInodeTree.GetTree(),
 				txRbDentryTree: mp.txProcessor.txResource.txRbDentryTree.GetTree(),
 				uniqChecker:    uniqChecker.clone(),
-				multiVerList:   mp.getVerList(),
+				multiVerList:   mp.GetVerList(),
 			}
 			select {
 			case mp.extReset <- struct{}{}:

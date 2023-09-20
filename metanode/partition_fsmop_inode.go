@@ -322,7 +322,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	)
 
 	if ino.getVer() == 0 {
-		ext2Del, doMore, status = inode.unlinkTopLayer(ino, mp.verSeq, mp.multiVersionList)
+		ext2Del, doMore, status = inode.unlinkTopLayer(mp.config.PartitionId, ino, mp.verSeq, mp.multiVersionList)
 	} else { // means drop snapshot
 		log.LogDebugf("action[fsmUnlinkInode] req drop assigned snapshot reqseq %v inode seq %v", ino.getVer(), inode.getVer())
 		if ino.getVer() > inode.getVer() && !isInitSnapVer(ino.getVer()) {
@@ -330,7 +330,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 				ino.Inode, ino.getVer(), inode.getVer())
 			return
 		} else {
-			ext2Del, doMore, status = inode.unlinkVerInList(ino, mp.verSeq, mp.multiVersionList)
+			ext2Del, doMore, status = inode.unlinkVerInList(mp.config.PartitionId, ino, mp.verSeq, mp.multiVersionList)
 		}
 	}
 	if !doMore {
@@ -368,8 +368,8 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	}
 
 	if len(ext2Del) > 0 {
-		log.LogDebugf("action[fsmUnlinkInode] ino %v ext2Del %v", ino, ext2Del)
-		inode.DecSplitExts(ext2Del)
+		log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v DecSplitExts ext2Del %v", mp.config.PartitionId, ino, ext2Del)
+		inode.DecSplitExts(mp.config.PartitionId, ext2Del)
 		mp.extDelCh <- ext2Del
 	}
 	log.LogDebugf("action[fsmUnlinkInode] ino %v left", inode)
@@ -462,8 +462,8 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
 	mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
 
-	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
-	ino2.DecSplitExts(delExtents)
+	log.LogInfof("fsmAppendExtents inode(%v) DecSplitExts deleteExtents(%v)", ino2.Inode, delExtents)
+	ino2.DecSplitExts(mp.config.PartitionId, delExtents)
 	mp.extDelCh <- delExtents
 	return
 }
@@ -480,15 +480,15 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		return
 	}
 
-	ino2 := item.(*Inode)
-	if ino2.ShouldDelete() {
+	fsmIno := item.(*Inode)
+	if fsmIno.ShouldDelete() {
 		status = proto.OpNotExistErr
 		return
 	}
 	var (
 		discardExtentKey []proto.ExtentKey
 	)
-	oldSize := int64(ino2.Size)
+	oldSize := int64(fsmIno.Size)
 	eks := ino.Extents.CopyExtents()
 
 	if len(eks) < 1 {
@@ -498,22 +498,34 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		discardExtentKey = eks[1:]
 	}
 
-	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks[:1]); status != proto.OpOk {
+	if status = mp.uidManager.addUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1]); status != proto.OpOk {
 		log.LogErrorf("fsmAppendExtentsWithCheck.addUidSpace status %v", status)
 		return
 	}
 
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] ino %v isSplit %v ek %v hist len %v", ino2.Inode, isSplit, eks[0], ino2.getLayerLen())
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] ino %v isSplit %v ek %v hist len %v", fsmIno.Inode, isSplit, eks[0], fsmIno.getLayerLen())
+
+	appendExtParam := &AppendExtParam{
+		mpId:             mp.config.PartitionId,
+		mpVer:            mp.verSeq,
+		reqVer:           ino.getVer(),
+		ek:               eks[0],
+		ct:               ino.ModifyTime,
+		discardExtents:   discardExtentKey,
+		volType:          mp.volType,
+		multiVersionList: mp.multiVersionList,
+	}
+
 	if !isSplit {
-		delExtents, status = ino2.AppendExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.getVer(), eks[0], ino.ModifyTime, discardExtentKey, mp.volType)
+		delExtents, status = fsmIno.AppendExtentWithCheck(appendExtParam)
 		if status == proto.OpOk {
-			log.LogInfof("action[fsmAppendExtentsWithCheck] delExtents [%v]", delExtents)
-			ino2.DecSplitExts(delExtents)
+			log.LogInfof("action[fsmAppendExtentsWithCheck] mp %v DecSplitExts delExtents [%v]", mp.config.PartitionId, delExtents)
+			fsmIno.DecSplitExts(appendExtParam.mpId, delExtents)
 			mp.extDelCh <- delExtents
 		}
 		// conflict need delete eks[0], to clear garbage data
 		if status == proto.OpConflictExtentsErr {
-			log.LogInfof("action[fsmAppendExtentsWithCheck] OpConflictExtentsErr [%v]", eks[:1])
+			log.LogInfof("action[fsmAppendExtentsWithCheck] mp %v OpConflictExtentsErr [%v]", mp.config.PartitionId, eks[:1])
 			if !storage.IsTinyExtent(eks[0].ExtentId) && eks[0].ExtentOffset >= util.ExtentSize {
 				eks[0].SetSplit(true)
 			}
@@ -523,21 +535,22 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		// only the ek itself will be moved to level before
 		// ino verseq be set with mp ver before submit in case other mp be updated while on flight, which will lead to
 		// inconsistent between raft pairs
-		delExtents, status = ino2.SplitExtentWithCheck(mp.verSeq, mp.multiVersionList, ino.getVer(), eks[0], ino.ModifyTime, mp.volType)
-		ino2.DecSplitExts(delExtents)
+		delExtents, status = fsmIno.SplitExtentWithCheck(appendExtParam)
+		log.LogInfof("action[fsmAppendExtentsWithCheck] mp %v DecSplitExts delExtents [%v]", mp.config.PartitionId, delExtents)
+		fsmIno.DecSplitExts(mp.config.PartitionId, delExtents)
 		mp.extDelCh <- delExtents
-		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
+		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, delExtents)
 	}
 
 	// conflict need delete eks[0], to clear garbage data
 	if status == proto.OpConflictExtentsErr {
 		mp.extDelCh <- eks[:1]
-		mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, eks[:1])
-		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", ino2.Inode, delExtents)
+		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1])
+		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", fsmIno.Inode, delExtents)
 	}
 
-	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
-	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
+	mp.updateUsedInfo(int64(fsmIno.Size)-oldSize, 0, fsmIno.Inode)
+	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", fsmIno.Inode, eks[0], delExtents, discardExtentKey, status)
 
 	return
 }
@@ -608,14 +621,14 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 
-	if delExtents, err = i.RestoreExts2NextLayer(delExtents, mp.verSeq, 0); err != nil {
+	if delExtents, err = i.RestoreExts2NextLayer(mp.config.PartitionId, delExtents, mp.verSeq, 0); err != nil {
 		panic("RestoreExts2NextLayer should not be error")
 	}
 	mp.updateUsedInfo(int64(i.Size)-oldSize, 0, i.Inode)
 
 	// now we should delete the extent
-	log.LogInfof("fsmExtentsTruncate inode(%v) exts(%v)", i.Inode, delExtents)
-	i.DecSplitExts(delExtents)
+	log.LogInfof("fsmExtentsTruncate.mp (%v) inode(%v) DecSplitExts exts(%v)", mp.config.PartitionId, i.Inode, delExtents)
+	i.DecSplitExts(mp.config.PartitionId, delExtents)
 	mp.extDelCh <- delExtents
 	mp.uidManager.minusUidSpace(i.Uid, i.Inode, delExtents)
 	return
@@ -767,9 +780,9 @@ func (mp *metaPartition) fsmClearInodeCache(ino *Inode) (status uint8) {
 		return
 	}
 	delExtents := ino2.EmptyExtents(ino.ModifyTime)
-	log.LogInfof("fsmClearInodeCache inode(%v) delExtents(%v)", ino2.Inode, delExtents)
+	log.LogInfof("fsmClearInodeCache.mp(%v) inode(%v) DecSplitExts delExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
 	if len(delExtents) > 0 {
-		ino2.DecSplitExts(delExtents)
+		ino2.DecSplitExts(mp.config.PartitionId, delExtents)
 		mp.extDelCh <- delExtents
 	}
 	return
