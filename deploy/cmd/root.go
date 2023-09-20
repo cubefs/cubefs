@@ -12,7 +12,7 @@ const ClusterName = "cubeFS"
 const RemoteUser = "root"
 const ConfDir = "conf"
 const ScriptDir = "../docker/script"
-const BinDir = "/cfs-deploy"
+const BinDir = "/bin"
 const BinVersion = "release-3.2.1"
 
 type ServerType string

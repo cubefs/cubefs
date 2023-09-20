@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 func transferConfigFileToRemote(localFilePath string, remoteFilePath string, remoteUser string, remoteHost string) error {
@@ -64,4 +66,56 @@ func transferDirectoryToRemote(localFilePath string, remoteFilePath string, remo
 //     if err != nil {
 //         fmt.Printf("Failed to transfer file: %s\n", err)
 //     }
+// }
+
+func copyFolder(sourcePath, destinationPath string) error {
+	err := filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relativePath, err := filepath.Rel(sourcePath, path)
+		if err != nil {
+			return err
+		}
+
+		destinationFilePath := filepath.Join(destinationPath, relativePath)
+
+		if info.IsDir() {
+			err := os.MkdirAll(destinationFilePath, info.Mode())
+			if err != nil {
+				return err
+			}
+		} else {
+			sourceFile, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer sourceFile.Close()
+
+			destinationFile, err := os.Create(destinationFilePath)
+			if err != nil {
+				return err
+			}
+			defer destinationFile.Close()
+
+			_, err = io.Copy(destinationFile, sourceFile)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("文件夹复制完成！")
+	return nil
+}
+
+// func main() {
+
 // }

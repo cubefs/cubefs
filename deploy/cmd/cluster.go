@@ -184,6 +184,15 @@ func removeDuplicates(slice []string) []string {
 	return result
 }
 func initCluster() {
+	sourcePath := "../build/bin"
+	destinationPath := "bin"
+
+	err := copyFolder(sourcePath, destinationPath)
+	if err != nil {
+		fmt.Println("copy /build/bin to deploy failed：", err)
+	}
+
+	//cp cubefs/build/bin -> cubefs/deploy/bin
 	config, err := readConfig()
 	if err != nil {
 		log.Fatal(err)

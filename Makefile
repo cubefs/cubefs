@@ -26,6 +26,9 @@ authtool:
 cli: 
 	@build/build.sh cli $(GOMOD) --threads=$(threads)
 
+deploy: 
+	@build/build.sh deploy $(GOMOD) --threads=$(threads)
+
 fsck: 
 	@build/build.sh fsck $(GOMOD) --threads=$(threads)
 

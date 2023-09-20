@@ -1,7 +1,8 @@
 package main
 
 import (
-	"deploy_cli/cmd"
+	//"github.com/cubefs/cubefs/deploy/cmd"
+	"deploy/cmd"
 	"log"
 )
 
