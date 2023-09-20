@@ -308,6 +308,9 @@ func (client *ExtentClient) FileSize(inode uint64) (size uint64, gen uint64, val
 	if !s.extents.initialized {
 		s.GetExtents(context.Background())
 	}
+	if !s.extents.initialized {
+		return
+	}
 	valid = true
 	size, gen = s.extents.Size()
 	return

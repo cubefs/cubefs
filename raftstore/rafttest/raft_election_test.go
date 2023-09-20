@@ -284,8 +284,8 @@ func withLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode
 	newServers = make([]*testServer, 0)
 	for _, s := range servers {
 		if lead, _ := s.raft.LeaderTerm(1); s.nodeID == lead && len(shutServer) == 0 {
-			s.raft.Stop()
 			stopT = time.Now()
+			s.raft.Stop()
 			w.WriteString(fmt.Sprintf("[%s] stop leader.\r\n", stopT.Format(format_time)))
 			shutServer = append(shutServer, s)
 		} else {
