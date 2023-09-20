@@ -205,17 +205,20 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 
 func (verMgr *VolVersionManager) checkCreateStrategy() {
 	verMgr.RLock()
-	defer verMgr.RUnlock()
-
 	log.LogDebugf("checkSnapshotStrategy enter")
 	if len(verMgr.multiVersionList)-1 > verMgr.strategy.KeepVerCnt {
+		verMgr.RUnlock()
 		return
 	}
+	verMgr.RUnlock()
+
 	curTime := time.Now()
 	if verMgr.strategy.TimeUp(curTime) {
 		log.LogDebugf("checkSnapshotStrategy.vol %v try create snapshot", verMgr.vol.Name)
 		if _, err := verMgr.createVer2PhaseTask(verMgr.c, uint64(time.Now().UnixMicro()), proto.CreateVersion, verMgr.strategy.ForceUpdate); err != nil {
+			verMgr.RLock()
 			verEle := verMgr.multiVersionList[len(verMgr.multiVersionList)-1]
+			verMgr.RUnlock()
 			if int64(verEle.Ver)/1e6+int64(verMgr.strategy.GetPeriodicSecond()) < curTime.Unix() {
 				msg := fmt.Sprintf("[checkSnapshotStrategy] last version %v status %v for %v hours than 2times periodic", verEle.Ver, verEle.Status, 2*verMgr.strategy.Periodic)
 				Warn(verMgr.c.Name, msg)
