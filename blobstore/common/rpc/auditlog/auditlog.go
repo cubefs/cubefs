@@ -165,8 +165,14 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	)
 	startTime := time.Now().UnixNano()
 
-	span, ctx := trace.StartSpanFromHTTPHeaderSafe(req, j.module)
-	defer span.Finish()
+	ctx := req.Context()
+	span := trace.SpanFromContext(ctx)
+	if span == nil {
+		span, ctx = trace.StartSpanFromHTTPHeaderSafe(req, "")
+		defer span.Finish()
+		req = req.WithContext(ctx)
+	}
+
 	_w := &responseWriter{
 		module:         j.module,
 		body:           j.bodyPool.Get().([]byte),
@@ -176,7 +182,6 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 		startTime:      time.Now(),
 		ResponseWriter: w,
 	}
-	req = req.WithContext(ctx)
 
 	// parse request to decodeRep
 	decodeReq := j.decoder.DecodeReq(req)
