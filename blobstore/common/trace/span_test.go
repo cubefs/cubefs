@@ -48,12 +48,8 @@ func TestSpan_Logs(t *testing.T) {
 	expectedLogs := []struct {
 		logs []ptlog.Field
 	}{
-		{
-			logs: []ptlog.Field{ptlog.String("event", "success"), ptlog.Int("waited.millis", 20)},
-		},
-		{
-			logs: []ptlog.Field{ptlog.String("event", "failed"), ptlog.Int("waited.millis", 1500)},
-		},
+		{logs: []ptlog.Field{ptlog.String("event", "success"), ptlog.Int("waited.millis", 20)}},
+		{logs: []ptlog.Field{ptlog.String("event", "failed"), ptlog.Int("waited.millis", 1500)}},
 	}
 
 	for k, v := range expectedLogs {
@@ -78,9 +74,72 @@ func TestSpan_OperationName(t *testing.T) {
 	span, _ := StartSpanFromContext(context.Background(), "span")
 	defer span.Finish()
 
+	id := span.TraceID()
+	{
+		span := span.WithOperation("")
+		require.Equal(t, id, span.TraceID())
+		require.Equal(t, "span", span.OperationName())
+	}
 	require.Equal(t, "span", span.OperationName())
 	span.SetOperationName("span2")
+	require.Equal(t, id, span.TraceID())
 	require.Equal(t, "span2", span.OperationName())
+	{
+		span := span.WithOperation("span3")
+		require.Equal(t, id, span.TraceID())
+		require.Equal(t, "span2:span3", span.OperationName())
+	}
+}
+
+func TestSpan_WithOperation(t *testing.T) {
+	rootSpan, ctx := StartSpanFromContext(context.Background(), "Operation")
+	defer rootSpan.Finish()
+
+	span := SpanFromContext(ctx)
+
+	spanL1 := span.WithOperation("L1")
+	require.Equal(t, "Operation:L1", spanL1.OperationName())
+	spanL2 := spanL1.WithOperation("L2")
+	spanL2.Info("span l2:", spanL2.String())
+	spanL3 := spanL2.WithOperation("L3")
+	spanL3.Warn("span l3:", spanL3.String())
+	require.Equal(t, "Operation:L1:L2:L3", spanL3.OperationName())
+	spanL2x := spanL1.WithOperation("L2x")
+	spanL2x.Error("span l2x:", spanL2x.String())
+
+	spanL1.SetOperationName("")
+	require.Equal(t, "", spanL1.OperationName())
+	require.Equal(t, rootSpan.String(), spanL1.String())
+
+	{
+		root := SpanFromContextSafe(context.Background())
+		require.Equal(t, "", root.OperationName())
+
+		span := root.WithOperation("")
+		require.Equal(t, "", span.OperationName())
+		span = span.WithOperation("span")
+		require.Equal(t, "span", span.OperationName())
+	}
+}
+
+func TestSpan_ContextOperation(t *testing.T) {
+	root, ctx := StartSpanFromContext(context.Background(), "Context")
+	defer root.Finish()
+
+	id := root.TraceID()
+	require.Equal(t, id, root.TraceID())
+
+	newCtx := ContextWithSpan(ctx, root.WithOperation("L1").WithOperation("L2"))
+	span, _ := StartSpanFromContextWithTraceID(newCtx, "opt", "traceid")
+
+	require.Equal(t, id, root.TraceID())
+	require.Equal(t, "traceid", span.TraceID())
+	require.Equal(t, "opt", span.OperationName())
+
+	span = SpanFromContext(newCtx)
+	require.Equal(t, id, root.TraceID())
+	require.Equal(t, id, span.TraceID())
+	require.Equal(t, "Context:L1:L2", span.OperationName())
 }
 
 func TestSpan_Baggage(t *testing.T) {
@@ -183,6 +242,9 @@ func TestSpan_BaseLogger(t *testing.T) {
 
 		span, _ := StartSpanFromContext(ctx, "test baseLogger")
 
+		span.Println("println")
+		span.Printf("%s", "printf")
+
 		span.Debug("span info:", span.String())
 		span.Debugf("spanContent info: %+v ,traceID: %s", span.Context(), span.TraceID())
 
@@ -205,8 +267,31 @@ func TestSpan_BaseLogger(t *testing.T) {
 				span.Panicf("panic on span: %p", span.Context().(*SpanContext))
 			}
 		})
-
 		span.Finish()
+
+		{
+			span := rootSpan.WithOperation("with-operation")
+
+			span.Println("println")
+			span.Printf("%s", "printf")
+			span.Debug("operation span info:", span.String())
+			span.Debugf("spanContent info: %+v ,traceID: %s", span.Context(), span.TraceID())
+			span.Info("operation service name", span.Tracer().(*Tracer).serviceName)
+			span.Infof("operation span success, name: %s", span.OperationName())
+			span.Warn("get spanID")
+			span.Warnf("spanID: %d", span.Context().(*SpanContext).spanID)
+			span.Error("SpanFromContext failed")
+			span.Errorf("operationName: %s", span.OperationName())
+
+			require.Panics(t, func() {
+				if level%2 == 0 {
+					span.Panic("panic on span", span)
+				} else {
+					span.Panicf("panic on span: %p", span.Context().(*SpanContext))
+				}
+			})
+			span.Finish()
+		}
 	}
 }
 

@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	defaultRootSpanName   = "defaultBlobnodeRootSpanName"
+	defaultRootSpanName   = ""
 	defaultMaxLogsPerSpan = 50
 )
 
