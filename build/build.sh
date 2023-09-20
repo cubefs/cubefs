@@ -479,6 +479,9 @@ case "$cmd" in
     "cli")
         build_cli
         ;;
+    "deploy")
+        build_cfs_deploy
+        ;;
     "fsck")
         build_fsck
         ;;
