@@ -333,6 +333,15 @@ build_cli() {
     popd >/dev/null
 }
 
+build_cfs_deploy() {
+    #cfs_deploy need gorocksdb too
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-deploy      "
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-deploy ${SrcPath}/deploy/*.go  && echo "success" || echo "failed"
+    #sh cli/build.sh ${BuildBinPath}/cfs-cli && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 build_fsck() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-fsck      "
@@ -469,6 +478,9 @@ case "$cmd" in
         ;;
     "cli")
         build_cli
+        ;;
+    "deploy")
+        build_cfs_deploy
         ;;
     "fsck")
         build_fsck

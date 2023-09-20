@@ -8,11 +8,15 @@ default: all
 phony := all
 all: build
 
-phony += build server authtool client cli libsdk fsck fdstore preload bcache blobstore
-build: server authtool client cli libsdk fsck fdstore preload bcache blobstore
+phony += build server authtool client cli libsdk fsck fdstore preload bcache blobstore deploy
+build: server authtool client cli libsdk fsck fdstore preload bcache blobstore deploy
 
 server: 
 	@build/build.sh server $(GOMOD) --threads=$(threads)
+
+deploy: 
+	@build/build.sh deploy $(GOMOD) --threads=$(threads)
+
 
 blobstore:
 	@build/build.sh blobstore $(GOMOD) --threads=$(threads)
