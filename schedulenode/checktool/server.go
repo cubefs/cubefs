@@ -8,8 +8,13 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs"
 	"github.com/cubefs/cubefs/schedulenode/worker"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"sync"
+)
+
+const (
+	RoleCubeFSBot = "CubeFSBot"
 )
 
 type ChecktoolWorker struct {
@@ -38,14 +43,14 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		err = errors.New("Invalid Node Type")
 		return
 	}
-
+	// init ump monitor and alarm module
+	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(RoleCubeFSBot).WithModule(RoleCubeFSBot))
 	cw.StopC = make(chan struct{}, 0)
 	cw.TaskChan = make(chan *proto.Task, worker.DefaultTaskChanLength)
 	if err = cw.parseConfig(cfg); err != nil {
 		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
 		return
 	}
-
 	cw.ctx, cw.cancel = context.WithCancel(context.Background())
 	cw.cfsm = cfs.NewChubaoFSMonitor(cw.ctx)
 	if err = cw.cfsm.Start(cfg); err != nil {

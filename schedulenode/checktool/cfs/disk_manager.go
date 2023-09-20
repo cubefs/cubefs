@@ -73,7 +73,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 					log.LogDebugf("action[doCheckDataNodeDiskError] host[%s] Addr[%s] badDisk[%s]", host, badDiskOnNode.Addr, badDisk)
 					// 控制单块盘的下线间隔时间
 					lastOfflineThisDiskTime := host.offlineDisksIn24Hour[dataNodeBadDiskKey]
-					if time.Since(lastOfflineThisDiskTime) > time.Minute*30 {
+					if time.Since(lastOfflineThisDiskTime) > time.Minute*10 {
 						offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
 						host.offlineDisksIn24Hour[dataNodeBadDiskKey] = time.Now()
 					}
@@ -216,7 +216,7 @@ func offlineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) {
 	doOfflineDataNodeDisk(host, addr, badDisk, force)
 }
 
-//当前处于恢复中的DP数量
+// 当前处于恢复中的DP数量
 func getBadPartitionIDsCount(host *ClusterHost) (badDPsCount int, err error) {
 	cv, err := getCluster(host)
 	if err != nil {
