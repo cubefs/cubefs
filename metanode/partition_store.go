@@ -294,8 +294,8 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 		if _, err = crcCheck.Write(mem[offset-n : offset]); err != nil {
 			return err
 		}
-		log.LogDebugf("loadExtend: new extend from bytes: partitionID（%v) volume(%v) inode(%v)",
-			mp.config.PartitionId, mp.config.VolName, extend.inode)
+		//log.LogDebugf("loadExtend: new extend from bytes: partitionID (%v) volume(%v) inode(%v)",
+		//	mp.config.PartitionId, mp.config.VolName, extend.inode)
 		_ = mp.fsmSetXAttr(extend)
 
 		if _, err = crcCheck.Write(mem[offset : offset+int(numBytes)]); err != nil {
