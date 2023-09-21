@@ -529,8 +529,12 @@ func searchExtent(dps []uint64, extents []uint64, extentOffset uint, size uint, 
 				}
 				inode := inodes[idx*int(concurrency)+i]
 				mp := locateMpByInode(mps, inode)
+				if mp == nil || mp.LeaderAddr == "" {
+					stdout("mp leader not found, inode:%v", inode)
+					continue
+				}
 				mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], client.MetaNodeProfPort), false)
-				extentsResp, err := mtClient.GetExtentsByInode(mp.PartitionID, inode)
+				extentsResp, err := mtClient.GetExtentKeyByInodeId(mp.PartitionID, inode)
 				if err != nil {
 					stdout("get extents error: %v, inode: %d\n", err, inode)
 					wg.Done()
@@ -841,7 +845,7 @@ func getExtentsByInodes(inodes []uint64, concurrency uint64, mps []*proto.MetaPa
 			for ino := range inoCh {
 				mp := locateMpByInode(mps, ino)
 				mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], client.MetaNodeProfPort), false)
-				re, tmpErr := mtClient.GetExtentsByInode(mp.PartitionID, ino)
+				re, tmpErr := mtClient.GetExtentKeyByInodeId(mp.PartitionID, ino)
 				if tmpErr != nil {
 					err = fmt.Errorf("get extents from inode err: %v, inode: %d", tmpErr, ino)
 					resultCh <- nil

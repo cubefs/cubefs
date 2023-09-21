@@ -373,7 +373,7 @@ func (mc *MetaHttpClient) GetExtentKeyByInodeId(metaPartitionId, inode uint64) (
 		return
 	}
 
-	log.LogInfof("mp id:%v, inode id:%v, resp info:%s", metaPartitionId, inode, string(data))
+	//log.LogInfof("mp id:%v, inode id:%v, resp info:%s", metaPartitionId, inode, string(data))
 
 	result = new(proto.GetExtentsResponse)
 	if len(data) == 0 {
@@ -385,29 +385,6 @@ func (mc *MetaHttpClient) GetExtentKeyByInodeId(metaPartitionId, inode uint64) (
 	result = new(proto.GetExtentsResponse)
 	if err = json.Unmarshal(data, &result); err != nil {
 		err = errors.NewErrorf("data:%s unmarshal extents key failed: %v", string(data), err)
-		return
-	}
-	return
-}
-
-func (mc *MetaHttpClient) GetExtentsByInode(mpId uint64, inode uint64) (re *proto.GetExtentsResponse, err error) {
-	defer func() {
-		if err != nil {
-			log.LogErrorf("action[getExtentsByInode],pid:%v, inode:%v,err:%v", mpId, inode, err)
-		}
-	}()
-
-	re = &proto.GetExtentsResponse{}
-	req := newAPIRequest(http.MethodGet, "/getExtentsByInode")
-	req.addParam("pid", fmt.Sprintf("%v", mpId))
-	req.addParam("ino", fmt.Sprintf("%v", inode))
-	respData, err := mc.serveRequest(req)
-	//fmt.Printf("err:%v,respData:%v\n", err, string(respData))
-	if err != nil {
-		return
-	}
-	err = json.Unmarshal(respData, re)
-	if err != nil {
 		return
 	}
 	return

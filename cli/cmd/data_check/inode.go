@@ -16,7 +16,7 @@ func (checkEngine *CheckEngine) checkInodeCrc(inode uint64, mp *proto.MetaPartit
 		wg          sync.WaitGroup
 	)
 	mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], checkEngine.mnProf), false)
-	extentsResp, err = mtClient.GetExtentsByInode(mp.PartitionID, inode)
+	extentsResp, err = mtClient.GetExtentKeyByInodeId(mp.PartitionID, inode)
 	if err != nil {
 		checkEngine.onCheckFail(CheckFailInode, fmt.Sprintf("%v %v %v", checkEngine.currentVol, mp.PartitionID, inode))
 		log.LogErrorf("CheckFail-Inode, cluster:%s, vol:%s, inode: %d, err:%v", checkEngine.cluster, checkEngine.currentVol, inode, err)
@@ -110,7 +110,7 @@ func (checkEngine *CheckEngine) checkInodeEkNum(inode uint64, mp *proto.MetaPart
 	eks := make([]*proto.GetExtentsResponse, len(mp.Members))
 	for i, host := range mp.Members {
 		mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], checkEngine.mnProf), false)
-		extents, err := mtClient.GetExtentsByInode(mp.PartitionID, inode)
+		extents, err := mtClient.GetExtentKeyByInodeId(mp.PartitionID, inode)
 		if err != nil {
 			return
 		}
