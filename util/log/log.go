@@ -138,7 +138,7 @@ func (writer *asyncWriter) Write(p []byte) (n int, err error) {
 	writer.mu.Lock()
 	writer.buffer.Write(p)
 	writer.mu.Unlock()
-	writer.flushToFile()
+
 	if writer.buffer.Len() > WriterBufferLenLimit {
 		select {
 		case writer.flushC <- true:
