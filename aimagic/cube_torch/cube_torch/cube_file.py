@@ -1,4 +1,5 @@
 import builtins
+import copy
 import io
 from functools import wraps
 
@@ -37,8 +38,12 @@ class InterceptionIO:
         self.free_memory_queues = free_memory_queues
 
     def get_file_path_meta(self, file_path):
-        if file_path in self.file_path_metas:
-            return self.file_path_metas.get(file_path)
+        try:
+            if file_path in self.file_path_metas:
+                return self.file_path_metas.pop(file_path)
+        except Exception as e:
+            return None
+
         return None
 
     def get_cube_file_stream_by_meta(self, file_path):
@@ -60,7 +65,10 @@ class InterceptionIO:
         file_content_size = int.from_bytes(data[item_offset:item_offset + 8], byteorder='big')
         item_offset += 8
         content = bytes(data[item_offset:item_offset + file_content_size])
+        free_item_meta=actual_file_path, m_offset, m_size
+        self.free_memory_queues.put(free_item_meta)
         return CubeStream(file_path, content, file_meta)
+
 
     def intercept_open(self, func):
         @wraps(func)
@@ -82,8 +90,8 @@ class InterceptionIO:
                 CubeFileOpenInterceptor.add_count(stream is not None)
                 if stream:
                     stream.seek(0)
-                    return func(stream, **kwargs)
-            result = func(*args, **kwargs)
+                    return builtins_torch_load(stream, **kwargs)
+            result = builtins_torch_load(*args, **kwargs)
             return result
 
         return wrapper

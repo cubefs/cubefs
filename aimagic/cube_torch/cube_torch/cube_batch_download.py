@@ -50,8 +50,8 @@ class CubeBatchDownloader:
         self.dataset_id = dataset_id
         self.batch_download_idx = batch_download_idx
         self.shard_memory = shared_memory
-        self.input_queue = queues[batch_download_idx][0]
-        self.output_queue = queues[batch_download_idx][1]
+        self.input_queue = queues[0]
+        self.out_queue = queues[1]
         self.storage_session = requests.Session()
         self._lock = threading.Lock()
         retry_strategy = Retry(
@@ -100,25 +100,24 @@ class CubeBatchDownloader:
         request = (self.batch_download_idx, filename, write_size)
         with self._lock:
             self.input_queue.put(request)
-            response = self.output_queue.get()
+            response = self.out_queue.get()
 
         m_worker_idx, m_file_path, m_offset, m_size = response
         if m_worker_idx != self.batch_download_idx:
             raise ValueError("add_cube_item:{} for batch_download_idx:{} input_queue:{} "
-                             "output_queue:{}".format(os.getpid(), self.batch_download_idx, request, response))
+                             "out_queue:{}".format(os.getpid(), self.batch_download_idx, request, response))
         if m_offset is None:
-            raise ValueError("add_cube_item:{} for batch_download_idx:{} input_queue:{} "
-                             "output_queue:{}".format(os.getpid(), self.batch_download_idx, request, response))
+            return None
+
+        if m_size != write_size:
+            return None
 
         if m_file_path != filename:
             raise ValueError("add_cube_item:{} for batch_download_idx:{} input_queue:{} "
-                             "output_queue:{}".format(os.getpid(), self.batch_download_idx, request, response))
-        if m_size != write_size:
-            raise ValueError("add_cube_item:{} for batch_download_idx:{} input_queue:{} "
-                             "output_queue:{}".format(os.getpid(), self.batch_download_idx, request, response))
+                             "out_queue:{}".format(os.getpid(), self.batch_download_idx, request, response))
+
         self.shard_memory[m_offset:m_offset + m_size] = encode_data
         self.file_path_metas[filename] = response
-
 
     def batch_download(self, index_list):
         try:

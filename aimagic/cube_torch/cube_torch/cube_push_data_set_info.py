@@ -13,7 +13,7 @@ LOCAL_IP = 'localIP'
 USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
 one_day = 60 * 60 * 5
 SHARED_MEMORY_SIZE = 'SHARED_MEMORY_SIZE'
-default_shared_memory_size = 3 * 1024 * 1024 * 1024
+default_shared_memory_size = 4 * 1024 * 1024 * 1024
 
 
 class CubePushDataSetInfo(CubeDataSetInfo):
@@ -244,5 +244,5 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_notify_storage_worker_num(self):
         if self._is_use_batch_download:
-            return 5
+            return 3
         return 1

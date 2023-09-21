@@ -201,6 +201,7 @@ class CubeDataLoader(Generic[T_co]):
         self._push_worker_loop_process = []
         self.batch_download_shared_memory = None
         self.batch_download_file_metas = None
+        self.free_file_meta_queue=None
         self.batch_download_notify_queues = []
         self.init_cube_dataset_info()
         torch.set_vital('Dataloader', 'enabled', 'True')  # type: ignore[attr-defined]
@@ -223,13 +224,14 @@ class CubeDataLoader(Generic[T_co]):
             self.batch_download_shared_memory = multiprocessing.RawArray(ctypes.c_ubyte, cache_size)
             self.batch_download_file_metas = manager.dict()
             for index in range(notify_storage_worker_num):
-                input_queue = multiprocessing.Queue(maxsize=self.batch_size)
-                output_queue = multiprocessing.Queue(maxsize=self.batch_size)
+                input_queue = multiprocessing.Queue(maxsize=self.batch_size*2)
+                output_queue = multiprocessing.Queue(maxsize=self.batch_size*2)
                 self.batch_download_notify_queues.append((input_queue, output_queue))
+            self.free_file_meta_queue=multiprocessing.Queue(maxsize=self.batch_size*notify_storage_worker_num)
             e = multiprocessing.Event()
             ctx = multiprocessing.get_context("fork")
             w = ctx.Process(target=_loop_allocate_mem_worker,
-                            args=(cache_size, notify_storage_worker_num, self.batch_download_notify_queues, e))
+                            args=(cache_size, notify_storage_worker_num, self.batch_download_notify_queues, self.free_file_meta_queue,e))
             w.daemon = True
             w.start()
             self._push_worker_loop_events.append(w)
@@ -240,7 +242,7 @@ class CubeDataLoader(Generic[T_co]):
             downloader_info = None
             if self.is_use_batch_download:
                 downloader_info = (batch_download_addr, self._dataset_id, index, self.batch_download_file_metas,
-                                   self.batch_download_shared_memory, self.batch_download_notify_queues)
+                                   self.batch_download_shared_memory, self.batch_download_notify_queues[index])
             ctx = multiprocessing.get_context("fork")
             w = ctx.Process(target=_loop_push_worker, args=(
                 self.wait_read_train_file_queue, cube_prefetch_addr, self.is_use_batch_download, downloader_info, e))
@@ -486,7 +488,11 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         cube_root_dir = self.cube_dataset_info.get_cubefs_root_dir()
         self.batch_download_shared_memory = None
         self.batch_download_file_metas = None
-        downloader_info = (loader.batch_download_file_metas, loader.batch_download_shared_memory)
+        downloader_info = None
+        if is_use_batch_download:
+            downloader_info = (
+                loader.batch_download_file_metas, loader.batch_download_shared_memory,
+                loader.free_file_meta_queue)
 
         for i in range(self._num_workers):
             index_queue = multiprocessing_context.Queue()
@@ -955,7 +961,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     q.close()
 
             finally:
-                # Even though all this function does is putting into queues that
+                # Even though all this function does is putting into batch_download_notify_queues that
                 # we have called `cancel_join_thread` on, weird things can
                 # happen when a worker is killed by a signal, e.g., hanging in
                 # `Event.set()`. So we need to guard this with SIGCHLD handler,

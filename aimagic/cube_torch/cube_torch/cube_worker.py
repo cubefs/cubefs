@@ -116,9 +116,7 @@ def _unregister_pid_to_storage(pids, unregister_storage_addr):
         return
 
 
-
-
-def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, downloader_info,event):
+def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_batch_download, downloader_info, event):
     torch.set_num_threads(1)
     if is_use_batch_download:
         downloader = CubeBatchDownloader(downloader_info)
@@ -138,15 +136,12 @@ def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_bat
             continue
 
 
-def _loop_allocate_mem_worker(total_memory,batch_download_workers,queues,event):
+def _loop_allocate_mem_worker(total_memory, batch_download_workers, batch_download_notify_queues, free_item_meta_queue, event):
     torch.set_num_threads(batch_download_workers)
-    mem_allocater=MemoryAllocater(total_memory,batch_download_workers,queues)
+    mem_allocater = MemoryAllocater(total_memory, batch_download_workers, batch_download_notify_queues, free_item_meta_queue)
     while not event.is_set():
         for t in mem_allocater.allocate_memory_threads:
             t.join()
-
-
-
 
 
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
@@ -158,7 +153,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         set_global_cube_rootdir_path(cube_root_dir)
         CubeFileOpenInterceptor.set_params(cube_root_dir)
         CubeFileOpenInterceptor.start_timer()
-        inception = InterceptionIO(downloader_info[0], downloader_info[1],None)
+        inception = InterceptionIO(downloader_info[0], downloader_info[1], downloader_info[2])
         builtins.open = inception.intercept_open(open)
         torch.load = inception.intercept_torch_load(torch.load)
         set_global_interception_io(inception)
