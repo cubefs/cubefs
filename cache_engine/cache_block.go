@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"hash/crc32"
 	"math"
 	"os"
 	"strings"
@@ -150,6 +151,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	if _, err = cb.file.ReadAt(data[:realSize], offset); err != nil {
 		return
 	}
+	crc = crc32.ChecksumIEEE(data)
 	return
 }
 
