@@ -171,6 +171,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 		module:         j.module,
 		body:           j.bodyPool.Get().([]byte),
 		bodyLimit:      j.cfg.BodyLimit,
+		no2xxBody:      j.cfg.No2xxBody,
 		span:           span,
 		startTime:      time.Now(),
 		ResponseWriter: w,
@@ -272,4 +273,14 @@ func defaultLogFilter(r *http.Request, words []string) bool {
 		}
 	}
 	return false
+}
+
+// ExtraHeader provides extra response header writes to the ResponseWriter.
+func ExtraHeader(w http.ResponseWriter) http.Header {
+	h := make(http.Header)
+	if eh, ok := w.(ResponseExtraHeader); ok {
+		h = eh.ExtraHeader()
+	}
+
+	return h
 }

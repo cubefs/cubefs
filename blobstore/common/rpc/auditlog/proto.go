@@ -29,6 +29,8 @@ type Config struct {
 	ChunkBits uint `json:"chunkbits"`
 	// BodyLimit negative means no body-cache, 0 means default buffer size.
 	BodyLimit int `json:"bodylimit"`
+	// No2xxBody means that the response body of 2xx will not be logged.
+	No2xxBody bool `json:"no_2xx_body"`
 	// rotate new audit log file every start time
 	RotateNew     bool   `json:"rotate_new"`
 	LogFileSuffix string `json:"log_file_suffix"`
@@ -63,4 +65,8 @@ type MetricSender interface {
 
 type Decoder interface {
 	DecodeReq(req *http.Request) *DecodedReq
+}
+
+type ResponseExtraHeader interface {
+	ExtraHeader() http.Header
 }
