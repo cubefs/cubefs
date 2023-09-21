@@ -16,6 +16,7 @@ package auditlog
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -37,23 +38,25 @@ type testRespData struct {
 	Result string `json:"result"`
 }
 
-func initServer(t *testing.T) (server *httptest.Server, tmpDir string, lc LogCloser) {
-	moduleName := "TESTMOULE"
-	tracer := trace.NewTracer(moduleName)
+type testErrorRespData struct {
+	XMLName xml.Name `xml:"Error"`
+	Code    string   `xml:"Code"`
+	Message string   `xml:"Message"`
+}
+
+func initServer(t *testing.T, name string, cfg Config) (server *httptest.Server, tmpDir string, lc LogCloser) {
+	tracer := trace.NewTracer(name)
 	trace.SetGlobalTracer(tracer)
 
-	tmpDir = os.TempDir() + "/test-audit-log" + strconv.FormatInt(time.Now().Unix(), 10) + strconv.Itoa(rand.Intn(100000))
+	tmpDir = fmt.Sprintf("%s/%s-auditlog-%s%s", os.TempDir(), name, strconv.FormatInt(time.Now().Unix(), 10), strconv.Itoa(rand.Intn(100000)))
 	err := os.Mkdir(tmpDir, 0o755)
 	require.NoError(t, err)
 
+	cfg.LogDir = tmpDir
+	cfg.MetricConfig = PrometheusConfig{Idc: name}
+
 	var ah rpc.ProgressHandler
-	ah, lc, err = Open(moduleName, &Config{
-		LogDir: tmpDir, ChunkBits: 29,
-		KeywordsFilter: []string{"Get"},
-		MetricConfig: PrometheusConfig{
-			Idc: moduleName,
-		},
-	})
+	ah, lc, err = Open(name, &cfg)
 	require.NoError(t, err)
 	require.NotNil(t, ah)
 	require.NotNil(t, lc)
@@ -62,14 +65,43 @@ func initServer(t *testing.T) (server *httptest.Server, tmpDir string, lc LogClo
 		_, err := ioutil.ReadAll(req.Body)
 		require.NoError(t, err)
 		w.Header().Set("testh1", "testh1value")
+		w.Header().Add("testh1", "testh1value2")
 		w.Header().Set("Content-Type", rpc.MIMEJSON)
+		w.Header()["ETag"] = []string{"etag value"}
+
+		extraHeader := ExtraHeader(w)
+		extraHeader.Set("extra-header1", "header1 value")
+		extraHeader.Set("Extra-header2", "header2 value")
+		extraHeader.Add("Extra-header2", "header2 value2")
+
 		w.WriteHeader(http.StatusOK)
 		data, err := json.Marshal(testRespData{Result: "success"})
 		require.NoError(t, err)
 		w.Write(data)
 	}
+
+	errorResponseHandler := func(w http.ResponseWriter, req *http.Request) {
+		errResp := testErrorRespData{
+			Code:    "ErrorTestResponseCode",
+			Message: "error test response message",
+		}
+		data, err := xml.Marshal(errResp)
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", rpc.MIMEXML)
+		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(data)
+	}
+
 	entryHandler := func(w http.ResponseWriter, req *http.Request) {
-		ah.Handler(w, req, bussinessHandler)
+		switch req.URL.Path {
+		case "/":
+			ah.Handler(w, req, bussinessHandler)
+		case "/error-response":
+			ah.Handler(w, req, errorResponseHandler)
+		default:
+			w.WriteHeader(http.StatusNotImplemented)
+		}
 	}
 
 	server = httptest.NewServer(http.HandlerFunc(entryHandler))
@@ -116,7 +148,10 @@ func initNoContentLengthServer(t *testing.T) (server *httptest.Server, tmpDir st
 }
 
 func TestOpen(t *testing.T) {
-	server, tmpDir, lc := initServer(t)
+	cfg := Config{
+		KeywordsFilter: []string{"Get"},
+	}
+	server, tmpDir, lc := initServer(t, "testOpen", cfg)
 	defer func() {
 		server.Close()
 		os.RemoveAll(tmpDir)
@@ -192,6 +227,54 @@ func TestNoContentLength(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "{\"test1\":\"test1value\"}", respData.Result)
 	resp.Body.Close()
+}
+
+func TestNoLogBody(t *testing.T) {
+	cfg := Config{
+		No2xxBody: true,
+	}
+	server, tmpDir, lc := initServer(t, "testNoLogBody", cfg)
+	defer func() {
+		server.Close()
+		os.RemoveAll(tmpDir)
+		lc.Close()
+	}()
+
+	url := server.URL
+	client := http.DefaultClient
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	b, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	respData := &testRespData{}
+	err = json.Unmarshal(b, respData)
+	require.NoError(t, err)
+	require.Equal(t, "success", respData.Result)
+	resp.Body.Close()
+
+	req, err = http.NewRequest(http.MethodPut, url+"/error-response", nil)
+	require.NoError(t, err)
+	resp, err = client.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	b, err = ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	respData2 := &testErrorRespData{}
+	err = xml.Unmarshal(b, respData2)
+	require.NoError(t, err)
+	require.Equal(t, "ErrorTestResponseCode", respData2.Code)
+	resp.Body.Close()
+
+	open, err := os.Open(tmpDir)
+	require.NoError(t, err)
+	dirEntries, err := open.ReadDir(-1)
+	require.NoError(t, err)
+	require.Greater(t, len(dirEntries), 0)
+	require.NoError(t, open.Close())
 }
 
 func TestBodylimit(t *testing.T) {
