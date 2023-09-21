@@ -119,7 +119,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optBusiness string
 	var optMPCount int
 	var optReplicaNum string
-	var optSize int
+	var optDPSize int
 	var optVolType int
 	var optFollowerRead string
 	var optZoneName string
@@ -186,7 +186,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  description              : %v\n", optBusiness)
 				stdout("  mpCount                  : %v\n", optMPCount)
 				stdout("  replicaNum               : %v\n", optReplicaNum)
-				stdout("  size                     : %v G\n", optSize)
+				stdout("  dpSize                   : %v G\n", optDPSize)
 				stdout("  volType                  : %v\n", optVolType)
 				stdout("  followerRead             : %v\n", followerRead)
 				stdout("  readOnlyWhenFull         : %v\n", dpReadOnlyWhenVolFull)
@@ -215,7 +215,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
-				optMPCount, int(replicaNum), optSize, optVolType, followerRead,
+				optMPCount, int(replicaNum), optDPSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
@@ -234,7 +234,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optBusiness, CliFlagBusiness, cmdVolDefaultBusiness, "Description")
 	cmd.Flags().IntVar(&optMPCount, CliFlagMPCount, cmdVolDefaultMPCount, "Specify init meta partition count")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
-	cmd.Flags().IntVar(&optSize, CliFlagSize, cmdVolDefaultSize, "Specify data partition size[Unit: GB]")
+	cmd.Flags().IntVar(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify data partition size[Unit: GB]")
 	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultVolType, "Type of volume (default 0)")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, "", "Enable read form replica follower")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
