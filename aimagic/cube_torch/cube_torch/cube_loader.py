@@ -444,17 +444,17 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
     def __init__(self, loader):
         self._shutdown = False
         super(CubeMultiProcessingDataLoaderIter, self).__init__(loader)
-        assert self._num_workers > 0
-        if self._num_workers < 8:
-            self._num_workers = 8
+
         if loader.multiprocessing_context is None:
             multiprocessing_context = multiprocessing
         else:
             multiprocessing_context = loader.multiprocessing_context
-
         self._sampler_iter_len = self.__len__()
         self._prefetch_factor = loader.prefetch_factor
         self._num_workers = loader.num_workers
+        assert self._num_workers > 0
+        if self._num_workers < 8:
+            self._num_workers = 8
         self._worker_init_fn = loader.worker_init_fn
         self._worker_result_queue = multiprocessing_context.Queue()  # gnore[var-annotated]
         self._worker_pids_set = False
