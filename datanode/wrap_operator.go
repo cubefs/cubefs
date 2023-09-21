@@ -284,52 +284,70 @@ func (s *DataNode) commitDelVersion(volumeID string, verSeq uint64) (err error) 
 	return
 }
 
-func (s *DataNode) commitCreateVersion(volumeID string, verSeq uint64) (err error) {
-	log.LogInfof("action[commitCreateVersion] handle master version reqeust seq %v", verSeq)
-	if value, ok := s.volUpdating.Load(volumeID); ok {
+func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err error) {
+
+	log.LogInfof("action[commitCreateVersion] handle master version reqeust seq %v", req.VerSeq)
+	if value, ok := s.volUpdating.Load(req.VolumeID); ok {
 		ver2Phase := value.(*verOp2Phase)
 		log.LogWarnf("action[commitCreateVersion] try commit volume %v prepare seq %v with commit seq %v",
-			volumeID, ver2Phase.verPrepare, verSeq)
-		if verSeq < ver2Phase.verSeq {
-			err = fmt.Errorf("vol %v seq %v create less than loal %v", volumeID, verSeq, ver2Phase.verSeq)
-			log.LogErrorf("action[commitCreateVersion] err %v", err)
+			req.VolumeID, ver2Phase.verPrepare, req.VerSeq)
+		if req.VerSeq < ver2Phase.verSeq {
+			log.LogWarnf("vol %v seq %v create less than loal %v", req.VolumeID, req.VerSeq, ver2Phase.verSeq)
 			return
 		}
 		if ver2Phase.step != proto.CreateVersionPrepare {
-			err = fmt.Errorf("vol %v seq %v step not prepare", volumeID, ver2Phase.step)
-			log.LogErrorf("action[commitCreateVersion] err %v", err)
-			return
+			log.LogWarnf("action[commitCreateVersion] vol %v seq %v step not prepare", req.VolumeID, ver2Phase.step)
 		}
-		ver2Phase.verSeq = verSeq
-		ver2Phase.step = proto.CreateVersionCommit
-		ver2Phase.status = proto.VersionWorkingFinished
-		log.LogWarnf("action[commitCreateVersion] commit volume %v prepare seq %v with commit seq %v",
-			volumeID, ver2Phase.verPrepare, verSeq)
+
 		for _, partition := range s.space.partitions {
-			if partition.config.VolName != volumeID {
+			if partition.config.VolName != req.VolumeID {
 				continue
 			}
 			partition.volVersionInfoList.Lock()
 			cnt := len(partition.volVersionInfoList.VerList)
-			if cnt > 0 && partition.volVersionInfoList.VerList[cnt-1].Ver >= verSeq {
-				log.LogWarnf("action[HandleVersionOp] reqeust seq %v lessOrEqual last exist snapshot seq %v",
-					partition.volVersionInfoList.VerList[cnt-1].Ver, verSeq)
+			if cnt > 0 && partition.volVersionInfoList.VerList[cnt-1].Ver >= req.VerSeq {
+				log.LogWarnf("action[commitCreateVersion] reqeust seq %v lessOrEqual last exist snapshot seq %v",
+					partition.volVersionInfoList.VerList[cnt-1].Ver, req.VerSeq)
 				partition.volVersionInfoList.Unlock()
 				continue
 			}
-			newVer := &proto.VolVersionInfo{
-				Status: proto.VersionNormal,
-				Ver:    verSeq,
+
+			if req.Op == proto.CreateVersionPrepare {
+				partition.volVersionInfoList.VerList = append(partition.volVersionInfoList.VerList, &proto.VolVersionInfo{
+					Status: proto.VersionPrepare,
+					Ver:    req.VerSeq,
+				})
+				log.LogDebugf("action[commitCreateVersion] reqeust add new seq %v verlist (%v)", req.VerSeq, partition.volVersionInfoList)
+				partition.verSeq = req.VerSeq
+			} else {
+				vlen := len(partition.volVersionInfoList.VerList)
+				lastVer := partition.volVersionInfoList.VerList[vlen-1]
+				if lastVer.Ver != req.VerSeq {
+					log.LogWarnf("action[commitCreateVersion] reqeust seq %v not equal lastVer %v dp verlist (%v) master verlist (%v)",
+						req.VerSeq, lastVer, partition.volVersionInfoList, req.VolVerList)
+					partition.volVersionInfoList.VerList = req.VolVerList
+					partition.verSeq = req.VerSeq
+					partition.volVersionInfoList.Unlock()
+					continue
+				}
+				lastVer.Status = proto.VersionNormal
 			}
-			partition.verSeq = verSeq
-			partition.volVersionInfoList.VerList = append(partition.volVersionInfoList.VerList, newVer)
+
 			partition.volVersionInfoList.Unlock()
 		}
+		if req.Op == proto.CreateVersionPrepare {
+			return
+		}
+		ver2Phase.verSeq = req.VerSeq
+		ver2Phase.step = proto.CreateVersionCommit
+		ver2Phase.status = proto.VersionWorkingFinished
+		log.LogWarnf("action[commitCreateVersion] commit volume %v prepare seq %v with commit seq %v",
+			req.VolumeID, ver2Phase.verPrepare, req.VerSeq)
 
 		return
 	}
 
-	log.LogWarnf("action[commitCreateVersion] vol %v not found seq %v", volumeID, verSeq)
+	log.LogWarnf("action[commitCreateVersion] vol %v not found seq %v", req.VolumeID, req.VerSeq)
 	return
 }
 
@@ -395,8 +413,12 @@ func (s *DataNode) handleUpdateVerPacket(p *repl.Packet) {
 				log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
 				goto end
 			}
+			if err = s.commitCreateVersion(request); err != nil {
+				log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
+				goto end
+			}
 		} else if request.Op == proto.CreateVersionCommit {
-			if err = s.commitCreateVersion(request.VolumeID, request.VerSeq); err != nil {
+			if err = s.commitCreateVersion(request); err != nil {
 				log.LogErrorf("action[handleUpdateVerPacket] handle master version reqeust err %v", err)
 				goto end
 			}

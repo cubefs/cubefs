@@ -142,12 +142,13 @@ func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable
 	return
 }
 
-func (metaNode *MetaNode) createVersionTask(volume string, version uint64, op uint8, addr string) (task *proto.AdminTask) {
+func (metaNode *MetaNode) createVersionTask(volume string, version uint64, op uint8, addr string, verList []*proto.VolVersionInfo) (task *proto.AdminTask) {
 	request := &proto.MultiVersionOpRequest{
-		VolumeID: volume,
-		VerSeq:   version,
-		Op:       op,
-		Addr:     addr,
+		VolumeID:   volume,
+		VerSeq:     version,
+		Op:         op,
+		Addr:       addr,
+		VolVerList: verList,
 	}
 	task = proto.NewAdminTask(proto.OpVersionOperation, metaNode.Addr, request)
 	return
