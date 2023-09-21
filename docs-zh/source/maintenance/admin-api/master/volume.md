@@ -25,7 +25,7 @@ CubeFS以 **Owner**参数作为用户ID。
 | owner            | string | 卷的所有者，同时也是用户ID                                        | 是   | 无                                |
 | mpCount          | int    | 初始化元数据分片个数                                            | 否   | 3                                |
 | replicaNum       | int    | 副本数                                                   | 否   | 副本卷默认3（支持1,3），纠删码卷默认1（支持1-16个）   |
-| size             | int    | 数据分片大小，单位GB                                           | 否   | 120                              |
+| dpSize           | int    | 数据分片大小上限，单位GB                                           | 否   | 120                              |
 | enablePosixAcl   | bool   | 是否配置posix权限限制                                         | 否   | false                            |
 | followerRead     | bool   | 允许从follower读取数据，纠删码卷默认true                            | 否   | false                            |
 | crossZone        | bool   | 是否跨区域，如设为true，则不能设置zoneName参数                         | 否   | false                            |
