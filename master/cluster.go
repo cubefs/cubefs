@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"math"
 	"net/http"
 	"sort"
@@ -26,6 +25,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 
 	authSDK "github.com/cubefs/cubefs/sdk/auth"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
@@ -3483,6 +3484,10 @@ func (c *Cluster) getMonitorPushAddr() (addr string) {
 }
 
 func (c *Cluster) setMetaNodeThreshold(threshold float32) (err error) {
+	if threshold > 1.0 || threshold < 0.0 {
+		err = fmt.Errorf("set threshold failed: threshold (%v) should between 0.0 and 1.0", threshold)
+		return
+	}
 	oldThreshold := c.cfg.MetaNodeThreshold
 	c.cfg.MetaNodeThreshold = threshold
 	if err = c.syncPutCluster(); err != nil {
