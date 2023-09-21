@@ -394,7 +394,7 @@ func (verMgr *VolVersionManager) createTaskToDataNode(cluster *Cluster, verSeq u
 		verMgr.prepareCommit.nodeCnt++
 		log.LogInfof("action[createTaskToDataNode] volume %v addr %v op %v verseq %v nodeCnt %v",
 			verMgr.vol.Name, addr.(string), op, verSeq, verMgr.prepareCommit.nodeCnt)
-		task := node.createVersionTask(verMgr.vol.Name, verSeq, op, addr.(string))
+		task := node.createVersionTask(verMgr.vol.Name, verSeq, op, addr.(string), verMgr.multiVersionList)
 		tasks = append(tasks, task)
 		return true
 	})
@@ -445,7 +445,7 @@ func (verMgr *VolVersionManager) createTaskToMetaNode(cluster *Cluster, verSeq u
 		log.LogInfof("action[createTaskToMetaNode] volume %v addr %v op %v verseq %v nodeCnt %v",
 			verMgr.vol.Name, addr.(string), op, verSeq, verMgr.prepareCommit.nodeCnt)
 		verMgr.prepareCommit.metaNodeArray.Store(node.Addr, TypeNoReply)
-		task := node.createVersionTask(verMgr.vol.Name, verSeq, op, addr.(string))
+		task := node.createVersionTask(verMgr.vol.Name, verSeq, op, addr.(string), verMgr.multiVersionList)
 		tasks = append(tasks, task)
 		return true
 	})

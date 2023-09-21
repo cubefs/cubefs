@@ -558,10 +558,11 @@ type QosToDataNode struct {
 
 // MultiVersionOpRequest defines the request of
 type MultiVersionOpRequest struct {
-	VolumeID string
-	VerSeq   uint64
-	Op       uint8
-	Addr     string
+	VolumeID   string
+	VerSeq     uint64
+	Op         uint8
+	Addr       string
+	VolVerList []*VolVersionInfo
 }
 
 // MultiVersionOpResponse defines the response to the request of l.

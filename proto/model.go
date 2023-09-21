@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -351,6 +352,10 @@ type VolVersionInfo struct {
 	Ver     uint64 // unixMicro of createTime used as version
 	DelTime int64
 	Status  uint8 // building,normal,deleted,abnormal
+}
+
+func (vv *VolVersionInfo) String() string {
+	return fmt.Sprintf("Ver:%v|DelTimt:%v|status:%v", vv.Ver, vv.DelTime, vv.DelTime)
 }
 
 type VolVersionInfoList struct {
