@@ -1202,6 +1202,7 @@ func NewMetaPartitionForTest() *metaPartition {
 	partition.uniqChecker.keepTime = 1
 	partition.uniqChecker.keepOps = 0
 	partition.mqMgr = NewQuotaManager(VolNameForTest, 1)
+
 	return partition
 }
 
@@ -1220,7 +1221,6 @@ func mockPartitionRaftForTest(ctrl *gomock.Controller) *metaPartition {
 
 	raft.EXPECT().LeaderTerm().Return(uint64(1), uint64(1)).AnyTimes()
 	partition.raftPartition = raft
-
 	return partition
 }
 
@@ -1427,4 +1427,30 @@ func TestXAttrOperation(t *testing.T) {
 	err = packRsp.UnmarshalData(resp)
 	assert.True(t, err == nil)
 	assert.True(t, resp.Value == "value1")
+}
+
+func TestUpdateDenty(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	mp = mockPartitionRaftForTest(mockCtrl)
+
+	mp.config = metaConf
+	mp.config.Cursor = 0
+	mp.config.End = 100000
+	mp.uidManager = NewUidMgr(metaConf.VolName, metaConf.PartitionId)
+	mp.mqMgr = NewQuotaManager(metaConf.VolName, metaConf.PartitionId)
+	mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, &proto.VolVersionInfo{
+		Ver: 0,
+	})
+
+	testCreateInode(nil, DirModeType)
+	err := mp.CreateDentry(&CreateDentryReq{Name: "testfile", ParentID: 1, VerSeq: 0, Inode: 1000}, &Packet{})
+	assert.True(t, err == nil)
+	testCreateVer()
+	mp.UpdateDentry(&UpdateDentryReq{Name: "testfile", ParentID: 1, Inode: 2000}, &Packet{})
+	den := &Dentry{Name: "testfile", ParentId: 1}
+	den.setVerSeq(math.MaxUint64)
+	denRsp, status := mp.getDentry(den)
+	assert.True(t, status == proto.OpOk)
+	assert.True(t, denRsp.Inode == 1000)
 }
