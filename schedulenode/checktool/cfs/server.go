@@ -15,77 +15,81 @@ import (
 )
 
 const (
-	cfgKeyUsedRatio                      = "usedRatio"
-	cfgKeyAvailSpaceRatio                = "availSpaceRatio"
-	cfgKeyReadWriteDpRatio               = "readWriteDpRatio"
-	cfgKeyClusterUsedRatio               = "clusterUsedRatio"
-	cfgKeyNlClusterUsedRatio             = "nlClusterUsedRatio"
-	cfgKeyMinRWCnt                       = "minRWCnt"
-	cfgKeyDomains                        = "cfsDomains"
-	cfgKeyInterval                       = "interval"
-	cfgKeyDpCheckInterval                = "dpCheckInterval"
-	cfgKeyMpCheckInterval                = "mpCheckInterval"
-	cfgKeyMaxOfflineDataNodes            = "maxOfflineDataNodes"
-	cfgKeyMaxOfflineDisks                = "maxOfflineDisks"
-	cfgKeyMinOfflineDiskMinute           = "minOfflineDiskMinute"
-	domainSeparator                      = ","
-	UMPCFSNormalWarnKey                  = checktool.UmpKeyStorageBotPrefix + "cfs"
-	UMPCFSZoneUsedRatioWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio"
-	UMPCFSZoneUsedRatioOPWarnKey         = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio.op"
-	UMPCFSRaftlogBackWarnKey             = checktool.UmpKeyStorageBotPrefix + "chubaofs.raft.log.backup"
-	UMPCFSClusterUsedRatio               = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.used.ratio"
-	UMPCFSClusterConnRefused             = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.connection.refused"
-	UMPKeyInactiveNodes                  = checktool.UmpKeyStorageBotPrefix + "chubaofs.inactive.nodes"
-	UMPKeyMetaPartitionNoLeader          = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.no.leader"
-	UMPKeyDataPartitionLoadFailed        = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.load.failed"
-	UMPKeyMetaPartitionPeerInconsistency = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.peer.inconsistency"
-	UMPKeyDataPartitionPeerInconsistency = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.peer.inconsistency"
-	UMPKeyMetaNodeDiskSpace              = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.space"
-	UMPKeyMetaNodeDiskRatio              = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.ratio"
-	UMPKeyMasterLbPodStatus              = checktool.UmpKeyStorageBotPrefix + "chubaofs.master.lb.pod.status"
-	UMPCFSNodeRestartWarnKey             = checktool.UmpKeyStorageBotPrefix + "cfs.restart.node"
-	UMPCFSInactiveNodeWarnKey            = checktool.UmpKeyStorageBotPrefix + "cfs.inactive.node"
-	UMPCFSZoneWriteAbilityWarnKey        = checktool.UmpKeyStorageBotPrefix + "cfs.zone.writeability.ratio"
-	UMPCFSInodeCountDiffWarnKey          = checktool.UmpKeyStorageBotPrefix + "cfs.inode.count.diff"
-	UMPCFSRapidMemIncreaseWarnKey        = checktool.UmpKeyStorageBotPrefix + "cfs.rapid.mem.increase"
-	UMPCFSMySqlMemWarnKey                = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
-	TB                                   = 1024 * 1024 * 1024 * 1024
-	GB                                   = 1024 * 1024 * 1024
-	defaultMpNoLeaderWarnInternal        = 10 * 60
-	defaultMpNoLeaderMinCount            = 3
-	keyWordReleaseCluster                = "seqwrite"
-	defaultMaxInactiveNodes              = 2
-	defaultMaxOfflineDataNodes           = 3
-	defaultMaxOfflineDisks               = 10
-	defaultMinOfflineDiskDuration        = time.Minute * 30
-	defaultMNDiskMinWarnSize             = GB * 20
-	defaultMNDiskMinWarnRatio            = 0.7
-	cfsKeymasterJsonPath                 = "cfsmasterJsonPath"
-	minRWDPAndMPVolsJsonPath             = "minRWDPAndMPVolsJsonPath"
-	cfsKeyWarnFaultToUsersJsonPath       = "cfsWarnFaultToUsersJsonPath"
-	cfgKeyDPMaxPendQueueCount            = "dpMaxPendQueueCount"
-	cfgKeyDPMaxAppliedIDDiffCount        = "dpMaxAppliedIDDiffCount"
-	cfgKeyMPMaxPendQueueCount            = "mpMaxPendQueueCount"
-	cfgKeyMPMaxAppliedIDDiffCount        = "mpMaxAppliedIDDiffCount"
-	cfgKeyDPPendQueueAlarmThreshold      = "dpPendQueueAlarmThreshold"
-	cfgKeyMPPendQueueAlarmThreshold      = "mpPendQueueAlarmThreshold"
-	cfgKeySreDbConfigDSNPort             = "sreDbConfig"
-	cfgKeyJdosToken                      = "jdosToken"
-	cfgKeyJdosURl                        = "jdosURL"
-	cfgKeyJdosErp                        = "jdosErp"
-	cfgKeyMetaNodeExportDiskUsedRatio    = "metaNodeExportDiskUsedRatio"
-	cfgKeyIgnoreCheckMP                  = "ignoreCheckMP"
-	cfgKeyNodeRapidMemIncWarnThreshold   = "nodeRapidMemIncWarnThreshold"
-	cfgKeyNodeRapidMemIncreaseWarnRatio  = "nodeRapidMemIncreaseWarnRatio"
-	defaultNodeRapidMemIncWarnThreshold  = 20 //内存使用率(%)
-	defaultNodeRapidMemIncreaseWarnRatio = 0.05
-	minMetaNodeExportDiskUsedRatio       = 70
-	defaultRestartNodeMaxCountIn24Hour   = 3
-	maxBadDataPartitionsCount            = 200
-	minWarnFaultToUsersCheckInterval     = 60 * 5
-	defaultMaxPendQueueCount             = 0
-	defaultMaxAppliedIDDiffCount         = 100
-	defaultMaxOfflineFlashNodesIn24Hour  = 5
+	cfgKeyUsedRatio                         = "usedRatio"
+	cfgKeyAvailSpaceRatio                   = "availSpaceRatio"
+	cfgKeyReadWriteDpRatio                  = "readWriteDpRatio"
+	cfgKeyClusterUsedRatio                  = "clusterUsedRatio"
+	cfgKeyNlClusterUsedRatio                = "nlClusterUsedRatio"
+	cfgKeyMinRWCnt                          = "minRWCnt"
+	cfgKeyDomains                           = "cfsDomains"
+	cfgKeyInterval                          = "interval"
+	cfgKeyDpCheckInterval                   = "dpCheckInterval"
+	cfgKeyMpCheckInterval                   = "mpCheckInterval"
+	cfgKeyMaxOfflineDataNodes               = "maxOfflineDataNodes"
+	cfgKeyMaxOfflineDisks                   = "maxOfflineDisks"
+	cfgKeyMinOfflineDiskMinute              = "minOfflineDiskMinute"
+	cfgKeyMetaNodeUsedRatioMinThresholdSSD  = "metaNodeUsedRatioMinThresholdSSD"
+	cfgKeyDataNodeUsedRatioMinThresholdSSD  = "dataNodeUsedRatioMinThresholdSSD"
+	domainSeparator                         = ","
+	UMPCFSNormalWarnKey                     = checktool.UmpKeyStorageBotPrefix + "cfs"
+	UMPCFSZoneUsedRatioWarnKey              = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio"
+	UMPCFSZoneUsedRatioOPWarnKey            = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio.op"
+	UMPCFSRaftlogBackWarnKey                = checktool.UmpKeyStorageBotPrefix + "chubaofs.raft.log.backup"
+	UMPCFSClusterUsedRatio                  = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.used.ratio"
+	UMPCFSClusterConnRefused                = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.connection.refused"
+	UMPKeyInactiveNodes                     = checktool.UmpKeyStorageBotPrefix + "chubaofs.inactive.nodes"
+	UMPKeyMetaPartitionNoLeader             = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.no.leader"
+	UMPKeyDataPartitionLoadFailed           = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.load.failed"
+	UMPKeyMetaPartitionPeerInconsistency    = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.peer.inconsistency"
+	UMPKeyDataPartitionPeerInconsistency    = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.peer.inconsistency"
+	UMPKeyMetaNodeDiskSpace                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.space"
+	UMPKeyMetaNodeDiskRatio                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.ratio"
+	UMPKeyMasterLbPodStatus                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.master.lb.pod.status"
+	UMPCFSNodeRestartWarnKey                = checktool.UmpKeyStorageBotPrefix + "cfs.restart.node"
+	UMPCFSInactiveNodeWarnKey               = checktool.UmpKeyStorageBotPrefix + "cfs.inactive.node"
+	UMPCFSZoneWriteAbilityWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.zone.writeability.ratio"
+	UMPCFSInodeCountDiffWarnKey             = checktool.UmpKeyStorageBotPrefix + "cfs.inode.count.diff"
+	UMPCFSRapidMemIncreaseWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.rapid.mem.increase"
+	UMPCFSMySqlMemWarnKey                   = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
+	TB                                      = 1024 * 1024 * 1024 * 1024
+	GB                                      = 1024 * 1024 * 1024
+	defaultMpNoLeaderWarnInternal           = 10 * 60
+	defaultMpNoLeaderMinCount               = 3
+	keyWordReleaseCluster                   = "seqwrite"
+	defaultMaxInactiveNodes                 = 2
+	defaultMaxOfflineDataNodes              = 3
+	defaultMaxOfflineDisks                  = 10
+	defaultMinOfflineDiskDuration           = time.Minute * 10
+	defaultMNDiskMinWarnSize                = GB * 20
+	defaultMNDiskMinWarnRatio               = 0.7
+	defaultMetaNodeUsedRatioMinThresholdSSD = 0.87
+	defaultDataNodeUsedRatioMinThresholdSSD = 0.87
+	cfsKeymasterJsonPath                    = "cfsmasterJsonPath"
+	minRWDPAndMPVolsJsonPath                = "minRWDPAndMPVolsJsonPath"
+	cfsKeyWarnFaultToUsersJsonPath          = "cfsWarnFaultToUsersJsonPath"
+	cfgKeyDPMaxPendQueueCount               = "dpMaxPendQueueCount"
+	cfgKeyDPMaxAppliedIDDiffCount           = "dpMaxAppliedIDDiffCount"
+	cfgKeyMPMaxPendQueueCount               = "mpMaxPendQueueCount"
+	cfgKeyMPMaxAppliedIDDiffCount           = "mpMaxAppliedIDDiffCount"
+	cfgKeyDPPendQueueAlarmThreshold         = "dpPendQueueAlarmThreshold"
+	cfgKeyMPPendQueueAlarmThreshold         = "mpPendQueueAlarmThreshold"
+	cfgKeySreDbConfigDSNPort                = "sreDbConfig"
+	cfgKeyJdosToken                         = "jdosToken"
+	cfgKeyJdosURl                           = "jdosURL"
+	cfgKeyJdosErp                           = "jdosErp"
+	cfgKeyMetaNodeExportDiskUsedRatio       = "metaNodeExportDiskUsedRatio"
+	cfgKeyIgnoreCheckMP                     = "ignoreCheckMP"
+	cfgKeyNodeRapidMemIncWarnThreshold      = "nodeRapidMemIncWarnThreshold"
+	cfgKeyNodeRapidMemIncreaseWarnRatio     = "nodeRapidMemIncreaseWarnRatio"
+	defaultNodeRapidMemIncWarnThreshold     = 20 //内存使用率(%)
+	defaultNodeRapidMemIncreaseWarnRatio    = 0.05
+	minMetaNodeExportDiskUsedRatio          = 70
+	defaultRestartNodeMaxCountIn24Hour      = 3
+	maxBadDataPartitionsCount               = 200
+	minWarnFaultToUsersCheckInterval        = 60 * 5
+	defaultMaxPendQueueCount                = 0
+	defaultMaxAppliedIDDiffCount            = 100
+	defaultMaxOfflineFlashNodesIn24Hour     = 5
 )
 
 const (
@@ -149,6 +153,8 @@ type ChubaoFSMonitor struct {
 	ignoreCheckMp                           bool
 	nodeRapidMemIncWarnThreshold            float64
 	nodeRapidMemIncreaseWarnRatio           float64
+	metaNodeUsedRatioMinThresholdSSD        float64
+	dataNodeUsedRatioMinThresholdSSD        float64
 	jdosToken                               string
 	jdosUrl                                 string
 	jdosErp                                 string
@@ -385,14 +391,26 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		s.metaNodeExportDiskUsedRatio = minMetaNodeExportDiskUsedRatio
 	}
 	s.ignoreCheckMp = cfg.GetBool(cfgKeyIgnoreCheckMP)
+	s.metaNodeUsedRatioMinThresholdSSD = cfg.GetFloat(cfgKeyMetaNodeUsedRatioMinThresholdSSD)
+	if s.metaNodeUsedRatioMinThresholdSSD <= 0 {
+		fmt.Printf("parse %v failed use default value\n", cfgKeyMetaNodeUsedRatioMinThresholdSSD)
+		s.metaNodeUsedRatioMinThresholdSSD = defaultMetaNodeUsedRatioMinThresholdSSD
+	}
+	s.dataNodeUsedRatioMinThresholdSSD = cfg.GetFloat(cfgKeyDataNodeUsedRatioMinThresholdSSD)
+	if s.dataNodeUsedRatioMinThresholdSSD <= 0 {
+		fmt.Printf("parse %v failed use default value\n", cfgKeyDataNodeUsedRatioMinThresholdSSD)
+		s.dataNodeUsedRatioMinThresholdSSD = defaultDataNodeUsedRatioMinThresholdSSD
+	}
 	if err = loadDockerIPList(); err != nil {
 		return
 	}
 	s.parseJdosToken(cfg)
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
-		",offlineDataNodeMaxCountIn24Hour[%v],offlineDiskMaxCountIn24Hour[%v],offlineDiskMinDuration[%v],  mpCheckInterval[%v], dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v]\n",
-		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio, s.offlineDataNodeMaxCountIn24Hour,
-		s.offlineDiskMaxCountIn24Hour, s.offlineDiskMinDuration, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval, s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp)
+		",offlineDataNodeMaxCountIn24Hour[%v],offlineDiskMaxCountIn24Hour[%v],offlineDiskMinDuration[%v],  mpCheckInterval[%v], "+
+		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v]\n",
+		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio,
+		s.offlineDataNodeMaxCountIn24Hour, s.offlineDiskMaxCountIn24Hour, s.offlineDiskMinDuration, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
+		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD)
 	return
 }
 

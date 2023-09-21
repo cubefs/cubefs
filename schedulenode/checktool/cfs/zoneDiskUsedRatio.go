@@ -24,7 +24,7 @@ type PackAlarmInfo struct {
 }
 
 const (
-	usedRatioMinThresholdSSD   = 0.83
+	usedRatioMinThresholdSSD   = 0.85
 	usedRatioMinThresholdMysql = 0.75
 	usedRatioMaxThresholdMysql = 0.80
 	usedRatioMinThresholdOther = 0.75
@@ -192,7 +192,7 @@ func (s *ChubaoFSMonitor) doCheckZoneDataNodeDiskUsedRatio(csv *cfs.ClusterStatI
 	}
 	for zoneName, zoneStat := range csv.ZoneStatInfo {
 		//如果是SSD zone 低于阈值直接忽略
-		if host.isSSDZone(zoneName) && zoneStat.DataNodeStat.UsedRatio < usedRatioMinThresholdSSD {
+		if host.isSSDZone(zoneName) && zoneStat.DataNodeStat.UsedRatio < s.dataNodeUsedRatioMinThresholdSSD {
 			log.LogDebug(fmt.Sprintf("ssd zone:%v dataRatio:%v", zoneName, zoneStat.DataNodeStat.UsedRatio))
 			continue
 		}
@@ -219,7 +219,7 @@ func (s *ChubaoFSMonitor) doCheckZoneMetaNodeDiskUsedRatio(csv *cfs.ClusterStatI
 	}
 	for zoneName, zoneStat := range csv.ZoneStatInfo {
 		//如果是SSD zone 低于阈值直接忽略
-		if host.isSSDZone(zoneName) && zoneStat.MetaNodeStat.UsedRatio < usedRatioMinThresholdSSD {
+		if host.isSSDZone(zoneName) && zoneStat.MetaNodeStat.UsedRatio < s.metaNodeUsedRatioMinThresholdSSD {
 			log.LogDebug(fmt.Sprintf("ssd zone:%v,metaRatio:%v", zoneName, zoneStat.MetaNodeStat.UsedRatio))
 			continue
 		}

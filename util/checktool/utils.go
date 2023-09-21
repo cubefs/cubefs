@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/cubefs/cubefs/util/checktool/dongdong"
-	"github.com/cubefs/cubefs/util/checktool/ump"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"path/filepath"
@@ -26,7 +26,8 @@ var ddAlarm, _ = dongdong.NewCommonAlarm("check_tool")
 
 var otherDDAlarmMap = new(sync.Map)
 
-//WarnToTargetGidByDongDongAlarm
+// WarnToTargetGidByDongDongAlarm
+//
 //	buff.WriteString(fmt.Sprintf("【警告】%v\n", msg))
 //	buff.WriteString(fmt.Sprintf("【应用】%v\n", app))
 //	buff.WriteString(fmt.Sprintf("【采集点】%v\n", umpKey))
@@ -65,7 +66,7 @@ func WarnBySpecialUmpKey(umpKey, msg string) {
 		warnByDongDongAlarm(umpKey, msg)
 		return
 	}
-	ump.Alarm(umpKey, msg)
+	exporter.WarningBySpecialUMPKey(umpKey, msg)
 }
 
 func isNormalUmpKey(umpKey string) bool {
