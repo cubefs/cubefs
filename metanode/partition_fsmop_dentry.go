@@ -376,6 +376,12 @@ func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
 		if dentry.Inode == d.Inode {
 			return
 		}
+		if d.getVerSeq() < mp.GetVerSeq() {
+			dn := d.CopyDirectly()
+			dn.(*Dentry).setVerSeq(d.getVerSeq())
+			d.setVerSeq(mp.GetVerSeq())
+			d.multiSnap.dentryList = append([]*Dentry{dn.(*Dentry)}, d.multiSnap.dentryList...)
+		}
 		d.Inode, dentry.Inode = dentry.Inode, d.Inode
 		resp.Msg = dentry
 	})
