@@ -131,8 +131,8 @@ Access、Proxy均为无状态节点，不涉及到数据搬迁，这里仅介绍
 #### 节点故障
 集群可用，宕机的节点数不超过集群的大多数
 - 在新的节点启用clustermgr服务，将新服务中的配置中加上当前节点的成员信息；
-- 调用[成员移除接口](admin-api/blobstore/cm.md)移除宕机的节点；
-- 调用[成员添加接口](admin-api/blobstore/cm.md)将刚启动的Clustermgr节点加到集群中；
+- 调用[成员移除接口](../admin-api/blobstore/cm.md)移除宕机的节点；
+- 调用[成员添加接口](../admin-api/blobstore/cm.md)将刚启动的Clustermgr节点加到集群中；
 - 等待数据自动同步即可
 
 ### BlobNode
