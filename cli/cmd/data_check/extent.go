@@ -8,6 +8,7 @@ import (
 	"github.com/cubefs/cubefs/util/unit"
 	"math"
 	"math/rand"
+	"sort"
 	"strings"
 	"time"
 )
@@ -23,25 +24,44 @@ func (entry *ErrorEntry) String() string {
 	return fmt.Sprintf("BlockOffset:%v, BlockSize:%v, ErrorMessage:\n%v", entry.BlockOffset, entry.BlockSize, entry.ErrMessage)
 }
 
-func CheckExtentKey(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, quickCheck bool) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
-	log.LogDebugf("action[CheckExtentKey] cluster:%v, volume:%v, ino:%v, ek:%v", cluster, volume, ino, ek)
-	if ek.Size > unit.GB*2 {
-		if !proto.IsTinyExtent(ek.ExtentId) {
-			log.LogErrorf("invalid size for normal extent:%v", ek)
-			return
-		}
-		badExtent, badExtentInfo, err = samplingCheckTinyExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
+func CheckFixedOffsetSize(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, volume string, quickCheck bool) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
+	log.LogDebugf("action[CheckFixedOffsetSize] cluster:%v, volume:%v, ek:%v", cluster, volume, ek)
+	badExtent, badExtentInfo, err = slowCheckExtent(cluster, dnProf, dataReplicas, ek, 0, volume)
+	return
+}
+
+func CheckFullExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, volume string, quickCheck bool) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
+	log.LogDebugf("action[CheckFullExtent] cluster:%v, volume:%v, ek:%v", cluster, volume, ek)
+	if ek.Size == 0 {
 		return
 	}
 	if proto.IsTinyExtent(ek.ExtentId) {
-		badExtent, badExtentInfo, err = fullCheckExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
+		badExtent, badExtentInfo, err = samplingCheckTinyExtent(cluster, dnProf, dataReplicas, ek, 0, volume)
+		return
+	}
+	if quickCheck {
+		badExtent, badExtentInfo, err = quickCheckExtent(cluster, dnProf, dataReplicas, ek, 0, volume)
+		return
+	}
+	badExtent, badExtentInfo, err = slowCheckExtent(cluster, dnProf, dataReplicas, ek, 0, volume)
+	return
+}
+
+func checkInodeExtentKey(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string, quickCheck bool) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
+	log.LogDebugf("action[checkInodeExtentKey] cluster:%v, volume:%v, ino:%v, ek:%v", cluster, volume, ino, ek)
+	if ek.Size > unit.MB*128 {
+		log.LogErrorf("invalid size extent:%v", ek)
+		return
+	}
+	if proto.IsTinyExtent(ek.ExtentId) {
+		badExtent, badExtentInfo, err = slowCheckExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
 		return
 	}
 	if quickCheck {
 		badExtent, badExtentInfo, err = quickCheckExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
 		return
 	}
-	badExtent, badExtentInfo, err = fullCheckExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
+	badExtent, badExtentInfo, err = slowCheckExtent(cluster, dnProf, dataReplicas, ek, ino, volume)
 	return
 }
 
@@ -114,17 +134,17 @@ func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataR
 	return
 }
 
-func fullCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
+func slowCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
 	var badAddrs []string
 	var output string
 	var same bool
 	for i := 0; i < 10; i++ {
 		if badAddrs, output, same, err = checkExtentMd5(dnProf, dataReplicas, ek); err != nil {
-			log.LogErrorf("fullCheckExtent failed, cluster:%v, partition:%v, extent:%v, err:%v\n", cluster, ek.PartitionId, ek.ExtentId, err)
+			log.LogErrorf("slowCheckExtent failed, cluster:%v, partition:%v, extent:%v, err:%v\n", cluster, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		if same {
-			log.LogInfof("action[fullCheckExtent], cluster:%v, partition:%v, extent:%v, inode:%v, check same at md5 check", cluster, ek.PartitionId, ek.ExtentId, ino)
+			log.LogInfof("action[slowCheckExtent], cluster:%v, partition:%v, extent:%v, inode:%v, check same at md5 check", cluster, ek.PartitionId, ek.ExtentId, ino)
 			return
 		}
 		time.Sleep(time.Second)
@@ -133,7 +153,7 @@ func fullCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataRe
 		return
 	}
 	badExtent = true
-	log.LogWarnf("action[fullCheckExtent] found bad extent, output: \n%v", output)
+	log.LogWarnf("action[slowCheckExtent] found bad extent, output: \n%v", output)
 	badExtentInfo = BadExtentInfo{
 		ExtentID:     ek.ExtentId,
 		PartitionID:  ek.PartitionId,
@@ -148,25 +168,59 @@ func fullCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataRe
 }
 
 func samplingCheckTinyExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
-	if ek.Size < unit.GB*2 {
-		log.LogErrorf("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, invalid tiny extent size:%v", cluster, volume, ino, ek)
+	if ek.Size == unit.KB*4 {
+		//if size=0, the full extent will be checked
+		newEk := &proto.ExtentKey{
+			Size:         0,
+			ExtentOffset: 0,
+			PartitionId:  ek.PartitionId,
+			ExtentId:     ek.ExtentId,
+		}
+		badExtent, badExtentInfo, err = slowCheckExtent(cluster, dnProf, dataReplicas, newEk, ino, volume)
 		return
 	}
-	sample := uint32(128) * unit.KB
-	sampleN := 32
-	log.LogInfof("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, ek:%v", cluster, volume, ino, ek)
-	//ek is aligned to 4K, minus 4KB to avoid overflow
-	for i := 0; i < sampleN; i++ {
+	var allHoles [][]uint64
+	for _, replica := range dataReplicas {
+		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], dnProf)
+		dataClient := http_client.NewDataClient(datanode, false)
+		tinyExtentInfo, e := dataClient.GetExtentHoles(ek.PartitionId, ek.ExtentId)
+		if e != nil {
+			err = e
+			return
+		}
+		for _, hole := range tinyExtentInfo.Holes {
+			allHoles = append(allHoles, []uint64{hole.Offset, hole.Offset + hole.Size})
+		}
+	}
+	if len(allHoles) > 0 {
+		allHoles = merge(allHoles)
+	}
+
+	sample := uint32(4) * unit.KB
+	sampleN := ek.Size / sample
+	if sampleN > 32 {
+		sampleN = 32
+	}
+	log.LogInfof("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, ek:%v, holesLen:%v, holes:%v", cluster, volume, ino, ek, len(allHoles), allHoles)
+	//ek is aligned to 4K, skip the last 4KB to avoid overflow
+	maxOffset := int64(ek.Size - sample*2)
+	retry := 200
+	for i := 0; i < int(sampleN) && retry > 0; {
 		rand.Seed(time.Now().UnixNano())
-		offset := uint64(rand.Int63n(int64(ek.Size-sample))) + ek.ExtentOffset
+		offset := uint64(rand.Int63n(maxOffset))
+		if isHole(offset, offset+uint64(sample), allHoles) {
+			retry--
+			continue
+		}
+		i++
 		newEk := &proto.ExtentKey{
 			Size:         sample,
 			ExtentOffset: offset,
 			PartitionId:  ek.PartitionId,
 			ExtentId:     ek.ExtentId,
 		}
-		log.LogDebugf("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, ek:%v", cluster, volume, ino, ek)
-		badExtent, badExtentInfo, err = fullCheckExtent(cluster, dnProf, dataReplicas, newEk, ino, volume)
+		log.LogDebugf("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, ek:%v", cluster, volume, ino, newEk)
+		badExtent, badExtentInfo, err = slowCheckExtent(cluster, dnProf, dataReplicas, newEk, ino, volume)
 		if err != nil {
 			return
 		}
@@ -175,6 +229,43 @@ func samplingCheckTinyExtent(cluster string, dnProf uint16, dataReplicas []*prot
 		}
 	}
 	return
+}
+
+func merge(intervals [][]uint64) [][]uint64 {
+	sort.Slice(intervals, func(i, j int) bool {
+		v1, v2 := intervals[i], intervals[j]
+		return v1[0] < v2[0] || v1[0] == v2[0] && v1[1] < v2[1]
+	})
+	stack := [][]uint64{intervals[0]}
+	for i := 1; i < len(intervals); i++ {
+		cnt1 := stack[len(stack)-1]
+		cnt2 := intervals[i]
+		if cnt1[0] <= cnt2[0] && cnt1[1] >= cnt2[0] {
+			cnt1[1] = max(cnt1[1], cnt2[1])
+			stack[len(stack)-1] = cnt1
+		} else {
+			stack = append(stack, cnt2)
+		}
+	}
+	return stack
+}
+func max(i, j uint64) uint64 {
+	if i > j {
+		return i
+	}
+	return j
+}
+
+func isHole(start, end uint64, allHoles [][]uint64) bool {
+	if start >= end {
+		return false
+	}
+	for _, hole := range allHoles {
+		if !(end <= hole[0] || start >= hole[1]) {
+			return true
+		}
+	}
+	return false
 }
 
 func retryCheckBlockMd5(dataReplicas []*proto.DataReplica, cluster string, dnProf uint16, ek *proto.ExtentKey, ino uint64, retry int, blockSize uint64, wrongBlocks []int) (newBlocks []int, blockError map[int]*ErrorEntry, err error) {
@@ -263,7 +354,7 @@ func checkExtentMd5(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.
 		dataClient := http_client.NewDataClient(datanode, false)
 		extentMd5orCrc, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, ek.ExtentOffset, uint64(ek.Size))
 		if err != nil {
-			log.LogErrorf("GetMd5OrCrc: datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
+			log.LogErrorf("action[checkExtentMd5]: datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		replicas[idx].partitionId = ek.PartitionId

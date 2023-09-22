@@ -984,23 +984,22 @@ func newExtentCheckByIdCmd(mc *sdk.MasterClient) *cobra.Command {
 				return
 			}
 			if proto.IsTinyExtent(ek.ExtentId) {
-				if ek.Size < 4*unit.KB {
-					stdout("wrong tiny extent size:%v", ek)
-					return
-				}
-				ek.Size = ek.Size - 4*unit.KB
-				stdout("tiny extent is aligned to 4KB, the last 4KB is truncated for md5 check\n")
+				stdout("tiny extent is aligned to 4KB, the last 4KB may be skipped for md5 check\n")
 			}
-			if size > 0 {
-				ek.ExtentOffset = offset
-				ek.Size = uint32(size)
-			}
+			var badExtent bool
+			var badExtentInfo data_check.BadExtentInfo
 			if ek.Size <= 0 {
 				stdout("extent key size is 0, skip check\n")
 				return
 			}
 			stdout("extent check might cost a few seconds, waiting...\n")
-			badExtent, badExtentInfo, err := data_check.CheckExtentKey(mc.Nodes()[0], mc.DataNodeProfPort, dpInfo.Replicas, &ek, 0, dpInfo.VolName, false)
+			if size > 0 {
+				ek.ExtentOffset = offset
+				ek.Size = uint32(size)
+				badExtent, badExtentInfo, err = data_check.CheckFixedOffsetSize(mc.Nodes()[0], mc.DataNodeProfPort, dpInfo.Replicas, &ek, dpInfo.VolName, false)
+			} else {
+				badExtent, badExtentInfo, err = data_check.CheckFullExtent(mc.Nodes()[0], mc.DataNodeProfPort, dpInfo.Replicas, &ek, dpInfo.VolName, false)
+			}
 			if err != nil {
 				stdout(err.Error())
 				return

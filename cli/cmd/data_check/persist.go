@@ -79,7 +79,7 @@ func (rp *BadExtentPersist) persistBadExtent(e BadExtentInfo) {
 	msg := fmt.Sprintf("pid(%v) eid(%v) tiny(%v) badhostLen(%v) badhost(%v) vol(%v) ino(%v) eOff(%v) fOff(%v) size(%v) time(%v)",
 		e.PartitionID, e.ExtentID, proto.IsTinyExtent(e.ExtentID), len(e.Hosts), e.Hosts, e.Volume, e.Inode, e.ExtentOffset,
 		e.FileOffset, e.Size, time.Now().Format("2006-01-02 15:04:05"))
-	exporter.WarningBySpecialUMPKey(UmpWarnKey, fmt.Sprintf("Domain[%s] found bad crc normal extent: %v", rp.MasterAddr, msg))
+	exporter.WarningBySpecialUMPKey(UmpWarnKey, fmt.Sprintf("Domain[%s] found bad crc extent: %v", rp.MasterAddr, msg))
 	rp.badExtentFd.WriteString(msg + "\n")
 	rp.badExtentFd.Sync()
 }

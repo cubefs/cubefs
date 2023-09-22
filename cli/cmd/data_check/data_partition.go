@@ -7,7 +7,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/unit"
 	"sync"
 	"time"
 )
@@ -132,10 +131,10 @@ func CheckDataPartitionReplica(dpMasterInfo *proto.DataPartitionInfo, mc *master
 			ExtentOffset: 0,
 			Size:         uint32(ekTmp[proto.ExtentInfoSize]),
 		}
-		if proto.IsTinyExtent(ek.ExtentId) {
-			ek.Size = ek.Size - 4*unit.KB
+		if ek.Size == 0 {
+			continue
 		}
-		badExtent, badExtentInfo, err1 := CheckExtentKey(mc.Nodes()[0], mc.DataNodeProfPort, dpMasterInfo.Replicas, &ek, 0, dpMasterInfo.VolName, quickCheck)
+		badExtent, badExtentInfo, err1 := CheckFullExtent(mc.Nodes()[0], mc.DataNodeProfPort, dpMasterInfo.Replicas, &ek, dpMasterInfo.VolName, quickCheck)
 		if err1 != nil {
 			failedExtents = append(failedExtents, ek.ExtentId)
 		}

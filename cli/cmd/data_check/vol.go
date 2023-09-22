@@ -80,7 +80,7 @@ func (checkEngine *CheckEngine) checkVol() {
 			msg := fmt.Sprintf("checkVol, cluster:%s, vol:%s, path%s", checkEngine.cluster, checkEngine.currentVol, checkEngine.path)
 			var stack string
 			stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
-			log.LogCritical("%s%s\n", msg, stack)
+			log.LogCriticalf("%s%s\n", msg, stack)
 		}
 		log.LogInfof("finish check vol, cluster:%s, vol:%s", checkEngine.cluster, checkEngine.currentVol)
 		if err != nil {

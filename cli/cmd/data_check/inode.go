@@ -44,7 +44,7 @@ func (checkEngine *CheckEngine) checkInodeCrc(inode uint64, mp *proto.MetaPartit
 	for i := 0; i < int(checkEngine.config.Concurrency); i++ {
 		go func(ino uint64) {
 			for ek := range ekCh {
-				checkEngine.checkInodeEkCrc(ek, ino)
+				checkEngine.checkInodeEk(ek, ino)
 				wg.Done()
 			}
 		}(inode)
@@ -53,7 +53,7 @@ func (checkEngine *CheckEngine) checkInodeCrc(inode uint64, mp *proto.MetaPartit
 	log.LogInfof("finish check, cluster:%s, vol:%s, inode: %d, extents len:%v\n", checkEngine.cluster, checkEngine.currentVol, inode, len(checkEKs))
 }
 
-func (checkEngine *CheckEngine) checkInodeEkCrc(ek proto.ExtentKey, ino uint64) {
+func (checkEngine *CheckEngine) checkInodeEk(ek proto.ExtentKey, ino uint64) {
 	var err error
 	var ekStr string
 	defer func() {
@@ -77,20 +77,20 @@ func (checkEngine *CheckEngine) checkInodeEkCrc(ek proto.ExtentKey, ino uint64) 
 		err = fmt.Errorf("partition not exists")
 		return
 	}
-	log.LogDebugf("action[checkInodeEkCrc] cluster:%v, volume:%v, ino:%v, begin check extent key:%v", checkEngine.cluster, checkEngine.currentVol, ino, ek)
+	log.LogDebugf("action[checkInodeEk] cluster:%v, volume:%v, ino:%v, begin check extent key:%v", checkEngine.cluster, checkEngine.currentVol, ino, ek)
 	for _, h := range partition.Hosts {
 		if len(checkEngine.config.Filter.NodeFilter) > 0 && !proto.IncludeString(h, checkEngine.config.Filter.NodeFilter) {
-			log.LogDebugf("action[checkInodeEkCrc] cluster:%v, volume:%v, ino:%v, host:%v, skip extent key:%v by node filter:%v", checkEngine.cluster, checkEngine.currentVol, ino, h, ek, len(checkEngine.config.Filter.NodeFilter))
+			log.LogDebugf("action[checkInodeEk] cluster:%v, volume:%v, ino:%v, host:%v, skip extent key:%v by node filter:%v", checkEngine.cluster, checkEngine.currentVol, ino, h, ek, len(checkEngine.config.Filter.NodeFilter))
 			return
 		}
 		if len(checkEngine.config.Filter.NodeExcludeFilter) > 0 && proto.IncludeString(h, checkEngine.config.Filter.NodeExcludeFilter) {
-			log.LogDebugf("action[checkInodeEkCrc] cluster:%v, volume:%v, ino:%v, host:%v, skip extent key:%v by exclude node filter:%v", checkEngine.cluster, checkEngine.currentVol, ino, h, ek, len(checkEngine.config.Filter.NodeExcludeFilter))
+			log.LogDebugf("action[checkInodeEk] cluster:%v, volume:%v, ino:%v, host:%v, skip extent key:%v by exclude node filter:%v", checkEngine.cluster, checkEngine.currentVol, ino, h, ek, len(checkEngine.config.Filter.NodeExcludeFilter))
 			return
 		}
 	}
 	var badExtentInfo BadExtentInfo
 	var badExtent bool
-	badExtent, badExtentInfo, err = CheckExtentKey(checkEngine.cluster, checkEngine.mc.DataNodeProfPort, partition.Replicas, &ek, ino, checkEngine.currentVol, checkEngine.config.QuickCheck)
+	badExtent, badExtentInfo, err = checkInodeExtentKey(checkEngine.cluster, checkEngine.mc.DataNodeProfPort, partition.Replicas, &ek, ino, checkEngine.currentVol, checkEngine.config.QuickCheck)
 	if badExtent {
 		checkEngine.repairPersist.BadExtentCh <- badExtentInfo
 	}
