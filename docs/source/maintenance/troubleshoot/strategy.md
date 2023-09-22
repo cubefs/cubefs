@@ -140,7 +140,7 @@ The cluster is available, and the number of nodes that have crashed does not exc
 
 #### Disk Failure
 
-Call the clusterMgr interface to set the bad disk and go through the bad disk repair process. For details, refer to [Disk Management](admin-api/blobstore/cm.md).
+Call the clusterMgr interface to set the bad disk and go through the bad disk repair process. For details, refer to [Disk Management](../admin-api/blobstore/cm.md).
 
 ```bash
 curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"status":2}' "http://127.0.0.1:9998/disk/set"

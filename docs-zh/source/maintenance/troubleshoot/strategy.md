@@ -139,7 +139,7 @@ Access、Proxy均为无状态节点，不涉及到数据搬迁，这里仅介绍
 
 #### 磁盘故障
 
-调用clusterMgr接口设置坏盘，走坏盘修复流程,详细参考[磁盘管理](admin-api/blobstore/cm.md)
+调用clusterMgr接口设置坏盘，走坏盘修复流程,详细参考[磁盘管理](../admin-api/blobstore/cm.md)
 
 ```bash
 curl -X POST --header 'Content-Type: application/json' -d '{"disk_id":2,"status":2}' "http://127.0.0.1:9998/disk/set"
