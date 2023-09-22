@@ -45,25 +45,21 @@ func (checkEngine *CheckEngine) doRepairPartition(dp uint64, node string) {
 
 func (checkEngine *CheckEngine) checkNode() (err error) {
 	var dpCount int
-	defer func() {
-		if err != nil {
-			log.LogErrorf("checkNode error:%v\n", err)
-		}
-	}()
 	excludeDPs := util.LoadSpecifiedPartitions()
 	if err != nil {
 		return
 	}
-	for _, node := range checkEngine.config.Filter.NodeFilter {
+	var doCheck = func(node string) {
+		defer func() {
+			if err != nil {
+				log.LogErrorf("checkNode error:%v\n", err)
+			}
+		}()
 		log.LogInfof("checkNode begin, datanode:%v", node)
-		if err != nil {
-			return
-		}
 		var datanodeInfo *proto.DataNodeInfo
 		if datanodeInfo, err = checkEngine.mc.NodeAPI().GetDataNode(node); err != nil {
 			return
 		}
-
 		wg := sync.WaitGroup{}
 		dpCh := make(chan uint64, 1000)
 		for _, dp := range datanodeInfo.PersistenceDataPartitions {
@@ -95,6 +91,9 @@ func (checkEngine *CheckEngine) checkNode() (err error) {
 		log.LogInfof("checkNode end, datanode:%v", node)
 	}
 
+	for _, node := range checkEngine.config.Filter.NodeFilter {
+		doCheck(node)
+	}
 	return
 }
 

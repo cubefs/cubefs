@@ -530,7 +530,7 @@ func searchExtent(dps []uint64, extents []uint64, extentOffset uint, size uint, 
 				inode := inodes[idx*int(concurrency)+i]
 				mp := locateMpByInode(mps, inode)
 				if mp == nil || mp.LeaderAddr == "" {
-					stdout("mp leader not found, inode:%v", inode)
+					stdout("mp leader not found, inode:%v\n", inode)
 					continue
 				}
 				mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], client.MetaNodeProfPort), false)
