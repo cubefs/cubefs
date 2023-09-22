@@ -15,8 +15,7 @@
 package meta
 
 import (
-	gerrors "errors"
-	"math/rand"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -92,9 +91,13 @@ type MetaConfig struct {
 	OnAsyncTaskError AsyncTaskErrorFunc
 	EnableSummary    bool
 	MetaSendTimeout  int64
+	//EnableTransaction uint8
+	//EnableTransaction bool
+	MountPoint                 string
+	SubDir                     string
+	TrashTraverseLimit         int
+	TrashRebuildGoroutineLimit int
 
-	// EnableTransaction uint8
-	// EnableTransaction bool
 	VerReadSeq uint64
 }
 
@@ -165,6 +168,14 @@ type MetaWrapper struct {
 	uniqidRangeMutex sync.Mutex
 
 	qc *QuotaCache
+	//trash
+	TrashInterval int64
+	trashPolicy   *Trash
+	disableTrash  bool
+	rootIno       uint64
+	entryCache    map[uint64]inoInfoCache
+	inoInfoLk     sync.RWMutex
+	subDir        string
 
 	VerReadSeq uint64
 	LastVerSeq uint64
@@ -174,6 +185,12 @@ type MetaWrapper struct {
 type uniqidRange struct {
 	cur uint64
 	end uint64
+}
+
+type inoInfoCache struct {
+	ino       uint64
+	parentIno uint64
+	name      string
 }
 
 // the ticket from authnode
@@ -222,27 +239,57 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.uniqidRangeMap = make(map[uint64]*uniqidRange)
 	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	mw.VerReadSeq = config.VerReadSeq
+	mw.entryCache = make(map[uint64]inoInfoCache)
+	mw.subDir = config.SubDir
+	limit := MaxMountRetryLimit
 
-	limit := 0
-	for limit < MaxMountRetryLimit {
+	for limit > 0 {
+		err = mw.initMetaWrapper()
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
-		if err = mw.initMetaWrapper(); err != nil {
-			log.LogErrorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
-			if gerrors.Is(err, proto.ErrVolAuthKeyNotMatch) || gerrors.Is(err, proto.ErrVolNotExists) {
+		if err != nil {
+			if strings.Contains(err.Error(), "auth key do not match") {
+				limit = 0
 				break
 			}
-			limit++
+			log.LogErrorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
+		}
+		if err == proto.ErrVolNotExists {
+			return nil, err
+		}
+		if err != nil {
+			limit--
 			time.Sleep(MountRetryInterval * time.Duration(limit))
 			continue
 		}
 		break
 	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	mw.epoch = uint64(rand.Intn(len(mw.rwPartitions) + 1)) // Choose the init mp randomly.
+	//disable by TrashInterval = -1
+	if mw.TrashInterval > 0 {
+		trashTraverseLimit := config.TrashTraverseLimit
+		trashRebuildGoroutineLimit := config.TrashRebuildGoroutineLimit
+		// default value for sdk
+		if trashTraverseLimit <= 0 {
+			trashTraverseLimit = 10
+		}
+		if trashRebuildGoroutineLimit <= 0 {
+			trashRebuildGoroutineLimit = 10
+		}
+		//TODO:need use goroutine?
+		mw.trashPolicy, err = NewTrash(mw, mw.TrashInterval, config.SubDir,
+			trashTraverseLimit, trashRebuildGoroutineLimit)
+		if err != nil {
+			log.LogErrorf("action[initMetaWrapper] init trash failed, err %s", err.Error())
+		}
+	}
+	if limit <= 0 && err != nil {
+		return nil, err
+	}
 
 	go mw.updateQuotaInfoTick()
 	go mw.refresh()
