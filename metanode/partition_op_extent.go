@@ -208,12 +208,14 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList, 
 				needUpdate = true
 				continue
 			}
-		}
-		if info2.Status != proto.VersionNormal && info2.Status != vms.Status {
+			log.LogWarnf("checkVerList. vol %v mp %v version info(%v) not exist in master (%v)",
+				mp.config.VolName, mp.config.PartitionId, info2, masterListInfo.VerList)
+		} else if info2.Status != proto.VersionNormal && info2.Status != vms.Status {
 			log.LogWarnf("checkVerList. vol %v mp %v ver %v status abnormal %v", mp.config.VolName, mp.config.PartitionId, info2.Ver, info2.Status)
 			info2.Status = vms.Status
 			needUpdate = true
 		}
+
 		VerList = append(VerList, info2)
 		verMapLocal[info2.Ver] = info2
 	}
