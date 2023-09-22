@@ -88,8 +88,11 @@ type Super struct {
 	ebsc         *blobstore.BlobStoreClient
 	sc           *SummaryCache
 
-	taskPool []common.TaskPool
-	closeC   chan struct{}
+	taskPool     []common.TaskPool
+	closeC       chan struct{}
+	disableTrash bool
+
+	enableVerRead bool
 }
 
 // Functions that Super needs to implement
@@ -106,8 +109,8 @@ const (
 // NewSuper returns a new Super.
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
-	masters := strings.Split(opt.Master, meta.HostsSeparator)
-	metaConfig := &meta.MetaConfig{
+	var masters = strings.Split(opt.Master, meta.HostsSeparator)
+	var metaConfig = &meta.MetaConfig{
 		Volume:          opt.Volname,
 		Owner:           opt.Owner,
 		Masters:         masters,
@@ -116,6 +119,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
 		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
 		MetaSendTimeout: opt.MetaSendTimeout,
+		//EnableTransaction: opt.EnableTransaction,
+		SubDir:                     opt.SubDir,
+		TrashRebuildGoroutineLimit: int(opt.TrashRebuildGoroutineLimit),
+		TrashTraverseLimit:         int(opt.TrashDeleteExpiredDirGoroutineLimit),
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -487,6 +494,28 @@ func (s *Super) SetResume(w http.ResponseWriter, r *http.Request) {
 	s.sockaddr = ""
 	s.fslock.Unlock()
 	replySucc(w, r, "set resume successfully")
+}
+
+func (s *Super) DisableTrash(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+	)
+	if err = r.ParseForm(); err != nil {
+		replyFail(w, r, err.Error())
+		return
+	}
+	flag := r.FormValue("flag")
+	switch strings.ToLower(flag) {
+	case "true":
+		s.disableTrash = true
+	case "false":
+		s.disableTrash = false
+	default:
+		err = fmt.Errorf("flag only can be set :true of false")
+		replyFail(w, r, err.Error())
+		return
+	}
+	replySucc(w, r, fmt.Sprintf("set disable flag to %v", s.disableTrash))
 }
 
 func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {

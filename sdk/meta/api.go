@@ -19,6 +19,7 @@ import (
 	"fmt"
 	syslog "log"
 	"math"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +67,7 @@ func (mw *MetaWrapper) GetRootIno(subdir string) (uint64, error) {
 		return 0, fmt.Errorf("GetRootIno: not directory, subdir(%v) mode(%v) err(%v)", subdir, info.Mode, err)
 	}
 	syslog.Printf("GetRootIno: %v\n", rootIno)
+	mw.rootIno = rootIno
 	return rootIno, nil
 }
 
@@ -340,6 +342,7 @@ func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mo
 	if err != nil || status != statusOK {
 		return 0, 0, statusToErrno(status)
 	}
+	mw.AddInoInfoCache(inode, parentID, name)
 	return inode, mode, nil
 }
 
@@ -535,6 +538,45 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 	return xattrs, nil
 }
 
+func (mw *MetaWrapper) shouldMoveToTrash(parentIno uint64, entry string) (error, bool) {
+	log.LogDebugf("action[shouldMoveToTrash]: parentIno(%v) entry(%v)", parentIno, entry)
+	//remove .Trash directly
+	if mw.trashPolicy.IsTrashRoot(parentIno, entry) {
+		return syscall.EOPNOTSUPP, false
+	}
+	//check if is sub dir of .Trash
+	//get parent path to mount sub
+	currentPath := mw.getCurrentPathToMountSub(parentIno)
+	if strings.Contains(currentPath, UnknownPath) {
+		return nil, false
+	}
+	log.LogDebugf("action[shouldMoveToTrash]: parentIno(%v) entry(%v) currentPath(%v)", parentIno, entry, currentPath)
+
+	subs := strings.Split(currentPath, "/")
+	if len(subs) == 1 {
+		//should never happen: file in root trash
+		if subs[0] == TrashPrefix {
+			return nil, true
+		}
+	} else {
+		if subs[0] == TrashPrefix && strings.HasPrefix(subs[1], ExpiredPrefix) {
+			log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v)is expired ", currentPath)
+			return nil, true
+		}
+		//should never happen: dir in root trash
+		if subs[0] == TrashPrefix {
+			log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v) not legal ", currentPath)
+			return nil, true
+		}
+	}
+	log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v) is not expired ", currentPath)
+	return nil, false
+}
+
+/*
+ * Note that the return value of InodeInfo might be nil without error,
+ * and the caller should make sure InodeInfo is valid before using it.
+ */
 func (mw *MetaWrapper) Delete_ll(parentID uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
 	if mw.enableTx(proto.TxOpMaskRemove) {
 		return mw.txDelete_ll(parentID, name, isDir, fullPath)
@@ -562,7 +604,28 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		mode   uint32
 		mp     *MetaPartition
 	)
+	start := time.Now()
+	defer func() {
+		log.LogDebugf("Delete_ll: consume %v", time.Since(start).Seconds())
+	}()
 
+	if mw.trashPolicy == nil {
+		//发布前删除
+		log.LogDebugf("TRACE Remove:TrashPolicy is nil")
+	}
+	if mw.trashPolicy != nil && mw.disableTrash == false {
+		//cannot delete .Trash
+		err, ret := mw.shouldMoveToTrash(parentID, name)
+		if err != nil {
+			return nil, err
+		}
+		if !ret {
+			parentPathAbsolute := mw.getCurrentPath(parentID)
+			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
+			return nil, err
+		}
+
+	}
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
 		log.LogErrorf("txDelete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
@@ -666,7 +729,10 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		}
 		tx.SetOnCommit(job)
 	}
-
+	//clear trash cache
+	if mw.trashPolicy != nil && mw.disableTrash == false {
+		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
+	}
 	return info, preErr
 }
 
@@ -686,6 +752,24 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		inodeCreateTime int64
 		denVer          uint64
 	)
+	log.LogDebugf("action[Delete_ll_EX] name %v verSeq %v parentID %v isDir %v", name, verSeq, parentID, isDir)
+	if mw.trashPolicy == nil {
+		//发布前删除
+		log.LogDebugf("TRACE Remove:TrashPolicy is nil")
+	}
+	if mw.trashPolicy != nil && mw.disableTrash == false {
+		//cannot delete .Trash
+		err, ret := mw.shouldMoveToTrash(parentID, name)
+		if err != nil {
+			return nil, err
+		}
+		if !ret {
+			parentPathAbsolute := mw.getCurrentPath(parentID)
+			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
+			return nil, err
+		}
+
+	}
 	log.LogDebugf("action[Delete_ll_EX] name %v verSeq %v parentID %v isDir %v", name, verSeq, parentID, isDir)
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
@@ -911,6 +995,10 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 			}
 		}()
 	}
+	//clear trash cache
+	if mw.trashPolicy != nil && mw.disableTrash == false {
+		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
+	}
 
 	return info, nil
 }
@@ -1135,6 +1223,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	// look up for the src ino
 	status, inode, mode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.VerReadSeq)
 	if err != nil || status != statusOK {
+		log.LogDebugf("Rename_ll: no such srcParentID %v srcName %v", srcParentID, srcName)
 		return statusToErrno(status)
 	}
 
@@ -1158,9 +1247,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 	var srcInodeInfo *proto.InodeInfo
 	var dstInodeInfo *proto.InodeInfo
-	if mw.EnableSummary {
-		srcInodeInfo, _ = mw.InodeGet_ll(inode)
-	}
+	srcInodeInfo, _ = mw.InodeGet_ll(inode)
 
 	// Note that only regular files are allowed to be overwritten.
 	if status == statusExist && (proto.IsSymlink(mode) || proto.IsRegular(mode)) {
@@ -1172,9 +1259,9 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		if err != nil {
 			return syscall.EAGAIN
 		}
-		if mw.EnableSummary {
-			dstInodeInfo, _ = mw.InodeGet_ll(oldInode)
-		}
+		dstInodeInfo, _ = mw.InodeGet_ll(oldInode)
+		//delete old cache
+		mw.DeleteInoInfoCache(oldInode)
 	}
 
 	if status != statusOK {
@@ -1266,6 +1353,10 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	// 	mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
 	// }
 
+	//log.LogDebugf("Rename_ll: dstInodeInfo %v", dstInodeInfo)
+	//mw.AddInoInfoCache(dstInodeInfo.Inode, dstParentID, dstName)
+	mw.DeleteInoInfoCache(srcInodeInfo.Inode)
+	mw.AddInoInfoCache(srcInodeInfo.Inode, dstParentID, dstName)
 	return nil
 }
 
@@ -1665,6 +1756,7 @@ func (mw *MetaWrapper) Evict(inode uint64, fullPath string) error {
 		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
 	}
+	mw.DeleteInoInfoCache(inode)
 	return nil
 }
 
@@ -2487,4 +2579,59 @@ func (mw *MetaWrapper) RevokeQuota_ll(parentIno uint64, quotaId uint32, maxConcu
 	var curInodeCount uint64
 	err = mw.revokeQuota(parentIno, quotaId, &numInodes, &curInodeCount, &inodes, maxConcurrencyInode, true)
 	return
+}
+
+const UnknownPath = "unknown"
+
+func (mw *MetaWrapper) getCurrentPathToMountSub(parentIno uint64) (parentPath string) {
+	currentPath := mw.getCurrentPath(parentIno)
+	if strings.Contains(currentPath, UnknownPath) {
+		return UnknownPath
+	}
+	log.LogDebugf("action[getCurrentPathToMountSub]: currentPath(%v)  parentIno(%v)", currentPath, parentIno)
+
+	subs := strings.Split(currentPath, "/")
+	var index = 0
+	for i, sub := range subs {
+		if sub == mw.subDir {
+			index = i
+			break
+		}
+	}
+	for i, sub := range subs {
+		if i >= index {
+			parentPath = path.Join(parentPath, sub)
+		}
+	}
+	log.LogDebugf("action[getCurrentPathToMountSub]: parentPath(%v)", parentPath)
+	return
+}
+
+func (mw *MetaWrapper) getCurrentPath(parentIno uint64) string {
+	if parentIno == mw.rootIno {
+		return "/"
+	}
+
+	mw.inoInfoLk.RLock()
+	node, ok := mw.entryCache[parentIno]
+	mw.inoInfoLk.RUnlock()
+	if !ok {
+		log.LogDebugf("action[getCurrentPath]: parentIno(%v)return UnknownPath", parentIno)
+		return UnknownPath
+	}
+	return path.Join(mw.getCurrentPath(node.parentIno), node.name)
+}
+
+func (mw *MetaWrapper) AddInoInfoCache(ino, parentIno uint64, name string) {
+	mw.inoInfoLk.Lock()
+	defer mw.inoInfoLk.Unlock()
+	mw.entryCache[ino] = inoInfoCache{ino: ino, parentIno: parentIno, name: name}
+
+	log.LogDebugf("action[AddInoInfoCache]: ino(%v) cache(%v)", ino, mw.entryCache[ino])
+}
+
+func (mw *MetaWrapper) DeleteInoInfoCache(ino uint64) {
+	mw.inoInfoLk.Lock()
+	defer mw.inoInfoLk.Unlock()
+	delete(mw.entryCache, ino)
 }
