@@ -602,7 +602,8 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(auditlog.EnableAuditLogReqPath, super.EnableAuditLog)
 	http.HandleFunc(auditlog.DisableAuditLogReqPath, auditlog.DisableAuditLog)
 	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
-
+	//trash 发布前修改
+	//	http.HandleFunc(trash.DisableTrash, super.DisableTrash)
 	statusCh := make(chan error)
 	pprofAddr := ":" + opt.Profport
 	if opt.LocallyProf {
@@ -863,5 +864,6 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	}
 	opt.EbsEndpoint = clusterInfo.EbsAddr
 	opt.EbsServicePath = clusterInfo.ServicePath
+	opt.TrashInterval = int64(util.Min(int(opt.TrashInterval), volumeInfo.TrashInterval))
 	return
 }

@@ -866,6 +866,7 @@ type SimpleVolView struct {
 	CacheRule        string
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
+	TrashInterval    int
 }
 
 type NodeSetInfo struct {

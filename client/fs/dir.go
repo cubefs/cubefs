@@ -176,7 +176,6 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
-
 	if d.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
 	}
@@ -203,6 +202,7 @@ func (d *Dir) Forget() {
 	d.super.fslock.Lock()
 	delete(d.super.nodeCache, ino)
 	d.super.fslock.Unlock()
+	d.super.mw.DeleteInoInfoCache(ino)
 }
 
 // Mkdir handles the mkdir request.
@@ -218,7 +218,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.FormatLog("Mkdir", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
-
+	log.LogDebugf("TRACE Mkdir:enter")
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
@@ -254,14 +254,15 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.FormatLog("Remove", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
+		log.LogDebugf("Remove: parent(%v) entry(%v) consume %v", d.info.Inode, req.Name, time.Since(start).Seconds())
 	}()
+	log.LogDebugf("TRACE Remove: parent(%v) entry(%v)", d.info.Inode, req.Name)
 
 	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 		return ParseError(err)
 	}
-
 	if info != nil {
 		deletedInode = info.Inode
 	}
@@ -569,6 +570,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		log.LogErrorf("Rename: NOT DIR, parent(%v) req(%v)", d.info.Inode, req)
 		return fuse.ENOTSUP
 	}
+	log.LogDebugf("TRACE Rename: enter")
 	start := time.Now()
 	var srcInode uint64 // must exist
 	var dstInode uint64 // may not exist
