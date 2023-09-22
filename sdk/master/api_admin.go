@@ -918,6 +918,12 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 		request.addParam(proto.ClientReqRemoveDupFlagKey, strconv.FormatBool(true))
 	}
 	request.addParam("modul", info.Modul)
+	if info.MetaNodeDelEKVolumeRate >= 0 {
+		request.addParam(proto.MetaNodeDelEKVolRateLimitKey, strconv.FormatInt(info.MetaNodeDelEKVolumeRate, 10))
+	}
+	if info.MetaNodeDelEKZoneRate >= 0 {
+		request.addParam(proto.MetaNodeDelEKZoneRateLimitKey, strconv.FormatInt(info.MetaNodeDelEKZoneRate, 10))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, _, err = api.mc.serveRequest(request); err != nil {

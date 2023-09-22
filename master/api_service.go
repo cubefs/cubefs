@@ -537,6 +537,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ClientVolOpRateLimit:                   m.cluster.cfg.ClientVolOpRateLimitMap[vol],
 		ObjectNodeActionRateLimit:              m.cluster.cfg.ObjectNodeActionRateLimitMap[vol],
 		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
+		MetaNodeDelEkVolRateLimitMap:           m.cluster.cfg.MetaNodeDelEKVolRateLimitMap,
+		MetaNodeDelEkZoneRateLimitMap:          m.cluster.cfg.MetaNodeDelEKZoneRateLimitMap,
 		MetaNodeDumpWaterLevel:                 dumpWaterLevel,
 		MonitorSummarySec:                      monitorSummarySec,
 		MonitorReportSec:                       monitorReportSec,
@@ -2624,6 +2626,32 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	if val, ok := params[fixTinyDeleteRecordKey]; ok {
 		if err = m.cluster.setFixTinyDeleteRecord(val.(uint64)); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	if val, ok := params[proto.MetaNodeDelEKZoneRateLimitKey]; ok {
+		zoneName := params[zoneNameKey].(string)
+		if zoneName == "" {
+			err = errors.NewErrorf("zone name can not be empty when setting zone delete ek rate limit")
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.cluster.setMetaNodeDeleteEKZoneLimit(val.(uint64), zoneName); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	if val, ok := params[proto.MetaNodeDelEKVolRateLimitKey]; ok {
+		volName := params[volumeKey].(string)
+		if volName == "" {
+			err = errors.NewErrorf("vol name can not be empty when setting vol delete ek rate limit")
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+		if err = m.cluster.setMetaNodeDeleteEKVolLimit(val.(uint64), volName); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -4786,7 +4814,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
-		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, flashNodeRateKey, flashNodeVolRateKey}
+		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, flashNodeRateKey, flashNodeVolRateKey,
+		proto.MetaNodeDelEKZoneRateLimitKey, proto.MetaNodeDelEKVolRateLimitKey}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return

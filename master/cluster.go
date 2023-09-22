@@ -4237,6 +4237,50 @@ func (c *Cluster) setRateLimit(modul string, zone string, volume string, opcode 
 	return
 }
 
+func (c *Cluster) setMetaNodeDeleteEKZoneLimit(val uint64, zoneName string) (err error) {
+	oldVal, ok := c.cfg.MetaNodeDelEKZoneRateLimitMap[zoneName]
+
+	if val > 0 {
+		c.cfg.MetaNodeDelEKZoneRateLimitMap[zoneName] = val
+	} else {
+		delete(c.cfg.MetaNodeDelEKZoneRateLimitMap, zoneName)
+	}
+
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteEKZoneLimit] err[%v]", err)
+		if ok {
+			c.cfg.MetaNodeDelEKZoneRateLimitMap[zoneName] = oldVal
+		} else {
+			delete(c.cfg.MetaNodeDelEKZoneRateLimitMap, zoneName)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeDeleteEKVolLimit(val uint64, volName string) (err error) {
+	oldVal, ok := c.cfg.MetaNodeDelEKVolRateLimitMap[volName]
+
+	if val > 0 {
+		c.cfg.MetaNodeDelEKVolRateLimitMap[volName] = val
+	} else {
+		delete(c.cfg.MetaNodeDelEKVolRateLimitMap, volName)
+	}
+
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeDeleteEKVolLimit] err[%v]", err)
+		if ok {
+			c.cfg.MetaNodeDelEKVolRateLimitMap[volName] = oldVal
+		} else {
+			delete(c.cfg.MetaNodeDelEKVolRateLimitMap, volName)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func cleanRateLimitMap(m map[string]map[string]map[int]proto.AllLimitGroup) {
 	for modul, zoneVolOpMap := range m {
 		for zoneVol, opMap := range zoneVolOpMap {

@@ -301,6 +301,12 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			} else if info.ClientReqRemoveDupFlag == 1 {
 				msg += fmt.Sprintf("Client Req Remove Dup        : enable, ")
 			}
+			if info.MetaNodeDelEKZoneRate >= 0 {
+				msg += fmt.Sprintf("MetaNodeDelEKZoneRate, Zone: %s, Rate: %v ", info.ZoneName, info.MetaNodeDelEKZoneRate)
+			}
+			if info.MetaNodeDelEKVolumeRate >= 0 {
+				msg += fmt.Sprintf("MetaNodeDelEKVolRate, Vol: %s, Rate: %v ", info.Volume, info.MetaNodeDelEKVolumeRate)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -379,6 +385,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.RemoteReadConnTimeoutMs, "RemoteReadConnTimeoutMs", -1, "set remoteCache client read/write connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&info.ReadConnTimeoutMs, "ReadConnTimeoutMs", -1, "set zone or cluster(omit zone acts on cluster) read connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&info.WriteConnTimeoutMs, "WriteConnTimeoutMs", -1, "set zone or cluster(omit zone acts on cluster) write connection timeout, unit: ms")
+	cmd.Flags().Int64Var(&info.MetaNodeDelEKVolumeRate, "metaNodeDelEKVolRate", -1, "del ek rate limit for volume")
+	cmd.Flags().Int64Var(&info.MetaNodeDelEKZoneRate, "metaNodeDelEKZoneRate", -1, "del ek rate limit for zone")
 	return cmd
 }
 
@@ -457,6 +465,10 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  ReqRecordsReservedCount          : %v\n", info.ClientReqRecordsReservedCount))
 	sb.WriteString(fmt.Sprintf("  RemoteReadConnTimeoutMs          : %v(ms)\n", info.RemoteReadConnTimeout))
 	sb.WriteString(fmt.Sprintf("  ZoneNetConnConfig                : %v\n", info.ZoneNetConnConfig))
+	sb.WriteString(fmt.Sprintf("  MetaNodeDelEKZoneRateLimit       : %v\n", info.MetaNodeDelEkZoneRateLimitMap))
+	sb.WriteString(fmt.Sprintf("   (map[zoneName]limit of delete ek)\n"))
+	sb.WriteString(fmt.Sprintf("  MetaNodeDelEKVolRateLimit       : %v\n", info.MetaNodeDelEkVolRateLimitMap))
+	sb.WriteString(fmt.Sprintf("   (map[volName]limit of delete ek)\n"))
 	return sb.String()
 }
 

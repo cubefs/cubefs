@@ -95,6 +95,7 @@ type VolumeConfig struct {
 	CleanTrashItemMaxCountEachTime    int32
 	CursorSkipStep                    uint64
 	EnableRemoveDupReq                bool
+	TruncateEKCount                   int
 }
 
 type MetaNodeVersion struct {
@@ -480,6 +481,7 @@ func (m *metadataManager) updateVolConf() (err error) {
 			CleanTrashItemMaxCountEachTime:    vol.CleanTrashMaxCountEachTime,
 			CleanTrashItemMaxDurationEachTime: vol.CleanTrashMaxDurationEachTime,
 			EnableRemoveDupReq:                vol.EnableRemoveDupReq,
+			TruncateEKCount:                   vol.TruncateEKCountEveryTime,
 		}
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
 			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+
@@ -601,6 +603,17 @@ func (m *metadataManager) getRemoveDupReqEnableState(vol string) (enable bool, e
 		return
 	}
 	enable = volConf.EnableRemoveDupReq
+	return
+}
+
+func (m *metadataManager) getVolumeTruncateEKCountEveryTimeValue(vol string) (value int) {
+	m.volConfMapRWMutex.RLock()
+	defer m.volConfMapRWMutex.RUnlock()
+	volConf, ok := m.volConfMap[vol]
+	if !ok {
+		return
+	}
+	value = volConf.TruncateEKCount
 	return
 }
 

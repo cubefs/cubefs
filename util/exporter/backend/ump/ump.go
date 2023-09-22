@@ -238,6 +238,22 @@ func AfterTP(o *TpObject, err error) {
 	TpObjectPool.Put(o)
 }
 
+func AfterTPWithValue(o *TpObject, value int64, err error) {
+	if !enableUmp {
+		return
+	}
+	tp := o.UmpType.(*FunctionTpGroupBy)
+	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e6)
+	tp.ProcessState = "0"
+	if err != nil {
+		tp.ProcessState = "1"
+		tp.elapsedTime = -1
+	}
+	tp.count = value
+	mergeLogByUMPKey(tp)
+	TpObjectPool.Put(o)
+}
+
 func AfterTPUs(o *TpObject, err error) {
 	if !enableUmp {
 		return

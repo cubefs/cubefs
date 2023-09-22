@@ -1,6 +1,8 @@
 package metanode
 
 import (
+	"golang.org/x/time/rate"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -21,6 +23,8 @@ const (
 	DefaultDumpWaterLevel                = 100
 	DefaultRocksDBModeMaxFsUsedPercent   = 60
 	DefaultMemModeMaxFsUsedFactorPercent = 80
+	DefaultDelEKLimitBurst               = 10 * 10000 //10w todo:待定
+	DefaultTruncateEKCount               = 10 * 10000
 )
 
 type NodeInfo struct {
@@ -56,6 +60,57 @@ var (
 	nodeInfo                   = &NodeInfo{}
 	nodeInfoStopC              = make(chan struct{}, 0)
 	deleteWorkerSleepMs uint64 = 0
+
+	// request rate limiter for entire meta node
+	reqRateLimit   uint64
+	reqRateLimiter = rate.NewLimiter(rate.Inf, DefaultReqLimitBurst)
+
+	// map[opcode]*rate.Limiter, request rate limiter for opcode
+	reqOpRateLimitMap   = make(map[uint8]uint64)
+	reqOpRateLimiterMap = make(map[uint8]*rate.Limiter)
+	reqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
+	reqVolOpPartRateLimiterMap = make(map[string]map[uint8]*rate.Limiter)
+
+	isRateLimitOn bool
+
+	delEKZoneRateLimit   uint64
+	delEKZoneRateLimiter = rate.NewLimiter(rate.Inf, DefaultDelEKLimitBurst)
+
+	delEKVolRateLimitMap = make(map[string]uint64)
+	delEKVolRateLimiterMap = make(map[string]*rate.Limiter)
+
+	delExtentRateLimitLocal uint64
+	delExtentRateLimiterLocal = rate.NewLimiter(rate.Inf, DefaultDelEKLimitBurst)
+
+	limitOpcodeMap = map[uint8]bool{
+		proto.OpMetaCreateInode:     true,
+		proto.OpMetaInodeGet:        true,
+		proto.OpMetaCreateDentry:    true,
+		proto.OpMetaExtentsAdd:      true,
+		proto.OpMetaBatchExtentsAdd: true,
+		proto.OpMetaExtentsList:     true,
+		proto.OpMetaInodeGetV2:      true,
+		proto.OpMetaReadDir:         true,
+
+		proto.OpMetaLookup:                    true,
+		proto.OpMetaBatchInodeGet:             true,
+		proto.OpMetaBatchGetXAttr:             true,
+		proto.OpMetaBatchUnlinkInode:          true,
+		proto.OpMetaBatchDeleteDentry:         true,
+		proto.OpMetaBatchEvictInode:           true,
+		proto.OpListMultiparts:                true,
+		proto.OpMetaGetCmpInode:               true,
+		proto.OpMetaInodeMergeEks:             true,
+		proto.OpMetaFileMigMergeEks:           true,
+		proto.OpMetaGetDeletedInode:           true,
+		proto.OpMetaBatchGetDeletedInode:      true,
+		proto.OpMetaRecoverDeletedDentry:      true,
+		proto.OpMetaBatchRecoverDeletedDentry: true,
+		proto.OpMetaRecoverDeletedInode:       true,
+		proto.OpMetaBatchRecoverDeletedInode:  true,
+		proto.OpMetaBatchCleanDeletedDentry:   true,
+		proto.OpMetaBatchCleanDeletedInode:    true,
+	}
 
 	// all cluster internal nodes
 	clusterMap = make(map[string]bool)
@@ -371,6 +426,127 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
 		statistics.StatisticsModule.UpdateMonitorReportTime(limitInfo.MonitorReportSec)
 	}
+}
+
+func (m *MetaNode) updateTotReqLimitInfo(info *proto.LimitInfo) {
+	reqRateLimit = info.MetaNodeReqRateLimit
+	l := rate.Limit(reqRateLimit)
+	if reqRateLimit == 0 {
+		l = rate.Inf
+	}
+	reqRateLimiter.SetLimit(l)
+}
+
+func (m *MetaNode) updateOpLimitiInfo(info *proto.LimitInfo) {
+	var (
+		r                   uint64
+		ok                  bool
+		tmpOpRateLimiterMap map[uint8]*rate.Limiter
+	)
+
+	// update request rate limiter for opcode
+	if reflect.DeepEqual(reqOpRateLimitMap, info.MetaNodeReqOpRateLimitMap) {
+		return
+	}
+	reqOpRateLimitMap = info.MetaNodeReqOpRateLimitMap
+	tmpOpRateLimiterMap = make(map[uint8]*rate.Limiter)
+	for op, _ := range limitOpcodeMap {
+		r, ok = reqOpRateLimitMap[op]
+		if !ok {
+			r, ok = reqOpRateLimitMap[0]
+		}
+		if !ok {
+			continue
+		}
+		tmpOpRateLimiterMap[op] = rate.NewLimiter(rate.Limit(r), DefaultReqLimitBurst)
+	}
+	reqOpRateLimiterMap = tmpOpRateLimiterMap
+}
+
+func (m *MetaNode) updateVolLimitiInfo(info *proto.LimitInfo) {
+	if reflect.DeepEqual(reqOpRateLimitMap, info.MetaNodeReqVolOpRateLimitMap) {
+		return
+	}
+	reqVolOpPartRateLimitMap = info.MetaNodeReqVolOpRateLimitMap
+	tmpVolOpRateLimiterMap := make(map[string]map[uint8]*rate.Limiter)
+	for vol, volOps := range reqVolOpPartRateLimitMap {
+		opRateLimiterMap := make(map[uint8]*rate.Limiter)
+		tmpVolOpRateLimiterMap[vol] = opRateLimiterMap
+		for op, opValue := range volOps {
+			//op is not limit
+			isLimitOp, ok := limitOpcodeMap[op]
+			if !ok || !isLimitOp {
+				continue
+			}
+
+			//set limit
+			l := rate.Limit(opValue)
+			opRateLimiterMap[op] = rate.NewLimiter(l, DefaultReqLimitBurst)
+		}
+	}
+	reqVolOpPartRateLimiterMap = tmpVolOpRateLimiterMap
+}
+func (m *MetaNode) updateZoneDelEKLimitInfo(info *proto.LimitInfo) {
+	limit, ok := info.MetaNodeDelEkZoneRateLimitMap[m.zoneName]
+	if !ok {
+		if delEKZoneRateLimit == 0 {
+			log.LogDebugf("updateZoneDelEKLimitInfo: zone %s DelEkZoneRateLimit unLimit", m.zoneName)
+			return
+		}
+		delEKZoneRateLimiter.SetLimit(rate.Inf)
+		delEKZoneRateLimit = 0
+		log.LogDebugf("updateZoneDelEKLimitInfo: zone %s set DelEkZoneRateLimit to unLimit", m.zoneName)
+		return
+	}
+
+	if limit == delEKZoneRateLimit {
+		log.LogDebugf("updateZoneDelEKLimitInfo: zone %s with equal DelEkZoneRateLimit: %v", m.zoneName, delEKZoneRateLimit)
+		return
+	}
+
+	l := rate.Inf
+	if limit > 0 {
+		l = rate.Limit(limit)
+	}
+	delEKZoneRateLimiter.SetLimit(l)
+	delEKZoneRateLimit = limit
+	log.LogDebugf("updateZoneDelEKLimitInfo: zone %s delEKRateLimit with %v", m.zoneName, l)
+	return
+}
+
+func (m *MetaNode) updateVolDelEKLimitInfo(info *proto.LimitInfo) {
+	if reflect.DeepEqual(info.MetaNodeDelEkVolRateLimitMap, delEKVolRateLimitMap) {
+		log.LogDebugf("updateVolDelEKLimitInfo: equal DelEKVolRateLimitMap")
+		return
+	}
+	tmpRateLimiter := make(map[string]*rate.Limiter, len(info.MetaNodeDelEkVolRateLimitMap))
+	for volName, rateLimit := range info.MetaNodeDelEkVolRateLimitMap {
+		l := rate.Inf
+		if rateLimit > 0 {
+			l = rate.Limit(rateLimit)
+		}
+		tmpRateLimiter[volName] = rate.NewLimiter(l, DefaultDelEKLimitBurst)
+	}
+	delEKVolRateLimiterMap = tmpRateLimiter
+	delEKVolRateLimitMap = info.MetaNodeDelEkVolRateLimitMap
+	log.LogDebugf("updateVolDelEKLimitInfo: DelEKVolRateLimitMap:%v", delEKVolRateLimitMap)
+}
+
+func (m *MetaNode) updateRateLimitInfo() {
+	info := limitInfo
+	if info == nil {
+		return
+	}
+
+	m.updateTotReqLimitInfo(info)
+	m.updateOpLimitiInfo(info)
+	m.updateVolLimitiInfo(info)
+	m.updateZoneDelEKLimitInfo(info)
+	m.updateVolDelEKLimitInfo(info)
+
+	isRateLimitOn = (reqRateLimit > 0 ||
+		len(reqOpRateLimitMap) > 0 ||
+		len(reqVolOpPartRateLimitMap) > 0 )
 }
 
 func (m *MetaNode) updateClusterMap() {

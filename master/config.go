@@ -116,6 +116,8 @@ type clusterConfig struct {
 	DataNodeRepairTaskCount             uint64
 	DataNodeRepairSSDZoneTaskCount      uint64
 	DataNodeRepairTaskCountZoneLimit    map[string]uint64
+	MetaNodeDelEKVolRateLimitMap        map[string]uint64
+	MetaNodeDelEKZoneRateLimitMap       map[string]uint64
 	MetaNodeDeleteWorkerSleepMs         uint64
 	DataNodeFlushFDInterval             uint32
 	DataNodeFlushFDParallelismOnDisk    uint64
@@ -206,6 +208,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.ClientVolOpRateLimitMap = make(map[string]map[uint8]int64)
 	cfg.ObjectNodeActionRateLimitMap = make(map[string]map[string]int64)
 	cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)
+	cfg.MetaNodeDelEKVolRateLimitMap = make(map[string]uint64)
+	cfg.MetaNodeDelEKZoneRateLimitMap = make(map[string]uint64)
 	cfg.DeleteEKRecordFilesMaxSize = 0 // use meta node default value 60MB 10files
 	cfg.MetaRaftLogSize = 0            //use meta node config value
 	cfg.MetaRaftLogCap = 0             // use meta node config value

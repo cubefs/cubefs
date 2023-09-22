@@ -118,3 +118,10 @@ func (fl *freeList) Range(f func(ino uint64) bool) {
 		}
 	}
 }
+
+func (fl *freeList) Find(ino uint64) bool {
+	fl.Lock()
+	defer fl.Unlock()
+	_, ok := fl.index[ino]
+	return ok
+}

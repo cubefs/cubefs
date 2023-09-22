@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/errors"
-	"io/ioutil"
 	"os"
 	"path"
 	"sort"
@@ -345,35 +344,6 @@ func (mp *metaPartition) confUpdateNode(req *proto.MetaPartitionDecommissionRequ
 }
 
 func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
-	fileName := string(buf)
-	id, e := delExtNameID(fileName)
-	if e != nil {
-		err = fmt.Errorf("load file:[%s] format err:[%v] so skip", fileName, e)
-		log.LogErrorf(err.Error())
-		return
-	}
-
-	infos, err := ioutil.ReadDir(mp.config.RootDir)
-	if err != nil {
-		return
-	}
-
-	for _, f := range infos {
-		if f.IsDir() {
-			continue
-		}
-		if !strings.HasPrefix(f.Name(), prefixDelExtent) {
-			continue
-		}
-		fid, e := delExtNameID(f.Name())
-		if e != nil {
-			log.LogErrorf("load file:[%s] format err:[%v] so skip", fileName, e)
-			continue
-		}
-		if fid <= id {
-			_ = os.Remove(path.Join(mp.config.RootDir, f.Name()))
-		}
-	}
 	return
 }
 

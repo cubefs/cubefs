@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/util/cpu"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"golang.org/x/time/rate"
 	"hash/crc32"
 	"io"
 	"io/fs"
@@ -125,6 +126,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/checkFreeList", m.checkFreelist)
 	http.HandleFunc("/getReqRecords", m.getRequestRecords)
 	http.HandleFunc("/getReqRecordsInRocksDB", m.getRequestRecordsInRocksDB)
+
+	http.HandleFunc("/setDelEKRateLimit", m.setLocalDeleteExtentRateLimit)
 	return
 }
 
@@ -2753,5 +2756,53 @@ func (m *MetaNode) getRequestRecordsInRocksDB(w http.ResponseWriter, r *http.Req
 		Count:   count,
 		Records: reqRecords,
 	}
+	return
+}
+
+func (m *MetaNode) setLocalDeleteExtentRateLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		data              []byte
+		resp              *APIResponse
+		err               error
+		rateLimitValueStr string
+		rateLimit         uint64
+		oldRateLimit      uint64
+	)
+	resp = NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ = resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("updateLocalDeleteExtentRateLimit response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	rateLimitValueStr = r.FormValue("rateLimit")
+	rateLimit, err = strconv.ParseUint(rateLimitValueStr, 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	oldRateLimit = delExtentRateLimitLocal
+	if rateLimit == delExtentRateLimitLocal {
+		log.LogDebugf("setLocalDeleteExtentRateLimit oldRateLimit(%v) equal to newRateLimitValue", oldRateLimit)
+		return
+	}
+
+	limit := rate.Inf
+	if rateLimit > 0 {
+		limit = rate.Limit(rateLimit)
+	}
+
+	delExtentRateLimitLocal = rateLimit
+	delExtentRateLimiterLocal.SetLimit(limit)
+	log.LogDebugf("setLocalDeleteExtentRateLimit from %v to %v", oldRateLimit, delExtentRateLimitLocal)
 	return
 }

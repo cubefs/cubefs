@@ -341,6 +341,7 @@ type metaPartition struct {
 	state                       uint32
 	delInodeFp                  *os.File
 	freeList                    *freeList // free inode list, only change when raft apply
+	needRetryFreeInodes         map[uint64]byte // 失败重试inode
 	extDelCh                    chan []proto.MetaDelExtentKey
 	extReset                    chan struct{}
 	vol                         *Vol
@@ -579,21 +580,22 @@ func (mp *metaPartition) getRocksDbRootDir() string {
 
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *metaPartition {
 	mp := &metaPartition{
-		config:         conf,
-		stopC:          make(chan bool),
-		storeChan:      make(chan *storeMsg, 100),
-		freeList:       newFreeList(),
-		extDelCh:       make(chan []proto.MetaDelExtentKey, 10000),
-		extReset:       make(chan struct{}),
-		vol:            NewVol(),
-		manager:        manager,
-		monitorData:    statistics.InitMonitorData(statistics.ModelMetaNode),
-		marshalVersion: MetaPartitionMarshVersion2,
-		extDelCursor:   make(chan uint64, 1),
-		db:             NewRocksDb(),
-		CreationType:   conf.CreationType,
-		stopChState:    mpStopChOpenState,
-		reqRecords:     NewRequestRecords(),
+		config:              conf,
+		stopC:               make(chan bool),
+		storeChan:           make(chan *storeMsg, 100),
+		freeList:            newFreeList(),
+		needRetryFreeInodes: make(map[uint64]byte, 0),
+		extDelCh:            make(chan []proto.MetaDelExtentKey, 10000),
+		extReset:            make(chan struct{}),
+		vol:                 NewVol(),
+		manager:             manager,
+		monitorData:         statistics.InitMonitorData(statistics.ModelMetaNode),
+		marshalVersion:      MetaPartitionMarshVersion2,
+		extDelCursor:        make(chan uint64, 1),
+		db:                  NewRocksDb(),
+		CreationType:        conf.CreationType,
+		stopChState:         mpStopChOpenState,
+		reqRecords:          NewRequestRecords(),
 	}
 	return mp
 }

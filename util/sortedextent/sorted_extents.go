@@ -532,6 +532,19 @@ func (se *SortedExtents) Truncate(offset, ino uint64) []proto.MetaDelExtentKey {
 	return delEks.GetDelExtentKeys(se.eks)
 }
 
+func (se *SortedExtents) TruncateByCountFromEnd(truncateCount int) (ekCount int){
+	se.Lock()
+	defer se.Unlock()
+
+	endIndex := len(se.eks) - truncateCount
+	if endIndex <= 0 {
+		endIndex = 0
+	}
+	se.eks = se.eks[:endIndex]
+	ekCount = len(se.eks)
+	return
+}
+
 func (se *SortedExtents) Len() int {
 	se.RLock()
 	defer se.RUnlock()
@@ -567,6 +580,17 @@ func (se *SortedExtents) Range2(f func(index int, ek proto.ExtentKey) bool) {
 
 	for i, ek := range se.eks {
 		if !f(i, ek) {
+			break
+		}
+	}
+}
+
+func (se *SortedExtents) RangeWithIndexOffset(indexOffset int, f func(ek proto.ExtentKey) bool) {
+	se.RLock()
+	defer se.RUnlock()
+
+	for index := indexOffset; index < len(se.eks); index++ {
+		if !f(se.eks[index]) {
 			break
 		}
 	}

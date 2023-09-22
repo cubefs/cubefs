@@ -37,6 +37,7 @@ var (
 
 type TP interface {
 	Set(err error)
+	SetWithValue(value int64, err error)
 }
 
 type promTP struct {
@@ -46,6 +47,22 @@ type promTP struct {
 }
 
 func (tp *promTP) Set(err error) {
+	if tp == nil {
+		return
+	}
+	if tp.tp != nil {
+		tp.tp.Observe(float64(time.Since(tp.start).Nanoseconds()))
+	}
+	if tp.failure != nil {
+		if err != nil {
+			tp.failure.Add(1)
+		} else {
+			tp.failure.Add(0)
+		}
+	}
+}
+
+func (tp *promTP) SetWithValue(value int64, err error) {
 	if tp == nil {
 		return
 	}
@@ -94,6 +111,15 @@ func (tp *umpTP) Set(err error) {
 	}
 }
 
+func (tp *umpTP) SetWithValue(value int64, err error) {
+	if tp == nil {
+		return
+	}
+	if tp.to != nil {
+		ump.AfterTPWithValue(tp.to, value, err)
+	}
+}
+
 func newUmpTP(key string, start time.Time, precision UMPTPPrecision) TP {
 	var tp = &umpTP{
 		precision: precision,
@@ -112,6 +138,10 @@ func (tp *noonTP) Set(_ error) {
 	return
 }
 
+func (tp *noonTP) SetWithValue(value int64, err error) {
+	return
+}
+
 var singletonNoonTP = &noonTP{}
 
 type multipleTP []TP
@@ -119,6 +149,12 @@ type multipleTP []TP
 func (tp multipleTP) Set(err error) {
 	for _, recorder := range tp {
 		recorder.Set(err)
+	}
+}
+
+func (tp multipleTP) SetWithValue(value int64, err error) {
+	for _, recorder := range tp {
+		recorder.SetWithValue(value, err)
 	}
 }
 

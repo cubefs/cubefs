@@ -65,6 +65,8 @@ type clusterValue struct {
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64
 	ObjectNodeActionRateLimitMap        map[string]map[string]int64
+	MetaNodeDeleteEKZoneLimitMap        map[string]uint64
+	MetaNodeDeleteEKVolLimitMap         map[string]uint64
 	PoolSizeOfDataPartitionsInRecover   int32
 	PoolSizeOfMetaPartitionsInRecover   int32
 	FixTinyDeleteRecordLimit            uint64
@@ -143,6 +145,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ClientWriteVolRateLimitMap:          c.cfg.ClientWriteVolRateLimitMap,
 		ClientVolOpRateLimitMap:             c.cfg.ClientVolOpRateLimitMap,
 		ObjectNodeActionRateLimitMap:        c.cfg.ObjectNodeActionRateLimitMap,
+		MetaNodeDeleteEKVolLimitMap:         c.cfg.MetaNodeDelEKVolRateLimitMap,
+		MetaNodeDeleteEKZoneLimitMap:        c.cfg.MetaNodeDelEKZoneRateLimitMap,
 		DisableAutoAllocate:                 c.DisableAutoAllocate,
 		PoolSizeOfDataPartitionsInRecover:   c.cfg.DataPartitionsRecoverPoolSize,
 		PoolSizeOfMetaPartitionsInRecover:   c.cfg.MetaPartitionsRecoverPoolSize,
@@ -1119,6 +1123,14 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 		if cv.BitMapAllocatorMinFreeFactor > 0 {
 			c.cfg.BitMapAllocatorMinFreeFactor = cv.BitMapAllocatorMinFreeFactor
+		}
+		c.cfg.MetaNodeDelEKZoneRateLimitMap = cv.MetaNodeDeleteEKZoneLimitMap
+		if c.cfg.MetaNodeDelEKZoneRateLimitMap == nil {
+			c.cfg.MetaNodeDelEKZoneRateLimitMap = make(map[string]uint64)
+		}
+		c.cfg.MetaNodeDelEKVolRateLimitMap = cv.MetaNodeDeleteEKVolLimitMap
+		if c.cfg.MetaNodeDelEKVolRateLimitMap == nil {
+			c.cfg.MetaNodeDelEKVolRateLimitMap = make(map[string]uint64)
 		}
 		atomic.StoreUint64(&c.cfg.MetaNodeDumpWaterLevel, cv.MetaNodeDumpWaterLevel)
 		atomic.StoreUint64(&c.cfg.MonitorSummarySec, cv.MonitorSummarySec)

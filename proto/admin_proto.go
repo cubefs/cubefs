@@ -296,6 +296,8 @@ const (
 	ClientReqRemoveDupFlagKey     = "reqRemoveDupKey"
 	VolRemoveDupFlagKey           = "volRemoveDupReqKey"
 	NetworkFlowRatioKey           = "networkFlowRatio"
+	MetaNodeDelEKZoneRateLimitKey = "metaNodeDelEKZoneRateLimit"
+	MetaNodeDelEKVolRateLimitKey  = "metaNodeDelEKVolRateLimit"
 )
 
 const (
@@ -600,6 +602,9 @@ type LimitInfo struct {
 	DataNodeRepairClusterTaskLimitOnDisk   uint64
 	DataNodeRepairSSDZoneTaskLimitOnDisk   uint64
 	DataNodeRepairTaskCountZoneLimit       map[string]uint64
+
+	MetaNodeDelEkZoneRateLimitMap map[string]uint64
+	MetaNodeDelEkVolRateLimitMap  map[string]uint64
 
 	MetaNodeDumpWaterLevel           uint64
 	DataNodeFlushFDInterval          uint32
@@ -1254,6 +1259,7 @@ type VolInfo struct {
 	EnableRemoveDupReq            bool
 	CleanTrashMaxDurationEachTime int32
 	CleanTrashMaxCountEachTime    int32
+	TruncateEKCountEveryTime      int
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
@@ -1359,6 +1365,8 @@ type RateLimitInfo struct {
 	RemoteReadConnTimeoutMs          int64
 	ReadConnTimeoutMs                int64
 	WriteConnTimeoutMs               int64
+	MetaNodeDelEKVolumeRate          int64
+	MetaNodeDelEKZoneRate            int64
 }
 
 type ConvertMode uint8

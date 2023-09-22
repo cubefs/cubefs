@@ -255,6 +255,10 @@ const (
 )
 
 const (
+	MetaPartitionDeleteEKUmpKey = "Meta_DeleteEK"
+)
+
+const (
 	_  = iota
 	KB = 1 << (10 * iota)
 	MB

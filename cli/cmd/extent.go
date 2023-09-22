@@ -817,13 +817,14 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 		PartitionID: partitionId,
 		Hosts:       partition.Hosts,
 	}
-	eks := make([]*proto.InodeExtentKey, len(extents))
+	eks := make([]*proto.MetaDelExtentKey, len(extents))
 	for i := 0; i < len(extents); i++ {
-		ek := proto.ExtentKey{
-			PartitionId: partitionId,
-			ExtentId:    extents[i],
+		eks[i] = &proto.MetaDelExtentKey{
+			ExtentKey: proto.ExtentKey{
+				PartitionId:  partitionId,
+				ExtentId:     extents[i],
+			},
 		}
-		eks[i] = &proto.InodeExtentKey{ExtentKey: ek}
 	}
 	packet := metanode.NewPacketToBatchDeleteExtent(context.Background(), dp, eks)
 	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {

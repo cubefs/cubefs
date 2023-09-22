@@ -17,6 +17,7 @@ package metanode
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"math/rand"
 	"net"
 	"os"
@@ -140,7 +141,17 @@ func (mp *metaPartition) GetBatchDelInodeCnt() uint64{
 	return batchDelCnt
 }
 
+func (mp *metaPartition) GetTruncateEKCountEveryTime() (count int) {
+	count = DefaultTruncateEKCount
+	truncateEKCount := mp.manager.getVolumeTruncateEKCountEveryTimeValue(mp.config.VolName)
+	if truncateEKCount > 0 {
+		count = truncateEKCount
+	}
+	return
+}
+
 func (mp *metaPartition) deleteWorker() {
+	freeRetryListHandleTimer := time.NewTicker(time.Hour*1)
 	var (
 		//idx      uint64
 		isLeader   bool
@@ -159,7 +170,15 @@ func (mp *metaPartition) deleteWorker() {
 				mp.inodeDelEkFd.Sync()
 				mp.inodeDelEkFd.Close()
 			}
+			freeRetryListHandleTimer.Stop()
 			return
+		case <- freeRetryListHandleTimer.C:
+			if _, isLeader = mp.IsLeader(); !isLeader {
+				continue
+			}
+			for inodeID := range mp.needRetryFreeInodes {
+				mp.freeList.Push(inodeID)
+			}
 		default:
 		}
 
@@ -194,11 +213,10 @@ func (mp *metaPartition) deleteWorker() {
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.InodeExtentKey,
-	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.MetaDelExtentKey,
+	allInodes []*Inode, truncateCount int) (shouldCommit []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
-	shouldPushToFreeList = make([]*Inode, 0)
 	var (
 		wg   sync.WaitGroup
 		lock sync.Mutex
@@ -207,44 +225,88 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 	//wait all Partition do BatchDeleteExtents fininsh
 	for partitionID, extents := range partitionDeleteExtents {
 		wg.Add(1)
-		go func(partitionID uint64, extents []*proto.InodeExtentKey) {
-			perr := mp.doBatchDeleteExtentsByPartition(ctx, partitionID, extents)
-			lock.Lock()
-			occurErrors[partitionID] = perr
-			lock.Unlock()
+		go func(partitionID uint64, extents []*proto.MetaDelExtentKey) {
+			start := 0
+			for {
+				end := start + DefaultDelEKLimitBurst //每次删除的ek个数不能超过限速的burst值
+				if end > len(extents) {
+					end = len(extents)
+				}
+				mp.deleteEKWithRateLimit(end-start)
+				perr := mp.doBatchDeleteExtentsByPartition(ctx, partitionID, extents[start:end])
+				lock.Lock()
+				occurErrors[partitionID] = perr
+				lock.Unlock()
+				if perr != nil {
+					break
+				}
+				if end == len(extents) {
+					break
+				}
+				start = end
+			}
 			wg.Done()
 		}(partitionID, extents)
 	}
 	wg.Wait()
 
-	//range AllNode,find all Extents delete success on inode,it must to be append shouldCommit
-	for i := 0; i < len(allInodes); i++ {
-		successDeleteExtentCnt := 0
-		inode := allInodes[i]
+	for dpID, perr := range occurErrors {
+		if perr == nil {
+			continue
+		}
+
+		errorEKs, _ := partitionDeleteExtents[dpID]
+		for _, ek := range errorEKs {
+			mp.freeList.Remove(ek.InodeId)
+			mp.needRetryFreeInodes[ek.InodeId] = 0
+		}
+	}
+
+	for _, inode := range allInodes {
 		if inode.Extents == nil || inode.Extents.Len() == 0 {
 			shouldCommit = append(shouldCommit, inode)
 			continue
 		}
-		inode.Extents.Range(func(ek proto.ExtentKey) bool {
-			if occurErrors[ek.PartitionId] == nil {
-				successDeleteExtentCnt++
-				return true
-			} else {
-				log.LogWarnf("deleteInode Inode(%v) error(%v)", inode.Inode, occurErrors[ek.PartitionId])
-				return false
+
+		if mp.freeList.Find(inode.Inode) {
+			ekCount := inode.Extents.TruncateByCountFromEnd(truncateCount)
+			if ekCount == 0 {
+				shouldCommit = append(shouldCommit, inode)
 			}
-		})
-		if successDeleteExtentCnt == inode.Extents.Len() {
-			shouldCommit = append(shouldCommit, inode)
-		} else {
-			shouldPushToFreeList = append(shouldPushToFreeList, inode)
 		}
 	}
-
 	return
 }
 
-func (mp *metaPartition) recordInodeDeleteEkInfo(info *Inode) {
+func (mp *metaPartition) deleteEKWithRateLimit(delEKCount int) {
+	limit, _ := delEKVolRateLimitMap[mp.config.VolName]
+	delEKRateLimitOn := delExtentRateLimitLocal > 0 ||  limit > 0 || delEKZoneRateLimit > 0
+	if !delEKRateLimitOn {
+		return
+	}
+
+	ctx := context.Background()
+	if delExtentRateLimitLocal > 0 {
+		delExtentRateLimiterLocal.WaitN(ctx, delEKCount)
+		return
+	}
+
+	if limit > 0 {
+		limiter, ok := delEKVolRateLimiterMap[mp.config.VolName]
+		if !ok {
+			return
+		}
+		limiter.WaitN(ctx, delEKCount)
+		return
+	}
+
+	if delEKZoneRateLimit > 0 {
+		delEKZoneRateLimiter.WaitN(ctx, delEKCount)
+	}
+	return
+}
+
+func (mp *metaPartition) recordInodeDeleteEkInfo(info *Inode, truncateIndexOffset int) {
 	if info == nil || info.Extents == nil ||info.Extents.Len() == 0 {
 		return
 	}
@@ -263,7 +325,7 @@ func (mp *metaPartition) recordInodeDeleteEkInfo(info *Inode) {
 	}
 	timeStamp := time.Now().Unix()
 
-	info.Extents.Range(func(ek proto.ExtentKey) bool {
+	info.Extents.RangeWithIndexOffset(truncateIndexOffset, func(ek proto.ExtentKey) bool {
 
 		delEk := ek.ConvertToMetaDelEk(info.Inode, uint64(proto.DelEkSrcTypeFromDelInode), timeStamp)
 		ekBuff := make([]byte, proto.ExtentDbKeyLengthWithIno)
@@ -304,10 +366,11 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v), stack:%v", mp.config.PartitionId, r, debug.Stack()))
 		}
 	}()
+	truncateEKCount := mp.GetTruncateEKCountEveryTime()
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
 	//shouldRePushToFreeList := make([]*Inode, 0)
 	allDeleteExtents := make(map[string]uint64)
-	deleteExtentsByPartition := make(map[uint64][]*proto.InodeExtentKey)
+	deleteExtentsByPartition := make(map[uint64][]*proto.MetaDelExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		var inodeVal *Inode
@@ -323,38 +386,38 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 			continue
 		}
 		inodeVal = dio.buildInode()
-		//if err == nil && dio != nil {
-		//	inodeVal = dio.buildInode()
-		//} else {
-		//	inodeVal, err = mp.inodeTree.Get(ino)
-		//	if err != nil || inodeVal == nil {
-		//		log.LogWarnf("[deleteMarkedInodes], not found the deleted inode: %v", ino)
-		//		continue
-		//	}
-		//}
+
 		if inodeVal.Extents == nil || inodeVal.Extents.Len() == 0 {
 			allInodes = append(allInodes, inodeVal)
 			continue
 		}
 
-		mp.recordInodeDeleteEkInfo(inodeVal)
+		truncateIndexOffset := inodeVal.Extents.Len() - truncateEKCount
+		if truncateIndexOffset < 0 {
+			truncateIndexOffset = 0
+		}
 
-		inodeVal.Extents.Range(func(ek proto.ExtentKey) bool {
-			_, ok := allDeleteExtents[ek.GetExtentKey()]
+		mp.recordInodeDeleteEkInfo(inodeVal, truncateIndexOffset)
+		inodeVal.Extents.RangeWithIndexOffset(truncateIndexOffset, func(ek proto.ExtentKey) bool {
+			ext := &ek
+			_, ok := allDeleteExtents[ext.GetExtentKey()]
 			if !ok {
 				allDeleteExtents[ek.GetExtentKey()] = ino
 			}
 			exts, ok := deleteExtentsByPartition[ek.PartitionId]
 			if !ok {
-				exts = make([]*proto.InodeExtentKey, 0)
+				exts = make([]*proto.MetaDelExtentKey, 0)
 			}
-			exts = append(exts, &proto.InodeExtentKey{ExtentKey: ek, Inode: inodeVal.Inode})
-			deleteExtentsByPartition[ek.PartitionId] = exts
+			exts = append(exts, &proto.MetaDelExtentKey{
+				ExtentKey: ek,
+				InodeId:   inodeVal.Inode,
+			})
+			deleteExtentsByPartition[ext.PartitionId] = exts
 			return true
 		})
 		allInodes = append(allInodes, inodeVal)
 	}
-	shouldCommit, _ = mp.batchDeleteExtentsByPartition(ctx, deleteExtentsByPartition, allInodes)
+	shouldCommit = mp.batchDeleteExtentsByPartition(ctx, deleteExtentsByPartition, allInodes, truncateEKCount)
 	bufSlice := make([]byte, 0, 8*len(shouldCommit))
 	for _, inode := range shouldCommit {
 		bufSlice = append(bufSlice, inode.MarshalKey()...)
@@ -371,15 +434,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 		log.LogWarnf("[deleteInodeTreeOnRaftPeers] raft commit inode list: %v, "+
 			"response %s", shouldCommit, err.Error())
 	}
-	//for _, inode := range shouldCommit {
-	//	if err != nil {
-	//		//mp.freeList.Push(inode.Inode)
-	//	}
-	//}
 	log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Count())
-	//for _, inode := range shouldRePushToFreeList {
-	//	//mp.freeList.Push(inode.Inode)
-	//}
 }
 
 func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDeleteInodes []byte) (err error) {
@@ -427,8 +482,11 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg 
 	return
 }
 
-func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.InodeExtentKey) (err error) {
+func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.MetaDelExtentKey) (err error) {
 	// get the data node view
+	tpObj := exporter.NewVolumeTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
+	defer tpObj.SetWithValue(1, err)
+	log.LogDebugf("doDeleteMarkedInodes mp(%v) ext(%v)", mp.config.PartitionId, ext)
 	dp := mp.vol.GetPartition(ext.PartitionId)
 	if dp == nil {
 		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
@@ -481,7 +539,10 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.In
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.InodeExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.MetaDelExtentKey) (err error) {
+	tpObj := exporter.NewVolumeTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
+	defer tpObj.SetWithValue(int64(len(exts)), err)
+	log.LogDebugf("doBatchDeleteExtentsByPartition mp(%v) dp(%v), extentCnt(%v)", mp.config.PartitionId, partitionID, len(exts))
 	// get the data node view
 	dp := mp.vol.GetPartition(partitionID)
 	if dp == nil {
@@ -552,7 +613,7 @@ func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
 	}
 }
 
-func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPartition, ext *proto.InodeExtentKey) (err error) {
+func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPartition, ext *proto.MetaDelExtentKey) (err error) {
 	// delete the data node
 	conn, err := mp.config.ConnPool.GetConnect(dp.EcHosts[0])
 
@@ -589,7 +650,7 @@ func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPar
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteEcExtentsByPartition(ctx context.Context, dp *DataPartition, exts []*proto.InodeExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteEcExtentsByPartition(ctx context.Context, dp *DataPartition, exts []*proto.MetaDelExtentKey) (err error) {
 	var (
 		conn *net.TCPConn
 	)
