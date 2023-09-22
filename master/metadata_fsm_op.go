@@ -1035,6 +1035,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 			return err
 		}
 
+		if cv.Name != c.Name {
+			log.LogErrorf("action[loadClusterValue] loaded cluster value: %+v", cv)
+			continue
+		}
+
 		log.LogDebugf("action[loadClusterValue] loaded cluster value: %+v", cv)
 		c.CreateTime = cv.CreateTime
 
