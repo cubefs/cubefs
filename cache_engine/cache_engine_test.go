@@ -201,7 +201,8 @@ func TestLru(t *testing.T) {
 	}
 }
 
-func testSparseFile(t *testing.T) {
+func TestSparseFile(t *testing.T) {
+	t.Skipf("Case seems illgal and need to be update") // TODO: 该测试用例有问题，需要调整。
 	lruCap := 10
 	rawData := make([]byte, 0)
 	for i := 0; uint64(i) < 128*unit.KB; i++ {

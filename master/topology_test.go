@@ -263,7 +263,7 @@ func TestIDC(t *testing.T) {
 			t.FailNow()
 		}
 		for _, v := range views {
-			if views[0].Name != idc1Name {
+			if v.Name != idc1Name {
 				continue
 			}
 			for name, mType := range v.Zones {
