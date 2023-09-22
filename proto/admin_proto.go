@@ -1102,6 +1102,8 @@ type SimpleVolView struct {
 	CacheRule        string
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
+	TrashInterval    int
+
 	// multi version snapshot
 	LatestVer         uint64
 	Forbidden         bool
