@@ -355,7 +355,7 @@ type VolVersionInfo struct {
 }
 
 func (vv *VolVersionInfo) String() string {
-	return fmt.Sprintf("Ver:%v|DelTimt:%v|status:%v", vv.Ver, vv.DelTime, vv.DelTime)
+	return fmt.Sprintf("Ver:%v|DelTimt:%v|status:%v", vv.Ver, vv.DelTime, vv.Status)
 }
 
 type VolVersionInfoList struct {
