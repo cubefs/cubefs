@@ -11,7 +11,7 @@ from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 
 LOCAL_IP = 'localIP'
 USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
-one_day = 60 * 60 * 5
+avali_dataset_time = 60 * 5
 SHARED_MEMORY_SIZE = 'SHARED_MEMORY_SIZE'
 default_shared_memory_size = 4 * 1024 * 1024 * 1024
 
@@ -51,6 +51,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                                                                                            self._dataset_cnt)
 
         self.batch_download_addr = "http://127.0.0.1:{}/batchdownload/path".format(self.prof_port)
+        self.clean_old_dataset_file(self.dataset_dir)
 
         if not self.is_use_batch_download():
             t = threading.Thread(target=self._renew_ttl_loop, daemon=True)
@@ -181,10 +182,10 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                 if len(self.cube_prefetch_file_list) != 0:
                     self.renew_ttl_on_prefetch_files()
                 self.clean_old_dataset_file(self.dataset_dir)
-                time.sleep(10)
+                time.sleep(60)
             except Exception as e:
                 print("_renew_ttl_loop expect {}".format(e))
-                time.sleep(10)
+                time.sleep(60)
                 continue
 
     def clean_old_dataset_file(self, folder):
@@ -193,7 +194,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                 file_path = os.path.join(folder, filename)
                 if os.path.isfile(file_path):
                     stat = os.stat(file_path)
-                    if time.time() - stat.st_atime > one_day:
+                    if time.time() - stat.st_atime > avali_dataset_time:
                         print(f'Deleting file {file_path} due to not accessed over a day')
                         os.remove(file_path)
         except Exception as e:
