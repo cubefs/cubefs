@@ -232,8 +232,6 @@ func (verMgr *VolVersionManager) checkCreateStrategy() {
 
 func (verMgr *VolVersionManager) checkDeleteStrategy() {
 	verMgr.RLock()
-	defer verMgr.RUnlock()
-
 	log.LogDebugf("checkSnapshotStrategy.vol %v try delete snapshot nLen %v, keep cnt %v", verMgr.vol.Name, len(verMgr.multiVersionList)-1, verMgr.strategy.KeepVerCnt)
 	nLen := len(verMgr.multiVersionList)
 	log.LogDebugf("checkSnapshotStrategy.vol %v try delete snapshot nLen %v, keep cnt %v", verMgr.vol.Name, len(verMgr.multiVersionList)-1, verMgr.strategy.KeepVerCnt)
