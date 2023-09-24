@@ -43,12 +43,12 @@ func (checkEngine *CheckEngine) doRepairPartition(dp uint64, node string) {
 }
 
 func (checkEngine *CheckEngine) checkNode() (err error) {
-	var dpCount int
 	excludeDPs := util.LoadSpecifiedPartitions()
 	if err != nil {
 		return
 	}
 	var doCheck = func(node string) {
+		var dpCount int
 		defer func() {
 			if err != nil {
 				log.LogErrorf("checkNode error:%v\n", err)

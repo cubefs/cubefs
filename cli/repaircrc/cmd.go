@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/cubefs/cubefs/util/exporter"
+	_ "net/http/pprof"
 
 	"github.com/cubefs/cubefs/cli/repaircrc/repaircrc_server"
 	"github.com/cubefs/cubefs/util/config"

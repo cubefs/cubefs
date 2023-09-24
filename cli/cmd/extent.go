@@ -135,7 +135,11 @@ func newExtentGetCmd() *cobra.Command {
 				}
 				var md5Sum = "N/A"
 				if getMd5 && extent[proto.ExtentInfoSize] < 16*unit.GB {
-					md5Sum, err = dataClient.ComputeExtentMd5(partitionID, extentID, 0, extent[proto.ExtentInfoSize]-uint64(proto.PageSize))
+					size := extent[proto.ExtentInfoSize]
+					if proto.IsTinyExtent(extentID) && size >= proto.PageSize {
+						size = extent[proto.ExtentInfoSize] - uint64(proto.PageSize)
+					}
+					md5Sum, err = dataClient.ComputeExtentMd5(partitionID, extentID, 0, size)
 					if err != nil {
 						md5Sum = "N/A"
 					}

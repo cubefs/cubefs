@@ -168,10 +168,15 @@ func slowCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataRe
 }
 
 func samplingCheckTinyExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
-	if ek.Size == unit.KB*4 {
+	sample := uint32(4) * unit.KB
+	sampleN := ek.Size / sample
+	if ek.Size <= sample*2 {
+		return
+	}
+	if ek.Size == sample*2 {
 		//if size=0, the full extent will be checked
 		newEk := &proto.ExtentKey{
-			Size:         0,
+			Size:         sample,
 			ExtentOffset: 0,
 			PartitionId:  ek.PartitionId,
 			ExtentId:     ek.ExtentId,
@@ -196,8 +201,6 @@ func samplingCheckTinyExtent(cluster string, dnProf uint16, dataReplicas []*prot
 		allHoles = merge(allHoles)
 	}
 
-	sample := uint32(4) * unit.KB
-	sampleN := ek.Size / sample
 	if sampleN > 32 {
 		sampleN = 32
 	}
