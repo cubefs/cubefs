@@ -41,7 +41,7 @@ const (
 const (
 	StreamerNormal int32 = iota
 	StreamerError
-	StreamerRetry
+	LastEKVersionNotEqual
 )
 
 const (
@@ -378,28 +378,29 @@ begin:
 				}
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
 			} else {
-				log.LogDebugf("action[streamer.write] ino %v doOverwriteByAppend extent key (%v)", s.inode, req.ExtentKey)
-				writeSize, _, err, _ = s.doOverwriteByAppend(req, direct, proto.OpRandomWriteAppend)
+				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
+				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct)
 			}
 			if s.client.bcacheEnable {
 				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
 				go s.client.evictBcache(cacheKey)
 			}
 		} else {
-
 			if !isChecked && checkFunc != nil {
 				isChecked = true
 				if err = checkFunc(); err != nil {
 					return
 				}
 			}
-
 			// try append write, get response
 			log.LogDebugf("action[streamer.write] doAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
 			var status int32
-			if writeSize, err, status = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, true); status == StreamerRetry {
-				log.LogDebugf("action[streamer.write] doOverwriteByAppend req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-				if writeSize, _, err, status = s.doOverwriteByAppend(req, direct, proto.OpTryWriteAppend); status == int32(proto.OpTryOtherExtent) {
+			// First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
+			// it indicates that the extent may have been fully utilized by the previous version.
+			// Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
+			if writeSize, err, status = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, true); status == LastEKVersionNotEqual {
+				log.LogDebugf("action[streamer.write] tryDirectAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
+				if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct); status == int32(proto.OpTryOtherExtent) {
 					log.LogDebugf("action[streamer.write] doAppendWrite again req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
 					writeSize, err, _ = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, false)
 				}
@@ -420,39 +421,40 @@ begin:
 	return
 }
 
-func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) doOverWriteByAppend(req *ExtentRequest, direct bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
+	// the extent key needs to be updated because when preparing the requests,
+	// the obtained extent key could be a local key which can be inconsistent with the remote key.
+	// the OpTryWriteAppend is a special case, ignore it
+	req.ExtentKey = s.extents.Get(uint64(req.FileOffset))
+	return s.doDirectWriteByAppend(req, direct, proto.OpRandomWriteAppend)
+}
+
+func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
+
+	req.ExtentKey = s.handler.key
+	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend)
+}
+
+func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	var (
 		dp        *wrapper.DataPartition
 		reqPacket *Packet
 	)
 
-	log.LogDebugf("action[doOverwriteByAppend] inode %v enter in req %v", s.inode, req)
-
+	log.LogDebugf("action[doDirectWriteByAppend] inode %v enter in req %v", s.inode, req)
 	err = s.flush()
 	if err != nil {
 		return
 	}
 
-	offset := req.FileOffset
-	size := req.Size
-
-	// the extent key needs to be updated because when preparing the requests,
-	// the obtained extent key could be a local key which can be inconsistent with the remote key.
-	// the OpTryWriteAppend is a special case, ignore it
-	if op != proto.OpTryWriteAppend {
-		req.ExtentKey = s.extents.Get(uint64(offset))
-	} else {
-		req.ExtentKey = s.handler.key
-	}
-
 	if req.ExtentKey == nil {
-		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, offset, req.ExtentKey))
+		err = errors.New(fmt.Sprintf("doOverwrite: extent key not exist, ino(%v) ekFileOffset(%v) ek(%v)", s.inode, req.FileOffset, req.ExtentKey))
 		return
 	}
 
 	if dp, err = s.client.dataWrapper.GetDataPartition(req.ExtentKey.PartitionId); err != nil {
 		// TODO unhandled error
-		errors.Trace(err, "doOverwriteByAppend: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
+		errors.Trace(err, "doDirectWriteByAppend: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
 	}
 
@@ -460,14 +462,14 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8
 	if proto.IsCold(s.client.volumeType) {
 		retry = false
 	}
-	log.LogDebugf("action[doOverwriteByAppend] inode %v  data process", s.inode)
+	log.LogDebugf("action[doDirectWriteByAppend] inode %v  data process", s.inode)
 
 	addr := dp.LeaderAddr
 	if storage.IsTinyExtent(req.ExtentKey.ExtentId) {
 		addr = dp.Hosts[0]
-		reqPacket = NewWriteTinyDirectly(s.inode, req.ExtentKey.PartitionId, offset, dp)
+		reqPacket = NewWriteTinyDirectly(s.inode, req.ExtentKey.PartitionId, req.FileOffset, dp)
 	} else {
-		reqPacket = NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, int(req.ExtentKey.ExtentOffset)+int(req.ExtentKey.Size), s.inode, offset, direct, op)
+		reqPacket = NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, int(req.ExtentKey.ExtentOffset)+int(req.ExtentKey.Size), s.inode, req.FileOffset, direct, op)
 	}
 
 	sc := &StreamConn{
@@ -476,11 +478,11 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8
 	}
 
 	replyPacket := new(Packet)
-	if size > util.BlockSize {
-		log.LogErrorf("action[doOverwriteByAppend] inode %v size too large %v", s.inode, size)
+	if req.Size > util.BlockSize {
+		log.LogErrorf("action[doDirectWriteByAppend] inode %v size too large %v", s.inode, req.Size)
 		panic(nil)
 	}
-	for total < size { // normally should only run once due to key exist in the system must be less than BlockSize
+	for total < req.Size { // normally should only run once due to key exist in the system must be less than BlockSize
 		// right position in extent:offset-ek4FileOffset+total+ekExtOffset .
 		// ekExtOffset will be set by replay packet at addExtentInfo(datanode)
 
@@ -491,7 +493,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8
 			reqPacket.ExtentType = proto.TinyExtentType
 		}
 
-		packSize := util.Min(size-total, util.BlockSize)
+		packSize := util.Min(req.Size-total, util.BlockSize)
 		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])
 		reqPacket.Size = uint32(packSize)
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
@@ -499,11 +501,11 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8
 		err = sc.Send(&retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
 			e := replyPacket.ReadFromConnWithVer(conn, proto.ReadDeadlineTime)
 			if e != nil {
-				log.LogWarnf("doOverwriteByAppend.Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
+				log.LogWarnf("doDirectWriteByAppend.Stream Writer doOverwrite: ino(%v) failed to read from connect, req(%v) err(%v)", s.inode, reqPacket, e)
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
-			log.LogDebugf("action[doOverwriteByAppend] ino(%v) get replyPacket opcode %v resultCode %v", s.inode, replyPacket.Opcode, replyPacket.ResultCode)
+			log.LogDebugf("action[doDirectWriteByAppend] ino(%v) get replyPacket opcode %v resultCode %v", s.inode, replyPacket.Opcode, replyPacket.ResultCode)
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
 			}
@@ -515,25 +517,25 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8
 
 			if replyPacket.ResultCode == proto.OpTryOtherAddr {
 				e = TryOtherAddrError
-				log.LogDebugf("action[doOverwriteByAppend] data process err %v", e)
+				log.LogDebugf("action[doDirectWriteByAppend] data process err %v", e)
 			}
 			return e, false
 		})
 
 		proto.Buffers.Put(reqPacket.Data)
 		reqPacket.Data = nil
-		log.LogDebugf("doOverwriteByAppend: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
+		log.LogDebugf("doDirectWriteByAppend: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
 
 		if err != nil || replyPacket.ResultCode != proto.OpOk {
 			status = int32(replyPacket.ResultCode)
 			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
-			log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
+			log.LogErrorf("action[doDirectWriteByAppend] data process err %v", err)
 			break
 		}
 
 		if !reqPacket.isValidWriteReply(replyPacket) || reqPacket.CRC != replyPacket.CRC {
 			err = errors.New(fmt.Sprintf("doOverwrite: is not the corresponding reply, ino(%v) req(%v) replyPacket(%v)", s.inode, req, replyPacket))
-			log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
+			log.LogErrorf("action[doDirectWriteByAppend] data process err %v", err)
 			break
 		}
 
@@ -541,7 +543,7 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8
 		break
 	}
 	if err != nil {
-		log.LogErrorf("action[doOverwriteByAppend] data process err %v", err)
+		log.LogErrorf("action[doDirectWriteByAppend] data process err %v", err)
 		return
 	}
 	extKey = &proto.ExtentKey{
@@ -555,25 +557,24 @@ func (s *Streamer) doOverwriteByAppend(req *ExtentRequest, direct bool, op uint8
 		},
 	}
 	if op == proto.OpRandomWriteAppend || op == proto.OpSyncRandomWriteAppend {
-		log.LogDebugf("action[doOverwriteByAppend] inode %v local cache process start extKey %v", s.inode, extKey)
+		log.LogDebugf("action[doDirectWriteByAppend] inode %v local cache process start extKey %v", s.inode, extKey)
 		if err = s.extents.SplitExtentKey(s.inode, extKey); err != nil {
-			log.LogErrorf("action[doOverwriteByAppend] inode %v llocal cache process err %v", s.inode, err)
+			log.LogErrorf("action[doDirectWriteByAppend] inode %v llocal cache process err %v", s.inode, err)
 			return
 		}
-		log.LogDebugf("action[doOverwriteByAppend] inode %v meta extent split with ek (%v)", s.inode, extKey)
+		log.LogDebugf("action[doDirectWriteByAppend] inode %v meta extent split with ek (%v)", s.inode, extKey)
 		if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey); err != nil {
-			log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
+			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
 	} else {
-		// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
-		_ = s.extents.Append(extKey, false)
-		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, nil); err != nil {
-			log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
+		discards := s.extents.Append(extKey, true)
+		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards); err != nil {
+			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
 	}
-	log.LogDebugf("action[doOverwriteByAppend] inode %v process over!", s.inode)
+	log.LogDebugf("action[doDirectWriteByAppend] inode %v process over!", s.inode)
 	return
 }
 
@@ -682,7 +683,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	return
 }
 
-func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (find bool) {
+func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNotEqual bool) {
 	storeMode := s.GetStoreMod(offset, size)
 
 	// && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset)  delete ??
@@ -690,7 +691,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (find bool) {
 		if currentEK := s.extents.GetEndForAppendWrite(uint64(offset), s.verSeq, false); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
 			if currentEK.GetSeq() != s.verSeq {
 				log.LogDebugf("tryInitExtentHandlerByLastEk. exist ek seq %v vs request seq %v", currentEK.GetSeq(), s.verSeq)
-				find = true
+				isLastEkVerNotEqual = true
 			}
 
 			log.LogDebugf("tryInitExtentHandlerByLastEk: found ek in ExtentCache, extent_id(%v) offset(%v) size(%v), ekoffset(%v) eksize(%v) exist ek seq %v vs request seq %v",
@@ -698,7 +699,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (find bool) {
 			_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
 			if pidErr == nil {
 				seq := currentEK.GetSeq()
-				if find {
+				if isLastEkVerNotEqual {
 					seq = s.verSeq
 				}
 				handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
@@ -727,7 +728,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (find bool) {
 	return
 }
 
-func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, checkExist bool) (total int, err error, status int32) {
+func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reUseEk bool) (total int, err error, status int32) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -739,10 +740,10 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, che
 
 	log.LogDebugf("doAppendWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 	if proto.IsHot(s.client.volumeType) {
-		if checkExist {
-			if find := s.tryInitExtentHandlerByLastEk(offset, size); find {
+		if reUseEk {
+			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size); isLastEkVerNotEqual {
 				log.LogDebugf("doAppendWrite enter: ino(%v) tryInitExtentHandlerByLastEk worked", s.inode)
-				status = StreamerRetry
+				status = LastEKVersionNotEqual
 				return
 			}
 		}
