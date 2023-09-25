@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -212,12 +213,16 @@ type OpMultipart interface {
 
 // MultiVersion operation from master or client
 type OpMultiVersion interface {
+	GetVerSeq() uint64
+	GetVerList() []*proto.VolVersionInfo
+	GetAllVerList() []*proto.VolVersionInfo
 	HandleVersionOp(op uint8, verSeq uint64, verList []*proto.VolVersionInfo, sync bool) (err error)
 	fsmVersionOp(reqData []byte) (err error)
 	GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
 	GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
 	GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse)
 	checkVerList(info *proto.VolVersionInfoList, sync bool) (err error)
+	checkByMasterVerlist(mpVerList *proto.VolVersionInfoList, masterVerList *proto.VolVersionInfoList) (err error)
 }
 
 // OpMeta defines the interface for the metadata operations.
@@ -236,8 +241,6 @@ type OpMeta interface {
 // OpPartition defines the interface for the partition operations.
 type OpPartition interface {
 	GetVolName() (volName string)
-	GetVerSeq() uint64
-	GetVerList() []*proto.VolVersionInfo
 	IsLeader() (leaderAddr string, isLeader bool)
 	LeaderTerm() (leaderID, term uint64)
 	IsFollowerRead() bool
@@ -539,6 +542,23 @@ func (mp *metaPartition) GetVerList() []*proto.VolVersionInfo {
 	return mp.multiVersionList.VerList
 }
 
+// include TemporaryVerMap or else cann't recycle temporary version after restart
+func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
+	mp.multiVersionList.RLock()
+	defer mp.multiVersionList.RUnlock()
+	verList = mp.multiVersionList.VerList
+	for _, verInfo := range mp.multiVersionList.TemporaryVerMap {
+		verList = append(verList, verInfo)
+	}
+	sort.SliceStable(verList, func(i, j int) bool {
+		if verList[i].Ver < verList[j].Ver {
+			return true
+		}
+		return false
+	})
+	return
+}
+
 func (mp *metaPartition) checkAndUpdateVerList(verSeq uint64) (err error) {
 	mp.multiVersionList.Lock()
 	defer mp.multiVersionList.Unlock()
@@ -774,12 +794,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
-	//// do cache TTL die out process
-	//if err = mp.multiVersionTTLWork(); err != nil {
-	//	err = errors.NewErrorf("[onStart] start CacheTTLWork id=%d: %s",
-	//		mp.config.PartitionId, err.Error())
-	//	return
-	//}
+	go mp.multiVersionTTLWork(time.Hour)
 	return
 }
 
@@ -881,7 +896,9 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		manager:          manager,
 		uniqChecker:      newUniqChecker(),
 		verSeq:           conf.VerSeq,
-		multiVersionList: &proto.VolVersionInfoList{},
+		multiVersionList: &proto.VolVersionInfoList{
+			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
+		},
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp
@@ -1372,52 +1389,176 @@ func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 }
 
 // cacheTTLWork only happen in datalake situation
-func (mp *metaPartition) multiVersionTTLWork() (err error) {
+func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 	// check volume type, only Cold volume will do the cache ttl.
 	if mp.verSeq == 0 {
 		return
 	}
 	// do cache ttl work
-	go func() {
-		// first sleep a rand time, range [0, 1200s(20m)],
-		// make sure all mps is not doing scan work at the same time.
-		rand.Seed(time.Now().Unix())
-		time.Sleep(time.Duration(rand.Intn(1200)))
+	// first sleep a rand time, range [0, 1200s(20m)],
+	// make sure all mps is not doing scan work at the same time.
+	rand.Seed(time.Now().Unix())
+	time.Sleep(time.Duration(rand.Intn(1200)))
 
-		ttl := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
-
-		for {
-			select {
-			case <-ttl.C:
-				log.LogDebugf("[multiVersionTTLWork] begin cache ttl, mp[%v]", mp.config.PartitionId)
-				// only leader can do TTL work
-				if _, ok := mp.IsLeader(); !ok {
-					log.LogDebugf("[multiVersionTTLWork] partitionId=%d is not leader, skip", mp.config.PartitionId)
-				}
-
-				for _, version := range mp.multiVersionList.VerList {
-					if version.Status == proto.VersionNormal {
-						continue
-					}
-					go mp.delVersion(version.Ver)
-				}
-
-			case <-mp.stopC:
-				log.LogWarnf("[multiVersionTTLWork] stoped, mp(%d)", mp.config.PartitionId)
-				return
+	ttl := time.NewTicker(dur)
+	snapQueue := make(chan interface{}, 5)
+	for {
+		select {
+		case <-ttl.C:
+			log.LogDebugf("[multiVersionTTLWork] begin cache ttl, mp[%v]", mp.config.PartitionId)
+			// only leader can do TTL work
+			if _, ok := mp.IsLeader(); !ok {
+				log.LogDebugf("[multiVersionTTLWork] partitionId=%d is not leader, skip", mp.config.PartitionId)
 			}
-		}
+			mp.multiVersionList.RLock()
+			volVersionInfoList := &proto.VolVersionInfoList{
+				VerList: mp.multiVersionList.VerList,
+				TemporaryVerMap: mp.multiVersionList.TemporaryVerMap,
+			}
+			mp.multiVersionList.RUnlock()
 
-	}()
+			for _, version := range volVersionInfoList.VerList {
+				if len(volVersionInfoList.TemporaryVerMap) > 0 {
+					if _, exist := volVersionInfoList.TemporaryVerMap[version.Ver];exist {
+						if version.Status == proto.VersionDeleting {
+							break
+						}
+						version.Status = proto.VersionDeleting
+						snapQueue <- nil
+						go func(verSeq uint64) {
+							mp.delPartitionVersion(verSeq)
+							<- snapQueue
+						}(version.Ver)
+					}
+				}
+			}
+			//mp.multiVersionList.RUnlock()
+
+		case <-mp.stopC:
+			log.LogWarnf("[multiVersionTTLWork] stoped, mp(%d)", mp.config.PartitionId)
+			return
+		}
+	}
+
 	return
 }
 
-func (mp *metaPartition) delVersion(verSeq uint64) (err error) {
+func (mp *metaPartition) delPartitionVersion(verSeq uint64) {
+	var wg sync.WaitGroup
+	wg.Add(3)
+	reqVerSeq := verSeq
+	if reqVerSeq == 0 {
+		reqVerSeq = math.MaxUint64
+	}
+	go mp.delPartitionInodesVersion(reqVerSeq, &wg)
+	go mp.delPartitionExtendsVersion(reqVerSeq, &wg)
+	go mp.delPartitionDentriesVersion(reqVerSeq, &wg)
+	wg.Wait()
+
+	mp.multiVersionList.Lock()
+	defer mp.multiVersionList.Unlock()
+	for id, verInfo := range mp.multiVersionList.VerList {
+		if verInfo.Ver > verSeq {
+			log.LogWarnf("action[delPartitionInodesVersion] mp %v verSeq iterator del and done but not found seq %v",
+				mp.config.PartitionId, verSeq)
+			break
+		}
+		if verInfo.Ver == verSeq {
+			mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:id], mp.multiVersionList.VerList[id+1:]...)
+			log.LogWarnf("action[delPartitionInodesVersion] mp %v verSeq iterator del and done found seq %v and delete",
+				mp.config.PartitionId, verSeq)
+			delete(mp.multiVersionList.TemporaryVerMap, verSeq)
+			return
+		}
+	}
+}
+
+func (mp *metaPartition) delPartitionDentriesVersion(verSeq uint64, wg *sync.WaitGroup) {
+	defer wg.Done()
+	// begin
+	count := 0
+	needSleep := false
+
+	mp.dentryTree.GetTree().Ascend(func(i BtreeItem) bool {
+		if _, ok := mp.IsLeader(); !ok {
+			return false
+		}
+		den := i.(*Dentry)
+		// dir type just skip
+
+		p := &Packet{}
+		req := &proto.DeleteDentryRequest{
+			VolName: mp.config.VolName,
+			ParentID: mp.config.PartitionId,
+			PartitionID: den.ParentId,
+			Name: den.Name,
+			Verseq: verSeq,
+		}
+		mp.DeleteDentry(req, p)
+		// check empty result.
+		// if result is OpAgain, means the extDelCh maybe full,
+		// so let it sleep 1s.
+		if p.ResultCode == proto.OpAgain {
+			needSleep = true
+		}
+
+		// every 1000 inode sleep 1s
+		if count > 1000 || needSleep {
+			count %= 1000
+			needSleep = false
+			time.Sleep(time.Second)
+		}
+		return true
+	})
+}
+
+func (mp *metaPartition) delPartitionExtendsVersion(verSeq uint64, wg *sync.WaitGroup) {
+	defer wg.Done()
+	// begin
+	count := 0
+	needSleep := false
+
+	mp.extendTree.GetTree().Ascend(func(treeItem BtreeItem) bool {
+		if _, ok := mp.IsLeader(); !ok {
+			return false
+		}
+		e := treeItem.(*Extend)
+
+		p := &Packet{}
+		req := &proto.RemoveXAttrRequest{
+			VolName: mp.config.VolName,
+			PartitionId: mp.config.PartitionId,
+			Inode: e.inode,
+			VerSeq: verSeq,
+		}
+		mp.RemoveXAttr(req, p)
+		// check empty result.
+		// if result is OpAgain, means the extDelCh maybe full,
+		// so let it sleep 1s.
+		if p.ResultCode == proto.OpAgain {
+			needSleep = true
+		}
+
+		// every 1000 inode sleep 1s
+		if count > 1000 || needSleep {
+			count %= 1000
+			needSleep = false
+			time.Sleep(time.Second)
+		}
+		return true
+	})
+}
+
+func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitGroup)  {
+	defer wg.Done()
 	// begin
 	count := 0
 	needSleep := false
 
 	mp.inodeTree.GetTree().Ascend(func(i BtreeItem) bool {
+		if _, ok := mp.IsLeader(); !ok {
+			return false
+		}
 		inode := i.(*Inode)
 		// dir type just skip
 		if proto.IsDir(inode.Type) {
