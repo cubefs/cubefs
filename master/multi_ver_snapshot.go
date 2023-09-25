@@ -254,6 +254,7 @@ func (verMgr *VolVersionManager) checkDeleteStrategy() {
 		}
 		return
 	}
+	verMgr.RUnlock()
 }
 
 func (verMgr *VolVersionManager) UpdateVerStatus(verSeq uint64, status uint8) (err error) {
