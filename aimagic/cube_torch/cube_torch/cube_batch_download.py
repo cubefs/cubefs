@@ -11,6 +11,8 @@ from PIL import Image
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
+from cube_torch.mem_manager import MemoryAllocater
+
 
 class CubeStream(io.BytesIO):
     def __init__(self, _fpath, _fcontent, item_meta):
@@ -44,14 +46,15 @@ def encode_item_to_bytes(item_meta):
 
 class CubeBatchDownloader:
     def __init__(self, downloader_info):
-        download_url, dataset_id, batch_download_idx, file_path_metas, shared_memory, queues = downloader_info
+        download_url, dataset_id, batch_download_idx, file_path_metas, shared_memory, sub_shared_memory_start, sub_shared_memory_end, free_memory_qeueue = downloader_info
         self.batch_download_addr = download_url
         self.file_path_metas = file_path_metas
         self.dataset_id = dataset_id
+        self.sub_shared_memory_start = sub_shared_memory_start
+        self.sub_shared_memory_end = sub_shared_memory_end
+        self.memory_allocate = MemoryAllocater(sub_shared_memory_start, sub_shared_memory_end)
         self.batch_download_idx = batch_download_idx
         self.shard_memory = shared_memory
-        self.input_queue = queues[0]
-        self.out_queue = queues[1]
         self.storage_session = requests.Session()
         self._lock = threading.Lock()
         retry_strategy = Retry(
@@ -61,6 +64,10 @@ class CubeBatchDownloader:
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.storage_session.mount('http://', adapter)
+        e=threading.Event()
+        t=threading.Thread(target=self.background_free_memory,args=(free_memory_qeueue,e))
+        t.daemon=True
+        t.start()
         print("CubeBatchDownloader init on :{}".format(batch_download_idx))
 
     def check_content(self, item):
@@ -71,6 +78,12 @@ class CubeBatchDownloader:
 
         else:
             torch.load(item.get_path())
+
+    def background_free_memory(self, free_item_meta_queue, event):
+        while not event.is_set():
+            request = free_item_meta_queue.get()
+            m_worker_id,actual_file_path, free_offset, size = request
+            self.memory_allocate.mem_manager.free(free_offset - self.sub_shared_memory_start, size)
 
     def stream_parse_content(self, url, response):
         version = response.raw.read(8)
@@ -98,10 +111,7 @@ class CubeBatchDownloader:
         encode_data = encode_item_to_bytes(item_meta)
         write_size = len(encode_data)
         request = (self.batch_download_idx, filename, write_size)
-        with self._lock:
-            self.input_queue.put(request)
-            response = self.out_queue.get()
-
+        response = self.memory_allocate.allocate_memory(request)
         m_worker_idx, m_file_path, m_offset, m_size = response
         if m_worker_idx != self.batch_download_idx:
             raise ValueError("add_cube_item:{} for batch_download_idx:{} input_queue:{} "

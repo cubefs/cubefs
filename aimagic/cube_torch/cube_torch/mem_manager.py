@@ -1,52 +1,20 @@
-import os
+
 import threading
 
 
+
 class MemoryAllocater:
-    def __init__(self, total_memory,batch_download_workers, batch_download_notify_queues, free_memory_queue):
-        self._total_memory = total_memory
-        self.allocate_memory_threads = []
-        self.mem_manager = MemoryManager(total_memory)
-        self.allocate_memory_event = []
-        self.batch_download_workers = batch_download_workers
-        self.batch_download_notify_queues = batch_download_notify_queues
-        for index in range(batch_download_workers):
-            e = threading.Event()
-            input_queue = self.batch_download_notify_queues[index][0]
-            out_queue = self.batch_download_notify_queues[index][1]
-            t = threading.Thread(target=self.background_allocate_memory, args=(index,input_queue,out_queue, e))
-            t.daemon = True
-            t.start()
-            self.allocate_memory_threads.append(t)
-            self.allocate_memory_event.append(e)
-        e = threading.Event()
-        t = threading.Thread(target=self.background_free_memory, args=(free_memory_queue,e))
-        t.daemon = True
-        t.start()
-        self.allocate_memory_threads.append(t)
-        self.allocate_memory_event.append(e)
+    def __init__(self, sub_shared_memory_start, sub_shared_memory_end):
+        self.sub_shared_memory_start = sub_shared_memory_start
+        self.sub_shared_memory_end = sub_shared_memory_end
+        self.sub_shared_memory_size = sub_shared_memory_end - sub_shared_memory_start
+        self.mem_manager = MemoryManager(self.sub_shared_memory_size)
 
-    def background_allocate_memory(self, batch_download_idx,input_queue,out_queue, event):
-        while not event.is_set():
-            request = input_queue.get()
-            if len(request)==5:
-                worker_idx, file_path, free_offset, size,is_free=request
-                self.mem_manager.free(free_offset,size)
-                continue
-            worker_idx, file_path, write_size = request
-            write_offset, size = self.mem_manager.allocate(write_size)
-            if write_offset is None:
-                response = (worker_idx, file_path, None, None)
-            else:
-                response = (worker_idx, file_path, write_offset, size)
-            out_queue.put(response)
-
-    def background_free_memory(self,free_item_meta_queue,event):
-        while not event.is_set():
-            request = free_item_meta_queue.get()
-            actual_file_path, free_offset, size=request
-            self.mem_manager.free(free_offset,size)
-
+    def allocate_memory(self, request):
+        worker_idx, file_path, write_size = request
+        write_offset, size = self.mem_manager.allocate(write_size)
+        response = (worker_idx, file_path, write_offset+self.sub_shared_memory_start, size)
+        return response
 
 
 class MemoryManager:

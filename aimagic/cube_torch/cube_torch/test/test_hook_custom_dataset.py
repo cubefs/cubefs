@@ -60,14 +60,13 @@ def start_worker_test_Dataset(i):
     train_dataset = CustomDataSet()
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=200, shuffle=True,
-        num_workers=1)
+        num_workers=5)
     epoch = 0
     while True:
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
         epoch += 1
-        break
 
 
 if __name__ == '__main__':

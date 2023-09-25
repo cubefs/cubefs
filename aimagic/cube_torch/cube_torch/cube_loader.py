@@ -38,7 +38,7 @@ from torch.utils.data.sampler import (
 
 from cube_torch import get_manager, CubePushDataSetInfo
 from cube_torch.cube_worker import _worker_loop, _register_pid_to_storage, \
-    _unregister_pid_to_storage, _loop_push_worker, _loop_allocate_mem_worker
+    _unregister_pid_to_storage, _loop_push_worker
 
 
 class CubeDataLoader(Generic[T_co]):
@@ -205,8 +205,7 @@ class CubeDataLoader(Generic[T_co]):
         self._push_worker_loop_process = []
         self.batch_download_shared_memory = None
         self.batch_download_file_metas = None
-        self.free_file_meta_queue=None
-        self.batch_download_notify_queues = []
+        self.free_file_meta_queues = []
         self.init_cube_dataset_info()
         torch.set_vital('Dataloader', 'enabled', 'True')  # type: ignore[attr-defined]
 
@@ -227,26 +226,18 @@ class CubeDataLoader(Generic[T_co]):
         if self.is_use_batch_download:
             self.batch_download_shared_memory = multiprocessing.RawArray(ctypes.c_ubyte, cache_size)
             self.batch_download_file_metas = manager.dict()
-            for index in range(notify_storage_worker_num):
-                input_queue = multiprocessing.Queue(maxsize=self.batch_size*2)
-                output_queue = multiprocessing.Queue(maxsize=self.batch_size*2)
-                self.batch_download_notify_queues.append((input_queue, output_queue))
-            self.free_file_meta_queue=multiprocessing.Queue(maxsize=self.batch_size*notify_storage_worker_num)
-            e = multiprocessing.Event()
-            ctx = multiprocessing.get_context("fork")
-            w = ctx.Process(target=_loop_allocate_mem_worker,
-                            args=(cache_size, notify_storage_worker_num, self.batch_download_notify_queues, self.free_file_meta_queue,e))
-            w.daemon = True
-            w.start()
-            self._push_worker_loop_events.append(w)
-            self._push_worker_loop_events.append(e)
 
+        every_sub_shared_memory_size=cache_size//notify_storage_worker_num
         for index in range(notify_storage_worker_num):
             e = multiprocessing.Event()
             downloader_info = None
             if self.is_use_batch_download:
+                sub_shared_memory_start=index*every_sub_shared_memory_size
+                sub_shared_memory_end=(index+1)*every_sub_shared_memory_size
+                free_memory_qeueue=manager.Queue(maxsize=self.batch_size)
                 downloader_info = (batch_download_addr, self._dataset_id, index, self.batch_download_file_metas,
-                                   self.batch_download_shared_memory, self.batch_download_notify_queues[index])
+                                   self.batch_download_shared_memory,sub_shared_memory_start,sub_shared_memory_end,free_memory_qeueue)
+                self.free_file_meta_queues.append(free_memory_qeueue)
             ctx = multiprocessing.get_context("fork")
             w = ctx.Process(target=_loop_push_worker, args=(
                 self.wait_read_train_file_queue, cube_prefetch_addr, self.is_use_batch_download, downloader_info, e))
@@ -493,7 +484,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         if is_use_batch_download:
             downloader_info = (
                 loader.batch_download_file_metas, loader.batch_download_shared_memory,
-                loader.free_file_meta_queue)
+                loader.free_file_meta_queues)
 
         for i in range(self._num_workers):
             index_queue = multiprocessing_context.Queue()

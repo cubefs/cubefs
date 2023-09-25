@@ -245,5 +245,5 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_notify_storage_worker_num(self):
         if self._is_use_batch_download:
-            return 3
+            return 1
         return 1

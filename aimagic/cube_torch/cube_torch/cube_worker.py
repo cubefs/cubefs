@@ -136,12 +136,6 @@ def _loop_push_worker(wait_read_train_file_queue, cube_prefetch_addr, is_use_bat
             continue
 
 
-def _loop_allocate_mem_worker(total_memory, batch_download_workers, batch_download_notify_queues, free_item_meta_queue, event):
-    torch.set_num_threads(batch_download_workers)
-    mem_allocater = MemoryAllocater(total_memory, batch_download_workers, batch_download_notify_queues, free_item_meta_queue)
-    while not event.is_set():
-        for t in mem_allocater.allocate_memory_threads:
-            t.join()
 
 
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,

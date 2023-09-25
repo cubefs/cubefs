@@ -65,17 +65,17 @@ class InterceptionIO:
         file_content_size = int.from_bytes(data[item_offset:item_offset + 8], byteorder='big')
         item_offset += 8
         content = bytes(data[item_offset:item_offset + file_content_size])
-        free_item_meta=actual_file_path, m_offset, m_size
-        self.free_memory_queues.put(free_item_meta)
         return CubeStream(file_path, content, file_meta)
 
+    def free_item_meta(self, file_meta):
+        self.free_memory_queues[file_meta[0]].put(file_meta)
 
     def intercept_open(self, func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             file_path = args[0]
             if is_prefix_cube_file(file_path):
-                return CubeFile(*args,**kwargs)
+                return CubeFile(*args, **kwargs)
             result = builtins_open(*args, **kwargs)
             return result
 
@@ -90,7 +90,9 @@ class InterceptionIO:
                 CubeFileOpenInterceptor.add_count(stream is not None)
                 if stream:
                     stream.seek(0)
-                    return builtins_torch_load(stream, **kwargs)
+                    result = builtins_torch_load(stream, **kwargs)
+                    self.free_item_meta(stream.item_meta)
+                    return result
             result = builtins_torch_load(*args, **kwargs)
             return result
 
@@ -124,7 +126,9 @@ class CubeFile(io.FileIO):
 
     def close(self, *args, **kwargs):  # real signature unknown
         if self._is_cached:
-            return self._cube_stream.close(*args, **kwargs)
+            self._cube_stream.close(*args, **kwargs)
+            global global_interceptionIO
+            global_interceptionIO.free_item_meta(self._cube_stream.item_meta)
         return super().close()
 
     def flush(self, *args, **kwargs):  # real signature unknown
