@@ -267,7 +267,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			quotaRebuild:   quotaRebuild,
 			uidRebuild:     uidRebuild,
 			uniqChecker:    uniqChecker,
-			multiVerList:   mp.GetVerList(),
+			multiVerList:   mp.GetAllVerList(),
 		}
 		log.LogDebugf("opFSMStoreTick: quotaRebuild [%v] uidRebuild [%v]", quotaRebuild, uidRebuild)
 		mp.storeChan <- msg

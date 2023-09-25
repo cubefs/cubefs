@@ -185,6 +185,7 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 
 func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)
+	extend.verSeq = req.VerSeq
 	extend.Put([]byte(req.Key), nil, mp.verSeq)
 	if _, err = mp.putExtend(opFSMRemoveXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

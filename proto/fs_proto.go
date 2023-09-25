@@ -795,6 +795,7 @@ type RemoveXAttrRequest struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
+	VerSeq      uint64 `json:"seq"`
 }
 
 type ListXAttrRequest struct {

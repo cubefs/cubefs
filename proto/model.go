@@ -359,8 +359,9 @@ func (vv *VolVersionInfo) String() string {
 }
 
 type VolVersionInfoList struct {
-	VerList  []*VolVersionInfo
-	Strategy VolumeVerStrategy
+	VerList         []*VolVersionInfo
+	Strategy        VolumeVerStrategy
+	TemporaryVerMap map[uint64]*VolVersionInfo
 	sync.RWMutex
 }
 

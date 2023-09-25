@@ -1228,7 +1228,7 @@ func (i *Inode) getLastestVer(reqVerSeq uint64, commit bool, verlist *proto.VolV
 	return 0, false
 }
 
-func (i *Inode) ShouldDelVer(mpVer uint64, delVer uint64) (ok bool, err error) {
+func (i *Inode) ShouldDelVer(delVer uint64, mpVer uint64) (ok bool, err error) {
 	if i.getVer() == 0 {
 		if delVer > 0 {
 			if isInitSnapVer(delVer) {
