@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"html"
 	"net/http"
 	"strconv"
 
@@ -39,7 +40,7 @@ func SetRequestID(r *http.Request, requestID string) {
 }
 
 func GetRequestID(r *http.Request) (id string) {
-	return mux.Vars(r)[ContextKeyRequestID]
+	return html.EscapeString(mux.Vars(r)[ContextKeyRequestID])
 }
 
 func SetRequestAction(r *http.Request, action proto.Action) {
