@@ -285,6 +285,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 	}
 	return nil, syscall.ENOMEM
 create_dentry:
+	log.LogDebugf("Create_ll name %v ino %v", name, info.Inode)
 	if mw.EnableQuota {
 		status, err = mw.quotaDcreate(parentMP, parentID, name, info.Inode, mode, quotaIds)
 	} else {
@@ -326,7 +327,10 @@ func (mw *MetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, mo
 	if err != nil || status != statusOK {
 		return 0, 0, statusToErrno(status)
 	}
-	mw.AddInoInfoCache(inode, parentID, name)
+	//only save dir
+	if proto.IsDir(mode) {
+		mw.AddInoInfoCache(inode, parentID, name)
+	}
 	return inode, mode, nil
 }
 
@@ -794,7 +798,7 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 	if err != nil || status != statusOK {
 		return nil, nil
 	}
-
+	log.LogDebugf("delete_ll name %v ino %v", name, info.Inode)
 	if mw.EnableSummary {
 		go func() {
 			if proto.IsDir(mode) {
@@ -2349,7 +2353,7 @@ func (mw *MetaWrapper) getCurrentPath(parentIno uint64) string {
 	}
 
 	mw.inoInfoLk.RLock()
-	node, ok := mw.entryCache[parentIno]
+	node, ok := mw.dirCache[parentIno]
 	mw.inoInfoLk.RUnlock()
 	if !ok {
 		log.LogDebugf("action[getCurrentPath]: parentIno(%v)return UnknownPath", parentIno)
@@ -2361,13 +2365,13 @@ func (mw *MetaWrapper) getCurrentPath(parentIno uint64) string {
 func (mw *MetaWrapper) AddInoInfoCache(ino, parentIno uint64, name string) {
 	mw.inoInfoLk.Lock()
 	defer mw.inoInfoLk.Unlock()
-	mw.entryCache[ino] = inoInfoCache{ino: ino, parentIno: parentIno, name: name}
+	mw.dirCache[ino] = dirInfoCache{ino: ino, parentIno: parentIno, name: name}
 
-	log.LogDebugf("action[AddInoInfoCache]: ino(%v) cache(%v)", ino, mw.entryCache[ino])
+	log.LogDebugf("action[AddInoInfoCache]: ino(%v) cache(%v)", ino, mw.dirCache[ino])
 }
 
 func (mw *MetaWrapper) DeleteInoInfoCache(ino uint64) {
 	mw.inoInfoLk.Lock()
 	defer mw.inoInfoLk.Unlock()
-	delete(mw.entryCache, ino)
+	delete(mw.dirCache, ino)
 }

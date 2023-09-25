@@ -272,7 +272,6 @@ func (trash *Trash) deleteExpiredData() {
 		if strings.Compare(entry.Name, CurrentName) == 0 {
 			continue
 		}
-
 		//extract timestamp from name
 		err, checkPoint := trash.extractTimeStampFromName(entry.Name)
 		if err != nil {
@@ -281,6 +280,7 @@ func (trash *Trash) deleteExpiredData() {
 		}
 		if now.Sub(time.Unix(checkPoint, 0)) > (time.Duration(trash.deleteInterval) * time.Minute) {
 			log.LogDebugf("action[deleteExpiredData]delete  %s ", entry.Name)
+			trash.mw.AddInoInfoCache(entry.Inode, trash.trashRootIno, entry.Name)
 			trash.removeAll(entry.Name, entry.Inode)
 			trash.deleteTask(trash.trashRootIno, entry.Name, proto.IsDir(entry.Type))
 		}
@@ -301,6 +301,7 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 		if !proto.IsDir(entry.Type) {
 			continue
 		}
+		trash.mw.AddInoInfoCache(entry.Inode, dirIno, entry.Name)
 		select {
 		case trash.traverseDirGoroutineLimit <- true:
 			log.LogDebugf("action[deleteDir]launch goroutine  %v", entry.Name)
@@ -311,7 +312,7 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 				trash.releaseTraverseToken()
 			}(entry.Name, entry.Inode)
 		default:
-			log.LogDebugf("action[deleteDir]excute local  %v", entry.Name)
+			log.LogDebugf("action[deleteDir]execute local  %v", entry.Name)
 			trash.removeAll(entry.Name, entry.Inode)
 		}
 	}
@@ -538,10 +539,13 @@ func (trash *Trash) ReadDir(path string) ([]proto.Dentry, error) {
 }
 
 func (trash *Trash) deleteTask(parentIno uint64, entry string, isDir bool) {
-	_, err := trash.mw.Delete_ll(parentIno, entry, isDir)
+	info, err := trash.mw.Delete_ll(parentIno, entry, isDir)
 	if err != nil {
 		log.LogWarnf("Delete_ll %v failed:%v", entry, err.Error())
 		return
+	}
+	if !isDir {
+		trash.mw.Evict(info.Inode)
 	}
 	log.LogDebugf("Delete_ll %v success", entry)
 }
