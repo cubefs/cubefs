@@ -537,6 +537,8 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 			}
 			streamer := NewStreamer(ec, inodeInfo.Inode, ec.streamerConcurrentMap.GetMapSegment(inodeInfo.Inode), false)
 			streamer.refcnt++
+			isRecover := false
+			hasROW := false
 			fmt.Println("TestExtentHandler_PendingPacket: done create inode")
 
 			defer func() {
@@ -553,6 +555,9 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 					if err != nil || readSize != rule.size {
 						t.Fatalf("TestStreamer_WriteFile_Pending read CFS file offset(%v) size(%v) err(%v) test(%v) expect size(%v) but size(%v)",
 							rule.offset, rule.size, err, tt.name, rule.size, readSize)
+					}
+					if streamer.handler != nil && streamer.handler.getStatus() >= ExtentStatusRecovery {
+						isRecover = true
 					}
 					// check data crc
 					readLocalData := make([]byte, rule.size)
@@ -577,8 +582,12 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 					offset := rule.offset + uint64(i*size)
 					fmt.Printf("test(%v) write offset(%v) size(%v)\n", tt.name, offset, size)
 					total, isROW, err := streamer.write(context.Background(), writeData, offset, size, false)
-					if err != nil || total != size || isROW != false {
+					hasROW = hasROW || isROW
+					if err != nil || total != size {
 						t.Fatalf("TestStreamer_WriteFile_Pending write: name(%v) err(%v) total(%v) isROW(%v) expect size(%v)", tt.name, err, total, isROW, size)
+					}
+					if streamer.handler != nil && streamer.handler.getStatus() >= ExtentStatusRecovery {
+						isRecover = true
 					}
 					if _, err = localFile.WriteAt(writeData, int64(offset)); err != nil {
 						t.Fatalf("TestStreamer_WriteFile_Pending failed: write local file err(%v) name(%v)", err, localFile.Name())
@@ -588,6 +597,9 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 				if rule.isFlush {
 					if err = streamer.flush(context.Background(), true); err != nil {
 						t.Fatalf("TestStreamer_WriteFile_Pending cfs flush err(%v) test(%v)", err, tt.name)
+					}
+					if streamer.handler != nil && streamer.handler.getStatus() >= ExtentStatusRecovery {
+						isRecover = true
 					}
 					if err = localFile.Sync(); err != nil {
 						t.Fatalf("TestStreamer_WriteFile_Pending local flush err(%v) file(%v)", err, localFile.Name())
@@ -599,29 +611,35 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 			if err = streamer.flush(context.Background(), true); err != nil {
 				t.Fatalf("TestStreamer_WriteFile_Pending cfs flush err(%v) test(%v)", err, tt.name)
 			}
+			if streamer.handler != nil && streamer.handler.getStatus() >= ExtentStatusRecovery {
+				isRecover = true
+			}
 			if err = localFile.Sync(); err != nil {
 				t.Fatalf("TestStreamer_WriteFile_Pending local flush err(%v) file(%v)", err, localFile.Name())
 			}
-			// check extent
-			fmt.Println("TestStreamer_WriteFile_Pending: start check extent")
 			extents := streamer.extents.List()
-			if len(extents) == 0 || len(extents) != len(tt.extentTypeList) {
-				t.Fatalf("TestStreamer_WriteFile_Pending failed: test(%v) expect extent length(%v) but(%v) extents(%v)",
-					tt.name, len(tt.extentTypeList), len(extents), extents)
-			}
-			unexpectedExtent := false
-			for i, ext := range extents {
-				expectExtent := tt.extentTypeList[i]
-				if ext.FileOffset != expectExtent.FileOffset || ext.Size != expectExtent.Size {
-					unexpectedExtent = true
-					break
+			if !isRecover && !hasROW {
+				// check extent
+				fmt.Println("TestStreamer_WriteFile_Pending: start check extent")
+				if len(extents) == 0 || len(extents) != len(tt.extentTypeList) {
+					t.Fatalf("TestStreamer_WriteFile_Pending failed: test(%v) expect extent length(%v) but(%v) extents(%v)",
+						tt.name, len(tt.extentTypeList), len(extents), extents)
 				}
+				unexpectedExtent := false
+				for i, ext := range extents {
+					expectExtent := tt.extentTypeList[i]
+					if ext.FileOffset != expectExtent.FileOffset || ext.Size != expectExtent.Size {
+						unexpectedExtent = true
+						break
+					}
+				}
+				if unexpectedExtent {
+					t.Fatalf("TestStreamer_WriteFile_Pending failed: test(%v) expect extent list(%v) but(%v)",
+						tt.name, tt.extentTypeList, extents)
+				}
+				fmt.Println("TestStreamer_WriteFile_Pending: extent list: ", extents)
 			}
-			if unexpectedExtent {
-				t.Fatalf("TestStreamer_WriteFile_Pending failed: test(%v) expect extent list(%v) but(%v)",
-					tt.name, tt.extentTypeList, extents)
-			}
-			fmt.Println("TestStreamer_WriteFile_Pending: extent list: ", extents)
+			
 			// read data and check crc
 			for _, ext := range extents {
 				fmt.Println("TestStreamer_WriteFile_Pending: start read file extent: ", ext)

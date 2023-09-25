@@ -428,7 +428,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 	)
 	if !s.enableOverwrite() && len(requests) > 1 {
 		req := NewExtentRequest(offset, size, data, 0, uint64(size), nil)
-		writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
+		writeSize, isROW, err = s.doOverWriteOrROW(ctx, req, direct)
 		total += writeSize
 	} else {
 		for _, req := range requests {
