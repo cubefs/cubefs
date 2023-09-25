@@ -69,11 +69,9 @@ func (mp *metaPartition) fsmTxCreateInode(txIno *TxInode, quotaIds []uint32) (st
 
 // Create and inode and attach it to the inode tree.
 func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
-	log.LogDebugf("action[fsmCreateInode] inode  %v be created", ino.Inode)
 	if status = mp.uidManager.addUidSpace(ino.Uid, ino.Inode, nil); status != proto.OpOk {
 		return
 	}
-	log.LogDebugf("action[fsmCreateInode] inode  %v be created", ino)
 
 	status = proto.OpOk
 	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
@@ -149,11 +147,7 @@ func (mp *metaPartition) getInodeByVer(ino *Inode) (i *Inode) {
 		log.LogDebugf("action[getInodeByVer] not found ino %v verseq %v", ino.Inode, ino.getVer())
 		return
 	}
-	log.LogDebugf("action[getInodeByVer] ino %v verseq %v hist len %v request ino ver %v",
-		ino.Inode, item.(*Inode).getVer(), item.(*Inode).getLayerLen(), ino.getVer())
 	i, _ = item.(*Inode).getInoByVer(ino.getVer(), false)
-
-	log.LogDebugf("action[getInodeByVer] ino %v verseq %v fin,i %v", ino.Inode, item.(*Inode).getVer(), i)
 	return
 }
 
