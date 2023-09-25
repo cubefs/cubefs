@@ -52,11 +52,7 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 		n := copy(w.body[w.n:], b)
 		w.n += n
 	}
-
-	copied := make([]byte, len(b))
-	copy(copied, b)
-
-	n, err := w.ResponseWriter.Write(copied)
+	n, err := w.ResponseWriter.Write(b)
 	w.bodyWritten += int64(n)
 	return n, err
 }
