@@ -307,7 +307,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 			err = nil
 			if dp.leaderState.isLeader() { // primary does not need to wait repair
 				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-				if err = dp.persist(nil, true); err != nil {
+				if err = dp.persist(nil, false); err != nil {
 					log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
 					timer.Reset(5 * time.Second)
 					continue
@@ -344,7 +344,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-			if err = dp.persist(nil, true); err != nil {
+			if err = dp.persist(nil, false); err != nil {
 				log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
 				continue
