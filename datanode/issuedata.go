@@ -2,6 +2,7 @@ package datanode
 
 import (
 	"bufio"
+	"container/list"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -16,14 +17,12 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
-
-	"github.com/cubefs/cubefs/util/concurrent"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/async"
+	"github.com/cubefs/cubefs/util/concurrent"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
@@ -41,6 +40,9 @@ const (
 	issueFragmentBinaryLength = 28
 
 	fixedIssueFragmentsFilename = "FIXED_ISSUE_FRAGMENTS"
+
+	maxProcessorWorkers = 4
+	minFixesPerWorker   = 16
 )
 
 type GetRemotesFunc func() []string
@@ -101,7 +103,9 @@ type IssueProcessor struct {
 	path          string
 	partitionID   uint64
 	fragments     []*IssueFragment
-	mu            sync.RWMutex
+	fragmentsMu   sync.RWMutex
+	queue         *list.List
+	queueMu       sync.Mutex
 	storage       *storage.ExtentStore
 	getRemotes    GetRemotesFunc
 	getHAType     GetHATypeFunc
@@ -136,33 +140,50 @@ func (p *IssueProcessor) lockPersist() (release func()) {
 }
 
 func (p *IssueProcessor) worker() {
-	var pendingTimer = time.NewTimer(0)
-	for p.getIssueFragmentCount() > 0 {
+	var fragment *IssueFragment
+	defer func() {
+		if fragment != nil {
+			p.pushFragmentToQueue(fragment)
+		}
+	}()
+	for {
 		select {
 		case <-p.stopCh:
 			return
-		case <-pendingTimer.C:
+		default:
 		}
-		var fragments = p.copyIssueFragments()
-		if len(fragments) > 0 {
-			log.LogWarnf("IssueProcessor: Partition(%v) start to check and fix %v issue fragments: %v",
-				p.partitionID, p.getIssueFragmentCount(),
-				func() string {
-					var sb = strings.Builder{}
-					for _, fragment := range fragments {
-						if sb.Len() > 0 {
-							sb.WriteString(", ")
-						}
-						sb.WriteString(fmt.Sprintf("ExtentID(%v)_Offset(%v)_Size(%v)",
-							fragment.extentID, fragment.offset, fragment.size))
-					}
-					return sb.String()
-				}())
+		fragment = p.pickFragmentFromQueue()
+		if fragment == nil {
+			// 已不存在还需修复的数据段落, worker可以退出
+			return
 		}
-
-		p.checkAndFixFragments(p.copyIssueFragments())
-		if p.getIssueFragmentCount() > 0 {
-			pendingTimer.Reset(time.Second * 10)
+		var success, err = p.checkAndFixFragment(fragment)
+		if err != nil {
+			log.LogErrorf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix temporary and will be retry later", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
+			// 归还队列以重试
+			p.pushFragmentToQueue(fragment)
+			continue
+		}
+		if !success {
+			// 该数据片段无法修复，进行报警
+			log.LogCriticalf("IssueProcessor: Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) can not fix", p.partitionID, fragment.extentID, fragment.offset, fragment.size)
+			exporter.Warning(fmt.Sprintf("CAN NOT FIX BROKEN EXTENT!\n"+
+				"Found issue data fragment cause server fault and can not fix it.\n"+
+				"Partition: %v\n"+
+				"Extent: %v\n"+
+				"Offset: %v\n"+
+				"Size: %v",
+				p.partitionID, fragment.extentID, fragment.offset, fragment.size))
+			// 确定无法修复的不在归还队列进行重试。
+			continue
+		}
+		if p.removeFragment(fragment) {
+			if err = p.recordFixedFragment(fragment); err != nil {
+				log.LogWarnf("IssueProcessor: record fixed fragment failed: %v", err)
+			}
+			if err = p.persistIssueFragments(); err != nil {
+				log.LogErrorf("IssueProcessor: persist issue fragments failed: %v", err)
+			}
 		}
 	}
 }
@@ -180,18 +201,38 @@ func (p *IssueProcessor) handleWorkerPanic(i interface{}) {
 	return
 }
 
+func (p *IssueProcessor) pickFragmentFromQueue() (fragment *IssueFragment) {
+	p.queueMu.Lock()
+	defer p.queueMu.Unlock()
+	var element = p.queue.Front()
+	if element == nil {
+		return
+	}
+	fragment = element.Value.(*IssueFragment)
+	p.queue.Remove(element)
+	return
+}
+
+func (p *IssueProcessor) pushFragmentToQueue(fragments ...*IssueFragment) {
+	p.queueMu.Lock()
+	defer p.queueMu.Unlock()
+	for _, fragment := range fragments {
+		p.queue.PushBack(fragment)
+	}
+}
+
 func (p *IssueProcessor) copyIssueFragments() []*IssueFragment {
 	var fragments []*IssueFragment
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.fragmentsMu.RLock()
+	defer p.fragmentsMu.RUnlock()
 	fragments = make([]*IssueFragment, len(p.fragments))
 	copy(fragments, p.fragments)
 	return fragments
 }
 
 func (p *IssueProcessor) getIssueFragmentCount() int {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.fragmentsMu.RLock()
+	defer p.fragmentsMu.RUnlock()
 	return len(p.fragments)
 }
 
@@ -639,6 +680,7 @@ func (p *IssueProcessor) loadIssueFragments() (err error) {
 		fragments = append(fragments, fragment)
 	}
 	p.fragments = fragments
+	p.pushFragmentToQueue(p.fragments...)
 	return
 }
 
@@ -717,8 +759,8 @@ func (p *IssueProcessor) RemoveByRange(extentID, offset, size uint64) error {
 }
 
 func (p *IssueProcessor) removeExtent(extentID uint64) (removed bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.fragmentsMu.Lock()
+	defer p.fragmentsMu.Unlock()
 	if len(p.fragments) == 0 {
 		return
 	}
@@ -742,8 +784,8 @@ func (p *IssueProcessor) removeExtent(extentID uint64) (removed bool) {
 }
 
 func (p *IssueProcessor) removeCovered(extentID, offset, size uint64) (removed bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.fragmentsMu.Lock()
+	defer p.fragmentsMu.Unlock()
 	if len(p.fragments) == 0 {
 		return
 	}
@@ -767,21 +809,23 @@ func (p *IssueProcessor) removeCovered(extentID, offset, size uint64) (removed b
 }
 
 func (p *IssueProcessor) addFragment(fragment *IssueFragment) (added bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.fragmentsMu.Lock()
 	for i := 0; i < len(p.fragments); i++ {
 		if p.fragments[i].Equals(fragment) {
+			p.fragmentsMu.Unlock()
 			return
 		}
 	}
 	p.fragments = append(p.fragments, fragment)
+	p.fragmentsMu.Unlock()
 	added = true
+	p.pushFragmentToQueue(fragment)
 	return
 }
 
 func (p *IssueProcessor) removeFragment(fragment *IssueFragment) (removed bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.fragmentsMu.Lock()
+	defer p.fragmentsMu.Unlock()
 	var i = 0
 	for i < len(p.fragments) {
 		if !p.fragments[i].Equals(fragment) {
@@ -805,8 +849,8 @@ func (p *IssueProcessor) FindOverlap(extentID, offset, size uint64) bool {
 	if len(p.fragments) == 0 {
 		return false
 	}
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.fragmentsMu.RLock()
+	defer p.fragmentsMu.RUnlock()
 	for i := 0; i < len(p.fragments); i++ {
 		if p.fragments[i].Overlap(extentID, offset, size) {
 			return true
@@ -825,6 +869,7 @@ func NewIssueProcessor(partitionID uint64, path string, storage *storage.ExtentS
 		persistSyncCh: make(chan struct{}, 1),
 		stopCh:        make(chan struct{}),
 		fixLimiter:    limiter,
+		queue:         list.New(),
 	}
 	var err error
 	if err = p.loadIssueFragments(); err != nil {
@@ -844,8 +889,12 @@ func NewIssueProcessor(partitionID uint64, path string, storage *storage.ExtentS
 		}
 	}
 
-	if p.getIssueFragmentCount() > 0 {
-		async.RunWorker(p.worker, p.handleWorkerPanic)
+	// 启动多个Worker用于修复
+	if fragmentCount := p.getIssueFragmentCount(); fragmentCount > 0 {
+		workerNum := int(math.Min(math.Max(float64(fragmentCount/minFixesPerWorker), 1), float64(maxProcessorWorkers)))
+		for i := 0; i < workerNum; i++ {
+			async.RunWorker(p.worker, p.handleWorkerPanic)
+		}
 	}
 	return p, nil
 }

@@ -611,8 +611,8 @@ const (
 	DefaultForceFlushFDSecond            = 10
 	DefaultForceFlushFDParallelismOnDisk = 5
 	DefaultForceFlushDataSizeOnEachDisk  = util.MB
-	DefaultDeletionConcurrencyOnDisk     = 2
-	DefaultIssueFixConcurrencyOnDisk     = 4
+	DefaultDeletionConcurrencyOnDisk     = 4
+	DefaultIssueFixConcurrencyOnDisk     = 16
 )
 
 func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
