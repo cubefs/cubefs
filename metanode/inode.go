@@ -1276,8 +1276,6 @@ func (ino *Inode) getInoByVer(verSeq uint64, equal bool) (i *Inode, idx int) {
 	ino.RLock()
 	defer ino.RUnlock()
 
-	log.LogDebugf("action[getInoByVer] ino %v verseq %v hist len %v request ino ver %v",
-		ino.Inode, ino.getVer(), ino.getLayerLen(), verSeq)
 	if verSeq == 0 || verSeq == ino.getVer() || (isInitSnapVer(verSeq) && ino.getVer() == 0) {
 		return ino, 0
 	}
