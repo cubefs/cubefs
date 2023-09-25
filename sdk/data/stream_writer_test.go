@@ -25,7 +25,7 @@ import (
 )
 
 func init() {
-	log.InitLog(".", "test", log.DebugLevel, nil)
+	log.InitLog("/cfs/log", "test", log.DebugLevel, nil)
 }
 
 type HTTPReply struct {
@@ -347,7 +347,6 @@ func TestROW(t *testing.T) {
 		t.Fatalf("create ROW testFile failed: err(%v), file(%v)", err, testROWFilePath)
 	}
 	defer func() {
-		ROWFile.Close()
 		os.Remove(testROWFilePath)
 		log.LogFlush()
 	}()
@@ -371,6 +370,7 @@ func TestROW(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, inode)
 	}
+	fmt.Printf("inode(%v) eks(%v)\n", inode, eks)
 	for _, ek := range eks {
 		req := &ExtentRequest{
 			FileOffset: ek.FileOffset,
@@ -383,6 +383,8 @@ func TestROW(t *testing.T) {
 			t.Fatalf("doROW failed: err(%v), req(%v)", err, req)
 		}
 	}
+	ROWFile.Close()
+	time.Sleep(5*time.Second)
 	//ROWFile, _ = os.Open(testROWFilePath)
 	//readBytes := make([]byte, len(writeBytes))
 	//readOffset := int64(0)
