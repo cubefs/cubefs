@@ -173,7 +173,7 @@ type MetaWrapper struct {
 	trashPolicy   *Trash
 	disableTrash  bool
 	rootIno       uint64
-	entryCache    map[uint64]inoInfoCache
+	dirCache      map[uint64]dirInfoCache
 	inoInfoLk     sync.RWMutex
 	subDir        string
 
@@ -187,7 +187,7 @@ type uniqidRange struct {
 	end uint64
 }
 
-type inoInfoCache struct {
+type dirInfoCache struct {
 	ino       uint64
 	parentIno uint64
 	name      string
@@ -240,6 +240,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	mw.VerReadSeq = config.VerReadSeq
 	mw.entryCache = make(map[uint64]inoInfoCache)
+	mw.dirCache = make(map[uint64]dirInfoCache)
 	mw.subDir = config.SubDir
 	limit := MaxMountRetryLimit
 
