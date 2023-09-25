@@ -251,6 +251,7 @@ const (
 	Uint64Size                     = int(unsafe.Sizeof(uint64(0)))
 
 	intervalToSyncEvictReqRecords = time.Second * 5
+	defParallelismStartMPCount    = 16
 )
 
 const (

@@ -782,28 +782,47 @@ func (m *metadataManager) startPartitions() (err error) {
 	var wg sync.WaitGroup
 	start := time.Now()
 	failCnt := uint64(0)
-	pids := m.partitionIDs()
-	for _, id := range pids {
-		var partition MetaPartition
-		partition, err = m.getPartition(id)
-		if err != nil {
-			continue
+
+	mpIds := m.partitionIDs()
+	partitionIdC := make(chan uint64, defParallelismStartMPCount)
+	wg.Add(1)
+	go func(c chan<- uint64) {
+		defer wg.Done()
+		for _, mpId := range mpIds {
+			c <- mpId
 		}
-		if partition.GetBaseConfig().PartitionId != id {
-			continue
-		}
+		close(c)
+	}(partitionIdC)
+
+	for i := 0; i < defParallelismStartMPCount; i++ {
 		wg.Add(1)
-		go func(pid uint64, mp MetaPartition) {
+		go func(c <-chan uint64) {
 			defer wg.Done()
-			if pErr := mp.Start(); pErr != nil {
-				log.LogErrorf("partition[%v] start failed: %v", pid, pErr)
-				atomic.AddUint64(&failCnt, 1)
-				return
+			var partition MetaPartition
+			for {
+				mpId, ok := <-c
+				if !ok || mpId == 0{
+					return
+				}
+
+				partition, err = m.getPartition(mpId)
+				if err != nil {
+					continue
+				}
+				if partition.GetBaseConfig().PartitionId != mpId {
+					continue
+				}
+				if pErr := partition.Start(); pErr != nil {
+					log.LogErrorf("partition[%v] start failed: %v", mpId, pErr)
+					atomic.AddUint64(&failCnt, 1)
+					return
+				}
+				log.LogInfof("partition[%v] start success", mpId)
 			}
-			log.LogInfof("partition[%v] start success", pid)
-		}(id , partition)
+		}(partitionIdC)
 	}
 	wg.Wait()
+
 	if failCnt != 0 {
 		log.LogErrorf("start %d partitions failed", failCnt)
 		return errors.NewErrorf("start %d partitions failed", failCnt)
