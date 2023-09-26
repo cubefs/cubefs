@@ -1373,7 +1373,9 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	//log.LogDebugf("Rename_ll: dstInodeInfo %v", dstInodeInfo)
 	//mw.AddInoInfoCache(dstInodeInfo.Inode, dstParentID, dstName)
 	mw.DeleteInoInfoCache(srcInodeInfo.Inode)
-	mw.AddInoInfoCache(srcInodeInfo.Inode, dstParentID, dstName)
+	if proto.IsDir(srcInodeInfo.Mode) {
+		mw.AddInoInfoCache(srcInodeInfo.Inode, dstParentID, dstName)
+	}
 	return nil
 }
 
