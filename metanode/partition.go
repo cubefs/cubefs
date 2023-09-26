@@ -583,9 +583,9 @@ func (mp *metaPartition) updateSize() {
 				})
 
 				mp.size = size
-				log.LogDebugf("[updateSize] update mp(%d) size(%d) success", mp.config.PartitionId, size)
+				log.LogDebugf("[updateSize] update mp(%d) size(%d) success,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len())
 			case <-mp.stopC:
-				log.LogDebugf("[updateSize] stop update mp(%d) size", mp.config.PartitionId)
+				log.LogDebugf("[updateSize] stop update mp(%d) size,inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
 				return
 			}
 		}
@@ -749,11 +749,14 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	go mp.startCheckerEvict()
 
+	log.LogDebugf("[before raft] get mp(%d) applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
+
 	if err = mp.startRaft(); err != nil {
 		err = errors.NewErrorf("[onStart] start raft id=%d: %s",
 			mp.config.PartitionId, err.Error())
 		return
 	}
+	log.LogDebugf("[after raft] get mp(%d) applied(%d),inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.applyID, mp.inodeTree.Len(), mp.dentryTree.Len())
 
 	mp.updateSize()
 
@@ -812,8 +815,8 @@ func (mp *metaPartition) startRaft() (err error) {
 		}
 		peers = append(peers, rp)
 	}
-	log.LogDebugf("start partition id=%d raft peers: %s",
-		mp.config.PartitionId, peers)
+	log.LogInfof("start partition id=%d,applyID:%v raft peers: %s",
+		mp.config.PartitionId, mp.applyID, peers)
 	pc := &raftstore.PartitionConfig{
 		ID:      mp.config.PartitionId,
 		Applied: mp.applyID,
@@ -1056,7 +1059,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	wg.Wait()
-
+	log.LogDebugf("[load meta finish] get mp(%d) inodeCount(%d),dentryCount(%d)", mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
 	for _, err = range errs {
 		if err != nil {
 			return
