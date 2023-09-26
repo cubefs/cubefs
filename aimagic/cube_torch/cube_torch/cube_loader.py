@@ -64,7 +64,6 @@ class CubeDataLoader(Generic[T_co]):
                  persistent_workers: bool = False,
                  pin_memory_device: str = ""):
         torch._C._log_api_usage_once("python.data_loader")
-        self.pin_memory_device = pin_memory_device
         if num_workers < 0:
             raise ValueError('num_workers option should be non-negative; '
                              'use num_workers=0 to disable multiprocessing.')
@@ -78,13 +77,15 @@ class CubeDataLoader(Generic[T_co]):
         if persistent_workers and num_workers == 0:
             raise ValueError('persistent_workers option needs num_workers > 0')
 
-        self.dataset = dataset
-        self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
 
-        if self.prefetch_factor<4:
-            self.prefetch_factor=4
+        if self.prefetch_factor < 8:
+            self.prefetch_factor = 8
+
+        self.dataset = dataset
+        self.num_workers = num_workers
         self.pin_memory = pin_memory
+        self.pin_memory_device = pin_memory_device
         self.timeout = timeout
         self.worker_init_fn = worker_init_fn
         self.multiprocessing_context = multiprocessing_context
