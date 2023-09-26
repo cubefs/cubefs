@@ -518,11 +518,20 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
 
             # Queue is not type-annotated
             self._data_queue = queue.Queue()  # type: ignore[var-annotated]
-            pin_memory_thread = threading.Thread(
-                target=_utils.pin_memory._pin_memory_loop,
-                args=(self._worker_result_queue, self._data_queue,
-                      torch.cuda.current_device(),
-                      self._pin_memory_thread_done_event, self._pin_memory_device))
+
+            if hasattr(self,'_pin_memory_device'):
+                pin_memory_thread = threading.Thread(
+                    target=_utils.pin_memory._pin_memory_loop,
+                    args=(self._worker_result_queue, self._data_queue,
+                          torch.cuda.current_device(),
+                          self._pin_memory_thread_done_event, self._pin_memory_device))
+            else:
+                pin_memory_thread = threading.Thread(
+                    target=_utils.pin_memory._pin_memory_loop,
+                    args=(self._worker_result_queue, self._data_queue,
+                          torch.cuda.current_device(),
+                          self._pin_memory_thread_done_event))
+
             pin_memory_thread.daemon = True
             pin_memory_thread.start()
             # Similar to workers (see comment above), we only register
