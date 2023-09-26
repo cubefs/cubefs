@@ -214,7 +214,7 @@ func stepLeader(r *raftFsm, m *proto.Message) {
 			}
 			if pr.maybeDecrTo(m.Index, nextProbeIdx, m.Commit) {
 				if logger.IsEnableDebug() {
-					logger.Debug("%x decreased progress of %x to [%s]", r.id, m.From, pr)
+					logger.Debug("[%v] decreased progress of [%v] to [%s]", r.id, m.From, pr)
 				}
 				if pr.state == replicaStateReplicate {
 					pr.becomeProbe()
