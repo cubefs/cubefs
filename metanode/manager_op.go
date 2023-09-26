@@ -118,17 +118,19 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 
-			addr, isLeader := partition.IsLeader()
-			if addr == "" {
-				mpr.Status = proto.Unavailable
-			}
-			mpr.IsLeader = isLeader
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly
 			}
 			if resp.MemUsed > uint64(float64(resp.Total)*MaxUsedMemFactor) {
 				mpr.Status = proto.ReadOnly
 			}
+
+			addr, isLeader := partition.IsLeader()
+			if addr == "" {
+				mpr.Status = proto.Unavailable
+			}
+			mpr.IsLeader = isLeader
+
 			resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 			return true
 		})
