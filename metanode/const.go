@@ -174,7 +174,7 @@ const (
 	resetStoreTick
 	opFSMExtentDelSyncV2
 	opFSMMetaAddVirtualMP //deprecated
-	opFSMSynVirtualMPs //deprecated
+	opFSMSynVirtualMPs    //deprecated
 
 	opFSMSyncMetaConf
 
@@ -236,12 +236,12 @@ const (
 	defRaftLogSize                  = unit.MB * 8
 	defIntervalToCleanTrash         = time.Minute * 5
 
-	intervalFailOverLeader          = time.Second
-	defTryFailOverCnt               = 3
-	defParallelFailOverCnt          = 10
+	intervalFailOverLeader = time.Second
+	defTryFailOverCnt      = 3
+	defParallelFailOverCnt = 10
 
-	defCleanTrashItemMaxTotalCountEachTime    = 100 * 10000 //100W
-	defCleanTrashItemMaxDurationEachTime      = 5           //min
+	defCleanTrashItemMaxTotalCountEachTime = 100 * 10000 //100W
+	defCleanTrashItemMaxDurationEachTime   = 5           //min
 
 	defBitMapAllocatorMaxUsedFactorForAvailable = 0.9
 	defBitMapAllocatorMinFreeFactorForAvailable = 0.4
@@ -251,7 +251,7 @@ const (
 	Uint64Size                     = int(unsafe.Sizeof(uint64(0)))
 
 	intervalToSyncEvictReqRecords = time.Second * 5
-	defParallelismStartMPCount    = 16
+	defParallelismStartMPCount    = 32
 )
 
 const (
@@ -318,11 +318,11 @@ func ParseCursorResetMode(typeStr string) (CursorResetMode, error) {
 type SnapshotVersion byte
 
 const (
-	BaseSnapshotV = iota
-	BatchSnapshotV1 //rocksdb
-	BatchSnapshotV2 //bitmap allocator
-	BatchSnapshotV3 //remove dup op
-	LatestSnapV = BatchSnapshotV3 //change with max snap version
+	BaseSnapshotV   = iota
+	BatchSnapshotV1                   //rocksdb
+	BatchSnapshotV2                   //bitmap allocator
+	BatchSnapshotV3                   //remove dup op
+	LatestSnapV     = BatchSnapshotV3 //change with max snap version
 )
 
 const (
