@@ -62,6 +62,8 @@ const (
 	AppendRandomWriteType    = 4
 
 	NormalExtentDeleteRetainTime = 3600 * 4
+
+	ExtBackupSuffix = ".old"
 )
 
 var (
@@ -150,10 +152,15 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 	s.dataPath = dataDir
 	s.partitionType = dpType
 	s.partitionID = partitionID
-	if err = MkdirAll(dataDir); err != nil {
-		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
-	}
+
 	if isCreate {
+		if err = s.backupExtent(); err != nil {
+			return
+		}
+		if err = MkdirAll(dataDir); err != nil {
+			return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
+		}
+
 		if s.tinyExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, TinyExtDeletedFileName), TinyDeleteFileOpt, 0o666); err != nil {
 			return
 		}
@@ -167,6 +174,9 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 			return
 		}
 	} else {
+		if err = MkdirAll(dataDir); err != nil {
+			return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
+		}
 		if s.tinyExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, TinyExtDeletedFileName), os.O_RDWR|os.O_APPEND, 0o666); err != nil {
 			return
 		}
@@ -1213,5 +1223,25 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 	}()
 	newOffset, newEnd, err = e.tinyExtentAvaliOffset(offset)
 
+	return
+}
+
+func (s *ExtentStore) backupExtent() (err error) {
+	// create: move current folder to .old and create a new folder
+	if _, err = os.Stat(s.dataPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		} else {
+			return
+		}
+	}
+
+	backupDirName := s.dataPath + ExtBackupSuffix
+	if err = os.RemoveAll(backupDirName); err != nil {
+		return
+	}
+	if err = os.Rename(s.dataPath, backupDirName); err != nil {
+		return
+	}
 	return
 }

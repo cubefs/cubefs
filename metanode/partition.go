@@ -246,6 +246,7 @@ type OpPartition interface {
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
+	BackupMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	Reset() (err error)
 	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
@@ -966,6 +967,12 @@ func (mp *metaPartition) GetUniqId() uint64 {
 func (mp *metaPartition) PersistMetadata() (err error) {
 	mp.config.sortPeers()
 	err = mp.persistMetadata()
+	return
+}
+
+// Backup partition to partition.old
+func (mp *metaPartition) BackupMetadata() (err error) {
+	err = mp.backupMetadata()
 	return
 }
 

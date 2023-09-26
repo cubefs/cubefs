@@ -53,6 +53,7 @@ const (
 	uniqIDFile      = "uniqID"
 	uniqCheckerFile = "uniqChecker"
 	verdataFile     = "multiVer"
+	backupSuffix    = ".old"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {
@@ -781,6 +782,28 @@ func (mp *metaPartition) loadMultiVer(rootDir string) (err error) {
 	log.LogInfof("loadMultiVer: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) verlist (%v) mp Ver(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename, mp.multiVersionList.VerList, mp.verSeq)
 	return
+}
+
+func (mp *metaPartition) backupMetadata() error {
+	_, err := os.Stat(mp.config.RootDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		} else {
+			return err
+		}
+	}
+
+	backupName := mp.config.RootDir + backupSuffix
+	// remove old backup
+	if err = os.RemoveAll(backupName); err != nil {
+		return err
+	}
+
+	if err = os.Rename(mp.config.RootDir, backupName); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (mp *metaPartition) persistMetadata() (err error) {
