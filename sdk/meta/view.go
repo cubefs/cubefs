@@ -155,7 +155,7 @@ func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
 
 // 发布前修改
 // const DefaultTrashInterval int64 = 60 * 24 * 5 // keep 5 day
-const DefaultTrashInterval int64 = 2
+const DefaultTrashInterval int64 = 10
 
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 

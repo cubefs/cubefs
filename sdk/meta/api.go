@@ -285,7 +285,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 	}
 	return nil, syscall.ENOMEM
 create_dentry:
-	log.LogDebugf("Create_ll name %v ino %v", name, info.Inode)
+	log.LogDebugf("Create_ll name %v ino %v in parent %v", name, info.Inode, parentID)
 	if mw.EnableQuota {
 		status, err = mw.quotaDcreate(parentMP, parentID, name, info.Inode, mode, quotaIds)
 	} else {
@@ -298,7 +298,7 @@ create_dentry:
 		}
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
-		if status != statusExist {
+		if status == statusExist {
 			mw.iunlink(mp, info.Inode)
 			mw.ievict(mp, info.Inode)
 		}
@@ -1169,7 +1169,9 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	//log.LogDebugf("Rename_ll: dstInodeInfo %v", dstInodeInfo)
 	//mw.AddInoInfoCache(dstInodeInfo.Inode, dstParentID, dstName)
 	mw.DeleteInoInfoCache(srcInodeInfo.Inode)
-	mw.AddInoInfoCache(srcInodeInfo.Inode, dstParentID, dstName)
+	if proto.IsDir(srcInodeInfo.Mode) {
+		mw.AddInoInfoCache(srcInodeInfo.Inode, dstParentID, dstName)
+	}
 	return nil
 }
 
@@ -2357,7 +2359,7 @@ func (mw *MetaWrapper) getCurrentPath(parentIno uint64) string {
 	mw.inoInfoLk.RUnlock()
 	if !ok {
 		log.LogDebugf("action[getCurrentPath]: parentIno(%v)return UnknownPath", parentIno)
-		return UnknownPath
+		return "/" + UnknownPath
 	}
 	return path.Join(mw.getCurrentPath(node.parentIno), node.name)
 }
