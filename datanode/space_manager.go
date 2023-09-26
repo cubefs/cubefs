@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,7 +76,10 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 
 func (manager *SpaceManager) AsyncLoadExtent() {
 	log.LogErrorf("start AsyncLoadAllPartitions ")
-	const maxParallelism = 64
+	maxParallelism := 64
+	if manager.dataNode != nil && strings.Contains(manager.dataNode.zoneName, "ssd") {
+		maxParallelism = 16
+	}
 	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
 	wg := sync.WaitGroup{}
 	partitionC := make(chan *DataPartition, parallelism)
