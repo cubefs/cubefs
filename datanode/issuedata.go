@@ -619,11 +619,6 @@ func (p *IssueProcessor) checkAndFixFragment(fragment *IssueFragment) (success b
 	var remoteHosts = p.getRemotes()
 	var haType = p.getHAType()
 	for _, policy := range policies {
-		select {
-		case <-p.stopCh:
-			break
-		default:
-		}
 		var crc uint32
 		if crc, success, err = policy.handler(remoteHosts, haType, localCrc, fragment); err != nil {
 			log.LogErrorf("IssueProcessor: Policy(%v) fixes Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) failed: %v",
