@@ -860,9 +860,18 @@ func (d *Disk) createFlushExtentsRater(parallelism uint64) *rate.Limiter {
 	if parallelism <= 0 {
 		parallelism = DefaultForceFlushFDParallelismOnDisk
 	}
-	flushFDQps := parallelism * DefaultForceFlushDataSizeOnEachDisk
+	var flushFDQps uint64
+	if d.isSSDMediaType() {
+		flushFDQps = parallelism * DefaultForceFlushDataSizeOnEachSSDDisk
+	} else {
+		flushFDQps = parallelism * DefaultForceFlushDataSizeOnEachHDDDisk
+	}
 	flushExtentsRater := rate.NewLimiter(rate.Limit(flushFDQps), int(flushFDQps))
 	return flushExtentsRater
+}
+
+func (d *Disk) isSSDMediaType() bool {
+	return d.space.dataNode != nil && strings.Contains(d.space.dataNode.zoneName, "ssd")
 }
 
 func (d *Disk) persistLatestFlushTime(unix int64) (err error) {

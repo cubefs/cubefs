@@ -611,12 +611,13 @@ func (manager *SpaceManager) SetPartitionConsistencyMode(mode proto.ConsistencyM
 }
 
 const (
-	MaxDiskRepairTaskLimit               = 256
-	DefaultForceFlushFDSecond            = 10
-	DefaultForceFlushFDParallelismOnDisk = 5
-	DefaultForceFlushDataSizeOnEachDisk  = util.MB
-	DefaultDeletionConcurrencyOnDisk     = 4
-	DefaultIssueFixConcurrencyOnDisk     = 16
+	MaxDiskRepairTaskLimit                 = 256
+	DefaultForceFlushFDSecond              = 10
+	DefaultForceFlushFDParallelismOnDisk   = 5
+	DefaultForceFlushDataSizeOnEachHDDDisk = 2 * util.MB
+	DefaultForceFlushDataSizeOnEachSSDDisk = 10 * util.MB
+	DefaultDeletionConcurrencyOnDisk       = 4
+	DefaultIssueFixConcurrencyOnDisk       = 16
 )
 
 func (manager *SpaceManager) SetDiskRepairTaskLimit(newValue uint64) {
