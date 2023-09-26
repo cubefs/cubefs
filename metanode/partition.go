@@ -246,6 +246,7 @@ type OpPartition interface {
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
+	RenameStaleMetadata() (err error)
 	ChangeMember(changeType raftproto.ConfChangeType, peer raftproto.Peer, context []byte) (resp interface{}, err error)
 	Reset() (err error)
 	UpdatePartition(req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
@@ -468,9 +469,10 @@ type OpQuota interface {
 // metaPartition manages the range of the inode IDs.
 // When a new inode is requested, it allocates a new inode id for this inode if possible.
 // States:
-//  +-----+             +-------+
-//  | New | → Restore → | Ready |
-//  +-----+             +-------+
+//
+//	+-----+             +-------+
+//	| New | → Restore → | Ready |
+//	+-----+             +-------+
 type metaPartition struct {
 	config                 *MetaPartitionConfig
 	size                   uint64                // For partition all file size
@@ -969,6 +971,12 @@ func (mp *metaPartition) GetUniqId() uint64 {
 func (mp *metaPartition) PersistMetadata() (err error) {
 	mp.config.sortPeers()
 	err = mp.persistMetadata()
+	return
+}
+
+// Backup partition to partition.old
+func (mp *metaPartition) RenameStaleMetadata() (err error) {
+	err = mp.renameStaleMetadata()
 	return
 }
 

@@ -26,6 +26,7 @@ import (
 	"path"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/util/log"
 
@@ -53,6 +54,9 @@ const (
 	uniqIDFile      = "uniqID"
 	uniqCheckerFile = "uniqChecker"
 	verdataFile     = "multiVer"
+
+	StaleMetadataSuffix     = ".old"
+	StaleMetadataTimeFormat = "20060102150405.000000000"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {
@@ -784,6 +788,21 @@ func (mp *metaPartition) loadMultiVer(rootDir string) (err error) {
 	log.LogInfof("loadMultiVer: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) verlist (%v) mp Ver(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename, mp.multiVersionList.VerList, mp.verSeq)
 	return
+}
+
+func (mp *metaPartition) renameStaleMetadata() (err error) {
+	if _, err = os.Stat(mp.config.RootDir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+	}
+
+	curTime := time.Now().Format(StaleMetadataTimeFormat)
+	staleMetaDirName := mp.config.RootDir + "_" + curTime + StaleMetadataSuffix
+	if err = os.Rename(mp.config.RootDir, staleMetaDirName); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (mp *metaPartition) persistMetadata() (err error) {
