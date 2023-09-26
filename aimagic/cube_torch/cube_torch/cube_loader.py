@@ -453,8 +453,8 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._prefetch_factor = loader.prefetch_factor
         self._num_workers = loader.num_workers
         assert self._num_workers > 0
-        if self._num_workers < 8:
-            self._num_workers = 8
+        if self._num_workers < 3:
+            self._num_workers = 3
         self._worker_init_fn = loader.worker_init_fn
         self._worker_result_queue = multiprocessing_context.Queue()  # gnore[var-annotated]
         self._worker_pids_set = False
