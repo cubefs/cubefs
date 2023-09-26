@@ -81,6 +81,9 @@ class CubeDataLoader(Generic[T_co]):
         self.dataset = dataset
         self.num_workers = num_workers
         self.prefetch_factor = prefetch_factor
+
+        if self.prefetch_factor<4:
+            self.prefetch_factor=4
         self.pin_memory = pin_memory
         self.timeout = timeout
         self.worker_init_fn = worker_init_fn
@@ -452,9 +455,6 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._sampler_iter_len = self.__len__()
         self._prefetch_factor = loader.prefetch_factor
         self._num_workers = loader.num_workers
-        assert self._num_workers > 0
-        if self._num_workers < 3:
-            self._num_workers = 3
         self._worker_init_fn = loader.worker_init_fn
         self._worker_result_queue = multiprocessing_context.Queue()  # gnore[var-annotated]
         self._worker_pids_set = False
