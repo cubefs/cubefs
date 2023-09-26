@@ -562,6 +562,11 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		err = errors.NewErrorf("[createPartition] partition is nil")
 		return
 	}
+
+	if err = partition.RenameStaleMetadata(); err != nil {
+		err = errors.NewErrorf("[createPartition]->%s", err.Error())
+	}
+
 	if err = partition.PersistMetadata(); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
 		return

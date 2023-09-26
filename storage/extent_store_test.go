@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
@@ -185,6 +187,53 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 	}
 }
 
+func staleExtentStoreTest(t *testing.T, dpType int) {
+	path, clean, err := getTestPathExtentStore()
+	extDirName := filepath.Base(path)
+	require.NoError(t, err)
+	defer clean()
+	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	require.NoError(t, err)
+	id, err := s.NextExtentID()
+	require.NoError(t, err)
+	err = s.Create(id)
+	require.NoError(t, err)
+	s.Close()
+
+	// reopen1
+	newS1, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	require.NoError(t, err)
+	fileList, err := os.ReadDir(filepath.Dir(path))
+	require.NoError(t, err)
+
+	staleCount := 0
+	for _, f := range fileList {
+		fname := filepath.Base(f.Name())
+		if strings.HasPrefix(fname, extDirName) && filepath.Ext(fname) == storage.StaleExtStoreBackupSuffix {
+			staleCount++
+		}
+	}
+	require.Equal(t, 1, staleCount)
+	newS1.Close()
+
+	// reopen2
+	newS2, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	require.NoError(t, err)
+	fileList, err = os.ReadDir(filepath.Dir(path))
+	require.NoError(t, err)
+
+	staleCount = 0
+	for _, f := range fileList {
+		fname := filepath.Base(f.Name())
+		if strings.HasPrefix(fname, extDirName) && filepath.Ext(f.Name()) == storage.StaleExtStoreBackupSuffix {
+			staleCount++
+		}
+	}
+	require.Equal(t, 2, staleCount)
+
+	defer newS2.Close()
+}
+
 func extentStoreTest(t *testing.T, dpType int) {
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
@@ -194,6 +243,7 @@ func extentStoreTest(t *testing.T, dpType int) {
 	defer s.Close()
 	extentStoreLogicalTest(t, s)
 	reopenExtentStoreTest(t, dpType)
+	staleExtentStoreTest(t, dpType)
 }
 
 func TestExtentStores(t *testing.T) {
