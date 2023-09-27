@@ -29,6 +29,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 
@@ -169,7 +170,6 @@ func main() {
 		log.LogErrorf("logLeftSpaceLimit is not a legal int value: %v", err.Error())
 		logLeftSpaceLimit = log.DefaultLogLeftSpaceLimit
 	}
-
 	// Init server instance with specified role configuration.
 	var (
 		server common.Server
@@ -231,6 +231,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer log.LogFlush()
+
+	_, err = auditlog.InitAudit(logDir, module, auditlog.DefaultAuditLogSize)
+	if err != nil {
+		err = errors.NewErrorf("Fatal: failed to init audit log - %v", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	defer auditlog.StopAudit()
 
 	if *redirectSTD {
 		// Init output file

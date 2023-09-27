@@ -43,6 +43,10 @@ import (
 	"github.com/cubefs/cubefs/util/timeutil"
 )
 
+// NOTE: if the operation is invoked by local machine
+// the remote addr is "127.0.0.1"
+const localAddrForAudit = "127.0.0.1"
+
 var (
 	ErrIllegalHeartbeatAddress = errors.New("illegal heartbeat address")
 	ErrIllegalReplicateAddress = errors.New("illegal replicate address")
@@ -126,25 +130,25 @@ func (c *MetaPartitionConfig) sortPeers() {
 
 // OpInode defines the interface for the inode operations.
 type OpInode interface {
-	CreateInode(req *CreateInoReq, p *Packet) (err error)
-	UnlinkInode(req *UnlinkInoReq, p *Packet) (err error)
-	UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error)
+	CreateInode(req *CreateInoReq, p *Packet, remoteAddr string) (err error)
+	UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr string) (err error)
+	UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet, remoteAddr string) (err error)
 	InodeGet(req *InodeGetReq, p *Packet) (err error)
 	InodeGetSplitEk(req *InodeGetSplitReq, p *Packet) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
-	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
-	EvictInode(req *EvictInodeReq, p *Packet) (err error)
-	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
+	CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAddr string) (err error)
+	EvictInode(req *EvictInodeReq, p *Packet, remoteAddr string) (err error)
+	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, remoteAddr string) (err error)
 	SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
 	GetInodeTreeLen() int
-	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
-	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
+	DeleteInode(req *proto.DeleteInodeRequest, p *Packet, remoteAddr string) (err error)
+	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet, remoteAddr string) (err error)
 	ClearInodeCache(req *proto.ClearInodeCacheRequest, p *Packet) (err error)
-	TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet) (err error)
-	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet) (err error)
-	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet) (err error)
-	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet) (err error)
+	TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet, remoteAddr string) (err error)
+	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet, remoteAddr string) (err error)
+	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
+	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error)
 }
 
 type OpExtend interface {
@@ -160,28 +164,28 @@ type OpExtend interface {
 
 // OpDentry defines the interface for the dentry operations.
 type OpDentry interface {
-	CreateDentry(req *CreateDentryReq, p *Packet) (err error)
-	DeleteDentry(req *DeleteDentryReq, p *Packet) (err error)
-	DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error)
-	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
+	CreateDentry(req *CreateDentryReq, p *Packet, remoteAddr string) (err error)
+	DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAddr string) (err error)
+	DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet, remoteAddr string) (err error)
+	UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAddr string) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
 	ReadDirLimit(req *ReadDirLimitReq, p *Packet) (err error)
 	ReadDirOnly(req *ReadDirOnlyReq, p *Packet) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
 	GetDentryTree() *BTree
 	GetDentryTreeLen() int
-	TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet) (err error)
-	TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet) (err error)
-	TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Packet) (err error)
-	QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, p *Packet) (err error)
+	TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet, remoteAddr string) (err error)
+	TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet, remoteAddr string) (err error)
+	TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Packet, remoteAddr string) (err error)
+	QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, p *Packet, remoteAddr string) (err error)
 }
 
 type OpTransaction interface {
 	TxCreate(req *proto.TxCreateRequest, p *Packet) (err error)
 	TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) error
 	TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) error
-	TxCommit(req *proto.TxApplyRequest, p *Packet) (err error)
-	TxRollback(req *proto.TxApplyRequest, p *Packet) (err error)
+	TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAddr string) (err error)
+	TxRollback(req *proto.TxApplyRequest, p *Packet, remoteAddr string) (err error)
 	TxGetInfo(req *proto.TxGetInfoRequest, p *Packet) (err error)
 	TxGetCnt() (uint64, uint64, uint64)
 	TxGetTree() (*BTree, *BTree, *BTree)
@@ -194,7 +198,7 @@ type OpExtent interface {
 	BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequest, p *Packet) (err error)
 	ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
 	ObjExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
-	ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error)
+	ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, remoteAddr string) (err error)
 	BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error)
 	// ExtentsDelete(req *proto.DelExtentKeyRequest, p *Packet) (err error)
 }
@@ -1557,7 +1561,7 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 			Inode:  inode.Inode,
 			VerSeq: verSeq,
 		}
-		mp.UnlinkInode(req, p)
+		mp.UnlinkInode(req, p, localAddrForAudit)
 		// check empty result.
 		// if result is OpAgain, means the extDelCh maybe full,
 		// so let it sleep 1s.
