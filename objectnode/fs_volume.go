@@ -324,7 +324,7 @@ func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool)
 			return err
 		}
 		var inodeInfo *proto.InodeInfo
-		if inodeInfo, err = v.mw.Create_ll(parentID, filename, DefaultFileMode, 0, 0, nil); err != nil {
+		if inodeInfo, err = v.mw.Create_ll(parentID, filename, DefaultFileMode, 0, 0, nil, path); err != nil {
 			return err
 		}
 		inode = inodeInfo.Inode
@@ -685,7 +685,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	// This file has only inode but no dentry. In this way, this temporary file can be made invisible
 	// in the true sense. In order to avoid the adverse impact of other user operations on temporary data.
 	var invisibleTempDataInode *proto.InodeInfo
-	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
+	if invisibleTempDataInode, err = v.mw.InodeCreate_ll(parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0), fixedPath); err != nil {
 		log.LogErrorf("PutObject: inode create fail: volume(%v) path(%v) err(%v)", v.name, path, err)
 		return
 	}
@@ -694,10 +694,10 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 		if err != nil {
 			log.LogWarnf("PutObject: unlink temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, path, invisibleTempDataInode.Inode)
-			_, _ = v.mw.InodeUnlink_ll(invisibleTempDataInode.Inode)
+			_, _ = v.mw.InodeUnlink_ll(invisibleTempDataInode.Inode, fixedPath)
 			log.LogWarnf("PutObject: evict temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, path, invisibleTempDataInode.Inode)
-			_ = v.mw.Evict(invisibleTempDataInode.Inode)
+			_ = v.mw.Evict(invisibleTempDataInode.Inode, fixedPath)
 		}
 	}()
 
@@ -806,7 +806,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	// apply new inode to dentry
-	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode, false)
+	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode, false, fixedPath)
 	if err != nil {
 		log.LogErrorf("PutObject: apply new inode to dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 			parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
@@ -820,7 +820,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	return fsInfo, nil
 }
 
-func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64, isCompleteMultipart bool) (err error) {
+func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64, isCompleteMultipart bool, fullPath string) (err error) {
 	var existMode uint32
 	_, existMode, err = v.mw.Lookup_ll(parentId, name) // exist object inode
 	if err != nil && err != syscall.ENOENT {
@@ -829,7 +829,7 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64, 
 	}
 
 	if err == syscall.ENOENT {
-		if err = v.applyInodeToNewDentry(parentId, name, inode); err != nil {
+		if err = v.applyInodeToNewDentry(parentId, name, inode, fullPath); err != nil {
 			log.LogErrorf("applyInodeToDEntry: apply inode to new dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 				parentId, name, inode, err)
 			return
@@ -846,7 +846,7 @@ func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64, 
 		// current implementation doesn't support object versioning, so uploading a object with a key already existed in bucket
 		// is implemented with replacing the old one instead.
 		// refer: https://docs.aws.amazon.com/AmazonS3/latest/userguide/upload-objects.html
-		if err = v.applyInodeToExistDentry(parentId, name, inode, isCompleteMultipart); err != nil {
+		if err = v.applyInodeToExistDentry(parentId, name, inode, isCompleteMultipart, fullPath); err != nil {
 			log.LogErrorf("applyInodeToDEntry: apply inode to exist dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 				parentId, name, inode, err)
 			return
@@ -903,9 +903,9 @@ func (v *Volume) DeletePath(path string) (err error) {
 
 	// delete dentry with condition when objectlock is open
 	if objetLock != nil {
-		_, err = v.mw.DeleteWithCond_ll(parent, ino, name, mode.IsDir())
+		_, err = v.mw.DeleteWithCond_ll(parent, ino, name, mode.IsDir(), path)
 	} else {
-		_, err = v.mw.Delete_ll(parent, name, mode.IsDir())
+		_, err = v.mw.Delete_ll(parent, name, mode.IsDir(), path)
 	}
 	if err != nil {
 		return
@@ -921,7 +921,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 
 	log.LogInfof("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
 	// Evict inode
-	if err = v.mw.Evict(ino); err != nil {
+	if err = v.mw.Evict(ino, path); err != nil {
 		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
 	}
 	err = nil
@@ -1002,7 +1002,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 
 	// create temp file (inode only, invisible for user)
 	var tempInodeInfo *proto.InodeInfo
-	if tempInodeInfo, err = v.mw.InodeCreate_ll(0, DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
+	if tempInodeInfo, err = v.mw.InodeCreate_ll(0, DefaultFileMode, 0, 0, nil, make([]uint64, 0), path); err != nil {
 		log.LogErrorf("WritePart: meta create inode fail: multipartID(%v) partID(%v) err(%v)",
 			multipartId, partId, err)
 		return nil, err
@@ -1016,19 +1016,19 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		if err != nil {
 			log.LogWarnf("WritePart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
-			_, _ = v.mw.InodeUnlink_ll(tempInodeInfo.Inode)
+			_, _ = v.mw.InodeUnlink_ll(tempInodeInfo.Inode, path)
 			log.LogWarnf("WritePart: evict part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, tempInodeInfo.Inode)
-			_ = v.mw.Evict(tempInodeInfo.Inode)
+			_ = v.mw.Evict(tempInodeInfo.Inode, path)
 		}
 		// Delete the old inode and release the written data.
 		if exist {
 			log.LogWarnf("WritePart: unlink old part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, oldInode)
-			_, _ = v.mw.InodeUnlink_ll(oldInode)
+			_, _ = v.mw.InodeUnlink_ll(oldInode, path)
 			log.LogWarnf("WritePart: evict old part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartId, partId, oldInode)
-			_ = v.mw.Evict(oldInode)
+			_ = v.mw.Evict(oldInode, path)
 		}
 	}()
 
@@ -1111,7 +1111,7 @@ func (v *Volume) AbortMultipart(path string, multipartID string) (err error) {
 		for _, part := range multipartInfo.Parts {
 			log.LogWarnf("AbortMultipart: unlink part inode: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, path, multipartID, part.ID, part.Inode)
-			if _, err = v.mw.InodeUnlink_ll(part.Inode); err != nil {
+			if _, err = v.mw.InodeUnlink_ll(part.Inode, path); err != nil {
 				log.LogErrorf("AbortMultipart: meta inode unlink fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, part.ID, part.Inode, err)
 			}
@@ -1175,7 +1175,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 
 	// create inode for complete data
 	var completeInodeInfo *proto.InodeInfo
-	if completeInodeInfo, err = v.mw.InodeCreate_ll(parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0)); err != nil {
+	if completeInodeInfo, err = v.mw.InodeCreate_ll(parentId, DefaultFileMode, 0, 0, nil, make([]uint64, 0), path); err != nil {
 		log.LogErrorf("CompleteMultipart: meta inode create fail: volume(%v) path(%v) multipartID(%v) err(%v)",
 			v.name, path, multipartID, err)
 		return
@@ -1186,7 +1186,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		if err != nil {
 			log.LogWarnf("CompleteMultipart: destroy inode: volume(%v) path(%v) multipartID(%v) inode(%v)",
 				v.name, path, multipartID, completeInodeInfo.Inode)
-			if deleteErr := v.mw.InodeDelete_ll(completeInodeInfo.Inode); deleteErr != nil {
+			if deleteErr := v.mw.InodeDelete_ll(completeInodeInfo.Inode, path); deleteErr != nil {
 				log.LogErrorf("CompleteMultipart: meta delete complete inode fail: volume(%v) path(%v) multipartID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, completeInodeInfo.Inode, err)
 			}
@@ -1293,7 +1293,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 	}
 
 	// apply new inode to dentry
-	if err = v.applyInodeToDEntry(parentId, filename, completeInodeInfo.Inode, true); err != nil {
+	if err = v.applyInodeToDEntry(parentId, filename, completeInodeInfo.Inode, true, path); err != nil {
 		log.LogErrorf("CompleteMultipart: apply inode to dentry fail: volume(%v) multipartID(%v) parentId(%v) "+
 			"fileName(%v) inode(%v) err(%v)", v.name, multipartID, parentId, filename, completeInodeInfo.Inode, err)
 		return
@@ -1312,7 +1312,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		for _, part := range parts {
 			log.LogWarnf("CompleteMultipart: destroy part inode: volume(%v) multipartID(%v) partID(%v) inode(%v)",
 				v.name, multipartID, part.ID, part.Inode)
-			if err2 = v.mw.InodeDelete_ll(part.Inode); err2 != nil {
+			if err2 = v.mw.InodeDelete_ll(part.Inode, path); err2 != nil {
 				log.LogWarnf("CompleteMultipart: delete part inode fail: volume(%v) multipartID(%v) part(%v) err(%v)",
 					v.name, multipartID, part, err2)
 			}
@@ -1321,7 +1321,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		for discardedInode, partNum := range discardedPartInodes {
 			log.LogWarnf("CompleteMultipart: discard part: volume(%v) multipartID(%v) partNum(%v) inode(%v)",
 				v.name, multipartID, partNum, discardedInode)
-			if _, err2 = v.mw.InodeUnlink_ll(discardedInode); err2 != nil {
+			if _, err2 = v.mw.InodeUnlink_ll(discardedInode, path); err2 != nil {
 				log.LogWarnf("CompleteMultipart: unlink inode fail: volume(%v) multipartID(%v) inode(%v) err(%v)",
 					v.name, multipartID, discardedInode, err2)
 			}
@@ -1451,8 +1451,8 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 	return
 }
 
-func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint64) (err error) {
-	if err = v.mw.DentryCreate_ll(parentID, name, inode, DefaultFileMode); err != nil {
+func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint64, fullPath string) (err error) {
+	if err = v.mw.DentryCreate_ll(parentID, name, inode, DefaultFileMode, fullPath); err != nil {
 		log.LogErrorf("applyInodeToNewDentry: meta dentry create fail: parentID(%v) name(%v) inode(%v) mode(%v) err(%v)",
 			parentID, name, inode, DefaultFileMode, err)
 		return err
@@ -1460,9 +1460,9 @@ func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint6
 	return
 }
 
-func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uint64, isCompleteMultipart bool) (err error) {
+func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uint64, isCompleteMultipart bool, fullPath string) (err error) {
 	var oldInode uint64
-	oldInode, err = v.mw.DentryUpdate_ll(parentID, name, inode)
+	oldInode, err = v.mw.DentryUpdate_ll(parentID, name, inode, fullPath)
 	if err != nil {
 		log.LogErrorf("applyInodeToExistDentry: meta update dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 			parentID, name, inode, err)
@@ -1489,13 +1489,13 @@ func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uin
 
 	// unlink and evict old inode
 	log.LogWarnf("applyInodeToExistDentry: unlink inode: volume(%v) inode(%v)", v.name, oldInode)
-	if _, err = v.mw.InodeUnlink_ll(oldInode); err != nil {
+	if _, err = v.mw.InodeUnlink_ll(oldInode, fullPath); err != nil {
 		log.LogWarnf("applyInodeToExistDentry: unlink inode fail: volume(%v) inode(%v) err(%v)",
 			v.name, oldInode, err)
 	}
 
 	log.LogWarnf("applyInodeToExistDentry: evict inode: volume(%v) inode(%v)", v.name, oldInode)
-	if err = v.mw.Evict(oldInode); err != nil {
+	if err = v.mw.Evict(oldInode, fullPath); err != nil {
 		log.LogWarnf("applyInodeToExistDentry: evict inode fail: volume(%v) inode(%v) err(%v)",
 			v.name, oldInode, err)
 	}
@@ -1805,8 +1805,9 @@ func (v *Volume) Close() error {
 // and the actual search result is a non-directory, an ENOENT error is returned.
 //
 // ENOENT:
-// 		0x2 ENOENT No such file or directory. A component of a specified
-// 		pathname did not exist, or the pathname was an empty string.
+//
+//	0x2 ENOENT No such file or directory. A component of a specified
+//	pathname did not exist, or the pathname was an empty string.
 func (v *Volume) recursiveLookupTarget(path string, notUseCache bool) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
 	parent = rootIno
 	var pathIterator = NewPathIterator(path)
@@ -1998,7 +1999,7 @@ func (v *Volume) recursiveMakeDirectory(path string) (partentIno uint64, err err
 		}
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
-			info, err = v.mw.Create_ll(partentIno, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil)
+			info, err = v.mw.Create_ll(partentIno, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil, path[:pathIterator.cursor])
 			if err != nil && err == syscall.EEXIST {
 				existInode, mode, e := v.mw.Lookup_ll(partentIno, pathItem.Name)
 				if e != nil {
@@ -2047,7 +2048,7 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 		if lookupErr == syscall.ENOENT {
 			var inodeInfo *proto.InodeInfo
 			var createErr error
-			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, uint32(DefaultDirMode), 0, 0, nil)
+			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, uint32(DefaultDirMode), 0, 0, nil, "/"+dir)
 			if createErr != nil && createErr != syscall.EEXIST {
 				log.LogErrorf("lookupDirectories: meta create fail, parentID(%v) name(%v) mode(%v) err(%v)", parentId, dir, os.ModeDir, createErr)
 				return 0, createErr
@@ -2749,7 +2750,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}
 
 	// create target file inode and set target inode to be source file inode
-	if tInodeInfo, err = v.mw.InodeCreate_ll(tParentId, uint32(sMode), 0, 0, nil, make([]uint64, 0)); err != nil {
+	if tInodeInfo, err = v.mw.InodeCreate_ll(tParentId, uint32(sMode), 0, 0, nil, make([]uint64, 0), targetPath); err != nil {
 		return
 	}
 	defer func() {
@@ -2757,10 +2758,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if err != nil {
 			log.LogWarnf("CopyFile: unlink target temp inode: volume(%v) path(%v) inode(%v) ",
 				v.name, targetPath, tInodeInfo.Inode)
-			_, _ = v.mw.InodeUnlink_ll(tInodeInfo.Inode)
+			_, _ = v.mw.InodeUnlink_ll(tInodeInfo.Inode, targetPath)
 			log.LogWarnf("CopyFile: evict target temp inode: volume(%v) path(%v) inode(%v)",
 				v.name, targetPath, tInodeInfo.Inode)
-			_ = v.mw.Evict(tInodeInfo.Inode)
+			_ = v.mw.Evict(tInodeInfo.Inode, targetPath)
 		}
 	}()
 	if err = v.ec.OpenStream(tInodeInfo.Inode); err != nil {
@@ -2955,7 +2956,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}
 
 	// apply new inode to dentry
-	err = v.applyInodeToDEntry(tParentId, tLastName, tInodeInfo.Inode, false)
+	err = v.applyInodeToDEntry(tParentId, tLastName, tInodeInfo.Inode, false, targetPath)
 	if err != nil {
 		log.LogErrorf("CopyFile: apply inode to new dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
 			targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
@@ -2968,12 +2969,12 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	return
 }
 
-func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode uint64, mode uint32) (info *proto.InodeInfo, err error) {
+func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode uint64, mode uint32, newPath string, sourcePath string) (info *proto.InodeInfo, err error) {
 
-	if err = v.mw.DentryCreate_ll(parentID, newFileName, sourceFileInode, mode); err != nil {
+	if err = v.mw.DentryCreate_ll(parentID, newFileName, sourceFileInode, mode, newPath); err != nil {
 		return
 	}
-	if info, err = v.mw.InodeLink_ll(sourceFileInode); err != nil {
+	if info, err = v.mw.InodeLink_ll(sourceFileInode, sourcePath); err != nil {
 		return
 	}
 	return
