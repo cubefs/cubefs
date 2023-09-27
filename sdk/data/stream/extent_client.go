@@ -40,7 +40,7 @@ import (
 type SplitExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey) error
 type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey) error
 type GetExtentsFunc func(inode uint64) (uint64, uint64, []proto.ExtentKey, error)
-type TruncateFunc func(inode, size uint64) error
+type TruncateFunc func(inode, size uint64, fullPath string) error
 type EvictIcacheFunc func(inode uint64)
 type LoadBcacheFunc func(key string, buf []byte, offset uint64, size uint32) (int, error)
 type CacheBcacheFunc func(key string, buf []byte) error
@@ -517,7 +517,7 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 	return
 }
 
-func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int) error {
+func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, inode uint64, size int, fullPath string) error {
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -531,7 +531,7 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 		info, err = mw.InodeGet_ll(inode)
 		oldSize = info.Size
 	}
-	err = s.IssueTruncRequest(size)
+	err = s.IssueTruncRequest(size, fullPath)
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))
