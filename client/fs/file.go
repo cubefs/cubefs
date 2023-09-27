@@ -96,6 +96,9 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	if proto.IsSymlink(f.info.Mode) {
 		a.Size = uint64(len(f.info.Target))
 	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("TRACE Attr: inode(%v) attr(%v) fileSize(%v) gen(%v)", f.info, a, fileSize, gen)
+	}
 	return nil
 }
 

@@ -72,6 +72,12 @@ func (f *FlashNode) evictAllCacheHandler(w http.ResponseWriter, r *http.Request)
 	return
 }
 
+func (f *FlashNode) stopHandler(w http.ResponseWriter, r *http.Request) {
+	f.stopServer()
+	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Msg: "ok"})
+	return
+}
+
 func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {
 	reply, err := json.Marshal(httpReply)
 	if err != nil {

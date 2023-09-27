@@ -195,8 +195,8 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		if currReadSize == unit.ReadBlockSize {
 			proto.Buffers.Put(reply.Data)
 		}
-		logContent := fmt.Sprintf("action[doStreamReadRequest] volume:[%v] %v.", req.CacheRequest.Volume,
-			reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
+		logContent := fmt.Sprintf("action[doStreamReadRequest] ReqID[%v] volume:[%v] reply[%v] block[%v] .", p.ReqID, req.CacheRequest.Volume,
+			reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err), block.String())
 		log.LogReadf(logContent)
 	}
 	p.PacketOkReply()

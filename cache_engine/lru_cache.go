@@ -146,7 +146,7 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		expiresAt: time.Now().Add(expiration),
 	})
 	newCb := value.(*CacheBlock)
-	c.alloc += newCb.allocSize
+	c.alloc += newCb.getAllocSize()
 
 	toEvicts := make(map[interface{}]interface{}, 0)
 	for c.lru.Len() > c.size || c.alloc > c.maxAlloc {
@@ -252,7 +252,7 @@ func (c *fCache) removeElement(e *list.Element) {
 	kv := e.Value.(*entry)
 	delete(c.items, kv.key)
 	cb := kv.value.(*CacheBlock)
-	c.alloc -= cb.allocSize
+	c.alloc -= cb.getAllocSize()
 }
 
 func (c *fCache) Close() error {
