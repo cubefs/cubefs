@@ -16,6 +16,7 @@ package auditlog
 
 import (
 	"bufio"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -57,6 +58,23 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(b)
 	w.bodyWritten += int64(n)
 	return n, err
+}
+
+// ReadFrom implement io.ReaderFrom when io.Copy.
+// Response with this function will not hold first body bytes in local buffer.
+func (w *responseWriter) ReadFrom(src io.Reader) (n int64, err error) {
+	if !w.hasWroteHeader {
+		w.WriteHeader(http.StatusOK)
+		w.hasWroteHeader = true
+	}
+	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		n, err = rf.ReadFrom(src)
+		w.bodyWritten += int64(n)
+		return
+	}
+	n, err = io.Copy(w.ResponseWriter, src)
+	w.bodyWritten += int64(n)
+	return
 }
 
 func (w *responseWriter) WriteHeader(code int) {
