@@ -3094,12 +3094,12 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 		vol.Status = markDelete
 		if e := vol.deleteVolFromStore(c); e != nil {
-			log.LogErrorf("action[createVol] failed,vol[%v] err[%v]", vol.Name, e)
+			log.LogErrorf("action[createVol] deleteVolFromStore failed, vol[%v] err[%v]", vol.Name, e)
 		}
 
 		c.deleteVol(req.name)
 
-		err = fmt.Errorf("action[createVol] initMetaPartitions failed,err[%v]", err)
+		err = fmt.Errorf("action[createVol] initMetaPartitions failed, vol[%v] err[%v]", vol.Name, err)
 		goto errHandler
 	}
 
@@ -3107,14 +3107,26 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		for retryCount := 0; readWriteDataPartitions < defaultInitMetaPartitionCount && retryCount < 3; retryCount++ {
 			err = vol.initDataPartitions(c)
 			if err != nil {
-				log.LogError("init dataPartition error", err.Error(), retryCount, len(vol.dataPartitions.partitionMap))
+				log.LogError("action[createVol] init dataPartition error ",
+					err.Error(), retryCount, len(vol.dataPartitions.partitionMap))
 			}
 
 			readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 		}
 
 		if len(vol.dataPartitions.partitionMap) < defaultInitMetaPartitionCount {
-			err = fmt.Errorf("action[createVol]  initDataPartitions failed, less than %d", defaultInitMetaPartitionCount)
+			err = fmt.Errorf("action[createVol] vol[%v] initDataPartitions failed, less than %d",
+				vol.Name, defaultInitMetaPartitionCount)
+
+			oldVolStatus := vol.Status
+			vol.Status = markDelete
+			if err = c.syncUpdateVol(vol); err != nil {
+				log.LogErrorf("action[createVol] vol[%v] after init dataPartition error, mark vol delete persist failed", vol.Name)
+				vol.Status = oldVolStatus
+			} else {
+				log.LogErrorf("action[createVol] vol[%v] mark vol delete after init dataPartition error", vol.Name)
+			}
+
 			goto errHandler
 		}
 	}
@@ -3122,7 +3134,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
 	vol.updateViewCache(c)
 
-	log.LogInfof("action[createVol] vol[%v],readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
+	log.LogInfof("action[createVol] vol[%v], readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
 	return
 
 errHandler:
