@@ -19,6 +19,10 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"time"
+
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/cubefs/cubefs/util/exporter"
 
@@ -454,13 +458,17 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 }
 
 // ExtentsTruncate truncates an extent.
-func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error) {
+func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, remoteAddr string) (err error) {
 	if !proto.IsHot(mp.volType) {
 		err = fmt.Errorf("only support hot vol")
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-
+	fileSize := uint64(0)
+	start := time.Now()
+	defer func() {
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, fileSize)
+	}()
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
@@ -479,6 +487,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 	}
 
 	ino.Size = req.Size
+	fileSize = ino.Size
 	ino.setVer(mp.verSeq)
 	val, err := ino.Marshal()
 	if err != nil {
