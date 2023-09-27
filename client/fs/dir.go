@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -156,13 +157,14 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	var err error
 	var newInode uint64
 	metric := exporter.NewTPCnt("filecreate")
+	fullPath := path.Join(d.getCwd(), req.Name)
 	defer func() {
 		stat.EndStat("Create", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
-		auditlog.FormatLog("Create", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), newInode, 0)
+		auditlog.LogClientOp("Create", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, nil, ParseError(err)
@@ -213,13 +215,14 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	var err error
 	var newInode uint64
 	metric := exporter.NewTPCnt("mkdir")
+	fullPath := path.Join(d.getCwd(), req.Name)
 	defer func() {
 		stat.EndStat("Mkdir", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
-		auditlog.FormatLog("Mkdir", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), newInode, 0)
+		auditlog.LogClientOp("Mkdir", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -250,13 +253,14 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	var err error
 	var deletedInode uint64
 	metric := exporter.NewTPCnt("remove")
+	fullPath := path.Join(d.getCwd(), req.Name)
 	defer func() {
 		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
-		auditlog.FormatLog("Remove", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
+		auditlog.LogClientOp("Remove", fullPath, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
 	}()
 
-	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
+	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir, fullPath)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 		return ParseError(err)
@@ -591,6 +595,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	bgTime := stat.BeginStat()
 
 	metric := exporter.NewTPCnt("rename")
+	srcPath := path.Join(d.getCwd(), req.OldName)
+	dstPath := path.Join(dstDir.getCwd(), req.NewName)
 	defer func() {
 		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
@@ -607,7 +613,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 			}
 		}
 		d.super.fslock.Unlock()
-		auditlog.FormatLog("Rename", d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName, err, time.Since(start).Microseconds(), srcInode, dstInode)
+		auditlog.LogClientOp("Rename", srcPath, dstPath, err, time.Since(start).Microseconds(), srcInode, dstInode)
 	}()
 	//changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
 	if d.super.mw.EnableQuota {
@@ -615,7 +621,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 			return fuse.EPERM
 		}
 	}
-	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, true)
+	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, srcPath, dstPath, true)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
@@ -677,8 +683,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		stat.EndStat("Mknod", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
+	fullPath := path.Join(d.getCwd(), req.Name)
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -708,8 +714,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		stat.EndStat("Symlink", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
+	fullPath := path.Join(d.getCwd(), req.NewName)
+	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target), fullPath)
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)
@@ -751,8 +757,8 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 		stat.EndStat("Link", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	info, err := d.super.mw.Link(d.info.Inode, req.NewName, oldInode.Inode)
+	fullPath := path.Join(d.getCwd(), req.NewName)
+	info, err := d.super.mw.Link(d.info.Inode, req.NewName, oldInode.Inode, fullPath)
 	if err != nil {
 		log.LogErrorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.NewName, oldInode.Inode, err)
 		return nil, ParseError(err)

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -109,7 +110,6 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 
 // get file parentPath
 func (f *File) getParentPath() string {
-	filepath := ""
 	if f.parentIno == f.super.rootIno {
 		return "/"
 	}
@@ -119,14 +119,14 @@ func (f *File) getParentPath() string {
 	f.super.fslock.Unlock()
 	if !ok {
 		log.LogErrorf("Get node cache failed: ino(%v)", f.parentIno)
-		return "unknown" + filepath
+		return "unknown"
 	}
 	parentDir, ok := node.(*Dir)
 	if !ok {
 		log.LogErrorf("Type error: Can not convert node -> *Dir, ino(%v)", f.parentIno)
-		return "unknown" + filepath
+		return "unknown"
 	}
-	return parentDir.getCwd() + filepath
+	return parentDir.getCwd()
 }
 
 // Attr sets the attributes of a file.
@@ -193,8 +193,8 @@ func (f *File) Forget() {
 	if !f.super.orphan.Evict(ino) {
 		return
 	}
-
-	if err := f.super.mw.Evict(ino); err != nil {
+	fullPath := f.getParentPath() + f.name
+	if err := f.super.mw.Evict(ino, fullPath); err != nil {
 		log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
 	}
 }
@@ -381,7 +381,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 
 			// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
-			err = f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Offset)+reqlen)
+			fullPath := path.Join(f.getParentPath(), f.name)
+			err = f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Offset)+reqlen, fullPath)
 			if err == nil {
 				resp.Size = reqlen
 			}
@@ -567,7 +568,8 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
-		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size)); err != nil {
+		fullPath := path.Join(f.getParentPath(), f.name)
+		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size), fullPath); err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
