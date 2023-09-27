@@ -324,16 +324,16 @@ func (dp *DataPartition) ID() uint64 {
 }
 
 func (dp *DataPartition) AllocateExtentID() (id uint64, err error) {
-	if dp.config.VolHAType == proto.CrossRegionHATypeQuorum && dp.leaderState.isLeaderReady() {
-		// 为了保证ExtentID不会重复分配, quorum类型复制组(异地多活)仅在当前实例是Replicas Leader
-		// 且完成了baseExtentID对齐(LeaderReady)状态下允许分配ExtentID。
-		err = proto.ErrOperationDisabled
-		if !dp.leaderState.isLeader() {
-			// 复制组可能发生变化, 当前实例可能变更为Leader, 触发更新Replicas信息
-			dp.proposeUpdateReplicas()
-		}
-		return
-	}
+	// if dp.config.VolHAType == proto.CrossRegionHATypeQuorum && dp.leaderState.isLeaderReady() {
+	// 	// 为了保证ExtentID不会重复分配, quorum类型复制组(异地多活)仅在当前实例是Replicas Leader
+	// 	// 且完成了baseExtentID对齐(LeaderReady)状态下允许分配ExtentID。
+	// 	err = proto.ErrOperationDisabled
+	// 	if !dp.leaderState.isLeader() {
+	// 		// 复制组可能发生变化, 当前实例可能变更为Leader, 触发更新Replicas信息
+	// 		dp.proposeUpdateReplicas()
+	// 	}
+	// 	return
+	// }
 	id, err = dp.extentStore.NextExtentID()
 	return
 }
