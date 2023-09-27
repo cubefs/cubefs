@@ -87,9 +87,10 @@ type ReleaseRequest struct {
 
 // TruncRequest defines a truncate request.
 type TruncRequest struct {
-	size int
-	err  error
-	done chan struct{}
+	size     int
+	err      error
+	fullPath string
+	done     chan struct{}
 }
 
 // EvictRequest defines an evict request.
@@ -154,9 +155,10 @@ func (s *Streamer) IssueReleaseRequest() error {
 	return err
 }
 
-func (s *Streamer) IssueTruncRequest(size int) error {
+func (s *Streamer) IssueTruncRequest(size int, fullPath string) error {
 	request := truncRequestPool.Get().(*TruncRequest)
 	request.size = size
+	request.fullPath = fullPath
 	request.done = make(chan struct{}, 1)
 	s.request <- request
 	<-request.done
@@ -284,7 +286,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc)
 		request.done <- struct{}{}
 	case *TruncRequest:
-		request.err = s.truncate(request.size)
+		request.err = s.truncate(request.size, request.fullPath)
 		request.done <- struct{}{}
 	case *FlushRequest:
 		request.err = s.flush()
@@ -936,14 +938,14 @@ func (s *Streamer) abort() {
 	}
 }
 
-func (s *Streamer) truncate(size int) error {
+func (s *Streamer) truncate(size int, fullPath string) error {
 	s.closeOpenHandler()
 	err := s.flush()
 	if err != nil {
 		return err
 	}
 
-	err = s.client.truncate(s.inode, uint64(size))
+	err = s.client.truncate(s.inode, uint64(size), fullPath)
 	if err != nil {
 		return err
 	}
