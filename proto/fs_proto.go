@@ -375,7 +375,6 @@ type BatchUnlinkInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
-	FullPaths   []string `json:"fullPaths"`
 }
 
 // UnlinkInodeResponse defines the response to the request of unlinking an inode.
@@ -404,7 +403,6 @@ type BatchEvictInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
-	FullPaths   []string `json:"fullPaths"`
 }
 
 // CreateDentryRequest defines the request to create a dentry.
