@@ -186,7 +186,7 @@ func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.CreateInode(req, p)
+	err = mp.CreateInode(req, p, remoteAddr)
 	// reply the operation result to the client through TCP
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opCreateInode] req: %d - %v, resp: %v, body: %s",
@@ -212,7 +212,7 @@ func (m *metadataManager) opQuotaCreateInode(conn net.Conn, p *Packet, remoteAdd
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.QuotaCreateInode(req, p)
+	err = mp.QuotaCreateInode(req, p, remoteAddr)
 	// reply the operation result to the client through TCP
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opQuotaCreateInode] req: %d - %v, resp: %v, body: %s",
@@ -238,7 +238,7 @@ func (m *metadataManager) opTxMetaLinkInode(conn net.Conn, p *Packet, remoteAddr
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.TxCreateInodeLink(req, p)
+	err = mp.TxCreateInodeLink(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opTxMetaLinkInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -264,7 +264,7 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.CreateInodeLink(req, p)
+	err = mp.CreateInodeLink(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaLinkInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -310,8 +310,7 @@ func (m *metadataManager) opTxCreateDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-
-	err = mp.TxCreateDentry(req, p)
+	err = mp.TxCreateDentry(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opTxCreateDentry] req: %d - %v, resp: %v, body: %s",
@@ -463,7 +462,7 @@ func (m *metadataManager) opTxCommit(conn net.Conn, p *Packet,
 		return
 	}
 
-	err = mp.TxCommit(req, p)
+	err = mp.TxCommit(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opTxCommit] req: %d - %v, resp: %v, body: %s",
@@ -493,7 +492,7 @@ func (m *metadataManager) opTxRollback(conn net.Conn, p *Packet,
 		return
 	}
 
-	err = mp.TxRollback(req, p)
+	err = mp.TxRollback(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opTxRollback] req: %d - %v, resp: %v, body: %s",
@@ -521,7 +520,7 @@ func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.CreateDentry(req, p)
+	err = mp.CreateDentry(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opCreateDentry] req: %d - %v, resp: %v, body: %s",
@@ -548,7 +547,8 @@ func (m *metadataManager) opQuotaCreateDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.QuotaCreateDentry(req, p)
+	err = mp.QuotaCreateDentry(req, p, remoteAddr)
+
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opQuotaCreateDentry] req: %d - %v, resp: %v, body: %s",
@@ -578,7 +578,7 @@ func (m *metadataManager) opTxDeleteDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.TxDeleteDentry(req, p)
+	err = mp.TxDeleteDentry(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	if log.EnableDebug() {
 		log.LogDebugf("%s [opTxDeleteDentry] req: %d - %v, resp: %v, body: %s",
@@ -607,7 +607,7 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.DeleteDentry(req, p)
+	err = mp.DeleteDentry(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -634,7 +634,8 @@ func (m *metadataManager) opBatchDeleteDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.DeleteDentryBatch(req, p)
+	err = mp.DeleteDentryBatch(req, p, remoteAddr)
+
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -659,7 +660,7 @@ func (m *metadataManager) opTxUpdateDentry(conn net.Conn, p *Packet, remoteAddr 
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.TxUpdateDentry(req, p)
+	err = mp.TxUpdateDentry(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opTxUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -685,7 +686,8 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.UpdateDentry(req, p)
+	err = mp.UpdateDentry(req, p, remoteAddr)
+
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -711,9 +713,9 @@ func (m *metadataManager) opTxMetaUnlinkInode(conn net.Conn, p *Packet, remoteAd
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.TxUnlinkInode(req, p)
+	err = mp.TxUnlinkInode(req, p, remoteAddr)
 	m.respondToClient(conn, p)
-	log.LogDebugf("%s [opTxMetaUnlinkInode] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
@@ -737,7 +739,7 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.UnlinkInode(req, p)
+	err = mp.UnlinkInode(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -763,7 +765,7 @@ func (m *metadataManager) opMetaBatchUnlinkInode(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.UnlinkInodeBatch(req, p)
+	err = mp.UnlinkInodeBatch(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -897,8 +899,7 @@ func (m *metadataManager) opBatchMetaEvictInode(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-
-	if err = mp.EvictInodeBatch(req, p); err != nil {
+	if err = mp.EvictInodeBatch(req, p, remoteAddr); err != nil {
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 	}
 	m.respondToClient(conn, p)
@@ -926,8 +927,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-
-	if err = mp.EvictInode(req, p); err != nil {
+	if err = mp.EvictInode(req, p, remoteAddr); err != nil {
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 	}
 	m.respondToClient(conn, p)
@@ -1156,7 +1156,7 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	mp.ExtentsTruncate(req, p)
+	mp.ExtentsTruncate(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [OpMetaTruncate] req: %d - %v, resp body: %v, "+
 		"resp body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1568,7 +1568,7 @@ func (m *metadataManager) opMetaDeleteInode(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.DeleteInode(req, p)
+	err = mp.DeleteInode(req, p, remoteAddr)
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1595,7 +1595,7 @@ func (m *metadataManager) opMetaBatchDeleteInode(conn net.Conn, p *Packet,
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
-	err = mp.DeleteInodeBatch(req, p)
+	err = mp.DeleteInodeBatch(req, p, remoteAddr)
 	log.LogDebugf("%s [opMetaDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 
@@ -1991,7 +1991,7 @@ func (m *metadataManager) opTxCreateInode(conn net.Conn, p *Packet,
 		return
 	}
 
-	err = mp.TxCreateInode(req, p)
+	err = mp.TxCreateInode(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opTxCreateInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)

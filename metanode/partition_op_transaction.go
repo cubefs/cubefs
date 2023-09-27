@@ -17,9 +17,12 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"sync"
+	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) TxCreate(req *proto.TxCreateRequest, p *Packet) error {
@@ -223,7 +226,12 @@ func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) er
 	return nil
 }
 
-func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet) error {
+func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAddr string) error {
+	var err error
+	start := time.Now()
+	defer func() {
+		auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
+	}()
 	status, err := mp.txProcessor.txManager.commitTx(req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))
@@ -233,8 +241,12 @@ func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet) error {
 	return err
 }
 
-func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet) error {
-
+func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet, remoteAddr string) error {
+	var err error
+	start := time.Now()
+	defer func() {
+		auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
+	}()
 	status, err := mp.txProcessor.txManager.rollbackTx(req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))

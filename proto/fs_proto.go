@@ -172,6 +172,7 @@ type QuotaCreateInodeRequest struct {
 	Gid         uint32   `json:"gid"`
 	Target      []byte   `json:"tgt"`
 	QuotaIds    []uint32 `json:"qids"`
+	FullPath    string   `json:"fullPath"`
 }
 
 type CreateInodeRequest struct {
@@ -181,6 +182,7 @@ type CreateInodeRequest struct {
 	Uid         uint32 `json:"uid"`
 	Gid         uint32 `json:"gid"`
 	Target      []byte `json:"tgt"`
+	FullPath    string `json:"fullPath"`
 }
 
 // CreateInodeResponse defines the response to the request of creating an inode.
@@ -214,6 +216,7 @@ type TxCreateInodeRequest struct {
 	Target      []byte           `json:"tgt"`
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	FullPath    string           `json:"fullPath"`
 }
 
 // TxCreateInodeResponse defines the response with transaction info to the request of creating an inode.
@@ -270,6 +273,7 @@ type LinkInodeRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	UniqID      uint64 `json:"uiq"`
+	FullPath    string `json:"fullPath"`
 }
 
 // LinkInodeResponse defines the response to the request of linking an inode.
@@ -282,6 +286,7 @@ type TxLinkInodeRequest struct {
 	PartitionID uint64           `json:"pid"`
 	Inode       uint64           `json:"ino"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	FullPath    string           `json:"fullPath"`
 }
 
 func (tx *TxLinkInodeRequest) GetInfo() string {
@@ -308,6 +313,7 @@ type TxUnlinkInodeRequest struct {
 	Inode       uint64           `json:"ino"`
 	Evict       bool             `json:"evict"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	FullPath    string           `json:"fullPath"`
 }
 
 func (tx *TxUnlinkInodeRequest) GetInfo() string {
@@ -325,6 +331,7 @@ type UnlinkInodeRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	UniqID      uint64 `json:"uid"` //for request dedup
+	FullPath    string `json:"fullPath"`
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -332,6 +339,7 @@ type BatchUnlinkInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
+	FullPaths   []string `json:"fullPaths"`
 }
 
 // UnlinkInodeResponse defines the response to the request of unlinking an inode.
@@ -352,6 +360,7 @@ type EvictInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	FullPath    string `json:"fullPath"`
 }
 
 // EvictInodeRequest defines the request to evict some inode.
@@ -359,6 +368,7 @@ type BatchEvictInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
+	FullPaths   []string `json:"fullPaths"`
 }
 
 // CreateDentryRequest defines the request to create a dentry.
@@ -370,6 +380,7 @@ type QuotaCreateDentryRequest struct {
 	Name        string   `json:"name"`
 	Mode        uint32   `json:"mode"`
 	QuotaIds    []uint32 `json:"qids"`
+	FullPath    string   `json:"fullPath"`
 }
 
 type CreateDentryRequest struct {
@@ -379,6 +390,7 @@ type CreateDentryRequest struct {
 	Inode       uint64 `json:"ino"`
 	Name        string `json:"name"`
 	Mode        uint32 `json:"mode"`
+	FullPath    string `json:"fullPath"`
 }
 
 type TxPack interface {
@@ -395,6 +407,7 @@ type TxCreateDentryRequest struct {
 	Mode        uint32           `json:"mode"`
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	FullPath    string           `json:"fullPath"`
 }
 
 func (tx *TxCreateDentryRequest) GetInfo() string {
@@ -412,6 +425,7 @@ type UpdateDentryRequest struct {
 	ParentID    uint64 `json:"pino"`
 	Name        string `json:"name"`
 	Inode       uint64 `json:"ino"` // new inode number
+	FullPath    string `json:"fullPath"`
 }
 
 // UpdateDentryResponse defines the response to the request of updating a dentry.
@@ -427,6 +441,7 @@ type TxUpdateDentryRequest struct {
 	Inode       uint64           `json:"ino"`    // new inode number
 	OldIno      uint64           `json:"oldIno"` // new inode number
 	TxInfo      *TransactionInfo `json:"tx"`
+	FullPath    string           `json:"fullPath"`
 }
 
 func (tx *TxUpdateDentryRequest) GetInfo() string {
@@ -444,6 +459,7 @@ type TxDeleteDentryRequest struct {
 	Name        string           `json:"name"`
 	Ino         uint64           `json:"ino"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	FullPath    string           `json:"fullPath"`
 }
 
 func (tx *TxDeleteDentryRequest) GetInfo() string {
@@ -461,6 +477,7 @@ type DeleteDentryRequest struct {
 	ParentID        uint64 `json:"pino"`
 	Name            string `json:"name"`
 	InodeCreateTime int64  `json:"inodeCreateTime"`
+	FullPath        string `json:"fullPath"`
 }
 
 type BatchDeleteDentryRequest struct {
@@ -468,6 +485,7 @@ type BatchDeleteDentryRequest struct {
 	PartitionID uint64   `json:"pid"`
 	ParentID    uint64   `json:"pino"`
 	Dens        []Dentry `json:"dens"`
+	FullPaths   []string `json:"fullPaths"`
 }
 
 // DeleteDentryResponse defines the response to the request of deleting a dentry.
@@ -607,6 +625,7 @@ type TruncateRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Size        uint64 `json:"sz"`
+	FullPath    string `json:"fullPath"`
 }
 
 type EmptyExtentKeyRequest struct {
@@ -648,6 +667,7 @@ type DeleteInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	FullPath    string `json:"fullPath"`
 }
 
 // DeleteInodeRequest defines the request to delete an inode.
@@ -655,6 +675,7 @@ type DeleteInodeBatchRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionId uint64   `json:"pid"`
 	Inodes      []uint64 `json:"ino"`
+	FullPaths   []string `json:"fullPaths"`
 }
 
 // AppendExtentKeysRequest defines the request to append an extent key.
