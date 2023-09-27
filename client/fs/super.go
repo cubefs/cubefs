@@ -527,7 +527,7 @@ func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {
 		logSize = auditlog.DefaultAuditLogSize
 	}
 
-	err, dir, logModule, logMaxSize := auditlog.GetAuditLogInfo()
+	dir, logModule, logMaxSize, err := auditlog.GetAuditLogInfo()
 	if err != nil {
 
 		_, err = auditlog.InitAuditWithPrefix(logPath, prefix, int64(auditlog.DefaultAuditLogSize),
