@@ -267,6 +267,15 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if fileInfo.Mode.IsDir() {
+		SendEventNotification(o.notificationMgr, vol, &EventParams{
+			Request:  r,
+			Response: w,
+			Name:     ObjectAccessedGet,
+			Bucket:   param.Bucket(),
+			Key:      param.Object(),
+			Region:   o.region,
+			FileInfo: fileInfo,
+		})
 		return
 	}
 
@@ -301,6 +310,15 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	log.LogDebugf("getObjectHandler: read file success: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) cost(%v)",
 		GetRequestID(r), param.Bucket(), param.Object(), offset, size, time.Since(startGet))
 
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectAccessedGet,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+		FileInfo: fileInfo,
+	})
 	return
 }
 
@@ -524,6 +542,15 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(XAmzMetaPrefix+name, value)
 	}
 
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectAccessedHead,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+		FileInfo: fileInfo,
+	})
 	return
 }
 
@@ -662,6 +689,14 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		} else {
 			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)",
 				GetRequestID(r), vol.Name(), object.Key)
+			SendEventNotification(o.notificationMgr, vol, &EventParams{
+				Request:  r,
+				Response: w,
+				Name:     ObjectRemovedDelete,
+				Bucket:   vol.Name(),
+				Key:      object.Key,
+				Region:   o.region,
+			})
 			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
 		}
 		rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
@@ -912,6 +947,16 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccessResponseXML(w, response)
+
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectCreatedCopy,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+		FileInfo: fsFileInfo,
+	})
 	return
 }
 
@@ -1377,6 +1422,16 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header
 	w.Header()[ETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
+
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectCreatedPut,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+		FileInfo: fsFileInfo,
+	})
 	return
 }
 
@@ -1461,6 +1516,15 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectRemovedDelete,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+	})
 	return
 }
 
@@ -1584,6 +1648,14 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectTaggingPut,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+	})
 	return
 }
 
@@ -1626,6 +1698,15 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectTaggingDelete,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+	})
 	return
 }
 
@@ -1891,7 +1972,7 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// get object meta
-	_, xattrs, err := vol.ObjectMeta(param.Object())
+	fsFileInfo, xattrs, err := vol.ObjectMeta(param.Object())
 	if err != nil {
 		log.LogErrorf("getObjectRetentionHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
@@ -1922,6 +2003,16 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	writeSuccessResponseXML(w, b)
+
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectAccessedGetRetention,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+		FileInfo: fsFileInfo,
+	})
 	return
 }
 

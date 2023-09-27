@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.5.3 (2023-07-19)
+
+- Fix mountinfo parsing when super options have fields with spaces.
+- Fix division by zero while parsing cgroups.
+
+## v1.5.2 (2023-03-16)
+
+- Support child control cgroups
+- Fix file descriptor leak
+- Update dependencies
+
 ## v1.5.1 (2022-04-06)
 
 - Fix cgroups v2 mountpoint detection.

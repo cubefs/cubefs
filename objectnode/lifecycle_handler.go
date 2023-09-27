@@ -101,7 +101,8 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		errorCode = InvalidBucketName
 		return
 	}
-	if _, err = o.vm.Volume(param.Bucket()); err != nil {
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		errorCode = NoSuchBucket
 		return
 	}
@@ -161,6 +162,14 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		log.LogErrorf("putBucketLifecycle failed: SetBucketLifecycle err: bucket[%v] err(%v)", param.Bucket(), err)
 		return
 	}
+
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     LifecyclePut,
+		Bucket:   param.Bucket(),
+		Region:   o.region,
+	})
 
 	log.LogInfof("putBucketLifecycle success: requestID(%v) volume(%v) lifeCycle(%v)",
 		GetRequestID(r), param.Bucket(), lifeCycle)

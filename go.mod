@@ -20,7 +20,7 @@ require (
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/fatih/color v1.15.0
 	github.com/golang/mock v1.6.0
-	github.com/golang/protobuf v1.5.2
+	github.com/golang/protobuf v1.5.3
 	github.com/google/btree v1.0.1
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
@@ -39,11 +39,11 @@ require (
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 	github.com/xtaci/smux v1.5.16
 	go.etcd.io/etcd/raft/v3 v3.5.8
-	go.uber.org/automaxprocs v1.5.1
-	golang.org/x/net v0.8.0
-	golang.org/x/sync v0.1.0
-	golang.org/x/sys v0.7.0
-	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
+	go.uber.org/automaxprocs v1.5.3
+	golang.org/x/net v0.15.0
+	golang.org/x/sync v0.3.0
+	golang.org/x/sys v0.12.0
+	golang.org/x/time v0.3.0
 	gopkg.in/bsm/ratelimit.v1 v1.0.0-20170922094635-f56db5e73a5e
 	gopkg.in/go-playground/validator.v9 v9.31.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
@@ -51,15 +51,7 @@ require (
 )
 
 require (
-	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/tklauser/go-sysconf v0.3.11 // indirect
-	github.com/tklauser/numcpus v0.6.0 // indirect
-	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-)
-
-require (
-	github.com/BurntSushi/toml v1.1.0 // indirect
-	github.com/armon/go-metrics v0.4.1 // indirect
+	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -67,26 +59,16 @@ require (
 	github.com/desertbit/columnize v2.1.0+incompatible // indirect
 	github.com/desertbit/go-shlex v0.1.1 // indirect
 	github.com/desertbit/readline v1.5.1 // indirect
-	github.com/eapache/go-resiliency v1.3.0 // indirect
-	github.com/eapache/go-xerial-snappy v0.0.0-20230111030713-bf00bc1b83b6 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
-	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
-	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
-	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
+	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
-	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/gorilla/websocket v1.4.2 // indirect
-	github.com/graphql-go/graphql v0.8.0 // indirect
+	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-hclog v1.5.0 // indirect
-	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
-	github.com/hashicorp/go-uuid v1.0.3 // indirect
-	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
@@ -96,12 +78,13 @@ require (
 	github.com/jmespath/go-jmespath v0.3.0 // indirect
 	github.com/klauspost/compress v1.15.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.1.1 // indirect
-	github.com/leodido/go-urn v1.2.3 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.18 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
+	github.com/minio/highwayhash v1.0.2 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/nats-io/jwt/v2 v2.5.2 // indirect
+	github.com/nats-io/nkeys v0.4.5 // indirect
+	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
@@ -109,14 +92,46 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/samsarahq/go v0.0.0-20181026175739-13570df44b46 // indirect
-	github.com/shirou/gopsutil v3.21.11+incompatible
-	github.com/smartystreets/goconvey v1.8.0 // indirect
+	github.com/tklauser/go-sysconf v0.3.11 // indirect
+	github.com/tklauser/numcpus v0.6.0 // indirect
+	github.com/yuin/gopher-lua v1.1.0 // indirect
+	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	golang.org/x/arch v0.0.0-20190312162104-788fe5ffcd8c // indirect
-	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
-	golang.org/x/text v0.8.0 // indirect
+	golang.org/x/crypto v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987 // indirect
 	google.golang.org/grpc v1.35.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
-	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+require (
+	github.com/BurntSushi/toml v1.1.0 // indirect
+	github.com/alicebob/miniredis/v2 v2.30.5
+	github.com/armon/go-metrics v0.4.1 // indirect
+	github.com/eapache/go-resiliency v1.3.0 // indirect
+	github.com/eapache/go-xerial-snappy v0.0.0-20230111030713-bf00bc1b83b6 // indirect
+	github.com/eclipse/paho.mqtt.golang v1.4.3
+	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
+	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
+	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/go-redis/redis v6.15.9+incompatible
+	github.com/graphql-go/graphql v0.8.0 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-hclog v1.5.0 // indirect
+	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
+	github.com/hashicorp/go-uuid v1.0.3 // indirect
+	github.com/hashicorp/serf v0.10.1 // indirect
+	github.com/leodido/go-urn v1.2.3 // indirect
+	github.com/mattn/go-isatty v0.0.18 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/nats-io/nats-server/v2 v2.8.4
+	github.com/nats-io/nats.go v1.23.0
+	github.com/nsqio/go-nsq v1.1.0
+	github.com/onsi/ginkgo v1.16.5 // indirect
+	github.com/onsi/gomega v1.27.10 // indirect
+	github.com/shirou/gopsutil v3.21.11+incompatible
+	github.com/smartystreets/goconvey v1.8.0 // indirect
+	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 )

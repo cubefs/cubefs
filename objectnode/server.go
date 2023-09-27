@@ -126,6 +126,24 @@ const (
 	// 		}
 	configAuditLog = "auditLog"
 
+	// Map type configuration item, used to configure ObjectNode to support event notification feature. For
+	// detailed parameters, see the EventNotificationConfig structure.
+	// Example:
+	// 		{
+	// 			"eventNotification": {
+	// 				"async": true,
+	// 				"kafka": {
+	// 					"cubefs": {
+	//						"enable": true,
+	// 						"topic": "event_notification_topic",
+	// 						"brokers": "192.168.80.130:9095,192.168.80.131:9095,192.168.80.132:9095"
+	// 					}
+	// 				},
+	//				...
+	// 			}
+	// 		}
+	configEventNotification = "eventNotification"
+
 	// ObjMetaCache takes each path hierarchy of the path-like S3 object key as the cache key,
 	// and map it to the corresponding posix-compatible inode
 	// when enabled, the maxDentryCacheNum must at least be the minimum of defaultMaxDentryCacheNum
@@ -192,6 +210,7 @@ type ObjectNode struct {
 
 	localAuditHandler rpc.ProgressHandler
 	externalAudit     *ExternalAudit
+	notificationMgr   *NotificationMgr
 
 	closes []func() // close other resources after http server closed
 
@@ -283,6 +302,15 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		log.LogInfof("loadConfig: setup config: %v(%v)", configAuditLog, rawAuditLog)
 	}
 
+	// parse event notification config
+	if rawNotification := cfg.GetValue(configEventNotification); rawNotification != nil {
+		if err = o.setEventNotification(rawNotification); err != nil {
+			err = fmt.Errorf("invalid %v configuration: %v", configEventNotification, err)
+			return
+		}
+		log.LogInfof("loadConfig: setup config: %v(%v)", configEventNotification, rawNotification)
+	}
+
 	// parse strict config
 	strict := cfg.GetBool(configStrict)
 	log.LogInfof("loadConfig: strict: %v", strict)
@@ -362,6 +390,75 @@ func (o *ObjectNode) setAuditLog(raw interface{}) error {
 		}
 	}
 	o.closes = append(o.closes, func() { o.externalAudit.Close() })
+
+	return nil
+}
+
+func (o *ObjectNode) setEventNotification(raw interface{}) error {
+	var conf EventNotificationConfig
+	if err := ParseJSONEntity(raw, &conf); err != nil {
+		return err
+	}
+
+	o.notificationMgr = NewNotificationMgr()
+	if conf.Async {
+		o.notificationMgr.SetAsync(conf.Async)
+	}
+	for id, notifierConfig := range conf.Kafka {
+		if notifierConfig.Enable {
+			notifier, err := NewKafkaNotifier(id, notifierConfig)
+			if err != nil {
+				return err
+			}
+			o.notificationMgr.AddNotifier(notifier)
+		}
+	}
+	for id, notifierConfig := range conf.Redis {
+		if notifierConfig.Enable {
+			notifier, err := NewRedisNotifier(id, notifierConfig)
+			if err != nil {
+				return err
+			}
+			o.notificationMgr.AddNotifier(notifier)
+		}
+	}
+	for id, notifierConfig := range conf.Nsq {
+		if notifierConfig.Enable {
+			notifier, err := NewNsqNotifier(id, notifierConfig)
+			if err != nil {
+				return err
+			}
+			o.notificationMgr.AddNotifier(notifier)
+		}
+	}
+	for id, notifierConfig := range conf.Nats {
+		if notifierConfig.Enable {
+			notifier, err := NewNatsNotifier(id, notifierConfig)
+			if err != nil {
+				return err
+			}
+			o.notificationMgr.AddNotifier(notifier)
+		}
+	}
+	for id, notifierConfig := range conf.Mqtt {
+		if notifierConfig.Enable {
+			notifier, err := NewMqttNotifier(id, notifierConfig)
+			if err != nil {
+				return err
+			}
+			o.notificationMgr.AddNotifier(notifier)
+		}
+	}
+	for id, notifierConfig := range conf.Webhook {
+		if notifierConfig.Enable {
+			notifier, err := NewWebhookNotifier(id, notifierConfig)
+			if err != nil {
+				return err
+			}
+			o.notificationMgr.AddNotifier(notifier)
+		}
+	}
+	o.closes = append(o.closes, func() { o.notificationMgr.Close() })
 
 	return nil
 }

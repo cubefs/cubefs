@@ -221,5 +221,13 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	SendEventNotification(o.notificationMgr, vol, &EventParams{
+		Request:  r,
+		Response: w,
+		Name:     ObjectAclPut,
+		Bucket:   param.Bucket(),
+		Key:      param.Object(),
+		Region:   o.region,
+	})
 	return
 }
