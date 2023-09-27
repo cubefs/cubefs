@@ -1,3 +1,17 @@
+// Copyright 2023 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package auditlog
 
 import (
@@ -41,6 +55,8 @@ const (
 	SetAuditLogBufSizeReqPath = "/auditlog/setbufsize"
 )
 
+const auditFullPathUnsupported = "(Audit full path unsupported)"
+
 var DefaultTimeOutUs = [3]uint32{100000, 500000, 1000000}
 
 type ShiftedFile []os.FileInfo
@@ -78,15 +94,15 @@ func NewAuditPrefix(p ...string) *AuditPrefix {
 }
 
 func (a *AuditPrefix) String() string {
-	ap := ""
+	builder := strings.Builder{}
 	for _, p := range a.prefixes {
-		ap = ap + p + ", "
+		builder.WriteString(p)
+		builder.WriteString(", ")
 	}
-	return ap
+	return builder.String()
 }
 
 type Audit struct {
-	volName          string
 	hostName         string
 	ipAddr           string
 	logDir           string
@@ -101,10 +117,11 @@ type Audit struct {
 	stopC            chan struct{}
 	resetWriterBuffC chan int
 	pid              int
+	lock             sync.Mutex
 }
 
 var gAdt *Audit = nil
-var AdtMutex sync.RWMutex
+var gAdtMutex sync.RWMutex
 
 func getAddr() (HostName, IPAddr string) {
 	hostName, err := os.Hostname()
@@ -135,6 +152,7 @@ func getAddr() (HostName, IPAddr string) {
 	return
 }
 
+// NOTE: for client http apis
 func ResetWriterBuffSize(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error
@@ -161,59 +179,6 @@ func ResetWriterBuffSize(w http.ResponseWriter, r *http.Request) {
 func DisableAuditLog(w http.ResponseWriter, r *http.Request) {
 	StopAudit()
 	BuildSuccessResp(w, "disable audit log success")
-}
-
-func EnableAuditLog(w http.ResponseWriter, r *http.Request) {
-	var (
-		err error
-	)
-	if err = r.ParseForm(); err != nil {
-		BuildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	logPath := r.FormValue("path")
-	if logPath == "" {
-		err = fmt.Errorf("path cannot be empty")
-		BuildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	prefix := r.FormValue("prefix")
-	if prefix == "" {
-		err = fmt.Errorf("prefix cannot be empty")
-		BuildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	logSize := 0
-
-	if logSizeStr := r.FormValue("logsize"); logSizeStr != "" {
-		val, err := strconv.Atoi(logSizeStr)
-		if err != nil {
-			err = fmt.Errorf("logSize error")
-			BuildFailureResp(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		logSize = val
-	} else {
-		logSize = DefaultAuditLogSize
-	}
-
-	err, dir, logModule, logMaxSize := GetAuditLogInfo()
-	if err != nil {
-		_, err = InitAudit(logPath, prefix, int64(logSize))
-		if err != nil {
-			err = fmt.Errorf("Init audit log fail: %v\n", err)
-			BuildFailureResp(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		info := fmt.Sprintf("audit log is initialized with params: logDir(%v) logModule(%v) logMaxSize(%v)",
-			logPath, prefix, logSize)
-		BuildSuccessResp(w, info)
-	} else {
-		info := fmt.Sprintf("audit log is already initialized with params: logDir(%v) logModule(%v) logMaxSize(%v)",
-			dir, logModule, logMaxSize)
-		BuildSuccessResp(w, info)
-	}
-
 }
 
 func BuildSuccessResp(w http.ResponseWriter, data interface{}) {
@@ -247,58 +212,29 @@ func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string
 	w.Write(jsonBody)
 }
 
-func GetAuditLogInfo() (err error, dir, logModule string, logMaxSize int64) {
-	AdtMutex.RLock()
-	defer AdtMutex.RUnlock()
-	if gAdt != nil {
-		return nil, gAdt.logDir, gAdt.logModule, gAdt.logMaxSize
-	} else {
-		return errors.New("audit log is not initialized yet"), "", "", 0
-	}
+func (a *Audit) GetInfo() (dir, logModule string, logMaxSize int64) {
+	return a.logDir, a.logModule, a.logMaxSize
 }
 
-func InitAuditWithPrefix(dir, logModule string, logMaxSize int64, prefix *AuditPrefix) (a *Audit, err error) {
-	a, err = InitAudit(dir, logModule, logMaxSize)
+func NewAuditWithPrefix(dir, logModule string, logMaxSize int64, prefix *AuditPrefix) (a *Audit, err error) {
+	a, err = NewAudit(dir, logModule, logMaxSize)
 	if err != nil {
 		return nil, err
 	}
-
 	a.prefix = prefix
 	return a, nil
 }
 
-func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
-	AdtMutex.Lock()
-	defer AdtMutex.Unlock()
-
+func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	absPath, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
 	}
-
-	if !isPathSafe(absPath) {
-		return nil, errors.New("Invalid file path")
-	}
-
-	absLogModule, err := filepath.Abs(logModule)
-	if err != nil {
-		return nil, err
-	}
-
-	if !isPathSafe(absLogModule) {
-		return nil, errors.New("Invalid file path")
-	}
-
-	if gAdt != nil {
-		return gAdt, nil
-	}
-	if absPath == "" || absLogModule == "" || logMaxSize <= 0 {
-		errInfo := fmt.Sprintf("InitAudit failed with params: dir(%v) logModule(%v) logMaxSize(%v)",
-			absPath, absLogModule, logMaxSize)
-		return nil, errors.New(errInfo)
-	}
 	host, ip := getAddr()
-	absPath = path.Join(absPath, absLogModule)
+	absPath = path.Join(absPath, logModule)
+	if !isPathSafe(absPath) {
+		return nil, errors.New("invalid file path")
+	}
 	fi, err := os.Stat(absPath)
 	if err != nil {
 		os.MkdirAll(absPath, 0755)
@@ -310,11 +246,10 @@ func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	_ = os.Chmod(absPath, 0755)
 	logName := path.Join(absPath, Audit_Module) + ".log"
 	audit := &Audit{
-		volName:          "",
 		hostName:         host,
 		ipAddr:           ip,
 		logDir:           absPath,
-		logModule:        absLogModule,
+		logModule:        logModule,
 		logMaxSize:       logMaxSize,
 		logFileName:      logName,
 		writerBufSize:    DefaultAuditLogBufSize,
@@ -324,26 +259,26 @@ func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 		resetWriterBuffC: make(chan int),
 		pid:              os.Getpid(),
 	}
-
 	err = audit.newWriterSize(audit.writerBufSize)
 	if err != nil {
 		return nil, err
 	}
-	gAdt = audit
 	go audit.flushAuditLog()
 	return audit, nil
 }
 
-func formatAuditEntry(op, src, dst string, err error, latency int64, srcInode, dstInode uint64) (entry string) {
-	AdtMutex.RLock()
-	if gAdt == nil {
-		AdtMutex.RUnlock()
-		return ""
-	}
-	ipAddr := gAdt.ipAddr
-	hostName := gAdt.hostName
-	AdtMutex.RUnlock()
-
+// NOTE:
+// common header:
+// [PREFIX] CURRENT_TIME TIME_ZONE
+// format for client:
+// [COMMON HEADER] IP_ADDR HOSTNAME OP SRC DST(Rename) ERR LATENCY SRC_INODE DST_INODE(Rename)
+// format for server(inode):
+// [COMMON HEADER] CLIENT_ADDR VOLUME OP ("nil") FULL_PATH ERR LATENCY INODE FILE_SIZE
+// format for server(dentry):
+// [COMMON HEADER] CLIENT_ADDR VOLUME OP NAME FULL_PATH ERR LATENCY INODE PARENT_INODE
+// format for server(transaction):
+// [COMMON HEADER] CLIENT_ADDR VOLUME OP TX_ID ("nil") ERR LATENCY TM_ID (0)
+func (a *Audit) formatAuditEntry(ipAddr, hostName, op, src, dst string, err error, latency int64, srcInode, dstInode uint64) (entry string) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()
@@ -362,48 +297,155 @@ func formatAuditEntry(op, src, dst string, err error, latency int64, srcInode, d
 	return
 }
 
-func FormatLog(op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
-	if entry := formatAuditEntry(op, src, dst, err, latency, srcInode, dstInode); entry != "" {
-		if gAdt.prefix != nil {
-			entry = fmt.Sprintf("%s%s", gAdt.prefix.String(), entry)
+func (a *Audit) LogClientOp(op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
+	a.formatLog(a.ipAddr, a.hostName, op, src, dst, err, latency, srcInode, dstInode)
+}
+
+func (a *Audit) LogDentryOp(clientAddr, volume, op, name, fullPath string, err error, latency int64, ino, parentIno uint64) {
+	if fullPath == "" {
+		fullPath = auditFullPathUnsupported
+	}
+	a.formatLog(clientAddr, volume, op, name, fullPath, err, latency, ino, parentIno)
+}
+
+func (a *Audit) LogInodeOp(clientAddr, volume, op, fullPath string, err error, latency int64, ino uint64, fileSize uint64) {
+	if fullPath == "" {
+		fullPath = auditFullPathUnsupported
+	}
+	a.formatLog(clientAddr, volume, op, "nil", fullPath, err, latency, ino, fileSize)
+}
+
+func (a *Audit) LogTxOp(clientAddr, volume, op, txId string, err error, latency int64) {
+	a.formatLog(clientAddr, volume, op, txId, "nil", err, latency, 0, 0)
+}
+
+func (a *Audit) formatLog(ipAddr, hostName, op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
+	if entry := a.formatAuditEntry(ipAddr, hostName, op, src, dst, err, latency, srcInode, dstInode); entry != "" {
+		if a.prefix != nil {
+			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
 		}
-		AddLog(entry)
+		a.AddLog(entry)
+	}
+}
+
+func (a *Audit) ResetWriterBufferSize(size int) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a.resetWriterBuffC <- size
+}
+
+func (a *Audit) AddLog(content string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	select {
+	case a.bufferC <- content:
+		return
+	default:
+		log.LogErrorf("async audit log failed, audit:[%s]", content)
+	}
+}
+
+// NOTE: global functions
+
+func GetAuditLogInfo() (dir, logModule string, logMaxSize int64, err error) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt != nil {
+		dir, logModule, logMaxSize = gAdt.GetInfo()
+		return
+	} else {
+		return "", "", 0, errors.New("audit log is not initialized yet")
+	}
+}
+
+func InitAuditWithPrefix(dir, logModule string, logMaxSize int64, prefix *AuditPrefix) (a *Audit, err error) {
+	a, err = InitAudit(dir, logModule, logMaxSize)
+	if err != nil {
+		return nil, err
 	}
 
+	a.prefix = prefix
+	return a, nil
+}
+
+func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
+	gAdtMutex.Lock()
+	defer gAdtMutex.Unlock()
+	if gAdt == nil {
+		adt, err := NewAudit(dir, logModule, logMaxSize)
+		if err != nil {
+			return nil, err
+		}
+		gAdt = adt
+	}
+	return gAdt, nil
+}
+
+func LogClientOp(op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.LogClientOp(op, src, dst, err, latency, srcInode, dstInode)
+}
+
+func LogDentryOp(clientAddr, volume, op, name, fullPath string, err error, latency int64, ino, parentIno uint64) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.LogDentryOp(clientAddr, volume, op, name, fullPath, err, latency, ino, parentIno)
+}
+
+func LogInodeOp(clientAddr, volume, op, fullPath string, err error, latency int64, ino uint64, fileSize uint64) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.LogInodeOp(clientAddr, volume, op, fullPath, err, latency, ino, fileSize)
+}
+
+func LogTxOp(clientAddr, volume, op, txId string, err error, latency int64) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.LogTxOp(clientAddr, volume, op, txId, err, latency)
 }
 
 func ResetWriterBufferSize(size int) {
-	AdtMutex.Lock()
-	defer AdtMutex.Unlock()
+	gAdtMutex.Lock()
+	defer gAdtMutex.Unlock()
 	if gAdt == nil {
 		return
 	}
-	gAdt.resetWriterBuffC <- size
+	gAdt.ResetWriterBufferSize(size)
 }
 
 func AddLog(content string) {
-	AdtMutex.Lock()
-	defer AdtMutex.Unlock()
+	gAdtMutex.Lock()
+	defer gAdtMutex.Unlock()
 	if gAdt == nil {
 		return
 	}
-	select {
-	case gAdt.bufferC <- content:
-		return
-	default:
-		log.LogErrorf("Async audit log failed, audit:[%s]", content)
-	}
+	gAdt.AddLog(content)
 }
 
 func StopAudit() {
-	AdtMutex.Lock()
-	defer AdtMutex.Unlock()
+	gAdtMutex.Lock()
+	defer gAdtMutex.Unlock()
 	if gAdt == nil {
 		return
 	}
-	gAdt.stop()
+	gAdt.Stop()
 	gAdt = nil
 }
+
+// NOTE: implementation details
 
 func (a *Audit) flushAuditLog() {
 	cleanTimer := time.NewTimer(DefaultCleanInterval)
@@ -434,7 +476,7 @@ func (a *Audit) newWriterSize(size int) error {
 		logFile, err := os.OpenFile(a.logFileName, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
 		if err != nil {
 			log.LogErrorf("newWriterSize failed, logFileName: %s, err: %v\n", a.logFileName, err)
-			return fmt.Errorf("OpenLogFile failed, logFileName %s\n", a.logFileName)
+			return fmt.Errorf("OpenLogFile failed, logFileName %s", a.logFileName)
 		}
 
 		a.logFile = logFile
@@ -505,7 +547,9 @@ func (a *Audit) shouldDelete(info os.FileInfo, diskSpaceLeft int64, module strin
 	return time.Since(info.ModTime()) > MaxReservedDays && isOldAuditLogFile
 }
 
-func (a *Audit) stop() {
+func (a *Audit) Stop() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
 	close(a.stopC)
 	a.writer.Flush()
 	a.logFile.Close()
@@ -543,7 +587,7 @@ func (a *Audit) shiftFiles() error {
 		if os.Rename(a.logFileName, logNewFileName) != nil {
 			log.LogErrorf("RenameFile failed, logFileName: %s, logNewFileName: %s, err: %v\n",
 				a.logFileName, logNewFileName, err)
-			return fmt.Errorf("RenameFile failed, logFileName %s, logNewFileName %s\n",
+			return fmt.Errorf("action[shiftFiles] renameFile failed, logFileName %s, logNewFileName %s",
 				a.logFileName, logNewFileName)
 		}
 	}
