@@ -749,19 +749,22 @@ func (mp *metaPartition) loadMultiVer(rootDir string) (err error) {
 		return
 	}
 
-	var verData string
+	var (
+		verData string
+		applyId uint64
+	)
 	if strings.Contains(string(data), "|") {
-		_, err = fmt.Sscanf(string(data), "%d|%s", &mp.applyID, &verData)
+		_, err = fmt.Sscanf(string(data), "%d|%s", &applyId, &verData)
 	} else {
-		_, err = fmt.Sscanf(string(data), "%d", &mp.applyID)
+		_, err = fmt.Sscanf(string(data), "%d", &applyId)
 	}
 
 	if err != nil {
 		err = errors.NewErrorf("[loadMultiVer] ReadVerList: %s", err.Error())
 		return
 	}
-	log.LogInfof("loadMultiVer: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) data(%v) versionlist %v",
-		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename, verData, mp.multiVersionList)
+	log.LogInfof("loadMultiVer: load complete: partitionID(%v) volume(%v) applyID(%v) applyId(%v) filename(%v) data(%v) versionlist %v",
+		mp.config.PartitionId, mp.config.VolName, mp.applyID, applyId, filename, verData, mp.multiVersionList)
 
 	var verList []proto.VolVersionInfo
 	if err = json.Unmarshal([]byte(verData), &verList); err != nil {
