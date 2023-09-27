@@ -243,7 +243,6 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(opItem.size))
 		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
-		respStatus, err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
 		var syncWrite bool
 		writeType := storage.RandomWriteType
 		if opItem.opcode == proto.OpRandomWrite || opItem.opcode == proto.OpSyncRandomWrite {

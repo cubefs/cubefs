@@ -469,7 +469,8 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		addr = dp.Hosts[0]
 		reqPacket = NewWriteTinyDirectly(s.inode, req.ExtentKey.PartitionId, req.FileOffset, dp)
 	} else {
-		reqPacket = NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, int(req.ExtentKey.ExtentOffset)+int(req.ExtentKey.Size), s.inode, req.FileOffset, direct, op)
+		reqPacket = NewOverwriteByAppendPacket(dp, req.ExtentKey.ExtentId, int(req.ExtentKey.ExtentOffset)+int(req.ExtentKey.Size),
+			s.inode, req.FileOffset, direct, op)
 	}
 
 	sc := &StreamConn{

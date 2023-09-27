@@ -300,7 +300,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	// multiple clients are writing concurrently.
 	e.Lock()
 	defer e.Unlock()
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
+	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
 	if IsAppendWrite(writeType) && e.dataSize != offset {
 		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
 		log.LogErrorf("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
@@ -317,7 +317,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	blockNo := offset / util.BlockSize
 	offsetInBlock := offset % util.BlockSize
 	defer func() {
-		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v", offset, size, writeType)
+		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
 		if IsAppendWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
