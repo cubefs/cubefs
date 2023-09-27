@@ -548,7 +548,6 @@ func (m *metadataManager) opQuotaCreateDentry(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.QuotaCreateDentry(req, p, remoteAddr)
-
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opQuotaCreateDentry] req: %d - %v, resp: %v, body: %s",

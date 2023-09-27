@@ -292,7 +292,6 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 	defer func() {
 		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, 0)
 	}()
-
 	ino := NewInode(req.Inode, 0)
 	if item := mp.inodeTree.Get(ino); item == nil {
 		err = fmt.Errorf("inode %v reqeust cann't found", ino)
