@@ -32,7 +32,7 @@ import (
 //
 // txIcreate create inode and tx together
 func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, gid uint32,
-	target []byte, quotaIds []uint32) (status int, info *proto.InodeInfo, err error) {
+	target []byte, quotaIds []uint32, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIcreate", err, bgTime, 1)
@@ -49,6 +49,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		Target:      target,
 		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
+		FullPath:    fullPath,
 	}
 
 	resp := new(proto.TxCreateInodeResponse)
@@ -102,7 +103,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 	return status, resp.Info, nil
 }
 
-func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32) (status int,
+func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string) (status int,
 	info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -117,6 +118,7 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 		Gid:         gid,
 		Target:      target,
 		QuotaIds:    quotaIds,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -161,7 +163,7 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int,
+func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string) (status int,
 	info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -175,6 +177,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Uid:         uid,
 		Gid:         gid,
 		Target:      target,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -292,7 +295,7 @@ func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uin
 	return
 }
 
-func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIunlink", err, bgTime, 1)
@@ -303,6 +306,7 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		TxInfo:      tx.txInfo,
+		FullPath:    fullPath,
 	}
 	resp := new(proto.TxUnlinkInodeResponse)
 	metric := exporter.NewTPCnt("OpMetaTxUnlinkInode")
@@ -320,7 +324,7 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("iunlink", err, bgTime, 1)
@@ -338,6 +342,7 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64) (status int, inf
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		UniqID:      uniqID,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -421,7 +426,7 @@ func (mw *MetaWrapper) iclearCache(mp *MetaPartition, inode uint64) (status int,
 	return status, nil
 }
 
-func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err error) {
+func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ievict", err, bgTime, 1)
@@ -431,6 +436,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -464,7 +470,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64) (status int, err 
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32, quotaIds []uint32) (status int, err error) {
+func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32, quotaIds []uint32, fullPath string) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txDcreate", err, bgTime, 1)
@@ -483,6 +489,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		Mode:        mode,
 		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
+		FullPath:    fullPath,
 	}
 
 	metric := exporter.NewTPCnt("OpMetaTxCreateDentry")
@@ -512,7 +519,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 }
 
 func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	quotaIds []uint32) (status int, err error) {
+	quotaIds []uint32, fullPath string) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -530,6 +537,7 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 		Name:        name,
 		Mode:        mode,
 		QuotaIds:    quotaIds,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -563,7 +571,7 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 	return
 }
 
-func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32) (status int, err error) {
+func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32, fullPath string) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -580,6 +588,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		Inode:       inode,
 		Name:        name,
 		Mode:        mode,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -616,7 +625,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	return
 }
 
-func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, newInode, oldIno uint64) (status int, oldInode uint64, err error) {
+func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, newInode, oldIno uint64, fullPath string) (status int, oldInode uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txDupdate", err, bgTime, 1)
@@ -634,6 +643,7 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 		Inode:       newInode,
 		OldIno:      oldIno,
 		TxInfo:      tx.txInfo,
+		FullPath:    fullPath,
 	}
 
 	resp := new(proto.TxUpdateDentryResponse)
@@ -652,7 +662,7 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, newInode uint64) (status int, oldInode uint64, err error) {
+func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, newInode uint64, fullPath string) (status int, oldInode uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dupdate", err, bgTime, 1)
@@ -668,6 +678,7 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 		ParentID:    parentID,
 		Name:        name,
 		Inode:       newInode,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -779,7 +790,7 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status in
 //	return statusOK, nil
 //}
 
-func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, ino uint64, name string) (status int, inode uint64, err error) {
+func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, ino uint64, name string, fullPath string) (status int, inode uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txDdelete", err, bgTime, 1)
@@ -792,6 +803,7 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 		Name:        name,
 		Ino:         ino,
 		TxInfo:      tx.txInfo,
+		FullPath:    fullPath,
 	}
 
 	resp := new(proto.TxDeleteDentryResponse)
@@ -811,7 +823,7 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 	return statusOK, resp.Inode, nil
 }
 
-func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, inodeCreateTime int64) (status int, inode uint64, err error) {
+func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, inodeCreateTime int64, fullPath string) (status int, inode uint64, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ddelete", err, bgTime, 1)
@@ -823,6 +835,7 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, 
 		ParentID:        parentID,
 		Name:            name,
 		InodeCreateTime: inodeCreateTime,
+		FullPath:        fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -874,6 +887,63 @@ func (mw *MetaWrapper) canDeleteInode(mp *MetaPartition, info *proto.InodeInfo, 
 	}
 
 	return true, nil
+}
+
+func (mw *MetaWrapper) ddeletes(mp *MetaPartition, parentID uint64, dentries []proto.Dentry, fullPaths []string) (status int,
+	resp *proto.BatchDeleteDentryResponse, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ddeletes", err, bgTime, 1)
+	}()
+
+	req := &proto.BatchDeleteDentryRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		ParentID:    parentID,
+		Dens:        dentries,
+		FullPaths:   fullPaths,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaBatchDeleteDentry
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("ddeletes: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("ddeletes: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status == statusAgain {
+		err = errors.New("conflict request")
+		log.LogErrorf("ddeletes: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("ddeletes: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp = new(proto.BatchDeleteDentryResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogErrorf("ddeletes: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	log.LogDebugf("ddeletes: packet(%v) mp(%v) req(%v) (%v)", packet, mp, *req, resp.Items)
+	return statusOK, resp, nil
 }
 
 func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string) (status int, inode uint64, mode uint32, err error) {
@@ -1316,7 +1386,7 @@ func (mw *MetaWrapper) getObjExtents(mp *MetaPartition, inode uint64) (status in
 // 	return status, nil
 // }
 
-func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status int, err error) {
+func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64, fullPath string) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("truncate", err, bgTime, 1)
@@ -1327,6 +1397,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		Size:        size,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1362,7 +1433,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64) (status i
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIlink", err, bgTime, 1)
@@ -1373,6 +1444,7 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64)
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		TxInfo:      tx.txInfo,
+		FullPath:    fullPath,
 	}
 
 	resp := new(proto.TxLinkInodeResponse)
@@ -1393,7 +1465,11 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64)
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
+	return mw.ilinkWork(mp, inode, proto.OpMetaLinkInode, fullPath)
+}
+
+func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ilink", err, bgTime, 1)
@@ -1411,6 +1487,7 @@ func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64) (status int, info 
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		UniqID:      uniqID,
+		FullPath:    fullPath,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1669,7 +1746,7 @@ func (mw *MetaWrapper) addMultipartPart(mp *MetaPartition, path, multipartId str
 	return status, resp.OldInode, resp.Update, nil
 }
 
-func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err error) {
+func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64, fullPath string) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("idelete", err, bgTime, 1)
@@ -1679,6 +1756,7 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64) (status int, err
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
 		Inode:       inode,
+		FullPath:    fullPath,
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaDeleteInode
