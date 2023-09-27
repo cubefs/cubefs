@@ -273,7 +273,7 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 // format for client:
 // [COMMON HEADER] IP_ADDR HOSTNAME OP SRC DST(Rename) ERR LATENCY SRC_INODE DST_INODE(Rename)
 // format for server(inode):
-// [COMMON HEADER] CLIENT_ADDR VOLUME OP ("nil") FULL_PATH ERR LATENCY INODE FILE_SIZE
+// [COMMON HEADER] CLIENT_ADDR VOLUME OP ("nil") FULL_PATH ERR LATENCY INODE FILE_SIZE(Trunc)
 // format for server(dentry):
 // [COMMON HEADER] CLIENT_ADDR VOLUME OP NAME FULL_PATH ERR LATENCY INODE PARENT_INODE
 // format for server(transaction):
