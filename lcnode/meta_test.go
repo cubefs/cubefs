@@ -26,7 +26,7 @@ func (*MockMetaWrapper) ReadDirLimitForSnapShotClean(parentID uint64, from strin
 	return nil, nil
 }
 
-func (*MockMetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64) (*proto.InodeInfo, error) {
+func (*MockMetaWrapper) Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64, fullPath string) (*proto.InodeInfo, error) {
 	return nil, nil
 }
 
@@ -38,11 +38,11 @@ func (*MockMetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	return nil
 }
 
-func (*MockMetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+func (*MockMetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
 	return nil, nil
 }
 
-func (*MockMetaWrapper) Evict(inode uint64) error {
+func (*MockMetaWrapper) Evict(inode uint64, fullPath string) error {
 	return nil
 }
 

@@ -329,16 +329,17 @@ func (s *LcScanner) batchHandleFile() {
 		}
 		return
 	}
-	log.LogDebugf("batchHandleFile num: %v, expired num: %v, expired path: %v", len(inodesInfo), len(expiredDentries), getPath())
+	paths := getPath()
+	log.LogDebugf("batchHandleFile num: %v, expired num: %v, expired path: %v", len(inodesInfo), len(expiredDentries), paths)
 
-	for _, dentry := range expiredDentries {
+	for i, dentry := range expiredDentries {
 		s.limiter.Wait(context.Background())
-		_, err := s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir())
+		_, err := s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), paths[i])
 		if err != nil {
 			log.LogWarnf("batchHandleFile DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
 			continue
 		}
-		if err = s.mw.Evict(dentry.Inode); err != nil {
+		if err = s.mw.Evict(dentry.Inode, paths[i]); err != nil {
 			log.LogWarnf("batchHandleFile Evict err: %v, dentry: %+v", err, dentry)
 		}
 	}
@@ -367,8 +368,8 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, cond *proto.ExpirationC
 	return true
 }
 
-//scan dir tree in depth when size of dirChan.In grow too much.
-//consider 40 Bytes is the ave size of dentry, 100 million ScanDentries may take up to around 4GB of Memory
+// scan dir tree in depth when size of dirChan.In grow too much.
+// consider 40 Bytes is the ave size of dentry, 100 million ScanDentries may take up to around 4GB of Memory
 func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 	log.LogDebugf("handleDirLimitDepthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
 
