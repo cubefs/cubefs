@@ -8,11 +8,11 @@ from torchvision import datasets, transforms
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['localIP'] = "127.0.0.1"
 os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '10'
-os.environ['USE_BATCH_DOWNLOAD'] = '123'
+# os.environ['USE_BATCH_DOWNLOAD'] = '123'
 
 
 def start_worker_test_concatDataset(i):
-    traindir = "/mnt/cfs/chubaofs_tech_data-test/data"
+    traindir = "/mnt/cfs/chubaofs_tech_data-test"
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -44,7 +44,7 @@ def start_worker_test_Dataset(i):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    traindir = "/mnt/cfs/chubaofs_tech_data-test/data"
+    traindir = "/mnt/cfs/chubaofs_tech_data-test/data0"
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
@@ -66,4 +66,4 @@ def start_worker_test_Dataset(i):
 
 
 if __name__ == '__main__':
-    mp.spawn(fn=start_worker_test_Dataset, nprocs=1)
+    mp.spawn(fn=start_worker_test_concatDataset, nprocs=1)
