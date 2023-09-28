@@ -54,6 +54,7 @@ Starting from version v3.3.0, Proxy node supports caching of volume and disk inf
     "blob_delete_topic": "Topic name for delete messages",
     "shard_repair_topic": "Topic name for repair messages",
     "shard_repair_priority_topic": "Messages with high-priority repair will be delivered to this topic, usually when a bid has missing chunks in multiple chunks",
+    "version": "kafka version, default is 2.1.0",
     "msg_sender": {
       "kafka": "Refer to the Kafka producer usage configuration introduction"
     }
@@ -83,6 +84,7 @@ Starting from version v3.3.0, Proxy node supports caching of volume and disk inf
     "blob_delete_topic": "blob_delete",
     "shard_repair_topic": "shard_repair",
     "shard_repair_priority_topic": "shard_repair_prior",
+    "version": "0.10.2.0",
     "msg_sender": {
       "broker_list": ["127.0.0.1:9092"]
     }
