@@ -18,7 +18,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Shopify/sarama"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/kafka"
 )
 
 func TestConfigCheckAndFix(t *testing.T) {
@@ -39,12 +42,22 @@ func TestConfigCheckAndFix(t *testing.T) {
 	require.Error(t, err, errInvalidNodeID)
 
 	cfg.Services.NodeID = 1
+	cfg.Kafka.Version = "v2.3.aa"
 	err = cfg.fixConfig()
+	require.Error(t, err, errInvalidKafka)
+
+	cfg.Kafka.Version = "0.10.0.0"
+	err = cfg.fixConfig() // ok
+	require.NoError(t, err)
+
+	cfg.Kafka.Version = "2.1.0"
+	err = cfg.fixConfig() // ok
 	require.NoError(t, err)
 	require.True(t, cfg.IsLeader())
 	require.Equal(t, "127.0.0.1:9800", cfg.Leader())
 	require.Nil(t, cfg.Follower())
 	require.Equal(t, defaultDeleteDelayH, cfg.BlobDelete.SafeDelayTimeH)
+	require.Equal(t, sarama.V2_1_0_0, kafka.DefaultKafkaVersion)
 	cfg.Services.Members[2] = "127.0.0.1:9880"
 	require.Equal(t, "127.0.0.1:9880", cfg.Follower()[0])
 
