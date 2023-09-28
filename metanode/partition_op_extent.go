@@ -216,8 +216,10 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList, 
 			needUpdate = true
 		}
 
-		VerList = append(VerList, info2)
-		verMapLocal[info2.Ver] = info2
+		if _, ok := verMapLocal[info2.Ver]; !ok {
+			verMapLocal[info2.Ver] = info2
+			VerList = append(VerList, info2)
+		}
 	}
 	mp.multiVersionList.RUnlock()
 
@@ -234,6 +236,7 @@ func (mp *metaPartition) checkVerList(masterListInfo *proto.VolVersionInfoList, 
 			exporter.Warning(expStr)
 			VerList = append(VerList, vInfo)
 			needUpdate = true
+			verMapLocal[vInfo.Ver] = vInfo
 			continue
 		}
 		if ver.Status != vInfo.Status {
