@@ -53,7 +53,8 @@ v3.3.0版本开始支持Proxy节点卷和磁盘信息的缓存
   "mq": {
     "blob_delete_topic": "删除消息主题名",
     "shard_repair_topic": "修复消息主题名",
-    "shard_repair_priority_topic": "高优修复的消息会投递至该主题，一般是某个bid在多个chunk有缺失的情况", 
+    "shard_repair_priority_topic": "高优修复的消息会投递至该主题，一般是某个bid在多个chunk有缺失的情况",
+    "version": "kafka的版本号，默认为2.1.0",
     "msg_sender": {
       "kafka": "参见kafka生产者使用配置介绍"
     }
@@ -83,6 +84,7 @@ v3.3.0版本开始支持Proxy节点卷和磁盘信息的缓存
     "blob_delete_topic": "blob_delete",
     "shard_repair_topic": "shard_repair",
     "shard_repair_priority_topic": "shard_repair_prior",
+    "version": "0.10.2.0",
     "msg_sender": {
       "broker_list": ["127.0.0.1:9092"]
     }
