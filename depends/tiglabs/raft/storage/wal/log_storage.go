@@ -282,6 +282,7 @@ func (ls *logEntryStorage) get(name logFileName) (*logEntryFile, error) {
 }
 
 func (ls *logEntryStorage) remove(name logFileName) error {
+	_ = ls.cache.Delete(name, true)
 	return os.Remove(path.Join(ls.dir, name.String()))
 }
 
