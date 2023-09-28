@@ -39,6 +39,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 var (
@@ -1520,7 +1521,7 @@ func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
 }
 
 func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
-	curTime := Now.GetCurrentTimeUnix()
+	curTime := timeutil.GetCurrentTimeUnix()
 	// begin
 	count := 0
 	needSleep := false
@@ -1546,7 +1547,7 @@ func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
 				Inode: inode.Inode,
 			}
 			ino := NewInode(req.Inode, 0)
-			curTime = Now.GetCurrentTimeUnix()
+			curTime = timeutil.GetCurrentTimeUnix()
 			if inode.ModifyTime < curTime {
 				ino.ModifyTime = curTime
 			}

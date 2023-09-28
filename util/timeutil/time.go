@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package metanode
+package timeutil
 
 import (
 	"sync"
@@ -20,44 +20,54 @@ import (
 	"time"
 )
 
-// Now
-var Now = NewNowTime()
+// GetCurrentTime returns the current time.
+func GetCurrentTime() (now time.Time) {
+	return n.getCurrentTime()
+}
 
-// NowTime defines the current time.
-type NowTime struct {
+// GetCurrentTimeUnix returns the current time unix.
+func GetCurrentTimeUnix() int64 {
+	return n.getCurrentTimeUnix()
+}
+
+// now
+var n = newNowTime()
+
+// nowTime defines the current time.
+type nowTime struct {
 	sync.RWMutex
 	now      time.Time
 	timeUnix int64
 }
 
 // GetCurrentTime returns the current time.
-func (t *NowTime) GetCurrentTime() (now time.Time) {
+func (t *nowTime) getCurrentTime() (now time.Time) {
 	t.RLock()
 	now = t.now
 	t.RUnlock()
 	return
 }
 
-// GetCurrentTimeUnix returns the current time unix
-func (t *NowTime) GetCurrentTimeUnix() int64 {
+// GetCurrentTimeUnix returns the current time unix.
+func (t *nowTime) getCurrentTimeUnix() int64 {
 	return atomic.LoadInt64(&t.timeUnix)
 }
 
-// UpdateTime updates the stored time.
-func (t *NowTime) UpdateTime(now time.Time) {
+// updateTime updates the stored time.
+func (t *nowTime) updateTime(now time.Time) {
 	t.Lock()
 	t.now = now
 	t.Unlock()
 }
 
-// UpdateTimeUnix updates the stored time unix.
-func (t *NowTime) UpdateTimeUnix(now int64) {
+// updateTimeUnix updates the stored time unix.
+func (t *nowTime) updateTimeUnix(now int64) {
 	atomic.StoreInt64(&t.timeUnix, now)
 }
 
-// NewNowTime returns a new NowTime.
-func NewNowTime() *NowTime {
-	return &NowTime{
+// newNowTime returns a new nowTime.
+func newNowTime() *nowTime {
+	return &nowTime{
 		now:      time.Now(),
 		timeUnix: time.Now().Unix(),
 	}
@@ -68,8 +78,8 @@ func init() {
 		for {
 			time.Sleep(time.Second)
 			now := time.Now()
-			Now.UpdateTime(now)
-			Now.UpdateTimeUnix(now.Unix())
+			n.updateTime(now)
+			n.updateTimeUnix(now.Unix())
 		}
 	}()
 }

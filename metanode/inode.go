@@ -19,7 +19,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
+
 	"io"
 	"math"
 	"sync"
@@ -393,7 +396,7 @@ func (i *Inode) String() string {
 // NewInode returns a new Inode instance with specified Inode ID, name and type.
 // The AccessTime and ModifyTime will be set to the current time.
 func NewInode(ino uint64, t uint32) *Inode {
-	ts := Now.GetCurrentTimeUnix()
+	ts := timeutil.GetCurrentTimeUnix()
 	i := &Inode{
 		Inode:      ino,
 		Type:       t,
@@ -1837,7 +1840,7 @@ func (i *Inode) DoReadFunc(fn func()) {
 
 // SetMtime sets mtime to the current time.
 func (i *Inode) SetMtime() {
-	mtime := Now.GetCurrentTimeUnix()
+	mtime := timeutil.GetCurrentTimeUnix()
 	i.Lock()
 	defer i.Unlock()
 	i.ModifyTime = mtime

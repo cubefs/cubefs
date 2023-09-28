@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package metanode
+package timeutil
 
 import (
 	"testing"
@@ -20,16 +20,16 @@ import (
 )
 
 func TestGetCurrentTimeUnix(t *testing.T) {
-	t1 := Now.GetCurrentTimeUnix()
-	t2 := Now.GetCurrentTime().Unix()
+	t1 := GetCurrentTimeUnix()
+	t2 := GetCurrentTime().Unix()
 	n := time.Now().Unix()
 	if n-t1 > 1 || n-t2 > 1 {
 		t.Errorf("wrong time: %d %d %d", n, t1, t2)
 	}
 
 	time.Sleep(time.Second * 2)
-	t1 = Now.GetCurrentTimeUnix()
-	t2 = Now.GetCurrentTime().Unix()
+	t1 = GetCurrentTimeUnix()
+	t2 = GetCurrentTime().Unix()
 	n = time.Now().Unix()
 	if n-t1 > 1 || n-t2 > 1 {
 		t.Errorf("wrong time: %d %d %d", n, t1, t2)
@@ -38,13 +38,13 @@ func TestGetCurrentTimeUnix(t *testing.T) {
 
 func BenchmarkGetCurrentTimeUnix(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		Now.GetCurrentTimeUnix()
+		GetCurrentTimeUnix()
 	}
 }
 
 func BenchmarkGetCurrentTime(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		Now.GetCurrentTime().Unix()
+		GetCurrentTime().Unix()
 	}
 }
 
