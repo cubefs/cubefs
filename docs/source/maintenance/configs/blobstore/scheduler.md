@@ -78,7 +78,7 @@ Starting from v3.3.0, consumer groups are supported. For previous versions, plea
 
 * broker_list, Kafka node list
 * fail_msg_sender_timeout_ms, timeout for resending messages to the failed topic after message consumption fails, default is 1000ms
-* commit_interval_ms, interval for updating consumer offset, default is 1000ms
+* version, kafka version, default is 2.1.0
 * topics，consume topics
   * shard_repair, normal topic, default are `shard_repair` and `shard_repair_prior`
   * shard_repair_failed, failed topic, default is `shard_repair_failed`
@@ -89,7 +89,7 @@ Starting from v3.3.0, consumer groups are supported. For previous versions, plea
 {
   "broker_list": ["127.0.0.1:9095","127.0.0.1:9095","127.0.0.1:9095"],
   "fail_msg_sender_timeout_ms": 1000,
-  "commit_interval_ms": 1000,
+  "version": "0.10.2.0",
   "topics": {
     "shard_repair": [
       "shard_repair",
@@ -220,6 +220,7 @@ Starting from version v3.3.0, it is supported to configure the data deletion tim
 * safe_delay_time_h, deletion protection period, default is 72h. If a negative value is configured, the data will be deleted directly.
 * message_punish_threshold, Punishment threshold, if the corresponding number of failed attempts to consume a message exceeds this value, a punishment will be imposed for a period of time to avoid excessive retries within a short period. The default value is 3.
 * message_punish_time_m, punishment time, default 10 minutes
+* message_slow_down_time_s, slow down when it overload, default 3 second
 * delete_log, directory for storing deletion logs, needs to be configured, chunkbits default is 29
 * delete_hour_range, supports configuring the deletion time period in 24-hour format. For example, the following configuration indicates that deletion requests will only be initiated during the time period between 1:00 a.m. and 3:00 a.m. If not configured, deletion will be performed all day.
 * max_batch_size, batch consumption size of kafka messages, default is 10. If the batch is full or the time interval is reached, consume the Kafka messages accumulated during this period
@@ -229,6 +230,7 @@ Starting from version v3.3.0, it is supported to configure the data deletion tim
   "task_pool_size": 400,
   "message_punish_threshold": 3,
   "message_punish_time_m": 10,
+  "message_slow_down_time_s": 3,
   "safe_delay_time_h": 12,
   "delete_hour_range": {
     "from": 1,
