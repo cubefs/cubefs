@@ -19,8 +19,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/timeutil"
+
 	"io"
 	"time"
 
@@ -162,7 +165,7 @@ func (mp *metaPartition) getInodeTopLayer(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	i := item.(*Inode)
-	ctime := Now.GetCurrentTime().Unix()
+	ctime := timeutil.GetCurrentTimeUnix()
 	/*
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.
 	 * Shall add inode lock in the future.
@@ -186,7 +189,7 @@ func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse
 		return
 	}
 
-	ctime := Now.GetCurrentTime().Unix()
+	ctime := timeutil.GetCurrentTimeUnix()
 
 	/*
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.

@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 const (
@@ -59,7 +60,7 @@ func newUniqChecker() *uniqChecker {
 		inQue:    newUniqOpQueue(),
 		keepTime: opKeepTime,
 		keepOps:  opKeepOps,
-		rtime:    Now.GetCurrentTime().Unix(),
+		rtime:    timeutil.GetCurrentTimeUnix(),
 	}
 }
 
@@ -210,7 +211,7 @@ func (checker *uniqChecker) doEvict(evictBid uint64) {
 	checker.inQue.truncate(cnt - 1)
 
 	//regular rebuild map to reduce memory usage
-	n := Now.GetCurrentTime().Unix()
+	n := timeutil.GetCurrentTimeUnix()
 	if n-checker.rtime > opRebuildSec {
 		checker.op = make(map[uint64]struct{}, checker.inQue.len())
 		checker.inQue.scan(func(op *uniqOp) bool {

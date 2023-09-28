@@ -17,9 +17,10 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"os"
 	"sort"
+
+	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -535,7 +536,7 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 // 	ino := NewInode(req.Inode, 0)
 // 	inode := mp.inodeTree.Get(ino).(*Inode)
 // 	inode.Extents.Delete(req.Extents)
-// 	curTime := Now.GetCurrentTime().Unix()
+// 	curTime := timeutil.GetCurrentTimeUnix()
 // 	if inode.ModifyTime < curTime {
 // 		inode.ModifyTime = curTime
 // 	}
