@@ -18,6 +18,8 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/Shopify/sarama"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/cmd"
@@ -47,6 +49,7 @@ var (
 
 	// ErrIllegalTopic illegal topic
 	ErrIllegalTopic = errors.New("illegal topic")
+	ErrIllegalKafka = errors.New("illegal kafka version")
 )
 
 // MQConfig is mq config
@@ -55,6 +58,7 @@ type MQConfig struct {
 	ShardRepairTopic         string            `json:"shard_repair_topic"`
 	ShardRepairPriorityTopic string            `json:"shard_repair_priority_topic"`
 	MsgSender                kafka.ProducerCfg `json:"msg_sender"`
+	Version                  string            `json:"version"`
 }
 
 type Config struct {
@@ -225,5 +229,12 @@ func (c *Config) checkAndFix() (err error) {
 	defaulter.Equal(&c.ExpiresTicks, defaultExpiresTicks)
 	defaulter.LessOrEqual(&c.Clustermgr.Config.ClientTimeoutMs, defaultTimeoutMS)
 	defaulter.LessOrEqual(&c.MQ.MsgSender.TimeoutMs, defaultTimeoutMS)
+	if c.MQ.Version != "" {
+		kafkaVersion, err := sarama.ParseKafkaVersion(c.MQ.Version)
+		if err != nil {
+			return ErrIllegalKafka
+		}
+		kafka.DefaultKafkaVersion = kafkaVersion
+	}
 	return nil
 }
