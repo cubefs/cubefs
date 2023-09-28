@@ -15,11 +15,14 @@
 package scheduler
 
 import (
+	"github.com/Shopify/sarama"
+
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/cmd"
+	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
@@ -131,6 +134,7 @@ type KafkaConfig struct {
 	BrokerList             []string `json:"broker_list"`
 	Topics                 Topics   `json:"topics"`
 	FailMsgSenderTimeoutMs int64    `json:"fail_msg_sender_timeout_ms"`
+	Version                string   `json:"version"`
 }
 
 type Services struct {
@@ -181,7 +185,9 @@ func (c *Config) fixConfig() (err error) {
 	defaulter.LessOrEqual(&c.VolumeCacheUpdateIntervalS, defaultVolumeCacheUpdateIntervalS)
 	defaulter.LessOrEqual(&c.TaskLog.ChunkBits, defaultDeleteLogChunkSize)
 	c.fixClientConfig()
-	c.fixKafkaConfig()
+	if err := c.fixKafkaConfig(); err != nil {
+		return errInvalidKafka
+	}
 	c.fixBalanceConfig()
 	c.fixDiskDropConfig()
 	c.fixDiskRepairConfig()
@@ -204,7 +210,7 @@ func (c *Config) fixClientConfig() {
 	defaulter.LessOrEqual(&c.Scheduler.HostRetry, defaultRetryHostsCnt)
 }
 
-func (c *Config) fixKafkaConfig() {
+func (c *Config) fixKafkaConfig() (err error) {
 	defaulter.Empty(&c.Kafka.Topics.BlobDelete, defaultBlobDeleteNormalTopic)
 	defaulter.Empty(&c.Kafka.Topics.BlobDeleteFailed, defaultBlobDeleteFailedTopic)
 	defaulter.Empty(&c.Kafka.Topics.ShardRepairFailed, defaultShardRepairFailedTopic)
@@ -212,6 +218,14 @@ func (c *Config) fixKafkaConfig() {
 	if len(c.Kafka.Topics.ShardRepair) == 0 {
 		c.Kafka.Topics.ShardRepair = []string{defaultShardRepairNormalTopic, defaultShardRepairPriorityTopic}
 	}
+	if c.Kafka.Version != "" {
+		kafkaVersion, err := sarama.ParseKafkaVersion(c.Kafka.Version)
+		if err != nil {
+			return err
+		}
+		kafka.DefaultKafkaVersion = kafkaVersion
+	}
+	return nil
 }
 
 func (c *Config) fixBalanceConfig() {

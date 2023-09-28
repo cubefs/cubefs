@@ -47,6 +47,7 @@ var (
 	errInvalidMembers   = errors.New("invalid members")
 	errInvalidLeader    = errors.New("invalid leader")
 	errInvalidNodeID    = errors.New("invalid node_id")
+	errInvalidKafka     = errors.New("invalid kafka")
 )
 
 var (
