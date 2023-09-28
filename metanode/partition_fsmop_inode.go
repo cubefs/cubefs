@@ -493,11 +493,12 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	}
 
 	if status = mp.uidManager.addUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1]); status != proto.OpOk {
-		log.LogErrorf("fsmAppendExtentsWithCheck.addUidSpace status %v", status)
+		log.LogErrorf("fsmAppendExtentsWithCheck.mp %v addUidSpace status %v", mp.config.PartitionId, status)
 		return
 	}
 
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] ino %v isSplit %v ek %v hist len %v", fsmIno.Inode, isSplit, eks[0], fsmIno.getLayerLen())
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] mp %v ino %v isSplit %v ek %v hist len %v discardExtentKey %v",
+		mp.config.PartitionId, fsmIno.Inode, isSplit, eks[0], fsmIno.getLayerLen(), discardExtentKey)
 
 	appendExtParam := &AppendExtParam{
 		mpId:             mp.config.PartitionId,
@@ -540,11 +541,12 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	if status == proto.OpConflictExtentsErr {
 		mp.extDelCh <- eks[:1]
 		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1])
-		log.LogDebugf("fsmAppendExtentsWithCheck delExtents inode(%v) ek(%v)", fsmIno.Inode, delExtents)
+		log.LogDebugf("fsmAppendExtentsWithCheck mp %v delExtents inode(%v) ek(%v)", mp.config.PartitionId, fsmIno.Inode, delExtents)
 	}
 
 	mp.updateUsedInfo(int64(fsmIno.Size)-oldSize, 0, fsmIno.Inode)
-	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", fsmIno.Inode, eks[0], delExtents, discardExtentKey, status)
+	log.LogInfof("fsmAppendExtentWithCheck mp %v inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)",
+		mp.config.PartitionId, fsmIno.Inode, eks[0], delExtents, discardExtentKey, status)
 
 	return
 }
