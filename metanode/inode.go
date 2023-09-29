@@ -1494,10 +1494,10 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 
 	var err error
 	param.ek.SetSeq(param.reqVer)
-	log.LogDebugf("action[SplitExtentWithCheck] inode %v,ver %v,ek %v,hist len %v", i.Inode, param.reqVer, param.ek, i.getLayerLen())
+	log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].inode %v,ver %v,ek %v,hist len %v", param.mpId, i.Inode, param.reqVer, param.ek, i.getLayerLen())
 
 	if param.reqVer != i.getVer() {
-		log.LogDebugf("action[SplitExtentWithCheck] CreateVer ver %v", param.reqVer)
+		log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].CreateVer ver %v", param.mpId, param.reqVer)
 		i.CreateVer(param.reqVer)
 	}
 	i.Lock()
@@ -1506,7 +1506,7 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 	i.buildMultiSnap()
 	delExtents, status = i.Extents.SplitWithCheck(param.mpId, i.Inode, param.ek, i.multiSnap.ekRefMap)
 	if status != proto.OpOk {
-		log.LogErrorf("action[SplitExtentWithCheck] status %v", status)
+		log.LogErrorf("action[SplitExtentWithCheck] mpId[%v].status %v", param.mpId, status)
 		return
 	}
 	if len(delExtents) == 0 {
@@ -1518,7 +1518,7 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 	}
 
 	if delExtents, err = i.RestoreExts2NextLayer(param.mpId, delExtents, param.mpVer, 0); err != nil {
-		log.LogErrorf("action[fsmAppendExtentWithCheck] ino %v RestoreMultiSnapExts split error %v", i.Inode, err)
+		log.LogErrorf("action[fsmAppendExtentWithCheck] mpId[%v].ino %v RestoreMultiSnapExts split error %v", param.mpId, i.Inode, err)
 		return
 	}
 	if proto.IsHot(param.volType) {
@@ -1584,11 +1584,11 @@ type AppendExtParam struct {
 func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto.ExtentKey, status uint8) {
 
 	param.ek.SetSeq(param.mpVer)
-	log.LogDebugf("action[AppendExtentWithCheck] mpVer %v inode %v and fsm ver %v,req ver %v,ek %v,hist len %v",
-		param.mpVer, i.Inode, i.getVer(), param.reqVer, param.ek, i.getLayerLen())
+	log.LogDebugf("action[AppendExtentWithCheck] mpId[%v].mpVer %v inode %v and fsm ver %v,req ver %v,ek %v,hist len %v",
+		param.mpId, param.mpVer, i.Inode, i.getVer(), param.reqVer, param.ek, i.getLayerLen())
 
 	if param.mpVer != i.getVer() {
-		log.LogDebugf("action[AppendExtentWithCheck] ver %v inode ver %v", param.reqVer, i.getVer())
+		log.LogDebugf("action[AppendExtentWithCheck] mpId[%v].ver %v inode ver %v", param.mpId, param.reqVer, i.getVer())
 		i.CreateVer(param.mpVer)
 	}
 
@@ -1598,7 +1598,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 	refFunc := func(key *proto.ExtentKey) { i.insertEkRefMap(param.mpId, key) }
 	delExtents, status = i.Extents.AppendWithCheck(i.Inode, param.ek, refFunc, param.discardExtents)
 	if status != proto.OpOk {
-		log.LogErrorf("action[AppendExtentWithCheck] status %v", status)
+		log.LogErrorf("action[AppendExtentWithCheck] mpId[%v].status %v", param.mpId, status)
 		return
 	}
 
@@ -1609,7 +1609,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 			return
 		}
 		if delExtents, err = i.RestoreExts2NextLayer(param.mpId, delExtents, param.mpVer, 0); err != nil {
-			log.LogErrorf("action[AppendExtentWithCheck] RestoreMultiSnapExts err %v", err)
+			log.LogErrorf("action[AppendExtentWithCheck] mpId[%v].RestoreMultiSnapExts err %v", param.mpId, err)
 			return nil, proto.OpErr
 		}
 	}

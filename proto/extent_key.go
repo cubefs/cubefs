@@ -76,6 +76,29 @@ func (k *ExtentKey) AddModGen() {
 	k.SnapInfo.ModGen++
 }
 
+func (k *ExtentKey) Equals(ek *ExtentKey) bool {
+	if k == nil && ek == nil {
+		return true
+	} else if k == nil || ek == nil {
+		return false
+	}
+	if k.PartitionId != ek.PartitionId ||
+		k.Size != ek.Size ||
+		k.ExtentOffset != ek.ExtentOffset ||
+		k.FileOffset != ek.FileOffset ||
+		k.ExtentId != ek.ExtentId ||
+		k.CRC != ek.CRC {
+		return false
+	}
+	if k.SnapInfo == nil && ek.SnapInfo == nil {
+		return true
+	} else if k.SnapInfo == nil || ek.SnapInfo == nil {
+		return false
+	}
+	return k.SnapInfo.IsSplit == ek.SnapInfo.IsSplit &&
+		k.SnapInfo.VerSeq == ek.SnapInfo.VerSeq
+}
+
 func (k *ExtentKey) IsSplit() bool {
 	if k.SnapInfo == nil {
 		return false
