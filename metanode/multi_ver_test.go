@@ -1454,3 +1454,9 @@ func TestUpdateDenty(t *testing.T) {
 	assert.True(t, status == proto.OpOk)
 	assert.True(t, denRsp.Inode == 1000)
 }
+
+func TestCheckEkEqual(t *testing.T) {
+	ek1 := &proto.ExtentKey{FileOffset: 10, SnapInfo: &proto.ExtSnapInfo{VerSeq: 10, IsSplit: true}}
+	ek2 := &proto.ExtentKey{FileOffset: 10, SnapInfo: &proto.ExtSnapInfo{VerSeq: 10, IsSplit: true}}
+	assert.True(t, ek1.Equals(ek2))
+}
