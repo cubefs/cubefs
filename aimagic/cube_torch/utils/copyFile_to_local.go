@@ -16,18 +16,25 @@ import (
 )
 
 func copyFIle(src,dst string)(err error){
+	fsrc,errsrc:=os.Stat(src)
+	if errsrc!=nil {
+		return errsrc
+	}
+
+	fdst,errdst:=os.Stat(dst)
+	if errdst==nil{
+		if fsrc.Size()==fdst.Size(){
+			return nil
+		}
+
+	}
+
 	var data []byte
 	data,err=ioutil.ReadFile(src)
 	if err!=nil {
 		return
 	}
 
-	fi,err:=os.Stat(dst)
-	if err==nil {
-		if fi.Size()==int64(len(data)){
-			return nil
-		}
-	}
 	err=ioutil.WriteFile(dst,data,0777)
 
 	return

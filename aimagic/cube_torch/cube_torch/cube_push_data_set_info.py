@@ -11,9 +11,13 @@ from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 
 LOCAL_IP = 'localIP'
 USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
+PREFETCH_THREAD_NUM = 'PREFETCH_THREAD_NUM'
 avali_dataset_time = 60 * 5
 SHARED_MEMORY_SIZE = 'SHARED_MEMORY_SIZE'
 default_shared_memory_size = 4 * 1024 * 1024 * 1024
+
+Min_PREFETCH_THREAD_NUM = 1
+Max_PREFETCH_THREAD_NUM = 5
 
 
 class CubePushDataSetInfo(CubeDataSetInfo):
@@ -26,6 +30,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prof_port = ""
         self._is_use_batch_download = os.environ.get(USE_BATCH_DOWNLOAD)
         self.shared_memory_size = os.environ.get(SHARED_MEMORY_SIZE)
+        self.prefetch_thread_num = os.environ.get(PREFETCH_THREAD_NUM)
         self.local_ip = os.environ.get(LOCAL_IP)
         self.cube_prefetch_ttl = 30
         self.dataset_dir_prefix = ".cube_torch"
@@ -100,6 +105,15 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
         self.shared_memory_size = shared_memory
 
+        if self.prefetch_thread_num is None:
+            self.prefetch_thread_num = Min_PREFETCH_THREAD_NUM
+
+        try:
+            thread_num = int(self.prefetch_thread_num)
+        except Exception:
+            thread_num = Min_PREFETCH_THREAD_NUM
+        self.prefetch_thread_num = thread_num
+
         if not self.is_valid_ip(self.local_ip):
             raise ValueError("{} is not valid,please reset {} ".format(self.local_ip, LOCAL_IP))
 
@@ -161,9 +175,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
             if check_consistency and not self.load_train_name_check_consistency(train_name, train_data):
                 raise ValueError("train_file_name:{} consistency check failed".format(train_name))
 
-        self.cube_prefetch_file_list = train_file_list
-        print("write_cube_train_files set cube_prefetch_files is {}".format(self.cube_prefetch_file_list))
-        return self.cube_prefetch_file_list
+        return train_file_list
 
     def set_cube_prefetch_file_list_by_datasets(self):
         if len(self.cube_prefetch_file_list) != 0:
@@ -247,3 +259,6 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         if self._is_use_batch_download:
             return 1
         return 1
+
+    def get_cube_prefetch_thread_cnt(self):
+        return self.prefetch_thread_num

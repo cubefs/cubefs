@@ -7,6 +7,7 @@ import asyncio
 import builtins
 import json
 import logging
+import os
 import queue
 import random
 import threading
@@ -84,9 +85,7 @@ def _post_to_storage(index_list, notify_storage_addr):
         return
     try:
         data = json.dumps(index_list)
-        with requests.post(notify_storage_addr, data, timeout=2) as response:
-            if response.status_code != 200:
-                raise ValueError("unavali request,response:{}".format(response.text))
+        requests.post(notify_storage_addr, data, timeout=2)
     except Exception as e:
         print('_post_to_storage{} _post_to_storage error{} index_list{} '.format(notify_storage_addr, e, index_list))
         return
@@ -131,13 +130,17 @@ def _loop_batch_download_worker(wait_read_train_file_queue, downloader_info, eve
 def _loop_notify_storage_thread(wait_read_train_file_queue, cube_prefetch_addr, event):
     while not event.is_set():
         try:
-            copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
+            copy_file_indexs = wait_read_train_file_queue.get(timeout=2)
+            if copy_file_indexs is None:
+                event.set()
+                break
             index_list = [copy_file_indexs]
             _post_to_storage_async(index_list, cube_prefetch_addr)
         except queue.Empty:
             continue
         except Exception as e:
             continue
+    print("pid:{} _loop_notify_storage_thread exit".format(os.getpid()))
 
 
 def _init_batchdownload_worker_info(storage_info):
@@ -152,13 +155,27 @@ def _init_batchdownload_worker_info(storage_info):
     set_global_interception_io(inception)
 
 
-def _init_notify_storage_thread(storage_info):
-    torch.set_num_threads(2)
-    e = threading.Event()
-    t = threading.Thread(target=_loop_notify_storage_thread, args=(storage_info[1], storage_info[2], e))
-    t.daemon = True
-    t.start()
-    return t, e
+def _init_prefetch_threads(worker_id, storage_info):
+    notify_storage_thread = None
+    notify_storage_event = None
+    if worker_id < storage_info[1]:
+        torch.set_num_threads(2)
+        notify_storage_event = threading.Event()
+        notify_storage_thread = threading.Thread(target=_loop_notify_storage_thread,
+                                                 args=(storage_info[2], storage_info[3], notify_storage_event),
+                                                 daemon=True)
+        notify_storage_thread.daemon = True
+        notify_storage_thread.start()
+    else:
+        torch.set_num_threads(1)
+    return notify_storage_thread, notify_storage_event
+
+
+def _send_stop_signal_to_prefetch_thread(worker_id, thread_event, thread, storage_info):
+    if thread_event is not None and worker_id < storage_info[1]:
+        storage_info[2].put(None)
+        thread_event.set()
+        thread.join()
 
 
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
@@ -169,7 +186,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
     if is_use_batch_download:
         _init_batchdownload_worker_info(storage_info)
     else:
-        notify_storage_thread, notify_storage_event = _init_notify_storage_thread(storage_info)
+        notify_storage_thread, notify_storage_event = _init_prefetch_threads(worker_id, storage_info)
     try:
         seed = base_seed + worker_id
         random.seed(seed)
@@ -226,6 +243,8 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
             elif r is None:
                 # Received the final signal
                 assert done_event.is_set() or iteration_end
+                _send_stop_signal_to_prefetch_thread(worker_id, notify_storage_event, notify_storage_thread,
+                                                     storage_info)
                 break
             elif done_event.is_set() or iteration_end:
                 # `done_event` is set. But I haven't received the final signal
@@ -253,11 +272,9 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
             data_queue.put((idx, data))
             del data, idx, index, r  # save memory
 
-        if is_use_batch_download:
-            notify_storage_event.set()
-            notify_storage_thread.join()
     except KeyboardInterrupt:
         pass
+
     if done_event.is_set():
         data_queue.cancel_join_thread()
         data_queue.close()
