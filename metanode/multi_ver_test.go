@@ -1450,6 +1450,7 @@ func TestUpdateDenty(t *testing.T) {
 	mp.UpdateDentry(&UpdateDentryReq{Name: "testfile", ParentID: 1, Inode: 2000}, &Packet{})
 	den := &Dentry{Name: "testfile", ParentId: 1}
 	den.setVerSeq(math.MaxUint64)
+
 	denRsp, status := mp.getDentry(den)
 	assert.True(t, status == proto.OpOk)
 	assert.True(t, denRsp.Inode == 1000)
