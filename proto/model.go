@@ -16,6 +16,7 @@ package proto
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"sync"
 	"time"
 )
@@ -363,6 +364,37 @@ type VolVersionInfoList struct {
 	Strategy        VolumeVerStrategy
 	TemporaryVerMap map[uint64]*VolVersionInfo
 	sync.RWMutex
+}
+
+func (v *VolVersionInfoList) GetNextOlderVer(ver uint64) (verSeq uint64, err error) {
+	v.RLock()
+	defer v.RUnlock()
+	log.LogDebugf("getNextOlderVer ver %v", ver)
+	for idx, info := range v.VerList {
+		log.LogDebugf("getNextOlderVer id %v ver %v info %v", idx, info.Ver, info)
+		if info.Ver >= ver {
+			if idx == 0 {
+				return 0, fmt.Errorf("not found")
+			}
+			return v.VerList[idx-1].Ver, nil
+		}
+	}
+	log.LogErrorf("getNextOlderVer ver %v not found", ver)
+	return 0, fmt.Errorf("version not exist")
+}
+
+func (v *VolVersionInfoList) GetNextNewerVer(ver uint64) (verSeq uint64, err error) {
+	v.RLock()
+	defer v.RUnlock()
+	log.LogDebugf("getNextOlderVer ver %v", ver)
+	for idx, info := range v.VerList {
+		log.LogDebugf("getNextOlderVer id %v ver %v info %v", idx, info.Ver, info)
+		if info.Ver > ver {
+			return info.Ver, nil
+		}
+	}
+	log.LogErrorf("getNextOlderVer ver %v not found", ver)
+	return 0, fmt.Errorf("version not exist")
 }
 
 func (v *VolVersionInfoList) GetLastVer() uint64 {

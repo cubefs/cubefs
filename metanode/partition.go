@@ -221,7 +221,7 @@ type OpMultiVersion interface {
 	GetAllVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
 	GetSpecVersionInfo(req *proto.MultiVersionOpRequest, p *Packet) (err error)
 	GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest, rsp *proto.GetExtentsResponse)
-	checkVerList(info *proto.VolVersionInfoList, sync bool) (err error)
+	checkVerList(info *proto.VolVersionInfoList, sync bool) (needUpdate bool, err error)
 	checkByMasterVerlist(mpVerList *proto.VolVersionInfoList, masterVerList *proto.VolVersionInfoList) (err error)
 }
 
@@ -882,20 +882,20 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 // NewMetaPartition creates a new meta partition with the specified configuration.
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
-		config:           conf,
-		dentryTree:       NewBtree(),
-		inodeTree:        NewBtree(),
-		extendTree:       NewBtree(),
-		multipartTree:    NewBtree(),
-		stopC:            make(chan bool),
-		storeChan:        make(chan *storeMsg, 100),
-		freeList:         newFreeList(),
-		extDelCh:         make(chan []proto.ExtentKey, defaultDelExtentsCnt),
-		extReset:         make(chan struct{}),
-		vol:              NewVol(),
-		manager:          manager,
-		uniqChecker:      newUniqChecker(),
-		verSeq:           conf.VerSeq,
+		config:        conf,
+		dentryTree:    NewBtree(),
+		inodeTree:     NewBtree(),
+		extendTree:    NewBtree(),
+		multipartTree: NewBtree(),
+		stopC:         make(chan bool),
+		storeChan:     make(chan *storeMsg, 100),
+		freeList:      newFreeList(),
+		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		extReset:      make(chan struct{}),
+		vol:           NewVol(),
+		manager:       manager,
+		uniqChecker:   newUniqChecker(),
+		verSeq:        conf.VerSeq,
 		multiVersionList: &proto.VolVersionInfoList{
 			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 		},
@@ -1412,27 +1412,22 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 			}
 			mp.multiVersionList.RLock()
 			volVersionInfoList := &proto.VolVersionInfoList{
-				VerList: mp.multiVersionList.VerList,
+				VerList:         mp.multiVersionList.VerList,
 				TemporaryVerMap: mp.multiVersionList.TemporaryVerMap,
 			}
 			mp.multiVersionList.RUnlock()
-
-			for _, version := range volVersionInfoList.VerList {
-				if len(volVersionInfoList.TemporaryVerMap) > 0 {
-					if _, exist := volVersionInfoList.TemporaryVerMap[version.Ver];exist {
-						if version.Status == proto.VersionDeleting {
-							break
-						}
-						version.Status = proto.VersionDeleting
-						snapQueue <- nil
-						go func(verSeq uint64) {
-							mp.delPartitionVersion(verSeq)
-							<- snapQueue
-						}(version.Ver)
-					}
+			for _, version := range volVersionInfoList.TemporaryVerMap {
+				if version.Status == proto.VersionDeleting {
+					continue
 				}
+				snapQueue <- nil
+				version.Status = proto.VersionDeleting
+				go func(verSeq uint64) {
+					mp.delPartitionVersion(verSeq)
+					delete(volVersionInfoList.TemporaryVerMap, verSeq)
+					<-snapQueue
+				}(version.Ver)
 			}
-			//mp.multiVersionList.RUnlock()
 
 		case <-mp.stopC:
 			log.LogWarnf("[multiVersionTTLWork] stoped, mp(%d)", mp.config.PartitionId)
@@ -1454,23 +1449,6 @@ func (mp *metaPartition) delPartitionVersion(verSeq uint64) {
 	go mp.delPartitionExtendsVersion(reqVerSeq, &wg)
 	go mp.delPartitionDentriesVersion(reqVerSeq, &wg)
 	wg.Wait()
-
-	mp.multiVersionList.Lock()
-	defer mp.multiVersionList.Unlock()
-	for id, verInfo := range mp.multiVersionList.VerList {
-		if verInfo.Ver > verSeq {
-			log.LogWarnf("action[delPartitionInodesVersion] mp %v verSeq iterator del and done but not found seq %v",
-				mp.config.PartitionId, verSeq)
-			break
-		}
-		if verInfo.Ver == verSeq {
-			mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:id], mp.multiVersionList.VerList[id+1:]...)
-			log.LogWarnf("action[delPartitionInodesVersion] mp %v verSeq iterator del and done found seq %v and delete",
-				mp.config.PartitionId, verSeq)
-			delete(mp.multiVersionList.TemporaryVerMap, verSeq)
-			return
-		}
-	}
 }
 
 func (mp *metaPartition) delPartitionDentriesVersion(verSeq uint64, wg *sync.WaitGroup) {
@@ -1488,11 +1466,11 @@ func (mp *metaPartition) delPartitionDentriesVersion(verSeq uint64, wg *sync.Wai
 
 		p := &Packet{}
 		req := &proto.DeleteDentryRequest{
-			VolName: mp.config.VolName,
-			ParentID: mp.config.PartitionId,
+			VolName:     mp.config.VolName,
+			ParentID:    mp.config.PartitionId,
 			PartitionID: den.ParentId,
-			Name: den.Name,
-			Verseq: verSeq,
+			Name:        den.Name,
+			Verseq:      verSeq,
 		}
 		mp.DeleteDentry(req, p)
 		// check empty result.
@@ -1526,10 +1504,10 @@ func (mp *metaPartition) delPartitionExtendsVersion(verSeq uint64, wg *sync.Wait
 
 		p := &Packet{}
 		req := &proto.RemoveXAttrRequest{
-			VolName: mp.config.VolName,
+			VolName:     mp.config.VolName,
 			PartitionId: mp.config.PartitionId,
-			Inode: e.inode,
-			VerSeq: verSeq,
+			Inode:       e.inode,
+			VerSeq:      verSeq,
 		}
 		mp.RemoveXAttr(req, p)
 		// check empty result.
@@ -1549,7 +1527,7 @@ func (mp *metaPartition) delPartitionExtendsVersion(verSeq uint64, wg *sync.Wait
 	})
 }
 
-func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitGroup)  {
+func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// begin
 	count := 0
