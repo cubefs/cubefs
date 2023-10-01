@@ -202,7 +202,7 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 		}
 	}
 
-	for verSeq, _ := range  mp.multiVersionList.TemporaryVerMap {
+	for verSeq := range mp.multiVersionList.TemporaryVerMap {
 		for index, verInfo := range mp.multiVersionList.VerList {
 			if verInfo.Ver == verSeq {
 				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:index], mp.multiVersionList.VerList[index+1:]...)
@@ -213,22 +213,21 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 	return
 }
 
-func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, sync bool) (err error) {
+func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, sync bool) (needUpdate bool, err error) {
 	mp.multiVersionList.RLock()
 	verMapLocal := make(map[uint64]*proto.VolVersionInfo)
-	verMapMaster := make(map[uint64]*proto.VolVersionInfo)
+	verMapReq := make(map[uint64]*proto.VolVersionInfo)
 	for _, ver := range reqVerListInfo.VerList {
-		verMapMaster[ver.Ver] = ver
+		verMapReq[ver.Ver] = ver
 	}
 
 	var (
-		VerList    []*proto.VolVersionInfo
-		needUpdate bool
+		VerList []*proto.VolVersionInfo
 	)
 
 	for _, info2 := range mp.multiVersionList.VerList {
 		log.LogDebugf("checkVerList. vol %v mp %v ver info %v", mp.config.VolName, mp.config.PartitionId, info2)
-		vms, exist := verMapMaster[info2.Ver]
+		vms, exist := verMapReq[info2.Ver]
 		if !exist {
 			log.LogWarnf("checkVerList. vol %v mp %v version info(%v) not exist in master (%v)",
 				mp.config.VolName, mp.config.PartitionId, info2, reqVerListInfo.VerList)
@@ -255,6 +254,9 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 			expStr := fmt.Sprintf("checkVerList.vol %v mp %v not found %v in mp list and append version %v",
 				mp.config.VolName, mp.config.PartitionId, vInfo.Ver, vInfo)
 			log.LogWarnf("[checkVerList] vol %v", expStr)
+			if vInfo.Ver < mp.multiVersionList.GetLastVer() {
+				continue
+			}
 			exporter.Warning(expStr)
 			VerList = append(VerList, vInfo)
 			needUpdate = true

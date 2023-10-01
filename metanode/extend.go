@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"sync"
 
 	"github.com/cubefs/cubefs/util/btree"
@@ -31,7 +32,28 @@ type Extend struct {
 	dataMap   map[string][]byte
 	verSeq    uint64
 	multiVers []*Extend
+	versionMu sync.RWMutex
 	mu        sync.RWMutex
+}
+
+func (e *Extend) checkSequence() (err error) {
+	e.versionMu.RLock()
+	defer e.versionMu.RUnlock()
+
+	lastSeq := e.verSeq
+	for id, extend := range e.multiVers {
+		if lastSeq <= extend.verSeq {
+			return fmt.Errorf("id %v seq %v not less than last seq %v", id, extend.verSeq, lastSeq)
+		}
+	}
+	return
+}
+
+func (e *Extend) GetMinVer() uint64 {
+	if len(e.multiVers) == 0 {
+		return e.verSeq
+	}
+	return e.multiVers[len(e.multiVers)-1].verSeq
 }
 
 func (e *Extend) GetExtentByVersion(ver uint64) (extend *Extend) {
@@ -44,6 +66,8 @@ func (e *Extend) GetExtentByVersion(ver uint64) (extend *Extend) {
 		}
 		return e.multiVers[0]
 	}
+	e.versionMu.RLock()
+	defer e.versionMu.RUnlock()
 	for i := len(e.multiVers) - 1; i >= 0; i-- {
 		if e.multiVers[i].verSeq <= ver {
 			return e.multiVers[i]
@@ -189,6 +213,8 @@ func (e *Extend) Copy() btree.Item {
 	for k, v := range e.dataMap {
 		newExt.dataMap[k] = v
 	}
+	newExt.verSeq = e.verSeq
+	newExt.multiVers = e.multiVers
 	return newExt
 }
 

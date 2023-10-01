@@ -2378,7 +2378,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 					return true
 				}
 			}
-			if err = partition.checkVerList(info, false); err != nil {
+			if _, err = partition.checkVerList(info, false); err != nil {
 				log.LogErrorf("[checkVolVerList] volumeName %v err %v", volName, err)
 			}
 			return true
@@ -2482,7 +2482,8 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 		return
 	}
 	if p.IsVersionList() {
-		return mp.checkVerList(&proto.VolVersionInfoList{VerList: p.VerList}, true, false)
+		_, err = mp.checkVerList(&proto.VolVersionInfoList{VerList: p.VerList}, true)
+		return
 	}
 	p.Opcode = proto.OpAgainVerionList
 	// need return and tell client
