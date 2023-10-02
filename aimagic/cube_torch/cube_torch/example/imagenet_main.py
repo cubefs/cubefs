@@ -21,10 +21,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import ConcatDataset
 
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
-os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '100'
-os.environ['CubeFS_CACHE_DIR'] = '/dev/shm/test'
-os.environ['CubeFS_CACHE_SIZE'] = '127374100000'
-os.environ['localIP'] = '11.163.35.34'
+os.environ['localIP'] = '11.127.50.194'
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -236,14 +233,14 @@ def main_worker(gpu, ngpus_per_node, args):
         all_sub_train_datasets.append(sub_dataset)
     train_dataset = ConcatDataset(all_sub_train_datasets)
 
-    # train_dataset = datasets.ImageFolder(
-    #     traindir,
-    #     transforms.Compose([
-    #         transforms.RandomResizedCrop(224),
-    #         transforms.RandomHorizontalFlip(),
-    #         transforms.ToTensor(),
-    #         normalize,
-    #     ]))
+    train_dataset = datasets.ImageFolder(
+        traindir,
+        transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ]))
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -297,7 +294,6 @@ def main_worker(gpu, ngpus_per_node, args):
         #         'scheduler' : scheduler.state_dict()
         #     }, is_best)
 
-
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
@@ -311,11 +307,11 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
     # switch to train mode
     model.train()
-    epoch_samples = 0
-    prev_samples = 0
-    timestamp = time.time()
 
     end = time.time()
+    torch.cuda.synchronize()
+    step_time = time.time()
+    step_cost_time = time.time()
     for i, (images, target) in enumerate(train_loader):
         # iteration_start_time = time.time()
         # measure data loading time
@@ -341,14 +337,6 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         loss.backward()
         optimizer.step()
 
-        epoch_samples += len(images)
-        if i % 5 == 0:
-            end_time = time.time()
-            rate = (epoch_samples - prev_samples) / (end_time - timestamp)
-            print("pid:{} batch_idx:{} Rate:{}/s".format(os.getpid(), i, rate))
-            prev_samples = epoch_samples
-            timestamp = time.time()
-
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
@@ -356,6 +344,15 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if i % args.print_freq == 0:
             progress.display(i)
+        torch.cuda.synchronize()
+        step_end_time = time.time()
+        if dist.get_rank() == 0:
+            print(f"one step cost: {step_end_time - step_cost_time}")
+        step_cost_time = time.time()
+        if dist.get_rank() == 0:
+            print(f"throughput: {1024 * (i + 1) / (step_end_time - step_time)} ")
+
+
 
 
 def validate(val_loader, model, criterion, args):
