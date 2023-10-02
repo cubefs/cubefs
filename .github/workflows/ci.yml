@@ -74,6 +74,11 @@ jobs:
             docs-zh/**
             **.md
 
+      - name: Remove pre-installed software to free up disk space
+        if: steps.changed-files.outputs.only_changed != 'true'
+        run: |
+          sudo rm -rf /usr/local/lib/android
+
       - name: S3 tests
         if: steps.changed-files.outputs.only_changed != 'true'
         run: |
