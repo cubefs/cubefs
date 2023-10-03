@@ -1,11 +1,17 @@
+import asyncio
 import builtins
-import copy
 import io
+import json
+import os
+import queue
+import threading
 from functools import wraps
 
+import requests
 import torch
+from requests.adapters import HTTPAdapter
+from urllib3 import Retry
 
-from cube_torch.cube_batch_download import CubeStream
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
 global_interceptionIO = None
@@ -30,45 +36,85 @@ def is_prefix_cube_file(string):
     return string[:prefix_length] == global_cube_rootdir_path
 
 
+class CubeStream(io.BytesIO):
+    def __init__(self, _fpath, _fcontent):
+        self.file_path = _fpath
+        self.content = _fcontent
+        self.content_size = len(_fcontent)
+        super().__init__(_fcontent)
+
+    def get_path(self):
+        return self.file_path
+
+    def get_content(self):
+        return self.content
+
+    def get_content_size(self):
+        return self.content_size
+
+
+
+class ThreadSafeDict:
+    def __init__(self):
+        self._dict = {}
+        self._lock = threading.Lock()
+
+    def pop_item(self, key):
+        with self._lock:
+            try:
+                return self._dict.pop(key)
+            except Exception:
+                return None
+
+    def set_item(self, key, value):
+        with self._lock:
+            self._dict[key] = value
+
+    def get_length(self):
+        with self._lock:
+            return len(self._dict)
+
+
 class InterceptionIO:
+    def __init__(self, storage_info):
+        cube_rootdir, batch_download_addr, wait_download_queue, batch_size = storage_info
+        self.cube_rootdir = cube_rootdir
+        self.files = ThreadSafeDict()
+        self.batch_download_addr = batch_download_addr
+        self.storage_session = requests.Session()
+        self.wait_download_queue = wait_download_queue
+        self.download_event = threading.Event()
+        self.batch_size = batch_size
+        self._lock = threading.Lock()
+        retry_strategy = Retry(
+            total=1,  # 最大重试次数
+            backoff_factor=0.5,  # 重试之间的时间间隔因子
+            status_forcelist=[429, 500, 502, 503, 504]  # 触发重试的 HTTP 状态码
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.storage_session.mount('http://', adapter)
+        self.download_thread = threading.Thread(target=self._loop_download_worker, args=(self.download_event,))
+        self.download_thread.daemon = True
+        self.download_thread.start()
 
-    def __init__(self, file_path_metas, shared_memory, free_memory_queues):
-        self.file_path_metas = file_path_metas
-        self.shared_memory = shared_memory
-        self.free_memory_queues = free_memory_queues
+    def get_stream(self, file_name):
+        return self.files.pop_item(file_name)
 
-    def get_file_path_meta(self, file_path):
-        try:
-            if file_path in self.file_path_metas:
-                return self.file_path_metas.pop(file_path)
-        except Exception as e:
-            return None
+    def get_event_and_thread(self):
+        return self.download_thread, self.download_event
 
-        return None
+    def is_allow_store_files(self):
+        if self.files.get_length() < int(self.batch_size * 10):
+            return True
+        return False
 
-    def get_cube_file_stream_by_meta(self, file_path):
-        file_meta = self.get_file_path_meta(file_path)
-        if file_meta is None:
-            return None
-        m_worker_id, m_file_path, m_offset, m_size = file_meta
-        data = bytes(self.shared_memory[m_offset:m_offset + m_size])
-        item_offset = 0
-        item_offset += 8
-        file_path_size = int.from_bytes(data[item_offset:item_offset + 8], byteorder='big')
-        item_offset += 8
-        actual_file_path = data[item_offset:item_offset + file_path_size].decode()
-        if file_path != actual_file_path:
-            print("expect_file_path:{} actual_file_path:{} item_meta:{}".format(file_path, actual_file_path,
-                                                                                file_meta))
-            return None
-        item_offset += file_path_size
-        file_content_size = int.from_bytes(data[item_offset:item_offset + 8], byteorder='big')
-        item_offset += 8
-        content = bytes(data[item_offset:item_offset + file_content_size])
-        return CubeStream(file_path, content, file_meta)
-
-    def free_item_meta(self, file_meta):
-        self.free_memory_queues[file_meta[0]].put(file_meta)
+    def _loop_download_worker(self, event):
+        while not event.is_set():
+            try:
+                files = self.wait_download_queue.get(timeout=3)
+                self.batch_download_async([files])
+            except queue.Empty:
+                continue
 
     def intercept_open(self, func):
         @wraps(func)
@@ -86,17 +132,57 @@ class InterceptionIO:
         def wrapper(*args, **kwargs):
             file_path = args[0]
             if is_prefix_cube_file(file_path):
-                stream = self.get_cube_file_stream_by_meta(file_path)
+                stream = self.get_stream(file_path)
                 CubeFileOpenInterceptor.add_count(stream is not None)
                 if stream:
                     stream.seek(0)
                     result = builtins_torch_load(stream, **kwargs)
-                    self.free_item_meta(stream.item_meta)
                     return result
             result = builtins_torch_load(*args, **kwargs)
             return result
 
         return wrapper
+
+    def batch_download(self, index_list):
+        try:
+            data = json.dumps(index_list)
+            with requests.post(self.batch_download_addr, data=data, stream=True, timeout=100,
+                               headers={'Content-Type': 'application/octet-stream'}) as response:
+                if response.status_code != 200:
+                    raise ValueError(
+                        "unavalid http reponse code:{} response:{}".format(response.status_code, response.text))
+                self.stream_parse_content(self.batch_download_addr, response)
+        except Exception as e:
+            print('pid:{} url:{} Error:{} '.format(os.getpid(), self.batch_download_addr, e))
+            pass
+
+    def batch_download_async(self, index_list):
+        loop = asyncio.new_event_loop()
+        loop.run_in_executor(None, self.batch_download, index_list)
+
+    def add_stream(self, file_path, stream):
+        self.files.set_item(file_path, stream)
+
+
+    def stream_parse_content(self, url, response):
+        version = response.raw.read(8)
+        version = int.from_bytes(version, byteorder='big')
+        count = response.raw.read(8)
+        count = int.from_bytes(count, byteorder='big')
+        for i in range(count):
+            file_path_size = response.raw.read(8)
+            file_path_size = int.from_bytes(file_path_size, byteorder='big')
+
+            filename = response.raw.read(file_path_size)
+            filename = filename.decode()
+
+            content_length = response.raw.read(8)
+            content_length = int.from_bytes(content_length, byteorder='big')
+
+            content = response.raw.read(content_length)
+            stream = CubeStream(filename, content)
+            self.add_stream(filename, stream)
+        response.raw.close()
 
 
 class CubeFile(io.FileIO):
@@ -108,7 +194,7 @@ class CubeFile(io.FileIO):
         self.name = args[0]
         global global_interceptionIO
         self._is_cached = False
-        stream = global_interceptionIO.get_cube_file_stream_by_meta(self.name)
+        stream = global_interceptionIO.get_stream(self.name)
         CubeFileOpenInterceptor.add_count(stream is not None)
         if stream is None:
             super().__init__(*args, **kwargs)
@@ -126,9 +212,7 @@ class CubeFile(io.FileIO):
 
     def close(self, *args, **kwargs):  # real signature unknown
         if self._is_cached:
-            self._cube_stream.close(*args, **kwargs)
-            global global_interceptionIO
-            global_interceptionIO.free_item_meta(self._cube_stream.item_meta)
+            return self._cube_stream.close(*args, **kwargs)
         return super().close()
 
     def flush(self, *args, **kwargs):  # real signature unknown

@@ -19,7 +19,6 @@ import torch
 from torch._utils import ExceptionWrapper
 from torch.utils.data import _DatasetKind
 
-from cube_torch.cube_batch_download import CubeBatchDownloader
 from cube_torch.cube_file import set_global_cube_rootdir_path, InterceptionIO, set_global_interception_io
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
@@ -113,20 +112,6 @@ def _unregister_pid_to_storage(pids, unregister_storage_addr):
         return
 
 
-def _loop_batch_download_worker(wait_read_train_file_queue, downloader_info, event):
-    torch.set_num_threads(1)
-    downloader = CubeBatchDownloader(downloader_info)
-    while not event.is_set():
-        try:
-            copy_file_indexs = wait_read_train_file_queue.get(timeout=5)
-            index_list = [copy_file_indexs]
-            downloader.batch_download_async(index_list)
-        except queue.Empty:
-            continue
-        except Exception as e:
-            continue
-
-
 def _loop_notify_storage_thread(wait_read_train_file_queue, cube_prefetch_addr, event):
     while not event.is_set():
         try:
@@ -143,16 +128,18 @@ def _loop_notify_storage_thread(wait_read_train_file_queue, cube_prefetch_addr, 
     print("pid:{} _loop_notify_storage_thread exit".format(os.getpid()))
 
 
-def _init_batchdownload_worker_info(storage_info):
-    torch.set_num_threads(1)
+def _init_batchdownload_threads(storage_info):
+    torch.set_num_threads(2)
     cube_root_dir = storage_info[0]
     set_global_cube_rootdir_path(cube_root_dir)
     CubeFileOpenInterceptor.set_params(cube_root_dir)
-    CubeFileOpenInterceptor.start_timer()
-    inception = InterceptionIO(storage_info[1], storage_info[2], storage_info[3])
+    timer=CubeFileOpenInterceptor.start_timer()
+    inception = InterceptionIO(storage_info)
     builtins.open = inception.intercept_open(open)
     torch.load = inception.intercept_torch_load(torch.load)
     set_global_interception_io(inception)
+    download_thread, download_event=inception.get_event_and_thread()
+    return download_thread,download_event,timer
 
 
 def _init_prefetch_threads(worker_id, storage_info):
@@ -171,20 +158,24 @@ def _init_prefetch_threads(worker_id, storage_info):
     return notify_storage_thread, notify_storage_event
 
 
-def _send_stop_signal_to_prefetch_thread(worker_id, thread_event, thread, storage_info):
-    if thread_event is not None and worker_id < storage_info[1]:
+def _send_stop_signal_to_prefetch_thread(worker_id, is_batch_download, thread_event, thread, storage_info,print_timer):
+    if is_batch_download:
+        print_timer.cancel()
+        thread_event.set()
+        thread.join()
+    elif thread_event is not None and worker_id < storage_info[1]:
         storage_info[2].put(None)
         thread_event.set()
         thread.join()
+    return
 
 
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
                  auto_collation, collate_fn, drop_last, base_seed, init_fn, worker_id,
                  num_workers, persistent_workers, is_use_batch_download, storage_info):
-    notify_storage_thread = None
-    notify_storage_event = None
+    print_timer=None
     if is_use_batch_download:
-        _init_batchdownload_worker_info(storage_info)
+        notify_storage_thread, notify_storage_event,print_timer = _init_batchdownload_threads(storage_info)
     else:
         notify_storage_thread, notify_storage_event = _init_prefetch_threads(worker_id, storage_info)
     try:
@@ -243,8 +234,8 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
             elif r is None:
                 # Received the final signal
                 assert done_event.is_set() or iteration_end
-                _send_stop_signal_to_prefetch_thread(worker_id, notify_storage_event, notify_storage_thread,
-                                                     storage_info)
+                _send_stop_signal_to_prefetch_thread(worker_id,is_use_batch_download, notify_storage_event, notify_storage_thread,
+                                                     storage_info,print_timer)
                 break
             elif done_event.is_set() or iteration_end:
                 # `done_event` is set. But I haven't received the final signal

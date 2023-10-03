@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='cube_torch',
-    version='0.2',
+    version='0.3',
     description='cube_torch is A Pytorch Acceleration Package',
     author='guoweilong',
     author_email='542531652@qq.com',
@@ -19,8 +19,6 @@ setup(
             '__init__.py',
             'test/*.py',
             'example/*.py',
-            'mem_manager.py'
-            'cube_batch_download.py',
             'cube_loader.py',
             'cube_file.py',
             'cube_worker.py',

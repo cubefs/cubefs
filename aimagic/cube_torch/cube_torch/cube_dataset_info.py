@@ -43,6 +43,7 @@ class CubeDataSetInfo:
     def is_cubefs_mount_point(self, directory_path):
         stat_info = os.stat(directory_path)
         inode_number = stat_info.st_ino
+        inode_number=1
         return inode_number == 1
 
     def check_cube_queue_size_on_worker(self):

@@ -43,6 +43,7 @@ class CubeFileOpenInterceptor:
 
         timer = threading.Timer(60, timer_callback)
         timer.start()
+        return timer
 
     @staticmethod
     def print_hit_rate():
