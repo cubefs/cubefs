@@ -23,7 +23,7 @@ class CubeDataSetInfo:
         self.cube_loader = cube_loader
         self.dataset_id = id(cube_loader.dataset)
         self.cubefs_queue_size_on_worker = os.environ.get(CubeFS_QUEUE_SIZE_ON_WORKER)
-        self.cubefs_root_dir = os.environ.get(CubeFS_ROOT_DIR)
+        self.cubefs_mount_point = os.environ.get(CubeFS_ROOT_DIR)
         self.cube_prefetch_file_list = []
         self.train_list = []
         self._is_test_env = os.environ.get(TEST_ENV)
@@ -35,10 +35,10 @@ class CubeDataSetInfo:
         self._init_env_fininsh = False
 
     def get_cubefs_root_dir(self):
-        return self.cubefs_root_dir
+        return self.cubefs_mount_point
 
     def get_cubefs_cache_dir(self):
-        return self.cubefs_root_dir
+        return self.cubefs_mount_point
 
     def is_cubefs_mount_point(self, directory_path):
         stat_info = os.stat(directory_path)
@@ -47,12 +47,6 @@ class CubeDataSetInfo:
         return inode_number == 1
 
     def check_cube_queue_size_on_worker(self):
-        if self.cubefs_root_dir is None:
-            raise ValueError("{} not set on os environ ".format(CubeFS_ROOT_DIR))
-
-        if not self.is_cubefs_mount_point(self.cubefs_root_dir):
-            raise ValueError("{} is not cubefs client mount point".format(self.cubefs_root_dir))
-
         if self.cubefs_queue_size_on_worker is None:
             self.cubefs_queue_size_on_worker = Min_QUEUE_SIZE_ON_WORKER
         try:

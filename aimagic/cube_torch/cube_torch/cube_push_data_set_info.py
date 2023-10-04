@@ -9,11 +9,10 @@ import requests
 from cube_torch import get_manager
 from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 
-LOCAL_IP = 'localIP'
 USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
+LOCAL_IP = 'localIP'
 PREFETCH_THREAD_NUM = 'PREFETCH_THREAD_NUM'
 avali_dataset_time = 60 * 5
-SHARED_MEMORY_SIZE = 'SHARED_MEMORY_SIZE'
 default_shared_memory_size = 4 * 1024 * 1024 * 1024
 
 Min_PREFETCH_THREAD_NUM = 1
@@ -29,32 +28,20 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.shared_memory_size = 0
         self.prof_port = ""
         self._is_use_batch_download = os.environ.get(USE_BATCH_DOWNLOAD)
-        self.shared_memory_size = os.environ.get(SHARED_MEMORY_SIZE)
         self.prefetch_thread_num = os.environ.get(PREFETCH_THREAD_NUM)
-        self.local_ip = os.environ.get(LOCAL_IP)
         self.cube_prefetch_ttl = 30
-        self.dataset_dir_prefix = ".cube_torch"
         self.check_evn()
         self._dataset_cnt = cube_loader.real_sample_size
-        self.dataset_config_dir = os.path.join(self.cubefs_root_dir, self.dataset_dir_prefix, self.local_ip)
-        cube_info_file = os.path.join(self.dataset_config_dir, ".cube_info")
-        if not os.path.exists(cube_info_file):
-            raise ValueError("{} is not exsit,please use right CubeFS Client version ".format(cube_info_file))
-        if not os.path.exists(self.dataset_config_dir):
-            os.makedirs(self.dataset_config_dir, exist_ok=True)
-        self.get_cube_client_post_info()
+        self.cubefs_mount_point = ""
+        self.local_ip = ""
+        self.read_cube_torch_config_file_for_v3()
+        self.dataset_dir = os.path.join(self.cubefs_mount_point, '.cube_torch', self.local_ip, '.dataset')
         self.storage_seesion = requests.Session()
-        self.dataset_dir = "{}/{}".format(self.dataset_config_dir, ".dataset")
-        if not os.path.exists(self.dataset_dir):
-            os.makedirs(self.dataset_dir, exist_ok=True)
         self.get_train_file_name_lists()
-
         self.register_pid_addr = "http://127.0.0.1:{}/register/pid".format(self.prof_port)
         self.unregister_pid_addr = "http://127.0.0.1:{}/unregister/pid".format(self.prof_port)
         self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
-        self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,
-                                                                                           self._dataset_cnt)
-
+        self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,self._dataset_cnt)
         self.batch_download_addr = "http://127.0.0.1:{}/batchdownload/path".format(self.prof_port)
         self.clean_old_dataset_file(self.dataset_dir)
 
@@ -89,22 +76,6 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         return self._is_use_batch_download
 
     def check_evn(self):
-        if self.cubefs_root_dir is None:
-            raise ValueError("{} not set on os environ ".format(CubeFS_ROOT_DIR))
-
-        if self.local_ip is None:
-            raise ValueError("{} not set on os environ ".format(LOCAL_IP))
-
-        if self.shared_memory_size is None:
-            self.shared_memory_size = default_shared_memory_size
-
-        try:
-            shared_memory = int(self.shared_memory_size)
-        except Exception:
-            shared_memory = default_shared_memory_size
-
-        self.shared_memory_size = shared_memory
-
         if self.prefetch_thread_num is None:
             self.prefetch_thread_num = Min_PREFETCH_THREAD_NUM
 
@@ -114,9 +85,6 @@ class CubePushDataSetInfo(CubeDataSetInfo):
             thread_num = Min_PREFETCH_THREAD_NUM
         self.prefetch_thread_num = thread_num
 
-        if not self.is_valid_ip(self.local_ip):
-            raise ValueError("{} is not valid,please reset {} ".format(self.local_ip, LOCAL_IP))
-
         if self._is_use_batch_download is not None:
             self._is_use_batch_download = True
         else:
@@ -124,18 +92,28 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
         self.check_cube_queue_size_on_worker()
         self._init_env_fininsh = True
-        self.shared_memory_size = self.shared_memory_size // 2
 
-    def get_cube_client_post_info(self):
-        cube_info_file = os.path.join(self.dataset_config_dir, ".cube_info")
+    def read_cube_torch_config_file_for_v3(self):
+        config = '/tmp/cube_torch.config'
         try:
-            with open(cube_info_file) as f:
+            with open(config) as f:
                 cube_info = json.load(f)
                 if 'prof' not in cube_info:
-                    raise ValueError(".cube_info {} cannot find prof info".format(cube_info_file))
+                    raise ValueError(".cube_info {} cannot find prof info".format(config))
                 self.prof_port = cube_info['prof']
                 if type(self.prof_port) is not int:
-                    raise ValueError(".cube_info {} not set prof prof info".format(cube_info_file))
+                    raise ValueError(".cube_info {} not set prof prof info".format(config))
+                if 'mount_point' not in cube_info:
+                    raise ValueError(".cube_info {} cannot find mount_point info".format(config))
+                self.cubefs_mount_point = cube_info['mount_point']
+                if not self.is_cubefs_mount_point(self.cubefs_mount_point):
+                    raise ValueError("{} is not cubefs client mount point".format(self.cubefs_mount_point))
+                if not self.is_use_batch_download():
+                    if 'local_ip' not in cube_info:
+                        raise ValueError(".cube_info {} cannot find prof info".format(config))
+                    self.local_ip = cube_info['local_ip']
+                    if not self.is_valid_ip(self.local_ip):
+                        raise ValueError(".cube_info {} cannot find valid  ip".format(config))
 
         except Exception as e:
             raise e
@@ -201,6 +179,8 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                 continue
 
     def clean_old_dataset_file(self, folder):
+        if self.is_use_batch_download():
+            return
         try:
             for filename in os.listdir(folder):
                 file_path = os.path.join(folder, filename)
