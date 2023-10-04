@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -39,6 +40,8 @@ const BatchDownloadV1 = 0
 
 type CubeInfo struct {
 	Prof uint64 `json:"prof"`
+	MountPoint string `json:"mount_point"`
+	LocalIP string 	`json:"local_ip"`
 }
 
 type PrefetchManager struct {
@@ -129,15 +132,25 @@ func (pManager *PrefetchManager) Close() {
 	pManager.wg.Wait()
 }
 
+const(
+	Cube_Torch_ConfigFile="/tmp/cube_torch.config"
+)
+
 func (pManager *PrefetchManager) GenerateCubeInfo(localIP string, port uint64) (err error) {
 	var (
 		cubeInfoBytes []byte
 		fd            *os.File
 	)
-	cubeInfo := &CubeInfo{Prof: port}
+	cubeInfo := &CubeInfo{Prof: port,MountPoint:pManager.mountPoint,LocalIP: localIP}
 	if cubeInfoBytes, err = json.Marshal(cubeInfo); err != nil {
 		log.LogErrorf("GenerateCubeInfo: info(%v) json marshal err(%v)", cubeInfo, err)
 		return
+	}
+	err=ioutil.WriteFile(Cube_Torch_ConfigFile,cubeInfoBytes,0666)
+	if err!=nil{
+		log.LogErrorf("Generate Cube_Torch_ConfigFile(%v): info(%v) json marshal err(%v)", Cube_Torch_ConfigFile,cubeInfo, err)
+		return
+
 	}
 	cubeInfoDir := path.Join(pManager.mountPoint, CubeInfoDir, localIP)
 	if err = os.MkdirAll(cubeInfoDir, 0777); err != nil {

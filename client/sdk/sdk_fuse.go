@@ -445,6 +445,12 @@ func registerInterceptedSignal() {
 	}()
 }
 
+
+const (
+	MaxPreFetchThreadCount =400
+	MinPreFetchThreadCount =200
+)
+
 func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	var err error
 	opt := new(proto.MountOptions)
@@ -531,6 +537,15 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if opt.PrefetchThread > 0 && !iputil.IsValidIP(opt.LocalIP) {
 		return nil, fmt.Errorf("invalid prefetch config: localIP(%v) must be a valid IP", opt.LocalIP)
 	}
+
+	if opt.PrefetchThread > MaxPreFetchThreadCount {
+		opt.PrefetchThread= MaxPreFetchThreadCount
+	}
+
+	if opt.PrefetchThread < MinPreFetchThreadCount{
+		opt.PrefetchThread=MinPreFetchThreadCount
+	}
+
 
 	opt.StreamerSegCount = GlobalMountOptions[proto.StreamerSegCount].GetInt64()
 
