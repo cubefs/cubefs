@@ -11,6 +11,8 @@ import os
 import queue
 import random
 import threading
+import weakref
+
 from dataclasses import dataclass
 from typing import Union
 
@@ -135,6 +137,7 @@ def _init_batchdownload_threads(storage_info):
     CubeFileOpenInterceptor.set_params(cube_root_dir)
     timer=CubeFileOpenInterceptor.start_timer()
     inception = InterceptionIO(storage_info)
+    weakref.ref(inception)
     builtins.open = inception.intercept_open(open)
     torch.load = inception.intercept_torch_load(torch.load)
     set_global_interception_io(inception)
@@ -173,11 +176,7 @@ def _send_stop_signal_to_prefetch_thread(worker_id, is_batch_download, thread_ev
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
                  auto_collation, collate_fn, drop_last, base_seed, init_fn, worker_id,
                  num_workers, persistent_workers, is_use_batch_download, storage_info):
-    print_timer=None
-    if is_use_batch_download:
-        notify_storage_thread, notify_storage_event,print_timer = _init_batchdownload_threads(storage_info)
-    else:
-        notify_storage_thread, notify_storage_event = _init_prefetch_threads(worker_id, storage_info)
+
     try:
         seed = base_seed + worker_id
         random.seed(seed)
@@ -218,6 +217,12 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         iteration_end = False
         watchdog = ManagerWatchdog()
         fetch_batch_cnt = 0
+        print_timer = None
+        if is_use_batch_download:
+            notify_storage_thread, notify_storage_event, print_timer = _init_batchdownload_threads(storage_info)
+        else:
+            notify_storage_thread, notify_storage_event = _init_prefetch_threads(worker_id, storage_info)
+
         while watchdog.is_alive():
             try:
                 r = index_queue.get(timeout=MP_STATUS_CHECK_INTERVAL)

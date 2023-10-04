@@ -1,4 +1,6 @@
 import os
+import time
+
 import cube_torch
 import torch
 import torch.multiprocessing as mp
@@ -7,8 +9,7 @@ from torchvision import datasets, transforms
 
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['localIP'] = "127.0.0.1"
-os.environ['CubeFS_QUEUE_SIZE_ON_WORKER'] = '10'
-# os.environ['USE_BATCH_DOWNLOAD'] = '123'
+os.environ['USE_BATCH_DOWNLOAD'] = '123'
 
 
 def start_worker_test_concatDataset(i):
@@ -37,6 +38,7 @@ def start_worker_test_concatDataset(i):
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
             print("i is {}, epoch {} ".format(i, epoch))
+            time.sleep(1)
         epoch += 1
 
 

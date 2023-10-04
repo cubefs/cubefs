@@ -5,6 +5,7 @@ import json
 import os
 import queue
 import threading
+import traceback
 from functools import wraps
 
 import requests
@@ -36,12 +37,22 @@ def is_prefix_cube_file(string):
     return string[:prefix_length] == global_cube_rootdir_path
 
 
-class CubeStream(io.BytesIO):
+def func1(file_path):
+    stack = traceback.extract_stack()
+    for f in reversed(stack):
+        print("file_path:{} f:{}".format(file_path, f))
+
+
+def func_traceback(file_path):
+    for s in traceback.format_stack():
+        print(s.strip())
+
+
+class CubeStream:
     def __init__(self, _fpath, _fcontent):
         self.file_path = _fpath
         self.content = _fcontent
         self.content_size = len(_fcontent)
-        super().__init__(_fcontent)
 
     def get_path(self):
         return self.file_path
@@ -53,7 +64,6 @@ class CubeStream(io.BytesIO):
         return self.content_size
 
 
-
 class ThreadSafeDict:
     def __init__(self):
         self._dict = {}
@@ -61,10 +71,7 @@ class ThreadSafeDict:
 
     def pop_item(self, key):
         with self._lock:
-            try:
-                return self._dict.pop(key)
-            except Exception:
-                return None
+            return self._dict.pop(key, None)
 
     def set_item(self, key, value):
         with self._lock:
@@ -121,7 +128,8 @@ class InterceptionIO:
         def wrapper(*args, **kwargs):
             file_path = args[0]
             if is_prefix_cube_file(file_path):
-                return CubeFile(*args, **kwargs)
+                result=CubeFile(*args, **kwargs)
+                return result
             result = builtins_open(*args, **kwargs)
             return result
 
@@ -136,7 +144,7 @@ class InterceptionIO:
                 CubeFileOpenInterceptor.add_count(stream is not None)
                 if stream:
                     stream.seek(0)
-                    result = builtins_torch_load(stream, **kwargs)
+                    result = builtins_torch_load(stream.content, **kwargs)
                     return result
             result = builtins_torch_load(*args, **kwargs)
             return result
@@ -162,7 +170,6 @@ class InterceptionIO:
 
     def add_stream(self, file_path, stream):
         self.files.set_item(file_path, stream)
-
 
     def stream_parse_content(self, url, response):
         version = response.raw.read(8)
@@ -194,15 +201,20 @@ class CubeFile(io.FileIO):
         self.name = args[0]
         global global_interceptionIO
         self._is_cached = False
+        self._cube_stream = None
         stream = global_interceptionIO.get_stream(self.name)
         CubeFileOpenInterceptor.add_count(stream is not None)
         if stream is None:
             super().__init__(*args, **kwargs)
             return
         else:
-            self._cube_stream = stream
+            self._cube_stream = io.BytesIO(stream.content)
             self._is_cached = True
+
         return
+
+    def __del__(self):
+        print("name:{} is_cached:{} will be destory".format(self.name,self._is_cached))
 
     def __enter__(self):
         return self

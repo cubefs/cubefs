@@ -609,8 +609,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         # the worker will be reset to available in the next epoch.
         self._workers_status = [True for i in range(self._num_workers)]
         # Reset the worker input_queue cycle so it resumes next epoch at worker 0
-        if not self._start_loop_get_index:
-            self._start_loop_get_index = True
+
 
         # We resume the prefetching in case it was enabled
         if not first_iter:
@@ -623,9 +622,13 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                     assert return_data is None
                     resume_iteration_cnt -= 1
         # prime the prefetch loop
+
+        if not self._start_loop_get_index:
+            self._start_loop_get_index = True
         for _ in range(self._prefetch_factor * self._num_workers):
             self._try_put_index()
         print("pid{} end reset{}".format(os.getpid(), datetime.datetime.now()))
+
 
     def _try_get_data(self, timeout=_utils.MP_STATUS_CHECK_INTERVAL):
         # Tries to fetch data from `self._data_queue` once for a given timeout.
