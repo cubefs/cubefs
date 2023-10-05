@@ -13,6 +13,7 @@ import torch
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
+
 global_interceptionIO = None
 global_cube_rootdir_path = None
 builtins_open = builtins.open
@@ -143,6 +144,7 @@ class InterceptionIO:
                 CubeFileOpenInterceptor.add_count(stream is not None)
                 if stream:
                     result = builtins_torch_load(stream, **kwargs)
+                    del stream
                     return result
             result = builtins_torch_load(*args, **kwargs)
             return result
@@ -158,6 +160,7 @@ class InterceptionIO:
                     raise ValueError(
                         "unavalid http reponse code:{} response:{}".format(response.status_code, response.text))
                 self.stream_parse_content(self.batch_download_addr, response)
+            del data, index_list
         except Exception as e:
             print('pid:{} url:{} Error:{} '.format(os.getpid(), self.batch_download_addr, e))
             pass
@@ -168,7 +171,6 @@ class InterceptionIO:
 
     def add_stream(self, file_path, stream):
         self.files.set_item(file_path, stream)
-
 
     def stream_parse_content(self, url, response):
         version = response.raw.read(8)
