@@ -42,6 +42,7 @@ type CubeInfo struct {
 	Prof uint64 `json:"prof"`
 	MountPoint string `json:"mount_point"`
 	LocalIP string 	`json:"local_ip"`
+	VolName string  `json:"vol_name"`
 }
 
 type PrefetchManager struct {
@@ -141,12 +142,13 @@ func (pManager *PrefetchManager) GenerateCubeInfo(localIP string, port uint64) (
 		cubeInfoBytes []byte
 		fd            *os.File
 	)
-	cubeInfo := &CubeInfo{Prof: port,MountPoint:pManager.mountPoint,LocalIP: localIP}
+	cubeInfo := &CubeInfo{Prof: port,MountPoint:pManager.mountPoint,LocalIP: localIP,VolName: pManager.volName}
 	if cubeInfoBytes, err = json.Marshal(cubeInfo); err != nil {
 		log.LogErrorf("GenerateCubeInfo: info(%v) json marshal err(%v)", cubeInfo, err)
 		return
 	}
-	err=ioutil.WriteFile(Cube_Torch_ConfigFile,cubeInfoBytes,0666)
+	cubeTorchConfig:=fmt.Sprintf("%v.%v",Cube_Torch_ConfigFile,pManager.volName)
+	err=ioutil.WriteFile(cubeTorchConfig,cubeInfoBytes,0666)
 	if err!=nil{
 		log.LogErrorf("Generate Cube_Torch_ConfigFile(%v): info(%v) json marshal err(%v)", Cube_Torch_ConfigFile,cubeInfo, err)
 		return
