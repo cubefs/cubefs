@@ -46,11 +46,12 @@ def func_traceback(file_path):
         print(s.strip())
 
 
-class CubeStream:
+class CubeStream(io.BytesIO):
     def __init__(self, _fpath, _fcontent):
         self.file_path = _fpath
         self.content = _fcontent
         self.content_size = len(_fcontent)
+        super().__init__(_fcontent)
 
     def get_path(self):
         return self.file_path
@@ -141,8 +142,7 @@ class InterceptionIO:
                 stream = self.get_stream(file_path)
                 CubeFileOpenInterceptor.add_count(stream is not None)
                 if stream:
-                    stream.seek(0)
-                    result = builtins_torch_load(stream.content, **kwargs)
+                    result = builtins_torch_load(stream, **kwargs)
                     return result
             result = builtins_torch_load(*args, **kwargs)
             return result
@@ -208,7 +208,7 @@ class CubeFile(io.FileIO):
             super().__init__(*args, **kwargs)
             return
         else:
-            self._cube_stream = io.BytesIO(stream.content)
+            self._cube_stream = stream
             self._is_cached = True
 
         return
