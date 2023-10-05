@@ -10,6 +10,7 @@ from cube_torch import get_manager
 from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 
 USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
+VOL_NAME='VOL_NAME'
 LOCAL_IP = 'localIP'
 PREFETCH_THREAD_NUM = 'PREFETCH_THREAD_NUM'
 avali_dataset_time = 60 * 5
@@ -27,6 +28,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.register_pid_addr = ""
         self.shared_memory_size = 0
         self.prof_port = ""
+        self.vol_name=os.environ.get(VOL_NAME)
         self._is_use_batch_download = os.environ.get(USE_BATCH_DOWNLOAD)
         self.prefetch_thread_num = os.environ.get(PREFETCH_THREAD_NUM)
         self.cube_prefetch_ttl = 30
@@ -76,6 +78,9 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         return self._is_use_batch_download
 
     def check_evn(self):
+        if self.vol_name is None:
+            raise  ValueError('VOL_NAME env not set,please set VOL_NAME env')
+
         if self.prefetch_thread_num is None:
             self.prefetch_thread_num = Min_PREFETCH_THREAD_NUM
 
@@ -94,7 +99,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self._init_env_fininsh = True
 
     def read_cube_torch_config_file_for_v3(self):
-        config = '/tmp/cube_torch.config'
+        config = '/tmp/cube_torch.config.{}'.format(self.vol_name)
         try:
             with open(config) as f:
                 cube_info = json.load(f)

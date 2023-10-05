@@ -137,7 +137,6 @@ def _init_batchdownload_threads(storage_info):
     CubeFileOpenInterceptor.set_params(cube_root_dir)
     timer=CubeFileOpenInterceptor.start_timer()
     inception = InterceptionIO(storage_info)
-    weakref.ref(inception)
     builtins.open = inception.intercept_open(open)
     torch.load = inception.intercept_torch_load(torch.load)
     set_global_interception_io(inception)
