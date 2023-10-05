@@ -12,9 +12,7 @@ import requests
 import torch
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
-
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
-
 global_interceptionIO = None
 global_cube_rootdir_path = None
 builtins_open = builtins.open
@@ -128,7 +126,7 @@ class InterceptionIO:
         def wrapper(*args, **kwargs):
             file_path = args[0]
             if is_prefix_cube_file(file_path):
-                result=CubeFile(*args, **kwargs)
+                result = CubeFile(*args, **kwargs)
                 return result
             result = builtins_open(*args, **kwargs)
             return result
@@ -171,21 +169,23 @@ class InterceptionIO:
     def add_stream(self, file_path, stream):
         self.files.set_item(file_path, stream)
 
+
     def stream_parse_content(self, url, response):
         version = response.raw.read(8)
         version = int.from_bytes(version, byteorder='big')
         count = response.raw.read(8)
         count = int.from_bytes(count, byteorder='big')
         for i in range(count):
-            file_path_size = response.raw.read(8)
-            file_path_size = int.from_bytes(file_path_size, byteorder='big')
-
+            file_path_size_body = response.raw.read(8)
+            file_path_size = int.from_bytes(file_path_size_body, byteorder='big')
             filename = response.raw.read(file_path_size)
             filename = filename.decode()
-
-            content_length = response.raw.read(8)
-            content_length = int.from_bytes(content_length, byteorder='big')
-
+            content_length_body = response.raw.read(8)
+            content_length = int.from_bytes(content_length_body, byteorder='big')
+            if content_length == 0:
+                print("file_name:{} content_length:{} content_length_body:{}".format(filename, content_length,
+                                                                                     len(content_length_body)))
+                break
             content = response.raw.read(content_length)
             stream = CubeStream(filename, content)
             self.add_stream(filename, stream)
@@ -214,7 +214,7 @@ class CubeFile(io.FileIO):
         return
 
     def __del__(self):
-        print("name:{} is_cached:{} will be destory".format(self.name,self._is_cached))
+        pass
 
     def __enter__(self):
         return self
@@ -224,12 +224,12 @@ class CubeFile(io.FileIO):
 
     def close(self, *args, **kwargs):  # real signature unknown
         if self._is_cached:
-            return self._cube_stream.close(*args, **kwargs)
+            return self._cube_stream.close()
         return super().close()
 
     def flush(self, *args, **kwargs):  # real signature unknown
         if self._is_cached:
-            return self._cube_stream.flush(*args, **kwargs)
+            return self._cube_stream.flush()
         return super().flush()
 
     def read(self, *args, **kwargs):  # real signature unknown
