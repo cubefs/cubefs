@@ -7,8 +7,8 @@ from torchvision import datasets
 CubeFS_ROOT_DIR = 'CubeFS_ROOT_DIR'
 TEST_ENV = 'TEST_ENV'
 CubeFS_QUEUE_SIZE_ON_WORKER = 'CubeFS_QUEUE_SIZE_ON_WORKER'
-Min_QUEUE_SIZE_ON_WORKER = 30
-Max_QUEUE_SIZE_ON_WORKER = 60
+Min_QUEUE_SIZE_ON_WORKER = 10
+Max_QUEUE_SIZE_ON_WORKER = 20
 
 
 def is_2d_array(obj):
