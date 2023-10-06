@@ -450,8 +450,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
 
             index_queue = multiprocessing_context.Queue()
             index_queue.cancel_join_thread()
-            ctx = multiprocessing_context.get_context("fork")
-            w = ctx.Process(
+            w = multiprocessing_context.Process(
                 target=_worker_loop,
                 args=(self._dataset_kind, self._dataset, index_queue,
                       self._worker_result_queue, self._workers_done_event,

@@ -130,7 +130,7 @@ def _loop_notify_storage_thread(storage_info, event):
 
 
 def _init_batchdownload_threads(storage_info):
-    torch.set_num_threads(2)
+    torch.set_num_threads(1)
     cube_root_dir = storage_info[0]
     set_global_cube_rootdir_path(cube_root_dir)
     CubeFileOpenInterceptor.set_params(cube_root_dir)
@@ -144,7 +144,7 @@ def _init_batchdownload_threads(storage_info):
 
 
 def _init_prefetch_threads(worker_id, storage_info):
-    torch.set_num_threads(2)
+    torch.set_num_threads(1)
     notify_storage_event = threading.Event()
     notify_storage_thread = threading.Thread(target=_loop_notify_storage_thread,
                                              args=(storage_info, notify_storage_event),
