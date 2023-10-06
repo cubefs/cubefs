@@ -12,6 +12,7 @@ import requests
 import torch
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
+
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
 
 global_interceptionIO = None
@@ -84,8 +85,8 @@ class ThreadSafeDict:
 
 class InterceptionIO:
     def __init__(self, storage_info):
-        cube_rootdir, batch_download_addr, wait_download_queue, batch_size = storage_info
-        self.cube_rootdir = cube_rootdir
+        cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
+        self.cube_root_dir = cube_root_dir
         self.files = ThreadSafeDict()
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
@@ -107,6 +108,10 @@ class InterceptionIO:
     def get_stream(self, file_name):
         return self.files.pop_item(file_name)
 
+    def stop_loop_download_worker(self):
+        self.download_event.set()
+        self.download_thread.join()
+
     def get_event_and_thread(self):
         return self.download_thread, self.download_event
 
@@ -119,9 +124,13 @@ class InterceptionIO:
         while not event.is_set():
             try:
                 files = self.wait_download_queue.get(timeout=3)
+                if files is None:
+                    break
                 self.batch_download_async([files])
             except queue.Empty:
                 continue
+        event.set()
+        print("pid:{} loop_downloader_worker ready exit".format(os.getpid()))
 
     def intercept_open(self, func):
         @wraps(func)

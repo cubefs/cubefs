@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 from torch import multiprocessing
 from torch.utils.data import ConcatDataset, Dataset
-
+os.environ["VOL_NAME"]='tech-data-test1'
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
 os.environ['localIP'] = "127.0.0.1"
 os.environ['USE_BATCH_DOWNLOAD'] = 'true'

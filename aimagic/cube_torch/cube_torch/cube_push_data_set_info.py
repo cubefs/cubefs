@@ -9,7 +9,7 @@ import requests
 from cube_torch import get_manager
 from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 
-USE_BATCH_DOWNLOAD = 'USE_BATCH_DOWNLOAD'
+USE_PREFETCH = 'USE_PREFETCH'
 VOL_NAME='VOL_NAME'
 LOCAL_IP = 'localIP'
 PREFETCH_THREAD_NUM = 'PREFETCH_THREAD_NUM'
@@ -29,7 +29,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.shared_memory_size = 0
         self.prof_port = ""
         self.vol_name=os.environ.get(VOL_NAME)
-        self._is_use_batch_download = os.environ.get(USE_BATCH_DOWNLOAD)
+        self._is_use_batch_download = True
         self.prefetch_thread_num = os.environ.get(PREFETCH_THREAD_NUM)
         self.cube_prefetch_ttl = 30
         self.check_evn()
@@ -89,12 +89,9 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         except Exception:
             thread_num = Min_PREFETCH_THREAD_NUM
         self.prefetch_thread_num = thread_num
-
-        if self._is_use_batch_download is not None:
-            self._is_use_batch_download = True
-        else:
-            self._is_use_batch_download = False
-
+        prefetch=os.environ.get(USE_PREFETCH)
+        if prefetch is not  None:
+            self._is_use_batch_download=False
         self.check_cube_queue_size_on_worker()
         self._init_env_fininsh = True
 
