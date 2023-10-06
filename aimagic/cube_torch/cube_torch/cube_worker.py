@@ -226,7 +226,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
             elif r is None:
                 # Received the final signal
                 assert done_event.is_set() or iteration_end
-                _send_stop_signal_to_prefetch_thread(is_use_batch_download, print_timer,notify_storage_thread,notify_storage_event)
+                _send_stop_signal_to_prefetch_thread(is_use_batch_download,print_timer, notify_storage_thread,notify_storage_event)
                 break
             elif done_event.is_set() or iteration_end:
                 # `done_event` is set. But I haven't received the final signal

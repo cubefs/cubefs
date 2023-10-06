@@ -85,14 +85,14 @@ class ThreadSafeDict:
 
 class InterceptionIO:
     def __init__(self, storage_info):
-        cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
+        cube_root_dir, wait_download_queue, batch_download_addr,batch_size = storage_info
         self.cube_root_dir = cube_root_dir
         self.files = ThreadSafeDict()
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
         self.wait_download_queue = wait_download_queue
+        self.batch_size=batch_size
         self.download_event = threading.Event()
-        self.batch_size = batch_size
         self._lock = threading.Lock()
         retry_strategy = Retry(
             total=1,  # 最大重试次数
@@ -114,11 +114,6 @@ class InterceptionIO:
 
     def get_event_and_thread(self):
         return self.download_thread, self.download_event
-
-    def is_allow_store_files(self):
-        if self.files.get_length() < int(self.batch_size * 10):
-            return True
-        return False
 
     def _loop_download_worker(self, event):
         while not event.is_set():

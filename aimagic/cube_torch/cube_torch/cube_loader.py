@@ -202,8 +202,14 @@ class CubeDataLoader(Generic[T_co]):
         self.wait_read_train_file_queue.cancel_join_thread()
         self.is_use_batch_download = False
         self._dataset_id = id(self.dataset)
+        self.wait_download_queues=[]
         self.cube_dataset_info = CubePushDataSetInfo(self)
         self.is_use_batch_download = self.cube_dataset_info.is_use_batch_download()
+        for i in range(self.num_workers):
+            download_queue = multiprocessing.Queue()
+            download_queue.cancel_join_thread()
+            self.wait_download_queues.append(download_queue)
+
         torch.set_vital('Dataloader', 'enabled', 'True')  # type: ignore[attr-defined]
 
     def _get_iterator(self) -> '_BaseDataLoaderIter':
@@ -412,10 +418,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
         self._storage_event = threading.Event()
         self._loadindex_event = threading.Event()
         self.is_use_batch_download = loader.is_use_batch_download
-        self._wait_download_queues = []
-        for i in range(self._num_workers):
-            download_queue=get_manager().Queue()
-            self._wait_download_queues.append(download_queue)
+        self._wait_download_queues = loader.wait_download_queues
         self._batch_size = loader.batch_size
         self._preload_index_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker() * 2)
         self._loadindex_queue = queue.Queue(maxsize=self.cube_dataset_info.get_cube_queue_size_on_worker())

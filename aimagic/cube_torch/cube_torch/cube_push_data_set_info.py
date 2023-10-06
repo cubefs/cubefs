@@ -10,7 +10,7 @@ from cube_torch import get_manager
 from cube_torch.cube_dataset_info import CubeDataSetInfo, CubeFS_ROOT_DIR
 
 USE_PREFETCH = 'USE_PREFETCH'
-VOL_NAME='VOL_NAME'
+VOL_NAME = 'VOL_NAME'
 LOCAL_IP = 'localIP'
 PREFETCH_THREAD_NUM = 'PREFETCH_THREAD_NUM'
 avali_dataset_time = 60 * 5
@@ -28,7 +28,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.register_pid_addr = ""
         self.shared_memory_size = 0
         self.prof_port = ""
-        self.vol_name=os.environ.get(VOL_NAME)
+        self.vol_name = os.environ.get(VOL_NAME)
         self._is_use_batch_download = True
         self.prefetch_thread_num = os.environ.get(PREFETCH_THREAD_NUM)
         self.cube_prefetch_ttl = 30
@@ -43,7 +43,8 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.register_pid_addr = "http://127.0.0.1:{}/register/pid".format(self.prof_port)
         self.unregister_pid_addr = "http://127.0.0.1:{}/unregister/pid".format(self.prof_port)
         self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
-        self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,self._dataset_cnt)
+        self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,
+                                                                                           self._dataset_cnt)
         self.batch_download_addr = "http://127.0.0.1:{}/batchdownload/path".format(self.prof_port)
         self.clean_old_dataset_file(self.dataset_dir)
 
@@ -79,7 +80,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def check_evn(self):
         if self.vol_name is None:
-            raise  ValueError('VOL_NAME env not set,please set VOL_NAME env')
+            raise ValueError('VOL_NAME env not set,please set VOL_NAME env')
 
         if self.prefetch_thread_num is None:
             self.prefetch_thread_num = Min_PREFETCH_THREAD_NUM
@@ -89,9 +90,9 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         except Exception:
             thread_num = Min_PREFETCH_THREAD_NUM
         self.prefetch_thread_num = thread_num
-        prefetch=os.environ.get(USE_PREFETCH)
-        if prefetch is not  None:
-            self._is_use_batch_download=False
+        prefetch = os.environ.get(USE_PREFETCH)
+        if prefetch is not None:
+            self._is_use_batch_download = False
         self.check_cube_queue_size_on_worker()
         self._init_env_fininsh = True
 
