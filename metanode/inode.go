@@ -19,16 +19,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/timeutil"
-
 	"io"
 	"math"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 const (
