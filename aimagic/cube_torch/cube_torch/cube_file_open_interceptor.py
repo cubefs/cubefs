@@ -2,6 +2,30 @@ import os
 import threading
 
 
+class PrintHitCacheInfoTimer:
+    def __init__(self, interval, callback):
+        self.interval = interval
+        self.callback = callback
+        self.timer = None
+        self.cancelled = False
+
+    def _run(self):
+        if self.cancelled:
+            return
+        self.callback()
+        self.timer = threading.Timer(self.interval, self._run)
+        self.timer.start()
+
+    def start(self):
+        self.timer = threading.Timer(self.interval, self._run)
+        self.timer.start()
+
+    def cancel(self):
+        if self.timer is not None:
+            self.cancelled = True
+            self.timer.cancel()
+
+
 class CubeFileOpenInterceptor:
     _instance = None
     cube_root_dir = "/tmp"  # 数据目录
@@ -11,6 +35,8 @@ class CubeFileOpenInterceptor:
     total_count = 0
     total_hit_count = 0
     total_miss_count = 0
+    should_exit = False
+    timer = None
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
@@ -26,6 +52,12 @@ class CubeFileOpenInterceptor:
     @staticmethod
     def set_params(cube_root_dir):
         CubeFileOpenInterceptor.cube_root_dir = cube_root_dir
+        CubeFileOpenInterceptor.timer = PrintHitCacheInfoTimer(60, CubeFileOpenInterceptor.print_hit_rate)
+        CubeFileOpenInterceptor.timer.start()
+
+    @staticmethod
+    def stop_print_hitcache_timer():
+        CubeFileOpenInterceptor.timer.cancel()
 
     @staticmethod
     def add_count(is_cache):
@@ -33,17 +65,6 @@ class CubeFileOpenInterceptor:
             CubeFileOpenInterceptor._last_cycle_hit_count += 1
         else:
             CubeFileOpenInterceptor._last_cycle_miss_count += 1
-
-    @staticmethod
-    def start_timer():
-        def timer_callback():
-            CubeFileOpenInterceptor.print_hit_rate()
-            timer = threading.Timer(60, timer_callback)
-            timer.start()
-
-        timer = threading.Timer(60, timer_callback)
-        timer.start()
-        return timer
 
     @staticmethod
     def print_hit_rate():

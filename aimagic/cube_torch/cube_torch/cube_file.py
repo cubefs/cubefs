@@ -118,7 +118,7 @@ class InterceptionIO:
     def _loop_download_worker(self, event):
         while not event.is_set():
             try:
-                files = self.wait_download_queue.get(timeout=3)
+                files = self.wait_download_queue.get(timeout=5)
                 if files is None:
                     break
                 self.batch_download_async([files])
