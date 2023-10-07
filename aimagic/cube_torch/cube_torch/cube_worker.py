@@ -158,7 +158,7 @@ def _send_stop_signal_to_prefetch_thread(is_batch_download, print_timer,thread,e
     if is_batch_download:
         print_timer.cancel()
     event.set()
-    thread.join(timeout=1)
+    thread.join()
 
 
 def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
