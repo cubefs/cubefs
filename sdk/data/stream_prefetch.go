@@ -717,7 +717,7 @@ func (pManager *PrefetchManager) ReadData(ctx context.Context, dInfo *DownloadFi
 	}()
 
 	fileSize, _, valid := pManager.ec.FileSize(inodeID)
-	if !valid || fileSize == 0 || fileSize > DownloadFileSizeThreshold {
+	if !valid || fileSize == 0 {
 		return fmt.Errorf("file size is (%v)", fileSize)
 	}
 
