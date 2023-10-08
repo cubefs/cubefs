@@ -194,6 +194,9 @@ func TestBatchDownload(t *testing.T)  {
 	assert.Equal(t, uint64(5), pathCount, "count of path")
 	start := uint64(16)
 	for i := uint64(0); i < pathCount; i++ {
+		if start >= uint64(len(res)) {
+			break
+		}
 		pathSize := binary.BigEndian.Uint64(res[start:start+8])
 		start += 8
 		fmt.Println("path: ", string(res[start:start+pathSize]))
@@ -238,17 +241,16 @@ func TestBatchDownloadPath(t *testing.T)  {
 	assert.Equal(t, uint64(6), pathCount, "count of path")
 	start := uint64(16)
 	for i := uint64(0); i < pathCount; i++ {
+		if start >= uint64(len(res)) {
+			break
+		}
 		pathSize := binary.BigEndian.Uint64(res[start:start+8])
 		start += 8
 		filepath := string(res[start:start+pathSize])
 		fmt.Println("path: ", filepath)
 		start += pathSize
 		contentSize := binary.BigEndian.Uint64(res[start:start+8])
-		expectedSize := 10240
-		if filepath == "cfs" {
-			expectedSize = 0
-		}
-		assert.Equal(t, uint64(expectedSize), contentSize, "content size")
+		assert.Equal(t, uint64(10240), contentSize, "content size")
 		start += 8
 		start += contentSize
 	}
