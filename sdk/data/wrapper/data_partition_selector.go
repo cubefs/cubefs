@@ -38,6 +38,9 @@ type DataPartitionSelector interface {
 
 	// RemoveDP removes specified data partition.
 	RemoveDP(partitionID uint64)
+
+	// Count return number of data partitions held by selector.
+	Count() int
 }
 
 var (
@@ -127,6 +130,10 @@ func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	w.Lock.RUnlock()
+
+	if dpSelector.Count() <= 1 {
+		return
+	}
 
 	dpSelector.RemoveDP(partitionID)
 }
