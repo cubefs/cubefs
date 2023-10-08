@@ -113,21 +113,21 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval, true)
 
 	var extentConfig = &data.ExtentConfig{
-		Volume:                   opt.Volname,
-		Masters:                  masters,
-		FollowerRead:             opt.FollowerRead,
-		NearRead:                 opt.NearRead,
-		ReadRate:                 opt.ReadRate,
-		WriteRate:                opt.WriteRate,
-		ExtentSize:               int(opt.ExtentSize),
-		AutoFlush:                opt.AutoFlush,
-		OnInsertExtentKey:        s.mw.InsertExtentKey,
-		OnGetExtents:             s.mw.GetExtents,
-		OnTruncate:               s.mw.Truncate,
-		OnEvictIcache:            s.ic.Delete,
-		OnPutIcache:              s.ic.PutValue,
-		MetaWrapper:              s.mw,
-		StreamerSegCount: 		  opt.StreamerSegCount,
+		Volume:            opt.Volname,
+		Masters:           masters,
+		FollowerRead:      opt.FollowerRead,
+		NearRead:          opt.NearRead,
+		ReadRate:          opt.ReadRate,
+		WriteRate:         opt.WriteRate,
+		ExtentSize:        int(opt.ExtentSize),
+		AutoFlush:         opt.AutoFlush,
+		OnInsertExtentKey: s.mw.InsertExtentKey,
+		OnGetExtents:      s.mw.GetExtents,
+		OnTruncate:        s.mw.Truncate,
+		OnEvictIcache:     s.ic.Delete,
+		OnPutIcache:       s.ic.PutValue,
+		MetaWrapper:       s.mw,
+		StreamerSegCount:  opt.StreamerSegCount,
 	}
 	if first_start {
 		s.ec, err = data.NewExtentClient(extentConfig, nil)
@@ -426,7 +426,6 @@ func (s *Super) Owner() string {
 	return s.owner
 }
 
-
 func (s *Super) ClosePrefetchWorker() {
 	if s.prefetchManager != nil {
 		s.prefetchManager.Close()
@@ -480,8 +479,8 @@ func (s *Super) PrefetchAddPath(w http.ResponseWriter, r *http.Request) {
 
 func (s *Super) PrefetchByIndex(w http.ResponseWriter, r *http.Request) {
 	var (
-		bytes	[]byte
-		err 	error
+		bytes []byte
+		err   error
 	)
 	tpObject := exporter.NewVolumeTP("PrefetchAPI", s.volname)
 	defer func() {
@@ -538,8 +537,8 @@ func (s *Super) PrefetchByIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Super) PrefetchByPath(w http.ResponseWriter, r *http.Request) {
 	var (
-		bytes	[]byte
-		err 	error
+		bytes []byte
+		err   error
 	)
 	tpObject := exporter.NewVolumeTP("PrefetchPathAPI", s.volname)
 	defer func() {
@@ -637,17 +636,17 @@ func (s *Super) UnregisterAppPid(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("Delete app pid (%v).\n", pidArr)))
 }
 
-func (s *Super) GeneratePrefetchCubeInfo(localIP string, port uint64) error {
+func (s *Super) GeneratePrefetchCubeInfo(port uint64) error {
 	if s.prefetchManager == nil {
 		return nil
 	}
-	return s.prefetchManager.GenerateCubeInfo(localIP, port)
+	return s.prefetchManager.GenerateCubeInfo(port)
 }
 
 func (s *Super) BatchDownload(w http.ResponseWriter, r *http.Request) {
 	var (
-		bytes	[]byte
-		err 	error
+		bytes []byte
+		err   error
 	)
 	tpObject := exporter.NewVolumeTP("BatchDownloadAPI", s.volname)
 	defer func() {
@@ -714,8 +713,8 @@ func (s *Super) BatchDownload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Super) BatchDownloadPath(w http.ResponseWriter, r *http.Request) {
 	var (
-		bytes	[]byte
-		err 	error
+		bytes []byte
+		err   error
 	)
 	tpObject := exporter.NewVolumeTP("BatchDownloadPathAPI", s.volname)
 	defer func() {
@@ -737,7 +736,7 @@ func (s *Super) BatchDownloadPath(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(fmt.Sprintf("read body err(%v)\n", err)))
 		return
 	}
-	var batchArr   [][]string
+	var batchArr [][]string
 	if err = json.Unmarshal(bytes, &batchArr); err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(fmt.Sprintf("json unmarshal err(%v)\n", err)))

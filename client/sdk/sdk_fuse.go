@@ -51,7 +51,6 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/jacobsa/daemonize"
@@ -78,16 +77,16 @@ const (
 	ControlCommandFreeOSMemory = "/debug/freeosmemory"
 	ControlCommandTracing      = "/tracing"
 
-	ControlPrefetchRead		   = "/prefetch/read"
-	ControlPrefetchReadPath	   = "/prefetch/read/path"
-	ControlPrefetchAddPath	   = "/prefetch/pathAdd"
-	ControlPrefetchAppPid	   = "/post/processID"
-	ControlRegisterPid	   	   = "/register/pid"
-	ControlUnregisterPid	   = "/unregister/pid"
-	ControlBatchDownload	   = "/batchdownload"
-	ControlBatchDownloadPath   = "/batchdownload/path"
+	ControlPrefetchRead      = "/prefetch/read"
+	ControlPrefetchReadPath  = "/prefetch/read/path"
+	ControlPrefetchAddPath   = "/prefetch/pathAdd"
+	ControlPrefetchAppPid    = "/post/processID"
+	ControlRegisterPid       = "/register/pid"
+	ControlUnregisterPid     = "/unregister/pid"
+	ControlBatchDownload     = "/batchdownload"
+	ControlBatchDownloadPath = "/batchdownload/path"
 
-	Role                       = "Client"
+	Role = "Client"
 )
 
 type fClient struct {
@@ -253,8 +252,8 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	gClient.wg.Add(2)
 	go func() {
 		gClient.portWg.Wait()
-		if err = gClient.super.GeneratePrefetchCubeInfo(opt.LocalIP, gClient.profPort); err != nil {
-			log.LogErrorf("GeneratePrefetchCubeInfo: err(%v) localIP(%v) prof(%v)", err, opt.LocalIP, gClient.profPort)
+		if err = gClient.super.GeneratePrefetchCubeInfo(gClient.profPort); err != nil {
+			log.LogErrorf("GeneratePrefetchCubeInfo: err(%v) prof(%v)", err, gClient.profPort)
 		}
 		version.ReportVersionSchedule(cfg, masters, versionInfo, gClient.volName, opt.MountPoint, CommitID, gClient.profPort, gClient.stopC, &gClient.wg)
 	}()
@@ -445,10 +444,9 @@ func registerInterceptedSignal() {
 	}()
 }
 
-
 const (
-	MaxPreFetchThreadCount =400
-	MinPreFetchThreadCount =200
+	MaxPreFetchThreadCount = 400
+	MinPreFetchThreadCount = 200
 )
 
 func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
@@ -531,24 +529,41 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		return nil, fmt.Errorf("invalid config file: pidFile(%s) must be a absolute path", opt.PidFile)
 	}
 	opt.EnableReadDirPlus = GlobalMountOptions[proto.EnableReadDirPlus].GetBool()
-
 	opt.PrefetchThread = GlobalMountOptions[proto.PrefetchThread].GetInt64()
-	opt.LocalIP = GlobalMountOptions[proto.LocalIP].GetString()
-	if opt.PrefetchThread > 0 && !iputil.IsValidIP(opt.LocalIP) {
-		return nil, fmt.Errorf("invalid prefetch config: localIP(%v) must be a valid IP", opt.LocalIP)
-	}
-
-	if opt.PrefetchThread > MaxPreFetchThreadCount {
-		opt.PrefetchThread= MaxPreFetchThreadCount
-	}
-
-	if opt.PrefetchThread < MinPreFetchThreadCount{
-		opt.PrefetchThread=MinPreFetchThreadCount
-	}
-
-
 	opt.StreamerSegCount = GlobalMountOptions[proto.StreamerSegCount].GetInt64()
 
+	opt.Profile = GlobalMountOptions[proto.Profile].GetString()
+	if opt.Profile == proto.ProfileAiPrefetch {
+		if !GlobalMountOptions[proto.EnableReadDirPlus].HasConfig() {
+			opt.EnableReadDirPlus = true
+		}
+		if !GlobalMountOptions[proto.KeepCache].HasConfig() {
+			opt.KeepCache = true
+		}
+		if !GlobalMountOptions[proto.PrefetchThread].HasConfig() {
+			opt.PrefetchThread = 3*int64(runtime.NumCPU())
+		}
+		if !GlobalMountOptions[proto.FsyncOnClose].HasConfig() {
+			opt.FsyncOnClose = false
+		}
+		if !GlobalMountOptions[proto.StreamerSegCount].HasConfig() {
+			opt.StreamerSegCount = 10000
+		}
+		if !GlobalMountOptions[proto.IcacheTimeout].HasConfig() {
+			opt.IcacheTimeout = 300
+		}
+		if !GlobalMountOptions[proto.LookupValid].HasConfig() {
+			opt.LookupValid = 300
+		}
+	}
+	if opt.PrefetchThread > 0 {
+		if opt.PrefetchThread > MaxPreFetchThreadCount {
+			opt.PrefetchThread = MaxPreFetchThreadCount
+		}
+		if opt.PrefetchThread < MinPreFetchThreadCount {
+			opt.PrefetchThread = MinPreFetchThreadCount
+		}
+	}
 	return opt, nil
 }
 

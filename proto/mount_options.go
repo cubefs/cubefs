@@ -62,21 +62,22 @@ const (
 	PidFile
 	EnableReadDirPlus
 	PrefetchThread
-	LocalIP
 	StreamerSegCount
 	MaxBackground
 	CongestionThresh
+	Profile
 
 	MaxMountOption
 )
 
 // For server
 const (
-	MasterAddr       = "masterAddr"
-	ListenPort       = "listen"
-	HttpPort         = "prof"
-	ObjectNodeDomain = "objectNodeDomain"
-	MaxReadAhead     = 512 * 1024
+	MasterAddr        = "masterAddr"
+	ListenPort        = "listen"
+	HttpPort          = "prof"
+	ObjectNodeDomain  = "objectNodeDomain"
+	MaxReadAhead      = 512 * 1024
+	ProfileAiPrefetch = "ai_prefetch"
 )
 
 type MountOption struct {
@@ -84,6 +85,11 @@ type MountOption struct {
 	description  string
 	cmdlineValue string
 	value        interface{}
+	hasConfig    bool // is this option in config file
+}
+
+func NewMountOption(keyword string, description string, value interface{}) MountOption {
+	return MountOption{keyword, description, "", value, false}
 }
 
 func (opt MountOption) String() string {
@@ -96,59 +102,59 @@ func NewMountOptions() []MountOption {
 }
 
 func InitMountOptions(opts []MountOption) {
-	opts[MountPoint] = MountOption{"mountPoint", "Mount Point", "", ""}
-	opts[Modulename] = MountOption{"modulename", "module name", "", ""}
-	opts[VolName] = MountOption{"volName", "Volume Name", "", ""}
-	opts[Owner] = MountOption{"owner", "Owner", "", ""}
-	opts[Master] = MountOption{MasterAddr, "Master Address", "", ""}
-	opts[LogDir] = MountOption{"logDir", "Log Path", "", ""}
-	opts[WarnLogDir] = MountOption{"warnLogDir", "Warn Log Path", "", ""}
-	opts[LogLevel] = MountOption{"logLevel", "Log Level", "", ""}
-	opts[ProfPort] = MountOption{"profPort", "PProf Port", "", ""}
-	opts[ExporterPort] = MountOption{"exporterPort", "Exporter Port", "", ""}
-	opts[IcacheTimeout] = MountOption{"icacheTimeout", "Inode Cache Expiration Time", "", int64(-1)}
-	opts[LookupValid] = MountOption{"lookupValid", "Lookup Valid Duration", "", int64(-1)}
-	opts[AttrValid] = MountOption{"attrValid", "Attr Valid Duration", "", int64(-1)}
-	opts[ReadRate] = MountOption{"readRate", "Read Rate Limit", "", int64(-1)}
-	opts[WriteRate] = MountOption{"writeRate", "Write Rate Limit", "", int64(-1)}
-	opts[EnSyncWrite] = MountOption{"enSyncWrite", "Enable Sync Write", "", int64(-1)}
-	opts[AutoInvalData] = MountOption{"autoInvalData", "Auto Invalidate Data", "", int64(-1)}
-	opts[Rdonly] = MountOption{"rdonly", "Mount as readonly", "", false}
-	opts[WriteCache] = MountOption{"writecache", "Enable FUSE writecache feature", "", false}
-	opts[KeepCache] = MountOption{"keepcache", "Enable FUSE keepcache feature", "", false}
-	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
-	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", false}
-	opts[ReadAheadSize] = MountOption{"readAheadSize", "Set the size of kernel read-ahead", "", int64(MaxReadAhead)}
-	opts[MaxBackground] = MountOption{"maxBackground", "Set the count of kernel background requests", "", int64(0)}
-	opts[CongestionThresh] = MountOption{"congestionThresh", "Set the congestion threshold of kernel background requests", "", int64(0)}
+	opts[MountPoint] = NewMountOption("mountPoint", "Mount Point", "")
+	opts[Modulename] = NewMountOption("modulename", "module name", "")
+	opts[VolName] = NewMountOption("volName", "Volume Name", "")
+	opts[Owner] = NewMountOption("owner", "Owner", "")
+	opts[Master] = NewMountOption(MasterAddr, "Master Address", "")
+	opts[LogDir] = NewMountOption("logDir", "Log Path", "")
+	opts[WarnLogDir] = NewMountOption("warnLogDir", "Warn Log Path", "")
+	opts[LogLevel] = NewMountOption("logLevel", "Log Level", "")
+	opts[ProfPort] = NewMountOption("profPort", "PProf Port", "")
+	opts[ExporterPort] = NewMountOption("exporterPort", "Exporter Port", "")
+	opts[IcacheTimeout] = NewMountOption("icacheTimeout", "Inode Cache Expiration Time", int64(-1))
+	opts[LookupValid] = NewMountOption("lookupValid", "Lookup Valid Duration", int64(-1))
+	opts[AttrValid] = NewMountOption("attrValid", "Attr Valid Duration", int64(-1))
+	opts[ReadRate] = NewMountOption("readRate", "Read Rate Limit", int64(-1))
+	opts[WriteRate] = NewMountOption("writeRate", "Write Rate Limit", int64(-1))
+	opts[EnSyncWrite] = NewMountOption("enSyncWrite", "Enable Sync Write", int64(-1))
+	opts[AutoInvalData] = NewMountOption("autoInvalData", "Auto Invalidate Data", int64(-1))
+	opts[Rdonly] = NewMountOption("rdonly", "Mount as readonly", false)
+	opts[WriteCache] = NewMountOption("writecache", "Enable FUSE writecache feature", false)
+	opts[KeepCache] = NewMountOption("keepcache", "Enable FUSE keepcache feature", false)
+	opts[FollowerRead] = NewMountOption("followerRead", "Enable read from follower", false)
+	opts[NearRead] = NewMountOption("nearRead", "Enable read from nearest node", false)
+	opts[ReadAheadSize] = NewMountOption("readAheadSize", "Set the size of kernel read-ahead", int64(MaxReadAhead))
+	opts[MaxBackground] = NewMountOption("maxBackground", "Set the count of kernel background requests", int64(0))
+	opts[CongestionThresh] = NewMountOption("congestionThresh", "Set the congestion threshold of kernel background requests", int64(0))
 
-	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
-	opts[ClientKey] = MountOption{"clientKey", "Client Key", "", ""}
-	opts[TicketHost] = MountOption{"ticketHost", "Ticket Host", "", ""}
-	opts[EnableHTTPS] = MountOption{"enableHTTPS", "Enable HTTPS", "", false}
-	opts[CertFile] = MountOption{"certFile", "Cert File", "", ""}
+	opts[Authenticate] = NewMountOption("authenticate", "Enable Authenticate", false)
+	opts[ClientKey] = NewMountOption("clientKey", "Client Key", "")
+	opts[TicketHost] = NewMountOption("ticketHost", "Ticket Host", "")
+	opts[EnableHTTPS] = NewMountOption("enableHTTPS", "Enable HTTPS", false)
+	opts[CertFile] = NewMountOption("certFile", "Cert File", "")
 
-	opts[TokenKey] = MountOption{"token", "Token Key", "", ""}
-	opts[AccessKey] = MountOption{"accessKey", "Access Key", "", ""}
-	opts[SecretKey] = MountOption{"secretKey", "Secret Key", "", ""}
+	opts[TokenKey] = NewMountOption("token", "Token Key", "")
+	opts[AccessKey] = NewMountOption("accessKey", "Access Key", "")
+	opts[SecretKey] = NewMountOption("secretKey", "Secret Key", "")
 
-	opts[DisableDcache] = MountOption{"disableDcache", "Disable Dentry Cache", "", false}
-	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", ""}
-	opts[AutoMakeSubDir] = MountOption{"autoMakeSubdir", "Auto make non-existent subdir", "", false}
-	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
-	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
-	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
-	opts[EnablePosixACL] = MountOption{"enablePosixACL", "enable posix ACL support", "", false}
-	opts[NoBatchGetInodeOnReaddir] = MountOption{"noBatchGetInodeOnReaddir", "Not batch get inode info when readdir", "", false}
-	opts[ExtentSize] = MountOption{"extentSize", "set extentSize for client", "", int64(0)}
-	opts[AutoFlush] = MountOption{"autoFlush", "set autoFlush for client", "", true}
-	opts[DeleteProcessAbsoPath] = MountOption{"delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "", ""}
-	opts[UmpCollectWay] = MountOption{"umpCollectWay", "1: by file, 2: by jmtp client", "", int64(exporter.UMPCollectMethodFile)}
-	opts[PidFile] = MountOption{"pidFile", "pidFile absolute path", "", ""}
-	opts[EnableReadDirPlus] = MountOption{"readDirPlus", "readdir and get inode info to accelerate any future lookups in the same directory", "", false}
-	opts[PrefetchThread] = MountOption{"prefetchThread", "start multiple threads to prefetch files", "", int64(0)}
-	opts[LocalIP] = MountOption{"localIP", "local IP address", "", ""}
-	opts[StreamerSegCount] = MountOption{"streamerSegCount", "The number of streamer segment map", "", int64(0)}
+	opts[DisableDcache] = NewMountOption("disableDcache", "Disable Dentry Cache", false)
+	opts[SubDir] = NewMountOption("subdir", "Mount sub directory", "")
+	opts[AutoMakeSubDir] = NewMountOption("autoMakeSubdir", "Auto make non-existent subdir", false)
+	opts[FsyncOnClose] = NewMountOption("fsyncOnClose", "Perform fsync upon file close", true)
+	opts[MaxCPUs] = NewMountOption("maxcpus", "The maximum number of CPUs that can be executing", int64(-1))
+	opts[EnableXattr] = NewMountOption("enableXattr", "Enable xattr support", false)
+	opts[EnablePosixACL] = NewMountOption("enablePosixACL", "enable posix ACL support", false)
+	opts[NoBatchGetInodeOnReaddir] = NewMountOption("noBatchGetInodeOnReaddir", "Not batch get inode info when readdir", false)
+	opts[ExtentSize] = NewMountOption("extentSize", "set extentSize for client", int64(0))
+	opts[AutoFlush] = NewMountOption("autoFlush", "set autoFlush for client", true)
+	opts[DeleteProcessAbsoPath] = NewMountOption("delProcessAbsoPath", "the absolute path of the process which is allowed to delete files", "")
+	opts[UmpCollectWay] = NewMountOption("umpCollectWay", "1: by file, 2: by jmtp client", int64(exporter.UMPCollectMethodFile))
+	opts[PidFile] = NewMountOption("pidFile", "pidFile absolute path", "")
+	opts[EnableReadDirPlus] = NewMountOption("readDirPlus", "readdir and get inode info to accelerate any future lookups in the same directory", false)
+	opts[PrefetchThread] = NewMountOption("prefetchThread", "start multiple threads to prefetch files", int64(0))
+	opts[StreamerSegCount] = NewMountOption("streamerSegCount", "The number of streamer segment map", int64(0))
+	opts[Profile] = NewMountOption("profile", "config group for different situations", "")
 }
 
 func ParseMountOptions(opts []MountOption, cfg *config.Config) {
@@ -160,6 +166,7 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			} else {
 				if value, present := cfg.CheckAndGetString(opts[i].keyword); present {
 					opts[i].value = value
+					opts[i].hasConfig = true
 				} else {
 					opts[i].value = v
 				}
@@ -172,6 +179,7 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			} else {
 				if value, present := cfg.CheckAndGetInt64(opts[i].keyword); present {
 					opts[i].value = value
+					opts[i].hasConfig = true
 				} else {
 					opts[i].value = v
 				}
@@ -184,6 +192,7 @@ func ParseMountOptions(opts []MountOption, cfg *config.Config) {
 			} else {
 				if value, present := cfg.CheckAndGetBool(opts[i].keyword); present {
 					opts[i].value = value
+					opts[i].hasConfig = true
 				} else {
 					opts[i].value = v
 				}
@@ -241,6 +250,10 @@ func (opt *MountOption) GetInt64() int64 {
 	return val
 }
 
+func (opt *MountOption) HasConfig() bool {
+	return opt.hasConfig
+}
+
 type MountOptions struct {
 	Config                   *config.Config
 	MountPoint               string
@@ -284,9 +297,13 @@ type MountOptions struct {
 	UmpCollectWay            int64
 	PidFile                  string
 	EnableReadDirPlus        bool
-	PrefetchThread			 int64
-	LocalIP					 string
-	StreamerSegCount		 int64
-	MaxBackground			 int64
-	CongestionThresh		 int64
+	PrefetchThread           int64
+	StreamerSegCount         int64
+	MaxBackground            int64
+	CongestionThresh         int64
+	Profile                  string
+}
+
+func (opt MountOptions) String() string {
+	return fmt.Sprintf("MountPoint:%v, Modulename:%v, Volname:%v, Owner:%v, Master:%v, Logpath:%v, Loglvl:%v, Profport:%v, IcacheTimeout:%v, LookupValid:%v, AttrValid:%v, ReadRate:%v, WriteRate:%v, EnSyncWrite:%v, AutoInvalData:%v, UmpDatadir:%v, Rdonly:%v, WriteCache:%v, KeepCache:%v, FollowerRead:%v, Authenticate:%v, TicketMess:%v, TokenKey:%v, AccessKey:%v, SecretKey:%v, DisableDcache:%v, SubDir:%v, AutoMakeSubDir:%v, FsyncOnClose:%v, MaxCPUs:%v, EnableXattr:%v, NearRead:%v, EnablePosixACL:%v, ExtentSize:%v, AutoFlush:%v, DelProcessPath:%v, NoBatchGetInodeOnReaddir:%v, ReadAheadSize:%v, UmpCollectWay:%v, PidFile:%v, EnableReadDirPlus:%v, PrefetchThread:%v, StreamerSegCount:%v, MaxBackground:%v, CongestionThresh:%v, Profile:%v", opt.MountPoint, opt.Modulename, opt.Volname, opt.Owner, opt.Master, opt.Logpath, opt.Loglvl, opt.Profport, opt.IcacheTimeout, opt.LookupValid, opt.AttrValid, opt.ReadRate, opt.WriteRate, opt.EnSyncWrite, opt.AutoInvalData, opt.UmpDatadir, opt.Rdonly, opt.WriteCache, opt.KeepCache, opt.FollowerRead, opt.Authenticate, opt.TicketMess, opt.TokenKey, opt.AccessKey, opt.SecretKey, opt.DisableDcache, opt.SubDir, opt.AutoMakeSubDir, opt.FsyncOnClose, opt.MaxCPUs, opt.EnableXattr, opt.NearRead, opt.EnablePosixACL, opt.ExtentSize, opt.AutoFlush, opt.DelProcessPath, opt.NoBatchGetInodeOnReaddir, opt.ReadAheadSize, opt.UmpCollectWay, opt.PidFile, opt.EnableReadDirPlus, opt.PrefetchThread, opt.StreamerSegCount, opt.MaxBackground, opt.CongestionThresh, opt.Profile)
 }

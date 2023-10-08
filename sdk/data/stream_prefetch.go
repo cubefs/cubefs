@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	CubeInfoDir		 = ".cube_torch"
+	CubeInfoDir      = ".cube_torch"
 	CubeInfoFileName = ".cube_info"
 
 	DefaultIndexDentryExpiration = 60 * time.Minute
@@ -38,40 +38,40 @@ const (
 const BatchDownloadV1 = 0
 
 type CubeInfo struct {
-	Prof uint64 `json:"prof"`
+	Prof       uint64 `json:"prof"`
 	MountPoint string `json:"mount_point"`
-	LocalIP string 	`json:"local_ip"`
-	VolName string  `json:"vol_name"`
+	LocalIP    string `json:"local_ip"`
+	VolName    string `json:"vol_name"`
 }
 
 type PrefetchManager struct {
-	volName			 string
+	volName          string
 	mountPoint       string
 	ec               *ExtentClient
 	indexFileInfoMap sync.Map // key: index file path, value: *IndexInfo
 	indexInfoChan    chan *IndexInfo
 	filePathChan     chan *FileInfo
 	downloadChan     chan *DownloadFileInfo
-	lookupDcache	 sync.Map // key: inode ID, value: dcache
+	lookupDcache     sync.Map // key: inode ID, value: dcache
 	appPid           sync.Map
 	dcacheMap        sync.Map // key: parent Inode ID, value: *IndexDentryInfo
 
-	metrics			 *PrefetchMetrics
+	metrics *PrefetchMetrics
 
-	wg     		sync.WaitGroup
-	closeC    	chan struct{}
-	isClosed  	bool
-	closeLock	sync.RWMutex
+	wg        sync.WaitGroup
+	closeC    chan struct{}
+	isClosed  bool
+	closeLock sync.RWMutex
 }
 
 type PrefetchMetrics struct {
-	appReadCount	uint64
-	totalReadCount	uint64
+	appReadCount   uint64
+	totalReadCount uint64
 }
 
 type IndexInfo struct {
 	path        string
-	datasetCnt	string
+	datasetCnt  string
 	ttl         int64
 	validMinute int64
 	fileInfoMap []*FileInfo
@@ -97,9 +97,9 @@ func (info *IndexDentryInfo) String() string {
 }
 
 type FileInfo struct {
-	path  	string
-	inoID 	uint64
-	isAbs	bool
+	path  string
+	inoID uint64
+	isAbs bool
 }
 
 type DentryInfo struct {
@@ -110,15 +110,16 @@ type DentryInfo struct {
 func NewPrefetchManager(ec *ExtentClient, volName, mountPoint string, prefetchThreads int64) *PrefetchManager {
 	InitReadBlockPool()
 	pManager := &PrefetchManager{
-		volName: 		volName,
-		mountPoint:     mountPoint,
-		ec:             ec,
-		closeC:         make(chan struct{}, 1),
-		indexInfoChan:  make(chan *IndexInfo, 1024),
-		filePathChan:   make(chan *FileInfo, 10240000),
-		downloadChan:   make(chan *DownloadFileInfo, 10240000),
-		metrics: 		&PrefetchMetrics{0, 0},
+		volName:       volName,
+		mountPoint:    mountPoint,
+		ec:            ec,
+		closeC:        make(chan struct{}, 1),
+		indexInfoChan: make(chan *IndexInfo, 1024),
+		filePathChan:  make(chan *FileInfo, 10240000),
+		downloadChan:  make(chan *DownloadFileInfo, 10240000),
+		metrics:       &PrefetchMetrics{0, 0},
 	}
+	log.LogInfof("NewPrefetchManager: start prefetch threads(%v)", prefetchThreads)
 	for i := int64(0); i < prefetchThreads; i++ {
 		pManager.wg.Add(1)
 		go func(id int64) {
@@ -140,44 +141,25 @@ func (pManager *PrefetchManager) Close() {
 	pManager.clearDownloadChan()
 }
 
-const(
-	Cube_Torch_ConfigFile="/tmp/cube_torch.config"
+const (
+	Cube_Torch_ConfigFile = "/tmp/cube_torch.config"
 )
 
-func (pManager *PrefetchManager) GenerateCubeInfo(localIP string, port uint64) (err error) {
+func (pManager *PrefetchManager) GenerateCubeInfo(port uint64) (err error) {
 	var (
 		cubeInfoBytes []byte
-		fd            *os.File
 	)
-	cubeInfo := &CubeInfo{Prof: port,MountPoint:pManager.mountPoint,LocalIP: localIP,VolName: pManager.volName}
+	cubeInfo := &CubeInfo{Prof: port, MountPoint: pManager.mountPoint, VolName: pManager.volName}
 	if cubeInfoBytes, err = json.Marshal(cubeInfo); err != nil {
 		log.LogErrorf("GenerateCubeInfo: info(%v) json marshal err(%v)", cubeInfo, err)
 		return
 	}
-	cubeTorchConfig:=fmt.Sprintf("%v.%v",Cube_Torch_ConfigFile,pManager.volName)
-	err=ioutil.WriteFile(cubeTorchConfig,cubeInfoBytes,0666)
-	if err!=nil{
-		log.LogErrorf("Generate Cube_Torch_ConfigFile(%v): info(%v) json marshal err(%v)", Cube_Torch_ConfigFile,cubeInfo, err)
-		return
-
+	cubeTorchConfig := fmt.Sprintf("%v.%v", Cube_Torch_ConfigFile, pManager.volName)
+	err = ioutil.WriteFile(cubeTorchConfig, cubeInfoBytes, 0666)
+	if err != nil {
+		log.LogErrorf("Generate Cube_Torch_ConfigFile(%v): info(%v) json marshal err(%v)", Cube_Torch_ConfigFile, cubeInfo, err)
 	}
-	cubeInfoDir := path.Join(pManager.mountPoint, CubeInfoDir, localIP)
-	if err = os.MkdirAll(cubeInfoDir, 0777); err != nil {
-		log.LogErrorf("GenerateCubeInfo: mkdir(%v) err(%v)", cubeInfoDir, err)
-		return
-	}
-	cubeInfoPath := path.Join(cubeInfoDir, CubeInfoFileName)
-	if fd, err = os.OpenFile(cubeInfoPath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666); err != nil {
-		log.LogErrorf("GenerateCubeInfo: open file(%v) err(%v)", cubeInfoPath, err)
-		return
-	}
-	defer fd.Close()
-
-	if _, err = fd.WriteAt(cubeInfoBytes, 0); err != nil {
-		log.LogErrorf("GenerateCubeInfo: write file(%v) err(%v) info(%v)", cubeInfoPath, err, cubeInfo)
-		return
-	}
-	return fd.Sync()
+	return
 }
 
 func (pManager *PrefetchManager) backGroundPrefetchWorker(id int64) {
@@ -268,7 +250,7 @@ func (pManager *PrefetchManager) cleanExpiredIndexInfo() {
 			appRead := atomic.SwapUint64(&pManager.metrics.appReadCount, 0)
 			hitPercent := float64(100)
 			if totalRead != 0 {
-				hitPercent = float64(totalRead - appRead) / float64(totalRead) * 100
+				hitPercent = float64(totalRead-appRead) / float64(totalRead) * 100
 			}
 			log.LogInfof("PrefetchManager: totalRead(%v) appRead(%v) hitCache(%.2f%%) pathChan(%v) batchDownloadChan(%v)",
 				totalRead, appRead, hitPercent, len(pManager.filePathChan), len(pManager.downloadChan))
@@ -580,9 +562,9 @@ func (pManager *PrefetchManager) PrefetchByPath(filepath string) error {
 }
 
 type DownloadFileInfo struct {
-	absPath		string
-	fileInfo	*FileInfo
-	resp		*BatchDownloadRespWriter
+	absPath  string
+	fileInfo *FileInfo
+	resp     *BatchDownloadRespWriter
 }
 
 func (d *DownloadFileInfo) String() string {
@@ -594,8 +576,8 @@ func (d *DownloadFileInfo) String() string {
 
 type BatchDownloadRespWriter struct {
 	sync.Mutex
-	Wg		sync.WaitGroup
-	Writer	io.Writer
+	Wg     sync.WaitGroup
+	Writer io.Writer
 }
 
 func (resp *BatchDownloadRespWriter) write(data []byte) {
@@ -631,9 +613,9 @@ func (pManager *PrefetchManager) GetBatchFileInfos(batchArr [][]uint64, datasetC
 
 func (pManager *PrefetchManager) DownloadData(fileInfo *FileInfo, respData *BatchDownloadRespWriter) {
 	dInfo := &DownloadFileInfo{
-		absPath:	path.Join(pManager.mountPoint, fileInfo.path),
-		fileInfo: 	fileInfo,
-		resp:     	respData,
+		absPath:  path.Join(pManager.mountPoint, fileInfo.path),
+		fileInfo: fileInfo,
+		resp:     respData,
 	}
 	if err := pManager.putDownloadChan(dInfo); err != nil {
 		log.LogWarnf("DownloadData: err(%v)", err)
@@ -643,8 +625,8 @@ func (pManager *PrefetchManager) DownloadData(fileInfo *FileInfo, respData *Batc
 
 func (pManager *PrefetchManager) DownloadPath(filePath string, respData *BatchDownloadRespWriter) {
 	dInfo := &DownloadFileInfo{
-		absPath:	filePath,
-		resp:   	respData,
+		absPath: filePath,
+		resp:    respData,
 	}
 	if err := pManager.putDownloadChan(dInfo); err != nil {
 		log.LogWarnf("DownloadPath: err(%v)", err)
@@ -654,8 +636,8 @@ func (pManager *PrefetchManager) DownloadPath(filePath string, respData *BatchDo
 
 func (pManager *PrefetchManager) ReadData(ctx context.Context, dInfo *DownloadFileInfo) (err error) {
 	var (
-		content 	[]byte
-		readSize	int
+		content  []byte
+		readSize int
 	)
 	defer func() {
 		if err == nil && readSize > 0 {
@@ -784,7 +766,7 @@ func (pManager *PrefetchManager) LookupPathByCache(ctx context.Context, absPath 
 		if err != nil {
 			return 0, err
 		}
-		if index != len(dirs) - 1 {
+		if index != len(dirs)-1 {
 			dcache.Put(dir, child)
 		}
 		ino = child
