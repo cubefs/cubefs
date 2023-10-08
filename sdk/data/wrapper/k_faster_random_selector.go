@@ -146,6 +146,12 @@ func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 	return
 }
 
+func (s *KFasterRandomSelector) Count() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.partitions)
+}
+
 func swap(s []*DataPartition, i int, j int) {
 	s[i], s[j] = s[j], s[i]
 }

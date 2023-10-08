@@ -130,6 +130,12 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	return
 }
 
+func (s *DefaultRandomSelector) Count() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.partitions)
+}
+
 func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
 	s.RLock()
 	localLeaderPartitions := s.localLeaderPartitions
