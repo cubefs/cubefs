@@ -575,7 +575,6 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                 return
 
     def _reset(self, loader, first_iter=False):
-        print("pid{} start reset{}".format(os.getpid(), datetime.datetime.now()))
         super()._reset(loader, first_iter)
         self._worker_queue_idx_cycle = itertools.cycle(range(self._num_workers))
 
@@ -613,7 +612,6 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             self._start_loop_get_index = True
         for _ in range(self._prefetch_factor * self._num_workers):
             self._try_put_index()
-        print("pid{} end reset{}".format(os.getpid(), datetime.datetime.now()))
 
     def _try_get_data(self, timeout=_utils.MP_STATUS_CHECK_INTERVAL):
         # Tries to fetch data from `self._data_queue` once for a given timeout.
