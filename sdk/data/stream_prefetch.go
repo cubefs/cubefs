@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -53,6 +52,7 @@ type PrefetchManager struct {
 	indexInfoChan    chan *IndexInfo
 	filePathChan     chan *FileInfo
 	downloadChan     chan *DownloadFileInfo
+	lookupDcache	 sync.Map // key: inode ID, value: dcache
 	appPid           sync.Map
 	dcacheMap        sync.Map // key: parent Inode ID, value: *IndexDentryInfo
 
@@ -282,6 +282,14 @@ func (pManager *PrefetchManager) cleanExpiredIndexInfo() {
 				if dCache.IsExpired() {
 					pManager.dcacheMap.Delete(key)
 					log.LogInfof("cleanExpiredIndexInfo: dcache parent id(%v)", key)
+				}
+				return true
+			})
+			pManager.lookupDcache.Range(func(key, value interface{}) bool {
+				dcache := value.(*cache.DentryCache)
+				if dcache.IsExpired() {
+					pManager.lookupDcache.Delete(key)
+					log.LogInfof("cleanExpiredIndexInfo: lookupDcache parent id(%v)", key)
 				}
 				return true
 			})
@@ -628,7 +636,6 @@ func (pManager *PrefetchManager) GetBatchFileInfos(batchArr [][]uint64, datasetC
 }
 
 func (pManager *PrefetchManager) DownloadData(fileInfo *FileInfo, respData *BatchDownloadRespWriter) {
-	var noData []byte
 	dInfo := &DownloadFileInfo{
 		absPath:	path.Join(pManager.mountPoint, fileInfo.path),
 		fileInfo: 	fileInfo,
@@ -637,12 +644,6 @@ func (pManager *PrefetchManager) DownloadData(fileInfo *FileInfo, respData *Batc
 	respData.Wg.Add(1)
 	select {
 	case <-pManager.closeC:
-		if len(noData) == 0 {
-			noData = make([]byte, 16)
-			binary.BigEndian.PutUint64(noData[0:8], uint64(0))
-			binary.BigEndian.PutUint64(noData[8:16], uint64(0))
-		}
-		respData.write(noData)
 		log.LogWarnf("DownloadData: threads are closed")
 		respData.Wg.Done()
 	case pManager.downloadChan <- dInfo:
@@ -651,7 +652,6 @@ func (pManager *PrefetchManager) DownloadData(fileInfo *FileInfo, respData *Batc
 }
 
 func (pManager *PrefetchManager) DownloadPath(filePath string, respData *BatchDownloadRespWriter) {
-	var noData []byte
 	dInfo := &DownloadFileInfo{
 		absPath:	filePath,
 		resp:   	respData,
@@ -659,12 +659,6 @@ func (pManager *PrefetchManager) DownloadPath(filePath string, respData *BatchDo
 	respData.Wg.Add(1)
 	select {
 	case <-pManager.closeC:
-		if len(noData) == 0 {
-			noData = make([]byte, 16)
-			binary.BigEndian.PutUint64(noData[0:8], uint64(0))
-			binary.BigEndian.PutUint64(noData[8:16], uint64(0))
-		}
-		respData.write(noData)
 		log.LogWarnf("DownloadData: threads are closed")
 		respData.Wg.Done()
 	case pManager.downloadChan <- dInfo:
@@ -678,34 +672,32 @@ func (pManager *PrefetchManager) ReadData(ctx context.Context, dInfo *DownloadFi
 		readSize	int
 	)
 	defer func() {
-		filePath := dInfo.absPath
-		dataLen := 8 + len(filePath) + 8 + readSize
-		respData := GetBlockBuf(dataLen)
-		binary.BigEndian.PutUint64(respData[0:8], uint64(len(filePath)))
-		copy(respData[8:8+len(filePath)], filePath)
-		binary.BigEndian.PutUint64(respData[8+len(filePath):16+len(filePath)], uint64(readSize))
-		if readSize > 0 {
+		if err == nil && readSize > 0 {
+			filePath := dInfo.absPath
+			dataLen := 8 + len(filePath) + 8 + readSize
+			respData := GetBlockBuf(dataLen)
+			binary.BigEndian.PutUint64(respData[0:8], uint64(len(filePath)))
+			copy(respData[8:8+len(filePath)], filePath)
+			binary.BigEndian.PutUint64(respData[8+len(filePath):16+len(filePath)], uint64(readSize))
 			copy(respData[16+len(filePath):dataLen], content[:readSize])
-		}
-		if log.IsDebugEnabled() {
-			log.LogDebugf("ReadData: resp data len(%v) pathLen(%v) readSize(%v)", dataLen, len(filePath), readSize)
-		}
-		dInfo.resp.write(respData[:dataLen])
-		dInfo.resp.Wg.Done()
+			if log.IsDebugEnabled() {
+				log.LogDebugf("ReadData: resp data len(%v) pathLen(%v) readSize(%v)", dataLen, len(filePath), readSize)
+			}
+			dInfo.resp.write(respData[:dataLen])
 
-		PutBlockBuf(respData)
-		if len(content) > 0 {
-			PutBlockBuf(content)
+			PutBlockBuf(respData)
+			if len(content) > 0 {
+				PutBlockBuf(content)
+			}
 		}
+		dInfo.resp.Wg.Done()
 	}()
 
 	var inodeID uint64
 	if dInfo.fileInfo == nil || dInfo.fileInfo.inoID == 0 {
-		var statInfo os.FileInfo
-		if statInfo, err = os.Stat(dInfo.absPath); err != nil {
+		if inodeID, err = pManager.LookupPathByCache(ctx, dInfo.absPath); err != nil {
 			return
 		}
-		inodeID = statInfo.Sys().(*syscall.Stat_t).Ino
 	} else {
 		inodeID = dInfo.fileInfo.inoID
 	}
@@ -774,6 +766,47 @@ func (pManager *PrefetchManager) AddAppReadCount() {
 		return
 	}
 	atomic.AddUint64(&pManager.metrics.appReadCount, 1)
+}
+
+func (pManager *PrefetchManager) LookupPathByCache(ctx context.Context, absPath string) (uint64, error) {
+	if !strings.HasPrefix(absPath, pManager.mountPoint) {
+		return 0, fmt.Errorf("not cfs path")
+	}
+	ino := proto.RootIno
+	subDir := strings.Replace(absPath, pManager.mountPoint, "", 1)
+	if subDir == "" || subDir == "/" {
+		return 0, fmt.Errorf("not cfs file")
+	}
+	dirs := strings.Split(subDir, "/")
+	for index, dir := range dirs {
+		if dir == "/" || dir == "" {
+			continue
+		}
+		var dcache *cache.DentryCache
+		value, ok := pManager.lookupDcache.Load(ino)
+		if ok {
+			dcache = value.(*cache.DentryCache)
+			if child, exist := dcache.Get(dir); exist {
+				ino = child
+				continue
+			}
+		} else {
+			value, _ = pManager.lookupDcache.LoadOrStore(ino, cache.NewDentryCache(DefaultIndexDentryExpiration, true))
+			dcache = value.(*cache.DentryCache)
+		}
+		child, _, err := pManager.ec.metaWrapper.Lookup_ll(ctx, ino, dir)
+		if err != nil {
+			return 0, err
+		}
+		if index != len(dirs) - 1 {
+			dcache.Put(dir, child)
+		}
+		ino = child
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("LookupPathByCache: get inode(%v) of path(%v)", ino, absPath)
+	}
+	return ino, nil
 }
 
 func copyString(s string) string {
