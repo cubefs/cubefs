@@ -200,8 +200,6 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         # `None`.
         iteration_end = False
         watchdog = ManagerWatchdog()
-        fetch_batch_cnt = 0
-        print_timer = None
         torch.set_num_threads(1)
         if is_use_batch_download:
             notify_storage_thread, notify_storage_event = _init_batchdownload_threads(storage_info)
@@ -240,7 +238,6 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
             else:
                 try:
                     data = fetcher.fetch(index)
-                    fetch_batch_cnt += 1
                 except Exception as e:
                     if isinstance(e, StopIteration) and dataset_kind == _DatasetKind.Iterable:
                         data = _IterableDatasetStopIteration(worker_id)
