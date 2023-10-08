@@ -65,11 +65,11 @@ def start_worker_test_Dataset(i):
     while True:
         print("start epoch {} read data".format(epoch))
         for i, t in enumerate(train_loader):
-            print("i is {}, epoch {} ".format(i, epoch))
+            print("i is {}, epoch {} ".format(i, len(t)))
         epoch += 1
 
 
 if __name__ == '__main__':
-    w = multiprocessing.Process(target=start_worker_test_concatDataset, args=(1,))
+    w = multiprocessing.Process(target=start_worker_test_Dataset, args=(1,))
     w.daemon = False
     w.start()
