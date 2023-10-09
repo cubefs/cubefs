@@ -1042,7 +1042,7 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 			log.LogDebugf("action[unlinkTopLayer] mp %v iino %v", mpId, ino)
 			return true
 		}
-		log.LogDebugf("action[unlinkTopLayer] mp %v inode %v be unlinked, File restore, multiSnap.ekRefMap %v", mpId, ino.Inode, inode.multiSnap.ekRefMap)
+		log.LogDebugf("action[unlinkTopLayer] mp %v inode %v be unlinked", mpId, ino.Inode)
 		dIno.DecNLink() // dIno should be inode
 		doMore = true
 		return
@@ -1062,8 +1062,8 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 			return
 		}
 
-		log.LogDebugf("action[unlinkTopLayer] need restore.ino %v withSeq %v equal mp seq, verlist %v multiSnap.ekRefMap %v",
-			ino, inode.getVer(), verlist, inode.multiSnap.ekRefMap)
+		log.LogDebugf("action[unlinkTopLayer] need restore.ino %v withSeq %v equal mp seq, verlist %v",
+			ino, inode.getVer(), verlist)
 		// need restore
 		if !proto.IsDir(inode.Type) {
 			delFunc()
@@ -1104,7 +1104,6 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 		log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked, File create ver 1st layer", ino.Inode)
 	}
 	return
-
 }
 
 func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.VolVersionInfoList) (ext2Del []proto.ExtentKey, doMore bool, status uint8) {
