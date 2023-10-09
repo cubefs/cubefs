@@ -127,8 +127,8 @@ $ docker/run_docker.sh -h
 - 远端拉取构建【`推荐`】
 
 ``` bash
-$> docker pull cubefs/cubefs:blobstore-v3.2.0 # 拉取镜像
-$> docker run cubefs/cubefs:blobstore-v3.2.0 # 运行镜像
+$> docker pull cubefs/cubefs:blobstore-v3.3.0 # 拉取镜像
+$> docker run cubefs/cubefs:blobstore-v3.3.0 # 运行镜像
 $> docker container ls # 查看运行中的容器
    CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS               NAMES
    76100321156b        blobstore:v3.2.0                       "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
