@@ -552,11 +552,11 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 		log.LogDebugf("Delete_ll: consume %v", time.Since(start).Seconds())
 	}()
 
-	if mw.trashPolicy == nil {
-		//发布前删除
-		log.LogDebugf("TRACE Remove:TrashPolicy is nil")
-	}
-	if mw.trashPolicy != nil && mw.disableTrash == false {
+	if mw.disableTrash == false && mw.disableTrashByClient == false {
+		if mw.trashPolicy == nil {
+			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
+			mw.enableTrash()
+		}
 		//cannot delete .Trash
 		err, ret := mw.shouldMoveToTrash(parentID, name)
 		if err != nil {
@@ -694,11 +694,12 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 		mp              *MetaPartition
 		inodeCreateTime int64
 	)
-	if mw.trashPolicy == nil {
-		//发布前删除
-		log.LogDebugf("TRACE Remove:TrashPolicy is nil")
-	}
-	if mw.trashPolicy != nil && mw.disableTrash == false {
+
+	if mw.disableTrash == false && mw.disableTrashByClient == false {
+		if mw.trashPolicy == nil {
+			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
+			mw.enableTrash()
+		}
 		//cannot delete .Trash
 		err, ret := mw.shouldMoveToTrash(parentID, name)
 		if err != nil {
@@ -2376,4 +2377,8 @@ func (mw *MetaWrapper) DeleteInoInfoCache(ino uint64) {
 	mw.inoInfoLk.Lock()
 	defer mw.inoInfoLk.Unlock()
 	delete(mw.dirCache, ino)
+}
+
+func (mw *MetaWrapper) DisableTrashByClient(flag bool) {
+	mw.disableTrashByClient = flag
 }

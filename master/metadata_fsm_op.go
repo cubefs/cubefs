@@ -264,6 +264,7 @@ type volValue struct {
 	IopsRLimit, IopsWLimit, FlowRlimit, FlowWlimit         uint64
 	IopsRMagnify, IopsWMagnify, FlowRMagnify, FlowWMagnify uint32
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
+	TrashInterval                                          int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -325,6 +326,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		ClientHitTriggerCnt: vol.qosManager.ClientHitTriggerCnt,
 
 		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
+		TrashInterval:         vol.TrashInterval,
 	}
 
 	return
@@ -900,7 +902,7 @@ func (c *Cluster) loadZoneValue() (err error) {
 	return
 }
 
-//persist cluster value if not persisted; set create time for cluster being created.
+// persist cluster value if not persisted; set create time for cluster being created.
 func (c *Cluster) checkPersistClusterValue() {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {

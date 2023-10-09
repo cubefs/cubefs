@@ -559,6 +559,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.QuotaListAll).
 		HandlerFunc(m.ListQuotaAll)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetTrashInterval).
+		HandlerFunc(m.volSetTrashInterval)
 
 }
 

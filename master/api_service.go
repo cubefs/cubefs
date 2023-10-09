@@ -2204,6 +2204,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		CacheHighWater:          vol.CacheHighWater,
 		CacheRule:               vol.CacheRule,
 		PreloadCapacity:         vol.getPreloadCapacity(),
+		TrashInterval:           vol.TrashInterval,
 	}
 
 	vol.uidSpaceManager.RLock()
@@ -4250,8 +4251,8 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 		stat.TxRbInoCnt += mp.TxRbInoCnt
 		stat.TxRbDenCnt += mp.TxRbDenCnt
 	}
-
-	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.UsedSize)
+	stat.TrashInterval = vol.TrashInterval
+	log.LogDebugf("total[%v],usedSize[%v] TrashInterval[%v]", stat.TotalSize, stat.UsedSize, stat.TrashInterval)
 	if proto.IsHot(vol.VolType) {
 		return
 	}
@@ -4259,6 +4260,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.CacheTotalSize = vol.CacheCapacity * util.GB
 	stat.CacheUsedSize = vol.cfsUsedSpace()
 	stat.CacheUsedRatio = strconv.FormatFloat(float64(stat.CacheUsedSize)/float64(stat.CacheTotalSize), 'f', 2, 32)
+
 	log.LogDebugf("ebsTotal[%v],ebsUsedSize[%v]", stat.CacheTotalSize, stat.CacheUsedSize)
 
 	return
@@ -5183,4 +5185,42 @@ func (m *Server) queryBadDisks(w http.ResponseWriter, r *http.Request) {
 	})
 
 	sendOkReply(w, r, newSuccessHTTPReply(infos))
+}
+
+func (m *Server) volSetTrashInterval(w http.ResponseWriter, r *http.Request) {
+	var (
+		name     string
+		interval int64
+		err      error
+		msg      string
+		authKey  string
+		vol      *Vol
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetTrashInterval))
+	defer func() {
+		doStatAndMetric(proto.AdminSetTrashInterval, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
+	if name, authKey, interval, err = parseRequestToSetTrashInterval(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if interval < 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "interval cannot be less than 0"})
+		return
+	}
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	newArgs := getVolVarargs(vol)
+	newArgs.trashInterval = interval
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("update vol[%v] TrashInterval to %v successfully\n", name, interval)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }

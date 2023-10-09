@@ -164,13 +164,14 @@ type MetaWrapper struct {
 
 	qc *QuotaCache
 	//trash
-	TrashInterval int64
-	trashPolicy   *Trash
-	disableTrash  bool
-	rootIno       uint64
-	dirCache      map[uint64]dirInfoCache
-	inoInfoLk     sync.RWMutex
-	subDir        string
+	TrashInterval        int64
+	trashPolicy          *Trash
+	disableTrash         bool
+	disableTrashByClient bool
+	rootIno              uint64
+	dirCache             map[uint64]dirInfoCache
+	inoInfoLk            sync.RWMutex
+	subDir               string
 }
 
 type uniqidRange struct {
@@ -255,25 +256,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		}
 		break
 	}
-
-	//disable by TrashInterval = -1
-	if mw.TrashInterval > 0 {
-		trashTraverseLimit := config.TrashTraverseLimit
-		trashRebuildGoroutineLimit := config.TrashRebuildGoroutineLimit
-		// default value for sdk
-		if trashTraverseLimit <= 0 {
-			trashTraverseLimit = 10
-		}
-		if trashRebuildGoroutineLimit <= 0 {
-			trashRebuildGoroutineLimit = 10
-		}
-		//TODO:need use goroutine?
-		mw.trashPolicy, err = NewTrash(mw, mw.TrashInterval, config.SubDir,
-			trashTraverseLimit, trashRebuildGoroutineLimit)
-		if err != nil {
-			log.LogErrorf("action[initMetaWrapper] init trash failed, err %s", err.Error())
-		}
-	}
+	mw.enableTrash()
 	if limit <= 0 && err != nil {
 		return nil, err
 	}
@@ -281,6 +264,22 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	go mw.updateQuotaInfoTick()
 	go mw.refresh()
 	return mw, nil
+}
+func (mw *MetaWrapper) enableTrash() {
+	if mw.disableTrash == true {
+		return
+	}
+	if mw.TrashInterval > 0 {
+		// default value for sdk
+		trashTraverseLimit := 10
+		trashRebuildGoroutineLimit := 10
+		var err error
+		mw.trashPolicy, err = NewTrash(mw, mw.TrashInterval, mw.subDir,
+			trashTraverseLimit, trashRebuildGoroutineLimit)
+		if err != nil {
+			log.LogErrorf("action[initMetaWrapper] init trash failed, err %s", err.Error())
+		}
+	}
 }
 
 func (mw *MetaWrapper) initMetaWrapper() (err error) {

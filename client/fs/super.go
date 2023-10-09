@@ -505,15 +505,15 @@ func (s *Super) DisableTrash(w http.ResponseWriter, r *http.Request) {
 	flag := r.FormValue("flag")
 	switch strings.ToLower(flag) {
 	case "true":
-		s.disableTrash = true
+		s.mw.DisableTrashByClient(true)
 	case "false":
-		s.disableTrash = false
+		s.mw.DisableTrashByClient(false)
 	default:
 		err = fmt.Errorf("flag only can be set :true of false")
 		replyFail(w, r, err.Error())
 		return
 	}
-	replySucc(w, r, fmt.Sprintf("set disable flag to %v", s.disableTrash))
+	replySucc(w, r, fmt.Sprintf("set disable flag to %v", flag))
 }
 
 func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {

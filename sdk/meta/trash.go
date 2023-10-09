@@ -22,7 +22,7 @@ const CurrentName = "Current"
 const TrashPrefix = ".Trash"
 const ExpiredPrefix = "Expired"
 const ParentDirPrefix = "____"
-const ExpiredTimeFormat = "2006-01-02-15:04:05"
+const ExpiredTimeFormat = "2006-01-02-150405"
 const FileNameLengthMax = 255
 const LongNamePrefix = "LongName____"
 const OriginalName = "OriginalName"
@@ -241,14 +241,17 @@ func transferLongFileName(filePath string) (newName, oldName string) {
 	newBaseName := path.Base(newName)
 	return path.Join(parentPath, LongNamePrefix+newBaseName), oldName
 }
-
-func (trash *Trash) deleteWorker() {
-	log.LogDebugf("action[deleteWorker] enter")
-	//发布前修改
-	checkPointInterval := trash.deleteInterval / 4
+func (trash *Trash) getDeleteInterval() int64 {
+	checkPointInterval := atomic.LoadInt64(&trash.deleteInterval) / 4
 	if checkPointInterval == 0 {
 		checkPointInterval = 1
 	}
+	return checkPointInterval
+}
+
+func (trash *Trash) deleteWorker() {
+	log.LogDebugf("action[deleteWorker] enter")
+	checkPointInterval := trash.getDeleteInterval()
 	t := time.NewTicker(time.Duration(checkPointInterval) * time.Minute)
 	///t := time.NewTicker(10 * time.Second)
 	defer t.Stop()
@@ -262,7 +265,7 @@ func (trash *Trash) deleteWorker() {
 			trash.deleteExpiredData()
 			//rename current directory(expired_timestamp)
 			trash.renameCurrent()
-			//发布前修改
+			checkPointInterval = trash.getDeleteInterval()
 			t.Reset(time.Duration(checkPointInterval) * time.Minute)
 		}
 	}

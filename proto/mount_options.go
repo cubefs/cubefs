@@ -154,7 +154,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheFilterFiles] = MountOption{"bcacheFilterFiles", "The block cache filter files suffix", "", "py;pyx;sh;yaml;conf;pt;pth;log;out"}
 	opts[BcacheBatchCnt] = MountOption{"bcacheBatchCnt", "The block cache get meta count", "", int64(100000)}
 	opts[BcacheCheckIntervalS] = MountOption{"bcacheCheckIntervalS", "The block cache check interval", "", int64(300)}
-	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", false}
+	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", true}
 	opts[RequestTimeout] = MountOption{"requestTimeout", "The Request Expiration Time", "", int64(0)}
 	opts[MinWriteAbleDataPartitionCnt] = MountOption{"minWriteAbleDataPartitionCnt",
 		"Min writeable data partition count retained int dpSelector when update DataPartitionsView from master",
@@ -257,68 +257,68 @@ func (opt *MountOption) GetInt64() int64 {
 }
 
 type MountOptions struct {
-	Config                              *config.Config
-	MountPoint                          string
-	Volname                             string
-	Owner                               string
-	Master                              string
-	Logpath                             string
-	Loglvl                              string
-	Profport                            string
-	LocallyProf                         bool
-	IcacheTimeout                       int64
-	LookupValid                         int64
-	AttrValid                           int64
-	ReadRate                            int64
-	WriteRate                           int64
-	EnSyncWrite                         int64
-	AutoInvalData                       int64
-	UmpDatadir                          string
-	Rdonly                              bool
-	WriteCache                          bool
-	KeepCache                           bool
-	FollowerRead                        bool
-	Authenticate                        bool
-	TicketMess                          auth.TicketMess
-	TokenKey                            string
-	AccessKey                           string
-	SecretKey                           string
-	DisableDcache                       bool
-	SubDir                              string
-	FsyncOnClose                        bool
-	MaxCPUs                             int64
-	EnableXattr                         bool
-	NearRead                            bool
-	EnablePosixACL                      bool
-	EnableQuota                         bool
-	EnableTransaction                   string
-	TxTimeout                           int64
-	TxConflictRetryNum                  int64
-	TxConflictRetryInterval             int64
-	VolType                             int
-	EbsEndpoint                         string
-	EbsServicePath                      string
-	CacheAction                         int
-	CacheThreshold                      int
-	EbsBlockSize                        int
-	EnableBcache                        bool
-	BcacheDir                           string
-	BcacheFilterFiles                   string
-	BcacheCheckIntervalS                int64
-	BcacheBatchCnt                      int64
-	ReadThreads                         int64
-	WriteThreads                        int64
-	EnableSummary                       bool
-	EnableUnixPermission                bool
-	NeedRestoreFuse                     bool
-	MetaSendTimeout                     int64
-	BuffersTotalLimit                   int64
-	MaxStreamerLimit                    int64
-	EnableAudit                         bool
-	RequestTimeout                      int64
-	MinWriteAbleDataPartitionCnt        int
-	FileSystemName                      string
-	TrashInterval                       int64
+	Config                       *config.Config
+	MountPoint                   string
+	Volname                      string
+	Owner                        string
+	Master                       string
+	Logpath                      string
+	Loglvl                       string
+	Profport                     string
+	LocallyProf                  bool
+	IcacheTimeout                int64
+	LookupValid                  int64
+	AttrValid                    int64
+	ReadRate                     int64
+	WriteRate                    int64
+	EnSyncWrite                  int64
+	AutoInvalData                int64
+	UmpDatadir                   string
+	Rdonly                       bool
+	WriteCache                   bool
+	KeepCache                    bool
+	FollowerRead                 bool
+	Authenticate                 bool
+	TicketMess                   auth.TicketMess
+	TokenKey                     string
+	AccessKey                    string
+	SecretKey                    string
+	DisableDcache                bool
+	SubDir                       string
+	FsyncOnClose                 bool
+	MaxCPUs                      int64
+	EnableXattr                  bool
+	NearRead                     bool
+	EnablePosixACL               bool
+	EnableQuota                  bool
+	EnableTransaction            string
+	TxTimeout                    int64
+	TxConflictRetryNum           int64
+	TxConflictRetryInterval      int64
+	VolType                      int
+	EbsEndpoint                  string
+	EbsServicePath               string
+	CacheAction                  int
+	CacheThreshold               int
+	EbsBlockSize                 int
+	EnableBcache                 bool
+	BcacheDir                    string
+	BcacheFilterFiles            string
+	BcacheCheckIntervalS         int64
+	BcacheBatchCnt               int64
+	ReadThreads                  int64
+	WriteThreads                 int64
+	EnableSummary                bool
+	EnableUnixPermission         bool
+	NeedRestoreFuse              bool
+	MetaSendTimeout              int64
+	BuffersTotalLimit            int64
+	MaxStreamerLimit             int64
+	EnableAudit                  bool
+	RequestTimeout               int64
+	MinWriteAbleDataPartitionCnt int
+	FileSystemName               string
+	//TrashInterval                       int64
 	TrashDeleteExpiredDirGoroutineLimit int64
 	TrashRebuildGoroutineLimit          int64
 }

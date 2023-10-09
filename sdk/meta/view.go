@@ -167,13 +167,17 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
-	//enable trash by default
+	// 0 means disable trash
+	atomic.StoreInt64(&mw.TrashInterval, info.TrashInterval)
 	if info.TrashInterval == 0 {
-		atomic.StoreInt64(&mw.TrashInterval, DefaultTrashInterval)
+		mw.disableTrash = true
 	} else {
-		atomic.StoreInt64(&mw.TrashInterval, info.TrashInterval)
+		mw.disableTrash = false
+		if mw.trashPolicy != nil {
+			atomic.StoreInt64(&mw.trashPolicy.deleteInterval, info.TrashInterval)
+		}
 	}
-	log.LogInfof("VolStatInfo: info(%v)", info)
+	log.LogInfof("VolStatInfo: info(%v), disableTrash(%v)", info, mw.disableTrash)
 	return
 }
 

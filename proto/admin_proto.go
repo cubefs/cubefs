@@ -189,6 +189,8 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
+	//trash
+	AdminSetTrashInterval = "/vol/setTrashInterval"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -866,7 +868,7 @@ type SimpleVolView struct {
 	CacheRule        string
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
-	TrashInterval    int
+	TrashInterval    int64
 }
 
 type NodeSetInfo struct {
