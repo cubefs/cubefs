@@ -684,59 +684,6 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 	return info, preErr
 }
 
-func (mw *MetaWrapper) BatchDelete_ll(dentries []*proto.ScanDentry) {
-	mw.batchDelete_ll(dentries)
-}
-
-func (mw *MetaWrapper) batchDelete_ll(dentries []*proto.ScanDentry) {
-	pidDentries := make(map[uint64][]proto.Dentry)
-	for _, d := range dentries {
-		if _, ok := pidDentries[d.ParentId]; !ok {
-			pidDentries[d.ParentId] = make([]proto.Dentry, 0, 256)
-		}
-		pidDentries[d.ParentId] = append(pidDentries[d.ParentId], proto.Dentry{
-			Name:  d.Name,
-			Inode: d.Inode,
-			Type:  d.Type,
-		})
-	}
-	respCh := make(chan *proto.BatchDeleteDentryResponse, BatchIgetRespBuf)
-	var wg sync.WaitGroup
-	for pid, ds := range pidDentries {
-		parentMP := mw.getPartitionByInode(pid)
-		if parentMP == nil {
-			continue
-		}
-		wg.Add(1)
-		go mw.batchddelete(&wg, parentMP, pid, ds, respCh)
-	}
-	go func() {
-		wg.Wait()
-		close(respCh)
-	}()
-	for resp := range respCh {
-		parentID := resp.ParentID
-		for _, r := range resp.Items {
-			if r.Status == proto.OpOk {
-				mp := mw.getPartitionByInode(r.Inode)
-				if mp == nil {
-					log.LogErrorf("batchDelete_ll: No inode partition, ino(%v)", r.Inode)
-					continue
-				}
-				status, info, err := mw.iunlink(mp, r.Inode, 0, 0)
-				if err != nil || status != statusOK {
-					continue
-				}
-				if mw.EnableSummary {
-					go func() {
-						mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
-					}()
-				}
-			}
-		}
-	}
-}
-
 /*
  * Note that the return value of InodeInfo might be nil without error,
  * and the caller should make sure InodeInfo is valid before using it.

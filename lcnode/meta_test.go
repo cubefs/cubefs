@@ -38,8 +38,12 @@ func (*MockMetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	return nil
 }
 
-func (*MockMetaWrapper) BatchDelete_ll(dentries []*proto.ScanDentry) {
+func (*MockMetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+	return nil, nil
+}
 
+func (*MockMetaWrapper) Evict(inode uint64) error {
+	return nil
 }
 
 func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error) {
