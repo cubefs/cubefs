@@ -420,7 +420,8 @@ func (w *Wrapper) getDataPartitionFromMaster(isInit bool, dpId uint64) (err erro
 
 	var dpInfo *proto.DataPartitionInfo
 	if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, dpId); err != nil {
-		log.LogErrorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) err(%v)", w.volName, err)
+		log.LogErrorf("getDataPartitionFromMaster: get data partitions fail: volume(%v) dpId(%v) err(%v)",
+			w.volName, dpId, err)
 		return
 	}
 
