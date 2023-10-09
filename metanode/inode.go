@@ -1039,10 +1039,10 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 		var dIno *Inode
 		if ext2Del, dIno = inode.getAndDelVer(mpId, ino.getVer(), mpVer, verlist); dIno == nil {
 			status = proto.OpNotExistErr
-			log.LogDebugf("action[unlinkTopLayer] ino %v", ino)
+			log.LogDebugf("action[unlinkTopLayer] mp %v iino %v", mpId, ino)
 			return true
 		}
-		log.LogDebugf("action[unlinkTopLayer] inode %v be unlinked, File restore, multiSnap.ekRefMap %v", ino.Inode, inode.multiSnap.ekRefMap)
+		log.LogDebugf("action[unlinkTopLayer] mp %v inode %v be unlinked, File restore, multiSnap.ekRefMap %v", mpId, ino.Inode, inode.multiSnap.ekRefMap)
 		dIno.DecNLink() // dIno should be inode
 		doMore = true
 		return
