@@ -106,6 +106,7 @@ func (d *Dentry) isDeleted() bool {
 func (d *Dentry) setDeleted() {
 	if d.multiSnap == nil {
 		log.LogErrorf("action[setDeleted] d %v be set deleted not found multiSnap", d)
+		return
 	}
 	log.LogDebugf("action[setDeleted] d %v be set deleted", d)
 	d.multiSnap.VerSeq |= uint64(1) << 63
