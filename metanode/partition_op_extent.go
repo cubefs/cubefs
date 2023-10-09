@@ -389,7 +389,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
 			mp.GetExtentByVer(ino, req, resp)
 			vIno := ino.Copy().(*Inode)
-			vIno.setVer(req.VerSeq)
+			vIno.setVerNoCheck(req.VerSeq)
 			if vIno = mp.getInodeByVer(vIno); vIno != nil {
 				resp.Generation = vIno.Generation
 				resp.Size = vIno.Size
