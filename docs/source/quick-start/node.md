@@ -127,8 +127,8 @@ Support the following docker image deployment methods:
 - Remote pull build [`recommended`]
 
 ``` bash
-$> docker pull cubefs/cubefs:blobstore-v3.2.0 # Pull the image
-$> docker run cubefs/cubefs:blobstore-v3.2.0 # Run the image
+$> docker pull cubefs/cubefs:blobstore-v3.3.0 # Pull the image
+$> docker run cubefs/cubefs:blobstore-v3.3.0 # Run the image
 $> docker container ls # View running containers
    CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS               NAMES
    76100321156b        blobstore:v3.2.0                       "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
