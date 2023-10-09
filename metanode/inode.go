@@ -20,7 +20,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	syslog "log"
 	"math"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -117,7 +119,7 @@ func NewMultiSnap(seq uint64) *InodeMultiSnap {
 	}
 }
 
-func (i *Inode) setVer(seq uint64) {
+func (i *Inode) setVerDoWork(seq uint64) {
 	if seq == 0 && i.multiSnap == nil {
 		return
 	}
@@ -126,6 +128,18 @@ func (i *Inode) setVer(seq uint64) {
 	} else {
 		i.multiSnap.verSeq = seq
 	}
+}
+
+func (i *Inode) setVerNoCheck(seq uint64) {
+	i.setVerDoWork(seq)
+}
+
+func (i *Inode) setVer(seq uint64) {
+	if i.getVer() > seq {
+		syslog.Println(fmt.Sprintf("inode %v old seq %v cann't use seq %v", i.getVer(), seq, string(debug.Stack())))
+		log.LogFatalf("inode %v old seq %v cann't use seq %v", i.getVer(), seq, string(debug.Stack()))
+	}
+	i.setVerDoWork(seq)
 }
 
 func (i *Inode) insertEkRefMap(mpId uint64, ek *proto.ExtentKey) {
@@ -685,10 +699,12 @@ func (i *Inode) MarshalValue() (val []byte) {
 	var err error
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(64)
-	i.RLock()
 
-	//	log.LogInfof("action[MarshalValue] inode %v current verseq %v, hist len (%v)", i.Inode, i.verSeq, i.getLayerLen())
+	i.RLock()
 	i.MarshalInodeValue(buff)
+	if i.getLayerLen() > 0 && i.getVer() == 0 {
+		log.LogFatalf("action[MarshalValue] inode %v current verseq %v, hist len (%v) stack(%v)", i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
+	}
 	if err = binary.Write(buff, binary.BigEndian, int32(i.getLayerLen())); err != nil {
 		panic(err)
 	}

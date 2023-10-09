@@ -652,7 +652,7 @@ func testDelDirSnapshotVersion(t *testing.T, verSeq uint64, dirIno *Inode, dirDe
 	//testPrintAllDentry(t)
 
 	rDirIno := dirIno.Copy().(*Inode)
-	rDirIno.setVer(verSeq)
+	rDirIno.setVerNoCheck(verSeq)
 
 	rspDelIno := mp.fsmUnlinkInode(rDirIno, 0)
 
