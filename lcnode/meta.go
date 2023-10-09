@@ -21,6 +21,7 @@ type MetaWrapper interface {
 	Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64) (*proto.InodeInfo, error)
 	Lookup_ll(parentID uint64, name string) (inode uint64, mode uint32, err error)
 	BatchInodeGet(inodes []uint64) []*proto.InodeInfo
-	BatchDelete_ll(dentries []*proto.ScanDentry)
+	DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool) (*proto.InodeInfo, error)
+	Evict(inode uint64) error
 	ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error)
 }

@@ -91,7 +91,6 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 }
 
 func (l *LcNode) startLcScan(adminTask *proto.AdminTask) (err error) {
-
 	request := adminTask.Request.(*proto.LcNodeRuleTaskRequest)
 	log.LogInfof("startLcScan: scan task(%v) received!", request.Task)
 	resp := &proto.LcNodeRuleTaskResponse{}
@@ -299,7 +298,6 @@ func (s *LcScanner) scan() {
 }
 
 func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
-	s.limiter.Wait(context.Background())
 	log.LogDebugf("handleFile dentry: %+v, fileChan.Len: %v", dentry, s.fileChan.Len())
 	atomic.AddInt64(&s.currentStat.FileScannedNum, 1)
 	atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
@@ -333,10 +331,18 @@ func (s *LcScanner) batchHandleFile() {
 	}
 	log.LogDebugf("batchHandleFile num: %v, expired num: %v, expired path: %v", len(inodesInfo), len(expiredDentries), getPath())
 
-	if len(expiredDentries) > 0 {
-		s.mw.BatchDelete_ll(expiredDentries)
-		atomic.AddInt64(&s.currentStat.ExpiredNum, int64(len(expiredDentries)))
+	for _, dentry := range expiredDentries {
+		s.limiter.Wait(context.Background())
+		_, err := s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir())
+		if err != nil {
+			log.LogWarnf("batchHandleFile DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
+			continue
+		}
+		if err = s.mw.Evict(dentry.Inode); err != nil {
+			log.LogWarnf("batchHandleFile Evict err: %v, dentry: %+v", err, dentry)
+		}
 	}
+	atomic.AddInt64(&s.currentStat.ExpiredNum, int64(len(expiredDentries)))
 }
 
 func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, cond *proto.ExpirationConfig) bool {

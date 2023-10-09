@@ -15,7 +15,6 @@
 package master
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -47,22 +46,8 @@ func (c *Cluster) handleLcNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 		response := task.Response.(*proto.LcNodeHeartbeatResponse)
 		err = c.handleLcNodeHeartbeatResp(task.OperatorAddr, response)
 	case proto.OpLcNodeScan:
-		bytes, err := json.Marshal(task.Request)
-		if err != nil {
-			log.LogErrorf("lc action[handleLcNodeTaskResponse] Marshal task request failed!")
-			return
-		}
-		var request interface{}
-		request = &proto.LcNodeRuleTaskRequest{}
-		if err = json.Unmarshal(bytes, request); err != nil {
-			log.LogErrorf("lc action[handleLcNodeTaskResponse] Unmarshal task request failed!")
-			return
-		}
-		task.Request = request
-
-		req := task.Request.(*proto.LcNodeRuleTaskRequest)
 		response := task.Response.(*proto.LcNodeRuleTaskResponse)
-		err = c.handleLcNodeLcScanResp(req, response)
+		err = c.handleLcNodeLcScanResp(task.OperatorAddr, response)
 	case proto.OpLcNodeSnapshotVerDel:
 		response := task.Response.(*proto.SnapshotVerDelTaskResponse)
 		err = c.handleLcNodeSnapshotScanResp(task.OperatorAddr, response)
@@ -78,25 +63,6 @@ func (c *Cluster) handleLcNodeTaskResponse(nodeAddr string, task *proto.AdminTas
 
 errHandler:
 	log.LogErrorf("lc handleLcNodeTaskResponse failed, task: %v, err: %v", task.ToString(), err)
-	return
-}
-
-func (c *Cluster) handleLcNodeLcScanResp(req *proto.LcNodeRuleTaskRequest, resp *proto.LcNodeRuleTaskResponse) (err error) {
-	log.LogDebugf("action[handleLcNodeLcScanResp] lcnode(%v) RuleId(%v) in task(%v) Enter", req.LcNodeAddr, req.Task.Rule.ID, resp.ID)
-	defer func() {
-		log.LogDebugf("action[handleLcNodeLcScanResp] lcnode(%v) RuleId(%v) in task(%v) Exit", req.LcNodeAddr, req.Task.Rule.ID, resp.ID)
-	}()
-
-	c.lcMgr.lcNodeStatus.ReleaseNode(req.LcNodeAddr)
-
-	if resp.Status == proto.TaskFailed {
-		c.lcMgr.lcRuleTaskStatus.RedoTask(resp.ID)
-	} else {
-		c.lcMgr.lcRuleTaskStatus.DeleteScanningTask(resp.ID)
-		c.lcMgr.lcRuleTaskStatus.AddResult(resp)
-	}
-
-	log.LogInfof("action[handleLcNodeLcScanResp] scanning completed, resp(%v)", resp)
 	return
 }
 
@@ -178,24 +144,44 @@ errHandler:
 	return
 }
 
+func (c *Cluster) handleLcNodeLcScanResp(nodeAddr string, resp *proto.LcNodeRuleTaskResponse) (err error) {
+	log.LogDebugf("action[handleLcNodeLcScanResp] lcnode(%v), task(%v) Enter", nodeAddr, resp.ID)
+	defer func() {
+		log.LogDebugf("action[handleLcNodeLcScanResp] lcnode(%v), task(%v) Exit", nodeAddr, resp.ID)
+	}()
+
+	switch resp.Status {
+	case proto.TaskFailed:
+		c.lcMgr.lcRuleTaskStatus.RedoTask(resp.ID)
+	case proto.TaskSucceeds:
+		c.lcMgr.lcRuleTaskStatus.DeleteScanningTask(resp.ID)
+		c.lcMgr.lcRuleTaskStatus.AddResult(resp)
+	default:
+		log.LogInfof("action[handleLcNodeLcScanResp] scanning received, resp(%v)", resp)
+		return
+	}
+
+	c.lcMgr.lcNodeStatus.ReleaseNode(nodeAddr)
+	log.LogInfof("action[handleLcNodeLcScanResp] scanning completed, resp(%v)", resp)
+	return
+}
+
 func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.SnapshotVerDelTaskResponse) (err error) {
 	log.LogDebugf("action[handleLcNodeSnapshotScanResp] lcnode(%v), task(%v) Enter", nodeAddr, resp.ID)
 	defer func() {
 		log.LogDebugf("action[handleLcNodeSnapshotScanResp] lcnode(%v), task(%v) Exit", nodeAddr, resp.ID)
 	}()
 
-	c.snapshotMgr.lcNodeStatus.ReleaseNode(nodeAddr)
-
-	if resp.Status == proto.TaskFailed {
+	switch resp.Status {
+	case proto.TaskFailed:
 		c.snapshotMgr.lcSnapshotTaskStatus.RedoTask(resp.ID)
-	} else {
+	case proto.TaskSucceeds:
 		//1.mark done for VersionMgr
 		var vol *Vol
 		vol, err = c.getVol(resp.VolName)
 		if err != nil {
 			log.LogErrorf("action[handleLcNodeSnapshotScanResp] snapshot task(%v) scanning completed by %v, results(%v), volume(%v) is not found",
 				resp.ID, nodeAddr, resp, resp.VolName)
-			return
 		} else {
 			_ = vol.VersionMgr.DelVer(resp.VerSeq)
 		}
@@ -203,8 +189,12 @@ func (c *Cluster) handleLcNodeSnapshotScanResp(nodeAddr string, resp *proto.Snap
 		//2. mark done for snapshotMgr
 		c.snapshotMgr.lcSnapshotTaskStatus.DeleteScanningTask(resp.ID)
 		c.snapshotMgr.lcSnapshotTaskStatus.AddResult(resp)
+	default:
+		log.LogInfof("action[handleLcNodeSnapshotScanResp] scanning received, resp(%v)", resp)
+		return
 	}
 
+	c.snapshotMgr.lcNodeStatus.ReleaseNode(nodeAddr)
 	log.LogInfof("action[handleLcNodeSnapshotScanResp] scanning completed, resp(%v)", resp)
 	return
 }

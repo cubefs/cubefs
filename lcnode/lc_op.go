@@ -89,15 +89,16 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 		l.scannerMutex.RUnlock()
 
 		resp.Status = proto.TaskSucceeds
+
 	end:
-		adminTask.Request = nil
 		adminTask.Response = resp
 		l.respondToMaster(adminTask)
-		data, _ := json.Marshal(resp)
-		log.LogInfof("%s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, cost %s",
-			remoteAddr, p.String(), req, adminTask, string(data), time.Since(start).String())
+		log.LogInfof("%s pkt %s, resp success req: %v, respAdminTask: %v, resp: %v, cost %s",
+			remoteAddr, p.String(), req, adminTask, resp, time.Since(start).String())
 	}()
+
 	l.lastHeartbeat = time.Now()
+	log.LogDebugf("lastHeartbeat: %v", l.lastHeartbeat)
 	return
 }
 
@@ -119,20 +120,16 @@ func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet) (err error) {
 
 	decoder := json.NewDecoder(bytes.NewBuffer(data))
 	decoder.UseNumber()
-
 	if err = decoder.Decode(adminTask); err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
-		adminTask.Request = nil
 		adminTask.Response = resp
 		l.respondToMaster(adminTask)
 		return
 	}
 
-	if err = l.startLcScan(adminTask); err != nil {
-		l.respondToMaster(adminTask)
-		return
-	}
+	l.startLcScan(adminTask)
+	l.respondToMaster(adminTask)
 
 	return
 }
@@ -181,10 +178,8 @@ func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet) (err error) {
 		return
 	}
 
-	if err = l.startSnapshotScan(adminTask); err != nil {
-		l.respondToMaster(adminTask)
-		return
-	}
+	l.startSnapshotScan(adminTask)
+	l.respondToMaster(adminTask)
 
 	return
 }
