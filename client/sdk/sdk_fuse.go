@@ -656,6 +656,7 @@ func GetFuseFd() *os.File {
 }
 
 func StopClient() (clientState []byte) {
+	start := time.Now()
 	gClient.super.ClosePrefetchWorker()
 
 	gClient.fuseServer.Stop()
@@ -664,7 +665,7 @@ func StopClient() (clientState []byte) {
 	clientState = gClient.clientState
 
 	gClient.super.Close()
-	syslog.Println("Stop fuse client successfully.")
+	syslog.Printf("Stop fuse client successfully, cost[%v].\n", time.Since(start))
 
 	sysutil.RedirectFD(gClient.stderrFd, int(os.Stderr.Fd()))
 	gClient.outputFile.Sync()
