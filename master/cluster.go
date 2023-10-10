@@ -3121,7 +3121,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 			oldVolStatus := vol.Status
 			vol.Status = markDelete
-			if err = c.syncUpdateVol(vol); err != nil {
+			if errSync := c.syncUpdateVol(vol); errSync != nil {
 				log.LogErrorf("action[createVol] vol[%v] after init dataPartition error, mark vol delete persist failed", vol.Name)
 				vol.Status = oldVolStatus
 			} else {
