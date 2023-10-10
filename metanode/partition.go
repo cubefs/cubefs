@@ -675,6 +675,9 @@ func (mp *metaPartition) Stop() {
 }
 
 func (mp *metaPartition) versionInit(isCreate bool) (err error) {
+	if !isCreate {
+		return
+	}
 	var verList *proto.VolVersionInfoList
 	verList, err = masterClient.AdminAPI().GetVerList(mp.config.VolName)
 
@@ -682,26 +685,19 @@ func (mp *metaPartition) versionInit(isCreate bool) (err error) {
 		log.LogErrorf("action[onStart] GetVerList err[%v]", err)
 		return
 	}
-	if isCreate || len(mp.multiVersionList.VerList) == 0 {
-		for _, info := range verList.VerList {
-			if info.Status != proto.VersionNormal {
-				continue
-			}
-			mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
-		}
 
-		log.LogDebugf("action[onStart] verList %v", mp.multiVersionList.VerList)
-		if err = mp.storeInitMultiversion(); err != nil {
-			return
+	for _, info := range verList.VerList {
+		if info.Status != proto.VersionNormal {
+			continue
 		}
+		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
 	}
 
+	log.LogDebugf("action[onStart] verList %v", mp.multiVersionList.VerList)
 	vlen := len(mp.multiVersionList.VerList)
 	if vlen > 0 {
 		mp.verSeq = mp.multiVersionList.VerList[vlen-1].Ver
 	}
-
-	go mp.runVersionOp()
 
 	return
 }
@@ -713,6 +709,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		}
 		mp.onStop()
 	}()
+	if err = mp.versionInit(isCreate); err != nil {
+		return
+	}
 	if err = mp.load(isCreate); err != nil {
 		err = errors.NewErrorf("[onStart] load partition id=%d: %s",
 			mp.config.PartitionId, err.Error())
@@ -741,9 +740,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	mp.vol.volDeleteLockTime = volumeInfo.DeleteLockTime
 
-	if err = mp.versionInit(isCreate); err != nil {
-		return
-	}
+	go mp.runVersionOp()
 
 	mp.volType = volumeInfo.VolType
 	var ebsClient *blobstore.BlobStoreClient
@@ -1022,6 +1019,7 @@ const (
 	CRC_COUNT_BASIC      int = 4
 	CRC_COUNT_TX_STUFF   int = 7
 	CRC_COUNT_UINQ_STUFF int = 8
+	CRC_COUNT_MULTI_VER  int = 9
 )
 
 func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
@@ -1038,7 +1036,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	crc_count := len(crcs)
-	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF {
+	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF && crc_count != CRC_COUNT_MULTI_VER {
 		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
 		return ErrSnapshotCrcMismatch
 	}
@@ -1052,9 +1050,14 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		loadFuncs = append(loadFuncs, mp.loadTxRbInode)
 		loadFuncs = append(loadFuncs, mp.loadTxRbDentry)
 	}
-	if crc_count == CRC_COUNT_UINQ_STUFF {
+	if crc_count >= CRC_COUNT_UINQ_STUFF {
 		needLoadUniqStuff = true
 		loadFuncs = append(loadFuncs, mp.loadUniqChecker)
+	}
+	if crc_count == CRC_COUNT_MULTI_VER {
+		loadFuncs = append(loadFuncs, mp.loadMultiVer)
+	} else {
+		mp.storeMultiVersion(snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
 	}
 
 	errs := make([]error, len(loadFuncs))
@@ -1111,7 +1114,6 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	if err = mp.loadApplyID(snapshotPath); err != nil {
 		return
 	}
-	err = mp.loadMultiVer(snapshotPath)
 	return
 }
 
@@ -1136,10 +1138,7 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 		return nil
 
 	}
-	if err = mp.loadMultiVer(snapshotPath); err != nil {
-		log.LogErrorf("laod error %v", err)
-		return
-	}
+
 	return mp.LoadSnapshot(snapshotPath)
 }
 
@@ -1171,8 +1170,8 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeTxRbInode,
 		mp.storeTxRbDentry,
 		mp.storeUniqChecker,
+		mp.storeMultiVersion,
 	}
-	mp.storeMultiversion(tmpDir, sm)
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
 		if crc, err = storeFunc(tmpDir, sm); err != nil {
@@ -1716,6 +1715,7 @@ func (mp *metaPartition) storeSnapshotFiles() (err error) {
 		txRbDentryTree: NewBtree(),
 		uniqId:         mp.GetUniqId(),
 		uniqChecker:    newUniqChecker(),
+		multiVerList:   mp.multiVersionList.VerList,
 	}
 
 	return mp.store(msg)
