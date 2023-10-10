@@ -131,7 +131,7 @@ $> docker pull cubefs/cubefs:blobstore-v3.3.0 # 拉取镜像
 $> docker run cubefs/cubefs:blobstore-v3.3.0 # 运行镜像
 $> docker container ls # 查看运行中的容器
    CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS               NAMES
-   76100321156b        blobstore:v3.2.0                       "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
+   76100321156b        blobstore:v3.3.0                       "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
 $> docker exec -it thirsty_kare /bin/bash # 进入容器
 ```
 
@@ -141,7 +141,7 @@ $> docker exec -it thirsty_kare /bin/bash # 进入容器
 $> cd blobstore
 $> ./run_docker.sh -b # 编译构建
 &> Successfully built 0b29fda1cd22
-   Successfully tagged blobstore:v3.2.0
+   Successfully tagged blobstore:v3.3.0
 $> ./run_docker.sh -r # 运行镜像
 $> ... # 后续步骤同拉取构建
 ```
