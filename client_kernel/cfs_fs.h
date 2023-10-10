@@ -24,6 +24,8 @@ struct cfs_mount_info {
 	struct cfs_master_client *master;
 	struct cfs_meta_client *meta;
 	struct cfs_extent_client *ec;
+	atomic_long_t links_limit;
+	struct delayed_work update_limit_work;
 };
 
 struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options);

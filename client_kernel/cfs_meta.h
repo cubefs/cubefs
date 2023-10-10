@@ -110,9 +110,6 @@ struct cfs_meta_client {
 #define META_UNIQID_BUCKET_COUNT 128
 	struct hlist_head uniqid_ranges[META_UNIQID_BUCKET_COUNT];
 	struct mutex uniqid_lock;
-
-	atomic_long_t links_limit;
-	struct delayed_work update_limit_work;
 };
 
 struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,

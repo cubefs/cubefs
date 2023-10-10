@@ -6,6 +6,10 @@
 #define CFS_BLOCK_SIZE (1UL << CFS_BLOCK_SIZE_SHIFT)
 #define CFS_INODE_MAX_ID ((1UL << 63) - 1)
 
+#define CFS_UPDATE_LIMIT_INTERVAL_MS 5 * 60 * 1000u
+#define CFS_LINKS_DEFAULT 20000000
+#define CFS_LINKS_MIN 1000000
+
 #define pr_qstr(q) \
 	(q) ? (q)->len : 0, (q) ? (q)->name : (const unsigned char *)""
 
@@ -26,6 +30,8 @@
 
 static struct kmem_cache *inode_cache;
 static struct kmem_cache *pagevec_cache;
+
+#define CFS_INODE(i) ((struct cfs_inode *)(i))
 
 struct cfs_inode {
 	struct inode vfs_inode;
@@ -97,6 +103,14 @@ static inline bool is_quota_cache_valid(struct cfs_inode *ci)
 static inline void set_quota_cache_valid(struct cfs_inode *ci)
 {
 	ci->quota_jiffies = jiffies;
+}
+
+static inline bool is_links_exceed_limit(struct cfs_inode *ci)
+{
+	struct super_block *sb = ci->vfs_inode.i_sb;
+	struct cfs_mount_info *cmi = sb->s_fs_info;
+
+	return ci->vfs_inode.i_nlink >= atomic_long_read(&cmi->links_limit);
 }
 
 static inline void cfs_inode_refresh_unlock(struct cfs_inode *ci,
@@ -849,12 +863,17 @@ static int cfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		      ", mode=0%o, uid=%u, gid=%u\n",
 		      pr_inode(dir), pr_dentry(dentry), mode, uid, gid);
 
-	if (cmi->options->enable_quota) {
-		struct cfs_inode *ci = (struct cfs_inode *)dir;
+	ret = cfs_inode_refresh(CFS_INODE(dir));
+	if (ret < 0)
+		return ret;
 
-		if (!is_quota_cache_valid(ci))
-			cfs_inode_refresh(ci);
-		quota = &ci->quota_infos;
+	if (is_links_exceed_limit(CFS_INODE(dir)))
+		return -EDQUOT;
+
+	if (cmi->options->enable_quota) {
+		if (!is_quota_cache_valid(CFS_INODE(dir)))
+			cfs_inode_refresh(CFS_INODE(dir));
+		quota = &CFS_INODE(dir)->quota_infos;
 	}
 
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
@@ -885,6 +904,13 @@ static int cfs_link(struct dentry *src_dentry, struct inode *dst_dir,
 		      pr_dentry(src_dentry), pr_inode(dst_dir),
 		      pr_dentry(dst_dentry));
 
+	ret = cfs_inode_refresh(CFS_INODE(dst_dir));
+	if (ret < 0)
+		return ret;
+
+	if (is_links_exceed_limit(CFS_INODE(dst_dir)))
+		return -EDQUOT;
+
 	ret = cfs_meta_link(cmi->meta, dst_dir->i_ino, &dst_dentry->d_name,
 			    src_dentry->d_inode->i_ino, NULL);
 	if (ret < 0) {
@@ -913,13 +939,19 @@ static int cfs_symlink(struct inode *dir, struct dentry *dentry,
 		      ", target=%s, uid=%u, gid=%u\n",
 		      pr_inode(dir), pr_dentry(dentry), target, uid, gid);
 
-	if (cmi->options->enable_quota) {
-		struct cfs_inode *ci = (struct cfs_inode *)dir;
+	ret = cfs_inode_refresh(CFS_INODE(dir));
+	if (ret < 0)
+		return ret;
 
-		if (!is_quota_cache_valid(ci))
-			cfs_inode_refresh(ci);
-		quota = &ci->quota_infos;
+	if (is_links_exceed_limit(CFS_INODE(dir)))
+		return -EDQUOT;
+
+	if (cmi->options->enable_quota) {
+		if (!is_quota_cache_valid(CFS_INODE(dir)))
+			cfs_inode_refresh(CFS_INODE(dir));
+		quota = &CFS_INODE(dir)->quota_infos;
 	}
+
 	mode = S_IFLNK | S_IRWXU | S_IRWXG | S_IRWXO;
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
 			      gid, target, quota, &iinfo);
@@ -952,13 +984,19 @@ static int cfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 		      ", mode=0%o, uid=%u, gid=%u\n",
 		      pr_inode(dir), pr_dentry(dentry), mode, uid, gid);
 
-	if (cmi->options->enable_quota) {
-		struct cfs_inode *ci = (struct cfs_inode *)dir;
+	ret = cfs_inode_refresh(CFS_INODE(dir));
+	if (ret < 0)
+		return ret;
 
-		if (!is_quota_cache_valid(ci))
-			cfs_inode_refresh(ci);
-		quota = &ci->quota_infos;
+	if (is_links_exceed_limit(CFS_INODE(dir)))
+		return -EDQUOT;
+
+	if (cmi->options->enable_quota) {
+		if (!is_quota_cache_valid(CFS_INODE(dir)))
+			cfs_inode_refresh(CFS_INODE(dir));
+		quota = &CFS_INODE(dir)->quota_infos;
 	}
+
 	mode &= ~current_umask();
 	mode |= S_IFDIR;
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
@@ -1010,13 +1048,19 @@ static int cfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 		      ", mode=0%o, uid=%u, gid=%u\n",
 		      pr_inode(dir), pr_dentry(dentry), mode, uid, gid);
 
-	if (cmi->options->enable_quota) {
-		struct cfs_inode *ci = (struct cfs_inode *)dir;
+	ret = cfs_inode_refresh(CFS_INODE(dir));
+	if (ret < 0)
+		return ret;
 
-		if (!is_quota_cache_valid(ci))
-			cfs_inode_refresh(ci);
-		quota = &ci->quota_infos;
+	if (is_links_exceed_limit(CFS_INODE(dir)))
+		return -EDQUOT;
+
+	if (cmi->options->enable_quota) {
+		if (!is_quota_cache_valid(CFS_INODE(dir)))
+			cfs_inode_refresh(CFS_INODE(dir));
+		quota = &CFS_INODE(dir)->quota_infos;
 	}
+
 	mode &= ~current_umask();
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
 			      gid, NULL, NULL, &iinfo);
@@ -1038,11 +1082,20 @@ static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 {
 	struct super_block *sb = old_dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
+	int ret;
 
 	cfs_log_debug("old_dir=" fmt_inode ", old_dentry=" fmt_dentry
 		      ",new_dir = " fmt_inode ",new_dentry=" fmt_dentry "\n",
 		      pr_inode(old_dir), pr_dentry(old_dentry),
 		      pr_inode(new_dir), pr_dentry(new_dentry));
+
+	ret = cfs_inode_refresh(CFS_INODE(new_dir));
+	if (ret < 0)
+		return ret;
+
+	if (is_links_exceed_limit(CFS_INODE(new_dir)))
+		return -EDQUOT;
+
 	return cfs_meta_rename(cmi->meta, old_dir->i_ino, &old_dentry->d_name,
 			       new_dir->i_ino, &new_dentry->d_name, true);
 }
@@ -1314,6 +1367,27 @@ struct file_system_type cfs_fs_type = {
 	.mount = cfs_mount,
 };
 
+static void update_limit_work_cb(struct work_struct *work)
+{
+	struct delayed_work *delayed_work = to_delayed_work(work);
+	struct cfs_mount_info *cmi = container_of(
+		delayed_work, struct cfs_mount_info, update_limit_work);
+	struct cfs_cluster_info info;
+	int ret;
+
+	schedule_delayed_work(delayed_work,
+			      msecs_to_jiffies(CFS_UPDATE_LIMIT_INTERVAL_MS));
+	ret = cfs_master_get_cluster_info(cmi->master, &info);
+	if (ret < 0) {
+		cfs_log_err("get cluster info error %d\n", ret);
+		return;
+	}
+	if (info.links_limit < CFS_LINKS_MIN)
+		info.links_limit = CFS_LINKS_DEFAULT;
+	atomic_long_set(&cmi->links_limit, info.links_limit);
+	cfs_cluster_info_clear(&info);
+}
+
 /**
  * @return mount_info if success, error code if failed.
  */
@@ -1328,6 +1402,8 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 		return ERR_PTR(-ENOMEM);
 	}
 	cmi->options = options;
+	atomic_long_set(&cmi->links_limit, CFS_LINKS_DEFAULT);
+	INIT_DELAYED_WORK(&cmi->update_limit_work, update_limit_work_cb);
 	cmi->master = cfs_master_client_new(&options->addrs, options->volume);
 	if (!cmi->master) {
 		cfs_mount_info_release(cmi);
@@ -1345,6 +1421,7 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 		cfs_mount_info_release(cmi);
 		return err_ptr;
 	}
+	schedule_delayed_work(&cmi->update_limit_work, 0);
 	return cmi;
 }
 
@@ -1352,14 +1429,11 @@ void cfs_mount_info_release(struct cfs_mount_info *cmi)
 {
 	if (!cmi)
 		return;
-	if (cmi->ec)
-		cfs_extent_client_release(cmi->ec);
-	if (cmi->meta)
-		cfs_meta_client_release(cmi->meta);
-	if (cmi->master)
-		cfs_master_client_release(cmi->master);
-	if (cmi->options)
-		cfs_options_release(cmi->options);
+	cancel_delayed_work_sync(&cmi->update_limit_work);
+	cfs_extent_client_release(cmi->ec);
+	cfs_meta_client_release(cmi->meta);
+	cfs_master_client_release(cmi->master);
+	cfs_options_release(cmi->options);
 	kfree(cmi);
 }
 

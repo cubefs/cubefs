@@ -2,10 +2,6 @@
 
 #define META_RECV_TIMEOUT_MS 5000u
 #define META_UPDATE_MP_INTERVAL_MS 5 * 60 * 1000u
-#define META_UPDATE_LIMIT_INTERVAL_MS 5 * 60 * 1000u
-
-#define META_LINKS_DEFAULT 20000000
-#define META_LINKS_MIN 1000000
 
 static int do_meta_request_internal(struct cfs_meta_client *mc,
 				    struct sockaddr_storage *host,
@@ -180,34 +176,6 @@ static void meta_update_partition_work_cb(struct work_struct *work)
 	cfs_meta_update_partition(mc);
 }
 
-static int cfs_meta_update_links_limit(struct cfs_meta_client *mc)
-{
-	struct cfs_cluster_info info;
-	int ret;
-
-	ret = cfs_master_get_cluster_info(mc->master, &info);
-	if (ret < 0) {
-		cfs_log_err("get cluster info error %d\n", ret);
-		return ret;
-	}
-	if (info.links_limit < META_LINKS_MIN)
-		info.links_limit = META_LINKS_DEFAULT;
-	atomic_long_set(&mc->links_limit, info.links_limit);
-	cfs_cluster_info_clear(&info);
-	return 0;
-}
-
-static void meta_update_limit_work_cb(struct work_struct *work)
-{
-	struct delayed_work *delayed_work = to_delayed_work(work);
-	struct cfs_meta_client *mc = container_of(
-		delayed_work, struct cfs_meta_client, update_mp_work);
-
-	schedule_delayed_work(delayed_work,
-			      msecs_to_jiffies(META_UPDATE_LIMIT_INTERVAL_MS));
-	cfs_meta_update_links_limit(mc);
-}
-
 #define META_ITEM_COUNT_PRE_BTREE_NODE 1024
 struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,
 					    const char *vol_name)
@@ -237,7 +205,6 @@ struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,
 	mutex_init(&mc->select_lock);
 	hash_init(mc->uniqid_ranges);
 	mutex_init(&mc->uniqid_lock);
-	atomic_long_set(&mc->links_limit, META_LINKS_DEFAULT);
 
 	ret = cfs_meta_update_partition(mc);
 	if (ret < 0)
@@ -245,10 +212,6 @@ struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,
 	INIT_DELAYED_WORK(&mc->update_mp_work, meta_update_partition_work_cb);
 	schedule_delayed_work(&mc->update_mp_work,
 			      msecs_to_jiffies(META_UPDATE_MP_INTERVAL_MS));
-
-	INIT_DELAYED_WORK(&mc->update_limit_work, meta_update_limit_work_cb);
-	schedule_delayed_work(&mc->update_mp_work,
-			      msecs_to_jiffies(META_UPDATE_LIMIT_INTERVAL_MS));
 	return mc;
 
 err_update:
@@ -270,7 +233,6 @@ void cfs_meta_client_release(struct cfs_meta_client *mc)
 	if (!mc)
 		return;
 	cancel_delayed_work_sync(&mc->update_mp_work);
-	cancel_delayed_work_sync(&mc->update_limit_work);
 	hash_for_each_safe(mc->paritions, i, tmp, mp, hash) {
 		hash_del(&mp->hash);
 		cfs_meta_partition_release(mp);
@@ -419,23 +381,6 @@ static int cfs_meta_get_uniqid(struct cfs_meta_client *mc,
 	cfs_uniqid_range_next_id(range, uniqid);
 	mutex_unlock(&mc->uniqid_lock);
 	return 0;
-}
-
-/**
- * Return true if the link of dir is exceed the limit.
- */
-static bool cfs_meta_dir_links_limit(struct cfs_meta_client *mc, u64 ino)
-{
-	struct cfs_packet_inode *iinfo;
-	int err;
-	bool limit = true;
-
-	err = cfs_meta_get(mc, ino, &iinfo);
-	if (!err) {
-		limit = iinfo->nlink >= atomic_long_read(&mc->links_limit);
-		cfs_packet_inode_release(iinfo);
-	}
-	return limit;
 }
 
 #if 0
@@ -1151,9 +1096,6 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 	u32 retry;
 	int ret = 0;
 
-	if (cfs_meta_dir_links_limit(mc, parent_ino))
-		return -EDQUOT;
-
 	read_lock(&mc->lock);
 	parent_mp = cfs_meta_get_partition_by_inode(mc, parent_ino);
 	if (!parent_mp) {
@@ -1206,9 +1148,6 @@ int cfs_meta_link(struct cfs_meta_client *mc, u64 parent_ino, struct qstr *name,
 	struct cfs_meta_partition *mp;
 	struct cfs_packet_inode *iinfo;
 	int ret;
-
-	if (cfs_meta_dir_links_limit(mc, parent_ino))
-		return -EDQUOT;
 
 	read_lock(&mc->lock);
 	parent_mp = cfs_meta_get_partition_by_inode(mc, parent_ino);
@@ -1310,9 +1249,6 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 	u64 src_ino, old_ino = 0;
 	umode_t mode;
 	int ret;
-
-	if (cfs_meta_dir_links_limit(mc, dst_parent_ino))
-		return -EDQUOT;
 
 	read_lock(&mc->lock);
 	src_parent_mp = cfs_meta_get_partition_by_inode(mc, src_parent_ino);
