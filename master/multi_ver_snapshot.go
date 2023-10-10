@@ -55,8 +55,8 @@ type VolVersionManager struct {
 	sync.RWMutex
 }
 
-func newVersionMgr(vol *Vol) *VolVersionManager {
-	return &VolVersionManager{
+func newVersionMgr(vol *Vol) (mgr *VolVersionManager) {
+	mgr = &VolVersionManager{
 		vol:    vol,
 		wait:   make(chan error, 1),
 		cancel: make(chan bool, 1),
@@ -65,6 +65,7 @@ func newVersionMgr(vol *Vol) *VolVersionManager {
 			metaNodeArray: new(sync.Map),
 		},
 	}
+	return
 }
 func (verMgr *VolVersionManager) String() string {
 	return fmt.Sprintf("mgr:{vol[%v],status[%v] verSeq [%v], prepareinfo [%v]}",

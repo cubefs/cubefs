@@ -407,6 +407,13 @@ func (c *Cluster) getHostFromDomainZone(domainId uint64, createType uint32, repl
 	return
 }
 
+func (c *Cluster) IsLeader() bool {
+	if c.partition != nil {
+		return c.partition.IsRaftLeader()
+	}
+	return false
+}
+
 func (c *Cluster) scheduleToManageDp() {
 	go func() {
 		// check volumes after switching leader two minutes
@@ -4357,7 +4364,6 @@ func (c *Cluster) scheduleToSnapshotDelVerScan() {
 					waited = true
 				}
 				c.getSnapshotDelVer()
-				c.checkSnapshotStrategy()
 			}
 			time.Sleep(waitTime)
 		}
@@ -4387,23 +4393,6 @@ func (c *Cluster) getSnapshotDelVer() {
 	log.LogDebug("getSnapshotDelVer AddVerInfo finish")
 	c.snapshotMgr.lcSnapshotTaskStatus.DeleteOldResult()
 	log.LogDebug("getSnapshotDelVer DeleteOldResult finish")
-}
-
-func (c *Cluster) checkSnapshotStrategy() {
-	vols := c.allVols()
-	for _, vol := range vols {
-		if !proto.IsHot(vol.VolType) {
-			continue
-		}
-		vol.VersionMgr.RLock()
-		if vol.VersionMgr.strategy.GetPeriodicSecond() == 0 || vol.VersionMgr.strategy.Enable == false { // strategy not be set
-			vol.VersionMgr.RUnlock()
-			continue
-		}
-		vol.VersionMgr.RUnlock()
-		vol.VersionMgr.checkCreateStrategy()
-		vol.VersionMgr.checkDeleteStrategy()
-	}
 }
 
 func (c *Cluster) SetBucketLifecycle(req *proto.LcConfiguration) error {
