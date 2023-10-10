@@ -177,6 +177,7 @@ func newVol(vv volValue) (vol *Vol) {
 	}
 	vol.qosManager.volUpdateMagnify(magnifyQosVal)
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
+	vol.CheckStrategy()
 	return
 }
 
@@ -199,6 +200,40 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	vol.Forbidden = vv.Forbidden
 	return vol
+}
+
+func (vol *Vol) CheckStrategy() {
+	//make sure resume all the processing ver deleting tasks before checking
+	waitTime := time.Second * defaultIntervalToCheck
+	waited := false
+
+	go func() {
+		for {
+			if vol.Status == markDelete {
+				break
+			}
+			if vol.VersionMgr.c != nil && vol.VersionMgr.c.IsLeader() {
+				if !waited {
+					log.LogInfof("wait for %v seconds once after becoming leader to make sure all the ver deleting tasks are resumed",
+						waitTime)
+					time.Sleep(waitTime)
+					waited = true
+				}
+				if !proto.IsHot(vol.VolType) {
+					return
+				}
+				vol.VersionMgr.RLock()
+				if vol.VersionMgr.strategy.GetPeriodicSecond() == 0 || vol.VersionMgr.strategy.Enable == false { // strategy not be set
+					vol.VersionMgr.RUnlock()
+					continue
+				}
+				vol.VersionMgr.RUnlock()
+				vol.VersionMgr.checkCreateStrategy()
+				vol.VersionMgr.checkDeleteStrategy()
+			}
+			time.Sleep(waitTime)
+		}
+	}()
 }
 
 func (vol *Vol) getPreloadCapacity() uint64 {
