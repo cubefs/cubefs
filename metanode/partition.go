@@ -1478,7 +1478,7 @@ func (mp *metaPartition) delPartitionDentriesVersion(verSeq uint64, wg *sync.Wai
 			Name:        den.Name,
 			Verseq:      verSeq,
 		}
-		mp.DeleteDentry(req, p)
+		mp.DeleteDentry(req, p, localAddrForAudit)
 		// check empty result.
 		// if result is OpAgain, means the extDelCh maybe full,
 		// so let it sleep 1s.
