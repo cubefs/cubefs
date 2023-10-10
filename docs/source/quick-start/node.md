@@ -131,7 +131,7 @@ $> docker pull cubefs/cubefs:blobstore-v3.3.0 # Pull the image
 $> docker run cubefs/cubefs:blobstore-v3.3.0 # Run the image
 $> docker container ls # View running containers
    CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS               NAMES
-   76100321156b        blobstore:v3.2.0                       "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
+   76100321156b        blobstore:v3.3.0                       "/bin/sh -c /apps/..."   4 minutes ago       Up 4 minutes                            thirsty_kare
 $> docker exec -it thirsty_kare /bin/bash # Enter the container
 ```
 
@@ -141,7 +141,7 @@ $> docker exec -it thirsty_kare /bin/bash # Enter the container
 $> cd blobstore
 $> ./run_docker.sh -b # Compile and build
 &> Successfully built 0b29fda1cd22
-   Successfully tagged blobstore:v3.2.0
+   Successfully tagged blobstore:v3.3.0
 $> ./run_docker.sh -r # Run the image
 $> ... # The subsequent steps are the same as those for remote pull build
 ```
