@@ -36,9 +36,9 @@ var partitionId uint64 = 10
 var manager = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)}
 var mp *metaPartition
 
-//PartitionId   uint64              `json:"partition_id"`
-//VolName       string              `json:"vol_name"`
-//PartitionType int                 `json:"partition_type"`
+// PartitionId   uint64              `json:"partition_id"`
+// VolName       string              `json:"vol_name"`
+// PartitionType int                 `json:"partition_type"`
 var metaConf = &MetaPartitionConfig{
 	PartitionId:   10001,
 	VolName:       VolNameForTest,
@@ -1489,7 +1489,7 @@ func TestDelPartitionVersion(t *testing.T) {
 	ino := testCreateInode(t, FileModeType)
 	assert.True(t, ino.getVer() == 10)
 	mp.SetXAttr(&proto.SetXAttrRequest{Inode: ino.Inode, Key: "key1", Value: "0000"}, &Packet{})
-	mp.CreateDentry(&CreateDentryReq{Inode: ino.Inode, Name: "dentryName"}, &Packet{})
+	mp.CreateDentry(&CreateDentryReq{Inode: ino.Inode, Name: "dentryName"}, &Packet{}, "/dentryName")
 
 	err = managerVersionPrepare(&proto.MultiVersionOpRequest{VolumeID: VolNameForTest, Op: proto.CreateVersionPrepare, VerSeq: 25})
 	mp.SetXAttr(&proto.SetXAttrRequest{Inode: ino.Inode, Key: "key1", Value: "1111"}, &Packet{})
