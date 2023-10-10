@@ -711,7 +711,6 @@ func (i *Inode) MarshalValue() (val []byte) {
 
 	if i.multiSnap != nil {
 		for _, ino := range i.multiSnap.multiVersions {
-			//	log.LogInfof("action[MarshalValue] inode %v current verseq %v", ino.Inode, ino.verSeq)
 			ino.MarshalInodeValue(buff)
 		}
 	}
