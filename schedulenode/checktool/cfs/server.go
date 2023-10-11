@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/checktool"
+	"github.com/cubefs/cubefs/util/checktool/ump"
 	"github.com/cubefs/cubefs/util/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -51,6 +52,7 @@ const (
 	UMPCFSInodeCountDiffWarnKey             = checktool.UmpKeyStorageBotPrefix + "cfs.inode.count.diff"
 	UMPCFSRapidMemIncreaseWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.rapid.mem.increase"
 	UMPCFSMySqlMemWarnKey                   = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
+	UMPCFSSparkFixPartitionKey              = checktool.UmpKeyStorageBotPrefix + "cfs.fix_lack_replica"
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
 	defaultMpNoLeaderWarnInternal           = 10 * 60
@@ -158,6 +160,7 @@ type ChubaoFSMonitor struct {
 	jdosToken                               string
 	jdosUrl                                 string
 	jdosErp                                 string
+	umpClient                               *ump.UMPClient
 	ctx                                     context.Context
 }
 
@@ -245,6 +248,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	//go s.scheduleToCompareMasterMetaDataDiff()
 	go s.scheduleToCheckMasterNodesAlive()
 	go s.scheduleToCheckDiskError()
+	go s.scheduleToFixBadDataPartition(cfg)
 	go s.scheduleToCheckXBPTicket()
 	go s.scheduleToCheckZoneDiskUsedRatio()
 	go s.scheduleToCheckObjectNodeAlive(cfg)
