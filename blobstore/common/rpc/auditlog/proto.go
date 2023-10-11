@@ -38,8 +38,8 @@ type Config struct {
 	Backup       int              `json:"backup"`
 	MetricConfig PrometheusConfig `json:"metric_config"`
 
-	// KeywordsFilter log filter based on uri and request method
-	KeywordsFilter []string `json:"keywords_filter"`
+	// Filters are or relations
+	Filters []FilterConfig `json:"filters"`
 
 	// LogFormat valid value is "text" or "json", default is "text"
 	LogFormat string `json:"log_format"`

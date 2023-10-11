@@ -17,13 +17,12 @@ The basic configuration is shared by each module and mainly includes server port
       "service": "service name",
       "tag": "tag",
       "team": "team",
-
       "enable_req_length_cnt": "whether to enable request length statistics, true or false, default is false",
       "enable_resp_length_cnt": "whether to enable response length statistics, true or false, default is false",
       "enable_resp_duration": "whether to enable response latency, true or false, default is false",
       "max_api_level": "maximum API level, such as 2 for /get/name"
     },
-    "keywords_filter": "keyword filter, currently supports URL and request method filtering, such as /download, GET, etc."
+    "filters": "Filter log by multi-criteria matching of log's fields"
   },
   "auth": {
     "enable_auth": "whether to enable authentication, true or false, default is false",

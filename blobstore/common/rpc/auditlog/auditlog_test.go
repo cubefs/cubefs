@@ -56,6 +56,7 @@ func initServer(t *testing.T, name string, cfg Config) (server *httptest.Server,
 
 	cfg.LogDir = tmpDir
 	cfg.MetricConfig = PrometheusConfig{Idc: name}
+	cfg.Filters = []FilterConfig{{Must: Conditions{"term": {"method": "GET"}}}}
 
 	var ah rpc.ProgressHandler
 	ah, lc, err = Open(name, &cfg)
@@ -177,7 +178,7 @@ func initNoContentLengthServer(t *testing.T) (server *httptest.Server, tmpDir st
 
 func TestOpen(t *testing.T) {
 	cfg := Config{
-		KeywordsFilter: []string{"Get"},
+		Filters: []FilterConfig{{Must: Conditions{"term": {"method": "GET"}}}},
 	}
 	server, tmpDir, lc := initServer(t, "testOpen", cfg)
 	defer func() {

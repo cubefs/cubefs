@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -54,6 +53,7 @@ type jsonAuditlog struct {
 	decoder      Decoder
 	metricSender MetricSender
 	logFile      LogCloser
+	logFilter    LogFilter
 
 	logPool  sync.Pool
 	bodyPool sync.Pool
@@ -138,11 +138,17 @@ func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser
 		}
 	}
 
+	logFilter, err := newLogFilter(cfg.Filters)
+	if err != nil {
+		return nil, nil, errors.Info(err, "new log filter").Detail(err)
+	}
+
 	return &jsonAuditlog{
 		module:       module,
 		decoder:      &defaultDecoder{},
 		metricSender: NewPrometheusSender(cfg.MetricConfig),
 		logFile:      logFile,
+		logFilter:    logFilter,
 
 		logPool: sync.Pool{
 			New: func() interface{} {
@@ -251,7 +257,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 
 	j.metricSender.Send(auditLog.ToBytesWithTab(b))
 
-	if j.logFile == nil || (len(j.cfg.KeywordsFilter) > 0 && defaultLogFilter(req, j.cfg.KeywordsFilter)) {
+	if j.logFile == nil || j.logFilter.Filter(auditLog) {
 		return
 	}
 
@@ -266,18 +272,6 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 		span.Errorf("jsonlog.Handler Log failed, err: %s", err.Error())
 		return
 	}
-}
-
-// defaultLogFilter support uri and method filter based on keywords
-func defaultLogFilter(r *http.Request, words []string) bool {
-	method := strings.ToLower(r.Method)
-	for _, word := range words {
-		str := strings.ToLower(word)
-		if method == str || strings.Contains(r.RequestURI, str) {
-			return true
-		}
-	}
-	return false
 }
 
 // ExtraHeader provides extra response header writes to the ResponseWriter.
