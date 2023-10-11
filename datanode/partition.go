@@ -36,7 +36,6 @@ import (
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -135,6 +134,8 @@ type DataPartition struct {
 	decommissionRepairProgress float64 //record repair progress for decommission datapartition
 	stopRecover                bool
 	recoverErrCnt              uint64 // donot reset, if reach max err cnt, delete this dp
+
+	diskErrCnt uint64 // number of disk io errors while reading or writing
 }
 
 func (dp *DataPartition) IsForbidden() bool {
@@ -609,22 +610,22 @@ func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
-func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
+func (dp *DataPartition) checkIsDiskError(err error, rwFlag uint8) {
 	if err == nil {
 		return
 	}
-	if IsDiskErr(err.Error()) {
-		mesg := fmt.Sprintf("checkIsDiskError disk path %v error on %v", dp.Path(), LocalIP)
-		exporter.Warning(mesg)
-		log.LogErrorf(mesg)
-		dp.stopRaft()
-		dp.disk.incReadErrCnt()
-		dp.disk.incWriteErrCnt()
-		dp.disk.Status = proto.Unavailable
-		dp.statusUpdate()
-		dp.disk.ForceExitRaftStore()
-		diskError = true
+	log.LogWarnf("checkIsDiskError: disk path %v, error: %v, partition:%v, rwFlag:%v",
+		dp.Path(), err.Error(), dp.partitionID, rwFlag)
+	if !IsDiskErr(err.Error()) {
+		return
 	}
+
+	dp.stopRaft()
+	dp.incDiskErrCnt()
+	dp.disk.triggerDiskError(rwFlag, &dp.partitionID)
+
+	//must after change disk.status
+	dp.statusUpdate()
 	return
 }
 
@@ -1188,4 +1189,9 @@ func (dp *DataPartition) handleDecommissionRecoverFailed() {
 	log.LogWarnf("[handleDecommissionRecoverFailed]  dp(%d) recover failed reach max limit", dp.partitionID)
 	dp.PersistMetadata()
 	dp.StopDecommissionRecover(true)
+}
+
+func (dp *DataPartition) incDiskErrCnt() {
+	atomic.AddUint64(&dp.diskErrCnt, 1)
+	log.LogErrorf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, dp.diskErrCnt)
 }

@@ -725,29 +725,6 @@ func (s *DataNode) serveSmuxStream(stream *smux.Stream) {
 	packetProcessor.ServerConn()
 }
 
-// Increase the disk error count by one.
-func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
-	if err == nil {
-		return
-	}
-	dp := s.space.Partition(partitionID)
-	if dp == nil {
-		return
-	}
-	d := dp.Disk()
-	if d == nil {
-		return
-	}
-	if !IsDiskErr(err.Error()) {
-		return
-	}
-	if flag == WriteFlag {
-		d.incWriteErrCnt()
-	} else if flag == ReadFlag {
-		d.incReadErrCnt()
-	}
-}
-
 func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 	s.enableSmuxConnPool = cfg.GetBool(ConfigKeyEnableSmuxClient)
 	s.smuxPortShift = int(cfg.GetInt64(ConfigKeySmuxPortShift))

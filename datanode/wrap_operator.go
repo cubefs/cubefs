@@ -737,7 +737,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 		}
-		s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
+		partition.checkIsDiskError(err, WriteFlag)
 		return
 	}
 
@@ -754,7 +754,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 		}
-		partition.checkIsDiskError(err)
+		partition.checkIsDiskError(err, WriteFlag)
 	} else {
 		size := p.Size
 		offset := 0
@@ -777,7 +777,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 				partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 			}
-			partition.checkIsDiskError(err)
+			partition.checkIsDiskError(err, WriteFlag)
 			if err != nil {
 				break
 			}
@@ -785,7 +785,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			offset += currSize
 		}
 	}
-	s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 }
 
 func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
@@ -959,7 +958,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
 			tpObject.Set(err)
 		}
-		partition.checkIsDiskError(err)
+		partition.checkIsDiskError(err, ReadFlag)
 		p.CRC = reply.CRC
 		if err != nil {
 			return

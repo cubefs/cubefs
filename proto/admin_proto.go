@@ -625,6 +625,12 @@ type DataNodeQosResponse struct {
 	Result     string
 }
 
+type BadDiskStat struct {
+	DiskPath             string
+	TotalPartitionCnt    int
+	DiskErrPartitionList []uint64
+}
+
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
 type DataNodeHeartbeatResponse struct {
 	Total               uint64
@@ -639,7 +645,8 @@ type DataNodeHeartbeatResponse struct {
 	PartitionReports    []*DataPartitionReport
 	Status              uint8
 	Result              string
-	BadDisks            []string
+	BadDisks            []string           //Keep this old field for compatibility
+	BadDiskStats        []BadDiskStat      //key: disk path
 	CpuUtil             float64            `json:"cpuUtil"`
 	IoUtils             map[string]float64 `json:"ioUtil"`
 }

@@ -337,8 +337,10 @@ type DecommissionProgress struct {
 }
 
 type BadDiskInfo struct {
-	Address string
-	Path    string
+	Address              string
+	Path                 string
+	TotalPartitionCnt    int
+	DiskErrPartitionList []uint64
 }
 
 type BadDiskInfos struct {

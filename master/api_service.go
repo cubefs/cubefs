@@ -5935,11 +5935,16 @@ func (m *Server) queryBadDisks(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return true
 		}
-		for _, badDisk := range dataNode.BadDisks {
-			info := proto.BadDiskInfo{Address: dataNode.Addr, Path: badDisk}
+
+		for _, bds := range dataNode.BadDiskStats {
+			info := proto.BadDiskInfo{
+				Address:              dataNode.Addr,
+				Path:                 bds.DiskPath,
+				TotalPartitionCnt:    bds.TotalPartitionCnt,
+				DiskErrPartitionList: bds.DiskErrPartitionList,
+			}
 			infos.BadDisks = append(infos.BadDisks, info)
 		}
-
 		return true
 	})
 
