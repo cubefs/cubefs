@@ -77,7 +77,8 @@ type Disk struct {
 	limitFactor map[uint32]*rate.Limiter
 
 	// diskPartition info
-	diskPartition *disk.PartitionStat
+	diskPartition       *disk.PartitionStat
+	DiskErrPartitionSet map[uint64]struct{}
 }
 
 const (
@@ -119,6 +120,8 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
 	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+
+	d.DiskErrPartitionSet = make(map[uint64]struct{}, 0)
 	return
 }
 
@@ -304,38 +307,62 @@ func (d *Disk) checkDiskStatus() {
 	path := path.Join(d.Path, DiskStatusFile)
 	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o755)
 	if err != nil {
-		d.triggerDiskError(err)
+		d.CheckDiskError(err, ReadFlag)
 		return
 	}
 	defer fp.Close()
 	data := []byte(DiskStatusFile)
 	_, err = fp.WriteAt(data, 0)
 	if err != nil {
-		d.triggerDiskError(err)
+		d.CheckDiskError(err, WriteFlag)
 		return
 	}
 	if err = fp.Sync(); err != nil {
-		d.triggerDiskError(err)
+		d.CheckDiskError(err, WriteFlag)
 		return
 	}
 	if _, err = fp.ReadAt(data, 0); err != nil {
-		d.triggerDiskError(err)
+		d.CheckDiskError(err, ReadFlag)
 		return
 	}
 }
 
-func (d *Disk) triggerDiskError(err error) {
+func (d *Disk) CheckDiskError(err error, rwFlag uint8) {
 	if err == nil {
 		return
 	}
-	log.LogWarnf("triggerDiskError disk err %s", err.Error())
-	if IsDiskErr(err.Error()) {
-		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
-		exporter.Warning(mesg)
-		log.LogErrorf(mesg)
-		d.ForceExitRaftStore()
-		d.Status = proto.Unavailable
+	log.LogWarnf("CheckDiskError disk err: %v, disk:%v", err.Error(), d.Path)
+
+	if !IsDiskErr(err.Error()) {
+		return
 	}
+
+	d.triggerDiskError(rwFlag, nil)
+}
+
+func (d *Disk) triggerDiskError(rwFlag uint8, dpId *uint64) {
+	mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
+	exporter.Warning(mesg)
+	log.LogWarnf(mesg)
+
+	if rwFlag == WriteFlag {
+		d.incWriteErrCnt()
+	} else if rwFlag == ReadFlag {
+		d.incReadErrCnt()
+	} else {
+		d.incWriteErrCnt()
+		d.incReadErrCnt()
+	}
+
+	if dpId != nil {
+		d.AddDiskErrPartition(*dpId)
+	} else {
+		//use 0 for disk error without any data partition
+		d.AddDiskErrPartition(0)
+	}
+
+	d.Status = proto.Unavailable
+	d.ForceExitRaftStore()
 }
 
 func (d *Disk) updateSpaceInfo() (err error) {
@@ -345,12 +372,10 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	}
 
 	if d.Status == proto.Unavailable {
-
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
 		exporter.Warning(mesg)
 		d.ForceExitRaftStore()
-
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
 	} else {
@@ -360,7 +385,6 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
 		"restSize(%v) preRestSize (%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
 		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.DiskRdonlySpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
-
 	return
 }
 
@@ -377,6 +401,7 @@ func (d *Disk) AttachDataPartition(dp *DataPartition) {
 func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.Lock()
 	delete(d.partitionMap, dp.partitionID)
+	delete(d.DiskErrPartitionSet, dp.partitionID)
 	d.Unlock()
 
 	d.computeUsage()
@@ -594,6 +619,20 @@ func (d *Disk) updateDisk(allocSize uint64) {
 
 func (d *Disk) getSelectWeight() float64 {
 	return float64(atomic.LoadUint64(&d.Allocated)) / float64(d.Total)
+}
+
+func (d *Disk) AddDiskErrPartition(dpId uint64) {
+	if _, ok := d.DiskErrPartitionSet[dpId]; !ok {
+		d.DiskErrPartitionSet[dpId] = struct{}{}
+	}
+}
+
+func (d *Disk) GetDiskErrPartitionList() (diskErrPartitionList []uint64) {
+	diskErrPartitionList = make([]uint64, 0)
+	for k := range d.DiskErrPartitionSet {
+		diskErrPartitionList = append(diskErrPartitionList, k)
+	}
+	return diskErrPartitionList
 }
 
 // isExpiredPartition return whether one partition is expired

@@ -49,7 +49,8 @@ type DataNode struct {
 	TotalPartitionSize        uint64
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
-	BadDisks                  []string
+	BadDisks                  []string            //Keep this old field for compatibility
+	BadDiskStats              []proto.BadDiskStat //key: disk path
 	DecommissionedDisks       sync.Map
 	ToBeOffline               bool
 	RdOnly                    bool
@@ -152,7 +153,10 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
 	dataNode.TotalPartitionSize = resp.TotalPartitionSize
+
 	dataNode.BadDisks = resp.BadDisks
+	dataNode.BadDiskStats = resp.BadDiskStats
+
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
