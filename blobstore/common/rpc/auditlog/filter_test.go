@@ -29,136 +29,189 @@ var auditlog = AuditLog{
 		"Trace-Tags":               []string{"span.kind:server"},
 		"X-Content-Type-Options":   "nosniff",
 	},
+	RespBody:   "",
 	RespLength: 19,
 	Duration:   56,
 }
 
-func TestFilter(t *testing.T) {
-	que := Query{
-		MustNot: []map[string]interface{}{
-			{"match": []map[string]interface{}{{"path": "my_service"}}},
-			{"range": []map[string]interface{}{{"start_time": "16894926383996679-16894926383996679"}}},
-		},
-		Must: []map[string]interface{}{
-			{"term": []map[string]interface{}{{"module": "RPC"}, {"method": "GET"}}},
-			{"regexp": []map[string]interface{}{{"req_header": "^.*$"}}},
-			{"match": []map[string]interface{}{{"path": "get", "req_header": "gzip"}}},
-		},
+func TestFilterNewError(t *testing.T) {
+	cases := []FilterConfig{
+		{Must: Conditions{"term": {"no-field": "x"}}},
+		{MustNot: Conditions{"term": {"StatusCode": "xxx"}}},
+		{Must: Conditions{"term-match": {"method": "GET"}}},
+		{Must: Conditions{"term-match": {"duration": "GET"}}},
+		{MustNot: Conditions{"regexp": {"Method": `(\d`}}},
+		{Should: Conditions{"range": {"status_code": "1-2-3"}}},
+		{Should: Conditions{"range": {"status_code": "x-"}}},
+		{Should: Conditions{"range": {"status_code": "-x"}}},
+		{Should: Conditions{"range": {"status_code": 100}}},
 	}
-	arr, _ := json.Marshal(que)
-	q := Query{}
-	json.Unmarshal(arr, &q)
-	require.NoError(t, q.Init())
-	ok, _ := q.FilterLogWithPriority(&auditlog)
-	require.True(t, ok)
-}
-
-func Benchmark_Filter(b *testing.B) {
-	que := Query{
-		MustNot: []map[string]interface{}{
-			{"match": []map[string]interface{}{{"path": "my_service"}, {"req_type": "REQ11"}}},
-			{"range": []map[string]interface{}{{"start_time": "16894926383996679-16894926383996679"}}},
-			{"term": []map[string]interface{}{
-				{"req_params": "RPC"},
-				{"resp_header": "utf-8"},
-				{"resp_length": "0"},
-				{"duration": "10"},
-			}},
-		},
-		Must: []map[string]interface{}{
-			{"term": []map[string]interface{}{
-				{"module": "RPC"},
-				{"method": "GET"},
-				{"duration": "56"},
-			}},
-			{"regexp": []map[string]interface{}{{"req_header": "^.*$"}}},
-			{"match": []map[string]interface{}{{"path": "get", "req_header": "gzip"}}},
-		},
-		Should: []map[string]interface{}{
-			{"term": []map[string]interface{}{{"status_code": 404}, {"status_code": 200}, {"status_code": 403}}},
-		},
-	}
-	arr, _ := json.Marshal(que)
-	q := Query{}
-	json.Unmarshal(arr, &q)
-	b.ResetTimer()
-	require.NoError(b, q.Init())
-	for i := 0; i < b.N; i++ {
-		q.FilterLogWithPriority(&auditlog)
+	for _, cfg := range cases {
+		_, err := newFilter(cfg)
+		require.Error(t, err)
+		_, err = newLogFilter([]FilterConfig{cfg})
+		require.Error(t, err)
 	}
 }
 
-func Benchmark_FilterWithPriority(b *testing.B) {
-	var que Query = Query{
-		MustNot: []map[string]interface{}{
-			{"match": []map[string]interface{}{{"path": "my_service"}}},
-			{"range": []map[string]interface{}{{"start_time": "16894926383996679-"}}},
+func TestFilterRun(t *testing.T) {
+	cases := []struct {
+		cfg FilterConfig
+		b   bool
+	}{
+		{FilterConfig{Must: Conditions{"term": {"ReqType": "REQx"}}}, false},
+		{FilterConfig{Must: Conditions{"term": {"ReqType": "REQ"}}}, true},
+		{FilterConfig{Must: Conditions{"term": {"ReqType": []string{"REQ", "QER"}}}}, false},
+		{FilterConfig{Must: Conditions{"term": {"ReqType": "REQ", "RespLength": "19"}}}, true},
+		{FilterConfig{
+			Must:    Conditions{"term": {"ReqType": "REQ", "RespLength": "19"}},
+			MustNot: Conditions{"term": {"module": "rpc"}, "match": {"path": "//service"}},
+		}, true},
+		{FilterConfig{
+			MustNot: Conditions{"term": {"module": "rpc"}, "match": {"path": "/service"}},
+		}, false},
+		{FilterConfig{
+			Should: Conditions{
+				"match":  {"path": "//service"},
+				"regexp": {"req_header": "access.master"},
+			},
+		}, true},
+		{FilterConfig{
+			Should: Conditions{
+				"match":  {"path": "//service"},
+				"regexp": {"req_header": "access.master", "RespHeader": ".*"},
+			},
+		}, true},
+		{FilterConfig{
+			Must: Conditions{
+				"term":  {"ReqType": "REQ", "RespLength": "19", "req_params": "", "start_time": "16894926383996678"},
+				"range": {"Duration": "1-20,30-100"},
+			},
+			MustNot: Conditions{
+				"term":  {"module": []string{"rpc", "Rpc", "RPc"}, "method": "get"},
+				"match": {"path": "//service"},
+			},
+			Should: Conditions{
+				"term":   {"resp_body": "body"},
+				"match":  {"path": "//service"},
+				"regexp": {"req_header": "access..master", "RespHeader": "Blobstore-Traceid"},
+				"range":  {"status_code": "100-403,405-500"},
+			},
+		}, false},
+	}
+	for _, cs := range cases {
+		f, err := newLogFilter([]FilterConfig{cs.cfg})
+		require.NoError(t, err)
+		if cs.b {
+			require.True(t, f.Filter(&auditlog))
+		} else {
+			require.False(t, f.Filter(&auditlog))
+		}
+	}
+
+	cfg := FilterConfig{
+		Must: Conditions{
+			"term":  {"ReqType": "REQ", "RespLength": "19", "req_params": "", "start_time": "16894926383996678"},
+			"range": {"Duration": "1-20,30-100"},
 		},
-		Must: []map[string]interface{}{
-			{"term": []map[string]interface{}{{"module": "RPC"}, {"method": "GET"}}},
-			{"regexp": []map[string]interface{}{{"req_header": "^.*$"}}},
-			{"match": []map[string]interface{}{{"path": "get", "req_header": "gzip"}}},
-		},
-		Should: []map[string]interface{}{
-			{"term": []map[string]interface{}{{"status_code": 404}, {"status_code": 200}, {"status_code": 403, "resp_length": 19}}},
+		MustNot: Conditions{
+			"term":  {"module": []string{"rpc", "Rpc", "RPc"}, "method": "GET"},
+			"match": {"path": "//service"},
 		},
 	}
-	q := Query{}
-	arr, _ := json.Marshal(que)
-	json.Unmarshal(arr, &q)
+	f, err := newFilter(cfg)
+	require.NoError(t, err)
+	for range [100000]struct{}{} {
+		require.False(t, f.Filter(&auditlog))
+	}
+	require.Equal(t, int64(1), f.reset)
+	f.and.Push(f.and.Pop())
+
+	cfgString := `{
+		"must":{
+			"term":{"ReqType":"REQ","RespLength":"19","req_params":"","start_time":"16894926383996678"},
+			"range":{"Duration":"1-20,30-100"}
+		},
+		"must_not":{
+			"term":{"method":"GET","module":["rpc","Rpc","RPc", 10]},
+			"match":{"path":"//service"}
+		}
+	}`
+	var cfgLoad FilterConfig
+	require.NoError(t, json.Unmarshal([]byte(cfgString), &cfgLoad))
+	require.Equal(t, cfg.Must, cfgLoad.Must)
+	f, err = newFilter(cfgLoad)
+	require.NoError(t, err)
+	for range [100000]struct{}{} {
+		require.False(t, f.Filter(&auditlog))
+	}
+	require.Equal(t, int64(1), f.reset)
+}
+
+func Benchmark_FilterSimple(b *testing.B) {
+	f, err := newFilter(FilterConfig{Must: Conditions{"term": {"ReqType": "REQ"}}})
+	require.NoError(b, err)
 	b.ResetTimer()
-	require.NoError(b, q.Init())
 	for i := 0; i < b.N; i++ {
-		q.FilterLogWithPriority(&auditlog)
+		f.Filter(&auditlog)
 	}
 }
 
-func Benchmark_FilterWithPriorityB(b *testing.B) {
-	var que Query = Query{
-		MustNot: []map[string]interface{}{
-			{"match": []map[string]interface{}{{"path": "my_service"}}},
-			{"range": []map[string]interface{}{{"start_time": "16894926383996679-"}}},
-		},
-		Must: []map[string]interface{}{
-			{"term": []map[string]interface{}{{"module": "RPC"}, {"method": "GET"}}},
-			{"regexp": []map[string]interface{}{{"req_header": "^.*$"}}},
-			{"match": []map[string]interface{}{{"path": "get", "req_header": "gzip"}}},
-		},
-		Should: []map[string]interface{}{
-			{"term": []map[string]interface{}{{"status_code": 404}, {"status_code": 200}, {"status_code": 403}}},
-		},
-	}
-	q := Query{}
-	arr, _ := json.Marshal(que)
-	json.Unmarshal(arr, &q)
+func Benchmark_FilterPriority(b *testing.B) {
+	f, err := newFilter(FilterConfig{
+		Must:    Conditions{"range": {"Duration": "1-20,30-100"}},
+		MustNot: Conditions{"term": {"module": "rpc", "method": "GET"}, "match": {"path": "//service"}},
+	})
+	require.NoError(b, err)
 	b.ResetTimer()
-	require.NoError(b, q.Init())
 	for i := 0; i < b.N; i++ {
-		q.FilterLogWithPriority(&auditlog)
+		f.Filter(&auditlog)
 	}
 }
 
-func Benchmark_FilterWithPriorityC(b *testing.B) {
-	var que Query = Query{
-		MustNot: []map[string]interface{}{
-			{"match": []map[string]interface{}{{"path": "my_service"}}},
-			{"range": []map[string]interface{}{{"start_time": "16894926383996679-"}}},
+func Benchmark_FilterComplex(b *testing.B) {
+	f, err := newFilter(FilterConfig{
+		Must: Conditions{
+			"term":  {"ReqType": "REQ", "RespLength": "19", "req_params": "", "start_time": "16894926383996678"},
+			"range": {"Duration": "1-20,30-100"},
 		},
-		Must: []map[string]interface{}{
-			{"term": []map[string]interface{}{{"module": "RPC"}, {"method": "GET"}}},
-			{"regexp": []map[string]interface{}{{"req_header": "^.*$"}}},
-			{"match": []map[string]interface{}{{"path": "get", "req_header": "gzip"}}},
+		MustNot: Conditions{"term": {"module": "rpc", "method": "get"}, "match": {"path": "//service"}},
+		Should: Conditions{
+			"term":  {"resp_body": "body"},
+			"match": {"path": "//service"},
+			"range": {"status_code": "100-403,405-500"},
 		},
-		Should: []map[string]interface{}{
-			{"term": []map[string]interface{}{{"status_code": 404}, {"status_code": 200}, {"status_code": 403}}},
-		},
-	}
-	q := Query{}
-	arr, _ := json.Marshal(que)
-	json.Unmarshal(arr, &q)
+	})
+	require.NoError(b, err)
 	b.ResetTimer()
-	require.NoError(b, q.Init())
 	for i := 0; i < b.N; i++ {
-		q.FilterLogWithPriority(&auditlog)
+		f.Filter(&auditlog)
+	}
+}
+
+func Benchmark_FilterMatch(b *testing.B) {
+	f, err := newFilter(FilterConfig{Must: Conditions{"match": {"path": "vice"}}})
+	require.NoError(b, err)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		f.Filter(&auditlog)
+	}
+}
+
+func Benchmark_FilterRegxp(b *testing.B) {
+	f, err := newFilter(FilterConfig{Must: Conditions{"regexp": {"path": "^/service.get$"}}})
+	require.NoError(b, err)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		f.Filter(&auditlog)
+	}
+}
+
+func Benchmark_FilterHeader(b *testing.B) {
+	f, err := newFilter(FilterConfig{Should: Conditions{"regexp": {"req_header": "access..master"}}})
+	require.NoError(b, err)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		f.Filter(&auditlog)
 	}
 }

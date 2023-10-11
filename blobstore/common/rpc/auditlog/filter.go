@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
+
 package auditlog
 
 import (
@@ -24,346 +25,188 @@ import (
 	"sync/atomic"
 )
 
-// Query Define a struct of log filter
-// This is an example of Query
-
-//{
-//	MustNot []struct {
-//		Match []struct {
-//			Path string `json:"path"`
-//		} `json:"match,omitempty"`
-//		Range []struct {
-//			StartTime  string `json:"start_time"`
-//		} `json:"range,omitempty"`
-//	} `json:"must_not"`
-//	Must []struct {
-//		Term []struct {
-//			Module string `json:"module"`
-//			Method string `json:"method"`
-//		} `json:"term,omitempty"`
-//		Regexp []struct {
-//			ReqHeader string `json:"req_header"`
-//		} `json:"regexp,omitempty"`
-//		Match []struct {
-//			Path      string `json:"path"`
-//			ReqHeader string `json:"req_header"`
-//		} `json:"match,omitempty"`
-//	} `json:"must"`
-//	Should []struct {
-//		Match []struct {
-//			Path string `json:"path"`
-//		} `json:"match,omitempty"`
-//		Term []struct {
-//			StatusCode int `json:"status_code"`
-//			RespLength int `json:"resp_length"`
-//		} `json:"term,omitempty"`
-//	} `json:"should"`
-//}
-
-var mutex sync.Mutex
-
-type FilterFunc struct {
-	t        string
-	f        func(log *AuditLog) bool
-	priority int64
-	err      error
+// LogFilter filter log with queries.
+type LogFilter interface {
+	Filter(*AuditLog) bool
 }
 
-type Query struct {
-	Must        []map[string]interface{} `json:"must"`
-	MustNot     []map[string]interface{} `json:"must_not"`
-	Should      []map[string]interface{} `json:"should"`
-	all         PriorityQueue
-	or          PriorityQueue
-	priorityAll int64
-	priorityOr  int64
-	num         int64
-	upper       int64
+// FilterConfig config of log filter.
+// Returns Must && MustNot && Should.
+type FilterConfig struct {
+	Must    Conditions `json:"must"`     // all conditions must be true.
+	MustNot Conditions `json:"must_not"` // all conditions must be false.
+	Should  Conditions `json:"should"`   // true only if any of condition is true.
 }
 
-type PriorityQueue []*FilterFunc
+// Conditions compare condition.
+// term   // equal
+// match  // contains
+// regexp // regexp
+// range  // int range, multi-ranges like "200-203,410-420,500-"
+// map[field]string or map[field][]string
+type Conditions map[string]map[string]interface{}
 
-func (pq PriorityQueue) Len() int { return len(pq) }
+type condFunc func(*AuditLog) bool
 
-func (pq PriorityQueue) Less(i, j int) bool {
-	return pq[i].priority > pq[j].priority
+type condition struct {
+	Func     condFunc
+	Priority int64
 }
 
-func (pq PriorityQueue) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
-}
+type condQueue []condition
 
-func (pq *PriorityQueue) Push(x interface{}) {
-	item := x.(*FilterFunc)
-	*pq = append(*pq, item)
-}
-
-func (pq *PriorityQueue) Pop() interface{} {
-	old := *pq
+func (q condQueue) Len() int            { return len(q) }
+func (q condQueue) Less(i, j int) bool  { return q[i].Priority > q[j].Priority }
+func (q condQueue) Swap(i, j int)       { q[i], q[j] = q[j], q[i] }
+func (q *condQueue) Push(x interface{}) { *q = append(*q, x.(condition)) }
+func (q *condQueue) Pop() interface{} {
+	old := *q
 	n := len(old)
 	item := old[n-1]
-	old[n-1] = nil
-	*pq = old[0 : n-1]
+	*q = old[0 : n-1]
 	return item
 }
 
-func (filter *Query) Init() error {
-	filter.num = 500
-	filter.upper = 1000
-	all := make([]*FilterFunc, 0)
-	for _, clause := range filter.Must {
-		for key, valueList := range clause {
-			switch key {
-			case "term":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("term", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"must", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
-			case "match":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("match", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"must", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
-			case "range":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("range", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"must", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
-			case "regexp":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("regexp", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"must", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
+type filters struct {
+	filters []*filter
+}
+
+func newLogFilter(cfgs []FilterConfig) (LogFilter, error) {
+	fs := &filters{}
+	for _, cfg := range cfgs {
+		f, err := newFilter(cfg)
+		if err != nil {
+			return nil, err
+		}
+		fs.filters = append(fs.filters, f)
+	}
+	return fs, nil
+}
+
+func (fs *filters) Filter(log *AuditLog) bool {
+	for idx := range fs.filters {
+		if fs.filters[idx].Filter(log) {
+			return true
+		}
+	}
+	return false
+}
+
+type filter struct {
+	lock  sync.RWMutex
+	and   condQueue
+	or    condQueue
+	count int64
+	reset int64
+}
+
+func getConditions(operation, field string, value interface{}) ([]condFunc, error) {
+	var values []string
+	switch val := value.(type) {
+	case string:
+		values = []string{val}
+	case []string:
+		values = val[:]
+	case []interface{}:
+		for idx := range val {
+			if x, ok := val[idx].(string); ok {
+				values = append(values, x)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("invalid value:%v", value)
+	}
+	funcs := make([]condFunc, 0, len(values))
+	for _, val := range values {
+		cond, err := parse(operation, field, val)
+		if err != nil {
+			return nil, err
+		}
+		funcs = append(funcs, cond)
+	}
+	return funcs, nil
+}
+
+func newFilter(cfg FilterConfig) (*filter, error) {
+	f := new(filter)
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	for operation, fields := range cfg.Must {
+		for field, value := range fields {
+			conds, err := getConditions(operation, field, value)
+			if err != nil {
+				return nil, err
+			}
+			for idx := range conds {
+				f.and = append(f.and, condition{Func: conds[idx]})
 			}
 		}
 	}
-	for _, clause := range filter.MustNot {
-		for key, valueList := range clause {
-			switch key {
-			case "term":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("term", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"mustNot", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
-			case "match":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("match", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"mustNot", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
-			case "range":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("range", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"mustNot", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
-			case "regexp":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("regexp", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"mustNot", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
+	for operation, fields := range cfg.MustNot {
+		for field, value := range fields {
+			conds, err := getConditions(operation, field, value)
+			if err != nil {
+				return nil, err
+			}
+			for idx := range conds {
+				f.and = append(f.and, condition{
+					Func: func(log *AuditLog) bool { return !conds[idx](log) },
+				})
 			}
 		}
 	}
-	or := make([]*FilterFunc, 0)
-	for _, clause := range filter.Should {
-		for key, valueList := range clause {
-			switch key {
-			case "term":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("term", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"should", fun, 0, err}
-						or = append(or, &re)
-					}
-				}
-			case "match":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("match", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"should", fun, 0, err}
-						or = append(or, &re)
-					}
-				}
-			case "range":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("range", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"should", fun, 0, err}
-						all = append(all, &re)
-					}
-				}
-			case "regexp":
-				for _, value := range valueList.([]interface{}) {
-					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("regexp", field, fmt.Sprintf("%v", val))
-						if err != nil {
-							return err
-						}
-						re := FilterFunc{"should", fun, 0, err}
-						or = append(or, &re)
-					}
-				}
+	for operation, fields := range cfg.Should {
+		for field, value := range fields {
+			conds, err := getConditions(operation, field, value)
+			if err != nil {
+				return nil, err
+			}
+			for idx := range conds {
+				f.or = append(f.or, condition{Func: conds[idx]})
 			}
 		}
 	}
-	filter.all = all
-	filter.or = or
-	heap.Init(&filter.all)
-	heap.Init(&filter.or)
-	return nil
+	return f, nil
 }
 
-type FilterError struct {
-	msg string
-}
-
-func (e FilterError) Error() string {
-	return fmt.Sprintf("msg:%v", e.msg)
-}
-
-func (r *Query) updatePriority(a *PriorityQueue, i int) {
-	mutex.Lock()
-	defer mutex.Unlock()
-	heap.Fix(a, i)
-	r.num = 0
-}
-
-func (filter *Query) FilterLogWithPriority(log *AuditLog) (bool, error) {
-	filter.num++
-	if filter.priorityAll >= filter.priorityOr {
-		lenPriorityQueue := filter.all.Len()
-		for i := 0; i < lenPriorityQueue; i++ {
-			tem := filter.all[i]
-			if tem.t == "must" && !tem.f(log) {
-				atomic.AddInt64(&(filter.priorityAll), 1)
-				if filter.num >= filter.upper {
-					atomic.AddInt64(&(tem.priority), 1)
-					filter.updatePriority(&filter.all, i)
-				}
-				return false, tem.err
-			} else if tem.t == "mustNot" && tem.f(log) {
-				atomic.AddInt64(&(filter.priorityAll), 1)
-				if filter.num >= filter.upper {
-					atomic.AddInt64(&(tem.priority), 1)
-					filter.updatePriority(&filter.all, i)
-				}
-				return false, tem.err
-			}
-		}
-		lenPriorityQueue = filter.or.Len()
-		if lenPriorityQueue == 0 {
-			return true, nil
-		}
-		for i := 0; i < lenPriorityQueue; i++ {
-			if filter.or[i].f(log) {
-				if filter.num >= filter.upper {
-					atomic.AddInt64(&(filter.or[i].priority), 1)
-					filter.updatePriority(&filter.or, i)
-				}
-				return true, nil
-			}
-		}
-		atomic.AddInt64(&(filter.priorityOr), 1)
-		return false, FilterError{"Should filter "}
-	} else {
-		lenPriorityQueue := filter.or.Len()
-		if lenPriorityQueue > 0 {
-			flag := true
-			for i := 0; i < lenPriorityQueue; i++ {
-				if filter.or[i].f(log) {
-					if filter.num >= filter.upper {
-						atomic.AddInt64(&(filter.or[i].priority), 1)
-						filter.updatePriority(&filter.or, i)
-					}
-					flag = false
-					break
-				}
-			}
-			if flag {
-				atomic.AddInt64(&(filter.priorityOr), 1)
-				return false, FilterError{"Should filter "}
-			}
-		}
-		lenPriorityQueue = filter.all.Len()
-		for i := 0; i < lenPriorityQueue; i++ {
-			tem := filter.all[i]
-			if tem.t == "must" && !tem.f(log) {
-				atomic.AddInt64(&(filter.priorityAll), 1)
-				if filter.num >= filter.upper {
-					atomic.AddInt64(&(tem.priority), 1)
-					filter.updatePriority(&filter.all, i)
-				}
-				return false, tem.err
-			} else if tem.t == "mustNot" && tem.f(log) {
-				atomic.AddInt64(&(filter.priorityAll), 1)
-				if filter.num >= filter.upper {
-					atomic.AddInt64(&(tem.priority), 1)
-					filter.updatePriority(&filter.all, i)
-				}
-				return false, tem.err
-			}
-		}
-		return true, nil
+func (f *filter) Filter(log *AuditLog) bool {
+	if atomic.LoadInt64(&f.count) > 10000 {
+		atomic.StoreInt64(&f.count, 0)
+		atomic.AddInt64(&f.reset, 1)
+		// reset priority
+		f.lock.Lock()
+		heap.Init(&f.and)
+		heap.Init(&f.or)
+		f.lock.Unlock()
 	}
+
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	for idx := range f.and {
+		if !f.and[idx].Func(log) {
+			atomic.AddInt64(&f.and[idx].Priority, 1)
+			if idx > 0 {
+				atomic.AddInt64(&f.count, 1)
+			}
+			return false
+		}
+	}
+
+	hasor := len(f.or) > 0
+	for idx := range f.or {
+		if f.or[idx].Func(log) {
+			atomic.AddInt64(&f.or[idx].Priority, 1)
+			if idx > 0 {
+				atomic.AddInt64(&f.count, 1)
+			}
+			return true
+		}
+	}
+	return !hasor
 }
 
-func parse(operation, field, value string) (func(log *AuditLog) bool, error) {
+func parse(operation, field, value string) (condFunc, error) {
 	var getStrField func(log *AuditLog) string
 	var getIntField func(log *AuditLog) int64
 
@@ -393,9 +236,6 @@ func parse(operation, field, value string) (func(log *AuditLog) bool, error) {
 		getIntField = func(log *AuditLog) int64 { return log.RespLength }
 	case "duration", "Duration":
 		getIntField = func(log *AuditLog) int64 { return log.Duration }
-
-	default:
-		return nil, fmt.Errorf("unsupported field:%s", field)
 	}
 
 	if getStrField != nil {
