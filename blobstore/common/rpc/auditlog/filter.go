@@ -16,6 +16,7 @@ package auditlog
 import (
 	"container/heap"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,9 +33,7 @@ import (
 //			Path string `json:"path"`
 //		} `json:"match,omitempty"`
 //		Range []struct {
-//			StartTime struct {
-//				Gte string `json:"gte"`
-//			} `json:"start_time"`
+//			StartTime  string `json:"start_time"`
 //		} `json:"range,omitempty"`
 //	} `json:"must_not"`
 //	Must []struct {
@@ -108,7 +107,7 @@ func (pq *PriorityQueue) Pop() interface{} {
 	return item
 }
 
-func (filter *Query) Init() {
+func (filter *Query) Init() error {
 	filter.num = 500
 	filter.upper = 1000
 	all := make([]*FilterFunc, 0)
@@ -118,7 +117,10 @@ func (filter *Query) Init() {
 			case "term":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("term", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("term", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"must", fun, 0, err}
 						all = append(all, &re)
 					}
@@ -126,7 +128,10 @@ func (filter *Query) Init() {
 			case "match":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("match", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("match", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"must", fun, 0, err}
 						all = append(all, &re)
 					}
@@ -134,28 +139,21 @@ func (filter *Query) Init() {
 			case "range":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						rangeMap := val.(map[string]interface{})
-						val1, ok1 := rangeMap["gte"]
-						val2, ok2 := rangeMap["lte"]
-						if ok1 && ok2 {
-							fun, err := parse("range", field, fmt.Sprintf("%v", val1), fmt.Sprintf("%v", val1))
-							re := FilterFunc{"must", fun, 0, err}
-							all = append(all, &re)
-						} else if ok1 {
-							fun, err := parse("range", field, fmt.Sprintf("%v", val1), "")
-							re := FilterFunc{"must", fun, 0, err}
-							all = append(all, &re)
-						} else if ok2 {
-							fun, err := parse("range", field, "", fmt.Sprintf("%v", val2))
-							re := FilterFunc{"must", fun, 0, err}
-							all = append(all, &re)
+						fun, err := parse("range", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
 						}
+						re := FilterFunc{"must", fun, 0, err}
+						all = append(all, &re)
 					}
 				}
 			case "regexp":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("regexp", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("regexp", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"must", fun, 0, err}
 						all = append(all, &re)
 					}
@@ -169,7 +167,10 @@ func (filter *Query) Init() {
 			case "term":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("term", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("term", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"mustNot", fun, 0, err}
 						all = append(all, &re)
 					}
@@ -177,7 +178,10 @@ func (filter *Query) Init() {
 			case "match":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("match", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("match", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"mustNot", fun, 0, err}
 						all = append(all, &re)
 					}
@@ -185,28 +189,21 @@ func (filter *Query) Init() {
 			case "range":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						rangeMap := val.(map[string]interface{})
-						val1, ok1 := rangeMap["gte"]
-						val2, ok2 := rangeMap["lte"]
-						if ok1 && ok2 {
-							fun, err := parse("range", field, fmt.Sprintf("%v", val1), fmt.Sprintf("%v", val1))
-							re := FilterFunc{"mustNot", fun, 0, err}
-							all = append(all, &re)
-						} else if ok1 {
-							fun, err := parse("range", field, fmt.Sprintf("%v", val1), "")
-							re := FilterFunc{"mustNot", fun, 0, err}
-							all = append(all, &re)
-						} else if ok2 {
-							fun, err := parse("range", field, "", fmt.Sprintf("%v", val2))
-							re := FilterFunc{"mustNot", fun, 0, err}
-							all = append(all, &re)
+						fun, err := parse("range", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
 						}
+						re := FilterFunc{"mustNot", fun, 0, err}
+						all = append(all, &re)
 					}
 				}
 			case "regexp":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("regexp", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("regexp", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"mustNot", fun, 0, err}
 						all = append(all, &re)
 					}
@@ -221,7 +218,10 @@ func (filter *Query) Init() {
 			case "term":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("term", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("term", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"should", fun, 0, err}
 						or = append(or, &re)
 					}
@@ -229,7 +229,10 @@ func (filter *Query) Init() {
 			case "match":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("match", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("match", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"should", fun, 0, err}
 						or = append(or, &re)
 					}
@@ -237,28 +240,21 @@ func (filter *Query) Init() {
 			case "range":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						rangeMap := val.(map[string]interface{})
-						val1, ok1 := rangeMap["gte"]
-						val2, ok2 := rangeMap["lte"]
-						if ok1 && ok2 {
-							fun, err := parse("range", field, fmt.Sprintf("%v", val1), fmt.Sprintf("%v", val1))
-							re := FilterFunc{"should", fun, 0, err}
-							all = append(all, &re)
-						} else if ok1 {
-							fun, err := parse("range", field, fmt.Sprintf("%v", val1), "")
-							re := FilterFunc{"should", fun, 0, err}
-							all = append(all, &re)
-						} else if ok2 {
-							fun, err := parse("range", field, "", fmt.Sprintf("%v", val2))
-							re := FilterFunc{"should", fun, 0, err}
-							all = append(all, &re)
+						fun, err := parse("range", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
 						}
+						re := FilterFunc{"should", fun, 0, err}
+						all = append(all, &re)
 					}
 				}
 			case "regexp":
 				for _, value := range valueList.([]interface{}) {
 					for field, val := range value.(map[string]interface{}) {
-						fun, err := parse("regexp", field, fmt.Sprintf("%v", val), "")
+						fun, err := parse("regexp", field, fmt.Sprintf("%v", val))
+						if err != nil {
+							return err
+						}
 						re := FilterFunc{"should", fun, 0, err}
 						or = append(or, &re)
 					}
@@ -270,6 +266,7 @@ func (filter *Query) Init() {
 	filter.or = or
 	heap.Init(&filter.all)
 	heap.Init(&filter.or)
+	return nil
 }
 
 type FilterError struct {
@@ -366,289 +363,106 @@ func (filter *Query) FilterLogWithPriority(log *AuditLog) (bool, error) {
 	}
 }
 
-func parse(operation, field, value, value2 string) (func(log *AuditLog) bool, error) {
-	err := fmt.Errorf("unsupported (%s %s)", field, operation)
+func parse(operation, field, value string) (func(log *AuditLog) bool, error) {
+	var getStrField func(log *AuditLog) string
+	var getIntField func(log *AuditLog) int64
+
 	switch field {
-	case "req_type":
+	case "req_type", "ReqType":
+		getStrField = func(log *AuditLog) string { return log.ReqType }
+	case "module", "Module":
+		getStrField = func(log *AuditLog) string { return log.Module }
+	case "method", "Method":
+		getStrField = func(log *AuditLog) string { return log.Method }
+	case "path", "Path":
+		getStrField = func(log *AuditLog) string { return log.Path }
+	case "req_header", "ReqHeader":
+		getStrField = func(log *AuditLog) string { return string(log.ReqHeader.Encode()) }
+	case "req_params", "ReqParams":
+		getStrField = func(log *AuditLog) string { return log.ReqParams }
+	case "resp_header", "RespHeader":
+		getStrField = func(log *AuditLog) string { return string(log.RespHeader.Encode()) }
+	case "resp_body", "RespBody":
+		getStrField = func(log *AuditLog) string { return log.RespBody }
+
+	case "start_time", "StartTime":
+		getIntField = func(log *AuditLog) int64 { return log.StartTime }
+	case "status_code", "StatusCode":
+		getIntField = func(log *AuditLog) int64 { return int64(log.StatusCode) }
+	case "resp_length", "RespLength":
+		getIntField = func(log *AuditLog) int64 { return log.RespLength }
+	case "duration", "Duration":
+		getIntField = func(log *AuditLog) int64 { return log.Duration }
+
+	default:
+		return nil, fmt.Errorf("unsupported field:%s", field)
+	}
+
+	if getStrField != nil {
 		switch operation {
 		case "term":
-			return func(log *AuditLog) bool {
-				return log.ReqType == value
-			}, err
+			return func(log *AuditLog) bool { return getStrField(log) == value }, nil
 		case "match":
-			return func(log *AuditLog) bool {
-				return strings.Contains(log.ReqType, value)
-			}, err
+			return func(log *AuditLog) bool { return strings.Contains(getStrField(log), value) }, nil
 		case "regexp":
-			reg, e := regexp.Compile(value)
-			if e != nil {
-				return nil, e
+			reg, err := regexp.Compile(value)
+			if err != nil {
+				return nil, err
 			}
-			return func(log *AuditLog) bool {
-				return reg.MatchString(log.ReqType)
-			}, err
+			return func(log *AuditLog) bool { return reg.MatchString(getStrField(log)) }, nil
 		default:
-			return nil, err
-		}
-	case "module":
-		switch operation {
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.Module == value
-			}, err
-		case "match":
-			return func(log *AuditLog) bool {
-				return strings.Contains(log.Module, value)
-			}, err
-		case "regexp":
-			reg, e := regexp.Compile(value)
-			if e != nil {
-				return nil, e
-			}
-			return func(log *AuditLog) bool {
-				return reg.MatchString(log.Module)
-			}, err
-		default:
-			return nil, err
-		}
-	case "start_time":
-		val, e := strconv.ParseInt(value, 10, 64)
-		if e != nil {
-			return nil, e
-		}
-		switch operation {
-		case "range":
-			val2, _ := strconv.ParseInt(value2, 10, 64)
-			if value2 == "" {
-				return func(log *AuditLog) bool {
-					return log.StartTime >= val
-				}, err
-			} else if value == "" {
-				return func(log *AuditLog) bool {
-					return log.StartTime <= val2
-				}, err
-			} else {
-				return func(log *AuditLog) bool {
-					return log.StartTime >= val && log.StartTime <= val2
-				}, err
-			}
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.StartTime == val
-			}, err
-		default:
-			return nil, err
-		}
-	case "method":
-		switch operation {
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.Method == value
-			}, err
-		case "match":
-			return func(log *AuditLog) bool {
-				return strings.Contains(log.Method, value)
-			}, err
-		case "regexp":
-			reg, e := regexp.Compile(value)
-			if e != nil {
-				return nil, e
-			}
-			return func(log *AuditLog) bool {
-				return reg.MatchString(log.Method)
-			}, err
-		default:
-			return nil, err
-		}
-	case "path":
-		switch operation {
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.Path == value
-			}, err
-		case "match":
-			return func(log *AuditLog) bool {
-				return strings.Contains(log.Path, value)
-			}, err
-		case "regexp":
-			reg, e := regexp.Compile(value)
-			if e != nil {
-				return nil, e
-			}
-			return func(log *AuditLog) bool {
-				return reg.MatchString(log.Path)
-			}, err
-		default:
-			return nil, err
-		}
-	case "req_header":
-		switch operation {
-		case "term":
-			return func(log *AuditLog) bool {
-				return string(log.ReqHeader.Encode()) == value
-			}, err
-		case "match":
-			return func(log *AuditLog) bool {
-				return strings.Contains(string(log.ReqHeader.Encode()), value)
-			}, err
-		case "regexp":
-			reg, e := regexp.Compile(value)
-			if e != nil {
-				return nil, e
-			}
-			return func(log *AuditLog) bool {
-				return reg.MatchString(string(log.ReqHeader.Encode()))
-			}, err
-		default:
-			return nil, err
-		}
-	case "req_params":
-		switch operation {
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.ReqParams == value
-			}, err
-		case "match":
-			return func(log *AuditLog) bool {
-				return strings.Contains(log.ReqParams, value)
-			}, err
-		case "regexp":
-			reg, e := regexp.Compile(value)
-			if e != nil {
-				return nil, e
-			}
-			return func(log *AuditLog) bool {
-				return reg.MatchString(log.ReqParams)
-			}, err
-		default:
-			return nil, err
-		}
-	case "status_code":
-		val, e := strconv.Atoi(value)
-		if e != nil {
-			return nil, e
-		}
-		switch operation {
-		case "range":
-			val2, _ := strconv.Atoi(value)
-			if value2 == "" {
-				return func(log *AuditLog) bool {
-					return log.StatusCode >= val
-				}, err
-			} else if value == "" {
-				return func(log *AuditLog) bool {
-					return log.StatusCode <= val2
-				}, err
-			} else {
-				return func(log *AuditLog) bool {
-					return log.StatusCode >= val && log.StatusCode <= val2
-				}, err
-			}
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.StatusCode == val
-			}, err
-		default:
-			return nil, err
-		}
-	case "resp_header":
-		switch operation {
-		case "term":
-			return func(log *AuditLog) bool {
-				return string(log.RespHeader.Encode()) == value
-			}, err
-		case "match":
-			return func(log *AuditLog) bool {
-				return strings.Contains(string(log.RespHeader.Encode()), value)
-			}, err
-		case "regexp":
-			reg, e := regexp.Compile(value)
-			if e != nil {
-				return nil, e
-			}
-			return func(log *AuditLog) bool {
-				return reg.MatchString(string(log.RespHeader.Encode()))
-			}, err
-		default:
-			return nil, err
-		}
-	case "resp_body":
-		switch operation {
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.RespBody == value
-			}, nil
-		case "match":
-			return func(log *AuditLog) bool {
-				return strings.Contains(log.RespBody, value)
-			}, nil
-		case "regexp":
-			reg, e := regexp.Compile(value)
-			if e != nil {
-				return nil, e
-			}
-			return func(log *AuditLog) bool {
-				return reg.MatchString(log.RespBody)
-			}, err
-		default:
-			return nil, err
-		}
-	case "resp_length":
-		val, e := strconv.ParseInt(value, 10, 64)
-		if e != nil {
-			return nil, e
-		}
-		switch operation {
-		case "range":
-			val2, _ := strconv.ParseInt(value2, 10, 64)
-			if value2 == "" {
-				return func(log *AuditLog) bool {
-					return log.RespLength >= val
-				}, err
-			} else if value == "" {
-				return func(log *AuditLog) bool {
-					return log.RespLength <= val2
-				}, err
-			} else {
-				return func(log *AuditLog) bool {
-					return log.RespLength >= val && log.RespLength <= val2
-				}, err
-			}
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.RespLength == val
-			}, nil
-		default:
-			return nil, err
-		}
-	case "duration":
-		val, e := strconv.ParseInt(value, 10, 64)
-		if e != nil {
-			return nil, e
-		}
-		switch operation {
-		case "range":
-			val2, _ := strconv.ParseInt(value2, 10, 64)
-			if value2 == "" {
-				return func(log *AuditLog) bool {
-					return log.Duration >= val
-				}, err
-			} else if value == "" {
-				return func(log *AuditLog) bool {
-					return log.Duration <= val2
-				}, err
-			} else {
-				return func(log *AuditLog) bool {
-					return log.Duration >= val && log.Duration <= val2
-				}, err
-			}
-		case "term":
-			return func(log *AuditLog) bool {
-				return log.Duration == val
-			}, nil
-		default:
-			return nil, err
+			return nil, fmt.Errorf("unsupported operation:%s", operation)
 		}
 	}
-	return nil, err
+	if getIntField != nil {
+		switch operation {
+		case "term":
+			val, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid value:%s", value)
+			}
+			return func(log *AuditLog) bool { return getIntField(log) == val }, nil
+		case "range":
+			strs := strings.Split(value, ",")
+			ranges := make([][2]int64, 0, len(strs))
+			for _, str := range strs {
+				se := strings.Split(str, "-")
+				if len(se) != 2 {
+					return nil, fmt.Errorf("invalid range:%s", value)
+				}
+
+				start := int64(math.MinInt64)
+				if se[0] != "" {
+					i, err := strconv.ParseInt(se[0], 10, 64)
+					if err != nil {
+						return nil, fmt.Errorf("invalid range:%s", str)
+					}
+					start = i
+				}
+				end := int64(math.MaxInt64)
+				if se[1] != "" {
+					i, err := strconv.ParseInt(se[1], 10, 64)
+					if err != nil {
+						return nil, fmt.Errorf("invalid range:%s", str)
+					}
+					end = i
+				}
+				ranges = append(ranges, [2]int64{start, end})
+			}
+
+			return func(log *AuditLog) bool {
+				val := getIntField(log)
+				for idx := range ranges {
+					if val >= ranges[idx][0] && val <= ranges[idx][1] {
+						return true
+					}
+				}
+				return false
+			}, nil
+		default:
+			return nil, fmt.Errorf("unsupported operation:%s", operation)
+		}
+	}
+
+	return nil, fmt.Errorf("unsupported field:%s operation:%s", field, operation)
 }
