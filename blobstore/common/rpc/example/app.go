@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
@@ -459,6 +460,10 @@ func (a *app) List(c *rpc.Context) {
 
 		files = append(files, resp)
 	}
+
+	extraHeader := auditlog.ExtraHeader(c.Writer)
+	extraHeader.Add("http-header-key", "http-header-value")
+	extraHeader["oWN-defined-KEY"] = []string{"ODvalue", "0x10"}
 
 	c.RespondStatusData(http.StatusOK, files)
 }

@@ -263,11 +263,9 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
         "chunkbits": 29,        
         "log_file_suffix": ".log",        
         "backup": 10,        
-        "keywords_filter": [
-            "list",
-            "metrics",
-            "/shard/get/"
-        ],        
+        "filters": [
+            {"should": {"match": {"path": ["list", "metrics", "/shard/get/"]}}}
+        ],
         "metric_config": {            
             "idc": "bjht",            
             "service": "BLOBNODE",            

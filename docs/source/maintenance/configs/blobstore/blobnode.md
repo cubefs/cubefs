@@ -265,11 +265,9 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
         "chunkbits": 29,        
         "log_file_suffix": ".log",        
         "backup": 10,        
-        "keywords_filter": [
-            "list",
-            "metrics",
-            "/shard/get/"
-        ],        
+        "filters": [
+            {"should": {"match": {"path": ["list", "metrics", "/shard/get/"]}}}
+        ],
         "metric_config": {            
             "idc": "bjht",            
             "service": "BLOBNODE",            
