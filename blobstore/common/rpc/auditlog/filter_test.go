@@ -37,11 +37,7 @@ func TestFilter(t *testing.T) {
 	que := Query{
 		MustNot: []map[string]interface{}{
 			{"match": []map[string]interface{}{{"path": "my_service"}}},
-			{"range": []map[string]interface{}{{
-				"start_time": map[string]interface{}{
-					"gte": "16894926383996679", "lte": "16894926383996679",
-				},
-			}}},
+			{"range": []map[string]interface{}{{"start_time": "16894926383996679-16894926383996679"}}},
 		},
 		Must: []map[string]interface{}{
 			{"term": []map[string]interface{}{{"module": "RPC"}, {"method": "GET"}}},
@@ -52,7 +48,7 @@ func TestFilter(t *testing.T) {
 	arr, _ := json.Marshal(que)
 	q := Query{}
 	json.Unmarshal(arr, &q)
-	q.Init()
+	require.NoError(t, q.Init())
 	ok, _ := q.FilterLogWithPriority(&auditlog)
 	require.True(t, ok)
 }
@@ -61,11 +57,7 @@ func Benchmark_Filter(b *testing.B) {
 	que := Query{
 		MustNot: []map[string]interface{}{
 			{"match": []map[string]interface{}{{"path": "my_service"}, {"req_type": "REQ11"}}},
-			{"range": []map[string]interface{}{{
-				"start_time": map[string]interface{}{
-					"gte": "16894926383996679", "lte": "16894926383996679",
-				},
-			}}},
+			{"range": []map[string]interface{}{{"start_time": "16894926383996679-16894926383996679"}}},
 			{"term": []map[string]interface{}{
 				{"req_params": "RPC"},
 				{"resp_header": "utf-8"},
@@ -90,7 +82,7 @@ func Benchmark_Filter(b *testing.B) {
 	q := Query{}
 	json.Unmarshal(arr, &q)
 	b.ResetTimer()
-	q.Init()
+	require.NoError(b, q.Init())
 	for i := 0; i < b.N; i++ {
 		q.FilterLogWithPriority(&auditlog)
 	}
@@ -100,7 +92,7 @@ func Benchmark_FilterWithPriority(b *testing.B) {
 	var que Query = Query{
 		MustNot: []map[string]interface{}{
 			{"match": []map[string]interface{}{{"path": "my_service"}}},
-			{"range": []map[string]interface{}{{"start_time": map[string]interface{}{"gte": "16894926383996679"}}}},
+			{"range": []map[string]interface{}{{"start_time": "16894926383996679-"}}},
 		},
 		Must: []map[string]interface{}{
 			{"term": []map[string]interface{}{{"module": "RPC"}, {"method": "GET"}}},
@@ -115,7 +107,7 @@ func Benchmark_FilterWithPriority(b *testing.B) {
 	arr, _ := json.Marshal(que)
 	json.Unmarshal(arr, &q)
 	b.ResetTimer()
-	q.Init()
+	require.NoError(b, q.Init())
 	for i := 0; i < b.N; i++ {
 		q.FilterLogWithPriority(&auditlog)
 	}
@@ -125,7 +117,7 @@ func Benchmark_FilterWithPriorityB(b *testing.B) {
 	var que Query = Query{
 		MustNot: []map[string]interface{}{
 			{"match": []map[string]interface{}{{"path": "my_service"}}},
-			{"range": []map[string]interface{}{{"start_time": map[string]interface{}{"gte": "16894926383996679"}}}},
+			{"range": []map[string]interface{}{{"start_time": "16894926383996679-"}}},
 		},
 		Must: []map[string]interface{}{
 			{"term": []map[string]interface{}{{"module": "RPC"}, {"method": "GET"}}},
@@ -140,7 +132,7 @@ func Benchmark_FilterWithPriorityB(b *testing.B) {
 	arr, _ := json.Marshal(que)
 	json.Unmarshal(arr, &q)
 	b.ResetTimer()
-	q.Init()
+	require.NoError(b, q.Init())
 	for i := 0; i < b.N; i++ {
 		q.FilterLogWithPriority(&auditlog)
 	}
@@ -150,7 +142,7 @@ func Benchmark_FilterWithPriorityC(b *testing.B) {
 	var que Query = Query{
 		MustNot: []map[string]interface{}{
 			{"match": []map[string]interface{}{{"path": "my_service"}}},
-			{"range": []map[string]interface{}{{"start_time": map[string]interface{}{"gte": "16894926383996679"}}}},
+			{"range": []map[string]interface{}{{"start_time": "16894926383996679-"}}},
 		},
 		Must: []map[string]interface{}{
 			{"term": []map[string]interface{}{{"module": "RPC"}, {"method": "GET"}}},
@@ -165,7 +157,7 @@ func Benchmark_FilterWithPriorityC(b *testing.B) {
 	arr, _ := json.Marshal(que)
 	json.Unmarshal(arr, &q)
 	b.ResetTimer()
-	q.Init()
+	require.NoError(b, q.Init())
 	for i := 0; i < b.N; i++ {
 		q.FilterLogWithPriority(&auditlog)
 	}
