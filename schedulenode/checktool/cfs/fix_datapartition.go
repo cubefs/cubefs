@@ -56,7 +56,7 @@ func (s *ChubaoFSMonitor) doFixBadDataPartition() {
 		}
 	}()
 	idsMap := make(map[uint64]bool, 0)
-	alarmRecords, err = s.umpClient.GetAlarmRecords(alarmRecordsMethod, "chubaofs-node", "jdos", endPoint, time.Now().UnixMilli()-60*2*1000, time.Now().UnixMilli())
+	alarmRecords, err = s.umpClient.GetAlarmRecords(alarmRecordsMethod, "chubaofs-node", "jdos", endPoint, time.Now().UnixMilli()-60*10*1000, time.Now().UnixMilli())
 	if err != nil {
 		return
 	}
@@ -82,38 +82,22 @@ func (s *ChubaoFSMonitor) doFixBadDataPartition() {
 	}
 	log.LogWarnf("action[doFixBadDataPartition] domain[sparkchubaofs.jd.local] found %v bad partitions, start fix", len(idsMap))
 	for partition := range idsMap {
-		var dp *proto.DataPartitionInfo
-		dp, err = client.AdminAPI().GetDataPartition("", partition)
-		if err != nil {
+		var (
+			needFix    bool
+			extraHost  string
+			remainHost string
+		)
+		if needFix, extraHost, remainHost, err = isNeedFix(client, partition); err != nil {
+			log.LogErrorf("action[doFixBadDataPartition] err:%v", err)
 			continue
 		}
-		if dp.ReplicaNum != 2 {
+		if !needFix {
 			continue
-		}
-		if len(dp.Hosts) != 1 {
-			continue
-		}
-		// len(hosts)==1, retry 20s later
-		time.Sleep(time.Second * 20)
-		dp, err = client.AdminAPI().GetDataPartition("", partition)
-		if err != nil {
-			continue
-		}
-		if len(dp.Hosts) != 1 {
-			continue
-		}
-		// add a new host
-		var extraHost string
-		for _, replica := range dp.Replicas {
-			if replica.Addr == dp.Hosts[0] {
-				continue
-			}
-			extraHost = replica.Addr
-			break
 		}
 		var dn *proto.DataNodeInfo
 		dn, err = client.NodeAPI().GetDataNode(extraHost)
 		if err != nil {
+			log.LogErrorf("action[doFixBadDataPartition] err:%v", err)
 			continue
 		}
 		allNodeViews := make([]proto.NodeView, 0)
@@ -125,17 +109,19 @@ func (s *ChubaoFSMonitor) doFixBadDataPartition() {
 				allNodeViews = append(allNodeViews, ns.DataNodes...)
 			}
 		}
+		log.LogInfof("action[doFixBadDataPartition] try to add learner to fix one replica partition:%v", partition)
 		retry := 20
 		for i := 0; i < retry; i++ {
 			rand.Seed(time.Now().UnixNano())
 			index := rand.Intn(len(allNodeViews) - 1)
 			destNode := allNodeViews[index]
-			if destNode.Addr == extraHost || destNode.Addr == dp.Hosts[0] {
+			if destNode.Addr == extraHost || destNode.Addr == remainHost {
 				continue
 			}
 			var destNodeView *proto.DataNodeInfo
-			destNodeView, err = client.NodeAPI().GetDataNode(extraHost)
+			destNodeView, err = client.NodeAPI().GetDataNode(destNode.Addr)
 			if err != nil {
+				log.LogErrorf("action[doFixBadDataPartition] err:%v", err)
 				continue
 			}
 			if destNodeView.UsageRatio > 0.8 {
@@ -146,11 +132,55 @@ func (s *ChubaoFSMonitor) doFixBadDataPartition() {
 			}
 			err = client.AdminAPI().AddDataLearner(partition, destNode.Addr, true, 90)
 			if err != nil {
-				continue
+				log.LogErrorf("action[doFixBadDataPartition] partition:%v, err:%v", partition, err)
+				break
 			}
 			exporter.WarningBySpecialUMPKey(UMPCFSSparkFixPartitionKey, fmt.Sprintf("Domain[%v] fix one replica partition:%v success, add learner:%v", cfsDomain, partition, destNode.Addr))
 			break
 		}
 	}
+	return
+}
+
+func isNeedFix(client *master.MasterClient, partition uint64) (fix bool, extraHost string, remainHost string, err error) {
+	var dp *proto.DataPartitionInfo
+	dp, err = client.AdminAPI().GetDataPartition("", partition)
+	if err != nil {
+		return
+	}
+	if dp.ReplicaNum != 2 {
+		return
+	}
+	if len(dp.Hosts) != 1 {
+		return
+	}
+	leader := false
+	for _, r := range dp.Replicas {
+		if r.IsLeader {
+			leader = true
+		}
+	}
+	if !leader {
+		err = fmt.Errorf("partition:%v no leader", partition)
+		return
+	}
+	// len(hosts)==1, retry 20s later
+	time.Sleep(time.Second * 20)
+	dp, err = client.AdminAPI().GetDataPartition("", partition)
+	if err != nil {
+		return
+	}
+	if len(dp.Hosts) != 1 {
+		return
+	}
+	for _, replica := range dp.Replicas {
+		if replica.Addr == dp.Hosts[0] {
+			continue
+		}
+		extraHost = replica.Addr
+		break
+	}
+	remainHost = dp.Hosts[0]
+	fix = true
 	return
 }
