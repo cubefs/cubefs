@@ -288,3 +288,10 @@ func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 func (mf *MetadataFsm) delKeyAndPutIndex(key string, cmdMap map[string][]byte) (err error) {
 	return mf.store.DeleteKeyAndPutIndex(key, cmdMap, true)
 }
+
+// Stop stops the RaftServer
+func (mf *MetadataFsm) Stop() {
+	if mf.rs != nil {
+		mf.rs.Stop()
+	}
+}

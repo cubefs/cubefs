@@ -17,13 +17,14 @@ package master
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
 	"strconv"
 	"sync"
+
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 
 	"github.com/cubefs/cubefs/util/stat"
 
@@ -192,6 +193,13 @@ func (m *Server) Shutdown() {
 		}
 	}
 	stat.CloseStat()
+
+	// stop raftServer first
+	if m.fsm != nil {
+		m.fsm.Stop()
+	}
+
+	// then stop rocksDBStore
 	if m.rocksDBStore != nil {
 		m.rocksDBStore.Close()
 	}
