@@ -670,9 +670,9 @@ func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit boo
 			continue
 		}
 		//log.LogInfof("updateDataPartition: dp(%v)", dp)
-		w.replaceOrInsertPartition(dp)
-		if dp.Status == proto.ReadWrite {
-			rwPartitionGroups = append(rwPartitionGroups, dp)
+		actualDp := w.replaceOrInsertPartition(dp)
+		if actualDp.Status == proto.ReadWrite {
+			rwPartitionGroups = append(rwPartitionGroups, actualDp)
 		}
 	}
 
@@ -700,7 +700,7 @@ func (w *Wrapper) saveDataPartition() *proto.DataPartitionsView {
 	return dpv
 }
 
-func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
+func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) (actualDp *DataPartition) {
 	if w.CrossRegionHATypeQuorum() {
 		w.initCrossRegionHostStatus(dp)
 		dp.CrossRegionMetrics.Lock()
@@ -739,19 +739,18 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.CrossRegionMetrics.Lock()
 		old.CrossRegionMetrics.CrossRegionHosts = dp.CrossRegionMetrics.CrossRegionHosts
 		old.CrossRegionMetrics.Unlock()
-		dp.Metrics = old.Metrics
-		dp.ReadMetrics = old.ReadMetrics
-		dp.timeoutCnt = atomic.LoadInt32(&old.timeoutCnt)
 		old.ecEnable = w.ecEnable
+		actualDp = old
 	} else {
 		dp.Metrics = proto.NewDataPartitionMetrics()
 		dp.ReadMetrics = proto.NewDPReadMetrics()
 		dp.ecEnable = w.ecEnable
 		w.partitions.Store(dp.PartitionID, dp)
+		actualDp = dp
 		log.LogInfof("updateDataPartition: new dp (%v) EcMigrateStatus (%v)", dp, dp.EcMigrateStatus)
 	}
 	w.Unlock()
-
+	return actualDp
 }
 
 func isLeaderExist(addr string, hosts []string) bool {
@@ -763,22 +762,22 @@ func isLeaderExist(addr string, hosts []string) bool {
 	return false
 }
 
-func (w *Wrapper) getDataPartitionByPid(partitionID uint64) (err error) {
+func (w *Wrapper) getDataPartitionFromMaster(partitionID uint64) (err error) {
 	var dpInfo *proto.DataPartitionInfo
 	start := time.Now()
 	for {
 		if dpInfo, err = w.mc.AdminAPI().GetDataPartition(w.volName, partitionID); err == nil {
 			if len(dpInfo.Hosts) > 0 {
-				log.LogInfof("getDataPartitionByPid: pid(%v) vol(%v)", partitionID, w.volName)
+				log.LogInfof("getDataPartitionFromMaster: pid(%v) vol(%v)", partitionID, w.volName)
 				break
 			}
 			err = fmt.Errorf("master return empty host list")
 		}
 		if err != nil && time.Since(start) > MasterNoCacheAPIRetryTimeout {
-			log.LogWarnf("getDataPartitionByPid: err(%v) pid(%v) vol(%v) retry timeout(%v)", err, partitionID, w.volName, time.Since(start))
+			log.LogWarnf("getDataPartitionFromMaster: err(%v) pid(%v) vol(%v) retry timeout(%v)", err, partitionID, w.volName, time.Since(start))
 			return
 		}
-		log.LogWarnf("getDataPartitionByPid: err(%v) pid(%v) vol(%v) retry next round", err, partitionID, w.volName)
+		log.LogWarnf("getDataPartitionFromMaster: err(%v) pid(%v) vol(%v) retry next round", err, partitionID, w.volName)
 		time.Sleep(1 * time.Second)
 	}
 	var convert = func(dpInfo *proto.DataPartitionInfo) *DataPartition {
@@ -796,7 +795,7 @@ func (w *Wrapper) getDataPartitionByPid(partitionID uint64) (err error) {
 		return dp
 	}
 	dp := convert(dpInfo)
-	log.LogInfof("getDataPartitionByPid: dp(%v) leader(%v)", dp, dp.GetLeaderAddr())
+	log.LogInfof("getDataPartitionFromMaster: dp(%v) leader(%v)", dp, dp.GetLeaderAddr())
 	w.replaceOrInsertPartition(dp)
 	return nil
 }
@@ -814,7 +813,7 @@ func getDpInfoLeaderAddr(partition *proto.DataPartitionInfo) (leaderAddr string)
 func (w *Wrapper) GetDataPartition(partitionID uint64) (dp *DataPartition, err error) {
 	value, ok := w.partitions.Load(partitionID)
 	if !ok {
-		w.getDataPartitionByPid(partitionID)
+		w.getDataPartitionFromMaster(partitionID)
 		value, ok = w.partitions.Load(partitionID)
 		if !ok {
 			return nil, fmt.Errorf("partition[%v] not exsit", partitionID)

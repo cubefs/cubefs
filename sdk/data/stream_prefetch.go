@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path"
 	"runtime/debug"
@@ -248,10 +247,7 @@ func (pManager *PrefetchManager) cleanExpiredIndexInfo() {
 		case <-t1.C:
 			totalRead := atomic.SwapUint64(&pManager.metrics.totalReadCount, 0)
 			appRead := atomic.SwapUint64(&pManager.metrics.appReadCount, 0)
-			hitPercent := float64(100)
-			if totalRead != 0 {
-				hitPercent = float64(totalRead-appRead) / float64(totalRead) * 100
-			}
+			hitPercent := computeHitPercent(totalRead, appRead)
 			log.LogInfof("PrefetchManager: totalRead(%v) appRead(%v) hitCache(%.2f%%) pathChan(%v) batchDownloadChan(%v)",
 				totalRead, appRead, hitPercent, len(pManager.filePathChan), len(pManager.downloadChan))
 		case <-t.C:
@@ -284,6 +280,17 @@ func (pManager *PrefetchManager) cleanExpiredIndexInfo() {
 			})
 		}
 	}
+}
+
+func computeHitPercent(totalRead, appRead uint64) float64 {
+	hitPercent := float64(100)
+	if appRead >= totalRead {
+		return 0
+	}
+	if totalRead != 0 {
+		hitPercent = float64(totalRead - appRead) / float64(totalRead) * 100
+	}
+	return hitPercent
 }
 
 func (pManager *PrefetchManager) OsReadFile(filePath string, readData []byte) (err error) {
@@ -574,19 +581,16 @@ func (d *DownloadFileInfo) String() string {
 	return fmt.Sprintf("path(%v) info(%v)", d.absPath, d.fileInfo)
 }
 
-type BatchDownloadRespWriter struct {
-	sync.Mutex
-	Wg     sync.WaitGroup
-	Writer io.Writer
+type DownloadResult struct {
+	RespData	[]byte
+	DataLen		int
 }
 
-func (resp *BatchDownloadRespWriter) write(data []byte) {
-	resp.Lock()
-	// todo err
-	resp.Writer.Write(data)
-	resp.Writer.(http.Flusher).Flush()
-	resp.Unlock()
+type BatchDownloadRespWriter struct {
+	Wg     	sync.WaitGroup
+	ResChan	chan *DownloadResult
 }
+
 func (pManager *PrefetchManager) GetBatchFileInfos(batchArr [][]uint64, datasetCnt string) (infos []*FileInfo, err error) {
 	for _, indexArr := range batchArr {
 		for _, index := range indexArr {
@@ -636,32 +640,31 @@ func (pManager *PrefetchManager) DownloadPath(filePath string, respData *BatchDo
 
 func (pManager *PrefetchManager) ReadData(ctx context.Context, dInfo *DownloadFileInfo) (err error) {
 	var (
-		content  []byte
-		readSize int
+		content 	[]byte
+		readSize	int
+		inodeID		uint64
 	)
 	defer func() {
 		if err == nil && readSize > 0 {
+			dRes := &DownloadResult{}
 			filePath := dInfo.absPath
-			dataLen := 8 + len(filePath) + 8 + readSize
-			respData := GetBlockBuf(dataLen)
-			binary.BigEndian.PutUint64(respData[0:8], uint64(len(filePath)))
-			copy(respData[8:8+len(filePath)], filePath)
-			binary.BigEndian.PutUint64(respData[8+len(filePath):16+len(filePath)], uint64(readSize))
-			copy(respData[16+len(filePath):dataLen], content[:readSize])
+			dRes.DataLen = 8 + len(filePath) + 8 + readSize
+			dRes.RespData = GetBlockBuf(dRes.DataLen)
+			binary.BigEndian.PutUint64(dRes.RespData[0:8], uint64(len(filePath)))
+			copy(dRes.RespData[8:8+len(filePath)], filePath)
+			binary.BigEndian.PutUint64(dRes.RespData[8+len(filePath):16+len(filePath)], uint64(readSize))
+			copy(dRes.RespData[16+len(filePath):dRes.DataLen], content[:readSize])
 			if log.IsDebugEnabled() {
-				log.LogDebugf("ReadData: resp data len(%v) pathLen(%v) readSize(%v)", dataLen, len(filePath), readSize)
+				log.LogDebugf("ReadData: ino(%v) resp data len(%v) pathLen(%v) readSize(%v)", inodeID, dRes.DataLen, len(filePath), readSize)
 			}
-			dInfo.resp.write(respData[:dataLen])
-
-			PutBlockBuf(respData)
-			if len(content) > 0 {
-				PutBlockBuf(content)
-			}
+			dInfo.resp.ResChan <- dRes
 		}
 		dInfo.resp.Wg.Done()
+		if len(content) > 0 {
+			PutBlockBuf(content)
+		}
 	}()
 
-	var inodeID uint64
 	if dInfo.fileInfo == nil || dInfo.fileInfo.inoID == 0 {
 		if inodeID, err = pManager.LookupPathByCache(ctx, dInfo.absPath); err != nil {
 			return

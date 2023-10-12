@@ -634,7 +634,7 @@ func (m *metadataManager) getPartition(id uint64) (mp MetaPartition, err error) 
 	if ok {
 		return
 	}
-	err = errors.New(fmt.Sprintf("unknown meta partition: %d", id))
+	err = errors.New(fmt.Sprintf("%s: %d", proto.ErrUnknownMetaPartition.Error(), id))
 	return
 }
 

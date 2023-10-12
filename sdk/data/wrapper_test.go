@@ -11,7 +11,7 @@ const (
 	ltptestMaster = "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010"
 )
 
-func TestWrapper_getDataPartitionByPid(t *testing.T) {
+func TestWrapper_getDataPartitionFromMaster(t *testing.T) {
 	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","))
 	if err != nil {
 		t.Fatalf("NewDataPartitionWrapper failed, err %v", err)
@@ -37,15 +37,15 @@ func TestWrapper_getDataPartitionByPid(t *testing.T) {
 		if invalidPid <= pid {
 			invalidPid = pid + 1
 		}
-		if err = dataWrapper.getDataPartitionByPid(pid); err != nil {
-			t.Fatalf("getDataPartitionByPid failed, pid %v, err %v", pid, err)
+		if err = dataWrapper.getDataPartitionFromMaster(pid); err != nil {
+			t.Fatalf("getDataPartitionFromMaster failed, pid %v, err %v", pid, err)
 		}
 	}
 
 	oldValue := MasterNoCacheAPIRetryTimeout
 	MasterNoCacheAPIRetryTimeout = 10 * time.Second
-	if err = dataWrapper.getDataPartitionByPid(invalidPid); err == nil {
-		t.Fatalf("getDataPartitionByPid use invalidPid %v, expect failed but success", invalidPid)
+	if err = dataWrapper.getDataPartitionFromMaster(invalidPid); err == nil {
+		t.Fatalf("getDataPartitionFromMaster use invalidPid %v, expect failed but success", invalidPid)
 	}
 	MasterNoCacheAPIRetryTimeout = oldValue
 }

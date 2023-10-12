@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"syscall"
 	"time"
 
@@ -273,8 +274,16 @@ func (mw *MetaWrapper) sendToHost(ctx context.Context, mp *MetaPartition, req *p
 		err = syscall.EBADMSG
 		return nil, true, err
 	}
+	mw.checkAddrNotExist(addr, resp, mp)
 	log.LogDebugf("sendToHost successful: mp(%v) addr(%v) req(%v) resp(%v)", mp, addr, req, resp)
 	return resp, false, nil
+}
+
+func (mw *MetaWrapper) checkAddrNotExist(addr string, resp *proto.Packet, mp *MetaPartition) {
+	if resp != nil && resp.ResultCode == proto.OpErr && strings.Contains(resp.GetResultMsg(), proto.ErrUnknownMetaPartition.Error()) {
+		log.LogWarnf("checkAddrNotExist: resp(%v) from not existed addr(%v), update old mp(%v)", resp, addr, mp)
+		mw.triggerAndWaitForceUpdate()
+	}
 }
 
 //func sortMembers(leader string, members []string) []string {

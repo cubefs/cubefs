@@ -269,8 +269,8 @@ func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
 		wg   sync.WaitGroup
 		lock sync.Mutex
 	)
-	for i := 0; i < len(dp.Hosts); i++ {
-		host := dp.Hosts[i]
+	allHosts := dp.GetAllHosts()
+	for _, host := range allHosts {
 		wg.Add(1)
 		go func(addr string) {
 			var (
@@ -308,17 +308,18 @@ func isExcludedByDp(dp *DataPartition, exclude map[uint64]struct{}) bool {
 }
 
 func isExcludedByHost(dp *DataPartition, exclude map[string]struct{}, quorum int) bool {
-	if _, exist := exclude[dp.Hosts[0]]; exist {
+	allHosts := dp.GetAllHosts()
+	if _, exist := exclude[allHosts[0]]; exist {
 		return true
 	}
 	aliveCount := 0
-	for _, host := range dp.Hosts {
+	for _, host := range allHosts {
 		if _, exist := exclude[host]; !exist {
 			aliveCount++
 		}
 	}
 	// 'quorum == 0' means all hosts must succeed
-	if quorum <= 0 && aliveCount < len(dp.Hosts) {
+	if quorum <= 0 && aliveCount < len(allHosts) {
 		return true
 	}
 	if quorum > 0 && aliveCount < quorum {
@@ -375,9 +376,9 @@ func (dp *DataPartition) FollowerRead(reqPacket *common.Packet, req *ExtentReque
 	}
 	errMap[sc.currAddr] = err
 
-	hosts := sortByStatus(sc.dp, sc.currAddr)
 	startTime := time.Now()
 	for i := 0; i < StreamSendReadMaxRetry; i++ {
+		hosts := sortByStatus(sc.dp, sc.currAddr)
 		for _, addr := range hosts {
 			log.LogWarnf("FollowerRead: try addr(%v) reqPacket(%v)", addr, reqPacket)
 			sc.currAddr = addr
@@ -434,10 +435,6 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *comm
 		sc, reqPacket, isErr, targetHosts, errMap))
 }
 
-func (dp *DataPartition) SendReadCmdToDataPartition(sc *StreamConn, reqPacket *common.Packet, req *ExtentRequest) (readBytes int, reply *common.Packet, tryOther bool, err error) {
-	return dp.sendReadCmdToDataPartition(sc, reqPacket, req)
-}
-
 func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *common.Packet, req *ExtentRequest) (readBytes int, reply *common.Packet, tryOther bool, err error) {
 	if sc.currAddr == "" {
 		err = errors.New(fmt.Sprintf("sendReadCmdToDataPartition: failed, current address is null, reqPacket(%v)", reqPacket))
@@ -460,6 +457,7 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *c
 	}
 	if readBytes, reply, tryOther, err = sc.getReadReply(conn, reqPacket, req); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
+		dp.checkAddrNotExist(sc.currAddr, reply)
 		log.LogWarnf("sendReadCmdToDataPartition: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, reqPacket, err)
 		return
 	}
@@ -528,6 +526,7 @@ func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *com
 		log.LogWarnf("OverWriteToDataPartitionLeader: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		return
 	}
+	dp.checkAddrNotExist(sc.currAddr, reply)
 	return
 }
 
@@ -823,6 +822,14 @@ func (dp *DataPartition) getFollowerReadHost() string {
 		}
 	}
 	return dp.GetLeaderAddr()
+}
+
+func (dp *DataPartition) checkAddrNotExist(addr string, reply *common.Packet) {
+	if reply != nil && reply.ResultCode == proto.OpTryOtherAddr && strings.Contains(reply.GetResultMsg(), proto.ErrDataPartitionNotExists.Error()) {
+		log.LogWarnf("checkAddrNotExist: reply(%v) from not existed addr(%v), update old dp(%v)", reply, addr, dp)
+		dp.hostErrMap.Delete(addr)
+		dp.ClientWrapper.getDataPartitionFromMaster(dp.PartitionID)
+	}
 }
 
 // sortByStatus will return hosts list sort by host status for DataPartition.

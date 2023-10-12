@@ -104,6 +104,8 @@ var (
 	ExtentNotFoundError = errors.New("extent does not exist")
 	ErrGetExtentsFailed = errors.New("get extents failed")
 	ErrTmpfsNoSpace      = errors.New("no space left on device")
+
+	ErrUnknownMetaPartition = errors.New("unknown meta partition")
 )
 
 // http response error code and error message definitions

@@ -700,11 +700,28 @@ func (s *Super) BatchDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.Write(respData)
 
-	respWriter := &data.BatchDownloadRespWriter{Writer: w}
+	respWriter := &data.BatchDownloadRespWriter{ResChan: make(chan *data.DownloadResult, len(batchInfos))}
 	for _, info := range batchInfos {
 		s.prefetchManager.DownloadData(info, respWriter)
 	}
-	respWriter.Wg.Wait()
+
+	go func() {
+		respWriter.Wg.Wait()
+		close(respWriter.ResChan)
+	}()
+
+	isRespErr := false
+	for dRes := range respWriter.ResChan {
+		if isRespErr {
+			data.PutBlockBuf(dRes.RespData)
+			continue
+		}
+		if _, err = w.Write(dRes.RespData[:dRes.DataLen]); err != nil {
+			log.LogWarnf("BatchDownload: write response err(%v)", err)
+			isRespErr = true
+		}
+		data.PutBlockBuf(dRes.RespData)
+	}
 	if log.IsDebugEnabled() {
 		log.LogDebugf("BatchDownload: datasetCnt(%v) batchArr(%v) end cost(%v)", datasetCnt, batchArr, time.Since(start))
 	}
@@ -758,13 +775,30 @@ func (s *Super) BatchDownloadPath(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.Write(respData)
 
-	respWriter := &data.BatchDownloadRespWriter{Writer: w}
+	respWriter := &data.BatchDownloadRespWriter{ResChan: make(chan *data.DownloadResult, pathCount)}
 	for _, batch := range batchArr {
 		for _, path := range batch {
 			s.prefetchManager.DownloadPath(path, respWriter)
 		}
 	}
-	respWriter.Wg.Wait()
+
+	go func() {
+		respWriter.Wg.Wait()
+		close(respWriter.ResChan)
+	}()
+
+	isRespErr := false
+	for dRes := range respWriter.ResChan {
+		if isRespErr {
+			data.PutBlockBuf(dRes.RespData)
+			continue
+		}
+		if _, err = w.Write(dRes.RespData[:dRes.DataLen]); err != nil {
+			log.LogWarnf("BatchDownloadPath: write response err(%v)", err)
+			isRespErr = true
+		}
+		data.PutBlockBuf(dRes.RespData)
+	}
 	if log.IsDebugEnabled() {
 		log.LogDebugf("BatchDownloadPath: batchArr(%v) end cost(%v)", batchArr, time.Since(start))
 	}

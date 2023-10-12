@@ -209,7 +209,7 @@ func TestBatchDownload(t *testing.T)  {
 }
 
 func getProfPort() (profPort uint64, err error) {
-	filePath := path.Join("/cfs/mnt", CubeInfoDir, "127.0.0.1", CubeInfoFileName)
+	filePath := fmt.Sprintf("%v.%v", Cube_Torch_ConfigFile, ltptestVolume)
 	var fh *os.File
 	fh, err = os.Open(filePath)
 	if err != nil {

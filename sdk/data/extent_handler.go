@@ -395,6 +395,7 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 				log.LogDebugf("processReply: receive NoSpaceErr, packet(%v), remove dp[%v]", packet, packet.PartitionID)
 			}
 		}
+		eh.dp.checkAddrNotExist(eh.dp.Hosts[0], reply)
 		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		eh.dp.RecordWrite(packet.StartT, true)
@@ -717,26 +718,28 @@ func (eh *ExtentHandler) ehCreateExtent(ctx context.Context, conn *net.TCPConn, 
 }
 
 func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *DataPartition, quorum int) (extID int, status uint8, err error) {
-	p := common.NewCreateExtentPacket(ctx, dp.PartitionID, dp.GetAllHosts(), quorum, inode)
+	allHosts := dp.GetAllHosts()
+	p := common.NewCreateExtentPacket(ctx, dp.PartitionID, allHosts, quorum, inode)
 	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
-		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) host(%v)", p, dp.Hosts[0])
+		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) host(%v)", p, allHosts[0])
 		return 0, p.ResultCode, err
 	}
 
 	if err = p.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
-		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) host(%v)", p, dp.Hosts[0])
+		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) host(%v)", p, allHosts[0])
 		return 0, p.ResultCode, err
 	}
 
 	if p.ResultCode != proto.OpOk {
 		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) quorum(%v) host(%v) ResultCode(%v)",
-			p, quorum, dp.Hosts[0], p.GetResultMsg()))
+			p, quorum, allHosts[0], p.GetResultMsg()))
+		dp.checkAddrNotExist(allHosts[0], p)
 		return 0, p.ResultCode, err
 	}
 
 	extID = int(p.ExtentID)
 	if extID <= 0 {
-		err = errors.New(fmt.Sprintf("createExtent: illegal extID(%v) from (%v), quorum(%v)", extID, dp.Hosts[0], quorum))
+		err = errors.New(fmt.Sprintf("createExtent: illegal extID(%v) from (%v), quorum(%v)", extID, allHosts[0], quorum))
 		return
 	}
 

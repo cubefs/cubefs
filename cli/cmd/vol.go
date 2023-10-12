@@ -770,6 +770,9 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Remove dup req      : %v\n", vv.EnableRemoveDupReq))
 			}
 
+			if vv.ConnConfig == nil {
+				vv.ConnConfig = &proto.ConnConfig{}
+			}
 			if optReadConnTimeoutMs > 0 {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ReadConnTimeout     : %v ms -> %v ms\n", vv.ConnConfig.ReadTimeoutNs/int64(time.Millisecond), optReadConnTimeoutMs))

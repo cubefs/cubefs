@@ -516,7 +516,8 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 
 	for total < size {
 		currSize := unit.Min(size-total, unit.OverWritePacketSizeLimit)
-		packet := common.NewROWPacket(ctx, dp.PartitionID, dp.GetAllHosts(), s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset+uint64(total), total, currSize)
+		allHosts := dp.GetAllHosts()
+		packet := common.NewROWPacket(ctx, dp.PartitionID, allHosts, s.client.dataWrapper.quorum, s.inode, extID, oriReq.FileOffset+uint64(total), total, currSize)
 		if direct {
 			packet.Opcode = proto.OpSyncWrite
 		}
@@ -535,6 +536,7 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 					log.LogDebugf("writeToExtent: remove dp[%v] which returns NoSpaceErr, packet[%v]", packet.PartitionID, packet)
 				}
 			}
+			dp.checkAddrNotExist(allHosts[0], reply)
 			err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 			break
 		}
