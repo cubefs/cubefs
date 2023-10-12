@@ -2,7 +2,9 @@ package http_client
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
@@ -45,6 +47,18 @@ func (client *FlashClient) GetStat() (nodeStat *proto.FlashNodeStat, err error) 
 	}
 	return
 }
+
+func (client *FlashClient) GetVersion() (version *proto.VersionValue, err error) {
+	var data []byte
+	data, err = doGet(fmt.Sprintf("http://%v/version", client.host))
+	if err != nil {
+		return
+	}
+	version = &proto.VersionValue{}
+	err = json.Unmarshal(data, version)
+	return
+}
+
 func (client *FlashClient) EvictVol(volume string) (err error) {
 	params := make(map[string]string)
 	params["volume"] = volume
@@ -60,5 +74,15 @@ func (client *FlashClient) EvictAll() (err error) {
 	if err != nil {
 		return
 	}
+	return
+}
+
+func doGet(url string) (data []byte, err error) {
+	var resp *http.Response
+	if resp, err = http.Get(url); err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	data, err = ioutil.ReadAll(resp.Body)
 	return
 }

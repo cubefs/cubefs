@@ -20,6 +20,8 @@ const (
 	cfgKeyAvailSpaceRatio                   = "availSpaceRatio"
 	cfgKeyReadWriteDpRatio                  = "readWriteDpRatio"
 	cfgKeyClusterUsedRatio                  = "clusterUsedRatio"
+	cfgKeyCheckFlashNode                    = "checkFlashNode"
+	cfgKeyFlashNodeValidVersions            = "flashNodeVersions"
 	cfgKeyNlClusterUsedRatio                = "nlClusterUsedRatio"
 	cfgKeyMinRWCnt                          = "minRWCnt"
 	cfgKeyDomains                           = "cfsDomains"
@@ -53,6 +55,7 @@ const (
 	UMPCFSRapidMemIncreaseWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.rapid.mem.increase"
 	UMPCFSMySqlMemWarnKey                   = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
 	UMPCFSSparkFixPartitionKey              = checktool.UmpKeyStorageBotPrefix + "cfs.fix_lack_replica"
+	UMPCFSSparkFlashNodeVersionKey          = checktool.UmpKeyStorageBotPrefix + "cfs.flashnode.version"
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
 	defaultMpNoLeaderWarnInternal           = 10 * 60
@@ -157,6 +160,8 @@ type ChubaoFSMonitor struct {
 	nodeRapidMemIncreaseWarnRatio           float64
 	metaNodeUsedRatioMinThresholdSSD        float64
 	dataNodeUsedRatioMinThresholdSSD        float64
+	checkFlashNode                          bool
+	flashNodeValidVersions                  []string
 	jdosToken                               string
 	jdosUrl                                 string
 	jdosErp                                 string
@@ -380,6 +385,8 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	if s.offlineDiskMinDuration < defaultMinOfflineDiskDuration {
 		s.offlineDiskMinDuration = defaultMinOfflineDiskDuration
 	}
+	s.checkFlashNode = cfg.GetBool(cfgKeyCheckFlashNode)
+	s.flashNodeValidVersions = cfg.GetStringSlice(cfgKeyFlashNodeValidVersions)
 	if cfsWarnFaultToUsersJsonPath := cfg.GetString(cfsKeyWarnFaultToUsersJsonPath); cfsWarnFaultToUsersJsonPath != "" {
 		if err = s.extractWarnFaultToUsers(cfsWarnFaultToUsersJsonPath); err != nil {
 			return fmt.Errorf("parse cfsWarnFaultToUsersJsonPath failed,detail:%v err:%v", cfsWarnFaultToUsersJsonPath, err)

@@ -203,11 +203,18 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 							limit = strconv.FormatUint(stat.NodeLimit, 10)
 						}
 					}
+					version := "N/A"
+					commit := "N/A"
+					versionInfo, e := getFlashNodeVersion(fn.Addr, client.FlashNodeProfPort)
+					if e == nil {
+						version = versionInfo.Version
+						commit = versionInfo.CommitID
+					}
 					if showHitRate {
-						row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
+						row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
 							formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
 					} else {
-						row = fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
+						row = fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, version,
 							formatYesNo(fn.IsActive), fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
 					}
 					stdout("%v\n", row)
@@ -222,6 +229,12 @@ func getFlashNodeStat(host string, port uint16) (*proto.FlashNodeStat, error) {
 	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
 	return fnClient.GetStat()
 }
+
+func getFlashNodeVersion(host string, port uint16) (*proto.VersionValue, error) {
+	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
+	return fnClient.GetVersion()
+}
+
 func newFlashGroupSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		flashGroupID uint64

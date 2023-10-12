@@ -24,7 +24,7 @@ const (
 )
 
 func (s *ChubaoFSMonitor) scheduleToFixBadDataPartition(cfg *config.Config) {
-	if cfg.GetString(cfgFixBadPartition) != "true" {
+	if !cfg.GetBool(cfgFixBadPartition) {
 		return
 	}
 	if cfg.GetString(cfgUmpAPiToken) == "" {

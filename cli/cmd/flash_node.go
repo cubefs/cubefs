@@ -110,7 +110,14 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 							limit = strconv.FormatUint(stat.NodeLimit, 10)
 						}
 					}
-					row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, fn.Version,
+					version := "N/A"
+					commit := "N/A"
+					versionInfo, e := getFlashNodeVersion(fn.Addr, client.FlashNodeProfPort)
+					if e == nil {
+						version = versionInfo.Version
+						commit = versionInfo.CommitID
+					}
+					row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
 						formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
 					stdout("%v\n", row)
 				}

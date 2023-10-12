@@ -3,7 +3,9 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/checktool"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
 	"net"
@@ -48,7 +50,10 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 			}
 			cv.checkMetaNodeAlive(host)
 			cv.checkDataNodeAlive(host, s)
-			cv.checkFlashNodeAlive(host)
+			if s.checkFlashNode {
+				cv.checkFlashNodeAlive(host)
+			}
+			cv.checkFlashNodeVersion(host, s.flashNodeValidVersions)
 			cv.checkMetaNodeDiskStat(host, defaultMNDiskMinWarnSize)
 			cv.checkMetaNodeDiskStatByMDCInfoFromSre(host, s)
 			cv.checkMetaNodeRaftLogBackupAlive(host)
@@ -188,7 +193,33 @@ func (ch *ClusterHost) getDataNode(addr string) (dataNode *DataNode, err error) 
 	return
 }
 
+func (cv *ClusterView) checkFlashNodeVersion(host *ClusterHost, expectVersion []string) {
+	if len(expectVersion) == 0 {
+		log.LogWarnf("checkFlashNodeVersion, no version specified in config:%v, skip check", cfgKeyFlashNodeValidVersions)
+		return
+	}
+	port := host.getFlashNodeProfPort()
+	for _, fn := range cv.FlashNodes {
+		client := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(fn.Addr, ":")[0], port), false)
+		version, err := client.GetVersion()
+		if err != nil {
+			log.LogErrorf("checkFlashNodeVersion, node:%v, err:%v", fn.Addr, err)
+			continue
+		}
+		rightV := false
+		for _, v := range expectVersion {
+			if v == version.CommitID {
+				rightV = true
+			}
+		}
+		if !rightV {
+			exporter.WarningBySpecialUMPKey(UMPCFSSparkFlashNodeVersionKey, fmt.Sprintf("invalid version[%v], expect[%v]", version.CommitID, expectVersion))
+		}
+	}
+}
+
 func (cv *ClusterView) checkFlashNodeAlive(host *ClusterHost) {
+	log.LogWarnf("action[checkFlashNodeAlive] domain[%v] begin check inactive flash nodes", host.host)
 	deadNodes := make([]FlashNodeView, 0)
 	for _, fn := range cv.FlashNodes {
 		if fn.Status == false {
@@ -232,7 +263,7 @@ func (cv *ClusterView) checkFlashNodeAlive(host *ClusterHost) {
 				}
 			}
 
-			if time.Since(flashNodeView.ReportTime) < 30*time.Minute {
+			if time.Since(flashNodeView.ReportTime) < 60*time.Minute {
 				continue
 			}
 
@@ -849,6 +880,10 @@ func (ch *ClusterHost) getDataNodePProfPort() (port string) {
 		port = "6001"
 	}
 	return
+}
+
+func (ch *ClusterHost) getFlashNodeProfPort() string {
+	return "8001"
 }
 
 func (ch *ClusterHost) getMetaNodePProfPort() (port string) {
