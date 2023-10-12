@@ -134,6 +134,8 @@ int cfs_meta_lookup_path(struct cfs_meta_client *mc, const char *path,
 			 struct cfs_packet_inode **iinfo);
 int cfs_meta_get(struct cfs_meta_client *mc, u64 ino,
 		 struct cfs_packet_inode **iinfo);
+int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
+		       struct cfs_packet_inode_ptr_array *iinfo_vec);
 int cfs_meta_readdir(struct cfs_meta_client *mc, u64 parent_ino,
 		     const char *from, u64 limit,
 		     struct cfs_packet_dentry_array *dentries);

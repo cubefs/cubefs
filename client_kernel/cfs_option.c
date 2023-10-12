@@ -22,10 +22,10 @@ static int addrs_parse(const char *str, size_t len,
 		return ret;
 
 	s = str;
-	for (i = 0; i < addrs->num; i++) {
+	for (; addrs->num < addrs->cap; addrs->num++) {
 		e = strnchr(s, str + len - s, ',');
 		ret = cfs_parse_addr(s, e ? e - s : str + len - s,
-				     &addrs->base[i]);
+				     &addrs->base[addrs->num]);
 		if (ret < 0)
 			break;
 		s = e + 1;
@@ -183,7 +183,7 @@ static int cfs_options_parse(const char *dev_str, const char *opt_str,
 			end = strchr(start, ',');
 			if (end)
 				ret = cfs_kstrntobool(start, end - start,
-						     &options->enable_quota);
+						      &options->enable_quota);
 			else
 				ret = kstrtobool(start, &options->enable_quota);
 			if (ret < 0) {

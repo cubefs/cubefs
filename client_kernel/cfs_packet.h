@@ -295,6 +295,15 @@ static inline void cfs_packet_inode_clear(struct cfs_packet_inode *info)
 struct cfs_packet_inode *cfs_packet_inode_new(void);
 void cfs_packet_inode_release(struct cfs_packet_inode *info);
 
+typedef struct cfs_packet_inode *cfs_packet_inode_ptr;
+
+static inline void cfs_packet_inode_ptr_clear(cfs_packet_inode_ptr *info_ptr)
+{
+	cfs_packet_inode_release(*info_ptr);
+}
+
+DEFINE_ARRAY(, cfs_packet_inode_ptr)
+
 struct cfs_packet_dentry {
 	char *name; /* json: name */
 	u64 ino; /* json: ino */
@@ -366,7 +375,7 @@ cfs_packet_icreate_reply_clear(struct cfs_packet_icreate_reply *reply)
 {
 	if (!reply)
 		return;
-	cfs_packet_inode_clear(reply->info);
+	cfs_packet_inode_release(reply->info);
 	memset(reply, 0, sizeof(*reply));
 }
 
@@ -393,7 +402,34 @@ cfs_packet_iget_reply_clear(struct cfs_packet_iget_reply *reply)
 {
 	if (!reply)
 		return;
-	cfs_packet_inode_clear(reply->info);
+	cfs_packet_inode_release(reply->info);
+	memset(reply, 0, sizeof(*reply));
+}
+
+struct cfs_packet_batch_iget_request {
+	const char *vol_name; /* json: vol */
+	u64 pid; /* json: pid */
+	struct u64_array ino_vec; /* json: inos */
+};
+
+static inline void cfs_packet_batch_iget_request_clear(
+	struct cfs_packet_batch_iget_request *request)
+{
+	if (!request)
+		return;
+	memset(request, 0, sizeof(*request));
+}
+
+struct cfs_packet_batch_iget_reply {
+	struct cfs_packet_inode_ptr_array info_vec; /* json: infos */
+};
+
+static inline void
+cfs_packet_batch_iget_reply_clear(struct cfs_packet_batch_iget_reply *reply)
+{
+	if (!reply)
+		return;
+	cfs_packet_inode_ptr_array_clear(&reply->info_vec);
 	memset(reply, 0, sizeof(*reply));
 }
 
@@ -843,6 +879,7 @@ struct cfs_packet {
 		union {
 			struct cfs_packet_icreate_request icreate;
 			struct cfs_packet_iget_request iget;
+			struct cfs_packet_batch_iget_request batch_iget;
 			struct cfs_packet_lookup_request ilookup;
 			struct cfs_packet_readdir_request readdir;
 			struct cfs_packet_dcreate_request dcreate;
@@ -878,6 +915,7 @@ struct cfs_packet {
 		union {
 			struct cfs_packet_icreate_reply icreate;
 			struct cfs_packet_iget_reply iget;
+			struct cfs_packet_batch_iget_reply batch_iget;
 			struct cfs_packet_lookup_reply ilookup;
 			struct cfs_packet_readdir_reply readdir;
 			struct cfs_packet_ddelete_reply ddelete;

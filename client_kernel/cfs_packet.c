@@ -76,39 +76,35 @@ cfs_quota_info_array_from_json(cfs_json_t *json,
 	size_t len;
 	cfs_json_t json_val;
 	int ret;
-	size_t i;
 
 	ret = cfs_json_get_array_size(json);
 	if (ret >= 0) {
 		ret = cfs_quota_info_array_init(quota_infos, ret);
 		if (ret < 0)
 			goto failed;
-		for (i = 0; i < quota_infos->num; i++) {
-			info = &quota_infos->base[i];
-			ret = cfs_json_get_array_item(json, i,
+		for (; quota_infos->num < quota_infos->cap;
+		     quota_infos->num++) {
+			info = &quota_infos->base[quota_infos->num];
+			ret = cfs_json_get_array_item(json, quota_infos->num,
 						      &json_quota_info);
 			if (unlikely(ret < 0))
 				goto failed;
 			ret = cfs_json_get_object_key_ptr(
 				&json_quota_info, (const char **)&key, &len);
 			if (ret < 0) {
-				cfs_log_debug("1\n");
 				goto failed;
 			}
 			ret = cfs_kstrntou32(key, len, 10, &info->id);
 			if (ret < 0) {
-				cfs_log_debug("2\n");
 				goto failed;
 			}
 			ret = cfs_json_get_object_value(&json_quota_info,
 							&json_val);
 			if (ret < 0) {
-				cfs_log_debug("3\n");
 				goto failed;
 			}
 			ret = cfs_json_get_bool(&json_val, "rid", &info->root);
 			if (ret < 0) {
-				cfs_log_debug("4\n");
 				goto failed;
 			}
 		}
@@ -349,6 +345,63 @@ static int cfs_packet_iget_reply_from_json(cfs_json_t *json,
 }
 
 static int
+cfs_packet_batch_iget_request_to_json(struct cfs_packet_batch_iget_request *req,
+				      struct cfs_buffer *buffer)
+{
+	size_t i;
+
+	CHECK(cfs_buffer_write(buffer, "{"));
+	CHECK(cfs_buffer_write(buffer, "\"vol\":\"%s\",", req->vol_name));
+	CHECK(cfs_buffer_write(buffer, "\"pid\":%llu,", req->pid));
+	CHECK(cfs_buffer_write(buffer, "\"inos\":[", req->pid));
+	for (i = 0; i < req->ino_vec.num; i++) {
+		CHECK(cfs_buffer_write(buffer, i == 0 ? "%llu" : ",%llu",
+				       req->ino_vec.base[i]));
+	}
+	CHECK(cfs_buffer_write(buffer, "]}"));
+	return 0;
+}
+
+static int
+cfs_packet_batch_iget_reply_from_json(cfs_json_t *json,
+				      struct cfs_packet_batch_iget_reply *res)
+{
+	cfs_json_t json_infos, json_info;
+	int ret;
+
+	memset(res, 0, sizeof(*res));
+	ret = cfs_json_get_object(json, "infos", &json_infos);
+	CHECK_GOTO(ret, "not found iget.infos");
+
+	ret = cfs_json_get_array_size(&json_infos);
+	if (ret >= 0) {
+		ret = cfs_packet_inode_ptr_array_init(&res->info_vec, ret);
+		if (ret < 0)
+			goto failed;
+		for (; res->info_vec.num < res->info_vec.cap;
+		     res->info_vec.num++) {
+			ret = cfs_json_get_array_item(
+				&json_infos, res->info_vec.num, &json_info);
+			if (unlikely(ret < 0))
+				goto failed;
+			res->info_vec.base[res->info_vec.num] =
+				cfs_packet_inode_new();
+			if (!res->info_vec.base[res->info_vec.num]) {
+				ret = -ENOMEM;
+				goto failed;
+			}
+			ret = cfs_packet_inode_from_json(
+				&json_info,
+				res->info_vec.base[res->info_vec.num]);
+			CHECK_GOTO(ret, "failed to parse info");
+		}
+	}
+failed:
+	cfs_packet_batch_iget_reply_clear(res);
+	return ret;
+}
+
+static int
 cfs_packet_lookup_request_to_json(struct cfs_packet_lookup_request *req,
 				  struct cfs_buffer *buffer)
 {
@@ -402,7 +455,6 @@ cfs_packet_readdir_reply_from_json(cfs_json_t *json,
 				   struct cfs_packet_readdir_reply *res)
 {
 	cfs_json_t json_children, json_child;
-	size_t i;
 	int ret;
 
 	memset(res, 0, sizeof(*res));
@@ -414,13 +466,15 @@ cfs_packet_readdir_reply_from_json(cfs_json_t *json,
 		ret = cfs_packet_dentry_array_init(&res->children, ret);
 		if (ret < 0)
 			goto failed;
-		for (i = 0; i < res->children.num; i++) {
-			ret = cfs_json_get_array_item(&json_children, i,
-						      &json_child);
+		for (; res->children.num < res->children.cap;
+		     res->children.num++) {
+			ret = cfs_json_get_array_item(
+				&json_children, res->children.num, &json_child);
 			if (unlikely(ret < 0))
 				goto failed;
 			ret = cfs_packet_dentry_from_json(
-				&json_child, &res->children.base[i]);
+				&json_child,
+				&res->children.base[res->children.num]);
 			CHECK_GOTO(ret, "failed to parse children");
 		}
 	}
@@ -704,7 +758,6 @@ cfs_packet_lxattr_reply_from_json(cfs_json_t *json,
 {
 	cfs_json_t json_xattrs, json_xattr;
 	int ret;
-	size_t i;
 
 	memset(res, 0, sizeof(*res));
 	ret = cfs_json_get_string(json, "vol", &res->vol_name);
@@ -721,13 +774,14 @@ cfs_packet_lxattr_reply_from_json(cfs_json_t *json,
 		ret = string_array_init(&res->xattrs, ret);
 		if (ret < 0)
 			goto failed;
-		for (i = 0; i < res->xattrs.num; i++) {
-			ret = cfs_json_get_array_item(&json_xattrs, i,
-						      &json_xattr);
+		for (; res->xattrs.num < res->xattrs.cap; res->xattrs.num++) {
+			ret = cfs_json_get_array_item(
+				&json_xattrs, res->xattrs.num, &json_xattr);
 			if (ret < 0)
 				goto failed;
-			ret = cfs_json_get_value_string(&json_xattr,
-							&res->xattrs.base[i]);
+			ret = cfs_json_get_value_string(
+				&json_xattr,
+				&res->xattrs.base[res->xattrs.num]);
 			CHECK_GOTO(ret, "failed to parse xattrs");
 		}
 	}
@@ -755,7 +809,6 @@ cfs_packet_lextent_reply_from_json(cfs_json_t *json,
 {
 	cfs_json_t json_extents, json_extent;
 	int ret;
-	size_t i;
 
 	memset(res, 0, sizeof(*res));
 	ret = cfs_json_get_u64(json, "gen", &res->generation);
@@ -770,13 +823,15 @@ cfs_packet_lextent_reply_from_json(cfs_json_t *json,
 		ret = cfs_packet_extent_array_init(&res->extents, ret);
 		if (ret < 0)
 			goto failed;
-		for (i = 0; i < res->extents.num; i++) {
-			ret = cfs_json_get_array_item(&json_extents, i,
-						      &json_extent);
+		for (; res->extents.num < res->extents.cap;
+		     res->extents.num++) {
+			ret = cfs_json_get_array_item(
+				&json_extents, res->extents.num, &json_extent);
 			if (unlikely(ret < 0))
 				goto failed;
 			ret = cfs_packet_extent_from_json(
-				&json_extent, &res->extents.base[i]);
+				&json_extent,
+				&res->extents.base[res->extents.num]);
 			CHECK_GOTO(ret, "failed to parse eks");
 		}
 	}
@@ -893,6 +948,9 @@ int cfs_packet_request_data_to_json(struct cfs_packet *packet,
 	case CFS_OP_INODE_GET:
 		return cfs_packet_iget_request_to_json(
 			&packet->request.data.iget, buffer);
+	case CFS_OP_INODE_BATCH_GET:
+		return cfs_packet_batch_iget_request_to_json(
+			&packet->request.data.batch_iget, buffer);
 	case CFS_OP_LOOKUP:
 		return cfs_packet_lookup_request_to_json(
 			&packet->request.data.ilookup, buffer);
@@ -962,6 +1020,9 @@ int cfs_packet_reply_data_from_json(cfs_json_t *json, struct cfs_packet *packet)
 	case CFS_OP_INODE_GET:
 		return cfs_packet_iget_reply_from_json(
 			json, &packet->reply.data.iget);
+	case CFS_OP_INODE_BATCH_GET:
+		return cfs_packet_batch_iget_reply_from_json(
+			json, &packet->reply.data.batch_iget);
 	case CFS_OP_LOOKUP:
 		return cfs_packet_lookup_reply_from_json(
 			json, &packet->reply.data.ilookup);
@@ -1019,6 +1080,10 @@ void cfs_packet_request_data_clear(struct cfs_packet *packet)
 		break;
 	case CFS_OP_INODE_GET:
 		cfs_packet_iget_request_clear(&packet->request.data.iget);
+		break;
+	case CFS_OP_INODE_BATCH_GET:
+		cfs_packet_batch_iget_request_clear(
+			&packet->request.data.batch_iget);
 		break;
 	case CFS_OP_LOOKUP:
 		cfs_packet_lookup_request_clear(&packet->request.data.ilookup);
@@ -1098,6 +1163,10 @@ void cfs_packet_reply_data_clear(struct cfs_packet *packet)
 	case CFS_OP_INODE_GET:
 		cfs_packet_iget_reply_clear(&packet->reply.data.iget);
 		break;
+	case CFS_OP_INODE_BATCH_GET:
+		cfs_packet_batch_iget_reply_clear(
+			&packet->reply.data.batch_iget);
+		break;
 	case CFS_OP_LOOKUP:
 		cfs_packet_lookup_reply_clear(&packet->reply.data.ilookup);
 		break;
@@ -1161,7 +1230,6 @@ int cfs_volume_view_from_json(cfs_json_t *json,
 			      struct cfs_volume_view *vol_view)
 {
 	cfs_json_t json_mps, json_mp;
-	int i;
 	int ret;
 
 	cfs_volume_view_init(vol_view);
@@ -1186,12 +1254,18 @@ int cfs_volume_view_from_json(cfs_json_t *json,
 			&vol_view->meta_partitions, ret);
 		if (ret < 0)
 			goto failed;
-		for (i = 0; i < vol_view->meta_partitions.num; i++) {
-			ret = cfs_json_get_array_item(&json_mps, i, &json_mp);
+		for (; vol_view->meta_partitions.num <
+		       vol_view->meta_partitions.cap;
+		     vol_view->meta_partitions.num++) {
+			ret = cfs_json_get_array_item(
+				&json_mps, vol_view->meta_partitions.num,
+				&json_mp);
 			if (unlikely(ret < 0))
 				goto failed;
 			ret = cfs_meta_partition_view_from_json(
-				&json_mp, &vol_view->meta_partitions.base[i]);
+				&json_mp,
+				&vol_view->meta_partitions
+					 .base[vol_view->meta_partitions.num]);
 			CHECK_GOTO(ret, "failed to parse MetaPartitions");
 		}
 	}
@@ -1208,7 +1282,6 @@ int cfs_meta_partition_view_from_json(cfs_json_t *json,
 	cfs_json_t json_addrs, json_addr;
 	const char *val;
 	size_t len;
-	u32 i;
 	int ret;
 
 	cfs_meta_partition_view_init(mp_view);
@@ -1258,17 +1331,19 @@ int cfs_meta_partition_view_from_json(cfs_json_t *json,
 		ret = sockaddr_storage_array_init(&mp_view->members, ret);
 		if (ret < 0)
 			goto failed;
-		for (i = 0; i < mp_view->members.num; i++) {
-			ret = cfs_json_get_array_item(&json_addrs, i,
-						      &json_addr);
+		for (; mp_view->members.num < mp_view->members.cap;
+		     mp_view->members.num++) {
+			ret = cfs_json_get_array_item(
+				&json_addrs, mp_view->members.num, &json_addr);
 			if (unlikely(ret < 0))
 				goto failed;
 			ret = cfs_json_get_value_string_ptr(&json_addr, &val,
 							    &len);
 			CHECK_GOTO(ret, "failed to parse Members");
 
-			ret = cfs_parse_addr(val, len,
-					     &mp_view->members.base[i]);
+			ret = cfs_parse_addr(
+				val, len,
+				&mp_view->members.base[mp_view->members.num]);
 			CHECK_GOTO(ret, "failed to parse Members");
 		}
 	}
@@ -1285,7 +1360,6 @@ int cfs_data_partition_view_from_json(cfs_json_t *json,
 	cfs_json_t json_addrs, json_addr;
 	const char *val;
 	size_t len;
-	u32 i;
 	int ret;
 
 	cfs_data_partition_view_init(dp_view);
@@ -1332,17 +1406,19 @@ int cfs_data_partition_view_from_json(cfs_json_t *json,
 		ret = sockaddr_storage_array_init(&dp_view->members, ret);
 		if (ret < 0)
 			goto failed;
-		for (i = 0; i < dp_view->members.num; i++) {
-			ret = cfs_json_get_array_item(&json_addrs, i,
-						      &json_addr);
+		for (; dp_view->members.num < dp_view->members.cap;
+		     dp_view->members.num++) {
+			ret = cfs_json_get_array_item(
+				&json_addrs, dp_view->members.num, &json_addr);
 			if (unlikely(ret < 0))
 				goto failed;
 			ret = cfs_json_get_value_string_ptr(&json_addr, &val,
 							    &len);
 			CHECK_GOTO(ret, "failed to parse Hosts");
 
-			ret = cfs_parse_addr(val, len,
-					     &dp_view->members.base[i]);
+			ret = cfs_parse_addr(
+				val, len,
+				&dp_view->members.base[dp_view->members.num]);
 			CHECK_GOTO(ret, "failed to parse Hosts");
 		}
 	}

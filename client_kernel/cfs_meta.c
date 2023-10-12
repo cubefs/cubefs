@@ -516,6 +516,48 @@ static int cfs_meta_iget_internal(struct cfs_meta_client *mc,
 	return 0;
 }
 
+static int cfs_meta_batch_iget_internal(
+	struct cfs_meta_client *mc, struct cfs_meta_partition *mp,
+	struct u64_array *ino_vec, struct cfs_packet_inode_ptr_array *iinfo_vec)
+{
+	u8 op = CFS_OP_INODE_BATCH_GET;
+	struct cfs_packet *packet;
+	struct cfs_packet_batch_iget_request *request_data;
+	struct cfs_packet_batch_iget_reply *reply_data;
+	size_t i;
+	int ret;
+
+	packet = cfs_packet_new(op, mp->id, NULL, NULL);
+	if (!packet)
+		return -ENOMEM;
+
+	request_data = &packet->request.data.batch_iget;
+	request_data->vol_name = mc->volume;
+	request_data->pid = mp->id;
+	request_data->ino_vec = *ino_vec;
+
+	ret = do_meta_request(mc, mp, packet);
+	if (ret < 0) {
+		cfs_packet_release(packet);
+		return ret;
+	}
+	ret = cfs_parse_status(packet->reply.hdr.result_code);
+	if (ret > 0) {
+		cfs_packet_release(packet);
+		return ret;
+	}
+	reply_data = &packet->reply.data.batch_iget;
+	cfs_packet_inode_ptr_array_move(iinfo_vec, &reply_data->info_vec);
+	for (i = 0; i < iinfo_vec->num; i++) {
+		if (S_ISLNK(iinfo_vec->base[i]->mode) &&
+		    iinfo_vec->base[i]->target)
+			iinfo_vec->base[i]->size =
+				strlen(iinfo_vec->base[i]->target);
+	}
+	cfs_packet_release(packet);
+	return 0;
+}
+
 static int cfs_meta_lookup_internal(struct cfs_meta_client *mc,
 				    struct cfs_meta_partition *mp,
 				    u64 parent_ino, struct qstr *name, u64 *ino,
@@ -1435,6 +1477,114 @@ int cfs_meta_get(struct cfs_meta_client *mc, u64 ino,
 
 unlock:
 	read_unlock(&mc->lock);
+	return ret;
+}
+
+struct batch_iget_task {
+	struct work_struct work;
+	struct completion done;
+	struct hlist_node hash;
+	struct cfs_meta_client *mc;
+	struct cfs_meta_partition *mp;
+	struct u64_array ino_vec;
+	struct cfs_packet_inode_ptr_array iinfo_vec;
+};
+
+static void batch_iget_work_cb(struct work_struct *work)
+{
+	struct batch_iget_task *task =
+		container_of(work, struct batch_iget_task, work);
+
+	cfs_meta_batch_iget_internal(task->mc, task->mp, &task->ino_vec,
+				     &task->iinfo_vec);
+	complete(&task->done);
+}
+
+static struct batch_iget_task *
+batch_iget_task_new(struct cfs_meta_client *mc, struct cfs_meta_partition *mp,
+		    size_t ino_num)
+{
+	struct batch_iget_task *task;
+
+	task = kzalloc(sizeof(*task), GFP_NOFS);
+	if (!task)
+		return NULL;
+	task->mc = mc;
+	task->mp = mp;
+	INIT_WORK(&task->work, batch_iget_work_cb);
+	init_completion(&task->done);
+	u64_array_init(&task->ino_vec, ino_num);
+	return task;
+}
+
+static void batch_iget_task_release(struct batch_iget_task *task)
+{
+	if (!task)
+		return;
+	u64_array_clear(&task->ino_vec);
+	cfs_packet_inode_ptr_array_clear(&task->iinfo_vec);
+	kfree(task);
+}
+
+#define BATCH_GET_TASK_BUCKET 32
+
+/**
+ * @param iinfo_vec [out]
+ */
+int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
+		       struct cfs_packet_inode_ptr_array *iinfo_vec)
+{
+	struct cfs_meta_partition *mp;
+	struct hlist_head tasks[BATCH_GET_TASK_BUCKET];
+	struct batch_iget_task *task;
+	struct hlist_node *tmp;
+	size_t i;
+	int ret;
+
+	hash_init(tasks);
+	read_lock(&mc->lock);
+	for (i = 0; i < ino_vec->num; i++) {
+		mp = cfs_meta_get_partition_by_inode(mc, ino_vec->base[i]);
+		if (!mp)
+			continue;
+		hash_for_each_possible(tasks, task, hash, mp->id) {
+			if (task->mp == mp)
+				break;
+		}
+		if (!task) {
+			task = batch_iget_task_new(mc, mp, ino_vec->num);
+			if (!task) {
+				ret = -ENOMEM;
+				goto unlock;
+			}
+			hash_add(tasks, &task->hash, mp->id);
+		}
+		task->ino_vec.base[task->ino_vec.num++] = ino_vec->base[i];
+	}
+
+	hash_for_each(tasks, i, task, hash) {
+		schedule_work(&task->work);
+	}
+	hash_for_each(tasks, i, task, hash) {
+		wait_for_completion(&task->done);
+	}
+
+	ret = cfs_packet_inode_ptr_array_init(iinfo_vec, ino_vec->num);
+	if (ret < 0)
+		goto unlock;
+	hash_for_each(tasks, i, task, hash) {
+		while (task->iinfo_vec.num-- > 0) {
+			iinfo_vec->base[iinfo_vec->num++] =
+				task->iinfo_vec.base[task->iinfo_vec.num];
+		}
+	}
+
+unlock:
+	read_unlock(&mc->lock);
+	hash_for_each_safe(tasks, i, tmp, task, hash) {
+		hash_del(&task->hash);
+		batch_iget_task_release(task);
+	}
 	return ret;
 }
 

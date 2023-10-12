@@ -40,64 +40,69 @@
 
 /* define array */
 
-#define DEFINE_ARRAY(type, name)                                              \
-	struct name##_array {                                                 \
-		type name *base;                                              \
-		size_t num;                                                   \
-	};                                                                    \
-	static inline int name##_array_init(struct name##_array *array,       \
-					    size_t num)                       \
-	{                                                                     \
-		array->num = num;                                             \
-		if (array->num == 0)                                          \
-			return 0;                                             \
-		if (!(array->base = kcalloc(                                  \
-			      array->num, sizeof(array->base[0]), GFP_NOFS))) \
-			return -ENOMEM;                                       \
-		return 0;                                                     \
-	}                                                                     \
-	static inline void name##_array_clear(struct name##_array *array)     \
-	{                                                                     \
-		if (!array || !array->base)                                   \
-			return;                                               \
-		for (; array->num > 0; array->num--) {                        \
-			name##_clear(&array->base[array->num - 1]);           \
-		}                                                             \
-		kfree(array->base);                                           \
-		array->base = NULL;                                           \
-	}                                                                     \
-	static inline void name##_array_move(struct name##_array *array1,     \
-					     struct name##_array *array2)     \
-	{                                                                     \
-		BUG_ON(!array1 || !array2);                                   \
-		array1->base = cfs_move(array2->base, NULL);                  \
-		array1->num = cfs_move(array2->num, 0);                       \
-	}                                                                     \
-	static inline int name##_array_clone(                                 \
-		struct name##_array *array1,                                  \
-		const struct name##_array *array2)                            \
-	{                                                                     \
-		int ret;                                                      \
-		BUG_ON(!array1 || !array2);                                   \
-		ret = name##_array_init(array1, array2->num);                 \
-		if (ret == 0)                                                 \
-			memcpy(array1->base, array2->base,                    \
-			       sizeof(array2->base[0]) * array2->num);        \
-		return ret;                                                   \
+#define DEFINE_ARRAY(type, name)                                               \
+	struct name##_array {                                                  \
+		type name *base;                                               \
+		size_t num;                                                    \
+		size_t cap;                                                    \
+	};                                                                     \
+	static inline int name##_array_init(struct name##_array *array,        \
+					    size_t cap)                        \
+	{                                                                      \
+		array->base = NULL;                                            \
+		array->num = 0;                                                \
+		array->cap = cap;                                              \
+		if (array->cap == 0)                                           \
+			return 0;                                              \
+		if (!(array->base = kcalloc(                                   \
+			      array->cap, sizeof(array->base[0]), GFP_NOFS)))  \
+			return -ENOMEM;                                        \
+		return 0;                                                      \
+	}                                                                      \
+	static inline void name##_array_clear(struct name##_array *array)      \
+	{                                                                      \
+		if (!array || !array->base)                                    \
+			return;                                                \
+		while (array->num-- > 0) {                                     \
+			name##_clear(&array->base[array->num]);                \
+		}                                                              \
+		kfree(array->base);                                            \
+		array->base = NULL;                                            \
+		array->cap = 0;                                                \
+	}                                                                      \
+	static inline void name##_array_move(struct name##_array *dst,         \
+					     struct name##_array *src)         \
+	{                                                                      \
+		BUG_ON(!dst || !src);                                          \
+		dst->base = cfs_move(src->base, NULL);                         \
+		dst->num = cfs_move(src->num, 0);                              \
+		dst->cap = cfs_move(src->cap, 0);                              \
+	}                                                                      \
+	static inline int name##_array_clone(struct name##_array *dst,         \
+					     const struct name##_array *src)   \
+	{                                                                      \
+		int ret;                                                       \
+		BUG_ON(!dst || !src);                                          \
+		ret = name##_array_init(dst, src->num);                        \
+		if (ret < 0)                                                   \
+			return ret;                                            \
+		dst->num = src->num;                                           \
+		memcpy(dst->base, src->base, sizeof(src->base[0]) * src->num); \
+		return 0;                                                      \
 	}
 
 /**
- * define u32 array.
+ * define u64_array.
  */
-static inline void u32_clear(u32 *u)
+static inline void u64_clear(u64 *u)
 {
 	*u = 0;
 }
 
-DEFINE_ARRAY(, u32)
+DEFINE_ARRAY(, u64)
 
 /**
- * define char array.
+ * define string_array.
  */
 typedef char *string;
 static inline void string_clear(string *s)
@@ -109,7 +114,7 @@ static inline void string_clear(string *s)
 DEFINE_ARRAY(, string)
 
 /**
- * define sockaddr_storage array.
+ * define sockaddr_storage_array.
  */
 static inline void sockaddr_storage_clear(struct sockaddr_storage *ss)
 {

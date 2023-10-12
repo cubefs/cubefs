@@ -623,6 +623,9 @@ static int cfs_readdir(struct file *file, void *dirent, filldir_t filldir)
 	}
 
 	while (!cfi->done) {
+		struct u64_array ino_vec;
+		struct cfs_packet_inode_ptr_array iinfo_vec;
+
 		if (cfi->denties.num > 0) {
 			kfree(cfi->marker);
 			cfi->marker = kstrdup(
@@ -640,16 +643,35 @@ static int cfs_readdir(struct file *file, void *dirent, filldir_t filldir)
 		}
 		if (cfi->denties.num < READDIR_NUM)
 			cfi->done = true;
-		for (i = 0; i < cfi->denties.num; i++) {
+
+		ret = u64_array_init(&ino_vec, cfi->denties.num);
+		if (ret < 0)
+			return ret;
+		ret = cfs_meta_batch_get(cmi->meta, &ino_vec, &iinfo_vec);
+		u64_array_clear(&ino_vec);
+		if (ret < 0)
+			return ret;
+
+		for (i = 0; i < iinfo_vec.num; i++) {
 			struct cfs_inode *ci;
 
 			ci = (struct cfs_inode *)ilookup(
-				sb, cfi->denties.base[i].ino);
+				sb, iinfo_vec.base[i]->ino);
 			if (!ci)
 				continue;
+			spin_lock(&ci->vfs_inode.i_lock);
+			cfs_inode_refresh_unlock(ci, iinfo_vec.base[i]);
+			set_iattr_cache_valid(ci);
+			set_quota_cache_valid(ci);
 			set_dentry_cache_valid(ci);
+			spin_unlock(&ci->vfs_inode.i_lock);
 			iput(&ci->vfs_inode);
 		}
+		/**
+		 * free cfs_packet_inode array.
+		 */
+		cfs_packet_inode_ptr_array_clear(&iinfo_vec);
+
 		for (cfi->denties_offset = 0;
 		     cfi->denties_offset < cfi->denties.num;
 		     cfi->denties_offset++) {

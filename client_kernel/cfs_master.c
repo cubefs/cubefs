@@ -427,7 +427,6 @@ int cfs_master_get_data_partitions(
 	struct http_response response;
 	cfs_json_t json_data;
 	cfs_json_t json_dp_views, json_dp_view;
-	size_t i;
 	int ret;
 
 	http_request_init(&request);
@@ -455,13 +454,13 @@ int cfs_master_get_data_partitions(
 		ret = cfs_data_partition_view_array_init(dp_views, ret);
 		if (ret < 0)
 			goto end;
-		for (i = 0; i < dp_views->num; i++) {
-			ret = cfs_json_get_array_item(&json_dp_views, i,
-						      &json_dp_view);
+		for (; dp_views->num < dp_views->cap; dp_views->num++) {
+			ret = cfs_json_get_array_item(
+				&json_dp_views, dp_views->num, &json_dp_view);
 			if (unlikely(ret < 0))
 				goto end;
 			ret = cfs_data_partition_view_from_json(
-				&json_dp_view, &dp_views->base[i]);
+				&json_dp_view, &dp_views->base[dp_views->num]);
 			if (ret < 0) {
 				cfs_log_err("parse DataPartitions error %d\n",
 					    ret);

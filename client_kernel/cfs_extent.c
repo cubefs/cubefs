@@ -554,8 +554,6 @@ static int extent_cache_append(struct cfs_extent_cache *cache,
 						   btree_count(cache->discard));
 		if (ret < 0)
 			goto out;
-
-		discard_extents->num = 0;
 		extent_btree_for_ascend_range(cache->discard, low_key, high_key,
 					      deleted)
 		{
@@ -817,7 +815,7 @@ static void extent_async_io_work_cb(struct work_struct *work)
 		packet->error = ret;
 		if (packet->handle_reply)
 			packet->handle_reply(packet);
-		complete(&packet->done);
+		cfs_packet_complete_reply(packet);
 		cfs_packet_release(packet);
 
 		if (ret < 0) {
