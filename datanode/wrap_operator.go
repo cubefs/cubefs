@@ -299,6 +299,8 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 			log.LogWarnf("action[commitCreateVersion] vol %v seq %v step not prepare", req.VolumeID, ver2Phase.step)
 		}
 
+		s.space.partitionMutex.RLock()
+		defer s.space.partitionMutex.RUnlock()
 		for _, partition := range s.space.partitions {
 			if partition.config.VolName != req.VolumeID {
 				continue
