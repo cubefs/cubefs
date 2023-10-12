@@ -106,7 +106,9 @@ func (s *ChubaoFSDPReleaser) scheduleToReleaseDataNodeDp() {
 	if s.ScheduleIntervalHour < 4 {
 		s.ScheduleIntervalHour = 4
 	}
-	s.releaseDataNodeDp()
+	if s.IsEnable {
+		s.releaseDataNodeDp()
+	}
 	timer := time.NewTimer(time.Duration(s.ScheduleIntervalHour) * time.Hour)
 	defer timer.Stop()
 	for {
