@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"os"
 	"runtime/debug"
@@ -78,7 +79,6 @@ type CacheConfig struct {
 }
 
 type RemoteCache struct {
-	sync.RWMutex
 	cluster     string
 	volname     string
 	mc          *masterSDK.MasterClient
@@ -86,7 +86,6 @@ type RemoteCache struct {
 	connConfig  *proto.ConnConfig
 	hostLatency sync.Map
 	flashGroups *btree.BTree
-	allSlots    map[uint32]bool
 	stopOnce    sync.Once
 	stopC       chan struct{}
 	wg          sync.WaitGroup
@@ -142,7 +141,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 	addr := fg.getFlashHost()
 	if addr == "" {
 		err = fmt.Errorf("getFlashHost failed: cannot find any available host")
-		log.LogErrorf("FlashGroup read failed: err(%v)", err)
+		log.LogWarnf("FlashGroup read failed: err(%v)", err)
 		return
 	}
 	reqPacket := common.NewCachePacket(ctx, inode, proto.OpCacheRead)
@@ -153,7 +152,6 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 	defer func() {
 		if err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error())) {
 			moved = fg.moveToUnknownRank(addr)
-			rc.hostLatency.Store(addr, time.Duration(0))
 		}
 	}()
 	if conn, err = rc.conns.GetConnect(addr); err != nil {
@@ -189,6 +187,12 @@ func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *common.Packet,
 			log.LogWarnf("getReadReply: ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
 			return
 		}
+		expectCrc := crc32.ChecksumIEEE(replyPacket.Data[:replyPacket.Size])
+		if replyPacket.CRC != expectCrc {
+			err = fmt.Errorf("inconsistent CRC, expect(%v) reply(%v)", expectCrc, replyPacket.CRC)
+			log.LogWarnf("getReadReply: req(%v) err(%v)", req, err)
+			return
+		}
 		copy(req.Data[readBytes:], replyPacket.Data)
 		readBytes += int(replyPacket.Size)
 	}
@@ -203,7 +207,7 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 	addr := fg.getFlashHost()
 	if addr == "" {
 		err = fmt.Errorf("getFlashHost failed: can not find host")
-		log.LogErrorf("FlashGroup prepare failed: err(%v)", err)
+		log.LogWarnf("FlashGroup prepare failed: err(%v)", err)
 		return
 	}
 	reqPacket := common.NewCachePacket(ctx, inode, proto.OpCachePrepare)
@@ -214,7 +218,6 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 	defer func() {
 		if err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error())) {
 			moved = fg.moveToUnknownRank(addr)
-			rc.hostLatency.Store(addr, time.Duration(0))
 		}
 	}()
 	if conn, err = rc.conns.GetConnect(addr); err != nil {
@@ -317,7 +320,7 @@ func (rc *RemoteCache) refresh() {
 		if err == nil {
 			break
 		}
-		log.LogErrorf("refreshMetaInfo: err(%v) try next update", err)
+		log.LogErrorf("refresh: err(%v) try next update", err)
 	}
 }
 
@@ -349,63 +352,47 @@ func (rc *RemoteCache) refreshWithRecover() (panicErr error) {
 				log.LogErrorf("updateFlashGroups err: %v", err)
 			}
 		case <-refreshLatency.C:
-			allHosts := make(map[string]bool)
-			rc.flashGroups.Ascend(func(item btree.Item) bool {
-				fgItem := item.(*SlotItem)
-				for _, host := range fgItem.FlashGroup.Hosts {
-					allHosts[host] = true
-				}
-				return true
-			})
-			rc.refreshHostLatency(allHosts)
+			rc.refreshHostLatency()
 			refreshLatency.Reset(RefreshHostLatencyInterval)
 		}
 	}
 }
 
 func (rc *RemoteCache) updateFlashGroups() (err error) {
-	var fgv *proto.FlashGroupView
+	var (
+		fgv            *proto.FlashGroupView
+		newFlashGroups = btree.New(32)
+	)
 	if fgv, err = rc.mc.AdminAPI().ClientFlashGroups(); err != nil {
 		log.LogWarnf("updateFlashGroups: err(%v)", err)
 		return
 	}
 
-	recordSlots := make(map[uint32]bool)
-
-	rc.Lock()
-	defer rc.Unlock()
-	rc.retryHostLatency()
 	for _, fg := range fgv.FlashGroups {
 		newAdded := make([]string, 0)
 		for _, host := range fg.Hosts {
 			if _, ok := rc.hostLatency.Load(host); !ok {
-				rc.hostLatency.Store(host, time.Duration(0))
 				newAdded = append(newAdded, host)
 			}
 		}
+		if log.IsDebugEnabled() {
+			log.LogDebugf("updateFlashGroups: fgID(%v) newAdded hosts: %v", fg.ID, newAdded)
+		}
+
 		rc.updateHostLatency(newAdded)
 		sortedHosts := rc.ClassifyHostsByAvgDelay(fg.ID, fg.Hosts)
-		if log.IsDebugEnabled() {
-			log.LogDebugf("updateFlashGroups: new hosts: %v", newAdded)
-		}
+
 		flashGroup := NewFlashGroup(fg, sortedHosts)
 		for _, slot := range fg.Slot {
 			slotItem := &SlotItem{
 				slot:       slot,
 				FlashGroup: flashGroup,
 			}
-			rc.flashGroups.ReplaceOrInsert(slotItem)
-			delete(rc.allSlots, slot)
-			recordSlots[slot] = true
+			newFlashGroups.ReplaceOrInsert(slotItem)
 		}
 	}
-	for slot := range rc.allSlots {
-		fgItem := &SlotItem{slot, nil}
-		rc.flashGroups.Delete(fgItem)
-	}
+	rc.flashGroups = newFlashGroups
 
-	rc.allSlots = recordSlots
-	log.LogInfof("updateFlashGroups: %d", len(fgv.FlashGroups))
 	return
 }
 
@@ -428,80 +415,98 @@ func (rc *RemoteCache) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sor
 			sortedHosts[CrossRegionRank] = append(sortedHosts[CrossRegionRank], host)
 		}
 	}
-	log.LogInfof("ClassifyHostsByAvgDelay: fg(%v) sortedHost:%v", fgID, sortedHosts)
+	log.LogInfof("ClassifyHostsByAvgDelay: fgID(%v) sortedHost:%v", fgID, sortedHosts)
 	return sortedHosts
 }
 
-func (rc *RemoteCache) refreshHostLatency(hosts map[string]bool) {
+func (rc *RemoteCache) refreshHostLatency() {
+	hosts := rc.getFlashHostsMap()
+
 	needPings := make([]string, 0)
 	rc.hostLatency.Range(func(key, value interface{}) bool {
 		host := key.(string)
 		if _, exist := hosts[host]; !exist {
 			rc.hostLatency.Delete(host)
 			log.LogInfof("remove flashNode(%v)", host)
+		} else {
+			needPings = append(needPings, host)
 		}
-		needPings = append(needPings, host)
 		return true
 	})
 	rc.updateHostLatency(needPings)
 	log.LogInfof("updateHostLatencyByLatency: needPings(%v)", len(needPings))
 }
 
-func (rc *RemoteCache) updateHostLatency(hosts []string) (failedHosts map[string]bool) {
+func (rc *RemoteCache) updateHostLatency(hosts []string) {
 	if hosts == nil || len(hosts) == 0 {
 		return
 	}
-	failedHosts = make(map[string]bool)
 	for _, host := range hosts {
 		avgTime, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
-		if err != nil {
-			avgTime = time.Duration(0)
-			failedHosts[host] = true
+		if err == nil {
+			rc.hostLatency.Store(host, avgTime)
+		} else {
+			rc.hostLatency.Delete(host)
 			log.LogWarnf("updateHostLatency: host(%v) err(%v)", host, err)
 		}
-		rc.hostLatency.Store(host, avgTime)
 	}
-	log.LogDebugf("updateHostLatency: failedHosts(%v)", failedHosts)
 	return
-}
-
-func (rc *RemoteCache) retryHostLatency() {
-	retryHosts := make([]string, 0)
-	rc.hostLatency.Range(func(key, value interface{}) bool {
-		host := key.(string)
-		delay := value.(time.Duration)
-		if delay == 0 {
-			retryHosts = append(retryHosts, host)
-		}
-		return true
-	})
-	rc.updateHostLatency(retryHosts)
-	if log.IsDebugEnabled() {
-		log.LogDebugf("retryHostLatency: retry hosts(%v)", retryHosts)
-	}
 }
 
 func (rc *RemoteCache) GetFlashGroupBySlot(slot uint32) *FlashGroup {
 	var item *SlotItem
+
 	pivot := &SlotItem{slot: slot}
-
-	rc.RLock()
-	defer rc.RUnlock()
-	rc.flashGroups.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
-		item = i.(*SlotItem)
+	var rangeFunc = func(item btree.Item) bool {
+		item = item.(*SlotItem)
 		return false
-	})
-
-	if item == nil && rc.flashGroups.Len() > 0 {
-		item = rc.flashGroups.Min().(*SlotItem)
 	}
+	rc.rangeFlashGroups(pivot, rangeFunc)
+
 	if item == nil {
-		return nil
+		return rc.getMinFlashGroup()
 	}
 	return item.FlashGroup
+}
+
+func (rc *RemoteCache) getFlashHostsMap() map[string]bool {
+	allHosts := make(map[string]bool)
+
+	var rangeFunc = func(item btree.Item) bool {
+		fgItem := item.(*SlotItem)
+		for _, host := range fgItem.FlashGroup.Hosts {
+			allHosts[host] = true
+		}
+		return true
+	}
+	rc.rangeFlashGroups(nil, rangeFunc)
+
+	return allHosts
 }
 
 type CacheReadRequest struct {
 	proto.CacheReadRequest
 	Data []byte
+}
+
+func (rc *RemoteCache) rangeFlashGroups(pivot *SlotItem, rangeFunc func(item btree.Item) bool) {
+	flashGroups := rc.flashGroups
+
+	if pivot == nil {
+		flashGroups.Ascend(rangeFunc)
+	} else {
+		flashGroups.AscendGreaterOrEqual(pivot, rangeFunc)
+	}
+}
+
+func (rc *RemoteCache) getMinFlashGroup() *FlashGroup {
+	flashGroups := rc.flashGroups
+
+	if flashGroups.Len() > 0 {
+		item := flashGroups.Min().(*SlotItem)
+		if item != nil {
+			return item.FlashGroup
+		}
+	}
+	return nil
 }
