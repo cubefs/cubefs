@@ -654,7 +654,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		if err1 := vol.DeletePath(object.Key); err1 != nil {
 			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
 				GetRequestID(r), vol.Name(), object.Key, err1)
-			if err1 != AccessDenied {
+			if !strings.Contains(err1.Error(), AccessDenied.ErrorMessage) {
 				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "InternalError", Message: err1.Error()})
 			} else {
 				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "AccessDenied", Message: err1.Error()})

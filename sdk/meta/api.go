@@ -15,6 +15,7 @@
 package meta
 
 import (
+	"errors"
 	"fmt"
 	syslog "log"
 	"math"
@@ -810,12 +811,37 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 	return info, nil
 }
 
+func isObjectLocked(mw *MetaWrapper, inode uint64, name string) error {
+	xattrInfo, err := mw.XAttrGet_ll(inode, "oss:lock")
+	if err != nil {
+		log.LogErrorf("isObjectLocked: check ObjectLock err(%v) name(%v)", err, name)
+		return err
+	}
+	retainUntilDate := xattrInfo.Get("oss:lock")
+	if len(retainUntilDate) > 0 {
+		retainUntilDateInt64, err := strconv.ParseInt(string(retainUntilDate), 10, 64)
+		if err != nil {
+			return err
+		}
+		if retainUntilDateInt64 > time.Now().UnixNano() {
+			log.LogWarnf("isObjectLocked: object is locked, retainUntilDate(%v) name(%v)", retainUntilDateInt64, name)
+			return errors.New("Access Denied")
+		}
+	}
+	return nil
+}
+
 func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+
+	err := isObjectLocked(mw, cond, name)
+	if err != nil {
+		return nil, err
+	}
+
 	var (
 		status int
 		inode  uint64
 		mode   uint32
-		err    error
 		info   *proto.InodeInfo
 		mp     *MetaPartition
 	)

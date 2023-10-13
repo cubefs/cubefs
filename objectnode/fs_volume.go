@@ -899,12 +899,6 @@ func (v *Volume) DeletePath(path string) (err error) {
 		log.LogErrorf("DeletePath: load volume objetLock: volume(%v) err(%v)", v.name, err)
 		return
 	}
-	if objetLock != nil {
-		err = isObjectLocked(v, ino, name, path)
-		if err != nil {
-			return
-		}
-	}
 	log.LogInfof("DeletePath: delete: volume(%v) path(%v) inode(%v)", v.name, path, ino)
 
 	// delete dentry with condition when objectlock is open
