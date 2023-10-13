@@ -111,7 +111,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	)
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), inoID, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 	}()
 	inoID, err = mp.nextInodeID()
 	if err != nil {
@@ -163,7 +163,7 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 	)
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), inoID, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 	}()
 	inoID, err = mp.nextInodeID()
 	if err != nil {
@@ -226,7 +226,7 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 	}()
 	txInfo := req.TxInfo.GetCopy()
 	var status uint8
@@ -316,7 +316,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 	)
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 	}()
 	makeRspFunc := func() {
 		status := msg.Status
@@ -575,7 +575,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 	}()
 	txInfo := req.TxInfo.GetCopy()
 	ino := NewInode(req.Inode, 0)
@@ -627,7 +627,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 	}()
 	var r interface{}
 	var val []byte
@@ -675,7 +675,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 	}()
 	ino := NewInode(req.Inode, 0)
 	val, err := ino.Marshal()
@@ -773,7 +773,7 @@ func (mp *metaPartition) GetInodeTreeLen() int {
 func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 	}()
 	var bytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)
@@ -852,7 +852,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	)
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), inoID, 0)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 	}()
 	inoID, err = mp.nextInodeID()
 	if err != nil {
