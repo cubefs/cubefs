@@ -29,7 +29,7 @@ import (
 func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, 0)
+		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
 	}()
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
@@ -84,7 +84,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
+		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
 	}()
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
@@ -130,7 +130,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAdd
 func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
+		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
 	}()
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
@@ -185,7 +185,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.FullPath, err, time.Since(start).Milliseconds(), req.Ino, req.ParentID)
+		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Ino, req.ParentID)
 	}()
 	txInfo := req.TxInfo.GetCopy()
 	den := &Dentry{
@@ -260,7 +260,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.FullPath, err, time.Since(start).Milliseconds(), 0, req.ParentID)
+		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), 0, req.ParentID)
 	}()
 	if req.InodeCreateTime > 0 {
 		if mp.vol.volDeleteLockTime > 0 && req.InodeCreateTime+mp.vol.volDeleteLockTime*60*60 > time.Now().Unix() {
@@ -381,7 +381,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet,
 func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
+		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
 	}()
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
@@ -450,7 +450,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	defer func() {
-		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
+		auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
 	}()
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")

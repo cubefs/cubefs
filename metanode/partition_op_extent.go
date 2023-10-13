@@ -465,7 +465,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	fileSize := uint64(0)
 	start := time.Now()
 	defer func() {
-		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.FullPath, err, time.Since(start).Milliseconds(), req.Inode, fileSize)
+		auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, fileSize)
 	}()
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
 	item := mp.inodeTree.CopyGet(ino)

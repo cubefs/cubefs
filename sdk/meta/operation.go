@@ -49,8 +49,8 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		Target:      target,
 		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	resp := new(proto.TxCreateInodeResponse)
 	defer func() {
@@ -118,8 +118,8 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 		Gid:         gid,
 		Target:      target,
 		QuotaIds:    quotaIds,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpQuotaCreateInode
@@ -177,8 +177,8 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Uid:         uid,
 		Gid:         gid,
 		Target:      target,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaCreateInode
@@ -306,8 +306,8 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		TxInfo:      tx.txInfo,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 	resp := new(proto.TxUnlinkInodeResponse)
 	metric := exporter.NewTPCnt("OpMetaTxUnlinkInode")
 	defer func() {
@@ -344,8 +344,8 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, verSeq uint64, d
 		UniqID:      uniqID,
 		VerSeq:      verSeq,
 		DenVerSeq:   denVerSeq,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUnlinkInode
@@ -438,8 +438,8 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string) 
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaEvictInode
@@ -491,8 +491,8 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		Mode:        mode,
 		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	metric := exporter.NewTPCnt("OpMetaTxCreateDentry")
 	defer func() {
@@ -539,8 +539,8 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 		Name:        name,
 		Mode:        mode,
 		QuotaIds:    quotaIds,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpQuotaCreateDentry
@@ -594,8 +594,8 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		Name:        name,
 		Mode:        mode,
 		VerSeq:      verSeq,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaCreateDentry
@@ -646,8 +646,8 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 		Inode:       newInode,
 		OldIno:      oldIno,
 		TxInfo:      tx.txInfo,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	resp := new(proto.TxUpdateDentryResponse)
 	metric := exporter.NewTPCnt("OpMetaTxUpdateDentry")
@@ -681,8 +681,8 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 		ParentID:    parentID,
 		Name:        name,
 		Inode:       newInode,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUpdateDentry
@@ -806,8 +806,8 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 		Name:        name,
 		Ino:         ino,
 		TxInfo:      tx.txInfo,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	resp := new(proto.TxDeleteDentryResponse)
 
@@ -839,8 +839,8 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, 
 		Name:            name,
 		InodeCreateTime: inodeCreateTime,
 		Verseq:          verSeq,
-		FullPath:        fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 	log.LogDebugf("action[ddelete] %v", req)
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaDeleteDentry
@@ -1411,8 +1411,8 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64, fullPath 
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		Size:        size,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaTruncate
@@ -1458,8 +1458,8 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		TxInfo:      tx.txInfo,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	resp := new(proto.TxLinkInodeResponse)
 	metric := exporter.NewTPCnt("OpMetaTxLinkInode")
@@ -1501,8 +1501,8 @@ func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, full
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		UniqID:      uniqID,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()
 	packet.Opcode = op
@@ -1822,8 +1822,8 @@ func (mw *MetaWrapper) idelete(mp *MetaPartition, inode uint64, fullPath string)
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
 		Inode:       inode,
-		FullPath:    fullPath,
 	}
+	req.FullPaths = []string{fullPath}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaDeleteInode
 	packet.PartitionID = mp.PartitionID
