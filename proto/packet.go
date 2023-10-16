@@ -127,7 +127,13 @@ const (
 
 	OpLcNodeHeartbeat      uint8 = 0x55
 	OpLcNodeScan           uint8 = 0x56
-	OpLcNodeSnapshotVerDel uint8 = 0x57
+	OpLcNodeSnapshotVerDel uint8 = 0x5B
+
+	//backUp
+	OpBatchLockNormalExtent   uint8 = 0x57
+	OpBatchUnlockNormalExtent uint8 = 0x58
+	OpBackupRead              uint8 = 0x59
+	OpBackupWrite             uint8 = 0x5A
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition           uint8 = 0x60
@@ -608,6 +614,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpLcNodeSnapshotVerDel"
 	case OpMetaReadDirOnly:
 		m = "OpMetaReadDirOnly"
+	case OpBackupRead:
+		m = "OpBackupRead"
+	case OpBatchLockNormalExtent:
+		m = "OpBatchLockNormalExtent"
+	case OpBatchUnlockNormalExtent:
+		m = "OpBatchUnlockNormalExtent"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
@@ -1009,7 +1021,8 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	}
 
 	size := p.Size
-	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
+		p.Opcode == OpBackupRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	p.Data = make([]byte, size)
@@ -1175,4 +1188,12 @@ func InitBufferPool(bufLimit int64) {
 	buf.HeadVerBuffersTotalLimit = bufLimit
 
 	Buffers = buf.NewBufferPool()
+}
+
+func (p *Packet) IsBatchLockNormalExtents() bool {
+	return p.Opcode == OpBatchLockNormalExtent
+}
+
+func (p *Packet) IsBatchUnlockNormalExtents() bool {
+	return p.Opcode == OpBatchUnlockNormalExtent
 }
