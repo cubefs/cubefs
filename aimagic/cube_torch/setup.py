@@ -23,6 +23,7 @@ setup(
             'cube_file.py',
             'cube_worker.py',
             'cube_dataset_info.py',
+            'cube_lru_cache.py',
             'NOTICE',
             'cube_push_data_set_info.py',
             'cube_file_open_interceptor.py',

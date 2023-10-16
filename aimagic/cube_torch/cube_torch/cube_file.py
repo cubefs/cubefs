@@ -14,6 +14,7 @@ from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
+from cube_torch.cube_lru_cache import LRUCache
 
 global_interceptionIO = None
 global_cube_rootdir_path = None
@@ -65,33 +66,15 @@ class CubeStream(io.BytesIO):
         return self.content_size
 
 
-class ThreadSafeDict:
-    def __init__(self):
-        self._dict = {}
-        self._lock = threading.Lock()
-
-    def pop_item(self, key):
-        with self._lock:
-            return self._dict.pop(key, None)
-
-    def set_item(self, key, value):
-        with self._lock:
-            self._dict[key] = value
-
-    def get_length(self):
-        with self._lock:
-            return len(self._dict)
-
-
 class InterceptionIO:
     def __init__(self, storage_info):
-        cube_root_dir, wait_download_queue, batch_download_addr,batch_size = storage_info
+        cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
         self.cube_root_dir = cube_root_dir
-        self.files = ThreadSafeDict()
+        self.files_cache = LRUCache(max_size=batch_size * 10, timeout=300)
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
         self.wait_download_queue = wait_download_queue
-        self.batch_size=batch_size
+        self.batch_size = batch_size
         self.download_event = threading.Event()
         self._lock = threading.Lock()
         retry_strategy = Retry(
@@ -106,7 +89,7 @@ class InterceptionIO:
         self.download_thread.start()
 
     def get_stream(self, file_name):
-        return self.files.pop_item(file_name)
+        return self.files_cache.pop(file_name)
 
     def stop_loop_download_worker(self):
         self.download_event.set()
@@ -165,6 +148,7 @@ class InterceptionIO:
                         "unavalid http reponse code:{} response:{}".format(response.status_code, response.text))
                 self.stream_parse_content(self.batch_download_addr, response)
             del data, index_list
+            self.files_cache.cleanup_expired_items()
         except Exception as e:
             print('pid:{} url:{} Error:{} '.format(os.getpid(), self.batch_download_addr, e))
             pass
@@ -174,7 +158,7 @@ class InterceptionIO:
         loop.run_in_executor(None, self.batch_download, index_list)
 
     def add_stream(self, file_path, stream):
-        self.files.set_item(file_path, stream)
+        self.files_cache.put(file_path, stream)
 
     def stream_parse_content(self, url, response):
         version = response.raw.read(8)
