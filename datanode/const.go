@@ -65,6 +65,7 @@ const (
 	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
 	ActionStreamReadTinyExtentRepair = "ActionStreamReadTinyExtentRepair"
 	ActionBatchMarkDelete            = "ActionBatchMarkDelete"
+	ActionBatchLockNormalExtent      = "ActionBatchLockNormalExtent"
 	ActionUpdateVersion              = "ActionUpdateVersion"
 	ActionStopDataPartitionRepair    = "ActionStopDataPartitionRepair"
 	ActionRecoverDataReplicaMeta     = "ActionRecoverDataReplicaMeta"
