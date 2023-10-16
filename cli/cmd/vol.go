@@ -67,9 +67,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			var vols []*proto.VolInfo
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
 				return
@@ -144,9 +142,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			volumeName := args[0]
 			userID := args[1]
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			crossZone, _ := strconv.ParseBool(optCrossZone)
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
@@ -296,9 +292,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			volumeName := args[0]
 			isChange := false
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				return
@@ -652,9 +646,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			volumeName := args[0]
 			var svv *proto.SimpleVolView
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				err = fmt.Errorf("Get volume info failed:\n%v\n", err)
@@ -727,9 +719,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			volumeName := args[0]
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			// ask user for confirm
 			if !optYes {
@@ -786,9 +776,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			userID := args[1]
 
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 
 			// ask user for confirm
@@ -849,9 +837,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			number := args[1]
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var count int64
 			if count, err = strconv.ParseInt(number, 10, 64); err != nil {
@@ -903,9 +889,7 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 			capacityStr := args[1]
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			volume := r.(*volumeClient)
 			if volume.capacity, err = strconv.ParseUint(capacityStr, 10, 64); err != nil {
@@ -945,9 +929,7 @@ func newVolSetForbiddenCmd(client *master.MasterClient) *cobra.Command {
 			settingStr := args[1]
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			forbidden, err := strconv.ParseBool(settingStr)
 			if err != nil {

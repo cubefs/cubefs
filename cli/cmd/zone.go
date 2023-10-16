@@ -56,9 +56,7 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 			var zones []*proto.ZoneView
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if zones, err = client.AdminAPI().ListZones(); err != nil {
 				return
@@ -86,9 +84,7 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				zoneView *proto.ZoneView
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			zoneName = args[0]
 			if topo, err = client.AdminAPI().Topo(); err != nil {
@@ -129,9 +125,7 @@ func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			zoneName := args[0]
 			if err = client.AdminAPI().UpdateZone(zoneName, enable, dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector); err != nil {

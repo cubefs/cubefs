@@ -54,9 +54,7 @@ func newUidAddCmd(client *master.MasterClient) *cobra.Command {
 			}
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var uidInfo *proto.UidSpaceRsp
 			if uidInfo, err = client.UserAPI().UidOperation(args[0], args[1], util.UidAddLimit, args[2]); err != nil || !uidInfo.OK {
@@ -91,9 +89,7 @@ func newUidListCmd(client *master.MasterClient) *cobra.Command {
 			volumeName := args[0]
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var uidInfo *proto.UidSpaceRsp
 			if uidInfo, err = client.UserAPI().UidOperation(volumeName, "", util.UidLimitList, ""); err != nil || !uidInfo.OK {
@@ -127,9 +123,7 @@ func newUidDelCmd(client *master.MasterClient) *cobra.Command {
 
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var uidInfo *proto.UidSpaceRsp
 			if uidInfo, err = client.UserAPI().UidOperation(args[0], args[1], util.UidDel, ""); err != nil || !uidInfo.OK {
@@ -156,9 +150,7 @@ func newUidCheckCmd(client *master.MasterClient) *cobra.Command {
 
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var uidInfo *proto.UidSpaceRsp
 			if uidInfo, err = client.UserAPI().UidOperation(args[0], args[1], util.UidGetLimit, ""); err != nil || !uidInfo.OK {

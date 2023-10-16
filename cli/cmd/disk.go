@@ -40,9 +40,7 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 				err   error
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if infos, err = client.AdminAPI().QueryBadDisks(); err != nil {
 				return

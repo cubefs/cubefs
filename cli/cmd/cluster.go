@@ -69,18 +69,18 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cp *proto.ClusterIP
 			var clusterPara map[string]string
 			if cv, err = client.AdminAPI().GetCluster(); err != nil {
-				errout("Error: %v\n", err)
+				errout(err)
 			}
 			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
-				errout("Error: %v\n", err)
+				errout(err)
 			}
 			if cp, err = client.AdminAPI().GetClusterIP(); err != nil {
-				errout("Error: %v\n", err)
+				errout(err)
 			}
 			stdout("[Cluster]\n")
 			stdout("%v", formatClusterView(cv, cn, cp))
 			if clusterPara, err = client.AdminAPI().GetClusterParas(); err != nil {
-				errout("Error: %v\n", err)
+				errout(err)
 			}
 
 			stdout(fmt.Sprintf("  BatchCount         : %v\n", clusterPara[nodeDeleteBatchCountKey]))
@@ -105,7 +105,7 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 			)
 			defer func() {
 				if err != nil {
-					errout("Error: %v\n", err)
+					errout(err)
 				}
 			}()
 			if cs, err = client.AdminAPI().GetClusterStat(); err != nil {
@@ -139,9 +139,7 @@ If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 				enable bool
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if enable, err = strconv.ParseBool(args[0]); err != nil {
 				err = fmt.Errorf("Parse bool fail: %v\n", err)
@@ -175,9 +173,7 @@ If the memory usage reaches this threshold, all the meta partition will be readO
 				threshold float64
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if threshold, err = strconv.ParseFloat(args[0], 64); err != nil {
 				err = fmt.Errorf("Parse Float fail: %v\n", err)
@@ -210,9 +206,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
@@ -254,9 +248,7 @@ If 'forbid=true', MetaPartition decommission/migrate and MetaNode decommission i
 				forbid bool
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if forbid, err = strconv.ParseBool(args[0]); err != nil {
 				err = fmt.Errorf("Parse bool fail: %v\n", err)

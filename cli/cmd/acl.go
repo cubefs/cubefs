@@ -51,9 +51,7 @@ func newAclAddCmd(client *master.MasterClient) *cobra.Command {
 			}
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var aclInfo *proto.AclRsp
 			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclAddIP); err != nil || !aclInfo.OK {
@@ -80,9 +78,7 @@ func newAclListCmd(client *master.MasterClient) *cobra.Command {
 			volumeName := args[0]
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var aclInfo *proto.AclRsp
 			if aclInfo, err = client.UserAPI().AclOperation(volumeName, "", util.AclListIP); err != nil || !aclInfo.OK {
@@ -113,9 +109,7 @@ func newAclDelCmd(client *master.MasterClient) *cobra.Command {
 
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var aclInfo *proto.AclRsp
 			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclDelIP); err != nil || !aclInfo.OK {
@@ -142,9 +136,7 @@ func newAclCheckCmd(client *master.MasterClient) *cobra.Command {
 
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			var aclInfo *proto.AclRsp
 			if aclInfo, err = client.UserAPI().AclOperation(args[0], args[1], util.AclCheckIP); err != nil || !aclInfo.OK {

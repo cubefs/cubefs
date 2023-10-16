@@ -56,7 +56,7 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 						suggestionsString += fmt.Sprintf("\t%v\n", s)
 					}
 				}
-				errout("cfs-cli: unknown command %q\n%s", args[0], suggestionsString)
+				errout(fmt.Errorf("cfs-cli: unknown command %q\n%s", args[0], suggestionsString))
 			},
 		},
 	}
@@ -91,13 +91,25 @@ func stdout(format string, a ...interface{}) {
 	_, _ = fmt.Fprintf(os.Stdout, format, a...)
 }
 
-func errout(format string, a ...interface{}) {
-	log.LogErrorf(format, a...)
-	_, _ = fmt.Fprintf(os.Stderr, format, a...)
-	OsExitWithLogFlush()
+func stdoutln(a ...interface{}) {
+	fmt.Fprintln(os.Stdout, a...)
 }
 
-func OsExitWithLogFlush() {
+func stdoutf(format string, a ...interface{}) {
+	fmt.Fprintf(os.Stdout, format, a...)
+}
+
+func stdoutlnf(format string, a ...interface{}) {
+	stdoutf(format, a...)
+	fmt.Fprint(os.Stdout)
+}
+
+func errout(err error) {
+	if err == nil {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Error:", err)
+	log.LogError("Error:", err)
 	log.LogFlush()
 	os.Exit(1)
 }

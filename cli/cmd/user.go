@@ -69,9 +69,7 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 			secretKey := optSecretKey
 			userType := proto.UserTypeFromString(optUserType)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if !userType.Valid() {
 				err = fmt.Errorf("Invalid user type. ")
@@ -158,9 +156,7 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 			secretKey := optSecretKey
 			var userType proto.UserType
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if optUserType != "" {
 				userType = proto.UserTypeFromString(optUserType)
@@ -240,9 +236,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			userID := args[0]
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if !optYes {
 				stdout("Delete user [%v] (yes/no)[no]:", userID)
@@ -288,9 +282,7 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			userID := args[0]
 			var userInfo *proto.UserInfo
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				err = fmt.Errorf("Get user info failed: %v\n", err)
@@ -327,9 +319,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			volume := args[1]
 			var perm proto.Permission
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 
 			perm = proto.BuiltinPermissionPrefix
@@ -405,9 +395,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			var users []*proto.UserInfo
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {
 				return

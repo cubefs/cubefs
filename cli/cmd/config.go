@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"math"
 	"os"
@@ -77,13 +76,11 @@ func newConfigSetCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			tmp, _ := strconv.Atoi(optTimeout)
 			if tmp > math.MaxUint16 {
-				stdout("Please reset timeout. Input less than math.MaxUint16\n")
+				stdoutln("Please reset timeout. Input less than math.MaxUint16")
 				return
 			}
 			timeOut := uint16(tmp)
@@ -117,10 +114,7 @@ func newConfigInfoCmd() *cobra.Command {
 		Short: cmdConfigInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := LoadConfig()
-			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				OsExitWithLogFlush()
-			}
+			errout(err)
 			printConfigInfo(config)
 		},
 	}
