@@ -1054,8 +1054,11 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		needLoadUniqStuff = true
 		loadFuncs = append(loadFuncs, mp.loadUniqChecker)
 	}
+
 	if crc_count == CRC_COUNT_MULTI_VER {
-		loadFuncs = append(loadFuncs, mp.loadMultiVer)
+		if err = mp.loadMultiVer(snapshotPath, crcs[CRC_COUNT_MULTI_VER-1]); err != nil {
+			return
+		}
 	} else {
 		mp.storeMultiVersion(snapshotPath, &storeMsg{multiVerList: mp.multiVersionList.VerList})
 	}
