@@ -450,3 +450,8 @@ type TinyExtentDeleteRecord struct {
 	Size         uint32
 	CRC          uint32
 }
+
+type GcLockExtents struct {
+	IsCreate bool
+	Eks      []*ExtentKey
+}
