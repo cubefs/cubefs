@@ -54,9 +54,7 @@ func newNodeSetListCmd(client *master.MasterClient) *cobra.Command {
 			var nodeSetStats []*proto.NodeSetStat
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if nodeSetStats, err = client.AdminAPI().ListNodeSets(zoneName); err != nil {
 				return
@@ -83,9 +81,7 @@ func newNodeSetInfoCmd(client *master.MasterClient) *cobra.Command {
 			var nodeSetStatInfo *proto.NodeSetStatInfo
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 
 			nodeSetId := args[0]
@@ -109,9 +105,7 @@ func newNodeSetUpdateCmd(client *master.MasterClient) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 
 			nodeSetId := args[0]

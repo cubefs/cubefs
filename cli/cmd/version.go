@@ -46,9 +46,7 @@ func newVersionCreateCmd(client *master.MasterClient) *cobra.Command {
 			volumeName := args[0]
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if _, err = client.AdminAPI().CreateVersion(volumeName); err != nil {
 				return
@@ -87,9 +85,7 @@ func newVersionListCmd(client *master.MasterClient) *cobra.Command {
 				err        error
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if verList, err = client.AdminAPI().GetVerList(volumeName); err != nil {
 				return
@@ -121,9 +117,7 @@ func newVersionDelCmd(client *master.MasterClient) *cobra.Command {
 
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if err = client.AdminAPI().DeleteVersion(args[0], args[1]); err != nil {
 				return
@@ -148,9 +142,7 @@ func newVersionStrategyCmd(client *master.MasterClient) *cobra.Command {
 
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if err = client.AdminAPI().SetStrategy(args[0], args[1], args[2], args[3], args[4]); err != nil {
 				return

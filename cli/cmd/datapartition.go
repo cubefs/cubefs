@@ -66,9 +66,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 				partition   *proto.DataPartitionInfo
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
 				return
@@ -76,7 +74,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			if partition, err = client.AdminAPI().GetDataPartition("", partitionID); err != nil {
 				return
 			}
-			stdout("%v", formatDataPartitionInfo(partition))
+			stdoutf("%v", formatDataPartitionInfo(partition))
 		},
 	}
 	return cmd
@@ -102,15 +100,13 @@ The "reset" command will be released in next version`,
 				err       error
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(ignoreDiscardDp); err != nil {
 				return
 			}
-			stdout("[Inactive Data nodes]:\n")
-			stdout("%v\n", formatDataNodeDetailTableHeader())
+			stdoutln("[Inactive Data nodes]:")
+			stdoutlnf("%v", formatDataNodeDetailTableHeader())
 			for _, addr := range diagnosis.InactiveDataNodes {
 				var node *proto.DataNodeInfo
 				if node, err = client.NodeAPI().GetDataNode(addr); err != nil {
@@ -122,11 +118,11 @@ The "reset" command will be released in next version`,
 				return dataNodes[i].ID < dataNodes[j].ID
 			})
 			for _, node := range dataNodes {
-				stdout("%v\n", formatDataNodeDetail(node, true))
+				stdoutln(formatDataNodeDetail(node, true))
 			}
-			stdout("\n")
-			stdout("[Corrupt data partitions](no leader):\n")
-			stdout("%v\n", partitionInfoTableHeader)
+			stdoutln()
+			stdoutln("[Corrupt data partitions](no leader):")
+			stdoutln(partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.CorruptDataPartitionIDs, func(i, j int) bool {
 				return diagnosis.CorruptDataPartitionIDs[i] < diagnosis.CorruptDataPartitionIDs[j]
 			})
@@ -136,12 +132,12 @@ The "reset" command will be released in next version`,
 					err = fmt.Errorf("Partition not found, err:[%v] ", err)
 					return
 				}
-				stdout("%v\n", formatDataPartitionInfoRow(partition))
+				stdoutln(formatDataPartitionInfoRow(partition))
 			}
 
-			stdout("\n")
-			stdout("%v\n", "[Partition lack replicas]:")
-			stdout("%v\n", partitionInfoTableHeader)
+			stdoutln()
+			stdoutln("[Partition lack replicas]:")
+			stdoutln(partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
 			})
@@ -152,27 +148,27 @@ The "reset" command will be released in next version`,
 					return
 				}
 				if partition != nil {
-					stdout("%v\n", formatDataPartitionInfoRow(partition))
+					stdoutln(formatDataPartitionInfoRow(partition))
 				}
 			}
 
-			stdout("\n")
-			stdout("%v\n", "[Bad data partitions(decommission not completed)]:")
-			badPartitionTablePattern := "%-8v    %-10v    %-10v\n"
-			stdout(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR PROGRESS")
+			stdoutln()
+			stdoutln("[Bad data partitions(decommission not completed)]:")
+			badPartitionTablePattern := "%-8v    %-10v    %-10v"
+			stdoutlnf(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR PROGRESS")
 			for _, bdpv := range diagnosis.BadDataPartitionInfos {
 				sort.SliceStable(bdpv.PartitionInfos, func(i, j int) bool {
 					return bdpv.PartitionInfos[i].PartitionID < bdpv.PartitionInfos[j].PartitionID
 				})
 				for _, pinfo := range bdpv.PartitionInfos {
 					percent := strconv.FormatFloat(pinfo.DecommissionRepairProgress*100, 'f', 2, 64) + "%"
-					stdout(badPartitionTablePattern, bdpv.Path, pinfo.PartitionID, percent)
+					stdoutlnf(badPartitionTablePattern, bdpv.Path, pinfo.PartitionID, percent)
 				}
 			}
 
-			stdout("\n")
-			stdout("%v\n", "[Partition has unavailable replica]:")
-			stdout("%v\n", badReplicaPartitionInfoTableHeader)
+			stdoutln()
+			stdoutln("[Partition has unavailable replica]:")
+			stdoutln(badReplicaPartitionInfoTableHeader)
 			sort.SliceStable(diagnosis.BadReplicaDataPartitionIDs, func(i, j int) bool {
 				return diagnosis.BadReplicaDataPartitionIDs[i] < diagnosis.BadReplicaDataPartitionIDs[j]
 			})
@@ -184,14 +180,14 @@ The "reset" command will be released in next version`,
 					return
 				}
 				if partition != nil {
-					stdout("%v\n", formatBadReplicaDpInfoRow(partition))
+					stdoutln(formatBadReplicaDpInfoRow(partition))
 				}
 			}
 
 			if diff {
-				stdout("\n")
-				stdout("%v\n", "[Partition with replica file count differ significantly]:")
-				stdout("%v\n", RepFileCountDifferInfoTableHeader)
+				stdoutln()
+				stdoutln("[Partition with replica file count differ significantly]:")
+				stdoutln(RepFileCountDifferInfoTableHeader)
 				sort.SliceStable(diagnosis.RepFileCountDifferDpIDs, func(i, j int) bool {
 					return diagnosis.RepFileCountDifferDpIDs[i] < diagnosis.RepFileCountDifferDpIDs[j]
 				})
@@ -202,13 +198,13 @@ The "reset" command will be released in next version`,
 						return
 					}
 					if partition != nil {
-						stdout("%v\n", formatReplicaFileCountDiffDpInfoRow(partition))
+						stdoutln(formatReplicaFileCountDiffDpInfoRow(partition))
 					}
 				}
 
-				stdout("\n")
-				stdout("%v\n", "[Partition with replica used size differ significantly]:")
-				stdout("%v\n", RepUsedSizeDifferInfoTableHeader)
+				stdoutln()
+				stdoutln("[Partition with replica used size differ significantly]:")
+				stdoutln(RepUsedSizeDifferInfoTableHeader)
 				sort.SliceStable(diagnosis.RepUsedSizeDifferDpIDs, func(i, j int) bool {
 					return diagnosis.RepUsedSizeDifferDpIDs[i] < diagnosis.RepUsedSizeDifferDpIDs[j]
 				})
@@ -219,22 +215,22 @@ The "reset" command will be released in next version`,
 						return
 					}
 					if partition != nil {
-						stdout("%v\n", formatReplicaSizeDiffDpInfoRow(partition))
+						stdoutln(formatReplicaSizeDiffDpInfoRow(partition))
 					}
 				}
 			} else {
-				stdout("\n")
-				stdout("%v %v\n", "[Number of Partition with replica file count differ significantly]:",
+				stdoutln()
+				stdoutlnf("%v %v", "[Number of Partition with replica file count differ significantly]:",
 					len(diagnosis.RepUsedSizeDifferDpIDs))
 
-				stdout("\n")
-				stdout("%v %v\n", "[Number of Partition with replica used size differ significantly]:",
+				stdoutln()
+				stdoutlnf("%v %v", "[Number of Partition with replica used size differ significantly]:",
 					len(diagnosis.RepUsedSizeDifferDpIDs))
 			}
 
-			stdout("\n")
-			stdout("%v\n", "[Partition with excessive replicas]:")
-			stdout("%v\n", partitionInfoTableHeader)
+			stdoutln()
+			stdoutln("[Partition with excessive replicas]:")
+			stdoutln(partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.ExcessReplicaDpIDs, func(i, j int) bool {
 				return diagnosis.ExcessReplicaDpIDs[i] < diagnosis.ExcessReplicaDpIDs[j]
 			})
@@ -245,7 +241,7 @@ The "reset" command will be released in next version`,
 					return
 				}
 				if partition != nil {
-					stdout("%v\n", formatDataPartitionInfoRow(partition))
+					stdoutln(formatDataPartitionInfoRow(partition))
 				}
 			}
 		},
@@ -269,9 +265,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 				partitionID uint64
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
@@ -281,7 +275,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address, raftForceDel, clientIDKey); err != nil {
 				return
 			}
-			stdout("Decommission data partition successfully\n")
+			stdoutln("Decommission data partition successfully")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -307,9 +301,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 				partitionID uint64
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			address := args[0]
 			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
@@ -318,7 +310,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().AddDataReplica(partitionID, address, clientIDKey); err != nil {
 				return
 			}
-			stdout("Add replication successfully\n")
+			stdoutln("Add replication successfully")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -343,9 +335,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 				partitionID uint64
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			address := args[0]
 			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
@@ -354,7 +344,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			if err = client.AdminAPI().DeleteDataReplica(partitionID, address, clientIDKey); err != nil {
 				return
 			}
-			stdout("Delete replication successfully\n")
+			stdoutln("Delete replication successfully")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -378,23 +368,21 @@ func newDataPartitionGetDiscardCmd(client *master.MasterClient) *cobra.Command {
 			)
 
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 
 			if infos, err = client.AdminAPI().GetDiscardDataPartition(); err != nil {
 				return
 			}
 
-			stdout("\n")
-			stdout("%v\n", "[Discard Partitions]:")
-			stdout("%v\n", partitionInfoTableHeader)
+			stdoutln()
+			stdoutln("[Discard Partitions]:")
+			stdoutln(partitionInfoTableHeader)
 			sort.SliceStable(infos.DiscardDps, func(i, j int) bool {
 				return infos.DiscardDps[i].PartitionID < infos.DiscardDps[j].PartitionID
 			})
 			for _, partition := range infos.DiscardDps {
-				stdout("%v\n", formatDataPartitionInfoRow(&partition))
+				stdoutln(formatDataPartitionInfoRow(&partition))
 			}
 		},
 	}

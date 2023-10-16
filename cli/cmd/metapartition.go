@@ -64,9 +64,7 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 				partition   *proto.MetaPartitionInfo
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if partitionID, err = strconv.ParseUint(args[0], 10, 64); err != nil {
 				return
@@ -97,9 +95,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 				err       error
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			if diagnosis, err = client.AdminAPI().DiagnoseMetaPartition(); err != nil {
 				return
@@ -270,9 +266,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 				partitionID uint64
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
@@ -304,9 +298,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 				partitionID uint64
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
@@ -338,9 +330,7 @@ func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 				partitionID uint64
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v\n", err)
-				}
+				errout(err)
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
