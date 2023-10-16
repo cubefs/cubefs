@@ -106,7 +106,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("create quota failed, fullPath %v has more than 5 path.\n", fullPaths)
 				return
 			}
-			quotaPathInofs := make([]proto.QuotaPathInfo, 0, 0)
+			quotaPathInofs := make([]proto.QuotaPathInfo, 0)
 			for _, path := range fullPaths {
 				var quotaPathInfo proto.QuotaPathInfo
 				quotaPathInfo.FullPath = path
@@ -338,6 +338,10 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 			var totalNums uint64
 			var quotaIdNum uint32
 			tmp, err := strconv.ParseUint(quotaId, 10, 32)
+			if err != nil {
+				stdout("quotaId %v is illegal", quotaId)
+				return
+			}
 			quotaIdNum = uint32(tmp)
 			for _, pathInfo := range quotaInfo.PathInfos {
 				inodeNums, err := metaWrapper.ApplyQuota_ll(pathInfo.RootInode, quotaIdNum, maxConcurrencyInode)
@@ -380,6 +384,10 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 			}
 			var quotaIdNum uint32
 			tmp, err := strconv.ParseUint(quotaId, 10, 32)
+			if err != nil {
+				stdout("quotaId %v is illegal", quotaId)
+				return
+			}
 			quotaIdNum = uint32(tmp)
 			if forceInode == 0 {
 				if quotaInfo, err = client.AdminAPI().GetQuota(volName, quotaId); err != nil {

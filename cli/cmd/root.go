@@ -63,6 +63,10 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 
 	cmd.CFSCmd.Flags().BoolVarP(&optShowVersion, "version", "v", false, "Show version information")
 
+	// TODO: delete compatibility cmd at 49e62e794d7c1000c9fb09bd75565112ecd5c5e1.
+	// add back into Commands later ?
+	_ = newCompatibilityCmd()
+
 	cmd.CFSCmd.AddCommand(
 		cmd.newClusterCmd(client),
 		newVolCmd(client),

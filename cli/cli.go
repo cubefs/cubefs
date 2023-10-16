@@ -25,16 +25,9 @@ import (
 )
 
 //TODO: remove this later.
-//go:generate go vet ./...
 //go:generate gofumpt -l -w .
 //go:generate git diff --exit-code
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
-
-var (
-	CommitID   string
-	BranchName string
-	BuildTime  string
-)
 
 func runCLI() (err error) {
 	var cfg *cmd.Config
@@ -89,10 +82,15 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 func main() {
 	var err error
 	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		log.LogFlush()
+		os.Exit(1)
+	}
 	defer log.LogFlush()
 	if err = runCLI(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		log.LogFlush()
-		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }

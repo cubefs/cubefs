@@ -83,7 +83,7 @@ func newConfigSetCmd() *cobra.Command {
 			}()
 			tmp, _ := strconv.Atoi(optTimeout)
 			if tmp > math.MaxUint16 {
-				stdout(fmt.Sprintf("Please reset timeout. Input less than math.MaxUint16\n"))
+				stdout("Please reset timeout. Input less than math.MaxUint16\n")
 				return
 			}
 			timeOut := uint16(tmp)

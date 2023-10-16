@@ -56,7 +56,6 @@ const (
 	nodeAutoRepairRateKey         = "autoRepairRate"
 	nodeMaxDpCntLimit             = "maxDpCntLimit"
 	cmdForbidMpDecommission       = "forbid meta partition decommission"
-	cmdClusterUpdateSelector      = "update cluster node selector and nodeset selector"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {

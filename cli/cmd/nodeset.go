@@ -67,12 +67,10 @@ func newNodeSetListCmd(client *master.MasterClient) *cobra.Command {
 			for _, nodeSet := range nodeSetStats {
 				stdout(zoneDataPattern, nodeSet.ID, nodeSet.Capacity, nodeSet.Zone, nodeSet.MetaNodeNum, nodeSet.DataNodeNum)
 			}
-			return
 		},
 	}
 
 	cmd.Flags().StringVar(&zoneName, CliFlagZoneName, "", "List nodeSets in the specified zone")
-
 	return cmd
 }
 
@@ -96,7 +94,6 @@ func newNodeSetInfoCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("%v", formatNodeSetView(nodeSetStatInfo))
-			return
 		},
 	}
 	return cmd
@@ -122,7 +119,6 @@ func newNodeSetUpdateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("success to update nodeset %v\n", nodeSetId)
-			return
 		},
 	}
 	cmd.Flags().StringVar(&dataNodeSelector, "dataNodeSelector", "", "Set the node select policy(datanode) for specify nodeset")
