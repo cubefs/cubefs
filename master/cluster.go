@@ -3273,7 +3273,7 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
 	adjustStart = adjustStart + metaPartitionInodeIdStep
 	log.LogWarnf("vol[%v],maxMp[%v],start[%v],adjustStart[%v]", volName, maxPartitionID, start, adjustStart)
-	if err = vol.splitMetaPartition(c, partition, adjustStart, metaPartitionInodeIdStep); err != nil {
+	if err = vol.splitMetaPartition(c, partition, adjustStart, metaPartitionInodeIdStep, false); err != nil {
 		log.LogErrorf("action[updateInodeIDRange]  mp[%v] err[%v]", partition.PartitionID, err)
 	}
 	return
