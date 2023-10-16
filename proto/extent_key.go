@@ -457,6 +457,11 @@ type TinyExtentDeleteRecord struct {
 	CRC          uint32
 }
 
+type GcLockExtents struct {
+	IsCreate bool
+	Eks      []*ExtentKey
+}
+
 type DelExtentParam struct {
 	*ExtentKey
 	IsSnapshotDeletion bool

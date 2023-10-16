@@ -25,6 +25,7 @@ var (
 	DensFile   string
 	MetaPort   string
 	InodeID    uint64
+	DataPort   string
 )
 
 var (
@@ -34,6 +35,8 @@ var (
 	obsoleteInodeDumpFileName  string = "inode.dump.obsolete"
 	obsoleteDentryDumpFileName string = "dentry.dump.obsolete"
 	pathDumpFileName           string = "path.dump"
+	tinyDir                    string = "tiny"
+	normalDir                  string = "normal"
 )
 
 type Inode struct {
