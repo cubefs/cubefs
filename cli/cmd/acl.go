@@ -15,7 +15,7 @@ const (
 	cmdAclListShort  = "list volume ip list"
 	cmdAclCheckShort = "check volume ip"
 
-	//acl op
+	// acl op
 	CliAclAdd       = "add"
 	cliAclListShort = "list"
 	CliAclDel       = "del"
@@ -23,7 +23,7 @@ const (
 )
 
 func newAclCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdAclUse,
 		Short:   cmdAclShort,
 		Args:    cobra.MinimumNArgs(0),
@@ -40,7 +40,7 @@ func newAclCmd(client *master.MasterClient) *cobra.Command {
 
 func newAclAddCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliAclAdd,
 		Short:   cmdAclAddShort,
 		Aliases: []string{"add"},
@@ -68,7 +68,7 @@ func newAclAddCmd(client *master.MasterClient) *cobra.Command {
 
 func newAclListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cliAclListShort,
 		Short:   cmdAclListShort,
 		Aliases: []string{"list"},
@@ -77,7 +77,7 @@ func newAclListCmd(client *master.MasterClient) *cobra.Command {
 				stdout("need volume name\n")
 				return
 			}
-			var volumeName = args[0]
+			volumeName := args[0]
 			var err error
 			defer func() {
 				if err != nil {
@@ -101,7 +101,7 @@ func newAclListCmd(client *master.MasterClient) *cobra.Command {
 
 func newAclDelCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliAclDel,
 		Short:   cmdAclDelShort,
 		Aliases: []string{"del"},
@@ -130,7 +130,7 @@ func newAclDelCmd(client *master.MasterClient) *cobra.Command {
 
 func newAclCheckCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliAclCheck,
 		Short:   cmdAclCheckShort,
 		Aliases: []string{"check"},

@@ -16,11 +16,12 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
-	"sort"
-	"strconv"
 )
 
 const (
@@ -29,7 +30,7 @@ const (
 )
 
 func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdDataPartitionUse,
 		Short: cmdDataPartitionShort,
 	}
@@ -54,7 +55,7 @@ const (
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpInfo + " [DATA PARTITION ID]",
 		Short: cmdDataPartitionGetShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -85,7 +86,7 @@ func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command 
 	var ignoreDiscardDp bool
 	var diff bool
 
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptDataPartitionShort,
 		Long: `If the data nodes are marked as "Inactive", it means the nodes has been not available for a time. It is suggested to 
@@ -260,7 +261,7 @@ The "reset" command will be released in next version`,
 func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var raftForceDel bool
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -298,7 +299,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 
 func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpReplicate + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionReplicateShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -334,7 +335,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpDelReplica + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDeleteReplicaShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -369,7 +370,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 }
 
 func newDataPartitionGetDiscardCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpGetDiscard,
 		Short: cmdDataPartitionGetDiscardShort,
 		Run: func(cmd *cobra.Command, args []string) {

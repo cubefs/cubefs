@@ -15,7 +15,7 @@
 package cmd
 
 const (
-	//List of operation name for cli
+	// List of operation name for cli
 	CliOpGet                  = "get"
 	CliOpList                 = "list"
 	CliOpStatus               = "stat"
@@ -41,10 +41,10 @@ const (
 	CliOpGetDiscard           = "get-discard"
 	CliOpForbidMpDecommission = "forbid-mp-decommission"
 
-	//Shorthand format of operation name
+	// Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"
 
-	//resource name
+	// resource name
 	CliResourceDataNode      = "datanode [COMMAND]"
 	CliResourceMetaNode      = "metanode"
 	CliResourceDataPartition = "datapartition"
@@ -54,7 +54,7 @@ const (
 	CliResourceDisk          = "disk"
 	CliResourceConfig        = "config"
 
-	//Flags
+	// Flags
 	CliFlagName                = "name"
 	CliFlagOnwer               = "user"
 	CliFlagDataPartitionSize   = "dp-size"
@@ -117,17 +117,17 @@ const (
 	CliFlagDeleteLockTime      = "delete-lock-time"
 	CliFlagClientIDKey         = "clientIDKey"
 
-	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
+	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
-	//Shorthand format of resource name
+	// Shorthand format of resource name
 	ResourceDataNodeShortHand      = "dn"
 	ResourceMetaNodeShortHand      = "mn"
 	ResourceDataPartitionShortHand = "dp"
 	ResourceMetaPartitionShortHand = "mp"
 
-	//Usages
+	// Usages
 	CliUsageClientIDKey = "needed if cluster authentication is on"
-	//version op
+	// version op
 	CliFlagVersionCreate      = "verCreate"
 	CliFlagVersionList        = "verList"
 	CliFlagVersionDel         = "verDel"

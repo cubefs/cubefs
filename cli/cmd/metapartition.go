@@ -16,11 +16,12 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
-	"sort"
-	"strconv"
 )
 
 const (
@@ -29,7 +30,7 @@ const (
 )
 
 func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdMetaPartitionUse,
 		Short: cmdMetaPartitionShort,
 	}
@@ -52,7 +53,7 @@ const (
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpInfo + " [META PARTITION ID]",
 		Short: cmdMetaPartitionGetShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -80,7 +81,7 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newListCorruptMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptMetaPartitionShort,
 		Long: `If the meta nodes are marked as "Inactive", it means the nodes has been not available for a long time. It is suggested to eliminate
@@ -261,7 +262,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionDecommissionShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -295,7 +296,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 
 func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpReplicate + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionReplicateShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -329,7 +330,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 
 func newMetaPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpDelReplica + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionDeleteReplicaShort,
 		Args:  cobra.MinimumNArgs(2),

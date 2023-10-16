@@ -54,7 +54,7 @@ const (
 )
 
 func newQuotaCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdQuotaUse,
 		Short:   cmdQuotaShort,
 		Args:    cobra.MinimumNArgs(0),
@@ -78,7 +78,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 	var maxFiles uint64
 	var maxBytes uint64
 
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdQuotaCreateUse,
 		Short: cmdQuotaCreateShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -87,7 +87,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 			volName := args[0]
 			fullPath := args[1]
 
-			var metaConfig = &meta.MetaConfig{
+			metaConfig := &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
 			}
@@ -156,7 +156,7 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdQuotaListUse,
 		Short: cmdQuotaListShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -182,7 +182,7 @@ func newQuotaListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newQuotaListAllCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdQuotaListAllUse,
 		Short: cmdQuotaListAllShort,
 		Args:  cobra.MinimumNArgs(0),
@@ -208,7 +208,7 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var maxFiles uint64
 	var maxBytes uint64
 
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdQuotaUpdateUse,
 		Short: cmdQuotaUpdateShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -242,7 +242,7 @@ func newQuotaUpdateCmd(client *master.MasterClient) *cobra.Command {
 
 func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 	var optYes bool
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdQuotaDeleteUse,
 		Short: cmdQUotaDeleteShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -273,7 +273,7 @@ func newQuotaDelete(client *master.MasterClient) *cobra.Command {
 }
 
 func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdQuotaGetInodeUse,
 		Short: cmdQuotaGetInodeShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -285,7 +285,7 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			var metaConfig = &meta.MetaConfig{
+			metaConfig := &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
 			}
@@ -310,7 +310,7 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 
 func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 	var maxConcurrencyInode uint64
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdQuotaApplyUse,
 		Short: cmdQuotaApplyShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -325,7 +325,7 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			var metaConfig = &meta.MetaConfig{
+			metaConfig := &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
 			}
@@ -357,7 +357,7 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 	var maxConcurrencyInode uint64
 	var forceInode uint64
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdQuotaRevokeUse,
 		Short: cmdQuotaRevokeShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -368,7 +368,7 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 			var quotaInfo *proto.QuotaInfo
 			var totalNums uint64
 
-			var metaConfig = &meta.MetaConfig{
+			metaConfig := &meta.MetaConfig{
 				Volume:  volName,
 				Masters: client.Nodes(),
 			}

@@ -29,7 +29,7 @@ const (
 )
 
 func (cmd *CubeFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Command {
-	var clusterCmd = &cobra.Command{
+	clusterCmd := &cobra.Command{
 		Use:   cmdClusterUse,
 		Short: cmdClusterShort,
 	}
@@ -60,7 +60,7 @@ const (
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpInfo,
 		Short: cmdClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -96,7 +96,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpStatus,
 		Short: cmdClusterStatShort,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -123,7 +123,7 @@ func newClusterStatCmd(client *master.MasterClient) *cobra.Command {
 
 func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:       CliOpFreeze + " [ENABLE]",
 		ValidArgs: []string{"true", "false"},
 		Short:     cmdClusterFreezeShort,
@@ -164,7 +164,7 @@ If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
 
 func newClusterSetThresholdCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpSetThreshold + " [THRESHOLD]",
 		Short: cmdClusterThresholdShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -205,13 +205,11 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	metaNodesetSelector := ""
 	dataNodeSelector := ""
 	metaNodeSelector := ""
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
 		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				err error
-			)
+			var err error
 			defer func() {
 				if err != nil {
 					errout("Error: %v\n", err)
@@ -242,7 +240,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newClusterDisableMpDecommissionCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:       CliOpForbidMpDecommission + " [true|false]",
 		ValidArgs: []string{"true", "false"},
 		Short:     cmdForbidMpDecommission,
