@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/raftstore/walreader/common"
 	"github.com/cubefs/cubefs/raftstore/walreader/decode/meta_dbback/metanode"
@@ -40,14 +41,18 @@ const (
 )
 
 const (
+	columnWidthFrom  = 15
+	columnWidthTime  = 20
 	columnWidthOp    = 24
 	columnWidthAttrs = 0
 )
 
 type MetadataOpKvData struct {
-	Op uint32 `json:"op"`
-	K  []byte `json:"k"`
-	V  []byte `json:"v"`
+	Op        uint32 `json:"op"`
+	K         string `json:"k"`
+	V         []byte `json:"v"`
+	From      string `json:"from"`
+	Timestamp int64  `json:"ts"`
 }
 
 type MetadataCommandDecoder struct {
@@ -80,9 +85,24 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 	}
 
 	var (
+		columnValFrom  = common.ColumnValue{Width: columnWidthFrom}
+		columnValTime  = common.ColumnValue{Width: columnWidthTime}
 		columnValOp    = common.ColumnValue{Width: columnWidthOp}
 		columnValAttrs = common.ColumnValue{Width: columnWidthAttrs}
 	)
+
+	if opKVData.From != "" {
+		columnValFrom.Value = opKVData.From
+	} else {
+		columnValFrom.Value = "N/A"
+	}
+	if opKVData.Timestamp > time.Now().Unix() {
+		columnValTime.Value = time.Unix(opKVData.Timestamp/(1e9), 0).Format("2006-01-02 15:04:05")
+	} else if opKVData.Timestamp > 0 {
+		columnValTime.Value = time.Unix(opKVData.Timestamp, 0).Format("2006-01-02 15:04:05")
+	} else {
+		columnValTime.Value = "N/A"
+	}
 
 	switch opKVData.Op {
 	case opFSMCreateInode:
@@ -119,7 +139,8 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 			return
 		}
 		columnValOp.SetValue("ExtentTruncate")
-		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, size: %v", ino.Inode, ino.Size))
+		newIno := binary.BigEndian.Uint64(ino.LinkTarget)
+		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, size: %v, maskino:%v", ino.Inode, ino.Size, newIno))
 	case opFSMCreateLinkInode:
 		ino := metanode.Inode{}
 		if err = ino.Unmarshal(opKVData.V); err != nil {
@@ -184,7 +205,7 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		columnValAttrs.SetValue("N/A")
 	}
 	values = common.NewColumnValues()
-	values.Add(columnValOp, columnValAttrs)
+	values.Add(columnValFrom, columnValTime, columnValOp, columnValAttrs)
 	return
 }
 
