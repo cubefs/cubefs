@@ -68,9 +68,10 @@ func newInspector(t *testing.T) *VolumeInspectMgr {
 	ctr := gomock.NewController(t)
 	clusterMgr := NewMockClusterMgrAPI(ctr)
 	taskSwitch := mocks.NewMockSwitcher(ctr)
-	shardRepairSender := NewMockMqProxyAPI(ctr)
+	deleteMgr := newBlobDeleteMgr(t)
+	repairMgr := newShardRepairMgr(t)
 	conf := &VolumeInspectMgrCfg{InspectIntervalS: defaultInspectIntervalS, TimeoutMs: 1}
-	return NewVolumeInspectMgr(clusterMgr, shardRepairSender, taskSwitch, conf)
+	return NewVolumeInspectMgr(clusterMgr, deleteMgr, repairMgr, taskSwitch, conf)
 }
 
 func TestInspectorRun(t *testing.T) {
@@ -216,8 +217,6 @@ func TestInspectorFinish(t *testing.T) {
 			task.ret = &proto.VolumeInspectRet{MissedShards: genMockFailShards(100012, []proto.BlobID{3, 4})}
 		}
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.repairShardSender.(*MockMqProxyAPI).EXPECT().SendShardRepairMsg(any, any, any, any).Return(errMock)
-		mgr.repairShardSender.(*MockMqProxyAPI).EXPECT().SendShardRepairMsg(any, any, any, any).AnyTimes().Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().SetVolumeInspectCheckPoint(any, any).Return(nil)
 
 		mgr.finish(ctx)

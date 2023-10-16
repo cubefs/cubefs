@@ -23,7 +23,6 @@ import (
 	"net/url"
 	"time"
 
-	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/config"
@@ -31,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
-	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -101,7 +99,6 @@ func NewService(conf *Config) (svr *Service, err error) {
 		leader:        conf.IsLeader(),
 		leaderHost:    conf.Leader(),
 		followerHosts: conf.Follower(),
-		kafkaMonitors: make([]*base.KafkaTopicMonitor, 0),
 	}
 
 	clusterMgrCli := client.NewClusterMgrClient(&conf.ClusterMgr)
@@ -119,14 +116,13 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
 
-	kafkaClient := base.NewKafkaConsumer(conf.Kafka.BrokerList)
-	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli, kafkaClient)
+	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli)
 	if err != nil {
 		log.Errorf("new shard repair mgr: cfg[%+v], err[%w]", conf.ShardRepair, err)
 		return nil, err
 	}
 
-	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, topologyMgr, switchMgr, blobnodeCli, kafkaClient)
+	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, topologyMgr, switchMgr, blobnodeCli)
 	if err != nil {
 		log.Errorf("new blob delete mgr: cfg[%+v], err[%w]", conf.BlobDelete, err)
 		return nil, err
@@ -143,16 +139,6 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 
 	if err = svr.RunTask(); err != nil {
-		return nil, err
-	}
-
-	if !svr.leader {
-		return
-	}
-
-	err = svr.NewKafkaMonitor(conf.ClusterID)
-	if err != nil {
-		log.Errorf("run kafka monitor failed: err[%w]", err)
 		return nil, err
 	}
 
@@ -184,12 +170,11 @@ func NewService(conf *Config) (svr *Service, err error) {
 
 	manualMigMgr := NewManualMigrateMgr(clusterMgrCli, volumeUpdater, taskLogger, &conf.ManualMigrate)
 
-	mqProxy := client.NewProxyClient(&conf.Proxy, cmapi.New(&conf.ClusterMgr), conf.ClusterID)
 	inspectorTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeVolumeInspect.String())
 	if err != nil {
 		return nil, err
 	}
-	inspectMgr := NewVolumeInspectMgr(clusterMgrCli, mqProxy, inspectorTaskSwitch, &conf.VolumeInspect)
+	inspectMgr := NewVolumeInspectMgr(clusterMgrCli, deleteMgr, shardRepairMgr, inspectorTaskSwitch, &conf.VolumeInspect)
 
 	svr.balanceMgr = balanceMgr
 	svr.diskDropMgr = diskDropMgr
@@ -265,36 +250,6 @@ func (svr *Service) RunTask() error {
 	return nil
 }
 
-func (svr *Service) NewKafkaMonitor(clusterID proto.ClusterID) error {
-	// blob delete
-	brokerList := conf.Kafka.BrokerList
-	if err := svr.newMonitor(proto.TaskTypeBlobDelete, clusterID, conf.BlobDelete.topics(), brokerList); err != nil {
-		return err
-	}
-
-	// shard repair
-	return svr.newMonitor(proto.TaskTypeShardRepair, clusterID, conf.ShardRepair.topics(), brokerList)
-}
-
-func (svr *Service) newMonitor(taskType proto.TaskType, clusterID proto.ClusterID, topics []string, brokerList []string) error {
-	for _, topic := range topics {
-		cfg := &base.KafkaConfig{BrokerList: brokerList, Topic: topic}
-		m, err := base.NewKafkaTopicMonitor(taskType, clusterID, cfg)
-		if err != nil {
-			log.Errorf("new kafka topic monitor topic failed: topic[%s], err[%+v]", topic, err)
-			return err
-		}
-		svr.kafkaMonitors = append(svr.kafkaMonitors, m)
-	}
-	return nil
-}
-
-func (svr *Service) CloseKafkaMonitors() {
-	for _, monitor := range svr.kafkaMonitors {
-		monitor.Close()
-	}
-}
-
 // LoadVolInfo load volume info
 func (svr *Service) LoadVolInfo() error {
 	return svr.clusterTopology.LoadVolumes()
@@ -345,7 +300,6 @@ func (svr *Service) Close() {
 	if !svr.leader {
 		return
 	}
-	svr.CloseKafkaMonitors()
 	svr.balanceMgr.Close()
 	svr.diskRepairMgr.Close()
 	svr.diskDropMgr.Close()

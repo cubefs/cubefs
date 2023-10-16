@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"sort"
 	"sync"
 	"time"
@@ -178,8 +179,8 @@ type VolumeInspectMgr struct {
 	taskSwitch    taskswitch.ISwitcher
 	clusterMgrCli client.ClusterMgrAPI
 
-	repairShardSender client.ProxyAPI
-	sendDeduplicator  *badShardDeduplicator
+	shardRepairMgr *ShardRepairMgr
+	blobDeleteMgr  *BlobDeleteMgr
 
 	completeTaskCounter counter.Counter
 	timeoutCounter      counter.Counter
@@ -190,18 +191,18 @@ type VolumeInspectMgr struct {
 // NewVolumeInspectMgr returns inspect task manager
 func NewVolumeInspectMgr(
 	clusterMgrCli client.ClusterMgrAPI,
-	repairShardSender client.ProxyAPI,
+	delMgr *BlobDeleteMgr, repairMgr *ShardRepairMgr,
 	taskSwitch taskswitch.ISwitcher, cfg *VolumeInspectMgrCfg) *VolumeInspectMgr {
 	return &VolumeInspectMgr{
-		Closer:            closer.New(),
-		tasks:             make(map[string]*inspectTaskInfo),
-		acquireEnable:     false,
-		firstPrepare:      true,
-		taskSwitch:        taskSwitch,
-		clusterMgrCli:     clusterMgrCli,
-		repairShardSender: repairShardSender,
-		sendDeduplicator:  newBadShardDeduplicator(defaultDuplicateCnt),
-		cfg:               cfg,
+		Closer:         closer.New(),
+		tasks:          make(map[string]*inspectTaskInfo),
+		acquireEnable:  false,
+		firstPrepare:   true,
+		taskSwitch:     taskSwitch,
+		clusterMgrCli:  clusterMgrCli,
+		blobDeleteMgr:  delMgr,
+		shardRepairMgr: repairMgr,
+		cfg:            cfg,
 	}
 }
 
@@ -545,8 +546,22 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 
 		for bid, bads := range bidsBads {
 			span.Infof("inspect missed: vid[%d], bid[%d], shards[%+v]", vid, bid, bads)
+			if mgr.canRecover(volInfo.CodeMode, bads) {
+				base.InsistOn(ctx, "send shard repair msg failed", func() error {
+					return mgr.shardRepairMgr.Repair(ctx, &proto.ShardRepairMsg{
+						Bid:    bid,
+						Vid:    vid,
+						BadIdx: bads,
+					})
+				})
+				continue
+			}
+			span.Errorf("inspect missed: vid[%d], bid[%d], shards[%+v], and can not be repaired", vid, bid, bads)
 			base.InsistOn(ctx, "send shard repair msg failed", func() error {
-				return mgr.trySendShardRepairMsg(ctx, vid, bid, bads)
+				return mgr.blobDeleteMgr.Delete(ctx, &proto.DeleteMsg{
+					Bid: bid,
+					Vid: vid,
+				})
 			})
 		}
 	}
@@ -566,6 +581,23 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 	if err != nil {
 		span.Warnf("save checkpoint failed: err[%+v]", err)
 	}
+}
+
+func (mgr *VolumeInspectMgr) canRecover(codeMode codemode.CodeMode, bads []uint8) bool {
+
+	tactic := codeMode.T()
+	globalStripe, _, _ := tactic.GlobalStripe()
+	badMap := make(map[int]struct{}, len(bads))
+	for _, idx := range bads {
+		badMap[int(idx)] = struct{}{}
+	}
+	count := 0
+	for _, idx := range globalStripe {
+		if _, ok := badMap[idx]; ok {
+			count++
+		}
+	}
+	return count <= tactic.M
 }
 
 func (mgr *VolumeInspectMgr) collectVolInspectBads(
@@ -607,23 +639,6 @@ func (mgr *VolumeInspectMgr) collectVolInspectBads(
 		bidsMissed[bid] = bads
 	}
 	return
-}
-
-func (mgr *VolumeInspectMgr) trySendShardRepairMsg(ctx context.Context, vid proto.Vid, bid proto.BlobID, badIdxs []uint8) error {
-	span := trace.SpanFromContextSafe(ctx)
-	if mgr.sendDeduplicator.reduplicate(vid, bid, badIdxs) {
-		span.Infof("volume has send shard repair msg: vid[%d], bid[%d], bad idxs[%+v]", vid, bid, badIdxs)
-		return nil
-	}
-
-	err := mgr.repairShardSender.SendShardRepairMsg(ctx, vid, bid, badIdxs)
-	if err != nil {
-		return err
-	}
-	span.Infof("send shard repair msg success: vid[%d], bid[%d], bad idxs[%+v]", vid, bid, badIdxs)
-
-	mgr.sendDeduplicator.add(vid, bid, badIdxs)
-	return nil
 }
 
 func (mgr *VolumeInspectMgr) allVolVisited() bool {

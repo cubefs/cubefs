@@ -16,18 +16,13 @@ package scheduler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
-
-	"github.com/Shopify/sarama"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
-	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -74,18 +69,6 @@ type ShardRepairConfig struct {
 	EnablePartial  bool             `json:"enable_partial"`
 }
 
-func (cfg *ShardRepairConfig) topics() []string {
-	return append(cfg.Kafka.TopicNormals, cfg.Kafka.TopicFailed)
-}
-
-func (cfg *ShardRepairConfig) failedProducerConfig() *kafka.ProducerCfg {
-	return &kafka.ProducerCfg{
-		BrokerList: cfg.Kafka.BrokerList,
-		Topic:      cfg.Kafka.TopicFailed,
-		TimeoutMs:  cfg.Kafka.FailMsgSenderTimeoutMs,
-	}
-}
-
 // OrphanShard orphan shard identification.
 type OrphanShard struct {
 	ClusterID proto.ClusterID `json:"cluster_id"`
@@ -99,11 +82,6 @@ type ShardRepairMgr struct {
 	taskPool        taskpool.TaskPool
 	taskSwitch      *taskswitch.TaskSwitch
 	clusterTopology IClusterTopology
-
-	kafkaConsumerClient base.KafkaConsumer
-	consumers           []base.GroupConsumer
-	failMsgSender       base.IProducer
-	punishTime          time.Duration
 
 	blobnodeCli      client.BlobnodeAPI
 	blobnodeSelector selector.Selector
@@ -127,7 +105,6 @@ func NewShardRepairMgr(
 	switchMgr *taskswitch.SwitchMgr,
 	blobnodeCli client.BlobnodeAPI,
 	clusterMgrCli client.ClusterMgrAPI,
-	kafkaClient base.KafkaConsumer,
 ) (*ShardRepairMgr, error) {
 	taskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeShardRepair.String())
 	if err != nil {
@@ -137,10 +114,6 @@ func NewShardRepairMgr(
 	workerSelector := selector.MakeSelector(60*1000, func() (hosts []string, err error) {
 		return clusterMgrCli.GetService(context.Background(), proto.ServiceNameBlobNode, cfg.ClusterID)
 	})
-	failMsgSender, err := base.NewMsgSender(cfg.failedProducerConfig())
-	if err != nil {
-		return nil, err
-	}
 
 	orphanShardsLog, err := recordlog.NewEncoder(&cfg.OrphanShardLog)
 	if err != nil {
@@ -153,10 +126,6 @@ func NewShardRepairMgr(
 		taskSwitch:       taskSwitch,
 		clusterTopology:  clusterTopology,
 		blobnodeSelector: workerSelector,
-
-		kafkaConsumerClient: kafkaClient,
-		failMsgSender:       failMsgSender,
-		punishTime:          time.Duration(cfg.MessagePunishTimeM) * time.Minute,
 
 		orphanShardLogger: orphanShardsLog,
 
@@ -177,67 +146,10 @@ func (mgr *ShardRepairMgr) Enabled() bool {
 }
 
 func (mgr *ShardRepairMgr) Run() {
-	go mgr.runTask()
 }
 
 func (mgr *ShardRepairMgr) Close() {
 	mgr.Closer.Close()
-	mgr.stopConsumer()
-}
-
-func (mgr *ShardRepairMgr) runTask() {
-	t := time.NewTicker(time.Second)
-	span := trace.SpanFromContextSafe(context.Background())
-	defer t.Stop()
-
-	for {
-		select {
-		case <-t.C:
-			if !mgr.Enabled() {
-				mgr.stopConsumer()
-				continue
-			}
-			if err := mgr.startConsumer(); err != nil {
-				span.Errorf("start consumer failed: err[%+v]", err)
-				mgr.stopConsumer()
-			}
-		case <-mgr.Done():
-			return
-		}
-	}
-}
-
-func (mgr *ShardRepairMgr) startConsumer() error {
-	if mgr.consumerRunning() {
-		return nil
-	}
-	for _, topic := range mgr.cfg.topics() {
-		consumer, err := mgr.kafkaConsumerClient.StartKafkaConsumer(base.KafkaConsumerCfg{
-			TaskType:     proto.TaskTypeShardRepair,
-			Topic:        topic,
-			MaxBatchSize: 1, // dont need batch, hard-coded
-			MaxWaitTimeS: 1,
-		}, mgr.Consume)
-		if err != nil {
-			return err
-		}
-		mgr.consumers = append(mgr.consumers, consumer)
-	}
-	return nil
-}
-
-func (mgr *ShardRepairMgr) stopConsumer() {
-	if !mgr.consumerRunning() {
-		return
-	}
-	for _, consumer := range mgr.consumers {
-		consumer.Stop()
-	}
-	mgr.consumers = nil
-}
-
-func (mgr *ShardRepairMgr) consumerRunning() bool {
-	return mgr.consumers != nil
 }
 
 type shardRepairRet struct {
@@ -257,40 +169,28 @@ func (mgr *ShardRepairMgr) GetErrorStats() (errStats []string, totalErrCnt uint6
 	return base.FormatPrint(statsResult), totalErrCnt
 }
 
-// Consume consume kafka messages: if message is not consume will return false, otherwise return true
-func (mgr *ShardRepairMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause base.ConsumerPause) bool {
-	_, ctx := trace.StartSpanFromContext(context.Background(), "ShardRepairConsume")
+func (mgr *ShardRepairMgr) Repair(ctx context.Context, repairMsg *proto.ShardRepairMsg) error {
+	var ret shardRepairRet
 
-	for _, msg := range msgs {
-		rslt := mgr.handleOneMsg(ctx, msg, consumerPause)
-		mgr.recordOneResult(ctx, rslt)
+	defer mgr.recordOneResult(ctx, ret)
 
-		if rslt.status == ShardRepairStatusUndo {
-			return false
-		}
+	jobKey := fmt.Sprintf("%d:%d:%s", repairMsg.Vid, repairMsg.Bid, repairMsg.BadIdx)
+	_, err, _ := mgr.group.Do(jobKey, func() (ret interface{}, e error) {
+		e = mgr.repairWithCheckVolConsistency(ctx, repairMsg)
+		return
+	})
+
+	if isOrphanShard(err) {
+		ret = shardRepairRet{status: ShardRepairStatusOrphan, err: err}
+		return err
 	}
-	return true
-}
 
-func (mgr *ShardRepairMgr) handleOneMsg(ctx context.Context, msg *sarama.ConsumerMessage, consumerPause base.ConsumerPause) (ret shardRepairRet) {
-	var repairMsg *proto.ShardRepairMsg
-	ret.status = ShardRepairStatusUnexpect
-	defer func() {
-		ret.repairMsg = repairMsg
-	}()
-
-	err := json.Unmarshal(msg.Value, &repairMsg)
 	if err != nil {
-		ret.err = err
-		return
+		ret = shardRepairRet{status: ShardRepairStatusFailed, err: err}
+		return err
 	}
-	if !repairMsg.IsValid() {
-		ret.err = proto.ErrInvalidMsg
-		return
-	}
-
-	_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "ShardRepairConsume", repairMsg.ReqId)
-	return mgr.consume(ctx, repairMsg, consumerPause)
+	ret = shardRepairRet{status: ShardRepairStatusDone}
+	return nil
 }
 
 func (mgr *ShardRepairMgr) recordOneResult(ctx context.Context, r shardRepairRet) {
@@ -302,15 +202,12 @@ func (mgr *ShardRepairMgr) recordOneResult(ctx context.Context, r shardRepairRet
 		mgr.repairSuccessCounterMin.Add()
 
 	case ShardRepairStatusFailed:
-		span.Warnf("repair failed and send msg to fail queue: vid[%d], bid[%d], retry[%d], err[%+v]",
-			r.repairMsg.Vid, r.repairMsg.Bid, r.repairMsg.Retry, r.err)
+		span.Warnf("repair failed and send msg to fail queue: vid[%d], bid[%d], err[%+v]",
+			r.repairMsg.Vid, r.repairMsg.Bid, r.err)
 		mgr.repairFailedCounter.Inc()
 		mgr.repairFailedCounterMin.Add()
 		mgr.errStatsDistribution.AddFail(r.err)
 
-		base.InsistOn(ctx, "repairer send2FailQueue", func() error {
-			return mgr.send2FailQueue(ctx, r.repairMsg)
-		})
 	case ShardRepairStatusUnexpect, ShardRepairStatusOrphan:
 		mgr.repairFailedCounter.Inc()
 		mgr.repairFailedCounterMin.Add()
@@ -321,39 +218,6 @@ func (mgr *ShardRepairMgr) recordOneResult(ctx context.Context, r shardRepairRet
 	default:
 		// do nothing
 	}
-}
-
-func (mgr *ShardRepairMgr) consume(ctx context.Context, repairMsg *proto.ShardRepairMsg, consumerPause base.ConsumerPause) shardRepairRet {
-	// quick exit if consumer is pause
-	select {
-	case <-consumerPause.Done():
-		return shardRepairRet{status: ShardRepairStatusUndo}
-	default:
-	}
-	span := trace.SpanFromContextSafe(ctx)
-	// if message retry times is greater than MessagePunishThreshold while sleep MessagePunishTimeM minutes
-	if repairMsg.Retry >= mgr.cfg.MessagePunishThreshold {
-		span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
-			time.Now().Add(mgr.punishTime), mgr.punishTime, repairMsg.Retry)
-		if ok := sleep(mgr.punishTime, consumerPause); !ok {
-			return shardRepairRet{status: ShardRepairStatusUndo}
-		}
-	}
-	jobKey := fmt.Sprintf("%d:%d:%s", repairMsg.Vid, repairMsg.Bid, repairMsg.BadIdx)
-	_, err, _ := mgr.group.Do(jobKey, func() (ret interface{}, e error) {
-		e = mgr.repairWithCheckVolConsistency(ctx, repairMsg)
-		return
-	})
-
-	if isOrphanShard(err) {
-		return shardRepairRet{status: ShardRepairStatusOrphan, err: err}
-	}
-
-	if err != nil {
-		return shardRepairRet{status: ShardRepairStatusFailed, err: err}
-	}
-
-	return shardRepairRet{status: ShardRepairStatusDone}
 }
 
 func (mgr *ShardRepairMgr) repairWithCheckVolConsistency(ctx context.Context, repairMsg *proto.ShardRepairMsg) error {
@@ -434,22 +298,4 @@ func (mgr *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg *proto
 
 func isOrphanShard(err error) bool {
 	return rpc.DetectStatusCode(err) == errcode.CodeOrphanShard
-}
-
-func (mgr *ShardRepairMgr) send2FailQueue(ctx context.Context, msg *proto.ShardRepairMsg) error {
-	span := trace.SpanFromContextSafe(ctx)
-
-	msg.Retry++
-	b, err := json.Marshal(msg)
-	if err != nil {
-		// just panic if marsh fail
-		span.Panicf("send to fail queue msg json.Marshal failed: msg[%+v], err[%+v]", msg, err)
-	}
-
-	err = mgr.failMsgSender.SendMessage(b)
-	if err != nil {
-		return fmt.Errorf("send message: err[%w]", err)
-	}
-
-	return nil
 }
