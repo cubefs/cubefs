@@ -125,7 +125,6 @@ const (
 	OpQuotaCreateDentry         uint8 = 0x54
 
 	// Operations: Master -> LcNode
-
 	OpLcNodeHeartbeat      uint8 = 0x55
 	OpLcNodeScan           uint8 = 0x56
 	OpLcNodeSnapshotVerDel uint8 = 0x5B
