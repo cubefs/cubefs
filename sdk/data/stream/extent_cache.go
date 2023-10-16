@@ -388,11 +388,13 @@ func (cache *ExtentCache) GetEndForAppendWrite(offset uint64, verSeq uint64, nee
 				if ek.ExtentOffset >= util.ExtentSize {
 					log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v req offset %v verseq %v not found, exist ek [%v]",
 						cache.inode, offset, verSeq, ek.String())
+					ret = nil
 					return false
 				}
 				//?? should not have the neighbor extent in the next
 				if lastExistEk != nil && ek.IsFileInSequence(lastExistEk) {
 					log.LogErrorf("action[ExtentCache.GetEndForAppendWrite] exist sequence extent %v", lastExistEk)
+					ret = nil
 					return false
 				}
 				log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v offset %v verseq %v found,ek [%v] lastExistEk[%v], lastExistEkTest[%v]",
