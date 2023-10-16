@@ -227,10 +227,6 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			panic(newRaftApplyError(err))
 		}
 	}()
-	//if dp.IsRejectWrite() {
-	//	err = fmt.Errorf("partition(%v) disk(%v) err(%v)", dp.partitionID, dp.Disk().Path, syscall.ENOSPC)
-	//	return
-	//}
 
 	if opItem, err = UnmarshalRandWriteRaftLog(command); err != nil {
 		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v) unmarshal failed(%v)", raftApplyID, dp.partitionID, err)

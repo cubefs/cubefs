@@ -292,6 +292,10 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkWriteOffsetAndSize(writeType, offset, size); err != nil {
 		log.LogErrorf("action[Extent.Write] checkWriteOffsetAndSize offset %v size %v writeType %v err %v",
 			offset, size, writeType, err)
+		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
+		log.LogInfof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
+			offset, size, writeType, err)
+		status = proto.OpTryOtherExtent
 		return
 	}
 
