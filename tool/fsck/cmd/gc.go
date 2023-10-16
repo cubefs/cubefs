@@ -431,16 +431,16 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				slog.Fatalf("loadInode failed, read body error, mp %s, host %s, err %s", mpId, addr, err.Error())
 			}
 			ino := &metanode.Inode{
-				Inode:                       0,
-				Type:                        0,
-				Generation:                  1,
-				CreateTime:                  0,
-				AccessTime:                  0,
-				ModifyTime:                  0,
-				NLink:                       1,
-				Extents:                     metanode.NewSortedExtents(),
-				StorageClass:                0, //TODO:tangjingyu use CONST VAR
-				HybridCouldExtents:          metanode.NewSortedHybridCloudExtents(),
+				Inode:              0,
+				Type:               0,
+				Generation:         1,
+				CreateTime:         0,
+				AccessTime:         0,
+				ModifyTime:         0,
+				NLink:              1,
+				Extents:            metanode.NewSortedExtents(),
+				StorageClass:       0, //TODO:tangjingyu use CONST VAR
+				HybridCouldExtents: metanode.NewSortedHybridCloudExtents(),
 			}
 			if err = ino.Unmarshal(inoBuf); err != nil {
 				slog.Fatalf("loadInode failed, unmarshal error, mp %s, host %s, err %s", mpId, addr, err.Error())
