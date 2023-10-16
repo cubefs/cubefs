@@ -123,10 +123,17 @@ const (
 	OpQuotaCreateDentry         uint8 = 0x54
 
 	// Operations: Master -> LcNode
+	OpLcNodeHeartbeat uint8 = 0x55
+	OpLcNodeScan      uint8 = 0x56
 
-	OpLcNodeHeartbeat      uint8 = 0x55
-	OpLcNodeScan           uint8 = 0x56
-	OpLcNodeSnapshotVerDel uint8 = 0x57
+	//backUp
+	OpBatchLockNormalExtent   uint8 = 0x57
+	OpBatchUnlockNormalExtent uint8 = 0x58
+	OpBackupRead              uint8 = 0x59
+	OpBackupWrite             uint8 = 0x5A
+
+	// Master -> LcNode
+	OpLcNodeSnapshotVerDel uint8 = 0x5F
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition           uint8 = 0x60
@@ -593,6 +600,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaBatchDeleteInodeQuota"
 	case OpMetaGetInodeQuota:
 		m = "OpMetaGetInodeQuota"
+	case OpBackupRead:
+		m = "OpBackupRead"
+	case OpBatchLockNormalExtent:
+		m = "OpBatchLockNormalExtent"
+	case OpBatchUnlockNormalExtent:
+		m = "OpBatchUnlockNormalExtent"
 	case OpStopDataPartitionRepair:
 		m = "OpStopDataPartitionRepair"
 	case OpLcNodeHeartbeat:
@@ -1003,7 +1016,8 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		return syscall.EBADMSG
 	}
 	size := p.Size
-	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
+		p.Opcode == OpBackupRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	p.Data = make([]byte, size)
@@ -1171,4 +1185,12 @@ func InitBufferPool(bufLimit int64) {
 	buf.HeadVerBuffersTotalLimit = bufLimit
 
 	Buffers = buf.NewBufferPool()
+}
+
+func (p *Packet) IsBatchLockNormalExtents() bool {
+	return p.Opcode == OpBatchLockNormalExtent
+}
+
+func (p *Packet) IsBatchUnlockNormalExtents() bool {
+	return p.Opcode == OpBatchUnlockNormalExtent
 }
