@@ -1131,7 +1131,7 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 			}
 		}
 
-		//send latest end to replica
+		// send latest end to replica metanode, including updating the end after MaxMP split when the old MaxMP is unavailable
 		if mr.End != mp.End {
 			mp.addUpdateMetaReplicaTask(c)
 		}
@@ -1169,7 +1169,7 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		log.LogWarnf("updateInodeIDUpperBound: disable auto create meta partition, mp %d", mp.PartitionID)
 		return
 	}
-	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep); err != nil {
+	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep, false); err != nil {
 		log.LogError(err)
 	}
 	return
