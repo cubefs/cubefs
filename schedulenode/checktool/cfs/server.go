@@ -63,6 +63,7 @@ const (
 	keyWordReleaseCluster                   = "seqwrite"
 	defaultMaxInactiveNodes                 = 2
 	defaultMaxOfflineDataNodes              = 3
+	defaultMaxOfflineMetaNodes              = 3
 	defaultMaxOfflineDisks                  = 10
 	defaultMinOfflineDiskDuration           = time.Minute * 10
 	defaultMNDiskMinWarnSize                = GB * 20

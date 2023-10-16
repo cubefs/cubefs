@@ -32,6 +32,7 @@ type ClusterHost struct {
 	offlineFlashNodesIn24Hour     map[string]time.Time
 	inOfflineDiskDataNodes        map[string]time.Time
 	offlineDisksIn24Hour          map[string]time.Time
+	offlineMetaNodesIn24Hour      map[string]time.Time
 	dataNodeBadDisk               map[string]time.Time
 	isReleaseCluster              bool
 	LeaderAddr                    string

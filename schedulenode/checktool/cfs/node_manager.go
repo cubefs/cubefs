@@ -95,17 +95,27 @@ func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
 	log.LogWarnf("action[checkMetaNodeAlive] %v has %v inactive meta nodes %v", host.host, len(inactiveMetaNodes), deadNodes)
 	msg := fmt.Sprintf("%v has %v inactive meta nodes,some of which have been inactive for five minutes,", host, inactiveLen)
 	host.doProcessAlarm(host.deadMetaNodes, msg, metaNodeType)
-	if len(inactiveMetaNodes) == 1 {
-		mn, err := getMetaNode(host, metaNode.Addr)
+	for addr, t := range host.offlineMetaNodesIn24Hour {
+		if time.Since(t) > 24*time.Hour {
+			delete(host.offlineMetaNodesIn24Hour, addr)
+		}
+	}
+	if len(host.offlineMetaNodesIn24Hour) < defaultMaxOfflineMetaNodes {
+		log.LogWarnf("action[checkMetaNodeAlive] %v has offline %v inactive meta nodes in latest 24 hours", host.host, len(host.offlineMetaNodesIn24Hour))
+		return
+	}
+	for _, inactiveMn := range inactiveMetaNodes {
+		mn, err := getMetaNode(host, inactiveMn.Addr)
 		if err != nil {
 			return
 		}
-		if time.Since(mn.ReportTime) > 60*time.Minute && time.Since(host.lastTimeOfflineMetaNode) > 24*time.Hour {
-			if isPhysicalMachineFailure(metaNode.Addr) {
-				log.LogErrorf("action[isPhysicalMachineFailure] %v meta node:%v", host.host, metaNode.Addr)
+		if time.Since(mn.ReportTime) > 60*time.Minute && len(host.offlineMetaNodesIn24Hour) < defaultMaxOfflineMetaNodes {
+			if isPhysicalMachineFailure(inactiveMn.Addr) {
+				log.LogErrorf("action[isPhysicalMachineFailure] %v meta node:%v", host.host, inactiveMn.Addr)
 				if host.host == "cn.chubaofs.jd.local" || host.host == "cn.chubaofs-seqwrite.jd.local" || host.host == "cn.elasticdb.jd.local" {
-					offlineMetaNode(host, metaNode.Addr)
+					offlineMetaNode(host, inactiveMn.Addr)
 					host.lastTimeOfflineMetaNode = time.Now()
+					host.offlineMetaNodesIn24Hour[inactiveMn.Addr] = time.Now()
 				}
 			}
 		}
