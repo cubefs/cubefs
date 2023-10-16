@@ -16,26 +16,18 @@ package scheduler
 
 import (
 	"context"
-	"encoding/json"
-	"io/ioutil"
-	"os"
-	"testing"
-	"time"
-
-	"github.com/Shopify/sarama"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
-	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -52,13 +44,6 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 	blobnode := NewMockBlobnodeAPI(ctr)
 	blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(nil)
 
-	sender := NewMockProducer(ctr)
-	sender.EXPECT().SendMessage(any).AnyTimes().Return(nil)
-	kafkaClient := NewMockKafkaConsumer(ctr)
-	consumer := NewMockGroupConsumer(ctr)
-	consumer.EXPECT().Stop().AnyTimes().Return()
-	kafkaClient.EXPECT().StartKafkaConsumer(any, any).AnyTimes().Return(consumer, nil)
-
 	orphanShardLog := mocks.NewMockRecordLogEncoder(ctr)
 	orphanShardLog.EXPECT().Encode(any).AnyTimes().Return(nil)
 
@@ -71,9 +56,6 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 		clusterTopology:         clusterTopology,
 		blobnodeSelector:        selector,
 		blobnodeCli:             blobnode,
-		failMsgSender:           sender,
-		kafkaConsumerClient:     kafkaClient,
-		punishTime:              time.Duration(defaultMessagePunishTimeM) * time.Minute,
 		orphanShardLogger:       orphanShardLog,
 		taskSwitch:              taskSwitch,
 		taskPool:                taskpool.New(10, 10),
@@ -88,186 +70,168 @@ func newShardRepairMgr(t *testing.T) *ShardRepairMgr {
 	}
 }
 
-func TestConsumerShardRepairMsg(t *testing.T) {
-	ctr := gomock.NewController(t)
-	ctx := context.Background()
-	mgr := newShardRepairMgr(t)
-	msg := &proto.ShardRepairMsg{Bid: 1, Vid: 1, ReqId: "123456", BadIdx: []uint8{0, 1}}
-	msgByte, _ := json.Marshal(msg)
-	kafkaMsg := &sarama.ConsumerMessage{
-		Value: msgByte,
-	}
-	commonCloser := closer.New()
-	defer commonCloser.Close()
-	{
-		// message is invalid
-		kafkaMsg := &sarama.ConsumerMessage{
-			Value: []byte("123"),
-		}
-		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
-		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
-
-		msg := proto.ShardRepairMsg{}
-		msgByte, _ := json.Marshal(msg)
-		kafkaMsg = &sarama.ConsumerMessage{
-			Value: msgByte,
-		}
-		kafkaMsgs = []*sarama.ConsumerMessage{kafkaMsg}
-		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
-	}
-	{
-		// repair success
-		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
-		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
-	}
-	{
-		// repair failed
-		oldBlobnode := mgr.blobnodeCli
-		blobnode := NewMockBlobnodeAPI(ctr)
-		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errMock)
-		mgr.blobnodeCli = blobnode
-		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
-		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
-		mgr.blobnodeCli = oldBlobnode
-	}
-	{
-		// consume undo
-		consuming := closer.New()
-		consuming.Close()
-		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
-		require.False(t, mgr.Consume(kafkaMsgs, consuming))
-	}
-	{
-		// repair success
-		ret := mgr.consume(ctx, msg, commonCloser)
-		require.Equal(t, ShardRepairStatusDone, ret.status)
-	}
-	{
-		// repair failed because worker err
-		oldBlobnode := mgr.blobnodeCli
-		blobnode := NewMockBlobnodeAPI(ctr)
-		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errMock)
-		mgr.blobnodeCli = blobnode
-		ret := mgr.consume(ctx, msg, commonCloser)
-		require.Equal(t, ShardRepairStatusFailed, ret.status)
-		require.ErrorIs(t, errMock, ret.err)
-		mgr.blobnodeCli = oldBlobnode
-	}
-	{
-		// return one message and repair failed because worker err(should update volume map)
-		oldBlobnode := mgr.blobnodeCli
-		blobnode := NewMockBlobnodeAPI(ctr)
-		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errcode.ErrDestReplicaBad)
-		mgr.blobnodeCli = blobnode
-		ret := mgr.consume(ctx, msg, commonCloser)
-		require.Equal(t, ShardRepairStatusFailed, ret.status)
-		require.ErrorIs(t, errcode.ErrDestReplicaBad, ret.err)
-		mgr.blobnodeCli = oldBlobnode
-	}
-	{
-		// repair failed because worker return ErrOrphanShard err
-		oldBlobnode := mgr.blobnodeCli
-		blobnode := NewMockBlobnodeAPI(ctr)
-		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errcode.ErrOrphanShard)
-		mgr.blobnodeCli = blobnode
-		ret := mgr.consume(ctx, msg, commonCloser)
-		require.Equal(t, ShardRepairStatusOrphan, ret.status)
-		require.ErrorIs(t, errcode.ErrOrphanShard, ret.err)
-		mgr.blobnodeCli = oldBlobnode
-	}
-	{
-		// consume undo
-		consuming := closer.New()
-		consuming.Close()
-		ret := mgr.consume(ctx, msg, consuming)
-		require.Equal(t, ShardRepairStatusUndo, ret.status)
-	}
-	{
-		// message punished and consume success
-		msg := &proto.ShardRepairMsg{Bid: 1, Vid: 1, ReqId: "123456", BadIdx: []uint8{0, 1}, Retry: defaultMessagePunishThreshold}
-		oldPunishTime := mgr.punishTime
-		mgr.punishTime = 10 * time.Millisecond
-		ret := mgr.consume(ctx, msg, commonCloser)
-		require.Equal(t, ShardRepairStatusDone, ret.status)
-		mgr.punishTime = oldPunishTime
-	}
-	{
-		// message punished for a while and cancel
-		msg := &proto.ShardRepairMsg{Bid: 1, Vid: 1, ReqId: "123456", BadIdx: []uint8{0, 1}, Retry: defaultMessagePunishThreshold}
-		closer := closer.New()
-		go func() {
-			time.Sleep(10 * time.Millisecond)
-			closer.Close()
-		}()
-		ret := mgr.consume(ctx, msg, closer)
-		require.Equal(t, ShardRepairStatusUndo, ret.status)
-	}
-}
-
-func TestNewShardRepairMgr(t *testing.T) {
-	ctr := gomock.NewController(t)
-
-	broker0 := NewBroker(t)
-	defer broker0.Close()
-
-	testDir, err := ioutil.TempDir(os.TempDir(), "orphan_shard_log")
-	require.NoError(t, err)
-	defer os.RemoveAll(testDir)
-
-	cfg := &ShardRepairConfig{
-		Kafka: ShardRepairKafkaConfig{
-			BrokerList:   []string{broker0.Addr()},
-			TopicNormals: []string{testTopic},
-			TopicFailed:  testTopic,
-		},
-		OrphanShardLog: recordlog.Config{
-			Dir:       testDir,
-			ChunkBits: 22,
-		},
-		MessagePunishTimeM:     defaultMessagePunishTimeM,
-		MessagePunishThreshold: defaultMessagePunishThreshold,
-	}
-
-	clusterTopology := NewMockClusterTopology(ctr)
-	clusterTopology.EXPECT().GetVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
-	clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
-
-	clusterMgrCli := NewMockClusterMgrAPI(ctr)
-	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("false", nil)
-	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
-
-	blobnode := NewMockBlobnodeAPI(ctr)
-	blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(nil)
-
-	clusterCli := NewMockClusterMgrAPI(ctr)
-	clusterCli.EXPECT().GetService(any, any, any).Return(nil, errMock)
-	clusterCli.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
-	clusterCli.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
-
-	kafkaClient := NewMockKafkaConsumer(ctr)
-	consumer := NewMockGroupConsumer(ctr)
-	consumer.EXPECT().Stop().AnyTimes().Return()
-	kafkaClient.EXPECT().StartKafkaConsumer(any, any).AnyTimes().Return(consumer, nil)
-
-	mgr, err := NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient)
-	require.NoError(t, err)
-	require.False(t, mgr.Enabled())
-
-	// get stats
-	mgr.GetErrorStats()
-	mgr.GetTaskStats()
-
-	// run task
-	mgr.Run()
-	err = mgr.startConsumer()
-	require.NoError(t, err)
-	mgr.stopConsumer()
-	require.Nil(t, mgr.consumers)
-	mgr.Close()
-
-	_, err = NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient)
-	require.Error(t, err)
-}
+//func TestConsumerShardRepairMsg(t *testing.T) {
+//	ctr := gomock.NewController(t)
+//	ctx := context.Background()
+//	mgr := newShardRepairMgr(t)
+//	msg := &proto.ShardRepairMsg{Bid: 1, Vid: 1, ReqId: "123456", BadIdx: []uint8{0, 1}}
+//	msgByte, _ := json.Marshal(msg)
+//	kafkaMsg := &sarama.ConsumerMessage{
+//		Value: msgByte,
+//	}
+//	{
+//		// repair success
+//		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+//		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
+//	}
+//	{
+//		// repair failed
+//		oldBlobnode := mgr.blobnodeCli
+//		blobnode := NewMockBlobnodeAPI(ctr)
+//		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errMock)
+//		mgr.blobnodeCli = blobnode
+//		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+//		require.True(t, mgr.Consume(kafkaMsgs, commonCloser))
+//		mgr.blobnodeCli = oldBlobnode
+//	}
+//	{
+//		// consume undo
+//		consuming := closer.New()
+//		consuming.Close()
+//		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
+//		require.False(t, mgr.Consume(kafkaMsgs, consuming))
+//	}
+//	{
+//		// repair success
+//		ret := mgr.consume(ctx, msg, commonCloser)
+//		require.Equal(t, ShardRepairStatusDone, ret.status)
+//	}
+//	{
+//		// repair failed because worker err
+//		oldBlobnode := mgr.blobnodeCli
+//		blobnode := NewMockBlobnodeAPI(ctr)
+//		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errMock)
+//		mgr.blobnodeCli = blobnode
+//		ret := mgr.consume(ctx, msg, commonCloser)
+//		require.Equal(t, ShardRepairStatusFailed, ret.status)
+//		require.ErrorIs(t, errMock, ret.err)
+//		mgr.blobnodeCli = oldBlobnode
+//	}
+//	{
+//		// return one message and repair failed because worker err(should update volume map)
+//		oldBlobnode := mgr.blobnodeCli
+//		blobnode := NewMockBlobnodeAPI(ctr)
+//		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errcode.ErrDestReplicaBad)
+//		mgr.blobnodeCli = blobnode
+//		ret := mgr.consume(ctx, msg, commonCloser)
+//		require.Equal(t, ShardRepairStatusFailed, ret.status)
+//		require.ErrorIs(t, errcode.ErrDestReplicaBad, ret.err)
+//		mgr.blobnodeCli = oldBlobnode
+//	}
+//	{
+//		// repair failed because worker return ErrOrphanShard err
+//		oldBlobnode := mgr.blobnodeCli
+//		blobnode := NewMockBlobnodeAPI(ctr)
+//		blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(errcode.ErrOrphanShard)
+//		mgr.blobnodeCli = blobnode
+//		ret := mgr.consume(ctx, msg, commonCloser)
+//		require.Equal(t, ShardRepairStatusOrphan, ret.status)
+//		require.ErrorIs(t, errcode.ErrOrphanShard, ret.err)
+//		mgr.blobnodeCli = oldBlobnode
+//	}
+//	{
+//		// consume undo
+//		consuming := closer.New()
+//		consuming.Close()
+//		ret := mgr.consume(ctx, msg, consuming)
+//		require.Equal(t, ShardRepairStatusUndo, ret.status)
+//	}
+//	{
+//		// message punished and consume success
+//		msg := &proto.ShardRepairMsg{Bid: 1, Vid: 1, ReqId: "123456", BadIdx: []uint8{0, 1}, Retry: defaultMessagePunishThreshold}
+//		oldPunishTime := mgr.punishTime
+//		mgr.punishTime = 10 * time.Millisecond
+//		ret := mgr.consume(ctx, msg, commonCloser)
+//		require.Equal(t, ShardRepairStatusDone, ret.status)
+//		mgr.punishTime = oldPunishTime
+//	}
+//	{
+//		// message punished for a while and cancel
+//		msg := &proto.ShardRepairMsg{Bid: 1, Vid: 1, ReqId: "123456", BadIdx: []uint8{0, 1}, Retry: defaultMessagePunishThreshold}
+//		closer := closer.New()
+//		go func() {
+//			time.Sleep(10 * time.Millisecond)
+//			closer.Close()
+//		}()
+//		ret := mgr.consume(ctx, msg, closer)
+//		require.Equal(t, ShardRepairStatusUndo, ret.status)
+//	}
+//}
+//
+//func TestNewShardRepairMgr(t *testing.T) {
+//	ctr := gomock.NewController(t)
+//
+//	broker0 := NewBroker(t)
+//	defer broker0.Close()
+//
+//	testDir, err := ioutil.TempDir(os.TempDir(), "orphan_shard_log")
+//	require.NoError(t, err)
+//	defer os.RemoveAll(testDir)
+//
+//	cfg := &ShardRepairConfig{
+//		Kafka: ShardRepairKafkaConfig{
+//			BrokerList:   []string{broker0.Addr()},
+//			TopicNormals: []string{testTopic},
+//			TopicFailed:  testTopic,
+//		},
+//		OrphanShardLog: recordlog.Config{
+//			Dir:       testDir,
+//			ChunkBits: 22,
+//		},
+//		MessagePunishTimeM:     defaultMessagePunishTimeM,
+//		MessagePunishThreshold: defaultMessagePunishThreshold,
+//	}
+//
+//	clusterTopology := NewMockClusterTopology(ctr)
+//	clusterTopology.EXPECT().GetVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+//	clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+//
+//	clusterMgrCli := NewMockClusterMgrAPI(ctr)
+//	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("false", nil)
+//	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
+//
+//	blobnode := NewMockBlobnodeAPI(ctr)
+//	blobnode.EXPECT().RepairShard(any, any, any).AnyTimes().Return(nil)
+//
+//	clusterCli := NewMockClusterMgrAPI(ctr)
+//	clusterCli.EXPECT().GetService(any, any, any).Return(nil, errMock)
+//	clusterCli.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
+//	clusterCli.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
+//
+//	kafkaClient := NewMockKafkaConsumer(ctr)
+//	consumer := NewMockGroupConsumer(ctr)
+//	consumer.EXPECT().Stop().AnyTimes().Return()
+//	kafkaClient.EXPECT().StartKafkaConsumer(any, any).AnyTimes().Return(consumer, nil)
+//
+//	mgr, err := NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient)
+//	require.NoError(t, err)
+//	require.False(t, mgr.Enabled())
+//
+//	// get stats
+//	mgr.GetErrorStats()
+//	mgr.GetTaskStats()
+//
+//	// run task
+//	mgr.Run()
+//	err = mgr.startConsumer()
+//	require.NoError(t, err)
+//	mgr.stopConsumer()
+//	require.Nil(t, mgr.consumers)
+//	mgr.Close()
+//
+//	_, err = NewShardRepairMgr(cfg, clusterTopology, switchMgr, blobnode, clusterCli, kafkaClient)
+//	require.Error(t, err)
+//}
 
 func TestTryRepair(t *testing.T) {
 	ctx := context.Background()

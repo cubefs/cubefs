@@ -45,15 +45,10 @@ const (
 	defaultInspectTimeoutMs  = 10000
 
 	defaultTaskPoolSize           = 10
-	defaultDeleteHourRangeTo      = 24
 	defaultMessagePunishThreshold = 3
 	defaultMessagePunishTimeM     = 4
 	defaultSlowDownTimeS          = 3
 	defaultDeleteLogChunkSize     = uint(29)
-	defaultDeleteDelayH           = int64(72)
-	defaultDeleteNoDelay          = int64(0)
-	defaultMaxBatchSize           = 10
-	defaultBatchIntervalSec       = 2
 
 	defaultTickInterval   = uint32(1)
 	defaultHeartbeatTicks = uint32(30)
@@ -274,26 +269,9 @@ func (c *Config) fixShardRepairConfig() {
 }
 
 func (c *Config) fixBlobDeleteConfig() error {
-	if !c.BlobDelete.DeleteHourRange.Valid() {
-		return errInvalidHourRange
-	}
-	if c.BlobDelete.DeleteHourRange.From == 0 {
-		defaulter.Equal(&c.BlobDelete.DeleteHourRange.To, defaultDeleteHourRangeTo)
-	}
+
 	c.BlobDelete.ClusterID = c.ClusterID
-	defaulter.LessOrEqual(&c.BlobDelete.TaskPoolSize, defaultTaskPoolSize)
 	defaulter.LessOrEqual(&c.BlobDelete.DeleteLog.ChunkBits, defaultDeleteLogChunkSize)
-	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishThreshold, defaultMessagePunishThreshold)
-	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishTimeM, defaultMessagePunishTimeM)
-	defaulter.LessOrEqual(&c.BlobDelete.MessageSlowDownTimeS, defaultSlowDownTimeS)
-	defaulter.Equal(&c.BlobDelete.SafeDelayTimeH, defaultDeleteDelayH)
-	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
-	defaulter.Equal(&c.BlobDelete.MaxBatchSize, defaultMaxBatchSize)
-	defaulter.Equal(&c.BlobDelete.BatchIntervalS, defaultBatchIntervalSec)
-	c.BlobDelete.Kafka.BrokerList = c.Kafka.BrokerList
-	c.BlobDelete.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
-	c.BlobDelete.Kafka.TopicNormal = c.Kafka.Topics.BlobDelete
-	c.BlobDelete.Kafka.TopicFailed = c.Kafka.Topics.BlobDeleteFailed
 	return nil
 }
 
