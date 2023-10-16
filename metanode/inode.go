@@ -1411,7 +1411,7 @@ func (i *Inode) getAndDelVer(mpId uint64, dVer uint64, mpVer uint64, verlist *pr
 					i.Inode, i.multiSnap.multiVersions[id].getVer(), nVerSeq, dVer)
 
 				i.multiSnap.multiVersions[id].setVer(nVerSeq)
-				delExtents, ino = i.MultiLayerClearExtByVer(id, nVerSeq), i.multiSnap.multiVersions[id]
+				delExtents, ino = i.MultiLayerClearExtByVer(id+1, nVerSeq), i.multiSnap.multiVersions[id]
 				if len(i.multiSnap.multiVersions[id].Extents.eks) != 0 {
 					log.LogDebugf("action[getAndDelVer] ino %v   after clear self still have ext and left", i.Inode)
 					return
