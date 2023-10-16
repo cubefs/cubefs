@@ -214,7 +214,7 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 						row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
 							formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
 					} else {
-						row = fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, version,
+						row = fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
 							formatYesNo(fn.IsActive), fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
 					}
 					stdout("%v\n", row)
