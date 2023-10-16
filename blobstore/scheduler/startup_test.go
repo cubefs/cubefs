@@ -202,15 +202,12 @@ func TestServer(t *testing.T) {
 	kafkaOffset.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
 	kafkaOffset.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
 
-	err := leaderServer.NewKafkaMonitor(proto.ClusterID(1))
-	require.Error(t, err)
-
 	hosts := []string{leaderHost, followerHost}
 	for _, host := range hosts {
 		clusterMgrCli := mocks.NewMockClientAPI(ctr)
 		clusterMgrCli.EXPECT().GetService(any, any).AnyTimes().Return(cmapi.ServiceInfo{Nodes: []cmapi.ServiceNode{{ClusterID: 1, Host: host}}}, nil)
 		cli := api.New(&api.Config{}, clusterMgrCli, proto.ClusterID(1))
-		_, err = cli.Stats(ctx, host)
+		_, err := cli.Stats(ctx, host)
 		require.NoError(t, err)
 		_, err = cli.LeaderStats(ctx)
 		require.NoError(t, err)
@@ -225,7 +222,7 @@ func TestServer(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	err = leaderServer.load()
+	err := leaderServer.load()
 	require.NoError(t, err)
 }
 

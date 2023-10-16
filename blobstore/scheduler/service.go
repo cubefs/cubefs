@@ -48,7 +48,6 @@ type Service struct {
 	blobDeleteMgr   ITaskRunner
 	clusterTopology IClusterTopology
 	volumeUpdater   client.IVolumeUpdater
-	kafkaMonitors   []*base.KafkaTopicMonitor
 
 	clusterMgrCli client.ClusterMgrAPI
 }

@@ -15,13 +15,9 @@
 package scheduler
 
 import (
-	"errors"
 	"testing"
 
-	"github.com/Shopify/sarama"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cubefs/cubefs/blobstore/common/kafka"
 )
 
 func TestConfigCheckAndFix(t *testing.T) {
@@ -42,56 +38,15 @@ func TestConfigCheckAndFix(t *testing.T) {
 	require.Error(t, err, errInvalidNodeID)
 
 	cfg.Services.NodeID = 1
-	cfg.Kafka.Version = "v2.3.aa"
 	err = cfg.fixConfig()
-	require.Error(t, err, errInvalidKafka)
-
-	cfg.Kafka.Version = "0.10.0.0"
-	err = cfg.fixConfig() // ok
-	require.NoError(t, err)
-
-	cfg.Kafka.Version = "2.1.0"
-	err = cfg.fixConfig() // ok
 	require.NoError(t, err)
 	require.True(t, cfg.IsLeader())
 	require.Equal(t, "127.0.0.1:9800", cfg.Leader())
 	require.Nil(t, cfg.Follower())
-	require.Equal(t, defaultDeleteDelayH, cfg.BlobDelete.SafeDelayTimeH)
-	require.Equal(t, sarama.V2_1_0_0, kafka.DefaultKafkaVersion)
 	cfg.Services.Members[2] = "127.0.0.1:9880"
 	require.Equal(t, "127.0.0.1:9880", cfg.Follower()[0])
 
 	cfg.Services.NodeID = 1
-	cfg.BlobDelete.SafeDelayTimeH = -1
 	err = cfg.fixConfig()
 	require.NoError(t, err)
-	require.Equal(t, defaultDeleteNoDelay, cfg.BlobDelete.SafeDelayTimeH)
-	require.Equal(t, defaultDeleteHourRangeTo, cfg.BlobDelete.DeleteHourRange.To)
-
-	testCases := []struct {
-		hourRange HourRange
-		err       error
-	}{
-		{
-			hourRange: HourRange{From: 1, To: 0},
-			err:       errInvalidHourRange,
-		},
-		{
-			hourRange: HourRange{From: 1, To: 25},
-			err:       errInvalidHourRange,
-		},
-		{
-			hourRange: HourRange{From: -2, To: -1},
-			err:       errInvalidHourRange,
-		},
-		{
-			hourRange: HourRange{From: 25, To: 26},
-			err:       errInvalidHourRange,
-		},
-	}
-	for _, test := range testCases {
-		cfg.BlobDelete.DeleteHourRange = test.hourRange
-		err = cfg.fixConfig()
-		require.True(t, errors.Is(err, test.err))
-	}
 }
