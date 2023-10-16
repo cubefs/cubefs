@@ -15,20 +15,20 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"bufio"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"io"
 )
 
 const (
@@ -119,8 +119,7 @@ func newAPIRequest(method string, path string) *request {
 	}
 }
 
-type RespBody struct {
-}
+type RespBody struct{}
 
 func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	var resp *http.Response
@@ -130,7 +129,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	} else {
 		schema = "http"
 	}
-	var url = fmt.Sprintf("%s://%s%s", schema, c.host,
+	url := fmt.Sprintf("%s://%s%s", schema, c.host,
 		r.path)
 	resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
 	log.LogInfof("resp %v,err %v", resp, err)
@@ -147,7 +146,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	switch stateCode {
 	case http.StatusOK:
-		var body = &struct {
+		body := &struct {
 			Code int32           `json:"code"`
 			Msg  string          `json:"msg"`
 			Data json.RawMessage `json:"data"`
@@ -155,7 +154,6 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 
 		if err := json.Unmarshal(respData, body); err != nil {
 			return nil, fmt.Errorf("unmarshal response body err:%v", err)
-
 		}
 		// o represent proto.ErrCodeSuccess
 		if body.Code != 200 {

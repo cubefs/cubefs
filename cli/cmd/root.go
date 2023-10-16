@@ -35,7 +35,7 @@ type CubeFSCmd struct {
 
 func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 	var optShowVersion bool
-	var cmd = &CubeFSCmd{
+	cmd := &CubeFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
 			Short: cmdRootShort,

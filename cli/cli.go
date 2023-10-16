@@ -24,6 +24,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+//TODO: remove this later.
+//go:generate go vet ./...
+//go:generate gofumpt -l -w .
+//go:generate git diff --exit-code
+//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
+
 var (
 	CommitID   string
 	BranchName string
@@ -44,7 +50,7 @@ func runCLI() (err error) {
 }
 
 func setupCommands(cfg *cmd.Config) *cobra.Command {
-	var mc = master.NewMasterClient(cfg.MasterAddr, false)
+	mc := master.NewMasterClient(cfg.MasterAddr, false)
 	mc.SetTimeout(cfg.Timeout)
 	mc.SetClientIDKey(cfg.ClientIDKey)
 	cfsRootCmd := cmd.NewRootCmd(mc)
@@ -74,7 +80,7 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	//		},
 	//	}
 
-	//cfsRootCmd.CFSCmd.AddCommand(completionCmd)
+	// cfsRootCmd.CFSCmd.AddCommand(completionCmd)
 
 	cfsRootCmd.CFSCmd.AddCommand(cmd.GenClusterCfgCmd)
 	return cfsRootCmd.CFSCmd

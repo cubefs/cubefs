@@ -31,7 +31,7 @@ const (
 )
 
 func newCompatibilityCmd() *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdCompatibilityUse,
 		Aliases: []string{"cptest"},
 		Short:   cmdCompatibilityShort,
@@ -48,7 +48,7 @@ const (
 )
 
 func newMetaCompatibilityCmd() *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliOpMetaCompatibility,
 		Short:   cmdMetaCompatibilityShort,
 		Aliases: []string{"meta"},

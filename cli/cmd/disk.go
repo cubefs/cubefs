@@ -1,10 +1,11 @@
 package cmd
 
 import (
+	"sort"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
-	"sort"
 )
 
 const (
@@ -13,7 +14,7 @@ const (
 )
 
 func newDiskCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdDiskUse,
 		Short:   cmdDiskShort,
 		Args:    cobra.MinimumNArgs(0),
@@ -30,7 +31,7 @@ const (
 )
 
 func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckBadDisksShort,
 		Run: func(cmd *cobra.Command, args []string) {

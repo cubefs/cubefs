@@ -33,7 +33,7 @@ const (
 )
 
 func newVolCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdVolUse,
 		Short:   cmdVolShort,
 		Args:    cobra.MinimumNArgs(0),
@@ -60,7 +60,7 @@ const (
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdVolListShort,
 		Aliases: []string{"ls"},
@@ -141,14 +141,14 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optDeleteLockTime int64
 	var clientIDKey string
 	var optYes bool
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volumeName = args[0]
-			var userID = args[1]
+			volumeName := args[0]
+			userID := args[1]
 			defer func() {
 				if err != nil {
 					errout("Error: %v\n", err)
@@ -293,16 +293,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicaNum string
 	var optDeleteLockTime int64
 	var optEnableQuota string
-	var confirmString = strings.Builder{}
+	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpUpdate + " [VOLUME NAME]",
 		Short: cmdVolUpdateShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volumeName = args[0]
-			var isChange = false
+			volumeName := args[0]
+			isChange := false
 			defer func() {
 				if err != nil {
 					errout("Error: %v\n", err)
@@ -413,7 +413,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v h\n", vv.DeleteLockTime))
 			}
 
-			//var maskStr string
+			// var maskStr string
 			if optTxMask != "" {
 				var oldMask, newMask proto.TxOpMask
 				oldMask, err = proto.GetMaskFromString(vv.EnableTransaction)
@@ -432,7 +432,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 						isChange = true
 						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, optTxMask))
 					}
-
 				} else {
 					if proto.MaskContains(oldMask, newMask) {
 						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
@@ -605,7 +604,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			stdout("Volume configuration has been update successfully.\n")
 			return
-
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -641,7 +639,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 
 	return cmd
-
 }
 
 const (
@@ -655,13 +652,13 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 		optDataDetail bool
 	)
 
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdVolInfoUse,
 		Short: cmdVolInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volumeName = args[0]
+			volumeName := args[0]
 			var svv *proto.SimpleVolView
 			defer func() {
 				if err != nil {
@@ -732,13 +729,13 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		optYes      bool
 		clientIDKey string
 	)
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdVolDeleteUse,
 		Short: cmdVolDeleteShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volumeName = args[0]
+			volumeName := args[0]
 			defer func() {
 				if err != nil {
 					errout("Error: %v\n", err)
@@ -788,15 +785,15 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	var optForce bool
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdVolTransferUse,
 		Short:   cmdVolTransferShort,
 		Aliases: []string{"trans"},
 		Args:    cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volume = args[0]
-			var userID = args[1]
+			volume := args[0]
+			userID := args[1]
 
 			defer func() {
 				if err != nil {
@@ -828,7 +825,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				return
 			}
-			var param = proto.UserTransferVolParam{
+			param := proto.UserTransferVolParam{
 				Volume:  volume,
 				UserSrc: volSimpleView.Owner,
 				UserDst: userInfo.UserID,
@@ -853,13 +850,13 @@ const (
 
 func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
 		Short: cmdVolAddDPCmdShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			var volume = args[0]
-			var number = args[1]
+			volume := args[0]
+			number := args[1]
 			var err error
 			defer func() {
 				if err != nil {
@@ -908,13 +905,13 @@ func newVolShrinkCmd(client *master.MasterClient) *cobra.Command {
 
 func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 	var clientIDKey string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   use + " [VOLUME] [CAPACITY]",
 		Short: short,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			var name = args[0]
-			var capacityStr = args[1]
+			name := args[0]
+			capacityStr := args[1]
 			var err error
 			defer func() {
 				if err != nil {
@@ -951,13 +948,13 @@ var (
 )
 
 func newVolSetForbiddenCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdVolSetForbiddenUse,
 		Short: cmdVolSetForbiddenShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			var name = args[0]
-			var settingStr = args[1]
+			name := args[0]
+			settingStr := args[1]
 			var err error
 			defer func() {
 				if err != nil {

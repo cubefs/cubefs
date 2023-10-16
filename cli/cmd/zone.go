@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/cubefs/cubefs/proto"
 	sdk "github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
@@ -27,7 +28,7 @@ const (
 )
 
 func newZoneCmd(client *sdk.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdZoneUse,
 		Short: cmdZoneShort,
 		Args:  cobra.MinimumNArgs(0),
@@ -47,7 +48,7 @@ const (
 )
 
 func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdZoneListShort,
 		Aliases: []string{"ls"},
@@ -74,7 +75,7 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 }
 
 func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpInfo + " [NAME]",
 		Short: cmdZoneInfoShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -123,7 +124,7 @@ func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
 	metaNodesetSelector := ""
 	dataNodeSelector := ""
 	metaNodeSelector := ""
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpUpdate + " [NAME]",
 		Short: cmdZoneUpdateShort,
 		Args:  cobra.MinimumNArgs(1),

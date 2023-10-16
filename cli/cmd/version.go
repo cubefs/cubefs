@@ -16,7 +16,7 @@ const (
 )
 
 func newVersionCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdVersionUse,
 		Short:   cmdVersionShort,
 		Args:    cobra.MinimumNArgs(0),
@@ -33,7 +33,7 @@ func newVersionCmd(client *master.MasterClient) *cobra.Command {
 
 func newVersionCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliFlagVersionCreate,
 		Short:   cmdVersionCreateShort,
 		Aliases: []string{"create"},
@@ -43,7 +43,7 @@ func newVersionCreateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			var verList *proto.VolVersionInfoList
-			var volumeName = args[0]
+			volumeName := args[0]
 			var err error
 			defer func() {
 				if err != nil {
@@ -64,7 +64,6 @@ func newVersionCreateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				stdout("%v\n", formatVerInfoTableRow(ver))
 			}
-
 		},
 	}
 	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of volume name to filter")
@@ -73,7 +72,7 @@ func newVersionCreateCmd(client *master.MasterClient) *cobra.Command {
 
 func newVersionListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliFlagVersionList,
 		Short:   cmdVersionListShort,
 		Aliases: []string{"create"},
@@ -110,7 +109,7 @@ func newVersionListCmd(client *master.MasterClient) *cobra.Command {
 
 func newVersionDelCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliFlagVersionDel,
 		Short:   cmdVersionDelShort,
 		Aliases: []string{"create"},
@@ -137,7 +136,7 @@ func newVersionDelCmd(client *master.MasterClient) *cobra.Command {
 
 func newVersionStrategyCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliFlagVersionSetStrategy,
 		Short:   cmdVersionSetStrategyShort,
 		Aliases: []string{"create"},

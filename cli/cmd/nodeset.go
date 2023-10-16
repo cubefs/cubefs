@@ -26,7 +26,7 @@ const (
 )
 
 func newNodeSetCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdNodeSetUse,
 		Short: cmdNodeSetShort,
 		Args:  cobra.MinimumNArgs(0),
@@ -47,7 +47,7 @@ const (
 
 func newNodeSetListCmd(client *master.MasterClient) *cobra.Command {
 	var zoneName string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpList,
 		Short: cmdNodeSetListShort,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -77,7 +77,7 @@ func newNodeSetListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newNodeSetInfoCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpInfo,
 		Short: cmdGetNodeSetShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -105,7 +105,7 @@ func newNodeSetInfoCmd(client *master.MasterClient) *cobra.Command {
 func newNodeSetUpdateCmd(client *master.MasterClient) *cobra.Command {
 	dataNodeSelector := ""
 	metaNodeSelector := ""
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpUpdate,
 		Short: cmdUpdateNodeSetShort,
 		Args:  cobra.MinimumNArgs(1),

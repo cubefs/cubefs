@@ -30,7 +30,7 @@ const (
 )
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliResourceDataNode,
 		Short: cmdDataNodeShort,
 	}
@@ -52,7 +52,7 @@ const (
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 	var optFilterStatus string
 	var optFilterWritable string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdDataNodeListShort,
 		Aliases: []string{"ls"},
@@ -91,7 +91,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpInfo + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeInfoShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -110,7 +110,6 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 			}
 			stdout("[Data node info]\n")
 			stdout("%v", formatDataNodeDetail(datanodeInfo, false))
-
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -127,7 +126,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		optCount    int
 		clientIDKey string
 	)
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeDecommissionInfoShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -148,7 +147,6 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Decommission data node successfully\n")
-
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -165,7 +163,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
 	var optCount int
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
 		Short: cmdDataNodeMigrateInfoShort,
 		Args:  cobra.MinimumNArgs(2),
@@ -188,7 +186,6 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Migrate data node successfully\n")
-
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
