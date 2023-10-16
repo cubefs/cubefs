@@ -1701,6 +1701,7 @@ func (s *ExtentStore) renameStaleExtentStore() (err error) {
 	if err = os.Rename(s.dataPath, staleExtStoreDirName); err != nil {
 		return
 	}
+
 	return
 }
 
