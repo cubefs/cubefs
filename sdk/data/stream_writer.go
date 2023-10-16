@@ -506,7 +506,8 @@ func (s *Streamer) enableOverwrite() bool {
 }
 
 func (s *Streamer) enableParallelOverwrite(requests []*ExtentRequest) bool {
-	return s.enableOverwrite() && len(requests) == 1 && requests[0].ExtentKey != nil && requests[0].ExtentKey.PartitionId != 0
+	//return s.enableOverwrite() && len(requests) == 1 && requests[0].ExtentKey != nil && requests[0].ExtentKey.PartitionId != 0
+	return false
 }
 
 func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp *DataPartition, extID int,

@@ -364,10 +364,12 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 	}
 	if s.enableParallelOverwrite(requests) {
 		if log.IsDebugEnabled() {
-			log.LogDebugf("WriteForParallelOverwrite: ino(%v) parallel overwrite offset(%v) size(%v)", s.inode, offset, len(data))
+			log.LogDebugf("WriteForParallelOverwrite: ino(%v) offset(%v) size(%v) req(%v)", s.inode, offset, len(data), requests)
 		}
 		if overWriteSize, overWriteErr := s.doOverwrite(ctx, requests[0], direct); overWriteErr == nil {
 			return overWriteSize, false, nil
+		} else {
+			log.LogWarnf("WriteForParallelOverwrite: err(%v) ino(%v) offset(%v) size(%v) req(%v)", overWriteErr, s.inode, offset, len(data), requests)
 		}
 	}
 	return s.IssueWriteRequest(ctx, offset, data, direct)

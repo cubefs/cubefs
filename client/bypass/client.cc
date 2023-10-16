@@ -499,7 +499,8 @@ int real_rmdir(const char *pathname) {
     char *path = get_cfs_path(pathname);
     int re;
     if(g_hook && path != NULL) {
-        if(strlen(g_client_info.replicate_path) > 0) {
+        bool is_root = (strlen(path) == 0 || (strlen(path) == 1 && path[0] == '/'));
+        if(!is_root && strlen(g_client_info.replicate_path) > 0) {
             char *local_path = cat_path(g_client_info.replicate_path, path);
             re = libc_rmdir(local_path);
             free(local_path);
@@ -1048,7 +1049,8 @@ int real_unlinkat(int dirfd, const char *pathname, int flags) {
     const char *cfs_path = (path == NULL) ? pathname : path;
     int re;
     if(g_hook && is_cfs) {
-        if(strlen(g_client_info.replicate_path) > 0) {
+        bool is_root = (path != NULL && (strlen(path) == 0 || (strlen(path) == 1 && path[0] == '/')));
+        if(!is_root && strlen(g_client_info.replicate_path) > 0) {
             re = libc_unlinkat(dirfd, local_path != NULL ? local_path : pathname, flags);
             if(re < 0) {
                 goto log;
@@ -1413,6 +1415,65 @@ log:
     free(local_path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, re:%d\n", __func__, is_cfs, dirfd, pathname, re);
+    #endif
+    return re;
+}
+
+int real_statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf) {
+    bool is_cfs = false;
+    char *path = NULL;
+    if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
+        path = get_cfs_path(pathname);
+        is_cfs = (path != NULL);
+    } else {
+        is_cfs = fd_in_cfs(dirfd);
+        if(is_cfs) {
+            dirfd = get_cfs_fd(dirfd);
+        }
+    }
+
+    const char *cfs_path = (path == NULL) ? pathname : path;
+    int re;
+    if(g_hook && path != NULL) {
+        struct stat statbuf;
+        re = cfs_errno(cfs_fstatat(g_client_info.cfs_client_id, dirfd, cfs_path, &statbuf, flags));
+        if(re == 0) {
+            statxbuf->stx_mask = 0;
+            statxbuf->stx_attributes = 0;
+            statxbuf->stx_attributes_mask = 0;
+            statxbuf->stx_rdev_major = 0;
+            statxbuf->stx_rdev_minor = 0;
+            statxbuf->stx_dev_major = 0;
+            statxbuf->stx_dev_minor = 0;
+            statxbuf->stx_ino = statbuf.st_ino;
+            statxbuf->stx_size = statbuf.st_size;
+            statxbuf->stx_nlink = statbuf.st_nlink;
+            statxbuf->stx_blksize = statbuf.st_blksize;
+            statxbuf->stx_uid = statbuf.st_uid;
+            statxbuf->stx_gid = statbuf.st_gid;
+            statxbuf->stx_blocks = statbuf.st_blocks;
+            statxbuf->stx_mode = statbuf.st_mode;
+            statxbuf->stx_atime.tv_sec = statbuf.st_atim.tv_sec;
+            statxbuf->stx_atime.tv_nsec = statbuf.st_atim.tv_nsec;
+            statxbuf->stx_btime.tv_sec = statbuf.st_ctim.tv_sec;
+            statxbuf->stx_btime.tv_nsec = statbuf.st_ctim.tv_nsec;
+            statxbuf->stx_mtime.tv_sec = statbuf.st_mtim.tv_sec;
+            statxbuf->stx_mtime.tv_nsec = statbuf.st_mtim.tv_nsec;
+            statxbuf->stx_ctime.tv_sec = statbuf.st_ctim.tv_sec;
+            statxbuf->stx_ctime.tv_nsec = statbuf.st_ctim.tv_nsec;
+            pthread_rwlock_rdlock(&g_client_info.open_inodes_lock);
+            auto it = g_client_info.open_inodes.find(statxbuf->stx_ino);
+            if(it != g_client_info.open_inodes.end()) {
+                statxbuf->stx_size = it->second->size;
+            }
+            pthread_rwlock_unlock(&g_client_info.open_inodes_lock);
+        }
+    } else {
+        re = libc_statx(dirfd, pathname, flags, mask, statxbuf);
+    }
+    free(path);
+    #ifdef _CFS_DEBUG
+    log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%x, mask:%x, re:%d\n", __func__, is_cfs, dirfd, pathname, flags, mask, re);
     #endif
     return re;
 }
@@ -2253,17 +2314,11 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
 
     off_t offset = 0;
     size_t size = 0;
-    ssize_t re = -1, re_cache = 0;
+    ssize_t re = -1, re_cache = 0, re_local = 0;
 
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
-        if(strlen(g_client_info.replicate_path) > 0) {
-            re = libc_write(fd, buf, count);
-            if(re < 0) {
-                goto log;
-            }
-        }
         file_t *f = get_open_file(fd);
         if(f == NULL)
             goto log;
@@ -2284,6 +2339,15 @@ ssize_t real_write(int fd, const void *buf, size_t count) {
         if(re > 0) {
             f->pos += re;
             size = update_inode_size(f->inode_info, f->pos);
+        } else {
+            goto log;
+        }
+        if(strlen(g_client_info.replicate_path) > 0) {
+            re_local = libc_write(fd, buf, count);
+            if(re_local != re) {
+                re = re_local;
+                goto log;
+            }
         }
     } else {
         #ifdef _CFS_DEBUG
@@ -2298,7 +2362,7 @@ log:
     const char *fd_path = get_fd_path(fd);
     clock_gettime(CLOCK_REALTIME, &stop);
     long time = (stop.tv_sec - start.tv_sec)*1000000000 + stop.tv_nsec - start.tv_nsec;
-    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, time:%d\n", __func__, is_cfs, fd, fd_path, count, offset, size, re, re_cache, time/1000);
+    log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, re_local:%d time:%d\n", __func__, is_cfs, fd, fd_path, count, offset, size, re, re_cache, re_local, time/1000);
     #endif
     return re;
 }
@@ -2682,6 +2746,7 @@ static void init_cfs_func(void *handle) {
     cfs_fstat64 = (cfs_fstat64_t)dlsym(handle, "cfs_fstat64");
     cfs_fstatat = (cfs_fstatat_t)dlsym(handle, "cfs_fstatat");
     cfs_fstatat64 = (cfs_fstatat64_t)dlsym(handle, "cfs_fstatat64");
+    cfs_statx = (cfs_statx_t)dlsym(handle, "cfs_statx");
     cfs_chmod = (cfs_chmod_t)dlsym(handle, "cfs_chmod");
     cfs_fchmod = (cfs_fchmod_t)dlsym(handle, "cfs_fchmod");
     cfs_fchmodat = (cfs_fchmodat_t)dlsym(handle, "cfs_fchmodat");

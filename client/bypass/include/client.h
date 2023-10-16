@@ -90,6 +90,7 @@ int real_fstat(int ver, int fd, struct stat *statbuf);
 int real_fstat64(int ver, int fd, struct stat64 *statbuf);
 int real_fstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags);
 int real_fstatat64(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags);
+int real_statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf);
 int real_fchmod(int fd, mode_t mode);
 int real_fchmodat(int dirfd, const char *pathname, mode_t mode, int flags);
 int real_lchown(const char *pathname, uid_t owner, gid_t group);
