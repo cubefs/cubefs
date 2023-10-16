@@ -32,9 +32,11 @@ class CubeFileOpenInterceptor:
     cube_cache_dir = "user memory"
     _last_cycle_hit_count = 0  # 命中次数
     _last_cycle_miss_count = 0  # 未命中次数
+    _last_cycle_preload_time = 0  # 未命中次数
     total_count = 0
     total_hit_count = 0
     total_miss_count = 0
+    total_preload_time = 0
     should_exit = False
     timer = None
 
@@ -60,9 +62,10 @@ class CubeFileOpenInterceptor:
         CubeFileOpenInterceptor.timer.cancel()
 
     @staticmethod
-    def add_count(is_cache):
+    def add_count(is_cache, preload_time):
         if is_cache:
             CubeFileOpenInterceptor._last_cycle_hit_count += 1
+            CubeFileOpenInterceptor._last_cycle_preload_time += preload_time
         else:
             CubeFileOpenInterceptor._last_cycle_miss_count += 1
 
@@ -75,24 +78,30 @@ class CubeFileOpenInterceptor:
         CubeFileOpenInterceptor.total_count += request_count
         CubeFileOpenInterceptor.total_hit_count += CubeFileOpenInterceptor._last_cycle_hit_count
         CubeFileOpenInterceptor.total_miss_count += CubeFileOpenInterceptor._last_cycle_miss_count
+        CubeFileOpenInterceptor.total_preload_time += CubeFileOpenInterceptor._last_cycle_preload_time
 
         last_cycle_hit_rate = (CubeFileOpenInterceptor._last_cycle_hit_count / request_count) * 100
         last_cycle_miss_rate = (CubeFileOpenInterceptor._last_cycle_miss_count / request_count) * 100
+        last_cycle_avg_preload_time = CubeFileOpenInterceptor._last_cycle_preload_time / request_count
+
         total_hit_rate = (CubeFileOpenInterceptor.total_hit_count / CubeFileOpenInterceptor.total_count) * 100
         total_miss_rate = (CubeFileOpenInterceptor.total_miss_count / CubeFileOpenInterceptor.total_count) * 100
+        total_avg_preload_time = CubeFileOpenInterceptor.total_preload_time / CubeFileOpenInterceptor.total_count
+
         print_mesg = "pid:{} cube_cache_dir:{} last_cycle_metrics:([request_count:{} hit_count:{} miss_count:{} " \
-                     "hit_rate:{:.2f}% miss_rate:{:.2f}% ])  sum_metrics:([request_count:{} hit_count:{} " \
-                     "miss_count:{} hit_rate:{:.2f}% miss_rate:{:.2f}%]) " \
+                     "hit_rate:{:.2f}% miss_rate:{:.2f}%  avg_preload_time:{:.2f} s])  sum_metrics:([request_count:{} hit_count:{} " \
+                     "miss_count:{} hit_rate:{:.2f}% miss_rate:{:.2f}% avg_preload_time:{:.2f} s]) " \
                      "".format(os.getpid(), CubeFileOpenInterceptor.cube_cache_dir, request_count,
                                CubeFileOpenInterceptor._last_cycle_hit_count,
                                CubeFileOpenInterceptor._last_cycle_miss_count,
-                               last_cycle_hit_rate, last_cycle_miss_rate,
+                               last_cycle_hit_rate, last_cycle_miss_rate, last_cycle_avg_preload_time,
                                CubeFileOpenInterceptor.total_count,
                                CubeFileOpenInterceptor.total_hit_count,
                                CubeFileOpenInterceptor.total_miss_count,
-                               total_hit_rate, total_miss_rate)
+                               total_hit_rate, total_miss_rate, total_avg_preload_time)
 
         print(print_mesg)
 
         CubeFileOpenInterceptor._last_cycle_hit_count = 0
         CubeFileOpenInterceptor._last_cycle_miss_count = 0
+        CubeFileOpenInterceptor._last_cycle_preload_time=0

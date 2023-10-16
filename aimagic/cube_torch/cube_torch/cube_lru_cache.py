@@ -39,8 +39,7 @@ class LRUCache:
     def pop(self, key):
         with self.lock:
             if key in self.cache:
-                value = self.cache.pop(key)[0]
-                return value
+                return self.cache.pop(key)
             else:
                 return None
 

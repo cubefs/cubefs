@@ -206,12 +206,8 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
-    traindir_list = [os.path.join(args.data, 'eval_file_' + str(i)) for i in range(1)]
-    # traindir = os.file_path.join(args.data, 'train')
-    # traindir = os.file_path.join(args.data, 'eval_file_0')
-    # valdir = os.file_path.join(args.data, 'val')
+    traindir_list = [os.path.join(args.data, 'eval_file_' + str(i)) for i in range(3)]
     valdir = os.path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'val')
-    # traindir = os.file_path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'train')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -331,7 +327,12 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         step_end_time = time.time()
 
         if i % args.print_freq == 0:
-            print('imagenet throughput: {} images/s'.format((1024 * (i + 1)) / (step_end_time - step_time)))
+            progress.display(i + 1)
+
+        if dist.get_rank() == 0:
+            print(f"one step cost: {step_end_time - step_cost_time}")
+            print(f"throughput: {1024 * (i + 1) / (step_end_time - step_time)} ")
+            step_cost_time = time.time()
 
 
 def validate(val_loader, model, criterion, args):

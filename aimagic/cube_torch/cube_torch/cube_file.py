@@ -7,6 +7,7 @@ import queue
 import threading
 import traceback
 from functools import wraps
+import time
 
 import requests
 import torch
@@ -89,7 +90,15 @@ class InterceptionIO:
         self.download_thread.start()
 
     def get_stream(self, file_name):
-        return self.files_cache.pop(file_name)
+        r = self.files_cache.pop(file_name)
+        if r is None:
+            CubeFileOpenInterceptor.add_count(False, 0)
+            return None
+        else:
+            current_time = time.time()
+            stream, put_time = r
+            CubeFileOpenInterceptor.add_count(True, current_time - put_time)
+            return stream
 
     def stop_loop_download_worker(self):
         self.download_event.set()
@@ -128,7 +137,6 @@ class InterceptionIO:
             file_path = args[0]
             if is_prefix_cube_file(file_path):
                 stream = self.get_stream(file_path)
-                CubeFileOpenInterceptor.add_count(stream is not None)
                 if stream:
                     result = builtins_torch_load(stream, **kwargs)
                     del stream
@@ -193,7 +201,6 @@ class CubeFile(io.FileIO):
         self._is_cached = False
         self._cube_stream = None
         stream = global_interceptionIO.get_stream(self.name)
-        CubeFileOpenInterceptor.add_count(stream is not None)
         if stream is None:
             super().__init__(*args, **kwargs)
             return

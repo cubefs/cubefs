@@ -15,7 +15,6 @@ setup(
     packages=['cube_torch'],
     package_data={
         'cube_torch': [
-
             '__init__.py',
             'test/*.py',
             'example/*.py',
