@@ -227,8 +227,8 @@ func getDataPartitions(addr, name string) ([]*proto.DataPartitionResponse, error
 		return nil, fmt.Errorf("Unmarshal data partitions body failed: %v", err)
 	}
 
-	var dpv *proto.DataPartitionsView
-	if err = json.Unmarshal(body.Data, &dpv); err != nil {
+	dpv := &proto.DataPartitionsView{}
+	if err = json.Unmarshal(body.Data, dpv); err != nil {
 		return nil, fmt.Errorf("Unmarshal data partitions view failed: %v", err)
 	}
 
