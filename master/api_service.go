@@ -877,7 +877,6 @@ func (m *Server) QosUpdateClientParam(w http.ResponseWriter, r *http.Request) {
 	}
 	if value = r.FormValue(ClientReqPeriod); value != "" {
 		if parsed, err = strconv.ParseUint(value, 10, 32); err != nil || parsed == 0 {
-			log.LogErrorf("hytemp error %v", err)
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("wrong param of peroid")))
 			return
 		}

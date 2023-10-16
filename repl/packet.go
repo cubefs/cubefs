@@ -16,11 +16,12 @@ package repl
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
@@ -347,6 +348,7 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (er
 	if _, err = io.ReadFull(c, header); err != nil {
 		return
 	}
+
 	if err = p.UnmarshalHeader(header); err != nil {
 		return
 	}
@@ -430,7 +432,8 @@ func (p *Packet) IsBroadcastMinAppliedID() bool {
 func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead ||
 		p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDeleteRecord ||
-		p.Opcode == proto.OpTinyExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead
+		p.Opcode == proto.OpTinyExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead ||
+		p.Opcode == proto.OpBackupRead
 }
 
 func (p *Packet) IsRandomWrite() bool {

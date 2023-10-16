@@ -119,6 +119,12 @@ const (
 	OpQuotaCreateInode          uint8 = 0x53
 	OpQuotaCreateDentry         uint8 = 0x54
 
+	//backUp
+	OpBatchLockNormalExtent   uint8 = 0x57
+	OpBatchUnlockNormalExtent uint8 = 0x58
+	OpBackupRead              uint8 = 0x59
+	OpBackupWrite             uint8 = 0x5A
+
 	// Operations: Master -> DataNode
 	OpCreateDataPartition           uint8 = 0x60
 	OpDeleteDataPartition           uint8 = 0x61
@@ -504,6 +510,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaBatchDeleteInodeQuota"
 	case OpMetaGetInodeQuota:
 		m = "OpMetaGetInodeQuota"
+	case OpBackupRead:
+		m = "OpBackupRead"
+	case OpBatchLockNormalExtent:
+		m = "OpBatchLockNormalExtent"
+	case OpBatchUnlockNormalExtent:
+		m = "OpBatchUnlockNormalExtent"
 	}
 	return
 }
@@ -730,7 +742,8 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		return syscall.EBADMSG
 	}
 	size := p.Size
-	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
+		p.Opcode == OpBackupRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	p.Data = make([]byte, size)
@@ -891,4 +904,12 @@ func InitBufferPool(bufLimit int64) {
 	buf.NormalBuffersTotalLimit = bufLimit
 	buf.HeadBuffersTotalLimit = bufLimit
 	Buffers = buf.NewBufferPool()
+}
+
+func (p *Packet) IsBatchLockNormalExtents() bool {
+	return p.Opcode == OpBatchLockNormalExtent
+}
+
+func (p *Packet) IsBatchUnlockNormalExtents() bool {
+	return p.Opcode == OpBatchUnlockNormalExtent
 }

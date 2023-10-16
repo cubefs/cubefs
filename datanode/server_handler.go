@@ -23,10 +23,12 @@ import (
 	"path"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -440,4 +442,35 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 		return
 	}
 	w.Write(jsonBody)
+}
+
+func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		err         error
+		extents     []*storage.ExtentInfo
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	beforeTimeInt, err := strconv.ParseInt(r.FormValue("beforeTime"), 10, 64)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	beforeTime := time.Unix(beforeTimeInt, 0)
+	if partitionID, err = strconv.ParseUint(r.FormValue("id"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	extents = partition.ExtentStore().GetAllExtents(beforeTime)
+	log.LogInfof("getAllExtent: partitionID:%v, beforeTime:%v, extents len:%v", partitionID, beforeTime, len(extents))
+	s.buildSuccessResp(w, extents)
+	return
 }

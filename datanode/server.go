@@ -570,6 +570,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getMetricsDegrade", s.getMetricsDegrade)
 	http.HandleFunc("/qosEnable", s.setQosEnable())
 	http.HandleFunc("/genClusterVersionFile", s.genClusterVersionFile)
+	http.HandleFunc("/getAllExtent", s.getAllExtent)
 }
 
 func (s *DataNode) startTCPService() (err error) {
