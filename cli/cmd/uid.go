@@ -102,7 +102,7 @@ func newUidListCmd(client *master.MasterClient) *cobra.Command {
 			}
 			stdout("%v\n", volumeUidTableHeader)
 			for _, info := range uidInfo.UidSpaceArr {
-				if !uidListAll && info.Enabled == false {
+				if !uidListAll && !info.Enabled {
 					continue
 				}
 				stdout("%v\n", formatUidInfoTableRow(info))

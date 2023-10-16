@@ -39,7 +39,6 @@ import (
 )
 
 //TODO: remove this later.
-//go:generate go vet ./...
 //go:generate gofumpt -l -w .
 //go:generate git diff --exit-code
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...

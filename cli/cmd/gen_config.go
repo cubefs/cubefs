@@ -287,13 +287,13 @@ func storeConfig2Json(configPath string, config map[string]interface{}) error {
 }
 
 func interface2String(inter interface{}) string {
-	switch inter.(type) {
+	switch val := inter.(type) {
 	case string:
-		return fmt.Sprintf("%s", inter.(string))
+		return val
 	case int:
-		return fmt.Sprintf("%d", inter.(int))
+		return fmt.Sprintf("%d", val)
 	case float64:
-		return fmt.Sprintf("%f", inter.(float64))
+		return fmt.Sprintf("%f", val)
 	case nil:
 		return ""
 	default:

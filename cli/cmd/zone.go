@@ -68,7 +68,6 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 			for _, zone := range zones {
 				stdout(zoneTablePattern, zone.Name, zone.Status)
 			}
-			return
 		},
 	}
 	return cmd
@@ -106,7 +105,6 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("%v", formatZoneView(zoneView))
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {

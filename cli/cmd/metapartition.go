@@ -253,8 +253,6 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 					stdout("%v\n", formatMetaPartitionInfoRow(partition))
 				}
 			}
-
-			return
 		},
 	}
 	return cmd

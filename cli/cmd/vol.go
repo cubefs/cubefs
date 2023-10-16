@@ -20,10 +20,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cubefs/cubefs/util"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 	"github.com/spf13/cobra"
 )
 
@@ -91,15 +90,10 @@ const (
 	cmdVolDefaultMPCount               = 3
 	cmdVolDefaultDPSize                = 120
 	cmdVolDefaultCapacity              = 10 // 100GB
-	cmdVolDefaultReplicas              = 3
-	cmdVolDefaultFollowerReader        = true
 	cmdVolDefaultZoneName              = ""
 	cmdVolDefaultCrossZone             = "false"
 	cmdVolDefaultBusiness              = ""
-	cmdVolDefaultReplicaNum            = 3
-	cmdVolDefaultSize                  = 120
 	cmdVolDefaultVolType               = 0
-	cmdVolDefaultFollowerRead          = "false"
 	cmdVolDefaultCacheRuleKey          = ""
 	cmdVolDefaultEbsBlkSize            = 8 * 1024 * 1024
 	cmdVolDefaultCacheCapacity         = 0
@@ -225,7 +219,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Create volume success.\n")
-			return
 		},
 	}
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity")
@@ -262,7 +255,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdVolSetShort    = "Set configuration of the volume"
 	cmdVolUpdateShort = "Update configuration of the volume"
 )
 
@@ -320,14 +312,14 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Description         : %v \n", vv.Description))
 			}
-			if vv.CrossZone == false && "" != optZoneName {
+			if !vv.CrossZone && "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
 				vv.ZoneName = optZoneName
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
 			}
-			if vv.CrossZone == true && "" != optZoneName {
+			if vv.CrossZone && "" != optZoneName {
 				err = fmt.Errorf("Can not set zone name of the volume that cross zone\n")
 			}
 			if optCapacity > 0 {
@@ -603,7 +595,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Volume configuration has been update successfully.\n")
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -705,7 +696,6 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					stdout("%v\n", formatDataPartitionTableRow(dp))
 				}
 			}
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -875,7 +865,6 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Add dp successfully.\n")
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -928,7 +917,6 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 				return
 			}
 			stdout("Volume capacity has been set successfully.\n")
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -969,7 +957,6 @@ func newVolSetForbiddenCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Volume forbidden property has been set successfully, please wait few minutes for the settings to take effect.\n")
-			return
 		},
 	}
 	return cmd

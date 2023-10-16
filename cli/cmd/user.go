@@ -125,7 +125,6 @@ func newUserCreateCmd(client *master.MasterClient) *cobra.Command {
 			// display operation result
 			stdout("Create user success:\n")
 			printUserInfo(userInfo)
-			return
 		},
 	}
 	cmd.Flags().StringVar(&optPassword, "password", "", "Specify user password")
@@ -214,7 +213,6 @@ func newUserUpdateCmd(client *master.MasterClient) *cobra.Command {
 
 			stdout("Update user success:\n")
 			printUserInfo(userInfo)
-			return
 		},
 	}
 	cmd.Flags().StringVar(&optAccessKey, "access-key", "", "Update user access key")
@@ -261,7 +259,6 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Delete user success.\n")
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -366,7 +363,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			var userInfo *proto.UserInfo
-			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
+			if _, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				return
 			}
 			if perm.IsNone() {
