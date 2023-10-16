@@ -16,11 +16,12 @@ package repl
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
@@ -408,6 +409,13 @@ func (p *Packet) IsBatchDeleteExtents() bool {
 
 func (p *Packet) IsBroadcastMinAppliedID() bool {
 	return p.Opcode == proto.OpBroadcastMinAppliedID
+}
+
+func (p *Packet) IsReadOperation() bool {
+	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead ||
+		p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDeleteRecord ||
+		p.Opcode == proto.OpTinyExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead ||
+		p.Opcode == proto.OpBackupRead
 }
 
 func (p *Packet) IsRandomWrite() bool {

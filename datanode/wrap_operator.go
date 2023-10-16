@@ -107,7 +107,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
-			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead:
+			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead, proto.OpBackupRead:
 			case proto.OpReadTinyDeleteRecord:
 				log.LogRead(logContent)
 			case proto.OpWrite, proto.OpRandomWrite,
@@ -128,9 +128,9 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 	switch p.Opcode {
 	case proto.OpCreateExtent:
 		s.handlePacketToCreateExtent(p)
-	case proto.OpWrite, proto.OpSyncWrite:
+	case proto.OpWrite, proto.OpSyncWrite, proto.OpBackupWrite:
 		s.handleWritePacket(p)
-	case proto.OpStreamRead:
+	case proto.OpStreamRead, proto.OpBackupRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpStreamFollowerRead:
 		s.extentRepairReadPacket(p, c, StreamRead)
@@ -181,6 +181,10 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleUpdateVerPacket(p)
 	case proto.OpStopDataPartitionRepair:
 		s.handlePacketToStopDataPartitionRepair(p)
+	case proto.OpBatchLockNormalExtent:
+		s.handleBatchLockNormalExtent(p, c)
+	case proto.OpBatchUnlockNormalExtent:
+		s.handleBatchUnlockNormalExtent(p, c)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -761,7 +765,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
 		}); !writable {
 			err = storage.TryAgainError
 			return
@@ -783,7 +787,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
-			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+			_, err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
 		}); !writable {
 			err = storage.TryAgainError
 			return
@@ -811,7 +815,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 
 			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
-				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite())
+				_, err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
 			}); !writable {
 				err = storage.TryAgainError
 				return
@@ -996,7 +1000,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		partition.Disk().allocCheckLimit(proto.FlowReadType, currReadSize)
 
 		partition.disk.limitRead.Run(int(currReadSize), func() {
-			reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead)
+			reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead, p.Opcode == proto.OpBackupRead)
 		})
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
@@ -1141,7 +1145,7 @@ func (s *DataNode) tinyExtentRepairRead(request *repl.Packet, connect net.Conn) 
 			reply.Data = make([]byte, currReadSize)
 		}
 		reply.ExtentOffset = offset
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false, false)
 		if err != nil {
 			return
 		}
@@ -1571,4 +1575,81 @@ func (s *DataNode) handlePacketToStopDataPartitionRepair(p *repl.Packet) {
 	}
 	dp.StopDecommissionRecover(request.Stop)
 	log.LogInfof("action[handlePacketToStopDataPartitionRepair] %v stop %v success", request.PartitionId, request.Stop)
+}
+
+func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn) {
+	var (
+		err error
+	)
+
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[handleBatchLockNormalExtent] err %v", err)
+			p.PackErrorBody(ActionBatchLockNormalExtent, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+
+	partition := p.Object.(*DataPartition)
+	gcLockEks := &proto.GcLockExtents{}
+	err = json.Unmarshal(p.Data, gcLockEks)
+	if err != nil {
+		log.LogErrorf("action[handleBatchLockNormalExtent] err %v", err)
+		return
+	}
+
+	store := partition.ExtentStore()
+
+	// In order to prevent users from writing extents, lock first and then create
+	err = store.ExtentBatchLockNormalExtent(gcLockEks.Eks, gcLockEks.IsCreate)
+	if err != nil {
+		log.LogErrorf("action[handleBatchLockNormalExtent] err %v", err)
+		return
+	}
+
+	if gcLockEks.IsCreate {
+		for _, ek := range gcLockEks.Eks {
+			err = store.Create(ek.ExtentId)
+			if err == storage.ExtentExistsError {
+				err = nil
+				continue
+			}
+			if err != nil {
+				log.LogErrorf("action[handleBatchLockNormalExtent] create extent err %v", err)
+				return
+			}
+		}
+	}
+	log.LogInfof("action[handleBatchLockNormalExtent] success len: %v, isCreate: %v", len(gcLockEks.Eks), gcLockEks.IsCreate)
+	return
+}
+
+func (s *DataNode) handleBatchUnlockNormalExtent(p *repl.Packet, connect net.Conn) {
+	var (
+		err error
+	)
+
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[handleBatchUnlockNormalExtent] err %v", err)
+			p.PackErrorBody(ActionBatchLockNormalExtent, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+
+	partition := p.Object.(*DataPartition)
+	var exts []*proto.ExtentKey
+	err = json.Unmarshal(p.Data, &exts)
+	if err != nil {
+		log.LogErrorf("action[handleBatchUnlockNormalExtent] err %v", err)
+		return
+	}
+
+	store := partition.ExtentStore()
+	store.ExtentBatchUnlockNormalExtent(exts)
+
+	log.LogInfof("action[handleBatchUnlockNormalExtent] success len: %v", len(exts))
+	return
 }
