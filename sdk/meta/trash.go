@@ -21,14 +21,16 @@ import (
 const CurrentName = "Current"
 const TrashPrefix = ".Trash"
 const ExpiredPrefix = "Expired"
-const ParentDirPrefix = "____"
+const ParentDirPrefix = "|____|"
 const ExpiredTimeFormat = "2006-01-02-150405"
 const FileNameLengthMax = 255
 const LongNamePrefix = "LongName____"
 const OriginalName = "OriginalName"
+const DefaultReaddirLimit = 4096
 
 const (
 	DisableTrash = "/trash/disable"
+	QueryTrash   = "/trash/query"
 )
 
 type Trash struct {
@@ -696,11 +698,16 @@ func (trash *Trash) buildDeletedFileParentDirs() {
 		log.LogWarnf("action[buildDeletedFileParentDirs] trashInfo is nil %v", trashCurrent)
 		return
 	}
-	children, err := trash.mw.ReadDir_ll(trashInfo.Inode)
-	if err != nil {
-		log.LogWarnf("action[buildDeletedFileParentDirs] ReadDir  %v  failed:%v", trashCurrent, err.Error())
-		return
-	}
+	var (
+		noMore = false
+		from   = ""
+		//children []proto.Dentry
+	)
+	//children, err := trash.mw.ReadDir_ll(trashInfo.Inode)
+	//if err != nil {
+	//	log.LogWarnf("action[buildDeletedFileParentDirs] ReadDir  %v  failed:%v", trashCurrent, err.Error())
+	//	return
+	//}
 	rebuildTaskFunc := func() {
 		defer wg.Done()
 		for task := range taskCh {
@@ -716,12 +723,31 @@ func (trash *Trash) buildDeletedFileParentDirs() {
 		wg.Add(1)
 		go rebuildTaskFunc()
 	}
-	for _, child := range children {
-		log.LogDebugf("action[buildDeletedFileParentDirs] rebuild %v type %v", child.Name, child.Type)
-		if strings.Contains(child.Name, ParentDirPrefix) || strings.Contains(child.Name, LongNamePrefix) {
-			taskCh <- RebuildTask{Name: child.Name, Type: child.Type, Inode: trashInfo.Inode, FileIno: child.Inode}
+	for !noMore {
+		batches, err := trash.mw.ReadDirLimit_ll(trashInfo.Inode, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("action[buildDeletedFileParentDirs] ReadDirLimit_ll: ino(%v) err(%v) from(%v)", trashInfo.Inode, err, from)
+			return
 		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		for _, child := range batches {
+			log.LogDebugf("action[buildDeletedFileParentDirs] rebuild %v type %v", child.Name, child.Type)
+			if strings.Contains(child.Name, ParentDirPrefix) || strings.Contains(child.Name, LongNamePrefix) {
+				taskCh <- RebuildTask{Name: child.Name, Type: child.Type, Inode: trashInfo.Inode, FileIno: child.Inode}
+			}
+		}
+		from = batches[len(batches)-1].Name
 	}
+
 	close(taskCh)
 	wg.Wait()
 	log.LogDebugf("action[buildDeletedFileParentDirs] end")

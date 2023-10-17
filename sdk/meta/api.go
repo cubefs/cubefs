@@ -2641,3 +2641,11 @@ func (mw *MetaWrapper) DeleteInoInfoCache(ino uint64) {
 	defer mw.inoInfoLk.Unlock()
 	delete(mw.dirCache, ino)
 }
+
+func (mw *MetaWrapper) DisableTrashByClient(flag bool) {
+	mw.disableTrashByClient = flag
+}
+
+func (mw *MetaWrapper) QueryTrashDisableByClient() bool {
+	return mw.disableTrashByClient
+}
