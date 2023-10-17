@@ -80,6 +80,7 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	}
 
 	// set io type
+	convertIoType(&args.Type) // For compatibility with previous versions io type
 	ctx = bnapi.SetIoType(ctx, args.Type)
 	ctx = limitio.SetLimitTrack(ctx)
 
@@ -456,6 +457,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	}
 
 	// set io type
+	convertIoType(&args.Type) // For compatibility with previous versions io type
 	ctx = bnapi.SetIoType(ctx, args.Type)
 	ctx = limitio.SetLimitTrack(ctx)
 
@@ -526,4 +528,11 @@ func isShardErr(err error) bool {
 		return true
 	}
 	return false
+}
+
+// For compatibility with previous versions io type, convert: 0->0; [1,8)->1
+func convertIoType(iot *bnapi.IOType) {
+	if *iot > bnapi.NormalIO {
+		*iot = bnapi.BackgroundIO
+	}
 }
