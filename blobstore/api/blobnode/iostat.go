@@ -30,7 +30,8 @@ type IOType uint64
 const (
 	NormalIO     IOType = iota // From: external: user io: read/write
 	BackgroundIO               // From: external: background io: shard repair;disk repair, delete, compact;balance, drop, manual migrate; internal, inspect
-	IOTypeMax
+	IOTypeMax                  // 2
+	IOTypeOldMax = 8           // For compatibility with previous versions
 )
 
 var IOtypemap = [...]string{
@@ -41,7 +42,7 @@ var IOtypemap = [...]string{
 var _ = IOtypemap[IOTypeMax-1]
 
 func (it IOType) IsValid() bool {
-	return it >= NormalIO && it < IOTypeMax
+	return it >= NormalIO && it < IOTypeOldMax
 }
 
 func (it IOType) String() string {
