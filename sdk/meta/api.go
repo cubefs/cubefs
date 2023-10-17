@@ -2382,3 +2382,7 @@ func (mw *MetaWrapper) DeleteInoInfoCache(ino uint64) {
 func (mw *MetaWrapper) DisableTrashByClient(flag bool) {
 	mw.disableTrashByClient = flag
 }
+
+func (mw *MetaWrapper) QueryTrashDisableByClient() bool {
+	return mw.disableTrashByClient
+}

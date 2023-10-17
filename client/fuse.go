@@ -605,6 +605,8 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	http.HandleFunc(auditlog.SetAuditLogBufSizeReqPath, auditlog.ResetWriterBuffSize)
 	//trash 发布前修改
 	http.HandleFunc(meta.DisableTrash, super.DisableTrash)
+	http.HandleFunc(meta.QueryTrash, super.QueryTrash)
+
 	statusCh := make(chan error)
 	pprofAddr := ":" + opt.Profport
 	if opt.LocallyProf {

@@ -513,7 +513,16 @@ func (s *Super) DisableTrash(w http.ResponseWriter, r *http.Request) {
 		replyFail(w, r, err.Error())
 		return
 	}
-	replySucc(w, r, fmt.Sprintf("set disable flag to %v", flag))
+	replySucc(w, r, fmt.Sprintf("set disable flag to %v\n", flag))
+}
+
+func (s *Super) QueryTrash(w http.ResponseWriter, r *http.Request) {
+	flag := s.mw.QueryTrashDisableByClient()
+	if !flag {
+		replySucc(w, r, fmt.Sprintf("Trash is now enable interval[%v]\n", s.mw.TrashInterval))
+	} else {
+		replySucc(w, r, fmt.Sprintf("Trash is now disable\n"))
+	}
 }
 
 func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {
