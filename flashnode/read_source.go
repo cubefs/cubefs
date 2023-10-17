@@ -38,32 +38,31 @@ const (
 	ConnectTimeoutData      = 500 * time.Millisecond
 )
 
+type blockWriteHandle struct {
+	writer func(data []byte, off, size int64) error
+	offset int64
+}
+
 var extentReaderConnPool *connpool.ConnectPool
 
-type ReadSource struct {
-}
+type ReadSource struct{}
 
 func NewReadSource() *ReadSource {
 	extentReaderConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, IdleConnTimeoutData, ConnectTimeoutData)
 	return &ReadSource{}
 }
 
-func (reader *ReadSource) ReadExtentData(source *proto.DataSource, afterReadFunc func([]byte, int64) error) (readBytes int, err error) {
-	var reqPacket *proto.Packet
-	reqPacket = newReadPacket(context.Background(), &proto.ExtentKey{
-		PartitionId: source.PartitionID,
-		ExtentId:    source.ExtentID,
-	}, int(source.ExtentOffset), int(source.Size_), source.FileOffset, true)
-
-	readBytes, err = extentReadWithRetry(reqPacket, source.Hosts, afterReadFunc)
-	if err != nil {
-		log.LogErrorf("read error: err(%v)", err)
-		return readBytes, err
+func (reader *ReadSource) ReadExtentData(source *proto.DataSource, writer func(data []byte, off, size int64) error) (readBytes int, err error) {
+	wh := &blockWriteHandle{
+		writer: writer,
+		offset: int64(source.CacheBlockOffset()),
 	}
-	return
+	ek := &proto.ExtentKey{PartitionId: source.PartitionID, ExtentId: source.ExtentID}
+	req := newStreamFollowerReadPacket(context.Background(), ek, int(source.ExtentOffset), int(source.Size_), source.FileOffset)
+	return reader.extentReadWithRetry(req, source.Hosts, wh)
 }
 
-func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc func([]byte, int64) error) (readBytes int, err error) {
+func (reader *ReadSource) extentReadWithRetry(req *proto.Packet, hosts []string, w *blockWriteHandle) (readBytes int, err error) {
 	errMap := make(map[string]error)
 	startTime := time.Now()
 	retryCount := 0
@@ -71,101 +70,85 @@ func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc 
 		retryCount++
 		for _, addr := range hosts {
 			if log.IsDebugEnabled() {
-				log.LogDebugf("extentReadWithRetry: try addr(%v) reqPacket(%v)", addr, reqPacket)
+				log.LogDebugf("extentReadWithRetry: try addr(%v) req(%v)", addr, req)
 			}
-			readBytes, err = sendReadCmdToDataPartition(addr, reqPacket, afterReadFunc)
+			if addr == "" {
+				err = errors.New(fmt.Sprintf("extentReadWithRetry: failed, current address is null, req(%v)", req))
+				return
+			}
+			readBytes, err = reader.sendReadCmdToDataPartition(addr, req, w)
 			if err == nil {
 				return
 			}
 			errMap[addr] = err
 			if log.IsWarnEnabled() {
-				log.LogWarnf("extentReadWithRetry: try addr(%v) failed! reqPacket(%v) err(%v)", addr, reqPacket, err)
+				log.LogWarnf("extentReadWithRetry: try addr(%v) failed! req(%v) err(%v)", addr, req, err)
 			}
 			if strings.Contains(err.Error(), proto.ErrTmpfsNoSpace.Error()) {
 				break
 			}
 		}
 		if time.Since(startTime) > time.Duration(ExtentReadTimeoutSec*int64(time.Second)) {
-			log.LogWarnf("extentReadWithRetry: retry timeout req(%v) time(%v)", reqPacket, time.Since(startTime))
+			log.LogWarnf("extentReadWithRetry: retry timeout req(%v) time(%v)", req, time.Since(startTime))
 			break
 		}
-		log.LogWarnf("extentReadWithRetry: errMap(%v), reqPacket(%v), try the next round", errMap, reqPacket)
+		log.LogWarnf("extentReadWithRetry: errMap(%v), req(%v), try the next round", errMap, req)
 		time.Sleep(ExtentReadSleepInterval)
 	}
-	err = errors.New(fmt.Sprintf("FollowerRead: failed %v times, reqPacket(%v) errMap(%v)", ExtentReadMaxRetry, reqPacket, errMap))
+	err = errors.New(fmt.Sprintf("FollowerRead: failed %v times, req(%v) errMap(%v)", ExtentReadMaxRetry, req, errMap))
 	return
 }
 
-func sendReadCmdToDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc func([]byte, int64) error) (readBytes int, err error) {
-	if addr == "" {
-		err = errors.New(fmt.Sprintf("sendReadCmdToDataPartition: failed, current address is null, reqPacket(%v)", reqPacket))
-		return
-	}
+func (reader *ReadSource) sendReadCmdToDataPartition(addr string, req *proto.Packet, w *blockWriteHandle) (readBytes int, err error) {
 	var conn *net.TCPConn
 	defer func() {
 		extentReaderConnPool.PutConnectWithErr(conn, err)
 	}()
 	if conn, err = extentReaderConnPool.GetConnect(addr); err != nil {
-		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", addr, reqPacket, err)
+		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) req(%v) err(%v)", addr, req, err)
 		return
 	}
-	if err = sendToDataPartition(conn, reqPacket, addr); err != nil {
-		log.LogWarnf("sendReadCmdToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", addr, reqPacket, err)
-		return
-	}
-	if readBytes, err = getReadReply(conn, reqPacket, afterReadFunc); err != nil {
-		log.LogWarnf("sendReadCmdToDataPartition: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", addr, reqPacket, err)
-		return
-	}
-	return
-}
-
-func sendToDataPartition(conn *net.TCPConn, req *proto.Packet, addr string) (err error) {
-	if log.IsDebugEnabled() {
-		log.LogDebugf("sendToDataPartition: send to addr(%v)", addr)
-	}
-	if req.Opcode == proto.OpStreamFollowerRead {
-		req.SendT = time.Now().UnixNano()
-	}
+	req.SendT = time.Now().UnixNano()
 	if err = req.WriteToConnNs(conn, ExtentReadTimeoutSec*int64(time.Second)); err != nil {
-		log.LogWarnf("sendToDataPartition: failed to write to addr(%v) err(%v)", addr, err)
+		log.LogWarnf("sendReadCmdToDataPartition: failed to write to addr(%v) err(%v)", addr, err)
 		return
 	}
-	if log.IsDebugEnabled() {
-		log.LogDebugf("sendToDataPartition exit: send to addr(%v) successfully", addr)
+	if readBytes, err = reader.getReadReply(conn, req, w); err != nil {
+		log.LogWarnf("sendReadCmdToDataPartition: getReply error and RETURN, addr(%v) req(%v) err(%v)", addr, req, err)
+		return
 	}
 	return
 }
 
-func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc func([]byte, int64) error) (readBytes int, err error) {
+func (reader *ReadSource) getReadReply(conn *net.TCPConn, req *proto.Packet, w *blockWriteHandle) (readBytes int, err error) {
 	readBytes = 0
-	tmpData := make([]byte, reqPacket.Size)
-	for readBytes < int(reqPacket.Size) {
-		replyPacket := newReplyPacket(reqPacket.Ctx(), reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
-		bufSize := unit.Min(unit.ReadBlockSize, int(reqPacket.Size)-readBytes)
+	tmpData := make([]byte, req.Size)
+	offset := w.offset
+	for readBytes < int(req.Size) {
+		replyPacket := newReplyPacket(req.Ctx(), req.ReqID, req.PartitionID, req.ExtentID)
+		bufSize := unit.Min(unit.ReadBlockSize, int(req.Size)-readBytes)
 		replyPacket.Data = tmpData[readBytes : readBytes+bufSize]
 		e := replyPacket.ReadFromConn(conn, ExtentReadTimeoutSec)
 		if e != nil {
-			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, e)
-			// Upon receiving TryOtherAddrError, other hosts will be retried.
+			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", req, readBytes, e)
 			return readBytes, e
 		}
 
-		e = checkReadReplyValid(reqPacket, replyPacket)
+		e = checkReadReplyValid(req, replyPacket)
 		if e != nil {
-			// Don't change the error message, since the caller will
-			// check if it is NotLeaderErr.
 			return readBytes, e
 		}
-		if afterReadFunc != nil {
-			e = afterReadFunc(replyPacket.Data[:bufSize], int64(bufSize))
-			if e != nil {
-				return readBytes, e
-			}
+		if w.writer == nil {
+			return readBytes, fmt.Errorf("write handle is nil")
+		}
+		e = w.writer(replyPacket.Data[:bufSize], offset, int64(bufSize))
+		if e != nil {
+			return readBytes, e
 		}
 		if replyPacket.Size != uint32(bufSize) {
-			exporter.WarningCritical(fmt.Sprintf("action[getReadReply] reply size not valid, ReqID(%v) PartitionID(%v) Extent(%v) buffSize(%v) ReplySize(%v)", reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID, bufSize, replyPacket.Size))
+			exporter.WarningCritical(fmt.Sprintf("action[getReadReply] reply size not valid, ReqID(%v) PartitionID(%v) Extent(%v) buffSize(%v) ReplySize(%v)", req.ReqID, req.PartitionID, req.ExtentID, bufSize, replyPacket.Size))
 		}
+		offset += int64(replyPacket.Size)
 		readBytes += int(replyPacket.Size)
 	}
 	return readBytes, nil
@@ -187,6 +170,7 @@ func checkReadReplyValid(request *proto.Packet, reply *proto.Packet) (err error)
 	}
 	return nil
 }
+
 func isValidReadReply(p *proto.Packet, q *proto.Packet) bool {
 	if p.ReqID == q.ReqID && p.PartitionID == q.PartitionID && p.ExtentID == q.ExtentID {
 		return true
@@ -194,19 +178,15 @@ func isValidReadReply(p *proto.Packet, q *proto.Packet) bool {
 	return false
 }
 
-// newReadPacket returns a new read packet.
-func newReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size int, fileOffset uint64, followerRead bool) *proto.Packet {
+// newStreamFollowerReadPacket returns a new read packet.
+func newStreamFollowerReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size int, fileOffset uint64) *proto.Packet {
 	p := new(proto.Packet)
 	p.ExtentID = key.ExtentId
 	p.PartitionID = key.PartitionId
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(extentOffset)
 	p.Size = uint32(size)
-	if followerRead {
-		p.Opcode = proto.OpStreamFollowerRead
-	} else {
-		p.Opcode = proto.OpStreamRead
-	}
+	p.Opcode = proto.OpStreamFollowerRead
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = 0

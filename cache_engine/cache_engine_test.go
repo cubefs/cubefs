@@ -209,8 +209,8 @@ func TestSparseFile(t *testing.T) {
 	for i := 0; uint64(i) < 128*unit.KB; i++ {
 		rawData = append(rawData, 'b')
 	}
-	var readSourceFunc = func(source *proto.DataSource, afterReadFunc func([]byte, int64) error) (readBytes int, err error) {
-		err = afterReadFunc(rawData, int64(source.Size_))
+	var readSourceFunc = func(source *proto.DataSource, w func(data []byte, off, size int64) error) (readBytes int, err error) {
+		err = w(rawData, int64(source.FileOffset)&(proto.CACHE_BLOCK_SIZE-1), int64(source.Size_))
 		if err != nil {
 			return
 		}
@@ -252,17 +252,7 @@ func TestSparseFile(t *testing.T) {
 		return
 	}
 	for _, source := range sources {
-		localStart := int64(source.FileOffset)
-		writeCacheAfterRead := func(data []byte, size int64) error {
-			e := cb.WriteAt(data, localStart, size)
-			if e != nil {
-				return e
-			}
-			t.Logf("write source, offset:%v size:%v", localStart, size)
-			localStart += size
-			return nil
-		}
-		_, err = cb.readSource(source, writeCacheAfterRead)
+		_, err = cb.readSource(source, cb.WriteAt)
 		if assert.Error(t, err) {
 			return
 		}

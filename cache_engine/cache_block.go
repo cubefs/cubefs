@@ -126,7 +126,7 @@ func (cb *CacheBlock) Exist() (exsit bool) {
 
 // WriteAt writes data to an cacheBlock, only append write supported
 func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
-	if err = cb.checkOffsetAndSize(offset, size); err != nil {
+	if err = cb.checkWriteOffsetAndSize(offset, size); err != nil {
 		return
 	}
 	if _, err = cb.file.WriteAt(data[:size], offset); err != nil {
@@ -141,17 +141,13 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	if err = cb.waitCacheReady(ctx); err != nil {
 		return
 	}
-	if offset >= cb.getAllocSize() || offset > cb.getUsedSize() || cb.getUsedSize() == 0 {
-		return 0, fmt.Errorf("invalid read, offset:%d, allocSize:%d, usedSize:%d", offset, cb.getAllocSize(), cb.getUsedSize())
-	}
-	realSize := cb.getUsedSize() - offset
-	if realSize >= size {
-		realSize = size
+	if cb.getUsedSize() == 0 || offset >= cb.getAllocSize() || offset >= cb.getUsedSize() || offset+size > cb.getUsedSize() {
+		return 0, fmt.Errorf("invalid read, offset:%d, size:%v, allocSize:%d, usedSize:%d", offset, size, cb.getAllocSize(), cb.getUsedSize())
 	}
 	if log.IsDebugEnabled() {
 		log.LogDebugf("action[Read] read cache block:%v, offset:%d, allocSize:%d, usedSize:%d", cb.blockKey, offset, cb.allocSize, cb.usedSize)
 	}
-	if _, err = cb.file.ReadAt(data[:realSize], offset); err != nil {
+	if _, err = cb.file.ReadAt(data[:size], offset); err != nil {
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -159,12 +155,12 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 }
 
 // todo: use end size to replace allocSize
-func (cb *CacheBlock) checkOffsetAndSize(offset, size int64) error {
+func (cb *CacheBlock) checkWriteOffsetAndSize(offset, size int64) error {
 	if offset+size > cb.getAllocSize() {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v allocSize:%d", offset, size, cb.getAllocSize()))
+		return NewParameterMismatchErr(fmt.Sprintf("invalid write, offset=%v size=%v allocSize:%d", offset, size, cb.getAllocSize()))
 	}
 	if offset >= cb.getAllocSize() || size == 0 {
-		return NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v allocSize:%d", offset, size, cb.getAllocSize()))
+		return NewParameterMismatchErr(fmt.Sprintf("invalid write, offset=%v size=%v allocSize:%d", offset, size, cb.getAllocSize()))
 	}
 	return nil
 }
@@ -204,10 +200,10 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	}
 	var stop bool
 	var sb = strings.Builder{}
-	for _, s := range sources {
+	for idx, s := range sources {
 		select {
 		case sourceTaskCh <- s:
-			sb.WriteString(fmt.Sprintf("dp(%v) extent(%v) offset(%v) size(%v) fileOffset(%v) hosts(%v)\n", s.PartitionID, s.ExtentID, s.ExtentOffset, s.Size_, s.FileOffset, strings.Join(s.Hosts, ",")))
+			sb.WriteString(fmt.Sprintf("  sourceIndex(%d) dp(%v) extent(%v) offset(%v) size(%v) fileOffset(%v) hosts(%v)\n", idx, s.PartitionID, s.ExtentID, s.ExtentOffset, s.Size_, s.FileOffset, strings.Join(s.Hosts, ",")))
 		case <-ctx.Done():
 			stop = true
 		}
@@ -217,13 +213,13 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	}
 	close(sourceTaskCh)
 	wg.Wait()
-	if log.IsWarnEnabled() {
-		log.LogWarnf("action[Init], cache block:%v, sources:\n%v", cb.blockKey, sb.String())
-	}
 	err = ctx.Err()
 	if err != nil {
 		cb.markClose()
 		return
+	}
+	if log.IsInfoEnabled() {
+		log.LogInfof("action[Init], cache block:%v, sources_len:%v, sources:\n%v", cb.blockKey, len(sources), sb.String())
 	}
 	cb.markReady()
 	return
@@ -244,26 +240,13 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, cancel context.CancelFu
 			if task == nil {
 				return
 			}
-			var tmpOffset int64
-			atomic.StoreInt64(&tmpOffset, int64(task.FileOffset)&(proto.CACHE_BLOCK_SIZE-1))
-			writeCacheAfterRead := func(data []byte, size int64) error {
-				e := cb.WriteAt(data, atomic.LoadInt64(&tmpOffset), size)
-				if e != nil {
-					return e
-				}
-				atomic.AddInt64(&tmpOffset, size)
-				return nil
-			}
 			tStart := time.Now()
-			if log.IsDebugEnabled() {
-				log.LogDebugf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, tmpOffset:%d, start", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, tmpOffset)
-			}
-			if _, err = cb.readSource(task, writeCacheAfterRead); err != nil {
-				log.LogErrorf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, tmpOffset:%d, readSource err:%v", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, tmpOffset, err)
+			if _, err = cb.readSource(task, cb.WriteAt); err != nil {
+				log.LogErrorf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, FileOffset:%d, size:%v, readSource err:%v", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.FileOffset, task.Size_, err)
 				return
 			}
 			if log.IsDebugEnabled() {
-				log.LogDebugf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, Size:%v, tmpOffset:%d, end, cost[%v]", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.Size_, tmpOffset, time.Since(tStart))
+				log.LogDebugf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, FileOffset:%d, size:%v, end, cost[%v]", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.FileOffset, task.Size_, time.Since(tStart))
 			}
 		}
 	}
@@ -302,7 +285,7 @@ func (cb *CacheBlock) markReady() {
 // align AllocSize with PageSize-4KB
 func computeAllocSize(sources []*proto.DataSource) (alloc uint64) {
 	for _, s := range sources {
-		blockOffset := s.FileOffset & (proto.CACHE_BLOCK_SIZE - 1)
+		blockOffset := s.CacheBlockOffset()
 		blockEnd := blockOffset + s.Size_ - 1
 		pageOffset := blockOffset / proto.PageSize
 		pageEnd := blockEnd / proto.PageSize
