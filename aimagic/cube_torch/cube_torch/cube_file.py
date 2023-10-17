@@ -39,17 +39,6 @@ def is_prefix_cube_file(string):
     return string[:prefix_length] == global_cube_rootdir_path
 
 
-def func1(file_path):
-    stack = traceback.extract_stack()
-    for f in reversed(stack):
-        print("file_path:{} f:{}".format(file_path, f))
-
-
-def func_traceback(file_path):
-    for s in traceback.format_stack():
-        print(s.strip())
-
-
 class CubeStream(io.BytesIO):
     def __init__(self, _fpath, _fcontent):
         self.file_path = _fpath
@@ -66,18 +55,24 @@ class CubeStream(io.BytesIO):
     def get_content_size(self):
         return self.content_size
 
+    def __del__(self):
+        del self.content
+        if not self.closed:
+            self.close()
+
 
 class InterceptionIO:
-    def __init__(self, storage_info):
+    def __init__(self, storage_info, switch_event):
         cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
         self.cube_root_dir = cube_root_dir
-        self.files_cache = LRUCache(max_size=batch_size * 10, timeout=300)
+        self.files_cache = LRUCache(timeout=60)
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
         self.wait_download_queue = wait_download_queue
         self.batch_size = batch_size
         self.download_event = threading.Event()
         self._lock = threading.Lock()
+        self.switch_event = switch_event
         retry_strategy = Retry(
             total=1,  # 最大重试次数
             backoff_factor=0.5,  # 重试之间的时间间隔因子
@@ -100,20 +95,22 @@ class InterceptionIO:
             CubeFileOpenInterceptor.add_count(True, current_time - put_time)
             return stream
 
-    def stop_loop_download_worker(self):
-        self.download_event.set()
-        self.download_thread.join()
-
     def get_event_and_thread(self):
         return self.download_thread, self.download_event
 
     def _loop_download_worker(self, event):
+        loop_index = 0
         while not event.is_set():
             try:
+                loop_index += 1
                 files = self.wait_download_queue.get(timeout=5)
                 if files is None:
                     break
                 self.batch_download_async([files])
+                if loop_index % 5 == 0:
+                    self.files_cache.cleanup_expired_items()
+                if loop_index % 100 == 0:
+                    CubeFileOpenInterceptor.print_hit_rate()
             except queue.Empty:
                 continue
         event.set()
@@ -139,7 +136,6 @@ class InterceptionIO:
                 stream = self.get_stream(file_path)
                 if stream:
                     result = builtins_torch_load(stream, **kwargs)
-                    del stream
                     return result
             result = builtins_torch_load(*args, **kwargs)
             return result
@@ -156,7 +152,6 @@ class InterceptionIO:
                         "unavalid http reponse code:{} response:{}".format(response.status_code, response.text))
                 self.stream_parse_content(self.batch_download_addr, response)
             del data, index_list
-            self.files_cache.cleanup_expired_items()
         except Exception as e:
             print('pid:{} url:{} Error:{} '.format(os.getpid(), self.batch_download_addr, e))
             pass
@@ -187,6 +182,9 @@ class InterceptionIO:
             content = response.raw.read(content_length)
             stream = CubeStream(filename, content)
             self.add_stream(filename, stream)
+            if self.switch_event.is_set():
+                self.switch_event.clear()
+                self.switch_event.wait()
         response.raw.close()
 
 
@@ -211,7 +209,9 @@ class CubeFile(io.FileIO):
         return
 
     def __del__(self):
-        pass
+        if self._is_cached:
+            del self._cube_stream
+        del self._name
 
     def __enter__(self):
         return self

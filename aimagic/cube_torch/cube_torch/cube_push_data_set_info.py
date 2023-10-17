@@ -4,6 +4,7 @@ import re
 import threading
 import time
 
+import numpy as np
 import requests
 
 from cube_torch import get_manager
@@ -61,9 +62,6 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_register_pid_addr(self):
         return self.register_pid_addr
-
-    def get_shared_memory_size(self):
-        return self.shared_memory_size
 
     def get_unregister_pid_addr(self):
         return self.unregister_pid_addr
@@ -238,10 +236,3 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def get_batch_download_addr(self):
         return self.batch_download_addr
 
-    def get_notify_storage_worker_num(self):
-        if self._is_use_batch_download:
-            return 1
-        return 1
-
-    def get_cube_prefetch_thread_cnt(self):
-        return self.prefetch_thread_num
