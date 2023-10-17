@@ -111,11 +111,11 @@ func (i *idleVolumes) delete(vid proto.Vid) {
 		delete(i.m, vid)
 
 		atomic.AddInt64(&i.allAllocatableNum, -1)
-		curShardNum = i.allocatableShard[vid].allocatable.Len()
+		curShardNum = i.allocatableShard[curShardIdx].allocatable.Len()
 		allAllocatableNum := int(atomic.LoadInt64(&i.allAllocatableNum))
 		// If the Shard volumeNum < average, there must be another Shard volume Num > average,  guarantee uniformity of each Shard, The time complexity is O(i.shardLen)
 		if curShardNum < allAllocatableNum/i.shardLen {
-			for idx := (curShardIdx + 1) % i.shardLen; idx < i.shardLen; idx = (idx + 1) % i.shardLen {
+			for idx := (curShardIdx + 1) % i.shardLen; idx < i.shardLen; idx++ {
 				if i.allocatableShard[idx].allocatable.Len() > allAllocatableNum/i.shardLen {
 					// move from
 					eFrom := i.allocatableShard[idx].allocatable
@@ -286,11 +286,10 @@ func (a *volumeAllocator) PreAlloc(ctx context.Context, mode codemode.CodeMode, 
 	rand.Seed(time.Now().UnixNano())
 	shardIdx := rand.Intn(idleVolumes.shardLen)
 	startIdx := shardIdx
+	isLastShard := false
 	optionalVids := make([]proto.Vid, 0)
+	var assignable []*volume
 
-GetOneShardAgain:
-	allIdles := idleVolumes.getOneShardIdles(shardIdx)
-	availableVolCount := len(allIdles)
 	allocatableScoreThreshold := a.codeModes[mode].tactic.PutQuorum - a.getShardNum(mode)
 	isEnableDiskLoad := a.isEnableDiskLoad()
 	scoreThreshold := healthiestScore
@@ -299,12 +298,21 @@ GetOneShardAgain:
 	// optionalVids include all volume id which satisfied with our condition(idle/enough free size/health/not over disk load)
 	// all vid will range by health, the more healthier volume will range in front of the optional head
 
+GetOneShardAgain:
+	allIdles := idleVolumes.getOneShardIdles(shardIdx)
+	if (shardIdx+1)%idleVolumes.shardLen == startIdx {
+		isLastShard = true
+		// if last shard has none volume, will put assignable to allIdles, for adjust disk threshold
+		if len(allIdles) == 0 {
+			allIdles = assignable
+			assignable = nil
+		}
+	}
+
 RETRY:
-	index := 0
-	var assignable []*volume
 	span.Debugf("prealloc volume length is %d,isEnableDiskLoad:%v", len(allIdles), isEnableDiskLoad)
 	now := time.Now()
-	for _, volume := range allIdles {
+	for idx, volume := range allIdles {
 		volume.lock.RLock()
 		if volume.canAlloc(a.allocatableSize, scoreThreshold) && (!isEnableDiskLoad || !a.isOverload(volume.vUnits, diskLoadThreshold)) {
 			optionalVids = append(optionalVids, volume.vid)
@@ -323,7 +331,7 @@ RETRY:
 
 		// go to the end, first retry with high disk load volume
 		// second  lower health score volume
-		if index == availableVolCount-1 {
+		if isLastShard && idx == len(allIdles)-1 {
 			span.Infof("assignable volume length is %d", len(assignable))
 			if len(assignable) == 0 {
 				span.Warnf("has no assignable volume,enableDiskLoad:%v,diskLoadThreshold:%d", isEnableDiskLoad, diskLoadThreshold)
@@ -337,10 +345,8 @@ RETRY:
 				scoreThreshold -= 1
 			}
 			allIdles = assignable
-			availableVolCount = len(allIdles)
 			goto RETRY
 		}
-		index++
 	}
 	if len(optionalVids) < a.allocFactor*count {
 		shardIdx = (shardIdx + 1) % idleVolumes.shardLen
