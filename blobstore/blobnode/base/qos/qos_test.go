@@ -20,10 +20,13 @@ import (
 
 func TestNewQosManager(t *testing.T) {
 	ctx := context.Background()
+	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
 	// statGet, _ := flow.NewIOFlowStat("110", true)
 	ioStat, _ := iostat.StatInit("", 0, true)
+	iostat1, _ := iostat.StatInit("", 0, true)
 	iom := &flow.IOFlowStat{}
 	iom[0] = ioStat
+	iom[1] = iostat1
 	diskView := flow.NewDiskViewer(iom)
 	conf := Config{
 		DiskBandwidthMBPS: 200,
@@ -66,6 +69,12 @@ func TestNewQosManager(t *testing.T) {
 		buf := make([]byte, 8)
 		_, err = rt.ReadAt(buf, 0)
 		require.NoError(t, err)
+
+		ctx = bnapi.SetIoType(ctx, bnapi.IOTypeMax)
+		require.Panics(t, func() {
+			rt = qos.ReaderAt(ctx, bnapi.IOTypeMax, f)
+		})
+		ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
 	}
 
 	{
@@ -82,6 +91,10 @@ func TestNewQosManager(t *testing.T) {
 		wt := qos.WriterAt(ctx, bnapi.NormalIO, f)
 		_, err = wt.WriteAt([]byte("hello"), 10)
 		require.NoError(t, err)
+
+		require.Panics(t, func() {
+			wt = qos.WriterAt(ctx, bnapi.IOTypeMax, f)
+		})
 	}
 
 	{
