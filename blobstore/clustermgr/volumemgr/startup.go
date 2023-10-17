@@ -96,6 +96,9 @@ func (c *VolumeMgrConfig) checkAndFix() {
 	if c.AllocFactor <= 0 {
 		c.AllocFactor = defaultAllocFactor
 	}
+	if c.ShardNum <= 0 {
+		c.ShardNum = defaultShardNum
+	}
 }
 
 // NewVolumeMgr constructs a new volume manager.
