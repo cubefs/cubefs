@@ -201,10 +201,7 @@ func (qos *IoQueueQos) getIostat(iot bnapi.IOType) (ios iostat.StatMgrAPI) {
 }
 
 func (qos *IoQueueQos) getBpsLimiter(iot bnapi.IOType) (l *rate.Limiter) {
-	if iot.IsValid() {
-		l = qos.bpsLimiters[iot]
-	}
-	return l
+	return qos.bpsLimiters[iot]
 }
 
 func (qos *IoQueueQos) ReaderAt(ctx context.Context, ioType bnapi.IOType, reader io.ReaderAt) io.ReaderAt {

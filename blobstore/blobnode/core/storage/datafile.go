@@ -86,7 +86,6 @@ var (
 	ErrShardHeaderNotMatch  = errors.New("chunkdata: shard header not match")
 	ErrChunkDataMagic       = errors.New("chunkdata: magic not match")
 	ErrChunkHeaderBufSize   = errors.New("chunkdata: buf size not match")
-	ErrDiskBusy             = errors.New("chunkdata: disk busy")
 )
 
 type ChunkHeader struct {
@@ -311,7 +310,7 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	)
 
 	if !cd.qosAllow(ctx, qos.WriteType) { // If there is too much io, it will discard some low-priority io
-		return ErrDiskBusy
+		return bloberr.ErrOverload
 	}
 	defer cd.qosRelease(qos.WriteType)
 
@@ -411,7 +410,7 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 	}
 
 	if !cd.qosAllow(ctx, qos.ReadType) { // If there is too much io, it will discard some low-priority io
-		return nil, ErrDiskBusy
+		return nil, bloberr.ErrOverload
 	}
 	defer cd.qosRelease(qos.ReadType)
 
