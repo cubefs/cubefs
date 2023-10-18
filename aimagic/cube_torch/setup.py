@@ -11,6 +11,7 @@ setup(
         'torch',
         'requests',
         'torchvision',
+        'numpy',
     ],
     packages=['cube_torch'],
     package_data={
