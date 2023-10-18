@@ -69,8 +69,12 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def covert_index_list_to_filename(self, index_list):
         train_file_name_lists = []
         for index in index_list:
-            for train in self.train_list:
-                train_file_name_lists.append(train[index])
+            if isinstance(self.train_list, np.ndarray):
+                train_file_name_lists.extend(self.train_list[:, index])
+            else:
+                for train in self.train_list:
+                    train_file_name_lists.append(train[index])
+
         return train_file_name_lists
 
     def is_use_batch_download(self):

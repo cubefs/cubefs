@@ -35,7 +35,7 @@ from torch.utils.data.sampler import (
     SequentialSampler,
 )
 
-from cube_torch import CubePushDataSetInfo, get_manager
+from cube_torch import CubePushDataSetInfo
 from cube_torch.cube_worker import _worker_loop, _register_pid_to_storage, \
     _unregister_pid_to_storage
 

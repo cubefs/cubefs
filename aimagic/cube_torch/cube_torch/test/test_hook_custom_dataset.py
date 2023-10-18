@@ -1,5 +1,8 @@
 import os
 import time
+
+import numpy as np
+
 import cube_torch
 import torch
 from PIL import Image
@@ -15,16 +18,17 @@ class CustomDataSet(Dataset):
     def __init__(self):
         imglist = "0_0_1w.txt"
         titlelist = "0_0_title_1w.txt"
-        self.imglist = self.read_file(imglist)
-        self.titlelist = self.read_file(titlelist)
+        self.imglist = np.asarray(self.read_file(imglist))
+        self.titlelist = np.asarray(self.read_file(titlelist))
 
     def train_data_list(self):
-        return [self.imglist, self.titlelist]
+        return np.array([self.imglist, self.titlelist])
 
     def read_file(self, filename):
         with open(filename, 'r') as f:
             lines = f.readlines()
-        return [line.strip() for line in lines]
+        data=[line.strip() for line in lines]
+        return data
 
     def __len__(self):
         return len(self.imglist)
@@ -70,6 +74,6 @@ def start_worker_test_Dataset(i):
 
 
 if __name__ == '__main__':
-    w = multiprocessing.Process(target=start_worker_test_Dataset, args=(1,))
+    w = multiprocessing.Process(target=start_worker_test_concatDataset, args=(1,))
     w.daemon = False
     w.start()

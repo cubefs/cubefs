@@ -20,6 +20,10 @@ def is_2d_array(obj):
     return False
 
 
+def is_numpy_2d_array(obj):
+    return isinstance(obj, np.ndarray) and len(obj.shape) == 2
+
+
 class CubeDataSetInfo:
     def __init__(self, cube_loader):
         self.cube_loader = cube_loader
@@ -75,25 +79,35 @@ class CubeDataSetInfo:
                 samples_path.append(os.path.join(dataset.root, path))
             return samples_path
         if hasattr(dataset, 'train_data_list'):
-            return dataset.train_data_list()
+            train_list = dataset.train_data_list()
+            if not is_numpy_2d_array(train_list):
+                raise ValueError("Invalid Custom Dataset train_data_list func, "
+                                 "Its return value must be a two-dimensional numpy array.")
+            return train_list
         raise ValueError("Invalid dataset{} because the custom dataset does not implement "
                          "the train_data_list method or it is not a pytorch dataset supported by CubeTorch.".format(
             dataset))
 
-    def _concatDataSet_get_samples(self, dataset):
-        file_name_lists = []
-        sdata_arr_is_2d = False
+    def _concat_numpy_2d_array(self, dataset):
+        numpy_2d_array = []
         for sdataset in dataset.datasets:
             sdata_arr = self.get_dataset_samples(sdataset)
-            if is_2d_array(sdata_arr):
-                sdata_arr_is_2d = True
-                file_name_lists.append(sdata_arr)
-            else:
-                file_name_lists += sdata_arr
-        if sdata_arr_is_2d:
-            return [sum(row, []) for row in zip(*file_name_lists)]
+            numpy_2d_array.append(sdata_arr)
+        return numpy_2d_array
+
+    def _concat_1d_array(self, dataset):
+        file_name_lists = []
+        for sdataset in dataset.datasets:
+            sdata_arr = self.get_dataset_samples(sdataset)
+            file_name_lists += sdata_arr
+        return file_name_lists
+
+    def _concatDataSet_get_samples(self, dataset):
+        sdata_arr = self.get_dataset_samples(dataset.datasets[0])
+        if is_numpy_2d_array(sdata_arr):
+            return np.concatenate(self._concat_numpy_2d_array(dataset), axis=1)
         else:
-            return file_name_lists
+            return self._concat_1d_array(dataset)
 
     def _signel_DataSet_get_samples(self, dataset):
         return self.get_dataset_samples(dataset)
@@ -107,12 +121,10 @@ class CubeDataSetInfo:
             file_name_lists = self._concatDataSet_get_samples(dataset)
         else:
             file_name_lists = self._signel_DataSet_get_samples(dataset)
-        if is_2d_array(file_name_lists):
-            train_list = file_name_lists
+        if is_numpy_2d_array(file_name_lists):
+            self.train_list = file_name_lists
         else:
-            train_list = [file_name_lists]
-
-        self.train_list = train_list
+            self.train_list = [file_name_lists]
 
     def get_cube_queue_size_on_worker(self):
         return self.cubefs_queue_size_on_worker
