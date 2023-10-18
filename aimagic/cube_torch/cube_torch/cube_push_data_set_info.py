@@ -46,6 +46,7 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
         self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,
                                                                                            self._dataset_cnt)
+
         self.batch_download_addr = "http://127.0.0.1:{}/batchdownload/path".format(self.prof_port)
         self.clean_old_dataset_file(self.dataset_dir)
 
@@ -69,12 +70,10 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def covert_index_list_to_filename(self, index_list):
         train_file_name_lists = []
         for index in index_list:
-            if isinstance(self.train_list, np.ndarray):
+            if self.train_list_dimensional==2:
                 train_file_name_lists.extend(self.train_list[:, index])
             else:
-                for train in self.train_list:
-                    train_file_name_lists.append(train[index])
-
+                train_file_name_lists.append(self.train_list[index])
         return train_file_name_lists
 
     def is_use_batch_download(self):
