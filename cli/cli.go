@@ -15,6 +15,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/cubefs/cubefs/sdk/convert"
 	"os"
@@ -85,9 +86,21 @@ following command to execute:
 	return cfsRootCmd.CFSCmd
 }
 
+var configVersion = flag.Bool("v", false, "Show client version")
+
 func main() {
+	flag.Parse()
 	var err error
 	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil)
+	if err != nil {
+		fmt.Printf(err.Error())
+		os.Exit(1)
+	}
+	Version := proto.DumpVersion("ClI", BranchName, CommitID, BuildTime)
+	if *configVersion {
+		fmt.Printf("%v", Version)
+		return
+	}
 	defer log.LogFlush()
 	if err = runCLI(); err != nil {
 		log.LogFlush()

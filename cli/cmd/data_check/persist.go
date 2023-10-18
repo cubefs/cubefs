@@ -96,13 +96,16 @@ func (rp *BadExtentPersist) PersistResult() {
 	}
 }
 
-func NewRepairPersist(dir, master string) (rp *BadExtentPersist) {
+func NewRepairPersist(dir, master string) (rp *BadExtentPersist, err error) {
 	rp = new(BadExtentPersist)
 	rp.MasterAddr = master
 	rp.BadExtentCh = make(chan BadExtentInfo, 1024)
 	rp.path = dir
-	rp.checkFailedFd, _ = os.OpenFile(fmt.Sprintf("%v/.checkFailed_%v.csv", rp.path, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	rp.badExtentFd, _ = os.OpenFile(fmt.Sprintf("%v/bad_extents_%v", rp.path, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	rp.checkFailedFd, err = os.OpenFile(fmt.Sprintf("%v/.checkFailed_%v.csv", rp.path, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return
+	}
+	rp.badExtentFd, err = os.OpenFile(fmt.Sprintf("%v/bad_extents_%v", rp.path, strings.Split(master, ":")[0]), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	return
 }
 
@@ -111,8 +114,12 @@ func (rp *BadExtentPersist) Close() {
 		PartitionID: 0,
 		ExtentID:    0,
 	}
-	rp.checkFailedFd.Sync()
-	rp.checkFailedFd.Close()
-	rp.badExtentFd.Sync()
-	rp.badExtentFd.Close()
+	if rp.checkFailedFd != nil {
+		rp.checkFailedFd.Sync()
+		rp.checkFailedFd.Close()
+	}
+	if rp.badExtentFd != nil {
+		rp.badExtentFd.Sync()
+		rp.badExtentFd.Close()
+	}
 }

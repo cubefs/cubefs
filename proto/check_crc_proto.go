@@ -111,3 +111,12 @@ func IncludeString(target string, filter []string) bool {
 	}
 	return false
 }
+
+func FuzzyMatchString(target string, filter []string) bool {
+	for _, item := range filter {
+		if strings.Contains(target, item) {
+			return true
+		}
+	}
+	return false
+}

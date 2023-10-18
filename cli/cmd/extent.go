@@ -247,10 +247,18 @@ func newExtentRepairCmd() *cobra.Command {
 }
 
 func repairExtents(host string, partitionID uint64, extentIDs []uint64) {
+	var err error
+	var dp *proto.DataPartitionInfo
+	defer func() {
+		if err != nil {
+			log.LogErrorf("repairExtents, err:%v", err)
+			fmt.Printf(err.Error())
+		}
+	}()
 	if partitionID < 0 || len(extentIDs) == 0 {
 		return
 	}
-	dp, err := client.AdminAPI().GetDataPartition("", partitionID)
+	dp, err = client.AdminAPI().GetDataPartition("", partitionID)
 	if err != nil {
 		return
 	}
@@ -394,7 +402,11 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 				QuickCheck:          quickCheck,
 			}
 			outputDir, _ := os.Getwd()
-			checkEngine = data_check.NewCheckEngine(config, outputDir, client, checkType, specifyPath)
+			checkEngine, err = data_check.NewCheckEngine(config, outputDir, client, checkType, specifyPath)
+			if err != nil {
+				stdout(err.Error())
+				return
+			}
 			defer checkEngine.Close()
 			fmt.Printf("check start...\n")
 			err = checkEngine.Start()

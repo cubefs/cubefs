@@ -47,7 +47,7 @@ type BadExtentInfo struct {
 	Volume       string
 }
 
-func NewCheckEngine(config proto.CheckTaskInfo, outputDir string, mc *master.MasterClient, extentCheckType int, path string) (checkEngine *CheckEngine) {
+func NewCheckEngine(config proto.CheckTaskInfo, outputDir string, mc *master.MasterClient, extentCheckType int, path string) (checkEngine *CheckEngine, err error) {
 	checkEngine = &CheckEngine{
 		config:    config,
 		checkType: extentCheckType,
@@ -60,7 +60,10 @@ func NewCheckEngine(config proto.CheckTaskInfo, outputDir string, mc *master.Mas
 		closeCh:   make(chan bool, 1),
 	}
 
-	checkEngine.repairPersist = NewRepairPersist(outputDir, checkEngine.cluster)
+	checkEngine.repairPersist, err = NewRepairPersist(outputDir, checkEngine.cluster)
+	if err != nil {
+		return
+	}
 	go checkEngine.repairPersist.PersistResult()
 	checkEngine.onCheckFail = checkEngine.repairPersist.persistFailed
 	log.LogInfof("NewCheckEngine end")
@@ -116,23 +119,13 @@ func getVolsByFilter(mc *master.MasterClient, filter proto.Filter) (vols []strin
 	}
 	vols = make([]string, 0)
 	for _, v := range volsInfo {
-		if len(filter.VolFilter) > 0 && !proto.IncludeString(v.Name, filter.VolFilter) {
+		if len(filter.VolFilter) > 0 && !proto.FuzzyMatchString(v.Name, filter.VolFilter) {
 			continue
 		}
-		if len(filter.VolExcludeFilter) > 0 && proto.IncludeString(v.Name, filter.VolExcludeFilter) {
+		if len(filter.VolExcludeFilter) > 0 && proto.FuzzyMatchString(v.Name, filter.VolExcludeFilter) {
 			continue
 		}
-		volume, e := mc.AdminAPI().GetVolumeSimpleInfo(v.Name)
-		if e != nil {
-			log.LogErrorf("get volume info failed, vol:%v, skip check this volume, err:%v", v.Name, err)
-			continue
-		}
-		if len(filter.ZoneFilter) > 0 && !proto.IncludeString(volume.ZoneName, filter.ZoneFilter) {
-			continue
-		}
-		if len(filter.ZoneExcludeFilter) > 0 && proto.IncludeString(volume.ZoneName, filter.ZoneExcludeFilter) {
-			continue
-		}
+		log.LogDebugf("add volume[%v] to check list", v.Name)
 		vols = append(vols, v.Name)
 	}
 	return

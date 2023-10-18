@@ -32,6 +32,7 @@ func (checkEngine *CheckEngine) checkVols() (err error) {
 
 	for _, v := range checkVols {
 		if checkEngine.closed {
+			log.LogWarnf("check engine closed")
 			break
 		}
 		checkEngine.currentVol = v
@@ -55,6 +56,7 @@ func (checkEngine *CheckEngine) CheckFailedVols() {
 	checkEngine.repairPersist.refreshFailedFD()
 	for _, v := range vols {
 		if checkEngine.closed {
+			log.LogWarnf("check engine closed")
 			break
 		}
 		checkEngine.currentVol = v
@@ -120,6 +122,7 @@ func (checkEngine *CheckEngine) checkVol() {
 		go func() {
 			for mp := range mpCh {
 				if checkEngine.closed {
+					log.LogWarnf("check engine closed")
 					wg.Done()
 					continue
 				}

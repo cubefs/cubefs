@@ -311,9 +311,8 @@ func executeTask(t *RepairCrcTask) {
 	if t.Frequency.Interval < 1 {
 		t.Frequency.Interval = defaultIntervalHour
 	}
-	timer := time.NewTimer(time.Duration(t.Frequency.Interval) * time.Hour)
+	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
-	timer.Reset(time.Second)
 	var execCount uint32
 	outputDir, _ := os.Getwd()
 	for {
@@ -327,8 +326,13 @@ func executeTask(t *RepairCrcTask) {
 					}
 				}()
 				var checkEngine *data_check.CheckEngine
-				checkEngine = data_check.NewCheckEngine(t.CheckTaskInfo, outputDir, t.mc, data_check.CheckTypeExtentCrc, "")
-				defer checkEngine.Close()
+				checkEngine, err = data_check.NewCheckEngine(t.CheckTaskInfo, outputDir, t.mc, data_check.CheckTypeExtentCrc, "")
+				if err != nil {
+					return
+				}
+				defer func() {
+					checkEngine.Close()
+				}()
 				go func() {
 					select {
 					case <-t.stopC:

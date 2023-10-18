@@ -30,6 +30,9 @@ func (checkEngine *CheckEngine) doRepairPartition(dp uint64, node string) {
 	if err != nil {
 		return
 	}
+	if len(checkEngine.config.Filter.VolFilter) > 0 && !proto.IncludeString(dpMasterInfo.VolName, checkEngine.config.Filter.VolFilter) {
+		return
+	}
 	if failedExtents, err = CheckDataPartitionReplica(dpMasterInfo, checkEngine.mc, extentMin, checkEngine.repairPersist.BadExtentCh, checkEngine.config.QuickCheck); err != nil {
 		checkEngine.onCheckFail(CheckFailDp, fmt.Sprintf("%v %v", dpMasterInfo.VolName, dp))
 		return

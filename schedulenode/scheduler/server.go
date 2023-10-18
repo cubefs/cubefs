@@ -285,19 +285,21 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		log.LogErrorf("[registerWorker] create smart volume worker failed, err(%v)", err)
 		return
 	}
+	s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
 	var compactWorker *compact.CompactWorker
 	if compactWorker, err = compact.NewCompactWorkerForScheduler(cfg); err != nil {
 		log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
 		return
 	}
-	var crcWorker *crcworker.CrcWorker
-	if crcWorker, err = crcworker.NewCrcWorkerForScheduler(); err != nil {
-		log.LogErrorf("[registerWorker] create crc worker failed, err(%v)", err)
-		return
-	}
-	s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
 	s.workers.Store(proto.WorkerTypeCompact, compactWorker)
-	s.workers.Store(proto.WorkerTypeCheckCrc, crcWorker)
+	if cfg.GetBool(config.ConfigKeyEnableCrcWorker) {
+		var crcWorker *crcworker.CrcWorker
+		if crcWorker, err = crcworker.NewCrcWorkerForScheduler(); err != nil {
+			log.LogErrorf("[registerWorker] create crc worker failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeCheckCrc, crcWorker)
+	}
 	return
 }
 

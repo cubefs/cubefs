@@ -316,7 +316,10 @@ func newCheckReplicaByDataNodeCmd(client *master.MasterClient) *cobra.Command {
 				QuickCheck:          quickCheck,
 				CheckTiny:           checkTiny,
 			}
-			checkEngine = data_check.NewCheckEngine(config, outputDir, client, optCheckType, "")
+			checkEngine, err = data_check.NewCheckEngine(config, outputDir, client, optCheckType, "")
+			if err != nil {
+				return
+			}
 			defer checkEngine.Close()
 			err = checkEngine.Start()
 			if err != nil {

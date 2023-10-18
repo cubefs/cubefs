@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cubefs/cubefs/cli/cmd/data_check"
+	"github.com/cubefs/cubefs/proto"
 	syslog "log"
 	"net"
 	"net/http"
@@ -21,7 +22,13 @@ import (
 )
 
 var (
-	configFile = flag.String("c", "", "config file path")
+	CommitID   string
+	BranchName string
+	BuildTime  string
+)
+var (
+	configFile    = flag.String("c", "", "config file path")
+	configVersion = flag.Bool("v", false, "Show client version")
 )
 var (
 	configKeyLogDir    = "logDir"
@@ -38,6 +45,11 @@ func main() {
 
 func run() error {
 	flag.Parse()
+	Version := proto.DumpVersion("CRC Server", BranchName, CommitID, BuildTime)
+	if *configVersion {
+		fmt.Printf("%v", Version)
+		return nil
+	}
 	cfg, err := config.LoadConfigFile(*configFile)
 	if err != nil {
 		return err

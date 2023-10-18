@@ -59,7 +59,7 @@ const (
 	ConfigKeyWorkerHeartbeat  = "workerHeartbeat"  // int
 	ConfigKeyWorkerPeriod     = "workerPeriod"     // int
 	ConfigKeyWorkerTaskPeriod = "workerTaskPeriod" // int
-
+	ConfigKeyEnableCrcWorker  = "enableCrcWorker"
 	// HBase config
 	ConfigKeyHBaseUrl = "hBaseUrl" // int
 )

@@ -170,6 +170,9 @@ func slowCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataRe
 func samplingCheckTinyExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
 	sample := uint32(4) * unit.KB
 	sampleN := ek.Size / sample
+	if sampleN > 128 {
+		sampleN = 128
+	}
 	if ek.Size <= sample*2 {
 		return
 	}
@@ -200,11 +203,7 @@ func samplingCheckTinyExtent(cluster string, dnProf uint16, dataReplicas []*prot
 	if len(allHoles) > 0 {
 		allHoles = merge(allHoles)
 	}
-
-	if sampleN > 32 {
-		sampleN = 32
-	}
-	log.LogInfof("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, ek:%v, holesLen:%v, holes:%v", cluster, volume, ino, ek, len(allHoles), allHoles)
+	log.LogInfof("samplingCheckTinyExtent, cluster:%v, volume:%v, ino:%v, ek:%v, holesLen:%v", cluster, volume, ino, ek, len(allHoles))
 	//ek is aligned to 4K, skip the last 4KB to avoid overflow
 	maxOffset := int64(ek.Size - sample*2)
 	retry := 200
