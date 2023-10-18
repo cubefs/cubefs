@@ -129,11 +129,11 @@ def _loop_notify_storage_thread(storage_info, event):
     print("pid:{} _loop_notify_storage_thread exit".format(os.getpid()))
 
 
-def _init_batchdownload_threads(storage_info):
+def _init_batchdownload_threads(storage_info,switch_event):
     cube_root_dir = storage_info[0]
     set_global_cube_rootdir_path(cube_root_dir)
     CubeFileOpenInterceptor.set_params(cube_root_dir)
-    inception = InterceptionIO(storage_info)
+    inception = InterceptionIO(storage_info,switch_event)
     builtins.open = inception.intercept_open(open)
     torch.load = inception.intercept_torch_load(torch.load)
     set_global_interception_io(inception)
@@ -201,8 +201,9 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
         iteration_end = False
         watchdog = ManagerWatchdog()
         torch.set_num_threads(1)
+        switch_event=threading.Event()
         if is_use_batch_download:
-            notify_storage_thread, notify_storage_event = _init_batchdownload_threads(storage_info)
+            notify_storage_thread, notify_storage_event = _init_batchdownload_threads(storage_info,switch_event)
         else:
             notify_storage_thread, notify_storage_event = _init_prefetch_threads(worker_id, storage_info)
 
@@ -232,6 +233,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
             idx = r[0]
             index = r[1]
             data: Union[_IterableDatasetStopIteration, ExceptionWrapper]
+            switch_event.set()
             if init_exception is not None:
                 data = init_exception
                 init_exception = None
@@ -248,6 +250,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
 
             data_queue.put((idx, data))
             del data, idx, index, r  # save memory
+            switch_event.clear()
 
     except KeyboardInterrupt:
         pass

@@ -18,10 +18,8 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import ConcatDataset
-
-os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
-os.environ['localIP'] = '11.127.50.194'
+from torch.utils.data import Subset, ConcatDataset
+import cube_torch
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -56,7 +54,7 @@ parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='file_path to latest checkpoint (default: none)')
+                    help='path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
@@ -65,8 +63,8 @@ parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
                     help='node rank for distributed training')
-parser.add_argument('--dist-batch_download_addr', default='tcp://224.66.41.62:23456', type=str,
-                    help='batch_download_addr used to set up distributed training')
+parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
+                    help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
@@ -208,12 +206,8 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
-    traindir_list = [os.path.join(args.data, 'eval_file_' + str(i)) for i in range(1)]
-    # traindir = os.file_path.join(args.data, 'train')
-    # traindir = os.file_path.join(args.data, 'eval_file_0')
-    # valdir = os.file_path.join(args.data, 'val')
+    traindir_list = [os.path.join(args.data, 'eval_file_' + str(i)) for i in range(3)]
     valdir = os.path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'val')
-    # traindir = os.file_path.join("/mnt/cfs/chubaofs_tech_data-test/sangqingyuan1/imagenet", 'train')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -232,15 +226,6 @@ def main_worker(gpu, ngpus_per_node, args):
         print('folder {} init Execute time: {:.3f}s'.format(traindir, end - start))
         all_sub_train_datasets.append(sub_dataset)
     train_dataset = ConcatDataset(all_sub_train_datasets)
-
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ]))
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -294,6 +279,7 @@ def main_worker(gpu, ngpus_per_node, args):
         #         'scheduler' : scheduler.state_dict()
         #     }, is_best)
 
+
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
@@ -309,11 +295,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     model.train()
 
     end = time.time()
-    torch.cuda.synchronize()
     step_time = time.time()
     step_cost_time = time.time()
     for i, (images, target) in enumerate(train_loader):
-        # iteration_start_time = time.time()
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -340,19 +324,15 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
-        # print(f"one iteration time usage: {time.time() - iteration_start_time}s")
+        step_end_time = time.time()
 
         if i % args.print_freq == 0:
-            progress.display(i)
-        torch.cuda.synchronize()
-        step_end_time = time.time()
+            progress.display(i + 1)
+
         if dist.get_rank() == 0:
             print(f"one step cost: {step_end_time - step_cost_time}")
-        step_cost_time = time.time()
-        if dist.get_rank() == 0:
             print(f"throughput: {1024 * (i + 1) / (step_end_time - step_time)} ")
-
-
+            step_cost_time = time.time()
 
 
 def validate(val_loader, model, criterion, args):

@@ -1,5 +1,7 @@
+import gc
 import os
 
+import numpy as np
 from torch import multiprocessing
 from torch.utils.data import ConcatDataset
 from torchvision import datasets
@@ -43,7 +45,7 @@ class CubeDataSetInfo:
     def is_cubefs_mount_point(self, directory_path):
         stat_info = os.stat(directory_path)
         inode_number = stat_info.st_ino
-        inode_number=1
+        inode_number = 1
         return inode_number == 1
 
     def check_cube_queue_size_on_worker(self):
@@ -106,9 +108,11 @@ class CubeDataSetInfo:
         else:
             file_name_lists = self._signel_DataSet_get_samples(dataset)
         if is_2d_array(file_name_lists):
-            self.train_list = file_name_lists
+            train_list = file_name_lists
         else:
-            self.train_list = [file_name_lists]
+            train_list = [file_name_lists]
+
+        self.train_list = train_list
 
     def get_cube_queue_size_on_worker(self):
         return self.cubefs_queue_size_on_worker
