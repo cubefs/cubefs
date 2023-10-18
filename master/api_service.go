@@ -6290,7 +6290,7 @@ func (m *Server) getBadNodes(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 	dataNodes := make([]proto.BadNodeView, 0)
-	m.cluster.dataNodes.Range(func(key, value any) bool {
+	m.cluster.dataNodes.Range(func(key, value interface{}) bool {
 		dn, ok := value.(*DataNode)
 		if !ok {
 			return true

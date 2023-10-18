@@ -292,6 +292,10 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 				c.removeDataPartitionRaftOnly(partition, proto.Peer{ID: dn.ID, Addr: dn.Addr})
 			}
 			c.deleteDataReplica(partition, dn, false)
+		} else if dn != nil {
+			partition.Lock()
+			partition.removeReplicaByAddr(dn.Addr)
+			partition.Unlock()
 		}
 	}
 	if partition.Status == proto.ReadWrite {
@@ -339,7 +343,7 @@ func (partition *DataPartition) deleteIllegalReplica() (excessAddr string, err e
 			break
 		}
 	}
-	if partition.ReplicaNum >= 2 && len(partition.Hosts) < int(partition.ReplicaNum) {
+	if !(len(partition.Replicas) >= 2 && len(partition.Hosts) >= int(partition.ReplicaNum)/2) {
 		return "", nil
 	}
 	return

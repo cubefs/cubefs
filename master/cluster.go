@@ -1686,7 +1686,7 @@ func (c *Cluster) decommissionTwoReplicaDataPartition(offlineAddr string, dp *Da
 	if err = dp.tryToChangeLeader(c, remainNode); err != nil {
 		goto errHandler
 	}
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 3)
 	if err = c.removeDataPartitionRaftOnly(dp, proto.Peer{ID: oldNode.ID, Addr: oldNode.Addr}); err != nil {
 		goto errHandler
 	}

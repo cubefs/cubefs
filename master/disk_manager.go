@@ -71,7 +71,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			return true
 		}
-		if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) && partition.allReplicaHasRecovered() {
+		if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) && len(partition.Hosts) >= int(replicaNum) && partition.allReplicaHasRecovered() {
 			partition.RLock()
 			if partition.isRecover {
 				partition.isRecover = false
