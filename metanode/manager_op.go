@@ -213,6 +213,7 @@ func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet,
 	}
 
 	err = mp.CreateInode(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	// reply the operation result to the client through TCP
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opCreateInode] req: %d - %v, resp: %v, body: %s",
@@ -243,6 +244,7 @@ func (m *metadataManager) opQuotaCreateInode(conn net.Conn, p *Packet, remoteAdd
 		return
 	}
 	err = mp.QuotaCreateInode(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	// reply the operation result to the client through TCP
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opQuotaCreateInode] req: %d - %v, resp: %v, body: %s",
@@ -273,6 +275,7 @@ func (m *metadataManager) opTxMetaLinkInode(conn net.Conn, p *Packet, remoteAddr
 		return
 	}
 	err = mp.TxCreateInodeLink(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opTxMetaLinkInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -303,6 +306,7 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.CreateInodeLink(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opMetaLinkInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -353,6 +357,7 @@ func (m *metadataManager) opTxCreateDentry(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.TxCreateDentry(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opTxCreateDentry] req: %d - %v, resp: %v, body: %s",
@@ -567,6 +572,7 @@ func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.CreateDentry(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opCreateDentry] req: %d - %v, resp: %v, body: %s",
@@ -598,6 +604,7 @@ func (m *metadataManager) opQuotaCreateDentry(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.QuotaCreateDentry(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClient(conn, p)
 
 	log.LogDebugf("%s [opQuotaCreateDentry] req: %d - %v, resp: %v, body: %s",
@@ -663,6 +670,7 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
 	}
 
 	err = mp.DeleteDentry(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -696,7 +704,7 @@ func (m *metadataManager) opBatchDeleteDentry(conn net.Conn, p *Packet,
 	}
 
 	err = mp.DeleteDentryBatch(req, p, remoteAddr)
-
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opDeleteDentry] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -727,7 +735,7 @@ func (m *metadataManager) opTxUpdateDentry(conn net.Conn, p *Packet, remoteAddr 
 		return
 	}
 	err = mp.TxUpdateDentry(req, p, remoteAddr)
-
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opTxUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -760,7 +768,7 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 	}
 
 	err = mp.UpdateDentry(req, p, remoteAddr)
-
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opUpdateDentry] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -792,7 +800,7 @@ func (m *metadataManager) opTxMetaUnlinkInode(conn net.Conn, p *Packet, remoteAd
 		return
 	}
 	err = mp.TxUnlinkInode(req, p, remoteAddr)
-
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -823,6 +831,7 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.UnlinkInode(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -853,6 +862,7 @@ func (m *metadataManager) opMetaBatchUnlinkInode(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.UnlinkInodeBatch(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opDeleteInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1010,6 +1020,7 @@ func (m *metadataManager) opBatchMetaEvictInode(conn net.Conn, p *Packet,
 	if err = mp.EvictInodeBatch(req, p, remoteAddr); err != nil {
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 	}
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opBatchMetaEvictInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1042,6 +1053,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 	if err = mp.EvictInode(req, p, remoteAddr); err != nil {
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 	}
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opMetaEvictInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1076,6 +1088,7 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
 	if err = mp.SetAttr(req, p.Data, p); err != nil {
 		err = errors.NewErrorf("[opSetAttr] req: %v, error: %s", req, err.Error())
 	}
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opSetAttr] req: %d - %v, resp: %v, body: %s", remoteAddr,
 		p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1133,6 +1146,7 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 		return
 	}
 	err = mp.ExtentAppend(req, p)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	if err != nil {
 		log.LogErrorf("%s [opMetaExtentsAdd] ExtentAppend: %s, "+
@@ -1171,6 +1185,7 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 	if err = mp.ExtentAppendWithCheck(req, p); err != nil {
 		log.LogErrorf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s", remoteAddr, err.Error())
 	}
+	m.updatePackRspSeq(mp, p)
 	if err = m.respondToClientWithVer(conn, p); err != nil {
 		log.LogErrorf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s, "+
 			"response to client: %s", remoteAddr, err.Error(), p.GetResultMsg())
@@ -1287,6 +1302,7 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 		return
 	}
 	mp.ExtentsTruncate(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [OpMetaTruncate] req: %d - %v, resp body: %v, "+
 		"resp body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1758,6 +1774,7 @@ func (m *metadataManager) opMetaUpdateXAttr(conn net.Conn, p *Packet, remoteAddr
 		return
 	}
 	err = mp.UpdateXAttr(req, p)
+	m.updatePackRspSeq(mp, p)
 	_ = m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opMetaSetXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1787,6 +1804,7 @@ func (m *metadataManager) opMetaSetXAttr(conn net.Conn, p *Packet, remoteAddr st
 		return
 	}
 	err = mp.SetXAttr(req, p)
+	m.updatePackRspSeq(mp, p)
 	_ = m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opMetaSetXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1816,6 +1834,7 @@ func (m *metadataManager) opMetaBatchSetXAttr(conn net.Conn, p *Packet, remoteAd
 		return
 	}
 	err = mp.BatchSetXAttr(req, p)
+	m.updatePackRspSeq(mp, p)
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [OpMetaBatchSetXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1920,6 +1939,7 @@ func (m *metadataManager) opMetaRemoveXAttr(conn net.Conn, p *Packet, remoteAddr
 		return
 	}
 	err = mp.RemoveXAttr(req, p)
+	m.updatePackRspSeq(mp, p)
 	_ = m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opMetaGetXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -1974,6 +1994,7 @@ func (m *metadataManager) opMetaBatchExtentsAdd(conn net.Conn, p *Packet, remote
 		return
 	}
 	err = mp.BatchExtentAppend(req, p)
+	m.updatePackRspSeq(mp, p)
 	_ = m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opMetaBatchExtentsAdd] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -2171,6 +2192,7 @@ func (m *metadataManager) opTxCreateInode(conn net.Conn, p *Packet,
 	}
 
 	err = mp.TxCreateInode(req, p, remoteAddr)
+	m.updatePackRspSeq(mp, p)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opTxCreateInode] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
@@ -2461,6 +2483,18 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 	err = fmt.Errorf("vol %v not found", VolumeID)
 	log.LogErrorf("action[commitCreateVersion] err %v", err)
 
+	return
+}
+
+func (m *metadataManager) updatePackRspSeq(mp MetaPartition, p *Packet) {
+	if mp.GetVerSeq() >= p.VerSeq {
+		if mp.GetVerSeq() > p.VerSeq {
+			log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
+			p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
+			p.ExtentType |= proto.VersionListFlag
+			p.VerList = mp.GetVerList()
+		}
+	}
 	return
 }
 
