@@ -450,7 +450,6 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 	}
 	dp.monitorData[proto.ActionOverWrite].UpdateData(uint64(opItem.size))
-	_ = dp.issueProcessor.RemoveByRange(opItem.extentID, uint64(opItem.offset), uint64(opItem.size))
 	return
 }
 

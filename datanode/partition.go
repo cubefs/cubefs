@@ -32,6 +32,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/datanode/riskdata"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
@@ -279,8 +281,8 @@ type DataPartition struct {
 	persistedApplied  uint64
 	persistedMetadata *DataPartitionMetadata
 
-	actionHolder   *holder.ActionHolder
-	issueProcessor *IssueProcessor
+	actionHolder *holder.ActionHolder
+	dataFixer    *riskdata.Fixer
 }
 
 type DataPartitionViewInfo struct {
@@ -446,13 +448,13 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 }
 
 func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err error) {
-	var fragments []*IssueFragment
+	var fragments []*riskdata.Fragment
 	if dp.needServerFaultCheck {
 		if fragments, err = dp.scanIssueFragments(latestFlushTimeUnix); err != nil {
 			return
 		}
 	}
-	var getRemotes GetRemotesFunc = func() []string {
+	var getRemotes riskdata.GetRemotesFunc = func() []string {
 		var replicas = dp.getReplicaClone()
 		var remotes = make([]string, 0, len(replicas)-1)
 		for _, replica := range replicas {
@@ -462,21 +464,18 @@ func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err erro
 		}
 		return remotes
 	}
-	var getHAType GetHATypeFunc = func() proto.CrossRegionHAType {
+	var getHAType riskdata.GetHATypeFunc = func() proto.CrossRegionHAType {
 		return dp.config.VolHAType
 	}
-	if dp.issueProcessor, err = NewIssueProcessor(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments, dp.disk.issueFixConcurrentLimiter); err != nil {
+	if dp.dataFixer, err = riskdata.NewFixer(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments,
+		dp.disk.issueFixConcurrentLimiter, gConnPool); err != nil {
 		return
 	}
 	return
 }
 
-func (dp *DataPartition) CheckIssue(extentID, offset, size uint64) bool {
-	return dp.issueProcessor.FindOverlap(extentID, offset, size)
-}
-
-func (dp *DataPartition) RemoveIssueExtent(extentID uint64) error {
-	return dp.issueProcessor.RemoveByExtent(extentID)
+func (dp *DataPartition) CheckRisk(extentID, offset, size uint64) bool {
+	return dp.dataFixer.FindOverlap(extentID, offset, size)
 }
 
 const (
@@ -595,6 +594,9 @@ func (dp *DataPartition) tryLoadRaftHardStateFromDisk() (hs raftProto.HardState,
 func (dp *DataPartition) Start() (err error) {
 	go func() {
 		go dp.statusUpdateScheduler(context.Background())
+		if dp.dataFixer != nil {
+			dp.dataFixer.Start()
+		}
 		if dp.DataPartitionCreateType == proto.DecommissionedCreateDataPartition {
 			dp.startRaftAfterRepair()
 			return
@@ -745,7 +747,7 @@ func (dp *DataPartition) Stop() {
 			close(dp.stopC)
 		}
 		// Close the store and raftstore.
-		dp.issueProcessor.Stop()
+		dp.dataFixer.Stop()
 		if dp.extentReleasor != nil {
 			dp.extentReleasor.Stop()
 		}
@@ -1423,7 +1425,7 @@ func (dp *DataPartition) ChangeCreateType(createType int) (err error) {
 	return
 }
 
-func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragments []*IssueFragment, err error) {
+func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragments []*riskdata.Fragment, err error) {
 	if latestFlushTimeUnix == 0 {
 		return
 	}
@@ -1462,10 +1464,10 @@ func (dp *DataPartition) scanIssueFragments(latestFlushTimeUnix int64) (fragment
 			// 切成最大16MB的段
 			for subFragOffset := fragOffset; subFragOffset < extentSize; {
 				subFragSize := uint64(math.Min(float64(16*unit.MB), float64((fragOffset+fragSize)-subFragOffset)))
-				fragments = append(fragments, &IssueFragment{
-					extentID: extentID,
-					offset:   subFragOffset,
-					size:     subFragSize,
+				fragments = append(fragments, &riskdata.Fragment{
+					ExtentID: extentID,
+					Offset:   subFragOffset,
+					Size:     subFragSize,
 				})
 				subFragOffset += subFragSize
 			}

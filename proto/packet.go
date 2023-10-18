@@ -81,8 +81,9 @@ const (
 	OpGetAllExtentInfo               uint8 = 0x18
 	OpTinyExtentAvaliRead            uint8 = 0x19
 	OpGetPersistedAppliedId          uint8 = 0x1a
-	OpGetAllWatermarksV3             uint8 = 0x1b
-	OpEcTinyDelInfoRead                    = OpReadTinyDeleteRecord
+	OpGetAllWatermarksV3 			 uint8 = 0x1b
+	OpFingerprint        			 uint8 = 0x1c
+	OpEcTinyDelInfoRead        = OpReadTinyDeleteRecord
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -548,6 +549,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaGetAppliedID"
 	case OpRandomWriteV3:
 		m = "OpRandomWriteV3"
+	case OpFingerprint:
+		m = "OpFingerprint"
 	case OpSyncRandomWriteV3:
 		m = "OpSyncRandomWriteV3"
 	case OpMetaRecoverDeletedDentry:

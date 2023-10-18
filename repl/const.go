@@ -50,5 +50,5 @@ const (
 )
 
 const (
-	ReplProtocalServerTimeOut = 60 * 5
+	ReplProtocalServerTimeOut = 60 * 2
 )

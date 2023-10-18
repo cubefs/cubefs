@@ -209,7 +209,7 @@ func (dp *DataPartition) handleRaftAskRollback(original []byte, index uint64) (r
 	}()
 	var buf = make([]byte, opItem.size)
 	var crc uint32
-	if crc, err = dp.extentStore.Read(opItem.extentID, opItem.offset, opItem.size, buf[:opItem.size], false); err != nil {
+	if crc, err = dp.extentStore.Read(opItem.extentID, opItem.offset, opItem.size, buf[:opItem.size], false, true); err != nil {
 		return
 	}
 	rollback, err = MarshalRandWriteRaftLog(opItem.opcode, opItem.extentID, opItem.offset, opItem.size, buf[:opItem.size], crc)

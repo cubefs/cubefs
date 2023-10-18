@@ -1070,6 +1070,52 @@ func (s *DataNode) getExtentCrc(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, result)
 }
 
+func (s *DataNode) getFingerprint(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		extentID    uint64
+		strict      bool
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionId"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if extentID, err = strconv.ParseUint(r.FormValue("extentId"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	strict, _ = strconv.ParseBool(r.FormValue("strict"))
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	store := partition.ExtentStore()
+
+	var eib *storage.ExtentInfoBlock
+	if eib, err = store.Watermark(extentID); err != nil {
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var fingerprint storage.Fingerprint
+	if fingerprint, err = store.Fingerprint(extentID, 0, int64(eib[storage.Size]), strict); err != nil {
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	result := &struct {
+		Fingerprint storage.Fingerprint
+	}{
+		Fingerprint: fingerprint,
+	}
+	s.buildSuccessResp(w, result)
+}
+
 func (s *DataNode) resetFaultOccurredCheckLevel(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID       uint64

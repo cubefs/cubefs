@@ -16,6 +16,7 @@ package repl
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/rand"
@@ -441,10 +442,10 @@ func PutPacketToPool(p *Packet) {
 	p.TpObject = nil
 	p.errorCh = nil
 	p.Data = nil
-	p.StartT = time.Now().UnixNano()
-	p.WaitT = time.Now().UnixNano()
-	p.SendT = time.Now().UnixNano()
-	p.RecvT = time.Now().UnixNano()
+	p.StartT = 0
+	p.WaitT = 0
+	p.SendT = 0
+	p.RecvT = 0
 	index := rand.Intn(PacketPoolCnt)
 	PacketPool[index].Put(p)
 }
@@ -505,6 +506,57 @@ func NewPacketToGetAllWatermarksV3(ctx context.Context, partitionID uint64, exte
 	p.ReqID = proto.GenerateRequestID()
 	p.ExtentType = extentType
 	p.SetCtx(ctx)
+	return
+}
+
+type FingerprintRequest struct {
+	PartitionID uint64
+	ExtentID    uint64
+	Offset      int64
+	Size        int64
+	Force       bool
+}
+
+func ParseFingerprintPacket(p *Packet) (req *FingerprintRequest, err error) {
+	if p.Opcode != proto.OpFingerprint {
+		err = fmt.Errorf("opcode mismatch: expected=%v, actual=%v", proto.OpFingerprint, p.Opcode)
+		return
+	}
+	if len(p.Arg) < 17 {
+		err = fmt.Errorf("arg length less than 17")
+		return
+	}
+	req = &FingerprintRequest{
+		PartitionID: p.PartitionID,
+		ExtentID:    p.ExtentID,
+		Offset:      int64(binary.BigEndian.Uint64(p.Arg[0:8])),
+		Size:        int64(binary.BigEndian.Uint64(p.Arg[8:16])),
+		Force:       p.Arg[16] == 1,
+	}
+	return
+}
+
+func NewPacketToFingerprint(ctx context.Context, req *FingerprintRequest) (p *Packet) {
+	var arg = make([]byte, 17) // offset(8) + size(8) + force(1)
+	binary.BigEndian.PutUint64(arg[0:8], uint64(req.Offset))
+	binary.BigEndian.PutUint64(arg[8:16], uint64(req.Size))
+	arg[16] = func() byte {
+		if req.Force {
+			return 1
+		}
+		return 0
+	}()
+
+	p = new(Packet)
+	p.ExtentID = req.ExtentID
+	p.PartitionID = req.PartitionID
+	p.Magic = proto.ProtoMagic
+	p.Arg = arg
+	p.ArgLen = uint32(len(p.Arg))
+	p.Opcode = proto.OpFingerprint
+	p.ReqID = proto.GenerateRequestID()
+	p.SetCtx(ctx)
+
 	return
 }
 

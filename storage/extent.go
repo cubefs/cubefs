@@ -21,6 +21,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,6 +40,111 @@ const (
 	SEEK_HOLE      = 4
 )
 
+type HeaderHandler interface {
+	Load([]byte) error
+	Save([]byte) error
+}
+
+type funcHeaderHandler struct {
+	load func([]byte) error
+	save func([]byte) error
+}
+
+func (f *funcHeaderHandler) Load(b []byte) error {
+	if f != nil && f.load != nil {
+		return f.load(b)
+	}
+	return nil
+}
+
+func (f *funcHeaderHandler) Save(b []byte) error {
+	if f != nil && f.save != nil {
+		return f.save(b)
+	}
+	return nil
+}
+
+func NewFuncHeaderHandler(load, save func([]byte) error) HeaderHandler {
+	return &funcHeaderHandler{
+		load: load,
+		save: save,
+	}
+}
+
+type Fingerprint []uint32
+
+func (f *Fingerprint) Append(crc uint32) (index int) {
+	index = len(*f)
+	*f = append(*f, crc)
+	return index
+}
+
+func (f *Fingerprint) Equals(other Fingerprint) bool {
+	return reflect.DeepEqual(*f, other)
+}
+
+func (f *Fingerprint) Get(index int) (crc uint32, exists bool) {
+	if index < len(*f) {
+		crc = (*f)[index]
+		exists = true
+	}
+	return
+}
+
+func (f *Fingerprint) FirstConflict(other Fingerprint) int {
+	for i := 0; i < len(*f) && i < len(other); i++ {
+		if (*f)[i] != other[i] {
+			return i
+		}
+	}
+	return 0
+}
+
+func (f *Fingerprint) Len() int {
+	return len(*f)
+}
+
+func (f *Fingerprint) Empty() bool {
+	return len(*f) == 0
+}
+
+func (f *Fingerprint) Sum() uint32 {
+	var hash = crc32.NewIEEE()
+	var b = make([]byte, 4)
+	for i := 0; i < len(*f); i++ {
+		binary.BigEndian.PutUint32(b, (*f)[i])
+		_, _ = hash.Write(b)
+	}
+	return hash.Sum32()
+}
+
+func (f *Fingerprint) EncodeBinary() []byte {
+	var b = make([]byte, 4*len(*f))
+	for i := 0; i < len(*f); i++ {
+		var offset = i * 4
+		binary.BigEndian.PutUint32(b[offset:offset+4], (*f)[i])
+	}
+	return b
+}
+
+func (f *Fingerprint) DecodeBinary(b []byte) {
+	for i := 0; i+4 < len(b); i += 4 {
+		f.Append(binary.BigEndian.Uint32(b[i : i+4]))
+	}
+}
+
+func (f *Fingerprint) Reset() {
+	*f = (*f)[:0]
+}
+
+func (f *Fingerprint) String() string {
+	return fmt.Sprintf("%v:%v", f.Len(), f.Sum())
+}
+
+func NewFingerprint(cap int) Fingerprint {
+	return make([]uint32, 0, cap)
+}
+
 // Extent is an implementation of Extent for local regular extent file data management.
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
@@ -54,15 +160,35 @@ type Extent struct {
 	sync.Mutex
 
 	ioInterceptor IOInterceptor
+	headerHandler HeaderHandler
 }
 
-// NewExtent create and returns a new extent instance.
-func NewExtent(name string, extentID uint64, ioi IOInterceptor) *Extent {
-	e := new(Extent)
-	e.extentID = extentID
-	e.filePath = name
-	e.ioInterceptor = ioi
-	return e
+// CreateExtent create an new Extent to disk.
+func CreateExtent(name string, extentID uint64, ioi IOInterceptor, handler HeaderHandler) (*Extent, error) {
+	var e = &Extent{
+		extentID:      extentID,
+		filePath:      name,
+		ioInterceptor: ioi,
+		headerHandler: handler,
+	}
+	if err := e.create(); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// OpenExtent open an exists Extent from disk.
+func OpenExtent(name string, extentID uint64, ioi IOInterceptor, handler HeaderHandler) (*Extent, error) {
+	var e = &Extent{
+		extentID:      extentID,
+		filePath:      name,
+		ioInterceptor: ioi,
+		headerHandler: handler,
+	}
+	if err := e.open(); err != nil {
+		return nil, err
+	}
+	return e, nil
 }
 
 // Close this extent and release FD.
@@ -91,9 +217,9 @@ func (e *Extent) Exist() (exist bool) {
 	return true
 }
 
-// InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
+// create init extent data info filesystem. If entry file exist and overwrite is true,
 // this operation will clear all data of exist entry file and initialize extent header data.
-func (e *Extent) InitToFS() (err error) {
+func (e *Extent) create() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0666); err != nil {
 		return err
 	}
@@ -106,14 +232,16 @@ func (e *Extent) InitToFS() (err error) {
 	if proto.IsTinyExtent(e.extentID) {
 		e.dataSize = 0
 		return
+	} else {
+		e.header = make([]byte, unit.BlockHeaderSize)
 	}
 	atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 	e.dataSize = 0
 	return
 }
 
-// RestoreFromFS restores the entity data and status from the file stored on the filesystem.
-func (e *Extent) RestoreFromFS() (err error) {
+// open restores the entity data and status from the file stored on the filesystem.
+func (e *Extent) open() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0666); err != nil {
 		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
 			err = proto.ExtentNotFoundError
@@ -134,6 +262,11 @@ func (e *Extent) RestoreFromFS() (err error) {
 		}
 		e.dataSize = watermark
 		return
+	} else {
+		e.header = make([]byte, unit.BlockHeaderSize)
+		if err = e.headerHandler.Load(e.header); err != nil {
+			return
+		}
 	}
 	e.dataSize = info.Size()
 	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
@@ -193,7 +326,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfoBlock) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
 	defer func() {
 		if err == nil {
 			atomic.StoreInt32(&e.modified, 1)
@@ -218,8 +351,6 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err != nil {
 		return
 	}
-	blockNo := offset / unit.BlockSize
-	offsetInBlock := offset % unit.BlockSize
 	defer func() {
 		if IsAppendWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
@@ -234,25 +365,32 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			return
 		}
 	}
-	if offsetInBlock == 0 && size == unit.BlockSize {
-		err = crcFunc(e, int(blockNo), crc)
-		return
-	}
-	if offsetInBlock+size <= unit.BlockSize {
-		err = crcFunc(e, int(blockNo), 0)
-		return
-	}
-	if err = crcFunc(e, int(blockNo), 0); err == nil {
-		err = crcFunc(e, int(blockNo+1), 0)
-	}
 
+	var (
+		blkNo     = int(offset / unit.BlockSize)
+		blkOffset = offset % unit.BlockSize
+	)
+
+	switch {
+	case blkOffset == 0 && size == unit.BlockSize:
+		// 当本次写入的数据位置完全对齐整个Block(128KB), 更新该Block的CRC记录信息
+		e.setBlkCRC(blkNo, crc)
+	case blkOffset+size <= unit.BlockSize:
+		// 本次写入的数据未完全对齐整个Block(128KB)且数据范围未跨Block(128KB), 将该Block的CRC信息置0
+		e.setBlkCRC(blkNo, 0)
+	default:
+		// 本次写入的数据未完全对齐整个Block(128KB)且数据范围跨Block(128KB), 将涉及的Block CRC信息置0
+		e.setBlkCRC(blkNo, 0)
+		e.setBlkCRC(blkNo+1, 0)
+	}
+	err = e.saveHeader()
 	return
 }
 
 // Read reads data from an extent.
-func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
+func (e *Extent) Read(data []byte, offset, size int64, isRepairRead, force bool) (crc uint32, err error) {
 	if proto.IsTinyExtent(e.extentID) {
-		return e.ReadTiny(data, offset, size, isRepairRead)
+		return e.readTiny(data, offset, size, isRepairRead)
 	}
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
@@ -265,11 +403,29 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
+
+	if force {
+		return
+	}
+
+	var (
+		blkNo     = int(offset / unit.BlockSize)
+		blkOffset = offset % unit.BlockSize
+	)
+
+	if blkOffset == 0 && size == unit.BlockSize {
+		// 当本次写入的数据位置完全对齐整个Block(128KB), 尝试直接读取该Block的CRC信息，若CRC信息有效则进行校验
+		if expected := e.getBlkCRC(blkNo); expected != 0 && expected != crc {
+			err = NewParameterMismatchErr(fmt.Sprintf("crc mismatch: expected %v, actual %v", expected, crc))
+			return
+		}
+	}
+
 	return
 }
 
-// ReadTiny read data from a tiny extent.
-func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
+// readTiny read data from a tiny extent.
+func (e *Extent) readTiny(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
 	var doIO = func() {
 		_, err = e.file.ReadAt(data[:size], offset)
 	}
@@ -280,6 +436,59 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 	crc = crc32.ChecksumIEEE(data[:size])
 
 	return
+}
+
+func (e *Extent) Fingerprint(offset, size int64, strict bool) (fingerprint Fingerprint, err error) {
+	fingerprint = NewFingerprint(int(size) / unit.BlockSize)
+	var blkCRC uint32
+	var saveHeader bool
+	var buf = make([]byte, unit.BlockSize)
+	for cursor := offset; cursor < offset+size; {
+		if !proto.IsTinyExtent(e.extentID) && cursor%unit.BlockSize == 0 && cursor+unit.BlockSize < offset+size {
+			var updated bool
+			if blkCRC, updated, err = e.computeBlkCRC(int(cursor)/unit.BlockSize, strict); err != nil {
+				return
+			}
+			if updated {
+				saveHeader = true
+			}
+			cursor += unit.BlockSize
+			fingerprint.Append(blkCRC)
+			continue
+		}
+		var readSize = int64(math.Min(float64(offset+size-cursor), float64(unit.BlockSize)))
+		if _, err = e.file.ReadAt(buf[:readSize], cursor); err != nil {
+			return
+		}
+		blkCRC = crc32.ChecksumIEEE(buf[:readSize])
+		fingerprint.Append(blkCRC)
+		cursor += readSize
+	}
+	if saveHeader {
+		err = e.saveHeader()
+	}
+	return
+}
+
+func (e *Extent) saveHeader() (err error) {
+	err = e.headerHandler.Save(e.header)
+	return
+}
+
+func (e *Extent) setBlkCRC(blockNo int, crc uint32) {
+	var headerOffset = blockNo * unit.PerBlockCrcSize
+	if len(e.header) >= headerOffset+unit.PerBlockCrcSize {
+		binary.BigEndian.PutUint32(e.header[headerOffset:headerOffset+unit.PerBlockCrcSize], crc)
+	}
+	return
+}
+
+func (e *Extent) getBlkCRC(blockNo int) uint32 {
+	var headerOffset = blockNo * unit.PerBlockCrcSize
+	if len(e.header) >= headerOffset+unit.PerBlockCrcSize {
+		return binary.BigEndian.Uint32(e.header[headerOffset : headerOffset+unit.PerBlockCrcSize])
+	}
+	return 0
 }
 
 func (e *Extent) checkOffsetAndSize(offset, size int64) error {
@@ -317,35 +526,53 @@ func (e *Extent) Flush() (err error) {
 	return
 }
 
-func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
+func (e *Extent) autoComputeExtentCrc() (crc uint32, err error) {
 	var blockCnt int
 	blockCnt = int(e.Size() / unit.BlockSize)
 	if e.Size()%unit.BlockSize != 0 {
 		blockCnt += 1
 	}
 	crcData := make([]byte, blockCnt*unit.PerBlockCrcSize)
+	var saveHeader bool
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
-		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*unit.PerBlockCrcSize : (blockNo+1)*unit.PerBlockCrcSize])
-		if blockCrc != 0 {
-			binary.BigEndian.PutUint32(crcData[blockNo*unit.PerBlockCrcSize:(blockNo+1)*unit.PerBlockCrcSize], blockCrc)
-			continue
-		}
-		bdata := make([]byte, unit.BlockSize)
-		offset := int64(blockNo * unit.BlockSize)
-		var readN int
-		readN, err = e.file.ReadAt(bdata[:unit.BlockSize], offset)
-		if readN == 0 && err != nil {
+		var (
+			blockCrc uint32
+			updated  bool
+		)
+		if blockCrc, updated, err = e.computeBlkCRC(blockNo, false); err != nil {
 			break
 		}
-		blockCrc = crc32.ChecksumIEEE(bdata[:readN])
-		err = crcFunc(e, blockNo, blockCrc)
-		if err != nil {
-			return
+		if updated {
+			saveHeader = true
 		}
 		binary.BigEndian.PutUint32(crcData[blockNo*unit.PerBlockCrcSize:(blockNo+1)*unit.PerBlockCrcSize], blockCrc)
 	}
 	crc = crc32.ChecksumIEEE(crcData)
+	if !saveHeader {
+		return
+	}
+	if err = e.saveHeader(); err != nil {
+		return
+	}
+	return
+}
 
+func (e *Extent) computeBlkCRC(blkNo int, force bool) (crc uint32, updated bool, err error) {
+	if crc = e.getBlkCRC(blkNo); crc != 0 && !force {
+		return
+	}
+	var (
+		blkdata = make([]byte, unit.BlockSize)
+		offset  = int64(blkNo * unit.BlockSize)
+		readN   int
+	)
+	if readN, err = e.file.ReadAt(blkdata[:unit.BlockSize], offset); readN == 0 && err != nil {
+		return
+	}
+	err = nil
+	crc = crc32.ChecksumIEEE(blkdata[:readN])
+	e.setBlkCRC(blkNo, crc)
+	updated = true
 	return
 }
 

@@ -107,6 +107,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handlePacketToGetAllWatermarksV2(p)
 	case proto.OpGetAllWatermarksV3:
 		s.handlePacketToGetAllWatermarksV3(p)
+	case proto.OpFingerprint:
+		s.handleFingerprintPacket(p)
 	case proto.OpGetAllExtentInfo:
 		s.handlePacketToGetAllExtentInfo(p)
 	case proto.OpCreateDataPartition:
@@ -367,7 +369,6 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				partition.ID(), p.ExtentID, inode, err)
 		}
 	}
-	_ = partition.RemoveIssueExtent(p.ExtentID)
 	if err != nil {
 		p.PackErrorBody(ActionMarkDelete, err.Error())
 	} else {
@@ -393,7 +394,6 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, ext.ExtentId, ext.ExtentOffset, ext.Size, remote)
 			_ = partition.MarkDelete(ext.ExtentId, ext.Inode, ext.ExtentOffset, uint64(ext.Size))
-			_ = partition.RemoveIssueExtent(p.ExtentID)
 		}
 	}
 
@@ -587,11 +587,9 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	}
 
 	// isForceRead 函数用来检查读请求包是否有强制读表示，强制读请求会不检查请求所读数据区域是否存在风险
-	var isForceRead = func(p *repl.Packet) bool {
-		return len(p.Arg) > 0 && p.Arg[0] == 1
-	}
+	var isForceRead = len(p.Arg) > 0 && p.Arg[0] == 1
 
-	if !isForceRead(p) && partition.CheckIssue(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) {
+	if isForceRead && partition.CheckRisk(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) {
 		// 正常非强制读请求下，若请求所读数据区域存在风险，则拒绝响应。
 		err = proto.ErrOperationDisabled
 		return
@@ -639,7 +637,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 					return storeErr
 				}
 			}
-			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead)
+			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead, isForceRead)
 			return storeErr
 		}()
 		partition.checkIsDiskError(err)
@@ -803,6 +801,47 @@ func (s *DataNode) handlePacketToGetAllWatermarksV3(p *repl.Packet) {
 	return
 }
 
+func (s *DataNode) handleFingerprintPacket(p *repl.Packet) {
+	var (
+		err error
+	)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionGetExtentFingerprint, err.Error())
+		}
+	}()
+	var (
+		req         *repl.FingerprintRequest
+		partition   = p.Object.(*DataPartition)
+		store       = partition.ExtentStore()
+		fingerprint storage.Fingerprint
+	)
+
+	if req, err = repl.ParseFingerprintPacket(p); err != nil {
+		return
+	}
+
+	var isIssue bool
+	if isIssue = partition.CheckRisk(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)); isIssue && !req.Force {
+		// 正常非强制读请求下，若请求所读数据区域存在风险，则拒绝响应。
+		err = proto.ErrOperationDisabled
+		return
+	}
+
+	if !req.Force && partition.CheckRisk(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) {
+		// 正常非强制读请求下，若请求所读数据区域存在风险，则拒绝响应。
+		err = proto.ErrOperationDisabled
+		return
+	}
+
+	if fingerprint, err = store.Fingerprint(p.ExtentID, p.ExtentOffset, int64(p.Size), isIssue); err != nil {
+		return
+	}
+	var data = fingerprint.EncodeBinary()
+	p.PacketOkWithBody(data)
+	return
+}
+
 func (s *DataNode) handlePacketToGetAllExtentInfo(p *repl.Packet) {
 	var (
 		err  error
@@ -925,7 +964,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			reply.Data = make([]byte, currReadSize)
 		}
 		reply.ExtentOffset = offset
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false, false)
 		if err != nil {
 			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
@@ -1021,7 +1060,7 @@ func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.C
 			reply.Data = make([]byte, currReadSize)
 		}
 		reply.ExtentOffset = offset
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false, false)
 		if err != nil {
 			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)

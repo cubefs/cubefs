@@ -282,10 +282,8 @@ func (s *ExtentStore) Create(extentID, inode uint64, putCache bool) (err error) 
 		err = ExtentExistsError
 		return err
 	}
-	e = NewExtent(name, extentID, s.ioInterceptor)
-	e.header = make([]byte, unit.BlockHeaderSize)
-	err = e.InitToFS()
-	if err != nil {
+	var headerHandler = s.getExtentHeaderHandler(extentID)
+	if e, err = CreateExtent(name, extentID, s.ioInterceptor, headerHandler); err != nil {
 		return err
 	}
 	if putCache {
@@ -423,7 +421,7 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	err = e.Write(data, offset, size, crc, writeType, isSync, s.PersistenceBlockCrc, ei)
+	err = e.Write(data, offset, size, crc, writeType, isSync)
 	if err != nil {
 		return err
 	}
@@ -449,7 +447,7 @@ func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) er
 }
 
 // Read reads the extent based on the given id.
-func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool) (crc uint32, err error) {
+func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead, force bool) (crc uint32, err error) {
 	var e *Extent
 	ei, _ := s.getExtentInfoByExtentID(extentID)
 	if e, err = s.ExtentWithHeader(ei); err != nil {
@@ -458,8 +456,24 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return
 	}
-	crc, err = e.Read(nbuf, offset, size, isRepairRead)
+	crc, err = e.Read(nbuf, offset, size, isRepairRead, force)
 
+	return
+}
+
+func (s *ExtentStore) Fingerprint(extentID uint64, offset, size int64, strict bool) (fingerprint Fingerprint, err error) {
+	if proto.IsTinyExtent(extentID) {
+		return
+	}
+	var e *Extent
+	ei, _ := s.getExtentInfoByExtentID(extentID)
+	if e, err = s.ExtentWithHeader(ei); err != nil {
+		return
+	}
+	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
+		return
+	}
+	fingerprint, err = e.Fingerprint(offset, size, strict)
 	return
 }
 
@@ -977,24 +991,30 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
-	e = NewExtent(name, extentID, s.ioInterceptor)
-	if err = e.RestoreFromFS(); err != nil {
-		err = fmt.Errorf("restore from file %v putCache %v system: %v", name, putCache, err)
+	var headerHandler = s.getExtentHeaderHandler(extentID)
+	if e, err = OpenExtent(name, extentID, s.ioInterceptor, headerHandler); err != nil {
 		return
 	}
 	if !putCache {
 		return
 	}
-	if !proto.IsTinyExtent(extentID) {
-		e.header = make([]byte, unit.BlockHeaderSize)
-		if _, err = s.verifyExtentFp.ReadAt(e.header, int64(extentID*unit.BlockHeaderSize)); err != nil && err != io.EOF {
-			return
-		}
-	}
 	err = nil
 	s.cache.Put(e)
 
 	return
+}
+
+func (s *ExtentStore) getExtentHeaderHandler(extentID uint64) HeaderHandler {
+	var offset = int64(extentID * unit.BlockHeaderSize)
+	var load = func(b []byte) (err error) {
+		_, err = s.verifyExtentFp.ReadAt(b[:unit.BlockHeaderSize], offset)
+		return
+	}
+	var save = func(b []byte) (err error) {
+		_, err = s.verifyExtentFp.WriteAt(b[:unit.BlockHeaderSize], offset)
+		return
+	}
+	return NewFuncHeaderHandler(load, save)
 }
 
 func (s *ExtentStore) ScanBlocks(extentID uint64) (bcs []*BlockCrc, err error) {
@@ -1043,7 +1063,7 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 	sort.Sort(ExtentInfoArr(needUpdateCrcExtents))
 	for _, ei := range needUpdateCrcExtents {
 		e, err := s.ExtentWithHeader(ei)
-		extentCrc, err := e.autoComputeExtentCrc(s.PersistenceBlockCrc)
+		extentCrc, err := e.autoComputeExtentCrc()
 		if err != nil {
 			continue
 		}

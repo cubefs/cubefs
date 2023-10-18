@@ -55,6 +55,8 @@ const (
 	DefaultRollingInterval = 1 * time.Second
 	RolledExtension        = ".old"
 	MaxReservedDays        = 7 * 24 * time.Hour
+
+	unknown = "???"
 )
 
 var levelPrefixes = []string{
@@ -361,9 +363,24 @@ func (l *Log) initLog(logDir, module string, level Level) error {
 
 // SetPrefix sets the log prefix.
 func (l *Log) SetPrefix(s, level string) string {
-	_, file, line, ok := runtime.Caller(2)
-	if !ok {
-		line = 0
+	var (
+		pc     uintptr
+		file   = unknown
+		method = unknown
+		line   int
+		ok     bool
+	)
+	pc, file, line, ok = runtime.Caller(2)
+	if ok {
+		if f := runtime.FuncForPC(pc); f != nil {
+			fname := f.Name()
+			for i := len(fname) - 1; i > 0; i-- {
+				if fname[i] == '/' {
+					method = fname[i+1:]
+					break
+				}
+			}
+		}
 	}
 	short := file
 	for i := len(file) - 1; i > 0; i-- {
@@ -373,7 +390,7 @@ func (l *Log) SetPrefix(s, level string) string {
 		}
 	}
 	file = short
-	return level + " " + file + ":" + strconv.Itoa(line) + ": " + s
+	return level + " " + file + ":" + strconv.Itoa(line) + ":" + method + ": " + s
 }
 
 // Flush flushes the log.

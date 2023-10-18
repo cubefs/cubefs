@@ -477,6 +477,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/repairExtent", s.repairExtent)
 	http.HandleFunc("/repairExtentBatch", s.repairExtentBatch)
 	http.HandleFunc("/extentCrc", s.getExtentCrc)
+	http.HandleFunc("/fingerprint", s.getFingerprint)
 	http.HandleFunc("/resetFaultOccurredCheckLevel", s.resetFaultOccurredCheckLevel)
 }
 
