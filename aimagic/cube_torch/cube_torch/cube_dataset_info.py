@@ -24,6 +24,10 @@ def is_numpy_2d_array(obj):
     return isinstance(obj, np.ndarray) and len(obj.shape) == 2
 
 
+def is_numpy_1d_array(obj):
+    return isinstance(obj, np.ndarray) and len(obj.shape) == 1
+
+
 class CubeDataSetInfo:
     def __init__(self, cube_loader):
         self.cube_loader = cube_loader
@@ -39,6 +43,7 @@ class CubeDataSetInfo:
             self._is_test_env = False
         self.stop_event = multiprocessing.Event()
         self._init_env_fininsh = False
+        self.train_list_dimensional = 1
 
     def get_cubefs_root_dir(self):
         return self.cubefs_mount_point
@@ -66,48 +71,40 @@ class CubeDataSetInfo:
             raise ValueError("{} set is not a number exception{} ".format(CubeFS_QUEUE_SIZE_ON_WORKER, e))
 
     def get_dataset_samples(self, dataset):
+        result = None
         if isinstance(dataset, datasets.DatasetFolder):
-            samples = dataset.samples
-            return [s[0] for s in samples]
-        if isinstance(dataset, datasets.VOCDetection):
-            return dataset.images
-        if isinstance(dataset, datasets.CocoDetection):
+            result = np.array([s[0] for s in dataset.samples])
+        elif isinstance(dataset, datasets.VOCDetection):
+            result = np.array(dataset.images)
+        elif isinstance(dataset, datasets.CocoDetection):
             samples_len = dataset.__len__()
             samples_path = []
             for i in range(samples_len):
                 path = dataset.coco.loadImgs(i)[0]["file_name"]
                 samples_path.append(os.path.join(dataset.root, path))
-            return samples_path
-        if hasattr(dataset, 'train_data_list'):
-            train_list = dataset.train_data_list()
-            if not is_numpy_2d_array(train_list):
-                raise ValueError("Invalid Custom Dataset train_data_list func, "
-                                 "Its return value must be a two-dimensional numpy array.")
-            return train_list
-        raise ValueError("Invalid dataset{} because the custom dataset does not implement "
-                         "the train_data_list method or it is not a pytorch dataset supported by CubeTorch.".format(
-            dataset))
+            result = np.array(samples_path)
+        elif hasattr(dataset, 'train_data_list'):
+            result = dataset.train_data_list()
 
-    def _concat_numpy_2d_array(self, dataset):
-        numpy_2d_array = []
+        if not is_numpy_2d_array(result) and not is_numpy_1d_array(result):
+            raise ValueError("Invalid Custom Dataset train_data_list func, "
+                             "Its return value must be a two-dimensional numpy array or one-dimensional numpy array.")
+
+        return result
+
+    def _concat_numpy_array(self, dataset):
+        numpy_array = []
         for sdataset in dataset.datasets:
             sdata_arr = self.get_dataset_samples(sdataset)
-            numpy_2d_array.append(sdata_arr)
-        return numpy_2d_array
-
-    def _concat_1d_array(self, dataset):
-        file_name_lists = []
-        for sdataset in dataset.datasets:
-            sdata_arr = self.get_dataset_samples(sdataset)
-            file_name_lists += sdata_arr
-        return file_name_lists
+            numpy_array.append(sdata_arr)
+        return numpy_array
 
     def _concatDataSet_get_samples(self, dataset):
         sdata_arr = self.get_dataset_samples(dataset.datasets[0])
         if is_numpy_2d_array(sdata_arr):
-            return np.concatenate(self._concat_numpy_2d_array(dataset), axis=1)
-        else:
-            return self._concat_1d_array(dataset)
+            return np.concatenate(self._concat_numpy_array(dataset), axis=1)
+        elif is_numpy_1d_array(sdata_arr):
+            return np.concatenate(self._concat_numpy_array(dataset))
 
     def _signel_DataSet_get_samples(self, dataset):
         return self.get_dataset_samples(dataset)
@@ -122,9 +119,8 @@ class CubeDataSetInfo:
         else:
             file_name_lists = self._signel_DataSet_get_samples(dataset)
         if is_numpy_2d_array(file_name_lists):
-            self.train_list = file_name_lists
-        else:
-            self.train_list = [file_name_lists]
+            self.train_list_dimensional = 2
+        self.train_list = file_name_lists
 
     def get_cube_queue_size_on_worker(self):
         return self.cubefs_queue_size_on_worker

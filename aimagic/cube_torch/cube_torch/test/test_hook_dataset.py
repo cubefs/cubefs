@@ -8,12 +8,12 @@ from torch.utils.data import ConcatDataset
 from torchvision import datasets, transforms
 
 os.environ["CubeFS_ROOT_DIR"] = "/mnt/cfs/chubaofs_tech_data-test"
-os.environ['localIP'] = "127.0.0.1"
-os.environ['USE_BATCH_DOWNLOAD'] = '123'
+os.environ["VOL_NAME"]='tech-data-test1'
+
 
 
 def start_worker_test_concatDataset(i):
-    traindir = "/mnt/cfs/chubaofs_tech_data-test"
+    traindir = "/mnt/cfs/chubaofs_tech_data-test/data"
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -46,7 +46,7 @@ def start_worker_test_Dataset(i):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    traindir = "/mnt/cfs/chubaofs_tech_data-test/data0"
+    traindir = "/mnt/cfs/chubaofs_tech_data-test/data/data0/"
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([

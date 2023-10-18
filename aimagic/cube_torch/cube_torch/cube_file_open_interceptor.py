@@ -1,4 +1,29 @@
 import os
+import threading
+
+
+class PrintHitCacheInfoTimer:
+    def __init__(self, interval, callback):
+        self.interval = interval
+        self.callback = callback
+        self.timer = None
+        self.cancelled = False
+
+    def _run(self):
+        if self.cancelled:
+            return
+        self.callback()
+        self.timer = threading.Timer(self.interval, self._run)
+        self.timer.start()
+
+    def start(self):
+        self.timer = threading.Timer(self.interval, self._run)
+        self.timer.start()
+
+    def cancel(self):
+        if self.timer is not None:
+            self.cancelled = True
+            self.timer.cancel()
 
 
 class CubeFileOpenInterceptor:
@@ -29,6 +54,8 @@ class CubeFileOpenInterceptor:
     @staticmethod
     def set_params(cube_root_dir):
         CubeFileOpenInterceptor.cube_root_dir = cube_root_dir
+        CubeFileOpenInterceptor.timer = PrintHitCacheInfoTimer(120, CubeFileOpenInterceptor.print_hit_rate)
+        CubeFileOpenInterceptor.timer.start()
 
     @staticmethod
     def stop_print_hitcache_timer():
