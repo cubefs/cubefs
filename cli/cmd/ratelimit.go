@@ -33,6 +33,7 @@ const (
 
 	minMonitorSummarySeconds = 5
 	minMonitorReportSeconds  = 10
+	clusterDbBack            = "cfs_dbBack"
 )
 
 func newRateLimitCmd(client *master.MasterClient) *cobra.Command {
@@ -374,7 +375,11 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  MetaNodeReqVolOpRateMap          : %v\n", info.MetaNodeReqVolOpRateLimitMap))
 	sb.WriteString(fmt.Sprintf("    (map[string]map[opcode]limit)\n"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskHDDZone        : %v\n", info.DataNodeRepairClusterTaskLimitOnDisk))
+	if strings.EqualFold(clusterDbBack, info.Cluster) {
+		sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskHDDZone        : %v\n", info.DataNodeRepairTaskLimitOnDisk))
+	} else {
+		sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskHDDZone        : %v\n", info.DataNodeRepairClusterTaskLimitOnDisk))
+	}
 	sb.WriteString(fmt.Sprintf("  DataNodeRepairTaskSSDZone        : %v\n", info.DataNodeRepairSSDZoneTaskLimitOnDisk))
 	sb.WriteString(fmt.Sprintf("  DataNodeReqZoneRateMap           : %v\n", info.DataNodeReqZoneRateLimitMap))
 	sb.WriteString(fmt.Sprintf("    (map[zone]limit)\n"))
