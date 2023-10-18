@@ -28,6 +28,8 @@
 
 ## 技术揭秘
 
+- [CubeFS源码解读 | ObjectNode对象存储协议解析（下）](https://mp.weixin.qq.com/s/RKkZzpxwlycR2QNhwr_-YA)，2023-09-01，Chenyang Zhao
+- [CubeFS源码解读 | ObjectNode对象存储协议解析（上）](https://mp.weixin.qq.com/s/if5D1w3zPDtgRbB3_FLAGg)，2023-08-22，Chenyang Zhao
 - [CubeFS"源"理解读｜纠删码之异步删除与数据修补](https://mp.weixin.qq.com/s/d3l3v2V5K-ifSDWdm9caTw)，2023-07-04，Tianyue Peng
 - [CubeFS"源"理解读 | Master模块之HTTP服务](https://mp.weixin.qq.com/s/rqmdSs-w0qgE5Ual4KgpmQ)，2023-06-15，Huocheng Wu
 - [CubeFS原创方案丨原生HDFS协议访问支持](https://mp.weixin.qq.com/s/vw9O9ssHIWDIozjYkoy8IA) , 2023-05-31, Tianjiong,Zhang
