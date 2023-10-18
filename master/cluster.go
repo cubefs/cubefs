@@ -1462,7 +1462,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 			var diskPath string
 
 			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize,
-				dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition, dp.PartitionType); err != nil {
+				dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition, dp.PartitionType, false); err != nil {
 				errChannel <- err
 				return
 			}
@@ -1518,7 +1518,7 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition,
-	peers []proto.Peer, hosts []string, createType int, partitionType int) (diskPath string, err error) {
+	peers []proto.Peer, hosts []string, createType int, partitionType int, needRollBack bool) (diskPath string, err error) {
 	log.LogInfof("action[syncCreateDataPartitionToDataNode] dp [%v] createtype[%v], partitionType[%v]", dp.PartitionID, createType, partitionType)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
@@ -1528,8 +1528,10 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	var resp *proto.Packet
 	if resp, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
 		//data node is not alive or other process error
-		dp.DecommissionNeedRollback = true
-		c.syncUpdateDataPartition(dp)
+		if needRollBack {
+			dp.DecommissionNeedRollback = true
+			c.syncUpdateDataPartition(dp)
+		}
 		return
 	}
 	return string(resp.Data), nil
@@ -2536,7 +2538,7 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	dp.RUnlock()
 
 	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize,
-		dp, peers, hosts, proto.DecommissionedCreateDataPartition, dp.PartitionType)
+		dp, peers, hosts, proto.DecommissionedCreateDataPartition, dp.PartitionType, true)
 	if err != nil {
 		return
 	}
