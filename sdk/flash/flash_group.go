@@ -102,7 +102,7 @@ func (fg *FlashGroup) moveToUnknownRank(addr string) bool {
 	unknowns = append(unknowns, addr)
 	fg.rankedHost[UnknownZoneRank] = unknowns
 
-	log.LogWarnf("moveToUnknownRank: flash host: %v", addr)
+	log.LogWarnf("moveToUnknownRank: fgID(%v) host: %v", fg.ID, addr)
 	return moved
 }
 
