@@ -1508,12 +1508,12 @@ func (i *Inode) buildMultiSnap() {
 func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.ExtentKey, status uint8) {
 
 	var err error
-	param.ek.SetSeq(param.reqVer)
+	param.ek.SetSeq(param.mpVer)
 	log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].inode %v,ver %v,ek %v,hist len %v", param.mpId, i.Inode, param.reqVer, param.ek, i.getLayerLen())
 
-	if param.reqVer != i.getVer() {
-		log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].CreateVer ver %v", param.mpId, param.reqVer)
-		i.CreateVer(param.reqVer)
+	if param.mpVer != i.getVer() {
+		log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].CreateVer ver %v", param.mpId, param.mpVer)
+		i.CreateVer(param.mpVer)
 	}
 	i.Lock()
 	defer i.Unlock()
@@ -1589,7 +1589,6 @@ type AppendExtParam struct {
 	mpId             uint64
 	mpVer            uint64
 	multiVersionList *proto.VolVersionInfoList
-	reqVer           uint64
 	ek               proto.ExtentKey
 	ct               int64
 	discardExtents   []proto.ExtentKey
@@ -1597,10 +1596,9 @@ type AppendExtParam struct {
 }
 
 func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto.ExtentKey, status uint8) {
-
 	param.ek.SetSeq(param.mpVer)
-	log.LogDebugf("action[AppendExtentWithCheck] mpId[%v].mpVer %v inode %v and fsm ver %v,req ver %v,ek %v,hist len %v",
-		param.mpId, param.mpVer, i.Inode, i.getVer(), param.reqVer, param.ek, i.getLayerLen())
+	log.LogDebugf("action[AppendExtentWithCheck] mpId[%v].mpVer %v inode %v and fsm ver %v,ek %v,hist len %v",
+		param.mpId, param.mpVer, i.Inode, i.getVer(), param.ek, i.getLayerLen())
 
 	if param.mpVer != i.getVer() {
 		log.LogDebugf("action[AppendExtentWithCheck] mpId[%v].ver %v inode ver %v", param.mpId, param.reqVer, i.getVer())

@@ -593,7 +593,6 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		Inode:       inode,
 		Name:        name,
 		Mode:        mode,
-		VerSeq:      verSeq,
 	}
 	req.FullPaths = []string{fullPath}
 

@@ -506,7 +506,6 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	appendExtParam := &AppendExtParam{
 		mpId:             mp.config.PartitionId,
 		mpVer:            mp.verSeq,
-		reqVer:           ino.getVer(),
 		ek:               eks[0],
 		ct:               ino.ModifyTime,
 		discardExtents:   discardExtentKey,

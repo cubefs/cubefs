@@ -427,7 +427,6 @@ type CreateDentryRequest struct {
 	Inode       uint64 `json:"ino"`
 	Name        string `json:"name"`
 	Mode        uint32 `json:"mode"`
-	VerSeq      uint64 `json:"seq"`
 	RequestExtend
 }
 
