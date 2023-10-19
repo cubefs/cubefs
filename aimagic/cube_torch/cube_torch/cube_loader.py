@@ -202,7 +202,7 @@ class CubeDataLoader(Generic[T_co]):
         self.wait_read_train_file_queue.cancel_join_thread()
         self.is_use_batch_download = False
         self._dataset_id = id(self.dataset)
-        self.wait_download_queues=[]
+        self.wait_download_queues = []
         self.cube_dataset_info = CubePushDataSetInfo(self)
         self.is_use_batch_download = self.cube_dataset_info.is_use_batch_download()
         for i in range(self.num_workers):
@@ -441,7 +441,7 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
             if is_use_batch_download:
                 storage_info = (
                     cube_root_dir, self._wait_download_queues[i], self.cube_dataset_info.get_batch_download_addr(),
-                    self._batch_size)
+                    self._batch_size, self.cube_dataset_info.get_free_os_memory_addr())
                 print("batch download addr  info:{}".format(storage_info))
             else:
                 storage_info = (

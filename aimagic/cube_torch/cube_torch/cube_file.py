@@ -63,13 +63,14 @@ class CubeStream(io.BytesIO):
 
 class InterceptionIO:
     def __init__(self, storage_info):
-        cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
+        cube_root_dir, wait_download_queue, batch_download_addr, batch_size,free_memory_addr = storage_info
         self.cube_root_dir = cube_root_dir
         self.files_cache = LRUCache(timeout=60)
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
         self.wait_download_queue = wait_download_queue
         self.batch_size = batch_size
+        self.free_memory_addr=free_memory_addr
         self.download_event = threading.Event()
         self._lock = threading.Lock()
         retry_strategy = Retry(
@@ -110,6 +111,8 @@ class InterceptionIO:
                     self.files_cache.cleanup_expired_items()
                 if loop_index % 100 == 0:
                     CubeFileOpenInterceptor.print_hit_rate()
+                if loop_index %1000==0:
+                    self.free_os_memory_async()
             except queue.Empty:
                 continue
         event.set()
@@ -155,9 +158,20 @@ class InterceptionIO:
             print('pid:{} url:{} Error:{} '.format(os.getpid(), self.batch_download_addr, e))
             pass
 
+
+    def free_memory_async(self):
+        try:
+            requests.get(self.free_memory_addr)
+        except Exception as e:
+            pass
+
     def batch_download_async(self, index_list):
         loop = asyncio.new_event_loop()
         loop.run_in_executor(None, self.batch_download, index_list)
+
+    def free_os_memory_async(self):
+        loop = asyncio.new_event_loop()
+        loop.run_in_executor(None, self.free_memory_async)
 
     def add_stream(self, file_path, stream):
         self.files_cache.put(file_path, stream)
