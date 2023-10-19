@@ -439,6 +439,8 @@ func (vol *Vol) getRWMetaPartitionNum() (num uint64, isHeartBeatDone bool) {
 		}
 		if mp.Status == proto.ReadWrite {
 			num++
+		} else {
+			log.LogWarnf("The mp[%v] of vol[%v] is not RW", mp.PartitionID, vol.Name)
 		}
 	}
 	return num, true
@@ -664,6 +666,11 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 	}
 	c.addMetaNodeTasks(tasks)
+	// avoid split during volume creation
+	if len(mps) < defaultReplicaNum {
+		log.LogDebugf("The vol[%v] is being created", vol.Name)
+		return
+	}
 	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
 }
 
