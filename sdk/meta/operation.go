@@ -582,10 +582,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	if parentID == inode {
 		return statusExist, nil
 	}
-	var verSeq uint64
-	if mw.Client != nil {
-		verSeq = mw.Client.GetLatestVer()
-	}
+
 	req := &proto.CreateDentryRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,

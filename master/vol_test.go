@@ -3,6 +3,8 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -314,6 +316,57 @@ func statVol(name string, t *testing.T) {
 		hostAddr, proto.ClientVolStat, name)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+}
+
+func TestVolMpsLock(t *testing.T) {
+	name := "TestVolMpsLock"
+	var volID uint64 = 1
+	var createTime = time.Now().Unix()
+
+	vv := volValue{
+		ID:                volID,
+		Name:              name,
+		Owner:             name,
+		ZoneName:          "",
+		DataPartitionSize: util.DefaultDataPartitionSize,
+		Capacity:          100,
+		DpReplicaNum:      defaultReplicaNum,
+		ReplicaNum:        defaultReplicaNum,
+		FollowerRead:      false,
+		Authenticate:      false,
+		CrossZone:         false,
+		DefaultPriority:   false,
+		CreateTime:        createTime,
+		Description:       "",
+	}
+
+	vol := newVol(vv)
+	vol.mpsLock.Lock()
+	go vol.mpsLock.CheckExceptionLock(time.Microsecond*10, time.Microsecond*50)
+	assert.True(t, strings.Contains(vol.mpsLock.lastEffectStack, "Lock stack"))
+	assert.True(t, vol.mpsLock.lastEffectStack != "")
+	for cnt := 0; cnt < 20; cnt++ {
+		if vol.mpsLock.hang == false {
+			time.Sleep(time.Microsecond * 100)
+		}
+		break
+	}
+	t.Logf("log.EnableDebug() %v, mpsLock.lockTime %v  mpsLock.onLock %v mpsLock.vol.status() %v enable(%v)", log.EnableDebug(),
+		vol.mpsLock.lockTime, vol.mpsLock.onLock, vol.status(), vol.mpsLock.enable)
+	assert.True(t, vol.mpsLock.enable == 1)
+	assert.True(t, vol.mpsLock.hang == true)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		vol.mpsLock.RLock()
+		assert.True(t, strings.Contains(vol.mpsLock.lastEffectStack, "RLock stack"))
+		vol.mpsLock.RUnlock()
+		wg.Done()
+	}()
+	vol.mpsLock.UnLock()
+	wg.Wait()
+	assert.True(t, vol.mpsLock.hang == false)
+	assert.True(t, strings.Contains(vol.mpsLock.lastEffectStack, "RUnlock stack"))
 }
 
 func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
