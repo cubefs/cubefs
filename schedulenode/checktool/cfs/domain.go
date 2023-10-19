@@ -52,6 +52,7 @@ type ClusterHost struct {
 	inactiveNodesForCheckVolLock  sync.RWMutex
 	metaNodeDiskRatioWarnTime     time.Time
 	metaNodeDiskUsedWarnTime      time.Time
+	lastDisableFlashNodeTime      time.Time
 	nodeMemInfo                   map[string]float64
 }
 

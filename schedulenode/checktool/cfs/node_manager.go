@@ -3,7 +3,9 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/http_client"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -223,7 +225,22 @@ func (cv *ClusterView) checkFlashNodeVersion(host *ClusterHost, expectVersion []
 			}
 		}
 		if !rightV {
-			exporter.WarningBySpecialUMPKey(UMPCFSSparkFlashNodeVersionKey, fmt.Sprintf("invalid version[%v], expect[%v]", version.CommitID, expectVersion))
+			exporter.WarningBySpecialUMPKey(UMPCFSSparkFlashNodeVersionKey, fmt.Sprintf("flashnode[%v] invalid version[%v], expect[%v], has been automatically disabled", fn.Addr, version.CommitID, expectVersion))
+			masterClient := master.NewMasterClient([]string{host.host}, false)
+			var fnv *proto.FlashNodeViewInfo
+			fnv, err = masterClient.NodeAPI().GetFlashNode(fn.Addr)
+			if err != nil {
+				log.LogErrorf("checkFlashNodeVersion, node:%v, err:%v", fn.Addr, err)
+				continue
+			}
+			if fnv.IsEnable && time.Since(host.lastDisableFlashNodeTime) > time.Hour*6 {
+				log.LogWarnf("set flashnode to inactive:%v, time:%v", fn.Addr, host.lastDisableFlashNodeTime)
+				/*				err = masterClient.NodeAPI().SetFlashNodeState(fn.Addr, "false")
+								if err != nil {
+									log.LogErrorf("checkFlashNodeVersion, node:%v, err:%v", fn.Addr, err)
+								}*/
+				host.lastDisableFlashNodeTime = time.Now()
+			}
 		}
 	}
 }
