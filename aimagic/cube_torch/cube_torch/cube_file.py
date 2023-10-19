@@ -62,7 +62,7 @@ class CubeStream(io.BytesIO):
 
 
 class InterceptionIO:
-    def __init__(self, storage_info, switch_event):
+    def __init__(self, storage_info):
         cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
         self.cube_root_dir = cube_root_dir
         self.files_cache = LRUCache(timeout=60)
@@ -72,7 +72,6 @@ class InterceptionIO:
         self.batch_size = batch_size
         self.download_event = threading.Event()
         self._lock = threading.Lock()
-        self.switch_event = switch_event
         retry_strategy = Retry(
             total=1,  # 最大重试次数
             backoff_factor=0.5,  # 重试之间的时间间隔因子
@@ -182,9 +181,6 @@ class InterceptionIO:
             content = response.raw.read(content_length)
             stream = CubeStream(filename, content)
             self.add_stream(filename, stream)
-            if self.switch_event.is_set():
-                self.switch_event.clear()
-                self.switch_event.wait()
         response.raw.close()
 
 
