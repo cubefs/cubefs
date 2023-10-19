@@ -11,7 +11,7 @@
 
 *  训练速度高: 针对大量的小文件训练场景，让AI的训练速度和本地NVME速度一样快。 
 *  简单易用: 用户不需要改变自己的训练代码，仅需要加入`import cube_torch`的字样，并设置几个环境变量即可进行加速。
-*  适用范围广: 适用于所有的pytorch的训练模型。 
+*  适用范围广: 适用于所有的pytorch的训练模型。已支持DEEPSPPED等框架
 
 
 
@@ -110,8 +110,8 @@ class VLPDataset(Dataset):
             title_file_list = p.map(read_img_meta, title_metas)
         self.title_list = reduce(concat_list, title_file_list)
         
-        self.img_list=np.asarray(self.img_list)
-        self.title_list=np.asarray(self.title_list)
+        self.img_list=np.array(self.img_list)
+        self.title_list=np.array(self.title_list)
         super().__init__()
 
     def train_data_list(self):
@@ -155,8 +155,8 @@ user memory last_cycle_metrics:([request_count:4801 hit_count:4801 miss_count:0 
 # 四、cube_torch 加速效果测试
 
 
-|                    | 9600w vlp(samples/s) | 3700w vlp(samples/s) | 7400w 224x224 imagenet(samples/s) |128w imagenet 1280x857 (samples/s)|128w imagenet  1280x857 (每个epoch 耗费秒数)|
-| :-----             | ----:                | :----:               | :----:                    | :----:                 | :----:                        |
-| 本地NVME            |                      | 3100                 | 2200                      | 1036                   |   1030                        | 
-| cubeFS             | 2200                 | 2400                 | 1800                      | 1356                   |   1350                        | 
-| cube_torch + cubeFS| 3100                 | 3096                 | 2185                      | 1958                   |   640                         | 
+|                    | 9600w vlp(samples/s) | 3700w vlp(samples/s) | 7400w 224x224 imagenet(samples/s) |128w imagenet 1280x857 (samples/s) |128w imagenet  1280x857 (每个epoch 耗费秒数)|
+| :-----             | ----:                | :----:               | :----:                            | :----:                            | :----:                        |
+| 本地NVME            |                      | 3100                 | 2200                              | 1036                              |   1030                        | 
+| cubeFS             | 2200                 | 2400                 | 1800                              | 1356                              |   1350                        | 
+| cube_torch + cubeFS| 3100                 | 3096                 | 2185                              | 1958                              |   640                         | 

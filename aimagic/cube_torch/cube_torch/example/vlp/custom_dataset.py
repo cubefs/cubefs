@@ -24,10 +24,10 @@ std_transform = transforms.Compose([
 
 
 def read_img_meta(filename):
-   with open(filename, 'r') as f:
-      lines = f.readlines()
-      data=[line.strip() for line in lines]
-      return data
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+        data = [line.strip() for line in lines]
+        return data
 
 
 def concat_list(a, b):
@@ -97,7 +97,6 @@ def gen_mask(seq, mask_token_id, mask_ignore_token_ids, pad_token_id, mask_prob,
     return masked_seq, mask
 
 
-
 class VLPDataset(Dataset):
     def __init__(self, image_metas: List[str], title_metas: List[str], max_length=50, image_transform=std_transform,
                  masking_func=None, attrs: List[str] = [], tokenizer=None):
@@ -110,8 +109,10 @@ class VLPDataset(Dataset):
         with ProcessPool() as p:
             title_file_list = p.map(read_img_meta, title_metas)
         self.title_list = reduce(concat_list, title_file_list)
-        self.img_list=np.asarray(self.img_list)
-        self.title_list=np.asarray(self.title_list)
+
+        self.img_list = np.array(self.img_list)
+        self.title_list = np.array(self.title_list)
+
         super().__init__()
         self.max_length = max_length
         self.transform = image_transform
@@ -119,6 +120,12 @@ class VLPDataset(Dataset):
 
     def train_data_list(self):
         return np.array([self.img_list, self.title_list])
+
+    ##新增train_data_list函数，表示需要告诉cubefs 所需要关注的训练集文件名列表。
+    # 注意，该函数可以返回多个，如上：返回训练图片文件列表、该图片对应的标题文件列表
+    # self.img_list 必须是一个numpy的一维数组，可能是：[/mnt/cfs/jpg/1.jpg,/mnt/cfs/jpg/2.jpg,/mnt/cfs/jpg/3.jpg,/mnt/cfs/jpg/4.jpg]
+    # self.title_list 必须是一个numpy的一维数组，可能是[/mnt/cfs/title/1.title,/mnt/cfs/title/2.title,/mnt/cfs/title/3.title,/mnt/cfs/title/4.title]
+    # 注意img_list 里面的文件名和title_list里面的文件名，必须一一对应。
 
     def __len__(self):
         return len(self.img_list)
