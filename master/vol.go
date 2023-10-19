@@ -333,6 +333,11 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 func (vol *Vol) getRWMetaPartitionNum() (num uint64, isHeartBeatDone bool) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
+	// avoid split during volume creation
+	if len(vol.MetaPartitions) < defaultReplicaNum {
+		log.LogDebugf("The vol[%v] is being created.", vol.Name)
+		return num, false
+	}
 	for _, mp := range vol.MetaPartitions {
 		if !mp.heartBeatDone {
 			log.LogInfof("The mp[%v] of vol[%v] is not done", mp.PartitionID, vol.Name)
