@@ -2487,13 +2487,11 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 }
 
 func (m *metadataManager) updatePackRspSeq(mp MetaPartition, p *Packet) {
-	if mp.GetVerSeq() >= p.VerSeq {
-		if mp.GetVerSeq() > p.VerSeq {
-			log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
-			p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
-			p.ExtentType |= proto.VersionListFlag
-			p.VerList = mp.GetVerList()
-		}
+	if mp.GetVerSeq() > p.VerSeq {
+		log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver %v, packet ver %v", mp.GetVerSeq(), p.VerSeq)
+		p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
+		p.ExtentType |= proto.VersionListFlag
+		p.VerList = mp.GetVerList()
 	}
 	return
 }

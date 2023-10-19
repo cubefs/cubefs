@@ -492,6 +492,7 @@ func TestAppendList(t *testing.T) {
 			verSeq: splitSeq,
 		},
 	}
+	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	t.Logf("in split at begin")
 	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].GetSeq() == ino.getLayerVer(3))

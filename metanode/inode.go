@@ -1509,7 +1509,7 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 
 	var err error
 	param.ek.SetSeq(param.mpVer)
-	log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].inode %v,ver %v,ek %v,hist len %v", param.mpId, i.Inode, param.reqVer, param.ek, i.getLayerLen())
+	log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].inode %v,ek %v,hist len %v", param.mpId, i.Inode, param.ek, i.getLayerLen())
 
 	if param.mpVer != i.getVer() {
 		log.LogDebugf("action[SplitExtentWithCheck] mpId[%v].CreateVer ver %v", param.mpId, param.mpVer)
@@ -1601,7 +1601,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 		param.mpId, param.mpVer, i.Inode, i.getVer(), param.ek, i.getLayerLen())
 
 	if param.mpVer != i.getVer() {
-		log.LogDebugf("action[AppendExtentWithCheck] mpId[%v].ver %v inode ver %v", param.mpId, param.reqVer, i.getVer())
+		log.LogDebugf("action[AppendExtentWithCheck] mpId[%v].inode ver %v", param.mpId, i.getVer())
 		i.CreateVer(param.mpVer)
 	}
 
