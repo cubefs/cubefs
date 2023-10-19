@@ -313,9 +313,11 @@ int __fxstatat64(int ver, int dirfd, const char *pathname, struct stat64 *statbu
     LOCK_RETURN_INT(fstatat64(ver, dirfd, pathname, statbuf, flags));
 }
 
+#ifdef HAVE_STATX
 int statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf) {
     LOCK_RETURN_INT(statx(dirfd, pathname, flags, mask, statxbuf));
 }
+#endif
 
 int chmod(const char *pathname, mode_t mode) {
     return fchmodat(AT_FDCWD, pathname, mode, 0);
@@ -691,7 +693,9 @@ static void init_cfsc_func(void *handle) {
     real_fstat64 = (fstat64_t)dlsym(handle, "real_fstat64");
     real_fstatat = (fstatat_t)dlsym(handle, "real_fstatat");
     real_fstatat64 = (fstatat64_t)dlsym(handle, "real_fstatat64");
+    #ifdef HAVE_STATX
     real_statx = (statx_t)dlsym(handle, "real_statx");
+    #endif
     real_fchmod = (fchmod_t)dlsym(handle, "real_fchmod");
     real_fchmodat = (fchmodat_t)dlsym(handle, "real_fchmodat");
     real_lchown = (lchown_t)dlsym(handle, "real_lchown");

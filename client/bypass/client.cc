@@ -1419,6 +1419,7 @@ log:
     return re;
 }
 
+#ifdef HAVE_STATX
 int real_statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf) {
     bool is_cfs = false;
     char *path = NULL;
@@ -1477,6 +1478,7 @@ int real_statx(int dirfd, const char *pathname, int flags, unsigned int mask, st
     #endif
     return re;
 }
+#endif
 
 int real_fchmod(int fd, mode_t mode) {
     #ifdef _CFS_DEBUG
@@ -2746,7 +2748,6 @@ static void init_cfs_func(void *handle) {
     cfs_fstat64 = (cfs_fstat64_t)dlsym(handle, "cfs_fstat64");
     cfs_fstatat = (cfs_fstatat_t)dlsym(handle, "cfs_fstatat");
     cfs_fstatat64 = (cfs_fstatat64_t)dlsym(handle, "cfs_fstatat64");
-    cfs_statx = (cfs_statx_t)dlsym(handle, "cfs_statx");
     cfs_chmod = (cfs_chmod_t)dlsym(handle, "cfs_chmod");
     cfs_fchmod = (cfs_fchmod_t)dlsym(handle, "cfs_fchmod");
     cfs_fchmodat = (cfs_fchmodat_t)dlsym(handle, "cfs_fchmodat");

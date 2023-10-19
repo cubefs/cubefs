@@ -66,7 +66,9 @@ typedef int (*fstat_t)(int ver, int fd, struct stat *statbuf);
 typedef int (*fstat64_t)(int ver, int fd, struct stat64 *statbuf);
 typedef int (*fstatat_t)(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags);
 typedef int (*fstatat64_t)(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags);
+#ifdef HAVE_STATX
 typedef int (*statx_t)(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf);
+#endif
 typedef int (*fchmod_t)(int fd, mode_t mode);
 typedef int (*fchmodat_t)(int dirfd, const char *pathname, mode_t mode, int flags);
 typedef int (*lchown_t)(const char *pathname, uid_t owner, gid_t group);
@@ -154,7 +156,9 @@ int libc_fstat(int ver, int fd, struct stat *statbuf);
 int libc_fstat64(int ver, int fd, struct stat64 *statbuf);
 int libc_fstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf, int flags);
 int libc_fstatat64(int ver, int dirfd, const char *pathname, struct stat64 *statbuf, int flags);
+#ifdef HAVE_STATX
 int libc_statx(int dirfd, const char *pathname, int flags, unsigned int mask, struct statx *statxbuf);
+#endif
 int libc_fchmod(int fd, mode_t mode);
 int libc_fchmodat(int dirfd, const char *pathname, mode_t mode, int flags);
 int libc_lchown(const char *path, uid_t owner, gid_t group);

@@ -94,6 +94,15 @@ build_sdk_nodynamic() {
     go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -buildmode=c-shared -o ${bin}/libcfssdk.so ${dir}/sdk/sdk_bypass.go ${dir}/sdk/posix_bypass.go ${dir}/sdk/http_bypass.go ${dir}/sdk/http_common.go ${dir}/sdk/ump.go ${dir}/sdk/no_dynamic.go ${dir}/sdk/type_${arch}.go
 }
 
+have_statx() {
+    libc_version=$(ldd --version | head -1 | grep -Eo "[0-9]+\.[0-9]+")
+    libc_major=$(echo $libc_version | cut -d'.' -f1)
+    libc_minor=$(echo $libc_version | cut -d'.' -f2)
+    if [[ $libc_major -gt 2 || ($libc_major -eq 2 && $libc_minor -ge 28)]]; then
+        echo "-DHAVE_STATX"
+    fi
+}
+
 build_client_dynamic() {
     echo "building client (cfs-client cfs-client-inner cfs-client-static libcfsclient.so libcfsc.so libempty.so) ..."
 
@@ -104,8 +113,8 @@ build_client_dynamic() {
     # static fuse client, for libc version < 2.14
     go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
 
-    gcc ${gccflag} -std=c99 -fPIC -shared -DDYNAMIC_UPDATE -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
-    g++ -std=c++11 ${gccflag} -fPIC -shared -DDYNAMIC_UPDATE -DCommitID=\"${CommitID}\" -o ${bin}/libcfsc.so ${dir}/bypass/client.cc ${dir}/bypass/cache.cc ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.cc ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c ${dir}/bypass/util.cc -ldl -lpthread -I ${dir}/bypass/include
+    gcc ${gccflag} -std=c99 -fPIC -shared $(have_statx) -DDYNAMIC_UPDATE -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
+    g++ -std=c++11 ${gccflag} -fPIC -shared $(have_statx) -DDYNAMIC_UPDATE -DCommitID=\"${CommitID}\" -o ${bin}/libcfsc.so ${dir}/bypass/client.cc ${dir}/bypass/cache.cc ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.cc ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c ${dir}/bypass/util.cc -ldl -lpthread -I ${dir}/bypass/include
     go build -ldflags "${goflag} -r /usr/lib64" -buildmode=plugin -linkshared -o ${bin}/libempty.so ${dir}/empty.go
 }
 
@@ -113,8 +122,8 @@ build_client_nodynamic() {
     echo "building client (cfs-client libcfsclient.so libcfsc.so) ..."
     go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
 
-    gcc ${gccflag} -std=c99 -fPIC -shared -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
-    g++ -std=c++11 ${gccflag} -DCommitID=\"${CommitID}\" -fPIC -shared -o ${bin}/libcfsc.so ${dir}/bypass/client.cc ${dir}/bypass/cache.cc ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.cc ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c ${dir}/bypass/util.cc -ldl -lpthread -I ${dir}/bypass/include
+    gcc ${gccflag} -std=c99 -fPIC -shared $(have_statx) -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include
+    g++ -std=c++11 ${gccflag} $(have_statx) -DCommitID=\"${CommitID}\" -fPIC -shared -o ${bin}/libcfsc.so ${dir}/bypass/client.cc ${dir}/bypass/cache.cc ${dir}/bypass/packet.c ${dir}/bypass/conn_pool.cc ${dir}/bypass/ini.c ${dir}/bypass/libc_operation.c ${dir}/bypass/util.cc -ldl -lpthread -I ${dir}/bypass/include
 }
 
 if [[ ${build_sdk} -eq 1 ]]; then
