@@ -29,8 +29,9 @@ import (
 )
 
 const (
-	NoDiskLoadThreshold = int(^uint(0) >> 1)
-	healthiestScore     = 0
+	NoDiskLoadThreshold   = int(^uint(0) >> 1)
+	healthiestScore       = 0
+	shardBalanceThreshold = 0.75
 )
 
 type allocConfig struct {
@@ -87,7 +88,7 @@ func (i *idleVolumes) addAllocatable(vol *volume) {
 
 	idx := int(vol.vid) % i.shardLen
 	e := i.allocatableShard[idx].allocatable.PushFront(vol)
-	i.m[vol.vid] = idleItem{element: e, head: i.allocatableShard[idx].allocatable}
+	i.m[vol.vid] = idleItem{element: e, head: i.allocatableShard[idx].allocatable, shardIdx: idx}
 	atomic.AddInt64(&i.allAllocatableNum, 1)
 	i.Unlock()
 }
@@ -104,30 +105,33 @@ func (i *idleVolumes) addNotAllocatable(vol *volume) {
 
 func (i *idleVolumes) delete(vid proto.Vid) {
 	i.Lock()
-	var curShardNum int
+	var curShardLen int
 	if item, ok := i.m[vid]; ok {
 		curShardIdx := item.shardIdx
 		item.head.Remove(item.element)
 		delete(i.m, vid)
 
 		atomic.AddInt64(&i.allAllocatableNum, -1)
-		curShardNum = i.allocatableShard[curShardIdx].allocatable.Len()
-		allAllocatableNum := int(atomic.LoadInt64(&i.allAllocatableNum))
-		// If the Shard volumeNum < average, there must be another Shard volume Num > average,  guarantee uniformity of each Shard, The time complexity is O(i.shardLen)
-		if curShardNum < allAllocatableNum/i.shardLen {
-			for idx := (curShardIdx + 1) % i.shardLen; idx < i.shardLen; idx++ {
-				if i.allocatableShard[idx].allocatable.Len() > allAllocatableNum/i.shardLen {
+		curShardLen = i.allocatableShard[curShardIdx].allocatable.Len()
+		averageShardLen := int(atomic.LoadInt64(&i.allAllocatableNum)) / i.shardLen
+		// If the Shard volumeLen < average, there must be another Shard volumeLen > average,  guarantee uniformity of each Shard, The time complexity is O(i.shardLen)
+		if float64(curShardLen) < shardBalanceThreshold*float64(averageShardLen) {
+			for j, idx := 0, curShardIdx+1; j < i.shardLen; j++ {
+				if idx >= i.shardLen {
+					idx = idx % i.shardLen
+				}
+				if i.allocatableShard[idx].allocatable.Len() > averageShardLen {
 					// move from
 					eFrom := i.allocatableShard[idx].allocatable
 					e := eFrom.Front()
 					eFrom.Remove(e)
-
 					// move to
 					eTo := i.allocatableShard[curShardIdx].allocatable
-					i.m[e.Value.(*volume).vid] = idleItem{element: e, head: i.allocatableShard[idx].allocatable, shardIdx: curShardNum}
+					i.m[e.Value.(*volume).vid] = idleItem{element: e, head: i.allocatableShard[idx].allocatable, shardIdx: curShardIdx}
 					eTo.PushFront(e)
 					break
 				}
+				idx++
 			}
 		}
 	}
