@@ -133,6 +133,7 @@ const (
 	MaxParts       = 1000
 	MaxUploads     = 1000
 	SinglePutLimit = 5 * 1 << 30 // 5G
+	BodyLimit      = 1 << 20
 )
 
 const (

@@ -106,6 +106,10 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil && err != io.EOF {
 		log.LogErrorf("putBucketLifecycle failed: read request body data err: requestID(%v) err(%v)", GetRequestID(r), err)
