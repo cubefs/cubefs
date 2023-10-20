@@ -148,12 +148,18 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			time.Sleep(1 * time.Second)
 		}
 		if !dp.IsRecover && err != nil {
-			msg := fmt.Sprintf("Domain [%v], data partition [%v] volName [%v] load failed in replica: "+
-				"addr[%v], may be raft start failed or partition is stopped by fatal error", ch.host, dp.PartitionID, volName, addr)
-			if strings.Contains(err.Error(), "partition not exist") {
-				checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionLoadFailed, msg)
+			time.Sleep(10 * time.Second)
+			if dnPartition, err = dataNodeGetPartition(ch, addr, dp.PartitionID); err == nil {
+				break
 			}
-			continue
+			if err != nil {
+				msg := fmt.Sprintf("Domain [%v], data partition [%v] volName [%v] load failed in replica: "+
+					"addr[%v], may be raft start failed or partition is stopped by fatal error", ch.host, dp.PartitionID, volName, addr)
+				if strings.Contains(err.Error(), "partition not exist") {
+					checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionLoadFailed, msg)
+				}
+				continue
+			}
 		}
 		if dnPartition == nil {
 			continue
