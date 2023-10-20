@@ -78,8 +78,6 @@ func initWithRegionMagic(regionMagic string) {
 		log.Warn("no region magic setting, using default secret keys for checksum")
 		return
 	}
-
-	log.Info("using magic secret keys for checksum with:", regionMagic)
 	b := sha1.Sum([]byte(regionMagic))
 	initTokenSecret(b[:8])
 	initLocationSecret(b[:8])
