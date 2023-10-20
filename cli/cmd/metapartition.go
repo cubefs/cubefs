@@ -178,7 +178,10 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 					return
 				}
 				if partition != nil {
-					stdout("%v\n", formatBadReplicaMpInfoRow(partition))
+					badReplicaMpInfoRow := formatBadReplicaMpInfoRow(partition)
+					if "" != badReplicaMpInfoRow {
+						stdout("%v\n", badReplicaMpInfoRow)
+					}
 				}
 			}
 
