@@ -119,6 +119,7 @@ const (
 	MaxKeys    = 1000
 	MaxParts   = 1000
 	MaxUploads = 1000
+	BodyLimit  = 1 << 20
 )
 
 const (
