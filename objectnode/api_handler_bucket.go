@@ -23,7 +23,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
@@ -86,30 +85,29 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	}
 	defer rateLimit.ReleaseLimitResource(userInfo.UserID, param.apiName)
 
-	// get LocationConstraint if any
-	contentLenStr := r.Header.Get(ContentLength)
-	if contentLen, errConv := strconv.Atoi(contentLenStr); errConv == nil && contentLen > 0 {
-		var requestBytes []byte
-		requestBytes, err = ioutil.ReadAll(r.Body)
-		if err != nil && err != io.EOF {
-			log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			return
-		}
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
+	requestBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil && err != io.EOF {
+		log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		return
+	}
 
-		createBucketRequest := &CreateBucketRequest{}
-		err = UnmarshalXMLEntity(requestBytes, createBucketRequest)
-		if err != nil {
-			log.LogErrorf("createBucketHandler: unmarshal xml fail: requestID(%v) err(%v)",
-				GetRequestID(r), err)
-			errorCode = InvalidArgument
-			return
-		}
-		if createBucketRequest.LocationConstraint != o.region {
-			log.LogErrorf("createBucketHandler: location constraint not match the service: requestID(%v) LocationConstraint(%v) region(%v)",
-				GetRequestID(r), createBucketRequest.LocationConstraint, o.region)
-			errorCode = InvalidLocationConstraint
-			return
-		}
+	createBucketRequest := &CreateBucketRequest{}
+	err = UnmarshalXMLEntity(requestBytes, createBucketRequest)
+	if err != nil {
+		log.LogErrorf("createBucketHandler: unmarshal xml fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
+		errorCode = InvalidArgument
+		return
+	}
+	if createBucketRequest.LocationConstraint != o.region {
+		log.LogErrorf("createBucketHandler: location constraint not match the service: requestID(%v) LocationConstraint(%v) region(%v)",
+			GetRequestID(r), createBucketRequest.LocationConstraint, o.region)
+		errorCode = InvalidLocationConstraint
+		return
 	}
 
 	var acl *AccessControlPolicy
@@ -397,6 +395,10 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
 	var body []byte
 	if body, err = ioutil.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)",

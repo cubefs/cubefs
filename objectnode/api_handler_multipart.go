@@ -651,8 +651,11 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// get uploaded part info in request
-	var requestBytes []byte
-	requestBytes, err = ioutil.ReadAll(r.Body)
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
+	requestBytes, err := ioutil.ReadAll(r.Body)
 	if err != nil && err != io.EOF {
 		log.LogErrorf("completeMultipartUploadHandler: read request body fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
