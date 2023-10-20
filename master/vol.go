@@ -180,7 +180,6 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.qosManager.volUpdateMagnify(magnifyQosVal)
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
 	vol.mpsLock = newMpsLockManager(vol)
-	vol.CheckStrategy()
 	return
 }
 
@@ -294,17 +293,20 @@ func (mpsLock *mpsLockManager) CheckExceptionLock(interval time.Duration, expire
 	}
 }
 
-func (vol *Vol) CheckStrategy() {
+func (vol *Vol) CheckStrategy(c *Cluster) {
 	//make sure resume all the processing ver deleting tasks before checking
-	waitTime := time.Second * defaultIntervalToCheck
-	waited := false
-
+	if atomic.LoadInt32(&vol.VersionMgr.checkStrategy) == 1 {
+		return
+	}
+	atomic.StoreInt32(&vol.VersionMgr.checkStrategy, 1)
 	go func() {
+		waitTime := time.Second * defaultIntervalToCheck
+		waited := false
 		for {
 			if vol.Status == markDelete {
 				break
 			}
-			if vol.VersionMgr.c != nil && vol.VersionMgr.c.IsLeader() {
+			if c != nil && c.IsLeader() {
 				if !waited {
 					log.LogInfof("wait for %v seconds once after becoming leader to make sure all the ver deleting tasks are resumed",
 						waitTime)
@@ -320,8 +322,8 @@ func (vol *Vol) CheckStrategy() {
 					continue
 				}
 				vol.VersionMgr.RUnlock()
-				vol.VersionMgr.checkCreateStrategy()
-				vol.VersionMgr.checkDeleteStrategy()
+				vol.VersionMgr.checkCreateStrategy(c)
+				vol.VersionMgr.checkDeleteStrategy(c)
 			}
 			time.Sleep(waitTime)
 		}

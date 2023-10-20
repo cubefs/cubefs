@@ -466,6 +466,7 @@ func (c *Cluster) scheduleToCheckVolStatus() {
 				vols := c.copyVols()
 				for _, vol := range vols {
 					vol.checkStatus(c)
+					vol.CheckStrategy(c)
 				}
 			}
 			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))

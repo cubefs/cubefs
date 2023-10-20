@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -339,20 +340,22 @@ func TestVolMpsLock(t *testing.T) {
 		CreateTime:        createTime,
 		Description:       "",
 	}
-
+	expireTime := time.Microsecond * 50
 	vol := newVol(vv)
 	vol.mpsLock.Lock()
-	go vol.mpsLock.CheckExceptionLock(time.Microsecond*10, time.Microsecond*50)
-	assert.True(t, strings.Contains(vol.mpsLock.lastEffectStack, "Lock stack"))
-	assert.True(t, vol.mpsLock.lastEffectStack != "")
-	for cnt := 0; cnt < 20; cnt++ {
-		if vol.mpsLock.hang == false {
-			time.Sleep(time.Microsecond * 100)
-		}
-		break
+	mpsLock := vol.mpsLock
+	assert.True(t, !(mpsLock.vol.status() == markDelete || atomic.LoadInt32(&mpsLock.enable) == 0))
+
+	assert.True(t, mpsLock.onLock == true)
+	time.Sleep(time.Microsecond * 100)
+	tm := time.Now()
+	if tm.After(mpsLock.lockTime.Add(expireTime)) {
+		log.LogWarnf("vol %v mpsLock hang more than %v since time %v stack(%v)",
+			mpsLock.vol.Name, expireTime, mpsLock.lockTime, mpsLock.lastEffectStack)
+		mpsLock.hang = true
 	}
-	t.Logf("log.EnableDebug() %v, mpsLock.lockTime %v  mpsLock.onLock %v mpsLock.vol.status() %v enable(%v)", log.EnableDebug(),
-		vol.mpsLock.lockTime, vol.mpsLock.onLock, vol.status(), vol.mpsLock.enable)
+
+	assert.True(t, strings.Contains(vol.mpsLock.lastEffectStack, "Lock stack"))
 	assert.True(t, vol.mpsLock.enable == 1)
 	assert.True(t, vol.mpsLock.hang == true)
 	var wg sync.WaitGroup

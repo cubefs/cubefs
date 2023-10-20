@@ -51,6 +51,7 @@ type VolVersionManager struct {
 	verSeq           uint64
 	enabled          bool
 	strategy         proto.VolumeVerStrategy
+	checkStrategy    int32
 	c                *Cluster
 	sync.RWMutex
 }
@@ -89,7 +90,6 @@ func (verMgr *VolVersionManager) Persist() (err error) {
 
 func (verMgr *VolVersionManager) loadMultiVersion(c *Cluster, val []byte) (err error) {
 	persistInfo := &VolVersionPersist{}
-	verMgr.c = c
 	if err = json.Unmarshal(val, persistInfo); err != nil {
 		return
 	}
@@ -208,7 +208,7 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 	return
 }
 
-func (verMgr *VolVersionManager) checkCreateStrategy() {
+func (verMgr *VolVersionManager) checkCreateStrategy(c *Cluster) {
 	verMgr.RLock()
 	log.LogDebugf("checkSnapshotStrategy enter")
 	if len(verMgr.multiVersionList)-1 > verMgr.strategy.KeepVerCnt {
@@ -220,13 +220,13 @@ func (verMgr *VolVersionManager) checkCreateStrategy() {
 	curTime := time.Now()
 	if verMgr.strategy.TimeUp(curTime) {
 		log.LogDebugf("checkSnapshotStrategy.vol %v try create snapshot", verMgr.vol.Name)
-		if _, err := verMgr.createVer2PhaseTask(verMgr.c, uint64(time.Now().UnixMicro()), proto.CreateVersion, verMgr.strategy.ForceUpdate); err != nil {
+		if _, err := verMgr.createVer2PhaseTask(c, uint64(time.Now().UnixMicro()), proto.CreateVersion, verMgr.strategy.ForceUpdate); err != nil {
 			verMgr.RLock()
 			verEle := verMgr.multiVersionList[len(verMgr.multiVersionList)-1]
 			verMgr.RUnlock()
 			if int64(verEle.Ver)/1e6+int64(verMgr.strategy.GetPeriodicSecond()) < curTime.Unix() {
 				msg := fmt.Sprintf("[checkSnapshotStrategy] last version %v status %v for %v hours than 2times periodic", verEle.Ver, verEle.Status, 2*verMgr.strategy.Periodic)
-				Warn(verMgr.c.Name, msg)
+				Warn(c.Name, msg)
 			}
 			return
 		}
@@ -235,7 +235,7 @@ func (verMgr *VolVersionManager) checkCreateStrategy() {
 	}
 }
 
-func (verMgr *VolVersionManager) checkDeleteStrategy() {
+func (verMgr *VolVersionManager) checkDeleteStrategy(c *Cluster) {
 	verMgr.RLock()
 	log.LogDebugf("checkSnapshotStrategy.vol %v try delete snapshot nLen %v, keep cnt %v", verMgr.vol.Name, len(verMgr.multiVersionList)-1, verMgr.strategy.KeepVerCnt)
 	nLen := len(verMgr.multiVersionList)
@@ -248,13 +248,13 @@ func (verMgr *VolVersionManager) checkDeleteStrategy() {
 			if verMgr.multiVersionList[0].DelTime+int64(verMgr.strategy.GetPeriodicSecond()) < time.Now().Unix() {
 				msg := fmt.Sprintf("[checkSnapshotStrategy] version %v in deleting status for %v hours than configure periodic [%v] hours",
 					verMgr.multiVersionList[0].Ver, verMgr.multiVersionList[0].Status, verMgr.strategy.GetPeriodic())
-				Warn(verMgr.c.Name, msg)
+				Warn(c.Name, msg)
 			}
 			verMgr.RUnlock()
 			return
 		}
 		verMgr.RUnlock()
-		if _, err := verMgr.createVer2PhaseTask(verMgr.c, verMgr.multiVersionList[0].Ver, proto.DeleteVersion, verMgr.strategy.ForceUpdate); err != nil {
+		if _, err := verMgr.createVer2PhaseTask(c, verMgr.multiVersionList[0].Ver, proto.DeleteVersion, verMgr.strategy.ForceUpdate); err != nil {
 			return
 		}
 		return
