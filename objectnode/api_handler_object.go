@@ -528,8 +528,11 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var bytes []byte
-	bytes, err = ioutil.ReadAll(r.Body)
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
+	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
@@ -1421,6 +1424,10 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
@@ -1508,6 +1515,10 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 	}
 	if len(param.Object()) == 0 {
 		errorCode = InvalidKey
+		return
+	}
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
 		return
 	}
 	var requestBody []byte
@@ -1716,4 +1727,22 @@ func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, 
 		return 0, 0, 0, 0
 	}
 	return partSize, partCount, rangeLower, rangeUpper
+}
+
+func VerifyContentLength(r *http.Request, bodyLimit int64) (int64, *ErrorCode) {
+	dcl := r.Header.Get("x-amz-decoded-content-length")
+	var length = r.ContentLength
+	if dcl != "" {
+		l, err := strconv.ParseInt(dcl, 10, 64)
+		if err == nil {
+			length = l
+		}
+	}
+	if length > bodyLimit {
+		return 0, EntityTooLarge
+	}
+	if length <= 0 {
+		return 0, MissingContentLength
+	}
+	return length, nil
 }
