@@ -48,7 +48,11 @@ class CubePushDataSetInfo(CubeDataSetInfo):
                                                                                            self._dataset_cnt)
 
         self.free_memory_addr="http://127.0.0.1:{}/debug/freeosmemory".format(self.prof_port)
-        requests.get(self.free_memory_addr)
+        try:
+            requests.get(self.free_memory_addr)
+        except Exception as e:
+            pass
+
         self.batch_download_addr = "http://127.0.0.1:{}/batchdownload/path".format(self.prof_port)
         self.clean_old_dataset_file(self.dataset_dir)
 

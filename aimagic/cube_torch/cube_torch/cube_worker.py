@@ -151,9 +151,7 @@ def _init_prefetch_threads(worker_id, storage_info):
     return notify_storage_thread, notify_storage_event
 
 
-def _send_stop_signal_to_prefetch_thread(is_batch_download, thread, event):
-    if is_batch_download:
-        CubeFileOpenInterceptor.stop_print_hitcache_timer()
+def _send_stop_signal_to_prefetch_thread(thread, event):
     event.set()
     thread.join()
 
@@ -205,7 +203,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
             notify_storage_thread, notify_storage_event = _init_batchdownload_threads(storage_info)
         else:
             notify_storage_thread, notify_storage_event = _init_prefetch_threads(worker_id, storage_info)
-
+        loop_index = 1
         while watchdog.is_alive():
             try:
                 r = index_queue.get(timeout=MP_STATUS_CHECK_INTERVAL)
@@ -222,7 +220,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
             elif r is None:
                 # Received the final signal
                 assert done_event.is_set() or iteration_end
-                _send_stop_signal_to_prefetch_thread(is_use_batch_download, notify_storage_thread, notify_storage_event)
+                _send_stop_signal_to_prefetch_thread(notify_storage_thread, notify_storage_event)
                 break
             elif done_event.is_set() or iteration_end:
                 # `done_event` is set. But I haven't received the final signal
@@ -231,6 +229,7 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
                 continue
             idx = r[0]
             index = r[1]
+            loop_index += 1
             data: Union[_IterableDatasetStopIteration, ExceptionWrapper]
             if init_exception is not None:
                 data = init_exception
@@ -248,6 +247,8 @@ def _worker_loop(dataset_kind, dataset, index_queue, data_queue, done_event,
 
             data_queue.put((idx, data))
             del data, idx, index, r  # save memory
+            if loop_index % 100 == 0:
+                CubeFileOpenInterceptor.print_hit_rate()
 
     except KeyboardInterrupt:
         pass
