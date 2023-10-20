@@ -22,7 +22,9 @@ import (
 )
 
 var (
-	warningKey string
+	warningKey      string
+	warnPanicKey    string
+	warnCriticalKey string
 )
 
 func Warning(detail string) {
@@ -44,20 +46,20 @@ func WarningBySpecialUMPKey(key, detail string) {
 }
 
 func WarningCritical(detail string) {
-	if warningKey == "" {
-		warningKey = fmt.Sprintf("%v_%v_critical", clusterName, moduleName)
+	if warnCriticalKey == "" {
+		warnCriticalKey = fmt.Sprintf("%v_%v_critical", clusterName, moduleName)
 	}
-	ump.Alarm(warningKey, detail)
-	log.LogCritical(warningKey, detail)
+	ump.Alarm(warnCriticalKey, detail)
+	log.LogCritical(warnCriticalKey, detail)
 	return
 }
 
 func WarningPanic(detail string) {
-	if warningKey == "" {
-		warningKey = fmt.Sprintf("%v_%v_panic", clusterName, moduleName)
+	if warnPanicKey == "" {
+		warnPanicKey = fmt.Sprintf("%v_%v_panic", clusterName, moduleName)
 	}
-	ump.Alarm(warningKey, detail)
-	log.LogCritical(warningKey, detail)
+	ump.Alarm(warnPanicKey, detail)
+	log.LogCritical(warnPanicKey, detail)
 	return
 }
 
