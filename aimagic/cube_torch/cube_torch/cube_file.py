@@ -5,7 +5,6 @@ import json
 import os
 import queue
 import threading
-import traceback
 from functools import wraps
 import time
 
@@ -15,7 +14,7 @@ from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
-from cube_torch.cube_lru_cache import LRUCache
+from cube_torch.cube_lru_cache import LRUCache, CubeStream
 
 global_interceptionIO = None
 global_cube_rootdir_path = None
@@ -39,37 +38,16 @@ def is_prefix_cube_file(string):
     return string[:prefix_length] == global_cube_rootdir_path
 
 
-class CubeStream(io.BytesIO):
-    def __init__(self, _fpath, _fcontent):
-        self.file_path = _fpath
-        self.content = _fcontent
-        self.content_size = len(_fcontent)
-        super().__init__(_fcontent)
-
-    def get_path(self):
-        return self.file_path
-
-    def get_content(self):
-        return self.content
-
-    def get_content_size(self):
-        return self.content_size
-
-    def __del__(self):
-        del self.content
-        if not self.closed:
-            self.close()
-
-
 class InterceptionIO:
     def __init__(self, storage_info):
-        cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
+        cube_root_dir, wait_download_queue, batch_download_addr, batch_size, free_memory_addr = storage_info
         self.cube_root_dir = cube_root_dir
         self.files_cache = LRUCache(timeout=60)
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
         self.wait_download_queue = wait_download_queue
         self.batch_size = batch_size
+        self.free_memory_addr = free_memory_addr
         self.download_event = threading.Event()
         self._lock = threading.Lock()
         retry_strategy = Retry(
@@ -83,16 +61,17 @@ class InterceptionIO:
         self.download_thread.daemon = True
         self.download_thread.start()
 
+    def add_stream(self, file_path, stream):
+        self.files_cache.put(file_path, stream)
+
     def get_stream(self, file_name):
-        r = self.files_cache.pop(file_name)
-        if r is None:
+        stream = self.files_cache.pop(file_name)
+        if stream is None:
             CubeFileOpenInterceptor.add_count(False, 0)
             return None
-        else:
-            current_time = time.time()
-            stream, put_time = r
-            CubeFileOpenInterceptor.add_count(True, current_time - put_time)
-            return stream
+        current_time = time.time()
+        CubeFileOpenInterceptor.add_count(True, current_time - stream.put_time)
+        return stream
 
     def get_event_and_thread(self):
         return self.download_thread, self.download_event
@@ -106,10 +85,10 @@ class InterceptionIO:
                 if files is None:
                     break
                 self.batch_download_async([files])
-                if loop_index % 5 == 0:
-                    self.files_cache.cleanup_expired_items()
                 if loop_index % 100 == 0:
                     CubeFileOpenInterceptor.print_hit_rate()
+                    expired_keys = self.files_cache.get_expired_key()
+                    self.files_cache.delete_keys(expired_keys)
             except queue.Empty:
                 continue
         event.set()
@@ -155,12 +134,19 @@ class InterceptionIO:
             print('pid:{} url:{} Error:{} '.format(os.getpid(), self.batch_download_addr, e))
             pass
 
+    def free_memory_async(self):
+        try:
+            requests.get(self.free_memory_addr)
+        except Exception as e:
+            pass
+
     def batch_download_async(self, index_list):
         loop = asyncio.new_event_loop()
         loop.run_in_executor(None, self.batch_download, index_list)
 
-    def add_stream(self, file_path, stream):
-        self.files_cache.put(file_path, stream)
+    def free_os_memory_async(self):
+        loop = asyncio.new_event_loop()
+        loop.run_in_executor(None, self.free_memory_async)
 
     def stream_parse_content(self, url, response):
         version = response.raw.read(8)

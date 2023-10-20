@@ -155,8 +155,9 @@ user memory last_cycle_metrics:([request_count:4801 hit_count:4801 miss_count:0 
 # 四、cube_torch 加速效果测试
 
 
-|                    | 9600w vlp(samples/s) | 3700w vlp(samples/s) | 7400w 224x224 imagenet(samples/s) |128w imagenet 1280x857 (samples/s) |128w imagenet  1280x857 (每个epoch 耗费秒数)|
-| :-----             | ----:                | :----:               | :----:                            | :----:                            | :----:                        |
-| 本地NVME            |                      | 3100                 | 2200                              | 1036                              |   1030                        | 
-| cubeFS             | 2200                 | 2400                 | 1800                              | 1356                              |   1350                        | 
-| cube_torch + cubeFS| 3100                 | 3096                 | 2185                              | 1958                              |   640                         | 
+
+|                    | 9600w vlp(samples/s) | 3700w vlp(samples/s) | 7400w 224x224 imagenet(samples/s) |7400w imagenet  224x224 (每个epoch 耗费秒数) |128w imagenet 1280x857 (samples/s) |128w imagenet  1280x857 (每个epoch 耗费秒数)|
+| :-----             | ----:                | :----:               | :----:                            |:----:                                      | :----:                            | :----:                        |
+| 本地NVME            |                      | 3100                 | 2200                              |  32444s                                    | 1036                              |   1030                        | 
+| cubeFS             | 2200                 | 2400                 | 1800                              |                                            | 1356                              |   1350                        | 
+| cube_torch + cubeFS| 3100                 | 3096                 | 2185                              |  33357s                                    | 1958                              |   640                         | 

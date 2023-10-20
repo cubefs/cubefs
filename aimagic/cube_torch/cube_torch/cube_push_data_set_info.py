@@ -47,6 +47,12 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,
                                                                                            self._dataset_cnt)
 
+        self.free_memory_addr="http://127.0.0.1:{}/debug/freeosmemory".format(self.prof_port)
+        try:
+            requests.get(self.free_memory_addr)
+        except Exception as e:
+            pass
+
         self.batch_download_addr = "http://127.0.0.1:{}/batchdownload/path".format(self.prof_port)
         self.clean_old_dataset_file(self.dataset_dir)
 
@@ -60,6 +66,9 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_cube_prefetch_addr(self):
         return self.prefetch_read_url
+
+    def get_free_os_memory_addr(self):
+        return self.free_memory_addr
 
     def get_register_pid_addr(self):
         return self.register_pid_addr
