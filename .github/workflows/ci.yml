@@ -13,6 +13,7 @@ on:
   pull_request:
     branches:
       - master
+      - release-*
       - develop-*
       - blobstore-*
     paths-ignore:
