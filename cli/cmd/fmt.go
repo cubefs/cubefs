@@ -409,6 +409,9 @@ func formatBadReplicaMpInfoRow(partition *proto.MetaPartitionInfo) string {
 		}
 	}
 	sb.WriteString("]")
+	if sb.String() == "[]" {
+		return ""
+	}
 	return fmt.Sprintf(badReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
 		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
 }
