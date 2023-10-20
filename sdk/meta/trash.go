@@ -3,6 +3,7 @@ package meta
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/google/uuid"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -75,7 +76,6 @@ func NewTrash(mw *MetaWrapper, interval int64, subDir string, traverseLimit int,
 	if err := trash.InitTrashRoot(); err != nil {
 		return nil, err
 	}
-	//发布前修改
 	go trash.deleteWorker()
 	go trash.buildDeletedFileParentDirsBackground()
 	return trash, nil
@@ -205,7 +205,7 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 	err = trash.renameToTrashTempFile(parentIno, srcPath, dstPath)
 	log.LogDebugf("action[MoveToTrash]  rename: srcPath(%v) dstPath(%v) consume %v", srcPath, dstPath, time.Since(startRename).Seconds())
 	if err != nil {
-		log.LogDebugf("action[MoveToTrash] rename %v to %v failed:%v", srcPath, dstPath, err.Error())
+		log.LogWarnf("action[MoveToTrash] rename %v to %v failed:%v", srcPath, dstPath, err.Error())
 		return err
 	}
 	if needStoreXattr {
@@ -241,7 +241,7 @@ func transferLongFileName(filePath string) (newName, oldName string) {
 	}
 	newName = strings.ReplaceAll(oldName, ParentDirPrefix, "/")
 	newBaseName := path.Base(newName)
-	return path.Join(parentPath, LongNamePrefix+newBaseName), oldName
+	return path.Join(parentPath, LongNamePrefix+newBaseName+ParentDirPrefix+uuid.New().String()), oldName
 }
 func (trash *Trash) getDeleteInterval() int64 {
 	checkPointInterval := atomic.LoadInt64(&trash.deleteInterval) / 4
@@ -354,49 +354,125 @@ func (trash *Trash) deleteExpiredData() {
 }
 
 func (trash *Trash) removeAll(dirName string, dirIno uint64) {
-	var wg sync.WaitGroup
-	log.LogDebugf("action[deleteDir]start delete %v", dirName)
-	entries, err := trash.mw.ReadDir_ll(dirIno)
-	if err != nil {
-		log.LogWarnf("action[deleteDir]delete %v failed: %v", dirName, err)
-		return
+	log.LogDebugf("action[removeAll]start delete %v", dirName)
+	var (
+		wg     sync.WaitGroup
+		noMore = false
+		from   = ""
+	)
+	for !noMore {
+		batches, err := trash.mw.ReadDirLimit_ll(dirIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("action[removeAll] ReadDirLimit_ll: ino(%v) err(%v) from(%v)", dirIno, err, from)
+			return
+		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		for _, entry := range batches {
+			log.LogDebugf("action[deleteDir]traverse  %v", entry.Name)
+			if !proto.IsDir(entry.Type) {
+				continue
+			}
+			trash.mw.AddInoInfoCache(entry.Inode, dirIno, entry.Name)
+			select {
+			case trash.traverseDirGoroutineLimit <- true:
+				log.LogDebugf("action[deleteDir]launch goroutine  %v", entry.Name)
+				wg.Add(1)
+				go func(dirName string, dirIno uint64) {
+					defer wg.Done()
+					trash.removeAll(dirName, dirIno)
+					trash.releaseTraverseToken()
+				}(entry.Name, entry.Inode)
+			default:
+				log.LogDebugf("action[deleteDir]execute local  %v", entry.Name)
+				trash.removeAll(entry.Name, entry.Inode)
+			}
+		}
+		wg.Wait()
+		from = batches[len(batches)-1].Name
 	}
+	noMore = false
+	from = ""
+	for !noMore {
+		batches, err := trash.mw.ReadDirLimit_ll(dirIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("action[removeAll] ReadDirLimit_ll: ino(%v) err(%v) from(%v)", dirIno, err, from)
+			return
+		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		for _, entry := range batches {
+			select {
+			case trash.traverseDirGoroutineLimit <- true:
+				wg.Add(1)
+				go func(parentIno uint64, entry string, isDir bool) {
+					defer wg.Done()
+					trash.deleteTask(parentIno, entry, isDir)
+				}(dirIno, entry.Name, proto.IsDir(entry.Type))
+			default:
+				trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type))
+			}
+		}
+		wg.Wait()
+		from = batches[len(batches)-1].Name
+	}
+	//entries, err := trash.mw.ReadDir_ll(dirIno)
+	//if err != nil {
+	//	log.LogWarnf("action[deleteDir]delete %v failed: %v", dirName, err)
+	//	return
+	//}
 	//delete sub files
-	for _, entry := range entries {
-		log.LogDebugf("action[deleteDir]traverse  %v", entry.Name)
-		if !proto.IsDir(entry.Type) {
-			continue
-		}
-		trash.mw.AddInoInfoCache(entry.Inode, dirIno, entry.Name)
-		select {
-		case trash.traverseDirGoroutineLimit <- true:
-			log.LogDebugf("action[deleteDir]launch goroutine  %v", entry.Name)
-			wg.Add(1)
-			go func(dirName string, dirIno uint64) {
-				defer wg.Done()
-				trash.removeAll(dirName, dirIno)
-				trash.releaseTraverseToken()
-			}(entry.Name, entry.Inode)
-		default:
-			log.LogDebugf("action[deleteDir]execute local  %v", entry.Name)
-			trash.removeAll(entry.Name, entry.Inode)
-		}
-	}
-	wg.Wait()
-	//all sub files is deleted
-	for _, entry := range entries {
-		select {
-		case trash.traverseDirGoroutineLimit <- true:
-			wg.Add(1)
-			go func(parentIno uint64, entry string, isDir bool) {
-				defer wg.Done()
-				trash.deleteTask(parentIno, entry, isDir)
-			}(dirIno, entry.Name, proto.IsDir(entry.Type))
-		default:
-			trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type))
-		}
-	}
-	wg.Wait()
+	//for _, entry := range entries {
+	//	log.LogDebugf("action[deleteDir]traverse  %v", entry.Name)
+	//	if !proto.IsDir(entry.Type) {
+	//		continue
+	//	}
+	//	trash.mw.AddInoInfoCache(entry.Inode, dirIno, entry.Name)
+	//	select {
+	//	case trash.traverseDirGoroutineLimit <- true:
+	//		log.LogDebugf("action[deleteDir]launch goroutine  %v", entry.Name)
+	//		wg.Add(1)
+	//		go func(dirName string, dirIno uint64) {
+	//			defer wg.Done()
+	//			trash.removeAll(dirName, dirIno)
+	//			trash.releaseTraverseToken()
+	//		}(entry.Name, entry.Inode)
+	//	default:
+	//		log.LogDebugf("action[deleteDir]execute local  %v", entry.Name)
+	//		trash.removeAll(entry.Name, entry.Inode)
+	//	}
+	//}
+	//wg.Wait()
+	////all sub files is deleted
+	//for _, entry := range entries {
+	//	select {
+	//	case trash.traverseDirGoroutineLimit <- true:
+	//		wg.Add(1)
+	//		go func(parentIno uint64, entry string, isDir bool) {
+	//			defer wg.Done()
+	//			trash.deleteTask(parentIno, entry, isDir)
+	//		}(dirIno, entry.Name, proto.IsDir(entry.Type))
+	//	default:
+	//		trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type))
+	//	}
+	//}
+	//wg.Wait()
 	log.LogDebugf("action[deleteDir] delete complete %v", dirName)
 }
 
@@ -623,6 +699,9 @@ func (trash *Trash) deleteTask(parentIno uint64, entry string, isDir bool) {
 		return
 	}
 	if !isDir {
+		if info == nil {
+			log.LogErrorf("deleteTask unexpected nil info %v %v", parentIno, entry)
+		}
 		trash.mw.Evict(info.Inode)
 	}
 	log.LogDebugf("Delete_ll %v success", entry)
@@ -846,15 +925,17 @@ func (trash *Trash) recoverPosixPathName(fileName string, fileIno uint64) string
 			log.LogWarnf("action[recoverPosixPathName]:InodeGet_ll for %v[%v] failed:%v",
 				fileName, fileIno, err.Error())
 			fileName = strings.ReplaceAll(fileName, LongNamePrefix, "/")
-			return fileName
+			//remove uuid
+			return strings.Split(fileName, ParentDirPrefix)[0]
 		} else {
 			log.LogDebugf("action[recoverPosixPathName]:XAttrGet_ll for %v", fileName)
 			attrInfo, err := trash.mw.XAttrGet_ll(info.Inode, OriginalName)
 			if err != nil {
 				log.LogWarnf("action[recoverPosixPathName]:XAttrGet_ll for %v[%v] failed:%v",
 					fileName, fileIno, err.Error())
+				//remove uuid
 				fileName = strings.ReplaceAll(fileName, LongNamePrefix, "/")
-				return fileName
+				return strings.Split(fileName, ParentDirPrefix)[0]
 			}
 			fileName = attrInfo.XAttrs[OriginalName]
 			log.LogDebugf("action[recoverPosixPathName] fileName %v is read from xattr ", fileName)
