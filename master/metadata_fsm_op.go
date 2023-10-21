@@ -781,6 +781,7 @@ func (c *Cluster) loadMultiVersion(vol *Vol) (err error) {
 		log.LogWarnf("action[loadMultiVersion] MultiVersion zero and do init")
 		return vol.VersionMgr.init(c)
 	}
+	vol.VersionMgr.c = c
 	for _, value := range result {
 		return vol.VersionMgr.loadMultiVersion(c, value)
 	}
