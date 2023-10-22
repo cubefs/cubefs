@@ -1399,10 +1399,15 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 		wg           sync.WaitGroup
 		isPreload    bool
 		partitionTTL int64
+		ok bool
 	)
 
 	c.volMutex.RLock()
-	vol = c.vols[volName]
+	if vol, ok = c.vols[volName]; !ok {
+		err = fmt.Errorf("vol %v not exist", volName)
+		log.LogWarnf("createDataPartition volName %v not found", volName)
+		return
+	}
 	c.volMutex.RUnlock()
 
 	dpReplicaNum := vol.dpReplicaNum
