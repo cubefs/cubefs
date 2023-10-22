@@ -582,6 +582,10 @@ func (verMgr *VolVersionManager) createVer2PhaseTask(cluster *Cluster, verSeq ui
 	if verRsp, err, op = verMgr.initVer2PhaseTask(verSeq, op); err != nil {
 		return
 	}
+	if op == proto.CreateVersion {
+		log.LogWarnf("action[createVer2PhaseTask] vol %v update seq %v to %v", verMgr.vol.Name, verSeq, verMgr.prepareCommit.prepareInfo.Ver)
+		verSeq = verMgr.prepareCommit.prepareInfo.Ver
+	}
 
 	if _, err = verMgr.createTask(cluster, verSeq, op, force); err != nil {
 		log.LogInfof("action[createVer2PhaseTask] vol %v CreateVersionPrepare err %v", verMgr.vol.Name, err)
