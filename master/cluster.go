@@ -147,6 +147,9 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	if err, volViews = mgr.c.loadVolsViews(); err != nil {
 		panic(err)
 	}
+	if len(volViews) == 0 {
+		return
+	}
 
 	mgr.rwMutex.Lock()
 	mgr.volViewMap = make(map[string]*volValue)
@@ -165,7 +168,7 @@ func (mgr *followerReadManager) getVolumeDpView() {
 		log.LogErrorf("followerReadManager.getVolumeDpView but master leader not ready")
 		return
 	}
-
+	avgSleepTime := time.Second * 5 / time.Duration(len(volViews))
 	for _, vv := range volViews {
 		if (vv.Status == proto.VolStatusMarkDelete && !vv.Forbidden) || (vv.Status == proto.VolStatusMarkDelete && vv.Forbidden && vv.DeleteExecTime.Sub(time.Now()) <= 0) {
 			mgr.rwMutex.Lock()
@@ -180,6 +183,7 @@ func (mgr *followerReadManager) getVolumeDpView() {
 			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v leader(%v)", vv.Name, err, mgr.c.masterClient.Leader())
 			continue
 		}
+		time.Sleep(avgSleepTime)
 		mgr.updateVolViewFromLeader(vv.Name, view)
 	}
 }
@@ -189,11 +193,16 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 		err error
 	)
 	vols := mgr.c.copyVols()
+	if len(vols) == 0 {
+		return
+	}
+	avgSleepTime := time.Second * 5 / time.Duration(len(vols))
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
 		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
 			continue
 		}
+		time.Sleep(avgSleepTime)
 		var body []byte
 		if body, err = vol.getDataPartitionsView(); err != nil {
 			log.LogErrorf("followerReadManager.sendFollowerVolumeDpView err %v", err)
@@ -532,13 +541,22 @@ func (c *Cluster) scheduleToCheckVolStatus() {
 func (c *Cluster) scheduleToCheckFollowerReadCache() {
 	go func() {
 		for {
+			if !c.cfg.EnableFollowerCache {
+				time.Sleep(time.Second * 5)
+				continue
+			}
+			begin := time.Now()
 			if !c.partition.IsRaftLeader() {
 				c.followerReadManager.getVolumeDpView()
 				c.followerReadManager.checkStatus()
 			} else {
 				c.followerReadManager.sendFollowerVolumeDpView()
 			}
-			time.Sleep(5 * time.Second)
+			end := time.Now()
+			if end.Sub(begin).Seconds() > 5 {
+				continue
+			}
+			time.Sleep(time.Second*5 - end.Sub(begin))
 		}
 	}()
 }
