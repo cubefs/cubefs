@@ -395,7 +395,8 @@ begin:
 				}
 			}
 			// try append write, get response
-			log.LogDebugf("action[streamer.write] doAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
+			log.LogDebugf("action[streamer.write] doAppendWrite req: ExtentKey(%v) FileOffset(%v) size(%v)",
+				req.ExtentKey, req.FileOffset, req.Size)
 			var status int32
 			// First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
 			// it indicates that the extent may have been fully utilized by the previous version.
