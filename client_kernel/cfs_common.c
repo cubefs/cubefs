@@ -136,7 +136,8 @@ const char *cfs_pr_time(struct timespec *time)
 		 "%04ld-%02d-%02dT%02d:%02d:%02d+%02d:%02d",
 		 result.tm_year + 1900, result.tm_mon + 1, result.tm_mday,
 		 result.tm_hour, result.tm_min, result.tm_sec,
-		 sys_tz.tz_minuteswest / 60, abs(sys_tz.tz_minuteswest % 60));
+		 sys_tz.tz_minuteswest / 60,
+		 (int)abs(sys_tz.tz_minuteswest % 60));
 	return s;
 }
 

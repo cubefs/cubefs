@@ -556,6 +556,9 @@ static int cfs_open(struct inode *inode, struct file *file)
 		break;
 	}
 	file->private_data = cfi;
+#if defined(KERNEL_HAS_ITERATE_DIR) && defined(FMODE_KABI_ITERATE)
+	file->f_mode |= FMODE_KABI_ITERATE;
+#endif
 	return 0;
 }
 

@@ -28,6 +28,8 @@ echo "#ifndef __CONFIG_H__" >> $CONFIG_H
 echo "#define __CONFIG_H__" >> $CONFIG_H
 
 cat > $MAKEFILE <<EOF
+EXTRA_CFLAGS += -Werror
+
 obj-m += test.o
 all:
 	make -C /lib/modules/$(uname -r)/build M=$PWD/build modules
