@@ -321,6 +321,11 @@ type MinRWDPAndMPVolInfo struct {
 	MinRWDPCount int    `json:"minRWDPCount,omitempty"`
 }
 
+type ClusterConfigCheck struct {
+	Interval   int `json:"interval"`
+	CfsCluster []map[string]string `json:"cfsCluster"`
+}
+
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
 	Zones []*ZoneView
