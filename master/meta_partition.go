@@ -568,7 +568,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
 			Warn(clusterID, msg)
-			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
+			msg = fmt.Sprintf("checkMetaPartitions-reportMissingReplicas mp[%v] missing host[%v]", mp.PartitionID, addr)
 			Warn(clusterID, msg)
 		}
 	}

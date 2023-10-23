@@ -239,6 +239,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.config.EnableAutoDeleteReplica = cfg.GetBoolWithDefault(enableAutoDeleteReplica, false)
 	syslog.Printf("get enableAutoDeleteReplica cfg %v", m.config.EnableAutoDeleteReplica)
 
+	m.config.EnableFollowerCache = cfg.GetBoolWithDefault(enableFollowerCache, true)
+	syslog.Printf("get enableFollowerCache cfg %v", m.config.EnableFollowerCache)
+
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
