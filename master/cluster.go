@@ -1399,7 +1399,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 		wg           sync.WaitGroup
 		isPreload    bool
 		partitionTTL int64
-		ok bool
+		ok           bool
 	)
 
 	c.volMutex.RLock()
