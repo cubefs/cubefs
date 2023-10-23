@@ -596,6 +596,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpLcNodeScan"
 	case OpLcNodeSnapshotVerDel:
 		m = "OpLcNodeSnapshotVerDel"
+	case OpMetaReadDirOnly:
+		m = "OpMetaReadDirOnly"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
