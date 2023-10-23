@@ -295,14 +295,15 @@ func (mpsLock *mpsLockManager) CheckExceptionLock(interval time.Duration, expire
 
 func (vol *Vol) CheckStrategy(c *Cluster) {
 	//make sure resume all the processing ver deleting tasks before checking
-	if atomic.LoadInt32(&vol.VersionMgr.checkStrategy) == 1 {
+	if !atomic.CompareAndSwapInt32(&vol.VersionMgr.checkStrategy, 0, 1) {
 		return
 	}
-	atomic.StoreInt32(&vol.VersionMgr.checkStrategy, 1)
+
 	go func() {
-		waitTime := time.Second * defaultIntervalToCheck
+		waitTime := 5 * time.Second * defaultIntervalToCheck
 		waited := false
 		for {
+			time.Sleep(waitTime)
 			if vol.Status == markDelete {
 				break
 			}
@@ -325,7 +326,6 @@ func (vol *Vol) CheckStrategy(c *Cluster) {
 				vol.VersionMgr.checkCreateStrategy(c)
 				vol.VersionMgr.checkDeleteStrategy(c)
 			}
-			time.Sleep(waitTime)
 		}
 	}()
 }
