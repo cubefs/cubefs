@@ -1027,7 +1027,6 @@ struct cfs_meta_partition_view {
 	u64 max_ino; /* json: MaxInodeID */
 	u64 inode_count; /* json: InodeCount */
 	u64 dentry_count; /* json: DentryCount */
-	u64 free_list_len; /* json: FreeListLen */
 	struct sockaddr_storage *leader; /* json: LeaderAddr */
 	struct sockaddr_storage_array members; /* json: Members */
 	bool is_recover; /* json: IsRecover */

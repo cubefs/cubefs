@@ -1303,9 +1303,6 @@ int cfs_meta_partition_view_from_json(cfs_json_t *json,
 	ret = cfs_json_get_u64(json, "DentryCount", &mp_view->dentry_count);
 	CHECK_GOTO(ret, "not found DentryCount");
 
-	ret = cfs_json_get_u64(json, "FreeListLen", &mp_view->free_list_len);
-	CHECK_GOTO(ret, "not found FreeListLen");
-
 	ret = cfs_json_get_bool(json, "IsRecover", &mp_view->is_recover);
 	CHECK_GOTO(ret, "not found IsRecover");
 

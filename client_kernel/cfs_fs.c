@@ -1536,23 +1536,30 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 	INIT_DELAYED_WORK(&cmi->update_limit_work, update_limit_work_cb);
 	cmi->master = cfs_master_client_new(&options->addrs, options->volume);
 	if (!cmi->master) {
-		cfs_mount_info_release(cmi);
-		return ERR_PTR(-ENOMEM);
+		err_ptr = ERR_PTR(-ENOMEM);
+		goto err_master;
 	}
 	cmi->meta = cfs_meta_client_new(cmi->master, options->volume);
 	if (IS_ERR(cmi->meta)) {
 		err_ptr = ERR_CAST(cmi->meta);
-		cfs_mount_info_release(cmi);
-		return err_ptr;
+		goto err_meta;
 	}
 	cmi->ec = cfs_extent_client_new(cmi->master, cmi->meta);
 	if (IS_ERR(cmi->ec)) {
 		err_ptr = ERR_CAST(cmi->ec);
-		cfs_mount_info_release(cmi);
-		return err_ptr;
+		goto err_ec;
 	}
 	schedule_delayed_work(&cmi->update_limit_work, 0);
 	return cmi;
+
+err_ec:
+	cfs_meta_client_release(cmi->meta);
+err_meta:
+	cfs_master_client_release(cmi->master);
+err_master:
+	cfs_options_release(cmi->options);
+	kfree(cmi);
+	return err_ptr;
 }
 
 void cfs_mount_info_release(struct cfs_mount_info *cmi)
