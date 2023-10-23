@@ -16,13 +16,21 @@
 #include <linux/pagevec.h>
 #include <linux/poll.h>
 #include <linux/printk.h>
+#include <linux/signal.h>
 #include <linux/slab.h>
 #include <linux/socket.h>
+#include <linux/spinlock.h>
 #include <linux/statfs.h>
 #include <linux/string.h>
 #include <linux/tcp.h>
 #include <linux/vmalloc.h>
 #include <linux/writeback.h>
+#include <linux/xattr.h>
+#ifdef KERNEL_HAS_SOCK_CREATE_KERN_WITH_NET
+#include <net/net_namespace.h>
+#endif
+
+#include "config.h"
 
 #undef pr_fmt
 #define pr_fmt(fmt) "cfs: %s() " fmt

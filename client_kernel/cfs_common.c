@@ -133,7 +133,7 @@ const char *cfs_pr_time(struct timespec *time)
 	s = time_str[i];
 	time_to_tm(time->tv_sec, sys_tz.tz_minuteswest / 60, &result);
 	snprintf(s, MAX_TIME_STR_LEN,
-		 "%04ld-%02d-%02dT%02d:%02d:%02d+%02d:%02ld",
+		 "%04ld-%02d-%02dT%02d:%02d:%02d+%02d:%02d",
 		 result.tm_year + 1900, result.tm_mon + 1, result.tm_mday,
 		 result.tm_hour, result.tm_min, result.tm_sec,
 		 sys_tz.tz_minuteswest / 60, abs(sys_tz.tz_minuteswest % 60));

@@ -1,5 +1,4 @@
 #include "cfs_fs.h"
-#include "cfs_option.h"
 
 #define CFS_FS_MAGIC 0x20230705
 #define CFS_BLOCK_SIZE_SHIFT 12
@@ -311,8 +310,7 @@ static inline loff_t cfs_inode_page_size(struct cfs_inode *ci,
 {
 	loff_t offset = page_offset(page);
 
-	return min((loff_t)PAGE_CACHE_SIZE,
-		   i_size_read(&ci->vfs_inode) - offset);
+	return min((loff_t)PAGE_SIZE, i_size_read(&ci->vfs_inode) - offset);
 }
 
 static int cfs_writepage(struct page *page, struct writeback_control *wbc)
@@ -387,9 +385,9 @@ static int cfs_write_begin(struct file *file, struct address_space *mapping,
 {
 	struct inode *inode = file_inode(file);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
-	pgoff_t index = pos >> PAGE_CACHE_SHIFT;
-	loff_t page_off = pos & PAGE_CACHE_MASK;
-	int pos_in_page = pos & ~PAGE_CACHE_MASK;
+	pgoff_t index = pos >> PAGE_SHIFT;
+	loff_t page_off = pos & PAGE_MASK;
+	int pos_in_page = pos & ~PAGE_MASK;
 	int end_in_page = pos_in_page + len;
 	struct page *page;
 	loff_t i_size;
@@ -413,18 +411,17 @@ static int cfs_write_begin(struct file *file, struct address_space *mapping,
 	/**
 	 * 2. full page write.
 	 */
-	if (pos_in_page == 0 && len == PAGE_CACHE_SIZE)
+	if (pos_in_page == 0 && len == PAGE_SIZE)
 		return 0;
 
 	/**
 	 * 3. end of file.
 	 */
 	i_size = i_size_read(inode);
-	if (page_off >= i_size ||
-	    (pos_in_page == 0 && (pos + len) >= i_size &&
-	     end_in_page - pos_in_page != PAGE_CACHE_SIZE)) {
+	if (page_off >= i_size || (pos_in_page == 0 && (pos + len) >= i_size &&
+				   end_in_page - pos_in_page != PAGE_SIZE)) {
 		zero_user_segments(page, 0, pos_in_page, end_in_page,
-				   PAGE_CACHE_SIZE);
+				   PAGE_SIZE);
 		return 0;
 	}
 
@@ -437,7 +434,7 @@ static int cfs_write_begin(struct file *file, struct address_space *mapping,
 		ret = -EIO;
 	if (ret < 0) {
 		unlock_page(page);
-		page_cache_release(page);
+		put_page(page);
 	}
 	return ret;
 }
@@ -453,7 +450,7 @@ static int cfs_write_end(struct file *file, struct address_space *mapping,
 	loff_t last_pos = pos + copied;
 
 	if (copied < len) {
-		unsigned from = pos & (PAGE_CACHE_SIZE - 1);
+		unsigned from = pos & (PAGE_SIZE - 1);
 
 		zero_user(page, from + copied, len - copied);
 	}
@@ -466,7 +463,7 @@ static int cfs_write_end(struct file *file, struct address_space *mapping,
 
 	set_page_dirty(page);
 	unlock_page(page);
-	page_cache_release(page);
+	put_page(page);
 
 	return copied;
 }
@@ -474,6 +471,33 @@ static int cfs_write_end(struct file *file, struct address_space *mapping,
 /**
   * Called by generic_file_aio_write(), Caller holds the i_mutex.
   */
+#if defined(KERNEL_HAS_DIO_WITH_ITER)
+static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter)
+{
+	struct file *file = iocb->ki_filp;
+	struct inode *inode = file_inode(file);
+	loff_t offset = iocb->ki_pos;
+
+	if (iov_iter_rw(iter) == READ)
+		return cfs_extent_dio_read(CFS_INODE(inode)->es, iter, offset);
+	else
+		return cfs_extent_dio_write(CFS_INODE(inode)->es, iter, offset);
+	return -1;
+}
+#elif defined(KERNEL_HAS_DIO_WITH_ITER_AND_OFFSET)
+static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter,
+			     loff_t offset)
+{
+	struct file *file = iocb->ki_filp;
+	struct inode *inode = file_inode(file);
+
+	if (iov_iter_rw(iter) == READ)
+		return cfs_extent_dio_read(CFS_INODE(inode)->es, iter, offset);
+	else
+		return cfs_extent_dio_write(CFS_INODE(inode)->es, iter, offset);
+	return -1;
+}
+#else
 static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
 			     const struct iovec *iov, loff_t offset,
 			     unsigned long nr_segs)
@@ -487,7 +511,11 @@ static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
 		      ", offset=%lld, nr_segs=%lu, iov_len=%zu\n",
 		      pr_file(file), offset, nr_segs, iov_length(iov, nr_segs));
 
+#ifdef KERNEL_HAS_IOV_ITER_WITH_TAG
+	iov_iter_init(&ii, WRITE, iov, nr_segs, len);
+#else
 	iov_iter_init(&iter, iov, nr_segs, iov_length(iov, nr_segs), 0);
+#endif
 	switch (type) {
 	case READ:
 		return cfs_extent_dio_read(ci->es, &iter, offset);
@@ -497,6 +525,7 @@ static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
 		return -1;
 	}
 }
+#endif
 
 static int cfs_open(struct inode *inode, struct file *file)
 {
@@ -582,14 +611,17 @@ static int cfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 }
 
 #define READDIR_NUM 1024
+#if defined(KERNEL_HAS_ITERATE_DIR_SHARED) || defined(KERNEL_HAS_ITERATE_DIR)
+static int cfs_iterate_dir(struct file *file, struct dir_context *ctx)
+#else
 static int cfs_readdir(struct file *file, void *dirent, filldir_t filldir)
+#endif
 {
 	struct inode *inode = file_inode(file);
 	struct super_block *sb = inode->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	struct cfs_file_info *cfi = file->private_data;
 	struct cfs_packet_dentry *dentry;
-	size_t offset;
 	size_t i;
 	int ret;
 
@@ -600,27 +632,39 @@ static int cfs_readdir(struct file *file, void *dirent, filldir_t filldir)
 		      pr_dentry(file_dentry(file)), cfi->denties_offset,
 		      cfi->denties.num, cfi->done);
 
+#if defined(KERNEL_HAS_ITERATE_DIR_SHARED) || defined(KERNEL_HAS_ITERATE_DIR)
+	if (!dir_emit_dots(file, ctx))
+		return 0;
+	for (; cfi->denties_offset < cfi->denties.num; cfi->denties_offset++) {
+		dentry = &cfi->denties.base[cfi->denties_offset];
+		if (!dir_emit(ctx, dentry->name, strlen(dentry->name),
+			      dentry->ino, (dentry->type >> 12) & 15)) {
+			return 0;
+		}
+		ctx->pos++;
+	}
+#else
 	if (file->f_pos == 0) {
-		if (filldir(dirent, ".", 1, 0, inode->i_ino,
-			    inode->i_mode >> 12) < 0)
+		if (filldir(dirent, ".", 1, 0, inode->i_ino, DT_DIR) < 0)
 			return 0;
 		file->f_pos = 1;
 	}
 	if (file->f_pos == 1) {
-		ino_t ino = parent_ino(file->f_dentry);
-		if (filldir(dirent, "..", 2, 1, ino, inode->i_mode >> 12) < 0)
+		if (filldir(dirent, "..", 2, 1, parent_ino(file->f_path.dentry),
+			    DT_DIR) < 0)
 			return 0;
 		file->f_pos = 2;
 	}
-	offset = file->f_pos;
 	for (; cfi->denties_offset < cfi->denties.num; cfi->denties_offset++) {
 		dentry = &cfi->denties.base[cfi->denties_offset];
 		if (filldir(dirent, dentry->name, strlen(dentry->name),
-			    offset++, dentry->ino, dentry->type >> 12) < 0) {
+			    file->f_pos, dentry->ino,
+			    (dentry->type >> 12) & 15) < 0) {
 			return 0;
 		}
 		file->f_pos++;
 	}
+#endif
 
 	while (!cfi->done) {
 		struct u64_array ino_vec;
@@ -676,12 +720,20 @@ static int cfs_readdir(struct file *file, void *dirent, filldir_t filldir)
 		     cfi->denties_offset < cfi->denties.num;
 		     cfi->denties_offset++) {
 			dentry = &cfi->denties.base[cfi->denties_offset];
+#if defined(KERNEL_HAS_ITERATE_DIR_SHARED) || defined(KERNEL_HAS_ITERATE_DIR)
+			if (!dir_emit(ctx, dentry->name, strlen(dentry->name),
+				      dentry->ino, (dentry->type >> 12) & 15)) {
+				return 0;
+			}
+			ctx->pos++;
+#else
 			if (filldir(dirent, dentry->name, strlen(dentry->name),
-				    offset++, dentry->ino,
-				    dentry->type >> 12) < 0) {
+				    file->f_pos, dentry->ino,
+				    (dentry->type >> 12) & 15) < 0) {
 				return 0;
 			}
 			file->f_pos++;
+#endif
 		}
 	}
 	return 0;
@@ -742,7 +794,11 @@ static int cfs_setattr(struct dentry *dentry, struct iattr *iattr)
 	cfs_log_debug("dentry=" fmt_dentry ", ia_valid=0x%x\n",
 		      pr_dentry(dentry), iattr->ia_valid);
 
+#ifdef KERNEL_HAS_SETATTR_PREPARE
+	err = setattr_prepare(dentry, iattr);
+#else
 	err = inode_change_ok(inode, iattr);
+#endif
 	if (err)
 		return err;
 
@@ -764,6 +820,19 @@ static int cfs_setattr(struct dentry *dentry, struct iattr *iattr)
 	return 0;
 }
 
+#ifdef KERNEL_HAS_GETATTR_WITH_PATH
+static int cfs_getattr(const struct path *path, struct kstat *stat,
+		       u32 request_mask, unsigned int query_flags)
+{
+	struct inode *inode = d_inode(path->dentry);
+	struct cfs_inode *ci = (struct cfs_inode *)inode;
+
+	if (!is_iattr_cache_valid(ci))
+		cfs_inode_refresh(ci);
+	generic_fillattr(inode, stat);
+	return 0;
+}
+#else
 static int cfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 		       struct kstat *stat)
 {
@@ -775,6 +844,7 @@ static int cfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	generic_fillattr(inode, stat);
 	return 0;
 }
+#endif
 
 #ifdef ENABLE_XATTR
 static int cfs_setxattr(struct dentry *dentry, const char *name,
@@ -825,12 +895,8 @@ static int cfs_removexattr(struct dentry *dentry, const char *name)
 }
 #endif
 
-/**
- * Directory Inode
- */
-
-struct dentry *cfs_lookup(struct inode *dir, struct dentry *dentry,
-			  unsigned int flags)
+static struct dentry *cfs_lookup(struct inode *dir, struct dentry *dentry,
+				 unsigned int flags)
 {
 	struct super_block *sb = dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
@@ -862,11 +928,7 @@ struct dentry *cfs_lookup(struct inode *dir, struct dentry *dentry,
 		d_add(dentry, NULL);
 		return NULL;
 	}
-
-	if (S_ISDIR(inode->i_mode))
-		return d_materialise_unique(dentry, inode);
-	else
-		return d_splice_alias(inode, dentry);
+	return d_splice_alias(inode, dentry);
 }
 
 static int cfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
@@ -1099,8 +1161,14 @@ static int cfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	return 0;
 }
 
+#ifdef KERNEL_HAS_RENAME_WITH_FLAGS
+static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
+		      struct inode *new_dir, struct dentry *new_dentry,
+		      unsigned int flags)
+#else
 static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		      struct inode *new_dir, struct dentry *new_dentry)
+#endif
 {
 	struct super_block *sb = old_dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
@@ -1110,6 +1178,12 @@ static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		      ",new_dir = " fmt_inode ",new_dentry=" fmt_dentry "\n",
 		      pr_inode(old_dir), pr_dentry(old_dentry),
 		      pr_inode(new_dir), pr_dentry(new_dentry));
+
+	/* Any flags not handled by the filesystem should result in EINVAL being returned */
+#ifdef KERNEL_HAS_RENAME_WITH_FLAGS
+	if (flags != 0)
+		return -EINVAL;
+#endif
 
 	ret = cfs_inode_refresh(CFS_INODE(new_dir));
 	if (ret < 0)
@@ -1133,6 +1207,16 @@ static int cfs_unlink(struct inode *dir, struct dentry *dentry)
 			       d_is_dir(dentry));
 }
 
+/**
+ * follow_link() is replaced with get_link().
+ */
+#ifdef KERNEL_HAS_GET_LINK
+static const char *cfs_get_link(struct dentry *dentry, struct inode *inode,
+				struct delayed_call *done)
+{
+	return inode->i_link;
+}
+#else
 static void *cfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
 	struct inode *inode = d_inode(dentry);
@@ -1142,12 +1226,9 @@ static void *cfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 	nd_set_link(nd, ci->link_target);
 	return NULL;
 }
+#endif
 
-/**
- * Super Block
- */
-
-struct inode *cfs_alloc_inode(struct super_block *sb)
+static struct inode *cfs_alloc_inode(struct super_block *sb)
 {
 	struct cfs_inode *ci;
 	struct inode *inode;
@@ -1166,7 +1247,7 @@ struct inode *cfs_alloc_inode(struct super_block *sb)
 	return (struct inode *)ci;
 }
 
-void cfs_destroy_inode(struct inode *inode)
+static void cfs_destroy_inode(struct inode *inode)
 {
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
 
@@ -1182,7 +1263,7 @@ static int cfs_drop_inode(struct inode *inode)
 	return generic_drop_inode(inode);
 }
 
-void cfs_put_super(struct super_block *sb)
+static void cfs_put_super(struct super_block *sb)
 {
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 
@@ -1190,7 +1271,7 @@ void cfs_put_super(struct super_block *sb)
 	cfs_mount_info_release(cmi);
 }
 
-int cfs_statfs(struct dentry *dentry, struct kstatfs *kstatfs)
+static int cfs_statfs(struct dentry *dentry, struct kstatfs *kstatfs)
 {
 	struct super_block *sb = dentry->d_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
@@ -1217,10 +1298,21 @@ int cfs_statfs(struct dentry *dentry, struct kstatfs *kstatfs)
 	return 0;
 }
 
-int cfs_sb_show_options(struct seq_file *seq_file, struct dentry *dentry)
+static int cfs_show_options(struct seq_file *seq_file, struct dentry *dentry)
 {
-	cfs_log_info("cfs_sb_show_options()\n");
-	return -1;
+	struct super_block *sb = dentry->d_sb;
+	struct cfs_mount_info *cmi = sb->s_fs_info;
+
+	seq_printf(seq_file, ",owner=%s", cmi->options->owner);
+	seq_printf(seq_file, ",dentry_cache_valid_ms=%u",
+		   cmi->options->dentry_cache_valid_ms);
+	seq_printf(seq_file, ",attr_cache_valid_ms=%u",
+		   cmi->options->attr_cache_valid_ms);
+	seq_printf(seq_file, ",quota_cache_valid_ms=%u",
+		   cmi->options->quota_cache_valid_ms);
+	seq_printf(seq_file, ",enable_quota=%s",
+		   cmi->options->enable_quota ? "true" : "false");
+	return 0;
 }
 
 /**
@@ -1264,8 +1356,8 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 /**
  * mount -t cubefs -o owner=ltptest //172.16.1.101:17010,172.16.1.102:17010,172.16.1.103:17010/ltptest /mnt/cubefs
  */
-struct dentry *cfs_mount(struct file_system_type *fs_type, int flags,
-			 const char *dev_str, void *opt_str)
+static struct dentry *cfs_mount(struct file_system_type *fs_type, int flags,
+				const char *dev_str, void *opt_str)
 {
 	struct cfs_options *options;
 	struct cfs_mount_info *cmi;
@@ -1308,10 +1400,13 @@ const struct file_operations cfs_file_fops = {
 	.open = cfs_open,
 	.release = cfs_release,
 	.llseek = generic_file_llseek,
-	.read = do_sync_read,
-	.write = do_sync_write,
+#ifdef KERNEL_HAS_READ_WRITE_ITER
+	.read_iter = generic_file_read_iter,
+	.write_iter = generic_file_write_iter,
+#else
 	.aio_read = generic_file_aio_read,
 	.aio_write = generic_file_aio_write,
+#endif
 	.mmap = generic_file_mmap,
 	.fsync = cfs_fsync,
 	.flush = cfs_flush,
@@ -1333,8 +1428,14 @@ const struct file_operations cfs_dir_fops = {
 	.open = cfs_open,
 	.release = cfs_release,
 	.read = generic_read_dir,
+#ifdef KERNEL_HAS_ITERATE_DIR_SHARED
+	.iterate_shared = cfs_iterate_dir,
+#elif defined(KERNEL_HAS_ITERATE_DIR)
+	.iterate = cfs_iterate_dir,
+#else
 	.readdir = cfs_readdir,
-	// .llseek = NULL,
+#endif
+	.llseek = NULL,
 	.fsync = noop_fsync,
 };
 
@@ -1360,8 +1461,12 @@ const struct inode_operations cfs_dir_iops = {
 };
 
 const struct inode_operations cfs_symlink_iops = {
+#ifdef KERNEL_HAS_GET_LINK
+	.get_link = cfs_get_link,
+#else
 	.readlink = generic_readlink,
 	.follow_link = cfs_follow_link,
+#endif
 };
 
 const struct inode_operations cfs_special_iops = {
@@ -1379,7 +1484,7 @@ const struct super_operations cfs_super_ops = {
 	.drop_inode = cfs_drop_inode,
 	.put_super = cfs_put_super,
 	.statfs = cfs_statfs,
-	// .show_options = cfs_sb_show_options,
+	.show_options = cfs_show_options,
 };
 
 struct file_system_type cfs_fs_type = {

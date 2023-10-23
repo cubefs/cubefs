@@ -1,7 +1,11 @@
 /*.o
+/*.o.d
 /*.ko*
 /*.mod.*
 /.*.cmd
 /Module.symvers
 /modules.order
 /.tmp_versions/
+/.cache.mk
+/config.h
+/config.log

@@ -122,9 +122,9 @@ static inline int cfs_parse_status(u8 status)
  * Define the maximum number of pages transferred to server.
  * The Maximum write size of tiny extent is 1MB,
  * the Maximum write size of normal extent is 128KB,
- * so the maximum number of pages is 1MB / PAGE_CACHE_SIZE.
+ * so the maximum number of pages is 1MB / PAGE_SIZE.
  */
-#define CFS_PAGE_VEC_NUM (1024 * 1024 / PAGE_CACHE_SIZE)
+#define CFS_PAGE_VEC_NUM (1024 * 1024 / PAGE_SIZE)
 
 /**
  *  Define cubefs file mode, refer to "https://pkg.go.dev/io/fs#FileMode".

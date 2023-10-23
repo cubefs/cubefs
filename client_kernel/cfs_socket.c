@@ -52,10 +52,17 @@ int cfs_socket_create(enum cfs_socket_type type,
 			return -ENOMEM;
 
 		memcpy(&csk->ss_dst, ss, sizeof(*ss));
+#ifdef KERNEL_HAS_SOCK_CREATE_KERN_WITH_NET
+		ret = sock_create_kern(&init_net, AF_INET, SOCK_STREAM,
+				       IPPROTO_TCP, &csk->sock);
+#else
 		ret = sock_create_kern(AF_INET, SOCK_STREAM, IPPROTO_TCP,
 				       &csk->sock);
-		if (ret < 0)
+#endif
+		if (ret < 0) {
+			kfree(csk);
 			return ret;
+		}
 		csk->sock->sk->sk_allocation = GFP_NOFS;
 
 		ret = kernel_connect(csk->sock, (struct sockaddr *)&csk->ss_dst,
@@ -125,14 +132,14 @@ void cfs_socket_release(struct cfs_socket *csk, bool forever)
 	}
 }
 
-void cfs_socket_set_callback(struct cfs_socket *csk,
-			     const struct cfs_socket_ops *ops, void *private)
-{
-	csk->sock->sk->sk_user_data = private;
-	csk->sock->sk->sk_data_ready = ops->sk_data_ready;
-	csk->sock->sk->sk_write_space = ops->sk_write_space;
-	csk->sock->sk->sk_state_change = ops->sk_state_change;
-}
+// void cfs_socket_set_callback(struct cfs_socket *csk,
+// 			     const struct cfs_socket_ops *ops, void *private)
+// {
+// 	csk->sock->sk->sk_user_data = private;
+// 	csk->sock->sk->sk_data_ready = ops->sk_data_ready;
+// 	csk->sock->sk->sk_write_space = ops->sk_write_space;
+// 	csk->sock->sk->sk_state_change = ops->sk_state_change;
+// }
 
 int cfs_socket_set_recv_timeout(struct cfs_socket *csk, u32 timeout_ms)
 {
@@ -176,7 +183,11 @@ int cfs_socket_send_iovec(struct cfs_socket *csk, struct iovec *iov,
 	 * Don't allow other signals to interrupt the transmission */
 	siginitsetinv(&blocked, sigmask(SIGKILL));
 	sigprocmask(SIG_SETMASK, &blocked, &oldset);
+#ifdef KERNEL_HAS_IOV_ITER_WITH_TAG
+	iov_iter_init(&ii, WRITE, iov, nr_segs, len);
+#else
 	iov_iter_init(&ii, iov, nr_segs, len, 0);
+#endif
 	while (iov_iter_count(&ii) > 0) {
 		struct msghdr msghdr = {
 			.msg_flags = MSG_NOSIGNAL,

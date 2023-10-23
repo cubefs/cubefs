@@ -32,8 +32,8 @@ int cfs_socket_create(enum cfs_socket_type type,
 		      const struct sockaddr_storage *dst,
 		      struct cfs_socket **cskp);
 void cfs_socket_release(struct cfs_socket *csk, bool forever);
-void cfs_socket_set_callback(struct cfs_socket *csk,
-			     const struct cfs_socket_ops *ops, void *private);
+// void cfs_socket_set_callback(struct cfs_socket *csk,
+// 			     const struct cfs_socket_ops *ops, void *private);
 int cfs_socket_set_recv_timeout(struct cfs_socket *csk, u32 timeout_ms);
 int cfs_socket_send(struct cfs_socket *csk, void *data, size_t len);
 int cfs_socket_recv(struct cfs_socket *csk, void *data, size_t len);

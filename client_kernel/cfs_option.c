@@ -223,6 +223,7 @@ struct cfs_options *cfs_options_new(const char *dev_str, const char *opt_str)
 	}
 	return options;
 }
+
 void cfs_options_release(struct cfs_options *options)
 {
 	if (!options)

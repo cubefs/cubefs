@@ -1,0 +1,256 @@
+#!/bin/sh
+
+TMPDIR=$PWD/build
+MAKEFILE="${TMPDIR}/Makefile"
+TEST_H="${TMPDIR}/test.h"
+TEST_C="${TMPDIR}/test.c"
+CONFIG_LOG=$PWD/config.log
+CONFIG_H=$PWD/config.h
+
+check_flags() {
+    make -C $TMPDIR >> $CONFIG_LOG 2>&1
+    if [ $? -eq 0 ]
+    then
+        echo $1 "yes"
+        echo "#define $1 1" >> $CONFIG_H
+    else
+        echo $1 "no"
+    fi
+    make -C $TMPDIR clean >> $CONFIG_LOG 2>&1
+}
+
+rm -rf $TMPDIR
+mkdir -p $TMPDIR
+rm -rf $CONFIG_LOG
+rm -rf $CONFIG_H
+
+echo "#ifndef __CONFIG_H__" >> $CONFIG_H
+echo "#define __CONFIG_H__" >> $CONFIG_H
+
+cat > $MAKEFILE <<EOF
+obj-m += test.o
+all:
+	make -C /lib/modules/$(uname -r)/build M=$PWD/build modules
+clean:
+	make -C /lib/modules/$(uname -r)/build M=$PWD/build clean
+EOF
+
+cat > $TEST_H <<EOF
+#include <linux/module.h>
+#include <linux/kernel.h>
+
+MODULE_LICENSE("GPL v2");
+EOF
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+const char *get_link (struct dentry *dentry, struct inode *inode, struct delayed_call *call)
+{
+    return NULL;
+}
+
+int test (void)
+{
+    struct inode_operations op;
+
+    op.get_link = get_link;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_GET_LINK"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int getattr (const struct path *path, struct kstat *stat, u32 mask, unsigned int flags)
+{
+    return 0;
+}
+
+int test (void)
+{
+    struct inode_operations op;
+
+    op.getattr = getattr;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_GETATTR_WITH_PATH"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int rename (struct inode *old_dir, struct dentry *old_dentry,
+			struct inode *new_dir, struct dentry *new_dentry, unsigned int flags)
+{
+    return 0;
+}
+
+int test (void)
+{
+    struct inode_operations op;
+
+    op.rename = rename;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_RENAME_WITH_FLAGS"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int iterate (struct file *file, struct dir_context *ctx)
+{
+    return 0;
+}
+
+int test (void)
+{
+    struct file_operations op;
+
+    op.iterate = iterate;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_ITERATE_DIR"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int iterate_shared (struct file *file, struct dir_context *ctx)
+{
+    return 0;
+}
+
+int test (void)
+{
+    struct file_operations op;
+
+    op.iterate_shared = iterate_shared;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_ITERATE_DIR_SHARED"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+ssize_t read_iter (struct kiocb *iocb, struct iov_iter *iov)
+{
+    return 0;
+}
+
+ssize_t write_iter (struct kiocb *iocb, struct iov_iter *iov)
+{
+    return 0;
+}
+
+int test (void)
+{
+    struct file_operations op;
+
+    op.read_iter = read_iter;
+    op.write_iter = write_iter;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_READ_WRITE_ITER"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+ssize_t direct_IO (struct kiocb *iocb, struct iov_iter *iter)
+{
+    return 0;
+}
+
+int test (void)
+{
+    struct address_space_operations op;
+
+    op.direct_IO = direct_IO;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_DIO_WITH_ITER"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+ssize_t direct_IO (struct kiocb *iocb, struct iov_iter *iter, loff_t offset)
+{
+    return 0;
+}
+
+int test (void)
+{
+    struct address_space_operations op;
+
+    op.direct_IO = direct_IO;
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_DIO_WITH_ITER_AND_OFFSET"
+
+cat > $TEST_C <<EOF
+#include <linux/uio.h>
+#include "test.h"
+
+int test (void)
+{
+    struct iov_iter iter;
+
+    iov_iter_init(&iter, 0, NULL, 0, 0);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_IOV_ITER_WITH_TAG"
+
+cat > $TEST_C <<EOF
+#include <linux/fs.h>
+#include "test.h"
+
+int test (void)
+{
+    setattr_prepare(NULL, NULL);
+    return 0;
+}
+
+EOF
+check_flags "KERNEL_HAS_SETATTR_PREPARE"
+
+cat > $TEST_C <<EOF
+#include <linux/net.h>
+#include <linux/socket.h>
+#include <linux/in.h>
+#include <net/net_namespace.h>
+#include "test.h"
+
+int test (void)
+{
+    return sock_create_kern(&init_net, AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL);
+}
+
+EOF
+check_flags "KERNEL_HAS_SOCK_CREATE_KERN_WITH_NET"
+
+echo "#endif" >> $CONFIG_H
+rm -rf $TMPDIR

@@ -64,8 +64,8 @@ static size_t page_iter_size(struct page_iter *iter)
 {
 	if (iter->nr_pages == 0)
 		return 0;
-	return (iter->nr_pages - 1) * PAGE_CACHE_SIZE -
-	       iter->first_page_offset + iter->last_page_size;
+	return (iter->nr_pages - 1) * PAGE_SIZE - iter->first_page_offset +
+	       iter->last_page_size;
 }
 
 static void page_iter_advance(struct page_iter *iter, size_t size)
@@ -75,8 +75,8 @@ static void page_iter_advance(struct page_iter *iter, size_t size)
 	BUG_ON(page_iter_size(iter) < size);
 
 	page_offset = iter->first_page_offset + size;
-	while (page_offset >= PAGE_CACHE_SIZE) {
-		page_offset -= PAGE_CACHE_SIZE;
+	while (page_offset >= PAGE_SIZE) {
+		page_offset -= PAGE_SIZE;
 		iter->pages++;
 		iter->nr_pages--;
 	}
@@ -98,7 +98,7 @@ static size_t page_copy(const struct page_iter *src, struct page_frag *dst,
 		if (i + 1 == src->nr_pages)
 			dst[i].size = src->last_page_size - page_offset;
 		else
-			dst[i].size = PAGE_CACHE_SIZE - page_offset;
+			dst[i].size = PAGE_SIZE - page_offset;
 		copied += dst[i].size;
 		if (copied >= *size) {
 			dst[i].size -= copied - *size;
@@ -1408,7 +1408,7 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 
 	page_iter_init(&iter, pages, nr_pages, 0, last_page_size);
 	for (i = 0; i < iter.nr_pages - 1; i++)
-		__page_io_set(iter.pages[i], PAGE_CACHE_SIZE);
+		__page_io_set(iter.pages[i], PAGE_SIZE);
 	__page_io_set(iter.pages[i], last_page_size);
 
 	ret = extent_cache_refresh(&es->cache, false);
@@ -1453,9 +1453,8 @@ err_page:
 	}
 	if (iter.nr_pages > 0) {
 		struct page *page = iter.pages[0];
-		size_t firs_page_size = iter.nr_pages == 1 ?
-						iter.last_page_size :
-						PAGE_CACHE_SIZE;
+		size_t firs_page_size =
+			iter.nr_pages == 1 ? iter.last_page_size : PAGE_SIZE;
 
 		BUG_ON(ret == 0);
 		SetPageError(page);
@@ -1558,9 +1557,9 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, struct page **pages,
 	cfs_log_debug("pages(%lu~%lu)\n", pages[0]->index,
 		      pages[nr_pages - 1]->index);
 
-	page_iter_init(&iter, pages, nr_pages, 0, PAGE_CACHE_SIZE);
+	page_iter_init(&iter, pages, nr_pages, 0, PAGE_SIZE);
 	for (i = 0; i < iter.nr_pages; i++)
-		__page_io_set(iter.pages[i], PAGE_CACHE_SIZE);
+		__page_io_set(iter.pages[i], PAGE_SIZE);
 
 	ret = extent_cache_refresh(&es->cache, false);
 	if (ret < 0) {
@@ -1616,9 +1615,8 @@ err_page:
 	}
 	if (iter.nr_pages > 0) {
 		struct page *page = iter.pages[0];
-		size_t firs_page_size = iter.nr_pages == 1 ?
-						iter.last_page_size :
-						PAGE_CACHE_SIZE;
+		size_t firs_page_size =
+			iter.nr_pages == 1 ? iter.last_page_size : PAGE_SIZE;
 
 		BUG_ON(ret == 0);
 		SetPageError(page);
@@ -2210,6 +2208,9 @@ int cfs_extent_module_init(void)
 {
 	if (extent_work_queue)
 		return 0;
+#ifndef WQ_NON_REENTRANT
+#define WQ_NON_REENTRANT 0
+#endif
 	extent_work_queue = alloc_workqueue(
 		"extent_wq", WQ_NON_REENTRANT | WQ_MEM_RECLAIM, 0);
 	if (!extent_work_queue) {
