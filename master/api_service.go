@@ -2387,12 +2387,11 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		volDentryCount uint64
 	)
 	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-
 	for _, mp := range vol.MetaPartitions {
 		volDentryCount = volDentryCount + mp.DentryCount
 		volInodeCount = volInodeCount + mp.InodeCount
 	}
+	vol.mpsLock.RUnlock()
 	maxPartitionID := vol.maxPartitionID()
 
 	view = &proto.SimpleVolView{
