@@ -32,6 +32,10 @@ def set_global_interception_io(io):
     global_interceptionIO = io
 
 
+def get_current_time():
+    return int(time.perf_counter())
+
+
 def is_prefix_cube_file(string):
     global global_cube_rootdir_path
     prefix_length = len(global_cube_rootdir_path)
@@ -69,8 +73,7 @@ class InterceptionIO:
         if stream is None:
             CubeFileOpenInterceptor.add_count(False, 0)
             return None
-        current_time = time.time()
-        CubeFileOpenInterceptor.add_count(True, current_time - stream.put_time)
+        CubeFileOpenInterceptor.add_count(True, get_current_time() - stream.put_time)
         return stream
 
     def get_event_and_thread(self):
@@ -153,6 +156,7 @@ class InterceptionIO:
         version = int.from_bytes(version, byteorder='big')
         count = response.raw.read(8)
         count = int.from_bytes(count, byteorder='big')
+        curr_time = get_current_time()
         for i in range(count):
             file_path_size_body = response.raw.read(8)
             file_path_size = int.from_bytes(file_path_size_body, byteorder='big')
@@ -165,7 +169,7 @@ class InterceptionIO:
                                                                                      len(content_length_body)))
                 break
             content = response.raw.read(content_length)
-            stream = CubeStream(filename, content)
+            stream = CubeStream(filename, content, curr_time)
             self.add_stream(filename, stream)
         response.raw.close()
 

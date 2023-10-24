@@ -73,16 +73,16 @@ class CubeDataSetInfo:
     def get_dataset_samples(self, dataset):
         result = None
         if isinstance(dataset, datasets.DatasetFolder):
-            result = np.array([s[0] for s in dataset.samples])
+            result=np.asarray(dataset.samples)[:, 0]
         elif isinstance(dataset, datasets.VOCDetection):
-            result = np.array(dataset.images)
+            result = np.asarray(dataset.images)
         elif isinstance(dataset, datasets.CocoDetection):
             samples_len = dataset.__len__()
             samples_path = []
             for i in range(samples_len):
                 path = dataset.coco.loadImgs(i)[0]["file_name"]
                 samples_path.append(os.path.join(dataset.root, path))
-            result = np.array(samples_path)
+            result = np.asarray(samples_path)
         elif hasattr(dataset, 'train_data_list'):
             result = dataset.train_data_list()
 
