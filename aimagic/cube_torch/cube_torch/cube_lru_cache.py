@@ -4,11 +4,11 @@ import threading
 
 
 class CubeStream(io.BytesIO):
-    def __init__(self, _fpath, _fcontent,put_time):
+    def __init__(self, _fpath, _fcontent):
         self.file_path = _fpath
         self.content = _fcontent
         self.content_size = len(_fcontent)
-        self.put_time = put_time
+        self.put_time = time.time()
         super().__init__(_fcontent)
 
     def get_path(self):

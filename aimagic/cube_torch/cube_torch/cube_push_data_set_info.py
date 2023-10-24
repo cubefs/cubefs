@@ -4,7 +4,6 @@ import re
 import threading
 import time
 
-import numpy as np
 import requests
 
 from cube_torch import get_manager
@@ -46,13 +45,6 @@ class CubePushDataSetInfo(CubeDataSetInfo):
         self.prefetch_file_url = "http://127.0.0.1:{}/prefetch/pathAdd".format(self.prof_port)
         self.prefetch_read_url = "http://127.0.0.1:{}/prefetch/read?dataset_cnt={}".format(self.prof_port,
                                                                                            self._dataset_cnt)
-
-        self.free_memory_addr="http://127.0.0.1:{}/debug/freeosmemory".format(self.prof_port)
-        try:
-            requests.get(self.free_memory_addr)
-        except Exception as e:
-            pass
-
         self.batch_download_addr = "http://127.0.0.1:{}/batchdownload/path".format(self.prof_port)
         self.clean_old_dataset_file(self.dataset_dir)
 
@@ -66,9 +58,6 @@ class CubePushDataSetInfo(CubeDataSetInfo):
 
     def get_cube_prefetch_addr(self):
         return self.prefetch_read_url
-
-    def get_free_os_memory_addr(self):
-        return self.free_memory_addr
 
     def get_register_pid_addr(self):
         return self.register_pid_addr
@@ -248,3 +237,10 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def get_batch_download_addr(self):
         return self.batch_download_addr
 
+    def get_notify_storage_worker_num(self):
+        if self._is_use_batch_download:
+            return 1
+        return 1
+
+    def get_cube_prefetch_thread_cnt(self):
+        return self.prefetch_thread_num
