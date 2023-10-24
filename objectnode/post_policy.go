@@ -91,6 +91,20 @@ var startsWithSupported = map[string]bool{
 	"$x-amz-date":              false,
 }
 
+var ignoredPostFormKeys = map[string]bool{
+	"awsaccesskeyid":           true,
+	"file":                     true,
+	"policy":                   true,
+	"signature":                true,
+	"x-amz-signature":          true,
+	"x-amz-checksum-algorithm": true,
+	"x-amz-checksum-crc32":     true,
+	"x-amz-checksum-crc32c":    true,
+	"x-amz-checksum-sha1":      true,
+	"x-amz-checksum-sha256":    true,
+	"x-amz-checksum-mode":      true,
+}
+
 const (
 	condEqual         = "eq"
 	condStartsWith    = "starts-with"
@@ -223,9 +237,33 @@ func (p *PostPolicy) parseSlice(cond []interface{}) error {
 	return nil
 }
 
-func (p *PostPolicy) Match(toMatch map[string]string) error {
+func (p *PostPolicy) Match(forms map[string]string) error {
 	if !p.Expiration.After(time.Now().UTC()) {
 		return ErrPostPolicyExpired
+	}
+
+	if forms == nil {
+		forms = make(map[string]string)
+	}
+
+	allNeedKeys := make(map[string]bool)
+	ignoredKeys := make(map[string]bool)
+	for key := range forms {
+		key = strings.ToLower(key)
+		switch {
+		case ignoredPostFormKeys[key], ignoredKeys[key], strings.HasPrefix(key, "x-amz-server-side-encryption"):
+			continue
+		case strings.HasPrefix(key, "x-amz-ignore-"):
+			key = strings.Replace(key, "x-amz-ignore-", "", 1)
+			ignoredKeys[key] = true
+			delete(allNeedKeys, key)
+		case strings.HasPrefix(key, "x-ignore-"):
+			key = strings.Replace(key, "x-ignore-", "", 1)
+			ignoredKeys[key] = true
+			delete(allNeedKeys, key)
+		default:
+			allNeedKeys[key] = true
+		}
 	}
 
 	xAmzMeta := make(map[string]bool)
@@ -234,7 +272,7 @@ func (p *PostPolicy) Match(toMatch map[string]string) error {
 			xAmzMeta[strings.TrimPrefix(cond.Key, "$")] = true
 		}
 	}
-	for key := range toMatch {
+	for key := range forms {
 		key = strings.ToLower(key)
 		if strings.HasPrefix(key, "x-amz-meta-") && !xAmzMeta[key] {
 			return &ErrorCode{
@@ -247,23 +285,40 @@ func (p *PostPolicy) Match(toMatch map[string]string) error {
 
 	for _, cond := range p.Conditions.Matches {
 		key := strings.TrimPrefix(cond.Key, "$")
-		if !policyCondMatch(cond.Operator, toMatch[key], cond.Value) {
+		if !policyCondMatch(cond.Operator, forms[key], cond.Value) {
 			return &ErrorCode{
 				ErrorCode:    "PolicyConditionNotMatch",
 				ErrorMessage: fmt.Sprintf("The %v not match with the policy condition.", key),
 				StatusCode:   http.StatusForbidden,
 			}
 		}
+		delete(allNeedKeys, key)
 	}
 
-	if size := toMatch["content-length"]; size != "" {
+	size := forms["content-length"]
+	lengthMin := p.Conditions.ContentLengthRange.Min
+	lengthMax := p.Conditions.ContentLengthRange.Max
+	if lengthMax > 0 {
 		fsize, _ := strconv.ParseInt(size, 10, 64)
-		if fsize < p.Conditions.ContentLengthRange.Min || fsize > p.Conditions.ContentLengthRange.Max {
+		if size == "" || fsize < lengthMin || fsize > lengthMax {
 			return &ErrorCode{
 				ErrorCode:    "PolicyConditionNotMatch",
 				ErrorMessage: "The content-length does not match the policy's content-length-range.",
 				StatusCode:   http.StatusForbidden,
 			}
+		}
+	}
+	delete(allNeedKeys, "content-length")
+
+	var keys []string
+	for key := range allNeedKeys {
+		keys = append(keys, key)
+	}
+	if len(keys) > 0 {
+		return &ErrorCode{
+			ErrorCode:    "PolicyConditionNotMatch",
+			ErrorMessage: fmt.Sprintf("Every field in the form must be in policy conditions, still need %s.", strings.Join(keys, ", ")),
+			StatusCode:   http.StatusForbidden,
 		}
 	}
 
@@ -294,4 +349,13 @@ func parseToInt64(val interface{}) (int64, error) {
 	default:
 		return 0, errors.New("invalid number format")
 	}
+}
+
+func PolicyConditionMatch(policy string, forms map[string]string) error {
+	p, err := NewPostPolicy(policy)
+	if err != nil {
+		return err
+	}
+
+	return p.Match(forms)
 }
