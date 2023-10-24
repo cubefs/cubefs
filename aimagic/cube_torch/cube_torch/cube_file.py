@@ -5,8 +5,8 @@ import json
 import os
 import queue
 import threading
+import traceback
 from functools import wraps
-import time
 
 import requests
 import torch
@@ -14,7 +14,6 @@ from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
-from cube_torch.cube_lru_cache import LRUCache, CubeStream
 
 global_interceptionIO = None
 global_cube_rootdir_path = None
@@ -32,26 +31,67 @@ def set_global_interception_io(io):
     global_interceptionIO = io
 
 
-def get_current_time():
-    return int(time.perf_counter())
-
-
 def is_prefix_cube_file(string):
     global global_cube_rootdir_path
     prefix_length = len(global_cube_rootdir_path)
     return string[:prefix_length] == global_cube_rootdir_path
 
 
+def func1(file_path):
+    stack = traceback.extract_stack()
+    for f in reversed(stack):
+        print("file_path:{} f:{}".format(file_path, f))
+
+
+def func_traceback(file_path):
+    for s in traceback.format_stack():
+        print(s.strip())
+
+
+class CubeStream(io.BytesIO):
+    def __init__(self, _fpath, _fcontent):
+        self.file_path = _fpath
+        self.content = _fcontent
+        self.content_size = len(_fcontent)
+        super().__init__(_fcontent)
+
+    def get_path(self):
+        return self.file_path
+
+    def get_content(self):
+        return self.content
+
+    def get_content_size(self):
+        return self.content_size
+
+
+class ThreadSafeDict:
+    def __init__(self):
+        self._dict = {}
+        self._lock = threading.Lock()
+
+    def pop_item(self, key):
+        with self._lock:
+            return self._dict.pop(key, None)
+
+    def set_item(self, key, value):
+        with self._lock:
+            self._dict[key] = value
+
+    def get_length(self):
+        with self._lock:
+            return len(self._dict)
+
+
 class InterceptionIO:
     def __init__(self, storage_info):
-        cube_root_dir, wait_download_queue, batch_download_addr, batch_size, free_memory_addr = storage_info
+        cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
         self.cube_root_dir = cube_root_dir
-        self.files_cache = LRUCache(timeout=60)
+        self.files = ThreadSafeDict()
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
         self.wait_download_queue = wait_download_queue
-        self.batch_size = batch_size
-        self.free_memory_addr = free_memory_addr
+        self.batch_size=batch_size
         self.download_event = threading.Event()
         self._lock = threading.Lock()
         retry_strategy = Retry(
@@ -65,33 +105,25 @@ class InterceptionIO:
         self.download_thread.daemon = True
         self.download_thread.start()
 
-    def add_stream(self, file_path, stream):
-        self.files_cache.put(file_path, stream)
-
     def get_stream(self, file_name):
-        stream = self.files_cache.pop(file_name)
-        if stream is None:
-            CubeFileOpenInterceptor.add_count(False, 0)
-            return None
-        CubeFileOpenInterceptor.add_count(True, get_current_time() - stream.put_time)
+        stream=self.files.pop_item(file_name)
+        CubeFileOpenInterceptor.add_count(stream is not None)
         return stream
+
+    def stop_loop_download_worker(self):
+        self.download_event.set()
+        self.download_thread.join()
 
     def get_event_and_thread(self):
         return self.download_thread, self.download_event
 
     def _loop_download_worker(self, event):
-        loop_index = 0
         while not event.is_set():
             try:
-                loop_index += 1
                 files = self.wait_download_queue.get(timeout=5)
                 if files is None:
                     break
                 self.batch_download_async([files])
-                if loop_index % 100 == 0:
-                    CubeFileOpenInterceptor.print_hit_rate()
-                    expired_keys = self.files_cache.get_expired_key()
-                    self.files_cache.delete_keys(expired_keys)
             except queue.Empty:
                 continue
         event.set()
@@ -117,6 +149,7 @@ class InterceptionIO:
                 stream = self.get_stream(file_path)
                 if stream:
                     result = builtins_torch_load(stream, **kwargs)
+                    del stream
                     return result
             result = builtins_torch_load(*args, **kwargs)
             return result
@@ -137,26 +170,18 @@ class InterceptionIO:
             print('pid:{} url:{} Error:{} '.format(os.getpid(), self.batch_download_addr, e))
             pass
 
-    def free_memory_async(self):
-        try:
-            requests.get(self.free_memory_addr)
-        except Exception as e:
-            pass
-
     def batch_download_async(self, index_list):
         loop = asyncio.new_event_loop()
         loop.run_in_executor(None, self.batch_download, index_list)
 
-    def free_os_memory_async(self):
-        loop = asyncio.new_event_loop()
-        loop.run_in_executor(None, self.free_memory_async)
+    def add_stream(self, file_path, stream):
+        self.files.set_item(file_path, stream)
 
     def stream_parse_content(self, url, response):
         version = response.raw.read(8)
         version = int.from_bytes(version, byteorder='big')
         count = response.raw.read(8)
         count = int.from_bytes(count, byteorder='big')
-        curr_time = get_current_time()
         for i in range(count):
             file_path_size_body = response.raw.read(8)
             file_path_size = int.from_bytes(file_path_size_body, byteorder='big')
@@ -169,7 +194,7 @@ class InterceptionIO:
                                                                                      len(content_length_body)))
                 break
             content = response.raw.read(content_length)
-            stream = CubeStream(filename, content, curr_time)
+            stream = CubeStream(filename, content)
             self.add_stream(filename, stream)
         response.raw.close()
 
@@ -195,9 +220,7 @@ class CubeFile(io.FileIO):
         return
 
     def __del__(self):
-        if self._is_cached:
-            del self._cube_stream
-        del self._name
+        pass
 
     def __enter__(self):
         return self
