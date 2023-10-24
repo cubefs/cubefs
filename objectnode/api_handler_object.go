@@ -1460,6 +1460,9 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
 			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
+		if strings.Contains(err.Error(), AccessDenied.ErrorMessage) {
+			err = AccessDenied
+		}
 		return
 	}
 
