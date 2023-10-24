@@ -447,6 +447,7 @@ func (mp *metaPartition) evictExpiredRequestRecords(dbWriteHandle interface{}, e
 				mp.config.PartitionId, err)
 			return
 		}
+		defer mp.db.ReleaseSnap(dbSnap)
 
 		if err = mp.db.RangeWithSnap(startKey, endKey, dbSnap, func(k, v []byte) (bool, error) {
 			if len(k) != requestInfoRocksDBKeyLen {

@@ -100,16 +100,18 @@ func recoverRocksDBPanic() {
 }
 
 type RocksDbInfo struct {
-	dir            string
-	defReadOption  *gorocksdb.ReadOptions
-	defWriteOption *gorocksdb.WriteOptions
-	defFlushOption *gorocksdb.FlushOptions
-	defSyncOption  *gorocksdb.WriteOptions
-	db             *gorocksdb.DB
-	mutex          sync.RWMutex
-	state          uint32
-	syncCnt        uint64
-	SyncFlag       bool
+	dir                  string
+	defOption            *gorocksdb.Options
+	defBasedTableOptions *gorocksdb.BlockBasedTableOptions
+	defReadOption        *gorocksdb.ReadOptions
+	defWriteOption       *gorocksdb.WriteOptions
+	defFlushOption       *gorocksdb.FlushOptions
+	defSyncOption        *gorocksdb.WriteOptions
+	db                   *gorocksdb.DB
+	mutex                sync.RWMutex
+	state                uint32
+	syncCnt              uint64
+	SyncFlag             bool
 }
 
 func NewRocksDb() (dbInfo *RocksDbInfo) {
@@ -154,11 +156,17 @@ func (dbInfo *RocksDbInfo) CloseDb() (err error) {
 	dbInfo.defReadOption.Destroy()
 	dbInfo.defWriteOption.Destroy()
 	dbInfo.defFlushOption.Destroy()
+	dbInfo.defSyncOption.Destroy()
+	dbInfo.defBasedTableOptions.Destroy()
+	dbInfo.defOption.Destroy()
 
 	dbInfo.db = nil
 	dbInfo.defReadOption = nil
 	dbInfo.defWriteOption = nil
 	dbInfo.defFlushOption = nil
+	dbInfo.defSyncOption = nil
+	dbInfo.defBasedTableOptions = nil
+	dbInfo.defOption = nil
 	return
 }
 func (dbInfo *RocksDbInfo) CommitEmptyRecordToSyncWal(flushWal bool) {
@@ -266,6 +274,8 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string, walFileSize, walMemSize, logF
 		return rocksDBError
 	}
 	dbInfo.dir = dir
+	dbInfo.defOption = opts
+	dbInfo.defBasedTableOptions = basedTableOptions
 	dbInfo.defReadOption = gorocksdb.NewDefaultReadOptions()
 	dbInfo.defWriteOption = gorocksdb.NewDefaultWriteOptions()
 	dbInfo.defFlushOption = gorocksdb.NewDefaultFlushOptions()
@@ -329,10 +339,14 @@ func (dbInfo *RocksDbInfo) ReOpenDb(dir string, walFileSize, walMemSize, logFile
 
 }
 
-func (dbInfo *RocksDbInfo) iterator(snapshot *gorocksdb.Snapshot) *gorocksdb.Iterator {
-	ro := gorocksdb.NewDefaultReadOptions()
+func genRocksDBReadOption(snap *gorocksdb.Snapshot) (ro *gorocksdb.ReadOptions) {
+	ro = gorocksdb.NewDefaultReadOptions()
 	ro.SetFillCache(false)
-	ro.SetSnapshot(snapshot)
+	ro.SetSnapshot(snap)
+	return
+}
+
+func (dbInfo *RocksDbInfo) iterator(ro *gorocksdb.ReadOptions) *gorocksdb.Iterator {
 	return dbInfo.db.NewIterator(ro)
 }
 
@@ -447,9 +461,11 @@ func (dbInfo *RocksDbInfo) RangeWithSnap(start, end []byte, snap *gorocksdb.Snap
 	}
 	defer dbInfo.releaseDb()
 
-	it := dbInfo.iterator(snap)
+	ro := genRocksDBReadOption(snap)
+	it := dbInfo.iterator(ro)
 	defer func() {
 		it.Close()
+		ro.Destroy()
 	}()
 	return dbInfo.rangeWithIter(it, start, end, cb)
 }
@@ -465,9 +481,11 @@ func (dbInfo *RocksDbInfo) RangeWithSnapByPrefix(prefix, start, end []byte, snap
 	}
 	defer dbInfo.releaseDb()
 
-	it := dbInfo.iterator(snap)
+	ro := genRocksDBReadOption(snap)
+	it := dbInfo.iterator(ro)
 	defer func() {
 		it.Close()
+		ro.Destroy()
 	}()
 	return dbInfo.rangeWithIterByPrefix(it, prefix, start, end, cb)
 }
@@ -483,9 +501,11 @@ func (dbInfo *RocksDbInfo) DescRangeWithSnap(start, end []byte, snap *gorocksdb.
 	}
 	defer dbInfo.releaseDb()
 
-	it := dbInfo.iterator(snap)
+	ro := genRocksDBReadOption(snap)
+	it := dbInfo.iterator(ro)
 	defer func() {
 		it.Close()
+		ro.Destroy()
 	}()
 	return dbInfo.descRangeWithIter(it, start, end, cb)
 }
@@ -498,9 +518,11 @@ func (dbInfo *RocksDbInfo) Range(start, end []byte, cb func(k, v []byte) (bool, 
 	defer dbInfo.releaseDb()
 
 	snapshot := dbInfo.db.NewSnapshot()
-	it := dbInfo.iterator(snapshot)
+	ro := genRocksDBReadOption(snapshot)
+	it := dbInfo.iterator(ro)
 	defer func() {
 		it.Close()
+		ro.Destroy()
 		dbInfo.db.ReleaseSnapshot(snapshot)
 	}()
 	return dbInfo.rangeWithIter(it, start, end, cb)
@@ -514,9 +536,11 @@ func (dbInfo *RocksDbInfo) DescRange(start, end []byte, cb func(k, v []byte) (bo
 	defer dbInfo.releaseDb()
 
 	snapshot := dbInfo.db.NewSnapshot()
-	it := dbInfo.iterator(snapshot)
+	ro := genRocksDBReadOption(snapshot)
+	it := dbInfo.iterator(ro)
 	defer func() {
 		it.Close()
+		ro.Destroy()
 		dbInfo.db.ReleaseSnapshot(snapshot)
 	}()
 	return dbInfo.descRangeWithIter(it, start, end, cb)
