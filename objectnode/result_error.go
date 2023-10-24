@@ -79,6 +79,7 @@ var (
 	InvalidMinPartNumber                = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "You must specify at least one part.", StatusCode: http.StatusBadRequest}
 	DiskQuotaExceeded                   = &ErrorCode{"DiskQuotaExceeded", "Disk Quota Exceeded.", http.StatusBadRequest}
 	FileDeleteLock                      = &ErrorCode{"FileDeleteLock", "Operation not permitted.", http.StatusBadRequest}
+	MalformedPOSTRequest                = &ErrorCode{ErrorCode: "MalformedPOSTRequest", ErrorMessage: "The body of your POST request is not well-formed multipart/form-data.", StatusCode: http.StatusBadRequest}
 )
 
 type ErrorCode struct {
@@ -124,6 +125,14 @@ func (ec *ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) {
 
 func (ec *ErrorCode) Error() string {
 	return ec.ErrorMessage
+}
+
+func (ec *ErrorCode) Copy() *ErrorCode {
+	return &ErrorCode{
+		ErrorCode:    ec.ErrorCode,
+		ErrorMessage: ec.ErrorMessage,
+		StatusCode:   ec.StatusCode,
+	}
 }
 
 func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
