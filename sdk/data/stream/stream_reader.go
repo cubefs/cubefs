@@ -45,7 +45,8 @@ type Streamer struct {
 	traversed int // how many times the streamer is traversed
 
 	extents *ExtentCache
-	once    sync.Once
+
+	once sync.Once
 
 	handler    *ExtentHandler   // current open handler
 	dirtylist  *DirtyExtentList // dirty handlers

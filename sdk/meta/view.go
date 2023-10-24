@@ -173,7 +173,7 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	} else {
 		mw.disableTrash = false
 		if mw.trashPolicy != nil {
-			atomic.StoreInt64(&mw.trashPolicy.deleteInterval, info.TrashInterval)
+			mw.trashPolicy.UpdateDeleteInterval(info.TrashInterval)
 		}
 	}
 	log.LogInfof("VolStatInfo: info(%v), disableTrash(%v)", info, mw.disableTrash)

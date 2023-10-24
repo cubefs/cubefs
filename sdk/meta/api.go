@@ -493,8 +493,8 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 	return xattrs, nil
 }
 
-func (mw *MetaWrapper) shouldMoveToTrash(parentIno uint64, entry string) (error, bool) {
-	log.LogDebugf("action[shouldMoveToTrash]: parentIno(%v) entry(%v)", parentIno, entry)
+func (mw *MetaWrapper) shouldNotMoveToTrash(parentIno uint64, entry string) (error, bool) {
+	log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v)", parentIno, entry)
 	//remove .Trash directly
 	if mw.trashPolicy.IsTrashRoot(parentIno, entry) {
 		return syscall.EOPNOTSUPP, false
@@ -503,19 +503,20 @@ func (mw *MetaWrapper) shouldMoveToTrash(parentIno uint64, entry string) (error,
 	//get parent path to mount sub
 	currentPath := mw.getCurrentPathToMountSub(parentIno)
 	if strings.Contains(currentPath, UnknownPath) {
-		return nil, false
+		return nil, true
 	}
-	log.LogDebugf("action[shouldMoveToTrash]: parentIno(%v) entry(%v) currentPath(%v)", parentIno, entry, currentPath)
+	log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v) currentPath(%v)", parentIno, entry, currentPath)
 
 	subs := strings.Split(currentPath, "/")
 	if len(subs) == 1 {
 		//should never happen: file in root trash
 		if subs[0] == TrashPrefix {
+			log.LogDebugf("action[shouldNotMoveToTrash]: currentPath(%v) should not remove ", subs[0])
 			return nil, true
 		}
 	} else {
 		if subs[0] == TrashPrefix && strings.HasPrefix(subs[1], ExpiredPrefix) {
-			log.LogDebugf("action[shouldMoveToTrash]: currentPath(%v)is expired ", currentPath)
+			log.LogDebugf("action[shouldNotMoveToTrash]: currentPath(%v)is expired ", currentPath)
 			return nil, true
 		}
 		//should never happen: dir in root trash
@@ -558,7 +559,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool) (in
 			mw.enableTrash()
 		}
 		//cannot delete .Trash
-		err, ret := mw.shouldMoveToTrash(parentID, name)
+		err, ret := mw.shouldNotMoveToTrash(parentID, name)
 		if err != nil {
 			return nil, err
 		}
@@ -701,7 +702,7 @@ func (mw *MetaWrapper) delete_ll(parentID uint64, name string, isDir bool) (*pro
 			mw.enableTrash()
 		}
 		//cannot delete .Trash
-		err, ret := mw.shouldMoveToTrash(parentID, name)
+		err, ret := mw.shouldNotMoveToTrash(parentID, name)
 		if err != nil {
 			return nil, err
 		}
