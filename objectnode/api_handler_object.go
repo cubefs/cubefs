@@ -29,6 +29,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -1398,10 +1399,226 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: will be implemented
-	errorCode = UnsupportedOperation
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("postObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
 
-	return
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("postObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		return
+	}
+
+	// qps and concurrency limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	// content-md5 check if specified in the request
+	requestMD5 := r.Header.Get(ContentMD5)
+	if requestMD5 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
+		if err != nil {
+			errorCode = InvalidDigest
+			return
+		}
+		requestMD5 = hex.EncodeToString(decoded)
+	}
+
+	// object lock check
+	objetLock, err := vol.metaLoader.loadObjectLock()
+	if err != nil {
+		log.LogErrorf("postObjectHandler: load volume objetLock fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
+		errorCode = NoContentMd5HeaderErr
+		return
+	}
+
+	// parse the request form and check
+	formReq := NewFormRequest(r)
+	if err = formReq.ParseMultipartForm(); err != nil {
+		log.LogErrorf("postObjectHandler: parse form fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
+		return
+	}
+
+	key := formReq.MultipartFormValue("key")
+	if key == "" {
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Missing key")
+		return
+	}
+	key = strings.Replace(key, "${filename}", formReq.FileName(), -1)
+	if !utf8.ValidString(key) || len(key) > MaxKeyLength {
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid utf8 string or the key is too long")
+		return
+	}
+
+	var aclInfo *AccessControlPolicy
+	if acl := formReq.MultipartFormValue("acl"); acl != "" {
+		if aclInfo, err = ParseCannedAcl(acl, userInfo.UserID); err != nil {
+			log.LogErrorf("postObjectHandler: parse canned acl fail: requestID(%v) volume(%v) acl(%v) err(%v)",
+				GetRequestID(r), param.Bucket(), acl, err)
+			errorCode = MalformedPOSTRequest
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
+			return
+		}
+	}
+
+	var tagging *Tagging
+	if taggingRaw := formReq.MultipartFormValue("tagging"); taggingRaw != "" {
+		if tagging, err = ParseTagging(taggingRaw); err != nil {
+			errorCode = MalformedPOSTRequest
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid tagging")
+			return
+		}
+		if _, erc := tagging.Validate(); erc != nil {
+			errorCode = MalformedPOSTRequest
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, erc)
+			return
+		}
+	}
+
+	successStatus := formReq.MultipartFormValue("success_action_status")
+	successRedirect := formReq.MultipartFormValue("success_action_redirect")
+	if successRedirect != "" {
+		if _, err = url.Parse(successRedirect); err != nil {
+			errorCode = MalformedPOSTRequest
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid success_action_redirect")
+			return
+		}
+	}
+
+	contentType := formReq.MultipartFormValue("content-type")
+	contentDisposition := formReq.MultipartFormValue("content-disposition")
+	cacheControl := formReq.MultipartFormValue("cache-control")
+	if cacheControl != "" && !ValidateCacheControl(cacheControl) {
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid cache-control")
+		return
+	}
+
+	expires := formReq.MultipartFormValue("expires")
+	if expires != "" && !ValidateCacheExpires(expires) {
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid expires")
+		return
+	}
+
+	policy := formReq.MultipartFormValue("policy")
+	if policy == "" {
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Missing policy")
+		return
+	}
+
+	// read the file, the rest will be written to a temporary file if exceed
+	f, size, err := formReq.FormFile(10 << 20)
+	if err != nil {
+		log.LogErrorf("postObjectHandler: form file fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
+		return
+	}
+	defer f.Close()
+	if size > SinglePutLimit {
+		errorCode = EntityTooLarge
+		return
+	}
+
+	metadata := make(map[string]string)
+	// policy match forms
+	forms := make(map[string]string)
+	for name, values := range formReq.MultipartForm.Value {
+		name = strings.ToLower(name)
+		if strings.HasPrefix(name, XAmzMetaPrefix) {
+			forms[name] = strings.Join(values, ",")
+			metadata[name[len(XAmzMetaPrefix):]] = strings.Join(values, ",")
+		} else if len(values) > 0 {
+			forms[name] = values[0]
+		}
+	}
+	forms["bucket"] = param.Bucket()
+	forms["key"] = key
+	forms["content-length"] = strconv.FormatInt(size, 10)
+
+	// policy condition check
+	if err = PolicyConditionMatch(policy, forms); err != nil {
+		log.LogErrorf("postObjectHandler: policy match fail: requestID(%v) volume(%v) forms(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), forms, err)
+		return
+	}
+
+	// flow control
+	var reader io.Reader
+	if size > DefaultFlowLimitSize {
+		reader = rateLimit.GetReader(vol.owner, param.apiName, f)
+	} else {
+		reader = f
+	}
+
+	// put object
+	putOpt := &PutFileOption{
+		MIMEType:     contentType,
+		Disposition:  contentDisposition,
+		Tagging:      tagging,
+		Metadata:     metadata,
+		CacheControl: cacheControl,
+		Expires:      expires,
+		ACL:          aclInfo,
+		ObjectLock:   objetLock,
+	}
+	var fsFileInfo *FSFileInfo
+	if fsFileInfo, err = vol.PutObject(key, reader, putOpt); err != nil {
+		log.LogErrorf("postObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), vol.Name(), key, err)
+		err = handlePutObjectErr(err)
+		return
+	}
+
+	// check content-md5 of actual data if specified in the request
+	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
+		log.LogErrorf("postObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
+			GetRequestID(r), vol.Name(), key, requestMD5, fsFileInfo.ETag)
+		errorCode = BadDigest
+		return
+	}
+
+	// set response header
+	etag := wrapUnescapedQuot(fsFileInfo.ETag)
+	w.Header()[ETag] = []string{etag}
+
+	// return response depending on success_action_xxx parameter
+	if successRedirect != "" {
+		http.Redirect(w, r, successRedirect, http.StatusMovedPermanently)
+		return
+	}
+	switch successStatus {
+	case "200":
+		w.WriteHeader(http.StatusOK)
+	case "201":
+		response := NewS3UploadObject()
+		response.Bucket = param.Bucket()
+		response.Key = key
+		response.ETag = etag
+		response.Location = "/" + response.Bucket + "/" + response.Key
+		writeResponse(w, http.StatusCreated, []byte(response.String()), ValueContentTypeXML)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func handlePutObjectErr(err error) error {

@@ -83,11 +83,11 @@ var (
 	LifeCycleRulesLessThenOne           = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "At least one lifecycle rule must be specified.", StatusCode: http.StatusBadRequest}
 	LifeCycleAtLeastOneAction           = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "At least one action must be specified in a lifecycle rule.", StatusCode: http.StatusBadRequest}
 	LifeCycleRulesInvalid               = &ErrorCode{ErrorCode: "InvalidRequest", ErrorMessage: "Lifecycle rule is invalid.", StatusCode: http.StatusBadRequest}
-
-	NoSuchObjectLockConfiguration   = &ErrorCode{"NoSuchObjectLockConfiguration", "The specified object does not have a ObjectLock configuration", http.StatusNotFound}
-	NoContentMd5HeaderErr           = &ErrorCode{"NoContentMd5Header", "Content-MD5 HTTP header is required for Upload Object/Part requests with Object Lock parameters", http.StatusBadRequest}
-	ObjectLockConfigurationNotFound = &ErrorCode{"ObjectLockConfigurationNotFoundError", "Object Lock configuration does not exist for this bucket", http.StatusNotFound}
-	TooManyRequests                 = &ErrorCode{"TooManyRequests", "too many requests, please retry later", http.StatusTooManyRequests}
+	NoSuchObjectLockConfiguration       = &ErrorCode{"NoSuchObjectLockConfiguration", "The specified object does not have a ObjectLock configuration", http.StatusNotFound}
+	NoContentMd5HeaderErr               = &ErrorCode{"NoContentMd5Header", "Content-MD5 HTTP header is required for Upload Object/Part requests with Object Lock parameters", http.StatusBadRequest}
+	ObjectLockConfigurationNotFound     = &ErrorCode{"ObjectLockConfigurationNotFoundError", "Object Lock configuration does not exist for this bucket", http.StatusNotFound}
+	TooManyRequests                     = &ErrorCode{"TooManyRequests", "too many requests, please retry later", http.StatusTooManyRequests}
+	MalformedPOSTRequest                = &ErrorCode{ErrorCode: "MalformedPOSTRequest", ErrorMessage: "The body of your POST request is not well-formed multipart/form-data.", StatusCode: http.StatusBadRequest}
 )
 
 type ErrorCode struct {

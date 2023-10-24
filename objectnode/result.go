@@ -349,3 +349,41 @@ type CreateBucketRequest struct {
 	XMLName            xml.Name `xml:"CreateBucketConfiguration"`
 	LocationConstraint string   `xml:"LocationConstraint"`
 }
+
+type S3UploadObject struct {
+	XMLName  xml.Name
+	Bucket   string `xml:"Bucket"` // bucket name
+	Key      string `xml:"Key"`    // object id or name
+	ETag     string `xml:"ETag"`   // object content MD5 hash
+	Location string `xml:"Location"`
+}
+
+func NewS3UploadObject() *S3UploadObject {
+	return &S3UploadObject{
+		XMLName: xml.Name{
+			Space: S3Namespace,
+			Local: "PostResponse",
+		},
+	}
+}
+
+func (s3 *S3UploadObject) SetBucket(bucket string) {
+	s3.Bucket = bucket
+}
+
+func (s3 *S3UploadObject) SetKey(key string) {
+	s3.Key = key
+}
+
+func (s3 *S3UploadObject) SetETag(etag string) {
+	s3.ETag = etag
+}
+
+func (s3 *S3UploadObject) SetLocation(location string) {
+	s3.Location = location
+}
+
+func (s3 *S3UploadObject) String() string {
+	b, _ := xml.Marshal(s3)
+	return string(b)
+}
