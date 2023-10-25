@@ -546,11 +546,8 @@ class CubeMultiProcessingDataLoaderIter(_BaseDataLoaderIter):
                 if worker_queue_idx == -1:
                     raise StopIteration
                 index = self._next_index()
-                if self.is_use_batch_download:
-                    train_file_names = self.cube_dataset_info.covert_index_list_to_filename(index)
-                    self._wait_download_queues[worker_queue_idx].put(train_file_names)
-                else:
-                    self._wait_download_queues[worker_queue_idx].put(index)
+                train_file_names = self.cube_dataset_info.covert_index_list_to_filename(index)
+                self._wait_download_queues[worker_queue_idx].put(train_file_names)
                 r = (worker_queue_idx, index)
                 self._preload_index_queue.put(r)
             except StopIteration:

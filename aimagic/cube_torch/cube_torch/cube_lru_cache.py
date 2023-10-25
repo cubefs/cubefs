@@ -4,11 +4,11 @@ import threading
 
 
 class CubeStream(io.BytesIO):
-    def __init__(self, _fpath, _fcontent):
+    def __init__(self, _fpath, _fcontent, put_time):
         self.file_path = _fpath
         self.content = _fcontent
         self.content_size = len(_fcontent)
-        self.put_time = time.time()
+        self.put_time = put_time
         super().__init__(_fcontent)
 
     def get_path(self):
@@ -20,17 +20,13 @@ class CubeStream(io.BytesIO):
     def get_content_size(self):
         return self.content_size
 
-    def __del__(self):
-        del self.content
-        if not self.closed:
-            self.close()
-
 
 class LRUCache:
     def __init__(self, timeout):
         self.timeout = timeout
         self.cache = {}
         self.lock = threading.Lock()
+        self.last_check_time = time.time()
 
     def put(self, key, value):
         with self.lock:
@@ -44,18 +40,15 @@ class LRUCache:
         with self.lock:
             return len(self.cache)
 
-    def delete_keys(self, keys):
-        with self.lock:
-            for key in keys:
-                self.cache.pop(key, None)
-
-    def get_expired_key(self):
-        expired_key = []
+    def clean_expired_key(self):
+        current_time = time.time()
+        if current_time - self.last_check_time < 30 * 60:
+            return
         with self.lock:
             for key, stream in self.cache.items():
-                if self._is_expired(stream.put_time):
-                    expired_key.append(key)
-        return expired_key
+                if self._is_expired(current_time, stream.put_time):
+                    self.cache.pop(key)
+        self.last_check_time=time.time()
 
-    def _is_expired(self, timestamp):
-        return time.time() - timestamp > self.timeout
+    def _is_expired(self, current_time, timestamp):
+        return current_time - timestamp > self.timeout

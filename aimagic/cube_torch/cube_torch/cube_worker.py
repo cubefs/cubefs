@@ -84,9 +84,9 @@ def _post_to_storage(index_list, notify_storage_addr):
         return
     try:
         data = json.dumps(index_list)
-        requests.post(notify_storage_addr, data, timeout=2)
+        requests.post(notify_storage_addr, data, timeout=100)
     except Exception as e:
-        print('_post_to_storage{} _post_to_storage error{} index_list{} '.format(notify_storage_addr, e, index_list))
+        print('_post_to_storage{} _post_to_storage error{}'.format(notify_storage_addr, e))
         return
 
 

@@ -5,15 +5,15 @@ import json
 import os
 import queue
 import threading
-import traceback
+import time
 from functools import wraps
-
 import requests
 import torch
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
+from cube_torch.cube_lru_cache import CubeStream, LRUCache
 
 global_interceptionIO = None
 global_cube_rootdir_path = None
@@ -37,63 +37,17 @@ def is_prefix_cube_file(string):
     return string[:prefix_length] == global_cube_rootdir_path
 
 
-def func1(file_path):
-    stack = traceback.extract_stack()
-    for f in reversed(stack):
-        print("file_path:{} f:{}".format(file_path, f))
-
-
-def func_traceback(file_path):
-    for s in traceback.format_stack():
-        print(s.strip())
-
-
-class CubeStream(io.BytesIO):
-    def __init__(self, _fpath, _fcontent):
-        self.file_path = _fpath
-        self.content = _fcontent
-        self.content_size = len(_fcontent)
-        super().__init__(_fcontent)
-
-    def get_path(self):
-        return self.file_path
-
-    def get_content(self):
-        return self.content
-
-    def get_content_size(self):
-        return self.content_size
-
-
-class ThreadSafeDict:
-    def __init__(self):
-        self._dict = {}
-        self._lock = threading.Lock()
-
-    def pop_item(self, key):
-        with self._lock:
-            return self._dict.pop(key, None)
-
-    def set_item(self, key, value):
-        with self._lock:
-            self._dict[key] = value
-
-    def get_length(self):
-        with self._lock:
-            return len(self._dict)
-
 
 class InterceptionIO:
     def __init__(self, storage_info):
         cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
         self.cube_root_dir = cube_root_dir
-        self.files = ThreadSafeDict()
+        self.files = LRUCache(500)
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
         self.wait_download_queue = wait_download_queue
-        self.batch_size=batch_size
+        self.batch_size = batch_size
         self.download_event = threading.Event()
-        self._lock = threading.Lock()
         retry_strategy = Retry(
             total=1,  # 最大重试次数
             backoff_factor=0.5,  # 重试之间的时间间隔因子
@@ -106,7 +60,7 @@ class InterceptionIO:
         self.download_thread.start()
 
     def get_stream(self, file_name):
-        stream=self.files.pop_item(file_name)
+        stream = self.files.pop(file_name)
         CubeFileOpenInterceptor.add_count(stream is not None)
         return stream
 
@@ -118,12 +72,16 @@ class InterceptionIO:
         return self.download_thread, self.download_event
 
     def _loop_download_worker(self, event):
+        loop_index = 0
         while not event.is_set():
             try:
-                files = self.wait_download_queue.get(timeout=5)
+                loop_index += 1
+                files = self.wait_download_queue.get(timeout=3)
                 if files is None:
                     break
                 self.batch_download_async([files])
+                if loop_index % 100 == 0:
+                    self.files.clean_expired_key()
             except queue.Empty:
                 continue
         event.set()
@@ -175,13 +133,14 @@ class InterceptionIO:
         loop.run_in_executor(None, self.batch_download, index_list)
 
     def add_stream(self, file_path, stream):
-        self.files.set_item(file_path, stream)
+        self.files.put(file_path, stream)
 
     def stream_parse_content(self, url, response):
         version = response.raw.read(8)
         version = int.from_bytes(version, byteorder='big')
         count = response.raw.read(8)
         count = int.from_bytes(count, byteorder='big')
+        current_time = int(time.time())
         for i in range(count):
             file_path_size_body = response.raw.read(8)
             file_path_size = int.from_bytes(file_path_size_body, byteorder='big')
@@ -194,7 +153,7 @@ class InterceptionIO:
                                                                                      len(content_length_body)))
                 break
             content = response.raw.read(content_length)
-            stream = CubeStream(filename, content)
+            stream = CubeStream(filename, content, current_time)
             self.add_stream(filename, stream)
         response.raw.close()
 
