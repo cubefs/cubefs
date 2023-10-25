@@ -106,8 +106,8 @@ func newMockService(t *testing.T) *Service {
 
 	cacher := mock.NewMockCacher(ctr)
 	cacher.EXPECT().GetVolume(A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
-			volume := new(proxy.VersionVolume)
+		func(_ context.Context, args *clustermgr.CacheVolumeArgs) (*clustermgr.VersionVolume, error) {
+			volume := new(clustermgr.VersionVolume)
 			if args.Vid%2 == 0 {
 				volume.Vid = args.Vid
 				return volume, nil
@@ -118,7 +118,7 @@ func newMockService(t *testing.T) *Service {
 			return nil, errors.New("internal error")
 		})
 	cacher.EXPECT().GetDisk(A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+		func(_ context.Context, args *clustermgr.CacheDiskArgs) (*blobnode.DiskInfo, error) {
 			disk := new(blobnode.DiskInfo)
 			if args.DiskID%2 == 0 {
 				disk.DiskID = args.DiskID

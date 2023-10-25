@@ -29,7 +29,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -107,7 +106,7 @@ func TestProxyCacherErase(t *testing.T) {
 
 	{
 		cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil)
-		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		_, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 		<-cc.syncChan
 		require.NoError(t, c.Erase(ctx, diskvKeyVolume(1)))
@@ -123,10 +122,10 @@ func TestProxyCacherErase(t *testing.T) {
 	{
 		cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil)
 		cmCli.EXPECT().DiskInfo(A, A).Return(&blobnode.DiskInfo{}, nil)
-		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		_, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 		<-cc.syncChan
-		_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		_, err = c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1})
 		require.NoError(t, err)
 		<-cc.syncChan
 

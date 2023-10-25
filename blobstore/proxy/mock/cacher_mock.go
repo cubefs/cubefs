@@ -9,7 +9,7 @@ import (
 	reflect "reflect"
 
 	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	proxy "github.com/cubefs/cubefs/blobstore/api/proxy"
+	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -51,7 +51,7 @@ func (mr *MockCacherMockRecorder) Erase(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // GetDisk mocks base method.
-func (m *MockCacher) GetDisk(arg0 context.Context, arg1 *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+func (m *MockCacher) GetDisk(arg0 context.Context, arg1 *clustermgr.CacheDiskArgs) (*blobnode.DiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDisk", arg0, arg1)
 	ret0, _ := ret[0].(*blobnode.DiskInfo)
@@ -66,10 +66,10 @@ func (mr *MockCacherMockRecorder) GetDisk(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // GetVolume mocks base method.
-func (m *MockCacher) GetVolume(arg0 context.Context, arg1 *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+func (m *MockCacher) GetVolume(arg0 context.Context, arg1 *clustermgr.CacheVolumeArgs) (*clustermgr.VersionVolume, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolume", arg0, arg1)
-	ret0, _ := ret[0].(*proxy.VersionVolume)
+	ret0, _ := ret[0].(*clustermgr.VersionVolume)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

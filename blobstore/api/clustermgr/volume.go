@@ -117,12 +117,23 @@ type AllocVolumeArgs struct {
 	Count    int               `json:"count"`
 }
 
+type AllocVolumeV2Args struct {
+	CodeMode codemode.CodeMode `json:"code_mode"`
+	Count    int               `json:"count"`
+	NeedSize uint64            `json:"need_size,omitempty"`
+}
+
 type AllocatedVolumeInfos struct {
 	AllocVolumeInfos []AllocVolumeInfo `json:"alloc_volume_infos"`
 }
 
 func (c *Client) AllocVolume(ctx context.Context, args *AllocVolumeArgs) (ret AllocatedVolumeInfos, err error) {
 	err = c.PostWith(ctx, "/volume/alloc", &ret, args)
+	return
+}
+
+func (c *Client) AllocVolumeV2(ctx context.Context, args *AllocVolumeV2Args) (ret AllocatedVolumeInfos, err error) {
+	err = c.PostWith(ctx, "/v2/volume/alloc", &ret, args)
 	return
 }
 
@@ -153,6 +164,16 @@ type RetainVolumes struct {
 
 func (c *Client) RetainVolume(ctx context.Context, args *RetainVolumeArgs) (ret RetainVolumes, err error) {
 	err = c.PostWith(ctx, "/volume/retain", &ret, args)
+	return
+}
+
+type ReleaseVolumes struct {
+	NormalVids []proto.Vid `json:"normal_vids"`
+	SealedVids []proto.Vid `json:"sealed_vids"`
+}
+
+func (c *Client) ReleaseVolume(ctx context.Context, args *ReleaseVolumes) (err error) {
+	err = c.PostWith(ctx, "/volume/release", nil, args)
 	return
 }
 

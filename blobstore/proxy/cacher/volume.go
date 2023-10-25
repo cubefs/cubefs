@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -30,7 +29,7 @@ import (
 const keyVolumeConcurrency = "volume"
 
 type expiryVolume struct {
-	proxy.VersionVolume
+	clustermgr.VersionVolume
 	ExpiryAt int64 `json:"expiry,omitempty"` // seconds
 }
 
@@ -48,7 +47,7 @@ func decodeVolume(data []byte) (valueExpired, error) {
 	return volume, err
 }
 
-func (c *cacher) GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+func (c *cacher) GetVolume(ctx context.Context, args *clustermgr.CacheVolumeArgs) (*clustermgr.VersionVolume, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("try to get volume %+v", args)
 

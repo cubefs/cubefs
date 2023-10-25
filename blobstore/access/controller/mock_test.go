@@ -116,8 +116,8 @@ func init() {
 
 	pcli := mocks.NewMockProxyClient(C(&testing.T{}))
 	pcli.EXPECT().GetCacheVolume(A, A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
-			volume := new(proxy.VersionVolume)
+		func(_ context.Context, _ string, args *cmapi.CacheVolumeArgs) (*cmapi.VersionVolume, error) {
+			volume := new(cmapi.VersionVolume)
 			vid := args.Vid
 			dataCalled[vid]++
 			if val, ok := dataVolumes[vid]; ok {
@@ -131,7 +131,7 @@ func init() {
 			return nil, errNotFound
 		})
 	pcli.EXPECT().GetCacheDisk(A, A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*bnapi.DiskInfo, error) {
+		func(_ context.Context, _ string, args *cmapi.CacheDiskArgs) (*bnapi.DiskInfo, error) {
 			if val, ok := dataDisks[args.DiskID]; ok {
 				return &val, nil
 			}

@@ -279,7 +279,7 @@ func (v *VolumeMgr) PreRetainVolume(ctx context.Context, tokens []string, host s
 	return &cm.RetainVolumes{RetainVolTokens: retainVolumes}, nil
 }
 
-func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, count int, host string) (ret *cm.AllocatedVolumeInfos, err error) {
+func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, count int, host string, needSize uint64) (ret *cm.AllocatedVolumeInfos, err error) {
 	if _, ok := v.codeMode[mode]; !ok {
 		return nil, ErrInvalidCodeMode
 	}
@@ -290,7 +290,7 @@ func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, cou
 	v.pendingEntries.Store(pendingKey, nil)
 	defer v.pendingEntries.Delete(pendingKey)
 
-	preAllocVids, diskLoadThreshold := v.allocator.PreAlloc(ctx, mode, count)
+	preAllocVids, diskLoadThreshold := v.allocator.PreAlloc(ctx, mode, count, needSize)
 	span.Debugf("preAlloc vids is %v,now disk load is %d", preAllocVids, diskLoadThreshold)
 	defer func() {
 		// check if need to insert volume back

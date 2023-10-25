@@ -281,11 +281,15 @@ func (a *volumeAllocator) Insert(v *volume, mode codemode.CodeMode) {
 // 2. when EnableDiskLoad=true, if do not hash enough volumes to alloc ,
 //      1) first add disk's load and retry, each time add one until disk's load equal to diskLoadThreshold will set EnableDiskLoad=false
 //      2) second minus volume score and retry , each time minus one until volume's score equal to scoreThreshold
-func (a *volumeAllocator) PreAlloc(ctx context.Context, mode codemode.CodeMode, count int) ([]proto.Vid, int) {
+func (a *volumeAllocator) PreAlloc(ctx context.Context, mode codemode.CodeMode, count int, needSize uint64) ([]proto.Vid, int) {
 	span := trace.SpanFromContextSafe(ctx)
 	idleVolumes := a.idles[mode]
 	if idleVolumes == nil {
 		return nil, 0
+	}
+	allocatableSize := a.allocatableSize
+	if needSize != 0 {
+		allocatableSize = needSize + a.allocatableSize
 	}
 	rand.Seed(time.Now().UnixNano())
 	shardIdx := rand.Intn(idleVolumes.shardLen)
@@ -318,12 +322,14 @@ RETRY:
 	now := time.Now()
 	for idx, volume := range allIdles {
 		volume.lock.RLock()
-		if volume.canAlloc(a.allocatableSize, scoreThreshold) && (!isEnableDiskLoad || !a.isOverload(volume.vUnits, diskLoadThreshold)) {
+		if volume.canAlloc(allocatableSize, scoreThreshold) && (!isEnableDiskLoad || !a.isOverload(volume.vUnits, diskLoadThreshold)) {
 			optionalVids = append(optionalVids, volume.vid)
 			// only insufficient free size or unhealthy volume move to temporary head,
 			// ignore over diskLoad volume
-		} else if !volume.canAlloc(a.allocatableSize, allocatableScoreThreshold) && volume.canInsert() {
-			idleVolumes.addNotAllocatable(volume)
+		} else if !volume.canAlloc(allocatableSize, allocatableScoreThreshold) && volume.canInsert() {
+			if allocatableSize == a.allocatableSize {
+				idleVolumes.addNotAllocatable(volume)
+			}
 		} else {
 			assignable = append(assignable, volume)
 		}

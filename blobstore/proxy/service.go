@@ -180,8 +180,8 @@ func New(cfg Config, cmcli clustermgr.APIProxy) *Service {
 func NewHandler(service *Service) *rpc.Router {
 	router := rpc.New()
 	rpc.RegisterArgsParser(&proxy.ListVolsArgs{}, "json")
-	rpc.RegisterArgsParser(&proxy.CacheVolumeArgs{}, "json")
-	rpc.RegisterArgsParser(&proxy.CacheDiskArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.CacheVolumeArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.CacheDiskArgs{}, "json")
 	rpc.RegisterArgsParser(&proxy.DiscardVolsArgs{}, "json")
 
 	// POST /volume/alloc
