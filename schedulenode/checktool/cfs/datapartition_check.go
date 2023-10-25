@@ -98,6 +98,10 @@ func (s *ChubaoFSMonitor) checkDpPeerCorrupt() {
 	dpCheckStartTime := time.Now()
 	log.LogInfof("check all dataPartitions corrupt start")
 	for _, host := range s.hosts {
+		if host.isReleaseCluster {
+			//release_db raft is not implemented
+			continue
+		}
 		checkDpCorruptWg.Add(1)
 		go checkHostDataPartition(host)
 	}
@@ -144,12 +148,18 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			time.Sleep(1 * time.Second)
 		}
 		if !dp.IsRecover && err != nil {
-			msg := fmt.Sprintf("Domain [%v], data partition [%v] volName [%v] load failed in replica: "+
-				"addr[%v], may be raft start failed or partition is stopped by fatal error", ch.host, dp.PartitionID, volName, addr)
-			if strings.Contains(err.Error(), "partition not exist") {
-				checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionLoadFailed, msg)
+			time.Sleep(10 * time.Second)
+			if dnPartition, err = dataNodeGetPartition(ch, addr, dp.PartitionID); err == nil {
+				break
 			}
-			continue
+			if err != nil {
+				msg := fmt.Sprintf("Domain [%v], data partition [%v] volName [%v] load failed in replica: "+
+					"addr[%v], may be raft start failed or partition is stopped by fatal error", ch.host, dp.PartitionID, volName, addr)
+				if strings.Contains(err.Error(), "partition not exist") {
+					checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionLoadFailed, msg)
+				}
+				continue
+			}
 		}
 		if dnPartition == nil {
 			continue
@@ -195,9 +205,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, msg)
 		}
 	}
-	if !ch.isReleaseCluster {
-		checkRaftReplicaStatus(ch, replicaRaftStatusMap, dp.PartitionID, dp.VolName, partitionTypeDP, dp.Hosts, dp.IsRecover, dp.Replicas, nil)
-	}
+	checkRaftReplicaStatus(ch, replicaRaftStatusMap, dp.PartitionID, dp.VolName, partitionTypeDP, dp.Hosts, dp.IsRecover, dp.Replicas, nil)
 	if len(badReplicas) == 0 {
 		return
 	}
@@ -277,32 +285,23 @@ func repairDp(release bool, host string, replica PeerReplica) {
 	var outputStr string
 	switch replica.PeerErrorInfo {
 	case "HOST3_PEER2":
-		if !release {
-			if err := decommissionDp(host, replica.ReplicationID, replica.PeerAddr); err != nil {
-				log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] repair failed, err:%v", host, replica.ReplicationID, err)
-			} else {
-				outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] has been automatically repaired, cmd[cfs-cli datapartition decommission %v %v]", host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
-			}
-		} else {
-			outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] recommond cmd: cfs-cli datapartition decommission %v %v", host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
+		if err := decommissionDp(release, host, replica.VolName, replica.ReplicationID, replica.PeerAddr); err != nil {
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] repair failed, err:%v", host, replica.ReplicationID, err)
+			return
 		}
+		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] has been automatically repaired, cmd[cfs-cli datapartition decommission %v %v]", host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
 	case "PEER4_HOST3":
-		if !release {
-			if err := addDpReplica(host, replica.ReplicationID, replica.PeerAddr); err != nil {
-				log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-addDpReplica failed, err:%v", host, replica.ReplicationID, err)
-				break
-			}
-			time.Sleep(time.Second * 3)
-			if err := delDpReplica(host, replica.ReplicationID, replica.PeerAddr); err != nil {
-				log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-delDpReplica failed, err:%v", host, replica.ReplicationID, err)
-				break
-			}
-			outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli datapartition add-replica %v %v && sleep 3 && cfs-cli datapartition del-replica %v %v]",
-				host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
-		} else {
-			outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] recommond cmd: cfs-cli datapartition add-replica %v %v && sleep 3 && cfs-cli datapartition del-replica %v %v",
-				host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
+		if err := addDpReplica(host, replica.ReplicationID, replica.PeerAddr); err != nil {
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-addDpReplica failed, err:%v", host, replica.ReplicationID, err)
+			break
 		}
+		time.Sleep(time.Second * 3)
+		if err := delDpReplica(host, replica.ReplicationID, replica.PeerAddr); err != nil {
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-delDpReplica failed, err:%v", host, replica.ReplicationID, err)
+			break
+		}
+		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli datapartition add-replica %v %v && sleep 3 && cfs-cli datapartition del-replica %v %v]",
+			host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
 	case "HOST2_PEER3":
 		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] recommond cmd: cfs-cli datapartition add-replica %v %v",
 			host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
@@ -313,9 +312,14 @@ func repairDp(release bool, host string, replica PeerReplica) {
 	checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, outputStr)
 }
 
-func decommissionDp(master string, partition uint64, addr string) (err error) {
-	reqURL := fmt.Sprintf("http://%v/dataPartition/decommission?id=%v&addr=%v", master, partition, addr)
-	_, err = doRequest(reqURL, false)
+func decommissionDp(releaseDB bool, master string, vol string, partition uint64, addr string) (err error) {
+	var reqURL string
+	if releaseDB {
+		reqURL = fmt.Sprintf("http://%v/dataPartition/offline?name=%v&id=%v&addr=%v", master, vol, partition, addr)
+	} else {
+		reqURL = fmt.Sprintf("http://%v/dataPartition/decommission?id=%v&addr=%v", master, partition, addr)
+	}
+	_, err = doRequest(reqURL, releaseDB)
 	return
 }
 

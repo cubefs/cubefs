@@ -232,34 +232,24 @@ func repairMp(release bool, host string, rep PeerReplica) {
 	var outputStr string
 	switch rep.PeerErrorInfo {
 	case "PEER2_HOST3":
-		if !release {
-			if err := decommissionMp(host, rep.ReplicationID, rep.PeerAddr); err != nil {
-				log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] repair failed, err:%v", host, rep.ReplicationID, err)
-			} else {
-				outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] has been automatically repaired, cmd[cfs-cli metapartition decommission %v %v]",
-					host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
-			}
+		if err := decommissionMp(release, host, rep.VolName, rep.ReplicationID, rep.PeerAddr); err != nil {
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] repair failed, err:%v", host, rep.ReplicationID, err)
 		} else {
-			outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] cmd: cfs-cli metapartition decommission %v %v",
+			outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] has been automatically repaired, cmd[cfs-cli metapartition decommission %v %v]",
 				host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
 		}
 	case "PEER4_HOST3":
-		if !release {
-			if err := addMpReplica(host, rep.ReplicationID, rep.PeerAddr); err != nil {
-				log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-addMpReplica failed, err:%v", host, rep.ReplicationID, err)
-				break
-			}
-			time.Sleep(time.Second * 3)
-			if err := delMpReplica(host, rep.ReplicationID, rep.PeerAddr); err != nil {
-				log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-delMpReplica failed, err:%v", host, rep.ReplicationID, err)
-				break
-			}
-			outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli metapartition add-replica %v %v && sleep 3 && cfs-cli metapartition del-replica %v %v]",
-				host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
-		} else {
-			outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] cmd: cfs-cli metapartition add-replica %v %v && sleep 3 && cfs-cli metapartition del-replica %v %v",
-				host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
+		if err := addMpReplica(release, host, rep.ReplicationID, rep.PeerAddr); err != nil {
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-addMpReplica failed, err:%v", host, rep.ReplicationID, err)
+			break
 		}
+		time.Sleep(time.Second * 3)
+		if err := delMpReplica(release, host, rep.ReplicationID, rep.PeerAddr); err != nil {
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-delMpReplica failed, err:%v", host, rep.ReplicationID, err)
+			break
+		}
+		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli metapartition add-replica %v %v && sleep 3 && cfs-cli metapartition del-replica %v %v]",
+			host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
 	case "HOST2_PEER3":
 		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] cmd: cfs-cli metapartition add-replica %v %v",
 			host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
@@ -270,23 +260,29 @@ func repairMp(release bool, host string, rep PeerReplica) {
 	checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, outputStr)
 }
 
-func decommissionMp(master string, partition uint64, addr string) (err error) {
-	reqURL := fmt.Sprintf("http://%v/metaPartition/decommission?id=%v&addr=%v", master, partition, addr)
-	_, err = doRequest(reqURL, false)
+func decommissionMp(releaseDB bool, master string, vol string, partition uint64, addr string) (err error) {
+	var reqURL string
+	if releaseDB {
+		reqURL = fmt.Sprintf("http://%v/metaPartition/offline?name=%v&id=%v&addr=%v", master, vol, partition, addr)
+	} else {
+		reqURL = fmt.Sprintf("http://%v/metaPartition/decommission?id=%v&addr=%v", master, partition, addr)
+	}
+	_, err = doRequest(reqURL, releaseDB)
 	return
 }
 
-func addMpReplica(master string, partition uint64, addr string) (err error) {
+func addMpReplica(releaseDB bool, master string, partition uint64, addr string) (err error) {
 	reqURL := fmt.Sprintf("http://%v/metaReplica/add?id=%v&addr=%v", master, partition, addr)
-	_, err = doRequest(reqURL, false)
+	_, err = doRequest(reqURL, releaseDB)
 	return
 }
 
-func delMpReplica(master string, partition uint64, addr string) (err error) {
+func delMpReplica(releaseDB bool, master string, partition uint64, addr string) (err error) {
 	reqURL := fmt.Sprintf("http://%v/metaReplica/delete?id=%v&addr=%v", master, partition, addr)
-	_, err = doRequest(reqURL, false)
+	_, err = doRequest(reqURL, releaseDB)
 	return
 }
+
 func getPartition(ch *ClusterHost, addr string, partitionID uint64) (mnPartition *MNMetaPartitionInfo, err error) {
 	// set meta node port
 	var port string
@@ -415,7 +411,7 @@ func checkRaftReplicaStatus(host *ClusterHost, replicaRaftStatusMap map[string]*
 	}
 }
 
-//不是reccover 状态， applied相同的情况下，inodeCount/dentryCout > 1000 电话告警
+// 不是reccover 状态， applied相同的情况下，inodeCount/dentryCout > 1000 电话告警
 func checkRaftInodeCountOrDentryCountDiff(host *ClusterHost, replicaRaftStatusMap map[string]*raft.Status, pID uint64, volName string, mp *MetaPartition) {
 	if len(replicaRaftStatusMap) == 0 {
 		return

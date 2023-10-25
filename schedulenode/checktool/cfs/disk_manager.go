@@ -6,6 +6,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/common/xbp"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -50,9 +51,7 @@ func (s *ChubaoFSMonitor) checkDiskError() {
 }
 
 func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, host *ClusterHost) {
-	var (
-		url string
-	)
+	var url string
 	newCheckedDataNodeBadDisk := make(map[string]time.Time, 0)
 	for _, badDiskOnNode := range cv.DataNodeBadDisks {
 		for _, badDisk := range badDiskOnNode.BadDiskPath {
@@ -201,6 +200,12 @@ func doOfflineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) 
 }
 
 func offlineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) {
+	if strings.Contains(host.host, dbbackHost) {
+		h := time.Now().Hour()
+		if h > 8 {
+			return
+		}
+	}
 	badDPsCount, err := getBadPartitionIDsCount(host)
 	if err != nil {
 		log.LogWarn(fmt.Sprintf("action[offlineDataNodeDisk] getBadPartitionIDsCount host:%v err:%v", host, err))

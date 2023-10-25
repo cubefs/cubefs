@@ -52,6 +52,7 @@ type ClusterHost struct {
 	inactiveNodesForCheckVolLock  sync.RWMutex
 	metaNodeDiskRatioWarnTime     time.Time
 	metaNodeDiskUsedWarnTime      time.Time
+	lastDisableFlashNodeTime      time.Time
 	nodeMemInfo                   map[string]float64
 }
 
@@ -318,6 +319,11 @@ type MinRWDPAndMPVolInfo struct {
 	VolName      string `json:"volName"`
 	MinRWMPCount int    `json:"minRWMPCount"`
 	MinRWDPCount int    `json:"minRWDPCount,omitempty"`
+}
+
+type ClusterConfigCheck struct {
+	Interval   int `json:"interval"`
+	CfsCluster []map[string]string `json:"cfsCluster"`
 }
 
 // TopologyView provides the view of the topology view of the cluster

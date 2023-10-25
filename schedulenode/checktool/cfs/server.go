@@ -48,6 +48,7 @@ const (
 	UMPKeyMetaNodeDiskSpace                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.space"
 	UMPKeyMetaNodeDiskRatio                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.ratio"
 	UMPKeyMasterLbPodStatus                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.master.lb.pod.status"
+	UMPKeyClusterConfigCheck                = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.config"
 	UMPCFSNodeRestartWarnKey                = checktool.UmpKeyStorageBotPrefix + "cfs.restart.node"
 	UMPCFSInactiveNodeWarnKey               = checktool.UmpKeyStorageBotPrefix + "cfs.inactive.node"
 	UMPCFSZoneWriteAbilityWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.zone.writeability.ratio"
@@ -73,6 +74,7 @@ const (
 	cfsKeymasterJsonPath                    = "cfsmasterJsonPath"
 	minRWDPAndMPVolsJsonPath                = "minRWDPAndMPVolsJsonPath"
 	cfsKeyWarnFaultToUsersJsonPath          = "cfsWarnFaultToUsersJsonPath"
+	cfgKeyClusterConfigCheckJsonPath        = "clusterConfigCheckJsonPath"
 	cfgKeyDPMaxPendQueueCount               = "dpMaxPendQueueCount"
 	cfgKeyDPMaxAppliedIDDiffCount           = "dpMaxAppliedIDDiffCount"
 	cfgKeyMPMaxPendQueueCount               = "mpMaxPendQueueCount"
@@ -96,6 +98,7 @@ const (
 	defaultMaxPendQueueCount                = 0
 	defaultMaxAppliedIDDiffCount            = 100
 	defaultMaxOfflineFlashNodesIn24Hour     = 5
+	dbbackHost                              = "cn.chubaofs-seqwrite.jd.local"
 )
 
 const (
@@ -167,6 +170,7 @@ type ChubaoFSMonitor struct {
 	jdosUrl                                 string
 	jdosErp                                 string
 	umpClient                               *ump.UMPClient
+	clusterConfigCheck                      *ClusterConfigCheck
 	ctx                                     context.Context
 }
 
@@ -180,6 +184,7 @@ func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
 		volNeedAllocateDPContinuedTimes: make(map[string]int),
 		WarnFaultToUsers:                make([]*WarnFaultToTargetUsers, 0),
 		lastCheckStartTime:              make(map[string]time.Time),
+		clusterConfigCheck:              new(ClusterConfigCheck),
 		ctx:                             ctx,
 	}
 }
@@ -244,6 +249,15 @@ func (s *ChubaoFSMonitor) extractWarnFaultToUsers(filePath string) (err error) {
 	return
 }
 
+func (s *ChubaoFSMonitor) extractClusterConfigCheck(filePath string) (err error) {
+	cfg, _ := config.LoadConfigFile(filePath)
+	if err = json.Unmarshal(cfg.Raw, s.clusterConfigCheck); err != nil {
+		return
+	}
+	fmt.Println("clusterConfigCheck:", s.clusterConfigCheck)
+	return
+}
+
 func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.scheduleToCheckVol()
 	go s.scheduleToCheckSpecificVol()
@@ -264,6 +278,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.scheduleToCheckMetaPartitionSplit()
 	go s.scheduleToCheckZoneMnDnWriteAbilityRate()
 	go s.scheduleToCheckCFSHighIncreaseMemNodes()
+	go s.scheduleToCheckClusterConfig()
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
@@ -293,6 +308,13 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	}
 	if err = s.extractMinRWDPAndMPVols(minRWDPAndMPVolsJson); err != nil {
 		return fmt.Errorf("parse minRWDPAndMPVolsJsonPath failed, cfsmasterJsonPath can't be nil err:%v", err)
+	}
+	clusterConfigCheckJsonPath := cfg.GetString(cfgKeyClusterConfigCheckJsonPath)
+	if clusterConfigCheckJsonPath == "" {
+		return fmt.Errorf("clusterConfigCheckJsonPath is empty")
+	}
+	if err = s.extractClusterConfigCheck(clusterConfigCheckJsonPath); err != nil {
+		return fmt.Errorf("parse clusterConfigCheckJsonPath failed, clusterConfigCheckJsonPath can't be nil err:%v", err)
 	}
 	useRatio := cfg.GetFloat(cfgKeyUsedRatio)
 	if useRatio <= 0 {
