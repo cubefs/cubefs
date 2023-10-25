@@ -535,7 +535,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.Profile = GlobalMountOptions[proto.Profile].GetString()
 	if opt.Profile == proto.ProfileAiPrefetch {
 		if !GlobalMountOptions[proto.EnableReadDirPlus].HasConfig() {
-			opt.EnableReadDirPlus = true
+			opt.EnableReadDirPlus = false
 		}
 		if !GlobalMountOptions[proto.KeepCache].HasConfig() {
 			opt.KeepCache = true
