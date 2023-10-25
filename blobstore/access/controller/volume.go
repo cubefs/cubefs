@@ -253,14 +253,14 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 		return nil, err
 	}
 
-	var volume *proxy.VersionVolume
+	var volume *clustermgr.VersionVolume
 	id := addCVid(v.cid, vid)
 	triedHosts := make(map[string]struct{})
 	if err = retry.ExponentialBackoff(3, 30).RuptOn(func() (bool, error) {
 		for _, host := range hosts {
 			triedHosts[host] = struct{}{}
 			if volume, err = v.proxy.GetCacheVolume(ctx, host,
-				&proxy.CacheVolumeArgs{Vid: vid, Flush: flush, Version: ver}); err != nil {
+				&clustermgr.CacheVolumeArgs{Vid: vid, Flush: flush, Version: ver}); err != nil {
 				if rpc.DetectStatusCode(err) == errcode.CodeVolumeNotExist {
 					return true, err
 				}
@@ -315,7 +315,7 @@ func (v *volumeGetterImpl) flush(ctx context.Context, vid proto.Vid, ver uint32,
 		go func(host string) {
 			retry.ExponentialBackoff(2, 10).RuptOn(func() (bool, error) {
 				if _, err := v.proxy.GetCacheVolume(ctx, host,
-					&proxy.CacheVolumeArgs{Vid: vid, Flush: true, Version: ver}); err != nil {
+					&clustermgr.CacheVolumeArgs{Vid: vid, Flush: true, Version: ver}); err != nil {
 					if rpc.DetectStatusCode(err) == errcode.CodeVolumeNotExist {
 						span.Info("not found volume", vid)
 						return true, err

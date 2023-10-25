@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
@@ -59,14 +60,14 @@ func (c *client) SendDeleteMsg(ctx context.Context, host string, args *DeleteArg
 	return c.PostWith(ctx, host+"/deletemsg", nil, args)
 }
 
-func (c *client) GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (volume *VersionVolume, err error) {
-	volume = new(VersionVolume)
+func (c *client) GetCacheVolume(ctx context.Context, host string, args *clustermgr.CacheVolumeArgs) (volume *clustermgr.VersionVolume, err error) {
+	volume = new(clustermgr.VersionVolume)
 	url := fmt.Sprintf("%s/cache/volume/%d?flush=%v&version=%d", host, args.Vid, args.Flush, args.Version)
 	err = c.GetWith(ctx, url, &volume)
 	return
 }
 
-func (c *client) GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (disk *blobnode.DiskInfo, err error) {
+func (c *client) GetCacheDisk(ctx context.Context, host string, args *clustermgr.CacheDiskArgs) (disk *blobnode.DiskInfo, err error) {
 	disk = new(blobnode.DiskInfo)
 	url := fmt.Sprintf("%s/cache/disk/%d?flush=%v", host, args.DiskID, args.Flush)
 	err = c.GetWith(ctx, url, &disk)

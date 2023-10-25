@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -34,23 +34,23 @@ func TestProxyCacherDiskUpdate(t *testing.T) {
 	cmCli.EXPECT().DiskInfo(A, A).Return(&blobnode.DiskInfo{}, nil).Times(4)
 
 	for range [100]struct{}{} {
-		_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		_, err := c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1})
 		require.NoError(t, err)
-		_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 2})
+		_, err = c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 2})
 		require.NoError(t, err)
 	}
 
 	time.Sleep(time.Second * 4) // expired
 	for range [100]struct{}{} {
-		_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		_, err := c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1})
 		require.NoError(t, err)
-		_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 2})
+		_, err = c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 2})
 		require.NoError(t, err)
 	}
 
 	cmCli.EXPECT().DiskInfo(A, A).Return(&blobnode.DiskInfo{}, nil).Times(100)
 	for range [100]struct{}{} {
-		_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1, Flush: true})
+		_, err := c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1, Flush: true})
 		require.NoError(t, err)
 	}
 }
@@ -61,11 +61,11 @@ func TestProxyCacherDiskError(t *testing.T) {
 	cmCli.EXPECT().DiskInfo(A, A).Return(nil, errors.New("mock error")).Times(1)
 	cmCli.EXPECT().DiskInfo(A, A).Return(nil, errcode.ErrCMDiskNotFound).Times(2)
 
-	_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+	_, err := c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1})
 	require.Error(t, err)
-	_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 2, Flush: true})
+	_, err = c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 2, Flush: true})
 	require.ErrorIs(t, errcode.ErrCMDiskNotFound, err)
-	_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1, Flush: false})
+	_, err = c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1, Flush: false})
 	require.ErrorIs(t, errcode.ErrCMDiskNotFound, err)
 }
 
@@ -74,14 +74,14 @@ func TestProxyCacherDiskCacheMiss(t *testing.T) {
 	defer clean()
 
 	cmCli.EXPECT().DiskInfo(A, A).Return(&blobnode.DiskInfo{}, nil).Times(3)
-	_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+	_, err := c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1})
 	require.NoError(t, err)
 	<-c.(*cacher).syncChan
 
 	basePath := c.(*cacher).config.DiskvBasePath
 	{ // memory cache miss, load from diskv
 		c, _ = New(1, ConfigCache{DiskvBasePath: basePath, DiskExpirationS: 2}, cmCli)
-		_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		_, err = c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1})
 		require.NoError(t, err)
 	}
 	{ // cannot decode diskv value
@@ -91,13 +91,13 @@ func TestProxyCacherDiskCacheMiss(t *testing.T) {
 		file.Close()
 
 		c, _ = New(1, ConfigCache{DiskvBasePath: basePath, DiskExpirationS: 2}, cmCli)
-		_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		_, err = c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1})
 		require.NoError(t, err)
 	}
 	{ // load diskv expired
 		c, _ = New(1, ConfigCache{DiskvBasePath: basePath, DiskExpirationS: 2}, cmCli)
 		time.Sleep(time.Second * 3)
-		_, err = c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
+		_, err = c.GetDisk(context.Background(), &clustermgr.CacheDiskArgs{DiskID: 1})
 		require.NoError(t, err)
 	}
 }

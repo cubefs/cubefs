@@ -25,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -222,7 +221,7 @@ func TestAccessServiceGetBrokenDiskHost(t *testing.T) {
 
 	pcli := mocks.NewMockProxyClient(C(t))
 	pcli.EXPECT().GetCacheDisk(A, A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*bnapi.DiskInfo, error) {
+		func(_ context.Context, _ string, args *cmapi.CacheDiskArgs) (*bnapi.DiskInfo, error) {
 			if val, ok := dataDisks[args.DiskID]; ok {
 				return &val, nil
 			}

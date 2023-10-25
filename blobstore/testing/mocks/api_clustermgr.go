@@ -67,6 +67,21 @@ func (mr *MockClientAPIMockRecorder) AllocVolume(arg0, arg1 interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolume", reflect.TypeOf((*MockClientAPI)(nil).AllocVolume), arg0, arg1)
 }
 
+// AllocVolumeV2 mocks base method.
+func (m *MockClientAPI) AllocVolumeV2(arg0 context.Context, arg1 *clustermgr.AllocVolumeV2Args) (clustermgr.AllocatedVolumeInfos, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AllocVolumeV2", arg0, arg1)
+	ret0, _ := ret[0].(clustermgr.AllocatedVolumeInfos)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AllocVolumeV2 indicates an expected call of AllocVolumeV2.
+func (mr *MockClientAPIMockRecorder) AllocVolumeV2(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeV2", reflect.TypeOf((*MockClientAPI)(nil).AllocVolumeV2), arg0, arg1)
+}
+
 // DiskInfo mocks base method.
 func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*blobnode.DiskInfo, error) {
 	m.ctrl.T.Helper()
@@ -154,6 +169,20 @@ func (m *MockClientAPI) RegisterService(arg0 context.Context, arg1 clustermgr.Se
 func (mr *MockClientAPIMockRecorder) RegisterService(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterService", reflect.TypeOf((*MockClientAPI)(nil).RegisterService), arg0, arg1, arg2, arg3, arg4)
+}
+
+// ReleaseVolume mocks base method.
+func (m *MockClientAPI) ReleaseVolume(arg0 context.Context, arg1 *clustermgr.ReleaseVolumes) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReleaseVolume", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReleaseVolume indicates an expected call of ReleaseVolume.
+func (mr *MockClientAPIMockRecorder) ReleaseVolume(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseVolume", reflect.TypeOf((*MockClientAPI)(nil).ReleaseVolume), arg0, arg1)
 }
 
 // RetainVolume mocks base method.
