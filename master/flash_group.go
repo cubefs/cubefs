@@ -517,7 +517,7 @@ func (c *Cluster) updateFlashGroupResponseCache() {
 	if err != nil {
 		msg := fmt.Sprintf("action[updateFlashGroupResponseCache] json marshal err:%v", err)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateViewCache], msg)
 		return
 	}
 	c.flashGroupRespCache = flashGroupRespCache

@@ -119,7 +119,7 @@ func (ecdp *EcDataPartition) checkEcMissingReplicas(clusterID, leaderAddr string
 				"miss time > %v  lastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v So Migrate by manual",
 				clusterID, ecdp.PartitionID, replica.Addr, ecPartitionMissSec, replica.ReportTime, lastReportTime, isActive)
 			msg = msg + fmt.Sprintf(" decommissionEcPartitionURL is http://%v/ecPartition/decommission?id=%v&addr=%v", leaderAddr, ecdp.PartitionID, replica.Addr)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpMissingRepica], msg)
 		}
 	}
 
@@ -128,7 +128,7 @@ func (ecdp *EcDataPartition) checkEcMissingReplicas(clusterID, leaderAddr string
 			msg := fmt.Sprintf("action[checkEcMissErr],clusterID[%v] partitionID:%v  on Node:%v  "+
 				"miss time  > :%v  but server not exsit So Migrate", clusterID, ecdp.PartitionID, addr, ecPartitionMissSec)
 			msg = msg + fmt.Sprintf(" decommissionEcPartitionURL is http://%v/ecPartition/decommission?id=%v&addr=%v", leaderAddr, ecdp.PartitionID, addr)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpMissingRepica], msg)
 		}
 	}
 }
@@ -187,7 +187,7 @@ func (ecdp *EcDataPartition) checkEcStatus(clusterName string, needLog bool, dpT
 		ecdp.Status = proto.ReadOnly
 		msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
 			ecdp.PartitionID, ecdp.ReplicaNum, len(liveEcReplicas), ecdp.Status, ecdp.Hosts)
-		Warn(clusterName, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpCheckStatus], msg)
 		return
 	}
 
@@ -205,7 +205,7 @@ func (ecdp *EcDataPartition) checkEcStatus(clusterName string, needLog bool, dpT
 			ecdp.PartitionID, ecdp.ReplicaNum, len(liveEcReplicas), ecdp.Status, ecdp.Hosts)
 		log.LogInfo(msg)
 		if time.Now().Unix()-ecdp.lastWarnTime > intervalToWarnDataPartition {
-			Warn(clusterName, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpCheckStatus], msg)
 			ecdp.lastWarnTime = time.Now().Unix()
 		}
 	}
@@ -253,7 +253,7 @@ func (ecdp *EcDataPartition) checkEcReplicationTask(c *Cluster) {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+
 			" On :%v  Err:%v  rocksDBRecords:%v",
 			deleteIllegalReplicaErr, ecdp.PartitionID, excessAddr, excessErr.Error(), ecdp.Hosts)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpIllegalRepica], msg)
 		ecNode, _ := c.ecNode(excessAddr)
 		if ecNode != nil {
 			c.deleteEcReplicaFromEcNodeOptimistic(ecdp, ecNode)
@@ -264,7 +264,7 @@ func (ecdp *EcDataPartition) checkEcReplicationTask(c *Cluster) {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, ecdp.PartitionID, lackAddr, lackErr.Error(), ecdp.Hosts)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpMissingRepica], msg)
 		return
 	}
 
@@ -277,7 +277,7 @@ func (ecdp *EcDataPartition) checkEcReplicaNum(c *Cluster, vol *Vol) {
 	if int(ecdp.ReplicaNum) != len(ecdp.Hosts) {
 		msg := fmt.Sprintf("FIX EcDataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v",
 			c.Name, vol.Name, ecdp.PartitionID, ecdp.ReplicaNum)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyEcdpReplicaNum], msg)
 	}
 
 	volReplicaNum := vol.EcDataNum + vol.EcParityNum
@@ -340,7 +340,7 @@ func (ecdp *EcDataPartition) checkEcDiskError(clusterID, leaderAddr string) (dis
 		msg := fmt.Sprintf("action[checkEcPartitionDiskErr],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost",
 			clusterID, ecdp.PartitionID, diskAddr)
 		msg = msg + fmt.Sprintf(" decommissionEcPartitionURL is http://%v/ecPartition/decommission?id=%v&addr=%v", leaderAddr, ecdp.PartitionID, diskAddr)
-		Warn(clusterID, msg)
+		log.LogWarn(msg)
 	}
 
 	return

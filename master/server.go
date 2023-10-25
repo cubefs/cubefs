@@ -57,6 +57,7 @@ var (
 
 	useConnPool = true //for test
 	gConfig     *clusterConfig
+	gBadNodes   = new(sync.Map)
 )
 
 // Server represents the server in a cluster
@@ -283,6 +284,7 @@ func (m *Server) initFsm() {
 func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
+	m.cluster.initAlarmKey()
 }
 
 func (m *Server) initUser() {

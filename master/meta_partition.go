@@ -76,6 +76,7 @@ type MetaPartition struct {
 	OfflinePeerID        uint64
 	modifyTime           int64
 	lastOfflineTime      int64
+	CreateTime           int64
 	PanicHosts           []string //PanicHosts records the hosts discard by reset peer action.
 	LoadResponse         []*proto.MetaPartitionLoadResponse
 	offlineMutex         sync.RWMutex
@@ -311,14 +312,14 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	if writeLog && len(liveReplicas) != int(mp.ReplicaNum) {
 		allLiveReplicas := mp.getAllLiveReplicas()
 		// if mp is no leader,but all replica is alive,don't alarm
-		if len(allLiveReplicas) == int(mp.ReplicaNum) {
+		if len(allLiveReplicas) == int(mp.ReplicaNum)+int(mp.LearnerNum) {
 			return
 		}
 		inactiveAddrs := mp.getInactiveAddrsFromLiveReplicas(allLiveReplicas)
-		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v, replicas:%v learnerNum:%v,replicas:%v,persistenceHosts:%v inactiveAddrs:%v",
+		msg := fmt.Sprintf("action[checkMPStatus],id:%v,status:%v,replicaNum:%v, replicas:%v learnerNum:%v,allLiveReplicas:%v,persistenceHosts:%v inactiveAddrs:%v",
 			mp.PartitionID, mp.Status, mp.ReplicaNum, len(mp.Replicas), mp.LearnerNum, len(allLiveReplicas), mp.Hosts, inactiveAddrs)
 		log.LogInfo(msg)
-		Warn(clusterID, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpCheckStatus], msg)
 	}
 	return
 }
@@ -339,7 +340,7 @@ func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum 
 	if mp.ReplicaNum != replicaNum {
 		msg := fmt.Sprintf("FIX MetaPartition replicaNum clusterID[%v] vol[%v] mp[%v] expect replica num[%v],current num[%v]",
 			c.Name, volName, mp.PartitionID, replicaNum, mp.ReplicaNum)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpReplicaNum], msg)
 	}
 }
 
@@ -559,9 +560,9 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 		}
 	}
 
@@ -570,9 +571,9 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 		}
 	}
 }
@@ -592,7 +593,7 @@ func (mp *MetaPartition) replicaCreationTasks(c *Cluster, volName string) {
 		msg = fmt.Sprintf("action[missingReplicaAddrs],clusterID[%v] metaPartition:%v  lack replication"+
 			" on :%v Hosts:%v",
 			c.Name, mp.PartitionID, addrs, mp.Hosts)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 	}
 
 	return
@@ -727,7 +728,7 @@ func (mp *MetaPartition) createTaskToUpdateMetaReplica(clusterID string, partiti
 	if err != nil {
 		msg := fmt.Sprintf("action[createTaskToUpdateMetaReplica] clusterID[%v] meta partition %v no leader",
 			clusterID, mp.PartitionID)
-		Warn(clusterID, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdminTaskException], msg)
 		return
 	}
 	req := &proto.UpdateMetaPartitionRequest{PartitionID: partitionID, End: end, VolName: mp.volName}

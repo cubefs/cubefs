@@ -185,10 +185,9 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 errHandler:
 	log.LogError(fmt.Sprintf("action[decommissionMetaPartition],volName: %v,partitionID: %v,err: %v",
 		mp.volName, mp.PartitionID, errors.Stack(err)))
-	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] offline addr[%v] failed,err:%v",
-		c.Name, mp.PartitionID, nodeAddr, err))
 	if err != nil {
 		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpDecommissionFailed], err.Error())
 	}
 	return
 }
@@ -216,10 +215,10 @@ func (c *Cluster) selectMetaReplaceAddr(nodeAddr string, mp *MetaPartition, dstS
 	return
 
 errHandler:
-	log.LogError(fmt.Sprintf("action[selectMetaReplaceAddr],volName: %v,partitionID: %v,err: %v",
-		mp.volName, mp.PartitionID, errors.Stack(err)))
-	Warn(c.Name, fmt.Sprintf("clusterID[%v] meta partition[%v] addr[%v] select replace failed,err:%v",
-		c.Name, mp.PartitionID, nodeAddr, err))
+	msg := fmt.Sprintf("action[selectMetaReplaceAddr] clusterID[%v] volName: [%v] meta partition[%v] addr[%v] select replace failed,err:%v",
+		c.Name, mp.volName, mp.PartitionID, nodeAddr, err)
+	log.LogError(msg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyChooseTargetHost], msg)
 	if err != nil {
 		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
 	}
@@ -436,7 +435,7 @@ errHandler:
 		"Err:%v , PersistenceHosts:%v  ",
 		c.Name, mp.PartitionID, panicHosts, err, mp.Hosts)
 	if err != nil {
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpReset], msg)
 	}
 	return
 }
@@ -509,7 +508,7 @@ errHandler:
 		"Err:%v , PersistenceHosts:%v  ",
 		c.Name, mp.PartitionID, oldAddr, err, mp.Hosts)
 	if err != nil {
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyChooseTargetHost], msg)
 	}
 	return
 }
@@ -1174,7 +1173,7 @@ func (c *Cluster) doLoadMetaPartition(mp *MetaPartition) {
 	select {
 	case err := <-errChannel:
 		msg := fmt.Sprintf("action[doLoadMetaPartition] vol[%v],mpID[%v],err[%v]", mp.volName, mp.PartitionID, err.Error())
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpLoadFailed], msg)
 		return
 	default:
 	}
@@ -1253,7 +1252,7 @@ func (c *Cluster) dealUpdateMetaPartitionResp(nodeAddr string, resp *proto.Updat
 		msg := fmt.Sprintf("action[dealUpdateMetaPartitionResp],clusterID[%v] nodeAddr %v update meta partition failed,err %v",
 			c.Name, nodeAddr, resp.Result)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdminTaskException], msg)
 	}
 	return
 }
@@ -1263,7 +1262,7 @@ func (c *Cluster) dealDeleteMetaPartitionResp(nodeAddr string, resp *proto.Delet
 		msg := fmt.Sprintf("action[dealDeleteMetaPartitionResp],clusterID[%v] nodeAddr %v "+
 			"delete meta partition failed,err %v", c.Name, nodeAddr, resp.Result)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdminTaskException], msg)
 		return
 	}
 	var mr *MetaReplica
@@ -1294,7 +1293,7 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		msg := fmt.Sprintf("action[dealMetaNodeHeartbeatResp],clusterID[%v] nodeAddr %v heartbeat failed,err %v",
 			c.Name, nodeAddr, resp.Result)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyNodeHeartbeat], msg)
 		return
 	}
 
@@ -1345,7 +1344,7 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 		if err != nil {
 			err = fmt.Errorf("action[adjustMetaNode],clusterID[%v] addr:%v,zone[%v] err:%v ", c.Name, metaNode.Addr, metaNode.ZoneName, err.Error())
 			log.LogError(errors.Stack(err))
-			Warn(c.Name, err.Error())
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdjustNodeSet], err.Error())
 		}
 	}()
 	var zone *Zone
@@ -1430,7 +1429,8 @@ func (c *Cluster) dealDeleteDataPartitionResponse(nodeAddr string, resp *proto.D
 		dp.removeReplicaByAddr(nodeAddr)
 
 	} else {
-		Warn(c.Name, fmt.Sprintf("clusterID[%v] delete data partition[%v] failed,err[%v]", c.Name, nodeAddr, resp.Result))
+		msg := fmt.Sprintf("clusterID[%v] delete data partition[%v] failed,err[%v]", c.Name, nodeAddr, resp.Result)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdminTaskException], msg)
 	}
 
 	return
@@ -1473,8 +1473,9 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 	)
 	log.LogInfof("action[handleDataNodeHeartbeatResp] clusterID[%v] receive dataNode[%v] heartbeat, ", c.Name, nodeAddr)
 	if resp.Status != proto.TaskSucceeds {
-		Warn(c.Name, fmt.Sprintf("action[handleDataNodeHeartbeatResp] clusterID[%v] dataNode[%v] heartbeat task failed",
-			c.Name, nodeAddr))
+		msg := fmt.Sprintf("action[handleDataNodeHeartbeatResp] clusterID[%v] dataNode[%v] heartbeat task failed",
+			c.Name, nodeAddr)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyNodeHeartbeat], msg)
 		return
 	}
 
@@ -1524,7 +1525,7 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 		if err != nil {
 			err = fmt.Errorf("action[adjustDataNode],clusterID[%v] dataNodeAddr:%v,zone[%v] err:%v ", c.Name, dataNode.Addr, dataNode.ZoneName, err.Error())
 			log.LogError(errors.Stack(err))
-			Warn(c.Name, err.Error())
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyAdjustNodeSet], err.Error())
 		}
 	}()
 	var zone *Zone

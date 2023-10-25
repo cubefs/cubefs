@@ -2,8 +2,7 @@ package master
 
 import "strings"
 
-var mixedMetaNodeMap = map[string]bool{
-}
+var mixedMetaNodeMap = map[string]bool{}
 
 func IsMixedMetaNode(addr string) bool {
 	if len(mixedMetaNodeMap) == 0 {

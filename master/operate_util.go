@@ -31,15 +31,15 @@ import (
 
 func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize, replicaNum int, hosts []string, createType int, learners []proto.Learner, volumeHAType proto.CrossRegionHAType) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
-		PartitionId:    ID,
-		PartitionSize:  dataPartitionSize,
-		ReplicaNum:     replicaNum,
-		VolumeId:       volName,
-		Members:        members,
-		Learners:       learners,
-		Hosts:          hosts,
-		CreateType:     createType,
-		VolumeHAType:   volumeHAType,
+		PartitionId:   ID,
+		PartitionSize: dataPartitionSize,
+		ReplicaNum:    replicaNum,
+		VolumeId:      volName,
+		Members:       members,
+		Learners:      learners,
+		Hosts:         hosts,
+		CreateType:    createType,
+		VolumeHAType:  volumeHAType,
 	}
 	return
 }
@@ -213,11 +213,6 @@ func Warn(clusterID, msg string) {
 
 // WarnBySpecialKey provides warnings when exits
 func WarnBySpecialKey(key, msg string) {
-	log.LogWarn(msg)
-	exporter.Warning(msg)
-}
-
-func WarnBySpecialUMPKey(key, msg string) {
 	log.LogWarn(msg)
 	exporter.WarningBySpecialUMPKey(key, msg)
 }

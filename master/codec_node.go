@@ -41,18 +41,18 @@ type CodecNode struct {
 }
 
 type codecNodeValue struct {
-	ID   uint64
-	Addr string
+	ID       uint64
+	Addr     string
 	ZoneName string
-	Version string
+	Version  string
 }
 
 func newCodecNodeValue(codecNode *CodecNode) *codecNodeValue {
 	return &codecNodeValue{
-		ID:   codecNode.ID,
-		Addr: codecNode.Addr,
+		ID:       codecNode.ID,
+		Addr:     codecNode.Addr,
 		ZoneName: codecNode.ZoneName,
-		Version: codecNode.Version,
+		Version:  codecNode.Version,
 	}
 }
 
@@ -251,7 +251,7 @@ func (c *Cluster) dealCodecNodeHeartbeatResp(nodeAddr string, resp *proto.CodecN
 		msg := fmt.Sprintf("action[dealCodecNodeHeartbeatResp],clusterID[%v] nodeAddr %v heartbeat failed,err %v",
 			c.Name, nodeAddr, resp.Result)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyNodeHeartbeat], msg)
 		return
 	}
 
@@ -294,7 +294,7 @@ func (c *Cluster) addCodecNode(nodeAddr, zoneName, version string) (id uint64, e
 errHandler:
 	err = fmt.Errorf("action[addCodecNode],clusterID[%v] codecNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyNodeRegisterFailed], err.Error())
 	return
 }
 
@@ -340,14 +340,14 @@ func (c *Cluster) decommissionCodecNode(codecNode *CodecNode) (err error) {
 	if err = c.syncDeleteCodecNode(codecNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionCodecNode],clusterID[%v] node[%v] offline failed,err[%v]",
 			c.Name, codecNode.Addr, err)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionNode], msg)
 		return
 	}
 	c.codecNodes.Delete(codecNode.Addr)
 	go codecNode.clean()
 	msg = fmt.Sprintf("action[decommissionCodecNode],clusterID[%v] node[%v] offLine success",
 		c.Name, codecNode.Addr)
-	Warn(c.Name, msg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionNode], msg)
 	return
 }
 

@@ -203,6 +203,7 @@ type metaPartitionValue struct {
 	Learners      []bsProto.Learner
 	PanicHosts    []string
 	IsRecover     bool
+	CreateTime    int64
 }
 
 func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
@@ -221,6 +222,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		OfflinePeerID: mp.OfflinePeerID,
 		IsRecover:     mp.IsRecover,
 		PanicHosts:    mp.PanicHosts,
+		CreateTime:    mp.CreateTime,
 	}
 	return
 }
@@ -1286,7 +1288,8 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			continue
 		}
 		if vol.ID != mpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v],mp[%v]", mpv.VolName, vol.ID, mpv.VolID, mpv.PartitionID))
+			msg := fmt.Sprintf("action[loadMetaPartitions] has duplicate vol[%v],vol.ID[%v],mpv.VolID[%v],mp[%v]", mpv.VolName, vol.ID, mpv.VolID, mpv.PartitionID)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyLoadClusterMetadata], msg)
 			continue
 		}
 		mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, mpv.LearnerNum, vol.Name, mpv.VolID)
@@ -1296,6 +1299,7 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.OfflinePeerID = mpv.OfflinePeerID
 		mp.IsRecover = mpv.IsRecover
 		mp.modifyTime = time.Now().Unix()
+		mp.CreateTime = mpv.CreateTime
 		mp.PanicHosts = mpv.PanicHosts
 		if mp.IsRecover && len(mp.PanicHosts) > 0 {
 			for _, address := range mp.PanicHosts {
@@ -1330,7 +1334,8 @@ func (c *Cluster) loadDataPartitions() (err error) {
 			continue
 		}
 		if vol.ID != dpv.VolID {
-			Warn(c.Name, fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.ID[%v],dpv.VolID[%v],dp[%v]", dpv.VolName, vol.ID, dpv.VolID, dpv.PartitionID))
+			msg := fmt.Sprintf("action[loadDataPartitions] has duplicate vol[%v],vol.ID[%v],dpv.VolID[%v],dp[%v]", dpv.VolName, vol.ID, dpv.VolID, dpv.PartitionID)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyLoadClusterMetadata], msg)
 			continue
 		}
 		dp := newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID)

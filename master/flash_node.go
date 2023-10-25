@@ -315,7 +315,7 @@ func (c *Cluster) decommissionFlashNode(flashNode *FlashNode) (err error) {
 	}
 	msg = fmt.Sprintf("action[decommissionFlashNode],clusterID[%v] node[%v] flashGroupID[%v] offLine success",
 		c.Name, flashNode.Addr, flashGroupID)
-	Warn(c.Name, msg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionNode], msg)
 	return
 }
 func (c *Cluster) deleteFlashNode(flashNode *FlashNode) (err error) {
@@ -326,7 +326,7 @@ func (c *Cluster) deleteFlashNode(flashNode *FlashNode) (err error) {
 	if err = c.syncDeleteFlashNode(flashNode); err != nil {
 		msg := fmt.Sprintf("action[deleteFlashNode],clusterID[%v] node[%v] offline failed,err[%v]",
 			c.Name, flashNode.Addr, err)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionNode], msg)
 		flashNode.FlashGroupID = oldFlashGroupID
 		return
 	}

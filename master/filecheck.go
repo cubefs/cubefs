@@ -43,7 +43,8 @@ func (partition *DataPartition) validateCRC(clusterID string) {
 				inactiveAddrs = append(inactiveAddrs, host)
 			}
 		}
-		Warn(clusterID, fmt.Sprintf("vol[%v],dpId[%v],liveAddrs[%v],inactiveAddrs[%v]", partition.VolName, partition.PartitionID, liveAddrs, inactiveAddrs))
+		msg := fmt.Sprintf("vol[%v],dpId[%v],liveAddrs[%v],inactiveAddrs[%v]", partition.VolName, partition.PartitionID, liveAddrs, inactiveAddrs)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], msg)
 	}
 	partition.doValidateCRC(liveReplicas, clusterID)
 	return
@@ -83,7 +84,7 @@ func (partition *DataPartition) checkTinyExtentFile(fc *FileInCore, liveReplicas
 	for _, fm := range fms {
 		msg = msg + fmt.Sprintf("fm[%v]:%v\n", fm.locIndex, fm)
 	}
-	Warn(clusterID, msg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], msg)
 	return
 }
 
@@ -97,7 +98,8 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
 		lastReportTime, ok := partition.FilesWithMissingReplica[fc.Name]
 		if len(partition.FilesWithMissingReplica) > 400 {
-			Warn(clusterID, fmt.Sprintf("partitionid[%v] has [%v] files missed replica", partition.PartitionID, len(partition.FilesWithMissingReplica)))
+			msg := fmt.Sprintf("partitionid[%v] has [%v] files missed replica", partition.PartitionID, len(partition.FilesWithMissingReplica))
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], msg)
 			return
 		}
 
@@ -113,7 +115,8 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 		for _, replica := range liveReplicas {
 			liveAddrs = append(liveAddrs, replica.Addr)
 		}
-		Warn(clusterID, fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partition.PartitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs))
+		msg := fmt.Sprintf("partitionid[%v],file[%v],fms[%v],liveAddr[%v]", partition.PartitionID, fc.Name, fc.getFileMetaAddrs(), liveAddrs)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], msg)
 	}
 	if !needRepair {
 		return
@@ -126,7 +129,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 		msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  ExtentOffset diffrent between all Node  "+
 			" it can not repair it ", clusterID, partition.PartitionID, fc.Name)
 		msg += (fileCrcSorter)(fileCrcArr).log()
-		Warn(clusterID, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], msg)
 		return
 	}
 
@@ -136,7 +139,7 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 			msg := fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v  File:%v  badCrc On :%v  ",
 				clusterID, partition.PartitionID, fc.Name, badNode.getLocationAddr())
 			msg += (fileCrcSorter)(fileCrcArr).log()
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], msg)
 		}
 	}
 	return

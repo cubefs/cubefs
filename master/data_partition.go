@@ -484,14 +484,14 @@ func (partition *DataPartition) checkReplicaNumAndSize(c *Cluster, vol *Vol) {
 	if int(partition.ReplicaNum) != len(partition.Hosts) {
 		msg := fmt.Sprintf("FIX DataPartition replicaNum,clusterID[%v] volName[%v] partitionID:%v orgReplicaNum:%v Hosts:%v",
 			c.Name, vol.Name, partition.PartitionID, partition.ReplicaNum, partition.Hosts)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpReplicaNum], msg)
 	}
 
 	if vol.dpReplicaNum < partition.ReplicaNum && !vol.NeedToLowerReplica {
 		vol.NeedToLowerReplica = true
 	}
 
-	partition.checkReplicaSize(c.Name, c.cfg.diffSpaceUsage)
+	partition.checkReplicaSize(c.cfg.diffSpaceUsage)
 }
 
 func (partition *DataPartition) hostsToString() (hosts string) {

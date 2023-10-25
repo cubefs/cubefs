@@ -714,7 +714,7 @@ errHandler:
 	err = fmt.Errorf("action[addMetaNode],clusterID[%v] metaNodeAddr:%v err:%v ",
 		c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyNodeRegisterFailed], err.Error())
 	return
 }
 
@@ -760,7 +760,7 @@ func (c *Cluster) addDataNode(nodeAddr, httpPort, zoneName, version string) (id 
 errHandler:
 	err = fmt.Errorf("action[addDataNode],clusterID[%v] dataNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyNodeRegisterFailed], err.Error())
 	return
 }
 
@@ -1085,7 +1085,7 @@ func (c *Cluster) createDataPartition(volName, designatedZoneName string) (dp *D
 errHandler:
 	err = fmt.Errorf("action[createDataPartition], clusterID[%v] vol[%v] zoneName:[%v] Err:%v ", c.Name, volName, zoneName, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpCreate], err.Error())
 	return
 }
 
@@ -1516,13 +1516,13 @@ func (c *Cluster) decommissionDataNode(dataNode *DataNode, destZoneName string, 
 	if err = c.syncDeleteDataNode(dataNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
 			c.Name, dataNode.Addr, err)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionNode], msg)
 		return
 	}
 	c.delDataNodeFromCache(dataNode)
 	msg = fmt.Sprintf("action[decommissionDataNode],clusterID[%v] Node[%v] OffLine success",
 		c.Name, dataNode.Addr)
-	Warn(c.Name, msg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionNode], msg)
 	return
 }
 
@@ -1614,7 +1614,7 @@ errHandler:
 		msg = errMsg + fmt.Sprintf("decommission data partition failed,clusterID[%v] partitionID:%v  offlineAddr:%v  "+
 			"newAddr:%v  PersistenceHosts:%v  Err:%v  ",
 			c.Name, dp.PartitionID, oldAddr, addAddr, dp.Hosts, err)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpDecommissionFailed], msg)
 		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", dp.VolName, dp.PartitionID, err.Error())
 	}
 	return
@@ -1686,7 +1686,7 @@ func (c *Cluster) decommissionTwoReplicaDataPartition(offlineAddr string, dp *Da
 	if err = dp.tryToChangeLeader(c, remainNode); err != nil {
 		goto errHandler
 	}
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 3)
 	if err = c.removeDataPartitionRaftOnly(dp, proto.Peer{ID: oldNode.ID, Addr: oldNode.Addr}); err != nil {
 		goto errHandler
 	}
@@ -1707,7 +1707,7 @@ errHandler:
 		msg = fmt.Sprintf("decommission data partition failed,clusterID[%v] partitionID:%v  offlineAddr:%v  "+
 			"newAddr:%v  PersistenceHosts:%v  Err:%v  ",
 			c.Name, dp.PartitionID, oldAddr, addAddr, dp.Hosts, err)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpDecommissionFailed], msg)
 		err = fmt.Errorf("vol[%v],partition[%v],err[%v]", dp.VolName, dp.PartitionID, err.Error())
 	}
 	return
@@ -2209,7 +2209,7 @@ errHandler:
 		"Err:%v , PersistenceHosts:%v  ",
 		c.Name, dp.PartitionID, panicHosts, err, dp.Hosts)
 	if err != nil {
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpReset], msg)
 	}
 	return
 }
@@ -2929,12 +2929,12 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode, strictMode bool) (err
 	if err = c.syncDeleteMetaNode(metaNode); err != nil {
 		msg = fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] OffLine failed,err[%v]",
 			c.Name, metaNode.Addr, err)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionNode], msg)
 		return
 	}
 	c.deleteMetaNodeFromCache(metaNode)
 	msg = fmt.Sprintf("action[decommissionMetaNode],clusterID[%v] Node[%v] OffLine success", c.Name, metaNode.Addr)
-	Warn(c.Name, msg)
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDecommissionNode], msg)
 	return
 }
 
@@ -3019,7 +3019,7 @@ func (c *Cluster) setVolConvertTaskState(name, authKey string, newState proto.Vo
 errHandler:
 	err = fmt.Errorf("action[setVolConvertTaskState], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyRenameVolFailed], err.Error())
 	return
 }
 
@@ -3064,7 +3064,7 @@ func (c *Cluster) shrinkVolCapacity(name, authKey string, newCapacity uint64) (e
 errHandler:
 	err = fmt.Errorf("action[shrinkVolCapacity], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateVolFailed], err.Error())
 	return
 }
 
@@ -3253,7 +3253,7 @@ errHandler:
 	vol.rollbackConfig(volBak)
 	err = fmt.Errorf("action[updateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateVolFailed], err.Error())
 	return
 }
 
@@ -3333,7 +3333,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 errHandler:
 	err = fmt.Errorf("action[createVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err)
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyCreateVolFailed], err.Error())
 	return
 }
 
@@ -3406,7 +3406,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 errHandler:
 	err = fmt.Errorf("action[doCreateVol], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyCreateVolFailed], err.Error())
 	return
 }
 
@@ -4896,7 +4896,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 	if dpCrcInfo.IsBuildValidateCRCTaskErr {
 		warnMsg.WriteString(fmt.Sprintf("checkFileCrcTaskErr clusterID[%v] partitionID:%v build task err:%v ",
 			c.Name, dpCrcInfo.PartitionID, dpCrcInfo.ErrMsg))
-		WarnBySpecialUMPKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], warnMsg.String())
 		return
 	}
 	replicaCrcDetail := new(strings.Builder)
@@ -4912,7 +4912,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 		if extentCrcInfo.ExtentNum == len(extentCrcInfo.CrcLocAddrMap) {
 			warnMsg.WriteString("crc different between all node.")
 			warnMsg.WriteString(replicaCrcDetail.String())
-			WarnBySpecialUMPKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], warnMsg.String())
 			continue
 		}
 
@@ -4929,7 +4929,7 @@ func (c *Cluster) handleDataNodeValidateCRCReport(dpCrcInfo *proto.DataPartition
 			if crc != maxNumCrc {
 				warnMsg.WriteString(fmt.Sprintf("badCrc On addr:%v detail:", locAddrs))
 				warnMsg.WriteString(replicaCrcDetail.String())
-				WarnBySpecialUMPKey(fmt.Sprintf("%v_%v_validate_crc", c.Name, ModuleName), warnMsg.String())
+				WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpValidateCrc], warnMsg.String())
 			}
 		}
 	}
@@ -5805,7 +5805,7 @@ func (c *Cluster) updateClusterViewResponseCache() {
 	if err != nil {
 		msg := fmt.Sprintf("action[updateClusterViewResponseCache] json marshal err:%v", err)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateViewCache], msg)
 		return
 	}
 	c.responseCache = responseCache
@@ -5815,7 +5815,7 @@ func (c *Cluster) updateClusterViewResponseCache() {
 	if err != nil {
 		msg := fmt.Sprintf("action[updateClusterViewResponseCache] protobuf marshal err:%v", err)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateViewCache], msg)
 		return
 	}
 	replyPb := &proto.HTTPReplyPb{Code: proto.ErrCodeSuccess, Msg: proto.ErrSuc.Error(), Data: data}
@@ -5823,7 +5823,7 @@ func (c *Cluster) updateClusterViewResponseCache() {
 	if err != nil {
 		msg := fmt.Sprintf("action[updateClusterViewResponseCache] protobuf marshal err:%v", err)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateViewCache], msg)
 		return
 	}
 	c.responseCachePb = responseCachePb
@@ -5981,7 +5981,7 @@ func (c *Cluster) setVolChildFileMaxCount(name string, newChildFileMaxCount uint
 errHandler:
 	err = fmt.Errorf("action[setVolChildFileMaxCount], clusterID[%v] name:%v, err:%v ", c.Name, name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyUpdateVolFailed], err.Error())
 	return
 }
 
@@ -6183,13 +6183,13 @@ func (vol *Vol) ConvertPartitionsToNewVol(c *Cluster) {
 	if err != nil {
 		msg := fmt.Sprintf("action[ConvertPartitionsToNewVol] vol:%v,new vol:%v err:%v", vol.Name, vol.NewVolName, err)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyRenameVolFailed], msg)
 		return
 	}
 	if newRenamedVol.ID != vol.NewVolID {
 		msg := fmt.Sprintf("action[ConvertPartitionsToNewVol] vol:%v expect new vol id:%v,new vol id:%v", vol.Name, vol.NewVolID, newRenamedVol.ID)
 		log.LogError(msg)
-		Warn(c.Name, msg)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyRenameVolFailed], msg)
 		return
 	}
 	if err = c.batchConvertRenamedOldVolMpMetadataToNewVol(vol, newRenamedVol, markDeleteVolUpdatePartitionBatchCount); err != nil {
@@ -6251,7 +6251,7 @@ errHandler:
 	}
 	err = fmt.Errorf("action[batchConvertRenamedOldVolMpMetadataToNewVol], clusterID[%v] name:%v, err:%v ", c.Name, oldVol.Name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyRenameVolFailed], err.Error())
 	return
 }
 func (c *Cluster) batchConvertRenamedOldVolDpMetadataToNewVol(oldVol, renamedVol *Vol, batchCount int) (err error) {
@@ -6293,7 +6293,7 @@ errHandler:
 	}
 	err = fmt.Errorf("action[batchConvertRenamedOldVolDpMetadataToNewVol], clusterID[%v] name:%v, err:%v ", c.Name, oldVol.Name, err.Error())
 	log.LogError(errors.Stack(err))
-	Warn(c.Name, err.Error())
+	WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpConvertFailed], err.Error())
 	return
 }
 func (c *Cluster) convertRenamedOldVolMpMetadataByRaft(oldVol, renamedVol *Vol, cmdMap map[string]*RaftCmd, affectedMps []*MetaPartition) (err error) {

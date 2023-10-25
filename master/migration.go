@@ -46,7 +46,8 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 		return true
 	})
 	if len(unrecoverPartitionIDs) != 0 {
-		Warn(c.Name, fmt.Sprintf("action[checkMigratedDpRecoveryProgress] clusterID[%v],has[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs))
+		msg := fmt.Sprintf("action[checkMigratedDpRecoveryProgress] clusterID[%v],has[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
 	}
 }
 
@@ -134,6 +135,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 		return true
 	})
 	if len(unrecoverMpIDs) != 0 {
-		Warn(c.Name, fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs))
+		msg := fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpHasNotRecover], msg)
 	}
 }

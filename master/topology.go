@@ -477,7 +477,7 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum 
 		if isStrict {
 			msg := fmt.Sprintf("action[allocZonesForMetaNode],zoneName[%v],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],isStrict[%v],err:%v",
 				zoneName, len(zoneList), len(candidateZones), demandWriteNodes, isStrict, proto.ErrNoZoneToCreateMetaPartition)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyChooseTargetHost], msg)
 		}
 		return nil, proto.ErrNoZoneToCreateMetaPartition
 	}
@@ -544,7 +544,7 @@ func (t *topology) allocZonesForDataNode(clusterID, zoneName string, replicaNum 
 		if isStrict {
 			msg := fmt.Sprintf("action[allocZonesForDataNode],zoneName[%v],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],isStrict[%v],err:%v",
 				zoneName, len(zoneList), len(candidateZones), demandWriteNodes, isStrict, proto.ErrNoZoneToCreateDataPartition)
-			Warn(clusterID, msg)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyChooseTargetHost], msg)
 		}
 		return nil, errors.NewError(proto.ErrNoZoneToCreateDataPartition)
 	}
