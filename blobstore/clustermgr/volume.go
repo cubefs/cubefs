@@ -111,7 +111,7 @@ func (s *Service) VolumeAlloc(c *rpc.Context) {
 		return
 	}
 
-	ret, err := s.VolumeMgr.AllocVolume(ctx, args.CodeMode, args.Count, clientIP(c.Request))
+	ret, err := s.VolumeMgr.AllocVolume(ctx, args.CodeMode, args.Count, clientIP(c.Request), 0)
 	if err != nil {
 		span.Errorf("alloc volume error:%v", err)
 		c.RespondError(err)
@@ -119,6 +119,33 @@ func (s *Service) VolumeAlloc(c *rpc.Context) {
 	}
 	if ret != nil {
 		span.Debugf("alloc volumes %v to %v", ret.AllocVolumeInfos, clientIP(c.Request))
+		c.RespondJSON(ret)
+	}
+}
+
+func (s *Service) V2VolumeAlloc(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	args := new(clustermgr.AllocVolumeV2Args)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+	span.Debugf("accept V2VolumeAlloc request, args: %v", args)
+
+	if args.Count <= 0 {
+		c.RespondError(apierrors.ErrAllocVolumeInvalidParams)
+		return
+	}
+
+	ret, err := s.VolumeMgr.AllocVolume(ctx, args.CodeMode, args.Count, clientIP(c.Request), args.NeedSize)
+	if err != nil {
+		span.Errorf("alloc volume v2  error:%v", err)
+		c.RespondError(err)
+		return
+	}
+	if ret != nil {
+		span.Debugf("alloc volumes v2 %v to %v", ret.AllocVolumeInfos, clientIP(c.Request))
 		c.RespondJSON(ret)
 	}
 }

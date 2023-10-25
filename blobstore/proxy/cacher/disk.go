@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -48,7 +48,7 @@ func decodeDisk(data []byte) (valueExpired, error) {
 	return disk, err
 }
 
-func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+func (c *cacher) GetDisk(ctx context.Context, args *clustermgr.CacheDiskArgs) (*blobnode.DiskInfo, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("try to get disk %+v", args)
 

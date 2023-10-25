@@ -112,8 +112,8 @@ func parseID(key string) (uint32, error) {
 
 // Cacher memory cache handlers.
 type Cacher interface {
-	GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error)
-	GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error)
+	GetVolume(ctx context.Context, args *clustermgr.CacheVolumeArgs) (*clustermgr.VersionVolume, error)
+	GetDisk(ctx context.Context, args *clustermgr.CacheDiskArgs) (*blobnode.DiskInfo, error)
 	// Erase remove all if key is "ALL".
 	Erase(ctx context.Context, key string) error
 }

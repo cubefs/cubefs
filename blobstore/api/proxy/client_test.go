@@ -61,7 +61,7 @@ func TestClient_GetCacheVolume(t *testing.T) {
 		w.Write([]byte(`{"vid": 111, "units": [{"vuid": 425335980033}]}`))
 	}))
 	defer mockServer.Close()
-	for _, args := range []CacheVolumeArgs{
+	for _, args := range []clustermgr.CacheVolumeArgs{
 		{Vid: 1, Version: 0, Flush: false},
 		{Vid: 1, Version: 0xb06bccdb, Flush: false},
 		{Vid: 2, Version: 0, Flush: true},
@@ -82,7 +82,7 @@ func TestClient_GetCacheDisk(t *testing.T) {
 		w.Write([]byte(`{"disk_id": 9876}`))
 	}))
 	defer mockServer.Close()
-	for _, args := range []CacheDiskArgs{
+	for _, args := range []clustermgr.CacheDiskArgs{
 		{DiskID: 1, Flush: false},
 		{DiskID: 2, Flush: true},
 	} {
