@@ -491,14 +491,14 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 			})
 			return nil
 		})
-		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
+		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host, 0)
 		require.NoError(t, err)
 		require.Equal(t, ret.AllocVolumeInfos[0].HealthScore, 0)
 		require.Equal(t, len(ret.AllocVolumeInfos), 2)
 
 		// alloc not exist codemode
 		mode := codemode.EC6P6Align512
-		ret, err = mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
+		ret, err = mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host, 0)
 		require.Error(t, err)
 		require.Nil(t, ret)
 	}
@@ -512,7 +512,7 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 			})
 			return nil
 		})
-		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
+		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host, 0)
 		require.Error(t, err)
 	}
 
@@ -525,14 +525,14 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 			})
 			return nil
 		})
-		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
+		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host, 0)
 		require.Error(t, err)
 	}
 
 	// test allocVolume : failed case, raft propose error
 	{
 		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(errors.New("error"))
-		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
+		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host, 0)
 		require.Error(t, err)
 		require.Nil(t, ret)
 	}
@@ -540,7 +540,7 @@ func TestVolumeMgr_AllocVolume(t *testing.T) {
 	// failed case, only volume free space bigger than allocatableSize can alloc
 	{
 		mockVolumeMgr.allocator.allocatableSize = 1 << 42
-		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
+		ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host, 0)
 		require.Error(t, err)
 		require.Nil(t, ret)
 	}
@@ -635,7 +635,7 @@ func TestVolumeMgr_applyAllocVolume(t *testing.T) {
 		mockVolumeMgr.raftServer = mockRaftServer
 
 		args.Vids = []proto.Vid{10, 12, 14, 16, 18}
-		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
+		_, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host, 0)
 		require.Error(t, err)
 	}
 }
@@ -962,7 +962,7 @@ func TestVolumeMgr_PreAlloc(t *testing.T) {
 			}
 			return nil
 		})
-		vids, diskLoad := mockVolumeMgr.allocator.PreAlloc(context.Background(), testCase.codemode, testCase.count)
+		vids, diskLoad := mockVolumeMgr.allocator.PreAlloc(context.Background(), testCase.codemode, testCase.count, 0)
 		require.Equal(t, testCase.lenVids, len(vids))
 		require.Equal(t, testCase.diskLoad, diskLoad)
 	}
@@ -1016,7 +1016,7 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
+			ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host, 0)
 			require.NoError(b, err)
 			require.Equal(b, len(ret.AllocVolumeInfos), 2)
 		}
