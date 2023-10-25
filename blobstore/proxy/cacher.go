@@ -15,14 +15,14 @@
 package proxy
 
 import (
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 // GetCacheVolume returns volume in cacher.
 func (s *Service) GetCacheVolume(c *rpc.Context) {
-	args := new(proxy.CacheVolumeArgs)
+	args := new(clustermgr.CacheVolumeArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
@@ -42,7 +42,7 @@ func (s *Service) GetCacheVolume(c *rpc.Context) {
 
 // GetCacheDisk returns disk info in cacher.
 func (s *Service) GetCacheDisk(c *rpc.Context) {
-	args := new(proxy.CacheDiskArgs)
+	args := new(clustermgr.CacheDiskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return

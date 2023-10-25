@@ -219,6 +219,49 @@ func TestService_VolumeAlloc2(t *testing.T) {
 	require.Equal(t, 3, len(ret.AllocVolumeInfos))
 }
 
+func TestService_VolumeAllocV2(t *testing.T) {
+	testService, clean := initServiceWithData()
+	defer clean()
+	cmClient := initTestClusterClient(testService)
+	ctx := newCtx()
+
+	// alloc volume
+	args := &clustermgr.AllocVolumeV2Args{
+		CodeMode: 1,
+		Count:    1,
+	}
+	args.NeedSize = 1024 * 1024 * 1024 * 10
+	ret, err := cmClient.AllocVolumeV2(ctx, args)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(ret.AllocVolumeInfos))
+	vol := ret.AllocVolumeInfos[0]
+	require.Equal(t, vol.Status, proto.VolumeStatusActive)
+
+	args.NeedSize = 1024 * 1024 * 1024 * 1023
+	ret, err = cmClient.AllocVolumeV2(ctx, args)
+	require.Error(t, err)
+	require.Equal(t, 0, len(ret.AllocVolumeInfos))
+
+	args.CodeMode = 2
+	ret, err = cmClient.AllocVolumeV2(ctx, args)
+	require.Error(t, err)
+	require.Equal(t, 0, len(ret.AllocVolumeInfos))
+
+	// failed case, count not invalid
+	args = &clustermgr.AllocVolumeV2Args{
+		CodeMode: 1,
+		Count:    0,
+	}
+	_, err = cmClient.AllocVolumeV2(ctx, args)
+	require.Error(t, err)
+
+	// failed case, code mode not invalid
+	args.Count = 1
+	args.CodeMode = 9
+	_, err = cmClient.AllocVolumeV2(ctx, args)
+	require.Error(t, err)
+}
+
 func TestService_ChunkSetCompact(t *testing.T) {
 	testService, clean := initServiceWithData()
 	defer clean()

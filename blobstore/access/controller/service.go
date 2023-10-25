@@ -345,7 +345,7 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 			return nil, err
 		}
 		for _, host := range hosts {
-			diskInfo, err := s.proxy.GetCacheDisk(ctx, host, &proxy.CacheDiskArgs{DiskID: diskID})
+			diskInfo, err := s.proxy.GetCacheDisk(ctx, host, &clustermgr.CacheDiskArgs{DiskID: diskID})
 			if err != nil {
 				span.Warnf("get disk %d from proxy %s error %s", diskID, host, err.Error())
 				continue
