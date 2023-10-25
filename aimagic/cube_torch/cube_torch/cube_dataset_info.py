@@ -48,9 +48,6 @@ class CubeDataSetInfo:
     def get_cubefs_root_dir(self):
         return self.cubefs_mount_point
 
-    def get_cubefs_cache_dir(self):
-        return self.cubefs_mount_point
-
     def is_cubefs_mount_point(self, directory_path):
         stat_info = os.stat(directory_path)
         inode_number = stat_info.st_ino
@@ -73,7 +70,7 @@ class CubeDataSetInfo:
     def get_dataset_samples(self, dataset):
         result = None
         if isinstance(dataset, datasets.DatasetFolder):
-            result=np.asarray(dataset.samples)[:, 0]
+            result = np.asarray(dataset.samples)[:, 0]
         elif isinstance(dataset, datasets.VOCDetection):
             result = np.asarray(dataset.images)
         elif isinstance(dataset, datasets.CocoDetection):
