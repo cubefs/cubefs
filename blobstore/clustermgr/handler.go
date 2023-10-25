@@ -84,6 +84,8 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/volume/alloc", service.VolumeAlloc, rpc.OptArgsBody())
 
+	rpc.POST("/v2/volume/alloc", service.V2VolumeAlloc, rpc.OptArgsBody())
+
 	rpc.POST("/volume/update", service.VolumeUpdate, rpc.OptArgsBody())
 
 	rpc.POST("/volume/retain", service.VolumeRetain, rpc.OptArgsBody())

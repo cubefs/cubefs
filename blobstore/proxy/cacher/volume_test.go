@@ -37,21 +37,21 @@ func TestProxyCacherVolumeUpdate(t *testing.T) {
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil).Times(4)
 
 	for range [100]struct{}{} {
-		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		_, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 	}
 	for range [100]struct{}{} {
-		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 2})
+		_, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 2})
 		require.NoError(t, err)
 	}
 
 	time.Sleep(time.Second * 4) // expired
 	for range [100]struct{}{} {
-		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		_, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 	}
 	for range [100]struct{}{} {
-		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 2})
+		_, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 2})
 		require.NoError(t, err)
 	}
 }
@@ -64,28 +64,28 @@ func TestProxyCacherVolumeFlush(t *testing.T) {
 	volume.Units = []clustermgr.Unit{{Vuid: 1234}, {Vuid: 5678}}
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(1)
 	for range [100]struct{}{} {
-		vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		vol, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 		require.Equal(t, uint32(0x9d31f755), vol.Version)
 	}
 
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(100)
 	for range [100]struct{}{} {
-		vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1, Flush: true})
+		vol, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1, Flush: true})
 		require.NoError(t, err)
 		require.Equal(t, uint32(0x9d31f755), vol.Version)
 	}
 
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(1)
 	for range [100]struct{}{} {
-		vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 3, Flush: true, Version: 0x01})
+		vol, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 3, Flush: true, Version: 0x01})
 		require.NoError(t, err)
 		require.Equal(t, uint32(0x9d31f755), vol.Version)
 	}
 
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(volume, nil).Times(100)
 	for range [100]struct{}{} {
-		vol, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 4, Flush: true, Version: 0x9d31f755})
+		vol, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 4, Flush: true, Version: 0x9d31f755})
 		require.NoError(t, err)
 		require.Equal(t, uint32(0x9d31f755), vol.Version)
 	}
@@ -107,7 +107,7 @@ func TestProxyCacherVolumeSingle(t *testing.T) {
 	wg.Add(n)
 	for range [n]struct{}{} {
 		go func() {
-			c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+			c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 			wg.Done()
 		}()
 	}
@@ -123,11 +123,11 @@ func TestProxyCacherVolumeError(t *testing.T) {
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(nil, errors.New("mock error")).Times(1)
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(nil, errcode.ErrVolumeNotExist).Times(2)
 
-	_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+	_, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 	require.Error(t, err)
-	_, err = c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 2, Flush: true})
+	_, err = c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 2, Flush: true})
 	require.ErrorIs(t, errcode.ErrVolumeNotExist, err)
-	_, err = c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1, Flush: false})
+	_, err = c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1, Flush: false})
 	require.ErrorIs(t, errcode.ErrVolumeNotExist, err)
 }
 
@@ -136,14 +136,14 @@ func TestProxyCacherVolumeCacheMiss(t *testing.T) {
 	defer clean()
 
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil).Times(3)
-	_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+	_, err := c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 	require.NoError(t, err)
 	<-c.(*cacher).syncChan
 
 	basePath := c.(*cacher).config.DiskvBasePath
 	{ // memory cache miss, load from diskv
 		c, _ = New(1, ConfigCache{DiskvBasePath: basePath, VolumeExpirationS: 2}, cmCli)
-		_, err = c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		_, err = c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 	}
 	{ // cannot decode diskv value
@@ -153,13 +153,13 @@ func TestProxyCacherVolumeCacheMiss(t *testing.T) {
 		file.Close()
 
 		c, _ = New(1, ConfigCache{DiskvBasePath: basePath, VolumeExpirationS: 2}, cmCli)
-		_, err = c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		_, err = c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 	}
 	{ // load diskv expired
 		c, _ = New(1, ConfigCache{DiskvBasePath: basePath, VolumeExpirationS: 2}, cmCli)
 		time.Sleep(time.Second * 3)
-		_, err = c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
+		_, err = c.GetVolume(context.Background(), &clustermgr.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 	}
 }
@@ -170,7 +170,7 @@ func BenchmarkProxyMemoryHit(b *testing.B) {
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil).AnyTimes()
 
 	ctx := context.Background()
-	args := &proxy.CacheVolumeArgs{Vid: 1}
+	args := &clustermgr.CacheVolumeArgs{Vid: 1}
 	_, err := c.GetVolume(ctx, args)
 	require.NoError(b, err)
 
@@ -189,7 +189,7 @@ func BenchmarkProxyDiskvHit(b *testing.B) {
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil).AnyTimes()
 
 	ctx := context.Background()
-	args := &proxy.CacheVolumeArgs{}
+	args := &clustermgr.CacheVolumeArgs{}
 	b.ResetTimer()
 	for ii := 0; ii < b.N; ii++ {
 		args.Vid = proto.Vid(ii)
@@ -203,7 +203,7 @@ func BenchmarkProxyDiskvMiss(b *testing.B) {
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil).AnyTimes()
 
 	ctx := context.Background()
-	args := &proxy.CacheVolumeArgs{}
+	args := &clustermgr.CacheVolumeArgs{}
 	b.ResetTimer()
 	for ii := 0; ii < b.N; ii++ {
 		args.Vid = proto.Vid(ii)
@@ -217,7 +217,7 @@ func BenchmarkProxyClusterMiss(b *testing.B) {
 	cmCli.EXPECT().GetVolumeInfo(A, A).Return(nil, errcode.ErrVolumeNotExist).AnyTimes()
 
 	ctx := context.Background()
-	args := &proxy.CacheVolumeArgs{Vid: 1}
+	args := &clustermgr.CacheVolumeArgs{Vid: 1}
 	b.ResetTimer()
 	for ii := 0; ii < b.N; ii++ {
 		args.Vid = proto.Vid(ii)
