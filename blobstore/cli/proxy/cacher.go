@@ -18,7 +18,7 @@ import (
 	"github.com/desertbit/grumble"
 	"github.com/fatih/color"
 
-	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -42,7 +42,7 @@ func addCmdCacher(cmd *grumble.Command) {
 		},
 		Run: func(c *grumble.Context) error {
 			volume, err := proxyCli.GetCacheVolume(common.CmdContext(), c.Flags.String(_host),
-				&proxy.CacheVolumeArgs{
+				&clustermgr.CacheVolumeArgs{
 					Vid:     proto.Vid(c.Flags.Uint64("vid")),
 					Version: uint32(c.Flags.Uint64("version")),
 					Flush:   c.Flags.Bool("flush"),
@@ -64,7 +64,7 @@ func addCmdCacher(cmd *grumble.Command) {
 		},
 		Run: func(c *grumble.Context) error {
 			disk, err := proxyCli.GetCacheDisk(common.CmdContext(), c.Flags.String(_host),
-				&proxy.CacheDiskArgs{
+				&clustermgr.CacheDiskArgs{
 					DiskID: proto.DiskID(c.Flags.Uint64("disk_id")),
 					Flush:  c.Flags.Bool("flush"),
 				})

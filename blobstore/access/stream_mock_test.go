@@ -82,7 +82,7 @@ var (
 	cc                controller.ClusterController
 
 	clusterInfo *clustermgr.ClusterInfo
-	dataVolume  *proxy.VersionVolume
+	dataVolume  *clustermgr.VersionVolume
 	dataAllocs  []proxy.AllocRet
 	dataNodes   map[string]clustermgr.ServiceInfo
 	dataDisks   map[proto.DiskID]blobnode.DiskInfo
@@ -284,7 +284,7 @@ func initMockData() {
 		Vid:      volumeID,
 	}
 
-	dataVolume = &proxy.VersionVolume{VolumeInfo: clustermgr.VolumeInfo{
+	dataVolume = &clustermgr.VersionVolume{VolumeInfo: clustermgr.VolumeInfo{
 		VolumeInfoBase: clustermgr.VolumeInfoBase{
 			Vid:      volumeID,
 			CodeMode: codemode.EC6P6,
@@ -357,7 +357,7 @@ func initMockData() {
 	proxycli.EXPECT().GetCacheVolume(gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().Return(dataVolume, nil)
 	proxycli.EXPECT().GetCacheDisk(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+		func(_ context.Context, _ string, args *clustermgr.CacheDiskArgs) (*blobnode.DiskInfo, error) {
 			if val, ok := dataDisks[args.DiskID]; ok {
 				return &val, nil
 			}
