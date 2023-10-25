@@ -1195,7 +1195,7 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 }
 
 func (vol *Vol) deleteVolFromStore(c *Cluster) (err error) {
-
+	log.LogWarnf("deleteVolFromStore vol %v", vol.Name)
 	if err = c.syncDeleteVol(vol); err != nil {
 		return
 	}

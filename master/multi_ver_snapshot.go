@@ -82,6 +82,10 @@ func (verMgr *VolVersionManager) Persist() (err error) {
 	if val, err = json.Marshal(persistInfo); err != nil {
 		return
 	}
+	if verMgr.c == nil {
+		log.LogErrorf("vol %v cluster nil", verMgr.vol.Name)
+		return fmt.Errorf("persist vol %v cluster nil", verMgr.vol.Name)
+	}
 	if err = verMgr.c.syncMultiVersion(verMgr.vol, val); err != nil {
 		return
 	}

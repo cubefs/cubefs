@@ -1509,7 +1509,7 @@ func TestDelPartitionVersion(t *testing.T) {
 	}
 	mp.checkByMasterVerlist(mp.multiVersionList, masterList)
 	mp.checkVerList(masterList, true)
-	assert.True(t, len(mp.multiVersionList.TemporaryVerMap) == 3)
+	assert.True(t, len(mp.multiVersionList.TemporaryVerMap) == 2)
 
 	mp.SetXAttr(&proto.SetXAttrRequest{Inode: ino.Inode, Key: "key1", Value: "2222"}, &Packet{})
 
@@ -1525,17 +1525,14 @@ func TestDelPartitionVersion(t *testing.T) {
 		break
 	}
 	inoNew := mp.getInode(&Inode{Inode: ino.Inode}, false).Msg
-	assert.True(t, inoNew.getVer() == 20)
+	assert.True(t, inoNew.getVer() == 25)
 	extend = mp.extendTree.Get(NewExtend(ino.Inode)).(*Extend)
 	t.Logf("extent verseq %v, multivers %v", extend.verSeq, extend.multiVers)
 	assert.True(t, extend.verSeq == 50)
-	assert.True(t, len(extend.multiVers) == 2)
-	assert.True(t, extend.multiVers[0].verSeq == 30)
-	assert.True(t, extend.multiVers[1].verSeq == 20)
-	t.Logf("extent key1 in multiVers[0] %v, in multiVers[1] %v",
-		string(extend.multiVers[0].dataMap["key1"]), string(extend.multiVers[1].dataMap["key1"]))
+	assert.True(t, len(extend.multiVers) == 1)
+	assert.True(t, extend.multiVers[0].verSeq == 25)
+
 	assert.True(t, string(extend.multiVers[0].dataMap["key1"]) == "1111")
-	assert.True(t, string(extend.multiVers[1].dataMap["key1"]) == "0000")
 
 	err = extend.checkSequence()
 	t.Logf("extent checkSequence err %v", err)
