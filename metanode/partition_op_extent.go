@@ -192,12 +192,17 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 	}
 	mp.multiVersionList.Lock()
 	defer mp.multiVersionList.Unlock()
-	for _, info2 := range mpVerList.VerList {
+	vlen := len(mpVerList.VerList)
+	for id, info2 := range mpVerList.VerList {
+		if id == vlen-1 {
+			break
+		}
 		log.LogDebugf("checkVerList. vol %v mp %v ver info %v", mp.config.VolName, mp.config.PartitionId, info2)
 		_, exist := verMapMaster[info2.Ver]
 		if !exist {
 			if info2.Ver < currMasterSeq {
 				if _, ok := mp.multiVersionList.TemporaryVerMap[info2.Ver]; !ok {
+					log.LogInfof("checkVerList. vol %v mp %v ver info %v be consider as TemporaryVer", mp.config.VolName, mp.config.PartitionId, info2)
 					mp.multiVersionList.TemporaryVerMap[info2.Ver] = info2
 				}
 			}
@@ -207,6 +212,7 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 	for verSeq := range mp.multiVersionList.TemporaryVerMap {
 		for index, verInfo := range mp.multiVersionList.VerList {
 			if verInfo.Ver == verSeq {
+				log.LogInfof("checkVerList. vol %v mp %v ver info %v be consider as TemporaryVer and do deletion", mp.config.VolName, mp.config.PartitionId, verInfo)
 				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:index], mp.multiVersionList.VerList[index+1:]...)
 				break
 			}

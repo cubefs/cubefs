@@ -1451,6 +1451,8 @@ func (mp *metaPartition) delPartitionVersion(verSeq uint64) {
 	if reqVerSeq == 0 {
 		reqVerSeq = math.MaxUint64
 	}
+
+	log.LogInfof("action[delPartitionVersion] mp %v verSeq %v:%v", mp.config.PartitionId, verSeq, reqVerSeq)
 	go mp.delPartitionInodesVersion(reqVerSeq, &wg)
 	go mp.delPartitionExtendsVersion(reqVerSeq, &wg)
 	go mp.delPartitionDentriesVersion(reqVerSeq, &wg)

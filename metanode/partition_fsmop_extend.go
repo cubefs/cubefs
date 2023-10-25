@@ -26,6 +26,7 @@ type ExtendOpResult struct {
 }
 
 func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
+	extend.verSeq = mp.GetVerSeq()
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
 	if treeItem == nil {
@@ -104,8 +105,10 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 					log.LogDebugf("mp %v inode %v extent layer %v update seq %v to %v",
 						mp.config.PartitionId, ele.inode, id, ele.verSeq, globalNewVer)
 					ele.verSeq = globalNewVer
+					return
 				}
-				break
+				e.multiVers = append(e.multiVers[:id], e.multiVers[id+1:]...)
+				return
 			}
 		}
 	}
