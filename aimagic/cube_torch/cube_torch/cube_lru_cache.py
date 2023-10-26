@@ -3,6 +3,10 @@ import time
 import threading
 
 
+def get_current_time():
+    return int(time.perf_counter())
+
+
 class CubeStream(io.BytesIO):
     def __init__(self, _fpath, _fcontent, put_time):
         self.file_path = _fpath
@@ -41,14 +45,16 @@ class LRUCache:
             return len(self.cache)
 
     def clean_expired_key(self):
-        current_time = time.time()
+        current_time = get_current_time()
         if current_time - self.last_check_time < 30 * 60:
             return
         with self.lock:
             for key, stream in self.cache.items():
-                if self._is_expired(current_time, stream.put_time):
-                    self.cache.pop(key)
-        self.last_check_time=time.time()
+                if current_time - stream.put_time > self.timeout:
+                    self.cache.pop(key, None)
+                    print("key{} has expires,so auto expires,current_time:{} put_time:{}".format(key, current_time,
+                                                                                                 stream.put_time))
+        self.last_check_time = time.time()
 
     def _is_expired(self, current_time, timestamp):
         return current_time - timestamp > self.timeout

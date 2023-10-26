@@ -13,12 +13,14 @@ from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
 from cube_torch.cube_file_open_interceptor import CubeFileOpenInterceptor
-from cube_torch.cube_lru_cache import CubeStream, LRUCache
+from cube_torch.cube_lru_cache import CubeStream, LRUCache, get_current_time
 
 global_interceptionIO = None
 global_cube_rootdir_path = None
 builtins_open = builtins.open
 builtins_torch_load = torch.load
+
+
 
 
 def set_global_cube_rootdir_path(rootdir):
@@ -42,7 +44,7 @@ class InterceptionIO:
     def __init__(self, storage_info):
         cube_root_dir, wait_download_queue, batch_download_addr, batch_size = storage_info
         self.cube_root_dir = cube_root_dir
-        self.files = LRUCache(500)
+        self.files = LRUCache(1000)
         self.batch_download_addr = batch_download_addr
         self.storage_session = requests.Session()
         self.wait_download_queue = wait_download_queue
@@ -72,16 +74,13 @@ class InterceptionIO:
         return self.download_thread, self.download_event
 
     def _loop_download_worker(self, event):
-        loop_index = 0
         while not event.is_set():
             try:
-                loop_index += 1
-                files = self.wait_download_queue.get(timeout=3)
+                files = self.wait_download_queue.get(timeout=5)
                 if files is None:
                     break
                 self.batch_download_async([files])
-                if loop_index % 100 == 0:
-                    self.files.clean_expired_key()
+                self.files.clean_expired_key()
             except queue.Empty:
                 continue
         event.set()
@@ -140,7 +139,7 @@ class InterceptionIO:
         version = int.from_bytes(version, byteorder='big')
         count = response.raw.read(8)
         count = int.from_bytes(count, byteorder='big')
-        current_time = int(time.time())
+        current_time = get_current_time()
         for i in range(count):
             file_path_size_body = response.raw.read(8)
             file_path_size = int.from_bytes(file_path_size_body, byteorder='big')
