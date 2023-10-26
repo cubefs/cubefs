@@ -39,7 +39,7 @@ func (client *ExtentClient) GetReadRequests(ctx context.Context, inode uint64, d
 	s.once.Do(func() {
 		s.GetExtents(ctx)
 	})
-	if !s.extents.initialized {
+	if !s.InitExtents(ctx) {
 		err = proto.ErrGetExtentsFailed
 		return
 	}

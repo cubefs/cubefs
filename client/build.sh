@@ -95,7 +95,7 @@ build_sdk_nodynamic() {
 }
 
 have_statx() {
-    libc_version=$(ldd --version | head -1 | grep -Eo "[0-9]+\.[0-9]+")
+    libc_version=$(ldd --version | head -1 | grep -Eo "[0-9]+\.[0-9]+$")
     libc_major=$(echo $libc_version | cut -d'.' -f1)
     libc_minor=$(echo $libc_version | cut -d'.' -f2)
     if [[ $libc_major -gt 2 || ($libc_major -eq 2 && $libc_minor -ge 28)]]; then

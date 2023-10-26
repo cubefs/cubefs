@@ -15,5 +15,5 @@
   "secretKey": "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd",
   "readDirPlus": true,
   "prefetchThread": 10,
-  "localIP": "127.0.0.1"
+  "updateExtentsOnRead": true
 }

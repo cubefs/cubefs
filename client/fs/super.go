@@ -113,21 +113,23 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval, true)
 
 	var extentConfig = &data.ExtentConfig{
-		Volume:            opt.Volname,
-		Masters:           masters,
-		FollowerRead:      opt.FollowerRead,
-		NearRead:          opt.NearRead,
-		ReadRate:          opt.ReadRate,
-		WriteRate:         opt.WriteRate,
-		ExtentSize:        int(opt.ExtentSize),
-		AutoFlush:         opt.AutoFlush,
-		OnInsertExtentKey: s.mw.InsertExtentKey,
-		OnGetExtents:      s.mw.GetExtents,
-		OnTruncate:        s.mw.Truncate,
-		OnEvictIcache:     s.ic.Delete,
-		OnPutIcache:       s.ic.PutValue,
-		MetaWrapper:       s.mw,
-		StreamerSegCount:  opt.StreamerSegCount,
+		Volume:            		opt.Volname,
+		Masters:           		masters,
+		FollowerRead:      		opt.FollowerRead,
+		NearRead:          		opt.NearRead,
+		ReadRate:          		opt.ReadRate,
+		WriteRate:         		opt.WriteRate,
+		ExtentSize:        		int(opt.ExtentSize),
+		AutoFlush:         		opt.AutoFlush,
+		UpdateExtentsOnRead:	opt.UpdateExtentsOnRead,
+		OnInodeGet: 			s.InodeGet,
+		OnInsertExtentKey: 		s.mw.InsertExtentKey,
+		OnGetExtents:      		s.mw.GetExtents,
+		OnTruncate:        		s.mw.Truncate,
+		OnEvictIcache:     		s.ic.Delete,
+		OnPutIcache:       		s.ic.PutValue,
+		MetaWrapper:       		s.mw,
+		StreamerSegCount:  		opt.StreamerSegCount,
 	}
 	if first_start {
 		s.ec, err = data.NewExtentClient(extentConfig, nil)

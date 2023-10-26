@@ -128,6 +128,13 @@ func (s *Streamer) GetExtents(ctx context.Context) error {
 	return s.extents.Refresh(ctx, s.inode, s.client.getExtents)
 }
 
+func (s *Streamer) InitExtents(ctx context.Context) bool {
+	if !s.extents.initialized {
+		s.GetExtents(ctx)
+	}
+	return s.extents.initialized
+}
+
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
@@ -258,7 +265,15 @@ func (s *Streamer) readFromDataNode(ctx context.Context, requests []*ExtentReque
 	return
 }
 
-func (s *Streamer) UpdateExpiredExtentCache(ctx context.Context) {
+func (s *Streamer) UpdateExpiredExtentCache(ctx context.Context, readMaxOffset uint64) {
+	if s.client.updateExtentsOnRead && s.client.inodeGet != nil {
+		isUpdated := s.updateExtentCacheByReadOffset(ctx, readMaxOffset)
+		if isUpdated {
+			return
+		}
+	}
+
+	// ROW in cross-region mode maybe insert a new ek
 	if !s.client.dataWrapper.CrossRegionHATypeQuorum() {
 		return
 	}
@@ -269,6 +284,27 @@ func (s *Streamer) UpdateExpiredExtentCache(ctx context.Context) {
 	if s.extents.IsExpired(expireSecond) {
 		s.GetExtents(ctx)
 	}
+}
+
+func (s *Streamer) updateExtentCacheByReadOffset(ctx context.Context, readMaxOffset uint64) (isUpdated bool) {
+	extentsSize, extentsGen := s.extents.Size()
+	if readMaxOffset <= extentsSize {
+		return false
+	}
+	inodeInfo, err := s.client.inodeGet(ctx, s.inode)
+	if err != nil {
+		log.LogWarnf("updateExtentCacheByReadOffset: get inode(%v) info err(%v)", s.inode, err)
+		return false
+	}
+	if extentsSize < inodeInfo.Size || extentsGen < inodeInfo.Generation {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("updateExtentCacheByReadOffset: ino(%v) readMaxOffset(%v) but extents size(%v) gen(%v) is less than inode size(%v) gen(%v)",
+				s.inode, readMaxOffset, extentsSize, extentsGen, inodeInfo.Size, inodeInfo.Generation)
+		}
+		s.GetExtents(ctx)
+		return true
+	}
+	return false
 }
 
 func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *common.Packet) (targetHosts []string, isErr bool) {

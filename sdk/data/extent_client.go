@@ -35,6 +35,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type InodeGetFunc func(ctx context.Context, ino uint64) (*proto.InodeInfo, error)
 type InsertExtentKeyFunc func(ctx context.Context, inode uint64, key proto.ExtentKey, isPreExtent bool) error
 type GetExtentsFunc func(ctx context.Context, inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(ctx context.Context, inode, oldSize, size uint64) error
@@ -97,6 +98,8 @@ type ExtentConfig struct {
 	TinySize                 int
 	ExtentSize               int
 	AutoFlush                bool
+	UpdateExtentsOnRead		 bool
+	OnInodeGet				 InodeGetFunc
 	OnInsertExtentKey        InsertExtentKeyFunc
 	OnGetExtents             GetExtentsFunc
 	OnTruncate               TruncateFunc
@@ -124,6 +127,7 @@ type ExtentClient struct {
 
 	dataWrapper     *Wrapper
 	metaWrapper     *meta.MetaWrapper
+	inodeGet		InodeGetFunc
 	insertExtentKey InsertExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
@@ -135,6 +139,7 @@ type ExtentClient struct {
 	tinySize   int
 	extentSize int
 	autoFlush  bool
+	updateExtentsOnRead	bool
 
 	stopC chan struct{}
 	wg    sync.WaitGroup
@@ -195,6 +200,8 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	}
 	client.SetExtentSize(config.ExtentSize)
 	client.autoFlush = config.AutoFlush
+	client.updateExtentsOnRead = config.UpdateExtentsOnRead
+	client.inodeGet = config.OnInodeGet
 
 	if client.tinySize == NoUseTinyExtent {
 		client.tinySize = 0
@@ -305,10 +312,7 @@ func (client *ExtentClient) FileSize(inode uint64) (size uint64, gen uint64, val
 	if s == nil {
 		return
 	}
-	if !s.extents.initialized {
-		s.GetExtents(context.Background())
-	}
-	if !s.extents.initialized {
+	if !s.InitExtents(context.Background()) {
 		return
 	}
 	valid = true
@@ -332,9 +336,10 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 			s.GetExtents(ctx)
 		}
 	})
-	if !s.extents.initialized {
+	if !s.InitExtents(ctx) {
 		return 0, false, proto.ErrGetExtentsFailed
 	}
+
 	if !s.initServer {
 		s.InitServer()
 	}
@@ -438,7 +443,7 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size uin
 			s.GetExtents(ctx)
 		}
 	})
-	if !s.extents.initialized {
+	if !s.InitExtents(ctx) {
 		return proto.ErrGetExtentsFailed
 	}
 
@@ -483,13 +488,12 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 			s.GetExtents(ctx)
 		}
 	})
-	if !s.extents.initialized {
+	if !s.InitExtents(ctx) {
 		err = proto.ErrGetExtentsFailed
 		return
 	}
 
-	// ROW in cross-region mode maybe insert a new ek
-	s.UpdateExpiredExtentCache(ctx)
+	s.UpdateExpiredExtentCache(ctx, offset + uint64(size))
 
 	read, hasHole, err = s.read(ctx, data, offset, size)
 	if err != nil && strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()) {

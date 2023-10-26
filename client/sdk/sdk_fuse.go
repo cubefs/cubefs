@@ -531,6 +531,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableReadDirPlus = GlobalMountOptions[proto.EnableReadDirPlus].GetBool()
 	opt.PrefetchThread = GlobalMountOptions[proto.PrefetchThread].GetInt64()
 	opt.StreamerSegCount = GlobalMountOptions[proto.StreamerSegCount].GetInt64()
+	opt.UpdateExtentsOnRead = GlobalMountOptions[proto.UpdateExtentsOnRead].GetBool()
 
 	opt.Profile = GlobalMountOptions[proto.Profile].GetString()
 	if opt.Profile == proto.ProfileAiPrefetch {
