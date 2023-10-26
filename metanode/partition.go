@@ -276,6 +276,7 @@ type MetaPartition interface {
 	SetForbidden(status bool)
 	IsEnableAuditLog() bool
 	SetEnableAuditLog(status bool)
+	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
 }
 
 type UidManager struct {
