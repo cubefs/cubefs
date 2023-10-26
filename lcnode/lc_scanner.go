@@ -529,8 +529,8 @@ func (s *LcScanner) checkScanning() {
 					response.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
 
 					s.lcnode.scannerMutex.Lock()
-					delete(s.lcnode.lcScanners, s.ID)
 					s.Stop()
+					delete(s.lcnode.lcScanners, s.ID)
 					s.lcnode.scannerMutex.Unlock()
 
 					s.lcnode.respondToMaster(s.adminTask)

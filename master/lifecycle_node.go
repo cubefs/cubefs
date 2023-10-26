@@ -47,8 +47,8 @@ func (lcNode *LcNode) clean() {
 func (lcNode *LcNode) checkLiveness() {
 	lcNode.Lock()
 	defer lcNode.Unlock()
-	log.LogInfof("action[checkLiveness] lcnode[%v] report time[%v],since report time[%v], need gap [%v]",
-		lcNode.Addr, lcNode.ReportTime, time.Since(lcNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
+	log.LogInfof("action[checkLiveness] lcnode[%v, %v, %v] report time[%v], since report time[%v], need gap[%v]",
+		lcNode.ID, lcNode.Addr, lcNode.IsActive, lcNode.ReportTime, time.Since(lcNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(lcNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		lcNode.IsActive = false
 	}
