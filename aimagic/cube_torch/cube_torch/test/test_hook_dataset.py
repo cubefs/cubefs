@@ -68,4 +68,4 @@ def start_worker_test_Dataset(i):
 
 
 if __name__ == '__main__':
-    mp.spawn(fn=start_worker_test_concatDataset, nprocs=1)
+    mp.spawn(fn=start_worker_test_Dataset, nprocs=1)

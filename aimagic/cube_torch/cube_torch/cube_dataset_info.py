@@ -44,6 +44,7 @@ class CubeDataSetInfo:
         self.stop_event = multiprocessing.Event()
         self._init_env_fininsh = False
         self.train_list_dimensional = 1
+        self.is_folder_dataset = False
 
     def get_cubefs_root_dir(self):
         return self.cubefs_mount_point
@@ -70,24 +71,33 @@ class CubeDataSetInfo:
     def get_dataset_samples(self, dataset):
         result = None
         if isinstance(dataset, datasets.DatasetFolder):
-            result = np.asarray(dataset.samples)[:, 0]
+            result = dataset.samples
+            self.is_folder_dataset = True
         elif isinstance(dataset, datasets.VOCDetection):
-            result = np.asarray(dataset.images)
+            result = dataset.images
+            self.is_folder_dataset = True
         elif isinstance(dataset, datasets.CocoDetection):
             samples_len = dataset.__len__()
             samples_path = []
             for i in range(samples_len):
                 path = dataset.coco.loadImgs(i)[0]["file_name"]
                 samples_path.append(os.path.join(dataset.root, path))
-            result = np.asarray(samples_path)
+            result = samples_path
+            self.is_folder_dataset = True
         elif hasattr(dataset, 'train_data_list'):
             result = dataset.train_data_list()
-
-        if not is_numpy_2d_array(result) and not is_numpy_1d_array(result):
+        if not self.is_folder_dataset and not is_numpy_2d_array(result) and not is_numpy_1d_array(result):
             raise ValueError("Invalid Custom Dataset train_data_list func, "
                              "Its return value must be a two-dimensional numpy array or one-dimensional numpy array.")
 
         return result
+
+    def _concat_folder_dataset_array(self, dataset):
+        sample_array = []
+        for sub_dataset in dataset.datasets:
+            sdata_arr = self.get_dataset_samples(sub_dataset)
+            sample_array.extend(sdata_arr)
+        return sample_array
 
     def _concat_numpy_array(self, dataset):
         numpy_array = []
@@ -98,7 +108,9 @@ class CubeDataSetInfo:
 
     def _concatDataSet_get_samples(self, dataset):
         sdata_arr = self.get_dataset_samples(dataset.datasets[0])
-        if is_numpy_2d_array(sdata_arr):
+        if self.is_folder_dataset:
+            return self._concat_folder_dataset_array(dataset)
+        elif is_numpy_2d_array(sdata_arr):
             return np.concatenate(self._concat_numpy_array(dataset), axis=1)
         elif is_numpy_1d_array(sdata_arr):
             return np.concatenate(self._concat_numpy_array(dataset))

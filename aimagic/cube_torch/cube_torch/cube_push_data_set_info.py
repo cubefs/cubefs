@@ -40,14 +40,37 @@ class CubePushDataSetInfo(CubeDataSetInfo):
     def get_unregister_pid_addr(self):
         return self.unregister_pid_addr
 
-    def covert_index_list_to_filename(self, index_list):
+    def folder_train_file_names(self, index_list):
+        train_file_name_lists = []
+        is_signal_element = False
+        if len(self.train_list[0]) == 1:
+            is_signal_element = True
+        for index in index_list:
+            if is_signal_element:
+                train_file_name_lists.append(self.train_list[index])
+            else:
+                train_file_name_lists.append(self.train_list[index][0])
+        return train_file_name_lists
+
+    def numpy_2d_train_file_names(self, index_list):
         train_file_name_lists = []
         for index in index_list:
-            if self.train_list_dimensional == 2:
-                train_file_name_lists.extend(self.train_list[:, index])
-            else:
-                train_file_name_lists.append(self.train_list[index])
+            train_file_name_lists.extend(self.train_list[:, index])
         return train_file_name_lists
+
+    def numpy_1d_train_file_names(self, index_list):
+        train_file_name_lists = []
+        for index in index_list:
+            train_file_name_lists.extend(self.train_list[index])
+        return train_file_name_lists
+
+    def covert_index_list_to_filename(self, index_list):
+        if self.is_folder_dataset:
+            return self.folder_train_file_names(index_list)
+        elif self.train_list_dimensional == 2:
+            return self.numpy_2d_train_file_names(index_list)
+        elif self.train_list_dimensional == 1:
+            return self.numpy_1d_train_file_names(index_list)
 
     def is_use_batch_download(self):
         return self._is_use_batch_download
