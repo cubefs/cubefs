@@ -19,42 +19,88 @@ import "sync"
 type Null struct {
 }
 type Set struct {
-	sync.RWMutex
 	m map[string]Null
+}
+type SyncSet struct {
+	sync.RWMutex
+	Set
 }
 
 func NewSet() *Set {
 	return &Set{
-		m: map[string]Null{},
+		m: make(map[string]Null),
+	}
+}
+
+func NewSyncSet() *SyncSet {
+	return &SyncSet{
+		Set: Set{
+			m: make(map[string]Null),
+		},
 	}
 }
 
 func (s *Set) Add(val string) {
-	s.Lock()
-	defer s.Unlock()
 	s.m[val] = Null{}
 }
-func (s *Set) Remove(val string) {
+
+func (s *SyncSet) Add(val string) {
 	s.Lock()
 	defer s.Unlock()
+	s.Set.Add(val)
+}
+
+func (s *Set) Remove(val string) {
 	delete(s.m, val)
 }
 
+func (s *SyncSet) Remove(val string) {
+	s.Lock()
+	defer s.Unlock()
+	s.Set.Remove(val)
+}
+
 func (s *Set) Has(key string) bool {
-	s.RLock()
-	defer s.RUnlock()
 	_, ok := s.m[key]
 	return ok
 }
 
-func (s *Set) Len() int {
+func (s *SyncSet) Has(key string) bool {
 	s.RLock()
 	defer s.RUnlock()
+	return s.Set.Has(key)
+}
+
+func (s *Set) Len() int {
 	return len(s.m)
 }
 
+func (s *SyncSet) Len() int {
+	s.RLock()
+	defer s.RUnlock()
+	return s.Set.Len()
+}
+
 func (s *Set) Clear() {
+	s.m = make(map[string]Null)
+}
+
+func (s *SyncSet) Clear() {
 	s.Lock()
 	defer s.Unlock()
-	s.m = make(map[string]Null)
+	s.Set.Clear()
+}
+
+func (s *Set) Range(fun func(key interface{}) bool) {
+	for k, _ := range s.m {
+		if !fun(k) {
+			return
+		}
+	}
+}
+
+func (s *SyncSet) Range(fun func(key interface{}) bool) {
+	s.Lock()
+	defer s.Unlock()
+	s.Set.Range(fun)
 }
