@@ -267,7 +267,7 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	return audit, nil
 }
 
-// NOTE:
+// NOTE: the format of audit log in here
 // common header:
 // [PREFIX] CURRENT_TIME TIME_ZONE
 // format for client:

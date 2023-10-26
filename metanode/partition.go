@@ -247,6 +247,7 @@ type MetaPartition interface {
 	ForceSetMetaPartitionToFininshLoad()
 	IsEnableAuditLog() bool
 	SetEnableAuditLog(status bool)
+	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
 }
 
 type UidManager struct {

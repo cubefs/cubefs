@@ -20,12 +20,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/time/rate"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -33,7 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-//Rollback Type
+// Rollback Type
 const (
 	TxNoOp uint8 = iota
 	TxUpdate
@@ -287,18 +288,18 @@ func NewTxRollbackDentry(dentry *Dentry, txDentryInfo *proto.TxDentryInfo, rbTyp
 	}
 }
 
-//TM
+// TM
 type TransactionManager struct {
 	//need persistence and sync to all the raft members of the mp
 	txIdAlloc   *TxIDAllocator
 	txTree      *BTree
 	txProcessor *TransactionProcessor
-	blacklist   *util.Set
+	blacklist   *util.SyncSet
 	opLimiter   *rate.Limiter
 	sync.RWMutex
 }
 
-//RM
+// RM
 type TransactionResource struct {
 	txRbInodeTree  *BTree //key: inode id
 	txRbDentryTree *BTree // key: parentId_name
@@ -327,7 +328,7 @@ func NewTransactionManager(txProcessor *TransactionProcessor) *TransactionManage
 		txIdAlloc:   newTxIDAllocator(),
 		txTree:      NewBtree(),
 		txProcessor: txProcessor,
-		blacklist:   util.NewSet(),
+		blacklist:   util.NewSyncSet(),
 		opLimiter:   rate.NewLimiter(rate.Inf, 128),
 	}
 	return txMgr
@@ -641,7 +642,7 @@ func (tm *TransactionManager) addTxInfo(txInfo *proto.TransactionInfo) {
 	tm.txTree.ReplaceOrInsert(txInfo, true)
 }
 
-//TM register a transaction, process client transaction
+// TM register a transaction, process client transaction
 func (tm *TransactionManager) registerTransaction(txInfo *proto.TransactionInfo) (err error) {
 
 	if uint64(txInfo.TmID) == tm.txProcessor.mp.config.PartitionId {
@@ -1185,7 +1186,7 @@ func (tr *TransactionResource) Reset() {
 	tr.txProcessor = nil
 }
 
-//check if item(inode, dentry) is in transaction for modifying
+// check if item(inode, dentry) is in transaction for modifying
 func (tr *TransactionResource) isInodeInTransction(ino *Inode) (inTx bool, txID string) {
 	//return true only if specified inode is in an ongoing transaction(not expired yet)
 	tr.Lock()
@@ -1264,7 +1265,7 @@ func (tr *TransactionResource) deleteTxRollbackInode(ino uint64, txId string) (s
 	return proto.OpOk
 }
 
-//RM add an `TxRollbackInode` into `txRollbackInodes`
+// RM add an `TxRollbackInode` into `txRollbackInodes`
 func (tr *TransactionResource) addTxRollbackInode(rbInode *TxRollbackInode) (status uint8) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1326,7 +1327,7 @@ func (tr *TransactionResource) deleteTxRollbackDentry(pid uint64, name, txId str
 	return proto.OpOk
 }
 
-//RM add a `TxRollbackDentry` into `txRollbackDentries`
+// RM add a `TxRollbackDentry` into `txRollbackDentries`
 func (tr *TransactionResource) addTxRollbackDentry(rbDentry *TxRollbackDentry) (status uint8) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1398,7 +1399,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 	return
 }
 
-//RM roll back an inode, retry if error occours
+// RM roll back an inode, retry if error occours
 func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1457,7 +1458,7 @@ func (tr *TransactionResource) rollbackDentryInternal(rbDentry *TxRollbackDentry
 	return
 }
 
-//RM roll back a dentry, retry if error occours
+// RM roll back a dentry, retry if error occours
 func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1492,7 +1493,7 @@ func (tr *TransactionResource) rollbackDentry(req *proto.TxDentryApplyRequest) (
 	return
 }
 
-//RM simplely remove the inode from TransactionResource
+// RM simplely remove the inode from TransactionResource
 func (tr *TransactionResource) commitInode(txID string, inode uint64) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
@@ -1519,7 +1520,7 @@ func (tr *TransactionResource) commitInode(txID string, inode uint64) (status ui
 	return
 }
 
-//RM simplely remove the dentry from TransactionResource
+// RM simplely remove the dentry from TransactionResource
 func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string) (status uint8, err error) {
 	tr.Lock()
 	defer tr.Unlock()
