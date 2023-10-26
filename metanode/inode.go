@@ -794,10 +794,12 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			if err, ekRef = i.Extents.UnmarshalBinary(extBytes, v3); err != nil {
 				return
 			}
+			// log.LogDebugf("Inode %v ekRef %v", i.Inode, ekRef)
 			if ekRef != nil {
 				if i.multiSnap == nil {
 					i.multiSnap = NewMultiSnap(0)
 				}
+				// log.LogDebugf("Inode %v ekRef %v", i.Inode, ekRef)
 				i.multiSnap.ekRefMap = ekRef
 			}
 		}
@@ -868,13 +870,13 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 				if i.multiSnap.ekRefMap == nil {
 					i.multiSnap.ekRefMap = new(sync.Map)
 				}
-				//log.LogDebugf("UnmarshalValue. inode %v merge top layer multiSnap.ekRefMap with layer %v", i.Inode, idx)
+				// log.LogDebugf("UnmarshalValue. inode %v merge top layer multiSnap.ekRefMap with layer %v", i.Inode, idx)
 				proto.MergeSplitKey(i.Inode, i.multiSnap.ekRefMap, ino.multiSnap.ekRefMap)
 			}
 			if i.multiSnap == nil {
 				i.multiSnap = &InodeMultiSnap{}
 			}
-			//log.LogDebugf("action[UnmarshalValue] inode %v old seq %v hist len %v", ino.Inode, ino.getVer(), i.getLayerLen())
+			// log.LogDebugf("action[UnmarshalValue] inode %v old seq %v hist len %v", ino.Inode, ino.getVer(), i.getLayerLen())
 			i.multiSnap.multiVersions = append(i.multiSnap.multiVersions, ino)
 		}
 	}
@@ -1638,8 +1640,8 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 	return
 }
 
-func (i *Inode) ExtentsTruncate(length uint64, ct int64, doOnLastKey func(*proto.ExtentKey)) (delExtents []proto.ExtentKey) {
-	delExtents = i.Extents.Truncate(length, doOnLastKey)
+func (i *Inode) ExtentsTruncate(length uint64, ct int64, doOnLastKey func(*proto.ExtentKey), insertRefMap func(ek *proto.ExtentKey)) (delExtents []proto.ExtentKey) {
+	delExtents = i.Extents.Truncate(length, doOnLastKey, insertRefMap)
 	i.Size = length
 	i.ModifyTime = ct
 	i.Generation++
@@ -1685,8 +1687,8 @@ func (i *Inode) DecSplitExts(mpId uint64, delExtents interface{}) {
 			log.LogDebugf("[DecSplitExts] mpId [%v]  ek not split %v", mpId, ek)
 			continue
 		}
-		if i.multiSnap.ekRefMap == nil {
-			log.LogErrorf("[DecSplitExts] mpid [%v]. multiSnap.ekRefMap is nil", mpId)
+		if i.multiSnap == nil || i.multiSnap.ekRefMap == nil {
+			log.LogErrorf("[DecSplitExts] mpid [%v]. inode [%v] multiSnap.ekRefMap is nil", mpId, i.Inode)
 			return
 		}
 
