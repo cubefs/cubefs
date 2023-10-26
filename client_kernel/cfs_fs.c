@@ -1281,10 +1281,12 @@ static int cfs_statfs(struct dentry *dentry, struct kstatfs *kstatfs)
 	struct cfs_volume_stat stat;
 	int ret;
 
-	cfs_log_info("dentry=" fmt_dentry "\n", pr_dentry(dentry));
 	ret = cfs_master_get_volume_stat(cmi->master, &stat);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_err("get volume '%s' stat error %d\n",
+			    cmi->master->volume, ret);
 		return ret;
+	}
 	memset(kstatfs, 0, sizeof(*kstatfs));
 	kstatfs->f_type = CFS_FS_MAGIC;
 	kstatfs->f_namelen = NAME_MAX;

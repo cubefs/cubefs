@@ -11,7 +11,7 @@ struct cfs_socket_pool {
 	struct delayed_work work;
 };
 
-struct cfs_socket_pool *sock_pool;
+static struct cfs_socket_pool *sock_pool;
 
 static inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr)
 {
@@ -32,7 +32,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 {
 	struct cfs_socket *csk;
 	u32 key;
-	int ret = 0;
+	int ret;
 	int optval;
 
 	BUG_ON(sock_pool == NULL);
@@ -109,7 +109,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 	}
 	*cskp = csk;
 
-	return ret;
+	return 0;
 }
 
 void cfs_socket_release(struct cfs_socket *csk, bool forever)

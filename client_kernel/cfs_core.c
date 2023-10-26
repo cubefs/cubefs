@@ -6,8 +6,6 @@ static int __init cfs_init(void)
 {
 	int ret;
 
-	cfs_log_info("init\n");
-
 	ret = cfs_socket_module_init();
 	if (ret < 0) {
 		cfs_log_err("init socket module error %d\n", ret);
@@ -32,7 +30,13 @@ static int __init cfs_init(void)
 		goto exit;
 	}
 
-	return register_filesystem(&cfs_fs_type);
+	ret = register_filesystem(&cfs_fs_type);
+	if (ret < 0) {
+		cfs_log_err("register file system error %d\n", ret);
+		goto exit;
+	}
+	cfs_log_info("init\n");
+	return 0;
 
 exit:
 	cfs_socket_module_exit();
@@ -44,12 +48,18 @@ exit:
 
 static void __exit cfs_exit(void)
 {
-	cfs_log_info("exit\n");
-	unregister_filesystem(&cfs_fs_type);
+	int ret;
+
+	ret = unregister_filesystem(&cfs_fs_type);
+	if (ret < 0) {
+		cfs_log_err("unregister file system error %d\n", ret);
+		return;
+	}
 	cfs_packet_module_exit();
 	cfs_socket_module_exit();
 	cfs_extent_module_exit();
 	cfs_fs_module_exit();
+	cfs_log_info("exit\n");
 }
 
 module_init(cfs_init);
