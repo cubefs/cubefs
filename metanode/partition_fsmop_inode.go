@@ -603,6 +603,11 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		eks = append(eks, *lastKey)
 		mp.uidManager.minusUidSpace(i.Uid, i.Inode, eks)
 	}
+
+	insertSplitKey := func(ek *proto.ExtentKey) {
+		i.insertEkRefMap(mp.config.PartitionId, ek)
+	}
+
 	if i.getVer() != mp.verSeq {
 		i.CreateVer(mp.verSeq)
 	}
@@ -613,7 +618,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	oldSize := int64(i.Size)
-	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, doOnLastKey)
+	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, doOnLastKey, insertSplitKey)
 
 	if len(delExtents) == 0 {
 		return

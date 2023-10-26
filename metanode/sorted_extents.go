@@ -435,7 +435,7 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	return
 }
 
-func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentKey)) (deleteExtents []proto.ExtentKey) {
+func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentKey), insertRefMap func(ek *proto.ExtentKey)) (deleteExtents []proto.ExtentKey) {
 	var endIndex int
 
 	se.Lock()
@@ -464,15 +464,23 @@ func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentK
 			if doOnLastKey != nil {
 				doOnLastKey(&proto.ExtentKey{Size: uint32(lastKey.FileOffset + uint64(lastKey.Size) - offset)})
 			}
-			rsKey := *lastKey
+			rsKey := &proto.ExtentKey{}
+			*rsKey = *lastKey
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
+			lastKey.SetSplit(true)
+			if insertRefMap != nil {
+				insertRefMap(lastKey)
+			}
 
 			rsKey.Size -= lastKey.Size
 			rsKey.FileOffset += uint64(lastKey.Size)
 			rsKey.ExtentOffset += uint64(lastKey.Size)
 			rsKey.SetSplit(true) // the delete key not the last one
+			if insertRefMap != nil {
+				insertRefMap(rsKey)
+			}
 
-			deleteExtents = append([]proto.ExtentKey{rsKey}, deleteExtents...)
+			deleteExtents = append([]proto.ExtentKey{*rsKey}, deleteExtents...)
 			log.LogDebugf("SortedExtents.Truncate rsKey %v, deleteExtents %v", rsKey, deleteExtents)
 		}
 	}

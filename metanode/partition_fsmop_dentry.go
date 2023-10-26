@@ -215,7 +215,7 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 // Delete dentry from the dentry tree.
 func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp *DentryResponse) {
 
-	log.LogDebugf("action[fsmDeleteDentry] delete param (%v) seq %v", denParm, denParm.getSeqFiled())
+	log.LogDebugf("action[fsmDeleteDentry] mp [%v] delete param (%v) seq %v", mp.config.PartitionId, denParm, denParm.getSeqFiled())
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 	var denFound *Dentry
@@ -233,7 +233,7 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 		clean  bool
 	)
 	if checkInode {
-		log.LogDebugf("action[fsmDeleteDentry] delete param %v", denParm)
+		log.LogDebugf("action[fsmDeleteDentry] mp %v delete param %v", mp.config.PartitionId, denParm)
 		item = mp.dentryTree.Execute(func(tree *btree.BTree) interface{} {
 			d := tree.CopyGet(denParm)
 			if d == nil {
