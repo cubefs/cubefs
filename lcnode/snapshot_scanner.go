@@ -425,8 +425,8 @@ func (s *SnapshotScanner) checkScanning(report bool) {
 					response.TotalInodeNum = s.currentStat.TotalInodeNum
 					response.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
 					s.lcnode.scannerMutex.Lock()
-					delete(s.lcnode.snapshotScanners, s.ID)
 					s.Stop()
+					delete(s.lcnode.snapshotScanners, s.ID)
 					s.lcnode.scannerMutex.Unlock()
 
 					s.lcnode.respondToMaster(s.adminTask)

@@ -60,7 +60,7 @@ func (lcMgr *lifecycleManager) startLcScan() {
 	}
 
 	// start scan init
-	lcMgr.lcNodeStatus.workingNodes = make(map[string]string)
+	lcMgr.lcNodeStatus.WorkingNodes = make(map[string]string)
 	lcMgr.lcRuleTaskStatus = NewLcRuleTaskStatus()
 	for _, r := range tasks {
 		lcMgr.lcRuleTaskStatus.ToBeScanned[r.Id] = r
@@ -99,7 +99,7 @@ func (lcMgr *lifecycleManager) scanning() bool {
 		})
 
 		for _, task := range scanning {
-			workingNodes := lcMgr.lcNodeStatus.workingNodes
+			workingNodes := lcMgr.lcNodeStatus.WorkingNodes
 			var node string
 			for nodeAddr, t := range workingNodes {
 				if task.Id == t {
@@ -226,28 +226,28 @@ type OpLcNode interface {
 
 type lcNodeStatus struct {
 	sync.RWMutex
-	idleNodes    map[string]string //ip:ip
-	workingNodes map[string]string //ip:taskId
+	IdleNodes    map[string]string //ip:ip
+	WorkingNodes map[string]string //ip:taskId
 }
 
 func NewLcNodeStatus() *lcNodeStatus {
 	return &lcNodeStatus{
-		idleNodes:    make(map[string]string),
-		workingNodes: make(map[string]string),
+		IdleNodes:    make(map[string]string),
+		WorkingNodes: make(map[string]string),
 	}
 }
 
 func (ns *lcNodeStatus) GetIdleNode(taskId string) (nodeAddr string) {
 	ns.Lock()
 	defer ns.Unlock()
-	if len(ns.idleNodes) == 0 {
+	if len(ns.IdleNodes) == 0 {
 		return
 	}
 
-	for n := range ns.idleNodes {
+	for n := range ns.IdleNodes {
 		nodeAddr = n
-		delete(ns.idleNodes, nodeAddr)
-		ns.workingNodes[nodeAddr] = taskId
+		delete(ns.IdleNodes, nodeAddr)
+		ns.WorkingNodes[nodeAddr] = taskId
 		return
 	}
 	return
@@ -256,18 +256,18 @@ func (ns *lcNodeStatus) GetIdleNode(taskId string) (nodeAddr string) {
 func (ns *lcNodeStatus) RemoveNode(nodeAddr string) (taskId string) {
 	ns.Lock()
 	defer ns.Unlock()
-	taskId = ns.workingNodes[nodeAddr]
-	delete(ns.idleNodes, nodeAddr)
-	delete(ns.workingNodes, nodeAddr)
+	taskId = ns.WorkingNodes[nodeAddr]
+	delete(ns.IdleNodes, nodeAddr)
+	delete(ns.WorkingNodes, nodeAddr)
 	return
 }
 
 func (ns *lcNodeStatus) ReleaseNode(nodeAddr string) (taskId string) {
 	ns.Lock()
 	defer ns.Unlock()
-	taskId = ns.workingNodes[nodeAddr]
-	delete(ns.workingNodes, nodeAddr)
-	ns.idleNodes[nodeAddr] = nodeAddr
+	taskId = ns.WorkingNodes[nodeAddr]
+	delete(ns.WorkingNodes, nodeAddr)
+	ns.IdleNodes[nodeAddr] = nodeAddr
 	return
 }
 

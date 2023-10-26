@@ -4243,30 +4243,35 @@ func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
 	var ln *LcNode
 	if value, ok := c.lcNodes.Load(nodeAddr); ok {
 		ln = value.(*LcNode)
+		ln.ReportTime = time.Now()
+		ln.clean()
+		ln.TaskManager = newAdminTaskManager(ln.Addr, c.Name)
 		log.LogInfof("action[addLcNode] already add nodeAddr: %v, id: %v", nodeAddr, ln.ID)
-		return ln.ID, nil
+	} else {
+		ln = newLcNode(nodeAddr, c.Name)
+		// allocate LcNode id
+		if id, err = c.idAlloc.allocateCommonID(); err != nil {
+			goto errHandler
+		}
+		ln.ID = id
+		log.LogInfof("action[addLcNode] allocateCommonID: %v", id)
 	}
-	ln = newLcNode(nodeAddr, c.Name)
-	// allocate LcNode id
-	if id, err = c.idAlloc.allocateCommonID(); err != nil {
-		goto errHandler
-	}
-	ln.ID = id
-	log.LogInfof("action[addLcNode] allocateCommonID: %v", id)
+
 	if err = c.syncAddLcNode(ln); err != nil {
 		goto errHandler
 	}
 	c.lcNodes.Store(nodeAddr, ln)
 	c.lcMgr.lcNodeStatus.Lock()
-	delete(c.lcMgr.lcNodeStatus.workingNodes, nodeAddr)
-	c.lcMgr.lcNodeStatus.idleNodes[nodeAddr] = nodeAddr
+	delete(c.lcMgr.lcNodeStatus.WorkingNodes, nodeAddr)
+	c.lcMgr.lcNodeStatus.IdleNodes[nodeAddr] = nodeAddr
 	c.lcMgr.lcNodeStatus.Unlock()
 	c.snapshotMgr.lcNodeStatus.Lock()
-	delete(c.snapshotMgr.lcNodeStatus.workingNodes, nodeAddr)
-	c.snapshotMgr.lcNodeStatus.idleNodes[nodeAddr] = nodeAddr
+	delete(c.snapshotMgr.lcNodeStatus.WorkingNodes, nodeAddr)
+	c.snapshotMgr.lcNodeStatus.IdleNodes[nodeAddr] = nodeAddr
 	c.snapshotMgr.lcNodeStatus.Unlock()
 	log.LogInfof("action[addLcNode], clusterID[%v], lcNodeAddr: %v, id: %v, add idleNodes", c.Name, nodeAddr, ln.ID)
-	return
+	return ln.ID, nil
+
 errHandler:
 	err = fmt.Errorf("action[addLcNode],clusterID[%v] lcNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
@@ -4275,33 +4280,33 @@ errHandler:
 }
 
 type LcNodeStatInfo struct {
-	Addr   string
-	TaskId string
+	Addr string
 }
 
 type LcNodeInfoResponse struct {
-	Infos               []*LcNodeStatInfo
-	LcConfigurations    map[string]*proto.LcConfiguration
-	LcRuleTaskStatus    *lcRuleTaskStatus
-	LcSnapshotVerStatus *lcSnapshotVerStatus
+	RegisterInfos      []*LcNodeStatInfo
+	LcConfigurations   map[string]*proto.LcConfiguration
+	LcRuleTaskStatus   *lcRuleTaskStatus
+	LcNodeStatus       *lcNodeStatus
+	SnapshotVerStatus  *lcSnapshotVerStatus
+	SnapshotNodeStatus *lcNodeStatus
 }
 
 func (c *Cluster) getAllLcNodeInfo() (rsp *LcNodeInfoResponse, err error) {
 	rsp = &LcNodeInfoResponse{
-		Infos: make([]*LcNodeStatInfo, 0),
+		RegisterInfos: make([]*LcNodeStatInfo, 0),
 	}
 	c.lcNodes.Range(func(addr, value interface{}) bool {
-		TaskId := c.lcMgr.lcNodeStatus.workingNodes[addr.(string)]
-		ln := &LcNodeStatInfo{
-			Addr:   addr.(string),
-			TaskId: TaskId,
-		}
-		rsp.Infos = append(rsp.Infos, ln)
+		rsp.RegisterInfos = append(rsp.RegisterInfos, &LcNodeStatInfo{
+			Addr: addr.(string),
+		})
 		return true
 	})
 	rsp.LcConfigurations = c.lcMgr.lcConfigurations
 	rsp.LcRuleTaskStatus = c.lcMgr.lcRuleTaskStatus
-	rsp.LcSnapshotVerStatus = c.snapshotMgr.lcSnapshotTaskStatus
+	rsp.LcNodeStatus = c.lcMgr.lcNodeStatus
+	rsp.SnapshotVerStatus = c.snapshotMgr.lcSnapshotTaskStatus
+	rsp.SnapshotNodeStatus = c.snapshotMgr.lcNodeStatus
 	return
 }
 
