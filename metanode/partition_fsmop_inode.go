@@ -282,7 +282,7 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 // fsmUnlinkInode delete the specified inode from inode tree.
 
 func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
-	log.LogDebugf("action[fsmUnlinkInode] ino %v", ino)
+	log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v", mp.config.PartitionId, ino)
 	var (
 		ext2Del []proto.ExtentKey
 	)
@@ -292,13 +292,13 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
-		log.LogDebugf("action[fsmUnlinkInode] ino %v", ino)
+		log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v", mp.config.PartitionId, ino)
 		resp.Status = proto.OpNotExistErr
 		return
 	}
 	inode := item.(*Inode)
 	if ino.getVer() == 0 && inode.ShouldDelete() {
-		log.LogDebugf("action[fsmUnlinkInode] ino %v", ino)
+		log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v", mp.config.PartitionId, ino)
 		resp.Status = proto.OpNotExistErr
 		return
 	}
@@ -308,11 +308,11 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	resp.Msg = inode
 
 	if !mp.uniqChecker.legalIn(uniqID) {
-		log.LogWarnf("fsmUnlinkInode repeat, ino %v uniqID %v nlink %v", ino.Inode, uniqID, ino.GetNLink())
+		log.LogWarnf("fsmUnlinkInode repeat, mp %v ino %v uniqID %v nlink %v", mp.config.PartitionId, ino.Inode, uniqID, ino.GetNLink())
 		return
 	}
 
-	log.LogDebugf("action[fsmUnlinkInode] get inode %v", inode)
+	log.LogDebugf("action[fsmUnlinkInode] mp %v get inode %v", mp.config.PartitionId, inode)
 	var (
 		doMore bool
 		status = proto.OpOk
@@ -321,10 +321,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	if ino.getVer() == 0 {
 		ext2Del, doMore, status = inode.unlinkTopLayer(mp.config.PartitionId, ino, mp.verSeq, mp.multiVersionList)
 	} else { // means drop snapshot
-		log.LogDebugf("action[fsmUnlinkInode] req drop assigned snapshot reqseq %v inode seq %v", ino.getVer(), inode.getVer())
+		log.LogDebugf("action[fsmUnlinkInode] mp %v req drop assigned snapshot reqseq %v inode seq %v", mp.config.PartitionId, ino.getVer(), inode.getVer())
 		if ino.getVer() > inode.getVer() && !isInitSnapVer(ino.getVer()) {
-			log.LogDebugf("action[fsmUnlinkInode] inode %v unlink not exist snapshot and return do nothing.reqSeq %v larger than inode seq %v",
-				ino.Inode, ino.getVer(), inode.getVer())
+			log.LogDebugf("action[fsmUnlinkInode] mp %v inode %v unlink not exist snapshot and return do nothing.reqSeq %v larger than inode seq %v",
+				mp.config.PartitionId, ino.Inode, ino.getVer(), inode.getVer())
 			return
 		} else {
 			ext2Del, doMore, status = inode.unlinkVerInList(mp.config.PartitionId, ino, mp.verSeq, mp.multiVersionList)
@@ -336,10 +336,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	}
 
 	if ino.getVer() == 0 && topLayerEmpty && inode.IsEmptyDirAndNoSnapshot() { // normal deletion
-		log.LogDebugf("action[fsmUnlinkInode] ino %v really be deleted, empty dir", inode)
+		log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v really be deleted, empty dir", mp.config.PartitionId, inode)
 		mp.inodeTree.Delete(inode)
 	} else if ino.getVer() > 0 && inode.IsEmptyDirAndNoSnapshot() { // snapshot deletion
-		log.LogDebugf("action[fsmUnlinkInode] ino %v really be deleted, empty dir", inode)
+		log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v really be deleted, empty dir", mp.config.PartitionId, inode)
 		mp.inodeTree.Delete(inode)
 		mp.updateUsedInfo(0, -1, inode.Inode)
 	}
@@ -357,10 +357,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 
 		// all snapshot between create to last deletion cleaned
 		if inode.NLink == 0 && inode.getLayerLen() == 0 {
-			log.LogDebugf("action[fsmUnlinkInode] unlink inode %v and push to freeList", inode)
+			log.LogDebugf("action[fsmUnlinkInode] mp %v unlink inode %v and push to freeList", mp.config.PartitionId, inode)
 			inode.AccessTime = time.Now().Unix()
 			mp.freeList.Push(inode.Inode)
-			log.LogDebugf("action[fsmUnlinkInode] ino %v", inode)
+			log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v", mp.config.PartitionId, inode)
 		}
 	}
 
@@ -369,7 +369,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		inode.DecSplitExts(mp.config.PartitionId, ext2Del)
 		mp.extDelCh <- ext2Del
 	}
-	log.LogDebugf("action[fsmUnlinkInode] ino %v left", inode)
+	log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v left", mp.config.PartitionId, inode)
 	return
 }
 

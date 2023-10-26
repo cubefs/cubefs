@@ -334,7 +334,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 	}
 	ino := NewInode(req.Inode, 0)
 	if item := mp.inodeTree.Get(ino); item == nil {
-		err = fmt.Errorf("inode %v reqeust cann't found", ino)
+		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
 		log.LogErrorf("action[UnlinkInode] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
@@ -345,13 +345,13 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		r, err = mp.submit(opFSMUnlinkInodeOnce, val)
 	} else {
 		ino.setVer(req.VerSeq)
-		log.LogDebugf("action[UnlinkInode] verseq %v ino %v", req.VerSeq, ino)
+		log.LogDebugf("action[UnlinkInode] mp %v verseq %v ino %v", mp.config.PartitionId, req.VerSeq, ino)
 		val, err = ino.Marshal()
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
-		log.LogDebugf("action[UnlinkInode] ino %v submit", ino)
+		log.LogDebugf("action[UnlinkInode] mp %v ino %v submit", mp.config.PartitionId, ino)
 		r, err = mp.submit(opFSMUnlinkInode, val)
 	}
 
