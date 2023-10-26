@@ -300,7 +300,7 @@ type TransactionManager struct {
 	txIdAlloc   *TxIDAllocator
 	txTree      *BTree
 	txProcessor *TransactionProcessor
-	blacklist   *util.Set
+	blacklist   *util.SyncSet
 	opLimiter   *rate.Limiter
 	sync.RWMutex
 }
@@ -334,7 +334,7 @@ func NewTransactionManager(txProcessor *TransactionProcessor) *TransactionManage
 		txIdAlloc:   newTxIDAllocator(),
 		txTree:      NewBtree(),
 		txProcessor: txProcessor,
-		blacklist:   util.NewSet(),
+		blacklist:   util.NewSyncSet(),
 		opLimiter:   rate.NewLimiter(rate.Inf, 128),
 	}
 	return txMgr
