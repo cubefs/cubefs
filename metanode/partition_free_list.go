@@ -34,7 +34,6 @@ import (
 
 const (
 	AsyncDeleteInterval           = 10 * time.Second
-	UpdateVolTicket               = 2 * time.Minute
 	BatchCounts                   = 128
 	OpenRWAppendOpt               = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	TempFileValidTime             = 86400 // units: sec
@@ -58,14 +57,12 @@ func (mp *metaPartition) startFreeList() (err error) {
 		return
 	}
 
-	// start vol update ticket
-	go mp.updateVolWorker()
 	go mp.deleteWorker()
 	mp.startToDeleteExtents()
 	return
 }
 
-func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
+UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView) {
 	volName := mp.config.VolName
 	dataView, err := masterClient.ClientAPI().EncodingGzip().GetDataPartitions(volName)
 	if err != nil {
@@ -94,7 +91,7 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		for i := 0; i < len(view.DataPartitions); i++ {
 			if len(view.DataPartitions[i].Hosts) < 1 {
-				log.LogErrorf("updateVolWorker dp id(%v) is invalid, DataPartitionResponse detail[%v]",
+				log.LogErrorf("action[UpdateVolumeView] dp id(%v) is invalid, DataPartitionResponse detail[%v]",
 					view.DataPartitions[i].PartitionID, view.DataPartitions[i])
 				continue
 			}
@@ -108,16 +105,8 @@ func (mp *metaPartition) updateVolWorker() {
 		}
 		return newView
 	}
-	mp.updateVolView(convert)
-	for {
-		select {
-		case <-mp.stopC:
-			t.Stop()
-			return
-		case <-t.C:
-			mp.updateVolView(convert)
-		}
-	}
+	mp.vol.UpdatePartitions(convert(dataView))
+	mp.vol.volDeleteLockTime = volumeView.DeleteLockTime
 }
 
 const (
