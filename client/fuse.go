@@ -679,8 +679,7 @@ func registerInterceptedSignal(mnt string) {
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 	go func() {
 		sig := <-sigC
-		syslog.Printf("Killed due to a received signal (%v)\n", sig)
-		syscall.Unmount(mnt, 0)
+		syslog.Printf("Killed due to a received signal (%v)[%d-%v]\n", sig, os.Getpid(), mnt)
 		auditlog.StopAudit()
 		log.LogFlush()
 		os.Exit(1)
