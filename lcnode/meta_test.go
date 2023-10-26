@@ -49,3 +49,7 @@ func (*MockMetaWrapper) Evict(inode uint64, fullPath string) error {
 func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error) {
 	return nil, nil
 }
+
+func (*MockMetaWrapper) Close() error {
+	return nil
+}

@@ -113,6 +113,7 @@ func (s *SnapshotScanner) Stop() {
 	close(s.stopC)
 	s.rPoll.WaitAndClose()
 	close(s.inodeChan.In)
+	s.mw.Close()
 	log.LogDebugf("snapshot scanner(%v) stopped", s.ID)
 }
 

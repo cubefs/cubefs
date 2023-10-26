@@ -555,5 +555,6 @@ func (s *LcScanner) Stop() {
 	s.dirRPoll.WaitAndClose()
 	close(s.dirChan.In)
 	close(s.fileChan.In)
+	s.mw.Close()
 	log.LogInfof("scanner(%v) stopped", s.ID)
 }
