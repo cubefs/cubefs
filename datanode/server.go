@@ -471,6 +471,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/raftStatus", s.getRaftStatus)
 	http.HandleFunc("/setAutoRepairStatus", s.setAutoRepairStatus)
 	http.HandleFunc("/releasePartitions", s.releasePartitions)
+	http.HandleFunc("/restorePartitions", s.restorePartitions)
 	http.HandleFunc("/computeExtentMd5", s.getExtentMd5Sum)
 	http.HandleFunc("/stat/info", s.getStatInfo)
 	http.HandleFunc("/getReplBufferDetail", s.getReplProtocalBufferDetail)

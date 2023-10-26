@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -194,6 +195,84 @@ func (s *DataNode) releasePartitions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.buildSuccessResp(w, fmt.Sprintf("release partitions, success partitions: %v, failed partitions: %v, failed disks: %v", successVols, failedVols, failedDisks))
+}
+
+func (s *DataNode) restorePartitions(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramAuthKey = "key"
+		paramIdKey   = "id"
+	)
+	var (
+		err         error
+		all         bool
+		successDps  []uint64
+		failedDisks []string
+		failedDps   []uint64
+	)
+	ids := make(map[uint64]bool)
+	key := r.FormValue(paramAuthKey)
+	if !matchKey(key) {
+		err = fmt.Errorf("auth key not match: %v", key)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	idVal := r.FormValue(paramIdKey)
+	if idVal == "all" {
+		all = true
+	} else {
+		allId := strings.Split(idVal, ",")
+		for _, val := range allId {
+			id, err := strconv.ParseUint(val, 10, 64)
+			if err != nil {
+				continue
+			}
+			ids[id] = true
+		}
+	}
+	// Format: expired_datapartition_{ID}_{Capacity}_{Timestamp}
+	// Regexp: ^expired_datapartition_(\d)+_(\d)+_(\d)+$
+	regexpExpiredPartitionDirName := regexp.MustCompile("^expired_datapartition_(\\d)+_(\\d)+_(\\d)+$")
+	for _, d := range s.space.disks {
+		var entries []fs.DirEntry
+		entries, err = os.ReadDir(d.Path)
+		if err != nil {
+			failedDisks = append(failedDisks, d.Path)
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			filename := entry.Name()
+			if !regexpExpiredPartitionDirName.MatchString(filename) {
+				continue
+			}
+			parts := strings.Split(filename, "_")
+			dpid, err := strconv.ParseUint(parts[2], 10, 64)
+			if err != nil {
+				failedDps = append(failedDps, dpid)
+				continue
+			}
+			if !all {
+				if _, ok := ids[dpid]; !ok {
+					continue
+				}
+			}
+			newname := strings.Join(parts[1:4], "_")
+			err = os.Rename(d.Path+"/"+filename, d.Path+"/"+newname)
+			if err != nil {
+				failedDps = append(failedDps, dpid)
+				continue
+			}
+			err = s.space.ReloadPartition(d, dpid, newname)
+			if err != nil {
+				failedDps = append(failedDps, dpid)
+				continue
+			}
+			successDps = append(successDps, dpid)
+		}
+	}
+	s.buildSuccessResp(w, fmt.Sprintf("restore partitions, success partitions: %v, failed partitions: %v, failed disks: %v", successDps, failedDps, failedDisks))
 }
 
 func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {
