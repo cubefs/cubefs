@@ -556,3 +556,16 @@ func (s *Service) V2VolumeList(c *rpc.Context) {
 		return
 	}
 }
+
+func (s *Service) VolumeSetSealed(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	args := new(clustermgr.SetVolumeSealedArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+	span.Debugf("accept VolumeSetSealed request, args: %v", args)
+
+	c.RespondError(s.VolumeMgr.SetVolumeSealed(ctx, args.Vid))
+}
