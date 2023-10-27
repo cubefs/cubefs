@@ -379,3 +379,12 @@ type AdminUpdateUnitArgs struct {
 	NextEpoch uint32 `json:"next_epoch"`
 	VolumeUnitInfo
 }
+
+type SetVolumeSealedArgs struct {
+	Vid proto.Vid `json:"vid"`
+}
+
+func (c *Client) SetVolumeSealed(ctx context.Context, args *SetVolumeSealedArgs) (err error) {
+	err = c.PostWith(ctx, "/volume/set/sealed", nil, args)
+	return
+}

@@ -20,6 +20,7 @@ type VolumeTaskType uint8
 const (
 	VolumeTaskTypeLock VolumeTaskType = VolumeTaskType(iota + 1)
 	VolumeTaskTypeUnlock
+	VolumeTaskTypeSetSealed
 )
 
 func (t VolumeTaskType) String() string {
@@ -28,7 +29,8 @@ func (t VolumeTaskType) String() string {
 		return "lock"
 	case VolumeTaskTypeUnlock:
 		return "unlock"
-	default:
-		return "unknown"
+	case VolumeTaskTypeSetSealed:
+		return "sealed"
 	}
+	return "unknown"
 }

@@ -45,6 +45,7 @@ const (
 	CodeNotSupportIdle               = 931
 	CodeDiskIsDropping               = 932
 	CodeRejectDeleteSystemConfig     = 933
+	CodeSetVolumeSealedNotAllow      = 934
 )
 
 var (
@@ -78,4 +79,5 @@ var (
 	ErrNotSupportIdle               = Error(CodeNotSupportIdle)
 	ErrDiskIsDropping               = Error(CodeDiskIsDropping)
 	ErrRejectDelSysConfig           = Error(CodeRejectDeleteSystemConfig)
+	ErrSetVolumeSealedNotAllow      = Error(CodeSetVolumeSealedNotAllow)
 )

@@ -94,6 +94,9 @@ func (m *VolumeMgr) setVolumeStatus(task *volTask) error {
 			case base.VolumeTaskTypeUnlock:
 				msg = "readwrite"
 				e = m.blobNodeClient.SetChunkReadwrite(ctx, host, &arg)
+			case base.VolumeTaskTypeSetSealed:
+				// nothing to do
+				return
 			default:
 				log.Panicf("Unknown taskType(%d)", task.taskType)
 			}
@@ -162,6 +165,19 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
 		vol.lock.Unlock()
 		// nothing to do
+	case base.VolumeTaskTypeSetSealed:
+		vol.lock.Lock()
+		if !vol.canSetSealed() {
+			span.Warnf("volume can't set sealed, status=%d", vol.getStatus())
+			vol.lock.Unlock()
+			return nil
+		}
+		vol.setStatus(ctx, proto.VolumeStatusSealed)
+		rec := vol.ToRecord()
+		// store task to db
+		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
+		vol.lock.Unlock()
+
 	default:
 		span.Panicf("Unknown task type(%d)", t)
 	}

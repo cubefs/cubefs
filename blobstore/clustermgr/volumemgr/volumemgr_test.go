@@ -37,6 +37,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -755,12 +756,14 @@ func TestVolumeMgr_applyExpireVolume(t *testing.T) {
 
 	vol1 = mockVolumeMgr.all.getVol(proto.Vid(1))
 	vol3 = mockVolumeMgr.all.getVol(proto.Vid(3))
-	require.Equal(t, proto.VolumeStatusIdle, vol1.volInfoBase.Status)
-	require.Equal(t, proto.VolumeStatusIdle, vol3.volInfoBase.Status)
+	vol5 = mockVolumeMgr.all.getVol(proto.Vid(5))
+	require.Equal(t, proto.VolumeStatusSealed, vol1.volInfoBase.Status)
+	require.Equal(t, proto.VolumeStatusSealed, vol3.volInfoBase.Status)
 	require.Equal(t, proto.VolumeStatusIdle, vol5.volInfoBase.Status)
 
 	// double check if not expire ,direct return
 	vol7 := mockVolumeMgr.all.getVol(proto.Vid(7))
+	vol7.token.expireTime = time.Now().Add(10 * time.Second).UnixNano()
 	err = mockVolumeMgr.applyExpireVolume(ctx, []proto.Vid{7})
 	require.NoError(t, err)
 	require.Equal(t, proto.VolumeStatusActive, vol7.volInfoBase.Status)
@@ -921,6 +924,50 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 	// volume status id idle , cannot apply volume unlock task, direct return but error is nil
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.NewString(), base.VolumeTaskTypeUnlock)
 	require.NoError(t, err)
+}
+
+func TestVolumeMgr_SetVolumeSealed(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
+	mockVolumeMgr.raftServer = mockRaftServer
+	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
+
+	vol := mockVolumeMgr.all.getVol(1)
+
+	// success case
+	ctx := context.Background()
+	vol.setStatus(ctx, proto.VolumeStatusIdle)
+	err := mockVolumeMgr.SetVolumeSealed(ctx, vol.vid)
+	require.NoError(t, err)
+
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), 1, uuid.New().String(), base.VolumeTaskTypeSetSealed)
+	require.NoError(t, err)
+	vol = mockVolumeMgr.all.getVol(1)
+	require.Equal(t, proto.VolumeStatusSealed, vol.volInfoBase.Status)
+
+	// failed case 1
+	vol.setStatus(ctx, proto.VolumeStatusActive)
+	err = mockVolumeMgr.SetVolumeSealed(ctx, vol.vid)
+	require.Equal(t, errcode.ErrSetVolumeSealedNotAllow, err)
+
+	// if vol status is active it can be applied to sealed
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), 1, uuid.New().String(), base.VolumeTaskTypeSetSealed)
+	require.NoError(t, err)
+	vol = mockVolumeMgr.all.getVol(1)
+	require.Equal(t, proto.VolumeStatusSealed, vol.volInfoBase.Status)
+
+	// failed case 2
+	vol.setStatus(ctx, proto.VolumeStatusIdle)
+	vol.setStatus(ctx, proto.VolumeStatusLock)
+	err = mockVolumeMgr.SetVolumeSealed(ctx, vol.vid)
+	require.Equal(t, errcode.ErrSetVolumeSealedNotAllow, err)
+
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), 1, uuid.New().String(), base.VolumeTaskTypeSetSealed)
+	require.NoError(t, err)
+	vol = mockVolumeMgr.all.getVol(1)
+	require.Equal(t, proto.VolumeStatusLock, vol.volInfoBase.Status)
 }
 
 func TestVolumeMgr_Report(t *testing.T) {
