@@ -236,7 +236,10 @@ func newExtentRepairCmd() *cobra.Command {
 					if len(exts) == 0 {
 						continue
 					}
-					repairExtents(host, pid, exts)
+					err = util_sdk.RepairExtents(client, host, pid, exts)
+					if err != nil {
+						fmt.Printf("repair failed: %v %v %v %v", host, pid, exts, err)
+					}
 				}
 			}
 			fmt.Println("extent repair finished")
@@ -244,80 +247,6 @@ func newExtentRepairCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&fromFile, "from-file", false, "specify extents file name to repair, file name is repair_extents, format:`partitionID extentID host`")
 	return cmd
-}
-
-func repairExtents(host string, partitionID uint64, extentIDs []uint64) {
-	var err error
-	var dp *proto.DataPartitionInfo
-	defer func() {
-		if err != nil {
-			log.LogErrorf("repairExtents, err:%v", err)
-			fmt.Printf(err.Error())
-		}
-	}()
-	if partitionID < 0 || len(extentIDs) == 0 {
-		return
-	}
-	dp, err = client.AdminAPI().GetDataPartition("", partitionID)
-	if err != nil {
-		return
-	}
-	var exist bool
-	for _, h := range dp.Hosts {
-		if h == host {
-			exist = true
-			break
-		}
-	}
-	if !exist {
-		err = fmt.Errorf("host[%v] not exist in hosts[%v]", host, dp.Hosts)
-		return
-	}
-	dHost := fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], client.DataNodeProfPort)
-	dataClient := http_client.NewDataClient(dHost, false)
-	partition, err := dataClient.GetPartitionFromNode(partitionID)
-	if err != nil {
-		fmt.Printf("repair failed: %v %v %v\n", partitionID, extentIDs, host)
-		return
-	}
-	partitionPath := fmt.Sprintf("datapartition_%v_%v", partitionID, dp.Replicas[0].Total)
-	if len(extentIDs) == 1 {
-		err = dataClient.RepairExtent(extentIDs[0], partition.Path, partitionID)
-		if err != nil {
-			fmt.Printf("repair failed: %v %v %v %v\n", partitionID, extentIDs[0], host, partition.Path)
-			if _, err = dataClient.GetPartitionFromNode(partitionID); err == nil {
-				return
-			}
-			for i := 0; i < 3; i++ {
-				if err = dataClient.ReLoadPartition(partitionPath, strings.Split(partition.Path, "/datapartition")[0]); err == nil {
-					break
-				}
-			}
-			return
-		}
-		fmt.Printf("repair success: %v %v %v %v\n", partitionID, extentIDs[0], host, partition.Path)
-	} else {
-		var extMap map[uint64]string
-		extentsStrs := make([]string, 0)
-		for _, e := range extentIDs {
-			extentsStrs = append(extentsStrs, strconv.FormatUint(e, 10))
-		}
-		extMap, err = dataClient.RepairExtentBatch(strings.Join(extentsStrs, "-"), partition.Path, partitionID)
-		if err != nil {
-			fmt.Printf("repair failed: %v %v %v %v\n", partitionID, extentsStrs, host, partition.Path)
-			if _, err = dataClient.GetPartitionFromNode(partitionID); err == nil {
-				return
-			}
-			for i := 0; i < 3; i++ {
-				if err = dataClient.ReLoadPartition(partitionPath, strings.Split(partition.Path, "/datapartition")[0]); err == nil {
-					break
-				}
-			}
-			return
-		}
-		fmt.Printf("repair success: %v %v %v %v\n", partitionID, extentsStrs, host, partition.Path)
-		fmt.Printf("repair result: %v\n", extMap)
-	}
 }
 
 func newExtentCheckCmd(checkType int) *cobra.Command {
@@ -402,7 +331,7 @@ func newExtentCheckCmd(checkType int) *cobra.Command {
 				QuickCheck:          quickCheck,
 			}
 			outputDir, _ := os.Getwd()
-			checkEngine, err = data_check.NewCheckEngine(config, outputDir, client, checkType, specifyPath)
+			checkEngine, err = data_check.NewCheckEngine(config, outputDir, client, checkType, specifyPath, false)
 			if err != nil {
 				stdout(err.Error())
 				return

@@ -101,7 +101,7 @@ func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataR
 	}
 	var wrongMd5Blocks []int
 	//继续查询每个CRC块的Md5
-	if wrongMd5Blocks, errEntryMap, err = retryCheckBlockMd5(dataReplicas, cluster, dnProf, ek, ino, 10, DefaultCheckBlockKB, wrongCrcBlocks); err != nil {
+	if wrongMd5Blocks, errEntryMap, err = retryCheckBlockMd5(dataReplicas, cluster, dnProf, ek, ino, DefaultCheckRetry, DefaultCheckBlockKB, wrongCrcBlocks); err != nil {
 		return
 	}
 	if len(wrongMd5Blocks) == 0 {

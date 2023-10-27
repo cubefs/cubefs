@@ -17,6 +17,7 @@ const (
 
 const (
 	DefaultCheckBlockKB = 128
+	DefaultCheckRetry   = 32
 )
 
 type CheckEngine struct {
@@ -47,7 +48,7 @@ type BadExtentInfo struct {
 	Volume       string
 }
 
-func NewCheckEngine(config proto.CheckTaskInfo, outputDir string, mc *master.MasterClient, extentCheckType int, path string) (checkEngine *CheckEngine, err error) {
+func NewCheckEngine(config proto.CheckTaskInfo, outputDir string, mc *master.MasterClient, extentCheckType int, path string, autoFix bool) (checkEngine *CheckEngine, err error) {
 	checkEngine = &CheckEngine{
 		config:    config,
 		checkType: extentCheckType,
@@ -60,13 +61,13 @@ func NewCheckEngine(config proto.CheckTaskInfo, outputDir string, mc *master.Mas
 		closeCh:   make(chan bool, 1),
 	}
 
-	checkEngine.repairPersist, err = NewRepairPersist(outputDir, checkEngine.cluster)
+	checkEngine.repairPersist, err = NewRepairPersist(outputDir, checkEngine.cluster, mc, autoFix)
 	if err != nil {
 		return
 	}
 	go checkEngine.repairPersist.PersistResult()
 	checkEngine.onCheckFail = checkEngine.repairPersist.persistFailed
-	log.LogInfof("NewCheckEngine end")
+	log.LogInfof("NewCheckEngine end, outputDir:%v", outputDir)
 	return
 }
 

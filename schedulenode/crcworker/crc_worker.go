@@ -287,7 +287,7 @@ func (s *CrcWorker) ConsumeTask(task *proto.Task) (restore bool, err error) {
 		return
 	}
 	var checkEngine *data_check.CheckEngine
-	checkEngine, err = data_check.NewCheckEngine(crcTaskInfo, s.outputDir, mc, data_check.CheckTypeExtentCrc, "")
+	checkEngine, err = data_check.NewCheckEngine(crcTaskInfo, s.outputDir, mc, data_check.CheckTypeExtentCrc, "", false)
 	if err != nil {
 		return
 	}

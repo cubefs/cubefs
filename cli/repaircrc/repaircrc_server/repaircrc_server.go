@@ -23,10 +23,12 @@ type RepairServer struct {
 	repairTaskMap  map[int64]*RepairCrcTask
 	taskReceiverCh chan *RepairCrcTask
 	taskDir        string
+	outputDir      string
 	maxTaskId      atomic2.Int64
 	lock           sync.RWMutex
 	state          uint32
 	stopC          chan bool
+	autoFix        bool
 	wg             sync.WaitGroup
 }
 
@@ -47,8 +49,9 @@ const (
 )
 
 const (
-	repairTaskFile = "task.json"
-	maxTaskIDFile  = "MAX_TASK_ID"
+	repairTaskFile   = "task.json"
+	maxTaskIDFile    = "MAX_TASK_ID"
+	defaultOutputDir = "/export/App/crcserver"
 )
 
 // Shutdown shuts down the current data node.
@@ -106,7 +109,11 @@ func (s *RepairServer) parseConfig(cfg *config.Config) (err error) {
 	var maxTaskID uint64
 	var taskFile *os.File
 	s.taskDir = cfg.GetString("taskDir")
-
+	s.outputDir = cfg.GetString("outputDir")
+	if s.outputDir == "" {
+		s.outputDir = defaultOutputDir
+	}
+	s.autoFix = cfg.GetBool("autoFix")
 	//read max task id
 	taskIDFile := fmt.Sprintf("%v/%v", s.taskDir, maxTaskIDFile)
 	idFile, err = os.Open(taskIDFile)
@@ -290,14 +297,14 @@ func (s *RepairServer) scheduleToRepairCrc() {
 		select {
 		case task := <-s.taskReceiverCh:
 			log.LogInfof("scheduleToRepairCrc, task:%v", task.TaskId)
-			go executeTask(task)
+			go s.executeTask(task)
 		case <-s.stopC:
 			return
 		}
 	}
 }
 
-func executeTask(t *RepairCrcTask) {
+func (s *RepairServer) executeTask(t *RepairCrcTask) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -314,7 +321,6 @@ func executeTask(t *RepairCrcTask) {
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
 	var execCount uint32
-	outputDir, _ := os.Getwd()
 	for {
 		select {
 		case <-timer.C:
@@ -326,7 +332,7 @@ func executeTask(t *RepairCrcTask) {
 					}
 				}()
 				var checkEngine *data_check.CheckEngine
-				checkEngine, err = data_check.NewCheckEngine(t.CheckTaskInfo, outputDir, t.mc, data_check.CheckTypeExtentCrc, "")
+				checkEngine, err = data_check.NewCheckEngine(t.CheckTaskInfo, s.outputDir, t.mc, data_check.CheckTypeExtentCrc, "", s.autoFix)
 				if err != nil {
 					return
 				}

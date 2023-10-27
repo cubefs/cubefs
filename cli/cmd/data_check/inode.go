@@ -15,11 +15,20 @@ func (checkEngine *CheckEngine) checkInodeCrc(inode uint64, mp *proto.MetaPartit
 		extentsResp *proto.GetExtentsResponse
 		wg          sync.WaitGroup
 	)
+	defer func() {
+		if err != nil {
+			checkEngine.onCheckFail(CheckFailInode, fmt.Sprintf("%v %v %v", checkEngine.currentVol, mp.PartitionID, inode))
+			log.LogErrorf("CheckFail-Inode, cluster:%s, vol:%s, inode: %d, err:%v", checkEngine.cluster, checkEngine.currentVol, inode, err)
+			return
+		}
+	}()
+	if mp.LeaderAddr == "" {
+		err = fmt.Errorf("mp:%v no leader", mp.PartitionID)
+		return
+	}
 	mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], checkEngine.mnProf), false)
 	extentsResp, err = mtClient.GetExtentKeyByInodeId(mp.PartitionID, inode)
 	if err != nil {
-		checkEngine.onCheckFail(CheckFailInode, fmt.Sprintf("%v %v %v", checkEngine.currentVol, mp.PartitionID, inode))
-		log.LogErrorf("CheckFail-Inode, cluster:%s, vol:%s, inode: %d, err:%v", checkEngine.cluster, checkEngine.currentVol, inode, err)
 		return
 	}
 	log.LogInfof("begin check inode, cluster:%s, vol:%s, inode: %d, extent count: %d", checkEngine.cluster, checkEngine.currentVol, inode, len(extentsResp.Extents))
@@ -160,6 +169,9 @@ func (checkEngine *CheckEngine) checkInodes(mps []*proto.MetaPartitionView, inod
 					continue
 				}
 				mp := locateMpByInode(mps, ino)
+				if mp == nil {
+					continue
+				}
 				if checkEngine.checkType == CheckTypeInodeEkNum {
 					checkEngine.checkInodeEkNum(ino, mp)
 				} else {
