@@ -556,6 +556,49 @@ func (v *VolumeMgr) ReleaseVolume(ctx context.Context, args *cm.ReleaseVolumes) 
 	return nil
 }
 
+func (v *VolumeMgr) SetVolumeSealed(ctx context.Context, vid proto.Vid) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	vol := v.all.getVol(vid)
+	if vol == nil {
+		span.Errorf("volume not found, vid: %d", vid)
+		return apierrors.ErrVolumeNotExist
+	}
+
+	vol.lock.RLock()
+	status := vol.getStatus()
+	if status == proto.VolumeStatusSealed {
+		vol.lock.RUnlock()
+		return nil
+	}
+	// if scheduler mark vol to sealed, the status must be idle
+	if status != proto.VolumeStatusIdle {
+		vol.lock.RUnlock()
+		span.Warnf("can't set volume %d sealed, current status(%d) not idle", vid, vol.getStatus())
+		return apierrors.ErrSetVolumeSealedNotAllow
+	}
+	vol.lock.RUnlock()
+
+	param := ChangeVolStatusCtx{
+		Vid:      vid,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeSetSealed,
+	}
+	data, err := json.Marshal(param)
+	if err != nil {
+		span.Errorf("json marshal failed, vid: %d, error: %v", vid, err)
+		return apierrors.ErrCMUnexpect
+	}
+
+	proposeInfo := base.EncodeProposeInfo(v.GetModuleName(), OperTypeChangeVolumeStatus, data, base.ProposeContext{ReqID: span.TraceID()})
+	err = v.raftServer.Propose(ctx, proposeInfo)
+	if err != nil {
+		span.Errorf("raft propose error:%v", err)
+		return apierrors.ErrRaftPropose
+	}
+	return nil
+}
+
 func (v *VolumeMgr) Stat(ctx context.Context) (stat cm.VolumeStatInfo) {
 	stat.TotalVolume = defaultVolumeStatusStat.StatTotal()
 	statAllocatable := v.allocator.StatAllocatable()
@@ -690,7 +733,7 @@ func (v *VolumeMgr) applyExpireVolume(ctx context.Context, vids []proto.Vid) (er
 		}
 		// already been proceed, then just return success
 		vol.lock.Lock()
-		if vol.getStatus() == proto.VolumeStatusIdle {
+		if vol.getStatus() == proto.VolumeStatusSealed {
 			vol.lock.Unlock()
 			continue
 		}
@@ -702,7 +745,7 @@ func (v *VolumeMgr) applyExpireVolume(ctx context.Context, vids []proto.Vid) (er
 
 		span.Debugf("volume info:  %#v expired,token is %#v", vol.volInfoBase, vol.token)
 		// set volume status idle, it'll call volume status change event function
-		vol.setStatus(ctx, proto.VolumeStatusIdle)
+		vol.setStatus(ctx, proto.VolumeStatusSealed)
 		volRecord := vol.ToRecord()
 		err = v.volumeTbl.PutVolumeRecord(volRecord)
 		if err != nil {
@@ -865,6 +908,8 @@ func (v *VolumeMgr) loop() {
 				span_.Errorf("raft propose data error:%v", err)
 				continue
 			}
+			// set vol to sealed for inspect
+
 		case <-v.closeLoopChan:
 			ctx.Done()
 			return
