@@ -717,6 +717,13 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 						VerSeq: seq,
 					},
 				}
+
+				if s.handler != nil {
+					log.LogDebugf("tryInitExtentHandlerByLastEk: close old handler, currentEK.PartitionId(%v)",
+						currentEK.PartitionId)
+					s.closeOpenHandler()
+				}
+
 				s.handler = handler
 				s.dirty = false
 				log.LogDebugf("tryInitExtentHandlerByLastEk: currentEK.PartitionId(%v) found", currentEK.PartitionId)
