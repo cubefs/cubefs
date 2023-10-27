@@ -22,7 +22,7 @@ import (
 const CurrentName = "Current"
 const TrashPrefix = ".Trash"
 const ExpiredPrefix = "Expired"
-const ParentDirPrefix = "|____|"
+const ParentDirPrefix = "|__|"
 const ExpiredTimeFormat = "2006-01-02-150405"
 const FileNameLengthMax = 255
 const LongNamePrefix = "LongName____"
@@ -242,24 +242,24 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 		return err
 	}
 	if needStoreXattr {
-		//go func(name, dstPath string) {
-		var (
-			info *proto.InodeInfo
-			err  error
-		)
-		info, err = trash.LookupEntry(trashCurrentIno, path.Base(dstPath))
-		if err != nil {
-			log.LogWarnf("action[MoveToTrash] LookupEntry %v failed:%v", dstPath, err.Error())
-			return err
-		}
+		go func(name, dstPath string, parentID uint64) {
+			var (
+				info *proto.InodeInfo
+				err  error
+			)
+			info, err = trash.LookupEntry(parentID, path.Base(dstPath))
+			if err != nil {
+				log.LogWarnf("action[MoveToTrash] LookupEntry %v failed:%v", dstPath, err.Error())
+				return
+			}
 
-		err = trash.mw.XAttrSet_ll(info.Inode, []byte(OriginalName), []byte(originName))
-		if err != nil {
-			log.LogWarnf("action[MoveToTrash] set xattr for %v[%v] failed:%v", dstPath, info.Inode, err.Error())
-			return err
-		}
-		log.LogDebugf("action[MoveToTrash] set xattr for %v [%v]success:%v", dstPath, info.Inode, originName)
-		//}(originName, dstPath)
+			err = trash.mw.XAttrSet_ll(info.Inode, []byte(OriginalName), []byte(originName))
+			if err != nil {
+				log.LogWarnf("action[MoveToTrash] set xattr for %v[%v] failed:%v", dstPath, info.Inode, err.Error())
+				return
+			}
+			log.LogDebugf("action[MoveToTrash] set xattr for %v [%v]success:%v", dstPath, info.Inode, originName)
+		}(originName, dstPath, trashCurrentIno)
 	}
 	//nil to check tmp file exist
 	trash.subDirCache.Put(dstPath, &proto.InodeInfo{})
