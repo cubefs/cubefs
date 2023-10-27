@@ -386,6 +386,23 @@ func TestService_VolumeLock(t *testing.T) {
 	}
 }
 
+func TestService_VolumeSetSealed(t *testing.T) {
+	cleanWG.Wait()
+	testService, clean := initServiceWithData()
+	defer clean()
+	cmClient := initTestClusterClient(testService)
+	ctx := newCtx()
+
+	// set volume sealed
+	{
+		args := &clustermgr.SetVolumeSealedArgs{
+			Vid: proto.Vid(1),
+		}
+		err := cmClient.SetVolumeSealed(ctx, args)
+		require.NoError(t, err)
+	}
+}
+
 func TestService_VolumeUnitList(t *testing.T) {
 	testService, clean := initServiceWithData()
 	defer clean()
