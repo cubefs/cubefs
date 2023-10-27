@@ -38,6 +38,7 @@ func initialVolumeStatusStat() {
 			proto.VolumeStatusIdle:      make(statusVolumesMap),
 			proto.VolumeStatusActive:    make(statusVolumesMap),
 			proto.VolumeStatusUnlocking: make(statusVolumesMap),
+			proto.VolumeStatusSealed:    make(statusVolumesMap),
 		},
 	}
 }
