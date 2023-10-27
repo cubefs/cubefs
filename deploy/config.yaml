@@ -1,0 +1,50 @@
+global:
+  container_image: docker.io/cubefs/cbfs-base:1.0-golang-1.17.13
+  data_dir: /data
+  variable:
+    target: 0.0.1
+
+master:
+  config:
+    listen: 17010
+    prof: 17020
+    data_dir: /data
+
+metanode:
+  config:
+    listen: 17210
+    prof: 17220
+    data_dir: /data
+
+datanode:
+  config:
+    listen: 17310
+    prof: 17320
+    data_dir: /data
+
+
+deplopy_hosts_list:
+  master:
+    hosts:
+      - 10.1.0.44
+      - 10.1.0.45
+      - 10.1.0.46
+  metanode:
+    hosts:
+      - 10.1.0.44
+      - 10.1.0.45
+      - 10.1.0.46
+
+  datanode:
+    - hosts: 10.1.0.44
+      disk:
+        - path: /data/disk0
+          size: 10737418240
+    - hosts: 10.1.0.45
+      disk:
+        - path: /data/disk0
+          size: 10737418240
+    - hosts: 10.1.0.46
+      disk:
+        - path: /data/disk0
+          size: 10737418240
