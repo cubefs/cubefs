@@ -399,6 +399,13 @@ func (v *VolVersionInfoList) GetNextNewerVer(ver uint64) (verSeq uint64, err err
 	return 0, fmt.Errorf("version not exist")
 }
 
+func (v *VolVersionInfoList) GetLastVolVerInfo() *VolVersionInfo {
+	if len(v.VerList) == 0 {
+		return nil
+	}
+	return v.VerList[len(v.VerList)-1]
+}
+
 func (v *VolVersionInfoList) GetLastVer() uint64 {
 	if len(v.VerList) == 0 {
 		return 0
