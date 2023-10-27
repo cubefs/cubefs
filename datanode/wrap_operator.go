@@ -305,45 +305,50 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 			if partition.config.VolName != req.VolumeID {
 				continue
 			}
+
 			partition.volVersionInfoList.Lock()
-			cnt := len(partition.volVersionInfoList.VerList)
-			if cnt > 0 && partition.volVersionInfoList.VerList[cnt-1].Ver >= req.VerSeq {
-				log.LogWarnf("action[commitCreateVersion] reqeust seq %v lessOrEqual last exist snapshot seq %v",
-					partition.volVersionInfoList.VerList[cnt-1].Ver, req.VerSeq)
+			if len(partition.volVersionInfoList.VerList) == 0 {
+				log.LogWarnf("action[commitCreateVersion] reqeust ver %v verlist  %v  dp verlist nil and set", req.VerSeq, req.VolVerList)
+				partition.volVersionInfoList.VerList = req.VolVerList
+				partition.verSeq = req.VerSeq
 				partition.volVersionInfoList.Unlock()
 				continue
 			}
 
-			if req.Op == proto.CreateVersionPrepare {
-				partition.volVersionInfoList.VerList = append(partition.volVersionInfoList.VerList, &proto.VolVersionInfo{
-					Status: proto.VersionPrepare,
-					Ver:    req.VerSeq,
-				})
-				log.LogDebugf("action[commitCreateVersion] reqeust add new seq %v verlist (%v)", req.VerSeq, partition.volVersionInfoList)
-				partition.verSeq = req.VerSeq
-			} else {
-				vlen := len(partition.volVersionInfoList.VerList)
-				lastVer := partition.volVersionInfoList.VerList[vlen-1]
-				if lastVer.Ver != req.VerSeq {
-					log.LogWarnf("action[commitCreateVersion] reqeust seq %v not equal lastVer %v dp verlist (%v) master verlist (%v)",
-						req.VerSeq, lastVer, partition.volVersionInfoList, req.VolVerList)
-					partition.volVersionInfoList.VerList = req.VolVerList
-					partition.verSeq = req.VerSeq
-					partition.volVersionInfoList.Unlock()
-					continue
+			lastVerInfo := partition.volVersionInfoList.GetLastVolVerInfo()
+			log.LogInfof("action[commitCreateVersion] reqeust seq %v lessOrEqual last exist snapshot seq %v op %v",
+				lastVerInfo.Ver, req.VerSeq, req.Op)
+
+			if lastVerInfo.Ver >= req.VerSeq {
+				if lastVerInfo.Ver == req.VerSeq {
+					if req.Op == proto.CreateVersionCommit {
+						lastVerInfo.Status = proto.VersionNormal
+					}
 				}
-				lastVer.Status = proto.VersionNormal
+				partition.volVersionInfoList.Unlock()
+				continue
 			}
 
+			var status uint8 = proto.VersionPrepare
+			if req.Op == proto.CreateVersionCommit {
+				status = proto.VersionNormal
+			}
+			partition.volVersionInfoList.VerList = append(partition.volVersionInfoList.VerList, &proto.VolVersionInfo{
+				Status: status,
+				Ver:    req.VerSeq,
+			})
+			log.LogInfof("action[commitCreateVersion] reqeust add new seq %v verlist (%v)", req.VerSeq, partition.volVersionInfoList)
+			partition.verSeq = req.VerSeq
 			partition.volVersionInfoList.Unlock()
 		}
+
 		if req.Op == proto.CreateVersionPrepare {
 			return
 		}
 		ver2Phase.verSeq = req.VerSeq
 		ver2Phase.step = proto.CreateVersionCommit
 		ver2Phase.status = proto.VersionWorkingFinished
-		log.LogWarnf("action[commitCreateVersion] commit volume %v prepare seq %v with commit seq %v",
+		log.LogInfof("action[commitCreateVersion] commit volume %v prepare seq %v with commit seq %v",
 			req.VolumeID, ver2Phase.verPrepare, req.VerSeq)
 
 		return
