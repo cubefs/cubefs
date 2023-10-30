@@ -388,3 +388,12 @@ func (c *Client) SetVolumeSealed(ctx context.Context, args *SetVolumeSealedArgs)
 	err = c.PostWith(ctx, "/volume/set/sealed", nil, args)
 	return
 }
+
+type SetVolumeIdleArgs struct {
+	Vid proto.Vid `json:"vid"`
+}
+
+func (c *Client) SetVolumeIdle(ctx context.Context, args *SetVolumeIdleArgs) (err error) {
+	err = c.PostWith(ctx, "/volume/set/sealed", nil, args)
+	return
+}
