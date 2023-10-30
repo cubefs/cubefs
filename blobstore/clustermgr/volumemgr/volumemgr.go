@@ -596,6 +596,58 @@ func (v *VolumeMgr) SetVolumeSealed(ctx context.Context, vid proto.Vid) error {
 		span.Errorf("raft propose error:%v", err)
 		return apierrors.ErrRaftPropose
 	}
+
+	vol.lock.RLock()
+	status = vol.volInfoBase.Status
+	vol.lock.RUnlock()
+
+	if status != proto.VolumeStatusSealed {
+		span.Errorf("volume %d status(%d) is not set sealed", vid, status)
+		return apierrors.ErrSetVolumeSealedNotAllow
+	}
+	return nil
+}
+
+func (v *VolumeMgr) SetVolumeIdle(ctx context.Context, vid proto.Vid) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	vol := v.all.getVol(vid)
+	if vol == nil {
+		span.Errorf("volume not found, vid: %d", vid)
+		return apierrors.ErrVolumeNotExist
+	}
+
+	vol.lock.RLock()
+	status := vol.getStatus()
+	if status == proto.VolumeStatusIdle {
+		vol.lock.RUnlock()
+		return nil
+	}
+	// if scheduler mark vol to idle, the status must be sealed
+	if status != proto.VolumeStatusSealed {
+		vol.lock.RUnlock()
+		span.Warnf("can't set volume %d idle, current status(%d) not sealed", vid, vol.getStatus())
+		return apierrors.ErrCodeSetVolumeIdleNotAllow
+	}
+	vol.lock.RUnlock()
+
+	param := ChangeVolStatusCtx{
+		Vid:      vid,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeSetIdle,
+	}
+	data, err := json.Marshal(param)
+	if err != nil {
+		span.Errorf("json marshal failed, vid: %d, error: %v", vid, err)
+		return apierrors.ErrCMUnexpect
+	}
+
+	proposeInfo := base.EncodeProposeInfo(v.GetModuleName(), OperTypeChangeVolumeStatus, data, base.ProposeContext{ReqID: span.TraceID()})
+	err = v.raftServer.Propose(ctx, proposeInfo)
+	if err != nil {
+		span.Errorf("raft propose error:%v", err)
+		return apierrors.ErrRaftPropose
+	}
 	return nil
 }
 
