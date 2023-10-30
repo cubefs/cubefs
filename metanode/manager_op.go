@@ -2381,7 +2381,9 @@ func (m *metadataManager) checkVolVerList() (err error) {
 			if partition.GetVolName() != volName {
 				return true
 			}
-			mpsVerlist[partition.GetBaseConfig().PartitionId] = &proto.VolVersionInfoList{VerList: partition.GetVerList()}
+			log.LogDebugf("action[checkVolVerList] volumeName %v id %v dp verlist %v partition.GetBaseConfig().PartitionId %v",
+				volName, id, partition.GetVerList(), partition.GetBaseConfig().PartitionId)
+			mpsVerlist[id] = &proto.VolVersionInfoList{VerList: partition.GetVerList()}
 			return true
 		})
 		var info *proto.VolVersionInfoList
@@ -2395,6 +2397,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 			if partition.GetVolName() != volName {
 				return true
 			}
+			log.LogDebugf("action[checkVolVerList] volumeName %v info %v id %v ", volName, info, id)
 			if _, exist := mpsVerlist[id]; exist {
 				if err = partition.checkByMasterVerlist(mpsVerlist[id], info); err != nil {
 					return true
@@ -2633,7 +2636,10 @@ end:
 	}
 	adminTask.Request = nil
 	adminTask.Response = resp
-	m.respondToMaster(adminTask)
+	if errRsp := m.respondToMaster(adminTask); errRsp != nil {
+		log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, errRsp %v err %v",
+			remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
+	}
 
 	if log.EnableInfo() {
 		rspData, _ := json.Marshal(resp)
