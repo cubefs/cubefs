@@ -73,7 +73,7 @@ func BenchmarkSnapshot(b *testing.B) {
 	req := &createVolReq{
 		name:             "",
 		owner:            "cfs",
-		size:             1,
+		dpSize:           1,
 		mpCount:          1,
 		dpReplicaNum:     3,
 		capacity:         300,

@@ -158,7 +158,7 @@ func createDefaultMasterServerForTest() *Server {
 	req := &createVolReq{
 		name:             commonVolName,
 		owner:            "cfs",
-		size:             3,
+		dpSize:           3,
 		mpCount:          3,
 		dpReplicaNum:     3,
 		capacity:         300,

@@ -314,7 +314,7 @@ func TestBalanceMetaPartition(t *testing.T) {
 	req := &createVolReq{
 		name:             commonVolName + "1",
 		owner:            "cfs",
-		size:             3,
+		dpSize:           3,
 		mpCount:          30,
 		dpReplicaNum:     3,
 		capacity:         100,
