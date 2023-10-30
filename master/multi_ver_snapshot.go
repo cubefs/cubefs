@@ -69,8 +69,8 @@ func newVersionMgr(vol *Vol) (mgr *VolVersionManager) {
 	return
 }
 func (verMgr *VolVersionManager) String() string {
-	return fmt.Sprintf("mgr:{vol[%v],status[%v] verSeq [%v], prepareinfo [%v]}",
-		verMgr.vol.Name, verMgr.status, verMgr.verSeq, verMgr.prepareCommit)
+	return fmt.Sprintf("mgr:{vol[%v],status[%v] verSeq [%v], prepareinfo [%v], verlist [%v]}",
+		verMgr.vol.Name, verMgr.status, verMgr.verSeq, verMgr.prepareCommit, verMgr.multiVersionList)
 }
 func (verMgr *VolVersionManager) Persist() (err error) {
 	persistInfo := &VolVersionPersist{
@@ -178,7 +178,9 @@ func (verMgr *VolVersionManager) DelVer(verSeq uint64) (err error) {
 			break
 		}
 	}
-	verMgr.Persist()
+	if err = verMgr.Persist(); err != nil {
+		log.LogErrorf("[DelVer] vol %v call persist error %v", verMgr.vol.Name, err)
+	}
 	return
 }
 
@@ -186,7 +188,7 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 	verMgr.Lock()
 	defer verMgr.Unlock()
 
-	log.LogDebugf("vol %v SetVerStrategy.keepCnt %v need in [1-%v], peroidic %v need in [1-%v], enable %v", verMgr.vol.Name,
+	log.LogWarnf("vol %v SetVerStrategy.keepCnt %v need in [1-%v], peroidic %v need in [1-%v], enable %v", verMgr.vol.Name,
 		strategy.KeepVerCnt, MaxSnapshotCount, strategy.GetPeriodic(), 24*7, strategy.Enable)
 
 	if strategy.Enable == true {
@@ -208,7 +210,10 @@ func (verMgr *VolVersionManager) SetVerStrategy(strategy proto.VolumeVerStrategy
 	verMgr.strategy.Enable = strategy.Enable
 	verMgr.strategy.UTime = time.Now()
 
-	verMgr.Persist()
+	if err = verMgr.Persist(); err != nil {
+		log.LogErrorf("action[SetVerStrategy] vol %v err %v", verMgr.vol.Name, err)
+		return
+	}
 	return
 }
 
@@ -235,7 +240,9 @@ func (verMgr *VolVersionManager) checkCreateStrategy(c *Cluster) {
 			return
 		}
 		verMgr.strategy.UTime = time.Now()
-		verMgr.Persist()
+		if err := verMgr.Persist(); err != nil {
+			log.LogErrorf("vol %v call persist error %v", verMgr.vol.Name, err)
+		}
 	}
 }
 
@@ -346,8 +353,9 @@ func (verMgr *VolVersionManager) handleTaskRsp(resp *proto.MultiVersionOpRespons
 		dFunc(partitionType, verMgr.prepareCommit.metaNodeArray)
 	}
 
-	log.LogInfof("action[handleTaskRsp] vol %v commit cnt %v, node cnt %v, operation %v", atomic.LoadUint32(&verMgr.prepareCommit.commitCnt),
-		verMgr.vol.Name, atomic.LoadUint32(&verMgr.prepareCommit.nodeCnt), verMgr.prepareCommit.op)
+	log.LogInfof("action[handleTaskRsp] vol %v commit cnt %v, node cnt %v, operation %v", verMgr.vol.Name,
+		atomic.LoadUint32(&verMgr.prepareCommit.commitCnt),
+		atomic.LoadUint32(&verMgr.prepareCommit.nodeCnt), verMgr.prepareCommit.op)
 
 	if atomic.LoadUint32(&verMgr.prepareCommit.commitCnt) == verMgr.prepareCommit.nodeCnt && needCommit {
 		if verMgr.prepareCommit.op == proto.DeleteVersion {
