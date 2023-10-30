@@ -854,7 +854,9 @@ func (mp *MetaPartition) setMaxInodeID() {
 
 // Caller should call mp.lock and mp.unlock when use it.
 func (mp *MetaPartition) setHeartBeatDone() {
-	mp.heartBeatDone = true
+	if len(mp.Replicas) == int(mp.ReplicaNum) {
+		mp.heartBeatDone = true
+	}
 }
 
 func (mp *MetaPartition) setInodeCount() {
