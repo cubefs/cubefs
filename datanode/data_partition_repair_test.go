@@ -192,7 +192,7 @@ func TestBuildDataPartitionRepairTask_TinyExtent(t *testing.T) {
 	}
 	dp.DoRepairOnLeaderDisk(ctx, repairTasks[0])
 	for _, extentId := range tinyExtents {
-		if !dp.ExtentStore().HasExtent(extentId) {
+		if !dp.ExtentStore().IsExists(extentId) {
 			t.Fatalf("tiny extent(%v) should exist", extentId)
 		}
 		size, _ := dp.ExtentStore().LoadExtentWaterMark(extentId)
@@ -204,7 +204,7 @@ func TestBuildDataPartitionRepairTask_TinyExtent(t *testing.T) {
 			t.Fatalf("repaired tiny extent(%v) size expect:%v actual:%v", extentId, expectSize, size)
 		}
 	}
-	if err = dp.NotifyExtentRepair(ctx, repairTasks); err != nil {
+	if err = dp.notifyFollowersToRepair(ctx, repairTasks); err != nil {
 		t.Fatalf("notify extent repair should not have err, but there are err:%v", err)
 	}
 }
@@ -253,7 +253,7 @@ func TestBuildDataPartitionRepairTask_NormalExtent(t *testing.T) {
 		}
 	}
 	dp.DoRepairOnLeaderDisk(ctx, repairTasks[0])
-	if !dp.ExtentStore().HasExtent(mock.LocalCreateExtentId) {
+	if !dp.ExtentStore().IsExists(mock.LocalCreateExtentId) {
 		t.Fatalf("normal extent(%v) should exist", mock.LocalCreateExtentId)
 	}
 	// 比较创建并修复后extent水位
@@ -269,7 +269,7 @@ func TestBuildDataPartitionRepairTask_NormalExtent(t *testing.T) {
 			t.Fatalf("repaired normal extent(%v) size expect:%v actual:%v", extentId, extentId*1024, size)
 		}
 	}
-	if err = dp.NotifyExtentRepair(ctx, repairTasks); err != nil {
+	if err = dp.notifyFollowersToRepair(ctx, repairTasks); err != nil {
 		t.Fatalf("notify extent repair should not have err, but there are err:%v", err)
 	}
 }
@@ -299,7 +299,7 @@ func TestRepair(t *testing.T) {
 	}
 	dp.repair(ctx, proto.TinyExtentType)
 	for _, extentId := range brokenTinyExtents {
-		if !dp.ExtentStore().HasExtent(extentId) {
+		if !dp.ExtentStore().IsExists(extentId) {
 			t.Fatalf("tiny extent(%v) should exist", extentId)
 		}
 		size, _ := dp.ExtentStore().LoadExtentWaterMark(extentId)
@@ -312,7 +312,7 @@ func TestRepair(t *testing.T) {
 		}
 	}
 	dp.repair(ctx, proto.NormalExtentType)
-	if !dp.ExtentStore().HasExtent(mock.LocalCreateExtentId) {
+	if !dp.ExtentStore().IsExists(mock.LocalCreateExtentId) {
 		t.Fatalf("normal extent(%v) should exist", mock.LocalCreateExtentId)
 	}
 	// 比较创建并修复后extent水位

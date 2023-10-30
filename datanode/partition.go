@@ -56,7 +56,6 @@ const (
 	ApplyIndexFile                = "APPLY"
 	TempApplyIndexFile            = ".apply"
 	TimeLayout                    = "2006-01-02 15:04:05"
-	ExtentReleasorDirName         = "releasor"
 )
 
 type FaultOccurredCheckLevel uint8
@@ -244,7 +243,6 @@ type DataPartition struct {
 	path            string
 	used            int
 	extentStore     *storage.ExtentStore
-	extentReleasor  *storage.ExtentReleasor
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
 
@@ -557,9 +555,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		return
 	}
 
-	if partition.extentReleasor, err = storage.NewExtentReleasor(path.Join(partition.path, ExtentReleasorDirName), partition.extentStore, false, nil); err != nil {
-		return
-	}
 	rand.Seed(time.Now().UnixNano())
 	partition.FullSyncTinyDeleteTime = time.Now().Unix() + rand.Int63n(3600*24)
 	partition.lastSyncTinyDeleteTime = partition.FullSyncTinyDeleteTime
@@ -748,9 +743,6 @@ func (dp *DataPartition) Stop() {
 		}
 		// Close the store and raftstore.
 		dp.dataFixer.Stop()
-		if dp.extentReleasor != nil {
-			dp.extentReleasor.Stop()
-		}
 		dp.extentStore.Close()
 		dp.stopRaft()
 		if err := dp.persist(nil, false); err != nil {
@@ -781,12 +773,17 @@ func (dp *DataPartition) Delete() {
 }
 
 func (dp *DataPartition) MarkDelete(extentID, inode, offset, size uint64) (err error) {
-	err = dp.extentReleasor.MarkDelete(context.Background(), inode, extentID, offset, size)
+	err = dp.extentStore.MarkDelete(extentID, inode, int64(offset), int64(size))
 	return
 }
 
-func (dp *DataPartition) FlushDelete() (err error) {
-	return dp.extentReleasor.FlushDelete(2)
+func (dp *DataPartition) BatchMarkDelete(batch storage.Batch) (err error) {
+	err = dp.extentStore.BatchMarkDelete(batch)
+	return
+}
+
+func (dp *DataPartition) FlushDelete() (n int, err error) {
+	return dp.extentStore.FlushDelete()
 }
 
 func (dp *DataPartition) Expired() {

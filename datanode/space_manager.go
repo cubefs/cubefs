@@ -616,7 +616,7 @@ const (
 	DefaultForceFlushFDParallelismOnDisk   = 5
 	DefaultForceFlushDataSizeOnEachHDDDisk = 2 * util.MB
 	DefaultForceFlushDataSizeOnEachSSDDisk = 10 * util.MB
-	DefaultDeletionConcurrencyOnDisk       = 4
+	DefaultDeletionConcurrencyOnDisk       = 2
 	DefaultIssueFixConcurrencyOnDisk       = 16
 )
 

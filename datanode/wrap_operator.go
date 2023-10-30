@@ -384,27 +384,34 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var (
 		err error
 	)
+	defer func() {
+		if err != nil {
+			log.LogErrorf(fmt.Sprintf("(%v) error(%v) data(%v)", p.GetUniqueLogId(), err, string(p.Data)))
+			p.PackErrorBody(ActionBatchDeleteExtent, err.Error())
+			return
+		}
+		p.PacketOkReply()
+	}()
+
 	remote := c.RemoteAddr().String()
 	partition := p.Object.(*DataPartition)
-	var exts []*proto.InodeExtentKey
-	err = json.Unmarshal(p.Data[0:p.Size], &exts)
-	if err == nil {
-		for _, ext := range exts {
-			DeleteLimiterWait()
-			log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
-				p.PartitionID, ext.ExtentId, ext.ExtentOffset, ext.Size, remote)
-			_ = partition.MarkDelete(ext.ExtentId, ext.Inode, ext.ExtentOffset, uint64(ext.Size))
-		}
+	var keys []*proto.InodeExtentKey
+	if err = json.Unmarshal(p.Data[0:p.Size], &keys); err != nil {
+		return
 	}
 
-	if err != nil {
-		log.LogErrorf(fmt.Sprintf("(%v) error(%v) data(%v)", p.GetUniqueLogId(), err, string(p.Data)))
-		p.PackErrorBody(ActionBatchDeleteExtent, err.Error())
-	} else {
-		p.PacketOkReply()
+	var batch = storage.NewBatch(len(keys))
+	for _, key := range keys {
+		DeleteLimiterWait()
+		log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
+			p.PartitionID, key.ExtentId, key.ExtentOffset, key.Size, remote)
+		batch.Add(key.Inode, key.ExtentId, int64(key.ExtentOffset), int64(key.Size))
+	}
+	if err = partition.BatchMarkDelete(batch); err != nil {
+		return
 	}
 
-	partition.monitorData[proto.ActionBatchMarkDelete].UpdateData(uint64(len(exts)))
+	partition.monitorData[proto.ActionBatchMarkDelete].UpdateData(uint64(len(keys)))
 	return
 }
 

@@ -117,7 +117,7 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 	availableTinyExtents, brokenTinyExtents := dp.prepareRepairTasks(repairTasks)
 
 	// notify the replicas to repair the extent
-	err = dp.NotifyExtentRepair(ctx, repairTasks)
+	err = dp.notifyFollowersToRepair(ctx, repairTasks)
 	if err != nil {
 		dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 		log.LogErrorf("action[repair] partition(%v) err(%v).",
@@ -371,17 +371,14 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTask *D
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
-		if !store.IsFinishLoad() {
+		if !store.IsFinishLoad() || store.IsDeleted(extentInfo[storage.FileID]) {
 			continue
 		}
-		if store.IsRecentDelete(extentInfo[storage.FileID]) {
-			continue
-		}
-		store.Create(extentInfo[storage.FileID], extentInfo[storage.Inode], true)
+		_ = store.Create(extentInfo[storage.FileID], extentInfo[storage.Inode], true)
 	}
 	var allReplicas = dp.getReplicaClone()
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-		if store.IsRecentDelete(extentInfo[storage.FileID]) {
+		if store.IsDeleted(extentInfo[storage.FileID]) {
 			continue
 		}
 		majorSource := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
@@ -424,10 +421,10 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 			continue
 		}
 
-		if store.IsRecentDelete(extentInfo[storage.FileID]) {
+		if store.IsDeleted(extentInfo[storage.FileID]) {
 			continue
 		}
-		if store.HasExtent(extentInfo[storage.FileID]) {
+		if store.IsExists(extentInfo[storage.FileID]) {
 			var info = storage.ExtentInfoBlock{
 				storage.FileID: extentInfo[storage.FileID],
 				storage.Size:   extentInfo[storage.Size],
@@ -479,7 +476,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 	}
 	var validExtentsToBeRepaired int
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-		if store.IsRecentDelete(extentInfo[storage.FileID]) || !store.HasExtent(extentInfo[storage.FileID]) {
+		if store.IsDeleted(extentInfo[storage.FileID]) || !store.IsExists(extentInfo[storage.FileID]) {
 			continue
 		}
 		majorSource := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
@@ -558,6 +555,9 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 		}
 		maxBaseExtentID = uint64(math.Max(float64(maxBaseExtentID), float64(repairTask.BaseExtentID)))
 		for extentID, extentInfo := range repairTask.extents {
+			if dp.extentStore.IsDeleted(extentID) {
+				continue
+			}
 			extentWithMaxSize, ok := extentInfoMap[extentID]
 			if !ok {
 				extentInfoMap[extentID] = extentInfo
@@ -687,8 +687,8 @@ func (dp *DataPartition) notifyFollower(ctx context.Context, wg *sync.WaitGroup,
 	return err
 }
 
-// NotifyExtentRepair notifies the followers to repair.
-func (dp *DataPartition) NotifyExtentRepair(ctx context.Context, members []*DataPartitionRepairTask) (err error) {
+// notifyFollowersToRepair notifies the followers to repair.
+func (dp *DataPartition) notifyFollowersToRepair(ctx context.Context, members []*DataPartitionRepairTask) (err error) {
 	wg := new(sync.WaitGroup)
 	for i := 1; i < len(members); i++ {
 		if members[i] == nil {
@@ -753,7 +753,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 	}
 	defer release()
 	store := dp.ExtentStore()
-	if !store.HasExtent(remoteExtentInfo[storage.FileID]) {
+	if !store.IsExists(remoteExtentInfo[storage.FileID]) {
 		return
 	}
 

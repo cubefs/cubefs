@@ -41,30 +41,30 @@ const (
 )
 
 type HeaderHandler interface {
-	Load([]byte) error
-	Save([]byte) error
+	Load(b []byte, off, size int64) error
+	Save(b []byte, off, size int64) error
 }
 
 type funcHeaderHandler struct {
-	load func([]byte) error
-	save func([]byte) error
+	load func([]byte, int64, int64) error
+	save func([]byte, int64, int64) error
 }
 
-func (f *funcHeaderHandler) Load(b []byte) error {
+func (f *funcHeaderHandler) Load(b []byte, off, size int64) error {
 	if f != nil && f.load != nil {
-		return f.load(b)
+		return f.load(b, off, size)
 	}
 	return nil
 }
 
-func (f *funcHeaderHandler) Save(b []byte) error {
+func (f *funcHeaderHandler) Save(b []byte, off, size int64) error {
 	if f != nil && f.save != nil {
-		return f.save(b)
+		return f.save(b, off, size)
 	}
 	return nil
 }
 
-func NewFuncHeaderHandler(load, save func([]byte) error) HeaderHandler {
+func NewFuncHeaderHandler(load, save func([]byte, int64, int64) error) HeaderHandler {
 	return &funcHeaderHandler{
 		load: load,
 		save: save,
@@ -264,7 +264,7 @@ func (e *Extent) open() (err error) {
 		return
 	} else {
 		e.header = make([]byte, unit.BlockHeaderSize)
-		if err = e.headerHandler.Load(e.header); err != nil {
+		if err = e.headerHandler.Load(e.header, 0, unit.BlockHeaderSize); err != nil {
 			return
 		}
 	}
@@ -375,15 +375,17 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	case blkOffset == 0 && size == unit.BlockSize:
 		// 当本次写入的数据位置完全对齐整个Block(128KB), 更新该Block的CRC记录信息
 		e.setBlkCRC(blkNo, crc)
+		err = e.saveHeader(blkNo)
 	case blkOffset+size <= unit.BlockSize:
 		// 本次写入的数据未完全对齐整个Block(128KB)且数据范围未跨Block(128KB), 将该Block的CRC信息置0
 		e.setBlkCRC(blkNo, 0)
+		err = e.saveHeader(blkNo)
 	default:
 		// 本次写入的数据未完全对齐整个Block(128KB)且数据范围跨Block(128KB), 将涉及的Block CRC信息置0
 		e.setBlkCRC(blkNo, 0)
 		e.setBlkCRC(blkNo+1, 0)
+		err = e.saveHeader(blkNo, blkNo+1)
 	}
-	err = e.saveHeader()
 	return
 }
 
@@ -441,16 +443,17 @@ func (e *Extent) readTiny(data []byte, offset, size int64, isRepairRead bool) (c
 func (e *Extent) Fingerprint(offset, size int64, strict bool) (fingerprint Fingerprint, err error) {
 	fingerprint = NewFingerprint(int(size) / unit.BlockSize)
 	var blkCRC uint32
-	var saveHeader bool
+	var updatedBlkNos []int
 	var buf = make([]byte, unit.BlockSize)
 	for cursor := offset; cursor < offset+size; {
 		if !proto.IsTinyExtent(e.extentID) && cursor%unit.BlockSize == 0 && cursor+unit.BlockSize < offset+size {
+			var blkNo = int(cursor) / unit.BlockSize
 			var updated bool
-			if blkCRC, updated, err = e.computeBlkCRC(int(cursor)/unit.BlockSize, strict); err != nil {
+			if blkCRC, updated, err = e.computeBlkCRC(blkNo, strict); err != nil {
 				return
 			}
 			if updated {
-				saveHeader = true
+				updatedBlkNos = append(updatedBlkNos, blkNo)
 			}
 			cursor += unit.BlockSize
 			fingerprint.Append(blkCRC)
@@ -464,29 +467,43 @@ func (e *Extent) Fingerprint(offset, size int64, strict bool) (fingerprint Finge
 		fingerprint.Append(blkCRC)
 		cursor += readSize
 	}
-	if saveHeader {
+
+	switch {
+	case len(updatedBlkNos) == 0:
+	case len(updatedBlkNos) <= 4:
+		err = e.saveHeader(updatedBlkNos...)
+	default:
 		err = e.saveHeader()
 	}
 	return
 }
 
-func (e *Extent) saveHeader() (err error) {
-	err = e.headerHandler.Save(e.header)
+func (e *Extent) saveHeader(blkNos ...int) (err error) {
+	if len(blkNos) == 0 {
+		err = e.headerHandler.Save(e.header[:unit.BlockHeaderSize], 0, unit.BlockHeaderSize)
+		return
+	}
+	for _, blkNo := range blkNos {
+		var hOff = int64(blkNo * unit.PerBlockCrcSize)
+		if err = e.headerHandler.Save(e.header[hOff:hOff+unit.PerBlockCrcSize], hOff, unit.PerBlockCrcSize); err != nil {
+			return
+		}
+	}
 	return
 }
 
 func (e *Extent) setBlkCRC(blockNo int, crc uint32) {
-	var headerOffset = blockNo * unit.PerBlockCrcSize
-	if len(e.header) >= headerOffset+unit.PerBlockCrcSize {
-		binary.BigEndian.PutUint32(e.header[headerOffset:headerOffset+unit.PerBlockCrcSize], crc)
+	var hOffset = blockNo * unit.PerBlockCrcSize
+	if len(e.header) >= hOffset+unit.PerBlockCrcSize {
+		binary.BigEndian.PutUint32(e.header[hOffset:hOffset+unit.PerBlockCrcSize], crc)
 	}
 	return
 }
 
 func (e *Extent) getBlkCRC(blockNo int) uint32 {
-	var headerOffset = blockNo * unit.PerBlockCrcSize
-	if len(e.header) >= headerOffset+unit.PerBlockCrcSize {
-		return binary.BigEndian.Uint32(e.header[headerOffset : headerOffset+unit.PerBlockCrcSize])
+	var hOffset = blockNo * unit.PerBlockCrcSize
+	if len(e.header) >= hOffset+unit.PerBlockCrcSize {
+		return binary.BigEndian.Uint32(e.header[hOffset : hOffset+unit.PerBlockCrcSize])
 	}
 	return 0
 }
@@ -533,7 +550,7 @@ func (e *Extent) autoComputeExtentCrc() (crc uint32, err error) {
 		blockCnt += 1
 	}
 	crcData := make([]byte, blockCnt*unit.PerBlockCrcSize)
-	var saveHeader bool
+	var updatedBlkNos []int
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
 		var (
 			blockCrc uint32
@@ -543,16 +560,18 @@ func (e *Extent) autoComputeExtentCrc() (crc uint32, err error) {
 			break
 		}
 		if updated {
-			saveHeader = true
+			updatedBlkNos = append(updatedBlkNos, blockNo)
 		}
 		binary.BigEndian.PutUint32(crcData[blockNo*unit.PerBlockCrcSize:(blockNo+1)*unit.PerBlockCrcSize], blockCrc)
 	}
 	crc = crc32.ChecksumIEEE(crcData)
-	if !saveHeader {
-		return
-	}
-	if err = e.saveHeader(); err != nil {
-		return
+
+	switch {
+	case len(updatedBlkNos) == 0:
+	case len(updatedBlkNos) <= 4:
+		err = e.saveHeader(updatedBlkNos...)
+	default:
+		err = e.saveHeader()
 	}
 	return
 }

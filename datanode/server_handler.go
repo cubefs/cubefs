@@ -297,8 +297,7 @@ func (s *DataNode) getExtentMd5Sum(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("partition(%v) not exist", partitionID))
 		return
 	}
-	exsit := partition.ExtentStore().HasExtent(extentID)
-	if !exsit {
+	if !partition.ExtentStore().IsExists(extentID) {
 		s.buildFailureResp(w, http.StatusNotFound, fmt.Sprintf("partition(%v) extentID(%v) not exist", partitionID, extentID))
 		return
 	}

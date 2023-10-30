@@ -16,7 +16,6 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/shirou/gopsutil/load"
 	"io/ioutil"
 	"os"
 	"path"
@@ -27,6 +26,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/shirou/gopsutil/load"
 
 	"github.com/cubefs/cubefs/util/concurrent"
 
@@ -326,13 +327,15 @@ func (d *Disk) startScheduler() {
 
 func (d *Disk) flushDeleteScheduler() {
 	var (
-		flushDeleteTimer = time.NewTimer(0)
+		flushDeleteTicker = time.NewTicker(time.Minute)
 	)
 	for {
 		select {
-		case <-flushDeleteTimer.C:
+		case <-flushDeleteTicker.C:
+			if !gHasLoadDataPartition {
+				continue
+			}
 			d.flushDelete()
-			flushDeleteTimer.Reset(time.Minute * 5)
 		}
 	}
 }
@@ -357,8 +360,9 @@ func (d *Disk) flushDelete() {
 			if partition = <-partitionCh; partition == nil {
 				return
 			}
-			if err = partition.FlushDelete(); err != nil {
-				log.LogErrorf("DP[%v] flush delete failed: %v", partition.partitionID, err)
+			if _, err = partition.FlushDelete(); err != nil {
+				log.LogErrorf("Disk(%v) DP(%v) flush delete failed: %v", d.Path, partition.partitionID, err)
+				continue
 			}
 		}
 	}

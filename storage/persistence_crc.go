@@ -28,33 +28,29 @@ type BlockCrc struct {
 }
 type BlockCrcArr []*BlockCrc
 
-const (
-	BaseExtentIDOffset = 0
-)
-
 func (arr BlockCrcArr) Len() int           { return len(arr) }
 func (arr BlockCrcArr) Less(i, j int) bool { return arr[i].BlockNo < arr[j].BlockNo }
 func (arr BlockCrcArr) Swap(i, j int)      { arr[i], arr[j] = arr[j], arr[i] }
 
-type UpdateCrcFunc func(e *Extent, blockNo int, crc uint32) (err error)
-type GetExtentCrcFunc func(extentID uint64) (crc uint32, err error)
+const (
+	BaseExtentIDOffset          = 0
+	AllocatedExtentHeaderOffset = 8
+)
 
-func (s *ExtentStore) PersistenceBlockCrc(e *Extent, blockNo int, blockCrc uint32) (err error) {
-	startIdx := blockNo * unit.PerBlockCrcSize
-	endIdx := startIdx + unit.PerBlockCrcSize
-	binary.BigEndian.PutUint32(e.header[startIdx:endIdx], blockCrc)
-	verifyStart := startIdx + int(unit.BlockHeaderSize*e.extentID)
-	if _, err = s.verifyExtentFp.WriteAt(e.header[startIdx:endIdx], int64(verifyStart)); err != nil {
-		return
-	}
+func (s *ExtentStore) removeExtentHeader(extentID uint64) (err error) {
+	err = fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
+		int64(unit.BlockHeaderSize*extentID), unit.BlockHeaderSize)
 
 	return
 }
 
-func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
-	err = fallocate(int(s.verifyExtentFp.Fd()), FallocFLPunchHole|FallocFLKeepSize,
-		int64(unit.BlockHeaderSize*extentID), unit.BlockHeaderSize)
-
+func (s *ExtentStore) allocatedExtentHeader() (extentID uint64) {
+	value := make([]byte, 8)
+	_, err := s.metadataFp.ReadAt(value, AllocatedExtentHeaderOffset)
+	if err != nil {
+		return
+	}
+	extentID = binary.BigEndian.Uint64(value)
 	return
 }
 
@@ -66,34 +62,24 @@ func (s *ExtentStore) persistenceBaseExtentID(extentID uint64) (err error) {
 	return
 }
 
-func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerfiyFile() (extentID uint64) {
-	value := make([]byte, 8)
-	_, err := s.metadataFp.WriteAt(value, 8)
-	if err != nil {
-		return
-	}
-	extentID = binary.BigEndian.Uint64(value)
-	return
-}
-
-func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
-	if currExtentID > atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
+func (s *ExtentStore) allocateExtentHeader(extentID uint64) {
+	if extentID > atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
 		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
 		endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
 		size := int64(1000 * unit.BlockHeaderSize)
-		err := fallocate(int(s.verifyExtentFp.Fd()), 1, prevAllocSpaceExtentID*unit.BlockHeaderSize, size)
+		err := fallocate(int(s.verifyExtentFp.Fd()), FallocFLKeepSize, prevAllocSpaceExtentID*unit.BlockHeaderSize, size)
 		if err != nil {
 			return
 		}
 		data := make([]byte, 8)
 		binary.BigEndian.PutUint64(data, uint64(endAllocSpaceExtentID))
-		if _, err = s.metadataFp.WriteAt(data, 8); err != nil {
+		if _, err = s.metadataFp.WriteAt(data, AllocatedExtentHeaderOffset); err != nil {
 			return
 		}
 		atomic.StoreUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile, uint64(endAllocSpaceExtentID))
-		log.LogInfof("Action(PreAllocSpaceOnVerfiyFile) PartitionID(%v) currentExtent(%v)"+
+		log.LogInfof("Action(allocateExtentHeader) PartitionID(%v) currentExtent(%v)"+
 			"PrevAllocSpaceExtentIDOnVerifyFile(%v) EndAllocSpaceExtentIDOnVerifyFile(%v)"+
-			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, currExtentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
+			" has allocSpaceOnVerifyFile to (%v)", s.partitionID, extentID, prevAllocSpaceExtentID, endAllocSpaceExtentID,
 			prevAllocSpaceExtentID*unit.BlockHeaderSize+size)
 	}
 
