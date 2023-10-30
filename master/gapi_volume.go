@@ -199,7 +199,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	req := &createVolReq{
 		name:             args.Name,
 		owner:            args.Owner,
-		size:             int(args.DataPartitionSize),
+		dpSize:           int(args.DataPartitionSize),
 		mpCount:          int(args.MpCount),
 		dpReplicaNum:     uint8(args.DpReplicaNum),
 		capacity:         int(args.Capacity),

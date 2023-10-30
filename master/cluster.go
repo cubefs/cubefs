@@ -3168,10 +3168,10 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 	var createTime = time.Now().Unix() // record unix seconds of volume create time
 	var dataPartitionSize uint64
 
-	if req.size*util.GB == 0 {
+	if req.dpSize*util.GB == 0 {
 		dataPartitionSize = util.DefaultDataPartitionSize
 	} else {
-		dataPartitionSize = uint64(req.size) * util.GB
+		dataPartitionSize = uint64(req.dpSize) * util.GB
 	}
 
 	vv := volValue{

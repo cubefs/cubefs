@@ -652,7 +652,7 @@ type coldVolArgs struct {
 type createVolReq struct {
 	name                                 string
 	owner                                string
-	size                                 int
+	dpSize                               int
 	mpCount                              int
 	dpReplicaNum                         uint8
 	capacity                             int
@@ -756,7 +756,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 	req.dpReplicaNum = uint8(parsedDpReplicaNum)
 
-	if req.size, err = extractUintWithDefault(r, dataPartitionSizeKey, 120); err != nil {
+	if req.dpSize, err = extractUintWithDefault(r, dataPartitionSizeKey, 120); err != nil {
 		return
 	}
 
