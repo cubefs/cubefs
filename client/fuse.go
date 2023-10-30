@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cubefs/cubefs/sdk/meta"
-	"io/ioutil"
 	"io"
 	syslog "log"
 	"math"
@@ -926,6 +925,6 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	}
 	opt.EbsEndpoint = clusterInfo.EbsAddr
 	opt.EbsServicePath = clusterInfo.ServicePath
-	opt.TrashInterval = int64(util.Min(int(opt.TrashInterval), volumeInfo.TrashInterval))
+	// opt.TrashInterval = int64(util.Min(int(opt.TrashInterval), volumeInfo.TrashInterval))
 	return
 }
