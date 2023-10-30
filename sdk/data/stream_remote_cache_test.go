@@ -8,7 +8,7 @@ import (
 )
 
 func Test_getCacheReadRequests(t *testing.T) {
-	t.Skip()
+	//t.Skip()
 	data := make([]byte, 4*proto.CACHE_BLOCK_SIZE, 4*proto.CACHE_BLOCK_SIZE)
 	source := &proto.DataSource{}
 	cRequests := []*proto.CacheRequest{
@@ -104,7 +104,7 @@ func Test_getCacheReadRequests(t *testing.T) {
 		{
 			cacheRequests: cRequests[2:],
 			offset:        2 * proto.CACHE_BLOCK_SIZE,
-			size:          2*proto.CACHE_BLOCK_SIZE + 1024,
+			size:          2 * proto.CACHE_BLOCK_SIZE,
 			expect:        []*flash.CacheReadRequest{cReadReq3, cReadReq5},
 		},
 		{

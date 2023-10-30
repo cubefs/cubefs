@@ -11,8 +11,7 @@ import (
 )
 
 var (
-	testRemoteCache = new(RemoteCache)
-	ctx             = context.Background()
+	ctx = context.Background()
 )
 
 func Test_getFlashHost(t *testing.T) {
@@ -26,8 +25,6 @@ func Test_getFlashHost(t *testing.T) {
 
 	rankedHosts3 := make(map[ZoneRankType][]string, 0)
 	rankedHosts3[UnknownZoneRank] = append(rankedHosts3[UnknownZoneRank], "3.3.3.3")
-
-	testRemoteCache.sameZoneWeight = sameZoneWeight
 
 	fgInfo1 := &proto.FlashGroupInfo{}
 	fg1 := NewFlashGroup(fgInfo1, rankedHosts1)

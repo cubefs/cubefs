@@ -56,7 +56,8 @@ const (
 
 	sameZoneTimeout   = 400 * time.Microsecond
 	SameRegionTimeout = 2 * time.Millisecond
-	sameZoneWeight    = 70
+
+	limitedHostPunishTime = time.Duration(5 * time.Second)
 )
 
 type ZoneRankType int
@@ -74,8 +75,7 @@ type CacheConfig struct {
 	Masters []string
 	MW      *meta.MetaWrapper
 
-	SameZoneWeight int
-	ReadTimeoutMs  int64
+	ReadTimeoutMs int64
 }
 
 type RemoteCache struct {
@@ -92,8 +92,9 @@ type RemoteCache struct {
 	metaWrapper *meta.MetaWrapper
 	cacheBloom  *bloom.BloomFilter
 
-	sameZoneWeight int
-	readTimeoutMs  int64
+	readTimeoutMs   int64
+	limitedHost     map[string]time.Time
+	limitedHostLock sync.RWMutex
 }
 
 func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
@@ -104,11 +105,6 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 	rc.metaWrapper = config.MW
 	rc.flashGroups = btree.New(32)
 	rc.mc = masterSDK.NewMasterClient(config.Masters, false)
-	if config.SameZoneWeight <= 0 {
-		rc.sameZoneWeight = sameZoneWeight
-	} else {
-		rc.sameZoneWeight = config.SameZoneWeight
-	}
 	if config.ReadTimeoutMs <= 0 {
 		rc.readTimeoutMs = ConnectTimeoutDataMs
 	} else {
@@ -127,6 +123,7 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 	}
 	rc.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(rc.connConfig.IdleTimeoutSec)*time.Second, time.Duration(rc.connConfig.ConnectTimeoutNs))
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
+	rc.limitedHost = make(map[string]time.Time)
 
 	rc.wg.Add(1)
 	go rc.refresh()
@@ -136,9 +133,11 @@ func NewRemoteCache(config *CacheConfig) (*RemoteCache, error) {
 func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, req *CacheReadRequest) (read int, err error) {
 	var (
 		conn  *net.TCPConn
+		reply *common.Packet
 		moved bool
 	)
-	addr := fg.getFlashHost()
+
+	addr := rc.selectFlashHost(fg)
 	if addr == "" {
 		err = fmt.Errorf("getFlashHost failed: cannot find any available host")
 		log.LogWarnf("FlashGroup read failed: err(%v)", err)
@@ -146,7 +145,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 	}
 	reqPacket := common.NewCachePacket(ctx, inode, proto.OpCacheRead)
 	if err = reqPacket.MarshalDataPb(&req.CacheReadRequest); err != nil {
-		log.LogWarnf("FlashGroup Read: failed to MarshalData (%+v). err(%v)", req, err)
+		log.LogWarnf("FlashGroup Read: failed to Marshal req(%v) err(%v)", req, err)
 		return
 	}
 	defer func() {
@@ -165,18 +164,24 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		log.LogWarnf("FlashGroup Read: failed to write to addr(%v) err(%v)", addr, err)
 		return
 	}
-	if read, err = rc.getReadReply(conn, reqPacket, req); err != nil {
+	if read, reply, err = rc.getReadReply(conn, reqPacket, req); err != nil {
 		log.LogWarnf("FlashGroup Read: getReadReply from addr(%v) err(%v)", addr, err)
 	}
+	// check resultCode is limited or not
+	if reply.ResultCode == proto.OpAgain {
+		rc.putLimitedHost(addr)
+		log.LogWarnf("FlashGroup Read: put limited flash host(%v), fg(%v)", addr, fg.ID)
+	}
+
 	if log.IsDebugEnabled() {
 		log.LogDebugf("FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v) moved(%v)", fg, addr, req, reqPacket, err, moved)
 	}
 	return
 }
 
-func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *common.Packet, req *CacheReadRequest) (readBytes int, err error) {
+func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *common.Packet, req *CacheReadRequest) (readBytes int, replyPacket *common.Packet, err error) {
 	for readBytes < int(req.Size_) {
-		replyPacket := common.NewCacheReply(reqPacket.Ctx())
+		replyPacket = common.NewCacheReply(reqPacket.Ctx())
 		err = replyPacket.ReadFromConnNs(conn, rc.connConfig.ReadTimeoutNs)
 		if err != nil {
 			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
@@ -509,4 +514,51 @@ func (rc *RemoteCache) getMinFlashGroup() *FlashGroup {
 		}
 	}
 	return nil
+}
+
+func (rc *RemoteCache) selectFlashHost(fg *FlashGroup) (host string) {
+	visited := make(map[string]bool)
+	for {
+		host = fg.getFlashHost()
+		if host == "" {
+			return
+		}
+		if visited[host] {
+			return ""
+		}
+		if !rc.isLimitedHost(host) {
+			return
+		}
+		visited[host] = true
+	}
+}
+
+func (rc *RemoteCache) putLimitedHost(host string) {
+	rc.limitedHostLock.Lock()
+	defer rc.limitedHostLock.Unlock()
+
+	rc.limitedHost[host] = time.Now()
+}
+
+func (rc *RemoteCache) removeLimitedHost(host string) {
+	rc.limitedHostLock.Lock()
+	defer rc.limitedHostLock.Unlock()
+
+	delete(rc.limitedHost, host)
+}
+
+func (rc *RemoteCache) isLimitedHost(host string) bool {
+	rc.limitedHostLock.RLock()
+	insertTime, ok := rc.limitedHost[host]
+	if !ok {
+		rc.limitedHostLock.RUnlock()
+		return false
+	}
+	rc.limitedHostLock.RUnlock()
+
+	if time.Since(insertTime) >= limitedHostPunishTime {
+		rc.removeLimitedHost(host)
+		return false
+	}
+	return true
 }

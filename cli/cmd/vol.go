@@ -19,8 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/cli/cmd/util/sdk"
-	"github.com/cubefs/cubefs/util/exporter"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -30,18 +28,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/cli/api"
+	"github.com/cubefs/cubefs/cli/cmd/util/sdk"
+	"github.com/cubefs/cubefs/metanode"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/bitset"
-	"github.com/cubefs/cubefs/util/log"
-
-	"github.com/cubefs/cubefs/cli/api"
-	"github.com/cubefs/cubefs/metanode"
-
 	"github.com/cubefs/cubefs/util/errors"
-
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
 )
 
@@ -663,17 +660,17 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.RemoteCacheBoostPath = newRule
 			}
 
-			if optRemoteCacheBoostPath == "" && optDelRemoteCacheBoostPath == "" {
-				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostPath      : %v\n", vv.RemoteCacheBoostPath))
-			}
-
 			if optRemoteCacheBoostEnable != "" {
 				isChange = true
 				var enable bool
 				if enable, err = strconv.ParseBool(optRemoteCacheBoostEnable); err != nil {
 					return
 				}
+				if enable && vv.RemoteCacheBoostPath == "" {
+					vv.RemoteCacheBoostPath = "/"
+				}
 				confirmString.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable    : %v -> %v\n", formatEnabledDisabled(vv.RemoteCacheBoostEnable), formatEnabledDisabled(enable)))
+				confirmString.WriteString(fmt.Sprintf("	RemoteCacheBoostPath      : %v\n", vv.RemoteCacheBoostPath))
 				vv.RemoteCacheBoostEnable = enable
 			}
 

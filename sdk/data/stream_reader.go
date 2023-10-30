@@ -71,8 +71,8 @@ type Streamer struct {
 
 	bloomStatus bool
 
-	initLock	 sync.RWMutex
-	initServer	 bool
+	initLock   sync.RWMutex
+	initServer bool
 }
 
 // NewStreamer returns a new streamer.
@@ -175,6 +175,9 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 	if revisedRequests != nil {
 		requests = revisedRequests
 	}
+	if offset >= fileSize {
+		return 0, false, io.EOF
+	}
 	holeSize, ioErr := s.readHoles(requests, fileSize)
 	if ioErr != nil && ioErr != io.EOF {
 		log.LogErrorf("Stream read failed: err:(%v)", ioErr)
@@ -184,7 +187,11 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 	total += holeSize
 
 	if s.enableRemoteCache() {
-		cacheReadRequests, err = s.prepareCacheRequests(offset, uint64(size), data)
+		canReadSize := uint64(size)
+		if offset+uint64(size) > fileSize {
+			canReadSize = fileSize - offset
+		}
+		cacheReadRequests, err = s.prepareCacheRequests(offset, canReadSize, data)
 		if err == nil {
 			var read int
 			if read, err = s.readFromRemoteCache(ctx, offset, uint64(size), cacheReadRequests); err == nil {

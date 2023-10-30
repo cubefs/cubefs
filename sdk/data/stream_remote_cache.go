@@ -17,7 +17,6 @@ package data
 import (
 	"context"
 	"fmt"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/flash"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -198,11 +197,11 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*fl
 	return cReadRequests, nil
 }
 
-func getCacheReadRequests(offset uint64, size uint64, data []byte, cRequests []*proto.CacheRequest) (cReadRequests []*flash.CacheReadRequest) {
+func getCacheReadRequests(offset, size uint64, data []byte, cRequests []*proto.CacheRequest) (cReadRequests []*flash.CacheReadRequest) {
 	cReadRequests = make([]*flash.CacheReadRequest, 0, len(cRequests))
+
 	startFixedOff := offset / proto.CACHE_BLOCK_SIZE * proto.CACHE_BLOCK_SIZE
 	endFixedOff := (offset + size - 1) / proto.CACHE_BLOCK_SIZE * proto.CACHE_BLOCK_SIZE
-
 	for _, cReq := range cRequests {
 		cReadReq := new(flash.CacheReadRequest)
 		cReadReq.CacheRequest = cReq
