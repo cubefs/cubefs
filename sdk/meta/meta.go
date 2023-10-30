@@ -241,7 +241,6 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.uniqidRangeMap = make(map[uint64]*uniqidRange)
 	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	mw.VerReadSeq = config.VerReadSeq
-	mw.entryCache = make(map[uint64]inoInfoCache)
 	mw.dirCache = make(map[uint64]dirInfoCache)
 	mw.subDir = config.SubDir
 	limit := MaxMountRetryLimit
