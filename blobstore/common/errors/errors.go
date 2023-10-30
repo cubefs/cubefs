@@ -85,6 +85,8 @@ var errCodeMap = map[int]string{
 	CodeDiskIsDropping:               "dropping disk not allow change state or set readonly",
 	CodeRejectDeleteSystemConfig:     "reject delete system config",
 	CodeRegisterServiceInvalidParams: "register service params is invalid",
+	CodeSetVolumeSealedNotAllow:      "not allow to set volume sealed",
+	CodeSetVolumeIdleNotAllow:        "not allow to set volume idle",
 
 	// scheduler
 	CodeNotingTodo: "nothing to do",

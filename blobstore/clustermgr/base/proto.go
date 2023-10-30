@@ -21,6 +21,7 @@ const (
 	VolumeTaskTypeLock VolumeTaskType = VolumeTaskType(iota + 1)
 	VolumeTaskTypeUnlock
 	VolumeTaskTypeSetSealed
+	VolumeTaskTypeSetIdle
 )
 
 func (t VolumeTaskType) String() string {

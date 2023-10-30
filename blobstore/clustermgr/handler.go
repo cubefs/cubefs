@@ -98,6 +98,8 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/volume/set/sealed", service.VolumeSetSealed, rpc.OptArgsBody())
 
+	rpc.POST("/volume/set/idle", service.VolumeSetIdle, rpc.OptArgsBody())
+
 	rpc.POST("/volume/unit/alloc", service.VolumeUnitAlloc, rpc.OptArgsBody())
 
 	rpc.POST("/volume/unit/release", service.VolumeUnitRelease, rpc.OptArgsBody())
