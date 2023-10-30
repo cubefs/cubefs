@@ -134,7 +134,7 @@ func (vs *lcSnapshotVerStatus) GetOneTask() (taskId string) {
 
 	info := vs.VerInfos[taskId]
 	delete(vs.VerInfos, taskId)
-	info.UpdateTime = time.Now().UnixMicro()
+	info.UpdateTime = time.Now().Unix()
 	vs.ProcessingVerInfos[taskId] = info
 	return
 }
@@ -166,7 +166,7 @@ func (vs *lcSnapshotVerStatus) AddVerInfo(task *proto.SnapshotVerDelTask) {
 	vs.Lock()
 	defer vs.Unlock()
 	if pInfo, ok := vs.ProcessingVerInfos[task.Id]; ok {
-		if time.Since(time.UnixMicro(pInfo.UpdateTime)) < time.Second*time.Duration(5*defaultIntervalToCheck) {
+		if time.Since(time.Unix(pInfo.UpdateTime, 0)) < time.Second*time.Duration(5*defaultIntervalToCheck) {
 			log.LogDebugf("VerInfo: %v is already in processing", task)
 			return
 		} else {
