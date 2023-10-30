@@ -569,3 +569,16 @@ func (s *Service) VolumeSetSealed(c *rpc.Context) {
 
 	c.RespondError(s.VolumeMgr.SetVolumeSealed(ctx, args.Vid))
 }
+
+func (s *Service) VolumeSetIdle(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	args := new(clustermgr.SetVolumeIdleArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+	span.Debugf("accept VolumeSetIdle request, args: %v", args)
+
+	c.RespondError(s.VolumeMgr.SetVolumeIdle(ctx, args.Vid))
+}
