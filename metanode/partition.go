@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -128,7 +127,7 @@ type OpInode interface {
 	CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAddr string) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet, remoteAddr string) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, remoteAddr string) (err error)
-	SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error)
+	SetAttr(reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
 	GetInodeTreeLen() int
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet, remoteAddr string) (err error)
@@ -1359,4 +1358,8 @@ func (mp *metaPartition) startCheckerEvict() {
 			return
 		}
 	}
+}
+
+func (mp *metaPartition) GetVolName() (volName string) {
+	return mp.config.VolName
 }

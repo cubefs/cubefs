@@ -28,6 +28,7 @@ const FileNameLengthMax = 255
 const LongNamePrefix = "LongName____"
 const OriginalName = "OriginalName"
 const DefaultReaddirLimit = 4096
+const TrashPathIgnore = "trashPathIgnore"
 
 const (
 	DisableTrash = "/trash/disable"
@@ -100,7 +101,7 @@ func (trash *Trash) InitTrashRoot() (err error) {
 		return err
 	}
 	_, err = trash.CreateDirectory(parentDirInfo.Inode, TrashPrefix,
-		parentDirInfo.Mode, parentDirInfo.Uid, parentDirInfo.Gid)
+		parentDirInfo.Mode, parentDirInfo.Uid, parentDirInfo.Gid, TrashPrefix)
 	if err != nil {
 		log.LogErrorf("action[InitTrashRoot]create trash root failed: %v", err.Error())
 		return err
@@ -136,7 +137,7 @@ func (trash *Trash) createCurrent() (err error) {
 		return nil
 	}
 	inodeInfo, err := trash.CreateDirectory(trash.trashRootIno, CurrentName,
-		trash.trashRootMode, trash.trashRootUid, trash.trashRootGid)
+		trash.trashRootMode, trash.trashRootUid, trash.trashRootGid, path.Join(TrashPrefix, CurrentName))
 	if err != nil {
 		if err != syscall.EEXIST {
 			log.LogErrorf("action[createCurrent]create trash current failed: %v", err.Error())
@@ -399,7 +400,7 @@ func (trash *Trash) deleteExpiredData() {
 			log.LogDebugf("action[deleteExpiredData]delete  %s ", entry.Name)
 			trash.mw.AddInoInfoCache(entry.Inode, trash.trashRootIno, entry.Name)
 			trash.removeAll(entry.Name, entry.Inode)
-			trash.deleteTask(trash.trashRootIno, entry.Name, proto.IsDir(entry.Type))
+			trash.deleteTask(trash.trashRootIno, entry.Name, proto.IsDir(entry.Type), path.Join(TrashPrefix, entry.Name))
 		}
 	}
 }
@@ -472,12 +473,12 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 			select {
 			case trash.traverseDirGoroutineLimit <- true:
 				wg.Add(1)
-				go func(parentIno uint64, entry string, isDir bool) {
+				go func(parentIno uint64, entry string, isDir bool, fullPath string) {
 					defer wg.Done()
-					trash.deleteTask(parentIno, entry, isDir)
-				}(dirIno, entry.Name, proto.IsDir(entry.Type))
+					trash.deleteTask(parentIno, entry, isDir, fullPath)
+				}(dirIno, entry.Name, proto.IsDir(entry.Type), path.Join(dirName, entry.Name))
 			default:
-				trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type))
+				trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type), path.Join(dirName, entry.Name))
 			}
 		}
 		wg.Wait()
@@ -589,10 +590,10 @@ func (trash *Trash) IsDir(path string) bool {
 
 }
 
-func (trash *Trash) CreateDirectory(pino uint64, name string, mode, uid, gid uint32) (info *proto.InodeInfo, err error) {
+func (trash *Trash) CreateDirectory(pino uint64, name string, mode, uid, gid uint32, fullName string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
 	fuseMode |= uint32(os.ModeDir)
-	return trash.mw.Create_ll(pino, name, fuseMode, uid, gid, nil)
+	return trash.mw.Create_ll(pino, name, fuseMode, uid, gid, nil, fullName)
 }
 
 func (trash *Trash) LookupEntry(parentID uint64, name string) (*proto.InodeInfo, error) {
@@ -690,7 +691,7 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 			panic(fmt.Sprintf("info should not be nil for parentPath %v", parentPath))
 			return
 		}
-		parentInfo, err = trash.CreateDirectory(parentIno, sub, info.Mode, info.Uid, info.Gid)
+		parentInfo, err = trash.CreateDirectory(parentIno, sub, info.Mode, info.Uid, info.Gid, path.Join(parentPath, sub))
 		if err != nil {
 			log.LogWarnf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
 			log.LogDebugf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
@@ -708,7 +709,7 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 }
 
 func (trash *Trash) renameToTrashTempFile(parentIno, currentIno uint64, oldPath, newPath string) error {
-	return trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), true)
+	return trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true)
 }
 
 func (trash *Trash) rename(oldPath, newPath string) error {
@@ -730,7 +731,7 @@ func (trash *Trash) rename(oldPath, newPath string) error {
 		return err
 	}
 
-	return trash.mw.Rename_ll(oldInfo.Inode, path.Base(oldPath), newInfo.Inode, path.Base(newPath), true)
+	return trash.mw.Rename_ll(oldInfo.Inode, path.Base(oldPath), newInfo.Inode, path.Base(newPath), oldPath, newPath, true)
 }
 
 func (trash *Trash) deleteSrcDir(dirPath string) error {
@@ -741,7 +742,7 @@ func (trash *Trash) deleteSrcDir(dirPath string) error {
 		return err
 
 	}
-	_, err = trash.mw.Delete_ll(parentInfo.Inode, path.Base(dirPath), true)
+	_, err = trash.mw.Delete_ll(parentInfo.Inode, path.Base(dirPath), true, dirPath)
 	return err
 }
 
@@ -762,8 +763,8 @@ func (trash *Trash) ReadDir(path string) ([]proto.Dentry, error) {
 	return trash.mw.ReadDir_ll(info.Inode)
 }
 
-func (trash *Trash) deleteTask(parentIno uint64, entry string, isDir bool) {
-	info, err := trash.mw.Delete_ll(parentIno, entry, isDir)
+func (trash *Trash) deleteTask(parentIno uint64, entry string, isDir bool, fullPath string) {
+	info, err := trash.mw.Delete_ll(parentIno, entry, isDir, fullPath)
 	if err != nil {
 		log.LogWarnf("Delete_ll %v failed:%v", entry, err.Error())
 		return
@@ -772,7 +773,7 @@ func (trash *Trash) deleteTask(parentIno uint64, entry string, isDir bool) {
 		if info == nil {
 			log.LogErrorf("deleteTask unexpected nil info %v %v", parentIno, entry)
 		}
-		trash.mw.Evict(info.Inode)
+		trash.mw.Evict(info.Inode, fullPath)
 	}
 	log.LogDebugf("Delete_ll %v success", entry)
 }
@@ -1003,7 +1004,7 @@ func (trash *Trash) rebuildDir(dirName, trashCurrent string, ino uint64, fileIno
 		trash.createParentPathInTrash(dirName, CurrentName)
 	}
 	log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v]", dirName, trashCurrent, ino)
-	_, err := trash.mw.Delete_ll(ino, path.Base(originName), true)
+	_, err := trash.mw.Delete_ll(ino, path.Base(originName), true, path.Join(trashCurrent, dirName))
 	if err != nil {
 		log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v] failed:err", dirName, trashCurrent, ino, err)
 	}

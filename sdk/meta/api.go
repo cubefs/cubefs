@@ -17,7 +17,6 @@ package meta
 import (
 	"fmt"
 	syslog "log"
-	"math"
 	"path"
 	"sort"
 	"strconv"
@@ -781,9 +780,9 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, fu
 			}
 		}
 	}
-	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
+	log.LogDebugf("action[Delete_ll] parentID %v name %v", parentID, name)
 
-	status, inode, _, err = mw.ddelete(parentMP, parentID, name, inodeCreateTime, fullPath)
+	status, inode, err = mw.ddelete(parentMP, parentID, name, inodeCreateTime, fullPath)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			return nil, nil
@@ -797,7 +796,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, fu
 		log.LogErrorf("delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 		return nil, nil
 	}
-	log.LogDebugf("action[Delete_ll] parentID %v name %v verSeq %v", parentID, name, verSeq)
+	log.LogDebugf("action[Delete_ll] parentID %v name %v", parentID, name)
 	status, info, err = mw.iunlink(mp, inode, fullPath)
 
 	if err != nil || status != statusOK {

@@ -796,7 +796,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	// apply new inode to dentry
-	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode, false, fixedPath)
+	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode, fixedPath)
 	if err != nil {
 		log.LogErrorf("PutObject: apply new inode to dentry fail: parentID(%v) name(%v) inode(%v) err(%v)",
 			parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
@@ -894,7 +894,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 		}
 	}
 	log.LogWarnf("DeletePath: delete: volume(%v) path(%v) inode(%v)", v.name, path, ino)
-	if _, err = v.mw.Delete_ll(parent, name, mode.IsDir()); err != nil {
+	if _, err = v.mw.Delete_ll(parent, name, mode.IsDir(), path); err != nil {
 		return
 	}
 
@@ -1916,7 +1916,7 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 		}
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
-			info, err = v.mw.Create_ll(partentIno, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil, path[:pathIterator.cursor])
+			info, err = v.mw.Create_ll(ino, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil, path[:pathIterator.cursor])
 			if err != nil && err == syscall.EEXIST {
 				existInode, mode, e := v.mw.Lookup_ll(ino, pathItem.Name)
 				if e != nil {
@@ -2867,7 +2867,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}
 
 	// apply new inode to dentry
-	err = v.applyInodeToDEntry(tParentId, tLastName, tInodeInfo.Inode, false, targetPath)
+	err = v.applyInodeToDEntry(tParentId, tLastName, tInodeInfo.Inode, targetPath)
 	if err != nil {
 		log.LogErrorf("CopyFile: apply inode to new dentry fail: path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
 			targetPath, tParentId, tLastName, tInodeInfo.Inode, err)
