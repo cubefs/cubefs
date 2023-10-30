@@ -936,12 +936,13 @@ func TestVolumeMgr_SetVolumeSealed(t *testing.T) {
 
 	vol := mockVolumeMgr.all.getVol(1)
 
-	// success case
+	// success case not apply
 	ctx := context.Background()
 	vol.setStatus(ctx, proto.VolumeStatusIdle)
 	err := mockVolumeMgr.SetVolumeSealed(ctx, vol.vid)
-	require.NoError(t, err)
-
+	require.Error(t, err)
+	require.Equal(t, proto.VolumeStatusIdle, vol.volInfoBase.Status)
+	// apply
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 1, uuid.New().String(), base.VolumeTaskTypeSetSealed)
 	require.NoError(t, err)
 	vol = mockVolumeMgr.all.getVol(1)
@@ -952,7 +953,7 @@ func TestVolumeMgr_SetVolumeSealed(t *testing.T) {
 	err = mockVolumeMgr.SetVolumeSealed(ctx, vol.vid)
 	require.Equal(t, errcode.ErrSetVolumeSealedNotAllow, err)
 
-	// if vol status is active it can be applied to sealed
+	// if vol status is active and it can be applied to sealed
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 1, uuid.New().String(), base.VolumeTaskTypeSetSealed)
 	require.NoError(t, err)
 	vol = mockVolumeMgr.all.getVol(1)
@@ -965,6 +966,45 @@ func TestVolumeMgr_SetVolumeSealed(t *testing.T) {
 	require.Equal(t, errcode.ErrSetVolumeSealedNotAllow, err)
 
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 1, uuid.New().String(), base.VolumeTaskTypeSetSealed)
+	require.NoError(t, err)
+	vol = mockVolumeMgr.all.getVol(1)
+	require.Equal(t, proto.VolumeStatusLock, vol.volInfoBase.Status)
+}
+
+func TestVolumeMgr_SetVolumeIdle(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
+	mockVolumeMgr.raftServer = mockRaftServer
+	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
+
+	vol := mockVolumeMgr.all.getVol(1)
+
+	// success case not apply
+	ctx := context.Background()
+	vol.setStatus(ctx, proto.VolumeStatusSealed)
+	err := mockVolumeMgr.SetVolumeIdle(ctx, vol.vid)
+	require.NoError(t, err)
+	require.Equal(t, proto.VolumeStatusSealed, vol.volInfoBase.Status)
+	// apply
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), 1, uuid.New().String(), base.VolumeTaskTypeSetIdle)
+	require.NoError(t, err)
+	vol = mockVolumeMgr.all.getVol(1)
+	require.Equal(t, proto.VolumeStatusIdle, vol.volInfoBase.Status)
+
+	// failed case 1
+	vol.setStatus(ctx, proto.VolumeStatusActive)
+	err = mockVolumeMgr.SetVolumeIdle(ctx, vol.vid)
+	require.Equal(t, errcode.ErrCodeSetVolumeIdleNotAllow, err)
+
+	// failed case 2
+	vol.setStatus(ctx, proto.VolumeStatusIdle)
+	vol.setStatus(ctx, proto.VolumeStatusLock)
+	err = mockVolumeMgr.SetVolumeIdle(ctx, vol.vid)
+	require.Equal(t, errcode.ErrCodeSetVolumeIdleNotAllow, err)
+
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), 1, uuid.New().String(), base.VolumeTaskTypeSetIdle)
 	require.NoError(t, err)
 	vol = mockVolumeMgr.all.getVol(1)
 	require.Equal(t, proto.VolumeStatusLock, vol.volInfoBase.Status)
