@@ -577,6 +577,10 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
+		// adjust the handler key to last direct write one
+		s.handler.fileOffset = int(extKey.FileOffset)
+		s.handler.size = int(extKey.Size)
+		s.handler.key = extKey
 	}
 	log.LogDebugf("action[doDirectWriteByAppend] inode %v process over!", s.inode)
 	return
