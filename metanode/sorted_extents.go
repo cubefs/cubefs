@@ -3,8 +3,9 @@ package metanode
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/cubefs/cubefs/util/log"
 	"sync"
+
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/storage"
 
@@ -177,7 +178,6 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 		status = proto.OpArgMismatchErr
 		return
 	}
-	ekSplit.SetSplit(true)
 	lastKey := se.eks[len(se.eks)-1]
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ekSplit.FileOffset {
 		log.LogErrorf("[SplitWithCheck] mpId [%v]. inode %v eks do split not found", mpId, inodeID)
@@ -347,7 +347,6 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	if lastKey.FileOffset+uint64(lastKey.Size) <= ek.FileOffset {
 		se.eks = append(se.eks, ek)
 		if lastKey.IsSequenceWithDiffSeq(&ek) {
-			se.eks[idx].SetSplit(true)
 			addRefFunc(lastKey)
 			addRefFunc(&ek)
 		}
@@ -467,7 +466,6 @@ func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentK
 			rsKey := &proto.ExtentKey{}
 			*rsKey = *lastKey
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
-			lastKey.SetSplit(true)
 			if insertRefMap != nil {
 				insertRefMap(lastKey)
 			}
@@ -475,7 +473,6 @@ func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentK
 			rsKey.Size -= lastKey.Size
 			rsKey.FileOffset += uint64(lastKey.Size)
 			rsKey.ExtentOffset += uint64(lastKey.Size)
-			rsKey.SetSplit(true) // the delete key not the last one
 			if insertRefMap != nil {
 				insertRefMap(rsKey)
 			}
