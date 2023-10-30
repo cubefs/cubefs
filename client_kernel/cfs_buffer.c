@@ -38,6 +38,35 @@ void cfs_buffer_release(struct cfs_buffer *buffer)
 	kfree(buffer);
 }
 
+int cfs_buffer_resize(struct cfs_buffer *buffer, size_t n)
+{
+	char *data;
+	bool is_vmalloc;
+
+	n = (n % CFS_BUFFER_SIZE + 1) * CFS_BUFFER_SIZE;
+	if (n != buffer->capacity) {
+		data = kmalloc(n, GFP_NOFS | __GFP_NOWARN);
+		if (!data) {
+			data = vmalloc(n);
+			if (!data)
+				return -ENOMEM;
+			is_vmalloc = true;
+		} else {
+			is_vmalloc = false;
+		}
+
+		if (buffer->is_vmalloc)
+			kvfree(buffer->data);
+		else
+			kfree(buffer->data);
+		buffer->is_vmalloc = is_vmalloc;
+		buffer->data = data;
+	}
+	buffer->capacity = n;
+	buffer->pos = 0;
+	return 0;
+}
+
 int cfs_buffer_grow(struct cfs_buffer *buffer, size_t n)
 {
 	char *data;

@@ -408,9 +408,13 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	 * packet arg
 	 */
 	if (arglen > 0) {
-		packet->reply.arg = cfs_buffer_new(arglen);
-		if (!packet->reply.arg) {
+		if (packet->reply.arg) {
+			ret = cfs_buffer_resize(packet->reply.arg, arglen);
+		} else if (!(packet->reply.arg = cfs_buffer_new(arglen))) {
 			ret = -ENOMEM;
+		}
+
+		if (ret < 0) {
 			cfs_log_err(
 				"so(%p) id=%llu, op=0x%x, alloc reply arg oom\n",
 				csk->sock,
@@ -540,7 +544,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			/**
 			 *  reply error message
 			 */
-			cfs_log_err(
+			cfs_log_debug(
 				"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, arglen=%u, datalen=%u, data=%.*s\n",
 				csk->sock,
 				be64_to_cpu(packet->reply.hdr.req_id),

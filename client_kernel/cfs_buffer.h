@@ -53,6 +53,7 @@ static inline void cfs_buffer_reset(struct cfs_buffer *buffer)
 	buffer->pos = 0;
 }
 
+int cfs_buffer_resize(struct cfs_buffer *buffer, size_t n);
 int cfs_buffer_grow(struct cfs_buffer *buffer, size_t n);
 int cfs_buffer_write(struct cfs_buffer *buffer, const char *fmt, ...);
 #endif
