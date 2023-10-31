@@ -45,7 +45,7 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 			if infos, err = client.AdminAPI().QueryBadDisks(); err != nil {
 				return
 			}
-			stdout("[Unavaliable disks]:\n")
+			stdout("(partitionID=0 means detected by datanode disk checking, not associated with any partition)\n\n[Unavaliable disks]:\n")
 			stdout("%v\n", formatBadDiskTableHeader())
 
 			sort.SliceStable(infos.BadDisks, func(i, j int) bool {

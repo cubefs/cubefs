@@ -65,6 +65,9 @@ const (
 	DefaultDiskMaxErr          = 1
 	DefaultDiskRetainMin       = 5 * util.GB // GB
 	DefaultNameResolveInterval = 1           // minutes
+
+	DefaultDiskUnavailableErrorCount          = 5
+	DefaultDiskUnavailablePartitionErrorCount = 3
 )
 
 const (
@@ -109,6 +112,11 @@ const (
 	ConfigDiskQosEnable = "diskQosEnable" // bool
 
 	ConfigServiceIDKey = "serviceIDKey"
+
+	// disk status becomes unavailable if disk error count reaches this value
+	ConfigKeyDiskUnavailableErrorCount = "diskUnavailableErrorCount"
+	// disk status becomes unavailable if disk error partition count reaches this value
+	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
 )
 
 const cpuSampleDuration = 1 * time.Second
@@ -164,6 +172,9 @@ type DataNode struct {
 	serviceIDKey            string
 	cpuUtil                 atomicutil.Float64
 	cpuSamplerDone          chan struct{}
+
+	diskUnavailableErrorCount          uint64 //disk status becomes unavailable when disk error count reaches this value
+	diskUnavailablePartitionErrorCount uint64 //disk status becomes unavailable when disk error partition count reaches this value
 }
 
 type verOp2Phase struct {
@@ -331,6 +342,24 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.metricsDegrade = cfg.GetInt64(CfgMetricsDegrade)
 
 	s.serviceIDKey = cfg.GetString(ConfigServiceIDKey)
+
+	diskUnavailableErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailableErrorCount)
+	if diskUnavailableErrorCount <= 0 || diskUnavailableErrorCount > 100 {
+		diskUnavailableErrorCount = DefaultDiskUnavailableErrorCount
+		log.LogDebugf("action[parseConfig] ConfigKeyDiskUnavailableErrorCount(%v) out of range, set as default(%v)",
+			diskUnavailableErrorCount, DefaultDiskUnavailableErrorCount)
+	}
+	s.diskUnavailableErrorCount = uint64(diskUnavailableErrorCount)
+	log.LogDebugf("action[parseConfig] load diskUnavailableErrorCount(%v)", s.diskUnavailableErrorCount)
+
+	diskUnavailablePartitionErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailablePartitionErrorCount)
+	if diskUnavailablePartitionErrorCount <= 0 || diskUnavailablePartitionErrorCount > 100 {
+		diskUnavailablePartitionErrorCount = DefaultDiskUnavailablePartitionErrorCount
+		log.LogDebugf("action[parseConfig] ConfigKeyDiskUnavailablePartitionErrorCount(%v) out of range, set as default(%v)",
+			diskUnavailablePartitionErrorCount, DefaultDiskUnavailablePartitionErrorCount)
+	}
+	s.diskUnavailablePartitionErrorCount = uint64(diskUnavailablePartitionErrorCount)
+	log.LogDebugf("action[parseConfig] load diskUnavailablePartitionErrorCount(%v)", s.diskUnavailablePartitionErrorCount)
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
