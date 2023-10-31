@@ -425,13 +425,12 @@ func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
 }
 
 func (vol *Vol) getRWMetaPartitionNum() (num uint64, isHeartBeatDone bool) {
-	vol.mpsLock.RLock()
-	defer vol.mpsLock.RUnlock()
-	// avoid split during volume creation
-	if len(vol.MetaPartitions) < defaultReplicaNum {
-		log.LogDebugf("The vol[%v] is being created.", vol.Name)
+	if time.Now().Unix()-vol.createTime <= defaultMetaPartitionTimeOutSec {
+		log.LogInfof("The vol[%v] is being created.", vol.Name)
 		return num, false
 	}
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		if !mp.heartBeatDone {
 			log.LogInfof("The mp[%v] of vol[%v] is not done", mp.PartitionID, vol.Name)
@@ -666,11 +665,6 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 	}
 	c.addMetaNodeTasks(tasks)
-	// avoid split during volume creation
-	if len(mps) < defaultReplicaNum {
-		log.LogDebugf("The vol[%v] is being created", vol.Name)
-		return
-	}
 	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)
 }
 
@@ -687,7 +681,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 	maxMPInodeUsedRatio := float64(maxMP.MaxInodeID-maxMP.Start) / float64(metaPartitionInodeStep)
 	RWMPNum, isHeartBeatDone := vol.getRWMetaPartitionNum()
 	if !isHeartBeatDone {
-		log.LogDebugf("Not all volume[%s] mp heartbeat is done, skip mp split", vol.Name)
+		log.LogInfof("Not all volume[%s] mp heartbeat is done, skip mp split", vol.Name)
 		return
 	}
 	if maxMP.memUsedReachThreshold(c.Name, vol.Name) || RWMPNum < lowerLimitRWMetaPartition ||
@@ -701,7 +695,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 				maxMP.PartitionID, err)
 			Warn(c.Name, msg)
 		}
-		log.LogDebugf("volume[%v] split MaxMP[%v], MaxInodeID[%d] Start[%d] RWMPNum[%d] maxMPInodeUsedRatio[%.2f]",
+		log.LogInfof("volume[%v] split MaxMP[%v], MaxInodeID[%d] Start[%d] RWMPNum[%d] maxMPInodeUsedRatio[%.2f]",
 			vol.Name, maxPartitionID, maxMP.MaxInodeID, maxMP.Start, RWMPNum, maxMPInodeUsedRatio)
 	}
 	return
