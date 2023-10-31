@@ -171,6 +171,7 @@ type VolumeInspectMgr struct {
 	startVid proto.Vid
 	// start vid in next batch
 	nextVid proto.Vid
+	//sealedVid []proto.Vid
 
 	firstPrepare bool
 
@@ -267,7 +268,82 @@ func (mgr *VolumeInspectMgr) getStartVid(ctx context.Context) proto.Vid {
 	return zeroVid
 }
 
-func (mgr *VolumeInspectMgr) prepare(ctx context.Context) {
+//type getIdleToSealedVolArgs struct {
+//	start proto.Vid
+//	count int
+//}
+//
+//// sealed or idle->sealed
+//func (mgr *VolumeInspectMgr) getNeededVids(ctx context.Context) (vids []proto.Vid) {
+//	span := trace.SpanFromContextSafe(ctx)
+//
+//	vids, err := mgr.clusterMgrCli.GetSealedVids(ctx, mgr.cfg.InspectBatch)
+//	if len(vids) != 0 {
+//		return vids
+//	}
+//
+//	if err != nil {
+//		span.Warnf("Fail to get sealed volumes: err[%+v]", err)
+//	}
+//
+//	// mark idle to sealed
+//	mgr.startVid = mgr.getStartVid(ctx)
+//	vids, err = mgr.clusterMgrCli.GetMarkIdleToSealedVolume(ctx, getIdleToSealedVolArgs{start: mgr.startVid, count: mgr.cfg.InspectBatch})
+//	//if err == nil {
+//	//	vids = genVolumeId()
+//	//}
+//
+//	return []proto.Vid{}
+//}
+//
+//func (mgr *VolumeInspectMgr) genVolumeId(arg getIdleToSealedVolArgs) []proto.Vid {
+//	vids := make([]proto.Vid, mgr.cfg.InspectBatch)
+//
+//	for i := range vids {
+//		vids[i] = arg.start + proto.Vid(i)
+//	}
+//
+//	return vids
+//}
+
+func (mgr *VolumeInspectMgr) getSealedVolume(ctx context.Context) []*client.VolumeInfoSimple {
+	span := trace.SpanFromContextSafe(ctx)
+
+	vols, err := mgr.clusterMgrCli.ListSealedVolume(ctx)
+	if err != nil {
+		span.Errorf("Fail to list sealed volume: err[%+v]", err)
+		return nil
+	}
+
+	if len(vols) > mgr.cfg.InspectBatch {
+		return vols[:mgr.cfg.InspectBatch]
+	}
+
+	return vols
+}
+
+func (mgr *VolumeInspectMgr) genSealedTask(ctx context.Context, vols []*client.VolumeInfoSimple) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	for _, vol := range vols {
+		err := mgr.clusterMgrCli.SetVolumeSealed(ctx, vol.Vid)
+		if err != nil {
+			span.Errorf("Fail to mark sealed volume: err[%+v]", err)
+			continue
+		}
+
+		taskID := mgr.genTaskID(vol)
+		mgr.tasks[taskID] = &inspectTaskInfo{
+			t:           mgr.genInspectTask(taskID, vol),
+			ret:         nil,
+			acquireTime: nil,
+		}
+		span.Debugf("prepare inspect task: vid[%d], task_id[%s]", vol.Vid, taskID)
+	}
+	span.Infof("prepare finished: first vid[%d], task count[%d]", vols[0].Vid, len(mgr.tasks))
+}
+
+func (mgr *VolumeInspectMgr) genIdleVolumeTask(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	var (
@@ -321,8 +397,17 @@ func (mgr *VolumeInspectMgr) prepare(ctx context.Context) {
 	}
 
 	mgr.nextVid = nextVid
-
 	span.Infof("prepare finished: next vid[%d], task count[%d]", nextVid, len(mgr.tasks))
+}
+
+func (mgr *VolumeInspectMgr) prepare(ctx context.Context) {
+	vols := mgr.getSealedVolume(ctx)
+	if len(vols) > 0 {
+		mgr.genSealedTask(ctx, vols)
+		return
+	}
+
+	mgr.genIdleVolumeTask(ctx)
 }
 
 // AcquireInspect acquire inspect task
@@ -436,8 +521,10 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 	}
 
 	// post repair shard msg
+	vidMap := make(map[proto.Vid]struct{})
 	for _, volMissedShards := range missedShards {
 		vid := volMissedShards[0].Vuid.Vid()
+		vidMap[vid] = struct{}{}
 
 		volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, vid)
 		if err != nil {
@@ -461,6 +548,15 @@ func (mgr *VolumeInspectMgr) finish(ctx context.Context) {
 			base.InsistOn(ctx, "send shard repair msg failed", func() error {
 				return mgr.trySendShardRepairMsg(ctx, vid, bid, bads)
 			})
+		}
+	}
+
+	for vid := range vidMap {
+		err := retry.Timed(3, 200).On(func() error {
+			return mgr.clusterMgrCli.SetVolumeIdle(ctx, vid)
+		})
+		if err != nil {
+			span.Warnf("Fail to set idle volume: vid=%d, err[%+v]", vid, err)
 		}
 	}
 
