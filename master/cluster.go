@@ -629,6 +629,9 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			if vol.FollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
 			}
+			if !vol.EnableAuditLog {
+				hbReq.DisableAuditVols = append(hbReq.DisableAuditVols, vol.Name)
+			}
 
 			spaceInfo := vol.uidSpaceManager.getSpaceOp()
 			hbReq.UidLimitInfo = append(hbReq.UidLimitInfo, spaceInfo...)
