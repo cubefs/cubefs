@@ -1450,7 +1450,8 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
-		errorCode = NoContentMd5HeaderErr
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "No Content-MD5 with Object Lock")
 		return
 	}
 
