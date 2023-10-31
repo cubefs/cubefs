@@ -278,6 +278,8 @@ type MetaPartition interface {
 	ForceSetMetaPartitionToFininshLoad()
 	IsForbidden() bool
 	SetForbidden(status bool)
+	IsEnableAuditLog() bool
+	SetEnableAuditLog(status bool)
 }
 
 type UidManager struct {
@@ -516,6 +518,7 @@ type metaPartition struct {
 	multiVersionList       *proto.VolVersionInfoList
 	versionLock            sync.Mutex
 	verUpdateChan          chan []byte
+	enableAuditLog         bool
 }
 
 func (mp *metaPartition) IsForbidden() bool {
@@ -524,6 +527,14 @@ func (mp *metaPartition) IsForbidden() bool {
 
 func (mp *metaPartition) SetForbidden(status bool) {
 	mp.config.Forbidden = status
+}
+
+func (mp *metaPartition) IsEnableAuditLog() bool {
+	return mp.enableAuditLog
+}
+
+func (mp *metaPartition) SetEnableAuditLog(status bool) {
+	mp.enableAuditLog = status
 }
 
 func (mp *metaPartition) acucumRebuildStart() bool {
@@ -875,6 +886,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		multiVersionList: &proto.VolVersionInfoList{
 			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 		},
+		enableAuditLog: true,
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp

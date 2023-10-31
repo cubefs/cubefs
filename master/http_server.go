@@ -290,6 +290,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminVolForbidden).
 		HandlerFunc(m.forbidVolume)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminVolEnableAuditLog).
+		HandlerFunc(m.setEnableAuditLogForVolume)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminClusterForbidMpDecommission).
 		HandlerFunc(m.setupForbidMetaPartitionDecommission)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

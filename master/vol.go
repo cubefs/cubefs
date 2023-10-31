@@ -112,6 +112,7 @@ type Vol struct {
 	VersionMgr              *VolVersionManager
 	Forbidden               bool
 	mpsLock                 *mpsLockManager
+	EnableAuditLog          bool
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -180,6 +181,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.qosManager.volUpdateMagnify(magnifyQosVal)
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
 	vol.mpsLock = newMpsLockManager(vol)
+	vol.EnableAuditLog = true
 	return
 }
 
@@ -201,6 +203,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vol.txConflictRetryInterval = proto.DefaultTxConflictRetryInterval
 	}
 	vol.Forbidden = vv.Forbidden
+	vol.EnableAuditLog = vv.EnableAuditLog
 	return vol
 }
 

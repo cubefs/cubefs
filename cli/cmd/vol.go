@@ -49,6 +49,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolTransferCmd(client),
 		newVolAddDPCmd(client),
 		newVolSetForbiddenCmd(client),
+		newVolSetAuditLogCmd(client),
 	)
 	return cmd
 }
@@ -939,6 +940,36 @@ func newVolSetForbiddenCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("Volume forbidden property has been set successfully, please wait few minutes for the settings to take effect.\n")
+		},
+	}
+	return cmd
+}
+
+var (
+	cmdVolSetAuditLogUse   = "set-auditlog [VOLUME] [STATUS]"
+	cmdVolSetAuditLogShort = "Enable/Disable backend audit log for volume"
+)
+
+func newVolSetAuditLogCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   cmdVolSetAuditLogUse,
+		Short: cmdVolSetAuditLogShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			name := args[0]
+			settingStr := args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			enable, err := strconv.ParseBool(settingStr)
+			if err != nil {
+				return
+			}
+			if err = client.AdminAPI().SetVolumeAuditLog(name, enable); err != nil {
+				return
+			}
+			stdout("Volume audit log has been set successfully, please wait few minutes for the settings to take effect.\n")
 		},
 	}
 	return cmd

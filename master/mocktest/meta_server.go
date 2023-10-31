@@ -168,11 +168,11 @@ func (mms *MockMetaServer) handleTryToLeader(conn net.Conn, p *proto.Packet, adm
 	return
 }
 
-func (mms *MockMetaServer) CheckVolPartition(name string, forbidden bool) bool {
+func (mms *MockMetaServer) CheckVolPartition(name string, cond func(*MockMetaPartition) bool) bool {
 	mms.RLock()
 	defer mms.RUnlock()
 	for _, mp := range mms.partitions {
-		if mp.VolName == name && mp.IsForbidden() != forbidden {
+		if mp.VolName == name && !cond(mp) {
 			return false
 		}
 	}
@@ -217,6 +217,8 @@ func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Pac
 		Members:     req.Members,
 		Replicas:    replicas,
 	}
+	partition.SetEnableAuditLog(true)
+	partition.SetForbidden(false)
 	mms.Lock()
 	mms.partitions[req.PartitionID] = partition
 	mms.Unlock()
@@ -231,6 +233,16 @@ func (mms *MockMetaServer) checkForbiddenVolume(volNames []string, mp *MockMetaP
 		}
 	}
 	mp.SetForbidden(false)
+}
+
+func (mms *MockMetaServer) checkAuditLogVolume(volNames []string, mp *MockMetaPartition) {
+	for _, volName := range volNames {
+		if mp.VolName == volName {
+			mp.SetEnableAuditLog(false)
+			return
+		}
+	}
+	mp.SetEnableAuditLog(true)
 }
 
 // Handle OpHeartbeat packet.
@@ -259,6 +271,7 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 	mms.RLock()
 	for id, partition := range mms.partitions {
 		mms.checkForbiddenVolume(req.ForbiddenVols, partition)
+		mms.checkAuditLogVolume(req.DisableAuditVols, partition)
 		mpr := &proto.MetaPartitionReport{
 			PartitionID: id,
 			Start:       partition.Start,

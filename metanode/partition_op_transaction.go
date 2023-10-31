@@ -229,9 +229,11 @@ func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) er
 func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAddr string) error {
 	var err error
 	start := time.Now()
-	defer func() {
-		auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
-	}()
+	if mp.IsEnableAuditLog() {
+		defer func() {
+			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
+		}()
+	}
 	status, err := mp.txProcessor.txManager.commitTx(req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))
@@ -244,9 +246,11 @@ func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAd
 func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet, remoteAddr string) error {
 	var err error
 	start := time.Now()
-	defer func() {
-		auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
-	}()
+	if mp.IsEnableAuditLog() {
+		defer func() {
+			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
+		}()
+	}
 	status, err := mp.txProcessor.txManager.rollbackTx(req.TxID, false)
 	if err != nil {
 		p.PacketErrorWithBody(status, []byte(err.Error()))
