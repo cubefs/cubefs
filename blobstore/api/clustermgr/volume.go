@@ -118,6 +118,7 @@ type AllocVolumeArgs struct {
 }
 
 type AllocVolumeV2Args struct {
+	IsInit   bool              `json:"is_init"`
 	CodeMode codemode.CodeMode `json:"code_mode"`
 	Count    int               `json:"count"`
 	NeedSize uint64            `json:"need_size,omitempty"`
