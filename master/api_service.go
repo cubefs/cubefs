@@ -184,6 +184,48 @@ func (m *Server) setupAutoAllocation(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set DisableAutoAllocate to %v successfully", status)))
 }
 
+func (m *Server) setEnableAuditLogForVolume(w http.ResponseWriter, r *http.Request) {
+	var (
+		status bool
+		name   string
+		err    error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolEnableAuditLog))
+	defer func() {
+		doStatAndMetric(proto.AdminVolEnableAuditLog, metric, err, nil)
+		if err != nil {
+			log.LogErrorf("set volume aduit log failed, error: %v", err)
+		} else {
+			log.LogInfof("set volume aduit log to (%v) success", status)
+		}
+	}()
+	if name, err = parseAndExtractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if status, err = parseAndExtractStatus(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	vol, err := m.cluster.getVol(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	oldEnable := vol.EnableAuditLog
+	vol.EnableAuditLog = status
+	defer func() {
+		if err != nil {
+			vol.EnableAuditLog = oldEnable
+		}
+	}()
+	if err = m.cluster.syncUpdateVol(vol); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume audit log to (%v) success", status)))
+}
+
 func (m *Server) setupForbidMetaPartitionDecommission(w http.ResponseWriter, r *http.Request) {
 	var (
 		status bool
@@ -2204,6 +2246,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		CacheRule:               vol.CacheRule,
 		PreloadCapacity:         vol.getPreloadCapacity(),
 		TrashInterval:           vol.TrashInterval,
+		EnableAuditLog:          vol.EnableAuditLog,
 	}
 
 	vol.uidSpaceManager.RLock()

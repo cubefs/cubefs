@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -45,6 +46,7 @@ type MockDataServer struct {
 	partitions                      []*MockDataPartition
 	zoneName                        string
 	mc                              *master.MasterClient
+	sync.RWMutex
 }
 
 func NewMockDataServer(addr string, zoneName string) *MockDataServer {
@@ -163,6 +165,17 @@ func (mds *MockDataServer) handleTryToLeader(conn net.Conn, p *proto.Packet, adm
 	return
 }
 
+func (mds *MockDataServer) CheckVolPartition(name string, cond func(*MockDataPartition) bool) bool {
+	mds.RLock()
+	defer mds.RUnlock()
+	for _, dp := range mds.partitions {
+		if dp.VolName == name && !cond(dp) {
+			return false
+		}
+	}
+	return true
+}
+
 func (mds *MockDataServer) handleDecommissionDataPartition(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
 	defer func() {
 		if err != nil {
@@ -220,6 +233,8 @@ func (mds *MockDataServer) handleCreateDataPartition(conn net.Conn, p *proto.Pac
 		total:       req.PartitionSize,
 		used:        defaultUsedSize,
 	}
+	mds.Lock()
+	defer mds.Unlock()
 	mds.partitions = append(mds.partitions, partition)
 	return
 }

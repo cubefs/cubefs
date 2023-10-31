@@ -245,6 +245,8 @@ type MetaPartition interface {
 	LoadSnapshot(path string) error
 	ForceSetMetaPartitionToLoadding()
 	ForceSetMetaPartitionToFininshLoad()
+	IsEnableAuditLog() bool
+	SetEnableAuditLog(status bool)
 }
 
 type UidManager struct {
@@ -479,6 +481,15 @@ type metaPartition struct {
 	mqMgr                  *MetaQuotaManager
 	nonIdempotent          sync.Mutex
 	uniqChecker            *uniqChecker
+	enableAuditLog         bool
+}
+
+func (mp *metaPartition) IsEnableAuditLog() bool {
+	return mp.enableAuditLog
+}
+
+func (mp *metaPartition) SetEnableAuditLog(status bool) {
+	mp.enableAuditLog = status
 }
 
 func (mp *metaPartition) acucumRebuildStart() bool {
@@ -738,19 +749,20 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 // NewMetaPartition creates a new meta partition with the specified configuration.
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
-		config:        conf,
-		dentryTree:    NewBtree(),
-		inodeTree:     NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
-		stopC:         make(chan bool),
-		storeChan:     make(chan *storeMsg, 100),
-		freeList:      newFreeList(),
-		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
-		extReset:      make(chan struct{}),
-		vol:           NewVol(),
-		manager:       manager,
-		uniqChecker:   newUniqChecker(),
+		config:         conf,
+		dentryTree:     NewBtree(),
+		inodeTree:      NewBtree(),
+		extendTree:     NewBtree(),
+		multipartTree:  NewBtree(),
+		stopC:          make(chan bool),
+		storeChan:      make(chan *storeMsg, 100),
+		freeList:       newFreeList(),
+		extDelCh:       make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		extReset:       make(chan struct{}),
+		vol:            NewVol(),
+		manager:        manager,
+		uniqChecker:    newUniqChecker(),
+		enableAuditLog: true,
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp

@@ -427,6 +427,16 @@ func (api *AdminAPI) GetVolumeSimpleInfo(volName string) (vv *proto.SimpleVolVie
 	return
 }
 
+func (api *AdminAPI) SetVolumeAuditLog(volName string, enable bool) (err error) {
+	request := newAPIRequest(http.MethodPost, proto.AdminVolEnableAuditLog)
+	request.addParam("name", volName)
+	request.addParam("enable", strconv.FormatBool(enable))
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) UploadFlowInfo(volName string,
 	flowInfo *proto.ClientReportLimitInfo) (vv *proto.LimitRsp2Client, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QosUpload)
