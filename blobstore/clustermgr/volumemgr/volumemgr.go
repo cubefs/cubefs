@@ -494,6 +494,68 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid) error {
 	return nil
 }
 
+func (v *VolumeMgr) ReleaseVolume(ctx context.Context, args *cm.ReleaseVolumes) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	releaseFn := func(vid proto.Vid, status proto.VolumeStatus, taskType base.VolumeTaskType) error {
+		vol := v.all.getVol(vid)
+		if vol == nil {
+			span.Errorf("apply release volume,vid %d not exist", vid)
+			return nil
+		}
+		// already been processed, then just return success
+		vol.lock.RLock()
+		if vol.getStatus() == status {
+			vol.lock.RUnlock()
+			return nil
+		}
+		if status == proto.VolumeStatusIdle && !vol.canSetIdle() {
+			span.Warnf("volume can't be set idle, current status is %d,vid is %d", vol.getStatus(), vol.vid)
+			vol.lock.RUnlock()
+			return nil
+		}
+		if status == proto.VolumeStatusSealed && !vol.canSetSealed() {
+			span.Warnf("volume can't be set sealed, current status is %d,vid is %d", vol.getStatus(), vol.vid)
+			vol.lock.RUnlock()
+			return nil
+		}
+		vol.lock.RUnlock()
+
+		param := ChangeVolStatusCtx{
+			Vid:      vid,
+			TaskID:   uuid.New().String(),
+			TaskType: taskType,
+		}
+		data, err := json.Marshal(param)
+		if err != nil {
+			span.Errorf("json marshal failed, vid: %d, error: %v", vid, err)
+			return apierrors.ErrCMUnexpect
+		}
+
+		proposeInfo := base.EncodeProposeInfo(v.GetModuleName(), OperTypeChangeVolumeStatus, data, base.ProposeContext{ReqID: span.TraceID()})
+		err = v.raftServer.Propose(ctx, proposeInfo)
+		if err != nil {
+			span.Errorf("raft propose error:%v", err)
+			return apierrors.ErrRaftPropose
+		}
+		return nil
+	}
+
+	for _, vid := range args.NormalVids {
+		err := releaseFn(vid, proto.VolumeStatusIdle, base.VolumeTaskTypeSetIdle)
+		if err != nil {
+			return err
+		}
+	}
+	for _, vid := range args.SealedVids {
+		err := releaseFn(vid, proto.VolumeStatusSealed, base.VolumeTaskTypeSetSealed)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (v *VolumeMgr) Stat(ctx context.Context) (stat cm.VolumeStatInfo) {
 	stat.TotalVolume = defaultVolumeStatusStat.StatTotal()
 	statAllocatable := v.allocator.StatAllocatable()

@@ -124,6 +124,14 @@ func (vol *volume) canUnlock() bool {
 	return vol.getStatus() == proto.VolumeStatusLock
 }
 
+func (vol *volume) canSetSealed() bool {
+	return vol.getStatus() == proto.VolumeStatusIdle || vol.getStatus() == proto.VolumeStatusActive
+}
+
+func (vol *volume) canSetIdle() bool {
+	return vol.getStatus() == proto.VolumeStatusActive
+}
+
 func (vol *volume) isExpired() bool {
 	return vol.getStatus() == proto.VolumeStatusActive && vol.token.expireTime < time.Now().UnixNano()
 }
