@@ -2369,7 +2369,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 	)
 
 	log.LogDebugf("checkVolVerList start")
-	m.Range(false, func(id uint64, partition MetaPartition) bool {
+	m.Range(true, func(id uint64, partition MetaPartition) bool {
 		volumeArr[partition.GetVolName()] = true
 		return true
 	})
@@ -2412,34 +2412,32 @@ func (m *metadataManager) checkVolVerList() (err error) {
 func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op uint8, synchronize bool) (err error) {
 
 	log.LogWarnf("action[commitCreateVersion] volume %v seq %v", VolumeID, VerSeq)
-
-	m.mu.RLock()
 	var wg sync.WaitGroup
-	wg.Add(len(m.partitions))
+	// wg.Add(len(m.partitions))
 	resultCh := make(chan error, len(m.partitions))
-	m.Range(false, func(id uint64, partition MetaPartition) bool {
-		go func() {
-			if partition.GetVolName() == VolumeID {
-				if _, ok := partition.IsLeader(); !ok {
-					wg.Done()
-					return
-				}
-				log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, id, VerSeq)
-				if err = partition.HandleVersionOp(Op, VerSeq, nil, synchronize); err != nil {
-					log.LogErrorf("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v err %v", VolumeID, id, VerSeq, err)
-					wg.Done()
-					resultCh <- err
-					return
-				}
+	m.Range(true, func(id uint64, partition MetaPartition) bool {
+		if partition.GetVolName() != VolumeID {
+			return true
+		}
+
+		if _, ok := partition.IsLeader(); !ok {
+			return true
+		}
+
+		wg.Add(1)
+		go func(mpId uint64, mp MetaPartition) {
+			defer wg.Done()
+			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, mpId, VerSeq)
+			if err := mp.HandleVersionOp(Op, VerSeq, nil, synchronize); err != nil {
+				log.LogErrorf("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v err %v", VolumeID, mpId, VerSeq, err)
+				resultCh <- err
+				return
 			}
-			wg.Done()
-			return
-		}()
+		}(id, partition)
 		return true
 	})
-	wg.Wait()
-	m.mu.RUnlock()
 
+	wg.Wait()
 	select {
 	case err = <-resultCh:
 		if err != nil {
