@@ -41,6 +41,7 @@ const (
 	AdminUpdateVol                            = "/vol/update"
 	AdminVolShrink                            = "/vol/shrink"
 	AdminVolExpand                            = "/vol/expand"
+	AdminVolEnableAuditLog                    = "/vol/auditlog"
 	AdminCreateVol                            = "/admin/createVol"
 	AdminGetVol                               = "/admin/getVol"
 	AdminClusterFreeze                        = "/cluster/freeze"
@@ -496,6 +497,7 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
+	DisableAuditVols []string
 }
 
 // PartitionReport defines the partition report.
@@ -869,6 +871,7 @@ type SimpleVolView struct {
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
 	TrashInterval    int64
+	EnableAuditLog   bool
 }
 
 type NodeSetInfo struct {

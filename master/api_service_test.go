@@ -25,6 +25,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -70,6 +72,10 @@ var server = createDefaultMasterServerForTest()
 var commonVol *Vol
 var cfsUser *proto.UserInfo
 
+var mockServerLock sync.Mutex
+
+var mockMetaServers []*mocktest.MockMetaServer
+
 func createDefaultMasterServerForTest() *Server {
 
 	cfgJSON := `{
@@ -102,12 +108,13 @@ func createDefaultMasterServerForTest() *Server {
 	addDataServer(mds6Addr, testZone2)
 
 	// add meta node
-	addMetaServer(mms1Addr, testZone1)
-	addMetaServer(mms2Addr, testZone1)
-	addMetaServer(mms3Addr, testZone2)
-	addMetaServer(mms4Addr, testZone2)
-	addMetaServer(mms5Addr, testZone2)
-	addMetaServer(mms6Addr, testZone2)
+	mockMetaServers = make([]*mocktest.MockMetaServer, 0)
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms1Addr, testZone1))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms2Addr, testZone1))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms3Addr, testZone2))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms4Addr, testZone2))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms5Addr, testZone2))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms6Addr, testZone2))
 	// we should wait 5 seoncds for master to prepare state
 	time.Sleep(5 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
@@ -222,9 +229,10 @@ func addDataServer(addr, zoneName string) {
 	mds.Start()
 }
 
-func addMetaServer(addr, zoneName string) {
+func addMetaServer(addr, zoneName string) *mocktest.MockMetaServer {
 	mms := mocktest.NewMockMetaServer(addr, zoneName)
 	mms.Start()
+	return mms
 }
 
 func TestSetMetaNodeThreshold(t *testing.T) {
@@ -630,11 +638,10 @@ func TestDataPartitionDecommission(t *testing.T) {
 	partition.isRecover = false
 }
 
-//func TestGetAllVols(t *testing.T) {
-//	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
-//	process(reqURL, t)
-//}
-//
+//	func TestGetAllVols(t *testing.T) {
+//		reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
+//		process(reqURL, t)
+//	}
 func TestGetMetaPartitions(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientMetaPartitions, commonVolName)
 	process(reqURL, t)
@@ -997,4 +1004,65 @@ func TestListUsersOfVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
 	fmt.Println(reqURL)
 	process(reqURL, t)
+}
+
+func rangeMockMetaServers(fun func(*mocktest.MockMetaServer) bool) (count int, passed int) {
+	mockServerLock.Lock()
+	defer mockServerLock.Unlock()
+	count = len(mockMetaServers)
+	for _, mms := range mockMetaServers {
+		passed += 1
+		if !fun(mms) {
+			return
+		}
+	}
+	return
+}
+
+const (
+	volPartitionCheckTimeout = 60
+)
+
+func checkVolAuditLog(name string, enable bool) (success bool) {
+	metaChecker := func(mmp *mocktest.MockMetaPartition) bool {
+		return mmp.IsEnableAuditLog() == enable
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
+		okCount := 0
+		count, _ := rangeMockMetaServers(func(mms *mocktest.MockMetaServer) bool {
+			if mms.CheckVolPartition(name, metaChecker) {
+				okCount += 1
+			}
+			return true
+		})
+		if count == okCount {
+			success = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return
+}
+
+func TestVolumeEnableAuditLog(t *testing.T) {
+	name := "auditLogVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminVolEnableAuditLog)
+	enableUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, enableKey)
+	disableUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, enableKey)
+	process(disableUrl, t)
+	require.False(t, vol.EnableAuditLog)
+	require.True(t, checkVolAuditLog(name, false))
+	process(enableUrl, t)
+	require.True(t, vol.EnableAuditLog)
+	require.True(t, checkVolAuditLog(name, true))
 }

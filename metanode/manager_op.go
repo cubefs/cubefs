@@ -46,6 +46,18 @@ func (m *metadataManager) checkFollowerRead(volNames []string, partition MetaPar
 	return
 }
 
+func (m *metadataManager) checkDisableAuditLogVolume(volNames []string, partition MetaPartition) {
+	volName := partition.GetBaseConfig().VolName
+	for _, name := range volNames {
+		if name == volName {
+			partition.SetEnableAuditLog(false)
+			return
+		}
+	}
+	partition.SetEnableAuditLog(true)
+	return
+}
+
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	// For ack to master
@@ -80,6 +92,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 
 		m.Range(func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
+			m.checkDisableAuditLogVolume(req.DisableAuditVols, partition)
 			partition.SetUidLimit(req.UidLimitInfo)
 			partition.SetTxInfo(req.TxInfo)
 			partition.setQuotaHbInfo(req.QuotaHbInfos)
