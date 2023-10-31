@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -1299,13 +1300,16 @@ func TestUpdateClusterNodesetSelector(t *testing.T) {
 	process(updateMetaSelectorUrl, t)
 }
 
-const forbidVolCheckTimeout = 60
+const volPartitionCheckTimeout = 60
 
 func checkVolForbidden(name string, forbidden bool) (success bool) {
-	for i := 0; i < forbidVolCheckTimeout; i++ {
+	dataChecker := func(mdp *mocktest.MockDataPartition) bool {
+		return mdp.IsForbidden() == forbidden
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
 		okCount := 0
 		count, _ := rangeMockDataServers(func(mds *mocktest.MockDataServer) bool {
-			if mds.CheckVolPartition(name, forbidden) {
+			if mds.CheckVolPartition(name, dataChecker) {
 				okCount += 1
 			}
 			return true
@@ -1320,10 +1324,13 @@ func checkVolForbidden(name string, forbidden bool) (success bool) {
 		return
 	}
 	success = false
-	for i := 0; i < forbidVolCheckTimeout; i++ {
+	metaChecker := func(mmp *mocktest.MockMetaPartition) bool {
+		return mmp.IsForbidden() == forbidden
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
 		okCount := 0
 		count, _ := rangeMockMetaServers(func(mms *mocktest.MockMetaServer) bool {
-			if mms.CheckVolPartition(name, forbidden) {
+			if mms.CheckVolPartition(name, metaChecker) {
 				okCount += 1
 			}
 			return true
@@ -1353,6 +1360,7 @@ func TestForbiddenVolume(t *testing.T) {
 	forbidUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, forbiddenKey)
 	unforbidUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, forbiddenKey)
 	process(forbidUrl, t)
+	t.Logf("check forbid volume")
 	dps := vol.cloneDataPartitionMap()
 	mps := vol.cloneMetaPartitionMap()
 	for _, dp := range dps {
@@ -1373,6 +1381,7 @@ func TestForbiddenVolume(t *testing.T) {
 		return
 	}
 	process(unforbidUrl, t)
+	t.Logf("check unforbid volume")
 	ok = checkVolForbidden(vol.Name, vol.Forbidden)
 	if !ok {
 		t.Errorf("failed to unforbid volume, check timeout")
@@ -1390,4 +1399,48 @@ func TestForbiddenVolume(t *testing.T) {
 			return
 		}
 	}
+}
+
+func checkVolAuditLog(name string, enable bool) (success bool) {
+	metaChecker := func(mmp *mocktest.MockMetaPartition) bool {
+		return mmp.IsEnableAuditLog() == enable
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
+		okCount := 0
+		count, _ := rangeMockMetaServers(func(mms *mocktest.MockMetaServer) bool {
+			if mms.CheckVolPartition(name, metaChecker) {
+				okCount += 1
+			}
+			return true
+		})
+		if count == okCount {
+			success = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return
+}
+
+func TestVolumeEnableAuditLog(t *testing.T) {
+	name := "auditLogVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminVolEnableAuditLog)
+	enableUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, enableKey)
+	disableUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, enableKey)
+	process(disableUrl, t)
+	require.False(t, vol.EnableAuditLog)
+	require.True(t, checkVolAuditLog(name, false))
+	process(enableUrl, t)
+	require.True(t, vol.EnableAuditLog)
+	require.True(t, checkVolAuditLog(name, true))
 }

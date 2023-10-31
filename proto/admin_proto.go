@@ -45,6 +45,7 @@ const (
 	AdminVolShrink                            = "/vol/shrink"
 	AdminVolExpand                            = "/vol/expand"
 	AdminVolForbidden                         = "/vol/forbidden"
+	AdminVolEnableAuditLog                    = "/vol/auditlog"
 	AdminCreateVol                            = "/admin/createVol"
 	AdminGetVol                               = "/admin/getVol"
 	AdminClusterFreeze                        = "/cluster/freeze"
@@ -599,7 +600,8 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
-	ForbiddenVols []string
+	ForbiddenVols    []string
+	DisableAuditVols []string
 }
 
 // DataPartitionReport defines the partition report.
@@ -834,7 +836,6 @@ type VolView struct {
 	DeleteLockTime int64
 	CacheTTL       int
 	VolType        int
-	Forbidden      bool
 }
 
 func (v *VolView) SetOwner(owner string) {
@@ -1000,8 +1001,9 @@ type SimpleVolView struct {
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
 	// multi version snapshot
-	LatestVer uint64
-	Forbidden bool
+	LatestVer      uint64
+	Forbidden      bool
+	EnableAuditLog bool
 }
 
 type NodeSetInfo struct {

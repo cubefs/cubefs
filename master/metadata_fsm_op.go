@@ -284,6 +284,7 @@ type volValue struct {
 	IopsRMagnify, IopsWMagnify, FlowRMagnify, FlowWMagnify uint32
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
 	Forbidden                                              bool
+	EnableAuditLog                                         bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -346,6 +347,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 
 		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 		Forbidden:             vol.Forbidden,
+		EnableAuditLog:        vol.EnableAuditLog,
 	}
 
 	return
