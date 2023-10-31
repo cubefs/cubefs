@@ -2136,10 +2136,11 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 		value.SetDecommissionStatus(markDecommission)
 	}
 
+	l.mu.Lock()
 	if _, ok := l.cacheMap[value.PartitionID]; ok {
+		l.mu.Unlock()
 		return
 	}
-	l.mu.Lock()
 	elm := l.decommissionList.PushBack(value)
 	l.cacheMap[value.PartitionID] = elm
 	l.mu.Unlock()
