@@ -1741,7 +1741,7 @@ func VerifyContentLength(r *http.Request, bodyLimit int64) (int64, *ErrorCode) {
 	if length > bodyLimit {
 		return 0, EntityTooLarge
 	}
-	if length <= 0 {
+	if length < 0 {
 		return 0, MissingContentLength
 	}
 	return length, nil
