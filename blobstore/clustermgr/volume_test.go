@@ -262,6 +262,23 @@ func TestService_VolumeAllocV2(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestService_VolumeRelease(t *testing.T) {
+	testService, clean := initServiceWithData()
+	defer clean()
+	cmClient := initTestClusterClient(testService)
+	ctx := newCtx()
+
+	// release volume
+	normalVids := []proto.Vid{1}
+	sealedVids := []proto.Vid{2}
+	args := &clustermgr.ReleaseVolumes{
+		NormalVids: normalVids,
+		SealedVids: sealedVids,
+	}
+	err := cmClient.ReleaseVolume(ctx, args)
+	require.NoError(t, err)
+}
+
 func TestService_ChunkSetCompact(t *testing.T) {
 	testService, clean := initServiceWithData()
 	defer clean()
