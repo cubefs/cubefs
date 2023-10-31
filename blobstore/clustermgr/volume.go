@@ -133,6 +133,12 @@ func (s *Service) V2VolumeAlloc(c *rpc.Context) {
 	}
 	span.Debugf("accept V2VolumeAlloc request, args: %v", args)
 
+	// client init, return allocated volume back directly
+	if args.IsInit {
+		c.RespondJSON(s.VolumeMgr.ListAllocatedVolume(ctx, clientIP(c.Request), args.CodeMode))
+		return
+	}
+
 	if args.Count <= 0 {
 		c.RespondError(apierrors.ErrAllocVolumeInvalidParams)
 		return
@@ -281,6 +287,19 @@ func (s *Service) VolumeUnlock(c *rpc.Context) {
 	span.Debugf("accept VolumeUnlock request, args: %v", args)
 
 	c.RespondError(s.VolumeMgr.UnlockVolume(ctx, args.Vid))
+}
+
+func (s *Service) VolumeRelease(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	args := new(clustermgr.ReleaseVolumes)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+	span.Debugf("accept VolumeRelease request, args: %+v", args)
+
+	c.RespondError(s.VolumeMgr.ReleaseVolume(ctx, args))
 }
 
 func (s *Service) VolumeUnitAlloc(c *rpc.Context) {
