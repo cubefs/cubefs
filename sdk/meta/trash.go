@@ -775,6 +775,7 @@ func (trash *Trash) deleteTask(parentIno uint64, entry string, isDir bool, fullP
 	if !isDir {
 		if info == nil {
 			log.LogErrorf("deleteTask unexpected nil info %v %v", parentIno, entry)
+			return
 		}
 		trash.mw.Evict(info.Inode, fullPath)
 	}
