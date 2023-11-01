@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -365,14 +366,9 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.diskUnavailablePartitionErrorCount = uint64(diskUnavailablePartitionErrorCount)
 	log.LogDebugf("action[parseConfig] load diskUnavailablePartitionErrorCount(%v)", s.diskUnavailablePartitionErrorCount)
 
-	mediaType := cfg.GetInt64(ConfigMediaType)
-	switch uint32(mediaType) {
-	case proto.MediaType_SSD:
-		s.mediaType = proto.MediaType_SSD
-	case proto.MediaType_HDD:
-		s.mediaType = proto.MediaType_HDD
-	default:
-		s.mediaType = proto.MediaType_Unspecified
+	var mediaType uint32
+	mediaTypeInt64 := cfg.GetInt64(ConfigMediaType)
+	if mediaTypeInt64 < 0 || mediaTypeInt64 > math.MaxUint32 {
 		err = fmt.Errorf("parseConfig: invalid mediaType[%v]", mediaType)
 		return err
 	}
