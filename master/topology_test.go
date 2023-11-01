@@ -24,7 +24,7 @@ func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
 func TestSingleZone(t *testing.T) {
 	topo := newTopology()
 	zoneName := "test"
-	zone := newZone(zoneName)
+	zone := newZone(zoneName, proto.MediaType_Unspecified)
 	topo.putZone(zone)
 	c := new(Cluster)
 	nodeSet := newNodeSet(c, 1, 6, zoneName)
@@ -74,7 +74,7 @@ func TestAllocZones(t *testing.T) {
 	zoneCount := 3
 	//add three zones
 	zoneName1 := testZone1
-	zone1 := newZone(zoneName1)
+	zone1 := newZone(zoneName1, proto.MediaType_Unspecified)
 	nodeSet1 := newNodeSet(c, 1, 6, zoneName1)
 
 	zone1.putNodeSet(nodeSet1)
@@ -83,7 +83,7 @@ func TestAllocZones(t *testing.T) {
 	topo.putDataNode(createDataNodeForTopo(mds2Addr, zoneName1, nodeSet1))
 
 	zoneName2 := testZone2
-	zone2 := newZone(zoneName2)
+	zone2 := newZone(zoneName2, proto.MediaType_Unspecified)
 	nodeSet2 := newNodeSet(c, 2, 6, zoneName2)
 
 	zone2.putNodeSet(nodeSet2)
@@ -92,7 +92,7 @@ func TestAllocZones(t *testing.T) {
 	topo.putDataNode(createDataNodeForTopo(mds4Addr, zoneName2, nodeSet2))
 
 	zoneName3 := "zone3"
-	zone3 := newZone(zoneName3)
+	zone3 := newZone(zoneName3, proto.MediaType_Unspecified)
 	nodeSet3 := newNodeSet(c, 3, 6, zoneName3)
 
 	zone3.putNodeSet(nodeSet3)
