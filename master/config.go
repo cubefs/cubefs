@@ -64,14 +64,14 @@ const (
 // default value
 const (
 	defaultTobeFreedDataPartitionCount         = 1000
-	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60                                // a data partition can only be freed after loading 5 mins
-	defaultIntervalToFreeDataPartition         = 10                                    // in terms of seconds
+	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
+	defaultIntervalToFreeDataPartition         = 10     // in terms of seconds
 	defaultIntervalToCheck                     = 60
 	defaultIntervalToCheckHeartbeat            = 6
 	defaultIntervalToCheckDataPartition        = 5
 	defaultIntervalToCheckQos                  = 1
-	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck           // in terms of seconds
-	noHeartBeatTimes                           = 3                                     // number of times that no heartbeat reported
+	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
+	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
 	defaultDataPartitionTimeOutSec             = 200 * defaultIntervalToCheckHeartbeat // datanode with massive amount of dp may cost 10-min
 	defaultMissingDataPartitionInterval        = 24 * 3600
