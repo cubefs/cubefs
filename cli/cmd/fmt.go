@@ -816,6 +816,7 @@ func formatZoneView(zv *proto.ZoneView) string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("Zone Name:        %v\n", zv.Name))
 	sb.WriteString(fmt.Sprintf("Status:           %v\n", zv.Status))
+	sb.WriteString(fmt.Sprintf("MediaType:        %v\n", zv.MediaType))
 	sb.WriteString("Nodeset Selector:\n")
 	sb.WriteString(fmt.Sprintf("       Data:%v\n", zv.DataNodesetSelector))
 	sb.WriteString(fmt.Sprintf("       Meta:%v\n", zv.MetaNodesetSelector))

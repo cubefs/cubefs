@@ -389,8 +389,8 @@ func (c *Cluster) scheduleToUpdateStatInfo() {
 
 func (c *Cluster) addNodeSetGrp(ns *nodeSet, load bool) (err error) {
 	log.LogWarnf("addNodeSetGrp nodeSet id[%v] zonename[%v] load[%v] grpManager init[%v]",
-
 		ns.ID, ns.zoneName, load, c.domainManager.init)
+
 	if c.domainManager.init {
 		err = c.domainManager.putNodeSet(ns, load)
 		c.putZoneDomain(false)
@@ -944,7 +944,7 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 	metaNode = newMetaNode(nodeAddr, zoneName, c.Name)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
-		zone = c.t.putZoneIfAbsent(newZone(zoneName))
+		zone = c.t.putZoneIfAbsent(newZone(zoneName, proto.MediaType_Unspecified))
 	}
 
 	var ns *nodeSet
@@ -996,23 +996,77 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
+	var needPersistZone bool
+	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
+		nodeAddr, zoneName, nodesetId, mediaType)
+
 	if node, ok := c.dataNodes.Load(nodeAddr); ok {
 		dataNode = node.(*DataNode)
 		if nodesetId > 0 && nodesetId != dataNode.NodeSetID {
-			return dataNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
+			msg := fmt.Sprintf("datanode(%v) already in cluster, but nodesetId not match, existNodeSetID(%v) toAdd(%v)",
+				nodeAddr, dataNode.NodeSetID, nodesetId)
+			log.LogErrorf("[addDataNode] %v", msg)
+			return dataNode.ID, fmt.Errorf(msg)
 		}
+
+		if dataNode.MediaType != mediaType {
+			msg := fmt.Sprintf("datanode(%v) already in cluster, but datanode mediaType not match, existMediaType(%v) toAdd(%v)",
+				nodeAddr, proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(mediaType))
+			log.LogErrorf("[addDataNode] %v", msg)
+			return dataNode.ID, fmt.Errorf(msg)
+		}
+
+		log.LogInfof("[addDataNode] already exist: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
+			nodeAddr, zoneName, nodesetId, mediaType)
 		return dataNode.ID, nil
+	}
+
+	if !proto.IsValidMediaType(mediaType) {
+		msg := fmt.Sprintf("invalid mediaType(%v) when adding datanode(%v)", mediaType, nodeAddr)
+		log.LogErrorf("[addDataNode] %v", msg)
+		return dataNode.ID, fmt.Errorf(msg)
 	}
 
 	dataNode = newDataNode(nodeAddr, zoneName, c.Name, mediaType)
 	dataNode.DpCntLimit = newDpCountLimiter(&c.cfg.MaxDpCntLimit)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
-		zone = c.t.putZoneIfAbsent(newZone(zoneName))
+		log.LogInfof("[addDataNode] create zone(%v) by datanode(%v)", zoneName, nodeAddr)
+		zone = newZone(zoneName, mediaType)
+		needPersistZone = true
 	}
+
+	zoneMediaType := zone.GetMediaType()
+	if zoneMediaType != mediaType {
+		if zoneMediaType != proto.MediaType_Unspecified {
+			// if zone.mediaType is proto.MediaType_Unspecified, means has no datanode added into the zone yet
+
+			msg := fmt.Sprintf("datanode(%v) already in zone(%v) mediaType not match, existMediaType(%v) toAdd(%v)",
+				nodeAddr, zoneName, proto.MediaTypeString(zoneMediaType), proto.MediaTypeString(mediaType))
+			log.LogErrorf("[addDataNode] %v", msg)
+			return dataNode.ID, fmt.Errorf(msg)
+		} else {
+			zone.SetMediaType(mediaType)
+			log.LogInfof("[addDataNode] set zone(%v) mediaType(%v) by datanode(%v)",
+				zoneName, proto.MediaTypeString(mediaType), nodeAddr)
+			needPersistZone = true
+		}
+	}
+
+	if needPersistZone {
+		persistErr := c.sycnPutZoneInfo(zone)
+		if persistErr != nil {
+			msg := fmt.Sprintf("persist zone(%v) failed when adding datanode(%v)", zoneName, nodeAddr)
+			log.LogErrorf("[addDataNode] %v", msg)
+			return dataNode.ID, fmt.Errorf(msg)
+		}
+	}
+	c.t.putZoneIfAbsent(zone) // put if the above code creates zone
+
 	var ns *nodeSet
 	if nodesetId > 0 {
 		if ns, err = zone.getNodeSet(nodesetId); err != nil {
+			log.LogErrorf("[addDataNode] %v", err.Error())
 			return nodesetId, err
 		}
 	} else {
@@ -1046,11 +1100,11 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	c.addNodeSetGrp(ns, false)
 
 	c.dataNodes.Store(nodeAddr, dataNode)
-	log.LogInfof("action[addDataNode],clusterID[%v] dataNodeAddr:%v,nodeSetId[%v],capacity[%v]",
+	log.LogInfof("action[addDataNode] clusterID[%v] dataNodeAddr:%v, nodeSetId[%v], capacity[%v]",
 		c.Name, nodeAddr, ns.ID, ns.Capacity)
 	return
 errHandler:
-	err = fmt.Errorf("action[addDataNode],clusterID[%v] dataNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
+	err = fmt.Errorf("action[addDataNode] clusterID[%v] dataNodeAddr:%v err:%v", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
