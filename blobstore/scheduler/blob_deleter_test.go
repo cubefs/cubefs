@@ -74,9 +74,7 @@ func newBlobDeleteMgr(t *testing.T) *BlobDeleteMgr {
 		delFailCounterByMin:    &counter.Counter{},
 
 		Closer: closer.New(),
-		cfg: &BlobDeleteConfig{
-			MessagePunishThreshold: defaultMessagePunishThreshold,
-		},
+		cfg:    &BlobDeleteConfig{},
 	}
 }
 
