@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -63,11 +64,21 @@ func generateWarnDetail(r *http.Request, errorInfo string) string {
 		statusCode, requestID, action.Name(), bucket, object, errorInfo)
 }
 
+// AuditMiddleware returns a middleware handler that writes the local audit log before returning response.
+func (o *ObjectNode) auditMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if o.localAuditHandler != nil {
+				o.localAuditHandler.Handler(w, r, next.ServeHTTP)
+			} else {
+				next.ServeHTTP(w, r)
+			}
+		})
+}
+
 // TraceMiddleware returns a middleware handler to trace request.
 // After receiving the request, the handler will assign a unique RequestID to
 // the request and record the processing time of the request.
-// Workflow:
-//   request → [pre-handle] → [next handler] → [post-handle] → response
 func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 	var generateRequestID = func() (string, error) {
 		var uUID uuid.UUID
@@ -78,11 +89,22 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		return strings.ReplaceAll(uUID.String(), "-", ""), nil
 	}
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-		var err error
+		// wrapper for w to record its stats
+		w = NewResponseStater(w)
+		defer func() {
+			p := ParseRequestParam(r)
+			extraHeader := auditlog.ExtraHeader(w)
+			extraHeader.Set("Tbl", p.Bucket())
+			extraHeader.Set("Api", p.API())
+			extraHeader.Set("Owner", p.Owner())
+			extraHeader.Set("Requester", p.Requester())
+			if o.externalAudit != nil {
+				o.externalAudit.Logger(w, r)
+			}
+		}()
 
-		// ===== pre-handle start =====
-		var requestID string
-		if requestID, err = generateRequestID(); err != nil {
+		requestID, err := generateRequestID()
+		if err != nil {
 			log.LogErrorf("traceMiddleware: generate request ID fail, remote(%v) url(%v) err(%v)",
 				r.RemoteAddr, r.URL.String(), err)
 			InternalErrorCode(err).ServeResponse(w, r)
@@ -104,7 +126,6 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 
 		var action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 		SetRequestAction(r, action)
-		// ===== pre-handle finish =====
 
 		var startTime = time.Now()
 		metric := exporter.NewTPCnt(fmt.Sprintf("action_%v", action.Name()))
@@ -132,12 +153,10 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			exporter.Warning(generateWarnDetail(r, getResponseErrorMessage(r)))
 		}
 
-		// ===== post-handle start =====
 		log.LogInfof("traceMiddleware: end with action(%v) requestID(%v) host(%v) method(%v) url(%v) "+
 			"reqHeader(%v) remote(%v) respHeader(%v) statusCode(%v) errorMsg(%v) cost(%v)",
 			action.Name(), requestID, r.Host, r.Method, r.URL.String(), r.Header, getRequestIP(r), w.Header(),
 			statusCode, getResponseErrorMessage(r), time.Since(startTime))
-		// ==== post-handle finish =====
 	}
 	return handlerFunc
 }
@@ -188,8 +207,6 @@ func (o *ObjectNode) policyCheckMiddleware(next http.Handler) http.Handler {
 // ContentMiddleware returns a middleware handler to process reader for content.
 // If the request contains the "X-amz-Decoded-Content-Length" header, it means that the data
 // in the request body is chunked. Use ChunkedReader to parse the data.
-// Workflow:
-//   request → [pre-handle] → [next handler] → response
 func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(XAmzDecodedContentLength) != "" && r.Header.Get(ContentEncoding) != streamingContentEncoding {
@@ -207,7 +224,9 @@ func (o *ObjectNode) contentMiddleware(next http.Handler) http.Handler {
 // At this time, if the client request uses the Expect header when signing, it will cause the
 // ObjectNode to verify the signature.
 // A workaround is used here to solve this problem. Add the following configuration in nginx:
-//   proxy_set_header X-Forwarded-Expect $ http_Expect
+//
+//	proxy_set_header X-Forwarded-Expect $ http_Expect
+//
 // In this way, nginx will not only automatically handle the Expect handshake, but also send
 // the original value of Expect to the ObjectNode through X-Forwarded-Expect. ObjectNode only
 // needs to use the value of X-Forwarded-Expect.
@@ -231,12 +250,11 @@ func (o *ObjectNode) expectMiddleware(next http.Handler) http.Handler {
 
 // CORSMiddleware returns a middleware handler to support CORS request.
 // This handler will write following header into response:
-//   Access-Control-Allow-Origin [*]
-//   Access-Control-Allow-Headers [*]
-//   Access-Control-Allow-Methods [*]
-//   Access-Control-Max-Age [0]
-// Workflow:
-//   request → [pre-handle] → [next handler] → response
+//
+//	Access-Control-Allow-Origin [*]
+//	Access-Control-Allow-Headers [*]
+//	Access-Control-Allow-Methods [*]
+//	Access-Control-Max-Age [0]
 func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -259,6 +277,7 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 				return
 			}
 		}
+		mux.Vars(r)[ContextKeyOwner] = vol.GetOwner()
 
 		if IsAccountLevelApi(param.apiName) {
 			next.ServeHTTP(w, r)

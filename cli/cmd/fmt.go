@@ -864,9 +864,10 @@ func formatQuotaInfo(info *proto.QuotaInfo) string {
 var badDiskDetailTableRowPattern = "%-18v    %-18v    %-18v    %-18v    %-18v"
 
 func formatBadDiskTableHeader() string {
-	return fmt.Sprintf(badDiskDetailTableRowPattern, "Address", "Path", "TotalPartitionCnt", "DiskErrPartitionCnt", "DiskErrPartitionList")
+	return fmt.Sprintf(badDiskDetailTableRowPattern, "Address", "Path", "TotalPartitionCnt", "DiskErrPartitionCnt", "PartitionIdsWithDiskErr")
 }
 
 func formatBadDiskInfoRow(disk proto.BadDiskInfo) string {
-	return fmt.Sprintf(badDiskDetailTableRowPattern, disk.Address, disk.Path, disk.TotalPartitionCnt, len(disk.DiskErrPartitionList), disk.DiskErrPartitionList)
+	msgDpIdList := fmt.Sprintf("%v", disk.DiskErrPartitionList)
+	return fmt.Sprintf(badDiskDetailTableRowPattern, disk.Address, disk.Path, disk.TotalPartitionCnt, len(disk.DiskErrPartitionList), msgDpIdList)
 }

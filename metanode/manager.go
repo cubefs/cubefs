@@ -331,8 +331,10 @@ func (m *metadataManager) startCpuSample() {
 			case <-m.stopC:
 				return
 			default:
-				used := loadutil.GetCpuUtilPercent(sampleDuration)
-				m.cpuUtil.Store(used)
+				used, err := loadutil.GetCpuUtilPercent(sampleDuration)
+				if err == nil {
+					m.cpuUtil.Store(used)
+				}
 			}
 		}
 	}()

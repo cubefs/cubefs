@@ -1594,18 +1594,19 @@ func (partition *DataPartition) ReleaseDecommissionToken(c *Cluster) {
 //}
 
 func (partition *DataPartition) restoreReplicaMeta(c *Cluster) (err error) {
-	dstDataNode, err := c.dataNode(partition.DecommissionDstAddr)
-	if err != nil {
-		log.LogWarnf("action[restoreReplicaMeta]partition %v find dst %v data node failed:%v",
-			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
-		return
-	}
-	removePeer := proto.Peer{ID: dstDataNode.ID, Addr: partition.DecommissionDstAddr}
-	if err = c.removeHostMember(partition, removePeer); err != nil {
-		log.LogWarnf("action[restoreReplicaMeta]partition %v metadata  removeReplica %v failed:%v",
-			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
-		return
-	}
+	//dst has
+	//dstDataNode, err := c.dataNode(partition.DecommissionDstAddr)
+	//if err != nil {
+	//	log.LogWarnf("action[restoreReplicaMeta]partition %v find dst %v data node failed:%v",
+	//		partition.PartitionID, partition.DecommissionDstAddr, err.Error())
+	//	return
+	//}
+	//removePeer := proto.Peer{ID: dstDataNode.ID, Addr: partition.DecommissionDstAddr}
+	//if err = c.removeHostMember(partition, removePeer); err != nil {
+	//	log.LogWarnf("action[restoreReplicaMeta]partition %v metadata  removeReplica %v failed:%v",
+	//		partition.PartitionID, partition.DecommissionDstAddr, err.Error())
+	//	return
+	//}
 	srcDataNode, err := c.dataNode(partition.DecommissionSrcAddr)
 	if err != nil {
 		log.LogWarnf("action[restoreReplicaMeta]partition %v find src %v data node failed:%v",
@@ -1646,6 +1647,7 @@ func getTargetNodeset(addr string, c *Cluster) (ns *nodeSet, zone *Zone, err err
 }
 
 func (partition *DataPartition) needRollback(c *Cluster) bool {
+	log.LogDebugf("action[needRollback]dp[%v]DecommissionNeedRollbackTimes[%v]", partition.PartitionID, partition.DecommissionNeedRollbackTimes)
 	//failed by error except add replica or create dp or repair dp
 	if !partition.DecommissionNeedRollback {
 		return false
@@ -1656,12 +1658,31 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 		return false
 	}
 	if partition.DecommissionNeedRollbackTimes >= defaultDecommissionRollbackLimit {
-		//recover decommission src replica
-		err := c.addDataReplica(partition, partition.DecommissionSrcAddr)
-		if err != nil {
-			log.LogWarnf("action[needRollback]dp[%v] recover decommission src replica failed", partition.PartitionID)
-		}
+		log.LogDebugf("action[needRollback]try add restore replica, dp[%v]DecommissionNeedRollbackTimes[%v]",
+			partition.PartitionID, partition.DecommissionNeedRollbackTimes)
+		partition.DecommissionNeedRollback = false
 		return false
 	}
 	return true
+}
+
+func (partition *DataPartition) restoreReplica(c *Cluster) {
+	var err error
+
+	err = c.removeDataReplica(partition, partition.DecommissionDstAddr, false, false)
+	if err != nil {
+		log.LogWarnf("action[restoreReplica]dp[%v] rollback to del replica[%v] failed:%v",
+			partition.PartitionID, partition.DecommissionDstAddr, err.Error())
+	} else {
+		log.LogDebugf("action[restoreReplica]dp[%v] rollback to del replica[%v] success",
+			partition.PartitionID, partition.DecommissionDstAddr)
+	}
+
+	err = c.addDataReplica(partition, partition.DecommissionSrcAddr)
+	if err != nil {
+		log.LogWarnf("action[restoreReplica]dp[%v] recover decommission src replica failed", partition.PartitionID)
+	} else {
+		log.LogDebugf("action[restoreReplica]dp[%v] rollback to add replica[%v] success",
+			partition.PartitionID, partition.DecommissionSrcAddr)
+	}
 }

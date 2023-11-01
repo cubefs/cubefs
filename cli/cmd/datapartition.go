@@ -272,7 +272,8 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			if err != nil {
 				return
 			}
-			if err = client.AdminAPI().DecommissionDataPartition(partitionID, address, raftForceDel, clientIDKey); err != nil {
+			if err := client.AdminAPI().DecommissionDataPartition(partitionID, address, raftForceDel, clientIDKey); err != nil {
+				stdout(fmt.Sprintf("failed:err(%v)\n", err.Error()))
 				return
 			}
 			stdoutln("Decommission data partition successfully")

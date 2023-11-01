@@ -260,8 +260,20 @@ func (d *Disk) incReadErrCnt() {
 	atomic.AddUint64(&d.ReadErrCnt, 1)
 }
 
+func (d *Disk) getReadErrCnt() uint64 {
+	return atomic.LoadUint64(&d.ReadErrCnt)
+}
+
 func (d *Disk) incWriteErrCnt() {
 	atomic.AddUint64(&d.WriteErrCnt, 1)
+}
+
+func (d *Disk) getWriteErrCnt() uint64 {
+	return atomic.LoadUint64(&d.WriteErrCnt)
+}
+
+func (d *Disk) getTotalErrCnt() uint64 {
+	return d.getReadErrCnt() + d.getWriteErrCnt()
 }
 
 func (d *Disk) startScheduleToUpdateSpaceInfo() {
@@ -304,6 +316,11 @@ const (
 )
 
 func (d *Disk) checkDiskStatus() {
+	if d.Status == proto.Unavailable {
+		log.LogInfof("[checkDiskStatus] disk status is unavailable, no need to check, disk path(%v)", d.Path)
+		return
+	}
+
 	path := path.Join(d.Path, DiskStatusFile)
 	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o755)
 	if err != nil {
@@ -327,6 +344,8 @@ func (d *Disk) checkDiskStatus() {
 	}
 }
 
+const DiskErrNotAssociatedWithPartition uint64 = 0 //use 0 for disk error without any data partition
+
 func (d *Disk) CheckDiskError(err error, rwFlag uint8) {
 	if err == nil {
 		return
@@ -337,11 +356,11 @@ func (d *Disk) CheckDiskError(err error, rwFlag uint8) {
 		return
 	}
 
-	d.triggerDiskError(rwFlag, nil)
+	d.triggerDiskError(rwFlag, DiskErrNotAssociatedWithPartition)
 }
 
-func (d *Disk) triggerDiskError(rwFlag uint8, dpId *uint64) {
-	mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
+func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
+	mesg := fmt.Sprintf("disk path %v error on %v, dpId %v", d.Path, LocalIP, dpId)
 	exporter.Warning(mesg)
 	log.LogWarnf(mesg)
 
@@ -354,15 +373,19 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId *uint64) {
 		d.incReadErrCnt()
 	}
 
-	if dpId != nil {
-		d.AddDiskErrPartition(*dpId)
-	} else {
-		//use 0 for disk error without any data partition
-		d.AddDiskErrPartition(0)
-	}
+	d.AddDiskErrPartition(dpId)
 
-	d.Status = proto.Unavailable
-	d.ForceExitRaftStore()
+	diskErrCnt := d.getTotalErrCnt()
+	diskErrPartitionCnt := d.GetDiskErrPartitionCount()
+	if diskErrCnt >= d.dataNode.diskUnavailableErrorCount || diskErrPartitionCnt >= d.dataNode.diskUnavailablePartitionErrorCount {
+		msg := fmt.Sprintf("set disk unavailable for too many disk error, "+
+			"disk path(%v), ip(%v), diskErrCnt(%v) threshold(%v), diskErrPartitionCnt(%v) threshold(%v)",
+			d.Path, LocalIP, diskErrCnt, d.dataNode.diskUnavailableErrorCount, diskErrPartitionCnt, d.dataNode.diskUnavailablePartitionErrorCount)
+		exporter.Warning(msg)
+		log.LogWarnf(msg)
+		d.Status = proto.Unavailable
+		d.ForceExitRaftStore()
+	}
 }
 
 func (d *Disk) updateSpaceInfo() (err error) {
@@ -633,6 +656,10 @@ func (d *Disk) GetDiskErrPartitionList() (diskErrPartitionList []uint64) {
 		diskErrPartitionList = append(diskErrPartitionList, k)
 	}
 	return diskErrPartitionList
+}
+
+func (d *Disk) GetDiskErrPartitionCount() uint64 {
+	return uint64(len(d.DiskErrPartitionSet))
 }
 
 // isExpiredPartition return whether one partition is expired

@@ -154,7 +154,7 @@ func (mp *MetaPartition) updateInodeIDRangeForAllReplicas() {
 	}
 }
 
-//canSplit caller must be add lock
+// canSplit caller must be add lock
 func (mp *MetaPartition) canSplit(end uint64, metaPartitionInodeIdStep uint64, ignoreNoLeader bool) (err error) {
 	if end < mp.Start {
 		err = fmt.Errorf("end[%v] less than mp.start[%v]", end, mp.Start)
@@ -294,7 +294,9 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 		report = true
 
 	}
-	WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, report)
+	if WarnMetrics != nil {
+		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, report)
+	}
 	return
 }
 
@@ -558,16 +560,20 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 				Warn(clusterID, msg)
 				//msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
 				//Warn(clusterID, msg)
-				WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
+				if WarnMetrics != nil {
+					WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
+				}
 			}
 
 		} else {
-			WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, false)
+			if WarnMetrics != nil {
+				WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, false)
+			}
 		}
 	}
-
-	WarnMetrics.CleanObsoleteMpMissing(clusterID, mp)
-
+	if WarnMetrics != nil {
+		WarnMetrics.CleanObsoleteMpMissing(clusterID, mp)
+	}
 	for _, addr := range mp.Hosts {
 		if mp.isMissingReplica(addr) && mp.shouldReportMissingReplica(addr, interval) {
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on node:%v  "+

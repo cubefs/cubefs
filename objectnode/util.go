@@ -19,10 +19,14 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -386,4 +390,38 @@ func ParseCompatibleTime(timeStr string) (t time.Time, err error) {
 		}
 	}
 	return
+}
+
+// GetRootCAs loads all X.509 certificates from the specified files.
+func GetRootCAs(file ...string) (*x509.CertPool, error) {
+	rootCAs := x509.NewCertPool()
+	for _, f := range file {
+		rootPEM, err := os.ReadFile(f)
+		if err != nil || rootPEM == nil {
+			return nil, fmt.Errorf("loading or parsing rootCA file failed: %w", err)
+		}
+		if !rootCAs.AppendCertsFromPEM(rootPEM) {
+			return nil, fmt.Errorf("failed to parse root certificate from %q", f)
+		}
+	}
+
+	return rootCAs, nil
+}
+
+// NewTLSConfig creates a new tls.Config object for configuring TLS settings.
+// clientCert: file path to the client's certificate.
+// clientKey: file path to the client's private key.
+func NewTLSConfig(clientCert, clientKey string) (*tls.Config, error) {
+	tlsConfig := tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	if clientCert != "" && clientKey != "" {
+		cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
+		if err != nil {
+			return &tlsConfig, err
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return &tlsConfig, nil
 }

@@ -331,10 +331,6 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				continue
 			}
 
-			// start raft
-			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-			dp.decommissionRepairProgress = float64(1)
-			dp.PersistMetadata()
 			if err := dp.StartRaft(isLoad); err != nil {
 				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
 				timer.Reset(5 * time.Second)
@@ -383,7 +379,7 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 		return
 	}
 	data, _ := json.Marshal(req)
-	log.LogInfof("addRaftNode: remove self: partitionID(%v) nodeID(%v) index(%v) data(%v) ",
+	log.LogInfof("addRaftNode: partitionID(%v) nodeID(%v) index(%v) data(%v) ",
 		req.PartitionId, dp.config.NodeID, index, string(data))
 	dp.config.Peers = append(dp.config.Peers, req.AddPeer)
 	dp.config.Hosts = append(dp.config.Hosts, req.AddPeer.Addr)

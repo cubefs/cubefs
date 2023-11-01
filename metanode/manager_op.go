@@ -2369,7 +2369,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 	)
 
 	log.LogDebugf("checkVolVerList start")
-	m.Range(false, func(id uint64, partition MetaPartition) bool {
+	m.Range(true, func(id uint64, partition MetaPartition) bool {
 		volumeArr[partition.GetVolName()] = true
 		return true
 	})
@@ -2381,7 +2381,9 @@ func (m *metadataManager) checkVolVerList() (err error) {
 			if partition.GetVolName() != volName {
 				return true
 			}
-			mpsVerlist[partition.GetBaseConfig().PartitionId] = &proto.VolVersionInfoList{VerList: partition.GetVerList()}
+			log.LogDebugf("action[checkVolVerList] volumeName %v id %v dp verlist %v partition.GetBaseConfig().PartitionId %v",
+				volName, id, partition.GetVerList(), partition.GetBaseConfig().PartitionId)
+			mpsVerlist[id] = &proto.VolVersionInfoList{VerList: partition.GetVerList()}
 			return true
 		})
 		var info *proto.VolVersionInfoList
@@ -2395,6 +2397,7 @@ func (m *metadataManager) checkVolVerList() (err error) {
 			if partition.GetVolName() != volName {
 				return true
 			}
+			log.LogDebugf("action[checkVolVerList] volumeName %v info %v id %v ", volName, info, id)
 			if _, exist := mpsVerlist[id]; exist {
 				if err = partition.checkByMasterVerlist(mpsVerlist[id], info); err != nil {
 					return true
@@ -2412,34 +2415,32 @@ func (m *metadataManager) checkVolVerList() (err error) {
 func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op uint8, synchronize bool) (err error) {
 
 	log.LogWarnf("action[commitCreateVersion] volume %v seq %v", VolumeID, VerSeq)
-
-	m.mu.RLock()
 	var wg sync.WaitGroup
-	wg.Add(len(m.partitions))
+	// wg.Add(len(m.partitions))
 	resultCh := make(chan error, len(m.partitions))
-	m.Range(false, func(id uint64, partition MetaPartition) bool {
-		go func() {
-			if partition.GetVolName() == VolumeID {
-				if _, ok := partition.IsLeader(); !ok {
-					wg.Done()
-					return
-				}
-				log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, id, VerSeq)
-				if err = partition.HandleVersionOp(Op, VerSeq, nil, synchronize); err != nil {
-					log.LogErrorf("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v err %v", VolumeID, id, VerSeq, err)
-					wg.Done()
-					resultCh <- err
-					return
-				}
+	m.Range(true, func(id uint64, partition MetaPartition) bool {
+		if partition.GetVolName() != VolumeID {
+			return true
+		}
+
+		if _, ok := partition.IsLeader(); !ok {
+			return true
+		}
+
+		wg.Add(1)
+		go func(mpId uint64, mp MetaPartition) {
+			defer wg.Done()
+			log.LogInfof("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v", VolumeID, mpId, VerSeq)
+			if err := mp.HandleVersionOp(Op, VerSeq, nil, synchronize); err != nil {
+				log.LogErrorf("action[commitCreateVersion] volume %v mp  %v do HandleVersionOp verseq %v err %v", VolumeID, mpId, VerSeq, err)
+				resultCh <- err
+				return
 			}
-			wg.Done()
-			return
-		}()
+		}(id, partition)
 		return true
 	})
-	wg.Wait()
-	m.mu.RUnlock()
 
+	wg.Wait()
 	select {
 	case err = <-resultCh:
 		if err != nil {
@@ -2635,7 +2636,10 @@ end:
 	}
 	adminTask.Request = nil
 	adminTask.Response = resp
-	m.respondToMaster(adminTask)
+	if errRsp := m.respondToMaster(adminTask); errRsp != nil {
+		log.LogInfof("action[opMultiVersionOp] %s pkt %s, resp success req:%v; respAdminTask: %v, resp: %v, errRsp %v err %v",
+			remoteAddr, p.String(), req, adminTask, resp, errRsp, err)
+	}
 
 	if log.EnableInfo() {
 		rspData, _ := json.Marshal(resp)

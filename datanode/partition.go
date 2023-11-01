@@ -421,7 +421,7 @@ func (dp *DataPartition) getReplicaLen() int {
 	return len(dp.replicas)
 }
 
-func (dp *DataPartition) IsExsitReplica(addr string) bool {
+func (dp *DataPartition) IsExistReplica(addr string) bool {
 	dp.replicasLock.RLock()
 	defer dp.replicasLock.RUnlock()
 	for _, host := range dp.replicas {
@@ -596,6 +596,9 @@ func (dp *DataPartition) statusUpdate() {
 			status = proto.Unavailable
 		}
 	}
+	if dp.getDiskErrCnt() > 0 {
+		dp.partitionStatus = proto.Unavailable
+	}
 
 	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v, res:%v",
 		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), int(math.Min(float64(status), float64(dp.disk.Status))))
@@ -626,7 +629,7 @@ func (dp *DataPartition) checkIsDiskError(err error, rwFlag uint8) {
 
 	dp.stopRaft()
 	dp.incDiskErrCnt()
-	dp.disk.triggerDiskError(rwFlag, &dp.partitionID)
+	dp.disk.triggerDiskError(rwFlag, dp.partitionID)
 
 	//must after change disk.status
 	dp.statusUpdate()
@@ -1196,6 +1199,10 @@ func (dp *DataPartition) handleDecommissionRecoverFailed() {
 }
 
 func (dp *DataPartition) incDiskErrCnt() {
-	atomic.AddUint64(&dp.diskErrCnt, 1)
-	log.LogErrorf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, dp.diskErrCnt)
+	diskErrCnt := atomic.AddUint64(&dp.diskErrCnt, 1)
+	log.LogWarnf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, diskErrCnt)
+}
+
+func (dp *DataPartition) getDiskErrCnt() uint64 {
+	return atomic.LoadUint64(&dp.diskErrCnt)
 }

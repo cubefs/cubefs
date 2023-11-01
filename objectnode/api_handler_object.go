@@ -1420,12 +1420,23 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
+	// parse the request form
+	formReq := NewFormRequest(r)
+	if err = formReq.ParseMultipartForm(); err != nil {
+		log.LogErrorf("postObjectHandler: parse form fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = MalformedPOSTRequest
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
+		return
+	}
+
 	// content-md5 check if specified in the request
-	requestMD5 := r.Header.Get(ContentMD5)
+	requestMD5 := formReq.MultipartFormValue(ContentMD5)
 	if requestMD5 != "" {
 		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
 		if err != nil {
-			errorCode = InvalidDigest
+			errorCode = MalformedPOSTRequest
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid Content-MD5")
 			return
 		}
 		requestMD5 = hex.EncodeToString(decoded)
@@ -1439,20 +1450,12 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
-		errorCode = NoContentMd5HeaderErr
-		return
-	}
-
-	// parse the request form and check
-	formReq := NewFormRequest(r)
-	if err = formReq.ParseMultipartForm(); err != nil {
-		log.LogErrorf("postObjectHandler: parse form fail: requestID(%v) volume(%v) err(%v)",
-			GetRequestID(r), param.Bucket(), err)
 		errorCode = MalformedPOSTRequest
-		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "No Content-MD5 with Object Lock")
 		return
 	}
 
+	// other form fields check
 	key := formReq.MultipartFormValue("key")
 	if key == "" {
 		errorCode = MalformedPOSTRequest
@@ -1493,8 +1496,9 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	successStatus := formReq.MultipartFormValue("success_action_status")
 	successRedirect := formReq.MultipartFormValue("success_action_redirect")
+	var successRedirectURL *url.URL
 	if successRedirect != "" {
-		if _, err = url.Parse(successRedirect); err != nil {
+		if successRedirectURL, err = url.Parse(successRedirect); err != nil {
 			errorCode = MalformedPOSTRequest
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid success_action_redirect")
 			return
@@ -1602,8 +1606,14 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header()[ETag] = []string{etag}
 
 	// return response depending on success_action_xxx parameter
-	if successRedirect != "" {
-		http.Redirect(w, r, successRedirect, http.StatusMovedPermanently)
+	if successRedirectURL != nil {
+		query := successRedirectURL.Query()
+		query.Set("bucket", param.Bucket())
+		query.Set("key", key)
+		query.Set("etag", etag)
+		successRedirectURL.RawQuery = query.Encode()
+		w.Header().Set(Location, successRedirectURL.String())
+		w.WriteHeader(http.StatusSeeOther)
 		return
 	}
 	switch successStatus {
@@ -2206,7 +2216,7 @@ func VerifyContentLength(r *http.Request, bodyLimit int64) (int64, *ErrorCode) {
 	if length > bodyLimit {
 		return 0, EntityTooLarge
 	}
-	if length <= 0 {
+	if length < 0 {
 		return 0, MissingContentLength
 	}
 	return length, nil

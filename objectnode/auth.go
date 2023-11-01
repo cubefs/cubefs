@@ -218,8 +218,9 @@ func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) 
 		uid, ak, sk = sts.UserInfo.UserID, sts.UserInfo.AccessKey, sts.FedSK
 	}
 
-	mux.Vars(r)[ContextKeyUid] = uid
 	mux.Vars(r)[ContextKeyAccessKey] = ak
+	mux.Vars(r)[ContextKeyRequester] = uid
+
 	if !param.action.IsNone() && o.signatureIgnoredActions.Contains(param.action) {
 		return nil
 	}
