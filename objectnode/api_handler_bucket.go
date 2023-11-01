@@ -80,30 +80,31 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_, errorCode = VerifyContentLength(r, BodyLimit)
+	length, errorCode := VerifyContentLength(r, BodyLimit)
 	if errorCode != nil {
 		return
 	}
-	var requestBytes []byte
-	requestBytes, err = ioutil.ReadAll(r.Body)
-	if err != nil && err != io.EOF {
-		log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		return
-	}
-
-	createBucketRequest := &CreateBucketRequest{}
-	err = UnmarshalXMLEntity(requestBytes, createBucketRequest)
-	if err != nil {
-		log.LogErrorf("createBucketHandler: unmarshal xml fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
-		errorCode = InvalidArgument
-		return
-	}
-	if createBucketRequest.LocationConstraint != o.region {
-		log.LogErrorf("createBucketHandler: location constraint not match the service: requestID(%v) LocationConstraint(%v) region(%v)",
-			GetRequestID(r), createBucketRequest.LocationConstraint, o.region)
-		errorCode = InvalidLocationConstraint
-		return
+	if length > 0 {
+		var requestBytes []byte
+		requestBytes, err = ioutil.ReadAll(r.Body)
+		if err != nil && err != io.EOF {
+			log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			return
+		}
+		createBucketRequest := &CreateBucketRequest{}
+		err = UnmarshalXMLEntity(requestBytes, createBucketRequest)
+		if err != nil {
+			log.LogErrorf("createBucketHandler: unmarshal xml fail: requestID(%v) err(%v)",
+				GetRequestID(r), err)
+			errorCode = InvalidArgument
+			return
+		}
+		if createBucketRequest.LocationConstraint != o.region {
+			log.LogErrorf("createBucketHandler: location constraint not match the service: requestID(%v) LocationConstraint(%v) region(%v)",
+				GetRequestID(r), createBucketRequest.LocationConstraint, o.region)
+			errorCode = InvalidLocationConstraint
+			return
+		}
 	}
 
 	var acl *AccessControlPolicy
