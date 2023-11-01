@@ -1944,21 +1944,21 @@ func (m *Server) markDeleteVol(w http.ResponseWriter, r *http.Request) {
 	var (
 		name    string
 		authKey string
-		// force   bool
-		err error
-		msg string
+		force   bool
+		err     error
+		msg     string
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDeleteVol))
 	defer func() {
 		doStatAndMetric(proto.AdminDeleteVol, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, authKey, _, err = parseRequestToDeleteVol(r); err != nil {
+	if name, authKey, force, err = parseRequestToDeleteVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if err = m.cluster.markDeleteVol(name, authKey, false); err != nil {
+	if err = m.cluster.markDeleteVol(name, authKey, force); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

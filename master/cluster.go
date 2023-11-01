@@ -1289,23 +1289,24 @@ func (c *Cluster) markDeleteVol(name, authKey string, force bool) (err error) {
 		return proto.ErrVolNotExists
 	}
 
-	vol.mpsLock.RLock()
-	volDentryCount := uint64(0)
-	for _, mp := range vol.MetaPartitions {
-		// to avoid latency, fetch latest mp dentry count from metanode
-		c.doLoadMetaPartition(mp)
-		mpDentryCount := uint64(0)
-		for _, response := range mp.LoadResponse {
-			if response.DentryCount > mpDentryCount {
-				mpDentryCount = response.DentryCount
+	if !force {
+		volDentryCount := uint64(0)
+		mpsCopy := vol.cloneMetaPartitionMap()
+		for _, mp := range mpsCopy {
+			// to avoid latency, fetch latest mp dentry count from metanode
+			c.doLoadMetaPartition(mp)
+			mpDentryCount := uint64(0)
+			for _, response := range mp.LoadResponse {
+				if response.DentryCount > mpDentryCount {
+					mpDentryCount = response.DentryCount
+				}
 			}
+			volDentryCount += mpDentryCount
 		}
-		volDentryCount += mpDentryCount
-	}
-	vol.mpsLock.RUnlock()
 
-	if volDentryCount > 0 {
-		return fmt.Errorf("vol %s is not empty ! dentry count: %d ", vol.Name, volDentryCount)
+		if volDentryCount > 0 {
+			return fmt.Errorf("vol %s is not empty ! dentry count: %d ", vol.Name, volDentryCount)
+		}
 	}
 
 	if proto.IsCold(vol.VolType) && vol.totalUsedSpace() > 0 && !force {

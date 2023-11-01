@@ -311,10 +311,7 @@ func parseRequestToDeleteVol(r *http.Request) (name, authKey string, force bool,
 		return
 	}
 
-	force, err = extractBoolWithDefault(r, forceDelVolKey, false)
-	if err != nil {
-		return
-	}
+	force = extractForceDeleteOption(r)
 
 	return
 
@@ -1353,6 +1350,13 @@ func extractAuthKey(r *http.Request) (authKey string, err error) {
 		return
 	}
 	return
+}
+
+func extractForceDeleteOption(r *http.Request) (force bool) {
+	if forceDelVolStr := r.FormValue(forceDelVolKey); forceDelVolStr == "true" {
+		return true
+	}
+	return false
 }
 
 func extractClientIDKey(r *http.Request) (clientIDKey string, err error) {

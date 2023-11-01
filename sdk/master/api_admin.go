@@ -324,11 +324,12 @@ func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	return
 }
 
-func (api *AdminAPI) DeleteVolumeWithAuthNode(volName, authKey, clientIDKey string) (err error) {
+func (api *AdminAPI) DeleteVolumeWithAuthNode(volName, authKey, clientIDKey string, forceDelete bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminDeleteVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("forceDelVol", fmt.Sprintf("%v", forceDelete))
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

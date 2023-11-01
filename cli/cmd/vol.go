@@ -709,6 +709,7 @@ const (
 func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		optYes      bool
+		optForce    bool
 		clientIDKey string
 	)
 	cmd := &cobra.Command{
@@ -738,7 +739,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			if err = client.AdminAPI().DeleteVolumeWithAuthNode(volumeName, util.CalcAuthKey(svv.Owner), clientIDKey); err != nil {
+			if err = client.AdminAPI().DeleteVolumeWithAuthNode(volumeName, util.CalcAuthKey(svv.Owner), clientIDKey, optForce); err != nil {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
@@ -752,6 +753,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().BoolVarP(&optForce, "forceDelete", "f", false, "Force delete this volume, no matter empty or not. default is false")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
