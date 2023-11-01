@@ -171,7 +171,7 @@ func (mgr *ShardRepairMgr) GetErrorStats() (errStats []string, totalErrCnt uint6
 
 func (mgr *ShardRepairMgr) Repair(ctx context.Context, repairMsg *proto.ShardRepairMsg) error {
 	var ret shardRepairRet
-
+	ret.repairMsg = repairMsg
 	defer mgr.recordOneResult(ctx, ret)
 
 	jobKey := fmt.Sprintf("%d:%d:%s", repairMsg.Vid, repairMsg.Bid, repairMsg.BadIdx)
@@ -269,16 +269,14 @@ func (mgr *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volu
 		EnablePartial: mgr.cfg.EnablePartial,
 	}
 
-	err := mgr.blobnodeCli.RepairShard(ctx, workerHost, task)
-	if err == nil {
-		return volInfo, nil
+	if err := mgr.blobnodeCli.RepairShard(ctx, workerHost, task); err != nil {
+		if isOrphanShard(err) {
+			mgr.saveOrphanShard(ctx, repairMsg)
+		}
+		return volInfo, err
 	}
 
-	if isOrphanShard(err) {
-		mgr.saveOrphanShard(ctx, repairMsg)
-	}
-
-	return volInfo, err
+	return volInfo, nil
 }
 
 func (mgr *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg *proto.ShardRepairMsg) {
