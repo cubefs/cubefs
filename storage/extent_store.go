@@ -1315,8 +1315,8 @@ func (s *ExtentStore) ExtentBatchLockNormalExtent(ext []*proto.ExtentKey, IsCrea
 		if !IsCreate {
 			extent, err := s.extentWithHeaderByExtentID(e.ExtentId)
 			if err != nil {
-				log.LogErrorf("[ExtentBatchLockNormalExtent] get extent error(%v)", err)
-				return err
+				log.LogWarnf("[ExtentBatchLockNormalExtent] get extent error(%v)", err)
+				continue
 			}
 			if e.Size != uint32(extent.dataSize) {
 				log.LogErrorf("[ExtentBatchLockNormalExtent] extent size not match, extentID(%v), extentSize(%v), extentKeySize(%v)",
