@@ -101,7 +101,7 @@ func stdoutf(format string, a ...interface{}) {
 
 func stdoutlnf(format string, a ...interface{}) {
 	stdoutf(format, a...)
-	fmt.Fprint(os.Stdout)
+	fmt.Fprintln(os.Stdout)
 }
 
 func errout(err error) {
