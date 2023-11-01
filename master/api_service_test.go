@@ -343,6 +343,13 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 }
 
 func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
+	return doProcess(reqURL, t, true)
+}
+func processWithoutCheckReplyCode(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
+	return doProcess(reqURL, t, false)
+}
+
+func doProcess(reqURL string, t *testing.T, checkReplyCode bool) (reply *proto.HTTPReply) {
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		t.Errorf("err is %v", err)
@@ -365,7 +372,7 @@ func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 		t.Error(err)
 		return
 	}
-	if reply.Code != 0 {
+	if checkReplyCode && reply.Code != 0 {
 		t.Errorf("failed,msg[%v],data[%v]", reply.Msg, reply.Data)
 		return
 	}
@@ -410,22 +417,37 @@ func decommissionDisk(addr, path string, t *testing.T) {
 }
 
 func TestMarkDeleteVol(t *testing.T) {
-	name := "delVol"
-	createVol(map[string]interface{}{nameKey: name}, t)
+	namePrefix := "delVol"
+	forceDelOps := []bool{true, false}
+	for i, force := range forceDelOps {
+		name := fmt.Sprintf("%s%d", namePrefix, i)
+		createVol(map[string]interface{}{nameKey: name}, t)
 
-	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
-	process(reqURL, t)
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v&forceDelVol=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner), force)
+		if force {
+			process(reqURL, t)
+		} else {
+			processWithoutCheckReplyCode(reqURL, t)
+		}
 
-	userInfo, err := server.user.getUserInfo("cfs")
-	if err != nil {
-		t.Error(err)
-		return
+		userInfo, err := server.user.getUserInfo("cfs")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		volExists := contains(userInfo.Policy.OwnVols, name)
+		if force && volExists {
+			t.Errorf("expect no vol %v in own vols, but is exist", name)
+			return
+		}
+		if !force && !volExists {
+			t.Errorf("expect vol %v in own vols, but is not exist", name)
+			return
+		}
+
 	}
 
-	if contains(userInfo.Policy.OwnVols, name) {
-		t.Errorf("expect no vol %v in own vols, but is exist", name)
-		return
-	}
 }
 
 func TestSetVolCapacity(t *testing.T) {
@@ -548,8 +570,9 @@ func checkUpdateVolParm(key string, req map[string]interface{}, wrong, correct i
 
 func delVol(name string, t *testing.T) {
 	req := map[string]interface{}{
-		nameKey:    name,
-		volAuthKey: buildAuthKey(testOwner),
+		nameKey:        name,
+		volAuthKey:     buildAuthKey(testOwner),
+		forceDelVolKey: true,
 	}
 
 	processWithFatalV2(proto.AdminDeleteVol, true, req, t)
@@ -1346,7 +1369,7 @@ func TestForbiddenVolume(t *testing.T) {
 		return
 	}
 	defer func() {
-		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v&forceDelVol=true", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
 		process(reqURL, t)
 	}()
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminVolForbidden)

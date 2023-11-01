@@ -356,7 +356,7 @@ func (mms *MockMetaServer) handleLoadMetaPartition(conn net.Conn, p *proto.Packe
 		DoCompare:   true,
 		ApplyID:     100,
 		MaxInode:    123456,
-		DentryCount: 0,
+		DentryCount: 123456,
 	}
 	data, err = json.Marshal(resp)
 	if err != nil {

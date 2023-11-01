@@ -251,7 +251,7 @@ stop_client() {
 delete_volumes() {
     for VolName in ${VolNameList[*]}; do
         echo -n "Deleting volume ${VolName}  ... "
-        ${cli} volume delete ${VolName} -y &> /dev/null
+        ${cli} volume delete ${VolName} -y -f &> /dev/null
         if [[ $? -eq 0 ]]; then
             echo -e "\033[32mdone\033[0m"
             return
