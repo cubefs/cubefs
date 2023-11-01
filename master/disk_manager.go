@@ -276,7 +276,8 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		dd.markDecommissionFailed()
 		return DecommissionFail, progress
 	}
-	return dd.GetDecommissionStatus(), progress
+	dd.SetDecommissionStatus(DecommissionRunning)
+	return DecommissionRunning, progress
 }
 
 func (dd *DecommissionDisk) GetDecommissionStatus() uint32 {

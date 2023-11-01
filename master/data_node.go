@@ -329,6 +329,10 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v",
 		dataNode.Addr, dataNode.DecommissionDiskList)
 
+	if totalDisk == 0 {
+		dataNode.SetDecommissionStatus(DecommissionInitial)
+		return DecommissionInitial, float64(0)
+	}
 	for _, disk := range dataNode.DecommissionDiskList {
 		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
 		//if not found, may already success, so only care running disk

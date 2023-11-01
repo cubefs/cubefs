@@ -190,6 +190,7 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 	for _, ver := range masterVerList.VerList {
 		verMapMaster[ver.Ver] = ver
 	}
+	log.LogDebugf("checkVerList. vol %v mp %v masterVerList %v mpVerList.VerList %v", mp.config.VolName, mp.config.PartitionId, masterVerList, mpVerList.VerList)
 	mp.multiVersionList.Lock()
 	defer mp.multiVersionList.Unlock()
 	vlen := len(mpVerList.VerList)
@@ -197,14 +198,12 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 		if id == vlen-1 {
 			break
 		}
-		log.LogDebugf("checkVerList. vol %v mp %v ver info %v", mp.config.VolName, mp.config.PartitionId, info2)
+		log.LogDebugf("checkVerList. vol %v mp %v ver info %v currMasterSeq %v", mp.config.VolName, mp.config.PartitionId, info2, currMasterSeq)
 		_, exist := verMapMaster[info2.Ver]
 		if !exist {
-			if info2.Ver < currMasterSeq {
-				if _, ok := mp.multiVersionList.TemporaryVerMap[info2.Ver]; !ok {
-					log.LogInfof("checkVerList. vol %v mp %v ver info %v be consider as TemporaryVer", mp.config.VolName, mp.config.PartitionId, info2)
-					mp.multiVersionList.TemporaryVerMap[info2.Ver] = info2
-				}
+			if _, ok := mp.multiVersionList.TemporaryVerMap[info2.Ver]; !ok {
+				log.LogInfof("checkVerList. vol %v mp %v ver info %v be consider as TemporaryVer", mp.config.VolName, mp.config.PartitionId, info2)
+				mp.multiVersionList.TemporaryVerMap[info2.Ver] = info2
 			}
 		}
 	}

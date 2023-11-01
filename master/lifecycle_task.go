@@ -92,7 +92,7 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 		for _, taskRsp := range resp.LcScanningTasks {
 			c.lcMgr.lcRuleTaskStatus.Lock()
 
-			if c.lcMgr.lcRuleTaskStatus.Results[taskRsp.ID].Done {
+			if c.lcMgr.lcRuleTaskStatus.Results[taskRsp.ID] != nil && c.lcMgr.lcRuleTaskStatus.Results[taskRsp.ID].Done {
 				log.LogInfof("action[handleLcNodeHeartbeatResp], lcNode[%v] task[%v] already done", nodeAddr, taskRsp.ID)
 			} else {
 				c.lcMgr.lcRuleTaskStatus.Results[taskRsp.ID] = taskRsp
@@ -112,7 +112,7 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 		for _, taskRsp := range resp.SnapshotScanningTasks {
 			c.snapshotMgr.lcSnapshotTaskStatus.Lock()
 
-			if c.snapshotMgr.lcSnapshotTaskStatus.TaskResults[taskRsp.ID].Done {
+			if c.snapshotMgr.lcSnapshotTaskStatus.TaskResults[taskRsp.ID] != nil && c.snapshotMgr.lcSnapshotTaskStatus.TaskResults[taskRsp.ID].Done {
 				log.LogInfof("action[handleLcNodeHeartbeatResp], lcNode[%v] snapshot task[%v] already done", nodeAddr, taskRsp.ID)
 			} else {
 				c.snapshotMgr.lcSnapshotTaskStatus.TaskResults[taskRsp.ID] = taskRsp

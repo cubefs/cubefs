@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -183,12 +182,7 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			// o represent proto.ErrCodeSuccess
 			if body.Code != 0 {
 				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
-				if body.Code == proto.ErrCodeInternalError && len(body.Msg) != 0 {
-					return nil, errors.New(body.Msg)
-				} else {
-					return nil, proto.ParseErrorCode(body.Code)
-				}
-
+				return []byte(body.Data), errors.New(body.Msg)
 			}
 			return []byte(body.Data), nil
 		default:

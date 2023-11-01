@@ -22,6 +22,6 @@ import (
 )
 
 func TestCpuUtil(t *testing.T) {
-	used := loadutil.GetCpuUtilPercent(time.Second)
+	used, _ := loadutil.GetCpuUtilPercent(time.Second)
 	t.Logf("CPU Util: %v\n", used)
 }

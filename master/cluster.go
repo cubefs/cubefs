@@ -2392,7 +2392,6 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 }
 
 func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
-	log.LogDebugf("[addDataReplica]dp %v  addDataReplica %v", dp.PartitionID, addr)
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addDataReplica],vol[%v],dp %v ,err[%v]", dp.VolName, dp.PartitionID, err)
@@ -3991,7 +3990,7 @@ func (c *Cluster) checkDecommissionDisk() {
 	c.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
 		status := disk.GetDecommissionStatus()
-		if status == DecommissionSuccess {
+		if status == DecommissionSuccess || status == DecommissionFail {
 			if time.Now().Sub(time.Unix(disk.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
 				if err := c.syncDeleteDecommissionDisk(disk); err != nil {
 					msg := fmt.Sprintf("action[checkDecommissionDisk],clusterID[%v] node[%v] disk[%v],"+
@@ -4000,8 +3999,8 @@ func (c *Cluster) checkDecommissionDisk() {
 					log.LogWarnf("%s", msg)
 				} else {
 					c.delDecommissionDiskFromCache(disk)
-					log.LogDebugf("action[checkDecommissionDisk] delete DecommissionDisk[%s] "+
-						"for decommission success", disk.GenerateKey())
+					log.LogDebugf("action[checkDecommissionDisk] delete DecommissionDisk[%s] status(%v)",
+						disk.GenerateKey(), status)
 				}
 			}
 		}

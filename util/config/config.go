@@ -75,6 +75,11 @@ func (c *Config) parse(fileName string) error {
 	return err
 }
 
+// GetValue returns the raw data for the config key.
+func (c *Config) GetValue(key string) interface{} {
+	return c.data[key]
+}
+
 // GetString returns a string for the config key.
 func (c *Config) GetString(key string) string {
 	x, present := c.data[key]

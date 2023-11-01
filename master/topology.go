@@ -1180,7 +1180,7 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				status := disk.GetDecommissionStatus()
 				if status == DecommissionRunning {
 					runningCnt++
-				} else if status == DecommissionSuccess || status == DecommissionFail {
+				} else if status == DecommissionSuccess || status == DecommissionFail || status == DecommissionPause {
 					//remove from decommission disk list
 					log.LogWarnf("traverseDecommissionDisk remove disk %v status %v",
 						disk.GenerateKey(), disk.GetDecommissionStatus())
@@ -2250,6 +2250,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsDecommissionFailed() {
 					if !dp.tryRollback(c) {
+						dp.restoreReplica(c)
 						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
 							dp.PartitionID)
 						l.Remove(dp)
