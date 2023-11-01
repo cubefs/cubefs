@@ -28,6 +28,15 @@ const (
 	DeleteStageDelete
 )
 
+var stageMap = map[DeleteStage]string{
+	DeleteStageMarkDelete: "MarkDelete",
+	DeleteStageDelete:     "Delete",
+}
+
+func (d DeleteStage) String() string {
+	return stageMap[d]
+}
+
 type BlobDeleteStage struct {
 	Stages map[uint8]DeleteStage `json:"stages"`
 }

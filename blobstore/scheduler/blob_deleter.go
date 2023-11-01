@@ -50,7 +50,6 @@ const (
 	DeleteStatusDone = deleteStatus(iota)
 	DeleteStatusFailed
 	DeleteStatusUnexpect
-	DeleteStatusUndo
 )
 
 // ErrVunitLengthNotEqual vunit length not equal
@@ -245,8 +244,6 @@ func (mgr *BlobDeleteMgr) recordAllResult(ret *delBlobRet) {
 		// it can delete in next inspect
 	case DeleteStatusUnexpect:
 		span.Warnf("unexpected result will ignore: msg[%+v], err[%+v]", delMsg, ret.err)
-	case DeleteStatusUndo:
-		span.Warnf("delete message unconsume: msg[%+v]", delMsg)
 	}
 }
 
@@ -362,29 +359,16 @@ func (mgr *BlobDeleteMgr) deleteShard(ctx context.Context, location proto.VunitL
 		err = mgr.blobnodeCli.Delete(ctx, location, bid)
 	}
 
-	errCode := 0
-	defer func() {
-		if err == nil {
-			span.Debugf("delete shard set stage: location[%+v], stage[%d]", location, stage)
-			return
-		}
-
-		if shouldBackToInitStage(err) {
-			stageMgr.setShardDelStage(location.Vuid, proto.InitStage)
-			span.Warnf("delete shard failed, roll back to init: bid[%d], location[%+v], markDelete[%v], code[%d], err[%+v]",
-				bid, location, markDelete, errCode, err)
-		}
-	}()
-
 	if err != nil {
-		errCode = rpc.DetectStatusCode(err)
+		errCode := rpc.DetectStatusCode(err)
 		if assumeDeleteSuccess(errCode) {
 			span.Debugf("delete bid failed but assume success: bid[%d], location[%+v], err[%+v] ",
 				bid, location, err)
 			return nil
 		}
+		return
 	}
-
+	span.Debugf("delete shard set stage: location[%+v], stage[%s]", location, stage.String())
 	return
 }
 
