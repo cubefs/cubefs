@@ -865,8 +865,10 @@ func (s *DataNode) startCpuSample() {
 				return
 			default:
 				// this function will sleep cpuSampleDuration
-				used := loadutil.GetCpuUtilPercent(cpuSampleDuration)
-				s.cpuUtil.Store(used)
+				used, err := loadutil.GetCpuUtilPercent(cpuSampleDuration)
+				if err == nil {
+					s.cpuUtil.Store(used)
+				}
 			}
 		}
 	}()
