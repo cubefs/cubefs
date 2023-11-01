@@ -42,11 +42,11 @@ import (
 )
 
 const (
-	MaxBloomFilterSize uint64 = 25 * 1024 * 1024 * 1024
-	//MaxBloomFilterSize uint64 = 25 * 1024 * 1024
-	MpDir  string = "mp"
-	DpDir  string = "dp"
-	BadDir string = "bad"
+	//MaxBloomFilterSize uint64 = 25 * 1024 * 1024 * 1024
+	MaxBloomFilterSize uint64 = 25 * 1024 * 1024
+	MpDir              string = "mp"
+	DpDir              string = "dp"
+	BadDir             string = "bad"
 )
 
 var (
@@ -120,21 +120,21 @@ func newGetMpExtentsCmd() *cobra.Command {
 func getMpInfoById(mpId string) (mpInfo *proto.MetaPartitionInfo, err error) {
 	resp, err := http.Get(fmt.Sprintf("http://%s%s?id=%s", MasterAddr, proto.ClientMetaPartition, mpId))
 	if err != nil {
-		log.LogErrorf("Get meta partition by mpId %s failed, err: %v\n", mpId, err)
+		log.LogErrorf("Get meta partition by mpId %s failed, err: %v", mpId, err)
 
 		return nil, err
 	}
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		log.LogErrorf("Invalid status code: %v\n", resp.StatusCode)
+		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
 		err = fmt.Errorf("Invalid status code: %v", resp.StatusCode)
 		return nil, err
 	}
 
 	respData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.LogErrorf("Read body failed, err: %v\n", err)
+		log.LogErrorf("Read body failed, err: %v", err)
 		return nil, err
 	}
 
@@ -152,7 +152,7 @@ func getMpInfoById(mpId string) (mpInfo *proto.MetaPartitionInfo, err error) {
 	mpInfo = &proto.MetaPartitionInfo{}
 	err = json.Unmarshal(body.Data, mpInfo)
 	if err != nil {
-		log.LogErrorf("Unmarshal meta partition info failed, err: %v\n", err)
+		log.LogErrorf("Unmarshal meta partition info failed, err: %v", err)
 		return nil, err
 	}
 
@@ -162,12 +162,12 @@ func getMpInfoById(mpId string) (mpInfo *proto.MetaPartitionInfo, err error) {
 func getExtentsFromMp(dir string, volname string, fromMpId string) {
 	mpvs, err := getMetaPartitions(MasterAddr, volname)
 	if err != nil {
-		log.LogErrorf("Get meta partitions failed, err: %v\n", err)
+		log.LogErrorf("Get meta partitions failed, err: %v", err)
 		return
 	}
 	fromMp, err := strconv.ParseUint(fromMpId, 10, 64)
 	if err != nil {
-		log.LogErrorf("Parse fromMpId failed, err: %v\n", err)
+		log.LogErrorf("Parse fromMpId failed, err: %v", err)
 		return
 	}
 	for _, mpv := range mpvs {
@@ -180,7 +180,7 @@ func getExtentsFromMp(dir string, volname string, fromMpId string) {
 func getExtentsByMpId(dir string, volname string, mpId string) {
 	mpInfo, err := getMpInfoById(mpId)
 	if err != nil {
-		log.LogErrorf("Get meta partition info failed, err: %v\n", err)
+		log.LogErrorf("Get meta partition info failed, err: %v", err)
 		return
 	}
 	var leaderAddr string
@@ -192,19 +192,19 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 	}
 
 	if leaderAddr == "" {
-		log.LogErrorf("Get leader address failed mpId %v\n", mpId)
+		log.LogErrorf("Get leader address failed mpId %v", mpId)
 		return
 	}
 
 	resp, err := http.Get(fmt.Sprintf("http://%s:%s/getInodeSnapshot?pid=%s", strings.Split(leaderAddr, ":")[0], MetaPort, mpId))
 	if err != nil {
-		log.LogErrorf("Get inode snapshot failed, err: %v\n", err)
+		log.LogErrorf("Get inode snapshot failed, err: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.LogErrorf("Invalid status code: %v\n", resp.StatusCode)
+		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
 		return
 	}
 
@@ -213,19 +213,19 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 
 	tinyFilePath, NormalFilePath, err := InitLocalDir(dir, volname, mpId, MpDir)
 	if err != nil {
-		log.LogErrorf("Init local dir failed, err: %v\n", err)
+		log.LogErrorf("Init local dir failed, err: %v", err)
 		return
 	}
 
 	tinyFile, err := os.OpenFile(tinyFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.LogErrorf("Open file failed, err: %v\n", err)
+		log.LogErrorf("Open file failed, err: %v", err)
 		return
 	}
 	defer tinyFile.Close()
 	normalFile, err := os.OpenFile(NormalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.LogErrorf("Open file failed, err: %v\n", err)
+		log.LogErrorf("Open file failed, err: %v", err)
 		return
 	}
 	defer normalFile.Close()
@@ -273,7 +273,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 			return
 		}
 		eks := ino.Extents.CopyExtents()
-		log.LogInfof("inode:%v, extent:%v\n", ino.Inode, eks)
+		log.LogInfof("inode:%v, extent:%v", ino.Inode, eks)
 		for _, ek := range eks {
 			var eksForGc ExtentForGc
 			eksForGc.Id = strconv.FormatUint(ek.PartitionId, 10) + "_" + strconv.FormatUint(ek.ExtentId, 10)
@@ -281,20 +281,20 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 			eksForGc.Size = ek.Size
 			data, err := json.Marshal(eksForGc)
 			if err != nil {
-				log.LogErrorf("Marshal extents failed, err: %v\n", err)
+				log.LogErrorf("Marshal extents failed, err: %v", err)
 				return
 			}
 			if !storage.IsTinyExtent(ek.ExtentId) {
-				log.LogInfof("normal extent:%v, data:%v\n", ek.ExtentId, len(data))
+				log.LogInfof("normal extent:%v, data:%v", ek.ExtentId, len(data))
 				_, err = normalFile.Write(append(data, '\n'))
 				if err != nil {
-					log.LogErrorf("Write normal extent to file failed, err: %v\n", err)
+					log.LogErrorf("Write normal extent to file failed, err: %v", err)
 					return
 				}
 			} else {
 				_, err = tinyFile.Write(append(data, '\n'))
 				if err != nil {
-					log.LogErrorf("Write tiny extent to file failed, err: %v\n", err)
+					log.LogErrorf("Write tiny extent to file failed, err: %v", err)
 					return
 				}
 			}
@@ -401,19 +401,19 @@ func newGetDpExtentsCmd() *cobra.Command {
 func getDpInfoById(dpId string) (dpInfo *proto.DataPartitionInfo, err error) {
 	resp, err := http.Get(fmt.Sprintf("http://%s%s?id=%s", MasterAddr, proto.AdminGetDataPartition, dpId))
 	if err != nil {
-		log.LogErrorf("Get data partition failed, err: %v\n", err)
+		log.LogErrorf("Get data partition failed, err: %v", err)
 		return
 	}
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		log.LogErrorf("Invalid status code: %v\n", resp.StatusCode)
+		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
 		return
 	}
 
 	respData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.LogErrorf("Read response body failed, err: %v\n", err)
+		log.LogErrorf("Read response body failed, err: %v", err)
 		return
 	}
 
@@ -440,7 +440,7 @@ func getDpInfoById(dpId string) (dpInfo *proto.DataPartitionInfo, err error) {
 func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 	dpInfo, err := getDpInfoById(dpId)
 	if err != nil {
-		log.LogErrorf("Get dp info failed, err: %v\n", err)
+		log.LogErrorf("Get dp info failed, err: %v", err)
 		return
 	}
 	var leaderAddr string
@@ -452,26 +452,26 @@ func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 	}
 
 	if leaderAddr == "" {
-		log.LogErrorf("Get leader addr failed, err: %v\n", err)
+		log.LogErrorf("Get leader addr failed, err: %v", err)
 		return
 	}
 
 	resp, err := http.Get(fmt.Sprintf("http://%s:%s/getAllExtent?id=%s&beforeTime=%s",
 		strings.Split(leaderAddr, ":")[0], DataPort, dpId, time))
 	if err != nil {
-		log.LogErrorf("Get all extents failed, err: %v\n", err)
+		log.LogErrorf("Get all extents failed, err: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.LogErrorf("Invalid status id %v, code: %v\n", dpId, resp.StatusCode)
+		log.LogErrorf("Invalid status id %v, code: %v", dpId, resp.StatusCode)
 		return
 	}
 
 	respData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.LogErrorf("Read response body failed, err: %v\n", err)
+		log.LogErrorf("Read response body failed, err: %v", err)
 		return
 	}
 
@@ -494,18 +494,18 @@ func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 
 	tinyFilePath, normalFilePath, err := InitLocalDir(dir, volname, dpId, "dp")
 	if err != nil {
-		log.LogErrorf("Init local dir failed, err: %v\n", err)
+		log.LogErrorf("Init local dir failed, err: %v", err)
 		return
 	}
 	tinyFile, err := os.OpenFile(tinyFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.LogErrorf("Open tinyFile failed, err: %v\n", err)
+		log.LogErrorf("Open tinyFile failed, err: %v", err)
 		return
 	}
 	defer tinyFile.Close()
 	normalFile, err := os.OpenFile(normalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.LogErrorf("Open normalFile failed, err: %v\n", err)
+		log.LogErrorf("Open normalFile failed, err: %v", err)
 		return
 	}
 	defer normalFile.Close()
@@ -517,19 +517,19 @@ func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 		eksForGc.Size = uint32(extent.Size)
 		data, err := json.Marshal(eksForGc)
 		if err != nil {
-			log.LogErrorf("Marshal extents failed, err: %v\n", err)
+			log.LogErrorf("Marshal extents failed, err: %v", err)
 			return
 		}
 		if !storage.IsTinyExtent(extent.FileID) {
 			_, err = normalFile.Write(append(data, '\n'))
 			if err != nil {
-				log.LogErrorf("Write normal extent to file failed, err: %v\n", err)
+				log.LogErrorf("Write normal extent to file failed, err: %v", err)
 				return
 			}
 		} else {
 			_, err = tinyFile.Write(append(data, '\n'))
 			if err != nil {
-				log.LogErrorf("Write tiny extent to file failed, err: %v\n", err)
+				log.LogErrorf("Write tiny extent to file failed, err: %v", err)
 				return
 			}
 		}
@@ -539,13 +539,13 @@ func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 func getExtentsFromDpId(dir string, volname string, fromDpId string, time string) {
 	dps, err := getDataPartitions(MasterAddr, volname)
 	if err != nil {
-		log.LogErrorf("Get data partitions failed, err: %v\n", err)
+		log.LogErrorf("Get data partitions failed, err: %v", err)
 		return
 	}
 
 	fromDp, err := strconv.ParseUint(fromDpId, 10, 64)
 	if err != nil {
-		log.LogErrorf("Parse from dp id failed, err: %v\n", err)
+		log.LogErrorf("Parse from dp id failed, err: %v", err)
 		return
 	}
 	for _, dp := range dps {
@@ -568,10 +568,10 @@ func newCalcBadExtentsCmd() *cobra.Command {
 			if extType == "normal" {
 				calcBadNormalExtents(volname, dir)
 			} else if extType == "tiny" {
-				log.LogErrorf("tiny is not supported now\n")
+				log.LogErrorf("tiny is not supported now")
 				return
 			} else {
-				log.LogErrorf("Invalid extent type: %s\n", extType)
+				log.LogErrorf("Invalid extent type: %s", extType)
 				return
 			}
 
@@ -596,7 +596,7 @@ func calcBadNormalExtents(volname, dir string) (err error) {
 
 	err = addMpExtentToBF(normalMpDir)
 	if err != nil {
-		log.LogErrorf("Add normal extents to bloom filter failed, err: %v\n", err)
+		log.LogErrorf("Add normal extents to bloom filter failed, err: %v", err)
 		return
 	}
 
@@ -605,7 +605,7 @@ func calcBadNormalExtents(volname, dir string) (err error) {
 	if _, err = os.Stat(destDir); os.IsNotExist(err) {
 		err = os.MkdirAll(destDir, 0755)
 		if err != nil {
-			log.LogErrorf("Mkdir dest dir failed, err: %v\n", err)
+			log.LogErrorf("Mkdir dest dir failed, err: %v", err)
 			return
 		}
 	}
@@ -616,7 +616,7 @@ func calcBadNormalExtents(volname, dir string) (err error) {
 func addMpExtentToBF(mpDir string) (err error) {
 	fileInfos, err := ioutil.ReadDir(mpDir)
 	if err != nil {
-		log.LogErrorf("Read mp dir failed, err: %v\n", err)
+		log.LogErrorf("Read mp dir failed, err: %v", err)
 		return
 	}
 
@@ -625,7 +625,7 @@ func addMpExtentToBF(mpDir string) (err error) {
 			filePath := filepath.Join(mpDir, fileInfo.Name())
 			file, err := os.Open(filePath)
 			if err != nil {
-				log.LogErrorf("Open file failed, err: %v\n", err)
+				log.LogErrorf("Open file failed, err: %v", err)
 				return err
 			}
 			defer file.Close()
@@ -637,13 +637,13 @@ func addMpExtentToBF(mpDir string) (err error) {
 					if err == io.EOF {
 						break
 					}
-					log.LogErrorf("Read line failed, err: %v\n", err)
+					log.LogErrorf("Read line failed, err: %v", err)
 					return err
 				}
 				var eksForGc ExtentForGc
 				err = json.Unmarshal(line, &eksForGc)
 				if err != nil {
-					log.LogErrorf("Unmarshal extent failed, err: %v\n", err)
+					log.LogErrorf("Unmarshal extent failed, err: %v", err)
 					return err
 				}
 
@@ -657,7 +657,7 @@ func addMpExtentToBF(mpDir string) (err error) {
 func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 	fileInfos, err := ioutil.ReadDir(dpDir)
 	if err != nil {
-		log.LogErrorf("Read dp dir failed, err: %v\n", err)
+		log.LogErrorf("Read dp dir failed, err: %v", err)
 		return
 	}
 
@@ -666,7 +666,7 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 			filePath := filepath.Join(dpDir, fileInfo.Name())
 			file, err := os.Open(filePath)
 			if err != nil {
-				log.LogErrorf("Open file failed, err: %v\n", err)
+				log.LogErrorf("Open file failed, err: %v", err)
 				return err
 			}
 			defer file.Close()
@@ -678,13 +678,13 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 					if err == io.EOF {
 						break
 					}
-					log.LogErrorf("Read line failed, err: %v\n", err)
+					log.LogErrorf("Read line failed, err: %v", err)
 					return err
 				}
 				var eksForGc ExtentForGc
 				err = json.Unmarshal(line, &eksForGc)
 				if err != nil {
-					log.LogErrorf("Unmarshal extent failed, err: %v\n", err)
+					log.LogErrorf("Unmarshal extent failed, err: %v", err)
 					return err
 				}
 				if !gBloomFilter.Contains([]byte(eksForGc.Id)) {
@@ -696,7 +696,7 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 
 					err = writeBadNormalExtentoLocal(dpId, badDir, badExtent)
 					if err != nil {
-						log.LogErrorf("Write bad extent failed, err: %v\n", err)
+						log.LogErrorf("Write bad extent failed, err: %v", err)
 						return err
 					}
 				}
@@ -708,22 +708,23 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 
 // write bad extent to local
 func writeBadNormalExtentoLocal(dpId, badDir string, badExtent BadNornalExtent) (err error) {
-	log.LogInfof("Write dpId: %s bad extent: %v\n", dpId, badExtent)
+	log.LogInfof("Write dpId: %s bad extent: %s", dpId, badExtent)
+
 	filePath := filepath.Join(badDir, dpId)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		log.LogErrorf("Open file failed, err: %v\n", err)
+		log.LogErrorf("Open file failed, err: %v", err)
 		return err
 	}
 	defer file.Close()
 	data, err := json.Marshal(&badExtent)
 	if err != nil {
-		log.LogErrorf("Marshal bad extent failed, err: %v\n", err)
+		log.LogErrorf("Marshal bad extent failed, err: %v", err)
 		return err
 	}
 	_, err = file.Write(append(data, '\n'))
 	if err != nil {
-		log.LogErrorf("Write bad extent failed, err: %v\n", err)
+		log.LogErrorf("Write bad extent failed, err: %v", err)
 		return err
 	}
 	return
@@ -743,10 +744,10 @@ func newCheckBadExtentsCmd() *cobra.Command {
 			if extType == "normal" {
 				checkBadNormalExtents(volname, dir, dpId)
 			} else if extType == "tiny" {
-				log.LogErrorf("tiny is not supported now\n")
+				log.LogErrorf("tiny is not supported now")
 				return
 			} else {
-				log.LogErrorf("Invalid extent type: %s\n", extType)
+				log.LogErrorf("Invalid extent type: %s", extType)
 				return
 			}
 		},
@@ -760,7 +761,7 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 
 	fileInfos, err := ioutil.ReadDir(normalMpDir)
 	if err != nil {
-		log.LogErrorf("Read mp dir failed, err: %v\n", err)
+		log.LogErrorf("Read mp dir failed, err: %v", err)
 		return
 	}
 
@@ -769,7 +770,7 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 			filePath := filepath.Join(normalMpDir, fileInfo.Name())
 			file, err := os.Open(filePath)
 			if err != nil {
-				log.LogErrorf("Open file failed, err: %v\n", err)
+				log.LogErrorf("Open file failed, err: %v", err)
 				return
 			}
 			defer file.Close()
@@ -781,13 +782,13 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 					if err == io.EOF {
 						break
 					}
-					log.LogErrorf("Read line failed, err: %v\n", err)
+					log.LogErrorf("Read line failed, err: %v", err)
 					return
 				}
 				var eksForGc ExtentForGc
 				err = json.Unmarshal(line, &eksForGc)
 				if err != nil {
-					log.LogErrorf("Unmarshal extent failed, err: %v\n", err)
+					log.LogErrorf("Unmarshal extent failed, err: %v", err)
 					return
 				}
 				parts := strings.Split(eksForGc.Id, "_")
@@ -797,7 +798,7 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 					continue
 				}
 				if checkMpExtent(extentId, badExtentPath) {
-					log.LogErrorf("Find bad extent in mp: %s\n", eksForGc.Id)
+					log.LogErrorf("Find bad extent in mp: %s", eksForGc.Id)
 					return
 				}
 			}
@@ -808,10 +809,10 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 }
 
 func checkMpExtent(extentId, badExtentPath string) (isFind bool) {
-	log.LogInfof("check extent: %s\n", extentId)
+	log.LogInfof("check extent: %s", extentId)
 	file, err := os.Open(badExtentPath)
 	if err != nil {
-		log.LogErrorf("Open file failed, err: %v\n", err)
+		log.LogErrorf("Open file failed, err: %v", err)
 		return
 	}
 	defer file.Close()
@@ -822,14 +823,14 @@ func checkMpExtent(extentId, badExtentPath string) (isFind bool) {
 			if err == io.EOF {
 				break
 			}
-			log.LogErrorf("Read line failed, err: %v\n", err)
+			log.LogErrorf("Read line failed, err: %v", err)
 			return
 		}
 		line = line[:len(line)-1]
 		var badExtent BadNornalExtent
 		err = json.Unmarshal(line, &badExtent)
 		if err != nil {
-			log.LogErrorf("Unmarshal bad extent failed, err: %v\n", err)
+			log.LogErrorf("Unmarshal bad extent failed, err: %v", err)
 			return
 		}
 		if badExtent.ExtentId == extentId {
@@ -839,161 +840,10 @@ func checkMpExtent(extentId, badExtentPath string) (isFind bool) {
 	return false
 }
 
-// func newLockBadExtentsCmd() *cobra.Command {
-// 	var (
-// 		fromDpId string
-// 		dpId     string
-// 		extent   string
-// 	)
-
-// 	cmd := &cobra.Command{
-// 		Use:   "lockBadExtents [VOLNAME] [EXTENT TYPE] [DIR]",
-// 		Short: "lock bad extents do not allow reading or writing",
-// 		Args:  cobra.ExactArgs(3),
-// 		Run: func(cmd *cobra.Command, args []string) {
-// 			volname := args[0]
-// 			extType := args[1]
-// 			dir := args[2]
-
-// 			if extType == "normal" {
-// 				if fromDpId != "" {
-// 					fromDpIdNum, err := strconv.ParseUint(fromDpId, 10, 64)
-// 					if err != nil {
-// 						log.LogErrorf("Parse fromDpId failed, err: %v\n", err)
-// 						return
-// 					}
-// 					lockBadNormalExtentFromDp(volname, dir, fromDpIdNum)
-// 					return
-// 				}
-// 				if dpId != "" {
-// 					if extent != "" {
-// 						lockBadNormalExtent(volname, dir, dpId, extent)
-// 					} else {
-// 						lockBadNormalExtentOfDp(volname, dir, dpId)
-// 					}
-// 					return
-// 				}
-
-// 			}
-// 		},
-// 	}
-// 	cmd.Flags().StringVar(&fromDpId, "from-dp", "", "lock bad extent from dp id")
-// 	cmd.Flags().StringVar(&dpId, "dp", "", "lock bad extent in dp id")
-// 	cmd.Flags().StringVar(&extent, "e", "", "lock one bad extent")
-// 	return cmd
-// }
-
-// func lockBadNormalExtentOfDp(volname, dir, dpIdStr string) {
-// 	log.LogInfof("back bad normal volname: %s, dir: %s, dpId: %s\n", volname, dir, dpIdStr)
-// 	badNormalDpFile := filepath.Join(dir, volname, BadDir, normalDir, dpIdStr)
-// 	file, err := os.Open(badNormalDpFile)
-// 	if err != nil {
-// 		log.LogErrorf("Open file failed, err: %v\n", err)
-// 		return
-// 	}
-// 	defer file.Close()
-
-// 	reader := bufio.NewReader(file)
-// 	exts := make([]*BadNornalExtent, 0)
-// 	for {
-// 		line, err := reader.ReadBytes('\n')
-// 		if err != nil {
-// 			if err == io.EOF {
-// 				break
-// 			}
-// 			log.LogErrorf("Read line failed, err: %v\n", err)
-// 			return
-// 		}
-// 		line = line[:len(line)-1]
-// 		var badExtent BadNornalExtent
-// 		err = json.Unmarshal(line, &badExtent)
-// 		if err != nil {
-// 			log.LogErrorf("Unmarshal bad extent failed, err: %v\n", err)
-// 			return
-// 		}
-// 		exts = append(exts, &badExtent)
-// 	}
-
-// 	err = batchLockBadNormalExtent(dpIdStr, exts)
-// 	if err != nil {
-// 		log.LogErrorf("Batch lock bad normal extent failed, err: %v\n", err)
-// 		return
-// 	}
-
-// 	log.LogInfof("lockBadNormalExtentOfDp success dpId %v", dpIdStr)
-// 	return
-
-// }
-
-// func lockBadNormalExtentFromDp(volname, dir string, fromDpId uint64) {
-// 	badNormalDir := filepath.Join(dir, volname, BadDir, normalDir)
-
-// 	fileInfos, err := ioutil.ReadDir(badNormalDir)
-// 	if err != nil {
-// 		log.LogErrorf("Read bad normal dir failed, err: %v\n", err)
-// 		return
-// 	}
-
-// 	for _, fileInfo := range fileInfos {
-// 		dpIdStr := fileInfo.Name()
-// 		dpId, err := strconv.ParseUint(dpIdStr, 10, 64)
-// 		if err != nil {
-// 			log.LogErrorf("Parse dp id failed, err: %v\n", err)
-// 			continue
-// 		}
-// 		if dpId < fromDpId {
-// 			continue
-// 		}
-// 		lockBadNormalExtentOfDp(volname, dir, dpIdStr)
-// 	}
-// }
-
-// func lockBadNormalExtent(volname, dir, dpIdStr, extentStr string) (err error) {
-// 	log.LogInfof("back bad normal volname: %s, dir: %s, dpId: %s, extent: %s\n", volname, dir, dpIdStr, extentStr)
-// 	badNormalDpFile := filepath.Join(dir, volname, BadDir, normalDir, dpIdStr)
-// 	file, err := os.Open(badNormalDpFile)
-// 	if err != nil {
-// 		log.LogErrorf("Open file failed, err: %v\n", err)
-// 		return
-// 	}
-// 	defer file.Close()
-
-// 	reader := bufio.NewReader(file)
-// 	for {
-// 		line, err := reader.ReadBytes('\n')
-// 		if err != nil {
-// 			if err == io.EOF {
-// 				break
-// 			}
-// 			log.LogErrorf("Read line failed, err: %v\n", err)
-// 			return err
-// 		}
-// 		line = line[:len(line)-1]
-// 		var badExtent BadNornalExtent
-// 		err = json.Unmarshal(line, &badExtent)
-// 		if err != nil {
-// 			log.LogErrorf("Unmarshal bad extent failed, err: %v\n", err)
-// 			return err
-// 		}
-// 		if badExtent.ExtentId == extentStr {
-// 			log.LogInfof("Find bad extent: %s\n", extentStr)
-// 			var exts = []*BadNornalExtent{&badExtent}
-// 			err = batchLockBadNormalExtent(dpIdStr, exts)
-// 			if err != nil {
-// 				log.LogErrorf("Batch lock bad normal extent failed, err: %v\n", err)
-// 				return err
-// 			}
-// 			return err
-// 		}
-// 	}
-// 	log.LogErrorf("Can't find extent: %s\n", extentStr)
-// 	return
-// }
-
 func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate bool) (err error) {
 	dpInfo, err := getDpInfoById(dpIdStr)
 	if err != nil {
-		log.LogErrorf("Get dp info failed, err: %v\n", err)
+		log.LogErrorf("Get dp %v info failed, err: %v", dpIdStr, err)
 		return
 	}
 
@@ -1001,7 +851,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 	for _, ext := range exts {
 		extentId, err := strconv.ParseUint(ext.ExtentId, 10, 64)
 		if err != nil {
-			log.LogErrorf("Parse extent id failed, err: %v\n", err)
+			log.LogErrorf("Parse extent id failed, err: %v", err)
 			return err
 		}
 		ek := &proto.ExtentKey{
@@ -1022,11 +872,11 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 	conn, err := streamConnPool.GetConnect(dpInfo.Hosts[0])
 	defer func() {
 		streamConnPool.PutConnect(conn, true)
-		log.LogInfof("batchLockBadNormalExtent PutConnect (%v)\n", dpInfo.Hosts[0])
+		log.LogInfof("batchLockBadNormalExtent PutConnect (%v)", dpInfo.Hosts[0])
 	}()
 
 	if err != nil {
-		log.LogErrorf("Get connect failed, err: %v\n", err)
+		log.LogErrorf("Get connect failed, err: %v", err)
 		return
 	}
 
@@ -1037,7 +887,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 	p.PartitionID = dpInfo.PartitionID
 	p.Data, err = json.Marshal(gcLockEks)
 	if err != nil {
-		log.LogErrorf("Marshal extent keys failed, err: %v\n", err)
+		log.LogErrorf("Marshal extent keys failed, err: %v", err)
 		return
 	}
 	p.Size = uint32(len(p.Data))
@@ -1047,17 +897,17 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 	p.ArgLen = uint32(len(p.Arg))
 
 	if err = p.WriteToConn(conn); err != nil {
-		log.LogErrorf("WriteToConn failed, err: %v\n", err)
+		log.LogErrorf("WriteToConn dp %v failed, err: %v", dpIdStr, err)
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
-		log.LogErrorf("ReadFromConn failed, err: %v\n", err)
+		log.LogErrorf("ReadFromConn dp %v failed, err: %v", dpIdStr, err)
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		log.LogErrorf("batchLockBadNormalExtent failed, ResultCode: %v\n", p.ResultCode)
-		err = fmt.Errorf("batchLockBadNormalExtent failed, ResultCode: %v", p.ResultCode)
+		log.LogErrorf("batchLockBadNormalExtent dp %v failed, ResultCode: %v", dpIdStr, p.ResultCode)
+		err = fmt.Errorf("batchLockBadNormalExtent dp %v failed, ResultCode: %v", dpIdStr, p.ResultCode)
 		return
 	}
 
@@ -1068,7 +918,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	dpInfo, err := getDpInfoById(dpIdStr)
 	if err != nil {
-		log.LogErrorf("Get dp info failed, err: %v\n", err)
+		log.LogErrorf("Get dp info failed, err: %v", err)
 		return
 	}
 
@@ -1076,7 +926,7 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 	for _, ext := range exts {
 		extentId, err := strconv.ParseUint(ext.ExtentId, 10, 64)
 		if err != nil {
-			log.LogErrorf("Parse extent id failed, err: %v\n", err)
+			log.LogErrorf("Parse extent id failed, err: %v", err)
 			return err
 		}
 		ek := &proto.ExtentKey{
@@ -1093,11 +943,11 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 	conn, err := streamConnPool.GetConnect(dpInfo.Hosts[0])
 	defer func() {
 		streamConnPool.PutConnect(conn, true)
-		log.LogInfof("batchUnlockBadNormalExtent PutConnect (%v)\n", dpInfo.Hosts[0])
+		log.LogInfof("batchUnlockBadNormalExtent PutConnect (%v)", dpInfo.Hosts[0])
 	}()
 
 	if err != nil {
-		log.LogErrorf("Get connect failed, err: %v\n", err)
+		log.LogErrorf("Get connect failed, err: %v", err)
 		return
 	}
 
@@ -1108,7 +958,7 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 	p.PartitionID = dpInfo.PartitionID
 	p.Data, err = json.Marshal(eks)
 	if err != nil {
-		log.LogErrorf("Marshal extent keys failed, err: %v\n", err)
+		log.LogErrorf("Marshal extent keys failed, err: %v", err)
 		return
 	}
 	p.Size = uint32(len(p.Data))
@@ -1118,16 +968,16 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 	p.ArgLen = uint32(len(p.Arg))
 
 	if err = p.WriteToConn(conn); err != nil {
-		log.LogErrorf("WriteToConn failed, err: %v\n", err)
+		log.LogErrorf("WriteToConn failed, err: %v", err)
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
-		log.LogErrorf("ReadFromConn failed, err: %v\n", err)
+		log.LogErrorf("ReadFromConn failed, err: %v", err)
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		log.LogErrorf("batchUnlockBadNormalExtent failed, ResultCode: %v\n", p.ResultCode)
+		log.LogErrorf("batchUnlockBadNormalExtent failed, ResultCode: %v", p.ResultCode)
 		err = fmt.Errorf("batchUnlockBadNormalExtent failed, ResultCode: %v", p.ResultCode)
 		return
 	}
@@ -1157,7 +1007,7 @@ func newCleanBadExtentsCmd() *cobra.Command {
 				if fromDpId != "" {
 					fromDpIdNum, err := strconv.ParseUint(fromDpId, 10, 64)
 					if err != nil {
-						log.LogErrorf("Parse from dp id failed, err: %v\n", err)
+						log.LogErrorf("Parse from dp id failed, err: %v", err)
 						return
 					}
 					cleanBadNormalExtentFromDp(volname, dir, backupDir, fromDpIdNum)
@@ -1172,10 +1022,10 @@ func newCleanBadExtentsCmd() *cobra.Command {
 					return
 				}
 			} else if extType == "tiny" {
-				log.LogErrorf("tiny is not supported now\n")
+				log.LogErrorf("tiny is not supported now")
 				return
 			} else {
-				log.LogErrorf("Invalid extent type: %s\n", extType)
+				log.LogErrorf("Invalid extent type: %s", extType)
 				return
 			}
 		},
@@ -1188,7 +1038,7 @@ func newCleanBadExtentsCmd() *cobra.Command {
 }
 
 func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (err error) {
-	log.LogInfof("Clean bad normal volname: %s, dir: %s, backupDir: %s, dpId: %s, extent: %s\n", volname, dir, backupDir, dpIdStr, extentStr)
+	log.LogInfof("Clean bad normal volname: %s, dir: %s, backupDir: %s, dpId: %s, extent: %s", volname, dir, backupDir, dpIdStr, extentStr)
 	badNornalDpFile := filepath.Join(dir, volname, BadDir, normalDir, dpIdStr)
 	file, err := os.Open(badNornalDpFile)
 	if err != nil {
@@ -1236,7 +1086,7 @@ func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (e
 
 			err = batchUnlockBadNormalExtent(dpIdStr, exts)
 			if err != nil {
-				log.LogErrorf("Batch unlock bad normal extent failed, err: %v\n", err)
+				log.LogErrorf("Batch unlock bad normal extent failed, err: %v", err)
 				return err
 			}
 			log.LogInfof("cleanBadNormalExtent extent: %s", extentStr)
@@ -1248,24 +1098,24 @@ func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (e
 }
 
 func copyBadNormalExtentToBackup(volname, backupDir, dpIdStr string, badExtent BadNornalExtent) (err error) {
-	log.LogInfof("Clean bad normal extent Internal backupDir: %s, dpIdStr: %s, badExtent:%v\n",
+	log.LogInfof("Clean bad normal extent Internal backupDir: %s, dpIdStr: %s, badExtent:%v",
 		backupDir, dpIdStr, badExtent.ExtentId)
 
 	extentId, err := strconv.ParseUint(badExtent.ExtentId, 10, 64)
 	if err != nil {
-		log.LogErrorf("Parse extent id failed, err: %v\n", err)
+		log.LogErrorf("Parse extent id failed, err: %v", err)
 		return
 	}
 
 	data, readBytes, err := readBadExtentFromDp(dpIdStr, extentId, badExtent.Size)
 	if err != nil {
-		log.LogErrorf("Read bad extent from dp failed, err: %v\n", err)
+		log.LogErrorf("Read bad extent from dp failed, err: %v", err)
 		return
 	}
 
 	err = writeBadNormalExtentToBackup(backupDir, volname, dpIdStr, badExtent, data, readBytes)
 	if err != nil {
-		log.LogErrorf("Write bad extent to dest dir failed, err: %v\n", err)
+		log.LogErrorf("Write bad extent to dest dir failed, err: %v", err)
 		return
 	}
 
@@ -1275,7 +1125,7 @@ func copyBadNormalExtentToBackup(volname, backupDir, dpIdStr string, badExtent B
 func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	dpInfo, err := getDpInfoById(dpIdStr)
 	if err != nil {
-		log.LogErrorf("Get dp info failed, err: %v\n", err)
+		log.LogErrorf("Get dp info failed, err: %v", err)
 		return
 	}
 
@@ -1283,7 +1133,7 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	for _, ext := range exts {
 		extentId, err := strconv.ParseUint(ext.ExtentId, 10, 64)
 		if err != nil {
-			log.LogErrorf("Parse extent id failed, err: %v\n", err)
+			log.LogErrorf("Parse extent id failed, err: %v", err)
 			return err
 		}
 		ek := &proto.ExtentKey{
@@ -1302,11 +1152,11 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 
 	defer func() {
 		smuxPool.PutConnect(conn, true)
-		log.LogInfof("batchDeleteBadExtent PutConnect (%v)\n", addr)
+		log.LogInfof("batchDeleteBadExtent PutConnect (%v)", addr)
 	}()
 
 	if err != nil {
-		log.LogInfof("Get connect failed, err: %v\n", err)
+		log.LogInfof("Get connect failed, err: %v", err)
 		return
 	}
 
@@ -1322,16 +1172,16 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	p.Arg = []byte(strings.Join(dpInfo.Hosts[1:], proto.AddrSplit) + proto.AddrSplit)
 	p.ArgLen = uint32(len(p.Arg))
 	if err = p.WriteToConn(conn); err != nil {
-		log.LogErrorf("WriteToConn failed, err: %v\n", err)
+		log.LogErrorf("WriteToConn failed, err: %v", err)
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
-		log.LogErrorf("ReadFromConn failed, err: %v\n", err)
+		log.LogErrorf("ReadFromConn failed, err: %v", err)
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		log.LogErrorf("BatchDeleteExtent failed, ResultCode: %v\n", p.ResultCode)
+		log.LogErrorf("BatchDeleteExtent failed, ResultCode: %v", p.ResultCode)
 		err = fmt.Errorf("BatchDeleteExtent failed, ResultCode: %v", p.ResultCode)
 		return
 	}
@@ -1341,13 +1191,13 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []byte, readBytes int, err error) {
 	dpId, err := strconv.ParseUint(dpIdStr, 10, 64)
 	if err != nil {
-		log.LogErrorf("Parse dp id failed, err: %v\n", err)
+		log.LogErrorf("Parse dp id failed, err: %v", err)
 		return
 	}
 
 	dpInfo, err := getDpInfoById(dpIdStr)
 	if err != nil {
-		log.LogErrorf("Get dp info failed, err: %v\n", err)
+		log.LogErrorf("Get dp info failed, err: %v", err)
 		return
 	}
 	var leaderAddr string
@@ -1371,12 +1221,12 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 
 	conn, err := streamConnPool.GetConnect(leaderAddr)
 	if err != nil {
-		log.LogErrorf("GetConnect failed %v\n", err)
+		log.LogErrorf("GetConnect failed %v", err)
 		return
 	}
 	err = p.WriteToConn(conn)
 	if err != nil {
-		log.LogErrorf("WriteToConn failed %v\n", err)
+		log.LogErrorf("WriteToConn failed %v", err)
 		return
 	}
 	data = make([]byte, size)
@@ -1387,12 +1237,12 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 		replyPacket.Size = uint32(bufSize)
 		err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 		if err != nil {
-			log.LogErrorf("ReadFromConn failed %v\n", err)
+			log.LogErrorf("ReadFromConn failed %v", err)
 			return
 		}
 
 		if replyPacket.ResultCode != proto.OpOk {
-			log.LogErrorf("ReadFromConn failed ResultCode %v\n", replyPacket.ResultCode)
+			log.LogErrorf("ReadFromConn failed ResultCode %v", replyPacket.ResultCode)
 			err = fmt.Errorf("ReadFromConn failed ResultCode %v", replyPacket.ResultCode)
 			return
 		}
@@ -1405,11 +1255,11 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 
 func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent BadNornalExtent, data []byte, readBytes int) (err error) {
 	dpDir := filepath.Join(backupDir, volname, normalDir, dpIdStr)
-	log.LogInfof("Write bad extent to dest dir: %s\n", dpDir)
+	log.LogInfof("Write bad extent to dest dir: %s", dpDir)
 	if _, err = os.Stat(dpDir); os.IsNotExist(err) {
 		err = os.MkdirAll(dpDir, 0755)
 		if err != nil {
-			log.LogErrorf("Mkdir failed, err: %v\n", err)
+			log.LogErrorf("Mkdir failed, err: %v", err)
 			return
 		}
 	}
@@ -1417,14 +1267,14 @@ func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent 
 	extentFile := filepath.Join(dpDir, badExtent.ExtentId)
 	file, err := os.Create(extentFile)
 	if err != nil {
-		log.LogErrorf("Create extent file failed, err: %v\n", err)
+		log.LogErrorf("Create extent file failed, err: %v", err)
 		return
 	}
 	defer file.Close()
 
 	_, err = file.Write(data[:readBytes])
 	if err != nil {
-		log.LogErrorf("Write extent file failed, err: %v\n", err)
+		log.LogErrorf("Write extent file failed, err: %v", err)
 		return
 	}
 
@@ -1432,11 +1282,11 @@ func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent 
 }
 
 func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err error) {
-	log.LogInfof("Clean bad normal extents in dpId: %s\n", dpIdStr)
+	log.LogInfof("Clean bad normal extents in dpId: %s", dpIdStr)
 	badNormalDpFile := filepath.Join(dir, volname, BadDir, normalDir, dpIdStr)
 	file, err := os.Open(badNormalDpFile)
 	if err != nil {
-		log.LogErrorf("Open bad normal dp file failed, err: %v\n", err)
+		log.LogErrorf("Open bad normal dp file failed, err: %v", err)
 		return
 	}
 	defer file.Close()
@@ -1449,14 +1299,14 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 			if err == io.EOF {
 				break
 			}
-			log.LogErrorf("Read line failed, err: %v\n", err)
+			log.LogErrorf("Read line failed, err: %v", err)
 			return err
 		}
 		line = line[:len(line)-1]
 		var badExtent BadNornalExtent
 		err = json.Unmarshal(line, &badExtent)
 		if err != nil {
-			log.LogErrorf("Unmarshal bad extent failed, err: %v\n", err)
+			log.LogErrorf("Unmarshal bad extent failed, err: %v", err)
 			return err
 		}
 
@@ -1465,26 +1315,26 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 
 	err = batchLockBadNormalExtent(dpIdStr, exts, false)
 	if err != nil {
-		log.LogErrorf("Batch lock bad normal extent failed, err: %v\n", err)
+		log.LogErrorf("Batch lock dp %v bad normal extent failed, err: %v", dpIdStr, err)
 		return err
 	}
 
 	for _, badExtent := range exts {
 		err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, *badExtent)
 		if err != nil {
-			log.LogErrorf("Clean bad normal extent failed, err: %v\n", err)
+			log.LogErrorf("Clean bad normal extent failed, dp %v, extent %v, err: %v", dpIdStr, badExtent.ExtentId, err)
 			return err
 		}
 	}
 	err = batchDeleteBadExtent(dpIdStr, exts)
 	if err != nil {
-		log.LogErrorf("Batch delete bad extent failed, err: %v\n", err)
+		log.LogErrorf("Batch delete bad extent failed, dp %v, err: %v", dpIdStr, err)
 		return err
 	}
 
 	err = batchUnlockBadNormalExtent(dpIdStr, exts)
 	if err != nil {
-		log.LogErrorf("Batch unlock bad normal extent failed, err: %v\n", err)
+		log.LogErrorf("Batch unlock bad normal extent failed, err: %v", err)
 		return err
 	}
 	return
@@ -1495,7 +1345,7 @@ func cleanBadNormalExtentFromDp(volname, dir, backupDir string, fromDpId uint64)
 
 	fileInfos, err := ioutil.ReadDir(badNormalDir)
 	if err != nil {
-		log.LogErrorf("Read bad normal dir failed, err: %v\n", err)
+		log.LogErrorf("Read bad normal dir failed, err: %v", err)
 		return
 	}
 
@@ -1503,7 +1353,7 @@ func cleanBadNormalExtentFromDp(volname, dir, backupDir string, fromDpId uint64)
 		dpIdStr := fileInfo.Name()
 		dpId, err := strconv.ParseUint(dpIdStr, 10, 64)
 		if err != nil {
-			log.LogErrorf("Parse dp id failed, err: %v\n", err)
+			log.LogErrorf("Parse dp id failed, err: %v", err)
 			continue
 		}
 		if dpId < fromDpId {
@@ -1511,7 +1361,7 @@ func cleanBadNormalExtentFromDp(volname, dir, backupDir string, fromDpId uint64)
 		}
 		err = cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr)
 		if err != nil {
-			log.LogErrorf("Clean bad normal extents in dp id failed, err: %v\n", err)
+			log.LogErrorf("Clean bad normal extents in dp id failed, err: %v", err)
 			continue
 		}
 	}
@@ -1543,10 +1393,10 @@ func newRollbackBadExtentsCmd() *cobra.Command {
 				}
 
 			} else if extType == "tiny" {
-				log.LogErrorf("tiny is not supported now\n")
+				log.LogErrorf("tiny is not supported now")
 				return
 			} else {
-				log.LogErrorf("Invalid extent type: %s\n", extType)
+				log.LogErrorf("Invalid extent type: %s", extType)
 				return
 			}
 		},
@@ -1562,7 +1412,7 @@ func rollbackBadNormalExtentInDpId(volname, backupDir, dpId string) {
 	log.LogInfof("Rollback bad normal extents in dp: %s", rollbackDpDir)
 	fileInfos, err := ioutil.ReadDir(rollbackDpDir)
 	if err != nil {
-		log.LogErrorf("Read rollback dp dir failed, err: %v\n", err)
+		log.LogErrorf("Read rollback dp %v dir failed, err: %v", dpId, err)
 		return
 	}
 
@@ -1570,7 +1420,7 @@ func rollbackBadNormalExtentInDpId(volname, backupDir, dpId string) {
 		extent := fileInfo.Name()
 		err := rollbackBadNormalExtent(volname, backupDir, dpId, extent)
 		if err != nil {
-			log.LogErrorf("Rollback bad normal extent %v failed, err: %v\n", extent, err)
+			log.LogErrorf("Rollback bad normal dp %v extent %v failed, err: %v", dpId, extent, err)
 			continue
 		}
 	}
@@ -1581,7 +1431,7 @@ func rollbackBadNormalExtent(volname, backupDir, dpId, extent string) (err error
 	log.LogInfof("Rollback bad normal extent: %s", rollbackFilePath)
 	data, err := ioutil.ReadFile(rollbackFilePath)
 	if err != nil {
-		log.LogErrorf("Read bad extent failed, err: %v\n", err)
+		log.LogErrorf("Read bad extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
 		return
 	}
 	var badExtent BadNornalExtent
@@ -1589,19 +1439,19 @@ func rollbackBadNormalExtent(volname, backupDir, dpId, extent string) (err error
 	badExtent.Size = uint32(len(data))
 	err = batchLockBadNormalExtent(dpId, []*BadNornalExtent{&badExtent}, true)
 	if err != nil {
-		log.LogErrorf("Batch lock bad normal extent failed, err: %v\n", err)
+		log.LogErrorf("Batch lock bad normal extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
 		return
 	}
 
 	err = writeBadNormalExtentToDp(data, volname, dpId, extent)
 	if err != nil {
-		log.LogErrorf("Write bad extent to dp failed, err: %v\n", err)
+		log.LogErrorf("Write bad extent to dp failed, dp %v, extent %v, err: %v", dpId, extent, err)
 		return
 	}
 
 	err = batchUnlockBadNormalExtent(dpId, []*BadNornalExtent{&badExtent})
 	if err != nil {
-		log.LogErrorf("Batch unlock bad normal extent failed, err: %v\n", err)
+		log.LogErrorf("Batch unlock bad normal extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
 		return
 	}
 
@@ -1611,7 +1461,7 @@ func rollbackBadNormalExtent(volname, backupDir, dpId, extent string) (err error
 func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err error) {
 	dpInfo, err := getDpInfoById(dpId)
 	if err != nil {
-		log.LogErrorf("Get dp info failed, err: %v\n", err)
+		log.LogErrorf("Get dp info failed, dp %v, err: %v", dpId, err)
 		return
 	}
 
@@ -1620,11 +1470,11 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 
 	defer func() {
 		streamConnPool.PutConnect(conn, true)
-		log.LogInfof("writeBadNormalExtentToDp PutConnect (%v)\n", leaderAddr)
+		log.LogInfof("writeBadNormalExtentToDp PutConnect (%v)", leaderAddr)
 	}()
 
 	if err != nil {
-		log.LogErrorf("Get connect failed, err: %v\n", err)
+		log.LogErrorf("Get connect failed, err: %v", err)
 		return
 	}
 
@@ -1639,13 +1489,13 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 	p.ReqID = proto.GenerateRequestID()
 	p.PartitionID, err = strconv.ParseUint(dpId, 10, 64)
 	if err != nil {
-		log.LogErrorf("Parse dp %s id failed, err: %v\n", dpId, err)
+		log.LogErrorf("Parse dp %s id failed, err: %v", dpId, err)
 		return
 	}
 	p.ExtentType = proto.NormalExtentType
 	p.ExtentID, err = strconv.ParseUint(extent, 10, 64)
 	if err != nil {
-		log.LogErrorf("Parse extent %s id failed, err: %v\n", extent, err)
+		log.LogErrorf("Parse extent %s id failed, err: %v", extent, err)
 		return
 	}
 	p.ExtentOffset = 0
@@ -1658,15 +1508,15 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 	p.StartT = time.Now().UnixNano()
 	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
 	if err = p.WriteToConn(conn); err != nil {
-		log.LogErrorf("WriteToConn failed, err: %v\n", err)
+		log.LogErrorf("WriteToConn failed, dp %v, extent %v, err: %v", dpId, extent, err)
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
-		log.LogErrorf("ReadFromConn failed, err: %v\n", err)
+		log.LogErrorf("ReadFromConn failed, dp %v, extent %v, err: %v", dpId, extent, err)
 		return
 	}
 	if p.ResultCode != proto.OpOk {
-		log.LogErrorf("BatchDeleteExtent failed, ResultCode: %v\n", p.ResultCode)
+		log.LogErrorf("writeBadNormalExtentToDp failed, dp %v, extent %v, ResultCode: %v", dpId, extent, p.ResultCode)
 		return
 	}
 	return
