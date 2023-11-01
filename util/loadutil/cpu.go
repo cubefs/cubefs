@@ -15,12 +15,30 @@
 package loadutil
 
 import (
+	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"time"
 
 	"github.com/shirou/gopsutil/cpu"
 )
 
-func GetCpuUtilPercent(sampleDuration time.Duration) float64 {
-	utils, _ := cpu.Percent(sampleDuration, false)
-	return utils[0]
+func GetCpuUtilPercent(sampleDuration time.Duration) (used float64, err error) {
+	utils, err := cpu.Percent(sampleDuration, false)
+	if err != nil {
+		log.LogErrorf("[GetCpuUtilPercent] err: %v", err.Error())
+		return
+	}
+	if utils == nil {
+		err = fmt.Errorf("got nil result")
+		log.LogErrorf("[GetCpuUtilPercent] err: %v", err.Error())
+		return
+	}
+	if len(utils) == 0 {
+		err = fmt.Errorf("got result len is 0")
+		log.LogErrorf("[GetCpuUtilPercent] err: %v", err.Error())
+		return
+	}
+
+	used = utils[0]
+	return
 }
