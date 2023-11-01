@@ -24,8 +24,8 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	bsProto "github.com/cubefs/cubefs/proto"
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -121,7 +121,7 @@ type metaPartitionValue struct {
 	VolName       string
 	Hosts         string
 	OfflinePeerID uint64
-	Peers         []bsProto.Peer
+	Peers         []proto.Peer
 	IsRecover     bool
 }
 
@@ -146,7 +146,7 @@ type dataPartitionValue struct {
 	PartitionID                    uint64
 	ReplicaNum                     uint8
 	Hosts                          string
-	Peers                          []bsProto.Peer
+	Peers                          []proto.Peer
 	Status                         int8
 	VolID                          uint64
 	VolName                        string
@@ -309,7 +309,7 @@ type volValue struct {
 	EnablePosixAcl bool
 	EnableQuota    bool
 
-	EnableTransaction       bsProto.TxOpMask
+	EnableTransaction       proto.TxOpMask
 	TxTimeout               int64
 	TxConflictRetryNum      int64
 	TxConflictRetryInterval int64
@@ -377,14 +377,14 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		CacheLRUInterval:    vol.CacheLRUInterval,
 		CacheRule:           vol.CacheRule,
 		VolQosEnable:        vol.qosManager.qosEnable,
-		IopsRLimit:          vol.qosManager.getQosLimit(bsProto.IopsReadType),
-		IopsWLimit:          vol.qosManager.getQosLimit(bsProto.IopsWriteType),
-		FlowRlimit:          vol.qosManager.getQosLimit(bsProto.FlowReadType),
-		FlowWlimit:          vol.qosManager.getQosLimit(bsProto.FlowWriteType),
-		IopsRMagnify:        vol.qosManager.getQosMagnify(bsProto.IopsReadType),
-		IopsWMagnify:        vol.qosManager.getQosMagnify(bsProto.IopsWriteType),
-		FlowRMagnify:        vol.qosManager.getQosMagnify(bsProto.FlowReadType),
-		FlowWMagnify:        vol.qosManager.getQosMagnify(bsProto.FlowWriteType),
+		IopsRLimit:          vol.qosManager.getQosLimit(proto.IopsReadType),
+		IopsWLimit:          vol.qosManager.getQosLimit(proto.IopsWriteType),
+		FlowRlimit:          vol.qosManager.getQosLimit(proto.FlowReadType),
+		FlowWlimit:          vol.qosManager.getQosLimit(proto.FlowWriteType),
+		IopsRMagnify:        vol.qosManager.getQosMagnify(proto.IopsReadType),
+		IopsWMagnify:        vol.qosManager.getQosMagnify(proto.IopsWriteType),
+		FlowRMagnify:        vol.qosManager.getQosMagnify(proto.FlowReadType),
+		FlowWMagnify:        vol.qosManager.getQosMagnify(proto.FlowWriteType),
 		ClientReqPeriod:     vol.qosManager.ClientReqPeriod,
 		ClientHitTriggerCnt: vol.qosManager.ClientHitTriggerCnt,
 
@@ -1004,8 +1004,8 @@ func (c *Cluster) syncPutDataNode(opType uint32, dataNode *DataNode) (err error)
 func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {
 	log.LogInfof("action[addRaftNode] nodeID: %v, addr: %v:", nodeID, addr)
 
-	peer := proto.Peer{ID: nodeID}
-	_, err = c.partition.ChangeMember(proto.ConfAddNode, peer, []byte(addr))
+	peer := raftProto.Peer{ID: nodeID}
+	_, err = c.partition.ChangeMember(raftProto.ConfAddNode, peer, []byte(addr))
 	if err != nil {
 		return errors.New("action[addRaftNode] error: " + err.Error())
 	}
@@ -1015,8 +1015,8 @@ func (c *Cluster) addRaftNode(nodeID uint64, addr string) (err error) {
 func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
 	log.LogInfof("action[removeRaftNode] nodeID: %v, addr: %v:", nodeID, addr)
 
-	peer := proto.Peer{ID: nodeID}
-	_, err = c.partition.ChangeMember(proto.ConfRemoveNode, peer, []byte(addr))
+	peer := raftProto.Peer{ID: nodeID}
+	_, err = c.partition.ChangeMember(raftProto.ConfRemoveNode, peer, []byte(addr))
 	if err != nil {
 		return errors.New("action[removeRaftNode] error: " + err.Error())
 	}
@@ -1024,8 +1024,8 @@ func (c *Cluster) removeRaftNode(nodeID uint64, addr string) (err error) {
 }
 
 func (c *Cluster) updateDirChildrenNumLimit(val uint32) {
-	if val < bsProto.MinDirChildrenNumLimit {
-		val = bsProto.DefaultDirChildrenNumLimit
+	if val < proto.MinDirChildrenNumLimit {
+		val = proto.DefaultDirChildrenNumLimit
 	}
 	atomic.StoreUint32(&c.cfg.DirChildrenNumLimit, val)
 }
@@ -1129,9 +1129,10 @@ func (c *Cluster) loadZoneValue() (err error) {
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
 			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
 		}
-		log.LogInfof("action[loadZoneValue] load zonename[%v] with limit [%v,%v,%v,%v]",
-			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit)
+		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], mediaType:%v",
+			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit, proto.MediaTypeString(cv.MediaType))
 		zone.loadDataNodeQosLimit()
+		zone.SetMediaType(cv.MediaType)
 	}
 
 	return
@@ -1289,7 +1290,7 @@ func (c *Cluster) loadNodeSets() (err error) {
 		zone, err := c.t.getZone(nsv.ZoneName)
 		if err != nil {
 			log.LogErrorf("action[loadNodeSets], getZone err:%v", err)
-			zone = newZone(nsv.ZoneName)
+			zone = newZone(nsv.ZoneName, proto.MediaType_Unspecified)
 			c.t.putZoneIfAbsent(zone)
 		}
 		ns.UpdateMaxParallel(int32(c.DecommissionLimit))
@@ -1591,7 +1592,7 @@ func (c *Cluster) loadVols() (err error) {
 		}
 
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
-		if vol.Forbidden && vol.Status == bsProto.VolStatusMarkDelete {
+		if vol.Forbidden && vol.Status == proto.VolStatusMarkDelete {
 			c.delayDeleteVolsInfo = append(c.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: vol.Name, authKey: vol.authKey, execTime: vol.DeleteExecTime, user: vol.user})
 			log.LogInfof("action[loadDelayDeleteVols],vol[%v]", vol.Name)
 		}
@@ -1758,8 +1759,8 @@ type decommissionDiskValue struct {
 	Type                     uint32
 	DecommissionCompleteTime int64
 	DecommissionLimit        int
-	IgnoreDecommissionDps    []bsProto.IgnoreDecommissionDP
-	ResidualDecommissionDps  []bsProto.IgnoreDecommissionDP
+	IgnoreDecommissionDps    []proto.IgnoreDecommissionDP
+	ResidualDecommissionDps  []proto.IgnoreDecommissionDP
 	DiskDisable              bool
 }
 
@@ -1894,19 +1895,19 @@ func (c *Cluster) loadLcNodes() (err error) {
 	return
 }
 
-func (c *Cluster) syncAddLcConf(lcConf *bsProto.LcConfiguration) (err error) {
+func (c *Cluster) syncAddLcConf(lcConf *proto.LcConfiguration) (err error) {
 	return c.syncPutLcConfInfo(opSyncAddLcConf, lcConf)
 }
 
-func (c *Cluster) syncDeleteLcConf(lcConf *bsProto.LcConfiguration) (err error) {
+func (c *Cluster) syncDeleteLcConf(lcConf *proto.LcConfiguration) (err error) {
 	return c.syncPutLcConfInfo(opSyncDeleteLcConf, lcConf)
 }
 
-func (c *Cluster) syncUpdateLcConf(lcConf *bsProto.LcConfiguration) (err error) {
+func (c *Cluster) syncUpdateLcConf(lcConf *proto.LcConfiguration) (err error) {
 	return c.syncPutLcConfInfo(opSyncUpdateLcConf, lcConf)
 }
 
-func (c *Cluster) syncPutLcConfInfo(opType uint32, lcConf *bsProto.LcConfiguration) (err error) {
+func (c *Cluster) syncPutLcConfInfo(opType uint32, lcConf *proto.LcConfiguration) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = lcConfPrefix + lcConf.VolName
@@ -1925,7 +1926,7 @@ func (c *Cluster) loadLcConfs() (err error) {
 	}
 
 	for _, value := range result {
-		lcConf := &bsProto.LcConfiguration{}
+		lcConf := &proto.LcConfiguration{}
 		if err = json.Unmarshal(value, lcConf); err != nil {
 			err = fmt.Errorf("action[loadLcConfs],value:%v,unmarshal err:%v", string(value), err)
 			return
