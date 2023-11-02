@@ -89,8 +89,9 @@ func (status VolumeStatus) String() string {
 		return "unlocking"
 	case VolumeStatusSealed:
 		return "sealed"
+	default:
+		return "unknown"
 	}
-	return "unknown"
 }
 
 // VolumeStatus has idle, active, lock, unlocking and sealed state
