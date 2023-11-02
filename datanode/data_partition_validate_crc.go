@@ -48,7 +48,7 @@ func (dp *DataPartition) runValidateCRC(ctx context.Context) {
 	if dp.partitionStatus == proto.Unavailable {
 		return
 	}
-	if !dp.leaderState.isLeader() {
+	if !dp.isReplLeader {
 		return
 	}
 

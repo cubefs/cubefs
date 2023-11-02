@@ -29,7 +29,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/datanode/riskdata"
@@ -199,36 +198,6 @@ func NewWALApplyStatus() *WALApplyStatus {
 	return &WALApplyStatus{}
 }
 
-type leaderState struct {
-	val int32
-}
-
-func (s *leaderState) isLeader() bool {
-	return atomic.LoadInt32(&s.val) > 0
-}
-
-func (s *leaderState) isLeaderReady() bool {
-	return atomic.LoadInt32(&s.val) == 2
-}
-
-func (s *leaderState) markLeader() bool {
-	return atomic.CompareAndSwapInt32(&s.val, 0, 1)
-}
-
-func (s *leaderState) markLeaderReady() bool {
-	return atomic.CompareAndSwapInt32(&s.val, 1, 2)
-}
-
-func (s *leaderState) markNotLeader() {
-	atomic.StoreInt32(&s.val, 0)
-}
-
-func newLeaderState() *leaderState {
-	return &leaderState{
-		val: 0,
-	}
-}
-
 type DataPartition struct {
 	clusterID       string
 	volumeID        string
@@ -238,7 +207,7 @@ type DataPartition struct {
 	replicas        []string // addresses of the replicas
 	replicasLock    sync.RWMutex
 	disk            *Disk
-	leaderState     *leaderState
+	isReplLeader    bool
 	isRaftLeader    bool
 	path            string
 	used            int
@@ -252,7 +221,6 @@ type DataPartition struct {
 	applyStatus           *WALApplyStatus
 
 	repairPropC              chan struct{}
-	updateReplicasPropC      chan struct{}
 	updateVolInfoPropC       chan struct{}
 	latestPropUpdateReplicas int64 // 记录最近一次申请更新Replicas信息的时间戳，单位为秒
 
@@ -324,16 +292,6 @@ func (dp *DataPartition) ID() uint64 {
 }
 
 func (dp *DataPartition) AllocateExtentID() (id uint64, err error) {
-	// if dp.config.VolHAType == proto.CrossRegionHATypeQuorum && dp.leaderState.isLeaderReady() {
-	// 	// 为了保证ExtentID不会重复分配, quorum类型复制组(异地多活)仅在当前实例是Replicas Leader
-	// 	// 且完成了baseExtentID对齐(LeaderReady)状态下允许分配ExtentID。
-	// 	err = proto.ErrOperationDisabled
-	// 	if !dp.leaderState.isLeader() {
-	// 		// 复制组可能发生变化, 当前实例可能变更为Leader, 触发更新Replicas信息
-	// 		dp.proposeUpdateReplicas()
-	// 	}
-	// 	return
-	// }
 	id, err = dp.extentStore.NextExtentID()
 	return
 }
@@ -497,10 +455,8 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		disk:                    disk,
 		path:                    dataPath,
 		partitionSize:           dpCfg.PartitionSize,
-		leaderState:             newLeaderState(),
 		replicas:                make([]string, 0),
 		repairPropC:             make(chan struct{}, 1),
-		updateReplicasPropC:     make(chan struct{}, 1),
 		updateVolInfoPropC:      make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),
@@ -615,9 +571,7 @@ func (dp *DataPartition) replicasInit() {
 	if dp.config.Hosts != nil && len(dp.config.Hosts) >= 1 {
 		leaderAddr := strings.Split(dp.config.Hosts[0], ":")
 		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
-			if dp.leaderState.markLeader() {
-				dp.proposeRepair()
-			}
+			dp.isReplLeader = true
 		}
 	}
 }
@@ -871,23 +825,6 @@ func (dp *DataPartition) proposeRepair() {
 	}
 }
 
-func (dp *DataPartition) proposeUpdateReplicas() {
-	// 控制申请更新Replicas信息的间隔
-	var prev = atomic.LoadInt64(&dp.latestPropUpdateReplicas)
-	var now = time.Now().Unix()
-	if now-prev < IntervalToProposeUpdateReplica {
-		return
-	}
-	if !atomic.CompareAndSwapInt64(&dp.latestPropUpdateReplicas, prev, now) {
-		return
-	}
-	log.LogWarnf("DP[%v] trigger update replicas, previous %v", dp.partitionID, time.Unix(prev, 0))
-	select {
-	case dp.updateReplicasPropC <- struct{}{}:
-	default:
-	}
-}
-
 func (dp *DataPartition) proposeUpdateVolumeInfo() {
 	select {
 	case dp.updateVolInfoPropC <- struct{}{}:
@@ -909,16 +846,6 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 			repairTimer.Stop()
 			validateCRCTimer.Stop()
 			return
-		case <-dp.updateReplicasPropC:
-			becomesLeader, err := dp.updateReplicas(true)
-			if err != nil {
-				log.LogWarnf("DP(%v) force update replicas failed: %v", dp.partitionID, err)
-				continue
-			}
-			if becomesLeader {
-				// 触发修复
-				dp.proposeRepair()
-			}
 
 		case <-dp.repairPropC:
 			repairTimer.Stop()
@@ -932,10 +859,6 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 			dp.statusUpdate()
 			if index >= math.MaxUint32 {
 				index = 0
-			}
-			if _, err := dp.updateReplicas(false); err != nil {
-				log.LogWarnf("DP[%v] update replicas failed: %v", dp.partitionID, err)
-				continue
 			}
 			if index%2 == 0 {
 				dp.runRepair(ctx, proto.TinyExtentType)
@@ -1044,7 +967,7 @@ func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8) {
 		return
 	}*/
 
-	if !dp.leaderState.isLeader() {
+	if !dp.isReplLeader {
 		return
 	}
 	if dp.extentStore.BrokenTinyExtentCnt() == 0 {
@@ -1053,7 +976,7 @@ func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8) {
 	dp.repair(ctx, extentType)
 }
 
-func (dp *DataPartition) updateReplicas(isForce bool) (becomesLeader bool, err error) {
+func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 	if !isForce && time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
 		return
 	}
@@ -1067,12 +990,7 @@ func (dp *DataPartition) updateReplicas(isForce bool) (becomesLeader bool, err e
 		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from(%v) to(%v).",
 			dp.partitionID, dp.replicas, replicas)
 	}
-	switch {
-	case isLeader && dp.leaderState.markLeader():
-		becomesLeader = true
-	case !isLeader:
-		dp.leaderState.markNotLeader()
-	}
+	dp.isReplLeader = isLeader
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
 	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v)", dp.partitionID))
@@ -1318,13 +1236,7 @@ func (dp *DataPartition) SyncReplicaHosts(replicas []string) {
 		}
 	}
 	dp.replicasLock.Lock()
-
-	switch {
-	case leader && dp.leaderState.markLeader():
-		dp.proposeRepair()
-	case !leader:
-		dp.leaderState.markNotLeader()
-	}
+	dp.isReplLeader = leader
 	dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
 	dp.replicasLock.Unlock()

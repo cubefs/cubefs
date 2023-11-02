@@ -305,7 +305,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 		select {
 		case <-timer.C:
 			err = nil
-			if dp.leaderState.isLeader() { // primary does not need to wait repair
+			if dp.isReplLeader { // primary does not need to wait repair
 				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 				if err = dp.persist(nil, false); err != nil {
 					log.LogErrorf("Partition(%v) persist metadata failed and try after 5s: %v", dp.partitionID, err)

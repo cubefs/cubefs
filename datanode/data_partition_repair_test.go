@@ -421,7 +421,6 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 	partition = &DataPartition{
 		volumeID:                "test-vol",
 		clusterID:               "test-cluster",
-		leaderState:             newLeaderState(),
 		partitionID:             partitionID,
 		path:                    dataPath,
 		partitionSize:           partitionSize,

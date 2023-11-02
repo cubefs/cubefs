@@ -128,9 +128,6 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 
 	// ask the leader to do the repair
 	dp.DoRepairOnLeaderDisk(ctx, repairTasks[0])
-	if volHAType := dp.config.VolHAType; (volHAType == proto.CrossRegionHATypeQuorum && len(repairTasks) > len(replicas)/2) || volHAType == proto.DefaultCrossRegionHAType {
-		dp.leaderState.markLeaderReady()
-	}
 	end := time.Now().UnixNano()
 
 	// every time we need to figureAnnotatef out which extents need to be repaired and which ones do not.
