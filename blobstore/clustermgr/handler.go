@@ -75,6 +75,8 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.RegisterArgsParser(&clustermgr.ListVolumeV2Args{}, "json")
 	rpc.RegisterArgsParser(&clustermgr.ListVolumeUnitArgs{}, "json")
 	rpc.RegisterArgsParser(&clustermgr.ListAllocatedVolumeArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.SetVolumeSealedArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.SetVolumeIdleArgs{}, "json")
 
 	rpc.GET("/volume/get", service.VolumeGet, rpc.OptArgsQuery())
 
@@ -96,9 +98,9 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/volume/release", service.VolumeRelease, rpc.OptArgsBody())
 
-	rpc.POST("/volume/set/sealed", service.VolumeSetSealed, rpc.OptArgsBody())
+	rpc.POST("/volume/set/sealed/:vid", service.VolumeSetSealed, rpc.OptArgsURI())
 
-	rpc.POST("/volume/set/idle", service.VolumeSetIdle, rpc.OptArgsBody())
+	rpc.POST("/volume/set/idle/:vid", service.VolumeSetIdle, rpc.OptArgsURI())
 
 	rpc.POST("/volume/unit/alloc", service.VolumeUnitAlloc, rpc.OptArgsBody())
 

@@ -63,12 +63,7 @@ func (c *Client) GetCacheVolume(ctx context.Context, host string, args *CacheVol
 }
 
 func (c *Client) GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (disk *blobnode.DiskInfo, err error) {
-	disk, err = c.DiskInfo(ctx, args.DiskID)
-	if err != nil {
-		return nil, err
-	}
-
-	return disk, nil
+	return c.DiskInfo(ctx, args.DiskID)
 }
 
 func (c *Client) Erase(ctx context.Context, host string, key string) error {
