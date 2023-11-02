@@ -150,10 +150,8 @@ func (s *Service) V2VolumeAlloc(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	if ret != nil {
-		span.Debugf("alloc volumes v2 %v to %v", ret.AllocVolumeInfos, clientIP(c.Request))
-		c.RespondJSON(ret)
-	}
+	span.Debugf("alloc volumes v2 %v to %v", ret.AllocVolumeInfos, clientIP(c.Request))
+	c.RespondJSON(ret)
 }
 
 func (s *Service) VolumeAllocatedList(c *rpc.Context) {

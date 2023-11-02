@@ -177,7 +177,6 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 		// store task to db
 		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
 		vol.lock.Unlock()
-		return nil
 
 	case base.VolumeTaskTypeSetIdle:
 		vol.lock.Lock()
@@ -191,7 +190,6 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 		// store task to db
 		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
 		vol.lock.Unlock()
-		return nil
 
 	default:
 		span.Panicf("Unknown task type(%d)", t)
