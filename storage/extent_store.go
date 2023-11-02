@@ -48,7 +48,6 @@ const (
 	tinyDeleteFileOpenFlag            = os.O_CREATE | os.O_RDWR | os.O_APPEND
 	tinyDeleteFilePerm                = 0666
 	tinyExtentDeletedFilename         = "TINYEXTENT_DELETE"
-	normalExtentDeletedFilename       = "NORMALEXTENT_DELETE"
 	inodeIndexFilename                = "INODE_INDEX"
 	MaxExtentCount                    = 20000
 	MinNormalExtentID                 = 1024
@@ -190,7 +189,6 @@ type ExtentStore struct {
 	storeSize                         int      // size of the extent store
 	metadataFp                        *os.File // metadata file pointer?
 	tinyExtentDeleteFp                *os.File
-	normalExtentDeleteFp              *os.File
 	closeC                            chan bool
 	closed                            bool
 	availableTinyExtentC              chan uint64 // available tinyExtent channel
@@ -243,9 +241,6 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 		return
 	}
 	if s.metadataFp, err = os.OpenFile(path.Join(s.dataPath, baseExtentIDFilename), os.O_CREATE|os.O_RDWR, 0666); err != nil {
-		return
-	}
-	if s.normalExtentDeleteFp, err = os.OpenFile(path.Join(s.dataPath, normalExtentDeletedFilename), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666); err != nil {
 		return
 	}
 	if s.inodeIndex, err = openInodeIndex(path.Join(s.dataPath, inodeIndexFilename)); err != nil {
@@ -696,9 +691,6 @@ func (s *ExtentStore) FlushDelete() (n int, err error) {
 			}
 		}
 		s.ioInterceptor.intercept(IODelete, doIO)
-		if err = s.PersistenceHasDeleteExtent(extent); err != nil && log.IsWarnEnabled() {
-			log.LogWarnf("Store(%v) record deleted extent failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
-		}
 		if err = s.removeExtentHeader(extent); err != nil && log.IsWarnEnabled() {
 			log.LogWarnf("Store(%v) remove block CRC info failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
 			return true, nil
@@ -740,8 +732,6 @@ func (s *ExtentStore) Close() {
 	s.cache.Close()
 	s.tinyExtentDeleteFp.Sync()
 	s.tinyExtentDeleteFp.Close()
-	s.normalExtentDeleteFp.Sync()
-	s.normalExtentDeleteFp.Close()
 	s.verifyExtentFp.Sync()
 	s.verifyExtentFp.Close()
 	s.closed = true

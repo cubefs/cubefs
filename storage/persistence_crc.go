@@ -95,12 +95,3 @@ func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) 
 	extentID = binary.BigEndian.Uint64(data)
 	return
 }
-
-func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
-	data := make([]byte, 8)
-	binary.BigEndian.PutUint64(data, extentID)
-	if _, err = s.normalExtentDeleteFp.Write(data); err != nil {
-		return
-	}
-	return
-}
