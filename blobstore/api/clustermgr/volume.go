@@ -385,7 +385,7 @@ type SetVolumeSealedArgs struct {
 }
 
 func (c *Client) SetVolumeSealed(ctx context.Context, args *SetVolumeSealedArgs) (err error) {
-	err = c.PostWith(ctx, "/volume/set/sealed", nil, args)
+	err = c.PostWith(ctx, fmt.Sprintf("/volume/set/sealed/%d", args.Vid), nil, rpc.NoneBody)
 	return
 }
 
@@ -394,6 +394,6 @@ type SetVolumeIdleArgs struct {
 }
 
 func (c *Client) SetVolumeIdle(ctx context.Context, args *SetVolumeIdleArgs) (err error) {
-	err = c.PostWith(ctx, "/volume/set/sealed", nil, args)
+	err = c.PostWith(ctx, fmt.Sprintf("/volume/set/idle/%d", args.Vid), nil, rpc.NoneBody)
 	return
 }
