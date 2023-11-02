@@ -15,8 +15,8 @@
 package meta
 
 import (
+	gerrors "errors"
 	"fmt"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -92,8 +92,8 @@ type MetaConfig struct {
 	EnableSummary    bool
 	MetaSendTimeout  int64
 
-	//EnableTransaction uint8
-	//EnableTransaction bool
+	// EnableTransaction uint8
+	// EnableTransaction bool
 	VerReadSeq uint64
 }
 
@@ -218,36 +218,26 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.EnableSummary = config.EnableSummary
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
-	//mw.EnableTransaction = config.EnableTransaction
 	mw.uniqidRangeMap = make(map[uint64]*uniqidRange, 0)
 	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
 	mw.VerReadSeq = config.VerReadSeq
 
 	limit := 0
-
 	for limit < MaxMountRetryLimit {
-		err = mw.initMetaWrapper()
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
-		if err != nil {
-			if strings.Contains(err.Error(), "auth key do not match") {
-				limit = 0
+		if err = mw.initMetaWrapper(); err != nil {
+			log.LogErrorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
+			if gerrors.Is(err, proto.ErrVolAuthKeyNotMatch) || gerrors.Is(err, proto.ErrVolNotExists) {
 				break
 			}
-			log.LogErrorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
-		}
-		if err == proto.ErrVolNotExists {
-			return nil, err
-		}
-		if err != nil {
 			limit++
 			time.Sleep(MountRetryInterval * time.Duration(limit))
 			continue
 		}
 		break
 	}
-
-	if limit <= 0 && err != nil {
+	if err != nil {
 		return nil, err
 	}
 
