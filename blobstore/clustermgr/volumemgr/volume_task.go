@@ -94,7 +94,7 @@ func (m *VolumeMgr) setVolumeStatus(task *volTask) error {
 			case base.VolumeTaskTypeUnlock:
 				msg = "readwrite"
 				e = m.blobNodeClient.SetChunkReadwrite(ctx, host, &arg)
-			case base.VolumeTaskTypeSetSealed:
+			case base.VolumeTaskTypeSetSealed, base.VolumeTaskTypeSetIdle:
 				// nothing to do
 				return
 			default:
