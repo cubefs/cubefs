@@ -28,21 +28,21 @@ func (s *Service) loopDataInspect() {
 	if !conf.DiskConfig.EnableDataInspect {
 		return
 	}
-	span, ctx := trace.StartSpanFromContext(s.ctx, "")
+	pSpan, pCtx := trace.StartSpanFromContext(s.ctx, "")
 	timer := time.NewTimer(time.Duration(s.Conf.ChunkInspectIntervalSec) * time.Second)
 	defer timer.Stop()
 
 	for {
 		select {
 		case <-s.closeCh:
-			span.Warnf("loop inspect data done.")
+			pSpan.Warnf("loop inspect data done.")
 			return
 		case <-timer.C:
-			span.Info("loop start inspect disks.")
+			pSpan.Info("loop start inspect disks.")
 			var wg sync.WaitGroup
-			disks := s.copyDiskStorages(ctx)
+			disks := s.copyDiskStorages(pCtx)
 			for _, ds := range disks {
-				span, ctx := trace.StartSpanFromContext(ctx, "")
+				span, ctx := trace.StartSpanFromContext(context.Background(), pSpan.OperationName()+"_"+ds.ID().ToString())
 				wg.Add(1)
 				go func(ds core.DiskAPI) {
 					defer wg.Done()
@@ -99,9 +99,12 @@ func startInspect(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, erro
 	startBid := proto.InValidBlobID
 	ds := cs.Disk()
 	badShards := make([]bnapi.BadShard, 0)
-	scanFn := func(ctx context.Context, batchShards []*bnapi.ShardInfo) (err error) {
+
+	scanFn := func(pCtx context.Context, batchShards []*bnapi.ShardInfo) (err error) {
 		for _, si := range batchShards {
-			span, ctx := trace.StartSpanFromContext(ctx, "")
+			pSpan := trace.SpanFromContextSafe(pCtx)
+			span, ctx := trace.StartSpanFromContext(context.Background(), pSpan.OperationName())
+			ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 			discard := io.Discard
 			shardReader := core.NewShardReader(si.Bid, si.Vuid, 0, 0, discard)
 			_, err := cs.Read(ctx, shardReader)
@@ -121,6 +124,7 @@ func startInspect(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, erro
 		}
 		return nil
 	}
+
 	err := ScanShard(ctx, cs, startBid, scanFn)
 	if err != nil {
 		return nil, err
