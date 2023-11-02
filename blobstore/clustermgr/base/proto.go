@@ -32,6 +32,9 @@ func (t VolumeTaskType) String() string {
 		return "unlock"
 	case VolumeTaskTypeSetSealed:
 		return "sealed"
+	case VolumeTaskTypeSetIdle:
+		return "idle"
+	default:
+		return "unknown"
 	}
-	return "unknown"
 }
