@@ -125,11 +125,13 @@ func (vol *volume) canUnlock() bool {
 }
 
 func (vol *volume) canSetSealed() bool {
-	return vol.getStatus() == proto.VolumeStatusIdle || vol.getStatus() == proto.VolumeStatusActive
+	status := vol.getStatus()
+	return status == proto.VolumeStatusIdle || status == proto.VolumeStatusActive
 }
 
 func (vol *volume) canSetIdle() bool {
-	return vol.getStatus() == proto.VolumeStatusActive
+	status := vol.getStatus()
+	return status == proto.VolumeStatusSealed || status == proto.VolumeStatusActive
 }
 
 func (vol *volume) isExpired() bool {
