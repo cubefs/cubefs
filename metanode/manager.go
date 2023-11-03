@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/tokenmanager"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -54,6 +55,9 @@ type MetadataManager interface {
 	StartPartition(id uint64) error
 	StopPartition(id uint64) error
 	ReloadPartition(id uint64) error
+	ResetDumpSnapShotConfCount(confCount uint64)
+	GetDumpSnapRunningCount() uint64
+	GetDumpSnapMPID() []uint64
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -80,6 +84,7 @@ type metadataManager struct {
 	stopC              chan bool
 	volConfMap         map[string]*VolumeConfig
 	volConfMapRWMutex  sync.RWMutex
+	tokenM             *tokenmanager.TokenManager
 }
 
 type VolumeConfig struct {
@@ -103,6 +108,7 @@ type MetaNodeVersion struct {
 	Minor int64
 	Patch int64
 }
+
 
 func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
 	labels = make([]string, 3)
@@ -1071,6 +1077,35 @@ func (m *metadataManager) ReloadPartition(id uint64) (err error) {
 	return
 }
 
+func (m *metadataManager) ResetDumpSnapShotConfCount(confCount uint64) {
+	if m.tokenM == nil {
+		return
+	}
+
+	if m.tokenM.GetConfCnt() != confCount {
+		m.tokenM.ResetRunCnt(confCount)
+	}
+
+	return
+}
+
+func (m *metadataManager) GetDumpSnapRunningCount() uint64 {
+	if m.tokenM == nil {
+		return 0
+	}
+
+	return m.tokenM.GetRunningCnt()
+}
+
+func (m *metadataManager) GetDumpSnapMPID() []uint64 {
+	if m.tokenM == nil {
+		return nil
+	}
+
+	_, mpIds := m.tokenM.GetRunningIds()
+	return mpIds
+}
+
 // NewMetadataManager returns a new metadata manager.
 func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (MetadataManager, error) {
 	mm := &metadataManager{
@@ -1084,7 +1119,9 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		stopC:       make(chan bool, 0),
 		volConfMap:  make(map[string]*VolumeConfig, 0),
 		rocksDBDirs: metaNode.rocksDirs,
+		tokenM:      tokenmanager.NewTokenManager(10),
 	}
+
 	if err := mm.loadPartitions(); err != nil {
 		return nil, err
 	}

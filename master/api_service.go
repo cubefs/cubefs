@@ -574,6 +574,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ClientReqRemoveDupFlag:                 m.cluster.cfg.ClientReqRemoveDup,
 		RemoteReadConnTimeout:                  m.cluster.cfg.RemoteReadConnTimeoutMs,
 		ZoneNetConnConfig:                      m.cluster.cfg.ZoneNetConnConfig,
+		MetaNodeDumpSnapCountByZone: 			m.cluster.cfg.MetaNodeDumpSnapCountByZone,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -2557,6 +2558,19 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			err = m.cluster.setMetaNodeReqOpRateLimit(v, uint8(op))
 		}
 
+		if err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	if val, ok := params[proto.MetaNodeDumpSnapCountKey]; ok {
+		if zone == "" && len(zone) <= 0 {
+			err = errors.NewErrorf("parameter %s can not nil", zoneNameKey)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		err = m.cluster.setMetaNodeDumpSnapCount(zone, val.(int64))
 		if err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
@@ -4823,7 +4837,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
 		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
-		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey}
+		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return

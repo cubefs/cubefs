@@ -4620,6 +4620,28 @@ func (c *Cluster) setMetaNodeReqOpRateLimit(val int64, op uint8) (err error) {
 	return
 }
 
+func (c *Cluster) setMetaNodeDumpSnapCount(zone string, val int64) (err error) {
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	oldVal, ok := c.cfg.MetaNodeDumpSnapCountByZone[zone]
+	if val > 0 {
+		c.cfg.MetaNodeDumpSnapCountByZone[zone] = uint64(val)
+	} else {
+		delete(c.cfg.MetaNodeDumpSnapCountByZone, zone)
+	}
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeReqVolPartRateLimit] err[%v]", err)
+		if ok {
+			c.cfg.MetaNodeDumpSnapCountByZone[zone] = oldVal
+		} else {
+			delete(c.cfg.MetaNodeDumpSnapCountByZone, zone)
+		}
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setClientReadVolRateLimit(val uint64, vol string) (err error) {
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()

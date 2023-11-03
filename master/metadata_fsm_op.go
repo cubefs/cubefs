@@ -112,6 +112,7 @@ type clusterValue struct {
 	ClientReqRemoveDupFlag              bool
 	RemoteReadConnTimeoutMs             int64
 	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
+	MetaNodeDumpSnapCountByZone			map[string]uint64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -193,6 +194,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ClientReqRemoveDupFlag:              c.cfg.ClientReqRemoveDup,
 		RemoteReadConnTimeoutMs:             c.cfg.RemoteReadConnTimeoutMs,
 		ZoneNetConnConfig:                   c.cfg.ZoneNetConnConfig,
+		MetaNodeDumpSnapCountByZone:         c.cfg.MetaNodeDumpSnapCountByZone,
 	}
 	return cv
 }
@@ -1180,6 +1182,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.ZoneNetConnConfig = cv.ZoneNetConnConfig
 		if c.cfg.ZoneNetConnConfig == nil {
 			c.cfg.ZoneNetConnConfig = make(map[string]bsProto.ConnConfig)
+		}
+
+		c.cfg.MetaNodeDumpSnapCountByZone = cv.MetaNodeDumpSnapCountByZone
+		if c.cfg.MetaNodeDumpSnapCountByZone == nil {
+			c.cfg.MetaNodeDumpSnapCountByZone = make(map[string]uint64)
 		}
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)

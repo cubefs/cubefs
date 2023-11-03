@@ -307,6 +307,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.MetaNodeDelEKVolumeRate >= 0 {
 				msg += fmt.Sprintf("MetaNodeDelEKVolRate, Vol: %s, Rate: %v ", info.Volume, info.MetaNodeDelEKVolumeRate)
 			}
+			if info.MetaNodeDumpSnapCount != -1 {
+				msg += fmt.Sprintf("Metanode Dump Snap Count     : %d, ", info.MetaNodeDumpSnapCount)
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -387,6 +390,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.WriteConnTimeoutMs, "WriteConnTimeoutMs", -1, "set zone or cluster(omit zone acts on cluster) write connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&info.MetaNodeDelEKVolumeRate, "metaNodeDelEKVolRate", -1, "del ek rate limit for volume")
 	cmd.Flags().Int64Var(&info.MetaNodeDelEKZoneRate, "metaNodeDelEKZoneRate", -1, "del ek rate limit for zone")
+	cmd.Flags().Int64Var(&info.MetaNodeDumpSnapCount, proto.MetaNodeDumpSnapCountKey, -1, "set metanode dump snap count")
 	return cmd
 }
 
@@ -469,6 +473,8 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("   (map[zoneName]limit of delete ek)\n"))
 	sb.WriteString(fmt.Sprintf("  MetaNodeDelEKVolRateLimit       : %v\n", info.MetaNodeDelEkVolRateLimitMap))
 	sb.WriteString(fmt.Sprintf("   (map[volName]limit of delete ek)\n"))
+	sb.WriteString(fmt.Sprintf("  MetaDumpSnapCount                : %v\n", info.MetaNodeDumpSnapCountByZone))
+	sb.WriteString(fmt.Sprintf("    (map[zoneName]SnapCount of specified zone)\n"))
 	return sb.String()
 }
 

@@ -924,6 +924,10 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MetaNodeDelEKZoneRate >= 0 {
 		request.addParam(proto.MetaNodeDelEKZoneRateLimitKey, strconv.FormatInt(info.MetaNodeDelEKZoneRate, 10))
 	}
+
+	if info.MetaNodeDumpSnapCount >= 0 {
+		request.addParam(proto.MetaNodeDumpSnapCountKey, strconv.Itoa(int(info.MetaNodeDumpSnapCount)))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, _, err = api.mc.serveRequest(request); err != nil {

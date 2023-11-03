@@ -22,7 +22,6 @@ import (
 	"github.com/cubefs/cubefs/util/unit"
 	"time"
 
-	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -79,8 +78,11 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer.Stop()
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	timerSyncReqRecordsEvictTimestamp := time.NewTimer(time.Second * 5)
-	scheduleState := common.StateStopped
+	storeTicker := time.NewTicker(intervalDumpSnap)
 	dumpFunc := func(msg *storeMsg) {
+		defer func() {
+			mp.manager.tokenM.PutRunToken(mp.config.PartitionId)
+		}()
 		log.LogWarnf("[beforMetaPartitionStore] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
 			msg.applyIndex)
@@ -113,18 +115,10 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		if _, ok := mp.IsLeader(); ok {
 			timer.Reset(intervalToPersistData)
 		}
-		scheduleState = common.StateStopped
 	}
 	go func(stopC chan bool) {
 		var msgs []*storeMsg
-		readyChan := make(chan struct{}, 1)
 		for {
-			if len(msgs) > 0 {
-				if scheduleState == common.StateStopped {
-					scheduleState = common.StateRunning
-					readyChan <- struct{}{}
-				}
-			}
 			select {
 			case <-stopC:
 				if len(msgs) != 0 {
@@ -132,9 +126,18 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				timer.Stop()
 				timerCursor.Stop()
+				storeTicker.Stop()
+
 				return
 
-			case <-readyChan:
+			case <-storeTicker.C:
+				if len(msgs) == 0{
+					continue
+				}
+
+				if !mp.manager.tokenM.GetRunToken(mp.config.PartitionId) {
+					continue
+				}
 				var (
 					maxIdx uint64
 					maxMsg *storeMsg
@@ -160,6 +163,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				if maxMsg != nil {
 					go dumpFunc(maxMsg)
+				} else {
+					//no dump exe, release token
+					mp.manager.tokenM.PutRunToken(mp.config.PartitionId)
 				}
 				msgs = msgs[:0]
 			case msg := <-mp.storeChan:

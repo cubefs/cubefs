@@ -126,8 +126,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/checkFreeList", m.checkFreelist)
 	http.HandleFunc("/getReqRecords", m.getRequestRecords)
 	http.HandleFunc("/getReqRecordsInRocksDB", m.getRequestRecordsInRocksDB)
-
 	http.HandleFunc("/setDelEKRateLimit", m.setLocalDeleteExtentRateLimit)
+	http.HandleFunc("/setDumpSnapCount", m.setDumpSnapCount)
 	return
 }
 
@@ -940,6 +940,9 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"cleanTrashItemMaxCountEachTime":    nodeInfo.CleanTrashItemMaxCountEachTime,
 		"clientReqRecordsReserveCount":      reqRecordMaxCount.Load(),
 		"clientReqRecordsReserveMin":        reqRecordReserveMin.Load(),
+		"dumpSnapConfCount":                 m.GetDumpSnapCount(),
+		"dumpSnapRunningCount":              m.GetDumpSnapRunningCount(),
+		"dumpSnapMpIDS":					 m.GetDumpSnapMPID(),
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -2775,13 +2778,11 @@ func (m *MetaNode) setLocalDeleteExtentRateLimit(w http.ResponseWriter, r *http.
 			log.LogErrorf("updateLocalDeleteExtentRateLimit response %s", err)
 		}
 	}()
-
 	if err = r.ParseForm(); err != nil {
 		resp.Code = http.StatusBadRequest
 		resp.Msg = err.Error()
 		return
 	}
-
 	rateLimitValueStr = r.FormValue("rateLimit")
 	rateLimit, err = strconv.ParseUint(rateLimitValueStr, 10, 64)
 	if err != nil {
@@ -2789,7 +2790,6 @@ func (m *MetaNode) setLocalDeleteExtentRateLimit(w http.ResponseWriter, r *http.
 		resp.Msg = err.Error()
 		return
 	}
-
 	oldRateLimit = delExtentRateLimitLocal
 	if rateLimit == delExtentRateLimitLocal {
 		log.LogDebugf("setLocalDeleteExtentRateLimit oldRateLimit(%v) equal to newRateLimitValue", oldRateLimit)
@@ -2804,5 +2804,42 @@ func (m *MetaNode) setLocalDeleteExtentRateLimit(w http.ResponseWriter, r *http.
 	delExtentRateLimitLocal = rateLimit
 	delExtentRateLimiterLocal.SetLimit(limit)
 	log.LogDebugf("setLocalDeleteExtentRateLimit from %v to %v", oldRateLimit, delExtentRateLimitLocal)
+	return
+}
+
+func (m *MetaNode) setDumpSnapCount(w http.ResponseWriter, r *http.Request) {
+	var (
+		err error
+		dumpCount uint64
+	)
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getRequestRecordsInRocksDB] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	if dumpCount, err = strconv.ParseUint(r.FormValue("dumpCount"), 10, 64); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	m.updateDumpSnapCountLoc(dumpCount)
+
+	resp.Data = &struct {
+		Count   uint64            `json:"count"`
+		RunningCount uint64		  `json:"running_count"`
+	}{
+		Count:   m.GetDumpSnapCount(),
+		RunningCount: m.GetDumpSnapRunningCount(),
+	}
 	return
 }

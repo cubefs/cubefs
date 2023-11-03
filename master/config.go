@@ -173,6 +173,7 @@ type clusterConfig struct {
 	ClientReqRemoveDup                  bool //default false, disable remove dup
 	RemoteReadConnTimeoutMs             int64
 	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
+	MetaNodeDumpSnapCountByZone			map[string]uint64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -214,6 +215,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaRaftLogSize = 0            //use meta node config value
 	cfg.MetaRaftLogCap = 0             // use meta node config value
 	cfg.ZoneNetConnConfig = make(map[string]bsProto.ConnConfig)
+	cfg.MetaNodeDumpSnapCountByZone = make(map[string]uint64)
 	return
 }
 

@@ -252,6 +252,10 @@ const (
 
 	intervalToSyncEvictReqRecords = time.Second * 5
 	defParallelismStartMPCount    = 32
+
+	defHDDParalleDumpCount        = 32
+	defSSDParalleDumpCount        = 128
+	intervalDumpSnap              = time.Second * 5
 )
 
 const (

@@ -54,6 +54,9 @@ type NodeInfo struct {
 
 	CleanTrashItemMaxDurationEachTime int32 //min
 	CleanTrashItemMaxCountEachTime    int32
+
+	DumpSnapCountCluster      uint64
+	DumpSnapCountLoc  	      uint64
 }
 
 var (
@@ -363,6 +366,63 @@ func (m *MetaNode) setRemoveDupReqFlag(enableState bool) {
 	enableRemoveDupReq = enableState
 }
 
+func (m *MetaNode)GetDumpSnapCount() uint64 {
+	Count := uint64(0)
+	Count = atomic.LoadUint64(&nodeInfo.DumpSnapCountCluster)
+
+	localCount := atomic.LoadUint64(&nodeInfo.DumpSnapCountLoc)
+	if localCount != 0 {
+		Count = localCount
+	}
+
+	if Count == 0 {
+		Count = defHDDParalleDumpCount
+		if strings.Contains(m.zoneName, "ssd") {
+			Count = defSSDParalleDumpCount
+		}
+	}
+	return Count
+}
+
+func (m *MetaNode)GetDumpSnapRunningCount() uint64 {
+	Count := uint64(0)
+	if m.metadataManager != nil {
+		Count = m.metadataManager.GetDumpSnapRunningCount()
+	}
+	return Count
+}
+
+func (m *MetaNode)GetDumpSnapMPID() []uint64 {
+	if m.metadataManager != nil {
+		return m.metadataManager.GetDumpSnapMPID()
+	}
+	return nil
+}
+
+func (m *MetaNode)SetDumpSnapCount() {
+	Count := m.GetDumpSnapCount()
+	if m.metadataManager != nil {
+		m.metadataManager.ResetDumpSnapShotConfCount(Count)
+	}
+	return
+}
+
+func (m *MetaNode)updateDumpSnapCountCluster(info *proto.LimitInfo) {
+	clusterCount, ok := info.MetaNodeDumpSnapCountByZone[m.zoneName]
+	if !ok {
+		clusterCount = 0
+	}
+	atomic.StoreUint64(&nodeInfo.DumpSnapCountCluster, clusterCount)
+	m.SetDumpSnapCount()
+	return
+}
+
+func (m *MetaNode)updateDumpSnapCountLoc(dumpCount uint64) {
+	atomic.StoreUint64(&nodeInfo.DumpSnapCountLoc, dumpCount)
+	m.SetDumpSnapCount()
+	return
+}
+
 func getGlobalConfNodeInfo() *NodeInfo {
 	newInfo := *nodeInfo
 	return &newInfo
@@ -421,6 +481,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.setRequestRecordsReservedCount(limitInfo.ClientReqRecordsReservedCount)
 	m.setRequestRecordsReservedMin(limitInfo.ClientReqRecordsReservedMin)
 	m.setRemoveDupReqFlag(limitInfo.ClientReqRemoveDupFlag)
+	m.updateDumpSnapCountCluster(limitInfo)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)

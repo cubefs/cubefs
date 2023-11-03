@@ -298,6 +298,8 @@ const (
 	NetworkFlowRatioKey           = "networkFlowRatio"
 	MetaNodeDelEKZoneRateLimitKey = "metaNodeDelEKZoneRateLimit"
 	MetaNodeDelEKVolRateLimitKey  = "metaNodeDelEKVolRateLimit"
+	DataNodeNetworkFlowRatioKey   = "dataNodeNetworkFlowRatio"
+	MetaNodeDumpSnapCountKey      = "metaNodeDumpSnapCount"
 )
 
 const (
@@ -656,6 +658,7 @@ type LimitInfo struct {
 	ClientReqRecordsReservedCount int32
 	ClientReqRecordsReservedMin   int32
 	ClientReqRemoveDupFlag        bool
+	MetaNodeDumpSnapCountByZone   map[string]uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1367,6 +1370,7 @@ type RateLimitInfo struct {
 	WriteConnTimeoutMs               int64
 	MetaNodeDelEKVolumeRate          int64
 	MetaNodeDelEKZoneRate            int64
+	MetaNodeDumpSnapCount            int64
 }
 
 type ConvertMode uint8
