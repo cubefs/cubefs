@@ -790,7 +790,7 @@ func (mp *metaPartition) loadMultiVer(rootDir string, crc uint32) (err error) {
 	mp.multiVersionList.VerList = verList
 	mp.verSeq = mp.multiVersionList.GetLastVer()
 
-	log.LogInfof("loadMultiVer: load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) verlist (%v) crc (%v) mp Ver(%v)",
+	log.LogInfof("loadMultiVer: updateVerList load complete: partitionID(%v) volume(%v) applyID(%v) filename(%v) verlist (%v) crc (%v) mp Ver(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.applyID, filename, mp.multiVersionList.VerList, crc, mp.verSeq)
 	return
 }

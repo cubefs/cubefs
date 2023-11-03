@@ -563,38 +563,6 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 	return
 }
 
-func (mp *metaPartition) checkAndUpdateVerList(verSeq uint64) (err error) {
-	mp.multiVersionList.Lock()
-	defer mp.multiVersionList.Unlock()
-
-	if isInitSnapVer(verSeq) {
-		verSeq = 0
-	}
-	log.LogDebugf("mp.multiVersionList.VerList size %v, content %v", len(mp.multiVersionList.VerList), mp.multiVersionList.VerList)
-	nLen := len(mp.multiVersionList.VerList)
-	if nLen == 0 {
-		log.LogFatalf("checkAndUpdateVerList. mp %v must have more than one version on list", mp.config.PartitionId)
-		return
-	}
-
-	if mp.multiVersionList.VerList[0].Ver > verSeq {
-		return
-	}
-	if mp.multiVersionList.VerList[0].Ver == verSeq {
-		log.LogWarnf("checkAndUpdateVerList. mp %v last ver %v need drop!", mp.config.PartitionId, verSeq)
-		if len(mp.multiVersionList.VerList) == 0 {
-			mp.multiVersionList.VerList = mp.multiVersionList.VerList[:0]
-			return
-		}
-		mp.multiVersionList.VerList = mp.multiVersionList.VerList[1:]
-		return
-	} else {
-		log.LogWarnf("checkAndUpdateVerList. mp %v last ver %v need drop on sequence,request %v!",
-			mp.config.PartitionId, mp.multiVersionList.VerList[0].Ver, verSeq)
-	}
-	return
-}
-
 func (mp *metaPartition) updateSize() {
 	timer := time.NewTicker(time.Minute * 2)
 	go func() {

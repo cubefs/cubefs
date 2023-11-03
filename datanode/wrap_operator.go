@@ -273,7 +273,7 @@ func (s *DataNode) commitDelVersion(volumeID string, verSeq uint64) (err error) 
 				break
 			}
 			if ver.Ver == verSeq {
-				log.LogInfof("action[fsmVersionOp] mp[%v] seq %v,seqArray size %v", partition.config.PartitionID, verSeq, len(verListMgr.VerList))
+				log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v,seqArray size %v", partition.config.PartitionID, verSeq, len(verListMgr.VerList))
 				// mp.multiVersionList = append(mp.multiVersionList[:i], mp.multiVersionList[i+1:]...)
 				verListMgr.VerList = append(verListMgr.VerList[:i], verListMgr.VerList[i+1:]...)
 				break
@@ -308,9 +308,9 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 
 			partition.volVersionInfoList.Lock()
 			if len(partition.volVersionInfoList.VerList) == 0 {
-				log.LogWarnf("action[commitCreateVersion] reqeust ver %v verlist  %v  dp verlist nil and set", req.VerSeq, req.VolVerList)
 				partition.volVersionInfoList.VerList = req.VolVerList
 				partition.verSeq = req.VerSeq
+				log.LogInfof("action[commitCreateVersion] updateVerList reqeust ver %v verlist  %v  dp verlist nil and set", req.VerSeq, req.VolVerList)
 				partition.volVersionInfoList.Unlock()
 				continue
 			}
@@ -337,7 +337,7 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 				Status: status,
 				Ver:    req.VerSeq,
 			})
-			log.LogInfof("action[commitCreateVersion] reqeust add new seq %v verlist (%v)", req.VerSeq, partition.volVersionInfoList)
+			log.LogInfof("action[commitCreateVersion] updateVerList reqeust add new seq %v verlist (%v)", req.VerSeq, partition.volVersionInfoList)
 			partition.verSeq = req.VerSeq
 			partition.volVersionInfoList.Unlock()
 		}
