@@ -211,8 +211,10 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 	for verSeq := range mp.multiVersionList.TemporaryVerMap {
 		for index, verInfo := range mp.multiVersionList.VerList {
 			if verInfo.Ver == verSeq {
-				log.LogInfof("checkVerList. vol %v mp %v ver info %v be consider as TemporaryVer and do deletion", mp.config.VolName, mp.config.PartitionId, verInfo)
+				log.LogInfof("checkVerList.updateVerList vol %v mp %v ver info %v be consider as TemporaryVer and do deletion verlist %v",
+					mp.config.VolName, mp.config.PartitionId, verInfo, mp.multiVersionList.VerList)
 				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:index], mp.multiVersionList.VerList[index+1:]...)
+				log.LogInfof("checkVerList.updateVerList vol %v mp %v verlist %v", mp.config.VolName, mp.config.PartitionId, mp.multiVersionList.VerList)
 				break
 			}
 		}
@@ -287,7 +289,7 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 			lastSeq = VerList[i].Ver
 			return false
 		})
-		if err = mp.HandleVersionOp(proto.SyncAllVersionList, lastSeq, VerList, sync); err != nil {
+		if err = mp.HandleVersionOp(proto.SyncBatchVersionList, lastSeq, VerList, sync); err != nil {
 			return
 		}
 	}

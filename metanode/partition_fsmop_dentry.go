@@ -218,19 +218,11 @@ func (mp *metaPartition) fsmDeleteDentry(denParm *Dentry, checkInode bool) (resp
 	log.LogDebugf("action[fsmDeleteDentry] mp [%v] delete param (%v) seq %v", mp.config.PartitionId, denParm, denParm.getSeqFiled())
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
-	var denFound *Dentry
-	if denParm.getSeqFiled() != 0 {
-		if err := mp.checkAndUpdateVerList(denParm.getSeqFiled()); err != nil {
-			resp.Status = proto.OpNotExistErr
-			log.LogErrorf("action[fsmDeleteDentry] mp %v dentry %v err %v", mp.config.PartitionId, denParm, err)
-			return
-		}
-	}
-
 	var (
-		item   interface{}
-		doMore = true
-		clean  bool
+		denFound *Dentry
+		item     interface{}
+		doMore   = true
+		clean    bool
 	)
 	if checkInode {
 		log.LogDebugf("action[fsmDeleteDentry] mp %v delete param %v", mp.config.PartitionId, denParm)

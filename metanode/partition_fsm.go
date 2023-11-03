@@ -493,7 +493,7 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		mp.verSeq = opData.VerSeq
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, newVer)
 
-		log.LogInfof("action[fsmVersionOp] mp[%v] seq %v, op %v, seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
+		log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v, op %v, seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
 	} else if opData.Op == proto.CreateVersionCommit {
 		cnt := len(mp.multiVersionList.VerList)
 		if cnt > 0 {
@@ -518,7 +518,7 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		mp.verSeq = opData.VerSeq
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, newVer)
 
-		log.LogInfof("action[fsmVersionOp] mp[%v] seq %v, op %v, seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
+		log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v, op %v, seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
 	} else if opData.Op == proto.DeleteVersion {
 		for i, ver := range mp.multiVersionList.VerList {
 			if i == len(mp.multiVersionList.VerList)-1 {
@@ -527,18 +527,29 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 				break
 			}
 			if ver.Ver == opData.VerSeq {
-				log.LogInfof("action[fsmVersionOp] mp[%v] seq %v, op %v, seqArray size %v", mp.config.PartitionId, opData.VerSeq, opData.Op, len(mp.multiVersionList.VerList))
+				log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v, op %v, VerList %v",
+					mp.config.PartitionId, opData.VerSeq, opData.Op, mp.multiVersionList.VerList)
 				// mp.multiVersionList = append(mp.multiVersionList[:i], mp.multiVersionList[i+1:]...)
 				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList[:i], mp.multiVersionList.VerList[i+1:]...)
+				log.LogInfof("action[fsmVersionOp] updateVerList mp[%v] seq %v, op %v, VerList %v",
+					mp.config.PartitionId, opData.VerSeq, opData.Op, mp.multiVersionList.VerList)
 				break
 			}
 		}
-	} else if opData.Op == proto.SyncAllVersionList {
-		log.LogWarnf("action[fsmVersionOp] mp %v before update:with seq %v verlist %v",
-			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
-		mp.multiVersionList.VerList = opData.VerList
+	} else if opData.Op == proto.SyncBatchVersionList {
+		log.LogInfof("action[fsmVersionOp] mp %v before update:with seq %v verlist %v opData.VerList %v",
+			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList, opData.VerList)
+
 		mp.verSeq = opData.VerSeq
-		log.LogWarnf("action[fsmVersionOp] mp %v after update:with seq %v verlist %v",
+		lastVer := mp.multiVersionList.GetLastVer()
+		for _, info := range opData.VerList {
+			if info.Ver > lastVer {
+				mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
+				log.LogInfof("action[fsmVersionOp] updateVerList mp %v after update:with seq %v verlist %v",
+					mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
+			}
+		}
+		log.LogInfof("action[fsmVersionOp] updateVerList mp %v after update:with seq %v verlist %v",
 			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
 	} else {
 		log.LogErrorf("action[fsmVersionOp] mp %v with seq %v process op type %v seq %v not found",
