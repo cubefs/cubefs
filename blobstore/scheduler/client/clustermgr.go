@@ -47,6 +47,8 @@ type ClusterMgrVolumeAPI interface {
 	ListDiskVolumeUnits(ctx context.Context, diskID proto.DiskID) (ret []*VunitInfoSimple, err error)
 	ListVolume(ctx context.Context, marker proto.Vid, count int) (volInfo []*VolumeInfoSimple, retVid proto.Vid, err error)
 	ListSealedVolume(ctx context.Context) (volInfo []*VolumeInfoSimple, err error)
+	SetVolumeSealed(ctx context.Context, vid proto.Vid) (err error)
+	SetVolumeIdle(ctx context.Context, vid proto.Vid) (err error)
 }
 
 type ClusterMgrDiskAPI interface {
@@ -367,6 +369,8 @@ type IClusterManager interface {
 	ListVolumeUnit(ctx context.Context, args *cmapi.ListVolumeUnitArgs) ([]*cmapi.VolumeUnitInfo, error)
 	ListVolume(ctx context.Context, args *cmapi.ListVolumeArgs) (ret cmapi.ListVolumes, err error)
 	ListVolumeV2(ctx context.Context, args *cmapi.ListVolumeV2Args) (ret cmapi.ListVolumes, err error)
+	SetVolumeSealed(ctx context.Context, args *cmapi.SetVolumeSealedArgs) (err error)
+	SetVolumeIdle(ctx context.Context, args *cmapi.SetVolumeIdleArgs) (err error)
 	ListDisk(ctx context.Context, args *cmapi.ListOptionArgs) (ret cmapi.ListDiskRet, err error)
 	ListDroppingDisk(ctx context.Context) (ret []*blobnode.DiskInfo, err error)
 	SetDisk(ctx context.Context, id proto.DiskID, status proto.DiskStatus) (err error)
@@ -560,6 +564,18 @@ func (c *clustermgrClient) ListSealedVolume(ctx context.Context) (rets []*Volume
 		rets = append(rets, ret)
 	}
 	return
+}
+func (c *clustermgrClient) SetVolumeSealed(ctx context.Context, vid proto.Vid) (err error) {
+	c.rwLock.RLock()
+	defer c.rwLock.RUnlock()
+
+	return c.client.SetVolumeSealed(ctx, &cmapi.SetVolumeSealedArgs{Vid: vid})
+}
+func (c *clustermgrClient) SetVolumeIdle(ctx context.Context, vid proto.Vid) (err error) {
+	c.rwLock.RLock()
+	defer c.rwLock.RUnlock()
+
+	return c.client.SetVolumeIdle(ctx, &cmapi.SetVolumeIdleArgs{Vid: vid})
 }
 
 // ListClusterDisks list all disks
