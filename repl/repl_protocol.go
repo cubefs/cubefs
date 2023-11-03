@@ -402,7 +402,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	defer func() {
 		reply.clean()
 	}()
-	log.LogDebugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(), rp.sourceConn)
+	log.LogDebugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
@@ -413,7 +413,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		}
 		rp.Stop()
 	}
-	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn)
+	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn.RemoteAddr().String())
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
