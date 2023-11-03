@@ -47,7 +47,6 @@ type IVolumeInspector interface {
 const (
 	defaultPrepareFailSleepS = 10
 	zeroVid                  = proto.Vid(0)
-	defaultDuplicateCnt      = 10000000
 )
 
 // manager of volumes inspect

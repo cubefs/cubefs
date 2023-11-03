@@ -230,6 +230,21 @@ func (mr *MockClusterManagerMockRecorder) ListVolumeUnit(arg0, arg1 interface{})
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVolumeUnit", reflect.TypeOf((*MockClusterManager)(nil).ListVolumeUnit), arg0, arg1)
 }
 
+// ListVolumeV2 mocks base method.
+func (m *MockClusterManager) ListVolumeV2(arg0 context.Context, arg1 *clustermgr.ListVolumeV2Args) (clustermgr.ListVolumes, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListVolumeV2", arg0, arg1)
+	ret0, _ := ret[0].(clustermgr.ListVolumes)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListVolumeV2 indicates an expected call of ListVolumeV2.
+func (mr *MockClusterManagerMockRecorder) ListVolumeV2(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVolumeV2", reflect.TypeOf((*MockClusterManager)(nil).ListVolumeV2), arg0, arg1)
+}
+
 // LockVolume mocks base method.
 func (m *MockClusterManager) LockVolume(arg0 context.Context, arg1 *clustermgr.LockVolumeArgs) error {
 	m.ctrl.T.Helper()
@@ -298,6 +313,34 @@ func (m *MockClusterManager) SetKV(arg0 context.Context, arg1 string, arg2 []byt
 func (mr *MockClusterManagerMockRecorder) SetKV(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetKV", reflect.TypeOf((*MockClusterManager)(nil).SetKV), arg0, arg1, arg2)
+}
+
+// SetVolumeIdle mocks base method.
+func (m *MockClusterManager) SetVolumeIdle(arg0 context.Context, arg1 *clustermgr.SetVolumeIdleArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetVolumeIdle", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetVolumeIdle indicates an expected call of SetVolumeIdle.
+func (mr *MockClusterManagerMockRecorder) SetVolumeIdle(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVolumeIdle", reflect.TypeOf((*MockClusterManager)(nil).SetVolumeIdle), arg0, arg1)
+}
+
+// SetVolumeSealed mocks base method.
+func (m *MockClusterManager) SetVolumeSealed(arg0 context.Context, arg1 *clustermgr.SetVolumeSealedArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetVolumeSealed", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetVolumeSealed indicates an expected call of SetVolumeSealed.
+func (mr *MockClusterManagerMockRecorder) SetVolumeSealed(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVolumeSealed", reflect.TypeOf((*MockClusterManager)(nil).SetVolumeSealed), arg0, arg1)
 }
 
 // UnlockVolume mocks base method.

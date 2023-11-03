@@ -284,7 +284,6 @@ func (mgr *BlobDeleteMgr) deleteShards(
 	vid := volInfo.Vid
 
 	retCh := make(chan delShardRet, len(locations))
-	defer close(retCh)
 
 	span.Debugf("delete blob: vid[%d], bid[%d], markDelete[%+v]", vid, bid, markDelete)
 	for _, location := range locations {
