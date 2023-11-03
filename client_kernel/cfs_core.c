@@ -30,6 +30,12 @@ static int __init cfs_init(void)
 		goto exit;
 	}
 
+	ret = cfs_page_module_init();
+	if (ret < 0) {
+		cfs_log_err("init page module error %d\n", ret);
+		goto exit;
+	}
+
 	ret = register_filesystem(&cfs_fs_type);
 	if (ret < 0) {
 		cfs_log_err("register file system error %d\n", ret);
@@ -43,6 +49,7 @@ exit:
 	cfs_packet_module_exit();
 	cfs_extent_module_exit();
 	cfs_fs_module_exit();
+	cfs_page_module_exit();
 	return ret;
 }
 
@@ -59,6 +66,7 @@ static void __exit cfs_exit(void)
 	cfs_socket_module_exit();
 	cfs_extent_module_exit();
 	cfs_fs_module_exit();
+	cfs_page_module_exit();
 	cfs_log_info("exit\n");
 }
 

@@ -4,6 +4,7 @@
 #include "cfs_buffer.h"
 #include "cfs_common.h"
 #include "cfs_json.h"
+#include "cfs_page.h"
 
 // clang-format off
 #define CFS_PACKET_MAGIC                0xFF
@@ -117,14 +118,6 @@ static inline int cfs_parse_status(u8 status)
 #define CFS_MP_STATUS_READONLY 1
 #define CFS_MP_STATUS_READWRITE 2
 #define CFS_MP_STATUS_UNAVAILABLE -1
-
-/**
- * Define the maximum number of pages transferred to server.
- * The Maximum write size of tiny extent is 1MB,
- * the Maximum write size of normal extent is 128KB,
- * so the maximum number of pages is 1MB / PAGE_SIZE.
- */
-#define CFS_PAGE_VEC_NUM (1024 * 1024 / PAGE_SIZE)
 
 /**
  *  Define cubefs file mode, refer to "https://pkg.go.dev/io/fs#FileMode".
@@ -900,12 +893,8 @@ struct cfs_packet {
 			struct cfs_packet_gquota_request gquota;
 			__be64 ino; /* extent create */
 			struct {
-				union {
-					struct page_frag *pages;
-					struct iovec *iov;
-				};
-				size_t nr_segs;
-				bool is_page;
+				struct cfs_page_frag *frags;
+				size_t nr;
 			} write;
 		} data;
 	} request;
@@ -928,12 +917,8 @@ struct cfs_packet {
 			struct cfs_packet_uniqid_reply uniqid;
 			struct cfs_packet_gquota_reply gquota;
 			struct {
-				union {
-					struct page_frag *pages;
-					struct iovec *iov;
-				};
-				size_t nr_segs;
-				bool is_page;
+				struct cfs_page_frag *frags;
+				size_t nr;
 			} read;
 		} data;
 	} reply;
@@ -944,8 +929,7 @@ struct cfs_packet {
 	void (*handle_reply)(struct cfs_packet *);
 	void *private;
 	union {
-		struct page_frag pages[CFS_PAGE_VEC_NUM];
-		struct iovec iov[CFS_PAGE_VEC_NUM];
+		struct cfs_page_frag frags[CFS_PAGE_VEC_NUM];
 	} rw;
 };
 

@@ -4,16 +4,22 @@ KDIR := $(MODULES_DIR)/build
 obj-m += cubefs.o
 
 cubefs-y :=	btree.o \
+	crc32.o \
 	cfs_buffer.o \
 	cfs_common.o \
 	cfs_core.o \
-	cfs_extent.o \
+	cfs_extent_cache.o \
+	cfs_extent_client.o \
+	cfs_extent_reader.o \
+	cfs_extent_stream.o \
+	cfs_extent_writer.o \
 	cfs_fs.o \
 	cfs_json.o \
 	cfs_master.o \
 	cfs_meta.o \
 	cfs_option.o \
 	cfs_packet.o \
+	cfs_page.o \
 	cfs_socket.o
 
 all:

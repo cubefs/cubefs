@@ -210,41 +210,6 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 	return inode;
 }
 
-struct cfs_pagevec {
-	size_t nr;
-	struct page *pages[CFS_PAGE_VEC_NUM + 32];
-};
-
-static inline struct cfs_pagevec *cfs_pagevec_new(void)
-{
-	return kmem_cache_zalloc(pagevec_cache, GFP_NOFS);
-}
-
-static inline void cfs_pagevec_release(struct cfs_pagevec *vec)
-{
-	kmem_cache_free(pagevec_cache, vec);
-}
-
-static bool cfs_pagevec_append(struct cfs_pagevec *vec, struct page *page)
-{
-	if (vec->nr == ARRAY_SIZE(vec->pages))
-		return false;
-	if (vec->nr > 0 && vec->pages[vec->nr - 1]->index + 1 != page->index)
-		return false;
-	vec->pages[vec->nr++] = page;
-	return true;
-}
-
-static bool cfs_pagevec_empty(struct cfs_pagevec *vec)
-{
-	return vec->nr == 0;
-}
-
-static void cfs_pagevec_clear(struct cfs_pagevec *vec)
-{
-	vec->nr = 0;
-}
-
 /**
  * Called when readpages() failed to update page.
  */
@@ -255,27 +220,32 @@ static int cfs_readpage(struct file *file, struct page *page)
 
 	cfs_log_debug("file=" fmt_file ", page=%p{.index=%lu}\n", file, page,
 		      page ? page->index : 0);
-	return cfs_extent_read_pages(ci->es, &page, 1);
+
+	return cfs_extent_read_pages(ci->es, &page, 1, page_offset(page), 0,
+				     PAGE_SIZE);
 }
 
 static int cfs_readpages_cb(void *data, struct page *page)
 {
-	struct cfs_pagevec *vec = data;
+	struct cfs_page_vec *vec = data;
 	struct inode *inode = page->mapping->host;
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
 	int ret;
 
-	if (!cfs_pagevec_append(vec, page)) {
-		ret = cfs_extent_read_pages(ci->es, vec->pages, vec->nr);
-		cfs_pagevec_clear(vec);
-		if (ret < 0) {
-			page_endio(page, READ, ret);
-			return ret;
-		}
-		ret = cfs_pagevec_append(vec, page);
-		BUG_ON(!ret);
-	}
+	if (cfs_page_vec_append(vec, page))
+		return 0;
+	ret = cfs_extent_read_pages(ci->es, vec->pages, vec->nr,
+				    page_offset(vec->pages[0]), 0, PAGE_SIZE);
+	cfs_page_vec_clear(vec);
+	if (ret < 0)
+		goto failed;
+	ret = cfs_page_vec_append(vec, page);
+	BUG_ON(!ret);
 	return 0;
+
+failed:
+	page_endio(page, READ, ret);
+	return ret;
 }
 
 /**
@@ -286,22 +256,26 @@ static int cfs_readpages(struct file *file, struct address_space *mapping,
 {
 	struct inode *inode = file_inode(file);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
-	struct cfs_pagevec *vec;
+	struct cfs_page_vec *vec;
 	int ret;
 
 	cfs_log_debug("file=%p{}, nr_pages=%u\n", file, nr_pages);
 
-	vec = cfs_pagevec_new();
+	vec = cfs_page_vec_new();
 	if (!vec)
 		return -ENOMEM;
 	ret = read_cache_pages(mapping, pages, cfs_readpages_cb, vec);
 	if (ret < 0)
 		goto out;
-	if (!cfs_pagevec_empty(vec))
-		ret = cfs_extent_read_pages(ci->es, vec->pages, vec->nr);
+	if (cfs_page_vec_empty(vec)) {
+		ret = 0;
+		goto out;
+	}
+	ret = cfs_extent_read_pages(ci->es, vec->pages, vec->nr,
+				    page_offset(vec->pages[0]), 0, PAGE_SIZE);
 
 out:
-	cfs_pagevec_release(vec);
+	cfs_page_vec_release(vec);
 	return ret;
 }
 
@@ -321,7 +295,8 @@ static int cfs_writepage(struct page *page, struct writeback_control *wbc)
 
 	page_size = cfs_inode_page_size(ci, page);
 	set_page_writeback(page);
-	return cfs_extent_write_pages(ci->es, &page, 1, page_size);
+	return cfs_extent_write_pages(ci->es, &page, 1, page_offset(page), 0,
+				      page_size);
 }
 
 static int cfs_writepages_cb(struct page *page, struct writeback_control *wbc,
@@ -329,20 +304,21 @@ static int cfs_writepages_cb(struct page *page, struct writeback_control *wbc,
 {
 	struct inode *inode = page->mapping->host;
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
-	struct cfs_pagevec *vec = data;
+	struct cfs_page_vec *vec = data;
 	loff_t page_size;
 	int ret;
 
-	if (!cfs_pagevec_append(vec, page)) {
+	if (!cfs_page_vec_append(vec, page)) {
 		page_size = cfs_inode_page_size(ci, vec->pages[vec->nr - 1]);
 		ret = cfs_extent_write_pages(ci->es, vec->pages, vec->nr,
+					     page_offset(vec->pages[0]), 0,
 					     page_size);
-		cfs_pagevec_clear(vec);
+		cfs_page_vec_clear(vec);
 		if (ret < 0) {
 			unlock_page(page);
 			return ret;
 		}
-		ret = cfs_pagevec_append(vec, page);
+		ret = cfs_page_vec_append(vec, page);
 		BUG_ON(!ret);
 	}
 	set_page_writeback(page);
@@ -358,21 +334,22 @@ static int cfs_writepages(struct address_space *mapping,
 {
 	struct inode *inode = mapping->host;
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
-	struct cfs_pagevec *vec;
+	struct cfs_page_vec *vec;
 	loff_t page_size;
 	int ret = 0;
 
 	cfs_log_debug("inode=" fmt_inode "\n", pr_inode(inode));
-	vec = cfs_pagevec_new();
+	vec = cfs_page_vec_new();
 	if (!vec)
 		return -ENOMEM;
 	write_cache_pages(mapping, wbc, cfs_writepages_cb, vec);
-	if (!cfs_pagevec_empty(vec)) {
+	if (!cfs_page_vec_empty(vec)) {
 		page_size = cfs_inode_page_size(ci, vec->pages[vec->nr - 1]);
 		ret = cfs_extent_write_pages(ci->es, vec->pages, vec->nr,
+					     page_offset(vec->pages[0]), 0,
 					     page_size);
 	}
-	cfs_pagevec_release(vec);
+	cfs_page_vec_release(vec);
 	return ret;
 }
 
@@ -428,7 +405,8 @@ static int cfs_write_begin(struct file *file, struct address_space *mapping,
 	/**
 	 * 4. uncached page write, page must be read from server first.
 	 */
-	ret = cfs_extent_read_pages(ci->es, &page, 1);
+	ret = cfs_extent_read_pages(ci->es, &page, 1, page_offset(page), 0,
+				    PAGE_SIZE);
 	lock_page(page);
 	if (PageError(page))
 		ret = -EIO;
@@ -478,11 +456,8 @@ static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter)
 	struct inode *inode = file_inode(file);
 	loff_t offset = iocb->ki_pos;
 
-	if (iov_iter_rw(iter) == READ)
-		return cfs_extent_dio_read(CFS_INODE(inode)->es, iter, offset);
-	else
-		return cfs_extent_dio_write(CFS_INODE(inode)->es, iter, offset);
-	return -1;
+	return cfs_extent_dio_read_write(CFS_INODE(inode)->es,
+					 iov_iter_rw(iter), iter, offset);
 }
 #elif defined(KERNEL_HAS_DIO_WITH_ITER_AND_OFFSET)
 static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter,
@@ -491,11 +466,8 @@ static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter,
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
 
-	if (iov_iter_rw(iter) == READ)
-		return cfs_extent_dio_read(CFS_INODE(inode)->es, iter, offset);
-	else
-		return cfs_extent_dio_write(CFS_INODE(inode)->es, iter, offset);
-	return -1;
+	return cfs_extent_dio_read_write(CFS_INODE(inode)->es,
+					 iov_iter_rw(iter), iter, offset);
 }
 #else
 static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
@@ -504,7 +476,6 @@ static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
-	struct cfs_inode *ci = (struct cfs_inode *)inode;
 	struct iov_iter iter;
 
 	cfs_log_debug("file=" fmt_file
@@ -512,18 +483,12 @@ static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
 		      pr_file(file), offset, nr_segs, iov_length(iov, nr_segs));
 
 #ifdef KERNEL_HAS_IOV_ITER_WITH_TAG
-	iov_iter_init(&ii, WRITE, iov, nr_segs, len);
+	iov_iter_init(&iter, type, iov, nr_segs, iov_length(iov, nr_segs));
 #else
 	iov_iter_init(&iter, iov, nr_segs, iov_length(iov, nr_segs), 0);
 #endif
-	switch (type) {
-	case READ:
-		return cfs_extent_dio_read(ci->es, &iter, offset);
-	case WRITE:
-		return cfs_extent_dio_write(ci->es, &iter, offset);
-	default:
-		return -1;
-	}
+	return cfs_extent_dio_read_write(CFS_INODE(inode)->es, type, &iter,
+					 offset);
 }
 #endif
 
@@ -1594,7 +1559,7 @@ int cfs_fs_module_init(void)
 			goto oom;
 	}
 	if (!pagevec_cache) {
-		pagevec_cache = KMEM_CACHE(cfs_pagevec, SLAB_MEM_SPREAD);
+		pagevec_cache = KMEM_CACHE(cfs_page_vec, SLAB_MEM_SPREAD);
 		if (!pagevec_cache)
 			goto oom;
 	}

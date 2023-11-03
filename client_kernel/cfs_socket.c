@@ -228,8 +228,8 @@ int cfs_socket_recv_iovec(struct cfs_socket *csk, struct iovec *iov,
 	return ret;
 }
 
-int cfs_socket_send_pages(struct cfs_socket *csk, struct page_frag *pages,
-			  size_t nr_pages)
+static int cfs_socket_send_pages(struct cfs_socket *csk,
+				 struct cfs_page_frag *frags, size_t nr)
 {
 	size_t i;
 	sigset_t blocked, oldset;
@@ -239,9 +239,10 @@ int cfs_socket_send_pages(struct cfs_socket *csk, struct page_frag *pages,
 	 * Don't allow other signals to interrupt the transmission */
 	siginitsetinv(&blocked, sigmask(SIGKILL));
 	sigprocmask(SIG_SETMASK, &blocked, &oldset);
-	for (i = 0; i < nr_pages; i++) {
-		ret = kernel_sendpage(csk->sock, pages[i].page, pages[i].offset,
-				      pages[i].size, MSG_NOSIGNAL);
+	for (i = 0; i < nr; i++) {
+		ret = kernel_sendpage(csk->sock, frags[i].page->page,
+				      frags[i].offset, frags[i].size,
+				      MSG_NOSIGNAL);
 		if (ret < 0) {
 			cfs_log_err("so(%p) kernel sendpage error %d\n",
 				    csk->sock, ret);
@@ -252,8 +253,8 @@ int cfs_socket_send_pages(struct cfs_socket *csk, struct page_frag *pages,
 	return ret;
 }
 
-int cfs_socket_recv_pages(struct cfs_socket *csk, struct page_frag *pages,
-			  size_t nr_pages)
+static int cfs_socket_recv_pages(struct cfs_socket *csk,
+				 struct cfs_page_frag *frags, size_t nr)
 {
 	size_t i;
 	sigset_t blocked, oldset;
@@ -263,17 +264,17 @@ int cfs_socket_recv_pages(struct cfs_socket *csk, struct page_frag *pages,
 	 * Don't allow other signals to interrupt the transmission */
 	siginitsetinv(&blocked, sigmask(SIGKILL));
 	sigprocmask(SIG_SETMASK, &blocked, &oldset);
-	for (i = 0; i < nr_pages; i++) {
+	for (i = 0; i < nr; i++) {
 		struct kvec vec;
 		struct msghdr msghdr = {
 			.msg_flags = MSG_WAITALL | MSG_NOSIGNAL,
 		};
 
-		vec.iov_base = kmap(pages[i].page) + pages[i].offset,
-		vec.iov_len = pages[i].size,
+		vec.iov_base = kmap(frags[i].page->page) + frags[i].offset;
+		vec.iov_len = frags[i].size;
 		ret = kernel_recvmsg(csk->sock, &msghdr, &vec, 1, vec.iov_len,
 				     msghdr.msg_flags);
-		kunmap(pages[i].page);
+		kunmap(frags[i].page->page);
 		if (ret < 0) {
 			cfs_log_err("so(%p) kernel recvmsg error %d\n",
 				    csk->sock, ret);
@@ -358,14 +359,9 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		break;
 	case CFS_OP_STREAM_WRITE:
 	case CFS_OP_STREAM_RANDOM_WRITE:
-		if (packet->request.data.write.is_page)
-			ret = cfs_socket_send_pages(
-				csk, packet->request.data.write.pages,
-				packet->request.data.write.nr_segs);
-		else
-			ret = cfs_socket_send_iovec(
-				csk, packet->request.data.write.iov,
-				packet->request.data.write.nr_segs);
+		ret = cfs_socket_send_pages(csk,
+					    packet->request.data.write.frags,
+					    packet->request.data.write.nr);
 		break;
 	case CFS_OP_STREAM_READ:
 	case CFS_OP_STREAM_FOLLOWER_READ:
@@ -453,14 +449,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		/**
 		 *  reply read extent message
 		 */
-		if (packet->reply.data.read.is_page)
-			ret = cfs_socket_recv_pages(
-				csk, packet->reply.data.read.pages,
-				packet->reply.data.read.nr_segs);
-		else
-			ret = cfs_socket_recv_iovec(
-				csk, packet->reply.data.read.iov,
-				packet->reply.data.read.nr_segs);
+		ret = cfs_socket_recv_pages(csk, packet->reply.data.read.frags,
+					    packet->reply.data.read.nr);
 		if (ret < 0) {
 			cfs_log_err(
 				"so(%p) id=%llu, op=0x%x, recv data(%u) error %d\n",
@@ -545,13 +535,14 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			 *  reply error message
 			 */
 			cfs_log_debug(
-				"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, arglen=%u, datalen=%u, data=%.*s\n",
+				"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, from=%s, data=%.*s\n",
 				csk->sock,
 				be64_to_cpu(packet->reply.hdr.req_id),
 				packet->reply.hdr.opcode,
 				be64_to_cpu(packet->reply.hdr.pid),
 				be64_to_cpu(packet->reply.hdr.ext_id),
-				packet->reply.hdr.result_code, arglen, datalen,
+				packet->reply.hdr.result_code,
+				cfs_pr_addr(&csk->ss_dst),
 				(int)cfs_buffer_size(csk->rx_buffer),
 				cfs_buffer_data(csk->rx_buffer));
 		}

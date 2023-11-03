@@ -298,7 +298,7 @@ cfs_meta_select_partition(struct cfs_meta_client *mc)
 			mc->select_mp = list_first_entry_or_null(
 				&mc->rw_partitions, struct cfs_meta_partition,
 				list);
-		else if (list_is_last(&mc->rw_partitions, &mc->select_mp->list))
+		else if (list_is_last(&mc->select_mp->list, &mc->rw_partitions))
 			mc->select_mp = list_first_entry_or_null(
 				&mc->rw_partitions, struct cfs_meta_partition,
 				list);
