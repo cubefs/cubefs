@@ -333,6 +333,17 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
+
+	m.config.MonitorPushAddr = cfg.GetString(cfgMonitorPushAddr)
+
+	m.config.volForceDeletion = cfg.GetBoolWithDefault(cfgVolForceDeletion, true)
+
+	threshold := cfg.GetInt64WithDefault(cfgVolDeletionDentryThreshold, 0)
+	if threshold < 0 {
+		return fmt.Errorf("volDeletionDentryThreshold can't be less than 0 ! ")
+	}
+	m.config.volDeletionDentryThreshold = uint64(threshold)
+
 	return
 }
 

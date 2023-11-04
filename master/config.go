@@ -47,6 +47,11 @@ const (
 	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
 	disableAutoCreate                   = "disableAutoCreate"
+	cfgMonitorPushAddr                  = "monitorPushAddr"
+	intervalToScanS3Expiration          = "intervalToScanS3Expiration"
+
+	cfgVolForceDeletion           = "volForceDeletion"
+	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
 )
 
 //default value
@@ -125,6 +130,12 @@ type clusterConfig struct {
 	MetaPartitionInodeIdStep            uint64
 	MaxQuotaNumPerVol                   int
 	DisableAutoCreate                   bool
+	MonitorPushAddr                     string
+	IntervalToScanS3Expiration          int64
+	MaxConcurrentLcNodes                uint64
+
+	volForceDeletion           bool   // when delete a volume, ignore it's dentry count or not
+	volDeletionDentryThreshold uint64 // in case of volForceDeletion is set to false, define the dentry count threshold to allow volume deletion
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
