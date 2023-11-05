@@ -450,12 +450,12 @@ func NewInode(ino uint64, t uint32) *Inode {
 		NLink:      1,
 		Extents:    NewSortedExtents(),
 		//ObjExtents:         NewSortedObjExtents(),
-		multiSnap:              nil,
-		StorageClass:           0,
-		HybridCouldExtents:     NewSortedHybridCloudExtents(),
-		ForbiddenMigration:     ApproverToMigration,
-		WriteGeneration:        0,
-		HybridCouldExtentsTemp: newSortedHybridCloudExtentsTemp(),
+		multiSnap:          nil,
+		StorageClass:       0,
+		HybridCouldExtents: NewSortedHybridCloudExtents(),
+		ForbiddenMigration: ApproverToMigration,
+		WriteGeneration:    0,
+		//		HybridCouldExtentsTemp: newSortedHybridCloudExtentsTemp(),
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2

@@ -2,6 +2,7 @@ package metanode
 
 import (
 	"container/list"
+	"github.com/cubefs/cubefs/util/log"
 	"sync"
 	"time"
 )
@@ -56,8 +57,8 @@ func (fmList *forbiddenMigrationList) Delete(ino uint64) {
 }
 
 func (fmList *forbiddenMigrationList) getExpiredForbiddenMigrationInodes() []uint64 {
-	fmList.Lock()
-	defer fmList.Unlock()
+	fmList.RLock()
+	defer fmList.RUnlock()
 	var expiredInos []uint64
 	currentTime := time.Now().UnixNano()
 	for e := fmList.list.Back(); e != nil; e = e.Prev() {
@@ -75,12 +76,17 @@ func (fmList *forbiddenMigrationList) getExpiredForbiddenMigrationInodes() []uin
 }
 
 func (fmList *forbiddenMigrationList) getAllForbiddenMigrationInodes() []uint64 {
-	fmList.Lock()
-	defer fmList.Unlock()
+	fmList.RLock()
+	defer fmList.RUnlock()
 	var allInos []uint64
+	log.LogDebugf("[getAllForbiddenMigrationInodes] len %v:", fmList.list.Len())
 	for e := fmList.list.Back(); e != nil; e = e.Prev() {
-		info := e.Value.(*forbiddenInodeInfo)
-		allInos = append(allInos, info.ino)
+		if info, ok := e.Value.(*forbiddenInodeInfo); ok {
+			allInos = append(allInos, info.ino)
+		} else {
+			log.LogWarnf("[getAllForbiddenMigrationInodes] %v", e.Value)
+		}
+
 	}
 	return allInos
 }

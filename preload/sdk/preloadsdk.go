@@ -447,7 +447,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 		log.LogDebugf("worker %v ready to preload(%v)", id, job.name)
 		ino := job.ino
 		//#1 open
-		c.ec.OpenStream(ino)
+		c.ec.OpenStream(ino, true)
 		//#2 write
 		var (
 			objExtents []proto.ObjExtentKey
@@ -490,13 +490,15 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 				log.LogWarnf("Read (%v) wrong size:(%v)", objExtent, n)
 				continue
 			}
-			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil)
+			//TODO:default cache type is ssd?
+			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil, proto.MediaType_SSD, false)
 			//in preload mode,onece extend_hander set to error, streamer is set to error
 			// so write should failed immediately
 			if err != nil {
 				subErr = true
 				log.LogWarnf("preload (%v) to cbfs failed (%v)", job.name, err)
-				if err = c.ec.GetDataPartitionForWrite(); err != nil {
+				//TODO:default cache type is ssd?
+				if err = c.ec.GetDataPartitionForWrite(proto.MediaType_SSD); err != nil {
 					log.LogErrorf("worker %v end for %v", id, err)
 					noWritableDP = true
 				}
