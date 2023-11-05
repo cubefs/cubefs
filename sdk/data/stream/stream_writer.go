@@ -63,14 +63,15 @@ type OpenRequest struct {
 
 // WriteRequest defines a write request.
 type WriteRequest struct {
-	fileOffset int
-	size       int
-	data       []byte
-	flags      int
-	writeBytes int
-	err        error
-	done       chan struct{}
-	checkFunc  func() error
+	fileOffset   int
+	size         int
+	data         []byte
+	flags        int
+	writeBytes   int
+	err          error
+	done         chan struct{}
+	checkFunc    func() error
+	storageClass uint32
 }
 
 // FlushRequest defines a flush request.
@@ -110,7 +111,7 @@ func (s *Streamer) IssueOpenRequest() error {
 	return nil
 }
 
-func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFunc func() error) (write int, err error) {
+func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFunc func() error, storageClass uint32) (write int, err error) {
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -123,6 +124,7 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 	request.flags = flags
 	request.done = make(chan struct{}, 1)
 	request.checkFunc = checkFunc
+	request.storageClass = storageClass
 
 	s.request <- request
 	s.writeLock.Unlock()
@@ -294,7 +296,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc)
+		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc, request.storageClass)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size, request.fullPath)
@@ -315,7 +317,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 	}
 }
 
-func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error) (total int, err error) {
+func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error, storageClass uint32) (total int, err error) {
 	var (
 		direct     bool
 		retryTimes int8
@@ -405,7 +407,7 @@ begin:
 					return
 				}
 			}
-			writeSize, err = s.doWriteAppend(req, direct)
+			writeSize, err = s.doWriteAppend(req, direct, storageClass)
 		}
 		if err != nil {
 			log.LogErrorf("Streamer write: ino(%v) err(%v)", s.inode, err)
@@ -747,14 +749,14 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 		checkVerFunc(currentEK)
 		log.LogDebugf("tryInitExtentHandlerByLastEk: found ek in ExtentCache, extent_id(%v) req_offset(%v) req_size(%v), currentEK [%v] streamer seq %v",
 			currentEK.ExtentId, offset, size, currentEK, s.verSeq)
-		_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
+		dp, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
 		if pidErr == nil {
 			seq := currentEK.GetSeq()
 			if isLastEkVerNotEqual {
 				seq = s.verSeq
 			}
 			log.LogDebugf("tryInitExtentHandlerByLastEk NewExtentHandler")
-			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
+			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size), dp.MediaType)
 			handler.key = &proto.ExtentKey{
 				FileOffset:   currentEK.FileOffset,
 				PartitionId:  currentEK.PartitionId,
@@ -810,7 +812,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 // First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
 // it indicates that the extent may have been fully utilized by the previous version.
 // Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
-func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool) (writeSize int, err error) {
+func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool, storageClass uint32) (writeSize int, err error) {
 	var status int32
 	// try append write, get response
 	log.LogDebugf("action[streamer.write] doWriteAppend req: ExtentKey(%v) FileOffset(%v) size(%v)",
@@ -818,18 +820,18 @@ func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool) (writeSize int
 	// First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
 	// it indicates that the extent may have been fully utilized by the previous version.
 	// Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
-	if writeSize, err, status = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, true); status == LastEKVersionNotEqual {
+	if writeSize, err, status = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, true, storageClass); status == LastEKVersionNotEqual {
 		log.LogDebugf("action[streamer.write] tryDirectAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
 		if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct); status == int32(proto.OpTryOtherExtent) {
 			log.LogDebugf("action[streamer.write] doWriteAppend again req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-			writeSize, err, _ = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, false)
+			writeSize, err, _ = s.doWriteAppendEx(req.Data, req.FileOffset, req.Size, direct, false, storageClass)
 		}
 	}
 	log.LogDebugf("action[streamer.write] doWriteAppend status %v err %v", status, err)
 	return
 }
 
-func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, reUseEk bool) (total int, err error, status int32) {
+func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, reUseEk bool, storageClass uint32) (total int, err error, status int32) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -853,7 +855,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 
 		for i := 0; i < MaxNewHandlerRetry; i++ {
 			if s.handler == nil {
-				s.handler = NewExtentHandler(s, offset, storeMode, 0)
+				s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass)
 				s.dirty = false
 			} else if s.handler.storeMode != storeMode {
 				// store mode changed, so close open handler and start a new one
@@ -882,7 +884,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 			}
 		}
 	} else {
-		s.handler = NewExtentHandler(s, offset, storeMode, 0)
+		s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass)
 		s.dirty = false
 		ek, err = s.handler.write(data, offset, size, direct)
 		if err == nil && ek != nil {

@@ -5183,10 +5183,10 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol, byMeta)))
+	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol, byMeta, m.defaultMediaType)))
 }
 
-func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
+func volStat(vol *Vol, countByMeta bool, storageClass uint32) (stat *proto.VolStatInfo) {
 	stat = new(proto.VolStatInfo)
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * util.GB
@@ -5212,7 +5212,9 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	vol.mpsLock.RUnlock()
 
 	stat.TrashInterval = vol.TrashInterval
-	log.LogDebugf("total[%v],usedSize[%v] TrashInterval[%v]", stat.TotalSize, stat.UsedSize, stat.TrashInterval)
+	stat.DefaultMediaType = storageClass
+	log.LogDebugf("[volStat] vol[%v] total[%v],usedSize[%v] TrashInterval[%v] DefaultStorageClass[%v]",
+		vol.Name, stat.TotalSize, stat.UsedSize, stat.TrashInterval, stat.DefaultMediaType)
 	if proto.IsHot(vol.VolType) {
 		return
 	}
@@ -5221,8 +5223,8 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.CacheUsedSize = vol.cfsUsedSpace()
 	stat.CacheUsedRatio = strconv.FormatFloat(float64(stat.CacheUsedSize)/float64(stat.CacheTotalSize), 'f', 2, 32)
 
-	log.LogDebugf("ebsTotal[%v],ebsUsedSize[%v]", stat.CacheTotalSize, stat.CacheUsedSize)
-
+	log.LogDebugf("[volStat] vol[%v] ebsTotal[%v], ebsUsedSize[%v] DefaultStorageClass[%v]",
+		vol.Name, stat.CacheTotalSize, stat.CacheUsedSize, stat.DefaultMediaType)
 	return
 }
 
@@ -5352,7 +5354,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 				return
 			}
-			stat := volStat(vol, false)
+			stat := volStat(vol, false, m.defaultMediaType)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize,
 				stat.UsedSize, stat.DpReadOnlyWhenVolFull)
 			volsInfo = append(volsInfo, volInfo)
@@ -6242,7 +6244,7 @@ func (m *Server) ListQuotaAll(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.QuotaListAll, metric, nil, nil)
 	}()
 
-	volsInfo := m.cluster.listQuotaAll()
+	volsInfo := m.cluster.listQuotaAll(m.defaultMediaType)
 	log.LogInfof("list all vol has quota [%v]", volsInfo)
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 	return

@@ -540,7 +540,7 @@ func (client *ExtentClient) SetFileSize(inode uint64, size int, sync bool) {
 }
 
 // Write writes the data.
-func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error) (write int, err error) {
+func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error) {
 	prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -550,10 +550,11 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 
 	s.once.Do(func() {
 		// TODO unhandled error
+		//TODO-chi:isMigration?
 		s.GetExtents()
 	})
 
-	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc)
+	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc, storageClass)
 	if err != nil {
 		log.LogError(errors.Stack(err))
 	}
@@ -795,9 +796,9 @@ func (client *ExtentClient) CheckDataPartitionExsit(partitionID uint64) error {
 	return err
 }
 
-func (client *ExtentClient) GetDataPartitionForWrite() error {
+func (client *ExtentClient) GetDataPartitionForWrite(mediaType uint32) error {
 	exclude := make(map[string]struct{})
-	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude)
+	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude, mediaType)
 	return err
 }
 

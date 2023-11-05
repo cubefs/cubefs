@@ -208,6 +208,7 @@ type file struct {
 	fileReader *blobstore.Reader
 
 	path         string
+	storageClass uint32
 	openForWrite bool
 }
 
@@ -713,7 +714,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		fileCachePattern := fmt.Sprintf(".*%s.*", c.cacheRuleKey)
 		fileCache, _ = regexp.MatchString(fileCachePattern, absPath)
 	}
-	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath)
+	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath, info.StorageClass)
 	if f == nil {
 		return statusEMFILE
 	}
@@ -1491,7 +1492,7 @@ func (c *client) checkPermission() (err error) {
 	return
 }
 
-func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string) *file {
+func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string, storageClass uint32) *file {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	fd, ok := c.fdset.NextClear(0)
@@ -1499,7 +1500,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 		return nil
 	}
 	c.fdset.Set(fd)
-	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path}
+	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path, storageClass: storageClass}
 	if flags&0x0f != syscall.O_RDONLY {
 		f.openForWrite = true
 	}
@@ -1672,7 +1673,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 			}
 			return nil
 		}
-		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc)
+		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc, f.storageClass, false)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.id, f.ino), offset, data, flags)
 	}
