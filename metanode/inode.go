@@ -97,6 +97,8 @@ type Inode struct {
 	//HybridCloud
 	StorageClass       uint32
 	HybridCouldExtents *SortedHybridCloudExtents
+	ForbiddenMigration uint32
+	WriteGeneration    uint64
 }
 
 func (i *Inode) GetMultiVerString() string {
@@ -441,17 +443,20 @@ func (i *Inode) String() string {
 func NewInode(ino uint64, t uint32) *Inode {
 	ts := timeutil.GetCurrentTimeUnix()
 	i := &Inode{
-		Inode:              ino,
-		Type:               t,
-		Generation:         1,
-		CreateTime:         ts,
-		AccessTime:         ts,
-		ModifyTime:         ts,
-		NLink:              1,
-		Extents:            NewSortedExtents(),
+		Inode:      ino,
+		Type:       t,
+		Generation: 1,
+		CreateTime: ts,
+		AccessTime: ts,
+		ModifyTime: ts,
+		NLink:      1,
+		Extents:    NewSortedExtents(),
+		//ObjExtents:         NewSortedObjExtents(),
 		multiSnap:          nil,
 		StorageClass:       0,
 		HybridCouldExtents: NewSortedHybridCloudExtents(),
+		ForbiddenMigration: ApproverToMigration,
+		WriteGeneration:    0,
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2
@@ -738,6 +743,12 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	if err = binary.Write(buff, binary.BigEndian, &i.StorageClass); err != nil {
 		panic(err)
 	}
+	if err = binary.Write(buff, binary.BigEndian, &i.ForbiddenMigration); err != nil {
+		panic(err)
+	}
+	if err = binary.Write(buff, binary.BigEndian, &i.WriteGeneration); err != nil {
+		panic(err)
+	}
 	// marshal cache ExtentsKey
 	extData, err := i.Extents.MarshalBinary(true)
 	if err != nil {
@@ -890,6 +901,12 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	//hybridcloud format
 	if v4 {
 		if err = binary.Read(buff, binary.BigEndian, &i.StorageClass); err != nil {
+			return
+		}
+		if err = binary.Read(buff, binary.BigEndian, &i.ForbiddenMigration); err != nil {
+			return
+		}
+		if err = binary.Read(buff, binary.BigEndian, &i.WriteGeneration); err != nil {
 			return
 		}
 		extSize := uint32(0)

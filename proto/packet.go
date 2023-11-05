@@ -106,6 +106,8 @@ const (
 	OpMetaReadDirLimit       uint8 = 0x3D
 	OpMetaLockDir            uint8 = 0x3E
 
+	OpMetaRenewalForbiddenMigration uint8 = 0x3F // for hybrid cloud
+
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition           uint8 = 0x40
 	OpMetaNodeHeartbeat             uint8 = 0x41

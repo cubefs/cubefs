@@ -150,6 +150,7 @@ type OpInode interface {
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error)
+	RenewalForbiddenMigration(req *proto.RenewalForbiddenMigrationRequest, p *Packet, remoteAddr string) (err error)
 }
 
 type OpExtend interface {
@@ -524,6 +525,7 @@ type metaPartition struct {
 	enableAuditLog          bool
 	recycleInodeDelFileFlag atomicutil.Flag
 	storageTypes            []uint32
+	fmList                  *forbiddenMigrationList
 }
 
 func (mp *metaPartition) IsForbidden() bool {
