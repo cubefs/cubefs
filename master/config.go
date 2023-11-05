@@ -49,9 +49,9 @@ const (
 	disableAutoCreate                   = "disableAutoCreate"
 	cfgMonitorPushAddr                  = "monitorPushAddr"
 	intervalToScanS3Expiration          = "intervalToScanS3Expiration"
-
-	cfgVolForceDeletion           = "volForceDeletion"
-	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
+	cfgVolForceDeletion                 = "volForceDeletion"
+	cfgVolDeletionDentryThreshold       = "volDeletionDentryThreshold"
+	defaultStorageClass                 = "defaultStorageClass" //for hybrid cloud
 )
 
 // default value

@@ -69,6 +69,8 @@ func init() {
 		CacheThreshold:  0,
 	}
 	ec := &stream.ExtentClient{}
+	fmt.Println(reflect.ValueOf(MockWriteTrue).Type().Name())
+	fmt.Println(reflect.ValueOf(ec.Write).Type().Name())
 	err := gohook.HookMethod(ec, "Write", MockWriteTrue, nil)
 	if err != nil {
 		panic(fmt.Sprintf("Hook advance instance method failed:%s", err.Error()))

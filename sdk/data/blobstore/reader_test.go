@@ -501,8 +501,7 @@ func MockCheckDataPartitionExistFalse(client *stream.ExtentClient, partitionID u
 	return errors.New("CheckDataPartitionExist failed")
 }
 
-func MockWriteTrue(client *stream.ExtentClient, inode uint64, offset int, data []byte,
-	flags int, checkFunc func() error) (write int, err error) {
+func MockWriteTrue(client *stream.ExtentClient, inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error) {
 	return len(data), nil
 }
 
