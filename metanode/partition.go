@@ -919,6 +919,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		multiVersionList: &proto.VolVersionInfoList{
 			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 		},
+		fmList: newForbiddenMigrationList(proto.ForbiddenMigrationRenewalPeriod),
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp
