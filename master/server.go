@@ -105,32 +105,33 @@ var (
 
 // Server represents the server in a cluster
 type Server struct {
-	id              uint64
-	clusterName     string
-	ip              string
-	bindIp          bool
-	port            string
-	logDir          string
-	walDir          string
-	storeDir        string
-	bStoreAddr      string
-	servicePath     string
-	retainLogs      uint64
-	tickInterval    int
-	raftRecvBufSize int
-	electionTick    int
-	leaderInfo      *LeaderInfo
-	config          *clusterConfig
-	cluster         *Cluster
-	user            *User
-	rocksDBStore    *raftstore_db.RocksDBStore
-	raftStore       raftstore.RaftStore
-	fsm             *MetadataFsm
-	partition       raftstore.Partition
-	wg              sync.WaitGroup
-	reverseProxy    *httputil.ReverseProxy
-	metaReady       bool
-	apiServer       *http.Server
+	id               uint64
+	clusterName      string
+	ip               string
+	bindIp           bool
+	port             string
+	logDir           string
+	walDir           string
+	storeDir         string
+	bStoreAddr       string
+	servicePath      string
+	retainLogs       uint64
+	tickInterval     int
+	raftRecvBufSize  int
+	electionTick     int
+	leaderInfo       *LeaderInfo
+	config           *clusterConfig
+	cluster          *Cluster
+	user             *User
+	rocksDBStore     *raftstore_db.RocksDBStore
+	raftStore        raftstore.RaftStore
+	fsm              *MetadataFsm
+	partition        raftstore.Partition
+	wg               sync.WaitGroup
+	reverseProxy     *httputil.ReverseProxy
+	metaReady        bool
+	apiServer        *http.Server
+	defaultMediaType uint32
 }
 
 // NewServer creates a new server
@@ -371,6 +372,8 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	m.config.volDeletionDentryThreshold = uint64(threshold)
 
+	m.defaultMediaType = uint32(cfg.GetInt64WithDefault(defaultStorageClass, 0))
+	syslog.Println("defaultMediaType=", m.defaultMediaType)
 	return
 }
 

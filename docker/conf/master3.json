@@ -14,5 +14,6 @@
   "walDir": "/cfs/data/wal",
   "storeDir": "/cfs/data/store",
   "metaNodeReservedMem": "67108864",
-  "intervalToScanS3Expiration": "180"
+  "intervalToScanS3Expiration": "180",
+  "defaultStorageClass": 1
 }
