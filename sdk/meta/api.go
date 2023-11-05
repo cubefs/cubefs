@@ -1474,7 +1474,7 @@ func (mw *MetaWrapper) AppendObjExtentKeys(inode uint64, eks []proto.ObjExtentKe
 	return nil
 }
 
-func (mw *MetaWrapper) GetExtents(inode uint64, isCache bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
 	//mediaType := mw.GetMediaType()
 	//if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD {
 	//	return 0, 0, nil, errors.New(fmt.Sprintf("Current media type %v do not support GetExtents",
@@ -1486,7 +1486,7 @@ func (mw *MetaWrapper) GetExtents(inode uint64, isCache bool) (gen uint64, size 
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	resp, err := mw.getExtents(mp, inode, isCache)
+	resp, err := mw.getExtents(mp, inode, isCache, openForWrite)
 	if err != nil {
 		if resp != nil {
 			err = statusToErrno(resp.Status)
@@ -2530,4 +2530,19 @@ func (mw *MetaWrapper) RevokeQuota_ll(parentIno uint64, quotaId uint32, maxConcu
 
 func (mw *MetaWrapper) GetMediaType() uint32 {
 	return atomic.LoadUint32(&mw.DefaultMediaType)
+}
+
+func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("Truncate: No inode partition, ino(%v)", inode)
+		return syscall.ENOENT
+	}
+
+	status, err := mw.renewalForbiddenMigration(mp, inode)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+	return nil
+
 }
