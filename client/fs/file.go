@@ -223,10 +223,14 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 			needBCache = true
 		}
 	}
+	var openForWrite = false
+	if req.Flags&0x0f != syscall.O_RDONLY {
+		openForWrite = true
+	}
 	if needBCache {
-		f.super.ec.OpenStreamWithCache(ino, needBCache)
+		f.super.ec.OpenStreamWithCache(ino, needBCache, openForWrite)
 	} else {
-		f.super.ec.OpenStream(ino)
+		f.super.ec.OpenStream(ino, openForWrite)
 	}
 	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
@@ -558,10 +562,14 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	ino := f.info.Inode
 	start := time.Now()
+	var openForWrite = false
+	if req.Flags&0x0f != syscall.O_RDONLY {
+		openForWrite = true
+	}
 	if req.Valid.Size() && proto.IsHot(f.super.volType) {
 		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
 		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
-		if err := f.super.ec.OpenStream(ino); err != nil {
+		if err := f.super.ec.OpenStream(ino, openForWrite); err != nil {
 			log.LogErrorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}

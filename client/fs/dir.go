@@ -173,8 +173,11 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info, uint32(req.Flags&DefaultFlag), d.info.Inode, req.Name)
 	newInode = info.Inode
-
-	d.super.ec.OpenStream(info.Inode)
+	var openForWrite = false
+	if req.Flags&0x0f != syscall.O_RDONLY {
+		openForWrite = true
+	}
+	d.super.ec.OpenStream(info.Inode, openForWrite)
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()

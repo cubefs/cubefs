@@ -75,8 +75,8 @@ func (cache *ExtentCache) LogOutPut() {
 	})
 }
 
-func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc, isCache bool) error {
-	gen, size, extents, err := getExtents(inode, isCache)
+func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc, isCache, openForWrite bool) error {
+	gen, size, extents, err := getExtents(inode, isCache, openForWrite)
 	if err != nil {
 		return err
 	}
@@ -87,12 +87,12 @@ func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc, 
 }
 
 // Refresh refreshes the extent cache.
-func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc, isCache bool) error {
+func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc, isCache, openForWrite bool) error {
 	if cache.root.Len() > 0 {
 		return nil
 	}
 
-	gen, size, extents, err := getExtents(inode, isCache)
+	gen, size, extents, err := getExtents(inode, isCache, openForWrite)
 	if err != nil {
 		return err
 	}

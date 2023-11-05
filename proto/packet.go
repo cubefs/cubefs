@@ -93,15 +93,16 @@ const (
 	//Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
 
-	OpMetaDeleteInode        uint8 = 0x33 // delete specified inode immediately and do not remove data.
-	OpMetaBatchExtentsAdd    uint8 = 0x34 // for extents batch attachment
-	OpMetaSetXAttr           uint8 = 0x35
-	OpMetaGetXAttr           uint8 = 0x36
-	OpMetaRemoveXAttr        uint8 = 0x37
-	OpMetaListXAttr          uint8 = 0x38
-	OpMetaBatchGetXAttr      uint8 = 0x39
-	OpMetaExtentAddWithCheck uint8 = 0x3A // Append extent key with discard extents check
-	OpMetaReadDirLimit       uint8 = 0x3D
+	OpMetaDeleteInode               uint8 = 0x33 // delete specified inode immediately and do not remove data.
+	OpMetaBatchExtentsAdd           uint8 = 0x34 // for extents batch attachment
+	OpMetaSetXAttr                  uint8 = 0x35
+	OpMetaGetXAttr                  uint8 = 0x36
+	OpMetaRemoveXAttr               uint8 = 0x37
+	OpMetaListXAttr                 uint8 = 0x38
+	OpMetaBatchGetXAttr             uint8 = 0x39
+	OpMetaExtentAddWithCheck        uint8 = 0x3A // Append extent key with discard extents check
+	OpMetaReadDirLimit              uint8 = 0x3D
+	OpMetaRenewalForbiddenMigration uint8 = 0x3E
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition           uint8 = 0x40
