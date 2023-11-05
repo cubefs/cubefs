@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
@@ -949,5 +950,64 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 	}
 	mp.mqMgr.updateUsedInfo(bytes, files, req.QuotaId)
 	log.LogInfof("fsmDeleteInodeQuotaBatch quotaId [%v] resp [%v] success.", req.QuotaId, resp)
+	return
+}
+
+func (mp *metaPartition) internalFreeForbiddenMigrationInode(val []byte) (err error) {
+	if len(val) == 0 {
+		return
+	}
+	buf := bytes.NewBuffer(val)
+	ino := NewInode(0, 0)
+	for {
+		err = binary.Read(buf, binary.BigEndian, &ino.Inode)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				return
+			}
+			return
+		}
+		log.LogDebugf("internalFreeForbiddenMigration: received internal free forbidden migration"+
+			": partitionID(%v) inode(%v)",
+			mp.config.PartitionId, ino.Inode)
+		mp.freeForbiddenMigrationInode(ino)
+	}
+}
+
+func (mp *metaPartition) freeForbiddenMigrationInode(ino *Inode) {
+	log.LogDebugf("action[internalFreeForbiddenMigrationInode] ino %v really be freed", ino)
+	atomic.StoreUint32(&ino.ForbiddenMigration, ApproverToMigration)
+	mp.fmList.Delete(ino.Inode)
+	return
+}
+
+func (mp *metaPartition) fsmForbiddenInodeMigration(ino *Inode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	log.LogDebugf("action[fsmForbiddenInodeMigration] inode %v", ino)
+	resp.Status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	atomic.StoreUint32(&i.ForbiddenMigration, ForbiddenToMigration)
+	atomic.AddUint64(&i.WriteGeneration, 1)
+	mp.fmList.Put(i.Inode)
+	return
+}
+
+func (mp *metaPartition) fsmRenewalInodeForbiddenMigration(ino *Inode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	log.LogDebugf("action[fsmForbiddenInodeMigration] inode %v", ino)
+	resp.Status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	mp.fmList.Put(i.Inode)
 	return
 }

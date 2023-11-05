@@ -813,3 +813,12 @@ func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
 		}
 	}
 }
+
+func (mp *metaPartition) syncToRaftFollowersFreeForbiddenMigrationInode(hasDeleteInodes []byte) (err error) {
+	if len(hasDeleteInodes) == 0 {
+		return
+	}
+	_, err = mp.submit(opFSMInternalFreeForbiddenMigrationInode, hasDeleteInodes)
+
+	return
+}

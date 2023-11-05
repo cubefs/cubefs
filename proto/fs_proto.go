@@ -684,12 +684,13 @@ type AppendObjExtentKeysRequest struct {
 
 // GetExtentsRequest defines the reques to get extents.
 type GetExtentsRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
-	VerSeq      uint64 `json:"seq"`
-	VerAll      bool
-	IsCache     bool
+	VolName      string `json:"vol"`
+	PartitionID  uint64 `json:"pid"`
+	Inode        uint64 `json:"ino"`
+	VerSeq       uint64 `json:"seq"`
+	VerAll       bool
+	IsCache      bool
+	OpenForWrite bool
 }
 
 // GetObjExtentsResponse defines the response to the request of getting obj extents.
@@ -702,11 +703,12 @@ type GetObjExtentsResponse struct {
 
 // GetExtentsResponse defines the response to the request of getting extents.
 type GetExtentsResponse struct {
-	Generation uint64      `json:"gen"`
-	Size       uint64      `json:"sz"`
-	Extents    []ExtentKey `json:"eks"`
-	LayerInfo  []LayerInfo `json:"layer"`
-	Status     int
+	Generation      uint64      `json:"gen"`
+	Size            uint64      `json:"sz"`
+	Extents         []ExtentKey `json:"eks"`
+	LayerInfo       []LayerInfo `json:"layer"`
+	Status          int
+	WriteGeneration uint64 `json:"writeGeneration"`
 }
 
 // TruncateRequest defines the request to truncate.
@@ -1029,4 +1031,10 @@ type GetUniqIDRequest struct {
 
 type GetUniqIDResponse struct {
 	Start uint64 `json:"start"`
+}
+
+type RenewalForbiddenMigrationRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
 }
