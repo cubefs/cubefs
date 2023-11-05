@@ -55,6 +55,7 @@ type Streamer struct {
 	verSeq               uint64
 	needUpdateVer        int32
 	isCache              bool
+	openForWrite         bool
 }
 
 type bcacheKey struct {
@@ -63,7 +64,7 @@ type bcacheKey struct {
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
+func NewStreamer(client *ExtentClient, inode uint64, openForWrite bool) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -76,6 +77,7 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.pendingCache = make(chan bcacheKey, 1)
 	s.verSeq = client.multiVerMgr.latestVerSeq
 	s.extents.verSeq = client.multiVerMgr.latestVerSeq
+	s.openForWrite = openForWrite
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -93,14 +95,14 @@ func (s *Streamer) String() string {
 // TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents() error {
 	if s.client.disableMetaCache || !s.needBCache {
-		return s.extents.RefreshForce(s.inode, s.client.getExtents, s.isCache)
+		return s.extents.RefreshForce(s.inode, s.client.getExtents, s.isCache, s.openForWrite)
 	}
 
-	return s.extents.Refresh(s.inode, s.client.getExtents, s.isCache)
+	return s.extents.Refresh(s.inode, s.client.getExtents, s.isCache, s.openForWrite)
 }
 
 func (s *Streamer) GetExtentsForce() error {
-	return s.extents.RefreshForce(s.inode, s.client.getExtents, s.isCache)
+	return s.extents.RefreshForce(s.inode, s.client.getExtents, s.isCache, s.openForWrite)
 }
 
 // GetExtentReader returns the extent reader.

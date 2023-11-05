@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/auditlog"
@@ -418,7 +419,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		resp := &proto.GetExtentsResponse{}
 		log.LogInfof("action[ExtentsList] inode %v request verseq %v ino ver %v ino.Size %v ino %v hist len %v",
 			req.Inode, req.VerSeq, ino.getVer(), ino.Size, ino, ino.getLayerLen())
-
+		resp.WriteGeneration = atomic.LoadUint64(&ino.WriteGeneration)
 		if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
 			mp.GetExtentByVer(ino, req, resp)
 			vIno := ino.Copy().(*Inode)
@@ -461,12 +462,29 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		if req.VerAll {
 			resp.LayerInfo = retMsg.Msg.getAllLayerEks()
 		}
+
 		reply, err = json.Marshal(resp)
 		if err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
+		} else {
+			//if inode is required for writing, mark it as forbidden migration
+			if req.OpenForWrite {
+				var val []byte
+				val, err = ino.Marshal()
+				if err != nil {
+					p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+					return
+				}
+				_, err = mp.submit(opFSMForbiddenMigrationInode, val)
+				if err != nil {
+					status = proto.OpErr
+					reply = []byte(err.Error())
+				}
+			}
 		}
 	}
+	//mark inode as ForbiddenMigration
 	p.PacketErrorWithBody(status, reply)
 	return
 }

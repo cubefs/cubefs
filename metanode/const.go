@@ -92,6 +92,9 @@ type (
 
 	// Client -> MetaNode
 	GetUniqIDResp = proto.GetUniqIDResponse
+
+	//Client -> MetaNode
+	RenewalForbiddenMigrationRequest = proto.RenewalForbiddenMigrationRequest
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail
@@ -185,6 +188,10 @@ const (
 
 	opFSMSentToChanV1 = 71
 	opFSMStoreTickV1  = 72
+
+	opFSMInternalFreeForbiddenMigrationInode = 73
+	opFSMForbiddenMigrationInode             = 74
+	opFSMRenewalForbiddenMigration           = 75
 )
 
 var (
