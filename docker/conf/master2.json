@@ -16,5 +16,6 @@
   "metaNodeReservedMem": "67108864",
   "intervalToScanS3Expiration": "180",
   "enableLogPanicHook": true,
-  "enableFollowerCache": false
+  "enableFollowerCache": false,
+  "defaultStorageClass": 1
 }
