@@ -15,5 +15,7 @@
   "storeDir": "/cfs/data/store",
   "metaNodeReservedMem": "67108864",
   "intervalToScanS3Expiration": "180",
-  "enableLogPanicHook": true
+  "enableLogPanicHook": true,
+  "enableFollowerCache": false,
+  "defaultStorageClass": 1
 }
