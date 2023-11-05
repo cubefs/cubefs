@@ -30,7 +30,7 @@ func (mp *metaPartition) checkForbiddenMigrationWorker() {
 		case <-t.C:
 			if _, isLeader = mp.IsLeader(); !isLeader {
 				log.LogDebugf("[checkForbiddenMigrationWorker] mp %v nodeId not leader, quit",
-					mp.config.PartitionId, mp.config.NodeId)
+					mp.config.PartitionId)
 				return
 			}
 			inos := mp.fmList.getExpiredForbiddenMigrationInodes()
@@ -71,7 +71,7 @@ func (mp *metaPartition) checkForbiddenMigrationWorker() {
 
 func (mp *metaPartition) refreshForbiddenMigrationList() {
 	log.LogDebugf("[refreshForbiddenMigrationList] pid: %v HandleLeaderChange become leader "+
-		" nodeId: %v, leader: %v", mp.config.PartitionId, mp.config.NodeId)
+		" nodeId: %v ", mp.config.PartitionId, mp.config.NodeId)
 	allInos := mp.fmList.getAllForbiddenMigrationInodes()
 	for _, ino := range allInos {
 		mp.fmList.Put(ino)
