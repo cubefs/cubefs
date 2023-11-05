@@ -115,11 +115,13 @@ type ExtentHandler struct {
 
 	stop chan struct{}
 	sync.Once
+
+	mediaType uint32
 }
 
 // NewExtentHandler returns a new extent handler.
-func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
-	// log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
+func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, storageClass uint32) *ExtentHandler {
+	//	log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:             stream,
 		id:                 GetExtentHandlerID(),
@@ -134,6 +136,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		doneReceiver:       make(chan struct{}),
 		stop:               make(chan struct{}),
 		meetLimitedIoError: false,
+		verUpdate:          make(chan uint64),
+		mediaType:          storageClass,
 	}
 
 	go eh.receiver()
@@ -578,7 +582,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		if eh.meetLimitedIoError {
 			extentType = eh.storeMode
 		}
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0)
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.mediaType)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -610,7 +614,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
-			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude); err != nil {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.mediaType); err != nil {
 				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
 				continue
