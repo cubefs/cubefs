@@ -207,7 +207,8 @@ type file struct {
 	fileWriter *blobstore.Writer
 	fileReader *blobstore.Reader
 
-	path string
+	path         string
+	openForWrite bool
 }
 
 type dirStream struct {
@@ -1499,6 +1500,9 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 	}
 	c.fdset.Set(fd)
 	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path}
+	if flags&0x0f != syscall.O_RDONLY {
+		f.openForWrite = true
+	}
 	if proto.IsCold(c.volType) {
 		clientConf := blobstore.ClientConfig{
 			VolName:         c.volName,
@@ -1621,7 +1625,7 @@ func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 }
 
 func (c *client) openStream(f *file) {
-	_ = c.ec.OpenStream(f.ino)
+	_ = c.ec.OpenStream(f.ino, f.openForWrite)
 }
 
 func (c *client) closeStream(f *file) {

@@ -1012,3 +1012,21 @@ func (mp *metaPartition) InodeGetAccessTime(req *InodeGetReq, p *Packet) (err er
 	p.PacketErrorWithBody(status, reply)
 	return
 }
+
+func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMigrationRequest,
+	p *Packet, remoteAddr string) (err error) {
+	ino := NewInode(req.Inode, 0)
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(opFSMRenewalForbiddenMigration, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	msg := resp.(*InodeResponse)
+	p.PacketErrorWithBody(msg.Status, nil)
+	return
+}

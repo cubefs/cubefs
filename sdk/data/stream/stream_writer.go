@@ -195,6 +195,16 @@ func (s *Streamer) GetStoreMod(offset int, size int) (storeMode int) {
 func (s *Streamer) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
+
+	renewalTimer := time.NewTicker(proto.ForbiddenMigrationRenewalPeriod / 5)
+	defer renewalTimer.Stop()
+	//defer func() {
+	//	if !s.client.disableMetaCache && s.needBCache {
+	//		close(s.request)
+	//		s.request = nil
+	//	}
+	//}()
+
 	for {
 		select {
 		case request := <-s.request:
@@ -228,6 +238,13 @@ func (s *Streamer) server() {
 				s.idle++
 			}
 			s.client.streamerLock.Unlock()
+
+		case <-renewalTimer.C:
+			//renewal forbidden migration
+			err := s.client.renewalForbiddenMigration(s.inode)
+			if err != nil {
+				log.LogWarnf("ino(%v) renewalForbiddenMigration failed err %v", s.inode, err.Error())
+			}
 		}
 	}
 }
