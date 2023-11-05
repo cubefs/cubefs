@@ -66,8 +66,8 @@ func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	return
 }
 
-func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
-	dp = s.getLocalLeaderDataPartition(exclude)
+func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType uint32) (dp *DataPartition, err error) {
+	dp = s.getLocalLeaderDataPartition(exclude, mediaType)
 	if dp != nil {
 		return dp, nil
 	}
@@ -76,7 +76,7 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	partitions := s.partitions
 	s.RUnlock()
 
-	dp = s.getRandomDataPartition(partitions, exclude)
+	dp = s.getRandomDataPartition(partitions, exclude, mediaType)
 
 	if dp != nil {
 		return dp, nil
@@ -136,14 +136,14 @@ func (s *DefaultRandomSelector) Count() int {
 	return len(s.partitions)
 }
 
-func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
+func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}, mediaType uint32) *DataPartition {
 	s.RLock()
 	localLeaderPartitions := s.localLeaderPartitions
 	s.RUnlock()
-	return s.getRandomDataPartition(localLeaderPartitions, exclude)
+	return s.getRandomDataPartition(localLeaderPartitions, exclude, mediaType)
 }
 
-func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) (
+func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}, mediaType uint32) (
 	dp *DataPartition) {
 	length := len(partitions)
 	if length == 0 {
@@ -153,7 +153,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(length)
 	dp = partitions[index]
-	if !isExcluded(dp, exclude) {
+	if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
 		log.LogDebugf("DefaultRandomSelector: select dp[%v] address[%p], index %v", dp, dp, index)
 		return dp
 	}
@@ -163,7 +163,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	var currIndex int
 	for i := 0; i < length; i++ {
 		currIndex = (index + i) % length
-		if !isExcluded(partitions[currIndex], exclude) {
+		if !isExcluded(partitions[currIndex], exclude) && dp.MediaType == mediaType {
 			log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", partitions[currIndex], currIndex)
 			return partitions[currIndex]
 		}

@@ -49,6 +49,7 @@ const (
 	disableAutoCreate                   = "disableAutoCreate"
 	cfgMonitorPushAddr                  = "monitorPushAddr"
 	intervalToScanS3Expiration          = "intervalToScanS3Expiration"
+	defaultStorageClass                 = "defaultStorageClass"
 )
 
 // default value
