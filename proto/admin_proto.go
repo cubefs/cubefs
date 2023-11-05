@@ -783,6 +783,7 @@ type DataPartitionResponse struct {
 	IsRecover     bool
 	PartitionTTL  int64
 	IsDiscard     bool
+	MediaType     uint32
 }
 
 // DataPartitionsView defines the view of a data partition

@@ -73,7 +73,7 @@ func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	return
 }
 
-func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
+func (s *KFasterRandomSelector) Select(exclude map[string]struct{}, mediaType uint32) (dp *DataPartition, err error) {
 	s.RLock()
 	partitions := s.partitions
 	kValue := s.kValue
@@ -88,7 +88,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(kValue)
 	dp = partitions[index]
-	if !isExcluded(dp, exclude) {
+	if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
 		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 			dp, index, kValue, len(partitions))
 		return dp, nil
@@ -99,7 +99,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	// if partitions[index] is excluded, select next in fasterRwPartitions
 	for i := 1; i < kValue; i++ {
 		dp = partitions[(index+i)%kValue]
-		if !isExcluded(dp, exclude) {
+		if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
 			log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%kValue, kValue, len(partitions))
 			return dp, nil
@@ -112,7 +112,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	slowerRwPartitionsNum := len(partitions) - kValue
 	for i := 0; i < slowerRwPartitionsNum; i++ {
 		dp = partitions[(index+i)%slowerRwPartitionsNum+kValue]
-		if !isExcluded(dp, exclude) {
+		if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
 			log.LogDebugf("KFasterRandomSelector: select slower dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%slowerRwPartitionsNum+kValue, kValue, len(partitions))
 			return dp, nil

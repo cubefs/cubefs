@@ -445,7 +445,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	var size int
 	if proto.IsHot(f.super.volType) || f.isStoredInReplicaSystem() {
 		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
-		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc); err == ParseError(syscall.ENOSPC) {
+		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc, f.info.StorageClass, false); err == ParseError(syscall.ENOSPC) {
 			return
 		}
 	} else if f.isStoredInEbsSystem() {
