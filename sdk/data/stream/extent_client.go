@@ -39,12 +39,13 @@ import (
 
 type SplitExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey) error
 type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey, isCache bool) error
-type GetExtentsFunc func(inode uint64, isCache bool) (uint64, uint64, []proto.ExtentKey, error)
+type GetExtentsFunc func(inode uint64, isCache bool, openForWrite bool) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64, fullPath string) error
 type EvictIcacheFunc func(inode uint64)
 type LoadBcacheFunc func(key string, buf []byte, offset uint64, size uint32) (int, error)
 type CacheBcacheFunc func(key string, buf []byte) error
 type EvictBacheFunc func(key string) error
+type RenewalForbiddenMigrationFunc func(inode uint64) error
 
 const (
 	MaxMountRetryLimit = 6
@@ -119,6 +120,8 @@ type ExtentConfig struct {
 
 	DisableMetaCache             bool
 	MinWriteAbleDataPartitionCnt int
+
+	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
 }
 
 type MultiVerMgr struct {
@@ -130,32 +133,33 @@ type MultiVerMgr struct {
 
 // ExtentClient defines the struct of the extent client.
 type ExtentClient struct {
-	streamers          map[uint64]*Streamer
-	streamerList       *list.List
-	streamerLock       sync.Mutex
-	maxStreamerLimit   int
-	readLimiter        *rate.Limiter
-	writeLimiter       *rate.Limiter
-	disableMetaCache   bool
-	volumeType         int
-	volumeName         string
-	bcacheEnable       bool
-	bcacheDir          string
-	BcacheHealth       bool
-	preload            bool
-	LimitManager       *manager.LimitManager
-	dataWrapper        *wrapper.Wrapper
-	appendExtentKey    AppendExtentKeyFunc
-	splitExtentKey     SplitExtentKeyFunc
-	getExtents         GetExtentsFunc
-	truncate           TruncateFunc
-	evictIcache        EvictIcacheFunc //May be null, must check before using
-	loadBcache         LoadBcacheFunc
-	cacheBcache        CacheBcacheFunc
-	evictBcache        EvictBacheFunc
-	inflightL1cache    sync.Map
-	inflightL1BigBlock int32
-	multiVerMgr        *MultiVerMgr
+	streamers                 map[uint64]*Streamer
+	streamerList              *list.List
+	streamerLock              sync.Mutex
+	maxStreamerLimit          int
+	readLimiter               *rate.Limiter
+	writeLimiter              *rate.Limiter
+	disableMetaCache          bool
+	volumeType                int
+	volumeName                string
+	bcacheEnable              bool
+	bcacheDir                 string
+	BcacheHealth              bool
+	preload                   bool
+	LimitManager              *manager.LimitManager
+	dataWrapper               *wrapper.Wrapper
+	appendExtentKey           AppendExtentKeyFunc
+	splitExtentKey            SplitExtentKeyFunc
+	getExtents                GetExtentsFunc
+	truncate                  TruncateFunc
+	evictIcache               EvictIcacheFunc //May be null, must check before using
+	loadBcache                LoadBcacheFunc
+	cacheBcache               CacheBcacheFunc
+	evictBcache               EvictBacheFunc
+	inflightL1cache           sync.Map
+	inflightL1BigBlock        int32
+	multiVerMgr               *MultiVerMgr
+	renewalForbiddenMigration RenewalForbiddenMigrationFunc
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -374,22 +378,22 @@ func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64) error {
+func (client *ExtentClient) OpenStream(inode uint64, openForWrite bool) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode)
+		s = NewStreamer(client, inode, openForWrite)
 		client.streamers[inode] = s
 	}
 	return s.IssueOpenRequest()
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache bool) error {
+func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openForWrite bool) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode)
+		s = NewStreamer(client, inode, openForWrite)
 		client.streamers[inode] = s
 		if !client.disableMetaCache && needBCache {
 			client.streamerList.PushFront(inode)

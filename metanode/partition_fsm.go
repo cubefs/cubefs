@@ -443,10 +443,23 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		err = mp.fsmUniqCheckerEvict(req)
 	case opFSMVersionOp:
 		err = mp.fsmVersionOp(msg.V)
+	case opFSMForbiddenMigrationInode:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmForbiddenInodeMigration(ino)
+	case opFSMInternalFreeForbiddenMigrationInode:
+		err = mp.internalFreeForbiddenMigrationInode(msg.V)
+	case opFSMRenewalForbiddenMigration:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmForbiddenInodeMigration(ino)
 	default:
 		// do nothing
 	}
-
 	return
 }
 
@@ -908,6 +921,8 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
 		go mp.initInode(ino)
 	}
+	//refresh forbidden migration list
+	mp.refreshForbiddenMigrationList()
 }
 
 // Put puts the given key-value pair (operation key and operation request) into the raft store.

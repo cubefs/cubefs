@@ -1037,7 +1037,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		etag    string
 		md5Hash = md5.New()
 	)
-	if err = v.ec.OpenStream(tempInodeInfo.Inode); err != nil {
+	if err = v.ec.OpenStream(tempInodeInfo.Inode, true); err != nil {
 		log.LogErrorf("WritePart: data open stream fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 			v.name, path, multipartId, partId, tempInodeInfo.Inode, err)
 		return nil, err
