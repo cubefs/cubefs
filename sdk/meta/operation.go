@@ -1282,18 +1282,19 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	return status, err
 }
 
-func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool) (resp *proto.GetExtentsResponse, err error) {
+func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool, openForWrite bool) (resp *proto.GetExtentsResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getExtents", err, bgTime, 1)
 	}()
 
 	req := &proto.GetExtentsRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		VerSeq:      mw.VerReadSeq,
-		IsCache:     isCache,
+		VolName:      mw.volname,
+		PartitionID:  mp.PartitionID,
+		Inode:        inode,
+		VerSeq:       mw.VerReadSeq,
+		IsCache:      isCache,
+		OpenForWrite: openForWrite,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -2963,4 +2964,47 @@ func (mw *MetaWrapper) inodeAccessTimeGet(mp *MetaPartition, inode uint64) (stat
 		return
 	}
 	return statusOK, resp.Info, nil
+}
+
+func (mw *MetaWrapper) renewalForbiddenMigration(mp *MetaPartition, inode uint64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("renewalForbiddenMigration", err, bgTime, 1)
+	}()
+
+	req := &proto.RenewalForbiddenMigrationRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaRenewalForbiddenMigration
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("renewalForbiddenMigration: ino(%v) err(%v)", inode, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("renewalForbiddenMigration: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("renewalForbiddenMigration: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("renewalForbiddenMigration exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return statusOK, nil
 }

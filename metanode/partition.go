@@ -147,6 +147,7 @@ type OpInode interface {
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error)
 	InodeGetAccessTime(req *InodeGetReq, p *Packet) (err error)
+	RenewalForbiddenMigration(req *proto.RenewalForbiddenMigrationRequest, p *Packet, remoteAddr string) (err error)
 }
 
 type OpExtend interface {
@@ -519,6 +520,7 @@ type metaPartition struct {
 	enablePersistAccessTime bool
 	accessTimeValidInterval uint64
 	storageTypes            []uint32
+	fmList                  *forbiddenMigrationList
 }
 
 func (mp *metaPartition) IsForbidden() bool {
