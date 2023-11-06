@@ -191,7 +191,7 @@ const (
 	defaultMinusOfMaxInodeID                     = 1000
 	defaultNodeSetGrpBatchCnt                    = 3
 	defaultMigrateDpCnt                          = 50
-	defaultMigrateMpCnt                          = 15
+	defaultMigrateMpCnt                          = 3
 	defaultMaxReplicaCnt                         = 16
 	defaultIopsRLimit                     uint64 = 1 << 35
 	defaultIopsWLimit                     uint64 = 1 << 35
