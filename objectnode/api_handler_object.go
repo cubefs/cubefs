@@ -265,6 +265,15 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if fileInfo.Mode.IsDir() {
+		SendEventNotification(vol, &EventParams{
+			Name:             ObjectAccessedGet,
+			Bucket:           param.Bucket(),
+			Key:              param.Object(),
+			Region:           o.region,
+			FileInfo:         fileInfo,
+			RequestParams:    extractEventRequestParams(r),
+			ResponseElements: extractEventResponseElements(w),
+		})
 		return
 	}
 
@@ -300,6 +309,17 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// send event notification
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectAccessedGet,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		FileInfo:         fileInfo,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
 
 	return
 }
@@ -527,6 +547,17 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(XAmzMetaPrefix+name, value)
 	}
 
+	// send event notification
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectAccessedHead,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		FileInfo:         fileInfo,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 
@@ -667,6 +698,16 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "AccessDenied", Message: err1.Error()})
 			}
 		} else {
+			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)",
+				GetRequestID(r), vol.Name(), object.Key)
+			SendEventNotification(vol, &EventParams{
+				Name:             ObjectRemovedDelete,
+				Bucket:           vol.Name(),
+				Key:              object.Key,
+				Region:           o.region,
+				RequestParams:    extractEventRequestParams(r),
+				ResponseElements: extractEventResponseElements(w),
+			})
 			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
 		}
 		rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
@@ -928,6 +969,18 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccessResponseXML(w, response)
+
+	// send event notification
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectCreatedCopy,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		FileInfo:         fsFileInfo,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 
@@ -1407,6 +1460,18 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header
 	w.Header()[ETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
+
+	// send event notification
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectCreatedPut,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		FileInfo:         fsFileInfo,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 
@@ -1638,6 +1703,17 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	etag := wrapUnescapedQuot(fsFileInfo.ETag)
 	w.Header()[ETag] = []string{etag}
 
+	// send event notification
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectCreatedPost,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		FileInfo:         fsFileInfo,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	// return response depending on success_action_xxx parameter
 	if successRedirectURL != nil {
 		query := successRedirectURL.Query()
@@ -1732,6 +1808,17 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+
+	// Send event notification
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectRemovedDelete,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 
@@ -1871,6 +1958,15 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectTaggingPut,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 
@@ -1923,6 +2019,16 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectTaggingDelete,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 
@@ -2222,7 +2328,7 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 
 	// get object meta
 	start := time.Now()
-	_, xattrs, err := vol.ObjectMeta(param.Object())
+	fsFileInfo, xattrs, err := vol.ObjectMeta(param.Object())
 	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
 		log.LogErrorf("getObjectRetentionHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
@@ -2254,6 +2360,18 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	writeSuccessResponseXML(w, b)
+
+	// send event notification
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectAccessedGetRetention,
+		Bucket:           param.Bucket(),
+		Key:              param.Object(),
+		Region:           o.region,
+		FileInfo:         fsFileInfo,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 

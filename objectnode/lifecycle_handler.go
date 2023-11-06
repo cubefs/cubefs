@@ -99,7 +99,9 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		errorCode = InvalidBucketName
 		return
 	}
-	if _, err = o.vm.Volume(param.Bucket()); err != nil {
+
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		errorCode = NoSuchBucket
 		return
 	}
@@ -164,6 +166,14 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 
+	SendEventNotification(vol, &EventParams{
+		Name:             LifecyclePut,
+		Bucket:           param.Bucket(),
+		Region:           o.region,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	log.LogInfof("putBucketLifecycle success: requestID(%v) volume(%v) lifeCycle(%v)",
 		GetRequestID(r), param.Bucket(), lifeCycle)
 }
@@ -182,7 +192,9 @@ func (o *ObjectNode) deleteBucketLifecycleConfigurationHandler(w http.ResponseWr
 		errorCode = InvalidBucketName
 		return
 	}
-	if _, err = o.vm.Volume(param.Bucket()); err != nil {
+
+	var vol *Volume
+	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
 		errorCode = NoSuchBucket
 		return
 	}
@@ -192,4 +204,12 @@ func (o *ObjectNode) deleteBucketLifecycleConfigurationHandler(w http.ResponseWr
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+
+	SendEventNotification(vol, &EventParams{
+		Name:             LifecycleDelete,
+		Bucket:           param.Bucket(),
+		Region:           o.region,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
 }

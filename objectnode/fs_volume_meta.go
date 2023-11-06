@@ -26,10 +26,12 @@ type ossMetaLoader interface {
 	loadACL() (p *AccessControlPolicy, err error)
 	loadCORS() (cors *CORSConfiguration, err error)
 	loadObjectLock() (config *ObjectLockConfig, err error)
+	loadNotification() (nc *NotificationConfig, err error)
 	storePolicy(p *Policy)
 	storeACL(p *AccessControlPolicy)
 	storeCORS(cors *CORSConfiguration)
 	storeObjectLock(config *ObjectLockConfig)
+	storeNotification(nc *NotificationConfig)
 	setSynced()
 }
 
@@ -46,14 +48,16 @@ type cacheMetaLoader struct {
 
 // OSSMeta is bucket policy and ACL metadata.
 type OSSMeta struct {
-	policy     *Policy
-	acl        *AccessControlPolicy
-	corsConfig *CORSConfiguration
-	lockConfig *ObjectLockConfig
-	policyLock sync.RWMutex
-	aclLock    sync.RWMutex
-	corsLock   sync.RWMutex
-	objectLock sync.RWMutex
+	policy           *Policy
+	acl              *AccessControlPolicy
+	corsConfig       *CORSConfiguration
+	lockConfig       *ObjectLockConfig
+	notification     *NotificationConfig
+	policyLock       sync.RWMutex
+	aclLock          sync.RWMutex
+	corsLock         sync.RWMutex
+	objectLock       sync.RWMutex
+	notificationLock sync.RWMutex
 }
 
 func (c *cacheMetaLoader) loadPolicy() (p *Policy, err error) {
@@ -156,6 +160,29 @@ func (c *cacheMetaLoader) storeObjectLock(config *ObjectLockConfig) {
 	return
 }
 
+func (c *cacheMetaLoader) loadNotification() (nc *NotificationConfig, err error) {
+	c.om.notificationLock.RLock()
+	nc = c.om.notification
+	c.om.notificationLock.RUnlock()
+	if nc == nil && atomic.LoadInt32(c.synced) == 0 {
+		ret, err, _ := c.sf.Do(XAttrKeyOSSNotification, func() (interface{}, error) {
+			return c.sml.loadNotification()
+		})
+		if err != nil {
+			return nil, err
+		}
+		nc = ret.(*NotificationConfig)
+		c.storeNotification(nc)
+	}
+	return
+}
+
+func (c *cacheMetaLoader) storeNotification(nc *NotificationConfig) {
+	c.om.notificationLock.Lock()
+	c.om.notification = nc
+	c.om.notificationLock.Unlock()
+}
+
 func (c *cacheMetaLoader) setSynced() {
 	atomic.StoreInt32(c.synced, 1)
 }
@@ -191,6 +218,12 @@ func (s *strictMetaLoader) loadObjectLock() (o *ObjectLockConfig, err error) {
 func (s *strictMetaLoader) storeObjectLock(cors *ObjectLockConfig) {
 	// do nothing
 }
+
+func (s *strictMetaLoader) loadNotification() (*NotificationConfig, error) {
+	return s.v.loadNotification()
+}
+
+func (s *strictMetaLoader) storeNotification(_ *NotificationConfig) {}
 
 func (s *strictMetaLoader) setSynced() {
 	// do nothing

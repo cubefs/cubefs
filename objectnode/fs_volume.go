@@ -130,14 +130,15 @@ type ListFilesV2Result struct {
 // A high-level approach that exposes the semantics of object storage to the outside world.
 // Volume escapes high-level object storage semantics to low-level POSIX semantics.
 type Volume struct {
-	mw         *meta.MetaWrapper
-	ec         *stream.ExtentClient
-	store      Store // Storage for ACP management
-	name       string
-	owner      string
-	metaLoader ossMetaLoader
-	ticker     *time.Ticker
-	createTime int64
+	mw          *meta.MetaWrapper
+	ec          *stream.ExtentClient
+	store       Store // Storage for ACP management
+	name        string
+	owner       string
+	metaLoader  ossMetaLoader
+	eventFilter EventFilter
+	ticker      *time.Ticker
+	createTime  int64
 
 	volType        int
 	ebsBlockSize   int
@@ -155,6 +156,8 @@ func (v *Volume) GetOwner() string {
 }
 
 func (v *Volume) syncOSSMeta() {
+	v.loadOSSMeta()
+
 	v.ticker = time.NewTicker(OSSMetaUpdateDuration)
 	defer v.ticker.Stop()
 	for {
@@ -198,6 +201,13 @@ func (v *Volume) loadOSSMeta() {
 		return
 	}
 	v.metaLoader.storeObjectLock(objectlock)
+
+	var nc *NotificationConfig
+	if nc, err = v.loadNotification(); err != nil {
+		return
+	}
+	v.metaLoader.storeNotification(nc)
+
 	v.metaLoader.setSynced()
 }
 
@@ -275,6 +285,34 @@ func (v *Volume) loadObjectLock() (configuration *ObjectLockConfig, err error) {
 		return
 	}
 	return configuration, nil
+}
+
+func (v *Volume) loadNotification() (*NotificationConfig, error) {
+	raw, err := v.store.Get(v.name, bucketRootPath, XAttrKeyOSSNotification)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(raw) <= 0 {
+		v.eventFilter = EventFilter{}
+		return nil, nil
+	}
+
+	cfg := NotificationConfig{}
+	if err = json.Unmarshal(raw, &cfg); err != nil {
+		return nil, err
+	}
+	v.eventFilter = cfg.EventFilter()
+
+	return &cfg, nil
+}
+
+func (v *Volume) SetEventFilter(filter EventFilter) {
+	v.eventFilter = filter
+}
+
+func (v *Volume) EventMatch(name EventName, key string) NotifierIDSet {
+	return v.eventFilter.Match(name, key)
 }
 
 func (v *Volume) getInodeFromPath(path string) (inode uint64, err error) {
@@ -3043,6 +3081,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		name:           config.Volume,
 		owner:          volumeInfo.Owner,
 		store:          config.Store,
+		eventFilter:    make(EventFilter),
 		createTime:     metaWrapper.VolCreateTime(),
 		volType:        volumeInfo.VolType,
 		ebsBlockSize:   volumeInfo.ObjBlockSize,

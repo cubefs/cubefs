@@ -240,6 +240,13 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Queries("lifecycle", "").
 			HandlerFunc(o.getBucketLifecycleConfigurationHandler)
 
+		// Get bucket notification configuration
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketNotificationConfiguration.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketNotificationConfigurationAction)).
+			Methods(http.MethodGet).
+			Queries("notification", "").
+			HandlerFunc(o.getBucketNotificationConfigurationHandler)
+
 		// Get bucket versioning
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketVersioning.html
 		// Notes: unsupported operation
@@ -468,6 +475,13 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Methods(http.MethodPut).
 			Queries("lifecycle", "").
 			HandlerFunc(o.putBucketLifecycleConfigurationHandler)
+
+		// Put bucket notification configuration
+		// API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_PutBucketNotificationConfiguration.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketNotificationConfigurationAction)).
+			Methods(http.MethodPut).
+			Queries("notification", "").
+			HandlerFunc(o.putBucketNotificationConfigurationHandler)
 
 		// Put bucket versioning
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketVersioning.html

@@ -163,6 +163,10 @@ const (
 	OSSPutBucketReplicationAction    Action = OSSActionPrefix + "PutBucketReplicationAction"    // unsupported
 	OSSDeleteBucketReplicationAction Action = OSSActionPrefix + "DeleteBucketReplicationAction" // unsupported
 
+	// Bucket notification actions
+	OSSGetBucketNotificationConfigurationAction Action = OSSActionPrefix + "GetBucketNotificationConfiguration"
+	OSSPutBucketNotificationConfigurationAction Action = OSSActionPrefix + "PutBucketNotificationConfiguration"
+
 	// STS actions
 	OSSGetFederationTokenAction Action = OSSActionPrefix + "GetFederationToken"
 
@@ -249,6 +253,8 @@ var AllActions = []Action{
 	OSSGetBucketReplicationAction,
 	OSSPutBucketReplicationAction,
 	OSSDeleteBucketReplicationAction,
+	OSSGetBucketNotificationConfigurationAction,
+	OSSPutBucketNotificationConfigurationAction,
 	OSSOptionsObjectAction,
 	OSSGetFederationTokenAction,
 

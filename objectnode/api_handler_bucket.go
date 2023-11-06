@@ -207,6 +207,16 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 	// release Volume from Volume manager
 	o.vm.Release(bucket)
 	w.WriteHeader(http.StatusNoContent)
+
+	// send event notification
+	SendEventNotification(vol, &EventParams{
+		Name:             BucketRemoved,
+		Bucket:           param.Bucket(),
+		Region:           o.region,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 
@@ -547,6 +557,15 @@ func (o *ObjectNode) putObjectLockConfigurationHandler(w http.ResponseWriter, r 
 	vol.metaLoader.storeObjectLock(config)
 
 	w.WriteHeader(http.StatusNoContent)
+
+	SendEventNotification(vol, &EventParams{
+		Name:             ObjectLockPut,
+		Bucket:           param.Bucket(),
+		Region:           o.region,
+		RequestParams:    extractEventRequestParams(r),
+		ResponseElements: extractEventResponseElements(w),
+	})
+
 	return
 }
 
