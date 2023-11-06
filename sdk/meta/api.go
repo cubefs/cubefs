@@ -1402,10 +1402,9 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey,
 	discard []proto.ExtentKey, isCache bool, storageClass uint32) error {
-	mediaType := mw.GetMediaType()
-	if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD && isCache != true {
+	if !proto.IsStorageClassReplica(mw.GetStorageClass()) && isCache != true {
 		return errors.New(fmt.Sprintf("Current media type %v isCache %v do not support AppendExtentKey",
-			mw.DefaultMediaType, isCache))
+			mw.DefaultStorageClass, isCache))
 	}
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -1474,10 +1473,10 @@ func (mw *MetaWrapper) AppendObjExtentKeys(inode uint64, eks []proto.ObjExtentKe
 }
 
 func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
-	//mediaType := mw.GetMediaType()
+	//mediaType := mw.GetStorageClass()
 	//if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD {
 	//	return 0, 0, nil, errors.New(fmt.Sprintf("Current media type %v do not support GetExtents",
-	//		mw.DefaultMediaType))
+	//		mw.DefaultStorageClass))
 	//}
 
 	mp := mw.getPartitionByInode(inode)
@@ -2527,8 +2526,8 @@ func (mw *MetaWrapper) RevokeQuota_ll(parentIno uint64, quotaId uint32, maxConcu
 	return
 }
 
-func (mw *MetaWrapper) GetMediaType() uint32 {
-	return atomic.LoadUint32(&mw.DefaultMediaType)
+func (mw *MetaWrapper) GetStorageClass() uint32 {
+	return atomic.LoadUint32(&mw.DefaultStorageClass)
 }
 
 func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {

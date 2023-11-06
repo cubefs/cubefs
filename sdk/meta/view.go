@@ -168,11 +168,12 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 		info.UsedSize = info.TotalSize
 	}
 
-	atomic.StoreUint32(&mw.DefaultMediaType, info.DefaultMediaType)
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
-	log.LogInfof("VolStatInfo: volume(%v) info(%v)", mw.volname, info)
+	atomic.StoreUint32(&mw.DefaultStorageClass, info.DefaultStorageClass)
+	log.LogInfof("VolStatInfo: volume(%v) info(%v) defaultStorageClass(%v)",
+		mw.volname, info, proto.StorageClassString(info.DefaultStorageClass))
 	return
 }
 

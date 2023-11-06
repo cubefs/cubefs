@@ -115,8 +115,7 @@ func TestCreateColdVol(t *testing.T) {
 	delVol(volName, t)
 	time.Sleep(11 * time.Second)
 
-	req[volTypeKey] = proto.VolumeTypeCold
-
+	req[volStorageClassKey] = proto.StorageClass_BlobStore
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	// check default val of LF vol

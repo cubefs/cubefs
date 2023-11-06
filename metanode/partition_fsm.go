@@ -921,7 +921,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		ino := NewInode(id, proto.Mode(os.ModePerm|os.ModeDir))
 		//TODO:
 		//ino.StorageClass = uint32(defaultMediaType)
-		ino.StorageClass = proto.MediaType_HDD
+		ino.StorageClass = proto.StorageClass_Replica_HDD
 		go mp.initInode(ino)
 	}
 	//refresh forbidden migration list

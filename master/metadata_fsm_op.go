@@ -285,6 +285,9 @@ type volValue struct {
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
 	Forbidden                                              bool
 	EnableAuditLog                                         bool
+
+	VolStorageClass     uint32
+	AllowedStorageClass []uint32
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -348,7 +351,11 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
 		Forbidden:             vol.Forbidden,
 		EnableAuditLog:        vol.EnableAuditLog,
+
+		VolStorageClass: vol.volStorageClass,
 	}
+	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
+	copy(vv.AllowedStorageClass, vol.allowedStorageClass)
 
 	return
 }
@@ -986,10 +993,11 @@ func (c *Cluster) loadZoneValue() (err error) {
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
 			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
 		}
-		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], mediaType:%v",
-			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit, proto.MediaTypeString(cv.MediaType))
+		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], dataMediaType:%v",
+			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit,
+			proto.MediaTypeString(cv.DataMediaType))
 		zone.loadDataNodeQosLimit()
-		zone.SetMediaType(cv.MediaType)
+		zone.SetDataMediaType(cv.DataMediaType)
 	}
 
 	return

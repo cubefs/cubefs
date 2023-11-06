@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"path"
 	"strings"
@@ -158,6 +159,36 @@ func (c *Config) GetInt64(key string) int64 {
 		return number
 	}
 	return 0
+}
+
+func (c *Config) GetUint64(key string) (err error, value uint64) {
+	var numInt64 int64
+	numInt64 = c.GetInt64(key)
+	if numInt64 < 0 {
+		err = fmt.Errorf("value of key(%v) is not uint64: %v", key, numInt64)
+		return err, 0
+	}
+	value = uint64(numInt64)
+	return
+}
+
+func (c *Config) GetUint32(key string) (err error, value uint32) {
+	var numInt64 int64
+	numInt64 = c.GetInt64(key)
+	if numInt64 < 0 || numInt64 > math.MaxUint32 {
+		err = fmt.Errorf("value of key(%v) is not uint32: %v", key, numInt64)
+		return err, 0
+	}
+	value = uint32(numInt64)
+	return
+}
+
+func (c *Config) GetUint32WithDefault(key string, defaultVal uint32) (value uint32) {
+	err, value := c.GetUint32(key)
+	if err != nil || value == 0 {
+		return defaultVal
+	}
+	return value
 }
 
 func (c *Config) HasKey(key string) bool {

@@ -337,6 +337,21 @@ func extractUintWithDefault(r *http.Request, key string, def int) (val int, err 
 	return val, nil
 }
 
+func extractUint32WithDefault(r *http.Request, key string, def uint32) (val uint32, err error) {
+	var str string
+	if str = r.FormValue(key); str == "" {
+		return def, nil
+	}
+
+	var valUint64 uint64
+	if valUint64, err = strconv.ParseUint(str, 10, 32); err != nil || valUint64 < 0 || valUint64 > math.MaxUint32 {
+		return 0, fmt.Errorf("parse [%s] is not valid uint64 [%d], err %v", key, val, err)
+	}
+
+	val = uint32(valUint64)
+	return val, nil
+}
+
 func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint64, err error) {
 
 	var str string
@@ -345,7 +360,7 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 	}
 
 	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val < 0 {
-		return 0, fmt.Errorf("parse [%s] is not valid uint [%d], err %v", key, val, err)
+		return 0, fmt.Errorf("parse [%s] is not valid uint64 [%d], err %v", key, val, err)
 	}
 
 	return val, nil
@@ -679,6 +694,10 @@ type createVolReq struct {
 	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
 	coldArgs coldVolArgs
+
+	//hybrid cloud
+	volStorageClass     uint32
+	allowedStorageClass []uint32 // format is uint32 Separated by commas: "StorageClass1, StorageClass2, ..."
 }
 
 func checkCacheAction(action int) error {
@@ -728,6 +747,35 @@ func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 	return
 }
 
+func parseAllowedStorageClass(r *http.Request) (allowedStorageClass []uint32, err error) {
+	allowedStorageClass = make([]uint32, 0)
+	allowedStorageClassString := extractStr(r, allowedStorageClassKey)
+	if allowedStorageClassString == "" {
+		return
+	}
+
+	allowedStorageClassStrList := strings.Split(allowedStorageClassString, ",")
+	encountered := map[uint64]bool{}
+	for _, ascStr := range allowedStorageClassStrList {
+		var ascUint64 uint64
+		if ascUint64, err = strconv.ParseUint(ascStr, 10, 32); err != nil || ascUint64 > math.MaxUint32 {
+			err = fmt.Errorf("parse (%s) failed, content(%v) is not valid uint32, err(%v)",
+				allowedStorageClassKey, allowedStorageClassString, err)
+			log.LogErrorf("[parseRequestToCreateVol] %v", err.Error())
+			return
+		}
+
+		// pick non-recurring elements
+		ascUint32 := uint32(ascUint64)
+		if !encountered[ascUint64] {
+			encountered[ascUint64] = true
+			allowedStorageClass = append(allowedStorageClass, ascUint32)
+			log.LogDebugf("[parseAllowedStorageClass] pick allowedStorageClass(%v)", proto.StorageClassString(ascUint32))
+		}
+	}
+	return
+}
+
 func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 
 	if err = r.ParseForm(); err != nil {
@@ -772,8 +820,30 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.volType, err = extractUint(r, volTypeKey); err != nil {
-		return
+	if vscStr := r.FormValue(volStorageClassKey); vscStr != "" {
+		if req.volStorageClass, err = extractUint32WithDefault(r, volStorageClassKey, proto.StorageClass_Unspecified); err != nil {
+			return
+		}
+
+		// handling compatibility, new version requester only has volStorageClassKey
+		// StorageClass_Unspecified means let master determine SSD or HDD in subsequent procedure
+		if req.volStorageClass == proto.StorageClass_Unspecified || proto.IsStorageClassReplica(req.volStorageClass) {
+			req.volType = proto.VolumeTypeHot
+		} else if req.volStorageClass == proto.StorageClass_BlobStore {
+			req.volType = proto.VolumeTypeCold
+		}
+	} else {
+		//handling compatibility, old version requester sends no volStorageClassKey but only volTypeKey
+		if req.volType, err = extractUint(r, volTypeKey); err != nil {
+			return
+		}
+
+		if proto.IsHot(req.volType) {
+			// let master determine SSD or HDD in subsequent procedure
+			req.volStorageClass = proto.StorageClass_Unspecified
+		} else if proto.IsCold(req.volType) {
+			req.volStorageClass = proto.StorageClass_BlobStore
+		}
 	}
 
 	followerRead, followerExist, err := extractFollowerRead(r)
@@ -785,7 +855,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return fmt.Errorf("vol with 1 ro 2 replia should enable followerRead")
 	}
 	req.followerRead = followerRead
-	if proto.IsHot(req.volType) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) {
+	if proto.IsStorageClassReplica(req.volStorageClass) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) {
 		req.followerRead = true
 	}
 
@@ -842,6 +912,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	req.txConflictRetryInterval = txConflictRetryInterval
 
 	if req.enableQuota, err = extractBoolWithDefault(r, enableQuota, false); err != nil {
+		return
+	}
+
+	if req.allowedStorageClass, err = parseAllowedStorageClass(r); err != nil {
 		return
 	}
 
@@ -1486,7 +1560,6 @@ func extractPositiveUint64(r *http.Request, key string) (val uint64, err error) 
 }
 
 func extractStr(r *http.Request, key string) (val string) {
-
 	return r.FormValue(key)
 }
 
