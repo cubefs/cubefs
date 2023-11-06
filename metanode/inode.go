@@ -95,6 +95,7 @@ type Inode struct {
 	//ObjExtents *SortedObjExtents
 	// Snapshot
 	multiSnap *InodeMultiSnap
+
 	//HybridCloud
 	StorageClass       uint32
 	HybridCouldExtents *SortedHybridCloudExtents
@@ -460,7 +461,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		Extents:    NewSortedExtents(),
 		//ObjExtents:         NewSortedObjExtents(),
 		multiSnap:          nil,
-		StorageClass:       0,
+		StorageClass:       proto.StorageClass_Unspecified, //proto.StorageClass_Replica_SSD, //TODO:tangjingyu
 		HybridCouldExtents: NewSortedHybridCloudExtents(),
 		ForbiddenMigration: ApproverToMigration,
 		WriteGeneration:    0,
@@ -732,7 +733,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	i.Reserved |= V3EnableSnapInodeFlag
 	i.Reserved |= V4EnableHybridCloud
 	//to check flag
-	if i.StorageClass == proto.MediaType_EBS {
+	if i.StorageClass == proto.StorageClass_BlobStore {
 		if i.HybridCouldExtents.sortedEks != nil {
 			ObjExtents := i.HybridCouldExtents.sortedEks.(*SortedObjExtents)
 			if ObjExtents != nil && len(ObjExtents.eks) > 0 {
@@ -1006,7 +1007,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	} else { //transform old-format inode to v4-format
 		if v2 || v3 {
 			if v2 {
-				i.StorageClass = proto.MediaType_EBS
+				i.StorageClass = proto.StorageClass_BlobStore
 				extSize := uint32(0)
 				if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
 					return
@@ -1041,7 +1042,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 				}
 			} else {
 				i.StorageClass = uint32(defaultMediaType)
-				if i.StorageClass == proto.MediaType_Unspecified {
+				if i.StorageClass == proto.StorageClass_Unspecified {
 					return fmt.Errorf("UnmarshalInodeValue: default media type is not specified in config")
 				}
 				extSize := uint32(0)
@@ -1075,7 +1076,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			}
 		} else {
 			i.StorageClass = uint32(defaultMediaType)
-			if i.StorageClass == proto.MediaType_Unspecified {
+			if i.StorageClass == proto.StorageClass_Unspecified {
 				return fmt.Errorf("UnmarshalInodeValue: default media type is not specified in config")
 			}
 			extents := NewSortedExtents()
@@ -2210,13 +2211,13 @@ func (i *Inode) CopyTinyExtents() (delExtents []proto.ExtentKey) {
 }
 
 func (i *Inode) storeInReplicaSystem() bool {
-	return i.StorageClass == proto.MediaType_HDD || i.StorageClass == proto.MediaType_SSD
+	return i.StorageClass == proto.StorageClass_Replica_HDD || i.StorageClass == proto.StorageClass_Replica_SSD
 }
 
 func (i *Inode) updateStorageClass(storageClass uint32) error {
 	i.Lock()
 	defer i.Unlock()
-	if i.StorageClass == proto.MediaType_Unspecified {
+	if i.StorageClass == proto.StorageClass_Unspecified {
 		i.StorageClass = storageClass
 	} else if i.StorageClass != storageClass {
 		return errors.New(fmt.Sprintf("storageClass %v not equal to inode.storageClass %v",
