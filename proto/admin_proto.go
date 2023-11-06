@@ -1183,7 +1183,9 @@ type SimpleVolView struct {
 	EnablePersistAccessTime bool
 
 	// hybrid cloud
-	DefaultMediaType uint32
+	VolStorageClass     uint32
+	AllowedStorageClass []uint32
+	CacheDpStorageClass uint32
 }
 
 type NodeSetInfo struct {
@@ -1256,7 +1258,7 @@ type ZoneView struct {
 	DataNodesetSelector string
 	MetaNodesetSelector string
 	NodeSet             map[uint64]*NodeSetView
-	MediaType           string
+	DataMediaType       string
 }
 
 type NodeSetView struct {
@@ -1302,8 +1304,9 @@ func IsPreLoadDp(typ int) bool {
 }
 
 const (
-	VolumeTypeHot  = 0
-	VolumeTypeCold = 1
+	VolumeTypeInvalid = -1
+	VolumeTypeHot     = 0
+	VolumeTypeCold    = 1
 )
 
 func IsCold(typ int) bool {
@@ -1396,24 +1399,63 @@ const (
 	StorageClass_Unspecified uint32 = 0
 	StorageClass_Replica_SSD uint32 = 1
 	StorageClass_Replica_HDD uint32 = 2
-	StorageClass_Blobtore    uint32 = 3
-
-	//Types may be added later:
-	//StorageClass_S3
-	//StorageClass_ARCHIV
-	//StorageClass_HDFS
+	StorageClass_BlobStore   uint32 = 3
 )
 
 var storageClassStringMap = map[uint32]string{
 	StorageClass_Unspecified: "Unspecified",
 	StorageClass_Replica_SSD: "ReplicaSSD",
 	StorageClass_Replica_HDD: "ReplicaHDD",
+	StorageClass_BlobStore:   "BlobStore",
 }
 
-func StorageClassStringMap(storageClass uint32) (value string) {
+func StorageClassString(storageClass uint32) (value string) {
 	value, ok := storageClassStringMap[storageClass]
 	if !ok {
-		value = "InvalidValue"
+		value = fmt.Sprintf("InvalidValue(%v)", storageClass)
 	}
+	return
+}
+
+func IsValidStorageClass(storageClass uint32) bool {
+	if storageClass >= StorageClass_Replica_SSD && storageClass <= StorageClass_BlobStore {
+		return true
+	}
+
+	return false
+}
+
+func IsStorageClassReplica(storageClass uint32) bool {
+	return storageClass == StorageClass_Replica_SSD || storageClass == StorageClass_Replica_HDD
+}
+
+// IsStorageClassBlobStore : encapsulate in a function in case there are more storage classes of blobstore in the future
+func IsStorageClassBlobStore(storageClass uint32) bool {
+	return storageClass == StorageClass_BlobStore
+}
+
+func GetVolTypeByStorageClass(storageClass uint32) (err error, volType int) {
+	if IsStorageClassReplica(storageClass) {
+		volType = VolumeTypeHot
+	} else if storageClass == StorageClass_BlobStore {
+		volType = VolumeTypeCold
+	} else {
+		err = fmt.Errorf("got invalid volType by storageClass(%v)", storageClass)
+		volType = VolumeTypeInvalid
+	}
+
+	return
+}
+
+func GetMediaTypeByStorageClass(storageClass uint32) (mediaType uint32) {
+	switch storageClass {
+	case StorageClass_Replica_SSD:
+		mediaType = MediaType_SSD
+	case StorageClass_Replica_HDD:
+		mediaType = MediaType_HDD
+	default:
+		mediaType = MediaType_Unspecified
+	}
+
 	return
 }

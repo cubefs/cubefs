@@ -180,11 +180,11 @@ type MetaWrapper struct {
 
 	disableTrashByClient bool
 
-	VerReadSeq        uint64
-	LastVerSeq        uint64
-	Client            wrapper.SimpleClientInfo
-	IsSnapshotEnabled bool
-	DefaultMediaType  uint32
+	VerReadSeq          uint64
+	LastVerSeq          uint64
+	Client              wrapper.SimpleClientInfo
+	IsSnapshotEnabled   bool
+	DefaultStorageClass uint32
 }
 
 type uniqidRange struct {
@@ -247,6 +247,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.dirCache = make(map[uint64]dirInfoCache)
 	mw.subDir = config.SubDir
 	limit := MaxMountRetryLimit
+	mw.DefaultStorageClass = proto.StorageClass_Unspecified
 
 	for limit > 0 {
 		err = mw.initMetaWrapper()

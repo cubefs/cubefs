@@ -119,7 +119,7 @@ func TestCreateColdVol(t *testing.T) {
 	// time.Sleep(30 * time.Second)
 
 	req[nameKey] = volName2
-	req[volTypeKey] = proto.VolumeTypeCold
+	req[volStorageClassKey] = proto.StorageClass_BlobStore
 
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 

@@ -127,9 +127,9 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	ino.setVer(mp.verSeq)
 	ino.LinkTarget = req.Target
 	ino.StorageClass = req.StorageType
-	if ino.StorageClass == proto.MediaType_SSD || ino.StorageClass == proto.MediaType_HDD {
+	if ino.storeInReplicaSystem() {
 		ino.HybridCouldExtents.sortedEks = NewSortedExtents()
-	} else if ino.StorageClass == proto.MediaType_EBS {
+	} else if ino.StorageClass == proto.StorageClass_BlobStore {
 		ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()
 	} else {
 		p.PacketErrorWithBody(proto.OpErr, []byte(fmt.Sprintf("storage type %v not support", ino.StorageClass)))

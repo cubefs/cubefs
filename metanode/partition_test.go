@@ -78,7 +78,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 
 	// add data to mp
 	ino := NewInode(0, 0)
-	ino.StorageClass = proto.MediaType_HDD
+	ino.StorageClass = proto.StorageClass_Replica_HDD
 	mp.inodeTree.ReplaceOrInsert(ino, true)
 	dentry := &Dentry{}
 	mp.dentryTree.ReplaceOrInsert(dentry, true)

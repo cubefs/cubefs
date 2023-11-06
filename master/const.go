@@ -151,6 +151,8 @@ const (
 	accessTimeIntervalKey           = "accessTimeValidInterval"
 	enablePersistAccessTimeKey      = "enablePersistAccessTime"
 	mediaTypeKey                    = "mediaType"
+	allowedStorageClassKey          = "allowedStorageClass"
+	volStorageClassKey              = "volStorageClass"
 )
 
 const (

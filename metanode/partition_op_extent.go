@@ -420,7 +420,8 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		reply  []byte
 		status = retMsg.Status
 	)
-	if ino.StorageClass != proto.MediaType_SSD && ino.StorageClass != proto.MediaType_HDD && req.IsCache != true {
+
+	if !ino.storeInReplicaSystem() && req.IsCache != true {
 		status = proto.OpErr
 		reply = []byte(fmt.Sprintf("ino storage type %v IsCache %v do not support ExtentsList",
 			ino.StorageClass, req.IsCache))
@@ -513,10 +514,10 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 		status = retMsg.Status
 	)
 	if status == proto.OpOk {
-		if ino.StorageClass != proto.MediaType_EBS {
+		if ino.StorageClass != proto.StorageClass_BlobStore {
 			status = proto.OpDismatchMediaType
 			reply = []byte(fmt.Sprintf("Dismatch storage type, current storage type is %s",
-				proto.MediaTypeString(ino.StorageClass)))
+				proto.StorageClassString(ino.StorageClass)))
 			p.PacketErrorWithBody(status, reply)
 			return
 		}
@@ -577,7 +578,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		return
 	}
 	i := item.(*Inode)
-	if i.StorageClass != proto.MediaType_HDD && i.StorageClass != proto.MediaType_SSD {
+	if !ino.storeInReplicaSystem() {
 		err = fmt.Errorf("inode %v storage type do not support tuncate operation %v ", req.Inode, i.StorageClass)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -594,6 +595,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	ino.Size = req.Size
 	fileSize = ino.Size
 	ino.setVer(mp.verSeq)
+	ino.StorageClass = i.StorageClass //TODO:tangjingyu: use var i instead of ino?
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -653,14 +655,14 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 		log.LogErrorf("BatchObjExtentAppend fail status [%v]", err)
 		return
 	}
-	if ino.StorageClass != proto.MediaType_EBS {
+	if ino.StorageClass != proto.StorageClass_BlobStore {
 		err = errors.New(fmt.Sprintf("ino StorageClass %v donot support BatchObjExtentAppend", ino.StorageClass))
 		log.LogErrorf("BatchObjExtentAppend fail [%v]", err)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
 	//can only be called when write into ebs
-	ino.StorageClass = proto.MediaType_EBS
+	ino.StorageClass = proto.StorageClass_BlobStore
 	objExtents := req.Extents
 	ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()
 	for _, objExtent := range objExtents {
