@@ -110,8 +110,9 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 				parIno.SetMtime()
 			}
 			return
-		} else if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) {
-			log.LogDebugf("action[fsmCreateDentry.ver] mp %v OpArgMismatchErr [%v] [%v]", mp.config.PartitionId, proto.OsModeType(dentry.Type), proto.OsModeType(d.Type))
+		} else if proto.OsModeType(dentry.Type) != proto.OsModeType(d.Type) && !proto.IsSymlink(dentry.Type) && !proto.IsSymlink(d.Type) {
+			log.LogErrorf("action[fsmCreateDentry] ParentId [%v] get [%v] but should del, dentry name [%v], inode [%v], type[%v,%v],dir[%v,%v]",
+				dentry.ParentId, parIno, dentry.Name, dentry.Inode, dentry.Type, d.Type, proto.IsSymlink(dentry.Type), proto.IsSymlink(d.Type))
 			status = proto.OpArgMismatchErr
 			return
 		} else if dentry.ParentId == d.ParentId && strings.Compare(dentry.Name, d.Name) == 0 && dentry.Inode == d.Inode {
