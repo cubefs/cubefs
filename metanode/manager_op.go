@@ -209,6 +209,7 @@ func (m *metadataManager) opCreateInode(conn net.Conn, p *Packet,
 
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 
@@ -241,6 +242,7 @@ func (m *metadataManager) opQuotaCreateInode(conn net.Conn, p *Packet, remoteAdd
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.QuotaCreateInode(req, p, remoteAddr)
@@ -272,6 +274,7 @@ func (m *metadataManager) opTxMetaLinkInode(conn net.Conn, p *Packet, remoteAddr
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.TxCreateInodeLink(req, p, remoteAddr)
@@ -303,6 +306,7 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.CreateInodeLink(req, p, remoteAddr)
@@ -354,6 +358,7 @@ func (m *metadataManager) opTxCreateDentry(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.TxCreateDentry(req, p, remoteAddr)
@@ -569,6 +574,7 @@ func (m *metadataManager) opCreateDentry(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.CreateDentry(req, p, remoteAddr)
@@ -601,6 +607,7 @@ func (m *metadataManager) opQuotaCreateDentry(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.QuotaCreateDentry(req, p, remoteAddr)
@@ -666,6 +673,7 @@ func (m *metadataManager) opDeleteDentry(conn net.Conn, p *Packet,
 
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 
@@ -700,6 +708,7 @@ func (m *metadataManager) opBatchDeleteDentry(conn net.Conn, p *Packet,
 
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 
@@ -732,6 +741,7 @@ func (m *metadataManager) opTxUpdateDentry(conn net.Conn, p *Packet, remoteAddr 
 
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.TxUpdateDentry(req, p, remoteAddr)
@@ -764,6 +774,7 @@ func (m *metadataManager) opUpdateDentry(conn net.Conn, p *Packet,
 
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 
@@ -797,6 +808,7 @@ func (m *metadataManager) opTxMetaUnlinkInode(conn net.Conn, p *Packet, remoteAd
 
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.TxUnlinkInode(req, p, remoteAddr)
@@ -828,6 +840,7 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.UnlinkInode(req, p, remoteAddr)
@@ -859,6 +872,7 @@ func (m *metadataManager) opMetaBatchUnlinkInode(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.UnlinkInodeBatch(req, p, remoteAddr)
@@ -1015,6 +1029,7 @@ func (m *metadataManager) opBatchMetaEvictInode(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	if err = mp.EvictInodeBatch(req, p, remoteAddr); err != nil {
@@ -1048,6 +1063,7 @@ func (m *metadataManager) opMetaEvictInode(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	if err = mp.EvictInode(req, p, remoteAddr); err != nil {
@@ -1083,6 +1099,7 @@ func (m *metadataManager) opSetAttr(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	if err = mp.SetAttr(req, p.Data, p); err != nil {
@@ -1143,6 +1160,7 @@ func (m *metadataManager) opMetaExtentsAdd(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.ExtentAppend(req, p)
@@ -1179,6 +1197,7 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 
@@ -1299,6 +1318,7 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	mp.ExtentsTruncate(req, p, remoteAddr)
@@ -1771,6 +1791,7 @@ func (m *metadataManager) opMetaUpdateXAttr(conn net.Conn, p *Packet, remoteAddr
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.UpdateXAttr(req, p)
@@ -1801,6 +1822,7 @@ func (m *metadataManager) opMetaSetXAttr(conn net.Conn, p *Packet, remoteAddr st
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.SetXAttr(req, p)
@@ -1831,6 +1853,7 @@ func (m *metadataManager) opMetaBatchSetXAttr(conn net.Conn, p *Packet, remoteAd
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.BatchSetXAttr(req, p)
@@ -1936,6 +1959,7 @@ func (m *metadataManager) opMetaRemoveXAttr(conn net.Conn, p *Packet, remoteAddr
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.RemoveXAttr(req, p)
@@ -1991,6 +2015,7 @@ func (m *metadataManager) opMetaBatchExtentsAdd(conn net.Conn, p *Packet, remote
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	err = mp.BatchExtentAppend(req, p)
@@ -2185,6 +2210,7 @@ func (m *metadataManager) opTxCreateInode(conn net.Conn, p *Packet,
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		m.respondToClientWithVer(conn, p)
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
