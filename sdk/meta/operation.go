@@ -49,7 +49,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		Target:      target,
 		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
-		StorageType: mw.DefaultMediaType,
+		StorageType: mw.DefaultStorageClass,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -119,7 +119,7 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 		Gid:         gid,
 		Target:      target,
 		QuotaIds:    quotaIds,
-		StorageType: mw.DefaultMediaType,
+		StorageType: mw.DefaultStorageClass,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -179,8 +179,10 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Uid:         uid,
 		Gid:         gid,
 		Target:      target,
-		StorageType: mw.DefaultMediaType,
+		StorageType: mw.DefaultStorageClass,
 	}
+	//TODO:tangjinyu test only
+	log.LogWarnf("###### req.StorageType(%v) mw.DefaultStorageClass(%v)", req.StorageType, mw.DefaultStorageClass)
 	req.FullPaths = []string{fullPath}
 
 	packet := proto.NewPacketReqID()

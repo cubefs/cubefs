@@ -101,7 +101,7 @@ type ZoneView struct {
 	DataNodesetSelector string
 	MetaNodesetSelector string
 	NodeSet             map[uint64]*NodeSetView
-	MediaType           string
+	DataMediaType       string
 }
 
 func newZoneView(name string) *ZoneView {
@@ -333,7 +333,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 		cv.Status = zone.getStatusToString()
 		cv.DataNodesetSelector = zone.GetDataNodesetSelector()
 		cv.MetaNodesetSelector = zone.GetMetaNodesetSelector()
-		cv.MediaType = zone.GetMediaTypeString()
+		cv.DataMediaType = zone.GetDataMediaTypeString()
 		tv.Zones = append(tv.Zones, cv)
 		nsc := zone.getAllNodeSet()
 		for _, ns := range nsc {
@@ -2216,32 +2216,124 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) checkCreateReq(req *createVolReq) (err error) {
+//TODO:tangjingyu need this func?
+//func (m *Server) isValidAllowedStorageClass(allowedStorageClass []uint32) (err error) {
+//	for idx, asc := range allowedStorageClass {
+//		if !proto.IsValidStorageClass(asc) {
+//			err = fmt.Errorf("[isValidAllowedStorageClass] allowedStorageClass index(%v) invalid value(%v)", idx, asc)
+//			log.LogError(err.Error())
+//			return err
+//		}
+//	}
+//
+//	return nil
+//}
 
-	if !proto.IsHot(req.volType) && !proto.IsCold(req.volType) {
-		return fmt.Errorf("vol type %d is illegal", req.volType)
+func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error) {
+	resourceChecker := NewStorageClassResourceChecker(m.cluster)
+
+	if req.volStorageClass == proto.StorageClass_Unspecified {
+		// when volStorageClass not specified, try to set as replica with fastest mediaType if resource can support
+		if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_SSD) {
+			req.volStorageClass = proto.StorageClass_Replica_SSD
+			log.LogInfof("[checkStorageClassForCreateVol] volStorageClass not specified, auto set as: %v",
+				proto.StorageClassString(req.volStorageClass))
+		} else if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_HDD) {
+			req.volStorageClass = proto.StorageClass_Replica_HDD
+			log.LogInfof("[checkStorageClassForCreateVol] volStorageClass not specified, auto set as: %v",
+				proto.StorageClassString(req.volStorageClass))
+		} else {
+			err = fmt.Errorf("volStorageClass not specified and cluster has no resource to suppoort replca-storageClass")
+			log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err:%v", req.name, err.Error())
+			return err
+		}
+	} else if !proto.IsValidStorageClass(req.volStorageClass) {
+		err = fmt.Errorf("invalid volStorageClass: %v", req.volStorageClass)
+		log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err:%v", req.name, err.Error())
+		return err
+	}
+	log.LogInfof("[checkStorageClassForCreateVol] volStorageClass: %v", proto.StorageClassString(req.volStorageClass))
+
+	if len(req.allowedStorageClass) == 0 {
+		req.allowedStorageClass = append(req.allowedStorageClass, req.volStorageClass)
+		log.LogInfof("[checkStorageClassForCreateVol] allowedStorageClass not specified, auto set as volStorageClass(%v)",
+			req.volStorageClass)
+		return
+	}
+
+	isVolStorageClassInAllowed := false
+	for idx, asc := range req.allowedStorageClass {
+		if !proto.IsValidStorageClass(asc) {
+			err = fmt.Errorf("allowedStorageClass index(%v) invalid value(%v)", idx, asc)
+			log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err:%v", req.name, err.Error())
+			return err
+		}
+
+		if !resourceChecker.HasResourceOfStorageClass(asc) {
+			err = fmt.Errorf("cluster has no resoure to support allowedStorageClass(%v)", proto.StorageClassString(asc))
+			log.LogErrorf("action[checkStorageClassForCreateVol] err: %v", err.Error())
+			return
+		}
+
+		if asc == req.volStorageClass {
+			isVolStorageClassInAllowed = true
+		}
+	}
+
+	// req.allowedStorageClass[] should contains req.volStorageClass
+	// TODO:tangjingyu auto add volStorageClass to allowedStorageClass if omit?
+	if !isVolStorageClassInAllowed {
+		err = fmt.Errorf("req volStorageClass(%v) not in allowedStorageClass(%v)",
+			req.volStorageClass, req.allowedStorageClass)
+		log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err:%v", req.name, err.Error())
+		return err
+	}
+	log.LogInfof("[checkStorageClassForCreateVol] allowedStorageClass: %v", req.allowedStorageClass)
+	return nil
+}
+
+func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
+	if err = m.checkStorageClassForCreateVolReq(req); err != nil {
+		return err
+	}
+
+	// property volType of volume is maintained for compatibility, now it's determined by volStorageClass
+	if err, req.volType = proto.GetVolTypeByStorageClass(req.volStorageClass); err != nil {
+		log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err when got volType:%v", req.name, err.Error())
+		return err
 	}
 
 	if req.capacity == 0 {
-		return fmt.Errorf("vol capacity can't be zero, %d", req.capacity)
+		err = fmt.Errorf("vol capacity can't be zero, %d", req.capacity)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
 	}
 
 	if req.dpSize != 0 && req.dpSize <= 10 {
-		return fmt.Errorf("datapartition dpSize must be bigger than 10 G")
+		err = fmt.Errorf("datapartition size must be bigger than 10 G")
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
 	}
 
-	if proto.IsHot(req.volType) {
+	if proto.IsStorageClassReplica(req.volStorageClass) {
 		if req.dpReplicaNum == 0 {
 			req.dpReplicaNum = defaultReplicaNum
+			log.LogInfof("[checkCreateVolReq] creating vol(%v), req dpReplicaNum is 0, set as defaultReplicaNum(%v)",
+				req.name, defaultReplicaNum)
 		}
 
 		if req.dpReplicaNum > 3 {
-			return fmt.Errorf("hot vol's replicaNum should be 1 to 3, received replicaNum is[%v]", req.dpReplicaNum)
+			err = fmt.Errorf("hot vol's replicaNum should be 1 to 3, received replicaNum is[%v]", req.dpReplicaNum)
+			log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+			return err
 		}
+
 		return nil
-	} else if proto.IsCold(req.volType) {
+	} else if proto.IsStorageClassBlobStore(req.volStorageClass) {
 		if req.dpReplicaNum > 16 {
-			return fmt.Errorf("cold vol's replicaNum should less then 17, received replicaNum is[%v]", req.dpReplicaNum)
+			err = fmt.Errorf("cold vol's replicaNum should less then 17, received replicaNum is[%v]", req.dpReplicaNum)
+			log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+			return err
 		}
 	}
 
@@ -2277,7 +2369,9 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 	}
 
 	if args.cacheLRUInterval != 0 && args.cacheLRUInterval < 2 {
-		return fmt.Errorf("cache lruInterval(%d) must bigger than 2 minutes", args.cacheLRUInterval)
+		err = fmt.Errorf("cache lruInterval(%d) must bigger than 2 minutes", args.cacheLRUInterval)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
 	}
 
 	if args.cacheLRUInterval == 0 {
@@ -2285,28 +2379,34 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 	}
 
 	if args.cacheLowWater >= args.cacheHighWater {
-		return fmt.Errorf("low water(%d) must be less than high water(%d)", args.cacheLowWater, args.cacheHighWater)
+		err = fmt.Errorf("low water(%d) must be less than high water(%d)", args.cacheLowWater, args.cacheHighWater)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
 	}
 
 	if args.cacheCap >= uint64(req.capacity) {
-		return fmt.Errorf("cache capacity(%d) must be less than capacity(%d)", args.cacheCap, req.capacity)
+		err = fmt.Errorf("cache capacity(%d) must be less than capacity(%d)", args.cacheCap, req.capacity)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
 	}
 
 	if args.cacheHighWater >= 90 || args.cacheLowWater >= 90 {
-		return fmt.Errorf("low(%d) or high water(%d) can't be large than 90, low than 0", args.cacheLowWater, args.cacheHighWater)
+		err = fmt.Errorf("low(%d) or high water(%d) can't be large than 90, low than 0", args.cacheLowWater, args.cacheHighWater)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
 	}
 
 	if int(req.dpReplicaNum) > m.cluster.dataNodeCount() {
-		return fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
+		err = fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
 	}
 
 	req.coldArgs = args
 	return nil
-
 }
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
-
 	req := &createVolReq{}
 	vol := &Vol{}
 
@@ -2322,7 +2422,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.checkCreateReq(req); err != nil {
+	if err = m.checkCreateVolReq(req); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2332,6 +2432,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	if vol, err = m.cluster.createVol(req); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2440,7 +2541,6 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 	maxPartitionID := vol.maxPartitionID()
 
 	view = &proto.SimpleVolView{
-
 		ID:                      vol.ID,
 		Name:                    vol.Name,
 		Owner:                   vol.Owner,
@@ -2488,7 +2588,12 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		LatestVer:               vol.VersionMgr.getLatestVer(),
 		Forbidden:               vol.Forbidden,
 		EnableAuditLog:          vol.EnableAuditLog,
+
+		AllowedStorageClass: vol.allowedStorageClass,
+		VolStorageClass:     vol.volStorageClass,
 	}
+	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
+	copy(view.AllowedStorageClass, vol.allowedStorageClass)
 
 	vol.uidSpaceManager.RLock()
 	defer vol.uidSpaceManager.RUnlock()
@@ -4724,10 +4829,10 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol, byMeta, m.defaultMediaType)))
+	sendOkReply(w, r, newSuccessHTTPReply(volStat(vol, byMeta)))
 }
 
-func volStat(vol *Vol, countByMeta bool, storageClass uint32) (stat *proto.VolStatInfo) {
+func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat = new(proto.VolStatInfo)
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * util.GB
@@ -4747,9 +4852,9 @@ func volStat(vol *Vol, countByMeta bool, storageClass uint32) (stat *proto.VolSt
 		stat.TxRbDenCnt += mp.TxRbDenCnt
 	}
 	vol.mpsLock.RUnlock()
-	stat.DefaultMediaType = storageClass
-	log.LogDebugf("action[volStat] vol [%v] total[%v],usedSize[%v] DefaultMediaType[%v]",
-		vol.Name, stat.TotalSize, stat.UsedSize, stat.DefaultMediaType)
+	stat.DefaultStorageClass = vol.volStorageClass
+	log.LogDebugf("action[volStat] vol [%v] total[%v] usedSize[%v] DefaultStorageClass[%v]",
+		vol.Name, stat.TotalSize, stat.UsedSize, stat.DefaultStorageClass)
 	if proto.IsHot(vol.VolType) {
 		return
 	}
@@ -4889,7 +4994,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 				return
 			}
-			stat := volStat(vol, false, m.defaultMediaType)
+			stat := volStat(vol, false)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize,
 				stat.UsedSize, stat.DpReadOnlyWhenVolFull)
 			volsInfo = append(volsInfo, volInfo)
@@ -5795,7 +5900,7 @@ func (m *Server) ListQuotaAll(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.QuotaListAll, metric, nil, nil)
 	}()
 
-	volsInfo := m.cluster.listQuotaAll(m.defaultMediaType)
+	volsInfo := m.cluster.listQuotaAll()
 	log.LogInfof("list all vol has quota [%v]", volsInfo)
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
 	return

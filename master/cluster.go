@@ -100,6 +100,7 @@ type Cluster struct {
 	snapshotMgr                  *snapshotDelManager
 	DecommissionDiskFactor       float64
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
+	server                       *Server
 }
 
 type followerReadManager struct {
@@ -306,7 +307,7 @@ func (mgr *followerReadManager) IsVolViewReady(volName string) bool {
 	return false
 }
 
-func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig) (c *Cluster) {
+func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition, cfg *clusterConfig, server *Server) (c *Cluster) {
 	c = new(Cluster)
 	c.Name = name
 	c.leaderInfo = leaderInfo
@@ -340,6 +341,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.snapshotMgr = newSnapshotManager()
 	c.snapshotMgr.cluster = c
 	c.S3ApiQosQuota = new(sync.Map)
+	c.server = server
 	return
 }
 
@@ -1036,17 +1038,17 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 		needPersistZone = true
 	}
 
-	zoneMediaType := zone.GetMediaType()
+	zoneMediaType := zone.GetDataMediaType()
 	if zoneMediaType != mediaType {
 		if zoneMediaType != proto.MediaType_Unspecified {
-			// if zone.mediaType is proto.MediaType_Unspecified, means has no datanode added into the zone yet
+			// zone.dataMediaType is proto.MediaType_Unspecified means has no datanode added into the zone yet
 
 			msg := fmt.Sprintf("datanode(%v) already in zone(%v) mediaType not match, existMediaType(%v) toAdd(%v)",
 				nodeAddr, zoneName, proto.MediaTypeString(zoneMediaType), proto.MediaTypeString(mediaType))
 			log.LogErrorf("[addDataNode] %v", msg)
 			return dataNode.ID, fmt.Errorf(msg)
 		} else {
-			zone.SetMediaType(mediaType)
+			zone.SetDataMediaType(mediaType)
 			log.LogInfof("[addDataNode] set zone(%v) mediaType(%v) by datanode(%v)",
 				zoneName, proto.MediaTypeString(mediaType), nodeAddr)
 			needPersistZone = true
@@ -1423,8 +1425,14 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool) (e
 			return
 		}
 	}
+
+	//TODO:tangjingyu
+	// mediaType : to_create_dpcnt
+	// dn mediaTypes in topo
+	// vol default storageClass
+
 	for i := 0; i < reqCount; i++ {
-		if c.DisableAutoAllocate {
+		if c.DisableAutoAllocate && !init {
 			log.LogWarn("disable auto allocate dataPartition")
 			return fmt.Errorf("cluster is disable auto allocate dataPartition")
 		}
@@ -3025,6 +3033,7 @@ func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
 	go metaNode.clean()
 }
 
+//TODO:tangjingyu: need to update volStorageClass or allowedStorageClass?
 func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err error) {
 	var (
 		vol           *Vol
@@ -3171,8 +3180,77 @@ func (c *Cluster) checkZoneName(name string,
 	return
 }
 
+func (c *Cluster) HasResourceOfStorageBlobStore() (has bool) {
+	has = true
+	if c.server.bStoreAddr == "" || c.server.servicePath == "" {
+		has = false
+	}
+
+	return has
+}
+
+// StorageClassResourceChecker : to check if the cluster has resource to support the storage class
+type StorageClassResourceChecker struct {
+	StorageClassResourceSet map[uint32]struct{}
+}
+
+func (checker *StorageClassResourceChecker) HasResourceOfStorageClass(storageClass uint32) (has bool) {
+	_, has = checker.StorageClassResourceSet[storageClass]
+	return
+}
+
+func NewStorageClassResourceChecker(c *Cluster) (checker *StorageClassResourceChecker) {
+	checker = &StorageClassResourceChecker{
+		StorageClassResourceSet: make(map[uint32]struct{}),
+	}
+
+	dataNodeMediaTypeMap := c.t.getDataMediaTypeCanUse()
+	for storageClass := range dataNodeMediaTypeMap {
+		checker.StorageClassResourceSet[storageClass] = struct{}{}
+	}
+
+	if c.HasResourceOfStorageBlobStore() {
+		checker.StorageClassResourceSet[proto.StorageClass_BlobStore] = struct{}{}
+	}
+
+	return
+}
+
+//TODO:tangjingyu del
+//func (c *Cluster) checkResourceForAllowedStorageClass(req *createVolReq, resourceChecker *StorageClassResourceChecker) (err error) {
+//	if resourceChecker == nil {
+//		resourceChecker = NewStorageClassResourceChecker(c)
+//	}
+//
+//	if !resourceChecker.HasResourceOfStorageClass(req.volStorageClass) {
+//		err = fmt.Errorf("cluster has no resoure to support volStorageClass(%v)",
+//			proto.StorageClassString(req.volStorageClass))
+//		log.LogErrorf("action[checkStorageClassHasResource] err: %v", err.Error())
+//		return
+//	}
+//	log.LogInfof("action[checkStorageClassHasResource] cluster support volStorageClass: %v",
+//		proto.StorageClassString(req.volStorageClass))
+//
+//	if len(req.allowedStorageClass) == 0 {
+//		err = fmt.Errorf("action[checkStorageClassHasResource] not specifyed allowed storage class")
+//		log.LogInfof("action[checkStorageClassHasResource] err: %v", err.Error())
+//		return
+//	}
+//
+//	for _, asc := range req.allowedStorageClass {
+//		if !resourceChecker.HasResourceOfStorageClass(asc) {
+//			err = fmt.Errorf("cluster has no resoure to support allowedStorageClass(%v)", proto.StorageClassString(asc))
+//			log.LogErrorf("action[checkStorageClassHasResource] err: %v", err.Error())
+//			return
+//		}
+//		log.LogInfof("action[checkStorageClassHasResource] cluster support allowedStorageClass(%v)",
+//			proto.StorageClassString(asc))
+//	}
+//	return
+//}
+
 // Create a new volume.
-// By default we create 3 meta partitions and 10 data partitions during initialization.
+// By default, we create 3 meta partitions and 10 data partitions during initialization.
 func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	if c.DisableAutoAllocate {
 		log.LogWarn("the cluster is frozen")
@@ -3199,7 +3277,6 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	if err = vol.initMetaPartitions(c, req.mpCount); err != nil {
-
 		vol.Status = markDelete
 		if e := vol.deleteVolFromStore(c); e != nil {
 			log.LogErrorf("action[createVol] deleteVolFromStore failed, vol[%v] err[%v]", vol.Name, e)
@@ -3211,7 +3288,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		goto errHandler
 	}
 
-	if vol.CacheCapacity > 0 || (proto.IsHot(vol.VolType) && vol.Capacity > 0) {
+	if vol.CacheCapacity > 0 || (proto.IsStorageClassReplica(vol.volStorageClass) && vol.Capacity > 0) {
 		for retryCount := 0; readWriteDataPartitions < defaultInitMetaPartitionCount && retryCount < 3; retryCount++ {
 			err = vol.initDataPartitions(c)
 			if err != nil {
@@ -3306,6 +3383,9 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlowWlimit:   req.qosLimitArgs.flowWVal,
 
 		DpReadOnlyWhenVolFull: req.DpReadOnlyWhenVolFull,
+
+		VolStorageClass:     req.volStorageClass,
+		AllowedStorageClass: req.allowedStorageClass,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)
@@ -4234,12 +4314,12 @@ func (c *Cluster) getAllDecommissionDataPartitionByDisk(addr, disk string) (part
 	return
 }
 
-func (c *Cluster) listQuotaAll(storageClass uint32) (volsInfo []*proto.VolInfo) {
+func (c *Cluster) listQuotaAll() (volsInfo []*proto.VolInfo) {
 	c.volMutex.RLock()
 	defer c.volMutex.RUnlock()
 	for _, vol := range c.vols {
 		if vol.quotaManager.HasQuota() {
-			stat := volStat(vol, false, storageClass)
+			stat := volStat(vol, false)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize,
 				stat.UsedSize, stat.DpReadOnlyWhenVolFull)
 			volsInfo = append(volsInfo, volInfo)

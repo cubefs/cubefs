@@ -92,7 +92,6 @@ const (
 	cmdVolDefaultZoneName              = ""
 	cmdVolDefaultCrossZone             = "false"
 	cmdVolDefaultBusiness              = ""
-	cmdVolDefaultVolType               = 0
 	cmdVolDefaultCacheRuleKey          = ""
 	cmdVolDefaultEbsBlkSize            = 8 * 1024 * 1024
 	cmdVolDefaultCacheCapacity         = 0
@@ -103,6 +102,7 @@ const (
 	cmdVolDefaultCacheLowWater         = 60
 	cmdVolDefaultCacheLRUInterval      = 5
 	cmdVolDefaultDpReadOnlyWhenVolFull = "false"
+	cmdVolDefaultAllowedStorageClass   = ""
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -113,7 +113,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optMPCount int
 	var optReplicaNum string
 	var optDPSize int
-	var optVolType int
 	var optFollowerRead string
 	var optZoneName string
 	var optCacheRuleKey string
@@ -133,7 +132,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optTxConflictRetryInterval int64
 	var optDeleteLockTime int64
 	var clientIDKey string
+	var optVolStorageClass uint32
+	var optAllowedStorageClass string
 	var optYes bool
+
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -149,12 +151,13 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
 
-			if optReplicaNum == "" && optVolType == 1 {
+			if optReplicaNum == "" && proto.IsStorageClassBlobStore(optVolStorageClass) {
 				optReplicaNum = "1"
 			}
-			if optVolType != 1 && optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
+			if proto.IsStorageClassReplica(optVolStorageClass) && optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
 				followerRead = true
 			}
+
 			if optEnableQuota != "yes" {
 				optEnableQuota = "false"
 			}
@@ -178,7 +181,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  mpCount                  : %v\n", optMPCount)
 				stdout("  replicaNum               : %v\n", optReplicaNum)
 				stdout("  dpSize                   : %v G\n", optDPSize)
-				stdout("  volType                  : %v\n", optVolType)
 				stdout("  followerRead             : %v\n", followerRead)
 				stdout("  readOnlyWhenFull         : %v\n", dpReadOnlyWhenVolFull)
 				stdout("  zoneName                 : %v\n", optZoneName)
@@ -195,6 +197,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
 				stdout("  TxConflictRetryNum       : %v\n", optTxConflictRetryNum)
 				stdout("  TxConflictRetryInterval  : %v ms\n", optTxConflictRetryInterval)
+				stdout("  volStorageClass          : %v\n", optVolStorageClass)
+				stdout("  allowedStorageClass      : %v\n", optAllowedStorageClass)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -206,11 +210,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
-				optMPCount, int(replicaNum), optDPSize, optVolType, followerRead,
+				optMPCount, int(replicaNum), optDPSize, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
-				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey)
+				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
+				optVolStorageClass, optAllowedStorageClass)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -225,7 +230,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optMPCount, CliFlagMPCount, cmdVolDefaultMPCount, "Specify init meta partition count")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().IntVar(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify data partition size[Unit: GB]")
-	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultVolType, "Type of volume (default 0)")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, "", "Enable read form replica follower")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().StringVar(&optCacheRuleKey, CliFlagCacheRuleKey, cmdVolDefaultCacheRuleKey, "Anything that match this field will be written to the cache")
@@ -247,6 +251,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
+	cmd.Flags().Uint32Var(&optVolStorageClass, CliFlagVolStorageClass, proto.StorageClass_Unspecified,
+		"Specify which StorageClass the clients mounts this vol should write to")
+	cmd.Flags().StringVar(&optAllowedStorageClass, CliFlagAllowedStorageClass, cmdVolDefaultAllowedStorageClass,
+		"Specify with StorageClasses the vol will support, format is comma separated uint32:\"StorageClass1, StorageClass2, ...\", empty value means determine by master")
 
 	return cmd
 }
