@@ -295,19 +295,20 @@ func (p *PostPolicy) Match(forms map[string]string) error {
 		delete(allNeedKeys, key)
 	}
 
-	if size := forms["content-length"]; size != "" {
+	size := forms["content-length"]
+	lengthMin := p.Conditions.ContentLengthRange.Min
+	lengthMax := p.Conditions.ContentLengthRange.Max
+	if lengthMax > 0 {
 		fsize, _ := strconv.ParseInt(size, 10, 64)
-		lengthMin := p.Conditions.ContentLengthRange.Min
-		lengthMax := p.Conditions.ContentLengthRange.Max
-		if fsize < lengthMin || (lengthMax > 0 && fsize > lengthMax) {
+		if size == "" || fsize < lengthMin || fsize > lengthMax {
 			return &ErrorCode{
 				ErrorCode:    "PolicyConditionNotMatch",
 				ErrorMessage: "The content-length does not match the policy's content-length-range.",
 				StatusCode:   http.StatusForbidden,
 			}
 		}
-		delete(allNeedKeys, "content-length")
 	}
+	delete(allNeedKeys, "content-length")
 
 	var keys []string
 	for key := range allNeedKeys {
