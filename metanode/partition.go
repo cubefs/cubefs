@@ -754,6 +754,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	if proto.IsHot(mp.volType) {
 		log.LogInfof("hot vol not need cacheTTL")
+		go mp.multiVersionTTLWork(time.Minute)
 		return
 	}
 	// do cache TTL die out process
@@ -763,7 +764,6 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
-	go mp.multiVersionTTLWork(time.Hour)
 	return
 }
 
@@ -1364,26 +1364,18 @@ func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 
 // cacheTTLWork only happen in datalake situation
 func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
-	// check volume type, only Cold volume will do the cache ttl.
-	if mp.verSeq == 0 {
-		return
-	}
 	// do cache ttl work
 	// first sleep a rand time, range [0, 1200s(20m)],
 	// make sure all mps is not doing scan work at the same time.
 	rand.Seed(time.Now().Unix())
-	time.Sleep(time.Duration(rand.Intn(1200)))
-
+	time.Sleep(time.Duration(rand.Intn(60)))
+	log.LogDebugf("[multiVersionTTLWork] start, mp[%v]", mp.config.PartitionId)
 	ttl := time.NewTicker(dur)
 	snapQueue := make(chan interface{}, 5)
 	for {
 		select {
 		case <-ttl.C:
 			log.LogDebugf("[multiVersionTTLWork] begin cache ttl, mp[%v]", mp.config.PartitionId)
-			// only leader can do TTL work
-			if _, ok := mp.IsLeader(); !ok {
-				log.LogDebugf("[multiVersionTTLWork] partitionId=%d is not leader, skip", mp.config.PartitionId)
-			}
 			mp.multiVersionList.RLock()
 			volVersionInfoList := &proto.VolVersionInfoList{
 				VerList:         mp.multiVersionList.VerList,
@@ -1398,7 +1390,9 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 				version.Status = proto.VersionDeleting
 				go func(verSeq uint64) {
 					mp.delPartitionVersion(verSeq)
-					delete(volVersionInfoList.TemporaryVerMap, verSeq)
+					mp.multiVersionList.Lock()
+					delete(mp.multiVersionList.TemporaryVerMap, verSeq)
+					mp.multiVersionList.Unlock()
 					<-snapQueue
 				}(version.Ver)
 			}
