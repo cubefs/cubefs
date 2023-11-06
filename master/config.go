@@ -51,7 +51,7 @@ const (
 	intervalToScanS3Expiration          = "intervalToScanS3Expiration"
 	cfgVolForceDeletion                 = "volForceDeletion"
 	cfgVolDeletionDentryThreshold       = "volDeletionDentryThreshold"
-	defaultStorageClass                 = "defaultStorageClass" //for hybrid cloud
+	cfgDefaultDataMediaType             = "defaultDataMediaType" //for hybrid cloud
 )
 
 // default value

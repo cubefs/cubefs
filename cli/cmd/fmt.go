@@ -150,6 +150,13 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Forbidden                       : %v\n", svv.Forbidden))
 	sb.WriteString(fmt.Sprintf("  EnableAuditLog                  : %v\n", svv.EnableAuditLog))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
+	allowedStorageClassStr := make([]string, 0)
+	for _, asc := range svv.AllowedStorageClass {
+		allowedStorageClassStr = append(allowedStorageClassStr, proto.StorageClassString(asc))
+	}
+	sb.WriteString(fmt.Sprintf("  VolStorageClass                 : %v\n", proto.StorageClassString(svv.VolStorageClass)))
+	sb.WriteString(fmt.Sprintf("  AllowedStorageClass             : %v\n", allowedStorageClassStr))
+
 	if svv.VolType == 1 {
 		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
 		sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))
@@ -816,7 +823,7 @@ func formatZoneView(zv *proto.ZoneView) string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("Zone Name:        %v\n", zv.Name))
 	sb.WriteString(fmt.Sprintf("Status:           %v\n", zv.Status))
-	sb.WriteString(fmt.Sprintf("MediaType:        %v\n", zv.MediaType))
+	sb.WriteString(fmt.Sprintf("DataMediaType:    %v\n", zv.DataMediaType))
 	sb.WriteString("Nodeset Selector:\n")
 	sb.WriteString(fmt.Sprintf("       Data:%v\n", zv.DataNodesetSelector))
 	sb.WriteString(fmt.Sprintf("       Meta:%v\n", zv.MetaNodesetSelector))

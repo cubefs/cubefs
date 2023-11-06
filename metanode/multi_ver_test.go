@@ -220,7 +220,7 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 	}
 
 	ino := NewInode(inoID, mode)
-	ino.StorageClass = proto.MediaType_HDD
+	ino.StorageClass = proto.StorageClass_Replica_HDD
 	ino.HybridCouldExtents.sortedEks = NewSortedExtents()
 	ino.setVer(mp.verSeq)
 	if t != nil {
@@ -361,7 +361,7 @@ func TestSplitKeyDeletion(t *testing.T) {
 		},
 		HybridCouldExtents: NewSortedHybridCloudExtents(),
 	}
-	iTmp.StorageClass = proto.MediaType_HDD
+	iTmp.StorageClass = proto.StorageClass_Replica_HDD
 	iTmp.HybridCouldExtents.sortedEks = extents
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	//TODO: support-hybrid
@@ -469,7 +469,7 @@ func TestAppendList(t *testing.T) {
 			multiSnap: &InodeMultiSnap{
 				verSeq: seq,
 			},
-			StorageClass: proto.MediaType_HDD,
+			StorageClass: proto.StorageClass_Replica_HDD,
 		}
 		mp.verSeq = seq
 
@@ -506,7 +506,7 @@ func TestAppendList(t *testing.T) {
 		HybridCouldExtents: NewSortedHybridCloudExtents(),
 		StorageClass:       ino.StorageClass,
 	}
-	iTmp.StorageClass = proto.MediaType_HDD
+	iTmp.StorageClass = proto.StorageClass_Replica_HDD
 	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	t.Logf("in split at begin")
@@ -614,7 +614,7 @@ func TestAppendList(t *testing.T) {
 			verSeq: splitSeq,
 		},
 		HybridCouldExtents: NewSortedHybridCloudExtents(),
-		StorageClass:       proto.MediaType_HDD,
+		StorageClass:       proto.StorageClass_Replica_HDD,
 	}
 	t.Logf("split key:%v", splitKey)
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
@@ -896,7 +896,7 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 			verSeq: seq,
 		},
 		HybridCouldExtents: NewSortedHybridCloudExtents(),
-		StorageClass:       proto.MediaType_HDD,
+		StorageClass:       proto.StorageClass_Replica_HDD,
 	}
 	mp.verSeq = seq
 	if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {
@@ -1191,11 +1191,11 @@ func TestInodeVerMarshal(t *testing.T) {
 	var sndSeq uint64 = 2
 	mp.verSeq = 100000
 	ino1 := NewInode(10, 5)
-	ino1.StorageClass = proto.MediaType_HDD
+	ino1.StorageClass = proto.StorageClass_Replica_HDD
 	ino1.setVer(topSeq)
 	ino1_1 := NewInode(10, 5)
 	ino1_1.setVer(sndSeq)
-	ino1_1.StorageClass = proto.MediaType_HDD
+	ino1_1.StorageClass = proto.StorageClass_Replica_HDD
 	ino1.multiSnap.multiVersions = append(ino1.multiSnap.multiVersions, ino1_1)
 	v1, _ := ino1.Marshal()
 

@@ -508,7 +508,7 @@ type metaPartition struct {
 	isLoadingMetaPartition bool
 	summaryLock            sync.Mutex
 	ebsClient              *blobstore.BlobStoreClient
-	volType                int
+	volType                int //TODO:tangjingyu to del this field and use storageClass instead?
 	isFollowerRead         bool
 	uidManager             *UidManager
 	xattrLock              sync.Mutex

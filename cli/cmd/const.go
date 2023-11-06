@@ -116,6 +116,8 @@ const (
 	CliFlagEnableQuota         = "enableQuota"
 	CliFlagDeleteLockTime      = "delete-lock-time"
 	CliFlagClientIDKey         = "clientIDKey"
+	CliFlagAllowedStorageClass = "allowedStorageClass"
+	CliFlagVolStorageClass     = "volStorageClass"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

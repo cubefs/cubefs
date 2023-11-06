@@ -176,6 +176,25 @@ func (t *topology) putMetaNodeToCache(metaNode *MetaNode) {
 	t.metaNodes.Store(metaNode.Addr, metaNode)
 }
 
+// dataMediaTypeSet: map[StorageClass]dataNodeCount
+func (t *topology) getDataMediaTypeCanUse() (dataMediaTypeMap map[uint32]int) {
+	dataMediaTypeMap = make(map[uint32]int)
+
+	t.zoneMap.Range(func(zoneName, value interface{}) bool {
+		zone := value.(*Zone)
+		if mediaType, zoneMediaTypeDataCount := zone.GetDataMediaTypeCanUse(); mediaType != proto.MediaType_Unspecified {
+			if count, ok := dataMediaTypeMap[mediaType]; !ok {
+				dataMediaTypeMap[mediaType] = zoneMediaTypeDataCount
+			} else {
+				dataMediaTypeMap[mediaType] = count + zoneMediaTypeDataCount
+			}
+		}
+
+		return true
+	})
+	return
+}
+
 type nodeSetCollection []*nodeSet
 
 func (nsc nodeSetCollection) Len() int {
@@ -1430,7 +1449,7 @@ type Zone struct {
 	QosIopsWLimit           uint64
 	QosFlowRLimit           uint64
 	QosFlowWLimit           uint64
-	mediaType               uint32
+	dataMediaType           uint32
 	sync.RWMutex
 }
 type zoneValue struct {
@@ -1441,10 +1460,10 @@ type zoneValue struct {
 	QosFlowWLimit       uint64
 	DataNodesetSelector string
 	MetaNodesetSelector string
-	MediaType           uint32
+	DataMediaType       uint32
 }
 
-func newZone(name string, mediaType uint32) (zone *Zone) {
+func newZone(name string, dataMediaType uint32) (zone *Zone) {
 	zone = &Zone{name: name}
 	zone.status = normalZone
 	zone.dataNodes = new(sync.Map)
@@ -1452,7 +1471,7 @@ func newZone(name string, mediaType uint32) (zone *Zone) {
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
 	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeType)
 	zone.metaNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
-	zone.SetMediaType(mediaType)
+	zone.SetDataMediaType(dataMediaType)
 	return
 }
 
@@ -1502,7 +1521,7 @@ func (zone *Zone) getFsmValue() *zoneValue {
 		QosFlowWLimit:       zone.QosFlowWLimit,
 		DataNodesetSelector: zone.GetDataNodesetSelector(),
 		MetaNodesetSelector: zone.GetMetaNodesetSelector(),
-		MediaType:           zone.GetMediaType(),
+		DataMediaType:       zone.GetDataMediaType(),
 	}
 }
 
@@ -2075,16 +2094,30 @@ func (zone *Zone) startDecommissionListTraverse(c *Cluster) (err error) {
 	return
 }
 
-func (zone *Zone) GetMediaType() uint32 {
-	return atomic.LoadUint32(&zone.mediaType)
+func (zone *Zone) GetDataMediaTypeString() string {
+	return proto.MediaTypeString(atomic.LoadUint32(&zone.dataMediaType))
 }
 
-func (zone *Zone) GetMediaTypeString() string {
-	return proto.MediaTypeString(atomic.LoadUint32(&zone.mediaType))
+func (zone *Zone) GetDataMediaType() uint32 {
+	return atomic.LoadUint32(&zone.dataMediaType)
 }
 
-func (zone *Zone) SetMediaType(newMediaType uint32) {
-	atomic.StoreUint32(&zone.mediaType, newMediaType)
+func (zone *Zone) SetDataMediaType(newMediaType uint32) {
+	atomic.StoreUint32(&zone.dataMediaType, newMediaType)
+}
+
+func (zone *Zone) GetDataMediaTypeCanUse() (dataMediaType uint32, dataCount int) {
+	dataMediaType = atomic.LoadUint32(&zone.dataMediaType)
+	if !proto.IsValidMediaType(dataMediaType) {
+		return proto.MediaType_Unspecified, 0
+	}
+
+	dataCount = zone.dataNodeCount()
+	if dataCount == 0 {
+		return proto.MediaType_Unspecified, 0
+	}
+
+	return dataMediaType, dataCount
 }
 
 type DecommissionDataPartitionList struct {
