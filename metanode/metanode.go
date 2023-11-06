@@ -337,7 +337,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	defaultMediaType, _ = strconv.ParseUint(cfg.GetString(cfgDefaultMediaType), 10, 64)
 	if defaultMediaType == 0 {
-		log.LogWarnf("bad DefaultMediaType config %v", defaultMediaType)
+		log.LogWarnf("bad DefaultStorageClass config %v", defaultMediaType)
 	}
 	err = m.validConfig()
 	return

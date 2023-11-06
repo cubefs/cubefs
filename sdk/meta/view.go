@@ -161,7 +161,7 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
 		return
 	}
-	atomic.StoreUint32(&mw.DefaultMediaType, info.DefaultMediaType)
+	atomic.StoreUint32(&mw.DefaultStorageClass, info.DefaultStorageClass)
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)

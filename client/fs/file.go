@@ -68,7 +68,7 @@ var (
 
 // NewFile returns a new file.
 func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename string) fs.Node {
-	if proto.IsCold(s.volType) || i.StorageClass == proto.MediaType_EBS {
+	if proto.IsCold(s.volType) || i.StorageClass == proto.StorageClass_BlobStore {
 		var (
 			fReader    *blobstore.Reader
 			fWriter    *blobstore.Writer
@@ -239,7 +239,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
 	}
-	if proto.IsCold(f.super.volType) || f.info.StorageClass == proto.MediaType_EBS {
+	if proto.IsCold(f.super.volType) || f.info.StorageClass == proto.StorageClass_BlobStore {
 		log.LogDebugf("TRANCE open ino(%v) info(%v)", ino, f.info)
 		fileSize, _ := f.fileSizeVersion2(ino)
 		clientConf := blobstore.ClientConfig{
@@ -794,9 +794,9 @@ func (f *File) filterFilesSuffix(filterFiles string) bool {
 }
 
 func (f *File) isStoredInReplicaSystem() bool {
-	return f.info.StorageClass == proto.MediaType_SSD || f.info.StorageClass == proto.MediaType_HDD
+	return f.info.StorageClass == proto.StorageClass_Replica_SSD || f.info.StorageClass == proto.StorageClass_Replica_HDD
 }
 
 func (f *File) isStoredInEbsSystem() bool {
-	return f.info.StorageClass == proto.MediaType_EBS
+	return f.info.StorageClass == proto.StorageClass_BlobStore
 }

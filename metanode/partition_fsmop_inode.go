@@ -484,7 +484,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		return
 	}
 	if err := fsmIno.updateStorageClass(ino.StorageClass); err != nil {
-		status = proto.OpDismatchMediaType
+		status = proto.OpDismatchMediaType //TODO:tangjingyu
 		return
 	}
 	var (

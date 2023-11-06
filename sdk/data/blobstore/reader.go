@@ -395,8 +395,8 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 			//for get cache key in future
 			streamer.WorkAsCache()
 		}
-		//TODO: default cache type is ssd?
-		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil, proto.MediaType_SSD, false)
+		//TODO: default cache type is ssd? //TODO:tangjingyu how to get cache storage class from master
+		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil, proto.StorageClass_Replica_SSD, false)
 		log.LogDebugf("TRACE blobStore asyncCache(L2) Exit. cacheKey=%v", cacheKey)
 		return
 	}
