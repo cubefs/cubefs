@@ -473,15 +473,15 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 				log.LogWarnf("Read (%v) wrong size:(%v)", objExtent, n)
 				continue
 			}
-			//TODO:default cache type is ssd?
-			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil, proto.MediaType_SSD, false)
+			//TODO:default cache type is ssd? //TODO:tangjingyu: how to get cache storage class from master?
+			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil, proto.StorageClass_Replica_SSD, false)
 			//in preload mode,onece extend_hander set to error, streamer is set to error
 			// so write should failed immediately
 			if err != nil {
 				subErr = true
 				log.LogWarnf("preload (%v) to cbfs failed (%v)", job.name, err)
 				//TODO:default cache type is ssd?
-				if err = c.ec.GetDataPartitionForWrite(proto.MediaType_SSD); err != nil {
+				if err = c.ec.GetDataPartitionForWrite(proto.StorageClass_Replica_SSD); err != nil {
 					log.LogErrorf("worker %v end for %v", id, err)
 					noWritableDP = true
 				}

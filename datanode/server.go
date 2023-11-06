@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -367,16 +366,22 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogDebugf("action[parseConfig] load diskUnavailablePartitionErrorCount(%v)", s.diskUnavailablePartitionErrorCount)
 
 	var mediaType uint32
-	mediaTypeInt64 := cfg.GetInt64(ConfigMediaType)
-	if mediaTypeInt64 < 0 || mediaTypeInt64 > math.MaxUint32 {
-		err = fmt.Errorf("parseConfig: invalid mediaType[%v]", mediaType)
+	if err, mediaType = cfg.GetUint32(ConfigMediaType); err != nil {
+		err = fmt.Errorf("parseConfig: invalid mediaType, err: %v", err.Error())
+		log.LogError(err.Error())
 		return err
 	}
+	if mediaType < proto.MediaType_SSD || mediaType > proto.MediaType_HDD {
+		err = fmt.Errorf("parseConfig: invalid mediaType(%v)", mediaType)
+		log.LogError(err.Error())
+		return err
+	}
+	s.mediaType = mediaType
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
 	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
-	log.LogDebugf("action[parseConfig] load mediaType(%v).", s.mediaType)
+	log.LogDebugf("action[parseConfig] load mediaType(%v)(%v)", s.mediaType, proto.MediaTypeString(s.mediaType))
 	return
 }
 

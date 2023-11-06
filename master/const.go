@@ -132,6 +132,8 @@ const (
 	DecommissionType           = "decommissionType"
 	decommissionDiskFactor     = "decommissionDiskFactor"
 	mediaTypeKey               = "mediaType"
+	allowedStorageClassKey     = "allowedStorageClass"
+	volStorageClassKey         = "volStorageClass"
 )
 
 const (

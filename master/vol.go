@@ -76,7 +76,6 @@ type Vol struct {
 	CacheLRUInterval int
 	CacheRule        string
 
-	PreloadCacheOn          bool
 	NeedToLowerReplica      bool
 	FollowerRead            bool
 	authenticate            bool
@@ -113,10 +112,14 @@ type Vol struct {
 	Forbidden               bool
 	mpsLock                 *mpsLockManager
 	EnableAuditLog          bool
+
+	// hybrid cloud
+	allowedStorageClass []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
+	volStorageClass     uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
+	// TODO: add feature dirStorageClass
 }
 
 func newVol(vv volValue) (vol *Vol) {
-
 	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 
 	if vol.threshold <= 0 {
@@ -182,6 +185,11 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
 	vol.mpsLock = newMpsLockManager(vol)
 	vol.EnableAuditLog = true
+
+	vol.allowedStorageClass = make([]uint32, len(vv.AllowedStorageClass))
+	copy(vol.allowedStorageClass, vv.AllowedStorageClass)
+	vol.volStorageClass = vv.VolStorageClass
+
 	return
 }
 
@@ -495,6 +503,12 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 }
 
 func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
+	// The previous check ensured that that vol.volStorageClass must is vol.allowedStorageClass[]
+	//for storageClass := range vol.allowedStorageClass {
+	//	mediaType := proto.GetMediaTypeByStorageClass(storageClass)
+	//}
+
+	//TODO:tangjingyu: create dp for each mediaType
 	// initialize k data partitionMap at a time
 	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true)
 	return
@@ -857,7 +871,6 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 }
 
 func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
-
 	ok = false
 	if vol.status() == markDelete {
 		err = proto.ErrVolNotExists
