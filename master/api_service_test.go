@@ -173,6 +173,7 @@ func createDefaultMasterServerForTest() *Server {
 		zoneName:         testZone2,
 		description:      "",
 		qosLimitArgs:     &qosArgs{},
+		volStorageClass:  proto.StorageClass_Replica_SSD,
 	}
 
 	vol, err := testServer.cluster.createVol(req)
@@ -512,7 +513,7 @@ func TestPreloadDp(t *testing.T) {
 	volName := "preloadVol"
 	req := map[string]interface{}{}
 	req[nameKey] = volName
-	req[volTypeKey] = proto.VolumeTypeCold
+	req[volStorageClassKey] = proto.StorageClass_BlobStore
 	createVol(req, t)
 
 	preCap := 60
@@ -524,7 +525,7 @@ func TestUpdateVol(t *testing.T) {
 	volName := "updateVol"
 	req := map[string]interface{}{}
 	req[nameKey] = volName
-	req[volTypeKey] = proto.VolumeTypeCold
+	req[volStorageClassKey] = proto.StorageClass_BlobStore
 
 	createVol(req, t)
 
@@ -609,7 +610,7 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.CacheRule == "")
 
 	for id, name := range []string{"z1", "z2", "z3"} {
-		zone := newZone(name)
+		zone := newZone(name, proto.MediaType_HDD)
 		nodeSet1 := newNodeSet(server.cluster, uint64(id), 6, name)
 
 		zone.putNodeSet(nodeSet1)

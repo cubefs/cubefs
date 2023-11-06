@@ -144,6 +144,9 @@ const (
 	CliFlagDecommissionDpLimit          = "decommissionDpLimit"
 	CliFlagDecommissionDiskLimit        = "decommissionDiskLimit"
 
+	CliFlagAllowedStorageClass = "allowedStorageClass"
+	CliFlagVolStorageClass     = "volStorageClass"
+
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	// Shorthand format of resource name

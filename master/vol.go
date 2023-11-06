@@ -76,7 +76,7 @@ type TxSubItem struct {
 	txConflictRetryNum      int64
 	txConflictRetryInterval int64
 	txOpLimit               int
-	enableTransaction       proto.TxOpMask
+	enableTransaction proto.TxOpMask
 }
 
 type TopoSubItem struct {
@@ -151,6 +151,10 @@ type Vol struct {
 
 	mpsLock *mpsLockManager
 	volLock sync.RWMutex
+
+	// hybrid cloud
+	allowedStorageClass []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
+	volStorageClass     uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -218,6 +222,10 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
 	vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	vol.EnableAutoMetaRepair.Store(defaultEnableDpMetaRepair)
+
+	vol.allowedStorageClass = make([]uint32, len(vv.AllowedStorageClass))
+	copy(vol.allowedStorageClass, vv.AllowedStorageClass)
+	vol.volStorageClass = vv.VolStorageClass
 	return
 }
 
@@ -612,6 +620,13 @@ func (vol *Vol) initDataPartitions(c *Cluster, dpCount int) (err error) {
 	if dpCount == 0 {
 		dpCount = defaultInitDataPartitionCnt
 	}
+
+	// The previous check ensured that that vol.volStorageClass must is vol.allowedStorageClass[]
+	//for storageClass := range vol.allowedStorageClass {
+	//	mediaType := proto.GetMediaTypeByStorageClass(storageClass)
+	//}
+
+	//TODO:tangjingyu: create dp for each mediaType
 	// initialize k data partitionMap at a time
 	err = c.batchCreateDataPartition(vol, dpCount, true)
 	return

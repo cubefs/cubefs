@@ -147,6 +147,8 @@ const (
 	dpTimeoutKey                    = "dpTimeout"
 	ShowAll                         = "showAll"
 	mediaTypeKey                    = "mediaType"
+	allowedStorageClassKey          = "allowedStorageClass"
+	volStorageClassKey              = "volStorageClass"
 )
 
 const (

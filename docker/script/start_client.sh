@@ -113,7 +113,7 @@ create_cold_volume() {
         return
     fi
     md5=`echo -n ${Owner} | md5sum | cut -d ' ' -f1`
-    curl -v "http://192.168.0.11:17010/admin/createVol?name=${VolName}&volType=1&cacheCap=8&cacheAction=2&capacity=10&owner=${Owner}&mpCount=3"
+    curl -v "http://192.168.0.11:17010/admin/createVol?name=${VolName}&volStorageClass=1&cacheCap=8&cacheAction=2&capacity=10&owner=${Owner}&mpCount=3"
     curl -v "http://192.168.0.11:17010/client/vol?name=${VolName}&authKey=${md5}" | python -m json.tool
 }
 
