@@ -1,15 +1,15 @@
 package repl
 
 import (
-	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/connpool"
-	"github.com/cubefs/cubefs/util/log"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/connpool"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type FollowerTransport struct {
@@ -23,8 +23,9 @@ type FollowerTransport struct {
 	lastActiveTime int64
 	replId         int64
 	pkgOrder       int64
-	globalErr      error
-	firstErrPkg    *FollowerPacket
+
+	// Error state
+	errState int32
 }
 
 func NewFollowersTransport(addr string, replId int64) (ft *FollowerTransport, err error) {
@@ -43,7 +44,7 @@ func NewFollowersTransport(addr string, replId int64) (ft *FollowerTransport, er
 	ft.exitCh = make(chan struct{})
 	ft.lastActiveTime = time.Now().Unix()
 	go ft.serverWriteToFollower()
-	go ft.serverReadFromFollower(context.Background())
+	go ft.serverReadFromFollower()
 
 	return
 }
@@ -79,19 +80,21 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			if err := p.WriteToConn(ft.conn, proto.WriteDeadlineTime); err != nil {
 				p.DecDataPoolRefCnt()
 				p.Data = nil
-				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v) firstError(%v)", ft.addr, err.Error(), ft.globalErr)
+				p.errorCh <- fmt.Errorf("send to follower %v failed: %v", ft.addr, err)
 				_ = ft.conn.Close()
-				ft.setGlobalErrAndFirstErrPkg(p, err)
-				log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgOrder, ft.globalErr, ft.firstErrPkg, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
+				if ft.markFirstError(err) {
+					log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgOrder, err, p, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
+				}
 				continue
 			}
 			p.Data = nil
 			p.DecDataPoolRefCnt()
 			if err := ft.PutRequestToRecvCh(p); err != nil {
-				p.errorCh <- fmt.Errorf(ActionSendToFollowers+" follower(%v) error(%v) firstError(%v)", ft.addr, err.Error(), ft.globalErr)
+				p.errorCh <- fmt.Errorf("send to follower %v failed: %v", ft.addr, err)
 				_ = ft.conn.Close()
-				ft.setGlobalErrAndFirstErrPkg(p, err)
-				log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgOrder, ft.globalErr, ft.firstErrPkg, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
+				if ft.markFirstError(err) {
+					log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) ActionSendToFollowers(%v) error(%v)", ft.replId, ft.pkgOrder, err, p, p.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err.Error())
+				}
 				continue
 			}
 
@@ -107,20 +110,19 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 	}
 }
 
-func (ft *FollowerTransport) setGlobalErrAndFirstErrPkg(p *FollowerPacket, err error) {
-	if ft.globalErr == nil {
-		ft.globalErr = err
-		ft.firstErrPkg = new(FollowerPacket)
-		copyFollowerPacket(p, ft.firstErrPkg)
+func (ft *FollowerTransport) markFirstError(err error) bool {
+	if err == nil {
+		return false
 	}
+	return atomic.CompareAndSwapInt32(&ft.errState, 0, 1)
 }
 
-func (ft *FollowerTransport) serverReadFromFollower(ctx context.Context) {
+func (ft *FollowerTransport) serverReadFromFollower() {
 	for {
 		select {
 		case p := <-ft.recvCh:
 			atomic.StoreInt64(&ft.lastActiveTime, time.Now().Unix())
-			_ = ft.readFollowerResult(ctx, p)
+			_ = ft.readFollowerResult(p)
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
@@ -141,15 +143,16 @@ func (ft *FollowerTransport) GetPacketFromPool() (p *Packet) {
 }
 
 // Read the response from the follower
-func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *FollowerPacket) (err error) {
+func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err error) {
 	reply := ft.GetPacketFromPool()
 	defer func() {
 		request.Data = nil
 		request.errorCh <- err
 		if err != nil {
 			_ = ft.conn.Close()
-			ft.setGlobalErrAndFirstErrPkg(request, err)
-			log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) readFollowerResult(%v) error(%v)", ft.replId, ft.pkgOrder, ft.globalErr, ft.firstErrPkg, request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
+			if ft.markFirstError(err) {
+				log.LogErrorf("replID(%v) pkgOrder(%v) firstErrorAndPkgInfo(%v,%v) request(%v) readFollowerResult(%v) error(%v)", ft.replId, ft.pkgOrder, err, request, request.GetUniqueLogId(), ft.conn.RemoteAddr().String(), err)
+			}
 			return
 		}
 		ft.PutPacketToPool(reply)
@@ -170,8 +173,10 @@ func (ft *FollowerTransport) readFollowerResult(ctx context.Context, request *Fo
 		err = fmt.Errorf(string(reply.Data[:reply.Size]))
 		return
 	}
-	log.LogDebugf("action[ActionReceiveFromFollower] %v.", reply.LogMessage(ActionReceiveFromFollower,
-		ft.addr, request.StartT, err))
+	if log.IsDebugEnabled() {
+		log.LogDebugf("action[ActionReceiveFromFollower] %v.", reply.LogMessage(ActionReceiveFromFollower,
+			ft.addr, request.StartT, err))
+	}
 	return
 }
 
