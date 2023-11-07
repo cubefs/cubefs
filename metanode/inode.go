@@ -137,7 +137,7 @@ func (i *Inode) setVerNoCheck(seq uint64) {
 func (i *Inode) setVer(seq uint64) {
 	if i.getVer() > seq {
 		syslog.Println(fmt.Sprintf("inode %v old seq %v cann't use seq %v", i.getVer(), seq, string(debug.Stack())))
-		log.LogFatalf("inode %v old seq %v cann't use seq %v", i.getVer(), seq, string(debug.Stack()))
+		log.LogFatalf("inode %v old seq %v cann't use seq %v stack %v", i.Inode, i.getVer(), seq, string(debug.Stack()))
 	}
 	i.setVerDoWork(seq)
 }

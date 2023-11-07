@@ -776,7 +776,7 @@ func (verMgr *VolVersionManager) getLatestVer() (ver uint64) {
 	if size == 0 {
 		return 0
 	}
-	log.LogInfof("action[getLatestVer] ver len %v verMgr %v", size, verMgr)
+
 	return verMgr.multiVersionList[size-1].Ver
 }
 
