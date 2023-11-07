@@ -222,7 +222,7 @@ func newMpsLockManager(vol *Vol) *mpsLockManager {
 	lc := &mpsLockManager{vol: vol}
 	go lc.CheckExceptionLock(lockCheckInterval, lockExpireInterval)
 	if log.EnableDebug() {
-		atomic.StoreInt32(&lc.enable, 1)
+		atomic.StoreInt32(&lc.enable, 0)
 	}
 	return lc
 }
