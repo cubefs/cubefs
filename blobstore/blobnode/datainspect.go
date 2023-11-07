@@ -36,8 +36,6 @@ type DataInspectConf struct {
 	Open        bool `json:"open"`
 	IntervalSec int  `json:"interval_sec"`
 	RateLimit   int  `json:"rate_limit"`
-	//MaxCount    int     `json:"max_count"`
-	//Factor      float64 `json:"factor"`
 }
 
 type DataInspectMgr struct {
@@ -51,8 +49,6 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf) *DataInspectMgr {
 	return &DataInspectMgr{
 		svr:  svr,
 		conf: conf,
-		//lmt:  rate.NewLimiter(rate.Every(time.Second), 10),
-		//lmt: rate.NewLimiter(rate.Limit(listShardBatch), 2*listShardBatch),
 	}
 }
 
@@ -156,15 +152,9 @@ func (mgr *DataInspectMgr) inspectChunk(ctx context.Context, cs core.ChunkAPI) (
 	startBid := proto.InValidBlobID
 	ds := cs.Disk()
 	badShards := make([]bnapi.BadShard, 0)
-
-	//qos := ds.GetIoQos()
-	//qos.Allow() //qos.Remain(ctx)
-	//remain := 10
 	lmt := mgr.getLimiter(ds)
 
 	scanFn := func(pCtx context.Context, batchShards []*bnapi.ShardInfo) (err error) {
-		//lmt.WaitN(ctx, listShardBatch)
-
 		for _, si := range batchShards {
 			pSpan := trace.SpanFromContextSafe(pCtx)
 			span, ctx := trace.StartSpanFromContext(context.Background(), pSpan.OperationName())
