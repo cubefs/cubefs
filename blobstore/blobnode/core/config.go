@@ -77,7 +77,6 @@ type RuntimeConfig struct {
 	DisableModifyInCompacting    bool    `json:"disable_modify_in_compacting"`
 	MustMountPoint               bool    `json:"must_mount_point"`
 	IOStatFileDryRun             bool    `json:"iostat_file_dryrun"`
-	EnableDataInspect            bool    `json:"enable_data_inspect"`
 	SetDefaultSwitch             bool    `json:"set_default_switch"`
 	CompactBatchSize             int     `json:"compact_batch_size"`
 	MetricReportIntervalS        int64   `json:"metric_report_interval_S"`

@@ -116,3 +116,22 @@ func IsSysConfigKey(key string) bool {
 		return false
 	}
 }
+
+type TaskSwitch string
+
+const (
+	TaskSwitchDataInspect TaskSwitch = "data_inspect"
+)
+
+func (t TaskSwitch) Valid() bool {
+	switch t {
+	case TaskSwitchDataInspect:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t TaskSwitch) String() string {
+	return string(t)
+}
