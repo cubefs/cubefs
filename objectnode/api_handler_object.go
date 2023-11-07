@@ -1482,7 +1482,8 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	var tagging *Tagging
 	if taggingRaw := formReq.MultipartFormValue("tagging"); taggingRaw != "" {
-		if tagging, err = ParseTagging(taggingRaw); err != nil {
+		tagging = NewTagging()
+		if err = xml.Unmarshal([]byte(taggingRaw), tagging); err != nil {
 			errorCode = MalformedPOSTRequest
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid tagging")
 			return
