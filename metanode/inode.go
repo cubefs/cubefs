@@ -1166,14 +1166,21 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 
 // AppendExtents append the extent to the btree.
 func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64, volType int) (delExtents []proto.ExtentKey) {
-	if proto.IsCold(volType) {
+	//if proto.IsCold(volType) {
+	//	return
+	//}
+	if !i.storeInReplicaSystem() {
 		return
 	}
 	i.Lock()
 	defer i.Unlock()
+	if i.HybridCouldExtents.sortedEks == nil {
+		i.HybridCouldExtents.sortedEks = NewSortedExtents()
+	}
+	extents := i.HybridCouldExtents.sortedEks.(*SortedExtents)
 	for _, ek := range eks {
-		delItems := i.Extents.Append(ek)
-		size := i.Extents.Size()
+		delItems := extents.Append(ek)
+		size := extents.Size()
 		if i.Size < size {
 			i.Size = size
 		}
@@ -1905,10 +1912,13 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 
 	i.Lock()
 	defer i.Unlock()
-	var extents = NewSortedExtents()
+	var extents *SortedExtents
 	if param.isCache {
 		extents = i.Extents
 	} else {
+		if i.HybridCouldExtents.sortedEks == nil {
+			i.HybridCouldExtents.sortedEks = NewSortedExtents()
+		}
 		extents = i.HybridCouldExtents.sortedEks.(*SortedExtents)
 	}
 
@@ -1931,14 +1941,22 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 		}
 	}
 
-	if proto.IsHot(param.volType) {
-		size := i.Extents.Size()
+	if i.storeInReplicaSystem() {
+		size := extents.Size()
 		if i.Size < size {
 			i.Size = size
 		}
 		i.Generation++
 		i.ModifyTime = param.ct
 	}
+	//if proto.IsHot(param.volType) {
+	//	size := i.Extents.Size()
+	//	if i.Size < size {
+	//		i.Size = size
+	//	}
+	//	i.Generation++
+	//	i.ModifyTime = param.ct
+	//}
 	return
 }
 
@@ -2183,4 +2201,16 @@ func (i *Inode) CopyTinyExtents() (delExtents []proto.ExtentKey) {
 
 func (i *Inode) storeInReplicaSystem() bool {
 	return i.StorageClass == proto.MediaType_HDD || i.StorageClass == proto.MediaType_SSD
+}
+
+func (i *Inode) updateStorageClass(storageClass uint32) error {
+	i.Lock()
+	defer i.Unlock()
+	if i.StorageClass == proto.MediaType_Unspecified {
+		i.StorageClass = storageClass
+	} else if i.StorageClass != storageClass {
+		return errors.New(fmt.Sprintf("storageClass %v not equal to inode.storageClass %v",
+			storageClass, i.StorageClass))
+	}
+	return nil
 }
