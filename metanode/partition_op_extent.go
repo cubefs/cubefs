@@ -214,7 +214,7 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 				log.LogInfof("checkVerList.updateVerList vol %v mp %v ver info %v be consider as TemporaryVer and do deletion verlist %v",
 					mp.config.VolName, mp.config.PartitionId, verInfo, mp.multiVersionList.VerList)
 				if index == len(mp.multiVersionList.VerList)-1 {
-					log.LogErrorf("checkVerList.updateVerList vol %v mp %v last ver info %v should not be consider as TemporaryVer and do deletion verlist %v",
+					log.LogInfof("checkVerList.updateVerList vol %v mp %v last ver info %v should not be consider as TemporaryVer and do deletion verlist %v",
 						mp.config.VolName, mp.config.PartitionId, verInfo, mp.multiVersionList.VerList)
 					return
 				} else {
