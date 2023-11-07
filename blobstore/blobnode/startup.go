@@ -255,7 +255,7 @@ func NewService(conf Config) (svr *Service, err error) {
 
 		closeCh: make(chan struct{}),
 	}
-	svr.inspectMgr = NewDataInspectMgr(svr)
+	svr.inspectMgr = NewDataInspectMgr(svr, conf.inspectConf)
 
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
 

@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -43,6 +44,7 @@ const (
 	DefaultDiskStatusCheckIntervalSec  = 2 * 60       // 2 min
 
 	DefaultDeleteQpsLimitPerDisk = 128
+	defaultInspectRate           = 100
 )
 
 var (
@@ -67,12 +69,13 @@ type Config struct {
 	HeartbeatIntervalSec        int `json:"heartbeat_interval_S"`
 	ChunkReportIntervalSec      int `json:"chunk_report_interval_S"`
 	ChunkGcIntervalSec          int `json:"chunk_gc_interval_S"`
-	ChunkInspectIntervalSec     int `json:"chunk_inspect_interval_S"`
 	ChunkProtectionPeriodSec    int `json:"chunk_protection_period_S"`
 	CleanExpiredStatIntervalSec int `json:"clean_expired_stat_interval_S"`
 	DiskStatusCheckIntervalSec  int `json:"disk_status_check_interval_S"`
 
 	DeleteQpsLimitPerDisk int `json:"delete_qps_limit_per_disk"`
+
+	inspectConf DataInspectConf `json:"inspect_conf"`
 }
 
 func configInit(config *Config) {
@@ -87,10 +90,6 @@ func configInit(config *Config) {
 
 	if config.ChunkGcIntervalSec <= 0 {
 		config.ChunkGcIntervalSec = DefaultChunkGcIntervalSec
-	}
-
-	if config.ChunkInspectIntervalSec <= 0 {
-		config.ChunkInspectIntervalSec = DefaultChunkInspectIntervalSec
 	}
 
 	if config.ChunkProtectionPeriodSec <= 0 {
@@ -112,6 +111,8 @@ func configInit(config *Config) {
 	if config.DeleteQpsLimitPerDisk <= 0 {
 		config.DeleteQpsLimitPerDisk = DefaultDeleteQpsLimitPerDisk
 	}
+	defaulter.LessOrEqual(&conf.inspectConf.IntervalSec, DefaultChunkInspectIntervalSec)
+	defaulter.LessOrEqual(&conf.inspectConf.RateLimit, defaultInspectRate)
 }
 
 func (s *Service) changeLimit(ctx context.Context, c Config) {

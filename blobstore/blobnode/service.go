@@ -143,7 +143,8 @@ func NewHandler(service *Service) *rpc.Router {
 
 	r.Handle(http.MethodPost, "/shard/repair", service.WorkerService.ShardRepair, rpc.OptArgsBody())
 	r.Handle(http.MethodGet, "/worker/stats", service.WorkerService.WorkerStats)
-	r.Handle(http.MethodGet, "/config/inspect", service.setInspectSwitch, rpc.OptArgsURI())
+	r.Handle(http.MethodGet, "/inspect/open/:open", service.setInspectSwitch, rpc.OptArgsURI())
+	r.Handle(http.MethodGet, "/inspect/rate/:rate", service.setInspectRate, rpc.OptArgsURI())
 
 	return r
 }

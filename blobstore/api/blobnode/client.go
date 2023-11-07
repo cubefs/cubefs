@@ -60,8 +60,12 @@ type ConfigReloadArgs struct {
 	Value string `json:"value"`
 }
 
-type InspectArgs struct {
+type InspectOpenArgs struct {
 	Open bool `json:"open"`
+}
+
+type InspectRateArgs struct {
+	Rate int `json:"rate"`
 }
 
 type DiskStatArgs struct {
