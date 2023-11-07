@@ -2544,7 +2544,7 @@ func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (
 		_, err = mp.checkVerList(&proto.VolVersionInfoList{VerList: p.VerList}, true)
 		return
 	}
-	p.Opcode = proto.OpAgainVerionList
+	p.ResultCode = proto.OpAgainVerionList
 	// need return and tell client
 	err = fmt.Errorf("vol %v req seq %v but not found commit status", mp.GetVolName(), p.VerSeq)
 	if value, ok := m.volUpdating.Load(mp.GetVolName()); ok {
