@@ -124,7 +124,8 @@ func (ec *ErrorCode) ServeResponse(w http.ResponseWriter, r *http.Request) {
 		Resource:  r.URL.String(),
 		RequestId: GetRequestID(r),
 	}
-	response, _ := MarshalXMLEntity(errorResponse)
+	response, _ := xml.Marshal(errorResponse)
+	response = append([]byte(strings.TrimSuffix(xml.Header, "\n")), response...)
 	w.Header().Set(ContentType, ValueContentTypeXML)
 	w.Header().Set(ContentLength, strconv.Itoa(len(response)))
 	w.WriteHeader(ec.StatusCode)
