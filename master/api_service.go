@@ -5222,7 +5222,6 @@ func volStat(vol *Vol, countByMeta bool, storageClass uint32) (stat *proto.VolSt
 	stat.CacheTotalSize = vol.CacheCapacity * util.GB
 	stat.CacheUsedSize = vol.cfsUsedSpace()
 	stat.CacheUsedRatio = strconv.FormatFloat(float64(stat.CacheUsedSize)/float64(stat.CacheTotalSize), 'f', 2, 32)
-
 	log.LogDebugf("[volStat] vol[%v] ebsTotal[%v], ebsUsedSize[%v] DefaultStorageClass[%v]",
 		vol.Name, stat.CacheTotalSize, stat.CacheUsedSize, stat.DefaultMediaType)
 	return

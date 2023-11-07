@@ -1054,6 +1054,8 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		}
 	} else {
 		// Write data to data node
+		log.LogErrorf("chihe: streamWrite volume(%v) inode(%v)StorageClass (%v)",
+			v.name, tempInodeInfo.Inode, tempInodeInfo.StorageClass)
 		if size, err = v.streamWrite(tempInodeInfo.Inode, reader, md5Hash, tempInodeInfo.StorageClass); err != nil {
 			log.LogErrorf("WritePart: stream write fail: volume(%v) inode(%v) multipartID(%v) partID(%v) err(%v)",
 				v.name, tempInodeInfo.Inode, multipartId, partId, err)
@@ -1232,7 +1234,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 			}
 			size += part.Size
 		}
-		if err = v.mw.AppendExtentKeys(completeInodeInfo.Inode, completeExtentKeys); err != nil {
+		if err = v.mw.AppendExtentKeys(completeInodeInfo.Inode, completeExtentKeys, completeInodeInfo.StorageClass); err != nil {
 			log.LogErrorf("CompleteMultipart: meta append extent keys fail: volume(%v) path(%v) multipartID(%v) inode(%v) err(%v)",
 				v.name, path, multipartID, completeInodeInfo.Inode, err)
 			return
@@ -3020,13 +3022,14 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 	}
 
 	extentConfig := &stream.ExtentConfig{
-		Volume:            config.Volume,
-		Masters:           config.Masters,
-		FollowerRead:      true,
-		OnAppendExtentKey: metaWrapper.AppendExtentKey,
-		OnSplitExtentKey:  metaWrapper.SplitExtentKey,
-		OnGetExtents:      metaWrapper.GetExtents,
-		OnTruncate:        metaWrapper.Truncate,
+		Volume:                      config.Volume,
+		Masters:                     config.Masters,
+		FollowerRead:                true,
+		OnAppendExtentKey:           metaWrapper.AppendExtentKey,
+		OnSplitExtentKey:            metaWrapper.SplitExtentKey,
+		OnGetExtents:                metaWrapper.GetExtents,
+		OnTruncate:                  metaWrapper.Truncate,
+		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
 	}
 	if proto.IsCold(volumeInfo.VolType) {
 		if blockCache != nil {
