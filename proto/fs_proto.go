@@ -672,6 +672,7 @@ type AppendExtentKeyWithCheckRequest struct {
 	VerSeq         uint64      `json:"seq"`
 	IsSplit        bool
 	IsCache        bool
+	StorageClass   uint32 `json:"storageClass"`
 }
 
 // AppendObjExtentKeyRequest defines the request to append an obj extent key.
@@ -780,10 +781,11 @@ type DeleteInodeBatchRequest struct {
 
 // AppendExtentKeysRequest defines the request to append an extent key.
 type AppendExtentKeysRequest struct {
-	VolName     string      `json:"vol"`
-	PartitionId uint64      `json:"pid"`
-	Inode       uint64      `json:"ino"`
-	Extents     []ExtentKey `json:"eks"`
+	VolName      string      `json:"vol"`
+	PartitionId  uint64      `json:"pid"`
+	Inode        uint64      `json:"ino"`
+	Extents      []ExtentKey `json:"eks"`
+	StorageClass uint32      `json:"storageClass"`
 }
 
 type SetXAttrRequest struct {
@@ -1034,7 +1036,8 @@ type GetUniqIDResponse struct {
 }
 
 type RenewalForbiddenMigrationRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
+	VolName      string `json:"vol"`
+	PartitionID  uint64 `json:"pid"`
+	Inode        uint64 `json:"ino"`
+	StorageClass uint32 `json:"storageClass"`
 }
