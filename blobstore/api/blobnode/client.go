@@ -60,6 +60,10 @@ type ConfigReloadArgs struct {
 	Value string `json:"value"`
 }
 
+type InspectArgs struct {
+	Open bool `json:"open"`
+}
+
 type DiskStatArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 }

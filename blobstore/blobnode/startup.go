@@ -255,6 +255,7 @@ func NewService(conf Config) (svr *Service, err error) {
 
 		closeCh: make(chan struct{}),
 	}
+	svr.inspectMgr = NewDataInspectMgr(svr)
 
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
 
@@ -364,7 +365,7 @@ func NewService(conf Config) (svr *Service, err error) {
 	go svr.loopReportChunkInfoToClusterMgr()
 	go svr.loopGcRubbishChunkFile()
 	go svr.loopCleanExpiredStatFile()
-	go svr.loopDataInspect()
+	go svr.inspectMgr.loopDataInspect()
 
 	return
 }

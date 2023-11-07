@@ -38,7 +38,7 @@ const (
 	DefaultChunkReportIntervalSec      = 60           // 1 min
 	DefaultCleanExpiredStatIntervalSec = 60 * 60      // 60 min
 	DefaultChunkGcIntervalSec          = 30 * 60      // 30 min
-	DefaultChunkInspectIntervalSec     = 2 * 60 * 60  // 2 hour
+	DefaultChunkInspectIntervalSec     = 24 * 60 * 60 // 24 hour
 	DefaultChunkProtectionPeriodSec    = 48 * 60 * 60 // 48 hour
 	DefaultDiskStatusCheckIntervalSec  = 2 * 60       // 2 min
 

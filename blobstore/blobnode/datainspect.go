@@ -7,11 +7,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/prometheus/client_golang/prometheus"
+)
+
+const (
+	listShardBatch = 100
+	maxRetry       = 3
+	slowDownMin    = 3
 )
 
 var dataInspectMetric = prometheus.NewGaugeVec(
@@ -24,75 +33,96 @@ var dataInspectMetric = prometheus.NewGaugeVec(
 	[]string{"cluster_id", "idc", "rack", "host", "disk_id", "vuid", "bid", "error"},
 )
 
-func (s *Service) loopDataInspect() {
-	if !conf.DiskConfig.EnableDataInspect {
-		return
-	}
-	pSpan, pCtx := trace.StartSpanFromContext(s.ctx, "")
-	timer := time.NewTimer(time.Duration(s.Conf.ChunkInspectIntervalSec) * time.Second)
-	defer timer.Stop()
+type DataInspectConf struct {
+	open bool
+}
+
+type DataInspectMgr struct {
+	svr  *Service
+	lck  sync.Mutex
+	conf DataInspectConf
+}
+
+func NewDataInspectMgr(svr *Service) *DataInspectMgr {
+	return &DataInspectMgr{svr: svr}
+}
+
+func (mgr *DataInspectMgr) loopDataInspect() {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
 
 	for {
 		select {
-		case <-s.closeCh:
+		case <-t.C:
+			if !mgr.getSwitch() {
+				continue
+			}
+			mgr.inspectAll()
+
+		case <-mgr.svr.closeCh:
+			return
+		}
+	}
+}
+
+func (mgr *DataInspectMgr) inspectAll() {
+	pSpan, pCtx := trace.StartSpanFromContext(mgr.svr.ctx, "")
+	timer := time.NewTimer(time.Duration(mgr.svr.Conf.ChunkInspectIntervalSec) * time.Second)
+	defer timer.Stop()
+
+	for {
+		pSpan.Info("loop start inspect disks.")
+		var wg sync.WaitGroup
+		disks := mgr.svr.copyDiskStorages(pCtx)
+		for _, ds := range disks {
+			wg.Add(1)
+			go mgr.inspectDisk(pSpan, ds, &wg)
+		}
+		wg.Wait()
+		if !mgr.getSwitch() {
+			return
+		}
+
+		timer.Reset(time.Duration(mgr.svr.Conf.ChunkInspectIntervalSec) * time.Second)
+		select {
+		case <-mgr.svr.closeCh:
 			pSpan.Warnf("loop inspect data done.")
 			return
 		case <-timer.C:
-			pSpan.Info("loop start inspect disks.")
-			var wg sync.WaitGroup
-			disks := s.copyDiskStorages(pCtx)
-			for _, ds := range disks {
-				span, ctx := trace.StartSpanFromContext(context.Background(), pSpan.OperationName()+"_"+ds.ID().ToString())
-				wg.Add(1)
-				go func(ds core.DiskAPI) {
-					defer wg.Done()
-					chunks, err := ds.ListChunks(ctx)
-					if err != nil {
-						span.Errorf("ListChunks error:%v", err)
-						return
-					}
-					for _, chunk := range chunks {
-						if chunk.Status == bnapi.ChunkStatusRelease {
-							continue
-						}
-						cs, found := ds.GetChunkStorage(chunk.Vuid)
-						if !found {
-							span.Errorf("vuid:%v not found", chunk.Vuid)
-							continue
-						}
-						_, err = startInspect(ctx, cs)
-						if err != nil {
-							span.Errorf("inspect error:%v", err)
-							return
-						}
-					}
-				}(ds)
-			}
-			wg.Wait()
-			timer.Reset(time.Duration(s.Conf.ChunkInspectIntervalSec) * time.Second)
 		}
 	}
 }
 
-func ScanShard(ctx context.Context, cs core.ChunkAPI, startBid proto.BlobID, inspectFunc func(ctx context.Context, batchShards []*bnapi.ShardInfo) (err error)) (err error) {
-	for {
-		shards, next, err := cs.ListShards(ctx, startBid, 1024, bnapi.ShardStatusNormal)
-		if err != nil {
-			return err
+func (mgr *DataInspectMgr) inspectDisk(pSpan trace.Span, ds core.DiskAPI, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	span, ctx := trace.StartSpanFromContext(context.Background(), pSpan.OperationName()+"_"+ds.ID().ToString())
+	chunks, err := ds.ListChunks(ctx)
+	if err != nil {
+		span.Errorf("ListChunks error:%v", err)
+		return
+	}
+	for _, chunk := range chunks {
+		if chunk.Status == bnapi.ChunkStatusRelease {
+			continue
 		}
-		err = inspectFunc(ctx, shards)
-		if err != nil {
-			return err
+		cs, found := ds.GetChunkStorage(chunk.Vuid)
+		if !found {
+			span.Errorf("vuid:%v not found", chunk.Vuid)
+			continue
 		}
-		startBid = next
-		if next == proto.InValidBlobID {
-			break
+		_, err = mgr.inspectChunk(ctx, cs)
+		if err != nil {
+			span.Errorf("inspect error:%v", err)
+			return
+		}
+		if !mgr.getSwitch() {
+			return
 		}
 	}
-	return nil
 }
 
-func startInspect(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, error) {
+func (mgr *DataInspectMgr) inspectChunk(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start inspect chunk, vuid:%v,chunkid:%s.", cs.Vuid(), cs.ID())
 	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
@@ -107,12 +137,21 @@ func startInspect(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, erro
 			ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 			discard := io.Discard
 			shardReader := core.NewShardReader(si.Bid, si.Vuid, 0, 0, discard)
-			_, err := cs.Read(ctx, shardReader)
-			if err != nil {
+
+			for i := 0; i < maxRetry; i++ {
+				_, err = cs.Read(ctx, shardReader)
+				if err == bloberr.ErrOverload {
+					time.Sleep(time.Minute * slowDownMin)
+					continue
+				}
+				break
+			}
+
+			if err != nil && err != bloberr.ErrOverload {
 				badShard := bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid}
 				badShards = append(badShards, badShard)
 				span.Errorf("inspect blob error, vuid:%v, bid:%v, err:%v, bad shards:%v", si.Vuid, si.Bid, err, badShards)
-				reportBadShard(cs, si.Bid, err)
+				mgr.reportBadShard(cs, si.Bid, err)
 			}
 
 			select {
@@ -125,7 +164,7 @@ func startInspect(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, erro
 		return nil
 	}
 
-	err := ScanShard(ctx, cs, startBid, scanFn)
+	err := mgr.ScanShard(ctx, cs, startBid, scanFn)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +172,29 @@ func startInspect(ctx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, erro
 	return badShards, nil
 }
 
-func reportBadShard(cs core.ChunkAPI, blobID proto.BlobID, err error) {
+func (mgr *DataInspectMgr) ScanShard(ctx context.Context, cs core.ChunkAPI, startBid proto.BlobID, inspectFunc func(ctx context.Context, batchShards []*bnapi.ShardInfo) (err error)) (err error) {
+	for {
+		shards, next, err := cs.ListShards(ctx, startBid, listShardBatch, bnapi.ShardStatusNormal)
+		if err != nil {
+			return err
+		}
+		err = inspectFunc(ctx, shards)
+		if err != nil {
+			return err
+		}
+		startBid = next
+		if next == proto.InValidBlobID {
+			break
+		}
+
+		if !mgr.getSwitch() {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (mgr *DataInspectMgr) reportBadShard(cs core.ChunkAPI, blobID proto.BlobID, err error) {
 	bid := strconv.FormatUint(uint64(blobID), 10)
 	diskInfo := cs.Disk().DiskInfo()
 	dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
@@ -144,6 +205,34 @@ func reportBadShard(cs core.ChunkAPI, blobID proto.BlobID, err error) {
 		cs.Vuid().ToString(),
 		bid,
 		err.Error()).Set(1)
+}
+
+func (mgr *DataInspectMgr) setSwitch(flag bool) {
+	mgr.lck.Lock()
+	defer mgr.lck.Unlock()
+
+	mgr.conf.open = flag
+}
+
+func (mgr *DataInspectMgr) getSwitch() bool {
+	mgr.lck.Lock()
+	defer mgr.lck.Unlock()
+
+	return mgr.conf.open
+}
+
+func (s *Service) setInspectSwitch(c *rpc.Context) {
+	args := new(bnapi.InspectArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+
+	span.Infof("data inspect switch args: %+v", args)
+	s.inspectMgr.setSwitch(args.Open)
 }
 
 func init() {
