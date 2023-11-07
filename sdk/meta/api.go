@@ -27,9 +27,9 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/multipart"
 )
@@ -80,8 +80,8 @@ func (mw *MetaWrapper) GetRootIno(subdir string, autoMakeDir bool) (uint64, erro
 }
 
 // Looks up absolute path and returns the ino
-func (mw *MetaWrapper) LookupPath(ctx context.Context, subdir string) (uint64, error) {
-	ino := proto.RootIno
+func (mw *MetaWrapper) LookupPath(ctx context.Context, rootIno uint64, subdir string) (uint64, error) {
+	ino := rootIno
 	if subdir == "" || subdir == "/" {
 		return ino, nil
 	}

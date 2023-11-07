@@ -1136,7 +1136,7 @@ func batchDeleteFileTest() (err error) {
 		}
 
 		var ino uint64
-		ino, err = gTrashEnv.metaWrapper.LookupPath(ctx, cfsd1)
+		ino, err = gTrashEnv.metaWrapper.LookupPath(ctx, proto.RootIno, cfsd1)
 		if err != nil {
 			log.LogErrorf(err.Error())
 			return
@@ -1225,7 +1225,7 @@ func batchDeleteFileTest() (err error) {
 		}
 
 		var ino uint64
-		ino, err = gTrashEnv.metaWrapper.LookupPath(ctx, cfsd1)
+		ino, err = gTrashEnv.metaWrapper.LookupPath(ctx, proto.RootIno, cfsd1)
 		if err != nil {
 			log.LogErrorf(err.Error())
 			return

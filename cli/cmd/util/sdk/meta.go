@@ -106,7 +106,7 @@ func GetAllInodesByPath(masters []string, vol string, path string) (inodes []uin
 		return
 	}
 	var ino uint64
-	ino, err = mw.LookupPath(ctx, path)
+	ino, err = mw.LookupPath(ctx, proto.RootIno, path)
 	if err != nil {
 		fmt.Printf("LookupPath fails, err:%v\n", err)
 		return

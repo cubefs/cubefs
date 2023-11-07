@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -32,7 +33,7 @@ func TestPrefetch_Load_Prefetch(t *testing.T)  {
 	var ec *ExtentClient
 	_, ec, err = creatHelper(t)
 	assert.Equal(t, nil, err, "init err")
-	pManager := NewPrefetchManager(ec, ltptestVolume, "/cfs/mnt", 5)
+	pManager := NewPrefetchManager(ec, ltptestVolume, "/cfs/mnt", proto.RootIno, 5)
 	defer func() {
 		pManager.Close()
 	}()

@@ -46,6 +46,7 @@ type CubeInfo struct {
 type PrefetchManager struct {
 	volName          string
 	mountPoint       string
+	rootIno			 uint64
 	ec               *ExtentClient
 	indexFileInfoMap sync.Map // key: index file path, value: *IndexInfo
 	indexInfoChan    chan *IndexInfo
@@ -106,11 +107,12 @@ type DentryInfo struct {
 	dcache *cache.DentryCache
 }
 
-func NewPrefetchManager(ec *ExtentClient, volName, mountPoint string, prefetchThreads int64) *PrefetchManager {
+func NewPrefetchManager(ec *ExtentClient, volName, mountPoint string, rootIno uint64, prefetchThreads int64) *PrefetchManager {
 	InitReadBlockPool()
 	pManager := &PrefetchManager{
 		volName:       volName,
 		mountPoint:    mountPoint,
+		rootIno: 	   rootIno,
 		ec:            ec,
 		closeC:        make(chan struct{}, 1),
 		indexInfoChan: make(chan *IndexInfo, 1024),
@@ -118,7 +120,8 @@ func NewPrefetchManager(ec *ExtentClient, volName, mountPoint string, prefetchTh
 		downloadChan:  make(chan *DownloadFileInfo, 10240000),
 		metrics:       &PrefetchMetrics{0, 0},
 	}
-	log.LogInfof("NewPrefetchManager: start prefetch threads(%v)", prefetchThreads)
+	log.LogInfof("NewPrefetchManager: vol(%v) start prefetch threads(%v) mount(%v) rootIno(%v)",
+		pManager.volName, prefetchThreads, pManager.mountPoint, pManager.rootIno)
 	for i := int64(0); i < prefetchThreads; i++ {
 		pManager.wg.Add(1)
 		go func(id int64) {
@@ -436,7 +439,7 @@ func (pManager *PrefetchManager) getDirInfo(ctx context.Context, path string) (p
 	if log.IsDebugEnabled() {
 		log.LogDebugf("getDirInfo enter: cfs path(%v)", path)
 	}
-	parIno, err = pManager.ec.metaWrapper.LookupPath(ctx, path)
+	parIno, err = pManager.ec.metaWrapper.LookupPath(ctx, pManager.rootIno, path)
 	if err != nil {
 		return
 	}
@@ -743,7 +746,7 @@ func (pManager *PrefetchManager) LookupPathByCache(ctx context.Context, absPath 
 	if !strings.HasPrefix(absPath, pManager.mountPoint) {
 		return 0, fmt.Errorf("not cfs path")
 	}
-	ino := proto.RootIno
+	ino := pManager.rootIno
 	subDir := strings.Replace(absPath, pManager.mountPoint, "", 1)
 	if subDir == "" || subDir == "/" {
 		return 0, fmt.Errorf("not cfs file")

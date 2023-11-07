@@ -49,7 +49,7 @@ func TestMetaAPI(t *testing.T) {
 	}
 	// look up path
 	absPath := strings.Join([]string{dir1, dir2}, "/")
-	inode, err := mw.LookupPath(ctx, absPath)
+	inode, err := mw.LookupPath(ctx, proto.RootIno, absPath)
 	if err != nil {
 		t.Errorf("look up path err(%v)", err)
 	}

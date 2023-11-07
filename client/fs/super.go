@@ -182,7 +182,7 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	go s.scheduler()
 
 	if opt.PrefetchThread > 0 {
-		s.prefetchManager = data.NewPrefetchManager(s.ec, s.volname, opt.MountPoint, opt.PrefetchThread)
+		s.prefetchManager = data.NewPrefetchManager(s.ec, s.volname, opt.MountPoint, s.rootIno, opt.PrefetchThread)
 	}
 
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v)", s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration)
