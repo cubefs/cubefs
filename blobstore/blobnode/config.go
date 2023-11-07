@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -38,19 +39,18 @@ const (
 	DefaultChunkReportIntervalSec      = 60           // 1 min
 	DefaultCleanExpiredStatIntervalSec = 60 * 60      // 60 min
 	DefaultChunkGcIntervalSec          = 30 * 60      // 30 min
-	DefaultChunkInspectIntervalSec     = 2 * 60 * 60  // 2 hour
+	DefaultChunkInspectIntervalSec     = 24 * 60 * 60 // 24 hour
 	DefaultChunkProtectionPeriodSec    = 48 * 60 * 60 // 48 hour
 	DefaultDiskStatusCheckIntervalSec  = 2 * 60       // 2 min
 
 	DefaultDeleteQpsLimitPerDisk = 128
+	DefaultInspectRate           = 4 * 1024 * 1024 // rate limit 4MB per second
 )
 
 var (
-	ErrNotSupportKey     = errors.New("not support this key")
-	ErrValueType         = errors.New("value type not match this key")
-	ErrNotConfigPrevious = errors.New("level previously not config")
-	ErrNotConfigNow      = errors.New("level not config now")
-	ErrValueOutOfLimit   = errors.New("value out of limit")
+	ErrNotSupportKey   = errors.New("not support this key")
+	ErrValueType       = errors.New("value type not match this key")
+	ErrValueOutOfLimit = errors.New("value out of limit")
 )
 
 type Config struct {
@@ -67,12 +67,13 @@ type Config struct {
 	HeartbeatIntervalSec        int `json:"heartbeat_interval_S"`
 	ChunkReportIntervalSec      int `json:"chunk_report_interval_S"`
 	ChunkGcIntervalSec          int `json:"chunk_gc_interval_S"`
-	ChunkInspectIntervalSec     int `json:"chunk_inspect_interval_S"`
 	ChunkProtectionPeriodSec    int `json:"chunk_protection_period_S"`
 	CleanExpiredStatIntervalSec int `json:"clean_expired_stat_interval_S"`
 	DiskStatusCheckIntervalSec  int `json:"disk_status_check_interval_S"`
 
 	DeleteQpsLimitPerDisk int `json:"delete_qps_limit_per_disk"`
+
+	InspectConf DataInspectConf `json:"inspect_conf"`
 }
 
 func configInit(config *Config) {
@@ -87,10 +88,6 @@ func configInit(config *Config) {
 
 	if config.ChunkGcIntervalSec <= 0 {
 		config.ChunkGcIntervalSec = DefaultChunkGcIntervalSec
-	}
-
-	if config.ChunkInspectIntervalSec <= 0 {
-		config.ChunkInspectIntervalSec = DefaultChunkInspectIntervalSec
 	}
 
 	if config.ChunkProtectionPeriodSec <= 0 {
@@ -112,6 +109,8 @@ func configInit(config *Config) {
 	if config.DeleteQpsLimitPerDisk <= 0 {
 		config.DeleteQpsLimitPerDisk = DefaultDeleteQpsLimitPerDisk
 	}
+	defaulter.LessOrEqual(&config.InspectConf.IntervalSec, DefaultChunkInspectIntervalSec)
+	defaulter.LessOrEqual(&config.InspectConf.RateLimit, DefaultInspectRate)
 }
 
 func (s *Service) changeLimit(ctx context.Context, c Config) {

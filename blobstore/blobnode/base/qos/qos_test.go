@@ -156,14 +156,14 @@ func TestQosTryAcquire(t *testing.T) {
 
 		// discard ratio
 		success := 0
-		for i := 0; i < 100; i++ {
+		for i := 0; i < 1000; i++ {
 			ok = q.TryAcquireIO(ctx, 1, WriteType)
 			if ok {
 				success++
 			}
 		}
-		ratio := float64(success) / 10
-		t.Logf("success ration:%f", ratio)
+		ratio := float64(success) / 1000
+		t.Logf("success:%d, ration:%f", success, ratio)
 		require.Less(t, ratio, 1.0)
 		// require.Less(t, 0.0, ratio)
 	}

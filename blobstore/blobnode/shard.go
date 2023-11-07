@@ -137,7 +137,7 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	if err != nil {
 		span.Errorf("Failed read. args:%v err:%v, written:%v", args, err, written)
 		if isShardErr(err) {
-			reportBadShard(cs, args.Bid, err)
+			s.inspectMgr.reportBadShard(cs, args.Bid, err)
 		}
 		if !wroteHeader {
 			err = handlerBidNotFoundErr(err)
