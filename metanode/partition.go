@@ -543,14 +543,21 @@ func (mp *metaPartition) acucumUidSizeByLoad(ino *Inode) {
 func (mp *metaPartition) GetVerList() []*proto.VolVersionInfo {
 	mp.multiVersionList.RLock()
 	defer mp.multiVersionList.RUnlock()
-	return mp.multiVersionList.VerList
+
+	verList := make([]*proto.VolVersionInfo, len(mp.multiVersionList.VerList))
+	copy(verList, mp.multiVersionList.VerList)
+
+	return verList
 }
 
 // include TemporaryVerMap or else cann't recycle temporary version after restart
 func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 	mp.multiVersionList.RLock()
 	defer mp.multiVersionList.RUnlock()
-	verList = mp.multiVersionList.VerList
+
+	verList = make([]*proto.VolVersionInfo, len(mp.multiVersionList.VerList))
+	copy(verList, mp.multiVersionList.VerList)
+
 	for _, verInfo := range mp.multiVersionList.TemporaryVerMap {
 		verList = append(verList, verInfo)
 	}
