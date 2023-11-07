@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
@@ -43,6 +44,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
 
 	tpObject := exporter.NewModuleTP(p.GetOpMsg())
+	tpObj := BeforeTpMonitor(p)
 	s.rateLimit(p, c)
 
 	start := time.Now().UnixNano()
@@ -74,6 +76,11 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 				}
 			}
 		}
+		size := uint64(p.Size)
+		if p.Opcode == proto.OpMarkDelete {
+			size = 0
+		}
+		tpObj.AfterTp(size)
 		p.Size = resultSize
 		tpObject.Set(err)
 	}()
@@ -374,8 +381,6 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	} else {
 		p.PacketOkReply()
 	}
-
-	partition.monitorData[proto.ActionMarkDelete].UpdateData(0)
 	return
 }
 
@@ -392,9 +397,10 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		}
 		p.PacketOkReply()
 	}()
-
 	remote := c.RemoteAddr().String()
 	partition := p.Object.(*DataPartition)
+	toObject := partition.monitorData[proto.ActionBatchMarkDelete].BeforeTp()
+
 	var keys []*proto.InodeExtentKey
 	if err = json.Unmarshal(p.Data[0:p.Size], &keys); err != nil {
 		return
@@ -411,7 +417,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		return
 	}
 
-	partition.monitorData[proto.ActionBatchMarkDelete].UpdateData(uint64(len(keys)))
+	toObject.AfterTp(uint64(len(keys)))
 	return
 }
 
@@ -420,7 +426,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	var err error
 	partition := p.Object.(*DataPartition)
 	defer func() {
-		partition.monitorData[proto.ActionAppendWrite].UpdateData(uint64(p.Size))
 		if err != nil {
 			p.PackErrorBody(ActionWrite, err.Error())
 		} else {
@@ -630,6 +635,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply.ExtentOffset = offset
 		p.Size = uint32(currReadSize)
 		p.ExtentOffset = offset
+		toObject := partition.monitorData[action].BeforeTp()
 
 		err = func() error {
 			var storeErr error
@@ -668,7 +674,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 			netErr = reply.WriteToConn(connect, proto.WriteDeadlineTime)
 			return netErr
 		}()
-		partition.monitorData[action].UpdateData(uint64(currReadSize))
+		toObject.AfterTp(uint64(currReadSize))
 		if err != nil {
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
 				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))
@@ -935,7 +941,6 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	offset := request.ExtentOffset
 	needReplySize = int64(tinyExtentFinfoSize - uint64(request.ExtentOffset))
 	avaliReplySize := uint64(needReplySize)
-	partition.monitorData[proto.ActionRepairRead].UpdateData(uint64(request.Size))
 
 	var (
 		newOffset, newEnd int64
@@ -1831,4 +1836,17 @@ func (s *DataNode) responseHeartbeat(task *proto.AdminTask) {
 		log.LogErrorf(err.Error())
 		return
 	}
+}
+
+func BeforeTpMonitor(p *repl.Packet) *statistics.TpObject {
+	var monitorOp int
+	switch p.Opcode {
+	case proto.OpWrite, proto.OpSyncWrite:
+		monitorOp = proto.ActionAppendWrite
+	case proto.OpMarkDelete:
+		monitorOp = proto.ActionMarkDelete
+	default:
+		return nil
+	}
+	return p.Object.(*DataPartition).monitorData[monitorOp].BeforeTp()
 }

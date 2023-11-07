@@ -576,14 +576,18 @@ func (s *DataNode) summaryMonitorData(reportTime int64) []*statistics.MonitorDat
 			if atomic.LoadUint64(&partition.monitorData[i].Count) == 0 {
 				continue
 			}
+			size, count, tp := partition.monitorData[i].ResetTp()
 			data := &statistics.MonitorData{
 				VolName:     partition.volumeID,
 				PartitionID: partition.partitionID,
 				DiskPath:    partition.Disk().Path,
 				Action:      i,
 				ActionStr:   proto.ActionDataMap[i],
-				Size:        atomic.SwapUint64(&partition.monitorData[i].Size, 0),
-				Count:       atomic.SwapUint64(&partition.monitorData[i].Count, 0),
+				Size:        size,
+				Count:       count,
+				Tp99:        uint64(tp.Tp99),
+				Max:         uint64(tp.Max),
+				Avg:         uint64(tp.Avg),
 				ReportTime:  reportTime,
 			}
 			dataList = append(dataList, data)

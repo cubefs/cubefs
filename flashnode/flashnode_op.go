@@ -93,6 +93,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 		req    *proto.CacheReadRequest
 		volume string
 	)
+
 	defer func() {
 		if err != nil {
 			logContent := fmt.Sprintf("action[opCacheRead] volume:[%v], logMsg:%v.", volume,
@@ -119,6 +120,8 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 		metric.Set(nil)
 		return
 	}
+	toObj := f.BeforeTp(volume, proto.ActionCacheRead)
+	defer toObj.AfterTp(req.Size_)
 	if block, err = f.cacheEngine.GetCacheBlockForRead(volume, req.CacheRequest.Inode, req.CacheRequest.FixedFileOffset, req.CacheRequest.Version, req.Size_); err != nil {
 		if block, err = f.cacheEngine.CreateBlock(req.CacheRequest); err != nil {
 			return err
@@ -128,7 +131,6 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 	if err = f.doStreamReadRequest(ctx, conn, req, p, block); err != nil {
 		return
 	}
-	f.recordMonitorAction(volume, proto.ActionCacheRead, req.Size_)
 	return
 }
 
@@ -221,16 +223,19 @@ func (f *FlashNode) opPrepare(conn net.Conn, p *Packet, remoteAddr string) (err 
 	p.PacketOkReply()
 	_ = respondToClient(conn, p)
 	volume = req.CacheRequest.Volume
+	toObj := f.BeforeTp(volume, proto.ActionCachePrepare)
+	defer func() {
+		if len(req.CacheRequest.Sources) == 0 {
+			toObj.AfterTp(0)
+		} else {
+			toObj.AfterTp(req.CacheRequest.Sources[len(req.CacheRequest.Sources)-1].FileOffset & (proto.CACHE_BLOCK_SIZE - 1))
+		}
+	}()
 	if err = f.cacheEngine.PrepareCache(reqID, req.CacheRequest); err != nil {
 		return err
 	}
 	if len(req.FlashNodes) > 0 {
 		f.dispatchRequestToFollowers(req)
-	}
-	if len(req.CacheRequest.Sources) == 0 {
-		f.recordMonitorAction(volume, proto.ActionCachePrepare, 0)
-	} else {
-		f.recordMonitorAction(volume, proto.ActionCachePrepare, req.CacheRequest.Sources[len(req.CacheRequest.Sources)-1].FileOffset&(proto.CACHE_BLOCK_SIZE-1))
 	}
 	return
 }

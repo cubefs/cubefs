@@ -74,28 +74,28 @@ func (sp sortedPeers) Swap(i, j int) {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId        uint64                       `json:"partition_id"`
-	VolName            string                       `json:"vol_name"`
-	Start              uint64                       `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
-	End                uint64                       `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
-	Peers              []proto.Peer                 `json:"peers"`    // Peers information of the raftStore
-	Learners           []proto.Learner              `json:"learners"` // Learners information of the raftStore
-	TrashRemainingDays int32                        `json:"-"`
-	Cursor             uint64                       `json:"-"` // Cursor ID of the inode that have been assigned
-	NodeId             uint64                       `json:"-"`
-	RootDir            string                       `json:"-"`
-	RocksDBDir         string                       `json:"rocksDb_dir"`
-	BeforeStart        func()                       `json:"-"`
-	AfterStart         func()                       `json:"-"`
-	BeforeStop         func()                       `json:"-"`
-	AfterStop          func()                       `json:"-"`
-	RaftStore          raftstore.RaftStore          `json:"-"`
-	ConnPool           *connpool.ConnectPool        `json:"-"`
-	StoreMode          proto.StoreMode              `json:"store_mode"`
-	CreationType       int                          `json:"creation_type"`
-	ChildFileMaxCount  uint32                       `json:"-"`
-	TrashCleanInterval uint64                       `json:"-"`
-	EnableRemoveDupReq bool                         `json:"-"`
+	PartitionId        uint64                `json:"partition_id"`
+	VolName            string                `json:"vol_name"`
+	Start              uint64                `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
+	End                uint64                `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
+	Peers              []proto.Peer          `json:"peers"`    // Peers information of the raftStore
+	Learners           []proto.Learner       `json:"learners"` // Learners information of the raftStore
+	TrashRemainingDays int32                 `json:"-"`
+	Cursor             uint64                `json:"-"` // Cursor ID of the inode that have been assigned
+	NodeId             uint64                `json:"-"`
+	RootDir            string                `json:"-"`
+	RocksDBDir         string                `json:"rocksDb_dir"`
+	BeforeStart        func()                `json:"-"`
+	AfterStart         func()                `json:"-"`
+	BeforeStop         func()                `json:"-"`
+	AfterStop          func()                `json:"-"`
+	RaftStore          raftstore.RaftStore   `json:"-"`
+	ConnPool           *connpool.ConnectPool `json:"-"`
+	StoreMode          proto.StoreMode       `json:"store_mode"`
+	CreationType       int                   `json:"creation_type"`
+	ChildFileMaxCount  uint32                `json:"-"`
+	TrashCleanInterval uint64                `json:"-"`
+	EnableRemoveDupReq bool                  `json:"-"`
 
 	RocksWalFileSize     uint64 `json:"rocks_wal_file_size"`
 	RocksWalMemSize      uint64 `json:"rocks_wal_mem_size"`
@@ -154,7 +154,7 @@ func (c *MetaPartitionConfig) persist() (err error) {
 	}
 	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		c.PartitionId, c.VolName, c.Start, c.End, c.Cursor)
-	log.LogInfof("persistMetadata: persist complete: partitionID(%v) creationType(%v) RocksDBWalFileSize(%v) +" +
+	log.LogInfof("persistMetadata: persist complete: partitionID(%v) creationType(%v) RocksDBWalFileSize(%v) +"+
 		"RocksDBWalMemSize(%v) RocksDBLogFileSize(%v) RocksDBReservedCount(%v) RocksDBLogReservedTime(%v) WALTTL(%v)", c.PartitionId,
 		c.CreationType, c.RocksWalFileSize, c.RocksWalMemSize, c.RocksLogFileSize,
 		c.RocksLogReVersedCnt, c.RocksLogReversedTime, c.RocksWalTTL)
@@ -169,7 +169,7 @@ func (c *MetaPartitionConfig) sortPeers() {
 func (c *MetaPartitionConfig) marshalJson() (data []byte, err error) {
 	type MetaConf MetaPartitionConfig
 	return json.Marshal(&struct {
-		Cursor    uint64 `json:"cursor"`
+		Cursor uint64 `json:"cursor"`
 		*MetaConf
 	}{
 		Cursor:   c.Cursor,
@@ -180,7 +180,7 @@ func (c *MetaPartitionConfig) marshalJson() (data []byte, err error) {
 func (c *MetaPartitionConfig) unmarshalJson(data []byte) (err error) {
 	type MetaConf MetaPartitionConfig
 	confStruct := &struct {
-		Cursor    uint64 `json:"cursor"`
+		Cursor uint64 `json:"cursor"`
 		*MetaConf
 	}{
 		MetaConf: (*MetaConf)(c),
@@ -322,9 +322,10 @@ type MetaPartition interface {
 // metaPartition manages the range of the inode IDs.
 // When a new inode is requested, it allocates a new inode id for this inode if possible.
 // States:
-//  +-----+             +-------+
-//  | New | → Restore → | Ready |
-//  +-----+             +-------+
+//
+//	+-----+             +-------+
+//	| New | → Restore → | Ready |
+//	+-----+             +-------+
 type metaPartition struct {
 	config                      *MetaPartitionConfig
 	confUpdateMutex             sync.Mutex
@@ -578,21 +579,21 @@ func (mp *metaPartition) getRocksDbRootDir() string {
 
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *metaPartition {
 	mp := &metaPartition{
-		config:           conf,
-		stopC:            make(chan bool),
-		storeChan:        make(chan *storeMsg, 100),
-		freeList:         newFreeList(),
-		extDelCh:         make(chan []proto.MetaDelExtentKey, 10000),
-		extReset:         make(chan struct{}),
-		vol:              NewVol(),
-		manager:          manager,
-		monitorData:      statistics.InitMonitorData(statistics.ModelMetaNode),
-		marshalVersion:   MetaPartitionMarshVersion2,
-		extDelCursor:     make(chan uint64, 1),
-		db:               NewRocksDb(),
-		CreationType:     conf.CreationType,
-		stopChState:      mpStopChOpenState,
-		reqRecords:       NewRequestRecords(),
+		config:         conf,
+		stopC:          make(chan bool),
+		storeChan:      make(chan *storeMsg, 100),
+		freeList:       newFreeList(),
+		extDelCh:       make(chan []proto.MetaDelExtentKey, 10000),
+		extReset:       make(chan struct{}),
+		vol:            NewVol(),
+		manager:        manager,
+		monitorData:    statistics.InitMonitorData(statistics.ModelMetaNode),
+		marshalVersion: MetaPartitionMarshVersion2,
+		extDelCursor:   make(chan uint64, 1),
+		db:             NewRocksDb(),
+		CreationType:   conf.CreationType,
+		stopChState:    mpStopChOpenState,
+		reqRecords:     NewRequestRecords(),
 	}
 	return mp
 }
@@ -850,7 +851,7 @@ func (mp *metaPartition) loadMetaInRocksDB() (err error) {
 
 func (mp *metaPartition) loadRequestRecordsInRocksDB() (err error) {
 	startKey := []byte{byte(ReqRecordsTable)}
-	endKey := []byte{byte(ReqRecordsTable+1)}
+	endKey := []byte{byte(ReqRecordsTable + 1)}
 	batchReq := make([]*RequestInfo, 0)
 	err = mp.db.Range(startKey, endKey, func(k, v []byte) (bool, error) {
 		reqInfos, e := UnmarshalBatchRequestInfo(v)
@@ -1429,7 +1430,6 @@ func (mp *metaPartition) Expired() (err error) {
 	return nil
 }
 
-//
 func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.MetaPartitionInfo
 	if partition, err = masterClient.ClientAPI().GetMetaPartition(mp.config.PartitionId, mp.config.VolName); err != nil {
@@ -1461,13 +1461,17 @@ func (mp *metaPartition) SumMonitorData(reportTime int64) []*statistics.MonitorD
 		if atomic.LoadUint64(&mp.monitorData[i].Count) == 0 {
 			continue
 		}
+		size, count, tp := mp.monitorData[i].ResetTp()
 		data := &statistics.MonitorData{
 			VolName:     mp.config.VolName,
 			PartitionID: mp.config.PartitionId,
 			Action:      i,
 			ActionStr:   proto.ActionMetaMap[i],
-			Size:        atomic.SwapUint64(&mp.monitorData[i].Size, 0),
-			Count:       atomic.SwapUint64(&mp.monitorData[i].Count, 0),
+			Size:        size,
+			Count:       count,
+			Tp99:        uint64(tp.Tp99),
+			Max:         uint64(tp.Max),
+			Avg:         uint64(tp.Avg),
 			ReportTime:  reportTime,
 		}
 		dataList = append(dataList, data)

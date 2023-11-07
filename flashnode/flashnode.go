@@ -192,7 +192,7 @@ func (f *FlashNode) stopCacheEngine() {
 }
 
 func (f *FlashNode) startCacheEngine() (err error) {
-	if f.cacheEngine, err = cache_engine.NewCacheEngine(f.tmpPath, int64(f.total), cache_engine.DefaultCacheMaxUsedRatio, LruCacheDefaultCapacity, time.Hour, f.readSource.ReadExtentData, f.recordMonitorAction); err != nil {
+	if f.cacheEngine, err = cache_engine.NewCacheEngine(f.tmpPath, int64(f.total), cache_engine.DefaultCacheMaxUsedRatio, LruCacheDefaultCapacity, time.Hour, f.readSource.ReadExtentData, f.BeforeTp); err != nil {
 		log.LogErrorf("start CacheEngine failed: %v", err)
 		return
 	}

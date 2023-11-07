@@ -37,11 +37,15 @@ func SummaryMonitorData(reportTime int64) []*MonitorData {
 			if atomic.LoadUint64(&p.monitorData[i].Count) == 0 {
 				continue
 			}
+			size, count, tp := p.monitorData[i].ResetTp()
 			data := &MonitorData{
 				PartitionID: p.PartitionId,
 				Action:      i,
-				Size:        atomic.SwapUint64(&p.monitorData[i].Size, 0),
-				Count:       atomic.SwapUint64(&p.monitorData[i].Count, 0),
+				Size:        size,
+				Count:       count,
+				Tp99:        uint64(tp.Tp99),
+				Max:         uint64(tp.Max),
+				Avg:         uint64(tp.Avg),
 				ReportTime:  reportTime,
 				ActionStr:   p.opAction,
 			}

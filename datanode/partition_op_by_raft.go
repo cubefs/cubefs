@@ -401,7 +401,9 @@ func (dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 // ApplyRandomWrite random write apply
 func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint64) (resp interface{}, err error) {
 	start := time.Now().UnixMicro()
+	toObject := dp.monitorData[proto.ActionOverWrite].BeforeTp()
 	defer func() {
+		toObject.AfterTp(uint64(opItem.size))
 		if err == nil {
 			resp = proto.OpOk
 			if log.IsWriteEnabled() {
@@ -449,7 +451,6 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		}
 		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry(%v)", raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size, err, i)
 	}
-	dp.monitorData[proto.ActionOverWrite].UpdateData(uint64(opItem.size))
 	return
 }
 

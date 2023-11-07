@@ -3,6 +3,7 @@ package statistics
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/tpmonitor"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,10 +46,14 @@ type MonitorData struct {
 	ActionStr   string
 	Size        uint64 // the num of read/write byte
 	Count       uint64
+	Tp99        uint64
+	Avg         uint64
+	Max         uint64
 	ReportTime  int64
 	TimeStr     string
 	IsTotal     bool
 	DiskPath    string // disk of dp
+	tpMonitor   *tpmonitor.TpMonitor
 }
 
 type ReportInfo struct {
@@ -136,9 +141,37 @@ func InitMonitorData(module string) []*MonitorData {
 	}
 	m := make([]*MonitorData, num)
 	for i := 0; i < num; i++ {
-		m[i] = &MonitorData{}
+		m[i] = &MonitorData{
+			tpMonitor: tpmonitor.NewTpMonitor(),
+		}
 	}
 	return m
+}
+
+type TpObject struct {
+	sTime   time.Time
+	monitor *MonitorData
+}
+
+func (data *MonitorData) BeforeTp() *TpObject {
+	return &TpObject{
+		sTime:   time.Now(),
+		monitor: data,
+	}
+}
+
+func (tpObject *TpObject) AfterTp(dataSize uint64) {
+	if StatisticsModule == nil || tpObject == nil || tpObject.monitor == nil {
+		return
+	}
+	data := tpObject.monitor
+	data.tpMonitor.Accumulate(int(time.Since(tpObject.sTime).Milliseconds()))
+	atomic.AddUint64(&data.Count, 1)
+	atomic.AddUint64(&data.Size, dataSize)
+}
+
+func (data *MonitorData) ResetTp() (size, count uint64, tp tpmonitor.TpResult) {
+	return atomic.SwapUint64(&data.Size, 0), atomic.SwapUint64(&data.Count, 0), data.tpMonitor.TpReset()
 }
 
 func (data *MonitorData) UpdateData(dataSize uint64) {

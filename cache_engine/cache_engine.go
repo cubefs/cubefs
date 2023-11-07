@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/fastcrc32"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/tmpfs"
 	"math"
 	"os"
@@ -55,7 +56,7 @@ type CacheEngine struct {
 	sync.Mutex
 }
 type ReadExtentData func(source *proto.DataSource, afterReadFunc func([]byte, int64) error) (readBytes int, err error)
-type MonitorFunc func(volume string, action int, size uint64)
+type MonitorFunc func(volume string, action int) *statistics.TpObject
 
 func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64, capacity int, expireTime time.Duration, readFunc ReadExtentData, monitorFunc MonitorFunc) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
@@ -207,10 +208,12 @@ func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, 
 	defer lock.RUnlock()
 	if value, getErr := c.lruCache.Get(key); getErr == nil {
 		block = value.(*CacheBlock)
-		c.monitorFunc(volume, proto.ActionCacheHit, size)
+		toObj := c.monitorFunc(volume, proto.ActionCacheHit)
+		toObj.AfterTp(size)
 		return
 	}
-	c.monitorFunc(volume, proto.ActionCacheMiss, 0)
+	toObj := c.monitorFunc(volume, proto.ActionCacheMiss)
+	toObj.AfterTp(0)
 	return nil, errors.New("cache block get failed")
 }
 
@@ -256,7 +259,8 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	}
 	err = block.initFilePath()
 	if n > 0 {
-		c.monitorFunc(volume, proto.ActionCacheEvict, uint64(n))
+		toObj := c.monitorFunc(volume, proto.ActionCacheEvict)
+		toObj.AfterTp(uint64(n))
 	}
 	return
 }

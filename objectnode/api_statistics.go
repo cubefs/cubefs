@@ -1,8 +1,6 @@
 package objectnode
 
 import (
-	"sync/atomic"
-
 	"github.com/cubefs/cubefs/util/statistics"
 )
 
@@ -22,6 +20,19 @@ const (
 	StatisticsActionListMultipartUploads    StatisticsAction = statistics.ActionS3ListMultipartUploads
 	StatisticsActionListParts               StatisticsAction = statistics.ActionS3ListParts
 )
+
+func (o *ObjectNode) BeforeTp(volume string, action int) *statistics.TpObject {
+	val, found := o.statistics.Load(volume)
+	if !found {
+		val, _ = o.statistics.LoadOrStore(volume, statistics.InitMonitorData(statistics.ModelFlashNode))
+	}
+	datas, is := val.([]*statistics.MonitorData)
+	if !is {
+		o.statistics.Delete(volume)
+		return nil
+	}
+	return datas[action].BeforeTp()
+}
 
 func (o *ObjectNode) recordAction(volume string, action StatisticsAction, size uint64) {
 	if !o.statisticEnabled {
@@ -59,13 +70,17 @@ func (o *ObjectNode) reportSummary(reportTime int64) []*statistics.MonitorData {
 			if data.Count == 0 {
 				continue
 			}
+			size, count, tp := data.ResetTp()
 			results = append(results, &statistics.MonitorData{
 				VolName:     volume,
 				PartitionID: 0,
 				Action:      i,
 				ActionStr:   statistics.ActionObjectMap[i],
-				Size:        atomic.SwapUint64(&data.Size, 0),
-				Count:       atomic.SwapUint64(&data.Count, 0),
+				Size:        size,
+				Count:       count,
+				Tp99:        uint64(tp.Tp99),
+				Max:         uint64(tp.Max),
+				Avg:         uint64(tp.Avg),
 				ReportTime:  reportTime,
 			})
 		}

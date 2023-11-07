@@ -765,6 +765,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		extentID   = remoteExtentInfo[storage.FileID]
 		remoteSize = remoteExtentInfo[storage.Size]
 	)
+	toObject := dp.monitorData[proto.ActionRepairWrite].BeforeTp()
 
 	// Checking store and extent state at first.
 	var store = dp.ExtentStore()
@@ -947,7 +948,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 
 	}
 
-	dp.monitorData[proto.ActionRepairWrite].UpdateData(hasRecoverySize)
+	toObject.AfterTp(hasRecoverySize)
 
 	return
 

@@ -3,10 +3,9 @@ package flashnode
 import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/statistics"
-	"sync/atomic"
 )
 
-func (f *FlashNode) recordMonitorAction(volume string, action int, size uint64) {
+func (f *FlashNode) BeforeTp(volume string, action int) *statistics.TpObject {
 	val, found := f.statistics.Load(volume)
 	if !found {
 		val, _ = f.statistics.LoadOrStore(volume, statistics.InitMonitorData(statistics.ModelFlashNode))
@@ -14,9 +13,9 @@ func (f *FlashNode) recordMonitorAction(volume string, action int, size uint64) 
 	datas, is := val.([]*statistics.MonitorData)
 	if !is {
 		f.statistics.Delete(volume)
-		return
+		return nil
 	}
-	datas[action].UpdateData(size)
+	return datas[action].BeforeTp()
 }
 
 func (f *FlashNode) reportSummary(reportTime int64) []*statistics.MonitorData {
@@ -39,13 +38,17 @@ func (f *FlashNode) reportSummary(reportTime int64) []*statistics.MonitorData {
 			if data.Count == 0 {
 				continue
 			}
+			size, count, tp := data.ResetTp()
 			results = append(results, &statistics.MonitorData{
 				VolName:     volume,
 				PartitionID: 0,
 				Action:      i,
 				ActionStr:   proto.ActionFlashMap[i],
-				Size:        atomic.SwapUint64(&data.Size, 0),
-				Count:       atomic.SwapUint64(&data.Count, 0),
+				Size:        size,
+				Count:       count,
+				Tp99:        uint64(tp.Tp99),
+				Max:         uint64(tp.Max),
+				Avg:         uint64(tp.Avg),
 				ReportTime:  reportTime,
 			})
 		}
