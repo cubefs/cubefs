@@ -392,7 +392,7 @@ begin:
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
 			} else {
 				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
-				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct)
+				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct, storageClass)
 			}
 			if s.client.bcacheEnable {
 				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
@@ -414,7 +414,7 @@ begin:
 			// Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
 			if writeSize, err, status = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, true, storageClass); status == LastEKVersionNotEqual {
 				log.LogDebugf("action[streamer.write] tryDirectAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-				if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct); status == int32(proto.OpTryOtherExtent) {
+				if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct, storageClass); status == int32(proto.OpTryOtherExtent) {
 					log.LogDebugf("action[streamer.write] doAppendWrite again req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
 					writeSize, err, _ = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, false, storageClass)
 				}
@@ -435,21 +435,21 @@ begin:
 	return
 }
 
-func (s *Streamer) doOverWriteByAppend(req *ExtentRequest, direct bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) doOverWriteByAppend(req *ExtentRequest, direct bool, storageClass uint32) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	// the extent key needs to be updated because when preparing the requests,
 	// the obtained extent key could be a local key which can be inconsistent with the remote key.
 	// the OpTryWriteAppend is a special case, ignore it
 	req.ExtentKey = s.extents.Get(uint64(req.FileOffset))
-	return s.doDirectWriteByAppend(req, direct, proto.OpRandomWriteAppend)
+	return s.doDirectWriteByAppend(req, direct, proto.OpRandomWriteAppend, storageClass)
 }
 
-func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool, storageClass uint32) (total int, extKey *proto.ExtentKey, err error, status int32) {
 
 	req.ExtentKey = s.handler.key
-	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend)
+	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend, storageClass)
 }
 
-func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8, storageClass uint32) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	var (
 		dp        *wrapper.DataPartition
 		reqPacket *Packet
@@ -578,14 +578,14 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 			return
 		}
 		log.LogDebugf("action[doDirectWriteByAppend] inode %v meta extent split with ek (%v)", s.inode, extKey)
-		if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey); err != nil {
+		if err = s.client.splitExtentKey(s.parentInode, s.inode, *extKey, storageClass); err != nil {
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
 	} else {
 		// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
 		discards := s.extents.Append(extKey, false)
-		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache); err != nil {
+		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache, storageClass); err != nil {
 			log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
