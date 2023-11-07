@@ -58,8 +58,8 @@ func init() {
 }
 
 type (
-	SplitExtentKeyFunc            func(parentInode, inode uint64, key proto.ExtentKey) error
-	AppendExtentKeyFunc           func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey, isCache bool) (int, error)
+	SplitExtentKeyFunc            func(parentInode, inode uint64, key proto.ExtentKey, storageClass uint32) error
+	AppendExtentKeyFunc           func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey, isCache bool, storageClass uint32) (int, error)
 	GetExtentsFunc                func(inode uint64, isCache bool, openForWrite bool) (uint64, uint64, []proto.ExtentKey, error)
 	TruncateFunc                  func(inode, size uint64, fullPath string) error
 	EvictIcacheFunc               func(inode uint64)
@@ -300,6 +300,7 @@ retry:
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
+	client.renewalForbiddenMigration = config.OnRenewalForbiddenMigration
 
 	if config.StreamRetryTimeout <= 0 {
 		client.streamRetryTimeout = StreamSendMaxTimeout
