@@ -37,8 +37,9 @@ import (
 	"golang.org/x/time/rate"
 )
 
-type SplitExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey) error
-type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey, isCache bool) error
+type SplitExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, storageClass uint32) error
+type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey,
+	isCache bool, storageClass uint32) error
 type GetExtentsFunc func(inode uint64, isCache bool, openForWrite bool) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64, fullPath string) error
 type EvictIcacheFunc func(inode uint64)
@@ -277,6 +278,7 @@ retry:
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
+	client.renewalForbiddenMigration = config.OnRenewalForbiddenMigration
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {

@@ -444,7 +444,7 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		return
 	}
 	oldSize := int64(ino2.Size)
-	eks := ino.Extents.CopyExtents()
+	eks := ino.HybridCouldExtents.sortedEks.(*SortedExtents).CopyExtents()
 	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
 		return
 	}
@@ -482,10 +482,17 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		status = proto.OpNotExistErr
 		return
 	}
+
 	//defer func() {
 	//	log.LogErrorf("fsmAppendExtentsWithCheck.exist mp %v param ino %v mp seq %v eks [%v]",
 	//		mp.config.PartitionId, ino, mp.verSeq, fsmIno.Extents)
 	//}()
+
+	if err := fsmIno.updateStorageClass(ino.StorageClass); err != nil {
+		status = proto.OpDismatchMediaType
+		return
+	}
+
 	var (
 		discardExtentKey []proto.ExtentKey
 	)
@@ -584,7 +591,10 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
-
+	if err := inode.updateStorageClass(ino.StorageClass); err != nil {
+		status = proto.OpDismatchMediaType
+		return
+	}
 	//eks := ino.ObjExtents.CopyExtents()
 	eks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents).CopyExtents()
 	err := inode.AppendObjExtents(eks, ino.ModifyTime)
