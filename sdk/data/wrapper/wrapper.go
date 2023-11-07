@@ -366,6 +366,8 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 			continue
 		}
 		dp := convert(partition)
+		//TODO:tangjingyu  load from master(maybe config of master)
+		dp.MediaType = proto.MediaType_SSD
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}

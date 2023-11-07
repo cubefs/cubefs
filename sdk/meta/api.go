@@ -1368,7 +1368,7 @@ func (mw *MetaWrapper) DentryUpdate_ll(parentID uint64, name string, inode uint6
 	return
 }
 
-func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.ExtentKey) error {
+func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.ExtentKey, storageClass uint32) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
@@ -1378,7 +1378,7 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 		oldInfo, _ = mw.InodeGet_ll(inode)
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false)
+	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false, storageClass)
 	if err != nil || status != statusOK {
 		log.LogErrorf("SplitExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
 		return statusToErrno(status)
@@ -1401,7 +1401,7 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey,
-	discard []proto.ExtentKey, isCache bool) error {
+	discard []proto.ExtentKey, isCache bool, storageClass uint32) error {
 	mediaType := mw.GetMediaType()
 	if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD && isCache != true {
 		return errors.New(fmt.Sprintf("Current media type %v isCache %v do not support AppendExtentKey",
@@ -1416,7 +1416,7 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		oldInfo, _ = mw.InodeGet_ll(inode)
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache)
+	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache, storageClass)
 	if err != nil || status != statusOK {
 		log.LogErrorf("MetaWrapper AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return statusToErrno(status)
@@ -1438,18 +1438,17 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 }
 
 // AppendExtentKeys append multiple extent key into specified inode with single request.
-func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey) error {
-	mediaType := mw.GetMediaType()
-	if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD {
-		return errors.New(fmt.Sprintf("Current media type %v do not support AppendExtentKeys",
-			mw.DefaultMediaType))
+func (mw *MetaWrapper) AppendExtentKeys(inode uint64, eks []proto.ExtentKey, storageClass uint32) error {
+	if storageClass != proto.MediaType_SSD && storageClass != proto.MediaType_HDD {
+		return errors.New(fmt.Sprintf("Current storage class %v do not support AppendExtentKeys",
+			storageClass))
 	}
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return syscall.ENOENT
 	}
 
-	status, err := mw.appendExtentKeys(mp, inode, eks)
+	status, err := mw.appendExtentKeys(mp, inode, eks, storageClass)
 	if err != nil || status != statusOK {
 		log.LogErrorf("AppendExtentKeys: inode(%v) extentKeys(%v) err(%v) status(%v)", inode, eks, err, status)
 		return statusToErrno(status)

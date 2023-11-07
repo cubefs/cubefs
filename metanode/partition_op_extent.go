@@ -141,6 +141,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	// extent key verSeq not set value since marshal will not include verseq
 	// use inode verSeq instead
 	inoParm.setVer(mp.verSeq)
+	inoParm.StorageClass = req.StorageClass
 	//TODO:
 	if req.IsCache {
 		inoParm.Extents.Append(ext)
@@ -604,7 +605,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		log.LogErrorf("BatchExtentAppend fail err [%v]", err)
 		return
 	}
-
+	ino.StorageClass = req.StorageClass
 	if !ino.storeInReplicaSystem() {
 		err = fmt.Errorf("ino %v storage type %v donot support BatchExtentAppend", ino.Inode, ino.StorageClass)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -642,6 +643,8 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+	//can only be called when write into ebs
+	ino.StorageClass = proto.MediaType_EBS
 	objExtents := req.Extents
 	ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()
 	for _, objExtent := range objExtents {

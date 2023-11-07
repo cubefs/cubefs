@@ -1224,7 +1224,7 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 }
 
 func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey,
-	discard []proto.ExtentKey, isSplit bool, isCache bool) (status int, err error) {
+	discard []proto.ExtentKey, isSplit bool, isCache bool, storageClass uint32) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("appendExtentKey", err, bgTime, 1)
@@ -1238,6 +1238,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		DiscardExtents: discard,
 		IsSplit:        isSplit,
 		IsCache:        isCache,
+		StorageClass:   storageClass,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1900,17 +1901,18 @@ func (mw *MetaWrapper) removeMultipart(mp *MetaPartition, path, multipartId stri
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents []proto.ExtentKey) (status int, err error) {
+func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents []proto.ExtentKey, storageClass uint32) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("appendExtentKeys", err, bgTime, 1)
 	}()
 
 	req := &proto.AppendExtentKeysRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Extents:     extents,
+		VolName:      mw.volname,
+		PartitionId:  mp.PartitionID,
+		Inode:        inode,
+		Extents:      extents,
+		StorageClass: storageClass,
 	}
 
 	packet := proto.NewPacketReqID()

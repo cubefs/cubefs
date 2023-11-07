@@ -4698,8 +4698,9 @@ func volStat(vol *Vol, countByMeta bool, storageClass uint32) (stat *proto.VolSt
 		stat.TxRbDenCnt += mp.TxRbDenCnt
 	}
 	vol.mpsLock.RUnlock()
-
-	log.LogDebugf("vol [%v] total[%v],usedSize[%v]", vol.Name, stat.TotalSize, stat.UsedSize)
+	stat.DefaultMediaType = storageClass
+	log.LogDebugf("action[volStat] vol [%v] total[%v],usedSize[%v] DefaultMediaType[%v]",
+		vol.Name, stat.TotalSize, stat.UsedSize, stat.DefaultMediaType)
 	if proto.IsHot(vol.VolType) {
 		return
 	}
@@ -4707,9 +4708,8 @@ func volStat(vol *Vol, countByMeta bool, storageClass uint32) (stat *proto.VolSt
 	stat.CacheTotalSize = vol.CacheCapacity * util.GB
 	stat.CacheUsedSize = vol.cfsUsedSpace()
 	stat.CacheUsedRatio = strconv.FormatFloat(float64(stat.CacheUsedSize)/float64(stat.CacheTotalSize), 'f', 2, 32)
-	stat.DefaultMediaType = storageClass
-	log.LogDebugf("vol [%v] ebsTotal[%v],ebsUsedSize[%v] DefaultMediaType[%v]",
-		vol.Name, stat.CacheTotalSize, stat.CacheUsedSize, stat.DefaultMediaType)
+	log.LogDebugf("action[volStat]  vol [%v] ebsTotal[%v],ebsUsedSize[%v]",
+		vol.Name, stat.CacheTotalSize, stat.CacheUsedSize)
 
 	return
 }
