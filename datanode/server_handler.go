@@ -709,7 +709,7 @@ func (s *DataNode) reloadPartitionByName(partitionPath, disk string) (err error)
 		return
 	}
 
-	if err = s.space.ReloadPartition(d, partitionID, partitionPath); err != nil {
+	if err = s.space.ReloadPartition(d, partitionID, partitionPath, s.limiter); err != nil {
 		return
 	}
 	return

@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"strings"
 	"sync"
 	"time"
@@ -213,7 +214,7 @@ func (manager *SpaceManager) Stats() *Stats {
 	return manager.stats
 }
 
-func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrCnt int) (err error) {
+func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrCnt int, limiter *multirate.MultiLimiter) (err error) {
 	var (
 		disk        *Disk
 		visitor     PartitionVisitor
@@ -236,7 +237,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrC
 		disk.SetFixTinyDeleteRecordLimitOnDisk(manager.fixTinyDeleteRecordLimitOnDisk)
 		disk.SetRepairTaskLimitOnDisk(manager.repairTaskLimitOnDisk)
 		startTime := time.Now()
-		disk.RestorePartition(visitor, DiskLoadPartitionParallelism)
+		disk.RestorePartition(visitor, DiskLoadPartitionParallelism, limiter)
 		log.LogInfof("disk(%v) load compete cost(%v)", path, time.Since(startTime))
 		manager.putDisk(disk)
 		err = nil
@@ -385,7 +386,7 @@ func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 	delete(manager.partitions, partitionID)
 }
 
-func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
+func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest, limiter *multirate.MultiLimiter) (dp *DataPartition, err error) {
 	// 保证同一时间只处理一个Partition的创建操作
 	manager.createPartitionMutex.Lock()
 	defer manager.createPartitionMutex.Unlock()
@@ -416,7 +417,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	if disk == nil {
 		return nil, ErrNoSpaceToCreatePartition
 	}
-	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {
+	if dp, err = CreateDataPartition(dpCfg, disk, request, limiter); err != nil {
 		return
 	}
 	if err = dp.Start(); err != nil {
@@ -454,7 +455,7 @@ func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
 	dp.Expired()
 }
 
-func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partitionPath string) (err error) {
+func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partitionPath string, limiter *multirate.MultiLimiter) (err error) {
 	var partition *DataPartition
 	err = d.RestoreOnePartition(func(dp *DataPartition) {
 		manager.partitionMutex.Lock()
@@ -463,7 +464,7 @@ func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partit
 			manager.partitions[dp.ID()] = dp
 			log.LogDebugf("action[reloadPartition] put partition(%v) to manager.", dp.ID())
 		}
-	}, partitionPath)
+	}, partitionPath, limiter)
 	if err != nil {
 		return
 	}

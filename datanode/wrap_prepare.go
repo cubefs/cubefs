@@ -48,7 +48,9 @@ func (s *DataNode) Prepare(p *repl.Packet, remoteAddr string) (err error) {
 	if err = s.checkPartition(p); err != nil {
 		return
 	}
-
+	if err = s.checkLimit(p); err != nil {
+		return
+	}
 	// For certain packet, we meed to add some additional extent information.
 	if err = s.addExtentInfo(p); err != nil {
 		return

@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -238,6 +239,7 @@ type DataPartition struct {
 	DataPartitionCreateType       int
 	finishPlayBackTinyDelete      bool
 	monitorData                   []*statistics.MonitorData
+	limiter                       *multirate.MultiLimiter
 
 	persistSync chan struct{}
 
@@ -270,9 +272,9 @@ type DataPartitionViewInfo struct {
 	BaseExtentID         uint64                    `json:"baseExtentID"`
 }
 
-func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
+func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest, limiter *multirate.MultiLimiter) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, true, limiter); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -327,7 +329,7 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
-func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int64) (dp *DataPartition, err error) {
+func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int64, limiter *multirate.MultiLimiter) (dp *DataPartition, err error) {
 	var (
 		metaFileData []byte
 	)
@@ -358,7 +360,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 		VolHAType: meta.VolumeHAType,
 		Mode:      meta.ConsistencyMode,
 	}
-	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
+	if dp, err = newDataPartition(dpCfg, disk, false, limiter); err != nil {
 		return
 	}
 	// dp.PersistMetadata()
@@ -445,7 +447,7 @@ func (dp *DataPartition) maybeUpdateFaultOccurredCheckLevel() {
 	}
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, limiter *multirate.MultiLimiter) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	partition := &DataPartition{
@@ -467,6 +469,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		monitorData:             statistics.InitMonitorData(statistics.ModelDataNode),
 		persistSync:             make(chan struct{}, 1),
 		inRepairExtents:         make(map[uint64]struct{}),
+		limiter:                 limiter,
 		applyStatus:             NewWALApplyStatus(),
 		actionHolder:            holder.NewActionHolder(),
 	}
@@ -1396,5 +1399,32 @@ func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
 		return CheckAllCommitID, nil
 	default:
 		return CheckNothing, fmt.Errorf("invalid param")
+	}
+}
+
+func (dp *DataPartition) limit(op int, size uint32, streamOpLimit bool) (err error) {
+	//因为流式读写请求没有统一埋点，所以用bool变量防止重复限速
+	if !streamOpLimit && repl.IsStreamOp(op) {
+		return
+	}
+	if dp == nil {
+		return ErrPartitionNotExist
+	}
+	if dp.limiter == nil {
+		return ErrLimiterNil
+	}
+	vol := dp.volumeID
+	path := dp.disk.Path
+	switch op {
+	case int(proto.OpWrite):
+		return dp.limiter.WaitN(nil, int(size), multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).AddNetIn().Result())
+	case int(proto.OpStreamRead), int(proto.OpRead):
+		return dp.limiter.WaitN(nil, int(size), multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).AddNetOut().Result())
+	case int(proto.OpTinyExtentRepairRead), int(proto.OpExtentRepairRead):
+		return dp.limiter.WaitN(nil, int(size), multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).AddNetOut().Result())
+	case proto.OpRepairWrite_:
+		return dp.limiter.WaitN(nil, 1, multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).Result())
+	default:
+		return dp.limiter.WaitN(nil, 1, multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).Result())
 	}
 }

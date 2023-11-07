@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"io/ioutil"
 	"os"
 	"path"
@@ -537,7 +538,7 @@ func (d *Disk) isPartitionDir(filename string) (isPartitionDir bool) {
 }
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
-func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
+func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int, limiter *multirate.MultiLimiter) {
 	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
@@ -594,7 +595,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 				}
 				partitionFullPath := path.Join(d.Path, filename)
 				startTime := time.Now()
-				if partition, loadErr = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit); loadErr != nil {
+				if partition, loadErr = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit, limiter); loadErr != nil {
 					msg := fmt.Sprintf("load partition(%v) failed: %v",
 						partitionFullPath, loadErr)
 					log.LogError(msg)
@@ -639,7 +640,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int) {
 }
 
 // RestoreOnePartition restores the data partition.
-func (d *Disk) RestoreOnePartition(visitor PartitionVisitor, partitionPath string) (err error) {
+func (d *Disk) RestoreOnePartition(visitor PartitionVisitor, partitionPath string, limiter *multirate.MultiLimiter) (err error) {
 	var (
 		partitionID uint64
 		partition   *DataPartition
@@ -684,7 +685,7 @@ func (d *Disk) RestoreOnePartition(visitor PartitionVisitor, partitionPath strin
 	}
 
 	startTime := time.Now()
-	if partition, err = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit); err != nil {
+	if partition, err = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit, limiter); err != nil {
 		msg := fmt.Sprintf("load partition(%v) failed: %v",
 			partitionFullPath, err)
 		log.LogError(msg)

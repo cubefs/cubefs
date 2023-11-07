@@ -16,7 +16,6 @@ package datanode
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -45,7 +44,6 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 
 	tpObject := exporter.NewModuleTP(p.GetOpMsg())
 	tpObj := BeforeTpMonitor(p)
-	s.rateLimit(p, c)
 
 	start := time.Now().UnixNano()
 	defer func() {
@@ -223,7 +221,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 		return
 	}
 	p.PartitionID = request.PartitionId
-	if dp, err = s.space.CreatePartition(request); err != nil {
+	if dp, err = s.space.CreatePartition(request, s.limiter); err != nil {
 		err = fmt.Errorf("from master Task(%v) cannot create Partition err(%v)", task.ToString(), err)
 		return
 	}
@@ -630,6 +628,10 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
+		err = partition.limit(int(p.Opcode), currReadSize, true)
+		if err != nil {
+			return
+		}
 		reply.Data = dataBuffer[:currReadSize]
 
 		reply.ExtentOffset = offset
@@ -926,13 +928,6 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	}
 
 	partition := request.Object.(*DataPartition)
-	if !partition.Disk().canRepairOnDisk() {
-		err = fmt.Errorf("disk(%v) limit on handleExtentRepairRead", partition.Disk().Path)
-		return
-	}
-	defer func() {
-		partition.Disk().finishRepairTask()
-	}()
 	store := partition.ExtentStore()
 	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)
 	if err != nil {
@@ -970,6 +965,10 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		}
 		currNeedReplySize := newEnd - newOffset
 		currReadSize := uint32(unit.Min(int(currNeedReplySize), unit.ReadBlockSize))
+		err = partition.limit(int(request.Opcode), currReadSize, true)
+		if err != nil {
+			return
+		}
 		if currReadSize == unit.ReadBlockSize {
 			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 		} else {
@@ -1727,69 +1726,6 @@ func (s *DataNode) forwardToRaftLeaderWithTimeOut(dp *DataPartition, p *repl.Pac
 	return
 }
 
-func (s *DataNode) rateLimit(p *repl.Packet, c *net.TCPConn) {
-	if !isRateLimitOn {
-		return
-	}
-	if !p.IsMarkDeleteExtentOperation() && !p.IsBatchDeleteExtentOperation() {
-		// ignore rate limit if request is from cluster internal nodes
-		addrSlice := strings.Split(c.RemoteAddr().String(), ":")
-		_, isInternal := clusterMap[addrSlice[0]]
-		if isInternal {
-			return
-		}
-	}
-
-	ctx := context.Background()
-	// request rate limit for entire data node
-	if reqRateLimit > 0 {
-		reqRateLimiter.Wait(ctx)
-	}
-
-	// request rate limit for opcode
-	limiter, ok := reqOpRateLimiterMap[p.Opcode]
-	if ok {
-		limiter.Wait(ctx)
-	}
-
-	partition, ok := p.Object.(*DataPartition)
-	if !ok {
-		return
-	}
-
-	// request rate limit for volume & opcode
-	opRatelimiterMap, ok := reqVolOpRateLimiterMap[partition.volumeID]
-	if ok {
-		limiter, ok = opRatelimiterMap[p.Opcode]
-		if ok {
-			limiter.Wait(ctx)
-		}
-	}
-
-	// request rate limit of each data partition for volume
-	partRateLimiterMap, ok := reqVolPartRateLimiterMap[partition.volumeID]
-	if ok {
-		limiter, ok = partRateLimiterMap[partition.ID()]
-		if ok {
-			limiter.Wait(ctx)
-		}
-	}
-
-	// request rate limit of each data partition for volume & opcode
-	opPartRateLimiterMap, ok := reqVolOpPartRateLimiterMap[partition.volumeID]
-	if ok {
-		partRateLimiterMap, ok = opPartRateLimiterMap[p.Opcode]
-		if ok {
-			limiter, ok = partRateLimiterMap[partition.ID()]
-			if ok {
-				limiter.Wait(ctx)
-			}
-		}
-	}
-
-	return
-}
-
 func (s *DataNode) responseHeartbeatPb(task *proto.AdminTask) {
 	var err error
 	request := &proto.HeartBeatRequest{}
@@ -1849,4 +1785,8 @@ func BeforeTpMonitor(p *repl.Packet) *statistics.TpObject {
 		return nil
 	}
 	return p.Object.(*DataPartition).monitorData[monitorOp].BeforeTp()
+}
+
+func (s *DataNode) checkLimit(pkg *repl.Packet) (err error) {
+	return pkg.Object.(*DataPartition).limit(int(pkg.Opcode), pkg.Size, false)
 }

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -55,13 +56,14 @@ var (
 	ErrIncorrectStoreType       = errors.New("Incorrect store type")
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
-
-	LocalIP               string
-	LocalServerPort       string
-	gConnPool             = connpool.NewConnectPool()
-	MasterClient          = masterSDK.NewMasterClient(nil, false)
-	gHasLoadDataPartition bool
-	gHasFinishedLoadDisks bool
+	ErrPartitionNotExist        = errors.New("partition not exist")
+	ErrLimiterNil               = errors.New("limiter is nil")
+	LocalIP                     string
+	LocalServerPort             string
+	gConnPool                   = connpool.NewConnectPool()
+	MasterClient                = masterSDK.NewMasterClient(nil, false)
+	gHasLoadDataPartition       bool
+	gHasFinishedLoadDisks       bool
 
 	maybeServerFaultOccurred bool // 是否判定当前节点大概率出现过系统断电
 )
@@ -113,6 +115,7 @@ type DataNode struct {
 	stopC                    chan bool
 	fixTinyDeleteRecordLimit uint64
 	control                  common.Control
+	limiter                  *multirate.MultiLimiter
 	processStatInfo          *statinfo.ProcessStatInfo
 }
 
@@ -154,6 +157,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.register(cfg)
 	log.LogErrorf("doStart register finish")
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
+	s.limiter = multirate.NewLimiterManager(multirate.ModulDataNode, "", MasterClient.AdminAPI().GetLimitInfo).GetLimiter()
 
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
@@ -344,7 +348,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			}
 			log.LogInfof("disk(%v) load with option [ReservedSpace: %v, MaxErrorCount: %v",
 				path, reserved, DefaultDiskMaxErr)
-			s.space.LoadDisk(path, reserved, DefaultDiskMaxErr)
+			s.space.LoadDisk(path, reserved, DefaultDiskMaxErr, s.limiter)
 		}(&wg, path)
 	}
 	wg.Wait()

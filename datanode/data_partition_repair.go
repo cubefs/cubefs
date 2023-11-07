@@ -777,11 +777,9 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		return
 	}
 
-	if !skipLimit {
-		if !dp.Disk().canRepairOnDisk() {
-			return errors.Trace(err, "limit on apply disk repair task")
-		}
-		defer dp.Disk().finishRepairTask()
+	err = dp.limit(proto.OpRepairWrite_, 1, true)
+	if err != nil {
+		return
 	}
 
 	var release, success = dp.tryLockExtentRepair(extentID)
