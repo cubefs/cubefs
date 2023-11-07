@@ -46,7 +46,8 @@ type Service struct {
 	ClusterMgrClient *cmapi.Client
 	groupRun         singleflight.Group
 
-	Conf *Config
+	Conf       *Config
+	inspectMgr *DataInspectMgr
 
 	// limiter
 	DeleteQpsLimitPerKey  limit.Limiter
