@@ -104,7 +104,12 @@ func newGetMpExtentsCmd() *cobra.Command {
 			}
 
 			if mpId != "" {
-				getExtentsByMpId(dir, volname, mpId)
+				err := getExtentsByMpId(dir, volname, mpId)
+				if err != nil {
+					log.LogErrorf("Get extents by mpId %s failed, err: %v", mpId, err)
+					fmt.Printf("Get extents by mpId %s failed, err: %v\n", mpId, err)
+				}
+				fmt.Printf("Get extents by mpId %s success\n", mpId)
 				return
 			}
 
@@ -172,16 +177,22 @@ func getExtentsFromMp(dir string, volname string, fromMpId string) {
 	}
 	for _, mpv := range mpvs {
 		if mpv.PartitionID >= fromMp {
-			getExtentsByMpId(dir, volname, strconv.FormatUint(mpv.PartitionID, 10))
+			err := getExtentsByMpId(dir, volname, strconv.FormatUint(mpv.PartitionID, 10))
+			if err != nil {
+				log.LogErrorf("Get extents by mpId %v failed, err: %v", mpv.PartitionID, err)
+				fmt.Printf("Get extents by mpId %v failed, err: %v\n", mpv.PartitionID, err)
+				return
+			}
 		}
 	}
+	fmt.Printf("Get extents from mpId %v success\n", fromMpId)
 }
 
-func getExtentsByMpId(dir string, volname string, mpId string) {
+func getExtentsByMpId(dir string, volname string, mpId string) (err error) {
 	mpInfo, err := getMpInfoById(mpId)
 	if err != nil {
 		log.LogErrorf("Get meta partition info failed, err: %v", err)
-		return
+		return err
 	}
 	var leaderAddr string
 	for _, mr := range mpInfo.Replicas {
@@ -193,19 +204,22 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 
 	if leaderAddr == "" {
 		log.LogErrorf("Get leader address failed mpId %v", mpId)
-		return
+		err = fmt.Errorf("Get leader address failed mpId %v", mpId)
+		return err
 	}
 
 	resp, err := http.Get(fmt.Sprintf("http://%s:%s/getInodeSnapshot?pid=%s", strings.Split(leaderAddr, ":")[0], MetaPort, mpId))
 	if err != nil {
 		log.LogErrorf("Get inode snapshot failed, err: %v", err)
-		return
+		err = fmt.Errorf("Get inode snapshot failed, err: %v", err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
-		return
+		err = fmt.Errorf("Invalid status code: %v", resp.StatusCode)
+		return err
 	}
 
 	reader := bufio.NewReaderSize(resp.Body, 4*1024*1024)
@@ -214,19 +228,19 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 	tinyFilePath, NormalFilePath, err := InitLocalDir(dir, volname, mpId, MpDir)
 	if err != nil {
 		log.LogErrorf("Init local dir failed, err: %v", err)
-		return
+		return err
 	}
 
 	tinyFile, err := os.OpenFile(tinyFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.LogErrorf("Open file failed, err: %v", err)
-		return
+		return err
 	}
 	defer tinyFile.Close()
 	normalFile, err := os.OpenFile(NormalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.LogErrorf("Open file failed, err: %v", err)
-		return
+		return err
 	}
 	defer normalFile.Close()
 	for {
@@ -236,10 +250,10 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
-				return
+				return err
 			}
 			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
-			return
+			return err
 		}
 		length := binary.BigEndian.Uint32(inoBuf)
 
@@ -253,7 +267,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 		_, err = io.ReadFull(reader, inoBuf)
 		if err != nil {
 			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
-			return
+			return err
 		}
 		ino := &metanode.Inode{
 			Inode:      0,
@@ -268,7 +282,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 		}
 		if err = ino.Unmarshal(inoBuf); err != nil {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
-			return
+			return err
 		}
 		eks := ino.Extents.CopyExtents()
 		log.LogInfof("inode:%v, extent:%v", ino.Inode, eks)
@@ -280,20 +294,20 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 			data, err := json.Marshal(eksForGc)
 			if err != nil {
 				log.LogErrorf("Marshal extents failed, err: %v", err)
-				return
+				return err
 			}
 			if !storage.IsTinyExtent(ek.ExtentId) {
 				log.LogInfof("normal extent:%v, data:%v", ek.ExtentId, len(data))
 				_, err = normalFile.Write(append(data, '\n'))
 				if err != nil {
 					log.LogErrorf("Write normal extent to file failed, err: %v", err)
-					return
+					return err
 				}
 			} else {
 				_, err = tinyFile.Write(append(data, '\n'))
 				if err != nil {
 					log.LogErrorf("Write tiny extent to file failed, err: %v", err)
-					return
+					return err
 				}
 			}
 		}
