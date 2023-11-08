@@ -50,13 +50,13 @@ const (
 	ratioQueueLow    = 1
 	ratioQueueMiddle = 3
 	ratioDiscardLow  = 30
-	ratioDiscardMid  = 50
+	ratioDiscardMid  = 40
 	ratioDiscardHigh = 70
 )
 
 type IoQosDiscard struct {
-	queueDepth   int32 // queue depth, const
-	currentCnt   int32 // current element cnt in queue, may be $queueDepth < $currentCnt < $maxWaitCnt
+	queueDepth   int32 // const, queue depth
+	currentCnt   int32 // current IO cnt in per queue, may be $queueDepth < $currentCnt < $maxWaitCnt
 	discardRatio int32
 	rand         *rand.Rand
 	closer.Closer
@@ -157,8 +157,8 @@ func (q *IoQosDiscard) adjustDiscardRatio() {
 }
 
 type IoQueueQos struct {
-	maxWaitCnt   int32           // const, max wait IO count
-	ioCnt        int32           // current IO count
+	maxWaitCnt   int32           // const, max total wait IO count, per disk
+	ioCnt        int32           // current total IO count, per disk
 	bpsLimiters  []*rate.Limiter // limit bandwidth
 	readDiscard  *IoQosDiscard   // discard some low level IO
 	writeDiscard []*IoQosDiscard

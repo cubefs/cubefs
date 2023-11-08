@@ -44,9 +44,9 @@ const (
 	DefaultMetricReportIntervalS        = int64(300)            // 300 Sec
 	DefaultBlockBufferSize              = int64(64 * 1024)      // 64k
 	DefaultCompactEmptyRateThreshold    = float64(0.8)          // 80% rate
-	defaultWriteThreadCnt               = 2
-	defaultReadThreadCnt                = 1
-	defaultIOQueueDepth                 = 256
+	defaultWriteThreadCnt               = 1
+	defaultReadThreadCnt                = 4
+	defaultIOQueueDepth                 = 512
 )
 
 // Config for disk
