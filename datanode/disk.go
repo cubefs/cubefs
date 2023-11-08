@@ -73,6 +73,8 @@ type Disk struct {
 	dataNode                                  *DataNode
 
 	limitFactor map[uint32]*rate.Limiter
+	limitRead   *ioLimiter
+	limitWrite  *ioLimiter
 }
 
 const (
@@ -107,29 +109,35 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
 	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitRead = newIOLimiter(space.dataNode.diskReadFlow, space.dataNode.diskReadIocc)
+	d.limitWrite = newIOLimiter(space.dataNode.diskWriteFlow, space.dataNode.diskWriteIocc)
 
 	return
 }
 
 func (d *Disk) updateQosLimiter() {
-	if d.dataNode.diskFlowReadLimit > 0 {
-		d.limitFactor[proto.FlowReadType].SetLimit(rate.Limit(d.dataNode.diskFlowReadLimit))
+	if d.dataNode.diskReadFlow > 0 {
+		d.limitFactor[proto.FlowReadType].SetLimit(rate.Limit(d.dataNode.diskReadFlow))
 	}
-	if d.dataNode.diskFlowWriteLimit > 0 {
-		d.limitFactor[proto.FlowWriteType].SetLimit(rate.Limit(d.dataNode.diskFlowWriteLimit))
+	if d.dataNode.diskWriteFlow > 0 {
+		d.limitFactor[proto.FlowWriteType].SetLimit(rate.Limit(d.dataNode.diskWriteFlow))
 	}
-	if d.dataNode.diskIopsReadLimit > 0 {
-		d.limitFactor[proto.IopsReadType].SetLimit(rate.Limit(d.dataNode.diskIopsReadLimit))
+	if d.dataNode.diskReadIops > 0 {
+		d.limitFactor[proto.IopsReadType].SetLimit(rate.Limit(d.dataNode.diskReadIops))
 	}
-	if d.dataNode.diskIopsWriteLimit > 0 {
-		d.limitFactor[proto.IopsWriteType].SetLimit(rate.Limit(d.dataNode.diskIopsWriteLimit))
+	if d.dataNode.diskWriteIops > 0 {
+		d.limitFactor[proto.IopsWriteType].SetLimit(rate.Limit(d.dataNode.diskWriteIops))
 	}
-
 	for i := proto.IopsReadType; i < proto.FlowWriteType; i++ {
 		log.LogInfof("action[updateQosLimiter] type %v limit %v", proto.QosTypeString(i), d.limitFactor[i].Limit())
 	}
-	log.LogInfof("action[updateQosLimiter] flowRead %v flowWrite %v iopsRead %v iopsWrite %v",
-		d.dataNode.diskFlowReadLimit, d.dataNode.diskFlowWriteLimit, d.dataNode.diskIopsReadLimit, d.dataNode.diskIopsWriteLimit)
+	log.LogInfof("action[updateQosLimiter] read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
+		d.dataNode.diskReadIocc, d.dataNode.diskReadIops, d.dataNode.diskReadFlow,
+		d.dataNode.diskWriteIocc, d.dataNode.diskWriteIops, d.dataNode.diskWriteFlow)
+	d.limitRead.ResetIO(d.dataNode.diskReadIocc)
+	d.limitRead.ResetFlow(d.dataNode.diskReadFlow)
+	d.limitWrite.ResetIO(d.dataNode.diskWriteIocc)
+	d.limitWrite.ResetFlow(d.dataNode.diskWriteFlow)
 }
 
 func (d *Disk) allocCheckLimit(factorType uint32, used uint32) error {

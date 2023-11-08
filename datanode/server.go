@@ -106,6 +106,12 @@ const (
 
 	//rate limit control enable
 	ConfigDiskQosEnable = "diskQosEnable" //bool
+	ConfigDiskReadIocc  = "diskReadIocc"  // int
+	ConfigDiskReadIops  = "diskReadIops"  // int
+	ConfigDiskReadFlow  = "diskReadFlow"  // int
+	ConfigDiskWriteIocc = "diskWriteIocc" // int
+	ConfigDiskWriteIops = "diskWriteIops" // int
+	ConfigDiskWriteFlow = "diskWriteFlow" // int
 )
 
 // DataNode defines the structure of a data node.
@@ -147,10 +153,12 @@ type DataNode struct {
 
 	diskQosEnable           bool
 	diskQosEnableFromMaster bool
-	diskIopsReadLimit       uint64
-	diskIopsWriteLimit      uint64
-	diskFlowReadLimit       uint64
-	diskFlowWriteLimit      uint64
+	diskReadIocc            int
+	diskReadIops            int
+	diskReadFlow            int
+	diskWriteIocc           int
+	diskWriteIops           int
+	diskWriteFlow           int
 	clusterUuid             string
 	clusterUuidEnable       bool
 }
@@ -313,8 +321,16 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 }
 
 func (s *DataNode) initQosLimit(cfg *config.Config) {
-	s.space.dataNode.diskQosEnable = cfg.GetBoolWithDefault(ConfigDiskQosEnable, true)
-	log.LogWarnf("action[initQosLimit] set qos value [%v] ,other param use default value", s.space.dataNode.diskQosEnable)
+	dn := s.space.dataNode
+	dn.diskQosEnable = cfg.GetBoolWithDefault(ConfigDiskQosEnable, true)
+	dn.diskReadIocc = cfg.GetInt(ConfigDiskReadIocc)
+	dn.diskReadIops = cfg.GetInt(ConfigDiskReadIops)
+	dn.diskReadFlow = cfg.GetInt(ConfigDiskReadFlow)
+	dn.diskWriteIocc = cfg.GetInt(ConfigDiskWriteIocc)
+	dn.diskWriteIops = cfg.GetInt(ConfigDiskWriteIops)
+	dn.diskWriteFlow = cfg.GetInt(ConfigDiskWriteFlow)
+	log.LogWarnf("action[initQosLimit] set qos [%v], read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
+		dn.diskQosEnable, dn.diskReadIocc, dn.diskReadIops, dn.diskReadFlow, dn.diskWriteIocc, dn.diskWriteIops, dn.diskWriteFlow)
 }
 
 func (s *DataNode) updateQosLimit() {
@@ -397,6 +413,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 
 	wg.Wait()
+	s.updateQosLimit() // load from config
 	return nil
 }
 
@@ -571,6 +588,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/qosEnable", s.setQosEnable())
 	http.HandleFunc("/genClusterVersionFile", s.genClusterVersionFile)
 	http.HandleFunc("/getAllExtent", s.getAllExtent)
+	http.HandleFunc("/setDiskQos", s.setDiskQos)
+	http.HandleFunc("/getDiskQos", s.getDiskQos)
 }
 
 func (s *DataNode) startTCPService() (err error) {

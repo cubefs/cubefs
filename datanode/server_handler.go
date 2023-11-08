@@ -17,7 +17,6 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/config"
 	"net/http"
 	"os"
 	"path"
@@ -28,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -350,6 +350,71 @@ func (s *DataNode) setQosEnable() func(http.ResponseWriter, *http.Request) {
 		s.diskQosEnable = enable
 		s.buildSuccessResp(w, "success")
 	}
+}
+
+func (s *DataNode) setDiskQos(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	parser := func(key string) (val int64, err error, has bool) {
+		valStr := r.FormValue(key)
+		if valStr == "" {
+			return 0, nil, false
+		}
+		has = true
+		val, err = strconv.ParseInt(valStr, 10, 64)
+		return
+	}
+
+	updated := false
+	for key, pVal := range map[string]*int{
+		ConfigDiskReadIocc:  &s.diskReadIocc,
+		ConfigDiskReadIops:  &s.diskReadIops,
+		ConfigDiskReadFlow:  &s.diskReadFlow,
+		ConfigDiskWriteIocc: &s.diskWriteIocc,
+		ConfigDiskWriteIops: &s.diskWriteIops,
+		ConfigDiskWriteFlow: &s.diskWriteFlow,
+	} {
+		val, err, has := parser(key)
+		if err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if has {
+			updated = true
+			*pVal = int(val)
+		}
+	}
+
+	if updated {
+		s.updateQosLimit()
+	}
+	s.buildSuccessResp(w, "success")
+}
+
+func (s *DataNode) getDiskQos(w http.ResponseWriter, r *http.Request) {
+	disks := make([]interface{}, 0)
+	for _, diskItem := range s.space.GetDisks() {
+		disk := &struct {
+			Path  string        `json:"path"`
+			Read  LimiterStatus `json:"read"`
+			Write LimiterStatus `json:"write"`
+		}{
+			Path:  diskItem.Path,
+			Read:  diskItem.limitRead.Status(),
+			Write: diskItem.limitWrite.Status(),
+		}
+		disks = append(disks, disk)
+	}
+	diskStatus := &struct {
+		Disks []interface{} `json:"disks"`
+		Zone  string        `json:"zone"`
+	}{
+		Disks: disks,
+		Zone:  s.zoneName,
+	}
+	s.buildSuccessResp(w, diskStatus)
 }
 
 func (s *DataNode) getSmuxPoolStat() func(http.ResponseWriter, *http.Request) {

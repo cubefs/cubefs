@@ -206,8 +206,9 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	}
 
 	partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-
-	err = partition.ExtentStore().Create(p.ExtentID)
+	partition.disk.limitWrite.Run(0, func() {
+		err = partition.ExtentStore().Create(p.ExtentID)
+	})
 
 	return
 }
@@ -288,29 +289,24 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			s.diskQosEnableFromMaster = request.EnableDiskQos
 
 			var needUpdate bool
-			if request.QosFlowWriteLimit > 0 && request.QosFlowWriteLimit != s.diskFlowWriteLimit {
-				s.diskFlowWriteLimit = request.QosFlowWriteLimit
-				needUpdate = true
-			}
-			if request.QosFlowReadLimit > 0 && request.QosFlowReadLimit != s.diskFlowReadLimit {
-				s.diskFlowReadLimit = request.QosFlowReadLimit
-				needUpdate = true
-			}
-			if request.QosIopsWriteLimit > 0 && request.QosIopsWriteLimit != s.diskIopsWriteLimit {
-				s.diskIopsWriteLimit = request.QosIopsWriteLimit
-				needUpdate = true
-			}
-			if request.QosIopsReadLimit > 0 && request.QosIopsReadLimit != s.diskIopsReadLimit {
-				s.diskIopsReadLimit = request.QosIopsReadLimit
-				needUpdate = true
+			for _, pair := range []struct {
+				replace uint64
+				origin  *int
+			}{
+				{request.QosFlowWriteLimit, &s.diskWriteFlow},
+				{request.QosFlowReadLimit, &s.diskReadFlow},
+				{request.QosIopsWriteLimit, &s.diskWriteIops},
+				{request.QosIopsReadLimit, &s.diskReadIops},
+			} {
+				if pair.replace > 0 && int(pair.replace) != *pair.origin {
+					*pair.origin = int(pair.replace)
+					needUpdate = true
+				}
 			}
 
 			if needUpdate {
 				log.LogWarnf("action[handleHeartbeatPacket] master change disk qos limit to [flowWrite %v, flowRead %v, iopsWrite %v, iopsRead %v]",
-					s.diskFlowWriteLimit,
-					s.diskFlowReadLimit,
-					s.diskIopsWriteLimit,
-					s.diskIopsReadLimit)
+					s.diskWriteFlow, s.diskReadFlow, s.diskWriteIops, s.diskReadIops)
 				s.updateQosLimit()
 			}
 		} else {
@@ -434,13 +430,17 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-			partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
+			partition.disk.limitWrite.Run(0, func() {
+				partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
+			})
 		}
 	} else {
 		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)",
 			p.PartitionID, p.ExtentID)
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-		partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
+		partition.disk.limitWrite.Run(0, func() {
+			partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
+		})
 	}
 
 	return
@@ -468,7 +468,9 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			if deleteLimiteRater.Allow() {
 				log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-				store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+				partition.disk.limitWrite.Run(0, func() {
+					store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+				})
 			} else {
 				log.LogInfof("delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
 				err = storage.TryAgainError
@@ -513,7 +515,12 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
+		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
+			err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
+		}); !writable {
+			err = storage.TryAgainError
+			return
+		}
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -527,7 +534,12 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 		}
 
-		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
+		if writable := partition.disk.limitWrite.TryRun(int(p.Size), func() {
+			err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data, p.CRC, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
+		}); !writable {
+			err = storage.TryAgainError
+			return
+		}
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -547,7 +559,12 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
 			}
 
-			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
+			if writable := partition.disk.limitWrite.TryRun(currSize, func() {
+				err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data, crc, storage.AppendWriteType, p.IsSyncWrite(), p.Opcode == proto.OpBackupWrite)
+			}); !writable {
+				err = storage.TryAgainError
+				return
+			}
 			if !shallDegrade {
 				s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 				partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
@@ -710,7 +727,9 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		partition.Disk().allocCheckLimit(proto.IopsReadType, 1)
 		partition.Disk().allocCheckLimit(proto.FlowReadType, currReadSize)
 
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead, p.Opcode == proto.OpBackupRead)
+		partition.disk.limitRead.Run(int(currReadSize), func() {
+			reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, isRepairRead, p.Opcode == proto.OpBackupRead)
+		})
 		if !shallDegrade {
 			s.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
