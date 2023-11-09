@@ -699,6 +699,10 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 		if currentEK := s.extents.GetEndForAppendWrite(uint64(offset), s.verSeq, false); currentEK != nil && !storage.IsTinyExtent(currentEK.ExtentId) {
 			if currentEK.GetSeq() != s.verSeq {
 				log.LogDebugf("tryInitExtentHandlerByLastEk. exist ek seq %v vs request seq %v", currentEK.GetSeq(), s.verSeq)
+				if int(currentEK.ExtentOffset)+int(currentEK.Size)+size > util.ExtentSize {
+					s.closeOpenHandler()
+					return
+				}
 				isLastEkVerNotEqual = true
 			}
 
