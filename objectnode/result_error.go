@@ -136,6 +136,14 @@ func (ec *ErrorCode) Error() string {
 	return ec.ErrorMessage
 }
 
+func (ec *ErrorCode) Copy() *ErrorCode {
+	return &ErrorCode{
+		ErrorCode:    ec.ErrorCode,
+		ErrorMessage: ec.ErrorMessage,
+		StatusCode:   ec.StatusCode,
+	}
+}
+
 func ServeInternalStaticErrorResponse(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(ContentType, ValueContentTypeXML)
 	w.WriteHeader(http.StatusInternalServerError)
