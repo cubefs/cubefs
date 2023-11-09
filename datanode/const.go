@@ -126,7 +126,7 @@ const (
 	DiskMaxFDLimit                     = 20000
 	DiskForceEvictFDRatio              = 0.25
 	CacheCapacityPerPartition          = 256
-	DiskLoadPartitionParallelism       = 10
+	DiskLoadPartitionParallelism       = 4
 	StrictModeMinReplicaNum            = 3 // 允许启用Strict模式的最少副本数量。
 )
 

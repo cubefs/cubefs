@@ -16,21 +16,20 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
-	"strings"
+	"math"
+	"runtime/debug"
 	"sync"
 	"time"
 
-	"github.com/tiglabs/raft/util"
-
-	"github.com/cubefs/cubefs/util/exporter"
-
-	"math"
+	"github.com/cubefs/cubefs/util/async"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/tiglabs/raft/util"
 )
 
 // SpaceManager manages the disk space.
@@ -55,62 +54,51 @@ type SpaceManager struct {
 	normalExtentDeleteExpireTime   uint64
 	flushFDIntervalSec             uint32
 	flushFDParallelismOnDisk       uint64
+
+	limiter *multirate.MultiLimiter
 }
 
 // NewSpaceManager creates a new space manager.
 func NewSpaceManager(dataNode *DataNode) *SpaceManager {
-	var space *SpaceManager
-	space = &SpaceManager{}
-	space.disks = make(map[string]*Disk)
-	space.diskList = make([]string, 0)
-	space.partitions = make(map[uint64]*DataPartition)
-	space.stats = NewStats(dataNode.zoneName)
-	space.stopC = make(chan bool, 0)
-	space.dataNode = dataNode
-	space.fixTinyDeleteRecordLimitOnDisk = DefaultFixTinyDeleteRecordLimitOnDisk
-	space.repairTaskLimitOnDisk = DefaultRepairTaskLimitOnDisk
-	space.normalExtentDeleteExpireTime = DefaultNormalExtentDeleteExpireTime
-	go space.statUpdateScheduler()
-
+	var space = &SpaceManager{
+		disks:                          make(map[string]*Disk),
+		diskList:                       make([]string, 0),
+		partitions:                     make(map[uint64]*DataPartition),
+		stats:                          NewStats(dataNode.zoneName),
+		stopC:                          make(chan bool, 0),
+		dataNode:                       dataNode,
+		fixTinyDeleteRecordLimitOnDisk: DefaultFixTinyDeleteRecordLimitOnDisk,
+		repairTaskLimitOnDisk:          DefaultRepairTaskLimitOnDisk,
+		normalExtentDeleteExpireTime:   DefaultNormalExtentDeleteExpireTime,
+		limiter:                        dataNode.limiter,
+	}
+	async.RunWorker(space.statUpdateScheduler, func(i interface{}) {
+		log.LogCriticalf("SPCMGR: stat update scheduler occurred panic: %v\nCallstack:\n%v",
+			i, string(debug.Stack()))
+	})
 	return space
 }
 
 func (manager *SpaceManager) AsyncLoadExtent() {
-	log.LogErrorf("start AsyncLoadAllPartitions ")
-	maxParallelism := 64
-	if manager.dataNode != nil && strings.Contains(manager.dataNode.zoneName, "ssd") {
-		maxParallelism = 16
-	}
-	var parallelism = int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
-	wg := sync.WaitGroup{}
-	partitionC := make(chan *DataPartition, parallelism)
-	partitions := manager.GetPartitions()
-	wg.Add(1)
-	go func(c chan<- *DataPartition) {
-		defer wg.Done()
-		for _, dp := range partitions {
-			c <- dp
-		}
-		close(c)
-	}(partitionC)
 
-	for i := 0; i < parallelism; i++ {
+	var disks = manager.GetDisks()
+	var wg = new(sync.WaitGroup)
+	if log.IsInfoEnabled() {
+		log.LogInfof("SPCMGR: lazy load start")
+	}
+	var start = time.Now()
+	for _, disk := range disks {
 		wg.Add(1)
-		go func(c <-chan *DataPartition) {
+		go func(disk *Disk) {
 			defer wg.Done()
-			var dp *DataPartition
-			for {
-				if dp = <-c; dp == nil {
-					return
-				}
-				dp.ExtentStore().Load()
-			}
-		}(partitionC)
+			disk.AsyncLoadExtent(DefaultLazyLoadParallelismPerDisk)
+		}(disk)
 	}
 	wg.Wait()
+	if log.IsInfoEnabled() {
+		log.LogInfof("SPCMGR: lazy load complete, elapsed %v", time.Now().Sub(start))
+	}
 	gHasLoadDataPartition = true
-	log.LogErrorf("end AsyncLoadAllPartitions ")
-
 }
 
 func (manager *SpaceManager) Stop() {
@@ -214,34 +202,34 @@ func (manager *SpaceManager) Stats() *Stats {
 	return manager.stats
 }
 
-func (manager *SpaceManager) LoadDisk(path string, reservedSpace uint64, maxErrCnt int, limiter *multirate.MultiLimiter) (err error) {
+func (manager *SpaceManager) LoadDisk(path *DiskPath, expired CheckExpired) (err error) {
 	var (
-		disk        *Disk
-		visitor     PartitionVisitor
-		diskFDLimit = FDLimit{
-			MaxFDLimit:      DiskMaxFDLimit,
-			ForceEvictRatio: DiskForceEvictFDRatio,
-		}
+		disk *Disk
 	)
-	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
-	visitor = func(dp *DataPartition) {
-		manager.partitionMutex.Lock()
-		defer manager.partitionMutex.Unlock()
-		if _, has := manager.partitions[dp.ID()]; !has {
-			manager.partitions[dp.ID()] = dp
-			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.ID())
+	if _, exists := manager.GetDisk(path); !exists {
+		var config = &DiskConfig{
+			Reserved:          path.Reserved(),
+			UsableRatio:       unit.NewRatio(DefaultDiskUseRatio),
+			MaxErrCnt:         DefaultDiskMaxErr,
+			MaxFDLimit:        DiskMaxFDLimit,
+			ForceFDEvictRatio: DiskForceEvictFDRatio,
+
+			FixTinyDeleteRecordLimit: manager.fixTinyDeleteRecordLimitOnDisk,
+			RepairTaskLimit:          manager.repairTaskLimitOnDisk,
 		}
-	}
-	if _, err = manager.GetDisk(path); err != nil {
-		disk = NewDisk(path, reservedSpace, maxErrCnt, diskFDLimit, manager)
-		disk.SetFixTinyDeleteRecordLimitOnDisk(manager.fixTinyDeleteRecordLimitOnDisk)
-		disk.SetRepairTaskLimitOnDisk(manager.repairTaskLimitOnDisk)
-		startTime := time.Now()
-		disk.RestorePartition(visitor, DiskLoadPartitionParallelism, limiter)
-		log.LogInfof("disk(%v) load compete cost(%v)", path, time.Since(startTime))
+		var startTime = time.Now()
+		if disk, err = OpenDisk(path.Path(), config, manager, DiskLoadPartitionParallelism, manager.limiter, expired); err != nil {
+			return
+		}
 		manager.putDisk(disk)
+		var count int
+		disk.WalkPartitions(func(u uint64, partition *DataPartition) bool {
+			manager.AttachPartition(partition)
+			count++
+			return true
+		})
+		log.LogInfof("Disk %v: load compete: partitions=%v, elapsed=%v", path, count, time.Since(startTime))
 		err = nil
-		go disk.autoComputeExtentCrc()
 	}
 	deleteSysStartTimeFile()
 	_ = initSysStartTimeFile()
@@ -278,15 +266,15 @@ func (manager *SpaceManager) StartPartitions() {
 	wg.Wait()
 }
 
-func (manager *SpaceManager) GetDisk(path string) (d *Disk, err error) {
+func (manager *SpaceManager) GetDisk(path *DiskPath) (d *Disk, exists bool) {
 	manager.diskMutex.RLock()
 	defer manager.diskMutex.RUnlock()
-	disk, has := manager.disks[path]
+	disk, has := manager.disks[path.Path()]
 	if has && disk != nil {
 		d = disk
+		exists = true
 		return
 	}
-	err = fmt.Errorf("disk(%v) not exsit", path)
 	return
 }
 
@@ -295,6 +283,7 @@ func (manager *SpaceManager) putDisk(d *Disk) {
 	manager.disks[d.Path] = d
 	manager.diskList = append(manager.diskList, d.Path)
 	manager.diskMutex.Unlock()
+
 }
 
 func (manager *SpaceManager) updateMetrics() {
@@ -404,9 +393,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 
 		VolHAType: request.VolumeHAType,
 	}
-	manager.partitionMutex.RLock()
-	dp = manager.partitions[dpCfg.PartitionID]
-	manager.partitionMutex.RUnlock()
+	dp = manager.Partition(dpCfg.PartitionID)
 	if dp != nil {
 		if err = dp.IsEquareCreateDataPartitionRequst(request); err != nil {
 			return nil, err
@@ -420,12 +407,11 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	if dp, err = CreateDataPartition(dpCfg, disk, request, limiter); err != nil {
 		return
 	}
+	disk.AttachDataPartition(dp)
+	manager.AttachPartition(dp)
 	if err = dp.Start(); err != nil {
 		return
 	}
-	manager.partitionMutex.Lock()
-	manager.partitions[dp.ID()] = dp
-	manager.partitionMutex.Unlock()
 	return
 }
 
@@ -457,17 +443,19 @@ func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
 
 func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partitionPath string, limiter *multirate.MultiLimiter) (err error) {
 	var partition *DataPartition
-	err = d.RestoreOnePartition(func(dp *DataPartition) {
-		manager.partitionMutex.Lock()
-		defer manager.partitionMutex.Unlock()
-		if _, has := manager.partitions[dp.ID()]; !has {
-			manager.partitions[dp.ID()] = dp
-			log.LogDebugf("action[reloadPartition] put partition(%v) to manager.", dp.ID())
-		}
-	}, partitionPath, limiter)
-	if err != nil {
+	if err = d.RestoreOnePartition(partitionPath, limiter); err != nil {
 		return
 	}
+
+	defer func() {
+		if err != nil {
+			manager.DetachDataPartition(partitionID)
+			partition.Disk().DetachDataPartition(partition)
+			msg := fmt.Sprintf("partition [id: %v, disk: %v] start failed: %v", partition.ID(), partition.Disk().Path, err)
+			log.LogErrorf(msg)
+			exporter.Warning(msg)
+		}
+	}()
 
 	partition = manager.Partition(partitionID)
 	if partition == nil {
@@ -475,22 +463,17 @@ func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partit
 	}
 
 	if err = partition.ChangeCreateType(proto.DecommissionedCreateDataPartition); err != nil {
-		goto errDeal
+		return
 	}
 
 	// start raft
 	if err = partition.Start(); err != nil {
-		goto errDeal
+		return
 	}
-	go partition.ExtentStore().Load()
-	return
-
-errDeal:
-	manager.DetachDataPartition(partitionID)
-	partition.Disk().DetachDataPartition(partition)
-	msg := fmt.Sprintf("partition [id: %v, disk: %v] start failed: %v", partition.ID(), partition.Disk().Path, err)
-	log.LogErrorf(msg)
-	exporter.Warning(msg)
+	async.RunWorker(partition.ExtentStore().Load, func(i interface{}) {
+		log.LogCriticalf("SPCMGR: DP %v: lazy load occurred panic: %v\nCallStack:\n%v",
+			partition.ID(), i, string(debug.Stack()))
+	})
 	return
 }
 

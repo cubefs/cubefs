@@ -75,7 +75,7 @@ func init() {
 	var exe, _ = os.Executable()
 	exe = path.Base(exe)
 	var pid = os.Getpid()
-	var logCommonPrefix = fmt.Sprintf("[%v/%v]", exe, pid)
+	var logCommonPrefix = fmt.Sprintf("[%v/%v] ", exe, pid)
 	for i := 0; i < len(levelPrefixes); i++ {
 		levelPrefixes[i] = logCommonPrefix + levelPrefixes[i]
 	}

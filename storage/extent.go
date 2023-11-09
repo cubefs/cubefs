@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -31,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -149,14 +151,14 @@ func NewFingerprint(cap int) Fingerprint {
 // This extent implementation manages all header info and data body in one single entry file.
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
 type Extent struct {
-	file         *os.File
-	filePath     string
-	extentID     uint64
-	modifyTime   int64
-	dataSize     int64
-	modified     int32
-	bufferedSize int64
-	header       []byte
+	file       *os.File
+	filePath   string
+	extentID   uint64
+	modifyTime int64
+	dataSize   int64
+	modified   int32
+	modifies   int64
+	header     []byte
 	sync.Mutex
 
 	ioInterceptor IOInterceptor
@@ -283,6 +285,10 @@ func (e *Extent) ModifyTime() int64 {
 	return atomic.LoadInt64(&e.modifyTime)
 }
 
+func (e *Extent) Modified() bool {
+	return atomic.LoadInt32(&e.modified) != 0
+}
+
 func IsRandomWrite(writeType int) bool {
 	return writeType == RandomWriteType
 }
@@ -330,7 +336,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	defer func() {
 		if err == nil {
 			atomic.StoreInt32(&e.modified, 1)
-			atomic.AddInt64(&e.bufferedSize, size)
+			atomic.AddInt64(&e.modifies, size)
 		}
 	}()
 	if proto.IsTinyExtent(e.extentID) {
@@ -536,9 +542,20 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 }
 
 // Flush synchronizes data to the disk.
-func (e *Extent) Flush() (err error) {
+func (e *Extent) Flush(limiter *rate.Limiter) (err error) {
 	if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
-		err = e.file.Sync()
+		var modifies = int(atomic.LoadInt64(&e.modifies))
+		if limiter != nil {
+			var burst = limiter.Burst()
+			if modifies > burst {
+				modifies = burst
+			}
+			_ = limiter.WaitN(context.Background(), modifies)
+		}
+		if err = e.file.Sync(); err != nil {
+			return
+		}
+		atomic.StoreInt64(&e.modifies, 0)
 	}
 	return
 }

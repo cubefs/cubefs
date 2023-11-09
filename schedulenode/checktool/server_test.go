@@ -2,13 +2,14 @@ package checktool
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/checktool/ump"
-	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func TestServer(t *testing.T) {
@@ -19,7 +20,9 @@ func TestServer(t *testing.T) {
 	logDir := "log"
 	logLevel := "debug"
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	ump.InitUmp("checktool")
+	exporter.Init(&exporter.Option{
+		Module: "checktool",
+	})
 	// Init logging
 	var (
 		level log.Level

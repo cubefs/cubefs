@@ -31,10 +31,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util/multirate"
-
 	"github.com/cubefs/cubefs/datanode/riskdata"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
@@ -43,6 +40,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/holder"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/tiglabs/raft"
@@ -365,7 +363,6 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 		return
 	}
 	// dp.PersistMetadata()
-	disk.space.AttachPartition(dp)
 
 	var appliedID uint64
 	if appliedID, err = dp.LoadAppliedID(); err != nil {
@@ -518,8 +515,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 	rand.Seed(time.Now().UnixNano())
 	partition.FullSyncTinyDeleteTime = time.Now().Unix() + rand.Int63n(3600*24)
 	partition.lastSyncTinyDeleteTime = partition.FullSyncTinyDeleteTime
-	// Attach data partition to disk mapping
-	disk.AttachDataPartition(partition)
 	dp = partition
 	return
 }
@@ -757,11 +752,6 @@ func (dp *DataPartition) Expired() {
 
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
-	if dp.raftPartition != nil {
-		_ = dp.raftPartition.Expired()
-	} else {
-		log.LogWarnf("action[ExpiredPartition] raft instance not ready! dp:%v", dp.config.PartitionID)
-	}
 	var currentPath = path.Clean(dp.path)
 	var newPath = path.Join(path.Dir(currentPath),
 		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
@@ -1190,10 +1180,9 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 
 // ChangeRaftMember is a wrapper function of changing the raft member.
 func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, peer raftProto.Peer, context []byte) (resp interface{}, err error) {
-	log.LogErrorf("[DataPartition->ChangeRaftMember] [partitionID: %v] start [changeType: %v, peer: %v]", dp.partitionID, changeType, peer)
-	defer func() {
-		log.LogErrorf("[DataPartition->ChangeRaftMember] [partitionID: %v] finish [changeType: %v, peer: %v]", dp.partitionID, changeType, peer)
-	}()
+	if log.IsWarnEnabled() {
+		log.LogWarnf("DP %v: change raft member: type %v, peer %v", dp.partitionID, changeType, peer)
+	}
 	resp, err = dp.raftPartition.ChangeMember(changeType, peer, context)
 	return
 }
@@ -1264,7 +1253,7 @@ func (dp *DataPartition) EvictExpiredFileDescriptor() {
 	dp.extentStore.EvictExpiredCache()
 }
 
-func (dp *DataPartition) ForceEvictFileDescriptor(ratio storage.Ratio) {
+func (dp *DataPartition) ForceEvictFileDescriptor(ratio unit.Ratio) {
 	dp.extentStore.ForceEvictCache(ratio)
 }
 

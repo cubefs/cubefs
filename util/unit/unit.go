@@ -15,6 +15,7 @@
 package unit
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 )
@@ -95,4 +96,28 @@ func isMatch(exp *regexp.Regexp, val interface{}) bool {
 func FixedPoint(value float64, scale int) float64 {
 	decimal := math.Pow10(scale)
 	return float64(int(math.Round(value*decimal))) / decimal
+}
+
+type Ratio float64
+
+func (r Ratio) Valid() bool {
+	return r >= 0 && r <= 1
+}
+
+func (r Ratio) Float64() float64 {
+	return float64(r)
+}
+
+func (r Ratio) String() string {
+	return fmt.Sprintf("%.2f%%", float64(r)*100)
+}
+
+func NewRatio(val float64) Ratio {
+	if val < 0 {
+		val = 0
+	}
+	if val > 1 {
+		val = 1
+	}
+	return Ratio(val)
 }

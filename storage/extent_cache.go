@@ -16,11 +16,12 @@ package storage
 
 import (
 	"container/list"
-	"context"
-	"golang.org/x/time/rate"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/unit"
+	"golang.org/x/time/rate"
 )
 
 // ExtentMapItem stores the extent entity pointer and the element
@@ -30,22 +31,6 @@ type ExtentMapItem struct {
 	element *list.Element
 
 	latestActive int64
-}
-
-type Ratio float64
-
-func (r Ratio) Valid() bool {
-	return r >= 0 && r <= 1
-}
-
-func NewRatio(val float64) Ratio {
-	if val < 0 {
-		val = 0
-	}
-	if val > 1 {
-		val = 1
-	}
-	return Ratio(val)
 }
 
 type CacheEvent uint8
@@ -232,7 +217,7 @@ func (cache *ExtentCache) EvictExpired() {
 	}
 }
 
-func (cache *ExtentCache) ForceEvict(ratio Ratio) {
+func (cache *ExtentCache) ForceEvict(ratio unit.Ratio) {
 	if !ratio.Valid() {
 		return
 	}
@@ -276,25 +261,15 @@ func (cache *ExtentCache) Flush(limiter *rate.Limiter) {
 	var extents = make([]*Extent, cache.extentList.Len())
 	var i int
 	for element := cache.extentList.Front(); element != nil; element = element.Next() {
-		var extent = element.Value.(*Extent)
-		if atomic.LoadInt32(&extent.modified) != 1 {
-			continue
+		if extent, is := element.Value.(*Extent); is && extent.Modified() {
+			extents[i] = extent
+			i++
 		}
-		extents[i] = extent
-		i++
 	}
 	cache.lock.RUnlock()
 	for _, e := range extents[:i] {
-		if limiter != nil {
-			bufSize := int(atomic.LoadInt64(&e.bufferedSize))
-			burst := limiter.Burst()
-			if bufSize > burst {
-				bufSize = burst
-			}
-			limiter.WaitN(context.Background(), bufSize)
-		}
-		_ = e.Flush()
-		atomic.StoreInt64(&e.bufferedSize, 0)
+		_ = e.Flush(limiter)
+		atomic.StoreInt64(&e.modifies, 0)
 	}
 	return
 }

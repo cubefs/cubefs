@@ -28,16 +28,14 @@ import (
 	"strings"
 	"time"
 
-	raftProto "github.com/tiglabs/raft/proto"
-
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/cpu"
 	"github.com/cubefs/cubefs/util/diskusage"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/storage"
+	raftProto "github.com/tiglabs/raft/proto"
 )
 
 var (
@@ -688,12 +686,19 @@ func (s *DataNode) stopPartition(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) reloadPartitionByName(partitionPath, disk string) (err error) {
 	var (
-		d           *Disk
 		partition   *DataPartition
 		partitionID uint64
 	)
 
-	if d, err = s.space.GetDisk(disk); err != nil {
+	var diskPath, ok = ParseDiskPath(disk)
+	if !ok {
+		err = fmt.Errorf("illegal disk path: %v", disk)
+		return
+	}
+
+	var d, exists = s.space.GetDisk(diskPath)
+	if !exists {
+		err = fmt.Errorf("disk no exists: %v", disk)
 		return
 	}
 

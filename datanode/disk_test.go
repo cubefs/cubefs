@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/cubefs/cubefs/util/unit"
+
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -18,10 +20,6 @@ var disk *Disk
 
 func init() {
 	var (
-		diskFDLimit = FDLimit{
-			MaxFDLimit:      DiskMaxFDLimit,
-			ForceEvictRatio: DiskForceEvictFDRatio,
-		}
 		spaceManager = &SpaceManager{
 			repairTaskLimitOnDisk:          0,
 			fixTinyDeleteRecordLimitOnDisk: 0,
@@ -33,15 +31,15 @@ func init() {
 		reservedSpace uint64 = DefaultDiskReservedSpace
 		stateFS              = new(syscall.Statfs_t)
 	)
-	fmt.Println("init disk")
 	if err := syscall.Statfs(testDiskPath, stateFS); err == nil {
-		reservedSpace = uint64(float64(stateFS.Blocks*uint64(stateFS.Bsize)) * DefaultDiskReservedRatio)
+		reservedSpace = uint64(float64(stateFS.Blocks*uint64(stateFS.Bsize)) * 0.1)
 	}
 	disk = new(Disk)
 	disk.Path = testDiskPath
 	disk.ReservedSpace = reservedSpace
 	disk.MaxErrCnt = DefaultDiskMaxErr
-	disk.fdLimit = diskFDLimit
+	disk.maxFDLimit = DiskMaxFDLimit
+	disk.forceEvictFDRatio = unit.NewRatio(DiskForceEvictFDRatio)
 	disk.space = spaceManager
 	disk.partitionMap = make(map[uint64]*DataPartition)
 	disk.fixTinyDeleteRecordLimit = spaceManager.fixTinyDeleteRecordLimitOnDisk
@@ -252,10 +250,7 @@ func TestUnmarshalPartitionName(t *testing.T) {
 }
 
 func TestUpdateSpaceInfo(t *testing.T) {
-	err := disk.updateSpaceInfo()
-	if err != nil {
-		t.Fatalf("updateSpaceInfo err:%v", err)
-	}
+	disk.updateSpaceInfo()
 	t.Logf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
 		"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", disk.Path,
 		disk.Total, disk.Available, disk.Unallocated, disk.ReservedSpace, disk.MaxErrCnt, disk.ReadErrCnt, disk.WriteErrCnt, disk.Status)
@@ -276,13 +271,12 @@ func TestRestoreOnePartition(t *testing.T) {
 	dpId = 10
 	MasterClient.AdminAPI().MockCreateDataPartition(localNodeAddress, dpId)
 
-	visitor := func(dp *DataPartition) {}
 	var applyId uint64 = 1234
 	dpDir := fmt.Sprintf("datapartition_%v_128849018880", dpId)
 	initDataPartitionUnderFile(dpId, applyId, dpDir)
 
 	defer removeUnderFile(dpDir)
-	err := disk.RestoreOnePartition(visitor, dpDir, nil)
+	err := disk.RestoreOnePartition(dpDir, nil)
 	if err != nil {
 		t.Fatalf("RestoreOnePartition err:%v", err)
 	}
@@ -293,11 +287,11 @@ func TestRestoreOnePartition(t *testing.T) {
 			t.Fatalf("disk restoreOnePartition mismatch, applyId except:%v, actual:%v", applyId, applied)
 		}
 	}
-	err = disk.RestoreOnePartition(visitor, "", nil)
+	err = disk.RestoreOnePartition("", nil)
 	if err == nil || !strings.Contains(err.Error(), "partition path is empty") {
 		t.Fatalf("err:%v", err)
 	}
-	err = disk.RestoreOnePartition(visitor, "lopsd", nil)
+	err = disk.RestoreOnePartition("lopsd", nil)
 	if err == nil || !strings.Contains(err.Error(), "read dir") {
 		t.Fatalf("err:%v", err)
 	}
@@ -307,7 +301,7 @@ func TestRestoreOnePartition(t *testing.T) {
 		removeUnderFile(dpDir)
 		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
 	}()
-	err = disk.RestoreOnePartition(visitor, dpDir, nil)
+	err = disk.RestoreOnePartition(dpDir, nil)
 	if err == nil || !strings.Contains(err.Error(), "invalid partition path") {
 		t.Fatalf("err:%v", err)
 	}
@@ -320,20 +314,7 @@ func TestRestoreOnePartition(t *testing.T) {
 		removeUnderFile(ExpiredPartitionPrefix + dpDir)
 		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
 	}()
-	_ = disk.RestoreOnePartition(visitor, dpDir, nil)
-}
-
-func TestRestorePartition(t *testing.T) {
-	var dpId uint64 = 10
-	var applyId uint64 = 1234
-	dpDir := fmt.Sprintf("datapartition_%v_128849018880", dpId)
-	initDataPartitionUnderFile(dpId, applyId, dpDir)
-	MasterClient.AdminAPI().MockCreateDataPartition(localNodeAddress, dpId)
-	defer func() {
-		removeUnderFile(dpDir)
-		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
-	}()
-	disk.RestorePartition(nil, 1, nil)
+	_ = disk.RestoreOnePartition(dpDir, nil)
 }
 
 func TestGetPersistPartitionsFromMaster(t *testing.T) {

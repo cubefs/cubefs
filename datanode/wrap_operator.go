@@ -407,8 +407,10 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var batch = storage.NewBatch(len(keys))
 	for _, key := range keys {
 		DeleteLimiterWait()
-		log.LogInfof("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
-			p.PartitionID, key.ExtentId, key.ExtentOffset, key.Size, remote)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
+				p.PartitionID, key.ExtentId, key.ExtentOffset, key.Size, remote)
+		}
 		batch.Add(key.Inode, key.ExtentId, int64(key.ExtentOffset), int64(key.Size))
 	}
 	if err = partition.BatchMarkDelete(batch); err != nil {

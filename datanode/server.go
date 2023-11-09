@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -30,24 +29,23 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"github.com/cubefs/cubefs/util/cpu"
-
-	"github.com/cubefs/cubefs/util/statinfo"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/repl"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/async"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/connpool"
+	"github.com/cubefs/cubefs/util/cpu"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/multirate"
+	"github.com/cubefs/cubefs/util/statinfo"
 	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/unit"
 )
@@ -56,8 +54,6 @@ var (
 	ErrIncorrectStoreType       = errors.New("Incorrect store type")
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
-	ErrPartitionNotExist        = errors.New("partition not exist")
-	ErrLimiterNil               = errors.New("limiter is nil")
 	LocalIP                     string
 	LocalServerPort             string
 	gConnPool                   = connpool.NewConnectPool()
@@ -70,12 +66,10 @@ var (
 
 const (
 	DefaultZoneName          = proto.DefaultZoneName
-	DefaultRaftDir           = "raft"
 	DefaultRaftLogsToRetain  = 1000 // Count of raft logs per data partition
 	DefaultDiskMaxErr        = 1
 	DefaultDiskReservedSpace = 5 * unit.GB // GB
-	DefaultDiskReservedRatio = float64(0.1)
-	DefaultDiskRetainMax     = 30 * unit.GB // GB
+	DefaultDiskUseRatio      = float64(0.90)
 )
 
 const (
@@ -153,9 +147,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	repl.SetConnectPool(gConnPool)
-	log.LogErrorf("doStart parseConfig finish")
 	s.register(cfg)
-	log.LogErrorf("doStart register finish")
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
 	s.limiter = multirate.NewLimiterManager(multirate.ModulDataNode, "", MasterClient.AdminAPI().GetLimitInfo).GetLimiter()
 
@@ -163,44 +155,28 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err = s.startRaftServer(cfg); err != nil {
 		return
 	}
-	log.LogErrorf("doStart startRaftServer finish")
 
 	// create space manager (disk, partition, etc.)
 	if err = s.startSpaceManager(cfg); err != nil {
-		return
-	}
-	log.LogErrorf("doStart startSpaceManager finish")
-
-	// check local partition compare with master ,if lack,then not start
-	if err = s.checkLocalPartitionMatchWithMaster(); err != nil {
-		fmt.Println(err)
 		exporter.Warning(err.Error())
 		return
 	}
-	log.LogErrorf("doStart checkLocalPartitionMatchWithMaster finish")
 
 	// start tcp listening
 	if err = s.startTCPService(); err != nil {
 		return
 	}
 
-	log.LogErrorf("doStart startTCPService finish")
-
 	// Start all loaded data partitions which managed by space manager,
 	// this operation will start raft partitions belong to data partitions.
 	s.space.StartPartitions()
-	log.LogErrorf("doStart start dataPartition raft  finish")
-	go s.space.AsyncLoadExtent()
 
-	go s.registerHandler()
-
-	go s.startUpdateNodeInfo()
-
-	go repl.LoggingAllReplProtocolBufferPoolUse()
+	async.RunWorker(s.space.AsyncLoadExtent)
+	async.RunWorker(s.registerHandler)
+	async.RunWorker(s.startUpdateNodeInfo)
+	async.RunWorker(s.startUpdateProcessStatInfo)
 
 	statistics.InitStatistics(cfg, s.clusterID, statistics.ModelDataNode, LocalIP, s.summaryMonitorData)
-
-	go s.startUpdateProcessStatInfo()
 
 	return
 }
@@ -249,13 +225,13 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 	s.tickInterval = int(cfg.GetFloat(cfgTickIntervalMs))
 	if s.tickInterval <= 300 {
-		log.LogWarnf("get config [%s]:(%v) less than 300 so set it to 500 ", cfgTickIntervalMs, cfg.GetString(cfgTickIntervalMs))
+		log.LogWarnf("DataNode: get config %s(%v) less than 300 so set it to 500 ", cfgTickIntervalMs, cfg.GetString(cfgTickIntervalMs))
 		s.tickInterval = 500
 	}
 
-	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
-	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
-	log.LogDebugf("action[parseConfig] load zoneName(%v).", s.zoneName)
+	log.LogInfof("DataNode: parse config: masterAddrs %v ", MasterClient.Nodes())
+	log.LogInfof("DataNode: parse config: port %v", s.port)
+	log.LogInfof("DataNode: parse config: zoneName %v ", s.zoneName)
 	return
 }
 
@@ -293,13 +269,10 @@ func (s *DataNode) parseSysStartTime() (err error) {
 		if err != nil {
 			return err
 		}
-		log.LogInfof("parseSysStartTime, localSysStart[%d], newSysStart[%d]", localSysStart, newSysStart)
+		log.LogInfof("DataNode: load sys start time: record %d, current %d", localSysStart, newSysStart)
 
-		if newSysStart-localSysStart > MAX_OFFSET_OF_TIME {
-			maybeServerFaultOccurred = true
-			log.LogWarnf("parseSysStartTime, the program may be started after power off, localSysStart[%d], newSysStart[%d]", localSysStart, newSysStart)
-		} else {
-			maybeServerFaultOccurred = false
+		if maybeServerFaultOccurred = newSysStart-localSysStart > MAX_OFFSET_OF_TIME; maybeServerFaultOccurred {
+			log.LogWarnf("DataNode: the program may be started after power off, record %d, current %d", localSysStart, newSysStart)
 		}
 	}
 	return
@@ -316,45 +289,111 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
 
-	var wg sync.WaitGroup
 	var startTime = time.Now()
-	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
-		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 
-		// format "PATH:RESET_SIZE
-		arr := strings.Split(d.(string), ":")
-		if len(arr) == 0 {
-			return errors.New("Invalid disk configuration. Example: PATH[:RESERVE_SIZE]")
+	// Prepare and validate disk config
+	var getDeviceID = func(path string) (uint64, error) {
+		var stat = new(syscall.Stat_t)
+		if err := syscall.Stat(path, stat); err != nil {
+			return 0, err
 		}
-		path := arr[0]
-		fileInfo, err := os.Stat(path)
+		return stat.Dev, nil
+	}
+	var rootDevID uint64
+	if rootDevID, err = getDeviceID("/"); err != nil {
+		return
+	}
+	log.LogInfof("root device: / (%v)", rootDevID)
+
+	var diskPaths = make(map[uint64]*DiskPath) // DevID -> DiskPath
+	for _, d := range cfg.GetSlice(ConfigKeyDisks) {
+		var diskPath, ok = ParseDiskPath(d.(string))
+		if !ok {
+			err = fmt.Errorf("invalid disks configuration: %v", d)
+			return
+		}
+		var devID uint64
+		if devID, err = getDeviceID(diskPath.Path()); err != nil {
+			return
+		}
+		if devID == rootDevID {
+			err = fmt.Errorf("root device in disks configuration: %v (%v), ", d, devID)
+			return
+		}
+		log.LogInfof("disk device: %v, %v (%v)", d, diskPath.Path(), devID)
+		if p, exists := diskPaths[devID]; exists {
+			err = fmt.Errorf("dependent device in disks configuration: [%v,%v]", d, p.Path())
+			return
+		}
+		diskPaths[devID] = diskPath
+	}
+
+	var checkExpired CheckExpired
+	var requires, fetchErr = s.fetchPersistPartitionIDsFromMaster()
+	if fetchErr == nil {
+		checkExpired = func(id uint64) bool {
+			if len(requires) == 0 {
+				return true
+			}
+			for _, existId := range requires {
+				if existId == id {
+					return false
+				}
+			}
+			return true
+		}
+	}
+
+	var futures []*async.Future
+	for devID, diskPath := range diskPaths {
+		var future = async.NewFuture()
+		go func(path *DiskPath, future *async.Future) {
+			if log.IsInfoEnabled() {
+				log.LogInfof("SPCMGR: loading disk: devID=%v, path=%v", devID, diskPath)
+			}
+			var err = s.space.LoadDisk(path, checkExpired)
+			future.Respond(nil, err)
+		}(diskPath, future)
+		futures = append(futures, future)
+	}
+	for _, future := range futures {
+		if _, err = future.Response(); err != nil {
+			return
+		}
+	}
+
+	// Check missed partitions
+	var misses = make([]uint64, 0)
+	for _, id := range requires {
+		if dp := s.space.Partition(id); dp == nil {
+			misses = append(misses, id)
+		}
+	}
+	if len(misses) > 0 {
+		err = fmt.Errorf("lack partitions: %v", misses)
+		return
+	}
+
+	gHasFinishedLoadDisks = true
+	log.LogInfof("SPCMGR: loaded all %v disks elapsed %v", len(diskPaths), time.Since(startTime))
+	return nil
+}
+
+func (s *DataNode) fetchPersistPartitionIDsFromMaster() (ids []uint64, err error) {
+	var dataNode *proto.DataNodeInfo
+	for i := 0; i < 3; i++ {
+		dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr)
 		if err != nil {
-			log.LogErrorf("stat disk [%v] failed: %v", path, err)
+			log.LogErrorf("DataNode: fetch node info from master failed: %v", err)
 			continue
 		}
-		if !fileInfo.IsDir() {
-			return errors.New("Disk path is not dir")
-		}
-
-		wg.Add(1)
-		go func(wg *sync.WaitGroup, path string) {
-			defer wg.Done()
-			var (
-				reserved uint64 = DefaultDiskReservedSpace
-				stateFS         = new(syscall.Statfs_t)
-			)
-			if err := syscall.Statfs(path, stateFS); err == nil {
-				reserved = uint64(float64(stateFS.Blocks*uint64(stateFS.Bsize)) * DefaultDiskReservedRatio)
-			}
-			log.LogInfof("disk(%v) load with option [ReservedSpace: %v, MaxErrorCount: %v",
-				path, reserved, DefaultDiskMaxErr)
-			s.space.LoadDisk(path, reserved, DefaultDiskMaxErr, s.limiter)
-		}(&wg, path)
+		break
 	}
-	wg.Wait()
-	gHasFinishedLoadDisks = true
-	log.LogInfof("space manager loaded all disk cost(%v)", time.Since(startTime))
-	return nil
+	if err != nil {
+		return
+	}
+	ids = dataNode.PersistenceDataPartitions
+	return
 }
 
 // registers the data node on the master to report the information such as IsIPV4 address.
@@ -372,7 +411,7 @@ func (s *DataNode) register(cfg *config.Config) {
 		case <-timer.C:
 			var ci *proto.ClusterInfo
 			if ci, err = MasterClient.AdminAPI().GetClusterInfo(); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
+				log.LogErrorf("DataNode: cannot get ip from master %v: %v",
 					MasterClient.Leader(), err)
 				timer.Reset(2 * time.Second)
 				continue
@@ -384,7 +423,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			}
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !unit.IsIPV4(LocalIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
+				log.LogErrorf("DataNode: got an invalid local ip %v from master %v",
 					LocalIP, masterAddr)
 				timer.Reset(2 * time.Second)
 				continue
@@ -399,7 +438,7 @@ func (s *DataNode) register(cfg *config.Config) {
 				continue
 			}
 			s.nodeID = nodeID
-			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
+			log.LogDebugf("DataNode: register success, nodeID %v", s.nodeID)
 			return
 		case <-s.stopC:
 			timer.Stop()
@@ -411,43 +450,6 @@ func (s *DataNode) register(cfg *config.Config) {
 type DataNodeInfo struct {
 	Addr                      string
 	PersistenceDataPartitions []uint64
-}
-
-func (s *DataNode) checkLocalPartitionMatchWithMaster() (err error) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
-		result := &DataNodeInfo{}
-		result.Addr = node.Addr
-		result.PersistenceDataPartitions = node.PersistenceDataPartitions
-		return result
-	}
-	var dataNode *proto.DataNodeInfo
-	for i := 0; i < 3; i++ {
-		if dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr); err != nil {
-			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
-			continue
-		}
-		break
-	}
-	if dataNode == nil {
-		return
-	}
-	dinfo := convert(dataNode)
-	if len(dinfo.PersistenceDataPartitions) == 0 {
-		return
-	}
-	lackPartitions := make([]uint64, 0)
-	for _, partitionID := range dinfo.PersistenceDataPartitions {
-		dp := s.space.Partition(partitionID)
-		if dp == nil {
-			lackPartitions = append(lackPartitions, partitionID)
-		}
-	}
-	if len(lackPartitions) == 0 {
-		return
-	}
-	err = fmt.Errorf("LackPartitions %v on datanode %v,datanode cannot start", lackPartitions, s.localServerAddr)
-	log.LogErrorf(err.Error())
-	return
 }
 
 func (s *DataNode) registerHandler() {

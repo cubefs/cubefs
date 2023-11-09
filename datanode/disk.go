@@ -16,11 +16,12 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,18 +29,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shirou/gopsutil/load"
-
-	"github.com/cubefs/cubefs/util/concurrent"
-
-	"github.com/cubefs/cubefs/util/async"
-	"golang.org/x/time/rate"
-
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/async"
+	"github.com/cubefs/cubefs/util/concurrent"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/multirate"
+	"github.com/cubefs/cubefs/util/unit"
+	"github.com/shirou/gopsutil/load"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -54,9 +53,54 @@ const (
 	TempLatestFlushTimeFile = ".LATEST_FLUSH"
 )
 
-type FDLimit struct {
-	MaxFDLimit      uint64  // 触发强制FD淘汰策略的阈值
-	ForceEvictRatio float64 // 强制FD淘汰比例
+var (
+	regexpDiskPath = regexp.MustCompile("^(/(\\w|-)+)+(:(\\d)+)?$")
+)
+
+type DiskPath struct {
+	path     string
+	reserved int64
+}
+
+func (p *DiskPath) Path() string {
+	return p.path
+}
+
+func (p *DiskPath) Reserved() int64 {
+	return p.reserved
+}
+
+func (p *DiskPath) String() string {
+	return fmt.Sprintf("DiskPath(path=%v, reserved=%v)", p.path, p.reserved)
+}
+
+func ParseDiskPath(str string) (p *DiskPath, success bool) {
+	if !regexpDiskPath.MatchString(str) {
+		return
+	}
+	var parts = strings.Split(str, ":")
+	p = &DiskPath{
+		path: parts[0],
+		reserved: func() int64 {
+			if len(parts) > 1 {
+				var val, _ = strconv.ParseInt(parts[1], 10, 64)
+				return val
+			}
+			return 0
+		}(),
+	}
+	success = true
+	return
+}
+
+type DiskConfig struct {
+	Reserved                 int64
+	UsableRatio              unit.Ratio
+	MaxErrCnt                int
+	MaxFDLimit               uint64     // 触发强制FD淘汰策略的阈值
+	ForceFDEvictRatio        unit.Ratio // 强制FD淘汰比例
+	FixTinyDeleteRecordLimit uint64
+	RepairTaskLimit          uint64
 }
 
 // Disk represents the structure of the disk
@@ -75,6 +119,7 @@ type Disk struct {
 	MaxErrCnt     int // maximum number of errors
 	Status        int // disk status such as READONLY
 	ReservedSpace uint64
+	UsableRatio   unit.Ratio // usable
 
 	RejectWrite  bool
 	partitionMap map[uint64]*DataPartition
@@ -88,38 +133,76 @@ type Disk struct {
 	limitLock                    sync.Mutex
 
 	// Runtime statistics
-	fdCount int64
-	fdLimit FDLimit
+	fdCount           int64
+	maxFDLimit        uint64
+	forceEvictFDRatio unit.Ratio
 
 	forceFlushFDParallelism uint64 // 控制Flush文件句柄的并发度
 
 	latestFlushTimeOnInit int64 // Disk 实例初始化时加载到的该磁盘最近一次Flush数据的时间
 
 	issueFixConcurrentLimiter *concurrent.Limiter // 修复服务器故障导致的不安全数据的并发限制器
+	limiter                   *multirate.MultiLimiter
 }
 
-type PartitionVisitor func(dp *DataPartition)
+type CheckExpired func(id uint64) bool
 
-func NewDisk(path string, reservedSpace uint64, maxErrCnt int, fdLimit FDLimit, space *SpaceManager) (d *Disk) {
-	d = new(Disk)
-	d.Path = path
-	d.ReservedSpace = reservedSpace
-	d.MaxErrCnt = maxErrCnt
-	d.RejectWrite = false
-	d.space = space
-	d.partitionMap = make(map[uint64]*DataPartition)
-	d.fixTinyDeleteRecordLimit = space.fixTinyDeleteRecordLimitOnDisk
-	d.repairTaskLimit = space.repairTaskLimitOnDisk
-	d.fdCount = 0
-	d.fdLimit = fdLimit
-	d.forceFlushFDParallelism = DefaultForceFlushFDParallelismOnDisk
-	d.issueFixConcurrentLimiter = concurrent.NewLimiter(DefaultIssueFixConcurrencyOnDisk)
-	d.computeUsage()
+func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism int, limiter *multirate.MultiLimiter, expired CheckExpired) (d *Disk, err error) {
+	_, err = os.Stat(path)
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err != nil {
+			d = nil
+		}
+	}()
+	d = &Disk{
+		Path:                      path,
+		ReservedSpace:             uint64(math.Max(float64(config.Reserved), float64(DefaultDiskReservedSpace))),
+		UsableRatio:               config.UsableRatio,
+		MaxErrCnt:                 config.MaxErrCnt,
+		RejectWrite:               false,
+		space:                     space,
+		partitionMap:              make(map[uint64]*DataPartition),
+		fixTinyDeleteRecordLimit:  config.FixTinyDeleteRecordLimit,
+		repairTaskLimit:           config.RepairTaskLimit,
+		fdCount:                   0,
+		maxFDLimit:                config.MaxFDLimit,
+		forceEvictFDRatio:         config.ForceFDEvictRatio,
+		forceFlushFDParallelism:   DefaultForceFlushFDParallelismOnDisk,
+		issueFixConcurrentLimiter: concurrent.NewLimiter(DefaultIssueFixConcurrencyOnDisk),
+		limiter:                   limiter,
+	}
+
+	if err = d.computeUsage(); err != nil {
+		return
+	}
 	d.updateSpaceInfo()
-	d.latestFlushTimeOnInit, _ = d.loadLatestFlushTime()
-	d.startScheduler()
+	if err = d.loadLatestFlushTime(); err != nil {
+		return
+	}
+
+	if err = d.loadPartitions(parallelism, expired); err != nil {
+		d = nil
+		return
+	}
+
+	async.RunWorker(d.managementScheduler, func(i interface{}) {
+		log.LogCriticalf("Disk %v: management scheduler occurred panic: %v\nCallstack:\n%v",
+			path, i, string(debug.Stack()))
+	})
 	async.RunWorker(d.flushDeleteScheduler, func(i interface{}) {
-		log.LogCriticalf("Disk[%v] flush delete scheduler occurred panic: %v", path, i)
+		log.LogCriticalf("Disk %v: flush delete scheduler occurred panic: %v\nCallStack:\n%v",
+			path, i, string(debug.Stack()))
+	})
+	async.RunWorker(d.crcComputationScheduler, func(i interface{}) {
+		log.LogCriticalf("Disk %v: CRC computation scheduler occurred panic: %v\nCallStack:\n%v",
+			path, i, string(debug.Stack()))
+	})
+	async.RunWorker(d.flushFPScheduler, func(i interface{}) {
+		log.LogCriticalf("Disk %v: FD Flush scheduler occurred panic: %v\nCallStack:\n%v",
+			path, i, string(debug.Stack()))
 	})
 	return
 }
@@ -130,7 +213,7 @@ func (d *Disk) SetForceFlushFDParallelism(parallelism uint64) {
 	}
 	if parallelism != d.forceFlushFDParallelism {
 		if log.IsDebugEnabled() {
-			log.LogDebugf("disk[%v] flush FD parallelism changed [prev: %v, new: %v]", d.Path, d.forceFlushFDParallelism, parallelism)
+			log.LogDebugf("Disk %v: flush FD parallelism changed, prev %v, new %v", d.Path, d.forceFlushFDParallelism, parallelism)
 		}
 		d.forceFlushFDParallelism = parallelism
 	}
@@ -174,54 +257,47 @@ func (d *Disk) finishRepairTask() {
 
 // Compute the disk usage
 func (d *Disk) computeUsage() (err error) {
-	d.RLock()
-	defer d.RUnlock()
 	fs := syscall.Statfs_t{}
-	err = syscall.Statfs(d.Path, &fs)
-	if err != nil {
+	if err = syscall.Statfs(d.Path, &fs); err != nil {
+		d.incReadErrCnt()
 		return
 	}
 
-	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace))
-	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
-	if total < 0 {
-		total = 0
-	}
-	d.Total = uint64(total)
+	// Total = (DeviceCapacity - Reserved) * UsableRatio
+	var deviceCapacity = fs.Blocks * uint64(fs.Bsize)
+	var capacity = int64(float64(deviceCapacity-d.ReservedSpace) * d.UsableRatio.Float64())
+	capacity = int64(math.Max(float64(capacity), float64(0)))
+	d.Total = uint64(capacity)
 
-	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace))
-	available := int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace)
-	if available < 0 {
-		available = 0
-	}
+	// Available = DeviceAvailable-(DeviceCapacity-Total)
+	var deviceAvailable = fs.Bavail * uint64(fs.Bsize)
+	var available = int64(deviceAvailable) - (int64(deviceCapacity) - capacity)
+	available = int64(math.Max(float64(available), float64(0)))
 	d.Available = uint64(available)
 
 	//  used := math.Max(0, int64(total - available))
-	used := int64(total - available)
-	if used < 0 {
-		used = 0
-	}
+	var used = capacity - available
+	used = int64(math.Max(float64(used), float64(0)))
 	d.Used = uint64(used)
 
-	allocatedSize := int64(0)
+	var allocated int64 = 0
+	d.RLock()
 	for _, dp := range d.partitionMap {
-		allocatedSize += int64(dp.Size())
+		allocated += int64(dp.Size())
 	}
-	atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
+	d.RUnlock()
+	atomic.StoreUint64(&d.Allocated, uint64(allocated))
 	//  unallocated = math.Max(0, total - allocatedSize)
-	unallocated := total - allocatedSize
-	if unallocated < 0 {
-		unallocated = 0
-	}
-	if d.Available <= 0 {
-		d.RejectWrite = true
-	} else {
-		d.RejectWrite = false
-	}
+	var unallocated = capacity - allocated
+	unallocated = int64(math.Max(float64(unallocated), float64(0)))
 	d.Unallocated = uint64(unallocated)
 
-	log.LogDebugf("action[computeUsage] disk(%v) all(%v) available(%v) used(%v)",
-		d.Path, d.Total, d.Available, d.Used)
+	d.RejectWrite = d.Available <= 0
+
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Disk %v: computed usage: Capacity %v, Available %v, Used %v, Allocated %v, Unallocated %v, DevCapacity %v, DevAvailable %v",
+			d.Path, d.Total, d.Available, d.Used, allocated, unallocated, deviceCapacity, deviceAvailable)
+	}
 
 	return
 }
@@ -234,55 +310,54 @@ func (d *Disk) incWriteErrCnt() {
 	atomic.AddUint64(&d.WriteErrCnt, 1)
 }
 
-func (d *Disk) startFlushFPScheduler() {
-
-	go func() {
-		flushFDSecond := d.space.flushFDIntervalSec
-		if flushFDSecond == 0 {
-			flushFDSecond = DefaultForceFlushFDSecond
-		}
-		forceFlushFDTicker := time.NewTicker(time.Duration(flushFDSecond) * time.Second)
-		defer func() {
-			forceFlushFDTicker.Stop()
-		}()
-		for {
-			select {
-			case <-forceFlushFDTicker.C:
-				if !gHasLoadDataPartition {
-					continue
-				}
-				avg, err := load.Avg()
-				if err != nil {
-					log.LogErrorf("action[startFlushFPScheduler] get host load value failed,err:%v", err)
-					continue
-				}
-				if avg.Load1 > 1000.0 {
-					log.LogErrorf("action[startFlushFPScheduler]  host load value larger than 1000")
-					continue
-				}
-				d.RLock()
-				var partitions = make([]*DataPartition, 0, len(d.partitionMap))
-				for _, partition := range d.partitionMap {
-					partitions = append(partitions, partition)
-				}
-				d.RUnlock()
-				d.forcePersistPartitions(partitions)
-				if flushFDSecond > 0 {
-					forceFlushFDTicker.Reset(time.Duration(flushFDSecond) * time.Second)
-				}
-			}
-			if d.maybeUpdateFlushFDInterval(flushFDSecond) {
-				log.LogDebugf("action[startFlushFPScheduler] disk(%v) update ticker from(%v) to (%v)", d.Path, flushFDSecond, d.space.flushFDIntervalSec)
-				oldFlushFDSecond := flushFDSecond
-				flushFDSecond = d.space.flushFDIntervalSec
-				if flushFDSecond > 0 {
-					forceFlushFDTicker.Reset(time.Duration(flushFDSecond) * time.Second)
-				} else {
-					flushFDSecond = oldFlushFDSecond
-				}
-			}
-		}
+func (d *Disk) flushFPScheduler() {
+	flushFDSecond := d.space.flushFDIntervalSec
+	if flushFDSecond == 0 {
+		flushFDSecond = DefaultForceFlushFDSecond
+	}
+	forceFlushFDTicker := time.NewTicker(time.Duration(flushFDSecond) * time.Second)
+	defer func() {
+		forceFlushFDTicker.Stop()
 	}()
+	for {
+		select {
+		case <-forceFlushFDTicker.C:
+			if !gHasLoadDataPartition {
+				continue
+			}
+			avg, err := load.Avg()
+			if err != nil {
+				log.LogErrorf("Disk %v: get host load value failed: %v", d.Path, err)
+				continue
+			}
+			if avg.Load1 > 1000.0 {
+				if log.IsWarnEnabled() {
+					log.LogWarnf("Disk %v: skip flush FD: host load value larger than 1000", d.Path)
+				}
+				continue
+			}
+			d.RLock()
+			var partitions = make([]*DataPartition, 0, len(d.partitionMap))
+			for _, partition := range d.partitionMap {
+				partitions = append(partitions, partition)
+			}
+			d.RUnlock()
+			d.forcePersistPartitions(partitions)
+			if flushFDSecond > 0 {
+				forceFlushFDTicker.Reset(time.Duration(flushFDSecond) * time.Second)
+			}
+		}
+		if d.maybeUpdateFlushFDInterval(flushFDSecond) {
+			log.LogDebugf("action[startFlushFPScheduler] disk(%v) update ticker from(%v) to (%v)", d.Path, flushFDSecond, d.space.flushFDIntervalSec)
+			oldFlushFDSecond := flushFDSecond
+			flushFDSecond = d.space.flushFDIntervalSec
+			if flushFDSecond > 0 {
+				forceFlushFDTicker.Reset(time.Duration(flushFDSecond) * time.Second)
+			} else {
+				flushFDSecond = oldFlushFDSecond
+			}
+		}
+	}
 }
 
 func (d *Disk) maybeUpdateFlushFDInterval(oldVal uint32) bool {
@@ -292,38 +367,38 @@ func (d *Disk) maybeUpdateFlushFDInterval(oldVal uint32) bool {
 	return false
 }
 
-func (d *Disk) startScheduler() {
-	go func() {
-		var (
-			updateSpaceInfoTicker        = time.NewTicker(5 * time.Second)
-			checkStatusTicker            = time.NewTicker(time.Minute * 2)
-			evictFDTicker                = time.NewTicker(time.Minute * 5)
-			forceEvictFDTicker           = time.NewTicker(time.Second * 10)
-			evictExtentDeleteCacheTicker = time.NewTicker(time.Minute * 10)
-		)
-		defer func() {
-			updateSpaceInfoTicker.Stop()
-			checkStatusTicker.Stop()
-			evictFDTicker.Stop()
-			forceEvictFDTicker.Stop()
-			evictExtentDeleteCacheTicker.Stop()
-		}()
-		for {
-			select {
-			case <-updateSpaceInfoTicker.C:
-				d.computeUsage()
-				d.updateSpaceInfo()
-			case <-checkStatusTicker.C:
-				d.checkDiskStatus()
-			case <-evictFDTicker.C:
-				d.evictExpiredFileDescriptor()
-			case <-forceEvictFDTicker.C:
-				d.forceEvictFileDescriptor()
-			case <-evictExtentDeleteCacheTicker.C:
-				d.evictExpiredExtentDeleteCache()
-			}
-		}
+func (d *Disk) managementScheduler() {
+	var (
+		updateSpaceInfoTicker        = time.NewTicker(5 * time.Second)
+		checkStatusTicker            = time.NewTicker(time.Minute * 2)
+		evictFDTicker                = time.NewTicker(time.Minute * 5)
+		forceEvictFDTicker           = time.NewTicker(time.Second * 10)
+		evictExtentDeleteCacheTicker = time.NewTicker(time.Minute * 10)
+	)
+	defer func() {
+		updateSpaceInfoTicker.Stop()
+		checkStatusTicker.Stop()
+		evictFDTicker.Stop()
+		forceEvictFDTicker.Stop()
+		evictExtentDeleteCacheTicker.Stop()
 	}()
+	for {
+		select {
+		case <-updateSpaceInfoTicker.C:
+			if err := d.computeUsage(); err != nil {
+				log.LogErrorf("Disk %v: compute usage failed: %v", d.Path, err)
+			}
+			d.updateSpaceInfo()
+		case <-checkStatusTicker.C:
+			d.checkDiskStatus()
+		case <-evictFDTicker.C:
+			d.evictExpiredFileDescriptor()
+		case <-forceEvictFDTicker.C:
+			d.forceEvictFileDescriptor()
+		case <-evictExtentDeleteCacheTicker.C:
+			d.evictExpiredExtentDeleteCache()
+		}
+	}
 }
 
 func (d *Disk) flushDeleteScheduler() {
@@ -334,6 +409,17 @@ func (d *Disk) flushDeleteScheduler() {
 		select {
 		case <-flushDeleteTicker.C:
 			if !gHasLoadDataPartition {
+				continue
+			}
+			avg, err := load.Avg()
+			if err != nil {
+				log.LogErrorf("Disk %v: get host load value failed: %v", d.Path, err)
+				continue
+			}
+			if avg.Load1 > 1000.0 {
+				if log.IsWarnEnabled() {
+					log.LogWarnf("Disk %v: skip flush delete: host load value larger than 1000", d.Path)
+				}
 				continue
 			}
 			d.flushDelete()
@@ -362,7 +448,7 @@ func (d *Disk) flushDelete() {
 				return
 			}
 			if _, err = partition.FlushDelete(); err != nil {
-				log.LogErrorf("Disk(%v) DP(%v) flush delete failed: %v", d.Path, partition.partitionID, err)
+				log.LogErrorf("Disk %v: DP(%v) flush delete failed: %v", d.Path, partition.partitionID, err)
 				continue
 			}
 		}
@@ -375,18 +461,28 @@ func (d *Disk) flushDelete() {
 	wg.Wait()
 }
 
-func (d *Disk) autoComputeExtentCrc() {
+func (d *Disk) crcComputationScheduler() {
+	var timer = time.NewTimer(0)
 	for {
-		partitions := make([]*DataPartition, 0)
-		d.RLock()
-		for _, dp := range d.partitionMap {
-			partitions = append(partitions, dp)
+		<-timer.C
+		avg, err := load.Avg()
+		if err != nil {
+			log.LogErrorf("Disk %v: get host load value failed: %v", d.Path, err)
+			timer.Reset(time.Minute)
+			continue
 		}
-		d.RUnlock()
-		for _, dp := range partitions {
-			dp.extentStore.AutoComputeExtentCrc()
+		if avg.Load1 > 1000.0 {
+			if log.IsWarnEnabled() {
+				log.LogWarnf("Disk %v: skip compute CRC: host load value larger than 1000", d.Path)
+			}
+			timer.Reset(time.Minute)
+			continue
 		}
-		time.Sleep(time.Minute)
+		d.WalkPartitions(func(u uint64, partition *DataPartition) bool {
+			partition.ExtentStore().AutoComputeExtentCrc()
+			return true
+		})
+		timer.Reset(time.Minute)
 	}
 }
 
@@ -450,11 +546,7 @@ func (d *Disk) triggerDiskError(err error) {
 	return
 }
 
-func (d *Disk) updateSpaceInfo() (err error) {
-	var statsInfo syscall.Statfs_t
-	if err = syscall.Statfs(d.Path, &statsInfo); err != nil {
-		d.incReadErrCnt()
-	}
+func (d *Disk) updateSpaceInfo() {
 	if d.Status == proto.Unavailable {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
@@ -465,9 +557,11 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	} else {
 		d.Status = proto.ReadWrite
 	}
-	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
-		"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
-		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Disk %v: updated space info: total(%v) available(%v) remain(%v) "+
+			"restSize(%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
+			d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
+	}
 	return
 }
 
@@ -477,7 +571,7 @@ func (d *Disk) AttachDataPartition(dp *DataPartition) {
 	d.partitionMap[dp.ID()] = dp
 	d.Unlock()
 
-	d.computeUsage()
+	_ = d.computeUsage()
 }
 
 // DetachDataPartition removes a data partition from the partition map.
@@ -486,7 +580,7 @@ func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	delete(d.partitionMap, dp.ID())
 	d.Unlock()
 
-	d.computeUsage()
+	_ = d.computeUsage()
 }
 
 // GetDataPartition returns the data partition based on the given partition ID.
@@ -538,40 +632,19 @@ func (d *Disk) isPartitionDir(filename string) (isPartitionDir bool) {
 }
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
-func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int, limiter *multirate.MultiLimiter) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
-		result := &DataNodeInfo{}
-		result.Addr = node.Addr
-		result.PersistenceDataPartitions = node.PersistenceDataPartitions
-		return result
-	}
-	var dataNode *proto.DataNodeInfo
-	var err error
-	for i := 0; i < 3; i++ {
-		dataNode, err = MasterClient.NodeAPI().GetDataNode(d.space.dataNode.localServerAddr)
-		if err != nil {
-			log.LogErrorf("action[RestorePartition]: getDataNode error %v", err)
-			continue
-		}
-		break
-	}
-
-	var dinfo *DataNodeInfo = nil
-	if dataNode != nil {
-		dinfo = convert(dataNode)
-		if len(dinfo.PersistenceDataPartitions) == 0 {
-			log.LogWarnf("action[RestorePartition]: length of PersistenceDataPartitions is 0, ExpiredPartition check " +
-				"without effect")
-		}
-	}
+func (d *Disk) loadPartitions(parallelism int, expired CheckExpired) (err error) {
 
 	var (
 		partitionID uint64
+		diskFp      *os.File
 	)
 
-	fileInfoList, err := ioutil.ReadDir(d.Path)
-	if err != nil {
-		log.LogErrorf("action[RestorePartition] read dir(%v) err(%v).", d.Path, err)
+	if diskFp, err = os.Open(d.Path); err != nil {
+		return
+	}
+
+	var filenames []string
+	if filenames, err = diskFp.Readdirnames(-1); err != nil {
 		return
 	}
 
@@ -595,24 +668,21 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int, limit
 				}
 				partitionFullPath := path.Join(d.Path, filename)
 				startTime := time.Now()
-				if partition, loadErr = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit, limiter); loadErr != nil {
+				if partition, loadErr = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit, d.limiter); loadErr != nil {
 					msg := fmt.Sprintf("load partition(%v) failed: %v",
 						partitionFullPath, loadErr)
 					log.LogError(msg)
 					exporter.Warning(msg)
-					return
+					continue
 				}
-				log.LogInfof("partition(%v) load complete cost(%v)",
+				log.LogInfof("DP(%v) load complete, elapsed %v",
 					partitionFullPath, time.Since(startTime))
-				if visitor != nil {
-					visitor(partition)
-				}
+				d.AttachDataPartition(partition)
 			}
 		}()
 	}
 	go func() {
-		for _, fileInfo := range fileInfoList {
-			filename := fileInfo.Name()
+		for _, filename := range filenames {
 			if !d.isPartitionDir(filename) {
 				continue
 			}
@@ -622,9 +692,11 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int, limit
 					filename, d.Path, err.Error())
 				continue
 			}
-			if dinfo != nil && isExpiredPartition(partitionID, dinfo.PersistenceDataPartitions) {
-				log.LogErrorf("action[RestorePartition]: find expired partition[%s], rename it and you can delete it "+
-					"manually", filename)
+			if expired != nil && expired(partitionID) {
+				if log.IsWarnEnabled() {
+					log.LogWarnf("Disk %v: found expired DP %v (%v): rename it and you can delete it "+
+						"manually", d.Path, partitionID, filename)
+				}
 				oldName := path.Join(d.Path, filename)
 				newName := path.Join(d.Path, ExpiredPartitionPrefix+filename)
 				_ = os.Rename(oldName, newName)
@@ -636,11 +708,11 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor, parallelism int, limit
 	}()
 
 	loadWaitGroup.Wait()
-	d.startFlushFPScheduler()
+	return
 }
 
 // RestoreOnePartition restores the data partition.
-func (d *Disk) RestoreOnePartition(visitor PartitionVisitor, partitionPath string, limiter *multirate.MultiLimiter) (err error) {
+func (d *Disk) RestoreOnePartition(partitionPath string, limiter *multirate.MultiLimiter) (err error) {
 	var (
 		partitionID uint64
 		partition   *DataPartition
@@ -694,10 +766,62 @@ func (d *Disk) RestoreOnePartition(visitor PartitionVisitor, partitionPath strin
 	}
 	log.LogInfof("partition(%v) load complete cost(%v)",
 		partitionFullPath, time.Since(startTime))
-	if visitor != nil {
-		visitor(partition)
-	}
+	d.AttachDataPartition(partition)
+	d.space.AttachPartition(partition)
 	return
+}
+
+func (d *Disk) WalkPartitions(f func(uint64, *DataPartition) bool) {
+	if f == nil {
+		return
+	}
+	d.Lock()
+	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
+	for _, partition := range d.partitionMap {
+		partitions = append(partitions, partition)
+	}
+	d.Unlock()
+	for _, partition := range partitions {
+		if !f(partition.ID(), partition) {
+			break
+		}
+	}
+}
+
+func (d *Disk) AsyncLoadExtent(parallelism int) {
+
+	if log.IsInfoEnabled() {
+		log.LogInfof("Disk %v: storage lazy load start", d.Path)
+	}
+	var start = time.Now()
+	var wg = new(sync.WaitGroup)
+	var partitionCh = make(chan *DataPartition, parallelism)
+	for i := 0; i < parallelism; i++ {
+		wg.Add(1)
+		async.RunWorker(func() {
+			defer wg.Done()
+			var dp *DataPartition
+			for {
+				if dp = <-partitionCh; dp == nil {
+					return
+				}
+				dp.ExtentStore().Load()
+			}
+		})
+	}
+	wg.Add(1)
+	async.RunWorker(func() {
+		defer wg.Done()
+		d.WalkPartitions(func(_ uint64, partition *DataPartition) bool {
+			partitionCh <- partition
+			return true
+		})
+		close(partitionCh)
+	})
+	wg.Wait()
+	if log.IsInfoEnabled() {
+		log.LogInfof("Disk %v: storage lazy load complete, elapsed %v", d.Path, time.Now().Sub(start))
+	}
 }
 
 func (d *Disk) getPersistPartitionsFromMaster() (dInfo *DataNodeInfo, err error) {
@@ -787,9 +911,8 @@ func (d *Disk) forceEvictFileDescriptor() {
 		partitions = append(partitions, partition)
 	}
 	d.RUnlock()
-	var ratio = storage.NewRatio(d.fdLimit.ForceEvictRatio)
 	for _, partition := range partitions {
-		partition.ForceEvictFileDescriptor(ratio)
+		partition.ForceEvictFileDescriptor(d.forceEvictFDRatio)
 	}
 	log.LogDebugf("action[forceEvictFileDescriptor] disk(%v) evicted FD count [%v -> %v]",
 		d.Path, count, atomic.LoadInt64(&d.fdCount))
@@ -897,11 +1020,11 @@ func (d *Disk) persistLatestFlushTime(unix int64) (err error) {
 		return
 	}
 	err = os.Rename(tmpFilename, path.Join(d.Path, LatestFlushTimeFile))
-	log.LogInfof("disk[%v] persist latest flush time [unix: %v]", d.Path, unix)
+	log.LogInfof("Disk %v: persist latest flush time [unix: %v]", d.Path, unix)
 	return
 }
 
-func (d *Disk) loadLatestFlushTime() (unix int64, err error) {
+func (d *Disk) loadLatestFlushTime() (err error) {
 	var filename = path.Join(d.Path, LatestFlushTimeFile)
 	var (
 		fileBytes []byte
@@ -912,7 +1035,7 @@ func (d *Disk) loadLatestFlushTime() (unix int64, err error) {
 		}
 		return
 	}
-	if _, err = fmt.Sscanf(string(fileBytes), "%d", &unix); err != nil {
+	if _, err = fmt.Sscanf(string(fileBytes), "%d", &d.latestFlushTimeOnInit); err != nil {
 		err = nil
 		return
 	}

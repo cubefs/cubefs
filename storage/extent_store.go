@@ -20,26 +20,24 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"hash/crc32"
+	"io"
 	"math"
 	"os"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"golang.org/x/time/rate"
-
-	"hash/crc32"
-	"io"
-	"sort"
-	"strings"
 	"syscall"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -1372,7 +1370,7 @@ func (s *ExtentStore) EvictExpiredCache() {
 	s.cache.EvictExpired()
 }
 
-func (s *ExtentStore) ForceEvictCache(ratio Ratio) {
+func (s *ExtentStore) ForceEvictCache(ratio unit.Ratio) {
 	s.cache.ForceEvict(ratio)
 }
 

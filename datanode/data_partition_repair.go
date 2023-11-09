@@ -89,8 +89,10 @@ func NewDataPartitionRepairTask(address string, extentFiles []storage.ExtentInfo
 //     add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 	start := time.Now().UnixNano()
-	log.LogInfof("action[repair] partition(%v) start.",
-		dp.partitionID)
+	if log.IsInfoEnabled() {
+		log.LogInfof("DP %v: replication data repair start",
+			dp.partitionID)
+	}
 
 	var tinyExtents []uint64 // unavailable extents 小文件写
 	if extentType == proto.TinyExtentType {
@@ -101,7 +103,7 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 	}
 	replicas := dp.getReplicaClone()
 	if len(replicas) == 0 {
-		log.LogErrorf("action[repair] partition(%v) replicas is nil.", dp.partitionID)
+		log.LogErrorf("DP %v: no valid replicas, skip repair.", dp.partitionID)
 		return
 	}
 	repairTasks, err := dp.buildDataPartitionRepairTask(ctx, replicas, extentType, tinyExtents)
@@ -118,10 +120,9 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 	availableTinyExtents, brokenTinyExtents := dp.prepareRepairTasks(repairTasks)
 
 	// notify the replicas to repair the extent
-	err = dp.notifyFollowersToRepair(ctx, repairTasks)
-	if err != nil {
+	if err = dp.notifyFollowersToRepair(ctx, repairTasks); err != nil {
 		dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
-		log.LogErrorf("action[repair] partition(%v) err(%v).",
+		log.LogErrorf("DP %v: notify follower %v to repair failed: %v",
 			dp.partitionID, err)
 		log.LogError(errors.Stack(err))
 		return
@@ -141,9 +142,8 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 			dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond))
 	}
 
-	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
-		" finish cost[%vms] masterAddr(%v).", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
-		dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond), MasterClient.Nodes())
+	log.LogInfof("DP %v: replication data repair finish: AvailableTiny %v, BrokenTiny %v, elapsed %vms",
+		dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(), dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond))
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(ctx context.Context, replicas []string, extentType uint8, tinyExtents []uint64) ([]*DataPartitionRepairTask, error) {
@@ -456,6 +456,17 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		}
 		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 	}
+	if num := len(repairTask.ExtentsToBeDeleted); num > 0 {
+		var batch = storage.NewBatch(num)
+		for _, extentInfo := range repairTask.ExtentsToBeDeleted {
+			var extentID = extentInfo[storage.FileID]
+			if !store.IsFinishLoad() || proto.IsTinyExtent(extentID) || store.IsDeleted(extentID) {
+				continue
+			}
+			batch.Add(0, extentID, 0, 0)
+		}
+		_ = store.BatchMarkDelete(batch)
+	}
 
 	localAddr := fmt.Sprintf("%v:%v", LocalIP, LocalServerPort)
 	allReplicas := dp.getReplicaClone()
@@ -588,7 +599,7 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 			}
 			info, exists := referenceExtents[extentID]
 			if !exists || extentInfo[storage.Size] > info[storage.Size] {
-				referenceExtents[extentID] = info
+				referenceExtents[extentID] = extentInfo
 				sources[extentID] = repairTask.addr
 			}
 		}
@@ -616,17 +627,21 @@ func (dp *DataPartition) generateExtentCreationTasks(repairTasks []*DataPartitio
 				if proto.IsTinyExtent(extentID) {
 					continue
 				}
-				ei := storage.ExtentInfoBlock{
-					storage.FileID: extentID,
-					storage.Size:   extentInfo[storage.Size],
-					storage.Inode:  extentInfo[storage.Inode],
-				}
+				var (
+					size = extentInfo[storage.Size]
+					ino  = extentInfo[storage.Inode]
+					ei   = storage.ExtentInfoBlock{
+						storage.FileID: extentID,
+						storage.Size:   size,
+						storage.Inode:  ino,
+					}
+				)
 				repairTask.ExtentsToBeRepairedSource[extentID] = sources[extentID]
 				repairTask.ExtentsToBeCreated = append(repairTask.ExtentsToBeCreated, ei)
 				repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, ei)
 
 				if log.IsInfoEnabled() {
-					log.LogInfof("DP(%v): REPAIR: gen extent creation: host(%v) extent(%v)", dp.partitionID, repairTask.addr, extentID)
+					log.LogInfof("DP %v: REPAIR: gen extent creation: host %v, extent %v, size %v, ino %v", dp.partitionID, repairTask.addr, extentID, size, ino)
 				}
 			}
 		}
@@ -657,7 +672,7 @@ func (dp *DataPartition) generateExtentRepairTasks(repairTasks []*DataPartitionR
 				repairTasks[index].ExtentsToBeRepaired = append(repairTasks[index].ExtentsToBeRepaired, fixExtent)
 				repairTasks[index].ExtentsToBeRepairedSource[extentID] = sources[extentID]
 				if log.IsInfoEnabled() {
-					log.LogInfof("DP(%v): REPAIR: gen extent repair: host(%v), extent(%v), size=(%v to %v)",
+					log.LogInfof("DP %v: REPAIR: gen extent repair: host(%v), extent(%v), size=(%v to %v)",
 						dp.partitionID, repairTasks[index].addr, extentID, extentInfo[storage.Size], fixExtent[storage.Size])
 				}
 				hasBeenRepaired = false
@@ -692,7 +707,7 @@ func (dp *DataPartition) generateExtentDeletionTasks(repairTasks []*DataPartitio
 				}
 				repairTask.ExtentsToBeDeleted = append(repairTask.ExtentsToBeDeleted, ei)
 				if log.IsInfoEnabled() {
-					log.LogInfof("DP(%v): REPAIR: gen extent deletion: host(%v), extent(%v)", dp.partitionID, repairTask.addr, extentID)
+					log.LogInfof("DP %v: REPAIR: gen extent deletion: host(%v), extent(%v)", dp.partitionID, repairTask.addr, extentID)
 				}
 			}
 		}
@@ -708,19 +723,11 @@ func (dp *DataPartition) generateBaseExtentIDTasks(repairTasks []*DataPartitionR
 	}
 }
 
-func (dp *DataPartition) notifyFollower(ctx context.Context, wg *sync.WaitGroup, index int, members []*DataPartitionRepairTask) (err error) {
-	defer func() {
-		wg.Done()
-	}()
+func (dp *DataPartition) notifyFollower(ctx context.Context, task *DataPartitionRepairTask) (err error) {
 	p := repl.NewPacketToNotifyExtentRepair(ctx, dp.partitionID) // notify all the followers to repair
 	var conn *net.TCPConn
-	replicas := dp.getReplicaClone()
-	if index >= len(replicas) {
-		err = errors.Trace(err, " partition(%v) get FollowerHost failed ", dp.partitionID)
-		return err
-	}
-	target := replicas[index]
-	p.Data, _ = json.Marshal(members[index])
+	target := task.addr
+	p.Data, _ = json.Marshal(task)
 	p.Size = uint32(len(p.Data))
 	conn, err = gConnPool.GetConnect(target)
 	defer func() {
@@ -741,15 +748,27 @@ func (dp *DataPartition) notifyFollower(ctx context.Context, wg *sync.WaitGroup,
 
 // notifyFollowersToRepair notifies the followers to repair.
 func (dp *DataPartition) notifyFollowersToRepair(ctx context.Context, members []*DataPartitionRepairTask) (err error) {
-	wg := new(sync.WaitGroup)
+	var futures []*async.Future
 	for i := 1; i < len(members); i++ {
 		if members[i] == nil {
 			continue
 		}
-		wg.Add(1)
-		go dp.notifyFollower(ctx, wg, i, members)
+		var future = async.NewFuture()
+		go func(future *async.Future, task *DataPartitionRepairTask) {
+			var err = dp.notifyFollower(ctx, task)
+			future.Respond(nil, err)
+		}(future, members[i])
+		futures = append(futures, future)
 	}
-	wg.Wait()
+	for _, future := range futures {
+		if _, e := future.Response(); e != nil {
+			if err != nil {
+				err = fmt.Errorf("%v: %v", e, err)
+				continue
+			}
+			err = e
+		}
+	}
 	return
 }
 

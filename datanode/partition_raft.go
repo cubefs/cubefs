@@ -217,7 +217,9 @@ func (dp *DataPartition) getMaxCommitID(ctx context.Context) (maxID uint64, err 
 
 func (dp *DataPartition) stopRaft() {
 	if dp.raftPartition != nil {
-		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.partitionID)
+		if log.IsInfoEnabled() {
+			log.LogInfof("DP(%v) stop raft partition", dp.partitionID)
+		}
 		_ = dp.raftPartition.Stop()
 	}
 	return
@@ -322,8 +324,7 @@ func (dp *DataPartition) startRaftAfterRepair() {
 			}
 			ctx := context.Background()
 			// wait for dp.replicas to be updated
-			relicas := dp.getReplicaClone()
-			if len(relicas) == 0 {
+			if replicas := dp.getReplicaClone(); len(replicas) == 0 {
 				log.LogErrorf("action[startRaftAfterRepair] partition(%v) replicas is nil.", dp.partitionID)
 				timer.Reset(5 * time.Second)
 				continue
