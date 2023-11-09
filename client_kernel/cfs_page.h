@@ -13,7 +13,6 @@
 
 struct cfs_page {
 	struct page *page;
-	atomic_t refcnt;
 	atomic_t io_bytes;
 };
 

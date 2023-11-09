@@ -25,47 +25,17 @@ struct cfs_page *cfs_page_new(struct page *page)
 	if (cpage) {
 		get_page(page);
 		cpage->page = page;
-		atomic_set(&cpage->refcnt, 1);
 	}
 	return cpage;
 }
 
 void cfs_page_release(struct cfs_page *cpage)
 {
-	if (cpage && atomic_dec_and_test(&cpage->refcnt)) {
+	if (cpage) {
 		put_page(cpage->page);
 		kmem_cache_free(cpage_cache, cpage);
 	}
 }
-
-// size_t cfs_page_iter_copy_to_vec(struct cfs_page_iter *iter,
-// 				 struct cfs_page *dst, size_t nr_dst,
-// 				 size_t *len)
-// {
-// 	size_t i;
-// 	size_t copied = 0;
-// 	size_t page_offset;
-
-// 	if (*len == 0 || iter->nr == 0 || nr_dst == 0) {
-// 		*len = 0;
-// 		return 0;
-// 	}
-// 	page_offset = iter->page_offset;
-// 	for (i = 0; i < iter->nr && i < nr_dst; i++) {
-// 		dst[i].page = iter->pages[i]->page;
-// 		dst[i].offset = iter->pages[i]->offset + page_offset;
-// 		dst[i].size = iter->pages[i]->size - page_offset;
-// 		copied += dst[i].size;
-// 		if (copied >= *len) {
-// 			dst[i].size -= copied - *len;
-// 			copied = *len;
-// 			break;
-// 		}
-// 		page_offset = 0;
-// 	}
-// 	*len = copied;
-// 	return i + 1;
-// }
 
 size_t cfs_page_iter_get_frags(struct cfs_page_iter *iter,
 			       struct cfs_page_frag *dst, size_t nr_dst,

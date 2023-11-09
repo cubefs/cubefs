@@ -73,7 +73,7 @@ static int do_extent_request_retry(struct cfs_data_partition *dp,
 				   struct cfs_packet *packet, u32 host_id)
 {
 	int again_cnt = 200;
-	int host_retry_cnt = dp->members.num;
+	int host_retry_cnt = 128;
 	struct sockaddr_storage *host;
 	int ret = -1;
 
@@ -86,22 +86,26 @@ retry:
 		/* try other host */
 		host_id++;
 		host_retry_cnt--;
+		msleep(100);
 		goto retry;
 	}
-	ret = cfs_parse_status(packet->reply.hdr.result_code);
+	ret = -cfs_parse_status(packet->reply.hdr.result_code);
 	switch (packet->reply.hdr.result_code) {
 	case CFS_STATUS_OK:
 		break;
 	case CFS_STATUS_AGAIN:
 		/* try the host */
 		again_cnt--;
-		if (again_cnt > 0)
+		if (again_cnt > 0) {
+			msleep(100);
 			goto retry;
+		}
 		/* else try other host */
 	default:
 		/* try other host */
 		host_id++;
 		host_retry_cnt--;
+		msleep(100);
 		goto retry;
 	}
 	return (int)(host_id % dp->members.num);
@@ -337,7 +341,7 @@ static int extent_write_pages_random(struct cfs_extent_stream *es,
 		for (i = 0; i < packet->request.data.write.nr; i++) {
 			frag = &packet->request.data.write.frags[i];
 			if (cfs_page_io_account(frag->page, frag->size)) {
-				page_endio(frag->page->page, WRITE, 0);
+				end_page_writeback(frag->page->page);
 				unlock_page(frag->page->page);
 				cfs_page_release(frag->page);
 			}
@@ -431,7 +435,7 @@ retry:
 	for (i = 0; i < packet->request.data.write.nr; i++) {
 		frag = &packet->request.data.write.frags[i];
 		if (cfs_page_io_account(frag->page, frag->size)) {
-			page_endio(frag->page->page, WRITE, 0);
+			end_page_writeback(frag->page->page);
 			unlock_page(frag->page->page);
 			cfs_page_release(frag->page);
 		}
@@ -464,7 +468,8 @@ static void extent_write_pages_reply_cb(struct cfs_packet *packet)
 		frag = &packet->request.data.write.frags[i];
 		if (err) {
 			SetPageError(frag->page->page);
-			if (frag->page->page->mapping)
+			if (frag->page->page->mapping &&
+			    !PageAnon(frag->page->page))
 				mapping_set_error(frag->page->page->mapping,
 						  err);
 		}
@@ -536,7 +541,7 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 	int ret;
 
 	BUG_ON(nr_pages == 0);
-	
+
 	cfs_log_debug(
 		"es(%p) nr_pages=%lu, file_offset=%llu, first_page_offset=%lu, end_page_size=%lu\n",
 		es, nr_pages, file_offset, first_page_offset, end_page_size);
@@ -544,7 +549,10 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
 	if (!cpages) {
 		for (i = 0; i < nr_pages; i++) {
-			page_endio(pages[i], WRITE, -ENOMEM);
+			SetPageError(pages[i]);
+			if (pages[i]->mapping && !PageAnon(pages[i]))
+				mapping_set_error(pages[i]->mapping, -ENOMEM);
+			end_page_writeback(pages[i]);
 			unlock_page(pages[i]);
 		}
 		return -ENOMEM;
@@ -553,7 +561,11 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 		cpages[i] = cfs_page_new(pages[i]);
 		if (!cpages[i]) {
 			while (i-- > 0) {
-				page_endio(pages[i], WRITE, -ENOMEM);
+				SetPageError(pages[i]);
+				if (pages[i]->mapping && !PageAnon(pages[i]))
+					mapping_set_error(pages[i]->mapping,
+							  -ENOMEM);
+				end_page_writeback(pages[i]);
 				unlock_page(pages[i]);
 				cfs_page_release(cpages[i]);
 			}
@@ -561,9 +573,6 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 			return -ENOMEM;
 		}
 	}
-
-	cfs_page_iter_init(&iter, cpages, nr_pages, first_page_offset,
-			   end_page_size);
 	if (nr_pages == 1) {
 		cfs_page_io_set(cpages[0], end_page_size - first_page_offset);
 	} else {
@@ -572,6 +581,9 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 			cfs_page_io_set(cpages[i], PAGE_SIZE);
 		cfs_page_io_set(cpages[i], end_page_size);
 	}
+
+	cfs_page_iter_init(&iter, cpages, nr_pages, first_page_offset,
+			   end_page_size);
 
 	ret = cfs_extent_cache_refresh(&es->cache, false);
 	if (ret < 0) {
@@ -627,7 +639,7 @@ err_page:
 				iter.end_page_size - iter.first_page_offset :
 				PAGE_SIZE - iter.first_page_offset;
 		SetPageError(cpage->page);
-		if (cpage->page->mapping)
+		if (cpage->page->mapping && !PageAnon(cpage->page))
 			mapping_set_error(cpage->page->mapping, ret);
 		if (cfs_page_io_account(cpage, first_page_size)) {
 			end_page_writeback(cpage->page);
@@ -636,7 +648,10 @@ err_page:
 		}
 		for (i = 1; i < iter.nr; i++) {
 			cpage = iter.pages[i];
-			page_endio(cpage->page, WRITE, ret);
+			SetPageError(cpage->page);
+			if (cpage->page->mapping && !PageAnon(cpage->page))
+				mapping_set_error(cpage->page->mapping, ret);
+			end_page_writeback(cpage->page);
 			unlock_page(cpage->page);
 			cfs_page_release(cpage);
 		}
@@ -747,7 +762,9 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, struct page **pages,
 	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
 	if (!cpages) {
 		for (i = 0; i < nr_pages; i++) {
-			page_endio(pages[i], READ, -ENOMEM);
+			ClearPageUptodate(pages[i]);
+			SetPageError(pages[i]);
+			unlock_page(pages[i]);
 		}
 		return -ENOMEM;
 	}
@@ -755,7 +772,9 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, struct page **pages,
 		cpages[i] = cfs_page_new(pages[i]);
 		if (!cpages[i]) {
 			while (i-- > 0) {
-				page_endio(pages[i], READ, -ENOMEM);
+				ClearPageUptodate(pages[i]);
+				SetPageError(pages[i]);
+				unlock_page(pages[i]);
 				cfs_page_release(cpages[i]);
 			}
 			kvfree(cpages);
@@ -802,7 +821,8 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, struct page **pages,
 					  frag.size);
 				cfs_page_iter_advance(&iter, len);
 				if (cfs_page_io_account(frag.page, len)) {
-					page_endio(frag.page->page, READ, 0);
+					SetPageUptodate(frag.page->page);
+					unlock_page(frag.page->page);
 					cfs_page_release(frag.page);
 				}
 				read_bytes += len;
@@ -844,10 +864,13 @@ err_page:
 		}
 		for (i = 1; i < iter.nr; i++) {
 			cpage = iter.pages[i];
-			page_endio(cpage->page, READ, ret);
+			SetPageError(cpage->page);
+			ClearPageUptodate(cpage->page);
+			unlock_page(cpage->page);
 			cfs_page_release(cpage);
 		}
 	}
+	kvfree(cpages);
 	return ret;
 }
 
