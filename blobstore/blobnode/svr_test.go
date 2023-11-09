@@ -309,8 +309,16 @@ func TestService_CmdpChunk(t *testing.T) {
 		Clustermgr:           cc,
 		HeartbeatIntervalSec: 600,
 	}
+
+	conf.DiskConfig.MustMountPoint = true
 	service, err := NewService(conf)
 	require.NoError(t, err)
+	require.Equal(t, 0, len(service.Disks)) // len(service.Disks) is 0
+
+	conf.DiskConfig.MustMountPoint = false
+	service, err = NewService(conf)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(service.Disks)) // len(conf.Disks) == len(service.Disks), is 2
 
 	ctx := context.Background()
 	cs, err := service.Disks[proto.DiskID(101)].CreateChunk(ctx, proto.Vuid(2001), 1000)
