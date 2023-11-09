@@ -1,6 +1,7 @@
 import os
 import time
 
+import cv2
 import numpy as np
 
 import cube_torch
@@ -37,7 +38,7 @@ class CustomDataSet(Dataset):
         with open(self.imglist[index], "rb") as f:
             img = Image.open(f)
             img.convert("RGB")
-
+        cv2.imread(self.imglist[index])
         t = torch.load(self.titlelist[index])
         return t
 

@@ -4,25 +4,16 @@ import io
 import torch
 from PIL import Image
 
+import cv2
 image_path = '/home/guowl/222.jpg'
-tensor2 = torchvision.io.read_image(image_path)
-print('torchvision.io.read_image result is {}'.format(tensor2))
+
+f=open(image_path,'rb')
+image_bytes=f.read()
+f.close()
+image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), -1)
+
+image_new=cv2.imread(image_path,-1)
+print("image_new type :{}".format(type(image_new)))
+print(np.array_equal(image,image_new))
 
 
-def read_image_from_bytes(image_bytes, mode='RGB'):
-    fp = io.BytesIO(image_bytes)
-    img = Image.open(fp)
-    np_img = np.array(img)
-    tensor = torch.from_numpy(np_img)
-    tensor = tensor.permute((2, 0, 1))
-    return tensor
-
-
-with open(image_path, 'rb') as f:
-    data = f.read()
-
-image_bytes = data
-tensor1 = read_image_from_bytes(image_bytes)
-
-print('read_image_from_bytes result is {}'.format(tensor1))
-assert torch.equal(tensor1, tensor2)

@@ -7,6 +7,9 @@ import queue
 import threading
 import time
 from functools import wraps
+
+import cv2
+import numpy as np
 import requests
 import torch
 from requests.adapters import HTTPAdapter
@@ -19,8 +22,7 @@ global_interceptionIO = None
 global_cube_rootdir_path = None
 builtins_open = builtins.open
 builtins_torch_load = torch.load
-
-
+builtins_cv2_imread=cv2.imread
 
 
 def set_global_cube_rootdir_path(rootdir):
@@ -37,7 +39,6 @@ def is_prefix_cube_file(string):
     global global_cube_rootdir_path
     prefix_length = len(global_cube_rootdir_path)
     return string[:prefix_length] == global_cube_rootdir_path
-
 
 
 class InterceptionIO:
@@ -109,6 +110,22 @@ class InterceptionIO:
                     del stream
                     return result
             result = builtins_torch_load(*args, **kwargs)
+            return result
+
+        return wrapper
+
+    def intercept_cv2_imread(self, func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            file_path = args[0]
+            if is_prefix_cube_file(file_path):
+                stream = self.get_stream(file_path)
+                if stream:
+                    result = cv2.imdecode(np.frombuffer(stream.content, np.uint8), **kwargs)
+                    stream.close()
+                    del stream
+                    return result
+            result = builtins_cv2_imread(*args, **kwargs)
             return result
 
         return wrapper

@@ -9,7 +9,7 @@ from torchvision import datasets
 CubeFS_ROOT_DIR = 'CubeFS_ROOT_DIR'
 TEST_ENV = 'TEST_ENV'
 CubeFS_QUEUE_SIZE_ON_WORKER = 'CubeFS_QUEUE_SIZE_ON_WORKER'
-Min_QUEUE_SIZE_ON_WORKER = 10
+DEFAULT_QUEUE_SIZE_ON_WORKER = 10
 Max_QUEUE_SIZE_ON_WORKER = 20
 
 
@@ -57,13 +57,11 @@ class CubeDataSetInfo:
 
     def check_cube_queue_size_on_worker(self):
         if self.cubefs_queue_size_on_worker is None:
-            self.cubefs_queue_size_on_worker = Min_QUEUE_SIZE_ON_WORKER
+            self.cubefs_queue_size_on_worker = DEFAULT_QUEUE_SIZE_ON_WORKER
+            return
+        
         try:
             queue_size = int(self.cubefs_queue_size_on_worker)
-            if queue_size > Max_QUEUE_SIZE_ON_WORKER:
-                queue_size = Max_QUEUE_SIZE_ON_WORKER
-            if queue_size < Min_QUEUE_SIZE_ON_WORKER:
-                queue_size = Min_QUEUE_SIZE_ON_WORKER
             self.cubefs_queue_size_on_worker = queue_size
         except Exception as e:
             raise ValueError("{} set is not a number exception{} ".format(CubeFS_QUEUE_SIZE_ON_WORKER, e))

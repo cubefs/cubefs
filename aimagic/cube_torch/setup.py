@@ -12,6 +12,7 @@ setup(
         'requests',
         'torchvision',
         'numpy',
+        'opencv-python'
     ],
     packages=['cube_torch'],
     package_data={

@@ -42,14 +42,10 @@
 
 ## 3.1 编译、安装cube_torch:
 ```python
-  python3 setup.py bdist_wheel
-```
-
-编译完成后，会在dist/cube_torch-0.3-py3-none-any.whl 生成安装包
-```python
-pip3 uninstall -y cube_torch
+python3 setup.py bdist_wheel
 pip3 install dist/cube_torch-0.3-py3-none-any.whl
 ```
+
 验证是否安装完成：
 ```python
 python3
@@ -65,7 +61,7 @@ import cube_torch
     "volName": "ltptest",
     "owner": "ltptest",
     "logDir": "/cfs/log",
-    "logLevel": "debug",
+    "logLevel": "info",
     "consulAddr": "http://192.168.0.101:8500",
     "exporterPort": 9500,
     "profPort": "17410",

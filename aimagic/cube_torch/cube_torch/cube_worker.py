@@ -13,6 +13,7 @@ import random
 import threading
 from typing import Union
 
+import cv2
 import requests
 import torch
 from dataclasses import dataclass
@@ -136,6 +137,7 @@ def _init_batchdownload_threads(storage_info):
     inception = InterceptionIO(storage_info)
     builtins.open = inception.intercept_open(open)
     torch.load = inception.intercept_torch_load(torch.load)
+    cv2.imread=inception.intercept_cv2_imread(cv2.imread)
     set_global_interception_io(inception)
     download_thread, download_event = inception.get_event_and_thread()
     return download_thread, download_event
