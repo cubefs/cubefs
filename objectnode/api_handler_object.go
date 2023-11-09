@@ -1425,7 +1425,7 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if err = formReq.ParseMultipartForm(); err != nil {
 		log.LogErrorf("postObjectHandler: parse form fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = MalformedPOSTRequest
+		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
 		return
 	}
@@ -1435,7 +1435,7 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if requestMD5 != "" {
 		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
 		if err != nil {
-			errorCode = MalformedPOSTRequest
+			errorCode = MalformedPOSTRequest.Copy()
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid Content-MD5")
 			return
 		}
@@ -1450,7 +1450,7 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
-		errorCode = MalformedPOSTRequest
+		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "No Content-MD5 with Object Lock")
 		return
 	}
@@ -1458,13 +1458,13 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// other form fields check
 	key := formReq.MultipartFormValue("key")
 	if key == "" {
-		errorCode = MalformedPOSTRequest
+		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Missing key")
 		return
 	}
 	key = strings.Replace(key, "${filename}", formReq.FileName(), -1)
 	if !utf8.ValidString(key) || len(key) > MaxKeyLength {
-		errorCode = MalformedPOSTRequest
+		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid utf8 string or the key is too long")
 		return
 	}
@@ -1474,7 +1474,7 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 		if aclInfo, err = ParseCannedAcl(acl, userInfo.UserID); err != nil {
 			log.LogErrorf("postObjectHandler: parse canned acl fail: requestID(%v) volume(%v) acl(%v) err(%v)",
 				GetRequestID(r), param.Bucket(), acl, err)
-			errorCode = MalformedPOSTRequest
+			errorCode = MalformedPOSTRequest.Copy()
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
 			return
 		}
@@ -1484,12 +1484,12 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if taggingRaw := formReq.MultipartFormValue("tagging"); taggingRaw != "" {
 		tagging = NewTagging()
 		if err = xml.Unmarshal([]byte(taggingRaw), tagging); err != nil {
-			errorCode = MalformedPOSTRequest
+			errorCode = MalformedPOSTRequest.Copy()
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid tagging")
 			return
 		}
 		if _, erc := tagging.Validate(); erc != nil {
-			errorCode = MalformedPOSTRequest
+			errorCode = MalformedPOSTRequest.Copy()
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, erc)
 			return
 		}
@@ -1500,7 +1500,7 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var successRedirectURL *url.URL
 	if successRedirect != "" {
 		if successRedirectURL, err = url.Parse(successRedirect); err != nil {
-			errorCode = MalformedPOSTRequest
+			errorCode = MalformedPOSTRequest.Copy()
 			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid success_action_redirect")
 			return
 		}
@@ -1510,21 +1510,21 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	contentDisposition := formReq.MultipartFormValue("content-disposition")
 	cacheControl := formReq.MultipartFormValue("cache-control")
 	if cacheControl != "" && !ValidateCacheControl(cacheControl) {
-		errorCode = MalformedPOSTRequest
+		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid cache-control")
 		return
 	}
 
 	expires := formReq.MultipartFormValue("expires")
 	if expires != "" && !ValidateCacheExpires(expires) {
-		errorCode = MalformedPOSTRequest
+		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid expires")
 		return
 	}
 
 	policy := formReq.MultipartFormValue("policy")
 	if policy == "" {
-		errorCode = MalformedPOSTRequest
+		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Missing policy")
 		return
 	}
@@ -1534,7 +1534,7 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.LogErrorf("postObjectHandler: form file fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = MalformedPOSTRequest
+		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
 		return
 	}
