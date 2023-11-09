@@ -35,6 +35,7 @@ func TestIsMountPoint(t *testing.T) {
 	b := IsMountPoint("")
 	require.Equal(t, false, b)
 
+	// test dir
 	dir, err := ioutil.TempDir(os.TempDir(), "MountPointTestFile")
 	require.NoError(t, err)
 
@@ -42,6 +43,10 @@ func TestIsMountPoint(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(dir)
 
+	b = IsMountPoint(dir)
+	require.Equal(t, false, b)
+
+	// test link dir
 	linkDir := filepath.Join(os.TempDir(), "MountPointTestFileLink")
 	defer os.Remove(linkDir)
 
