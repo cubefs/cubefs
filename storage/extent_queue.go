@@ -679,6 +679,10 @@ func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) 
 	var rfs = q.rfs.clone()
 	q.rfsMu.RUnlock()
 
+	if rfs.len() == 0 || rfs.last().seq() == si.seq && rfs.last().size() == int64(si.off) {
+		return
+	}
+
 	var reader *recordFileReader
 	var rec = getRecord()
 	defer returnRecord(rec)

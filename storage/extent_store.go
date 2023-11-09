@@ -649,11 +649,11 @@ func (s *ExtentStore) FlushDelete() (n int, err error) {
 	var start = time.Now()
 	defer func() {
 		if err != nil {
-			log.LogErrorf("Store(%v) flush delete failed: ", s.partitionID, err)
+			log.LogErrorf("Store(%v) flush delete failed: %v", s.partitionID, err)
 			return
 		}
 		if log.IsDebugEnabled() && n > 0 {
-			log.LogDebugf("Store(%v) flush delete complete, count=%v, elapsed=%v", n, time.Now().Sub(start))
+			log.LogDebugf("Store(%v) flush delete complete, count=%v, elapsed=%v", s.partitionID, n, time.Now().Sub(start))
 		}
 	}()
 
