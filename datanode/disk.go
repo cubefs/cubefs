@@ -359,6 +359,11 @@ func (d *Disk) CheckDiskError(err error, rwFlag uint8) {
 	d.triggerDiskError(rwFlag, DiskErrNotAssociatedWithPartition)
 }
 
+func (d *Disk) doDiskError() {
+	d.Status = proto.Unavailable
+	d.ForceExitRaftStore()
+}
+
 func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 	mesg := fmt.Sprintf("disk path %v error on %v, dpId %v", d.Path, LocalIP, dpId)
 	exporter.Warning(mesg)
@@ -383,8 +388,7 @@ func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
 			d.Path, LocalIP, diskErrCnt, d.dataNode.diskUnavailableErrorCount, diskErrPartitionCnt, d.dataNode.diskUnavailablePartitionErrorCount)
 		exporter.Warning(msg)
 		log.LogWarnf(msg)
-		d.Status = proto.Unavailable
-		d.ForceExitRaftStore()
+		d.doDiskError()
 	}
 }
 
