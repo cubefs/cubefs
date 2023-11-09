@@ -143,7 +143,6 @@ func InitConfig(conf *Config) error {
 		conf.NeedCompactCheck = true
 		conf.AllowForceCompact = true
 		conf.AllowCleanTrash = true
-		conf.MustMountPoint = true
 	}
 
 	defaulter.LessOrEqual(&conf.WriteThreadCnt, defaultWriteThreadCnt)
