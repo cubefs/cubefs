@@ -17,6 +17,7 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"os"
 	"path"
@@ -441,4 +442,48 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 		return
 	}
 	w.Write(jsonBody)
+}
+
+func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramDiskPath = "diskPath"
+	)
+	var (
+		err      error
+		diskPath string
+		disk     *Disk
+	)
+
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if diskPath = r.FormValue(paramDiskPath); diskPath == "" {
+		err = fmt.Errorf("param(%v) is empty", paramDiskPath)
+		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if disk, err = s.space.GetDisk(diskPath); err != nil {
+		err = fmt.Errorf("not exit such dissk, path: %v", diskPath)
+		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if disk.Status == proto.Unavailable {
+		msg := fmt.Sprintf("disk(%v) status was already unavailable, nothing to do", disk.Path)
+		log.LogInfof("[setDiskBadAPI] %v", msg)
+		s.buildSuccessResp(w, msg)
+		return
+	}
+
+	log.LogWarnf("[setDiskBadAPI] set bad disk, path: %v", disk.Path)
+	disk.doDiskError()
+
+	s.buildSuccessResp(w, "OK")
 }
