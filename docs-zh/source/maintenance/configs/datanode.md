@@ -17,6 +17,10 @@
 | masterAddr    | string slice | 集群管理器的地址                              | 是   |
 | localIP       | string       | 本机ip地址，如果不填写该选项，则使用和master通信的ip地址     | 否   |
 | zoneName      | string       | 指定区域，默认分配至`default`区域                 | 否   |
+| diskReadIocc  | int          | 限制单盘并发读操作,小于等于0表示不限制            | 否   |
+| diskReadFlow  | int          | 限制单盘读流量,小于等于0表示不限制                | 否   |
+| diskReadIocc  | int          | 限制单盘并发写操作,小于等于0表示不限制            | 否   |
+| diskReadFlow  | int          | 限制单盘写流量,小于等于0表示不限制                | 否   |
 | disks         | string slice | 格式：`磁盘挂载路径:预留空间` ，预留空间配置范围`[20G,50G]` | 是   |
 
 ## 配置示例
@@ -38,6 +42,10 @@
          "10.196.59.199:17010",
          "10.196.59.200:17010"
      ],
+     "diskReadIocc": 0,
+     "diskReadFlow": 0,
+     "diskWriteIocc": 0,
+     "diskWriteFlow": 0,
      "disks": [
          "/data0:10737418240",
          "/data1:10737418240"
