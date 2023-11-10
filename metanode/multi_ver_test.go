@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -356,7 +357,7 @@ func TestSplitKeyDeletion(t *testing.T) {
 			verSeq: splitSeq,
 		},
 	}
-
+	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	assert.True(t, testGetSplitSize(t, fileIno) == 1)
 	assert.True(t, testGetEkRefCnt(t, fileIno, &initExt) == 4)
@@ -533,6 +534,7 @@ func TestAppendList(t *testing.T) {
 		},
 	}
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
+	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 
@@ -566,7 +568,7 @@ func TestAppendList(t *testing.T) {
 	t.Logf("split key:%v", splitKey)
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
 	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].Extents.eks)
-
+	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
@@ -598,6 +600,7 @@ func TestAppendList(t *testing.T) {
 		},
 	}
 	t.Logf("split key:%v", splitKey)
+	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
@@ -1580,5 +1583,23 @@ func TestGetAllVerList(t *testing.T) {
 	newList := mp.GetAllVerList()
 	oldList := mp.multiVersionList.VerList
 	t.Logf("newList %v oldList %v", newList, oldList)
+	assert.True(t, true)
+}
+
+func TestVerlistSnapshot(t *testing.T) {
+	verList := []*proto.VolVersionInfo{
+		{Ver: 20, Status: proto.VersionNormal},
+	}
+	var verListBuf1 []byte
+	var err error
+	if verListBuf1, err = json.Marshal(verList); err != nil {
+		return
+	}
+	t.Logf("mp.TestVerlistSnapshot  %v", verListBuf1)
+	var verList12 []*proto.VolVersionInfo
+	if err = json.Unmarshal(verListBuf1, &verList12); err != nil {
+		t.Logf("mp.TestVerlistSnapshot  err %v", err)
+	}
+	t.Logf("mp.TestVerlistSnapshot  %v", verList12)
 	assert.True(t, true)
 }

@@ -469,6 +469,11 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	var (
 		delExtents []proto.ExtentKey
 	)
+	if mp.verSeq < ino.getVer() {
+		status = proto.OpArgMismatchErr
+		log.LogErrorf("fsmAppendExtentsWithCheck.mp %v param ino %v mp seq %v", mp.config.PartitionId, ino, mp.verSeq)
+		return
+	}
 	status = proto.OpOk
 	item := mp.inodeTree.CopyGet(ino)
 

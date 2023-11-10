@@ -185,6 +185,8 @@ const (
 
 	opFSMSentToChanV1 = 71
 	opFSMStoreTickV1  = 72
+
+	opFSMVerListSnapShot = 73
 )
 
 var (
