@@ -61,14 +61,14 @@ func (e *Extend) GetExtentByVersion(ver uint64) (extend *Extend) {
 		return e
 	}
 	if isInitSnapVer(ver) {
-		if e.multiVers[0].verSeq != 0 {
+		if e.GetMinVer() != 0 {
 			return nil
 		}
-		return e.multiVers[0]
+		return e.multiVers[len(e.multiVers)-1]
 	}
 	e.versionMu.RLock()
 	defer e.versionMu.RUnlock()
-	for i := len(e.multiVers) - 1; i >= 0; i-- {
+	for i := 0; i < len(e.multiVers)-1; i++ {
 		if e.multiVers[i].verSeq <= ver {
 			return e.multiVers[i]
 		}
