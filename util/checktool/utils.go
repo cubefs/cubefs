@@ -22,7 +22,28 @@ const (
 	DefaultWarnInternal    = 5 * 60
 )
 
-var ddAlarm, _ = dongdong.NewCommonAlarm("check_tool")
+var (
+	ddAlarm *dongdong.CommonAlarm = nil
+	ddAlarmMu sync.RWMutex
+)
+
+func getCheckToolDDAlarm() (alarm *dongdong.CommonAlarm, err error) {
+	ddAlarmMu.RLock()
+	alarm = ddAlarm
+	ddAlarmMu.RUnlock()
+
+	if alarm != nil {
+		return
+	}
+
+	ddAlarmMu.Lock()
+	if ddAlarm == nil {
+		ddAlarm, err = dongdong.NewCommonAlarm("check_tool")
+	}
+	alarm = ddAlarm
+	ddAlarmMu.Unlock()
+	return
+}
 
 var otherDDAlarmMap = new(sync.Map)
 
@@ -86,12 +107,11 @@ func warnByDongDongAlarm(umpKey, msg string) {
 			log.LogErrorf("action[warnByDongDongAlarm] err:%v", err)
 		}
 	}()
-	if ddAlarm == nil {
-		if ddAlarm, err = dongdong.NewCommonAlarm("check_tool"); err != nil {
-			return
-		}
+	var alarm *dongdong.CommonAlarm
+	if alarm, err = getCheckToolDDAlarm(); err != nil {
+		return
 	}
-	err = ddAlarm.Alarm(umpKey, msg)
+	err = alarm.Alarm(umpKey, msg)
 	return
 }
 

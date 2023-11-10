@@ -583,7 +583,7 @@ func (p *Fixer) checkAndFixFragment(fragment *Fragment) FixResult {
 	}
 
 	// 所有策略均无法修复目标
-	log.LogError("Fixer: all handlers fixes Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) response Failed",
+	log.LogErrorf("Fixer: all handlers fixes Partition(%v)_Extent(%v)_Offset(%v)_Size(%v) response Failed",
 		p.partitionID, fragment.ExtentID, fragment.Offset, fragment.Size)
 	return Failed
 }

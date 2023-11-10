@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -31,6 +30,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/multirate"
 
 	"github.com/cubefs/cubefs/datanode/riskdata"
 
@@ -1404,14 +1405,8 @@ func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
 
 func (dp *DataPartition) limit(op int, size uint32, streamOpLimit bool) (err error) {
 	//因为流式读写请求没有统一埋点，所以用bool变量防止重复限速
-	if !streamOpLimit && repl.IsStreamOp(op) {
+	if dp == nil || dp.limiter == nil || (!streamOpLimit && repl.IsStreamOp(op)) {
 		return
-	}
-	if dp == nil {
-		return ErrPartitionNotExist
-	}
-	if dp.limiter == nil {
-		return ErrLimiterNil
 	}
 	vol := dp.volumeID
 	path := dp.disk.Path

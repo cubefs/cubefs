@@ -318,6 +318,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 			t.Fatalf("%v respond error: %v", name, err)
 		}
 	}
+	_, _ = storage.FlushDelete()
 
 	// 结果检查
 	{
