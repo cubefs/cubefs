@@ -52,13 +52,13 @@ const (
 )
 
 const (
-	FileNameDateFormat     = "20060102150405"
-	FileOpt                = os.O_RDWR | os.O_CREATE | os.O_APPEND
-	WriterBufferInitSize   = 4 * 1024 * 1024
-	WriterBufferLenLimit   = 4 * 1024 * 1024
-	DefaultRollingInterval = 1 * time.Second
-	RolledExtension        = ".old"
-	MaxReservedDays        = 7 * 24 * time.Hour
+	FileNameDateFormat    = "20060102150405"
+	FileOpt               = os.O_RDWR | os.O_CREATE | os.O_APPEND
+	WriterBufferInitSize  = 4 * 1024 * 1024
+	WriterBufferLenLimit  = 4 * 1024 * 1024
+	DefaultRotateInterval = 1 * time.Second
+	RotatedExtension      = ".old"
+	MaxReservedDays       = 7 * 24 * time.Hour
 )
 
 var levelPrefixes = []string{
@@ -72,17 +72,17 @@ var levelPrefixes = []string{
 	"[Critical]",
 }
 
-type RolledFile []os.FileInfo
+type RotatedFile []os.FileInfo
 
-func (f RolledFile) Less(i, j int) bool {
+func (f RotatedFile) Less(i, j int) bool {
 	return f[i].ModTime().Before(f[j].ModTime())
 }
 
-func (f RolledFile) Len() int {
+func (f RotatedFile) Len() int {
 	return len(f)
 }
 
-func (f RolledFile) Swap(i, j int) {
+func (f RotatedFile) Swap(i, j int) {
 	f[i], f[j] = f[j], f[i]
 }
 
@@ -102,16 +102,16 @@ func setBlobLogLevel(loglevel Level) {
 }
 
 type asyncWriter struct {
-	file        *os.File
-	fileName    string
-	logSize     int64
-	rollingSize int64
-	buffer      *bytes.Buffer
-	flushTmp    *bytes.Buffer
-	flushC      chan bool
-	rotateDay   chan struct{} // TODO rotateTime?
-	mu          sync.Mutex
-	rotateMu    sync.Mutex
+	file       *os.File
+	fileName   string
+	logSize    int64
+	rotateSize int64
+	buffer     *bytes.Buffer
+	flushTmp   *bytes.Buffer
+	flushC     chan bool
+	rotateDay  chan struct{} // TODO rotateTime?
+	mu         sync.Mutex
+	rotateMu   sync.Mutex
 }
 
 func (writer *asyncWriter) flushScheduler() {
@@ -176,9 +176,9 @@ func (writer *asyncWriter) flushToFile() {
 	flushLength := writer.flushTmp.Len()
 	writer.rotateMu.Lock()
 	if (writer.logSize+int64(flushLength)) >= writer.
-		rollingSize || isRotateDay {
+		rotateSize || isRotateDay {
 		oldFile := writer.fileName + "." + time.Now().Format(
-			FileNameDateFormat) + RolledExtension
+			FileNameDateFormat) + RotatedExtension
 		if _, err := os.Lstat(oldFile); err != nil {
 			if err := writer.rename(oldFile); err == nil {
 				if fp, err := os.OpenFile(writer.fileName, FileOpt, 0666); err == nil {
@@ -210,7 +210,7 @@ func (writer *asyncWriter) rename(newName string) error {
 	return nil
 }
 
-func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
+func newAsyncWriter(fileName string, rotateSize int64) (*asyncWriter, error) {
 	fp, err := os.OpenFile(fileName, FileOpt, 0666)
 	if err != nil {
 		return nil, err
@@ -221,14 +221,14 @@ func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
 	}
 	_ = os.Chmod(fileName, 0666)
 	w := &asyncWriter{
-		file:        fp,
-		fileName:    fileName,
-		rollingSize: rollingSize,
-		logSize:     fInfo.Size(),
-		buffer:      bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
-		flushTmp:    bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
-		flushC:      make(chan bool, 1000),
-		rotateDay:   make(chan struct{}, 1),
+		file:       fp,
+		fileName:   fileName,
+		rotateSize: rotateSize,
+		logSize:    fInfo.Size(),
+		buffer:     bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
+		flushTmp:   bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
+		flushC:     make(chan bool, 1000),
+		rotateDay:  make(chan struct{}, 1),
 	}
 	go w.flushScheduler()
 	return w, nil
@@ -334,11 +334,11 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 
 		rotate.SetHeadRoomMb(int64(math.Min(minLogLeftSpaceLimit, DefaultHeadRoom)))
 
-		minRollingSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
-		if minRollingSize < DefaultMinRollingSize {
-			minRollingSize = DefaultMinRollingSize
+		minRotateSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
+		if minRotateSize < DefaultMinRotateSize {
+			minRotateSize = DefaultMinRotateSize
 		}
-		rotate.SetRollingSizeMb(int64(math.Min(float64(minRollingSize), float64(DefaultRollingSize))))
+		rotate.SetRotateSizeMb(int64(math.Min(float64(minRotateSize), float64(DefaultRotateSize))))
 	}
 	l.rotate = rotate
 	err = l.initLog(dir, module, level)
@@ -387,7 +387,7 @@ func (l *Log) initLog(logDir, module string, level Level) error {
 
 	newLog := func(logFileName string) (newLogger *LogObject, err error) {
 		logName := path.Join(logDir, module+logFileName)
-		w, err := newAsyncWriter(logName, l.rotate.rollingSize)
+		w, err := newAsyncWriter(logName, l.rotate.rotateSize)
 		if err != nil {
 			return
 		}
@@ -766,14 +766,14 @@ func LogDisableStderrOutput() {
 }
 
 func (l *Log) checkLogRotation(logDir, module string) {
-	var needDelFiles RolledFile
+	var needDelFiles RotatedFile
 	for {
 		needDelFiles = needDelFiles[:0]
 		// check disk space
 		fs := syscall.Statfs_t{}
 		if err := syscall.Statfs(logDir, &fs); err != nil {
 			LogErrorf("check disk space: %s", err.Error())
-			time.Sleep(DefaultRollingInterval)
+			time.Sleep(DefaultRotateInterval)
 			continue
 		}
 		diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
@@ -783,13 +783,13 @@ func (l *Log) checkLogRotation(logDir, module string) {
 		}
 		err := l.removeLogFile(logDir, diskSpaceLeft, module)
 		if err != nil {
-			time.Sleep(DefaultRollingInterval)
+			time.Sleep(DefaultRotateInterval)
 			continue
 		}
 		// check if it is time to rotate
 		now := time.Now()
 		if now.Day() == l.lastRolledTime.Day() {
-			time.Sleep(DefaultRollingInterval)
+			time.Sleep(DefaultRotateInterval)
 			continue
 		}
 
@@ -808,9 +808,9 @@ func (l *Log) checkLogRotation(logDir, module string) {
 
 func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64, module string) bool {
 	if diskSpaceLeft <= 0 {
-		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RolledExtension) && strings.HasPrefix(info.Name(), module)
+		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RotatedExtension) && strings.HasPrefix(info.Name(), module)
 	}
-	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RolledExtension) && strings.HasPrefix(info.Name(), module)
+	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RotatedExtension) && strings.HasPrefix(info.Name(), module)
 }
 
 func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (err error) {
@@ -820,7 +820,7 @@ func (l *Log) removeLogFile(logDir string, diskSpaceLeft int64, module string) (
 		LogErrorf("error read log directory files: %s", err.Error())
 		return
 	}
-	var needDelFiles RolledFile
+	var needDelFiles RotatedFile
 	for _, info := range fInfos {
 		if DeleteFileFilter(info, diskSpaceLeft, module) {
 			LogDebugf("%v will be put into needDelFiles", info.Name())
