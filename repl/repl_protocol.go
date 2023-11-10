@@ -270,7 +270,7 @@ func (rp *ReplProtocol) hasError() bool {
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
-	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
+	if err = request.ReadFromConnWithVer(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
 	//log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
