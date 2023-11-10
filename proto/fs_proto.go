@@ -631,6 +631,9 @@ type InodeMergeExtentsRequest struct {
 	Inode       uint64      `json:"inode_id"`
 	OldExtents  []ExtentKey `json:"old_extents"`
 	NewExtents  []ExtentKey `json:"new_extents"`
+	ClientID        uint64 `json:"client_id"`
+	ClientStartTime int64  `json:"client_sTime"`
+	ClientIP        uint32 `json:"client_ip"`
 }
 
 // Dentry defines the dentry struct.

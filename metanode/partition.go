@@ -208,6 +208,8 @@ type OpInode interface {
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 	GetCompactInodeInfo(req *proto.GetCmpInodesRequest, p *Packet) (err error)
 	MergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error)
+	FileMigMergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error)
+	InodeGetNoModifyAT(req *InodeGetReq, p *Packet, version uint8) (err error)
 }
 
 type OpDeletedInode interface {
@@ -257,6 +259,7 @@ type OpExtent interface {
 	ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
 	ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (err error)
 	BatchExtentAppend(req *proto.AppendExtentKeysRequest, p *Packet) (err error)
+	ExtentsListNoModifyAT(req *proto.GetExtentsRequest, p *Packet) (err error)
 }
 
 type OpMultipart interface {

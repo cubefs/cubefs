@@ -791,6 +791,29 @@ func (se *SortedExtents) findEkIndex(ek *proto.ExtentKey) (int, bool) {
 	return -1, false
 }
 
+func (se *SortedExtents) isAlreadyMergeWithOutLock(newEks []proto.ExtentKey) bool{
+	index, ok := se.findEkIndex(&newEks[0])
+	if !ok {
+		return false
+	}
+
+	newIndex := 0
+	for ; index < len(se.eks) && newIndex < len(newEks);{
+		if !se.eks[index].Equal(&newEks[newIndex]) {
+			return false
+		}
+		index++
+		newIndex++
+	}
+
+	if newIndex < len(newEks) {
+		//merge truncate/row merge; as false
+		return false
+	}
+
+	return true
+}
+
 func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKey, ino uint64) (deleteExtents []proto.MetaDelExtentKey, merged bool, msg string) {
 	se.RWMutex.Lock()
 	defer se.RWMutex.Unlock()
@@ -840,9 +863,64 @@ func (se *SortedExtents) Merge(newEks []proto.ExtentKey, oldEks []proto.ExtentKe
 	return deleteExtents, true, ""
 
 errHandle:
+	if se.isAlreadyMergeWithOutLock(newEks) {
+		return make([]proto.MetaDelExtentKey, 0), true, ""
+	}
 	merged = false
 	for _, ek := range newEks {
 		set.Put(&ek, ino, uint64(proto.DelEkSrcTypeFromMerge))
+	}
+	deleteExtents = set.GetDelExtentKeys(se.eks)
+	return
+}
+
+func (se *SortedExtents) FileMigMerge(newEks []proto.ExtentKey, oldEks []proto.ExtentKey, ino uint64) (deleteExtents []proto.MetaDelExtentKey, merged bool, msg string) {
+	se.RWMutex.Lock()
+	defer se.RWMutex.Unlock()
+	set := NewExtentKeySet()
+	var(
+		start          int
+		upper          []proto.ExtentKey
+	)
+	// get the old start index
+	index, ok := se.findEkIndex(&oldEks[0])
+	if !ok {
+		msg = fmt.Sprintf("findEkIndex oldEks[0](%v) not found(%v)", oldEks[0], ok)
+		goto errHandle
+	}
+	start = index
+	// check index out of range
+	if index+len(oldEks) > len(se.eks) {
+		msg = fmt.Sprintf("merge extent failed, index out of range [%v] with length %v", index+len(oldEks), len(se.eks))
+		goto errHandle
+	}
+	// check old ek exist
+	for _, ek := range oldEks {
+		if !se.eks[index].Equal(&ek) {
+			msg = fmt.Sprintf("merge extent failed, can not find pre ek:%v", ek.String())
+			goto errHandle
+		}
+		index++
+	}
+	// merge
+	upper = append(upper, se.eks[index:]...)
+	se.eks = se.eks[0:start]
+	se.eks = append(se.eks, newEks...)
+	se.eks = append(se.eks, upper...)
+	// Filter the EK that should be deleted
+	for _, ek := range oldEks {
+		set.Put(&ek, ino, uint64(proto.DelEkSrcTypeFromMerge))
+	}
+	deleteExtents = set.GetDelExtentKeys(se.eks)
+	return deleteExtents, true, ""
+
+errHandle:
+	if se.isAlreadyMergeWithOutLock(newEks) {
+		return make([]proto.MetaDelExtentKey, 0), true, ""
+	}
+	merged = false
+	for _, ek := range newEks {
+		set.Put(&ek, ino, uint64(proto.DelEkSrcTypeFromFileMigMerge))
 	}
 	deleteExtents = set.GetDelExtentKeys(se.eks)
 	return

@@ -272,6 +272,48 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 	return
 }
 
+func (mp *metaPartition) InodeGetNoModifyAT(req *InodeGetReq, p *Packet, version uint8) (err error) {
+	var (
+		reply []byte
+	)
+
+	ino := NewInode(req.Inode, 0)
+	var retMsg *InodeResponse
+	retMsg, err = mp.getInodeNoModifyAccessTime(ino)
+	if err != nil {
+		log.LogErrorf("InodeGet: get inode(Inode:%v) err:%v", req.Inode, err)
+		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
+		return
+	}
+
+	if version == proto.OpInodeGetVersion1 && retMsg.Status == proto.OpInodeOutOfRange {
+		retMsg.Status = proto.OpNotExistErr
+	}
+
+	if retMsg.Status != proto.OpOk {
+		p.PacketErrorWithBody(retMsg.Status, []byte("get inode err"))
+		return fmt.Errorf("errCode:%d, ino:%v, mp has inodes[%v, %v]\n",
+			retMsg.Status, req.Inode, mp.config.Start, mp.config.Cursor)
+	}
+
+	status := proto.OpOk
+	resp := &proto.InodeGetResponse{
+		Info: &proto.InodeInfo{},
+	}
+
+	if replyInfo(resp.Info, retMsg.Msg) {
+		status = proto.OpOk
+		reply, err = json.Marshal(resp)
+		if err != nil {
+			status = proto.OpErr
+			reply = []byte(err.Error())
+		}
+	}
+
+	p.PacketErrorWithBody(status, reply)
+	return
+}
+
 // InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	var (

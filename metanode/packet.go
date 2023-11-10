@@ -102,6 +102,12 @@ func (p *Packet) FillClientRequestPacket(reqObj interface{}) (err error) {
 	case proto.OpMetaDeleteDentry:
 		req := reqObj.(*proto.DeleteDentryRequest)
 		req.ClientIP = clientIPUint32
+	case proto.OpMetaInodeMergeEks:
+		req := reqObj.(*proto.InodeMergeExtentsRequest)
+		req.ClientIP = clientIPUint32
+	case proto.OpMetaFileMigMergeEks:
+		req := reqObj.(*proto.InodeMergeExtentsRequest)
+		req.ClientIP = clientIPUint32
 	default:
 	}
 	return

@@ -246,7 +246,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opGetCompactInodesInfo(conn, p, remoteAddr)
 	case proto.OpMetaInodeMergeEks:
 		err = m.opInodeMergeExtents(conn, p, remoteAddr)
-
+	case proto.OpMetaFileMigMergeEks:
+		err = m.opFileMigMergeExtents(conn, p, remoteAddr)
 	case proto.OpMetaReadDeletedDir:
 		err = m.opReadDeletedDir(conn, p, remoteAddr)
 	case proto.OpMetaLookupForDeleted:
@@ -273,6 +274,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opBatchCleanDeletedINode(conn, p, remoteAddr)
 	case proto.OpMetaStatDeletedFileInfo:
 		err = m.opStatDeletedFileInfo(conn, p, remoteAddr)
+	case proto.OpMetaGetExtentsNoModifyAccessTime:
+		err = m.opGetExtentsNoModifyAccessTime(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())

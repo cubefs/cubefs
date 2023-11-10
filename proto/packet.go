@@ -139,6 +139,7 @@ const (
 	//OpAddVirtualMetaPartition         uint8 = 0x4F // Deprecated
 
 	OpAddVirtualMetaPartition uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
+	OpMetaGetExtentsNoModifyAccessTime uint8 = 0x5B
 
 	// Operations client-->datanode
 	OpRandomWriteV3     uint8 = 0x50
@@ -194,6 +195,7 @@ const (
 	OpMetaCursorReset   uint8 = 0x94
 	OpMetaGetCmpInode   uint8 = 0x95
 	OpMetaInodeMergeEks uint8 = 0x96
+	OpMetaFileMigMergeEks uint8 = 0x97
 
 	//Operations: Master -> CodecNode
 	OpCodecNodeHeartbeat               uint8 = 0xA0

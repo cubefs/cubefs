@@ -143,6 +143,35 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse, err error) {
 	return
 }
 
+func (mp *metaPartition) getInodeNoModifyAccessTime(ino *Inode) (resp *InodeResponse, err error) {
+	resp = NewInodeResponse()
+	resp.Status = proto.OpOk
+
+	if isOutOfRange, _ := mp.isInoOutOfRange(ino.Inode); isOutOfRange {
+		resp.Status = proto.OpInodeOutOfRange
+		return
+	}
+
+	var i *Inode
+	i, err = mp.inodeTree.RefGet(ino.Inode)
+	if err != nil {
+		if err == rocksDBError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[getInode] clusterID[%s] volumeName[%s] partitionID[%v]"+
+				" get inode failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId))
+		}
+		resp.Status = proto.OpErr
+		return
+	}
+
+	if i == nil || i.ShouldDelete() {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	resp.Msg = i
+	return
+}
+
 func (mp *metaPartition) hasInode(ino *Inode) (ok bool, inode *Inode) {
 	var err error
 	inode, err = mp.inodeTree.RefGet(ino.Inode)
@@ -664,13 +693,19 @@ func (mp *metaPartition) fsmSetAttr(dbHandle interface{}, req *SetattrRequest, r
 	return
 }
 
-func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (status uint8, err error) {
+func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge, req *RequestInfo) (status uint8, err error) {
 	status = proto.OpOk
 	var ino *Inode
 	inodeId := im.Inode
 	newExtents := im.NewExtents
 	oldExtents := im.OldExtents
 	var delExtents []proto.MetaDelExtentKey
+
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(req); isDup {
+		log.LogCriticalf("fsmInsertExtents: dup req:%v, previousRespCode:%v", req, previousRespCode)
+		status = previousRespCode
+		return
+	}
 
 	//var delExtents = newExtents
 	defer func() {
@@ -687,19 +722,27 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 	var outOfRange bool
 	if outOfRange, _ = mp.isInoOutOfRange(inodeId); outOfRange {
 		status = proto.OpInodeOutOfRange
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 	ino, err = mp.inodeTree.Get(im.Inode)
 	if err != nil {
 		status = proto.OpErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 	if ino == nil {
 		status = proto.OpNotExistErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 	if ino.ShouldDelete() {
 		status = proto.OpNotExistErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 	var merged bool
@@ -708,19 +751,112 @@ func (mp *metaPartition) fsmExtentsMerge(dbHandle interface{}, im *InodeMerge) (
 	if !merged {
 		log.LogWarnf("InodeMergeFailed inode(%v) merge msg(%v)", inodeId, msg)
 		status = proto.OpInodeMergeErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
 		return
 	}
 	if err = mp.inodeTree.Put(dbHandle, ino); err != nil {
 		//unknown other apply status, do not del ek
 		status = proto.OpErr
-		delExtents = delExtents[:0]
+		if delExtents != nil {
+			delExtents = delExtents[:0]
+		}
 		return
 	}
+	mp.recordRequest(req, status)
+	mp.persistRequestInfoToRocksDB(dbHandle, req)
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(MergeExtents) inode(%v) oldEks(%v) newEks(%v) Commit error:%v",
 			mp.config.PartitionId, ino.Inode, oldExtents, newExtents, err)
 		status = proto.OpErr
-		delExtents = delExtents[:0]
+		if delExtents != nil {
+			delExtents = delExtents[:0]
+		}
+		mp.reqRecords.Remove(req)
+		return
+	}
+	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)
+	return
+}
+
+func (mp *metaPartition) fsmFileMigExtentsMerge(dbHandle interface{}, im *InodeMerge, req *RequestInfo) (status uint8, err error) {
+	status = proto.OpOk
+	var ino *Inode
+	inodeId := im.Inode
+	newExtents := im.NewExtents
+	oldExtents := im.OldExtents
+	var delExtents []proto.MetaDelExtentKey
+
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(req); isDup {
+		log.LogCriticalf("fsmInsertExtents: dup req:%v, previousRespCode:%v", req, previousRespCode)
+		status = previousRespCode
+		return
+	}
+	defer func() {
+		if len(delExtents) > 0 {
+			select {
+			case mp.extDelCh <- delExtents:
+			default:
+				log.LogWarnf("fsm(%v) FileMigExtentsMerge inode(%v) delEks(%v)", mp.config.PartitionId, inodeId, delExtents)
+			}
+			log.LogInfof("fsm(%v) FileMigExtentsMerge inode(%v) delExtents(%v) newExtents(%v) extDelChLen(%v)",
+				mp.config.PartitionId, inodeId, delExtents, newExtents, len(mp.extDelCh))
+		}
+	}()
+	var outOfRange bool
+	if outOfRange, _ = mp.isInoOutOfRange(inodeId); outOfRange {
+		status = proto.OpInodeOutOfRange
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
+		return
+	}
+	ino, err = mp.inodeTree.Get(im.Inode)
+	if err != nil {
+		status = proto.OpErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
+		return
+	}
+	if ino == nil {
+		status = proto.OpNotExistErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
+		return
+	}
+	if ino.ShouldDelete() {
+		status = proto.OpNotExistErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
+		return
+	}
+	var merged bool
+	var msg string
+	delExtents, merged, msg = ino.FileMigMergeExtents(newExtents, oldExtents)
+	if !merged {
+		log.LogWarnf("InodeFileMigMergeFailed inode(%v) merge msg(%v)", inodeId, msg)
+		status = proto.OpInodeMergeErr
+		mp.recordRequest(req, status)
+		mp.persistRequestInfoToRocksDB(dbHandle, req)
+		return
+	}
+	if err = mp.inodeTree.Put(dbHandle, ino); err != nil {
+		//unknown other apply status, do not del ek
+		status = proto.OpErr
+		if delExtents != nil {
+			delExtents = delExtents[:0]
+		}
+		return
+	}
+	mp.recordRequest(req, status)
+	mp.persistRequestInfoToRocksDB(dbHandle, req)
+	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
+		log.LogErrorf("fsm(%v) action(FileMigMergeExtents) inode(%v) oldEks(%v) newEks(%v) Commit error:%v",
+			mp.config.PartitionId, ino.Inode, oldExtents, newExtents, err)
+		status = proto.OpErr
+		if delExtents != nil {
+			delExtents = delExtents[:0]
+		}
+		mp.reqRecords.Remove(req)
 		return
 	}
 	_ = mp.inodeTree.ClearBatchWriteHandle(dbHandle)

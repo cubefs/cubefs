@@ -213,6 +213,44 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	return
 }
 
+func (mp *metaPartition) ExtentsListNoModifyAT(req *proto.GetExtentsRequest, p *Packet) (err error)  {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
+	var retMsg *InodeResponse
+	retMsg, err = mp.getInodeNoModifyAccessTime(NewInode(req.Inode, 0))
+	if err != nil {
+		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
+		return
+	}
+	ino := retMsg.Msg
+	var (
+		reply  []byte
+		status = retMsg.Status
+	)
+	if status == proto.OpOk {
+		resp := &proto.GetExtentsResponse{}
+		ino.DoReadFunc(func() {
+
+			resp.Generation = ino.Generation
+			resp.Size = ino.Size
+			ino.Extents.Range(func(ek proto.ExtentKey) bool {
+				resp.Extents = append(resp.Extents, ek)
+				return true
+			})
+		})
+		reply, err = json.Marshal(resp)
+		if err != nil {
+			status = proto.OpErr
+			reply = []byte(err.Error())
+		}
+	}
+	p.PacketErrorWithBody(status, reply)
+	return
+}
+
 func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error) {
 	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
@@ -235,6 +273,36 @@ func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Pa
 		return
 	}
 	resp, err := mp.submit(p.Ctx(), opFSMExtentMerge, p.RemoteWithReqID(), val, nil)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	p.PacketErrorWithBody(resp.(uint8), nil)
+	return
+}
+
+func (mp *metaPartition) FileMigMergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error) {
+	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+	if len(req.NewExtents) == 0 {
+		msg := fmt.Sprintf("inode(%v) newExtents length(%v) oldExtents length(%v)", req.Inode, len(req.NewExtents), len(req.OldExtents))
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(msg))
+		return
+	}
+	im := &InodeMerge{
+		Inode:      req.Inode,
+		NewExtents: req.NewExtents,
+		OldExtents: req.OldExtents,
+	}
+
+	val, err := im.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(p.Ctx(), opFSMFileMigExtentMerge, p.RemoteWithReqID(), val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

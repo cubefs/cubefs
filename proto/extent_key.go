@@ -40,6 +40,7 @@ var (
 	DelEkSrcTypeFromAppend   = 2
 	DelEkSrcTypeFromMerge    = 3
 	DelEkSrcTypeFromDelInode = 4
+	DelEkSrcTypeFromFileMigMerge = 5
 )
 
 // ExtentKey defines the extent key struct.

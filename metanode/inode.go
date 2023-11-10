@@ -727,6 +727,15 @@ func (i *Inode) MergeExtents(newEks []proto.ExtentKey, oldEks []proto.ExtentKey)
 	return
 }
 
+func (i *Inode) FileMigMergeExtents(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (delExtents []proto.MetaDelExtentKey, merged bool, msg string) {
+	i.Lock()
+	defer i.Unlock()
+	if delExtents, merged, msg = i.Extents.FileMigMerge(newEks, oldEks, i.Inode); merged {
+		i.Generation++
+	}
+	return
+}
+
 func (i *Inode) DelNewExtents(newEks []proto.ExtentKey) (delExtents []proto.MetaDelExtentKey) {
 	i.Lock()
 	defer i.Unlock()
@@ -788,9 +797,9 @@ func (i *Inode) IsEmptyDir() bool {
 func (i *Inode) IsNeedCompact(minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) bool {
 	i.RLock()
 	defer i.RUnlock()
-	if minEkLen < MinEkLen {
-		minEkLen = MinEkLen
-	}
+	//if minEkLen < MinEkLen {
+	//	minEkLen = MinEkLen
+	//}
 	if i.Extents.Len() <= minEkLen || i.Size <= minInodeSize {
 		return false
 	}

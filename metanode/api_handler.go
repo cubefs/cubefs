@@ -75,6 +75,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getExtentsByInode", m.getExtentsByInodeHandler)
 	// get all inodes of the partitionID
 	http.HandleFunc("/getAllInodes", m.getAllInodesHandler)
+	http.HandleFunc("/getInodeNoModifyAT", m.getInodeNoModifyAccessTimeHandler)
+	http.HandleFunc("/getExtentsNoModifyAT", m.getExtentsNoModifyAccessTimeHandler)
 	// get dentry information
 	http.HandleFunc("/getDentry", m.getDentryHandler)
 	http.HandleFunc("/getDirectory", m.getDirectoryHandler)
@@ -329,8 +331,8 @@ func (m *MetaNode) getAllDeleteEkHandler(w http.ResponseWriter, r *http.Request)
 				PartitionId:  ek.PartitionId,
 				ExtentId:     ek.ExtentId,
 				ExtentOffset: ek.ExtentOffset,
-				Size: ek.Size,
-				CRC: ek.CRC,
+				Size:         ek.Size,
+				CRC:          ek.CRC,
 			},
 			getDateInKey(k),
 		}
@@ -541,6 +543,95 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllInodesHandler] response %s", err)
+	}
+	return
+}
+
+func (m *MetaNode) getInodeNoModifyAccessTimeHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getInodeHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := &InodeGetReq{
+		PartitionID: pid,
+		Inode:       id,
+	}
+	p := NewPacket(r.Context())
+	err = mp.InodeGetNoModifyAT(req, p, proto.OpInodeGetCurVersion)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMsg()
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
+	return
+}
+
+func (m *MetaNode) getExtentsNoModifyAccessTimeHandler(w http.ResponseWriter, r *http.Request)  {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getExtentsNoModifyAccessTimeHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+
+	req := &proto.GetExtentsRequest{
+		PartitionID: pid,
+		Inode:       id,
+	}
+	p := NewPacket(r.Context())
+	if err = mp.ExtentsListNoModifyAT(req, p); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMsg()
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
 	}
 	return
 }
@@ -2279,10 +2370,10 @@ func (m *MetaNode) setDelEKRecordFilesMaxTotalSize(w http.ResponseWriter, r *htt
 	}
 	atomic.StoreUint64(&nodeInfo.delEKFileLocalMaxMB, maxTotalMB*unit.MB)
 	if maxTotalMB == 0 {
-		DeleteEKRecordFilesMaxTotalSize.Store(defDeleteEKRecordFilesMaxTotalSize*unit.MB)
+		DeleteEKRecordFilesMaxTotalSize.Store(defDeleteEKRecordFilesMaxTotalSize * unit.MB)
 		return
 	}
-	DeleteEKRecordFilesMaxTotalSize.Store(maxTotalMB*unit.MB)
+	DeleteEKRecordFilesMaxTotalSize.Store(maxTotalMB * unit.MB)
 	return
 }
 
@@ -2358,15 +2449,15 @@ func (m *MetaNode) setRaftStorageParam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logSizeStr := r.FormValue("logSize")
-	logSize, err:= strconv.Atoi(logSizeStr)
+	logSize, err := strconv.Atoi(logSizeStr)
 	if err != nil {
-	logSize = 0
+		logSize = 0
 	}
 
 	logCapStr := r.FormValue("logCap")
-	logCap, err:= strconv.Atoi(logCapStr)
+	logCap, err := strconv.Atoi(logCapStr)
 	if err != nil {
-	logCap = 0
+		logCap = 0
 	}
 
 	m.updateRaftParamFromLocal(logSize, logCap)
@@ -2417,8 +2508,8 @@ func (m *MetaNode) getDeletedDentrysByParentInoHandler(w http.ResponseWriter, r 
 		return
 	}
 	var (
-		count int64 = 0
-		ddentrys    = make([]*DeletedDentry, 0)
+		count    int64 = 0
+		ddentrys       = make([]*DeletedDentry, 0)
 	)
 	prefix := newPrimaryDeletedDentry(parentIno, "", 0, 0)
 	start := newPrimaryDeletedDentry(parentIno, prev, startTime, 0)
@@ -2646,6 +2737,7 @@ func (m *MetaNode) checkFreelist(w http.ResponseWriter, r *http.Request) {
 		UnExpectFreeInodes: unexpectFreeInodes,
 	}
 }
+
 func (m *MetaNode) getRequestRecords(w http.ResponseWriter, r *http.Request) {
 	var (
 		err error

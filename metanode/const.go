@@ -180,6 +180,7 @@ const (
 
 	opFSMMetaRaftAddVirtualMP //deprecated
 	opFSMSyncEvictReqRecords
+	opFSMFileMigExtentMerge
 )
 
 var (
