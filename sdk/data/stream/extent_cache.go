@@ -385,7 +385,7 @@ func (cache *ExtentCache) GetEndForAppendWrite(offset uint64, verSeq uint64, nee
 
 		if offset == ek.FileOffset+uint64(ek.Size) {
 			if !needCheck || ek.GetSeq() == verSeq {
-				if ek.ExtentOffset >= util.ExtentSize {
+				if int(ek.ExtentOffset)+int(ek.Size) >= util.ExtentSize {
 					log.LogDebugf("action[ExtentCache.GetEndForAppendWrite] inode %v req offset %v verseq %v not found, exist ek [%v]",
 						cache.inode, offset, verSeq, ek.String())
 					ret = nil
