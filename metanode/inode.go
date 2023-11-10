@@ -119,7 +119,7 @@ func NewMultiSnap(seq uint64) *InodeMultiSnap {
 	}
 }
 
-func (i *Inode) setVerDoWork(seq uint64) {
+func (i *Inode) verUpdate(seq uint64) {
 	if seq == 0 && i.multiSnap == nil {
 		return
 	}
@@ -131,7 +131,7 @@ func (i *Inode) setVerDoWork(seq uint64) {
 }
 
 func (i *Inode) setVerNoCheck(seq uint64) {
-	i.setVerDoWork(seq)
+	i.verUpdate(seq)
 }
 
 func (i *Inode) setVer(seq uint64) {
@@ -139,7 +139,7 @@ func (i *Inode) setVer(seq uint64) {
 		syslog.Println(fmt.Sprintf("inode %v old seq %v cann't use seq %v", i.getVer(), seq, string(debug.Stack())))
 		log.LogFatalf("inode %v old seq %v cann't use seq %v stack %v", i.Inode, i.getVer(), seq, string(debug.Stack()))
 	}
-	i.setVerDoWork(seq)
+	i.verUpdate(seq)
 }
 
 func (i *Inode) insertEkRefMap(mpId uint64, ek *proto.ExtentKey) {
@@ -1412,7 +1412,7 @@ func (i *Inode) getAndDelVer(mpId uint64, dVer uint64, mpVer uint64, verlist *pr
 				log.LogDebugf("action[getAndDelVer] ino %v  get next version in verList update ver from %v to %v.And delete exts with ver %v",
 					i.Inode, i.multiSnap.multiVersions[id].getVer(), nVerSeq, dVer)
 
-				i.multiSnap.multiVersions[id].setVer(nVerSeq)
+				i.multiSnap.multiVersions[id].setVerNoCheck(nVerSeq)
 				delExtents, ino = i.MultiLayerClearExtByVer(id+1, nVerSeq), i.multiSnap.multiVersions[id]
 				if len(i.multiSnap.multiVersions[id].Extents.eks) != 0 {
 					log.LogDebugf("action[getAndDelVer] ino %v   after clear self still have ext and left", i.Inode)
