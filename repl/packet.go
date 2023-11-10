@@ -15,7 +15,6 @@
 package repl
 
 import (
-	"encoding/binary"
 	"fmt"
 	"github.com/cubefs/cubefs/util/log"
 	"io"
@@ -339,48 +338,6 @@ func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
 	}
 	_, err = io.ReadFull(c, p.Data[:readSize])
 	return
-}
-
-func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime time.Duration) (err error) {
-	if deadlineTime != proto.NoReadDeadlineTime {
-		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
-	} else {
-		c.SetReadDeadline(time.Time{})
-	}
-	header, err := proto.Buffers.Get(util.PacketHeaderSize)
-	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
-	}
-	defer proto.Buffers.Put(header)
-	if _, err = io.ReadFull(c, header); err != nil {
-		return
-	}
-	if err = p.UnmarshalHeader(header); err != nil {
-		return
-	}
-	if p.Opcode == proto.OpRandomWriteVer {
-		log.LogInfof("action[ReadFromConnFromCli] option OpRandomWriteVer [%v]", p.Opcode)
-		ver := make([]byte, 8)
-		if _, err = io.ReadFull(c, ver); err != nil {
-			return
-		}
-		p.VerSeq = binary.BigEndian.Uint64(ver)
-	}
-
-	if p.ArgLen > 0 {
-		if err = proto.ReadFull(c, &p.Arg, int(p.ArgLen)); err != nil {
-			return
-		}
-	}
-
-	if p.Size < 0 {
-		return
-	}
-	size := p.Size
-	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
-		size = 0
-	}
-	return p.ReadFull(c, p.Opcode, int(size))
 }
 
 func (p *Packet) IsMasterCommand() bool {
