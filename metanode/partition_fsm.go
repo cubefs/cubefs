@@ -604,7 +604,6 @@ func (mp *metaPartition) Snapshot() (snap raftproto.Snapshot, err error) {
 	return
 }
 
-// ApplySnapshot applies the given multiSnap.multiVersions.
 func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
 		data           []byte
@@ -621,6 +620,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		txRbInodeTree  = NewBtree()
 		txRbDentryTree = NewBtree()
 		uniqChecker    = newUniqChecker()
+		verList        []*proto.VolVersionInfo
 	)
 
 	blockUntilStoreSnapshot := func() {
@@ -676,7 +676,9 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
 			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
 			mp.uniqChecker = uniqChecker
-
+			mp.multiVersionList.VerList = verList
+			mp.verSeq = mp.multiVersionList.GetLastVer()
+			log.LogInfof("mp %v updateVerList (%v) seq %v", mp.config.PartitionId, mp.multiVersionList.VerList, mp.verSeq)
 			err = nil
 			// store message
 			mp.storeChan <- &storeMsg{
@@ -821,6 +823,9 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			txRbDentry.Unmarshal(snap.V)
 			txRbDentryTree.ReplaceOrInsert(txRbDentry, true)
 			log.LogDebugf("ApplySnapshot: create txRbDentry: partitionID(%v) txRbDentry(%v)", mp.config.PartitionId, txRbDentry)
+		case opFSMVerListSnapShot:
+			json.Unmarshal(snap.V, &verList)
+			log.LogDebugf("ApplySnapshot: create verList: partitionID(%v) snap.V(%v) verList(%v)", mp.config.PartitionId, snap.V, verList)
 		case opExtentFileSnapshot:
 			fileName := string(snap.K)
 			fileName = path.Join(mp.config.RootDir, fileName)

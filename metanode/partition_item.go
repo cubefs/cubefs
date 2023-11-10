@@ -148,6 +148,7 @@ type MetaItemIterator struct {
 	txRbInodeTree     *BTree
 	txRbDentryTree    *BTree
 	uniqChecker       *uniqChecker
+	verList           []*proto.VolVersionInfo
 
 	filenames []string
 
@@ -165,6 +166,7 @@ const (
 	SiwKeyTxId
 	SiwKeyCursor
 	SiwKeyUniqId
+	SiwKeyVerList
 )
 
 type SnapItemWrapper struct {
@@ -201,6 +203,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
 	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
 	si.uniqChecker = mp.uniqChecker.clone()
+	si.verList = mp.GetAllVerList()
 	mp.nonIdempotent.Unlock()
 
 	si.dataCh = make(chan interface{})
@@ -219,9 +222,6 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			filenames = append(filenames, fileInfo.Name())
 		}
 		if !fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), prefixDelExtentV2) {
-			filenames = append(filenames, fileInfo.Name())
-		}
-		if !fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), prefixMultiVer) {
 			filenames = append(filenames, fileInfo.Name())
 		}
 	}
@@ -277,8 +277,12 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 			// process cursor
 			cursorWrapper := SnapItemWrapper{SiwKeyCursor, si.cursor}
 			produceItem(cursorWrapper)
-			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v)",
-				mp.config.PartitionId, si.applyID, si.txId, si.cursor, si.uniqID)
+
+			verListWrapper := SnapItemWrapper{SiwKeyVerList, si.verList}
+			produceItem(verListWrapper)
+
+			log.LogDebugf("newMetaItemIterator: SnapFormatVersion_1, partitionId(%v) applyID(%v) txId(%v) cursor(%v) uniqID(%v) verList(%v)",
+				mp.config.PartitionId, si.applyID, si.txId, si.cursor, si.uniqID, si.verList)
 
 			if si.uniqID != 0 {
 				// process uniqId
@@ -431,6 +435,13 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 			uniqIdBuf := make([]byte, 8)
 			binary.BigEndian.PutUint64(uniqIdBuf, uniqId)
 			snap = NewMetaItem(opFSMUniqIDSnap, typedItem.MarshalKey(), uniqIdBuf)
+		} else if typedItem.key == SiwKeyVerList {
+			var verListBuf []byte
+			if verListBuf, err = json.Marshal(typedItem.value.([]*proto.VolVersionInfo)); err != nil {
+				return
+			}
+			snap = NewMetaItem(opFSMVerListSnapShot, typedItem.MarshalKey(), verListBuf)
+			log.LogInfof("snapshot.fileRootDir %v verList %v", si.fileRootDir, verListBuf)
 		} else {
 			panic(fmt.Sprintf("MetaItemIterator.Next: unknown SnapItemWrapper key: %v", typedItem.key))
 		}
