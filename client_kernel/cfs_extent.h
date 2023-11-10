@@ -231,9 +231,10 @@ void cfs_extent_stream_release(struct cfs_extent_stream *es);
 int cfs_extent_stream_flush(struct cfs_extent_stream *es);
 int cfs_extent_stream_truncate(struct cfs_extent_stream *es, loff_t size);
 
-int cfs_extent_read_pages(struct cfs_extent_stream *es, struct page **pages,
-			  size_t nr_pages, loff_t file_offset,
-			  size_t first_page_offset, size_t end_page_size);
+int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
+			  struct page **pages, size_t nr_pages,
+			  loff_t file_offset, size_t first_page_offset,
+			  size_t end_page_size);
 int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 			   size_t nr_pages, loff_t file_offset,
 			   size_t first_page_offset, size_t end_page_size);

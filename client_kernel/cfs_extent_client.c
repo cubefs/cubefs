@@ -35,16 +35,11 @@ cfs_data_partition_new(struct cfs_data_partition_view *dp_view)
 	dp->replica_num = dp_view->replica_num;
 	sockaddr_storage_array_move(&dp->members, &dp_view->members);
 	for (i = 0; i < dp->members.num; i++) {
-		if (cfs_addr_cmp(dp_view->leader, &dp->members.base[i]) == 0) {
+		if (dp_view->leader &&
+		    cfs_addr_cmp(dp_view->leader, &dp->members.base[i]) == 0) {
 			dp->leader_idx = i;
 			break;
 		}
-	}
-	if (i == dp->members.num) {
-		sockaddr_storage_array_clear(&dp->members);
-		cfs_buffer_release(dp->follower_addrs);
-		kfree(dp);
-		return NULL;
 	}
 	dp->type = dp_view->type;
 	dp->epoch = dp_view->epoch;
@@ -233,11 +228,7 @@ int cfs_extent_module_init(void)
 {
 	if (extent_work_queue)
 		return 0;
-#ifndef WQ_NON_REENTRANT
-#define WQ_NON_REENTRANT 0
-#endif
-	extent_work_queue = alloc_workqueue(
-		"extent_wq", WQ_NON_REENTRANT | WQ_MEM_RECLAIM, 0);
+	extent_work_queue = alloc_workqueue("extent_wq", WQ_MEM_RECLAIM, 0);
 	if (!extent_work_queue) {
 		return -ENOMEM;
 	}

@@ -8,8 +8,9 @@
 #define EXTENT_TINY_MAX_ID 64
 #define EXTENT_TINY_SIZE 1048576
 
-#define EXTENT_WRITER_MAX_COUNT 32
-#define EXTENT_READER_MAX_COUNT 8
+#define EXTENT_REQ_RETRY_MAX_COUNT 64
+#define EXTENT_WRITER_MAX_COUNT EXTENT_REQ_RETRY_MAX_COUNT
+#define EXTENT_READER_MAX_COUNT EXTENT_REQ_RETRY_MAX_COUNT
 
 static enum extent_write_type extent_io_type(struct cfs_extent_io_info *io_info)
 {
@@ -73,7 +74,7 @@ static int do_extent_request_retry(struct cfs_data_partition *dp,
 				   struct cfs_packet *packet, u32 host_id)
 {
 	int again_cnt = 200;
-	int host_retry_cnt = 128;
+	int host_retry_cnt = EXTENT_REQ_RETRY_MAX_COUNT;
 	struct sockaddr_storage *host;
 	int ret = -1;
 
@@ -238,60 +239,6 @@ extent_stream_get_writer(struct cfs_extent_stream *es, loff_t offset,
 	es->nr_writers++;
 	mutex_unlock(&es->lock_writers);
 	return writer;
-}
-
-static struct cfs_extent_reader *
-extent_stream_get_reader(struct cfs_extent_stream *es,
-			 struct cfs_packet_extent *ext)
-{
-	struct cfs_extent_reader *reader = NULL;
-	struct cfs_data_partition *dp;
-
-	while (true) {
-		mutex_lock(&es->lock_readers);
-		reader = list_first_entry_or_null(
-			&es->readers, struct cfs_extent_reader, list);
-		if (!reader) {
-			mutex_unlock(&es->lock_readers);
-			break;
-		}
-
-		if (reader->flags &
-		    (EXTENT_WRITER_F_RECOVER | EXTENT_WRITER_F_ERROR)) {
-			list_del(&reader->list);
-			es->nr_readers--;
-			mutex_unlock(&es->lock_readers);
-		} else if (reader->dp->id != ext->pid ||
-			   reader->ext_id != ext->ext_id) {
-			list_del(&reader->list);
-			es->nr_readers--;
-			mutex_unlock(&es->lock_readers);
-		} else {
-			mutex_unlock(&es->lock_readers);
-			return reader;
-		}
-		cfs_extent_reader_flush(reader);
-		cfs_extent_reader_release(reader);
-	}
-
-	dp = cfs_extent_get_partition(es->ec, ext->pid);
-	if (!dp) {
-		cfs_log_err("es(%p) not found data partition(%llu)\n", es,
-			    ext->pid);
-		return ERR_PTR(-ENOENT);
-	}
-
-	reader = cfs_extent_reader_new(es, dp, dp->leader_idx, ext->ext_id);
-	if (!reader) {
-		cfs_data_partition_put(dp);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	mutex_lock(&es->lock_readers);
-	list_add_tail(&reader->list, &es->readers);
-	es->nr_readers++;
-	mutex_unlock(&es->lock_readers);
-	return reader;
 }
 
 static int extent_write_pages_random(struct cfs_extent_stream *es,
@@ -542,10 +489,11 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 
 	BUG_ON(nr_pages == 0);
 
+#ifdef DEBUG
 	cfs_log_debug(
 		"es(%p) nr_pages=%lu, file_offset=%llu, first_page_offset=%lu, end_page_size=%lu\n",
 		es, nr_pages, file_offset, first_page_offset, end_page_size);
-
+#endif
 	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
 	if (!cpages) {
 		for (i = 0; i < nr_pages; i++) {
@@ -660,6 +608,60 @@ err_page:
 	return ret;
 }
 
+static struct cfs_extent_reader *
+extent_stream_get_reader(struct cfs_extent_stream *es,
+			 struct cfs_packet_extent *ext)
+{
+	struct cfs_extent_reader *reader = NULL;
+	struct cfs_data_partition *dp;
+
+	while (true) {
+		mutex_lock(&es->lock_readers);
+		reader = list_first_entry_or_null(
+			&es->readers, struct cfs_extent_reader, list);
+		if (!reader) {
+			mutex_unlock(&es->lock_readers);
+			break;
+		}
+
+		if (reader->flags &
+		    (EXTENT_WRITER_F_RECOVER | EXTENT_WRITER_F_ERROR)) {
+			list_del(&reader->list);
+			es->nr_readers--;
+			mutex_unlock(&es->lock_readers);
+		} else if (reader->dp->id != ext->pid ||
+			   reader->ext_id != ext->ext_id) {
+			list_del(&reader->list);
+			es->nr_readers--;
+			mutex_unlock(&es->lock_readers);
+		} else {
+			mutex_unlock(&es->lock_readers);
+			return reader;
+		}
+		cfs_extent_reader_flush(reader);
+		cfs_extent_reader_release(reader);
+	}
+
+	dp = cfs_extent_get_partition(es->ec, ext->pid);
+	if (!dp) {
+		cfs_log_err("es(%p) not found data partition(%llu)\n", es,
+			    ext->pid);
+		return ERR_PTR(-ENOENT);
+	}
+
+	reader = cfs_extent_reader_new(es, dp, dp->leader_idx, ext->ext_id);
+	if (!reader) {
+		cfs_data_partition_put(dp);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	mutex_lock(&es->lock_readers);
+	list_add_tail(&reader->list, &es->readers);
+	es->nr_readers++;
+	mutex_unlock(&es->lock_readers);
+	return reader;
+}
+
 static void extent_read_pages_reply_cb(struct cfs_packet *packet)
 {
 	struct cfs_page_frag *frag;
@@ -688,9 +690,9 @@ static void extent_read_pages_reply_cb(struct cfs_packet *packet)
 	}
 }
 
-static int extent_read_pages_internal(struct cfs_extent_stream *es,
-				      struct cfs_extent_io_info *io_info,
-				      struct cfs_page_iter *iter)
+static int extent_read_pages_async(struct cfs_extent_stream *es,
+				   struct cfs_extent_io_info *io_info,
+				   struct cfs_page_iter *iter)
 {
 	struct cfs_data_partition *dp;
 	struct cfs_extent_reader *reader;
@@ -746,9 +748,79 @@ out:
 	return ret;
 }
 
-int cfs_extent_read_pages(struct cfs_extent_stream *es, struct page **pages,
-			  size_t nr_pages, loff_t file_offset,
-			  size_t first_page_offset, size_t end_page_size)
+static int extent_read_pages_sync(struct cfs_extent_stream *es,
+				  struct cfs_extent_io_info *io_info,
+				  struct cfs_page_iter *iter)
+{
+	struct cfs_data_partition *dp;
+	struct cfs_packet *packet;
+	size_t len;
+	size_t read_bytes = 0, total_bytes = io_info->size;
+	size_t read_offset = io_info->offset - io_info->ext.file_offset +
+			     io_info->ext.ext_offset;
+	int ret = 0;
+	int i;
+
+#ifdef DEBUG
+	cfs_log_debug("es(%p) ino=%llu, offset=%lld, size=%zu, pid=%llu, "
+		      "ext_id=%llu, ext_offset=%llu, ext_size=%u\n",
+		      es, es->ino, io_info->offset, io_info->size,
+		      io_info->ext.pid, io_info->ext.ext_id,
+		      io_info->ext.ext_offset, io_info->ext.size);
+#endif
+	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
+	if (!dp) {
+		cfs_log_err("es(%p) not found data partition(%llu)\n", es,
+			    io_info->ext.pid);
+		return -ENOENT;
+	}
+	while (read_bytes < total_bytes) {
+		len = min(total_bytes - read_bytes, EXTENT_BLOCK_SIZE);
+		packet = cfs_extent_packet_new(CFS_OP_STREAM_READ,
+					       CFS_EXTENT_TYPE_NORMAL, 0,
+					       dp->id, io_info->ext.ext_id,
+					       read_offset + read_bytes,
+					       io_info->offset);
+		if (!packet) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		cfs_packet_set_read_data(packet, iter, &len);
+
+		ret = do_extent_request_retry(dp, packet, dp->leader_idx);
+		if (ret < 0) {
+			cfs_log_err(
+				"es(%p) send packet(%llu) to dp(%llu) error %d\n",
+				es, be64_to_cpu(packet->request.hdr.req_id),
+				dp->id, ret);
+			cfs_packet_release(packet);
+			goto out;
+		}
+		cfs_data_partition_set_leader(dp, ret);
+
+		for (i = 0; i < packet->reply.data.read.nr; i++) {
+			struct cfs_page_frag *frag =
+				&packet->reply.data.read.frags[i];
+			if (cfs_page_io_account(frag->page, frag->size)) {
+				SetPageUptodate(frag->page->page);
+				unlock_page(frag->page->page);
+				cfs_page_release(frag->page);
+			}
+		}
+		cfs_packet_release(packet);
+		cfs_page_iter_advance(iter, len);
+		read_bytes += len;
+	}
+
+out:
+	cfs_data_partition_release(dp);
+	return ret;
+}
+
+int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
+			  struct page **pages, size_t nr_pages,
+			  loff_t file_offset, size_t first_page_offset,
+			  size_t end_page_size)
 {
 	struct cfs_page **cpages;
 	LIST_HEAD(io_info_list);
@@ -829,9 +901,12 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, struct page **pages,
 			}
 			goto next;
 		}
-		ret = extent_read_pages_internal(es, io_info, &iter);
+		if (direct_io)
+			ret = extent_read_pages_sync(es, io_info, &iter);
+		else
+			ret = extent_read_pages_async(es, io_info, &iter);
 		if (ret < 0) {
-			cfs_log_debug("es(%p) read pages error %d\n", es, ret);
+			cfs_log_err("es(%p) read pages error %d\n", es, ret);
 			goto err_page;
 		}
 
@@ -932,8 +1007,10 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 	size_t i;
 	int ret = 0;
 
+#ifdef DEBUG
 	cfs_log_debug("es(%p) type=%d offset=%lld, size=%lu\n", es, type,
 		      offset, iov_iter_count(iter));
+#endif
 	pages = extent_dio_pages_alloc(iter, type, &nr_pages,
 				       &first_page_offset, &end_page_size);
 	if (IS_ERR(pages)) {
@@ -952,7 +1029,7 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 		cfs_extent_write_pages(es, pages, nr_pages, offset,
 				       first_page_offset, end_page_size);
 	else
-		cfs_extent_read_pages(es, pages, nr_pages, offset,
+		cfs_extent_read_pages(es, true, pages, nr_pages, offset,
 				      first_page_offset, end_page_size);
 	cfs_extent_stream_flush(es);
 

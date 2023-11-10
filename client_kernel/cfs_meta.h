@@ -23,6 +23,7 @@ static inline struct cfs_meta_partition *
 cfs_meta_partition_new(struct cfs_meta_partition_view *mp_view)
 {
 	struct cfs_meta_partition *mp;
+	int i;
 
 	mp = kzalloc(sizeof(*mp), GFP_NOFS);
 	if (!mp)
@@ -30,13 +31,14 @@ cfs_meta_partition_new(struct cfs_meta_partition_view *mp_view)
 	mp->id = mp_view->id;
 	mp->start_ino = mp_view->start_ino;
 	mp->end_ino = mp_view->end_ino;
-	for (mp->leader_idx = 0; mp->leader_idx < mp_view->members.num;
-	     mp->leader_idx++) {
-		if (cfs_addr_cmp(&mp_view->members.base[mp->leader_idx],
-				 mp_view->leader) == 0)
-			break;
-	}
 	sockaddr_storage_array_move(&mp->members, &mp_view->members);
+	for (i = 0; i < mp->members.num; i++) {
+		if (mp_view->leader &&
+		    cfs_addr_cmp(mp_view->leader, &mp->members.base[i]) == 0) {
+			mp->leader_idx = i;
+			break;
+		}
+	}
 	mp->status = mp_view->status;
 	return mp;
 }

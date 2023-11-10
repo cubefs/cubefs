@@ -221,8 +221,8 @@ static int cfs_readpage(struct file *file, struct page *page)
 	cfs_log_debug("file=" fmt_file ", page=%p{.index=%lu}\n", file, page,
 		      page ? page->index : 0);
 
-	return cfs_extent_read_pages(ci->es, &page, 1, page_offset(page), 0,
-				     PAGE_SIZE);
+	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(page),
+				     0, PAGE_SIZE);
 }
 
 static int cfs_readpages_cb(void *data, struct page *page)
@@ -234,7 +234,7 @@ static int cfs_readpages_cb(void *data, struct page *page)
 
 	if (cfs_page_vec_append(vec, page))
 		return 0;
-	ret = cfs_extent_read_pages(ci->es, vec->pages, vec->nr,
+	ret = cfs_extent_read_pages(ci->es, false, vec->pages, vec->nr,
 				    page_offset(vec->pages[0]), 0, PAGE_SIZE);
 	cfs_page_vec_clear(vec);
 	if (ret < 0)
@@ -271,7 +271,7 @@ static int cfs_readpages(struct file *file, struct address_space *mapping,
 		ret = 0;
 		goto out;
 	}
-	ret = cfs_extent_read_pages(ci->es, vec->pages, vec->nr,
+	ret = cfs_extent_read_pages(ci->es, false, vec->pages, vec->nr,
 				    page_offset(vec->pages[0]), 0, PAGE_SIZE);
 
 out:
@@ -405,8 +405,8 @@ static int cfs_write_begin(struct file *file, struct address_space *mapping,
 	/**
 	 * 4. uncached page write, page must be read from server first.
 	 */
-	ret = cfs_extent_read_pages(ci->es, &page, 1, page_offset(page), 0,
-				    PAGE_SIZE);
+	ret = cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(page),
+				    0, PAGE_SIZE);
 	lock_page(page);
 	if (PageError(page))
 		ret = -EIO;
@@ -477,10 +477,6 @@ static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
 	struct iov_iter iter;
-
-	cfs_log_debug("file=" fmt_file
-		      ", offset=%lld, nr_segs=%lu, iov_len=%zu\n",
-		      pr_file(file), offset, nr_segs, iov_length(iov, nr_segs));
 
 #ifdef KERNEL_HAS_IOV_ITER_WITH_TAG
 	iov_iter_init(&iter, type, iov, nr_segs, iov_length(iov, nr_segs));
