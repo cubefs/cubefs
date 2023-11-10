@@ -15,6 +15,10 @@
     "192.168.30.200:80"
   ],
   "zone": "",
+  "diskReadIocc": 0,
+  "diskReadFlow": 0,
+  "diskWriteIocc": 0,
+  "diskWriteFlow": 0,
   "disks": [
     "/data0:21474836480",
     "/data1:21474836480"
