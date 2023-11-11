@@ -43,23 +43,23 @@ import (
 )
 
 const (
-	extentCRCHeaderFilename           = "EXTENT_CRC"
-	baseExtentIDFilename              = "EXTENT_META"
-	tinyDeleteFileOpenFlag            = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	tinyDeleteFilePerm                = 0666
-	tinyExtentDeletedFilename         = "TINYEXTENT_DELETE"
-	inodeIndexFilename                = "INODE_INDEX"
-	MaxExtentCount                    = 20000
-	MinNormalExtentID                 = 1024
-	DeleteTinyRecordSize              = 24
-	UpdateCrcInterval                 = 600
-	RepairInterval                    = 10
-	RandomWriteType                   = 2
-	AppendWriteType                   = 1
-	BaseExtentIDPersistStep           = 500
-	deletionQueueDirname              = "Deletion"
-	deletionQueueFilesize       int64 = 1024 * 1024 * 4
-	deletionQueueRetainFiles    int   = 1
+	extentCRCHeaderFilename         = "EXTENT_CRC"
+	baseExtentIDFilename            = "EXTENT_META"
+	tinyDeleteFileOpenFlag          = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	tinyDeleteFilePerm              = 0666
+	tinyExtentDeletedFilename       = "TINYEXTENT_DELETE"
+	inodeIndexFilename              = "INODE_INDEX"
+	MaxExtentCount                  = 20000
+	MinNormalExtentID               = 1024
+	DeleteTinyRecordSize            = 24
+	UpdateCrcInterval               = 600
+	RepairInterval                  = 10
+	RandomWriteType                 = 2
+	AppendWriteType                 = 1
+	BaseExtentIDPersistStep         = 500
+	deletionQueueDirname            = "Deletion"
+	deletionQueueFilesize     int64 = 1024 * 1024 * 4
+	deletionQueueRetainFiles  int   = 1
 
 	LoadInProgress int32 = 0
 	LoadFinish     int32 = 1
@@ -559,11 +559,6 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID, inode uint64, offset, size int64) (err error) {
-	var ei, ok = s.getExtentInfoByExtentID(extentID)
-	if !ok || s.IsDeleted(extentID) {
-		// Skip not exists or deleted extent
-		return
-	}
 
 	defer func() {
 		if err != nil {
@@ -579,13 +574,19 @@ func (s *ExtentStore) MarkDelete(extentID, inode uint64, offset, size int64) (er
 
 	var nowUnixSec = time.Now().Unix()
 	if !proto.IsTinyExtent(extentID) {
-		if inode != 0 && ei[Inode] != 0 && inode != ei[Inode] {
-			return NewParameterMismatchErr(fmt.Sprintf("inode mismatch: expected %v, actual %v", ei[Inode], inode))
+		if s.IsDeleted(extentID) {
+			// Skip cause target have been marked as deleted.
+			return
 		}
-		s.cache.Del(extentID)
-		s.infoStore.Delete(extentID)
+		if ei, exists := s.getExtentInfoByExtentID(extentID); exists {
+			if inode != 0 && ei[Inode] != 0 && inode != ei[Inode] {
+				return NewParameterMismatchErr(fmt.Sprintf("inode mismatch: expected %v, actual %v", ei[Inode], inode))
+			}
+			s.cache.Del(extentID)
+			s.infoStore.Delete(extentID)
+			atomic.AddInt64(&s.extentCnt, -1)
+		}
 		s.recentDeletedExtents.Store(extentID, nowUnixSec)
-		atomic.AddInt64(&s.extentCnt, -1)
 	}
 	err = s.deletionQueue.Produce(inode, extentID, offset, size, nowUnixSec)
 	return
@@ -593,14 +594,13 @@ func (s *ExtentStore) MarkDelete(extentID, inode uint64, offset, size int64) (er
 
 func (s *ExtentStore) BatchMarkDelete(batch Batch) (err error) {
 
-	var start = time.Now()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("Store(%v) batch mark delete failed: batchsize=%v, error=%v", s.partitionID, batch.Len(), err)
 			return
 		}
 		if log.IsDebugEnabled() && batch.Len() > 0 {
-			log.LogDebugf("Store(%v) batch mark delete extents, batchsize=%v, elapsed=%v", s.partitionID, batch.Len(), time.Now().Sub(start))
+			log.LogDebugf("Store(%v) batch mark delete extents: batchsize=%v", s.partitionID, batch.Len())
 		}
 	}()
 
@@ -608,8 +608,7 @@ func (s *ExtentStore) BatchMarkDelete(batch Batch) (err error) {
 	case 0:
 		return
 	case 1:
-		var ino, extent, offset, size = batch.Get(0)
-		err = s.MarkDelete(extent, ino, offset, size)
+		err = s.MarkDelete(batch.Get(0))
 		return
 	default:
 	}
@@ -620,19 +619,20 @@ func (s *ExtentStore) BatchMarkDelete(batch Batch) (err error) {
 
 	var nowUnixSec = time.Now().Unix()
 	batch.Walk(func(_ int, ino, extent uint64, offset, size int64) bool {
-		var ei, ok = s.getExtentInfoByExtentID(extent)
-		if !ok || s.IsDeleted(extent) {
-			// Skip not exists or deleted extent
-			return true
-		}
 		if !proto.IsTinyExtent(extent) {
-			if ino != 0 && ei[Inode] != 0 && ino != ei[Inode] {
+			if s.IsDeleted(extent) {
+				// Skip cause target normal extent have been marked as deleted.
 				return true
 			}
-			s.cache.Del(extent)
-			s.infoStore.Delete(extent)
+			if ei, exist := s.getExtentInfoByExtentID(extent); exist {
+				if ino != 0 && ei[Inode] != 0 && ino != ei[Inode] {
+					return true
+				}
+				s.cache.Del(extent)
+				s.infoStore.Delete(extent)
+				atomic.AddInt64(&s.extentCnt, -1)
+			}
 			s.recentDeletedExtents.Store(extent, nowUnixSec)
-			atomic.AddInt64(&s.extentCnt, -1)
 		}
 		producer.Add(ino, extent, offset, size, nowUnixSec)
 		if log.IsDebugEnabled() {

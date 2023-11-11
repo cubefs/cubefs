@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -210,11 +211,21 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 	var data = make([]byte, dataSize)
 	var dataCRC = crc32.ChecksumIEEE(data)
 	var ctx, cancel = context.WithCancel(context.Background())
+
+	var handleWorkerPanic async.PanicHandler = func(i interface{}) {
+		t.Fatalf("unexpected panic orrcurred: %v\nCallStack:\n%v", i, string(debug.Stack()))
+	}
+
 	// Start workers to write extents
 	for i := 0; i < writeWorkers; i++ {
 		var future = async.NewFuture()
-		go func(future *async.Future, ctx context.Context, cancelFunc context.CancelFunc) {
-			var err error
+		var worker async.ParamWorkerFunc = func(args ...interface{}) {
+			var (
+				future     = args[0].(*async.Future)
+				ctx        = args[1].(context.Context)
+				cancelFunc = args[2].(context.CancelFunc)
+				err        error
+			)
 			defer func() {
 				if err != nil {
 					cancelFunc()
@@ -245,18 +256,24 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 						err = nil
 						break
 					}
-					offset += int64(dataSize)
+					offset += dataSize
 				}
 			}
-		}(future, ctx, cancel)
+		}
+		async.ParamWorker(worker, handleWorkerPanic).RunWith(future, ctx, cancel)
 		futures[fmt.Sprintf("WriteWorker-%d", i)] = future
 	}
 
 	// Start extents delete worker
 	{
 		var future = async.NewFuture()
-		go func(future *async.Future, ctx context.Context, cancelFunc context.CancelFunc) {
-			var err error
+		var worker async.ParamWorkerFunc = func(args ...interface{}) {
+			var (
+				future     = args[0].(*async.Future)
+				ctx        = args[1].(context.Context)
+				cancelFunc = args[2].(context.CancelFunc)
+				err        error
+			)
 			defer func() {
 				if err != nil {
 					cancelFunc()
@@ -281,35 +298,41 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 					_ = storage.MarkDelete(eib[FileID], 0, 0, 0)
 				}
 			}
-		}(future, ctx, cancel)
+		}
+		async.ParamWorker(worker, handleWorkerPanic).RunWith(future, ctx, cancel)
 		futures["DeleteWorker"] = future
 	}
 
 	// Start control worker
 	{
 		var future = async.NewFuture()
-		go func(future *async.Future, ctx context.Context, cancelFunc context.CancelFunc) {
+		var worker async.ParamWorkerFunc = func(args ...interface{}) {
+			var (
+				future     = args[0].(*async.Future)
+				ctx        = args[1].(context.Context)
+				cancelFunc = args[2].(context.CancelFunc)
+			)
 			defer func() {
 				future.Respond(nil, nil)
-				var startTime = time.Now()
-				var stopTimer = time.NewTimer(executionDuration)
-				var displayTicker = time.NewTicker(time.Second * 10)
-				for {
-					select {
-					case <-stopTimer.C:
-						t.Logf("Execution finish.")
-						cancelFunc()
-						return
-					case <-displayTicker.C:
-						t.Logf("Execution time: %.0fs.", time.Now().Sub(startTime).Seconds())
-					case <-ctx.Done():
-						t.Logf("Execution aborted.")
-						return
-					}
-				}
-
 			}()
-		}(future, ctx, cancel)
+			var startTime = time.Now()
+			var stopTimer = time.NewTimer(executionDuration)
+			var displayTicker = time.NewTicker(time.Second * 10)
+			for {
+				select {
+				case <-stopTimer.C:
+					t.Logf("Execution finish.")
+					cancelFunc()
+					return
+				case <-displayTicker.C:
+					t.Logf("Execution time: %.0fs.", time.Now().Sub(startTime).Seconds())
+				case <-ctx.Done():
+					t.Logf("Execution aborted.")
+					return
+				}
+			}
+		}
+		async.ParamWorker(worker, handleWorkerPanic).RunWith(future, ctx, cancel)
 		futures["ControlWorker"] = future
 	}
 
