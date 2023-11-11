@@ -316,13 +316,17 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 		}
 	}
 	_ = os.Chmod(dir, 0755)
+
+	fs := syscall.Statfs_t{}
+	if err := syscall.Statfs(dir, &fs); err != nil {
+		return nil, fmt.Errorf("[InitLog] stats disk space: %s", err.Error())
+	}
+
 	if rotate == nil {
 		rotate = NewLogRotate()
-		fs := syscall.Statfs_t{}
-		if err := syscall.Statfs(dir, &fs); err != nil {
-			return nil, fmt.Errorf("[InitLog] stats disk space: %s",
-				err.Error())
-		}
+	}
+
+	if rotate.headRoom == 0 {
 		var minLogLeftSpaceLimit float64
 		if float64(fs.Bavail*uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize))*DefaultHeadRatio {
 			minLogLeftSpaceLimit = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
@@ -333,13 +337,16 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 		minLogLeftSpaceLimit = math.Max(minLogLeftSpaceLimit, float64(logLeftSpaceLimit))
 
 		rotate.SetHeadRoomMb(int64(math.Min(minLogLeftSpaceLimit, DefaultHeadRoom)))
+	}
 
+	if rotate.rotateSize == 0 {
 		minRotateSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
 		if minRotateSize < DefaultMinRotateSize {
 			minRotateSize = DefaultMinRotateSize
 		}
 		rotate.SetRotateSizeMb(int64(math.Min(float64(minRotateSize), float64(DefaultRotateSize))))
 	}
+
 	l.rotate = rotate
 	err = l.initLog(dir, module, level)
 	if err != nil {
