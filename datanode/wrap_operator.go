@@ -975,6 +975,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			reply.Data = make([]byte, currReadSize)
 		}
 		reply.ExtentOffset = offset
+		var tpObject = partition.monitorData[proto.ActionRepairRead].BeforeTp()
 		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false, false)
 		if err != nil {
 			if currReadSize == unit.ReadBlockSize {
@@ -982,7 +983,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			}
 			return
 		}
-		reply.Size = uint32(currReadSize)
+		reply.Size = currReadSize
 		reply.ResultCode = proto.OpOk
 		if err = reply.WriteToConn(connect, proto.WriteDeadlineTime); err != nil {
 			connect.Close()
@@ -991,6 +992,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			}
 			return
 		}
+		tpObject.AfterTp(uint64(currReadSize))
 		needReplySize -= int64(currReadSize)
 		offset += int64(currReadSize)
 		if currReadSize == unit.ReadBlockSize {

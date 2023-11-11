@@ -17,7 +17,10 @@ package datanode
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"hash/crc32"
 	"math"
 	"net"
 	"runtime/debug"
@@ -25,21 +28,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util/async"
-
-	"github.com/cubefs/cubefs/util/exporter"
-
-	"github.com/cubefs/cubefs/util/unit"
-
-	"encoding/binary"
-	"fmt"
-	"hash/crc32"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/async"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/statistics"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 // DataPartitionRepairTask defines the reapir task for the data partition.
@@ -765,7 +762,6 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		extentID   = remoteExtentInfo[storage.FileID]
 		remoteSize = remoteExtentInfo[storage.Size]
 	)
-	toObject := dp.monitorData[proto.ActionRepairWrite].BeforeTp()
 
 	// Checking store and extent state at first.
 	var store = dp.ExtentStore()
@@ -901,13 +897,14 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		// Write it to local extent file
 		currRecoverySize := uint64(reply.Size)
 		if proto.IsTinyExtent(extentID) {
-			isEmptyResponse := reply.Arg != nil && reply.Arg[0] == EmptyResponse
 			originalDataSize := uint64(reply.Size)
 			var remoteAvaliSize uint64
 			if reply.ArgLen == TinyExtentRepairReadResponseArgLen {
 				remoteAvaliSize = binary.BigEndian.Uint64(reply.Arg[9:TinyExtentRepairReadResponseArgLen])
 			}
-			if isEmptyResponse {
+			var tpObject *statistics.TpObject = nil
+			var emptyResponse bool
+			if emptyResponse = reply.Arg != nil && reply.Arg[0] == EmptyResponse; emptyResponse {
 				if reply.KernelOffset > 0 && reply.KernelOffset != uint64(crc32.ChecksumIEEE(reply.Arg)) {
 					err = fmt.Errorf("streamRepairExtent arg crc mismatch expectCrc(%v) actualCrc(%v) extent(%v_%v) fix from(%v) remoteAvaliSize(%v) "+
 						"hasRecoverySize(%v) currRecoverySize(%v) request(%v) reply(%v)", reply.KernelOffset, crc32.ChecksumIEEE(reply.Arg), dp.partitionID, remoteExtentInfo.String(),
@@ -915,14 +912,21 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 					return errors.Trace(err, "streamRepairExtent receive data error")
 				}
 				currRecoverySize = binary.BigEndian.Uint64(reply.Arg[1:9])
+			} else {
+				tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
 			}
+
 			if currFixOffset+currRecoverySize > remoteSize {
 				msg := fmt.Sprintf("action[streamRepairExtent] fix(%v_%v), streamRepairTinyExtent,remoteAvaliSize(%v) currFixOffset(%v) currRecoverySize(%v), remoteExtentSize(%v), isEmptyResponse(%v), needRecoverySize is too big",
-					dp.partitionID, localExtentInfo[storage.FileID], remoteAvaliSize, currFixOffset, currRecoverySize, remoteExtentInfo[storage.Size], isEmptyResponse)
+					dp.partitionID, localExtentInfo[storage.FileID], remoteAvaliSize, currFixOffset, currRecoverySize, remoteExtentInfo[storage.Size], emptyResponse)
 				exporter.WarningCritical(msg)
 				return errors.Trace(err, "streamRepairExtent repair data error ")
 			}
-			err = store.TinyExtentRecover(extentID, int64(currFixOffset), int64(currRecoverySize), reply.Data[:originalDataSize], reply.CRC, isEmptyResponse)
+			err = store.TinyExtentRecover(extentID, int64(currFixOffset), int64(currRecoverySize), reply.Data[:originalDataSize], reply.CRC, emptyResponse)
+			if tpObject != nil {
+				tpObject.AfterTp(currRecoverySize)
+			}
+
 			if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
 				log.LogInfof("streamRepairTinyExtent(%v) recover fininsh,remoteAvaliSize(%v) "+
 					"hasRecoverySize(%v) currRecoverySize(%v)", dp.applyRepairKey(int(localExtentInfo[storage.FileID])),
@@ -930,7 +934,9 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				break
 			}
 		} else {
+			var tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
 			err = store.Write(ctx, extentID, int64(currFixOffset), int64(reply.Size), reply.Data[0:reply.Size], reply.CRC, storage.AppendWriteType, BufferWrite)
+			tpObject.AfterTp(uint64(reply.Size))
 		}
 
 		// write to the local extent file
@@ -945,8 +951,6 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		}
 
 	}
-
-	toObject.AfterTp(hasRecoverySize)
 
 	return
 
