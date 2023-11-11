@@ -34,10 +34,7 @@ type LogRotate struct {
 
 // NewLogRotate returns a new LogRotate instance.
 func NewLogRotate() *LogRotate {
-	return &LogRotate{
-		rotateSize: DefaultRotateSize,
-		headRoom:   DefaultHeadRoom,
-	}
+	return &LogRotate{}
 }
 
 // SetRotateSizeMb sets the rotate size in terms of MB.
