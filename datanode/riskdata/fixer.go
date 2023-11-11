@@ -591,7 +591,10 @@ func (p *Fixer) checkAndFixFragment(fragment *Fragment) FixResult {
 func (p *Fixer) initFragments() (err error) {
 	var release = p.lockPersist()
 	defer release()
-	if err = p.openFp(); err != nil {
+	if err = p.checkFp(false); err != nil {
+		if os.IsNotExist(err) {
+			err = nil
+		}
 		return
 	}
 	var info os.FileInfo
@@ -661,7 +664,10 @@ func (p *Fixer) initFragments() (err error) {
 func (p *Fixer) removeFromFile(offset int64) (err error) {
 	var release = p.lockPersist()
 	defer release()
-	if err = p.openFp(); err != nil {
+	if err = p.checkFp(false); err != nil {
+		if os.IsNotExist(err) {
+			err = nil
+		}
 		return
 	}
 	if _, err = p.persistFp.WriteAt(emptyFragmentBinary[:fragmentBinaryLength], offset); err != nil {
@@ -673,7 +679,7 @@ func (p *Fixer) removeFromFile(offset int64) (err error) {
 func (p *Fixer) appendToFile(fragment *Fragment) (offset int64, err error) {
 	var release = p.lockPersist()
 	defer release()
-	if err = p.openFp(); err != nil {
+	if err = p.checkFp(true); err != nil {
 		return
 	}
 	if p.codecReuseBuf == nil || len(p.codecReuseBuf) < fragmentBinaryLength {
@@ -693,11 +699,18 @@ func (p *Fixer) appendToFile(fragment *Fragment) (offset int64, err error) {
 func (p *Fixer) cleanupFragmentRecords() (err error) {
 	var release = p.lockPersist()
 	defer release()
-	if err = p.openFp(); err != nil {
+	defer func() {
+		if err == nil {
+			p.indexNextOffset = 0
+		}
+	}()
+	if err = p.checkFp(false); err != nil {
+		if os.IsNotExist(err) {
+			err = nil
+		}
 		return
 	}
 	err = p.persistFp.Truncate(0)
-	p.indexNextOffset = 0
 	if log.IsDebugEnabled() {
 		log.LogDebugf("Fixer[%v] cleanup records file", p.partitionID)
 	}
@@ -773,10 +786,14 @@ func (p *Fixer) FindOverlap(extentID, offset, size uint64) bool {
 	return false
 }
 
-func (p *Fixer) openFp() (err error) {
+func (p *Fixer) checkFp(create bool) (err error) {
 	if p.persistFp == nil {
 		var fp *os.File
-		if fp, err = os.OpenFile(libpath.Join(p.path, fragmentsFilename), os.O_CREATE|os.O_RDWR, os.ModePerm); err != nil {
+		var flag = os.O_RDWR
+		if create {
+			flag |= os.O_CREATE
+		}
+		if fp, err = os.OpenFile(libpath.Join(p.path, fragmentsFilename), flag, os.ModePerm); err != nil {
 			return
 		}
 		p.persistFp = fp
