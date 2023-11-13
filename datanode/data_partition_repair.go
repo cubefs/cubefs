@@ -46,6 +46,7 @@ type DataPartitionRepairTask struct {
 	extents                        map[uint64]storage.ExtentInfoBlock
 	ExtentsToBeCreated             []storage.ExtentInfoBlock
 	ExtentsToBeRepaired            []storage.ExtentInfoBlock
+	ExtentsToBeDeleted             []storage.ExtentInfoBlock
 	ExtentsToBeRepairedSource      map[uint64]string
 	BaseExtentID                   uint64
 	LeaderTinyDeleteRecordFileSize int64
@@ -373,6 +374,19 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTask *D
 		}
 		_ = store.Create(extentInfo[storage.FileID], extentInfo[storage.Inode], true)
 	}
+
+	if num := len(repairTask.ExtentsToBeDeleted); num > 0 {
+		var batch = storage.NewBatch(num)
+		for _, extentInfo := range repairTask.ExtentsToBeDeleted {
+			var extentID = extentInfo[storage.FileID]
+			if !store.IsFinishLoad() || proto.IsTinyExtent(extentID) || store.IsDeleted(extentID) {
+				continue
+			}
+			batch.Add(0, extentID, 0, 0)
+		}
+		_ = store.BatchMarkDelete(batch)
+	}
+
 	var allReplicas = dp.getReplicaClone()
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
 		if store.IsDeleted(extentInfo[storage.FileID]) {
@@ -553,9 +567,10 @@ func (dp *DataPartition) brokenTinyExtents() (brokenTinyExtents []uint64) {
 
 func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTask) (availableTinyExtents []uint64, brokenTinyExtents []uint64) {
 	var (
-		extentInfoMap          = make(map[uint64]storage.ExtentInfoBlock)
-		sources                = make(map[uint64]string)
-		maxBaseExtentID uint64 = 0
+		referenceExtents        = make(map[uint64]storage.ExtentInfoBlock)
+		deletedExtents          = make(map[uint64]storage.ExtentInfoBlock)
+		sources                 = make(map[uint64]string)
+		maxBaseExtentID  uint64 = 0
 	)
 
 	for index := 0; index < len(repairTasks); index++ {
@@ -566,29 +581,28 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 		maxBaseExtentID = uint64(math.Max(float64(maxBaseExtentID), float64(repairTask.BaseExtentID)))
 		for extentID, extentInfo := range repairTask.extents {
 			if dp.extentStore.IsDeleted(extentID) {
+				if _, exists := deletedExtents[extentID]; !exists {
+					deletedExtents[extentID] = extentInfo
+				}
 				continue
 			}
-			extentWithMaxSize, ok := extentInfoMap[extentID]
-			if !ok {
-				extentInfoMap[extentID] = extentInfo
+			info, exists := referenceExtents[extentID]
+			if !exists || extentInfo[storage.Size] > info[storage.Size] {
+				referenceExtents[extentID] = info
 				sources[extentID] = repairTask.addr
-			} else {
-				if extentInfo[storage.Size] > extentWithMaxSize[storage.Size] {
-					extentInfoMap[extentID] = extentInfo
-					sources[extentID] = repairTask.addr
-				}
 			}
 		}
 	}
 
-	dp.buildExtentCreationTasks(repairTasks, extentInfoMap, sources)
-	dp.buildBaseExtentIDTasks(repairTasks, maxBaseExtentID)
-	availableTinyExtents, brokenTinyExtents = dp.buildExtentRepairTasks(repairTasks, extentInfoMap, sources)
+	dp.generateExtentCreationTasks(repairTasks, referenceExtents, sources)
+	dp.generateBaseExtentIDTasks(repairTasks, maxBaseExtentID)
+	availableTinyExtents, brokenTinyExtents = dp.generateExtentRepairTasks(repairTasks, referenceExtents, sources)
+	dp.generateExtentDeletionTasks(repairTasks, deletedExtents)
 	return
 }
 
 // Create a new extent if one of the replica is missing.
-func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRepairTask, extentInfoMap map[uint64]storage.ExtentInfoBlock, sources map[uint64]string) {
+func (dp *DataPartition) generateExtentCreationTasks(repairTasks []*DataPartitionRepairTask, extentInfoMap map[uint64]storage.ExtentInfoBlock, sources map[uint64]string) {
 	for extentID, extentInfo := range extentInfoMap {
 		if proto.IsTinyExtent(extentID) {
 			continue
@@ -605,19 +619,22 @@ func (dp *DataPartition) buildExtentCreationTasks(repairTasks []*DataPartitionRe
 				ei := storage.ExtentInfoBlock{
 					storage.FileID: extentID,
 					storage.Size:   extentInfo[storage.Size],
+					storage.Inode:  extentInfo[storage.Inode],
 				}
 				repairTask.ExtentsToBeRepairedSource[extentID] = sources[extentID]
 				repairTask.ExtentsToBeCreated = append(repairTask.ExtentsToBeCreated, ei)
 				repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, ei)
 
-				log.LogInfof("action[generatorAddExtentsTasks] addFile(%v_%v) on Index(%v).", dp.partitionID, ei, index)
+				if log.IsInfoEnabled() {
+					log.LogInfof("DP(%v): REPAIR: gen extent creation: host(%v) extent(%v)", dp.partitionID, repairTask.addr, extentID)
+				}
 			}
 		}
 	}
 }
 
 // proposeRepair an extent if the replicas do not have the same length.
-func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepairTask, maxSizeExtentMap map[uint64]storage.ExtentInfoBlock, sources map[uint64]string) (availableTinyExtents []uint64, brokenTinyExtents []uint64) {
+func (dp *DataPartition) generateExtentRepairTasks(repairTasks []*DataPartitionRepairTask, maxSizeExtentMap map[uint64]storage.ExtentInfoBlock, sources map[uint64]string) (availableTinyExtents []uint64, brokenTinyExtents []uint64) {
 	availableTinyExtents = make([]uint64, 0)
 	brokenTinyExtents = make([]uint64, 0)
 	for extentID, maxFileInfo := range maxSizeExtentMap {
@@ -639,8 +656,10 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 				}
 				repairTasks[index].ExtentsToBeRepaired = append(repairTasks[index].ExtentsToBeRepaired, fixExtent)
 				repairTasks[index].ExtentsToBeRepairedSource[extentID] = sources[extentID]
-				log.LogInfof("action[generatorFixExtentSizeTasks] fixExtent(%v_%v) on(%v), maxExtentInfo(%v) readRepairExtentInfo(%v)",
-					dp.partitionID, fixExtent, repairTasks[index].addr, maxFileInfo.String(), extentInfo.String())
+				if log.IsInfoEnabled() {
+					log.LogInfof("DP(%v): REPAIR: gen extent repair: host(%v), extent(%v), size=(%v to %v)",
+						dp.partitionID, repairTasks[index].addr, extentID, extentInfo[storage.Size], fixExtent[storage.Size])
+				}
 				hasBeenRepaired = false
 			}
 
@@ -657,7 +676,30 @@ func (dp *DataPartition) buildExtentRepairTasks(repairTasks []*DataPartitionRepa
 	return
 }
 
-func (dp *DataPartition) buildBaseExtentIDTasks(repairTasks []*DataPartitionRepairTask, maxBaseExtentID uint64) {
+func (dp *DataPartition) generateExtentDeletionTasks(repairTasks []*DataPartitionRepairTask, deletedExtents map[uint64]storage.ExtentInfoBlock) {
+	for extentID, _ := range deletedExtents {
+		if proto.IsTinyExtent(extentID) {
+			continue
+		}
+		for index := 0; index < len(repairTasks); index++ {
+			repairTask := repairTasks[index]
+			if repairTask == nil {
+				continue
+			}
+			if _, ok := repairTask.extents[extentID]; ok {
+				ei := storage.ExtentInfoBlock{
+					storage.FileID: extentID,
+				}
+				repairTask.ExtentsToBeDeleted = append(repairTask.ExtentsToBeDeleted, ei)
+				if log.IsInfoEnabled() {
+					log.LogInfof("DP(%v): REPAIR: gen extent deletion: host(%v), extent(%v)", dp.partitionID, repairTask.addr, extentID)
+				}
+			}
+		}
+	}
+}
+
+func (dp *DataPartition) generateBaseExtentIDTasks(repairTasks []*DataPartitionRepairTask, maxBaseExtentID uint64) {
 	for index := 0; index < len(repairTasks); index++ {
 		if repairTasks[index] == nil {
 			continue
