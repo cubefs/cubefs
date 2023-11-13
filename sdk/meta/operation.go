@@ -1226,7 +1226,7 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 }
 
 func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey,
-	discard []proto.ExtentKey, isSplit bool, isCache bool, storageClass uint32) (status int, err error) {
+	discard []proto.ExtentKey, isSplit bool, isCache bool, storageClass uint32, isMigration bool) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("appendExtentKey", err, bgTime, 1)
@@ -1241,6 +1241,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		IsSplit:        isSplit,
 		IsCache:        isCache,
 		StorageClass:   storageClass,
+		IsMigration:    isMigration,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1271,7 +1272,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	return status, err
 }
 
-func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool, openForWrite bool) (resp *proto.GetExtentsResponse, err error) {
+func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool, openForWrite, isMigration bool) (resp *proto.GetExtentsResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getExtents", err, bgTime, 1)
@@ -1284,6 +1285,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 		VerSeq:       mw.VerReadSeq,
 		IsCache:      isCache,
 		OpenForWrite: openForWrite,
+		IsMigration:  isMigration,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -2885,17 +2887,64 @@ func (mw *MetaWrapper) renewalForbiddenMigration(mp *MetaPartition, inode uint64
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
-		log.LogErrorf("truncate: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		log.LogErrorf("renewalForbiddenMigration: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("truncate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		log.LogErrorf("renewalForbiddenMigration: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
 
-	log.LogDebugf("truncate exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	log.LogDebugf("renewalForbiddenMigration exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return statusOK, nil
+}
+
+func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode uint64, storageType uint32,
+	extentKeys interface{}, writeGen uint64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("updateExtentKeyAfterMigration", err, bgTime, 1)
+	}()
+	req := &proto.UpdateExtentKeyAfterMigrationRequest{
+		PartitionID:   mp.PartitionID,
+		Inode:         inode,
+		StorageClass:  storageType,
+		NewExtentKeys: extentKeys,
+		WriteGen:      writeGen,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaUpdateExtentKeyAfterMigration
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("updateExtentKeyAfterMigration: ino(%v) err(%v)", inode, err)
+		return
+	}
+
+	log.LogDebugf("updateExtentKeyAfterMigration enter: packet(%v) mp(%v) req(%v)",
+		packet, mp, string(packet.Data))
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("updateExtentKeyAfterMigration: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("updateExtentKeyAfterMigration: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("updateExtentKeyAfterMigration exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
 }
