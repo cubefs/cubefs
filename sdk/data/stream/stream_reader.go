@@ -95,20 +95,20 @@ func (s *Streamer) String() string {
 }
 
 // TODO should we call it RefreshExtents instead?
-func (s *Streamer) GetExtents() error {
+func (s *Streamer) GetExtents(isMigration bool) error {
 	if s.client.disableMetaCache || !s.needBCache {
-		return s.extents.RefreshForce(s.inode, false, s.client.getExtents, s.isCache, s.openForWrite)
+		return s.extents.RefreshForce(s.inode, false, s.client.getExtents, s.isCache, s.openForWrite, isMigration)
 	}
 
-	return s.extents.Refresh(s.inode, s.client.getExtents, s.isCache, s.openForWrite)
+	return s.extents.Refresh(s.inode, s.client.getExtents, s.isCache, s.openForWrite, isMigration)
 }
 
 func (s *Streamer) GetExtentsForce() error {
-	return s.extents.RefreshForce(s.inode, false, s.client.getExtents, s.isCache, s.openForWrite)
+	return s.extents.RefreshForce(s.inode, false, s.client.getExtents, s.isCache, s.openForWrite, false)
 }
 
 func (s *Streamer) GetExtentsForceRefresh() error {
-	return s.extents.RefreshForce(s.inode, true, s.client.getExtents, s.isCache, s.openForWrite)
+	return s.extents.RefreshForce(s.inode, true, s.client.getExtents, s.isCache, s.openForWrite, false)
 }
 
 // GetExtentReader returns the extent reader.

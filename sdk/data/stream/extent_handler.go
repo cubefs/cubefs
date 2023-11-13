@@ -119,10 +119,13 @@ type ExtentHandler struct {
 	sync.Once
 
 	storageClass uint32
+
+	isMigration bool
 }
 
 // NewExtentHandler returns a new extent handler.
-func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, storageClass uint32) *ExtentHandler {
+func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
+	storageClass uint32, isMigration bool) *ExtentHandler {
 	//	log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:             stream,
@@ -140,6 +143,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, sto
 		meetLimitedIoError: false,
 		verUpdate:          make(chan uint64),
 		storageClass:       proto.GetMediaTypeByStorageClass(storageClass),
+		isMigration:        isMigration,
 	}
 
 	go eh.receiver()
@@ -469,7 +473,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			ekey := *eh.key
 			doAppend := func() (err error) {
 				discard := eh.stream.extents.Append(&ekey, true)
-				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, eh.storageClass)
+				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, eh.storageClass, eh.isMigration)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForceRefresh(); errUpdateExtents != nil {
 						log.LogErrorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
@@ -582,7 +586,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		if eh.meetLimitedIoError {
 			extentType = eh.storeMode
 		}
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.storageClass)
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.storageClass, eh.isMigration)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)

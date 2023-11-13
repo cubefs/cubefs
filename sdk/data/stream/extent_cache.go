@@ -75,33 +75,35 @@ func (cache *ExtentCache) LogOutPut() {
 	})
 }
 
-func (cache *ExtentCache) RefreshForce(inode uint64, force bool, getExtents GetExtentsFunc, isCache bool, openForWrite bool) error {
-	gen, size, extents, err := getExtents(inode, isCache, openForWrite)
+func (cache *ExtentCache) RefreshForce(inode uint64, force bool, getExtents GetExtentsFunc, isCache bool, openForWrite, isMigration bool) error {
+	gen, size, extents, err := getExtents(inode, isCache, openForWrite, isMigration)
 	if err != nil {
 		return err
 	}
 	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, force, extents)
 	if log.EnableDebug() {
-		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v) openForWrite(%v) isMigration(%v)",
+			inode, cache.gen, cache.size, cache.List(), openForWrite, isMigration)
 	}
 	return nil
 }
 
 // Refresh refreshes the extent cache.
-func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc, isCache, openForWrite bool) error {
+func (cache *ExtentCache) Refresh(inode uint64, getExtents GetExtentsFunc, isCache, openForWrite, isMigration bool) error {
 	if cache.root.Len() > 0 {
 		return nil
 	}
 
-	gen, size, extents, err := getExtents(inode, isCache, openForWrite)
+	gen, size, extents, err := getExtents(inode, isCache, openForWrite, isMigration)
 	if err != nil {
 		return err
 	}
 	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	cache.update(gen, size, false, extents)
 	if log.EnableDebug() {
-		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
+		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v) openForWrite(%v) isMigration(%v)",
+			inode, cache.gen, cache.size, cache.List(), openForWrite, isMigration)
 	}
 	return nil
 }
