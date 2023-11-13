@@ -95,6 +95,9 @@ type (
 
 	//Client -> MetaNode
 	RenewalForbiddenMigrationRequest = proto.RenewalForbiddenMigrationRequest
+
+	//Client -> MetaNode
+	UpdateExtentKeyAfterMigrationRequest = proto.UpdateExtentKeyAfterMigrationRequest
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail
@@ -194,6 +197,7 @@ const (
 	opFSMInternalFreeForbiddenMigrationInode = 74
 	opFSMForbiddenMigrationInode             = 75
 	opFSMRenewalForbiddenMigration           = 76
+	opFSMUpdateExtentKeyAfterMigration       = 77
 )
 
 var (
