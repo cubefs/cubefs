@@ -101,6 +101,13 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
+	if req.IsCache == true && req.IsMigration == true {
+		log.LogErrorf("ExtentAppendWithCheck parameter IsCache and IsMigration can not be ture at the same time")
+		err = errors.New("ExtentAppendWithCheck parameter IsCache and IsMigration can not be ture at the same time")
+		reply := []byte(err.Error())
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
 	var (
 		inoParm *Inode
 		i       *Inode
@@ -145,6 +152,9 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	//TODO:
 	if req.IsCache {
 		inoParm.Extents.Append(ext)
+	} else if req.IsMigration {
+		inoParm.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
+		inoParm.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Append(ext)
 	} else {
 		inoParm.HybridCouldExtents.sortedEks = NewSortedExtents()
 		inoParm.HybridCouldExtents.sortedEks.(*SortedExtents).Append(ext)
@@ -155,6 +165,9 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	if len(req.DiscardExtents) != 0 {
 		if req.IsCache {
 			inoParm.Extents.eks = append(inoParm.Extents.eks, req.DiscardExtents...)
+		} else if req.IsMigration {
+			extents := inoParm.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			extents.eks = append(extents.eks, req.DiscardExtents...)
 		} else {
 			extents := inoParm.HybridCouldExtents.sortedEks.(*SortedExtents)
 			extents.eks = append(extents.eks, req.DiscardExtents...)
@@ -417,10 +430,10 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		status = retMsg.Status
 	)
 
-	if !ino.storeInReplicaSystem() && req.IsCache != true {
+	if !ino.storeInReplicaSystem() && (req.IsCache != true || req.IsMigration != true) {
 		status = proto.OpErr
-		reply = []byte(fmt.Sprintf("ino storage type %v IsCache %v do not support ExtentsList",
-			ino.StorageClass, req.IsCache))
+		reply = []byte(fmt.Sprintf("ino %v storage type %v IsCache %v IsMigration %v do not support ExtentsList",
+			ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration))
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
@@ -448,6 +461,26 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 						log.LogInfof("action[ExtentsList] append ek %v", ek)
 						return true
 					})
+				})
+			} else if req.IsMigration {
+				if !ino.migrateToReplicaSystem() {
+					status = proto.OpErr
+					reply = []byte(fmt.Sprintf("ino %v storage type %v not migrate to replica system",
+						ino.Inode, ino.StorageClass))
+					p.PacketErrorWithBody(status, reply)
+					return
+				}
+				ino.DoReadFunc(func() {
+					resp.Generation = ino.Generation
+					resp.Size = ino.Size
+					if ino.HybridCouldExtentsMigration.sortedEks != nil {
+						extents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+						extents.Range(func(ek proto.ExtentKey) bool {
+							resp.Extents = append(resp.Extents, ek)
+							log.LogInfof("action[ExtentsList] append ek %v", ek)
+							return true
+						})
+					}
 				})
 			} else {
 				ino.DoReadFunc(func() {

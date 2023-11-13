@@ -483,28 +483,34 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		status = proto.OpNotExistErr
 		return
 	}
-	if err := fsmIno.updateStorageClass(ino.StorageClass); err != nil {
-		status = proto.OpDismatchMediaType //TODO:tangjingyu
-		return
-	}
 	var (
 		discardExtentKey []proto.ExtentKey
 	)
 	oldSize := int64(fsmIno.Size)
 	//get eks from inoParm, so do not need transform from HybridCouldExtents
 	var (
-		eks     []proto.ExtentKey
-		isCache bool
+		eks         []proto.ExtentKey
+		isCache     bool
+		isMigration bool
 	)
 	if len(ino.Extents.eks) != 0 {
 		isCache = true
 		eks = ino.Extents.CopyExtents()
-	} else {
+	} else if len(ino.HybridCouldExtents.sortedEks.(*SortedExtents).eks) != 0 {
 		isCache = false
 		eks = ino.HybridCouldExtents.sortedEks.(*SortedExtents).CopyExtents()
+	} else {
+		isMigration = true
+		eks = ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).CopyExtents()
 	}
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v, isCache %v",
-		fsmIno.Inode, fsmIno.getLayerLen(), eks, isCache)
+
+	if err := fsmIno.updateStorageClass(ino.StorageClass, isCache, isMigration); err != nil {
+		status = proto.OpDismatchMediaType //TODO:tangjingyu
+		return
+	}
+
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v, isCache %v isMigration %v",
+		fsmIno.Inode, fsmIno.getLayerLen(), eks, isCache, isMigration)
 	if len(eks) < 1 {
 		return
 	}
@@ -529,6 +535,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		volType:          mp.volType,
 		multiVersionList: mp.multiVersionList,
 		isCache:          isCache,
+		isMigration:      isMigration,
 	}
 
 	if !isSplit {
@@ -585,7 +592,7 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
-	if err := inode.updateStorageClass(ino.StorageClass); err != nil {
+	if err := inode.updateStorageClass(ino.StorageClass, false, false); err != nil {
 		status = proto.OpDismatchMediaType
 		return
 	}
@@ -1020,5 +1027,35 @@ func (mp *metaPartition) fsmRenewalInodeForbiddenMigration(ino *Inode) (resp *In
 	}
 	i := item.(*Inode)
 	mp.fmList.Put(i.Inode)
+	return
+}
+
+func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(ino *Inode) (resp *InodeResponse) {
+	resp = NewInodeResponse()
+	log.LogDebugf("action[fsmForbiddenInodeMigration] inode %v", ino)
+	resp.Status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		resp.Status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	//only can migrate to HDD or ebs for now
+	if ino.StorageClass == proto.MediaType_EBS {
+		//store old ek
+		i.HybridCouldExtentsMigration.storageClass = i.StorageClass
+		i.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtents.sortedEks
+		i.StorageClass = ino.HybridCouldExtentsMigration.storageClass
+		i.HybridCouldExtents.sortedEks = ino.HybridCouldExtentsMigration.sortedEks
+	} else {
+		tmpStorageClass := i.HybridCouldExtentsMigration.storageClass
+		tmpSortedEks := i.HybridCouldExtentsMigration.sortedEks
+		i.HybridCouldExtentsMigration.storageClass = i.StorageClass
+		i.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtents.sortedEks
+		i.StorageClass = tmpStorageClass
+		i.HybridCouldExtentsMigration.sortedEks = tmpSortedEks
+	}
+	i.HybridCouldExtentsMigration.storageClass = i.StorageClass
+	//TODO:chihe delete old ek
 	return
 }

@@ -111,10 +111,13 @@ type ExtentHandler struct {
 	verUpdate chan uint64
 
 	mediaType uint32
+
+	isMigration bool
 }
 
 // NewExtentHandler returns a new extent handler.
-func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, storageClass uint32) *ExtentHandler {
+func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
+	storageClass uint32, isMigration bool) *ExtentHandler {
 	//	log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:       stream,
@@ -130,6 +133,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, sto
 		doneReceiver: make(chan struct{}),
 		verUpdate:    make(chan uint64),
 		mediaType:    storageClass,
+		isMigration:  isMigration,
 	}
 
 	go eh.receiver()
@@ -333,7 +337,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		}
 		// todo(leonchang) need check safety
 		log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
-		eh.stream.GetExtents()
+		eh.stream.GetExtents(eh.isMigration)
 	}
 
 	if !packet.isValidWriteReply(reply) {
@@ -438,7 +442,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			discard = eh.stream.extents.Append(eh.key, true)
 			//ToFix: what about hhd use ssd?
 			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key,
-				discard, eh.stream.isCache, eh.mediaType)
+				discard, eh.stream.isCache, eh.mediaType, eh.isMigration)
 
 			if err == nil && len(discard) > 0 {
 				eh.stream.extents.RemoveDiscard(discard)
@@ -494,7 +498,8 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, 0, eh.mediaType)
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType,
+			0, eh.mediaType, eh.isMigration)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)

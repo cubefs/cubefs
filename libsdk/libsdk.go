@@ -1445,7 +1445,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 
 func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
 	if proto.IsHot(c.volType) {
-		n, err = c.ec.Read(f.ino, data, offset, len(data))
+		n, err = c.ec.Read(f.ino, data, offset, len(data), false)
 	} else {
 		n, err = f.fileReader.Read(c.ctx(c.id, f.ino), data, offset, len(data))
 	}

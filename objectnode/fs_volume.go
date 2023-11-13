@@ -1223,7 +1223,7 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		var completeExtentKeys = make([]proto.ExtentKey, 0)
 		for _, part := range parts {
 			var eks []proto.ExtentKey
-			if _, _, eks, err = v.mw.GetExtents(part.Inode, false, true); err != nil {
+			if _, _, eks, err = v.mw.GetExtents(part.Inode, false, true, false); err != nil {
 				log.LogErrorf("CompleteMultipart: meta get extents fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 					v.name, path, multipartID, part.ID, part.Inode, err)
 				return
@@ -1433,7 +1433,7 @@ func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAll
 		if uint64(size) > rest {
 			size = int(rest)
 		}
-		n, err = v.ec.Read(inode, buf, offset, size)
+		n, err = v.ec.Read(inode, buf, offset, size, false)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("appendInodeHash: data read fail, inode(%v) offset(%v) size(%v) err(%v)", inode, offset, size, err)
 			return
@@ -1622,7 +1622,7 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 		if err != nil {
 			return err
 		}
-		n, err = v.ec.Read(inode, tmp, off, readSize)
+		n, err = v.ec.Read(inode, tmp, off, readSize, false)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, inode, offset, size, err)
@@ -2816,7 +2816,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		if proto.IsCold(sv.volType) {
 			readN, err = ebsReader.Read(sctx, buf, readOffset, readSize)
 		} else {
-			readN, err = sv.ec.Read(sInode, buf, readOffset, readSize)
+			readN, err = sv.ec.Read(sInode, buf, readOffset, readSize, false)
 		}
 		if err != nil && err != io.EOF {
 			return
@@ -3171,13 +3171,13 @@ func (v *Volume) referenceExtentKey(oldInode, inode uint64) (bool, error) {
 
 	}
 	// hot volume
-	_, _, oldExtents, err := v.mw.GetExtents(oldInode, false, false)
+	_, _, oldExtents, err := v.mw.GetExtents(oldInode, false, false, false)
 	if err != nil {
 		log.LogErrorf("referenceExtentKey: meta get oldInode extents fail: volume(%v) inode(%v) err(%v)",
 			v.name, oldInode, err)
 		return false, err
 	}
-	_, _, extents, err := v.mw.GetExtents(inode, false, false)
+	_, _, extents, err := v.mw.GetExtents(inode, false, false, false)
 	if err != nil {
 		log.LogErrorf("referenceExtentKey: meta get inode objextents fail: volume(%v) inode(%v) err(%v)",
 			v.name, inode, err)

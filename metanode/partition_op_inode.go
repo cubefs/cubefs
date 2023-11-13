@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -1009,6 +1010,63 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 		return
 	}
 	resp, err := mp.submit(opFSMRenewalForbiddenMigration, val)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	msg := resp.(*InodeResponse)
+	p.PacketErrorWithBody(msg.Status, nil)
+	return
+}
+
+func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKeyAfterMigrationRequest, p *Packet,
+	remoteAddr string) (err error) {
+	ino := NewInode(req.Inode, 0)
+	if item := mp.inodeTree.Get(ino); item == nil {
+		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino.Inode)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		return
+	} else {
+		ino.StorageClass = item.(*Inode).StorageClass
+	}
+	if !ino.storeInReplicaSystem() && req.NewExtentKeys == nil {
+		err = fmt.Errorf("mp %v inode %v new extentKey for storageClass %v  can not be nil",
+			mp.config.PartitionId, ino.Inode, req.StorageClass)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
+		err = fmt.Errorf("mp %v inode %v is forbidden to migration", mp.config.PartitionId, ino.Inode)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	writeGen := atomic.LoadUint64(&ino.WriteGeneration)
+	if writeGen > req.WriteGen {
+		err = fmt.Errorf("mp %v inode %v write generation is %v now: receive %v",
+			mp.config.PartitionId, ino.Inode, writeGen, req.WriteGen)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
+	if req.StorageClass == proto.MediaType_EBS {
+		ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewExtentKeys.([]proto.ObjExtentKey))
+	} else if req.StorageClass != proto.MediaType_HDD {
+		err = fmt.Errorf("mp %v inode %v unsupport new migration storage class %v",
+			mp.config.PartitionId, ino.Inode, req.StorageClass)
+		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	val, err := ino.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	resp, err := mp.submit(opFSMUpdateExtentKeyAfterMigration, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

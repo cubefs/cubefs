@@ -72,6 +72,7 @@ type WriteRequest struct {
 	done         chan struct{}
 	checkFunc    func() error
 	storageClass uint32
+	isMigration  bool
 }
 
 // FlushRequest defines a flush request.
@@ -111,7 +112,7 @@ func (s *Streamer) IssueOpenRequest() error {
 	return nil
 }
 
-func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFunc func() error, storageClass uint32) (write int, err error) {
+func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error) {
 	if atomic.LoadInt32(&s.status) >= StreamerError {
 		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
 	}
@@ -125,6 +126,7 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 	request.done = make(chan struct{}, 1)
 	request.checkFunc = checkFunc
 	request.storageClass = storageClass
+	request.isMigration = isMigration
 
 	s.request <- request
 	s.writeLock.Unlock()
@@ -294,7 +296,8 @@ func (s *Streamer) handleRequest(request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc, request.storageClass)
+		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags,
+			request.checkFunc, request.storageClass, request.isMigration)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size, request.fullPath)
@@ -316,7 +319,8 @@ func (s *Streamer) handleRequest(request interface{}) {
 
 }
 
-func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error, storageClass uint32) (total int, err error) {
+func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error,
+	storageClass uint32, isMigration bool) (total int, err error) {
 	var (
 		direct     bool
 		retryTimes int8
@@ -331,7 +335,8 @@ begin:
 		offset = filesize
 	}
 
-	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
+	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v) storageClass(%v) isMigration(%v)",
+		s.inode, offset, size, storageClass, isMigration)
 
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
@@ -375,7 +380,7 @@ begin:
 				writeSize, err = s.doOverwrite(req, direct)
 				if err == proto.ErrCodeVersionOp {
 					log.LogDebugf("action[streamer.write] write need version update")
-					if err = s.GetExtents(); err != nil {
+					if err = s.GetExtents(isMigration); err != nil {
 						log.LogErrorf("action[streamer.write] err %v", err)
 						return
 					}
@@ -392,7 +397,7 @@ begin:
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
 			} else {
 				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
-				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct, storageClass)
+				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct, storageClass, isMigration)
 			}
 			if s.client.bcacheEnable {
 				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
@@ -412,11 +417,13 @@ begin:
 			// First, attempt sequential writes using neighboring extent keys. If the last extent has a different version,
 			// it indicates that the extent may have been fully utilized by the previous version.
 			// Next, try writing and directly checking the extent at the datanode. If the extent cannot be reused, create a new extent for writing.
-			if writeSize, err, status = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, true, storageClass); status == LastEKVersionNotEqual {
+			if writeSize, err, status = s.doAppendWrite(req.Data, req.FileOffset, req.Size,
+				direct, true, storageClass, isMigration); status == LastEKVersionNotEqual {
 				log.LogDebugf("action[streamer.write] tryDirectAppendWrite req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-				if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct, storageClass); status == int32(proto.OpTryOtherExtent) {
+				if writeSize, _, err, status = s.tryDirectAppendWrite(req, direct, storageClass, isMigration); status == int32(proto.OpTryOtherExtent) {
 					log.LogDebugf("action[streamer.write] doAppendWrite again req %v FileOffset %v size %v", req.ExtentKey, req.FileOffset, req.Size)
-					writeSize, err, _ = s.doAppendWrite(req.Data, req.FileOffset, req.Size, direct, false, storageClass)
+					writeSize, err, _ = s.doAppendWrite(req.Data, req.FileOffset, req.Size,
+						direct, false, storageClass, isMigration)
 				}
 			}
 			log.LogDebugf("action[streamer.write] doAppendWrite status %v err %v", status, err)
@@ -435,21 +442,22 @@ begin:
 	return
 }
 
-func (s *Streamer) doOverWriteByAppend(req *ExtentRequest, direct bool, storageClass uint32) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) doOverWriteByAppend(req *ExtentRequest, direct bool, storageClass uint32, isMigration bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	// the extent key needs to be updated because when preparing the requests,
 	// the obtained extent key could be a local key which can be inconsistent with the remote key.
 	// the OpTryWriteAppend is a special case, ignore it
 	req.ExtentKey = s.extents.Get(uint64(req.FileOffset))
-	return s.doDirectWriteByAppend(req, direct, proto.OpRandomWriteAppend, storageClass)
+	return s.doDirectWriteByAppend(req, direct, proto.OpRandomWriteAppend, storageClass, isMigration)
 }
 
-func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool, storageClass uint32) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool, storageClass uint32, isMigration bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
 
 	req.ExtentKey = s.handler.key
-	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend, storageClass)
+	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend, storageClass, isMigration)
 }
 
-func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8, storageClass uint32) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8,
+	storageClass uint32, isMigration bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	var (
 		dp        *wrapper.DataPartition
 		reqPacket *Packet
@@ -585,7 +593,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	} else {
 		// This ek is just a local cache for PrepareWriteRequest, so ignore discard eks here.
 		discards := s.extents.Append(extKey, false)
-		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache, storageClass); err != nil {
+		if err = s.client.appendExtentKey(s.parentInode, s.inode, *extKey, discards, s.isCache, storageClass, isMigration); err != nil {
 			log.LogErrorf("action[doOverwriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
@@ -703,7 +711,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	return
 }
 
-func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNotEqual bool) {
+func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int, isMigration bool) (isLastEkVerNotEqual bool) {
 	storeMode := s.GetStoreMod(offset, size)
 
 	// && (s.handler == nil || s.handler != nil && s.handler.fileOffset+s.handler.size != offset)  delete ??
@@ -726,7 +734,8 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 				if isLastEkVerNotEqual {
 					seq = s.verSeq
 				}
-				handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size), dp.MediaType)
+				handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size),
+					dp.MediaType, isMigration)
 				handler.key = &proto.ExtentKey{
 					FileOffset:   currentEK.FileOffset,
 					PartitionId:  currentEK.PartitionId,
@@ -759,7 +768,8 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 	return
 }
 
-func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reUseEk bool, storageClass uint32) (total int, err error, status int32) {
+func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reUseEk bool,
+	storageClass uint32, isMigration bool) (total int, err error, status int32) {
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -772,7 +782,7 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reU
 	log.LogDebugf("doAppendWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 	if proto.IsHot(s.client.volumeType) {
 		if reUseEk {
-			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size); isLastEkVerNotEqual {
+			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size, isMigration); isLastEkVerNotEqual {
 				log.LogDebugf("doAppendWrite enter: ino(%v) tryInitExtentHandlerByLastEk worked", s.inode)
 				status = LastEKVersionNotEqual
 				return
@@ -780,7 +790,7 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reU
 		}
 		for i := 0; i < MaxNewHandlerRetry; i++ {
 			if s.handler == nil {
-				s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass)
+				s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass, isMigration)
 				s.dirty = false
 			} else if s.handler.storeMode != storeMode {
 				// store mode changed, so close open handler and start a new one
@@ -798,7 +808,7 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reU
 			s.closeOpenHandler()
 		}
 	} else {
-		s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass)
+		s.handler = NewExtentHandler(s, offset, storeMode, 0, storageClass, isMigration)
 		s.dirty = false
 		ek, err = s.handler.write(data, offset, size, direct)
 		if err == nil && ek != nil {

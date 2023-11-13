@@ -39,8 +39,8 @@ import (
 
 type SplitExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, storageClass uint32) error
 type AppendExtentKeyFunc func(parentInode, inode uint64, key proto.ExtentKey, discard []proto.ExtentKey,
-	isCache bool, storageClass uint32) error
-type GetExtentsFunc func(inode uint64, isCache bool, openForWrite bool) (uint64, uint64, []proto.ExtentKey, error)
+	isCache bool, storageClass uint32, isMigration bool) error
+type GetExtentsFunc func(inode uint64, isCache bool, openForWrite, isMigration bool) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(inode, size uint64, fullPath string) error
 type EvictIcacheFunc func(inode uint64)
 type LoadBcacheFunc func(key string, buf []byte, offset uint64, size uint32) (int, error)
@@ -453,7 +453,7 @@ func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
 	if s == nil {
 		return nil
 	}
-	return s.GetExtents()
+	return s.GetExtents(false)
 }
 
 func (client *ExtentClient) ForceRefreshExtentsCache(inode uint64) error {
@@ -512,11 +512,10 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 
 	s.once.Do(func() {
 		// TODO unhandled error
-		//TODO-chi:isMigration?
-		s.GetExtents()
+		s.GetExtents(isMigration)
 	})
 
-	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc, storageClass)
+	write, err = s.IssueWriteRequest(offset, data, flags, checkFunc, storageClass, isMigration)
 	if err != nil {
 		log.LogError(errors.Stack(err))
 		exporter.Warning(err.Error())
@@ -559,8 +558,9 @@ func (client *ExtentClient) Flush(inode uint64) error {
 	return s.IssueFlushRequest()
 }
 
-func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
-	//log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
+func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int, isMigration bool) (read int, err error) {
+	log.LogDebugf("ExtentClient Read Enter, inode(%v), len(data)(%v), offset(%v), size(%v) isMigration(%v).",
+		inode, len(data), offset, size, isMigration)
 	//t1 := time.Now()
 	if size == 0 {
 		return
@@ -573,7 +573,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	}
 
 	s.once.Do(func() {
-		s.GetExtents()
+		s.GetExtents(isMigration)
 	})
 
 	err = s.IssueFlushRequest()
