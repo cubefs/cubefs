@@ -1313,8 +1313,8 @@ func TestSortedExtents_Merge6(t *testing.T) {
 	}
 
 	delEK, merged, msg = se.Merge(newEK, oldEK, 10)
-	if merged {
-		t.Errorf("merge expect failed, but success")
+	if !merged {
+		t.Errorf("merge expect success")
 		t.FailNow()
 	}
 

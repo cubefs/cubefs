@@ -3078,7 +3078,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod,
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
-	enableRemoveDupReq bool) (err error) {
+	enableRemoveDupReq bool, truncateEKCountEveryTime int) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3213,6 +3213,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.BatchDelInodeCnt = batchDelInodeCnt
 	vol.DelInodeInterval = delInodeInterval
 	vol.enableRemoveDupReq = enableRemoveDupReq
+	vol.TruncateEKCountEveryTime = truncateEKCountEveryTime
 	if isSmart && !vol.isSmart {
 		vol.smartEnableTime = time.Now().Unix()
 	}

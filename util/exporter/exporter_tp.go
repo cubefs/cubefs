@@ -185,6 +185,16 @@ func newVolumeTP(op string, volume string, precision UMPTPPrecision) (tp TP) {
 	return newTP(fmt.Sprintf("%s_%s_%s", clusterName, volume, op), unspecifiedTime, precision)
 }
 
+func newNodeAndVolumeModuleTP(op, volName string, precision UMPTPPrecision) (tp TP) {
+	if len(volName) > 0 {
+		return multipleTP{
+			newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), unspecifiedTime, precision),
+			newTP(fmt.Sprintf("%s_%s_%s", clusterName, volName, op), unspecifiedTime, precision),
+		}
+	}
+	return newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), unspecifiedTime, precision)
+}
+
 func NewModuleTP(op string) TP {
 	return newModuleTP(op, PrecisionMs)
 }
@@ -199,6 +209,10 @@ func NewVolumeTP(op string, volume string) TP {
 
 func NewVolumeTPUs(op string, volume string) TP {
 	return newVolumeTP(op, volume, PrecisionUs)
+}
+
+func NewNodeAndVolTP(op, volName string) TP {
+	return newNodeAndVolumeModuleTP(op, volName, PrecisionMs)
 }
 
 func NewCustomKeyTP(key string) TP {

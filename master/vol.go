@@ -118,6 +118,7 @@ type Vol struct {
 	enableRemoveDupReq         bool //for remove dup client retry operation
 	CleanTrashDurationEachTime int32
 	TrashCleanMaxCountEachTime int32
+	TruncateEKCountEveryTime   int
 	NewVolName                 string
 	NewVolID                   uint64
 	OldVolName                 string
@@ -315,6 +316,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.RemoteCacheTTL = vv.RemoteCacheTTL
 	vol.enableRemoveDupReq = vv.RemoveDupReqEnable
 	vol.ConnConfig = vv.ConnConfig
+	vol.TruncateEKCountEveryTime = vv.TruncateEKCountEveryTime
 	return vol
 }
 
@@ -1324,6 +1326,7 @@ func (vol *Vol) backupConfig() *Vol {
 		RemoteCacheAutoPrepare:     vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:             vol.RemoteCacheTTL,
 		ConnConfig:                 vol.ConnConfig,
+		TruncateEKCountEveryTime:   vol.TruncateEKCountEveryTime,
 	}
 }
 
@@ -1377,6 +1380,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.RemoteCacheTTL = backupVol.RemoteCacheTTL
 	vol.enableRemoveDupReq = backupVol.enableRemoveDupReq
 	vol.ConnConfig = backupVol.ConnConfig
+	vol.TruncateEKCountEveryTime = backupVol.TruncateEKCountEveryTime
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

@@ -1806,6 +1806,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		remoteCacheBoostEnable bool
 		remoteCacheAutoPrepare bool
 		remoteCacheTTL         int64
+
+		truncateEKCountEveryTime int
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1930,6 +1932,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if truncateEKCountEveryTime, err = parseTruncateEKCountEveryTimeToUpdateVol(r, vol); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	connConfig, err = parseConnConfigToUpdateVol(r, vol)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1941,7 +1948,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
-		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq); err != nil {
+		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
+		truncateEKCountEveryTime); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2159,93 +2167,94 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		fileAvgSize = float64(stat.RealUsedSize) / float64(volInodeCount)
 	}
 	return &proto.SimpleVolView{
-		ID:                     vol.ID,
-		Name:                   vol.Name,
-		Owner:                  vol.Owner,
-		ZoneName:               vol.zoneName,
-		DpReplicaNum:           vol.dpReplicaNum,
-		MpReplicaNum:           vol.mpReplicaNum,
-		DpLearnerNum:           vol.dpLearnerNum,
-		MpLearnerNum:           vol.mpLearnerNum,
-		InodeCount:             volInodeCount,
-		DentryCount:            volDentryCount,
-		MaxMetaPartitionID:     maxPartitionID,
-		Status:                 vol.Status,
-		Capacity:               vol.Capacity,
-		FollowerRead:           vol.FollowerRead,
-		DpFolReadDelayConfig:   vol.FollowerReadDelayCfg,
-		FolReadHostWeight:      vol.FollReadHostWeight,
-		NearRead:               vol.NearRead,
-		ForceROW:               vol.ForceROW,
-		EnableWriteCache:       vol.enableWriteCache,
-		CrossRegionHAType:      vol.CrossRegionHAType,
-		NeedToLowerReplica:     vol.NeedToLowerReplica,
-		Authenticate:           vol.authenticate,
-		EnableToken:            vol.enableToken,
-		CrossZone:              vol.crossZone,
-		AutoRepair:             vol.autoRepair,
-		VolWriteMutexEnable:    vol.volWriteMutexEnable,
-		Tokens:                 vol.tokens,
-		RwDpCnt:                vol.dataPartitions.readableAndWritableCnt,
-		MpCnt:                  vol.getMpCnt(),
-		DpCnt:                  vol.getDpCnt(),
-		CreateTime:             time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
-		Description:            vol.description,
-		DpSelectorName:         vol.dpSelectorName,
-		DpSelectorParm:         vol.dpSelectorParm,
-		OSSBucketPolicy:        vol.OSSBucketPolicy,
-		DPConvertMode:          vol.DPConvertMode,
-		MPConvertMode:          vol.MPConvertMode,
-		Quorum:                 vol.getDataPartitionQuorum(),
-		DpWriteableThreshold:   vol.dpWriteableThreshold,
-		ExtentCacheExpireSec:   vol.ExtentCacheExpireSec,
-		RwMpCnt:                int(vol.getWritableMpCount()),
-		MinWritableMPNum:       vol.MinWritableMPNum,
-		MinWritableDPNum:       vol.MinWritableDPNum,
-		TrashRemainingDays:     vol.trashRemainingDays,
-		DefaultStoreMode:       vol.DefaultStoreMode,
-		ConvertState:           vol.convertState,
-		MpLayout:               vol.MpLayout,
-		IsSmart:                vol.isSmart,
-		SmartEnableTime:        time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
-		SmartRules:             vol.smartRules,
-		TotalSize:              stat.TotalSize,
-		UsedSize:               stat.RealUsedSize,
-		TotalSizeGB:            fmt.Sprintf("%.2f", float64(stat.TotalSize)/unit.GB),
-		UsedSizeGB:             fmt.Sprintf("%.2f", float64(stat.RealUsedSize)/unit.GB),
-		UsedRatio:              usedRatio,
-		FileAvgSize:            fileAvgSize,
-		CreateStatus:           vol.CreateStatus,
-		CompactTag:             vol.compactTag.String(),
-		CompactTagModifyTime:   vol.compactTagModifyTime,
-		EcEnable:               vol.EcEnable,
-		EcWaitTime:             vol.EcMigrationWaitTime,
-		EcSaveTime:             vol.EcMigrationSaveTime,
-		EcRetryWait:            vol.EcMigrationRetryWait,
-		EcTimeOut:              vol.EcMigrationTimeOut,
-		EcDataNum:              vol.EcDataNum,
-		EcParityNum:            vol.EcParityNum,
-		EcMaxUnitSize:          vol.EcMaxUnitSize,
-		ChildFileMaxCount:      vol.ChildFileMaxCount,
-		TrashCleanInterval:     vol.TrashCleanInterval,
-		BatchDelInodeCnt:       vol.BatchDelInodeCnt,
-		DelInodeInterval:       vol.DelInodeInterval,
-		UmpCollectWay:          vol.UmpCollectWay,
-		EnableBitMapAllocator:  vol.EnableBitMapAllocator,
-		TrashCleanMaxCount:     vol.TrashCleanMaxCountEachTime,
-		TrashCleanDuration:     vol.CleanTrashDurationEachTime,
-		NewVolName:             vol.NewVolName,
-		NewVolID:               vol.NewVolID,
-		OldVolName:             vol.OldVolName,
-		FinalVolStatus:         vol.FinalVolStatus,
-		RenameConvertStatus:    vol.RenameConvertStatus,
-		MarkDeleteTime:         vol.MarkDeleteTime,
-		RemoteCacheBoostPath:   vol.RemoteCacheBoostPath,
-		RemoteCacheBoostEnable: vol.RemoteCacheBoostEnable,
-		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
-		RemoteCacheTTL:         vol.RemoteCacheTTL,
-		EnableRemoveDupReq:     vol.enableRemoveDupReq,
-		ConnConfig:             &vol.ConnConfig,
+		ID:                       vol.ID,
+		Name:                     vol.Name,
+		Owner:                    vol.Owner,
+		ZoneName:                 vol.zoneName,
+		DpReplicaNum:             vol.dpReplicaNum,
+		MpReplicaNum:             vol.mpReplicaNum,
+		DpLearnerNum:             vol.dpLearnerNum,
+		MpLearnerNum:             vol.mpLearnerNum,
+		InodeCount:               volInodeCount,
+		DentryCount:              volDentryCount,
+		MaxMetaPartitionID:       maxPartitionID,
+		Status:                   vol.Status,
+		Capacity:                 vol.Capacity,
+		FollowerRead:             vol.FollowerRead,
+		DpFolReadDelayConfig:     vol.FollowerReadDelayCfg,
+		FolReadHostWeight:        vol.FollReadHostWeight,
+		NearRead:                 vol.NearRead,
+		ForceROW:                 vol.ForceROW,
+		EnableWriteCache:         vol.enableWriteCache,
+		CrossRegionHAType:        vol.CrossRegionHAType,
+		NeedToLowerReplica:       vol.NeedToLowerReplica,
+		Authenticate:             vol.authenticate,
+		EnableToken:              vol.enableToken,
+		CrossZone:                vol.crossZone,
+		AutoRepair:               vol.autoRepair,
+		VolWriteMutexEnable:      vol.volWriteMutexEnable,
+		Tokens:                   vol.tokens,
+		RwDpCnt:                  vol.dataPartitions.readableAndWritableCnt,
+		MpCnt:                    vol.getMpCnt(),
+		DpCnt:                    vol.getDpCnt(),
+		CreateTime:               time.Unix(vol.createTime, 0).Format(proto.TimeFormat),
+		Description:              vol.description,
+		DpSelectorName:           vol.dpSelectorName,
+		DpSelectorParm:           vol.dpSelectorParm,
+		OSSBucketPolicy:          vol.OSSBucketPolicy,
+		DPConvertMode:            vol.DPConvertMode,
+		MPConvertMode:            vol.MPConvertMode,
+		Quorum:                   vol.getDataPartitionQuorum(),
+		DpWriteableThreshold:     vol.dpWriteableThreshold,
+		ExtentCacheExpireSec:     vol.ExtentCacheExpireSec,
+		RwMpCnt:                  int(vol.getWritableMpCount()),
+		MinWritableMPNum:         vol.MinWritableMPNum,
+		MinWritableDPNum:         vol.MinWritableDPNum,
+		TrashRemainingDays:       vol.trashRemainingDays,
+		DefaultStoreMode:         vol.DefaultStoreMode,
+		ConvertState:             vol.convertState,
+		MpLayout:                 vol.MpLayout,
+		IsSmart:                  vol.isSmart,
+		SmartEnableTime:          time.Unix(vol.smartEnableTime, 0).Format(proto.TimeFormat),
+		SmartRules:               vol.smartRules,
+		TotalSize:                stat.TotalSize,
+		UsedSize:                 stat.RealUsedSize,
+		TotalSizeGB:              fmt.Sprintf("%.2f", float64(stat.TotalSize)/unit.GB),
+		UsedSizeGB:               fmt.Sprintf("%.2f", float64(stat.RealUsedSize)/unit.GB),
+		UsedRatio:                usedRatio,
+		FileAvgSize:              fileAvgSize,
+		CreateStatus:             vol.CreateStatus,
+		CompactTag:               vol.compactTag.String(),
+		CompactTagModifyTime:     vol.compactTagModifyTime,
+		EcEnable:                 vol.EcEnable,
+		EcWaitTime:               vol.EcMigrationWaitTime,
+		EcSaveTime:               vol.EcMigrationSaveTime,
+		EcRetryWait:              vol.EcMigrationRetryWait,
+		EcTimeOut:                vol.EcMigrationTimeOut,
+		EcDataNum:                vol.EcDataNum,
+		EcParityNum:              vol.EcParityNum,
+		EcMaxUnitSize:            vol.EcMaxUnitSize,
+		ChildFileMaxCount:        vol.ChildFileMaxCount,
+		TrashCleanInterval:       vol.TrashCleanInterval,
+		BatchDelInodeCnt:         vol.BatchDelInodeCnt,
+		DelInodeInterval:         vol.DelInodeInterval,
+		UmpCollectWay:            vol.UmpCollectWay,
+		EnableBitMapAllocator:    vol.EnableBitMapAllocator,
+		TrashCleanMaxCount:       vol.TrashCleanMaxCountEachTime,
+		TrashCleanDuration:       vol.CleanTrashDurationEachTime,
+		NewVolName:               vol.NewVolName,
+		NewVolID:                 vol.NewVolID,
+		OldVolName:               vol.OldVolName,
+		FinalVolStatus:           vol.FinalVolStatus,
+		RenameConvertStatus:      vol.RenameConvertStatus,
+		MarkDeleteTime:           vol.MarkDeleteTime,
+		RemoteCacheBoostPath:     vol.RemoteCacheBoostPath,
+		RemoteCacheBoostEnable:   vol.RemoteCacheBoostEnable,
+		RemoteCacheAutoPrepare:   vol.RemoteCacheAutoPrepare,
+		RemoteCacheTTL:           vol.RemoteCacheTTL,
+		EnableRemoveDupReq:       vol.enableRemoveDupReq,
+		ConnConfig:               &vol.ConnConfig,
+		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 	}
 }
 
@@ -3997,6 +4006,27 @@ func parseConnConfigToUpdateVol(r *http.Request, vol *Vol) (config proto.ConnCon
 	return
 }
 
+func parseTruncateEKCountEveryTimeToUpdateVol(r *http.Request, vol *Vol) (truncateEkCount int, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	countStr := r.FormValue(proto.MetaNodeTruncateEKCountKey)
+	if countStr == "" {
+		truncateEkCount = vol.TruncateEKCountEveryTime
+		return
+	}
+
+	var count int64
+	count, err = strconv.ParseInt(countStr, 10, 64)
+	if err != nil {
+
+	}
+	truncateEkCount = int(count)
+	return
+}
+
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
@@ -5366,7 +5396,8 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
+				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
+				vol.TruncateEKCountEveryTime)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5401,7 +5432,8 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
+				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
+				vol.TruncateEKCountEveryTime)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5430,7 +5462,8 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
-			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq)
+			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
+			vol.TruncateEKCountEveryTime)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

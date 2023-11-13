@@ -367,6 +367,8 @@ type volValue struct {
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
 	RemoveDupReqEnable     bool
+
+	TruncateEKCountEveryTime int
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -453,6 +455,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:         vol.RemoteCacheTTL,
 		RemoveDupReqEnable:     vol.enableRemoveDupReq,
+
+		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 	}
 	return
 }

@@ -540,7 +540,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Me
 }
 
 func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.MetaDelExtentKey) (err error) {
-	tpObj := exporter.NewVolumeTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
+	tpObj := exporter.NewNodeAndVolTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
 	defer tpObj.SetWithValue(int64(len(exts)), err)
 	log.LogDebugf("doBatchDeleteExtentsByPartition mp(%v) dp(%v), extentCnt(%v)", mp.config.PartitionId, partitionID, len(exts))
 	// get the data node view

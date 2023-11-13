@@ -300,6 +300,7 @@ const (
 	MetaNodeDelEKVolRateLimitKey  = "metaNodeDelEKVolRateLimit"
 	DataNodeNetworkFlowRatioKey   = "dataNodeNetworkFlowRatio"
 	MetaNodeDumpSnapCountKey      = "metaNodeDumpSnapCount"
+	MetaNodeTruncateEKCountKey    = "truncateEKCountEveryTime"
 )
 
 const (
@@ -1231,6 +1232,8 @@ type SimpleVolView struct {
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
 	EnableRemoveDupReq     bool
+
+	TruncateEKCountEveryTime int
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1268,7 +1271,8 @@ type VolInfo struct {
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
 	remainingDays uint32, childFileMaxCnt uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
 	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32,
-	cleanTrashDurationEachTime, cleanTrashCountEachTime int32, enableBitMapAllocator bool, enableRemoveDupReq bool) *VolInfo {
+	cleanTrashDurationEachTime, cleanTrashCountEachTime int32, enableBitMapAllocator bool, enableRemoveDupReq bool,
+	truncateEKCountEveryTime int) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
@@ -1296,6 +1300,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		CleanTrashMaxCountEachTime:    cleanTrashCountEachTime,
 		CleanTrashMaxDurationEachTime: cleanTrashDurationEachTime,
 		EnableRemoveDupReq:            enableRemoveDupReq,
+		TruncateEKCountEveryTime:      truncateEKCountEveryTime,
 	}
 }
 

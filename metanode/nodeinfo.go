@@ -24,7 +24,7 @@ const (
 	DefaultRocksDBModeMaxFsUsedPercent   = 60
 	DefaultMemModeMaxFsUsedFactorPercent = 80
 	DefaultDelEKLimitBurst               = 10 * 10000 //10w todo:待定
-	DefaultTruncateEKCount               = 10 * 10000
+	DefaultTruncateEKCount               = 1024
 )
 
 type NodeInfo struct {

@@ -38,6 +38,8 @@ func TestSetClientReaddirOpRateLimit(t *testing.T) {
 		DnFixTinyDeleteRecordLimit:  -2,
 		DataNodeRepairTaskZoneCount: -2,
 		MetaNodeDumpWaterLevel:      -2,
+		MetaNodeDumpSnapCount:       -1,
+		MetaNodeDelEKZoneRate:       -1,
 	}
 	err := testMc.AdminAPI().SetRateLimit(&info)
 	if err != nil {

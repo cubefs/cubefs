@@ -132,6 +132,7 @@ const (
 	CliFlagDelRemoteCachePath     = "delRemoteCacheBoostPath"
 	CliFlagReadConnTimeout        = "readConnTimeout"
 	CliFlagWriteConnTimeout       = "writeConnTimeout"
+	CliFlagTruncateEKCount        = "truncateEKCount"
 
 	CliOpRollBack              = "rollback"
 	CliOpGetCanEcDel           = "get-can-del"

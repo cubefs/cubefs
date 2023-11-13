@@ -371,6 +371,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optDelRemoteCacheBoostPath   string
 		optReadConnTimeoutMs      int64
 		optWriteConnTimeoutMs     int64
+		optTruncateEKCountEveryTime int
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -789,6 +790,14 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  WriteConnTimeout     : %v ms\n", vv.ConnConfig.WriteTimeoutNs/int64(time.Millisecond)))
 			}
 
+			if optTruncateEKCountEveryTime >= 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  TruncateEKCountEveryTime: %v -> %v\n", vv.TruncateEKCountEveryTime, optTruncateEKCountEveryTime))
+				vv.TruncateEKCountEveryTime = optTruncateEKCountEveryTime
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  TruncateEKCountEveryTime: %v\n", vv.TruncateEKCountEveryTime))
+			}
+
 			if err != nil {
 				return
 			}
@@ -813,7 +822,8 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
 				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
-				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL, vv.EnableRemoveDupReq, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs)
+				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL,
+				vv.EnableRemoveDupReq, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime)
 			if err != nil {
 				return
 			}
@@ -866,6 +876,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDelRemoteCacheBoostPath, CliFlagDelRemoteCachePath, "", "del cache boost path rules")
 	cmd.Flags().Int64Var(&optReadConnTimeoutMs, CliFlagReadConnTimeout, 0, "set client read connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&optWriteConnTimeoutMs, CliFlagWriteConnTimeout, 0, "set client write connection timeout, unit: ms")
+	cmd.Flags().IntVar(&optTruncateEKCountEveryTime, CliFlagTruncateEKCount, -1, "truncate EK count every time when del inode")
 	return cmd
 }
 

@@ -209,6 +209,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		sb.WriteString(fmt.Sprintf("  ReadConnTimeout       : %v ms\n", svv.ConnConfig.ReadTimeoutNs/int64(time.Millisecond)))
 		sb.WriteString(fmt.Sprintf("  WriteConnTimeout      : %v ms\n", svv.ConnConfig.WriteTimeoutNs/int64(time.Millisecond)))
 	}
+	sb.WriteString(fmt.Sprintf("  TruncateEKCountEveryTime: %v\n", svv.TruncateEKCountEveryTime))
 	return sb.String()
 }
 

@@ -251,7 +251,7 @@ const (
 	Uint32Size                     = int(unsafe.Sizeof(uint32(0)))
 	Uint64Size                     = int(unsafe.Sizeof(uint64(0)))
 
-	intervalToSyncEvictReqRecords = time.Second * 5
+	intervalToSyncEvictReqRecords = time.Minute * 2
 	defParallelismStartMPCount    = 32
 
 	defHDDParalleDumpCount        = 32

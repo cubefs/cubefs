@@ -230,6 +230,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["cleanTrashItemMaxDurationEachTime"] = partition.getCleanTrashItemMaxDurationEachTime()
 	msg["cleanTrashItemMaxCountEachTime"] = partition.getCleanTrashItemMaxCountEachTime()
 	msg["enableRemoveDupReq"] = partition.removeDupClientReqEnableState()
+	msg["truncateCountEveryTime"] = partition.GetTruncateEKCountEveryTime()
 	msg["now"] = time.Now()
 	resp.Data = msg
 	resp.Code = http.StatusOK
