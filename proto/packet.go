@@ -354,8 +354,8 @@ func (p *Packet) GetCopy() *Packet {
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)ExID(%v)ExtOffset(%v)KernelOff(%v)Type(%v)Seq(%v)",
-		p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.ExtentID, p.ExtentOffset, p.KernelOffset, p.ExtentType, p.VerSeq)
+	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)ExID(%v)ExtOffset(%v)KernelOff(%v)Type(%v)Seq(%v)Size(%v)",
+		p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.ExtentID, p.ExtentOffset, p.KernelOffset, p.ExtentType, p.VerSeq, p.Size)
 }
 
 // GetStoreType returns the store type.
