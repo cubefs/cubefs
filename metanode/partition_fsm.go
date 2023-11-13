@@ -456,7 +456,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp = mp.fsmForbiddenInodeMigration(ino)
+		resp = mp.fsmRenewalInodeForbiddenMigration(ino)
+	case opFSMUpdateExtentKeyAfterMigration:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmUpdateExtentKeyAfterMigration(ino)
 	default:
 		// do nothing
 	}
