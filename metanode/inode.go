@@ -43,8 +43,9 @@ var (
 	V3EnableSnapInodeFlag uint64 = 0x04
 	V4EnableHybridCloud   uint64 = 0x08
 	//V4CacheExtentsFlag    uint64 = 0x07
-	V4ReplicaExtentsFlag uint64 = 0x10
-	V4EBSExtentsFlag     uint64 = 0x20
+	V4ReplicaExtentsFlag   uint64 = 0x10
+	V4EBSExtentsFlag       uint64 = 0x20
+	V4MigrationExtentsFlag uint64 = 0x40
 )
 
 // Inode wraps necessary properties of `Inode` information in the file system.
@@ -96,10 +97,11 @@ type Inode struct {
 	multiSnap *InodeMultiSnap
 
 	//HybridCloud
-	StorageClass       uint32
-	HybridCouldExtents *SortedHybridCloudExtents
-	ForbiddenMigration uint32
-	WriteGeneration    uint64
+	StorageClass                uint32
+	HybridCouldExtents          *SortedHybridCloudExtents
+	ForbiddenMigration          uint32
+	WriteGeneration             uint64
+	HybridCouldExtentsMigration *SortedHybridCloudExtentsMigration
 }
 
 func (i *Inode) GetMultiVerString() string {
@@ -444,12 +446,12 @@ func NewInode(ino uint64, t uint32) *Inode {
 		NLink:      1,
 		Extents:    NewSortedExtents(),
 		//ObjExtents:         NewSortedObjExtents(),
-		multiSnap:          nil,
-		StorageClass:       proto.StorageClass_Unspecified,
-		HybridCouldExtents: NewSortedHybridCloudExtents(),
-		ForbiddenMigration: ApproverToMigration,
-		WriteGeneration:    0,
-		//		HybridCouldExtentsTemp: newSortedHybridCloudExtentsTemp(),
+		multiSnap:                   nil,
+		StorageClass:                proto.StorageClass_Unspecified,
+		HybridCouldExtents:          NewSortedHybridCloudExtents(),
+		ForbiddenMigration:          ApproverToMigration,
+		WriteGeneration:             0,
+		HybridCouldExtentsMigration: NewSortedHybridCloudExtentsMigration(),
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2
@@ -499,6 +501,16 @@ func (i *Inode) Copy() BtreeItem {
 			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedObjExtents).Clone()
 		}
 	}
+	if i.HybridCouldExtentsMigration.sortedEks != nil {
+		newIno.HybridCouldExtentsMigration.storageClass = i.HybridCouldExtentsMigration.storageClass
+		if i.migrateToReplicaSystem() {
+			newIno.HybridCouldExtentsMigration.sortedEks =
+				i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
+		} else {
+			newIno.HybridCouldExtentsMigration.sortedEks =
+				i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
+		}
+	}
 	i.RUnlock()
 	return newIno
 }
@@ -528,6 +540,16 @@ func (i *Inode) CopyDirectly() BtreeItem {
 			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedExtents).Clone()
 		} else {
 			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedObjExtents).Clone()
+		}
+	}
+	if i.HybridCouldExtentsMigration.sortedEks != nil {
+		newIno.HybridCouldExtentsMigration.storageClass = i.HybridCouldExtentsMigration.storageClass
+		if i.migrateToReplicaSystem() {
+			newIno.HybridCouldExtentsMigration.sortedEks =
+				i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
+		} else {
+			newIno.HybridCouldExtentsMigration.sortedEks =
+				i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
 		}
 	}
 	return newIno
@@ -720,6 +742,9 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	} else {
 		panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, unsupport StorageClass %v", i.StorageClass)))
 	}
+	if i.HybridCouldExtentsMigration != nil && i.HybridCouldExtentsMigration.storageClass != proto.MediaType_Unspecified {
+		i.Reserved |= V4MigrationExtentsFlag
+	}
 	//log.LogInfof("action[MarshalInodeValue] inode %v Reserved %v", i.Inode, i.Reserved)
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
@@ -787,6 +812,45 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	//		panic(err)
 	//	}
 	//}
+	if i.Reserved&V4MigrationExtentsFlag > 0 {
+		if err = binary.Write(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.storageClass); err != nil {
+			panic(err)
+		}
+		if i.HybridCouldExtentsMigration.sortedEks == nil {
+			panic(errors.New(fmt.Sprintf("MarshalInodeValue failed,HybridCouldExtentsMigration class %v ek should not be nil",
+				i.HybridCouldExtentsMigration.storageClass)))
+		}
+		if i.migrateToReplicaSystem() {
+			replicaExtents := i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			extData, err := replicaExtents.MarshalBinary(true)
+			if err != nil {
+				panic(err)
+			}
+			if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
+				panic(err)
+			}
+			if _, err = buff.Write(extData); err != nil {
+				panic(err)
+			}
+
+		} else if i.HybridCouldExtentsMigration.storageClass == proto.StorageClass_BlobStore {
+			ObjExtents := i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents)
+			objExtData, err := ObjExtents.MarshalBinary()
+			if err != nil {
+				panic(err)
+			}
+			if err = binary.Write(buff, binary.BigEndian, uint32(len(objExtData))); err != nil {
+				panic(err)
+			}
+			if _, err = buff.Write(objExtData); err != nil {
+				panic(err)
+			}
+		} else {
+			panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, unsupport migrate StorageClass %v",
+				i.HybridCouldExtentsMigration.storageClass)))
+		}
+
+	}
 
 	if err = binary.Write(buff, binary.BigEndian, i.getVer()); err != nil {
 		panic(err)
@@ -964,6 +1028,49 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 				i.HybridCouldExtents.sortedEks = ObjExtents
 			}
 		}
+		if i.Reserved&V4MigrationExtentsFlag > 0 {
+			if i.HybridCouldExtentsMigration == nil {
+				i.HybridCouldExtentsMigration = NewSortedHybridCloudExtentsMigration()
+			}
+			if err = binary.Read(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.storageClass); err != nil {
+				return
+			}
+			if i.migrateToReplicaSystem() {
+				extSize = uint32(0)
+				if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
+					return
+				}
+				fmt.Printf("ino %v migration extSize %v\n", i.Inode, extSize)
+				if extSize > 0 {
+					extBytes := make([]byte, extSize)
+					if _, err = io.ReadFull(buff, extBytes); err != nil {
+						return
+					}
+					i.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
+					if err, _ = i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).UnmarshalBinary(extBytes, v3); err != nil {
+						return
+					}
+				}
+
+			} else if i.HybridCouldExtentsMigration.storageClass == proto.StorageClass_BlobStore {
+				ObjExtSize := uint32(0)
+				if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
+					return
+				}
+				if ObjExtSize > 0 {
+					objExtBytes := make([]byte, ObjExtSize)
+					if _, err = io.ReadFull(buff, objExtBytes); err != nil {
+						return
+					}
+					ObjExtents := NewSortedObjExtents()
+					if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
+						return
+					}
+					i.HybridCouldExtentsMigration.sortedEks = ObjExtents
+				}
+			}
+		}
+
 		var seq uint64
 		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
 			return
@@ -971,6 +1078,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		if seq != 0 {
 			i.setVer(seq)
 		}
+
 	} else { //transform old-format inode to v4-format
 		if v2 || v3 {
 			if v2 {
@@ -1055,7 +1163,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		}
 
 	}
-	//if v2 || v3 {
+	//if v2 || v3 {multi_ver_test
 	//	extSize := uint32(0)
 	//	if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
 	//		return
@@ -1892,6 +2000,7 @@ type AppendExtParam struct {
 	discardExtents   []proto.ExtentKey
 	volType          int
 	isCache          bool
+	isMigration      bool
 }
 
 func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto.ExtentKey, status uint8) {
@@ -1909,6 +2018,11 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 	var extents *SortedExtents
 	if param.isCache {
 		extents = i.Extents
+	} else if param.isMigration {
+		if i.HybridCouldExtentsMigration.sortedEks == nil {
+			i.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
+		}
+		extents = i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
 	} else {
 		if i.HybridCouldExtents.sortedEks == nil {
 			i.HybridCouldExtents.sortedEks = NewSortedExtents()
@@ -1934,8 +2048,8 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 			return nil, proto.OpErr
 		}
 	}
-
-	if i.storeInReplicaSystem() {
+	//only update size when write into replicaSystem,
+	if i.storeInReplicaSystem() && param.isCache == false && param.isMigration == false {
 		size := extents.Size()
 		if i.Size < size {
 			i.Size = size
@@ -2197,14 +2311,32 @@ func (i *Inode) storeInReplicaSystem() bool {
 	return i.StorageClass == proto.StorageClass_Replica_HDD || i.StorageClass == proto.StorageClass_Replica_SSD
 }
 
-func (i *Inode) updateStorageClass(storageClass uint32) error {
+func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration bool) error {
 	i.Lock()
 	defer i.Unlock()
-	if i.StorageClass == proto.StorageClass_Unspecified {
-		i.StorageClass = storageClass
-	} else if i.StorageClass != storageClass {
-		return errors.New(fmt.Sprintf("storageClass %v not equal to inode.storageClass %v",
-			storageClass, i.StorageClass))
+	//update ek to Extents(SSD layer), no need to update storage class for Inode
+	if isCache {
+		return nil
 	}
+	if isMigration {
+		if i.HybridCouldExtentsMigration.storageClass == proto.MediaType_Unspecified {
+			i.HybridCouldExtentsMigration.storageClass = storageClass
+		} else if i.HybridCouldExtentsMigration.storageClass != storageClass {
+			return errors.New(fmt.Sprintf("storageClass %v not equal to HybridCouldExtentsMigration.storageClass %v",
+				storageClass, i.HybridCouldExtentsMigration.storageClass))
+		}
+	} else {
+		if i.StorageClass == proto.StorageClass_Unspecified {
+			i.StorageClass = storageClass
+		} else if i.StorageClass != storageClass {
+			return errors.New(fmt.Sprintf("storageClass %v not equal to inode.storageClass %v",
+				storageClass, i.StorageClass))
+		}
+	}
+
 	return nil
+}
+
+func (i *Inode) migrateToReplicaSystem() bool {
+	return i.HybridCouldExtentsMigration.storageClass == proto.MediaType_HDD || i.HybridCouldExtentsMigration.storageClass == proto.MediaType_SSD
 }
