@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"syscall"
 
 	"github.com/cubefs/cubefs/proto"
@@ -184,6 +183,7 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 
 		// step2. Check user policy
 		userInfo := new(proto.UserInfo)
+		userPolicy := new(proto.UserPolicy)
 		isOwner := false
 		if isAnonymous(param.accessKey) && apiAllowAnonymous(param.apiName) {
 			log.LogDebugf("anonymous user: requestID(%v)", GetRequestID(r))
@@ -195,34 +195,29 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			allowed = false
 			return
 		}
-		if userInfo, err = o.getUserInfoByAccessKey(param.AccessKey()); err == nil {
-			// White list for admin and root user.
-			if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
-				log.LogDebugf("user policy check: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
-					GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
-				allowed = true
-				return
-			}
-			var userPolicy = userInfo.Policy
-			isOwner = userPolicy.IsOwn(param.Bucket())
-			subdir := strings.TrimRight(param.Object(), "/")
-			if subdir == "" {
-				subdir = r.URL.Query().Get(ParamPrefix)
-			}
-			// The bucket is not owned by request user who has not been authorized, so bucket policy should be checked.
-			if !isOwner && userPolicy.IsAuthorizedS3(param.Bucket()) {
-				log.LogInfof("user policy check:  permission url(%v) subdir(%v) requestID(%v) userID(%v) accessKey(%v) volume(%v) object(%v) action(%v) authorizedVols(%v)",
-					r.URL, subdir, GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Object(), param.Action(), userPolicy.AuthorizedVols)
-				allowed = true
-				return
-			}
-		} else {
+		userInfo, err = o.getUserInfoByAccessKey(param.AccessKey())
+		if err != nil {
 			log.LogErrorf("user policy check: load user policy from master fail: requestID(%v) accessKey(%v) err(%v)",
 				GetRequestID(r), param.AccessKey(), err)
 			allowed = false
 			return
 		}
-
+		// White list for admin and root user.
+		if userInfo.UserType == proto.UserTypeRoot || userInfo.UserType == proto.UserTypeAdmin {
+			log.LogDebugf("user policy check: user is admin: requestID(%v) userID(%v) accessKey(%v) volume(%v)",
+				GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket())
+			allowed = true
+			return
+		}
+		userPolicy = userInfo.Policy
+		isOwner = userPolicy.IsOwn(param.Bucket())
+		// The bucket is not owned by request user who has not been authorized, so bucket policy should be checked.
+		if !isOwner && userPolicy.IsAuthorizedS3(param.Bucket(), param.apiName) {
+			log.LogInfof("user policy check:  permission url(%v) requestID(%v) userID(%v) accessKey(%v) volume(%v) object(%v) action(%v) authorizedVols(%v)",
+				r.URL, GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Object(), param.Action(), userPolicy.AuthorizedVols)
+			allowed = true
+			return
+		}
 		// copy api should check srcBucket policy additionally
 		if param.apiName == COPY_OBJECT || param.apiName == UPLOAD_PART_COPY {
 			err = o.allowedBySrcBucketPolicy(param, userInfo.UserID)
