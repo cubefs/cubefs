@@ -21,8 +21,10 @@ import (
 )
 
 var (
-	AKRegexp = regexp.MustCompile("^[a-zA-Z0-9]{16}$")
-	SKRegexp = regexp.MustCompile("^[a-zA-Z0-9]{32}$")
+	AKRegexp   = regexp.MustCompile("^[a-zA-Z0-9]{16}$")
+	SKRegexp   = regexp.MustCompile("^[a-zA-Z0-9]{32}$")
+	WriteS3Api = []string{"PostObject", "PutObject", "CopyObject", "CreateMultipartUpload", "UploadPart", "UploadPartCopy",
+		"CompleteMultipartUpload", "AbortMultipartUpload", "DeleteObjects", "DeleteObject"}
 )
 
 type UserType uint8
@@ -172,19 +174,27 @@ func (policy *UserPolicy) IsAuthorized(volume, subdir string, action Action) boo
 	return false
 }
 
-func (policy *UserPolicy) IsAuthorizedS3(volume string) bool {
+func (policy *UserPolicy) IsAuthorizedS3(volume, api string) bool {
 	policy.mu.RLock()
 	defer policy.mu.RUnlock()
-	if len(policy.OwnVols) > 0 {
-		for _, v := range policy.OwnVols {
-			if v == volume {
-				return true
-			}
+	perms := policy.AuthorizedVols[volume]
+	for _, perm := range perms {
+		if builtinWritablePermRegexp.MatchString(perm) {
+			return true
 		}
+		if builtinReadOnlyPermRegexp.MatchString(perm) && !contain(api, WriteS3Api) {
+			return true
+		}
+		return false
 	}
-	_, exist := policy.AuthorizedVols[volume]
-	if exist {
-		return true
+	return false
+}
+
+func contain(str string, strs []string) bool {
+	for _, v := range strs {
+		if v == str {
+			return true
+		}
 	}
 	return false
 }
