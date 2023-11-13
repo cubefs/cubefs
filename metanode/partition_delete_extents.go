@@ -67,6 +67,9 @@ const (
 	defDeleteEKRecordFilesMaxTotalSize = 60 * unit.MB
 
 	MaxMetaDataDiskUsedFactor = 0.5
+
+	defAdjustHourMinuet			= 50
+	defEKDelDelaySecond         = 60 * 10		//10min
 )
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
@@ -86,7 +89,7 @@ func (mp *metaPartition) startToDeleteExtents() {
 	go mp.deleteExtentsFromDb()
 }
 
-func updateKeyToNow(data []byte) {
+func updateKeyToNowWithAdjust(data []byte, addHourFlag bool) {
 	now := time.Now()
 	now.Add(24 * time.Hour)
 	//YY YY MM DD HH
@@ -96,7 +99,13 @@ func updateKeyToNow(data []byte) {
 	data[monthKeyIndex] = (byte)(now.Month())
 	data[dayKeyIndex] = (byte)(now.Day())
 	data[hourKeyIndex] = (byte)(now.Hour())
+	if addHourFlag && now.Minute() > defAdjustHourMinuet {
+		data[hourKeyIndex] += 1
+	}
 	return
+}
+func updateKeyToNow(data []byte) {
+	updateKeyToNowWithAdjust(data, false)
 }
 
 func updateKeyToDate(key []byte, date uint64) {
@@ -226,7 +235,7 @@ func (mp *metaPartition) appendDelExtentsToDb() {
 			}
 		case eks := <-mp.extDelCh:
 			key := make([]byte, dbExtentKeySize)
-			updateKeyToNow(key)
+			updateKeyToNowWithAdjust(key, true)
 			if err := mp.addDelExtentToDb(key, eks); err != nil {
 				select {
 				case mp.extDelCh <- eks:
@@ -236,55 +245,6 @@ func (mp *metaPartition) appendDelExtentsToDb() {
 			}
 		}
 	}
-}
-
-func (mp *metaPartition) fsmSyncDelExtents(data []byte) {
-	eks := make([]proto.MetaDelExtentKey, 0)
-	key := make([]byte, dbExtentKeySize)
-	extDeleteCursor := binary.BigEndian.Uint64(data)
-	buff := bytes.NewBuffer(data[8:])
-	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, data:%v", mp.config.PartitionId, extDeleteCursor, data)
-	for {
-		if buff.Len() == 0 {
-			break
-		}
-
-		if buff.Len() < 24 {
-			log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; recv err packet; broken ek record, buff len:%d",
-				mp.config.PartitionId, extDeleteCursor, buff.Len())
-			return
-		}
-
-		ek := proto.ExtentKey{}
-		if err := ek.UnmarshalDbKeyByBuffer(buff); err != nil {
-			log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; recv err packet; unmarshal failed:%v",
-				mp.config.PartitionId, extDeleteCursor, err.Error())
-			return
-		}
-		if proto.IsTinyExtent(ek.ExtentId) {
-			continue
-		}
-
-		eks = append(eks, *ek.ConvertToMetaDelEk(0, 0, 0))
-	}
-
-	updateKeyToDate(key, extDeleteCursor)
-	//Update the key to next day. ignore day 32 item as it will be deleted by next month
-	key[dayKeyIndex] += 1
-
-	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, retry date:%d", mp.config.PartitionId, extDeleteCursor, getDateInKey(key))
-	if err := mp.addDelExtentToDb(key, eks); err != nil {
-		log.LogWarnf("Mp[%d] follower recv sync extent delete info, date:%d; commit retry eks failed:%s", mp.config.PartitionId, extDeleteCursor, err.Error())
-	}
-
-	if _, ok := mp.IsLeader(); !ok {
-		select {
-		case mp.extDelCursor <- extDeleteCursor:
-		default:
-		}
-	}
-	log.LogInfof("Mp[%d] follower recv sync extent delete info, date:%d, err count:%d finished", mp.config.PartitionId, extDeleteCursor, len(eks))
-	return
 }
 
 func (mp *metaPartition) fsmSyncDelExtentsV2(data []byte) {
@@ -402,6 +362,8 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 	cnt := 0
 	var delHandle interface{}
 
+	delStartTime := time.Now().Add(time.Second * (-defEKDelDelaySecond)).Unix()
+
 	delCursor = cur
 	delHandle, err = mp.db.CreateBatchHandler()
 	if err != nil {
@@ -438,6 +400,11 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 		ino := uint64(0)
 		if len(v) > 1 {
 			ek.UnMarshDelEkValue(v)
+		}
+
+		if ek.TimeStamp != 0 && ek.TimeStamp > delStartTime {
+			//del ek in 10min, wait next term
+			return true, nil
 		}
 
 		ekDelTimeStamp := getDateInKey(k)

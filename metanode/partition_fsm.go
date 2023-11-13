@@ -374,8 +374,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		resp, err = mp.fsmBatchCleanDeletedDentry(dbWriteHandle, batch)
 	case opFSMInternalCleanDeletedInode:
 		err = mp.internalClean(dbWriteHandle, msg.V)
-	case opFSMExtentDelSync:
-		mp.fsmSyncDelExtents(msg.V)
 	case opFSMExtentDelSyncV2:
 		mp.fsmSyncDelExtentsV2(msg.V)
 	case opFSMSyncEvictReqRecords:

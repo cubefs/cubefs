@@ -140,7 +140,7 @@ func AddExtentsToDB(t *testing.T, num, pid int, wg *sync.WaitGroup) {
 	//gen eks
 	key := make([]byte, dbExtentKeySize)
 	eks := generateEk(num)
-	updateKeyToNow(key)
+	updateKeyToNowWithAdjust(key, true)
 
 	//add eks to db
 	mp.extDelCh <- eks
@@ -177,7 +177,7 @@ func LeaderCleanExpiredEk(t *testing.T, num, pid int, wg *sync.WaitGroup) {
 	//gen eks
 	key := make([]byte, dbExtentKeySize)
 	eks := generateEk(num)
-	updateKeyToNow(key)
+	updateKeyToNowWithAdjust(key, true)
 
 	//add eks to db
 	mp.extDelCh <- eks
@@ -228,7 +228,7 @@ func FollowerSyncExpiredEk(t *testing.T, num, pid int, wg *sync.WaitGroup) {
 	//gen eks
 	key := make([]byte, dbExtentKeySize)
 	eks := generateEk(num)
-	updateKeyToNow(key)
+	updateKeyToNowWithAdjust(key, true)
 
 	//add eks to db
 	mp.extDelCh <- eks
@@ -310,7 +310,7 @@ func SnapResetDb(t *testing.T, num, pid int, wg *sync.WaitGroup) {
 
 	//gen eks
 	key := make([]byte, dbExtentKeySize)
-	updateKeyToNow(key)
+	updateKeyToNowWithAdjust(key, true)
 	eks := generateEk(num)
 
 	//add eks to db
@@ -377,7 +377,7 @@ func applySnapshot(t *testing.T, num int, rocksEnable bool, pid int, wg *sync.Wa
 	//gen eks
 	key := make([]byte, dbExtentKeySize)
 	eks := generateEk(num)
-	updateKeyToNow(key)
+	updateKeyToNowWithAdjust(key, true)
 
 	mp.extDelCh<-eks
 	//add eks to db
@@ -458,7 +458,7 @@ func extentDelFailedRetryTest(t *testing.T, num int, pid int, wg *sync.WaitGroup
 	//gen eks
 	key := make([]byte, dbExtentKeySize)
 	eks := generateEk(num)
-	updateKeyToNow(key)
+	updateKeyToNowWithAdjust(key, true)
 
 	mp.extDelCh<-eks
 	mp2.extDelCh<-eks
