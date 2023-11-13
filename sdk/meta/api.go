@@ -1378,7 +1378,7 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 		oldInfo, _ = mw.InodeGet_ll(inode)
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false, storageClass)
+	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false, storageClass, false)
 	if err != nil || status != statusOK {
 		log.LogErrorf("SplitExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
 		return statusToErrno(status)
@@ -1401,7 +1401,7 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey,
-	discard []proto.ExtentKey, isCache bool, storageClass uint32) error {
+	discard []proto.ExtentKey, isCache bool, storageClass uint32, isMigration bool) error {
 	if !proto.IsStorageClassReplica(mw.GetStorageClass()) && isCache != true {
 		return errors.New(fmt.Sprintf("Current media type %v isCache %v do not support AppendExtentKey",
 			mw.DefaultStorageClass, isCache))
@@ -1415,7 +1415,7 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		oldInfo, _ = mw.InodeGet_ll(inode)
 	}
 
-	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache, storageClass)
+	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache, storageClass, isMigration)
 	if err != nil || status != statusOK {
 		log.LogErrorf("MetaWrapper AppendExtentKey: inode(%v) ek(%v) local discard(%v) err(%v) status(%v)", inode, ek, discard, err, status)
 		return statusToErrno(status)
@@ -1472,7 +1472,7 @@ func (mw *MetaWrapper) AppendObjExtentKeys(inode uint64, eks []proto.ObjExtentKe
 	return nil
 }
 
-func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite, isMigration bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
 	//mediaType := mw.GetStorageClass()
 	//if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD {
 	//	return 0, 0, nil, errors.New(fmt.Sprintf("Current media type %v do not support GetExtents",
@@ -1484,7 +1484,7 @@ func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite bool) (gen
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	resp, err := mw.getExtents(mp, inode, isCache, openForWrite)
+	resp, err := mw.getExtents(mp, inode, isCache, openForWrite, isMigration)
 	if err != nil {
 		if resp != nil {
 			err = statusToErrno(resp.Status)
@@ -2543,4 +2543,19 @@ func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 	}
 	return nil
 
+}
+
+func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys interface{},
+	writeGen uint64) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		return syscall.ENOENT
+	}
+	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, extentKeys, writeGen)
+	if err != nil || status != statusOK {
+		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) writeGen(%v)  err(%v) status(%v)",
+			inode, storageType, extentKeys, writeGen, err, status)
+		return statusToErrno(status)
+	}
+	return nil
 }
