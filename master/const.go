@@ -54,6 +54,7 @@ const (
 	authenticateKey                     = "authenticate"
 	akKey                               = "ak"
 	keywordsKey                         = "keywords"
+	moduleKey                           = "modul"
 	zoneNameKey                         = "zoneName"
 	autoRepairKey                       = "autoRepair"
 	tokenKey                            = "token"
@@ -412,4 +413,8 @@ const (
 	userPrefix     = keySeparator + userAcronym + keySeparator
 	volUserPrefix  = keySeparator + volUserAcronym + keySeparator
 	TokenPrefix    = keySeparator + tokenAcronym + keySeparator
+)
+
+const (
+	rateLimitDefaultVal = "_"
 )

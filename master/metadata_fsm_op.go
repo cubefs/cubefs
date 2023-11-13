@@ -17,11 +17,12 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/exporter"
 
 	bsProto "github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -46,6 +47,8 @@ type clusterValue struct {
 	DataNodeReqZoneVolOpRateLimitMap    map[string]map[string]map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap      map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
+	NetworkFlowRatio                    map[string]uint64
+	RateLimit                           map[string]map[string]map[int]bsProto.AllLimitGroup
 	FlashNodeLimitMap                   map[string]uint64
 	FlashNodeVolLimitMap                map[string]map[string]uint64
 	MetaNodeReqRateLimit                uint64
@@ -117,11 +120,13 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeRepairTaskCount:             c.cfg.DataNodeRepairTaskCount,
 		DataNodeRepairTaskSSDZoneLimit:      c.cfg.DataNodeRepairSSDZoneTaskCount,
 		DataNodeRepairTaskCountZoneLimit:    c.cfg.DataNodeRepairTaskCountZoneLimit,
+		NetworkFlowRatio:                    c.cfg.NetworkFlowRatio,
 		DataNodeReqZoneRateLimitMap:         c.cfg.DataNodeReqZoneRateLimitMap,
 		DataNodeReqZoneOpRateLimitMap:       c.cfg.DataNodeReqZoneOpRateLimitMap,
 		DataNodeReqZoneVolOpRateLimitMap:    c.cfg.DataNodeReqZoneVolOpRateLimitMap,
 		DataNodeReqVolPartRateLimitMap:      c.cfg.DataNodeReqVolPartRateLimitMap,
 		DataNodeReqVolOpPartRateLimitMap:    c.cfg.DataNodeReqVolOpPartRateLimitMap,
+		RateLimit:                           c.cfg.RateLimit,
 		FlashNodeLimitMap:                   c.cfg.FlashNodeLimitMap,
 		FlashNodeVolLimitMap:                c.cfg.FlashNodeVolLimitMap,
 		MetaNodeReqRateLimit:                c.cfg.MetaNodeReqRateLimit,
@@ -1052,6 +1057,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if c.cfg.DataNodeRepairTaskCountZoneLimit == nil {
 			c.cfg.DataNodeRepairTaskCountZoneLimit = make(map[string]uint64)
 		}
+		c.cfg.NetworkFlowRatio = cv.NetworkFlowRatio
+		if c.cfg.NetworkFlowRatio == nil {
+			c.cfg.NetworkFlowRatio = make(map[string]uint64)
+		}
 		c.cfg.DataNodeReqZoneRateLimitMap = cv.DataNodeReqZoneRateLimitMap
 		if c.cfg.DataNodeReqZoneRateLimitMap == nil {
 			c.cfg.DataNodeReqZoneRateLimitMap = make(map[string]uint64)
@@ -1071,6 +1080,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.DataNodeReqVolOpPartRateLimitMap = cv.DataNodeReqVolOpPartRateLimitMap
 		if c.cfg.DataNodeReqVolOpPartRateLimitMap == nil {
 			c.cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
+		}
+		c.cfg.RateLimit = cv.RateLimit
+		if c.cfg.RateLimit == nil {
+			c.cfg.RateLimit = make(map[string]map[string]map[int]bsProto.AllLimitGroup)
 		}
 		c.cfg.FlashNodeVolLimitMap = cv.FlashNodeVolLimitMap
 		if c.cfg.FlashNodeVolLimitMap == nil {

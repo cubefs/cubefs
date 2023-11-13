@@ -3,7 +3,8 @@ package multirate
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
+	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,151 +14,170 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// BASIC CONCEPTS:
+// Event     An event can be a request or task. An event has many properties and statistic.
+// Property  Such as volume, opcode, disk, partition, etc.
+// Statistic Such as event count, network flowing in bytes, network flowing out bytes, each of
+//           them can has three dimensions: total, for each disk, for each partition.
+// Rule      A rule is a combination of properties and rate limits. Each property in a rule has
+//           three states: not exists, has a specific value, has a default value.
+//           Example: for each volume and opcode read, the total request rate limit is 100, the
+//           request rate limit for each disk is 10. In this rule, property volume has a default
+//           value, property opcode has a specific value, property disk doesn't exist.
+//           For an event which has n properties, there are 3^n possible rules.
+//
+//
+// HTTP API: /multirate/set?status=(1 on | 0 off | -1 clear all rules and limiters)
+//
+
 type PropertyType int
+type propertyState int
+type statType int
 
 const (
-	PropertyTypeNetwork PropertyType = iota
-	PropertyTypeVol
+	PropertyTypeVol PropertyType = iota
 	PropertyTypeOp
 	PropertyTypeDisk
+	PropertyTypePartition
+	propertyTypeMax // count of property types
 )
 
 const (
-	separator  = "_"
-	NetworkIn  = "in"
-	NetworkOut = "out"
+	propertyStateNotExist propertyState = iota
+	propertyStateHasName
+	propertyStateDefaultName
+)
+
+const (
+	statTypeCount statType = iota
+	statTypeInBytes
+	statTypeOutBytes
+	statTypeMax // count of stat types
+)
+
+const (
+	// don't use separator which may be used as volume name, such as _.-
+	separator = ":"
+
+	TimeoutUseDefault = 0
+	TimeoutNotWait    = -1
+	TimeoutWait       = -2
+
+	defaultTimeout = time.Second
+
+	controlSetStatus = "/multirate/set"
+	statusKey        = "status"
 )
 
 type Property struct {
-	Type PropertyType
-	Name string
+	Type  PropertyType
+	Value string
 }
-
-type PropertyConstruct struct {
-	Properties Properties
-}
-
 type Properties []Property
 
-func NewPropertyConstruct() *PropertyConstruct {
-	return &PropertyConstruct{
-		Properties: make([]Property, 0),
+type LimiterWithTimeout struct {
+	limiter *rate.Limiter
+	timeout time.Duration
+}
+type LimiterGroup [statTypeMax]LimiterWithTimeout
+type LimitGroup [statTypeMax]rate.Limit
+type BurstGroup [statTypeMax]int
+
+type Rule struct {
+	properties   Properties
+	defaultCount int
+	state        [propertyTypeMax]propertyState
+	limit        LimitGroup
+	burst        BurstGroup
+	timeout      time.Duration
+}
+
+type Stat struct {
+	Count    int
+	InBytes  int
+	OutBytes int
+}
+
+type MultiLimiter struct {
+	status   bool
+	rules    sync.Map // map[name]*Rule
+	limiters sync.Map // map[name]LimiterGroup
+}
+
+func (t PropertyType) String() string {
+	switch t {
+	case PropertyTypeVol:
+		return "Volume"
+	case PropertyTypeOp:
+		return "Opcode"
+	case PropertyTypeDisk:
+		return "Disk"
+	case PropertyTypePartition:
+		return "Partition"
+	default:
+		return fmt.Sprintf("Unkown(%v)", int(t))
 	}
 }
 
-func (construct *PropertyConstruct) Result() Properties {
-	return construct.Properties
-}
-func (construct *PropertyConstruct) AddVol(vol string) *PropertyConstruct {
-	construct.Properties = append(construct.Properties, Property{Type: PropertyTypeVol, Name: vol})
-	return construct
-}
-
-func (construct *PropertyConstruct) AddOp(op int) *PropertyConstruct {
-	construct.Properties = append(construct.Properties, Property{Type: PropertyTypeOp, Name: strconv.Itoa(op)})
-	return construct
-}
-
-func (construct *PropertyConstruct) AddPath(disk string) *PropertyConstruct {
-	construct.Properties = append(construct.Properties, Property{Type: PropertyTypeDisk, Name: disk})
-	return construct
+func (t statType) String() string {
+	switch t {
+	case statTypeCount:
+		return "Count"
+	case statTypeInBytes:
+		return "InBytes"
+	case statTypeOutBytes:
+		return "OutBytes"
+	default:
+		return fmt.Sprintf("Unkown(%v)", int(t))
+	}
 }
 
-func (construct *PropertyConstruct) AddNetIn() *PropertyConstruct {
-	construct.Properties = append(construct.Properties, Property{Type: PropertyTypeNetwork, Name: NetworkIn})
-	return construct
+func (p Property) String() string {
+	return fmt.Sprintf("{Type:%v, Value:%v}", p.Type, p.Value)
 }
 
-func (construct *PropertyConstruct) AddNetOut() *PropertyConstruct {
-	construct.Properties = append(construct.Properties, Property{Type: PropertyTypeNetwork, Name: NetworkOut})
-	return construct
+func (p Property) name() string {
+	// PropertyType may have a customed String(), p.Type should use placeholder %d instead of %v here
+	return fmt.Sprintf("%d%v", p.Type, p.Value)
 }
 
-func (p Property) RuleName() string {
-	return fmt.Sprintf("%v%v", p.Type, p.Name)
+func (ps Properties) sort() {
+	sort.Slice(ps, func(i, j int) bool {
+		return ps[i].Type < ps[j].Type
+	})
 }
 
-func (p Property) DefaultRuleName() string {
-	return fmt.Sprintf("%v", p.Type)
-}
-
-func (ps Properties) haveDefaultName() bool {
+func (ps Properties) defaultNameCount() int {
+	count := 0
 	for _, p := range ps {
-		if p.Name == "" {
-			return true
+		if p.Value == "" {
+			count++
 		}
 	}
-	return false
+	return count
 }
 
-func (ps Properties) RuleName() string {
+func (ps Properties) name() string {
+	var sb strings.Builder
+	for _, p := range ps {
+		sb.WriteString(strconv.Itoa(int(p.Type)))
+		sb.WriteString(p.Value)
+		sb.WriteString(separator)
+	}
+	return strings.TrimSuffix(sb.String(), separator)
+}
+
+func (ps Properties) match(name string) bool {
 	var strs []string
 	for _, p := range ps {
-		strs = append(strs, p.RuleName())
+		strs = append(strs, p.name())
 	}
-	sort.Slice(strs, func(i, j int) bool {
-		return strs[i] < strs[j]
-	})
-	return strings.Join(strs, separator)
-}
-
-// get all 2-degree default rule names
-// e.g., []Property{{PropertyTypeVol, "vol"}, {PropertyTypeOp, "write"}} has following rules:
-// 1vol_2write, 1_2write, 1vol_2, 1_2
-func (ps Properties) DefaultRuleName() (names []string) {
-	l := len(ps)
-	for i := 0; i < l; i++ {
-		for j := i + 1; j < l; j++ {
-			str1 := ps[i].RuleName()
-			str2 := ps[j].RuleName()
-			strs := []string{str1, str2}
-			sort.Slice(strs, func(i, j int) bool {
-				return strs[i] < strs[j]
-			})
-			names = append(names, strings.Join(strs, separator))
-
-			str1 = ps[i].RuleName()
-			str2 = ps[j].DefaultRuleName()
-			strs = []string{str1, str2}
-			sort.Slice(strs, func(i, j int) bool {
-				return strs[i] < strs[j]
-			})
-			names = append(names, strings.Join(strs, separator))
-
-			str1 = ps[i].DefaultRuleName()
-			str2 = ps[j].RuleName()
-			strs = []string{str1, str2}
-			sort.Slice(strs, func(i, j int) bool {
-				return strs[i] < strs[j]
-			})
-			names = append(names, strings.Join(strs, separator))
-
-			str1 = ps[i].DefaultRuleName()
-			str2 = ps[j].DefaultRuleName()
-			strs = []string{str1, str2}
-			sort.Slice(strs, func(i, j int) bool {
-				return strs[i] < strs[j]
-			})
-			names = append(names, strings.Join(strs, separator))
-		}
-	}
-	return
-}
-
-func (ps Properties) includeName(name string) bool {
-	var strs []string
-	for _, p := range ps {
-		strs = append(strs, p.RuleName())
-	}
-	sort.Slice(strs, func(i, j int) bool {
-		return strs[i] < strs[j]
-	})
 	names := strings.Split(name, separator)
 	if len(names) != len(strs) {
 		return false
 	}
 	for i := 0; i < len(strs); i++ {
-		// if a property has an empty name, its rule name len is 1
+		// if a property has an empty name, its name len is 1
 		if strs[i] != names[i] && len(strs[i]) > 1 {
 			return false
 		}
@@ -165,178 +185,383 @@ func (ps Properties) includeName(name string) bool {
 	return true
 }
 
-type Rule struct {
-	Properties
-	Limit rate.Limit
-	Burst int
+func (ps Properties) state() (re [propertyTypeMax]propertyState) {
+	for _, p := range ps {
+		if p.Value == "" {
+			re[p.Type] = propertyStateDefaultName
+		} else {
+			re[p.Type] = propertyStateHasName
+		}
+	}
+	return
 }
 
-type MultiLimiter struct {
-	rules    sync.Map // map[string]*Rule
-	limiters sync.Map // map[string]*rate.Limiter
+func (s Stat) index() (re [statTypeMax]bool) {
+	if s.Count > 0 {
+		re[statTypeCount] = true
+	}
+	if s.InBytes > 0 {
+		re[statTypeInBytes] = true
+	}
+	if s.OutBytes > 0 {
+		re[statTypeOutBytes] = true
+	}
+	return re
 }
 
-// empty name means the rule is for every object of the same type
-func NewRule(t PropertyType, name string, limit int, burst int) *Rule {
-	properties := []Property{{Type: t, Name: name}}
-	return NewMultiPropertyRule(properties, limit, burst)
+func (s Stat) val(t statType) (re int) {
+	if t == statTypeCount {
+		re = s.Count
+	} else if t == statTypeInBytes {
+		re = s.InBytes
+	} else if t == statTypeOutBytes {
+		re = s.OutBytes
+	}
+	return
 }
 
-func NewMultiPropertyRule(p Properties, limit int, burst int) *Rule {
+func (g LimitGroup) haveLimit() bool {
+	for _, l := range g {
+		if l > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (g LimiterGroup) String() string {
+	var strs []string
+	for i, l := range g {
+		if l.limiter != nil {
+			strs = append(strs, fmt.Sprintf("type(%v) addr(%p) limit(%v) timeout(%v)", statType(i), l.limiter, l.limiter.Limit(), l.timeout))
+		}
+	}
+	return strings.Join(strs, ", ")
+}
+
+func NewRule(ps Properties, limit LimitGroup, burst BurstGroup) *Rule {
 	r := new(Rule)
-	r.Properties = p
-	r.Limit = rate.Limit(limit)
-	r.Burst = burst
+	r.properties = ps
+	r.properties.sort()
+	r.defaultCount = r.properties.defaultNameCount()
+	r.state = r.properties.state()
+	r.limit = limit
+	r.burst = burst
 	return r
+}
+
+func NewRuleWithTimeout(ps Properties, limit LimitGroup, burst BurstGroup, timeout time.Duration) *Rule {
+	rule := NewRule(ps, limit, burst)
+	rule.timeout = timeout
+	return rule
+}
+
+func (r *Rule) String() string {
+	return fmt.Sprintf("properties:%v, limit:%v, burst:%v", r.properties, r.limit, r.burst)
+}
+
+func (r *Rule) match(ps Properties) (bool, string) {
+	var eventPs [statTypeMax]string
+	for _, p := range ps {
+		if p.Type >= propertyTypeMax {
+			continue
+		}
+		eventPs[p.Type] = p.Value
+	}
+
+	// if the rule has a property and the event doesn't have it, then not match
+	for i, state := range r.state {
+		if state != propertyStateNotExist && eventPs[i] == "" {
+			return false, ""
+		}
+	}
+
+	var sb strings.Builder
+	isMatch := true
+	for i, p := range eventPs {
+		if r.state[i] != propertyStateNotExist {
+			sb.WriteString(strconv.Itoa(i))
+			sb.WriteString(p)
+			sb.WriteString(separator)
+		}
+	}
+	for _, p := range r.properties {
+		if p.Value != eventPs[p.Type] && len(p.Value) > 0 {
+			isMatch = false
+		}
+	}
+	return isMatch, strings.TrimSuffix(sb.String(), separator)
 }
 
 func NewMultiLimiter() *MultiLimiter {
 	ml := new(MultiLimiter)
+	ml.status = true
 	return ml
+}
+
+func NewMultiLimiterWithHandler() *MultiLimiter {
+	ml := NewMultiLimiter()
+	http.HandleFunc(controlSetStatus, ml.handlerSetStatus)
+	return ml
+}
+
+func (ml *MultiLimiter) String() string {
+	var builder strings.Builder
+	builder.WriteString("rules: ")
+	ml.rules.Range(func(k, v interface{}) bool {
+		rule := v.(*Rule)
+		builder.WriteString(fmt.Sprintf("name(%v) limit(%v), ", k.(string), rule.limit))
+		return true
+	})
+	builder.WriteString("limiters: ")
+	ml.limiters.Range(func(k, v interface{}) bool {
+		builder.WriteString(fmt.Sprintf("name(%v) limiter(%v), ", k.(string), v.(LimiterGroup)))
+		return true
+	})
+	return strings.TrimRight(builder.String(), ", ")
+}
+
+func (ml *MultiLimiter) GetRulesDesc() string {
+	var builder strings.Builder
+	ml.rules.Range(func(k, v interface{}) bool {
+		rule := v.(*Rule)
+		builder.WriteString(rule.String())
+		builder.WriteString("\n")
+		return true
+	})
+	return builder.String()
 }
 
 func (ml *MultiLimiter) AddRule(r *Rule) *MultiLimiter {
-	name := r.Properties.RuleName()
-	ml.rules.Store(name, r)
-	if r.Properties.haveDefaultName() {
-		return ml
+	name := r.properties.name()
+	if !r.limit.haveLimit() {
+		return ml.ClearRule(r.properties)
 	}
-	l, ok := ml.limiters.Load(name)
-	if !ok {
-		ml.limiters.Store(name, rate.NewLimiter(r.Limit, r.Burst))
-	} else {
-		limiter, ok := l.(*rate.Limiter)
-		if ok {
-			limiter.SetLimit(r.Limit)
-			limiter.SetBurst(r.Burst)
+	val, ok := ml.rules.Load(name)
+	ml.rules.Store(name, r)
+	if ok {
+		oldRule := val.(*Rule)
+		if !reflect.DeepEqual(oldRule.limit, r.limit) || oldRule.timeout != r.timeout {
+			ml.clearLimiter(r.properties)
 		}
 	}
 	return ml
 }
 
-func (ml *MultiLimiter) ClearRule(p Properties) *MultiLimiter {
-	name := p.RuleName()
-	ml.rules.Delete(name)
-	if !p.haveDefaultName() {
-		ml.limiters.Delete(name)
-		return ml
-	}
+func (ml *MultiLimiter) ClearRule(ps Properties) *MultiLimiter {
+	ps.sort()
+	ml.rules.Delete(ps.name())
+	ml.clearLimiter(ps)
+	return ml
+}
 
+func (ml *MultiLimiter) clearLimiter(ps Properties) {
 	ml.limiters.Range(func(k, v interface{}) bool {
-		name = k.(string)
-		if _, ok := ml.rules.Load(name); ok {
-			return true
-		}
-		if p.includeName(name) {
+		name := k.(string)
+		if ps.match(name) {
 			ml.limiters.Delete(name)
 		}
 		return true
 	})
-	return ml
 }
 
-func (ml *MultiLimiter) Wait(ctx context.Context, properties Properties) error {
-	return ml.WaitN(ctx, 1, properties)
+func (ml *MultiLimiter) clearAll() {
+	ml.rules.Range(func(k, v interface{}) bool {
+		ml.rules.Delete(k)
+		return true
+	})
+	ml.limiters.Range(func(k, v interface{}) bool {
+		ml.limiters.Delete(k)
+		return true
+	})
 }
 
-const defaultLimiterTimeout = time.Second * 3
-
-var limiterOpTimeoutMap = map[int]time.Duration{
-	int(proto.OpRead):                 proto.ReadDeadlineTime * time.Second,
-	int(proto.OpStreamRead):           proto.ReadDeadlineTime * time.Second,
-	int(proto.OpWrite):                proto.WriteDeadlineTime * time.Second,
-	int(proto.OpCreateExtent):         proto.WriteDeadlineTime * time.Second,
-	int(proto.OpTinyExtentRepairRead): time.Second,
-	int(proto.OpExtentRepairRead):     5 * time.Second,
-	proto.OpRepairWrite_:              time.Second,
+func (ml *MultiLimiter) setStatus(status bool) {
+	ml.status = status
 }
 
-func getLimitOpTimeout(opcode int) time.Duration {
-	if timeout, ok := limiterOpTimeoutMap[opcode]; !ok {
-		return defaultLimiterTimeout
-	} else {
-		return timeout
-	}
+func (ml *MultiLimiter) Wait(ctx context.Context, ps Properties) error {
+	return ml.WaitN(ctx, ps, Stat{Count: 1})
 }
 
-func (ml *MultiLimiter) WaitN(ctx context.Context, n int, properties Properties) error {
-	var curContext context.Context
-	var cancel context.CancelFunc
+func (ml *MultiLimiter) WaitN(ctx context.Context, ps Properties, stat Stat) error {
 	if ctx == nil {
-		curContext, cancel = context.WithTimeout(context.Background(), getLimitOpTimeout(proto.OpRepairWrite_))
-		defer cancel()
-	} else {
-		curContext = ctx
+		return fmt.Errorf("nil context")
 	}
-	limiters := ml.getLimiters(properties)
-	for _, l := range limiters {
-		if err := l.WaitN(curContext, n); err != nil {
-			return err
+	return ml.waitOrAlowN(ctx, ps, stat, false)
+}
+
+func (ml *MultiLimiter) Allow(ps Properties) bool {
+	return ml.AllowN(ps, Stat{Count: 1})
+}
+
+func (ml *MultiLimiter) AllowN(ps Properties, stat Stat) bool {
+	err := ml.waitOrAlowN(nil, ps, stat, false)
+	return err == nil
+}
+
+// if ctx doesn't has Deadline, use rule timeout
+func (ml *MultiLimiter) WaitUseDefaultTimeout(ctx context.Context, ps Properties) error {
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
+	return ml.WaitNUseDefaultTimeout(ctx, ps, Stat{Count: 1})
+}
+
+func (ml *MultiLimiter) WaitNUseDefaultTimeout(ctx context.Context, ps Properties, stat Stat) error {
+	return ml.waitOrAlowN(ctx, ps, stat, true)
+}
+
+func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Stat, useDefault bool) (err error) {
+	if !ml.status {
+		return nil
+	}
+
+	statIndex := stat.index()
+	groups := ml.getLimiters(ps)
+	for _, group := range groups {
+		for i, limiterWithTimeout := range group {
+			limiter := limiterWithTimeout.limiter
+			if limiter == nil || !statIndex[i] {
+				continue
+			}
+
+			// ctx is nil only in Allow()
+			if ctx == nil {
+				if !limiter.AllowN(time.Now(), stat.val(statType(i))) {
+					err = fmt.Errorf("not allow")
+					return
+				}
+				continue
+			}
+
+			timeout := limiterWithTimeout.timeout
+			if timeout == 0 {
+				timeout = defaultTimeout
+			}
+			_, hasDeadline := ctx.Deadline()
+			var cancel context.CancelFunc
+			if !hasDeadline && useDefault {
+				ctx, cancel = context.WithTimeout(context.Background(), timeout)
+				defer cancel()
+			}
+			if err = limiter.WaitN(ctx, stat.val(statType(i))); err != nil {
+				return
+			}
+		}
+	}
+	return
+}
+
+// may return duplicate limiter groups
+func (ml *MultiLimiter) getLimiters(ps Properties) (re []LimiterGroup) {
+	ml.iterate(ps, func(name string, limit LimitGroup, burst BurstGroup, timeout time.Duration) {
+		group := ml.getLimiterGroup(name, limit, burst, timeout)
+		re = append(re, group)
+	})
+	return
+}
+
+func (ml *MultiLimiter) getLimiterGroup(name string, limit LimitGroup, burst BurstGroup, timeout time.Duration) (re LimiterGroup) {
+	if l, ok := ml.limiters.Load(name); ok {
+		re = l.(LimiterGroup)
+		return
+	}
+
+	for i, l := range limit {
+		if l > 0 {
+			re[i] = LimiterWithTimeout{rate.NewLimiter(l, burst[i]), timeout}
+		}
+	}
+	ml.limiters.Store(name, re)
+	return
+}
+
+func (ml *MultiLimiter) iterate(ps Properties, f func(name string, limit LimitGroup, burst BurstGroup, timeout time.Duration)) {
+	var nameRules []*nameRule
+	ml.rules.Range(func(k, v interface{}) bool {
+		rule := v.(*Rule)
+		isMatch, name := rule.match(ps)
+		if !isMatch {
+			return true
+		}
+
+		nameRule := getNameRule(nameRules, name, rule)
+		if nameRule != nil {
+			nameRules = append(nameRules, nameRule)
+		}
+		return true
+	})
+
+	for _, item := range nameRules {
+		f(item.name, item.limit, item.burst, item.timeout)
+	}
+}
+
+type nameRule struct {
+	name string
+	// default name count for each statType, a rule has smaller count has a higher priority
+	defaultCount [statTypeMax]int
+	limit        LimitGroup
+	burst        BurstGroup
+	timeout      time.Duration
+}
+
+func getNameRule(nameRules []*nameRule, name string, rule *Rule) *nameRule {
+	var item *nameRule
+	new := true
+	for _, item = range nameRules {
+		if name == item.name {
+			new = false
+			break
+		}
+	}
+
+	if new {
+		nameRule := nameRule{name: name, limit: rule.limit, burst: rule.burst, timeout: rule.timeout}
+		for i := range nameRule.defaultCount {
+			nameRule.defaultCount[i] = rule.defaultCount
+		}
+		return &nameRule
+	}
+
+	for i, l := range item.limit {
+		if rule.limit[i] == 0 {
+			continue
+		}
+		if l == 0 || rule.defaultCount < item.defaultCount[i] || (rule.defaultCount == item.defaultCount[i] && rule.limit[i] < l) {
+			item.limit[i] = rule.limit[i]
+			item.burst[i] = rule.burst[i]
+			item.defaultCount[i] = rule.defaultCount
+			item.timeout = rule.timeout
 		}
 	}
 	return nil
 }
 
-func (ml *MultiLimiter) Allow(properties Properties) bool {
-	return ml.AllowN(time.Now(), 1, properties)
-}
-
-func (ml *MultiLimiter) AllowN(now time.Time, n int, properties Properties) bool {
-	limiters := ml.getLimiters(properties)
-	for _, l := range limiters {
-		if !l.AllowN(now, n) {
-			return false
-		}
+func (ml *MultiLimiter) handlerSetStatus(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		w.Write([]byte(err.Error()))
+		return
 	}
-	return true
-}
 
-func (ml *MultiLimiter) getLimiters(properties Properties) (limiters []*rate.Limiter) {
-	var limiter *rate.Limiter
-	// for every single property rule
-	for _, p := range properties {
-		name := p.RuleName()
-		if l, ok := ml.limiters.Load(name); !ok {
-			if r, ok := ml.rules.Load(p.DefaultRuleName()); ok {
-				rule, ok := r.(*Rule)
-				if ok {
-					limiter = rate.NewLimiter(rule.Limit, rule.Burst)
-					ml.limiters.Store(name, limiter)
-					limiters = append(limiters, limiter)
-				}
-			}
+	if statusVal := r.FormValue(statusKey); statusVal != "" {
+		status, err := strconv.Atoi(statusVal)
+		if err != nil {
+			w.Write([]byte("status is not integer\n"))
+			return
+		}
+		var msg string
+		if status > 0 {
+			ml.setStatus(true)
+			msg = "have set on"
+		} else if status == 0 {
+			ml.setStatus(false)
+			msg = "have set off"
 		} else {
-			limiter, ok = l.(*rate.Limiter)
-			if ok {
-				limiters = append(limiters, limiter)
-			}
+			ml.clearAll()
+			msg = "have cleared all rules and limiters"
 		}
+		w.Write([]byte(fmt.Sprintf("%v successfully\n", msg)))
 	}
-	// for combined properties rule
-	if len(properties) > 1 {
-		name := properties.RuleName()
-		if l, ok := ml.limiters.Load(name); !ok {
-			defaultNames := properties.DefaultRuleName()
-			for _, defaultName := range defaultNames {
-				if r, ok := ml.rules.Load(defaultName); ok {
-					rule, ok := r.(*Rule)
-					if ok {
-						limiter = rate.NewLimiter(rule.Limit, rule.Burst)
-						ml.limiters.Store(name, limiter)
-						limiters = append(limiters, limiter)
-						// there should be only one limiter for a single property(or compound property),
-						// here just break and give up finding a most strict limiter
-						break
-					}
-				}
-			}
-		} else {
-			limiter, ok = l.(*rate.Limiter)
-			if ok {
-				limiters = append(limiters, limiter)
-			}
-		}
-	}
-
-	return
 }

@@ -11,23 +11,22 @@ import (
 
 func TestLimiterManager(t *testing.T) {
 	var (
-		zone          = "default"
-		vol           = "ltptest"
-		ratio  uint64 = 80
-		limit1 uint64 = 1
-		limit2 uint64 = 2
-		limit3 uint64 = 3
-		limit4 uint64 = 4
+		zone         = "default"
+		vol          = "ltptest"
+		ratio uint64 = 80
+		limit        = []int64{1, 2, 3, 4}
 	)
 
 	getLimitInfo := func(volName string) (info *proto.LimitInfo, err error) {
 		info = new(proto.LimitInfo)
-		info.DataNodeNetworkFlowRatio = ratio
-		info.DataNodeReqZoneOpRateLimitMap = map[string]map[uint8]uint64{
-			zone: {proto.OpRead: limit1},
+		info.NetworkFlowRatio = map[string]uint64{
+			ModulDataNode: ratio,
 		}
-		info.DataNodeReqVolOpRateLimitMap = map[string]map[uint8]uint64{
-			vol: {proto.OpRead: limit3, proto.OpWrite: limit4},
+		info.RateLimit = map[string]map[string]map[int]proto.AllLimitGroup{
+			ModulDataNode: {
+				ZonePrefix + zone: {int(proto.OpRead): {indexCountPerDisk: limit[0], indexOutBytesPerDisk: limit[1]}},
+				VolPrefix + vol:   {int(proto.OpRead): {indexCountPerDisk: limit[2]}, int(proto.OpWrite): {indexCountPerDisk: limit[3]}},
+			},
 		}
 		return
 	}
@@ -36,53 +35,55 @@ func TestLimiterManager(t *testing.T) {
 	m.updateLimitInfo()
 	ml := m.GetLimiter()
 	property := []Properties{
-		{{PropertyTypeNetwork, NetworkOut}},
-		Properties{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
-		Properties{{PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
-		Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
-		Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
+		{},
+		{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
+		{{PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
+		{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
+		{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
 	}
 	speed := getSpeed()
-	limit := []rate.Limit{
-		rate.Limit(speed * int(ratio) / 100),
-		rate.Limit(limit1),
-		0,
-		rate.Limit(limit3),
-		rate.Limit(limit4),
+	expect := []LimitGroup{
+		{statTypeInBytes: rate.Limit(speed * int(ratio) / 100), statTypeOutBytes: rate.Limit(speed * int(ratio) / 100)},
+		{statTypeCount: rate.Limit(limit[0]), statTypeOutBytes: rate.Limit(limit[1])},
+		{},
+		{statTypeCount: rate.Limit(limit[2])},
+		{statTypeCount: rate.Limit(limit[3])},
 	}
-	check(t, ml, property, limit)
+	check(t, ml, property, expect)
 
 	ratio = 90
 	getLimitInfo1 := func(volName string) (info *proto.LimitInfo, err error) {
 		info = new(proto.LimitInfo)
-		info.DataNodeNetworkFlowRatio = ratio
-		info.DataNodeReqZoneOpRateLimitMap = map[string]map[uint8]uint64{
-			zone: {proto.OpRead: limit2, proto.OpWrite: limit1},
+		info.NetworkFlowRatio = map[string]uint64{
+			ModulDataNode: ratio,
 		}
-		info.DataNodeReqVolOpRateLimitMap = map[string]map[uint8]uint64{
-			vol: {proto.OpWrite: limit3},
+		info.RateLimit = map[string]map[string]map[int]proto.AllLimitGroup{
+			ModulDataNode: {
+				ZonePrefix + zone: {int(proto.OpRead): {indexCountPerDisk: limit[1]}, int(proto.OpWrite): {indexCountPerDisk: limit[0]}},
+				VolPrefix + vol:   {int(proto.OpWrite): {indexCountPerDisk: limit[2]}},
+			},
 		}
 		return
 	}
-	limit = []rate.Limit{
-		rate.Limit(speed * int(ratio) / 100),
-		rate.Limit(limit2),
-		rate.Limit(limit1),
-		0,
-		rate.Limit(limit3),
+	expect = []LimitGroup{
+		{statTypeInBytes: rate.Limit(speed * int(ratio) / 100), statTypeOutBytes: rate.Limit(speed * int(ratio) / 100)},
+		{statTypeCount: rate.Limit(limit[1])},
+		{statTypeCount: rate.Limit(limit[0])},
+		{},
+		{statTypeCount: rate.Limit(limit[2])},
 	}
 	m.setGetLimitInfoFunc(getLimitInfo1)
 	m.updateLimitInfo()
-	check(t, ml, property, limit)
+	check(t, ml, property, expect)
 }
 
-func check(t *testing.T, ml *MultiLimiter, property []Properties, limit []rate.Limit) {
+func check(t *testing.T, ml *MultiLimiter, property []Properties, limit []LimitGroup) {
 	for i, p := range property {
-		val, ok := ml.rules.Load(p.RuleName())
-		if limit[i] > 0 {
+		val, ok := ml.rules.Load(p.name())
+		if limit[i].haveLimit() {
 			assert.True(t, ok)
 			r := val.(*Rule)
-			assert.Equal(t, r.Limit, limit[i])
+			assert.Equal(t, limit[i], r.limit)
 		} else {
 			assert.False(t, ok)
 		}

@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -297,7 +296,7 @@ func (m *metadataManager) Start() (err error) {
 	return
 }
 
-func (m *metadataManager) dealFailOverLeaderMp(mpIdArr []uint64) (leaderCnt uint64){
+func (m *metadataManager) dealFailOverLeaderMp(mpIdArr []uint64) (leaderCnt uint64) {
 	FailOverCh := make(chan uint64, defParallelFailOverCnt)
 	var wg sync.WaitGroup
 	leaderCnt = 0
@@ -311,7 +310,7 @@ func (m *metadataManager) dealFailOverLeaderMp(mpIdArr []uint64) (leaderCnt uint
 				continue
 			}
 			if _, ok := partition.IsLeader(); ok {
-				FailOverCh<-pid
+				FailOverCh <- pid
 				//partition.(*metaPartition).tryToGiveUpLeader()
 				atomic.AddUint64(&leaderCnt, 1)
 			}
@@ -324,7 +323,7 @@ func (m *metadataManager) dealFailOverLeaderMp(mpIdArr []uint64) (leaderCnt uint
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for ;; {
+			for {
 				pid, ok := <-FailOverCh
 				if !ok {
 					return
@@ -482,8 +481,8 @@ func (m *metadataManager) updateVolConf() (err error) {
 			CleanTrashItemMaxDurationEachTime: vol.CleanTrashMaxDurationEachTime,
 			EnableRemoveDupReq:                vol.EnableRemoveDupReq,
 		}
-		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, " +
-			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v," +
+		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
+			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+
 			" enableRemoveDupReq:%v",
 			vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval,
 			strconv.FormatBool(vol.EnableBitMapAllocator), vol.CleanTrashMaxDurationEachTime,
@@ -801,7 +800,7 @@ func (m *metadataManager) startPartitions() (err error) {
 			var partition MetaPartition
 			for {
 				mpId, ok := <-c
-				if !ok || mpId == 0{
+				if !ok || mpId == 0 {
 					return
 				}
 
@@ -958,10 +957,6 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 }
 
 func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) {
-	if !isRateLimitOn {
-		return
-	}
-
 	// ignore rate limit if request is from cluster internal nodes
 	addrSlice := strings.Split(remoteAddr, ":")
 	_, isInternal := clusterMap[addrSlice[0]]
@@ -969,33 +964,6 @@ func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 		return
 	}
 
-	ctx := context.Background()
-	// request rate limit for entire meta node
-	if reqRateLimit > 0 {
-		reqRateLimiter.Wait(ctx)
-	}
-
-	// request rate limit for opcode
-	limiter, ok := reqOpRateLimiterMap[p.Opcode]
-	if ok {
-		limiter.Wait(ctx)
-	}
-	pid := p.PartitionID
-	mp, err := s.GetPartition(pid)
-	if err != nil {
-		return
-	}
-
-	vol := mp.GetBaseConfig().VolName
-	volLimiterMap, ok := reqVolOpPartRateLimiterMap[vol]
-	if !ok {
-		return
-	}
-	volOpLimiter, ok := volLimiterMap[p.Opcode]
-	if !ok {
-		return
-	}
-	volOpLimiter.Wait(ctx)
 	return
 }
 

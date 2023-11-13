@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/unit"
 	pb "github.com/gogo/protobuf/proto"
 	atomic2 "go.uber.org/atomic"
@@ -4166,6 +4167,92 @@ func (c *Cluster) setDataNodeRepairTaskCountZoneLimit(val uint64, zone string) (
 		return
 	}
 	return
+}
+
+func (c *Cluster) setFlowRatio(modul string, flowRatio uint64) (err error) {
+	var data []byte
+	if data, err = json.Marshal(c.cfg.NetworkFlowRatio); err != nil {
+		return
+	}
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+	if flowRatio == 0 {
+		delete(c.cfg.NetworkFlowRatio, modul)
+	} else {
+		c.cfg.NetworkFlowRatio[modul] = flowRatio
+	}
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setFlowRatio] err[%v]", err)
+		_ = json.Unmarshal(data, &c.cfg.NetworkFlowRatio)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return nil
+}
+
+func (c *Cluster) setRateLimit(modul string, zone string, volume string, opcode uint64, rateLimit uint64, rateLimitIndex uint64) (err error) {
+	if rateLimitIndex >= multirate.IndexMax {
+		return nil
+	}
+	var data []byte
+	if data, err = json.Marshal(c.cfg.RateLimit); err != nil {
+		return
+	}
+	c.cfg.reqRateLimitMapMutex.Lock()
+	defer c.cfg.reqRateLimitMapMutex.Unlock()
+
+	zoneVolOpMap, ok := c.cfg.RateLimit[modul]
+	if !ok {
+		zoneVolOpMap = make(map[string]map[int]proto.AllLimitGroup)
+		c.cfg.RateLimit[modul] = zoneVolOpMap
+	}
+	var zoneVol string
+	if zone != "" {
+		if zone == rateLimitDefaultVal {
+			zone = ""
+		}
+		zoneVol = multirate.ZonePrefix + zone
+	} else {
+		if volume == rateLimitDefaultVal {
+			volume = ""
+		}
+		zoneVol = multirate.VolPrefix + volume
+	}
+	opMap, ok := zoneVolOpMap[zoneVol]
+	if !ok {
+		opMap = make(map[int]proto.AllLimitGroup)
+		zoneVolOpMap[zoneVol] = opMap
+	}
+	group, _ := opMap[int(opcode)]
+	group[rateLimitIndex] = int64(rateLimit)
+	opMap[int(opcode)] = group
+	cleanRateLimitMap(c.cfg.RateLimit)
+
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setRateLimit] err[%v]", err)
+		_ = json.Unmarshal(data, &c.cfg.RateLimit)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func cleanRateLimitMap(m map[string]map[string]map[int]proto.AllLimitGroup) {
+	for modul, zoneVolOpMap := range m {
+		for zoneVol, opMap := range zoneVolOpMap {
+			for op, group := range opMap {
+				if !multirate.HaveLimit(group) {
+					delete(opMap, op)
+				}
+			}
+			if len(opMap) == 0 {
+				delete(zoneVolOpMap, zoneVol)
+			}
+		}
+		if len(zoneVolOpMap) == 0 {
+			delete(m, modul)
+		}
+	}
 }
 
 func (c *Cluster) setDataNodeReqRateLimit(para updateLimitPara) (err error) {

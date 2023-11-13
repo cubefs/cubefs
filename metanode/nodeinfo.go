@@ -1,16 +1,15 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/util/unit"
-	"reflect"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/unit"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/statistics"
-	"golang.org/x/time/rate"
 )
 
 const (
@@ -25,31 +24,31 @@ const (
 )
 
 type NodeInfo struct {
-	deleteBatchCount 	uint64
-	readDirLimitNum		uint64
-	dumpWaterLevel      uint64
-	logMaxSize          uint64
-	reservedSpace       uint64
+	deleteBatchCount uint64
+	readDirLimitNum  uint64
+	dumpWaterLevel   uint64
+	logMaxSize       uint64
+	reservedSpace    uint64
 
-	rocksWalFileSize       uint64				//MB
-	rocksWalMemSize        uint64				//MB
-	rocksLogSize           uint64				//MB
-	rocksLogReservedTime   uint64				//day
-	rocksLogReservedCnt    uint64
-	rocksFlushWalInterval  uint64				// min default 30min
-	rocksFlushWal          bool					// default true flush
-	rocksWalTTL            uint64				//second default 60
-	trashCleanInterval     uint64  //min
-	delEKFileLocalMaxMB    uint64
-	raftLogSizeFromMaster  int
-	raftLogCapFromMaster   int
-	raftLogSizeFromLoc     int
-	raftLogCapFromLoc      int
+	rocksWalFileSize      uint64 //MB
+	rocksWalMemSize       uint64 //MB
+	rocksLogSize          uint64 //MB
+	rocksLogReservedTime  uint64 //day
+	rocksLogReservedCnt   uint64
+	rocksFlushWalInterval uint64 // min default 30min
+	rocksFlushWal         bool   // default true flush
+	rocksWalTTL           uint64 //second default 60
+	trashCleanInterval    uint64 //min
+	delEKFileLocalMaxMB   uint64
+	raftLogSizeFromMaster int
+	raftLogCapFromMaster  int
+	raftLogSizeFromLoc    int
+	raftLogCapFromLoc     int
 
 	bitMapAllocatorMaxUsedFactorForAvailable float64
 	bitMapAllocatorMinFreeFactorForAvailable float64
 
-	CleanTrashItemMaxDurationEachTime int32  //min
+	CleanTrashItemMaxDurationEachTime int32 //min
 	CleanTrashItemMaxCountEachTime    int32
 }
 
@@ -58,52 +57,12 @@ var (
 	nodeInfoStopC              = make(chan struct{}, 0)
 	deleteWorkerSleepMs uint64 = 0
 
-	// request rate limiter for entire meta node
-	reqRateLimit   uint64
-	reqRateLimiter = rate.NewLimiter(rate.Inf, DefaultReqLimitBurst)
-
-	// map[opcode]*rate.Limiter, request rate limiter for opcode
-	reqOpRateLimitMap   = make(map[uint8]uint64)
-	reqOpRateLimiterMap = make(map[uint8]*rate.Limiter)
-	reqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
-	reqVolOpPartRateLimiterMap = make(map[string]map[uint8]*rate.Limiter)
-
-	isRateLimitOn bool
-
 	// all cluster internal nodes
-	clusterMap     = make(map[string]bool)
-	limitInfo      *proto.LimitInfo
-	limitOpcodeMap = map[uint8]bool{
-		proto.OpMetaCreateInode:     true,
-		proto.OpMetaInodeGet:        true,
-		proto.OpMetaCreateDentry:    true,
-		proto.OpMetaExtentsAdd:      true,
-		proto.OpMetaBatchExtentsAdd: true,
-		proto.OpMetaExtentsList:     true,
-		proto.OpMetaInodeGetV2:      true,
-		proto.OpMetaReadDir:         true,
+	clusterMap = make(map[string]bool)
+	limitInfo  *proto.LimitInfo
 
-		proto.OpMetaLookup:                    true,
-		proto.OpMetaBatchInodeGet:             true,
-		proto.OpMetaBatchGetXAttr:             true,
-		proto.OpMetaBatchUnlinkInode:          true,
-		proto.OpMetaBatchDeleteDentry:         true,
-		proto.OpMetaBatchEvictInode:           true,
-		proto.OpListMultiparts:                true,
-		proto.OpMetaGetCmpInode:               true,
-		proto.OpMetaInodeMergeEks:             true,
-		proto.OpMetaGetDeletedInode:           true,
-		proto.OpMetaBatchGetDeletedInode:      true,
-		proto.OpMetaRecoverDeletedDentry:      true,
-		proto.OpMetaBatchRecoverDeletedDentry: true,
-		proto.OpMetaRecoverDeletedInode:       true,
-		proto.OpMetaBatchRecoverDeletedInode:  true,
-		proto.OpMetaBatchCleanDeletedDentry:   true,
-		proto.OpMetaBatchCleanDeletedInode:    true,
-	}
-
-	RocksDBModeMaxFsUsedPercent  uint64 = DefaultRocksDBModeMaxFsUsedPercent
-	MemModeMaxFsUsedPercent      uint64 = DefaultMemModeMaxFsUsedFactorPercent
+	RocksDBModeMaxFsUsedPercent uint64 = DefaultRocksDBModeMaxFsUsedPercent
+	MemModeMaxFsUsedPercent     uint64 = DefaultMemModeMaxFsUsedFactorPercent
 
 	enableRemoveDupReq = defaultEnableRemoveDupReq
 )
@@ -125,7 +84,7 @@ func ReadDirLimitNum() uint64 {
 	return val
 }
 
-func updateReadDirLimitNum(val uint64)  {
+func updateReadDirLimitNum(val uint64) {
 	atomic.StoreUint64(&nodeInfo.readDirLimitNum, val)
 }
 
@@ -148,7 +107,7 @@ func GetDumpWaterLevel() uint64 {
 	return val
 }
 
-func updateDumpWaterLevel(val uint64)  {
+func updateDumpWaterLevel(val uint64) {
 	atomic.StoreUint64(&nodeInfo.dumpWaterLevel, val)
 }
 
@@ -156,7 +115,7 @@ func updateRocksDBModeMaxFsUsedPercent(val float32) {
 	if val <= 0 || val >= 1 {
 		return
 	}
-	atomic.StoreUint64(&RocksDBModeMaxFsUsedPercent, uint64(val * 100))
+	atomic.StoreUint64(&RocksDBModeMaxFsUsedPercent, uint64(val*100))
 }
 
 func getRocksDBModeMaxFsUsedPercent() uint64 {
@@ -167,7 +126,7 @@ func updateMemModeMaxFsUsedPercent(val float32) {
 	if val <= 0 || val >= 1 {
 		return
 	}
-	atomic.StoreUint64(&MemModeMaxFsUsedPercent, uint64(val * 100))
+	atomic.StoreUint64(&MemModeMaxFsUsedPercent, uint64(val*100))
 }
 
 func getMemModeMaxFsUsedPercent() uint64 {
@@ -183,7 +142,7 @@ func updateLogMaxSize(val uint64) {
 	}
 }
 
-func (m *MetaNode)updateRocksDBDiskReservedSpaceSpace(val uint64) {
+func (m *MetaNode) updateRocksDBDiskReservedSpaceSpace(val uint64) {
 	if val != nodeInfo.reservedSpace && val != 0 {
 		nodeInfo.reservedSpace = val
 		for _, disk := range m.getDisks() {
@@ -193,23 +152,23 @@ func (m *MetaNode)updateRocksDBDiskReservedSpaceSpace(val uint64) {
 }
 
 func (m *MetaNode) updateRocksDBConf(info *proto.LimitInfo) {
-	if info.MetaRockDBWalFileSize != 0  && nodeInfo.rocksWalFileSize != info.MetaRockDBWalFileSize{
+	if info.MetaRockDBWalFileSize != 0 && nodeInfo.rocksWalFileSize != info.MetaRockDBWalFileSize {
 		nodeInfo.rocksWalFileSize = info.MetaRockDBWalFileSize
 	}
 
-	if info.MetaRocksWalMemSize != 0  && nodeInfo.rocksWalMemSize != info.MetaRocksWalMemSize{
+	if info.MetaRocksWalMemSize != 0 && nodeInfo.rocksWalMemSize != info.MetaRocksWalMemSize {
 		nodeInfo.rocksWalMemSize = info.MetaRocksWalMemSize
 	}
 
-	if info.MetaRocksLogSize != 0  && nodeInfo.rocksLogSize != info.MetaRocksLogSize{
+	if info.MetaRocksLogSize != 0 && nodeInfo.rocksLogSize != info.MetaRocksLogSize {
 		nodeInfo.rocksLogSize = info.MetaRocksLogSize
 	}
 
-	if info.MetaRocksLogReservedTime != 0  && nodeInfo.rocksLogReservedTime != info.MetaRocksLogReservedTime{
+	if info.MetaRocksLogReservedTime != 0 && nodeInfo.rocksLogReservedTime != info.MetaRocksLogReservedTime {
 		nodeInfo.rocksLogReservedTime = info.MetaRocksLogReservedTime
 	}
 
-	if info.MetaRocksLogReservedCnt != 0  && nodeInfo.rocksLogReservedCnt != info.MetaRocksLogReservedCnt{
+	if info.MetaRocksLogReservedCnt != 0 && nodeInfo.rocksLogReservedCnt != info.MetaRocksLogReservedCnt {
 		nodeInfo.rocksLogReservedCnt = info.MetaRocksLogReservedCnt
 	}
 
@@ -231,7 +190,7 @@ func (m *MetaNode) updateRocksDBConf(info *proto.LimitInfo) {
 }
 
 func (m *MetaNode) updateDeleteEKRecordFilesMaxSize(maxMB uint64) {
-	if maxMB == 0 || DeleteEKRecordFilesMaxTotalSize.Load() == maxMB * unit.MB {
+	if maxMB == 0 || DeleteEKRecordFilesMaxTotalSize.Load() == maxMB*unit.MB {
 		log.LogDebugf("[updateDeleteEKRecordFilesMaxSize] no need update")
 		return
 	}
@@ -356,18 +315,15 @@ func getGlobalConfNodeInfo() *NodeInfo {
 
 func (m *MetaNode) startUpdateNodeInfo() {
 	deleteTicker := time.NewTicker(UpdateDeleteLimitInfoTicket)
-	rateLimitTicker := time.NewTicker(UpdateRateLimitInfoTicket)
 	clusterViewTicker := time.NewTicker(UpdateClusterViewTicket)
 	defer func() {
 		deleteTicker.Stop()
-		rateLimitTicker.Stop()
 		clusterViewTicker.Stop()
 	}()
 
 	// call once on init before first tick
 	m.updateClusterMap()
 	m.updateDeleteLimitInfo()
-	m.updateRateLimitInfo()
 	for {
 		select {
 		case <-nodeInfoStopC:
@@ -375,8 +331,6 @@ func (m *MetaNode) startUpdateNodeInfo() {
 			return
 		case <-deleteTicker.C:
 			m.updateDeleteLimitInfo()
-		case <-rateLimitTicker.C:
-			m.updateRateLimitInfo()
 		case <-clusterViewTicker.C:
 			m.updateClusterMap()
 		}
@@ -417,80 +371,6 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
 		statistics.StatisticsModule.UpdateMonitorReportTime(limitInfo.MonitorReportSec)
 	}
-}
-
-func (m *MetaNode) updateTotReqLimitInfo(info *proto.LimitInfo) {
-	reqRateLimit = info.MetaNodeReqRateLimit
-	l := rate.Limit(reqRateLimit)
-	if reqRateLimit == 0 {
-		l = rate.Inf
-	}
-	reqRateLimiter.SetLimit(l)
-}
-
-func (m *MetaNode) updateOpLimitiInfo(info *proto.LimitInfo) {
-	var (
-		r                   uint64
-		ok                  bool
-		tmpOpRateLimiterMap map[uint8]*rate.Limiter
-	)
-
-	// update request rate limiter for opcode
-	if reflect.DeepEqual(reqOpRateLimitMap, info.MetaNodeReqOpRateLimitMap) {
-		return
-	}
-	reqOpRateLimitMap = info.MetaNodeReqOpRateLimitMap
-	tmpOpRateLimiterMap = make(map[uint8]*rate.Limiter)
-	for op, _ := range limitOpcodeMap {
-		r, ok = reqOpRateLimitMap[op]
-		if !ok {
-			r, ok = reqOpRateLimitMap[0]
-		}
-		if !ok {
-			continue
-		}
-		tmpOpRateLimiterMap[op] = rate.NewLimiter(rate.Limit(r), DefaultReqLimitBurst)
-	}
-	reqOpRateLimiterMap = tmpOpRateLimiterMap
-}
-
-func (m *MetaNode) updateVolLimitiInfo(info *proto.LimitInfo) {
-	if reflect.DeepEqual(reqOpRateLimitMap, info.MetaNodeReqVolOpRateLimitMap) {
-		return
-	}
-	reqVolOpPartRateLimitMap = info.MetaNodeReqVolOpRateLimitMap
-	tmpVolOpRateLimiterMap := make(map[string]map[uint8]*rate.Limiter)
-	for vol, volOps := range reqVolOpPartRateLimitMap {
-		opRateLimiterMap := make(map[uint8]*rate.Limiter)
-		tmpVolOpRateLimiterMap[vol] = opRateLimiterMap
-		for op, opValue := range volOps {
-			//op is not limit
-			isLimitOp, ok := limitOpcodeMap[op]
-			if !ok || !isLimitOp {
-				continue
-			}
-
-			//set limit
-			l := rate.Limit(opValue)
-			opRateLimiterMap[op] = rate.NewLimiter(l, DefaultReqLimitBurst)
-		}
-	}
-	reqVolOpPartRateLimiterMap = tmpVolOpRateLimiterMap
-}
-
-func (m *MetaNode) updateRateLimitInfo() {
-	info := limitInfo
-	if info == nil {
-		return
-	}
-
-	m.updateTotReqLimitInfo(info)
-	m.updateOpLimitiInfo(info)
-	m.updateVolLimitiInfo(info)
-
-	isRateLimitOn = (reqRateLimit > 0 ||
-		len(reqOpRateLimitMap) > 0 ||
-		len(reqVolOpPartRateLimitMap) > 0 )
 }
 
 func (m *MetaNode) updateClusterMap() {

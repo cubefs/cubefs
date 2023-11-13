@@ -368,7 +368,11 @@ func (p *Packet) GetOpMsgWithReqAndResult() (m string) {
 
 // GetOpMsg returns the operation type.
 func (p *Packet) GetOpMsg() (m string) {
-	switch p.Opcode {
+	return GetOpMsg(p.Opcode)
+}
+
+func GetOpMsg(opcode uint8) (m string) {
+	switch opcode {
 	case OpCreateExtent:
 		m = "OpCreateExtent"
 	case OpMarkDelete:

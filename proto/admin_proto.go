@@ -17,9 +17,10 @@ package proto
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/util/exporter"
 )
 
 // api
@@ -285,6 +286,8 @@ const (
 	FlashNodeVolRateKey           = "flashNodeVolRate"
 	DataNodeReqVolPartRateKey     = "dataNodeReqVolPartRate"
 	DataNodeReqVolOpPartRateKey   = "dataNodeReqVolOpPartRate"
+	RateLimitKey                  = "rateLimit"
+	RateLimitIndexKey             = "rateLimitIndex"
 	DataNodeMarkDeleteRateKey     = "markDeleteRate"
 	DpTimeoutCntThreshold         = "dpTimeoutCntThreshold"
 	NodeSetCapacityKey            = "nodeSetCapacity"
@@ -292,6 +295,7 @@ const (
 	ClientReqRecordReservedMinKey = "reqReservedMin"
 	ClientReqRemoveDupFlagKey     = "reqRemoveDupKey"
 	VolRemoveDupFlagKey           = "volRemoveDupReqKey"
+	NetworkFlowRatioKey           = "networkFlowRatio"
 )
 
 const (
@@ -557,6 +561,7 @@ type ClusterInfo struct {
 	ClientWriteLimitRate uint64
 }
 
+type AllLimitGroup [10]int64
 type LimitInfo struct {
 	Cluster                          string
 	MetaNodeDeleteBatchCount         uint64
@@ -573,13 +578,16 @@ type LimitInfo struct {
 	DataNodeReqZoneVolOpRateLimitMap map[string]map[string]map[uint8]uint64
 	DataNodeReqVolPartRateLimitMap   map[string]uint64
 	DataNodeReqVolOpPartRateLimitMap map[string]map[uint8]uint64
-	DataNodeDeleteLimitRate          uint64
-	ClientReadVolRateLimitMap        map[string]uint64
-	ClientWriteVolRateLimitMap       map[string]uint64
-	ClientReadRateLimit              uint64
-	ClientWriteRateLimit             uint64
-	ClientVolOpRateLimit             map[uint8]int64 // less than 0: no limit; equal 0: disable op
-	ObjectNodeActionRateLimit        map[string]int64
+	NetworkFlowRatio                 map[string]uint64
+	// map[module]map[zone:|vol:]map[op]AllLimitGroup
+	RateLimit                  map[string]map[string]map[int]AllLimitGroup
+	DataNodeDeleteLimitRate    uint64
+	ClientReadVolRateLimitMap  map[string]uint64
+	ClientWriteVolRateLimitMap map[string]uint64
+	ClientReadRateLimit        uint64
+	ClientWriteRateLimit       uint64
+	ClientVolOpRateLimit       map[uint8]int64 // less than 0: no limit; equal 0: disable op
+	ObjectNodeActionRateLimit  map[string]int64
 
 	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
 	DataNodeRepairTaskLimitOnDisk          uint64
@@ -1276,20 +1284,24 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 
 // RateLimitInfo defines the rate limit infomation
 type RateLimitInfo struct {
+	Modul                            string
 	ZoneName                         string
 	Volume                           string
 	Action                           string
-	Opcode                           int8
+	Opcode                           int64
 	MetaNodeReqRate                  int64
 	MetaNodeReqOpRate                int64
 	DataNodeRepairTaskCount          int64
 	DataNodeRepairTaskSSDZone        int64
 	DataNodeMarkDeleteRate           int64
+	NetworkFlowRatio                 int64
 	DataNodeReqRate                  int64
 	DataNodeReqOpRate                int64
 	DataNodeReqVolOpRate             int64
 	DataNodeReqVolPartRate           int64
 	DataNodeReqVolOpPartRate         int64
+	RateLimit                        int64
+	RateLimitIndex                   int64
 	FlashNodeRate                    int64
 	FlashNodeVolRate                 int64
 	DataNodeFlushFDInterval          int64

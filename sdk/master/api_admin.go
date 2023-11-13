@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/util/exporter"
 
@@ -773,6 +774,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.DataNodeMarkDeleteRate >= 0 {
 		request.addParam("markDeleteRate", strconv.FormatInt(info.DataNodeMarkDeleteRate, 10))
 	}
+	if info.NetworkFlowRatio >= 0 {
+		request.addParam(proto.NetworkFlowRatioKey, strconv.FormatInt(info.NetworkFlowRatio, 10))
+	}
 	if info.DataNodeReqRate >= 0 {
 		request.addParam("dataNodeReqRate", strconv.FormatInt(info.DataNodeReqRate, 10))
 	}
@@ -787,6 +791,15 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.DataNodeReqVolOpPartRate >= 0 {
 		request.addParam(proto.DataNodeReqVolOpPartRateKey, strconv.FormatInt(info.DataNodeReqVolOpPartRate, 10))
+	}
+	if info.RateLimitIndex >= 0 {
+		request.addParam(proto.RateLimitIndexKey, strconv.FormatInt(info.RateLimitIndex, 10))
+	}
+	if info.RateLimit >= 0 {
+		if info.RateLimitIndex == 0 {
+			info.RateLimit = info.RateLimit * int64(time.Millisecond)
+		}
+		request.addParam(proto.RateLimitKey, strconv.FormatInt(info.RateLimit, 10))
 	}
 	if info.FlashNodeRate >= 0 {
 		request.addParam(proto.FlashNodeRateKey, strconv.FormatInt(info.FlashNodeRate, 10))
@@ -904,6 +917,7 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	} else if info.ClientReqRemoveDupFlag > 0 {
 		request.addParam(proto.ClientReqRemoveDupFlagKey, strconv.FormatBool(true))
 	}
+	request.addParam("modul", info.Modul)
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, _, err = api.mc.serveRequest(request); err != nil {

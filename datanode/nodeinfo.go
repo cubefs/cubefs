@@ -22,8 +22,7 @@ const (
 var (
 	nodeInfoStopC     = make(chan struct{}, 0)
 	deleteLimiteRater = rate.NewLimiter(rate.Inf, DefaultMarkDeleteLimitBurst)
-
-	logMaxSize uint64
+	logMaxSize        uint64
 )
 
 func (s *DataNode) startUpdateNodeInfo() {
@@ -83,24 +82,6 @@ func (s *DataNode) updateNodeBaseInfo() {
 	}
 
 	s.updateLogMaxSize(limitInfo.LogMaxSize)
-}
-
-func (s *DataNode) getVolPartMap() map[string]map[uint64]bool {
-	volPartMap := make(map[string]map[uint64]bool)
-	var (
-		partMap map[uint64]bool
-		ok      bool
-	)
-	s.space.WalkPartitions(func(dp *DataPartition) bool {
-		partMap, ok = volPartMap[dp.volumeID]
-		if !ok {
-			partMap = make(map[uint64]bool)
-			volPartMap[dp.volumeID] = partMap
-		}
-		partMap[dp.ID()] = true
-		return true
-	})
-	return volPartMap
 }
 
 func (s *DataNode) updateLogMaxSize(val uint64) {
