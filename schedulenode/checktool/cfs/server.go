@@ -98,7 +98,6 @@ const (
 	defaultMaxPendQueueCount                = 0
 	defaultMaxAppliedIDDiffCount            = 100
 	defaultMaxOfflineFlashNodesIn24Hour     = 5
-	dbbackHost                              = "cn.chubaofs-seqwrite.jd.local"
 )
 
 const (
