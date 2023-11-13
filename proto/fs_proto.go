@@ -673,6 +673,7 @@ type AppendExtentKeyWithCheckRequest struct {
 	IsSplit        bool
 	IsCache        bool
 	StorageClass   uint32 `json:"storageClass"`
+	IsMigration    bool
 }
 
 // AppendObjExtentKeyRequest defines the request to append an obj extent key.
@@ -692,6 +693,7 @@ type GetExtentsRequest struct {
 	VerAll       bool
 	IsCache      bool
 	OpenForWrite bool
+	IsMigration  bool
 }
 
 // GetObjExtentsResponse defines the response to the request of getting obj extents.
@@ -1040,4 +1042,12 @@ type RenewalForbiddenMigrationRequest struct {
 	PartitionID  uint64 `json:"pid"`
 	Inode        uint64 `json:"ino"`
 	StorageClass uint32 `json:"storageClass"`
+}
+
+type UpdateExtentKeyAfterMigrationRequest struct {
+	PartitionID   uint64      `json:"pid"`
+	Inode         uint64      `json:"ino"`
+	StorageClass  uint32      `json:"storageClass"`
+	NewExtentKeys interface{} `json:"newExtentKeys"`
+	WriteGen      uint64      `json:"writeGen"`
 }
