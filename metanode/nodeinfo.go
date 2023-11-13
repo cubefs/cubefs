@@ -367,21 +367,18 @@ func (m *MetaNode) setRemoveDupReqFlag(enableState bool) {
 }
 
 func (m *MetaNode)GetDumpSnapCount() uint64 {
-	Count := uint64(0)
-	Count = atomic.LoadUint64(&nodeInfo.DumpSnapCountCluster)
+	dumpCount := uint64(0)
+	dumpCount = atomic.LoadUint64(&nodeInfo.DumpSnapCountCluster)
 
 	localCount := atomic.LoadUint64(&nodeInfo.DumpSnapCountLoc)
 	if localCount != 0 {
-		Count = localCount
+		dumpCount = localCount
 	}
 
-	if Count == 0 {
-		Count = defHDDParalleDumpCount
-		if strings.Contains(m.zoneName, "ssd") {
-			Count = defSSDParalleDumpCount
-		}
+	if dumpCount == 0 {
+		dumpCount = defParallelismDumpCount
 	}
-	return Count
+	return dumpCount
 }
 
 func (m *MetaNode)GetDumpSnapRunningCount() uint64 {
