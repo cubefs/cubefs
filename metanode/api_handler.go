@@ -2380,9 +2380,10 @@ func (m *MetaNode) setDelEKRecordFilesMaxTotalSize(w http.ResponseWriter, r *htt
 
 func (m *MetaNode) removeOldDelEKRecordFile(w http.ResponseWriter, r *http.Request) {
 	var (
-		err error
-		pid uint64
-		mp  MetaPartition
+		err          error
+		pid          uint64
+		mp           MetaPartition
+		maxTotalSize uint64
 	)
 	resp := NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
@@ -2398,6 +2399,17 @@ func (m *MetaNode) removeOldDelEKRecordFile(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+
+	maxTotalSizeStr := r.FormValue("maxTotalSize")
+	if maxTotalSizeStr != "" {
+		maxTotalSize, err = strconv.ParseUint(maxTotalSizeStr, 10, 64)
+		if err != nil {
+			resp.Code = http.StatusBadRequest
+			resp.Msg = err.Error()
+			return
+		}
+	}
+
 	pidStr := r.FormValue("pid")
 	if pidStr != "" {
 		if pid, err = strconv.ParseUint(pidStr, 10, 64); err != nil {
@@ -2410,8 +2422,8 @@ func (m *MetaNode) removeOldDelEKRecordFile(w http.ResponseWriter, r *http.Reque
 			resp.Msg = err.Error()
 			return
 		}
-		mp.(*metaPartition).removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, true)
-		mp.(*metaPartition).removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, true)
+		mp.(*metaPartition).removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, maxTotalSize, true)
+		mp.(*metaPartition).removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, maxTotalSize, true)
 		return
 	}
 
@@ -2427,8 +2439,8 @@ func (m *MetaNode) removeOldDelEKRecordFile(w http.ResponseWriter, r *http.Reque
 		if err != nil {
 			continue
 		}
-		partition.(*metaPartition).removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, true)
-		partition.(*metaPartition).removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, true)
+		partition.(*metaPartition).removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, maxTotalSize, true)
+		partition.(*metaPartition).removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, maxTotalSize, true)
 	}
 	return
 }

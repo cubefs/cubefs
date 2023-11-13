@@ -64,9 +64,14 @@ const (
 	InodeDelExtentKeyList             = "inodeDeleteExtentList.tmp"
 	PrefixInodeDelExtentKeyListBackup = "inodeDeleteExtentList."
 
-	defDeleteEKRecordFilesMaxTotalSize = 60 * unit.MB
+	defDeleteEKRecordFilesMaxTotalSize     = 60 * unit.MB
+	defForceDeleteEKRecordFileMaxTotalSize = 10 * unit.MB
 
-	MaxMetaDataDiskUsedFactor = 0.5
+	MaxMetaDataDiskUsedFactor                          = 0.5
+	ForceCleanDelEKRecordFileMaxMetaDataDiskUsedFactor = 0.75
+
+	cleanDelEKRecordFileTimerInterval = time.Minute * 5
+	delEKRecordFileRetentionTime = time.Minute * 10
 
 	defAdjustHourMinuet			= 50
 	defEKDelDelaySecond         = 60 * 10		//10min
@@ -489,11 +494,11 @@ func (mp *metaPartition) renameDeleteEKRecordFile(curFileName string, prefixName
 		log.LogErrorf("[renameDeleteEKRecordFile] stat delExtentListDir(%s) failed:%v", delExtentListDir, err)
 		return
 	}
-	mp.removeOldDeleteEKRecordFile(curFileName, prefixName, false)
+	mp.removeOldDeleteEKRecordFile(curFileName, prefixName, 0, false)
 	return
 }
 
-func (mp *metaPartition) removeOldDeleteEKRecordFile(curFileName, prefixName string, forceRemove bool) {
+func (mp *metaPartition) removeOldDeleteEKRecordFile(curFileName, prefixName string, maxTotalSize uint64, forceRemove bool) {
 	var metaDataDiskUsedRatio float64
 	if metaDataDisk, ok := mp.manager.metaNode.disks[mp.manager.metaNode.metadataDir]; ok {
 		metaDataDiskUsedRatio = metaDataDisk.Used/metaDataDisk.Total
@@ -504,6 +509,10 @@ func (mp *metaPartition) removeOldDeleteEKRecordFile(curFileName, prefixName str
 	}
 
 	deleteEKRecordFilesMaxTotalSize := DeleteEKRecordFilesMaxTotalSize.Load()
+	if maxTotalSize != 0 {
+		deleteEKRecordFilesMaxTotalSize = maxTotalSize
+	}
+
 	filesInfo, err := ioutil.ReadDir(mp.config.RootDir)
 	if err != nil {
 		log.LogErrorf("[removeOldDeleteEKRecordFile] read root dir %s failed:%v", mp.config.RootDir, err)
@@ -548,6 +557,35 @@ func (mp *metaPartition) removeOldDeleteEKRecordFile(curFileName, prefixName str
 	}
 	log.LogDebugf("[removeOldDeleteEKRecordFile] mp(%v) prefixName(%s) file total size after remove:%v",
 		mp.config.PartitionId, prefixName, totalSize-delSize)
+	return
+}
+
+func (mp *metaPartition) removeOldDeleteEKRecordFileByTime(curFileName, prefixName string, expiredTime time.Time) {
+	filesInfo, err := ioutil.ReadDir(mp.config.RootDir)
+	if err != nil {
+		log.LogErrorf("[removeOldDeleteEKRecordFile] read root dir %s failed:%v", mp.config.RootDir, err)
+		return
+	}
+	for _, fileInfo := range filesInfo {
+		if fileInfo.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(fileInfo.Name(), prefixName) {
+			continue
+		}
+		if fileInfo.Name() == curFileName {
+			continue
+		}
+
+		if fileInfo.ModTime().After(expiredTime) {
+			continue
+		}
+
+		if err = os.Remove(path.Join(mp.config.RootDir, fileInfo.Name())); err != nil {
+			log.LogErrorf("failed delete log file %s", fileInfo.Name())
+			continue
+		}
+	}
 	return
 }
 

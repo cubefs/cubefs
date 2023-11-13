@@ -383,6 +383,7 @@ func (m *metadataManager) Stop() {
 func (m *metadataManager) onStart() (err error) {
 	m.updateVolsConfScheduler()
 	go m.syncMetaPartitionsRocksDBWalLogScheduler()
+	go m.cleanOldDeleteEKRecordFileSchedule()
 	err = m.startPartitions()
 	if err != nil {
 		log.LogError(err.Error())
@@ -624,6 +625,68 @@ func (m *metadataManager) getVolumeTruncateEKCountEveryTimeValue(vol string) (va
 	}
 	value = volConf.TruncateEKCount
 	return
+}
+
+func (m *metadataManager) cleanOldDeleteEKRecordFileSchedule() {
+	timer := time.NewTicker(cleanDelEKRecordFileTimerInterval)
+	for {
+		select {
+		case <- m.stopC:
+			timer.Stop()
+			return
+		case <- timer.C:
+			m.doCleanOldDeleteEKRecordFile()
+		}
+	}
+}
+
+func (m *metadataManager) doCleanOldDeleteEKRecordFile() {
+	mpIDs := make([]uint64, 0)
+	m.Range(func(i uint64, p MetaPartition) bool {
+		mpIDs = append(mpIDs, p.GetBaseConfig().PartitionId)
+		return true
+	})
+
+	expiredTime := time.Now().Add(-delEKRecordFileRetentionTime)
+	for _, mpID := range mpIDs {
+		partition, err := m.getPartition(mpID)
+		if err != nil{
+			continue
+		}
+
+		mp, ok := partition.(*metaPartition)
+		if !ok {
+			continue
+		}
+
+		mp.removeOldDeleteEKRecordFileByTime(delExtentKeyList, prefixDelExtentKeyListBackup, expiredTime)
+		mp.removeOldDeleteEKRecordFileByTime(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, expiredTime)
+	}
+
+	var metaDataDiskUsedRatio float64
+	if metaDataDisk, ok := m.metaNode.disks[m.metaNode.metadataDir]; ok {
+		metaDataDiskUsedRatio = metaDataDisk.Used/metaDataDisk.Total
+	}
+	if metaDataDiskUsedRatio < ForceCleanDelEKRecordFileMaxMetaDataDiskUsedFactor {
+		log.LogDebugf("[removeOldDeleteEKRecordFile] meta data disk used ratio:%v", metaDataDiskUsedRatio)
+		return
+	}
+
+	recordFileMaxTotalSize := uint64(defForceDeleteEKRecordFileMaxTotalSize)
+	for _, mpID := range mpIDs {
+		partition, err := m.getPartition(mpID)
+		if err != nil{
+			continue
+		}
+
+		mp, ok := partition.(*metaPartition)
+		if !ok {
+			continue
+		}
+
+		mp.removeOldDeleteEKRecordFile(delExtentKeyList, prefixDelExtentKeyListBackup, recordFileMaxTotalSize, true)
+		mp.removeOldDeleteEKRecordFile(InodeDelExtentKeyList, PrefixInodeDelExtentKeyListBackup, recordFileMaxTotalSize, true)
+	}
 }
 
 // onStop stops each meta partitions.

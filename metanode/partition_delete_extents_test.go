@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/unit"
 	raftproto "github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
 	"github.com/cubefs/cubefs/util/diskusage"
@@ -545,7 +546,7 @@ func TestRemoveOldDeleteEKRecordFileCase01(t *testing.T) {
 		return
 	}
 
-	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup,false)
+	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup, 0, false)
 	var files []fs.DirEntry
 	files, err = os.ReadDir(mp.config.RootDir)
 	if err != nil {
@@ -607,7 +608,7 @@ func TestRemoveOldDeleteEKRecordFileCase02(t *testing.T) {
 		return
 	}
 
-	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup,false)
+	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup, 0, false)
 	var files []fs.DirEntry
 	files, err = os.ReadDir(mp.config.RootDir)
 	if err != nil {
@@ -669,7 +670,7 @@ func TestRemoveOldDeleteEKRecordFileCase03(t *testing.T) {
 		return
 	}
 
-	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup,false)
+	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup, 0, false)
 	var files []fs.DirEntry
 	files, err = os.ReadDir(mp.config.RootDir)
 	if err != nil {
@@ -683,6 +684,87 @@ func TestRemoveOldDeleteEKRecordFileCase03(t *testing.T) {
 		}
 	}
 	if cnt != 3 {
+		t.Errorf("expect file count:3, actual:%v", cnt)
+		return
+	}
+
+	mp.removeOldDeleteEKRecordFile(delExtentKeyList,  prefixDelExtentKeyListBackup, uint64(unit.MB * 5), false)
+	files, err = os.ReadDir(mp.config.RootDir)
+	if err != nil {
+		t.Errorf("read dir failed:%v", err)
+		return
+	}
+	cnt = 0
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), prefixDelExtentKeyListBackup) && file.Name() != delExtentKeyList {
+			cnt++
+		}
+	}
+	if cnt != 0 {
+		t.Errorf("expect file count:3, actual:%v", cnt)
+		return
+	}
+
+	if _, err = os.Stat(path.Join(mp.config.RootDir, delExtentKeyList)); err == nil {
+		return
+	} else {
+		if os.IsNotExist(err) {
+			t.Errorf("%s has been deleted", delExtentKeyList)
+			return
+		}
+		t.Errorf("stat %s error:%v", delExtentKeyList, err)
+	}
+}
+
+
+func TestRemoveOldDeleteEKRecordFileCase04(t *testing.T) {
+	rootDir := "./test_remove_old_file"
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, rootDir, ApplyMockWithNull)
+	if err != nil {
+		t.Errorf("mock metapartition failed:%v", err)
+		return
+	}
+
+	if mp == nil {
+		t.Errorf("mock mp is nil")
+		return
+	}
+	defer releaseMetaPartition(mp)
+	mp.manager.metaNode.disks = make(map[string]*diskusage.FsCapMon, 0)
+	mp.manager.metaNode.disks[rootDir] = &diskusage.FsCapMon{
+		Path:          rootDir,
+		IsRocksDBDisk: false,
+		ReservedSpace: 0,
+		Total:         100,
+		Used:          60,
+		Available:     0,
+		Status:        0,
+		MPCount:       0,
+	}
+
+	//create delete record ek file
+	err = createTestDeleteEKRecordsFile(5, mp.config.RootDir)
+	if err != nil {
+		t.Errorf("create test file failed:%v", err)
+		return
+	}
+
+	time.Sleep(time.Second * 3)
+
+	mp.removeOldDeleteEKRecordFileByTime(delExtentKeyList,  prefixDelExtentKeyListBackup, time.Now().Add(time.Second*(-1)))
+	var files []fs.DirEntry
+	files, err = os.ReadDir(mp.config.RootDir)
+	if err != nil {
+		t.Errorf("read dir failed:%v", err)
+		return
+	}
+	cnt := 0
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), prefixDelExtentKeyListBackup) && file.Name() != delExtentKeyList {
+			cnt++
+		}
+	}
+	if cnt != 0 {
 		t.Errorf("expect file count:3, actual:%v", cnt)
 		return
 	}
