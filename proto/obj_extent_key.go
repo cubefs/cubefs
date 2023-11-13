@@ -143,7 +143,10 @@ func (k *ObjExtentKey) UnmarshalBinary(buf *bytes.Buffer) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.BlobSize); err != nil {
 		return
 	}
-	blobs := make([]Blob, 0, int(k.BlobsLen))
+	var blobs []Blob
+	if k.BlobsLen > 0 {
+		blobs = make([]Blob, 0, int(k.BlobsLen))
+	}
 	for i := 0; i < int(k.BlobsLen); i++ {
 		tmpBlob := Blob{}
 		if err = binary.Read(buf, binary.BigEndian, &tmpBlob); err != nil {
