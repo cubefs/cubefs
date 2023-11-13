@@ -83,7 +83,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		tpLabels map[string]string
 		tpObject *exporter.TimePointCount
 	)
-
+	log.LogDebugf("action[OperatePacket] %v, pack [%v]", p.GetOpMsg(), p)
 	shallDegrade := p.ShallDegrade()
 	sz := p.Size
 	if !shallDegrade {

@@ -113,7 +113,7 @@ type ExtentHandler struct {
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
-	//	log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
+	// log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:       stream,
 		id:           GetExtentHandlerID(),
@@ -137,8 +137,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)Status(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.storeMode, eh.status)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)Status(%v)Dp(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.storeMode, eh.status, eh.dp)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -216,7 +216,7 @@ func (eh *ExtentHandler) sender() {
 		//		case <-t.C:
 		//			log.LogDebugf("sender alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.request:
-			//log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
@@ -259,7 +259,7 @@ func (eh *ExtentHandler) sender() {
 			}
 			packet.StartT = time.Now().UnixNano()
 
-			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
+			log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 
 			if err = packet.writeToConn(eh.conn); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
@@ -284,9 +284,9 @@ func (eh *ExtentHandler) receiver() {
 		//		case <-t.C:
 		//			log.LogDebugf("receiver alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.reply:
-			//log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+			log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
-			//log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+			log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
@@ -325,6 +325,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	if reply.ResultCode != proto.OpOk {
 		if reply.ResultCode != proto.ErrCodeVersionOpError {
 			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
+			log.LogDebugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
 			eh.processReplyError(packet, errmsg)
 			return
 		}
@@ -367,7 +368,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			ExtentOffset: extOffset,
 			Size:         packet.Size,
 			SnapInfo: &proto.ExtSnapInfo{
-				VerSeq: eh.stream.verSeq,
+				VerSeq: reply.VerSeq,
 			},
 		}
 	} else {
@@ -654,12 +655,12 @@ func (eh *ExtentHandler) setClosed() bool {
 }
 
 func (eh *ExtentHandler) setRecovery() bool {
-	//	log.LogDebugf("action[ExtentHandler.setRecovery] stack (%v)", string(debug.Stack()))
+	// log.LogDebugf("action[ExtentHandler.setRecovery] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusClosed, ExtentStatusRecovery)
 }
 
 func (eh *ExtentHandler) setError() bool {
-	//	log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
+	// log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
 	if proto.IsHot(eh.stream.client.volumeType) {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}
