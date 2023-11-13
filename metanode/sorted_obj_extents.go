@@ -20,6 +20,12 @@ func NewSortedObjExtents() *SortedObjExtents {
 	}
 }
 
+func NewSortedObjExtentsFromObjEks(eks []proto.ObjExtentKey) *SortedObjExtents {
+	return &SortedObjExtents{
+		eks: eks,
+	}
+}
+
 func (se *SortedObjExtents) String() string {
 	se.RLock()
 	data, err := json.Marshal(se.eks)

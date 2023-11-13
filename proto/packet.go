@@ -94,19 +94,16 @@ const (
 
 	// Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaFreeInodesOnRaftFollower uint8 = 0x32
-
-	OpMetaDeleteInode        uint8 = 0x33 // delete specified inode immediately and do not remove data.
-	OpMetaBatchExtentsAdd    uint8 = 0x34 // for extents batch attachment
-	OpMetaSetXAttr           uint8 = 0x35
-	OpMetaGetXAttr           uint8 = 0x36
-	OpMetaRemoveXAttr        uint8 = 0x37
-	OpMetaListXAttr          uint8 = 0x38
-	OpMetaBatchGetXAttr      uint8 = 0x39
-	OpMetaExtentAddWithCheck uint8 = 0x3A // Append extent key with discard extents check
-	OpMetaReadDirLimit       uint8 = 0x3D
-	OpMetaLockDir            uint8 = 0x3E
-
-	OpMetaRenewalForbiddenMigration uint8 = 0x3F // for hybrid cloud
+	OpMetaDeleteInode              uint8 = 0x33 // delete specified inode immediately and do not remove data.
+	OpMetaBatchExtentsAdd          uint8 = 0x34 // for extents batch attachment
+	OpMetaSetXAttr                 uint8 = 0x35
+	OpMetaGetXAttr                 uint8 = 0x36
+	OpMetaRemoveXAttr              uint8 = 0x37
+	OpMetaListXAttr                uint8 = 0x38
+	OpMetaBatchGetXAttr            uint8 = 0x39
+	OpMetaExtentAddWithCheck       uint8 = 0x3A // Append extent key with discard extents check
+	OpMetaReadDirLimit             uint8 = 0x3D
+	OpMetaLockDir                  uint8 = 0x3E
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition           uint8 = 0x40
@@ -271,8 +268,10 @@ const (
 
 	OpReachMaxExtentsErr uint8 = 0xB3
 
-	//hybirdCloud
-	OpDismatchStorageClass uint8 = 0xD8
+	// hybirdCloud
+	OpDismatchStorageClass              uint8 = 0x82
+	OpMetaRenewalForbiddenMigration     uint8 = 0x83
+	OpMetaUpdateExtentKeyAfterMigration uint8 = 0x84
 )
 
 const (
