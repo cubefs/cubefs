@@ -42,11 +42,12 @@ baijiaruo ([@baijiaruo](https://github.com/baijiaruo)) | [505892459@qq.com](mail
 
 Name | Email | Duty | Organization
 --------|---|---|---
-Tao Li ([@tomscut](https://github.com/tomscut)) | [tomleescut@gmail.com](tomleescut@gmail.com) | Master, MetaNode , Blobstore | [BIGO] 
+Tao Li ([@tomscut](https://github.com/tomscut)) | [tomleescut@gmail.com](tomleescut@gmail.com) | Master, MetaNode , Blobstore | [BIGO]
 Junhao Guo（[@M1eyu2018](https://github.com/M1eyu2018)）| [857037797@qq.com](857037797@qq.com) | Master, MetaNode, Client | [BIGO]
 Bingxing Liu（[@liubingxing](https://github.com/liubingxing)）| [liubbingxing@gmail.com](liubbingxing@gmail.com) | Master, MetaNode, Client | [BIGO]
 Xiang Li ([@lixiang](https://github.com/lixiang)) | [960754123@qq.com](mailto:960754123@qq.com) | Client, Community | [OPPO](https://www.oppo.com/en/)
 Qing Li ([@qingli](https://github.com/liqingqiya)) | [liqing.qiya@gmail.com](mailto:liqing.qiya@gmail.com) | Blobstore Blobnode | [OPPO]
 Zhihao Wang ([@Cresc](https://github.com/zhihao-wang)) | [wzh07@hotmail.com](mailto:liqing.qiya@gmail.com) | Blobstore Blobnode | [OPPO]
+NaturalSelect([@NaturalSelect](https://github.com/NaturalSelect)) | [2145973003@qq.com](mailto:2145973003@qq.com)| Master, MetaNode | -
 
 [BIGO]:https://www.bigo.tv/
