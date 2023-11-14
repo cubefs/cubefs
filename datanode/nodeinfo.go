@@ -91,7 +91,7 @@ func (s *DataNode) getVolPartMap() map[string]map[uint64]bool {
 		partMap map[uint64]bool
 		ok      bool
 	)
-	s.space.RangePartitions(func(dp *DataPartition) bool {
+	s.space.WalkPartitions(func(dp *DataPartition) bool {
 		partMap, ok = volPartMap[dp.volumeID]
 		if !ok {
 			partMap = make(map[uint64]bool)

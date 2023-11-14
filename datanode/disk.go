@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -30,12 +31,14 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/async"
 	"github.com/cubefs/cubefs/util/concurrent"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/multirate"
+	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/shirou/gopsutil/load"
 	"golang.org/x/time/rate"
@@ -143,6 +146,9 @@ type Disk struct {
 
 	issueFixConcurrentLimiter *concurrent.Limiter // 修复服务器故障导致的不安全数据的并发限制器
 	limiter                   *multirate.MultiLimiter
+
+	monitorData  []*statistics.MonitorData
+	interceptors storage.IOInterceptors
 }
 
 type CheckExpired func(id uint64) bool
@@ -173,7 +179,10 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 		forceFlushFDParallelism:   DefaultForceFlushFDParallelismOnDisk,
 		issueFixConcurrentLimiter: concurrent.NewLimiter(DefaultIssueFixConcurrencyOnDisk),
 		limiter:                   limiter,
+		monitorData:               statistics.InitMonitorData(statistics.ModelDataNode),
 	}
+
+	d.initInterceptors()
 
 	if err = d.computeUsage(); err != nil {
 		return
@@ -205,6 +214,73 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 			path, i, string(debug.Stack()))
 	})
 	return
+}
+
+func (d *Disk) initInterceptors() {
+	var (
+		unifiedDiskPath = strings.Trim(strings.ReplaceAll(d.Path, "/", "_"), "_")
+
+		tpKeyDiskIOWrite  = fmt.Sprintf("diskwrite_%s", unifiedDiskPath)
+		tpKeyDiskIORead   = fmt.Sprintf("diskread_%s", unifiedDiskPath)
+		tpKeyDiskIODelete = fmt.Sprintf("diskdelete_%s", unifiedDiskPath)
+		tpKeyDiskIOSync   = fmt.Sprintf("disksync_%s", unifiedDiskPath)
+	)
+	const (
+		ctxKeyExporterTPObject = byte(0)
+		ctxKeyMonitorTPObject  = byte(1)
+	)
+	d.interceptors.Register(storage.IOWrite,
+		storage.NewFuncInterceptor(
+			func() (ctx context.Context, err error) {
+				ctx = context.Background()
+				ctx = context.WithValue(ctx, ctxKeyExporterTPObject, exporter.NewModuleTPUs(tpKeyDiskIOWrite))
+				ctx = context.WithValue(ctx, ctxKeyMonitorTPObject, d.monitorData[proto.ActionDiskIOWrite].BeforeTp())
+				return
+			},
+			func(ctx context.Context, n int64, err error) {
+				d.triggerDiskError(err)
+				ctx.Value(ctxKeyExporterTPObject).(exporter.TP).Set(nil)
+				ctx.Value(ctxKeyMonitorTPObject).(*statistics.TpObject).AfterTp(uint64(n))
+			}))
+	d.interceptors.Register(storage.IORead,
+		storage.NewFuncInterceptor(
+			func() (ctx context.Context, err error) {
+				ctx = context.Background()
+				ctx = context.WithValue(ctx, ctxKeyExporterTPObject, exporter.NewModuleTPUs(tpKeyDiskIORead))
+				ctx = context.WithValue(ctx, ctxKeyMonitorTPObject, d.monitorData[proto.ActionDiskIORead].BeforeTp())
+				return
+			},
+			func(ctx context.Context, n int64, err error) {
+				d.triggerDiskError(err)
+				ctx.Value(ctxKeyExporterTPObject).(exporter.TP).Set(nil)
+				ctx.Value(ctxKeyMonitorTPObject).(*statistics.TpObject).AfterTp(uint64(n))
+			}))
+	d.interceptors.Register(storage.IORemove,
+		storage.NewFuncInterceptor(
+			func() (ctx context.Context, err error) {
+				ctx = context.Background()
+				ctx = context.WithValue(ctx, ctxKeyExporterTPObject, exporter.NewModuleTPUs(tpKeyDiskIODelete))
+				ctx = context.WithValue(ctx, ctxKeyMonitorTPObject, d.monitorData[proto.ActionDiskIODelete].BeforeTp())
+				return
+			},
+			func(ctx context.Context, n int64, err error) {
+				d.triggerDiskError(err)
+				ctx.Value(ctxKeyExporterTPObject).(exporter.TP).Set(nil)
+				ctx.Value(ctxKeyMonitorTPObject).(*statistics.TpObject).AfterTp(uint64(n))
+			}))
+	d.interceptors.Register(storage.IOSync,
+		storage.NewFuncInterceptor(
+			func() (ctx context.Context, err error) {
+				ctx = context.Background()
+				ctx = context.WithValue(ctx, ctxKeyExporterTPObject, exporter.NewModuleTPUs(tpKeyDiskIOSync))
+				ctx = context.WithValue(ctx, ctxKeyMonitorTPObject, d.monitorData[proto.ActionDiskIOSync].BeforeTp())
+				return
+			},
+			func(ctx context.Context, n int64, err error) {
+				d.triggerDiskError(err)
+				ctx.Value(ctxKeyExporterTPObject).(exporter.TP).Set(nil)
+				ctx.Value(ctxKeyMonitorTPObject).(*statistics.TpObject).AfterTp(uint64(n))
+			}))
 }
 
 func (d *Disk) SetForceFlushFDParallelism(parallelism uint64) {
@@ -536,7 +612,7 @@ func (d *Disk) triggerDiskError(err error) {
 	if err == nil {
 		return
 	}
-	if IsDiskErr(err.Error()) {
+	if IsDiskErr(err) {
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
@@ -668,7 +744,7 @@ func (d *Disk) loadPartitions(parallelism int, expired CheckExpired) (err error)
 				}
 				partitionFullPath := path.Join(d.Path, filename)
 				startTime := time.Now()
-				if partition, loadErr = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit, d.limiter); loadErr != nil {
+				if partition, loadErr = d.loadPartition(partitionFullPath); loadErr != nil {
 					msg := fmt.Sprintf("load partition(%v) failed: %v",
 						partitionFullPath, loadErr)
 					log.LogError(msg)
@@ -712,7 +788,7 @@ func (d *Disk) loadPartitions(parallelism int, expired CheckExpired) (err error)
 }
 
 // RestoreOnePartition restores the data partition.
-func (d *Disk) RestoreOnePartition(partitionPath string, limiter *multirate.MultiLimiter) (err error) {
+func (d *Disk) RestoreOnePartition(partitionPath string) (err error) {
 	var (
 		partitionID uint64
 		partition   *DataPartition
@@ -757,7 +833,7 @@ func (d *Disk) RestoreOnePartition(partitionPath string, limiter *multirate.Mult
 	}
 
 	startTime := time.Now()
-	if partition, err = LoadDataPartition(partitionFullPath, d, d.latestFlushTimeOnInit, limiter); err != nil {
+	if partition, err = d.loadPartition(partitionFullPath); err != nil {
 		msg := fmt.Sprintf("load partition(%v) failed: %v",
 			partitionFullPath, err)
 		log.LogError(msg)

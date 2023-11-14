@@ -544,7 +544,7 @@ func (s *DataNode) incDiskErrCnt(partitionID uint64, err error, flag uint8) {
 	if d == nil {
 		return
 	}
-	if !IsDiskErr(err.Error()) {
+	if !IsDiskErr(err) {
 		return
 	}
 	if flag == WriteFlag {
@@ -565,17 +565,38 @@ func IsSysErr(err error) (is bool) {
 	return reflect.TypeOf(err) == staticReflectedErrnoType
 }
 
-func IsDiskErr(errMsg string) bool {
-	if strings.Contains(errMsg, syscall.EIO.Error()) || strings.Contains(errMsg, syscall.EROFS.Error()) {
-		return true
-	}
-
-	return false
+func IsDiskErr(err error) bool {
+	return err != nil &&
+		(strings.Contains(err.Error(), syscall.EIO.Error()) ||
+			strings.Contains(err.Error(), syscall.EROFS.Error()))
 }
 
 func (s *DataNode) summaryMonitorData(reportTime int64) []*statistics.MonitorData {
-	dataList := make([]*statistics.MonitorData, 0)
-	s.space.RangePartitions(func(partition *DataPartition) bool {
+	var dataList = make([]*statistics.MonitorData, 0)
+	s.space.WalkDisks(func(disk *Disk) bool {
+		var totalCount uint64
+		for i, md := range disk.monitorData {
+			if atomic.LoadUint64(&md.Count) == 0 {
+				continue
+			}
+			size, count, tp := md.ResetTp()
+			var data = &statistics.MonitorData{
+				DiskPath:   disk.Path,
+				Action:     i,
+				ActionStr:  proto.ActionDataMap[i],
+				Size:       size,
+				Count:      count,
+				Tp99:       uint64(tp.Tp99),
+				Max:        uint64(tp.Max),
+				Avg:        uint64(tp.Avg),
+				ReportTime: reportTime,
+			}
+			dataList = append(dataList, data)
+			totalCount += data.Count
+		}
+		return true
+	})
+	s.space.WalkPartitions(func(partition *DataPartition) bool {
 		totalCount := uint64(0)
 		// each op
 		for i := 0; i < len(partition.monitorData); i++ {

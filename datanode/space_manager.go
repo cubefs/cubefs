@@ -114,10 +114,10 @@ func (manager *SpaceManager) Stop() {
 	wg.Add(1)
 	go func(c chan<- *DataPartition) {
 		defer wg.Done()
-		manager.RangePartitions(func(partition *DataPartition) bool {
+		manager.WalkPartitions(func(partition *DataPartition) bool {
 			c <- partition
 			return true
-		}) // RangePartitions 方法内部采用局部读锁结构，既不会产生map线程安全问题由不会长时间占用锁.
+		}) // WalkPartitions 方法内部采用局部读锁结构，既不会产生map线程安全问题由不会长时间占用锁.
 		close(c)
 	}(partitionC)
 
@@ -161,8 +161,8 @@ func (manager *SpaceManager) GetRaftStore() (raftStore raftstore.RaftStore) {
 }
 
 func (manager *SpaceManager) GetPartitions() (partitions []*DataPartition) {
-	partitions = make([]*DataPartition, 0)
 	manager.partitionMutex.RLock()
+	partitions = make([]*DataPartition, 0, len(manager.partitions))
 	for _, dp := range manager.partitions {
 		partitions = append(partitions, dp)
 	}
@@ -170,19 +170,12 @@ func (manager *SpaceManager) GetPartitions() (partitions []*DataPartition) {
 	return
 }
 
-func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bool) {
-	if f == nil {
+func (manager *SpaceManager) WalkPartitions(visitor func(partition *DataPartition) bool) {
+	if visitor == nil {
 		return
 	}
-	manager.partitionMutex.RLock()
-	partitions := make([]*DataPartition, 0, len(manager.partitions)) // 直接申请足够长度避免append过程中无意义slice扩容引起的内存分配和拷贝
-	for _, dp := range manager.partitions {
-		partitions = append(partitions, dp)
-	}
-	manager.partitionMutex.RUnlock()
-
-	for _, partition := range partitions {
-		if !f(partition) {
+	for _, partition := range manager.GetPartitions() {
+		if !visitor(partition) {
 			break
 		}
 	}
@@ -196,6 +189,17 @@ func (manager *SpaceManager) GetDisks() (disks []*Disk) {
 		disks = append(disks, disk)
 	}
 	return
+}
+
+func (manager *SpaceManager) WalkDisks(visitor func(*Disk) bool) {
+	if visitor == nil {
+		return
+	}
+	for _, disk := range manager.GetDisks() {
+		if !visitor(disk) {
+			break
+		}
+	}
 }
 
 func (manager *SpaceManager) Stats() *Stats {
@@ -375,7 +379,7 @@ func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 	delete(manager.partitions, partitionID)
 }
 
-func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest, limiter *multirate.MultiLimiter) (dp *DataPartition, err error) {
+func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 	// 保证同一时间只处理一个Partition的创建操作
 	manager.createPartitionMutex.Lock()
 	defer manager.createPartitionMutex.Unlock()
@@ -404,7 +408,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	if disk == nil {
 		return nil, ErrNoSpaceToCreatePartition
 	}
-	if dp, err = CreateDataPartition(dpCfg, disk, request, limiter); err != nil {
+	if dp, err = disk.createPartition(dpCfg, request); err != nil {
 		return
 	}
 	disk.AttachDataPartition(dp)
@@ -441,9 +445,9 @@ func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
 	dp.Expired()
 }
 
-func (manager *SpaceManager) ReloadPartition(d *Disk, partitionID uint64, partitionPath string, limiter *multirate.MultiLimiter) (err error) {
+func (manager *SpaceManager) LoadPartition(d *Disk, partitionID uint64, partitionPath string) (err error) {
 	var partition *DataPartition
-	if err = d.RestoreOnePartition(partitionPath, limiter); err != nil {
+	if err = d.RestoreOnePartition(partitionPath); err != nil {
 		return
 	}
 
@@ -519,7 +523,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.ZoneName = s.zoneName
 	response.PartitionReports = make([]*proto.PartitionReport, 0)
 	space := s.space
-	space.RangePartitions(func(partition *DataPartition) bool {
+	space.WalkPartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.PartitionReport{
 			VolName:         partition.volumeID,
@@ -666,7 +670,7 @@ func (s *DataNode) buildHeartBeatResponsePb(response *proto.DataNodeHeartbeatRes
 	response.ZoneName = s.zoneName
 	response.PartitionReports = make([]*proto.PartitionReportPb, 0)
 	space := s.space
-	space.RangePartitions(func(partition *DataPartition) bool {
+	space.WalkPartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.PartitionReportPb{
 			VolName:         partition.volumeID,

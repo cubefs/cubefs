@@ -117,25 +117,6 @@ var (
 	}
 )
 
-type IOType int
-
-const (
-	IOWrite IOType = iota
-	IORead
-	IODelete
-)
-
-type IOInterceptor func(io IOType, do func())
-
-func (i IOInterceptor) intercept(io IOType, do func()) {
-	if i != nil {
-		i(io, do)
-		return
-	}
-	do()
-	return
-}
-
 type Batch [][4]uint64
 
 func (b *Batch) Len() int {
@@ -206,7 +187,7 @@ type ExtentStore struct {
 
 	deletionQueue *ExtentQueue
 
-	ioInterceptor IOInterceptor
+	interceptors IOInterceptors
 }
 
 func MkdirAll(name string) (err error) {
@@ -214,12 +195,12 @@ func MkdirAll(name string) (err error) {
 }
 
 func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
-	cacheCapacity int, ln CacheListener, isCreatePartition bool, ioi IOInterceptor) (s *ExtentStore, err error) {
+	cacheCapacity int, ln CacheListener, isCreatePartition bool, ioi IOInterceptors) (s *ExtentStore, err error) {
 	s = new(ExtentStore)
 	s.dataPath = dataDir
 	s.partitionID = partitionID
 	s.infoStore = NewExtentInfoStore(partitionID)
-	s.ioInterceptor = ioi
+	s.interceptors = ioi
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
@@ -324,7 +305,7 @@ func (s *ExtentStore) Create(extentID, inode uint64, putCache bool) (err error) 
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 
 	var headerHandler = s.getExtentHeaderHandler(extentID)
-	if e, err = CreateExtent(name, extentID, s.ioInterceptor, headerHandler); err != nil {
+	if e, err = CreateExtent(name, extentID, headerHandler); err != nil {
 		return err
 	}
 	if putCache {
@@ -480,7 +461,7 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	err = e.Write(data, offset, size, crc, writeType, isSync)
+	err = e.Write(data, offset, size, crc, writeType, isSync, s.interceptors.Get(IOWrite))
 	if err != nil {
 		return err
 	}
@@ -515,7 +496,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return
 	}
-	crc, err = e.Read(nbuf, offset, size, isRepairRead, force)
+	crc, err = e.Read(nbuf, offset, size, isRepairRead, force, s.interceptors.Get(IORead))
 
 	return
 }
@@ -543,7 +524,7 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 	var (
 		hasDelete bool
 	)
-	if hasDelete, err = e.DeleteTiny(offset, size); err != nil {
+	if hasDelete, err = e.DeleteTiny(offset, size, s.interceptors.Get(IORemove)); err != nil {
 		return
 	}
 	if hasDelete {
@@ -683,12 +664,17 @@ func (s *ExtentStore) FlushDelete() (n int, err error) {
 				s.partitionID, ino, extent, timestamp)
 		}
 		var filepath = path.Join(s.dataPath, strconv.FormatUint(extent, 10))
-		var doIO = func() {
-			if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) && log.IsWarnEnabled() {
-				log.LogWarnf("Store(%v) remove NormalExtent file failed: extent=%v, ino=%v, filepath=%v, error=%v", s.partitionID, extent, ino, filepath, err)
-			}
+
+		var interceptor = s.interceptors.Get(IORemove)
+		var ctx context.Context
+		if ctx, err = interceptor.Before(); err != nil {
+			return false, err
 		}
-		s.ioInterceptor.intercept(IODelete, doIO)
+		if err = os.Remove(filepath); err != nil && !os.IsNotExist(err) && log.IsWarnEnabled() {
+			log.LogWarnf("Store(%v) remove NormalExtent file failed: extent=%v, ino=%v, filepath=%v, error=%v", s.partitionID, extent, ino, filepath, err)
+		}
+		interceptor.After(ctx, 0, err)
+
 		if err = s.removeExtentHeader(extent); err != nil && log.IsWarnEnabled() {
 			log.LogWarnf("Store(%v) remove block CRC info failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
 			return true, nil
@@ -726,7 +712,7 @@ func (s *ExtentStore) Close() {
 
 	// Release cache
 	s.deletionQueue.Close()
-	s.cache.Flush(nil)
+	s.cache.Flush(nil, s.interceptors.Get(IOSync))
 	s.cache.Close()
 	s.tinyExtentDeleteFp.Sync()
 	s.tinyExtentDeleteFp.Close()
@@ -1160,7 +1146,7 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	var headerHandler = s.getExtentHeaderHandler(extentID)
-	if e, err = OpenExtent(name, extentID, s.ioInterceptor, headerHandler); err != nil {
+	if e, err = OpenExtent(name, extentID, headerHandler); err != nil {
 		return
 	}
 	if !putCache {
@@ -1382,7 +1368,7 @@ func (s *ExtentStore) Flush(limiter *rate.Limiter) (err error) {
 	if err = s.metadataFp.Sync(); err != nil {
 		return
 	}
-	s.cache.Flush(limiter)
+	s.cache.Flush(limiter, s.interceptors.Get(IOSync))
 	return
 }
 
@@ -1438,7 +1424,7 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 		if e, err = s.ExtentWithHeader(ei); err != nil {
 			return
 		}
-		if _, err = e.DeleteTiny(int64(offset), int64(size)); err != nil {
+		if _, err = e.DeleteTiny(int64(offset), int64(size), s.interceptors.Get(IORemove)); err != nil {
 			return
 		}
 	}

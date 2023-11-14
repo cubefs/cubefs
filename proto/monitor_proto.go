@@ -41,6 +41,10 @@ const (
 	ActionRepairWrite
 	ActionMarkDelete
 	ActionBatchMarkDelete
+	ActionDiskIOWrite
+	ActionDiskIORead
+	ActionDiskIODelete
+	ActionDiskIOSync
 )
 
 var ActionDataMap = map[int]string{
@@ -51,6 +55,10 @@ var ActionDataMap = map[int]string{
 	ActionRepairWrite:     "repairWrite",
 	ActionMarkDelete:      "markDelete",
 	ActionBatchMarkDelete: "batchMarkDelete",
+	ActionDiskIOWrite:     "DiskIOWrite",
+	ActionDiskIORead:      "DiskIORead",
+	ActionDiskIODelete:    "DiskIODelete",
+	ActionDiskIOSync:      "DiskIOSync",
 }
 
 const (

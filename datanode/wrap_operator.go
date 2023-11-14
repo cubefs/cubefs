@@ -221,7 +221,7 @@ func (s *DataNode) handlePacketToCreateDataPartition(p *repl.Packet) {
 		return
 	}
 	p.PartitionID = request.PartitionId
-	if dp, err = s.space.CreatePartition(request, s.limiter); err != nil {
+	if dp, err = s.space.CreatePartition(request); err != nil {
 		err = fmt.Errorf("from master Task(%v) cannot create Partition err(%v)", task.ToString(), err)
 		return
 	}

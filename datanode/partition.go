@@ -271,9 +271,9 @@ type DataPartitionViewInfo struct {
 	BaseExtentID         uint64                    `json:"baseExtentID"`
 }
 
-func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.CreateDataPartitionRequest, limiter *multirate.MultiLimiter) (dp *DataPartition, err error) {
+func (d *Disk) createPartition(dpCfg *dataPartitionCfg, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, disk, true, limiter); err != nil {
+	if dp, err = newDataPartition(dpCfg, d, true, d.limiter, d.interceptors); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -281,7 +281,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	// persist file metadata
 	dp.DataPartitionCreateType = request.CreateType
 	err = dp.persistMetaDataOnly()
-	disk.AddSize(uint64(dp.Size()))
+	d.AddSize(uint64(dp.Size()))
 	if err = dp.initIssueProcessor(0); err != nil {
 		return
 	}
@@ -328,7 +328,7 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 // LoadDataPartition loads and returns a partition instance based on the specified directory.
 // It reads the partition metadata file stored under the specified directory
 // and creates the partition instance.
-func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int64, limiter *multirate.MultiLimiter) (dp *DataPartition, err error) {
+func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error) {
 	var (
 		metaFileData []byte
 	)
@@ -351,15 +351,15 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 		Peers:         meta.Peers,
 		Hosts:         meta.Hosts,
 		Learners:      meta.Learners,
-		RaftStore:     disk.space.GetRaftStore(),
-		NodeID:        disk.space.GetNodeID(),
-		ClusterID:     disk.space.GetClusterID(),
+		RaftStore:     d.space.GetRaftStore(),
+		NodeID:        d.space.GetNodeID(),
+		ClusterID:     d.space.GetClusterID(),
 		CreationType:  meta.DataPartitionCreateType,
 
 		VolHAType: meta.VolumeHAType,
 		Mode:      meta.ConsistencyMode,
 	}
-	if dp, err = newDataPartition(dpCfg, disk, false, limiter); err != nil {
+	if dp, err = newDataPartition(dpCfg, d, false, d.limiter, d.interceptors); err != nil {
 		return
 	}
 	// dp.PersistMetadata()
@@ -379,7 +379,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 		return
 	}
 
-	disk.AddSize(uint64(dp.Size()))
+	d.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
 
 	// 检查是否有需要更新Volume信息
@@ -397,7 +397,7 @@ func LoadDataPartition(partitionDir string, disk *Disk, latestFlushTimeUnix int6
 	dp.persistedApplied = appliedID
 	dp.persistedMetadata = meta
 	dp.maybeUpdateFaultOccurredCheckLevel()
-	if err = dp.initIssueProcessor(latestFlushTimeUnix); err != nil {
+	if err = dp.initIssueProcessor(d.latestFlushTimeOnInit); err != nil {
 		return
 	}
 	return
@@ -445,7 +445,7 @@ func (dp *DataPartition) maybeUpdateFaultOccurredCheckLevel() {
 	}
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, limiter *multirate.MultiLimiter) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, limiter *multirate.MultiLimiter, interceptors storage.IOInterceptors) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	partition := &DataPartition{
@@ -482,32 +482,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		}
 	}
 
-	var (
-		umpKeyDiskIOWrite  = fmt.Sprintf("diskwrite_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
-		umpKeyDiskIORead   = fmt.Sprintf("diskread_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
-		umpKeyDiskIODelete = fmt.Sprintf("diskdelete_%s", strings.Trim(strings.ReplaceAll(disk.Path, "/", "_"), "_"))
-	)
-
-	var ioInterceptor storage.IOInterceptor = func(io storage.IOType, do func()) {
-		var tp exporter.TP = nil
-		defer func() {
-			if tp != nil {
-				tp.Set(nil)
-			}
-		}()
-		switch io {
-		case storage.IOWrite:
-			tp = exporter.NewModuleTPUs(umpKeyDiskIOWrite)
-		case storage.IORead:
-			tp = exporter.NewModuleTPUs(umpKeyDiskIORead)
-		case storage.IODelete:
-			tp = exporter.NewModuleTPUs(umpKeyDiskIODelete)
-		default:
-		}
-		do()
-	}
-
-	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, CacheCapacityPerPartition, cacheListener, isCreatePartition, ioInterceptor)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize, CacheCapacityPerPartition, cacheListener, isCreatePartition, interceptors)
 	if err != nil {
 		return
 	}
@@ -934,7 +909,7 @@ func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 	if err == nil {
 		return
 	}
-	if IsDiskErr(err.Error()) {
+	if IsDiskErr(err) {
 		mesg := fmt.Sprintf("disk path %v error on %v", dp.Path(), LocalIP)
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)

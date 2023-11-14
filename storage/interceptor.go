@@ -3,28 +3,28 @@ package storage
 import "context"
 
 type Interceptor interface {
-	Before() (ctx context.Context, abort bool)
-	After(context.Context)
+	Before() (context.Context, error)
+	After(ctx context.Context, n int64, err error)
 }
 
-type BeforeFunc func() (ctx context.Context, abort bool)
-type AfterFunc func(context.Context)
+type BeforeFunc func() (ctx context.Context, err error)
+type AfterFunc func(ctx context.Context, n int64, err error)
 
 type funcInterceptor struct {
 	before BeforeFunc
 	after  AfterFunc
 }
 
-func (i *funcInterceptor) Before() (ctx context.Context, abort bool) {
+func (i *funcInterceptor) Before() (context.Context, error) {
 	if i.before != nil {
 		return i.before()
 	}
-	return nil, false
+	return nil, nil
 }
 
-func (i *funcInterceptor) After(ctx context.Context) {
+func (i *funcInterceptor) After(ctx context.Context, n int64, err error) {
 	if i.after != nil {
-		i.after(ctx)
+		i.after(ctx, n, err)
 		return
 	}
 	return
@@ -35,4 +35,29 @@ func NewFuncInterceptor(before BeforeFunc, after AfterFunc) Interceptor {
 		before: before,
 		after:  after,
 	}
+}
+
+var noopInterceptor = NewFuncInterceptor(nil, nil)
+
+type IOType int
+
+const (
+	IOWrite IOType = iota
+	IORead
+	IORemove
+	IOSync
+	__types
+)
+
+type IOInterceptors [__types]Interceptor
+
+func (ioi *IOInterceptors) Get(typ IOType) Interceptor {
+	if i := ioi[typ]; i != nil {
+		return i
+	}
+	return noopInterceptor
+}
+
+func (ioi *IOInterceptors) Register(typ IOType, interceptor Interceptor) {
+	ioi[typ] = interceptor
 }

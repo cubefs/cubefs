@@ -256,7 +256,7 @@ func (cache *ExtentCache) ForceEvict(ratio unit.Ratio) {
 	}
 }
 
-func (cache *ExtentCache) Flush(limiter *rate.Limiter) {
+func (cache *ExtentCache) Flush(limiter *rate.Limiter, interceptor Interceptor) {
 	cache.lock.RLock()
 	var extents = make([]*Extent, cache.extentList.Len())
 	var i int
@@ -268,7 +268,7 @@ func (cache *ExtentCache) Flush(limiter *rate.Limiter) {
 	}
 	cache.lock.RUnlock()
 	for _, e := range extents[:i] {
-		_ = e.Flush(limiter)
+		_ = e.Flush(limiter, interceptor)
 		atomic.StoreInt64(&e.modifies, 0)
 	}
 	return

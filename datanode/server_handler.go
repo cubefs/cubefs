@@ -217,7 +217,7 @@ func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
-	s.space.RangePartitions(func(dp *DataPartition) bool {
+	s.space.WalkPartitions(func(dp *DataPartition) bool {
 		partition := &struct {
 			ID                    uint64                  `json:"id"`
 			Size                  int                     `json:"size"`
@@ -714,7 +714,7 @@ func (s *DataNode) reloadPartitionByName(partitionPath, disk string) (err error)
 		return
 	}
 
-	if err = s.space.ReloadPartition(d, partitionID, partitionPath, s.limiter); err != nil {
+	if err = s.space.LoadPartition(d, partitionID, partitionPath); err != nil {
 		return
 	}
 	return
@@ -1154,7 +1154,7 @@ func (s *DataNode) resetFaultOccurredCheckLevel(w http.ResponseWriter, r *http.R
 		}
 		partition.setFaultOccurredCheckLevel(checkCorruptLevel)
 	} else {
-		s.space.RangePartitions(func(partition *DataPartition) bool {
+		s.space.WalkPartitions(func(partition *DataPartition) bool {
 			partition.setFaultOccurredCheckLevel(checkCorruptLevel)
 			return true
 		})
