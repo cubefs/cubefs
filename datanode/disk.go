@@ -363,17 +363,13 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		if err != nil {
 			return
 		}
-		d.Total = dStatus.totalPhysicalCapability
+		d.Total = dStatus.totalPhysicalCapability -d.ReservedSpace
 		available:=dStatus.freePhysicalCapability - d.ReservedSpace
 		if available < 0 {
 			available = 0
 		}
 		d.Available=available
-		used := int64(d.Total - d.Available)
-		if used < 0 {
-			used = 0
-		}
-		d.Used = uint64(used)
+		d.Used = dStatus.totalPhysicalCapability  - dStatus.freePhysicalCapability
 
 		allocatedSize := uint64(0)
 		for _, dp := range d.partitionMap {
@@ -384,12 +380,9 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		if unallocated < 0 {
 			unallocated = 0
 		}
-		if d.Available <= 0 {
-			d.RejectWrite = true
-		} else {
-			d.RejectWrite = false
-		}
 		d.Unallocated=unallocated
+		d.RejectWrite = d.Available <= 0
+
 		d.PhysicalUsedRatio = dStatus.physicalUsageRatio
 		d.CompressionRatio = dStatus.compRatio
 		log.LogDebugf("SfxDiskComputeUsage disk(%v) totalPhysicalSpace(%v) freePhysicalSpace(%v) PhysicalUsedRatio(%v) CompressionRatio(%v)",
@@ -406,13 +399,12 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 		return
 	}
 
-	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace))
-	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
+	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize)- d.ReservedSpace))
+	total := int64(fs.Blocks*uint64(fs.Bsize) -d.ReservedSpace)
 	if total < 0 {
 		total = 0
 	}
 	d.Total = uint64(total)
-
 	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace))
 	available := int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace)
 	if available < 0 {
@@ -420,12 +412,7 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 	}
 	d.Available = uint64(available)
 
-	//  used := math.Max(0, int64(total - available))
-	used := int64(total - available)
-	if used < 0 {
-		used = 0
-	}
-	d.Used = uint64(used)
+	d.Used = fs.Blocks * uint64(fs.Bsize) - fs.Bavail * uint64(fs.Bsize)
 
 	allocatedSize := int64(0)
 	for _, dp := range d.partitionMap {
