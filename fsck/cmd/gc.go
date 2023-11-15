@@ -345,7 +345,7 @@ func InitLocalDir(dir string, volname string, partitionId string, dirType string
 			log.LogErrorf("clear tiny file failed:%v", err)
 			return "", "", err
 		}
-		log.LogInfof("tiny file contents have been cleared successfully: ", tinyFilePath)
+		log.LogInfof("tiny file contents have been cleared successfully: %v", tinyFilePath)
 	}
 
 	normalFilePath = filepath.Join(normalPath, partitionId)
@@ -720,7 +720,7 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 
 // write bad extent to local
 func writeBadNormalExtentoLocal(dpId, badDir string, badExtent BadNornalExtent) (err error) {
-	log.LogInfof("Write dpId: %s bad extent: %s", dpId, badExtent)
+	log.LogInfof("Write dpId: %s bad extent: %v", dpId, badExtent)
 	filePath := filepath.Join(badDir, dpId)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
