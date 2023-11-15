@@ -264,7 +264,7 @@ func (s *DataNode) restorePartitions(w http.ResponseWriter, r *http.Request) {
 				failedDps = append(failedDps, dpid)
 				continue
 			}
-			err = s.space.ReloadPartition(d, dpid, newname)
+			err = s.space.LoadPartition(d, dpid, newname)
 			if err != nil {
 				failedDps = append(failedDps, dpid)
 				continue

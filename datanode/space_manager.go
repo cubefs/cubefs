@@ -213,7 +213,6 @@ func (manager *SpaceManager) LoadDisk(path *DiskPath, expired CheckExpired) (err
 	if _, exists := manager.GetDisk(path); !exists {
 		var config = &DiskConfig{
 			Reserved:          path.Reserved(),
-			UsableRatio:       unit.NewRatio(DefaultDiskUseRatio),
 			MaxErrCnt:         DefaultDiskMaxErr,
 			MaxFDLimit:        DiskMaxFDLimit,
 			ForceFDEvictRatio: DiskForceEvictFDRatio,

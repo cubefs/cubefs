@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -69,7 +70,7 @@ const (
 	DefaultRaftLogsToRetain  = 1000 // Count of raft logs per data partition
 	DefaultDiskMaxErr        = 1
 	DefaultDiskReservedSpace = 5 * unit.GB // GB
-	DefaultDiskUseRatio      = float64(0.90)
+	DefaultDiskUsableRatio = float64(0.90)
 )
 
 const (
@@ -298,13 +299,23 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	var startTime = time.Now()
 
 	// Prepare and validate disk config
-	var getDeviceID = func(path string) (uint64, error) {
+	var getDeviceID = func(path string) (devID uint64, err error) {
 		var stat = new(syscall.Stat_t)
-		if err := syscall.Stat(path, stat); err != nil {
-			return 0, err
+		if err = syscall.Stat(path, stat); err != nil {
+			return
 		}
-		return stat.Dev, nil
+		devID = stat.Dev
+		return
 	}
+	var getDeviceCapacity = func(path string) (capacity uint64, err error) {
+		var statfs = new(syscall.Statfs_t)
+		if err = syscall.Statfs(path, statfs); err != nil {
+			return
+		}
+		capacity = statfs.Blocks * uint64(statfs.Bsize)
+		return
+	}
+
 	var rootDevID uint64
 	if rootDevID, err = getDeviceID("/"); err != nil {
 		return
@@ -326,11 +337,16 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			err = fmt.Errorf("root device in disks configuration: %v (%v), ", d, devID)
 			return
 		}
-		log.LogInfof("disk device: %v, %v (%v)", d, diskPath.Path(), devID)
 		if p, exists := diskPaths[devID]; exists {
 			err = fmt.Errorf("dependent device in disks configuration: [%v,%v]", d, p.Path())
 			return
 		}
+		var capacity uint64
+		if capacity, err = getDeviceCapacity(diskPath.Path()); err != nil {
+			return
+		}
+		diskPath.SetReserved(uint64(math.Max(float64(capacity)*unit.NewRatio(1-DefaultDiskUsableRatio).Float64(), float64(diskPath.Reserved()))))
+		log.LogInfof("disk device: %v, path %v, device %v, capacity %v, reserved %v", d, diskPath.Path(), devID, capacity, diskPath.Reserved())
 		diskPaths[devID] = diskPath
 	}
 

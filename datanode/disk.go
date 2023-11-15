@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"os"
 	"path"
 	"regexp"
@@ -62,15 +61,19 @@ var (
 
 type DiskPath struct {
 	path     string
-	reserved int64
+	reserved uint64
 }
 
 func (p *DiskPath) Path() string {
 	return p.path
 }
 
-func (p *DiskPath) Reserved() int64 {
+func (p *DiskPath) Reserved() uint64 {
 	return p.reserved
+}
+
+func (p *DiskPath) SetReserved(reserved uint64) {
+	p.reserved = reserved
 }
 
 func (p *DiskPath) String() string {
@@ -84,9 +87,9 @@ func ParseDiskPath(str string) (p *DiskPath, success bool) {
 	var parts = strings.Split(str, ":")
 	p = &DiskPath{
 		path: parts[0],
-		reserved: func() int64 {
+		reserved: func() uint64 {
 			if len(parts) > 1 {
-				var val, _ = strconv.ParseInt(parts[1], 10, 64)
+				var val, _ = strconv.ParseUint(parts[1], 10, 64)
 				return val
 			}
 			return 0
@@ -97,8 +100,7 @@ func ParseDiskPath(str string) (p *DiskPath, success bool) {
 }
 
 type DiskConfig struct {
-	Reserved                 int64
-	UsableRatio              unit.Ratio
+	Reserved                 uint64
 	MaxErrCnt                int
 	MaxFDLimit               uint64     // 触发强制FD淘汰策略的阈值
 	ForceFDEvictRatio        unit.Ratio // 强制FD淘汰比例
@@ -122,7 +124,6 @@ type Disk struct {
 	MaxErrCnt     int // maximum number of errors
 	Status        int // disk status such as READONLY
 	ReservedSpace uint64
-	UsableRatio   unit.Ratio // usable
 
 	RejectWrite  bool
 	partitionMap map[uint64]*DataPartition
@@ -163,10 +164,10 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 			d = nil
 		}
 	}()
+
 	d = &Disk{
 		Path:                      path,
-		ReservedSpace:             uint64(math.Max(float64(config.Reserved), float64(DefaultDiskReservedSpace))),
-		UsableRatio:               config.UsableRatio,
+		ReservedSpace:             config.Reserved,
 		MaxErrCnt:                 config.MaxErrCnt,
 		RejectWrite:               false,
 		space:                     space,
@@ -339,40 +340,44 @@ func (d *Disk) computeUsage() (err error) {
 		return
 	}
 
-	// Total = (DeviceCapacity - Reserved) * UsableRatio
-	var deviceCapacity = fs.Blocks * uint64(fs.Bsize)
-	var capacity = int64(float64(deviceCapacity-d.ReservedSpace) * d.UsableRatio.Float64())
-	capacity = int64(math.Max(float64(capacity), float64(0)))
-	d.Total = uint64(capacity)
+	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace))
+	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
+	if total < 0 {
+		total = 0
+	}
+	d.Total = uint64(total)
 
-	// Available = DeviceAvailable-(DeviceCapacity-Total)
-	var deviceAvailable = fs.Bavail * uint64(fs.Bsize)
-	var available = int64(deviceAvailable) - (int64(deviceCapacity) - capacity)
-	available = int64(math.Max(float64(available), float64(0)))
+	//  available := math.Max(0, int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace))
+	available := int64(fs.Bavail*uint64(fs.Bsize) - d.ReservedSpace)
+	if available < 0 {
+		available = 0
+	}
 	d.Available = uint64(available)
 
 	//  used := math.Max(0, int64(total - available))
-	var used = capacity - available
-	used = int64(math.Max(float64(used), float64(0)))
+	used := int64(total - available)
+	if used < 0 {
+		used = 0
+	}
 	d.Used = uint64(used)
 
-	var allocated int64 = 0
-	d.RLock()
+	allocatedSize := int64(0)
 	for _, dp := range d.partitionMap {
-		allocated += int64(dp.Size())
+		allocatedSize += int64(dp.Size())
 	}
-	d.RUnlock()
-	atomic.StoreUint64(&d.Allocated, uint64(allocated))
+	atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
 	//  unallocated = math.Max(0, total - allocatedSize)
-	var unallocated = capacity - allocated
-	unallocated = int64(math.Max(float64(unallocated), float64(0)))
+	unallocated := total - allocatedSize
+	if unallocated < 0 {
+		unallocated = 0
+	}
 	d.Unallocated = uint64(unallocated)
 
 	d.RejectWrite = d.Available <= 0
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Disk %v: computed usage: Capacity %v, Available %v, Used %v, Allocated %v, Unallocated %v, DevCapacity %v, DevAvailable %v",
-			d.Path, d.Total, d.Available, d.Used, allocated, unallocated, deviceCapacity, deviceAvailable)
+		log.LogDebugf("Disk %v: computed usage: Capacity %v, Available %v, Used %v, Allocated %v, Unallocated %v",
+			d.Path, d.Total, d.Available, d.Used, allocatedSize, unallocated)
 	}
 
 	return
