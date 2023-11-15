@@ -17,6 +17,9 @@ package trace
 import (
 	"context"
 	"errors"
+	"hash/maphash"
+	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -307,4 +310,20 @@ func TestSpan_FinishWithOptions(t *testing.T) {
 			{Timestamp: time.Now()},
 		},
 	})
+}
+
+func Benchmark_RandomID_RandLock(b *testing.B) {
+	var l sync.Mutex
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for ii := 0; ii < b.N; ii++ {
+		l.Lock()
+		r.Uint64()
+		l.Unlock()
+	}
+}
+
+func Benchmark_RandomID_Maphash(b *testing.B) {
+	for ii := 0; ii < b.N; ii++ {
+		new(maphash.Hash).Sum64()
+	}
 }
