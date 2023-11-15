@@ -2906,7 +2906,7 @@ func (m *MetaNode) setLocalDeleteExtentRateLimit(w http.ResponseWriter, r *http.
 		limit = rate.Limit(rateLimit)
 	}
 
-	delExtentRateLimitLocal = rateLimit
+	atomic.StoreUint64(&delExtentRateLimitLocal, rateLimit)
 	delExtentRateLimiterLocal.SetLimit(limit)
 	log.LogDebugf("setLocalDeleteExtentRateLimit from %v to %v", oldRateLimit, delExtentRateLimitLocal)
 	return

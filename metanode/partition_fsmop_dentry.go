@@ -321,15 +321,15 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 	}
 
 	count := uint64(0)
-	readDirLimit := ReadDirLimitNum()
+	readDirLimitCount := ReadDirLimitNum()
 	err = mp.dentryTree.RangeWithPrefix(&Dentry{ParentId: req.ParentID}, begDentry, endDentry, func(d *Dentry) (bool, error) {
 		count += 1
 		if req.IsBatch && count > readDirMax {
 			resp.NextMarker = d.Name
 			return false, nil
 		}
-		if readDirLimit > 0 && count > readDirLimit {
-			log.LogWarnf("readDir: parent(%v) exceeded maximum limit(%v) count(%v)", req.ParentID, readDirLimit, count)
+		if readDirLimitCount > 0 && count > readDirLimitCount {
+			log.LogWarnf("readDir: parent(%v) exceeded maximum limit(%v) count(%v)", req.ParentID, readDirLimitCount, count)
 			return false, nil
 		}
 		resp.Children = append(resp.Children, proto.Dentry{

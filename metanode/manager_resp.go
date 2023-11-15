@@ -15,13 +15,16 @@
 package metanode
 
 import (
+	"context"
+	"github.com/cubefs/cubefs/util/multirate"
+	"github.com/cubefs/cubefs/util/unit"
 	"net"
 	"runtime/debug"
+	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-
 )
 
 // Reply operation results to the master.
@@ -58,6 +61,24 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 			}
 		}
 	}()
+
+	//package opcode pid may changed in process, ignore
+	pid := p.PartitionID
+	mp, err := m.GetPartition(pid)
+	if err != nil {
+		return
+	}
+
+	vol := mp.GetBaseConfig().VolName
+	ps := multirate.Properties{
+		{multirate.PropertyTypeVol, vol},
+		{multirate.PropertyTypeOp, strconv.Itoa(int(p.Opcode))},
+		{multirate.PropertyTypePartition, strconv.Itoa(int(pid))},
+	}
+	stat := multirate.Stat{
+		OutBytes: int(unit.PacketHeaderSize + p.ArgLen + p.Size),
+	}
+	m.limiter.WaitN(context.Background(), ps, stat)
 
 	// process data and send reply though specified tcp connection.
 	err = p.WriteToConn(conn, proto.WriteDeadlineTime)

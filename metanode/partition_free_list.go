@@ -17,12 +17,14 @@ package metanode
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/exporter"
 	"math/rand"
 	"net"
 	"os"
 	"path"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -228,7 +230,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 		go func(partitionID uint64, extents []*proto.MetaDelExtentKey) {
 			start := 0
 			for {
-				end := start + DefaultDelEKLimitBurst //每次删除的ek个数不能超过限速的burst值
+				end := start + DefaultDelEKBatchCount//每次删除的ek个数不能超过限速的burst值
 				if end > len(extents) {
 					end = len(extents)
 				}
@@ -279,30 +281,21 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 }
 
 func (mp *metaPartition) deleteEKWithRateLimit(delEKCount int) {
-	limit, _ := delEKVolRateLimitMap[mp.config.VolName]
-	delEKRateLimitOn := delExtentRateLimitLocal > 0 ||  limit > 0 || delEKZoneRateLimit > 0
-	if !delEKRateLimitOn {
-		return
-	}
-
 	ctx := context.Background()
-	if delExtentRateLimitLocal > 0 {
+	if atomic.LoadUint64(&delExtentRateLimitLocal) > 0 {
 		delExtentRateLimiterLocal.WaitN(ctx, delEKCount)
 		return
 	}
 
-	if limit > 0 {
-		limiter, ok := delEKVolRateLimiterMap[mp.config.VolName]
-		if !ok {
-			return
-		}
-		limiter.WaitN(ctx, delEKCount)
-		return
+	ps := multirate.Properties{
+		{multirate.PropertyTypeVol, mp.config.VolName},
+		{multirate.PropertyTypeOp,strconv.Itoa(int(proto.OpMarkDelete))},
+		{multirate.PropertyTypePartition, strconv.Itoa(int(mp.config.PartitionId))},
 	}
-
-	if delEKZoneRateLimit > 0 {
-		delEKZoneRateLimiter.WaitN(ctx, delEKCount)
+	stat := multirate.Stat{
+		Count: delEKCount,
 	}
+	mp.manager.limiter.WaitN(context.Background(), ps, stat)
 	return
 }
 

@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/statinfo"
 	"os"
 	"strconv"
@@ -66,6 +67,7 @@ type MetaNode struct {
 	diskStopCh        chan struct{}
 	disks             map[string]*diskusage.FsCapMon
 	control           common.Control
+	limitManager     *multirate.LimiterManager
 }
 
 // Start starts up the meta node with the specified configuration.
@@ -136,6 +138,11 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	if err = m.registerAPIHandler(); err != nil {
 		return
+	}
+
+	m.limitManager = multirate.NewLimiterManager(cfg.GetString("role"), m.zoneName,  masterClient.AdminAPI().GetLimitInfo)
+	if m.limitManager == nil {
+		return errors.New("Init limit manager failed!")
 	}
 
 	go m.startUpdateNodeInfo()

@@ -15,9 +15,12 @@
 package metanode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/tokenmanager"
+	"github.com/cubefs/cubefs/util/unit"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -85,6 +88,7 @@ type metadataManager struct {
 	volConfMap         map[string]*VolumeConfig
 	volConfMapRWMutex  sync.RWMutex
 	tokenM             *tokenmanager.TokenManager
+	limiter            *multirate.MultiLimiter
 }
 
 type VolumeConfig struct {
@@ -131,13 +135,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	m.rateLimit(conn, p, remoteAddr)
 
 	defer metric.Set(err)
-
-	//now := time.Now()
-	//defer func() {
-	//	go func() {
-	//		statistics.Report(p.GetOpMsg(), 0, p.PartitionID, time.Now().Sub(now))
-	//	}()
-	//}()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
@@ -1041,7 +1038,7 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 	return json.Marshal(m.partitions)
 }
 
-func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) {
+func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) {
 	// ignore rate limit if request is from cluster internal nodes
 	addrSlice := strings.Split(remoteAddr, ":")
 	_, isInternal := clusterMap[addrSlice[0]]
@@ -1049,6 +1046,23 @@ func (s *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 		return
 	}
 
+	pid := p.PartitionID
+	mp, err := m.GetPartition(pid)
+	if err != nil {
+		return
+	}
+
+	vol := mp.GetBaseConfig().VolName
+	ps := multirate.Properties{
+		{multirate.PropertyTypeVol, vol},
+		{multirate.PropertyTypeOp, strconv.Itoa(int(p.Opcode))},
+		{multirate.PropertyTypePartition, strconv.Itoa(int(pid))},
+	}
+	stat := multirate.Stat{
+		Count: 1,
+		InBytes: int(unit.PacketHeaderSize + p.ArgLen + p.Size),
+	}
+	m.limiter.WaitN(context.Background(), ps, stat)
 	return
 }
 
@@ -1186,6 +1200,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		volConfMap:  make(map[string]*VolumeConfig, 0),
 		rocksDBDirs: metaNode.rocksDirs,
 		tokenM:      tokenmanager.NewTokenManager(10),
+		limiter:     metaNode.limitManager.GetLimiter(),
 	}
 
 	if err := mm.loadPartitions(); err != nil {
