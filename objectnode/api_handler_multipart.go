@@ -172,10 +172,10 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var partNumberInt uint16
-	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil {
+	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil || partNumberInt < 1 {
 		log.LogErrorf("uploadPartHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
 			GetRequestID(r), partNumber, err)
-		errorCode = InvalidArgument
+		errorCode = InvalidPartNumber
 		return
 	}
 	if param.Bucket() == "" {
@@ -284,10 +284,10 @@ func (o *ObjectNode) uploadPartCopyHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var partNumberInt uint16
-	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil {
+	if partNumberInt, err = safeConvertStrToUint16(partNumber); err != nil || partNumberInt < 1 {
 		log.LogErrorf("uploadPartCopyHandler: parse part number fail, requestID(%v) raw(%v) err(%v)",
 			GetRequestID(r), partNumber, err)
-		errorCode = InvalidArgument
+		errorCode = InvalidPartNumber
 		return
 	}
 	if param.Bucket() == "" {
@@ -681,8 +681,14 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 	}
 	previousPartNum := 0
 	for _, p := range multipartUploadRequest.Parts {
+		if p.PartNumber < 1 {
+			log.LogErrorf("completeMultipartUploadHandler: invalid part number: requestID(%v) partNum=%d",
+				GetRequestID(r), p.PartNumber)
+			errorCode = InvalidPartNumber
+			return
+		}
 		if p.PartNumber < previousPartNum {
-			log.LogDebugf("completeMultipartUploadHandler: invalid part order: requestID(%v) prevPartNum=%d partNum=%d",
+			log.LogErrorf("completeMultipartUploadHandler: invalid part order: requestID(%v) prevPartNum=%d partNum=%d",
 				GetRequestID(r), previousPartNum, p.PartNumber)
 			errorCode = InvalidPartOrder
 			return
