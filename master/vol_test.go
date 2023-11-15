@@ -649,7 +649,7 @@ func checkClientViews(t *testing.T, newRenamedVol *Vol) {
 	assertErrNilOtherwiseFailNow(t, err)
 	assert.Equal(t, len(volView.MetaPartitions), len(mps))
 	assert.Equal(t, len(volView.DataPartitions), len(dataPartitionMap))
-	dataPartitionsView, err := mc.ClientAPI().GetDataPartitions(newRenamedVol.Name)
+	dataPartitionsView, err := mc.ClientAPI().GetDataPartitions(newRenamedVol.Name, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	assert.Equal(t, len(dataPartitionsView.DataPartitions), len(dataPartitionMap))
 	metaPartitions, err := mc.ClientAPI().GetMetaPartitions(newRenamedVol.Name)

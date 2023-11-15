@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/exporter"
-	"math/rand"
+	"github.com/cubefs/cubefs/util/fetchtopology"
 	"net"
 	"os"
 	"path"
@@ -68,55 +68,9 @@ func (mp *metaPartition) startFreeList() (err error) {
 	}
 
 	// start vol update ticket
-	go mp.updateVolWorker()
 	go mp.deleteWorker()
 	mp.startToDeleteExtents()
 	return
-}
-
-func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
-	volName := mp.config.VolName
-	dataView, err := masterClient.ClientAPI().GetDataPartitions(volName)
-	if err != nil {
-		err = fmt.Errorf("updateVolWorker: get meta partitions view fail: volume(%v) err(%v)",
-			volName, err)
-		log.LogErrorf(err.Error())
-		return
-	}
-	mp.vol.UpdatePartitions(convert(dataView))
-	return nil
-}
-
-func (mp *metaPartition) updateVolWorker() {
-	rand.Seed(time.Now().Unix())
-	time.Sleep(time.Duration(rand.Intn(int(UpdateVolTicket))))
-	t := time.NewTicker(UpdateVolTicket)
-	var convert = func(view *proto.DataPartitionsView) *DataPartitionsView {
-		newView := &DataPartitionsView{
-			DataPartitions: make([]*DataPartition, len(view.DataPartitions)),
-		}
-		for i := 0; i < len(view.DataPartitions); i++ {
-			newView.DataPartitions[i] = &DataPartition{
-				PartitionID: view.DataPartitions[i].PartitionID,
-				Status:      view.DataPartitions[i].Status,
-				Hosts:       view.DataPartitions[i].Hosts,
-				EcHosts:     view.DataPartitions[i].EcHosts,
-				EcMigrateStatus: view.DataPartitions[i].EcMigrateStatus,
-				ReplicaNum:  view.DataPartitions[i].ReplicaNum,
-			}
-		}
-		return newView
-	}
-	mp.updateVolView(convert)
-	for {
-		select {
-		case <-mp.stopC:
-			t.Stop()
-			return
-		case <-t.C:
-			mp.updateVolView(convert)
-		}
-	}
 }
 
 const (
@@ -125,7 +79,7 @@ const (
 )
 
 func (mp *metaPartition) GetDelInodeInterval() uint64{
-	interval := mp.manager.getDelInodeInterval(mp.config.VolName)
+	interval := mp.fetchTopoManager.GetDelInodeIntervalConf(mp.config.VolName)
 	clusterWaitValue := atomic.LoadUint64(&deleteWorkerSleepMs)
 	if interval == 0 {
 		interval = clusterWaitValue
@@ -135,7 +89,7 @@ func (mp *metaPartition) GetDelInodeInterval() uint64{
 
 func (mp *metaPartition) GetBatchDelInodeCnt() uint64{
 	clusterDelCnt := DeleteBatchCount()   // default 128
-	batchDelCnt := mp.manager.getBatchDelInodeCnt(mp.config.VolName)
+	batchDelCnt := mp.fetchTopoManager.GetBatchDelInodeCntConf(mp.config.VolName)
 	if batchDelCnt == 0 {
 		batchDelCnt = clusterDelCnt
 	}
@@ -145,7 +99,7 @@ func (mp *metaPartition) GetBatchDelInodeCnt() uint64{
 
 func (mp *metaPartition) GetTruncateEKCountEveryTime() (count int) {
 	count = DefaultTruncateEKCount
-	truncateEKCount := mp.manager.getVolumeTruncateEKCountEveryTimeValue(mp.config.VolName)
+	truncateEKCount := mp.fetchTopoManager.GetTruncateEKCountConf(mp.config.VolName)
 	if truncateEKCount > 0 {
 		count = truncateEKCount
 	}
@@ -217,6 +171,7 @@ func (mp *metaPartition) deleteWorker() {
 // delete Extents by Partition,and find all successDelete inode
 func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.MetaDelExtentKey,
 	allInodes []*Inode, truncateCount int) (shouldCommit []*Inode) {
+	dpsView := mp.fetchTopoManager.GetVolume(mp.config.VolName).DataPartitionsView()
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
 	var (
@@ -235,7 +190,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 					end = len(extents)
 				}
 				mp.deleteEKWithRateLimit(end-start)
-				perr := mp.doBatchDeleteExtentsByPartition(ctx, partitionID, extents[start:end])
+				perr := mp.doBatchDeleteExtentsByPartition(ctx, dpsView, partitionID, extents[start:end])
 				lock.Lock()
 				occurErrors[partitionID] = perr
 				lock.Unlock()
@@ -475,13 +430,16 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg 
 	return
 }
 
-func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.MetaDelExtentKey) (err error) {
+func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, dataPartitionsView fetchtopology.DataPartitionsView, ext *proto.MetaDelExtentKey) (err error) {
 	// get the data node view
 	tpObj := exporter.NewVolumeTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
 	defer tpObj.SetWithValue(1, err)
 	log.LogDebugf("doDeleteMarkedInodes mp(%v) ext(%v)", mp.config.PartitionId, ext)
-	dp := mp.vol.GetPartition(ext.PartitionId)
-	if dp == nil {
+	dp, ok := dataPartitionsView[ext.PartitionId]
+	if !ok || dp == nil {
+		mp.fetchTopoManager.FetchDataPartitionView(mp.config.VolName, ext.PartitionId)
+		log.LogDebugf("doDeleteMarkedInodes find dataPartition(%v) in vol(%s) failed," +
+			" force fetch data partition view", ext.PartitionId, mp.config.VolName)
 		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
 			ext.PartitionId)
 		return
@@ -526,19 +484,28 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Me
 		return
 	}
 	if p.ResultCode != proto.OpOk {
+		if p.ResultCode == proto.OpTryOtherAddr {
+			mp.fetchTopoManager.FetchDataPartitionView(mp.config.VolName, ext.PartitionId)
+			log.LogDebugf("doDeleteMarkedInodes vol(%s) dataPartition(%v) not exist in host(%v)," +
+				" force fetch data partition view", mp.config.VolName, ext.PartitionId, dp.Hosts[0])
+		}
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, partitionID uint64, exts []*proto.MetaDelExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context,
+	dataPartitionsView fetchtopology.DataPartitionsView, partitionID uint64, exts []*proto.MetaDelExtentKey) (err error) {
 	tpObj := exporter.NewNodeAndVolTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
 	defer tpObj.SetWithValue(int64(len(exts)), err)
 	log.LogDebugf("doBatchDeleteExtentsByPartition mp(%v) dp(%v), extentCnt(%v)", mp.config.PartitionId, partitionID, len(exts))
 	// get the data node view
-	dp := mp.vol.GetPartition(partitionID)
-	if dp == nil {
+	dp, ok := dataPartitionsView[partitionID]
+	if !ok || dp == nil {
+		mp.fetchTopoManager.FetchDataPartitionView(mp.config.VolName, partitionID)
+		log.LogDebugf("doBatchDeleteExtentsByPartition find dataPartition(%v) in vol(%s) failed," +
+			" force fetch data partition view", partitionID, mp.config.VolName)
 		err = errors.NewErrorf("unknown dataPartitionID=%d in vol",
 			partitionID)
 		return
@@ -589,6 +556,11 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context, pa
 		return
 	}
 	if p.ResultCode != proto.OpOk {
+		if p.ResultCode == proto.OpTryOtherAddr {
+			mp.fetchTopoManager.FetchDataPartitionView(mp.config.VolName, partitionID)
+			log.LogDebugf("doBatchDeleteExtentsByPartition vol(%s) dataPartition(%v) not exist in host(%v)," +
+				" force fetch data partition view", mp.config.VolName, partitionID, dp.Hosts[0])
+		}
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
@@ -606,7 +578,7 @@ func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
 	}
 }
 
-func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPartition, ext *proto.MetaDelExtentKey) (err error) {
+func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *fetchtopology.DataPartition, ext *proto.MetaDelExtentKey) (err error) {
 	// delete the data node
 	conn, err := mp.config.ConnPool.GetConnect(dp.EcHosts[0])
 
@@ -637,13 +609,18 @@ func (mp *metaPartition) doDeleteEcMarkedInodes(ctx context.Context, dp *DataPar
 		return
 	}
 	if p.ResultCode != proto.OpOk {
+		if p.ResultCode == proto.OpTryOtherAddr {
+			mp.fetchTopoManager.FetchDataPartitionView(mp.config.VolName, ext.PartitionId)
+			log.LogDebugf("doDeleteEcMarkedInodes vol(%s) ecDataPartition(%v) not exist in host(%v)," +
+				" force fetch data partition view", mp.config.VolName, ext.PartitionId, dp.EcHosts[0])
+		}
 		err = errors.NewErrorf("[deleteEcMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
 	}
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteEcExtentsByPartition(ctx context.Context, dp *DataPartition, exts []*proto.MetaDelExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteEcExtentsByPartition(ctx context.Context, dp *fetchtopology.DataPartition, exts []*proto.MetaDelExtentKey) (err error) {
 	var (
 		conn *net.TCPConn
 	)

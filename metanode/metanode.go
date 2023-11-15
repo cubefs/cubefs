@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/fetchtopology"
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/statinfo"
 	"os"
@@ -38,11 +39,12 @@ import (
 )
 
 var (
-	clusterInfo    *proto.ClusterInfo
-	masterClient   *masterSDK.MasterClient
-	configTotalMem uint64
-	serverPort     string
-	ProcessUsedMem uint64
+	clusterInfo        *proto.ClusterInfo
+	masterClient       *masterSDK.MasterClient
+	masterDomainClient *masterSDK.MasterClient
+	configTotalMem     uint64
+	serverPort         string
+	ProcessUsedMem     uint64
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -66,8 +68,9 @@ type MetaNode struct {
 	rocksDirs         []string
 	diskStopCh        chan struct{}
 	disks             map[string]*diskusage.FsCapMon
+	fetchTopoManager  *fetchtopology.FetchTopologyManager
 	control           common.Control
-	limitManager     *multirate.LimiterManager
+	limitManager      *multirate.LimiterManager
 }
 
 // Start starts up the meta node with the specified configuration.
@@ -133,16 +136,18 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.startRaftServer(); err != nil {
 		return
 	}
+
+	if err = m.initMultiLimiterManager(); err != nil {
+		return
+	}
+
+	m.initFetchTopologyManager()
+
 	if err = m.loadMetaPartitions(); err != nil {
 		return
 	}
 	if err = m.registerAPIHandler(); err != nil {
 		return
-	}
-
-	m.limitManager = multirate.NewLimiterManager(cfg.GetString("role"), m.zoneName,  masterClient.AdminAPI().GetLimitInfo)
-	if m.limitManager == nil {
-		return errors.New("Init limit manager failed!")
 	}
 
 	go m.startUpdateNodeInfo()
@@ -157,6 +162,10 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 
 	if err = m.startServer(); err != nil {
+		return
+	}
+
+	if err = m.startFetchTopologyManager(); err != nil {
 		return
 	}
 
@@ -183,6 +192,8 @@ func doShutdown(s common.Server) {
 	m.stopMetaManager()
 	m.stopRaftServer()
 	m.stopDiskStat()
+	m.stopFetchTopologyManager()
+	m.stopMultiLimiterManager()
 }
 
 // Sync blocks the invoker's goroutine until the meta node shuts down.
@@ -278,6 +289,11 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		masters = append(masters, addr.(string))
 	}
 	masterClient = masterSDK.NewMasterClient(masters, false)
+
+	domainAddr := cfg.GetString(proto.MasterDomainAddr)
+	if domainAddr != "" {
+		masterDomainClient = masterSDK.NewMasterClient([]string{domainAddr}, false)
+	}
 	err = m.validConfig()
 	return
 }
@@ -380,6 +396,55 @@ func (m *MetaNode) getProcessMemUsed() (memUsed uint64, err error) {
 	}
 
 	return memory.GetProcessMemory(os.Getpid())
+}
+
+func (m *MetaNode) addVolToFetchTopologyManager(name string) {
+	m.fetchTopoManager.AddVolume(name)
+}
+
+func (m *MetaNode) delVolFromFetchTopologyManager(name string) {
+	canDel := true
+	m.metadataManager.Range(func(i uint64, p MetaPartition) bool {
+		if p.GetBaseConfig().VolName == name {
+			canDel = false
+			return false
+		}
+		return true
+	})
+	if canDel {
+		m.fetchTopoManager.DeleteVolume(name)
+	}
+}
+
+func (m *MetaNode) initFetchTopologyManager() {
+	m.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, masterClient,	masterDomainClient,
+		true, true, m.limitManager.GetLimiter())
+	return
+}
+
+func (m *MetaNode) startFetchTopologyManager() (err error) {
+	return m.fetchTopoManager.Start()
+}
+
+func (m *MetaNode) stopFetchTopologyManager() {
+	if m.fetchTopoManager != nil {
+		m.fetchTopoManager.Stop()
+	}
+}
+
+func (m *MetaNode) initMultiLimiterManager() (err error) {
+	m.limitManager = multirate.NewLimiterManager(multirate.ModulMetaNode, m.zoneName,  masterClient.AdminAPI().GetLimitInfo)
+	if m.limitManager == nil {
+		err = errors.New("Init limit manager failed!")
+		return
+	}
+	return
+}
+
+func (m *MetaNode) stopMultiLimiterManager() {
+	if m.limitManager != nil {
+		m.limitManager.Stop()
+	}
 }
 
 // NewServer creates a new meta node instance.

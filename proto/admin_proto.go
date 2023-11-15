@@ -301,6 +301,8 @@ const (
 	DataNodeNetworkFlowRatioKey   = "dataNodeNetworkFlowRatio"
 	MetaNodeDumpSnapCountKey      = "metaNodeDumpSnapCount"
 	MetaNodeTruncateEKCountKey    = "truncateEKCountEveryTime"
+
+	IDsKey = "ids"
 )
 
 const (

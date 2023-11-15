@@ -54,6 +54,7 @@ type MetadataManager interface {
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
+	Range(f func(i uint64, p MetaPartition) bool)
 	SummaryMonitorData(reportTime int64) []*statistics.MonitorData
 	StartPartition(id uint64) error
 	StopPartition(id uint64) error
@@ -85,8 +86,6 @@ type metadataManager struct {
 	metaNode           *MetaNode
 	flDeleteBatchCount atomic.Value
 	stopC              chan bool
-	volConfMap         map[string]*VolumeConfig
-	volConfMapRWMutex  sync.RWMutex
 	tokenM             *tokenmanager.TokenManager
 	limiter            *multirate.MultiLimiter
 }
@@ -378,7 +377,6 @@ func (m *metadataManager) Stop() {
 
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
-	m.updateVolsConfScheduler()
 	go m.syncMetaPartitionsRocksDBWalLogScheduler()
 	go m.cleanOldDeleteEKRecordFileSchedule()
 	err = m.startPartitions()
@@ -439,189 +437,6 @@ func (m *metadataManager) syncMetaPartitionsRocksDBWalLogScheduler() {
 			return
 		}
 	}
-}
-
-func (m *metadataManager) updateVolsConfScheduler() {
-	for {
-		err := m.updateVolConf()
-		if err == nil {
-			log.LogWarnf("updateVolsConfScheduler, vols: %v", len(m.volConfMap))
-			break
-		}
-		log.LogWarnf("updateVolsConfScheduler, err: %v", err.Error())
-		time.Sleep(3 * time.Second)
-	}
-	go func() {
-		ticker := time.NewTicker(intervalToUpdateAllVolsConf)
-		for {
-			select {
-			case <-ticker.C:
-				m.updateVolConf()
-			case <-m.stopC:
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-}
-
-func (m *metadataManager) updateVolConf() (err error) {
-	var vols []*proto.VolInfo
-	vols, err = masterClient.AdminAPI().ListVols("")
-	if err != nil {
-		log.LogErrorf("updateTrashExpiredTime: err: %v", err.Error())
-		return
-	}
-	if len(vols) == 0 {
-		return
-	}
-	volConfMap := make(map[string]*VolumeConfig, 0)
-	for _, vol := range vols {
-		volConfMap[vol.Name] = &VolumeConfig{
-			Name:                              vol.Name,
-			TrashDay:                          int32(vol.TrashRemainingDays),
-			ChildFileMaxCnt:                   vol.ChildFileMaxCnt,
-			TrashCleanInterval:                vol.TrashCleanInterval,
-			BatchDelInodeCnt:                  vol.BatchInodeDelCnt,
-			DelInodeInterval:                  vol.DelInodeInterval,
-			EnableBitMapAllocator:             vol.EnableBitMapAllocator,
-			CleanTrashItemMaxCountEachTime:    vol.CleanTrashMaxCountEachTime,
-			CleanTrashItemMaxDurationEachTime: vol.CleanTrashMaxDurationEachTime,
-			EnableRemoveDupReq:                vol.EnableRemoveDupReq,
-			TruncateEKCount:                   vol.TruncateEKCountEveryTime,
-		}
-		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
-			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+
-			" enableRemoveDupReq:%v",
-			vol.Name, vol.TrashRemainingDays, vol.ChildFileMaxCnt, vol.TrashCleanInterval,
-			strconv.FormatBool(vol.EnableBitMapAllocator), vol.CleanTrashMaxDurationEachTime,
-			vol.CleanTrashMaxCountEachTime, vol.EnableRemoveDupReq)
-	}
-
-	m.volConfMapRWMutex.Lock()
-	defer m.volConfMapRWMutex.Unlock()
-	m.volConfMap = volConfMap
-	return
-}
-
-func (m *metadataManager) getTrashDaysByVol(vol string) (days int32) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	if volConf, ok := m.volConfMap[vol]; !ok {
-		days = -1
-	} else {
-		days = volConf.TrashDay
-	}
-	/*
-		if remaining > 0 {
-			remaining = time.Now().AddDate(0, 0, 0-int(remaining)).UnixNano() / 1000
-		}
-
-	*/
-	return
-}
-
-func (m *metadataManager) getChildFileMaxCount(vol string) (maxCount uint32) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	if volConf, ok := m.volConfMap[vol]; !ok {
-		maxCount = 0
-	} else {
-		maxCount = volConf.ChildFileMaxCnt
-	}
-	return
-}
-
-func (m *metadataManager) getTrashCleanInterval(vol string) (interval uint64) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	if volConf, ok := m.volConfMap[vol]; !ok {
-		interval = 0
-	} else {
-		interval = volConf.TrashCleanInterval
-	}
-	return
-}
-
-func (m *metadataManager) getBatchDelInodeCnt(vol string) (batchDelInodeCnt uint64) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	if volConf, ok := m.volConfMap[vol]; !ok {
-		batchDelInodeCnt = 0
-	} else {
-		batchDelInodeCnt = uint64(volConf.BatchDelInodeCnt)
-	}
-
-	return
-}
-
-func (m *metadataManager) getDelInodeInterval(vol string) (interval uint64) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	if volConf, ok := m.volConfMap[vol]; !ok {
-		interval = 0
-	} else {
-		interval = uint64(volConf.DelInodeInterval)
-	}
-
-	return
-}
-
-func (m *metadataManager) getBitMapAllocatorEnableFlag(vol string) (enableState bool, err error) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	volConf, ok := m.volConfMap[vol]
-	if !ok {
-		err = fmt.Errorf("get vol(%s) enableBitMapAllocator flag failed", vol)
-		return
-	}
-	enableState = volConf.EnableBitMapAllocator
-	return
-}
-
-func (m *metadataManager) getCleanTrashItemMaxDurationEachTime(vol string) (durationTime int32) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	volConf, ok := m.volConfMap[vol]
-	if !ok {
-		return
-	}
-	durationTime = volConf.CleanTrashItemMaxDurationEachTime
-	return
-}
-
-func (m *metadataManager) getCleanTrashItemMaxCountEachTime(vol string) (maxCount int32) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	volConf, ok := m.volConfMap[vol]
-	if !ok {
-		return
-	}
-	maxCount = volConf.CleanTrashItemMaxCountEachTime
-	return
-}
-
-func (m *metadataManager) getRemoveDupReqEnableState(vol string) (enable bool, err error) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	volConf, ok := m.volConfMap[vol]
-	if !ok {
-		err = fmt.Errorf("get vol(%s) enableBitMapAllocator flag failed", vol)
-		return
-	}
-	enable = volConf.EnableRemoveDupReq
-	return
-}
-
-func (m *metadataManager) getVolumeTruncateEKCountEveryTimeValue(vol string) (value int) {
-	m.volConfMapRWMutex.RLock()
-	defer m.volConfMapRWMutex.RUnlock()
-	volConf, ok := m.volConfMap[vol]
-	if !ok {
-		return
-	}
-	value = volConf.TruncateEKCount
-	return
 }
 
 func (m *metadataManager) cleanOldDeleteEKRecordFileSchedule() {
@@ -852,10 +667,15 @@ func (m *metadataManager) loadPartitions() (err error) {
 	return
 }
 
-func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) {
+func (m *metadataManager) addPartition(id uint64, partition MetaPartition) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.partitions[id] = partition
+}
+
+func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) {
+	m.addPartition(id, partition)
+	m.metaNode.addVolToFetchTopologyManager(partition.GetBaseConfig().VolName)
 	return
 }
 
@@ -912,7 +732,7 @@ func (m *metadataManager) startPartitions() (err error) {
 	return
 }
 
-func (m *metadataManager) detachPartition(id uint64) (err error) {
+func (m *metadataManager) delPartition(id uint64) (err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, has := m.partitions[id]
@@ -921,6 +741,20 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 		return
 	}
 	delete(m.partitions, id)
+	return
+}
+
+func (m *metadataManager) detachPartition(id uint64) (err error) {
+	var partition MetaPartition
+	partition, err = m.getPartition(id)
+	if err != nil {
+		err = fmt.Errorf("unknown partition: %d", id)
+		return
+	}
+	if err = m.delPartition(id); err != nil {
+		return
+	}
+	m.metaNode.delVolFromFetchTopologyManager(partition.GetBaseConfig().VolName)
 	return
 }
 
@@ -1197,7 +1031,6 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		metaNode:    metaNode,
 		connPool:    connpool.NewConnectPool(),
 		stopC:       make(chan bool, 0),
-		volConfMap:  make(map[string]*VolumeConfig, 0),
 		rocksDBDirs: metaNode.rocksDirs,
 		tokenM:      tokenmanager.NewTokenManager(10),
 		limiter:     metaNode.limitManager.GetLimiter(),

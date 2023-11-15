@@ -226,6 +226,9 @@ const (
 	OpCacheRead          uint8 = 0xD1
 	OpCachePrepare       uint8 = 0xD2
 
+	//just for rate limit code
+	OpFetchDataPartitionView uint8 = 0xDF
+
 	// Commons
 	OpInodeMergeErr    uint8 = 0xF1
 	OpInodeOutOfRange  uint8 = 0xF2

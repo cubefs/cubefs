@@ -361,6 +361,7 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 }
 
 func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor uint64, err error) {
+	dpsView := mp.fetchTopoManager.GetVolume(mp.config.VolName).DataPartitionsView()
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	cur := generalDateKey()
@@ -429,7 +430,7 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 
 		if needDel {
 			mp.deleteEKWithRateLimit(1)
-			if err = mp.doDeleteMarkedInodes(context.Background(), ek); err != nil {
+			if err = mp.doDeleteMarkedInodes(context.Background(), dpsView, ek); err != nil {
 				retryList.PushBack(ek)
 				log.LogWarnf("[cleanExpiredExtents] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())

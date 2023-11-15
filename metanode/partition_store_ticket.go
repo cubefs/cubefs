@@ -269,13 +269,22 @@ func (mp *metaPartition) startCleanTrashScheduler() {
 	}(mp.stopC)
 }
 
+func (mp *metaPartition) getTrashDaysByVol(vol string) (days int32) {
+	if volTopo := mp.fetchTopoManager.GetVolume(vol); volTopo.Config() == nil {
+		days = -1
+	} else {
+		days = volTopo.Config().GetTrashDays()
+	}
+	return
+}
+
 func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 	for {
 		if mp.config.TrashRemainingDays > -1 {
 			break
 		}
 
-		mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
+		mp.config.TrashRemainingDays = mp.getTrashDaysByVol(mp.config.VolName)
 		if mp.config.TrashRemainingDays == -1 {
 			log.LogWarnf("[startUpdateTrashDaysScheduler], Vol: %v, PartitionID: %v", mp.config.VolName, mp.config.PartitionId)
 			time.Sleep(time.Second)
@@ -294,13 +303,16 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 				if mp.trashExpiresFirstUpdateTime.IsZero() {
 					mp.trashExpiresFirstUpdateTime = time.Now()
 				}
-				mp.config.TrashRemainingDays = mp.manager.getTrashDaysByVol(mp.config.VolName)
-				mp.config.ChildFileMaxCount = mp.manager.getChildFileMaxCount(mp.config.VolName)
-				mp.config.TrashCleanInterval = mp.manager.getTrashCleanInterval(mp.config.VolName)
-				mp.updateMetaPartitionInodeAllocatorState()
-				if enableState, err := mp.manager.getRemoveDupReqEnableState(mp.config.VolName); err == nil {
-					mp.config.EnableRemoveDupReq = enableState
+				volTopo := mp.fetchTopoManager.GetVolume(mp.config.VolName)
+				if volTopo.Config() == nil {
+					continue
 				}
+				conf := volTopo.Config()
+				mp.config.TrashRemainingDays = conf.GetTrashDays()
+				mp.config.ChildFileMaxCount = conf.GetChildFileMaxCount()
+				mp.config.TrashCleanInterval = conf.GetTrashCleanInterval()
+				mp.config.EnableRemoveDupReq = conf.GetEnableRemoveDupReqFlag()
+				mp.updateMetaPartitionInodeAllocatorState(conf.GetEnableBitMapFlag())
 				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, childFileMaxCount: %v, trashCleanInterval: %vMin",
 					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.ChildFileMaxCount, mp.config.TrashCleanInterval)
 			}
@@ -308,13 +320,8 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 	}(mp.stopC)
 }
 
-func (mp *metaPartition) updateMetaPartitionInodeAllocatorState() {
-	enableBitMapAllocator, err := mp.manager.getBitMapAllocatorEnableFlag(mp.config.VolName)
-	if err != nil {
-		log.LogErrorf("updateMetaPartitionInodeAllocatorState get flag failed:%v", err)
-		return
-	}
-	if enableBitMapAllocator {
+func (mp *metaPartition) updateMetaPartitionInodeAllocatorState(enable bool) {
+	if enable {
 		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusAvailable)
 	} else {
 		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusUnavailable)

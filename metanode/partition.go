@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/fetchtopology"
 	"io/ioutil"
 	"net"
 	"os"
@@ -371,6 +372,7 @@ type metaPartition struct {
 	status                      int8
 	raftFSMLock                 sync.Mutex
 	reqRecords                  *RequestRecords
+	fetchTopoManager            *fetchtopology.FetchTopologyManager
 }
 
 // Start starts a meta partition.
@@ -599,6 +601,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		CreationType:        conf.CreationType,
 		stopChState:         mpStopChOpenState,
 		reqRecords:          NewRequestRecords(),
+		fetchTopoManager:    manager.metaNode.fetchTopoManager,
 	}
 	return mp
 }

@@ -443,6 +443,13 @@ func (vol *Vol) getDataPartitionsView(encodeType string) (body []byte, err error
 	return vol.dataPartitions.updateResponseJsonCache(vol.ecDataPartitions, false, 0)
 }
 
+func (vol *Vol) getDataPartitionsViewByIDs(encodeType string, dpIDs []uint64) (body []byte, err error) {
+	if encodeType == proto.ProtobufType {
+		return vol.dataPartitions.getDataPartitionsViewByIdsResponseProtobuf(vol.ecDataPartitions, dpIDs, 0)
+	}
+	return vol.dataPartitions.getDataPartitionsViewByIdsResponseJson(vol.ecDataPartitions, dpIDs, 0)
+}
+
 func (vol *Vol) getDataPartitionByID(partitionID uint64) (dp *DataPartition, err error) {
 	return vol.dataPartitions.get(partitionID)
 }

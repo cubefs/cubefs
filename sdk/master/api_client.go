@@ -16,12 +16,12 @@ package master
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/cubefs/cubefs/proto"
+	pb "github.com/gogo/protobuf/proto"
 	"net/http"
 	"net/url"
 	"strconv"
-
-	"github.com/cubefs/cubefs/proto"
-	pb "github.com/gogo/protobuf/proto"
 )
 
 type Decoder func([]byte) ([]byte, error)
@@ -168,13 +168,24 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 	return
 }
 
-func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
+//dpIDs为空时获取vol全量的dp信息
+func (api *ClientAPI) GetDataPartitions(volName string, dpIDs []uint64) (view *proto.DataPartitionsView, err error) {
 	path := proto.ClientDataPartitions
 	if proto.IsDbBack {
 		path = proto.ClientDataPartitionsDbBack
 	}
 	var request = newAPIRequest(http.MethodGet, path)
 	request.addParam("name", volName)
+	if len(dpIDs) != 0 {
+		var dpIDsStr string
+		for index, id := range dpIDs {
+			dpIDsStr += fmt.Sprintf("%v", id)
+			if index != len(dpIDs) - 1 {
+				dpIDsStr += ","
+			}
+		}
+		request.addParam(proto.IDsKey, dpIDsStr)
+	}
 	request.addHeader(proto.AcceptFormat, proto.ProtobufType)
 	var (
 		data        []byte

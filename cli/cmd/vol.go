@@ -1005,7 +1005,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			// print data detail
 			if optDataDetail {
 				var view *proto.DataPartitionsView
-				if view, err = client.ClientAPI().GetDataPartitions(volumeName); err != nil {
+				if view, err = client.ClientAPI().GetDataPartitions(volumeName, nil); err != nil {
 					errout("Get volume data detail information failed:\n%v\n", err)
 					os.Exit(1)
 				}
@@ -2214,7 +2214,7 @@ func getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh ch
 
 func getExtentsByDPs(client *master.MasterClient, volumeName string) (dataExtentsMap map[uint64]*bitset.ByteSliceBitSet, err error) {
 	var dpsView *proto.DataPartitionsView
-	dpsView, err = client.ClientAPI().GetDataPartitions(volumeName)
+	dpsView, err = client.ClientAPI().GetDataPartitions(volumeName, nil)
 	if err != nil {
 		log.LogErrorf("action[getExtentsByDPs] get volume[%s] data partition failed: %v", volumeName, err)
 		return

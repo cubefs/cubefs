@@ -38,7 +38,7 @@ func TestDataPartitionAPI(t *testing.T) {
 	}
 
 	nodes := cv.DataNodes
-	dps, err := testMc.ClientAPI().GetDataPartitions(testVolName)
+	dps, err := testMc.ClientAPI().GetDataPartitions(testVolName, nil)
 	if !assert.Nil(t, err) {
 		return
 	}

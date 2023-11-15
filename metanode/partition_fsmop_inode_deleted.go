@@ -457,7 +457,7 @@ func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *In
 		}
 
 		if inode != nil {
-			if enableBitMapAllocator, _ := mp.manager.getBitMapAllocatorEnableFlag(mp.config.VolName); enableBitMapAllocator {
+			if enableBitMapAllocator, _ := mp.fetchTopoManager.GetBitMapAllocatorEnableFlag(mp.config.VolName); enableBitMapAllocator {
 				exporter.WarningRocksdbError(fmt.Sprintf("action[internalCleanDeletedInode] clusterID[%s] " +
 					"volumeName[%s] partitionID[%v] confict inode[%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
 					mp.config.PartitionId, inode.Inode))

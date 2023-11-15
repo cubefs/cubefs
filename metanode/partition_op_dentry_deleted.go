@@ -281,7 +281,7 @@ func (mp *metaPartition) getCleanTrashItemMaxDurationEachTime() (cleanDurationEa
 		cleanDurationEachTime = val
 	}
 	//volume config
-	if val := mp.manager.getCleanTrashItemMaxDurationEachTime(mp.config.VolName); val != 0 {
+	if val := mp.fetchTopoManager.GetCleanTrashItemMaxDurationEachTimeConf(mp.config.VolName); val != 0 {
 		cleanDurationEachTime = val
 	}
 	return
@@ -292,7 +292,7 @@ func (mp *metaPartition) getCleanTrashItemMaxCountEachTime() (cleanMaxCountEachT
 	if val := atomic.LoadInt32(&nodeInfo.CleanTrashItemMaxCountEachTime); val != 0 {
 		cleanMaxCountEachTime = val
 	}
-	if val := mp.manager.getCleanTrashItemMaxCountEachTime(mp.config.VolName); val != 0 {
+	if val := mp.fetchTopoManager.GetCleanTrashItemMaxCountEachTimeConf(mp.config.VolName); val != 0 {
 		cleanMaxCountEachTime = val
 	}
 	return

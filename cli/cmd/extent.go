@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/fetchtopology"
 	"io"
 	"io/ioutil"
 	"math"
@@ -685,7 +686,7 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 		mu            sync.Mutex
 	)
 	// get all extents from datanode, MUST get extents from datanode first in case of newly added extents being deleted
-	view, err = client.ClientAPI().GetDataPartitions(vol)
+	view, err = client.ClientAPI().GetDataPartitions(vol, nil)
 	if err != nil {
 		stdout("get data partitions error: %v\n", err)
 		return
@@ -813,7 +814,7 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 		stdout("get conn from pool error: %v, partitionId: %d\n", err, partitionId)
 		return
 	}
-	dp := &metanode.DataPartition{
+	dp := &fetchtopology.DataPartition{
 		PartitionID: partitionId,
 		Hosts:       partition.Hosts,
 	}

@@ -2421,7 +2421,7 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 	}
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminSmartVolList)
 	process(reqURL, t)
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
@@ -2488,7 +2488,7 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 		t.Errorf("CreateVolume err:%v", err)
 		return
 	}
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
@@ -2567,7 +2567,7 @@ func TestGetTargetAddressForDataPartitionSmartCase2(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
@@ -2659,7 +2659,7 @@ func TestGetTargetAddressForDataPartitionSmartCase3(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
@@ -2746,7 +2746,7 @@ func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
@@ -2849,7 +2849,7 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
@@ -3030,7 +3030,7 @@ func TestGetTargetAddressForDataPartitionSmartCase6(t *testing.T) {
 		t.FailNow()
 	}
 
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
@@ -3180,7 +3180,7 @@ func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()
@@ -3242,7 +3242,7 @@ func TestFreezeDataPartition(t *testing.T) {
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
 	assertErrNilOtherwiseFailNow(t, err)
-	dps, err := mc.ClientAPI().GetDataPartitions(volName)
+	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
 	if !assert.NotZero(t, len(dps.DataPartitions)) {
 		t.FailNow()

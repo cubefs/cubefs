@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/fetchtopology"
 	"github.com/cubefs/cubefs/util/iputil"
 	"hash/crc32"
 	"net"
@@ -140,7 +141,7 @@ func NewPacket(ctx context.Context) *Packet {
 }
 
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
-func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.MetaDelExtentKey) *Packet {
+func NewPacketToDeleteExtent(ctx context.Context, dp *fetchtopology.DataPartition, ext *proto.MetaDelExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
@@ -162,7 +163,7 @@ func NewPacketToDeleteExtent(ctx context.Context, dp *DataPartition, ext *proto.
 }
 
 // NewPacketToBatchDeleteExtent returns a new packet to batch delete the extent.
-func NewPacketToBatchDeleteExtent(ctx context.Context, dp *DataPartition, exts []*proto.MetaDelExtentKey) *Packet {
+func NewPacketToBatchDeleteExtent(ctx context.Context, dp *fetchtopology.DataPartition, exts []*proto.MetaDelExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpBatchDeleteExtent
@@ -215,7 +216,7 @@ func NewPacketToChangeLeader(ctx context.Context, mpID uint64) *Packet {
 }
 
 // NewPacketToDeleteEcExtent returns a new packet to delete the extent.
-func NewPacketToDeleteEcExtent(ctx context.Context, dp *DataPartition, ext *proto.MetaDelExtentKey) *Packet {
+func NewPacketToDeleteEcExtent(ctx context.Context, dp *fetchtopology.DataPartition, ext *proto.MetaDelExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMarkDelete
@@ -237,7 +238,7 @@ func NewPacketToDeleteEcExtent(ctx context.Context, dp *DataPartition, ext *prot
 }
 
 // NewPacketToBatchDeleteEcExtent returns a new packet to batch delete the extent.
-func NewPacketToBatchDeleteEcExtent(ctx context.Context, dp *DataPartition, exts []*proto.MetaDelExtentKey) *Packet {
+func NewPacketToBatchDeleteEcExtent(ctx context.Context, dp *fetchtopology.DataPartition, exts []*proto.MetaDelExtentKey) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpBatchDeleteExtent

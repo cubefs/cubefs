@@ -5100,10 +5100,11 @@ func (m *Server) getMetaPartitions(w http.ResponseWriter, r *http.Request) {
 // Obtain all the data partitions in a volume.
 func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var (
-		body []byte
-		name string
-		vol  *Vol
-		err  error
+		body  []byte
+		name  string
+		vol   *Vol
+		err   error
+		dpIDs []uint64
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewModuleTP(proto.ClientDataPartitionsUmpKey)
@@ -5118,6 +5119,20 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encodeType := getEncodeType(r)
+	dpIDs, err = extractIDs(r)
+	if err != nil {
+		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
+		return
+	}
+	if len(dpIDs) != 0 {
+		if body, err = vol.getDataPartitionsViewByIDs(encodeType, dpIDs); err != nil {
+			m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			return
+		}
+		send(w, r, body, encodeType)
+		return
+	}
+
 	if body, err = vol.getDataPartitionsView(encodeType); err != nil {
 		m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
 		return
@@ -5703,6 +5718,33 @@ func extractOwner(r *http.Request) (owner string, err error) {
 		return "", errors.New("owner can only be number and letters")
 	}
 
+	return
+}
+
+func extractIDs(r *http.Request) (ids []uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	idsStr := r.FormValue(proto.IDsKey)
+	if idsStr == "" {
+		return
+	}
+
+	idStrArr := strings.Split(idsStr, ",")
+	if len(idStrArr) == 0 {
+		return
+	}
+
+	ids = make([]uint64, 0, len(idStrArr))
+	for _, idStr := range idStrArr {
+		var id uint64
+		id, err = strconv.ParseUint(idStr, 10, 64)
+		if err != nil {
+			return
+		}
+		 ids = append(ids, id)
+	}
 	return
 }
 

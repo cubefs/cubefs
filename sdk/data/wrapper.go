@@ -637,7 +637,7 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 }
 
 func (w *Wrapper) fetchDataPartition() (dpv *proto.DataPartitionsView, err error) {
-	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName); err != nil {
+	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName, nil); err != nil {
 		if err == proto.ErrVolNotExists {
 			w.volNotExistCount++
 		}

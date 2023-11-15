@@ -7,7 +7,7 @@ import (
 
 func TestGetDataPartitions(t *testing.T) {
 	testVolName := "ltptest"
-	_, err := testMc.ClientAPI().GetDataPartitions(testVolName)
+	_, err := testMc.ClientAPI().GetDataPartitions(testVolName, nil)
 	if err != nil {
 		t.Fatalf("GetDataPartitions failed, err %v", err)
 	}
