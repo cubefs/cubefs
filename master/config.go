@@ -201,6 +201,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DataNodeReqZoneVolOpRateLimitMap = make(map[string]map[string]map[uint8]uint64)
 	cfg.DataNodeReqVolPartRateLimitMap = make(map[string]uint64)
 	cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
+	cfg.NetworkFlowRatio = make(map[string]uint64)
 	cfg.RateLimit = make(map[string]map[string]map[int]bsProto.AllLimitGroup)
 	cfg.FlashNodeLimitMap = make(map[string]uint64)
 	cfg.FlashNodeVolLimitMap = make(map[string]map[string]uint64)

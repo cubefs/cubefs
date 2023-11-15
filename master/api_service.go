@@ -574,7 +574,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ClientReqRemoveDupFlag:                 m.cluster.cfg.ClientReqRemoveDup,
 		RemoteReadConnTimeout:                  m.cluster.cfg.RemoteReadConnTimeoutMs,
 		ZoneNetConnConfig:                      m.cluster.cfg.ZoneNetConnConfig,
-		MetaNodeDumpSnapCountByZone: 			m.cluster.cfg.MetaNodeDumpSnapCountByZone,
+		MetaNodeDumpSnapCountByZone:            m.cluster.cfg.MetaNodeDumpSnapCountByZone,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -2434,13 +2434,13 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		modul string
-		zone  string
-		vol   string
-		op    uint64
+		module string
+		zone   string
+		vol    string
+		op     uint64
 	)
 	if val, ok := params[moduleKey]; ok {
-		modul = val.(string)
+		module = val.(string)
 	}
 	if val, ok := params[zoneNameKey]; ok {
 		zone = val.(string)
@@ -2479,20 +2479,20 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if val, ok := params[proto.NetworkFlowRatioKey]; ok {
-		if modul == "" {
-			err = errors.NewErrorf("modul is empty")
+		if module == "" {
+			err = errors.NewErrorf("module is empty")
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 		flowRatio := val.(uint64)
-		if err = m.cluster.setFlowRatio(modul, flowRatio); err != nil {
+		if err = m.cluster.setFlowRatio(module, flowRatio); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
 	}
 	if val, ok := params[proto.RateLimitKey]; ok {
-		if modul == "" {
-			err = errors.NewErrorf("modul is empty")
+		if module == "" {
+			err = errors.NewErrorf("module is empty")
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -2519,7 +2519,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
-		if err = m.cluster.setRateLimit(modul, zone, vol, op, rateLimit, rateLimitIndex); err != nil {
+		if err = m.cluster.setRateLimit(module, zone, vol, op, rateLimit, rateLimitIndex); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -5743,7 +5743,7 @@ func extractIDs(r *http.Request) (ids []uint64, err error) {
 		if err != nil {
 			return
 		}
-		 ids = append(ids, id)
+		ids = append(ids, id)
 	}
 	return
 }

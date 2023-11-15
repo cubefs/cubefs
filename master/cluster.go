@@ -4170,7 +4170,7 @@ func (c *Cluster) setDataNodeRepairTaskCountZoneLimit(val uint64, zone string) (
 	return
 }
 
-func (c *Cluster) setFlowRatio(modul string, flowRatio uint64) (err error) {
+func (c *Cluster) setFlowRatio(module string, flowRatio uint64) (err error) {
 	var data []byte
 	if data, err = json.Marshal(c.cfg.NetworkFlowRatio); err != nil {
 		return
@@ -4178,9 +4178,9 @@ func (c *Cluster) setFlowRatio(modul string, flowRatio uint64) (err error) {
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
 	if flowRatio == 0 {
-		delete(c.cfg.NetworkFlowRatio, modul)
+		delete(c.cfg.NetworkFlowRatio, module)
 	} else {
-		c.cfg.NetworkFlowRatio[modul] = flowRatio
+		c.cfg.NetworkFlowRatio[module] = flowRatio
 	}
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setFlowRatio] err[%v]", err)
@@ -4191,7 +4191,7 @@ func (c *Cluster) setFlowRatio(modul string, flowRatio uint64) (err error) {
 	return nil
 }
 
-func (c *Cluster) setRateLimit(modul string, zone string, volume string, opcode uint64, rateLimit uint64, rateLimitIndex uint64) (err error) {
+func (c *Cluster) setRateLimit(module string, zone string, volume string, opcode uint64, rateLimit uint64, rateLimitIndex uint64) (err error) {
 	if rateLimitIndex >= multirate.IndexMax {
 		return nil
 	}
@@ -4202,10 +4202,10 @@ func (c *Cluster) setRateLimit(modul string, zone string, volume string, opcode 
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
 
-	zoneVolOpMap, ok := c.cfg.RateLimit[modul]
+	zoneVolOpMap, ok := c.cfg.RateLimit[module]
 	if !ok {
 		zoneVolOpMap = make(map[string]map[int]proto.AllLimitGroup)
-		c.cfg.RateLimit[modul] = zoneVolOpMap
+		c.cfg.RateLimit[module] = zoneVolOpMap
 	}
 	var zoneVol string
 	if zone != "" {
@@ -4283,7 +4283,7 @@ func (c *Cluster) setMetaNodeDeleteEKVolLimit(val uint64, volName string) (err e
 }
 
 func cleanRateLimitMap(m map[string]map[string]map[int]proto.AllLimitGroup) {
-	for modul, zoneVolOpMap := range m {
+	for module, zoneVolOpMap := range m {
 		for zoneVol, opMap := range zoneVolOpMap {
 			for op, group := range opMap {
 				if !multirate.HaveLimit(group) {
@@ -4295,7 +4295,7 @@ func cleanRateLimitMap(m map[string]map[string]map[int]proto.AllLimitGroup) {
 			}
 		}
 		if len(zoneVolOpMap) == 0 {
-			delete(m, modul)
+			delete(m, module)
 		}
 	}
 }

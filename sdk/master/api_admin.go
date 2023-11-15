@@ -918,7 +918,7 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	} else if info.ClientReqRemoveDupFlag > 0 {
 		request.addParam(proto.ClientReqRemoveDupFlagKey, strconv.FormatBool(true))
 	}
-	request.addParam("modul", info.Modul)
+	request.addParam("module", info.Module)
 	if info.MetaNodeDelEKVolumeRate >= 0 {
 		request.addParam(proto.MetaNodeDelEKVolRateLimitKey, strconv.FormatInt(info.MetaNodeDelEKVolumeRate, 10))
 	}

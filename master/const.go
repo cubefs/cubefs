@@ -54,7 +54,7 @@ const (
 	authenticateKey                     = "authenticate"
 	akKey                               = "ak"
 	keywordsKey                         = "keywords"
-	moduleKey                           = "modul"
+	moduleKey                           = "module"
 	zoneNameKey                         = "zoneName"
 	autoRepairKey                       = "autoRepair"
 	tokenKey                            = "token"

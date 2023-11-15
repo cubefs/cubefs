@@ -34,6 +34,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/fetchtopology"
+
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -151,7 +153,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	repl.SetConnectPool(gConnPool)
 	s.register(cfg)
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
-	s.limiterManager = multirate.NewLimiterManager(multirate.ModulDataNode, "", MasterClient.AdminAPI().GetLimitInfo)
+	s.limiterManager = multirate.NewLimiterManager(multirate.ModuleDataNode, "", MasterClient.AdminAPI().GetLimitInfo)
 	if s.limiterManager == nil {
 		err = fmt.Errorf("doStart NewLimiterManager fail")
 		return

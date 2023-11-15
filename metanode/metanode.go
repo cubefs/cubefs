@@ -16,13 +16,14 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
-	"github.com/cubefs/cubefs/util/multirate"
-	"github.com/cubefs/cubefs/util/statinfo"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/multirate"
+	"github.com/cubefs/cubefs/util/statinfo"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -417,7 +418,7 @@ func (m *MetaNode) delVolFromFetchTopologyManager(name string) {
 }
 
 func (m *MetaNode) initFetchTopologyManager() {
-	m.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, masterClient,	masterDomainClient,
+	m.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, masterClient, masterDomainClient,
 		true, true, m.limitManager.GetLimiter())
 	return
 }
@@ -433,7 +434,7 @@ func (m *MetaNode) stopFetchTopologyManager() {
 }
 
 func (m *MetaNode) initMultiLimiterManager() (err error) {
-	m.limitManager = multirate.NewLimiterManager(multirate.ModulMetaNode, m.zoneName,  masterClient.AdminAPI().GetLimitInfo)
+	m.limitManager = multirate.NewLimiterManager(multirate.ModuleMetaNode, m.zoneName, masterClient.AdminAPI().GetLimitInfo)
 	if m.limitManager == nil {
 		err = errors.New("Init limit manager failed!")
 		return

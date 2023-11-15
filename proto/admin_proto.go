@@ -416,7 +416,7 @@ func (m MediumType) String() string {
 }
 
 func (m MediumType) Check() bool {
-	return m == MediumSSD || m == MediumHDD || m == MediumEC || m== MediumSFX
+	return m == MediumSSD || m == MediumHDD || m == MediumEC || m == MediumSFX
 }
 
 type AtomicString struct {
@@ -574,7 +574,7 @@ type ClusterInfo struct {
 	ClientWriteLimitRate uint64
 }
 
-type AllLimitGroup [10]int64
+type AllLimitGroup [11]int64
 type LimitInfo struct {
 	Cluster                          string
 	MetaNodeDeleteBatchCount         uint64
@@ -865,7 +865,7 @@ type DiskInfo struct {
 	Status        int
 	Path          string
 	UsageRatio    float64
-	IsSFX		  bool
+	IsSFX         bool
 }
 
 // MetaPartitionReport defines the meta partition report.
@@ -1308,7 +1308,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 
 // RateLimitInfo defines the rate limit infomation
 type RateLimitInfo struct {
-	Modul                            string
+	Module                           string
 	ZoneName                         string
 	Volume                           string
 	Action                           string

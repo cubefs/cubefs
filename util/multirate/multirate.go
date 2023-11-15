@@ -27,7 +27,8 @@ import (
 //           For an event which has n properties, there are 3^n possible rules.
 //
 //
-// HTTP API: /multirate/set?status=(1 on | 0 off | -1 clear all rules and limiters)
+// HTTP API: /multirate/get
+//           /multirate/set?status=(1 on | 0 off | -1 clear all rules and limiters)
 //
 
 type PropertyType int
@@ -39,6 +40,7 @@ const (
 	PropertyTypeOp
 	PropertyTypeDisk
 	PropertyTypePartition
+	PropertyTypeFlow
 	propertyTypeMax // count of property types
 )
 
@@ -56,6 +58,9 @@ const (
 )
 
 const (
+	FlowNetwork = "network"
+	FlowDisk    = "disk"
+
 	// don't use separator which may be used as volume name, such as _.-
 	separator = ":"
 
@@ -66,6 +71,7 @@ const (
 	defaultTimeout = time.Second
 
 	controlSetStatus = "/multirate/set"
+	controlGet       = "/multirate/get"
 	statusKey        = "status"
 )
 
@@ -320,6 +326,7 @@ func NewMultiLimiter() *MultiLimiter {
 
 func NewMultiLimiterWithHandler() *MultiLimiter {
 	ml := NewMultiLimiter()
+	http.HandleFunc(controlGet, ml.handlerGet)
 	http.HandleFunc(controlSetStatus, ml.handlerSetStatus)
 	return ml
 }
@@ -352,10 +359,10 @@ func (ml *MultiLimiter) GetRulesDesc() string {
 }
 
 func (ml *MultiLimiter) AddRule(r *Rule) *MultiLimiter {
-	name := r.properties.name()
 	if !r.limit.haveLimit() {
 		return ml.ClearRule(r.properties)
 	}
+	name := r.properties.name()
 	val, ok := ml.rules.Load(name)
 	ml.rules.Store(name, r)
 	if ok {
@@ -556,6 +563,10 @@ func getNameRule(nameRules []*nameRule, name string, rule *Rule) *nameRule {
 		}
 	}
 	return nil
+}
+
+func (ml *MultiLimiter) handlerGet(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(ml.GetRulesDesc()))
 }
 
 func (ml *MultiLimiter) handlerSetStatus(w http.ResponseWriter, r *http.Request) {

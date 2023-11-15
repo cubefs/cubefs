@@ -12,14 +12,15 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/tokenmanager"
 	"golang.org/x/time/rate"
 )
 
 const (
-	ModulMaster    = "master"
-	ModulDataNode  = "datanode"
-	ModulMetaNode  = "metanode"
-	ModulFlashNode = "flashnode"
+	ModuleMaster    = "master"
+	ModuleDataNode  = "datanode"
+	ModuleMetaNode  = "metanode"
+	ModuleFlashNode = "flashnode"
 
 	ZonePrefix = "zone:"
 	VolPrefix  = "vol:"
@@ -53,8 +54,23 @@ const (
 	indexCountPerPartition
 	indexInBytesPerPartition
 	indexOutBytesPerPartition
+	indexConcurrency
 	IndexMax // count of indexes
 )
+
+var indexNameMap = map[string]int{
+	"timeout":              indexTimeout,
+	"count":                indexCount,
+	"inBytes":              indexInBytes,
+	"outBytes":             indexOutBytes,
+	"countPerDisk":         indexCountPerDisk,
+	"inBytesPerDisk":       indexInBytesPerDisk,
+	"outBytesPerDisk":      indexOutBytesPerDisk,
+	"countPerPartition":    indexCountPerPartition,
+	"inBytesPerPartition":  indexInBytesPerPartition,
+	"outBytesPerPartition": indexOutBytesPerPartition,
+	"concurrency":          indexConcurrency,
+}
 
 type GetLimitInfoFunc func(volName string) (info *proto.LimitInfo, err error)
 
@@ -63,6 +79,7 @@ type LimiterManager struct {
 	zoneName     string
 	getLimitInfo GetLimitInfoFunc
 	ml           *MultiLimiter
+	mt           *MultiTokenManager
 	stopC        chan struct{}
 	wg           sync.WaitGroup
 
@@ -105,6 +122,12 @@ func GetLimitGroupDesc(g proto.AllLimitGroup) string {
 		}
 		sb.WriteString(fmt.Sprintf("%v:%v", t, g))
 	}
+	if g[indexConcurrency] > 0 {
+		if sb.Len() > 0 {
+			sb.WriteString(" ")
+		}
+		sb.WriteString(fmt.Sprintf("concurrency:%v", g[indexConcurrency]))
+	}
 	return sb.String()
 }
 
@@ -131,12 +154,21 @@ func getBurstGroup(g proto.AllLimitGroup, t indexType) (re BurstGroup) {
 	return
 }
 
+func GetIndexByName(name string) int {
+	index, ok := indexNameMap[name]
+	if !ok {
+		return -1
+	}
+	return index
+}
+
 func NewLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc) *LimiterManager {
 	m := new(LimiterManager)
 	m.module = module
 	m.zoneName = zoneName
 	m.getLimitInfo = getLimitInfo
 	m.ml = NewMultiLimiterWithHandler()
+	m.mt = NewMultiTokenManager()
 	m.stopC = make(chan struct{})
 	m.oldOpRateLimitMap = make(map[int]proto.AllLimitGroup)
 	m.oldVolOpRateLimitMap = make(map[string]map[int]proto.AllLimitGroup)
@@ -150,6 +182,10 @@ func NewLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfo
 
 func (m *LimiterManager) GetLimiter() *MultiLimiter {
 	return m.ml
+}
+
+func (m *LimiterManager) GetTokenManager(op int, disk string) *tokenmanager.TokenManager {
+	return m.mt.GetTokenManager(op, disk)
 }
 
 func (m *LimiterManager) Stop() {
@@ -202,7 +238,7 @@ func (m *LimiterManager) updateLimitInfo() (err error) {
 
 	ratio := limitInfo.NetworkFlowRatio[m.module]
 	speed := getSpeed() * int(ratio) / 100
-	rule := NewRule(Properties{}, LimitGroup{statTypeInBytes: rate.Limit(speed), statTypeOutBytes: rate.Limit(speed)}, BurstGroup{statTypeInBytes: speed, statTypeOutBytes: speed})
+	rule := NewRule(Properties{{PropertyTypeFlow, FlowNetwork}}, LimitGroup{statTypeInBytes: rate.Limit(speed), statTypeOutBytes: rate.Limit(speed)}, BurstGroup{statTypeInBytes: speed, statTypeOutBytes: speed})
 	m.ml.AddRule(rule)
 
 	m.updateOpLimit(limitInfo)
@@ -233,6 +269,9 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			}
 			m.ml.ClearRule(p)
 		}
+		if oldGroup[indexConcurrency] > 0 && (!ok || group[indexConcurrency] <= 0) {
+			m.mt.addRule(op, 0)
+		}
 	}
 
 	for op, group := range opRateLimitMap {
@@ -249,6 +288,9 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			}
 			rule := NewRuleWithTimeout(p, getLimitGroup(group, i), getBurstGroup(group, i), time.Duration(group[indexTimeout]))
 			m.ml.AddRule(rule)
+		}
+		if group[indexConcurrency] > 0 {
+			m.mt.addRule(op, uint64(group[indexConcurrency]))
 		}
 	}
 	m.oldOpRateLimitMap = opRateLimitMap

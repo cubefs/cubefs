@@ -73,7 +73,11 @@ func newRateLimitInfoCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
-	var info proto.RateLimitInfo
+	var (
+		info          proto.RateLimitInfo
+		opName        string
+		rateLimitName string
+	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdRateLimitSetShort,
@@ -110,6 +114,21 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if info.NetworkFlowRatio > 100 {
 				errout("networkFlowRatio can't be greater than 100\n")
+			}
+			if opName != "" {
+				opcode := getOpCode(opName)
+				if opcode < 0 {
+					errout("invalid opName %v\n", opName)
+				}
+				info.Opcode = int64(opcode)
+			}
+			info.RateLimitIndex = -1
+			if rateLimitName != "" {
+				index := multirate.GetIndexByName(rateLimitName)
+				if index < 0 {
+					errout("invalid rateLimitName %v\n", rateLimitName)
+				}
+				info.RateLimitIndex = int64(index)
 			}
 			msg := ""
 			if info.ClientReadVolRate >= 0 {
@@ -164,7 +183,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 				msg += fmt.Sprintf("flashNodeRate: %d, zone:%s, ", info.FlashNodeRate, info.ZoneName)
 			}
 			if info.RateLimit >= 0 {
-				msg += fmt.Sprintf("modul:%s, zone:%s, volume:%s, rateLimit: %d, rateLimitIndex:%d, ", info.Modul, info.ZoneName, info.Volume, info.RateLimit, info.RateLimitIndex)
+				msg += fmt.Sprintf("module:%s, zone:%s, volume:%s, rateLimit: %d, rateLimitIndex:%d, ", info.Module, info.ZoneName, info.Volume, info.RateLimit, info.RateLimitIndex)
 			}
 			if info.FlashNodeVolRate >= 0 {
 				msg += fmt.Sprintf("flashNodeVolRate: %d, zone:%s, volume: %s, ", info.FlashNodeVolRate, info.ZoneName, info.Volume)
@@ -325,13 +344,14 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().Int64Var(&info.DataNodeRepairTaskCount, "dataNodeRepairTaskHDDCount", -1, "data node repair task count of hdd zones")
 	cmd.Flags().Int64Var(&info.DataNodeRepairTaskSSDZone, "dataNodeRepairTaskSSDCount", -1, "data node repair task count of ssd zones")
-	cmd.Flags().StringVar(&info.Modul, "modul", "", "module (datanode,metanode,flashnode)")
+	cmd.Flags().StringVar(&info.Module, "module", "", "module (master,datanode,metanode,flashnode)")
 	cmd.Flags().StringVar(&info.ZoneName, "zone", "", "zone (_ acts as default)")
 	cmd.Flags().StringVar(&info.Volume, "volume", "", "volume (_ acts as default)")
 	cmd.Flags().StringVar(&info.Action, "action", "", "object node action")
+	cmd.Flags().StringVar(&opName, "opname", "", "opcode name")
 	cmd.Flags().Int64Var(&info.Opcode, "opcode", 0, "opcode (zero opcode acts as default)")
 	cmd.Flags().Int64Var(&info.RateLimit, "rateLimit", -1, "rate limit")
-	cmd.Flags().Int64Var(&info.RateLimitIndex, "rateLimitIndex", -1, "rate limit index, 0: timeout(ms); 1-3: count, in bytes, out bytes; 4-6: per disk; 7-9: per partition")
+	cmd.Flags().StringVar(&rateLimitName, "rateLimitName", "", "rate limit name, timeout(ms),count,inBytes,outBytes,countPerDisk,inBytesPerDisk,outBytesPerDisk,countPerPartition,inBytesPerPartition,outBytesPerPartition,concurrency")
 	cmd.Flags().Int64Var(&info.MetaNodeReqRate, "metaNodeReqRate", -1, "meta node request rate limit")
 	cmd.Flags().Int64Var(&info.MetaNodeReqOpRate, "metaNodeReqOpRate", 0, "meta node request rate limit for opcode")
 	cmd.Flags().Int64Var(&info.DataNodeMarkDeleteRate, proto.DataNodeMarkDeleteRateKey, -1, "data node mark delete request rate limit")
@@ -480,8 +500,8 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 
 func getRateLimitDesc(rateLimit map[string]map[string]map[int]proto.AllLimitGroup) string {
 	var sb strings.Builder
-	for modul, zoneVolOpMap := range rateLimit {
-		sb.WriteString(fmt.Sprintf("    %v  ", modul))
+	for module, zoneVolOpMap := range rateLimit {
+		sb.WriteString(fmt.Sprintf("    %v  ", module))
 		var allZoneVol []string
 		for zoneVol := range zoneVolOpMap {
 			allZoneVol = append(allZoneVol, zoneVol)
@@ -504,7 +524,7 @@ func getRateLimitDesc(rateLimit map[string]map[string]map[int]proto.AllLimitGrou
 				if opIndex > 0 {
 					sb.WriteString(", ")
 				}
-				sb.WriteString(getOpDesc(modul, op))
+				sb.WriteString(getOpDesc(module, op))
 				sb.WriteString(":{")
 				sb.WriteString(multirate.GetLimitGroupDesc(g))
 				sb.WriteString("}")
@@ -516,10 +536,25 @@ func getRateLimitDesc(rateLimit map[string]map[string]map[int]proto.AllLimitGrou
 	return sb.String()
 }
 
-func getOpDesc(modul string, opcode int) string {
+func getOpDesc(module string, opcode int) string {
 	if opcode <= math.MaxUint8 {
-		return proto.GetOpMsg(uint8(opcode))
+		return strings.TrimPrefix(proto.GetOpMsg(uint8(opcode)), "Op")
 	} else {
 		return strconv.Itoa(opcode)
+	}
+}
+
+func getOpCode(name string) int {
+	if name == "" {
+		return 0
+	}
+	m := make(map[string]int)
+	for opcode := 0; opcode < math.MaxUint8; opcode++ {
+		m[proto.GetOpMsg(uint8(opcode))] = opcode
+	}
+	if op, ok := m["Op"+name]; ok {
+		return op
+	} else {
+		return -1
 	}
 }

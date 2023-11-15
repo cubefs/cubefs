@@ -11,31 +11,37 @@ import (
 
 func TestLimiterManager(t *testing.T) {
 	var (
-		zone         = "default"
-		vol          = "ltptest"
-		ratio uint64 = 80
-		limit        = []int64{1, 2, 3, 4}
+		zone               = "default"
+		vol                = "ltptest"
+		ratio       uint64 = 80
+		limit              = []int64{1, 2, 3, 4}
+		concurrency uint64 = 10
 	)
 
 	getLimitInfo := func(volName string) (info *proto.LimitInfo, err error) {
 		info = new(proto.LimitInfo)
 		info.NetworkFlowRatio = map[string]uint64{
-			ModulDataNode: ratio,
+			ModuleDataNode: ratio,
 		}
 		info.RateLimit = map[string]map[string]map[int]proto.AllLimitGroup{
-			ModulDataNode: {
-				ZonePrefix + zone: {int(proto.OpRead): {indexCountPerDisk: limit[0], indexOutBytesPerDisk: limit[1]}},
-				VolPrefix + vol:   {int(proto.OpRead): {indexCountPerDisk: limit[2]}, int(proto.OpWrite): {indexCountPerDisk: limit[3]}},
+			ModuleDataNode: {
+				ZonePrefix + zone: {
+					int(proto.OpRead): {indexCountPerDisk: limit[0], indexOutBytesPerDisk: limit[1], indexConcurrency: int64(concurrency)},
+				},
+				VolPrefix + vol: {
+					int(proto.OpRead):  {indexCountPerDisk: limit[2]},
+					int(proto.OpWrite): {indexCountPerDisk: limit[3]},
+				},
 			},
 		}
 		return
 	}
-	m := NewLimiterManager(ModulDataNode, zone, getLimitInfo)
+	m := NewLimiterManager(ModuleDataNode, zone, getLimitInfo)
 	m.Stop()
 	m.updateLimitInfo()
 	ml := m.GetLimiter()
 	property := []Properties{
-		{},
+		{{PropertyTypeFlow, FlowNetwork}},
 		{{PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
 		{{PropertyTypeOp, strconv.Itoa(int(proto.OpWrite))}, {PropertyTypeDisk, ""}},
 		{{PropertyTypeVol, vol}, {PropertyTypeOp, strconv.Itoa(int(proto.OpRead))}, {PropertyTypeDisk, ""}},
@@ -50,17 +56,24 @@ func TestLimiterManager(t *testing.T) {
 		{statTypeCount: rate.Limit(limit[3])},
 	}
 	check(t, ml, property, expect)
+	assert.Equal(t, concurrency, m.GetTokenManager(int(proto.OpRead), "").GetConfCnt())
 
 	ratio = 90
+	concurrency = 5
 	getLimitInfo1 := func(volName string) (info *proto.LimitInfo, err error) {
 		info = new(proto.LimitInfo)
 		info.NetworkFlowRatio = map[string]uint64{
-			ModulDataNode: ratio,
+			ModuleDataNode: ratio,
 		}
 		info.RateLimit = map[string]map[string]map[int]proto.AllLimitGroup{
-			ModulDataNode: {
-				ZonePrefix + zone: {int(proto.OpRead): {indexCountPerDisk: limit[1]}, int(proto.OpWrite): {indexCountPerDisk: limit[0]}},
-				VolPrefix + vol:   {int(proto.OpWrite): {indexCountPerDisk: limit[2]}},
+			ModuleDataNode: {
+				ZonePrefix + zone: {
+					int(proto.OpRead):  {indexCountPerDisk: limit[1], indexConcurrency: int64(concurrency)},
+					int(proto.OpWrite): {indexCountPerDisk: limit[0]},
+				},
+				VolPrefix + vol: {
+					int(proto.OpWrite): {indexCountPerDisk: limit[2]},
+				},
 			},
 		}
 		return
@@ -75,6 +88,7 @@ func TestLimiterManager(t *testing.T) {
 	m.setGetLimitInfoFunc(getLimitInfo1)
 	m.updateLimitInfo()
 	check(t, ml, property, expect)
+	assert.Equal(t, concurrency, m.GetTokenManager(int(proto.OpRead), "").GetConfCnt())
 }
 
 func check(t *testing.T, ml *MultiLimiter, property []Properties, limit []LimitGroup) {
