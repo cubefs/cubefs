@@ -577,6 +577,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v meta extent split process err %v", s.inode, err)
 			return
 		}
+		log.LogDebugf("action[doDirectWriteByAppend] handler fileoffset %v size %v key %v", s.handler.fileOffset, s.handler.size, s.handler.key)
 		// adjust the handler key to last direct write one
 		s.handler.fileOffset = int(extKey.FileOffset)
 		s.handler.size = int(extKey.Size)
@@ -717,6 +718,7 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 			if isLastEkVerNotEqual {
 				seq = s.verSeq
 			}
+			log.LogDebugf("tryInitExtentHandlerByLastEk NewExtentHandler")
 			handler := NewExtentHandler(s, int(currentEK.FileOffset), storeMode, int(currentEK.Size))
 			handler.key = &proto.ExtentKey{
 				FileOffset:   currentEK.FileOffset,
