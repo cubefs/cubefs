@@ -354,22 +354,23 @@ func (d *Disk) computeUsage() (err error) {
 	return
 }
 
+// computeUsageOnSFXDevice computes the disk usage on SFX device
 func (d *Disk) computeUsageOnSFXDevice() (err error) {
-	d.RLock()
-	defer d.RUnlock()
 	if d.IsSfx {
 		var dStatus sfxStatus
 		dStatus, err = GetSfxStatus(d.devName)
 		if err != nil {
 			return
 		}
-		d.Total = dStatus.totalPhysicalCapability -d.ReservedSpace
-		available:=dStatus.freePhysicalCapability - d.ReservedSpace
+		d.RLock()
+		defer d.RUnlock()
+		d.Total = dStatus.totalPhysicalCapability - d.ReservedSpace
+		available := dStatus.freePhysicalCapability - d.ReservedSpace
 		if available < 0 {
 			available = 0
 		}
-		d.Available=available
-		d.Used = dStatus.totalPhysicalCapability  - dStatus.freePhysicalCapability
+		d.Available = available
+		d.Used = dStatus.totalPhysicalCapability - dStatus.freePhysicalCapability
 
 		allocatedSize := uint64(0)
 		for _, dp := range d.partitionMap {
@@ -380,7 +381,7 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		if unallocated < 0 {
 			unallocated = 0
 		}
-		d.Unallocated=unallocated
+		d.Unallocated = unallocated
 		d.RejectWrite = d.Available <= 0
 
 		d.PhysicalUsedRatio = dStatus.physicalUsageRatio
@@ -391,16 +392,17 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 	return
 }
 
-// Compute the disk usage
+// computeUsageOnStdDevice computes the disk usage on standard device
 func (d *Disk) computeUsageOnStdDevice() (err error) {
 	fs := syscall.Statfs_t{}
 	if err = syscall.Statfs(d.Path, &fs); err != nil {
 		d.incReadErrCnt()
 		return
 	}
-
+	d.RLock()
+	defer d.RUnlock()
 	//  total := math.Max(0, int64(fs.Blocks*uint64(fs.Bsize)- d.ReservedSpace))
-	total := int64(fs.Blocks*uint64(fs.Bsize) -d.ReservedSpace)
+	total := int64(fs.Blocks*uint64(fs.Bsize) - d.ReservedSpace)
 	if total < 0 {
 		total = 0
 	}
@@ -412,7 +414,7 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 	}
 	d.Available = uint64(available)
 
-	d.Used = fs.Blocks * uint64(fs.Bsize) - fs.Bavail * uint64(fs.Bsize)
+	d.Used = fs.Blocks*uint64(fs.Bsize) - fs.Bavail*uint64(fs.Bsize)
 
 	allocatedSize := int64(0)
 	for _, dp := range d.partitionMap {

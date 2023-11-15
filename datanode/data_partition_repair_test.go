@@ -443,6 +443,6 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 	d := new(Disk)
 	d.repairTaskLimit = 10
 	partition.disk = d
-	partition.extentStore, err = storage.NewExtentStore(partition.path, partitionID, partitionSize, CacheCapacityPerPartition, nil, isCreatePartition, nil)
+	partition.extentStore, err = storage.NewExtentStore(partition.path, partitionID, partitionSize, CacheCapacityPerPartition, nil, isCreatePartition, storage.IOInterceptors{})
 	return
 }

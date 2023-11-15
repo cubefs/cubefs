@@ -31,7 +31,7 @@ func TestSpaceManager_CreatePartition(t *testing.T) {
 	space.SetRaftStore(mock.NewMockRaftStore())
 	if err = space.LoadDisk(&DiskPath{
 		path: path.Join(testPath.Path(), "disk"),
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("Load disk %v failed: %v", diskPath, err)
 	}
 
@@ -48,7 +48,7 @@ func TestSpaceManager_CreatePartition(t *testing.T) {
 			PartitionId:   nextPartitionID,
 			PartitionSize: 1024 * 1024,
 			VolumeId:      "test_volume",
-		}, nil); err != nil {
+		}); err != nil {
 			t.Fatalf("Create partition failed: %v", err)
 		}
 		initPartitionIDs = append(initPartitionIDs, uint64(i))
@@ -89,7 +89,7 @@ func TestSpaceManager_CreatePartition(t *testing.T) {
 			PartitionId:   nextPartitionID,
 			PartitionSize: 1024 * 1024,
 			VolumeId:      "test_volume",
-		}, nil); err != nil {
+		}); err != nil {
 			t.Fatalf("Create partition failed: %v", err)
 		}
 		nextPartitionID++
