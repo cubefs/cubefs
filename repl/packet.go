@@ -858,7 +858,3 @@ func (p *Packet) IsRandomWriteV3() bool {
 func (p *Packet) IsSyncWrite() bool {
 	return p.Opcode == proto.OpSyncWrite || p.Opcode == proto.OpSyncRandomWrite
 }
-
-func IsStreamOp(opcode int) bool {
-	return opcode == int(proto.OpTinyExtentRepairRead) || opcode == int(proto.OpExtentRepairRead) || opcode == int(proto.OpNotifyReplicasToRepair) || opcode == int(proto.OpStreamRead)
-}

@@ -630,9 +630,11 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
-		err = partition.limit(int(p.Opcode), currReadSize, true)
-		if err != nil {
-			return
+		if !isRepairRead {
+			err = partition.limit(int(p.Opcode), currReadSize)
+			if err != nil {
+				return
+			}
 		}
 		reply.Data = dataBuffer[:currReadSize]
 
@@ -967,10 +969,6 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		}
 		currNeedReplySize := newEnd - newOffset
 		currReadSize := uint32(unit.Min(int(currNeedReplySize), unit.ReadBlockSize))
-		err = partition.limit(int(request.Opcode), currReadSize, true)
-		if err != nil {
-			return
-		}
 		if currReadSize == unit.ReadBlockSize {
 			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 		} else {
@@ -1792,5 +1790,8 @@ func BeforeTpMonitor(p *repl.Packet) *statistics.TpObject {
 }
 
 func (s *DataNode) checkLimit(pkg *repl.Packet) (err error) {
-	return pkg.Object.(*DataPartition).limit(int(pkg.Opcode), pkg.Size, false)
+	if int(pkg.Opcode) == proto.OpRepairWrite_ || pkg.Opcode == proto.OpStreamRead {
+		return nil
+	}
+	return pkg.Object.(*DataPartition).limit(int(pkg.Opcode), pkg.Size)
 }

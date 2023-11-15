@@ -98,6 +98,25 @@ type Stat struct {
 	OutBytes int
 }
 
+func NewStat() Stat {
+	return Stat{}
+}
+
+func (s Stat) SetCount(count int) Stat {
+	s.Count = count
+	return s
+}
+
+func (s Stat) SetNetIn(in int) Stat {
+	s.InBytes = in
+	return s
+}
+
+func (s Stat) SetNetOut(out int) Stat {
+	s.OutBytes = out
+	return s
+}
+
 type MultiLimiter struct {
 	status   bool
 	rules    sync.Map // map[name]*Rule

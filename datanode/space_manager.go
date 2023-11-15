@@ -70,7 +70,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 		fixTinyDeleteRecordLimitOnDisk: DefaultFixTinyDeleteRecordLimitOnDisk,
 		repairTaskLimitOnDisk:          DefaultRepairTaskLimitOnDisk,
 		normalExtentDeleteExpireTime:   DefaultNormalExtentDeleteExpireTime,
-		limiter:                        dataNode.limiter,
+		limiter:                        dataNode.limiterManager.GetLimiter(),
 	}
 	async.RunWorker(space.statUpdateScheduler, func(i interface{}) {
 		log.LogCriticalf("SPCMGR: stat update scheduler occurred panic: %v\nCallstack:\n%v",

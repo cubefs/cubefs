@@ -834,7 +834,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		return
 	}
 
-	err = dp.limit(proto.OpRepairWrite_, 1, true)
+	err = dp.limit(proto.OpRepairWrite_, 0)
 	if err != nil {
 		return
 	}

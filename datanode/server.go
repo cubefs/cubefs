@@ -110,7 +110,7 @@ type DataNode struct {
 	fixTinyDeleteRecordLimit uint64
 	control                  common.Control
 	processStatInfo          *statinfo.ProcessStatInfo
-	limiter                  *multirate.MultiLimiter
+	limiterManager           *multirate.LimiterManager
 }
 
 func NewServer() *DataNode {
@@ -149,8 +149,11 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	repl.SetConnectPool(gConnPool)
 	s.register(cfg)
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
-	s.limiter = multirate.NewLimiterManager(multirate.ModulDataNode, "", MasterClient.AdminAPI().GetLimitInfo).GetLimiter()
-
+	s.limiterManager = multirate.NewLimiterManager(multirate.ModulDataNode, "", MasterClient.AdminAPI().GetLimitInfo)
+	if s.limiterManager == nil {
+		err = fmt.Errorf("doStart NewLimiterManager fail")
+		return
+	}
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
 		return
@@ -168,13 +171,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	log.LogErrorf("doStart startTCPService finish")
-
-	manager := multirate.NewLimiterManager(multirate.ModulDataNode, s.zoneName, MasterClient.AdminAPI().GetLimitInfo)
-	if manager == nil {
-		err = fmt.Errorf("doStart NewLimiterManager fail")
-		return
-	}
-	s.limiter = manager.GetLimiter()
 
 	// Start all loaded data partitions which managed by space manager,
 	// this operation will start raft partitions belong to data partitions.
@@ -200,6 +196,7 @@ func doShutdown(server common.Server) {
 	s.stopUpdateNodeInfo()
 	s.stopTCPService()
 	s.stopRaftServer()
+	s.limiterManager.Stop()
 	if gHasFinishedLoadDisks {
 		deleteSysStartTimeFile()
 	}

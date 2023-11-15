@@ -1367,23 +1367,21 @@ func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
 	}
 }
 
-func (dp *DataPartition) limit(op int, size uint32, streamOpLimit bool) (err error) {
-	//因为流式读写请求没有统一埋点，所以用bool变量防止重复限速
-	if dp == nil || dp.limiter == nil || (!streamOpLimit && repl.IsStreamOp(op)) {
+func (dp *DataPartition) limit(op int, netflow uint32) (err error) {
+	if dp == nil || dp.limiter == nil {
 		return
 	}
-	vol := dp.volumeID
-	path := dp.disk.Path
+	properties := multirate.Properties{
+		{Type: multirate.PropertyTypeVol, Value: dp.volumeID},
+		{Type: multirate.PropertyTypeOp, Value: strconv.Itoa(op)},
+		{Type: multirate.PropertyTypeDisk, Value: dp.disk.Path},
+	}
 	switch op {
 	case int(proto.OpWrite):
-		return dp.limiter.WaitN(nil, int(size), multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).AddNetIn().Result())
-	case int(proto.OpStreamRead), int(proto.OpRead):
-		return dp.limiter.WaitN(nil, int(size), multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).AddNetOut().Result())
-	case int(proto.OpTinyExtentRepairRead), int(proto.OpExtentRepairRead):
-		return dp.limiter.WaitN(nil, int(size), multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).AddNetOut().Result())
-	case proto.OpRepairWrite_:
-		return dp.limiter.WaitN(nil, 1, multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).Result())
+		return dp.limiter.WaitNUseDefaultTimeout(context.Background(), properties, multirate.NewStat().SetCount(1).SetNetIn(int(netflow)))
+	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead):
+		return dp.limiter.WaitNUseDefaultTimeout(context.Background(), properties, multirate.NewStat().SetCount(1).SetNetOut(int(netflow)))
 	default:
-		return dp.limiter.WaitN(nil, 1, multirate.NewPropertyConstruct().AddVol(vol).AddOp(op).AddPath(path).Result())
+		return dp.limiter.WaitUseDefaultTimeout(context.Background(), properties)
 	}
 }
