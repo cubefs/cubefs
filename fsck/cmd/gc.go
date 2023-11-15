@@ -722,7 +722,7 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 
 // write bad extent to local
 func writeBadNormalExtentoLocal(dpId, badDir string, badExtent BadNornalExtent) (err error) {
-	log.LogInfof("Write dpId: %s bad extent: %s", dpId, badExtent)
+	log.LogInfof("Write dpId: %s bad extent: %v", dpId, badExtent)
 
 	filePath := filepath.Join(badDir, dpId)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
