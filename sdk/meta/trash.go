@@ -970,7 +970,7 @@ func (trash *Trash) rebuildFile(fileName, trashCurrent string, fileIno uint64, f
 		}
 		if err := trash.rename(path.Join(trashCurrent, originName), path.Join(trashCurrent, baseName)); err != nil {
 			log.LogWarnf("action[rebuildFile]: recover  %v to  %v failed:err %v",
-				path.Join(trashCurrent, originName), path.Join(trashCurrent, baseName))
+				path.Join(trashCurrent, originName), path.Join(trashCurrent, baseName), err)
 		}
 	} else {
 		//
@@ -1007,7 +1007,7 @@ func (trash *Trash) rebuildDir(dirName, trashCurrent string, ino uint64, fileIno
 	log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v]", dirName, trashCurrent, ino)
 	_, err := trash.mw.Delete_ll(ino, path.Base(originName), true, path.Join(trashCurrent, dirName))
 	if err != nil {
-		log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v] failed:err", dirName, trashCurrent, ino, err)
+		log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v] failed:err %v", dirName, trashCurrent, ino, err)
 	}
 }
 
