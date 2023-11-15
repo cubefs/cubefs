@@ -137,8 +137,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)Status(%v)Dp(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.storeMode, eh.status, eh.dp)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -245,6 +245,9 @@ func (eh *ExtentHandler) sender() {
 			// For TinyStore, the extent offset is always 0 in the request packet,
 			// and the reply packet tells the real extent offset.
 			extOffset := int(packet.KernelOffset) - eh.fileOffset
+			if eh.key != nil {
+				extOffset += int(eh.key.ExtentOffset)
+			}
 
 			// fill the packet according to the extent
 			packet.PartitionID = eh.dp.PartitionID
