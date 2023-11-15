@@ -16,6 +16,7 @@ func TestGetLimitInfo(t *testing.T) {
 func TestSetClientReaddirOpRateLimit(t *testing.T) {
 	testVolName := "ltptest"
 	info := proto.RateLimitInfo{
+		Modul: 						 "metanode",
 		Volume:                      testVolName,
 		Opcode:                      0x26,
 		ClientVolOpRate:             -1,
