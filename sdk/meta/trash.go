@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/google/uuid"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -29,6 +30,7 @@ const LongNamePrefix = "LongName____"
 const OriginalName = "OriginalName"
 const DefaultReaddirLimit = 4096
 const TrashPathIgnore = "trashPathIgnore"
+const OneDayMinutes = 24 * 60
 
 const (
 	DisableTrash = "/trash/disable"
@@ -282,6 +284,14 @@ func (trash *Trash) getDeleteInterval() int64 {
 	checkPointInterval := atomic.LoadInt64(&trash.deleteInterval) / 4
 	if checkPointInterval == 0 {
 		checkPointInterval = 1
+	}
+	rand.Seed(time.Now().UnixNano())
+	randomNumber := rand.Intn(50)
+	//If the time interval is longer than one day
+	if checkPointInterval > OneDayMinutes {
+		checkPointInterval += int64(randomNumber * 30)
+	} else {
+		checkPointInterval += int64(randomNumber)
 	}
 	return checkPointInterval
 }
