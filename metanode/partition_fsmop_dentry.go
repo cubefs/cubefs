@@ -154,6 +154,9 @@ func (mp *metaPartition) fsmDeleteDentry(dbHandle interface{}, dentry *Dentry, t
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
 		log.LogCriticalf("fsmDeleteDentry: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
 		resp.Status = previousRespCode
+		if previousRespCode == proto.OpOk {
+			resp.Status = proto.OpNotExistErr
+		}
 		return
 	}
 	defer func() {
@@ -253,7 +256,7 @@ func (mp *metaPartition) fsmBatchDeleteDentry(dbHandle interface{}, batchDentry 
 	return
 }
 
-func (mp *metaPartition) fsmUpdateDentry(dbHandle interface{}, dentry *Dentry, timestamp int64, from string, trashEnable bool) (
+func (mp *metaPartition) fsmUpdateDentry(dbHandle interface{}, dentry *Dentry, timestamp int64, from string, trashEnable bool, reqInfo *RequestInfo) (
 	resp *DentryResponse, err error) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
@@ -262,6 +265,24 @@ func (mp *metaPartition) fsmUpdateDentry(dbHandle interface{}, dentry *Dentry, t
 		resp.Status = proto.OpInodeOutOfRange
 		return
 	}
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmDeleteDentry: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		if previousRespCode == proto.OpOk {
+			dentry.Inode = 0
+			resp.Msg = dentry
+		}
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+		mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	}()
+
 	var d *Dentry
 	d, err = mp.dentryTree.Get(dentry.ParentId, dentry.Name)
 	if err != nil {

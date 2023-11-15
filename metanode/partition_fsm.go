@@ -175,7 +175,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = den.Unmarshal(msg.V); err != nil {
 			return
 		}
-		resp, err = mp.fsmUpdateDentry(dbWriteHandle, den, msg.Timestamp, msg.From, msg.TrashEnable)
+		resp, err = mp.fsmUpdateDentry(dbWriteHandle, den, msg.Timestamp, msg.From, msg.TrashEnable, msg.ReqInfo)
 	case opFSMUpdatePartition:
 		req := &UpdatePartitionReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {

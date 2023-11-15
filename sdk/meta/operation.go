@@ -261,6 +261,8 @@ func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID 
 		ParentID:    parentID,
 		Name:        name,
 		Inode:       newInode,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)

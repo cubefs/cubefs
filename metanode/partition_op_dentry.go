@@ -88,6 +88,9 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
 	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
 		p.ResultCode = previousRespCode
+		if previousRespCode == proto.OpOk {
+			p.ResultCode = proto.OpNotExistErr
+		}
 		log.LogCriticalf("DeleteDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
 		return
 	}
@@ -204,6 +207,21 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 
 	if _, err = mp.isInoOutOfRange(req.ParentID); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+
+	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
+		p.ResultCode = previousRespCode
+		if previousRespCode == proto.OpOk {
+			var reply []byte
+			m := &UpdateDentryResp{
+				Inode: 0,
+			}
+			reply, err = json.Marshal(m)
+			p.PacketOkWithBody(reply)
+		}
+		log.LogCriticalf("DeleteDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
 		return
 	}
 
