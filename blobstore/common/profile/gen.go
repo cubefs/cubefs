@@ -94,6 +94,10 @@ func genDumpScript() {
 			fmt.Fprintf(f, "curl -sS '%s/debug/pprof/%s?debug=2' -o ${PREFIX}%s_debug_2\n",
 				profileAddr, name, name)
 			fallthrough
+		case "threadcreate":
+			fmt.Fprintf(f, "curl -sS '%s/debug/pprof/%s?debug=1' -o ${PREFIX}%s_debug_1\n",
+				profileAddr, name, name)
+			fallthrough
 		default:
 			fmt.Fprintf(f, "curl -sS '%s/debug/pprof/%s?seconds=5' -o ${PREFIX}%s\n",
 				profileAddr, name, name)
