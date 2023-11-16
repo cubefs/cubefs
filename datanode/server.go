@@ -71,6 +71,7 @@ const (
 	DefaultDiskMaxErr        = 1
 	DefaultDiskReservedSpace = 5 * unit.GB // GB
 	DefaultDiskUsableRatio = float64(0.90)
+	DefaultDiskReservedRatio = 0.1
 )
 
 const (
@@ -345,7 +346,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if capacity, err = getDeviceCapacity(diskPath.Path()); err != nil {
 			return
 		}
-		diskPath.SetReserved(uint64(math.Max(float64(capacity)*unit.NewRatio(1-DefaultDiskUsableRatio).Float64(), float64(diskPath.Reserved()))))
+		diskPath.SetReserved(uint64(math.Max(float64(capacity)*unit.NewRatio(DefaultDiskReservedRatio).Float64(), float64(diskPath.Reserved()))))
 		log.LogInfof("disk device: %v, path %v, device %v, capacity %v, reserved %v", d, diskPath.Path(), devID, capacity, diskPath.Reserved())
 		diskPaths[devID] = diskPath
 	}
