@@ -81,6 +81,45 @@ type Property struct {
 }
 type Properties []Property
 
+type PropertiesBuilder struct {
+	properties Properties
+}
+
+func NewPropertiesBuilder() *PropertiesBuilder {
+	return &PropertiesBuilder{
+		properties: Properties{},
+	}
+}
+
+func (s *PropertiesBuilder) SetVol(v string) *PropertiesBuilder {
+	s.properties = append(s.properties, Property{Type: PropertyTypeVol, Value: v})
+	return s
+}
+
+func (s *PropertiesBuilder) SetDisk(v string) *PropertiesBuilder {
+	s.properties = append(s.properties, Property{Type: PropertyTypeDisk, Value: v})
+	return s
+}
+
+func (s *PropertiesBuilder) SetOp(v string) *PropertiesBuilder {
+	s.properties = append(s.properties, Property{Type: PropertyTypeOp, Value: v})
+	return s
+}
+
+func (s *PropertiesBuilder) SetPartition(v string) *PropertiesBuilder {
+	s.properties = append(s.properties, Property{Type: PropertyTypePartition, Value: v})
+	return s
+}
+
+func (s *PropertiesBuilder) SetBandType(v string) *PropertiesBuilder {
+	s.properties = append(s.properties, Property{Type: PropertyTypeFlow, Value: v})
+	return s
+}
+
+func (s *PropertiesBuilder) Properties() Properties {
+	return s.properties
+}
+
 type LimiterWithTimeout struct {
 	limiter *rate.Limiter
 	timeout time.Duration
@@ -104,23 +143,33 @@ type Stat struct {
 	OutBytes int
 }
 
-func NewStat() Stat {
-	return Stat{}
+type StatConstructor struct {
+	stat Stat
 }
 
-func (s Stat) SetCount(count int) Stat {
-	s.Count = count
+func NewStatBuilder() *StatConstructor {
+	return &StatConstructor{
+		stat: Stat{},
+	}
+}
+
+func (s *StatConstructor) SetCount(count int) *StatConstructor {
+	s.stat.Count = count
 	return s
 }
 
-func (s Stat) SetNetIn(in int) Stat {
-	s.InBytes = in
+func (s *StatConstructor) SetInBytes(in int) *StatConstructor {
+	s.stat.InBytes = in
 	return s
 }
 
-func (s Stat) SetNetOut(out int) Stat {
-	s.OutBytes = out
+func (s *StatConstructor) SetOutBytes(out int) *StatConstructor {
+	s.stat.OutBytes = out
 	return s
+}
+
+func (s *StatConstructor) Stat() Stat {
+	return s.stat
 }
 
 type MultiLimiter struct {

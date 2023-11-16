@@ -834,10 +834,13 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		return
 	}
 
-	err = dp.limit(proto.OpRepairWrite_, 0)
+	err = dp.acquire(proto.OpExtentRepairWrite_)
 	if err != nil {
 		return
 	}
+	defer func() {
+		err = dp.release(proto.OpExtentRepairWrite_)
+	}()
 
 	var release, success = dp.tryLockExtentRepair(extentID)
 	if !success {
@@ -983,6 +986,12 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				exporter.WarningCritical(msg)
 				return errors.Trace(err, "streamRepairExtent repair data error ")
 			}
+			if !emptyResponse {
+				err = dp.limit(ctx, proto.OpExtentRepairWrite_, uint32(currRecoverySize))
+				if err != nil {
+					return
+				}
+			}
 			err = store.TinyExtentRecover(extentID, int64(currFixOffset), int64(currRecoverySize), reply.Data[:originalDataSize], reply.CRC, emptyResponse)
 			if tpObject != nil {
 				tpObject.AfterTp(currRecoverySize)
@@ -996,6 +1005,10 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 			}
 		} else {
 			var tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
+			err = dp.limit(ctx, proto.OpExtentRepairWrite_, uint32(currFixOffset))
+			if err != nil {
+				return
+			}
 			err = store.Write(ctx, extentID, int64(currFixOffset), int64(reply.Size), reply.Data[0:reply.Size], reply.CRC, storage.AppendWriteType, BufferWrite)
 			tpObject.AfterTp(uint64(reply.Size))
 		}

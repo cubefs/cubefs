@@ -1388,21 +1388,38 @@ func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
 	}
 }
 
-func (dp *DataPartition) limit(op int, netflow uint32) (err error) {
+func (dp *DataPartition) limit(ctx context.Context, op int, size uint32) (err error) {
 	if dp == nil || dp.limiter == nil {
 		return
 	}
-	properties := multirate.Properties{
-		{Type: multirate.PropertyTypeVol, Value: dp.volumeID},
-		{Type: multirate.PropertyTypeOp, Value: strconv.Itoa(op)},
-		{Type: multirate.PropertyTypeDisk, Value: dp.disk.Path},
-	}
+	propertyBuilder := multirate.NewPropertiesBuilder()
+	statBuilder := multirate.NewStatBuilder()
+
+	propertyBuilder.SetOp(strconv.Itoa(op)).SetVol(dp.volumeID).SetDisk(dp.disk.Path)
+	statBuilder.SetCount(1)
 	switch op {
 	case int(proto.OpWrite):
-		return dp.limiter.WaitNUseDefaultTimeout(context.Background(), properties, multirate.NewStat().SetCount(1).SetNetIn(int(netflow)))
+		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowNetwork).Properties(), statBuilder.SetInBytes(int(size)).Stat())
 	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead):
-		return dp.limiter.WaitNUseDefaultTimeout(context.Background(), properties, multirate.NewStat().SetCount(1).SetNetOut(int(netflow)))
+		if err = dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowNetwork).Properties(), statBuilder.SetOutBytes(int(size)).Stat()); err != nil {
+			return
+		}
+		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+	case int(proto.OpTinyExtentRepairRead), int(proto.OpExtentRepairRead):
+		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+	case proto.OpExtentRepairWrite_:
+		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetInBytes(int(size)).Stat())
 	default:
-		return dp.limiter.WaitUseDefaultTimeout(context.Background(), properties)
+		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
 	}
+}
+
+// todo:
+func (dp *DataPartition) acquire(op int) (err error) {
+	return
+}
+
+// todo:
+func (dp *DataPartition) release(op int) (err error) {
+	return err
 }

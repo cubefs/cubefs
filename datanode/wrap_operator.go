@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -575,6 +576,7 @@ func (s *DataNode) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Co
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
+		ctx = context.Background()
 	)
 	defer func() {
 		if err != nil {
@@ -589,12 +591,12 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
 	if isRepairRead {
-		if !partition.Disk().canRepairOnDisk() {
-			err = fmt.Errorf("disk(%v) limit on handleExtentRepairRead", partition.Disk().Path)
+		err = partition.acquire(int(proto.OpExtentRepairRead))
+		if err != nil {
 			return
 		}
 		defer func() {
-			partition.Disk().finishRepairTask()
+			err = partition.release(int(proto.OpExtentRepairRead))
 		}()
 	}
 
@@ -630,11 +632,9 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
-		if !isRepairRead {
-			err = partition.limit(int(p.Opcode), currReadSize)
-			if err != nil {
-				return
-			}
+		err = partition.limit(ctx, int(p.Opcode), currReadSize)
+		if err != nil {
+			return
 		}
 		reply.Data = dataBuffer[:currReadSize]
 
@@ -932,6 +932,15 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 	}
 
 	partition := request.Object.(*DataPartition)
+
+	err = partition.acquire(int(proto.OpTinyExtentRepairRead))
+	if err != nil {
+		return
+	}
+	defer func() {
+		err = partition.release(int(proto.OpTinyExtentRepairRead))
+	}()
+
 	store := partition.ExtentStore()
 	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)
 	if err != nil {
@@ -1790,8 +1799,12 @@ func BeforeTpMonitor(p *repl.Packet) *statistics.TpObject {
 }
 
 func (s *DataNode) checkLimit(pkg *repl.Packet) (err error) {
-	if int(pkg.Opcode) == proto.OpRepairWrite_ || pkg.Opcode == proto.OpStreamRead {
+	if isStreamOp(pkg.Opcode) {
 		return nil
 	}
-	return pkg.Object.(*DataPartition).limit(int(pkg.Opcode), pkg.Size)
+	return pkg.Object.(*DataPartition).limit(context.Background(), int(pkg.Opcode), pkg.Size)
+}
+
+func isStreamOp(op uint8) bool {
+	return int(op) == proto.OpExtentRepairWrite_ || op == proto.OpStreamRead || op == proto.OpTinyExtentRepairRead || op == proto.OpExtentRepairRead
 }
