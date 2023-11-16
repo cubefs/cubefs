@@ -174,7 +174,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	statistics.InitStatistics(cfg, m.clusterId, statistics.ModelMetaNode, m.localAddr, m.metadataManager.SummaryMonitorData)
+	statistics.InitStatistics(cfg, m.clusterId, statistics.ModelMetaNode, m.localAddr, m.metadataManager.RangeMonitorData)
 
 	go m.startUpdateProcessStatInfo()
 

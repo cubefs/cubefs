@@ -55,7 +55,7 @@ type MetadataManager interface {
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
 	Range(f func(i uint64, p MetaPartition) bool)
-	SummaryMonitorData(reportTime int64) []*statistics.MonitorData
+	RangeMonitorData(deal func(data *statistics.MonitorData, volName, diskPath string, pid uint64))
 	StartPartition(id uint64) error
 	StopPartition(id uint64) error
 	ReloadPartition(id uint64) error
@@ -130,10 +130,14 @@ func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	metric := exporter.NewModuleTP(p.GetOpMsg())
+	start := time.Now()
+	metric := exporter.NewModuleTPWithStart(p.GetOpMsg(), start)
 	m.rateLimit(conn, p, remoteAddr)
 
-	defer metric.Set(err)
+	defer func() {
+		cost := time.Since(start)
+		metric.SetWithCost(int64(cost/time.Millisecond), err)
+	}()
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
@@ -900,14 +904,16 @@ func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 	return
 }
 
-func (m *metadataManager) SummaryMonitorData(reportTime int64) []*statistics.MonitorData {
-	dataList := make([]*statistics.MonitorData, 0)
-	m.Range(func(i uint64, p MetaPartition) bool {
-		data := p.SumMonitorData(reportTime)
-		dataList = append(dataList, data...)
-		return true
-	})
-	return dataList
+func (m *metadataManager) RangeMonitorData(deal func(data *statistics.MonitorData, volName, diskPath string, pid uint64)) {
+	pids := m.partitionIDs()
+	for _, pid := range pids {
+		mp, err := m.getPartition(pid)
+		if err != nil {
+			continue
+		}
+		mp.RangeMonitorData(deal)
+	}
+	return
 }
 
 func (m *metadataManager) StartPartition(id uint64) (err error) {

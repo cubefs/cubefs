@@ -1,7 +1,6 @@
 package flashnode
 
 import (
-	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/statistics"
 )
 
@@ -18,8 +17,7 @@ func (f *FlashNode) BeforeTp(volume string, action int) *statistics.TpObject {
 	return datas[action].BeforeTp()
 }
 
-func (f *FlashNode) reportSummary(reportTime int64) []*statistics.MonitorData {
-	var results = make([]*statistics.MonitorData, 0)
+func (f *FlashNode) rangeMonitorData(deal func(data *statistics.MonitorData, vol, path string, pid uint64)) {
 	f.statistics.Range(func(key, value interface{}) (re bool) {
 		re = true
 		var is bool
@@ -33,26 +31,11 @@ func (f *FlashNode) reportSummary(reportTime int64) []*statistics.MonitorData {
 			f.statistics.Delete(key)
 			return
 		}
-		for i := 0; i < len(datas); i++ {
-			var data = datas[i]
-			if data.Count == 0 {
-				continue
-			}
-			size, count, tp := data.ResetTp()
-			results = append(results, &statistics.MonitorData{
-				VolName:     volume,
-				PartitionID: 0,
-				Action:      i,
-				ActionStr:   proto.ActionFlashMap[i],
-				Size:        size,
-				Count:       count,
-				Tp99:        uint64(tp.Tp99),
-				Max:         uint64(tp.Max),
-				Avg:         uint64(tp.Avg),
-				ReportTime:  reportTime,
-			})
+
+		for _, data := range datas {
+			deal(data, volume, "", 0)
 		}
 		return
 	})
-	return results
 }
+

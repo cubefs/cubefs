@@ -320,7 +320,7 @@ type MetaPartition interface {
 	Stop()
 	OpMeta
 	LoadSnapshot(path string) error
-	SumMonitorData(reportTime int64) []*statistics.MonitorData
+	RangeMonitorData(deal func(data *statistics.MonitorData, volName, diskPath string, pid uint64))
 }
 
 // metaPartition manages the range of the inode IDs.
@@ -1462,40 +1462,10 @@ func (mp *metaPartition) canRemoveSelf() (canRemove bool, err error) {
 	return
 }
 
-func (mp *metaPartition) SumMonitorData(reportTime int64) []*statistics.MonitorData {
-	dataList := make([]*statistics.MonitorData, 0)
-	totalCount := uint64(0)
-	for i := 0; i < len(mp.monitorData); i++ {
-		if atomic.LoadUint64(&mp.monitorData[i].Count) == 0 {
-			continue
-		}
-		size, count, tp := mp.monitorData[i].ResetTp()
-		data := &statistics.MonitorData{
-			VolName:     mp.config.VolName,
-			PartitionID: mp.config.PartitionId,
-			Action:      i,
-			ActionStr:   proto.ActionMetaMap[i],
-			Size:        size,
-			Count:       count,
-			Tp99:        uint64(tp.Tp99),
-			Max:         uint64(tp.Max),
-			Avg:         uint64(tp.Avg),
-			ReportTime:  reportTime,
-		}
-		dataList = append(dataList, data)
-		totalCount += data.Count
+func (mp *metaPartition) RangeMonitorData(deal func(data *statistics.MonitorData, volName, diskPath string, pid uint64)) {
+	for _, data := range mp.monitorData {
+		deal(data, mp.config.VolName, "", mp.config.PartitionId)
 	}
-	if totalCount > 0 {
-		totalData := &statistics.MonitorData{
-			VolName:     mp.config.VolName,
-			PartitionID: mp.config.PartitionId,
-			Count:       totalCount,
-			ReportTime:  reportTime,
-			IsTotal:     true,
-		}
-		dataList = append(dataList, totalData)
-	}
-	return dataList
 }
 
 func (mp *metaPartition) isTrashEnable() bool {

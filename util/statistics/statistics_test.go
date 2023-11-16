@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -30,29 +29,12 @@ var (
 	collector []*ReportInfo
 )
 
-func SummaryMonitorData(reportTime int64) []*MonitorData {
-	dataList := make([]*MonitorData, 0)
-	for _, p := range partition {
-		for i := 0; i < len(p.monitorData); i++ {
-			if atomic.LoadUint64(&p.monitorData[i].Count) == 0 {
-				continue
-			}
-			size, count, tp := p.monitorData[i].ResetTp()
-			data := &MonitorData{
-				PartitionID: p.PartitionId,
-				Action:      i,
-				Size:        size,
-				Count:       count,
-				Tp99:        uint64(tp.Tp99),
-				Max:         uint64(tp.Max),
-				Avg:         uint64(tp.Avg),
-				ReportTime:  reportTime,
-				ActionStr:   p.opAction,
-			}
-			dataList = append(dataList, data)
+func rangeMonitiorData(deal func(data *MonitorData, volName, diskPath string, pid uint64)) {
+	for _, mp := range partition {
+		for _, data := range mp.monitorData {
+			deal(data, "", "", mp.PartitionId)
 		}
 	}
-	return dataList
 }
 
 func collectHandler(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +64,7 @@ func collectHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(httpReply)
 }
 
+
 func TestStatistics(t *testing.T) {
 	conn, err := net.Listen("tcp", "127.0.0.1:8800")
 	if err != nil {
@@ -94,7 +77,7 @@ func TestStatistics(t *testing.T) {
 		"monitorAddr": "127.0.0.1:8800"
 	}`
 	cfg := config.LoadConfigString(cfgJson)
-	InitStatistics(cfg, "test", "metaNode", "127.0.0.1", SummaryMonitorData)
+	InitStatistics(cfg, "test", "metaNode", "127.0.0.1", rangeMonitiorData)
 
 	helper(1, t)
 	time.Sleep(time.Second * 1)

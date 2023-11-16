@@ -37,7 +37,9 @@ var (
 
 type TP interface {
 	Set(err error)
-	SetWithValue(value int64, err error)
+	SetWithCount(value int64, err error)
+	SetWithCost(costms int64, err error)
+	SetWithCostUS(costus int64, err error)
 }
 
 type promTP struct {
@@ -62,7 +64,7 @@ func (tp *promTP) Set(err error) {
 	}
 }
 
-func (tp *promTP) SetWithValue(value int64, err error) {
+func (tp *promTP) SetWithCount(value int64, err error) {
 	if tp == nil {
 		return
 	}
@@ -78,12 +80,43 @@ func (tp *promTP) SetWithValue(value int64, err error) {
 	}
 }
 
+func (tp *promTP) SetWithCost(value int64, err error) {
+	if tp == nil {
+		return
+	}
+	if tp.tp != nil {
+		tp.tp.Observe(float64(value * int64(time.Millisecond)))
+	}
+	if tp.failure != nil {
+		if err != nil {
+			tp.failure.Add(1)
+		} else {
+			tp.failure.Add(0)
+		}
+	}
+}
+
+func (tp *promTP) SetWithCostUS(value int64, err error) {
+	if tp == nil {
+		return
+	}
+	if tp.tp != nil {
+		tp.tp.Observe(float64(value * int64(time.Microsecond)))
+	}
+	if tp.failure != nil {
+		if err != nil {
+			tp.failure.Add(1)
+		} else {
+			tp.failure.Add(0)
+		}
+	}
+}
+
 func newPromTP(name string, start time.Time, lvs ...prom.LabelValue) TP {
 	name = promKeyReplacer.Replace(name)
 	var tp = &promTP{
 		tp:      prom.GetSummary(name, lvs...),
 		failure: prom.GetCounter(fmt.Sprintf("%s_failure", name), lvs...),
-		start:   time.Now(),
 	}
 	if start == unspecifiedTime {
 		tp.start = time.Now()
@@ -111,12 +144,30 @@ func (tp *umpTP) Set(err error) {
 	}
 }
 
-func (tp *umpTP) SetWithValue(value int64, err error) {
+func (tp *umpTP) SetWithCount(value int64, err error) {
 	if tp == nil {
 		return
 	}
 	if tp.to != nil {
-		ump.AfterTPWithValue(tp.to, value, err)
+		ump.AfterTPWithCount(tp.to, value, err)
+	}
+}
+
+func (tp *umpTP) SetWithCost(value int64, err error) {
+	if tp == nil {
+		return
+	}
+	if tp.to != nil {
+		ump.AfterTPWithCost(tp.to, value, err)
+	}
+}
+
+func (tp *umpTP) SetWithCostUS(value int64, err error) {
+	if tp == nil {
+		return
+	}
+	if tp.to != nil {
+		ump.AfterTPWithCostUS(tp.to, value, err)
 	}
 }
 
@@ -138,7 +189,15 @@ func (tp *noonTP) Set(_ error) {
 	return
 }
 
-func (tp *noonTP) SetWithValue(value int64, err error) {
+func (tp *noonTP) SetWithCount(value int64, err error) {
+	return
+}
+
+func (tp *noonTP) SetWithCost(value int64, err error) {
+	return
+}
+
+func (tp *noonTP) SetWithCostUS(value int64, err error) {
 	return
 }
 
@@ -152,9 +211,21 @@ func (tp multipleTP) Set(err error) {
 	}
 }
 
-func (tp multipleTP) SetWithValue(value int64, err error) {
+func (tp multipleTP) SetWithCount(value int64, err error) {
 	for _, recorder := range tp {
-		recorder.SetWithValue(value, err)
+		recorder.SetWithCount(value, err)
+	}
+}
+
+func (tp multipleTP) SetWithCost(value int64, err error) {
+	for _, recorder := range tp {
+		recorder.SetWithCost(value, err)
+	}
+}
+
+func (tp multipleTP) SetWithCostUS(value int64, err error) {
+	for _, recorder := range tp {
+		recorder.SetWithCostUS(value, err)
 	}
 }
 
@@ -171,14 +242,14 @@ func newTP(key string, start time.Time, precision UMPTPPrecision) (tp TP) {
 	return
 }
 
-func newModuleTP(op string, precision UMPTPPrecision) (tp TP) {
+func newModuleTP(op string, precision UMPTPPrecision, start time.Time) (tp TP) {
 	if len(zoneName) > 0 {
 		return multipleTP{
-			newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), unspecifiedTime, precision),
-			newTP(fmt.Sprintf("%s_%s_%s_%s", clusterName, zoneName, moduleName, op), unspecifiedTime, precision),
+			newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), start, precision),
+			newTP(fmt.Sprintf("%s_%s_%s_%s", clusterName, zoneName, moduleName, op), start, precision),
 		}
 	}
-	return newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), unspecifiedTime, precision)
+	return newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), start, precision)
 }
 
 func newVolumeTP(op string, volume string, precision UMPTPPrecision) (tp TP) {
@@ -196,11 +267,15 @@ func newNodeAndVolumeModuleTP(op, volName string, precision UMPTPPrecision) (tp 
 }
 
 func NewModuleTP(op string) TP {
-	return newModuleTP(op, PrecisionMs)
+	return newModuleTP(op, PrecisionMs, unspecifiedTime)
+}
+
+func NewModuleTPWithStart(op string, start time.Time) TP {
+	return newModuleTP(op, PrecisionMs, start)
 }
 
 func NewModuleTPUs(op string) TP {
-	return newModuleTP(op, PrecisionUs)
+	return newModuleTP(op, PrecisionUs, unspecifiedTime)
 }
 
 func NewVolumeTP(op string, volume string) TP {

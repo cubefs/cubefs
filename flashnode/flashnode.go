@@ -118,7 +118,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = f.startCacheEngine(); err != nil {
 		return
 	}
-	statistics.InitStatistics(cfg, f.clusterId, statistics.ModelFlashNode, f.localAddr, f.reportSummary)
+	statistics.InitStatistics(cfg, f.clusterId, statistics.ModelFlashNode, f.localAddr, f.rangeMonitorData)
 	return
 }
 

@@ -433,7 +433,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg 
 func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, dataPartitionsView fetchtopology.DataPartitionsView, ext *proto.MetaDelExtentKey) (err error) {
 	// get the data node view
 	tpObj := exporter.NewVolumeTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
-	defer tpObj.SetWithValue(1, err)
+	defer tpObj.SetWithCount(1, err)
 	log.LogDebugf("doDeleteMarkedInodes mp(%v) ext(%v)", mp.config.PartitionId, ext)
 	dp, ok := dataPartitionsView[ext.PartitionId]
 	if !ok || dp == nil {
@@ -498,7 +498,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, dataPartition
 func (mp *metaPartition) doBatchDeleteExtentsByPartition(ctx context.Context,
 	dataPartitionsView fetchtopology.DataPartitionsView, partitionID uint64, exts []*proto.MetaDelExtentKey) (err error) {
 	tpObj := exporter.NewNodeAndVolTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
-	defer tpObj.SetWithValue(int64(len(exts)), err)
+	defer tpObj.SetWithCount(int64(len(exts)), err)
 	log.LogDebugf("doBatchDeleteExtentsByPartition mp(%v) dp(%v), extentCnt(%v)", mp.config.PartitionId, partitionID, len(exts))
 	// get the data node view
 	dp, ok := dataPartitionsView[partitionID]

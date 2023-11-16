@@ -31,15 +31,24 @@ type Statistics struct {
 	cluster       string
 	module        string
 	address       string
-	sendList      []*MonitorData // store data per second
+	sendList      []*ReportData // store data per second
 	sendListLock  sync.RWMutex
 	monitorAddr   string
 	summarySecond uint64
 	reportSecond  uint64
 	stopC         chan bool
+	Range         func(deal func(data *MonitorData, volName, diskPath string, pid uint64))
 }
 
 type MonitorData struct {
+	Action      int
+	ActionStr   string
+	Size        uint64 // the num of read/write byte
+	Count       uint64
+	tpMonitor   *tpmonitor.TpMonitor
+}
+
+type ReportData struct {
 	VolName     string
 	PartitionID uint64
 	Action      int
@@ -53,14 +62,13 @@ type MonitorData struct {
 	TimeStr     string
 	IsTotal     bool
 	DiskPath    string // disk of dp
-	tpMonitor   *tpmonitor.TpMonitor
 }
 
 type ReportInfo struct {
 	Cluster string
 	Addr    string
 	Module  string
-	Infos   []*MonitorData
+	Infos   []*ReportData
 }
 
 func (m *Statistics) String() string {
@@ -68,8 +76,8 @@ func (m *Statistics) String() string {
 }
 
 func (data *MonitorData) String() string {
-	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)Disk(%v)ReportTime(%v)IsTotal(%v)}",
-		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.DiskPath, data.ReportTime, data.IsTotal)
+	return fmt.Sprintf("{Action(%v)ActionNum(%v)Count(%v)Size(%v)}",
+		data.ActionStr, data.Action, data.Count, data.Size)
 }
 
 func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistics {
@@ -78,25 +86,25 @@ func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistic
 		module:        moduleName,
 		address:       nodeAddr,
 		monitorAddr:   monitorAddr,
-		sendList:      make([]*MonitorData, 0),
+		sendList:      make([]*ReportData, 0),
 		summarySecond: defaultSummarySecond,
 		reportSecond:  defaultReportSecond,
 		stopC:         make(chan bool),
 	}
 }
 
-func InitStatistics(cfg *config.Config, cluster, moduleName, nodeAddr string, summaryFunc func(reportTime int64) []*MonitorData) {
+func InitStatistics(cfg *config.Config, cluster, moduleName, nodeAddr string, IterFunc func(deal func(data *MonitorData, volName, diskPath string, pid uint64))) {
 	targetCluster = cluster
 	targetModuleName = moduleName
 	targetNodeAddr = nodeAddr
-	targetSummaryFunc = summaryFunc
 	monitorAddr := cfg.GetString(ConfigMonitorAddr)
 	if monitorAddr == "" || StatisticsModule != nil {
 		return
 	}
 	once.Do(func() {
 		StatisticsModule = newStatistics(monitorAddr, cluster, moduleName, nodeAddr)
-		go StatisticsModule.summaryJob(summaryFunc)
+		StatisticsModule.Range = IterFunc
+		go StatisticsModule.summaryJob()
 		go StatisticsModule.reportJob()
 	})
 }
@@ -129,20 +137,27 @@ func (m *Statistics) CloseStatistics() {
 
 func InitMonitorData(module string) []*MonitorData {
 	var num int
+	var actionMap map[int]string
 	switch module {
 	case ModelDataNode:
 		num = len(proto.ActionDataMap)
+		actionMap = proto.ActionDataMap
 	case ModelMetaNode:
 		num = len(proto.ActionMetaMap)
+		actionMap = proto.ActionMetaMap
 	case ModelObjectNode:
 		num = len(ActionObjectMap)
+		actionMap = ActionObjectMap
 	case ModelFlashNode:
 		num = len(proto.ActionFlashMap)
+		actionMap = proto.ActionFlashMap
 	}
 	m := make([]*MonitorData, num)
 	for i := 0; i < num; i++ {
 		m[i] = &MonitorData{
 			tpMonitor: tpmonitor.NewTpMonitor(),
+			Action: i,
+			ActionStr: actionMap[i],
 		}
 	}
 	return m
@@ -165,13 +180,21 @@ func (tpObject *TpObject) AfterTp(dataSize uint64) {
 		return
 	}
 	data := tpObject.monitor
-	data.tpMonitor.Accumulate(int(time.Since(tpObject.sTime).Milliseconds()))
+	data.tpMonitor.Accumulate(int(time.Since(tpObject.sTime).Microseconds()), tpObject.sTime)
 	atomic.AddUint64(&data.Count, 1)
 	atomic.AddUint64(&data.Size, dataSize)
 }
 
-func (data *MonitorData) ResetTp() (size, count uint64, tp tpmonitor.TpResult) {
-	return atomic.SwapUint64(&data.Size, 0), atomic.SwapUint64(&data.Count, 0), data.tpMonitor.TpReset()
+func (data *MonitorData) SetCost(dataSize uint64, costUs int, start time.Time) {
+	if StatisticsModule == nil {
+		return
+	}
+	atomic.AddUint64(&data.Count, 1)
+	atomic.AddUint64(&data.Size, dataSize)
+	if data.tpMonitor != nil {
+		data.tpMonitor.Accumulate(costUs, start)
+	}
+	return
 }
 
 func (data *MonitorData) UpdateData(dataSize uint64) {
@@ -182,7 +205,30 @@ func (data *MonitorData) UpdateData(dataSize uint64) {
 	atomic.AddUint64(&data.Size, dataSize)
 }
 
-func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorData) {
+
+func (data *MonitorData) GenReportData(vol, path string, pid uint64, reportTime int64) *ReportData{
+	if atomic.LoadUint64(&data.Count) == 0 {
+		return nil
+	}
+
+	reportData := &ReportData{
+		VolName:     vol,
+		PartitionID: pid,
+		Action:      data.Action,
+		ActionStr:   data.ActionStr,
+		ReportTime:  reportTime,
+		DiskPath:    path,
+		Size:        atomic.SwapUint64(&data.Size, 0),
+		Count:       atomic.SwapUint64(&data.Count, 0),
+	}
+	if data.tpMonitor != nil {
+		reportData.Max, reportData.Avg, reportData.Tp99 = data.tpMonitor.CalcTp()
+	}
+
+	return reportData
+}
+
+func (m *Statistics) summaryJob() {
 	defer func() {
 		if err := recover(); err != nil {
 			log.LogErrorf("Monitor: summary job panic(%v) module(%v) ip(%v)", err, m.module, m.address)
@@ -196,7 +242,14 @@ func (m *Statistics) summaryJob(summaryFunc func(reportTime int64) []*MonitorDat
 		select {
 		case <-sumTicker.C:
 			reportTime := time.Now().Unix()
-			dataList := summaryFunc(reportTime)
+			dataList := make([]*ReportData, 0)
+			m.Range(func(data *MonitorData, vol, path string, pid uint64) {
+				reportData := data.GenReportData(vol, path, pid, reportTime)
+				if reportData != nil && reportData.Count != 0 {
+					dataList = append(dataList, reportData)
+				}
+
+			})
 			m.sendListLock.Lock()
 			m.sendList = append(m.sendList, dataList...)
 			m.sendListLock.Unlock()
@@ -245,16 +298,16 @@ func (m *Statistics) reportJob() {
 	}
 }
 
-func (m *Statistics) currentSendList() []*MonitorData {
+func (m *Statistics) currentSendList() []*ReportData {
 	m.sendListLock.Lock()
 	defer m.sendListLock.Unlock()
 
 	sendList := m.sendList
-	m.sendList = make([]*MonitorData, 0)
+	m.sendList = make([]*ReportData, 0)
 	return sendList
 }
 
-func (m *Statistics) reportToMonitor(sendList []*MonitorData) {
+func (m *Statistics) reportToMonitor(sendList []*ReportData) {
 	report := &ReportInfo{
 		Cluster: m.cluster,
 		Module:  m.module,

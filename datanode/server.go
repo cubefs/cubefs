@@ -31,7 +31,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -197,7 +196,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	async.RunWorker(s.startUpdateNodeInfo)
 	async.RunWorker(s.startUpdateProcessStatInfo)
 
-	statistics.InitStatistics(cfg, s.clusterID, statistics.ModelDataNode, LocalIP, s.summaryMonitorData)
+	statistics.InitStatistics(cfg, s.clusterID, statistics.ModelDataNode, LocalIP, s.rangeMonitorData)
 
 	return
 }
@@ -614,69 +613,21 @@ func IsDiskErr(err error) bool {
 			strings.Contains(err.Error(), syscall.EROFS.Error()))
 }
 
-func (s *DataNode) summaryMonitorData(reportTime int64) []*statistics.MonitorData {
-	var dataList = make([]*statistics.MonitorData, 0)
+func (s *DataNode)rangeMonitorData(deal func(data *statistics.MonitorData, vol, path string, pid uint64)) {
 	s.space.WalkDisks(func(disk *Disk) bool {
-		var totalCount uint64
-		for i, md := range disk.monitorData {
-			if atomic.LoadUint64(&md.Count) == 0 {
-				continue
-			}
-			size, count, tp := md.ResetTp()
-			var data = &statistics.MonitorData{
-				DiskPath:   disk.Path,
-				Action:     i,
-				ActionStr:  proto.ActionDataMap[i],
-				Size:       size,
-				Count:      count,
-				Tp99:       uint64(tp.Tp99),
-				Max:        uint64(tp.Max),
-				Avg:        uint64(tp.Avg),
-				ReportTime: reportTime,
-			}
-			dataList = append(dataList, data)
-			totalCount += data.Count
+		for _, md := range disk.monitorData {
+			deal(md, "", disk.Path, 0)
 		}
 		return true
 	})
+
+
 	s.space.WalkPartitions(func(partition *DataPartition) bool {
-		totalCount := uint64(0)
-		// each op
-		for i := 0; i < len(partition.monitorData); i++ {
-			if atomic.LoadUint64(&partition.monitorData[i].Count) == 0 {
-				continue
-			}
-			size, count, tp := partition.monitorData[i].ResetTp()
-			data := &statistics.MonitorData{
-				VolName:     partition.volumeID,
-				PartitionID: partition.partitionID,
-				DiskPath:    partition.Disk().Path,
-				Action:      i,
-				ActionStr:   proto.ActionDataMap[i],
-				Size:        size,
-				Count:       count,
-				Tp99:        uint64(tp.Tp99),
-				Max:         uint64(tp.Max),
-				Avg:         uint64(tp.Avg),
-				ReportTime:  reportTime,
-			}
-			dataList = append(dataList, data)
-			totalCount += data.Count
-		}
-		// total count
-		if totalCount > 0 {
-			totalData := &statistics.MonitorData{
-				VolName:     partition.volumeID,
-				PartitionID: partition.partitionID,
-				Count:       totalCount,
-				ReportTime:  reportTime,
-				IsTotal:     true,
-			}
-			dataList = append(dataList, totalData)
+		for _, md := range partition.monitorData {
+			deal(md, partition.volumeID, partition.Disk().Path, partition.partitionID)
 		}
 		return true
 	})
-	return dataList
 }
 
 func getBasePath() string {

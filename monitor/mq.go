@@ -110,8 +110,8 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 	}
 }
 
-func constructMQMessage(cluster, module, ip string, data *statistics.MonitorData) []byte {
-	msg := fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v", data.ReportTime, cluster, module, ip, data.Action, data.VolName, data.PartitionID,
-		data.Size, data.Count)
+func constructMQMessage(cluster, module, ip string, data *statistics.ReportData) []byte {
+	msg := fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v", data.ReportTime, cluster, module, ip, data.Action, data.VolName, data.PartitionID,
+		data.Size, data.Count, data.Max, data.Avg, data.Tp99)
 	return []byte(msg)
 }
