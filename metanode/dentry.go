@@ -71,6 +71,13 @@ func (d *Dentry) getSnapListLen() int {
 	return len(d.multiSnap.dentryList)
 }
 
+func (d *Dentry) addVersion(ver uint64) {
+	dn := d.CopyDirectly().(*Dentry)
+	dn.setVerSeq(d.getSeqFiled())
+	d.setVerSeq(ver)
+	d.multiSnap.dentryList = append([]*Dentry{dn}, d.multiSnap.dentryList...)
+}
+
 func (d *Dentry) setVerSeq(verSeq uint64) {
 	if verSeq == 0 {
 		return

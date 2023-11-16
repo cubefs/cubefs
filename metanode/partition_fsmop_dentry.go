@@ -100,7 +100,11 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 		if d.isDeleted() {
 			log.LogDebugf("action[fsmCreateDentry] mp %v newest dentry %v be set deleted flag", mp.config.PartitionId, d)
 			d.Inode = dentry.Inode
-			d.setVerSeq(dentry.getSeqFiled())
+			if d.getVerSeq() == dentry.getVerSeq() {
+				d.setVerSeq(dentry.getSeqFiled())
+			} else {
+				d.addVersion(dentry.getSeqFiled())
+			}
 			d.Type = dentry.Type
 			d.ParentId = dentry.ParentId
 			log.LogDebugf("action[fsmCreateDentry.ver] mp %v latest dentry already deleted.Now create new one [%v]", mp.config.PartitionId, dentry)
