@@ -340,10 +340,12 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, fullPath string)
 	}
 
 	req := &proto.UnlinkInodeRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		UniqID:      uniqID,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		UniqID:          uniqID,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -484,14 +486,16 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 	}
 
 	req := &proto.TxCreateDentryRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		Inode:       inode,
-		Name:        name,
-		Mode:        mode,
-		QuotaIds:    quotaIds,
-		TxInfo:      tx.txInfo,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		ParentID:        parentID,
+		Inode:           inode,
+		Name:            name,
+		Mode:            mode,
+		QuotaIds:        quotaIds,
+		TxInfo:          tx.txInfo,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -533,13 +537,15 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 	}
 
 	req := &proto.QuotaCreateDentryRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		Inode:       inode,
-		Name:        name,
-		Mode:        mode,
-		QuotaIds:    quotaIds,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		ParentID:        parentID,
+		Inode:           inode,
+		Name:            name,
+		Mode:            mode,
+		QuotaIds:        quotaIds,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -586,12 +592,14 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	}
 
 	req := &proto.CreateDentryRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		Inode:       inode,
-		Name:        name,
-		Mode:        mode,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		ParentID:        parentID,
+		Inode:           inode,
+		Name:            name,
+		Mode:            mode,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -801,12 +809,14 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 	}()
 
 	req := &proto.TxDeleteDentryRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		Name:        name,
-		Ino:         ino,
-		TxInfo:      tx.txInfo,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		ParentID:        parentID,
+		Name:            name,
+		Ino:             ino,
+		TxInfo:          tx.txInfo,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -839,6 +849,8 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, 
 		ParentID:        parentID,
 		Name:            name,
 		InodeCreateTime: inodeCreateTime,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	req.FullPaths = []string{fullPath}
 	log.LogDebugf("action[ddelete] %v", req)
@@ -1222,11 +1234,13 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	}()
 
 	req := &proto.AppendExtentKeyWithCheckRequest{
-		VolName:        mw.volname,
-		PartitionID:    mp.PartitionID,
-		Inode:          inode,
-		Extent:         extent,
-		DiscardExtents: discard,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		Extent:          extent,
+		DiscardExtents:  discard,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1397,10 +1411,12 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64, fullPath 
 	}()
 
 	req := &proto.TruncateRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		Size:        size,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		Size:            size,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -1487,10 +1503,12 @@ func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, full
 	}
 
 	req := &proto.LinkInodeRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		UniqID:      uniqID,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		UniqID:          uniqID,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -1545,15 +1563,17 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 	}()
 
 	req := &proto.SetAttrRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-		Valid:       valid,
-		Mode:        mode,
-		Uid:         uid,
-		Gid:         gid,
-		AccessTime:  atime,
-		ModifyTime:  mtime,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		Valid:           valid,
+		Mode:            mode,
+		Uid:             uid,
+		Gid:             gid,
+		AccessTime:      atime,
+		ModifyTime:      mtime,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1842,10 +1862,12 @@ func (mw *MetaWrapper) appendExtentKeys(mp *MetaPartition, inode uint64, extents
 	}()
 
 	req := &proto.AppendExtentKeysRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Extents:     extents,
+		VolName:         mw.volname,
+		PartitionId:     mp.PartitionID,
+		Inode:           inode,
+		Extents:         extents,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID()
@@ -1982,11 +2004,13 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 	}()
 
 	req := &proto.SetXAttrRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Key:         string(name),
-		Value:       string(value),
+		VolName:         mw.volname,
+		PartitionId:     mp.PartitionID,
+		Inode:           inode,
+		Key:             string(name),
+		Value:           string(value),
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID()
@@ -2132,10 +2156,12 @@ func (mw *MetaWrapper) removeXAttr(mp *MetaPartition, inode uint64, name string)
 	}()
 
 	req := &proto.RemoveXAttrRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Key:         name,
+		VolName:         mw.volname,
+		PartitionId:     mp.PartitionID,
+		Inode:           inode,
+		Key:             name,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID()
@@ -2384,11 +2410,13 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 
 	value := strconv.FormatInt(int64(filesInc), 10) + "," + strconv.FormatInt(int64(dirsInc), 10) + "," + strconv.FormatInt(int64(bytesInc), 10)
 	req := &proto.UpdateXAttrRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Key:         SummaryKey,
-		Value:       value,
+		VolName:         mw.volname,
+		PartitionId:     mp.PartitionID,
+		Inode:           inode,
+		Key:             SummaryKey,
+		Value:           value,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaUpdateXAttr

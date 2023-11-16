@@ -33,9 +33,10 @@ import (
 
 // MetaItem defines the structure of the metadata operations.
 type MetaItem struct {
-	Op uint32 `json:"op"`
-	K  []byte `json:"k"`
-	V  []byte `json:"v"`
+	Op      uint32       `json:"op"`
+	K       []byte       `json:"k"`
+	V       []byte       `json:"v"`
+	ReqInfo *RequestInfo `json:"req"`
 }
 
 // MarshalJson

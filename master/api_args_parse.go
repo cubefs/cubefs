@@ -364,6 +364,7 @@ type updateVolReq struct {
 	coldArgs                *coldVolArgs
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
+	enableRemoveDupReq      bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -516,6 +517,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		}
 	}
 
+	if req.enableRemoveDupReq, err = extractBoolWithDefault(r, proto.EnableRemoveDupReq, vol.enableRemoveDupReq); err != nil {
+		return
+	}
+
 	return
 }
 
@@ -628,6 +633,7 @@ type createVolReq struct {
 	DpReadOnlyWhenVolFull                bool
 	enableTransaction                    proto.TxOpMask
 	enableQuota                          bool
+	enableRemoveDupReq                   bool
 	txTimeout                            int64
 	txConflictRetryNum                   int64
 	txConflictRetryInterval              int64
@@ -801,6 +807,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
+	if req.enableRemoveDupReq, err = extractBoolWithDefault(r, proto.EnableRemoveDupReq, false); err != nil {
+		return
+	}
 	return
 }
 

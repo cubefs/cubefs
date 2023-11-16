@@ -141,6 +141,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	if svv.Forbidden && svv.Status == 1 {
 		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", svv.DeleteExecTime.Sub(time.Now())))
 	}
+	sb.WriteString(fmt.Sprintf("  RemoveDupReq                    : %v\n", formatEnabledDisabled(svv.EnableRemoveDupReq)))
 	if svv.VolType == 1 {
 		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))
 		sb.WriteString(fmt.Sprintf("  CacheCapacity        : %v G\n", svv.CacheCapacity))

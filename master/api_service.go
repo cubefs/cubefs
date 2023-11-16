@@ -2035,6 +2035,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.txConflictRetryInterval = req.txConflictRetryInterval
 	newArgs.txOpLimit = req.txOpLimit
 	newArgs.enableQuota = req.enableQuota
+	newArgs.enableRemoveDupReq = req.enableRemoveDupReq
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
@@ -2420,6 +2421,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		TrashInterval:           vol.TrashInterval,
 		Forbidden:               vol.Forbidden,
 		DisableAuditLog:         vol.DisableAuditLog,
+		EnableRemoveDupReq:      vol.enableRemoveDupReq,
 		DeleteExecTime:          vol.DeleteExecTime,
 	}
 
@@ -4609,7 +4611,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 			}
 			stat := volStat(vol, false)
 			volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize,
-				stat.UsedSize, stat.DpReadOnlyWhenVolFull)
+				stat.UsedSize, stat.DpReadOnlyWhenVolFull, vol.enableRemoveDupReq)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}

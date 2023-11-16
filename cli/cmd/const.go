@@ -112,7 +112,7 @@ const (
 	CliFlagForceInode          = "forceInode"
 	CliFlagEnableQuota         = "enableQuota"
 	CliFlagDeleteLockTime      = "delete-lock-time"
-
+	CliFlagEnableRemoveDupReq  = "enableRemoveDupReq"
 	//CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	//Shorthand format of resource name

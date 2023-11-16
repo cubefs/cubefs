@@ -87,7 +87,7 @@ func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 // The proxy is used during the leader change. When a leader of a partition changes, the proxy forwards the request to
 // the new leader.
 func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
-	p *Packet) (ok bool) {
+	p *Packet, req interface{}) (ok bool) {
 	var (
 		mConn      *net.TCPConn
 		leaderAddr string
@@ -121,6 +121,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	}
 
 	// send to master connection
+	p.ResetPackageData(req)
 	if err = p.WriteToConn(mConn); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.connPool.PutConnect(mConn, ForceClosedConnect)

@@ -33,7 +33,7 @@ func (mp *metaPartition) batchSetInodeQuota(req *proto.BatchSetMetaserverQuotaRe
 		return
 	}
 
-	r, err := mp.submit(opFSMSetInodeQuotaBatch, val)
+	r, err := mp.submit(opFSMSetInodeQuotaBatch, val, nil)
 	if err != nil {
 		log.LogErrorf("batchSetInodeQuota submit req [%v] failed [%v]", req, err)
 		return
@@ -56,7 +56,7 @@ func (mp *metaPartition) batchDeleteInodeQuota(req *proto.BatchDeleteMetaserverQ
 		return
 	}
 
-	r, err := mp.submit(opFSMDeleteInodeQuotaBatch, val)
+	r, err := mp.submit(opFSMDeleteInodeQuotaBatch, val, nil)
 	if err != nil {
 		log.LogErrorf("batchDeleteInodeQuota submit req [%v] failed [%v]", req, err)
 		return

@@ -128,7 +128,7 @@ type OpInode interface {
 	CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAddr string) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet, remoteAddr string) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, remoteAddr string) (err error)
-	SetAttr(reqData []byte, p *Packet) (err error)
+	SetAttr(req *SetattrRequest, reqData []byte, p *Packet) (err error)
 	GetInodeTree() *BTree
 	GetInodeTreeLen() int
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet, remoteAddr string) (err error)
@@ -201,6 +201,7 @@ type OpMultipart interface {
 	GetUidInfo() (info []*proto.UidReportSpaceInfo)
 	SetUidLimit(info []*proto.UidSpaceInfo)
 	SetTxInfo(info []*proto.TxInfo)
+	SetRemoveDupReqInfo(info []*proto.RemoveDupReqInfo)
 }
 
 // OpMeta defines the interface for the metadata operations.
@@ -486,6 +487,7 @@ type metaPartition struct {
 	nonIdempotent          sync.Mutex
 	uniqChecker            *uniqChecker
 	enableAuditLog         bool
+	reqRecords             *RequestRecords
 }
 
 func (mp *metaPartition) IsEnableAuditLog() bool {
@@ -775,6 +777,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		manager:        manager,
 		uniqChecker:    newUniqChecker(),
 		enableAuditLog: true,
+		reqRecords:     NewRequestRecords(),
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp
@@ -877,6 +880,7 @@ const (
 	CRC_COUNT_BASIC      int = 4
 	CRC_COUNT_TX_STUFF   int = 7
 	CRC_COUNT_UINQ_STUFF int = 8
+	CRC_COUNT_REQ_RECORD int = 9
 )
 
 func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
@@ -893,7 +897,8 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	crc_count := len(crcs)
-	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF {
+	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF &&
+		crc_count != CRC_COUNT_REQ_RECORD {
 		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
 		return ErrSnapshotCrcMismatch
 	}
@@ -907,7 +912,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		loadFuncs = append(loadFuncs, mp.loadTxRbInode)
 		loadFuncs = append(loadFuncs, mp.loadTxRbDentry)
 	}
-	if crc_count == CRC_COUNT_UINQ_STUFF {
+	if crc_count >= CRC_COUNT_UINQ_STUFF {
 		needLoadUniqStuff = true
 		loadFuncs = append(loadFuncs, mp.loadUniqChecker)
 	}
@@ -961,6 +966,10 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		if err = mp.loadUniqID(snapshotPath); err != nil {
 			return
 		}
+	}
+
+	if err = mp.loadRequestRecords(snapshotPath); err != nil {
+		return
 	}
 
 	return mp.loadApplyID(snapshotPath)
@@ -1019,6 +1028,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeTxRbInode,
 		mp.storeTxRbDentry,
 		mp.storeUniqChecker,
+		mp.storeRequestInfo,
 	}
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
@@ -1123,7 +1133,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.submit(opFSMUpdatePartition, reqData)
+	r, err := mp.submit(opFSMUpdatePartition, reqData, nil)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -1141,7 +1151,7 @@ func (mp *metaPartition) UpdatePartition(req *UpdatePartitionReq,
 }
 
 func (mp *metaPartition) DecommissionPartition(req []byte) (err error) {
-	_, err = mp.submit(opFSMDecommissionPartition, req)
+	_, err = mp.submit(opFSMDecommissionPartition, req, nil)
 	return
 }
 
@@ -1363,6 +1373,7 @@ func (mp *metaPartition) storeSnapshotFiles() (err error) {
 		txRbDentryTree: NewBtree(),
 		uniqId:         mp.GetUniqId(),
 		uniqChecker:    newUniqChecker(),
+		reqTree:        NewBtree(),
 	}
 
 	return mp.store(msg)
@@ -1390,4 +1401,20 @@ func (mp *metaPartition) startCheckerEvict() {
 
 func (mp *metaPartition) GetVolName() (volName string) {
 	return mp.config.VolName
+}
+
+func (mp *metaPartition) recordRequest(req *RequestInfo, respCode uint8) {
+	if req == nil {
+		return
+	}
+	req.RespCode = respCode
+	mp.reqRecords.Update(req)
+}
+
+func (mp *metaPartition) removeDupClientReqEnableState() bool {
+	if mp.reqRecords.enable {
+		return true
+	}
+
+	return false
 }

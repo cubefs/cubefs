@@ -81,7 +81,7 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode, reqInfo *RequestInfo) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	if mp.txProcessor.txManager.txInRMDone(txIno.TxInfo.TxID) {
@@ -115,12 +115,30 @@ func (mp *metaPartition) fsmTxCreateLinkInode(txIno *TxInode) (resp *InodeRespon
 		}
 	}()
 
-	return mp.fsmCreateLinkInode(txIno.Inode, 0)
+	return mp.fsmCreateLinkInode(txIno.Inode, 0, reqInfo)
 }
 
-func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
+func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64, reqInfo *RequestInfo) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmCreateLink: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		existIno := mp.inodeTree.Get(ino)
+		if existIno == nil {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
+		resp.Msg = existIno.(*Inode)
+	}
+
+	defer func() {
+		if resp.Status != proto.OpOk {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+	}()
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -231,7 +249,7 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 		}
 	}()
 
-	resp = mp.fsmUnlinkInode(txIno.Inode, 0)
+	resp = mp.fsmUnlinkInode(txIno.Inode, 0, nil)
 	if resp.Status != proto.OpOk {
 		return
 	}
@@ -244,9 +262,28 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 }
 
 // fsmUnlinkInode delete the specified inode from inode tree.
-func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeResponse) {
+func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64, reqInfo *RequestInfo) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
+
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmUnlinkInode: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		existIno := mp.inodeTree.Get(ino)
+		if existIno == nil {
+			resp.Status = proto.OpNotExistErr
+			return
+		}
+		resp.Msg = existIno.(*Inode)
+		return
+	}
+	defer func() {
+		if resp.Status != proto.OpOk {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+	}()
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -294,7 +331,7 @@ func (mp *metaPartition) fsmUnlinkInodeBatch(ib InodeBatch) (resp []*InodeRespon
 			resp = append(resp, &InodeResponse{Status: status})
 			continue
 		}
-		resp = append(resp, mp.fsmUnlinkInode(ino, 0))
+		resp = append(resp, mp.fsmUnlinkInode(ino, 0, nil))
 	}
 	return
 }
@@ -349,8 +386,14 @@ func (mp *metaPartition) internalDeleteInode(ino *Inode) {
 	return
 }
 
-func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmAppendExtents(ino *Inode, req *RequestInfo) (status uint8) {
 	status = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(req); isDup {
+		log.LogCriticalf("fsmAppendExtents: dup req:%v, previousRespCode:%v", req, previousRespCode)
+		status = previousRespCode
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -359,13 +402,16 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	ino2 := item.(*Inode)
 	if ino2.ShouldDelete() {
 		status = proto.OpNotExistErr
+		mp.recordRequest(req, status)
 		return
 	}
 	oldSize := int64(ino2.Size)
 	eks := ino.Extents.CopyExtents()
 	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
+		mp.recordRequest(req, status)
 		return
 	}
+	mp.recordRequest(req, status)
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
 	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtents inode(%v) deleteExtents(%v)", ino2.Inode, delExtents)
@@ -374,9 +420,15 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
+func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, req *RequestInfo) (status uint8) {
 	status = proto.OpOk
 	log.LogInfof("fsmAppendExtentsWithCheck ino %v", ino.Inode)
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(req); isDup {
+		log.LogCriticalf("fsmAppendExtents: dup req:%v, previousRespCode:%v", req, previousRespCode)
+		status = previousRespCode
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		status = proto.OpNotExistErr
@@ -385,6 +437,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	ino2 := item.(*Inode)
 	if ino2.ShouldDelete() {
 		status = proto.OpNotExistErr
+		mp.recordRequest(req, status)
 		return
 	}
 	var (
@@ -401,6 +454,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 
 	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks[:1]); status != proto.OpOk {
 		log.LogErrorf("fsmAppendExtentsWithCheck.addUidSpace status %v", status)
+		mp.recordRequest(req, status)
 		return
 	}
 
@@ -421,7 +475,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode) (status uint8) {
 	if status == proto.OpConflictExtentsErr {
 		mp.extDelCh <- eks[:1]
 	}
-
+	mp.recordRequest(req, status)
 	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
 	log.LogInfof("fsmAppendExtentWithCheck inode(%v) ek(%v) deleteExtents(%v) discardExtents(%v) status(%v)", ino2.Inode, eks[0], delExtents, discardExtentKey, status)
 	return
@@ -473,10 +527,16 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 // 	return
 // }
 
-func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmExtentsTruncate(ino *Inode, req *RequestInfo) (resp *InodeResponse) {
 	resp = NewInodeResponse()
-
 	resp.Status = proto.OpOk
+
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(req); isDup {
+		log.LogCriticalf("fsmExtentsTruncate: dup req:%v, previousRespCode:%v", req, previousRespCode)
+		resp.Status = previousRespCode
+		return
+	}
+
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
@@ -485,10 +545,12 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	i := item.(*Inode)
 	if i.ShouldDelete() {
 		resp.Status = proto.OpNotExistErr
+		mp.recordRequest(req, resp.Status)
 		return
 	}
 	if proto.IsDir(i.Type) {
 		resp.Status = proto.OpArgMismatchErr
+		mp.recordRequest(req, resp.Status)
 		return
 	}
 
@@ -498,6 +560,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		mp.uidManager.minusUidSpace(i.Uid, i.Inode, eks)
 	}
 
+	mp.recordRequest(req, resp.Status)
 	oldSize := int64(i.Size)
 	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, doOnLastKey)
 	mp.updateUsedInfo(int64(i.Size)-oldSize, 0, i.Inode)
@@ -559,10 +622,25 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
+func (mp *metaPartition) fsmSetAttr(req *SetattrRequest, reqInfo *RequestInfo) (err error) {
+	var status uint8 = proto.OpOk
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmSetAttr: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		status = previousRespCode
+		return
+	}
+
+	defer func() {
+		if status != proto.OpOk {
+			return
+		}
+		mp.recordRequest(reqInfo, status)
+	}()
+
 	ino := NewInode(req.Inode, req.Mode)
 	item := mp.inodeTree.CopyGet(ino)
 	if item == nil {
+		status = proto.OpNotExistErr
 		return
 	}
 	ino = item.(*Inode)

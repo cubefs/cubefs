@@ -751,7 +751,7 @@ func (tm *TransactionManager) setTransactionState(txId string, state int32) (sta
 	}
 	val, _ = json.Marshal(stateReq)
 
-	resp, err = tm.txProcessor.mp.submit(opFSMTxSetState, val)
+	resp, err = tm.txProcessor.mp.submit(opFSMTxSetState, val, nil)
 	if err != nil {
 		log.LogWarnf("setTransactionState: set transaction[%v] state to [%v] failed, err[%v]", txId, state, err)
 		return proto.OpAgain, err
@@ -775,7 +775,7 @@ func (tm *TransactionManager) delTxFromRM(txId string) (status uint8, err error)
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(opFSMTxDelete, val)
+	resp, err := tm.txProcessor.mp.submit(opFSMTxDelete, val, nil)
 	if err != nil {
 		log.LogWarnf("delTxFromRM: delTxFromRM transaction[%v] failed, err[%v]", txId, err)
 		return proto.OpAgain, err
@@ -866,7 +866,7 @@ func (tm *TransactionManager) commitTx(txId string, skipSetStat bool) (status ui
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(opFSMTxCommit, val)
+	resp, err := tm.txProcessor.mp.submit(opFSMTxCommit, val, nil)
 	if err != nil {
 		log.LogWarnf("commitTx: commit transaction[%v] failed, err[%v]", txId, err)
 		return proto.OpAgain, err
@@ -896,7 +896,7 @@ func (tm *TransactionManager) sendToRM(txInfo *proto.TransactionInfo, op uint8) 
 
 		pkt, _ := buildTxPacket(req, mpId, op)
 		if mp.config.PartitionId == mpId {
-			pt := &Packet{*pkt}
+			pt := &Packet{*pkt, ""}
 			go func() {
 				defer wg.Done()
 				var err error
@@ -988,7 +988,7 @@ func (tm *TransactionManager) rollbackTx(txId string, skipSetStat bool) (status 
 		return
 	}
 
-	resp, err := tm.txProcessor.mp.submit(opFSMTxRollback, val)
+	resp, err := tm.txProcessor.mp.submit(opFSMTxRollback, val, nil)
 
 	if err != nil {
 		log.LogWarnf("commitTx: rollback transaction[%v]  failed, err[%v]", txId, err)
@@ -1386,7 +1386,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 					tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, quotaId)
 				}
 			}
-			tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode, 0)
+			tr.txProcessor.mp.fsmUnlinkInode(rbInode.inode, 0, nil)
 			tr.txProcessor.mp.fsmEvictInode(rbInode.inode)
 		}
 
@@ -1441,9 +1441,9 @@ func (tr *TransactionResource) rollbackDentryInternal(rbDentry *TxRollbackDentry
 	switch rbDentry.rbType {
 	case TxAdd:
 		// need to be true to assert link not change.
-		status = tr.txProcessor.mp.fsmCreateDentry(rbDentry.dentry, true)
+		status = tr.txProcessor.mp.fsmCreateDentry(rbDentry.dentry, true, nil)
 	case TxDelete:
-		resp := tr.txProcessor.mp.fsmDeleteDentry(rbDentry.dentry, true)
+		resp := tr.txProcessor.mp.fsmDeleteDentry(rbDentry.dentry, true, nil)
 		status = resp.Status
 	case TxUpdate:
 		resp := tr.txProcessor.mp.fsmUpdateDentry(rbDentry.dentry)
@@ -1547,7 +1547,7 @@ func (tr *TransactionResource) commitDentry(txID string, pId uint64, name string
 	// unlink parent inode
 	if rbDentry.rbType == TxAdd {
 		parInode := NewInode(pId, 0)
-		st := tr.txProcessor.mp.fsmUnlinkInode(parInode, 0)
+		st := tr.txProcessor.mp.fsmUnlinkInode(parInode, 0, nil)
 		if st.Status != proto.OpOk {
 			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode %v", txID, parInode)
 			return
