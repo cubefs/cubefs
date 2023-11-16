@@ -311,6 +311,7 @@ const (
 	TimeFormat                 = "2006-01-02 15:04:05"
 	DefaultDirChildrenNumLimit = 20000000
 	MinDirChildrenNumLimit     = 1000000
+	EnableRemoveDupReq         = "enableRemoveDupReq"
 )
 
 // HTTPReply uniform response structure
@@ -493,6 +494,15 @@ type TxInfos struct {
 	TxInfo []*TxInfo
 }
 
+type RemoveDupReqInfo struct {
+	Volume string
+	Enable bool
+}
+
+type RemoveDupReqInfos struct {
+	RemoveDupReqInfo []*RemoveDupReqInfo
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
@@ -505,6 +515,7 @@ type HeartBeatRequest struct {
 	TxInfos
 	ForbiddenVols    []string
 	DisableAuditVols []string
+	RemoveDupReqInfos
 }
 
 // PartitionReport defines the partition report.
@@ -882,6 +893,7 @@ type SimpleVolView struct {
 	TrashInterval    int64
 	Forbidden        bool
 	DisableAuditLog  bool
+	EnableRemoveDupReq bool
 	DeleteExecTime   time.Time
 }
 
@@ -933,9 +945,11 @@ type VolInfo struct {
 	TotalSize             uint64
 	UsedSize              uint64
 	DpReadOnlyWhenVolFull bool
+	EnableRemoveDupReq    bool
 }
 
-func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, dpReadOnlyWhenVolFull bool) *VolInfo {
+func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64, dpReadOnlyWhenVolFull bool,
+	enableRemoveDupReq bool) *VolInfo {
 	return &VolInfo{
 		Name:                  name,
 		Owner:                 owner,
@@ -944,6 +958,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		TotalSize:             totalSize,
 		UsedSize:              usedSize,
 		DpReadOnlyWhenVolFull: dpReadOnlyWhenVolFull,
+		EnableRemoveDupReq:    enableRemoveDupReq,
 	}
 }
 

@@ -40,12 +40,14 @@ type storeMsg struct {
 	uidRebuild     bool
 	uniqId         uint64
 	uniqChecker    *uniqChecker
+	reqTree        *BTree
 }
 
 func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timer := time.NewTimer(time.Hour * 24 * 365)
 	timer.Stop()
 	timerCursor := time.NewTimer(intervalToSyncCursor)
+	timerSyncReqRecordsEvictTimestamp := time.NewTimer(intervalToSyncEvictReqRecords)
 	scheduleState := common.StateStopped
 	lastCursor := mp.GetCursor()
 	dumpFunc := func(msg *storeMsg) {
@@ -132,7 +134,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if _, err := mp.submit(opFSMStoreTick, nil); err != nil {
+				if _, err := mp.submit(opFSMStoreTick, nil, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
@@ -152,16 +154,28 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				Buf := make([]byte, 8)
 				binary.BigEndian.PutUint64(Buf, curCursor)
-				if _, err := mp.submit(opFSMSyncCursor, Buf); err != nil {
+				if _, err := mp.submit(opFSMSyncCursor, Buf, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 
 				binary.BigEndian.PutUint64(Buf, mp.txProcessor.txManager.txIdAlloc.getTransactionID())
-				if _, err := mp.submit(opFSMSyncTxID, Buf); err != nil {
+				if _, err := mp.submit(opFSMSyncTxID, Buf, nil); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				lastCursor = curCursor
 				timerCursor.Reset(intervalToSyncCursor)
+			case <-timerSyncReqRecordsEvictTimestamp.C:
+				if _, ok := mp.IsLeader(); !ok {
+					timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
+					continue
+				}
+				evictTimestamp := mp.reqRecords.GetEvictTimestamp()
+				evictTimestampBuff := make([]byte, 8)
+				binary.BigEndian.PutUint64(evictTimestampBuff, uint64(evictTimestamp))
+				if _, err := mp.submit(opFSMSyncEvictReqRecords, evictTimestampBuff, nil); err != nil {
+					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
+				}
+				timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
 			}
 		}
 	}(mp.stopC)

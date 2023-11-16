@@ -48,6 +48,7 @@ type VolVarargs struct {
 	txConflictRetryInterval int64
 	txOpLimit               int
 	trashInterval           int64
+	enableRemoveDupReq      bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -116,6 +117,7 @@ type Vol struct {
 	authKey        string
 	DeleteExecTime time.Time
 	user           *User
+	enableRemoveDupReq      bool //for remove dup client retry operation
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -163,6 +165,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.CacheLRUInterval = vv.CacheLRUInterval
 	vol.CacheRule = vv.CacheRule
 	vol.Status = vv.Status
+	vol.enableRemoveDupReq = vv.EnableRemoveDupReq
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,
@@ -210,6 +213,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.authKey = vv.AuthKey
 	vol.DeleteExecTime = vv.DeleteExecTime
 	vol.user = vv.User
+
+	vol.enableRemoveDupReq = vv.EnableRemoveDupReq
 	return vol
 }
 
@@ -1336,6 +1341,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.dpSelectorName = args.dpSelectorName
 	vol.dpSelectorParm = args.dpSelectorParm
 	vol.TrashInterval = args.trashInterval
+	vol.enableRemoveDupReq = args.enableRemoveDupReq
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1371,6 +1377,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		txOpLimit:               vol.txOpLimit,
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
+		enableRemoveDupReq:      vol.enableRemoveDupReq,
 	}
 }
 

@@ -66,6 +66,14 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("ExtentAppend: partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	ino := NewInode(req.Inode, 0)
 	if _, _, err = mp.CheckQuota(req.Inode, p); err != nil {
 		log.LogErrorf("ExtentAppend fail status [%v]", err)
@@ -78,7 +86,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsAdd, val)
+	resp, err := mp.submit(opFSMExtentsAdd, val, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -102,6 +110,12 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		inoParm *Inode
 		i       *Inode
 	)
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("ExtentAppend: partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
 	if inoParm, i, err = mp.CheckQuota(req.Inode, p); err != nil {
 		log.LogErrorf("ExtentAppendWithCheck CheckQuota fail err [%v]", err)
 		return
@@ -138,7 +152,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsAddWithCheck, val)
+	resp, err := mp.submit(opFSMExtentsAddWithCheck, val, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -238,6 +252,14 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("ExtentsTruncate: partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	fileSize := uint64(0)
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
@@ -269,7 +291,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentTruncate, val)
+	resp, err := mp.submit(opFSMExtentTruncate, val, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -283,6 +305,13 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	if !proto.IsHot(mp.volType) {
 		err = fmt.Errorf("only support hot vol")
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("BatchExtentAppend: partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
 		return
 	}
 
@@ -301,7 +330,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsAdd, val)
+	resp, err := mp.submit(opFSMExtentsAdd, val, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -330,7 +359,7 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMObjExtentsAdd, val)
+	resp, err := mp.submit(opFSMObjExtentsAdd, val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -368,7 +397,7 @@ func (mp *metaPartition) ExtentsEmpty(req *proto.EmptyExtentKeyRequest, p *Packe
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMExtentsEmpty, val)
+	resp, err := mp.submit(opFSMExtentsEmpty, val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -388,7 +417,18 @@ func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
 		return fmt.Errorf("[delExtents] marshal binary fail, %s", err.Error())
 	}
 
-	_, err = mp.submit(opFSMSentToChan, val)
+	_, err = mp.submit(opFSMSentToChan, val, nil)
 
+	return
+}
+
+func (mp *metaPartition) SetRemoveDupReqInfo(infos []*proto.RemoveDupReqInfo) {
+	for _, info := range infos {
+		if info.Volume == mp.config.VolName {
+			mp.reqRecords.enable = info.Enable
+			log.LogInfof("SetRemoveDupReqInfo mp %v enable %v ", mp.config.PartitionId, info.Enable)
+			return
+		}
+	}
 	return
 }

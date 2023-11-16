@@ -33,7 +33,7 @@ func NewDentryResponse() *DentryResponse {
 	}
 }
 
-func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
+func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry, reqInfo *RequestInfo) (status uint8) {
 
 	done := mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID)
 	if done {
@@ -65,14 +65,25 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 		}
 	}()
 
-	return mp.fsmCreateDentry(txDentry.Dentry, false)
+	return mp.fsmCreateDentry(txDentry.Dentry, false, reqInfo)
 }
 
 // Insert a dentry into the dentry tree.
 func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
-	forceUpdate bool) (status uint8) {
+	forceUpdate bool, reqInfo *RequestInfo) (status uint8) {
 	status = proto.OpOk
 	var parIno *Inode
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmCreateDentry: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		status = previousRespCode
+		return
+	}
+	defer func() {
+		if status != proto.OpOk {
+			return
+		}
+		mp.recordRequest(reqInfo, status)
+	}()
 	if !forceUpdate {
 		item := mp.inodeTree.CopyGet(NewInode(dentry.ParentId, 0))
 		if item == nil {
@@ -131,9 +142,16 @@ func (mp *metaPartition) getDentry(dentry *Dentry) (*Dentry, uint8) {
 	return dentry, status
 }
 
-func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResponse) {
+func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry, reqInfo *RequestInfo) (resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
+
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmDeleteDentry: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		return
+	}
+
 	if mp.txProcessor.txManager.txInRMDone(txDentry.TxInfo.TxID) {
 		log.LogWarnf("fsmTxDeleteDentry: tx is already finish. txId %s", txDentry.TxInfo.TxID)
 		resp.Status = proto.OpTxInfoNotExistErr
@@ -162,7 +180,9 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 	defer func() {
 		if resp.Status != proto.OpOk {
 			mp.txProcessor.txResource.deleteTxRollbackDentry(txDenInfo.ParentId, txDenInfo.Name, txDenInfo.TxID)
+			return
 		}
+		mp.recordRequest(reqInfo, resp.Status)
 	}()
 
 	item := mp.dentryTree.Get(tmpDen)
@@ -179,10 +199,22 @@ func (mp *metaPartition) fsmTxDeleteDentry(txDentry *TxDentry) (resp *DentryResp
 }
 
 // Delete dentry from the dentry tree.
-func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool) (
+func (mp *metaPartition) fsmDeleteDentry(dentry *Dentry, checkInode bool, reqInfo *RequestInfo) (
 	resp *DentryResponse) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
+
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(reqInfo); isDup {
+		log.LogCriticalf("fsmDeleteDentry: dup req:%v, previousRespCode:%v", reqInfo, previousRespCode)
+		resp.Status = previousRespCode
+		return
+	}
+	defer func() {
+		if resp.Status != proto.OpOk {
+			return
+		}
+		mp.recordRequest(reqInfo, resp.Status)
+	}()
 
 	var item interface{}
 	if checkInode {
@@ -228,7 +260,7 @@ func (mp *metaPartition) fsmBatchDeleteDentry(db DentryBatch) []*DentryResponse 
 			result = append(result, &DentryResponse{Status: status})
 			continue
 		}
-		result = append(result, mp.fsmDeleteDentry(dentry, true))
+		result = append(result, mp.fsmDeleteDentry(dentry, true, nil))
 	}
 	return result
 }

@@ -172,3 +172,7 @@ func (b *BTree) MaxItem() BtreeItem {
 	b.RUnlock()
 	return item
 }
+
+func (i *BTree) Count() uint64 {
+	return uint64(i.Len())
+}

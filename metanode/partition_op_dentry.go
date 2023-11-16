@@ -20,10 +20,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/log"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/errors"
 )
 
@@ -37,6 +36,13 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		return
+	}
+
+	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
+		p.ResultCode = previousRespCode
+		log.LogCriticalf("CreateDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
 		return
 	}
 
@@ -73,7 +79,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 		return
 	}
 
-	status, err := mp.submit(opFSMTxCreateDentry, val)
+	status, err := mp.submit(opFSMTxCreateDentry, val, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -94,6 +100,13 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAdd
 	if req.ParentID == req.Inode {
 		err = fmt.Errorf("parentId is equal inodeId")
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
+		return
+	}
+
+	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
+		p.ResultCode = previousRespCode
+		log.LogCriticalf("CreateDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
 		return
 	}
 
@@ -122,7 +135,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAdd
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(opFSMCreateDentry, val)
+	resp, err := mp.submit(opFSMCreateDentry, val, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -143,6 +156,14 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
+
+	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
+		p.ResultCode = previousRespCode
+		log.LogCriticalf("CreateDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
+		return
+	}
+
 	for _, quotaId := range req.QuotaIds {
 		status := mp.mqMgr.IsOverQuota(false, true, quotaId)
 		if status != 0 {
@@ -177,7 +198,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(opFSMCreateDentry, val)
+	resp, err := mp.submit(opFSMCreateDentry, val, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -187,6 +208,13 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 }
 
 func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Packet, remoteAddr string) (err error) {
+	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
+		p.ResultCode = previousRespCode
+		log.LogCriticalf("DeleteDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
+		return
+	}
+
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
@@ -244,7 +272,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 		return
 	}
 
-	r, err := mp.submit(opFSMTxDeleteDentry, val)
+	r, err := mp.submit(opFSMTxDeleteDentry, val, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -271,6 +299,14 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 			return
 		}
 	}
+
+	clientReq := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReq); isDup {
+		p.ResultCode = previousRespCode
+		log.LogCriticalf("DeleteDentry: dup req:%v, previousRespCode:%v", clientReq, previousRespCode)
+		return
+	}
+
 	dentry := &Dentry{
 		ParentId: req.ParentID,
 		Name:     req.Name,
@@ -280,7 +316,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submit(opFSMDeleteDentry, val)
+	r, err := mp.submit(opFSMDeleteDentry, val, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -327,7 +363,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet,
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	r, err := mp.submit(opFSMDeleteDentryBatch, val)
+	r, err := mp.submit(opFSMDeleteDentryBatch, val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -431,7 +467,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMTxUpdateDentry, val)
+	resp, err := mp.submit(opFSMTxUpdateDentry, val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -466,7 +502,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAdd
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMUpdateDentry, val)
+	resp, err := mp.submit(opFSMUpdateDentry, val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

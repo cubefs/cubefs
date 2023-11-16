@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
@@ -27,6 +28,13 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 	filesInc, _ := strconv.ParseInt(newValueList[0], 10, 64)
 	dirsInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
 	bytesInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
+
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("SetXAttr: dup req, req:%v, client req info:%v", req, clientReqInfo)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
 
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
@@ -46,7 +54,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 				strconv.FormatInt(int64(newBytes), 10)
 			var extend = NewExtend(req.Inode)
 			extend.Put([]byte(req.Key), []byte(newValue))
-			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+			if _, err = mp.putExtend(opFSMUpdateXAttr, extend, clientReqInfo); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
 			}
@@ -54,7 +62,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 			return
 		} else {
 			extend.Put([]byte(req.Key), []byte(req.Value))
-			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+			if _, err = mp.putExtend(opFSMUpdateXAttr, extend, clientReqInfo); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
 			}
@@ -64,7 +72,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 	} else {
 		var extend = NewExtend(req.Inode)
 		extend.Put([]byte(req.Key), []byte(req.Value))
-		if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+		if _, err = mp.putExtend(opFSMUpdateXAttr, extend, clientReqInfo); err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
 		}
@@ -74,9 +82,16 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 }
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("SetXAttr: dup req, req:%v, client req info:%v", req, clientReqInfo)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), []byte(req.Value))
-	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
+	if _, err = mp.putExtend(opFSMSetXAttr, extend, clientReqInfo); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -85,12 +100,19 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 }
 
 func (mp *metaPartition) BatchSetXAttr(req *proto.BatchSetXAttrRequest, p *Packet) (err error) {
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("SetXAttr: dup req, req:%v, client req info:%v", req, clientReqInfo)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	var extend = NewExtend(req.Inode)
 	for key, val := range req.Attrs {
 		extend.Put([]byte(key), []byte(val))
 	}
 
-	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
+	if _, err = mp.putExtend(opFSMSetXAttr, extend, clientReqInfo); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -178,9 +200,16 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 }
 
 func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
+	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
+	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
+		log.LogCriticalf("RemoveXAttr: dup req:%v, previousRespCode:%v", clientReqInfo, previousRespCode)
+		p.PacketErrorWithBody(previousRespCode, nil)
+		return
+	}
+
 	var extend = NewExtend(req.Inode)
 	extend.Put([]byte(req.Key), nil)
-	if _, err = mp.putExtend(opFSMRemoveXAttr, extend); err != nil {
+	if _, err = mp.putExtend(opFSMRemoveXAttr, extend, clientReqInfo); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -213,11 +242,11 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	return
 }
 
-func (mp *metaPartition) putExtend(op uint32, extend *Extend) (resp interface{}, err error) {
+func (mp *metaPartition) putExtend(op uint32, extend *Extend, clientReqInfo *RequestInfo) (resp interface{}, err error) {
 	var marshaled []byte
 	if marshaled, err = extend.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.submit(op, marshaled)
+	resp, err = mp.submit(op, marshaled, clientReqInfo)
 	return
 }

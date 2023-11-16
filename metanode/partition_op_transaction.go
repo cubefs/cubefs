@@ -139,7 +139,7 @@ func (mp *metaPartition) txInit(txInfo *proto.TransactionInfo, p *Packet) (ifo *
 		return nil, err
 	}
 
-	status, err := mp.submit(opFSMTxInit, val)
+	status, err := mp.submit(opFSMTxInit, val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return nil, err
@@ -183,7 +183,7 @@ func (mp *metaPartition) TxCommitRM(req *proto.TxApplyRMRequest, p *Packet) erro
 		return err
 	}
 
-	status, err := mp.submit(opFSMTxCommitRM, val)
+	status, err := mp.submit(opFSMTxCommitRM, val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -216,7 +216,7 @@ func (mp *metaPartition) TxRollbackRM(req *proto.TxApplyRMRequest, p *Packet) er
 		return err
 	}
 
-	status, err := mp.submit(opFSMTxRollbackRM, val)
+	status, err := mp.submit(opFSMTxRollbackRM, val, nil)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err

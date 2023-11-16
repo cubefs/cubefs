@@ -141,6 +141,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optTxConflictRetryInterval int64
 	var optDeleteLockTime int64
 	var optYes bool
+	var optEnableRemoveDupReq string
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -173,6 +174,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			if optDeleteLockTime < 0 {
 				optDeleteLockTime = 0
 			}
+			if optEnableRemoveDupReq != "yes" {
+				optEnableRemoveDupReq = "false"
+			}
 
 			// ask user for confirm
 			if !optYes {
@@ -204,6 +208,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
 				stdout("  TxConflictRetryNum       : %v\n", optTxConflictRetryNum)
 				stdout("  TxConflictRetryInterval  : %v ms\n", optTxConflictRetryInterval)
+				stdout("  EnableQuota              : %v\n", optEnableQuota)
+				stdout("  EnableRemoveDupReq          : %v\n", optEnableRemoveDupReq)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -219,7 +225,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
-				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota)
+				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, optEnableRemoveDupReq)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -256,6 +262,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
+	cmd.Flags().StringVar(&optEnableRemoveDupReq, CliFlagEnableRemoveDupReq, "false", "Enable remove duplicate (default false)")
 
 	return cmd
 }
@@ -292,6 +299,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optEnableQuota string
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
+	var optEnableRemoveDupReq string
 	var cmd = &cobra.Command{
 		Use:   CliOpUpdate + " [VOLUME NAME]",
 		Short: cmdVolUpdateShort,
@@ -577,6 +585,23 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
+			if optEnableRemoveDupReq != "" {
+				var enable bool
+				if enable, err = strconv.ParseBool(optEnableRemoveDupReq); err != nil {
+					return
+				}
+
+				if vv.EnableRemoveDupReq != enable {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  Remove dup req      : %v -> %v\n", vv.EnableRemoveDupReq, enable))
+					vv.EnableRemoveDupReq = enable
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  Remove dup req      : %v\n", vv.EnableRemoveDupReq))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Remove dup req      : %v\n", vv.EnableRemoveDupReq))
+			}
+
 			if err != nil {
 				return
 			}
@@ -634,7 +659,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
-
+	cmd.Flags().StringVar(&optEnableRemoveDupReq, CliFlagEnableRemoveDupReq, "", "Enable remove dup")
 	return cmd
 
 }
