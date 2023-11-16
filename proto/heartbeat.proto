@@ -24,6 +24,7 @@ message DiskInfoPb {
     int32  Status = 4;
     string Path = 5;
     float  UsageRatio = 6;
+    bool  IsSFX = 7;
 }
 
 message DataNodeHeartbeatResponsePb {

@@ -154,8 +154,6 @@ type Disk struct {
 	// sfx compressible ssd attribute
 	IsSfx              bool
 	devName            string
-	totalPhysicalSpace uint64 //total physical space .Byte
-	freePhysicalSpace  uint64 //free physical space .Byte
 	PhysicalUsedRatio  uint32 //physical space usage ratio
 	CompressionRatio   uint32 //full disk compression ratio
 }
