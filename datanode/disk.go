@@ -364,13 +364,21 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		}
 		d.RLock()
 		defer d.RUnlock()
-		d.Total = dStatus.totalPhysicalCapability - d.ReservedSpace
-		available := dStatus.freePhysicalCapability - d.ReservedSpace
+		total := int64(dStatus.totalPhysicalCapability) - int64(d.ReservedSpace)
+		if total <0 {
+			total=0
+		}
+		d.Total=uint64(total)
+		available := int64(dStatus.freePhysicalCapability) - int64(d.ReservedSpace)
 		if available < 0 {
 			available = 0
 		}
-		d.Available = available
-		d.Used = dStatus.totalPhysicalCapability - dStatus.freePhysicalCapability
+		d.Available = uint64(available)
+		used:= int64(dStatus.totalPhysicalCapability) - int64(dStatus.freePhysicalCapability)
+		if used <0 {
+			used=0
+		}
+		d.Used=uint64(used)
 
 		allocatedSize := uint64(0)
 		for _, dp := range d.partitionMap {
@@ -414,7 +422,11 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 	}
 	d.Available = uint64(available)
 
-	d.Used = fs.Blocks*uint64(fs.Bsize) - fs.Bavail*uint64(fs.Bsize)
+	used:= int64(fs.Blocks*fs.Bsize - fs.Bavail*fs.Bsize)
+	if used <0 {
+		used=0
+	}
+	d.Used=uint64(used)
 
 	allocatedSize := int64(0)
 	for _, dp := range d.partitionMap {
