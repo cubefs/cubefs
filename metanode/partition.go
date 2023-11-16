@@ -1396,10 +1396,15 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 		case <-ttl.C:
 			log.LogDebugf("[multiVersionTTLWork] begin cache ttl, mp[%v]", mp.config.PartitionId)
 			mp.multiVersionList.RLock()
-			volVersionInfoList := &proto.VolVersionInfoList{
-				VerList:         mp.multiVersionList.VerList,
-				TemporaryVerMap: mp.multiVersionList.TemporaryVerMap,
+			var volVersionInfoList = &proto.VolVersionInfoList{
+				TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 			}
+			copy(volVersionInfoList.VerList, mp.multiVersionList.VerList)
+			for key, value := range mp.multiVersionList.TemporaryVerMap {
+				copiedValue := *value
+				volVersionInfoList.TemporaryVerMap[key] = &copiedValue
+			}
+
 			mp.multiVersionList.RUnlock()
 			for _, version := range volVersionInfoList.TemporaryVerMap {
 				if version.Status == proto.VersionDeleting {
