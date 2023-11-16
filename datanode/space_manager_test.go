@@ -26,7 +26,7 @@ func TestSpaceManager_CreatePartition(t *testing.T) {
 		t.Fatalf("Make disk path %v failed: %v", diskPath, err)
 	}
 
-	var space = NewSpaceManager(&DataNode{})
+	var space = NewSpaceManager(&fakeNode.DataNode)
 	space.SetClusterID("test")
 	space.SetRaftStore(mock.NewMockRaftStore())
 	if err = space.LoadDisk(&DiskPath{

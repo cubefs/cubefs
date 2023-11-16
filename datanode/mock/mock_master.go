@@ -16,7 +16,9 @@ const (
 	TestMasterHost = "127.0.0.1:10729"
 	Master         = "master"
 )
+
 var mockMasterServer *mockMaster
+
 type mockDataNode struct {
 	HttpPort                  string
 	ZoneName                  string
@@ -27,17 +29,17 @@ type mockDataNode struct {
 }
 
 type mockMaster struct {
-	MasterAddr   string
-	CurNodeID    *atomic.Int64
-	DataNodeMap  map[string]*mockDataNode
+	MasterAddr  string
+	CurNodeID   *atomic.Int64
+	DataNodeMap map[string]*mockDataNode
 }
 
 func NewMockMaster() {
 	fmt.Println("init mock master")
 	mockMasterServer = &mockMaster{
-		MasterAddr: TestMasterHost,
+		MasterAddr:  TestMasterHost,
 		DataNodeMap: make(map[string]*mockDataNode, 0),
-		CurNodeID: new(atomic.Int64),
+		CurNodeID:   new(atomic.Int64),
 	}
 	profNetListener, err := net.Listen("tcp", TestMasterHost)
 	if err != nil {
@@ -53,6 +55,7 @@ func NewMockMaster() {
 		http.HandleFunc(proto.GetDataNode, fakeGetDataNode)
 		http.HandleFunc(proto.AdminCreateDataPartition, fakeCreateDataPartition)
 		http.HandleFunc(proto.AdminDeleteDataReplica, fakeDeleteDataReplica)
+		http.HandleFunc(proto.AdminGetLimitInfo, fakeGetLimitInfo)
 	}()
 }
 
@@ -67,18 +70,18 @@ func fakeGetClusterInfo(w http.ResponseWriter, r *http.Request) {
 func fakeAddDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr, httpPort, zoneName, version string
-		err error
+		err                                   error
 	)
 	if nodeAddr, httpPort, zoneName, version, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 	mockMasterServer.DataNodeMap[nodeAddr] = &mockDataNode{
-		ID: uint64(mockMasterServer.CurNodeID.Add(1)),
-		Host: nodeAddr,
-		HttpPort: httpPort,
-		ZoneName: zoneName,
-		Version: version,
+		ID:                        uint64(mockMasterServer.CurNodeID.Add(1)),
+		Host:                      nodeAddr,
+		HttpPort:                  httpPort,
+		ZoneName:                  zoneName,
+		Version:                   version,
 		PersistenceDataPartitions: make([]uint64, 0),
 	}
 	buildJSONResp(w, http.StatusOK, 1, Master, "")
@@ -86,8 +89,8 @@ func fakeAddDataNode(w http.ResponseWriter, r *http.Request) {
 
 func fakeGetDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr  string
-		err       error
+		nodeAddr string
+		err      error
 	)
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -99,8 +102,8 @@ func fakeGetDataNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info := &proto.DataNodeInfo{
-		ID: 1060,
-		Addr : mockMasterServer.DataNodeMap[nodeAddr].Host,
+		ID:                        1060,
+		Addr:                      mockMasterServer.DataNodeMap[nodeAddr].Host,
 		PersistenceDataPartitions: mockMasterServer.DataNodeMap[nodeAddr].PersistenceDataPartitions,
 	}
 	buildJSONResp(w, http.StatusOK, info, Master, "")
@@ -108,9 +111,9 @@ func fakeGetDataNode(w http.ResponseWriter, r *http.Request) {
 
 func fakeCreateDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr  string
-		id        uint64
-		err       error
+		nodeAddr string
+		id       uint64
+		err      error
 	)
 	if nodeAddr, id, err = parseRequestForCreateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -127,9 +130,9 @@ func fakeCreateDataPartition(w http.ResponseWriter, r *http.Request) {
 
 func fakeDeleteDataReplica(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr  string
-		id        uint64
-		err       error
+		nodeAddr string
+		id       uint64
+		err      error
 	)
 	if nodeAddr, id, err = parseRequestForCreateDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -149,6 +152,14 @@ func fakeDeleteDataReplica(w http.ResponseWriter, r *http.Request) {
 	}
 	node.PersistenceDataPartitions = newPersist
 	buildJSONResp(w, http.StatusOK, "success", Master, "")
+}
+
+func fakeGetLimitInfo(w http.ResponseWriter, r *http.Request) {
+	limit := &proto.LimitInfo{
+		Cluster:                  TestCluster,
+		DataNodeNetworkFlowRatio: 90,
+	}
+	buildJSONResp(w, http.StatusOK, limit, Master, "")
 }
 
 func buildJSONResp(w http.ResponseWriter, stateCode int, data interface{}, send, msg string) {
