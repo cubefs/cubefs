@@ -422,7 +422,7 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 	}
 	d.Available = uint64(available)
 
-	used:= int64(fs.Blocks*fs.Bsize - fs.Bavail*fs.Bsize)
+	used:= int64(fs.Blocks*uint64(fs.Bsize) - fs.Bavail*uint64(fs.Bsize))
 	if used <0 {
 		used=0
 	}
