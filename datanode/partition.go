@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/fetchtopology"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -238,9 +239,9 @@ type DataPartition struct {
 	DataPartitionCreateType       int
 	finishPlayBackTinyDelete      bool
 	monitorData                   []*statistics.MonitorData
-	limiter                       *multirate.MultiLimiter
-
-	persistSync chan struct{}
+	limiter                       *multirate.LimiterManager
+	topologyManager               *fetchtopology.FetchTopologyManager
+	persistSync                   chan struct{}
 
 	inRepairExtents  map[uint64]struct{}
 	inRepairExtentMu sync.Mutex
@@ -273,7 +274,7 @@ type DataPartitionViewInfo struct {
 
 func (d *Disk) createPartition(dpCfg *dataPartitionCfg, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, d, true, d.limiter, d.interceptors); err != nil {
+	if dp, err = newDataPartition(dpCfg, d, true, d.limiter, d.fetchtopoManager, d.interceptors); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -359,7 +360,7 @@ func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error)
 		VolHAType: meta.VolumeHAType,
 		Mode:      meta.ConsistencyMode,
 	}
-	if dp, err = newDataPartition(dpCfg, d, false, d.limiter, d.interceptors); err != nil {
+	if dp, err = newDataPartition(dpCfg, d, false, d.limiter, d.fetchtopoManager, d.interceptors); err != nil {
 		return
 	}
 	// dp.PersistMetadata()
@@ -445,7 +446,7 @@ func (dp *DataPartition) maybeUpdateFaultOccurredCheckLevel() {
 	}
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, limiter *multirate.MultiLimiter, interceptors storage.IOInterceptors) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, limiter *multirate.LimiterManager, fetchtopoManager *fetchtopology.FetchTopologyManager, interceptors storage.IOInterceptors) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	partition := &DataPartition{
@@ -468,6 +469,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		persistSync:             make(chan struct{}, 1),
 		inRepairExtents:         make(map[uint64]struct{}),
 		limiter:                 limiter,
+		topologyManager:         fetchtopoManager,
 		applyStatus:             NewWALApplyStatus(),
 		actionHolder:            holder.NewActionHolder(),
 	}
@@ -966,13 +968,22 @@ func (dp *DataPartition) runRepair(ctx context.Context, extentType uint8) {
 	dp.repair(ctx, extentType)
 }
 
-func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
-	if !isForce && time.Now().Unix()-dp.intervalToUpdateReplicas <= IntervalToUpdateReplica {
-		return
-	}
-	isLeader, replicas, err := dp.fetchReplicasFromMaster()
+func (dp *DataPartition) updateReplicas() (err error) {
+	var isLeader bool
+	replicas := make([]string, 0)
+	dp.backendRefreshCacheView()
+	partition, err := dp.getCacheView()
 	if err != nil {
 		return
+	}
+	for _, host := range partition.Hosts {
+		replicas = append(replicas, host)
+	}
+	if partition.Hosts != nil && len(partition.Hosts) >= 1 {
+		leaderAddr := strings.Split(partition.Hosts[0], ":")
+		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
+			isLeader = true
+		}
 	}
 	dp.replicasLock.Lock()
 	defer dp.replicasLock.Unlock()
@@ -1002,26 +1013,6 @@ func (dp *DataPartition) compareReplicas(v1, v2 []string) (equals bool) {
 		return
 	}
 	equals = false
-	return
-}
-
-// Fetch the replica information from the master.
-func (dp *DataPartition) fetchReplicasFromMaster() (isLeader bool, replicas []string, err error) {
-
-	var partition *proto.DataPartitionInfo
-	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
-		isLeader = false
-		return
-	}
-	for _, host := range partition.Hosts {
-		replicas = append(replicas, host)
-	}
-	if partition.Hosts != nil && len(partition.Hosts) >= 1 {
-		leaderAddr := strings.Split(partition.Hosts[0], ":")
-		if len(leaderAddr) == 2 && strings.TrimSpace(leaderAddr[0]) == LocalIP {
-			isLeader = true
-		}
-	}
 	return
 }
 
@@ -1184,9 +1175,10 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 }
 
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
-	var partition *proto.DataPartitionInfo
+	var peers []proto.Peer
+	var offlinePeer uint64
 	for i := 0; i < 2; i++ {
-		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err == nil {
+		if offlinePeer, peers, err = dp.topologyManager.GetPartitionRaftPeerFromMaster(dp.volumeID, dp.partitionID); err == nil {
 			break
 		}
 	}
@@ -1196,7 +1188,7 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	}
 	canRemove = false
 	var existInPeers bool
-	for _, peer := range partition.Peers {
+	for _, peer := range peers {
 		if dp.config.NodeID == peer.ID {
 			existInPeers = true
 		}
@@ -1205,7 +1197,7 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 		canRemove = true
 		return
 	}
-	if dp.config.NodeID == partition.OfflinePeerID {
+	if dp.config.NodeID == offlinePeer {
 		canRemove = true
 		return
 	}
@@ -1389,8 +1381,8 @@ func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
 }
 
 func (dp *DataPartition) limit(ctx context.Context, op int, size uint32) (err error) {
-	if dp == nil || dp.limiter == nil {
-		return
+	if dp == nil || dp.limiter == nil || dp.limiter.GetLimiter() == nil {
+		return ErrLimiterNil
 	}
 	propertyBuilder := multirate.NewPropertiesBuilder()
 	statBuilder := multirate.NewStatBuilder()
@@ -1399,27 +1391,52 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32) (err er
 	statBuilder.SetCount(1)
 	switch op {
 	case int(proto.OpWrite):
-		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowNetwork).Properties(), statBuilder.SetInBytes(int(size)).Stat())
-	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead):
-		if err = dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowNetwork).Properties(), statBuilder.SetOutBytes(int(size)).Stat()); err != nil {
+		if err = dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowNetwork).Properties(), statBuilder.SetInBytes(int(size)).Stat()); err != nil {
 			return
 		}
-		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead):
+		if err = dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowNetwork).Properties(), statBuilder.SetOutBytes(int(size)).Stat()); err != nil {
+			return
+		}
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
 	case int(proto.OpTinyExtentRepairRead), int(proto.OpExtentRepairRead):
-		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
 	case proto.OpExtentRepairWrite_:
-		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetInBytes(int(size)).Stat())
 	default:
-		return dp.limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
 	}
 }
 
-// todo:
+// todo: add properties to token manager
 func (dp *DataPartition) acquire(op int) (err error) {
+	if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op) == nil {
+		return ErrLimiterNil
+	}
+	dp.limiter.GetTokenManager(op).GetRunToken(dp.partitionID)
 	return
 }
 
-// todo:
+// todo: add properties to token manager
 func (dp *DataPartition) release(op int) (err error) {
+	if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op) == nil {
+		return ErrLimiterNil
+	}
+	dp.limiter.GetTokenManager(op).GetRunToken(dp.partitionID)
 	return err
+}
+
+func (dp *DataPartition) backendRefreshCacheView() {
+	if dp.topologyManager == nil {
+		return
+	}
+	dp.topologyManager.FetchDataPartitionView(dp.volumeID, dp.partitionID)
+}
+
+func (dp *DataPartition) getCacheView() (dataPartition *fetchtopology.DataPartition, err error) {
+	if dp.topologyManager == nil {
+		return nil, fmt.Errorf("topo manager is nil")
+	}
+	return dp.topologyManager.GetPartition(dp.volumeID, dp.partitionID)
 }

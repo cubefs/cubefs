@@ -987,7 +987,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				return errors.Trace(err, "streamRepairExtent repair data error ")
 			}
 			if !emptyResponse {
-				err = dp.limit(ctx, proto.OpExtentRepairWrite_, uint32(currRecoverySize))
+				err = dp.limit(context.Background(), proto.OpExtentRepairWrite_, uint32(currRecoverySize))
 				if err != nil {
 					return
 				}
@@ -1005,7 +1005,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 			}
 		} else {
 			var tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
-			err = dp.limit(ctx, proto.OpExtentRepairWrite_, uint32(currFixOffset))
+			err = dp.limit(context.Background(), proto.OpExtentRepairWrite_, uint32(currFixOffset))
 			if err != nil {
 				return
 			}

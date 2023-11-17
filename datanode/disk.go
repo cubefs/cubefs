@@ -17,6 +17,7 @@ package datanode
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/fetchtopology"
 	"io/ioutil"
 	"math"
 	"os"
@@ -148,10 +149,10 @@ type Disk struct {
 	latestFlushTimeOnInit int64 // Disk 实例初始化时加载到的该磁盘最近一次Flush数据的时间
 
 	issueFixConcurrentLimiter *concurrent.Limiter // 修复服务器故障导致的不安全数据的并发限制器
-	limiter                   *multirate.MultiLimiter
-
-	monitorData  []*statistics.MonitorData
-	interceptors storage.IOInterceptors
+	limiter                   *multirate.LimiterManager
+	fetchtopoManager          *fetchtopology.FetchTopologyManager
+	monitorData               []*statistics.MonitorData
+	interceptors              storage.IOInterceptors
 
 	// sfx compressible ssd attribute
 	IsSfx             bool
@@ -162,7 +163,7 @@ type Disk struct {
 
 type CheckExpired func(id uint64) bool
 
-func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism int, limiter *multirate.MultiLimiter, expired CheckExpired) (d *Disk, err error) {
+func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism int, limiter *multirate.LimiterManager, fetchTopoManager *fetchtopology.FetchTopologyManager, expired CheckExpired) (d *Disk, err error) {
 	_, err = os.Stat(path)
 	if err != nil {
 		return
@@ -188,6 +189,7 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 		forceFlushFDParallelism:   DefaultForceFlushFDParallelismOnDisk,
 		issueFixConcurrentLimiter: concurrent.NewLimiter(DefaultIssueFixConcurrencyOnDisk),
 		limiter:                   limiter,
+		fetchtopoManager:          fetchTopoManager,
 		monitorData:               statistics.InitMonitorData(statistics.ModelDataNode),
 	}
 

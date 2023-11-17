@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/fetchtopology"
 	"io/ioutil"
 	"math"
 	"net"
@@ -57,10 +58,12 @@ var (
 	ErrIncorrectStoreType       = errors.New("Incorrect store type")
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
+	ErrLimiterNil               = errors.New("limiter is nil")
 	LocalIP                     string
 	LocalServerPort             string
 	gConnPool                   = connpool.NewConnectPool()
 	MasterClient                = masterSDK.NewMasterClient(nil, false)
+	MasterDomainClient          = masterSDK.NewMasterClient(nil, false)
 	gHasLoadDataPartition       bool
 	gHasFinishedLoadDisks       bool
 
@@ -92,6 +95,7 @@ const (
 	ConfigKeyRaftHeartbeat = "raftHeartbeat"  // string
 	ConfigKeyRaftReplica   = "raftReplica"    // string
 	cfgTickIntervalMs      = "tickIntervalMs" // int
+	ConfigKeyMasterDomain  = "masterDomain"
 )
 
 // DataNode defines the structure of a data node.
@@ -115,6 +119,7 @@ type DataNode struct {
 	control                  common.Control
 	processStatInfo          *statinfo.ProcessStatInfo
 	limiterManager           *multirate.LimiterManager
+	fetchTopoManager         *fetchtopology.FetchTopologyManager
 }
 
 func NewServer() *DataNode {
@@ -158,6 +163,13 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		err = fmt.Errorf("doStart NewLimiterManager fail")
 		return
 	}
+
+	s.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, MasterClient, MasterDomainClient,
+		true, false, s.limiterManager.GetLimiter())
+	if err = s.fetchTopoManager.Start(); err != nil {
+		return
+	}
+
 	// start the raft server
 	if err = s.startRaftServer(cfg); err != nil {
 		return
@@ -227,6 +239,10 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	for _, ip := range cfg.GetSlice(proto.MasterAddr) {
 		MasterClient.AddNode(ip.(string))
+	}
+	masterDomain := cfg.GetString(ConfigKeyMasterDomain)
+	if masterDomain != "" {
+		MasterDomainClient.AddNode(masterDomain)
 	}
 	s.zoneName = cfg.GetString(ConfigKeyZone)
 	if s.zoneName == "" {

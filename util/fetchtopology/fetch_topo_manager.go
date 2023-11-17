@@ -98,7 +98,7 @@ func (f *FetchTopologyManager) FetchDataPartitionView(volName string, dpID uint6
 	}
 }
 
-//获取缓存中的partition视图信息
+// 获取缓存中的partition视图信息
 func (f *FetchTopologyManager) GetPartitionFromCache(volName string, dpID uint64) *DataPartition {
 	topoInfoValue, ok := f.vols.Load(volName)
 	if !ok {
@@ -114,7 +114,7 @@ func (f *FetchTopologyManager) GetPartitionFromCache(volName string, dpID uint64
 	return dataPartitionViewValue.(*DataPartition)
 }
 
-//缓存中partition的视图信息不存在立即通过接口从master获取一次
+// 缓存中partition的视图信息不存在立即通过接口从master获取一次
 func (f *FetchTopologyManager) GetPartition(volName string, dpID uint64) (dataPartition *DataPartition, err error) {
 	dataPartition = f.GetPartitionFromCache(volName, dpID)
 	if dataPartition != nil {
@@ -124,7 +124,7 @@ func (f *FetchTopologyManager) GetPartition(volName string, dpID uint64) (dataPa
 	return f.GetPartitionFromMaster(volName, dpID)
 }
 
-//调用master接口立即获取一次partition的信息,仅给data node使用
+// 调用master接口立即获取一次partition的信息,仅给data node使用
 func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint64) (dataPartition *DataPartition, err error) {
 	_ = f.limiter.Wait(context.Background(), rateLimitProperties)
 	var dataPartitionInfo *proto.DataPartitionInfo
@@ -133,8 +133,8 @@ func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint6
 		return
 	}
 	dataPartition = &DataPartition{
-		PartitionID:     dataPartitionInfo.PartitionID,
-		Hosts:           dataPartitionInfo.Hosts,
+		PartitionID: dataPartitionInfo.PartitionID,
+		Hosts:       dataPartitionInfo.Hosts,
 	}
 
 	value, _ := f.vols.LoadOrStore(volName, NewVolumeTopologyInfo(volName))
@@ -143,8 +143,8 @@ func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint6
 	return
 }
 
-//调用master接口立即获取一次partition raft peer的信息,仅给data node使用
-func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dpID uint64) (peers []proto.Peer, err error) {
+// 调用master接口立即获取一次partition raft peer的信息,仅给data node使用
+func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dpID uint64) (offlinePeerID uint64, peers []proto.Peer, err error) {
 	_ = f.limiter.Wait(context.Background(), rateLimitProperties)
 	var dataPartitionInfo *proto.DataPartitionInfo
 	dataPartitionInfo, err = f.masterDomainClient.AdminAPI().GetDataPartition(volName, dpID)
@@ -152,14 +152,15 @@ func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dp
 		return
 	}
 	dataPartition := &DataPartition{
-		PartitionID:     dataPartitionInfo.PartitionID,
-		Hosts:           dataPartitionInfo.Hosts,
+		PartitionID: dataPartitionInfo.PartitionID,
+		Hosts:       dataPartitionInfo.Hosts,
 	}
 
 	value, _ := f.vols.LoadOrStore(volName, NewVolumeTopologyInfo(volName))
 	volTopologyInfo := value.(*VolumeTopologyInfo)
 	volTopologyInfo.updateDataPartitionsView([]*DataPartition{dataPartition})
 	peers = dataPartitionInfo.Peers
+	offlinePeerID = dataPartitionInfo.OfflinePeerID
 	return
 }
 
@@ -352,8 +353,8 @@ func (f *FetchTopologyManager) updateVolumeConf() (err error) {
 			enableRemoveDupReq:                volConf.EnableRemoveDupReq,
 			truncateEKCount:                   volConf.TruncateEKCountEveryTime,
 		})
-		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, " +
-			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v," +
+		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
+			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+
 			" enableRemoveDupReq:%v, batchInodeDelCnt: %v, delInodeInterval: %v, truncateEKCountEveryTime: %v",
 			volConf.Name, volConf.TrashRemainingDays, volConf.ChildFileMaxCnt, volConf.TrashCleanInterval,
 			strconv.FormatBool(volConf.EnableBitMapAllocator), volConf.CleanTrashMaxDurationEachTime,

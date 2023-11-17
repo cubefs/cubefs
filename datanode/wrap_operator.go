@@ -576,7 +576,6 @@ func (s *DataNode) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Co
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	var (
 		err error
-		ctx = context.Background()
 	)
 	defer func() {
 		if err != nil {
@@ -632,7 +631,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
-		err = partition.limit(ctx, int(p.Opcode), currReadSize)
+		err = partition.limit(context.Background(), int(p.Opcode), currReadSize)
 		if err != nil {
 			return
 		}
@@ -982,6 +981,10 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 		} else {
 			reply.Data = make([]byte, currReadSize)
+		}
+		err = partition.limit(context.Background(), int(request.Opcode), currReadSize)
+		if err != nil {
+			return
 		}
 		reply.ExtentOffset = offset
 		var tpObject = partition.monitorData[proto.ActionRepairRead].BeforeTp()
@@ -1799,12 +1802,12 @@ func BeforeTpMonitor(p *repl.Packet) *statistics.TpObject {
 }
 
 func (s *DataNode) checkLimit(pkg *repl.Packet) (err error) {
-	if isStreamOp(pkg.Opcode) {
+	if isStreamOp(int(pkg.Opcode)) {
 		return nil
 	}
 	return pkg.Object.(*DataPartition).limit(context.Background(), int(pkg.Opcode), pkg.Size)
 }
 
-func isStreamOp(op uint8) bool {
-	return int(op) == proto.OpExtentRepairWrite_ || op == proto.OpStreamRead || op == proto.OpTinyExtentRepairRead || op == proto.OpExtentRepairRead
+func isStreamOp(op int) bool {
+	return op == proto.OpExtentRepairWrite_ || op == int(proto.OpStreamRead) || op == int(proto.OpTinyExtentRepairRead) || op == int(proto.OpExtentRepairRead)
 }
