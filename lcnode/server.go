@@ -41,6 +41,8 @@ type LcNode struct {
 	clusterID        string
 	nodeID           uint64
 	masters          []string
+	ebsAddr          string
+	logDir           string
 	mc               *master.MasterClient
 	scannerMutex     sync.RWMutex
 	stopC            chan bool
@@ -104,6 +106,7 @@ func doShutdown(s common.Server) {
 }
 
 func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
+	l.logDir = cfg.GetString("logDir")
 	// parse listen
 	listen := cfg.GetString(configListen)
 	if len(listen) == 0 {
@@ -234,6 +237,8 @@ func (l *LcNode) register() {
 			}
 			l.nodeID = nodeID
 			log.LogInfof("register: register LcNode: nodeID(%v)", l.nodeID)
+			l.ebsAddr = ci.EbsAddr
+			log.LogInfof("register: register success: %v", l)
 			return
 		case <-l.stopC:
 			timer.Stop()
