@@ -72,6 +72,10 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.QuotaInfos = quotaInfos
 	info.StorageClass = ino.StorageClass
+	info.WriteGen = ino.WriteGeneration
+	if ino.ForbiddenMigration == ForbiddenToMigration {
+		info.ForbiddenLc = true
+	}
 	return true
 }
 

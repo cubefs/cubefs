@@ -22,31 +22,56 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	RuleEnabled  string = "Enabled"
+	RuleDisabled string = "Disabled"
+
+	OpTypeDelete          = "DELETE"
+	OpTypeStorageClassHDD = "HDD"
+	OpTypeStorageClassEBS = "EBS"
+
+	StorageTypeSSD uint32 = 1
+	StorageTypeHDD uint32 = 2
+	StorageTypeEBS uint32 = 3
+)
+
+func OpTypeToStorageType(op string) uint32 {
+	switch op {
+	case OpTypeStorageClassHDD:
+		return StorageTypeHDD
+	case OpTypeStorageClassEBS:
+		return StorageTypeEBS
+	}
+	return 0
+}
+
 type LcConfiguration struct {
 	VolName string
 	Rules   []*Rule
 }
 
 type Rule struct {
-	Expire *ExpirationConfig
-	Filter *FilterConfig
-	ID     string
-	Status string
+	ID          string        `json:"ID" xml:"ID" bson:"ID"`
+	Status      string        `json:"Status" xml:"Status" bson:"Status"`
+	Filter      *Filter       `json:"Filter,omitempty" xml:"Filter,omitempty" bson:"Filter,omitempty"`
+	Expiration  *Expiration   `json:"Expiration,omitempty" xml:"Expiration,omitempty" bson:"Expiration,omitempty"`
+	Transitions []*Transition `json:"Transition,omitempty" xml:"Transition,omitempty" bson:"Transition,omitempty"`
 }
 
-type ExpirationConfig struct {
-	Date *time.Time
-	Days int
+type Expiration struct {
+	Date *time.Time `json:"Date,omitempty" xml:"Date,omitempty" bson:"Date,omitempty"`
+	Days *int       `json:"Days,omitempty" xml:"Days,omitempty" bson:"Days,omitempty"`
 }
 
-type FilterConfig struct {
-	Prefix string
+type Filter struct {
+	Prefix string `json:"Prefix,omitempty" xml:"Prefix,omitempty" bson:"Prefix,omitempty"`
 }
 
-const (
-	RuleEnabled  string = "Enabled"
-	RuleDisabled string = "Disabled"
-)
+type Transition struct {
+	Date         *time.Time `json:"Date,omitempty" xml:"Date,omitempty" bson:"Date,omitempty"`
+	Days         *int       `json:"Days,omitempty" xml:"Days,omitempty" bson:"Days,omitempty"`
+	StorageClass string     `json:"StorageClass,omitempty" xml:"StorageClass,omitempty" bson:"StorageClass,omitempty"`
+}
 
 func (lcConf *LcConfiguration) GenEnabledRuleTasks() []*RuleTask {
 	tasks := make([]*RuleTask, 0)
@@ -101,6 +126,10 @@ type LcNodeRuleTaskStatistics struct {
 	FileScannedNum       int64
 	DirScannedNum        int64
 	ExpiredNum           int64
+	MigrateToHddNum      int64
+	MigrateToEbsNum      int64
+	MigrateToHddBytes    int64
+	MigrateToEbsBytes    int64
 	ErrorSkippedNum      int64
 }
 
@@ -108,11 +137,15 @@ type LcNodeRuleTaskStatistics struct {
 // lcnode <-> meta
 
 type ScanDentry struct {
-	ParentId uint64 `json:"pid"`   // FileID value of the parent inode.
-	Inode    uint64 `json:"inode"` // FileID value of the current inode.
-	Name     string `json:"name"`  // Name of the current dentry.
-	Path     string `json:"path"`  // Path of the current dentry.
-	Type     uint32 `json:"type"`  // Type of the current dentry.
+	ParentId     uint64 `json:"pid"`   // FileID value of the parent inode.
+	Inode        uint64 `json:"inode"` // FileID value of the current inode.
+	Name         string `json:"name"`  // Name of the current dentry.
+	Path         string `json:"path"`  // Path of the current dentry.
+	Type         uint32 `json:"type"`  // Type of the current dentry.
+	Op           string `json:"op"`    // to delete or migrate
+	Size         uint64 `json:"size"`  // for migrate: size of the current dentry
+	StorageClass uint32 `json:"sc"`    // for migrate: storage class of the current dentry
+	WriteGen     uint64 `json:"gen"`   // for migrate: used to determine whether a file is modified
 }
 
 type BatchDentries struct {
