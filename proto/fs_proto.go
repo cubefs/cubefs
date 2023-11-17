@@ -95,6 +95,8 @@ type InodeInfo struct {
 	VerSeq       uint64                    `json:"seq"`
 	expiration   int64
 	StorageClass uint32 `json:"storageClass"`
+	WriteGen     uint64 `json:"writeGen"`
+	ForbiddenLc  bool   `json:"forbiddenLc"`
 }
 
 type SimpleExtInfo struct {
