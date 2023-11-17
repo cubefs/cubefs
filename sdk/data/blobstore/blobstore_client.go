@@ -17,6 +17,7 @@ package blobstore
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"io"
 	"time"
 
@@ -214,4 +215,137 @@ func createOPMetric(buf []byte, tag string) string {
 		return tag + "1M_4M"
 	}
 	return tag + "4M_8M"
+}
+
+func createOPMetricBySize(size uint64, tag string) string {
+	if size < 4*util.KB {
+		return tag + "0K_4K"
+	} else if size >= 4*util.KB && size < 128*util.KB {
+		return tag + "4K_128K"
+	} else if size >= 128*util.KB && size < 1*util.MB {
+		return tag + "128K_1M"
+	} else if size >= 1*util.MB && size < 4*util.MB {
+		return tag + "1M_4M"
+	} else if size >= 4*util.MB && size < 16*util.MB {
+		return tag + "4M_16M"
+	} else if size >= 16*util.MB && size < 64*util.MB {
+		return tag + "16M_64M"
+	} else if size >= 64*util.MB && size < 256*util.MB {
+		return tag + "64M_256M"
+	} else if size >= 256*util.MB && size < 1024*util.MB {
+		return tag + "256M_1G"
+	}
+	return tag + "1G_"
+}
+
+func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader, size uint64) (oek proto.ObjExtentKey, md5 []byte, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ebs-write", err, bgTime, 1)
+	}()
+
+	requestId := uuid.New().String()
+	log.LogDebugf("TRACE Ebs Put Enter, requestId(%v)  len(%v)", requestId, size)
+	start := time.Now()
+	ctx = access.WithRequestID(ctx, requestId)
+	metric := exporter.NewTPCnt(createOPMetricBySize(size, "ebswrite"))
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: volName})
+	}()
+
+	location, hash, err := ebs.client.Put(ctx, &access.PutArgs{
+		Size:   int64(size),
+		Hashes: access.HashAlgMD5,
+		Body:   f,
+	})
+	if err != nil {
+		log.LogErrorf("TRACE Ebs Put, err(%v),requestId(%v)", err.Error(), requestId)
+		return
+	}
+
+	md5, err = hex.DecodeString(hash.GetSumVal(access.HashAlgMD5).(string))
+	if err != nil {
+		log.LogErrorf("decode md5 %v, err %v", hash.GetSumVal(access.HashAlgMD5).(string), err)
+		return
+	}
+
+	blobs := make([]proto.Blob, 0)
+	for _, info := range location.Blobs {
+		blob := proto.Blob{
+			MinBid: uint64(info.MinBid),
+			Count:  uint64(info.Count),
+			Vid:    uint64(info.Vid),
+		}
+		blobs = append(blobs, blob)
+	}
+	oek = proto.ObjExtentKey{
+		Cid:        uint64(location.ClusterID),
+		CodeMode:   uint8(location.CodeMode),
+		Size:       location.Size,
+		BlobSize:   location.BlobSize,
+		Blobs:      blobs,
+		BlobsLen:   uint32(len(blobs)),
+		FileOffset: 0,
+		Crc:        location.Crc,
+	}
+	elapsed := time.Since(start)
+	log.LogDebugf("TRACE Ebs Put Exit, requestId(%v) loc(%v) oek(%v) md5(%v) size(%v) consume(%v)ns", requestId, location, oek, string(md5), size, elapsed.Nanoseconds())
+	return
+}
+
+func (ebs *BlobStoreClient) Get(ctx context.Context, volName string, offset uint64, size uint64, oek proto.ObjExtentKey) (body io.ReadCloser, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ebs-read", err, bgTime, 1)
+	}()
+
+	requestId := uuid.New().String()
+	log.LogDebugf("TRACE Ebs Read Enter requestId(%v), oek(%v)", requestId, oek)
+	ctx = access.WithRequestID(ctx, requestId)
+	start := time.Now()
+
+	metric := exporter.NewTPCnt(createOPMetricBySize(size, "ebsread"))
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: volName})
+	}()
+	blobs := oek.Blobs
+	sliceInfos := make([]access.SliceInfo, 0)
+	for _, b := range blobs {
+		sliceInfo := access.SliceInfo{
+			MinBid: ebsproto.BlobID(b.MinBid),
+			Vid:    ebsproto.Vid(b.Vid),
+			Count:  uint32(b.Count),
+		}
+		sliceInfos = append(sliceInfos, sliceInfo)
+	}
+	loc := access.Location{
+		ClusterID: ebsproto.ClusterID(oek.Cid),
+		Size:      oek.Size,
+		Crc:       oek.Crc,
+		CodeMode:  codemode.CodeMode(oek.CodeMode),
+		BlobSize:  oek.BlobSize,
+		Blobs:     sliceInfos,
+	}
+	//func get has retry
+	log.LogDebugf("TRACE Ebs Read, oek(%v) loc(%v)", oek, loc)
+	defer func() {
+		if body != nil {
+			body.Close()
+		}
+	}()
+	for i := 0; i < MaxRetryTimes; i++ {
+		body, err = ebs.client.Get(ctx, &access.GetArgs{Location: loc, Offset: offset, ReadSize: size})
+		if err == nil {
+			break
+		}
+		log.LogWarnf("TRACE Ebs Read, oek(%v), err(%v), requestId(%v),retryTimes(%v)", oek, err, requestId, i)
+		time.Sleep(RetrySleepInterval)
+	}
+	if err != nil {
+		log.LogErrorf("TRACE Ebs Read, oek(%v), err(%v), requestId(%v)", oek, err, requestId)
+		return
+	}
+	elapsed := time.Since(start)
+	log.LogDebugf("TRACE Ebs Read Exit, oek(%v) size(%v), consume(%v)ns", oek, size, elapsed.Nanoseconds())
+	return
 }

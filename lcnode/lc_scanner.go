@@ -17,12 +17,16 @@ package lcnode
 import (
 	"context"
 	"os"
+	"path"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
+	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/routinepool"
@@ -39,6 +43,7 @@ type LcScanner struct {
 	Volume        string
 	mw            MetaWrapper
 	lcnode        *LcNode
+	transitionMgr *TransitionMgr
 	adminTask     *proto.AdminTask
 	rule          *proto.Rule
 	dirChan       *unboundedchan.UnboundedChan
@@ -63,9 +68,9 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		Authenticate:  false,
 		ValidateOwner: false,
 	}
-
 	var metaWrapper *meta.MetaWrapper
 	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
+		log.LogErrorf("NewMetaWrapper err: %v", err)
 		return nil, err
 	}
 
@@ -85,6 +90,44 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		limiter:       rate.NewLimiter(lcScanLimitPerSecond, defaultLcScanLimitBurst),
 		now:           time.Now(),
 		stopC:         make(chan bool, 0),
+	}
+
+	var ebsConfig = access.Config{
+		ConnMode: access.NoLimitConnMode,
+		Consul: access.ConsulConfig{
+			Address: l.ebsAddr,
+		},
+		MaxSizePutOnce: MaxSizePutOnce,
+		Logger: &access.Logger{
+			Filename: path.Join(l.logDir, "ebs.log"),
+		},
+	}
+	var ebsClient *blobstore.BlobStoreClient
+	if ebsClient, err = blobstore.NewEbsClient(ebsConfig); err != nil {
+		log.LogErrorf("NewEbsClient err: %v", err)
+		return nil, err
+	}
+
+	var extentConfig = &stream.ExtentConfig{
+		Volume:                      scanner.Volume,
+		Masters:                     l.masters,
+		FollowerRead:                true,
+		OnAppendExtentKey:           metaWrapper.AppendExtentKey,
+		OnSplitExtentKey:            metaWrapper.SplitExtentKey,
+		OnGetExtents:                metaWrapper.GetExtents,
+		OnTruncate:                  metaWrapper.Truncate,
+		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
+	}
+	var extentClient *stream.ExtentClient
+	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
+		log.LogErrorf("NewExtentClient err: %v", err)
+		return nil, err
+	}
+
+	scanner.transitionMgr = &TransitionMgr{
+		volume:    scanner.Volume,
+		ec:        extentClient,
+		ebsClient: ebsClient,
 	}
 
 	return scanner, nil
@@ -299,74 +342,135 @@ func (s *LcScanner) scan() {
 }
 
 func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
-	log.LogDebugf("handleFile dentry: %+v, fileChan.Len: %v", dentry, s.fileChan.Len())
-	atomic.AddInt64(&s.currentStat.FileScannedNum, 1)
-	atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
+	log.LogDebugf("handleFile: %v, fileChan: %v", dentry, s.fileChan.Len())
 
-	s.batchDentries.Append(dentry)
-	if s.batchDentries.Len() >= batchExpirationGetNum {
-		s.batchHandleFile()
+	switch dentry.Op {
+	case proto.OpTypeDelete:
+		s.limiter.Wait(context.Background())
+		_, err := s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path)
+		if err != nil {
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			log.LogWarnf("batchHandleFile DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
+			return
+		}
+		if err = s.mw.Evict(dentry.Inode, dentry.Path); err != nil {
+			log.LogWarnf("batchHandleFile Evict err: %v, dentry: %+v", err, dentry)
+		}
+		atomic.AddInt64(&s.currentStat.ExpiredNum, 1)
+
+	case proto.OpTypeStorageClassHDD:
+		s.limiter.Wait(context.Background())
+		err := s.transitionMgr.migrate(dentry)
+		if err != nil {
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			log.LogErrorf("migrate err: %v, dentry: %+v, skip it", err, dentry)
+			return
+		}
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), nil, dentry.WriteGen)
+		if err != nil {
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
+			return
+		}
+		atomic.AddInt64(&s.currentStat.MigrateToHddNum, 1)
+		atomic.AddInt64(&s.currentStat.MigrateToHddBytes, int64(dentry.Size))
+
+	case proto.OpTypeStorageClassEBS:
+		s.limiter.Wait(context.Background())
+		oek, err := s.transitionMgr.migrateToEbs(dentry)
+		if err != nil {
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
+			return
+		}
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(dentry.Op), oek, dentry.WriteGen)
+		if err != nil {
+			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
+			return
+		}
+		atomic.AddInt64(&s.currentStat.MigrateToEbsNum, 1)
+		atomic.AddInt64(&s.currentStat.MigrateToEbsBytes, int64(dentry.Size))
+
+	default:
+		atomic.AddInt64(&s.currentStat.FileScannedNum, 1)
+		atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
+		s.batchDentries.Append(dentry)
+		if s.batchDentries.Len() >= batchExpirationGetNum {
+			s.batchHandleFile()
+		}
 	}
-
 }
 
 func (s *LcScanner) batchHandleFile() {
 	dentries, inodes := s.batchDentries.BatchGetAndClear()
-
-	var expiredDentries []*proto.ScanDentry
 	inodesInfo := s.mw.BatchInodeGet(inodes)
 	for _, info := range inodesInfo {
-		if s.inodeExpired(info, s.rule.Expire) {
+		if op := s.inodeExpired(info, s.rule.Expiration, s.rule.Transitions); op != "" {
 			d := dentries[info.Inode]
 			if d != nil {
-				expiredDentries = append(expiredDentries, d)
+				d.Op = op
+				d.Size = info.Size
+				d.StorageClass = info.StorageClass
+				d.WriteGen = info.WriteGen
+				s.fileChan.In <- d
 			}
 		}
 	}
-
-	var getPath = func() (path []string) {
-		for _, d := range expiredDentries {
-			path = append(path, d.Path)
-		}
-		return
-	}
-	paths := getPath()
-	log.LogDebugf("batchHandleFile num: %v, expired num: %v, expired path: %v", len(inodesInfo), len(expiredDentries), paths)
-
-	for i, dentry := range expiredDentries {
-		s.limiter.Wait(context.Background())
-		_, err := s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), paths[i])
-		if err != nil {
-			log.LogWarnf("batchHandleFile DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
-			continue
-		}
-		if err = s.mw.Evict(dentry.Inode, paths[i]); err != nil {
-			log.LogWarnf("batchHandleFile Evict err: %v, dentry: %+v", err, dentry)
-		}
-	}
-	atomic.AddInt64(&s.currentStat.ExpiredNum, int64(len(expiredDentries)))
 }
 
-func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, cond *proto.ExpirationConfig) bool {
-
-	if inode == nil || cond == nil {
-		return false
+func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration, condT []*proto.Transition) (op string) {
+	if inode == nil {
+		return
 	}
 
-	now := s.now.Unix()
-	if cond.Days > 0 {
-		if now-inode.CreateTime.Unix() < int64(cond.Days*24*60*60) {
-			return false
+	if inode.ForbiddenLc {
+		log.LogWarnf("forbidden migrate inode %+v", inode)
+		return
+	}
+
+	// execute expiration priority
+	if condE != nil {
+		if expired(s.now.Unix(), inode.CreateTime.Unix(), condE.Days, condE.Date) {
+			op = proto.OpTypeDelete
+			return
 		}
 	}
 
-	if cond.Date != nil {
-		if now < cond.Date.Unix() {
-			return false
+	// match from the coldest storage type
+	if condT != nil {
+		for _, cond := range condT {
+			if cond.StorageClass == proto.OpTypeStorageClassEBS {
+				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageTypeEBS {
+					op = proto.OpTypeStorageClassEBS
+					return
+				}
+			}
+		}
+		for _, cond := range condT {
+			if cond.StorageClass == proto.OpTypeStorageClassHDD {
+				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageTypeHDD {
+					op = proto.OpTypeStorageClassHDD
+					return
+				}
+			}
 		}
 	}
+	return
+}
 
-	return true
+func expired(now, ctime int64, days *int, date *time.Time) bool {
+	if days != nil && *days > 0 {
+		if now-ctime > int64(*days*24*60*60) {
+			return true
+		}
+	}
+	if date != nil {
+		if now > date.Unix() {
+			return true
+		}
+	}
+	return false
 }
 
 // scan dir tree in depth when size of dirChan.In grow too much.
@@ -525,6 +629,10 @@ func (s *LcScanner) checkScanning() {
 					response.Volume = s.Volume
 					response.RuleId = s.rule.ID
 					response.ExpiredNum = s.currentStat.ExpiredNum
+					response.MigrateToHddNum = s.currentStat.MigrateToHddNum
+					response.MigrateToEbsNum = s.currentStat.MigrateToEbsNum
+					response.MigrateToHddBytes = s.currentStat.MigrateToHddBytes
+					response.MigrateToEbsBytes = s.currentStat.MigrateToEbsBytes
 					response.FileScannedNum = s.currentStat.FileScannedNum
 					response.DirScannedNum = s.currentStat.DirScannedNum
 					response.TotalInodeScannedNum = s.currentStat.TotalInodeScannedNum
