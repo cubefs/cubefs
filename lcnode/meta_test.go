@@ -14,7 +14,12 @@
 
 package lcnode
 
-import "github.com/cubefs/cubefs/proto"
+import (
+	"os"
+	"time"
+
+	"github.com/cubefs/cubefs/proto"
+)
 
 type MockMetaWrapper struct{}
 
@@ -35,7 +40,27 @@ func (*MockMetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, m
 }
 
 func (*MockMetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
-	return nil
+	return []*proto.InodeInfo{
+		{
+			Inode:      1,
+			CreateTime: time.Now().AddDate(0, 0, -2),
+			Size:       100,
+		},
+		{
+			Inode:      2,
+			CreateTime: time.Now().AddDate(0, 0, -3),
+			Size:       200,
+		},
+		{
+			Inode:      3,
+			CreateTime: time.Now().AddDate(0, 0, -4),
+		},
+		{
+			Inode:       6,
+			CreateTime:  time.Now().AddDate(0, 0, -4),
+			ForbiddenLc: true,
+		},
+	}
 }
 
 func (*MockMetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
@@ -46,8 +71,50 @@ func (*MockMetaWrapper) Evict(inode uint64, fullPath string) error {
 	return nil
 }
 
+func (*MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys interface{}, writeGen uint64) error {
+	return nil
+}
+
 func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint64) ([]proto.Dentry, error) {
-	return nil, nil
+	// for handleDirLimitDepthFirst
+	if parentID == 4 {
+		return []proto.Dentry{
+			{
+				Inode: 5,
+				Type:  uint32(os.ModeDir),
+			},
+			{
+				Inode: 6,
+				Type:  uint32(420),
+			},
+		}, nil
+	}
+	// for handleDirLimitBreadthFirst
+	if parentID == 5 {
+		return nil, nil
+	}
+	return []proto.Dentry{
+		{
+			Inode: 1,
+			Type:  uint32(420),
+		},
+		{
+			Inode: 2,
+			Type:  uint32(420),
+		},
+		{
+			Inode: 3,
+			Type:  uint32(420),
+		},
+		{
+			Inode: 4,
+			Type:  uint32(os.ModeDir),
+		},
+		{
+			Inode: 5,
+			Type:  uint32(os.ModeDir),
+		},
+	}, nil
 }
 
 func (*MockMetaWrapper) Close() error {

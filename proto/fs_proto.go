@@ -96,6 +96,8 @@ type InodeInfo struct {
 	expiration        int64
 	PersistAccessTime time.Time `json:"pat"`
 	StorageClass      uint32    `json:"storageClass"`
+	WriteGen          uint64    `json:"writeGen"`
+	ForbiddenLc       bool      `json:"forbiddenLc"`
 }
 
 type SimpleExtInfo struct {

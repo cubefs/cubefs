@@ -45,12 +45,13 @@ const (
 	defaultLcScanLimitBurst        = 1000
 
 	maxLcScanRoutineNumPerTask = 5000
-	maxDirChanNum              = 1000000
 	defaultReadDirLimit        = 1000
 
 	defaultUnboundedChanInitCapacity = 10000
 	defaultLcNodeTaskCountLimit      = 1
 	maxLcNodeTaskCountLimit          = 20
+
+	MaxSizePutOnce = int64(1) << 23
 )
 
 var (
@@ -64,4 +65,5 @@ var (
 
 	snapshotRoutineNumPerTask int
 	lcNodeTaskCountLimit      int
+	maxDirChanNum             = 1000000
 )
