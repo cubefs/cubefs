@@ -6143,6 +6143,11 @@ func (m *Server) addLcNode(w http.ResponseWriter, r *http.Request) {
 		id       uint64
 		err      error
 	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddLcNode))
+	defer func() {
+		doStatAndMetric(proto.AddLcNode, metric, err, nil)
+	}()
+
 	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -6160,7 +6165,16 @@ func (m *Server) addLcNode(w http.ResponseWriter, r *http.Request) {
 
 // handle tasks such as heartbeat，expiration scanning, etc.
 func (m *Server) handleLcNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
-	tr, err := parseRequestToGetTaskResponse(r)
+	var (
+		tr  *proto.AdminTask
+		err error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetLcNodeTaskResponse))
+	defer func() {
+		doStatAndMetric(proto.GetLcNodeTaskResponse, metric, err, nil)
+	}()
+
+	tr, err = parseRequestToGetTaskResponse(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -6174,6 +6188,11 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		bytes []byte
 		err   error
 	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.SetBucketLifecycle))
+	defer func() {
+		doStatAndMetric(proto.SetBucketLifecycle, metric, err, nil)
+	}()
+
 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -6197,6 +6216,11 @@ func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		name   string
 		lcConf *proto.LcConfiguration
 	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetBucketLifecycle))
+	defer func() {
+		doStatAndMetric(proto.GetBucketLifecycle, metric, err, nil)
+	}()
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -6217,6 +6241,11 @@ func (m *Server) DelBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		err  error
 		name string
 	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.DeleteBucketLifecycle))
+	defer func() {
+		doStatAndMetric(proto.DeleteBucketLifecycle, metric, err, nil)
+	}()
+
 	if name, err = parseAndExtractName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -6232,6 +6261,11 @@ func (m *Server) DelBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) lcnodeInfo(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminLcNode))
+	defer func() {
+		doStatAndMetric(proto.AdminLcNode, metric, nil, nil)
+	}()
+
 	if err := r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

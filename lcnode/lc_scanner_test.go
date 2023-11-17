@@ -22,21 +22,41 @@ import (
 	"github.com/cubefs/cubefs/util/routinepool"
 	"github.com/cubefs/cubefs/util/unboundedchan"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 )
 
 func TestLcScanner(t *testing.T) {
 	lcScanRoutineNumPerTask = 1
+	maxDirChanNum = 0
 	scanCheckInterval = 1
+	days1, days2, days3 := 1, 2, 3
 	scanner := &LcScanner{
 		ID:     "test_id",
 		Volume: "test_vol",
 		mw:     NewMockMetaWrapper(),
 		lcnode: &LcNode{},
+		transitionMgr: &TransitionMgr{
+			volume:    "test_vol",
+			ec:        NewMockExtentClient(),
+			ebsClient: NewMockEbsClient(),
+		},
 		adminTask: &proto.AdminTask{
 			Response: &proto.LcNodeRuleTaskResponse{},
 		},
 		rule: &proto.Rule{
-			Expire: &proto.ExpirationConfig{},
+			Transitions: []*proto.Transition{
+				{
+					StorageClass: proto.OpTypeStorageClassHDD,
+					Days:         &days1,
+				},
+				{
+					StorageClass: proto.OpTypeStorageClassEBS,
+					Days:         &days2,
+				},
+			},
+			Expiration: &proto.Expiration{
+				Days: &days3,
+			},
 		},
 		dirChan:       unboundedchan.NewUnboundedChan(10),
 		fileChan:      unboundedchan.NewUnboundedChan(10),
@@ -44,6 +64,7 @@ func TestLcScanner(t *testing.T) {
 		fileRPoll:     routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
 		batchDentries: proto.NewBatchDentries(),
 		currentStat:   &proto.LcNodeRuleTaskStatistics{},
+		limiter:       rate.NewLimiter(defaultLcScanLimitPerSecond, defaultLcScanLimitBurst),
 		now:           time.Now(),
 		stopC:         make(chan bool, 0),
 	}
@@ -51,4 +72,13 @@ func TestLcScanner(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(time.Second * 5)
 	require.Equal(t, true, scanner.DoneScanning())
+	require.Equal(t, int64(8), scanner.currentStat.TotalInodeScannedNum)
+	require.Equal(t, int64(4), scanner.currentStat.FileScannedNum)
+	require.Equal(t, int64(4), scanner.currentStat.DirScannedNum)
+	require.Equal(t, int64(1), scanner.currentStat.ExpiredNum)
+	require.Equal(t, int64(1), scanner.currentStat.MigrateToHddNum)
+	require.Equal(t, int64(1), scanner.currentStat.MigrateToEbsNum)
+	require.Equal(t, int64(100), scanner.currentStat.MigrateToHddBytes)
+	require.Equal(t, int64(200), scanner.currentStat.MigrateToEbsBytes)
+	require.Equal(t, int64(0), scanner.currentStat.ErrorSkippedNum)
 }

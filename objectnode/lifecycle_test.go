@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,7 +49,7 @@ func TestLifecycleConfiguration(t *testing.T) {
 </LifecycleConfiguration>
 `
 
-	var l1 = NewLifeCycle()
+	var l1 = NewLifecycleConfiguration()
 	err := xml.Unmarshal([]byte(LifecycleXml), l1)
 	require.NoError(t, err)
 
@@ -79,39 +80,39 @@ func TestLifecycleConfiguration(t *testing.T) {
 
 	//days < 0
 	day := -1
-	l1.Rules[0].Expire.Days = &day
+	l1.Rules[0].Expiration.Days = &day
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrDaysType)
 	day = 0
-	l1.Rules[0].Expire.Days = &day
+	l1.Rules[0].Expiration.Days = &day
 
 	//date
-	l1.Rules[0].Expire.Days = nil
+	l1.Rules[0].Expiration.Days = nil
 	now := time.Now().In(time.UTC)
 	ti := time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, time.UTC)
-	l1.Rules[0].Expire.Date = &ti
+	l1.Rules[0].Expiration.Date = &ti
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrDateType)
 
 	//days and date all nil
-	l1.Rules[0].Expire.Days = nil
-	l1.Rules[0].Expire.Date = nil
+	l1.Rules[0].Expiration.Days = nil
+	l1.Rules[0].Expiration.Date = nil
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrMalformedXML)
 
 	//days and date
 	day = 1
-	l1.Rules[0].Expire.Days = &day
+	l1.Rules[0].Expiration.Days = &day
 	ti = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	l1.Rules[0].Expire.Date = &ti
+	l1.Rules[0].Expiration.Date = &ti
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrMalformedXML)
 
-	l1.Rules[0].Expire.Date = nil
+	l1.Rules[0].Expiration.Date = nil
 	day = 1
-	l1.Rules[0].Expire.Days = &day
+	l1.Rules[0].Expiration.Days = &day
 
-	l1.Rules[1].Expire = nil
+	l1.Rules[1].Expiration = nil
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrMissingActions)
 
@@ -123,4 +124,121 @@ func TestLifecycleConfiguration(t *testing.T) {
 	l1.Rules = l1.Rules[:0]
 	_, err = l1.Validate()
 	require.Equal(t, err, LifeCycleErrMissingRules)
+}
+
+func TestLifecycleConfigurationTransition1(t *testing.T) {
+	LifecycleXml := `
+<LifecycleConfiguration>
+    <Rule>
+        <ID>id1</ID>
+        <Status>Enabled</Status>
+        <Transition>
+           <Days>365</Days>
+           <StorageClass>HDD</StorageClass>
+        </Transition>
+    </Rule>
+</LifecycleConfiguration>
+`
+
+	var l1 = NewLifecycleConfiguration()
+	err := xml.Unmarshal([]byte(LifecycleXml), l1)
+	require.NoError(t, err)
+
+	// test validTransition
+	l1.Rules[0].Transitions[0].Days = nil
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrMalformedXML, err)
+
+	day := 1
+	now := time.Now().In(time.UTC)
+	ti := time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, time.UTC)
+	l1.Rules[0].Transitions[0].Days = &day
+	l1.Rules[0].Transitions[0].Date = &ti
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrMalformedXML, err)
+
+	l1.Rules[0].Transitions[0].Days = nil
+	l1.Rules[0].Transitions[0].StorageClass = "SSS"
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrMalformedXML, err)
+
+	l1.Rules[0].Transitions[0].StorageClass = "HDD"
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrDateType, err)
+
+	l1.Rules[0].Transitions[0].Date = nil
+	day = 0
+	l1.Rules[0].Transitions[0].Days = &day
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrDaysType, err)
+}
+
+func TestLifecycleConfigurationTransition2(t *testing.T) {
+	LifecycleXml := `
+<LifecycleConfiguration>
+    <Rule>
+        <ID>id1</ID>
+        <Status>Enabled</Status>
+        <Transition>
+           <Days>365</Days>
+           <StorageClass>HDD</StorageClass>
+        </Transition>
+		<Transition>
+           <Days>365</Days>
+           <StorageClass>HDD</StorageClass>
+        </Transition>
+    </Rule>
+</LifecycleConfiguration>
+`
+
+	var l1 = NewLifecycleConfiguration()
+	err := xml.Unmarshal([]byte(LifecycleXml), l1)
+	require.NoError(t, err)
+
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrStorageClass, err)
+
+	//test validTransitions
+	l1.Rules[0].Transitions[1].StorageClass = "EBS"
+	now := time.Now().In(time.UTC)
+	ti := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	l1.Rules[0].Transitions[1].Days = nil
+	l1.Rules[0].Transitions[1].Date = &ti
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrMalformedXML, err)
+
+	ti = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	l1.Rules[0].Transitions[0].Days = nil
+	l1.Rules[0].Transitions[0].Date = &ti
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrMalformedXML, err)
+
+	t2 := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
+	l1.Rules[0].Transitions[1].Date = &t2
+	l1.Rules[0].Expiration = &proto.Expiration{
+		Date: &t2,
+	}
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrMalformedXML, err)
+
+	day1, day2 := 1, 2
+	l1.Rules[0].Transitions[0].Days = &day2
+	l1.Rules[0].Transitions[0].Date = nil
+	l1.Rules[0].Transitions[1].Days = &day1
+	l1.Rules[0].Transitions[1].Date = nil
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrMalformedXML, err)
+
+	l1.Rules[0].Transitions[0].Days = &day1
+	l1.Rules[0].Transitions[1].Days = &day2
+	l1.Rules[0].Expiration.Date = nil
+	l1.Rules[0].Expiration.Days = &day2
+
+	_, err = l1.Validate()
+	require.Equal(t, LifeCycleErrMalformedXML, err)
+
+	day3 := 3
+	l1.Rules[0].Expiration.Days = &day3
+	ok, _ := l1.Validate()
+	require.Equal(t, true, ok)
 }
