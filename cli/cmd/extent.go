@@ -1067,6 +1067,20 @@ func parseDataExtentDelFiles(dir string) {
 	}
 }
 
+func parseDataExtentAsyncDelFiles(dir string) {
+	allFiles, _ := ioutil.ReadDir(dir)
+	for _, file := range allFiles {
+		deletionQueue, err := storage.OpenExtentQueue(path.Join(dir, file.Name(), "Deletion"), 4*unit.MB, 1)
+		if err != nil {
+			return
+		}
+		_ = deletionQueue.Walk(storage.WalkAll, func(ino, extent uint64, offset, size, timestamp int64) (goon bool, err error) {
+			fmt.Printf("Partition: %v, ino: %v, extent: %v, time: %v\n", file.Name(), ino, extent, time.Unix(timestamp, 0))
+			return true, nil
+		})
+	}
+}
+
 func newExtentParseCmd() *cobra.Command {
 	var srcDir string
 	var decoder string
@@ -1081,7 +1095,7 @@ func newExtentParseCmd() *cobra.Command {
 					stdout(err.Error())
 				}
 			}()
-			if decoder != "meta" && decoder != "data" {
+			if decoder != "meta" && decoder != "data" && decoder != "data_async_del" {
 				err = fmt.Errorf("invalid type param :%s", decoder)
 				return
 			}
@@ -1093,6 +1107,11 @@ func newExtentParseCmd() *cobra.Command {
 
 			if decoder == "data" {
 				parseDataExtentDelFiles(srcDir)
+				return
+			}
+
+			if decoder == "data_async_del" {
+				parseDataExtentAsyncDelFiles(srcDir)
 				return
 			}
 

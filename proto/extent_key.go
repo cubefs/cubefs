@@ -360,7 +360,7 @@ func (k *ExtentKey) Equal(k1 *ExtentKey) bool {
 // InodeExtentKey 继承自ExtentKey, 扩展了ExtentKey对应的Inode信息
 type InodeExtentKey struct {
 	ExtentKey
-	Inode uint64
+	InodeId uint64
 }
 
 const (

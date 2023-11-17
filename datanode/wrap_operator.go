@@ -353,9 +353,9 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	if p.ExtentType == proto.TinyExtentType {
 		ext := new(proto.InodeExtentKey)
 		if err = json.Unmarshal(p.Data, ext); err == nil && proto.IsTinyExtent(ext.ExtentId) {
-			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
-				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size, remote)
-			if err = partition.MarkDelete(storage.SingleMarker(0, ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))); err != nil && log.IsWarnEnabled() {
+			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_InodeID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
+				p.PartitionID, ext.InodeId, p.ExtentID, ext.ExtentOffset, ext.Size, remote)
+			if err = partition.MarkDelete(storage.SingleMarker(ext.InodeId, ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))); err != nil && log.IsWarnEnabled() {
 				log.LogWarnf("partition[%v] mark delete tiny extent[id: %v, offset: %v, size: %v] failed: %v",
 					partition.ID(), ext.ExtentId, ext.ExtentOffset, ext.Size, err)
 			}
@@ -365,11 +365,11 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		if p.Size > 0 && len(p.Data) > 0 {
 			ext := new(proto.InodeExtentKey)
 			if unmarshalErr := json.Unmarshal(p.Data, ext); unmarshalErr == nil {
-				inode = ext.Inode
+				inode = ext.InodeId
 			}
 		}
-		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v) from(%v)",
-			p.PartitionID, p.ExtentID, remote)
+		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_InodeID(%v)_Extent(%v) from(%v)",
+			p.PartitionID, inode, p.ExtentID, remote)
 		if err = partition.MarkDelete(storage.SingleMarker(inode, p.ExtentID, 0, 0)); err != nil && log.IsWarnEnabled() {
 			log.LogWarnf("partition[%v] mark delete extent[id: %v, inode: %v] failed: %v",
 				partition.ID(), p.ExtentID, inode, err)
@@ -409,10 +409,10 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	for _, key := range keys {
 		DeleteLimiterWait()
 		if log.IsDebugEnabled() {
-			log.LogDebugf("handleBatchMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
-				p.PartitionID, key.ExtentId, key.ExtentOffset, key.Size, remote)
+			log.LogDebugf("handleBatchMarkDeletePacket Delete PartitionID(%v)_InodeID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
+				p.PartitionID, key.InodeId, key.ExtentId, key.ExtentOffset, key.Size, remote)
 		}
-		batch.Add(key.Inode, key.ExtentId, int64(key.ExtentOffset), int64(key.Size))
+		batch.Add(key.InodeId, key.ExtentId, int64(key.ExtentOffset), int64(key.Size))
 	}
 	if err = partition.MarkDelete(batch); err != nil {
 		return
