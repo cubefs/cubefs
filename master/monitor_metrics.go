@@ -77,17 +77,13 @@ const (
 	MetricNodesetMpReplicaCount = "nodeset_mp_replica_count"
 	MetricNodesetDpReplicaCount = "nodeset_dp_replica_count"
 
-	MetricLcNodesConcurrentCount     = "lcNodes_concurrent"
-	Metrics3LcTotalScanned           = "s3Lc_Total_Scanned"
-	Metrics3LcTotalFileScanned       = "s3Lc_Total_File_Scanned"
-	Metrics3LcTotalDirScanned        = "s3Lc_Total_DirS_canned"
-	Metrics3LcTotalExpired           = "s3Lc_Total_Expired"
-	Metrics3LcAbortedMultipartUpload = "s3Lc_Aborted_Multipart_Upload"
-	MetricLcNodesCount               = "lc_nodes_count"
-	MetricLcTotalScanned             = "lc_total_scanned"
-	MetricLcTotalFileScanned         = "lc_total_file_scanned"
-	MetricLcTotalDirScanned          = "lc_total_dirs_scanned"
-	MetricLcTotalExpired             = "lc_total_expired"
+	MetricLcNodesCount        = "lc_nodes_count"
+	MetricLcVolScanned        = "lc_vol_scanned"
+	MetricLcVolFileScanned    = "lc_vol_file_scanned"
+	MetricLcVolDirScanned     = "lc_vol_dirs_scanned"
+	MetricLcVolExpired        = "lc_vol_expired"
+	MetricLcTotalExpiredNum   = "lc_total_expired_num"
+	MetricLcTotalMigrateBytes = "lc_total_migrate_Bytes"
 )
 
 var WarnMetrics *warningMetrics
@@ -143,12 +139,14 @@ type monitorMetrics struct {
 	inconsistentMps               map[string]string
 	nodesetIds                    map[uint64]string
 
-	lcNodesCount       *exporter.Gauge
-	lcVolNames         map[string]struct{}
-	lcTotalScanned     *exporter.GaugeVec
-	lcTotalFileScanned *exporter.GaugeVec
-	lcTotalDirScanned  *exporter.GaugeVec
-	lcTotalExpired     *exporter.GaugeVec
+	lcNodesCount        *exporter.Gauge
+	lcVolNames          map[string]struct{}
+	lcVolScanned        *exporter.GaugeVec
+	lcVolFileScanned    *exporter.GaugeVec
+	lcVolDirScanned     *exporter.GaugeVec
+	lcVolExpired        *exporter.GaugeVec
+	lcTotalExpiredNum   *exporter.Counter
+	lcTotalMigrateBytes *exporter.Counter
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -464,10 +462,12 @@ func (mm *monitorMetrics) start() {
 	mm.nodesetDpReplicaCount = exporter.NewGaugeVec(MetricNodesetDpReplicaCount, "", []string{"nodeset"})
 
 	mm.lcNodesCount = exporter.NewGauge(MetricLcNodesCount)
-	mm.lcTotalScanned = exporter.NewGaugeVec(MetricLcTotalScanned, "", []string{"volName", "type"})
-	mm.lcTotalFileScanned = exporter.NewGaugeVec(MetricLcTotalFileScanned, "", []string{"volName", "type"})
-	mm.lcTotalDirScanned = exporter.NewGaugeVec(MetricLcTotalDirScanned, "", []string{"volName", "type"})
-	mm.lcTotalExpired = exporter.NewGaugeVec(MetricLcTotalExpired, "", []string{"volName", "type"})
+	mm.lcVolScanned = exporter.NewGaugeVec(MetricLcVolScanned, "", []string{"volName", "type"})
+	mm.lcVolFileScanned = exporter.NewGaugeVec(MetricLcVolFileScanned, "", []string{"volName", "type"})
+	mm.lcVolDirScanned = exporter.NewGaugeVec(MetricLcVolDirScanned, "", []string{"volName", "type"})
+	mm.lcVolExpired = exporter.NewGaugeVec(MetricLcVolExpired, "", []string{"volName", "type"})
+	mm.lcTotalExpiredNum = exporter.NewCounter(MetricLcTotalExpiredNum)
+	mm.lcTotalMigrateBytes = exporter.NewCounter(MetricLcTotalMigrateBytes)
 	go mm.statMetrics()
 }
 
@@ -888,10 +888,12 @@ func (mm *monitorMetrics) clearInconsistentMps() {
 }
 
 func (mm *monitorMetrics) deleteS3LcVolMetric(volName string) {
-	mm.lcTotalScanned.DeleteLabelValues(volName, "total")
-	mm.lcTotalFileScanned.DeleteLabelValues(volName, "file")
-	mm.lcTotalDirScanned.DeleteLabelValues(volName, "dir")
-	mm.lcTotalExpired.DeleteLabelValues(volName, "expired")
+	mm.lcVolScanned.DeleteLabelValues(volName, "total")
+	mm.lcVolFileScanned.DeleteLabelValues(volName, "file")
+	mm.lcVolDirScanned.DeleteLabelValues(volName, "dir")
+	mm.lcVolExpired.DeleteLabelValues(volName, "expired")
+	mm.lcVolExpired.DeleteLabelValues(volName, "m_to_hdd")
+	mm.lcVolExpired.DeleteLabelValues(volName, "m_to_ebs")
 }
 
 func (mm *monitorMetrics) setLcMetrics() {
@@ -907,13 +909,30 @@ func (mm *monitorMetrics) setLcMetrics() {
 		}
 	}
 	lcTaskStatus.RUnlock()
+	var expiredNum int64
+	var migrateToHddNum int64
+	var migrateToEbsNum int64
+	var migrateToHddBytes int64
+	var migrateToEbsBytes int64
 	for key, stat := range volumeScanStatistics {
 		mm.lcVolNames[key] = struct{}{}
-		mm.lcTotalScanned.SetWithLabelValues(float64(stat.TotalInodeScannedNum), key, "total")
-		mm.lcTotalFileScanned.SetWithLabelValues(float64(stat.FileScannedNum), key, "file")
-		mm.lcTotalDirScanned.SetWithLabelValues(float64(stat.DirScannedNum), key, "dir")
-		mm.lcTotalExpired.SetWithLabelValues(float64(stat.ExpiredNum), key, "expired")
+		mm.lcVolScanned.SetWithLabelValues(float64(stat.TotalInodeScannedNum), key, "total")
+		mm.lcVolFileScanned.SetWithLabelValues(float64(stat.FileScannedNum), key, "file")
+		mm.lcVolDirScanned.SetWithLabelValues(float64(stat.DirScannedNum), key, "dir")
+		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredNum), key, "expired")
+		mm.lcVolExpired.SetWithLabelValues(float64(stat.MigrateToHddNum), key, "m_to_hdd")
+		mm.lcVolExpired.SetWithLabelValues(float64(stat.MigrateToEbsNum), key, "m_to_ebs")
+		expiredNum += stat.ExpiredNum
+		migrateToHddNum += stat.MigrateToHddNum
+		migrateToEbsNum += stat.MigrateToEbsNum
+		migrateToHddBytes += stat.MigrateToHddBytes
+		migrateToEbsBytes += stat.MigrateToEbsBytes
 	}
+	mm.lcTotalExpiredNum.SetWithLabels(float64(expiredNum), map[string]string{"type": "expired"})
+	mm.lcTotalExpiredNum.SetWithLabels(float64(migrateToHddNum), map[string]string{"type": "m_to_hdd"})
+	mm.lcTotalExpiredNum.SetWithLabels(float64(migrateToEbsNum), map[string]string{"type": "m_to_ebs"})
+	mm.lcTotalMigrateBytes.SetWithLabels(float64(migrateToHddBytes), map[string]string{"type": "m_to_hdd"})
+	mm.lcTotalMigrateBytes.SetWithLabels(float64(migrateToEbsBytes), map[string]string{"type": "m_to_ebs"})
 }
 
 func (mm *monitorMetrics) clearLcMetrics() {

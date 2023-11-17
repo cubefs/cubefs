@@ -50,30 +50,8 @@ func (o *ObjectNode) getBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 
-	var lifeCycle = NewLifeCycle()
-	lifeCycle.Rules = make([]*Rule, 0)
-	for _, lc := range lcConf.Rules {
-		rule := &Rule{
-			ID:     lc.ID,
-			Status: lc.Status,
-		}
-		if lc.Expire != nil {
-			rule.Expire = &Expiration{}
-			if lc.Expire.Date != nil {
-				rule.Expire.Date = lc.Expire.Date
-			}
-			if lc.Expire.Days != 0 {
-				rule.Expire.Days = &lc.Expire.Days
-			}
-		}
-		if lc.Filter != nil {
-			rule.Filter = &Filter{
-				Prefix: lc.Filter.Prefix,
-			}
-		}
-		lifeCycle.Rules = append(lifeCycle.Rules, rule)
-	}
-
+	var lifeCycle = NewLifecycleConfiguration()
+	lifeCycle.Rules = lcConf.Rules
 	var data []byte
 	data, err = xml.Marshal(lifeCycle)
 	if err != nil {
@@ -121,7 +99,7 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 		return
 	}
 
-	var lifeCycle = NewLifeCycle()
+	var lifeCycle = NewLifecycleConfiguration()
 	if err = UnmarshalXMLEntity(requestBody, lifeCycle); err != nil {
 		log.LogWarnf("putBucketLifecycle failed: decode request body err: requestID(%v) err(%v)", GetRequestID(r), err)
 		errorCode = LifeCycleErrMalformedXML
@@ -136,31 +114,8 @@ func (o *ObjectNode) putBucketLifecycleConfigurationHandler(w http.ResponseWrite
 
 	req := proto.LcConfiguration{
 		VolName: param.Bucket(),
-		Rules:   make([]*proto.Rule, 0),
+		Rules:   lifeCycle.Rules,
 	}
-
-	for _, lr := range lifeCycle.Rules {
-		rule := &proto.Rule{
-			ID:     lr.ID,
-			Status: lr.Status,
-		}
-		if lr.Expire != nil {
-			rule.Expire = &proto.ExpirationConfig{}
-			if lr.Expire.Date != nil {
-				rule.Expire.Date = lr.Expire.Date
-			}
-			if lr.Expire.Days != nil {
-				rule.Expire.Days = *lr.Expire.Days
-			}
-		}
-		if lr.Filter != nil {
-			rule.Filter = &proto.FilterConfig{
-				Prefix: lr.Filter.Prefix,
-			}
-		}
-		req.Rules = append(req.Rules, rule)
-	}
-
 	if err = o.mc.AdminAPI().SetBucketLifecycle(&req); err != nil {
 		log.LogErrorf("putBucketLifecycle failed: SetBucketLifecycle err: bucket[%v] err(%v)", param.Bucket(), err)
 		return
