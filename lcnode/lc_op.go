@@ -67,6 +67,10 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 					FileScannedNum:       atomic.LoadInt64(&scanner.currentStat.FileScannedNum),
 					DirScannedNum:        atomic.LoadInt64(&scanner.currentStat.DirScannedNum),
 					ExpiredNum:           atomic.LoadInt64(&scanner.currentStat.ExpiredNum),
+					MigrateToHddNum:      atomic.LoadInt64(&scanner.currentStat.MigrateToHddNum),
+					MigrateToEbsNum:      atomic.LoadInt64(&scanner.currentStat.MigrateToEbsNum),
+					MigrateToHddBytes:    atomic.LoadInt64(&scanner.currentStat.MigrateToHddBytes),
+					MigrateToEbsBytes:    atomic.LoadInt64(&scanner.currentStat.MigrateToEbsBytes),
 					ErrorSkippedNum:      atomic.LoadInt64(&scanner.currentStat.ErrorSkippedNum),
 				},
 			}
