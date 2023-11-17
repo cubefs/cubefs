@@ -2,6 +2,8 @@ package master
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -347,8 +349,13 @@ func (s *UserService) validatePassword(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
+	hashedPassword := sha256.Sum256([]byte(args.Password))
+	hashedPasswordStr := hex.EncodeToString(hashedPassword[:])
 
-	if ak.Password != args.Password {
+	hashedPassword_ := sha256.Sum256([]byte(ak.Password))
+	hashedPasswordStr_ := hex.EncodeToString(hashedPassword_[:])
+
+	if hashedPasswordStr != hashedPasswordStr_ {
 		log.LogWarnf("user:[%s] login pass word has err", args.UserID)
 		return nil, fmt.Errorf("user or password has err")
 	}
