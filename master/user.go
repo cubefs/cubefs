@@ -106,7 +106,7 @@ func (u *User) createKey(param *proto.UserCreateParam) (userInfo *proto.UserInfo
 	}
 	u.userStore.Store(userID, userInfo)
 	u.AKStore.Store(accessKey, AKUser)
-	log.LogInfof("action[createUser], userID: %v, accesskey[%v], secretkey[%v]", userID, accessKey, secretKey)
+
 	return
 }
 
