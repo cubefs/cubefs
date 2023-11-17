@@ -44,7 +44,6 @@ const (
 	defaultLcScanLimitBurst        = 1000
 
 	maxLcScanRoutineNumPerTask = 5000
-	maxDirChanNum              = 1000000
 	defaultReadDirLimit        = 1000
 
 	defaultMasterIntervalToCheckHeartbeat = 6
@@ -53,6 +52,8 @@ const (
 	defaultIntervalToCheckRegister        = 2 * defaultLcNodeTimeOutSec
 
 	defaultUnboundedChanInitCapacity = 10000
+
+	MaxSizePutOnce = int64(1) << 23
 )
 
 var (
@@ -65,4 +66,5 @@ var (
 	lcScanLimitPerSecond    rate.Limit
 
 	snapshotRoutineNumPerTask int
+	maxDirChanNum             = 1000000
 )
