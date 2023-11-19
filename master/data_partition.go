@@ -28,6 +28,13 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+type DataPartitionPreLoad struct {
+	PreloadCacheTTL      uint64
+	preloadCacheCapacity int
+	preloadReplicaNum    int
+	preloadZoneName      string
+}
+
 // DataPartition represents the structure of storing the file contents.
 type DataPartition struct {
 	PartitionID      uint64
@@ -74,13 +81,7 @@ type DataPartition struct {
 	VerSeq                         uint64
 	RecoverStartTime               time.Time
 	RecoverLastConsumeTime         time.Duration
-}
-
-type DataPartitionPreLoad struct {
-	PreloadCacheTTL      uint64
-	preloadCacheCapacity int
-	preloadReplicaNum    int
-	preloadZoneName      string
+	MediaType                      uint32
 }
 
 func (d *DataPartitionPreLoad) toString() string {
@@ -88,7 +89,8 @@ func (d *DataPartitionPreLoad) toString() string {
 		d.PreloadCacheTTL, d.preloadCacheCapacity, d.preloadReplicaNum, d.preloadZoneName)
 }
 
-func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64, partitionType int, partitionTTL int64) (partition *DataPartition) {
+func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
+	partitionType int, partitionTTL int64, mediaType uint32) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
 	partition.PartitionID = ID
@@ -114,6 +116,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.SpecialReplicaDecommissionStep = SpecialDecommissionInitial
 	partition.DecommissionDstAddrSpecify = false
 	partition.LeaderReportTime = now
+	partition.MediaType = mediaType
 	return
 }
 
@@ -283,7 +286,7 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 	task = proto.NewAdminTask(proto.OpCreateDataPartition, addr, newCreateDataPartitionRequest(
 		partition.VolName, partition.PartitionID, int(partition.ReplicaNum),
 		peers, int(dataPartitionSize), leaderSize, hosts, createType,
-		partitionType, decommissionedDisks, partition.VerSeq))
+		partitionType, decommissionedDisks, partition.VerSeq, partition.MediaType))
 	partition.resetTaskID(task)
 	return
 }
@@ -452,7 +455,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	dpr.IsRecover = partition.isRecover
 	dpr.IsDiscard = partition.IsDiscard
-
+	dpr.MediaType = partition.MediaType
 	return
 }
 
@@ -997,6 +1000,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		IsDiscard:                partition.IsDiscard,
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
 		Forbidden:                forbidden,
+		MediaType:                partition.MediaType,
 	}
 }
 
@@ -1491,7 +1495,8 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				partition.PartitionID, err.Error())
 			goto errHandler
 		}
-		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1)
+		//TODO:tanjingyu hechi:  properly handle mediaType while decommission
+		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1, partition.MediaType)
 		if err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from src nodeset failed:%v",
 				partition.PartitionID, err.Error())
@@ -1516,7 +1521,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				} else {
 					excludeZone = append(excludeZone, zones[0])
 				}
-				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, partition.Hosts, 1, 1, ""); err != nil {
+				if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, excludeZone, excludeNodeSets, partition.Hosts, 1, 1, "", partition.MediaType); err != nil {
 					log.LogWarnf("action[TryAcquireDecommissionToken] dp %v getHostFromNormalZone failed:%v",
 						partition.PartitionID, err.Error())
 					goto errHandler

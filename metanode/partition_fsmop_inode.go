@@ -489,7 +489,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	//}()
 
 	if err := fsmIno.updateStorageClass(ino.StorageClass); err != nil {
-		status = proto.OpDismatchMediaType //TODO:tangjingyu
+		status = proto.OpDismatchStorageClass
 		return
 	}
 
@@ -592,7 +592,7 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 		return
 	}
 	if err := inode.updateStorageClass(ino.StorageClass); err != nil {
-		status = proto.OpDismatchMediaType
+		status = proto.OpDismatchStorageClass
 		return
 	}
 	//eks := ino.ObjExtents.CopyExtents()

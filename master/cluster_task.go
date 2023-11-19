@@ -163,7 +163,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				excludeZone = append(excludeZone, zones[0])
 			}
 			// choose a meta node in other zone
-			if _, newPeers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, excludeNodeSets, oldHosts, 1, 1, ""); err != nil {
+			if _, newPeers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, excludeNodeSets, oldHosts, 1, 1, "", proto.MediaType_Unspecified); err != nil {
 				goto errHandler
 			}
 		}

@@ -1134,7 +1134,7 @@ func IsPreLoadDp(typ int) bool {
 const (
 	VolumeTypeHot     = 0
 	VolumeTypeCold    = 1
-	VolumeTypeInvalid = 1
+	VolumeTypeInvalid = 2
 )
 
 func IsCold(typ int) bool {
@@ -1160,14 +1160,12 @@ const (
 	MediaType_Unspecified uint32 = 0
 	MediaType_SSD         uint32 = 1
 	MediaType_HDD         uint32 = 2
-	MediaType_EBS         uint32 = 3 //TODO:tangjingyu del
 )
 
 var mediaTypeStringMap = map[uint32]string{
 	MediaType_Unspecified: "Unspecified",
 	MediaType_SSD:         "SSD",
 	MediaType_HDD:         "HDD",
-	MediaType_EBS:         "EBS",
 }
 
 func MediaTypeString(mediaType uint32) (value string) {

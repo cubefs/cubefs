@@ -294,7 +294,8 @@ func (s *Streamer) handleRequest(request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc, request.storageClass)
+		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags,
+			request.checkFunc, request.storageClass)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size, request.fullPath)
@@ -450,7 +451,8 @@ func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool, storage
 	return s.doDirectWriteByAppend(req, direct, proto.OpTryWriteAppend, storageClass)
 }
 
-func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8, storageClass uint32) (total int, extKey *proto.ExtentKey, err error, status int32) {
+func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8, storageClass uint32) (
+	total int, extKey *proto.ExtentKey, err error, status int32) {
 	var (
 		dp        *wrapper.DataPartition
 		reqPacket *Packet

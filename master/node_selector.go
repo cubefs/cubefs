@@ -288,7 +288,7 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 	// if we cannot get enough writable nodes, return error
 	weightedNodes, count := s.getCarryNodes(ns, total, excludeHosts)
 	if len(weightedNodes) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v ",
 			s.GetName(), replicaNum, len(weightedNodes))
 		return
 	}
@@ -630,10 +630,10 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum)
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int) (hosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int, mediaType uint32) (hosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
-	// we need a read lock to block the modify of node selector
+	// we need a read lock to block the modification of node selector
 	ns.dataNodeSelectorLock.Lock()
 	defer ns.dataNodeSelectorLock.Unlock()
 	return ns.dataNodeSelector.Select(ns, excludeHosts, replicaNum)
