@@ -236,9 +236,9 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v    %-18v"
+	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v     %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
-		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS")
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType","MEMBERS")
 
 	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
@@ -265,7 +265,7 @@ var (
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
 	return fmt.Sprintf(partitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
-		formatDataPartitionStatus(partition.Status), strings.Join(partition.Hosts, ", "))
+		formatDataPartitionStatus(partition.Status), proto.MediaTypeString(partition.MediaType), strings.Join(partition.Hosts, ", "))
 }
 
 func formatBadReplicaDpInfoRow(partition *proto.DataPartitionInfo) string {
@@ -411,7 +411,7 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("IsDiscard     : %v\n", partition.IsDiscard))
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
-	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("MediaType     : %v\n", proto.MediaTypeString(partition.MediaType)))
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatDataReplicaTableHeader()))
 	for _, replica := range partition.Replicas {

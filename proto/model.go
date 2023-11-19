@@ -273,6 +273,7 @@ type DataPartitionInfo struct {
 	RdOnly                   bool
 	IsDiscard                bool
 	Forbidden                bool
+	MediaType                uint32
 }
 
 // FileInCore define file in data partition

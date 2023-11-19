@@ -16,6 +16,7 @@ package wrapper
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"math/rand"
 	"strings"
 	"sync"
@@ -53,6 +54,9 @@ func (s *DefaultRandomSelector) Name() string {
 func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error) {
 	var localLeaderPartitions []*DataPartition
 	for i := 0; i < len(partitions); i++ {
+		//TODO:tangjingyu test only
+		log.LogInfof("############ DefaultRandomSelector[Refresh] dpId(%v) mediaType(%v)",
+			partitions[i].PartitionID, proto.MediaTypeString(partitions[i].MediaType))
 		if strings.Split(partitions[i].Hosts[0], ":")[0] == LocalIP {
 			localLeaderPartitions = append(localLeaderPartitions, partitions[i])
 		}
@@ -79,8 +83,12 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	dp = s.getRandomDataPartition(partitions, exclude, mediaType)
 
 	if dp != nil {
+		//TODO:tangjingyu test only
+		log.LogInfof("############ DefaultRandomSelector[Select]: targetMediaType(%v), selected dpId(%v) mediaType(%v)",
+			mediaType, dp.PartitionID, proto.MediaTypeString(dp.MediaType))
 		return dp, nil
 	}
+
 	log.LogErrorf("DefaultRandomSelector: no writable data partition with %v partitions and exclude(%v)",
 		len(partitions), exclude)
 	return nil, fmt.Errorf("no writable data partition")
@@ -150,6 +158,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 		return nil
 	}
 
+	//TODO:tangjingyu if mediaType == proto.MediaType_Unspecified
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(length)
 	dp = partitions[index]

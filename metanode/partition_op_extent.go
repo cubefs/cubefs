@@ -572,8 +572,8 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		return
 	}
 	i := item.(*Inode)
-	if !ino.storeInReplicaSystem() {
-		err = fmt.Errorf("inode %v storage type do not support tuncate operation %v ", req.Inode, i.StorageClass)
+	if !i.storeInReplicaSystem() {
+		err = fmt.Errorf("inode %v storageClass(%v) do not support tuncate operation", req.Inode, i.StorageClass)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -589,7 +589,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	ino.Size = req.Size
 	fileSize = ino.Size
 	ino.setVer(mp.verSeq)
-	ino.StorageClass = i.StorageClass //TODO:tangjingyu: use var i instead of ino?
+	ino.StorageClass = i.StorageClass
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

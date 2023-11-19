@@ -55,6 +55,19 @@ func (t *topology) zoneLen() int {
 	return len(t.zones)
 }
 
+func (t *topology) zoneLenOfDtaMediaType(mediaType uint32) (len int) {
+	t.zoneLock.RLock()
+	defer t.zoneLock.RUnlock()
+
+	for _, zone := range t.zones {
+		if zone.dataMediaType == mediaType {
+			len++
+		}
+	}
+
+	return len
+}
+
 func (t *topology) clear() {
 	t.dataNodes.Range(func(key, value interface{}) bool {
 		t.dataNodes.Delete(key)
@@ -518,7 +531,7 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 	return nil
 }
 
-func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8, createType uint32) (
+func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8, createType uint32, storageClass uint32) (
 	hosts []string,
 	peers []proto.Peer,
 	err error) {
@@ -566,7 +579,8 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 				}
 
 				if createType == TypeDataPartition {
-					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum); err != nil {
+					//TODO:tangjingyu hechi : check if storageClass is using rightly here
+					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum, storageClass); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						//nsg.status = dataNodesUnAvailable
 						continue
@@ -595,12 +609,17 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 	return nil, nil, fmt.Errorf("action[getHostFromNodeSetGrpSpecific] cann't alloc host")
 }
 
-func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32) (
+func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32, storageClass uint32) (
 	hosts []string,
 	peers []proto.Peer,
 	err error) {
 	var ok bool
 	var index int
+
+	if createType == TypeDataPartition && !proto.IsStorageClassReplica(storageClass) {
+		err = fmt.Errorf("action[getHostFromNodeSetGrp] invalid storageClass(%v) for TypeDataPartition", domainId)
+		return
+	}
 
 	if index, ok = nsgm.domainId2IndexMap[domainId]; !ok {
 		err = fmt.Errorf("action[getHostFromNodeSetGrp] not found domainid[%v]", domainId)
@@ -613,7 +632,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 	// this scenario is abnormal  may be caused by zone unavailable in high probability
 	if domainGrpManager.status != normal {
-		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType)
+		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType, storageClass)
 	}
 
 	// grp map be build with three zone on standard,no grp if zone less than three,here will build
@@ -670,7 +689,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1, storageClass); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					//nsg.status = dataNodesUnAvailable
 					continue
@@ -1371,13 +1390,29 @@ func (t *topology) allocZonesForMetaNode(zoneNum, replicaNum int, excludeZone []
 	return
 }
 
-func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string) (zones []*Zone, err error) {
+func (t *topology) allocZonesForDataNode(zoneNum, replicaNum int, excludeZone []string, mediaType uint32) (zones []*Zone, err error) {
+	log.LogInfof("######### allocZonesForDataNode run: mediaType(%v)", mediaType) //TODO:tangjingyu del
 	// domain enabled and have old zones to be used
 	if len(t.domainExcludeZones) > 0 {
+		log.LogInfof("######### allocZonesForDataNode getDomainExcludeZones() mediaType(%v)", mediaType) //TODO:tangjingyu del
 		zones = t.getDomainExcludeZones()
 	} else {
 		// if domain enable, will not enter here
+		log.LogInfof("######### allocZonesForDataNode getAllZones() mediaType(%v)", mediaType) //TODO:tangjingyu del
 		zones = t.getAllZones()
+	}
+	log.LogInfof("######### allocZonesForDataNode mediaType(%v), zones:%+v", mediaType, zones) //TODO:tangjingyu del
+
+	zonesOfMediaType := make([]*Zone, 0)
+	if mediaType != proto.MediaType_Unspecified {
+		// pick up zones by mediaType
+		for _, zone := range zones {
+			log.LogInfof("######### allocZonesForDataNode picking, zone:%v mediaType(%v)", zone.name, mediaType) //TODO:tangjingyu del
+			if zone.dataMediaType == mediaType {
+				zonesOfMediaType = append(zonesOfMediaType, zone)
+			}
+		}
+		zones = zonesOfMediaType
 	}
 
 	log.LogInfof("len(zones) = %v \n", len(zones))
@@ -1909,7 +1944,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 		if err != nil {
 			return nil, nil, errors.Trace(err, "zone[%v] alloc node set,replicaNum[%v]", zone.name, replicaNum)
 		}
-		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
+		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum, zone.dataMediaType)
 	}
 
 	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))

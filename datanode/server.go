@@ -371,7 +371,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 		log.LogError(err.Error())
 		return err
 	}
-	if mediaType < proto.MediaType_SSD || mediaType > proto.MediaType_HDD {
+	if !proto.IsValidMediaType(mediaType) {
 		err = fmt.Errorf("parseConfig: invalid mediaType(%v)", mediaType)
 		log.LogError(err.Error())
 		return err

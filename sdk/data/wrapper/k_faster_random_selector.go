@@ -88,6 +88,8 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(kValue)
 	dp = partitions[index]
+
+	//TODO:tangjingyu if mediaType == proto.MediaType_Unspecified
 	if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
 		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 			dp, index, kValue, len(partitions))

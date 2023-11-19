@@ -502,21 +502,14 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	return
 }
 
-func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
-	// The previous check ensured that that vol.volStorageClass must is vol.allowedStorageClass[]
-	//for storageClass := range vol.allowedStorageClass {
-	//	mediaType := proto.GetMediaTypeByStorageClass(storageClass)
-	//}
-
-	//TODO:tangjingyu: create dp for each mediaType
-	// initialize k data partitionMap at a time
-	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true)
+func (vol *Vol) initDataPartitions(c *Cluster, mediaType uint32) (err error) {
+	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true, mediaType)
 	return
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete && proto.IsHot(vol.VolType) {
-		c.batchCreateDataPartition(vol, 1, false)
+		c.batchCreateDataPartition(vol, 1, false, proto.MediaType_Unspecified) //TODO:tangjingyu
 	}
 
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
@@ -870,6 +863,7 @@ func (vol *Vol) shouldInhibitWriteBySpaceFull() bool {
 	return false
 }
 
+//TODO:tangjingyu consider mediaType
 func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 	ok = false
 	if vol.status() == markDelete {
@@ -917,7 +911,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		}
 
 		if vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
-			c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false)
+			c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false, proto.StorageClass_Unspecified) //TODO:tangjingyu
 			log.LogWarnf("autoCreateDataPartitions: readWrite less than 10, alloc new 10 partitions, vol %s", vol.Name)
 		}
 
@@ -944,7 +938,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
 		count := (maxSize-allocSize-1)/vol.dataPartitionSize + 1
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, int(count), false)
+		c.batchCreateDataPartition(vol, int(count), false, proto.MediaType_Unspecified) //TODO:tangjingyu)
 		return
 	}
 
@@ -952,7 +946,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		count := vol.calculateExpansionNum()
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, count, false)
+		c.batchCreateDataPartition(vol, count, false, proto.StorageClass_Unspecified) //TODO:tangjingyu
 	}
 }
 
@@ -1380,15 +1374,15 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	errChannel := make(chan error, vol.mpReplicaNum)
 
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartition, vol.mpReplicaNum); err != nil {
+		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartition, vol.mpReplicaNum, proto.StorageClass_Unspecified); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromDomainZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 
 	} else {
 		var excludeZone []string
-		zoneNum := c.decideZoneNum(vol.crossZone)
-
+		//zoneNum := c.decideZoneNum(vol.crossZone, proto.MediaType_Unspecified) //TODO:tangjingyu handle zoneNum of meta
+		zoneNum := 1
 		if hosts, peers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
 			return nil, errors.NewError(err)

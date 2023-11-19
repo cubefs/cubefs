@@ -1422,7 +1422,8 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
 	clusterTotalDataPartitions = m.cluster.getDataPartitionCount()
-	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false)
+	//TODO:tangjingyu need to support requester to specify volStorageClass?
+	err = m.cluster.batchCreateDataPartition(vol, reqCreateCount, false, proto.GetMediaTypeByStorageClass(vol.volStorageClass))
 	rstMsg = fmt.Sprintf(" createDataPartition succeeeds. "+
 		"clusterLastTotalDataPartitions[%v],vol[%v] has %v data partitions previously and %v data partitions now",
 		clusterTotalDataPartitions, volName, lastTotalDataPartitions, len(vol.dataPartitions.partitions))
@@ -2212,19 +2213,6 @@ func (m *Server) volShrink(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-//TODO:tangjingyu need this func?
-//func (m *Server) isValidAllowedStorageClass(allowedStorageClass []uint32) (err error) {
-//	for idx, asc := range allowedStorageClass {
-//		if !proto.IsValidStorageClass(asc) {
-//			err = fmt.Errorf("[isValidAllowedStorageClass] allowedStorageClass index(%v) invalid value(%v)", idx, asc)
-//			log.LogError(err.Error())
-//			return err
-//		}
-//	}
-//
-//	return nil
-//}
-
 func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error) {
 	resourceChecker := NewStorageClassResourceChecker(m.cluster)
 
@@ -2232,28 +2220,28 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		// when volStorageClass not specified, try to set as replica with fastest mediaType if resource can support
 		if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_SSD) {
 			req.volStorageClass = proto.StorageClass_Replica_SSD
-			log.LogInfof("[checkStorageClassForCreateVol] volStorageClass not specified, auto set as: %v",
-				proto.StorageClassString(req.volStorageClass))
+			log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
+				req.name, proto.StorageClassString(req.volStorageClass))
 		} else if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_HDD) {
 			req.volStorageClass = proto.StorageClass_Replica_HDD
-			log.LogInfof("[checkStorageClassForCreateVol] volStorageClass not specified, auto set as: %v",
-				proto.StorageClassString(req.volStorageClass))
+			log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
+				req.name, proto.StorageClassString(req.volStorageClass))
 		} else {
 			err = fmt.Errorf("volStorageClass not specified and cluster has no resource to suppoort replca-storageClass")
-			log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err:%v", req.name, err.Error())
+			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 			return err
 		}
 	} else if !proto.IsValidStorageClass(req.volStorageClass) {
 		err = fmt.Errorf("invalid volStorageClass: %v", req.volStorageClass)
-		log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err:%v", req.name, err.Error())
+		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 		return err
 	}
 	log.LogInfof("[checkStorageClassForCreateVol] volStorageClass: %v", proto.StorageClassString(req.volStorageClass))
 
 	if len(req.allowedStorageClass) == 0 {
 		req.allowedStorageClass = append(req.allowedStorageClass, req.volStorageClass)
-		log.LogInfof("[checkStorageClassForCreateVol] allowedStorageClass not specified, auto set as volStorageClass(%v)",
-			req.volStorageClass)
+		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), allowedStorageClass not specified, auto set as volStorageClass(%v)",
+			req.name, req.volStorageClass)
 		return
 	}
 
@@ -2261,13 +2249,23 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 	for idx, asc := range req.allowedStorageClass {
 		if !proto.IsValidStorageClass(asc) {
 			err = fmt.Errorf("allowedStorageClass index(%v) invalid value(%v)", idx, asc)
-			log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err:%v", req.name, err.Error())
+			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 			return err
 		}
 
 		if !resourceChecker.HasResourceOfStorageClass(asc) {
 			err = fmt.Errorf("cluster has no resoure to support allowedStorageClass(%v)", proto.StorageClassString(asc))
-			log.LogErrorf("action[checkStorageClassForCreateVol] err: %v", err.Error())
+			log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
+			return
+		}
+
+		// To control the complexity of the entire system at the current stage,
+		// not allow normal dp and cache/preload dp both exist in a volume at the same time:
+		// If volStorageClass is replica, will not create cache/preload dp even blobStore contained in allowedStorageClass
+		// if volStorageClass is blobStore, replica storage class can not be supported
+		if proto.IsStorageClassBlobStore(req.volStorageClass) && proto.IsStorageClassReplica(asc) {
+			err = fmt.Errorf("volStorageClass is blobStore, in tis case not support replica storage class")
+			log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
 			return
 		}
 
@@ -2276,15 +2274,18 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		}
 	}
 
-	// req.allowedStorageClass[] should contains req.volStorageClass
-	// TODO:tangjingyu auto add volStorageClass to allowedStorageClass if omit?
+	// auto add volStorageClass to allowedStorageClass if omit
 	if !isVolStorageClassInAllowed {
-		err = fmt.Errorf("req volStorageClass(%v) not in allowedStorageClass(%v)",
-			req.volStorageClass, req.allowedStorageClass)
-		log.LogErrorf("[checkStorageClassForCreateVol] creating vol(%v) err:%v", req.name, err.Error())
-		return err
+		log.LogInfof("[checkStorageClassForCreateVol] creating vol(%v) auto append volStorageClass(%v) to allowedStorageClass",
+			req.name, req.volStorageClass)
+		req.allowedStorageClass = append(req.allowedStorageClass, req.volStorageClass)
 	}
-	log.LogInfof("[checkStorageClassForCreateVol] allowedStorageClass: %v", req.allowedStorageClass)
+
+	//TODO:tangjingyu set req.crossZone properly in hybrid cloud
+	req.crossZone = true
+	log.LogInfof("############ [checkStorageClassForCreateVol] creating vol(%v) set crossZone as true", req.name)
+
+	log.LogInfof("[checkStorageClassForCreateVol] create vol(%v) allowedStorageClass: %v", req.name, req.allowedStorageClass)
 	return nil
 }
 

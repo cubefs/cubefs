@@ -294,7 +294,8 @@ func (s *Streamer) handleRequest(request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
-		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc, request.storageClass)
+		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags,
+			request.checkFunc, request.storageClass)
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size, request.fullPath)
