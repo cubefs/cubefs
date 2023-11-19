@@ -551,6 +551,7 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 }
 
 func (client *ExtentClient) Flush(inode uint64) error {
+	log.LogDebugf("########## ExtentClient Flush: ino(%v)", inode)
 	s := client.GetStreamer(inode)
 	if s == nil {
 		log.LogErrorf("Flush: stream is not opened yet, ino(%v)", inode)

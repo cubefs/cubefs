@@ -445,7 +445,7 @@ func NewInode(ino uint64, t uint32) *Inode {
 		Extents:    NewSortedExtents(),
 		//ObjExtents:         NewSortedObjExtents(),
 		multiSnap:          nil,
-		StorageClass:       proto.StorageClass_Unspecified, //proto.StorageClass_Replica_SSD, //TODO:tangjingyu
+		StorageClass:       proto.StorageClass_Unspecified,
 		HybridCouldExtents: NewSortedHybridCloudExtents(),
 		ForbiddenMigration: ApproverToMigration,
 		WriteGeneration:    0,

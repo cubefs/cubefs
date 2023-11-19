@@ -74,7 +74,8 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	}
 
 	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
-	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms", mw.metaSendTimeout, sendTimeLimit, delta)
+	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms, opCode: %v",
+		mw.metaSendTimeout, sendTimeLimit, delta, req.Opcode)
 
 	req.ExtentType |= proto.MultiVersionFlag
 
