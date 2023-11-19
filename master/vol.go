@@ -116,7 +116,6 @@ type Vol struct {
 	// hybrid cloud
 	allowedStorageClass []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
 	volStorageClass     uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
-	// TODO: add feature dirStorageClass
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -502,24 +501,32 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	return
 }
 
-func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
-	// The previous check ensured that that vol.volStorageClass must is vol.allowedStorageClass[]
-	//for storageClass := range vol.allowedStorageClass {
-	//	mediaType := proto.GetMediaTypeByStorageClass(storageClass)
-	//}
-
-	//TODO:tangjingyu: create dp for each mediaType
-	// initialize k data partitionMap at a time
-	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true)
+func (vol *Vol) initDataPartitions(c *Cluster, mediaType uint32) (err error) {
+	err = c.batchCreateDataPartition(vol, defaultInitDataPartitionCnt, true, mediaType)
 	return
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
-	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete && proto.IsHot(vol.VolType) {
-		c.batchCreateDataPartition(vol, 1, false)
+	if vol.Status != markDelete && proto.IsHot(vol.VolType) {
+		//check if need create dp for each allowedStorageClass of vol
+		for _, asc := range vol.allowedStorageClass {
+			if !proto.IsStorageClassReplica(asc) {
+				continue
+			}
+
+			mediaType := proto.GetMediaTypeByStorageClass(asc)
+			dpCntOfMediaType := vol.dataPartitions.getDataPartitionsCountOfMediaType(mediaType)
+			if dpCntOfMediaType == 0 {
+				log.LogInfof("[checkDataPartitions] vol(%v) mediaType(%v) dp count is 0, try to create 1 dp",
+					vol.Name, proto.MediaTypeString(mediaType))
+				c.batchCreateDataPartition(vol, 1, false, mediaType)
+			}
+		}
 	}
 
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
+	var rwDpCountOfSSD int
+	var rwDpCountOfHDD int
 
 	partitions := vol.dataPartitions.clonePartitions()
 	for _, dp := range partitions {
@@ -551,13 +558,25 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 		if dp.Status == proto.ReadWrite {
 			cnt++
+			if dp.Status == proto.ReadWrite {
+				cnt++
+				if dp.MediaType == proto.MediaType_HDD {
+					rwDpCountOfHDD++
+				}
+				if dp.MediaType == proto.MediaType_SSD {
+					rwDpCountOfSSD++
+				}
+			}
 		}
 
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
 
 		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 	}
-
+	vol.dataPartitions.setReadWriteDataPartitionCntByMediaType(rwDpCountOfHDD, proto.MediaType_HDD)
+	vol.dataPartitions.setReadWriteDataPartitionCntByMediaType(rwDpCountOfSSD, proto.MediaType_SSD)
+	log.LogInfof("[checkDataPartitions] vol(%v), rwDpCountOfHDD(%v), rwDpCountOfSSD(%v)",
+		vol.Name, rwDpCountOfHDD, rwDpCountOfSSD)
 	return
 }
 
@@ -903,7 +922,6 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 }
 
 func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
-
 	if time.Since(vol.dataPartitions.lastAutoCreateTime) < time.Minute {
 		return
 	}
@@ -916,16 +934,24 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 			return
 		}
 
-		if vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
-			c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false)
-			log.LogWarnf("autoCreateDataPartitions: readWrite less than 10, alloc new 10 partitions, vol %s", vol.Name)
+		for _, asc := range vol.allowedStorageClass {
+			if !proto.IsStorageClassReplica(asc) {
+				continue
+			}
+			mediaType := proto.GetMediaTypeByStorageClass(asc)
+			dpCntOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
+
+			if dpCntOfMediaType < minNumOfRWDataPartitions {
+				log.LogWarnf("autoCreateDataPartitions: vol(%v) mediaType(%v) readWrite less than %v, alloc new partitions",
+					vol.Name, proto.MediaTypeString(mediaType), minNumOfRWDataPartitions)
+				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false, mediaType)
+			}
 		}
 
 		return
 	}
 
 	if proto.IsCold(vol.VolType) {
-
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		maxSize := overSoldCap(vol.CacheCapacity * util.GB)
 		allocSize := uint64(0)
@@ -938,21 +964,47 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		}
 
 		if maxSize <= allocSize {
-			log.LogInfof("action[autoCreateDataPartitions] (%s) no need to create again, alloc [%d], max [%d]", vol.Name, allocSize, maxSize)
+			log.LogInfof("action[autoCreateDataPartitions] (%s) no need to create again, alloc [%d], max [%d]",
+				vol.Name, allocSize, maxSize)
 			return
 		}
 
+		cacheStorageClass := c.GetFastReplicaStorageClassFromCluster(nil)
+		cacheMediaType := proto.GetMediaTypeByStorageClass(cacheStorageClass)
 		count := (maxSize-allocSize-1)/vol.dataPartitionSize + 1
-		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, int(count), false)
+		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v] volStorageClass[%v], chosenMediaType(%v)",
+			vol.Name, count, proto.StorageClassString(vol.volStorageClass), proto.MediaTypeString(cacheMediaType))
+
+		c.batchCreateDataPartition(vol, int(count), false, cacheMediaType)
 		return
 	}
 
-	if (vol.Capacity > 200000 && vol.dataPartitions.readableAndWritableCnt < 200) || vol.dataPartitions.readableAndWritableCnt < minNumOfRWDataPartitions {
+	//check for hot vol
+	for _, asc := range vol.allowedStorageClass {
+		if !proto.IsStorageClassReplica(asc) {
+			continue
+		}
+		mediaType := proto.GetMediaTypeByStorageClass(asc)
+		rwDpCountOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
+		log.LogInfof("action[autoCreateDataPartitions] mediaType:%v, rwDpCountOfMediaType:%v",
+			mediaType, rwDpCountOfMediaType)
+		var createDpCount int
+		if asc == vol.volStorageClass && vol.Capacity > 200000 && rwDpCountOfMediaType < 200 {
+			createDpCount = vol.calculateExpansionNum()
+			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), calculated createDpCount:%v",
+				vol.Name, asc, createDpCount)
+		} else if rwDpCountOfMediaType < minNumOfRWDataPartitions {
+			createDpCount = minNumOfRWDataPartitions
+			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), min createDpCount:%v",
+				vol.Name, asc, createDpCount)
+		} else {
+			continue
+		}
+
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
-		count := vol.calculateExpansionNum()
-		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v]", vol.Name, count)
-		c.batchCreateDataPartition(vol, count, false)
+		log.LogInfof("action[autoCreateDataPartitions] vol[%v] createDpCount[%v] for mediaType(%v)",
+			vol.Name, createDpCount, proto.MediaTypeString(mediaType))
+		c.batchCreateDataPartition(vol, createDpCount, false, mediaType)
 	}
 }
 
@@ -1380,16 +1432,15 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	errChannel := make(chan error, vol.mpReplicaNum)
 
 	if c.isFaultDomain(vol) {
-		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartition, vol.mpReplicaNum); err != nil {
+		if hosts, peers, err = c.getHostFromDomainZone(vol.domainId, TypeMetaPartition, vol.mpReplicaNum, proto.StorageClass_Unspecified); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromDomainZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 
 	} else {
 		var excludeZone []string
-		zoneNum := c.decideZoneNum(vol.crossZone)
-
-		if hosts, peers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName); err != nil {
+		zoneNum := c.decideZoneNum(vol.crossZone, proto.MediaType_Unspecified)
+		if hosts, peers, err = c.getHostFromNormalZone(TypeMetaPartition, excludeZone, nil, nil, int(vol.mpReplicaNum), zoneNum, vol.zoneName, proto.StorageClass_Unspecified); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] getHostFromNormalZone err[%v]", err)
 			return nil, errors.NewError(err)
 		}

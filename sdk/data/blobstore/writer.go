@@ -515,7 +515,6 @@ func (writer *Writer) asyncCache(ino uint64, offset int, data []byte) {
 	//TODO: default cache type is ssd? //TODO:tangjingyu how to get cache storage class from master
 	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache, nil, proto.StorageClass_Replica_SSD, false)
 	log.LogDebugf("TRACE asyncCache Exit,write(%v) err(%v)", write, err)
-
 }
 
 func (writer *Writer) resetBufferWithoutPool() {

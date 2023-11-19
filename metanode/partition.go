@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/blobstore/api/access"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -31,7 +32,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/cmd/common"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
@@ -508,7 +508,7 @@ type metaPartition struct {
 	isLoadingMetaPartition bool
 	summaryLock            sync.Mutex
 	ebsClient              *blobstore.BlobStoreClient
-	volType                int //TODO:tangjingyu to del this field and use storageClass instead?
+	volType                int //kept in hybrid cloud for compatibility
 	isFollowerRead         bool
 	uidManager             *UidManager
 	xattrLock              sync.Mutex

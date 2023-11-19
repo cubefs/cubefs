@@ -530,6 +530,12 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
+			//TODO:tangjinyu  ignore mediaType when write to cache dp
+			//mediaType := eh.mediaType
+			//if eh.stream.isCache {
+			//	mediaType = proto.MediaType_Unspecified
+			//}
+
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.mediaType); err != nil {
 				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})

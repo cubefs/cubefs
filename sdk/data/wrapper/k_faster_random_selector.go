@@ -16,6 +16,7 @@ package wrapper
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -88,9 +89,10 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(kValue)
 	dp = partitions[index]
+
 	if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
-		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
-			dp, index, kValue, len(partitions))
+		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)， mediaType(%v)",
+			dp, index, kValue, len(partitions), proto.MediaTypeString(mediaType))
 		return dp, nil
 	}
 

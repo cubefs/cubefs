@@ -696,8 +696,9 @@ type createVolReq struct {
 	coldArgs coldVolArgs
 
 	//hybrid cloud
-	volStorageClass     uint32
-	allowedStorageClass []uint32 // format is uint32 Separated by commas: "StorageClass1, StorageClass2, ..."
+	volStorageClass             uint32
+	allowedStorageClass         []uint32 // format is uint32 Separated by commas: "StorageClass1, StorageClass2, ..."
+	hasMultiReplicaStorageClass bool
 }
 
 func checkCacheAction(action int) error {
@@ -820,12 +821,13 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
+	// handling compatibility
 	if vscStr := r.FormValue(volStorageClassKey); vscStr != "" {
+		// handling compatibility for new version requesters who send only volStorageClassKey, but no volTypeKey
 		if req.volStorageClass, err = extractUint32WithDefault(r, volStorageClassKey, proto.StorageClass_Unspecified); err != nil {
 			return
 		}
 
-		// handling compatibility, new version requester only has volStorageClassKey
 		// StorageClass_Unspecified means let master determine SSD or HDD in subsequent procedure
 		if req.volStorageClass == proto.StorageClass_Unspecified || proto.IsStorageClassReplica(req.volStorageClass) {
 			req.volType = proto.VolumeTypeHot
@@ -833,7 +835,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 			req.volType = proto.VolumeTypeCold
 		}
 	} else {
-		//handling compatibility, old version requester sends no volStorageClassKey but only volTypeKey
+		// handling compatibility for old version requesters who send only volTypeKey,  but no volStorageClassKey
 		if req.volType, err = extractUint(r, volTypeKey); err != nil {
 			return
 		}
