@@ -272,7 +272,7 @@ const (
 	OpReachMaxExtentsErr uint8 = 0xB3
 
 	//hybirdCloud
-	OpDismatchMediaType uint8 = 0xD8 //TODO:tangjingyu should rename to storageClass?
+	OpDismatchStorageClass uint8 = 0xD8
 )
 
 const (
