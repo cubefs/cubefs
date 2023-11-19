@@ -369,7 +369,6 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 			ClientWrapper:         w,
 		}
 	}
-
 	if proto.IsCold(w.volType) {
 		w.clearPartitions()
 	}
@@ -380,8 +379,6 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 			continue
 		}
 		dp := convert(partition)
-		//TODO:tangjingyu  load from master(maybe config of master)
-		dp.MediaType = proto.MediaType_SSD
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}
@@ -394,7 +391,8 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 		if dp.Status == proto.ReadWrite {
 			dp.MetricsRefresh()
 			rwPartitionGroups = append(rwPartitionGroups, dp)
-			log.LogInfof("updateDataPartition: dp(%v) address(%p) insert to rwPartitionGroups", dp.PartitionID, dp)
+			log.LogInfof("updateDataPartition: dpId(%v) mediaType(%v) address(%p) insert to rwPartitionGroups",
+				dp.PartitionID, proto.MediaTypeString(dp.MediaType), dp)
 		}
 	}
 
@@ -464,6 +462,7 @@ func (w *Wrapper) getDataPartitionFromMaster(dpId uint64) (err error) {
 	dpr.LeaderAddr = leaderAddr
 	dpr.IsRecover = dpInfo.IsRecover
 	dpr.IsDiscard = dpInfo.IsDiscard
+	dpr.MediaType = dpInfo.MediaType
 
 	DataPartitions := make([]*proto.DataPartitionResponse, 1)
 	DataPartitions = append(DataPartitions, dpr)
