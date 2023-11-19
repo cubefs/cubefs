@@ -1365,7 +1365,7 @@ const (
 	MediaType_Unspecified uint32 = 0
 	MediaType_SSD         uint32 = 1
 	MediaType_HDD         uint32 = 2
-	MediaType_EBS         uint32 = 3
+	MediaType_EBS         uint32 = 3 //TODO:tangjingyu del
 )
 
 var mediaTypeStringMap = map[uint32]string{
@@ -1378,7 +1378,7 @@ var mediaTypeStringMap = map[uint32]string{
 func MediaTypeString(mediaType uint32) (value string) {
 	value, ok := mediaTypeStringMap[mediaType]
 	if !ok {
-		value = "InvalidValue"
+		value = fmt.Sprintf("InvalidValue(%v)", mediaType)
 	}
 	return
 }

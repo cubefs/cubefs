@@ -75,6 +75,24 @@ func (t *topology) zoneLen() int {
 	return len(t.zones)
 }
 
+func (t *topology) zoneLenOfDtaMediaType(mediaType uint32) (len int) {
+	t.zoneLock.RLock()
+	defer t.zoneLock.RUnlock()
+
+	for _, zone := range t.zones {
+		if mediaType == proto.MediaType_Unspecified {
+			len++
+			continue
+		}
+
+		if zone.dataMediaType == mediaType {
+			len++
+		}
+	}
+
+	return len
+}
+
 func (t *topology) clear() {
 	t.metaTopology.clear()
 	t.dataTopology.clear()
@@ -531,7 +549,8 @@ func (nsgm *DomainManager) buildNodeSetGrp(domainGrpManager *DomainNodeSetGrpMan
 	return nil
 }
 
-func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8, createType uint32) (
+func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *DomainNodeSetGrpManager, replicaNum uint8,
+	createType uint32, mediaType uint32) (
 	hosts []string,
 	peers []proto.Peer,
 	err error,
@@ -579,7 +598,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 				}
 
 				if createType == TypeDataPartition {
-					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum); err != nil {
+					if host, peer, err = ns.getAvailDataNodeHosts(nil, needNum, mediaType); err != nil {
 						log.LogErrorf("action[getHostFromNodeSetGrpSpecific] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 						// nsg.status = dataNodesUnAvailable
 						continue
@@ -608,7 +627,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrpSpecific(domainGrpManager *Domai
 	return nil, nil, fmt.Errorf("action[getHostFromNodeSetGrpSpecific] cann't alloc host")
 }
 
-func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32) (
+func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uint8, createType uint32, mediaType uint32) (
 	hosts []string,
 	peers []proto.Peer,
 	err error,
@@ -627,7 +646,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 	// this scenario is abnormal  may be caused by zone unavailable in high probability
 	if domainGrpManager.status != normal {
-		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType)
+		return nsgm.getHostFromNodeSetGrpSpecific(domainGrpManager, replicaNum, createType, mediaType)
 	}
 
 	// grp map be build with three zone on standard,no grp if zone less than three,here will build
@@ -672,7 +691,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 
 		for i := 0; i < defaultMaxReplicaCnt*len(nsg.nodeSets); i++ {
 			ns := nsg.nodeSets[nsg.nsgInnerIndex]
-			log.LogInfof("action[getHostFromNodeSetGrp]  nodesetid[%v],zonename[%v], datanode len[%v],metanode len[%v],capacity[%v]",
+			log.LogInfof("action[getHostFromNodeSetGrp]  nodesetid[%v], zonename[%v], datanode len[%v],metanode len[%v],capacity[%v]",
 				ns.ID, ns.zoneName, ns.dataNodeLen(), ns.metaNodeLen(), ns.Capacity)
 			nsg.nsgInnerIndex = (nsg.nsgInnerIndex + 1) % defaultFaultDomainZoneCnt
 			if nsg.status == unavailableZone {
@@ -684,7 +703,7 @@ func (nsgm *DomainManager) getHostFromNodeSetGrp(domainId uint64, replicaNum uin
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] dataNodesUnAvailable", ns.ID, ns.zoneName)
 					continue
 				}
-				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1); err != nil {
+				if host, peer, err = ns.getAvailDataNodeHosts(hosts, 1, mediaType); err != nil {
 					log.LogWarnf("action[getHostFromNodeSetGrp] ns[%v] zone[%v] TypeDataPartition err[%v]", ns.ID, ns.zoneName, err)
 					// nsg.status = dataNodesUnAvailable
 					continue
@@ -1367,7 +1386,7 @@ func calculateDemandWriteNodes(zoneNum int, replicaNum int, isSpecialZoneName bo
 }
 
 // Choose the zone if it is writable and adapt to the rules for classifying zones
-func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string, specialZones []*Zone) (zones []*Zone, err error) {
+func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string, specialZones []*Zone, mediaType uint32) (zones []*Zone, err error) {
 	log.LogDebugf("[allocZonesForNode] NodeType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZones(%v)",
 		rsMgr.nodeType, zoneNumNeed, replicaNum, excludeZone, specialZones)
 
@@ -1875,7 +1894,7 @@ func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, e
 		if err != nil {
 			return nil, nil, errors.Trace(err, "zone[%v] alloc node set,replicaNum[%v]", zone.name, replicaNum)
 		}
-		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum)
+		return ns.getAvailDataNodeHosts(excludeHosts, replicaNum, zone.dataMediaType)
 	}
 
 	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum))

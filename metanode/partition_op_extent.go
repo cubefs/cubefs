@@ -50,6 +50,8 @@ func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, in
 		return
 	}
 	inode = item.(*Inode)
+	iParm.StorageClass = inode.StorageClass
+
 	mp.uidManager.acLock.Lock()
 	if mp.uidManager.getUidAcl(inode.Uid) {
 		log.LogWarnf("CheckQuota UidSpace.volname [%v] mp[%v] uid %v be set full", mp.uidManager.mpID, mp.uidManager.volName, inode.Uid)
@@ -144,7 +146,9 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	// use inode verSeq instead
 	inoParm.setVer(mp.verSeq)
 	inoParm.StorageClass = req.StorageClass
-	//TODO:
+	//TODO:tangjingyu
+	//if isCachem: inoParm.StorageClass set as inode's old storageClass
+
 	if req.IsCache {
 		inoParm.Extents.Append(ext)
 	} else {
@@ -423,8 +427,8 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	if !ino.storeInReplicaSystem() && req.IsCache != true {
 		status = proto.OpErr
-		reply = []byte(fmt.Sprintf("ino storage type %v IsCache %v do not support ExtentsList",
-			ino.StorageClass, req.IsCache))
+		reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) IsCache(%v) not support ExtentsList",
+			ino.Inode, ino.StorageClass, req.IsCache))
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
@@ -515,7 +519,7 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 	)
 	if status == proto.OpOk {
 		if ino.StorageClass != proto.StorageClass_BlobStore {
-			status = proto.OpDismatchMediaType
+			status = proto.OpDismatchStorageClass
 			reply = []byte(fmt.Sprintf("Dismatch storage type, current storage type is %s",
 				proto.StorageClassString(ino.StorageClass)))
 			p.PacketErrorWithBody(status, reply)
@@ -578,8 +582,8 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		return
 	}
 	i := item.(*Inode)
-	if !ino.storeInReplicaSystem() {
-		err = fmt.Errorf("inode %v storage type do not support tuncate operation %v ", req.Inode, i.StorageClass)
+	if !i.storeInReplicaSystem() {
+		err = fmt.Errorf("inode %v storageClass(%v) do not support tuncate operation", req.Inode, i.StorageClass)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
@@ -595,7 +599,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	ino.Size = req.Size
 	fileSize = ino.Size
 	ino.setVer(mp.verSeq)
-	ino.StorageClass = i.StorageClass //TODO:tangjingyu: use var i instead of ino?
+	ino.StorageClass = i.StorageClass
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -656,7 +660,8 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 		return
 	}
 	if ino.StorageClass != proto.StorageClass_BlobStore {
-		err = errors.New(fmt.Sprintf("ino StorageClass %v donot support BatchObjExtentAppend", ino.StorageClass))
+		err = errors.New(fmt.Sprintf("ino(%v) StorageClass(%v) donot support BatchObjExtentAppend",
+			ino.Inode, ino.StorageClass))
 		log.LogErrorf("BatchObjExtentAppend fail [%v]", err)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return

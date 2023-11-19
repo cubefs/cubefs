@@ -71,9 +71,11 @@ const (
 )
 
 var (
-	server    = createDefaultMasterServerForTest()
-	commonVol *Vol
-	cfsUser   *proto.UserInfo
+	server                 = createDefaultMasterServerForTest()
+	commonVol              *Vol
+	defaultVolStorageClass = proto.StorageClass_Replica_SSD
+	defaultMediaType       = proto.MediaType_SSD
+	cfsUser                *proto.UserInfo
 )
 
 var mockServerLock sync.Mutex
@@ -162,7 +164,7 @@ func createDefaultMasterServerForTest() *Server {
 	req := &createVolReq{
 		name:             commonVolName,
 		owner:            "cfs",
-		dpSize:           3,
+		dpSize:           11,
 		mpCount:          3,
 		dpReplicaNum:     3,
 		capacity:         300,
@@ -173,7 +175,12 @@ func createDefaultMasterServerForTest() *Server {
 		zoneName:         testZone2,
 		description:      "",
 		qosLimitArgs:     &qosArgs{},
-		volStorageClass:  proto.StorageClass_Replica_SSD,
+		volStorageClass:  defaultVolStorageClass,
+	}
+
+	err = testServer.checkCreateVolReq(req)
+	if err != nil {
+		panic("checkCreateVolReq failed: " + err.Error())
 	}
 
 	vol, err := testServer.cluster.createVol(req)
@@ -610,7 +617,7 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.CacheRule == "")
 
 	for id, name := range []string{"z1", "z2", "z3"} {
-		zone := newZone(name, proto.MediaType_HDD)
+		zone := newZone(name, defaultMediaType)
 		nodeSet1 := newNodeSet(server.cluster, uint64(id), 6, name)
 
 		zone.putNodeSet(nodeSet1)

@@ -112,22 +112,23 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
 	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.Status)))
+	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaType)))
 	return sb.String()
 }
 
@@ -273,9 +274,9 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v    %-18v"
+	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v     %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
-		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS")
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS")
 
 	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
@@ -306,7 +307,7 @@ var (
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
 	return fmt.Sprintf(partitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
-		formatDataPartitionStatus(partition.Status), strings.Join(partition.Hosts, ", "))
+		formatDataPartitionStatus(partition.Status), proto.MediaTypeString(partition.MediaType), strings.Join(partition.Hosts, ", "))
 }
 
 func formatBadReplicaDpInfoRow(partition *proto.DataPartitionInfo) string {
@@ -452,7 +453,7 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("IsDiscard     : %v\n", partition.IsDiscard))
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
-	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("MediaType     : %v\n", proto.MediaTypeString(partition.MediaType)))
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatDataReplicaTableHeader()))
 	for _, replica := range partition.Replicas {
@@ -652,6 +653,13 @@ func formatNodeOfflineStatus(status bool) string {
 		return "True"
 	}
 	return "False"
+}
+
+func formatNodeMediaType(mediaType uint32) string {
+	if mediaType == proto.MediaType_Unspecified {
+		return "N/A"
+	}
+	return proto.MediaTypeString(mediaType)
 }
 
 var (
