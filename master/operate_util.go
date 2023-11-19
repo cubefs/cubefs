@@ -29,9 +29,10 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+//TODO:tangjingyu param mediaType not used
 func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, members []proto.Peer,
 	dataPartitionSize, leaderSize int, hosts []string, createType int, partitionType int,
-	decommissionedDisks []string, verSeq uint64,
+	decommissionedDisks []string, verSeq uint64, mediaType uint32,
 ) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionTyp:        partitionType,
