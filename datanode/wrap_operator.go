@@ -354,7 +354,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		if err = json.Unmarshal(p.Data, ext); err == nil && proto.IsTinyExtent(ext.ExtentId) {
 			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size, remote)
-			if err = partition.MarkDelete(ext.ExtentId, 0, ext.ExtentOffset, uint64(ext.Size)); err != nil && log.IsWarnEnabled() {
+			if err = partition.MarkDelete(0, ext.ExtentId, ext.ExtentOffset, uint64(ext.Size)); err != nil && log.IsWarnEnabled() {
 				log.LogWarnf("partition[%v] mark delete tiny extent[id: %v, offset: %v, size: %v] failed: %v",
 					partition.ID(), ext.ExtentId, ext.ExtentOffset, ext.Size, err)
 			}
@@ -369,7 +369,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		}
 		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v) from(%v)",
 			p.PartitionID, p.ExtentID, remote)
-		if err = partition.MarkDelete(p.ExtentID, inode, 0, 0); err != nil && log.IsWarnEnabled() {
+		if err = partition.MarkDelete(inode, p.ExtentID, 0, 0); err != nil && log.IsWarnEnabled() {
 			log.LogWarnf("partition[%v] mark delete extent[id: %v, inode: %v] failed: %v",
 				partition.ID(), p.ExtentID, inode, err)
 		}

@@ -537,7 +537,7 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 }
 
 // MarkDelete marks the given extent as deleted.
-func (s *ExtentStore) MarkDelete(extentID, inode uint64, offset, size int64) (err error) {
+func (s *ExtentStore) MarkDelete(inode, extentID uint64, offset, size int64) (err error) {
 
 	defer func() {
 		if err != nil {
