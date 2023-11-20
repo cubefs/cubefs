@@ -807,9 +807,8 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reU
 				continue
 			}
 			ek, err = s.handler.write(data, offset, size, direct)
-			ek.SetSeq(s.verSeq)
-
 			if err == nil && ek != nil {
+				ek.SetSeq(s.verSeq)
 				if !s.dirty {
 					s.dirtylist.Put(s.handler)
 					s.dirty = true
