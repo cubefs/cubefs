@@ -154,9 +154,13 @@ func InitMonitorData(module string) []*MonitorData {
 	}
 	m := make([]*MonitorData, num)
 	for i := 0; i < num; i++ {
+		var tpMon *tpmonitor.TpMonitor
+		if module != ModelMetaNode || (module == ModelMetaNode && i >= proto.ActionMetaOpCreateInode) {
+			tpMon = tpmonitor.NewTpMonitor()
+		}
 		m[i] = &MonitorData{
-			tpMonitor: tpmonitor.NewTpMonitor(),
-			Action: i,
+			tpMonitor: tpMon,
+			Action:    i,
 			ActionStr: actionMap[i],
 		}
 	}

@@ -76,21 +76,45 @@ const (
 	ActionMetaExtentsList
 	ActionMetaTruncate
 	ActionMetaExtentsInsert
+	ActionMetaOpCreateInode
+	ActionMetaOpEvictInode
+	ActionMetaOpCreateDentry
+	ActionMetaOpDeleteDentry
+	ActionMetaOpLookup
+	ActionMetaOpReadDir
+	ActionMetaOpInodeGet
+	ActionMetaOpBatchInodeGet
+	ActionMetaOpExtentsAdd
+	ActionMetaOpExtentsList
+	ActionMetaOpTruncate
+	ActionMetaOpExtentsInsert
 )
 
 var ActionMetaMap = map[int]string{
-	ActionMetaCreateInode:   "createInode",
-	ActionMetaEvictInode:    "evictInode",
-	ActionMetaCreateDentry:  "createDentry",
-	ActionMetaDeleteDentry:  "deleteDentry",
-	ActionMetaLookup:        "lookup",
-	ActionMetaReadDir:       "readDir",
-	ActionMetaInodeGet:      "inodeGet",
-	ActionMetaBatchInodeGet: "batchInodeGet",
-	ActionMetaExtentsAdd:    "addExtents",
-	ActionMetaExtentsList:   "listExtents",
-	ActionMetaTruncate:      "truncate",
-	ActionMetaExtentsInsert: "insertExtent",
+	ActionMetaCreateInode:     "createInode",
+	ActionMetaEvictInode:      "evictInode",
+	ActionMetaCreateDentry:    "createDentry",
+	ActionMetaDeleteDentry:    "deleteDentry",
+	ActionMetaLookup:          "lookup",
+	ActionMetaReadDir:         "readDir",
+	ActionMetaInodeGet:        "inodeGet",
+	ActionMetaBatchInodeGet:   "batchInodeGet",
+	ActionMetaExtentsAdd:      "addExtents",
+	ActionMetaExtentsList:     "listExtents",
+	ActionMetaTruncate:        "truncate",
+	ActionMetaExtentsInsert:   "insertExtent",
+	ActionMetaOpCreateInode:   "opCreateInode",
+	ActionMetaOpEvictInode:    "opEvictInode",
+	ActionMetaOpCreateDentry:  "opCreateDentry",
+	ActionMetaOpDeleteDentry:  "opDeleteDentry",
+	ActionMetaOpLookup:        "opLookup",
+	ActionMetaOpReadDir:       "opReadDir",
+	ActionMetaOpInodeGet:      "opInodeGet",
+	ActionMetaOpBatchInodeGet: "opBatchInodeGet",
+	ActionMetaOpExtentsAdd:    "opAddExtents",
+	ActionMetaOpExtentsList:   "opListExtents",
+	ActionMetaOpTruncate:      "opTruncate",
+	ActionMetaOpExtentsInsert: "opInsertExtent",
 }
 
 const (

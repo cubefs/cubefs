@@ -128,6 +128,47 @@ func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
 	return
 }
 
+func (m *metadataManager) statisticsOpTimeDelay(p *Packet, startTime time.Time, cost int)  {
+	partition, err := m.GetPartition(p.PartitionID)
+	if err != nil {
+		return
+	}
+	mp, ok := partition.(*metaPartition)
+	if !ok {
+		return
+	}
+
+	var statisticsAction int
+	switch p.Opcode {
+	case proto.OpMetaCreateInode:
+		statisticsAction = proto.ActionMetaOpCreateInode
+	case proto.OpMetaEvictInode:
+		statisticsAction = proto.ActionMetaOpEvictInode
+	case proto.OpMetaCreateDentry:
+		statisticsAction = proto.ActionMetaOpCreateDentry
+	case proto.OpMetaDeleteDentry:
+		statisticsAction = proto.ActionMetaOpDeleteDentry
+	case proto.OpMetaLookup:
+		statisticsAction = proto.ActionMetaOpLookup
+	case proto.OpMetaReadDir:
+		statisticsAction = proto.ActionMetaOpReadDir
+	case proto.OpMetaInodeGet:
+		statisticsAction = proto.ActionMetaOpInodeGet
+	case proto.OpMetaBatchInodeGet:
+		statisticsAction = proto.ActionMetaOpBatchInodeGet
+	case proto.OpMetaExtentsAdd:
+		statisticsAction = proto.ActionMetaOpExtentsAdd
+	case proto.OpMetaExtentsList:
+		statisticsAction = proto.ActionMetaOpExtentsList
+	case proto.OpMetaTruncate:
+		statisticsAction = proto.ActionMetaOpTruncate
+	default:
+		return
+	}
+
+	mp.monitorData[statisticsAction].SetCost(0, cost, startTime)
+}
+
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
@@ -137,6 +178,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	defer func() {
 		cost := time.Since(start)
 		metric.SetWithCost(int64(cost/time.Millisecond), err)
+		m.statisticsOpTimeDelay(p, start, int(cost/time.Microsecond))
 	}()
 
 	switch p.Opcode {
