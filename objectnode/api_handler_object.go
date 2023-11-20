@@ -31,6 +31,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -47,7 +48,8 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		err       error
 		errorCode *ErrorCode
 	)
-	var startGet = time.Now()
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -137,8 +139,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		isRangeRead = true
-		log.LogDebugf("getObjectHandler: parse range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v) lower(%v) upper(%v)",
-			GetRequestID(r), param.Bucket(), param.Object(), rangeOpt, rangeLower, rangeUpper)
 	}
 
 	responseCacheControl := r.URL.Query().Get(ParamResponseCacheControl)
@@ -155,11 +155,9 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	responseContentDisposition := r.URL.Query().Get(ParamResponseContentDisposition)
 
 	// get object meta
-	var fileInfo *FSFileInfo
-	var xattr *proto.XAttrInfo
-	var start = time.Now()
-	fileInfo, xattr, err = vol.ObjectMeta(param.Object())
-	log.LogDebugf("getObjectHandler: get object meta cost: %v", time.Since(start))
+	start := time.Now()
+	fileInfo, xattr, err := vol.ObjectMeta(param.Object())
+	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
 		log.LogErrorf("getObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
@@ -290,7 +288,11 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		writer = w
 	}
+
+	// read file
+	start = time.Now()
 	err = vol.readFile(fileInfo.Inode, fileSize, param.Object(), writer, offset, size)
+	span.AppendTrackLog("file.r", start, err)
 	if err != nil {
 		log.LogErrorf("getObjectHandler: read file fail: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
@@ -299,8 +301,6 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	log.LogDebugf("getObjectHandler: read file success: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) cost(%v)",
-		GetRequestID(r), param.Bucket(), param.Object(), offset, size, time.Since(startGet))
 
 	return
 }
@@ -368,6 +368,8 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		err       error
 		errorCode *ErrorCode
 	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -398,8 +400,9 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// get object meta
-	var fileInfo *FSFileInfo
-	fileInfo, _, err = vol.ObjectMeta(param.Object())
+	start := time.Now()
+	fileInfo, _, err := vol.ObjectMeta(param.Object())
+	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
 		log.LogErrorf("headObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
@@ -535,6 +538,8 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		err       error
 		errorCode *ErrorCode
 	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -626,11 +631,10 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	deletedObjects := make([]Deleted, 0, len(deleteReq.Objects))
 	deletedErrors := make([]Error, 0)
 	objectKeys := make([]string, 0, len(deleteReq.Objects))
+	start := time.Now()
 	for _, object := range deleteReq.Objects {
 		result := POLICY_UNKNOW
 		if policy != nil && !policy.IsEmpty() {
-			log.LogDebugf("deleteObjectsHandler: policy check: requestID(%v) volume(%v) path(%v) policy(%v)",
-				GetRequestID(r), param.Bucket(), object.Key, policy)
 			conditionCheck := map[string]string{
 				SOURCEIP: param.sourceIP,
 				REFERER:  param.r.Referer(),
@@ -664,12 +668,11 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "AccessDenied", Message: err1.Error()})
 			}
 		} else {
-			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)",
-				GetRequestID(r), vol.Name(), object.Key)
 			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
 		}
 		rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 	}
+	span.AppendTrackLog("files.d", start, err)
 
 	deleteResult := DeleteResult{
 		Deleted: deletedObjects,
@@ -713,8 +716,12 @@ func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string
 // Copy object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html .
 func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -801,8 +808,11 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 			GetRequestID(r), sourceBucket, err)
 		return
 	}
-	var fileInfo *FSFileInfo
-	fileInfo, _, err = sourceVol.ObjectMeta(sourceObject)
+
+	// get object meta
+	start := time.Now()
+	fileInfo, _, err := sourceVol.ObjectMeta(sourceObject)
+	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
 		log.LogErrorf("copyObjectHandler: get object meta fail: requestID(%v) srcVolume(%v) srcObject(%v) err(%v)",
 			GetRequestID(r), sourceBucket, sourceObject, err)
@@ -876,6 +886,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// parse user-defined metadata
 	metadata := ParseUserDefinedMetadata(r.Header)
+
 	// copy file
 	opt := &PutFileOption{
 		MIMEType:     contentType,
@@ -886,7 +897,9 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ACL:          acl,
 		ObjectLock:   objetLock,
 	}
+	start = time.Now()
 	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
+	span.AppendTrackLog("file.c", start, err)
 	if err != nil && err != syscall.EINVAL && err != syscall.EFBIG {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
@@ -909,10 +922,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ETag:         "\"" + fsFileInfo.ETag + "\"",
 		LastModified: formatTimeISO(fsFileInfo.ModifyTime),
 	}
-	response, err := MarshalXMLEntity(copyResult)
-	if err != nil {
-		log.LogErrorf("copyObjectHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		return
+	response, ierr := MarshalXMLEntity(copyResult)
+	if ierr != nil {
+		log.LogErrorf("copyObjectHandler: marshal xml result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), copyResult, ierr)
 	}
 
 	writeSuccessResponseXML(w, response)
@@ -922,8 +935,12 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 // List objects v1
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html
 func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -981,16 +998,17 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var option = &ListFilesV1Option{
+	// list files
+	option := &ListFilesV1Option{
 		Prefix:     prefix,
 		Delimiter:  delimiter,
 		Marker:     marker,
 		MaxKeys:    maxKeysInt,
 		OnlyObject: true,
 	}
-
-	var result *ListFilesV1Result
-	result, err = vol.ListFilesV1(option)
+	start := time.Now()
+	result, err := vol.ListFilesV1(option)
+	span.AppendTrackLog("file.l", start, err)
 	if err != nil {
 		log.LogErrorf("getBucketV1Handler: list files fail: requestID(%v) volume(%v) option(%v) err(%v)",
 			GetRequestID(r), vol.Name(), option, err)
@@ -1057,8 +1075,12 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 // List objects version 2
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
 func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1137,7 +1159,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var option = &ListFilesV2Option{
+	// list files
+	option := &ListFilesV2Option{
 		Delimiter:  delimiter,
 		MaxKeys:    maxKeysInt,
 		Prefix:     prefix,
@@ -1145,9 +1168,9 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		FetchOwner: fetchOwnerBool,
 		StartAfter: startAfter,
 	}
-
-	var result *ListFilesV2Result
-	result, err = vol.ListFilesV2(option)
+	start := time.Now()
+	result, err := vol.ListFilesV2(option)
+	span.AppendTrackLog("file.l", start, err)
 	if err != nil {
 		log.LogErrorf("getBucketV2Handler: list files fail, requestID(%v) volume(%v) option(%v) err(%v)",
 			GetRequestID(r), vol.Name(), option, err)
@@ -1221,8 +1244,12 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 // Put object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
 func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1343,8 +1370,16 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	log.LogInfof("Audit: put object: requestID(%v) remote(%v) volume(%v) path(%v) type(%v)",
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object(), contentType)
 
-	var fsFileInfo *FSFileInfo
-	var opt = &PutFileOption{
+	// Flow Control
+	var reader io.Reader
+	if length > DefaultFlowLimitSize {
+		reader = rateLimit.GetReader(vol.owner, param.apiName, r.Body)
+	} else {
+		reader = r.Body
+	}
+
+	// Put Object
+	opt := &PutFileOption{
 		MIMEType:     contentType,
 		Disposition:  contentDisposition,
 		Tagging:      tagging,
@@ -1354,21 +1389,16 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ACL:          acl,
 		ObjectLock:   objetLock,
 	}
-	var startPut = time.Now()
-
-	// Flow Control
-	var reader io.Reader
-	if length > DefaultFlowLimitSize {
-		reader = rateLimit.GetReader(vol.owner, param.apiName, r.Body)
-	} else {
-		reader = r.Body
-	}
-	if fsFileInfo, err = vol.PutObject(param.Object(), reader, opt); err != nil {
+	start := time.Now()
+	fsFileInfo, err := vol.PutObject(param.Object(), reader, opt)
+	span.AppendTrackLog("file.w", start, err)
+	if err != nil {
 		log.LogErrorf("putObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
 		err = handlePutObjectErr(err)
 		return
 	}
+
 	// check content MD5
 	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
 		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
@@ -1376,8 +1406,6 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = BadDigest
 		return
 	}
-	log.LogDebugf("PutObject succeed, requestID(%v) volume(%v) key(%v) costTime: %v", GetRequestID(r),
-		vol.Name(), param.Object(), time.Since(startPut))
 
 	// set response header
 	w.Header()[ETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
@@ -1387,8 +1415,12 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 // Post object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPOST.html
 func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1586,8 +1618,10 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ACL:          aclInfo,
 		ObjectLock:   objetLock,
 	}
-	var fsFileInfo *FSFileInfo
-	if fsFileInfo, err = vol.PutObject(key, reader, putOpt); err != nil {
+	start := time.Now()
+	fsFileInfo, err := vol.PutObject(key, reader, putOpt)
+	span.AppendTrackLog("file.w", start, err)
+	if err != nil {
 		log.LogErrorf("postObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), key, err)
 		err = handlePutObjectErr(err)
@@ -1652,6 +1686,8 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 		err       error
 		errorCode *ErrorCode
 	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1684,7 +1720,10 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	log.LogInfof("Audit: delete object: requestID(%v) remote(%v) volume(%v) path(%v)",
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object())
 
+	// Delete file
+	start := time.Now()
 	err = vol.DeletePath(param.Object())
+	span.AppendTrackLog("file.d", start, err)
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
 			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
@@ -1701,8 +1740,12 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 // Get object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
 func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1730,8 +1773,11 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
-	var xattrInfo *proto.XAttrInfo
-	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil {
+	// get xattr
+	start := time.Now()
+	xattrInfo, err := vol.GetXAttr(param.object, XAttrKeyOSSTagging)
+	span.AppendTrackLog("xattr.r", start, err)
+	if err != nil {
 		log.LogErrorf("getObjectTaggingHandler: get volume XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
@@ -1756,8 +1802,12 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 // Put object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html
 func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1812,7 +1862,9 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	start := time.Now()
 	err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode()), false)
+	span.AppendTrackLog("xattr.w", start, err)
 	if err != nil {
 		log.LogErrorf("pubObjectTaggingHandler: set tagging xattr fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
@@ -1828,8 +1880,12 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 // Delete object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
 func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1857,7 +1913,10 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	}
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
-	if err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging); err != nil {
+	start := time.Now()
+	err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging)
+	span.AppendTrackLog("xattr.d", start, err)
+	if err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: volume delete tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		return
@@ -1869,8 +1928,12 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 
 // Put object extend attribute (xattr)
 func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1925,7 +1988,10 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err = vol.SetXAttr(param.object, key, []byte(value), true); err != nil {
+	start := time.Now()
+	err = vol.SetXAttr(param.object, key, []byte(value), true)
+	span.AppendTrackLog("xattr.w", start, err)
+	if err != nil {
 		log.LogErrorf("pubObjectXAttrHandler: volume set extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		if err == syscall.ENOENT {
@@ -1939,8 +2005,12 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 
 // Get object extend attribute (xattr)
 func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -1974,8 +2044,10 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var info *proto.XAttrInfo
-	if info, err = vol.GetXAttr(param.object, xattrKey); err != nil {
+	start := time.Now()
+	info, err := vol.GetXAttr(param.object, xattrKey)
+	span.AppendTrackLog("xattr.r", start, err)
+	if err != nil {
 		log.LogErrorf("getObjectXAttrHandler: get extend attribute fail: requestID(%v) volume(%v) object(%v) key(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), xattrKey, err)
 		if err == syscall.ENOENT {
@@ -1983,6 +2055,7 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
+
 	output := GetXAttrOutput{
 		XAttr: &XAttr{
 			Key:   xattrKey,
@@ -2002,8 +2075,12 @@ func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 
 // Delete object extend attribute (xattr)
 func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -2037,7 +2114,10 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err = vol.DeleteXAttr(param.object, xattrKey); err != nil {
+	start := time.Now()
+	err = vol.DeleteXAttr(param.object, xattrKey)
+	span.AppendTrackLog("xattr.d", start, err)
+	if err != nil {
 		log.LogErrorf("deleteObjectXAttrHandler: delete extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
 		if err == syscall.ENOENT {
@@ -2051,8 +2131,12 @@ func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Req
 
 // List object xattrs
 func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -2080,8 +2164,10 @@ func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
-	var keys []string
-	if keys, err = vol.ListXAttrs(param.object); err != nil {
+	start := time.Now()
+	keys, err := vol.ListXAttrs(param.object)
+	span.AppendTrackLog("xattr.l", start, err)
+	if err != nil {
 		log.LogErrorf("listObjectXAttrs: volume list extend attributes fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		if err == syscall.ENOENT {
@@ -2111,6 +2197,8 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 		err       error
 		errorCode *ErrorCode
 	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, errorCode)
 	}()
@@ -2133,7 +2221,9 @@ func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// get object meta
+	start := time.Now()
 	_, xattrs, err := vol.ObjectMeta(param.Object())
+	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
 		log.LogErrorf("getObjectRetentionHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)

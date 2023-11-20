@@ -186,6 +186,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 		no2xxBody:      j.cfg.No2xxBody,
 		span:           span,
 		startTime:      time.Now(),
+		statusCode:     http.StatusOK,
 		ResponseWriter: w,
 	}
 
