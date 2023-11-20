@@ -1473,7 +1473,7 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 // - Otherwise, throw errors
 
 func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreLoad, mediaType uint32) (dp *DataPartition, err error) {
-	log.LogInfof("action[createDataPartition] vol(%) preload(%v) mediType(%v)",
+	log.LogInfof("action[createDataPartition] vol(%v) preload(%v) mediType(%v)",
 		volName, preload, proto.MediaTypeString(mediaType))
 	var (
 		vol          *Vol
@@ -1797,7 +1797,7 @@ func (c *Cluster) getHostFromNormalZoneByMediaType(nodeType uint32, excludeZones
 	}
 
 	if len(zones) == 1 {
-		log.LogInfof("action[getHostFromNormalZoneByMediaType] zones [%v] mediaType(%V)",
+		log.LogInfof("action[getHostFromNormalZoneByMediaType] zones [%v] mediaType(%v)",
 			zones[0].name, proto.MediaTypeString(mediaType))
 		if hosts, peers, err = zones[0].getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, replicaNum); err != nil {
 			log.LogErrorf("action[getHostFromNormalZoneByMediaType],err[%v]", err.Error())

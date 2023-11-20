@@ -1512,7 +1512,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		c.addBadDataPartitionIdMap(dp)
 		//add to nodeset decommission list
 		go dp.addToDecommissionList(c)
-		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v],[mediaType]",
+		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v],mediaType[%v]",
 			vol.Name, dp.PartitionID, proto.MediaTypeString(dp.MediaType))
 	}
 	return
