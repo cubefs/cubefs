@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/tokenmanager"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -425,7 +426,7 @@ func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err erro
 		return dp.config.VolHAType
 	}
 	if dp.dataFixer, err = riskdata.NewFixer(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments,
-		dp.disk.issueFixConcurrentLimiter, gConnPool); err != nil {
+		dp.disk.issueFixConcurrentLimiter, gConnPool, dp.limit); err != nil {
 		return
 	}
 	return
@@ -851,6 +852,10 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 			dp.statusUpdate()
 			if index >= math.MaxUint32 {
 				index = 0
+			}
+			if err := dp.updateReplicas(); err != nil {
+				log.LogWarnf("DP[%v] update replicas failed: %v", dp.partitionID, err)
+				continue
 			}
 			if index%2 == 0 {
 				dp.runRepair(ctx, proto.TinyExtentType)
@@ -1380,7 +1385,7 @@ func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
 	}
 }
 
-func (dp *DataPartition) limit(ctx context.Context, op int, size uint32) (err error) {
+func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandType string) (err error) {
 	if dp == nil || dp.limiter == nil || dp.limiter.GetLimiter() == nil {
 		return ErrLimiterNil
 	}
@@ -1390,41 +1395,38 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32) (err er
 	propertyBuilder.SetOp(strconv.Itoa(op)).SetVol(dp.volumeID).SetDisk(dp.disk.Path)
 	statBuilder.SetCount(1)
 	switch op {
-	case int(proto.OpWrite):
-		if err = dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowNetwork).Properties(), statBuilder.SetInBytes(int(size)).Stat()); err != nil {
-			return
-		}
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+	case int(proto.OpWrite), int(proto.OpRandomWrite):
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
 	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead):
-		if err = dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowNetwork).Properties(), statBuilder.SetOutBytes(int(size)).Stat()); err != nil {
-			return
-		}
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
-	case int(proto.OpTinyExtentRepairRead), int(proto.OpExtentRepairRead):
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
-	case proto.OpExtentRepairWrite_:
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(multirate.FlowDisk).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+	case int(proto.OpTinyExtentRepairRead), int(proto.OpTinyExtentAvaliRead), int(proto.OpExtentRepairRead), proto.OpExtentRepairReadToRollback_,
+		proto.OpExtentRepairReadToComputeCrc_, proto.OpExtentRepairReadByPolicy_, proto.OpExtentReadToGetCrc_:
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+	case proto.OpExtentRepairWrite_, proto.OpExtentRepairWriteToApplyTempFile_:
+		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
 	default:
 		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
 	}
 }
 
-// todo: add properties to token manager
-func (dp *DataPartition) acquire(op int) (err error) {
-	//if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op) == nil {
-	//	return ErrLimiterNil
-	//}
-	//dp.limiter.GetTokenManager(op).GetRunToken(dp.partitionID)
+type tokenManagerWrapper struct {
+	tokenManager *tokenmanager.TokenManager
+	key          uint64
+}
+
+func (dp *DataPartition) acquire(op int) (manager *tokenManagerWrapper, err error) {
+	if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op, dp.path) == nil {
+		return nil, ErrLimiterNil
+	}
+	manager = &tokenManagerWrapper{
+		tokenManager: dp.limiter.GetTokenManager(op, dp.path),
+		key:          tokenManagerKeyGen.Add(1),
+	}
 	return
 }
 
-// todo: add properties to token manager
-func (dp *DataPartition) release(op int) (err error) {
-	//if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op) == nil {
-	//	return ErrLimiterNil
-	//}
-	//dp.limiter.GetTokenManager(op).GetRunToken(dp.partitionID)
-	return err
+func (manager *tokenManagerWrapper) release() {
+	manager.tokenManager.ReleaseToken(manager.key)
 }
 
 func (dp *DataPartition) backendRefreshCacheView() {

@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"io"
 	"math"
@@ -590,12 +591,13 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
 	if isRepairRead {
-		err = partition.acquire(int(proto.OpExtentRepairRead))
+		var tokenManager *tokenManagerWrapper
+		tokenManager, err = partition.acquire(int(proto.OpExtentRepairRead))
 		if err != nil {
 			return
 		}
 		defer func() {
-			err = partition.release(int(proto.OpExtentRepairRead))
+			tokenManager.release()
 		}()
 	}
 
@@ -631,7 +633,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
-		err = partition.limit(context.Background(), int(p.Opcode), currReadSize)
+		err = partition.limit(context.Background(), action, currReadSize, multirate.FlowDisk)
 		if err != nil {
 			return
 		}
@@ -932,12 +934,13 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 
 	partition := request.Object.(*DataPartition)
 
-	err = partition.acquire(int(proto.OpTinyExtentRepairRead))
+	var tokenManager *tokenManagerWrapper
+	tokenManager, err = partition.acquire(int(proto.OpTinyExtentRepairRead))
 	if err != nil {
 		return
 	}
 	defer func() {
-		err = partition.release(int(proto.OpTinyExtentRepairRead))
+		tokenManager.release()
 	}()
 
 	store := partition.ExtentStore()
@@ -977,14 +980,14 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		}
 		currNeedReplySize := newEnd - newOffset
 		currReadSize := uint32(unit.Min(int(currNeedReplySize), unit.ReadBlockSize))
+		err = partition.limit(context.Background(), int(proto.OpTinyExtentRepairRead), currReadSize, multirate.FlowDisk)
+		if err != nil {
+			return
+		}
 		if currReadSize == unit.ReadBlockSize {
 			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 		} else {
 			reply.Data = make([]byte, currReadSize)
-		}
-		err = partition.limit(context.Background(), int(request.Opcode), currReadSize)
-		if err != nil {
-			return
 		}
 		reply.ExtentOffset = offset
 		var tpObject = partition.monitorData[proto.ActionRepairRead].BeforeTp()
@@ -1079,6 +1082,10 @@ func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.C
 			break
 		}
 		currReadSize := uint32(unit.Min(int(currNeedReplySize), unit.ReadBlockSize))
+		err = partition.limit(context.Background(), int(proto.OpTinyExtentAvaliRead), currReadSize, multirate.FlowDisk)
+		if err != nil {
+			return
+		}
 		if currReadSize == unit.ReadBlockSize {
 			reply.Data, _ = proto.Buffers.Get(unit.ReadBlockSize)
 		} else {
@@ -1805,7 +1812,7 @@ func (s *DataNode) checkLimit(pkg *repl.Packet) (err error) {
 	if isStreamOp(int(pkg.Opcode)) {
 		return nil
 	}
-	return pkg.Object.(*DataPartition).limit(context.Background(), int(pkg.Opcode), pkg.Size)
+	return pkg.Object.(*DataPartition).limit(context.Background(), int(pkg.Opcode), pkg.Size, multirate.FlowNetwork)
 }
 
 func isStreamOp(op int) bool {

@@ -31,6 +31,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -67,6 +68,7 @@ var (
 	gHasFinishedLoadDisks       bool
 
 	maybeServerFaultOccurred bool // 是否判定当前节点大概率出现过系统断电
+	tokenManagerKeyGen       atomic.Uint64
 )
 
 const (
@@ -74,7 +76,7 @@ const (
 	DefaultRaftLogsToRetain  = 1000 // Count of raft logs per data partition
 	DefaultDiskMaxErr        = 1
 	DefaultDiskReservedSpace = 5 * unit.GB // GB
-	DefaultDiskUsableRatio = float64(0.90)
+	DefaultDiskUsableRatio   = float64(0.90)
 	DefaultDiskReservedRatio = 0.1
 )
 
@@ -613,14 +615,13 @@ func IsDiskErr(err error) bool {
 			strings.Contains(err.Error(), syscall.EROFS.Error()))
 }
 
-func (s *DataNode)rangeMonitorData(deal func(data *statistics.MonitorData, vol, path string, pid uint64)) {
+func (s *DataNode) rangeMonitorData(deal func(data *statistics.MonitorData, vol, path string, pid uint64)) {
 	s.space.WalkDisks(func(disk *Disk) bool {
 		for _, md := range disk.monitorData {
 			deal(md, "", disk.Path, 0)
 		}
 		return true
 	})
-
 
 	s.space.WalkPartitions(func(partition *DataPartition) bool {
 		for _, md := range partition.monitorData {

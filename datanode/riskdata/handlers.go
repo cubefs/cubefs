@@ -3,6 +3,7 @@ package riskdata
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"math"
 	"os"
@@ -145,6 +146,10 @@ func (p *Fixer) fixByFastTrustPolicy(hosts []string, hat proto.CrossRegionHAType
 			var extentWriteOffset = extentStartOffset + off
 			var extentWriteSize = int64(len(b))
 			var crc = crc32.ChecksumIEEE(b)
+			err = p.diskLimiter(context.Background(), proto.OpExtentRepairReadByPolicy_, uint32(extentWriteSize), multirate.FlowDisk)
+			if err != nil {
+				return
+			}
 			err = p.storage.Write(context.Background(), extentID, extentWriteOffset, extentWriteSize, b, crc, storage.RandomWriteType, false)
 			n = int(extentWriteSize)
 			return
@@ -215,6 +220,10 @@ func (p *Fixer) fixByStdTrustPolicy(hosts []string, hat proto.CrossRegionHAType,
 			var extentWriteOffset = extentStartOffset + off
 			var extentWriteSize = int64(len(b))
 			var crc = crc32.ChecksumIEEE(b)
+			err = p.diskLimiter(context.Background(), proto.OpExtentRepairReadByPolicy_, uint32(extentWriteSize), multirate.FlowDisk)
+			if err != nil {
+				return
+			}
 			err = p.storage.Write(context.Background(), extentID, extentWriteOffset, extentWriteSize, b, crc, storage.RandomWriteType, false)
 			if log.IsDebugEnabled() {
 				log.LogDebugf("Fixer[%v] write data to local storage: extent=%v, offset=%v, size=%v", p.partitionID, extentID, extentWriteOffset, extentWriteSize)

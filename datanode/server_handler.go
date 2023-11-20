@@ -1138,7 +1138,7 @@ func (s *DataNode) getExtentCrc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := partition.ExtentStore()
-	crc, err := store.GetExtentCrc(extentID)
+	crc, err := store.GetExtentCrc(extentID, partition.limit)
 	if err != nil {
 		log.LogErrorf("GetExtentCrc err(%v)", err)
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
@@ -1245,17 +1245,17 @@ func (s *DataNode) getSfxStatus(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
 	for _, diskItem := range s.space.GetDisks() {
 		disk := &struct {
-			Path               string `json:"path"`
-			IsSfx              bool   `json:"IsSfx"`
-			DevName            string `json:"devName"`
-			PhysicalUsedRatio  uint32 `json:"PhysicalUsedRatio"`
-			CompressionRatio   uint32 `json:"CompressionRatio"`
+			Path              string `json:"path"`
+			IsSfx             bool   `json:"IsSfx"`
+			DevName           string `json:"devName"`
+			PhysicalUsedRatio uint32 `json:"PhysicalUsedRatio"`
+			CompressionRatio  uint32 `json:"CompressionRatio"`
 		}{
-			Path:               diskItem.Path,
-			IsSfx:              diskItem.IsSfx,
-			DevName:            diskItem.devName,
-			PhysicalUsedRatio:  diskItem.PhysicalUsedRatio,
-			CompressionRatio:   diskItem.CompressionRatio,
+			Path:              diskItem.Path,
+			IsSfx:             diskItem.IsSfx,
+			DevName:           diskItem.devName,
+			PhysicalUsedRatio: diskItem.PhysicalUsedRatio,
+			CompressionRatio:  diskItem.CompressionRatio,
 		}
 		if disk.IsSfx {
 			disks = append(disks, disk)

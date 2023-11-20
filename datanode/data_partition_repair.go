@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"math"
 	"net"
@@ -833,13 +834,13 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		log.LogWarnf("partition(%v) is loading", dp.partitionID)
 		return
 	}
-
-	err = dp.acquire(proto.OpExtentRepairWrite_)
+	var tokenManager *tokenManagerWrapper
+	tokenManager, err = dp.acquire(proto.OpExtentRepairWrite_)
 	if err != nil {
 		return
 	}
 	defer func() {
-		err = dp.release(proto.OpExtentRepairWrite_)
+		tokenManager.release()
 	}()
 
 	var release, success = dp.tryLockExtentRepair(extentID)
@@ -987,7 +988,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				return errors.Trace(err, "streamRepairExtent repair data error ")
 			}
 			if !emptyResponse {
-				err = dp.limit(context.Background(), proto.OpExtentRepairWrite_, uint32(currRecoverySize))
+				err = dp.limit(context.Background(), proto.OpExtentRepairWrite_, uint32(currRecoverySize), multirate.FlowDisk)
 				if err != nil {
 					return
 				}
@@ -1004,11 +1005,11 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				break
 			}
 		} else {
-			var tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
-			err = dp.limit(context.Background(), proto.OpExtentRepairWrite_, uint32(currFixOffset))
+			err = dp.limit(context.Background(), proto.OpExtentRepairWrite_, uint32(currRecoverySize), multirate.FlowDisk)
 			if err != nil {
 				return
 			}
+			var tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
 			err = store.Write(ctx, extentID, int64(currFixOffset), int64(reply.Size), reply.Data[0:reply.Size], reply.CRC, storage.AppendWriteType, BufferWrite)
 			tpObject.AfterTp(uint64(reply.Size))
 		}

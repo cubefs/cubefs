@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"io"
 	"math"
@@ -50,6 +51,7 @@ const (
 
 type GetRemotesFunc func() []string
 type GetHATypeFunc func() proto.CrossRegionHAType
+type DiskLimiter func(ctx context.Context, op int, size uint32, bandType string) (err error)
 
 var (
 	emptyFragmentBinary = []byte{
@@ -123,6 +125,7 @@ func (f WriterAtFunc) WriteAt(b []byte, off int64) (n int, err error) {
 type Fixer struct {
 	path            string
 	partitionID     uint64
+	diskLimiter     DiskLimiter
 	connPool        *connpool.ConnectPool
 	indexes         []*fragmentIndex
 	indexNextOffset int64
@@ -336,6 +339,10 @@ func (p *Fixer) computeLocalCRC(fragment *Fragment) (crc uint32, err error) {
 
 	for remain > 0 {
 		var readSize = int64(math.Min(float64(remain), float64(unit.BlockSize)))
+		err = p.diskLimiter(context.Background(), proto.OpExtentRepairReadToComputeCrc_, uint32(readSize), multirate.FlowDisk)
+		if err != nil {
+			return
+		}
 		_, err = p.storage.Read(extentID, readOffset, readSize, buf[:readSize], false, true)
 		if log.IsDebugEnabled() {
 			log.LogDebugf("Fixer[%v] read storage: extent=%v, offset=%v, size=%v, error=%v",
@@ -509,6 +516,10 @@ func (p *Fixer) applyTempFileToExtent(f *os.File, extentID, offset, size uint64)
 			return
 		}
 		var crc = crc32.ChecksumIEEE(buf[:readSize])
+		err = p.diskLimiter(context.Background(), proto.OpExtentRepairWriteToApplyTempFile_, uint32(readSize), multirate.FlowDisk)
+		if err != nil {
+			return
+		}
 		if err = p.storage.Write(context.Background(), extentID, extentOffset, readSize, buf[:readSize], crc, storage.RandomWriteType, false); err != nil {
 			return
 		}
@@ -810,7 +821,7 @@ func (p *Fixer) closeFp() (err error) {
 }
 
 func NewFixer(partitionID uint64, path string, storage *storage.ExtentStore, getRemotes GetRemotesFunc, getHAType GetHATypeFunc,
-	fragments []*Fragment, limiter *concurrent.Limiter, connPool *connpool.ConnectPool) (*Fixer, error) {
+	fragments []*Fragment, limiter *concurrent.Limiter, connPool *connpool.ConnectPool, diskLimiter DiskLimiter) (*Fixer, error) {
 	var err error
 	var p = &Fixer{
 		partitionID:   partitionID,
@@ -825,6 +836,7 @@ func NewFixer(partitionID uint64, path string, storage *storage.ExtentStore, get
 		codecReuseBuf: make([]byte, fragmentBinaryLength),
 		connPool:      connPool,
 		persistFp:     nil,
+		diskLimiter:   diskLimiter,
 	}
 	if err = p.initFragments(); err != nil {
 		return nil, err
