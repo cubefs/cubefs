@@ -80,6 +80,11 @@ func (data *MonitorData) String() string {
 		data.ActionStr, data.Action, data.Count, data.Size)
 }
 
+func (data *ReportData) String() string {
+	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)Tp99(%v)Max(%v)Avg(%v)Disk(%v)ReportTime(%v)IsTotal(%v)}",
+		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.Tp99, data.Max, data.Avg, data.DiskPath, data.ReportTime, data.IsTotal)
+}
+
 func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistics {
 	return &Statistics{
 		cluster:       cluster,
