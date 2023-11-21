@@ -1748,7 +1748,11 @@ result:
 func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
 	value, ok := c.dataNodes.Load(addr)
 	if !ok {
-		err = errors.Trace(dataNodeNotFound(addr), "%v not found", addr)
+		if !c.IsLeader() {
+			err = errors.New("meta data for data nodes is cleared due to leader change!")
+		} else {
+			err = errors.Trace(dataNodeNotFound(addr), "%v not found", addr)
+		}
 		return
 	}
 
@@ -1759,7 +1763,11 @@ func (c *Cluster) dataNode(addr string) (dataNode *DataNode, err error) {
 func (c *Cluster) metaNode(addr string) (metaNode *MetaNode, err error) {
 	value, ok := c.metaNodes.Load(addr)
 	if !ok {
-		err = errors.Trace(metaNodeNotFound(addr), "%v not found", addr)
+		if !c.IsLeader() {
+			err = errors.New("meta data for meta nodes is cleared due to leader change!")
+		} else {
+			err = errors.Trace(metaNodeNotFound(addr), "%v not found", addr)
+		}
 		return
 	}
 	metaNode = value.(*MetaNode)
