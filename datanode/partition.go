@@ -700,13 +700,8 @@ func (dp *DataPartition) Delete() {
 	_ = os.RemoveAll(dp.Path())
 }
 
-func (dp *DataPartition) MarkDelete(inode, extentID, offset, size uint64) (err error) {
-	err = dp.extentStore.MarkDelete(inode, extentID, int64(offset), int64(size))
-	return
-}
-
-func (dp *DataPartition) BatchMarkDelete(batch storage.Batch) (err error) {
-	err = dp.extentStore.BatchMarkDelete(batch)
+func (dp *DataPartition) MarkDelete(marker storage.Marker) (err error) {
+	err = dp.extentStore.MarkDelete(marker)
 	return
 }
 
@@ -1146,7 +1141,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 				} else {
 					DeleteLimiterWait()
 					log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, dr.extentID, dr.offset, dr.size)
-					store.MarkDelete(0, dr.extentID, int64(dr.offset), int64(dr.size))
+					_ = store.MarkDelete(storage.SingleMarker(0, dr.extentID, int64(dr.offset), int64(dr.size)))
 				}
 			}
 		}

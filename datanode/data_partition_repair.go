@@ -376,7 +376,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTask *D
 	}
 
 	if num := len(repairTask.ExtentsToBeDeleted); num > 0 {
-		var batch = storage.NewBatch(num)
+		var batch = storage.BatchMarker(num)
 		for _, extentInfo := range repairTask.ExtentsToBeDeleted {
 			var extentID = extentInfo[storage.FileID]
 			if !store.IsFinishLoad() || proto.IsTinyExtent(extentID) || store.IsDeleted(extentID) {
@@ -457,7 +457,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		repairTask.ExtentsToBeRepaired = append(repairTask.ExtentsToBeRepaired, info)
 	}
 	if num := len(repairTask.ExtentsToBeDeleted); num > 0 {
-		var batch = storage.NewBatch(num)
+		var batch = storage.BatchMarker(num)
 		for _, extentInfo := range repairTask.ExtentsToBeDeleted {
 			var extentID = extentInfo[storage.FileID]
 			if !store.IsFinishLoad() || proto.IsTinyExtent(extentID) || store.IsDeleted(extentID) {

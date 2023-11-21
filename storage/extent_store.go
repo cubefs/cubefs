@@ -117,24 +117,31 @@ var (
 	}
 )
 
-type Batch [][4]uint64
+type Marker interface {
+	Len() int
+	Get(i int) (ino, extent uint64, offset, size int64)
+	Add(ino, extent uint64, offset, size int64)
+	Walk(f func(i int, ino, extent uint64, offset, size int64) bool)
+}
 
-func (b *Batch) Len() int {
+type batchMarker [][4]uint64
+
+func (b *batchMarker) Len() int {
 	return len(*b)
 }
 
-func (b *Batch) Get(i int) (ino, extent uint64, offset, size int64) {
+func (b *batchMarker) Get(i int) (ino, extent uint64, offset, size int64) {
 	v := (*b)[i]
 	return v[0], v[1], int64(v[2]), int64(v[3])
 }
 
-func (b *Batch) Add(ino, extent uint64, offset, size int64) {
+func (b *batchMarker) Add(ino, extent uint64, offset, size int64) {
 	*b = append(*b, [4]uint64{
 		ino, extent, uint64(offset), uint64(size),
 	})
 }
 
-func (b *Batch) Walk(f func(i int, ino, extent uint64, offset, szie int64) bool) {
+func (b *batchMarker) Walk(f func(i int, ino, extent uint64, offset, size int64) bool) {
 	if f == nil {
 		return
 	}
@@ -145,8 +152,37 @@ func (b *Batch) Walk(f func(i int, ino, extent uint64, offset, szie int64) bool)
 	}
 }
 
-func NewBatch(capacity int) Batch {
-	return make([][4]uint64, 0, capacity)
+func BatchMarker(capacity int) Marker {
+	b := batchMarker(make([][4]uint64, 0, capacity))
+	return &b
+}
+
+type singleMarker [4]uint64
+
+func (b *singleMarker) Len() int {
+	return 1
+}
+
+func (b *singleMarker) Get(i int) (ino, extent uint64, offset, size int64) {
+	if i != 0 {
+		panic("single marker only have one record")
+	}
+	return b[0], b[1], int64(b[2]), int64(b[3])
+}
+
+func (b *singleMarker) Add(_, _ uint64, _, _ int64) {
+	panic("single marker do not allow to add record")
+}
+
+func (b *singleMarker) Walk(f func(i int, ino uint64, extent uint64, offset int64, size int64) bool) {
+	if f != nil {
+		f(0, (*b)[0], (*b)[1], int64((*b)[2]), int64((*b)[3]))
+	}
+}
+
+func SingleMarker(ino, extent uint64, offset, size int64) Marker {
+	b := singleMarker{ino, extent, uint64(offset), uint64(size)}
+	return &b
 }
 
 // ExtentStore defines fields used in the storage engine.
@@ -162,7 +198,6 @@ type ExtentStore struct {
 	//extentInfoMap                     sync.Map // map that stores all the extent information
 	infoStore                         *ExtentInfoStore
 	inodeIndex                        *inodeIndex
-	extentCnt                         int64
 	cache                             *ExtentCache // extent cache
 	mutex                             sync.Mutex
 	storeSize                         int      // size of the extent store
@@ -325,7 +360,6 @@ func (s *ExtentStore) Create(extentID, inode uint64, putCache bool) (err error) 
 	}
 	s.infoStore.Create(extentID, inode)
 	s.infoStore.Update(extentID, 0, uint64(time.Now().Unix()), 0)
-	atomic.AddInt64(&s.extentCnt, 1)
 	_ = s.AdvanceBaseExtentID(extentID)
 	return
 }
@@ -355,11 +389,8 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 		if extentID, isExtent = s.ExtentID(name); !isExtent {
 			continue
 		}
-		if s.IsDeleted(extentID) {
-			// Do not load deleted extents
-			continue
-		}
-		if proto.IsTinyExtent(extentID) {
+		switch {
+		case proto.IsTinyExtent(extentID):
 			s.infoStore.Create(extentID, 0)
 			name := path.Join(s.dataPath, strconv.FormatUint(extentID, 10))
 			info, statErr := os.Stat(name)
@@ -373,7 +404,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 				watermark = watermark + (PageSize - watermark%PageSize)
 			}
 			s.infoStore.Update(extentID, uint64(watermark), uint64(info.ModTime().Unix()), 0)
-		} else {
+		case !s.IsDeleted(extentID):
 			var inode uint64
 			if inode, err = s.inodeIndex.Get(extentID); err != nil {
 				return
@@ -382,8 +413,8 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 			if extentID > baseFileID {
 				baseFileID = extentID
 			}
+		default:
 		}
-		atomic.AddInt64(&s.extentCnt, 1)
 	}
 	baseFileID = uint64(math.Max(float64(MinNormalExtentID), float64(baseFileID))) + BaseExtentAddNumOnInitExtentStore
 	if err = s.AdvanceBaseExtentID(baseFileID); err != nil {
@@ -537,7 +568,7 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 }
 
 // MarkDelete marks the given extent as deleted.
-func (s *ExtentStore) MarkDelete(inode, extentID uint64, offset, size int64) (err error) {
+func (s *ExtentStore) __markDeleteOne(inode, extentID uint64, offset, size int64) (err error) {
 
 	defer func() {
 		if err != nil {
@@ -563,7 +594,6 @@ func (s *ExtentStore) MarkDelete(inode, extentID uint64, offset, size int64) (er
 			}
 			s.cache.Del(extentID)
 			s.infoStore.Delete(extentID)
-			atomic.AddInt64(&s.extentCnt, -1)
 		}
 		s.recentDeletedExtents.Store(extentID, nowUnixSec)
 	}
@@ -571,33 +601,14 @@ func (s *ExtentStore) MarkDelete(inode, extentID uint64, offset, size int64) (er
 	return
 }
 
-func (s *ExtentStore) BatchMarkDelete(batch Batch) (err error) {
-
-	defer func() {
-		if err != nil {
-			log.LogErrorf("Store(%v) batch mark delete failed: batchsize=%v, error=%v", s.partitionID, batch.Len(), err)
-			return
-		}
-		if log.IsDebugEnabled() && batch.Len() > 0 {
-			log.LogDebugf("Store(%v) batch mark delete extents: batchsize=%v", s.partitionID, batch.Len())
-		}
-	}()
-
-	switch batch.Len() {
-	case 0:
-		return
-	case 1:
-		err = s.MarkDelete(batch.Get(0))
-		return
-	default:
-	}
+func (s *ExtentStore) __markDeleteMore(marker Marker) (err error) {
 	var producer *BatchProducer
-	if producer, err = s.deletionQueue.BatchProduce(len(batch)); err != nil {
+	if producer, err = s.deletionQueue.BatchProduce(marker.Len()); err != nil {
 		return
 	}
 
 	var nowUnixSec = time.Now().Unix()
-	batch.Walk(func(_ int, ino, extent uint64, offset, size int64) bool {
+	marker.Walk(func(_ int, ino, extent uint64, offset, size int64) bool {
 		if !proto.IsTinyExtent(extent) {
 			if s.IsDeleted(extent) {
 				// Skip cause target normal extent have been marked as deleted.
@@ -609,18 +620,40 @@ func (s *ExtentStore) BatchMarkDelete(batch Batch) (err error) {
 				}
 				s.cache.Del(extent)
 				s.infoStore.Delete(extent)
-				atomic.AddInt64(&s.extentCnt, -1)
 			}
 			s.recentDeletedExtents.Store(extent, nowUnixSec)
 		}
 		producer.Add(ino, extent, offset, size, nowUnixSec)
 		if log.IsDebugEnabled() {
-			log.LogDebugf("Store(%v) batch mark delete: ino=%v, extent=%v, offset=%v, size=%v",
+			log.LogDebugf("Store(%v) batchMarker mark delete: ino=%v, extent=%v, offset=%v, size=%v",
 				s.partitionID, ino, extent, offset, size)
 		}
 		return true
 	})
 	err = producer.Submit()
+	return
+}
+
+func (s *ExtentStore) MarkDelete(marker Marker) (err error) {
+
+	defer func() {
+		if err != nil {
+			log.LogErrorf("Store(%v) batchMarker mark delete failed: batchsize=%v, error=%v", s.partitionID, marker.Len(), err)
+			return
+		}
+		if log.IsDebugEnabled() && marker.Len() > 0 {
+			log.LogDebugf("Store(%v) batchMarker mark delete extents: batchsize=%v", s.partitionID, marker.Len())
+		}
+	}()
+
+	switch marker.Len() {
+	case 0:
+		return
+	case 1:
+		err = s.__markDeleteOne(marker.Get(0))
+	default:
+		err = s.__markDeleteMore(marker)
+	}
 	return
 }
 
@@ -1140,7 +1173,7 @@ func (s *ExtentStore) IsDeleted(extentID uint64) (deleted bool) {
 
 // GetExtentCount returns the seq of extents in the extentInfoMap
 func (s *ExtentStore) GetExtentCount() (count int) {
-	return int(atomic.LoadInt64(&s.extentCnt))
+	return s.infoStore.Len()
 }
 
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {

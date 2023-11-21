@@ -195,8 +195,8 @@ func (ms *ExtentInfoStore) RangeDist(extentType uint8, f func(extentID uint64, e
 }
 
 func (ms *ExtentInfoStore) Len() int {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
 	var tinyCount int
 	for _, tinyExtent := range ms.tinyExtents {
 		if tinyExtent[FileID] != 0 {

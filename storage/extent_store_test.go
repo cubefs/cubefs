@@ -295,7 +295,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 					return
 				}
 				for _, eib := range eibs {
-					_ = storage.MarkDelete(0, eib[FileID], 0, 0)
+					_ = storage.MarkDelete(SingleMarker(0, eib[FileID], 0, 0))
 				}
 			}
 		}
