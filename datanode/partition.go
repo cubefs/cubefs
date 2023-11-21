@@ -1411,19 +1411,19 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32) (err er
 
 // todo: add properties to token manager
 func (dp *DataPartition) acquire(op int) (err error) {
-	if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op) == nil {
-		return ErrLimiterNil
-	}
-	dp.limiter.GetTokenManager(op).GetRunToken(dp.partitionID)
+	//if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op) == nil {
+	//	return ErrLimiterNil
+	//}
+	//dp.limiter.GetTokenManager(op).GetRunToken(dp.partitionID)
 	return
 }
 
 // todo: add properties to token manager
 func (dp *DataPartition) release(op int) (err error) {
-	if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op) == nil {
-		return ErrLimiterNil
-	}
-	dp.limiter.GetTokenManager(op).GetRunToken(dp.partitionID)
+	//if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op) == nil {
+	//	return ErrLimiterNil
+	//}
+	//dp.limiter.GetTokenManager(op).GetRunToken(dp.partitionID)
 	return err
 }
 

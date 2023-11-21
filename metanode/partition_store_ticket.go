@@ -81,7 +81,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	storeTicker := time.NewTicker(intervalDumpSnap)
 	dumpFunc := func(msg *storeMsg) {
 		defer func() {
-			mp.manager.tokenM.PutRunToken(mp.config.PartitionId)
+			mp.manager.tokenM.ReleaseToken(mp.config.PartitionId)
 		}()
 		log.LogWarnf("[beforMetaPartitionStore] partitionId=%d: nowAppID"+
 			"=%d, applyID=%d", mp.config.PartitionId, curIndex,
@@ -127,6 +127,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				timer.Stop()
 				timerCursor.Stop()
 				storeTicker.Stop()
+				mp.manager.tokenM.ReleaseToken(mp.config.PartitionId)
 
 				return
 
@@ -165,7 +166,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					go dumpFunc(maxMsg)
 				} else {
 					//no dump exe, release token
-					mp.manager.tokenM.PutRunToken(mp.config.PartitionId)
+					mp.manager.tokenM.ReleaseToken(mp.config.PartitionId)
 				}
 				msgs = msgs[:0]
 			case msg := <-mp.storeChan:

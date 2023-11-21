@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/multirate"
 	"math"
 	"math/rand"
 	"os"
@@ -22,7 +23,8 @@ func ApplyMock(elem interface{},command []byte, index uint64) (resp interface{},
 func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.StoreMode, rootDir string, applyFunc metamock.ApplyFunc) (*metaPartition, error) {
 	_ = os.RemoveAll(rootDir)
 	_ = os.MkdirAll(rootDir, 0666)
-	node := &MetaNode{nodeId: metaNodeID, metadataDir: rootDir}
+	node := &MetaNode{nodeId: metaNodeID, metadataDir: rootDir, limitManager: &multirate.LimiterManager{}}
+	node.initFetchTopologyManager()
 	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node}
 	conf := &MetaPartitionConfig{
 		RocksDBDir:  rootDir,

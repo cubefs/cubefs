@@ -12,7 +12,7 @@ func TestGetTokenSuccess(t *testing.T) {
         t.Fatalf("need success, but now failed\n")
     }
 
-    tokenM.PutRunToken(1)
+    tokenM.ReleaseToken(1)
 
     if !tokenM.GetRunToken(3) {
         t.Fatalf("need success, but now failed\n")
@@ -58,7 +58,7 @@ func TestResetTokenAdd(t *testing.T) {
         t.Fatalf("need success, but now failed\n")
     }
 
-    tokenM.PutRunToken(3)
+    tokenM.ReleaseToken(3)
 
     if tokenM.GetRunToken(2) {
         //repeat
@@ -90,7 +90,7 @@ func TestResetTokenDec(t *testing.T) {
 
     tokenM.ResetRunCnt(2)
 
-    tokenM.PutRunToken(3)
+    tokenM.ReleaseToken(3)
 
     if tokenM.GetRunToken(3) {
         //repeat
@@ -101,7 +101,7 @@ func TestResetTokenDec(t *testing.T) {
         t.Fatalf("need success, but now failed\n")
     }
 
-    tokenM.PutRunToken(1)
+    tokenM.ReleaseToken(1)
     if tokenM.GetRunToken(4) {
         t.Fatalf("need failed, but now success\n")
     }
@@ -110,7 +110,7 @@ func TestResetTokenDec(t *testing.T) {
         t.Fatalf("need success, but now failed\n")
     }
 
-    tokenM.PutRunToken(2)
+    tokenM.ReleaseToken(2)
 
     if !tokenM.GetRunToken(4) {
         t.Fatalf("need success, but now failed\n")
@@ -131,13 +131,13 @@ func TestPutTokenFailed(t *testing.T) {
         t.Fatalf("need success, but now failed\n")
     }
 
-    tokenM.PutRunToken(4)
+    tokenM.ReleaseToken(4)
 
     if tokenM.GetRunToken(4) {
         t.Fatalf("need failed, but now success\n")
     }
 
-    tokenM.PutRunToken(2)
+    tokenM.ReleaseToken(2)
 
     if !tokenM.GetRunToken(4) {
         t.Fatalf("need success, but now failed\n")

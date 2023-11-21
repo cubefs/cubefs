@@ -126,7 +126,9 @@ func (f *FetchTopologyManager) GetPartition(volName string, dpID uint64) (dataPa
 
 // 调用master接口立即获取一次partition的信息,仅给data node使用
 func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint64) (dataPartition *DataPartition, err error) {
-	_ = f.limiter.Wait(context.Background(), rateLimitProperties)
+	if f.limiter != nil {
+		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
+	}
 	var dataPartitionInfo *proto.DataPartitionInfo
 	dataPartitionInfo, err = f.masterDomainClient.AdminAPI().GetDataPartition(volName, dpID)
 	if err != nil {
@@ -145,7 +147,9 @@ func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint6
 
 // 调用master接口立即获取一次partition raft peer的信息,仅给data node使用
 func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dpID uint64) (offlinePeerID uint64, peers []proto.Peer, err error) {
-	_ = f.limiter.Wait(context.Background(), rateLimitProperties)
+	if f.limiter != nil {
+		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
+	}
 	var dataPartitionInfo *proto.DataPartitionInfo
 	dataPartitionInfo, err = f.masterDomainClient.AdminAPI().GetDataPartition(volName, dpID)
 	if err != nil {

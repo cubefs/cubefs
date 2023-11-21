@@ -5,6 +5,10 @@ import (
     "sync"
 )
 
+const (
+    defMaxWaitToken  = 10 * 10000            //10W
+)
+
 type TokenManager struct {
     mu            sync.RWMutex
     runningId     []uint64
@@ -76,6 +80,10 @@ func (tokeM *TokenManager) GetRunToken(Key uint64) (canExe bool){
     defer tokeM.mu.Unlock()
 
     defer func() {
+        for ; tokeM.waitIdList.Len() > defMaxWaitToken; {
+            tokeM.waitIdList.Remove(tokeM.waitIdList.Front())
+        }
+
         if canExe {
             for index := 0; index < len(tokeM.runningId); index++ {
                 if tokeM.runningId[index] == 0 {
@@ -118,14 +126,22 @@ func (tokeM *TokenManager) GetRunToken(Key uint64) (canExe bool){
     return
 }
 
-func (tokeM *TokenManager) PutRunToken(Key uint64) {
+func (tokeM *TokenManager) ReleaseToken(Key uint64) {
     tokeM.mu.Lock()
     defer tokeM.mu.Unlock()
     for i := 0; i < len(tokeM.runningId); i++ {
         if tokeM.runningId[i] == Key {
             tokeM.runningId[i] = 0
             tokeM.runningCount--
-            return
+            break
         }
     }
+
+    for iter := tokeM.waitIdList.Front(); iter != nil; iter = iter.Next() {
+        if iter.Value.(uint64) == Key {
+            tokeM.waitIdList.Remove(iter)
+            break
+        }
+    }
+    return
 }
