@@ -346,20 +346,13 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 
 	//Fix#760: when nlink == 0, push into freeList and delay delete inode after 7 days
 	if inode.IsTempFile() {
-		mp.updateUsedInfo(-1*int64(inode.Size), -1, inode.Inode)
-		inode.DoWriteFunc(func() {
-			if inode.NLink == 0 {
-				inode.AccessTime = time.Now().Unix()
-				mp.freeList.Push(inode.Inode)
-				mp.uidManager.doMinusUidSpace(inode.Uid, inode.Inode, inode.Size)
-			}
-		})
-
 		// all snapshot between create to last deletion cleaned
 		if inode.NLink == 0 && inode.getLayerLen() == 0 {
+			mp.updateUsedInfo(-1*int64(inode.Size), -1, inode.Inode)
 			log.LogDebugf("action[fsmUnlinkInode] mp %v unlink inode %v and push to freeList", mp.config.PartitionId, inode)
 			inode.AccessTime = time.Now().Unix()
 			mp.freeList.Push(inode.Inode)
+			mp.uidManager.doMinusUidSpace(inode.Uid, inode.Inode, inode.Size)
 			log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v", mp.config.PartitionId, inode)
 		}
 	}
