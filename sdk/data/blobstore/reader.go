@@ -273,6 +273,12 @@ func (reader *Reader) buildExtentKey(rs *rwSlice) {
 
 func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err error) {
 	defer reader.wg.Done()
+
+	//TODO:tangjingyu test only
+	if reader.ebs == nil {
+		log.LogDebugf("####### [readSliceRange] reader.ebs is nil")
+	}
+
 	log.LogDebugf("TRACE blobStore readSliceRange Enter. ino(%v)  rs.fileOffset(%v),rs.rOffset(%v),rs.rSize(%v) ", reader.ino, rs.fileOffset, rs.rOffset, rs.rSize)
 	cacheKey := util.GenerateKey(reader.volName, reader.ino, rs.fileOffset)
 	log.LogDebugf("TRACE blobStore readSliceRange. ino(%v)  cacheKey(%v) ", reader.ino, cacheKey)
@@ -362,6 +368,11 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 }
 
 func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtentKey proto.ObjExtentKey) {
+	//TODO:tangjingyu test only set nil
+	if reader.ebs == nil {
+		log.LogDebugf("####### [asyncCache] reader.ebs is nil, cacheKey=%v", cacheKey)
+	}
+
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {

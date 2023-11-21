@@ -85,7 +85,7 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	if dp != nil {
 		//TODO:tangjingyu test only
 		log.LogInfof("############ DefaultRandomSelector[Select]: targetMediaType(%v), selected dpId(%v) mediaType(%v)",
-			mediaType, dp.PartitionID, proto.MediaTypeString(dp.MediaType))
+			proto.MediaTypeString(mediaType), dp.PartitionID, proto.MediaTypeString(dp.MediaType))
 		return dp, nil
 	}
 

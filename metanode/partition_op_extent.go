@@ -48,6 +48,8 @@ func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, in
 		return
 	}
 	inode = item.(*Inode)
+	iParm.StorageClass = inode.StorageClass
+
 	mp.uidManager.acLock.Lock()
 	if mp.uidManager.getUidAcl(inode.Uid) {
 		log.LogWarnf("CheckQuota UidSpace.vol %v mp[%v] uid %v be set full", mp.uidManager.mpID, mp.uidManager.volName, inode.Uid)
@@ -419,8 +421,8 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	if !ino.storeInReplicaSystem() && req.IsCache != true {
 		status = proto.OpErr
-		reply = []byte(fmt.Sprintf("ino storage type %v IsCache %v do not support ExtentsList",
-			ino.StorageClass, req.IsCache))
+		reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) IsCache(%v) not support ExtentsList",
+			ino.Inode, ino.StorageClass, req.IsCache))
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
@@ -650,7 +652,8 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 		return
 	}
 	if ino.StorageClass != proto.StorageClass_BlobStore {
-		err = errors.New(fmt.Sprintf("ino StorageClass %v donot support BatchObjExtentAppend", ino.StorageClass))
+		err = errors.New(fmt.Sprintf("ino(%v) StorageClass(%v) donot support BatchObjExtentAppend",
+			ino.Inode, ino.StorageClass))
 		log.LogErrorf("BatchObjExtentAppend fail [%v]", err)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return

@@ -449,11 +449,15 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 
 // RefreshExtentsCache refreshes the extent cache.
 func (client *ExtentClient) RefreshExtentsCache(inode uint64) error {
-	s := client.GetStreamer(inode)
-	if s == nil {
-		return nil
-	}
-	return s.GetExtents()
+	log.LogDebugf("######  RefreshExtentsCache: ino(%v)", inode) //TODO:tangjingyu del
+	return nil
+	//TODO:tangjingyu discuss with hechi
+
+	//s := client.GetStreamer(inode)
+	//if s == nil {
+	//	return nil
+	//}
+	//return s.GetExtents()
 }
 
 func (client *ExtentClient) ForceRefreshExtentsCache(inode uint64) error {
@@ -551,6 +555,7 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 }
 
 func (client *ExtentClient) Flush(inode uint64) error {
+	log.LogDebugf("########## ExtentClient Flush: ino(%v)", inode)
 	s := client.GetStreamer(inode)
 	if s == nil {
 		log.LogErrorf("Flush: stream is not opened yet, ino(%v)", inode)

@@ -404,8 +404,8 @@ const (
 	TypeDataPartition uint32 = 0x02
 )
 
-func (c *Cluster) getHostFromDomainZone(domainId uint64, createType uint32, replicaNum uint8, storageClass uint32) (hosts []string, peers []proto.Peer, err error) {
-	hosts, peers, err = c.domainManager.getHostFromNodeSetGrp(domainId, replicaNum, createType, storageClass)
+func (c *Cluster) getHostFromDomainZone(domainId uint64, createType uint32, replicaNum uint8, mediaType uint32) (hosts []string, peers []proto.Peer, err error) {
+	hosts, peers, err = c.domainManager.getHostFromNodeSetGrp(domainId, replicaNum, createType, mediaType)
 	return
 }
 
@@ -543,7 +543,7 @@ func (c *Cluster) checkDataPartitions() {
 	vols := c.allVols()
 	for _, vol := range vols {
 		readWrites := vol.checkDataPartitions(c)
-		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
+		vol.dataPartitions.setReadWriteDataPartitions(readWrites)
 		if c.metaReady {
 			vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
 		}
@@ -1396,12 +1396,18 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartiti
 	total := overSoldCap(uint64(preload.preloadCacheCapacity))
 	reqCreateCount := (total-1)/(util.DefaultDataPartitionSize/util.GB) + 1
 
+	chosenStorageClass := c.GetFastReplicaStorageClassFromCluster(nil)
+	if chosenStorageClass == proto.StorageClass_Unspecified {
+		log.LogErrorf("cluster has no resource to create preload data partition, vol(%v)", vol.Name)
+		return err, nil
+	}
+
 	for i := 0; i < int(reqCreateCount); i++ {
 		log.LogInfof("create preload data partition (%v) total (%v)", i, reqCreateCount)
-
 		var dp *DataPartition
-		//TODO:tangjingyu dtermin StorageClass
-		if dp, err = c.createDataPartition(vol.Name, preload, proto.StorageClass_Unspecified); err != nil {
+		chosenMediaType := proto.GetMediaTypeByStorageClass(chosenStorageClass)
+
+		if dp, err = c.createDataPartition(vol.Name, preload, chosenMediaType); err != nil {
 			log.LogErrorf("create preload data partition fail: volume(%v) err(%v)", vol.Name, err)
 			return err, nil
 		}
@@ -3200,7 +3206,7 @@ func (c *Cluster) HasResourceOfStorageBlobStore() (has bool) {
 	return has
 }
 
-// StorageClassResourceChecker : to check if the cluster has resource to support the storage class
+// StorageClassResourceChecker : check if the cluster has resource to support the specified storage class
 type StorageClassResourceChecker struct {
 	StorageClassResourceSet map[uint32]struct{}
 }
@@ -3227,10 +3233,13 @@ func NewStorageClassResourceChecker(c *Cluster) (checker *StorageClassResourceCh
 	return
 }
 
-func (c *Cluster) chooseStorageClassForCacheDp() (chosenStorageClass uint32) {
+func (c *Cluster) GetFastReplicaStorageClassFromCluster(resourceChecker *StorageClassResourceChecker) (chosenStorageClass uint32) {
 	chosenStorageClass = proto.StorageClass_Unspecified
 
-	resourceChecker := NewStorageClassResourceChecker(c)
+	if resourceChecker == nil {
+		resourceChecker = NewStorageClassResourceChecker(c)
+	}
+
 	if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_SSD) {
 		chosenStorageClass = proto.StorageClass_Replica_SSD
 	} else if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_HDD) {
@@ -3310,6 +3319,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		goto errHandler
 	}
 
+	// init data partitions according to vol parameters
 	if proto.IsStorageClassReplica(vol.volStorageClass) {
 		for _, acs := range req.allowedStorageClass {
 			chosenMediaType := proto.GetMediaTypeByStorageClass(acs)
@@ -3319,7 +3329,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 			readWriteDataPartitions = readWriteDataPartitions + tmpRwDpCnt
 		}
 	} else if proto.IsStorageClassBlobStore(vol.volStorageClass) && vol.CacheCapacity > 0 {
-		chosenStorageClass := c.chooseStorageClassForCacheDp()
+		chosenStorageClass := c.GetFastReplicaStorageClassFromCluster(nil)
 		chosenMediaType := proto.GetMediaTypeByStorageClass(chosenStorageClass)
 
 		log.LogInfof("action[createVol] vol[%v] choose dp storageClass(%v) for blobStore",
@@ -3330,7 +3340,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 		readWriteDataPartitions = readWriteDataPartitions + tmpRwDpCnt
 	}
 
-	vol.dataPartitions.readableAndWritableCnt = readWriteDataPartitions
+	vol.dataPartitions.setReadWriteDataPartitions(readWriteDataPartitions)
 	vol.updateViewCache(c)
 
 	log.LogInfof("action[createVol] vol[%v], readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)

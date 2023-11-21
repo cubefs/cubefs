@@ -369,9 +369,6 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
-		//TODO:tangjingyu
-		//log.LogInfof("##########  updateDataPartition: dpId(%v) mediaType(%v)",
-		//	dp.PartitionID, proto.MediaTypeString(dp.MediaType))
 		w.replaceOrInsertPartition(dp)
 		//do not insert preload dp in cold vol
 		if proto.IsCold(w.volType) && proto.IsPreLoadDp(dp.PartitionType) {

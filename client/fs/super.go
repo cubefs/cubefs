@@ -19,14 +19,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/common"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
@@ -244,19 +242,22 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 	if proto.IsCold(opt.VolType) {
-		s.ebsc, err = blobstore.NewEbsClient(access.Config{
-			ConnMode: access.NoLimitConnMode,
-			Consul: access.ConsulConfig{
-				Address: opt.EbsEndpoint,
-			},
-			MaxSizePutOnce: MaxSizePutOnce,
-			Logger: &access.Logger{
-				Filename: path.Join(opt.Logpath, "client/ebs.log"),
-			},
-		})
-		if err != nil {
-			return nil, errors.Trace(err, "NewEbsClient failed!")
-		}
+		//TODO:tangjingyu test only set nil
+		s.ebsc = nil
+		log.LogInfof("########### NewSuper: set s.ebsc = nil")
+		//s.ebsc, err = blobstore.NewEbsClient(access.Config{
+		//	ConnMode: access.NoLimitConnMode,
+		//	Consul: access.ConsulConfig{
+		//		Address: opt.EbsEndpoint,
+		//	},
+		//	MaxSizePutOnce: MaxSizePutOnce,
+		//	Logger: &access.Logger{
+		//		Filename: path.Join(opt.Logpath, "client/ebs.log"),
+		//	},
+		//})
+		//if err != nil {
+		//	return nil, errors.Trace(err, "NewEbsClient failed!")
+		//}
 	}
 	s.mw.Client = s.ec
 

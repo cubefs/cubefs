@@ -791,6 +791,12 @@ func (mp *metaPartition) doBatchDeleteObjExtentsInEBS(allInodes []*Inode) (shoul
 }
 
 func (mp *metaPartition) deleteObjExtents(oeks []proto.ObjExtentKey) (err error) {
+	//TODO:tangjingyu test only
+	if mp.ebsClient == nil {
+		log.LogInfof("######### [deleteObjExtents] mpId(%v), mp.ebsClient is nil", mp.config.PartitionId)
+		return
+	}
+
 	total := len(oeks)
 
 	for i := 0; i < total; i += maxDelCntOnce {

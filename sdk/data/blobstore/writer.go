@@ -467,6 +467,13 @@ func (writer *Writer) writeSlice(ctx context.Context, wSlice *rwSlice, wg bool) 
 	if wg {
 		defer writer.wg.Done()
 	}
+
+	//TODO:tangjingyu test set nil
+	if writer.ebsc == nil {
+		log.LogDebugf("######### [writeSlice] writer.ebsc is nil, ino(%v)", writer.ino)
+		return
+	}
+
 	writer.limitManager.WriteAlloc(ctx, int(wSlice.size))
 	log.LogDebugf("TRACE blobStore,writeSlice to ebs. ino(%v) fileOffset(%v) len(%v)", writer.ino, wSlice.fileOffset, wSlice.size)
 	location, err := writer.ebsc.Write(ctx, writer.volName, wSlice.Data, wSlice.size)

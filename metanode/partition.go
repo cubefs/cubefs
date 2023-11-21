@@ -31,7 +31,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/cmd/common"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
@@ -752,28 +751,32 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	go mp.runVersionOp()
 
 	mp.volType = volumeInfo.VolType
-	var ebsClient *blobstore.BlobStoreClient
+	//var ebsClient *blobstore.BlobStoreClient
 	if clusterInfo.EbsAddr != "" && proto.IsCold(mp.volType) {
-		ebsClient, err = blobstore.NewEbsClient(
-			access.Config{
-				ConnMode: access.NoLimitConnMode,
-				Consul: access.ConsulConfig{
-					Address: clusterInfo.EbsAddr,
-				},
-				MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
-				Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
-			},
-		)
+		//TODO:tangjingyu test only
+		mp.ebsClient = nil
+		log.LogInfof("##### action[onStart] mpId(%v) EbsAddr:%v", mp.config.PartitionId, clusterInfo.EbsAddr)
 
-		if err != nil {
-			log.LogErrorf("action[onStart] err[%v]", err)
-			return
-		}
-		if ebsClient == nil {
-			err = errors.NewErrorf("[onStart] ebsClient is nil")
-			return
-		}
-		mp.ebsClient = ebsClient
+		//ebsClient, err = blobstore.NewEbsClient(
+		//	access.Config{
+		//		ConnMode: access.NoLimitConnMode,
+		//		Consul: access.ConsulConfig{
+		//			Address: clusterInfo.EbsAddr,
+		//		},
+		//		MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
+		//		Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
+		//	},
+		//)
+		//
+		//if err != nil {
+		//	log.LogErrorf("action[onStart] err[%v]", err)
+		//	return
+		//}
+		//if ebsClient == nil {
+		//	err = errors.NewErrorf("[onStart] ebsClient is nil")
+		//	return
+		//}
+		//mp.ebsClient = ebsClient
 	}
 
 	go mp.startCheckerEvict()

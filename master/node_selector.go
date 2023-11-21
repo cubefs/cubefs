@@ -630,7 +630,7 @@ func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) 
 	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum)
 }
 
-func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int, storageClass uint32) (hosts []string, peers []proto.Peer, err error) {
+func (ns *nodeSet) getAvailDataNodeHosts(excludeHosts []string, replicaNum int, mediaType uint32) (hosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
 	// we need a read lock to block the modification of node selector

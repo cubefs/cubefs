@@ -29,9 +29,10 @@ import (
 type DataPartitionMap struct {
 	sync.RWMutex
 	partitionMap           map[uint64]*DataPartition
-	readableAndWritableCnt int    // number of readable and writable partitionMap
-	lastLoadedIndex        uint64 // last loaded partition index
-	lastReleasedIndex      uint64 // last released partition index
+	readableAndWritableCnt int            // number of readable and writable partitionMap
+	rwCntByMediaType       map[uint32]int // readable and writable dp count by mediaType
+	lastLoadedIndex        uint64         // last loaded partition index
+	lastReleasedIndex      uint64         // last released partition index
 	partitions             []*DataPartition
 	responseCache          []byte
 	lastAutoCreateTime     time.Time
@@ -42,6 +43,7 @@ type DataPartitionMap struct {
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
 	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
+	dpMap.rwCntByMediaType = make(map[uint32]int, 0)
 	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.responseCache = make([]byte, 0)
 	dpMap.volName = volName
@@ -117,10 +119,17 @@ func (dpMap *DataPartitionMap) put(dp *DataPartition) {
 	}
 }
 
-func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, clusterName string) {
+func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
 	dpMap.readableAndWritableCnt = readWrites
+}
+
+func (dpMap *DataPartitionMap) setReadWriteDataPartitionCntByMediaType(rwDpCnt int, mediaType uint32) {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+
+	dpMap.rwCntByMediaType[mediaType] = rwDpCnt
 }
 
 func (dpMap *DataPartitionMap) getDataPartitionResponseCache() []byte {

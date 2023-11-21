@@ -2218,19 +2218,15 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 
 	if req.volStorageClass == proto.StorageClass_Unspecified {
 		// when volStorageClass not specified, try to set as replica with fastest mediaType if resource can support
-		if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_SSD) {
-			req.volStorageClass = proto.StorageClass_Replica_SSD
-			log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
-				req.name, proto.StorageClassString(req.volStorageClass))
-		} else if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_HDD) {
-			req.volStorageClass = proto.StorageClass_Replica_HDD
-			log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
-				req.name, proto.StorageClassString(req.volStorageClass))
-		} else {
-			err = fmt.Errorf("volStorageClass not specified and cluster has no resource to suppoort replca-storageClass")
+		req.volStorageClass = m.cluster.GetFastReplicaStorageClassFromCluster(resourceChecker)
+		if req.volStorageClass == proto.StorageClass_Unspecified {
+			err = fmt.Errorf("volStorageClass not specified and cluster has no resource to suppoort replca storageClass")
 			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 			return err
 		}
+
+		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
+			req.name, proto.StorageClassString(req.volStorageClass))
 	} else if !proto.IsValidStorageClass(req.volStorageClass) {
 		err = fmt.Errorf("invalid volStorageClass: %v", req.volStorageClass)
 		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
