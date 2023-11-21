@@ -128,7 +128,8 @@ type MetaWrapper struct {
 	// use partitions and ranges directly. Use the helper functions instead.
 
 	// Partition map indexed by ID
-	partitions map[uint64]*MetaPartition
+	partitions     map[uint64]*MetaPartition
+	maxPartitionID uint64
 
 	// Partition tree indexed by Start, in order to find a partition in which
 	// a specific inode locate.

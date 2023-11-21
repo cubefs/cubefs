@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -192,8 +193,82 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	return
 }
 
+func (mw *MetaWrapper) isCredibleMetaPartitionView(mps []*proto.MetaPartitionView) (isCredible bool) {
+	if len(mps) < len(mw.partitions) {
+		log.LogWarnf("isCredibleMetaPartitionView: mps length:%v less than last update:%v", len(mps), len(mw.partitions))
+		return false
+	}
+
+	newMaxID := mw.maxPartitionID
+	defer func() {
+		if isCredible {
+			mw.maxPartitionID = newMaxID
+		}
+		if log.IsDebugEnabled() {
+			log.LogDebugf("isCredibleMetaPartitionView: isCredible(%v) maxID(%v)", isCredible, mw.maxPartitionID)
+		}
+	}()
+
+	if mw.maxPartitionID <= 0 {
+		if !sortAndCheckOverlap(mps) {
+			return false
+		}
+		newMaxID = mps[len(mps)-1].PartitionID
+		return true
+	}
+
+	newAddPartition := make([]*proto.MetaPartitionView, 0)
+	for _, mp := range mps {
+		if mp.PartitionID >= newMaxID {
+			newMaxID = mp.PartitionID
+			newAddPartition = append(newAddPartition, mp)
+		}
+	}
+
+	if len(newAddPartition) < 1 {
+		return false
+	}
+	if len(newAddPartition) == 1 {
+		return mw.validMaxPartition(newAddPartition[0])
+	}
+	return sortAndCheckOverlap(newAddPartition)
+}
+
+func (mw *MetaWrapper) validMaxPartition(mp *proto.MetaPartitionView) bool {
+	mw.RLock()
+	defer mw.RUnlock()
+
+	maxMp, ok := mw.partitions[mw.maxPartitionID]
+	if log.IsDebugEnabled() {
+		log.LogDebugf("unchangedMaxPartition: maxMp:%v mp:%v", maxMp, mp)
+	}
+	if ok {
+		return maxMp.PartitionID == mp.PartitionID && maxMp.Start == mp.Start && maxMp.End == mp.End
+	}
+	return false
+}
+
+func sortAndCheckOverlap(mps []*proto.MetaPartitionView) bool {
+	if log.IsDebugEnabled() {
+		log.LogDebugf("sortAndCheckOverlap: mp.len=%v", len(mps))
+	}
+	if len(mps) < 1 {
+		return false
+	}
+	sort.SliceStable(mps, func(i, j int) bool {
+		return mps[i].Start < mps[j].Start
+	})
+
+	for i := 1; i < len(mps); i++ {
+		if mps[i].Start != mps[i-1].End+1 {
+			log.LogWarnf("sortAndCheckOverlap: mp ranges overlap, %v-%v", mps[i-1], mps[i])
+			return false
+		}
+	}
+	return true
+}
+
 func (mw *MetaWrapper) updateMetaPartitions() error {
-	var view *VolumeView
 	vv, err := mw.fetchVolumeView()
 	if err != nil {
 		if err == proto.ErrVolNotExists {
@@ -202,7 +277,11 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		log.LogWarnf("updateMetaPartitions error: %v, volNotExistCount(%v)", err.Error(), mw.volNotExistCount)
 		return err
 	}
-	view = mw.convertVolumeView(vv)
+	if !mw.isCredibleMetaPartitionView(vv.MetaPartitions) {
+		err = fmt.Errorf("incredible mp view from master, %v", vv.MetaPartitions)
+		return err
+	}
+	view := mw.convertVolumeView(vv)
 
 	rwPartitions := make([]*MetaPartition, 0)
 	unavailPartitions := make([]*MetaPartition, 0)
@@ -269,6 +348,11 @@ func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
 		log.LogWarnf("updateMetaPartitionsWithNoCache: err(%v) vol(%v) retry next round", err, mw.volname)
 		time.Sleep(1 * time.Second)
 	}
+	if !mw.isCredibleMetaPartitionView(views) {
+		err := fmt.Errorf("incredible mp view from master, %v", views)
+		return err
+	}
+
 	rwPartitions := make([]*MetaPartition, 0)
 	for _, view := range views {
 		mp := &MetaPartition{
