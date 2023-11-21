@@ -143,32 +143,32 @@ type Stat struct {
 	OutBytes int
 }
 
-type StatConstructor struct {
+type StatBuilder struct {
 	stat Stat
 }
 
-func NewStatBuilder() *StatConstructor {
-	return &StatConstructor{
+func NewStatBuilder() *StatBuilder {
+	return &StatBuilder{
 		stat: Stat{},
 	}
 }
 
-func (s *StatConstructor) SetCount(count int) *StatConstructor {
+func (s *StatBuilder) SetCount(count int) *StatBuilder {
 	s.stat.Count = count
 	return s
 }
 
-func (s *StatConstructor) SetInBytes(in int) *StatConstructor {
+func (s *StatBuilder) SetInBytes(in int) *StatBuilder {
 	s.stat.InBytes = in
 	return s
 }
 
-func (s *StatConstructor) SetOutBytes(out int) *StatConstructor {
+func (s *StatBuilder) SetOutBytes(out int) *StatBuilder {
 	s.stat.OutBytes = out
 	return s
 }
 
-func (s *StatConstructor) Stat() Stat {
+func (s *StatBuilder) Stat() Stat {
 	return s.stat
 }
 

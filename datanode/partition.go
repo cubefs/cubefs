@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/util/fetchtopology"
-	"github.com/cubefs/cubefs/util/tokenmanager"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -31,6 +30,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/datanode/riskdata"
@@ -57,6 +57,8 @@ const (
 	ApplyIndexFile                = "APPLY"
 	TempApplyIndexFile            = ".apply"
 	TimeLayout                    = "2006-01-02 15:04:05"
+	AcquireTokenInterval          = time.Millisecond * 100
+	AcquireTokenTimeout           = time.Second * 3
 )
 
 type FaultOccurredCheckLevel uint8
@@ -1409,24 +1411,29 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 	}
 }
 
-type tokenManagerWrapper struct {
-	tokenManager *tokenmanager.TokenManager
-	key          uint64
-}
-
-func (dp *DataPartition) acquire(op int) (manager *tokenManagerWrapper, err error) {
+func (dp *DataPartition) acquire(op int) (release func(), err error) {
+	var cancel context.CancelFunc
+	var ctx context.Context
 	if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op, dp.path) == nil {
 		return nil, ErrLimiterNil
 	}
-	manager = &tokenManagerWrapper{
-		tokenManager: dp.limiter.GetTokenManager(op, dp.path),
-		key:          tokenManagerKeyGen.Add(1),
+	key := atomic.AddUint64(&tokenManagerKeyGen, 1)
+	tick := time.NewTicker(AcquireTokenInterval)
+	ctx, cancel = context.WithTimeout(context.Background(), AcquireTokenTimeout)
+	defer func() {
+		cancel()
+		tick.Stop()
+	}()
+	for {
+		select {
+		case <-tick.C:
+			if dp.limiter.GetTokenManager(op, dp.path).GetRunToken(key) {
+				return func() { dp.limiter.GetTokenManager(op, dp.path).ReleaseToken(key) }, nil
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
-	return
-}
-
-func (manager *tokenManagerWrapper) release() {
-	manager.tokenManager.ReleaseToken(manager.key)
 }
 
 func (dp *DataPartition) backendRefreshCacheView() {

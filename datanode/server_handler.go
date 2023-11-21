@@ -1138,7 +1138,7 @@ func (s *DataNode) getExtentCrc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := partition.ExtentStore()
-	crc, err := store.GetExtentCrc(extentID, partition.limit)
+	crc, err := store.GetExtentCrc(extentID)
 	if err != nil {
 		log.LogErrorf("GetExtentCrc err(%v)", err)
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())

@@ -1,10 +1,7 @@
 package storage
 
 import (
-	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/datanode/riskdata"
-	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"strings"
 	"syscall"
@@ -67,7 +64,7 @@ func (s *ExtentStore) TinyExtentHolesAndAvaliSize(extentID uint64, offset int64)
 	return
 }
 
-func (s *ExtentStore) GetExtentCrc(extentId uint64, diskLimit riskdata.DiskLimiter) (crc uint32, err error) {
+func (s *ExtentStore) GetExtentCrc(extentId uint64) (crc uint32, err error) {
 	var (
 		offset            int64
 		newOffset         int64
@@ -110,10 +107,6 @@ func (s *ExtentStore) GetExtentCrc(extentId uint64, diskLimit riskdata.DiskLimit
 			currReadSize = uint32(unit.Min(int(currNeedReplySize), 128*unit.MB))
 		} else {
 			currReadSize = uint32(unit.Min(int(needReadSize), 128*unit.MB))
-		}
-		err = diskLimit(context.Background(), proto.OpExtentReadToGetCrc_, currReadSize, multirate.FlowDisk)
-		if err != nil {
-			return
 		}
 		data := make([]byte, currReadSize)
 		dataCrc, err = s.Read(extentId, offset, int64(currReadSize), data, false, false)

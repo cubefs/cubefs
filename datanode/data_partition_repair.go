@@ -834,20 +834,20 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		log.LogWarnf("partition(%v) is loading", dp.partitionID)
 		return
 	}
-	var tokenManager *tokenManagerWrapper
-	tokenManager, err = dp.acquire(proto.OpExtentRepairWrite_)
+
+	release1, err := dp.acquire(proto.OpExtentRepairWrite_)
 	if err != nil {
 		return
 	}
 	defer func() {
-		tokenManager.release()
+		release1()
 	}()
 
-	var release, success = dp.tryLockExtentRepair(extentID)
+	var release2, success = dp.tryLockExtentRepair(extentID)
 	if !success {
 		return
 	}
-	defer release()
+	defer release2()
 
 	var localExtentInfo *storage.ExtentInfoBlock
 	if !skipLimit {

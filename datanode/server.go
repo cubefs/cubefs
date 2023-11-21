@@ -31,7 +31,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -68,7 +67,7 @@ var (
 	gHasFinishedLoadDisks       bool
 
 	maybeServerFaultOccurred bool // 是否判定当前节点大概率出现过系统断电
-	tokenManagerKeyGen       atomic.Uint64
+	tokenManagerKeyGen       uint64
 )
 
 const (

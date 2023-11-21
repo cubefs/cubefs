@@ -591,13 +591,12 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
 	if isRepairRead {
-		var tokenManager *tokenManagerWrapper
-		tokenManager, err = partition.acquire(int(proto.OpExtentRepairRead))
+		release, err := partition.acquire(int(proto.OpExtentRepairRead))
 		if err != nil {
 			return
 		}
 		defer func() {
-			tokenManager.release()
+			release()
 		}()
 	}
 
@@ -934,13 +933,12 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 
 	partition := request.Object.(*DataPartition)
 
-	var tokenManager *tokenManagerWrapper
-	tokenManager, err = partition.acquire(int(proto.OpTinyExtentRepairRead))
+	release, err := partition.acquire(int(proto.OpTinyExtentRepairRead))
 	if err != nil {
 		return
 	}
 	defer func() {
-		tokenManager.release()
+		release()
 	}()
 
 	store := partition.ExtentStore()

@@ -2,6 +2,7 @@ package mock
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/util/connpool"
 	"hash/crc32"
 	"io"
@@ -10,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/repl"
 )
 
 type MockResult int
