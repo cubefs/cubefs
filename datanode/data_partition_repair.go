@@ -384,7 +384,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTask *D
 			}
 			batch.Add(0, extentID, 0, 0)
 		}
-		_ = store.BatchMarkDelete(batch)
+		_ = store.MarkDelete(batch)
 	}
 
 	var allReplicas = dp.getReplicaClone()
@@ -465,7 +465,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 			}
 			batch.Add(0, extentID, 0, 0)
 		}
-		_ = store.BatchMarkDelete(batch)
+		_ = store.MarkDelete(batch)
 	}
 
 	localAddr := fmt.Sprintf("%v:%v", LocalIP, LocalServerPort)

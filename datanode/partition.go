@@ -705,8 +705,10 @@ func (dp *DataPartition) MarkDelete(marker storage.Marker) (err error) {
 	return
 }
 
-func (dp *DataPartition) FlushDelete() (n int, err error) {
-	return dp.extentStore.FlushDelete()
+func (dp *DataPartition) FlushDelete(interceptor storage.Interceptor) (deleted, remain int, err error) {
+	const count = 128
+	deleted, remain, err = dp.extentStore.FlushDelete(interceptor, count)
+	return
 }
 
 func (dp *DataPartition) Expired() {

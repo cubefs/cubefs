@@ -226,7 +226,7 @@ func (manager *SpaceManager) LoadDisk(path *DiskPath, expired CheckExpired) (err
 		}
 		manager.putDisk(disk)
 		var count int
-		disk.WalkPartitions(func(u uint64, partition *DataPartition) bool {
+		disk.WalkPartitions(func(partition *DataPartition) bool {
 			manager.AttachPartition(partition)
 			count++
 			return true

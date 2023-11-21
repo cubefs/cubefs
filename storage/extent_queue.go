@@ -74,6 +74,19 @@ const (
 	queueDefaultFilesize          = 4 * 1024 * 1024 // 4MB
 )
 
+type RetainFiles int
+
+func (retain RetainFiles) String() string {
+	if retain.Unlimited() {
+		return "Unlimited"
+	}
+	return strconv.Itoa(int(retain))
+}
+
+func (retain RetainFiles) Unlimited() bool {
+	return retain < 0
+}
+
 type recordFilename string
 
 func (r recordFilename) valid() bool {
@@ -461,7 +474,7 @@ type ExtentQueue struct {
 	writer      *recordFileWriter
 	writeMu     sync.Mutex
 	maxFilesize int64
-	retainFiles int
+	retainFiles RetainFiles
 	mf          *queueMetafile
 	closeOnce   sync.Once
 }
@@ -667,6 +680,36 @@ func (q *ExtentQueue) BatchProduce(batchsize int) (producer *BatchProducer, err 
 	return
 }
 
+// Remain returns number of records that have not been consumed yet.
+func (q *ExtentQueue) Remain() (count int) {
+	count = q.__remainFrom(q.mf.getConsumed())
+	return
+}
+
+// __remainFrom (inner private function) returns number of records from given index to last.
+func (q *ExtentQueue) __remainFrom(index recordIndex) (count int) {
+	q.rfsMu.RLock()
+	var rfs = q.rfs.clone()
+	q.rfsMu.RUnlock()
+
+	if rfs.len() == 0 || rfs.last().seq() == index.seq && rfs.last().size() == int64(index.off) {
+		return
+	}
+
+	rfs.walk(func(rf *recordFile) bool {
+		switch {
+		case rf.seq() == index.seq:
+			count += int((rf.size() - int64(index.off)) / int64(queueRecordCodecLength))
+		case rf.seq() > index.seq:
+			count += int(rf.size() / int64(queueRecordCodecLength))
+		default:
+		}
+		return true
+	})
+	return
+}
+
+// __walk (inner private function) used to traverse the records in the access queue from the given index to the end.
 func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) {
 	if q == nil {
 		err = ErrNilInstance
@@ -679,7 +722,7 @@ func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) 
 	var rfs = q.rfs.clone()
 	q.rfsMu.RUnlock()
 
-	if rfs.len() == 0 || rfs.last().seq() == si.seq && rfs.last().size() == int64(si.off) {
+	if q.__remainFrom(si) == 0 {
 		return
 	}
 
@@ -736,6 +779,11 @@ func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) 
 	return
 }
 
+// Walk used to traverse access records in given range.
+// Parameter:
+//   * r (WalkRange):
+//      WalkAll: all records stored in queue.
+//      WalkUnconsume: records that have not consumed yet.
 func (q *ExtentQueue) Walk(r WalkRange, visitor QueueVisitor) (err error) {
 	var idx recordIndex
 	switch r {
@@ -756,6 +804,7 @@ func (q *ExtentQueue) Walk(r WalkRange, visitor QueueVisitor) (err error) {
 	return
 }
 
+// Consume used to access records that have not been consumed yet and advance consume index after visited without any error.
 func (q *ExtentQueue) Consume(visitor QueueVisitor) (err error) {
 	defer func() {
 		_ = q.closeInactiveWriter()
@@ -784,6 +833,9 @@ func (q *ExtentQueue) Consume(visitor QueueVisitor) (err error) {
 }
 
 func (q *ExtentQueue) cleanup() (err error) {
+	if q.retainFiles.Unlimited() {
+		return
+	}
 	var consumed = q.mf.getConsumed()
 	if consumed.seq <= uint64(q.retainFiles) {
 		return
@@ -808,20 +860,17 @@ func (q *ExtentQueue) cleanup() (err error) {
 	return
 }
 
-func OpenExtentQueue(path string, filesize int64, retainfiles int) (queue *ExtentQueue, err error) {
+func OpenExtentQueue(path string, filesize int64, retain RetainFiles) (queue *ExtentQueue, err error) {
 	if err = os.Mkdir(path, queueDataDirPerm); err != nil && !os.IsExist(err) {
 		return
 	}
 	if filesize < 0 {
 		filesize = queueDefaultFilesize
 	}
-	if retainfiles < 0 {
-		retainfiles = queueDefaultRetainFiles
-	}
 	var r = &ExtentQueue{
 		path:        path,
 		maxFilesize: filesize,
-		retainFiles: retainfiles,
+		retainFiles: retain,
 	}
 	if err = r.open(); err != nil {
 		return

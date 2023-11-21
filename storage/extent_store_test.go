@@ -341,7 +341,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 			t.Fatalf("%v respond error: %v", name, err)
 		}
 	}
-	_, _ = storage.FlushDelete()
+	_, _, _ = storage.FlushDelete(NewFuncInterceptor(nil, nil), 0)
 
 	// 结果检查
 	{

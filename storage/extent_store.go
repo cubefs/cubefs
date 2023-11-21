@@ -41,23 +41,24 @@ import (
 )
 
 const (
-	extentCRCHeaderFilename         = "EXTENT_CRC"
-	baseExtentIDFilename            = "EXTENT_META"
-	tinyDeleteFileOpenFlag          = os.O_CREATE | os.O_RDWR | os.O_APPEND
-	tinyDeleteFilePerm              = 0666
-	tinyExtentDeletedFilename       = "TINYEXTENT_DELETE"
-	inodeIndexFilename              = "INODE_INDEX"
-	MaxExtentCount                  = 20000
-	MinNormalExtentID               = 1024
-	DeleteTinyRecordSize            = 24
-	UpdateCrcInterval               = 600
-	RepairInterval                  = 10
-	RandomWriteType                 = 2
-	AppendWriteType                 = 1
-	BaseExtentIDPersistStep         = 500
-	deletionQueueDirname            = "Deletion"
-	deletionQueueFilesize     int64 = 1024 * 1024 * 4
-	deletionQueueRetainFiles  int   = 1
+	extentCRCHeaderFilename   = "EXTENT_CRC"
+	baseExtentIDFilename      = "EXTENT_META"
+	tinyDeleteFileOpenFlag    = os.O_CREATE | os.O_RDWR | os.O_APPEND
+	tinyDeleteFilePerm        = 0666
+	tinyExtentDeletedFilename = "TINYEXTENT_DELETE"
+	inodeIndexFilename        = "INODE_INDEX"
+	MaxExtentCount            = 20000
+	MinNormalExtentID         = 1024
+	DeleteTinyRecordSize      = 24
+	UpdateCrcInterval         = 600
+	RepairInterval            = 10
+	RandomWriteType           = 2
+	AppendWriteType           = 1
+	BaseExtentIDPersistStep   = 500
+
+	deletionQueueDirname                 = "Deletion"
+	deletionQueueFilesize    int64       = 1024 * 1024 * 4
+	deletionQueueRetainFiles RetainFiles = 10
 
 	LoadInProgress int32 = 0
 	LoadFinish     int32 = 1
@@ -567,7 +568,7 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 	return
 }
 
-// MarkDelete marks the given extent as deleted.
+// __markDeleteOne is inner private function marks one given extent as deleted.
 func (s *ExtentStore) __markDeleteOne(inode, extentID uint64, offset, size int64) (err error) {
 
 	defer func() {
@@ -601,6 +602,7 @@ func (s *ExtentStore) __markDeleteOne(inode, extentID uint64, offset, size int64
 	return
 }
 
+// __markDeleteOne is inner private function marks multiple given extent as deleted.
 func (s *ExtentStore) __markDeleteMore(marker Marker) (err error) {
 	var producer *BatchProducer
 	if producer, err = s.deletionQueue.BatchProduce(marker.Len()); err != nil {
@@ -634,6 +636,7 @@ func (s *ExtentStore) __markDeleteMore(marker Marker) (err error) {
 	return
 }
 
+// MarkDelete is exported public method marks given marked extent(s) as deleted.
 func (s *ExtentStore) MarkDelete(marker Marker) (err error) {
 
 	defer func() {
@@ -657,20 +660,40 @@ func (s *ExtentStore) MarkDelete(marker Marker) (err error) {
 	return
 }
 
-func (s *ExtentStore) FlushDelete() (n int, err error) {
+// FlushDelete is exported public method removes and releases storage space resource through delete marked extents.
+// Parameter:
+//  * interceptor:
+//      The caller can inject an interceptor to track the execution of the delete operation.
+//  * count:
+//      limit on the number of deletions to be performed.
+//      When it is less than or equal to 0, it means there is no limit.
+func (s *ExtentStore) FlushDelete(interceptor Interceptor, count int) (deleted, remain int, err error) {
 	var start = time.Now()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("Store(%v) flush delete failed: %v", s.partitionID, err)
 			return
 		}
-		if log.IsDebugEnabled() && n > 0 {
-			log.LogDebugf("Store(%v) flush delete complete, count=%v, elapsed=%v", s.partitionID, n, time.Now().Sub(start))
+		if log.IsDebugEnabled() && deleted > 0 {
+			log.LogDebugf("Store(%v) flush delete complete, count %v, deleted %v, remain %v, elapsed %v",
+				s.partitionID, count, deleted, remain, time.Now().Sub(start))
 		}
 	}()
 
 	err = s.deletionQueue.Consume(func(ino, extent uint64, offset, size, timestamp int64) (bool, error) {
+		if count > 0 && deleted >= count {
+			return false, nil
+		}
 		var err error
+		if interceptor != nil {
+			var ctx context.Context
+			if ctx, err = interceptor.Before(); err != nil {
+				return false, err
+			}
+			defer func() {
+				interceptor.After(ctx, 0, err)
+			}()
+		}
 		if proto.IsTinyExtent(extent) {
 			if log.IsDebugEnabled() {
 				log.LogDebugf("Store(%v) flush delete TinyExtent: extent=%v, offset=%v, size=%v, timestamp=%v",
@@ -689,7 +712,7 @@ func (s *ExtentStore) FlushDelete() (n int, err error) {
 					s.partitionID, ino, extent, offset, size, err)
 				return true, nil
 			}
-			n++
+			deleted++
 			return true, nil
 		}
 		if log.IsDebugEnabled() {
@@ -712,9 +735,10 @@ func (s *ExtentStore) FlushDelete() (n int, err error) {
 			log.LogWarnf("Store(%v) remove block CRC info failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
 			return true, nil
 		}
-		n++
+		deleted++
 		return true, nil
 	})
+	remain = s.deletionQueue.Remain()
 	return
 }
 

@@ -152,10 +152,10 @@ type Disk struct {
 	interceptors storage.IOInterceptors
 
 	// sfx compressible ssd attribute
-	IsSfx              bool
-	devName            string
-	PhysicalUsedRatio  uint32 //physical space usage ratio
-	CompressionRatio   uint32 //full disk compression ratio
+	IsSfx             bool
+	devName           string
+	PhysicalUsedRatio uint32 //physical space usage ratio
+	CompressionRatio  uint32 //full disk compression ratio
 }
 
 type CheckExpired func(id uint64) bool
@@ -363,20 +363,20 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 		d.RLock()
 		defer d.RUnlock()
 		total := int64(dStatus.totalPhysicalCapability) - int64(d.ReservedSpace)
-		if total <0 {
-			total=0
+		if total < 0 {
+			total = 0
 		}
-		d.Total=uint64(total)
+		d.Total = uint64(total)
 		available := int64(dStatus.freePhysicalCapability) - int64(d.ReservedSpace)
 		if available < 0 {
 			available = 0
 		}
 		d.Available = uint64(available)
-		used:= int64(dStatus.totalPhysicalCapability) - int64(dStatus.freePhysicalCapability)
-		if used <0 {
-			used=0
+		used := int64(dStatus.totalPhysicalCapability) - int64(dStatus.freePhysicalCapability)
+		if used < 0 {
+			used = 0
 		}
-		d.Used=uint64(used)
+		d.Used = uint64(used)
 
 		allocatedSize := uint64(0)
 		for _, dp := range d.partitionMap {
@@ -420,11 +420,11 @@ func (d *Disk) computeUsageOnStdDevice() (err error) {
 	}
 	d.Available = uint64(available)
 
-	used:= int64(fs.Blocks*uint64(fs.Bsize) - fs.Bavail*uint64(fs.Bsize))
-	if used <0 {
-		used=0
+	used := int64(fs.Blocks*uint64(fs.Bsize) - fs.Bavail*uint64(fs.Bsize))
+	if used < 0 {
+		used = 0
 	}
-	d.Used=uint64(used)
+	d.Used = uint64(used)
 
 	allocatedSize := int64(0)
 	for _, dp := range d.partitionMap {
@@ -549,7 +549,15 @@ func (d *Disk) managementScheduler() {
 
 func (d *Disk) flushDeleteScheduler() {
 	var (
-		flushDeleteTicker = time.NewTicker(time.Minute)
+		flushDeleteTicker = time.NewTicker(time.Second * 30)
+
+		execute = func() {
+			for {
+				if deleted, remain := d.flushDelete(); 5*remain < deleted {
+					return
+				}
+			}
+		}
 	)
 	for {
 		select {
@@ -568,43 +576,45 @@ func (d *Disk) flushDeleteScheduler() {
 				}
 				continue
 			}
-			d.flushDelete()
+			execute()
 		}
 	}
 }
 
-func (d *Disk) flushDelete() {
-	d.RLock()
-	var partitionCh = make(chan *DataPartition, len(d.partitionMap))
-	for _, partition := range d.partitionMap {
-		partitionCh <- partition
-	}
-	d.RUnlock()
-	close(partitionCh)
-
-	var wg = new(sync.WaitGroup)
-	var worker = func() {
-		defer wg.Done()
-		var (
-			err       error
-			partition *DataPartition
-		)
-		for {
-			if partition = <-partitionCh; partition == nil {
-				return
-			}
-			if _, err = partition.FlushDelete(); err != nil {
-				log.LogErrorf("Disk %v: DP(%v) flush delete failed: %v", d.Path, partition.partitionID, err)
-				continue
+func (d *Disk) flushDelete() (deleted, remain int) {
+	const exporterOp = "FlushDelete"
+	var (
+		ctxKey                    = byte(0)
+		before storage.BeforeFunc = func() (ctx context.Context, err error) {
+			ctx = context.WithValue(context.Background(), ctxKey, exporter.NewModuleTP(exporterOp))
+			return
+		}
+		after storage.AfterFunc = func(ctx context.Context, n int64, err error) {
+			if tp, is := ctx.Value(ctxKey).(exporter.TP); is {
+				tp.Set(err)
 			}
 		}
-	}
+		interceptor = storage.NewFuncInterceptor(before, after)
 
-	for i := 0; i < DefaultDeletionConcurrencyOnDisk; i++ {
-		wg.Add(1)
-		async.RunWorker(worker)
+		partitions int
+		start      = time.Now()
+	)
+
+	d.WalkPartitions(func(partition *DataPartition) bool {
+		var n, r, err = partition.FlushDelete(interceptor)
+		if err != nil {
+			log.LogErrorf("DP[%v] flush delete failed: %v", partition.partitionID, err)
+		}
+		deleted += n
+		remain += r
+		partitions++
+		return true
+	})
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Disk %v: flush delete complete: partitions %v, deleted %v, remain %v, elapsed %vms",
+			d.Path, partitions, deleted, remain, time.Now().Sub(start).Milliseconds())
 	}
-	wg.Wait()
+	return
 }
 
 func (d *Disk) crcComputationScheduler() {
@@ -624,7 +634,7 @@ func (d *Disk) crcComputationScheduler() {
 			timer.Reset(time.Minute)
 			continue
 		}
-		d.WalkPartitions(func(u uint64, partition *DataPartition) bool {
+		d.WalkPartitions(func(partition *DataPartition) bool {
 			partition.ExtentStore().AutoComputeExtentCrc()
 			return true
 		})
@@ -917,8 +927,8 @@ func (d *Disk) RestoreOnePartition(partitionPath string) (err error) {
 	return
 }
 
-func (d *Disk) WalkPartitions(f func(uint64, *DataPartition) bool) {
-	if f == nil {
+func (d *Disk) WalkPartitions(visitor func(*DataPartition) bool) {
+	if visitor == nil {
 		return
 	}
 	d.Lock()
@@ -928,7 +938,7 @@ func (d *Disk) WalkPartitions(f func(uint64, *DataPartition) bool) {
 	}
 	d.Unlock()
 	for _, partition := range partitions {
-		if !f(partition.ID(), partition) {
+		if !visitor(partition) {
 			break
 		}
 	}
@@ -958,7 +968,7 @@ func (d *Disk) AsyncLoadExtent(parallelism int) {
 	wg.Add(1)
 	async.RunWorker(func() {
 		defer wg.Done()
-		d.WalkPartitions(func(_ uint64, partition *DataPartition) bool {
+		d.WalkPartitions(func(partition *DataPartition) bool {
 			partitionCh <- partition
 			return true
 		})
