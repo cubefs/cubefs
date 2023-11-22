@@ -408,6 +408,7 @@ func TestCreateVolWithDpCount(t *testing.T) {
 			zoneName:         testZone1 + "," + testZone2,
 			description:      "",
 			qosLimitArgs:     &qosArgs{},
+			volStorageClass:  defaultVolStorageClass,
 		}
 		_, err := server.cluster.createVol(req)
 		require.NoError(t, err)
@@ -435,6 +436,7 @@ func TestCreateVolWithDpCount(t *testing.T) {
 			zoneName:         testZone1 + "," + testZone2,
 			description:      "",
 			qosLimitArgs:     &qosArgs{},
+			volStorageClass:  defaultVolStorageClass,
 		}
 		_, err := server.cluster.createVol(req)
 		require.Error(t, err)

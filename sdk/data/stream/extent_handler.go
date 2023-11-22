@@ -139,7 +139,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, sto
 		stop:               make(chan struct{}),
 		meetLimitedIoError: false,
 		verUpdate:          make(chan uint64),
-		mediaType:          storageClass,
+		mediaType:          proto.GetMediaTypeByStorageClass(storageClass),
 	}
 
 	go eh.receiver()
@@ -468,7 +468,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			ekey := *eh.key
 			doAppend := func() (err error) {
 				discard := eh.stream.extents.Append(&ekey, true)
-				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, eh.mediaType)
+				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, proto.GetStorageClassByMediaType(eh.mediaType))
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForceRefresh(); errUpdateExtents != nil {
 						log.LogErrorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
@@ -616,12 +616,6 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
-			//TODO:tangjinyu  ignore mediaType when write to cache dp
-			//mediaType := eh.mediaType
-			//if eh.stream.isCache {
-			//	mediaType = proto.MediaType_Unspecified
-			//}
-
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.mediaType); err != nil {
 				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})

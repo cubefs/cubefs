@@ -336,6 +336,7 @@ type volValue struct {
 
 	VolStorageClass     uint32
 	AllowedStorageClass []uint32
+	CacheDpStorageClass uint32
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -408,7 +409,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 
-		VolStorageClass: vol.volStorageClass,
+		VolStorageClass:     vol.volStorageClass,
+		CacheDpStorageClass: vol.cacheDpStorageClass,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)
