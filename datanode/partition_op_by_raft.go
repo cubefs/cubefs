@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 
@@ -206,9 +207,10 @@ func (si *ItemIterator) Close() {
 
 // Next returns the next item in the iterator.
 func (si *ItemIterator) Next() (data []byte, err error) {
-	appIDBuf := make([]byte, 8)
-	binary.BigEndian.PutUint64(appIDBuf, si.applyID)
-	data = appIDBuf[:]
+	//appIDBuf := make([]byte, 8)
+	//binary.BigEndian.PutUint64(appIDBuf, si.applyID)
+	//data = appIDBuf[:]
+	err = io.EOF
 	return
 }
 
