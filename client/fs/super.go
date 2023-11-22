@@ -88,8 +88,13 @@ type Super struct {
 	ebsc         *blobstore.BlobStoreClient
 	sc           *SummaryCache
 
-	taskPool []common.TaskPool
-	closeC   chan struct{}
+	taskPool     []common.TaskPool
+	closeC       chan struct{}
+	disableTrash bool
+
+	enableVerRead bool
+
+	cacheDpStorageClass uint32
 }
 
 // Functions that Super needs to implement
@@ -215,6 +220,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		s.bc = bcache.NewBcacheClient()
 	}
 
+	s.cacheDpStorageClass = opt.CacheDpStorageClass
+
 	extentConfig := &stream.ExtentConfig{
 		Volume:            opt.Volname,
 		Masters:           masters,
@@ -240,6 +247,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		MinWriteAbleDataPartitionCnt: opt.MinWriteAbleDataPartitionCnt,
 		StreamRetryTimeout:           opt.StreamRetryTimeout,
 		OnRenewalForbiddenMigration:  s.mw.RenewalForbiddenMigration,
+		CacheDpStorageClass:          s.cacheDpStorageClass,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
@@ -284,8 +292,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
 	}
 
-	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
-		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
+	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v) cacheDpStorageClass(%v)",
+		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state, s.cacheDpStorageClass)
 
 	go s.loopSyncMeta()
 
