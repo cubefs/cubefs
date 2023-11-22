@@ -698,6 +698,7 @@ func (v *VolumeMgr) applyAdminUpdateVolumeUnit(ctx context.Context, unitInfo *cm
 	}
 	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, unitInfo.DiskID)
 	if err != nil {
+		vol.lock.Unlock()
 		return err
 	}
 	vol.vUnits[index].vuInfo.DiskID = diskInfo.DiskID
