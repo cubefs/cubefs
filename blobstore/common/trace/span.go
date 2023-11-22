@@ -62,6 +62,9 @@ type Span interface {
 	// AppendTrackLogWithDuration records cost time with duration for a calling to a module and
 	// appends to baggage with default key fieldTrackLogKey.
 	AppendTrackLogWithDuration(module string, duration time.Duration, err error)
+	// AppendTrackLogWithFunc records cost time for the function calling to a module and
+	// appends to baggage with default key fieldTrackLogKey.
+	AppendTrackLogWithFunc(module string, fn func() error)
 	// TrackLog returns track log, calls BaggageItem with default key fieldTrackLogKey.
 	TrackLog() []string
 
@@ -264,6 +267,13 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 		module += "/" + msg
 	}
 	s.track(module)
+}
+
+// AppendTrackLogWithFunc records cost time for the function calling to a module.
+func (s *spanImpl) AppendTrackLogWithFunc(module string, fn func() error) {
+	startTime := time.Now()
+	err := fn()
+	s.AppendTrackLog(module, startTime, err)
 }
 
 // AppendRPCTrackLog appends RPC track logs to baggage with default key fieldTrackLogKey.
