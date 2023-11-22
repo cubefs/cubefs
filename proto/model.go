@@ -281,6 +281,7 @@ type VolStatInfo struct {
 	DpReadOnlyWhenVolFull bool
 	TrashInterval         int64 `json:"TrashIntervalV2"`
 	DefaultStorageClass   uint32
+	CacheDpStorageClass   uint32
 }
 
 // DataPartition represents the structure of storing the file contents.

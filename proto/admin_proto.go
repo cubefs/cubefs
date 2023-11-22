@@ -1483,3 +1483,16 @@ func GetMediaTypeByStorageClass(storageClass uint32) (mediaType uint32) {
 
 	return
 }
+
+func GetStorageClassByMediaType(mediaType uint32) (storageClass uint32) {
+	switch mediaType {
+	case MediaType_SSD:
+		storageClass = StorageClass_Replica_SSD
+	case MediaType_HDD:
+		storageClass = StorageClass_Replica_HDD
+	default:
+		storageClass = StorageClass_Unspecified
+	}
+
+	return
+}
