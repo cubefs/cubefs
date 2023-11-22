@@ -534,6 +534,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 			status = int32(replyPacket.ResultCode)
 			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
 			log.LogErrorf("action[doDirectWriteByAppend] data process err %v", err)
+			s.handler.key = nil // direct write key cann't be used again in flush process
 			break
 		}
 
@@ -754,12 +755,12 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 			}
 		} else {
 			if s.handler.fileOffset+s.handler.size == offset {
-				if s.extents.Max().GetSeq() == s.verSeq {
+				if s.handler.key.GetSeq() == s.verSeq {
 					log.LogDebugf("tryInitExtentHandlerByLastEk: seq %vequal", s.verSeq)
 					return
 				}
 				log.LogDebugf("tryInitExtentHandlerByLastEk: seq not equal %v:%v", s.extents.Max().GetSeq(), s.verSeq)
-				initExtentHandlerFunc(s.extents.Max())
+				initExtentHandlerFunc(s.handler.key)
 				return
 			} else {
 				if ek := getEndEkFunc(); ek != nil {
