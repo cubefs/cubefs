@@ -55,6 +55,7 @@ func (k *KeyFlowCtrl) Acquire(key string, rate int) *Controller {
 func (k *KeyFlowCtrl) Release(key string) {
 
 	k.mutex.Lock()
+	defer k.mutex.Unlock()
 	ctrl, ok := k.current[key]
 	if !ok {
 		panic("key not in map. Possible reason: Release without Acquire.")
@@ -67,5 +68,4 @@ func (k *KeyFlowCtrl) Release(key string) {
 		ctrl.c.Close() // avoid goroutine leak
 		delete(k.current, key)
 	}
-	k.mutex.Unlock()
 }
