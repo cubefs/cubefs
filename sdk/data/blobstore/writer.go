@@ -511,9 +511,9 @@ func (writer *Writer) asyncCache(ino uint64, offset int, data []byte) {
 		stat.EndStat("write-async-cache", err, bgTime, 1)
 	}()
 
-	log.LogDebugf("TRACE asyncCache Enter,fileOffset(%v) len(%v)", offset, len(data))
-	//TODO: default cache type is ssd? //TODO:tangjingyu how to get cache storage class from master
-	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache, nil, proto.StorageClass_Replica_SSD, false)
+	log.LogDebugf("TRACE asyncCache Enter,fileOffset(%v) len(%v), storageClass(%v)",
+		offset, len(data), proto.StorageClassString(writer.ec.CacheDpStorageClass))
+	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache, nil, writer.ec.CacheDpStorageClass, false)
 	log.LogDebugf("TRACE asyncCache Exit,write(%v) err(%v)", write, err)
 }
 
