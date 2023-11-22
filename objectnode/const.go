@@ -76,13 +76,13 @@ const (
 	XAmzStorageClass                = "x-amz-storage-class"
 	XAmzTaggingCount                = "x-amz-tagging-count"
 	XAmzContentSha256               = "X-Amz-Content-Sha256"
-	XAmzCredential                  = "X-Amz-Credential"
+	XAmzCredential                  = "X-Amz-Credential" // #nosec G101
 	XAmzSignature                   = "X-Amz-Signature"
 	XAmzSignedHeaders               = "X-Amz-SignedHeaders"
 	XAmzAlgorithm                   = "X-Amz-Algorithm"
 	XAmzDate                        = "X-Amz-Date"
 	XAmzExpires                     = "X-Amz-Expires"
-	XAmzSecurityToken               = "X-Amz-Security-Token"
+	XAmzSecurityToken               = "X-Amz-Security-Token" // #nosec G101
 	XAmzObjectLockMode              = "X-Amz-Object-Lock-Mode"
 	XAmzObjectLockRetainUntilDate   = "X-Amz-Object-Lock-Retain-Until-Date"
 

@@ -107,7 +107,7 @@ const (
 	signV4Algorithm          = "AWS4-HMAC-SHA256"
 	streamingContentEncoding = "aws-chunked"
 
-	credentialFlag    = "Credential="
+	credentialFlag    = "Credential=" // #nosec G101
 	signatureFlag     = "Signature="
 	signedHeadersFlag = "SignedHeaders="
 

@@ -98,3 +98,16 @@ jobs:
           name: docker_data
           path: docker/docker_data.tar.gz
           retention-days: 7
+
+  ci-sast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+
+      - name: Run Semgrep Security Scanner
+        uses: returntocorp/semgrep-action@fcd5ab7459e8d91cb1777481980d1b18b4fc6735 # v1
+
+      - name: Run Gosec Security Scanner
+        run: |
+          docker/run_docker.sh --gosec
