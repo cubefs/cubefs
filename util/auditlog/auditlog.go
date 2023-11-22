@@ -117,7 +117,7 @@ type Audit struct {
 	stopC            chan struct{}
 	resetWriterBuffC chan int
 	pid              int
-	lock             sync.Mutex
+	lock             sync.RWMutex
 }
 
 var gAdt *Audit = nil
@@ -335,8 +335,8 @@ func (a *Audit) ResetWriterBufferSize(size int) {
 }
 
 func (a *Audit) AddLog(content string) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
+	a.lock.RLock()
+	defer a.lock.RUnlock()
 	select {
 	case a.bufferC <- content:
 		return
@@ -427,8 +427,8 @@ func ResetWriterBufferSize(size int) {
 }
 
 func AddLog(content string) {
-	gAdtMutex.Lock()
-	defer gAdtMutex.Unlock()
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
 	if gAdt == nil {
 		return
 	}
