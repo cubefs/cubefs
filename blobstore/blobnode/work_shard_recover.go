@@ -307,6 +307,7 @@ func (shards *ShardsBuf) PutShard(bid proto.BlobID, input io.Reader) error {
 
 	size := shards.shards[bid].size
 	if int64(len(shards.shards[bid].data)) != size {
+		shards.mu.Unlock()
 		return errShardSizeNotMatch
 	}
 	shards.mu.Unlock()
