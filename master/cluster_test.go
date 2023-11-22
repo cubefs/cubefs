@@ -131,7 +131,7 @@ func TestPanicCheckBadDiskRecovery(t *testing.T) {
 		t.Error(err)
 	}
 	dp := newDataPartition(partitionID, vol.dpReplicaNum, vol.Name, vol.ID,
-		proto.PartitionTypeNormal, 0, proto.MediaType_SSD)
+		proto.PartitionTypeNormal, 0, defaultMediaType)
 	c.BadDataPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckDiskRecoveryProgress()
 }

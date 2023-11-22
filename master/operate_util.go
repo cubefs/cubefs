@@ -44,7 +44,6 @@ func newCreateDataPartitionRequest(volName string, ID uint64, replicaNum int, me
 		LeaderSize:          leaderSize,
 		DecommissionedDisks: decommissionedDisks,
 		VerSeq:              verSeq,
-		MediaType:           mediaType, //TODO:tangjingyu: need send this to dn?
 	}
 	return
 }

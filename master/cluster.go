@@ -542,8 +542,7 @@ func (c *Cluster) checkDataPartitions() {
 
 	vols := c.allVols()
 	for _, vol := range vols {
-		readWrites := vol.checkDataPartitions(c)
-		vol.dataPartitions.setReadWriteDataPartitions(readWrites)
+		vol.checkDataPartitions(c)
 		if c.metaReady {
 			vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
 		}
@@ -1421,11 +1420,12 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartiti
 func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, mediaType uint32) (err error) {
 	if !init {
 		if _, err = vol.needCreateDataPartition(); err != nil {
-			log.LogWarnf("action[batchCreateDataPartition] create data p artition failed, err[%v]", err)
+			log.LogWarnf("action[batchCreateDataPartition] create data partition failed, err[%v]", err)
 			return
 		}
 	}
 
+	var createdCnt int
 	for i := 0; i < reqCount; i++ {
 		if c.DisableAutoAllocate && !init {
 			log.LogWarn("disable auto allocate dataPartition")
@@ -1441,7 +1441,13 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, me
 			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition,occurred error,err[%v]", i, err)
 			break
 		}
+		createdCnt++
 	}
+	log.LogInfof("action[batchCreateDataPartition] vol(%v), created data partition count:%v, mediaType:%v",
+		vol.Name, createdCnt, proto.MediaTypeString(mediaType))
+	vol.dataPartitions.IncReadWriteDataPartitionCntByMediaType(createdCnt, mediaType)
+	log.LogInfof("########### action[batchCreateDataPartition] vol(%v), mediaType:%v, rwDpCount:%v",
+		vol.Name, proto.MediaTypeString(mediaType), vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)) //TODO:tangjingyu test only
 	return
 }
 
@@ -3289,7 +3295,6 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 
 	var (
 		readWriteDataPartitions int //TODO:tangjingyu recored readWriteDataPartitions by StorageClass
-		tmpRwDpCnt              int
 	)
 
 	if req.zoneName, err = c.checkZoneName(req.name, req.crossZone, req.normalZonesFirst, req.zoneName, req.domainId); err != nil {
@@ -3323,26 +3328,26 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	if proto.IsStorageClassReplica(vol.volStorageClass) {
 		for _, acs := range req.allowedStorageClass {
 			chosenMediaType := proto.GetMediaTypeByStorageClass(acs)
-			if tmpRwDpCnt, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
+			if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
 				goto errHandler
 			}
-			readWriteDataPartitions = readWriteDataPartitions + tmpRwDpCnt
+			log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for replica",
+				req.name, readWriteDataPartitions, proto.MediaTypeString(chosenMediaType))
 		}
 	} else if proto.IsStorageClassBlobStore(vol.volStorageClass) && vol.CacheCapacity > 0 {
 		chosenStorageClass := c.GetFastReplicaStorageClassFromCluster(nil)
 		chosenMediaType := proto.GetMediaTypeByStorageClass(chosenStorageClass)
 
-		log.LogInfof("action[createVol] vol[%v] choose dp storageClass(%v) for blobStore",
+		log.LogInfof("action[createVol] vol[%v] choose cache dp storageClass(%v) for blobStore",
 			req.name, proto.StorageClassString(chosenStorageClass))
-		if tmpRwDpCnt, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
+		if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
 			goto errHandler
 		}
-		readWriteDataPartitions = readWriteDataPartitions + tmpRwDpCnt
+		log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for blobStore",
+			req.name, readWriteDataPartitions, proto.MediaTypeString(chosenMediaType))
 	}
 
-	vol.dataPartitions.setReadWriteDataPartitions(readWriteDataPartitions)
 	vol.updateViewCache(c)
-
 	log.LogInfof("action[createVol] vol[%v], readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
 	return
 

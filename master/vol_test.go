@@ -26,11 +26,19 @@ func TestAutoCreateDataPartitions(t *testing.T) {
 
 	commonVol.Capacity = 300 * util.TB
 	dpCount := len(commonVol.dataPartitions.partitions)
-	commonVol.dataPartitions.setReadWriteDataPartitions(0)
-	commonVol.dataPartitions.lastAutoCreateTime = time.Now().Add(-time.Minute)
+	commonVol.dataPartitions.setReadWriteDataPartitionCntByMediaType(0, defaultMediaType)
+	rwDpCountMediaType := commonVol.dataPartitions.getReadWriteDataPartitionCntByMediaType(defaultMediaType)
+	if rwDpCountMediaType != 0 {
+		t.Errorf("autoCreateDataPartitions failed: mediaType(%v) read and writable dp count not 0: %v",
+			proto.MediaTypeString(defaultMediaType), rwDpCountMediaType)
+		return
+	}
+	//commonVol.dataPartitions.setReadWriteDataPartitions(0) //TODO:tangjingyu del
+	commonVol.dataPartitions.lastAutoCreateTime = time.Now().Add(-(2 * time.Minute))
 	server.cluster.DisableAutoAllocate = false
-	t.Logf("status[%v],disableAutoAlloc[%v],cap[%v]\n",
-		commonVol.Status, server.cluster.DisableAutoAllocate, commonVol.Capacity)
+	t.Logf("status[%v],disableAutoAlloc[%v],cap[%v],volStorageClass[%v]\n",
+		commonVol.Status, server.cluster.DisableAutoAllocate, commonVol.Capacity,
+		proto.StorageClassString(commonVol.volStorageClass))
 
 	commonVol.checkAutoDataPartitionCreation(server.cluster)
 	newDpCount := len(commonVol.dataPartitions.partitions)
@@ -406,14 +414,14 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	vol.addMetaPartition(mp2)
 	vol.updateViewCache(server.cluster)
 	for id := 0; id < 30000; id++ {
-		dp := newDataPartition(uint64(id), 3, name, volID, 0, 0, proto.MediaType_SSD)
+		dp := newDataPartition(uint64(id), 3, name, volID, 0, 0, defaultMediaType)
 		vol.dataPartitions.put(dp)
 	}
 	go func() {
 		var id uint64 = 30000
 		for {
 			id++
-			dp := newDataPartition(id, 3, name, volID, 0, 0, proto.MediaType_SSD)
+			dp := newDataPartition(id, 3, name, volID, 0, 0, defaultMediaType)
 			vol.dataPartitions.put(dp)
 			time.Sleep(time.Second)
 		}

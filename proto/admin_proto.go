@@ -438,7 +438,6 @@ type CreateDataPartitionRequest struct {
 	DecommissionedDisks []string
 	IsMultiVer          bool
 	VerSeq              uint64
-	MediaType           uint32
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.

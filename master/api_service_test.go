@@ -70,6 +70,9 @@ const (
 
 var server = createDefaultMasterServerForTest()
 var commonVol *Vol
+var defaultVolStorageClass = proto.StorageClass_Replica_SSD
+var defaultMediaType = proto.MediaType_SSD
+
 var cfsUser *proto.UserInfo
 
 var mockServerLock sync.Mutex
@@ -170,7 +173,7 @@ func createDefaultMasterServerForTest() *Server {
 		zoneName:         testZone2,
 		description:      "",
 		qosLimitArgs:     &qosArgs{},
-		volStorageClass:  proto.StorageClass_Replica_SSD,
+		volStorageClass:  defaultVolStorageClass,
 	}
 
 	vol, err := testServer.cluster.createVol(req)
