@@ -56,6 +56,11 @@ run_bsgolint() {
     ${compose} run bs_golint
 }
 
+run_gosec() {
+    prepare
+    ${compose} run gosec
+}
+
 # build
 build() {
     prepare
@@ -153,6 +158,9 @@ for opt in ${ARGS[*]} ; do
         --bsgolint)
             cmd=run_bsgolint
             ;;
+        --gosec)
+            cmd=run_gosec
+            ;;
         -clean|--clean)
             cmd=clean
             ;;
@@ -206,6 +214,7 @@ case "-$cmd" in
     -run_s3test) run_s3test ;;
     -run_bsgofumpt) run_bsgofumpt ;;
     -run_bsgolint) run_bsgolint ;;
+    -run_gosec) run_gosec ;;
     -clean) clean ;;
     *) help ;;
 esac
