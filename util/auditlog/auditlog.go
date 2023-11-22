@@ -117,7 +117,6 @@ type Audit struct {
 	stopC            chan struct{}
 	resetWriterBuffC chan int
 	pid              int
-	lock             sync.RWMutex
 }
 
 var gAdt *Audit = nil
@@ -329,14 +328,10 @@ func (a *Audit) formatLog(ipAddr, hostName, op, src, dst string, err error, late
 }
 
 func (a *Audit) ResetWriterBufferSize(size int) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
 	a.resetWriterBuffC <- size
 }
 
 func (a *Audit) AddLog(content string) {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
 	select {
 	case a.bufferC <- content:
 		return
@@ -453,6 +448,10 @@ func (a *Audit) flushAuditLog() {
 	for {
 		select {
 		case <-a.stopC:
+			// NOTE: shoule we cleanup bufferC?
+			a.writer.Flush()
+			a.logFile.Close()
+			a.stopC <- struct{}{}
 			return
 		case bufSize := <-a.resetWriterBuffC:
 			a.writerBufSize = bufSize
@@ -547,12 +546,13 @@ func (a *Audit) shouldDelete(info os.FileInfo, diskSpaceLeft int64, module strin
 	return time.Since(info.ModTime()) > MaxReservedDays && isOldAuditLogFile
 }
 
+// NOTE: Please call me in single-thread
 func (a *Audit) Stop() {
-	a.lock.Lock()
-	defer a.lock.Unlock()
+	// NOTE: put a empty value to stop async coroutine
+	a.stopC <- struct{}{}
+	// NOTE: wait for coroutine stop
+	<-a.stopC
 	close(a.stopC)
-	a.writer.Flush()
-	a.logFile.Close()
 }
 
 func (a *Audit) logAudit(content string) error {
