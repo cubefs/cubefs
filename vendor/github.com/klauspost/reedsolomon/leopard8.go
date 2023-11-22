@@ -381,7 +381,7 @@ func (r *leopardFF8) ReconstructData(shards [][]byte) error {
 }
 
 func (r *leopardFF8) GetSurvivalShards(badIndex []int, azLayout [][]int) ([]int, []int, error) {
-	return nil,nil,ErrNotSupported
+	return nil, nil, ErrNotSupported
 }
 
 func (r *leopardFF8) PartialReconstruct(shards [][]byte, survivalIdx, badIdx []int) error {
