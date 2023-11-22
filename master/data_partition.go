@@ -1495,7 +1495,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 				partition.PartitionID, err.Error())
 			goto errHandler
 		}
-		//TODO:tanjingyu hechi:  properly handle mediaType while decommission
+
 		targetHosts, _, err = ns.getAvailDataNodeHosts(partition.Hosts, 1, partition.MediaType)
 		if err != nil {
 			log.LogWarnf("action[TryAcquireDecommissionToken] dp %v choose from src nodeset failed:%v",

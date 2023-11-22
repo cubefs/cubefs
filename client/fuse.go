@@ -884,6 +884,7 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.TxTimeout = volumeInfo.TxTimeout
 	opt.TxConflictRetryNum = volumeInfo.TxConflictRetryNum
 	opt.TxConflictRetryInterval = volumeInfo.TxConflictRetryInterval
+	opt.CacheDpStorageClass = volumeInfo.CacheDpStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

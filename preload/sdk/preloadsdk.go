@@ -60,6 +60,7 @@ type PreLoadClient struct {
 	ebsBlockSize          int
 	preloadFileNumTotal   int64
 	preloadFileNumSucceed int64
+	CacheDpStorageClass   uint32
 }
 
 type fileInfo struct {
@@ -473,15 +474,14 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 				log.LogWarnf("Read (%v) wrong size:(%v)", objExtent, n)
 				continue
 			}
-			//TODO:default cache type is ssd? //TODO:tangjingyu: how to get cache storage class from master?
-			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil, proto.StorageClass_Replica_SSD, false)
-			//in preload mode,onece extend_hander set to error, streamer is set to error
-			// so write should failed immediately
+
+			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil, c.CacheDpStorageClass, false)
+			//in preload mode,once extend_hander set to error, streamer is set to error
+			// so write should fail immediately
 			if err != nil {
 				subErr = true
 				log.LogWarnf("preload (%v) to cbfs failed (%v)", job.name, err)
-				//TODO:default cache type is ssd?
-				if err = c.ec.GetDataPartitionForWrite(proto.StorageClass_Replica_SSD); err != nil {
+				if err = c.ec.GetDataPartitionForWrite(c.CacheDpStorageClass); err != nil {
 					log.LogErrorf("worker %v end for %v", id, err)
 					noWritableDP = true
 				}
@@ -528,16 +528,25 @@ func (c *PreLoadClient) preloadFile() error {
 
 }
 
-func (c *PreLoadClient) CheckColdVolume() bool {
+func (c *PreLoadClient) CheckVolumeInfoFromMaster() bool {
 	var (
 		err  error
 		view *proto.SimpleVolView
 	)
 
 	if view, err = c.mc.AdminAPI().GetVolumeSimpleInfo(c.vol); err != nil {
-		log.LogErrorf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", c.vol, err)
+		log.LogErrorf("CheckVolumeInfoFromMaster: get volume simple info fail: volume(%v) err(%v)", c.vol, err)
 		return false
 	}
+
+	if view.CacheDpStorageClass == proto.StorageClass_Unspecified {
+		log.LogErrorf("CheckVolumeInfoFromMaster: volume(%v) cacheDpStorageClass not specified", c.vol)
+		return false
+	}
+	c.CacheDpStorageClass = view.CacheDpStorageClass
+	log.LogInfof("CheckVolumeInfoFromMaster: volume(%v) cacheDpStorageClass: %v",
+		c.vol, proto.StorageClassString(c.CacheDpStorageClass))
+
 	return view.VolType == proto.VolumeTypeCold
 }
 

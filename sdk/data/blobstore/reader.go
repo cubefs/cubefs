@@ -396,10 +396,9 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 			streamer.WorkAsCache()
 		}
 
-		//TODO:tangjingyu handle cache dp mediaType
-		////cold volume's cache has only one storage class of datapartitions, so use proto.StorageClass_Unspecified here
-		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil, proto.StorageClass_Replica_SSD, false)
-		log.LogDebugf("TRACE blobStore asyncCache(L2) Exit. cacheKey=%v", cacheKey)
+		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil, reader.ec.CacheDpStorageClass, false)
+		log.LogDebugf("TRACE blobStore asyncCache(L2) Exit. storageClass(%v) cacheKey=%v",
+			proto.StorageClassString(reader.ec.CacheDpStorageClass), cacheKey)
 		return
 	}
 

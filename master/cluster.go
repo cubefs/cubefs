@@ -1392,21 +1392,19 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartiti
 		return fmt.Errorf("vol type is not warm"), nil
 	}
 
-	total := overSoldCap(uint64(preload.preloadCacheCapacity))
-	reqCreateCount := (total-1)/(util.DefaultDataPartitionSize/util.GB) + 1
-
-	chosenStorageClass := c.GetFastReplicaStorageClassFromCluster(nil)
-	if chosenStorageClass == proto.StorageClass_Unspecified {
-		log.LogErrorf("cluster has no resource to create preload data partition, vol(%v)", vol.Name)
+	if vol.cacheDpStorageClass == proto.StorageClass_Unspecified {
+		err = fmt.Errorf(" has no resource to create preload data partition")
+		log.LogErrorf("[batchCreatePreLoadDataPartition] vol(%v) err: %v", vol.Name, err.Error())
 		return err, nil
 	}
+
+	total := overSoldCap(uint64(preload.preloadCacheCapacity))
+	reqCreateCount := (total-1)/(util.DefaultDataPartitionSize/util.GB) + 1
 
 	for i := 0; i < int(reqCreateCount); i++ {
 		log.LogInfof("create preload data partition (%v) total (%v)", i, reqCreateCount)
 		var dp *DataPartition
-		chosenMediaType := proto.GetMediaTypeByStorageClass(chosenStorageClass)
-
-		if dp, err = c.createDataPartition(vol.Name, preload, chosenMediaType); err != nil {
+		if dp, err = c.createDataPartition(vol.Name, preload, vol.cacheDpStorageClass); err != nil {
 			log.LogErrorf("create preload data partition fail: volume(%v) err(%v)", vol.Name, err)
 			return err, nil
 		}
@@ -2367,7 +2365,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 
 	if targetAddr != "" {
 		targetHosts = []string{targetAddr}
-	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1, dataNode.MediaType); err != nil {
+	} else if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1, dp.MediaType); err != nil {
 		if _, ok := c.vols[dp.VolName]; !ok {
 			log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline failed,PersistenceHosts:[%v]",
 				c.Name, dp.PartitionID, srcAddr, dp.Hosts)
@@ -3339,6 +3337,10 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	// init data partitions according to vol parameters
 	if proto.IsStorageClassReplica(vol.volStorageClass) {
 		for _, acs := range req.allowedStorageClass {
+			if !proto.IsStorageClassReplica(acs) {
+				continue
+			}
+
 			chosenMediaType := proto.GetMediaTypeByStorageClass(acs)
 			if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
 				goto errHandler
@@ -3347,11 +3349,10 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 				req.name, readWriteDataPartitions, proto.MediaTypeString(chosenMediaType))
 		}
 	} else if proto.IsStorageClassBlobStore(vol.volStorageClass) && vol.CacheCapacity > 0 {
-		chosenStorageClass := c.GetFastReplicaStorageClassFromCluster(nil)
-		chosenMediaType := proto.GetMediaTypeByStorageClass(chosenStorageClass)
+		chosenMediaType := proto.GetMediaTypeByStorageClass(vol.cacheDpStorageClass)
 
-		log.LogInfof("action[createVol] vol[%v] choose cache dp storageClass(%v) for blobStore",
-			req.name, proto.StorageClassString(chosenStorageClass))
+		log.LogInfof("action[createVol] vol[%v] to create cache dp with storageClass(%v) for blobStore",
+			req.name, proto.StorageClassString(vol.cacheDpStorageClass))
 		if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
 			goto errHandler
 		}
@@ -3428,6 +3429,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 
 		VolStorageClass:     req.volStorageClass,
 		AllowedStorageClass: req.allowedStorageClass,
+		CacheDpStorageClass: req.cacheDpStorageClass,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)

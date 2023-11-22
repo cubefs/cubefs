@@ -246,6 +246,7 @@ type VolStatInfo struct {
 	TxRbDenCnt            uint64
 	DpReadOnlyWhenVolFull bool
 	DefaultStorageClass   uint32
+	CacheDpStorageClass   uint32
 }
 
 // DataPartition represents the structure of storing the file contents.

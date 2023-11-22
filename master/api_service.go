@@ -2246,11 +2246,17 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 
 		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
 			req.name, proto.StorageClassString(req.volStorageClass))
+	} else if proto.IsStorageClassBlobStore(req.volStorageClass) {
+		req.cacheDpStorageClass = m.cluster.GetFastReplicaStorageClassFromCluster(resourceChecker)
+
+		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v)  volStorageClass(%v) set cacheDpStorageClass: %v",
+			req.name, proto.StorageClassString(req.volStorageClass), proto.StorageClassString(req.cacheDpStorageClass))
 	} else if !proto.IsValidStorageClass(req.volStorageClass) {
 		err = fmt.Errorf("invalid volStorageClass: %v", req.volStorageClass)
 		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 		return err
 	}
+
 	log.LogInfof("[checkStorageClassForCreateVol] volStorageClass: %v", proto.StorageClassString(req.volStorageClass))
 
 	if len(req.allowedStorageClass) == 0 {
@@ -2609,6 +2615,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 
 		AllowedStorageClass: vol.allowedStorageClass,
 		VolStorageClass:     vol.volStorageClass,
+		CacheDpStorageClass: vol.cacheDpStorageClass,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)
@@ -4871,6 +4878,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	}
 	vol.mpsLock.RUnlock()
 	stat.DefaultStorageClass = vol.volStorageClass
+	stat.CacheDpStorageClass = vol.cacheDpStorageClass
 	log.LogDebugf("action[volStat] vol [%v] total[%v] usedSize[%v] DefaultStorageClass[%v]",
 		vol.Name, stat.TotalSize, stat.UsedSize, stat.DefaultStorageClass)
 	if proto.IsHot(vol.VolType) {

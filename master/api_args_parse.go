@@ -699,6 +699,7 @@ type createVolReq struct {
 	volStorageClass             uint32
 	allowedStorageClass         []uint32 // format is uint32 Separated by commas: "StorageClass1, StorageClass2, ..."
 	hasMultiReplicaStorageClass bool
+	cacheDpStorageClass         uint32
 }
 
 func checkCacheAction(action int) error {
