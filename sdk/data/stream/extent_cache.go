@@ -138,17 +138,17 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	cache.root.DescendLessOrEqual(ekPivot, func(i btree.Item) bool {
 		if ekFind == nil {
 			ekFind = i.(*proto.ExtentKey)
-			log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ek [%v]", inodeID, ekFind)
+			log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ek [%v]", inodeID, ekFind)
 			return true
 		}
 		ekLeft = i.(*proto.ExtentKey)
-		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ekLeft [%v]", inodeID, ekLeft)
+		log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ekLeft [%v]", inodeID, ekLeft)
 		return false
 	})
 
 	cache.root.AscendGreaterThan(ekPivot, func(i btree.Item) bool {
 		ekRight = i.(*proto.ExtentKey)
-		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ekRight [%v]", inodeID, ekRight)
+		log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ekRight [%v]", inodeID, ekRight)
 		return false
 	})
 
