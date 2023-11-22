@@ -1015,9 +1015,9 @@ type SimpleVolView struct {
 	EnableAuditLog bool
 
 	// hybrid cloud
-	DefaultMediaType    uint32
 	AllowedStorageClass []uint32
 	VolStorageClass     uint32
+	CacheDpStorageClass uint32
 }
 
 type NodeSetInfo struct {
@@ -1252,6 +1252,19 @@ func GetMediaTypeByStorageClass(storageClass uint32) (mediaType uint32) {
 		mediaType = MediaType_HDD
 	default:
 		mediaType = MediaType_Unspecified
+	}
+
+	return
+}
+
+func GetStorageClassByMediaType(mediaType uint32) (storageClass uint32) {
+	switch mediaType {
+	case MediaType_SSD:
+		storageClass = StorageClass_Replica_SSD
+	case MediaType_HDD:
+		storageClass = StorageClass_Replica_HDD
+	default:
+		storageClass = StorageClass_Unspecified
 	}
 
 	return

@@ -116,6 +116,7 @@ type Vol struct {
 	// hybrid cloud
 	allowedStorageClass []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
 	volStorageClass     uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
+	cacheDpStorageClass uint32   // for SDK those access cache/preload dp of cold volume
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -188,7 +189,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.allowedStorageClass = make([]uint32, len(vv.AllowedStorageClass))
 	copy(vol.allowedStorageClass, vv.AllowedStorageClass)
 	vol.volStorageClass = vv.VolStorageClass
-
+	vol.cacheDpStorageClass = vv.CacheDpStorageClass
 	return
 }
 
@@ -969,8 +970,12 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 			return
 		}
 
-		cacheStorageClass := c.GetFastReplicaStorageClassFromCluster(nil)
-		cacheMediaType := proto.GetMediaTypeByStorageClass(cacheStorageClass)
+		if vol.cacheDpStorageClass == proto.StorageClass_Unspecified {
+			log.LogErrorf("action[autoCreateDataPartitions] no resource to create cache data partition, vol(%v)", vol.Name)
+			return
+		}
+
+		cacheMediaType := proto.GetMediaTypeByStorageClass(vol.cacheDpStorageClass)
 		count := (maxSize-allocSize-1)/vol.dataPartitionSize + 1
 		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v] volStorageClass[%v], chosenMediaType(%v)",
 			vol.Name, count, proto.StorageClassString(vol.volStorageClass), proto.MediaTypeString(cacheMediaType))
