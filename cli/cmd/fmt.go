@@ -83,22 +83,23 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "STATUS", "MEDIA")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
 	sb.WriteString(fmt.Sprintf("  Status  : %v", formatNodeStatus(view.Status)))
+	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaType)))
 	return sb.String()
 }
 
@@ -238,7 +239,7 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 var (
 	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v     %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
-		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType","MEMBERS")
+		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS")
 
 	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
@@ -605,6 +606,14 @@ func formatNodeStatus(status bool) string {
 	}
 	return "Inactive"
 }
+
+func formatNodeMediaType(mediaType uint32) string {
+	if mediaType == proto.MediaType_Unspecified {
+		return "N/A"
+	}
+	return proto.MediaTypeString(mediaType)
+}
+
 
 var (
 	units         = []string{"B", "KB", "MB", "GB", "TB", "PB"}

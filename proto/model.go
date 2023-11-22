@@ -158,6 +158,7 @@ type NodeView struct {
 	DomainAddr string
 	ID         uint64
 	IsWritable bool
+	MediaType  uint32
 }
 
 type DpRepairInfo struct {

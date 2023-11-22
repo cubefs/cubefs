@@ -3294,7 +3294,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	var (
-		readWriteDataPartitions int //TODO:tangjingyu recored readWriteDataPartitions by StorageClass
+		readWriteDataPartitions int
 	)
 
 	if req.zoneName, err = c.checkZoneName(req.name, req.crossZone, req.normalZonesFirst, req.zoneName, req.domainId); err != nil {
@@ -3348,7 +3348,8 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	vol.updateViewCache(c)
-	log.LogInfof("action[createVol] vol[%v], readableAndWritableCnt[%v]", req.name, readWriteDataPartitions)
+	log.LogInfof("action[createVol] vol[%v], readableAndWritableCnt[%v]",
+		req.name, vol.dataPartitions.readableAndWritableCnt)
 	return
 
 errHandler:
@@ -3529,7 +3530,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		dataNodes = append(dataNodes, proto.NodeView{Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
-			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble()})
+			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.isWriteAble(), MediaType: dataNode.MediaType})
 		return true
 	})
 	return
@@ -3540,7 +3541,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 	c.metaNodes.Range(func(addr, node interface{}) bool {
 		metaNode := node.(*MetaNode)
 		metaNodes = append(metaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
-			Status: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+			Status: metaNode.IsActive, IsWritable: metaNode.isWritable(), MediaType: proto.MediaType_Unspecified})
 		return true
 	})
 	return

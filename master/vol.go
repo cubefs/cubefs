@@ -991,12 +991,12 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		var createDpCount int
 		if asc == vol.volStorageClass && vol.Capacity > 200000 && rwDpCountOfMediaType < 200 {
 			createDpCount = vol.calculateExpansionNum()
-			log.LogInfof("action[autoCreateDataPartitions] volStorageClass(%v), calculated createDpCount:%v",
-				asc, createDpCount)
+			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), calculated createDpCount:%v",
+				vol.Name, asc, createDpCount)
 		} else if rwDpCountOfMediaType < minNumOfRWDataPartitions {
 			createDpCount = minNumOfRWDataPartitions
-			log.LogInfof("action[autoCreateDataPartitions] not volStorageClass(%v), min createDpCount:%v",
-				asc, createDpCount)
+			log.LogInfof("action[autoCreateDataPartitions] vol(%v) volStorageClass(%v), min createDpCount:%v",
+				vol.Name, asc, createDpCount)
 		} else {
 			continue
 		}

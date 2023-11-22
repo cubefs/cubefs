@@ -176,13 +176,6 @@ func (dpMap *DataPartitionMap) getDataPartitionsCountOfMediaType(mediaType uint3
 	return len(dpIdSet)
 }
 
-//TODO:tangjingyu del
-//func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int) {
-//	dpMap.Lock()
-//	defer dpMap.Unlock()
-//	dpMap.readableAndWritableCnt = readWrites
-//}
-
 func (dpMap *DataPartitionMap) refreshReadWriteDataPartitionCnt() {
 	var cntAllMediaType int
 	for _, cntOfMediaType := range dpMap.rwCntByMediaType {

@@ -162,7 +162,7 @@ func createDefaultMasterServerForTest() *Server {
 	req := &createVolReq{
 		name:             commonVolName,
 		owner:            "cfs",
-		dpSize:           3,
+		dpSize:           11,
 		mpCount:          3,
 		dpReplicaNum:     3,
 		capacity:         300,
@@ -174,6 +174,11 @@ func createDefaultMasterServerForTest() *Server {
 		description:      "",
 		qosLimitArgs:     &qosArgs{},
 		volStorageClass:  defaultVolStorageClass,
+	}
+
+	err = testServer.checkCreateVolReq(req)
+	if err != nil {
+		panic("checkCreateVolReq failed: " + err.Error())
 	}
 
 	vol, err := testServer.cluster.createVol(req)

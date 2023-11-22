@@ -513,7 +513,7 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 	)
 	if status == proto.OpOk {
 		if ino.StorageClass != proto.StorageClass_BlobStore {
-			status = proto.OpDismatchMediaType
+			status = proto.OpDismatchStorageClass
 			reply = []byte(fmt.Sprintf("Dismatch storage type, current storage type is %s",
 				proto.StorageClassString(ino.StorageClass)))
 			p.PacketErrorWithBody(status, reply)

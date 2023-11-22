@@ -245,7 +245,7 @@ const (
 	OpSplitMarkDelete  uint8 = 0xD6
 
 	//hybirdCloud
-	OpDismatchMediaType uint8 = 0xD7 //TODO:tangjingyu should rename to storageClass?
+	OpDismatchStorageClass uint8 = 0xD7
 )
 
 const (
