@@ -17,8 +17,8 @@ import (
 	"io"
 	"math"
 	"runtime"
-	"sync"
 	"sort"
+	"sync"
 
 	"github.com/klauspost/cpuid/v2"
 )
