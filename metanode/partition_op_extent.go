@@ -145,9 +145,10 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	// extent key verSeq not set value since marshal will not include verseq
 	// use inode verSeq instead
 	inoParm.setVer(mp.verSeq)
-	inoParm.StorageClass = req.StorageClass
-	//TODO:tangjingyu
-	//if isCachem: inoParm.StorageClass set as inode's old storageClass
+
+	if !req.IsCache {
+		inoParm.StorageClass = req.StorageClass
+	}
 
 	if req.IsCache {
 		inoParm.Extents.Append(ext)
@@ -155,8 +156,8 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		inoParm.HybridCouldExtents.sortedEks = NewSortedExtents()
 		inoParm.HybridCouldExtents.sortedEks.(*SortedExtents).Append(ext)
 	}
-	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) isCache(%v) verSeq (%v)",
-		req.Inode, req.PartitionID, req.IsCache, mp.verSeq)
+	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) isCache(%v) verSeq (%v) storageClass(%v)",
+		req.Inode, req.PartitionID, req.IsCache, mp.verSeq, proto.StorageClassString(inoParm.StorageClass))
 
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
