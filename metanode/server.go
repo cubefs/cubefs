@@ -16,8 +16,11 @@ package metanode
 
 import (
 	"context"
+	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"io"
 	"net"
+	"time"
 
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -32,6 +35,7 @@ func (m *MetaNode) startServer() (err error) {
 	}
 	go func(stopC chan uint8) {
 		defer ln.Close()
+		var latestAlarm time.Time
 		for {
 			conn, err := ln.Accept()
 			select {
@@ -40,6 +44,17 @@ func (m *MetaNode) startServer() (err error) {
 			default:
 			}
 			if err != nil {
+				log.LogErrorf("action[startTCPService] failed to accept, err:%s", err.Error())
+				// Alarm only once in 1 minute
+				if time.Now().Sub(latestAlarm) > time.Minute {
+					message := fmt.Sprintf("SERVER ACCEPT CONNECTION FAILED!\n"+
+						"Failed on accept connection from %v and will retry after 10s.\n"+
+						"Error message: %s",
+						ln.Addr(), err.Error())
+					exporter.WarningCritical(message)
+					latestAlarm = time.Now()
+				}
+				time.Sleep(time.Second * 5)
 				continue
 			}
 			go m.serveConn(conn, stopC)

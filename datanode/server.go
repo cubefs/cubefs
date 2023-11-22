@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
 	"io/ioutil"
 	"math"
 	"net"
