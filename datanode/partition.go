@@ -705,9 +705,33 @@ func (dp *DataPartition) MarkDelete(marker storage.Marker) (err error) {
 	return
 }
 
-func (dp *DataPartition) FlushDelete(interceptor storage.Interceptor) (deleted, remain int, err error) {
-	const count = 128
-	deleted, remain, err = dp.extentStore.FlushDelete(interceptor, count)
+func (dp *DataPartition) FlushDelete(count int) (deleted, remain int, err error) {
+
+	const (
+		exporterOp            = "FlushDelete"
+		ctxKeyExporterTp byte = 0x0
+		ctxKeySreTp      byte = 0x01
+	)
+
+	var (
+		monitorData = dp.monitorData[proto.ActionFlushDelete]
+
+		before storage.BeforeFunc = func() (ctx context.Context, err error) {
+			ctx = context.WithValue(context.Background(), ctxKeyExporterTp, exporter.NewModuleTP(exporterOp))
+			ctx = context.WithValue(ctx, ctxKeySreTp, monitorData.BeforeTp())
+			return
+		}
+		after storage.AfterFunc = func(ctx context.Context, n int64, err error) {
+			if tp, is := ctx.Value(ctxKeyExporterTp).(exporter.TP); is {
+				tp.Set(err)
+			}
+			if tp, is := ctx.Value(ctxKeySreTp).(*statistics.TpObject); is {
+				tp.AfterTp(0)
+			}
+		}
+	)
+
+	deleted, remain, err = dp.extentStore.FlushDelete(storage.NewFuncInterceptor(before, after), count)
 	return
 }
 

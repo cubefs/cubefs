@@ -70,7 +70,6 @@ const (
 	queueDataDirPerm              = 0777
 	queueMetaFilename             = "META"
 	queueMetaFilePerm             = 0666
-	queueDefaultRetainFiles       = 1
 	queueDefaultFilesize          = 4 * 1024 * 1024 // 4MB
 )
 
@@ -273,6 +272,24 @@ func (rfs *recordFiles) sort() {
 	sort.SliceStable(*rfs, func(i, j int) bool {
 		return (*rfs)[i]._seq < (*rfs)[j]._seq
 	})
+}
+
+func (rfs *recordFiles) remainFrom(index recordIndex) (count int) {
+	if rfs.len() == 0 || rfs.last().seq() == index.seq && rfs.last().size() == int64(index.off) {
+		return
+	}
+
+	rfs.walk(func(rf *recordFile) bool {
+		switch {
+		case rf.seq() == index.seq:
+			count += int((rf.size() - int64(index.off)) / int64(queueRecordCodecLength))
+		case rf.seq() > index.seq:
+			count += int(rf.size() / int64(queueRecordCodecLength))
+		default:
+		}
+		return true
+	})
+	return
 }
 
 type recordFileWriter struct {
@@ -682,30 +699,9 @@ func (q *ExtentQueue) BatchProduce(batchsize int) (producer *BatchProducer, err 
 
 // Remain returns number of records that have not been consumed yet.
 func (q *ExtentQueue) Remain() (count int) {
-	count = q.__remainFrom(q.mf.getConsumed())
-	return
-}
-
-// __remainFrom (inner private function) returns number of records from given index to last.
-func (q *ExtentQueue) __remainFrom(index recordIndex) (count int) {
 	q.rfsMu.RLock()
-	var rfs = q.rfs.clone()
+	count = q.rfs.remainFrom(q.mf.getConsumed())
 	q.rfsMu.RUnlock()
-
-	if rfs.len() == 0 || rfs.last().seq() == index.seq && rfs.last().size() == int64(index.off) {
-		return
-	}
-
-	rfs.walk(func(rf *recordFile) bool {
-		switch {
-		case rf.seq() == index.seq:
-			count += int((rf.size() - int64(index.off)) / int64(queueRecordCodecLength))
-		case rf.seq() > index.seq:
-			count += int(rf.size() / int64(queueRecordCodecLength))
-		default:
-		}
-		return true
-	})
 	return
 }
 
@@ -719,12 +715,12 @@ func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) 
 		return
 	}
 	q.rfsMu.RLock()
-	var rfs = q.rfs.clone()
-	q.rfsMu.RUnlock()
-
-	if q.__remainFrom(si) == 0 {
+	if q.rfs.remainFrom(si) == 0 {
+		q.rfsMu.RUnlock()
 		return
 	}
+	var rfs = q.rfs.clone()
+	q.rfsMu.RUnlock()
 
 	var reader *recordFileReader
 	var rec = getRecord()
@@ -810,13 +806,19 @@ func (q *ExtentQueue) Consume(visitor QueueVisitor) (err error) {
 		_ = q.closeInactiveWriter()
 	}()
 	var si = q.mf.getConsumed()
+	var count int
 	err = q.__walk(si, func(idx recordIndex, ino, extent uint64, offset, size, timestamp int64) (goon bool, err error) {
 		goon, err = visitor.visit(ino, extent, offset, size, timestamp)
 		if err == nil {
 			si = idx.next()
+			count++
 		}
 		return
 	})
+	if count == 0 {
+		return
+	}
+
 	var advanced, advanceErr = q.mf.advanceConsumed(si)
 	if advanceErr != nil {
 		log.LogErrorf("extent queue advance consumed index failed: path=%v, error=%v", q.path, si)

@@ -107,7 +107,7 @@ func TestExtentQueue(t *testing.T) {
 	assert.Equal(t, uint64(0), queue.mf.getConsumed().seq)
 	assert.Equal(t, uint64(0), queue.mf.getConsumed().off)
 
-	// 测试队列单挑生产
+	// 测试队列单挑生产5000条记录
 	for i := 0; i < 5000; i++ {
 		item := genitem()
 		err = queue.Produce(item.ino, item.extent, item.offset, item.size, item.timestamp)
@@ -115,7 +115,10 @@ func TestExtentQueue(t *testing.T) {
 		memproduce(item)
 	}
 
-	// 测试队列批量生产
+	// 检查队列Remain结果
+	assert.Equal(t, 5000, queue.Remain())
+
+	// 测试队列批量生产5000条记录，其中分10个Batch，每个Batch包含500条记录
 	for i := 0; i < 10; i++ {
 		var producer *BatchProducer
 		producer, err = queue.BatchProduce(100)
@@ -128,6 +131,9 @@ func TestExtentQueue(t *testing.T) {
 		err = producer.Submit()
 		assert.Nil(t, err)
 	}
+
+	// 检查队列Remain结果
+	assert.Equal(t, 10000, queue.Remain())
 
 	// 检查数据目录数据文件是否按预期自动结转
 	validRecordFileList(t, testpath.Path(), []string{
@@ -157,6 +163,9 @@ func TestExtentQueue(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 1000, counter)
 
+	// 检查队列Remain结果
+	assert.Equal(t, 9000, queue.Remain())
+
 	// 关闭队列实例后再打开, 以验证队列数据及状态恢复情况
 	queue.Close()
 
@@ -178,6 +187,9 @@ func TestExtentQueue(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	assert.Equal(t, 9000, counter)
+
+	// 检查队列Remain结果
+	assert.Equal(t, 0, queue.Remain())
 
 	// 当前队列已无未消费消息, 再次尝试消费, 此时应不会有任何消息被Consume方法消费
 	err = queue.Consume(func(ino, extent uint64, offset, size, timestamp int64) (goon bool, err error) {

@@ -18,9 +18,11 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"regexp"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -548,20 +550,10 @@ func (d *Disk) managementScheduler() {
 }
 
 func (d *Disk) flushDeleteScheduler() {
-	var (
-		flushDeleteTicker = time.NewTicker(time.Second * 30)
-
-		execute = func() {
-			for {
-				if deleted, remain := d.flushDelete(); 5*remain < deleted {
-					return
-				}
-			}
-		}
-	)
+	var ticker = time.NewTicker(time.Second * 30)
 	for {
 		select {
-		case <-flushDeleteTicker.C:
+		case <-ticker.C:
 			if !gHasLoadDataPartition {
 				continue
 			}
@@ -570,49 +562,57 @@ func (d *Disk) flushDeleteScheduler() {
 				log.LogErrorf("Disk %v: get host load value failed: %v", d.Path, err)
 				continue
 			}
-			if avg.Load1 > 1000.0 {
+			if math.Max(avg.Load1, avg.Load5) > 1000.00 {
 				if log.IsWarnEnabled() {
 					log.LogWarnf("Disk %v: skip flush delete: host load value larger than 1000", d.Path)
 				}
 				continue
 			}
-			execute()
+			d.flushDelete()
 		}
 	}
 }
 
-func (d *Disk) flushDelete() (deleted, remain int) {
-	const exporterOp = "FlushDelete"
-	var (
-		ctxKey                    = byte(0)
-		before storage.BeforeFunc = func() (ctx context.Context, err error) {
-			ctx = context.WithValue(context.Background(), ctxKey, exporter.NewModuleTP(exporterOp))
-			return
-		}
-		after storage.AfterFunc = func(ctx context.Context, n int64, err error) {
-			if tp, is := ctx.Value(ctxKey).(exporter.TP); is {
-				tp.Set(err)
+func (d *Disk) flushDelete() {
+
+	var __flushOnce = func() (deleted, remain int, goon bool) {
+
+		d.WalkPartitions(func(partition *DataPartition) bool {
+			const count = 128
+			var n, r, err = partition.FlushDelete(count)
+			if err != nil {
+				log.LogErrorf("DP %v: flush delete failed: %v", partition.ID(), err)
 			}
-		}
-		interceptor = storage.NewFuncInterceptor(before, after)
+			deleted += n
+			remain += r
+			if r > 32 {
+				goon = true
+			}
+			if n > 0 {
+				runtime.Gosched()
+			}
+			return true
+		})
+		return
+	}
 
-		partitions int
-		start      = time.Now()
+	var (
+		deleted int
+		remain  int
+		start   = time.Now()
 	)
-
-	d.WalkPartitions(func(partition *DataPartition) bool {
-		var n, r, err = partition.FlushDelete(interceptor)
-		if err != nil {
-			log.LogErrorf("DP[%v] flush delete failed: %v", partition.partitionID, err)
+	for {
+		var d, r, goon = __flushOnce()
+		deleted += d
+		remain = r
+		if goon {
+			continue
 		}
-		deleted += n
-		remain += r
-		partitions++
-		return true
-	})
-	if log.IsDebugEnabled() {
-		log.LogDebugf("Disk %v: flush delete complete: partitions %v, deleted %v, remain %v, elapsed %vms",
-			d.Path, partitions, deleted, remain, time.Now().Sub(start).Milliseconds())
+		break
+	}
+	if deleted > 0 && log.IsDebugEnabled() {
+		log.LogDebugf("Disk %v: flush delete complete: deleted %v, remain %v, elapsed %vms",
+			d.Path, deleted, remain, time.Now().Sub(start).Milliseconds())
 	}
 	return
 }
@@ -931,17 +931,21 @@ func (d *Disk) WalkPartitions(visitor func(*DataPartition) bool) {
 	if visitor == nil {
 		return
 	}
+	for _, partition := range d.__partitions() {
+		if !visitor(partition) {
+			break
+		}
+	}
+}
+
+func (d *Disk) __partitions() []*DataPartition {
 	d.Lock()
 	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
 	for _, partition := range d.partitionMap {
 		partitions = append(partitions, partition)
 	}
 	d.Unlock()
-	for _, partition := range partitions {
-		if !visitor(partition) {
-			break
-		}
-	}
+	return partitions
 }
 
 func (d *Disk) AsyncLoadExtent(parallelism int) {
