@@ -123,6 +123,8 @@ type ExtentConfig struct {
 	MinWriteAbleDataPartitionCnt int
 
 	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
+
+	CacheDpStorageClass uint32
 }
 
 type MultiVerMgr struct {
@@ -161,6 +163,7 @@ type ExtentClient struct {
 	inflightL1BigBlock        int32
 	multiVerMgr               *MultiVerMgr
 	renewalForbiddenMigration RenewalForbiddenMigrationFunc
+	CacheDpStorageClass       uint32
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -311,6 +314,9 @@ retry:
 
 	log.LogInfof("max streamer limit %d", client.maxStreamerLimit)
 	client.streamerList = list.New()
+
+	client.CacheDpStorageClass = config.CacheDpStorageClass
+
 	go client.backgroundEvictStream()
 
 	return

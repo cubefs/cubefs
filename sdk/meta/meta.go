@@ -169,6 +169,7 @@ type MetaWrapper struct {
 	LastVerSeq          uint64
 	Client              wrapper.SimpleClientInfo
 	DefaultStorageClass uint32
+	CacheDpStorageClass uint32
 }
 
 type uniqidRange struct {

@@ -129,7 +129,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, sto
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
 		verUpdate:    make(chan uint64),
-		mediaType:    storageClass,
+		mediaType:    proto.GetMediaTypeByStorageClass(storageClass),
 	}
 
 	go eh.receiver()
@@ -440,9 +440,9 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			}
 			var discard []proto.ExtentKey
 			discard = eh.stream.extents.Append(eh.key, true)
-			//ToFix: what about hhd use ssd?
+
 			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key,
-				discard, eh.stream.isCache, eh.mediaType)
+				discard, eh.stream.isCache, proto.GetStorageClassByMediaType(eh.mediaType))
 
 			if err == nil && len(discard) > 0 {
 				eh.stream.extents.RemoveDiscard(discard)
@@ -530,12 +530,6 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
-			//TODO:tangjinyu  ignore mediaType when write to cache dp
-			//mediaType := eh.mediaType
-			//if eh.stream.isCache {
-			//	mediaType = proto.MediaType_Unspecified
-			//}
-
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.mediaType); err != nil {
 				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
@@ -577,7 +571,6 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		eh.conn = conn
 		eh.extID = extID
 
-		//log.LogDebugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
 		return nil
 	}
 
