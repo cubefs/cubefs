@@ -106,6 +106,11 @@ run_gosec() {
     ${compose} run --rm gosec
 }
 
+run_gosec() {
+    prepare
+    ${compose} run gosec
+}
+
 # build
 build() {
     prepare
