@@ -252,7 +252,7 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 		logMaxSize:       logMaxSize,
 		logFileName:      logName,
 		writerBufSize:    DefaultAuditLogBufSize,
-		bufferC:          make(chan string, 1000),
+		bufferC:          make(chan string, 100000),
 		prefix:           nil,
 		stopC:            make(chan struct{}),
 		resetWriterBuffC: make(chan int),
@@ -556,7 +556,9 @@ func (a *Audit) Stop() {
 }
 
 func (a *Audit) logAudit(content string) error {
-	a.shiftFiles()
+	if err := a.shiftFiles(); err != nil {
+		return err
+	}
 
 	fmt.Fprintf(a.writer, "%s\n", content)
 	if a.writerBufSize <= 0 {
@@ -584,7 +586,7 @@ func (a *Audit) shiftFiles() error {
 		a.writer = nil
 		a.logFile = nil
 
-		if os.Rename(a.logFileName, logNewFileName) != nil {
+		if err := os.Rename(a.logFileName, logNewFileName); err != nil {
 			log.LogErrorf("RenameFile failed, logFileName: %s, logNewFileName: %s, err: %v\n",
 				a.logFileName, logNewFileName, err)
 			return fmt.Errorf("action[shiftFiles] renameFile failed, logFileName %s, logNewFileName %s",
