@@ -40,8 +40,8 @@ const (
 	MaxSkewTime         = 15 * time.Minute
 
 	XAmzContentSha256 = "X-Amz-Content-Sha256"
-	XAmzCredential    = "X-Amz-Credential"
-	XAmzSignature     = "X-Amz-Signature" //
+	XAmzCredential    = "X-Amz-Credential" // #nosec G101
+	XAmzSignature     = "X-Amz-Signature"  //
 	XAmzSignedHeaders = "X-Amz-SignedHeaders"
 	XAmzAlgorithm     = "X-Amz-Algorithm"
 	XAmzDate          = "X-Amz-Date"
@@ -53,7 +53,7 @@ const (
 	UnsignedPayload      = "UNSIGNED-PAYLOAD"
 	PresignedV4QueryAuth = "Authorization"
 
-	credentialFlag    = "Credential="
+	credentialFlag    = "Credential=" // #nosec G101
 	signatureFlag     = "Signature="
 	signedHeadersFlag = "SignedHeaders="
 )

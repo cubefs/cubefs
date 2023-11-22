@@ -477,3 +477,15 @@ services:
                 set -e;
                 cd ${CFSROOT}/blobstore &&
                 /go/bin/golangci-lint run --timeout 10m --issues-exit-code=1 -D errcheck -E bodyclose ./...
+
+    gosec:
+        image: ${IMAGE}
+        volumes:
+            - ../:${CFSROOT}
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                cd ${CFSROOT} &&
+                /go/bin/gosec -severity=high -exclude-dir=depends -exclude-dir=vendor -exclude-dir=autofs -exclude=G404 ./...
