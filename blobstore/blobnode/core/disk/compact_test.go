@@ -82,7 +82,7 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 
 	ctr := gomock.NewController(t)
 	ioPool := taskpool.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).AnyTimes()
+	ioPool.EXPECT().Submit(gomock.Any()).AnyTimes()
 	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = db
