@@ -123,7 +123,7 @@ func (dp *DataPartition) repair(ctx context.Context, extentType uint8) {
 	// notify the replicas to repair the extent
 	if err = dp.notifyFollowersToRepair(ctx, repairTasks); err != nil {
 		dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
-		log.LogErrorf("DP %v: notify follower to repair failed: %v",
+		log.LogErrorf("DP %v: notify followers to repair failed: %v",
 			dp.partitionID, err)
 		log.LogError(errors.Stack(err))
 		return
