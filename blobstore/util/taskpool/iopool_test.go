@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/proto"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
@@ -14,8 +16,16 @@ import (
 //go:generate mockgen -destination=./iopool_mock.go -package=taskpool -mock_names IoPool=MockIoPool github.com/cubefs/cubefs/blobstore/util/taskpool IoPool
 
 func TestIoPoolSimple(t *testing.T) {
-	writePool := NewWritePool(4, 16)
-	readPool := NewReadPool(1, 16)
+	metricConf := IoPoolMetricConf{
+		ClusterID: proto.ClusterID(1),
+		IDC:       "idc",
+		Rack:      "rack",
+		Host:      "host",
+		DiskID:    proto.DiskID(101),
+	}
+
+	writePool := NewWritePool(4, 16, metricConf)
+	readPool := NewReadPool(1, 16, metricConf)
 	defer writePool.Close()
 	defer readPool.Close()
 
@@ -32,32 +42,37 @@ func TestIoPoolSimple(t *testing.T) {
 	// close
 	{
 		n := 0
-		closePool := NewReadPool(1, 2)
-		go closePool.Submit(1, func() {
-			time.Sleep(time.Millisecond * 10)
-			n++
-		})
-		go closePool.Submit(2, func() {
-			time.Sleep(time.Millisecond * 10)
-			n++
-		})
+		closePool := NewReadPool(1, 2, metricConf)
+		task := IoPoolTaskArgs{
+			BucketId: 1,
+			Tm:       time.Now(),
+			TaskFn: func() {
+				time.Sleep(time.Millisecond * 10)
+				n++
+			},
+		}
+		task2, task3 := task, task
+		task2.BucketId = 2
+		task3.BucketId = 3
+		go closePool.Submit(task)
+		go closePool.Submit(task2)
 
 		time.Sleep(time.Second)
 		closePool.Close()
-		closePool.Submit(3, func() {
-			time.Sleep(time.Millisecond * 10)
-			n++
-		})
+		closePool.Submit(task3)
 		require.Equal(t, 2, n) // two task func
 	}
 
 	// alloc
 	{
 		chunkId := uint64(1)
-		taskFn := func() {
-			err = sys.PreAllocate(file.Fd(), 0, 4096)
+		taskFn := func() { err = sys.PreAllocate(file.Fd(), 0, 4096) }
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
 		}
-		writePool.Submit(chunkId, taskFn)
+		writePool.Submit(task)
 
 		require.NoError(t, err)
 		fi1, _ := file.Stat()
@@ -72,8 +87,13 @@ func TestIoPoolSimple(t *testing.T) {
 		taskFn := func() {
 			n, err = file.WriteAt(data, 0)
 		}
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
+		}
 
-		writePool.Submit(chunkId, taskFn)
+		writePool.Submit(task)
 		require.NoError(t, err)
 		require.Equal(t, len(content), n)
 	}
@@ -84,8 +104,13 @@ func TestIoPoolSimple(t *testing.T) {
 		taskFn := func() {
 			err = file.Sync()
 		}
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
+		}
 
-		writePool.Submit(chunkId, taskFn)
+		writePool.Submit(task)
 		require.NoError(t, err)
 	}
 
@@ -97,9 +122,14 @@ func TestIoPoolSimple(t *testing.T) {
 		taskFn := func() {
 			n, err = file.ReadAt(data, 0)
 		}
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
+		}
 
 		require.Equal(t, uint8(0), data[0])
-		readPool.Submit(chunkId, taskFn)
+		readPool.Submit(task)
 		require.NoError(t, err)
 		require.Equal(t, len(content), n)
 		require.Equal(t, content, string(data))
@@ -116,7 +146,12 @@ func TestIoPoolSimple(t *testing.T) {
 		taskFn := func() {
 			err = sys.PunchHole(file.Fd(), 0, 4096)
 		}
-		writePool.Submit(chunkId, taskFn)
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
+		}
+		writePool.Submit(task)
 
 		require.NoError(t, err)
 		_, err = file.Read(data)

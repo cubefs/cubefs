@@ -46,7 +46,7 @@ const (
 func newIoPoolMock(t *testing.T) taskpool.IoPool {
 	ctr := gomock.NewController(t)
 	ioPool := taskpool.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).Do(func(taskId uint64, taskFn func()) { taskFn() }).AnyTimes()
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
 
 	return ioPool
 }
@@ -86,7 +86,7 @@ func TestNewChunkStorage(t *testing.T) {
 	}
 	ctr := gomock.NewController(t)
 	ioPool := taskpool.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).AnyTimes()
+	ioPool.EXPECT().Submit(gomock.Any()).AnyTimes()
 
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, MaxWaitCount: 4, WriteChanQueCnt: 2})
 	defer ioQos.Close()

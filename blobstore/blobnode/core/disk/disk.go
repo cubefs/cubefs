@@ -489,8 +489,15 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	}
 
 	// setting io pools
-	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, conf.WriteQueueDepth)
-	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, conf.ReadQueueDepth)
+	metricConf := taskpool.IoPoolMetricConf{
+		ClusterID: conf.HostInfo.ClusterID,
+		IDC:       conf.HostInfo.IDC,
+		Rack:      conf.HostInfo.Rack,
+		Host:      conf.HostInfo.Host,
+		DiskID:    dm.DiskID,
+	}
+	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, conf.WriteQueueDepth, metricConf)
+	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, conf.ReadQueueDepth, metricConf)
 
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,
