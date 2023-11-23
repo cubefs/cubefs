@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
@@ -60,18 +61,24 @@ func (ef *blobFile) Fd() uintptr {
 }
 
 func (ef *blobFile) ReadAt(b []byte, off int64) (n int, err error) {
-	ef.readPool.Submit(ef.chunk, func() {
-		n, err = ef.file.ReadAt(b, off)
-	})
+	task := taskpool.IoPoolTaskArgs{
+		BucketId: ef.chunk,
+		Tm:       time.Now(),
+		TaskFn:   func() { n, err = ef.file.ReadAt(b, off) },
+	}
+	ef.readPool.Submit(task)
 
 	ef.handleError(err)
 	return
 }
 
 func (ef *blobFile) WriteAt(b []byte, off int64) (n int, err error) {
-	ef.writePool.Submit(ef.chunk, func() {
-		n, err = ef.file.WriteAt(b, off)
-	})
+	task := taskpool.IoPoolTaskArgs{
+		BucketId: ef.chunk,
+		Tm:       time.Now(),
+		TaskFn:   func() { n, err = ef.file.WriteAt(b, off) },
+	}
+	ef.writePool.Submit(task)
 
 	ef.handleError(err)
 	return
@@ -84,18 +91,24 @@ func (ef *blobFile) Stat() (info os.FileInfo, err error) {
 }
 
 func (ef *blobFile) Allocate(off int64, size int64) (err error) {
-	ef.writePool.Submit(ef.chunk, func() {
-		err = sys.PreAllocate(ef.file.Fd(), off, size)
-	})
+	task := taskpool.IoPoolTaskArgs{
+		BucketId: ef.chunk,
+		Tm:       time.Now(),
+		TaskFn:   func() { err = sys.PreAllocate(ef.file.Fd(), off, size) },
+	}
+	ef.writePool.Submit(task)
 
 	ef.handleError(err)
 	return
 }
 
 func (ef *blobFile) Discard(off int64, size int64) (err error) {
-	ef.writePool.Submit(ef.chunk, func() {
-		err = sys.PunchHole(ef.file.Fd(), off, size)
-	})
+	task := taskpool.IoPoolTaskArgs{
+		BucketId: ef.chunk,
+		Tm:       time.Now(),
+		TaskFn:   func() { err = sys.PunchHole(ef.file.Fd(), off, size) },
+	}
+	ef.writePool.Submit(task)
 
 	ef.handleError(err)
 	return
@@ -113,9 +126,12 @@ func (ef *blobFile) SysStat() (sysstat syscall.Stat_t, err error) {
 }
 
 func (ef *blobFile) Sync() (err error) {
-	ef.writePool.Submit(ef.chunk, func() {
-		err = ef.syncHandler.Do(nil)
-	})
+	task := taskpool.IoPoolTaskArgs{
+		BucketId: ef.chunk,
+		Tm:       time.Now(),
+		TaskFn:   func() { err = ef.syncHandler.Do(nil) },
+	}
+	ef.writePool.Submit(task)
 
 	ef.handleError(err)
 	return err

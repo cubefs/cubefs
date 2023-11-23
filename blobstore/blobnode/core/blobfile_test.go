@@ -51,8 +51,8 @@ func TestBlobFile_Op(t *testing.T) {
 
 	ctr := gomock.NewController(t)
 	ioPool := taskpool.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).Do(func(taskId uint64, taskFn func()) {
-		taskFn()
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+		args.TaskFn()
 	}).AnyTimes()
 	ef := blobFile{f, 1, syncWorker, nil, ioPool, ioPool}
 	log.Info(ef.Name())
