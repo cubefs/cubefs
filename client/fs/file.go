@@ -118,7 +118,7 @@ func (f *File) getParentPath() string {
 	node, ok := f.super.nodeCache[f.parentIno]
 	f.super.fslock.Unlock()
 	if !ok {
-		log.LogErrorf("Get node cache failed: ino(%v)", f.parentIno)
+		log.LogWarnf("Get node cache failed: ino(%v)", f.parentIno)
 		return "unknown"
 	}
 	parentDir, ok := node.(*Dir)

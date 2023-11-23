@@ -301,7 +301,7 @@ func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool)
 			return err
 		}
 		var inodeInfo *proto.InodeInfo
-		if inodeInfo, err = v.mw.Create_ll(parentID, filename, DefaultFileMode, 0, 0, nil, path); err != nil {
+		if inodeInfo, err = v.mw.Create_ll(parentID, filename, DefaultFileMode, 0, 0, nil, path, false); err != nil {
 			return err
 		}
 		inode = inodeInfo.Inode
@@ -1916,7 +1916,8 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 		}
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
-			info, err = v.mw.Create_ll(ino, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil, path[:pathIterator.cursor])
+			info, err = v.mw.Create_ll(ino, pathItem.Name, uint32(DefaultDirMode), 0, 0, nil,
+				path[:pathIterator.cursor], false)
 			if err != nil && err == syscall.EEXIST {
 				existInode, mode, e := v.mw.Lookup_ll(ino, pathItem.Name)
 				if e != nil {
@@ -1974,7 +1975,7 @@ func (v *Volume) lookupDirectories(dirs []string, autoCreate bool) (inode uint64
 		if lookupErr == syscall.ENOENT {
 			var inodeInfo *proto.InodeInfo
 			var createErr error
-			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, uint32(DefaultDirMode), 0, 0, nil, "/"+dir)
+			inodeInfo, createErr = v.mw.Create_ll(parentId, dir, uint32(DefaultDirMode), 0, 0, nil, "/"+dir, false)
 			if createErr != nil && createErr != syscall.EEXIST {
 				log.LogErrorf("lookupDirectories: meta create fail, parentID(%v) name(%v) mode(%v) err(%v)", parentId, dir, os.ModeDir, createErr)
 				return 0, createErr

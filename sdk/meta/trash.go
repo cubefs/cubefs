@@ -103,7 +103,7 @@ func (trash *Trash) InitTrashRoot() (err error) {
 		return err
 	}
 	_, err = trash.CreateDirectory(parentDirInfo.Inode, TrashPrefix,
-		parentDirInfo.Mode, parentDirInfo.Uid, parentDirInfo.Gid, TrashPrefix)
+		parentDirInfo.Mode, parentDirInfo.Uid, parentDirInfo.Gid, TrashPrefix, false)
 	if err != nil {
 		log.LogErrorf("action[InitTrashRoot]create trash root failed: %v", err.Error())
 		return err
@@ -120,7 +120,7 @@ func (trash *Trash) initTrashRootInodeInfo() {
 	trash.trashRootGid = trashRootInfo.Gid
 }
 
-func (trash *Trash) createCurrent() (err error) {
+func (trash *Trash) createCurrent(ingoreExist bool) (err error) {
 	trashCurrent := path.Join(trash.trashRoot, CurrentName)
 	log.LogDebugf("action[createCurrent] enter")
 	if trash.pathIsExist(trashCurrent) {
@@ -139,7 +139,7 @@ func (trash *Trash) createCurrent() (err error) {
 		return nil
 	}
 	inodeInfo, err := trash.CreateDirectory(trash.trashRootIno, CurrentName,
-		trash.trashRootMode, trash.trashRootUid, trash.trashRootGid, path.Join(TrashPrefix, CurrentName))
+		trash.trashRootMode, trash.trashRootUid, trash.trashRootGid, path.Join(TrashPrefix, CurrentName), ingoreExist)
 	if err != nil {
 		if err != syscall.EEXIST {
 			log.LogErrorf("action[createCurrent]create trash current failed: %v", err.Error())
@@ -201,7 +201,7 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 		log.LogDebugf("action[MoveToTrash] : parentPathAbsolute(%v) fileName(%v) consume %v", parentPathAbsolute, fileName, time.Since(start).Seconds())
 	}()
 	log.LogDebugf("action[MoveToTrash] : parentPathAbsolute(%v) fileName(%v) parentIno（%v）", parentPathAbsolute, fileName, parentIno)
-	if err = trash.createCurrent(); err != nil {
+	if err = trash.createCurrent(true); err != nil {
 		return err
 	}
 	//save current ino to prevent renaming current to expired
@@ -600,10 +600,10 @@ func (trash *Trash) IsDir(path string) bool {
 
 }
 
-func (trash *Trash) CreateDirectory(pino uint64, name string, mode, uid, gid uint32, fullName string) (info *proto.InodeInfo, err error) {
+func (trash *Trash) CreateDirectory(pino uint64, name string, mode, uid, gid uint32, fullName string, ignoreExist bool) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
 	fuseMode |= uint32(os.ModeDir)
-	return trash.mw.Create_ll(pino, name, fuseMode, uid, gid, nil, fullName)
+	return trash.mw.Create_ll(pino, name, fuseMode, uid, gid, nil, fullName, ignoreExist)
 }
 
 func (trash *Trash) LookupEntry(parentID uint64, name string) (*proto.InodeInfo, error) {
@@ -646,7 +646,7 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 	var trashCurrent string
 	if rootDir == CurrentName {
 		trashCurrent = path.Join(trash.trashRoot, CurrentName)
-		if err = trash.createCurrent(); err != nil {
+		if err = trash.createCurrent(true); err != nil {
 			return
 		}
 	} else {
@@ -694,17 +694,20 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 		info, err = trash.LookupPath(parentPath, true)
 		if err != nil {
 			log.LogWarnf("action[createParentPathInTrash] LookupPath origin %v failed:%v", parentPath, err.Error())
-			log.LogDebugf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
+			//log.LogDebugf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
 			return
 		}
 		if info == nil {
 			panic(fmt.Sprintf("info should not be nil for parentPath %v", parentPath))
 			return
 		}
-		parentInfo, err = trash.CreateDirectory(parentIno, sub, info.Mode, info.Uid, info.Gid, path.Join(parentPath, sub))
+		parentInfo, err = trash.CreateDirectory(parentIno, sub, info.Mode, info.Uid, info.Gid, path.Join(parentPath, sub), true)
 		if err != nil {
-			log.LogWarnf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
-			log.LogDebugf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
+			if err == syscall.EEXIST {
+				log.LogDebugf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
+			} else {
+				log.LogWarnf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
+			}
 			return
 		}
 		if parentInfo == nil {

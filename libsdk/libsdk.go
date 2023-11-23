@@ -1370,13 +1370,13 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 
 func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
 func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
 func (c *client) openStream(f *file) {

@@ -571,7 +571,8 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 	return
 }
 
-func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32, fullPath string) (status int, err error) {
+func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
+	fullPath string, ignoreExistError bool) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("dcreate", err, bgTime, 1)
@@ -615,7 +616,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	if (status != statusOK) && (status != statusExist) {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-	} else if status == statusExist {
+	} else if status == statusExist && ignoreExistError == false {
 		log.LogWarnf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
 	if proto.IsDir(mode) {
