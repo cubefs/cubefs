@@ -59,12 +59,13 @@ type Streamer struct {
 }
 
 type bcacheKey struct {
-	cacheKey  string
-	extentKey *proto.ExtentKey
+	cacheKey     string
+	extentKey    *proto.ExtentKey
+	storageClass uint32
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64, openForWrite bool) *Streamer {
+func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -78,6 +79,7 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite bool) *Streame
 	s.verSeq = client.multiVerMgr.latestVerSeq
 	s.extents.verSeq = client.multiVerMgr.latestVerSeq
 	s.openForWrite = openForWrite
+	s.isCache = isCache
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -107,7 +109,7 @@ func (s *Streamer) GetExtentsForce() error {
 
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
-func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
+func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*ExtentReader, error) {
 	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
 		return nil, err
@@ -119,7 +121,7 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 	}
 
 	retryRead := true
-	if proto.IsCold(s.client.volumeType) {
+	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
 		retryRead = false
 	}
 
@@ -127,7 +129,7 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 	return reader, nil
 }
 
-func (s *Streamer) read(data []byte, offset int, size int) (total int, err error) {
+func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) (total int, err error) {
 	//log.LogErrorf("==========> Streamer Read Enter, inode(%v).", s.inode)
 	//t1 := time.Now()
 	var (
@@ -218,7 +220,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 
 			//read extent
-			reader, err = s.GetExtentReader(req.ExtentKey)
+			reader, err = s.GetExtentReader(req.ExtentKey, storageClass)
 			if err != nil {
 				log.LogErrorf("action[streamer.read] req %v err %v", req, err)
 				break
@@ -230,7 +232,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 					//do nothing
 				} else {
 					select {
-					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
+					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey, storageClass: storageClass}:
 						if s.exceedBlockSize(req.ExtentKey.Size) {
 							atomic.AddInt32(&s.client.inflightL1BigBlock, 1)
 						}
@@ -276,7 +278,7 @@ func (s *Streamer) asyncBlockCache() {
 			} else {
 				data = make([]byte, ek.Size)
 			}
-			reader, err := s.GetExtentReader(ek)
+			reader, err := s.GetExtentReader(ek, pending.storageClass)
 			fullReq := NewExtentRequest(int(ek.FileOffset), int(ek.Size), data, ek)
 			readBytes, err := reader.Read(fullReq)
 			if err != nil || readBytes != len(data) {
@@ -314,8 +316,4 @@ func (s *Streamer) exceedBlockSize(size uint32) bool {
 		return true
 	}
 	return false
-}
-
-func (s *Streamer) WorkAsCache() {
-	s.isCache = true
 }

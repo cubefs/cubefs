@@ -125,6 +125,7 @@ type ExtentConfig struct {
 	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
 
 	CacheDpStorageClass uint32
+	AllowedStorageClass []uint32
 }
 
 type MultiVerMgr struct {
@@ -244,7 +245,8 @@ func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	limit := 0
 retry:
 
-	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq)
+	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters,
+		config.Preload, config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.AllowedStorageClass)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)
@@ -386,22 +388,22 @@ func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64, openForWrite bool) error {
+func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, openForWrite)
+		s = NewStreamer(client, inode, openForWrite, isCache)
 		client.streamers[inode] = s
 	}
 	return s.IssueOpenRequest()
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openForWrite bool) error {
+func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openForWrite, isCache bool) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, openForWrite)
+		s = NewStreamer(client, inode, openForWrite, isCache)
 		client.streamers[inode] = s
 		if !client.disableMetaCache && needBCache {
 			client.streamerList.PushFront(inode)
@@ -566,7 +568,7 @@ func (client *ExtentClient) Flush(inode uint64) error {
 	return s.IssueFlushRequest()
 }
 
-func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int) (read int, err error) {
+func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int, storageClass uint32) (read int, err error) {
 	//log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v).", inode, len(data), offset, size)
 	//t1 := time.Now()
 	if size == 0 {
@@ -588,12 +590,12 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		return
 	}
 
-	read, err = s.read(data, offset, size)
+	read, err = s.read(data, offset, size, storageClass)
 	// log.LogErrorf("======> ExtentClient Read Exit, inode(%v), time[%v us].", inode, time.Since(t1).Microseconds())
 	return
 }
 
-func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data []byte, offset int, size int) (read int, err error, isStream bool) {
+func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data []byte, offset int, size int, storageClass uint32) (read int, err error, isStream bool) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("read-extent", err, bgTime, 1)
@@ -614,7 +616,7 @@ func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data [
 	if err != nil {
 		return
 	}
-	reader, err = s.GetExtentReader(ek)
+	reader, err = s.GetExtentReader(ek, storageClass)
 	if err != nil {
 		return
 	}

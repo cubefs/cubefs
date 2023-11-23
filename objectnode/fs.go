@@ -34,6 +34,7 @@ type FSFileInfo struct {
 	Expires         string
 	Metadata        map[string]string `graphql:"-"` // User-defined metadata
 	RetainUntilDate string
+	StorageClass    uint32
 }
 
 type Prefixes []string
