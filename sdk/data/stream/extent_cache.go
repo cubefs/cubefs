@@ -67,6 +67,14 @@ func NewExtentCache(inode uint64) *ExtentCache {
 	}
 }
 
+func (cache *ExtentCache) LogOutPut() {
+	cache.root.Ascend(func(bi btree.Item) bool {
+		ek := bi.(*proto.ExtentKey)
+		log.LogDebugf("ExtentCache update: local ino(%v) ek(%v)", cache.inode, ek)
+		return true
+	})
+}
+
 func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) error {
 	gen, size, extents, err := getExtents(inode)
 	if err != nil {
@@ -130,6 +138,8 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	cache.Lock()
 	defer cache.Unlock()
 
+	//log.LogDebugf("before cache output")
+	//cache.LogOutPut()
 	// When doing the append, we do not care about the data after the file offset.
 	// Those data will be overwritten by the current extent anyway.
 	var ekFind *proto.ExtentKey
@@ -220,6 +230,8 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	log.LogDebugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v]", inodeID, ek, ekPivot)
 	cache.gen++
 
+	//log.LogDebugf("before cache output")
+	//cache.LogOutPut()
 	return
 }
 

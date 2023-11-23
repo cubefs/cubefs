@@ -701,7 +701,8 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 		}
 		return nil
 	}
-	initExtentHandlerFunc := func(currentEK *proto.ExtentKey) {
+
+	checkVerFunc := func(currentEK *proto.ExtentKey) {
 		if currentEK.GetSeq() != s.verSeq {
 			log.LogDebugf("tryInitExtentHandlerByLastEk. exist ek seq %v vs request seq %v", currentEK.GetSeq(), s.verSeq)
 			if int(currentEK.ExtentOffset)+int(currentEK.Size)+size > util.ExtentSize {
@@ -710,7 +711,10 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 			}
 			isLastEkVerNotEqual = true
 		}
+	}
 
+	initExtentHandlerFunc := func(currentEK *proto.ExtentKey) {
+		checkVerFunc(currentEK)
 		log.LogDebugf("tryInitExtentHandlerByLastEk: found ek in ExtentCache, extent_id(%v) req_offset(%v) req_size(%v), currentEK [%v] streamer seq %v",
 			currentEK.ExtentId, offset, size, currentEK, s.verSeq)
 		_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
@@ -755,12 +759,9 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 			}
 		} else {
 			if s.handler.fileOffset+s.handler.size == offset {
-				if s.handler.key.GetSeq() == s.verSeq {
-					log.LogDebugf("tryInitExtentHandlerByLastEk: seq %vequal", s.verSeq)
-					return
+				if s.handler.key != nil {
+					checkVerFunc(s.handler.key)
 				}
-				log.LogDebugf("tryInitExtentHandlerByLastEk: seq not equal %v:%v", s.extents.Max().GetSeq(), s.verSeq)
-				initExtentHandlerFunc(s.handler.key)
 				return
 			} else {
 				if ek := getEndEkFunc(); ek != nil {
