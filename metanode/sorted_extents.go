@@ -258,6 +258,7 @@ func (se *SortedExtents) SplitWithCheck(mpId uint64, inodeID uint64, ekSplit pro
 		var keyBefore *proto.ExtentKey
 		if len(se.eks) > 0 {
 			keyBefore = &se.eks[len(se.eks)-1]
+			log.LogDebugf("SplitWithCheck. mpId [%v].keyBefore. ek %v and ekSplit %v", mpId, keyBefore, ekSplit)
 		}
 		if keyBefore != nil && keyBefore.IsSequence(&ekSplit) {
 			log.LogDebugf("SplitWithCheck. mpId [%v]. inode %v  keyBefore [%v], ekSplit [%v]", mpId, inodeID, keyBefore, ekSplit)

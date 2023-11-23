@@ -462,6 +462,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	var (
 		delExtents []proto.ExtentKey
 	)
+
 	if mp.verSeq < ino.getVer() {
 		status = proto.OpArgMismatchErr
 		log.LogErrorf("fsmAppendExtentsWithCheck.mp %v param ino %v mp seq %v", mp.config.PartitionId, ino, mp.verSeq)
@@ -480,6 +481,10 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		status = proto.OpNotExistErr
 		return
 	}
+	//defer func() {
+	//	log.LogErrorf("fsmAppendExtentsWithCheck.exist mp %v param ino %v mp seq %v eks [%v]",
+	//		mp.config.PartitionId, ino, mp.verSeq, fsmIno.Extents)
+	//}()
 	var (
 		discardExtentKey []proto.ExtentKey
 	)
