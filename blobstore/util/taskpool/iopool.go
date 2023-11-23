@@ -31,8 +31,9 @@ type taskInfo struct {
 }
 
 type ioPoolSimple struct {
-	queue []chan *taskInfo
-	wg    sync.WaitGroup
+	queue  []chan *taskInfo
+	wg     sync.WaitGroup
+	closed chan struct{}
 }
 
 func NewWritePool(threadCnt, queueDepth int) IoPool {
@@ -50,7 +51,8 @@ func NewReadPool(threadCnt, queueDepth int) IoPool {
 // $queueDepth: The number of elements in the queue
 func newCommonIoPool(chanCnt, threadCnt, queueDepth int) *ioPoolSimple {
 	pool := &ioPoolSimple{
-		queue: make([]chan *taskInfo, chanCnt),
+		queue:  make([]chan *taskInfo, chanCnt),
+		closed: make(chan struct{}),
 	}
 	for i := range pool.queue {
 		pool.queue[i] = make(chan *taskInfo, queueDepth)
@@ -73,6 +75,12 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int) *ioPoolSimple {
 }
 
 func (p *ioPoolSimple) Submit(taskId uint64, taskFn func()) {
+	select {
+	case <-p.closed:
+		return
+	default:
+	}
+
 	idx, task := p.generateTask(taskId, taskFn)
 	p.queue[idx] <- task
 
@@ -90,7 +98,9 @@ func (p *ioPoolSimple) generateTask(taskId uint64, taskFn func()) (idx uint64, t
 	return idx, task
 }
 
+// Close the pool, Submit task maybe concurrent unsafe
 func (p *ioPoolSimple) Close() {
+	close(p.closed)
 	for i := range p.queue {
 		close(p.queue[i])
 	}
