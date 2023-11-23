@@ -314,26 +314,8 @@ func RebuildMetaWrapper(config *MetaConfig, metaState *MetaState) *MetaWrapper {
 	atomic.StoreUint64(&mw.usedSize, metaState.UsedSize)
 	mw.volNotExistCount = metaState.VolNotExistCount
 	if !mw.VolNotExists() {
-		view := mw.convertVolumeView(metaState.View)
-		rwPartitions := make([]*MetaPartition, 0)
-		for _, mp := range view.MetaPartitions {
-			mw.replaceOrInsertPartition(mp)
-			log.LogInfof("updateMetaPartition: mp(%v)", mp)
-			if mp.Status == proto.ReadWrite {
-				rwPartitions = append(rwPartitions, mp)
-			}
-		}
-		mw.ossSecure = view.OSSSecure
-		mw.ossBucketPolicy = view.OSSBucketPolicy
-		mw.volCreateTime = view.CreateTime
-		mw.crossRegionHAType = view.CrossRegionHAType
-		mw.updateConnConfig(view.ConnConfig)
-
-		if len(rwPartitions) > 0 {
-			mw.Lock()
-			mw.rwPartitions = rwPartitions
-			mw.Unlock()
-		}
+		mw.updateConfigByVolView(metaState.View)
+		mw.updateRanges(metaState.View.MetaPartitions, false)
 	}
 
 	mw.conns = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(mw.connConfig.IdleTimeoutSec)*time.Second, time.Duration(mw.connConfig.ConnectTimeoutNs))
