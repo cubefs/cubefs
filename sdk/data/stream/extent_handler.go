@@ -118,7 +118,7 @@ type ExtentHandler struct {
 	stop chan struct{}
 	sync.Once
 
-	mediaType uint32
+	storageClass uint32
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -139,7 +139,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, sto
 		stop:               make(chan struct{}),
 		meetLimitedIoError: false,
 		verUpdate:          make(chan uint64),
-		mediaType:          proto.GetMediaTypeByStorageClass(storageClass),
+		storageClass:       proto.GetMediaTypeByStorageClass(storageClass),
 	}
 
 	go eh.receiver()
@@ -173,7 +173,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
-	if proto.IsHot(eh.stream.client.volumeType) {
+	if proto.IsHot(eh.stream.client.volumeType) || proto.IsStorageClassReplica(eh.storageClass) {
 		if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
 			(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
@@ -461,14 +461,15 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 
 	if eh.key != nil {
 		if eh.dirty {
-			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
+			if (proto.IsCold(eh.stream.client.volumeType) || proto.IsStorageClassBlobStore(eh.storageClass)) &&
+				eh.status == ExtentStatusError {
 				return
 			}
 			var status int
 			ekey := *eh.key
 			doAppend := func() (err error) {
 				discard := eh.stream.extents.Append(&ekey, true)
-				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, proto.GetStorageClassByMediaType(eh.mediaType))
+				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard, eh.stream.isCache, eh.storageClass)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForceRefresh(); errUpdateExtents != nil {
 						log.LogErrorf("action[appendExtentKey] inode %v GetExtents err %v errUpdateExtents %v", eh.stream.inode, err, errUpdateExtents)
@@ -564,12 +565,9 @@ func (eh *ExtentHandler) waitForFlush() (err error) {
 }
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
-	// NOTE: if last result code is limited io error
-	// allow client to retry indefinitely
-	if !eh.meetLimitedIoError {
-		packet.errCount++
-	}
-	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) {
+	packet.errCount++
+	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) ||
+		proto.IsStorageClassBlobStore(eh.storageClass) {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
 
@@ -584,7 +582,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		if eh.meetLimitedIoError {
 			extentType = eh.storeMode
 		}
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.mediaType)
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.storageClass)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -616,7 +614,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
-			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.mediaType); err != nil {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.storageClass); err != nil {
 				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
 				continue
@@ -759,8 +757,8 @@ func (eh *ExtentHandler) setRecovery() bool {
 }
 
 func (eh *ExtentHandler) setError() bool {
-	// log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
-	if proto.IsHot(eh.stream.client.volumeType) {
+	//	log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
+	if proto.IsHot(eh.stream.client.volumeType) || proto.IsStorageClassReplica(eh.storageClass) {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
