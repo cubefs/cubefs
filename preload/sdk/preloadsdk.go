@@ -431,7 +431,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 		log.LogDebugf("worker %v ready to preload(%v)", id, job.name)
 		ino := job.ino
 		//#1 open
-		c.ec.OpenStream(ino, true)
+		c.ec.OpenStream(ino, true, true)
 		//#2 write
 		var (
 			objExtents []proto.ObjExtentKey

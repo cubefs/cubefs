@@ -110,7 +110,7 @@ type ExtentHandler struct {
 	// ver update need alloc new extent
 	verUpdate chan uint64
 
-	mediaType uint32
+	storageClass uint32
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -129,7 +129,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int, sto
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
 		verUpdate:    make(chan uint64),
-		mediaType:    proto.GetMediaTypeByStorageClass(storageClass),
+		storageClass: proto.GetMediaTypeByStorageClass(storageClass),
 	}
 
 	go eh.receiver()
@@ -163,7 +163,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 	// If this write request is not continuous, and cannot be merged
 	// into the extent handler, just close it and return error.
 	// In this case, the caller should try to create a new extent handler.
-	if proto.IsHot(eh.stream.client.volumeType) {
+	if proto.IsHot(eh.stream.client.volumeType) || proto.IsStorageClassReplica(eh.storageClass) {
 		if eh.fileOffset+eh.size != offset || eh.size+size > util.ExtentSize ||
 			(eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
 
@@ -435,14 +435,15 @@ func (eh *ExtentHandler) cleanup() (err error) {
 func (eh *ExtentHandler) appendExtentKey() (err error) {
 	if eh.key != nil {
 		if eh.dirty {
-			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
+			if (proto.IsCold(eh.stream.client.volumeType) || proto.IsStorageClassBlobStore(eh.storageClass)) &&
+				eh.status == ExtentStatusError {
 				return
 			}
 			var discard []proto.ExtentKey
 			discard = eh.stream.extents.Append(eh.key, true)
 
 			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key,
-				discard, eh.stream.isCache, proto.GetStorageClassByMediaType(eh.mediaType))
+				discard, eh.stream.isCache, proto.GetStorageClassByMediaType(eh.storageClass))
 
 			if err == nil && len(discard) > 0 {
 				eh.stream.extents.RemoveDiscard(discard)
@@ -489,7 +490,8 @@ func (eh *ExtentHandler) waitForFlush() {
 
 func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 	packet.errCount++
-	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) {
+	if packet.errCount >= MaxPacketErrorCount || proto.IsCold(eh.stream.client.volumeType) ||
+		proto.IsStorageClassBlobStore(eh.storageClass) {
 		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
 	}
 
@@ -498,7 +500,7 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, 0, eh.mediaType)
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, 0, eh.storageClass)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -530,7 +532,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
-			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.mediaType); err != nil {
+			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.storageClass); err != nil {
 				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
 				continue
@@ -667,8 +669,8 @@ func (eh *ExtentHandler) setRecovery() bool {
 }
 
 func (eh *ExtentHandler) setError() bool {
-	// log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
-	if proto.IsHot(eh.stream.client.volumeType) {
+	//	log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
+	if proto.IsHot(eh.stream.client.volumeType) || proto.IsStorageClassReplica(eh.storageClass) {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)

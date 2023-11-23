@@ -112,6 +112,13 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
+	if !proto.IsStorageClassReplica(req.StorageClass) {
+		log.LogErrorf("ExtentAppendWithCheck wrong storage class [%v]", req.StorageClass)
+		err = errors.New(fmt.Sprintf("ExtentAppendWithCheck wrong storage class [%v]", req.StorageClass))
+		reply := []byte(err.Error())
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
 	//TODO:if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
 	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
 	//if proto.IsCold(mp.volType) {

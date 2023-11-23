@@ -82,6 +82,7 @@ type Wrapper struct {
 	verConfReadSeq               uint64
 	verReadSeq                   uint64
 	client                       *SimpleClientInfo
+	allowedStorageClass          []uint32
 }
 
 func (w *Wrapper) GetMasterClient() *masterSDK.MasterClient {
@@ -89,7 +90,8 @@ func (w *Wrapper) GetMasterClient() *masterSDK.MasterClient {
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool, minWriteAbleDataPartitionCnt int, verReadSeq uint64) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool,
+	minWriteAbleDataPartitionCnt int, verReadSeq uint64, allowedStorageClass []uint32) (w *Wrapper, err error) {
 	log.LogInfof("action[NewDataPartitionWrapper] verReadSeq %v", verReadSeq)
 
 	w = new(Wrapper)
@@ -100,6 +102,7 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 	w.partitions = make(map[uint64]*DataPartition)
 	w.HostsStatus = make(map[string]bool)
 	w.preload = preload
+	w.allowedStorageClass = allowedStorageClass
 
 	w.minWriteAbleDataPartitionCnt = minWriteAbleDataPartitionCnt
 	if w.minWriteAbleDataPartitionCnt < 0 {
@@ -355,7 +358,7 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 			ClientWrapper:         w,
 		}
 	}
-	if proto.IsCold(w.volType) {
+	if proto.IsCold(w.volType) || proto.VolSupportsBlobStore(w.allowedStorageClass) {
 		w.clearPartitions()
 	}
 	rwPartitionGroups := make([]*DataPartition, 0)
@@ -371,7 +374,7 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
 		//do not insert preload dp in cold vol
-		if proto.IsCold(w.volType) && proto.IsPreLoadDp(dp.PartitionType) {
+		if (proto.IsCold(w.volType) || proto.VolSupportsBlobStore(w.allowedStorageClass)) && proto.IsPreLoadDp(dp.PartitionType) {
 			continue
 		}
 		if dp.Status == proto.ReadWrite {
@@ -383,7 +386,9 @@ func (w *Wrapper) updateDataPartitionByRsp(isInit bool, DataPartitions []*proto.
 	}
 
 	// isInit used to identify whether this call is caused by mount action
-	if isInit || len(rwPartitionGroups) >= w.minWriteAbleDataPartitionCnt || (proto.IsCold(w.volType) && (len(rwPartitionGroups) >= 1)) {
+	if isInit || len(rwPartitionGroups) >= w.minWriteAbleDataPartitionCnt ||
+		(proto.IsCold(w.volType) || proto.VolSupportsBlobStore(w.allowedStorageClass) &&
+			(len(rwPartitionGroups) >= 1)) {
 		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), isInit(%v), minWriteAbleDataPartitionCnt(%v)",
 			w.volName, len(rwPartitionGroups), len(DataPartitions), isInit, w.minWriteAbleDataPartitionCnt)
 		w.refreshDpSelector(rwPartitionGroups)
@@ -471,7 +476,7 @@ func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capaci
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for _, partition := range dpv.DataPartitions {
 		dp := convert(partition)
-		if proto.IsCold(w.volType) && !proto.IsPreLoadDp(dp.PartitionType) {
+		if (proto.IsCold(w.volType) || proto.VolSupportsBlobStore(w.allowedStorageClass)) && !proto.IsPreLoadDp(dp.PartitionType) {
 			continue
 		}
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
@@ -515,7 +520,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	dp, ok := w.tryGetPartition(partitionID)
-	if !ok && !proto.IsCold(w.volType) { // cache miss && hot volume
+	if !ok && (!proto.IsCold(w.volType) || !proto.VolSupportsBlobStore(w.allowedStorageClass)) { // cache miss && hot volume
 		err := w.getDataPartitionFromMaster(false, partitionID)
 		if err == nil {
 			dp, ok = w.tryGetPartition(partitionID)

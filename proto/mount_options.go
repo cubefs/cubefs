@@ -326,4 +326,5 @@ type MountOptions struct {
 	MinWriteAbleDataPartitionCnt int
 	FileSystemName               string
 	VerReadSeq                   uint64
+	AllowedStorageClass          []uint32
 }

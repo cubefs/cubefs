@@ -177,7 +177,11 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	if req.Flags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}
-	d.super.ec.OpenStream(info.Inode, openForWrite)
+	var isCache = false
+	if proto.IsStorageClassBlobStore(info.StorageClass) {
+		isCache = true
+	}
+	d.super.ec.OpenStream(info.Inode, openForWrite, isCache)
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()

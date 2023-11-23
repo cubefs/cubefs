@@ -1227,6 +1227,15 @@ func IsStorageClassBlobStore(storageClass uint32) bool {
 	return storageClass == StorageClass_BlobStore
 }
 
+func VolSupportsBlobStore(allowedStorageClass []uint32) bool {
+	for _, storageClass := range allowedStorageClass {
+		if storageClass == StorageClass_BlobStore {
+			return true
+		}
+	}
+	return false
+}
+
 func GetVolTypeByStorageClass(storageClass uint32) (err error, volType int) {
 	if IsStorageClassReplica(storageClass) {
 		volType = VolumeTypeHot
