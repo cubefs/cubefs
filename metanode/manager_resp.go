@@ -62,6 +62,19 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 		}
 	}()
 
+	m.responseRateLimit(p)
+
+	// process data and send reply though specified tcp connection.
+	err = p.WriteToConn(conn, proto.WriteDeadlineTime)
+	if err != nil {
+		log.LogErrorf("response to client[%s], "+
+			"request[%s], response packet[%s]",
+			err.Error(), p.GetOpMsg(), p.GetResultMsg())
+	}
+	return
+}
+
+func (m *metadataManager) responseRateLimit(p *Packet) {
 	//package opcode pid may changed in process, ignore
 	pid := p.PartitionID
 	mp, err := m.GetPartition(pid)
@@ -79,14 +92,6 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 		OutBytes: int(unit.PacketHeaderSize + p.ArgLen + p.Size),
 	}
 	m.limiter.WaitN(context.Background(), ps, stat)
-
-	// process data and send reply though specified tcp connection.
-	err = p.WriteToConn(conn, proto.WriteDeadlineTime)
-	if err != nil {
-		log.LogErrorf("response to client[%s], "+
-			"request[%s], response packet[%s]",
-			err.Error(), p.GetOpMsg(), p.GetResultMsg())
-	}
 	return
 }
 
