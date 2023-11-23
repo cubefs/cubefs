@@ -22,37 +22,39 @@ static enum extent_write_type extent_io_type(struct cfs_extent_io_info *io_info)
 	return EXTENT_WRITE_TYPE_TINY;
 }
 
-static int do_extent_request(struct sockaddr_storage *host,
+static int do_extent_request(struct cfs_extent_stream *es,
+			     struct sockaddr_storage *host,
 			     struct cfs_packet *packet)
 {
 	struct cfs_socket *sock;
 	int err;
 
-	err = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, &sock);
+	err = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, es->ec->log, &sock);
 	if (err) {
-		cfs_log_err("socket(%s) create error %d\n", cfs_pr_addr(host),
-			    err);
+		cfs_log_error(es->ec->log, "socket(%s) create error %d\n",
+			      cfs_pr_addr(host), err);
 		return err;
 	}
 
 	err = cfs_socket_set_recv_timeout(sock, EXTENT_RECV_TIMEOUT_MS);
 	if (err) {
-		cfs_log_err("socket(%s) set recv timeout error %d\n",
-			    cfs_pr_addr(host), err);
+		cfs_log_error(es->ec->log,
+			      "socket(%s) set recv timeout error %d\n",
+			      cfs_pr_addr(host), err);
 		goto out;
 	}
 
 	err = cfs_socket_send_packet(sock, packet);
 	if (err < 0) {
-		cfs_log_err("socket(%s) send packet error %d\n",
-			    cfs_pr_addr(host), err);
+		cfs_log_error(es->ec->log, "socket(%s) send packet error %d\n",
+			      cfs_pr_addr(host), err);
 		goto out;
 	}
 
 	err = cfs_socket_recv_packet(sock, packet);
 	if (err) {
-		cfs_log_err("socket(%s) recv packet error %d\n",
-			    cfs_pr_addr(host), err);
+		cfs_log_error(es->ec->log, "socket(%s) recv packet error %d\n",
+			      cfs_pr_addr(host), err);
 		goto out;
 	}
 
@@ -70,7 +72,8 @@ out:
  * @return negative number if all request failed, return the member id
  * if request success
  */
-static int do_extent_request_retry(struct cfs_data_partition *dp,
+static int do_extent_request_retry(struct cfs_extent_stream *es,
+				   struct cfs_data_partition *dp,
 				   struct cfs_packet *packet, u32 host_id)
 {
 	int again_cnt = 200;
@@ -82,7 +85,7 @@ retry:
 	if (host_retry_cnt == 0)
 		return ret;
 	host = &dp->members.base[host_id % dp->members.num];
-	ret = do_extent_request(host, packet);
+	ret = do_extent_request(es, host, packet);
 	if (ret < 0) {
 		/* try other host */
 		host_id++;
@@ -127,7 +130,9 @@ retry:
 
 	dp = cfs_extent_select_partition(es->ec);
 	if (!dp) {
-		cfs_log_err("es(%p) cannot select data partition\n", es);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) cannot select data partition\n",
+			      es->ino);
 		return -ENOENT;
 	}
 
@@ -141,9 +146,10 @@ retry:
 	packet->request.data.ino = cpu_to_be64(es->ino);
 	packet->request.hdr.size = cpu_to_be32(sizeof(es->ino));
 
-	ret = do_extent_request(&dp->members.base[0], packet);
+	ret = do_extent_request(es, &dp->members.base[0], packet);
 	if (ret < 0) {
-		cfs_log_err("es(%p) create extent error %d\n", es, ret);
+		cfs_log_error(es->ec->log, "ino(%llu) create extent error %d\n",
+			      es->ino, ret);
 		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		retry_cnt--;
@@ -151,8 +157,9 @@ retry:
 	}
 	ret = -cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret < 0) {
-		cfs_log_err("es(%p) create extent reply error code 0x%x\n", es,
-			    packet->reply.hdr.result_code);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) create extent reply error code 0x%x\n",
+			      es->ino, packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		retry_cnt--;
@@ -209,8 +216,10 @@ extent_stream_get_writer(struct cfs_extent_stream *es, loff_t offset,
 		struct cfs_data_partition *dp =
 			cfs_extent_get_partition(es->ec, extent.pid);
 		if (!dp) {
-			cfs_log_err("es(%p) not found data partition(%llu)\n",
-				    es, extent.pid);
+			cfs_log_error(
+				es->ec->log,
+				"ino(%llu) not found data partition(%llu)\n",
+				es->ino, extent.pid);
 			return ERR_PTR(-ENOENT);
 		}
 		writer = cfs_extent_writer_new(es, dp, extent.file_offset,
@@ -255,8 +264,9 @@ static int extent_write_pages_random(struct cfs_extent_stream *es,
 
 	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
 	if (!dp) {
-		cfs_log_err("es(%p) cannot get data partition(%llu)\n", es,
-			    io_info->ext.pid);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) cannot get data partition(%llu)\n",
+			      es->ino, io_info->ext.pid);
 		ret = -ENOENT;
 		return ret;
 	}
@@ -274,12 +284,14 @@ static int extent_write_pages_random(struct cfs_extent_stream *es,
 		}
 		cfs_packet_set_write_data(packet, iter, &w_len);
 
-		ret = do_extent_request_retry(dp, packet, dp->leader_idx);
+		ret = do_extent_request_retry(es, dp, packet, dp->leader_idx);
 		if (ret < 0) {
-			cfs_log_err(
-				"es(%p) send packet(%llu) to dp(%llu) error %d\n",
-				es, be64_to_cpu(packet->request.hdr.req_id),
-				dp->id, ret);
+			cfs_log_error(
+				es->ec->log,
+				"ino(%llu) send packet(%llu) to dp(%llu) error %d\n",
+				es->ino,
+				be64_to_cpu(packet->request.hdr.req_id), dp->id,
+				ret);
 			cfs_packet_release(packet);
 			goto out;
 		}
@@ -323,7 +335,9 @@ retry:
 
 	dp = cfs_extent_select_partition(es->ec);
 	if (!dp) {
-		cfs_log_err("es(%p) cannot select data partition\n", es);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) cannot select data partition\n",
+			      es->ino);
 		ret = -ENOENT;
 		return ret;
 	}
@@ -339,10 +353,12 @@ retry:
 	cfs_packet_set_request_arg(packet, dp->follower_addrs);
 	cfs_packet_set_write_data(packet, iter, &io_info->size);
 
-	ret = do_extent_request(&dp->members.base[0], packet);
+	ret = do_extent_request(es, &dp->members.base[0], packet);
 	if (ret < 0) {
 		if (retry_cnt == 1)
-			cfs_log_err("es(%p) write extent error %d\n", es, ret);
+			cfs_log_error(es->ec->log,
+				      "ino(%llu) write extent error %d\n",
+				      es->ino, ret);
 		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		retry_cnt--;
@@ -351,9 +367,10 @@ retry:
 	ret = -cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret < 0) {
 		if (retry_cnt == 1)
-			cfs_log_err(
-				"es(%p) write extent reply error code 0x%x\n",
-				es, packet->reply.hdr.result_code);
+			cfs_log_error(
+				es->ec->log,
+				"ino(%llu) write extent reply error code 0x%x\n",
+				es->ino, packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		retry_cnt--;
@@ -368,13 +385,17 @@ retry:
 			       io_info->size);
 	ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL);
 	if (unlikely(ret < 0)) {
-		cfs_log_err("es(%p) append extent cache error %d\n", es, ret);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) append extent cache error %d\n",
+			      es->ino, ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_meta_append_extent(es->ec->meta, es->ino, &extent, NULL);
 	if (ret < 0) {
-		cfs_log_err("es(%p) sync extent cache error %d\n", es, ret);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) sync extent cache error %d\n", es->ino,
+			      ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -395,17 +416,20 @@ retry:
 static void extent_write_pages_reply_cb(struct cfs_packet *packet)
 {
 	struct cfs_extent_writer *writer = packet->private;
+	struct cfs_log *log = writer->es->ec->log;
 	struct cfs_page_frag *frag;
 	size_t i;
 	int err;
 
 	if (packet->error) {
 		err = packet->error;
-		cfs_log_err("es(%p) io error %d\n", writer->es, err);
+		cfs_log_error(log, "ino(%llu) io error %d\n", writer->es->ino,
+			      err);
 	} else {
 		err = -cfs_parse_status(packet->reply.hdr.result_code);
 		if (err)
-			cfs_log_err("es(%p) reply error %d\n", writer->es, err);
+			cfs_log_error(log, "ino(%llu) reply error %d\n",
+				      writer->es->ino, err);
 	}
 	if (!err)
 		cfs_extent_writer_ack_bytes(
@@ -451,7 +475,7 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 			writer->dp->nr_followers, writer->dp->id,
 			writer->ext_id, offset - writer->file_offset, offset);
 		if (!packet) {
-			cfs_log_err("es(%p) oom\n", es);
+			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
 			ret = -ENOMEM;
 			return ret;
 		}
@@ -464,7 +488,7 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 				       writer->w_size + w_len);
 		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL);
 		if (unlikely(ret < 0)) {
-			cfs_log_err("es(%p) oom\n", es);
+			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
 			return ret;
 		}
 		cfs_extent_writer_request(writer, packet);
@@ -490,9 +514,10 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 	BUG_ON(nr_pages == 0);
 
 #ifdef DEBUG
-	cfs_log_debug(
-		"es(%p) nr_pages=%lu, file_offset=%llu, first_page_offset=%lu, end_page_size=%lu\n",
-		es, nr_pages, file_offset, first_page_offset, end_page_size);
+	cfs_pr_debug(
+		"ino(%llu) nr_pages=%lu, file_offset=%llu, first_page_offset=%lu, end_page_size=%lu\n",
+		es->ino, nr_pages, file_offset, first_page_offset,
+		end_page_size);
 #endif
 	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
 	if (!cpages) {
@@ -535,15 +560,19 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 
 	ret = cfs_extent_cache_refresh(&es->cache, false);
 	if (ret < 0) {
-		cfs_log_err("es(%p) extent cache refresh error %d\n", es, ret);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) extent cache refresh error %d\n",
+			      es->ino, ret);
 		goto err_page;
 	}
 	ret = cfs_prepare_extent_io_list(&es->cache, file_offset,
 					 cfs_page_iter_count(&iter),
 					 &io_info_list);
 	if (ret < 0) {
-		cfs_log_err("es(%p) prepare extent write request error %d\n",
-			    es, ret);
+		cfs_log_error(
+			es->ec->log,
+			"ino(%llu) prepare extent write request error %d\n",
+			es->ino, ret);
 		goto err_page;
 	}
 
@@ -564,7 +593,9 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 		list_del(&io_info->list);
 		cfs_extent_io_info_release(io_info);
 		if (ret < 0) {
-			cfs_log_err("es(%p) write page error %d\n", es, ret);
+			cfs_log_error(es->ec->log,
+				      "ino(%llu) write page error %d\n",
+				      es->ino, ret);
 			goto err_page;
 		}
 	}
@@ -644,8 +675,9 @@ extent_stream_get_reader(struct cfs_extent_stream *es,
 
 	dp = cfs_extent_get_partition(es->ec, ext->pid);
 	if (!dp) {
-		cfs_log_err("es(%p) not found data partition(%llu)\n", es,
-			    ext->pid);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) not found data partition(%llu)\n",
+			      es->ino, ext->pid);
 		return ERR_PTR(-ENOENT);
 	}
 
@@ -664,6 +696,9 @@ extent_stream_get_reader(struct cfs_extent_stream *es,
 
 static void extent_read_pages_reply_cb(struct cfs_packet *packet)
 {
+	struct cfs_extent_reader *reader = packet->private;
+	struct cfs_extent_stream *es = reader->es;
+	struct cfs_log *log = es->ec->log;
 	struct cfs_page_frag *frag;
 	size_t i;
 	int err;
@@ -673,7 +708,7 @@ static void extent_read_pages_reply_cb(struct cfs_packet *packet)
 	else
 		err = -cfs_parse_status(packet->reply.hdr.result_code);
 	if (err)
-		cfs_log_err("reply error %d\n", err);
+		cfs_log_error(log, "ino(%llu) reply error %d\n", es->ino, err);
 
 	for (i = 0; i < packet->reply.data.read.nr; i++) {
 		frag = &packet->reply.data.read.frags[i];
@@ -704,16 +739,17 @@ static int extent_read_pages_async(struct cfs_extent_stream *es,
 	int ret = 0;
 
 #ifdef DEBUG
-	cfs_log_debug("es(%p) ino=%llu, offset=%lld, size=%zu, pid=%llu, "
-		      "ext_id=%llu, ext_offset=%llu, ext_size=%u\n",
-		      es, es->ino, io_info->offset, io_info->size,
-		      io_info->ext.pid, io_info->ext.ext_id,
-		      io_info->ext.ext_offset, io_info->ext.size);
+	cfs_pr_debug("ino(%llu) offset=%lld, size=%zu, pid=%llu, "
+		     "ext_id=%llu, ext_offset=%llu, ext_size=%u\n",
+		     es->ino, io_info->offset, io_info->size, io_info->ext.pid,
+		     io_info->ext.ext_id, io_info->ext.ext_offset,
+		     io_info->ext.size);
 #endif
 	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
 	if (!dp) {
-		cfs_log_err("es(%p) not found data partition(%llu)\n", es,
-			    io_info->ext.pid);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) not found data partition(%llu)\n",
+			      es->ino, io_info->ext.pid);
 		return -ENOENT;
 	}
 	while (read_bytes < total_bytes) {
@@ -762,16 +798,17 @@ static int extent_read_pages_sync(struct cfs_extent_stream *es,
 	int i;
 
 #ifdef DEBUG
-	cfs_log_debug("es(%p) ino=%llu, offset=%lld, size=%zu, pid=%llu, "
-		      "ext_id=%llu, ext_offset=%llu, ext_size=%u\n",
-		      es, es->ino, io_info->offset, io_info->size,
-		      io_info->ext.pid, io_info->ext.ext_id,
-		      io_info->ext.ext_offset, io_info->ext.size);
+	cfs_pr_debug("ino(%llu) offset=%lld, size=%zu, pid=%llu, "
+		     "ext_id=%llu, ext_offset=%llu, ext_size=%u\n",
+		     es->ino, io_info->offset, io_info->size, io_info->ext.pid,
+		     io_info->ext.ext_id, io_info->ext.ext_offset,
+		     io_info->ext.size);
 #endif
 	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
 	if (!dp) {
-		cfs_log_err("es(%p) not found data partition(%llu)\n", es,
-			    io_info->ext.pid);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) not found data partition(%llu)\n",
+			      es->ino, io_info->ext.pid);
 		return -ENOENT;
 	}
 	while (read_bytes < total_bytes) {
@@ -787,12 +824,14 @@ static int extent_read_pages_sync(struct cfs_extent_stream *es,
 		}
 		cfs_packet_set_read_data(packet, iter, &len);
 
-		ret = do_extent_request_retry(dp, packet, dp->leader_idx);
+		ret = do_extent_request_retry(es, dp, packet, dp->leader_idx);
 		if (ret < 0) {
-			cfs_log_err(
-				"es(%p) send packet(%llu) to dp(%llu) error %d\n",
-				es, be64_to_cpu(packet->request.hdr.req_id),
-				dp->id, ret);
+			cfs_log_error(
+				es->ec->log,
+				"ino(%llu) send packet(%llu) to dp(%llu) error %d\n",
+				es->ino,
+				be64_to_cpu(packet->request.hdr.req_id), dp->id,
+				ret);
 			cfs_packet_release(packet);
 			goto out;
 		}
@@ -867,15 +906,19 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 
 	ret = cfs_extent_cache_refresh(&es->cache, false);
 	if (ret < 0) {
-		cfs_log_err("es(%p) extent cache refresh error %d\n", es, ret);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) extent cache refresh error %d\n",
+			      es->ino, ret);
 		goto err_page;
 	}
 	ret = cfs_prepare_extent_io_list(&es->cache, file_offset,
 					 cfs_page_iter_count(&iter),
 					 &io_info_list);
 	if (ret < 0) {
-		cfs_log_err("es(%p) prepare extent write request error %d\n",
-			    es, ret);
+		cfs_log_error(
+			es->ec->log,
+			"ino(%llu) prepare extent write request error %d\n",
+			es->ino, ret);
 		goto err_page;
 	}
 	while (!list_empty(&io_info_list)) {
@@ -906,7 +949,9 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 		else
 			ret = extent_read_pages_async(es, io_info, &iter);
 		if (ret < 0) {
-			cfs_log_err("es(%p) read pages error %d\n", es, ret);
+			cfs_log_error(es->ec->log,
+				      "ino(%llu) read pages error %d\n",
+				      es->ino, ret);
 			goto err_page;
 		}
 
@@ -1008,14 +1053,14 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 	int ret = 0;
 
 #ifdef DEBUG
-	cfs_log_debug("es(%p) type=%d offset=%lld, size=%lu\n", es, type,
-		      offset, iov_iter_count(iter));
+	cfs_pr_debug("ino(%llu) type=%d offset=%lld, size=%lu\n", es->ino, type,
+		     offset, iov_iter_count(iter));
 #endif
 	pages = extent_dio_pages_alloc(iter, type, &nr_pages,
 				       &first_page_offset, &end_page_size);
 	if (IS_ERR(pages)) {
-		cfs_log_err("es(%p) alloc pages error %ld\n", es,
-			    PTR_ERR(pages));
+		cfs_log_error(es->ec->log, "ino(%llu) alloc pages error %ld\n",
+			      es->ino, PTR_ERR(pages));
 		return PTR_ERR(pages);
 	}
 
@@ -1125,13 +1170,16 @@ int cfs_extent_stream_truncate(struct cfs_extent_stream *es, loff_t size)
 
 	ret = cfs_extent_stream_flush(es);
 	if (ret < 0) {
-		cfs_log_err("extent stream flush error %d\n", ret);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) extent stream flush error %d\n",
+			      es->ino, ret);
 		return ret;
 	}
 
 	ret = cfs_meta_truncate(es->ec->meta, es->ino, size);
 	if (ret < 0) {
-		cfs_log_err("meta turncate error %d\n", ret);
+		cfs_log_error(es->ec->log, "ino(%llu) meta turncate error %d\n",
+			      es->ino, ret);
 		return ret;
 	}
 
@@ -1144,6 +1192,8 @@ int cfs_extent_stream_truncate(struct cfs_extent_stream *es, loff_t size)
 	cfs_extent_cache_truncate(&es->cache, size);
 	ret = cfs_extent_cache_refresh(&es->cache, true);
 	if (ret < 0)
-		cfs_log_err("es(%p) extent cache refresh error %d\n", es, ret);
+		cfs_log_error(es->ec->log,
+			      "ino(%llu) extent cache refresh error %d\n",
+			      es->ino, ret);
 	return ret;
 }

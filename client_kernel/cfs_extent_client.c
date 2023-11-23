@@ -75,7 +75,7 @@ static void update_dp_work_cb(struct work_struct *work)
 
 struct cfs_extent_client *
 cfs_extent_client_new(struct cfs_master_client *master,
-		      struct cfs_meta_client *meta)
+		      struct cfs_meta_client *meta, struct cfs_log *log)
 {
 	struct cfs_extent_client *ec;
 	int ret;
@@ -85,6 +85,7 @@ cfs_extent_client_new(struct cfs_master_client *master,
 		return NULL;
 	ec->master = master;
 	ec->meta = meta;
+	ec->log = log;
 	hash_init(ec->streams);
 	hash_init(ec->data_partitions);
 	INIT_LIST_HEAD(&ec->rw_partitions);

@@ -12,7 +12,8 @@ cfs_json_t *cfs_json_parse(const char *js, size_t len);
 void cfs_json_release(cfs_json_t *json);
 int cfs_json_get_object(cfs_json_t *json, const char *key, cfs_json_t *val);
 int cfs_json_get_object_key(cfs_json_t *json, char **key);
-int cfs_json_get_object_key_ptr(cfs_json_t *json, const char **key, size_t *len);
+int cfs_json_get_object_key_ptr(cfs_json_t *json, const char **key,
+				size_t *len);
 int cfs_json_get_object_value(cfs_json_t *json, cfs_json_t *val);
 int cfs_json_get_string(cfs_json_t *json, const char *key, char **val);
 int cfs_json_get_string_ptr(cfs_json_t *json, const char *key, const char **val,

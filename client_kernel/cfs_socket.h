@@ -3,6 +3,7 @@
 
 #include "cfs_common.h"
 
+#include "cfs_log.h"
 #include "cfs_packet.h"
 
 struct cfs_socket_pool;
@@ -20,6 +21,7 @@ struct cfs_socket {
 	struct cfs_buffer *tx_buffer;
 	struct cfs_buffer *rx_buffer;
 	unsigned long jiffies;
+	struct cfs_log *log;
 };
 
 struct cfs_socket_ops {
@@ -29,7 +31,7 @@ struct cfs_socket_ops {
 };
 
 int cfs_socket_create(enum cfs_socket_type type,
-		      const struct sockaddr_storage *dst,
+		      const struct sockaddr_storage *dst, struct cfs_log *log,
 		      struct cfs_socket **cskp);
 void cfs_socket_release(struct cfs_socket *csk, bool forever);
 // void cfs_socket_set_callback(struct cfs_socket *csk,

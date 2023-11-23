@@ -3,6 +3,7 @@
 
 #include "cfs_common.h"
 
+#include "cfs_log.h"
 #include "cfs_master.h"
 #include "cfs_meta.h"
 #include "cfs_page.h"
@@ -124,6 +125,7 @@ struct cfs_extent_client {
 	struct cfs_data_partition *select_dp;
 	struct mutex select_lock;
 	struct delayed_work update_dp_work;
+	struct cfs_log *log;
 };
 
 struct cfs_extent_io_info *
@@ -213,7 +215,7 @@ void cfs_extent_reader_request(struct cfs_extent_reader *reader,
 
 struct cfs_extent_client *
 cfs_extent_client_new(struct cfs_master_client *master,
-		      struct cfs_meta_client *meta);
+		      struct cfs_meta_client *meta, struct cfs_log *log);
 void cfs_extent_client_release(struct cfs_extent_client *ec);
 int cfs_extent_update_partition(struct cfs_extent_client *ec);
 struct cfs_data_partition *

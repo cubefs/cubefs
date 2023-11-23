@@ -1,17 +1,18 @@
 #include "cfs_page.h"
-#include "crc32.h"
 
 static struct kmem_cache *cpage_cache;
 static struct kmem_cache *page_vec_cache;
 
 u32 cfs_page_frags_crc32(const struct cfs_page_frag *frags, size_t nr)
 {
-	crc32_t crc = 0;
+	u32 crc = 0;
 	size_t i;
 
 	for (i = 0; i < nr; i++) {
-		crc32_recalculate(kmap(frags[i].page->page) + frags[i].offset,
-				  frags[i].size, &crc);
+		crc ^= 0xffffffffUL;
+		crc = crc32_le(crc, kmap(frags[i].page->page) + frags[i].offset,
+			       frags[i].size);
+		crc ^= 0xffffffffUL;
 		kunmap(frags[i].page->page);
 	}
 	return crc;

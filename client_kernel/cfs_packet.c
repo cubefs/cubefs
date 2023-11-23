@@ -8,10 +8,10 @@
 			return r__; \
 	} while (0)
 
-#define CHECK_GOTO(ret, key, ...)                                    \
-	if (ret < 0) {                                               \
-		cfs_log_err(key ", error %d\n", ##__VA_ARGS__, ret); \
-		goto failed;                                         \
+#define CHECK_GOTO(ret, key, ...)                                   \
+	if (ret < 0) {                                              \
+		cfs_pr_err(key ", error %d\n", ##__VA_ARGS__, ret); \
+		goto failed;                                        \
 	}
 
 static atomic_t packet_seq = ATOMIC_INIT(0);
@@ -297,7 +297,7 @@ cfs_packet_icreate_reply_from_json(cfs_json_t *json,
 
 	ret = cfs_json_get_object(json, "info", &json_info);
 	if (ret < 0) {
-		cfs_log_err("not found iget.info, error %d\n", ret);
+		cfs_pr_err("not found iget.info, error %d\n", ret);
 		return ret;
 	}
 	res->info = cfs_packet_inode_new();
@@ -330,7 +330,7 @@ static int cfs_packet_iget_reply_from_json(cfs_json_t *json,
 
 	ret = cfs_json_get_object(json, "info", &json_info);
 	if (ret < 0) {
-		cfs_log_err("not found iget.info");
+		cfs_pr_err("not found iget.info");
 		return ret;
 	}
 	res->info = cfs_packet_inode_new();
@@ -595,7 +595,7 @@ static int cfs_packet_ilink_reply_from_json(cfs_json_t *json,
 
 	ret = cfs_json_get_object(json, "info", &json_info);
 	if (ret < 0) {
-		cfs_log_err("not found iget.info");
+		cfs_pr_err("not found iget.info");
 		return ret;
 	}
 	res->info = cfs_packet_inode_new();
@@ -631,7 +631,7 @@ cfs_packet_iunlink_reply_from_json(cfs_json_t *json,
 
 	ret = cfs_json_get_object(json, "info", &json_info);
 	if (ret < 0) {
-		cfs_log_err("not found iget.info");
+		cfs_pr_err("not found iget.info");
 		return ret;
 	}
 	res->info = cfs_packet_inode_new();
@@ -1148,8 +1148,8 @@ void cfs_packet_request_data_clear(struct cfs_packet *packet)
 	case CFS_OP_STREAM_RANDOM_WRITE:
 		break;
 	default:
-		cfs_log_err("operations(0x%x) not implemented\n",
-			    packet->request.hdr.opcode);
+		cfs_pr_err("operations(0x%x) not implemented\n",
+			   packet->request.hdr.opcode);
 		break;
 	}
 }
@@ -1220,8 +1220,8 @@ void cfs_packet_reply_data_clear(struct cfs_packet *packet)
 		/* reply is not used after alloced */
 		break;
 	default:
-		cfs_log_err("operations(0x%x) not implemented\n",
-			    packet->reply.hdr.opcode);
+		cfs_pr_err("operations(0x%x) not implemented\n",
+			   packet->reply.hdr.opcode);
 		break;
 	}
 }

@@ -10,34 +10,33 @@ static int do_meta_request_internal(struct cfs_meta_client *mc,
 	struct cfs_socket *sock;
 	int ret;
 
-	(void)mc;
-	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, &sock);
+	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, mc->log, &sock);
 	if (ret < 0) {
-		cfs_log_err("socket(%s) create error %d\n", cfs_pr_addr(host),
-			    ret);
+		cfs_log_error(mc->log, "socket(%s) create error %d\n",
+			      cfs_pr_addr(host), ret);
 		return ret;
 	}
 
 	ret = cfs_socket_set_recv_timeout(sock, META_RECV_TIMEOUT_MS);
 	if (ret < 0) {
-		cfs_log_err("socket(%s) set recv timeout error %d\n",
-			    cfs_pr_addr(host), ret);
+		cfs_log_error(mc->log, "socket(%s) set recv timeout error %d\n",
+			      cfs_pr_addr(host), ret);
 		cfs_socket_release(sock, true);
 		return ret;
 	}
 
 	ret = cfs_socket_send_packet(sock, packet);
 	if (ret < 0) {
-		cfs_log_err("socket(%s) send packet error %d\n",
-			    cfs_pr_addr(host), ret);
+		cfs_log_error(mc->log, "socket(%s) send packet error %d\n",
+			      cfs_pr_addr(host), ret);
 		cfs_socket_release(sock, true);
 		return ret;
 	}
 
 	ret = cfs_socket_recv_packet(sock, packet);
 	if (ret < 0) {
-		cfs_log_err("socket(%s) recv packet error %d\n",
-			    cfs_pr_addr(host), ret);
+		cfs_log_error(mc->log, "socket(%s) recv packet error %d\n",
+			      cfs_pr_addr(host), ret);
 		cfs_socket_release(sock, true);
 		return ret;
 	}
@@ -58,23 +57,18 @@ static int do_meta_request(struct cfs_meta_client *mc,
 
 	while (max-- > 0) {
 		struct sockaddr_storage *host;
-		// unsigned long time;
 
 		host = &mp->members.base[i];
 		i = (i + 1) % mp->members.num;
 
-		// time = jiffies;
 		ret = do_meta_request_internal(mc, host, packet);
-		// cfs_log_debug("id=%llu, op=0x%x, cost=%u ms\n",
-		// 	      be64_to_cpu(packet->request.hdr.req_id),
-		// 	      packet->request.hdr.opcode,
-		// 	      jiffies_to_msecs(jiffies - time));
 		if (ret < 0)
 			continue;
 
 		if (packet->request.hdr.req_id != packet->reply.hdr.req_id ||
 		    packet->request.hdr.opcode != packet->reply.hdr.opcode) {
-			cfs_log_err(
+			cfs_log_error(
+				mc->log,
 				"reply packet mismatch with request, req(%llu,%llu), opcode(0x%x,0x%x)\n",
 				packet->request.hdr.req_id,
 				packet->reply.hdr.req_id,
@@ -117,9 +111,9 @@ static int cfs_meta_update_partition(struct cfs_meta_client *mc)
 	size_t i;
 	int ret;
 
-	ret = cfs_master_get_volume_without_authkey(mc->master, &vol_view);
+	ret = cfs_master_get_volume(mc->master, &vol_view);
 	if (ret < 0) {
-		cfs_log_err("get meta partitions error %d\n", ret);
+		cfs_log_error(mc->log, "get meta partitions error %d\n", ret);
 		return ret;
 	}
 	write_lock(&mc->lock);
@@ -140,14 +134,14 @@ static int cfs_meta_update_partition(struct cfs_meta_client *mc)
 		mp_view = &vol_view.meta_partitions.base[i];
 		mp = cfs_meta_partition_new(mp_view);
 		if (!mp) {
-			cfs_log_err("oom\n");
+			cfs_pr_err("oom\n");
 			ret = -ENOMEM;
 			goto unlock;
 		}
 		ptr = (uintptr_t)mp;
 		btree_set(mc->partition_ranges, &ptr);
 		if (btree_oom(mc->partition_ranges)) {
-			cfs_log_err("oom\n");
+			cfs_pr_err("oom\n");
 			cfs_meta_partition_release(mp);
 			ret = -ENOMEM;
 			goto unlock;
@@ -178,7 +172,8 @@ static void meta_update_partition_work_cb(struct work_struct *work)
 
 #define META_ITEM_COUNT_PRE_BTREE_NODE 1024
 struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,
-					    const char *vol_name)
+					    const char *vol_name,
+					    struct cfs_log *log)
 {
 	struct cfs_meta_client *mc;
 	int ret;
@@ -191,6 +186,7 @@ struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,
 		ret = -ENOMEM;
 		goto err_volume;
 	}
+	mc->log = log;
 	mc->master = master;
 	rwlock_init(&mc->lock);
 	hash_init(mc->paritions);
@@ -207,8 +203,10 @@ struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,
 	mutex_init(&mc->uniqid_lock);
 
 	ret = cfs_meta_update_partition(mc);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_pr_err("update partition error %d\n", ret);
 		goto err_update;
+	}
 	INIT_DELAYED_WORK(&mc->update_mp_work, meta_update_partition_work_cb);
 	schedule_delayed_work(&mc->update_mp_work,
 			      msecs_to_jiffies(META_UPDATE_MP_INTERVAL_MS));
@@ -1158,7 +1156,7 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 			break;
 	}
 	if (ret != 0) {
-		cfs_log_err("create inode error %d\n", ret);
+		cfs_log_error(mc->log, "create inode error %d\n", ret);
 		ret = ret < 0 ? ret : -ret;
 		goto unlock;
 	}
@@ -1166,7 +1164,7 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 	ret = cfs_meta_dcreate_internal(mc, parent_mp, parent_ino, name,
 					(*iinfo)->ino, mode, quota_infos);
 	if (ret != 0) {
-		cfs_log_err("create dentry error %d\n", ret);
+		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(*iinfo);
 		ret = ret < 0 ? ret : -ret;
 		goto unlock;
@@ -1201,19 +1199,19 @@ int cfs_meta_link(struct cfs_meta_client *mc, u64 parent_ino, struct qstr *name,
 
 	ret = cfs_meta_ilink_internal(mc, mp, ino, &iinfo);
 	if (ret != 0) {
-		cfs_log_err("create inode error %d\n", ret);
+		cfs_log_error(mc->log, "create inode error %d\n", ret);
 		ret = ret < 0 ? ret : -ret;
 		goto unlock;
 	}
 	ret = cfs_meta_dcreate_internal(mc, parent_mp, parent_ino, name,
 					iinfo->ino, iinfo->mode, NULL);
 	if (ret > 0) {
-		cfs_log_err("create dentry error %d\n", ret);
+		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(iinfo);
 		cfs_meta_iunlink_internal(mc, mp, ino, NULL);
 		goto unlock;
 	} else if (ret < 0) {
-		cfs_log_err("create dentry error %d\n", ret);
+		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(iinfo);
 		goto unlock;
 	}
@@ -1229,7 +1227,7 @@ unlock:
  * @return 0 on success, < 0 on failed
  */
 int cfs_meta_delete(struct cfs_meta_client *mc, u64 parent_ino,
-		    struct qstr *name, bool is_dir)
+		    struct qstr *name, bool is_dir, u64 *ret_ino)
 {
 	struct cfs_meta_partition *mp;
 	u64 ino;
@@ -1267,12 +1265,8 @@ int cfs_meta_delete(struct cfs_meta_client *mc, u64 parent_ino,
 		ret = ret < 0 ? ret : -ret;
 		goto unlock;
 	}
-
-	ret = cfs_meta_ievict_internal(mc, mp, ino);
-	if (ret != 0) {
-		ret = ret < 0 ? ret : -ret;
-		goto unlock;
-	}
+	if (ret_ino)
+		*ret_ino = ino;
 
 unlock:
 	read_unlock(&mc->lock);

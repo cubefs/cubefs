@@ -130,7 +130,8 @@ static int http_request_marshal(struct http_request *request,
 	return 0;
 }
 
-static int do_send_http_request(struct cfs_socket *csk,
+static int do_send_http_request(struct cfs_master_client *mc,
+				struct cfs_socket *csk,
 				struct http_request *request)
 {
 	struct cfs_buffer *buffer;
@@ -146,16 +147,14 @@ static int do_send_http_request(struct cfs_socket *csk,
 		return ret;
 	}
 
-	// cfs_log_debug("%.*s\n", (int)cfs_buffer_size(buffer),
-	// 	      cfs_buffer_data(buffer));
-
 	ret = cfs_socket_send(csk, cfs_buffer_data(buffer),
 			      cfs_buffer_size(buffer));
 	cfs_buffer_release(buffer);
 	return ret;
 }
 
-static int do_recv_http_response(struct cfs_socket *csk,
+static int do_recv_http_response(struct cfs_master_client *mc,
+				 struct cfs_socket *csk,
 				 struct http_response *response)
 {
 	char *p;
@@ -207,25 +206,9 @@ static int do_recv_http_response(struct cfs_socket *csk,
 	}
 	p += 4;
 
-	// cfs_log_debug("%.*s\n",
-	// 	      (int)(cfs_buffer_data(response->buffer) +
-	// 		    cfs_buffer_size(response->buffer) - p),
-	// 	      p);
-
 	switch (response->status) {
 	case HTTP_STATUS_FORBIDDEN:
-		// ret = cfs_parse_addr(
-		// 	p,
-		// 	cfs_buffer_data(response->buffer) +
-		// 		cfs_buffer_size(response->buffer) - p,
-		// 	&response->master_addr);
-		// if (ret < 0) {
-		// 	cfs_log_err(
-		// 		"server response status 403: body is empty\n");
-		// 	goto failed;
-		// }
-		// break;
-		cfs_log_err("server response status 403\n");
+		cfs_log_error(mc->log, "server response status 403\n");
 		ret = -EBADMSG;
 		goto failed;
 	case HTTP_STATUS_OK: {
@@ -234,7 +217,8 @@ static int do_recv_http_response(struct cfs_socket *csk,
 			p, cfs_buffer_data(response->buffer) +
 				   cfs_buffer_size(response->buffer) - p);
 		if (!response->json_body) {
-			cfs_log_err(
+			cfs_log_error(
+				mc->log,
 				"server response status 200: body is invalid json\n");
 			ret = -EBADMSG;
 			goto failed;
@@ -244,7 +228,8 @@ static int do_recv_http_response(struct cfs_socket *csk,
 			goto failed;
 		}
 		if (code != 0) {
-			cfs_log_err(
+			cfs_log_error(
+				mc->log,
 				"server response status 200: body.code=%u\n",
 				code);
 			return -EBADMSG;
@@ -253,8 +238,8 @@ static int do_recv_http_response(struct cfs_socket *csk,
 		break;
 	}
 	default:
-		cfs_log_err("server response unknow status %u\n",
-			    response->status);
+		cfs_log_error(mc->log, "server response unknow status %u\n",
+			      response->status);
 		ret = -EBADMSG;
 		goto failed;
 	}
@@ -279,10 +264,11 @@ static int do_http_request(struct cfs_master_client *mc,
 		host = &mc->hosts.base[i++];
 		if (i == mc->hosts.num)
 			i = 0;
-		ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, &csk);
+		ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, host, mc->log, &csk);
 		if (ret < 0) {
-			cfs_log_err("connect master node %s error %d\n",
-				    cfs_pr_addr(host), ret);
+			cfs_log_error(mc->log,
+				      "connect master node %s error %d\n",
+				      cfs_pr_addr(host), ret);
 			continue;
 		}
 		ret = cfs_socket_set_recv_timeout(csk, HTTP_RECV_TIMEOUT_MS);
@@ -291,16 +277,18 @@ static int do_http_request(struct cfs_master_client *mc,
 			continue;
 		}
 
-		ret = do_send_http_request(csk, request);
+		ret = do_send_http_request(mc, csk, request);
 		if (ret < 0) {
-			cfs_log_err("send http request error %d\n", ret);
+			cfs_log_error(mc->log, "send http request error %d\n",
+				      ret);
 			cfs_socket_release(csk, true);
 			continue;
 		}
 
-		ret = do_recv_http_response(csk, response);
+		ret = do_recv_http_response(mc, csk, response);
 		if (ret < 0) {
-			cfs_log_err("recv http response error %d\n", ret);
+			cfs_log_error(mc->log, "recv http response error %d\n",
+				      ret);
 			cfs_socket_release(csk, true);
 			continue;
 		}
@@ -312,24 +300,85 @@ static int do_http_request(struct cfs_master_client *mc,
 	return -1;
 }
 
+static int calculate_md5(const unsigned char *input, size_t ilen,
+			 unsigned char *output)
+{
+	struct crypto_shash *tfm;
+	struct shash_desc *desc;
+	int ret;
+
+	tfm = crypto_alloc_shash("md5", 0, 0);
+	if (IS_ERR(tfm)) {
+		cfs_pr_err("tfm allocation failed\n");
+		return PTR_ERR(tfm);
+	}
+
+	desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm),
+		       GFP_KERNEL);
+	if (!desc) {
+		crypto_free_shash(tfm);
+		return -ENOMEM;
+	}
+
+	desc->tfm = tfm;
+	desc->flags = 0;
+
+	ret = crypto_shash_init(desc);
+	if (ret) {
+		cfs_pr_err("shash initialization failed\n");
+		goto out;
+	}
+
+	ret = crypto_shash_update(desc, input, ilen);
+	if (ret) {
+		cfs_pr_err("shash update failed\n");
+		goto out;
+	}
+
+	ret = crypto_shash_final(desc, output);
+	if (ret) {
+		cfs_pr_err("shash finalization failed\n");
+		goto out;
+	}
+
+out:
+	kfree(desc);
+	crypto_free_shash(tfm);
+	return ret;
+}
+
 struct cfs_master_client *
 cfs_master_client_new(const struct sockaddr_storage_array *hosts,
-		      const char *volume)
+		      const char *volume, const char *owner,
+		      struct cfs_log *log)
 {
 	struct cfs_master_client *mc;
+	unsigned char md5[MD5_DIGEST_SIZE];
+	int i;
+	int ret;
 
 	mc = kzalloc(sizeof(*mc), GFP_NOFS);
 	if (!mc)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
+	mc->log = log;
 	mc->volume = kstrdup(volume, GFP_NOFS);
 	if (!mc->volume) {
 		kfree(mc);
-		return NULL;
+		return ERR_PTR(-ENOMEM);
+	}
+	ret = calculate_md5(owner, strlen(owner), md5);
+	if (ret) {
+		kfree(mc->volume);
+		kfree(mc);
+		return ERR_PTR(ret);
+	}
+	for (i = 0; i < MD5_DIGEST_SIZE; i++) {
+		sprintf(mc->auth_key + 2 * i, "%02x", md5[i]);
 	}
 	if (sockaddr_storage_array_clone(&mc->hosts, hosts) < 0) {
 		kfree(mc->volume);
 		kfree(mc);
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 	}
 	return mc;
 }
@@ -347,8 +396,8 @@ void cfs_master_client_release(struct cfs_master_client *mc)
 /**
  * @param vol_view [out]
  */
-int cfs_master_get_volume_without_authkey(struct cfs_master_client *mc,
-					  struct cfs_volume_view *vol_view)
+int cfs_master_get_volume(struct cfs_master_client *mc,
+			  struct cfs_volume_view *vol_view)
 {
 	struct http_request request;
 	struct http_response response;
@@ -359,7 +408,8 @@ int cfs_master_get_volume_without_authkey(struct cfs_master_client *mc,
 	request.method = HTTP_POST;
 	request.path = "/client/vol";
 	request.p_name = mc->volume;
-	request.h_skip_owner_validation = true;
+	request.p_auth_key = mc->auth_key;
+	request.h_skip_owner_validation = false;
 
 	ret = do_http_request(mc, &request, &response);
 	if (ret < 0)
@@ -371,11 +421,13 @@ int cfs_master_get_volume_without_authkey(struct cfs_master_client *mc,
 	}
 	ret = cfs_json_get_object(response.json_body, "data", &json_data);
 	if (ret < 0) {
-		cfs_log_err("not found body.data\n");
+		cfs_log_error(mc->log, "not found body.data\n");
 		http_response_clear(&response);
 		return ret;
 	}
 	ret = cfs_volume_view_from_json(&json_data, vol_view);
+	if (ret)
+		cfs_log_error(mc->log, "parse data error %d\n", ret);
 	http_response_clear(&response);
 	return ret;
 }
@@ -407,11 +459,13 @@ int cfs_master_get_volume_stat(struct cfs_master_client *mc,
 	}
 	ret = cfs_json_get_object(response.json_body, "data", &json_data);
 	if (ret < 0) {
-		cfs_log_err("not found body.data\n");
+		cfs_log_error(mc->log, "not found body.data\n");
 		http_response_clear(&response);
 		return ret;
 	}
 	ret = cfs_volume_stat_from_json(&json_data, stat);
+	if (ret)
+		cfs_log_error(mc->log, "parse data error %d\n", ret);
 	http_response_clear(&response);
 	return ret;
 }
@@ -444,7 +498,7 @@ int cfs_master_get_data_partitions(
 	}
 	ret = cfs_json_get_object(response.json_body, "data", &json_data);
 	if (ret < 0) {
-		cfs_log_err("not found body.data\n");
+		cfs_log_error(mc->log, "not found body.data\n");
 		goto end;
 	}
 	ret = cfs_json_get_object(&json_data, "DataPartitions", &json_dp_views);
@@ -462,8 +516,9 @@ int cfs_master_get_data_partitions(
 			ret = cfs_data_partition_view_from_json(
 				&json_dp_view, &dp_views->base[dp_views->num]);
 			if (ret < 0) {
-				cfs_log_err("parse DataPartitions error %d\n",
-					    ret);
+				cfs_log_error(mc->log,
+					      "parse DataPartitions error %d\n",
+					      ret);
 				goto end;
 			}
 		}
@@ -496,12 +551,12 @@ int cfs_master_get_cluster_info(struct cfs_master_client *mc,
 	}
 	ret = cfs_json_get_object(response.json_body, "data", &json_data);
 	if (ret < 0) {
-		cfs_log_err("not found body.data\n");
+		cfs_log_error(mc->log, "not found body.data\n");
 		goto end;
 	}
 	ret = cfs_cluster_info_from_json(&json_data, info);
 	if (ret < 0) {
-		cfs_log_err("parse data error %d\n", ret);
+		cfs_log_error(mc->log, "parse data error %d\n", ret);
 		goto end;
 	}
 

@@ -166,8 +166,8 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 	inode = &ci->vfs_inode;
 
 	if (!(inode->i_state & I_NEW)) {
-		cfs_log_debug("old inode %p{.ino=%lu, .iprivate=%p}\n", inode,
-			      inode->i_ino, inode->i_private);
+		cfs_log_warn(cmi->log, "old inode %p{.ino=%lu, .iprivate=%p}\n",
+			     inode, inode->i_ino, inode->i_private);
 		return inode;
 	}
 
@@ -203,7 +203,7 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 		init_special_inode(inode, inode->i_mode, rdev);
 		break;
 	default:
-		cfs_log_err("unsupport inode mode 0%o\n", inode->i_mode);
+		cfs_pr_err("unsupport inode mode 0%o\n", inode->i_mode);
 		break;
 	}
 	unlock_new_inode(inode);
@@ -217,9 +217,6 @@ static int cfs_readpage(struct file *file, struct page *page)
 {
 	struct inode *inode = file_inode(file);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
-
-	cfs_log_debug("file=" fmt_file ", page=%p{.index=%lu}\n", file, page,
-		      page ? page->index : 0);
 
 	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(page),
 				     0, PAGE_SIZE);
@@ -258,8 +255,6 @@ static int cfs_readpages(struct file *file, struct address_space *mapping,
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
 	struct cfs_page_vec *vec;
 	int ret;
-
-	cfs_log_debug("file=%p{}, nr_pages=%u\n", file, nr_pages);
 
 	vec = cfs_page_vec_new();
 	if (!vec)
@@ -338,7 +333,6 @@ static int cfs_writepages(struct address_space *mapping,
 	loff_t page_size;
 	int ret = 0;
 
-	cfs_log_debug("inode=" fmt_inode "\n", pr_inode(inode));
 	vec = cfs_page_vec_new();
 	if (!vec)
 		return -ENOMEM;
@@ -491,14 +485,18 @@ static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
 static int cfs_open(struct inode *inode, struct file *file)
 {
 	struct cfs_file_info *cfi = file->private_data;
+	struct super_block *sb = inode->i_sb;
+	struct cfs_mount_info *cmi = sb->s_fs_info;
 
-	cfs_log_debug("file=" fmt_file ", inode=" fmt_inode
+	cfs_log_debug(cmi->log,
+		      "file=" fmt_file ", inode=" fmt_inode
 		      ", dentry=" fmt_dentry "\n",
 		      pr_file(file), pr_inode(inode),
 		      pr_dentry(file_dentry(file)));
 
 	if (cfi) {
-		cfs_log_debug("open file %p is already opened\n", file);
+		cfs_log_warn(cmi->log, "open file %p is already opened\n",
+			     file);
 		return 0;
 	}
 	cfi = kzalloc(sizeof(*cfi), GFP_NOFS);
@@ -526,8 +524,11 @@ static int cfs_open(struct inode *inode, struct file *file)
 static int cfs_release(struct inode *inode, struct file *file)
 {
 	struct cfs_file_info *cfi = file->private_data;
+	struct super_block *sb = inode->i_sb;
+	struct cfs_mount_info *cmi = sb->s_fs_info;
 
-	cfs_log_debug("file=" fmt_file ", inode=" fmt_inode
+	cfs_log_debug(cmi->log,
+		      "file=" fmt_file ", inode=" fmt_inode
 		      ", dentry=" fmt_dentry "\n",
 		      pr_file(file), pr_inode(inode),
 		      pr_dentry(file_dentry(file)));
@@ -546,9 +547,11 @@ static int cfs_flush(struct file *file, fl_owner_t id)
 {
 	struct inode *inode = file_inode(file);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct super_block *sb = inode->i_sb;
+	struct cfs_mount_info *cmi = sb->s_fs_info;
 	int ret;
 
-	cfs_log_debug("file=" fmt_file "\n", pr_file(file));
+	cfs_log_debug(cmi->log, "file=" fmt_file "\n", pr_file(file));
 	ret = write_inode_now(inode, 1);
 	if (ret < 0)
 		return ret;
@@ -562,9 +565,11 @@ static int cfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
 	struct inode *inode = file_inode(file);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct super_block *sb = inode->i_sb;
+	struct cfs_mount_info *cmi = sb->s_fs_info;
 	int ret;
 
-	cfs_log_debug("file=" fmt_file "\n", pr_file(file));
+	cfs_log_debug(cmi->log, "file=" fmt_file "\n", pr_file(file));
 	ret = write_inode_now(inode, 1);
 	if (ret < 0)
 		return ret;
@@ -589,7 +594,8 @@ static int cfs_readdir(struct file *file, void *dirent, filldir_t filldir)
 	size_t i;
 	int ret;
 
-	cfs_log_debug("file=" fmt_file ", inode=" fmt_inode
+	cfs_log_debug(cmi->log,
+		      "file=" fmt_file ", inode=" fmt_inode
 		      ", dentry=" fmt_dentry
 		      ", offset=%zu, nr_dentry=%zu, done=%d\n",
 		      pr_file(file), pr_inode(inode),
@@ -646,7 +652,7 @@ static int cfs_readdir(struct file *file, void *dirent, filldir_t filldir)
 		ret = cfs_meta_readdir(cmi->meta, inode->i_ino, cfi->marker,
 				       READDIR_NUM, &cfi->denties);
 		if (ret < 0) {
-			cfs_log_err("readdir error %d\n", ret);
+			cfs_pr_err("readdir error %d\n", ret);
 			return ret;
 		}
 		if (cfi->denties.num < READDIR_NUM)
@@ -726,8 +732,8 @@ static int cfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 			set_dentry_cache_valid(ci);
 			return false;
 		} else if (ret < 0) {
-			cfs_log_warning("get inode(%lu) error %d, try again\n",
-					inode->i_ino, ret);
+			cfs_pr_warning("get inode(%lu) error %d, try again\n",
+				       inode->i_ino, ret);
 			return true;
 		} else {
 			set_dentry_cache_valid(ci);
@@ -755,7 +761,7 @@ static int cfs_setattr(struct dentry *dentry, struct iattr *iattr)
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
 	int err;
 
-	cfs_log_debug("dentry=" fmt_dentry ", ia_valid=0x%x\n",
+	cfs_log_debug(cmi->log, "dentry=" fmt_dentry ", ia_valid=0x%x\n",
 		      pr_dentry(dentry), iattr->ia_valid);
 
 #ifdef KERNEL_HAS_SETATTR_PREPARE
@@ -818,7 +824,8 @@ static int cfs_setxattr(struct dentry *dentry, const char *name,
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	u64 ino = dentry->d_inode->i_ino;
 
-	cfs_log_debug("dentry=" fmt_dentry
+	cfs_log_debug(cmi->log,
+		      "dentry=" fmt_dentry
 		      ", name=%s, value=%.*s, flags=0x%x\n",
 		      pr_dentry(dentry), name, (int)len, (const char *)value,
 		      flags);
@@ -832,8 +839,8 @@ static ssize_t cfs_getxattr(struct dentry *dentry, const char *name,
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	u64 ino = dentry->d_inode->i_ino;
 
-	cfs_log_debug("dentry=" fmt_dentry ", name=%s\n", pr_dentry(dentry),
-		      name);
+	cfs_log_debug(cmi->log, "dentry=" fmt_dentry ", name=%s\n",
+		      pr_dentry(dentry), name);
 	return cfs_meta_get_xattr(cmi->meta, ino, name, value, size);
 }
 
@@ -843,7 +850,7 @@ static ssize_t cfs_listxattr(struct dentry *dentry, char *names, size_t size)
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	u64 ino = dentry->d_inode->i_ino;
 
-	cfs_log_debug("dentry=" fmt_dentry "\n", pr_dentry(dentry));
+	cfs_log_debug(cmi->log, "dentry=" fmt_dentry "\n", pr_dentry(dentry));
 	return cfs_meta_list_xattr(cmi->meta, ino, names, size);
 }
 
@@ -853,8 +860,8 @@ static int cfs_removexattr(struct dentry *dentry, const char *name)
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	u64 ino = dentry->d_inode->i_ino;
 
-	cfs_log_debug("dentry=" fmt_dentry ", name=%s\n", pr_dentry(dentry),
-		      name);
+	cfs_log_debug(cmi->log, "dentry=" fmt_dentry ", name=%s\n",
+		      pr_dentry(dentry), name);
 	return cfs_meta_remove_xattr(cmi->meta, ino, name);
 }
 #endif
@@ -871,7 +878,8 @@ static struct dentry *cfs_lookup(struct inode *dir, struct dentry *dentry,
 	if (unlikely(dentry->d_name.len > NAME_MAX))
 		return ERR_PTR(-ENAMETOOLONG);
 
-	cfs_log_debug("dir=" fmt_inode ", dentry=" fmt_dentry ", flags=0x%x\n",
+	cfs_log_debug(cmi->log,
+		      "dir=" fmt_inode ", dentry=" fmt_dentry ", flags=0x%x\n",
 		      pr_inode(dir), pr_dentry(dentry), flags);
 
 	ret = cfs_meta_lookup(cmi->meta, dir->i_ino, &dentry->d_name, &iinfo);
@@ -879,16 +887,16 @@ static struct dentry *cfs_lookup(struct inode *dir, struct dentry *dentry,
 		d_add(dentry, NULL);
 		return NULL;
 	} else if (ret < 0) {
-		cfs_log_err("lookup inode '%.*s', error %d\n",
-			    pr_qstr(&dentry->d_name), ret);
+		cfs_log_error(cmi->log, "lookup inode '%.*s', error %d\n",
+			      pr_qstr(&dentry->d_name), ret);
 		return ERR_PTR(ret);
 	}
 
 	inode = cfs_inode_new(sb, iinfo, 0);
 	cfs_packet_inode_release(iinfo);
 	if (!inode) {
-		cfs_log_err("create inode '%.*s' failed\n",
-			    pr_qstr(&dentry->d_name));
+		cfs_log_error(cmi->log, "create inode '%.*s' failed\n",
+			      pr_qstr(&dentry->d_name));
 		d_add(dentry, NULL);
 		return NULL;
 	}
@@ -904,19 +912,19 @@ static int cfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	uid_t gid = from_kgid(&init_user_ns, current_fsgid());
 	struct cfs_quota_info_array *quota = NULL;
 	struct cfs_packet_inode *iinfo;
-	struct inode *inode;
+	struct inode *inode = NULL;
+	unsigned long time;
 	int ret;
 
-	cfs_log_debug("dir=" fmt_inode ", dentry=" fmt_dentry
-		      ", mode=0%o, uid=%u, gid=%u\n",
-		      pr_inode(dir), pr_dentry(dentry), mode, uid, gid);
-
+	time = jiffies;
 	ret = cfs_inode_refresh(CFS_INODE(dir));
 	if (ret < 0)
-		return ret;
+		goto out;
 
-	if (is_links_exceed_limit(CFS_INODE(dir)))
-		return -EDQUOT;
+	if (is_links_exceed_limit(CFS_INODE(dir))) {
+		ret = -EDQUOT;
+		goto out;
+	}
 
 	if (cmi->options->enable_quota) {
 		if (!is_quota_cache_valid(CFS_INODE(dir)))
@@ -927,17 +935,23 @@ static int cfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
 			      gid, NULL, quota, &iinfo);
 	if (ret < 0) {
-		cfs_log_err("create dentry error %d\n", ret);
-		return ret;
+		cfs_log_error(cmi->log, "create dentry error %d\n", ret);
+		goto out;
 	}
 
 	inode = cfs_inode_new(sb, iinfo, 0);
 	cfs_packet_inode_release(iinfo);
-	if (!inode)
-		return -ENOMEM;
-
+	if (!inode) {
+		ret = -ENOMEM;
+		goto out;
+	}
 	d_instantiate(dentry, inode);
-	return 0;
+
+out:
+	cfs_log_audit(cmi->log, "Create", dentry, NULL, ret,
+		      jiffies_to_msecs(jiffies - time) * 1000,
+		      inode ? inode->i_ino : 0, 0);
+	return ret;
 }
 
 static int cfs_link(struct dentry *src_dentry, struct inode *dst_dir,
@@ -947,27 +961,31 @@ static int cfs_link(struct dentry *src_dentry, struct inode *dst_dir,
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	int ret;
 
-	cfs_log_debug("src_dentry=" fmt_dentry ", dst_dir=" fmt_inode
+	cfs_log_debug(cmi->log,
+		      "src_dentry=" fmt_dentry ", dst_dir=" fmt_inode
 		      ", dst_dentry=" fmt_dentry "\n",
 		      pr_dentry(src_dentry), pr_inode(dst_dir),
 		      pr_dentry(dst_dentry));
 
 	ret = cfs_inode_refresh(CFS_INODE(dst_dir));
 	if (ret < 0)
-		return ret;
+		goto out;
 
-	if (is_links_exceed_limit(CFS_INODE(dst_dir)))
-		return -EDQUOT;
+	if (is_links_exceed_limit(CFS_INODE(dst_dir))) {
+		ret = -EDQUOT;
+		goto out;
+	}
 
 	ret = cfs_meta_link(cmi->meta, dst_dir->i_ino, &dst_dentry->d_name,
 			    src_dentry->d_inode->i_ino, NULL);
 	if (ret < 0) {
 		d_drop(dst_dentry);
-		return ret;
+		goto out;
 	}
 	ihold(src_dentry->d_inode);
 	d_instantiate(dst_dentry, src_dentry->d_inode);
-	return 0;
+out:
+	return ret;
 }
 
 static int cfs_symlink(struct inode *dir, struct dentry *dentry,
@@ -983,7 +1001,8 @@ static int cfs_symlink(struct inode *dir, struct dentry *dentry,
 	struct inode *inode;
 	int ret;
 
-	cfs_log_debug("dir=" fmt_inode ", dentry=" fmt_dentry
+	cfs_log_debug(cmi->log,
+		      "dir=" fmt_inode ", dentry=" fmt_dentry
 		      ", target=%s, uid=%u, gid=%u\n",
 		      pr_inode(dir), pr_dentry(dentry), target, uid, gid);
 
@@ -1004,7 +1023,7 @@ static int cfs_symlink(struct inode *dir, struct dentry *dentry,
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
 			      gid, target, quota, &iinfo);
 	if (ret < 0) {
-		cfs_log_err("create dentry error %d\n", ret);
+		cfs_log_error(cmi->log, "create dentry error %d\n", ret);
 		return ret;
 	}
 
@@ -1025,19 +1044,19 @@ static int cfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	uid_t gid = from_kgid(&init_user_ns, current_fsgid());
 	struct cfs_quota_info_array *quota = NULL;
 	struct cfs_packet_inode *iinfo;
-	struct inode *inode;
+	struct inode *inode = NULL;
+	unsigned long time;
 	int ret;
 
-	cfs_log_debug("dir=" fmt_inode ", dentry=" fmt_dentry
-		      ", mode=0%o, uid=%u, gid=%u\n",
-		      pr_inode(dir), pr_dentry(dentry), mode, uid, gid);
-
+	time = jiffies;
 	ret = cfs_inode_refresh(CFS_INODE(dir));
 	if (ret < 0)
-		return ret;
+		goto out;
 
-	if (is_links_exceed_limit(CFS_INODE(dir)))
-		return -EDQUOT;
+	if (is_links_exceed_limit(CFS_INODE(dir))) {
+		ret = -EDQUOT;
+		goto out;
+	}
 
 	if (cmi->options->enable_quota) {
 		if (!is_quota_cache_valid(CFS_INODE(dir)))
@@ -1050,33 +1069,38 @@ static int cfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
 			      gid, NULL, quota, &iinfo);
 	if (ret < 0) {
-		cfs_log_err("create dentry error %d\n", ret);
-		return ret;
+		cfs_log_error(cmi->log, "create dentry error %d\n", ret);
+		goto out;
 	}
 
 	inode = cfs_inode_new(sb, iinfo, 0);
 	cfs_packet_inode_release(iinfo);
-	if (!inode)
-		return -ENOMEM;
-
+	if (!inode) {
+		ret = -ENOMEM;
+		goto out;
+	}
 	d_instantiate(dentry, inode);
-	return 0;
+
+out:
+	cfs_log_audit(cmi->log, "Mkdir", dentry, NULL, ret,
+		      jiffies_to_msecs(jiffies - time) * 1000,
+		      inode ? inode->i_ino : 0, 0);
+	return ret;
 }
 
 static int cfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	struct super_block *sb = dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
+	unsigned long time;
+	u64 ino = 0;
 	int ret;
 
-	cfs_log_debug("dir=" fmt_inode ", dentry=" fmt_dentry "\n",
-		      pr_inode(dir), pr_dentry(dentry));
+	time = jiffies;
 	ret = cfs_meta_delete(cmi->meta, dir->i_ino, &dentry->d_name,
-			      d_is_dir(dentry));
-	if (ret < 0)
-		cfs_log_debug("dir=" fmt_inode ", dentry=" fmt_dentry
-			      ", error=%d\n",
-			      pr_inode(dir), pr_dentry(dentry), ret);
+			      d_is_dir(dentry), &ino);
+	cfs_log_audit(cmi->log, "Rmdir", dentry, NULL, ret,
+		      jiffies_to_msecs(jiffies - time) * 1000, ino, 0);
 	return ret;
 }
 
@@ -1092,7 +1116,8 @@ static int cfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	struct inode *inode;
 	int ret;
 
-	cfs_log_debug("dir=" fmt_inode ", dentry=" fmt_dentry
+	cfs_log_debug(cmi->log,
+		      "dir=" fmt_inode ", dentry=" fmt_dentry
 		      ", mode=0%o, uid=%u, gid=%u\n",
 		      pr_inode(dir), pr_dentry(dentry), mode, uid, gid);
 
@@ -1113,7 +1138,7 @@ static int cfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
 			      gid, NULL, NULL, &iinfo);
 	if (ret < 0) {
-		cfs_log_err("create dentry error %d\n", ret);
+		cfs_log_error(cmi->log, "create dentry error %d\n", ret);
 		return ret;
 	}
 	inode = cfs_inode_new(sb, iinfo, rdev);
@@ -1136,12 +1161,8 @@ static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 {
 	struct super_block *sb = old_dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
+	unsigned long time;
 	int ret;
-
-	cfs_log_debug("old_dir=" fmt_inode ", old_dentry=" fmt_dentry
-		      ",new_dir = " fmt_inode ",new_dentry=" fmt_dentry "\n",
-		      pr_inode(old_dir), pr_dentry(old_dentry),
-		      pr_inode(new_dir), pr_dentry(new_dentry));
 
 	/* Any flags not handled by the filesystem should result in EINVAL being returned */
 #ifdef KERNEL_HAS_RENAME_WITH_FLAGS
@@ -1149,26 +1170,41 @@ static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		return -EINVAL;
 #endif
 
+	time = jiffies;
 	ret = cfs_inode_refresh(CFS_INODE(new_dir));
 	if (ret < 0)
-		return ret;
+		goto out;
 
-	if (is_links_exceed_limit(CFS_INODE(new_dir)))
-		return -EDQUOT;
+	if (is_links_exceed_limit(CFS_INODE(new_dir))) {
+		ret = -EDQUOT;
+		goto out;
+	}
 
-	return cfs_meta_rename(cmi->meta, old_dir->i_ino, &old_dentry->d_name,
-			       new_dir->i_ino, &new_dentry->d_name, true);
+	ret = cfs_meta_rename(cmi->meta, old_dir->i_ino, &old_dentry->d_name,
+			      new_dir->i_ino, &new_dentry->d_name, true);
+out:
+
+	cfs_log_audit(cmi->log, "Rename", old_dentry, new_dentry, ret,
+		      jiffies_to_msecs(jiffies - time) * 1000,
+		      old_dentry->d_inode ? old_dentry->d_inode->i_ino : 0,
+		      new_dentry->d_inode ? new_dentry->d_inode->i_ino : 0);
+	return ret;
 }
 
 static int cfs_unlink(struct inode *dir, struct dentry *dentry)
 {
 	struct super_block *sb = dir->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
+	u64 ino = 0;
+	unsigned long time;
+	int ret;
 
-	cfs_log_debug("dir=" fmt_inode ", dentry=" fmt_dentry "\n",
-		      pr_inode(dir), pr_dentry(dentry));
-	return cfs_meta_delete(cmi->meta, dir->i_ino, &dentry->d_name,
-			       d_is_dir(dentry));
+	time = jiffies;
+	ret = cfs_meta_delete(cmi->meta, dir->i_ino, &dentry->d_name,
+			      d_is_dir(dentry), &ino);
+	cfs_log_audit(cmi->log, "Unlink", dentry, NULL, ret,
+		      jiffies_to_msecs(jiffies - time) * 1000, ino, 0);
+	return ret;
 }
 
 /**
@@ -1185,8 +1221,10 @@ static void *cfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
 	struct inode *inode = d_inode(dentry);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct super_block *sb = inode->i_sb;
+	struct cfs_mount_info *cmi = sb->s_fs_info;
 
-	cfs_log_debug("dentry=" fmt_dentry "\n", pr_dentry(dentry));
+	cfs_log_debug(cmi->log, "dentry=" fmt_dentry "\n", pr_dentry(dentry));
 	nd_set_link(nd, ci->link_target);
 	return NULL;
 }
@@ -1231,7 +1269,7 @@ static void cfs_put_super(struct super_block *sb)
 {
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 
-	cfs_log_debug("sb=%p{.s_fs_info=%p}\n", sb, sb->s_fs_info);
+	cfs_log_info(cmi->log, "sb=%p{.s_fs_info=%p}\n", sb, sb->s_fs_info);
 	cfs_mount_info_release(cmi);
 }
 
@@ -1244,8 +1282,8 @@ static int cfs_statfs(struct dentry *dentry, struct kstatfs *kstatfs)
 
 	ret = cfs_master_get_volume_stat(cmi->master, &stat);
 	if (ret < 0) {
-		cfs_log_err("get volume '%s' stat error %d\n",
-			    cmi->master->volume, ret);
+		cfs_log_error(cmi->log, "get volume '%s' stat error %d\n",
+			      cmi->master->volume, ret);
 		return ret;
 	}
 	memset(kstatfs, 0, sizeof(*kstatfs));
@@ -1329,14 +1367,16 @@ static struct dentry *cfs_mount(struct file_system_type *fs_type, int flags,
 	struct cfs_mount_info *cmi;
 	struct dentry *dentry;
 
-	cfs_log_info("dev=\"%s\", options=\"%s\"\n", dev_str, (char *)opt_str);
+	cfs_pr_info("dev=\"%s\", options=\"%s\"\n", dev_str, (char *)opt_str);
 
 	options = cfs_options_new(dev_str, opt_str);
 	if (IS_ERR(options))
 		return ERR_CAST(options);
 	cmi = cfs_mount_info_new(options);
-	if (IS_ERR(cmi))
+	if (IS_ERR(cmi)) {
+		cfs_options_release(options);
 		return ERR_CAST(cmi);
+	}
 	dentry = mount_nodev(fs_type, flags, cmi, cfs_fs_fill_super);
 	if (IS_ERR(dentry))
 		cfs_mount_info_release(cmi);
@@ -1345,7 +1385,9 @@ static struct dentry *cfs_mount(struct file_system_type *fs_type, int flags,
 
 static void cfs_kill_sb(struct super_block *sb)
 {
-	cfs_log_debug("sb=%p{.s_fs_info=%p}\n", sb, sb->s_fs_info);
+	struct cfs_mount_info *cmi = sb->s_fs_info;
+
+	cfs_log_info(cmi->log, "sb=%p{.s_fs_info=%p}\n", sb, sb->s_fs_info);
 	kill_anon_super(sb);
 }
 
@@ -1460,6 +1502,81 @@ struct file_system_type cfs_fs_type = {
 	.mount = cfs_mount,
 };
 
+static int proc_log_open(struct inode *inode, struct file *file)
+{
+	file->private_data = PDE_DATA(inode);
+	return 0;
+}
+
+static ssize_t proc_log_read(struct file *file, char __user *buf, size_t size,
+			     loff_t *ppos)
+{
+	struct cfs_mount_info *cmi = file->private_data;
+
+	return cfs_log_read(cmi->log, buf, size);
+}
+
+static unsigned int proc_log_poll(struct file *file,
+				  struct poll_table_struct *p)
+{
+	struct cfs_mount_info *cmi = file->private_data;
+	struct cfs_log *log = cmi->log;
+
+	poll_wait(file, &log->wait, p);
+	if (cfs_log_size(log))
+		return POLLIN | POLLRDNORM;
+	return 0;
+}
+
+static int proc_log_release(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static const struct file_operations proc_log_fops = {
+	.owner = THIS_MODULE,
+	.open = proc_log_open,
+	.read = proc_log_read,
+	.llseek = generic_file_llseek,
+	.poll = proc_log_poll,
+	.release = proc_log_release,
+};
+
+static int init_proc(struct cfs_mount_info *cmi)
+{
+	char *proc_name;
+
+	proc_name =
+		kzalloc(strlen("fs/cubefs/") + strlen(cmi->options->volume) + 1,
+			GFP_KERNEL);
+	if (!proc_name)
+		return -ENOMEM;
+
+	sprintf(proc_name, "fs/cubefs/%s", cmi->options->volume);
+	cmi->proc_dir = proc_mkdir(proc_name, NULL);
+	if (!cmi->proc_dir) {
+		kfree(proc_name);
+		return -ENOMEM;
+	}
+	kfree(proc_name);
+
+	cmi->proc_log = proc_create_data("log", S_IRUSR | S_IRGRP | S_IROTH,
+					 cmi->proc_dir, &proc_log_fops, cmi);
+	if (!cmi->proc_log) {
+		proc_remove(cmi->proc_dir);
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+static void unint_proc(struct cfs_mount_info *cmi)
+{
+	if (cmi->proc_log)
+		proc_remove(cmi->proc_log);
+	if (cmi->proc_dir)
+		proc_remove(cmi->proc_dir);
+}
+
 static void update_limit_work_cb(struct work_struct *work)
 {
 	struct delayed_work *delayed_work = to_delayed_work(work);
@@ -1472,7 +1589,7 @@ static void update_limit_work_cb(struct work_struct *work)
 			      msecs_to_jiffies(CFS_UPDATE_LIMIT_INTERVAL_MS));
 	ret = cfs_master_get_cluster_info(cmi->master, &info);
 	if (ret < 0) {
-		cfs_log_err("get cluster info error %d\n", ret);
+		cfs_pr_err("get cluster info error %d\n", ret);
 		return;
 	}
 	if (info.links_limit < CFS_LINKS_MIN)
@@ -1490,28 +1607,38 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 	void *err_ptr;
 
 	cmi = kzalloc(sizeof(*cmi), GFP_NOFS);
-	if (!cmi) {
-		cfs_options_release(options);
+	if (!cmi)
 		return ERR_PTR(-ENOMEM);
-	}
 	cmi->options = options;
 	atomic_long_set(&cmi->links_limit, CFS_LINKS_DEFAULT);
 	INIT_DELAYED_WORK(&cmi->update_limit_work, update_limit_work_cb);
-	cmi->master = cfs_master_client_new(&options->addrs, options->volume);
-	if (!cmi->master) {
+
+	cmi->log = cfs_log_new();
+	if (IS_ERR(cmi->log)) {
+		err_ptr = ERR_CAST(cmi->log);
+		goto err_log;
+	}
+	if (init_proc(cmi) < 0) {
+		err_ptr = ERR_PTR(-ENOMEM);
+		goto err_proc;
+	}
+	cmi->master = cfs_master_client_new(&options->addrs, options->volume,
+					    options->owner, cmi->log);
+	if (IS_ERR(cmi->master)) {
 		err_ptr = ERR_PTR(-ENOMEM);
 		goto err_master;
 	}
-	cmi->meta = cfs_meta_client_new(cmi->master, options->volume);
+	cmi->meta = cfs_meta_client_new(cmi->master, options->volume, cmi->log);
 	if (IS_ERR(cmi->meta)) {
 		err_ptr = ERR_CAST(cmi->meta);
 		goto err_meta;
 	}
-	cmi->ec = cfs_extent_client_new(cmi->master, cmi->meta);
+	cmi->ec = cfs_extent_client_new(cmi->master, cmi->meta, cmi->log);
 	if (IS_ERR(cmi->ec)) {
 		err_ptr = ERR_CAST(cmi->ec);
 		goto err_ec;
 	}
+
 	schedule_delayed_work(&cmi->update_limit_work, 0);
 	return cmi;
 
@@ -1520,7 +1647,10 @@ err_ec:
 err_meta:
 	cfs_master_client_release(cmi->master);
 err_master:
-	cfs_options_release(cmi->options);
+	unint_proc(cmi);
+err_proc:
+	cfs_log_release(cmi->log);
+err_log:
 	kfree(cmi);
 	return err_ptr;
 }
@@ -1533,6 +1663,8 @@ void cfs_mount_info_release(struct cfs_mount_info *cmi)
 	cfs_extent_client_release(cmi->ec);
 	cfs_meta_client_release(cmi->meta);
 	cfs_master_client_release(cmi->master);
+	unint_proc(cmi);
+	cfs_log_release(cmi->log);
 	cfs_options_release(cmi->options);
 	kfree(cmi);
 }

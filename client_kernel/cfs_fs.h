@@ -4,6 +4,7 @@
 #include "cfs_common.h"
 
 #include "cfs_extent.h"
+#include "cfs_log.h"
 #include "cfs_master.h"
 #include "cfs_meta.h"
 #include "cfs_option.h"
@@ -21,6 +22,9 @@ extern struct file_system_type cfs_fs_type;
 
 struct cfs_mount_info {
 	struct cfs_options *options;
+	struct proc_dir_entry *proc_dir;
+	struct proc_dir_entry *proc_log;
+	struct cfs_log *log;
 	struct cfs_master_client *master;
 	struct cfs_meta_client *meta;
 	struct cfs_extent_client *ec;

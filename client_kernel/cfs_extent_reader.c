@@ -17,7 +17,7 @@ struct cfs_extent_reader *cfs_extent_reader_new(struct cfs_extent_stream *es,
 		return ERR_PTR(-ENOMEM);
 	host_idx = host_idx % dp->members.num;
 	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, &dp->members.base[host_idx],
-				&reader->sock);
+				es->ec->log, &reader->sock);
 	if (ret < 0) {
 		kfree(reader);
 		return ERR_PTR(ret);

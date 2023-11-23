@@ -1,6 +1,8 @@
 #ifndef __CFS_COMMON_H__
 #define __CFS_COMMON_H__
 
+#include <crypto/hash.h>
+#include <crypto/md5.h>
 #include <linux/crc32.h>
 #include <linux/fs.h>
 #include <linux/hashtable.h>
@@ -35,11 +37,11 @@
 #undef pr_fmt
 #define pr_fmt(fmt) "cfs: %s() " fmt
 
-#define cfs_log_err(fmt, ...) pr_err(fmt, __FUNCTION__, ##__VA_ARGS__)
-#define cfs_log_warning(fmt, ...) pr_warning(fmt, __FUNCTION__, ##__VA_ARGS__)
-#define cfs_log_notice(fmt, ...) pr_notice(fmt, __FUNCTION__, ##__VA_ARGS__)
-#define cfs_log_info(fmt, ...) pr_info(fmt, __FUNCTION__, ##__VA_ARGS__)
-#define cfs_log_debug(fmt, ...) \
+#define cfs_pr_err(fmt, ...) pr_err(fmt, __FUNCTION__, ##__VA_ARGS__)
+#define cfs_pr_warning(fmt, ...) pr_warning(fmt, __FUNCTION__, ##__VA_ARGS__)
+#define cfs_pr_notice(fmt, ...) pr_notice(fmt, __FUNCTION__, ##__VA_ARGS__)
+#define cfs_pr_info(fmt, ...) pr_info(fmt, __FUNCTION__, ##__VA_ARGS__)
+#define cfs_pr_debug(fmt, ...) \
 	printk(KERN_DEBUG pr_fmt(fmt), __FUNCTION__, ##__VA_ARGS__)
 
 #define cfs_move(p, v) \

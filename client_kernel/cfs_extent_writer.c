@@ -17,7 +17,7 @@ struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 	if (!writer)
 		return ERR_PTR(-ENOMEM);
 	ret = cfs_socket_create(CFS_SOCK_TYPE_TCP, &dp->members.base[0],
-				&writer->sock);
+				es->ec->log, &writer->sock);
 	if (ret < 0) {
 		kfree(writer);
 		return ERR_PTR(ret);
@@ -63,12 +63,14 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 			       writer->ext_id, 0, writer->ext_size);
 	ret = cfs_extent_cache_append(&es->cache, &ext, true, &discard_extents);
 	if (unlikely(ret < 0)) {
-		cfs_log_err("es(%p) append extent cache error %d\n", es, ret);
+		cfs_pr_err("ino(%llu) append extent cache error %d\n", es->ino,
+			   ret);
 		return ret;
 	}
 	ret = cfs_meta_append_extent(meta, es->ino, &ext, &discard_extents);
 	if (ret < 0) {
-		cfs_log_err("es(%p) sync extent cache error %d\n", es, ret);
+		cfs_pr_err("ino(%llu) sync extent cache error %d\n", es->ino,
+			   ret);
 		cfs_packet_extent_array_clear(&discard_extents);
 		return ret;
 	}

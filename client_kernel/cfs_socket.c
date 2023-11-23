@@ -27,7 +27,7 @@ static inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr)
 }
 
 int cfs_socket_create(enum cfs_socket_type type,
-		      const struct sockaddr_storage *ss,
+		      const struct sockaddr_storage *ss, struct cfs_log *log,
 		      struct cfs_socket **cskp)
 {
 	struct cfs_socket *csk;
@@ -67,10 +67,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 
 		ret = kernel_connect(csk->sock, (struct sockaddr *)&csk->ss_dst,
 				     sizeof(csk->ss_dst), 0 /*O_NONBLOCK*/);
-		if (ret == -EINPROGRESS) {
-			cfs_log_warning("connect %s inprogress\n",
-					cfs_pr_addr(&csk->ss_dst));
-		} else if (ret < 0) {
+		if (ret < 0 && ret != -EINPROGRESS) {
 			sock_release(csk->sock);
 			kfree(csk);
 			return ret;
@@ -90,7 +87,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 		ret = kernel_setsockopt(csk->sock, SOL_TCP, TCP_NODELAY,
 					(char *)&optval, sizeof(optval));
 		if (ret < 0)
-			cfs_log_warning(
+			cfs_pr_warning(
 				"kernel_setsockopt TCP_NODELAY error %d\n",
 				ret);
 
@@ -98,7 +95,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 		ret = kernel_setsockopt(csk->sock, SOL_SOCKET, SO_REUSEADDR,
 					(char *)&optval, sizeof(optval));
 		if (ret < 0)
-			cfs_log_warning(
+			cfs_pr_warning(
 				"kernel_setsockopt SO_REUSEADDR error %d\n",
 				ret);
 		csk->pool = sock_pool;
@@ -107,6 +104,7 @@ int cfs_socket_create(enum cfs_socket_type type,
 		list_del(&csk->list);
 		mutex_unlock(&sock_pool->lock);
 	}
+	csk->log = log;
 	*cskp = csk;
 
 	return 0;
@@ -195,11 +193,8 @@ int cfs_socket_send_iovec(struct cfs_socket *csk, struct iovec *iov,
 
 		ret = kernel_sendmsg(csk->sock, &msghdr, (struct kvec *)ii.iov,
 				     ii.nr_segs, iov_iter_count(&ii));
-		if (ret < 0) {
-			cfs_log_err("so(%p) kernel sendmsg error %d\n",
-				    csk->sock, ret);
+		if (ret < 0)
 			break;
-		}
 		iov_iter_advance(&ii, ret);
 	}
 	sigprocmask(SIG_SETMASK, &oldset, NULL);
@@ -223,8 +218,6 @@ int cfs_socket_recv_iovec(struct cfs_socket *csk, struct iovec *iov,
 	ret = kernel_recvmsg(csk->sock, &msghdr, (struct kvec *)iov, nr_segs,
 			     len, msghdr.msg_flags);
 	sigprocmask(SIG_SETMASK, &oldset, NULL);
-	if (ret < 0)
-		cfs_log_err("so(%p) kernel recvmsg error %d\n", csk->sock, ret);
 	return ret;
 }
 
@@ -243,11 +236,8 @@ static int cfs_socket_send_pages(struct cfs_socket *csk,
 		ret = kernel_sendpage(csk->sock, frags[i].page->page,
 				      frags[i].offset, frags[i].size,
 				      MSG_NOSIGNAL);
-		if (ret < 0) {
-			cfs_log_err("so(%p) kernel sendpage error %d\n",
-				    csk->sock, ret);
+		if (ret < 0)
 			break;
-		}
 	}
 	sigprocmask(SIG_SETMASK, &oldset, NULL);
 	return ret;
@@ -275,11 +265,8 @@ static int cfs_socket_recv_pages(struct cfs_socket *csk,
 		ret = kernel_recvmsg(csk->sock, &msghdr, &vec, 1, vec.iov_len,
 				     msghdr.msg_flags);
 		kunmap(frags[i].page->page);
-		if (ret < 0) {
-			cfs_log_err("so(%p) kernel recvmsg error %d\n",
-				    csk->sock, ret);
+		if (ret < 0)
 			break;
-		}
 	}
 	sigprocmask(SIG_SETMASK, &oldset, NULL);
 	return ret;
@@ -300,7 +287,8 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	default:
 		ret = cfs_packet_request_data_to_json(packet, csk->tx_buffer);
 		if (ret < 0) {
-			cfs_log_err(
+			cfs_log_error(
+				csk->log,
 				"so(%p) id=%llu, op=0x%x, invalid request data %d\n",
 				csk->sock,
 				be64_to_cpu(packet->request.hdr.req_id),
@@ -312,7 +300,7 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	}
 
 #ifdef DEBUG
-	cfs_log_debug(
+	cfs_pr_debug(
 		"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, ext_offset=%llu, "
 		"kernel_offset=%llu, arglen=%u, datalen=%u, data=%.*s\n",
 		csk->sock, be64_to_cpu(packet->request.hdr.req_id),
@@ -331,9 +319,11 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	ret = cfs_socket_send(csk, &packet->request.hdr,
 			      sizeof(packet->request.hdr));
 	if (ret < 0) {
-		cfs_log_err("so(%p) id=%llu, op=0x%x, send header error %d\n",
-			    csk->sock, be64_to_cpu(packet->request.hdr.req_id),
-			    packet->request.hdr.opcode, ret);
+		cfs_log_error(csk->log,
+			      "so(%p) id=%llu, op=0x%x, send header error %d\n",
+			      csk->sock,
+			      be64_to_cpu(packet->request.hdr.req_id),
+			      packet->request.hdr.opcode, ret);
 		return ret;
 	}
 
@@ -342,7 +332,8 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		ret = cfs_socket_send(csk, cfs_buffer_data(packet->request.arg),
 				      cfs_buffer_size(packet->request.arg));
 		if (ret < 0) {
-			cfs_log_err(
+			cfs_log_error(
+				csk->log,
 				"so(%p) id=%llu, op=0x%x, send arg error %d\n",
 				csk->sock,
 				be64_to_cpu(packet->request.hdr.req_id),
@@ -374,9 +365,11 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		break;
 	}
 	if (ret < 0)
-		cfs_log_err("so(%p) id=%llu, op=0x%x, send data error %d\n",
-			    csk->sock, be64_to_cpu(packet->request.hdr.req_id),
-			    packet->request.hdr.opcode, ret);
+		cfs_log_error(csk->log,
+			      "so(%p) id=%llu, op=0x%x, send data error %d\n",
+			      csk->sock,
+			      be64_to_cpu(packet->request.hdr.req_id),
+			      packet->request.hdr.opcode, ret);
 	return ret < 0 ? ret : 0;
 }
 
@@ -391,9 +384,11 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	ret = cfs_socket_recv(csk, &packet->reply.hdr,
 			      sizeof(packet->reply.hdr));
 	if (ret < 0) {
-		cfs_log_err("so(%p) id=%llu, op=0x%x, recv header error %d\n",
-			    csk->sock, be64_to_cpu(packet->request.hdr.req_id),
-			    packet->request.hdr.opcode, ret);
+		cfs_log_error(csk->log,
+			      "so(%p) id=%llu, op=0x%x, recv header error %d\n",
+			      csk->sock,
+			      be64_to_cpu(packet->request.hdr.req_id),
+			      packet->request.hdr.opcode, ret);
 		return ret;
 	}
 
@@ -411,7 +406,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		}
 
 		if (ret < 0) {
-			cfs_log_err(
+			cfs_log_error(
+				csk->log,
 				"so(%p) id=%llu, op=0x%x, alloc reply arg oom\n",
 				csk->sock,
 				be64_to_cpu(packet->request.hdr.req_id),
@@ -421,7 +417,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		ret = cfs_socket_recv(csk, cfs_buffer_data(packet->reply.arg),
 				      arglen);
 		if (ret < 0) {
-			cfs_log_err(
+			cfs_log_error(
+				csk->log,
 				"so(%p) id=%llu, op=0x%x, recv arg(%u) error %d\n",
 				csk->sock,
 				be64_to_cpu(packet->request.hdr.req_id),
@@ -438,7 +435,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	    (packet->reply.hdr.opcode == CFS_OP_STREAM_READ ||
 	     packet->reply.hdr.opcode == CFS_OP_STREAM_FOLLOWER_READ)) {
 #ifdef DEBUG
-		cfs_log_debug(
+		cfs_pr_debug(
 			"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, arglen=%u, datalen=%u\n",
 			csk->sock, be64_to_cpu(packet->reply.hdr.req_id),
 			packet->reply.hdr.opcode,
@@ -452,7 +449,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		ret = cfs_socket_recv_pages(csk, packet->reply.data.read.frags,
 					    packet->reply.data.read.nr);
 		if (ret < 0) {
-			cfs_log_err(
+			cfs_log_error(
+				csk->log,
 				"so(%p) id=%llu, op=0x%x, recv data(%u) error %d\n",
 				csk->sock,
 				be64_to_cpu(packet->request.hdr.req_id),
@@ -469,7 +467,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 				datalen - cfs_buffer_capacity(csk->rx_buffer);
 			ret = cfs_buffer_grow(csk->rx_buffer, grow_len);
 			if (ret < 0) {
-				cfs_log_err(
+				cfs_log_error(
+					csk->log,
 					"so(%p) id=%llu, op=0x%x, recv data oom\n",
 					csk->sock,
 					be64_to_cpu(packet->request.hdr.req_id),
@@ -481,7 +480,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		ret = cfs_socket_recv(csk, cfs_buffer_data(csk->rx_buffer),
 				      datalen);
 		if (ret < 0) {
-			cfs_log_err(
+			cfs_log_error(
+				csk->log,
 				"so(%p) id=%llu, op=0x%x, tcp recv data error %d\n",
 				csk->sock,
 				be64_to_cpu(packet->request.hdr.req_id),
@@ -493,7 +493,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		if (packet->reply.hdr.result_code == CFS_STATUS_OK) {
 			struct cfs_json *json;
 #ifdef DEBUG
-			cfs_log_debug(
+			cfs_pr_debug(
 				"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, arglen=%u, datalen=%u, data=%.*s\n",
 				csk->sock,
 				be64_to_cpu(packet->reply.hdr.req_id),
@@ -510,7 +510,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			json = cfs_json_parse(cfs_buffer_data(csk->rx_buffer),
 					      cfs_buffer_size(csk->rx_buffer));
 			if (!json) {
-				cfs_log_err(
+				cfs_log_error(
+					csk->log,
 					"so(%p) id=%llu, op=0x%x, invliad json\n",
 					csk->sock,
 					be64_to_cpu(packet->request.hdr.req_id),
@@ -520,7 +521,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 			ret = cfs_packet_reply_data_from_json(json, packet);
 			if (ret < 0) {
-				cfs_log_err(
+				cfs_log_error(
+					csk->log,
 					"so(%p) id=%llu, op=0x%x, parse json error %d\n",
 					csk->sock,
 					be64_to_cpu(packet->request.hdr.req_id),
@@ -534,7 +536,8 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			/**
 			 *  reply error message
 			 */
-			cfs_log_debug(
+			cfs_log_warn(
+				csk->log,
 				"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, from=%s, data=%.*s\n",
 				csk->sock,
 				be64_to_cpu(packet->reply.hdr.req_id),
@@ -548,7 +551,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		}
 	} else {
 #ifdef DEBUG
-		cfs_log_debug(
+		cfs_pr_debug(
 			"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, arglen=%u, datalen=%u\n",
 			csk->sock, be64_to_cpu(packet->reply.hdr.req_id),
 			packet->reply.hdr.opcode,

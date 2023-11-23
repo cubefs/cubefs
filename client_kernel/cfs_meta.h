@@ -4,6 +4,7 @@
 #include "cfs_common.h"
 
 #include "btree.h"
+#include "cfs_log.h"
 #include "cfs_master.h"
 #include "cfs_packet.h"
 #include "cfs_socket.h"
@@ -112,10 +113,12 @@ struct cfs_meta_client {
 #define META_UNIQID_BUCKET_COUNT 128
 	struct hlist_head uniqid_ranges[META_UNIQID_BUCKET_COUNT];
 	struct mutex uniqid_lock;
+	struct cfs_log *log;
 };
 
 struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,
-					    const char *vol_name);
+					    const char *vol_name,
+					    struct cfs_log *log);
 void cfs_meta_client_release(struct cfs_meta_client *mc);
 
 int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
@@ -126,7 +129,7 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 int cfs_meta_link(struct cfs_meta_client *mc, u64 parent_ino, struct qstr *name,
 		  u64 ino, struct cfs_packet_inode **iinfo);
 int cfs_meta_delete(struct cfs_meta_client *mc, u64 parent_ino,
-		    struct qstr *name, bool is_dir);
+		    struct qstr *name, bool is_dir, u64 *ret_ino);
 int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 		    struct qstr *src_name, u64 dst_parent_ino,
 		    struct qstr *dst_name, bool over_written);

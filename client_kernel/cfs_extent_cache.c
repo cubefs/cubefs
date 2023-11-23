@@ -356,7 +356,7 @@ int cfs_extent_cache_append(struct cfs_extent_cache *cache,
 	}
 
 #ifdef DEBUG
-	cfs_log_debug(
+	cfs_pr_debug(
 		"pid=%llu, ext_id=%llu, ext_offset=%llu, file_offset=%llu, ext_size=%u\n",
 		extent->pid, extent->ext_id, extent->ext_offset,
 		extent->file_offset, extent->size);
