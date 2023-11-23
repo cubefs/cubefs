@@ -44,6 +44,10 @@ func TestIoPoolSimple(t *testing.T) {
 
 		time.Sleep(time.Second)
 		closePool.Close()
+		closePool.Submit(3, func() {
+			time.Sleep(time.Millisecond * 10)
+			n++
+		})
 		require.Equal(t, 2, n) // two task func
 	}
 
