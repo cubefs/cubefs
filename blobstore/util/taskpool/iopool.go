@@ -15,44 +15,105 @@
 package taskpool
 
 import (
+	"fmt"
 	"sync"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
+const (
+	iopoolTypeRead  = "read"
+	iopoolTypeWrite = "write"
+
+	opDequeue = "dequeue"
+	opOnDisk  = "disk"
+)
+
+type IoPoolTaskArgs struct {
+	BucketId uint64
+	Tm       time.Time
+	TaskFn   func()
+}
+
 type IoPool interface {
-	Submit(taskId uint64, taskFn func())
+	Submit(IoPoolTaskArgs)
 	Close()
+}
+
+type IoPoolMetricConf struct {
+	ClusterID proto.ClusterID
+	IDC       string
+	Rack      string
+	Host      string
+	DiskID    proto.DiskID
+	poolType  string
 }
 
 type taskInfo struct {
 	fn   func()
 	done chan struct{}
+	tm   time.Time
 }
 
 type ioPoolSimple struct {
 	queue  []chan *taskInfo
 	wg     sync.WaitGroup
 	closed chan struct{}
+
+	conf   IoPoolMetricConf
+	metric *prometheus.SummaryVec
 }
 
-func NewWritePool(threadCnt, queueDepth int) IoPool {
+func NewWritePool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
 	// The number of chan queues, $chanCnt is one-to-one with $threadCnt
-	return newCommonIoPool(threadCnt, threadCnt, queueDepth)
+	conf.poolType = iopoolTypeWrite
+	return newCommonIoPool(threadCnt, threadCnt, queueDepth, conf)
 }
 
-func NewReadPool(threadCnt, queueDepth int) IoPool {
+func NewReadPool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
 	// Multiple $threadCnt share a same chan queue
-	return newCommonIoPool(1, threadCnt, queueDepth)
+	conf.poolType = iopoolTypeRead
+	return newCommonIoPool(1, threadCnt, queueDepth, conf)
 }
 
 // $chanCnt: The number of chan queues
 // $threadCnt: The number of read/write work goroutine, it must be greater than $chanCnt
 // $queueDepth: The number of elements in the queue
-func newCommonIoPool(chanCnt, threadCnt, queueDepth int) *ioPoolSimple {
+func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) *ioPoolSimple {
+	iopoolMetric := prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Namespace:  "blobstore",
+			Subsystem:  "blobnode",
+			Name:       "iopool",
+			Help:       "blobnode iopool timeout",
+			Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001},
+			ConstLabels: map[string]string{
+				"cluster_id": fmt.Sprintf("%d", conf.ClusterID),
+				"idc":        conf.IDC,
+				"rack":       conf.Rack,
+				"host":       conf.Host,
+				"disk_id":    fmt.Sprintf("%d", conf.DiskID),
+			},
+		},
+		[]string{"pool_type", "op_stage"},
+	)
+	if err := prometheus.Register(iopoolMetric); err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			iopoolMetric = are.ExistingCollector.(*prometheus.SummaryVec)
+		} else {
+			panic(err)
+		}
+	}
+
 	pool := &ioPoolSimple{
 		queue:  make([]chan *taskInfo, chanCnt),
 		closed: make(chan struct{}),
+		conf:   conf,
+		metric: iopoolMetric,
 	}
 	for i := range pool.queue {
 		pool.queue[i] = make(chan *taskInfo, queueDepth)
@@ -65,7 +126,10 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int) *ioPoolSimple {
 		go func() {
 			defer pool.wg.Done()
 			for task := range pool.queue[idx] {
+				start := time.Now()
+				pool.reportMetric(opDequeue, task.tm) // from enqueue to dequeue
 				task.fn()
+				pool.reportMetric(opOnDisk, start) // from dequeue to op done
 				task.done <- struct{}{}
 			}
 			log.Debug("close io pool")
@@ -74,25 +138,30 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int) *ioPoolSimple {
 	return pool
 }
 
-func (p *ioPoolSimple) Submit(taskId uint64, taskFn func()) {
+func (p *ioPoolSimple) reportMetric(opStage string, tm time.Time) {
+	costMs := time.Since(tm).Milliseconds()
+	p.metric.WithLabelValues(p.conf.poolType, opStage).Observe(float64(costMs))
+}
+
+func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
 	select {
 	case <-p.closed:
 		return
 	default:
 	}
 
-	idx, task := p.generateTask(taskId, taskFn)
+	idx, task := p.generateTask(args)
 	p.queue[idx] <- task
-
 	<-task.done
 }
 
-func (p *ioPoolSimple) generateTask(taskId uint64, taskFn func()) (idx uint64, task *taskInfo) {
-	idx = taskId % uint64(len(p.queue))
+func (p *ioPoolSimple) generateTask(args IoPoolTaskArgs) (idx uint64, task *taskInfo) {
+	idx = args.BucketId % uint64(len(p.queue))
 
 	task = &taskInfo{
-		fn:   taskFn,
+		fn:   args.TaskFn,
 		done: make(chan struct{}, 1),
+		tm:   args.Tm,
 	}
 
 	return idx, task
@@ -104,6 +173,7 @@ func (p *ioPoolSimple) Close() {
 	for i := range p.queue {
 		close(p.queue[i])
 	}
+
 	p.wg.Wait() // wait all io task done
 	log.Info("close all io pool, exit")
 }

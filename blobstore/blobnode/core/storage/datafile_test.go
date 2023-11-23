@@ -45,7 +45,7 @@ const (
 func newIoPoolMock(t *testing.T) taskpool.IoPool {
 	ctr := gomock.NewController(t)
 	ioPool := taskpool.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any(), gomock.Any()).Do(func(taskId uint64, taskFn func()) { taskFn() }).AnyTimes()
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
 
 	return ioPool
 }
