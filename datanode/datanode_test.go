@@ -21,8 +21,6 @@ import (
 	"github.com/jacobsa/daemonize"
 )
 
-var fakeNode *fakeDataNode
-
 const (
 	mockClusterName   = "datanode-cluster"
 	testLogDir        = "/cfs/log"
@@ -35,14 +33,6 @@ const (
 	profPort          = "11210"
 	mockZone01        = "zone-01"
 )
-
-func init() {
-	fmt.Println("init datanode")
-	mock.NewMockMaster()
-	if err := FakeNodePrepare(); err != nil {
-		panic(err.Error())
-	}
-}
 
 func newFakeDataNode() *fakeDataNode {
 	fdn := &fakeDataNode{
@@ -67,6 +57,7 @@ func newFakeDataNode() *fakeDataNode {
 		"disks": [
 			"` + testDiskPath + `:5368709120"
 		],
+		"enableRootDisk": true,
 		"listen": "` + tcpProtoPort + `",
 		"raftHeartbeat": "` + raftHeartBeatPort + `",
 		"raftReplica": "` + raftReplicaPort + `",
@@ -100,16 +91,6 @@ func FakeDirCreate() (err error) {
 	}
 	if err = os.MkdirAll(testDiskPath, 0766); err != nil {
 		panic(err)
-	}
-	return
-}
-
-func FakeNodePrepare() (err error) {
-	if err = FakeDirCreate(); err != nil {
-		return err
-	}
-	if fakeNode == nil {
-		fakeNode = newFakeDataNode()
 	}
 	return
 }

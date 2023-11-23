@@ -1388,7 +1388,13 @@ func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
 }
 
 func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandType string) (err error) {
-	if dp == nil || dp.limiter == nil || dp.limiter.GetLimiter() == nil {
+	if dp == nil {
+		return ErrPartitionNil
+	}
+	if dp.limiter == nil {
+		return ErrLimiterManagerNil
+	}
+	if dp.limiter.GetLimiter() == nil {
 		return ErrLimiterNil
 	}
 	propertyBuilder := multirate.NewPropertiesBuilder()
@@ -1414,8 +1420,14 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 func (dp *DataPartition) acquire(op int) (release func(), err error) {
 	var cancel context.CancelFunc
 	var ctx context.Context
-	if dp == nil || dp.limiter == nil || dp.limiter.GetTokenManager(op, dp.path) == nil {
-		return nil, ErrLimiterNil
+	if dp == nil {
+		return nil, ErrPartitionNil
+	}
+	if dp.limiter == nil {
+		return nil, ErrLimiterManagerNil
+	}
+	if dp.limiter.GetTokenManager(op, dp.path) == nil {
+		return func() {}, nil
 	}
 	key := atomic.AddUint64(&tokenManagerKeyGen, 1)
 	tick := time.NewTicker(AcquireTokenInterval)

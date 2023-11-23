@@ -16,6 +16,8 @@ import (
 	"github.com/cubefs/cubefs/util/statistics"
 )
 
+var fakeNode *fakeDataNode
+
 const (
 	mockDataTcpPort1 = 17017
 	mockDataID1      = 1
@@ -25,6 +27,15 @@ const (
 	mockDataID3      = 3
 	pageSize         = 4096
 )
+
+func init() {
+	fmt.Println("init datanode")
+	mock.NewMockMaster()
+	if err := FakeDirCreate(); err != nil {
+		panic(err.Error())
+	}
+	fakeNode = newFakeDataNode()
+}
 
 func TestGetLocalExtentInfo(t *testing.T) {
 	var (
@@ -436,6 +447,7 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 		persistSync:             make(chan struct{}, 1),
 		inRepairExtents:         make(map[uint64]struct{}),
 		applyStatus:             NewWALApplyStatus(),
+		limiter:                 fakeNode.limiterManager,
 		config: &dataPartitionCfg{
 			VolHAType: proto.DefaultCrossRegionHAType,
 		},

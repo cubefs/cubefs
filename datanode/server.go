@@ -56,7 +56,9 @@ var (
 	ErrIncorrectStoreType       = errors.New("Incorrect store type")
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
+	ErrLimiterManagerNil        = errors.New("limiter manager is nil")
 	ErrLimiterNil               = errors.New("limiter is nil")
+	ErrPartitionNil             = errors.New("partition is nil")
 	LocalIP                     string
 	LocalServerPort             string
 	gConnPool                   = connpool.NewConnectPool()
@@ -85,16 +87,17 @@ const (
 )
 
 const (
-	ConfigKeyLocalIP       = "localIP"        // string
-	ConfigKeyPort          = "port"           // int
-	ConfigKeyMasterAddr    = "masterAddr"     // array
-	ConfigKeyZone          = "zoneName"       // string
-	ConfigKeyDisks         = "disks"          // array
-	ConfigKeyRaftDir       = "raftDir"        // string
-	ConfigKeyRaftHeartbeat = "raftHeartbeat"  // string
-	ConfigKeyRaftReplica   = "raftReplica"    // string
-	cfgTickIntervalMs      = "tickIntervalMs" // int
-	ConfigKeyMasterDomain  = "masterDomain"
+	ConfigKeyLocalIP        = "localIP"        // string
+	ConfigKeyPort           = "port"           // int
+	ConfigKeyMasterAddr     = "masterAddr"     // array
+	ConfigKeyZone           = "zoneName"       // string
+	ConfigKeyDisks          = "disks"          // array
+	ConfigKeyRaftDir        = "raftDir"        // string
+	ConfigKeyRaftHeartbeat  = "raftHeartbeat"  // string
+	ConfigKeyRaftReplica    = "raftReplica"    // string
+	cfgTickIntervalMs       = "tickIntervalMs" // int
+	ConfigKeyMasterDomain   = "masterDomain"
+	ConfigKeyEnableRootDisk = "enableRootDisk"
 )
 
 // DataNode defines the structure of a data node.
@@ -351,7 +354,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if devID, err = getDeviceID(diskPath.Path()); err != nil {
 			return
 		}
-		if devID == rootDevID {
+		if !cfg.GetBool(ConfigKeyEnableRootDisk) && devID == rootDevID {
 			err = fmt.Errorf("root device in disks configuration: %v (%v), ", d, devID)
 			return
 		}
