@@ -16,9 +16,8 @@ package trace
 
 import (
 	"fmt"
-	"math/rand"
+	"hash/maphash"
 	"sync"
-	"time"
 )
 
 const (
@@ -32,17 +31,9 @@ func (id ID) String() string {
 	return fmt.Sprintf("%016x", uint64(id))
 }
 
-var (
-	seededIDGen = rand.New(rand.NewSource(time.Now().UnixNano()))
-	// The golang rand generators are *not* intrinsically thread-safe.
-	seededIDLock sync.Mutex
-)
-
 // RandomID generate ID for traceID or spanID
 func RandomID() ID {
-	seededIDLock.Lock()
-	defer seededIDLock.Unlock()
-	return ID(seededIDGen.Int63())
+	return ID(new(maphash.Hash).Sum64())
 }
 
 // SpanContext implements opentracing.SpanContext
@@ -102,12 +93,7 @@ func (s *SpanContext) append(value string) {
 		s.baggage = map[string][]string{internalTrackLogKey: {value}}
 		return
 	}
-
-	if _, ok := s.baggage[internalTrackLogKey]; ok {
-		s.baggage[internalTrackLogKey] = append(s.baggage[internalTrackLogKey], value)
-		return
-	}
-	s.baggage[internalTrackLogKey] = []string{value}
+	s.baggage[internalTrackLogKey] = append(s.baggage[internalTrackLogKey], value)
 }
 
 func (s *SpanContext) baggageItem(key string) []string {

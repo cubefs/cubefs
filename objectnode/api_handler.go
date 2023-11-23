@@ -18,24 +18,24 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"syscall"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/gorilla/mux"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 type RequestParam struct {
-	resource      string
-	bucket        string
-	object        string
-	action        proto.Action
-	sourceIP      string
-	conditionVars map[string][]string
-	vars          map[string]string
-	accessKey     string
-	r             *http.Request
+	resource  string
+	bucket    string
+	object    string
+	action    proto.Action
+	apiName   string
+	sourceIP  string
+	vars      map[string]string
+	accessKey string
+	r         *http.Request
 }
 
 func (p *RequestParam) Bucket() string {
@@ -57,22 +57,34 @@ func (p *RequestParam) GetVar(name string) string {
 	return p.r.FormValue(name)
 }
 
-func (p *RequestParam) GetConditionVar(name string) []string {
-	return p.conditionVars[name]
-}
-
 func (p *RequestParam) AccessKey() string {
 	return p.accessKey
+}
+
+func (p *RequestParam) API() string {
+	return p.apiName
+}
+
+func (p *RequestParam) Owner() string {
+	return p.vars[ContextKeyOwner]
+}
+
+func (p *RequestParam) Requester() string {
+	return p.vars[ContextKeyRequester]
+}
+
+func (p *RequestParam) RequestID() string {
+	return p.vars[ContextKeyRequestID]
 }
 
 func ParseRequestParam(r *http.Request) *RequestParam {
 	p := new(RequestParam)
 	p.r = r
 	p.vars = mux.Vars(r)
-	p.bucket = p.vars["bucket"]
-	p.object = p.vars["object"]
+	p.bucket = p.vars[ContextKeyBucket]
+	p.object = p.vars[ContextKeyObject]
+	p.accessKey = p.vars[ContextKeyAccessKey]
 	p.sourceIP = getRequestIP(r)
-	p.conditionVars = getCondtionValues(r)
 	if len(p.bucket) > 0 {
 		p.resource = p.bucket
 		if len(p.object) > 0 {
@@ -83,14 +95,11 @@ func ParseRequestParam(r *http.Request) *RequestParam {
 			}
 		}
 	}
-	auth := parseRequestAuthInfo(r)
-	if auth != nil {
-		p.accessKey = auth.accessKey
-	}
 	p.action = GetActionFromContext(r)
 	if p.action.IsNone() {
 		p.action = ActionFromRouteName(mux.CurrentRoute(r).GetName())
 	}
+	p.apiName = strings.TrimPrefix(string(p.action), proto.OSSActionPrefix)
 
 	return p
 }
@@ -102,22 +111,32 @@ func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
 	vol, err = o.vm.Volume(bucket)
 	if err != nil {
 		log.LogErrorf("getVol: load Volume fail, bucket(%v) err(%v)", bucket, err)
-		return nil, err
+		if err == proto.ErrVolNotExists {
+			err = NoSuchBucket
+			return
+		}
+		err = InternalErrorCode(err)
+		return
 	}
-
 	return vol, nil
 }
 
 func (o *ObjectNode) errorResponse(w http.ResponseWriter, r *http.Request, err error, ec *ErrorCode) {
 	if err != nil || ec != nil {
-		if err != nil {
-			log.LogErrorf("errorResponse: found error: requestID(%v) err(%v)",
-				GetRequestID(r), err)
+		log.LogErrorf("errorResponse: found error: requestID(%v) err(%v) errCode(%v)", GetRequestID(r), err, ec)
+		if err == syscall.EDQUOT || err == syscall.ENOSPC {
+			ec = DiskQuotaExceeded
+		}
+		if err == syscall.EPERM {
+			ec = FileDeleteLock
+		}
+		if ec1, ok := err.(*ErrorCode); ok && ec == nil {
+			ec = ec1
 		}
 		if ec == nil {
 			ec = InternalErrorCode(err)
 		}
-		_ = ec.ServeResponse(w, r)
+		ec.ServeResponse(w, r)
 	}
 }
 
@@ -127,6 +146,6 @@ func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.
 		getRequestIP(r),
 		ActionFromRouteName(mux.CurrentRoute(r).GetName()),
 		r.UserAgent())
-	_ = UnsupportedOperation.ServeResponse(w, r)
+	UnsupportedOperation.ServeResponse(w, r)
 	return
 }

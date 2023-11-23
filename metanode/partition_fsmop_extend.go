@@ -14,33 +14,104 @@
 
 package metanode
 
+import (
+	"fmt"
+	"github.com/cubefs/cubefs/util/log"
+	"math"
+)
+
 type ExtendOpResult struct {
 	Status uint8
 	Extend *Extend
 }
 
 func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
+	extend.verSeq = mp.GetVerSeq()
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
 	if treeItem == nil {
-		e = NewExtend(extend.inode)
-		mp.extendTree.ReplaceOrInsert(e, true)
+		mp.extendTree.ReplaceOrInsert(extend, true)
 	} else {
+		// attr multi-ver copy all attr for simplify management
 		e = treeItem.(*Extend)
+		if e.verSeq != extend.verSeq {
+			if extend.verSeq < e.verSeq {
+				return fmt.Errorf("seq error assign %v but less than %v", extend.verSeq, e.verSeq)
+			}
+			e.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiVers...)
+			e.verSeq = extend.verSeq
+		}
+		e.Merge(extend, true)
 	}
-	e.Merge(extend, true)
+
 	return
 }
 
-func (mp *metaPartition) fsmRemoveXAttr(extend *Extend) (err error) {
-	treeItem := mp.extendTree.CopyGet(extend)
+// todo(leon chang):check snapshot delete relation with attr
+func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
+	treeItem := mp.extendTree.CopyGet(reqExtend)
 	if treeItem == nil {
 		return
 	}
+
 	e := treeItem.(*Extend)
-	extend.Range(func(key, value []byte) bool {
-		e.Remove(key)
-		return true
-	})
+	if mp.GetVerSeq() == 0 || (e.verSeq == mp.GetVerSeq() && reqExtend.verSeq == 0) {
+		reqExtend.Range(func(key, value []byte) bool {
+			e.Remove(key)
+			return true
+		})
+		return
+	}
+
+	if reqExtend.verSeq == 0 {
+		reqExtend.verSeq = mp.GetVerSeq()
+	}
+	if reqExtend.verSeq == math.MaxUint64 {
+		reqExtend.verSeq = 0
+	}
+	e.versionMu.Lock()
+	defer e.versionMu.Unlock()
+	if reqExtend.verSeq < e.GetMinVer() {
+		return
+	}
+	if reqExtend.verSeq > e.verSeq {
+		e.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiVers...)
+		e.verSeq = reqExtend.verSeq
+		reqExtend.Range(func(key, value []byte) bool {
+			e.Remove(key)
+			return true
+		})
+	} else if reqExtend.verSeq == e.verSeq {
+		var globalNewVer uint64
+		if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(reqExtend.verSeq); err != nil {
+			log.LogErrorf("fsmRemoveXAttr. mp [%v] seq %v req ver %v not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.verSeq)
+			return err
+		}
+		e.verSeq = globalNewVer
+	} else {
+		innerLastVer := e.verSeq
+		for id, ele := range e.multiVers {
+			if ele.verSeq > reqExtend.verSeq {
+				innerLastVer = ele.verSeq
+				continue
+			} else if ele.verSeq < reqExtend.verSeq {
+				return
+			} else {
+				var globalNewVer uint64
+				if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(ele.verSeq); err != nil {
+					return err
+				}
+				if globalNewVer < innerLastVer {
+					log.LogDebugf("mp %v inode %v extent layer %v update seq %v to %v",
+						mp.config.PartitionId, ele.inode, id, ele.verSeq, globalNewVer)
+					ele.verSeq = globalNewVer
+					return
+				}
+				e.multiVers = append(e.multiVers[:id], e.multiVers[id+1:]...)
+				return
+			}
+		}
+	}
+
 	return
 }

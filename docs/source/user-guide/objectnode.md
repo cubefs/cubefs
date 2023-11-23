@@ -11,7 +11,7 @@ The configuration file is as follows:
 ```json
 {
      "role": "objectnode", 
-     "listen": "127.0.0.1:17410",
+     "listen": "17410",
      "domains": [
          "object.cfs.local"
      ],
@@ -33,7 +33,7 @@ The meaning of each parameter in the configuration file is shown in the followin
 | Parameter    | Type         | Meaning                                                                                       | Required |
 |--------------|--------------|-----------------------------------------------------------------------------------------------|----------|
 | role         | string       | Process role, must be set to `objectnode`                                                     | Yes      |
-| listen       | string       | IP address and port number that the object storage subsystem listens to.<br>Format: `IP:PORT` | Yes      |
+| listen       | string       | Port number that the object storage subsystem listens to.<br>Format: `PORT`                   | Yes      |
 | domains      | string slice | Configure domain names for S3-compatible interfaces to support DNS-style access to resources  | No       |
 | logDir       | string       | Log storage path                                                                              | Yes      |
 | logLevel     | string       | Log level. Default: `error`                                                                   | No       |

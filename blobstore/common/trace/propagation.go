@@ -22,12 +22,19 @@ import (
 )
 
 const (
-	prefixTracer  = "blobstore-tracer-"
-	prefixBaggage = "blobstore-baggage-"
+	prefixTracer = "blobstore-tracer-"
 
 	tracerFieldCount = 2
-	fieldKeyTraceID  = prefixTracer + "traceid"
-	fieldKeySpanID   = prefixTracer + "spanid"
+)
+
+// Propagate with those keys.
+// Define your own key by setting those variables before your application started.
+var (
+	RequestIDKey = "X-Reqid"
+
+	PrefixBaggage   = "blobstore-baggage-"
+	FieldKeyTraceID = prefixTracer + "traceid"
+	FieldKeySpanID  = prefixTracer + "spanid"
 )
 
 var (
@@ -75,12 +82,12 @@ func (t *TextMapPropagator) Inject(sc *SpanContext, carrier interface{}) error {
 	if !ok {
 		return ErrInvalidCarrier
 	}
-	writer.Set(fieldKeyTraceID, sc.traceID)
-	writer.Set(fieldKeySpanID, sc.spanID.String())
+	writer.Set(FieldKeyTraceID, sc.traceID)
+	writer.Set(FieldKeySpanID, sc.spanID.String())
 
 	sc.ForeachBaggageItems(func(k string, v []string) bool {
 		if k != internalTrackLogKey { // internal baggage will not inject
-			writer.Set(prefixBaggage+k, strings.Join(v, ","))
+			writer.Set(PrefixBaggage+k, strings.Join(v, ","))
 		}
 		return true
 	})
@@ -102,10 +109,10 @@ func (t *TextMapPropagator) Extract(carrier interface{}) (opentracing.SpanContex
 	)
 	err = reader.ForeachKey(func(key, val string) error {
 		switch strings.ToLower(key) {
-		case fieldKeyTraceID:
+		case FieldKeyTraceID:
 			traceID = val
 			fieldCount++
-		case fieldKeySpanID:
+		case FieldKeySpanID:
 			id, err := strconv.ParseUint(val, 16, 64)
 			if err != nil {
 				return ErrSpanContextCorrupted
@@ -114,8 +121,9 @@ func (t *TextMapPropagator) Extract(carrier interface{}) (opentracing.SpanContex
 			fieldCount++
 		default:
 			lowerKey := strings.ToLower(key)
-			if strings.HasPrefix(lowerKey, prefixBaggage) {
-				baggage[strings.TrimPrefix(lowerKey, prefixBaggage)] = []string{val}
+			if strings.HasPrefix(lowerKey, PrefixBaggage) {
+				k := strings.TrimPrefix(lowerKey, PrefixBaggage)
+				baggage[k] = append(baggage[k], val)
 			}
 		}
 		return nil
@@ -139,5 +147,5 @@ func (t *TextMapPropagator) Extract(carrier interface{}) (opentracing.SpanContex
 
 // GetTraceIDKey returns http header name of traceid
 func GetTraceIDKey() string {
-	return fieldKeyTraceID
+	return FieldKeyTraceID
 }

@@ -47,7 +47,7 @@ func LocationJoin(loc *access.Location, prefix string) string {
 // LocationF fmt pointer of Location
 func LocationF(loc *access.Location) (vals []string) {
 	if loc == nil {
-		return []string{" <nil> "}
+		return nilStrings[:]
 	}
 	vals = make([]string, 0, 8)
 	vals = append(vals, []string{

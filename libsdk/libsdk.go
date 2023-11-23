@@ -76,8 +76,6 @@ import "C"
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/buf"
 	"io"
 	syslog "log"
 	"os"
@@ -92,11 +90,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/cubefs/blobstore/common/trace"
-
 	"github.com/bits-and-blooms/bitset"
-	// "github.com/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/proto"
@@ -104,10 +100,11 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-	"github.com/hashicorp/consul/api"
 )
 
 const (
@@ -131,6 +128,7 @@ var (
 	statusEMFILE  = errorToStatus(syscall.EMFILE)
 	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
 	statusEISDIR  = errorToStatus(syscall.EISDIR)
+	statusENOSPC  = errorToStatus(syscall.ENOSPC)
 )
 var once sync.Once
 
@@ -206,6 +204,8 @@ type file struct {
 	//rw
 	fileWriter *blobstore.Writer
 	fileReader *blobstore.Reader
+
+	path string
 }
 
 type dirStream struct {
@@ -493,12 +493,12 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		parentIno = dirInfo.Inode
 		defer func() {
 			if info != nil {
-				auditlog.FormatLog("Create", dirpath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
+				auditlog.LogClientOp("Create", dirpath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
 			} else {
-				auditlog.FormatLog("Create", dirpath, "nil", err, time.Since(start).Microseconds(), 0, 0)
+				auditlog.LogClientOp("Create", dirpath, "nil", err, time.Since(start).Microseconds(), 0, 0)
 			}
 		}()
-		newInfo, err := c.create(dirInfo.Inode, name, fuseMode)
+		newInfo, err := c.create(dirInfo.Inode, name, fuseMode, absPath)
 		if err != nil {
 			if err != syscall.EEXIST {
 				return errorToStatus(err)
@@ -529,7 +529,7 @@ func cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t) C.int {
 		fileCachePattern := fmt.Sprintf(".*%s.*", c.cacheRuleKey)
 		fileCache, _ = regexp.MatchString(fileCachePattern, absPath)
 	}
-	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno)
+	f := c.allocFD(info.Inode, fuseFlags, fuseMode, fileCache, info.Size, parentIno, absPath)
 	if f == nil {
 		return statusEMFILE
 	}
@@ -625,6 +625,9 @@ func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 
 	n, err := c.write(f, int(off), buffer, flags)
 	if err != nil {
+		if err == syscall.ENOSPC {
+			return C.ssize_t(statusENOSPC)
+		}
 		return C.ssize_t(statusEIO)
 	}
 
@@ -919,9 +922,9 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 
 	defer func() {
 		if gerr == nil {
-			auditlog.FormatLog("Mkdir", dirpath, "nil", gerr, time.Since(start).Microseconds(), gino, 0)
+			auditlog.LogClientOp("Mkdir", dirpath, "nil", gerr, time.Since(start).Microseconds(), gino, 0)
 		} else {
-			auditlog.FormatLog("Mkdir", dirpath, "nil", gerr, time.Since(start).Microseconds(), 0, 0)
+			auditlog.LogClientOp("Mkdir", dirpath, "nil", gerr, time.Since(start).Microseconds(), 0, 0)
 		}
 	}()
 
@@ -934,7 +937,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 		child, _, err := c.mw.Lookup_ll(pino, dir)
 		if err != nil {
 			if err == syscall.ENOENT {
-				info, err := c.mkdir(pino, dir, uint32(mode))
+				info, err := c.mkdir(pino, dir, uint32(mode), dirpath)
 
 				if err != nil {
 					if err != syscall.EEXIST {
@@ -969,9 +972,9 @@ func cfs_rmdir(id C.int64_t, path *C.char) C.int {
 	absPath := c.absPath(C.GoString(path))
 	defer func() {
 		if info == nil {
-			auditlog.FormatLog("Rmdir", absPath, "nil", err, time.Since(start).Microseconds(), 0, 0)
+			auditlog.LogClientOp("Rmdir", absPath, "nil", err, time.Since(start).Microseconds(), 0, 0)
 		} else {
-			auditlog.FormatLog("Rmdir", absPath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
+			auditlog.LogClientOp("Rmdir", absPath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
 		}
 	}()
 	dirpath, name := gopath.Split(absPath)
@@ -980,7 +983,7 @@ func cfs_rmdir(id C.int64_t, path *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, true, absPath)
 	c.ic.Delete(dirInfo.Inode)
 	c.dc.Delete(absPath)
 	return errorToStatus(err)
@@ -1002,9 +1005,9 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 
 	defer func() {
 		if info == nil {
-			auditlog.FormatLog("Unlink", absPath, "nil", err, time.Since(start).Microseconds(), 0, 0)
+			auditlog.LogClientOp("Unlink", absPath, "nil", err, time.Since(start).Microseconds(), 0, 0)
 		} else {
-			auditlog.FormatLog("Unlink", absPath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
+			auditlog.LogClientOp("Unlink", absPath, "nil", err, time.Since(start).Microseconds(), info.Inode, 0)
 		}
 	}()
 	dirInfo, err := c.lookupPath(dirpath)
@@ -1020,13 +1023,13 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 		return statusEISDIR
 	}
 
-	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false)
+	info, err = c.mw.Delete_ll(dirInfo.Inode, name, false, absPath)
 	if err != nil {
 		return errorToStatus(err)
 	}
 
 	if info != nil {
-		_ = c.mw.Evict(info.Inode)
+		_ = c.mw.Evict(info.Inode, absPath)
 		c.ic.Delete(info.Inode)
 	}
 	return 0
@@ -1046,7 +1049,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 	absTo := c.absPath(C.GoString(to))
 
 	defer func() {
-		auditlog.FormatLog("Rename", absFrom, absTo, err, time.Since(start).Microseconds(), 0, 0)
+		auditlog.LogClientOp("Rename", absFrom, absTo, err, time.Since(start).Microseconds(), 0, 0)
 	}()
 
 	srcDirPath, srcName := gopath.Split(absFrom)
@@ -1061,7 +1064,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, false)
+	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, false)
 	c.ic.Delete(srcDirInfo.Inode)
 	c.ic.Delete(dstDirInfo.Inode)
 	c.dc.Delete(absFrom)
@@ -1149,7 +1152,7 @@ func (c *client) start() (err error) {
 			c.logLevel = "WARN"
 		}
 		level := parseLogLevel(c.logLevel)
-		log.InitLog(c.logDir, "libcfs", level, nil)
+		log.InitLog(c.logDir, "libcfs", level, nil, log.DefaultLogLeftSpaceLimit)
 		stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 	proto.InitBufferPool(int64(32768))
@@ -1185,7 +1188,7 @@ func (c *client) start() (err error) {
 	if c.ebsEndpoint != "" {
 		if ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
-			Consul: api.Config{
+			Consul: access.ConsulConfig{
 				Address: c.ebsEndpoint,
 			},
 			MaxSizePutOnce: MaxSizePutOnce,
@@ -1213,6 +1216,7 @@ func (c *client) start() (err error) {
 		Masters:           masters,
 		FollowerRead:      c.followerRead,
 		OnAppendExtentKey: mw.AppendExtentKey,
+		OnSplitExtentKey:  mw.SplitExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		BcacheEnable:      c.enableBcache,
@@ -1224,21 +1228,6 @@ func (c *client) start() (err error) {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
 	}
-	//if c.pushAddr == "" {
-	//	c.pushAddr = "cfs-push.oppo.local"
-	//}
-	//pushCfg := pushConfig{
-	//	PushAddr: c.pushAddr,
-	//}
-	//cfgJson, err := json.Marshal(pushCfg)
-	//if err != nil {
-	//	log.LogErrorf("newClient NewExtentClient: marsh push addr fail.(%v)", err)
-	//}
-	//cfg := config.LoadConfigString(string(cfgJson))
-	//once.Do(func() {
-	//	exporter.Init("hadoop-client", cfg)
-	//	exporter.RegistConsul(c.cluster, "hadoop-client", cfg)
-	//})
 
 	c.mw = mw
 	c.ec = ec
@@ -1280,7 +1269,7 @@ func (c *client) checkPermission() (err error) {
 	return
 }
 
-func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSize uint64, parentInode uint64) *file {
+func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSize uint64, parentInode uint64, path string) *file {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	fd, ok := c.fdset.NextClear(0)
@@ -1288,7 +1277,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 		return nil
 	}
 	c.fdset.Set(fd)
-	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode}
+	f := &file{fd: fd, ino: ino, flags: flags, mode: mode, pino: parentInode, path: path}
 	if proto.IsCold(c.volType) {
 		clientConf := blobstore.ClientConfig{
 			VolName:         c.volName,
@@ -1307,17 +1296,20 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 			FileSize:        fileSize,
 			CacheThreshold:  c.cacheThreshold,
 		}
-
+		f.fileWriter.FreeCache()
 		switch flags & 0xff {
 		case syscall.O_RDONLY:
 			f.fileReader = blobstore.NewReader(clientConf)
+			f.fileWriter = nil
 		case syscall.O_WRONLY:
 			f.fileWriter = blobstore.NewWriter(clientConf)
+			f.fileReader = nil
 		case syscall.O_RDWR:
 			f.fileReader = blobstore.NewReader(clientConf)
 			f.fileWriter = blobstore.NewWriter(clientConf)
 		default:
 			f.fileWriter = blobstore.NewWriter(clientConf)
+			f.fileReader = nil
 		}
 	}
 	c.fdmap[fd] = f
@@ -1377,15 +1369,15 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, atime, mtime)
 }
 
-func (c *client) create(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
+func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
 }
 
-func (c *client) mkdir(pino uint64, name string, mode uint32) (info *proto.InodeInfo, err error) {
+func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
 }
 
 func (c *client) openStream(f *file) {
@@ -1395,6 +1387,7 @@ func (c *client) openStream(f *file) {
 func (c *client) closeStream(f *file) {
 	_ = c.ec.CloseStream(f.ino)
 	_ = c.ec.EvictStream(f.ino)
+	f.fileWriter.FreeCache()
 	f.fileWriter = nil
 	f.fileReader = nil
 }
@@ -1411,7 +1404,7 @@ func (c *client) flush(f *file) error {
 }
 
 func (c *client) truncate(f *file, size int) error {
-	err := c.ec.Truncate(c.mw, f.pino, f.ino, size)
+	err := c.ec.Truncate(c.mw, f.pino, f.ino, size, f.path)
 	if err != nil {
 		return err
 	}
@@ -1421,7 +1414,21 @@ func (c *client) truncate(f *file, size int) error {
 func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
 	if proto.IsHot(c.volType) {
 		c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
-		n, err = c.ec.Write(f.ino, offset, data, flags)
+		checkFunc := func() error {
+			if !c.mw.EnableQuota {
+				return nil
+			}
+
+			if ok := c.ec.UidIsLimited(0); ok {
+				return syscall.ENOSPC
+			}
+
+			if c.mw.IsQuotaLimitedById(f.ino, true, false) {
+				return syscall.ENOSPC
+			}
+			return nil
+		}
+		n, err = c.ec.Write(f.ino, offset, data, flags, checkFunc)
 	} else {
 		n, err = f.fileWriter.Write(c.ctx(c.id, f.ino), offset, data, flags)
 	}

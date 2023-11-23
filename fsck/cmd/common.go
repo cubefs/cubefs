@@ -33,6 +33,7 @@ var (
 	inodeUpdateDumpFileName    string = "inode.dump.update"
 	obsoleteInodeDumpFileName  string = "inode.dump.obsolete"
 	obsoleteDentryDumpFileName string = "dentry.dump.obsolete"
+	pathDumpFileName           string = "path.dump"
 )
 
 type Inode struct {
@@ -46,6 +47,10 @@ type Inode struct {
 
 	Dens  []*Dentry
 	Valid bool
+	Files uint64
+	Dirs  uint64
+	Bytes uint64
+	Path  string
 }
 
 func (i *Inode) String() string {

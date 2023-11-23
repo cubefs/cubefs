@@ -64,7 +64,7 @@ func (cs *chunk) StartCompact(ctx context.Context) (newcs core.ChunkAPI, err err
 	stg := cs.getStg()
 
 	// new dstChunkStorage
-	ncs, err := newChunkStorage(ctx, cs.Disk().GetDataPath(), vm, func(o *core.Option) {
+	ncs, err := newChunkStorage(ctx, cs.Disk().GetDataPath(), vm, cs.readPool, cs.writePool, func(o *core.Option) {
 		o.Conf = cs.Disk().GetConfig()
 		o.DB = stg.MetaHandler().InnerDB()
 		o.IoQos = cs.Disk().GetIoQos()
@@ -149,7 +149,7 @@ func (cs *chunk) handleErrCompact(ctx context.Context, ncs core.ChunkAPI) {
 func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	ctx = bnapi.Setiotype(ctx, bnapi.CompactIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
 
 	startBid := proto.InValidBlobID
 	replStg := cs.getStg()
@@ -220,7 +220,6 @@ COMPACT:
 			if err != nil {
 				if err == core.ErrChunkScanEOF {
 					span.Infof("chunk %s scan finished", cs.ID())
-					err = nil
 					break COMPACT
 				} else {
 					span.Errorf("scan chunk meta(%s) failed: %v", cs.ID(), err)

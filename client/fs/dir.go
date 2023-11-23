@@ -15,10 +15,11 @@
 package fs
 
 import (
+	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"io"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,14 +29,12 @@ import (
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 
-	"github.com/cubefs/cubefs/sdk/meta"
-	"github.com/cubefs/cubefs/util/stat"
-
-	"golang.org/x/net/context"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // used to locate the position in parent
@@ -158,13 +157,14 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	var err error
 	var newInode uint64
 	metric := exporter.NewTPCnt("filecreate")
+	fullPath := path.Join(d.getCwd(), req.Name)
 	defer func() {
 		stat.EndStat("Create", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
-		auditlog.FormatLog("Create", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), newInode, 0)
+		auditlog.LogClientOp("Create", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, nil, ParseError(err)
@@ -215,13 +215,14 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	var err error
 	var newInode uint64
 	metric := exporter.NewTPCnt("mkdir")
+	fullPath := path.Join(d.getCwd(), req.Name)
 	defer func() {
 		stat.EndStat("Mkdir", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
-		auditlog.FormatLog("Mkdir", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), newInode, 0)
+		auditlog.LogClientOp("Mkdir", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -252,13 +253,14 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	var err error
 	var deletedInode uint64
 	metric := exporter.NewTPCnt("remove")
+	fullPath := path.Join(d.getCwd(), req.Name)
 	defer func() {
 		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
-		auditlog.FormatLog("Remove", d.getCwd()+"/"+req.Name, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
+		auditlog.LogClientOp("Remove", fullPath, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
 	}()
 
-	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir)
+	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir, fullPath)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 		return ParseError(err)
@@ -383,12 +385,46 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		stat.EndStat("ReadDirLimit", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	dirCtx := d.dctx.GetCopy(req.Handle)
+	var dirCtx DirContext
+	if req.Offset != 0 {
+		dirCtx = d.dctx.GetCopy(req.Handle)
+	} else {
+		dirCtx = DirContext{}
+	}
 	children, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, dirCtx.Name, limit)
 	if err != nil {
-		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v)", d.info.Inode, err)
+		log.LogErrorf("readdirlimit: Readdir: ino(%v) err(%v) offset %v", d.info.Inode, err, req.Offset)
 		return make([]fuse.Dirent, 0), ParseError(err)
+	}
+
+	if req.Offset == 0 {
+		if len(children) == 0 {
+			dirents := make([]fuse.Dirent, 0, len(children))
+			dirents = append(dirents, fuse.Dirent{
+				Inode: d.info.Inode,
+				Type:  fuse.DT_Dir,
+				Name:  ".",
+			})
+			pid := uint64(req.Pid)
+			if d.info.Inode == 1 {
+				pid = d.info.Inode
+			}
+			dirents = append(dirents, fuse.Dirent{
+				Inode: pid,
+				Type:  fuse.DT_Dir,
+				Name:  "..",
+			})
+			return dirents, io.EOF
+		}
+		children = append([]proto.Dentry{{
+			Name:  ".",
+			Inode: d.info.Inode,
+			Type:  uint32(os.ModeDir),
+		}, {
+			Name:  "..",
+			Inode: uint64(req.Pid),
+			Type:  uint32(os.ModeDir),
+		}}, children...)
 	}
 
 	// skip the first one, which is already accessed
@@ -559,6 +595,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	bgTime := stat.BeginStat()
 
 	metric := exporter.NewTPCnt("rename")
+	srcPath := path.Join(d.getCwd(), req.OldName)
+	dstPath := path.Join(dstDir.getCwd(), req.NewName)
 	defer func() {
 		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
@@ -575,15 +613,22 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 			}
 		}
 		d.super.fslock.Unlock()
-		auditlog.FormatLog("Rename", d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName, err, time.Since(start).Microseconds(), srcInode, dstInode)
+		auditlog.LogClientOp("Rename", srcPath, dstPath, err, time.Since(start).Microseconds(), srcInode, dstInode)
 	}()
-
-	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, true)
+	//changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
+	if d.super.mw.EnableQuota {
+		if !d.canRenameByQuota(dstDir, req.OldName) {
+			return fuse.EPERM
+		}
+	}
+	err = d.super.mw.Rename_ll(d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, srcPath, dstPath, true)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return ParseError(err)
 	}
-
+	// if len(changePathMap) != 0 {
+	// 	d.super.mw.BatchModifyQuotaPath(changePathMap)
+	// }
 	d.super.ic.Delete(d.info.Inode)
 	d.super.ic.Delete(dstDir.info.Inode)
 
@@ -638,8 +683,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		stat.EndStat("Mknod", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
+	fullPath := path.Join(d.getCwd(), req.Name)
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil, fullPath)
 	if err != nil {
 		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -669,8 +714,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		stat.EndStat("Symlink", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
+	fullPath := path.Join(d.getCwd(), req.NewName)
+	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target), fullPath)
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)
@@ -712,8 +757,8 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 		stat.EndStat("Link", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
-
-	info, err := d.super.mw.Link(d.info.Inode, req.NewName, oldInode.Inode)
+	fullPath := path.Join(d.getCwd(), req.NewName)
+	info, err := d.super.mw.Link(d.info.Inode, req.NewName, oldInode.Inode, fullPath)
 	if err != nil {
 		log.LogErrorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.NewName, oldInode.Inode, err)
 		return nil, ParseError(err)
@@ -882,6 +927,9 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 
 func (d *Dir) getCwd() string {
 	dirPath := ""
+	if d.info.Inode == d.super.rootIno {
+		return "/"
+	}
 	curIno := d.info.Inode
 	for curIno != d.super.rootIno {
 		d.super.fslock.Lock()
@@ -912,4 +960,25 @@ func dentryExpired(info *proto.DentryInfo) bool {
 
 func dentrySetExpiration(info *proto.DentryInfo, t time.Duration) {
 	info.SetExpiration(time.Now().Add(t).UnixNano())
+}
+
+func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {
+	fullPaths := d.super.mw.GetQuotaFullPaths()
+	if len(fullPaths) == 0 {
+		return true
+	}
+	var srcPath string
+	if d.getCwd() == "/" {
+		srcPath = "/" + srcName
+	} else {
+		srcPath = d.getCwd() + "/" + srcName
+	}
+
+	for _, fullPath := range fullPaths {
+		log.LogDebugf("srcPath [%v] fullPath[%v].", srcPath, fullPath)
+		if proto.IsAncestor(srcPath, fullPath) {
+			return false
+		}
+	}
+	return true
 }

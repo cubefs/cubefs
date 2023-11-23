@@ -36,7 +36,7 @@ func addCmdShard(cmd *grumble.Command) {
 		Help: "shard stat",
 		Flags: func(f *grumble.Flags) {
 			blobnodeFlags(f)
-			f.UintL("diskid", 1, "disk id")
+			f.UintL("diskid", 1, "disk id to stat")
 			f.UintL("vuid", 1, "vuid")
 			f.UintL("bid", 1, "bid")
 		},
@@ -62,7 +62,7 @@ func addCmdShard(cmd *grumble.Command) {
 		Help: "get shard",
 		Flags: func(f *grumble.Flags) {
 			blobnodeFlags(f)
-			f.UintL("diskid", 1, "disk id")
+			f.UintL("diskid", 1, "disk id to get")
 			f.UintL("vuid", 1, "vuid")
 			f.UintL("bid", 1, "bid")
 		},
@@ -80,6 +80,36 @@ func addCmdShard(cmd *grumble.Command) {
 				return err
 			}
 			fmt.Println(body)
+			return nil
+		},
+	})
+
+	chunkCommand.AddCommand(&grumble.Command{
+		Name: "mark",
+		Help: "mark delete is dangerous operation, execute with caution",
+		Flags: func(f *grumble.Flags) {
+			blobnodeFlags(f)
+		},
+		Args: func(c *grumble.Args) {
+			c.Uint64("diskid", "disk id to mark")
+			c.Uint64("vuid", "vuid")
+			c.Uint64("bid", "bid")
+		},
+		Run: func(c *grumble.Context) error {
+			cli := blobnode.New(&blobnode.Config{})
+			host := c.Flags.String("host")
+			args := blobnode.DeleteShardArgs{
+				DiskID: proto.DiskID(c.Args.Uint64("diskid")),
+				Vuid:   proto.Vuid(c.Args.Uint64("vuid")),
+				Bid:    proto.BlobID(c.Args.Uint64("bid")),
+			}
+			if !common.Confirm("to mark delete?") {
+				return nil
+			}
+			if err := cli.MarkDeleteShard(common.CmdContext(), host, &args); err != nil {
+				return err
+			}
+			fmt.Println("mark delete success")
 			return nil
 		},
 	})

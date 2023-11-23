@@ -48,14 +48,14 @@ func TestDeleteMsg_IsValid(t *testing.T) {
 
 func TestMsgMarshal(t *testing.T) {
 	stags := BlobDeleteStage{}
-	stags.SetStage(1, MarkDelStage)
-	stags.SetStage(2, MarkDelStage)
+	stags.SetStage(1, DeleteStageMarkDelete)
+	stags.SetStage(2, DeleteStageMarkDelete)
 	require.Equal(t, stags, stags.Copy())
 
 	vuid, _ := NewVuid(1, 2, 1)
 	sg, exist := stags.Stage(vuid)
 	require.True(t, exist)
-	require.Equal(t, MarkDelStage, sg)
+	require.Equal(t, DeleteStageMarkDelete, sg)
 	vuid, _ = NewVuid(1, 10, 1)
 	_, exist = stags.Stage(vuid)
 	require.False(t, exist)

@@ -12,7 +12,7 @@
   ],
   "enableHTTPS": "false",
   "domains": [
-    "object.chubao.io"
+    "object.cube.io"
   ],
   "signatureIgnoredActions": [
     "action:oss:GetObjectXAttr",

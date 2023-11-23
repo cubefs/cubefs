@@ -24,11 +24,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	CommitID   string
-	BranchName string
-	BuildTime  string
-)
+//TODO: remove this later.
+//go:generate gofumpt -l -w .
+//go:generate git diff --exit-code
+//go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
 
 func runCLI() (err error) {
 	var cfg *cmd.Config
@@ -44,8 +43,9 @@ func runCLI() (err error) {
 }
 
 func setupCommands(cfg *cmd.Config) *cobra.Command {
-	var mc = master.NewMasterClient(cfg.MasterAddr, false)
+	mc := master.NewMasterClient(cfg.MasterAddr, false)
 	mc.SetTimeout(cfg.Timeout)
+	mc.SetClientIDKey(cfg.ClientIDKey)
 	cfsRootCmd := cmd.NewRootCmd(mc)
 	//	var completionCmd = &cobra.Command{
 	//		Use:   "completion",
@@ -73,7 +73,7 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	//		},
 	//	}
 
-	//cfsRootCmd.CFSCmd.AddCommand(completionCmd)
+	// cfsRootCmd.CFSCmd.AddCommand(completionCmd)
 
 	cfsRootCmd.CFSCmd.AddCommand(cmd.GenClusterCfgCmd)
 	return cfsRootCmd.CFSCmd
@@ -81,11 +81,16 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 
 func main() {
 	var err error
-	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil)
+	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		log.LogFlush()
+		os.Exit(1)
+	}
 	defer log.LogFlush()
 	if err = runCLI(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		log.LogFlush()
-		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }

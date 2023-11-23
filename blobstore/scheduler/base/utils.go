@@ -120,10 +120,10 @@ func ShouldAllocAndRedo(errCode int) bool {
 }
 
 func InsistOn(ctx context.Context, errMsg string, on func() error) {
+	span := trace.SpanFromContextSafe(ctx)
 	attempt := 0
 	retry.Insist(time.Second, on, func(err error) {
 		attempt++
-		span := trace.SpanFromContextSafe(ctx)
 		span.Errorf("insist attempt-%d: %s %s", attempt, errMsg, err.Error())
 	})
 }

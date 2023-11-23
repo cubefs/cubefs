@@ -39,6 +39,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 	span.Infof("accept Alloc request, args: %v", args)
 	resp, err := s.volumeMgr.Alloc(ctx, args)
 	if err != nil {
+		span.Errorf("alloc volume failed, err: %v", err)
 		c.RespondError(err)
 		return
 	}
@@ -74,4 +75,24 @@ func (s *Service) List(c *rpc.Context) {
 	}
 	c.RespondJSON(resp)
 	span.Infof("list request response: %v", resp)
+}
+
+// Discard use for management to remove invalid volumes in time
+func (s *Service) Discard(c *rpc.Context) {
+	args := new(proxy.DiscardVolsArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+
+	span.Infof("accept Discard request, args: %v", args)
+
+	err := s.volumeMgr.Discard(ctx, args)
+	if err != nil {
+		c.RespondError(err)
+		return
+	}
 }

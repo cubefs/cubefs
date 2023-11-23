@@ -18,24 +18,34 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blockcache/bcache"
-	"github.com/cubefs/cubefs/sdk/data/blobstore"
-	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/hashicorp/consul/api"
 	"net/http"
 	"path"
 	"regexp"
 	"strings"
 	"sync"
 
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/reloadconf"
+
 	"github.com/gorilla/mux"
 )
+
+func init() {
+	trace.PrefixBaggage = "x-object-baggage-"
+	trace.FieldKeyTraceID = "x-object-trace-id"
+	trace.FieldKeySpanID = "x-object-span-id"
+}
 
 // Configuration items that act on the ObjectNode.
 const (
@@ -52,9 +62,9 @@ const (
 	// Example:
 	//		{
 	//			"masterAddr":[
-	//				"master1.chubao.io",
-	//				"master2.chubao.io",
-	//				"master3.chubao.io"
+	//				"master1.cube.io",
+	//				"master2.cube.io",
+	//				"master3.cube.io"
 	//			]
 	//		}
 	configMasterAddr = proto.MasterAddr
@@ -75,17 +85,49 @@ const (
 	// Example:
 	//		{
 	//			"domains": [
-	//				"object.chubao.io"
+	//				"object.cube.io"
 	//			]
 	//		}
-	// The configuration in the example will allow ObjectNode to automatically resolve "* .object.chubao.io".
+	// The configuration in the example will allow ObjectNode to automatically resolve "* .object.cube.io".
 	configDomains = "domains"
 
 	disabledActions               = "disabledActions"
 	configSignatureIgnoredActions = "signatureIgnoredActions"
 
-	//ObjMetaCache takes each path hierarchy of the path-like S3 object key as the cache key,
-	//and map it to the corresponding posix-compatible inode
+	// String array configuration item, used to configure the actions that are not allowed to be accessed by
+	// STS users.
+	// Example:
+	//		{
+	//			"stsNotAllowedActions": [
+	//				"action:oss:CreateBucket",
+	//				"action:oss:DeleteBucket"
+	//			]
+	//		}
+	configSTSNotAllowedActions = "stsNotAllowedActions"
+
+	// Map type configuration item, used to configure ObjectNode to support audit log feature. For detailed
+	// parameters, see the AuditLogConfig structure.
+	// Example:
+	// 		{
+	// 			"auditLog": {
+	// 				"local": {
+	// 					"logdir": "./run/auditlog/object/",
+	// 					"no_2xx_body": true
+	// 				},
+	// 				"kafka": {
+	// 					"cubefs": {
+	//						"enable": true,
+	// 						"topic": "audit_log_topic",
+	// 						"brokers": "192.168.80.130:9095,192.168.80.131:9095,192.168.80.132:9095"
+	// 					}
+	// 				},
+	//				...
+	// 			}
+	// 		}
+	configAuditLog = "auditLog"
+
+	// ObjMetaCache takes each path hierarchy of the path-like S3 object key as the cache key,
+	// and map it to the corresponding posix-compatible inode
 	// when enabled, the maxDentryCacheNum must at least be the minimum of defaultMaxDentryCacheNum
 	// Example:
 	//		{
@@ -94,28 +136,33 @@ const (
 	configObjMetaCache = "enableObjMetaCache"
 	// Example:
 	//		{
-	//			"cacheRefreshInterval": 600
+	//			"cacheRefreshIntervalSec": 600
 	//			"maxDentryCacheNum": 10000000
 	//			"maxInodeAttrCacheNum": 10000000
 	//		}
-	configCacheRefreshInterval = "cacheRefreshInterval"
-	configMaxDentryCacheNum    = "maxDentryCacheNum"
-	configMaxInodeAttrCacheNum = "maxInodeAttrCacheNum"
+	configCacheRefreshIntervalSec = "cacheRefreshIntervalSec"
+	configMaxDentryCacheNum       = "maxDentryCacheNum"
+	configMaxInodeAttrCacheNum    = "maxInodeAttrCacheNum"
 
-	//enable block cache when reading data in cold volume
+	// enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"
-	//define thread numbers for writing and reading ebs
+	// define thread numbers for writing and reading ebs
 	ebsWriteThreads = "bStoreWriteThreads"
 	ebsReadThreads  = "bStoreReadThreads"
+
+	// s3 QoS config refresh interval
+	s3QoSRefreshIntervalSec = "s3QoSRefreshIntervalSec"
 )
 
 // Default of configuration value
 const (
-	defaultListen               = "80"
-	defaultCacheRefreshInterval = 10 * 60
-	defaultMaxDentryCacheNum    = 10000000
-	defaultMaxInodeAttrCacheNum = 10000000
-	//ebs
+	defaultListen                 = "80"
+	defaultCacheRefreshInterval   = 10 * 60
+	defaultMaxDentryCacheNum      = 1000000
+	defaultMaxInodeAttrCacheNum   = 1000000
+	defaultS3QoSReloadIntervalSec = 300
+	defaultS3QoSConfName          = "s3qosInfo.conf"
+	// ebs
 	MaxSizePutOnce = int64(1) << 23
 )
 
@@ -126,8 +173,8 @@ var (
 	objMetaCache     *ObjMetaCache
 	blockCache       *bcache.BcacheClient
 	ebsClient        *blobstore.BlobStoreClient
-	writeThreads     int = 4
-	readThreads      int = 4
+	writeThreads     = 4
+	readThreads      = 4
 	enableBlockcache bool
 )
 
@@ -143,12 +190,18 @@ type ObjectNode struct {
 	wg         sync.WaitGroup
 	userStore  UserInfoStore
 
+	localAuditHandler rpc.ProgressHandler
+	externalAudit     *ExternalAudit
+
+	closes []func() // close other resources after http server closed
+
 	signatureIgnoredActions proto.Actions // signature ignored actions
 	disabledActions         proto.Actions // disabled actions
+	stsNotAllowedActions    proto.Actions // actions that are not accessible to STS users
 
-	encodedRegion []byte
-
-	control common.Control
+	control    common.Control
+	rateLimit  RateLimiter
+	limitMutex sync.RWMutex
 }
 
 func (o *ObjectNode) Start(cfg *config.Config) (err error) {
@@ -211,6 +264,25 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	// parse sts not allowed actions
+	stsNotAllowedActions := cfg.GetStringSlice(configSTSNotAllowedActions)
+	for _, actionName := range stsNotAllowedActions {
+		action := proto.ParseAction(actionName)
+		if !action.IsNone() {
+			o.stsNotAllowedActions = append(o.stsNotAllowedActions, action)
+			log.LogInfof("loadConfig: sts not allowed action: %v", action)
+		}
+	}
+
+	// parse auditLog config
+	if rawAuditLog := cfg.GetValue(configAuditLog); rawAuditLog != nil {
+		if err = o.setAuditLog(rawAuditLog); err != nil {
+			err = fmt.Errorf("invalid %v configuration: %v", configAuditLog, err)
+			return
+		}
+		log.LogInfof("loadConfig: setup config: %v(%v)", configAuditLog, rawAuditLog)
+	}
+
 	// parse strict config
 	strict := cfg.GetBool(configStrict)
 	log.LogInfof("loadConfig: strict: %v", strict)
@@ -222,24 +294,23 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse inode cache
 	cacheEnable := cfg.GetBool(configObjMetaCache)
 	if cacheEnable {
-
-		cacheRefreshInterval := uint64(cfg.GetInt64(configCacheRefreshInterval))
+		cacheRefreshInterval := uint64(cfg.GetInt64(configCacheRefreshIntervalSec))
 		if cacheRefreshInterval <= 0 {
 			cacheRefreshInterval = defaultCacheRefreshInterval
 		}
 
 		maxDentryCacheNum := cfg.GetInt64(configMaxDentryCacheNum)
-		if maxDentryCacheNum < defaultMaxDentryCacheNum {
+		if maxDentryCacheNum <= 0 {
 			maxDentryCacheNum = defaultMaxDentryCacheNum
 		}
 
 		maxInodeAttrCacheNum := cfg.GetInt64(configMaxInodeAttrCacheNum)
-		if maxInodeAttrCacheNum < defaultMaxInodeAttrCacheNum {
+		if maxInodeAttrCacheNum <= 0 {
 			maxInodeAttrCacheNum = defaultMaxInodeAttrCacheNum
 		}
 		objMetaCache = NewObjMetaCache(maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
-		log.LogInfof("loadConfig: enableObjMetaCache: %v, maxDentryCacheNum: %v, maxInodeAttrCacheNum: %v"+
-			", cacheRefreshInterval: %v", cacheEnable, maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
+		log.LogDebugf("loadConfig: enableObjMetaCache, maxDentryCacheNum: %v, maxInodeAttrCacheNum: %v"+
+			", cacheRefreshIntervalSec: %v", maxDentryCacheNum, maxInodeAttrCacheNum, cacheRefreshInterval)
 	}
 
 	enableBlockcache = cfg.GetBool(enableBcache)
@@ -252,8 +323,47 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 
 func (o *ObjectNode) updateRegion(region string) {
 	o.region = region
-	o.encodedRegion =
-		[]byte(fmt.Sprintf(fmt.Sprintf("<LocationConstraint>%s</LocationConstraint>", o.region)))
+}
+
+func (o *ObjectNode) setAuditLog(raw interface{}) error {
+	var conf AuditLogConfig
+	if err := ParseJSONEntity(raw, &conf); err != nil {
+		return err
+	}
+	// set the local audit log
+	if conf.Local != nil {
+		ah, lf, err := auditlog.Open("OBJECT", conf.Local)
+		if err != nil {
+			return err
+		}
+		if lf != nil {
+			o.closes = append(o.closes, func() { lf.Close() })
+		}
+		o.localAuditHandler = ah
+	}
+	// set the external audit log
+	o.externalAudit = NewExternalAudit()
+	for id, cfg := range conf.Kafka {
+		if cfg.Enable {
+			ak, err := NewKafkaAudit(id, cfg)
+			if err != nil {
+				return err
+			}
+			o.externalAudit.AddLoggers(ak)
+		}
+	}
+	for id, cfg := range conf.Webhook {
+		if cfg.Enable {
+			aw, err := NewWebhookAudit(id, cfg)
+			if err != nil {
+				return err
+			}
+			o.externalAudit.AddLoggers(aw)
+		}
+	}
+	o.closes = append(o.closes, func() { o.externalAudit.Close() })
+
+	return nil
 }
 
 func handleStart(s common.Server, cfg *config.Config) (err error) {
@@ -266,26 +376,18 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	// Get cluster info from master
-
 	var ci *proto.ClusterInfo
 	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {
 		return
 	}
 	o.updateRegion(ci.Cluster)
 	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
-	ebsClient, err = blobstore.NewEbsClient(access.Config{
-		ConnMode: access.NoLimitConnMode,
-		Consul: api.Config{
-			Address: ci.EbsAddr,
-		},
-		//ServicePath:    ci.ServicePath,
-		MaxSizePutOnce: MaxSizePutOnce,
-		Logger: &access.Logger{
-			Filename: path.Join(cfg.GetString("logDir"), "ebs.log"),
-		},
-	})
-
-	if err != nil {
+	if ci.EbsAddr != "" {
+		err = newEbsClient(ci, cfg)
+		if err != nil {
+			log.LogWarnf("handleStart: new ebsClient err(%v)", err)
+			return err
+		}
 		wt := cfg.GetInt(ebsWriteThreads)
 		if wt != 0 {
 			writeThreads = wt
@@ -294,6 +396,20 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		if rt != 0 {
 			readThreads = rt
 		}
+	}
+	// s3 api qos info
+	reloadConf := &reloadconf.ReloadConf{
+		ConfName:      defaultS3QoSConfName,
+		ReloadSec:     cfg.GetIntWithDefault(s3QoSRefreshIntervalSec, defaultS3QoSReloadIntervalSec),
+		RequestRemote: o.requestRemote,
+	}
+
+	err = reloadconf.StartReload(reloadConf, o.Reload)
+	if err != nil {
+		log.LogWarnf("handleStart: GetS3QoSInfo err(%v)", err)
+		o.limitMutex.Lock()
+		o.rateLimit = &NullRateLimit{}
+		o.limitMutex.Unlock()
 	}
 
 	// start rest api
@@ -309,22 +425,37 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	return
 }
 
+func newEbsClient(ci *proto.ClusterInfo, cfg *config.Config) (err error) {
+	ebsClient, err = blobstore.NewEbsClient(access.Config{
+		ConnMode: access.NoLimitConnMode,
+		Consul: access.ConsulConfig{
+			Address: ci.EbsAddr,
+		},
+		MaxSizePutOnce: MaxSizePutOnce,
+		Logger: &access.Logger{
+			Filename: path.Join(cfg.GetString("logDir"), "ebs.log"),
+		},
+	})
+	return err
+}
+
 func handleShutdown(s common.Server) {
 	o, ok := s.(*ObjectNode)
 	if !ok {
 		return
 	}
-	o.shutdownRestAPI()
+	o.shutdown()
 }
 
 func (o *ObjectNode) startMuxRestAPI() (err error) {
 	router := mux.NewRouter().SkipClean(true)
 	o.registerApiRouters(router)
 	router.Use(
+		o.auditMiddleware,
 		o.expectMiddleware,
-		o.corsMiddleware,
 		o.traceMiddleware,
 		o.authMiddleware,
+		o.corsMiddleware,
 		o.policyCheckMiddleware,
 		o.contentMiddleware,
 	)
@@ -344,10 +475,14 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	return
 }
 
-func (o *ObjectNode) shutdownRestAPI() {
+func (o *ObjectNode) shutdown() {
 	if o.httpServer != nil {
 		_ = o.httpServer.Shutdown(context.Background())
 		o.httpServer = nil
+	}
+	// close other resources after http server closed
+	for _, f := range o.closes {
+		f()
 	}
 }
 

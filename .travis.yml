@@ -5,7 +5,7 @@ services:
 
 before_install:
     - docker pull nginx:1.17.8
-    - docker build -t chubaofs/cfs-base:1.2 -f docker/Dockerfile docker
+    - docker build -t cubefs/cfs-base:1.2 -f docker/Dockerfile docker
 
 script:
     - docker/run_docker.sh -t

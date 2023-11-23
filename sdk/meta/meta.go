@@ -15,15 +15,18 @@
 package meta
 
 import (
+	gerrors "errors"
 	"fmt"
 	"sync"
 	"syscall"
 	"time"
 
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
 	authSDK "github.com/cubefs/cubefs/sdk/auth"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auth"
@@ -49,10 +52,16 @@ const (
 	statusNotPerm
 	statusConflictExtents
 	statusOpDirQuota
+	statusNoSpace
+	statusTxInodeInfoNotExist
+	statusTxConflict
+	statusTxTimeout
+	statusUploadPartConflict
+	statusNotEmpty
 )
 
 const (
-	MaxMountRetryLimit = 5
+	MaxMountRetryLimit = 6
 	MountRetryInterval = time.Second * 5
 
 	/*
@@ -60,6 +69,8 @@ const (
 	 * i.e. only one force update request is allowed every 5 sec.
 	 */
 	MinForceUpdateMetaPartitionsInterval = 5
+	DefaultQuotaExpiration               = 120 * time.Second
+	MaxQuotaCache                        = 10000
 )
 
 type AsyncTaskErrorFunc func(err error)
@@ -80,20 +91,25 @@ type MetaConfig struct {
 	OnAsyncTaskError AsyncTaskErrorFunc
 	EnableSummary    bool
 	MetaSendTimeout  int64
+
+	// EnableTransaction uint8
+	// EnableTransaction bool
+	VerReadSeq uint64
 }
 
 type MetaWrapper struct {
 	sync.RWMutex
-	cluster         string
-	localIP         string
-	volname         string
-	ossSecure       *OSSSecure
-	volCreateTime   int64
-	owner           string
-	ownerValidation bool
-	mc              *masterSDK.MasterClient
-	ac              *authSDK.AuthClient
-	conns           *util.ConnectPool
+	cluster           string
+	localIP           string
+	volname           string
+	ossSecure         *OSSSecure
+	volCreateTime     int64
+	volDeleteLockTime int64
+	owner             string
+	ownerValidation   bool
+	mc                *masterSDK.MasterClient
+	ac                *authSDK.AuthClient
+	conns             *util.ConnectPool
 
 	// Callback handler for handling asynchronous task errors.
 	onAsyncTaskError AsyncTaskErrorFunc
@@ -129,14 +145,37 @@ type MetaWrapper struct {
 	partCond  *sync.Cond
 
 	// Allocated to trigger and throttle instant partition updates
-	forceUpdate         chan struct{}
-	forceUpdateLimit    *rate.Limiter
-	EnableSummary       bool
-	metaSendTimeout     int64
-	DirChildrenNumLimit uint32
+	forceUpdate             chan struct{}
+	forceUpdateLimit        *rate.Limiter
+	singleflight            singleflight.Group
+	EnableSummary           bool
+	metaSendTimeout         int64
+	DirChildrenNumLimit     uint32
+	EnableTransaction       proto.TxOpMask
+	TxTimeout               int64
+	TxConflictRetryNum      int64
+	TxConflictRetryInterval int64
+	EnableQuota             bool
+	QuotaInfoMap            map[uint32]*proto.QuotaInfo
+	QuotaLock               sync.RWMutex
+
+	// uniqidRange for request dedup
+	uniqidRangeMap   map[uint64]*uniqidRange
+	uniqidRangeMutex sync.Mutex
+
+	qc *QuotaCache
+
+	VerReadSeq uint64
+	LastVerSeq uint64
+	Client     wrapper.SimpleClientInfo
 }
 
-//the ticket from authnode
+type uniqidRange struct {
+	cur uint64
+	end uint64
+}
+
+// the ticket from authnode
 type Ticket struct {
 	ID         string `json:"client_id"`
 	SessionKey string `json:"session_key"`
@@ -179,32 +218,30 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.forceUpdateLimit = rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval)
 	mw.EnableSummary = config.EnableSummary
 	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
+	mw.uniqidRangeMap = make(map[uint64]*uniqidRange, 0)
+	mw.qc = NewQuotaCache(DefaultQuotaExpiration, MaxQuotaCache)
+	mw.VerReadSeq = config.VerReadSeq
 
-	limit := MaxMountRetryLimit
-
-	for limit > 0 {
-		err = mw.initMetaWrapper()
+	limit := 0
+	for limit < MaxMountRetryLimit {
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
-		if err != nil {
-			log.LogErrorf("initMetaWrapper failed, err %s", err.Error())
-		}
-
-		if err == proto.ErrVolNotExists {
-			return nil, err
-		}
-		if err != nil {
-			limit--
-			time.Sleep(MountRetryInterval)
+		if err = mw.initMetaWrapper(); err != nil {
+			log.LogErrorf("NewMetaWrapper: init meta wrapper failed: volume(%v) err(%v)", mw.volname, err)
+			if gerrors.Is(err, proto.ErrVolAuthKeyNotMatch) || gerrors.Is(err, proto.ErrVolNotExists) {
+				break
+			}
+			limit++
+			time.Sleep(MountRetryInterval * time.Duration(limit))
 			continue
 		}
 		break
 	}
-
-	if limit <= 0 && err != nil {
+	if err != nil {
 		return nil, err
 	}
 
+	go mw.updateQuotaInfoTick()
 	go mw.refresh()
 	return mw, nil
 }
@@ -231,6 +268,10 @@ func (mw *MetaWrapper) initMetaWrapper() (err error) {
 
 func (mw *MetaWrapper) Owner() string {
 	return mw.owner
+}
+
+func (mw *MetaWrapper) enableTx(mask proto.TxOpMask) bool {
+	return mw.EnableTransaction != proto.TxPause && mw.EnableTransaction&mask > 0
 }
 
 func (mw *MetaWrapper) OSSSecure() (accessKey, secretKey string) {
@@ -282,10 +323,30 @@ func parseStatus(result uint8) (status int) {
 		status = statusConflictExtents
 	case proto.OpDirQuota:
 		status = statusOpDirQuota
+	case proto.OpNotEmpty:
+		status = statusNotEmpty
+	case proto.OpNoSpaceErr:
+		status = statusNoSpace
+	case proto.OpTxInodeInfoNotExistErr:
+		status = statusTxInodeInfoNotExist
+	case proto.OpTxConflictErr:
+		status = statusTxConflict
+	case proto.OpTxTimeoutErr:
+		status = statusTxTimeout
+	case proto.OpUploadPartConflictErr:
+		status = statusUploadPartConflict
 	default:
 		status = statusError
 	}
 	return
+}
+
+func statusErrToErrno(status int, err error) error {
+	if status == statusOK && err != nil {
+		return syscall.EAGAIN
+	}
+
+	return statusToErrno(status)
 }
 
 func statusToErrno(status int) error {
@@ -295,6 +356,8 @@ func statusToErrno(status int) error {
 		return syscall.EAGAIN
 	case statusExist:
 		return syscall.EEXIST
+	case statusNotEmpty:
+		return syscall.ENOTEMPTY
 	case statusNoent:
 		return syscall.ENOENT
 	case statusFull:
@@ -311,6 +374,16 @@ func statusToErrno(status int) error {
 		return syscall.ENOTSUP
 	case statusOpDirQuota:
 		return syscall.EDQUOT
+	case statusNoSpace:
+		return syscall.ENOSPC
+	case statusTxInodeInfoNotExist:
+		return syscall.EAGAIN
+	case statusTxConflict:
+		return syscall.EAGAIN
+	case statusTxTimeout:
+		return syscall.EAGAIN
+	case statusUploadPartConflict:
+		return syscall.EEXIST
 	default:
 	}
 	return syscall.EIO

@@ -78,5 +78,6 @@ func (c *client) Erase(ctx context.Context, host string, key string) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	return rpc.ParseData(resp, nil)
 }

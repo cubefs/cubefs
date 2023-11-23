@@ -1,5 +1,5 @@
 {
-  "clusterName": "chubaofs01",
+  "clusterName": "cubefs01",
   "id": "1",
   "role": "master",
   "ip": "192.168.0.11",
@@ -14,6 +14,5 @@
   "walDir": "/cfs/data/wal",
   "storeDir": "/cfs/data/store",
   "metaNodeReservedMem": "67108864",
-  "ebsAddr": "10.177.40.215:8500",
-  "ebsServicePath": "access"
+  "intervalToScanS3Expiration": "180"
 }

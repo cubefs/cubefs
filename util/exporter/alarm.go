@@ -54,10 +54,3 @@ func Warning(detail string) (a *Alarm) {
 	a.Add(1)
 	return
 }
-
-func (c *Alarm) publish() {
-	select {
-	case AlarmCh <- c:
-	default:
-	}
-}

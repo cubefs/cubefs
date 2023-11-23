@@ -90,7 +90,7 @@ func (s *Service) cleanExpiredStatFile() {
 
 		info, err := os.Stat(path)
 		if err != nil {
-			span.Errorf("path:%v, err:%v", path, err)
+			span.Errorf("stat path:%v, err:%v", path, err)
 			return err
 		}
 

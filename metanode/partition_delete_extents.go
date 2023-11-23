@@ -34,6 +34,7 @@ import (
 const (
 	prefixDelExtent     = "EXTENT_DEL"
 	prefixDelExtentV2   = "EXTENT_DEL_V2"
+	prefixMultiVer      = verdataFile
 	maxDeleteExtentSize = 10 * MB
 )
 
@@ -93,15 +94,19 @@ LOOP:
 
 	// check
 	lastItem := fileList.Back()
-	if lastItem == nil {
+	if lastItem != nil {
+		fileName = lastItem.Value.(string)
+	}
+	if lastItem == nil || !strings.HasPrefix(fileName, prefixDelExtentV2) {
 		//if no exist EXTENT_DEL_*, create one
+		log.LogDebugf("action[appendDelExtentsToFile] verseq %v", mp.verSeq)
 		fp, fileName, fileSize, err = mp.createExtentDeleteFile(prefixDelExtentV2, idx, fileList)
+		log.LogDebugf("action[appendDelExtentsToFile] verseq %v fileName %v", mp.verSeq, fileName)
 		if err != nil {
 			panic(err)
 		}
 	} else {
 		//exist, open last file
-		fileName = lastItem.Value.(string)
 		fp, err = os.OpenFile(path.Join(mp.config.RootDir, fileName),
 			os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
@@ -111,11 +116,7 @@ LOOP:
 		idx = getDelExtFileIdx(fileName)
 	}
 
-	extentV2 := false
-	if strings.HasPrefix(fileName, prefixDelExtentV2) {
-		extentV2 = true
-	}
-
+	log.LogDebugf("action[appendDelExtentsToFile] verseq %v fileName %v", mp.verSeq, fileName)
 	// TODO Unhandled errors
 	defer fp.Close()
 	buf := make([]byte, 0)
@@ -132,12 +133,9 @@ LOOP:
 		case eks := <-mp.extDelCh:
 			var data []byte
 			buf = buf[:0]
+			log.LogDebugf("del eks [%v]", eks)
 			for _, ek := range eks {
-				if extentV2 {
-					data, err = ek.MarshalBinaryWithCheckSum()
-				} else {
-					data, err = ek.MarshalBinary()
-				}
+				data, err = ek.MarshalBinaryWithCheckSum(true)
 				if err != nil {
 					log.LogWarnf("[appendDelExtentsToFile] partitionId=%d,"+
 						" extentKey marshal: %s", mp.config.PartitionId, err.Error())
@@ -162,12 +160,15 @@ LOOP:
 				if err != nil {
 					panic(err)
 				}
+				log.LogDebugf("appendDelExtentsToFile. vol %v mp %v createExtentDeleteFile %v",
+					mp.GetVolName(), mp.config.PartitionId, fileName)
 			}
 			// write delete extents into file
 			if _, err = fp.Write(buf); err != nil {
 				panic(err)
 			}
 			fileSize += int64(len(buf))
+			log.LogDebugf("action[appendDelExtentsToFile] filesize now %v", fileSize)
 		}
 	}
 }
@@ -217,7 +218,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		buf := make([]byte, MB)
 		fp, err := os.OpenFile(file, os.O_RDWR, 0644)
 		if err != nil {
-			log.LogErrorf("[deleteExtentsFromList] openFile %v error: %v", file, err)
+			log.LogErrorf("[deleteExtentsFromList] vol %v mp %v openFile %v error: %v", mp.GetVolName(), mp.config.PartitionId, file, err)
 			fileList.Remove(element)
 			goto LOOP
 		}
@@ -237,6 +238,11 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			extentKeyLen = uint64(proto.ExtentV2Length)
 		}
 		cursor := binary.BigEndian.Uint64(buf[:8])
+		stat, _ := fp.Stat()
+		log.LogDebugf("[deleteExtentsFromList] vol %v mp %v o openFile %v file len %v cursor %v", mp.GetVolName(), mp.config.PartitionId, file,
+			stat.Size(), cursor)
+
+		log.LogDebugf("action[deleteExtentsFromList] get cursor %v", cursor)
 		if size := uint64(fileInfo.Size()) - cursor; size < MB {
 			if size <= 0 {
 				size = extentKeyLen
@@ -252,7 +258,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			buf = buf[:size]
 		}
 		//read extents from cursor
-		n, err := fp.ReadAt(buf, int64(cursor))
+		rLen, err := fp.ReadAt(buf, int64(cursor))
 		// TODO Unhandled errors
 		fp.Close()
 		if err != nil && err != io.EOF {
@@ -261,7 +267,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			err = nil
 			if fileList.Len() <= 1 {
 				log.LogDebugf("[deleteExtentsFromList] partitionId=%d, %s"+
-					" extents delete ok n(%d), len(%d), cursor(%d)", mp.config.PartitionId, fileName, n, len(buf), cursor)
+					" extents delete ok n(%d), len(%d), cursor(%d)", mp.config.PartitionId, fileName, rLen, len(buf), cursor)
 			} else {
 				status := mp.raftPartition.Status()
 				if status.State == "StateLeader" && !status.RestoringSnapshot {
@@ -283,17 +289,26 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			continue
 		}
 		buff := bytes.NewBuffer(buf)
-		cursor += uint64(n)
+		cursor += uint64(rLen)
 		var deleteCnt uint64
 		errExts := make([]proto.ExtentKey, 0)
 		for {
 			if buff.Len() == 0 {
 				break
 			}
+
 			if uint64(buff.Len()) < extentKeyLen {
 				cursor -= uint64(buff.Len())
 				break
 			}
+
+			if extentV2 && uint64(buff.Len()) < uint64(proto.ExtentV3Length) {
+				if r := bytes.Compare(buff.Bytes()[:4], proto.ExtentKeyHeaderV3); r == 0 {
+					cursor -= uint64(buff.Len())
+					break
+				}
+			}
+
 			batchCount := DeleteBatchCount() * 5
 			if deleteCnt%batchCount == 0 {
 				DeleteWorkerSleepMs()
@@ -320,7 +335,8 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 					panic(err)
 				}
 			} else {
-				if err = ek.UnmarshalBinary(buff); err != nil {
+				//ek for del no need to get version
+				if err = ek.UnmarshalBinary(buff, false); err != nil {
 					panic(err)
 				}
 			}

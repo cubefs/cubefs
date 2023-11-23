@@ -14,7 +14,7 @@ curl http://127.0.0.1:9800/stats/leader # View the status of the main node
 ```
 
 ::: tip Note
-v3.2.2 use `stats/leader` and older is `leader/stats`
+v3.3.0 use `stats/leader` and older is `leader/stats`
 :::
 
 **Response Example**
@@ -236,7 +236,7 @@ curl http://127.0.0.1:9800/task/detail/:type/:id
 ## Query Offline or Repair Task Progress
 
 ::: tip Note
-New interface in v3.2.2
+New interface in v3.3.0
 :::
 
 ```bash

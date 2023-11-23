@@ -63,7 +63,7 @@ func addCmdConfig(cmd *grumble.Command) {
 		Help: "show config of [key]",
 		Run:  cmdGetConfig,
 		Args: func(a *grumble.Args) {
-			a.String("key", "config key", grumble.Default(""))
+			a.String("key", "config key to get", grumble.Default(""))
 		},
 		Flags: func(f *grumble.Flags) {
 			flags.VerboseRegister(f)
@@ -74,7 +74,7 @@ func addCmdConfig(cmd *grumble.Command) {
 		Name: "set",
 		Help: "set config of key",
 		Args: func(a *grumble.Args) {
-			a.String("key", "config key")
+			a.String("key", "config key to set")
 			a.String("value", "config value")
 		},
 		Flags: clusterFlags,
@@ -108,7 +108,7 @@ func addCmdConfig(cmd *grumble.Command) {
 		Name: "del",
 		Help: "del config of key",
 		Args: func(a *grumble.Args) {
-			a.String("key", "config key")
+			a.String("key", "config key to delete")
 		},
 		Flags: clusterFlags,
 		Run: func(c *grumble.Context) error {

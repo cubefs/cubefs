@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const (
@@ -80,6 +81,10 @@ type chunk struct {
 	status         bnapi.ChunkStatus
 	closed         bool
 	lastModifyTime int64
+
+	// io schedulers
+	readPool  taskpool.IoPool
+	writePool taskpool.IoPool
 }
 
 type FileInfo struct {
@@ -89,7 +94,7 @@ type FileInfo struct {
 	Size  uint64 `json:"size"`  // Chunk File Size ( file logic size)
 }
 
-func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, opts ...core.OptionFunc) (
+func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, readPool taskpool.IoPool, writePool taskpool.IoPool, opts ...core.OptionFunc) (
 	cs *chunk, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
@@ -103,7 +108,7 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, opt
 	}
 
 	// new chunkData fd
-	cd, err := storage.NewChunkData(ctx, vm, chunkFile, opt.Conf, opt.CreateDataIfMiss, opt.IoQos)
+	cd, err := storage.NewChunkData(ctx, vm, chunkFile, opt.Conf, opt.CreateDataIfMiss, opt.IoQos, readPool, writePool)
 	if err != nil {
 		span.Errorf("Failed new chunk data. dp:%s, err:%v", dataPath, err)
 		return nil, err
@@ -127,6 +132,8 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, opt
 		bidlimiter:     keycount.NewBlockingKeyCountLimit(1),
 		consistent:     core.NewConsistencyController(),
 		lastModifyTime: vm.Mtime,
+		readPool:       readPool,
+		writePool:      writePool,
 	}
 
 	// init compact task
@@ -149,10 +156,10 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, opt
 	return cs, err
 }
 
-func NewChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, opts ...core.OptionFunc) (
+func NewChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, readPool taskpool.IoPool, writePool taskpool.IoPool, opts ...core.OptionFunc) (
 	cs *Chunk, err error,
 ) {
-	c, err := newChunkStorage(ctx, dataPath, vm, opts...)
+	c, err := newChunkStorage(ctx, dataPath, vm, readPool, writePool, opts...)
 	if err != nil {
 		return nil, err
 	}

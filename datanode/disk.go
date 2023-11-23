@@ -15,7 +15,10 @@
 package datanode
 
 import (
+	"context"
 	"fmt"
+	syslog "log"
+	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -25,22 +28,21 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
-
-	"os"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/shirou/gopsutil/disk"
 )
 
 var (
 	// RegexpDataPartitionDir validates the directory name of a data partition.
-	RegexpDataPartitionDir, _        = regexp.Compile("^datapartition_(\\d)+_(\\d)+$")
-	RegexpCachePartitionDir, _       = regexp.Compile("^cachepartition_(\\d)+_(\\d)+$")
-	RegexpPreLoadPartitionDir, _     = regexp.Compile("^preloadpartition_(\\d)+_(\\d)+$")
-	RegexpExpiredDataPartitionDir, _ = regexp.Compile("^expired_datapartition_(\\d)+_(\\d)+$")
+	RegexpDataPartitionDir, _        = regexp.Compile(`^datapartition_(\d)+_(\d)+$`)
+	RegexpCachePartitionDir, _       = regexp.Compile(`^cachepartition_(\d)+_(\d)+$`)
+	RegexpPreLoadPartitionDir, _     = regexp.Compile(`^preloadpartition_(\d)+_(\d)+$`)
+	RegexpExpiredDataPartitionDir, _ = regexp.Compile(`^expired_datapartition_(\d)+_(\d)+$`)
 )
 
 const (
@@ -73,6 +75,10 @@ type Disk struct {
 	dataNode                                  *DataNode
 
 	limitFactor map[uint32]*rate.Limiter
+
+	// diskPartition info
+	diskPartition       *disk.PartitionStat
+	DiskErrPartitionSet map[uint64]struct{}
 }
 
 const (
@@ -81,7 +87,7 @@ const (
 
 type PartitionVisitor func(dp *DataPartition)
 
-func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk) {
+func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager) (d *Disk, err error) {
 	d = new(Disk)
 	d.Path = path
 	d.ReservedSpace = reservedSpace
@@ -92,8 +98,21 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.dataNode = space.dataNode
 	d.partitionMap = make(map[uint64]*DataPartition)
 	d.syncTinyDeleteRecordFromLeaderOnEveryDisk = make(chan bool, SyncTinyDeleteRecordFromLeaderOnEveryDisk)
-	d.computeUsage()
-	d.updateSpaceInfo()
+	err = d.computeUsage()
+	if err != nil {
+		return nil, err
+	}
+	err = d.updateSpaceInfo()
+	if err != nil {
+		return nil, err
+	}
+	// get disk partition info
+	d.diskPartition, err = loadutil.GetMatchParation(d.Path)
+	if err != nil {
+		// log but let execution continue
+		log.LogErrorf("get partition info error, path is %v error message %v", d.Path, err.Error())
+		err = nil
+	}
 	d.startScheduleToUpdateSpaceInfo()
 
 	d.limitFactor = make(map[uint32]*rate.Limiter, 0)
@@ -102,7 +121,12 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
 
+	d.DiskErrPartitionSet = make(map[uint64]struct{}, 0)
 	return
+}
+
+func (d *Disk) GetDiskPartition() *disk.PartitionStat {
+	return d.diskPartition
 }
 
 func (d *Disk) updateQosLimiter() {
@@ -144,7 +168,6 @@ func (d *Disk) PartitionCount() int {
 }
 
 func (d *Disk) CanWrite() bool {
-
 	if d.Status == proto.ReadWrite || !d.RejectWrite {
 		return true
 	}
@@ -165,6 +188,7 @@ func (d *Disk) computeUsage() (err error) {
 	fs := syscall.Statfs_t{}
 	err = syscall.Statfs(d.Path, &fs)
 	if err != nil {
+		log.LogErrorf("computeUsage. err %v", err)
 		return
 	}
 
@@ -197,6 +221,10 @@ func (d *Disk) computeUsage() (err error) {
 	for _, dp := range d.partitionMap {
 		allocatedSize += int64(dp.Size())
 	}
+
+	log.LogDebugf("computeUsage. fs info [%v,%v,%v,%v] total %v available %v DiskRdonlySpace %v ReservedSpace %v allocatedSize %v",
+		fs.Blocks, fs.Bsize, fs.Bavail, fs.Bfree, d.Total, d.Available, d.DiskRdonlySpace, d.ReservedSpace, allocatedSize)
+
 	atomic.StoreUint64(&d.Allocated, uint64(allocatedSize))
 	//  unallocated = math.Max(0, total - allocatedSize)
 	unallocated := total - allocatedSize
@@ -232,8 +260,20 @@ func (d *Disk) incReadErrCnt() {
 	atomic.AddUint64(&d.ReadErrCnt, 1)
 }
 
+func (d *Disk) getReadErrCnt() uint64 {
+	return atomic.LoadUint64(&d.ReadErrCnt)
+}
+
 func (d *Disk) incWriteErrCnt() {
 	atomic.AddUint64(&d.WriteErrCnt, 1)
+}
+
+func (d *Disk) getWriteErrCnt() uint64 {
+	return atomic.LoadUint64(&d.WriteErrCnt)
+}
+
+func (d *Disk) getTotalErrCnt() uint64 {
+	return d.getReadErrCnt() + d.getWriteErrCnt()
 }
 
 func (d *Disk) startScheduleToUpdateSpaceInfo() {
@@ -276,42 +316,80 @@ const (
 )
 
 func (d *Disk) checkDiskStatus() {
+	if d.Status == proto.Unavailable {
+		log.LogInfof("[checkDiskStatus] disk status is unavailable, no need to check, disk path(%v)", d.Path)
+		return
+	}
+
 	path := path.Join(d.Path, DiskStatusFile)
-	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0755)
+	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o755)
 	if err != nil {
-		d.triggerDiskError(err)
+		d.CheckDiskError(err, ReadFlag)
 		return
 	}
 	defer fp.Close()
 	data := []byte(DiskStatusFile)
 	_, err = fp.WriteAt(data, 0)
 	if err != nil {
-		d.triggerDiskError(err)
+		d.CheckDiskError(err, WriteFlag)
 		return
 	}
 	if err = fp.Sync(); err != nil {
-		d.triggerDiskError(err)
+		d.CheckDiskError(err, WriteFlag)
 		return
 	}
 	if _, err = fp.ReadAt(data, 0); err != nil {
-		d.triggerDiskError(err)
+		d.CheckDiskError(err, ReadFlag)
 		return
 	}
 }
 
-func (d *Disk) triggerDiskError(err error) {
+const DiskErrNotAssociatedWithPartition uint64 = 0 //use 0 for disk error without any data partition
+
+func (d *Disk) CheckDiskError(err error, rwFlag uint8) {
 	if err == nil {
 		return
 	}
-	log.LogWarnf("triggerDiskError disk err %s", err.Error())
-	if IsDiskErr(err.Error()) {
-		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
-		exporter.Warning(mesg)
-		log.LogErrorf(mesg)
-		d.ForceExitRaftStore()
-		d.Status = proto.Unavailable
+	log.LogWarnf("CheckDiskError disk err: %v, disk:%v", err.Error(), d.Path)
+
+	if !IsDiskErr(err.Error()) {
+		return
 	}
-	return
+
+	d.triggerDiskError(rwFlag, DiskErrNotAssociatedWithPartition)
+}
+
+func (d *Disk) doDiskError() {
+	d.Status = proto.Unavailable
+	d.ForceExitRaftStore()
+}
+
+func (d *Disk) triggerDiskError(rwFlag uint8, dpId uint64) {
+	mesg := fmt.Sprintf("disk path %v error on %v, dpId %v", d.Path, LocalIP, dpId)
+	exporter.Warning(mesg)
+	log.LogWarnf(mesg)
+
+	if rwFlag == WriteFlag {
+		d.incWriteErrCnt()
+	} else if rwFlag == ReadFlag {
+		d.incReadErrCnt()
+	} else {
+		d.incWriteErrCnt()
+		d.incReadErrCnt()
+	}
+
+	d.AddDiskErrPartition(dpId)
+
+	diskErrCnt := d.getTotalErrCnt()
+	diskErrPartitionCnt := d.GetDiskErrPartitionCount()
+	if diskErrCnt >= d.dataNode.diskUnavailableErrorCount || diskErrPartitionCnt >= d.dataNode.diskUnavailablePartitionErrorCount {
+		msg := fmt.Sprintf("set disk unavailable for too many disk error, "+
+			"disk path(%v), ip(%v), diskErrCnt(%v) threshold(%v), diskErrPartitionCnt(%v) threshold(%v)",
+			d.Path, LocalIP, diskErrCnt, d.dataNode.diskUnavailableErrorCount, diskErrPartitionCnt, d.dataNode.diskUnavailablePartitionErrorCount)
+		exporter.Warning(msg)
+		log.LogWarnf(msg)
+		d.doDiskError()
+	}
 }
 
 func (d *Disk) updateSpaceInfo() (err error) {
@@ -321,15 +399,12 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	}
 
 	if d.Status == proto.Unavailable {
-
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		log.LogErrorf(mesg)
 		exporter.Warning(mesg)
 		d.ForceExitRaftStore()
-
 	} else if d.Available <= 0 {
 		d.Status = proto.ReadOnly
-
 	} else {
 		d.Status = proto.ReadWrite
 	}
@@ -337,7 +412,6 @@ func (d *Disk) updateSpaceInfo() (err error) {
 	log.LogDebugf("action[updateSpaceInfo] disk(%v) total(%v) available(%v) remain(%v) "+
 		"restSize(%v) preRestSize (%v) maxErrs(%v) readErrs(%v) writeErrs(%v) status(%v)", d.Path,
 		d.Total, d.Available, d.Unallocated, d.ReservedSpace, d.DiskRdonlySpace, d.MaxErrCnt, d.ReadErrCnt, d.WriteErrCnt, d.Status)
-
 	return
 }
 
@@ -354,6 +428,7 @@ func (d *Disk) AttachDataPartition(dp *DataPartition) {
 func (d *Disk) DetachDataPartition(dp *DataPartition) {
 	d.Lock()
 	delete(d.partitionMap, dp.partitionID)
+	delete(d.DiskErrPartitionSet, dp.partitionID)
 	d.Unlock()
 
 	d.computeUsage()
@@ -414,15 +489,14 @@ func (d *Disk) isExpiredPartitionDir(filename string) (isExpiredPartitionDir boo
 }
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
-func (d *Disk) RestorePartition(visitor PartitionVisitor) {
-	var convert = func(node *proto.DataNodeInfo) *DataNodeInfo {
+func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
+	convert := func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
 		result.PersistenceDataPartitions = node.PersistenceDataPartitions
 		return result
 	}
 	var dataNode *proto.DataNodeInfo
-	var err error
 	for i := 0; i < 3; i++ {
 		dataNode, err = MasterClient.NodeAPI().GetDataNode(d.space.dataNode.localServerAddr)
 		if err != nil {
@@ -445,7 +519,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 	fileInfoList, err := os.ReadDir(d.Path)
 	if err != nil {
 		log.LogErrorf("action[RestorePartition] read dir(%v) err(%v).", d.Path, err)
-		return
+		return err
 	}
 
 	var (
@@ -458,7 +532,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			if d.isExpiredPartitionDir(filename) {
 				name := path.Join(d.Path, filename)
 				toDeleteExpiredPartitionNames = append(toDeleteExpiredPartitionNames, name)
-				log.LogInfof("action[RestorePartition]: find expired partition on path(%s)", name)
+				log.LogInfof("action[RestorePartition] find expired partition on path(%s)", name)
 			}
 			continue
 		}
@@ -494,17 +568,17 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 					partitionID, err.Error())
 				log.LogError(mesg)
 				exporter.Warning(mesg)
+				syslog.Println(mesg)
 				return
 			}
 			if visitor != nil {
 				visitor(dp)
 			}
-
 		}(partitionID, filename)
 	}
 
-	log.LogInfof("action[RestorePartition] expiredPartitions %v", toDeleteExpiredPartitionNames)
 	if len(toDeleteExpiredPartitionNames) > 0 {
+		log.LogInfof("action[RestorePartition] expiredPartitions %v, disk %v", toDeleteExpiredPartitionNames, d.Path)
 
 		notDeletedExpiredPartitionNames := d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
 
@@ -512,18 +586,16 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) {
 			go func(toDeleteExpiredPartitions []string) {
 				ticker := time.NewTicker(ExpiredPartitionExistTime)
 				log.LogInfof("action[RestorePartition] delete expiredPartitions automatically start, toDeleteExpiredPartitions %v", toDeleteExpiredPartitions)
-				for {
-					select {
-					case <-ticker.C:
-						d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
-						ticker.Stop()
-						log.LogInfof("action[RestorePartition] delete expiredPartitions automatically finish")
-					}
-				}
+
+				<-ticker.C
+				d.deleteExpiredPartitions(toDeleteExpiredPartitionNames)
+				ticker.Stop()
+				log.LogInfof("action[RestorePartition] delete expiredPartitions automatically finish")
 			}(notDeletedExpiredPartitionNames)
 		}
 	}
 	wg.Wait()
+	return err
 }
 
 func (d *Disk) deleteExpiredPartitions(toDeleteExpiredPartitionNames []string) (notDeletedExpiredPartitionNames []string) {
@@ -574,6 +646,24 @@ func (d *Disk) updateDisk(allocSize uint64) {
 
 func (d *Disk) getSelectWeight() float64 {
 	return float64(atomic.LoadUint64(&d.Allocated)) / float64(d.Total)
+}
+
+func (d *Disk) AddDiskErrPartition(dpId uint64) {
+	if _, ok := d.DiskErrPartitionSet[dpId]; !ok {
+		d.DiskErrPartitionSet[dpId] = struct{}{}
+	}
+}
+
+func (d *Disk) GetDiskErrPartitionList() (diskErrPartitionList []uint64) {
+	diskErrPartitionList = make([]uint64, 0)
+	for k := range d.DiskErrPartitionSet {
+		diskErrPartitionList = append(diskErrPartitionList, k)
+	}
+	return diskErrPartitionList
+}
+
+func (d *Disk) GetDiskErrPartitionCount() uint64 {
+	return uint64(len(d.DiskErrPartitionSet))
 }
 
 // isExpiredPartition return whether one partition is expired

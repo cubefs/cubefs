@@ -12,5 +12,5 @@
   "warnLogDir": "_dir_/logs",
   "walDir": "_dir_/wal",
   "storeDir": "_dir_/store",
-  "metaNodeReservedMem": "2147483648"
+  "metaNodeReservedMem": "536870912"
 }

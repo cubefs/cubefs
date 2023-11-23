@@ -61,7 +61,7 @@ var _ hash.Hash = (*dummyHash)(nil)
 // implements hash.Hash
 func (d dummyHash) Write(p []byte) (n int, err error) { return len(p), nil }
 func (d dummyHash) Sum(b []byte) []byte               { return []byte{} }
-func (d dummyHash) Reset()                            {}
+func (d dummyHash) Reset()                            { _ = struct{}{} }
 func (d dummyHash) Size() int                         { return 0 }
 func (d dummyHash) BlockSize() int                    { return 0 }
 
@@ -124,11 +124,12 @@ func (h HasherMap) ToWriter() io.Writer {
 type HashSumMap map[HashAlgorithm][]byte
 
 // GetSum get checksum value and ok via HashAlgorithm
-//   HashAlgDummy  returns nil, bool
-//   HashAlgCRC32  returns uint32, bool
-//   HashAlgMD5    returns string(32), bool
-//   HashAlgSHA1   returns string(40), bool
-//   HashAlgSHA256 returns string(64), bool
+//
+//	HashAlgDummy  returns nil, bool
+//	HashAlgCRC32  returns uint32, bool
+//	HashAlgMD5    returns string(32), bool
+//	HashAlgSHA1   returns string(40), bool
+//	HashAlgSHA256 returns string(64), bool
 func (h HashSumMap) GetSum(key HashAlgorithm) (interface{}, bool) {
 	b, ok := h[key]
 	if !ok {
@@ -259,18 +260,19 @@ func (loc *Location) Copy() Location {
 
 // Encode transfer Location to slice byte
 // Returns the buf created by me
-//  (n) means max-n bytes
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//  |  field  | crc | clusterid  | codemode |    size     |  blobsize  |
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//  | n-bytes |  4  | uvarint(5) |    1     | uvarint(10) | uvarint(5) |
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//          25   +  (5){len(blobs)}   +   len(Blobs) * 20
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//  |  blobs  | minbid | vid | count |           ...                   |
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//  | n-bytes |  (10)  | (5) |  (5)  | (20) | (20) |       ...         |
-//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//
+//	(n) means max-n bytes
+//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//	|  field  | crc | clusterid  | codemode |    size     |  blobsize  |
+//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//	| n-bytes |  4  | uvarint(5) |    1     | uvarint(10) | uvarint(5) |
+//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//	        25   +  (5){len(blobs)}   +   len(Blobs) * 20
+//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//	|  blobs  | minbid | vid | count |           ...                   |
+//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//	| n-bytes |  (10)  | (5) |  (5)  | (20) | (20) |       ...         |
+//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 func (loc *Location) Encode() []byte {
 	if loc == nil {
 		return nil

@@ -2,7 +2,7 @@
 ## Configuration Description
 
 | Keyword       | Parameter Type | Description                                                                                                                     | Required |
-|---------------|----------------|---------------------------------------------------------------------------------------------------------------------------------|----------|
+|:---------------|:----------------|:---------------------------------------------------------------------------------------------------------------------------------|:----------|
 | role          | string         | Role must be configured as "datanode"                                                                                           | Yes      |
 | listen        | string         | Port on which the data node starts TCP listening as a server                                                                    | Yes      |
 | localIP       | string         | IP address selected by the data node as a server                                                                                | No       |

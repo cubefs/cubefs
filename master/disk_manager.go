@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util"
+	//"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -57,41 +57,68 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] is not exist", c.Name, partitionID))
 				continue
 			}
-
+			//do not update status if paused
+			if partition.IsDecommissionPaused() {
+				continue
+			}
 			_, err = c.getVol(partition.VolName)
 			if err != nil {
 				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],partitionID[%v] vol(%s) is not exist",
 					c.Name, partitionID, partition.VolName))
 				continue
 			}
-			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replics %v conf replics num %v",
+			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replicas %v conf replicas num %v",
 				partition.PartitionID, partition.isSpecialReplicaCnt(), len(partition.Replicas), int(partition.ReplicaNum))
-			if len(partition.Replicas) == 0 ||
-				(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
-				(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
-				newBadDpIds = append(newBadDpIds, partitionID)
-				log.LogInfof("action[checkDiskRecoveryProgress] dp %v newBadDpIds [%v] replics %v conf replics num %v",
-					partition.PartitionID, newBadDpIds, len(partition.Replicas), int(partition.ReplicaNum))
+			//if len(partition.Replicas) == 0 ||
+			//	(!partition.isSpecialReplicaCnt() && len(partition.Replicas) < int(partition.ReplicaNum)) ||
+			//	(partition.isSpecialReplicaCnt() && len(partition.Replicas) > int(partition.ReplicaNum)) {
+			//	newBadDpIds = append(newBadDpIds, partitionID)
+			//	log.LogInfof("action[checkDiskRecoveryProgress] dp %v newBadDpIds [%v] replics %v conf replics num %v",
+			//		partition.PartitionID, newBadDpIds, len(partition.Replicas), int(partition.ReplicaNum))
+			//	continue
+			//}
+
+			newReplica, _ := partition.getReplica(partition.DecommissionDstAddr)
+			if newReplica == nil {
+				log.LogWarnf("action[checkDiskRecoveryProgress] dp %v cannot find replica %v", partition.PartitionID,
+					partition.DecommissionDstAddr)
 				continue
 			}
-
-			if partition.getMinus() < util.GB {
-				partition.isRecover = false
+			if newReplica.isRepairing() {
+				if !partition.isSpecialReplicaCnt() &&
+					time.Now().Sub(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					partition.DecommissionNeedRollback = true
+					partition.SetDecommissionStatus(DecommissionFail)
+					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v]  recovered timeout %s",
+						c.Name, partitionID, time.Now().Sub(partition.RecoverStartTime).String()))
+				} else {
+					newBadDpIds = append(newBadDpIds, partitionID)
+				}
+			} else {
+				if partition.isSpecialReplicaCnt() {
+					continue //change dp decommission status in decommission function
+				}
+				//do not add to BadDataPartitionIds
+				if newReplica.isUnavailable() {
+					partition.DecommissionNeedRollback = true
+					partition.SetDecommissionStatus(DecommissionFail)
+					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] has recovered failed", c.Name, partitionID))
+				} else {
+					partition.SetDecommissionStatus(DecommissionSuccess) //can be readonly or readwrite
+					Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
+				}
 				partition.RLock()
 				c.syncUpdateDataPartition(partition)
 				partition.RUnlock()
-				Warn(c.Name, fmt.Sprintf("clusterID[%v],partitionID[%v] has recovered success", c.Name, partitionID))
-			} else {
-				newBadDpIds = append(newBadDpIds, partitionID)
 			}
 		}
 
 		if len(newBadDpIds) == 0 {
-			Warn(c.Name, fmt.Sprintf("clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
+			Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],node:disk[%v] has recovered success", c.Name, key))
 			c.BadDataPartitionIds.Delete(key)
 		} else {
 			c.BadDataPartitionIds.Store(key, newBadDpIds)
-			log.LogInfof("BadDataPartitionIds key(%s) still have (%d) dp in recover", key, len(newBadDpIds))
+			log.LogInfof("action[checkDiskRecoveryProgress]BadDataPartitionIds key(%s) still have (%d) dp in recover", key, len(newBadDpIds))
 		}
 
 		return true
@@ -141,16 +168,24 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPa
 	return
 }
 
+const (
+	ManualDecommission uint32 = iota
+	AutoDecommission
+)
+
 type DecommissionDisk struct {
-	SrcAddr               string
-	DiskPath              string
-	DecommissionStatus    uint32
-	DecommissionRaftForce bool
-	DecommissionRetry     uint8
-	DecommissionDpTotal   int
-	DecommissionTerm      uint64
-	DecommissionLimit     int
-	DiskDisable           bool
+	SrcAddr                  string
+	DstAddr                  string
+	DiskPath                 string
+	DecommissionStatus       uint32
+	DecommissionRaftForce    bool
+	DecommissionRetry        uint8
+	DecommissionDpTotal      int
+	DecommissionTerm         uint64
+	DecommissionDpCount      int
+	DiskDisable              bool
+	Type                     uint32
+	DecommissionCompleteTime int64
 }
 
 func (dd *DecommissionDisk) GenerateKey() string {
@@ -184,15 +219,15 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		return DecommissionSuccess, float64(1)
 	}
 
-	if dd.GetDecommissionStatus() == DecommissionStop {
-		return DecommissionStop, float64(0)
+	if dd.GetDecommissionStatus() == DecommissionPause {
+		return DecommissionPause, float64(0)
 	}
 
 	defer func() {
 		c.syncUpdateDecommissionDisk(dd)
 	}()
 	if dd.DecommissionRetry >= defaultDecommissionRetryLimit {
-		dd.SetDecommissionStatus(DecommissionFail)
+		dd.markDecommissionFailed()
 		return DecommissionFail, float64(0)
 	}
 	//Get all dp on this disk
@@ -200,15 +235,17 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 	runningNum := 0
 	prepareNum := 0
 	stopNum := 0
+	//get the latest decommission result
 	partitions := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 
 	if len(partitions) == 0 {
-		dd.SetDecommissionStatus(DecommissionSuccess)
+		log.LogDebugf("action[updateDecommissionDiskStatus]no partitions left:%v", dd.GenerateKey())
+		dd.markDecommissionSuccess()
 		return DecommissionSuccess, float64(1)
 	}
 
 	for _, dp := range partitions {
-		if dp.IsDecommissionFailed() {
+		if dp.IsDecommissionFailed() && !dp.needRollback(c) {
 			failedNum++
 			failedPartitionIds = append(failedPartitionIds, dp.PartitionID)
 		}
@@ -221,25 +258,26 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 			preparePartitionIds = append(preparePartitionIds, dp.PartitionID)
 		}
 		//disk may stop before and will be counted into partitions
-		if dp.GetDecommissionStatus() == DecommissionStop {
+		if dp.GetDecommissionStatus() == DecommissionPause {
 			stopNum++
 			stopPartitionIds = append(stopPartitionIds, dp.PartitionID)
 		}
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
-	progress = float64(totalNum-len(partitions)+stopNum) / float64(totalNum)
+	progress = float64(totalNum-len(partitions)) / float64(totalNum)
 	if debug {
-		log.LogInfof("action[updateDecommissionDiskStatus] progress[%v] totalNum[%v] "+
-			"partitionIds[%v] FailedNum[%v] failedPartitionIds[%v], runningNum[%v] runningDp[%v], prepareNum[%v] prepareDp[%v] "+
-			"stopNum[%v] stopPartitionIds[%v]",
-			progress, totalNum, partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
+		log.LogInfof("action[updateDecommissionDiskStatus] disk[%v] progress[%v] totalNum[%v] "+
+			"partitionIds %v  FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
+			"stopNum[%v] stopPartitionIds %v ",
+			dd.GenerateKey(), progress, totalNum, partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
 			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
 	}
-	if failedNum >= (len(partitions) - stopNum) {
-		dd.SetDecommissionStatus(DecommissionFail)
+	if failedNum >= (len(partitions)-stopNum) && failedNum != 0 {
+		dd.markDecommissionFailed()
 		return DecommissionFail, progress
 	}
-	return dd.GetDecommissionStatus(), progress
+	dd.SetDecommissionStatus(DecommissionRunning)
+	return DecommissionRunning, progress
 }
 
 func (dd *DecommissionDisk) GetDecommissionStatus() uint32 {
@@ -249,27 +287,20 @@ func (dd *DecommissionDisk) GetDecommissionStatus() uint32 {
 func (dd *DecommissionDisk) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&dd.DecommissionStatus, status)
 }
-func (dd *DecommissionDisk) GetDecommissionFailedDPByTerm(c *Cluster) (error, []uint64) {
-	var (
-		failedDps     []uint64
-		err           error
-		badPartitions []*DataPartition
-	)
-	if dd.GetDecommissionStatus() != DecommissionFail {
-		err = fmt.Errorf("action[GetDecommissionDiskFailedDP]dataNode[%s] disk[%s] status must be failed,but[%d]",
-			dd.SrcAddr, dd.DiskPath, dd.GetDecommissionStatus())
-		return err, failedDps
-	}
 
-	badPartitions = c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
-	log.LogDebugf("action[GetDecommissionFailedDPByTerm] partitions len %v", len(badPartitions))
-	for _, dp := range badPartitions {
-		if dp.IsDecommissionFailed() {
-			failedDps = append(failedDps, dp.PartitionID)
-		}
-	}
-	log.LogWarnf("action[GetDecommissionDiskFailedDP] failed dp list [%v]", failedDps)
-	return nil, failedDps
+func (dd *DecommissionDisk) markDecommissionSuccess() {
+	dd.SetDecommissionStatus(DecommissionSuccess)
+	dd.DecommissionCompleteTime = time.Now().Unix()
+}
+
+func (dd *DecommissionDisk) markDecommissionFailed() {
+	dd.SetDecommissionStatus(DecommissionFail)
+	dd.DecommissionCompleteTime = time.Now().Unix()
+}
+
+func (dd *DecommissionDisk) GetLatestDecommissionDP(c *Cluster) (partitions []*DataPartition) {
+	partitions = c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+	return
 }
 
 func (dd *DecommissionDisk) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {
@@ -294,12 +325,46 @@ func (dd *DecommissionDisk) GetDecommissionFailedDP(c *Cluster) (error, []uint64
 	return nil, failedDps
 }
 
-func (dd *DecommissionDisk) markDecommission(raftForce bool, limit int) {
-	dd.SetDecommissionStatus(markDecommission)
-	//reset decommission status for failed once
-	dd.DecommissionRetry = 0
-	dd.DecommissionDpTotal = InvalidDecommissionDpCnt
-	dd.DecommissionRaftForce = raftForce
+func (dd *DecommissionDisk) markDecommission(dstPath string, raftForce bool, limit int) {
+	//if transfer from pause,do not change these attrs
+	if dd.GetDecommissionStatus() != DecommissionPause {
+		dd.DecommissionDpTotal = InvalidDecommissionDpCnt
+		dd.DecommissionDpCount = limit
+		dd.DecommissionRaftForce = raftForce
+		dd.DstAddr = dstPath
+		dd.DecommissionRetry = 0
+	}
 	dd.DecommissionTerm = dd.DecommissionTerm + 1
-	dd.DecommissionLimit = limit
+	dd.SetDecommissionStatus(markDecommission)
+}
+
+func (dd *DecommissionDisk) canAddToDecommissionList() bool {
+	status := dd.GetDecommissionStatus()
+	if status == DecommissionRunning ||
+		status == markDecommission {
+		return true
+	}
+	return false
+}
+
+func (dd *DecommissionDisk) AddToNodeSet() bool {
+	status := dd.GetDecommissionStatus()
+	if status == DecommissionRunning ||
+		status == markDecommission {
+		return true
+	}
+	return false
+}
+
+func (dd *DecommissionDisk) IsManualDecommissionDisk() bool {
+	return dd.Type == ManualDecommission
+}
+
+func (dd *DecommissionDisk) CanBePaused() bool {
+	status := dd.GetDecommissionStatus()
+	if status == DecommissionRunning || status == markDecommission ||
+		status == DecommissionPause {
+		return true
+	}
+	return false
 }

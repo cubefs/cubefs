@@ -106,10 +106,14 @@ type ExtentHandler struct {
 
 	// Signaled in receiver ONLY to exit *sender*.
 	doneSender chan struct{}
+
+	// ver update need alloc new extent
+	verUpdate chan uint64
 }
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *ExtentHandler {
+	// log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
 	eh := &ExtentHandler{
 		stream:       stream,
 		id:           GetExtentHandlerID(),
@@ -122,6 +126,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		reply:        make(chan *Packet, 1024),
 		doneSender:   make(chan struct{}),
 		doneReceiver: make(chan struct{}),
+		verUpdate:    make(chan uint64),
 	}
 
 	go eh.receiver()
@@ -132,8 +137,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)StoreMode(%v)Status(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.storeMode, eh.status)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -204,10 +209,14 @@ func (eh *ExtentHandler) sender() {
 
 	for {
 		select {
+		case <-eh.verUpdate:
+			eh.dp = nil
+			eh.key = nil
+			log.LogInfof("action[ExtentHandler] ver update in sender process and set dp and key as nil")
 		//		case <-t.C:
 		//			log.LogDebugf("sender alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.request:
-			//log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
@@ -236,6 +245,9 @@ func (eh *ExtentHandler) sender() {
 			// For TinyStore, the extent offset is always 0 in the request packet,
 			// and the reply packet tells the real extent offset.
 			extOffset := int(packet.KernelOffset) - eh.fileOffset
+			if eh.key != nil {
+				extOffset += int(eh.key.ExtentOffset)
+			}
 
 			// fill the packet according to the extent
 			packet.PartitionID = eh.dp.PartitionID
@@ -250,7 +262,7 @@ func (eh *ExtentHandler) sender() {
 			}
 			packet.StartT = time.Now().UnixNano()
 
-			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
+			log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 
 			if err = packet.writeToConn(eh.conn); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
@@ -258,9 +270,6 @@ func (eh *ExtentHandler) sender() {
 				eh.setRecovery()
 			}
 			eh.reply <- packet
-
-			log.LogDebugf("ExtentHandler sender: sent to the reply channel, eh(%v) packet(%v)", eh, packet)
-
 		case <-eh.doneSender:
 			eh.setClosed()
 			log.LogDebugf("sender: done, eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
@@ -278,9 +287,9 @@ func (eh *ExtentHandler) receiver() {
 		//		case <-t.C:
 		//			log.LogDebugf("receiver alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.reply:
-			//log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+			log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
-			//log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+			log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
@@ -294,8 +303,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			eh.empty <- struct{}{}
 		}
 	}()
-
-	//log.LogDebugf("processReply enter: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
@@ -312,18 +319,22 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-	err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
+	err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
 		eh.processReplyError(packet, err.Error())
 		return
 	}
 
-	log.LogDebugf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
-
 	if reply.ResultCode != proto.OpOk {
-		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
-		eh.processReplyError(packet, errmsg)
-		return
+		if reply.ResultCode != proto.ErrCodeVersionOpError {
+			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
+			log.LogDebugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
+			eh.processReplyError(packet, errmsg)
+			return
+		}
+		// todo(leonchang) need check safety
+		log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
+		eh.stream.GetExtents()
 	}
 
 	if !packet.isValidWriteReply(reply) {
@@ -359,6 +370,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			ExtentId:     extID,
 			ExtentOffset: extOffset,
 			Size:         packet.Size,
+			SnapInfo: &proto.ExtSnapInfo{
+				VerSeq: reply.VerSeq,
+			},
 		}
 	} else {
 		eh.key.Size += packet.Size
@@ -376,15 +390,12 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 	if err := eh.recoverPacket(packet); err != nil {
 		eh.discardPacket(packet)
 		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
-	} else {
-		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v)", eh, eh.recoverHandler, packet, errmsg)
 	}
 }
 
 func (eh *ExtentHandler) flush() (err error) {
 	eh.flushPacket()
 	eh.waitForFlush()
-
 	err = eh.appendExtentKey()
 	if err != nil {
 		return
@@ -427,6 +438,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			var discard []proto.ExtentKey
 			discard = eh.stream.extents.Append(eh.key, true)
 			err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, *eh.key, discard)
+
 			if err == nil && len(discard) > 0 {
 				eh.stream.extents.RemoveDiscard(discard)
 			}
@@ -507,7 +519,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		extID int
 	)
 
-	//log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
+	log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
 	exclude := make(map[string]struct{})
 
@@ -603,7 +615,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 		return extID, errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 	}
 
-	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime*2); err != nil {
+	if err = p.ReadFromConnWithVer(conn, proto.ReadDeadlineTime*2); err != nil {
 		return extID, errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 	}
 
@@ -641,14 +653,17 @@ func (eh *ExtentHandler) getStatus() int32 {
 }
 
 func (eh *ExtentHandler) setClosed() bool {
+	//	log.LogDebugf("action[ExtentHandler.setClosed] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusOpen, ExtentStatusClosed)
 }
 
 func (eh *ExtentHandler) setRecovery() bool {
+	// log.LogDebugf("action[ExtentHandler.setRecovery] stack (%v)", string(debug.Stack()))
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusClosed, ExtentStatusRecovery)
 }
 
 func (eh *ExtentHandler) setError() bool {
+	// log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
 	if proto.IsHot(eh.stream.client.volumeType) {
 		atomic.StoreInt32(&eh.stream.status, StreamerError)
 	}

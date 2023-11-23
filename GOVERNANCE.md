@@ -19,7 +19,7 @@ The term of the project lead is one year, with no term limit restriction.
 
 The project lead is elected by CubeFS maintainers according to an individual's technical merit to CubeFS project.
 
-The current project lead is identified in the top level [MAINTAINERS](MAINTAINERS) file with the string
+The current project lead is identified in the top level [MAINTAINERS](MAINTAINERS.md) file with the string
 `project lead` and the term behind the name.
 
 
@@ -32,15 +32,25 @@ participate in Pull Request reviews. Maintainers are expected to respond to assi
 in a *reasonable* time frame, either providing insights, or assign the Pull Requests to other
 maintainers.
 
-Every Maintainer is listed in the top-level [MAINTAINERS](https://github.com/cubefs/cubefs/blob/master/MAINTAINERS.md)
-file.
+Every Maintainer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
 
+## Committer
+
+Committer is an active contributor in the community who continuously makes contributions to the community by contributing codes, documentation, participating in community discussions, or helping community users answer questions, etc. 
+
+Typically, they need to have a good understanding of the project to help more community users quickly join the project. After becoming a committer, you will be responsible for reviewing relevant issues or PRs, and your opinions are also extremely important to the community.
+
+Every Committer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
+
+## Becoming a committer
+
+If you are interested in becoming a committer, please email `maintainers@cubefs.groups.io`, and you will receive an invitation letter from the community after the review is passed.
 
 ## Becoming a Maintainer
 
 On successful merge of a significant pull request any current maintainer can reach
 to the author behind the pull request and ask them if they are willing to become a CubeFS
-maintainer. The email of the new maintainer invitation should be cc'ed to `cubefs-maintainers@groups.io`
+maintainer. The email of the new maintainer invitation should be cc'ed to `maintainers@cubefs.groups.io`
 as part of the process.
 
 ## Changes in Maintainership
@@ -81,7 +91,7 @@ voting process as in `Changes in Project Lead`.
 
 Decisions are build on consensus between maintainers.
 Proposals and ideas can either be submitted for agreement via a github issue or PR,
-or by sending an email to `cubefs-maintainers@groups.io`.
+or by sending an email to `maintainers@cubefs.groups.io`.
 
 In general, we prefer that technical issues and maintainer membership are amicably worked out between the persons involved.
 If a dispute cannot be decided independently, get a third-party maintainer (e.g. a mutual contact with some background
@@ -92,7 +102,7 @@ Decision making process should be transparent to adhere to
 the principles of CubeFS project.
 
 All proposals, ideas, and decisions by maintainers or the project lead
-should either be part of a github issue or PR, or be sent to `cubefs-maintainers@groups.io`.
+should either be part of a github issue or PR, or be sent to `maintainers@cubefs.groups.io`.
 
 ## Github Project Administration
 
@@ -122,7 +132,7 @@ The CubeFS is open to receive new plugins as part of the CubeFS repo. The submis
 
 CubeFS might be involved in CNCF (or other CNCF projects) related
 marketing, events, or activities. Any maintainer could help driving the CubeFS involvement, as long as
-she/he sends email to `cubefs-maintainers@groups.io` (or create a GitHub Pull Request) to call for participation
+she/he sends email to `maintainers@cubefs.groups.io` (or create a GitHub Pull Request) to call for participation
 from other maintainers. The `Call for Participation` should be kept open for no less than a week if time
 permits, or a _reasonable_ time frame to allow maintainers to have a chance to volunteer.
 

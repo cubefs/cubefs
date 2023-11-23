@@ -56,6 +56,14 @@ func (opts *BlockBasedTableOptions) SetCacheIndexAndFilterBlocks(value bool) {
 	C.rocksdb_block_based_options_set_cache_index_and_filter_blocks(opts.c, boolToChar(value))
 }
 
+// SetCacheIndexAndFilterBlocksWithHighPriority sets cache index and filter
+// blocks with high priority (if cache_index_and_filter_blocks is enabled).
+// If set to true, depending on implementation of block cache,
+// index and filter blocks may be less likely to be evicted than data blocks.
+func (opts *BlockBasedTableOptions) SetCacheIndexAndFilterBlocksWithHighPriority(value bool) {
+	C.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(opts.c, boolToChar(value))
+}
+
 // SetPinL0FilterAndIndexBlocksInCache sets cache_index_and_filter_blocks.
 // If is true and the below is true (hash_index_allow_collision), then
 // filter and index blocks are stored in the cache, but a reference is
@@ -63,6 +71,15 @@ func (opts *BlockBasedTableOptions) SetCacheIndexAndFilterBlocks(value bool) {
 // evicted from cache when the table reader is freed.
 func (opts *BlockBasedTableOptions) SetPinL0FilterAndIndexBlocksInCache(value bool) {
 	C.rocksdb_block_based_options_set_pin_l0_filter_and_index_blocks_in_cache(opts.c, boolToChar(value))
+}
+
+// SetPinTopLevelIndexAndFilter set that if cache_index_and_filter_blocks is true, then
+// the top-level index of partitioned filter and index blocks are stored in
+// the cache, but a reference is held in the "table reader" object so the
+// blocks are pinned and only evicted from cache when the table reader is
+// freed. This is not limited to l0 in LSM tree.
+func (opts *BlockBasedTableOptions) SetPinTopLevelIndexAndFilter(value bool) {
+	C.rocksdb_block_based_options_set_pin_top_level_index_and_filter(opts.c, boolToChar(value))
 }
 
 // SetBlockSize sets the approximate size of user data packed per block.
@@ -92,6 +109,39 @@ func (opts *BlockBasedTableOptions) SetBlockSizeDeviation(blockSizeDeviation int
 // Default: 16
 func (opts *BlockBasedTableOptions) SetBlockRestartInterval(blockRestartInterval int) {
 	C.rocksdb_block_based_options_set_block_restart_interval(opts.c, C.int(blockRestartInterval))
+}
+
+// SetIndexBlockRestartInterval is the same as SetBlockRestartInterval but used for the index block.
+// Default: 1
+func (opts *BlockBasedTableOptions) SetIndexBlockRestartInterval(indexBlockRestartInterval int) {
+	C.rocksdb_block_based_options_set_index_block_restart_interval(opts.c, C.int(indexBlockRestartInterval))
+}
+
+// SetMetadataBlockSize sets the block size for partitioned metadata.
+// Currently applied to indexes when
+// kTwoLevelIndexSearch is used and to filters when partition_filters is used.
+// Note: Since in the current implementation the filters and index partitions
+// are aligned, an index/filter block is created when either index or filter
+// block size reaches the specified limit.
+// Note: this limit is currently applied to only index blocks; a filter
+// partition is cut right after an index block is cut
+// Default: 4096
+func (opts *BlockBasedTableOptions) SetMetadataBlockSize(metadataBlockSize uint64) {
+	C.rocksdb_block_based_options_set_metadata_block_size(opts.c, C.uint64_t(metadataBlockSize))
+}
+
+// SetPartitionFilters sets using partitioned full filters for each SST file.
+// This option is incompatible with block-based filters.
+// Note: currently this option requires kTwoLevelIndexSearch to be set as well.
+// Default: false
+func (opts *BlockBasedTableOptions) SetPartitionFilters(value bool) {
+	C.rocksdb_block_based_options_set_partition_filters(opts.c, boolToChar(value))
+}
+
+// SetUseDeltaEncoding sets using delta encoding to compress keys in blocks.
+// ReadOptions::pin_data requires this option to be disabled.
+func (opts *BlockBasedTableOptions) SetUseDeltaEncoding(value bool) {
+	C.rocksdb_block_based_options_set_use_delta_encoding(opts.c, boolToChar(value))
 }
 
 // SetFilterPolicy sets the filter policy opts reduce disk reads.
@@ -139,6 +189,35 @@ func (opts *BlockBasedTableOptions) SetBlockCacheCompressed(cache *Cache) {
 // Default: true
 func (opts *BlockBasedTableOptions) SetWholeKeyFiltering(value bool) {
 	C.rocksdb_block_based_options_set_whole_key_filtering(opts.c, boolToChar(value))
+}
+
+// SetFormatVersion sets the format version.
+// We currently have five versions:
+// 0 -- This version is currently written out by all RocksDB's versions by
+// default.  Can be read by really old RocksDB's. Doesn't support changing
+// checksum (default is CRC32).
+// 1 -- Can be read by RocksDB's versions since 3.0. Supports non-default
+// checksum, like xxHash. It is written by RocksDB when
+// BlockBasedTableOptions::checksum is something other than kCRC32c. (version
+// 0 is silently upconverted)
+// 2 -- Can be read by RocksDB's versions since 3.10. Changes the way we
+// encode compressed blocks with LZ4, BZip2 and Zlib compression. If you
+// don't plan to run RocksDB before version 3.10, you should probably use
+// this.
+// 3 -- Can be read by RocksDB's versions since 5.15. Changes the way we
+// encode the keys in index blocks. If you don't plan to run RocksDB before
+// version 5.15, you should probably use this.
+// This option only affects newly written tables. When reading existing
+// tables, the information about version is read from the footer.
+// 4 -- Can be read by RocksDB's versions since 5.16. Changes the way we
+// encode the values in index blocks. If you don't plan to run RocksDB before
+// version 5.16 and you are using index_block_restart_interval > 1, you should
+// probably use this as it would reduce the index size.
+// This option only affects newly written tables. When reading existing
+// tables, the information about version is read from the footer.
+// Default: 2
+func (opts *BlockBasedTableOptions) SetFormatVersion(version int) {
+	C.rocksdb_block_based_options_set_format_version(opts.c, C.int(version))
 }
 
 // SetIndexType sets the index type used for this table.

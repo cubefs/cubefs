@@ -16,11 +16,11 @@ package master
 
 import (
 	"fmt"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/proto"
@@ -43,14 +43,14 @@ type DataNode struct {
 	sync.RWMutex              `graphql:"-"`
 	UsageRatio                float64           // used / total space
 	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
-	Carry                     float64           // carry is a factor used in cacluate the node's weight
 	TaskManager               *AdminTaskManager `graphql:"-"`
-	DataPartitionReports      []*proto.PartitionReport
+	DataPartitionReports      []*proto.DataPartitionReport
 	DataPartitionCount        uint32
 	TotalPartitionSize        uint64
 	NodeSetID                 uint64
 	PersistenceDataPartitions []uint64
-	BadDisks                  []string
+	BadDisks                  []string            //Keep this old field for compatibility
+	BadDiskStats              []proto.BadDiskStat //key: disk path
 	DecommissionedDisks       sync.Map
 	ToBeOffline               bool
 	RdOnly                    bool
@@ -63,24 +63,35 @@ type DataNode struct {
 	DecommissionDstAddr       string
 	DecommissionRaftForce     bool
 	DecommissionRetry         uint8
-	DecommissionDpTotal       int
 	DecommissionLimit         int
-	DecommissionTerm          uint64
 	DecommissionCompleteTime  int64
+	DpCntLimit                DpCountLimiter     `json:"-"` // max count of data partition in a data node
+	CpuUtil                   atomicutil.Float64 `json:"-"`
+	ioUtils                   atomic.Value       `json:"-"`
+	DecommissionDiskList      []string
+	DecommissionDpTotal       int
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode = new(DataNode)
-	dataNode.Carry = rand.Float64()
 	dataNode.Total = 1
 	dataNode.Addr = addr
 	dataNode.ZoneName = zoneName
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DecommissionStatus = DecommissionInitial
-	dataNode.DecommissionTerm = 0
-	dataNode.DecommissionDpTotal = InvalidDecommissionDpCnt
+	dataNode.DpCntLimit = newDpCountLimiter(nil)
+	dataNode.CpuUtil.Store(0)
+	dataNode.SetIoUtils(make(map[string]float64))
 	return
+}
+
+func (dataNode *DataNode) GetIoUtils() map[string]float64 {
+	return dataNode.ioUtils.Load().(map[string]float64)
+}
+
+func (dataNode *DataNode) SetIoUtils(used map[string]float64) {
+	dataNode.ioUtils.Store(used)
 }
 
 func (dataNode *DataNode) checkLiveness() {
@@ -108,6 +119,25 @@ func (dataNode *DataNode) badPartitions(diskPath string, c *Cluster) (partitions
 	return
 }
 
+func (dataNode *DataNode) getDisks(c *Cluster) (diskPaths []string) {
+	diskPaths = make([]string, 0)
+	vols := c.copyVols()
+	if len(vols) == 0 {
+		return diskPaths
+	}
+	for _, vol := range vols {
+		disks := vol.dataPartitions.getReplicaDiskPaths(dataNode.Addr)
+		for _, disk := range disks {
+			if inStingList(disk, diskPaths) {
+				continue
+			}
+			diskPaths = append(diskPaths, disk)
+		}
+	}
+
+	return
+}
+
 func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse) {
 	dataNode.Lock()
 	defer dataNode.Unlock()
@@ -123,7 +153,10 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.DataPartitionCount = resp.CreatedPartitionCnt
 	dataNode.DataPartitionReports = resp.PartitionReports
 	dataNode.TotalPartitionSize = resp.TotalPartitionSize
+
 	dataNode.BadDisks = resp.BadDisks
+	dataNode.BadDiskStats = resp.BadDiskStats
+
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
 		dataNode.UsageRatio = 0.0
@@ -132,6 +165,8 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	}
 	dataNode.ReportTime = time.Now()
 	dataNode.isActive = true
+	log.LogDebugf("updateNodeMetric. datanode id %v addr %v total %v used %v avaliable %v", dataNode.ID, dataNode.Addr,
+		dataNode.Total, dataNode.Used, dataNode.AvailableSpace)
 }
 
 func (dataNode *DataNode) canAlloc() bool {
@@ -178,8 +213,12 @@ func (dataNode *DataNode) canAllocDp() bool {
 	return true
 }
 
+func (dataNode *DataNode) GetDpCntLimit() uint32 {
+	return uint32(dataNode.DpCntLimit.GetCntLimit())
+}
+
 func (dataNode *DataNode) dpCntInLimit() bool {
-	return dataNode.DataPartitionCount <= dpCntOneNodeLimit()
+	return dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
 }
 
 func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
@@ -191,13 +230,6 @@ func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
 	}
 
 	return
-}
-
-func (dataNode *DataNode) isAvailCarryNode() (ok bool) {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
-
-	return dataNode.Carry >= 1
 }
 
 func (dataNode *DataNode) GetID() uint64 {
@@ -212,20 +244,12 @@ func (dataNode *DataNode) GetAddr() string {
 	return dataNode.Addr
 }
 
-// SetCarry implements "SetCarry" in the Node interface
-func (dataNode *DataNode) SetCarry(carry float64) {
-	dataNode.Lock()
-	defer dataNode.Unlock()
-	dataNode.Carry = carry
-}
-
 // SelectNodeForWrite implements "SelectNodeForWrite" in the Node interface
 func (dataNode *DataNode) SelectNodeForWrite() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
 	dataNode.UsageRatio = float64(dataNode.Used) / float64(dataNode.Total)
 	dataNode.SelectedTimes++
-	dataNode.Carry = dataNode.Carry - 1.0
 }
 
 func (dataNode *DataNode) clean() {
@@ -242,6 +266,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 	request.QosIopsWriteLimit = dataNode.QosIopsWLimit
 	request.QosFlowReadLimit = dataNode.QosFlowRLimit
 	request.QosFlowWriteLimit = dataNode.QosFlowWLimit
+
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return
 }
@@ -270,54 +295,81 @@ func (dataNode *DataNode) getDecommissionedDisks() (decommissionedDisks []string
 
 func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint32, float64) {
 	var (
-		progress            float64
-		totalNum            = dataNode.DecommissionDpTotal
 		partitionIds        []uint64
 		failedPartitionIds  []uint64
 		runningPartitionIds []uint64
 		preparePartitionIds []uint64
 		stopPartitionIds    []uint64
+		totalDisk           = len(dataNode.DecommissionDiskList)
+		markDiskNum         = 0
+		successDiskNum      = 0
+		progress            float64
 	)
 	if dataNode.GetDecommissionStatus() == DecommissionInitial {
 		return DecommissionInitial, float64(0)
 	}
+	if dataNode.GetDecommissionStatus() == markDecommission {
+		return markDecommission, float64(0)
+	}
+	if dataNode.GetDecommissionStatus() == DecommissionSuccess {
+		return DecommissionSuccess, float64(1)
+	}
+	if dataNode.GetDecommissionStatus() == DecommissionPause {
+		return DecommissionPause, float64(0)
+	}
+	defer func() {
+		c.syncUpdateDataNode(dataNode)
+	}()
 	//not enter running status
 	if dataNode.DecommissionRetry >= defaultDecommissionRetryLimit {
 		dataNode.markDecommissionFail()
 		return DecommissionFail, float64(0)
 	}
 
-	if dataNode.GetDecommissionStatus() == markDecommission {
-		return markDecommission, float64(0)
-	}
+	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v",
+		dataNode.Addr, dataNode.DecommissionDiskList)
 
-	if totalNum == InvalidDecommissionDpCnt && dataNode.GetDecommissionStatus() == DecommissionFail {
-		return DecommissionFail, float64(0)
+	if totalDisk == 0 {
+		dataNode.SetDecommissionStatus(DecommissionInitial)
+		return DecommissionInitial, float64(0)
 	}
+	for _, disk := range dataNode.DecommissionDiskList {
+		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
+		//if not found, may already success, so only care running disk
+		if value, ok := c.DecommissionDisks.Load(key); ok {
+			dd := value.(*DecommissionDisk)
+			status := dd.GetDecommissionStatus()
+			if status == DecommissionSuccess {
+				successDiskNum++
+			} else if status == markDecommission {
+				markDiskNum++
+			}
+			_, diskProgress := dd.updateDecommissionStatus(c, debug)
+			progress += diskProgress
+		} else {
+			successDiskNum++ //disk with DecommissionSuccess will be removed from cache
+			progress += float64(1)
+		}
 
-	if dataNode.GetDecommissionStatus() == DecommissionSuccess {
-		return DecommissionSuccess, float64(1)
 	}
-
-	if dataNode.GetDecommissionStatus() == DecommissionStop {
-		return DecommissionStop, float64(0)
+	//only care data node running/prepare/success
+	//no disk get token
+	if markDiskNum == totalDisk {
+		dataNode.SetDecommissionStatus(DecommissionPrepare)
+		return DecommissionPrepare, float64(0)
+	} else {
+		if successDiskNum == totalDisk {
+			dataNode.SetDecommissionStatus(DecommissionSuccess)
+			return DecommissionSuccess, float64(1)
+		}
 	}
-	defer func() {
-		c.syncUpdateDataNode(dataNode)
-	}()
-
+	//update datanode or running status
+	partitions := dataNode.GetLatestDecommissionDataPartition(c)
 	//Get all dp on this dataNode
 	failedNum := 0
 	runningNum := 0
 	prepareNum := 0
 	stopNum := 0
-	partitions := c.getAllDecommissionDataPartitionByDataNodeAndTerm(dataNode.Addr, dataNode.DecommissionTerm)
-	//log.LogDebugf("action[updateDecommissionDataNodeStatus] partitions len %v", len(partitions))
-	//only failed or stopped or markDeleted
-	if len(partitions) == 0 {
-		dataNode.markDecommissionSuccess()
-		return DecommissionSuccess, float64(1)
-	}
 
 	for _, dp := range partitions {
 		if dp.IsDecommissionFailed() {
@@ -333,26 +385,46 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 			preparePartitionIds = append(preparePartitionIds, dp.PartitionID)
 		}
 		//datanode may stop before and will be counted into partitions
-		if dp.GetDecommissionStatus() == DecommissionStop {
+		if dp.GetDecommissionStatus() == DecommissionPause {
 			stopNum++
 			stopPartitionIds = append(stopPartitionIds, dp.PartitionID)
 		}
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
-	progress = float64(totalNum-len(partitions)+stopNum) / float64(totalNum)
-	if debug {
-		log.LogInfof("action[updateDecommissionDataNodeStatus]dataNode[%v] progress[%v] totalNum[%v] "+
-			"partitionIds[%v] FailedNum[%v] failedPartitionIds[%v], runningNum[%v] runningDp[%v], prepareNum[%v] prepareDp[%v] "+
-			"stopNum[%v] stopPartitionIds[%v]",
-			dataNode.Addr, progress, totalNum, partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
-			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
-	}
-
-	if failedNum >= (len(partitions) - stopNum) {
+	progress = progress / float64(totalDisk)
+	if failedNum >= (len(partitions)-stopNum) && failedNum != 0 {
 		dataNode.markDecommissionFail()
 		return DecommissionFail, progress
 	}
-	return dataNode.GetDecommissionStatus(), progress
+	dataNode.SetDecommissionStatus(DecommissionRunning)
+	if debug {
+		log.LogInfof("action[updateDecommissionStatus] dataNode[%v] progress[%v] totalNum[%v] "+
+			"partitionIds %v  FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
+			"stopNum[%v] stopPartitionIds %v ",
+			dataNode.Addr, progress, len(partitions), partitionIds, failedNum, failedPartitionIds, runningNum, runningPartitionIds,
+			prepareNum, preparePartitionIds, stopNum, stopPartitionIds)
+	}
+	return DecommissionRunning, progress
+}
+
+func (dataNode *DataNode) GetLatestDecommissionDataPartition(c *Cluster) (partitions []*DataPartition) {
+	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v", dataNode.Addr, dataNode.DecommissionDiskList)
+	for _, disk := range dataNode.DecommissionDiskList {
+		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
+		//if not found, may already success, so only care running disk
+		if value, ok := c.DecommissionDisks.Load(key); ok {
+			dd := value.(*DecommissionDisk)
+			dps := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
+			partitions = append(partitions, dps...)
+			dpIds := make([]uint64, 0)
+			for _, dp := range dps {
+				dpIds = append(dpIds, dp.PartitionID)
+			}
+			log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v disk %v dps[%v]",
+				dataNode.Addr, dd.DiskPath, dpIds)
+		}
+	}
+	return
 }
 
 func (dataNode *DataNode) GetDecommissionStatus() uint32 {
@@ -373,7 +445,7 @@ func (dataNode *DataNode) GetDecommissionFailedDPByTerm(c *Cluster) (error, []ui
 			dataNode.Addr, dataNode.GetDecommissionStatus())
 		return err, failedDps
 	}
-	partitions := c.getAllDecommissionDataPartitionByDataNodeAndTerm(dataNode.Addr, dataNode.DecommissionTerm)
+	partitions := dataNode.GetLatestDecommissionDataPartition(c)
 	log.LogDebugf("action[GetDecommissionDataNodeFailedDP] partitions len %v", len(partitions))
 	for _, dp := range partitions {
 		if dp.IsDecommissionFailed() {
@@ -414,13 +486,21 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 	//reset decommission status for failed once
 	dataNode.DecommissionRetry = 0
 	dataNode.DecommissionLimit = limit
-	dataNode.DecommissionDpTotal = InvalidDecommissionDpCnt
-	dataNode.DecommissionTerm = dataNode.DecommissionTerm + 1
+	dataNode.DecommissionDiskList = make([]string, 0)
 }
 
-func (dataNode *DataNode) markDecommissionSuccess() {
+func (dataNode *DataNode) canMarkDecommission() bool {
+	status := dataNode.GetDecommissionStatus()
+	return status == DecommissionInitial || status == DecommissionPause || status == DecommissionFail
+}
+
+func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
 	dataNode.SetDecommissionStatus(DecommissionSuccess)
-	dataNode.ToBeOffline = false
+	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
+	//if only decommission part of data partitions, can alloc dp in future
+	if len(partitions) != 0 {
+		dataNode.ToBeOffline = false
+	}
 	dataNode.DecommissionCompleteTime = time.Now().Unix()
 }
 
@@ -436,6 +516,26 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.DecommissionDstAddr = ""
 	dataNode.DecommissionRetry = 0
 	dataNode.DecommissionLimit = 0
-	dataNode.DecommissionDpTotal = InvalidDecommissionDpCnt
 	dataNode.DecommissionCompleteTime = 0
+	dataNode.DecommissionDiskList = make([]string, 0)
+}
+func (dataNode *DataNode) createVersionTask(volume string, version uint64, op uint8, addr string, verList []*proto.VolVersionInfo) (task *proto.AdminTask) {
+	request := &proto.MultiVersionOpRequest{
+		VolumeID:   volume,
+		VerSeq:     version,
+		Op:         uint8(op),
+		Addr:       addr,
+		VolVerList: verList,
+	}
+	log.LogInfof("action[createVersionTask] op %v  datanode addr %v addr %v volume %v seq %v", op, dataNode.Addr, addr, volume, version)
+	task = proto.NewAdminTask(proto.OpVersionOperation, dataNode.Addr, request)
+	return
+}
+
+func (dataNode *DataNode) CanBePaused() bool {
+	status := dataNode.GetDecommissionStatus()
+	if status == DecommissionRunning || status == markDecommission || status == DecommissionPause {
+		return true
+	}
+	return false
 }

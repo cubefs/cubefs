@@ -38,7 +38,7 @@ func addCmdAllocator(cmd *grumble.Command) {
 		Help: "alloc volume, just testing for most of time",
 		Flags: func(f *grumble.Flags) {
 			proxyFlags(f)
-			f.UintL("code_mode", 0, "codemode uint")
+			f.UintL("code_mode", 0, "codemode uint to alloc")
 			f.Uint64L("fsize", 0, "file size")
 			f.Uint64L("bid_count", 0, "bid count")
 		},
@@ -52,7 +52,7 @@ func addCmdAllocator(cmd *grumble.Command) {
 		},
 		Flags: func(f *grumble.Flags) {
 			proxyFlags(f)
-			f.UintL("code_mode", 0, "codemode uint")
+			f.UintL("code_mode", 0, "codemode uint to discard")
 		},
 		Run: discardVolumes,
 	})
@@ -61,7 +61,7 @@ func addCmdAllocator(cmd *grumble.Command) {
 		Help: "list volumes, show top 10 hosts and disks",
 		Flags: func(f *grumble.Flags) {
 			proxyFlags(f)
-			f.UintL("code_mode", 0, "codemode uint")
+			f.UintL("code_mode", 0, "codemode uint to list")
 			f.IntL("top", 10, "show top")
 		},
 		Run: listVolumes,

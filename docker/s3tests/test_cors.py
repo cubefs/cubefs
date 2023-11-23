@@ -24,7 +24,7 @@ OTHER_ORIGIN = "*.com"
 ALLOWED_HEADERS = ["*"]
 ALLOWED_METHODS = ['PUT', 'POST', 'GET']
 ALLOWED_ORIGINS = [PUT_ORIGIN]
-EXPOSE_HEADERS = ['*']
+EXPOSE_HEADERS = ['FooBar']
 MAX_AGE_SECONDS = 123
 
 CORS_CONFIG = {
@@ -50,9 +50,6 @@ class CorsTest(S3TestCase):
         self.s3 = get_env_s3_client()
 
     def test_cors_set(self):
-        # Get bucket CORS configuration
-        self.assert_get_bucket_cors_result(
-            result=self.s3.get_bucket_cors(Bucket=env.BUCKET))
         # Put bucket CORS configuration
         self.assert_result_status_code(
             result=self.s3.put_bucket_cors(Bucket=env.BUCKET, CORSConfiguration=CORS_CONFIG))
@@ -63,8 +60,12 @@ class CorsTest(S3TestCase):
         self.assert_result_status_code(
             result=self.s3.delete_bucket_cors(Bucket=env.BUCKET), status_code=204)
         # Get bucket CORS configuration
-        self.assert_get_bucket_cors_result(
-            result=self.s3.get_bucket_cors(Bucket=env.BUCKET))
+        try:
+            self.assert_get_bucket_cors_result(
+                result=self.s3.get_bucket_cors(Bucket=env.BUCKET))
+        except Exception as e:
+            self.assert_client_error(error=e, expect_status_code=404)
+
 
     def test_cors_request(self):
         # Put bucket cors
@@ -130,7 +131,7 @@ class CorsTest(S3TestCase):
         self.assert_cors_request_result(
             result=requests.options(url=options_url,
                                     headers={'Origin': PUT_ORIGIN, 'Access-Control-Request-Method': 'GET'}),
-            response_code=200,
+            response_code=403,
             response_origin=None,
             response_method=None)
         # Delete object

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // Part defined necessary fields for multipart part management.
@@ -130,18 +131,29 @@ func (m *Parts) Hash(part *Part) (has bool) {
 	return
 }
 
-func (m *Parts) LoadOrStore(part *Part) (actual *Part, stored bool) {
+func (m *Parts) UpdateOrStore(part *Part) (oldInode uint64, update, conflict bool) {
 	i := sort.Search(len(*m), func(i int) bool {
 		return (*m)[i].ID >= part.ID
 	})
 	if i >= 0 && i < len(*m) && (*m)[i].ID == part.ID {
-		actual = (*m)[i]
-		stored = false
+		oldPart := (*m)[i]
+		oldInode = oldPart.Inode
+		if part.Inode == oldInode {
+			log.LogWarnf("Request already success,the same partInode(%d) must not be overwritten.", oldInode)
+			return
+		}
+		if part.UploadTime.Before(oldPart.UploadTime) {
+			log.LogWarnf("Request part putTime[%v] is less than old part putTime[%v], partNumber[%v]",
+				part.UploadTime.UnixNano(), oldPart.UploadTime.UnixNano(), part.ID)
+			conflict = true
+			return
+		}
+		update = true
+		(*m)[i] = part
 		return
 	}
 	*m = append(*m, part)
-	actual = part
-	stored = true
+	update = false
 	m.sort()
 	return
 }
@@ -324,13 +336,13 @@ func (m *Multipart) ID() string {
 	return m.id
 }
 
-func (m *Multipart) LoadOrStorePart(part *Part) (actual *Part, stored bool) {
+func (m *Multipart) UpdateOrStorePart(part *Part) (oldInode uint64, updated, conflict bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.parts == nil {
 		m.parts = PartsFromBytes(nil)
 	}
-	actual, stored = m.parts.LoadOrStore(part)
+	oldInode, updated, conflict = m.parts.UpdateOrStore(part)
 	return
 }
 

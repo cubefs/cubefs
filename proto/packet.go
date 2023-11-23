@@ -15,10 +15,12 @@
 package proto
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
 	"strconv"
@@ -112,6 +114,19 @@ const (
 	OpRemoveMetaPartitionRaftMember uint8 = 0x47
 	OpMetaPartitionTryToLeader      uint8 = 0x48
 
+	// Quota
+	OpMetaBatchSetInodeQuota    uint8 = 0x50
+	OpMetaBatchDeleteInodeQuota uint8 = 0x51
+	OpMetaGetInodeQuota         uint8 = 0x52
+	OpQuotaCreateInode          uint8 = 0x53
+	OpQuotaCreateDentry         uint8 = 0x54
+
+	// Operations: Master -> LcNode
+
+	OpLcNodeHeartbeat      uint8 = 0x55
+	OpLcNodeScan           uint8 = 0x56
+	OpLcNodeSnapshotVerDel uint8 = 0x57
+
 	// Operations: Master -> DataNode
 	OpCreateDataPartition           uint8 = 0x60
 	OpDeleteDataPartition           uint8 = 0x61
@@ -124,6 +139,7 @@ const (
 	OpRemoveDataPartitionRaftMember uint8 = 0x68
 	OpDataPartitionTryToLeader      uint8 = 0x69
 	OpQos                           uint8 = 0x6A
+	OpStopDataPartitionRepair       uint8 = 0x6B
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70
@@ -132,7 +148,8 @@ const (
 	OpRemoveMultipart  uint8 = 0x73
 	OpListMultiparts   uint8 = 0x74
 
-	OpBatchDeleteExtent uint8 = 0x75 // SDK to MetaNode
+	OpBatchDeleteExtent   uint8 = 0x75 // SDK to MetaNode
+	OpGetExpiredMultipart uint8 = 0x76
 
 	//Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaBatchDeleteInode  uint8 = 0x90
@@ -140,8 +157,38 @@ const (
 	OpMetaBatchUnlinkInode  uint8 = 0x92
 	OpMetaBatchEvictInode   uint8 = 0x93
 
+	//Transaction Operations: Client -> MetaNode.
+	OpMetaTxCreate       uint8 = 0xA0
+	OpMetaTxCreateInode  uint8 = 0xA1
+	OpMetaTxUnlinkInode  uint8 = 0xA2
+	OpMetaTxCreateDentry uint8 = 0xA3
+	OpTxCommit           uint8 = 0xA4
+	OpTxRollback         uint8 = 0xA5
+	OpTxCommitRM         uint8 = 0xA6
+	OpTxRollbackRM       uint8 = 0xA7
+	OpMetaTxDeleteDentry uint8 = 0xA8
+	OpMetaTxUpdateDentry uint8 = 0xA9
+	OpMetaTxLinkInode    uint8 = 0xAA
+	OpMetaTxGet          uint8 = 0xAB
+
+	//Operations: Client -> MetaNode.
+	OpMetaGetUniqID uint8 = 0xAC
+
+	//Multi version snapshot
+	OpRandomWriteAppend     uint8 = 0xB1
+	OpSyncRandomWriteAppend uint8 = 0xB2
+	OpRandomWriteVer        uint8 = 0xB3
+	OpSyncRandomWriteVer    uint8 = 0xB4
+	OpSyncRandomWriteVerRsp uint8 = 0xB5
+	OpTryWriteAppend        uint8 = 0xB6
+	OpSyncTryWriteAppend    uint8 = 0xB7
+
 	// Commons
-	OpDirQuota           uint8 = 0xF1
+	OpNoSpaceErr uint8 = 0xEE
+	OpDirQuota   uint8 = 0xF1
+
+	// Commons
+
 	OpConflictExtentsErr uint8 = 0xF2
 	OpIntraGroupNetErr   uint8 = 0xF3
 	OpArgMismatchErr     uint8 = 0xF4
@@ -156,10 +203,13 @@ const (
 	OpNotPerm            uint8 = 0xFD
 	OpNotEmpty           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
+	OpTryOtherExtent     uint8 = 0xE0
+	OpAgainVerionList    uint8 = 0xEF
 
-	OpPing            uint8 = 0xFF
-	OpMetaUpdateXAttr uint8 = 0x3B
-	OpMetaReadDirOnly uint8 = 0x3C
+	OpPing                  uint8 = 0xFF
+	OpMetaUpdateXAttr       uint8 = 0x3B
+	OpMetaReadDirOnly       uint8 = 0x3C
+	OpUploadPartConflictErr uint8 = 0x3D
 
 	// ebs obj meta
 	OpMetaObjExtentAdd       uint8 = 0xDD
@@ -167,18 +217,70 @@ const (
 	OpMetaExtentsEmpty       uint8 = 0xDF
 	OpMetaBatchObjExtentsAdd uint8 = 0xD0
 	OpMetaClearInodeCache    uint8 = 0xD1
-	OpMetaBatchSetXAttr      uint8 = 0xD2
-	OpMetaGetAllXAttr        uint8 = 0xD3
+
+	OpMetaBatchSetXAttr uint8 = 0xD2
+	OpMetaGetAllXAttr   uint8 = 0xD3
+
+	//transaction error
+
+	OpTxInodeInfoNotExistErr  uint8 = 0xE0
+	OpTxConflictErr           uint8 = 0xE1
+	OpTxDentryInfoNotExistErr uint8 = 0xE2
+	OpTxRbInodeNotExistErr    uint8 = 0xE3
+	OpTxRbDentryNotExistErr   uint8 = 0xE4
+	OpTxInfoNotExistErr       uint8 = 0xE5
+	OpTxInternalErr           uint8 = 0xE6
+	OpTxCommitItemErr         uint8 = 0xE7
+	OpTxRollbackItemErr       uint8 = 0xE8
+	OpTxRollbackUnknownRbType uint8 = 0xE9
+	OpTxTimeoutErr            uint8 = 0xEA
+	OpTxSetStateErr           uint8 = 0xEB
+	OpTxCommitErr             uint8 = 0xEC
+	OpTxRollbackErr           uint8 = 0xED
+	OpTxUnknownOp             uint8 = 0xEE
+
+	// multiVersion to dp/mp
+	OpVersionOperation uint8 = 0xD5
+	OpSplitMarkDelete  uint8 = 0xD6
 )
 
 const (
 	WriteDeadlineTime                         = 5
 	ReadDeadlineTime                          = 5
-	SyncSendTaskDeadlineTime                  = 20
+	SyncSendTaskDeadlineTime                  = 30
 	NoReadDeadlineTime                        = -1
 	BatchDeleteExtentReadDeadLineTime         = 120
 	GetAllWatermarksDeadLineTime              = 60
 	DefaultClusterLoadFactor          float64 = 10
+	MultiVersionFlag                          = 0x80
+	VersionListFlag                           = 0x40
+)
+
+// multi version operation
+const (
+	CreateVersion        = 1
+	DeleteVersion        = 2
+	CreateVersionPrepare = 3
+	CreateVersionCommit  = 4
+	SyncBatchVersionList = 5
+)
+
+// stage of version building
+const (
+	VersionInit            = 0
+	VersionWorking         = 1
+	VersionWorkingTimeOut  = 2
+	VersionWorkingAbnormal = 3
+	VersionWorkingFinished = 4
+)
+
+// status of version
+const (
+	VersionNormal         = 1
+	VersionDeleted        = 2
+	VersionDeleting       = 3
+	VersionDeleteAbnormal = 4
+	VersionPrepare        = 5
 )
 
 const (
@@ -194,7 +296,7 @@ const (
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
-	ExtentType         uint8
+	ExtentType         uint8 // the highest bit be set while rsp to client if version not consistent then Verseq be valid
 	Opcode             uint8
 	ResultCode         uint8
 	RemainingFollowers uint8
@@ -211,6 +313,16 @@ type Packet struct {
 	StartT             int64
 	mesg               string
 	HasPrepare         bool
+	VerSeq             uint64 // only used in mod request to datanode
+	VerList            []*VolVersionInfo
+}
+
+func IsTinyExtentType(extentType uint8) bool {
+	return extentType&NormalExtentType != NormalExtentType
+}
+
+func IsNormalExtentType(extentType uint8) bool {
+	return extentType&NormalExtentType == NormalExtentType
 }
 
 // NewPacket returns a new packet.
@@ -228,21 +340,33 @@ func NewPacketReqID() *Packet {
 	return p
 }
 
+func (p *Packet) GetCopy() *Packet {
+	newPacket := NewPacket()
+	newPacket.ReqID = p.ReqID
+	newPacket.Opcode = p.Opcode
+	newPacket.PartitionID = p.PartitionID
+
+	newPacket.Data = make([]byte, p.Size)
+	copy(newPacket.Data[:p.Size], p.Data)
+
+	newPacket.Size = p.Size
+	return newPacket
+}
+
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)", p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg())
+	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)ExID(%v)ExtOffset(%v)KernelOff(%v)Type(%v)Seq(%v)Size(%v)",
+		p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.ExtentID, p.ExtentOffset, p.KernelOffset, p.ExtentType, p.VerSeq, p.Size)
 }
 
 // GetStoreType returns the store type.
 func (p *Packet) GetStoreType() (m string) {
-	switch p.ExtentType {
-	case TinyExtentType:
-		m = "TinyExtent"
-	case NormalExtentType:
-		m = "NormalExtent"
-	default:
-		m = "Unknown"
+	if IsNormalExtentType(p.ExtentType) {
+		return "NormalExtent"
+	} else if IsTinyExtentType(p.ExtentType) {
+		return "TinyExtent"
+	} else {
+		return "Unknown"
 	}
-	return
 }
 
 func (p *Packet) GetOpMsgWithReqAndResult() (m string) {
@@ -256,10 +380,18 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpCreateExtent"
 	case OpMarkDelete:
 		m = "OpMarkDelete"
+	case OpSplitMarkDelete:
+		m = "OpMarkDelete"
 	case OpWrite:
 		m = "OpWrite"
+	case OpTryWriteAppend:
+		m = "OpTryWriteAppend"
 	case OpRandomWrite:
 		m = "OpRandomWrite"
+	case OpRandomWriteAppend:
+		m = "OpRandomWriteAppend"
+	case OpRandomWriteVer:
+		m = "OpRandomWriteVer"
 	case OpRead:
 		m = "Read"
 	case OpStreamRead:
@@ -278,14 +410,20 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "IntraGroupNetErr"
 	case OpMetaCreateInode:
 		m = "OpMetaCreateInode"
+	case OpQuotaCreateInode:
+		m = "OpQuotaCreateInode"
 	case OpMetaUnlinkInode:
 		m = "OpMetaUnlinkInode"
 	case OpMetaBatchUnlinkInode:
 		m = "OpMetaBatchUnlinkInode"
 	case OpMetaCreateDentry:
 		m = "OpMetaCreateDentry"
+	case OpQuotaCreateDentry:
+		m = "OpQuotaCreateDentry"
 	case OpMetaDeleteDentry:
 		m = "OpMetaDeleteDentry"
+	case OpMetaBatchDeleteDentry:
+		m = "OpMetaBatchDeleteDentry"
 	case OpMetaOpen:
 		m = "OpMetaOpen"
 	case OpMetaReleaseOpen:
@@ -356,8 +494,14 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpGetPartitionSize"
 	case OpSyncWrite:
 		m = "OpSyncWrite"
+	case OpSyncTryWriteAppend:
+		m = "OpSyncTryWriteAppend"
 	case OpSyncRandomWrite:
 		m = "OpSyncRandomWrite"
+	case OpSyncRandomWriteVer:
+		m = "OpSyncRandomWriteVer"
+	case OpSyncRandomWriteAppend:
+		m = "OpSyncRandomWriteAppend"
 	case OpReadTinyDeleteRecord:
 		m = "OpReadTinyDeleteRecord"
 	case OpPing:
@@ -414,8 +558,56 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpBatchDeleteExtent"
 	case OpMetaClearInodeCache:
 		m = "OpMetaClearInodeCache"
+	case OpMetaTxCreateInode:
+		m = "OpMetaTxCreateInode"
+	case OpMetaTxCreateDentry:
+		m = "OpMetaTxCreateDentry"
+	case OpTxCommit:
+		m = "OpTxCommit"
+	case OpMetaTxCreate:
+		m = "OpMetaTxCreate"
+	case OpTxRollback:
+		m = "OpTxRollback"
+	case OpTxCommitRM:
+		m = "OpTxCommitRM"
+	case OpTxRollbackRM:
+		m = "OpTxRollbackRM"
+	case OpMetaTxDeleteDentry:
+		m = "OpMetaTxDeleteDentry"
+	case OpMetaTxUnlinkInode:
+		m = "OpMetaTxUnlinkInode"
+	case OpMetaTxUpdateDentry:
+		m = "OpMetaTxUpdateDentry"
+	case OpMetaTxLinkInode:
+		m = "OpMetaTxLinkInode"
+	case OpMetaTxGet:
+		m = "OpMetaTxGet"
+	case OpMetaBatchSetInodeQuota:
+		m = "OpMetaBatchSetInodeQuota"
+	case OpMetaBatchDeleteInodeQuota:
+		m = "OpMetaBatchDeleteInodeQuota"
+	case OpMetaGetInodeQuota:
+		m = "OpMetaGetInodeQuota"
+	case OpStopDataPartitionRepair:
+		m = "OpStopDataPartitionRepair"
+	case OpLcNodeHeartbeat:
+		m = "OpLcNodeHeartbeat"
+	case OpLcNodeScan:
+		m = "OpLcNodeScan"
+	case OpLcNodeSnapshotVerDel:
+		m = "OpLcNodeSnapshotVerDel"
+	case OpMetaReadDirOnly:
+		m = "OpMetaReadDirOnly"
+	default:
+		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}
 	return
+}
+
+func GetStatusStr(status uint8) string {
+	pkt := &Packet{}
+	pkt.ResultCode = status
+	return pkt.GetResultMsg()
 }
 
 // GetResultMsg returns the result message.
@@ -455,6 +647,38 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "DirNotEmpty"
 	case OpDirQuota:
 		m = "OpDirQuota"
+	case OpNoSpaceErr:
+		m = "NoSpaceErr"
+	case OpTxInodeInfoNotExistErr:
+		m = "OpTxInodeInfoNotExistErr"
+	case OpTxConflictErr:
+		m = "TransactionConflict"
+	case OpTxDentryInfoNotExistErr:
+		m = "OpTxDentryInfoNotExistErr"
+	case OpTxRbInodeNotExistErr:
+		m = "OpTxRbInodeNotExistEr"
+	case OpTxRbDentryNotExistErr:
+		m = "OpTxRbDentryNotExistEr"
+	case OpTxInfoNotExistErr:
+		m = "OpTxInfoNotExistErr"
+	case OpTxInternalErr:
+		m = "OpTxInternalErr"
+	case OpTxCommitItemErr:
+		m = "OpTxCommitItemErr"
+	case OpTxRollbackItemErr:
+		m = "OpTxRollbackItemErr"
+	case OpTxRollbackUnknownRbType:
+		m = "OpTxRollbackUnknownRbType"
+	case OpTxTimeoutErr:
+		m = "OpTxTimeoutErr"
+	case OpTxSetStateErr:
+		m = "OpTxSetStateErr"
+	case OpTxCommitErr:
+		m = "OpTxCommitErr"
+	case OpTxRollbackErr:
+		m = "OpTxRollbackErr"
+	case OpUploadPartConflictErr:
+		m = "OpUploadPartConflictErr"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
@@ -480,7 +704,17 @@ func (p *Packet) MarshalHeader(out []byte) {
 	binary.BigEndian.PutUint64(out[33:41], uint64(p.ExtentOffset))
 	binary.BigEndian.PutUint64(out[41:49], uint64(p.ReqID))
 	binary.BigEndian.PutUint64(out[49:util.PacketHeaderSize], p.KernelOffset)
+	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
+		binary.BigEndian.PutUint64(out[util.PacketHeaderSize:util.PacketHeaderSize+8], p.VerSeq)
+	}
 	return
+}
+
+func (p *Packet) IsVersionList() bool {
+	if p.ExtentType&VersionListFlag == VersionListFlag {
+		return true
+	}
+	return false
 }
 
 // UnmarshalHeader unmarshals the packet header.
@@ -503,6 +737,60 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.ReqID = int64(binary.BigEndian.Uint64(in[41:49]))
 	p.KernelOffset = binary.BigEndian.Uint64(in[49:util.PacketHeaderSize])
 
+	// header opcode OpRandomWriteVer should not unmarshal here due to header size is const
+	// the ver param should read at the higher level directly
+	//if p.Opcode ==OpRandomWriteVer {
+
+	return nil
+}
+
+const verInfoCnt = 17
+
+func (p *Packet) MarshalVersionSlice() (data []byte, err error) {
+	items := p.VerList
+	cnt := len(items)
+	buff := bytes.NewBuffer(make([]byte, 0, 2*cnt*verInfoCnt))
+	if err := binary.Write(buff, binary.BigEndian, uint16(cnt)); err != nil {
+		return nil, err
+	}
+
+	for _, v := range items {
+		if err := binary.Write(buff, binary.BigEndian, v.Ver); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(buff, binary.BigEndian, v.DelTime); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(buff, binary.BigEndian, v.Status); err != nil {
+			return nil, err
+		}
+	}
+
+	return buff.Bytes(), nil
+}
+
+func (p *Packet) UnmarshalVersionSlice(cnt int, d []byte) error {
+	items := make([]*VolVersionInfo, 0)
+	buf := bytes.NewBuffer(d)
+	var err error
+
+	for idx := 0; idx < cnt; idx++ {
+		e := &VolVersionInfo{}
+		err = binary.Read(buf, binary.BigEndian, &e.Ver)
+		if err != nil {
+			return err
+		}
+		err = binary.Read(buf, binary.BigEndian, &e.DelTime)
+		if err != nil {
+			return err
+		}
+		err = binary.Read(buf, binary.BigEndian, &e.Status)
+		if err != nil {
+			return err
+		}
+		items = append(items, e)
+	}
+	p.VerList = items
 	return nil
 }
 
@@ -543,14 +831,33 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 
 // WriteToConn writes through the given connection.
 func (p *Packet) WriteToConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(util.PacketHeaderSize)
-	if err != nil {
-		header = make([]byte, util.PacketHeaderSize)
+	headSize := util.PacketHeaderSize
+	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
+		headSize = util.PacketHeaderVerSize
 	}
+	//log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
+	header, err := Buffers.Get(headSize)
+	if err != nil {
+		header = make([]byte, headSize)
+	}
+	// log.LogErrorf("action[WriteToConn] buffer get nil,opcode %v head len [%v]", p.Opcode, len(header))
 	defer Buffers.Put(header)
 	c.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 	p.MarshalHeader(header)
 	if _, err = c.Write(header); err == nil {
+		// write dir version info.
+		if p.IsVersionList() {
+			d, err1 := p.MarshalVersionSlice()
+			if err1 != nil {
+				log.LogErrorf("MarshalVersionSlice: marshal version ifo failed, err %s", err1.Error())
+				return err1
+			}
+
+			_, err = c.Write(d)
+			if err != nil {
+				return err
+			}
+		}
 		if _, err = c.Write(p.Arg[:int(p.ArgLen)]); err == nil {
 			if p.Data != nil && p.Size != 0 {
 				_, err = c.Write(p.Data[:p.Size])
@@ -566,6 +873,85 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	*buf = make([]byte, readSize)
 	_, err = io.ReadFull(c, (*buf)[:readSize])
 	return
+}
+
+// ReadFromConn reads the data from the given connection.
+// Recognize the version bit and parse out version,
+// to avoid version field rsp back , the rsp of random write from datanode with replace OpRandomWriteVer to OpRandomWriteVerRsp
+func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
+	if timeoutSec != NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
+
+	header, err := Buffers.Get(util.PacketHeaderSize)
+	if err != nil {
+		header = make([]byte, util.PacketHeaderSize)
+	}
+	defer Buffers.Put(header)
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
+		return
+	}
+	if n != util.PacketHeaderSize {
+		return syscall.EBADMSG
+	}
+	if err = p.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	if p.ExtentType&MultiVersionFlag > 0 {
+		ver := make([]byte, 8)
+		if _, err = io.ReadFull(c, ver); err != nil {
+			return
+		}
+		p.VerSeq = binary.BigEndian.Uint64(ver)
+	}
+
+	if p.IsVersionList() {
+		cntByte := make([]byte, 2)
+		if _, err = io.ReadFull(c, cntByte); err != nil {
+			return err
+		}
+		cnt := binary.BigEndian.Uint16(cntByte)
+		log.LogDebugf("action[ReadFromConnWithVer] op %s verseq %v, extType %d, cnt %d",
+			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
+		verData := make([]byte, cnt*verInfoCnt)
+		if _, err = io.ReadFull(c, verData); err != nil {
+			log.LogWarnf("ReadFromConnWithVer: read ver slice from conn failed, err %s", err.Error())
+			return err
+		}
+
+		err = p.UnmarshalVersionSlice(int(cnt), verData)
+		if err != nil {
+			log.LogWarnf("ReadFromConnWithVer: unmarshal ver slice failed, err %s", err.Error())
+			return err
+		}
+	}
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		if _, err = io.ReadFull(c, p.Arg[:int(p.ArgLen)]); err != nil {
+			return err
+		}
+	}
+
+	if p.Size < 0 {
+		return syscall.EBADMSG
+	}
+	size := p.Size
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+		size = 0
+	}
+	p.Data = make([]byte, size)
+	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
 }
 
 // ReadFromConn reads the data from the given connection.
@@ -632,6 +1018,14 @@ func (p *Packet) PacketOkWithBody(reply []byte) {
 	p.ArgLen = 0
 }
 
+// attention use for tmp byte arr, eg: json marshal data
+func (p *Packet) PacketOkWithByte(reply []byte) {
+	p.Size = uint32(len(reply))
+	p.Data = reply
+	p.ResultCode = OpOk
+	p.ArgLen = 0
+}
+
 // PacketErrorWithBody sets the packet with error code whose body is filled with the given data.
 func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.Size = uint32(len(reply))
@@ -664,7 +1058,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 		return
 	}
 	m = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
-	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
+	if p.Opcode == OpSplitMarkDelete || (IsTinyExtentType(p.ExtentType) && p.Opcode == OpMarkDelete) && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
@@ -695,7 +1089,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 
 func (p *Packet) setPacketPrefix() {
 	p.mesg = fmt.Sprintf("Req(%v)_Partition(%v)_", p.ReqID, p.PartitionID)
-	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
+	if (p.Opcode == OpSplitMarkDelete || (IsTinyExtentType(p.ExtentType) && p.Opcode == OpMarkDelete)) && len(p.Data) > 0 {
 		ext := new(TinyExtentDeleteRecord)
 		err := json.Unmarshal(p.Data, ext)
 		if err == nil {
@@ -743,6 +1137,11 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 }
 
 // ShallRetry returns if we should retry the packet.
+func (p *Packet) ShouldRetryWithVersionList() bool {
+	return p.ResultCode == OpAgainVerionList
+}
+
+// ShallRetry returns if we should retry the packet.
 func (p *Packet) ShouldRetry() bool {
 	return p.ResultCode == OpAgain || p.ResultCode == OpErr
 }
@@ -754,5 +1153,7 @@ func (p *Packet) IsBatchDeleteExtents() bool {
 func InitBufferPool(bufLimit int64) {
 	buf.NormalBuffersTotalLimit = bufLimit
 	buf.HeadBuffersTotalLimit = bufLimit
+	buf.HeadVerBuffersTotalLimit = bufLimit
+
 	Buffers = buf.NewBufferPool()
 }

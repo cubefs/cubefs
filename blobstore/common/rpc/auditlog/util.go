@@ -247,6 +247,7 @@ func genXlogTags(service string, xlogs []string, respLength int64) []string {
 		if stringsContain(xlogs, []string{"AZF"}) && respLength > 1 {
 			tags = append(tags, "allzero")
 		}
+	default:
 	}
 	return tags
 }

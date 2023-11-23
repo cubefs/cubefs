@@ -31,7 +31,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -455,8 +454,9 @@ func (mgr *MigrateMgr) isJunkTask(disks *migratingDisks, task *proto.MigrateTask
 			return true
 		}
 		return false
+	default:
+		return false
 	}
-	return false
 }
 
 func (mgr *MigrateMgr) listMigratingDisks(ctx context.Context) (*migratingDisks, error) {
@@ -471,8 +471,9 @@ func (mgr *MigrateMgr) listMigratingDisks(ctx context.Context) (*migratingDisks,
 			disks.add(disk.Disk.DiskID, disk.Disk)
 		}
 		return disks, nil
+	default:
+		return nil, nil
 	}
-	return nil, nil
 }
 
 // Run run migrate task do prepare and finish task phase
@@ -491,7 +492,6 @@ func (mgr *MigrateMgr) prepareTaskLoop() {
 		}
 		err := mgr.prepareTask()
 		if err == base.ErrNoTaskInQueue {
-			log.Debug("no task in prepare queue and sleep")
 			time.Sleep(prepareMigrateTaskInterval)
 		}
 	}
@@ -597,7 +597,6 @@ func (mgr *MigrateMgr) finishTaskLoop() {
 		mgr.taskSwitch.WaitEnable()
 		err := mgr.finishTask()
 		if err == base.ErrNoTaskInQueue {
-			log.Debug("no task in finish queue and sleep")
 			time.Sleep(finishMigrateTaskInterval)
 		}
 	}
@@ -771,6 +770,7 @@ func (mgr *MigrateMgr) ClearDeletedTasks(diskID proto.DiskID) {
 	switch mgr.taskType {
 	case proto.TaskTypeDiskDrop: // only disk drop task need to clear by disk
 		mgr.deletedTasks.delete(diskID)
+	default:
 	}
 }
 
@@ -779,6 +779,7 @@ func (mgr *MigrateMgr) ClearDeletedTaskByID(diskID proto.DiskID, taskID string) 
 	switch mgr.taskType {
 	case proto.TaskTypeBalance: // only balance task need to clear by id
 		mgr.deletedTasks.deleteByID(diskID, taskID)
+	default:
 	}
 }
 
@@ -796,6 +797,7 @@ func (mgr *MigrateMgr) addMigratingVuid(diskID proto.DiskID, vuid proto.Vuid, ta
 	switch mgr.taskType {
 	case proto.TaskTypeBalance: // only balance task need to add
 		mgr.diskMigratingVuids.addMigratingVuid(diskID, vuid, taskID)
+	default:
 	}
 }
 
@@ -803,6 +805,7 @@ func (mgr *MigrateMgr) deleteMigratingVuid(diskID proto.DiskID, vuid proto.Vuid)
 	switch mgr.taskType {
 	case proto.TaskTypeBalance: // only balance task need to add
 		mgr.diskMigratingVuids.deleteMigratingVuid(diskID, vuid)
+	default:
 	}
 }
 
@@ -810,6 +813,7 @@ func (mgr *MigrateMgr) addDeletedTask(task *proto.MigrateTask) {
 	switch mgr.taskType {
 	case proto.TaskTypeDiskDrop, proto.TaskTypeBalance: // only disk drop and balance task need to add
 		mgr.deletedTasks.add(task.SourceDiskID, task.TaskID)
+	default:
 	}
 }
 

@@ -1,9 +1,10 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/proto"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -61,6 +62,7 @@ func (m *MetaNode) startUpdateNodeInfo() {
 			return
 		case <-ticker.C:
 			m.updateNodeInfo()
+			m.metadataManager.checkVolVerList()
 		}
 	}
 }

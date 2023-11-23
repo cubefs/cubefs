@@ -83,18 +83,21 @@ func (r *route) AddUserPath(path string) {
 }
 
 func (r *route) String() string {
+	varString := func(vars []string) string {
+		return fmt.Sprintf("\t%s\n\n", strings.Join(vars, "\n\t"))
+	}
 	r.mu.Lock()
 	sb := strings.Builder{}
 	sb.WriteString("usage:\n\t/\n\n")
 	sb.WriteString("vars:\n")
-	sb.WriteString(fmt.Sprintf("\t%s\n\n", strings.Join(r.vars, "\n\t")))
+	sb.WriteString(varString(r.vars))
 	sb.WriteString("pprof:\n")
-	sb.WriteString(fmt.Sprintf("\t%s\n\n", strings.Join(r.pprof, "\n\t")))
+	sb.WriteString(varString(r.pprof))
 	sb.WriteString("metrics:\n")
-	sb.WriteString(fmt.Sprintf("\t%s\n\n", strings.Join(r.metrics, "\n\t")))
+	sb.WriteString(varString(r.metrics))
 	if len(r.users) > 0 {
 		sb.WriteString("users:\n")
-		sb.WriteString(fmt.Sprintf("\t%s\n\n", strings.Join(r.users, "\n\t")))
+		sb.WriteString(varString(r.users))
 	}
 	r.mu.Unlock()
 	return sb.String()

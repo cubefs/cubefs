@@ -41,7 +41,6 @@ type Gauge struct {
 	name   string
 	labels map[string]string
 	val    float64
-	ch     chan interface{}
 }
 
 func NewGauge(name string) (g *Gauge) {
@@ -139,5 +138,13 @@ func NewGaugeVec(name, help string, labels []string) *GaugeVec {
 func (v *GaugeVec) SetWithLabelValues(val float64, lvs ...string) {
 	if m, err := v.GetMetricWithLabelValues(lvs...); err == nil {
 		m.Set(val)
+	}
+}
+
+func (v *GaugeVec) SetBoolWithLabelValues(val bool, lvs ...string) {
+	if val {
+		v.SetWithLabelValues(float64(1), lvs...)
+	} else {
+		v.SetWithLabelValues(0, lvs...)
 	}
 }

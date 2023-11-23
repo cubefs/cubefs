@@ -8,9 +8,9 @@
     "192.168.0.12:17010",
     "192.168.0.13:17010"
   ],
-  "objectNodeDomain": "object.chubao.io",
+  "objectNodeDomain": "object.cube.io",
   "monitor_addr": "http://192.168.0.102:9090",
-  "dashboard_addr": "http://grafana.chubao.io",
+  "dashboard_addr": "http://grafana.cube.io",
   "monitor_app": "cfs",
-  "monitor_cluster": "chubaofs01"
+  "monitor_cluster": "cubefs01"
 }

@@ -86,7 +86,7 @@ Here, a separate configuration file `cubefs-helm.yaml` is created to cover the k
 touch cubefs-helm.yaml
 ```
 
-The contents of the `cubefs-html.yaml` file are as follows:
+The contents of the `cubefs-helm.yaml` file are as follows:
 
 ``` yaml
 # Which components to install, if only the server is installed, keep the following configuration. If the client needs to be installed, set csi to true

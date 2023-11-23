@@ -233,11 +233,6 @@ func (cp *SmuxConnectPool) PutConnect(stream *smux.Stream, forceClose bool) {
 		return
 	}
 	if forceClose {
-		err := stream.Close()
-		if err == io.ErrClosedPipe {
-			return
-		}
-
 		pool.MarkClosed(stream)
 		return
 	}
@@ -396,7 +391,7 @@ func (p *SmuxPool) callCreate() (createCall *createSessCall) {
 		} else {
 			return
 		}
-	default:
+		//default:
 	}
 tryCreateNewSess:
 	prev := createCall
@@ -612,7 +607,6 @@ func (p *SmuxPool) handleCreateCall(call *createSessCall) {
 		return
 	}
 	p.insertSession(call.sess)
-	return
 }
 
 func (p *SmuxPool) openStream(sess *smux.Session) (stream *smux.Stream, err error) {
@@ -637,11 +631,6 @@ func (p *SmuxPool) PutStreamObjectToPool(obj *streamObject) {
 	case p.objects <- obj:
 		return
 	default:
-		err := obj.stream.Close()
-		if err == io.ErrClosedPipe {
-			return
-		}
-
 		p.MarkClosed(obj.stream)
 	}
 }

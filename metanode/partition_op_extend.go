@@ -45,7 +45,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 				strconv.FormatInt(int64(newDirs), 10) + "," +
 				strconv.FormatInt(int64(newBytes), 10)
 			var extend = NewExtend(req.Inode)
-			extend.Put([]byte(req.Key), []byte(newValue))
+			extend.Put([]byte(req.Key), []byte(newValue), mp.verSeq)
 			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
@@ -53,7 +53,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 			p.PacketOkReply()
 			return
 		} else {
-			extend.Put([]byte(req.Key), []byte(req.Value))
+			extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
 			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
@@ -63,7 +63,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 		}
 	} else {
 		var extend = NewExtend(req.Inode)
-		extend.Put([]byte(req.Key), []byte(req.Value))
+		extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
 		if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
@@ -75,7 +75,7 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)
-	extend.Put([]byte(req.Key), []byte(req.Value))
+	extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
 	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -87,7 +87,7 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 func (mp *metaPartition) BatchSetXAttr(req *proto.BatchSetXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)
 	for key, val := range req.Attrs {
-		extend.Put([]byte(key), []byte(val))
+		extend.Put([]byte(key), []byte(val), mp.verSeq)
 	}
 
 	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
@@ -107,9 +107,10 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 	}
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		if value, exist := extend.Get([]byte(req.Key)); exist {
-			response.Value = string(value)
+		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+			if value, exist := extend.Get([]byte(req.Key)); exist {
+				response.Value = string(value)
+			}
 		}
 	}
 	var encoded []byte
@@ -131,10 +132,12 @@ func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (
 	}
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		for key, val := range extend.dataMap {
-			response.Attrs[key] = string(val)
+		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+			for key, val := range extend.dataMap {
+				response.Attrs[key] = string(val)
+			}
 		}
+
 	}
 	var encoded []byte
 	encoded, err = json.Marshal(response)
@@ -155,14 +158,17 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 	for _, inode := range req.Inodes {
 		treeItem := mp.extendTree.Get(NewExtend(inode))
 		if treeItem != nil {
-			extend := treeItem.(*Extend)
 			info := &proto.XAttrInfo{
 				Inode:  inode,
 				XAttrs: make(map[string]string),
 			}
-			for _, key := range req.Keys {
-				if val, exist := extend.Get([]byte(key)); exist {
-					info.XAttrs[key] = string(val)
+
+			var extend *Extend
+			if extend = treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+				for _, key := range req.Keys {
+					if val, exist := extend.Get([]byte(key)); exist {
+						info.XAttrs[key] = string(val)
+					}
 				}
 			}
 			response.XAttrs = append(response.XAttrs, info)
@@ -179,7 +185,7 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 
 func (mp *metaPartition) RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)
-	extend.Put([]byte(req.Key), nil)
+	extend.Put([]byte(req.Key), nil, req.VerSeq)
 	if _, err = mp.putExtend(opFSMRemoveXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -197,11 +203,12 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 	}
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		extend.Range(func(key, value []byte) bool {
-			response.XAttrs = append(response.XAttrs, string(key))
-			return true
-		})
+		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+			extend.Range(func(key, value []byte) bool {
+				response.XAttrs = append(response.XAttrs, string(key))
+				return true
+			})
+		}
 	}
 	var encoded []byte
 	encoded, err = json.Marshal(response)

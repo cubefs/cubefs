@@ -15,89 +15,40 @@
 package qos
 
 import (
-	"sync"
-
-	"github.com/dustin/go-humanize"
-
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/priority"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
 const (
-	MaxIops      = 1000 * 1000 // 1000k
-	MaxBandwidth = 2 << 30     // 1GB/s
+	defaultMaxBandwidthMBPS        = 1024
+	defaultBackgroundBandwidthMBPS = 10
+	defaultMaxWaitCount            = 1024
 )
 
 type Config struct {
-	DiskBandwidthMBPS int64           `json:"disk_bandwidth_MBPS"`
-	DiskIOPS          int64           `json:"disk_iops"`
-	LevelConfigs      LevelConfig     `json:"flow_conf"`
-	DiskViewer        iostat.IOViewer `json:"-"`
-	StatGetter        flow.StatGetter `json:"-"`
+	StatGetter        flow.StatGetter `json:"-"` // Identify: a io flow
+	DiskViewer        iostat.IOViewer `json:"-"` // Identify: io viewer
+	ReadQueueDepth    int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
+	WriteQueueDepth   int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
+	WriteChanQueCnt   int             `json:"-"` // The number of chan queues, equal $chanCnt of write io pool
+	MaxWaitCount      int             `json:"max_wait_count"`
+	DiskBandwidthMBPS int64           `json:"disk_bandwidth_mbps"`
+	BackgroundMBPS    int64           `json:"background_mbps"`
 }
 
 type ParaConfig struct {
-	Iops      int64   `json:"iops"`
 	Bandwidth int64   `json:"bandwidth_MBPS"`
 	Factor    float64 `json:"factor"`
 }
 
-type Threshold struct {
-	sync.RWMutex
-	ParaConfig
-	DiskBandwidth int64
-	DiskIOPS      int64
-}
-
 type LevelConfig map[string]ParaConfig
 
-func (t *Threshold) reset(level string, c Config) {
-	t.Lock()
-	para := c.LevelConfigs[level]
-	para.Bandwidth *= humanize.MiByte
-	c.DiskBandwidthMBPS *= humanize.MiByte
-	t.ParaConfig = para
-	t.DiskIOPS = c.DiskIOPS
-	t.DiskBandwidth = c.DiskBandwidthMBPS
-	t.Unlock()
-}
+func InitAndFixQosConfig(raw *Config) {
+	defaulter.LessOrEqual(&raw.BackgroundMBPS, int64(defaultBackgroundBandwidthMBPS))
+	defaulter.LessOrEqual(&raw.MaxWaitCount, defaultMaxWaitCount)
 
-func InitAndFixParaConfig(raw ParaConfig) (para ParaConfig, err error) {
-	para = raw
-
-	if para.Iops < 0 || para.Bandwidth < 0 || para.Factor < 0 {
-		return para, ErrWrongConfig
+	if raw.BackgroundMBPS > raw.DiskBandwidthMBPS && raw.DiskBandwidthMBPS > 0 {
+		raw.BackgroundMBPS = raw.DiskBandwidthMBPS // fix background
 	}
-	if para.Iops == 0 {
-		para.Iops = MaxIops
-	}
-	if para.Bandwidth == 0 {
-		para.Bandwidth = MaxBandwidth
-	}
-	if para.Factor == 0 || para.Factor > 1 {
-		para.Factor = 1
-	}
-
-	return para, nil
-}
-
-func initConfig(conf *Config) (err error) {
-	levelConf := LevelConfig{}
-	for l, para := range conf.LevelConfigs {
-		if !priority.IsValidPriName(l) {
-			return ErrWrongConfig
-		}
-
-		para, err = InitAndFixParaConfig(para)
-		if err != nil {
-			return ErrWrongConfig
-		}
-
-		levelConf[l] = para
-	}
-
-	conf.LevelConfigs = levelConf
-
-	return nil
 }

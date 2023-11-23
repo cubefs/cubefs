@@ -17,7 +17,7 @@ cd docker
 ## Run the java test program
 
 ```
-java -cp target/libcubefs-1.0-SNAPSHOT-jar-with-dependencies.jar io.chubao.fs.TestCfsClient ls <dirpath>
-java -cp target/libcubefs-1.0-SNAPSHOT-jar-with-dependencies.jar io.chubao.fs.TestCfsClient read <filepath>
-java -cp target/libcubefs-1.0-SNAPSHOT-jar-with-dependencies.jar io.chubao.fs.TestCfsClient write <filepath>
+java -cp target/libcubefs-1.0-SNAPSHOT-jar-with-dependencies.jar io.cube.fs.TestCfsClient ls <dirpath>
+java -cp target/libcubefs-1.0-SNAPSHOT-jar-with-dependencies.jar io.cube.fs.TestCfsClient read <filepath>
+java -cp target/libcubefs-1.0-SNAPSHOT-jar-with-dependencies.jar io.cube.fs.TestCfsClient write <filepath>
 ```

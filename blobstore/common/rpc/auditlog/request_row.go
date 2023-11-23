@@ -72,7 +72,7 @@ var vre = regexp.MustCompile("^v[0-9]+$")
 
 type ReqHeader struct {
 	ContentLength string `json:"Content-Length"`
-	BodySize      int64  `json:"bs"` // body size
+	BodySize      int64  `json:"BodySize"` // body size
 	RawQuery      string `json:"RawQuery"`
 	Host          string `json:"Host"`
 	Token         *Token `json:"Token"`
@@ -354,10 +354,6 @@ func (a *RequestRow) ReqLength() (reqLength int64) {
 	if reqHeader == nil {
 		return
 	}
-	reqLength, _ = strconv.ParseInt(reqHeader.ContentLength, 10, 64)
-	if reqLength > 0 {
-		return reqLength
-	}
 	return reqHeader.BodySize
 }
 
@@ -475,32 +471,30 @@ func (a *RequestRow) XlogsTime(names []string) (msSpeedTotal uint64) {
 
 // apiWithParams returns api information with maxApiLevel( default 2).
 func apiWithParams(service, method, path, host, params string, maxApiLevel int) (api string) {
+	const unknown = ".unknown"
 	if service == "" || method == "" {
 		return "unknown.unknown"
 	}
 	stype := strings.ToLower(service)
 	fields := strings.Split(strings.ToLower(path), "/")
 	if len(fields) <= 1 {
-		return stype + ".unknown"
+		return stype + unknown
 	}
 
 	firstPath := fields[1]
 	firstPathIndex := 1
 
-	switch stype {
-	default:
-		if (vre.MatchString(firstPath) || firstPath == "admin") && len(fields) > 2 && fields[2] != "" {
-			firstPath = firstPath + "-" + fields[2]
-			firstPathIndex = 2
-		}
+	if (vre.MatchString(firstPath) || firstPath == "admin") && len(fields) > 2 && fields[2] != "" {
+		firstPath = firstPath + "-" + fields[2]
+		firstPathIndex = 2
+	}
 
-		// for defy api from apiserver
-		if firstPath == "v2-tune" {
-			return stype + ".v2-tune." + strings.Join(fields[firstPathIndex+1:], ".")
-		}
-		if !isValidApi(firstPath) {
-			return stype + ".unknown"
-		}
+	// for defy api from apiserver
+	if firstPath == "v2-tune" {
+		return stype + ".v2-tune." + strings.Join(fields[firstPathIndex+1:], ".")
+	}
+	if !isValidApi(firstPath) {
+		return stype + unknown
 	}
 
 	api = firstPath
@@ -510,11 +504,11 @@ func apiWithParams(service, method, path, host, params string, maxApiLevel int) 
 		length := len(fields)
 		for level <= maxApiLevel && index < length {
 			api += "." + fields[index]
-			level += 1
-			index += 1
+			level++
+			index++
 		}
 		if !isValidMultiPathApi(api) {
-			return stype + ".unknown"
+			return stype + unknown
 		}
 	}
 

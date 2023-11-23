@@ -2,7 +2,7 @@
 
 MntPoint=/cfs/mnt
 mkdir -p /cfs/bin /cfs/log /cfs/mnt
-src_path=/go/src/github.com/chubaofs/cfs
+src_path=/go/src/github.com/cubefs/cfs
 
 Master1Addr="192.168.0.11:17010"
 LeaderAddr=""

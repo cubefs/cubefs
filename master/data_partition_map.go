@@ -282,11 +282,14 @@ func (dpMap *DataPartitionMap) totalUsedSpace() (totalUsed uint64) {
 func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
 	dpMap.Lock()
 	defer dpMap.Unlock()
+	changedCnt := 0
 	for _, dp := range dpMap.partitions {
 		if proto.ReadWrite == dp.Status {
 			dp.Status = proto.ReadOnly
+			changedCnt++
 		}
 	}
+	log.LogDebugf("action[setAllDataPartitionsToReadOnly] ReadWrite->ReadOnly dp cnt: %v", changedCnt)
 }
 
 func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr string) (partitions []*DataPartition) {
@@ -299,4 +302,26 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 		}
 	}
 	return
+}
+
+func (dpMap *DataPartitionMap) getReplicaDiskPaths(nodeAddr string) (diskPaths []string) {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+	diskPaths = make([]string, 0)
+	for _, dp := range dpMap.partitionMap {
+		disk := dp.getReplicaDisk(nodeAddr)
+		if len(disk) != 0 && !inStingList(disk, diskPaths) {
+			diskPaths = append(diskPaths, disk)
+		}
+	}
+	return
+}
+
+func inStingList(target string, strArray []string) bool {
+	for _, element := range strArray {
+		if target == element {
+			return true
+		}
+	}
+	return false
 }

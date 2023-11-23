@@ -81,7 +81,8 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	if dp != nil {
 		return dp, nil
 	}
-
+	log.LogErrorf("DefaultRandomSelector: no writable data partition with %v partitions and exclude(%v)",
+		len(partitions), exclude)
 	return nil, fmt.Errorf("no writable data partition")
 }
 
@@ -127,6 +128,12 @@ func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
 	s.localLeaderPartitions = newLocalLeaderPartitions
 
 	return
+}
+
+func (s *DefaultRandomSelector) Count() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.partitions)
 }
 
 func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {

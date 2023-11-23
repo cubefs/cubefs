@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/gorilla/mux"
@@ -186,11 +185,6 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		exporterPort = 17510
 	}
 
-	if len(consulAddr) <= 0 {
-		log.LogInfo("consul addr is empty, use default, consul.ums.oppo.local ")
-		consulAddr = "consul.ums.oppo.local"
-	}
-
 	if exporterPort != int64(0) && len(consulAddr) > 0 {
 		if ok := strings.HasPrefix(consulAddr, "http"); !ok {
 			consulAddr = "http://" + consulAddr
@@ -229,13 +223,9 @@ func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
 
 	ticker := time.NewTicker(time.Second * 15)
 	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				err := pusher.Push()
-				if err != nil {
-					log.LogWarnf("push monitor data to %s err, %s", pushAddr, err.Error())
-				}
+		for range ticker.C {
+			if err := pusher.Push(); err != nil {
+				log.LogWarnf("push monitor data to %s err, %s", pushAddr, err.Error())
 			}
 		}
 	}()

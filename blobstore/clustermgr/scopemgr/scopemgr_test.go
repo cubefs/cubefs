@@ -36,7 +36,7 @@ func TestScopeMgr(t *testing.T) {
 	tmpDBPath := "/tmp/tmpnormaldb" + strconv.Itoa(rand.Intn(10000000000))
 	defer os.RemoveAll(tmpDBPath)
 
-	db, err := normaldb.OpenNormalDB(tmpDBPath, false)
+	db, err := normaldb.OpenNormalDB(tmpDBPath)
 	require.NoError(t, err)
 	defer db.Close()
 

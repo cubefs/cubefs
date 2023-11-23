@@ -17,6 +17,7 @@ package log
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -38,12 +39,6 @@ const (
 	maxLogLine     = 10000
 	defaultLogLine = 100
 )
-
-type logView struct {
-	logLevel  string
-	getLogNum int
-	logText   []string
-}
 
 // HTTPReply uniform response structure
 type HTTPReply struct {
@@ -114,12 +109,10 @@ func GetLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOKReply(w, r, msg, data)
-
-	return
 }
 
 func tailn(line int, file *os.File) (data []string, err error) {
-	fileLen, err := file.Seek(0, os.SEEK_END)
+	fileLen, err := file.Seek(0, io.SeekEnd)
 	if err != nil {
 		return
 	}
@@ -134,7 +127,7 @@ func tailn(line int, file *os.File) (data []string, err error) {
 			currSize = fileLen
 		}
 
-		_, err = file.Seek(-currSize, os.SEEK_CUR)
+		_, err = file.Seek(-currSize, io.SeekCurrent)
 		if err != nil {
 			return
 		}
@@ -172,7 +165,7 @@ func tailn(line int, file *os.File) (data []string, err error) {
 		}
 		lastStr = string(buff[:last])
 
-		fileLen, err = file.Seek(-currSize, os.SEEK_CUR)
+		fileLen, err = file.Seek(-currSize, io.SeekCurrent)
 
 		if fileLen <= 0 {
 			break
@@ -200,15 +193,10 @@ func sendOKReply(w http.ResponseWriter, r *http.Request, msg string, data interf
 	}
 
 	send(w, r, httpReply)
-
-	return
 }
 
 func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 	w.Header().Set("content-type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
-	if _, err := w.Write(reply); err != nil {
-		return
-	}
-	return
+	w.Write(reply)
 }

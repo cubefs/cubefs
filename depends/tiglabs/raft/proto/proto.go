@@ -27,15 +27,15 @@ type (
 
 const (
 	ReqMsgAppend MsgType = iota
-	ReqMsgVote
+	ReqMsgPreVote
 	ReqMsgHeartBeat
 	ReqMsgSnapShot
-	ReqMsgElectAck
+	ReqMsgVote
 	RespMsgAppend
-	RespMsgVote
+	RespMsgPreVote
 	RespMsgHeartBeat
 	RespMsgSnapShot
-	RespMsgElectAck
+	RespMsgVote
 	LocalMsgHup
 	LocalMsgProp
 	LeaseMsgOffline
@@ -101,7 +101,7 @@ type Message struct {
 	Type         MsgType
 	ForceVote    bool
 	Reject       bool
-	RejectIndex  uint64
+	RejectHint   uint64
 	ID           uint64
 	From         uint64
 	To           uint64
@@ -116,9 +116,9 @@ type Message struct {
 }
 
 func (m *Message) ToString() (mesg string) {
-	return fmt.Sprintf("Mesg:[%v] type(%v) ForceVote(%v) Reject(%v) RejectIndex(%v) "+
+	return fmt.Sprintf("Mesg:[%v] type(%v) ForceVote(%v) Reject(%v) RejectHint(%v) "+
 		"From(%v) To(%v) Term(%v) LogTrem(%v) Index(%v) Commit(%v)", m.ID, m.Type.String(), m.ForceVote,
-		m.Reject, m.RejectIndex, m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit)
+		m.Reject, m.RejectHint, m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit)
 }
 
 type ConfChange struct {
@@ -134,23 +134,23 @@ func (t MsgType) String() string {
 	case 0:
 		return "ReqMsgAppend"
 	case 1:
-		return "ReqMsgVote"
+		return "ReqMsgPreVote"
 	case 2:
 		return "ReqMsgHeartBeat"
 	case 3:
 		return "ReqMsgSnapShot"
 	case 4:
-		return "ReqMsgElectAck"
+		return "ReqMsgVote"
 	case 5:
 		return "RespMsgAppend"
 	case 6:
-		return "RespMsgVote"
+		return "RespMsgPreVote"
 	case 7:
 		return "RespMsgHeartBeat"
 	case 8:
 		return "RespMsgSnapShot"
 	case 9:
-		return "RespMsgElectAck"
+		return "RespMsgVote"
 	case 10:
 		return "LocalMsgHup"
 	case 11:
@@ -210,12 +210,12 @@ func (cc *ConfChange) String() string {
 
 func (m *Message) IsResponseMsg() bool {
 	return m.Type == RespMsgAppend || m.Type == RespMsgHeartBeat || m.Type == RespMsgVote ||
-		m.Type == RespMsgElectAck || m.Type == RespMsgSnapShot || m.Type == RespCheckQuorum
+		m.Type == RespMsgPreVote || m.Type == RespMsgSnapShot || m.Type == RespCheckQuorum
 }
 
 func (m *Message) IsElectionMsg() bool {
 	return m.Type == ReqMsgHeartBeat || m.Type == RespMsgHeartBeat || m.Type == ReqMsgVote || m.Type == RespMsgVote ||
-		m.Type == ReqMsgElectAck || m.Type == RespMsgElectAck || m.Type == LeaseMsgOffline || m.Type == LeaseMsgTimeout
+		m.Type == ReqMsgPreVote || m.Type == RespMsgPreVote || m.Type == LeaseMsgOffline || m.Type == LeaseMsgTimeout
 }
 
 func (m *Message) IsHeartbeatMsg() bool {

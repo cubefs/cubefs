@@ -1,3 +1,3 @@
-FROM ubuntu:18.04
+FROM ubuntu:18.04@sha256:152dc042452c496007f07ca9127571cb9c29697f42acbfad72324b2bb2e43c98
 RUN mkdir -p /export/Logs/authnode && mkdir -p /export/Data/authnode/raft && mkdir -p /export/Data/authnode/rocksdbstore
 CMD /app/cfs-server -c /app/authnode1.json -f 

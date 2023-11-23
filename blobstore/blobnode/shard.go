@@ -35,7 +35,6 @@ import (
 
 const (
 	ShardListPageLimit = 65536
-	BidBatchReadLimit  = 1024
 )
 
 /*
@@ -81,7 +80,8 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, args.Type)
+	convertIoType(&args.Type) // For compatibility with previous versions io type
+	ctx = bnapi.SetIoType(ctx, args.Type)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	s.lock.RLock()
@@ -97,28 +97,6 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
-
-	start := time.Now()
-	limitKey := args.Bid
-	err = s.GetQpsLimitPerKey.Acquire(limitKey)
-	span.AppendTrackLog("lk.key", start, err)
-	if err != nil {
-		c.RespondError(bloberr.ErrOverload)
-		span.Warnf("shard get overload. args:%v err:%v", args, err)
-		return
-	}
-	defer s.GetQpsLimitPerKey.Release(limitKey)
-
-	start = time.Now()
-	limitDiskKey := cs.Disk().ID()
-	err = s.GetQpsLimitPerDisk.Acquire(limitDiskKey)
-	span.AppendTrackLog("lk.disk", start, err)
-	if err != nil {
-		c.RespondError(bloberr.ErrOverload)
-		span.Warnf("shard get overload. args:%v err:%v", args, err)
-		return
-	}
-	defer s.GetQpsLimitPerDisk.Release(limitDiskKey)
 
 	// build shard reader
 	shard := core.NewShardReader(args.Bid, args.Vuid, from, to, w)
@@ -334,6 +312,13 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	}
 	defer s.DeleteQpsLimitPerDisk.Release(perDiskLimitKey)
 
+	qos := ds.GetIoQos() // max io wait
+	if !qos.Allow() {
+		c.RespondError(bloberr.ErrOverload)
+		return
+	}
+	defer qos.Release()
+
 	err = cs.AllowModify()
 	if err != nil {
 		span.Warnf("ChunkStorage can not mark delete: %v", err)
@@ -342,7 +327,7 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, bnapi.DeleteIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	err = cs.MarkDelete(ctx, args.Bid)
@@ -396,6 +381,13 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	}
 	defer s.DeleteQpsLimitPerKey.Release(limitKey)
 
+	qos := ds.GetIoQos() // max io wait
+	if !qos.Allow() {
+		c.RespondError(bloberr.ErrOverload)
+		return
+	}
+	defer qos.Release()
+
 	perDiskLimitKey := cs.Disk().ID()
 	err = s.DeleteQpsLimitPerDisk.Acquire(perDiskLimitKey)
 	if err != nil {
@@ -413,7 +405,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, bnapi.DeleteIO)
+	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	err = cs.Delete(ctx, args.Bid)
@@ -465,7 +457,8 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	}
 
 	// set io type
-	ctx = bnapi.Setiotype(ctx, args.Type)
+	convertIoType(&args.Type) // For compatibility with previous versions io type
+	ctx = bnapi.SetIoType(ctx, args.Type)
 	ctx = limitio.SetLimitTrack(ctx)
 
 	s.lock.RLock()
@@ -489,18 +482,6 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		return
 	}
 
-	start := time.Now()
-
-	limitKey := cs.Disk().ID()
-	err = s.PutQpsLimitPerDisk.Acquire(limitKey)
-	span.AppendTrackLog("lk.disk", start, err)
-	if err != nil {
-		span.Errorf("shard put overload. args:%v err:%v", args, err)
-		c.RespondError(bloberr.ErrOverload)
-		return
-	}
-	defer s.PutQpsLimitPerDisk.Release(limitKey)
-
 	if !cs.HasEnoughSpace(args.Size) {
 		span.Errorf("cs has no enougn space. args:%v, chunk info:%v, disk:%v",
 			args, cs.ChunkInfo(ctx), cs.Disk().Stats())
@@ -510,7 +491,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 
 	shard := core.NewShardWriter(args.Bid, args.Vuid, uint32(args.Size), c.Request.Body)
 
-	start = time.Now()
+	start := time.Now()
 
 	err = cs.Write(ctx, shard)
 	span.AppendTrackLog("disk.put", start, err)
@@ -547,4 +528,11 @@ func isShardErr(err error) bool {
 		return true
 	}
 	return false
+}
+
+// For compatibility with previous versions io type, convert: 0->0; [1,8)->1
+func convertIoType(iot *bnapi.IOType) {
+	if *iot > bnapi.NormalIO {
+		*iot = bnapi.BackgroundIO
+	}
 }

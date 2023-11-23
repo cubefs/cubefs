@@ -53,10 +53,10 @@ $ cd cubefs-csi
 
 #### 创建 CSI RBAC
 
-cfs-rbac.yaml 内容基本不用动，里面主要声明 CSI 组件的角色和对应的权限，所以直接执行如下命令：
+csi-rbac.yaml 内容基本不用动，里面主要声明 CSI 组件的角色和对应的权限，所以直接执行如下命令：
 
 ``` bash
-$ kubectl apply -f deploy/cfs-rbac.yaml
+$ kubectl apply -f deploy/csi-rbac.yaml
 ```
 
 #### 创建 StorageClass
@@ -238,7 +238,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: cubefs-sc
+  storageClassName: cfs-sc
 ```
 
 `storageClassName` 需要和刚刚创建的StorageClass的 `metadata` 中的name属性保持一致。这样就会根据 `cubefs-sc` 中定义的参数来创建存储卷。
@@ -293,7 +293,7 @@ spec:
         app: cfs-csi-demo-pod
     spec:
       nodeSelector:
-        cubefs-csi-node: enabled
+        component.cubefs.io/csi: enabled
       containers:
         - name: cfs-csi-demo
           image: nginx:1.17.9
@@ -358,4 +358,4 @@ PVC 会与一个 PV 进行绑定，而这个绑定的 PV 名称就是底下 cube
 
 ### CubeFS卷管理
 
-可以参考 [cubefs cli 工具使用指南](../maintenance/tool.md)
+可以参考 [cubefs cli 工具使用指南](../tools/cli.md)

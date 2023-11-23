@@ -15,16 +15,22 @@
 // Package taskpool provides limited pool running task
 package taskpool
 
+import "sync"
+
 // TaskPool limited pool
 type TaskPool struct {
 	pool chan func()
+	wg   *sync.WaitGroup
 }
 
 // New returns task pool with workerCount and poolSize
 func New(workerCount, poolSize int) TaskPool {
 	pool := make(chan func(), poolSize)
+	wg := &sync.WaitGroup{}
+	wg.Add(workerCount)
 	for i := 0; i < workerCount; i++ {
 		go func() {
+			defer wg.Done()
 			for {
 				task, ok := <-pool
 				if !ok {
@@ -34,7 +40,7 @@ func New(workerCount, poolSize int) TaskPool {
 			}
 		}()
 	}
-	return TaskPool{pool: pool}
+	return TaskPool{pool: pool, wg: wg}
 }
 
 // Run add task to pool, block if pool is full
@@ -55,4 +61,5 @@ func (tp TaskPool) TryRun(task func()) bool {
 // Close the pool, the function is concurrent unsafe
 func (tp TaskPool) Close() {
 	close(tp.pool)
+	tp.wg.Wait()
 }

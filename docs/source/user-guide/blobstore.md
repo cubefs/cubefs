@@ -1,22 +1,21 @@
 # Using Erasure Coding System
 
 ::: tip Note
-For a quick experience, please refer to [Single-Node Deployment](../deploy/node.md).
+For a quick experience, please refer to [Single-Node Mode](../quick-start/node.md).
 :::
 
 ## Compilation and Building
 
 ``` bash
 $ git clone https://github.com/cubefs/cubefs.git
-$ cd cubefs/blobstore
-$ source env.sh
-$ sh build.sh
+$ source build/cgo_env.sh
+$ make blobstore
 ```
 
-After successful building, the following executable files will be generated in the `bin` directory:
+After successful building, the following executable files will be generated in the `build/bin/blobstore` directory:
 
 ```text
-├── bin
+├── build/bin/blobstore
 │   ├── access
 │   ├── clustermgr
 │   ├── proxy
@@ -40,7 +39,6 @@ Due to the interdependence of the modules, the deployment should be carried out 
     > [Kafka](https://kafka.apache.org/documentation/#basic_ops)
     >
     > [Consul](https://learn.hashicorp.com/tutorials/consul/get-started-install?in=consul/getting-started)
-    > (optional, supports Consul)
 
 3.  **Language Environment**
 
@@ -188,6 +186,8 @@ nohup ./scheduler -f scheduler.conf &
      "broker_list": ["127.0.0.1:9092"]
    },
    "blob_delete": {
+     "max_batch_size": 10,
+     "batch_interval_s": 2,
      "delete_log": {
        "dir": "./run/delete_log"
      }
@@ -413,7 +413,7 @@ The reference configuration is as follows: `clustermgr-learner.conf`:
 
 ## Upload Testing
 
-> Refer to [CLI Deployment Verification](../deploy/verify.md) for details.
+> Refer to [Quick Use](../tools/cli.md) for details.
 
 ## Modifying Master Configuration
 

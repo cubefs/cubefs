@@ -41,13 +41,11 @@ func (s *Service) ChunkCreate(c *rpc.Context) {
 	span.Infof("chunk create args:%v", args)
 
 	if args.ChunkSize < 0 || args.ChunkSize > disk.MaxChunkSize {
-		span.Debugf("args:%v", args)
 		c.RespondError(bloberr.ErrInvalidParam)
 		return
 	}
 
 	if !bnapi.IsValidDiskID(args.DiskID) {
-		span.Debugf("args:%v", args)
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
@@ -99,7 +97,6 @@ func (s *Service) ChunkInspect(c *rpc.Context) {
 
 	span.Debugf("chunk inspect args: %v", args)
 	if !bnapi.IsValidDiskID(args.DiskID) {
-		span.Debugf("args:%v", args)
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
@@ -148,10 +145,9 @@ func (s *Service) ChunkRelease(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
-	span.Debugf("args: %v", args)
+	span.Debugf("chunk release args: %v", args)
 
 	if !bnapi.IsValidDiskID(args.DiskID) {
-		span.Debugf("args:%v", args)
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
@@ -159,7 +155,7 @@ func (s *Service) ChunkRelease(c *rpc.Context) {
 	limitKey := args.Vuid
 	err := s.ChunkLimitPerVuid.Acquire(limitKey)
 	if err != nil {
-		span.Errorf("vuid(%v) status concurry conflict", args.Vuid)
+		span.Errorf("release vuid(%v) status concurry conflict", args.Vuid)
 		c.RespondError(bloberr.ErrOverload)
 		return
 	}
@@ -169,14 +165,14 @@ func (s *Service) ChunkRelease(c *rpc.Context) {
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
 	if !exist {
-		span.Errorf("disk:%v not found", args.DiskID)
+		span.Errorf("release disk:%v not found", args.DiskID)
 		c.RespondError(bloberr.ErrNoSuchDisk)
 		return
 	}
 
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
-		span.Errorf("vuid:%v not found", args.Vuid)
+		span.Errorf("release vuid:%v not found", args.Vuid)
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
@@ -213,10 +209,9 @@ func (s *Service) ChunkReadonly(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
-	span.Debugf("args: %v", args)
+	span.Debugf("chunk readonly args: %v", args)
 
 	if !bnapi.IsValidDiskID(args.DiskID) {
-		span.Debugf("args:%v", args)
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
@@ -224,7 +219,7 @@ func (s *Service) ChunkReadonly(c *rpc.Context) {
 	limitKey := args.Vuid
 	err := s.ChunkLimitPerVuid.Acquire(limitKey)
 	if err != nil {
-		span.Errorf("vuid(%v) status concurry conflict", args.Vuid)
+		span.Errorf("readonly vuid(%v) status concurry conflict", args.Vuid)
 		c.RespondError(bloberr.ErrOverload)
 		return
 	}
@@ -234,14 +229,14 @@ func (s *Service) ChunkReadonly(c *rpc.Context) {
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
 	if !exist {
-		span.Errorf("disk:%v not found", args.DiskID)
+		span.Errorf("readonly disk:%v not found", args.DiskID)
 		c.RespondError(bloberr.ErrNoSuchDisk)
 		return
 	}
 
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
-		span.Errorf("vuid:%v not found", args.Vuid)
+		span.Errorf("readonly vuid:%v not found", args.Vuid)
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
@@ -283,10 +278,9 @@ func (s *Service) ChunkReadwrite(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
-	span.Debugf("args: %v", args)
+	span.Debugf("chunk readwrite args: %v", args)
 
 	if !bnapi.IsValidDiskID(args.DiskID) {
-		span.Debugf("args:%v", args)
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
@@ -294,7 +288,7 @@ func (s *Service) ChunkReadwrite(c *rpc.Context) {
 	limitKey := args.Vuid
 	err := s.ChunkLimitPerVuid.Acquire(limitKey)
 	if err != nil {
-		span.Errorf("vuid(%v) status concurry conflict", args.Vuid)
+		span.Errorf("readwrite vuid(%v) status concurry conflict", args.Vuid)
 		c.RespondError(bloberr.ErrOverload)
 		return
 	}
@@ -304,14 +298,14 @@ func (s *Service) ChunkReadwrite(c *rpc.Context) {
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
 	if !exist {
-		span.Errorf("disk:%v not found", args.DiskID)
+		span.Errorf("readwrite disk:%v not found", args.DiskID)
 		c.RespondError(bloberr.ErrNoSuchDisk)
 		return
 	}
 
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
-		span.Errorf("vuid:%v not found", args.Vuid)
+		span.Errorf("readwrite vuid:%v not found", args.Vuid)
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
@@ -356,7 +350,6 @@ func (s *Service) ChunkList(c *rpc.Context) {
 	span.Infof("chunk list args: %v", args)
 
 	if !bnapi.IsValidDiskID(args.DiskID) {
-		span.Debugf("args:%v", args)
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
@@ -406,7 +399,6 @@ func (s *Service) ChunkStat(c *rpc.Context) {
 	span.Infof("chunk stat args:%v", args)
 
 	if !bnapi.IsValidDiskID(args.DiskID) {
-		span.Debugf("args:%v", args)
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
@@ -415,7 +407,7 @@ func (s *Service) ChunkStat(c *rpc.Context) {
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
 	if !exist {
-		span.Errorf("disk:%v not found", args.DiskID)
+		span.Errorf("stat disk:%v not found", args.DiskID)
 		c.RespondError(bloberr.ErrNoSuchDisk)
 		return
 	}

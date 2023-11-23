@@ -31,7 +31,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -48,6 +47,7 @@ var (
 	errInvalidMembers   = errors.New("invalid members")
 	errInvalidLeader    = errors.New("invalid leader")
 	errInvalidNodeID    = errors.New("invalid node_id")
+	errInvalidKafka     = errors.New("invalid kafka")
 )
 
 var (
@@ -119,17 +119,14 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	topologyMgr := NewClusterTopologyMgr(clusterMgrCli, topoConf)
 
-	conf.ShardRepair.Kafka = conf.Kafka.ShardRepair
-	conf.ShardRepair.Kafka.BrokerList = conf.Kafka.BrokerList
-	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli)
+	kafkaClient := base.NewKafkaConsumer(conf.Kafka.BrokerList)
+	shardRepairMgr, err := NewShardRepairMgr(&conf.ShardRepair, topologyMgr, switchMgr, blobnodeCli, clusterMgrCli, kafkaClient)
 	if err != nil {
 		log.Errorf("new shard repair mgr: cfg[%+v], err[%w]", conf.ShardRepair, err)
 		return nil, err
 	}
 
-	conf.BlobDelete.Kafka = conf.Kafka.BlobDelete
-	conf.BlobDelete.Kafka.BrokerList = conf.Kafka.BrokerList
-	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, topologyMgr, blobnodeCli, switchMgr, clusterMgrCli)
+	deleteMgr, err := NewBlobDeleteMgr(&conf.BlobDelete, topologyMgr, switchMgr, blobnodeCli, kafkaClient)
 	if err != nil {
 		log.Errorf("new blob delete mgr: cfg[%+v], err[%w]", conf.BlobDelete, err)
 		return nil, err
@@ -145,18 +142,19 @@ func NewService(conf *Config) (svr *Service, err error) {
 		return nil, fmt.Errorf("service register: err:[%w]", err)
 	}
 
-	go svr.RunTask()
+	if err = svr.RunTask(); err != nil {
+		return nil, err
+	}
 
 	if !svr.leader {
 		return
 	}
 
-	err = svr.NewKafkaMonitor(conf.ClusterID, clusterMgrCli)
+	err = svr.NewKafkaMonitor(conf.ClusterID)
 	if err != nil {
 		log.Errorf("run kafka monitor failed: err[%w]", err)
 		return nil, err
 	}
-	svr.RunKafkaMonitors()
 
 	// all migrate manager
 	taskLogger, err := recordlog.NewEncoder(&conf.TaskLog)
@@ -257,52 +255,38 @@ func (svr *Service) Run() {
 }
 
 // RunTask run shard repair and blob delete tasks
-func (svr *Service) RunTask() {
-	err := svr.LoadVolInfo()
-	if err != nil {
-		log.Panicf("load volume info failed: err[%+v]", err)
+func (svr *Service) RunTask() error {
+	if err := svr.LoadVolInfo(); err != nil {
+		log.Errorf("load volume info failed: err[%+v]", err)
+		return err
 	}
-	svr.shardRepairMgr.RunTask()
-	svr.blobDeleteMgr.RunTask()
+	svr.blobDeleteMgr.Run()
+	svr.shardRepairMgr.Run()
+	return nil
 }
 
-func (svr *Service) NewKafkaMonitor(clusterID proto.ClusterID, access base.IConsumerOffset) error {
+func (svr *Service) NewKafkaMonitor(clusterID proto.ClusterID) error {
 	// blob delete
-	var blobDeleteTopicCfgs []*base.KafkaConfig
-	blobDeleteTopicCfgs = append(blobDeleteTopicCfgs, conf.BlobDelete.normalConsumerConfig())
-	blobDeleteTopicCfgs = append(blobDeleteTopicCfgs, conf.BlobDelete.failedConsumerConfig())
-	if err := svr.newMonitor(proto.TaskTypeBlobDelete, clusterID, blobDeleteTopicCfgs, access); err != nil {
+	brokerList := conf.Kafka.BrokerList
+	if err := svr.newMonitor(proto.TaskTypeBlobDelete, clusterID, conf.BlobDelete.topics(), brokerList); err != nil {
 		return err
 	}
 
 	// shard repair
-	var shardRepairTopicCfgs []*base.KafkaConfig
-	shardRepairTopicCfgs = append(shardRepairTopicCfgs, conf.ShardRepair.failedConsumerConfig())
-	for _, topicCfg := range conf.ShardRepair.priorityConsumerConfigs() {
-		shardRepairTopicCfgs = append(shardRepairTopicCfgs, &topicCfg.KafkaConfig)
-	}
-	return svr.newMonitor(proto.TaskTypeShardRepair, clusterID, shardRepairTopicCfgs, access)
+	return svr.newMonitor(proto.TaskTypeShardRepair, clusterID, conf.ShardRepair.topics(), brokerList)
 }
 
-func (svr *Service) newMonitor(taskType proto.TaskType, clusterID proto.ClusterID, topics []*base.KafkaConfig, access base.IConsumerOffset) error {
-	monitorIntervalS := 1
-	for _, topicCfg := range topics {
-		m, err := base.NewKafkaTopicMonitor(taskType, clusterID, topicCfg, access, monitorIntervalS)
+func (svr *Service) newMonitor(taskType proto.TaskType, clusterID proto.ClusterID, topics []string, brokerList []string) error {
+	for _, topic := range topics {
+		cfg := &base.KafkaConfig{BrokerList: brokerList, Topic: topic}
+		m, err := base.NewKafkaTopicMonitor(taskType, clusterID, cfg)
 		if err != nil {
-			log.Errorf("new kafka topic monitor topic failed: topic[%s], err[%+v]", topicCfg.Topic, err)
+			log.Errorf("new kafka topic monitor topic failed: topic[%s], err[%+v]", topic, err)
 			return err
 		}
 		svr.kafkaMonitors = append(svr.kafkaMonitors, m)
 	}
 	return nil
-}
-
-func (svr *Service) RunKafkaMonitors() {
-	for _, monitor := range svr.kafkaMonitors {
-		go func(monitor *base.KafkaTopicMonitor) {
-			monitor.Run()
-		}(monitor)
-	}
 }
 
 func (svr *Service) CloseKafkaMonitors() {
@@ -344,9 +328,6 @@ func (svr *Service) forwardToLeader(w http.ResponseWriter, req *http.Request) {
 	}
 	url.Host = svr.leaderHost
 
-	span := trace.SpanFromContextSafe(req.Context())
-	span.Debugf("forward url: %v", url)
-
 	proxy := httpproxy.ReverseProxy{
 		Director: func(request *http.Request) {
 			request.URL = url
@@ -358,6 +339,9 @@ func (svr *Service) forwardToLeader(w http.ResponseWriter, req *http.Request) {
 
 // Close close service safe
 func (svr *Service) Close() {
+	log.Infof("stop scheduler service")
+	svr.blobDeleteMgr.Close()
+	svr.shardRepairMgr.Close()
 	if !svr.leader {
 		return
 	}

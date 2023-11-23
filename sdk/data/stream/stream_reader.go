@@ -15,50 +15,45 @@
 package stream
 
 import (
+	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/buf"
-	"github.com/cubefs/cubefs/util/exporter"
-	"golang.org/x/net/context"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.
 // TODO rename streamer here is not a good name as it also handles overwrites, not just stream write.
 type Streamer struct {
-	client      *ExtentClient
-	inode       uint64
-	parentInode uint64
-
-	status int32
-
-	refcnt int
-
-	idle      int // how long there is no new request
-	traversed int // how many times the streamer is traversed
-
-	extents *ExtentCache
-	once    sync.Once
-
-	handler    *ExtentHandler   // current open handler
-	dirtylist  *DirtyExtentList // dirty handlers
-	dirty      bool             // whether current open handler is in the dirty list
-	isOpen     bool
-	needBCache bool
-
-	request chan interface{} // request channel, write/flush/close
-	done    chan struct{}    // stream writer is being closed
-
+	client               *ExtentClient
+	inode                uint64
+	parentInode          uint64
+	status               int32
+	refcnt               int
+	idle                 int // how long there is no new request
+	traversed            int // how many times the streamer is traversed
+	extents              *ExtentCache
+	once                 sync.Once
+	handler              *ExtentHandler   // current open handler
+	dirtylist            *DirtyExtentList // dirty handlers
+	dirty                bool             // whether current open handler is in the dirty list
+	isOpen               bool
+	needBCache           bool
+	request              chan interface{} // request channel, write/flush/close
+	done                 chan struct{}    // stream writer is being closed
 	writeLock            sync.Mutex
-	inflightL1cache      sync.Map
 	inflightEvictL1cache sync.Map
 	pendingCache         chan bcacheKey
+	verSeq               uint64
+	needUpdateVer        int32
 }
 
 type bcacheKey struct {
@@ -78,6 +73,8 @@ func NewStreamer(client *ExtentClient, inode uint64) *Streamer {
 	s.dirtylist = NewDirtyExtentList()
 	s.isOpen = true
 	s.pendingCache = make(chan bcacheKey, 1)
+	s.verSeq = client.multiVerMgr.latestVerSeq
+	s.extents.verSeq = client.multiVerMgr.latestVerSeq
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -113,6 +110,11 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
 		return nil, err
 	}
 
+	if partition.IsDiscard {
+		log.LogWarnf("GetExtentReader: datapartition %v is discard", partition.PartitionID)
+		return nil, DpDiscardError
+	}
+
 	retryRead := true
 	if proto.IsCold(s.client.volumeType) {
 		retryRead = false
@@ -131,7 +133,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
 	)
-
+	log.LogDebugf("action[streamer.read] offset %v size %v", offset, size)
 	ctx := context.Background()
 	s.client.readLimiter.Wait(ctx)
 	s.client.LimitManager.ReadAlloc(ctx, size)
@@ -159,6 +161,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 	filesize, _ := s.extents.Size()
 	log.LogDebugf("read: ino(%v) requests(%v) filesize(%v)", s.inode, requests, filesize)
 	for _, req := range requests {
+		log.LogDebugf("action[streamer.read] req %v", req)
 		if req.ExtentKey == nil {
 			for i := range req.Data {
 				req.Data[i] = 0
@@ -214,13 +217,22 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			//read extent
 			reader, err = s.GetExtentReader(req.ExtentKey)
 			if err != nil {
+				log.LogErrorf("action[streamer.read] req %v err %v", req, err)
 				break
 			}
 
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
-				select {
-				case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
-				default:
+				//limit big block cache
+				if s.exceedBlockSize(req.ExtentKey.Size) && atomic.LoadInt32(&s.client.inflightL1BigBlock) > 10 {
+					//do nothing
+				} else {
+					select {
+					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
+						if s.exceedBlockSize(req.ExtentKey.Size) {
+							atomic.AddInt32(&s.client.inflightL1BigBlock, 1)
+						}
+					default:
+					}
 				}
 			}
 
@@ -237,7 +249,7 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 			}
 		}
 	}
-	//log.LogErrorf("==========> Streamer Read Exit, inode(%v), time[%v us].", s.inode, time.Since(t1).Microseconds())
+	log.LogDebugf("action[streamer.read] offset %v size %v exit", offset, size)
 	return
 }
 
@@ -269,6 +281,9 @@ func (s *Streamer) asyncBlockCache() {
 				if ek.Size == bcache.MaxBlockSize {
 					buf.BCachePool.Put(data)
 				}
+				if s.exceedBlockSize(ek.Size) {
+					atomic.AddInt32(&s.client.inflightL1BigBlock, -1)
+				}
 				return
 			}
 			if s.client.cacheBcache != nil {
@@ -278,11 +293,22 @@ func (s *Streamer) asyncBlockCache() {
 			if ek.Size == bcache.MaxBlockSize {
 				buf.BCachePool.Put(data)
 			}
+			if s.exceedBlockSize(ek.Size) {
+				atomic.AddInt32(&s.client.inflightL1BigBlock, -1)
+			}
 		case <-t.C:
 			if s.refcnt <= 0 {
+				s.isOpen = false
 				return
 			}
 		}
 
 	}
+}
+
+func (s *Streamer) exceedBlockSize(size uint32) bool {
+	if size > bcache.BigExtentSize {
+		return true
+	}
+	return false
 }

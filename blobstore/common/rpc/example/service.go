@@ -22,6 +22,13 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
+func init() {
+	trace.RequestIDKey = "rid"
+	trace.PrefixBaggage = "baggage-"
+	trace.FieldKeyTraceID = "traceid"
+	trace.FieldKeySpanID = "spanid"
+}
+
 type metaValue struct {
 	val int
 }

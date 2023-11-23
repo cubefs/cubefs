@@ -94,7 +94,7 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeAddDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }
@@ -111,7 +111,7 @@ func (s *Service) DiskInfo(c *rpc.Context) {
 
 	// linear read
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
+		span.Errorf("info read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}
@@ -136,7 +136,7 @@ func (s *Service) DiskList(c *rpc.Context) {
 	span.Infof("accept DiskList request, args: %v", args)
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
+		span.Errorf("list read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}
@@ -213,14 +213,14 @@ func (s *Service) DiskSet(c *rpc.Context) {
 
 	data, err := json.Marshal(args)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("set args: %v, error: %v", args, err)
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeSetDiskStatus, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -271,7 +271,7 @@ func (s *Service) DiskDrop(c *rpc.Context) {
 	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeDroppingDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }
@@ -323,14 +323,14 @@ func (s *Service) DiskDropped(c *rpc.Context) {
 	// 3. data propose
 	data, err := json.Marshal(args)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("drop args: %v, error: %v", args, err)
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeDroppedDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }
@@ -341,7 +341,7 @@ func (s *Service) DiskDroppingList(c *rpc.Context) {
 	span.Info("accept DiskDroppingList request")
 
 	if err := s.raftNode.ReadIndex(ctx); err != nil {
-		span.Errorf("read index error: %v", err)
+		span.Errorf("dropping list read index error: %v", err)
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}
@@ -406,7 +406,7 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 	data, err := json.Marshal(args)
 	span.Debugf("heartbeat params: %s", string(data))
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("heartbeat args: %v, error: %v", args, err)
 		err = errors.Info(apierrors.ErrUnexpected).Detail(err)
 		c.RespondError(err)
 		return
@@ -414,7 +414,7 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeHeartbeatDiskInfo, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }
@@ -450,14 +450,14 @@ func (s *Service) DiskAccess(c *rpc.Context) {
 
 	data, err := json.Marshal(args)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("access args: %v, error: %v", args, err)
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeSwitchReadonly, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
@@ -490,14 +490,14 @@ func (s *Service) AdminDiskUpdate(c *rpc.Context) {
 
 	data, err := json.Marshal(args)
 	if err != nil {
-		span.Errorf("json marshal failed, args: %v, error: %v", args, err)
+		span.Errorf("update args: %v, error: %v", args, err)
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
 	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeAdminUpdateDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}

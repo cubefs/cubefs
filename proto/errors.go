@@ -16,7 +16,7 @@ package proto
 
 import "github.com/cubefs/cubefs/util/errors"
 
-//err
+// err
 var (
 	ErrSuc                    = errors.New("success")
 	ErrInternalError          = errors.New("internal error")
@@ -63,6 +63,7 @@ var (
 	ErrDuplicateKey                            = errors.New("duplicate key")
 	ErrAccessKeyNotExists                      = errors.New("access key not exists")
 	ErrInvalidTicket                           = errors.New("invalid ticket")
+	ErrInvalidClientIDKey                      = errors.New("invalid clientIDKey")
 	ErrExpiredTicket                           = errors.New("expired ticket")
 	ErrMasterAPIGenRespError                   = errors.New("master API generate response error")
 	ErrDuplicateUserID                         = errors.New("duplicate user id")
@@ -87,6 +88,13 @@ var (
 	ErrNoNodeSetToDecommission                 = errors.New("no node set available to decommission ")
 	ErrVolNoAvailableSpace                     = errors.New("vol has no available space")
 	ErrVolNoCacheAndRule                       = errors.New("vol has no cache and rule")
+	ErrNoAclPermission                         = errors.New("acl no permission")
+	ErrQuotaNotExists                          = errors.New("quota not exists")
+	ErrCodeVersionOp                           = errors.New("version op failed")
+	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
+	ErrNoNodeSetToUpdateDecommissionDiskFactor = errors.New("no node set available for updating decommission disk factor")
+	ErrNoNodeSetToQueryDecommissionDiskLimit   = errors.New("no node set available for query decommission disk limit")
+	ErrNodeSetNotExists                        = errors.New("node set not exists")
 )
 
 // http response error code and error message definitions
@@ -131,6 +139,7 @@ const (
 	ErrCodeAuthReqRedirectError
 	ErrCodeAccessKeyNotExists
 	ErrCodeInvalidTicket
+	ErrCodeInvalidClientIDKey
 	ErrCodeExpiredTicket
 	ErrCodeMasterAPIGenRespError
 	ErrCodeDuplicateUserID
@@ -151,6 +160,8 @@ const (
 	ErrCodeInvalidSecretKey
 	ErrCodeIsOwner
 	ErrCodeZoneNumError
+	ErrCodeVersionOpError
+	ErrCodeNodeSetNotExists
 )
 
 // Err2CodeMap error map to code
@@ -194,6 +205,7 @@ var Err2CodeMap = map[error]int32{
 	ErrAuthOSCapsOpGenRespError:        ErrCodeAuthOSCapsOpGenRespError,
 	ErrAccessKeyNotExists:              ErrCodeAccessKeyNotExists,
 	ErrInvalidTicket:                   ErrCodeInvalidTicket,
+	ErrInvalidClientIDKey:              ErrCodeInvalidClientIDKey,
 	ErrExpiredTicket:                   ErrCodeExpiredTicket,
 	ErrMasterAPIGenRespError:           ErrCodeMasterAPIGenRespError,
 	ErrDuplicateUserID:                 ErrCodeDuplicateUserID,
@@ -213,6 +225,8 @@ var Err2CodeMap = map[error]int32{
 	ErrInvalidSecretKey:                ErrCodeInvalidSecretKey,
 	ErrIsOwner:                         ErrCodeIsOwner,
 	ErrZoneNum:                         ErrCodeZoneNumError,
+	ErrCodeVersionOp:                   ErrCodeVersionOpError,
+	ErrNodeSetNotExists:                ErrCodeNodeSetNotExists,
 }
 
 func ParseErrorCode(code int32) error {
@@ -263,6 +277,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeAuthOSCapsOpGenRespError:        ErrAuthOSCapsOpGenRespError,
 	ErrCodeAccessKeyNotExists:              ErrAccessKeyNotExists,
 	ErrCodeInvalidTicket:                   ErrInvalidTicket,
+	ErrCodeInvalidClientIDKey:              ErrInvalidClientIDKey,
 	ErrCodeExpiredTicket:                   ErrExpiredTicket,
 	ErrCodeMasterAPIGenRespError:           ErrMasterAPIGenRespError,
 	ErrCodeDuplicateUserID:                 ErrDuplicateUserID,
@@ -282,6 +297,8 @@ var code2ErrMap = map[int32]error{
 	ErrCodeInvalidSecretKey:                ErrInvalidSecretKey,
 	ErrCodeIsOwner:                         ErrIsOwner,
 	ErrCodeZoneNumError:                    ErrZoneNum,
+	ErrCodeVersionOpError:                  ErrCodeVersionOp,
+	ErrCodeNodeSetNotExists:                ErrNodeSetNotExists,
 }
 
 type GeneralResp struct {

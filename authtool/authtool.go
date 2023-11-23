@@ -366,14 +366,13 @@ func accessAuthServer() {
 		}
 
 		if flaginfo.api.request == CreateKey {
-			if err = resp.KeyInfo.DumpJSONFile(flaginfo.api.output); err != nil {
+			if err = resp.KeyInfo.DumpJSONFile(flaginfo.api.output, resp.AuthIDKey); err != nil {
 				panic(err)
 			}
 		} else {
-			if res, err = resp.KeyInfo.DumpJSONStr(); err != nil {
+			if res, err = resp.KeyInfo.DumpJSONStr(resp.AuthIDKey); err != nil {
 				panic(err)
 			}
-			fmt.Printf(res + "\n")
 		}
 
 	case AddRaftNode:
@@ -513,7 +512,7 @@ func main() {
 				Role:    "AuthService",
 				Caps:    []byte(`{"*"}`),
 			}
-			keyInfo.DumpJSONFile(*output[i])
+			keyInfo.DumpJSONFile(*output[i], "")
 		}
 
 	default:

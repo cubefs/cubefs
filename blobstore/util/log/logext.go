@@ -52,19 +52,34 @@ func New(out io.Writer, calldepth int) Logger {
 	return l
 }
 
-func (l *logger) Output(id string, lvl Level, calldepth int, s string) error {
+func (l *logger) Output(id string, lvl Level, calldepth int, a ...interface{}) error {
 	if int32(lvl) < atomic.LoadInt32(&l.level) || lvl >= maxLevel {
 		return nil
 	}
-
-	now := time.Now()
-	buf := l.pool.Get().(*bytes.Buffer)
-
 	_, file, line, ok := runtime.Caller(calldepth)
 	if !ok {
 		file = "???"
 		line = 0
 	}
+	return l.write(id, lvl, file, line, fmt.Sprintln(a...))
+}
+
+func (l *logger) Outputf(id string, lvl Level, calldepth int, format string, a ...interface{}) error {
+	if int32(lvl) < atomic.LoadInt32(&l.level) || lvl >= maxLevel {
+		return nil
+	}
+	_, file, line, ok := runtime.Caller(calldepth)
+	if !ok {
+		file = "???"
+		line = 0
+	}
+	return l.write(id, lvl, file, line, fmt.Sprintf(format, a...))
+}
+
+func (l *logger) write(id string, lvl Level, file string, line int, s string) error {
+	now := time.Now()
+	buf := l.pool.Get().(*bytes.Buffer)
+
 	buf.Reset()
 	l.formatOutput(buf, now, file, line, lvl)
 	if id != "" {
@@ -86,11 +101,11 @@ func (l *logger) Output(id string, lvl Level, calldepth int, s string) error {
 // -----------------------------------------
 
 func (l *logger) outputf(lvl Level, format string, v []interface{}) {
-	l.Output("", lvl, l.calldepth, fmt.Sprintf(format, v...))
+	l.Outputf("", lvl, l.calldepth, format, v...)
 }
 
 func (l *logger) output(lvl Level, v []interface{}) {
-	l.Output("", lvl, l.calldepth, fmt.Sprintln(v...))
+	l.Output("", lvl, l.calldepth, v...)
 }
 
 func (l *logger) Printf(format string, v ...interface{})   { l.outputf(Linfo, format, v) }
@@ -119,14 +134,12 @@ func (l *logger) Fatal(v ...interface{}) {
 func (l *logger) Panicf(format string, v ...interface{}) {
 	s := fmt.Sprintf(format, v...)
 	l.outputf(Lpanic, format, v)
-	// l.Output("", Lpanic, l.calldepth, s)
 	panic(s)
 }
 
 func (l *logger) Panic(v ...interface{}) {
 	s := fmt.Sprintln(v...)
 	l.output(Lpanic, v)
-	// l.Output("", Lpanic, l.calldepth, s)
 	panic(s)
 }
 

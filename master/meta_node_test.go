@@ -9,8 +9,12 @@ import (
 
 func TestMetaNode(t *testing.T) {
 	// /metaNode/add and /metaNode/response processed by mock meta server
-	addr := mms6Addr
-	addMetaServer(addr, testZone2)
+	addr := mms7Addr
+	func() {
+		mockServerLock.Lock()
+		defer mockServerLock.Unlock()
+		mockMetaServers = append(mockMetaServers, addMetaServer(addr, testZone3))
+	}()
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(5 * time.Second)
 	getMetaNodeInfo(addr, t)

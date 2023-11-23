@@ -56,21 +56,23 @@ func TestRetain(t *testing.T) {
 			BidAllocNums: 100000,
 		},
 		VolConfig: VolConfig{
-			RetainIntervalS:     60,
-			VolumeReserveSize:   2 << 20,
-			DefaultAllocVolsNum: 10,
+			RetainIntervalS:      60,
+			VolumeReserveSize:    2 << 20,
+			DefaultAllocVolsNum:  10,
+			RetainBatchIntervalS: 1,
+			RetainVolumeBatchNum: 400,
 		},
 	}
 
-	v.retain(ctx)
+	v.retainAll(ctx)
 }
 
-func MockModeInfoMap() (modeMap map[codemode.CodeMode]*ModeInfo) {
+func MockModeInfoMap() (modeMap map[codemode.CodeMode]*modeInfo) {
 	now := time.Now().UnixNano()
 	mockHost := "127.0.0.1:7788"
-	modeInfoMap := make(map[codemode.CodeMode]*ModeInfo)
-	modeInfo1 := &ModeInfo{volumes: &volumes{}}
-	modeInfo2 := &ModeInfo{volumes: &volumes{}}
+	modeInfoMap := make(map[codemode.CodeMode]*modeInfo)
+	modeInfo1 := &modeInfo{current: &volumes{}, backup: &volumes{}}
+	modeInfo2 := &modeInfo{current: &volumes{}, backup: &volumes{}}
 	for i := 1; i <= 10; i++ {
 		vid := proto.Vid(i)
 		token := proto.EncodeToken(mockHost, vid)
@@ -84,9 +86,9 @@ func MockModeInfoMap() (modeMap map[codemode.CodeMode]*ModeInfo) {
 			Token:      token,
 			ExpireTime: 50*int64(math.Pow(10, 9)) + now,
 		}
-		modeInfo1.volumes.Put(&volume{
+		modeInfo1.Put(&volume{
 			AllocVolumeInfo: volInfo,
-		})
+		}, false)
 	}
 	modeInfoMap[codemode.CodeMode(0)] = modeInfo1
 	for i := 11; i <= 20; i++ {
@@ -102,9 +104,9 @@ func MockModeInfoMap() (modeMap map[codemode.CodeMode]*ModeInfo) {
 			Token:      token,
 			ExpireTime: 50*int64(math.Pow(10, 9)) + now,
 		}
-		modeInfo2.volumes.Put(&volume{
+		modeInfo2.Put(&volume{
 			AllocVolumeInfo: volInfo,
-		})
+		}, false)
 	}
 	// test full volume
 	fullVid := proto.Vid(31)
@@ -120,9 +122,9 @@ func MockModeInfoMap() (modeMap map[codemode.CodeMode]*ModeInfo) {
 		ExpireTime: 50*int64(math.Pow(10, 9)) + now,
 	}
 
-	modeInfo2.volumes.Put(&volume{
+	modeInfo2.Put(&volume{
 		AllocVolumeInfo: fullVolInfo,
-	})
+	}, false)
 
 	modeInfoMap[codemode.CodeMode(1)] = modeInfo2
 
@@ -132,11 +134,11 @@ func MockModeInfoMap() (modeMap map[codemode.CodeMode]*ModeInfo) {
 func TestRetainVolumes(t *testing.T) {
 	ctx := context.Background()
 	vm := volumeMgr{}
-	vm.modeInfos = make(map[codemode.CodeMode]*ModeInfo)
+	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
 
-	modeInfo := &ModeInfo{
-		volumes: &volumes{}, totalThreshold: 16 * 1024 * 1024 * 1024,
-		totalFree: 2 * 16 * 1024 * 1024 * 1024,
+	modeInfo := &modeInfo{
+		current:        &volumes{totalFree: 2 * 16 * 1024 * 1024 * 1024},
+		totalThreshold: 16 * 1024 * 1024 * 1024,
 	}
 
 	now := time.Now().UnixNano()
@@ -151,13 +153,13 @@ func TestRetainVolumes(t *testing.T) {
 			Token:      "token",
 			ExpireTime: now - 50*int64(math.Pow(10, 9)),
 		}
-		modeInfo.volumes.Put(&volume{
+		modeInfo.Put(&volume{
 			AllocVolumeInfo: volInfo,
-		})
+		}, false)
 	}
 
 	vm.modeInfos[codemode.CodeMode(2)] = modeInfo
-	tokens := vm.genRetainVolume(ctx)
+	tokens := vm.genRetainVolume(ctx, false)
 	expectedTokens := []string{"token", "token"}
 	require.Equal(t, expectedTokens, tokens)
 }

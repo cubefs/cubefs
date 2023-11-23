@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 echo "stop all service"
 ps -ef | grep cfs-server | grep -v grep | awk '{print $2}' | xargs kill -9

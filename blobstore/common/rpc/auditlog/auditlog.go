@@ -16,10 +16,11 @@ package auditlog
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,11 +36,24 @@ const (
 	defaultFileChunkBits      = 29
 )
 
+type reqBodyReadCloser struct {
+	bodyRead int64
+
+	io.ReadCloser
+}
+
+func (reqBody *reqBodyReadCloser) Read(p []byte) (n int, err error) {
+	n, err = reqBody.ReadCloser.Read(p)
+	reqBody.bodyRead += int64(n)
+	return
+}
+
 type jsonAuditlog struct {
 	module       string
 	decoder      Decoder
 	metricSender MetricSender
 	logFile      LogCloser
+	logFilter    LogFilter
 
 	logPool  sync.Pool
 	bodyPool sync.Pool
@@ -47,13 +61,64 @@ type jsonAuditlog struct {
 	cfg *Config
 }
 
+// AuditLog Define a struct to represent the structured log data
+type AuditLog struct {
+	ReqType    string `json:"req_type"`
+	Module     string `json:"module"`
+	StartTime  int64  `json:"start_time"`
+	Method     string `json:"method"`
+	Path       string `json:"path"`
+	ReqHeader  M      `json:"req_header"`
+	ReqParams  string `json:"req_params"`
+	StatusCode int    `json:"status_code"`
+	RespHeader M      `json:"resp_header"`
+	RespBody   string `json:"resp_body"`
+	RespLength int64  `json:"resp_length"`
+	Duration   int64  `json:"duration"`
+}
+
+func (a *AuditLog) ToBytesWithTab(buf *bytes.Buffer) (b []byte) {
+	buf.WriteString(a.ReqType)
+	buf.WriteByte('\t')
+	buf.WriteString(a.Module)
+	buf.WriteByte('\t')
+	buf.WriteString(strconv.FormatInt(a.StartTime, 10))
+	buf.WriteByte('\t')
+	buf.WriteString(a.Method)
+	buf.WriteByte('\t')
+	buf.WriteString(a.Path)
+	buf.WriteByte('\t')
+	buf.Write(a.ReqHeader.Encode())
+	buf.WriteByte('\t')
+	buf.WriteString(a.ReqParams)
+	buf.WriteByte('\t')
+	buf.WriteString(strconv.Itoa(a.StatusCode))
+	buf.WriteByte('\t')
+	buf.Write(a.RespHeader.Encode())
+	buf.WriteByte('\t')
+	buf.WriteString(a.RespBody)
+	buf.WriteByte('\t')
+	buf.WriteString(strconv.FormatInt(a.RespLength, 10))
+	buf.WriteByte('\t')
+	buf.WriteString(strconv.FormatInt(a.Duration, 10))
+	buf.WriteByte('\n')
+	return buf.Bytes()
+}
+
+func (a *AuditLog) ToJson() (b []byte) {
+	b, _ = json.Marshal(a)
+	return
+}
+
 func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser, err error) {
-	if cfg.BodyLimit == 0 {
+	if cfg.BodyLimit < 0 {
+		cfg.BodyLimit = 0
+	} else if cfg.BodyLimit == 0 {
 		cfg.BodyLimit = defaultReadBodyBuffLength
-	}
-	if cfg.BodyLimit > maxReadBodyBuffLength {
+	} else if cfg.BodyLimit > maxReadBodyBuffLength {
 		cfg.BodyLimit = maxReadBodyBuffLength
 	}
+
 	if cfg.ChunkBits == 0 {
 		cfg.ChunkBits = defaultFileChunkBits
 	}
@@ -65,6 +130,7 @@ func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser
 		Backup:            cfg.Backup,
 	}
 
+	logFile = noopLogCloser{}
 	if cfg.LogDir != "" {
 		logFile, err = largefile.OpenLargeFileLog(largeLogConfig, cfg.RotateNew)
 		if err != nil {
@@ -72,11 +138,17 @@ func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser
 		}
 	}
 
+	logFilter, err := newLogFilter(cfg.Filters)
+	if err != nil {
+		return nil, nil, errors.Info(err, "new log filter").Detail(err)
+	}
+
 	return &jsonAuditlog{
 		module:       module,
 		decoder:      &defaultDecoder{},
 		metricSender: NewPrometheusSender(cfg.MetricConfig),
 		logFile:      logFile,
+		logFilter:    logFilter,
 
 		logPool: sync.Pool{
 			New: func() interface{} {
@@ -93,19 +165,30 @@ func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser
 }
 
 func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(http.ResponseWriter, *http.Request)) {
+	var (
+		logBytes []byte
+		err      error
+	)
 	startTime := time.Now().UnixNano()
 
-	span, ctx := trace.StartSpanFromHTTPHeaderSafe(req, j.module)
-	defer span.Finish()
+	ctx := req.Context()
+	span := trace.SpanFromContext(ctx)
+	if span == nil {
+		span, ctx = trace.StartSpanFromHTTPHeaderSafe(req, "")
+		defer span.Finish()
+		req = req.WithContext(ctx)
+	}
+
 	_w := &responseWriter{
 		module:         j.module,
 		body:           j.bodyPool.Get().([]byte),
 		bodyLimit:      j.cfg.BodyLimit,
+		no2xxBody:      j.cfg.No2xxBody,
 		span:           span,
 		startTime:      time.Now(),
+		statusCode:     http.StatusOK,
 		ResponseWriter: w,
 	}
-	req = req.WithContext(ctx)
 
 	// parse request to decodeRep
 	decodeReq := j.decoder.DecodeReq(req)
@@ -121,35 +204,34 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 			w.WriteHeader(597)
 		}
 	}()
+
+	rc := &reqBodyReadCloser{ReadCloser: req.Body}
+	req.Body = rc
 	f(_w, req)
+	bodySize := rc.bodyRead
+	decodeReq.Header["BodySize"] = bodySize
 
 	endTime := time.Now().UnixNano() / 1000
 	b := j.logPool.Get().(*bytes.Buffer)
 	defer j.logPool.Put(b)
 	b.Reset()
 
-	b.WriteString("REQ\t")
-	b.WriteString(j.module)
-	b.WriteByte('\t')
-
-	// record request info
-	b.WriteString(strconv.FormatInt(startTime/100, 10))
-	b.WriteByte('\t')
-	b.WriteString(req.Method)
-	b.WriteByte('\t')
-	b.WriteString(decodeReq.Path)
-	b.WriteByte('\t')
-	b.Write(decodeReq.Header.Encode())
-	b.WriteByte('\t')
-	if len(decodeReq.Params) <= maxSeekableBodyLength && len(decodeReq.Params) > 0 {
-		b.Write(decodeReq.Params)
+	auditLog := &AuditLog{
+		ReqType:   "REQ",
+		Module:    j.module,
+		StartTime: startTime / 100,
+		Method:    req.Method,
+		Path:      decodeReq.Path,
+		ReqHeader: decodeReq.Header,
 	}
-	b.WriteByte('\t')
+
+	if len(decodeReq.Params) <= maxSeekableBodyLength && len(decodeReq.Params) > 0 {
+		auditLog.ReqParams = string(decodeReq.Params)
+	}
 
 	// record response info
 	respContentType := _w.Header().Get("Content-Type")
-	b.Write(_w.getStatusCode())
-	b.WriteByte('\t')
+	auditLog.StatusCode = _w.getStatusCode()
 
 	// Check if track-log and tags changed or not,
 	// if changed, we should set into response header again.
@@ -164,42 +246,41 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	if len(wHeader[rpc.HeaderTraceTags]) < len(tags) {
 		wHeader[rpc.HeaderTraceTags] = tags
 	}
-	b.Write(_w.getHeader())
-	b.WriteByte('\t')
+	auditLog.RespHeader = _w.getHeader()
 
-	// record body in json or xml content type
 	if (respContentType == rpc.MIMEJSON || respContentType == rpc.MIMEXML) &&
 		_w.Header().Get("Content-Encoding") != rpc.GzipEncodingType {
-		b.Write(_w.getBody())
+		auditLog.RespBody = string(_w.getBody())
 	}
-	b.WriteByte('\t')
-	b.WriteString(strconv.FormatInt(_w.getBodyWritten(), 10))
-	b.WriteByte('\t')
-	b.WriteString(strconv.FormatInt(endTime-startTime/1000, 10))
-	b.WriteByte('\n')
 
-	// report request metric
-	j.metricSender.Send(b.Bytes())
+	auditLog.RespLength = _w.getBodyWritten()
+	auditLog.Duration = endTime - startTime/1000
 
-	// log filter
-	if j.logFile == nil || (len(j.cfg.KeywordsFilter) > 0 && defaultLogFilter(req, j.cfg.KeywordsFilter)) {
+	j.metricSender.Send(auditLog.ToBytesWithTab(b))
+
+	if j.logFile == nil || j.logFilter.Filter(auditLog) {
 		return
 	}
-	err := j.logFile.Log(b.Bytes())
+
+	switch j.cfg.LogFormat {
+	case LogFormatJSON:
+		logBytes = auditLog.ToJson()
+	default:
+		logBytes = b.Bytes() // *bytes.Buffer was filled with metricSender.Send
+	}
+	err = j.logFile.Log(logBytes)
 	if err != nil {
 		span.Errorf("jsonlog.Handler Log failed, err: %s", err.Error())
 		return
 	}
 }
 
-// defaultLogFilter support uri and method filter based on keywords
-func defaultLogFilter(r *http.Request, words []string) bool {
-	method := strings.ToLower(r.Method)
-	for _, word := range words {
-		str := strings.ToLower(word)
-		if method == str || strings.Contains(r.RequestURI, str) {
-			return true
-		}
+// ExtraHeader provides extra response header writes to the ResponseWriter.
+func ExtraHeader(w http.ResponseWriter) http.Header {
+	h := make(http.Header)
+	if eh, ok := w.(ResponseExtraHeader); ok {
+		h = eh.ExtraHeader()
 	}
-	return false
+
+	return h
 }

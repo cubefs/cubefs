@@ -9,7 +9,7 @@ networks:
 
 services:
     monitor:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         depends_on:
             - consul
             - prometheus
@@ -18,7 +18,7 @@ services:
             extnetwork:
 
     servers:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         depends_on:
             - master1
             - master2
@@ -34,13 +34,16 @@ services:
             - objectnode1
             - objectnode2
             - objectnode3
+            - lcnode1
+            - lcnode2
+            - lcnode3
             - console1
             - nginx
         networks:
             extnetwork:
 
     master1:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "5901"
             - "5902"
@@ -56,12 +59,14 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.11
 
     master2:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "5901"
             - "5902"
@@ -77,11 +82,13 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.12
     master3:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "5901"
             - "5902"
@@ -97,12 +104,14 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.13
 
     metanode1:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17210"
             - "17220"
@@ -118,12 +127,14 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.21
 
     metanode2:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17210"
             - "17220"
@@ -139,12 +150,14 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.22
 
     metanode3:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17210"
             - "17220"
@@ -160,12 +173,14 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.23
 
     metanode4:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17210"
             - "17220"
@@ -181,12 +196,14 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.24
 
     datanode1:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17310"
             - "17320"
@@ -202,12 +219,14 @@ services:
         command: /bin/bash /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.31
 
     datanode2:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17310"
             - "17320"
@@ -223,12 +242,14 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.32
 
     datanode3:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17310"
             - "17320"
@@ -244,12 +265,14 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.33
 
     datanode4:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17310"
             - "17320"
@@ -265,12 +288,14 @@ services:
         command: /bin/sh /cfs/script/start.sh
         restart: on-failure
         privileged: true
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.34
 
     objectnode1:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "80"
             - 9500
@@ -289,7 +314,7 @@ services:
                 ipv4_address: 192.168.0.41
 
     objectnode2:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "80"
             - 9500
@@ -308,7 +333,7 @@ services:
                 ipv4_address: 192.168.0.42
 
     objectnode3:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "80"
             - 9500
@@ -326,9 +351,66 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.43
 
+    lcnode1:
+        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        ports:
+            - "17410"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/lcnode1/log:/cfs/log
+            - ./conf/lcnode.json:/cfs/conf/lcnode.json
+            - ./script/start_lcnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.61
+
+
+    lcnode2:
+        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        ports:
+            - "17410"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/lcnode2/log:/cfs/log
+            - ./conf/lcnode.json:/cfs/conf/lcnode.json
+            - ./script/start_lcnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.62
+
+    lcnode3:
+        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        ports:
+            - "17410"
+            - 9500
+        volumes:
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/lcnode3/log:/cfs/log
+            - ./conf/lcnode.json:/cfs/conf/lcnode.json
+            - ./script/start_lcnode.sh:/cfs/script/start.sh
+        command: /bin/sh /cfs/script/start.sh
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.63
 
     console1:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
           - "80"
         volumes:
@@ -344,7 +426,7 @@ services:
             ipv4_address: 192.168.0.50
 
     client:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - 9500
             - 17410:17410
@@ -363,6 +445,8 @@ services:
         cap_add:
             - SYS_ADMIN
         command: /bin/bash /cfs/script/start.sh
+        environment:
+            - TZ=Asia/Shanghai
         networks:
             extnetwork:
 
@@ -417,25 +501,64 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.104
 
-    build:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+    prepare:
+        image: ${IMAGE}
         volumes:
-            - ../:/go/src/github.com/cubefs/cubefs
-        command:
-            /bin/bash /go/src/github.com/cubefs/cubefs/docker/script/build.sh
-        networks:
-            extnetwork:
-
-    unit_test:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
-        volumes:
-            - ../:/go/src/github.com/cubefs/cubefs
+            - ../:${CFSROOT}
         command:
             - bash
             - "-c"
             - >-
                 set -e;
-                mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin &&
-                cd /go/src/github.com/cubefs/cubefs && make testcover
-        networks:
-            extnetwork:
+                tar -zxf /go/rocksdb_libs.tar.gz -C ${CFSROOT}/build
+
+    format:
+        image: ${IMAGE}
+        volumes:
+            - ../:${CFSROOT}
+        command:
+            /bin/bash ${CFSROOT}/docker/script/run_format.sh
+
+    build:
+        image: ${IMAGE}
+        volumes:
+            - ../:${CFSROOT}
+            - ./script/build.sh:/cfs/script/build.sh
+        command:
+            /bin/bash /cfs/script/build.sh
+
+    unit_test:
+        image: ${IMAGE}
+        volumes:
+            - ../:${CFSROOT}
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                mkdir -p ${CFSROOT}/docker/bin &&
+                cd ${CFSROOT} && make testcover
+
+    bs_gofumpt:
+        image: ${IMAGE}
+        volumes:
+            - ../:${CFSROOT}
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                cd ${CFSROOT}/blobstore && go vet -trimpath ./... &&
+                /go/bin/gofumpt -l -w . && git diff --exit-code
+
+    bs_golint:
+        image: ${IMAGE}
+        volumes:
+            - ../:${CFSROOT}
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                cd ${CFSROOT}/blobstore &&
+                /go/bin/golangci-lint run --timeout 10m --issues-exit-code=1 -D errcheck -E bodyclose ./...

@@ -28,11 +28,11 @@ cfs-client -c client.json
     "owner":"test",
     "accessKey":"**********",
     "secretKey":"*********",
-    "masterAddr":"192.168.0.1",
+    "masterAddr":"192.168.0.1:17010",
     "rdonly":"false",
     "logDir":"/home/service/var/logs/cfs/log",
     "logLevel":"warn",
-    "profPort":"192.168.1.1"
+    "profPort":"17410"
 }
 ```
 
@@ -85,6 +85,18 @@ umount -l /path/to/mountPoint
 ```
 
 `/path/to/mountPoint` 为客户端配置文件中的挂载路径
+
+## 在线升级或热重启客户端
+
+在线升级前，假设正在运行的旧客户端进程profPort端口为27510。
+
+```bash
+cfs-client -c fuse.json -r -p 27510
+```
+
+`-r` 新客户端尝试恢复旧客户端的上下文而不是真实挂载fuse，在线服务不中断接替旧客户端的数据读写请求。
+`-p 27510` 告诉新客户端进程连接旧客户端的27510端口进行通讯，控制旧客户端停止读新请求并将上下文信息写本地，旧客户端交接后自动退出。新客户端接替后会自动恢复旧客户端的上下文信息，继续响应读写请求。
+
 
 ## 开启一级缓存
 

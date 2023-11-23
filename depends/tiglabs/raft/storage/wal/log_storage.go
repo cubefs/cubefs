@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 type logEntryStorage struct {
@@ -30,6 +31,7 @@ type logEntryStorage struct {
 
 	dir         string
 	filesize    int
+	rotateTime  int64
 	logfiles    []logFileName // 所有日志文件的名字
 	last        *logEntryFile
 	nextFileSeq uint64
@@ -42,6 +44,7 @@ func openLogStorage(dir string, s *Storage) (*logEntryStorage, error) {
 		s:           s,
 		dir:         dir,
 		filesize:    s.c.GetFileSize(),
+		rotateTime:  timeutil.GetCurrentTimeUnix(),
 		nextFileSeq: 1,
 	}
 
@@ -282,6 +285,7 @@ func (ls *logEntryStorage) get(name logFileName) (*logEntryFile, error) {
 }
 
 func (ls *logEntryStorage) remove(name logFileName) error {
+	_ = ls.cache.Delete(name, true)
 	return os.Remove(path.Join(ls.dir, name.String()))
 }
 
@@ -340,8 +344,12 @@ func (ls *logEntryStorage) saveEntry(ent *proto.Entry) error {
 	}
 
 	// 当期文件是否已经写满
+	// 如果文件大小超过 MinFileSize 并且创建时间超过 MaxRotateInterval 则强制 rotate
+	// 能大幅减少 log index 的内存开销
 	woffset := ls.last.WriteOffset()
-	if uint64(woffset)+uint64(recordSize(ent)) > uint64(ls.filesize) {
+	if uint64(woffset)+uint64(recordSize(ent)) > uint64(ls.filesize) ||
+		(woffset > MinFileSize && timeutil.GetCurrentTimeUnix()-ls.rotateTime > MaxRotateInterval) {
+		ls.rotateTime = timeutil.GetCurrentTimeUnix()
 		if err := ls.rotate(); err != nil {
 			return err
 		}

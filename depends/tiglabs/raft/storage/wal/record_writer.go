@@ -16,6 +16,7 @@ package wal
 
 import (
 	"encoding/binary"
+	"io"
 	"os"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
@@ -88,7 +89,7 @@ func (w *recordWriter) Truncate(offset int64) error {
 		return err
 	}
 	w.offset = offset
-	_, err := w.f.Seek(offset, os.SEEK_SET)
+	_, err := w.f.Seek(offset, io.SeekStart)
 	return err
 }
 

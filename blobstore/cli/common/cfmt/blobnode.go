@@ -47,7 +47,7 @@ func ChunkInfoJoin(info *blobnode.ChunkInfo, prefix string) string {
 // ChunkInfoF chunk info
 func ChunkInfoF(info *blobnode.ChunkInfo) []string {
 	if info == nil {
-		return []string{" <nil> "}
+		return nilStrings[:]
 	}
 	return []string{
 		fmt.Sprintf("ID     : %s", ChunkidF(info.Id)),
@@ -69,7 +69,7 @@ func DiskHeartBeatInfoJoin(info *blobnode.DiskHeartBeatInfo, prefix string) stri
 // DiskHeartBeatInfoF disk heartbeat info
 func DiskHeartBeatInfoF(info *blobnode.DiskHeartBeatInfo) []string {
 	if info == nil {
-		return []string{" <nil> "}
+		return nilStrings[:]
 	}
 	return []string{
 		fmt.Sprintf("DiskID: %-12d | MaxN: %-8d | UsedN: %-8d | FreeN: %-8d",
@@ -87,7 +87,7 @@ func DiskInfoJoin(info *blobnode.DiskInfo, prefix string) string {
 // DiskInfoF disk info
 func DiskInfoF(info *blobnode.DiskInfo) []string {
 	if info == nil {
-		return []string{" <nil> "}
+		return nilStrings[:]
 	}
 	return append(DiskHeartBeatInfoF(&info.DiskHeartBeatInfo),
 		[]string{
@@ -109,7 +109,7 @@ func DiskInfoJoinV(info *blobnode.DiskInfo, prefix string) string {
 // DiskInfoFV disk info
 func DiskInfoFV(info *blobnode.DiskInfo) []string {
 	if info == nil {
-		return []string{" <nil> "}
+		return nilStrings[:]
 	}
 	return []string{
 		fmt.Sprint("DiskID   : ", info.DiskID),

@@ -15,8 +15,9 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/proto"
 	"net"
+
+	"github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -37,6 +38,33 @@ func (m *metadataManager) respondToMaster(task *proto.AdminTask) (err error) {
 	}()
 	if err = masterClient.NodeAPI().ResponseMetaNodeTask(task); err != nil {
 		err = errors.Trace(err, "try respondToMaster failed")
+	}
+	return
+}
+
+// Reply data through tcp connection to the client.
+func (m *metadataManager) respondToClientWithVer(conn net.Conn, p *Packet) (err error) {
+	// Handle panic
+	defer func() {
+		if r := recover(); r != nil {
+			switch data := r.(type) {
+			case error:
+				err = data
+			default:
+				err = errors.New(data.(string))
+			}
+		}
+	}()
+
+	// process data and send reply though specified tcp connection.
+	if p.VerSeq > 0 {
+		p.ExtentType |= proto.MultiVersionFlag
+	}
+	err = p.WriteToConn(conn)
+	if err != nil {
+		log.LogErrorf("response to client[%s], "+
+			"request[%s], response packet[%s]",
+			err.Error(), p.GetOpMsg(), p.GetResultMsg())
 	}
 	return
 }

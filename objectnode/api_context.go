@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"html"
 	"net/http"
 	"strconv"
 
@@ -28,6 +29,11 @@ const (
 	ContextKeyRequestAction = "ctx_request_action"
 	ContextKeyStatusCode    = "status_code"
 	ContextKeyErrorMessage  = "error_message"
+	ContextKeyBucket        = "bucket"
+	ContextKeyObject        = "object"
+	ContextKeyRequester     = "requester"
+	ContextKeyOwner         = "owner"
+	ContextKeyAccessKey     = "access_key"
 )
 
 func SetRequestID(r *http.Request, requestID string) {
@@ -35,7 +41,7 @@ func SetRequestID(r *http.Request, requestID string) {
 }
 
 func GetRequestID(r *http.Request) (id string) {
-	return mux.Vars(r)[ContextKeyRequestID]
+	return html.EscapeString(mux.Vars(r)[ContextKeyRequestID])
 }
 
 func SetRequestAction(r *http.Request, action proto.Action) {
@@ -46,8 +52,8 @@ func GetActionFromContext(r *http.Request) (action proto.Action) {
 	return proto.ParseAction(mux.Vars(r)[ContextKeyRequestAction])
 }
 
-func SetResponseStatusCode(r *http.Request, code ErrorCode) {
-	mux.Vars(r)[ContextKeyStatusCode] = strconv.Itoa(code.StatusCode)
+func SetResponseStatusCode(r *http.Request, code string) {
+	mux.Vars(r)[ContextKeyStatusCode] = code
 }
 
 func GetStatusCodeFromContext(r *http.Request) int {

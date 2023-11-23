@@ -40,28 +40,56 @@ type table struct {
 }
 
 /* table function list */
-func (t *table) Get(key []byte, opts ...OpOption) (data []byte, err error) {
-	cValue, err := t.db.GetCF(t.ro, t.cf, key)
-	if err != nil {
-		return nil, err
-	}
-	defer cValue.Free()
+func (t *table) Get(key []byte) (data []byte, err error) {
+	done := make(chan struct{})
+	t.ins.rpool.Run(func() {
+		defer close(done)
+		cValue, err1 := t.db.GetCF(t.ro, t.cf, key)
+		if err1 != nil {
+			err = err1
+			return
+		}
+		defer cValue.Free()
 
-	if !cValue.Exists() {
-		err = ErrNotFound
-		return
-	}
-	data = make([]byte, cValue.Size())
-	copy(data, cValue.Data())
+		if !cValue.Exists() {
+			err = ErrNotFound
+			return
+		}
+		data = make([]byte, cValue.Size())
+		copy(data, cValue.Data())
+	})
+	<-done
 	return
 }
 
-func (t *table) Put(kv KV, opts ...OpOption) (err error) {
-	return t.db.PutCF(t.wo, t.cf, kv.Key, kv.Value)
+func (t *table) Put(kv KV) (err error) {
+	task := &writeTask{
+		typ:  cfPutEvent,
+		data: cfPut{t.cf, kv.Key, kv.Value},
+		err:  make(chan error, 1),
+	}
+	t.ins.wchan <- task
+	return <-task.err
 }
 
-func (t *table) Delete(key []byte, opts ...OpOption) (err error) {
-	return t.db.DeleteCF(t.wo, t.cf, key)
+func (t *table) Delete(key []byte) (err error) {
+	task := &writeTask{
+		typ:  cfDeleteEvent,
+		data: cfDel{t.cf, key},
+		err:  make(chan error, 1),
+	}
+	t.ins.wchan <- task
+	return <-task.err
+}
+
+func (t *table) DeleteRange(start, end []byte) (err error) {
+	task := &writeTask{
+		typ:  cfRangeDeleteEvent,
+		data: cfRangeDelete{t.cf, start, end},
+		err:  make(chan error, 1),
+	}
+	t.ins.wchan <- task
+	return <-task.err
 }
 
 func (t *table) Name() string {
@@ -69,12 +97,11 @@ func (t *table) Name() string {
 }
 
 func (t *table) Flush() error {
-	return t.db.Flush(t.fo)
+	return t.ins.Flush()
 }
 
 func (t *table) DeleteBatch(keys [][]byte, safe bool) (err error) {
-	batch := rdb.NewWriteBatch()
-	defer batch.Destroy()
+	b := []batch{}
 	for _, key := range keys {
 		if safe {
 			_, err := t.Get(key)
@@ -82,17 +109,22 @@ func (t *table) DeleteBatch(keys [][]byte, safe bool) (err error) {
 				return err
 			}
 		}
-		batch.DeleteCF(t.cf, key)
+		b = append(b, batch{cfDeleteEvent, cfDel{t.cf, key}})
 	}
-	if batch.Count() > 0 {
-		err = t.db.Write(t.wo, batch)
+	if len(b) == 0 {
+		return
 	}
-	return
+	task := &writeTask{
+		typ:  batchEvent,
+		data: b,
+		err:  make(chan error, 1),
+	}
+	t.ins.wchan <- task
+	return <-task.err
 }
 
 func (t *table) WriteBatch(kvs []KV, safe bool) (err error) {
-	batch := rdb.NewWriteBatch()
-	defer batch.Destroy()
+	b := []batch{}
 	for _, kv := range kvs {
 		key := kv.Key
 		if safe {
@@ -107,12 +139,18 @@ func (t *table) WriteBatch(kvs []KV, safe bool) (err error) {
 				return errors.New(msg)
 			}
 		}
-		batch.PutCF(t.cf, kv.Key, kv.Value)
+		b = append(b, batch{cfPutEvent, cfPut{t.cf, kv.Key, kv.Value}})
 	}
-	if batch.Count() > 0 {
-		err = t.db.Write(t.wo, batch)
+	if len(b) == 0 {
+		return
 	}
-	return
+	task := &writeTask{
+		typ:  batchEvent,
+		data: b,
+		err:  make(chan error, 1),
+	}
+	t.ins.wchan <- task
+	return <-task.err
 }
 
 func (t *table) NewSnapshot() *Snapshot {
@@ -137,7 +175,7 @@ func (t *table) NewIterator(snapshot *Snapshot, opts ...OpOption) Iterator {
 		ro.SetSnapshot((*rdb.Snapshot)(snapshot))
 	}
 
-	return &iterator{ro: ro.ReadOptions, Iterator: t.db.NewIteratorCF(ro.ReadOptions, t.cf), once: sync.Once{}}
+	return &iterator{rpool: &t.ins.rpool, ro: ro.ReadOptions, iter: t.db.NewIteratorCF(ro.ReadOptions, t.cf), once: sync.Once{}}
 }
 
 func (t *table) GetDB() *rdb.DB {
@@ -149,12 +187,9 @@ func (t *table) GetCf() *rdb.ColumnFamilyHandle {
 }
 
 func (t *table) NewWriteBatch() *WriteBatch {
-	return &WriteBatch{rdb.NewWriteBatch()}
+	return &WriteBatch{}
 }
 
 func (t *table) DoBatch(batch *WriteBatch) error {
-	if batch.Count() > 0 {
-		return t.db.Write(t.wo, batch.WriteBatch)
-	}
-	return nil
+	return t.ins.DoBatch(batch)
 }

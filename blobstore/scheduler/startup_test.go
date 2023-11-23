@@ -117,8 +117,10 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	manualMgr.EXPECT().Run().AnyTimes().Return()
 
 	clusterTopology.EXPECT().LoadVolumes().AnyTimes().Return(nil)
-	shardRepairMgr.EXPECT().RunTask().AnyTimes().Return()
-	blobDeleteMgr.EXPECT().RunTask().AnyTimes().Return()
+	shardRepairMgr.EXPECT().Run().AnyTimes().Return()
+	shardRepairMgr.EXPECT().Close().AnyTimes().Return()
+	blobDeleteMgr.EXPECT().Run().AnyTimes().Return()
+	blobDeleteMgr.EXPECT().Close().AnyTimes().Return()
 
 	balanceMgr.EXPECT().Load().AnyTimes().Return(nil)
 	diskRepairMgr.EXPECT().Load().AnyTimes().Return(nil)
@@ -152,8 +154,8 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	balanceMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(proto.MigrateTask{}, errMock)
 
 	clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
-
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", errMock)
+
 	service := &Service{
 		ClusterID:       1,
 		leader:          isLeader,
@@ -166,8 +168,7 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 		blobDeleteMgr:   blobDeleteMgr,
 		clusterTopology: clusterTopology,
 		volumeUpdater:   volumeUpdater,
-
-		clusterMgrCli: clusterMgrCli,
+		clusterMgrCli:   clusterMgrCli,
 	}
 	return service
 }
@@ -201,7 +202,7 @@ func TestServer(t *testing.T) {
 	kafkaOffset.EXPECT().GetConsumeOffset(any, any, any).AnyTimes().Return(int64(0), nil)
 	kafkaOffset.EXPECT().SetConsumeOffset(any, any, any, any).AnyTimes().Return(nil)
 
-	err := leaderServer.NewKafkaMonitor(proto.ClusterID(1), kafkaOffset)
+	err := leaderServer.NewKafkaMonitor(proto.ClusterID(1))
 	require.Error(t, err)
 
 	hosts := []string{leaderHost, followerHost}

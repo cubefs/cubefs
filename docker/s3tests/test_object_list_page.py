@@ -131,7 +131,6 @@ class ObjectListPageTest(S3TestCase):
             # validate list result
             contents = []
             truncated = True
-            last_marker = ''
             while truncated:
                 result_contents = []
                 result = self.s3.list_objects(Bucket=env.BUCKET, Prefix=prefix, Marker=marker, MaxKeys=self.max_page_size)
@@ -145,7 +144,6 @@ class ObjectListPageTest(S3TestCase):
                 if 'NextMarker' in result:
                     next_marker = result['NextMarker']
                     if next_marker != '':
-                        last_marker = marker
                         marker = next_marker
 
                 if 'IsTruncated' in result:
@@ -159,9 +157,9 @@ class ObjectListPageTest(S3TestCase):
                 # print("list object count: {}, maxKey: {}, prefix: {}, first_key: {}, last_key: {}, next_marker: {}, truncate: {} ".format( \
                 #      len(result_contents), self.max_page_size, prefix, result_contents[0]['Key'], result_contents[-1]['Key'], marker, truncated))
 
-                if truncated and last_marker != '':
+                if truncated and marker != '':
                     # print("list object truncated: last_marker {} page_first_key: {} ".format(last_marker, result_contents[0]['Key'] ))
-                    self.assertEqual(last_marker, result_contents[0]['Key'])
+                    self.assertEqual(marker, result_contents[-1]['Key'])
 
             # print("list object total: {}, maxKey: {}, prefix: {}, first_key: {}, last_key: {}, next_marker: {} ".format( \
             #     len(contents), self.max_page_size, prefix, contents[0]['Key'], contents[-1]['Key'], marker))
@@ -226,8 +224,8 @@ class ObjectListPageTest(S3TestCase):
         for prefix in prefixs:
             prefix_keys = [ f['Key'] for f in file_keys if f['Key'].startswith(prefix) ]
             contents = []
+            result_contents = []
             continuation_token = ''
-            last_marker = ''
             truncated = True
             while truncated:
                 result = self.s3.list_objects_v2(
@@ -249,9 +247,9 @@ class ObjectListPageTest(S3TestCase):
                     truncated = bool(result['IsTruncated'])
                 else:
                     truncated = False
-                if truncated and last_marker != '':
+                if truncated and continuation_token != '':
                     #print("list object truncated: last_marker {} page_first_key: {} ".format(last_marker, result_contents[0]['Key'] ))
-                    self.assertEqual(last_marker, result_contents[0]['Key'])
+                    self.assertEqual(continuation_token, result_contents[-1]['Key'])
 
             # if prefix_keys[-1] != contents[-1]['Key']:
             #     print("{} {}", prefix_keys[-1], contents[-1]['Key'])

@@ -99,6 +99,7 @@ func RegisterArgsParser(args interface{}, tags ...string) {
 						pVal.Opt.Omitempty = true
 					case "base64":
 						pVal.Opt.Base64 = true
+					default:
 					}
 				}
 				break
@@ -225,6 +226,7 @@ func parseArgs(c *Context, args interface{}, opts ...ServerOption) error {
 				fVal += "=="
 			case 3:
 				fVal += "="
+			default:
 			}
 			b, err := base64.URLEncoding.DecodeString(fVal)
 			if err != nil {

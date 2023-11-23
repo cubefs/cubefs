@@ -147,7 +147,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	if request.IsBatchDeleteExtents() {
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
-	if err = reply.ReadFromConn(ft.conn, timeOut); err != nil {
+	if err = reply.ReadFromConnWithVer(ft.conn, timeOut); err != nil {
 		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
 		return
 	}
@@ -270,11 +270,12 @@ func (rp *ReplProtocol) hasError() bool {
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
-	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
+	if err = request.ReadFromConnWithVer(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
-	log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
-		request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
+	//log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
+	//	request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String(), rp.sourceConn)
+
 	if err = request.resolveFollowersAddr(); err != nil {
 		err = rp.putResponse(request)
 		return
@@ -401,20 +402,24 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	defer func() {
 		reply.clean()
 	}()
+	log.LogDebugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		if reply.ResultCode == proto.OpNotExistErr {
+		if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError {
 			log.LogInfof(err.Error())
 		} else {
 			log.LogErrorf(err.Error())
 		}
 		rp.Stop()
 	}
-
+	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn.RemoteAddr().String())
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
+		if reply.Opcode == proto.OpTryWriteAppend || reply.Opcode == proto.OpSyncTryWriteAppend {
+			log.LogDebugf("try rsp opcode %v", reply.Opcode)
+		}
 		return
 	}
 
@@ -442,12 +447,15 @@ func (rp *ReplProtocol) Stop() {
 }
 
 type SmuxConn struct {
+	once sync.Once
 	net.Conn
 	put func(conn net.Conn, force bool)
 }
 
 func (d *SmuxConn) Close() error {
-	d.put(d.Conn, true)
+	d.once.Do(func() {
+		d.put(d.Conn, true)
+	})
 	return nil
 }
 

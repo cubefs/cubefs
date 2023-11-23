@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/buf"
 	"net/http"
 	_ "net/http/pprof"
 	"path"
@@ -27,22 +26,22 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/blobstore/api/access"
-	"github.com/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-	"github.com/hashicorp/consul/api"
 )
 
 type LimitParameters struct {
 	TraverseDirConcurrency int64
 	PreloadFileConcurrency int64
-	ReadBlockConcurrency   int64
+	ReadBlockConcurrency   int32
 	PreloadFileSizeLimit   int64
 	ClearFileConcurrency   int64
 }
@@ -89,7 +88,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 	}
 
 	if config.LogDir != "" {
-		log.InitLog(config.LogDir, "preload", convertLogLevel(config.LogLevel), nil)
+		log.InitLog(config.LogDir, "preload", convertLogLevel(config.LogLevel), nil, log.DefaultLogLeftSpaceLimit)
 		stat.NewStatistic(config.LogDir, "preload", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 
@@ -128,6 +127,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		Masters:           config.Masters,
 		Preload:           true,
 		OnAppendExtentKey: mw.AppendExtentKey,
+		OnSplitExtentKey:  mw.SplitExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
 		VolumeType:        proto.VolumeTypeCold,
@@ -205,7 +205,7 @@ func (c *PreLoadClient) newEBSClient(masters []string, logDir string) (err error
 
 	if ebsc, err = blobstore.NewEbsClient(access.Config{
 		ConnMode: access.NoLimitConnMode,
-		Consul: api.Config{
+		Consul: access.ConsulConfig{
 			Address: ebsEndpoint,
 		},
 		MaxSizePutOnce: int64(c.ebsBlockSize),
@@ -473,7 +473,7 @@ func (c *PreLoadClient) preloadFileWorker(id int64, jobs <-chan fileInfo, wg *sy
 				log.LogWarnf("Read (%v) wrong size:(%v)", objExtent, n)
 				continue
 			}
-			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0)
+			_, err = c.ec.Write(ino, int(objExtent.FileOffset), buf, 0, nil)
 			//in preload mode,onece extend_hander set to error, streamer is set to error
 			// so write should failed immediately
 			if err != nil {

@@ -39,7 +39,7 @@ class SignatureTest(S3TestCase):
         # Test head a bucket by expired presigned url.
         url = s3.generate_presigned_url('head_bucket', Params={'Bucket': env.BUCKET}, ExpiresIn=-1)
         response = requests.head(url)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 400)
         response.close()
 
         # Vars for followed tests
@@ -78,12 +78,6 @@ class SignatureTest(S3TestCase):
         url = s3.generate_presigned_url('delete_object', Params={'Bucket': env.BUCKET, 'Key': key})
         response = requests.delete(url)
         self.assertEqual(response.status_code, 204)
-        response.close()
-
-        # Check deletion result
-        url = s3.generate_presigned_url('head_object', Params={'Bucket': env.BUCKET, 'Key': key})
-        response = requests.head(url)
-        self.assertEqual(response.status_code, 404)
         response.close()
 
         # Remove key prefix
@@ -139,7 +133,7 @@ class SignatureTest(S3TestCase):
         :return: None
         """
         self.__test_sign(
-            s3=get_env_s3_client(signature_version='s3'))
+            s3=get_env_s3_client())
 
     def test_signature_v2_cn(self):
         """
@@ -148,7 +142,7 @@ class SignatureTest(S3TestCase):
          :return: None
          """
         self.__test_sign(
-            s3=get_env_s3_client(signature_version='s3'),
+            s3=get_env_s3_client(),
             key=KEY_PREFIX + random_string_cn(16))
 
     def test_signature_v2_presign_en(self):
@@ -157,7 +151,7 @@ class SignatureTest(S3TestCase):
         :return:
         """
         self.__test_presign(
-            s3=get_env_s3_client(signature_version='s3'))
+            s3=get_env_s3_client())
 
     def test_signature_v2_presign_cn(self):
         """
@@ -166,7 +160,7 @@ class SignatureTest(S3TestCase):
          :return:
          """
         self.__test_presign(
-            s3=get_env_s3_client(signature_version='s3'),
+            s3=get_env_s3_client(),
             key=KEY_PREFIX + random_string_cn(16))
 
     def test_signature_v4_en(self):

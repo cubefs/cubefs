@@ -17,22 +17,29 @@ package objectnode
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/xml"
 	"io"
 	"io/ioutil"
 	"net/http"
-	"strconv"
+	"regexp"
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/gorilla/mux"
 )
+
+const (
+	DefaultMinBucketLength = 3
+	DefaultMaxBucketLength = 63
+)
+
+var regexBucketName = regexp.MustCompile(`^[0-9a-z][-0-9a-z]+[0-9a-z]$`)
 
 // Head bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html
 func (o *ObjectNode) headBucketHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header()[HeaderNameXAmzBucketRegion] = []string{o.region}
+	w.Header().Set(XAmzBucketRegion, o.region)
 }
 
 // Create bucket
@@ -42,51 +49,52 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
-	vars := mux.Vars(r)
-	bucket := vars["bucket"]
+	param := ParseRequestParam(r)
+	bucket := param.Bucket()
 	if bucket == "" {
-		_ = InvalidBucketName.ServeResponse(w, r)
+		errorCode = InvalidBucketName
 		return
 	}
-	//if vol, _ := o.getVol(bucket); vol != nil {
-	//	log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
-	//	_ = DuplicatedBucket.ServeResponse(w, r)
-	//	return
-	//}
+
+	if !IsValidBucketName(bucket, DefaultMinBucketLength, DefaultMaxBucketLength) {
+		errorCode = InvalidBucketName
+		return
+	}
 
 	if vol, _ := o.vm.VolumeWithoutBlacklist(bucket); vol != nil {
-		log.LogInfof("create bucket failed: duplicated bucket name[%v]", bucket)
-		_ = DuplicatedBucket.ServeResponse(w, r)
+		log.LogInfof("createBucketHandler: duplicated bucket name: requestID(%v) bucket(%v)", GetRequestID(r), bucket)
+		errorCode = BucketAlreadyOwnedByYou
 		return
 	}
 
-	auth := parseRequestAuthInfo(r)
 	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("createBucketHandler: get user info from master fail: requestID(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.AccessKey(), err)
 		return
 	}
 
-	// get LocationConstraint if any
-	contentLenStr := r.Header.Get(HeaderNameContentLength)
-	if contentLen, errConv := strconv.Atoi(contentLenStr); errConv == nil && contentLen > 0 {
-		var requestBytes []byte
-		requestBytes, err = ioutil.ReadAll(r.Body)
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(userInfo.UserID, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(userInfo.UserID, param.apiName)
+
+	length, errorCode := VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
+	if length > 0 {
+		requestBytes, err := ioutil.ReadAll(r.Body)
 		if err != nil && err != io.EOF {
 			log.LogErrorf("createBucketHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = InternalErrorCode(err)
 			return
 		}
-
 		createBucketRequest := &CreateBucketRequest{}
 		err = UnmarshalXMLEntity(requestBytes, createBucketRequest)
 		if err != nil {
@@ -96,79 +104,102 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if createBucketRequest.LocationConstraint != o.region {
-			_ = InvalidLocationConstraint.ServeResponse(w, r)
-			log.LogErrorf("createBucketHandler failed: LocationConstraint(%v), region(%v)",
-				createBucketRequest.LocationConstraint, o.region)
+			log.LogErrorf("createBucketHandler: location constraint not match the service: requestID(%v) LocationConstraint(%v) region(%v)",
+				GetRequestID(r), createBucketRequest.LocationConstraint, o.region)
+			errorCode = InvalidLocationConstraint
 			return
 		}
 	}
 
-	if err = o.mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
-		log.LogErrorf("create bucket[%v] failed: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	var acl *AccessControlPolicy
+	if acl, err = ParseACL(r, userInfo.UserID, false, false); err != nil {
+		log.LogErrorf("createBucketHandler: parse acl fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		return
 	}
-	//todo parse body
-	//w.Header()[HeaderNameLocation] = []string{o.region}
-	w.Header()[HeaderNameLocation] = []string{"/" + bucket}
-	w.Header()[HeaderNameConnection] = []string{"close"}
+
+	if err = o.mc.AdminAPI().CreateDefaultVolume(bucket, userInfo.UserID); err != nil {
+		log.LogErrorf("createBucketHandler: create bucket fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), bucket, param.AccessKey(), err)
+		return
+	}
+
+	w.Header().Set(Location, "/"+bucket)
+	w.Header().Set(Connection, "close")
+
+	vol, err1 := o.vm.VolumeWithoutBlacklist(bucket)
+	if err1 != nil {
+		log.LogWarnf("createBucketHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), bucket, err1)
+		return
+	}
+	if acl != nil {
+		if err1 = putBucketACL(vol, acl); err1 != nil {
+			log.LogWarnf("createBucketHandler: put acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
+				GetRequestID(r), bucket, acl, err1)
+		}
+		vol.metaLoader.storeACL(acl)
+	}
+
 	return
 }
 
 // Delete bucket
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
 func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request) {
-
 	var (
-		//volState *proto.VolStatInfo
-		authKey string
-		err     error
+		err       error
+		errorCode *ErrorCode
 	)
-	vars := mux.Vars(r)
-	bucket := vars["bucket"]
-	if bucket == "" {
-		_ = InvalidBucketName.ServeResponse(w, r)
-		return
-	}
-	auth := parseRequestAuthInfo(r)
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
-		return
-	}
-	//if volState, err = o.mc.ClientAPI().GetVolumeStat(bucket); err != nil {
-	//	log.LogErrorf("get bucket state from master error: err(%v)", err)
-	//	_ = InternalErrorCode(err).ServeResponse(w, r)
-	//	return
-	//}
-	//if volState.UsedSize != 0 {
-	//	_ = BucketNotEmpty.ServeResponse(w, r)
-	//	return
-	//}
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
 
-	var vol *Volume
-	if vol, err = o.vm.Volume(bucket); err != nil {
-		_ = NoSuchBucket.ServeResponse(w, r)
+	param := ParseRequestParam(r)
+	bucket := param.Bucket()
+	if bucket == "" {
+		errorCode = InvalidBucketName
 		return
 	}
+
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("deleteBucketHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), bucket, param.AccessKey(), err)
+		return
+	}
+	var vol *Volume
+	if vol, err = o.getVol(bucket); err != nil {
+		log.LogErrorf("deleteBucketHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), bucket, err)
+		return
+	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	if !vol.IsEmpty() {
-		_ = BucketNotEmpty.ServeResponse(w, r)
+		errorCode = BucketNotEmpty
 		return
 	}
 
 	// delete Volume from master
+	var authKey string
 	if authKey, err = calculateAuthKey(userInfo.UserID); err != nil {
-		log.LogErrorf("delete bucket[%v] error: calculate authKey(%v) err(%v)", bucket, userInfo.UserID, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+		log.LogErrorf("deleteBucketHandler: calculate authKey fail: requestID(%v) volume(%v) authKey(%v) err(%v)",
+			GetRequestID(r), bucket, userInfo.UserID, err)
 		return
 	}
 	if err = o.mc.AdminAPI().DeleteVolume(bucket, authKey); err != nil {
-		log.LogErrorf("delete bucket[%v] error: accessKey(%v), err(%v)", bucket, auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+		log.LogErrorf("deleteBucketHandler: delete volume fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), bucket, param.AccessKey(), err)
 		return
 	}
+	log.LogInfof("deleteBucketHandler: delete bucket success: requestID(%v) volume(%v) accessKey(%v)",
+		GetRequestID(r), bucket, param.AccessKey())
 
 	// release Volume from Volume manager
 	o.vm.Release(bucket)
@@ -179,15 +210,28 @@ func (o *ObjectNode) deleteBucketHandler(w http.ResponseWriter, r *http.Request)
 // List buckets
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html
 func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
 
-	var err error
-	auth := parseRequestAuthInfo(r)
+	param := ParseRequestParam(r)
 	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(auth.accessKey); err != nil {
-		log.LogErrorf("get user info from master error: accessKey(%v), err(%v)", auth.accessKey, err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.accessKey); err != nil {
+		log.LogErrorf("listBucketsHandler: get user info fail: requestID(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.AccessKey(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(userInfo.UserID, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(userInfo.UserID, param.apiName)
 
 	type bucket struct {
 		XMLName      xml.Name `xml:"Bucket"`
@@ -201,14 +245,12 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 		Buckets []bucket `xml:"Buckets>Bucket"`
 	}
 
-	var output = listBucketsOutput{}
-
-	ownVols := userInfo.Policy.OwnVols
-	for _, ownVol := range ownVols {
+	var output listBucketsOutput
+	for _, ownVol := range userInfo.Policy.OwnVols {
 		var vol *Volume
 		if vol, err = o.getVol(ownVol); err != nil {
-			log.LogErrorf("listBucketsHandler: load volume fail: volume(%v) err(%v)",
-				ownVol, err)
+			log.LogErrorf("listBucketsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+				GetRequestID(r), ownVol, err)
 			continue
 		}
 		output.Buckets = append(output.Buckets, bucket{
@@ -218,80 +260,121 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	output.Owner = Owner{DisplayName: userInfo.UserID, Id: userInfo.UserID}
 
-	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(&output); marshalError != nil {
-		log.LogErrorf("listBucketsHandler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+	response, err := MarshalXMLEntity(&output)
+	if err != nil {
+		log.LogErrorf("listBucketsHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), output, err)
 		return
 	}
-	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("listBucketsHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
-	}
+
+	writeSuccessResponseXML(w, response)
 	return
 }
 
 // Get bucket location
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html
-func (o *ObjectNode) getBucketLocation(w http.ResponseWriter, r *http.Request) {
-	_, _ = w.Write(o.encodedRegion)
+func (o *ObjectNode) getBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	var vol *Volume
+	param := ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getBucketLocationHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	location := LocationResponse{Location: o.region}
+	response, err := MarshalXMLEntity(location)
+	if err != nil {
+		log.LogErrorf("getBucketLocationHandler: xml marshal fail: requestID(%v) location(%v) err(%v)",
+			GetRequestID(r), location, err)
+		return
+	}
+
+	writeSuccessResponseXML(w, response)
 	return
 }
 
 // Get bucket tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html
 func (o *ObjectNode) getBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
-		_ = InvalidBucketName.ServeResponse(w, r)
+		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		_ = NoSuchBucket.ServeResponse(w, r)
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	var xattrInfo *proto.XAttrInfo
-	if xattrInfo, err = vol.GetXAttr("/", XAttrKeyOSSTagging); err != nil {
+	if xattrInfo, err = vol.GetXAttr(bucketRootPath, XAttrKeyOSSTagging); err != nil {
 		log.LogErrorf("getBucketTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
 		return
 	}
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 	var output, _ = ParseTagging(string(ossTaggingData))
-
-	var encoded []byte
 	if nil == output || len(output.TagSet) == 0 {
-		sb := strings.Builder{}
-		sb.WriteString(xml.Header)
-		sb.WriteString("<Tagging></Tagging>")
-		encoded = []byte(sb.String())
-	} else {
-		if encoded, err = MarshalXMLEntity(output); err != nil {
-			log.LogErrorf("getBucketTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			_ = InternalErrorCode(err).ServeResponse(w, r)
-			return
-		}
+		errorCode = NoSuchTagSetError
+		return
 	}
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	if _, err = w.Write(encoded); err != nil {
-		log.LogErrorf("getBucketTaggingHandler: write response fail: requestID(%v) err（%v)", GetRequestID(r), err)
+
+	response, err := MarshalXMLEntity(output)
+	if err != nil {
+		log.LogErrorf("getBucketTaggingHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), output, err)
+		return
 	}
+
+	writeSuccessResponseXML(w, response)
 	return
 }
 
 // Put bucket tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketTagging.html
 func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
-
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -300,35 +383,53 @@ func (o *ObjectNode) putBucketTaggingHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		errorCode = NoSuchBucket
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("putBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
-	var requestBody []byte
-	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
-		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
+	var body []byte
+	if body, err = ioutil.ReadAll(r.Body); err != nil {
+		log.LogErrorf("putBucketTaggingHandler: read request body data fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
+		errorCode = InvalidArgument
 		return
 	}
 
 	var tagging = NewTagging()
-	if err = UnmarshalXMLEntity(requestBody, tagging); err != nil {
-		log.LogWarnf("putBucketTaggingHandler: decode request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InvalidArgument.ServeResponse(w, r)
+	if err = UnmarshalXMLEntity(body, tagging); err != nil {
+		log.LogWarnf("putBucketTaggingHandler: unmarshal request body fail: requestID(%v) body(%v) err(%v)",
+			GetRequestID(r), string(body), err)
+		errorCode = InvalidArgument
 		return
 	}
 	validateRes, errorCode := tagging.Validate()
 	if !validateRes {
-		log.LogErrorf("putBucketTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
+		log.LogErrorf("putBucketTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)",
+			GetRequestID(r), tagging, errorCode.Error())
 		return
 	}
 
-	if err = vol.SetXAttr("/", XAttrKeyOSSTagging, []byte(tagging.Encode()), false); err != nil {
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+	err = vol.SetXAttr(bucketRootPath, XAttrKeyOSSTagging, []byte(tagging.Encode()), false)
+	if err != nil {
+		log.LogErrorf("putBucketTaggingHandler: set tagging xattr fail: requestID(%v) tagging(%v) err(%v)",
+			GetRequestID(r), tagging.Encode(), err)
 		return
 	}
 
+	w.WriteHeader(http.StatusNoContent)
 	return
 }
 
@@ -339,31 +440,35 @@ func (o *ObjectNode) deleteBucketTaggingHandler(w http.ResponseWriter, r *http.R
 		err       error
 		errorCode *ErrorCode
 	)
-
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: load Volume fail: requestID(%v) Volume(%v) err(%v)", GetRequestID(r), param.bucket, err)
-		errorCode = NoSuchBucket
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("deleteBucketTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
-	if err = vol.DeleteXAttr("/", XAttrKeyOSSTagging); err != nil {
-		log.LogErrorf("deleteBucketTaggingHandler: Volume delete tagging xattr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		_ = InternalErrorCode(err).ServeResponse(w, r)
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
 		return
 	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	if err = vol.DeleteXAttr(bucketRootPath, XAttrKeyOSSTagging); err != nil {
+		log.LogErrorf("deleteBucketTaggingHandler: delete tagging xattr fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 	return
 }
@@ -382,4 +487,121 @@ func calculateAuthKey(key string) (authKey string, err error) {
 func (o *ObjectNode) getUserInfoByAccessKey(accessKey string) (userInfo *proto.UserInfo, err error) {
 	userInfo, err = o.userStore.LoadUser(accessKey)
 	return
+}
+
+// Put Object Lock Configuration
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLockConfiguration.html
+func (o *ObjectNode) putObjectLockConfigurationHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+	var body []byte
+	if body, err = ioutil.ReadAll(io.LimitReader(r.Body, MaxObjectLockSize+1)); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
+		return
+	}
+	if len(body) > MaxObjectLockSize {
+		errorCode = EntityTooLarge
+		return
+	}
+	var config *ObjectLockConfig
+	if config, err = ParseObjectLockConfigFromXML(body); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: parse object lock config fail: requestID(%v) volume(%v) config(%v) err(%v)",
+			GetRequestID(r), vol.Name(), string(body), err)
+		return
+	}
+	if body, err = json.Marshal(config); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: json.Marshal object lock config fail: requestID(%v) volume(%v) config(%v) err(%v)",
+			GetRequestID(r), vol.Name(), config, err)
+		return
+	}
+	if err = storeObjectLock(body, vol); err != nil {
+		log.LogErrorf("putObjectLockConfigurationHandler: store object lock config fail: requestID(%v) volume(%v) config(%v) err(%v)",
+			GetRequestID(r), vol.Name(), string(body), err)
+		return
+	}
+	vol.metaLoader.storeObjectLock(config)
+
+	w.WriteHeader(http.StatusNoContent)
+	return
+}
+
+// Get Object Lock Configuration
+// https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html
+func (o *ObjectNode) getObjectLockConfigurationHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getObjectLockConfigurationHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+
+	var config *ObjectLockConfig
+	if config, err = vol.metaLoader.loadObjectLock(); err != nil {
+		log.LogErrorf("getObjectLockConfigurationHandler: load object lock fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
+		return
+	}
+	if config == nil || config.IsEmpty() {
+		errorCode = ObjectLockConfigurationNotFound
+		return
+	}
+	var data []byte
+	if data, err = MarshalXMLEntity(config); err != nil {
+		log.LogErrorf("getObjectLockConfigurationHandler: xml marshal fail: requestID(%v) volume(%v) cors(%+v) err(%v)",
+			GetRequestID(r), vol.Name(), config, err)
+		return
+	}
+
+	writeSuccessResponseXML(w, data)
+	return
+}
+
+func (o *ObjectNode) getUserInfoByAccessKeyV2(accessKey string) (userInfo *proto.UserInfo, err error) {
+	userInfo, err = o.userStore.LoadUser(accessKey)
+	if err == proto.ErrUserNotExists || err == proto.ErrAccessKeyNotExists || err == proto.ErrParamError {
+		err = InvalidAccessKeyId
+	}
+	return
+}
+
+func IsValidBucketName(bucketName string, minBucketLength, maxBucketLength int) bool {
+	if len(bucketName) < minBucketLength || len(bucketName) > maxBucketLength {
+		return false
+	}
+	if !regexBucketName.MatchString(bucketName) {
+		return false
+	}
+	return true
 }

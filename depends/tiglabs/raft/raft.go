@@ -228,6 +228,10 @@ func (s *raft) runApply() {
 			switch cmd := apply.command.(type) {
 			case *proto.ConfChange:
 				resp, err = s.raftConfig.StateMachine.ApplyMemberChange(cmd, apply.index)
+				if cmd.Type == proto.ConfRemoveNode && err == nil {
+					s.raftFsm.mo.RemovePeer(s.raftFsm.id, cmd.Peer)
+				}
+
 			case []byte:
 				resp, err = s.raftConfig.StateMachine.Apply(cmd, apply.index)
 			}
@@ -312,7 +316,10 @@ func (s *raft) run() {
 				(m.Type == proto.ReqMsgVote && s.raftFsm.raftLog.isUpToDate(m.Index, m.LogTerm, 0, 0)) {
 				switch m.Type {
 				case proto.ReqMsgHeartBeat:
-					if s.raftFsm.leader == m.From && m.From != s.config.NodeID {
+					// if s.raftFsm.leader == no leader, also need handler heartbeat request.
+					// Otherwise PreCandidate will not change his state to Follower.
+					// So remove the condition s.raftFsm.leader == m.From
+					if m.From != s.config.NodeID {
 						s.raftFsm.Step(m)
 					}
 				case proto.RespMsgHeartBeat:

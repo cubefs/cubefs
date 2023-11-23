@@ -1,4 +1,4 @@
-// Copyright 2022 The ChubaoFS Authors.
+// Copyright 2022 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,15 +34,16 @@ import (
 )
 
 const (
-	UnixSocketPath = "/var/lib/kubelet/device-plugins/bcache.socket"
+	UnixSocketPath = "/var/run/cubefscache/bcache.socket"
 
 	//config
-	CacheDir     = "cacheDir"
-	CacheLimit   = "cacheLimit"
-	CacheFree    = "cacheFree"
-	BlockSize    = "blockSize"
-	MaxFileSize  = 128 << 30
-	MaxBlockSize = 128 << 20
+	CacheDir      = "cacheDir"
+	CacheLimit    = "cacheLimit"
+	CacheFree     = "cacheFree"
+	BlockSize     = "blockSize"
+	MaxFileSize   = 128 << 30
+	MaxBlockSize  = 128 << 20
+	BigExtentSize = 32 << 20
 )
 
 var (
@@ -55,7 +56,7 @@ type bcacheConfig struct {
 	Mode      uint32
 	CacheSize int64
 	FreeRatio float32
-	Limit     int
+	Limit     uint32
 }
 
 type bcacheStore struct {
@@ -292,13 +293,11 @@ func (s *bcacheStore) parserConf(cfg *config.Config) (*bcacheConfig, error) {
 	if cacheDir == "" {
 		return nil, errors.NewErrorf("cacheDir is required.")
 	}
-	if v, err := strconv.Atoi(blockSize); err == nil {
+	if v, err := strconv.ParseUint(blockSize, 10, 32); err == nil {
 		bconf.BlockSize = uint32(v)
-
 	}
-	if v, err := strconv.Atoi(cacheLimit); err == nil {
-		bconf.Limit = v
-
+	if v, err := strconv.ParseUint(cacheLimit, 10, 32); err == nil {
+		bconf.Limit = uint32(v)
 	}
 	if v, err := strconv.ParseFloat(cacheFree, 32); err == nil {
 		bconf.FreeRatio = float32(v)

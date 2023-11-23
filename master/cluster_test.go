@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/require"
 )
 
 func buildPanicCluster() *Cluster {
@@ -92,7 +93,7 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	vol.addMetaPartition(mp)
 	mp = nil
 	c.checkMetaPartitions()
@@ -205,7 +206,7 @@ func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID)
+	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.Name, vol.ID, 0)
 	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.scheduleToCheckMetaPartitionRecoveryProgress()
 }
@@ -305,4 +306,59 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		t.Errorf("split failed,oldMpLen[%v],curMpLen[%v]", mpLen, curMpLen)
 	}
 
+}
+
+func TestBalanceMetaPartition(t *testing.T) {
+	// create volume and metaNode will create mp,sleep some time to wait cluster get latest meteNode info
+	// cluster normal volume has 3 mps , total 3*3 =9 mp in metaNode
+	req := &createVolReq{
+		name:             commonVolName + "1",
+		owner:            "cfs",
+		dpSize:           3,
+		mpCount:          30,
+		dpReplicaNum:     3,
+		capacity:         100,
+		followerRead:     false,
+		authenticate:     false,
+		crossZone:        true,
+		normalZonesFirst: false,
+		zoneName:         testZone1 + "," + testZone2,
+		description:      "",
+		qosLimitArgs:     &qosArgs{},
+	}
+	_, err := server.cluster.createVol(req)
+	require.NoError(t, err)
+	server.cluster.checkMetaNodeHeartbeat()
+	time.Sleep(time.Second * 2)
+
+	zoneM := make(map[string]struct{})
+	nodeSetM := make(map[uint64]struct{})
+	// get all metaNodes
+	sortNodes := server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	require.Equal(t, len(sortNodes.nodes), server.cluster.metaNodeCount())
+
+	// get noeExist zone metaNodes, should has 0 node
+	zoneM["noeExist"] = struct{}{}
+	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	// if there are no nodes selected, sortNodes is nil
+	if sortNodes != nil {
+		require.Equal(t, len(sortNodes.nodes), 0)
+	}
+
+	// get testZone2 metaNodes, should has 4 node
+	zoneM[testZone2] = struct{}{}
+	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	require.Equal(t, len(sortNodes.nodes), 4)
+	// get testZone1 metaNodes, should has 2 node
+	delete(zoneM, testZone2)
+	zoneM[testZone1] = struct{}{}
+	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	require.Equal(t, len(sortNodes.nodes), 2)
+
+	// zoneM has testZone1 and testZone2, should has all 6 node
+	zoneM[testZone2] = struct{}{}
+	sortNodes = server.cluster.getSortLeaderMetaNodes(zoneM, nodeSetM)
+	require.Equal(t, len(sortNodes.nodes), 6)
+
+	sortNodes.balanceLeader()
 }

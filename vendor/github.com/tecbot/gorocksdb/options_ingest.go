@@ -46,6 +46,18 @@ func (opts *IngestExternalFileOptions) SetAllowBlockingFlush(flag bool) {
 	C.rocksdb_ingestexternalfileoptions_set_allow_blocking_flush(opts.c, boolToChar(flag))
 }
 
+// SetIngestionBehind sets ingest_behind
+// Set to true if you would like duplicate keys in the file being ingested
+// to be skipped rather than overwriting existing data under that key.
+// Usecase: back-fill of some historical data in the database without
+// over-writing existing newer version of data.
+// This option could only be used if the DB has been running
+// with allow_ingest_behind=true since the dawn of time.
+// All files will be ingested at the bottommost level with seqno=0.
+func (opts *IngestExternalFileOptions) SetIngestionBehind(flag bool) {
+	C.rocksdb_ingestexternalfileoptions_set_ingest_behind(opts.c, boolToChar(flag))
+}
+
 // Destroy deallocates the IngestExternalFileOptions object.
 func (opts *IngestExternalFileOptions) Destroy() {
 	C.rocksdb_ingestexternalfileoptions_destroy(opts.c)

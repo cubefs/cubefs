@@ -25,7 +25,7 @@ If your Blobstore version is v1.1.0 or before which built with cubefs-blobstore 
 * `metanode`: reduce extent alloc memory when metanode snapshot (#1728, @Victor1319)
 * `metanode`: random write may cause metanode memory grow (#1729, @Victor1319)
 * `datanode`: bad disk space is calculated in datanode's total space (#1601, @Victor1319)
-* `datanode`: no premission disk can't be detected (#1602, @Victor1319)
+* `datanode`: no permission disk can't be detected (#1602, @Victor1319)
 * `master\cli`: add display of unavailable replica for cfs-cli datapartition check (#1771 ,@true1064)
 * `datanode`: datanode should compute datapartition used size right after loading extents from disk (#1782 ,@true1064)
 * `client`:enhance support nfs access operation (#1798, @leonrayang )
@@ -176,8 +176,8 @@ Release formal version release-v3.0.0 which based on the newest master commit, b
 6) manage third part library with go mod.
 
 Please refer to the documentation for details,the content already updated.
-English version : https://cubefs.readthedocs.io/en/latest/overview.html
-Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
+- English version: https://cubefs.io/docs/master/overview/introduction.html
+- Chinese version: https://cubefs.io/zh/docs/master/overview/introduction.html
 
 
 ### **Main Feature**
@@ -232,7 +232,7 @@ Chinese version: https://cubefs.readthedocs.io/zh_CN/latest/
 
 ### _**UPGRAGDE NOTICE**_
 
-If your ChubaoFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps. And also please make sure that your fuse client or objectnode version is equal to or older than the servers, i.e. master, metanode and datanode. In another word, newer versioned client can not be used in a cluster with older versioned servers.
 ### Notice
 * this release mainly used to optimize datanode cpu usage 
 
@@ -867,7 +867,7 @@ Release2.1.0 did a lot of work to optimize memory usage.
 * Client gets stale file size if streamer is auto evicted. [commit](https://github.com/cubefs/cubefs/commit/4831443a56a7342e1843db225e29645a1814007c)
 * Update export init for consul register [commit](https://github.com/cubefs/cubefs/commit/c06e1dbaf7dac5cfdd1faff2d8c215a050944217)
 * Err is shadowed in server main function [commit](https://github.com/cubefs/cubefs/commit/8ce0f64ad0f19cf8dcfab5cd1df9bf45de7d5017)
-* If master only create DataPartitionCnt is 10,then cannnot mount [commit](https://github.com/cubefs/cubefs/commit/5e47ca00d35b8ca0fa62a9e4a52dbac6da9d5ae9)
+* If master only create DataPartitionCnt is 10,then cannot mount [commit](https://github.com/cubefs/cubefs/commit/5e47ca00d35b8ca0fa62a9e4a52dbac6da9d5ae9)
 * Update export init for consul register [commit](https://github.com/cubefs/cubefs/commit/dfca18fa1b394fcceee2bf0696737d7197d77ddc)
 * DataPartition disk error ,not recvoery raft log on new datanode [commit](https://github.com/cubefs/cubefs/commit/d5febd10da6008dd4fca46d91b4e7d29ebadb9ec)
 * Datanode register hang bug [commit](https://github.com/cubefs/cubefs/commit/8eaeabf5c1a74b6057a43bf0e856e94823c9ad3a)

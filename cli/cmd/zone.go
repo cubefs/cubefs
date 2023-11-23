@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/cubefs/cubefs/proto"
 	sdk "github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
@@ -27,7 +28,7 @@ const (
 )
 
 func newZoneCmd(client *sdk.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdZoneUse,
 		Short: cmdZoneShort,
 		Args:  cobra.MinimumNArgs(0),
@@ -35,17 +36,19 @@ func newZoneCmd(client *sdk.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newZoneListCmd(client),
 		newZoneInfoCmd(client),
+		newZoneUpdateCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdZoneListShort = "List cluster zones"
-	cmdZoneInfoShort = "Show zone information"
+	cmdZoneListShort   = "List cluster zones"
+	cmdZoneInfoShort   = "Show zone information"
+	cmdZoneUpdateShort = "Update zone settings"
 )
 
 func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdZoneListShort,
 		Aliases: []string{"ls"},
@@ -53,9 +56,7 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 			var zones []*proto.ZoneView
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if zones, err = client.AdminAPI().ListZones(); err != nil {
 				return
@@ -65,14 +66,13 @@ func newZoneListCmd(client *sdk.MasterClient) *cobra.Command {
 			for _, zone := range zones {
 				stdout(zoneTablePattern, zone.Name, zone.Status)
 			}
-			return
 		},
 	}
 	return cmd
 }
 
 func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpInfo + " [NAME]",
 		Short: cmdZoneInfoShort,
 		Args:  cobra.MinimumNArgs(1),
@@ -84,9 +84,7 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				zoneView *proto.ZoneView
 			)
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			zoneName = args[0]
 			if topo, err = client.AdminAPI().Topo(); err != nil {
@@ -102,8 +100,7 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				err = fmt.Errorf("Zone[%v] not exists in cluster\n ", zoneName)
 				return
 			}
-			stdout(formatZoneView(zoneView))
-			return
+			stdout("%v", formatZoneView(zoneView))
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -112,5 +109,35 @@ func newZoneInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			return validZones(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	return cmd
+}
+
+func newZoneUpdateCmd(client *sdk.MasterClient) *cobra.Command {
+	enable := true
+	dataNodesetSelector := ""
+	metaNodesetSelector := ""
+	dataNodeSelector := ""
+	metaNodeSelector := ""
+	cmd := &cobra.Command{
+		Use:   CliOpUpdate + " [NAME]",
+		Short: cmdZoneUpdateShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			zoneName := args[0]
+			if err = client.AdminAPI().UpdateZone(zoneName, enable, dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector); err != nil {
+				return
+			}
+			stdout(fmt.Sprintf("Zone %v has been update successfully!\n", zoneName))
+		},
+	}
+	cmd.Flags().BoolVar(&enable, "enable", true, "Enable of disable specify zone")
+	cmd.Flags().StringVar(&dataNodesetSelector, CliFlagDataNodesetSelector, "", "Set the nodeset select policy(datanode) for specify zone")
+	cmd.Flags().StringVar(&metaNodesetSelector, CliFlagMetaNodesetSelector, "", "Set the nodeset select policy(metanode) for specify zone")
+	cmd.Flags().StringVar(&dataNodeSelector, CliFlagDataNodeSelector, "", "Set the node select policy(datanode) for specify zone")
+	cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for specify zone")
 	return cmd
 }

@@ -2,7 +2,7 @@ package manager
 
 import (
 	"container/list"
-	"golang.org/x/net/context"
+	"context"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -191,6 +191,8 @@ func (factor *LimitFactor) SetLimit(limitVal uint64, bufferVal uint64) {
 			if grid.limit == 0 {
 				grid.limit = 10 * util.KB
 			}
+		default:
+			// do nothing
 		}
 	} else {
 		factor.isSetLimitZero = false

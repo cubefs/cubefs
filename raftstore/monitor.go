@@ -6,6 +6,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"sync"
 	"time"
 )
 
@@ -73,15 +74,20 @@ type zombiePeer struct {
 }
 
 type monitor struct {
-	zombieDurations   map[zombiePeer]time.Duration
-	noLeaderDurations map[uint64]time.Duration
+	zombieDurations     map[zombiePeer]time.Duration
+	zombieDurationMutex sync.RWMutex
+
+	noLeaderDurations      map[uint64]time.Duration
+	noLeaderDurationsMutex sync.RWMutex
 }
 
 func newMonitor() *monitor {
-	return &monitor{
-		zombieDurations:   make(map[zombiePeer]time.Duration),
-		noLeaderDurations: make(map[uint64]time.Duration),
-	}
+	var m *monitor
+	m = &monitor{}
+
+	m.zombieDurations = make(map[zombiePeer]time.Duration)
+	m.noLeaderDurations = make(map[uint64]time.Duration)
+	return m
 }
 
 func (d *monitor) MonitorZombie(id uint64, peer proto.Peer, replicasMsg string, du time.Duration) {
@@ -96,7 +102,10 @@ func (d *monitor) MonitorZombie(id uint64, peer proto.Peer, replicasMsg string, 
 		partitionID: id,
 		peer:        peer,
 	}
+
+	d.zombieDurationMutex.RLock()
 	oldDu := d.zombieDurations[zombiePeer]
+	d.zombieDurationMutex.RUnlock()
 
 	if oldDu == 0 || du < oldDu {
 		// peer became zombie recently
@@ -116,8 +125,9 @@ func (d *monitor) MonitorZombie(id uint64, peer proto.Peer, replicasMsg string, 
 	if !needReport {
 		return
 	}
-
+	d.zombieDurationMutex.Lock()
 	d.zombieDurations[zombiePeer] = du
+	d.zombieDurationMutex.Unlock()
 	log.LogError(errMsg)
 	exporter.Warning(errMsg)
 }
@@ -129,7 +139,9 @@ func (d *monitor) MonitorElection(id uint64, replicaMsg string, du time.Duration
 	needReport := true
 	var errMsg string
 
+	d.noLeaderDurationsMutex.RLock()
 	oldDu := d.noLeaderDurations[id]
+	d.noLeaderDurationsMutex.RUnlock()
 
 	if oldDu == 0 || du < oldDu {
 		// became no leader recently
@@ -149,7 +161,38 @@ func (d *monitor) MonitorElection(id uint64, replicaMsg string, du time.Duration
 		return
 	}
 
+	d.noLeaderDurationsMutex.Lock()
 	d.noLeaderDurations[id] = du
+	d.noLeaderDurationsMutex.Unlock()
 	log.LogError(errMsg)
 	exporter.Warning(errMsg)
+}
+
+func (d *monitor) RemovePeer(id uint64, p proto.Peer) {
+	zp := zombiePeer{
+		partitionID: id,
+		peer:        p,
+	}
+
+	d.zombieDurationMutex.Lock()
+	_, present := d.zombieDurations[zp]
+	if present {
+		delete(d.zombieDurations, zp)
+		log.LogInfof("remove peer from raft monitor, partitionID: %v, peer: %v", id, p)
+	}
+	d.zombieDurationMutex.Unlock()
+}
+
+func (d *monitor) RemovePartition(id uint64, peers []proto.Peer) {
+	d.noLeaderDurationsMutex.Lock()
+	_, present := d.noLeaderDurations[id]
+	if present {
+		delete(d.noLeaderDurations, id)
+		log.LogInfof("remove partition from raft monitor, partitionID: %v, peers: %v", id, peers)
+	}
+	d.noLeaderDurationsMutex.Unlock()
+
+	for _, p := range peers {
+		d.RemovePeer(id, p)
+	}
 }

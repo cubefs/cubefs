@@ -13,43 +13,11 @@
 # permissions and limitations under the License.
 
 # -*- coding: utf-8 -*-
-
+import json
+import requests
 import env
 from base import S3TestCase, get_env_s3_client
 
-ACL_DEFAULT = {
-    'Grants': [
-        {
-            'Grantee': {
-                'Type': 'CanonicalUser',
-            },
-            'Permission': 'FULL_CONTROL'
-        },
-    ],
-    'Owner': {
-        'DisplayName': env.ACCESS_KEY,
-        'ID': env.ACCESS_KEY
-    }
-}
-
-ACL = {
-    'Grants': [
-        {
-            'Grantee': {
-                'DisplayName': 'xxx',
-                'EmailAddress': 'xyz@aa.com',
-                'ID': 'yyy',
-                'Type': 'CanonicalUser',
-                'URI': 'x/y/z'
-            },
-            'Permission': 'WRITE'
-        },
-    ],
-    'Owner': {
-        'DisplayName': 'xxx',
-        'ID': 'zzz'
-    }
-}
 
 
 class AclTest(S3TestCase):
@@ -60,18 +28,31 @@ class AclTest(S3TestCase):
         self.s3 = get_env_s3_client()
 
     def test_bucket_acl(self):
-        # Get bucket acl configuration
-        self.assert_get_bucket_acl_result(
-            result=self.s3.get_bucket_acl(Bucket=env.BUCKET), acl=ACL_DEFAULT)
+        resp = requests.get(
+            url=env.MASTER + '/client/vol?name=%s' % env.BUCKET,
+            headers={
+                'Skip-Owner-Validation': 'true'
+            })
+        content = json.loads(resp.content.decode())
+        OWNER = content['data']['Owner']
+        ACL = {
+            'Grants': [
+                {
+                    'Grantee': {
+                        'ID': OWNER,
+                        'Type': 'CanonicalUser'
+                    },
+                    'Permission': 'FULL_CONTROL'
+                },
+            ],
+            'Owner': {
+                'DisplayName': '',
+                'ID': OWNER
+            }
+        }
         # Put bucket acl configuration
         self.assert_result_status_code(
             result=self.s3.put_bucket_acl(Bucket=env.BUCKET, AccessControlPolicy=ACL))
         # Get bucket acl configuration
         self.assert_get_bucket_acl_result(
             result=self.s3.get_bucket_acl(Bucket=env.BUCKET), acl=ACL)
-        # Put bucket acl configuration
-        self.assert_result_status_code(
-            result=self.s3.put_bucket_acl(Bucket=env.BUCKET, AccessControlPolicy=ACL_DEFAULT))
-        # Get bucket acl configuration
-        self.assert_get_bucket_acl_result(
-            result=self.s3.get_bucket_acl(Bucket=env.BUCKET), acl=ACL_DEFAULT)

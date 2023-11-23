@@ -87,7 +87,7 @@ func (s *Service) ServiceRegister(c *rpc.Context) {
 	}
 	err = s.raftNode.Propose(ctx, base.EncodeProposeInfo(s.ServiceMgr.GetModuleName(), servicemgr.OpRegister, data, base.ProposeContext{ReqID: span.TraceID()}))
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error("register raft propose failed, err: ", err)
 		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }
@@ -135,7 +135,7 @@ func (s *Service) ServiceUnregister(c *rpc.Context) {
 			data,
 			base.ProposeContext{ReqID: span.TraceID()}))
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error("unregister raft propose failed, err: ", err)
 		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }
@@ -168,7 +168,7 @@ func (s *Service) ServiceHeartbeat(c *rpc.Context) {
 			data,
 			base.ProposeContext{ReqID: span.TraceID()}))
 	if err != nil {
-		span.Error("raft propose failed, err: ", err)
+		span.Error("heartbeat raft propose failed, err: ", err)
 		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }

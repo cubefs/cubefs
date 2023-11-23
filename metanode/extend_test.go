@@ -32,7 +32,7 @@ func TestExtend_Bytes(t *testing.T) {
 	extends := make([]*Extend, numSamples)
 	for i := 0; i < numSamples; i++ {
 		extend := NewExtend(random.Uint64())
-		extend.Put([]byte("msg"), []byte(util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)))
+		extend.Put([]byte("msg"), []byte(util.RandomString(16, util.Numeric|util.LowerLetter|util.UpperLetter)), 0)
 		extends[i] = extend
 	}
 

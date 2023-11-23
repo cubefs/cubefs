@@ -17,6 +17,7 @@ package allocator
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -29,49 +30,72 @@ type volume struct {
 }
 
 type volumes struct {
-	vols []*volume
+	vols      []*volume
+	totalFree int64
+
 	sync.RWMutex
 }
 
-func (s *volumes) Get(vid proto.Vid) (*volume, bool) {
+func (s *volumes) Get(vid proto.Vid) (res *volume, ok bool) {
 	s.RLock()
-	defer s.RUnlock()
 	i, ok := search(s.vols, vid)
 	if !ok {
+		s.RUnlock()
 		return nil, false
 	}
-	return s.vols[i], true
+	res = s.vols[i]
+	s.RUnlock()
+	return res, true
+}
+
+func (s *volumes) UpdateTotalFree(fsize int64) int64 {
+	return atomic.AddInt64(&s.totalFree, fsize)
+}
+
+func (s *volumes) TotalFree() int64 {
+	return atomic.LoadInt64(&s.totalFree)
 }
 
 func (s *volumes) Put(vol *volume) {
 	s.Lock()
-	defer s.Unlock()
-	_, ok := search(s.vols, vol.Vid)
+	idx, ok := search(s.vols, vol.Vid)
 	if !ok {
+		atomic.AddInt64(&s.totalFree, int64(vol.Free))
 		s.vols = append(s.vols, vol)
-		sort.Slice(s.vols, func(i, j int) bool {
-			return s.vols[i].Vid < s.vols[j].Vid
-		})
+		if idx == len(s.vols)-1 {
+			s.Unlock()
+			return
+		}
+		copy(s.vols[idx+1:], s.vols[idx:len(s.vols)-1])
+		s.vols[idx] = vol
 	}
+	s.Unlock()
 }
 
-func (s *volumes) Delete(vid proto.Vid) {
+func (s *volumes) Delete(vid proto.Vid) bool {
 	s.Lock()
-	defer s.Unlock()
 	i, ok := search(s.vols, vid)
 	if ok {
-		vols := make([]*volume, len(s.vols)-1)
-		copy(vols, s.vols[:i])
-		copy(vols[i:], s.vols[i+1:])
-		s.vols = vols
+		atomic.AddInt64(&s.totalFree, -int64(s.vols[i].Free))
+		copy(s.vols[i:], s.vols[i+1:])
+		s.vols = s.vols[:len(s.vols)-1]
 	}
+	s.Unlock()
+	return ok
 }
 
 func (s *volumes) List() (vols []*volume) {
 	s.RLock()
-	defer s.RUnlock()
-	vols = s.vols
+	vols = s.vols[:]
+	s.RUnlock()
 	return vols
+}
+
+func (s *volumes) Len() int {
+	s.RLock()
+	length := len(s.vols)
+	s.RUnlock()
+	return length
 }
 
 func search(vols []*volume, vid proto.Vid) (int, bool) {

@@ -19,6 +19,8 @@ import "github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 const (
 	DefaultFileCacheCapacity = 2
 	DefaultFileSize          = 32 * util.MB
+	MinFileSize              = 1 * util.MB
+	MaxRotateInterval        = 86400
 	DefaultSync              = false
 )
 

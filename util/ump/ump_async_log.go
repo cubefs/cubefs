@@ -128,7 +128,6 @@ func (lw *LogWrite) backGroundCheckFile() (err error) {
 }
 
 func (lw *LogWrite) backGroundWrite(umpType string) {
-
 	for {
 		var (
 			body []byte
@@ -160,7 +159,6 @@ func (lw *LogWrite) backGroundWrite(umpType string) {
 		body = append(body, []byte("\n")...)
 		lw.logFp.Write(body)
 		lw.logSize += (int64)(len(body))
-		body = make([]byte, 0)
 	}
 }
 
@@ -173,7 +171,7 @@ func initLogName(module, dataDir string) (err error) {
 	} else {
 		return fmt.Errorf("warnLogDir dir not config")
 	}
-	if err = os.MkdirAll(UmpDataDir, 0666); err != nil {
+	if err = os.MkdirAll(UmpDataDir, 0755); err != nil {
 		return
 	}
 

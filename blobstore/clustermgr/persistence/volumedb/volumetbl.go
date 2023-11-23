@@ -446,7 +446,7 @@ func (v *VolumeTable) PutVolumeUnit(vuidPrefix proto.VuidPrefix, unitRecord *Vol
 
 	indexKey := ""
 	indexName := v.indexes[volumeUintDiskIDIndex].indexName
-	indexKey += fmt.Sprintf(indexName+"-%d-%d", unitRecord.DiskID, vuidPrefix)
+	indexKey += fmtIndexKey(indexName, unitRecord.DiskID, vuidPrefix)
 	batch.PutCF(v.indexes[volumeUintDiskIDIndex].indexTbl.GetCf(), []byte(indexKey), key)
 	batch.PutCF(v.unitTbl.GetCf(), key, value)
 	return v.unitTbl.DoBatch(batch)
@@ -464,7 +464,7 @@ func (v *VolumeTable) PutVolumeUnits(units []*VolumeUnitRecord) (err error) {
 		}
 
 		indexKey := ""
-		indexKey += fmt.Sprintf(v.indexes["diskID"].indexName+"-%d-%d", unit.DiskID, unit.VuidPrefix)
+		indexKey += fmtIndexKey(v.indexes["diskID"].indexName, unit.DiskID, unit.VuidPrefix)
 		batch.PutCF(v.indexes[volumeUintDiskIDIndex].indexTbl.GetCf(), []byte(indexKey), key)
 		batch.PutCF(v.unitTbl.GetCf(), key, value)
 	}
@@ -539,10 +539,10 @@ func (v *VolumeTable) UpdateVolumeUnit(vuidPrefix proto.VuidPrefix, unitRecord *
 	}
 	oldDiskID := uRec.DiskID
 	oldIndexKey := ""
-	oldIndexKey += fmt.Sprintf(indexName+"-%d-%d", oldDiskID, vuidPrefix)
+	oldIndexKey += fmtIndexKey(indexName, oldDiskID, vuidPrefix)
 	batch.DeleteCF(v.indexes[volumeUintDiskIDIndex].indexTbl.GetCf(), []byte(oldIndexKey))
 
-	indexKey += fmt.Sprintf(indexName+"-%d-%d", unitRecord.DiskID, vuidPrefix)
+	indexKey += fmtIndexKey(indexName, unitRecord.DiskID, vuidPrefix)
 	batch.PutCF(v.indexes[volumeUintDiskIDIndex].indexTbl.GetCf(), []byte(indexKey), keyVuidPrefix)
 	batch.PutCF(v.unitTbl.GetCf(), keyVuidPrefix, value)
 
@@ -593,4 +593,8 @@ func decodeTaskRecord(buf []byte) (ret *VolumeTaskRecord, err error) {
 	dec := gob.NewDecoder(bytes.NewReader(buf))
 	err = dec.Decode(&ret)
 	return
+}
+
+func fmtIndexKey(name string, diskID proto.DiskID, vuidPrefix proto.VuidPrefix) string {
+	return fmt.Sprintf("%s-%d-%d", name, diskID, vuidPrefix)
 }

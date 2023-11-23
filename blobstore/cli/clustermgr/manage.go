@@ -87,7 +87,7 @@ func cmdAddMember(c *grumble.Context) error {
 		NodeHost:   nodeHost,
 	}
 	if !common.Confirm("confirm add?") {
-		fmt.Println("command canceled")
+		fmt.Println("add command canceled")
 		return nil
 	}
 	return cli.AddMember(ctx, memberArgs)
@@ -99,7 +99,7 @@ func cmdRemoveMember(c *grumble.Context) error {
 
 	id := c.Args.Uint64("peer_id")
 	if !common.Confirm("confirm remove?") {
-		fmt.Println("command canceled")
+		fmt.Println("remove command canceled")
 		return nil
 	}
 	return cli.RemoveMember(ctx, id)
@@ -112,7 +112,7 @@ func cmdTransferLeadership(c *grumble.Context) error {
 	id := c.Args.Uint64("peer_id")
 
 	if !common.Confirm("confirm transfer leadership?") {
-		fmt.Println("command canceled")
+		fmt.Println("transfer command canceled")
 		return nil
 	}
 

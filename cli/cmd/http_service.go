@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 )
 
 type clientHandler interface {
@@ -12,10 +13,11 @@ type clientHandler interface {
 }
 
 type volumeClient struct {
-	name     string
-	capacity uint64
-	opCode   MasterOp
-	client   *master.MasterClient
+	name        string
+	capacity    uint64
+	opCode      MasterOp
+	client      *master.MasterClient
+	clientIDKey string
 }
 
 func NewVolumeClient(opCode MasterOp, client *master.MasterClient) (vol *volumeClient) {
@@ -33,9 +35,9 @@ func (vol *volumeClient) excuteHttp() (err error) {
 			return
 		}
 		if vol.capacity <= vv.Capacity {
-			return errors.New(fmt.Sprintf("Expand capacity must larger than %v!\n", vv.Capacity))
+			return fmt.Errorf("Expand capacity must larger than %v", vv.Capacity)
 		}
-		if err = vol.client.AdminAPI().VolExpand(vol.name, vol.capacity, calcAuthKey(vv.Owner)); err != nil {
+		if err = vol.client.AdminAPI().VolExpand(vol.name, vol.capacity, util.CalcAuthKey(vv.Owner), vol.clientIDKey); err != nil {
 			return
 		}
 	case OpShrinkVol:
@@ -44,15 +46,13 @@ func (vol *volumeClient) excuteHttp() (err error) {
 			return
 		}
 		if vol.capacity >= vv.Capacity {
-			return errors.New(fmt.Sprintf("Expand capacity must less than %v!\n", vv.Capacity))
+			return fmt.Errorf("Expand capacity must less than %v", vv.Capacity)
 		}
-		if err = vol.client.AdminAPI().VolShrink(vol.name, vol.capacity, calcAuthKey(vv.Owner)); err != nil {
+		if err = vol.client.AdminAPI().VolShrink(vol.name, vol.capacity, util.CalcAuthKey(vv.Owner), vol.clientIDKey); err != nil {
 			return
 		}
 	case OpDeleteVol:
 	default:
-
 	}
-
 	return
 }

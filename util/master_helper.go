@@ -194,7 +194,7 @@ func (helper *masterHelper) updateMaster(address string) {
 }
 
 func (helper *masterHelper) mergeRequestUrl(url string, params map[string]string) string {
-	if params != nil && len(params) > 0 {
+	if len(params) > 0 {
 		buff := bytes.NewBuffer([]byte(url))
 		isFirstParam := true
 		for k, v := range params {

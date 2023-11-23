@@ -15,8 +15,6 @@
 package cmd
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"strconv"
@@ -24,6 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +32,7 @@ const (
 )
 
 func newVolCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdVolUse,
 		Short:   cmdVolShort,
 		Args:    cobra.MinimumNArgs(0),
@@ -49,6 +48,8 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolDeleteCmd(client),
 		newVolTransferCmd(client),
 		newVolAddDPCmd(client),
+		newVolSetForbiddenCmd(client),
+		newVolSetAuditLogCmd(client),
 	)
 	return cmd
 }
@@ -59,7 +60,7 @@ const (
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
 	var optKeyword string
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliOpList,
 		Short:   cmdVolListShort,
 		Aliases: []string{"ls"},
@@ -67,9 +68,7 @@ func newVolListCmd(client *master.MasterClient) *cobra.Command {
 			var vols []*proto.VolInfo
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if vols, err = client.AdminAPI().ListVols(optKeyword); err != nil {
 				return
@@ -90,15 +89,10 @@ const (
 	cmdVolDefaultMPCount               = 3
 	cmdVolDefaultDPSize                = 120
 	cmdVolDefaultCapacity              = 10 // 100GB
-	cmdVolDefaultReplicas              = 3
-	cmdVolDefaultFollowerReader        = true
 	cmdVolDefaultZoneName              = ""
 	cmdVolDefaultCrossZone             = "false"
 	cmdVolDefaultBusiness              = ""
-	cmdVolDefaultReplicaNum            = 3
-	cmdVolDefaultSize                  = 120
 	cmdVolDefaultVolType               = 0
-	cmdVolDefaultFollowerRead          = "false"
 	cmdVolDefaultCacheRuleKey          = ""
 	cmdVolDefaultEbsBlkSize            = 8 * 1024 * 1024
 	cmdVolDefaultCacheCapacity         = 0
@@ -118,7 +112,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optBusiness string
 	var optMPCount int
 	var optReplicaNum string
-	var optSize int
+	var optDPSize int
 	var optVolType int
 	var optFollowerRead string
 	var optZoneName string
@@ -132,54 +126,75 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLowWater int
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
+	var optEnableQuota string
+	var optTxMask string
+	var optTxTimeout uint32
+	var optTxConflictRetryNum int64
+	var optTxConflictRetryInterval int64
+	var optDeleteLockTime int64
+	var clientIDKey string
 	var optYes bool
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volumeName = args[0]
-			var userID = args[1]
+			volumeName := args[0]
+			userID := args[1]
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			crossZone, _ := strconv.ParseBool(optCrossZone)
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
-			replicaNum, _ := strconv.Atoi(optReplicaNum)
+
 			if optReplicaNum == "" && optVolType == 1 {
-				replicaNum = 1
+				optReplicaNum = "1"
+			}
+			if optVolType != 1 && optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
+				followerRead = true
+			}
+			if optEnableQuota != "yes" {
+				optEnableQuota = "false"
 			}
 			dpReadOnlyWhenVolFull, _ := strconv.ParseBool(optDpReadOnlyWhenVolFull)
+			replicaNum, _ := strconv.Atoi(optReplicaNum)
+
+			if optDeleteLockTime < 0 {
+				optDeleteLockTime = 0
+			}
 
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
-				stdout("  Name                : %v\n", volumeName)
-				stdout("  Owner               : %v\n", userID)
-				stdout("  capacity            : %v G\n", optCapacity)
-				stdout("  crossZone           : %v\n", crossZone)
-				stdout("  DefaultPriority     : %v\n", normalZonesFirst)
-				stdout("  description         : %v\n", optBusiness)
-				stdout("  mpCount             : %v\n", optMPCount)
-				stdout("  replicaNum          : %v\n", replicaNum)
-				stdout("  size                : %v G\n", optSize)
-				stdout("  volType             : %v\n", optVolType)
-				stdout("  followerRead        : %v\n", followerRead)
-				stdout("  readOnlyWhenFull    : %v\n", dpReadOnlyWhenVolFull)
-				stdout("  zoneName            : %v\n", optZoneName)
-				stdout("  cacheRuleKey        : %v\n", optCacheRuleKey)
-				stdout("  ebsBlkSize          : %v byte\n", optEbsBlkSize)
-				stdout("  cacheCapacity       : %v G\n", optCacheCap)
-				stdout("  cacheAction         : %v\n", optCacheAction)
-				stdout("  cacheThreshold      : %v byte\n", optCacheThreshold)
-				stdout("  cacheTTL            : %v day\n", optCacheTTL)
-				stdout("  cacheHighWater      : %v\n", optCacheHighWater)
-				stdout("  cacheLowWater       : %v\n", optCacheLowWater)
-				stdout("  cacheLRUInterval    : %v min\n", optCacheLRUInterval)
+				stdout("  Name                     : %v\n", volumeName)
+				stdout("  Owner                    : %v\n", userID)
+				stdout("  capacity                 : %v G\n", optCapacity)
+				stdout("  deleteLockTime           : %v h\n", optDeleteLockTime)
+				stdout("  crossZone                : %v\n", crossZone)
+				stdout("  DefaultPriority          : %v\n", normalZonesFirst)
+				stdout("  description              : %v\n", optBusiness)
+				stdout("  mpCount                  : %v\n", optMPCount)
+				stdout("  replicaNum               : %v\n", optReplicaNum)
+				stdout("  dpSize                   : %v G\n", optDPSize)
+				stdout("  volType                  : %v\n", optVolType)
+				stdout("  followerRead             : %v\n", followerRead)
+				stdout("  readOnlyWhenFull         : %v\n", dpReadOnlyWhenVolFull)
+				stdout("  zoneName                 : %v\n", optZoneName)
+				stdout("  cacheRuleKey             : %v\n", optCacheRuleKey)
+				stdout("  ebsBlkSize               : %v byte\n", optEbsBlkSize)
+				stdout("  cacheCapacity            : %v G\n", optCacheCap)
+				stdout("  cacheAction              : %v\n", optCacheAction)
+				stdout("  cacheThreshold           : %v byte\n", optCacheThreshold)
+				stdout("  cacheTTL                 : %v day\n", optCacheTTL)
+				stdout("  cacheHighWater           : %v\n", optCacheHighWater)
+				stdout("  cacheLowWater            : %v\n", optCacheLowWater)
+				stdout("  cacheLRUInterval         : %v min\n", optCacheLRUInterval)
+				stdout("  TransactionMask          : %v\n", optTxMask)
+				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
+				stdout("  TxConflictRetryNum       : %v\n", optTxConflictRetryNum)
+				stdout("  TxConflictRetryInterval  : %v ms\n", optTxConflictRetryInterval)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -190,17 +205,17 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			err = client.AdminAPI().CreateVolName(
-				volumeName, userID, optCapacity, crossZone, normalZonesFirst, optBusiness,
-				optMPCount, replicaNum, optSize, optVolType, followerRead,
+				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
+				optMPCount, int(replicaNum), optDPSize, optVolType, followerRead,
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
-				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull)
+				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
+				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
 			}
 			stdout("Create volume success.\n")
-			return
 		},
 	}
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, cmdVolDefaultCapacity, "Specify volume capacity")
@@ -209,9 +224,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optBusiness, CliFlagBusiness, cmdVolDefaultBusiness, "Description")
 	cmd.Flags().IntVar(&optMPCount, CliFlagMPCount, cmdVolDefaultMPCount, "Specify init meta partition count")
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
-	cmd.Flags().IntVar(&optSize, CliFlagSize, cmdVolDefaultSize, "Specify data partition size[Unit: GB]")
+	cmd.Flags().IntVar(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify data partition size[Unit: GB]")
 	cmd.Flags().IntVar(&optVolType, CliFlagVolType, cmdVolDefaultVolType, "Type of volume (default 0)")
-	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, cmdVolDefaultFollowerRead, "Enable read form replica follower")
+	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, "", "Enable read form replica follower")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().StringVar(&optCacheRuleKey, CliFlagCacheRuleKey, cmdVolDefaultCacheRuleKey, "Anything that match this field will be written to the cache")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")
@@ -224,13 +239,19 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, cmdVolDefaultCacheLRUInterval, "Specify interval expiration time[Unit: min]")
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link\"] or \"off\" or \"all\"")
+	cmd.Flags().Uint32Var(&optTxTimeout, CliTxTimeout, 1, "Specify timeout[Unit: minute] for transaction [1-60]")
+	cmd.Flags().Int64Var(&optTxConflictRetryNum, CliTxConflictRetryNum, 0, "Specify retry times for transaction conflict [1-100]")
+	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
+	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
+	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
 
 	return cmd
 }
 
 const (
-	cmdVolSetShort    = "Set configuration of the volume"
 	cmdVolUpdateShort = "Update configuration of the volume"
 )
 
@@ -249,21 +270,30 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCacheLowWater int
 	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
+	var clientIDKey string
+
 	var optYes bool
-	var confirmString = strings.Builder{}
+	var optTxMask string
+	var optTxTimeout int64
+	var optTxForceReset bool
+	var optTxConflictRetryNum int64
+	var optTxConflictRetryInterval int64
+	var optTxOpLimitVal int
+	var optReplicaNum string
+	var optDeleteLockTime int64
+	var optEnableQuota string
+	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   CliOpUpdate + " [VOLUME NAME]",
 		Short: cmdVolUpdateShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volumeName = args[0]
-			var isChange = false
+			volumeName := args[0]
+			isChange := false
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				return
@@ -277,14 +307,14 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Description         : %v \n", vv.Description))
 			}
-			if vv.CrossZone == false && "" != optZoneName {
+			if !vv.CrossZone && "" != optZoneName {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
 				vv.ZoneName = optZoneName
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v\n", vv.ZoneName))
 			}
-			if vv.CrossZone == true && "" != optZoneName {
+			if vv.CrossZone && "" != optZoneName {
 				err = fmt.Errorf("Can not set zone name of the volume that cross zone\n")
 			}
 			if optCapacity > 0 {
@@ -294,6 +324,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Capacity            : %v GB\n", vv.Capacity))
 			}
+
+			if optReplicaNum != "" {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v -> %v \n", vv.DpReplicaNum, optReplicaNum))
+				replicaNum, _ := strconv.ParseUint(optReplicaNum, 10, 8)
+				vv.DpReplicaNum = uint8(replicaNum)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ReplicaNum         : %v \n", vv.Description))
+			}
+
 			if optFollowerRead != "" {
 				isChange = true
 				var enable bool
@@ -303,6 +343,9 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v -> %v\n", formatEnabledDisabled(vv.FollowerRead), formatEnabledDisabled(enable)))
 				vv.FollowerRead = enable
 			} else {
+				if vv.DpReplicaNum == 1 || vv.DpReplicaNum == 2 {
+					vv.FollowerRead = true
+				}
 				confirmString.WriteString(fmt.Sprintf("  Allow follower read : %v\n", formatEnabledDisabled(vv.FollowerRead)))
 			}
 			if optEbsBlkSize > 0 {
@@ -328,6 +371,107 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
 			}
+
+			if optEnableQuota != "" {
+				if optEnableQuota == "false" {
+					if vv.EnableQuota {
+						isChange = true
+						vv.EnableQuota = false
+					}
+				}
+				if optEnableQuota == "true" {
+					if !vv.EnableQuota {
+						isChange = true
+						vv.EnableQuota = true
+					}
+				}
+			}
+			confirmString.WriteString(fmt.Sprintf("  EnableQuota : %v\n", formatEnabledDisabled(vv.EnableQuota)))
+
+			if optDeleteLockTime >= 0 {
+				if optDeleteLockTime != vv.DeleteLockTime {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v h -> %v h\n", vv.DeleteLockTime, optDeleteLockTime))
+					vv.DeleteLockTime = optDeleteLockTime
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v h\n", vv.DeleteLockTime))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v h\n", vv.DeleteLockTime))
+			}
+
+			// var maskStr string
+			if optTxMask != "" {
+				var oldMask, newMask proto.TxOpMask
+				oldMask, err = proto.GetMaskFromString(vv.EnableTransaction)
+				if err != nil {
+					return
+				}
+				newMask, err = proto.GetMaskFromString(optTxMask)
+				if err != nil {
+					return
+				}
+
+				if optTxForceReset {
+					if oldMask == newMask {
+						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+					} else {
+						isChange = true
+						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, optTxMask))
+					}
+				} else {
+					if proto.MaskContains(oldMask, newMask) {
+						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+					} else {
+						isChange = true
+						mergedMaskString := ""
+						if newMask == proto.TxOpMaskOff {
+							mergedMaskString = "off"
+						} else {
+							mergedMaskString = proto.GetMaskString(oldMask | newMask)
+						}
+
+						confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v  -> %v \n", vv.EnableTransaction, mergedMaskString))
+
+					}
+				}
+
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Transaction Mask    : %v \n", vv.EnableTransaction))
+			}
+
+			if optTxTimeout > 0 && vv.TxTimeout != optTxTimeout {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v -> %v\n", vv.TxTimeout, optTxTimeout))
+				vv.TxTimeout = optTxTimeout
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Transaction Timeout : %v minutes\n", vv.TxTimeout))
+			}
+
+			if optTxConflictRetryNum > 0 && vv.TxConflictRetryNum != optTxConflictRetryNum {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Tx Conflict Retry Num : %v -> %v\n", vv.TxConflictRetryNum, optTxConflictRetryNum))
+				vv.TxConflictRetryNum = optTxConflictRetryNum
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Tx Conflict Retry Num : %v\n", vv.TxConflictRetryNum))
+			}
+
+			if optTxConflictRetryInterval > 0 && vv.TxConflictRetryInterval != optTxConflictRetryInterval {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Tx Conflict Retry Interval : %v -> %v\n", vv.TxConflictRetryInterval, optTxConflictRetryInterval))
+				vv.TxConflictRetryInterval = optTxConflictRetryInterval
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Tx Conflict Retry Interval : %v ms\n", vv.TxConflictRetryInterval))
+			}
+
+			if optTxOpLimitVal > 0 && vv.TxOpLimit != optTxOpLimitVal {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  Tx Operation limit : %v -> %v\n", vv.TxOpLimit, optTxOpLimitVal))
+				vv.TxOpLimit = optTxOpLimitVal
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Tx Operation limit : %v\n", vv.TxOpLimit))
+			}
+
 			if optCacheAction != "" {
 				if vv.VolType == 0 {
 					err = fmt.Errorf("cache-action not support in hot vol\n")
@@ -414,11 +558,11 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				if enable, err = strconv.ParseBool(optDpReadOnlyWhenVolFull); err != nil {
 					return
 				}
-				confirmString.WriteString(fmt.Sprintf("  Become readonly when vol full : %v -> %v\n",
+				confirmString.WriteString(fmt.Sprintf("  Vol readonly when full : %v -> %v\n",
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull), formatEnabledDisabled(enable)))
 				vv.DpReadOnlyWhenVolFull = enable
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  Become readonly when vol full : %v\n",
+				confirmString.WriteString(fmt.Sprintf("  Vol readonly full : %v\n",
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
@@ -431,7 +575,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			}
 			// ask user for confirm
 			if !optYes {
-				stdout(confirmString.String())
+				stdout("%v", confirmString.String())
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -440,15 +584,12 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Description, calcAuthKey(vv.Owner), vv.ZoneName, vv.Capacity,
-				vv.FollowerRead, vv.ObjBlockSize, vv.CacheCapacity, vv.CacheAction, vv.CacheThreshold, vv.CacheTtl,
-				vv.CacheHighWater, vv.CacheLowWater, vv.CacheLruInterval, vv.CacheRule, vv.DpReadOnlyWhenVolFull)
+			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum,
+				optTxConflictRetryInterval, optTxOpLimitVal, clientIDKey)
 			if err != nil {
 				return
 			}
 			stdout("Volume configuration has been update successfully.\n")
-			return
-
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -470,12 +611,20 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, 0, " (default 60)")
 	cmd.Flags().StringVar(&optCacheRule, CliFlagCacheRule, "", "Specify cache rule")
 	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, 0, "Specify interval expiration time[Unit: min] (default 5)")
-	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
-		"Enable volume becomes read only when it is full")
+	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, "", "Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: [\"create|mkdir|remove|rename|mknod|symlink|link|pause\"] or \"off\" or \"all\"")
+	cmd.Flags().Int64Var(&optTxTimeout, CliTxTimeout, 0, "Specify timeout[Unit: minute] for transaction (0-60]")
+	cmd.Flags().Int64Var(&optTxConflictRetryNum, CliTxConflictRetryNum, 0, "Specify retry times for transaction conflict [1-100]")
+	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
+	cmd.Flags().BoolVar(&optTxForceReset, CliTxForceReset, false, "Reset transaction mask to the specified value of \"transaction-mask\"")
+	cmd.Flags().IntVar(&optTxOpLimitVal, CliTxOpLimit, 0, "Specify limitation[Unit: second] for transaction(default 0 unlimited)")
+	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
+	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
+	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 
 	return cmd
-
 }
 
 const (
@@ -489,18 +638,16 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 		optDataDetail bool
 	)
 
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdVolInfoUse,
 		Short: cmdVolInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volumeName = args[0]
+			volumeName := args[0]
 			var svv *proto.SimpleVolView
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			if svv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				err = fmt.Errorf("Get volume info failed:\n%v\n", err)
@@ -542,7 +689,6 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					stdout("%v\n", formatDataPartitionTableRow(dp))
 				}
 			}
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -563,19 +709,18 @@ const (
 
 func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optYes bool
+		optYes      bool
+		clientIDKey string
 	)
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   cmdVolDeleteUse,
 		Short: cmdVolDeleteShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volumeName = args[0]
+			volumeName := args[0]
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			// ask user for confirm
 			if !optYes {
@@ -594,7 +739,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			if err = client.AdminAPI().DeleteVolume(volumeName, calcAuthKey(svv.Owner)); err != nil {
+			if err = client.AdminAPI().DeleteVolumeWithAuthNode(volumeName, util.CalcAuthKey(svv.Owner), clientIDKey); err != nil {
 				err = fmt.Errorf("Delete volume failed:\n%v\n", err)
 				return
 			}
@@ -608,6 +753,7 @@ func newVolDeleteCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
@@ -619,20 +765,19 @@ const (
 func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 	var optYes bool
 	var optForce bool
-	var cmd = &cobra.Command{
+	var clientIDKey string
+	cmd := &cobra.Command{
 		Use:     cmdVolTransferUse,
 		Short:   cmdVolTransferShort,
 		Aliases: []string{"trans"},
 		Args:    cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var volume = args[0]
-			var userID = args[1]
+			volume := args[0]
+			userID := args[1]
 
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 
 			// ask user for confirm
@@ -659,13 +804,13 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
 				return
 			}
-			var param = proto.UserTransferVolParam{
+			param := proto.UserTransferVolParam{
 				Volume:  volume,
 				UserSrc: volSimpleView.Owner,
 				UserDst: userInfo.UserID,
 				Force:   optForce,
 			}
-			if _, err = client.UserAPI().TransferVol(&param); err != nil {
+			if _, err = client.UserAPI().TransferVol(&param, clientIDKey); err != nil {
 				return
 			}
 			stdout("Volume has been transferred successfully.\n")
@@ -673,6 +818,7 @@ func newVolTransferCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().BoolVarP(&optForce, "force", "f", false, "Force transfer without current owner check")
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
@@ -682,18 +828,17 @@ const (
 )
 
 func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
-	var cmd = &cobra.Command{
+	var clientIDKey string
+	cmd := &cobra.Command{
 		Use:   cmdVolAddDPCmdUse,
 		Short: cmdVolAddDPCmdShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			var volume = args[0]
-			var number = args[1]
+			volume := args[0]
+			number := args[1]
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			var count int64
 			if count, err = strconv.ParseInt(number, 10, 64); err != nil {
@@ -703,11 +848,10 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateDataPartition(volume, int(count)); err != nil {
+			if err = client.AdminAPI().CreateDataPartition(volume, int(count), clientIDKey); err != nil {
 				return
 			}
 			stdout("Add dp successfully.\n")
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -716,6 +860,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			return validVols(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
@@ -735,29 +880,28 @@ func newVolShrinkCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
-	var cmd = &cobra.Command{
+	var clientIDKey string
+	cmd := &cobra.Command{
 		Use:   use + " [VOLUME] [CAPACITY]",
 		Short: short,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			var name = args[0]
-			var capacityStr = args[1]
+			name := args[0]
+			capacityStr := args[1]
 			var err error
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			volume := r.(*volumeClient)
 			if volume.capacity, err = strconv.ParseUint(capacityStr, 10, 64); err != nil {
 				return
 			}
 			volume.name = name
+			volume.clientIDKey = clientIDKey
 			if err = volume.excuteHttp(); err != nil {
 				return
 			}
 			stdout("Volume capacity has been set successfully.\n")
-			return
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -767,12 +911,66 @@ func newVolSetCapacityCmd(use, short string, r clientHandler) *cobra.Command {
 			return validVols(volume.client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, r.(*volumeClient).client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 
-func calcAuthKey(key string) (authKey string) {
-	h := md5.New()
-	_, _ = h.Write([]byte(key))
-	cipherStr := h.Sum(nil)
-	return strings.ToLower(hex.EncodeToString(cipherStr))
+var (
+	cmdVolSetForbiddenUse   = "set-forbidden [VOLUME] [FORBIDDEN]"
+	cmdVolSetForbiddenShort = "Set the forbidden property for volume"
+)
+
+func newVolSetForbiddenCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   cmdVolSetForbiddenUse,
+		Short: cmdVolSetForbiddenShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			name := args[0]
+			settingStr := args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			forbidden, err := strconv.ParseBool(settingStr)
+			if err != nil {
+				return
+			}
+			if err = client.AdminAPI().SetVolumeForbidden(name, forbidden); err != nil {
+				return
+			}
+			stdout("Volume forbidden property has been set successfully, please wait few minutes for the settings to take effect.\n")
+		},
+	}
+	return cmd
+}
+
+var (
+	cmdVolSetAuditLogUse   = "set-auditlog [VOLUME] [STATUS]"
+	cmdVolSetAuditLogShort = "Enable/Disable backend audit log for volume"
+)
+
+func newVolSetAuditLogCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   cmdVolSetAuditLogUse,
+		Short: cmdVolSetAuditLogShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			name := args[0]
+			settingStr := args[1]
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			enable, err := strconv.ParseBool(settingStr)
+			if err != nil {
+				return
+			}
+			if err = client.AdminAPI().SetVolumeAuditLog(name, enable); err != nil {
+				return
+			}
+			stdout("Volume audit log has been set successfully, please wait few minutes for the settings to take effect.\n")
+		},
+	}
+	return cmd
 }

@@ -42,7 +42,7 @@ type (
 		Router          *httprouter.Router // router
 		hasMiddleware   bool               // true if the router with Middleware*
 		headMiddlewares []ProgressHandler  // middlewares run firstly of all
-		headHandler     http.HandlerFunc   // run thie handler if has no middlewares
+		headHandler     http.HandlerFunc   // run this handler if has no middlewares
 		interceptors    []HandlerFunc      // interceptors after middlewares
 	}
 )

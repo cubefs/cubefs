@@ -15,12 +15,14 @@
 package metanode
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // StartRaftServer initializes the address resolver and the raftStore server instance.
@@ -36,6 +38,13 @@ func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
 		}
 	}
 
+	if m.clusterUuidEnable {
+		if err = config.CheckOrStoreClusterUuid(m.raftDir, m.clusterUuid, false); err != nil {
+			log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+			return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err)
+		}
+	}
+
 	heartbeatPort, _ := strconv.Atoi(m.raftHeartbeatPort)
 	replicaPort, _ := strconv.Atoi(m.raftReplicatePort)
 
@@ -47,7 +56,7 @@ func (m *MetaNode) startRaftServer(cfg *config.Config) (err error) {
 		ReplicaPort:       replicaPort,
 		TickInterval:      m.tickInterval,
 		RecvBufSize:       m.raftRecvBufSize,
-		NumOfLogsToRetain: raftstore.DefaultNumOfLogsToRetain * 2,
+		NumOfLogsToRetain: m.raftRetainLogs,
 	}
 	m.raftStore, err = raftstore.NewRaftStore(raftConf, cfg)
 	if err != nil {

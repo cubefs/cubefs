@@ -31,7 +31,7 @@ const (
 )
 
 func newCompatibilityCmd() *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     cmdCompatibilityUse,
 		Aliases: []string{"cptest"},
 		Short:   cmdCompatibilityShort,
@@ -48,7 +48,7 @@ const (
 )
 
 func newMetaCompatibilityCmd() *cobra.Command {
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     CliOpMetaCompatibility,
 		Short:   cmdMetaCompatibilityShort,
 		Aliases: []string{"meta"},
@@ -62,9 +62,7 @@ func newMetaCompatibilityCmd() *cobra.Command {
 			)
 			client := api.NewMetaHttpClient(host, false)
 			defer func() {
-				if err != nil {
-					errout("Error: %v", err)
-				}
+				errout(err)
 			}()
 			id, err := strconv.ParseUint(pid, 10, 64)
 			if err != nil {

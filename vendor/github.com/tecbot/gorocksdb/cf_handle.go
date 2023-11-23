@@ -24,3 +24,13 @@ func (h *ColumnFamilyHandle) UnsafeGetCFHandler() unsafe.Pointer {
 func (h *ColumnFamilyHandle) Destroy() {
 	C.rocksdb_column_family_handle_destroy(h.c)
 }
+
+type ColumnFamilyHandles []*ColumnFamilyHandle
+
+func (cfs ColumnFamilyHandles) toCSlice() columnFamilySlice {
+	cCFs := make(columnFamilySlice, len(cfs))
+	for i, cf := range cfs {
+		cCFs[i] = cf.c
+	}
+	return cCFs
+}

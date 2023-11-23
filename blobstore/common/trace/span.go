@@ -39,6 +39,9 @@ type Span interface {
 	// OperationName allows retrieving current operation name.
 	OperationName() string
 
+	// WithOperation recursively save span with operation.
+	WithOperation(operation string) Span
+
 	// Tags returns tags for span
 	Tags() Tags
 
@@ -59,6 +62,9 @@ type Span interface {
 	// AppendTrackLogWithDuration records cost time with duration for a calling to a module and
 	// appends to baggage with default key fieldTrackLogKey.
 	AppendTrackLogWithDuration(module string, duration time.Duration, err error)
+	// AppendTrackLogWithFunc records cost time for the function calling to a module and
+	// appends to baggage with default key fieldTrackLogKey.
+	AppendTrackLogWithFunc(module string, fn func() error)
 	// TrackLog returns track log, calls BaggageItem with default key fieldTrackLogKey.
 	TrackLog() []string
 
@@ -88,7 +94,7 @@ type spanImpl struct {
 	// references for this span
 	references []opentracing.SpanReference
 
-	sync.RWMutex
+	rw sync.RWMutex
 }
 
 // Finish implements opentracing.Span API
@@ -104,11 +110,10 @@ func (s *spanImpl) FinishWithOptions(opts opentracing.FinishOptions) {
 	}
 	s.duration = finishTime.Sub(s.startTime)
 
-	s.Lock()
-	defer s.Unlock()
+	s.rw.Lock()
+	defer s.rw.Unlock()
 
 	s.logs = append(s.logs, opts.LogRecords...)
-
 	for _, ld := range opts.BulkLogData {
 		s.logs = append(s.logs, ld.ToLogRecord())
 	}
@@ -118,31 +123,49 @@ func (s *spanImpl) FinishWithOptions(opts opentracing.FinishOptions) {
 
 // Context implements opentracing.Span API
 func (s *spanImpl) Context() opentracing.SpanContext {
-	s.RLock()
-	defer s.RUnlock()
-
+	s.rw.RLock()
+	defer s.rw.RUnlock()
 	return s.context
+}
+
+// OperationName returns operationName for span
+func (s *spanImpl) OperationName() string {
+	s.rw.RLock()
+	defer s.rw.RUnlock()
+	return s.operationName
 }
 
 // SetOperationName implements opentracing.Span API
 func (s *spanImpl) SetOperationName(operationName string) opentracing.Span {
-	s.Lock()
-	defer s.Unlock()
-
+	s.rw.Lock()
+	defer s.rw.Unlock()
 	s.operationName = operationName
 	return s
 }
 
+func (s *spanImpl) WithOperation(operation string) Span {
+	op := s.OperationName()
+	if len(op) > 0 {
+		if len(operation) > 0 {
+			op = fmt.Sprintf("%s:%s", op, operation)
+		}
+	} else {
+		op = operation
+	}
+	return &operationSpan{
+		Span:      s,
+		operation: op,
+	}
+}
+
 // LogFields implements opentracing.Span API
 func (s *spanImpl) LogFields(fields ...ptlog.Field) {
-	s.Lock()
-	defer s.Unlock()
-
-	lr := opentracing.LogRecord{
+	s.rw.Lock()
+	defer s.rw.Unlock()
+	s.logs = append(s.logs, opentracing.LogRecord{
 		Fields:    fields,
 		Timestamp: time.Now(),
-	}
-	s.logs = append(s.logs, lr)
+	})
 }
 
 // LogKV implements opentracing.Span API
@@ -180,9 +203,8 @@ func (s *spanImpl) Tracer() opentracing.Tracer {
 
 // SetTag implements opentracing.Span API
 func (s *spanImpl) SetTag(key string, value interface{}) opentracing.Span {
-	s.Lock()
-	defer s.Unlock()
-
+	s.rw.Lock()
+	defer s.rw.Unlock()
 	if s.tags == nil {
 		s.tags = Tags{}
 	}
@@ -191,26 +213,24 @@ func (s *spanImpl) SetTag(key string, value interface{}) opentracing.Span {
 }
 
 // Deprecated: use LogFields or LogKV (not implements)
-func (s *spanImpl) LogEvent(event string) {}
+func (s *spanImpl) LogEvent(event string) {
+	// Deprecated: explaining why this function is empty.
+}
 
 // Deprecated: use LogFields or LogKV (not implements)
-func (s *spanImpl) LogEventWithPayload(event string, payload interface{}) {}
+func (s *spanImpl) LogEventWithPayload(event string, payload interface{}) {
+	// Deprecated: explaining why this function is empty.
+}
 
 // Deprecated: use LogFields or LogKV (not implements)
-func (s *spanImpl) Log(data opentracing.LogData) {}
-
-// OperationName returns operationName for span
-func (s *spanImpl) OperationName() string {
-	s.RLock()
-	defer s.RUnlock()
-
-	return s.operationName
+func (s *spanImpl) Log(data opentracing.LogData) {
+	// Deprecated: explaining why this function is empty.
 }
 
 // Tags returns tags for span
 func (s *spanImpl) Tags() Tags {
-	s.RLock()
-	defer s.RUnlock()
+	s.rw.RLock()
+	defer s.rw.RUnlock()
 	// copy
 	tags := make(map[string]interface{}, len(s.tags))
 	for key, value := range s.tags {
@@ -221,9 +241,8 @@ func (s *spanImpl) Tags() Tags {
 
 // Logs returns micro logs for span
 func (s *spanImpl) Logs() []opentracing.LogRecord {
-	s.RLock()
-	defer s.RUnlock()
-
+	s.rw.RLock()
+	defer s.rw.RUnlock()
 	return s.logs
 }
 
@@ -248,6 +267,13 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 		module += "/" + msg
 	}
 	s.track(module)
+}
+
+// AppendTrackLogWithFunc records cost time for the function calling to a module.
+func (s *spanImpl) AppendTrackLogWithFunc(module string, fn func() error) {
+	startTime := time.Now()
+	err := fn()
+	s.AppendTrackLog(module, startTime, err)
 }
 
 // AppendRPCTrackLog appends RPC track logs to baggage with default key fieldTrackLogKey.
@@ -283,18 +309,23 @@ func (s *spanImpl) TraceID() string {
 	return s.context.traceID
 }
 
-//-------------------------------------------------------------------
-//
+// -------------------------------------------------------------------
 const (
 	defaultCalldepth = 3
 )
 
 func (s *spanImpl) output(lvl log.Level, v []interface{}) {
-	log.DefaultLogger.Output(s.String(), lvl, defaultCalldepth, fmt.Sprintln(v...))
+	if log.DefaultLogger.GetOutputLevel() > lvl {
+		return
+	}
+	log.DefaultLogger.Output(s.String(), lvl, defaultCalldepth, v...)
 }
 
 func (s *spanImpl) outputf(lvl log.Level, format string, v []interface{}) {
-	log.DefaultLogger.Output(s.String(), lvl, defaultCalldepth, fmt.Sprintf(format, v...))
+	if log.DefaultLogger.GetOutputLevel() > lvl {
+		return
+	}
+	log.DefaultLogger.Outputf(s.String(), lvl, defaultCalldepth, format, v...)
 }
 
 func (s *spanImpl) Println(v ...interface{})               { s.output(log.Linfo, v) }
@@ -326,6 +357,100 @@ func (s *spanImpl) Fatal(v ...interface{}) {
 }
 
 func (s *spanImpl) Fatalf(format string, v ...interface{}) {
+	s.outputf(log.Lfatal, format, v)
+	os.Exit(1)
+}
+
+// -------------------------------------------------------------------
+type operationSpan struct {
+	Span
+	operation string
+}
+
+func (s *operationSpan) OperationName() string {
+	return s.operation
+}
+
+func (s *operationSpan) SetOperationName(operation string) opentracing.Span {
+	s.operation = operation
+	return s
+}
+
+func (s *operationSpan) WithOperation(operation string) Span {
+	op := s.OperationName()
+	if len(op) > 0 {
+		if len(operation) > 0 {
+			op = fmt.Sprintf("%s:%s", op, operation)
+		}
+	} else {
+		op = operation
+	}
+	return &operationSpan{
+		Span:      s,
+		operation: op,
+	}
+}
+
+func (s *operationSpan) String() string {
+	span := s.Span
+	next := true
+	for next {
+		switch x := span.(type) {
+		case *operationSpan:
+			span = x.Span
+		default:
+			next = false
+		}
+	}
+	if op := s.OperationName(); op != "" {
+		return fmt.Sprintf("%s:%s", span.String(), op)
+	}
+	return span.String()
+}
+
+func (s *operationSpan) output(lvl log.Level, v []interface{}) {
+	if log.DefaultLogger.GetOutputLevel() > lvl {
+		return
+	}
+	log.DefaultLogger.Output(s.String(), lvl, defaultCalldepth, v...)
+}
+
+func (s *operationSpan) outputf(lvl log.Level, format string, v []interface{}) {
+	if log.DefaultLogger.GetOutputLevel() > lvl {
+		return
+	}
+	log.DefaultLogger.Outputf(s.String(), lvl, defaultCalldepth, format, v...)
+}
+
+func (s *operationSpan) Println(v ...interface{})               { s.output(log.Linfo, v) }
+func (s *operationSpan) Printf(format string, v ...interface{}) { s.outputf(log.Linfo, format, v) }
+func (s *operationSpan) Debug(v ...interface{})                 { s.output(log.Ldebug, v) }
+func (s *operationSpan) Debugf(format string, v ...interface{}) { s.outputf(log.Ldebug, format, v) }
+func (s *operationSpan) Info(v ...interface{})                  { s.output(log.Linfo, v) }
+func (s *operationSpan) Infof(format string, v ...interface{})  { s.outputf(log.Linfo, format, v) }
+func (s *operationSpan) Warn(v ...interface{})                  { s.output(log.Lwarn, v) }
+func (s *operationSpan) Warnf(format string, v ...interface{})  { s.outputf(log.Lwarn, format, v) }
+func (s *operationSpan) Error(v ...interface{})                 { s.output(log.Lerror, v) }
+func (s *operationSpan) Errorf(format string, v ...interface{}) { s.outputf(log.Lerror, format, v) }
+
+func (s *operationSpan) Panic(v ...interface{}) {
+	str := fmt.Sprintln(v...)
+	s.output(log.Lpanic, v)
+	panic(s.String() + " -> " + str)
+}
+
+func (s *operationSpan) Panicf(format string, v ...interface{}) {
+	str := fmt.Sprintf(format, v...)
+	s.outputf(log.Lpanic, format, v)
+	panic(s.String() + " -> " + str)
+}
+
+func (s *operationSpan) Fatal(v ...interface{}) {
+	s.output(log.Lfatal, v)
+	os.Exit(1)
+}
+
+func (s *operationSpan) Fatalf(format string, v ...interface{}) {
 	s.outputf(log.Lfatal, format, v)
 	os.Exit(1)
 }

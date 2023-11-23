@@ -71,42 +71,31 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 
 ### kafka示例
 
+::: tip 提示
+v3.3.0版本开始支持消费组，之前版本请参考对应版本配置文件
+:::
+
 * broker_list，kafka节点列表
 * fail_msg_sender_timeout_ms，消息消费失败后重新投递至失败主题的超时时间，默认为1000ms
-* shard_repair，修补消息主题及消费分区指定（分区未指定默认消费所有分区），其中包含三类主题：
-    * normal，普通主题，默认为shard_repair
-    * failed，失败主题（正常消息消费失败后会将消息重新投递至该主题），默认为shard_repair_prior
-    * priority，优先消费主题，主要存放一些需要高优先级消费的修补消息，默认为shard_repair_failed
-* blob_delete，删除消息主题及消费分区指定，其中包含两类主题
-    * normal，普通主题，默认为blob_delete
-    * failed，失败主题（正常消息消费失败后会将消息重新投递至该主题），默认为blob_delete_failed
+* version，kafka的版本号，默认为2.1.0
+* topics，主题信息
+  * shard_repair，修补主题，包含两个：普通修补主题与高优修补主题，默认为`shard_repair`与`shard_repair_prior`
+  * shard_repair_failed，修补失败主题，默认为`shard_repair_failed`
+  * blob_delete，删除主题，默认`blob_delete`
+  * blob_delete_failed，删除失败主题，默认`blob_delete_failed`
 ```json
 {
   "broker_list": ["127.0.0.1:9095","127.0.0.1:9095","127.0.0.1:9095"],
   "fail_msg_sender_timeout_ms": 1000,
-  "shard_repair": {
-    "normal": {
-      "topic": "shard_repair",
-      "partitions": [0,1]
-    },
-    "failed": {
-      "topic": "shard_repair_failed",
-      "partitions": [0,1]
-    },
-    "priority": {
-      "topic": "shard_repair_prior",
-      "partitions": [0,1]
-    }
-  },
-  "blob_delete": {
-    "normal": {
-      "topic": "blob_delete",
-      "partitions": [0,1]
-    },
-    "failed": {
-      "topic": "blob_delete_failed",
-      "partitions": [0,1]
-    }
+  "version": "0.10.2.0",
+  "topics": {
+    "shard_repair": [
+      "shard_repair",
+      "shard_repair_prior"
+    ],
+    "shard_repair_failed": "shard_repair_failed",
+    "blob_delete": "blob_delete",
+    "blob_delete_failed": "blob_delete_failed"
   }
 }
 ```
@@ -138,7 +127,7 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 ### disk_drop示例
 
 ::: tip 提示
-v3.2.2版本开始支持并发下线磁盘。
+v3.3.0版本开始支持并发下线磁盘。
 :::
 
 * prepare_queue_retry_delay_s，准备队列重试时间间隔，当准备队列中的任务执行失败后的重试时间间隔，默认10
@@ -163,7 +152,7 @@ v3.2.2版本开始支持并发下线磁盘。
 ### disk_repair示例
 
 ::: tip 提示
-v3.2.2版本开始支持并发修复磁盘。
+v3.3.0版本开始支持并发修复磁盘。
 :::
 
 * prepare_queue_retry_delay_s，准备队列重试时间间隔，当准备队列中的任务执行失败后的重试时间间隔，默认10
@@ -202,17 +191,16 @@ v3.2.2版本开始支持并发修复磁盘。
 }
 ```
 ### shard_repair示例
+
 * task_pool_size，修补任务的并发度，默认10
-* normal_handle_batch_cnt，批量消费普通消息大小，默认100
-* fail_handle_batch_cnt，批量消费失败消息大小，默认100
-* fail_msg_consume_interval_ms，失败消息消费时间间隔，默认10000ms
+* message_punish_threshold，惩罚阈值，如果对应消费失败次数超过该值，则会惩罚一段时间，避免短时间内大量重试，默认3次
+* message_punish_time_m，惩罚时间，默认10分钟
 * orphan_shard_log，记录修补失败的孤本信息，dir需要配置，chunkbits为日志文件轮转大小，默认29（2^29字节）
 ```json
 {
   "task_pool_size": 10,
-  "normal_handle_batch_cnt": 500,
-  "fail_handle_batch_cnt": 100,
-  "fail_msg_consume_interval_ms": 10000,
+  "message_punish_threshold": 3,
+  "message_punish_time_m": 10,
   "orphan_shard_log": {
     "dir": "/home/service/scheduler/_package/orphan_shard_log",
     "chunkbits": 29
@@ -223,27 +211,30 @@ v3.2.2版本开始支持并发修复磁盘。
 ### blob_delete示例
 
 ::: tip 提示
-v3.2.2版本开始支持配置数据删除时间段。
+v3.3.0版本开始支持配置数据删除时间段。
 :::
 
 * task_pool_size，修补任务的并发度，默认10
-* normal_handle_batch_cnt，批量消费普通消息大小，默认100
-* fail_handle_batch_cnt，批量消费失败消息大小，默认100
-* fail_msg_consume_interval_ms，失败消息消费时间间隔，默认10000ms
 * safe_delay_time_h，删除保护期，默认72h，如果配置负数则表示直接删除
+* message_punish_threshold，惩罚阈值，如果对应消费失败次数超过该值，则会惩罚一段时间，避免短时间内大量重试，默认3次
+* message_punish_time_m，惩罚时间，默认10分钟
+* message_slow_down_time_s，删除太快时候的减速时间，默认3秒
 * delete_log，删除日志保留目录，需要配置，chunkbits默认为29
 * delete_hour_range，支持配置删除时间段，24小时制，比如以下配置表示凌晨1点到3点中间时间段才会发起删除请求，如果不配置默认全天删除
+* max_batch_size, 批量消费kafka消息的大小，默认10; 如果batch大小已满或已经达到时间间隔，则消费在此期间累积的Kafka消息
+* batch_interval_s, 消费kafka消息的最大间隔，默认2秒
 ```json
 {
   "task_pool_size": 400,
-  "normal_handle_batch_cnt": 1000,
-  "fail_handle_batch_cnt": 1000,
-  "fail_msg_consume_interval_ms": 6000,
+  "message_punish_threshold": 3,
+  "message_punish_time_m": 10,
   "safe_delay_time_h": 12,
   "delete_hour_range": {
     "from": 1,
     "to": 3
   },
+  "max_batch_size": 10,
+  "batch_interval_s": 2,
   "delete_log": {
     "dir": "/home/service/scheduler/_package/delete_log",
     "chunkbits": 29

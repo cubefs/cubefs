@@ -10,12 +10,27 @@ module.exports = [
     {
         text: 'Quick Start',
         children: [
-            'deploy/requirement.md',
-            'deploy/node.md',
-            'deploy/manual-deploy.md',
+            'quick-start/requirement.md',
+            'quick-start/node.md',
+            'quick-start/manual-deploy.md',
+            'quick-start/verify.md',
+        ]
+    },
+    {
+        text: 'Cluster Deployment',
+        children: [
+            'deploy/env.md',
             'deploy/yum.md',
             'deploy/k8s.md',
-            'deploy/verify.md',
+            {
+                text: 'Monitoring and Visualization',
+                children: [
+                    'deploy/metrics/metrics.md',
+                    'deploy/metrics/collect.md',
+                    'deploy/metrics/view.md',
+                ]
+            },
+            'deploy/upgrade.md',
         ]
     },
     {
@@ -27,15 +42,28 @@ module.exports = [
             'user-guide/blobstore.md',
             'user-guide/hadoop.md',
             'user-guide/k8s.md',
+            'user-guide/atomicity.md',
+            'user-guide/quota.md',
+            'user-guide/qos.md',
+            {
+                text: 'Optimization',
+                children: [
+                    'user-guide/optimization/fuse.md',
+                    'user-guide/optimization/cache.md',
+                    'user-guide/optimization/autofs.md',
+                ]
+            },
         ]
     },
     {
         text: 'Operation Guide',
         children: [
-            'maintenance/env.md',
-            'maintenance/tool.md',
+            'maintenance/capacity.md',
+            'maintenance/zone.md',
+            'maintenance/log.md',
+            'maintenance/code.md',
             {
-                text: 'Service Management Commands',
+                text: 'Service Management',
                 children: [
                     'maintenance/admin-api/master/cluster.md',
                     'maintenance/admin-api/master/metanode.md',
@@ -46,8 +74,6 @@ module.exports = [
                     'maintenance/admin-api/master/management.md',
                     'maintenance/admin-api/master/user.md',
                     'maintenance/admin-api/master/failureDomain.md',
-                    'maintenance/admin-api/master/qos.md',
-                    'maintenance/admin-api/master/quota.md',
                     'maintenance/admin-api/metanode/partition.md',
                     'maintenance/admin-api/metanode/inode.md',
                     'maintenance/admin-api/metanode/dentry.md',
@@ -59,7 +85,7 @@ module.exports = [
                 ]
             },
             {
-                text: 'Service Configuration Introduction',
+                text: 'Configuration Management',
                 children: [
                     'maintenance/configs/master.md',
                     'maintenance/configs/metanode.md',
@@ -73,24 +99,39 @@ module.exports = [
                     'maintenance/configs/blobstore/proxy.md',
                     'maintenance/configs/blobstore/blobnode.md',
                     'maintenance/configs/blobstore/scheduler.md',
+                    'maintenance/configs/config.md',
                 ]
             },
             {
-                text: 'Monitoring and Visualization Configuration',
+                text: 'Troubleshooting',
                 children: [
-                    'maintenance/metrics/metrics.md',
-                    'maintenance/metrics/collect.md',
-                    'maintenance/metrics/view.md',
+                    'maintenance/troubleshoot/strategy.md',
+                    'maintenance/troubleshoot/case.md',
                 ]
             },
-            'maintenance/config.md',
-            'maintenance/diskerr.md',
-            'maintenance/fuse.md',
-            'maintenance/capacity.md',
-            'maintenance/zone.md',
-            'maintenance/log.md',
-            'maintenance/code.md',
-            'maintenance/upgrade.md',
+        ]
+    },
+    {
+        text: 'Tools',
+        children: [
+            'tools/gui.md',
+            {
+                text: 'Using cfs-cli Tool',
+                children: [
+                    'tools/cfs-cli/overview.md',
+                    'tools/cfs-cli/cluster.md',
+                    'tools/cfs-cli/metanode.md',
+                    'tools/cfs-cli/datanode.md',
+                    'tools/cfs-cli/metapartition.md',
+                    'tools/cfs-cli/datapartition.md',
+                    'tools/cfs-cli/config.md',
+                    'tools/cfs-cli/volume.md',
+                    'tools/cfs-cli/user.md',
+                    'tools/cfs-cli/nodeset.md',
+                    'tools/cfs-cli/quota.md',
+                ]
+            },
+            'tools/blobstore-cli.md',
         ]
     },
     {
@@ -127,6 +168,7 @@ module.exports = [
             'faq/development.md',
             'faq/build.md',
             'faq/fuse.md',
+            'faq/kafka.md',
         ]
     }
 ]

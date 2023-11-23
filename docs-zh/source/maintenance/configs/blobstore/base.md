@@ -11,18 +11,18 @@
     "rotate_new": "是否开启新的日志文件用于每次重启，true 或者 false",
     "log_file_suffix": "日志文件后缀，实例`.log`",
     "backup": "保留文件个数，不配或0，表示无限制",
+    "log_format": "使用text或者json格式，默认text格式",
     "metric_config": {
       "idc": "机房编号",
       "service": "服务名",
       "tag": "标签",
       "team": "团队",
-      
       "enable_req_length_cnt": "是否启用请求长度统计，true或者false,默认false",
       "enable_resp_length_cnt": "是否启用响应长度统计，true或者false,默认false",
       "enable_resp_duration": "是否启用响应时延，true或者false,默认false",
       "max_api_level": "api最大层级数，如/get/name为2"
     },
-    "keywords_filter": "关键字过滤，目前支持url和请求方法过滤，如/download、get等"
+    "filters": "按照日志字段多条件组合匹配过滤日志"
   },
   "auth": {
     "enable_auth": "是否开启鉴权，true或者false，默认false",

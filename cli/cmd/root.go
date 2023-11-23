@@ -35,21 +35,37 @@ type CubeFSCmd struct {
 
 func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 	var optShowVersion bool
-	var cmd = &CubeFSCmd{
+	cmd := &CubeFSCmd{
 		CFSCmd: &cobra.Command{
 			Use:   path.Base(os.Args[0]),
 			Short: cmdRootShort,
 			Args:  cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
 				if optShowVersion {
-					stdout(proto.DumpVersion("CLI"))
+					stdout("%v", proto.DumpVersion("CLI"))
 					return
 				}
+				if len(args) == 0 {
+					cmd.Help()
+					return
+				}
+				suggestionsString := ""
+				if suggestions := cmd.SuggestionsFor(args[0]); len(suggestions) > 0 {
+					suggestionsString += "\nDid you mean this?\n"
+					for _, s := range suggestions {
+						suggestionsString += fmt.Sprintf("\t%v\n", s)
+					}
+				}
+				errout(fmt.Errorf("cfs-cli: unknown command %q\n%s", args[0], suggestionsString))
 			},
 		},
 	}
 
 	cmd.CFSCmd.Flags().BoolVarP(&optShowVersion, "version", "v", false, "Show version information")
+
+	// TODO: delete compatibility cmd at 49e62e794d7c1000c9fb09bd75565112ecd5c5e1.
+	// add back into Commands later ?
+	_ = newCompatibilityCmd()
 
 	cmd.CFSCmd.AddCommand(
 		cmd.newClusterCmd(client),
@@ -61,6 +77,12 @@ func NewRootCmd(client *master.MasterClient) *CubeFSCmd {
 		newMetaPartitionCmd(client),
 		newConfigCmd(),
 		newZoneCmd(client),
+		newNodeSetCmd(client),
+		newAclCmd(client),
+		newUidCmd(client),
+		newQuotaCmd(client),
+		newDiskCmd(client),
+		newVersionCmd(client),
 	)
 	return cmd
 }
@@ -69,13 +91,25 @@ func stdout(format string, a ...interface{}) {
 	_, _ = fmt.Fprintf(os.Stdout, format, a...)
 }
 
-func errout(format string, a ...interface{}) {
-	log.LogErrorf(format+"\n", a...)
-	_, _ = fmt.Fprintf(os.Stderr, format, a...)
-	OsExitWithLogFlush()
+func stdoutln(a ...interface{}) {
+	fmt.Fprintln(os.Stdout, a...)
 }
 
-func OsExitWithLogFlush() {
+func stdoutf(format string, a ...interface{}) {
+	fmt.Fprintf(os.Stdout, format, a...)
+}
+
+func stdoutlnf(format string, a ...interface{}) {
+	stdoutf(format, a...)
+	fmt.Fprintln(os.Stdout)
+}
+
+func errout(err error) {
+	if err == nil {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Error:", err)
+	log.LogError("Error:", err)
 	log.LogFlush()
 	os.Exit(1)
 }

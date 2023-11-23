@@ -11,18 +11,18 @@ The basic configuration is shared by each module and mainly includes server port
     "rotate_new": "whether to enable a new log file for each restart, true or false",
     "log_file_suffix": "log file suffix, for example `.log`",
     "backup": "number of files to keep, not set or 0 means no limit",
+    "log_format": "Use text or JSON format, with text format being the default",
     "metric_config": {
       "idc": "IDC number",
       "service": "service name",
       "tag": "tag",
       "team": "team",
-
       "enable_req_length_cnt": "whether to enable request length statistics, true or false, default is false",
       "enable_resp_length_cnt": "whether to enable response length statistics, true or false, default is false",
       "enable_resp_duration": "whether to enable response latency, true or false, default is false",
       "max_api_level": "maximum API level, such as 2 for /get/name"
     },
-    "keywords_filter": "keyword filter, currently supports URL and request method filtering, such as /download, GET, etc."
+    "filters": "Filter log by multi-criteria matching of log's fields"
   },
   "auth": {
     "enable_auth": "whether to enable authentication, true or false, default is false",

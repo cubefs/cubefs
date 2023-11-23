@@ -17,10 +17,8 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -68,17 +66,19 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			// related process.
 			updateWG := sync.WaitGroup{}
 			updateWG.Add(1)
-			defer updateWG.Done()
+
 			go func() {
-				updateWG.Wait()
-				if err = dp.updateReplicas(true); err != nil {
-					log.LogErrorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
-					return
-				}
+				defer updateWG.Done()
+				//may fetch old replica, e.g. 3-replica back to 2-replica for adding raft member not return
+				//if err = dp.updateReplicas(true); err != nil {
+				//	log.LogErrorf("ApplyMemberChange: update partition %v replicas failed: %v", dp.partitionID, err)
+				//	return
+				//}
 				if dp.isLeader {
 					dp.ExtentStore().MoveAllToBrokenTinyExtentC(storage.TinyExtentCount)
 				}
 			}()
+			updateWG.Wait()
 		}
 	case raftproto.ConfRemoveNode:
 		req := &proto.RemoveDataPartitionRaftMemberRequest{}
@@ -131,10 +131,10 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
 	if isRaftApplyError(err.Err.Error()) {
 		dp.stopRaft()
-		dp.checkIsDiskError(err.Err)
-		log.LogCriticalf("action[HandleFatalEvent] err(%v).", err)
+		dp.checkIsDiskError(err.Err, 0)
+		log.LogCriticalf("action[HandleFatalEvent] raft apply err(%v), partitionId:%v", err, dp.partitionID)
 	} else {
-		log.LogFatalf("action[HandleFatalEvent] err(%v).", err)
+		log.LogFatalf("action[HandleFatalEvent] err(%v), partitionId:%v", err, dp.partitionID)
 	}
 }
 
@@ -146,16 +146,6 @@ func (dp *DataPartition) HandleLeaderChange(leader uint64) {
 			panic(mesg)
 		}
 	}()
-	if dp.config.NodeID == leader {
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(LocalIP, serverPort), time.Second)
-		if err != nil {
-			log.LogErrorf(fmt.Sprintf("HandleLeaderChange PartitionID(%v) serverPort not exsit ,error %v", dp.partitionID, err))
-			go dp.raftPartition.TryToLeader(dp.partitionID)
-			return
-		}
-		conn.(*net.TCPConn).SetLinger(0)
-		conn.Close()
-	}
 	if dp.config.NodeID == leader {
 		dp.isRaftLeader = true
 	}

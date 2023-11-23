@@ -15,7 +15,10 @@
 package util
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"net"
 	"regexp"
 	"strings"
@@ -35,19 +38,42 @@ const (
 )
 
 const (
-	BlockCount         = 1024
-	BlockSize          = 65536 * 2
-	ReadBlockSize      = BlockSize
-	PerBlockCrcSize    = 4
-	ExtentSize         = BlockCount * BlockSize
-	PacketHeaderSize   = 57
-	BlockHeaderSize    = 4096
-	SyscallTryMaxTimes = 3
+	BlockCount          = 1024
+	BlockSize           = 65536 * 2
+	ReadBlockSize       = BlockSize
+	PerBlockCrcSize     = 4
+	ExtentSize          = BlockCount * BlockSize
+	PacketHeaderSize    = 57
+	BlockHeaderSize     = 4096
+	SyscallTryMaxTimes  = 3
+	PacketHeaderVerSize = 65
+)
+
+const (
+	PageSize          = 4 * util.KB
+	FallocFLKeepSize  = 1
+	FallocFLPunchHole = 2
+)
+
+const (
+	AclListIP  = 0
+	AclAddIP   = 1
+	AclDelIP   = 2
+	AclCheckIP = 3
+)
+
+const (
+	UidLimitList = 0
+	UidAddLimit  = 1
+	UidDel       = 2
+	UidGetLimit  = 3
 )
 
 const (
 	DefaultTinySizeLimit = 1 * MB // TODO explain tiny extent?
 )
+
+type MultiVersionSeq uint64
 
 func Min(a, b int) int {
 	if a > b {
@@ -206,4 +232,11 @@ func GenerateRepVolKey(volName string, ino uint64, dpId uint64, extentId uint64,
 
 func OneDaySec() int64 {
 	return 60 * 60 * 24
+}
+
+func CalcAuthKey(key string) (authKey string) {
+	h := md5.New()
+	_, _ = h.Write([]byte(key))
+	cipherStr := h.Sum(nil)
+	return strings.ToLower(hex.EncodeToString(cipherStr))
 }

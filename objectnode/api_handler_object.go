@@ -29,13 +29,16 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
-	rangeRegexp = regexp.MustCompile("^bytes=(\\d)*-(\\d)*$")
+	rangeRegexp  = regexp.MustCompile("^bytes=(\\d)*-(\\d)*$")
+	MaxKeyLength = 750
 )
 
 // Get object
@@ -46,16 +49,12 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode *ErrorCode
 	)
 
-	var startGet = time.Now()
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -65,78 +64,81 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		log.LogErrorf("getObjectHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
-		errorCode = NoSuchBucket
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getObjectHandler: load volume fail: requestID(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.Object(), err)
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// parse http range option
-	var rangeOpt = strings.TrimSpace(r.Header.Get(HeaderNameRange))
-	var rangeLower uint64
-	var rangeUpper uint64
-	var isRangeRead bool
-	var partSize uint64
-	var partCount uint64
-	revRange := false
+	var (
+		revRange    bool
+		isRangeRead bool
+		rangeLower  uint64
+		rangeUpper  uint64
+		partSize    uint64
+		partCount   uint64
+	)
+	rangeOpt := strings.TrimSpace(r.Header.Get(Range))
 	if len(rangeOpt) > 0 {
 		if !rangeRegexp.MatchString(rangeOpt) {
-			log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
-				GetRequestID(r), rangeOpt)
+			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
+				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
 			errorCode = InvalidRange
 			return
-		} else {
-			var hyphenIndex = strings.Index(rangeOpt, "-")
-			if hyphenIndex < 0 {
-				log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
-					GetRequestID(r), rangeOpt)
-				errorCode = InvalidRange
-				return
-			}
-
-			var lowerPart = rangeOpt[len("bytes="):hyphenIndex]
-			var upperPart = ""
-			if hyphenIndex+1 < len(rangeOpt) {
-				// bytes=-5
-				if hyphenIndex == len("bytes=") { //suffix range opt
-					revRange = true
-					rangeUpper = 1<<64 - 1
-					lowerPart = rangeOpt[hyphenIndex+1:]
-				} else { // bytes=1-10
-					upperPart = rangeOpt[hyphenIndex+1:]
-				}
-			} else if hyphenIndex+1 == len(rangeOpt) { // bytes=1-
-				rangeUpper = 1<<64 - 1
-			}
-
-			if len(lowerPart) > 0 {
-				if rangeLower, err = strconv.ParseUint(lowerPart, 10, 64); err != nil {
-					log.LogErrorf("getObjectHandler: parse range lower fail: requestID(%v) rangeOpt(%v) err(%v)",
-						GetRequestID(r), rangeOpt, err)
-					ServeInternalStaticErrorResponse(w, r)
-					return
-				}
-			}
-			if len(upperPart) > 0 {
-				if rangeUpper, err = strconv.ParseUint(upperPart, 10, 64); err != nil {
-					log.LogErrorf("getObjectHandler: parse range upper fail: requestID(%v) rangeOpt(%v) err(%v)",
-						GetRequestID(r), rangeOpt, err)
-					ServeInternalStaticErrorResponse(w, r)
-					return
-				}
-			}
-			if rangeUpper < rangeLower {
-				// upper enabled and lower than lower side
-				log.LogWarnf("getObjectHandler: getObject fail: requestID(%v) invalid rangeOpt(%v)",
-					GetRequestID(r), rangeOpt)
-				errorCode = InvalidRange
-				return
-			}
-
-			isRangeRead = true
-			log.LogDebugf("getObjectHandler: parse range option: requestID(%v) rangeOpt(%v) rangeLower(%v) rangeUpper(%v)",
-				GetRequestID(r), rangeOpt, rangeLower, rangeUpper)
 		}
+		hyphenIndex := strings.Index(rangeOpt, "-")
+		if hyphenIndex < 0 {
+			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
+				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
+			errorCode = InvalidRange
+			return
+		}
+		lowerPart := rangeOpt[len("bytes="):hyphenIndex]
+		upperPart := ""
+		if hyphenIndex+1 < len(rangeOpt) {
+			// bytes=-5
+			if hyphenIndex == len("bytes=") { // suffix range opt
+				revRange = true
+				rangeUpper = 1<<64 - 1
+				lowerPart = rangeOpt[hyphenIndex+1:]
+			} else { // bytes=1-10
+				upperPart = rangeOpt[hyphenIndex+1:]
+			}
+		} else if hyphenIndex+1 == len(rangeOpt) { // bytes=1-
+			rangeUpper = 1<<64 - 1
+		}
+		if len(lowerPart) > 0 {
+			if rangeLower, err = strconv.ParseUint(lowerPart, 10, 64); err != nil {
+				log.LogErrorf("getObjectHandler: parse range lower fail: requestID(%v) volume(%v) path(%v) rangeOpt(%v) err(%v)",
+					GetRequestID(r), param.Bucket(), param.Object(), rangeOpt, err)
+				errorCode = InvalidRange
+				return
+			}
+		}
+		if len(upperPart) > 0 {
+			if rangeUpper, err = strconv.ParseUint(upperPart, 10, 64); err != nil {
+				log.LogErrorf("getObjectHandler: parse range upper fail: requestID(%v) volume(%v) path(%v) rangeOpt(%v) err(%v)",
+					GetRequestID(r), param.Bucket(), param.Object(), rangeOpt, err)
+				errorCode = InvalidRange
+				return
+			}
+		}
+		if rangeUpper < rangeLower {
+			// upper enabled and lower than lower side
+			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
+				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
+			errorCode = InvalidRange
+			return
+		}
+		isRangeRead = true
 	}
 
 	responseCacheControl := r.URL.Query().Get(ParamResponseCacheControl)
@@ -153,79 +155,22 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	responseContentDisposition := r.URL.Query().Get(ParamResponseContentDisposition)
 
 	// get object meta
-	var fileInfo *FSFileInfo
-	var xattr *proto.XAttrInfo
-	var start = time.Now()
-	fileInfo, xattr, err = vol.ObjectMeta(param.Object())
-	log.LogDebugf("ObjectMeta cost: %v", time.Since(start))
-	if err == syscall.ENOENT {
-		errorCode = NoSuchKey
-		return
-	}
+	start := time.Now()
+	fileInfo, xattr, err := vol.ObjectMeta(param.Object())
+	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
 		log.LogErrorf("getObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
 
-	// parse request header
-	match := r.Header.Get(HeaderNameIfMatch)
-	noneMatch := r.Header.Get(HeaderNameIfNoneMatch)
-	modified := r.Header.Get(HeaderNameIfModifiedSince)
-	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
-
-	// Checking precondition: If-Match
-	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
-	if match != "" {
-		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
-			log.LogDebugf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, matchEag, GetRequestID(r))
-			errorCode = PreconditionFailed
-			return
-		}
-	}
-	// Checking precondition: If-Modified-Since
-	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
-	if modified != "" {
-		fileModTime := fileInfo.ModifyTime
-		modifiedTime, err := parseTimeRFC1123(modified)
-		if err != nil {
-			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = InvalidArgument
-			return
-		}
-		if !fileModTime.After(modifiedTime) {
-			log.LogInfof("getObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
-			errorCode = NotModified
-			return
-		}
-	}
-	// Checking precondition: If-None-Match
-	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
-	if noneMatch != "" {
-		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
-			log.LogErrorf("getObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
-				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
-			errorCode = NotModified
-			return
-		}
-	}
-	// Checking precondition: If-Unmodified-Since
-	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
-	if unmodified != "" && match == "" {
-		fileModTime := fileInfo.ModifyTime
-		modifiedTime, err := parseTimeRFC1123(unmodified)
-		if err != nil {
-			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
-			errorCode = InvalidArgument
-			return
-		}
-		if fileModTime.After(modifiedTime) {
-			log.LogInfof("getObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
-			errorCode = PreconditionFailed
-			return
-		}
+	// header condition check
+	errorCode = CheckConditionInHeader(r, fileInfo)
+	if errorCode != nil {
+		return
 	}
 
 	// validate and fix range
@@ -240,96 +185,84 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var contentLength = uint64(fileInfo.Size)
 	if isRangeRead {
 		contentLength = rangeUpper - rangeLower + 1
-		w.WriteHeader(http.StatusPartialContent)
 	}
 
 	// get object tagging size
 	ossTaggingData := xattr.Get(XAttrKeyOSSTagging)
 	output, _ := ParseTagging(string(ossTaggingData))
 	if output != nil && len(output.TagSet) > 0 {
-		w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
+		w.Header().Set(XAmzTaggingCount, strconv.Itoa(len(output.TagSet)))
 	}
-	/*var xattrInfo *proto.XAttrInfo
-	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil && err != syscall.ENOENT {
-		log.LogErrorf("getObjectHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
-	}
-	if xattrInfo != nil {
-		ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
-		output, _ := ParseTagging(string(ossTaggingData))
-		if output != nil && len(output.TagSet) > 0 {
-			w.Header()[HeaderNameXAmzTaggingCount] = []string{strconv.Itoa(len(output.TagSet))}
-		}
-	}*/
 
 	// set response header for GetObject
-	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
-	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
+	w.Header().Set(AcceptRanges, ValueAcceptRanges)
+	w.Header().Set(LastModified, formatTimeRFC1123(fileInfo.ModifyTime))
 	if len(responseContentType) > 0 {
-		w.Header()[HeaderNameContentType] = []string{responseContentType}
+		w.Header().Set(ContentType, responseContentType)
 	} else if len(fileInfo.MIMEType) > 0 {
-		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
+		w.Header().Set(ContentType, fileInfo.MIMEType)
 	} else {
-		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
+		w.Header().Set(ContentType, ValueContentTypeStream)
 	}
 	if len(responseContentDisposition) > 0 {
-		w.Header()[HeaderNameContentDisposition] = []string{responseContentDisposition}
+		w.Header().Set(ContentDisposition, responseContentDisposition)
 	} else if len(fileInfo.Disposition) > 0 {
-		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
+		w.Header().Set(ContentDisposition, fileInfo.Disposition)
 	}
 	if len(responseCacheControl) > 0 {
-		w.Header()[HeaderNameCacheControl] = []string{responseCacheControl}
+		w.Header().Set(CacheControl, responseCacheControl)
 	} else if len(fileInfo.CacheControl) > 0 {
-		w.Header()[HeaderNameCacheControl] = []string{fileInfo.CacheControl}
+		w.Header().Set(CacheControl, fileInfo.CacheControl)
 	}
 	if len(responseExpires) > 0 {
-		w.Header()[HeaderNameExpires] = []string{responseExpires}
+		w.Header().Set(Expires, responseExpires)
 	} else if len(fileInfo.Expires) > 0 {
-		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
+		w.Header().Set(Expires, fileInfo.Expires)
+	}
+	if len(fileInfo.RetainUntilDate) > 0 {
+		w.Header().Set(XAmzObjectLockMode, ComplianceMode)
+		w.Header().Set(XAmzObjectLockRetainUntilDate, fileInfo.RetainUntilDate)
 	}
 
-	//check request is whether contain param : partNumber
+	// check request is whether contain param : partNumber
 	partNumber := r.URL.Query().Get(ParamPartNumber)
 	if len(partNumber) > 0 && fileInfo.Size >= MinParallelDownloadFileSize {
 		partNumberInt, err := strconv.ParseUint(partNumber, 10, 64)
 		if err != nil {
-			log.LogErrorf("getObjectHandler: parse param partNumber(%s) fail: requestID(%v) err(%v)", partNumber, GetRequestID(r), err)
+			log.LogErrorf("getObjectHandler: parse partNumber(%v) fail: requestID(%v) volume(%v) path(%v) err(%v)",
+				partNumber, GetRequestID(r), param.Bucket(), param.Object(), err)
 			errorCode = InvalidArgument
 			return
 		}
-		partSize, partCount, rangeLower, rangeUpper, err = parsePartInfo(partNumberInt, uint64(fileInfo.Size))
-		log.LogDebugf("getObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
-		if err != nil {
-			errorCode = InternalErrorCode(err)
-			return
-		}
-
+		partSize, partCount, rangeLower, rangeUpper = parsePartInfo(partNumberInt, uint64(fileInfo.Size))
+		log.LogDebugf("getObjectHandler: partNumber(%v) fileSize(%v) parsed: partSize(%d) partCount(%d) rangeLower(%d) rangeUpper(%d)",
+			partNumberInt, fileInfo.Size, partSize, partCount, rangeLower, rangeUpper)
 		if partNumberInt > partCount {
-			log.LogErrorf("getObjectHandler: param partNumber(%d) is more then partCount{%d}: requestID(%v)", partNumberInt, partCount, GetRequestID(r))
+			log.LogErrorf("getObjectHandler: partNumber(%d) > partCount(%d): requestID(%v) volume(%v) path(%v)",
+				partNumberInt, partCount, GetRequestID(r), param.Bucket(), param.Object())
 			errorCode = NoSuchKey
 			return
 		}
 		// Header : Accept-Range, Content-Length, Content-Range, ETag, x-amz-mp-parts-count
-		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(partSize))}
-		w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
-		w.Header()[HeaderNameXAmzDownloadPartCount] = []string{strconv.Itoa(int(partCount))}
+		w.Header().Set(ContentLength, strconv.Itoa(int(partSize)))
+		w.Header().Set(ContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+		w.Header().Set(XAmzMpPartsCount, strconv.Itoa(int(partCount)))
 		if len(fileInfo.ETag) > 0 && !strings.Contains(fileInfo.ETag, "-") {
-			w.Header()[HeaderNameETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
+			w.Header()[ETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
 		}
 	} else {
-		w.Header()[HeaderNameContentLength] = []string{strconv.FormatUint(contentLength, 10)}
+		w.Header().Set(ContentLength, strconv.FormatUint(contentLength, 10))
 		if len(fileInfo.ETag) > 0 {
-			w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
+			w.Header()[ETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
 		}
 		if isRangeRead {
-			w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
+			w.Header().Set(ContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
 		}
 	}
 
 	// User-defined metadata
 	for name, value := range fileInfo.Metadata {
-		w.Header()[HeaderNameXAmzMetaPrefix+name] = []string{value}
+		w.Header().Set(XAmzMetaPrefix+name, value)
 	}
 
 	if fileInfo.Mode.IsDir() {
@@ -338,25 +271,94 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object content
 	var offset = rangeLower
-	var size = uint64(fileInfo.Size)
+	size, err := safeConvertInt64ToUint64(fileInfo.Size)
+	fileSize := size
+	if err != nil {
+		return
+	}
 	if isRangeRead || len(partNumber) > 0 {
 		size = rangeUpper - rangeLower + 1
+		w.WriteHeader(http.StatusPartialContent)
 	}
-	//err = vol.ReadFile(param.Object(), w, offset, size)
-	err = vol.readFile(fileInfo.Inode, uint64(fileInfo.Size), param.Object(), w, offset, size)
-	if err == syscall.ENOENT {
-		errorCode = NoSuchKey
-		return
+
+	// Flow Control
+	var writer io.Writer
+	if size > DefaultFlowLimitSize {
+		writer = rateLimit.GetResponseWriter(vol.owner, param.apiName, w)
+	} else {
+		writer = w
 	}
+
+	// read file
+	start = time.Now()
+	err = vol.readFile(fileInfo.Inode, fileSize, param.Object(), writer, offset, size)
+	span.AppendTrackLog("file.r", start, err)
 	if err != nil {
-		log.LogErrorf("getObjectHandler: read from Volume fail: requestId(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
+		log.LogErrorf("getObjectHandler: read file fail: requestID(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
-	log.LogDebugf("getObjectHandler: Volume read file: requestID(%v) Volume(%v) path(%v) offset(%v) size(%v)",
-		GetRequestID(r), param.Bucket(), param.Object(), offset, size)
-	log.LogDebugf("getObjectHandler: cost %v", time.Since(startGet))
+
 	return
+}
+
+func CheckConditionInHeader(r *http.Request, fileInfo *FSFileInfo) *ErrorCode {
+	// parse request header
+	match := r.Header.Get(IfMatch)
+	noneMatch := r.Header.Get(IfNoneMatch)
+	modified := r.Header.Get(IfModifiedSince)
+	unmodified := r.Header.Get(IfUnmodifiedSince)
+	// Checking precondition: If-Match
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if match != "" {
+		if matchEag := strings.Trim(match, "\""); matchEag != fileInfo.ETag {
+			log.LogDebugf("getObjectHandler: object eTag(%s) not match If-Match header value(%s), requestId(%v)",
+				fileInfo.ETag, matchEag, GetRequestID(r))
+			return PreconditionFailed
+
+		}
+	}
+	// Checking precondition: If-Modified-Since
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if modified != "" {
+		fileModTime := fileInfo.ModifyTime
+		modifiedTime, err := parseTimeRFC1123(modified)
+		if err != nil {
+			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			return InvalidArgument
+		}
+		if !fileModTime.After(modifiedTime) {
+			log.LogInfof("getObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
+			return NotModified
+		}
+	}
+	// Checking precondition: If-None-Match
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if noneMatch != "" {
+		if noneMatchEtag := strings.Trim(noneMatch, "\""); noneMatchEtag == fileInfo.ETag {
+			log.LogErrorf("getObjectHandler: object eTag(%s) match If-None-Match header value(%s), requestId(%v)",
+				fileInfo.ETag, noneMatchEtag, GetRequestID(r))
+			return NotModified
+		}
+	}
+	// Checking precondition: If-Unmodified-Since
+	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax
+	if unmodified != "" && match == "" {
+		fileModTime := fileInfo.ModifyTime
+		modifiedTime, err := parseTimeRFC1123(unmodified)
+		if err != nil {
+			log.LogErrorf("getObjectHandler: parse RFC1123 time fail: requestID(%v) err(%v)", GetRequestID(r), err)
+			return InvalidArgument
+		}
+		if fileModTime.After(modifiedTime) {
+			log.LogInfof("getObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
+			return PreconditionFailed
+		}
+	}
+	return nil
 }
 
 // Head object
@@ -366,11 +368,10 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 		err       error
 		errorCode *ErrorCode
 	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	// check args
@@ -385,32 +386,37 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("headObjectHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
-	// get object meta
-	var fileInfo *FSFileInfo
-	fileInfo, _, err = vol.ObjectMeta(param.Object())
-	if err == syscall.ENOENT {
-		errorCode = NoSuchKey
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
 		return
 	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	// get object meta
+	start := time.Now()
+	fileInfo, _, err := vol.ObjectMeta(param.Object())
+	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
-		log.LogErrorf("headObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v)err(%v)",
+		log.LogErrorf("headObjectHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
 
 	// parse request header
-	match := r.Header.Get(HeaderNameIfMatch)
-	noneMatch := r.Header.Get(HeaderNameIfNoneMatch)
-	modified := r.Header.Get(HeaderNameIfModifiedSince)
-	unmodified := r.Header.Get(HeaderNameIfUnmodifiedSince)
+	match := r.Header.Get(IfMatch)
+	noneMatch := r.Header.Get(IfNoneMatch)
+	modified := r.Header.Get(IfModifiedSince)
+	unmodified := r.Header.Get(IfUnmodifiedSince)
 
 	// Checking precondition: If-Match
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html#API_HeadObject_RequestSyntax
@@ -466,22 +472,26 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set response header
-	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
-	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
-	w.Header()[HeaderNameContentMD5] = []string{EmptyContentMD5String}
+	w.Header().Set(AcceptRanges, ValueAcceptRanges)
+	w.Header().Set(LastModified, formatTimeRFC1123(fileInfo.ModifyTime))
+	w.Header().Set(ContentMD5, EmptyContentMD5String)
 	if len(fileInfo.MIMEType) > 0 {
-		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
+		w.Header().Set(ContentType, fileInfo.MIMEType)
 	} else {
-		w.Header()[HeaderNameContentType] = []string{HeaderValueTypeStream}
+		w.Header().Set(ContentType, ValueContentTypeStream)
 	}
 	if len(fileInfo.Disposition) > 0 {
-		w.Header()[HeaderNameContentDisposition] = []string{fileInfo.Disposition}
+		w.Header().Set(ContentDisposition, fileInfo.Disposition)
 	}
 	if len(fileInfo.CacheControl) > 0 {
-		w.Header()[HeaderNameCacheControl] = []string{fileInfo.CacheControl}
+		w.Header().Set(CacheControl, fileInfo.CacheControl)
 	}
 	if len(fileInfo.Expires) > 0 {
-		w.Header()[HeaderNameExpires] = []string{fileInfo.Expires}
+		w.Header().Set(Expires, fileInfo.Expires)
+	}
+	if len(fileInfo.RetainUntilDate) > 0 {
+		w.Header().Set(XAmzObjectLockMode, ComplianceMode)
+		w.Header().Set(XAmzObjectLockRetainUntilDate, fileInfo.RetainUntilDate)
 	}
 
 	// check request is whether contain param : partNumber
@@ -493,51 +503,45 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		partSize, partCount, rangeLower, rangeUpper, err := parsePartInfo(partNumberInt, uint64(fileInfo.Size))
+		partSize, partCount, rangeLower, rangeUpper := parsePartInfo(partNumberInt, uint64(fileInfo.Size))
 		log.LogDebugf("headObjectHandler: parsed partSize(%d), partCount(%d), rangeLower(%d), rangeUpper(%d)", partSize, partCount, rangeLower, rangeUpper)
-		if err != nil {
-			errorCode = InternalErrorCode(err)
-			return
-		}
 		if partNumberInt > partCount {
 			log.LogErrorf("headObjectHandler: param partNumber(%d) is more then partCount(%d): requestID(%v)", partNumberInt, partCount, GetRequestID(r))
 			errorCode = NoSuchKey
 			return
 		}
-		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(partSize))}
-		w.Header()[HeaderNameContentRange] = []string{fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size)}
-		w.Header()[HeaderNameXAmzDownloadPartCount] = []string{strconv.Itoa(int(partCount))}
+		w.Header().Set(ContentLength, strconv.Itoa(int(partSize)))
+		w.Header().Set(ContentRange, fmt.Sprintf("bytes %d-%d/%d", rangeLower, rangeUpper, fileInfo.Size))
+		w.Header().Set(XAmzMpPartsCount, strconv.Itoa(int(partCount)))
 		if len(fileInfo.ETag) > 0 && !strings.Contains(fileInfo.ETag, "-") {
-			w.Header()[HeaderNameETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
+			w.Header()[ETag] = []string{fmt.Sprintf("%s-%d", fileInfo.ETag, partCount)}
 		}
 	} else {
-		w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(int(fileInfo.Size))}
+		w.Header().Set(ContentLength, strconv.Itoa(int(fileInfo.Size)))
 		if len(fileInfo.ETag) > 0 {
-			w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
+			w.Header()[ETag] = []string{wrapUnescapedQuot(fileInfo.ETag)}
 		}
 	}
 
 	// User-defined metadata
 	for name, value := range fileInfo.Metadata {
-		w.Header()[HeaderNameXAmzMetaPrefix+name] = []string{value}
+		w.Header().Set(XAmzMetaPrefix+name, value)
 	}
+
 	return
 }
 
 // Delete objects (multiple objects)
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html
 func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request) {
-
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -547,39 +551,46 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
-		log.LogErrorf("deleteObjectsHandler: load volume fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = NoSuchBucket
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("deleteObjectsHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
-	var bytes []byte
-	bytes, err = ioutil.ReadAll(r.Body)
-	if err != nil && err != io.EOF {
-		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
+	requestMD5 := r.Header.Get(ContentMD5)
+	if requestMD5 == "" {
+		errorCode = MissingContentMD5
+		return
+	}
+
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
+	bytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.LogErrorf("deleteObjectsHandler: read request body fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = UnexpectedContent
+		return
+	}
+	if requestMD5 != GetMD5(bytes) {
+		errorCode = BadDigest
 		return
 	}
 
 	deleteReq := DeleteRequest{}
 	err = UnmarshalXMLEntity(bytes, &deleteReq)
 	if err != nil {
-		log.LogErrorf("deleteObjectsHandler: unmarshal xml fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
-		errorCode = InvalidArgument
+		log.LogErrorf("deleteObjectsHandler: unmarshal xml fail: requestID(%v) volume(%v) request(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), string(bytes), err)
+		errorCode = MalformedXML
 		return
 	}
-
-	if len(deleteReq.Objects) <= 0 {
-		log.LogDebugf("deleteObjectsHandler: non objects found in request: requestID(%v)", GetRequestID(r))
-		errorCode = InvalidArgument
+	if len(deleteReq.Objects) > 1000 {
+		errorCode = EntityTooLarge
 		return
 	}
-
-	var (
-		deletedObjects = make([]Deleted, 0, len(deleteReq.Objects))
-		deletedErrors  = make([]Error, 0)
-	)
 
 	// Sort the key values in reverse order.
 	// The purpose of this is to delete the child leaf first and then the parent node.
@@ -595,86 +606,124 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return deleteReq.Objects[i].Key > deleteReq.Objects[j].Key
 	})
 
-	var objectKeys = make([]string, 0, len(deleteReq.Objects))
-	for _, object := range deleteReq.Objects {
-		objectKeys = append(objectKeys, object.Key)
-		err = vol.DeletePath(object.Key)
-		log.LogWarnf("deleteObjectsHandler: delete: requestID(%v) volume(%v) path(%v)",
-			GetRequestID(r), vol.Name(), object.Key)
-		if err != nil {
-			deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: err.Error()})
-			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
-				GetRequestID(r), vol.Name(), object.Key, err)
-		} else {
-			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
-			log.LogDebugf("deleteObjectsHandler: delete object success: requestID(%v) volume(%v) path(%v)", GetRequestID(r),
-				vol.Name(), object.Key)
-		}
+	vol, acl, policy, err := o.loadBucketMeta(param.Bucket())
+	if err != nil {
+		log.LogErrorf("deleteObjectsHandler: load bucket metadata fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
 	}
 
-	// Audit bulk delete behavior
-	log.LogInfof("Audit: delete multiple objects: requestID(%v) remote(%v) volume(%v) objects(%v)",
-		GetRequestID(r), getRequestIP(r), vol.Name(), strings.Join(objectKeys, ","))
+	userInfo, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
+	if err != nil {
+		log.LogErrorf("deleteObjectsHandler: get userinfo fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		return
+	}
+
+	allowByAcl := false
+	if acl == nil && userInfo.UserID == vol.owner {
+		allowByAcl = true
+	}
+	if acl != nil && acl.IsAllowed(userInfo.UserID, param.Action()) {
+		allowByAcl = true
+	}
+
+	deletedObjects := make([]Deleted, 0, len(deleteReq.Objects))
+	deletedErrors := make([]Error, 0)
+	objectKeys := make([]string, 0, len(deleteReq.Objects))
+	start := time.Now()
+	for _, object := range deleteReq.Objects {
+		result := POLICY_UNKNOW
+		if policy != nil && !policy.IsEmpty() {
+			conditionCheck := map[string]string{
+				SOURCEIP: param.sourceIP,
+				REFERER:  param.r.Referer(),
+				KEYNAME:  object.Key,
+				HOST:     param.r.Host,
+			}
+			result = policy.IsAllowed(param, userInfo.UserID, vol.owner, conditionCheck)
+		}
+		if result == POLICY_DENY || (result == POLICY_UNKNOW && !allowByAcl) {
+			deletedErrors = append(deletedErrors, Error{
+				Key:     object.Key,
+				Code:    "AccessDenied",
+				Message: "Not Allowed By Policy",
+			})
+			continue
+		}
+		objectKeys = append(objectKeys, object.Key)
+		log.LogWarnf("deleteObjectsHandler: delete path: requestID(%v) remote(%v) volume(%v) path(%v)",
+			GetRequestID(r), getRequestIP(r), vol.Name(), object.Key)
+		// QPS and Concurrency Limit
+		rateLimit := o.AcquireRateLimiter()
+		if err = rateLimit.AcquireLimitResource(vol.owner, DELETE_OBJECT); err != nil {
+			return
+		}
+		if err1 := vol.DeletePath(object.Key); err1 != nil {
+			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
+				GetRequestID(r), vol.Name(), object.Key, err1)
+			if !strings.Contains(err1.Error(), AccessDenied.ErrorMessage) {
+				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "InternalError", Message: err1.Error()})
+			} else {
+				deletedErrors = append(deletedErrors, Error{Key: object.Key, Code: "AccessDenied", Message: err1.Error()})
+			}
+		} else {
+			deletedObjects = append(deletedObjects, Deleted{Key: object.Key})
+		}
+		rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+	}
+	span.AppendTrackLog("files.d", start, err)
 
 	deleteResult := DeleteResult{
 		Deleted: deletedObjects,
 		Error:   deletedErrors,
 	}
-
-	log.LogDebugf("deleteObjectsHandler: delete objects: deletes(%v) errors(%v)",
-		len(deleteResult.Deleted), len(deleteResult.Error))
-
-	var bytesRes []byte
-	var marshalError error
-	if bytesRes, marshalError = MarshalXMLEntity(deleteResult); marshalError != nil {
-		log.LogErrorf("deleteObjectsHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
+	response, err1 := MarshalXMLEntity(deleteResult)
+	if err1 != nil {
+		log.LogErrorf("deleteObjectsHandler: xml marshal fail: requestID(%v) volume(%v) result(%+v) err(%v)",
+			GetRequestID(r), param.Bucket(), deleteResult, err1)
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytesRes))}
-	if _, err = w.Write(bytesRes); err != nil {
-		log.LogErrorf("deleteObjectsHandler: write response body fail: requestID(%v) err(%v)", GetRequestID(r), err)
-	}
+	writeSuccessResponseXML(w, response)
 	return
 }
 
-func parseCopySourceInfo(r *http.Request) (sourceBucket, sourceObject string) {
-	var copySource = r.Header.Get(HeaderNameXAmzCopySource)
-	if s, err := url.PathUnescape(copySource); err == nil {
-		copySource = s
+func extractSrcBucketKey(r *http.Request) (srcBucketId, srcKey, versionId string, err error) {
+	copySource := r.Header.Get(XAmzCopySource)
+	copySource, err = url.QueryUnescape(copySource)
+	if err != nil {
+		return "", "", "", InvalidArgument
 	}
-	if strings.HasPrefix(copySource, "/") {
-		copySource = copySource[1:]
+	// path could be /bucket/key or bucket/key
+	copySource = strings.TrimPrefix(copySource, "/")
+	elements := strings.SplitN(copySource, "?versionId=", 2)
+	if len(elements) == 1 {
+		versionId = ""
+	} else {
+		versionId = elements[1]
 	}
-
-	position := strings.Index(copySource, "/")
-	var bucket, object string
-	if position >= 0 {
-		bucket = copySource[:position]
-		if position+1 <= len(copySource) {
-			object = copySource[position+1:]
-		}
+	path := strings.SplitN(elements[0], "/", 2)
+	if len(path) == 1 {
+		return "", "", "", InvalidArgument
 	}
-
-	sourceBucket = bucket
-	sourceObject = object
+	srcBucketId, srcKey = path[0], path[1]
+	if srcBucketId == "" || srcKey == "" {
+		return "", "", "", InvalidArgument
+	}
 	return
 }
 
 // Copy object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html .
 func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -686,95 +735,106 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = InvalidKey
 		return
 	}
+	if len(param.Object()) > MaxKeyLength {
+		errorCode = KeyTooLong
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
-		log.LogErrorf("copyObjectHandler: load volume fail: requestID(%v) err(%v)",
-			getRequestIP(r), err)
-		errorCode = NoSuchBucket
+		log.LogErrorf("copyObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
-	// Checking user-defined metadata
-	var metadata = ParseUserDefinedMetadata(r.Header)
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// client can reset these system metadata: Content-Type, Content-Disposition
-	contentType := r.Header.Get(HeaderNameContentType)
-	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
-	cacheControl := r.Header.Get(HeaderNameCacheControl)
+	contentType := r.Header.Get(ContentType)
+	contentDisposition := r.Header.Get(ContentDisposition)
+	cacheControl := r.Header.Get(CacheControl)
 	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
 		errorCode = InvalidCacheArgument
 		return
 	}
-	expires := r.Header.Get(HeaderNameExpires)
+	expires := r.Header.Get(Expires)
 	if len(expires) > 0 && !ValidateCacheExpires(expires) {
 		errorCode = InvalidCacheArgument
 		return
 	}
 
 	// metadata directive, direct object node use source file metadata or recreate metadata for target file
-	metadataDirective := r.Header.Get(HeaderNameXAmzMetadataDirective)
+	metadataDirective := r.Header.Get(XAmzMetadataDirective)
 	// metadata directive default value is COPY
 	if len(metadataDirective) == 0 {
 		metadataDirective = MetadataDirectiveCopy
 	}
-	var opt = &PutFileOption{
-		MIMEType:     contentType,
-		Disposition:  contentDisposition,
-		Metadata:     metadata,
-		CacheControl: cacheControl,
-		Expires:      expires,
+	if metadataDirective != MetadataDirectiveCopy && metadataDirective != MetadataDirectiveReplace {
+		log.LogErrorf("copyObjectHandler: x-amz-metadata-directive invalid: requestID(%v) volume(%v) x-amz-metadata-directive(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), metadataDirective, err)
+		errorCode = InvalidArgument
+		return
 	}
-
-	sourceBucket, sourceObject := parseCopySourceInfo(r)
-
-	// check permission, must have read permission to source bucket
-	var userInfo *proto.UserInfo
-	if userInfo, err = o.getUserInfoByAccessKey(param.AccessKey()); err != nil {
-		log.LogErrorf("copyObjectHandler: get user info from master error: requestID(%v), accessKey(%v), err(%v)",
-			GetRequestID(r), param.AccessKey(), err)
-		errorCode = InternalErrorCode(err)
+	// parse x-amz-copy-source header
+	sourceBucket, sourceObject, _, err := extractSrcBucketKey(r)
+	if err != nil {
+		log.LogErrorf("copyObjectHandler: copySource(%v) argument invalid: requestID(%v) volume(%v) err(%v)",
+			r.Header.Get(XAmzCopySource), GetRequestID(r), param.Bucket(), err)
 		return
 	}
 
-	subdir := strings.TrimRight(param.Object(), "/")
-	if subdir == "" {
-		subdir = r.URL.Query().Get(ParamPrefix)
+	// check ACL
+	userInfo, err := o.getUserInfoByAccessKeyV2(param.AccessKey())
+	if err != nil {
+		log.LogErrorf("copyObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		return
 	}
-	if !userInfo.Policy.IsAuthorized(sourceBucket, subdir, proto.OSSCopyObjectAction) {
-		log.LogErrorf("copyObjectHandler: no permission to copy from source bucket, requestID(%v), source bucket(%v), source file(%v), target bucket(%v), target file(%v)",
-			GetRequestID(r), sourceBucket, sourceObject, param.bucket, param.object)
-		errorCode = AccessDenied
+	acl, err := ParseACL(r, userInfo.UserID, false, vol.GetOwner() != userInfo.UserID)
+	if err != nil {
+		log.LogErrorf("copyObjectHandler: parse acl fail: requestID(%v) volume(%v) acl(%+v) err(%v)",
+			GetRequestID(r), param.Bucket(), acl, err)
+		return
+	}
+
+	// get src object meta
+	var sourceVol *Volume
+	if sourceVol, err = o.getVol(sourceBucket); err != nil {
+		log.LogErrorf("copyObjectHandler: load source volume fail: requestID(%v) srcVolume(%v) err(%v)",
+			GetRequestID(r), sourceBucket, err)
 		return
 	}
 
 	// get object meta
-	var sourceVol *Volume
-	if sourceVol, err = o.getVol(sourceBucket); err != nil {
-		log.LogErrorf("copyObjectHandler: load source volume fail: vol(%v) requestID(%v) err(%v)",
-			sourceBucket, getRequestIP(r), err)
-		errorCode = NoSuchBucket
-		return
-	}
-
-	var fileInfo *FSFileInfo
-	fileInfo, _, err = sourceVol.ObjectMeta(sourceObject)
+	start := time.Now()
+	fileInfo, _, err := sourceVol.ObjectMeta(sourceObject)
+	span.AppendTrackLog("meta.r", start, err)
 	if err != nil {
-		log.LogErrorf("copyObjectHandler: volume get file info fail: sourceBucket(%v) sourceObject(%v) requestID(%v) err(%v)",
-			sourceBucket, sourceObject, GetRequestID(r), err)
-
+		log.LogErrorf("copyObjectHandler: get object meta fail: requestID(%v) srcVolume(%v) srcObject(%v) err(%v)",
+			GetRequestID(r), sourceBucket, sourceObject, err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
-			return
 		}
-		errorCode = InternalErrorCode(err)
+		return
+	}
+	if fileInfo.Size > SinglePutLimit {
+		errorCode = EntityTooLarge
+		return
+	}
+	if fileInfo.Size > SinglePutLimit {
+		errorCode = EntityTooLarge
 		return
 	}
 
 	// get header
-	copyMatch := r.Header.Get(HeaderNameXAmzCopyMatch)
-	noneMatch := r.Header.Get(HeaderNameXAmzCopyNoneMatch)
-	modified := r.Header.Get(HeaderNameXAmzCopyModified)
-	unModified := r.Header.Get(HeaderNameXAmzCopyUnModified)
+	copyMatch := r.Header.Get(XAmzCopySourceIfMatch)
+	noneMatch := r.Header.Get(XAmzCopySourceIfNoneMatch)
+	modified := r.Header.Get(XAmzCopySourceIfModifiedSince)
+	unModified := r.Header.Get(XAmzCopySourceIfUnmodifiedSince)
 
 	// response 412
 	if modified != "" {
@@ -816,13 +876,33 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// open source object stream
+	// ObjectLock  Config
+	objetLock, err := vol.metaLoader.loadObjectLock()
+	if err != nil {
+		log.LogErrorf("copyObjectHandler: load volume objetLock: requestID(%v)  volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
 
+	// parse user-defined metadata
+	metadata := ParseUserDefinedMetadata(r.Header)
+
+	// copy file
+	opt := &PutFileOption{
+		MIMEType:     contentType,
+		Disposition:  contentDisposition,
+		Metadata:     metadata,
+		CacheControl: cacheControl,
+		Expires:      expires,
+		ACL:          acl,
+		ObjectLock:   objetLock,
+	}
+	start = time.Now()
 	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
+	span.AppendTrackLog("file.c", start, err)
 	if err != nil && err != syscall.EINVAL && err != syscall.EFBIG {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	if err == syscall.EINVAL {
@@ -842,31 +922,27 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ETag:         "\"" + fsFileInfo.ETag + "\"",
 		LastModified: formatTimeISO(fsFileInfo.ModifyTime),
 	}
-
-	var bytes []byte
-	if bytes, err = MarshalXMLEntity(copyResult); err != nil {
-		log.LogErrorf("copyObjectHandler: marshal xml entity fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
-		return
+	response, ierr := MarshalXMLEntity(copyResult)
+	if ierr != nil {
+		log.LogErrorf("copyObjectHandler: marshal xml result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), copyResult, ierr)
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	_, _ = w.Write(bytes)
+	writeSuccessResponseXML(w, response)
 	return
 }
 
 // List objects v1
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html
 func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -878,9 +954,16 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketV1Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	// get options
 	marker := r.URL.Query().Get(ParamMarker)
 	prefix := r.URL.Query().Get(ParamPrefix)
@@ -892,7 +975,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
-			log.LogErrorf("getBucketV1Handler: parse max key fail, requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogErrorf("getBucketV1Handler: parse max key fail: requestID(%v) volume(%v) maxKeys(%v) err(%v)",
+				GetRequestID(r), vol.Name(), maxKeys, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -909,21 +993,30 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var option = &ListFilesV1Option{
+	if marker != "" && prefix != "" && !strings.HasPrefix(marker, prefix) {
+		errorCode = InvalidArgument
+		return
+	}
+
+	// list files
+	option := &ListFilesV1Option{
 		Prefix:     prefix,
 		Delimiter:  delimiter,
 		Marker:     marker,
 		MaxKeys:    maxKeysInt,
 		OnlyObject: true,
 	}
-
-	var result *ListFilesV1Result
-	result, err = vol.ListFilesV1(option)
+	start := time.Now()
+	result, err := vol.ListFilesV1(option)
+	span.AppendTrackLog("file.l", start, err)
 	if err != nil {
-		log.LogErrorf("getBucketV1Handler: list file fail: requestID(%v) volume(%v) err(%v)",
-			getRequestIP(r), vol.name, err)
-		errorCode = InvalidArgument
+		log.LogErrorf("getBucketV1Handler: list files fail: requestID(%v) volume(%v) option(%v) err(%v)",
+			GetRequestID(r), vol.Name(), option, err)
 		return
+	}
+	// The result of next list request should not include nextMarker.
+	if result.Truncated && len(result.Files) != 0 {
+		result.NextMarker = result.Files[len(result.Files)-1].Path
 	}
 
 	// get owner
@@ -934,8 +1027,8 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		if file.Mode == 0 {
 			// Invalid file mode, which means that the inode of the file may not exist.
 			// Record and filter out the file.
-			log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
-				vol.Name(), file.Path, file.Inode)
+			log.LogWarnf("getBucketV1Handler: invalid file found: requestID(%v) volume(%v) path(%v) inode(%v)",
+				GetRequestID(r), vol.Name(), file.Path, file.Inode)
 			continue
 		}
 		content := &Content{
@@ -968,33 +1061,28 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 		Contents:       contents,
 		CommonPrefixes: commonPrefixes,
 	}
-
-	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
-		log.LogErrorf("getBucketV1Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InvalidArgument
+	response, err := MarshalXMLEntity(listBucketResult)
+	if err != nil {
+		log.LogErrorf("getBucketV1Handler: xml marshal result fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	_, _ = w.Write(bytes)
-
+	writeSuccessResponseXML(w, response)
 	return
 }
 
 // List objects version 2
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
 func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1006,9 +1094,15 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getBucketV2Handler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// get options
 	prefix := r.URL.Query().Get(ParamPrefix)
@@ -1023,8 +1117,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if maxKeys != "" {
 		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
 		if err != nil {
-			log.LogErrorf("getBucketV2Handler: parse max keys fail, requestID(%v) err(%v)",
-				GetRequestID(r), err)
+			log.LogErrorf("getBucketV2Handler: parse max keys fail: requestID(%v) volume(%v) maxKeys(%v) err(%v)",
+				GetRequestID(r), vol.Name(), maxKeys, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -1039,7 +1133,8 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 	if fetchOwner != "" {
 		fetchOwnerBool, err = strconv.ParseBool(fetchOwner)
 		if err != nil {
-			log.LogErrorf("getBucketV2Handler: requestID(%v) err(%v)", GetRequestID(r), err)
+			log.LogErrorf("getBucketV2Handler: parse fetch owner fail: requestID(%v) volume(%v) fetchOwner(%v) err(%v)",
+				GetRequestID(r), vol.Name(), fetchOwner, err)
 			errorCode = InvalidArgument
 			return
 		}
@@ -1053,7 +1148,19 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var option = &ListFilesV2Option{
+	var marker string
+	if contToken != "" {
+		marker = contToken
+	} else {
+		marker = startAfter
+	}
+	if marker != "" && prefix != "" && !strings.HasPrefix(marker, prefix) {
+		errorCode = InvalidArgument
+		return
+	}
+
+	// list files
+	option := &ListFilesV2Option{
 		Delimiter:  delimiter,
 		MaxKeys:    maxKeysInt,
 		Prefix:     prefix,
@@ -1061,14 +1168,19 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		FetchOwner: fetchOwnerBool,
 		StartAfter: startAfter,
 	}
-
-	var result *ListFilesV2Result
-	result, err = vol.ListFilesV2(option)
+	start := time.Now()
+	result, err := vol.ListFilesV2(option)
+	span.AppendTrackLog("file.l", start, err)
 	if err != nil {
-		log.LogErrorf("getBucketV2Handler: list files fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
+		log.LogErrorf("getBucketV2Handler: list files fail, requestID(%v) volume(%v) option(%v) err(%v)",
+			GetRequestID(r), vol.Name(), option, err)
 		return
 	}
+	// The result of next list request should not include continuationToken.
+	if result.Truncated && len(result.Files) > 0 {
+		result.NextToken = result.Files[len(result.Files)-1].Path
+	}
+
 	// get owner
 	var bucketOwner *BucketOwner
 	if fetchOwnerBool {
@@ -1081,8 +1193,9 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 			if file.Mode == 0 {
 				// Invalid file mode, which means that the inode of the file may not exist.
 				// Record and filter out the file.
-				log.LogWarnf("getBucketV2Handler: invalid file found: volume(%v) path(%v) inode(%v)",
-					vol.Name(), file.Path, file.Inode)
+				log.LogWarnf("getBucketV2Handler: invalid file found: requestID(%v) volume(%v) path(%v) inode(%v)",
+					GetRequestID(r), vol.Name(), file.Path, file.Inode)
+				result.KeyCount--
 				continue
 			}
 			content := &Content{
@@ -1117,34 +1230,28 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 		Contents:       contents,
 		CommonPrefixes: commonPrefixes,
 	}
-
-	var bytes []byte
-	var marshalError error
-	if bytes, marshalError = MarshalXMLEntity(listBucketResult); marshalError != nil {
-		log.LogErrorf("getBucketV2Handler: marshal result fail, requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InvalidArgument
+	response, err := MarshalXMLEntity(listBucketResult)
+	if err != nil {
+		log.LogErrorf("getBucketV2Handler: xml marshal result fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), vol.Name(), err)
 		return
 	}
 
-	// set response header
-	w.Header()[HeaderNameContentType] = []string{HeaderValueContentTypeXML}
-	w.Header()[HeaderNameContentLength] = []string{strconv.Itoa(len(bytes))}
-	if _, err = w.Write(bytes); err != nil {
-		log.LogErrorf("getBucketVeHandler: write response body fail, requestID(%v) err(%v)", GetRequestID(r), err)
-	}
+	writeSuccessResponseXML(w, response)
 	return
 }
 
 // Put object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
 func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 
-	var err error
-	var errorCode *ErrorCode
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1154,139 +1261,438 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if param.Object() == "" {
 		errorCode = InvalidKey
+		return
+	}
+	if len(param.Object()) > MaxKeyLength {
+		errorCode = KeyTooLong
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putObjectHandler: load volume fail: requestID(%v)  volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
+
+	// Get request MD5, if request MD5 is not empty, compute and verify it.
+	requestMD5 := r.Header.Get(ContentMD5)
+	if requestMD5 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
+		if err != nil {
+			errorCode = InvalidDigest
+			return
+		}
+		requestMD5 = hex.EncodeToString(decoded)
+	}
+
+	// ObjectLock  Config
+	objetLock, err := vol.metaLoader.loadObjectLock()
+	if err != nil {
+		log.LogErrorf("putObjectHandler: load volume objetLock: requestID(%v)  volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
+		errorCode = NoContentMd5HeaderErr
+		return
+	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// Check 'x-amz-tagging' header
 	// Reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax
 	var tagging *Tagging
-	if xAmxTagging := r.Header.Get(HeaderNameXAmzTagging); xAmxTagging != "" {
+	if xAmxTagging := r.Header.Get(XAmzTagging); xAmxTagging != "" {
 		if tagging, err = ParseTagging(xAmxTagging); err != nil {
 			errorCode = InvalidArgument
 			return
 		}
 		var validateRes bool
 		if validateRes, errorCode = tagging.Validate(); !validateRes {
-			log.LogErrorf("putObjectHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
+			log.LogErrorf("putObjectHandler: tagging validate fail: requestID(%v) volume(%v) path(%v) tagging(%v) err(%v)",
+				GetRequestID(r), vol.Name(), param.Object(), tagging, errorCode)
 			return
 		}
 	}
 
-	// Checking user-defined metadata
-	var metadata = ParseUserDefinedMetadata(r.Header)
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("putObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		return
+	}
 
-	// Get request MD5, if request MD5 is not empty, compute and verify it.
-	requestMD5 := r.Header.Get(HeaderNameContentMD5)
+	// Check ACL
+	acl, err := ParseACL(r, userInfo.UserID, false, vol.GetOwner() != userInfo.UserID)
+	if err != nil {
+		log.LogErrorf("putObjectHandler: parse acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), acl, err)
+		return
+	}
 
-	var checkMD5 bool
-	if len(requestMD5) > 0 {
-		checkMD5 = true
+	// Verify ContentLength
+	length := GetContentLength(r)
+	if length > SinglePutLimit {
+		errorCode = EntityTooLarge
+		return
+	}
+	if length < 0 {
+		errorCode = MissingContentLength
+		return
 	}
 
 	// Get the requested content-type.
 	// In addition to being used to manage data types, it is used to distinguish
 	// whether the request is to create a directory.
-	contentType := r.Header.Get(HeaderNameContentType)
+	contentType := r.Header.Get(ContentType)
 	// Get request header : content-disposition
-	contentDisposition := r.Header.Get(HeaderNameContentDisposition)
+	contentDisposition := r.Header.Get(ContentDisposition)
 	// Get request header : Cache-Control
-	cacheControl := r.Header.Get(HeaderNameCacheControl)
+	cacheControl := r.Header.Get(CacheControl)
 	if len(cacheControl) > 0 && !ValidateCacheControl(cacheControl) {
 		errorCode = InvalidCacheArgument
 		return
 	}
 	// Get request header : Expires
-	expires := r.Header.Get(HeaderNameExpires)
+	expires := r.Header.Get(Expires)
 	if len(expires) > 0 && !ValidateCacheExpires(expires) {
 		errorCode = InvalidCacheArgument
 		return
 	}
-
+	// Checking user-defined metadata
+	metadata := ParseUserDefinedMetadata(r.Header)
 	// Audit file write
 	log.LogInfof("Audit: put object: requestID(%v) remote(%v) volume(%v) path(%v) type(%v)",
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object(), contentType)
 
-	var fsFileInfo *FSFileInfo
-	var opt = &PutFileOption{
+	// Flow Control
+	var reader io.Reader
+	if length > DefaultFlowLimitSize {
+		reader = rateLimit.GetReader(vol.owner, param.apiName, r.Body)
+	} else {
+		reader = r.Body
+	}
+
+	// Put Object
+	opt := &PutFileOption{
 		MIMEType:     contentType,
 		Disposition:  contentDisposition,
 		Tagging:      tagging,
 		Metadata:     metadata,
 		CacheControl: cacheControl,
 		Expires:      expires,
+		ACL:          acl,
+		ObjectLock:   objetLock,
 	}
-	var startPut = time.Now()
-	fsFileInfo, err = vol.PutObject(param.Object(), r.Body, opt)
-	log.LogDebugf("PutObject, cost: %v", time.Since(startPut))
-	if err == syscall.EINVAL {
-		errorCode = ObjectModeConflict
-		return
-	}
-	if err == io.ErrUnexpectedEOF {
-		log.LogWarnf("putObjectHandler: put object fail cause unexpected EOF: requestID(%v) volume(%v) path(%v) remote(%v) err(%v)",
-			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
-		errorCode = EntityTooSmall
-		return
-	}
+	start := time.Now()
+	fsFileInfo, err := vol.PutObject(param.Object(), reader, opt)
+	span.AppendTrackLog("file.w", start, err)
 	if err != nil {
 		log.LogErrorf("putObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
-		if !r.Close {
-			errorCode = InternalErrorCode(err)
-		}
+		err = handlePutObjectErr(err)
 		return
 	}
 
-	// validate content MD5 value
-	if strings.HasSuffix(requestMD5, "==") {
-		var decoded []byte
-		if decoded, err = base64.StdEncoding.DecodeString(requestMD5); err != nil {
-			log.LogErrorf("putObjectHandler: decode request MD5 value fail: requestID(%v) raw(%v) err(%v)",
-				GetRequestID(r), requestMD5, err)
-			errorCode = InternalErrorCode(err)
-			return
-		}
-		requestMD5 = hex.EncodeToString(decoded)
-	}
 	// check content MD5
-	if checkMD5 && requestMD5 != fsFileInfo.ETag {
-		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) requestMD5(%v) serverMD5(%v)",
-			r.URL.EscapedPath(), requestMD5, fsFileInfo.ETag)
+	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
+		log.LogErrorf("putObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), requestMD5, fsFileInfo.ETag)
 		errorCode = BadDigest
 		return
 	}
 
 	// set response header
-	w.Header()[HeaderNameETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
-	w.Header()[HeaderNameContentLength] = []string{"0"}
+	w.Header()[ETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
 	return
 }
 
-// Delete object
-// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
-func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request) {
-
+// Post object
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPOST.html
+func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err       error
 		errorCode *ErrorCode
 	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	param := ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("postObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+
+	var userInfo *proto.UserInfo
+	if userInfo, err = o.getUserInfoByAccessKeyV2(param.AccessKey()); err != nil {
+		log.LogErrorf("postObjectHandler: get user info fail: requestID(%v) volume(%v) accessKey(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), param.AccessKey(), err)
+		return
+	}
+
+	// qps and concurrency limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	// parse the request form
+	formReq := NewFormRequest(r)
+	if err = formReq.ParseMultipartForm(); err != nil {
+		log.LogErrorf("postObjectHandler: parse form fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
+		return
+	}
+
+	// content-md5 check if specified in the request
+	requestMD5 := formReq.MultipartFormValue(ContentMD5)
+	if requestMD5 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(requestMD5)
+		if err != nil {
+			errorCode = MalformedPOSTRequest.Copy()
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid Content-MD5")
 			return
 		}
+		requestMD5 = hex.EncodeToString(decoded)
+	}
+
+	// object lock check
+	objetLock, err := vol.metaLoader.loadObjectLock()
+	if err != nil {
+		log.LogErrorf("postObjectHandler: load volume objetLock fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		return
+	}
+	if objetLock != nil && objetLock.ToRetention() != nil && requestMD5 == "" {
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "No Content-MD5 with Object Lock")
+		return
+	}
+
+	// other form fields check
+	key := formReq.MultipartFormValue("key")
+	if key == "" {
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Missing key")
+		return
+	}
+	key = strings.Replace(key, "${filename}", formReq.FileName(), -1)
+	if !utf8.ValidString(key) || len(key) > MaxKeyLength {
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid utf8 string or the key is too long")
+		return
+	}
+
+	var aclInfo *AccessControlPolicy
+	if acl := formReq.MultipartFormValue("acl"); acl != "" {
+		if aclInfo, err = ParseCannedAcl(acl, userInfo.UserID); err != nil {
+			log.LogErrorf("postObjectHandler: parse canned acl fail: requestID(%v) volume(%v) acl(%v) err(%v)",
+				GetRequestID(r), param.Bucket(), acl, err)
+			errorCode = MalformedPOSTRequest.Copy()
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
+			return
+		}
+	}
+
+	var tagging *Tagging
+	if taggingRaw := formReq.MultipartFormValue("tagging"); taggingRaw != "" {
+		tagging = NewTagging()
+		if err = xml.Unmarshal([]byte(taggingRaw), tagging); err != nil {
+			errorCode = MalformedPOSTRequest.Copy()
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid tagging")
+			return
+		}
+		if _, erc := tagging.Validate(); erc != nil {
+			errorCode = MalformedPOSTRequest.Copy()
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, erc)
+			return
+		}
+	}
+
+	successStatus := formReq.MultipartFormValue("success_action_status")
+	successRedirect := formReq.MultipartFormValue("success_action_redirect")
+	var successRedirectURL *url.URL
+	if successRedirect != "" {
+		if successRedirectURL, err = url.Parse(successRedirect); err != nil {
+			errorCode = MalformedPOSTRequest.Copy()
+			errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid success_action_redirect")
+			return
+		}
+	}
+
+	contentType := formReq.MultipartFormValue("content-type")
+	contentDisposition := formReq.MultipartFormValue("content-disposition")
+	cacheControl := formReq.MultipartFormValue("cache-control")
+	if cacheControl != "" && !ValidateCacheControl(cacheControl) {
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid cache-control")
+		return
+	}
+
+	expires := formReq.MultipartFormValue("expires")
+	if expires != "" && !ValidateCacheExpires(expires) {
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid expires")
+		return
+	}
+
+	policy := formReq.MultipartFormValue("policy")
+	if policy == "" {
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Missing policy")
+		return
+	}
+
+	// read the file, the rest will be written to a temporary file if exceed
+	f, size, err := formReq.FormFile(10 << 20)
+	if err != nil {
+		log.LogErrorf("postObjectHandler: form file fail: requestID(%v) volume(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), err)
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%v)", errorCode.ErrorMessage, err)
+		return
+	}
+	defer f.Close()
+	if size > SinglePutLimit {
+		errorCode = EntityTooLarge
+		return
+	}
+
+	metadata := make(map[string]string)
+	// policy match forms
+	forms := make(map[string]string)
+	for name, values := range formReq.MultipartForm.Value {
+		name = strings.ToLower(name)
+		if strings.HasPrefix(name, XAmzMetaPrefix) {
+			forms[name] = strings.Join(values, ",")
+			metadata[name[len(XAmzMetaPrefix):]] = strings.Join(values, ",")
+		} else if len(values) > 0 {
+			forms[name] = values[0]
+		}
+	}
+	forms["bucket"] = param.Bucket()
+	forms["key"] = key
+	forms["content-length"] = strconv.FormatInt(size, 10)
+
+	// policy condition check
+	if err = PolicyConditionMatch(policy, forms); err != nil {
+		log.LogErrorf("postObjectHandler: policy match fail: requestID(%v) volume(%v) forms(%v) err(%v)",
+			GetRequestID(r), param.Bucket(), forms, err)
+		return
+	}
+
+	// flow control
+	var reader io.Reader
+	if size > DefaultFlowLimitSize {
+		reader = rateLimit.GetReader(vol.owner, param.apiName, f)
+	} else {
+		reader = f
+	}
+
+	// put object
+	putOpt := &PutFileOption{
+		MIMEType:     contentType,
+		Disposition:  contentDisposition,
+		Tagging:      tagging,
+		Metadata:     metadata,
+		CacheControl: cacheControl,
+		Expires:      expires,
+		ACL:          aclInfo,
+		ObjectLock:   objetLock,
+	}
+	start := time.Now()
+	fsFileInfo, err := vol.PutObject(key, reader, putOpt)
+	span.AppendTrackLog("file.w", start, err)
+	if err != nil {
+		log.LogErrorf("postObjectHandler: put object fail: requestId(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), vol.Name(), key, err)
+		err = handlePutObjectErr(err)
+		return
+	}
+
+	// check content-md5 of actual data if specified in the request
+	if requestMD5 != "" && requestMD5 != fsFileInfo.ETag {
+		log.LogErrorf("postObjectHandler: MD5 validate fail: requestID(%v) volume(%v) path(%v) requestMD5(%v) serverMD5(%v)",
+			GetRequestID(r), vol.Name(), key, requestMD5, fsFileInfo.ETag)
+		errorCode = BadDigest
+		return
+	}
+
+	// set response header
+	etag := wrapUnescapedQuot(fsFileInfo.ETag)
+	w.Header()[ETag] = []string{etag}
+
+	// return response depending on success_action_xxx parameter
+	if successRedirectURL != nil {
+		query := successRedirectURL.Query()
+		query.Set("bucket", param.Bucket())
+		query.Set("key", key)
+		query.Set("etag", etag)
+		successRedirectURL.RawQuery = query.Encode()
+		w.Header().Set(Location, successRedirectURL.String())
+		w.WriteHeader(http.StatusSeeOther)
+		return
+	}
+	switch successStatus {
+	case "200":
+		w.WriteHeader(http.StatusOK)
+	case "201":
+		response := NewS3UploadObject()
+		response.Bucket = param.Bucket()
+		response.Key = key
+		response.ETag = etag
+		response.Location = "/" + response.Bucket + "/" + response.Key
+		writeResponse(w, http.StatusCreated, []byte(response.String()), ValueContentTypeXML)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handlePutObjectErr(err error) error {
+	if err == syscall.EINVAL {
+		return ObjectModeConflict
+	}
+	if err == syscall.EEXIST {
+		return ConflictUploadRequest
+	}
+	if err == io.ErrUnexpectedEOF {
+		return EntityTooSmall
+	}
+	return err
+}
+
+// Delete object
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html .
+func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1297,22 +1703,33 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
 
 	// Audit deletion
 	log.LogInfof("Audit: delete object: requestID(%v) remote(%v) volume(%v) path(%v)",
 		GetRequestID(r), getRequestIP(r), vol.Name(), param.Object())
 
+	// Delete file
+	start := time.Now()
 	err = vol.DeletePath(param.Object())
+	span.AppendTrackLog("file.d", start, err)
 	if err != nil {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
 			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
+		if strings.Contains(err.Error(), AccessDenied.ErrorMessage) {
+			err = AccessDenied
+		}
 		return
 	}
 
@@ -1323,13 +1740,14 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 // Get object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html
 func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1345,52 +1763,56 @@ func (o *ObjectNode) getObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectTaggingHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), err)
-		errorCode = NoSuchBucket
 		return
 	}
-	var xattrInfo *proto.XAttrInfo
-	if xattrInfo, err = vol.GetXAttr(param.object, XAttrKeyOSSTagging); err != nil {
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	// get xattr
+	start := time.Now()
+	xattrInfo, err := vol.GetXAttr(param.object, XAttrKeyOSSTagging)
+	span.AppendTrackLog("xattr.r", start, err)
+	if err != nil {
+		log.LogErrorf("getObjectTaggingHandler: get volume XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
-			return
 		}
-		log.LogErrorf("getObjectTaggingHandler: Volume get XAttr fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
 	ossTaggingData := xattrInfo.Get(XAttrKeyOSSTagging)
 
 	var output, _ = ParseTagging(string(ossTaggingData))
-
-	var encoded []byte
-	if encoded, err = MarshalXMLEntity(output); err != nil {
-		log.LogErrorf("getObjectTaggingHandler: encode output fail: requestID(%v) err(%v)", GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
+	response, err := MarshalXMLEntity(output)
+	if err != nil {
+		log.LogErrorf("getObjectTaggingHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), output, err)
 		return
 	}
 
-	if _, err = w.Write(encoded); err != nil {
-		log.LogErrorf("getObjectTaggingHandler: write response fail: requestID(%v) err（%v)", GetRequestID(r), err)
-	}
+	writeSuccessResponseXML(w, response)
 	return
 }
 
 // Put object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectTagging.html
 func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
-
 	if param.Bucket() == "" {
 		errorCode = InvalidBucketName
 		return
@@ -1401,58 +1823,71 @@ func (o *ObjectNode) putObjectTaggingHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	var vol *Volume
-	if vol, err = o.vm.Volume(param.Bucket()); err != nil {
+	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
 
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
-		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogErrorf("putObjectTaggingHandler: read request body data fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
 	}
 
 	var tagging = NewTagging()
 	if err = xml.Unmarshal(requestBody, tagging); err != nil {
-		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)", GetRequestID(r), err)
+		log.LogWarnf("putObjectTaggingHandler: decode request body fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
 		errorCode = InvalidArgument
 		return
 	}
 	validateRes, errorCode := tagging.Validate()
 	if !validateRes {
-		log.LogErrorf("putObjectTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)", GetRequestID(r), tagging, err)
+		log.LogErrorf("putObjectTaggingHandler: tagging validate fail: requestID(%v) tagging(%v) err(%v)",
+			GetRequestID(r), tagging, errorCode.Error())
 		return
 	}
 
+	start := time.Now()
 	err = vol.SetXAttr(param.object, XAttrKeyOSSTagging, []byte(tagging.Encode()), false)
-
+	span.AppendTrackLog("xattr.w", start, err)
 	if err != nil {
-		log.LogErrorf("pubObjectTaggingHandler: volume set tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
+		log.LogErrorf("pubObjectTaggingHandler: set tagging xattr fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
 		if err == syscall.ENOENT {
 			errorCode = NoSuchKey
-		} else {
-			errorCode = InternalErrorCode(err)
 		}
 		return
 	}
+
 	return
 }
 
 // Delete object tagging
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjectTagging.html
 func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1468,13 +1903,22 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
-	if err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging); err != nil {
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	start := time.Now()
+	err = vol.DeleteXAttr(param.object, XAttrKeyOSSTagging)
+	span.AppendTrackLog("xattr.d", start, err)
+	if err != nil {
 		log.LogErrorf("deleteObjectTaggingHandler: volume delete tagging fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 
@@ -1484,14 +1928,14 @@ func (o *ObjectNode) deleteObjectTaggingHandler(w http.ResponseWriter, r *http.R
 
 // Put object extend attribute (xattr)
 func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
@@ -1499,33 +1943,44 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		errorCode = InvalidBucketName
 		return
 	}
-	var vol *Volume
-	if vol, err = o.getVol(param.bucket); err != nil {
-		log.LogErrorf("pubObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
-		errorCode = NoSuchBucket
-		return
-	}
 	if len(param.Object()) == 0 {
 		errorCode = InvalidKey
 		return
 	}
+	var vol *Volume
+	if vol, err = o.getVol(param.bucket); err != nil {
+		log.LogErrorf("pubObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
+		return
+	}
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	_, errorCode = VerifyContentLength(r, BodyLimit)
+	if errorCode != nil {
+		return
+	}
 	var requestBody []byte
 	if requestBody, err = ioutil.ReadAll(r.Body); err != nil {
-		_ = ErrorCode{
+		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),
 			StatusCode:   http.StatusBadRequest,
-		}.ServeResponse(w, r)
+		}
 		return
 	}
 	var putXAttrRequest = PutXAttrRequest{}
 	if err = xml.Unmarshal(requestBody, &putXAttrRequest); err != nil {
-		_ = ErrorCode{
+		errorCode = &ErrorCode{
 			ErrorCode:    "BadRequest",
 			ErrorMessage: err.Error(),
 			StatusCode:   http.StatusBadRequest,
-		}.ServeResponse(w, r)
+		}
 		return
 	}
 	var key, value = putXAttrRequest.XAttr.Key, putXAttrRequest.XAttr.Value
@@ -1533,189 +1988,281 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err = vol.SetXAttr(param.object, key, []byte(value), true); err != nil {
-		if err == syscall.ENOENT {
-			errorCode = NoSuchKey
-			return
-		}
+	start := time.Now()
+	err = vol.SetXAttr(param.object, key, []byte(value), true)
+	span.AppendTrackLog("xattr.w", start, err)
+	if err != nil {
 		log.LogErrorf("pubObjectXAttrHandler: volume set extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
+
 	return
 }
 
 // Get object extend attribute (xattr)
 func (o *ObjectNode) getObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
 
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
+		return
+	}
+	if len(param.Object()) == 0 {
+		errorCode = InvalidKey
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("getObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
-	if len(param.Object()) == 0 {
-		errorCode = InvalidKey
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
 		return
 	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	var xattrKey string
 	if xattrKey = param.GetVar(ParamKey); len(xattrKey) == 0 {
 		errorCode = InvalidArgument
 		return
 	}
 
-	var info *proto.XAttrInfo
-	if info, err = vol.GetXAttr(param.object, xattrKey); err != nil {
-		if err == syscall.ENOENT {
-			errorCode = NoSuchKey
-			return
-		}
+	start := time.Now()
+	info, err := vol.GetXAttr(param.object, xattrKey)
+	span.AppendTrackLog("xattr.r", start, err)
+	if err != nil {
 		log.LogErrorf("getObjectXAttrHandler: get extend attribute fail: requestID(%v) volume(%v) object(%v) key(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), xattrKey, err)
-		errorCode = InternalErrorCode(err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
-	var response = GetXAttrOutput{
+
+	output := GetXAttrOutput{
 		XAttr: &XAttr{
 			Key:   xattrKey,
 			Value: string(info.Get(xattrKey)),
 		},
 	}
-	var marshaled []byte
-	if marshaled, err = MarshalXMLEntity(&response); err != nil {
-		log.LogErrorf("getObjectXAttrHandler: marshal response body fail: requestID(%v) err(%v)",
-			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
+	response, err := MarshalXMLEntity(&output)
+	if err != nil {
+		log.LogErrorf("getObjectXAttrHandler: xml marshal result fail: requestID(%v) result(%v) err(%v)",
+			GetRequestID(r), output, err)
 		return
 	}
-	_, _ = w.Write(marshaled)
+
+	writeSuccessResponseXML(w, response)
 	return
 }
 
 // Delete object extend attribute (xattr)
 func (o *ObjectNode) deleteObjectXAttrHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
+
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
+		return
+	}
+	if len(param.Object()) == 0 {
+		errorCode = InvalidKey
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("deleteObjectXAttrHandler: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
 		return
 	}
-	if len(param.Object()) == 0 {
-		errorCode = InvalidKey
+
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
 		return
 	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
 	var xattrKey string
 	if xattrKey = param.GetVar(ParamKey); len(xattrKey) == 0 {
 		errorCode = InvalidArgument
 		return
 	}
 
-	if err = vol.DeleteXAttr(param.object, xattrKey); err != nil {
-		if err == syscall.ENOENT {
-			errorCode = NoSuchKey
-			return
-		}
+	start := time.Now()
+	err = vol.DeleteXAttr(param.object, xattrKey)
+	span.AppendTrackLog("xattr.d", start, err)
+	if err != nil {
 		log.LogErrorf("deleteObjectXAttrHandler: delete extend attribute fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = InternalErrorCode(err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
+
 	return
 }
 
 // List object xattrs
 func (o *ObjectNode) listObjectXAttrs(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var errorCode *ErrorCode
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
 
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
-		if errorCode != nil {
-			_ = errorCode.ServeResponse(w, r)
-			return
-		}
+		o.errorResponse(w, r, err, errorCode)
 	}()
+
 	var param = ParseRequestParam(r)
 	if len(param.Bucket()) == 0 {
 		errorCode = InvalidBucketName
+		return
+	}
+	if len(param.Object()) == 0 {
+		errorCode = InvalidKey
 		return
 	}
 	var vol *Volume
 	if vol, err = o.getVol(param.bucket); err != nil {
 		log.LogErrorf("listObjectXAttrs: load volume fail: requestID(%v) err(%v)",
 			GetRequestID(r), err)
-		errorCode = NoSuchBucket
-		return
-	}
-	if len(param.Object()) == 0 {
-		_ = &InvalidKey
 		return
 	}
 
-	var keys []string
-	if keys, err = vol.ListXAttrs(param.object); err != nil {
-		if err == syscall.ENOENT {
-			errorCode = NoSuchKey
-			return
-		}
+	// QPS and Concurrency Limit
+	rateLimit := o.AcquireRateLimiter()
+	if err = rateLimit.AcquireLimitResource(vol.owner, param.apiName); err != nil {
+		return
+	}
+	defer rateLimit.ReleaseLimitResource(vol.owner, param.apiName)
+
+	start := time.Now()
+	keys, err := vol.ListXAttrs(param.object)
+	span.AppendTrackLog("xattr.l", start, err)
+	if err != nil {
 		log.LogErrorf("listObjectXAttrs: volume list extend attributes fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
 		return
 	}
 
-	var response = ListXAttrsOutput{
+	output := ListXAttrsOutput{
 		Keys: keys,
 	}
-	var marshaled []byte
-	if marshaled, err = MarshalXMLEntity(&response); err != nil {
+	response, err := MarshalXMLEntity(&output)
+	if err != nil {
 		log.LogErrorf("listObjectXAttrs: marshal response body fail: requestID(%v) volume(%v) object(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
-	if _, err = w.Write(marshaled); err != nil {
-		log.LogErrorf("listObjectXAttrs: write response fail: requestID(%v) err(%v)", GetRequestID(r), err)
-	}
+
+	writeSuccessResponseXML(w, response)
 	return
 }
 
-func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, uint64, error) {
+// GetObjectRetention
+// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html
+func (o *ObjectNode) getObjectRetentionHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		err       error
+		errorCode *ErrorCode
+	)
+
+	span := trace.SpanFromContextSafe(r.Context())
+	defer func() {
+		o.errorResponse(w, r, err, errorCode)
+	}()
+
+	// check args
+	var param = ParseRequestParam(r)
+	if param.Bucket() == "" {
+		errorCode = InvalidBucketName
+		return
+	}
+	if param.Object() == "" {
+		errorCode = InvalidKey
+		return
+	}
+	var vol *Volume
+	if vol, err = o.getVol(param.Bucket()); err != nil {
+		log.LogErrorf("getObjectRetentionHandler: load volume fail: requestID(%v) err(%v)",
+			GetRequestID(r), err)
+		return
+	}
+
+	// get object meta
+	start := time.Now()
+	_, xattrs, err := vol.ObjectMeta(param.Object())
+	span.AppendTrackLog("meta.r", start, err)
+	if err != nil {
+		log.LogErrorf("getObjectRetentionHandler: get file meta fail: requestId(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), err)
+		if err == syscall.ENOENT {
+			errorCode = NoSuchKey
+		}
+		return
+	}
+	retainUntilDate := string(xattrs.Get(XAttrKeyOSSLock))
+	if retainUntilDate == "" {
+		errorCode = NoSuchObjectLockConfiguration
+		return
+	}
+	retainUntilDateInt64, err := strconv.ParseInt(retainUntilDate, 10, 64)
+	if err != nil {
+		log.LogErrorf("getObjectRetentionHandler: parse retainUntilDate fail: requestId(%v) volume(%v) path(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), err)
+		return
+	}
+	var objectRetention ObjectRetention
+	objectRetention.Mode = ComplianceMode
+	objectRetention.RetainUntilDate = RetentionDate{Time: time.Unix(0, retainUntilDateInt64).UTC()}
+	b, err := xml.Marshal(objectRetention)
+	if err != nil {
+		log.LogErrorf("getObjectRetentionHandler: xml marshal fail: requestId(%v) volume(%v) result(%v) err(%v)",
+			GetRequestID(r), vol.Name(), objectRetention, err)
+		return
+	}
+
+	writeSuccessResponseXML(w, b)
+	return
+}
+
+func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, uint64) {
 	var partSize uint64
 	var partCount uint64
 	var rangeLower uint64
 	var rangeUpper uint64
-	//partSize, partCount, rangeLower, rangeUpper
+	// partSize, partCount, rangeLower, rangeUpper
 	partSizeConst := ParallelDownloadPartSize
 	partCount = fileSize / uint64(partSizeConst)
 	lastSize := fileSize % uint64(partSizeConst)
@@ -1732,7 +2279,36 @@ func parsePartInfo(partNumber uint64, fileSize uint64) (uint64, uint64, uint64, 
 		rangeUpper = (partSize * partNumber) - 1
 	}
 	if partNumber > partCount {
-		return 0, 0, 0, 0, nil
+		return 0, 0, 0, 0
 	}
-	return partSize, partCount, rangeLower, rangeUpper, nil
+	return partSize, partCount, rangeLower, rangeUpper
+}
+
+func GetContentLength(r *http.Request) int64 {
+	dcl := r.Header.Get(HeaderNameXAmzDecodedContentLength)
+	if dcl != "" {
+		length, err := strconv.ParseInt(dcl, 10, 64)
+		if err == nil {
+			return length
+		}
+	}
+	return r.ContentLength
+}
+
+func VerifyContentLength(r *http.Request, bodyLimit int64) (int64, *ErrorCode) {
+	dcl := r.Header.Get(HeaderNameXAmzDecodedContentLength)
+	var length = r.ContentLength
+	if dcl != "" {
+		l, err := strconv.ParseInt(dcl, 10, 64)
+		if err == nil {
+			length = l
+		}
+	}
+	if length > bodyLimit {
+		return 0, EntityTooLarge
+	}
+	if length < 0 {
+		return 0, MissingContentLength
+	}
+	return length, nil
 }

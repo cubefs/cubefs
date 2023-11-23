@@ -21,11 +21,13 @@ import (
 	"log"
 	"os"
 	"path"
-	"strconv"
+	"strings"
 )
 
 const (
 	DefaultConstConfigFile = "constcfg"
+	ClusterVersionFile     = "CLUSTER-VERSION"
+	ClusterUUID            = "ClusterUUID"
 )
 
 // Config defines the struct of a configuration in general.
@@ -53,7 +55,9 @@ func LoadConfigFile(filename string) (*Config, error) {
 // LoadConfigString loads config information from a JSON string.
 func LoadConfigString(s string) *Config {
 	result := newConfig()
-	err := json.Unmarshal([]byte(s), &result.data)
+	decoder := json.NewDecoder(strings.NewReader(s))
+	decoder.UseNumber()
+	err := decoder.Decode(&result.data)
 	if err != nil {
 		log.Fatalf("error parsing config string %s: %s", s, err)
 	}
@@ -64,9 +68,16 @@ func (c *Config) parse(fileName string) error {
 	jsonFileBytes, err := ioutil.ReadFile(fileName)
 	c.Raw = jsonFileBytes
 	if err == nil {
-		err = json.Unmarshal(jsonFileBytes, &c.data)
+		decoder := json.NewDecoder(strings.NewReader(string(jsonFileBytes)))
+		decoder.UseNumber()
+		err = decoder.Decode(&c.data)
 	}
 	return err
+}
+
+// GetValue returns the raw data for the config key.
+func (c *Config) GetValue(key string) interface{} {
+	return c.data[key]
 }
 
 // GetString returns a string for the config key.
@@ -92,8 +103,12 @@ func (c *Config) GetFloat(key string) float64 {
 	if !present {
 		return -1
 	}
-	if result, isFloat := x.(float64); isFloat {
-		return result
+	if result, isNumber := x.(json.Number); isNumber {
+		number, err := result.Float64()
+		if err != nil {
+			return 0
+		}
+		return number
 	}
 	return 0
 }
@@ -124,46 +139,48 @@ func (c *Config) GetBool(key string) bool {
 	return false
 }
 
-// GetBool returns a int value for the config key.
+// GetInt returns a int value for the config key.
 func (c *Config) GetInt(key string) int {
-	x, present := c.data[key]
-	if !present {
-		return 0
-	}
-	if result, isInt := x.(int); isInt {
-		return result
-	}
-	return 0
+	return int(c.GetInt64(key))
 }
 
-// GetBool returns a int64 value for the config key.
+// GetInt64 returns a int64 value for the config key.
 func (c *Config) GetInt64(key string) int64 {
 	x, present := c.data[key]
 	if !present {
 		return 0
 	}
-	if result, isInt := x.(int64); isInt {
-		return result
-	}
-	if result, isFloat := x.(float64); isFloat {
-		return int64(result)
-	}
-	if result, isString := x.(string); isString {
-		r, err := strconv.ParseInt(result, 10, 64)
-		if err == nil {
-			return r
+	if result, isNumber := x.(json.Number); isNumber {
+		number, err := result.Int64()
+		if err != nil {
+			return 0
 		}
+		return number
 	}
 	return 0
 }
 
-// GetBool returns a int64 value for the config key.
+func (c *Config) HasKey(key string) bool {
+	_, present := c.data[key]
+	return present
+}
+
+// GetInt64WithDefault returns a int64 value for the config key.
 func (c *Config) GetInt64WithDefault(key string, defaultVal int64) int64 {
 	if val := c.GetInt64(key); val == 0 {
 		return defaultVal
 	} else {
 		return val
 	}
+}
+
+// GetInt returns a int value for the config key with default value.
+func (c *Config) GetIntWithDefault(key string, defaultVal int) int {
+	val := int(c.GetInt64(key))
+	if val == 0 {
+		return defaultVal
+	}
+	return val
 }
 
 // GetSlice returns an array for the config key.
@@ -276,4 +293,35 @@ func CheckOrStoreConstCfg(fileDir, fileName string, cfg *ConstConfig) (ok bool, 
 		return false, fmt.Errorf("compare const config %v and %v failed: %v", storedConstCfg, cfg, err)
 	}
 	return true, nil
+}
+
+func CheckOrStoreClusterUuid(dirPath, id string, force bool) (err error) {
+	dir, err := ioutil.ReadDir(dirPath)
+	if err != nil {
+		return fmt.Errorf("read dir %v failed: %v", dirPath, err.Error())
+	}
+	versionFile := path.Join(dirPath, ClusterVersionFile)
+	if len(dir) == 0 || force {
+		// store clusterUUID
+		ClusterMap := map[string]interface{}{"ClusterUUID": id}
+		data, err := json.Marshal(ClusterMap)
+		if err != nil {
+			return fmt.Errorf("json marshal failed: %v", err.Error())
+		}
+		if err = ioutil.WriteFile(versionFile, data, 0755); err != nil {
+			return fmt.Errorf("write file %v failed: %v", versionFile, err.Error())
+		}
+	} else {
+		// check clusterUUID
+		cfg, err := LoadConfigFile(versionFile)
+		if err != nil {
+			return fmt.Errorf("read file %v failed: %v\n", versionFile, err.Error())
+		}
+		clusterUuId := cfg.GetString(ClusterUUID)
+		if clusterUuId != id {
+			return fmt.Errorf("file %v ClusterUUID %v not equal to %v\n",
+				versionFile, clusterUuId, id)
+		}
+	}
+	return
 }

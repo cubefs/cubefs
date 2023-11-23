@@ -35,6 +35,7 @@ import (
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 // Chunkdata has a header (4k).
@@ -101,6 +102,7 @@ type datafile struct {
 	pool  sync.Pool
 
 	File   string
+	chunk  bnapi.ChunkId
 	header ChunkHeader
 	conf   *core.Config
 
@@ -147,7 +149,7 @@ func (hdr *ChunkHeader) String() string {
 	return s
 }
 
-func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos) (
+func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, readPool taskpool.IoPool, writePool taskpool.IoPool) (
 	cd *datafile, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -166,10 +168,11 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		conf.HandleIOError(context.Background(), vm.DiskID, err)
 	}
 
-	ef := core.NewBlobFile(fd, handleIOError)
+	ef := core.NewBlobFile(fd, handleIOError, uint64(vm.ChunkId.VolumeUnitId()), readPool, writePool)
 
 	cd = &datafile{
 		File:   file,
+		chunk:  vm.ChunkId,
 		conf:   conf,
 		closed: false,
 		ef:     ef,
@@ -300,21 +303,23 @@ func (cd *datafile) allocSpace(fsize int64) (pos int64, err error) {
 
 func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	span := trace.SpanFromContextSafe(ctx)
-
 	var (
 		w      *bncomm.Writer
 		buffer []byte
 		start  time.Time
 	)
 
-	phySize := core.Alignphysize(int64(shard.Size))
+	if !cd.qosAllow(ctx, qos.WriteType) { // If there is too much io, it will discard some low-priority io
+		return bloberr.ErrOverload
+	}
+	defer cd.qosRelease(qos.WriteType)
 
 	// allocate space
+	phySize := core.Alignphysize(int64(shard.Size))
 	pos, err := cd.allocSpace(phySize)
 	if err != nil {
 		return err
 	}
-
 	shard.Offset = pos
 
 	headerbuf := make([]byte, core.GetShardHeaderSize())
@@ -329,7 +334,8 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	}
 
 	start = time.Now()
-	_, err = qoswAt.WriteAt(headerbuf, pos)
+
+	_, err = qoswAt.WriteAt(headerbuf, pos) // qos write to raw
 	span.AppendTrackLog("hdr.w", start, err)
 	if err != nil {
 		return err
@@ -402,6 +408,11 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 	if to > shard.Size || to-from > shard.Size {
 		return nil, bloberr.ErrInvalidParam
 	}
+
+	if !cd.qosAllow(ctx, qos.ReadType) { // If there is too much io, it will discard some low-priority io
+		return nil, bloberr.ErrOverload
+	}
+	defer cd.qosRelease(qos.ReadType)
 
 	// skip header
 	pos := shard.Offset + core.GetShardHeaderSize()
@@ -505,17 +516,33 @@ func (cd *datafile) spaceInfo() (size int64, phySpace int64, err error) {
 }
 
 func (cd *datafile) qosReaderAt(ctx context.Context, reader io.ReaderAt) io.ReaderAt {
-	ioType := bnapi.Getiotype(ctx)
+	ioType := bnapi.GetIoType(ctx)
 	return cd.ioQos.ReaderAt(ctx, ioType, reader)
 }
 
 func (cd *datafile) qosWriterAt(ctx context.Context, writer io.WriterAt) io.WriterAt {
-	ioType := bnapi.Getiotype(ctx)
+	ioType := bnapi.GetIoType(ctx)
 	w := cd.ioQos.WriterAt(ctx, ioType, writer)
 	return w
 }
 
 func (cd *datafile) qosWriter(ctx context.Context, writer io.Writer) io.Writer {
-	ioType := bnapi.Getiotype(ctx)
+	ioType := bnapi.GetIoType(ctx)
 	return cd.ioQos.Writer(ctx, ioType, writer)
+}
+
+func (cd *datafile) qosAllow(ctx context.Context, rwType qos.IOTypeRW) bool {
+	q, ok := cd.ioQos.(*qos.IoQueueQos)
+	if !ok {
+		panic("wrong io qos type")
+	}
+	return q.TryAcquireIO(ctx, uint64(cd.chunk.VolumeUnitId()), rwType)
+}
+
+func (cd *datafile) qosRelease(rwType qos.IOTypeRW) {
+	q, ok := cd.ioQos.(*qos.IoQueueQos)
+	if !ok {
+		return
+	}
+	q.ReleaseIO(uint64(cd.chunk.VolumeUnitId()), rwType)
 }

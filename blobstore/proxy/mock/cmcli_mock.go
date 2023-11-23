@@ -47,8 +47,9 @@ func ProxyMockClusterMgrCli(tb testing.TB) cm.APIProxy {
 			return "1024", nil
 		case proto.VolumeChunkSizeKey:
 			return "17179869184", nil
+		default:
+			return
 		}
-		return
 	}).AnyTimes()
 	cmCli.EXPECT().AllocVolume(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, args *cm.AllocVolumeArgs) (ret cm.AllocatedVolumeInfos, err error) {
 		if !args.CodeMode.IsValid() {

@@ -5,8 +5,15 @@
 [![LICENSE](https://img.shields.io/github/license/cubefs/cubefs.svg)](https://github.com/cubefs/cubefs/blob/master/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cubefs/cubefs)](https://goreportcard.com/report/github.com/cubefs/cubefs)
-[![Docs](https://readthedocs.org/projects/cubefs/badge/?version=latest)](https://cubefs.readthedocs.io/en/latest/?badge=latest)
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/2761)
+[![Docs](https://img.shields.io/badge/docs-latest-green.svg)](https://cubefs.io/docs/master/overview/introduction.html)
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2761/badge)](https://bestpractices.coreinfrastructure.org/projects/6232)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/cubefs/cubefs/badge)](https://securityscorecards.dev/viewer/?uri=github.com/cubefs/cubefs)
+[![Codecov](https://img.shields.io/codecov/c/github/cubefs/cubefs?style=flat-square&logo=codecov)](https://codecov.io/gh/cubefs/cubefs)
+[![Artifact HUB](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/cubefs)](https://artifacthub.io/packages/helm/cubefs/cubefs)
+[![CLOMonitor](https://img.shields.io/endpoint?url=https://clomonitor.io/api/projects/cncf/chubao-fs/badge)](https://clomonitor.io/projects/cncf/chubao-fs)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fcubefs%2Fcubefs.svg?type=shield&issueType=security)](https://app.fossa.com/projects/git%2Bgithub.com%2Fcubefs%2Fcubefs?ref=badge_shield)
+[![Release](https://img.shields.io/github/v/release/cubefs/cubefs.svg?color=161823&style=flat-square&logo=smartthings)](https://github.com/cubefs/cubefs/releases)
+[![Tag](https://img.shields.io/github/v/tag/cubefs/cubefs.svg?color=ee8936&logo=fitbit&style=flat-square)](https://github.com/cubefs/cubefs/tags)
 
 |<img src="https://user-images.githubusercontent.com/5708406/91202310-31eaab80-e734-11ea-84fc-c1b1882ae71c.png" height="24"/>&nbsp;Community Meeting|
 |------------------|
@@ -32,41 +39,23 @@ Some key features of CubeFS include:
 - Flexible storage policies, high-performance replication or low-cost erasure coding
 
 
+<div width="100%" style="text-align:center;"><img alt="CubeFS Architecture" src="https://raw.githubusercontent.com/cubefs/cubefs/master/docs/source/pic/cfs-arch-ec.png"/></div>
+
 ## Documents
 
-- English version: https://cubefs.readthedocs.io/en/latest/
+- English version: https://cubefs.io/docs/master/overview/introduction.html
 - Chinese version: https://cubefs.io/zh/docs/master/overview/introduction.html
-
-## Benchmark
-
-Small file operation performance and scalability benchmark tested by [mdtest](https://github.com/LLNL/mdtest).
-
-<img src="https://raw.githubusercontent.com/cubefs/cubefs/master/docs/source/pic/cfs-small-file-benchmark.png" width="600" align=center/>
-
-|File Size (KB)	|  1	|  2	|  4	|  8	|   16  |   32  |   64  |  128 |
-|:-|:-|:-|:-|:-|:-|:-|:-|:-|
-|Creation (TPS)	|70383	|70383	|73738	|74617	|69479	|67435	|47540	|27147 |
-|Read (TPS)	    |108600	|118193	|118346	|122975	|116374	|110795	|90462	|62082 |
-|Removal (TPS)	|87648	|84651	|83532	|79279	|85498	|86523	|80946	|84441 |
-|Stat (TPS)	    |231961	|263270	|264207	|252309	|240244	|244906	|273576	|242930|
-
-Refer to [cubefs.readthedocs.io](https://cubefs.readthedocs.io/en/latest/evaluation.html) for performance and scalability of `IO` and `Metadata`.
-
-## Setup CubeFS 
-- [Set up a small CubeFS cluster](https://github.com/cubefs/cubefs/blob/master/INSTALL.md) 
-- [Helm chart to Run a CubeFS Cluster in Kubernetes](https://github.com/cubefs/cubefs/blob/master/HELM.md)
 
 ## Community
 
 - Homepage: [cubefs.io](https://cubefs.io/)
-- Mailing list: cubefs-users@groups.io
+- Mailing list: users@cubefs.groups.io
 - Slack: [cubefs.slack.com](https://cubefs.slack.com/)
 - WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604).
 
 ## Partners and Users
 
 There is the list of users and success stories [ADOPTERS.md](ADOPTERS.md).
-
 
 ## Reference
 
@@ -83,3 +72,7 @@ For detail see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 ## Note
 
 The master branch may be in an unstable or even broken state during development. Please use releases instead of the master branch in order to get a stable set of binaries.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=cubefs/cubefs&type=Date)](https://star-history.com/#cubefs/cubefs&Date)

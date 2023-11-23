@@ -98,7 +98,7 @@ metanode_totalMem = "28589934592"
 ...
 ```
 
-For more configurations please refer to [documentation](https://cubefs.readthedocs.io/en/latest/user-guide/master.html).
+For more configurations please refer to [documentation](https://cubefs.io/docs/master/maintenance/configs/master.html).
 
 Start the resources of CubeFS cluster with script `install.sh`. (make sure the Master is started first)
 

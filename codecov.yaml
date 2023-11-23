@@ -1,0 +1,18 @@
+coverage:
+  status: # https://docs.codecov.com/docs/commit-status
+    project:
+      default: # This can be anything, but it needs to exist as the name
+        # basic settings
+        target: auto # auto | <number>
+        threshold: 5% # <number>
+
+        # advanced settings
+        branches:
+          - master
+        only_pulls: true
+        informational: true
+        removed_code_behavior: off #removals_only, fully_covered_patch, adjust_base",
+
+    patch:
+      default:
+        informational: true

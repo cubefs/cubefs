@@ -575,6 +575,8 @@ func (d *DiskMgr) GetHeartbeatChangeDisks() []HeartbeatEvent {
 		span.Debugf("diskId:%d,expireTime:%v,lastExpireTime:%v", disk.diskID, disk.expireTime, disk.lastExpireTime)
 		// notify topper level when heartbeat expire or heartbeat recover
 		if disk.isExpire() {
+			span.Warnf("diskId:%d was expired,expireTime:%v,lastExpireTime:%v", disk.diskID, disk.expireTime, disk.lastExpireTime)
+
 			// expired disk has been notified already, then ignore it
 			if time.Since(disk.expireTime) >= 2*time.Duration(d.HeartbeatExpireIntervalS)*time.Second {
 				disk.lock.RUnlock()

@@ -9,7 +9,7 @@ The configuration of the proxy is based on the [public configuration](./base.md)
 ### Key Configuration
 
 ::: tip Note
-Starting from version v3.2.2, Proxy node supports caching of volume and disk information.
+Starting from version v3.3.0, Proxy node supports caching of volume and disk information.
 :::
 
 | Configuration Item     | Description                                                                                                                | Required |
@@ -47,11 +47,14 @@ Starting from version v3.2.2, Proxy node supports caching of volume and disk inf
   "retain_interval_s": "Renewal interval cycle, used in conjunction with the volume expiration time set by cm",
   "init_volume_num": "The number of volumes requested from clustermgr when starting up, set according to the size of the cluster",
   "default_alloc_vols_num": "The number of volumes requested from clustermgr each time, access allocation requests can trigger",
+  "retain_volume_batch_num": "The number of retain volumes in batches, which can relieve the pressure of a single retain, the default is 400",
+  "retain_batch_interval_s": "Batch retain interval",
   "metric_report_interval_s": "Time interval for proxy to report running status to Prometheus",
   "mq": {
     "blob_delete_topic": "Topic name for delete messages",
     "shard_repair_topic": "Topic name for repair messages",
     "shard_repair_priority_topic": "Messages with high-priority repair will be delivered to this topic, usually when a bid has missing chunks in multiple chunks",
+    "version": "kafka version, default is 2.1.0",
     "msg_sender": {
       "kafka": "Refer to the Kafka producer usage configuration introduction"
     }
@@ -81,6 +84,7 @@ Starting from version v3.2.2, Proxy node supports caching of volume and disk inf
     "blob_delete_topic": "blob_delete",
     "shard_repair_topic": "shard_repair",
     "shard_repair_priority_topic": "shard_repair_prior",
+    "version": "0.10.2.0",
     "msg_sender": {
       "broker_list": ["127.0.0.1:9092"]
     }

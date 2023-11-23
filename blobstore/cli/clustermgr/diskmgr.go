@@ -15,6 +15,7 @@
 package clustermgr
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -83,6 +84,34 @@ func addCmdDisk(cmd *grumble.Command) {
 			clusterFlags(f)
 		},
 	})
+
+	// offline disk
+	command.AddCommand(&grumble.Command{
+		Name: "offline",
+		Help: "offline disk <diskid>",
+		Run:  cmdOfflineDisk,
+		Args: func(a *grumble.Args) {
+			args.DiskIDRegister(a)
+		},
+		Flags: func(f *grumble.Flags) {
+			flags.VerboseRegister(f)
+			clusterFlags(f)
+		},
+	})
+
+	// offline all disks on the specified node
+	command.AddCommand(&grumble.Command{
+		Name: "offlineAll",
+		Help: "offline all disks on the specified node",
+		Run:  cmdOfflineAllDisks,
+		Args: func(a *grumble.Args) {
+			args.NodeHostRegister(a)
+		},
+		Flags: func(f *grumble.Flags) {
+			flags.VerboseRegister(f)
+			clusterFlags(f)
+		},
+	})
 }
 
 func cmdGetDisk(c *grumble.Context) error {
@@ -127,16 +156,7 @@ func cmdListDisks(c *grumble.Context) error {
 
 		for _, disk := range disks.Disks {
 			num++
-			if verbose || vv {
-				fmt.Printf("%4d. %s\n", num, strings.Repeat("- ", 60))
-				if vv {
-					ac.Next().Println(cfmt.DiskInfoJoinV(disk, "  "))
-				} else {
-					ac.Next().Println(cfmt.DiskInfoJoin(disk, "  "))
-				}
-			} else {
-				ac.Next().Printf("%4d. %v\n", num, disk)
-			}
+			showDisk(disk, ac, num, verbose, vv)
 		}
 
 		if disks.Marker == proto.InvalidDiskID || len(disks.Disks) < listOptionArgs.Count {
@@ -201,4 +221,110 @@ func openDiskTable(db *normaldb.NormalDB) (*normaldb.DiskTable, error) {
 		return nil, err
 	}
 	return tbl, nil
+}
+
+func cmdOfflineDisk(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+	diskid := args.DiskID(c.Args)
+	if diskid <= 0 {
+		return errors.New("invalid common args")
+	}
+
+	if !common.Confirm(fmt.Sprintf("offline disk %d?\n", diskid)) {
+		return nil
+	}
+
+	verbose := config.Verbose() || flags.Verbose(c.Flags)
+	if verbose {
+		fmt.Printf("set disk %d readonly\n", diskid)
+	}
+	if err := readonlyAndDropDisk(ctx, cmClient, diskid); err != nil {
+		return err
+	}
+	fmt.Printf("start to offline disk %d in the background\n", diskid)
+
+	return nil
+}
+
+func cmdOfflineAllDisks(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+	nodeHost := args.NodeHost(c.Args)
+	if len(nodeHost) <= 0 {
+		return errors.New("invalid args, node host is empty")
+	}
+
+	disks := make([]*blobnode.DiskInfo, 0)
+
+	// list all disks on the node
+	listOptionArgs := &clustermgr.ListOptionArgs{
+		Host:   nodeHost,
+		Status: proto.DiskStatusNormal, // only list normal disks
+		Marker: proto.DiskID(1),
+	}
+	for listOptionArgs.Marker > proto.InvalidDiskID {
+		disksOneQuery, err := cmClient.ListDisk(ctx, listOptionArgs)
+		if err != nil {
+			return err
+		}
+		disks = append(disks, disksOneQuery.Disks...)
+		listOptionArgs.Marker = disksOneQuery.Marker
+	}
+
+	// show all disks on the node and confirm
+	verbose := config.Verbose() || flags.Verbose(c.Flags)
+	vv := flags.Vverbose(c.Flags)
+	fmt.Printf("disks on node <%s>:\n", nodeHost)
+	ac := common.NewAlternateColor(3)
+	for i, disk := range disks {
+		showDisk(disk, ac, i+1, verbose, vv)
+	}
+	fmt.Println()
+	if !common.Confirm(fmt.Sprintf("offline all disks on node <%s>?\n", nodeHost)) {
+		return nil
+	}
+
+	// offline disks sequentially
+	for _, disk := range disks {
+		diskid := disk.DiskID
+		if vv {
+			fmt.Printf("set disk %d readonly\n", diskid)
+		}
+		if err := readonlyAndDropDisk(ctx, cmClient, diskid); err != nil {
+			return fmt.Errorf("offline disk %d failed: %w", diskid, err)
+		}
+		if verbose {
+			fmt.Printf("start to offline disk %d in the background\n", diskid)
+		}
+	}
+
+	fmt.Printf("successfully initiate background offline operations on all disks on node <%s>\n", nodeHost)
+
+	return nil
+}
+
+func showDisk(disk *blobnode.DiskInfo, ac *common.AlternateColor, num int, verbose, vv bool) {
+	if verbose || vv {
+		fmt.Printf("%4d. %s\n", num, strings.Repeat("- ", 60))
+		if vv {
+			ac.Next().Println(cfmt.DiskInfoJoinV(disk, "  "))
+		} else {
+			ac.Next().Println(cfmt.DiskInfoJoin(disk, "  "))
+		}
+	} else {
+		ac.Next().Printf("%4d. %v\n", num, disk)
+	}
+}
+
+func readonlyAndDropDisk(ctx context.Context, cmClient *clustermgr.Client, diskid proto.DiskID) error {
+	err := cmClient.SetReadonlyDisk(ctx, diskid, true)
+	if err != nil {
+		return fmt.Errorf("set disk %d readonly failed: %w", diskid, err)
+	}
+	if err := cmClient.DropDisk(ctx, diskid); err != nil {
+		return fmt.Errorf("drop disk %d failed: %w", diskid, err)
+	}
+
+	return nil
 }

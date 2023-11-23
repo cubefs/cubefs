@@ -17,12 +17,16 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"strconv"
+
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"github.com/cubefs/cubefs/raftstore"
+	raftstore "github.com/cubefs/cubefs/raftstore/raftstore_db"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
-	"io"
-	"strconv"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -47,6 +51,7 @@ type MetadataFsm struct {
 	peerChangeHandler   raftPeerChangeHandler
 	snapshotHandler     raftApplySnapshotHandler
 	UserAppCmdHandler   raftUserCmdApplyHandler
+	onSnapshot          bool
 }
 
 func newMetadataFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
@@ -125,7 +130,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 
 	switch cmd.Op {
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
-		opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser:
+		opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser, opSyncDeleteQuota, opSyncDeleteLcNode, opSyncDeleteLcConf, opSyncS3QosDelete:
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
@@ -138,6 +143,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 	default:
+		// sync put data
 		if err = mf.store.BatchPut(cmdMap, true); err != nil {
 			panic(err)
 		}
@@ -176,39 +182,93 @@ func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
 
 // ApplySnapshot implements the interface of raft.StateMachine
 func (mf *MetadataFsm) ApplySnapshot(peers []proto.Peer, iterator proto.SnapIterator) (err error) {
-	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] reset rocksdb before applying snapshot"))
-	snap := mf.store.RocksDBSnapshot()
-	defer mf.store.ReleaseSnapshot(snap)
-	it := mf.store.Iterator(snap)
-	defer it.Close()
-
-	for it.SeekToFirst(); it.Valid(); it.Next() {
-		key := string(it.Key().Data())
-		log.LogInfof("deleting Key: %v Value: %v", key, it.Value().Data())
-		mf.store.Del(key, true)
-	}
-
-	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
+	log.LogWarnf("action[ApplySnapshot] reset rocksdb before applying snapshot")
+	mf.onSnapshot = true
+	defer func() {
+		mf.onSnapshot = false
+	}()
 	var data []byte
+	// clear recovery dir
+	recoveryDir := raftstore.GetRocksDBStoreRecoveryDir(mf.store.GetDir())
+	if fileutil.ExistDir(recoveryDir) {
+		if err = os.RemoveAll(recoveryDir); err != nil {
+			log.LogErrorf("failed to remove temp dir %v, error %v", recoveryDir, err.Error())
+			return
+		}
+	}
+	rocksdbOpened := true
+	removeDir := ""
+	// open temp rocksdb
+	tempDb, err := raftstore.NewRocksDBStore(recoveryDir, mf.store.GetLruCacheSize(), mf.store.GetWriteBufferSize())
+	if err != nil {
+		log.LogErrorf("failed to open temp rocksdb %v", err.Error())
+		goto errHandler
+	}
+	// close rocksdb
+	mf.store.Close()
+	rocksdbOpened = false
+	// remove by rename
+	removeDir, err = os.MkdirTemp("", "remove_by_rename")
+	if err != nil {
+		log.LogErrorf("failed to get temp dir %v", err.Error())
+		goto errHandler
+	}
+	removeDir = fmt.Sprintf("%s/remove", removeDir)
+	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] begin,applied[%v]", mf.applied))
 	for err == nil {
+		bgTime := stat.BeginStat()
 		if data, err = iterator.Next(); err != nil {
 			break
 		}
+		stat.EndStat("ApplySnapshot-Next", err, bgTime, 1)
 		cmd := &RaftCmd{}
 		if err = json.Unmarshal(data, cmd); err != nil {
+			tempDb.Close()
 			goto errHandler
 		}
-		if _, err = mf.store.Put(cmd.K, cmd.V, true); err != nil {
+		bgTime = stat.BeginStat()
+		if _, err = tempDb.Put(cmd.K, cmd.V, false); err != nil {
+			tempDb.Close()
 			goto errHandler
 		}
+		stat.EndStat("ApplySnapshot-Put", err, bgTime, 1)
 	}
 	if err != nil && err != io.EOF {
+		tempDb.Close()
 		goto errHandler
+	}
+
+	if err = tempDb.Flush(); err != nil {
+		log.LogError(fmt.Sprintf("action[ApplySnapshot] Flush failed,err:%v", err.Error()))
+		tempDb.Close()
+		goto errHandler
+	}
+	tempDb.Close()
+	// commit point, remove by rename
+	if err = os.Rename(mf.store.GetDir(), removeDir); err != nil {
+		goto errHandler
+	}
+	if err = os.RemoveAll(removeDir); err != nil {
+		err = nil
+		log.LogErrorf("failed to remove directory %v", err.Error())
+	}
+	// rename new dir to raft store dir
+	if err = os.Rename(tempDb.GetDir(), mf.store.GetDir()); err != nil {
+		goto errHandler
+	}
+	// finish snapshot
+	err = mf.store.Open()
+	if err != nil {
+		log.LogErrorf("failed to open rocksdb %v", err.Error())
+		return err
 	}
 	mf.snapshotHandler()
 	log.LogWarnf(fmt.Sprintf("action[ApplySnapshot] success,applied[%v]", mf.applied))
 	return nil
 errHandler:
+	if !rocksdbOpened {
+		mf.store.Open()
+	}
 	log.LogError(fmt.Sprintf("action[ApplySnapshot] failed,err:%v", err.Error()))
 	return err
 }
@@ -227,4 +287,11 @@ func (mf *MetadataFsm) HandleLeaderChange(leader uint64) {
 
 func (mf *MetadataFsm) delKeyAndPutIndex(key string, cmdMap map[string][]byte) (err error) {
 	return mf.store.DeleteKeyAndPutIndex(key, cmdMap, true)
+}
+
+// Stop stops the RaftServer
+func (mf *MetadataFsm) Stop() {
+	if mf.rs != nil {
+		mf.rs.Stop()
+	}
 }

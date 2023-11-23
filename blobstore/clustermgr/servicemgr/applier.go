@@ -66,7 +66,7 @@ func (s *ServiceMgr) Apply(ctx context.Context, opTypes []int32, datas [][]byte,
 				defer wg.Done()
 				var arg clustermgr.RegisterArgs
 				if err := json.Unmarshal(datas[idx], &arg); err != nil {
-					errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+					errs[idx] = errors.Info(err, OpRegister, datas[idx]).Detail(err)
 					return
 				}
 				errs[idx] = s.handleRegister(taskCtx, arg)
@@ -77,7 +77,7 @@ func (s *ServiceMgr) Apply(ctx context.Context, opTypes []int32, datas [][]byte,
 				defer wg.Done()
 				var arg clustermgr.UnregisterArgs
 				if err := json.Unmarshal(datas[idx], &arg); err != nil {
-					errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+					errs[idx] = errors.Info(err, OpUnregister, datas[idx]).Detail(err)
 					return
 				}
 				errs[idx] = s.handleUnregister(taskCtx, arg.Name, arg.Host)
@@ -88,11 +88,12 @@ func (s *ServiceMgr) Apply(ctx context.Context, opTypes []int32, datas [][]byte,
 				defer wg.Done()
 				var arg clustermgr.HeartbeatArgs
 				if err := json.Unmarshal(datas[idx], &arg); err != nil {
-					errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+					errs[idx] = errors.Info(err, OpHeartbeat, datas[idx]).Detail(err)
 					return
 				}
 				errs[idx] = s.handleHeartbeat(taskCtx, arg.Name, arg.Host)
 			})
+		default:
 		}
 	}
 
@@ -150,6 +151,7 @@ func (s *ServiceMgr) Flush(ctx context.Context) error {
 			if err = s.tbl.Put(name, host, data); err != nil {
 				span.Panicf("put [moduleName: %s, host: %s] error: %v", name, host, err)
 			}
+		default:
 		}
 		return true
 	})
@@ -157,4 +159,5 @@ func (s *ServiceMgr) Flush(ctx context.Context) error {
 }
 
 func (s *ServiceMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }

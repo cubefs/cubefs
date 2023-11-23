@@ -1,22 +1,21 @@
 # 使用纠删码系统
 
 ::: tip 提示
-快速体验请看[单机部署](../deploy/node.md)
+快速体验请看[单机部署](../quick-start/node.md)
 :::
 
 ## 编译构建
 
 ``` bash
 $ git clone https://github.com/cubefs/cubefs.git
-$ cd cubefs/blobstore
-$ source env.sh
-$ sh build.sh
+$ source build/cgo_env.sh
+$ make blobstore
 ```
 
-构建成功后，将在 `bin` 目录中生成以下可执行文件：
+构建成功后，将在 `build/bin/blobstore` 目录中生成以下可执行文件：
 
 ```text
-├── bin
+├── build/bin/blobstore
 │   ├── access
 │   ├── clustermgr
 │   ├── proxy
@@ -40,7 +39,6 @@ $ sh build.sh
     > [Kafka](https://kafka.apache.org/documentation/#basic_ops)
     >
     > [Consul](https://learn.hashicorp.com/tutorials/consul/get-started-install?in=consul/getting-started)
-    > （可选，支持consul）
 
 3.  **语言环境**
 
@@ -187,6 +185,8 @@ nohup ./scheduler -f scheduler.conf &
      "broker_list": ["127.0.0.1:9092"]
    },
    "blob_delete": {
+     "max_batch_size": 10,
+     "batch_interval_s": 2,
      "delete_log": {
        "dir": "./run/delete_log"
      }
@@ -410,7 +410,7 @@ learner节点一般用于数据备份，故障恢复
 
 ## 上传测试
 
-> 可参考[CLI部署验证](../deploy/verify.md)
+> 可参考[CLI使用](../deploy/verify.md)
 
 ## 修改Master配置支持纠删码
 

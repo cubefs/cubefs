@@ -20,23 +20,24 @@ import (
 )
 
 var (
-	ExtentHasBeenDeletedError = errors.New("extent has been deleted")
-	ParameterMismatchError    = errors.New("parameter mismatch error")
-	NoAvailableExtentError    = errors.New("no available extent")
-	NoBrokenExtentError       = errors.New("no unavailable extent")
-	NoSpaceError              = errors.New("no space left on the device")
-	TryAgainError             = errors.New("try again")
-	CrcMismatchError          = errors.New("packet Crc is incorrect")
-	NoLeaderError             = errors.New("no raft leader")
-	ExtentNotFoundError       = errors.New("extent does not exist")
-	ExtentExistsError         = errors.New("extent already exists")
-	ExtentIsFullError         = errors.New("extent is full")
-	BrokenExtentError         = errors.New("extent has been broken")
-	BrokenDiskError           = errors.New("disk has broken")
-	ForbidWriteError          = errors.New("single replica decommission forbid write")
+	ExtentHasBeenDeletedError  = errors.New("extent has been deleted")
+	ParameterMismatchError     = errors.New("parameter mismatch error")
+	NoAvailableExtentError     = errors.New("no available extent")
+	NoBrokenExtentError        = errors.New("no unavailable extent")
+	NoSpaceError               = errors.New("no space left on the device")
+	TryAgainError              = errors.New("try again")
+	CrcMismatchError           = errors.New("packet Crc is incorrect")
+	NoLeaderError              = errors.New("no raft leader")
+	ExtentNotFoundError        = errors.New("extent does not exist")
+	ExtentExistsError          = errors.New("extent already exists")
+	ExtentIsFullError          = errors.New("extent is full")
+	BrokenExtentError          = errors.New("extent has been broken")
+	BrokenDiskError            = errors.New("disk has broken")
+	ForbidWriteError           = errors.New("single replica decommission forbid write")
+	VerNotConsistentError      = errors.New("ver not consistent")
+	SnapshotNeedNewExtentError = errors.New("snapshot need new extent error")
 )
 
-func NewParameterMismatchErr(msg string) (err error) {
-	err = fmt.Errorf("parameter mismatch error: %s", msg)
-	return
+func newParameterError(format string, a ...interface{}) error {
+	return fmt.Errorf("parameter mismatch error: %s", fmt.Sprintf(format, a...))
 }

@@ -25,6 +25,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -44,6 +46,8 @@ const (
 	mds3Addr          = "127.0.0.1:9103"
 	mds4Addr          = "127.0.0.1:9104"
 	mds5Addr          = "127.0.0.1:9105"
+	mds6Addr          = "127.0.0.1:9106"
+	mds7Addr          = "127.0.0.1:9107"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -51,9 +55,12 @@ const (
 	mms4Addr      = "127.0.0.1:8104"
 	mms5Addr      = "127.0.0.1:8105"
 	mms6Addr      = "127.0.0.1:8106"
+	mms7Addr      = "127.0.0.1:8107"
+	mms8Addr      = "127.0.0.1:8108"
 	commonVolName = "commonVol"
 	testZone1     = "zone1"
 	testZone2     = "zone2"
+	testZone3     = "zone3"
 
 	testUserID  = "testUser"
 	ak          = "0123456789123456"
@@ -64,6 +71,38 @@ const (
 var server = createDefaultMasterServerForTest()
 var commonVol *Vol
 var cfsUser *proto.UserInfo
+
+var mockServerLock sync.Mutex
+
+var mockDataServers []*mocktest.MockDataServer
+
+var mockMetaServers []*mocktest.MockMetaServer
+
+func rangeMockDataServers(fun func(*mocktest.MockDataServer) bool) (count int, passed int) {
+	mockServerLock.Lock()
+	defer mockServerLock.Unlock()
+	count = len(mockDataServers)
+	for _, mds := range mockDataServers {
+		passed += 1
+		if !fun(mds) {
+			return
+		}
+	}
+	return
+}
+
+func rangeMockMetaServers(fun func(*mocktest.MockMetaServer) bool) (count int, passed int) {
+	mockServerLock.Lock()
+	defer mockServerLock.Unlock()
+	count = len(mockMetaServers)
+	for _, mms := range mockMetaServers {
+		passed += 1
+		if !fun(mms) {
+			return
+		}
+	}
+	return
+}
 
 func createDefaultMasterServerForTest() *Server {
 
@@ -77,10 +116,10 @@ func createDefaultMasterServerForTest() *Server {
 		"retainLogs":"20000",
 		"tickInterval":500,
 		"electionTick":6,
-		"logDir": "/tmp/chubaofs/Logs",
+		"logDir": "/tmp/cubefs/Logs",
 		"logLevel":"DEBUG",
-		"walDir":"/tmp/chubaofs/raft",
-		"storeDir":"/tmp/chubaofs/rocksdbstore",
+		"walDir":"/tmp/cubefs/raft",
+		"storeDir":"/tmp/cubefs/rocksdbstore",
 		"clusterName":"cubefs"
 	}`
 
@@ -89,17 +128,23 @@ func createDefaultMasterServerForTest() *Server {
 		panic(err)
 	}
 	//add data node
-	addDataServer(mds1Addr, testZone1)
-	addDataServer(mds2Addr, testZone1)
-	addDataServer(mds3Addr, testZone2)
-	addDataServer(mds4Addr, testZone2)
-	addDataServer(mds5Addr, testZone2)
+	mockDataServers = make([]*mocktest.MockDataServer, 0)
+	mockDataServers = append(mockDataServers, addDataServer(mds1Addr, testZone1))
+	mockDataServers = append(mockDataServers, addDataServer(mds2Addr, testZone1))
+	mockDataServers = append(mockDataServers, addDataServer(mds3Addr, testZone2))
+	mockDataServers = append(mockDataServers, addDataServer(mds4Addr, testZone2))
+	mockDataServers = append(mockDataServers, addDataServer(mds5Addr, testZone2))
+	mockDataServers = append(mockDataServers, addDataServer(mds6Addr, testZone2))
+
 	// add meta node
-	addMetaServer(mms1Addr, testZone1)
-	addMetaServer(mms2Addr, testZone1)
-	addMetaServer(mms3Addr, testZone2)
-	addMetaServer(mms4Addr, testZone2)
-	addMetaServer(mms5Addr, testZone2)
+	mockMetaServers = make([]*mocktest.MockMetaServer, 0)
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms1Addr, testZone1))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms2Addr, testZone1))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms3Addr, testZone2))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms4Addr, testZone2))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms5Addr, testZone2))
+	mockMetaServers = append(mockMetaServers, addMetaServer(mms6Addr, testZone2))
+	// we should wait 5 seoncds for master to prepare state
 	time.Sleep(5 * time.Second)
 	testServer.cluster.checkDataNodeHeartbeat()
 	testServer.cluster.checkMetaNodeHeartbeat()
@@ -114,7 +159,7 @@ func createDefaultMasterServerForTest() *Server {
 	req := &createVolReq{
 		name:             commonVolName,
 		owner:            "cfs",
-		size:             3,
+		dpSize:           3,
 		mpCount:          3,
 		dpReplicaNum:     3,
 		capacity:         300,
@@ -188,8 +233,8 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	default:
 		level = log.ErrorLevel
 	}
-	if _, err = log.InitLog(logDir, "master", level, nil); err != nil {
-		fmt.Println("Fatal: failed to start the chubaofs daemon - ", err)
+	if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimit); err != nil {
+		fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
 		return
 	}
 	if profPort != "" {
@@ -208,14 +253,16 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 	return server, nil
 }
 
-func addDataServer(addr, zoneName string) {
+func addDataServer(addr, zoneName string) *mocktest.MockDataServer {
 	mds := mocktest.NewMockDataServer(addr, zoneName)
 	mds.Start()
+	return mds
 }
 
-func addMetaServer(addr, zoneName string) {
+func addMetaServer(addr, zoneName string) *mocktest.MockMetaServer {
 	mms := mocktest.NewMockMetaServer(addr, zoneName)
 	mms.Start()
+	return mms
 }
 
 func TestSetMetaNodeThreshold(t *testing.T) {
@@ -449,7 +496,7 @@ func TestUpdateVol(t *testing.T) {
 	setParam(descriptionKey, proto.AdminUpdateVol, req, desc, t)
 	checkParam(zoneNameKey, proto.AdminUpdateVol, req, "default", testZone1, t)
 	checkParam(authenticateKey, proto.AdminUpdateVol, req, "tt", true, t)
-	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", false, t)
+	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", true, t)
 	checkParam(ebsBlkSizeKey, proto.AdminUpdateVol, req, "-1", blkSize, t)
 	checkParam(cacheActionKey, proto.AdminUpdateVol, req, "3", proto.RWCache, t)
 	checkParam(cacheCapacity, proto.AdminUpdateVol, req, "1027", cacheCap, t)
@@ -621,11 +668,10 @@ func TestDataPartitionDecommission(t *testing.T) {
 	partition.isRecover = false
 }
 
-//func TestGetAllVols(t *testing.T) {
-//	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
-//	process(reqURL, t)
-//}
-//
+//	func TestGetAllVols(t *testing.T) {
+//		reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetALLVols)
+//		process(reqURL, t)
+//	}
 func TestGetMetaPartitions(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.ClientMetaPartitions, commonVolName)
 	process(reqURL, t)
@@ -646,10 +692,38 @@ func TestGetMetaNode(t *testing.T) {
 	process(reqURL, t)
 }
 
+func TestGetNodeInfo(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetNodeInfo)
+	process(reqURL, t)
+}
+
+func TestSetNodeMaxDpCntLimit(t *testing.T) {
+	// change current max data partition count limit to 4000
+	limit := uint32(4000)
+	reqURL := fmt.Sprintf("%v%v?maxDpCntLimit=%v", hostAddr, proto.AdminSetNodeInfo, limit)
+	process(reqURL, t)
+	// query current settings
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetNodeInfo)
+	reply := process(reqURL, t)
+	data := reply.Data.(map[string]interface{})
+	limitStr := (data[maxDpCntLimitKey]).(string)
+	assert.True(t, fmt.Sprint(limit) == limitStr)
+	// query data node info
+	reqURL = fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetDataNode, mds1Addr)
+	reply = process(reqURL, t)
+	data = reply.Data.(map[string]interface{})
+	dataNodeLimit := uint32((data[maxDpCntLimitKey]).(float64))
+	assert.True(t, dataNodeLimit == limit)
+}
+
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
-	dsAddr := "127.0.0.1:9106"
-	addDataServer(dsAddr, "zone2")
+	dsAddr := mds7Addr
+	func() {
+		mockServerLock.Lock()
+		defer mockServerLock.Unlock()
+		mockDataServers = append(mockDataServers, addDataServer(dsAddr, "zone2"))
+	}()
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
@@ -675,7 +749,7 @@ func TestAddDataReplica(t *testing.T) {
 func TestRemoveDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	partition.isRecover = false
-	dsAddr := "127.0.0.1:9106"
+	dsAddr := mds7Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
@@ -695,15 +769,18 @@ func TestAddMetaReplica(t *testing.T) {
 		t.Error("no meta partition")
 		return
 	}
-	msAddr := "127.0.0.1:8009"
-	addMetaServer(msAddr, testZone2)
+	func() {
+		mockServerLock.Lock()
+		defer mockServerLock.Unlock()
+		mockMetaServers = append(mockMetaServers, addMetaServer(mms8Addr, testZone3))
+	}()
 	server.cluster.checkMetaNodeHeartbeat()
 	time.Sleep(2 * time.Second)
-	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, msAddr)
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaReplica, partition.PartitionID, mms8Addr)
 	process(reqURL, t)
 	partition.RLock()
-	if !contains(partition.Hosts, msAddr) {
-		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, msAddr)
+	if !contains(partition.Hosts, mms8Addr) {
+		t.Errorf("hosts[%v] should contains dsAddr[%v]", partition.Hosts, mms8Addr)
 		partition.RUnlock()
 		return
 	}
@@ -718,7 +795,7 @@ func TestRemoveMetaReplica(t *testing.T) {
 		return
 	}
 	partition.IsRecover = false
-	msAddr := "127.0.0.1:8009"
+	msAddr := mms8Addr
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, partition.PartitionID, msAddr)
 	process(reqURL, t)
 	partition.RLock()
@@ -740,6 +817,136 @@ func TestListVols(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?keywords=%v", hostAddr, proto.AdminListVols, commonVolName)
 	fmt.Println(reqURL)
 	process(reqURL, t)
+}
+
+func TestUpdateNodesetNodeSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	ns := nsc[0]
+	reqUrl := fmt.Sprintf("%v%v?zoneName=%v&id=%v", hostAddr, proto.AdminUpdateNodeSetNodeSelector, testZone2, ns.ID)
+	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, RoundRobinNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, RoundRobinNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	if ns.GetDataNodeSelector() != RoundRobinNodeSelectorName {
+		t.Errorf("failed to change data node selector")
+		return
+	}
+	process(updateMetaSelectorUrl, t)
+	if ns.GetMetaNodeSelector() != RoundRobinNodeSelectorName {
+		t.Errorf("failed to change meta node selector")
+		return
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
+func TestUpdateZoneNodesetSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v?name=%v&enable=1", hostAddr, proto.UpdateZone, testZone2)
+	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
+	process(updateDataSelectorUrl, t)
+	if zone.GetDataNodesetSelector() != CarryWeightNodesetSelectorName {
+		t.Errorf("failed to change data nodeset selector")
+	}
+	process(updateMetaSelectorUrl, t)
+	if zone.GetMetaNodesetSelector() != CarryWeightNodesetSelectorName {
+		t.Errorf("failed to change meta nodeset selector")
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v&dataNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v&metaNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
+func TestUpdateZoneNodeSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v?name=%v&enable=1", hostAddr, proto.UpdateZone, testZone2)
+	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	failed := false
+	func() {
+		zone.nsLock.RLock()
+		defer zone.nsLock.RUnlock()
+		for _, ns := range zone.nodeSetMap {
+			if ns.GetDataNodeSelector() != TicketNodeSelectorName {
+				t.Errorf("failed to change data nodeset selector")
+				failed = true
+			}
+		}
+	}()
+	if failed {
+		return
+	}
+	process(updateMetaSelectorUrl, t)
+	func() {
+		zone.nsLock.RLock()
+		defer zone.nsLock.RUnlock()
+		for _, ns := range zone.nodeSetMap {
+			if ns.GetMetaNodeSelector() != TicketNodeSelectorName {
+				t.Errorf("failed to change data nodeset selector")
+				failed = true
+			}
+		}
+	}()
+	if failed {
+		return
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
+func TestUpdateZoneStatus(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UpdateZone, testZone2)
+	enableUrl := fmt.Sprintf("%v&enable=1", reqUrl)
+	disableUrl := fmt.Sprintf("%v&enable=0", reqUrl)
+	process(disableUrl, t)
+	if zone.getStatus() != unavailableZone {
+		t.Errorf("failed to update zone status")
+		return
+	}
+	process(enableUrl, t)
 }
 
 func post(reqURL string, data []byte, t *testing.T) (reply *proto.HTTPReply) {
@@ -965,4 +1172,275 @@ func TestListUsersOfVol(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.UsersOfVol, "test_create_vol")
 	fmt.Println(reqURL)
 	process(reqURL, t)
+}
+
+func TestListNodeSets(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.GetAllNodeSets)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+
+	reqURL = fmt.Sprintf("%v%v?zoneName=%v", hostAddr, proto.GetAllNodeSets, testZone2)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}
+
+func TestGetNodeSets(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?nodesetId=1", hostAddr, proto.GetNodeSet)
+	fmt.Println(reqURL)
+	process(reqURL, t)
+}
+
+func TestUpdateNodeSet(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	ns := nsc[0]
+	reqUrl := fmt.Sprintf("%v%v?nodesetId=%v", hostAddr, proto.UpdateNodeSet, ns.ID)
+	updateDataSelectorUrl := fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	if ns.GetDataNodeSelector() != TicketNodeSelectorName {
+		t.Errorf("failed to change data nodeset selector")
+		return
+	}
+	process(updateMetaSelectorUrl, t)
+	if ns.GetMetaNodeSelector() != TicketNodeSelectorName {
+		t.Errorf("failed to change data nodeset selector")
+		return
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v&dataNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v&metaNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
+func TestUpdateClusterNodeSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	updateDataSelectorUrl := fmt.Sprintf("%v?dataNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v?metaNodeSelector=%v", reqUrl, TicketNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	failed := false
+	func() {
+		zone.nsLock.RLock()
+		defer zone.nsLock.RUnlock()
+		for _, ns := range zone.nodeSetMap {
+			if ns.GetDataNodeSelector() != TicketNodeSelectorName {
+				t.Errorf("failed to change data nodeset selector")
+				failed = true
+			}
+		}
+	}()
+	if failed {
+		return
+	}
+	process(updateMetaSelectorUrl, t)
+	func() {
+		zone.nsLock.RLock()
+		defer zone.nsLock.RUnlock()
+		for _, ns := range zone.nodeSetMap {
+			if ns.GetMetaNodeSelector() != TicketNodeSelectorName {
+				t.Errorf("failed to change data nodeset selector")
+				failed = true
+			}
+		}
+	}()
+	if failed {
+		return
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v?dataNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v?metaNodeSelector=%v", reqUrl, CarryWeightNodeSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
+func TestUpdateClusterNodesetSelector(t *testing.T) {
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Errorf("failed to get zone, %v", err)
+		return
+	}
+	nsc := zone.getAllNodeSet()
+	if nsc.Len() == 0 {
+		t.Error("nodeset count could not be 0")
+		return
+	}
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	updateDataSelectorUrl := fmt.Sprintf("%v?dataNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
+	updateMetaSelectorUrl := fmt.Sprintf("%v?metaNodesetSelector=%v", reqUrl, CarryWeightNodesetSelectorName)
+	process(updateDataSelectorUrl, t)
+	if zone.GetDataNodesetSelector() != CarryWeightNodesetSelectorName {
+		t.Errorf("failed to change data nodeset selector")
+		return
+	}
+	process(updateMetaSelectorUrl, t)
+	if zone.GetMetaNodesetSelector() != CarryWeightNodesetSelectorName {
+		t.Errorf("failed to change meta nodeset selector")
+		return
+	}
+	updateDataSelectorUrl = fmt.Sprintf("%v?dataNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
+	updateMetaSelectorUrl = fmt.Sprintf("%v?metaNodesetSelector=%v", reqUrl, RoundRobinNodesetSelectorName)
+	process(updateDataSelectorUrl, t)
+	process(updateMetaSelectorUrl, t)
+}
+
+const volPartitionCheckTimeout = 60
+
+func checkVolForbidden(name string, forbidden bool) (success bool) {
+	dataChecker := func(mdp *mocktest.MockDataPartition) bool {
+		return mdp.IsForbidden() == forbidden
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
+		okCount := 0
+		count, _ := rangeMockDataServers(func(mds *mocktest.MockDataServer) bool {
+			if mds.CheckVolPartition(name, dataChecker) {
+				okCount += 1
+			}
+			return true
+		})
+		if count == okCount {
+			success = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !success {
+		return
+	}
+	success = false
+	metaChecker := func(mmp *mocktest.MockMetaPartition) bool {
+		return mmp.IsForbidden() == forbidden
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
+		okCount := 0
+		count, _ := rangeMockMetaServers(func(mms *mocktest.MockMetaServer) bool {
+			if mms.CheckVolPartition(name, metaChecker) {
+				okCount += 1
+			}
+			return true
+		})
+		if count == okCount {
+			success = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return
+}
+
+func TestForbiddenVolume(t *testing.T) {
+	name := "forbiddenVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminVolForbidden)
+	forbidUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, forbiddenKey)
+	unforbidUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, forbiddenKey)
+	process(forbidUrl, t)
+	t.Logf("check forbid volume")
+	dps := vol.cloneDataPartitionMap()
+	mps := vol.cloneMetaPartitionMap()
+	for _, dp := range dps {
+		if dp.Status == proto.ReadWrite {
+			t.Errorf("failed to set dp rd only")
+			return
+		}
+	}
+	for _, mp := range mps {
+		if mp.Status == proto.ReadWrite {
+			t.Errorf("failed to set mp rd only")
+			return
+		}
+	}
+	ok := checkVolForbidden(vol.Name, vol.Forbidden)
+	if !ok {
+		t.Errorf("failed to forbid volume, check timeout")
+		return
+	}
+	process(unforbidUrl, t)
+	t.Logf("check unforbid volume")
+	ok = checkVolForbidden(vol.Name, vol.Forbidden)
+	if !ok {
+		t.Errorf("failed to unforbid volume, check timeout")
+		return
+	}
+	for _, dp := range dps {
+		if dp.Status != proto.ReadWrite {
+			t.Errorf("failed to set dp rd only")
+			return
+		}
+	}
+	for _, mp := range mps {
+		if mp.Status != proto.ReadWrite {
+			t.Errorf("failed to set mp rd only")
+			return
+		}
+	}
+}
+
+func checkVolAuditLog(name string, enable bool) (success bool) {
+	metaChecker := func(mmp *mocktest.MockMetaPartition) bool {
+		return mmp.IsEnableAuditLog() == enable
+	}
+	for i := 0; i < volPartitionCheckTimeout; i++ {
+		okCount := 0
+		count, _ := rangeMockMetaServers(func(mms *mocktest.MockMetaServer) bool {
+			if mms.CheckVolPartition(name, metaChecker) {
+				okCount += 1
+			}
+			return true
+		})
+		if count == okCount {
+			success = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return
+}
+
+func TestVolumeEnableAuditLog(t *testing.T) {
+	name := "auditLogVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminVolEnableAuditLog)
+	enableUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, enableKey)
+	disableUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, enableKey)
+	process(disableUrl, t)
+	require.False(t, vol.EnableAuditLog)
+	require.True(t, checkVolAuditLog(name, false))
+	process(enableUrl, t)
+	require.True(t, vol.EnableAuditLog)
+	require.True(t, checkVolAuditLog(name, true))
 }

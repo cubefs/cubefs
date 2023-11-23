@@ -54,22 +54,20 @@ func TestSyncPushBach(t *testing.T) {
 	l := New()
 
 	wg := sync.WaitGroup{}
-	for j := 0; j < 50; j += 1 {
+	for range [50]struct{}{} {
 		wg.Add(1)
 		go func() {
-			for i := 0; i < 1000; i += 1 {
-				println("pushback: ", i)
+			for i := range [1000]struct{}{} {
 				l.PushBack(i)
 			}
 			wg.Done()
 		}()
 	}
-	for j := 0; j < 60; j += 1 {
+	for range [50]struct{}{} {
 		wg.Add(1)
 		go func() {
-			for i := 0; i < 1000; i += 1 {
+			for range [1000]struct{}{} {
 				if f := l.Front(); f != nil {
-					println("remove: ", f.Value)
 					l.Remove(f)
 				}
 			}

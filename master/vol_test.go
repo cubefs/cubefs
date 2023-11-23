@@ -3,6 +3,9 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -278,7 +281,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	//after check meta partitions ,the status must be writable
-	maxMp.checkStatus(server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID)
+	maxMp.checkStatus(server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID, 4194304, vol.Forbidden)
 	if maxMp.Status != proto.ReadWrite {
 		t.Errorf("expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status)
 		return
@@ -316,6 +319,62 @@ func statVol(name string, t *testing.T) {
 	process(reqURL, t)
 }
 
+func TestVolMpsLock(t *testing.T) {
+	name := "TestVolMpsLock"
+	var volID uint64 = 1
+	var createTime = time.Now().Unix()
+
+	vv := volValue{
+		ID:                volID,
+		Name:              name,
+		Owner:             name,
+		ZoneName:          "",
+		DataPartitionSize: util.DefaultDataPartitionSize,
+		Capacity:          100,
+		DpReplicaNum:      defaultReplicaNum,
+		ReplicaNum:        defaultReplicaNum,
+		FollowerRead:      false,
+		Authenticate:      false,
+		CrossZone:         false,
+		DefaultPriority:   false,
+		CreateTime:        createTime,
+		Description:       "",
+	}
+	expireTime := time.Microsecond * 50
+	vol := newVol(vv)
+	if vol.mpsLock.enable == 0 {
+		return
+	}
+	vol.mpsLock.Lock()
+	mpsLock := vol.mpsLock
+	assert.True(t, !(mpsLock.vol.status() == markDelete || atomic.LoadInt32(&mpsLock.enable) == 0))
+
+	assert.True(t, mpsLock.onLock == true)
+	time.Sleep(time.Microsecond * 100)
+	tm := time.Now()
+	if tm.After(mpsLock.lockTime.Add(expireTime)) {
+		log.LogWarnf("vol %v mpsLock hang more than %v since time %v stack(%v)",
+			mpsLock.vol.Name, expireTime, mpsLock.lockTime, mpsLock.lastEffectStack)
+		mpsLock.hang = true
+	}
+
+	assert.True(t, strings.Contains(vol.mpsLock.lastEffectStack, "Lock stack"))
+	assert.True(t, vol.mpsLock.enable == 1)
+	assert.True(t, vol.mpsLock.hang == true)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		vol.mpsLock.RLock()
+		assert.True(t, strings.Contains(vol.mpsLock.lastEffectStack, "RLock stack"))
+		vol.mpsLock.RUnlock()
+		wg.Done()
+	}()
+	vol.mpsLock.UnLock()
+	wg.Wait()
+	assert.True(t, vol.mpsLock.hang == false)
+	assert.True(t, strings.Contains(vol.mpsLock.lastEffectStack, "RUnlock stack"))
+}
+
 func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	name := "TestConcurrentReadWriteDataPartitionMap"
 	var volID uint64 = 1
@@ -340,10 +399,10 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 
 	vol := newVol(vv)
 	// unavailable mp
-	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
+	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, name, volID, 0)
 	vol.addMetaPartition(mp1)
 	//readonly mp
-	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, name, volID)
+	mp2 := newMetaPartition(2, 1, defaultMaxMetaPartitionInodeID, 3, name, volID, 0)
 	mp2.Status = proto.ReadOnly
 	vol.addMetaPartition(mp2)
 	vol.updateViewCache(server.cluster)

@@ -32,20 +32,28 @@ func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8)
 	return proto.OpOk
 }
 
-func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (status uint8) {
+func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.AppendMultipartResponse) {
 	storedItem := mp.multipartTree.CopyGet(multipart)
 	if storedItem == nil {
-		return proto.OpNotExistErr
+		resp.Status = proto.OpNotExistErr
+		return
 	}
 	storedMultipart, is := storedItem.(*Multipart)
 	if !is {
-		return proto.OpNotExistErr
+		resp.Status = proto.OpNotExistErr
+		return
 	}
 	for _, part := range multipart.Parts() {
-		actual, stored := storedMultipart.LoadOrStorePart(part)
-		if !stored && !actual.Equal(part) {
-			return proto.OpExistErr
+		oldInode, updated, conflict := storedMultipart.UpdateOrStorePart(part)
+		if conflict {
+			resp.Status = proto.OpUploadPartConflictErr
+			return
+		}
+		if updated {
+			resp.OldInode = oldInode
+			resp.Update = true
 		}
 	}
-	return proto.OpOk
+	resp.Status = proto.OpOk
+	return
 }

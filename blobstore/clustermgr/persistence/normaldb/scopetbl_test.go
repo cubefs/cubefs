@@ -29,7 +29,7 @@ func TestScopeTbl(t *testing.T) {
 	tmpDBPath := "/tmp/tmpnormaldb" + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpDBPath)
 
-	db, err := OpenNormalDB(tmpDBPath, false)
+	db, err := OpenNormalDB(tmpDBPath)
 	require.NoError(t, err)
 	defer db.Close()
 

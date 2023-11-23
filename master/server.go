@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
+
 	"github.com/cubefs/cubefs/util/stat"
 
 	"github.com/cubefs/cubefs/proto"
@@ -58,6 +60,10 @@ const (
 	cfgElectionTick      = "electionTick"
 	SecretKey            = "masterServiceKey"
 	Stat                 = "stat"
+	Authenticate         = "authenticate"
+	AuthNodeHost         = "authNodeHost"
+	AuthNodeEnableHTTPS  = "authNodeEnableHTTPS"
+	AuthNodeCertFile     = "authNodeCertFile"
 )
 
 var (
@@ -67,8 +73,6 @@ var (
 
 	useConnPool = true //for test
 	gConfig     *clusterConfig
-
-	maxDpCntOneNode = uint32(3000)
 )
 
 var overSoldFactor = defaultOverSoldFactor
@@ -99,14 +103,6 @@ var (
 	volNameErr = errors.New("name can only start and end with number or letters, and len can't less than 3")
 )
 
-func dpCntOneNodeLimit() uint32 {
-	if maxDpCntOneNode <= 0 {
-		return 3000
-	}
-
-	return maxDpCntOneNode
-}
-
 // Server represents the server in a cluster
 type Server struct {
 	id              uint64
@@ -127,7 +123,7 @@ type Server struct {
 	config          *clusterConfig
 	cluster         *Cluster
 	user            *User
-	rocksDBStore    *raftstore.RocksDBStore
+	rocksDBStore    *raftstore_db.RocksDBStore
 	raftStore       raftstore.RaftStore
 	fsm             *MetadataFsm
 	partition       raftstore.Partition
@@ -153,7 +149,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 
-	if m.rocksDBStore, err = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+	if m.rocksDBStore, err = raftstore_db.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		return
 	}
 
@@ -169,6 +165,11 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	if m.cluster.MasterSecretKey, err = cryptoutil.Base64Decode(MasterSecretKey); err != nil {
 		return fmt.Errorf("action[Start] failed %v, err: master service Key invalid = %s", proto.ErrInvalidCfg, MasterSecretKey)
 	}
+	m.cluster.authenticate = cfg.GetBool(Authenticate)
+	if m.cluster.authenticate {
+		m.cluster.initAuthentication(cfg)
+	}
+
 	m.cluster.scheduleTask()
 	m.startHTTPService(ModuleName, cfg)
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
@@ -192,6 +193,16 @@ func (m *Server) Shutdown() {
 		}
 	}
 	stat.CloseStat()
+
+	// stop raftServer first
+	if m.fsm != nil {
+		m.fsm.Stop()
+	}
+
+	// then stop rocksDBStore
+	if m.rocksDBStore != nil {
+		m.rocksDBStore.Close()
+	}
 	m.wg.Done()
 }
 
@@ -226,6 +237,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
 		return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 	}
+
+	m.config.DisableAutoCreate = cfg.GetBoolWithDefault(disableAutoCreate, false)
+	syslog.Printf("get disableAutoCreate cfg %v", m.config.DisableAutoCreate)
 
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
@@ -287,6 +301,20 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	dpNoLeaderReportInterval := cfg.GetString(cfgDpNoLeaderReportIntervalSec)
+	if dpNoLeaderReportInterval != "" {
+		if m.config.DpNoLeaderReportIntervalSec, err = strconv.ParseInt(dpNoLeaderReportInterval, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
+	mpNoLeaderReportInterval := cfg.GetString(cfgMpNoLeaderReportIntervalSec)
+	if mpNoLeaderReportInterval != "" {
+		if m.config.MpNoLeaderReportIntervalSec, err = strconv.ParseInt(mpNoLeaderReportInterval, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
 	dataPartitionTimeOutSec := cfg.GetString(dataPartitionTimeOutSec)
 	if dataPartitionTimeOutSec != "" {
 		if m.config.DataPartitionTimeOutSec, err = strconv.ParseInt(dataPartitionTimeOutSec, 10, 0); err != nil {
@@ -308,6 +336,14 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
 		}
 	}
+
+	intervalToScanS3ExpirationVal := cfg.GetString(intervalToScanS3Expiration)
+	if intervalToScanS3ExpirationVal != "" {
+		if m.config.IntervalToScanS3Expiration, err = strconv.ParseInt(intervalToScanS3ExpirationVal, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))
 	m.raftRecvBufSize = int(cfg.GetInt(cfgRaftRecvBufSize))
 	m.electionTick = int(cfg.GetFloat(cfgElectionTick))
@@ -317,6 +353,24 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.electionTick <= 3 {
 		m.electionTick = 5
 	}
+
+	maxQuotaNumPerVol := cfg.GetString(cfgMaxQuotaNumPerVol)
+	if maxQuotaNumPerVol != "" {
+		if m.config.MaxQuotaNumPerVol, err = strconv.Atoi(maxQuotaNumPerVol); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
+	m.config.MonitorPushAddr = cfg.GetString(cfgMonitorPushAddr)
+
+	m.config.volForceDeletion = cfg.GetBoolWithDefault(cfgVolForceDeletion, true)
+
+	threshold := cfg.GetInt64WithDefault(cfgVolDeletionDentryThreshold, 0)
+	if threshold < 0 {
+		return fmt.Errorf("volDeletionDentryThreshold can't be less than 0 ! ")
+	}
+	m.config.volDeletionDentryThreshold = uint64(threshold)
+
 	return
 }
 

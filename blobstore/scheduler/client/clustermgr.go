@@ -123,6 +123,7 @@ type ClusterMgrAPI interface {
 //	for example:
 //		blob_delete-consume_offset-blob_delete-1
 //		shard_repair-consume_offset-shard_repair-2
+
 const (
 	_delimiter           = "-"
 	_migratingDiskPrefix = "migrating"
@@ -396,14 +397,11 @@ func (c *clustermgrClient) GetConfig(ctx context.Context, key string) (val strin
 	defer c.rwLock.RUnlock()
 
 	span := trace.SpanFromContextSafe(ctx)
-
-	span.Debugf("get config: args key[%s]", key)
 	ret, err := c.client.GetConfig(ctx, key)
 	if err != nil {
-		span.Errorf("get config failed: err[%+v]", err)
+		span.Errorf("get config failed: key[%s], err[%+v]", key, err)
 		return
 	}
-	span.Debugf("get config ret: config[%s]", ret)
 	return ret, err
 }
 
@@ -414,13 +412,11 @@ func (c *clustermgrClient) GetVolumeInfo(ctx context.Context, vid proto.Vid) (*V
 
 	span := trace.SpanFromContextSafe(ctx)
 
-	span.Debugf("get volume info: args vid[%d]", vid)
 	info, err := c.client.GetVolumeInfo(ctx, &cmapi.GetVolumeArgs{Vid: vid})
 	if err != nil {
 		span.Errorf("get volume info failed: err[%+v]", err)
 		return nil, err
 	}
-	span.Debugf("get volume info ret: volume[%+v]", *info)
 	ret := &VolumeInfoSimple{}
 	ret.set(info)
 	return ret, nil
@@ -485,7 +481,6 @@ func (c *clustermgrClient) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid)
 	if err != nil {
 		return nil, err
 	}
-	span.Debugf("get disk info ret: disk[%+v]", diskInfo)
 
 	ret.set(info, diskInfo.Host)
 	return ret, err
@@ -511,24 +506,17 @@ func (c *clustermgrClient) ListDiskVolumeUnits(ctx context.Context, diskID proto
 	defer c.rwLock.RUnlock()
 
 	span := trace.SpanFromContextSafe(ctx)
-
-	span.Debugf("list disk volume units: args disk_id[%d]", diskID)
 	infos, err := c.client.ListVolumeUnit(ctx, &cmapi.ListVolumeUnitArgs{DiskID: diskID})
 	if err != nil {
-		span.Errorf("list disk volume units failed: err[%+v]", err)
+		span.Errorf("list disk volume units failed: disk_id[%d], err[%+v]", diskID, err)
 		return nil, err
-	}
-
-	for idx, info := range infos {
-		span.Debugf("list disk volume units ret: idx[%d], info[%+v]", idx, *info)
 	}
 
 	diskInfo, err := c.client.DiskInfo(ctx, diskID)
 	if err != nil {
-		span.Errorf("get disk info failed: err[%+v]", err)
+		span.Errorf("list volume unit, get disk info failed: disk_id[%d], err[%+v]", diskID, err)
 		return nil, err
 	}
-	span.Debugf("get disk info ret: disk[%+v]", *diskInfo)
 
 	for _, info := range infos {
 		ele := VunitInfoSimple{}
@@ -588,7 +576,7 @@ func (c *clustermgrClient) listAllDisks(ctx context.Context, status proto.DiskSt
 		}
 		selectDisks, selectMarker, err := c.listDisk(ctx, args)
 		if err != nil {
-			span.Errorf("list disk failed: err[%+v]", err)
+			span.Errorf("list all disk failed: err[%+v]", err)
 			return nil, err
 		}
 
@@ -614,7 +602,7 @@ func (c *clustermgrClient) listDisks(ctx context.Context, status proto.DiskStatu
 		}
 		selectDisks, selectMarker, err := c.listDisk(ctx, args)
 		if err != nil {
-			span.Errorf("list disk failed: err[%+v]", err)
+			span.Errorf("list disks failed: err[%+v]", err)
 			return nil, err
 		}
 
@@ -639,7 +627,6 @@ func (c *clustermgrClient) listDisk(ctx context.Context, args *cmapi.ListOptionA
 	}
 	marker = infos.Marker
 	for _, info := range infos.Disks {
-		span.Debugf("list disk ret: disk[%+v]", *info)
 		ele := DiskInfoSimple{}
 		ele.set(info)
 		disks = append(disks, &ele)
@@ -706,7 +693,7 @@ func (c *clustermgrClient) SetDiskDropped(ctx context.Context, diskID proto.Disk
 
 	info, err := c.client.DiskInfo(ctx, diskID)
 	if err != nil {
-		span.Errorf("get disk info failed: disk_id[%d], err[%+v]", diskID, err)
+		span.Errorf("set disk dropped, get disk info failed: disk_id[%d], err[%+v]", diskID, err)
 		return err
 	}
 
@@ -736,14 +723,11 @@ func (c *clustermgrClient) GetDiskInfo(ctx context.Context, diskID proto.DiskID)
 	defer c.rwLock.RUnlock()
 
 	span := trace.SpanFromContextSafe(ctx)
-
-	span.Debugf("get disk info: args disk_id[%d]", diskID)
 	info, err := c.client.DiskInfo(ctx, diskID)
 	if err != nil {
-		span.Errorf("get disk info failed: err[%+v]", err)
+		span.Errorf("get disk info failed: disk_id[%d], err[%+v]", diskID, err)
 		return nil, err
 	}
-	span.Debugf("get disk info ret: disk[%+v]", *info)
 	ret = &DiskInfoSimple{}
 	ret.set(info)
 	return ret, nil
@@ -847,7 +831,7 @@ func (c *clustermgrClient) listMigrateTasks(ctx context.Context, taskType proto.
 			return nil, marker, err
 		}
 		if task.TaskType != taskType {
-			span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
+			span.Errorf("list task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
 			continue
 		}
 		tasks = append(tasks, task)
@@ -864,11 +848,12 @@ func (c *clustermgrClient) listAllMigrateTasks(ctx context.Context, prefix strin
 			Count:  defaultListTaskNum,
 			Marker: marker,
 		}
-		ret, marker, err := c.listMigrateTasks(ctx, taskType, args)
+		ret, newMarker, err := c.listMigrateTasks(ctx, taskType, args)
 		if err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, ret...)
+		marker = newMarker
 		if marker == defaultListTaskMarker {
 			break
 		}
@@ -898,7 +883,7 @@ func (c *clustermgrClient) GetMigratingDisk(ctx context.Context, taskType proto.
 		return nil, err
 	}
 	if meta.TaskType != taskType {
-		span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, meta.TaskType)
+		span.Errorf("get task type is invalid: expected[%s], actual[%s]", taskType, meta.TaskType)
 		return meta, errcode.ErrIllegalTaskType
 	}
 	if meta.Disk.DiskID != diskID {
@@ -934,7 +919,7 @@ func (c *clustermgrClient) ListMigratingDisks(ctx context.Context, taskType prot
 				return nil, err
 			}
 			if task.TaskType != taskType {
-				span.Errorf("task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
+				span.Errorf("list disks task type is invalid: expected[%s], actual[%s]", taskType, task.TaskType)
 				continue
 			}
 			disks = append(disks, task)

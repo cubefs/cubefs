@@ -143,6 +143,7 @@ func (d *defaultDecoder) DecodeReq(req *http.Request) *DecodedReq {
 					decodedReq.Params = compactNewline(buff)
 				}
 			}
+		default:
 		}
 	}
 	return decodedReq

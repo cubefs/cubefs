@@ -15,10 +15,16 @@
 package objectnode
 
 import (
+	"bytes"
+	"encoding/json"
 	"encoding/xml"
-	"github.com/cubefs/cubefs/util/log"
 	"net/url"
+	"regexp"
+
+	"github.com/cubefs/cubefs/util/log"
 )
+
+var regexKeyValue = regexp.MustCompile(`^[0-9a-zA-Z+=._ :/@-]+$`)
 
 func MarshalXMLEntity(entity interface{}) ([]byte, error) {
 	var err error
@@ -35,6 +41,21 @@ func UnmarshalXMLEntity(bytes []byte, data interface{}) error {
 		return err
 	}
 	return nil
+}
+
+func ParseJSONEntity(raw interface{}, entity interface{}) error {
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(entity)
+}
+
+type LocationResponse struct {
+	XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ LocationConstraint" json:"-"`
+	Location string   `xml:",chardata"`
 }
 
 type CopyObjectResult struct {
@@ -118,8 +139,8 @@ type ListPartsResult struct {
 	Owner            *BucketOwner `xml:"Owner"`
 	StorageClass     string       `xml:"StorageClass"`
 	PartNumberMarker int          `xml:"PartNumberMarker"`
-	NextMarker       int          `xml:"NextPartNumberMarker"`
-	MaxParts         int          `xml:"MaxParts"`
+	NextMarker       uint64       `xml:"NextPartNumberMarker"`
+	MaxParts         uint64       `xml:"MaxParts"`
 	IsTruncated      bool         `xml:"IsTruncated"`
 	Parts            []*Part      `xml:"Parts"`
 }
@@ -138,7 +159,7 @@ type ListUploadsResult struct {
 	NextUploadIdMarker string          `xml:"NextUploadIdMarker"`
 	Delimiter          string          `xml:"Delimiter"`
 	Prefix             string          `xml:"Prefix"`
-	MaxUploads         int             `xml:"MaxUploads"`
+	MaxUploads         uint64          `xml:"MaxUploads"`
 	IsTruncated        bool            `xml:"IsTruncated"`
 	Uploads            []*Upload       `xml:"Uploads"`
 	CommonPrefixes     []*CommonPrefix `xml:"CommonPrefixes"`
@@ -201,8 +222,6 @@ func NewUploads(fsUploads []*FSUpload, accessKey string) []*Upload {
 
 func NewBucketOwner(volume *Volume) *BucketOwner {
 	return &BucketOwner{
-		//ID:          volume.Owner(),
-		//DisplayName: volume.Owner(),
 		ID:          volume.GetOwner(),
 		DisplayName: volume.GetOwner(),
 	}
@@ -265,15 +284,18 @@ func (t Tagging) Encode() string {
 
 func (t Tagging) Validate() (bool, *ErrorCode) {
 	var errorCode *ErrorCode
+	if len(t.TagSet) == 0 {
+		return false, InvalidTagError
+	}
 	if len(t.TagSet) > TaggingCounts {
-		return false, TagsGreaterThen10
+		return false, ExceedTagLimit
 	}
 	for _, tag := range t.TagSet {
 		log.LogDebugf("Validate: key : (%v), value : (%v)", tag.Key, tag.Value)
-		if len(tag.Key) > TaggingKeyMaxLength {
+		if len(tag.Key) > TaggingKeyMaxLength || !regexKeyValue.MatchString(tag.Key) {
 			return false, InvalidTagKey
 		}
-		if len(tag.Value) > TaggingValueMaxLength {
+		if len(tag.Value) > TaggingValueMaxLength || !regexKeyValue.MatchString(tag.Value) {
 			return false, InvalidTagValue
 		}
 	}
@@ -338,4 +360,42 @@ type CompleteMultipartUploadRequest struct {
 type CreateBucketRequest struct {
 	XMLName            xml.Name `xml:"CreateBucketConfiguration"`
 	LocationConstraint string   `xml:"LocationConstraint"`
+}
+
+type S3UploadObject struct {
+	XMLName  xml.Name
+	Bucket   string `xml:"Bucket"` // bucket name
+	Key      string `xml:"Key"`    // object id or name
+	ETag     string `xml:"ETag"`   // object content MD5 hash
+	Location string `xml:"Location"`
+}
+
+func NewS3UploadObject() *S3UploadObject {
+	return &S3UploadObject{
+		XMLName: xml.Name{
+			Space: S3Namespace,
+			Local: "PostResponse",
+		},
+	}
+}
+
+func (s3 *S3UploadObject) SetBucket(bucket string) {
+	s3.Bucket = bucket
+}
+
+func (s3 *S3UploadObject) SetKey(key string) {
+	s3.Key = key
+}
+
+func (s3 *S3UploadObject) SetETag(etag string) {
+	s3.ETag = etag
+}
+
+func (s3 *S3UploadObject) SetLocation(location string) {
+	s3.Location = location
+}
+
+func (s3 *S3UploadObject) String() string {
+	b, _ := xml.Marshal(s3)
+	return string(b)
 }

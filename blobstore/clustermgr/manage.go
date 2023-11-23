@@ -64,6 +64,7 @@ func (s *Service) MemberAdd(c *rpc.Context) {
 		err = s.raftNode.AddMember(ctx, raftserver.Member{NodeID: args.PeerID, Host: args.Host, Learner: true, Context: mc})
 	case clustermgr.MemberTypeNormal:
 		err = s.raftNode.AddMember(ctx, raftserver.Member{NodeID: args.PeerID, Host: args.Host, Learner: false, Context: mc})
+	default:
 	}
 	c.RespondError(err)
 }

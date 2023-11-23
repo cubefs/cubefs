@@ -17,6 +17,7 @@ package proto
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -24,12 +25,19 @@ import (
 const (
 	RootIno    = uint64(1)
 	SummaryKey = "cbfs.dir.summary"
+	QuotaKey   = "qa"
 )
 
 const (
 	FlagsSyncWrite int = 1 << iota
 	FlagsAppend
 	FlagsCache
+)
+
+const (
+	FlagsSnapshotDel int = 1 << iota
+	FlagsSnapshotDelDir
+	FlagsVerAll
 )
 
 // Mode returns the fileMode.
@@ -62,21 +70,43 @@ func IsSymlink(mode uint32) bool {
 	return OsMode(mode)&os.ModeSymlink != 0
 }
 
+func IsAncestor(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
+}
+
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
-	Inode      uint64    `json:"ino"`
-	Mode       uint32    `json:"mode"`
-	Nlink      uint32    `json:"nlink"`
-	Size       uint64    `json:"sz"`
-	Uid        uint32    `json:"uid"`
-	Gid        uint32    `json:"gid"`
-	Generation uint64    `json:"gen"`
-	ModifyTime time.Time `json:"mt"`
-	CreateTime time.Time `json:"ct"`
-	AccessTime time.Time `json:"at"`
-	Target     []byte    `json:"tgt"`
-
+	Inode      uint64                    `json:"ino"`
+	Mode       uint32                    `json:"mode"`
+	Nlink      uint32                    `json:"nlink"`
+	Size       uint64                    `json:"sz"`
+	Uid        uint32                    `json:"uid"`
+	Gid        uint32                    `json:"gid"`
+	Generation uint64                    `json:"gen"`
+	ModifyTime time.Time                 `json:"mt"`
+	CreateTime time.Time                 `json:"ct"`
+	AccessTime time.Time                 `json:"at"`
+	Target     []byte                    `json:"tgt"`
+	QuotaInfos map[uint32]*MetaQuotaInfo `json:"qifs"`
+	VerSeq     uint64                    `json:"seq"`
 	expiration int64
+}
+
+type SimpleExtInfo struct {
+	ID          uint64
+	PartitionID uint32
+	ExtentID    uint32
+}
+
+// InodeInfo defines the inode struct.
+type InodeSplitInfo struct {
+	Inode    uint64          `json:"ino"`
+	SplitArr []SimpleExtInfo `json:"splitInfo"`
+	VerSeq   uint64          `json:"seq"`
 }
 
 type SummaryInfo struct {
@@ -109,7 +139,8 @@ func (info *InodeInfo) SetExpiration(e int64) {
 
 // String returns the string format of the inode.
 func (info *InodeInfo) String() string {
-	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
+	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v) QuotaIds(%v)",
+		info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation, info.QuotaInfos)
 }
 
 type XAttrInfo struct {
@@ -152,7 +183,31 @@ func (d Dentry) String() string {
 	return fmt.Sprintf("Dentry{Name(%v),Inode(%v),Type(%v)}", d.Name, d.Inode, d.Type)
 }
 
+type RequestExtend struct {
+	FullPaths []string `json:"fullPaths"`
+}
+
+// NOTE: batch request may have multi full path
+// values, but other request only have one
+func (r *RequestExtend) GetFullPath() string {
+	if len(r.FullPaths) < 1 {
+		return ""
+	}
+	return r.FullPaths[0]
+}
+
 // CreateInodeRequest defines the request to create an inode.
+type QuotaCreateInodeRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	Mode        uint32   `json:"mode"`
+	Uid         uint32   `json:"uid"`
+	Gid         uint32   `json:"gid"`
+	Target      []byte   `json:"tgt"`
+	QuotaIds    []uint32 `json:"qids"`
+	RequestExtend
+}
+
 type CreateInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -160,6 +215,7 @@ type CreateInodeRequest struct {
 	Uid         uint32 `json:"uid"`
 	Gid         uint32 `json:"gid"`
 	Target      []byte `json:"tgt"`
+	RequestExtend
 }
 
 // CreateInodeResponse defines the response to the request of creating an inode.
@@ -167,15 +223,111 @@ type CreateInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+type TxCreateRequest struct {
+	VolName          string `json:"vol"`
+	PartitionID      uint64 `json:"pid"`
+	*TransactionInfo `json:"tx"`
+}
+
+type TxCreateResponse struct {
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
+type TxApplyRMRequest struct {
+	VolName          string `json:"vol"`
+	PartitionID      uint64 `json:"pid"`
+	*TransactionInfo `json:"tx"`
+}
+
+// TxCreateInodeRequest defines the request to create an inode with transaction info.
+type TxCreateInodeRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	Mode        uint32           `json:"mode"`
+	Uid         uint32           `json:"uid"`
+	Gid         uint32           `json:"gid"`
+	Target      []byte           `json:"tgt"`
+	QuotaIds    []uint32         `json:"qids"`
+	TxInfo      *TransactionInfo `json:"tx"`
+	RequestExtend
+}
+
+// TxCreateInodeResponse defines the response with transaction info to the request of creating an inode.
+type TxCreateInodeResponse struct {
+	Info   *InodeInfo       `json:"info"`
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
+const (
+	TxCommit int = 1 << iota
+	TxRollback
+)
+
+type TxApplyRequest struct {
+	TxID        string `json:"tx"`
+	TmID        uint64 `json:"tmid"`
+	TxApplyType int    `json:"type"`
+}
+
+type TxSetStateRequest struct {
+	TxID  string `json:"tx"`
+	State int32  `json:"state"`
+}
+
+type TxInodeApplyRequest struct {
+	TxID        string `json:"txid"`
+	Inode       uint64 `json:"ino"`
+	TxApplyType int    `json:"type"`
+	ApplyFrom   uint32 `json:"from"`
+}
+
+type TxDentryApplyRequest struct {
+	TxID string `json:"txid"`
+	//DenKey      string `json:"denkey"`
+	Pid         uint64 `json:"pid"`
+	Name        string `json:"name"`
+	TxApplyType int    `json:"type"`
+	ApplyFrom   uint32 `json:"from"`
+}
+
+type TxGetInfoRequest struct {
+	VolName string `json:"vol"`
+	TxID    string `json:"txid"`
+	Pid     uint64 `json:"pid"`
+}
+
+type TxGetInfoResponse struct {
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	UniqID      uint64 `json:"uiq"`
+	IsRename    bool   `json:"rename"`
+	RequestExtend
 }
 
 // LinkInodeResponse defines the response to the request of linking an inode.
 type LinkInodeResponse struct {
+	Info *InodeInfo `json:"info"`
+}
+
+type TxLinkInodeRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	Inode       uint64           `json:"ino"`
+	TxInfo      *TransactionInfo `json:"tx"`
+	RequestExtend
+}
+
+func (tx *TxLinkInodeRequest) GetInfo() string {
+	return tx.TxInfo.String()
+}
+
+type TxLinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
@@ -189,11 +341,33 @@ type ClearInodeCacheResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
+type TxUnlinkInodeRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	Inode       uint64           `json:"ino"`
+	Evict       bool             `json:"evict"`
+	TxInfo      *TransactionInfo `json:"tx"`
+	RequestExtend
+}
+
+func (tx *TxUnlinkInodeRequest) GetInfo() string {
+	return tx.TxInfo.String()
+}
+
+type TxUnlinkInodeResponse struct {
+	Info   *InodeInfo       `json:"info"`
+	TxInfo *TransactionInfo `json:"tx"`
+}
+
 // UnlinkInodeRequest defines the request to unlink an inode.
 type UnlinkInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	UniqID      uint64 `json:"uid"` //for request dedup
+	VerSeq      uint64 `json:"ver"`
+	DenVerSeq   uint64 `json:"denVer"`
+	RequestExtend
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -201,6 +375,7 @@ type BatchUnlinkInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
+	FullPaths   []string `json:"fullPaths"`
 }
 
 // UnlinkInodeResponse defines the response to the request of unlinking an inode.
@@ -221,6 +396,7 @@ type EvictInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	RequestExtend
 }
 
 // EvictInodeRequest defines the request to evict some inode.
@@ -228,9 +404,22 @@ type BatchEvictInodeRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
+	FullPaths   []string `json:"fullPaths"`
 }
 
 // CreateDentryRequest defines the request to create a dentry.
+type QuotaCreateDentryRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionID uint64   `json:"pid"`
+	ParentID    uint64   `json:"pino"`
+	Inode       uint64   `json:"ino"`
+	Name        string   `json:"name"`
+	Mode        uint32   `json:"mode"`
+	QuotaIds    []uint32 `json:"qids"`
+	VerSeq      uint64   `json:"seq"`
+	RequestExtend
+}
+
 type CreateDentryRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
@@ -238,6 +427,32 @@ type CreateDentryRequest struct {
 	Inode       uint64 `json:"ino"`
 	Name        string `json:"name"`
 	Mode        uint32 `json:"mode"`
+	RequestExtend
+}
+
+type TxPack interface {
+	GetInfo() string
+}
+
+// TxCreateDentryRequest defines the request to create a dentry.
+type TxCreateDentryRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	ParentID    uint64           `json:"pino"`
+	Inode       uint64           `json:"ino"`
+	Name        string           `json:"name"`
+	Mode        uint32           `json:"mode"`
+	QuotaIds    []uint32         `json:"qids"`
+	TxInfo      *TransactionInfo `json:"tx"`
+	RequestExtend
+}
+
+func (tx *TxCreateDentryRequest) GetInfo() string {
+	return tx.TxInfo.String()
+}
+
+type TxCreateDentryResponse struct {
+	TxInfo *TransactionInfo `json:"tx"`
 }
 
 // UpdateDentryRequest defines the request to update a dentry.
@@ -247,6 +462,7 @@ type UpdateDentryRequest struct {
 	ParentID    uint64 `json:"pino"`
 	Name        string `json:"name"`
 	Inode       uint64 `json:"ino"` // new inode number
+	RequestExtend
 }
 
 // UpdateDentryResponse defines the response to the request of updating a dentry.
@@ -254,12 +470,52 @@ type UpdateDentryResponse struct {
 	Inode uint64 `json:"ino"` // old inode number
 }
 
+type TxUpdateDentryRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	ParentID    uint64           `json:"pino"`
+	Name        string           `json:"name"`
+	Inode       uint64           `json:"ino"`    // new inode number
+	OldIno      uint64           `json:"oldIno"` // new inode number
+	TxInfo      *TransactionInfo `json:"tx"`
+	RequestExtend
+}
+
+func (tx *TxUpdateDentryRequest) GetInfo() string {
+	return tx.TxInfo.String()
+}
+
+type TxUpdateDentryResponse struct {
+	Inode uint64 `json:"ino"` // old inode number
+}
+
+type TxDeleteDentryRequest struct {
+	VolName     string           `json:"vol"`
+	PartitionID uint64           `json:"pid"`
+	ParentID    uint64           `json:"pino"`
+	Name        string           `json:"name"`
+	Ino         uint64           `json:"ino"`
+	TxInfo      *TransactionInfo `json:"tx"`
+	RequestExtend
+}
+
+func (tx *TxDeleteDentryRequest) GetInfo() string {
+	return tx.TxInfo.String()
+}
+
+type TxDeleteDentryResponse struct {
+	Inode uint64 `json:"ino"`
+}
+
 // DeleteDentryRequest define the request tp delete a dentry.
 type DeleteDentryRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
-	Name        string `json:"name"`
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	ParentID        uint64 `json:"pino"`
+	Name            string `json:"name"`
+	InodeCreateTime int64  `json:"inodeCreateTime"`
+	Verseq          uint64 `json:"ver"`
+	RequestExtend
 }
 
 type BatchDeleteDentryRequest struct {
@@ -267,6 +523,7 @@ type BatchDeleteDentryRequest struct {
 	PartitionID uint64   `json:"pid"`
 	ParentID    uint64   `json:"pino"`
 	Dens        []Dentry `json:"dens"`
+	FullPaths   []string `json:"fullPaths"`
 }
 
 // DeleteDentryResponse defines the response to the request of deleting a dentry.
@@ -276,7 +533,8 @@ type DeleteDentryResponse struct {
 
 // BatchDeleteDentryResponse defines the response to the request of deleting a dentry.
 type BatchDeleteDentryResponse struct {
-	Items []*struct {
+	ParentID uint64 `json:"pino"`
+	Items    []*struct {
 		Inode  uint64 `json:"ino"`
 		Status uint8  `json:"status"`
 	} `json:"items"`
@@ -288,12 +546,22 @@ type LookupRequest struct {
 	PartitionID uint64 `json:"pid"`
 	ParentID    uint64 `json:"pino"`
 	Name        string `json:"name"`
+	VerSeq      uint64 `json:"seq"`
+	VerAll      bool   `json:"verAll"`
+}
+type DetryInfo struct {
+	Inode  uint64 `json:"ino"`
+	Mode   uint32 `json:"mode"`
+	VerSeq uint64 `json:"seq"`
+	IsDel  bool   `json:"isDel"`
 }
 
 // LookupResponse defines the response for the loopup request.
 type LookupResponse struct {
-	Inode uint64 `json:"ino"`
-	Mode  uint32 `json:"mode"`
+	Inode  uint64      `json:"ino"`
+	Mode   uint32      `json:"mode"`
+	VerSeq uint64      `json:"seq"`
+	LayAll []DetryInfo `json:"layerInfo"`
 }
 
 // InodeGetRequest defines the request to get the inode.
@@ -301,11 +569,20 @@ type InodeGetRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	VerSeq      uint64 `json:"seq"`
+	VerAll      bool   `json:"verAll"`
+}
+
+type LayerInfo struct {
+	LayerIdx uint32      `json:"layerIdx"`
+	Info     *InodeInfo  `json:"info"`
+	Eks      []ExtentKey `json:"eks"`
 }
 
 // InodeGetResponse defines the response to the InodeGetRequest.
 type InodeGetResponse struct {
-	Info *InodeInfo `json:"info"`
+	Info   *InodeInfo  `json:"info"`
+	LayAll []InodeInfo `json:"layerInfo"`
 }
 
 // BatchInodeGetRequest defines the request to get the inode in batch.
@@ -313,6 +590,7 @@ type BatchInodeGetRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
+	VerSeq      uint64   `json:"seq"`
 }
 
 // BatchInodeGetResponse defines the response to the request of getting the inode in batch.
@@ -320,17 +598,34 @@ type BatchInodeGetResponse struct {
 	Infos []*InodeInfo `json:"infos"`
 }
 
+// InodeGetRequest defines the request to get the inode.
+type InodeGetSplitRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	VerSeq      uint64 `json:"seq"`
+	VerAll      bool   `json:"verAll"`
+}
+
+// InodeGetResponse defines the response to the InodeGetRequest.
+type InodeGetSplitResponse struct {
+	Info   *InodeSplitInfo  `json:"info"`
+	LayAll []InodeSplitInfo `json:"layerInfo"`
+}
+
 // ReadDirRequest defines the request to read dir.
 type ReadDirRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	ParentID    uint64 `json:"pino"`
+	VerSeq      uint64 `json:"seq"`
 }
 
 type ReadDirOnlyRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	ParentID    uint64 `json:"pino"`
+	VerSeq      uint64 `json:"seq"`
 }
 
 // ReadDirResponse defines the response to the request of reading dir.
@@ -348,6 +643,8 @@ type ReadDirLimitRequest struct {
 	ParentID    uint64 `json:"pino"`
 	Marker      string `json:"marker"`
 	Limit       uint64 `json:"limit"`
+	VerSeq      uint64 `json:"seq"`
+	VerOpt      uint8  `json:"VerOpt"`
 }
 
 type ReadDirLimitResponse struct {
@@ -368,6 +665,8 @@ type AppendExtentKeyWithCheckRequest struct {
 	Inode          uint64      `json:"ino"`
 	Extent         ExtentKey   `json:"ek"`
 	DiscardExtents []ExtentKey `json:"dek"`
+	VerSeq         uint64      `json:"seq"`
+	IsSplit        bool
 }
 
 // AppendObjExtentKeyRequest defines the request to append an obj extent key.
@@ -383,6 +682,8 @@ type GetExtentsRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	VerSeq      uint64 `json:"seq"`
+	VerAll      bool
 }
 
 // GetObjExtentsResponse defines the response to the request of getting obj extents.
@@ -398,6 +699,8 @@ type GetExtentsResponse struct {
 	Generation uint64      `json:"gen"`
 	Size       uint64      `json:"sz"`
 	Extents    []ExtentKey `json:"eks"`
+	LayerInfo  []LayerInfo `json:"layer"`
+	Status     int
 }
 
 // TruncateRequest defines the request to truncate.
@@ -406,12 +709,20 @@ type TruncateRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Size        uint64 `json:"sz"`
+	RequestExtend
 }
 
 type EmptyExtentKeyRequest struct {
 	VolName     string `json:"vol"`
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+}
+
+type DelVerRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	VerSeq      uint64 `json:"ver"`
 }
 
 type DelExtentKeyRequest struct {
@@ -432,6 +743,7 @@ type SetAttrRequest struct {
 	ModifyTime  int64  `json:"mt"`
 	AccessTime  int64  `json:"at"`
 	Valid       uint32 `json:"valid"`
+	VerSeq      uint64 `json:"seq"`
 }
 
 const (
@@ -447,6 +759,7 @@ type DeleteInodeRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	RequestExtend
 }
 
 // DeleteInodeRequest defines the request to delete an inode.
@@ -454,6 +767,7 @@ type DeleteInodeBatchRequest struct {
 	VolName     string   `json:"vol"`
 	PartitionId uint64   `json:"pid"`
 	Inodes      []uint64 `json:"ino"`
+	FullPaths   []string `json:"fullPaths"`
 }
 
 // AppendExtentKeysRequest defines the request to append an extent key.
@@ -483,6 +797,7 @@ type GetAllXAttrRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	VerSeq      uint64 `json:"seq"`
 }
 
 type GetAllXAttrResponse struct {
@@ -497,6 +812,7 @@ type GetXAttrRequest struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
+	VerSeq      uint64 `json:"seq"`
 }
 
 type GetXAttrResponse struct {
@@ -512,12 +828,14 @@ type RemoveXAttrRequest struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
+	VerSeq      uint64 `json:"seq"`
 }
 
 type ListXAttrRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
+	VerSeq      uint64 `json:"seq"`
 }
 
 type ListXAttrResponse struct {
@@ -532,6 +850,7 @@ type BatchGetXAttrRequest struct {
 	PartitionId uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
 	Keys        []string `json:"keys"`
+	VerSeq      uint64   `json:"seq"`
 }
 
 type BatchGetXAttrResponse struct {
@@ -586,6 +905,23 @@ type GetMultipartResponse struct {
 	Info *MultipartInfo `json:"info"`
 }
 
+type GetExpiredMultipartRequest struct {
+	VolName     string `json:"vol"`
+	Prefix      string `json:"path"`
+	Days        int    `json:"days"`
+	PartitionId uint64 `json:"pid"`
+}
+
+type ExpiredMultipartInfo struct {
+	Path        string   `json:"path"`
+	MultipartId string   `json:"mid"`
+	Inodes      []uint64 `json:"inodes"`
+}
+
+type GetExpiredMultipartResponse struct {
+	Infos []*ExpiredMultipartInfo `json:"infos"`
+}
+
 type AddMultipartPartRequest struct {
 	VolName     string             `json:"vol"`
 	PartitionId uint64             `json:"pid"`
@@ -623,4 +959,68 @@ type UpdateSummaryInfoRequest struct {
 	FileInc     int64  `json:"fileinc"`
 	DirInc      int64  `json:"dirinc"`
 	ByteInc     int64  `json:"byteinc"`
+}
+
+type SetMasterQuotaReuqest struct {
+	VolName   string          `json:"vol"`
+	PathInfos []QuotaPathInfo `json:"pinfos"`
+	MaxFiles  uint64          `json:"mf"`
+	MaxBytes  uint64          `json:"mbyte"`
+}
+
+type UpdateMasterQuotaReuqest struct {
+	VolName  string `json:"vol"`
+	QuotaId  uint32 `json:"qid"`
+	MaxFiles uint64 `json:"mf"`
+	MaxBytes uint64 `json:"mbyte"`
+}
+
+type ListMasterQuotaResponse struct {
+	Quotas []*QuotaInfo
+}
+
+type BatchSetMetaserverQuotaReuqest struct {
+	PartitionId uint64   `json:"pid"`
+	Inodes      []uint64 `json:"ino"`
+	QuotaId     uint32   `json:"qid"`
+	IsRoot      bool     `json:"root"`
+}
+
+type BatchSetMetaserverQuotaResponse struct {
+	InodeRes map[uint64]uint8 `json:"inores"`
+}
+
+type BatchDeleteMetaserverQuotaReuqest struct {
+	PartitionId uint64   `json:"pid"`
+	Inodes      []uint64 `json:"ino"`
+	QuotaId     uint32   `json:"qid"`
+}
+
+type BatchDeleteMetaserverQuotaResponse struct {
+	InodeRes map[uint64]uint8 `json:"inores"`
+}
+
+type GetInodeQuotaRequest struct {
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
+
+type GetInodeQuotaResponse struct {
+	MetaQuotaInfoMap map[uint32]*MetaQuotaInfo
+}
+
+type AppendMultipartResponse struct {
+	Status   uint8  `json:"status"`
+	Update   bool   `json:"update"`
+	OldInode uint64 `json:"oldinode"`
+}
+
+type GetUniqIDRequest struct {
+	VolName     string `json:"vol"`
+	PartitionID uint64 `json:"pid"`
+	Num         uint32 `json:"num"`
+}
+
+type GetUniqIDResponse struct {
+	Start uint64 `json:"start"`
 }

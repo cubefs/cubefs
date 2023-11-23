@@ -113,7 +113,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 			diskInfo := &blobnode.DiskInfo{}
 			err := json.Unmarshal(datas[idx], diskInfo)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -129,7 +129,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 			setStatusArgs := &clustermgr.DiskSetArgs{}
 			err := json.Unmarshal(datas[idx], setStatusArgs)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -141,7 +141,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 			args := &clustermgr.DiskInfoArgs{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -153,7 +153,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 			args := &clustermgr.DiskInfoArgs{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -165,7 +165,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 			args := &clustermgr.DisksHeartbeatArgs{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -178,7 +178,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 			args := &clustermgr.DiskAccessArgs{}
 			err := json.Unmarshal(datas[i], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -190,7 +190,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 			args := &blobnode.DiskInfo{}
 			err := json.Unmarshal(datas[i], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -198,6 +198,7 @@ func (d *DiskMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, 
 				errs[idx] = d.adminUpdateDisk(ctx, args)
 				wg.Done()
 			})
+		default:
 		}
 	}
 	wg.Wait()
@@ -253,6 +254,7 @@ func (d *DiskMgr) Flush(ctx context.Context) error {
 
 // DiskMgr do nothing when leader change
 func (d *DiskMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }
 
 func (d *DiskMgr) getTaskIdx(diskID proto.DiskID) int {

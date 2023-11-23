@@ -2,9 +2,10 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestMetaPartition(t *testing.T) {
@@ -35,7 +36,8 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 	}
 
 	var start uint64
-	start = mp.Start + defaultMetaPartitionInodeIDStep
+	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
+	start = mp.Start + metaPartitionInodeIdStep
 	reqURL := fmt.Sprintf("%v%v?name=%v&start=%v",
 		hostAddr, proto.AdminCreateMetaPartition, vol.Name, start)
 	fmt.Println(reqURL)
@@ -45,7 +47,7 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 		start = mp.MaxInodeID
 	}
 
-	start = start + defaultMetaPartitionInodeIDStep
+	start = start + metaPartitionInodeIdStep
 	vol, err = server.cluster.getVol(vol.Name)
 	if err != nil {
 		t.Error(err)

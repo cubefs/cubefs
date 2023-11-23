@@ -32,6 +32,10 @@ import (
 	"github.com/cubefs/cubefs/util/ump"
 )
 
+const (
+	BuffersTotalLimit = 1024 * 1024 // 1M
+)
+
 var gMetaWrapper *meta.MetaWrapper
 
 func newCleanCmd() *cobra.Command {
@@ -101,7 +105,7 @@ func Clean(opt string) error {
 
 	ump.InitUmp("fsck", "")
 
-	_, err := log.InitLog("fscklog", "fsck", log.InfoLevel, nil)
+	_, err := log.InitLog("fscklog", "fsck", log.InfoLevel, nil, log.DefaultLogLeftSpaceLimit)
 	if err != nil {
 		return fmt.Errorf("Init log failed: %v", err)
 	}
@@ -116,6 +120,8 @@ func Clean(opt string) error {
 	if err != nil {
 		return fmt.Errorf("NewMetaWrapper failed: %v", err)
 	}
+
+	proto.InitBufferPool(BuffersTotalLimit)
 
 	switch opt {
 	case "inode":
@@ -211,7 +217,7 @@ func doEvictInode(inode *Inode) error {
 	if inode.NLink != 0 || time.Since(time.Unix(inode.ModifyTime, 0)) < 24*time.Hour || !proto.IsRegular(inode.Type) {
 		return nil
 	}
-	err := gMetaWrapper.Evict(inode.Inode)
+	err := gMetaWrapper.Evict(inode.Inode, inode.Path)
 	if err != nil {
 		if err != syscall.ENOENT {
 			return err

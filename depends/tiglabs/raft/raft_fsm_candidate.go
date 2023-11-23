@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 )
 
+// first become preCandidate,
 func (r *raftFsm) becomeCandidate() {
 	if r.state == stateLeader {
 		panic(AppPanicError(fmt.Sprintf("[raft->becomeCandidate][%v] invalid transition [leader -> candidate].", r.id)))
@@ -34,7 +35,7 @@ func (r *raftFsm) becomeCandidate() {
 	r.vote = r.config.NodeID
 	r.state = stateCandidate
 	if logger.IsEnableDebug() {
-		logger.Debug("raft[%v] became candidate at term %d.", r.id, r.term)
+		logger.Debug("raft[%v] became candidate at term %d.", r.id, r.config.TransportConfig.ReplicateAddr, r.term)
 	}
 }
 
@@ -57,10 +58,10 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		r.becomeFollower(r.term, m.From)
 		return
 
-	case proto.ReqMsgElectAck:
+	case proto.ReqMsgPreVote:
 		r.becomeFollower(r.term, m.From)
 		nmsg := proto.GetMessage()
-		nmsg.Type = proto.RespMsgElectAck
+		nmsg.Type = proto.RespMsgPreVote
 		nmsg.To = m.From
 		r.send(nmsg)
 		proto.ReturnMessage(m)
@@ -85,23 +86,29 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		}
 		switch r.quorum() {
 		case gr:
-			if r.config.LeaseCheck {
-				r.becomeElectionAck()
-			} else {
-				r.becomeLeader()
-				r.bcastAppend()
-			}
+			r.becomeLeader()
+			r.bcastAppend()
 		case len(r.votes) - gr:
 			r.becomeFollower(r.term, NoLeader)
 		}
 	}
 }
 
-func (r *raftFsm) campaign(force bool) {
-	r.becomeCandidate()
+func (r *raftFsm) campaign(force bool, t CampaignType) {
+	var msgType proto.MsgType
+	var term uint64
+	if t == campaignPreElection {
+		r.becomePreCandidate()
+		msgType = proto.ReqMsgPreVote
+		term = r.term + 1
+	} else {
+		r.becomeCandidate()
+		msgType = proto.ReqMsgVote
+	}
+
 	if r.quorum() == r.poll(r.config.NodeID, true) {
-		if r.config.LeaseCheck {
-			r.becomeElectionAck()
+		if t == campaignPreElection {
+			r.campaign(force, campaignElection)
 		} else {
 			r.becomeLeader()
 		}
@@ -114,16 +121,17 @@ func (r *raftFsm) campaign(force bool) {
 		}
 		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
-			logger.Debug("[raft->campaign][%v logterm: %d, index: %d] sent "+
-				"vote request to %v at term %d.   raftFSM[%p]", r.id, lt, li, id, r.term, r)
+			logger.Debug("[raft->campaign][%v,%v logterm: %d, index: %d] sent "+
+				"%v request to %v at term %d.   raftFSM[%p]", msgType, r.id, r.config.ReplicateAddr, lt, li, id, r.term, r)
 		}
 
 		m := proto.GetMessage()
 		m.To = id
-		m.Type = proto.ReqMsgVote
+		m.Type = msgType
 		m.ForceVote = force
 		m.Index = li
 		m.LogTerm = lt
+		m.Term = term
 		r.send(m)
 	}
 }
@@ -131,9 +139,9 @@ func (r *raftFsm) campaign(force bool) {
 func (r *raftFsm) poll(id uint64, v bool) (granted int) {
 	if logger.IsEnableDebug() {
 		if v {
-			logger.Debug("raft[%v] received vote from %v at term %d.", r.id, id, r.term)
+			logger.Debug("raft[%v,%v] received vote from %v at term %d.", r.id, r.config.ReplicateAddr, id, r.term)
 		} else {
-			logger.Debug("raft[%v] received vote rejection from %v at term %d.", r.id, id, r.term)
+			logger.Debug("raft[%v,%v] received vote rejection from %v at term %d.", r.id, r.config.ReplicateAddr, id, r.term)
 		}
 	}
 	if _, ok := r.votes[id]; !ok {

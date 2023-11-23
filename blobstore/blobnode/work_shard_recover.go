@@ -307,6 +307,7 @@ func (shards *ShardsBuf) PutShard(bid proto.BlobID, input io.Reader) error {
 
 	size := shards.shards[bid].size
 	if int64(len(shards.shards[bid].data)) != size {
+		shards.mu.Unlock()
 		return errShardSizeNotMatch
 	}
 	shards.mu.Unlock()
@@ -402,7 +403,7 @@ func NewShardRecover(replicas Vunits, mode codemode.CodeMode, bidInfos []*ShardI
 	if vunitShardGetConcurrency <= 0 {
 		vunitShardGetConcurrency = defaultGetConcurrency
 	}
-	ioType := blobnode.Task2IOType(taskType)
+	ioType := blobnode.BackgroundIO
 
 	repair := ShardRecover{
 		replicas:                 replicas,

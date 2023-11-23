@@ -53,6 +53,7 @@ func (s *ScopeMgr) GetModuleName() string {
 }
 
 func (s *ScopeMgr) SetModuleName(module string) {
+	// TODO: to set module ???
 }
 
 func (s *ScopeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte, contexts []base.ProposeContext) error {
@@ -71,6 +72,7 @@ func (s *ScopeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte,
 			if err != nil {
 				return errors.Info(err, "apply commit failed, args: ", args).Detail(err)
 			}
+		default:
 		}
 	}
 
@@ -84,4 +86,5 @@ func (s *ScopeMgr) Flush(ctx context.Context) error {
 
 // nothing to do
 func (s *ScopeMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }

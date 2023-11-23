@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2018 The Chubao Authors.
+# Copyright 2018 The CubeFS Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 MntPoint=/cfs/mnt
 mkdir -p /cfs/bin /cfs/log /cfs/mnt
-src_path=/go/src/github.com/chubaofs/cfs
+src_path=/go/src/github.com/cubefs/cfs
 cli=/cfs/bin/cfs-cli
 conf_path=/cfs/conf
 
@@ -41,11 +41,13 @@ check_cluster() {
         LeaderAddr=`cat /tmp/cli_cluster_info | grep -i "master leader" | awk '{print$4}'`
         if [[ "x$LeaderAddr" != "x" ]] ; then
             echo -e "\033[32mdone\033[0m"
+            cat /tmp/cli_cluster_info
             return
         fi
         sleep 1
     done
     echo -e "\033[31mfail\033[0m"
+    cat /tmp/cli_cluster_info
     exit 1
 }
 
@@ -57,12 +59,31 @@ ensure_node_writable() {
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
         if [[ ${res} -eq 4 ]]; then
             echo -e "\033[32mdone\033[0m"
+            cat /tmp/cli_${node}_list
+            # Check nodes
+            awk '{print $2}' /tmp/cli_${node}_list | while read line
+            do
+                if [[ "${line}" != "ADDRESS" && "${line}" != "nodes]" ]]; then
+                    addr=`echo "${line}" | sed -e "s/([^)]*)//g"`
+                    echo "check ${node} ${addr}"
+                    ${cli} ${node} info ${addr}
+                fi
+            done
             return
         fi
         sleep 1
     done
     echo -e "\033[31mfail\033[0m"
     cat /tmp/cli_${node}_list
+    # Check nodes
+    awk '{print $2}' /tmp/cli_${node}_list | while read line
+    do
+        if [[ "${line}" != "ADDRESS" && "${line}" != "nodes]" ]]; then
+            addr=`echo "${line}" | sed -e "s/([^)]*)//g"`
+            echo "check ${node} ${addr}"
+            ${cli} ${node} info ${addr}
+        fi
+    done
     exit 1
 }
 

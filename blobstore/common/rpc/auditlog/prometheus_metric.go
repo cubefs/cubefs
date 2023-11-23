@@ -40,6 +40,7 @@ type PrometheusConfig struct {
 	Tag     string `json:"tag"`
 	Team    string `json:"team"`
 
+	SetDefaultSwitch    bool            `json:"set_default_switch"`
 	EnableHttpMethod    bool            `json:"enable_http_method"`
 	DisableApi          bool            `json:"disable_api"`
 	EnableReqLengthCnt  bool            `json:"enable_req_length_cnt"`
@@ -49,7 +50,7 @@ type PrometheusConfig struct {
 	MaxApiLevel         int             `json:"max_api_level"`
 	XWarns              []string        `json:"xwarns"`
 	ErrCodes            map[string]bool `json:"resp_err_codes"`
-	SizeBuckets         []int           `json:"size_buckets"`
+	SizeBuckets         []int64         `json:"size_buckets"`
 }
 
 type PrometheusSender struct {
@@ -175,14 +176,16 @@ func (ps *PrometheusSender) getSizeTag(size int64) string {
 	if len(ps.SizeBuckets) == 0 {
 		return ""
 	}
-	i := sort.SearchInts(ps.SizeBuckets, int(size))
+	i := sort.Search(len(ps.SizeBuckets), func(i int) bool {
+		return ps.SizeBuckets[i] >= size
+	})
 	if i == 0 {
 		return "0"
 	}
 	if i >= len(ps.SizeBuckets) {
-		return strconv.Itoa(ps.SizeBuckets[i-1]) + "_"
+		return strconv.FormatInt(ps.SizeBuckets[i-1], 10) + "_"
 	}
-	return strconv.Itoa(ps.SizeBuckets[i-1]) + "_" + strconv.Itoa(ps.SizeBuckets[i])
+	return strconv.FormatInt(ps.SizeBuckets[i-1], 10) + "_" + strconv.FormatInt(ps.SizeBuckets[i], 10)
 }
 
 func getResponseCounterVec(logtype string, constLabels map[string]string) *prometheus.CounterVec {

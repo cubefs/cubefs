@@ -20,416 +20,266 @@ package objectnode
 // https://docs.aws.amazon.com/AmazonS3/latest/dev/access-policy-language-overview.html
 
 import (
+	"encoding/json"
 	"fmt"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
+	"sort"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
-//https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/dev/example-bucket-policies.html
-type ConditionValues map[string]StringSet
-type Condition map[ConditionType]ConditionValues
-type ConditionType string
-type ConditionKey string
+var (
+	invalidCIDR                 = "value %v must be CIDR string for %v condition"
+	invalidIPKey                = "only %v key is allowed for %v condition"
+	invalidStringValue          = "value must be a string for %v condition"
+	invalidConditionKey         = "invalid condition key '%v'"
+	emptyCondition              = "condition must not be empty"
+	cannotHandledCondition      = "condition %v  cannot be handled"
+	cannotTransformToString     = "%v cannot transform to string"
+	cannotHandledConditionValue = "cannot handle condition values: %v"
+	invalidConditionOperator    = "invalid condition operator '%v'"
+	invalidConditionValue       = "invalid value"
+	duplicateConditionValue     = "duplicate value found '%v'"
+	unknownJsonData             = "unknown json data '%v'"
+)
 
-// https://docs.aws.amazon.com/zh_cn/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html
+type operator string
+
 const (
-	IpAddress                ConditionType = "IpAddress"
-	NotIpAddress                           = "NotIpAddress"
-	StringLike                             = "StringLike"
-	StringNotLike                          = "StringNotLike"
-	StringEquals                           = "StringEquals"
-	StringNotEquals                        = "StringNotEquals"
-	Bool                                   = "Bool"
-	DateEquals                             = "DateEquals"
-	DateNotEquals                          = "DateNotEquals"
-	DateLessThan                           = "DateLessThan"
-	DateLessThanEquals                     = "DateLessThanEquals"
-	DateGreaterThan                        = "DateGreaterThan"
-	DateGreaterThanEquals                  = "DateGreaterThanEquals"
-	NumericEquals                          = "NumericEquals"
-	NumericNotEquals                       = "NumericNotEquals"
-	NumericLessThan                        = "NumericLessThan"
-	NumericLessThanEquals                  = "NumericLessThanEquals"
-	NumericGreaterThan                     = "NumericGreaterThan"
-	NumericGreaterThanEquals               = "NumericGreaterThanEquals"
-	ArnEquals                              = "ArnEquals"
-	ArnLike                                = "ArnLike" //
-	ArnNotEquals                           = "ArnNotEquals"
-	ArnNotLike                             = "ArnNotLike" //
+	stringLike    = "StringLike"
+	stringNotLike = "StringNotLike"
+	ipAddress     = "IpAddress"
+	notIPAddress  = "NotIpAddress"
 )
 
-var (
-	StringFuncs    = []ConditionFunc{StringEqualsFunc, StringNotEqualsFunc, StringLikeFunc, StringNotLikeFunc}
-	DateFuncs      = []ConditionFunc{DateEqualsFunc, DateNotEqualsFunc, DateLessThanFunc, DateGreaterThanFunc, DateLessThanEqualsFunc, DateGreaterThanEqualsFunc}
-	IpAddressFuncs = []ConditionFunc{IpAddressFunc, NotIpAddressFunc}
-	BoolFuncs      = []ConditionFunc{BoolFunc}
-	NumericFuncs   = []ConditionFunc{NumericEqualsFunc, NumericNotEqualsFunc, NumericLessThanFunc, NumericLessThanEqualsFunc, NumericGreaterThanFunc, NumericGreaterThanEqualsFunc}
-	ArnFuncs       = []ConditionFunc{ArnEqualsFunc, ArnNotEqualsFunc, ArnLikeFunc, ArnNotLikeFunc}
-)
-
-type ConditionTypeSet map[ConditionType]null
-
-var (
-	StringType    = ConditionTypeSet{StringEquals: void, StringNotEquals: void, StringLike: void, StringNotLike: void}
-	DateType      = ConditionTypeSet{DateEquals: void, DateNotEquals: void, DateLessThan: void, DateGreaterThan: void, DateLessThanEquals: void, DateGreaterThanEquals: void}
-	IpAddressType = ConditionTypeSet{IpAddress: void, NotIpAddress: void}
-	BoolType      = ConditionTypeSet{Bool: void}
-	NumericType   = ConditionTypeSet{NumericEquals: void, NumericNotEquals: void, NumericLessThan: void, NumericLessThanEquals: void, NumericGreaterThan: void, NumericGreaterThanEquals: void}
-	ArnType       = ConditionTypeSet{ArnEquals: void, ArnNotEquals: void, ArnLike: void, ArnNotLike: void}
-)
-
-// https://docs.aws.amazon.com/zh_cn/IAM/latest/UserGuide/reference_policies_condition-keys.html
-const (
-	AwsCurrentTime            ConditionKey = "aws:CurrentTime"
-	AwsEpochTime                           = "aws:EpochTime"
-	AwsMultiFactorAuthPresent              = "aws:MultiFactorAuthPresent"
-	AwsPrincipalAccount                    = "aws:PrincipalAccount"
-	AwsPrincipalArn                        = "aws:PrincipalArn"
-	AwsPrincipalOrgID                      = "aws:PrincipalOrgID"
-	AwsPrincipalTag                        = "aws:PrincipalTag"
-	AwsPrincipalType                       = "aws:PrincipalType"
-	AwsReferer                             = "aws:Referer"
-	AwsRequestRegion                       = "aws:RequestRegion"
-	AwsRequestTagKey                       = "aws:RequestTag/tag-key"
-	AwsResourceTagKey                      = "aws:ResourceTag/tag-key"
-	AwsSecureTransport                     = "aws:SecureTransport"
-	AwsSourceAccout                        = "aws:AwsSourceAccout"
-	AwsSourceArn                           = "aws:SourceArn"
-	AwsSourceIp                            = "aws:SourceIp"
-	AwsSourceVpc                           = "aws:SourceVpc"
-	AwsSourceVpce                          = "aws:SourceVpce"
-	AwsTagKeys                             = "aws:TagKeys"
-	AwsTokenIssueTime                      = "aws:TokenIssueTime"
-	AwsUserAgent                           = "aws:UserAgent"
-	AwsUserId                              = "aws:userid"
-	AwsUserName                            = "aws:username"
-	AwsVpcSourceIp                         = "aws:VpcSourceIp"
-)
-
-var ConditionKeyType = map[ConditionKey]ConditionTypeSet{
-	AwsCurrentTime:            DateType,
-	AwsEpochTime:              DateType,
-	AwsMultiFactorAuthPresent: BoolType,
-	AwsPrincipalAccount:       StringType,
-	AwsPrincipalArn:           ArnType,
-	AwsPrincipalOrgID:         StringType,
-	AwsPrincipalTag:           StringType,
-	AwsPrincipalType:          StringType,
-	AwsReferer:                StringType,
-	AwsRequestRegion:          StringType,
-	AwsRequestTagKey:          StringType,
-	AwsResourceTagKey:         StringType,
-	AwsSecureTransport:        BoolType,
-	AwsSourceAccout:           StringType,
-	AwsSourceArn:              ArnType,
-	AwsSourceIp:               IpAddressType,
-	AwsSourceVpc:              StringType,
-	AwsSourceVpce:             StringType,
-	AwsTagKeys:                StringType,
-	AwsTokenIssueTime:         DateType,
-	AwsUserAgent:              StringType,
-	AwsUserId:                 StringType,
-	AwsUserName:               StringType,
-	AwsVpcSourceIp:            IpAddressType,
+var supportedOperators = []operator{
+	stringLike,
+	stringNotLike,
+	ipAddress,
+	notIPAddress,
+	// Add new conditions here.
 }
 
-var ConditionFuncMap = map[ConditionType]ConditionFunc{
-	IpAddress:             IpAddressFunc,
-	NotIpAddress:          NotIpAddressFunc,
-	StringLike:            StringLikeFunc,
-	StringNotLike:         StringNotLikeFunc,
-	StringEquals:          StringEqualsFunc,
-	StringNotEquals:       StringNotEqualsFunc,
-	Bool:                  BoolFunc,
-	DateEquals:            DateEqualsFunc,
-	DateNotEquals:         DateNotEqualsFunc,
-	DateLessThan:          DateLessThanFunc,
-	DateLessThanEquals:    DateLessThanEqualsFunc,
-	DateGreaterThan:       DateGreaterThanFunc,
-	DateGreaterThanEquals: DateGreaterThanEqualsFunc,
-}
-
-type ConditionFunc func(p *RequestParam, values ConditionValues) bool
-
-var (
-	awsTrimedPrefix = []string{"aws:", "jwt:", "s3:"}
-)
-
-func TrimAwsPrefixKey(key string) string {
-	for _, prefix := range awsTrimedPrefix {
-		if strings.HasPrefix(key, prefix) {
-			return strings.TrimPrefix(key, prefix)
-		}
-	}
-
-	return key
-}
-
-func getCondtionValues(r *http.Request) map[string][]string {
-	currentTime := time.Now().UTC()
-	authInfo := parseRequestAuthInfo(r)
-	accessKey := authInfo.accessKey
-	principalType := "User"
-	if accessKey == "" {
-		principalType = "Anonymous"
-	}
-	values := map[string][]string{
-		"SourceIp":      {getRequestIP(r)},
-		"UserAgent":     {r.UserAgent()},
-		"Referer":       {r.Referer()},
-		"CurrentTime":   {currentTime.Format(AMZTimeFormat)},
-		"EpochTime":     {fmt.Sprintf("%d", currentTime.Unix())},
-		"userid":        {accessKey},
-		"username":      {accessKey},
-		"PrincipalType": {principalType},
-	}
-
-	for k, v := range r.Header {
-		if existsV, ok := values[k]; ok {
-			values[k] = append(existsV, v...)
-		} else {
-			values[k] = v
-		}
-	}
-
-	for k, v := range r.URL.Query() {
-		if existsV, ok := values[k]; ok {
-			values[k] = append(existsV, v...)
-		} else {
-			values[k] = v
-		}
-	}
-
-	return values
-}
-
-func IpAddressFunc(p *RequestParam, value ConditionValues) bool {
-	key := TrimAwsPrefixKey(AwsSourceIp)
-	canonicalKey := http.CanonicalHeaderKey(key)
-	sourceIP, ok := value[canonicalKey]
-	if !ok {
-		return false
-	}
-	for ipnet := range sourceIP.values {
-		if ok, _ := isIPNetContainsIP(p.sourceIP, ipnet); ok {
+func (op operator) IsValid() bool {
+	for _, supOp := range supportedOperators {
+		if op == supOp {
 			return true
 		}
 	}
 
-	return true
-}
-
-func NotIpAddressFunc(p *RequestParam, values ConditionValues) bool {
-	return !IpAddressFunc(p, values)
-}
-
-func StringLikeFunc(reqParam *RequestParam, storeCondVals ConditionValues) bool {
-	for k, storeVals := range storeCondVals {
-		key := TrimAwsPrefixKey(k)
-		canonicalKey := http.CanonicalHeaderKey(key)
-		if reqVals, ok := reqParam.conditionVars[canonicalKey]; ok {
-			for _, rv := range reqVals {
-				for sv := range storeVals.values {
-					if match := patternMatch(rv, sv); match {
-						return true
-					}
-				}
-			}
-		}
-	}
-
 	return false
 }
 
-func StringNotLikeFunc(p *RequestParam, values ConditionValues) bool {
-	return !StringLikeFunc(p, values)
-}
-
-func StringEqualsFunc(reqParam *RequestParam, storeCondVals ConditionValues) bool {
-	for k, storeVals := range storeCondVals {
-		key := TrimAwsPrefixKey(k)
-		canonicalKey := http.CanonicalHeaderKey(key)
-		if reqVals, ok := reqParam.conditionVars[canonicalKey]; ok {
-			for _, rv := range reqVals {
-				if storeVals.Contains(rv) {
-					return true
-				}
-			}
-		} else if reqVals, ok := reqParam.conditionVars[key]; ok {
-			for _, rv := range reqVals {
-				if storeVals.Contains(rv) {
-					return true
-				}
-			}
-		}
+// encodes operator to JSON data.
+func (op operator) MarshalJSON() ([]byte, error) {
+	if !op.IsValid() {
+		return nil, fmt.Errorf("invalid operator %v", op)
 	}
 
-	return false
+	return json.Marshal(string(op))
 }
 
-func StringNotEqualsFunc(p *RequestParam, values ConditionValues) bool {
-	return !StringNotEqualsFunc(p, values)
-}
-
-// check statement conditions
-func (s Statement) checkConditions(param *RequestParam) bool {
-	if len(s.Condition) == 0 {
-		return true
+// decodes JSON data to condition operator.
+func (op *operator) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
 	}
-	for k, v := range s.Condition {
-		f, ok := ConditionFuncMap[k]
-		if !ok {
-			continue
-		}
-		if !f(param, v) {
+
+	parsedOperator, err := parseOperator(s)
+	if err != nil {
+		return err
+	}
+
+	*op = parsedOperator
+	return nil
+}
+
+func parseOperator(s string) (operator, error) {
+	n := operator(s)
+
+	if n.IsValid() {
+		return n, nil
+	}
+
+	return n, fmt.Errorf(invalidConditionOperator, s)
+}
+
+type Operation interface {
+	// evaluates this condition operation with given values.
+	evaluate(values map[string]string) bool
+
+	// returns all condition keys used in this operation.
+	keys() KeySet
+
+	// returns condition operator of this operation.
+	operator() operator
+
+	toMap() map[Key]ValueSet
+}
+
+type Condition []Operation
+
+// evaluates all operation with given values map.
+func (operations Condition) Evaluate(values map[string]string) bool {
+	for _, op := range operations {
+		if !op.evaluate(values) {
+			log.LogDebugf("cannot match a condition, operator:%v, conditionKV:%v, values: %v", op.operator(), op.toMap(), values)
 			return false
 		}
 	}
-
 	return true
 }
 
-func BoolFunc(p *RequestParam, policyCondtion ConditionValues) bool {
-	if len(policyCondtion) == 0 {
-		return true
+// returns list of keys used in all operation.
+func (operations Condition) Keys() KeySet {
+	keySet := NewKeySet()
+
+	for _, op := range operations {
+		keySet.AddAll(op.keys())
 	}
-	for condKey, condVal := range policyCondtion {
-		for vals := range condVal.values {
-			val1, _ := strconv.ParseBool(vals)
-			if cond, ok := p.conditionVars[condKey]; ok {
-				for _, c := range cond {
-					val2, _ := strconv.ParseBool(c)
-					return val1 == val2
-				}
+
+	return keySet
+}
+
+// encodes Condition to  JSON data.
+func (operations Condition) MarshalJSON() ([]byte, error) {
+	conditionKV := make(map[operator]map[Key]ValueSet)
+
+	for _, op := range operations {
+		if _, ok := conditionKV[op.operator()]; ok {
+			for k, v := range op.toMap() {
+				conditionKV[op.operator()][k] = v
 			}
+		} else {
+			conditionKV[op.operator()] = op.toMap()
 		}
 	}
 
-	return false
+	return json.Marshal(conditionKV)
 }
 
-func DateEqualsFunc(p *RequestParam, policyVals ConditionValues) bool {
-	for k, pVals := range policyVals {
-		for pVal := range pVals.values {
-			pDate, err := time.Parse(AMZTimeFormat, pVal)
+func (operations Condition) String() string {
+	var opStrings []string
+	for _, op := range operations {
+		s := fmt.Sprintf("%v", op)
+		opStrings = append(opStrings, s)
+	}
+	sort.Strings(opStrings)
+
+	return fmt.Sprintf("%v", opStrings)
+}
+
+var conditionOpMap = map[operator]func(map[Key]ValueSet) (Operation, error){
+	stringLike:    newStringLikeOp,
+	stringNotLike: newStringNotLikeOp,
+	ipAddress:     newIPAddressOp,
+	notIPAddress:  newNotIPAddressOp,
+	// Add new conditions here.
+}
+
+// decodes JSON data to Condition.
+func (operations *Condition) UnmarshalJSON(data []byte) error {
+	operatorMap := make(map[string]map[string]ValueSet)
+	if err := json.Unmarshal(data, &operatorMap); err != nil {
+		return err
+	}
+
+	if len(operatorMap) == 0 {
+		return fmt.Errorf(emptyCondition)
+	}
+
+	var ops []Operation
+	for operatorString, args := range operatorMap {
+		o, err := parseOperator(operatorString)
+		if err != nil {
+			return err
+		}
+
+		vfn, ok := conditionOpMap[o]
+		if !ok {
+			return fmt.Errorf(cannotHandledCondition, o)
+		}
+		m := make(map[Key]ValueSet)
+		for keyString, values := range args {
+			key, err := parseKey(keyString)
 			if err != nil {
-				return false
+				return err
 			}
-			if reqVals, ok := p.conditionVars[k]; ok {
-				for _, reqVal := range reqVals {
-					reqDate, err := time.Parse(AMZTimeFormat, reqVal)
-					if err != nil {
-						return false
-					}
-					return pDate.Equal(reqDate)
-				}
+			m[key] = values
+
+		}
+		op, err := vfn(m)
+		if err != nil {
+			return err
+		}
+		ops = append(ops, op)
+	}
+
+	*operations = ops
+
+	return nil
+}
+
+func (operations Condition) CheckValid() error {
+	for _, op := range operations {
+		if !op.operator().IsValid() {
+			return NewError("InvalidConditionType", fmt.Sprintf("policy has invalid condition type: %s", op.operator()), 400)
+		}
+		for key := range op.keys() {
+			if !key.IsValid() {
+				return NewError("InvalidConditionKey", fmt.Sprintf("policy has invalid condition key: %s", key), 400)
 			}
 		}
 	}
-
-	return false
+	return nil
 }
 
-func DateNotEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	return !DateEqualsFunc(p, value)
-}
+// parse a map into Condition
+func (operations *Condition) parseOperations(operatorMap map[string]map[string]interface{}) error {
+	var ops []Operation
+	for operatorString, args := range operatorMap {
+		o, err := parseOperator(operatorString)
+		if err != nil {
+			return err
+		}
 
-func DateLessThanFunc(p *RequestParam, value ConditionValues) bool {
-	for k, pVals := range value {
-		for pVal := range pVals.values {
-			pDate, err := time.Parse(AMZTimeFormat, pVal)
+		vfn, ok := conditionOpMap[o]
+		if !ok {
+			return fmt.Errorf(cannotHandledCondition, o)
+		}
+		m := make(map[Key]ValueSet)
+		for keyString, values := range args {
+
+			valueSet := NewValueSet()
+			key, err := parseKey(keyString)
 			if err != nil {
-				return false
+				return err
 			}
-			if reqVals, ok := p.conditionVars[k]; ok {
-				for _, reqVal := range reqVals {
-					reqDate, err := time.Parse(AMZTimeFormat, reqVal)
-					if err != nil {
-						return false
+			switch values.(type) {
+			case string:
+				valueSet.Add(NewStringValue(values.(string)))
+			case []interface{}:
+				for _, value := range values.([]interface{}) {
+					if valueString, ok := value.(string); ok {
+						valueSet.Add(NewStringValue(valueString))
+					} else {
+						return fmt.Errorf(cannotTransformToString, value)
 					}
-					return reqDate.Before(pDate)
 				}
+			default:
+
+				return fmt.Errorf(cannotHandledConditionValue, values)
 			}
+			m[key] = valueSet
+
 		}
-	}
-	return false
-}
-
-func DateLessThanEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	for k, pVals := range value {
-		for pVal := range pVals.values {
-			pDate, err := time.Parse(AMZTimeFormat, pVal)
-			if err != nil {
-				return false
-			}
-			if reqVals, ok := p.conditionVars[k]; ok {
-				for _, reqVal := range reqVals {
-					reqDate, err := time.Parse(AMZTimeFormat, reqVal)
-					if err != nil {
-						return false
-					}
-					return reqDate.Before(pDate) || reqDate.Equal(pDate)
-				}
-			}
+		op, err := vfn(m)
+		if err != nil {
+			return err
 		}
+		ops = append(ops, op)
 	}
-	return true
-}
 
-func DateGreaterThanFunc(p *RequestParam, value ConditionValues) bool {
-	return !DateLessThanEqualsFunc(p, value)
-}
-
-func DateGreaterThanEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	return !DateLessThanFunc(p, value)
-}
-
-func NumericEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	//TODO: numeric equal implements
-
-	return true
-}
-
-func NumericNotEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	return !NumericEqualsFunc(p, value)
-}
-
-func NumericLessThanFunc(p *RequestParam, value ConditionValues) bool {
-	//TODO: numeric less than implements
-
-	return true
-}
-
-func NumericLessThanEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	return NumericLessThanFunc(p, value) || NumericEqualsFunc(p, value)
-}
-
-func NumericGreaterThanFunc(p *RequestParam, value ConditionValues) bool {
-	return !NumericLessThanEqualsFunc(p, value)
-}
-
-func NumericGreaterThanEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	return !NumericLessThanFunc(p, value)
-}
-
-func ArnEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	//TODO: numeric equal implements
-
-	return true
-}
-
-func ArnNotEqualsFunc(p *RequestParam, value ConditionValues) bool {
-	return !ArnEqualsFunc(p, value)
-}
-
-func ArnLikeFunc(p *RequestParam, value ConditionValues) bool {
-	//TODO: numeric equal implements
-
-	return true
-}
-
-func ArnNotLikeFunc(p *RequestParam, value ConditionValues) bool {
-	return !ArnLikeFunc(p, value)
+	*operations = ops
+	return nil
 }

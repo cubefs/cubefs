@@ -14,6 +14,8 @@
 
 package proto
 
+import "sync"
+
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
 	Name string
@@ -39,6 +41,7 @@ type CreateMetaPartitionRequest struct {
 	End         uint64
 	PartitionID uint64
 	Members     []Peer
+	VerSeq      uint64
 }
 
 // CreateMetaPartitionResponse defines the response to the request of creating a meta partition.
@@ -47,4 +50,94 @@ type CreateMetaPartitionResponse struct {
 	PartitionID uint64
 	Status      uint8
 	Result      string
+}
+
+type UidSpaceInfo struct {
+	VolName   string
+	Uid       uint32
+	CTime     int64
+	Enabled   bool
+	Limited   bool
+	UsedSize  uint64
+	LimitSize uint64
+	Rsv       string
+}
+
+type UidReportSpaceInfo struct {
+	Uid   uint32
+	Size  uint64
+	Rsv   string
+	MTime int64
+}
+
+type QuotaUsedInfo struct {
+	UsedFiles int64
+	UsedBytes int64
+}
+
+type QuotaLimitedInfo struct {
+	LimitedFiles bool
+	LimitedBytes bool
+}
+
+type QuotaReportInfo struct {
+	QuotaId  uint32
+	UsedInfo QuotaUsedInfo
+}
+
+type QuotaInfo struct {
+	VolName     string
+	QuotaId     uint32
+	CTime       int64
+	PathInfos   []QuotaPathInfo
+	LimitedInfo QuotaLimitedInfo
+	UsedInfo    QuotaUsedInfo
+	MaxFiles    uint64
+	MaxBytes    uint64
+	Rsv         string
+}
+
+type QuotaHeartBeatInfo struct {
+	VolName     string
+	QuotaId     uint32
+	LimitedInfo QuotaLimitedInfo
+	Enable      bool
+}
+
+type MetaQuotaInfos struct {
+	QuotaInfoMap map[uint32]*MetaQuotaInfo
+	sync.RWMutex
+}
+
+type MetaQuotaInfo struct {
+	RootInode bool `json:"rid"`
+}
+
+type QuotaPathInfo struct {
+	FullPath    string
+	RootInode   uint64
+	PartitionId uint64
+}
+
+func (usedInfo *QuotaUsedInfo) Add(info *QuotaUsedInfo) {
+	usedInfo.UsedFiles += info.UsedFiles
+	usedInfo.UsedBytes += info.UsedBytes
+}
+
+func (quotaInfo *QuotaInfo) IsOverQuotaFiles() (isOver bool) {
+	if uint64(quotaInfo.UsedInfo.UsedFiles) > quotaInfo.MaxFiles {
+		isOver = true
+	} else {
+		isOver = false
+	}
+	return
+}
+
+func (quotaInfo *QuotaInfo) IsOverQuotaBytes() (isOver bool) {
+	if uint64(quotaInfo.UsedInfo.UsedBytes) > quotaInfo.MaxBytes {
+		isOver = true
+	} else {
+		isOver = false
+	}
+	return
 }

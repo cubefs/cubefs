@@ -25,9 +25,11 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 
@@ -41,6 +43,7 @@ import (
 	"github.com/cubefs/cubefs/authnode"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/datanode"
+	"github.com/cubefs/cubefs/lcnode"
 	"github.com/cubefs/cubefs/master"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/util/config"
@@ -52,27 +55,32 @@ const (
 	ConfigKeyRole              = "role"
 	ConfigKeyLogDir            = "logDir"
 	ConfigKeyLogLevel          = "logLevel"
+	ConfigKeyLogRotateSize     = "logRotateSize"
+	ConfigKeyLogRotateHeadRoom = "logRotateHeadRoom"
 	ConfigKeyProfPort          = "prof"
 	ConfigKeyWarnLogDir        = "warnLogDir"
 	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
+	ConfigKeyLogLeftSpaceLimit = "logLeftSpaceLimit"
 )
 
 const (
-	RoleMaster  = "master"
-	RoleMeta    = "metanode"
-	RoleData    = "datanode"
-	RoleAuth    = "authnode"
-	RoleObject  = "objectnode"
-	RoleConsole = "console"
+	RoleMaster    = "master"
+	RoleMeta      = "metanode"
+	RoleData      = "datanode"
+	RoleAuth      = "authnode"
+	RoleObject    = "objectnode"
+	RoleConsole   = "console"
+	RoleLifeCycle = "lcnode"
 )
 
 const (
-	ModuleMaster  = "master"
-	ModuleMeta    = "metaNode"
-	ModuleData    = "dataNode"
-	ModuleAuth    = "authNode"
-	ModuleObject  = "objectNode"
-	ModuleConsole = "console"
+	ModuleMaster    = "master"
+	ModuleMeta      = "metaNode"
+	ModuleData      = "dataNode"
+	ModuleAuth      = "authNode"
+	ModuleObject    = "objectNode"
+	ModuleConsole   = "console"
+	ModuleLifeCycle = "lcnode"
 )
 
 const (
@@ -155,10 +163,17 @@ func main() {
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
+	logRotateSize := cfg.GetInt64(ConfigKeyLogRotateSize)
+	logRotateHeadRoom := cfg.GetInt64(ConfigKeyLogRotateHeadRoom)
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
-
+	logLeftSpaceLimitStr := cfg.GetString(ConfigKeyLogLeftSpaceLimit)
+	logLeftSpaceLimit, err := strconv.ParseInt(logLeftSpaceLimitStr, 10, 64)
+	if err != nil || logLeftSpaceLimit == 0 {
+		log.LogErrorf("logLeftSpaceLimit is not a legal int value: %v", err.Error())
+		logLeftSpaceLimit = log.DefaultLogLeftSpaceLimit
+	}
 	// Init server instance with specified role configuration.
 	var (
 		server common.Server
@@ -183,6 +198,9 @@ func main() {
 	case RoleConsole:
 		server = console.NewServer()
 		module = ModuleConsole
+	case RoleLifeCycle:
+		server = lcnode.NewServer()
+		module = ModuleLifeCycle
 	default:
 		err = errors.NewErrorf("Fatal: role mismatch: %s", role)
 		fmt.Println(err)
@@ -208,8 +226,14 @@ func main() {
 	default:
 		level = log.ErrorLevel
 	}
-
-	_, err = log.InitLog(logDir, module, level, nil)
+	rotate := log.NewLogRotate()
+	if logRotateSize > 0 {
+		rotate.SetRotateSizeMb(logRotateSize)
+	}
+	if logRotateHeadRoom > 0 {
+		rotate.SetHeadRoomMb(logRotateHeadRoom)
+	}
+	_, err = log.InitLog(logDir, module, level, rotate, logLeftSpaceLimit)
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to init log - %v", err)
 		fmt.Println(err)
@@ -217,6 +241,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer log.LogFlush()
+
+	_, err = auditlog.InitAudit(logDir, module, auditlog.DefaultAuditLogSize)
+	if err != nil {
+		err = errors.NewErrorf("Fatal: failed to init audit log - %v", err)
+		fmt.Println(err)
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+	defer auditlog.StopAudit()
 
 	if *redirectSTD {
 		// Init output file
@@ -248,9 +281,7 @@ func main() {
 	}
 
 	proto.InitBufferPool(buffersTotalLimit)
-
 	syslog.Printf("Hello, CubeFS Storage\n%s\n", Version)
-
 	err = modifyOpenFiles()
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to modify open files - %v", err)
@@ -294,7 +325,7 @@ func main() {
 	}
 
 	syslog.Printf("server start success, pid %d, role %s", os.Getpid(), role)
-
+	log.LogDisableStderrOutput()
 	err = log.OutputPid(logDir, role)
 	if err != nil {
 		log.LogFlush()

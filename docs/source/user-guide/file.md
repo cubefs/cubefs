@@ -28,11 +28,11 @@ The example configuration file is as follows:
     "owner":"test",
     "accessKey":"**********",
     "secretKey":"*********",
-    "masterAddr":"192.168.0.1",
+    "masterAddr":"192.168.0.1:17010",
     "rdonly":"false",
     "logDir":"/home/service/var/logs/cfs/log",
     "logLevel":"warn",
-    "profPort":"192.168.1.1"
+    "profPort":"17410"
 }
 ```
 
@@ -85,6 +85,14 @@ umount -l /path/to/mountPoint
 ```
 
 `/path/to/mountPoint` is the mount path in the client configuration file.
+
+## Live Upgrade or hot restart 
+```bash
+cfs-client -c fuse.json -r -p 27510
+```
+Before live-upgrading, old cfs-client is running with profPort 27510. 
+`-r` restore FUSE instead of mounting.
+`-p 27510` tells new cfs-client to communicate with old cfs-client through port 27510.
 
 ## Enabling Level 1 Cache
 

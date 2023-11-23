@@ -15,12 +15,20 @@
 package objectnode
 
 import (
-	"net/url"
-	"regexp"
-	"strings"
-
+	"crypto/hmac"
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -62,7 +70,7 @@ type PathIterator struct {
 
 func (p *PathIterator) init() {
 	if !p.inited {
-		p.path = strings.TrimSpace(p.path)
+		// p.path = strings.TrimSpace(p.path)
 		loc := regexpSepPrefix.FindStringIndex(p.path)
 		if len(loc) == 2 {
 			p.path = p.path[loc[1]:]
@@ -285,9 +293,9 @@ func SplitFileRange(size, blockSize int64) (ranges [][2]int64) {
 func ParseUserDefinedMetadata(header http.Header) map[string]string {
 	metadata := make(map[string]string)
 	for name, values := range header {
-		if strings.HasPrefix(name, http.CanonicalHeaderKey(HeaderNameXAmzMetaPrefix)) &&
-			name != http.CanonicalHeaderKey(HeaderNameXAmzMetadataDirective) {
-			metaName := strings.ToLower(name[len(HeaderNameXAmzMetaPrefix):])
+		if strings.HasPrefix(name, http.CanonicalHeaderKey(XAmzMetaPrefix)) &&
+			name != http.CanonicalHeaderKey(XAmzMetadataDirective) {
+			metaName := strings.ToLower(name[len(XAmzMetaPrefix):])
 			metaValue := strings.Join(values, ",")
 			if !strings.HasPrefix(metaName, "oss:") {
 				metadata[metaName] = metaValue
@@ -326,4 +334,94 @@ func ValidateCacheExpires(expires string) bool {
 	}
 	log.LogErrorf("Expires less than now: %v, now: %v", expires, now)
 	return false
+}
+
+func GetMD5(b []byte) string {
+	hash := md5.New()
+	hash.Write(b)
+	return base64.StdEncoding.EncodeToString(hash.Sum(nil))
+}
+
+func contains(items []string, key string) bool {
+	for _, s := range items {
+		if s == key {
+			return true
+		}
+	}
+	return false
+}
+
+func MakeMD5(data []byte) []byte {
+	hash := md5.New()
+	hash.Write(data)
+	return hash.Sum(nil)
+}
+
+func MakeSha256(data []byte) []byte {
+	hash := sha256.New()
+	hash.Write(data)
+	return hash.Sum(nil)
+}
+
+func MakeHmacSha1(key, data []byte) []byte {
+	hash := hmac.New(sha1.New, key)
+	hash.Write(data)
+	return hash.Sum(nil)
+}
+
+func MakeHmacSha256(key, data []byte) []byte {
+	hash := hmac.New(sha256.New, key)
+	hash.Write(data)
+	return hash.Sum(nil)
+}
+
+func ParseCompatibleTime(timeStr string) (t time.Time, err error) {
+	layouts := []string{
+		time.RFC1123,
+		time.RFC1123Z,
+		time.RFC3339,
+		ISO8601Format,
+		ISO8601Layout,
+		ISO8601LayoutCompatible,
+	}
+	for _, layout := range layouts {
+		if t, err = time.Parse(layout, timeStr); err == nil {
+			return
+		}
+	}
+	return
+}
+
+// GetRootCAs loads all X.509 certificates from the specified files.
+func GetRootCAs(file ...string) (*x509.CertPool, error) {
+	rootCAs := x509.NewCertPool()
+	for _, f := range file {
+		rootPEM, err := os.ReadFile(f)
+		if err != nil || rootPEM == nil {
+			return nil, fmt.Errorf("loading or parsing rootCA file failed: %w", err)
+		}
+		if !rootCAs.AppendCertsFromPEM(rootPEM) {
+			return nil, fmt.Errorf("failed to parse root certificate from %q", f)
+		}
+	}
+
+	return rootCAs, nil
+}
+
+// NewTLSConfig creates a new tls.Config object for configuring TLS settings.
+// clientCert: file path to the client's certificate.
+// clientKey: file path to the client's private key.
+func NewTLSConfig(clientCert, clientKey string) (*tls.Config, error) {
+	tlsConfig := tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	if clientCert != "" && clientKey != "" {
+		cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
+		if err != nil {
+			return &tlsConfig, err
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return &tlsConfig, nil
 }

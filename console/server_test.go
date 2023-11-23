@@ -26,10 +26,10 @@ func TestServer(t *testing.T) {
 	// 	"retainLogs":"20000",
 	// 	"tickInterval":500,
 	// 	"electionTick":6,
-	// 	"logDir": "/tmp/chubaofs/Logs",
-	// 	"walDir":"/tmp/chubaofs/raft",
-	// 	"storeDir":"/tmp/chubaofs/rocksdbstore",
-	// 	"clusterName":"chubaofs"
+	// 	"logDir": "/tmp/cubefs/Logs",
+	// 	"walDir":"/tmp/cubefs/raft",
+	// 	"storeDir":"/tmp/cubefs/rocksdbstore",
+	// 	"clusterName":"cubefs"
 	// }`)
 
 	// mserver := master.NewServer()

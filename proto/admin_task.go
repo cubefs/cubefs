@@ -45,8 +45,8 @@ type AdminTask struct {
 
 // ToString returns the string format of the task.
 func (t *AdminTask) ToString() (msg string) {
-	msg = fmt.Sprintf("ID[%v] Status[%d] LastSendTime[%v]  SendCount[%v] Request[%v] Response[%v]",
-		t.ID, t.Status, t.SendTime, t.SendCount, t.Request, t.Response)
+	msg = fmt.Sprintf("ID[%v] OpCode[%d] Status[%d] LastSendTime[%v]  SendCount[%v] Request[%v] Response[%v]",
+		t.ID, t.OpCode, t.Status, t.SendTime, t.SendCount, t.Request, t.Response)
 
 	return
 }
@@ -114,7 +114,7 @@ func (t *AdminTask) isCreateTask() bool {
 
 // IsHeartbeatTask returns if the task is a heartbeat task.
 func (t *AdminTask) IsHeartbeatTask() bool {
-	return t.OpCode == OpDataNodeHeartbeat || t.OpCode == OpMetaNodeHeartbeat
+	return t.OpCode == OpDataNodeHeartbeat || t.OpCode == OpMetaNodeHeartbeat || t.OpCode == OpLcNodeHeartbeat
 }
 
 // NewAdminTask returns a new adminTask.
@@ -124,6 +124,17 @@ func NewAdminTask(opCode uint8, opAddr string, request interface{}) (t *AdminTas
 	t.Request = request
 	t.OperatorAddr = opAddr
 	t.ID = fmt.Sprintf("addr[%v]_op[%v]", t.OperatorAddr, t.OpCode)
+	t.CreateTime = time.Now().Unix()
+	return
+}
+
+// NewAdminTaskEx returns a new adminTask.
+func NewAdminTaskEx(opCode uint8, opAddr string, request interface{}, reqID string) (t *AdminTask) {
+	t = new(AdminTask)
+	t.OpCode = opCode
+	t.Request = request
+	t.OperatorAddr = opAddr
+	t.ID = fmt.Sprintf("addr[%v]_op[%v]_reqID[%v]", t.OperatorAddr, t.OpCode, reqID)
 	t.CreateTime = time.Now().Unix()
 	return
 }

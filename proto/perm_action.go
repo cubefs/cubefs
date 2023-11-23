@@ -51,6 +51,7 @@ const (
 	// Object actions
 	OSSGetObjectAction     Action = OSSActionPrefix + "GetObject"
 	OSSPutObjectAction     Action = OSSActionPrefix + "PutObject"
+	OSSPostObjectAction    Action = OSSActionPrefix + "PostObject"
 	OSSCopyObjectAction    Action = OSSActionPrefix + "CopyObject"
 	OSSListObjectsAction   Action = OSSActionPrefix + "ListObjects"
 	OSSDeleteObjectAction  Action = OSSActionPrefix + "DeleteObject"
@@ -115,9 +116,12 @@ const (
 	OSSDeleteBucketTaggingAction Action = OSSActionPrefix + "DeleteBucketTagging"
 
 	// Bucket lifecycle actions
-	OSSGetBucketLifecycleAction    Action = OSSActionPrefix + "GetBucketLifecycle"    // unsupported
-	OSSPutBucketLifecycleAction    Action = OSSActionPrefix + "PutBucketLifecycle"    // unsupported
-	OSSDeleteBucketLifecycleAction Action = OSSActionPrefix + "DeleteBucketLifecycle" // unsupported
+	OSSGetBucketLifecycleAction                 Action = OSSActionPrefix + "GetBucketLifecycle"    // unsupported
+	OSSPutBucketLifecycleAction                 Action = OSSActionPrefix + "PutBucketLifecycle"    // unsupported
+	OSSDeleteBucketLifecycleAction              Action = OSSActionPrefix + "DeleteBucketLifecycle" // unsupported
+	OSSGetBucketLifecycleConfigurationAction    Action = OSSActionPrefix + "GetBucketLifecycleConfiguration"
+	OSSPutBucketLifecycleConfigurationAction    Action = OSSActionPrefix + "PutBucketLifecycleConfiguration"
+	OSSDeleteBucketLifecycleConfigurationAction Action = OSSActionPrefix + "DeleteBucketLifecycleConfiguration"
 
 	// Object storage version actions
 	OSSGetBucketVersioningAction Action = OSSActionPrefix + "GetBucketVersioning" // unsupported
@@ -159,13 +163,16 @@ const (
 	OSSPutBucketReplicationAction    Action = OSSActionPrefix + "PutBucketReplicationAction"    // unsupported
 	OSSDeleteBucketReplicationAction Action = OSSActionPrefix + "DeleteBucketReplicationAction" // unsupported
 
+	// STS actions
+	OSSGetFederationTokenAction Action = OSSActionPrefix + "GetFederationToken"
+
 	// constants for POSIX file system interface
 	POSIXReadAction  Action = POSIXActionPrefix + "Read"
 	POSIXWriteAction Action = POSIXActionPrefix + "Write"
 
 	// Object lock actions
-	OSSPutObjectLockConfigurationAction Action = OSSActionPrefix + "PutObjectLockConfiguration" // unsupported
-	OSSGetObjectLockConfigurationAction Action = OSSActionPrefix + "GetObjectLockConfiguration" // unsupported
+	OSSPutObjectLockConfigurationAction Action = OSSActionPrefix + "PutObjectLockConfiguration"
+	OSSGetObjectLockConfigurationAction Action = OSSActionPrefix + "GetObjectLockConfiguration"
 
 	NoneAction Action = ""
 )
@@ -175,6 +182,7 @@ var (
 		// Object storage interface actions
 		OSSGetObjectAction,
 		OSSPutObjectAction,
+		OSSPostObjectAction,
 		OSSCopyObjectAction,
 		OSSListObjectsAction,
 		OSSDeleteObjectAction,
@@ -214,6 +222,9 @@ var (
 		OSSGetBucketLifecycleAction,
 		OSSPutBucketLifecycleAction,
 		OSSDeleteBucketLifecycleAction,
+		OSSGetBucketLifecycleConfigurationAction,
+		OSSPutBucketLifecycleConfigurationAction,
+		OSSDeleteBucketLifecycleConfigurationAction,
 		OSSGetBucketVersioningAction,
 		OSSPutBucketVersioningAction,
 		OSSListObjectVersionsAction,
@@ -240,6 +251,7 @@ var (
 		OSSPutBucketReplicationAction,
 		OSSDeleteBucketReplicationAction,
 		OSSOptionsObjectAction,
+		OSSGetFederationTokenAction,
 
 		// POSIX file system interface actions
 		POSIXReadAction,
@@ -315,7 +327,7 @@ func (p Permission) MatchSubdir(subdir string) bool {
 	}
 
 	pars := strings.Split(s, ":")
-	pars = pars[:len(pars)-1] //trim (Writable|ReadOnly) at the end
+	pars = pars[:len(pars)-1] // trim (Writable|ReadOnly) at the end
 	for _, toCmp := range pars {
 		if toCmp == "/" || toCmp == "" {
 			return true
@@ -324,15 +336,15 @@ func (p Permission) MatchSubdir(subdir string) bool {
 		toCmp = path.Clean("/" + toCmp)
 		if strings.HasPrefix(subdir, toCmp) {
 			tail := strings.TrimPrefix(subdir, toCmp)
-			//match case 1:
-			//subdir = "/a/b/c"
-			//toCmp  = "/a/b/c"
-			//tail   =       ""
+			// match case 1:
+			// subdir = "/a/b/c"
+			// toCmp  = "/a/b/c"
+			// tail   =       ""
 
-			//match case 2:
-			//subdir = "/a/b/c"
-			//toCmp  = "/a/b"
-			//tail   =     "/c"
+			// match case 2:
+			// subdir = "/a/b/c"
+			// toCmp  = "/a/b"
+			// tail   =     "/c"
 
 			if tail == "" || strings.HasPrefix(tail, "/") {
 				return true

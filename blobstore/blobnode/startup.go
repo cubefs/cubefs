@@ -247,9 +247,6 @@ func NewService(conf Config) (svr *Service, err error) {
 		Disks:            make(map[proto.DiskID]core.DiskAPI),
 		Conf:             &conf,
 
-		PutQpsLimitPerDisk:    keycount.New(conf.PutQpsLimitPerDisk),
-		GetQpsLimitPerDisk:    keycount.NewBlockingKeyCountLimit(conf.GetQpsLimitPerDisk),
-		GetQpsLimitPerKey:     keycount.NewBlockingKeyCountLimit(conf.GetQpsLimitPerKey),
 		DeleteQpsLimitPerDisk: keycount.New(conf.DeleteQpsLimitPerDisk),
 		DeleteQpsLimitPerKey:  keycount.NewBlockingKeyCountLimit(1),
 		ChunkLimitPerVuid:     keycount.New(1),

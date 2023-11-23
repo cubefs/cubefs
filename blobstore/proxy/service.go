@@ -18,6 +18,8 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/Shopify/sarama"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/cmd"
@@ -47,6 +49,7 @@ var (
 
 	// ErrIllegalTopic illegal topic
 	ErrIllegalTopic = errors.New("illegal topic")
+	ErrIllegalKafka = errors.New("illegal kafka version")
 )
 
 // MQConfig is mq config
@@ -55,6 +58,7 @@ type MQConfig struct {
 	ShardRepairTopic         string            `json:"shard_repair_topic"`
 	ShardRepairPriorityTopic string            `json:"shard_repair_priority_topic"`
 	MsgSender                kafka.ProducerCfg `json:"msg_sender"`
+	Version                  string            `json:"version"`
 }
 
 type Config struct {
@@ -178,6 +182,7 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.RegisterArgsParser(&proxy.ListVolsArgs{}, "json")
 	rpc.RegisterArgsParser(&proxy.CacheVolumeArgs{}, "json")
 	rpc.RegisterArgsParser(&proxy.CacheDiskArgs{}, "json")
+	rpc.RegisterArgsParser(&proxy.DiscardVolsArgs{}, "json")
 
 	// POST /volume/alloc
 	// request  body:  json
@@ -186,6 +191,10 @@ func NewHandler(service *Service) *rpc.Router {
 
 	// GET /volume/list?code_mode={code_mode}
 	router.Handle(http.MethodGet, "/volume/list", service.List, rpc.OptArgsQuery())
+
+	// POST /volume/discard
+	// request body: json
+	router.Handle(http.MethodPost, "/volume/discard", service.Discard, rpc.OptArgsBody())
 
 	// POST /repairmsg
 	// request body: json
@@ -220,5 +229,12 @@ func (c *Config) checkAndFix() (err error) {
 	defaulter.Equal(&c.ExpiresTicks, defaultExpiresTicks)
 	defaulter.LessOrEqual(&c.Clustermgr.Config.ClientTimeoutMs, defaultTimeoutMS)
 	defaulter.LessOrEqual(&c.MQ.MsgSender.TimeoutMs, defaultTimeoutMS)
+	if c.MQ.Version != "" {
+		kafkaVersion, err := sarama.ParseKafkaVersion(c.MQ.Version)
+		if err != nil {
+			return ErrIllegalKafka
+		}
+		kafka.DefaultKafkaVersion = kafkaVersion
+	}
 	return nil
 }

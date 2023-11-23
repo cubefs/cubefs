@@ -10,7 +10,7 @@ CubeFS由 **元数据子系统（Metadata Subsystem）** ，**数据子系统（
 Master节点可以有多个，节点之前通过Raft算法保证元数据的一致性，并且持久化到RocksDB中。
 :::
 
-- **元数据子系统**：由多个Meta Node节点组成，多个元数据分片（Meta Partition）和Raft实例（基于Multi-Raft复制协议）组成，每个元数据分片表示一个Inode范围元数据，其中包含两个内存B-Tree数：inode BTree与dentry BTree。
+- **元数据子系统**：由多个Meta Node节点组成，多个元数据分片（Meta Partition）和Raft实例（基于Multi-Raft复制协议）组成，每个元数据分片表示一个Inode范围元数据，其中包含两颗内存B-Tree树：inode BTree与dentry BTree。
 
 ::: tip 提示
 元数据实例最少需要3个，支持水平扩容。
@@ -24,6 +24,6 @@ Master节点可以有多个，节点之前通过Raft算法保证元数据的一�
 数据节点支持水平扩容。
 :::
 
-- **对象子系统**：由对象节点组成，提供了兼容标准S3语义的访问协议，可以通过Amazon S3 SDK或者是s3cmd等工具访问存储资源。
+- **对象子系统**：由对象节点（ObjectNode）组成，提供了兼容标准S3语义的访问协议，可以通过Amazon S3 SDK或者是s3cmd等工具访问存储资源。
 
 - **卷**：逻辑上的概念，由多个元数据和数据分片组成，从客户端的角度看，卷可以被看作是可被容器访问的文件系统实例。从对象存储的角度来看，一个卷对应着一个bucket。一个卷可以在多个容器中挂载，使得文件可以被不同客户端同时访问。

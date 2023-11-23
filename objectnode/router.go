@@ -52,11 +52,10 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get Object Lock configuration
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html
-		// Notes: unsupported operation
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectLockConfigurationAction)).
 			Methods(http.MethodGet).
 			Queries("object-lock", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.getObjectLockConfigurationHandler)
 
 		// List parts
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
@@ -108,12 +107,11 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 
 		// Get object retention
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html
-		// Notes: unsupported operation
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetObjectRetentionAction)).
 			Methods(http.MethodGet).
 			Path("/{object:.+}").
 			Queries("retention", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.getObjectRetentionHandler)
 
 		// Get object torrent
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTorrent.html
@@ -150,7 +148,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLocationAction)).
 			Methods(http.MethodGet).
 			Queries("location", "").
-			HandlerFunc(o.getBucketLocation)
+			HandlerFunc(o.getBucketLocationHandler)
 
 		// Get bucket policy
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicy.html
@@ -232,10 +230,17 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// Get bucket lifecycle
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycle.html
 		// Notes: unsupported operation
-		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLifecycleAction)).
+		// r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLifecycleAction)).
+		//	Methods(http.MethodGet).
+		//	Queries("lifecycle", "").
+		//	HandlerFunc(o.unsupportedOperationHandler)
+
+		// Get bucket lifecycle configuration
+		// API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetBucketLifecycleConfigurationAction)).
 			Methods(http.MethodGet).
 			Queries("lifecycle", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.getBucketLifecycleConfigurationHandler)
 
 		// Get bucket versioning
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketVersioning.html
@@ -292,26 +297,30 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 			Methods(http.MethodPost).
 			Queries("delete", "").
 			HandlerFunc(o.deleteObjectsHandler)
+
+		// Post object
+		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPOST.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPostObjectAction)).
+			Methods(http.MethodPost).
+			HandlerFunc(o.postObjectHandler)
 	}
 
 	var registerBucketHttpPutRouters = func(r *mux.Router) {
 		// Put Object Lock configuration
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLockConfiguration.html
-		// Notes: unsupported operation
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutObjectLockConfigurationAction)).
 			Methods(http.MethodPut).
 			Queries("object-lock", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.putObjectLockConfigurationHandler)
 
 		// Upload part copy
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html
-		// Notes: unsupported operation
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSUploadPartCopyAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
+			HeadersRegexp(XAmzCopySource, ".*?(\\/|%2F).*?").
 			Queries("partNumber", "{partNumber:[0-9]+}", "uploadId", "{uploadId:.*}").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.uploadPartCopyHandler)
 
 		// Upload part
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html .
@@ -326,7 +335,7 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSCopyObjectAction)).
 			Methods(http.MethodPut).
 			Path("/{object:.+}").
-			HeadersRegexp(HeaderNameXAmzCopySource, ".*?(\\/|%2F).*?").
+			HeadersRegexp(XAmzCopySource, ".*?(\\/|%2F).*?").
 			HandlerFunc(o.copyObjectHandler)
 
 		// Put object tagging
@@ -450,10 +459,17 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// Put bucket lifecycle
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycle.html
 		// Notes: unsupported operation
-		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketLifecycleAction)).
+		// r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketLifecycleAction)).
+		//	Methods(http.MethodPut).
+		//	Queries("lifecycle", "").
+		//	HandlerFunc(o.unsupportedOperationHandler)
+
+		// Put bucket lifecycle configuration
+		// API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSPutBucketLifecycleConfigurationAction)).
 			Methods(http.MethodPut).
 			Queries("lifecycle", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.putBucketLifecycleConfigurationHandler)
 
 		// Put bucket versioning
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketVersioning.html
@@ -559,10 +575,17 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// Delete bucket lifecycle
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketLifecycle.html
 		// Notes: unsupported operation
-		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteBucketLifecycleAction)).
+		// r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteBucketLifecycleAction)).
+		//	Methods(http.MethodDelete).
+		//	Queries("lifecycle", "").
+		//	HandlerFunc(o.unsupportedOperationHandler)
+
+		// Delete Bucket Lifecycle
+		// API reference: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_DeleteBucketLifecycle.html
+		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSDeleteBucketLifecycleConfigurationAction)).
 			Methods(http.MethodDelete).
 			Queries("lifecycle", "").
-			HandlerFunc(o.unsupportedOperationHandler)
+			HandlerFunc(o.deleteBucketLifecycleConfigurationHandler)
 
 		// Delete bucket
 		// API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
@@ -577,7 +600,6 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 		// https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
 		r.NewRoute().Name(ActionToUniqueRouteName(proto.OSSOptionsObjectAction)).
 			Methods(http.MethodOptions).
-			Path("/{object:.+}").
 			HandlerFunc(o.optionsObjectHandler)
 	}
 
@@ -595,6 +617,13 @@ func (o *ObjectNode) registerApiRouters(router *mux.Router) {
 	router.NewRoute().Name(ActionToUniqueRouteName(proto.OSSListBucketsAction)).
 		Methods(http.MethodGet).
 		HandlerFunc(o.listBucketsHandler)
+
+	// Get Federation Token (STS)
+	// API reference: https://docs.aws.amazon.com/STS/latest/APIReference/API_GetFederationToken.html
+	router.NewRoute().Name(ActionToUniqueRouteName(proto.OSSGetFederationTokenAction)).
+		Methods(http.MethodPost).
+		Path("/").
+		HandlerFunc(o.getFederationTokenHandler)
 
 	// Unsupported operation
 	router.NotFoundHandler = http.HandlerFunc(o.unsupportedOperationHandler)

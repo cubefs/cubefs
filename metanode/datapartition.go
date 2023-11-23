@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"sync"
 )
@@ -47,6 +48,7 @@ func NewDataPartitionsView() *DataPartitionsView {
 type Vol struct {
 	sync.RWMutex
 	dataPartitionView map[uint64]*DataPartition
+	volDeleteLockTime int64
 }
 
 // NewVol returns a new volume instance.
@@ -66,6 +68,7 @@ func (v *Vol) GetPartition(partitionID uint64) *DataPartition {
 // UpdatePartitions updates the data partition.
 func (v *Vol) UpdatePartitions(partitions *DataPartitionsView) {
 	for _, dp := range partitions.DataPartitions {
+		log.LogDebugf("action[UpdatePartitions] dp (id:%v,status:%v)", dp.PartitionID, dp.Status)
 		v.replaceOrInsert(dp)
 	}
 }

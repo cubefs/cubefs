@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	syslog "log"
 	"strings"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -31,8 +32,12 @@ type LeaderInfo struct {
 func (m *Server) handleLeaderChange(leader uint64) {
 	if leader == 0 {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
+		if WarnMetrics != nil {
+			WarnMetrics.reset()
+		}
 		return
 	}
+
 	oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
 	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
@@ -45,10 +50,12 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			m.cluster.checkPersistClusterValue()
 
 			m.loadMetadata()
+			m.cluster.metaReady = true
 			m.metaReady = true
 		}
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
+		m.cluster.checkLcNodeHeartbeat()
 		m.cluster.followerReadManager.reSet()
 
 	} else {
@@ -56,8 +63,12 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			m.clusterName, m.leaderInfo.addr))
 		m.clearMetadata()
 		m.metaReady = false
+		m.cluster.metaReady = false
 		m.cluster.masterClient.AddNode(m.leaderInfo.addr)
 		m.cluster.masterClient.SetLeader(m.leaderInfo.addr)
+		if WarnMetrics != nil {
+			WarnMetrics.reset()
+		}
 	}
 }
 
@@ -108,6 +119,7 @@ func (m *Server) restoreIDAlloc() {
 // Load stored metadata into the memory
 func (m *Server) loadMetadata() {
 	log.LogInfo("action[loadMetadata] begin")
+	syslog.Println("action[loadMetadata] begin")
 	m.clearMetadata()
 	m.restoreIDAlloc()
 	m.cluster.fsm.restore()
@@ -168,6 +180,9 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.loadDataPartitions(); err != nil {
 		panic(err)
 	}
+	if err = m.cluster.loadDecommissionDiskList(); err != nil {
+		panic(err)
+	}
 	if err = m.cluster.startDecommissionListTraverse(); err != nil {
 		panic(err)
 	}
@@ -196,12 +211,38 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadApiLimiterInfo] end")
+
+	log.LogInfo("action[loadQuota] begin")
+	if err = m.cluster.loadQuota(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadQuota] end")
+
+	log.LogInfo("action[loadLcConfs] begin")
+	if err = m.cluster.loadLcConfs(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadLcConfs] end")
+
+	log.LogInfo("action[loadLcNodes] begin")
+	if err = m.cluster.loadLcNodes(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadLcNodes] end")
+	syslog.Println("action[loadMetadata] end")
+
+	log.LogInfo("action[loadS3QoSInfo] begin")
+	if err = m.cluster.loadS3ApiQosInfo(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadS3QoSInfo] end")
 }
 
 func (m *Server) clearMetadata() {
 	m.cluster.clearTopology()
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
+	m.cluster.clearLcNodes()
 	m.cluster.clearVols()
 	m.user.clearUserStore()
 	m.user.clearAKStore()

@@ -1,6 +1,7 @@
 package datanode
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -12,11 +13,12 @@ const (
 	defaultMarkDeleteLimitBurst = 512
 	defaultIOLimitBurst         = 512
 	UpdateNodeInfoTicket        = 1 * time.Minute
+
+	RepairTimeOut   = time.Hour * 24
+	MaxRepairErrCnt = 1000
 )
 
-var (
-	nodeInfoStopC = make(chan struct{}, 0)
-)
+var nodeInfoStopC = make(chan struct{})
 
 func (m *DataNode) startUpdateNodeInfo() {
 	ticker := time.NewTicker(UpdateNodeInfoTicket)
@@ -46,7 +48,19 @@ func (m *DataNode) updateNodeInfo() {
 	setLimiter(deleteLimiteRater, clusterInfo.DataNodeDeleteLimitRate)
 
 	setDoExtentRepair(int(clusterInfo.DataNodeAutoRepairLimitRate))
+
+	atomic.StoreUint64(&m.dpMaxRepairErrCnt, clusterInfo.DpMaxRepairErrCnt)
+
 	log.LogInfof("updateNodeInfo from master:"+
-		"deleteLimite(%v),autoRepairLimit(%v)", clusterInfo.DataNodeDeleteLimitRate,
-		clusterInfo.DataNodeAutoRepairLimitRate)
+		"deleteLimite(%v), autoRepairLimit(%v), dpMaxRepairErrCnt(%v)",
+		clusterInfo.DataNodeDeleteLimitRate, clusterInfo.DataNodeAutoRepairLimitRate,
+		clusterInfo.DpMaxRepairErrCnt)
+}
+
+func (m *DataNode) GetDpMaxRepairErrCnt() uint64 {
+	dpMaxRepairErrCnt := atomic.LoadUint64(&m.dpMaxRepairErrCnt)
+	if dpMaxRepairErrCnt == 0 {
+		return MaxRepairErrCnt
+	}
+	return dpMaxRepairErrCnt
 }

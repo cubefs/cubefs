@@ -3,7 +3,10 @@ package gorocksdb
 // #include "rocksdb/c.h"
 // #include "gorocksdb.h"
 import "C"
-import "unsafe"
+import (
+	"errors"
+	"unsafe"
+)
 
 // CompressionType specifies the block compression.
 // DB contents are stored in a set of blocks, each of which holds a
@@ -20,6 +23,8 @@ const (
 	Bz2Compression    = CompressionType(C.rocksdb_bz2_compression)
 	LZ4Compression    = CompressionType(C.rocksdb_lz4_compression)
 	LZ4HCCompression  = CompressionType(C.rocksdb_lz4hc_compression)
+	XpressCompression = CompressionType(C.rocksdb_xpress_compression)
+	ZSTDCompression   = CompressionType(C.rocksdb_zstd_compression)
 )
 
 // CompactionStyle specifies the compaction style.
@@ -55,6 +60,15 @@ const (
 	FatalInfoLogLevel = InfoLogLevel(4)
 )
 
+type WALRecoveryMode int
+
+const (
+	TolerateCorruptedTailRecordsRecovery = WALRecoveryMode(0)
+	AbsoluteConsistencyRecovery          = WALRecoveryMode(1)
+	PointInTimeRecovery                  = WALRecoveryMode(2)
+	SkipAnyCorruptedRecordsRecovery      = WALRecoveryMode(3)
+)
+
 // Options represent all of the available options when opening a database with Open.
 type Options struct {
 	c *C.rocksdb_options_t
@@ -78,6 +92,30 @@ func NewDefaultOptions() *Options {
 // NewNativeOptions creates a Options object.
 func NewNativeOptions(c *C.rocksdb_options_t) *Options {
 	return &Options{c: c}
+}
+
+// GetOptionsFromString creates a Options object from existing opt and string.
+// If base is nil, a default opt create by NewDefaultOptions will be used as base opt.
+func GetOptionsFromString(base *Options, optStr string) (*Options, error) {
+	if base == nil {
+		base = NewDefaultOptions()
+		defer base.Destroy()
+	}
+
+	var (
+		cErr    *C.char
+		cOptStr = C.CString(optStr)
+	)
+	defer C.free(unsafe.Pointer(cOptStr))
+
+	newOpt := NewDefaultOptions()
+	C.rocksdb_get_options_from_string(base.c, cOptStr, newOpt.c, &cErr)
+	if cErr != nil {
+		defer C.rocksdb_free(unsafe.Pointer(cErr))
+		return nil, errors.New(C.GoString(cErr))
+	}
+
+	return newOpt, nil
 }
 
 // -------------------
@@ -304,7 +342,7 @@ func (opts *Options) OptimizeUniversalStyleCompaction(memtable_memory_budget uin
 // so you may wish to adjust this parameter to control memory usage.
 // Also, a larger write buffer will result in a longer recovery time
 // the next time the database is opened.
-// Default: 4MB
+// Default: 64MB
 func (opts *Options) SetWriteBufferSize(value int) {
 	C.rocksdb_options_set_write_buffer_size(opts.c, C.size_t(value))
 }
@@ -500,6 +538,67 @@ func (opts *Options) SetMaxBytesForLevelBase(value uint64) {
 // Default: 10
 func (opts *Options) SetMaxBytesForLevelMultiplier(value float64) {
 	C.rocksdb_options_set_max_bytes_for_level_multiplier(opts.c, C.double(value))
+}
+
+// SetLevelCompactiondynamiclevelbytes specifies whether to pick
+// target size of each level dynamically.
+//
+// We will pick a base level b >= 1. L0 will be directly merged into level b,
+// instead of always into level 1. Level 1 to b-1 need to be empty.
+// We try to pick b and its target size so that
+// 1. target size is in the range of
+//   (max_bytes_for_level_base / max_bytes_for_level_multiplier,
+//    max_bytes_for_level_base]
+// 2. target size of the last level (level num_levels-1) equals to extra size
+//    of the level.
+// At the same time max_bytes_for_level_multiplier and
+// max_bytes_for_level_multiplier_additional are still satisfied.
+//
+// With this option on, from an empty DB, we make last level the base level,
+// which means merging L0 data into the last level, until it exceeds
+// max_bytes_for_level_base. And then we make the second last level to be
+// base level, to start to merge L0 data to second last level, with its
+// target size to be 1/max_bytes_for_level_multiplier of the last level's
+// extra size. After the data accumulates more so that we need to move the
+// base level to the third last one, and so on.
+//
+// For example, assume max_bytes_for_level_multiplier=10, num_levels=6,
+// and max_bytes_for_level_base=10MB.
+// Target sizes of level 1 to 5 starts with:
+// [- - - - 10MB]
+// with base level is level. Target sizes of level 1 to 4 are not applicable
+// because they will not be used.
+// Until the size of Level 5 grows to more than 10MB, say 11MB, we make
+// base target to level 4 and now the targets looks like:
+// [- - - 1.1MB 11MB]
+// While data are accumulated, size targets are tuned based on actual data
+// of level 5. When level 5 has 50MB of data, the target is like:
+// [- - - 5MB 50MB]
+// Until level 5's actual size is more than 100MB, say 101MB. Now if we keep
+// level 4 to be the base level, its target size needs to be 10.1MB, which
+// doesn't satisfy the target size range. So now we make level 3 the target
+// size and the target sizes of the levels look like:
+// [- - 1.01MB 10.1MB 101MB]
+// In the same way, while level 5 further grows, all levels' targets grow,
+// like
+// [- - 5MB 50MB 500MB]
+// Until level 5 exceeds 1000MB and becomes 1001MB, we make level 2 the
+// base level and make levels' target sizes like this:
+// [- 1.001MB 10.01MB 100.1MB 1001MB]
+// and go on...
+//
+// By doing it, we give max_bytes_for_level_multiplier a priority against
+// max_bytes_for_level_base, for a more predictable LSM tree shape. It is
+// useful to limit worse case space amplification.
+//
+// max_bytes_for_level_multiplier_additional is ignored with this flag on.
+//
+// Turning this feature on or off for an existing DB can cause unexpected
+// LSM tree structure so it's not recommended.
+//
+// Default: false
+func (opts *Options) SetLevelCompactionDynamicLevelBytes(value bool) {
+	C.rocksdb_options_set_level_compaction_dynamic_level_bytes(opts.c, boolToChar(value))
 }
 
 // SetMaxCompactionBytes sets the maximum number of bytes in all compacted files.
@@ -711,6 +810,14 @@ func (opts *Options) SetDisableAutoCompactions(value bool) {
 	C.rocksdb_options_set_disable_auto_compactions(opts.c, C.int(btoi(value)))
 }
 
+// SetWALRecoveryMode sets the recovery mode
+//
+// Recovery mode to control the consistency while replaying WAL
+// Default: TolerateCorruptedTailRecordsRecovery
+func (opts *Options) SetWALRecoveryMode(mode WALRecoveryMode) {
+	C.rocksdb_options_set_wal_recovery_mode(opts.c, C.int(mode))
+}
+
 // SetWALTtlSeconds sets the WAL ttl in seconds.
 //
 // The following two options affect how archived logs will be deleted.
@@ -737,6 +844,13 @@ func (opts *Options) SetWALTtlSeconds(value uint64) {
 // Default: 0
 func (opts *Options) SetWalSizeLimitMb(value uint64) {
 	C.rocksdb_options_set_WAL_size_limit_MB(opts.c, C.uint64_t(value))
+}
+
+// SetEnablePipelinedWrite enables pipelined write
+//
+// Default: false
+func (opts *Options) SetEnablePipelinedWrite(value bool) {
+	C.rocksdb_options_set_enable_pipelined_write(opts.c, boolToChar(value))
 }
 
 // SetManifestPreallocationSize sets the number of bytes
@@ -872,6 +986,13 @@ func (opts *Options) SetUniversalCompactionOptions(value *UniversalCompactionOpt
 // Default: nil
 func (opts *Options) SetFIFOCompactionOptions(value *FIFOCompactionOptions) {
 	C.rocksdb_options_set_fifo_compaction_options(opts.c, value.c)
+}
+
+// GetStatisticsString returns the statistics as a string.
+func (opts *Options) GetStatisticsString() string {
+	sString := C.rocksdb_options_statistics_get_string(opts.c)
+	defer C.rocksdb_free(unsafe.Pointer(sString))
+	return C.GoString(sString)
 }
 
 // SetRateLimiter sets the rate limiter of the options.
@@ -1030,15 +1151,59 @@ func (opts *Options) SetBlockBasedTableFactory(value *BlockBasedTableOptions) {
 	C.rocksdb_options_set_block_based_table_factory(opts.c, value.c)
 }
 
+// SetAllowIngestBehind sets allow_ingest_behind
+// Set this option to true during creation of database if you want
+// to be able to ingest behind (call IngestExternalFile() skipping keys
+// that already exist, rather than overwriting matching keys).
+// Setting this option to true will affect 2 things:
+// 1) Disable some internal optimizations around SST file compression
+// 2) Reserve bottom-most level for ingested files only.
+// 3) Note that num_levels should be >= 3 if this option is turned on.
+//
+// DEFAULT: false
+// Immutable.
+func (opts *Options) SetAllowIngestBehind(value bool) {
+	C.rocksdb_options_set_allow_ingest_behind(opts.c, boolToChar(value))
+}
+
+// SetMemTablePrefixBloomSizeRatio sets memtable_prefix_bloom_size_ratio
+// if prefix_extractor is set and memtable_prefix_bloom_size_ratio is not 0,
+// create prefix bloom for memtable with the size of
+// write_buffer_size * memtable_prefix_bloom_size_ratio.
+// If it is larger than 0.25, it is sanitized to 0.25.
+//
+// Default: 0 (disable)
+func (opts *Options) SetMemTablePrefixBloomSizeRatio(value float64) {
+	C.rocksdb_options_set_memtable_prefix_bloom_size_ratio(opts.c, C.double(value))
+}
+
+// SetOptimizeFiltersForHits sets optimize_filters_for_hits
+// This flag specifies that the implementation should optimize the filters
+// mainly for cases where keys are found rather than also optimize for keys
+// missed. This would be used in cases where the application knows that
+// there are very few misses or the performance in the case of misses is not
+// important.
+//
+// For now, this flag allows us to not store filters for the last level i.e
+// the largest level which contains data of the LSM store. For keys which
+// are hits, the filters in this level are not useful because we will search
+// for the data anyway. NOTE: the filters in other levels are still useful
+// even for key hit because they tell us whether to look in that level or go
+// to the higher level.
+//
+// Default: false
+func (opts *Options) SetOptimizeFiltersForHits(value bool) {
+	C.rocksdb_options_set_optimize_filters_for_hits(opts.c, C.int(btoi(value)))
+}
+
 // Destroy deallocates the Options object.
 func (opts *Options) Destroy() {
 	C.rocksdb_options_destroy(opts.c)
 	if opts.ccmp != nil {
 		C.rocksdb_comparator_destroy(opts.ccmp)
 	}
-	if opts.cst != nil {
-		C.rocksdb_slicetransform_destroy(opts.cst)
-	}
+	// don't destroy the opts.cst here, it has already been
+	// associated with a PrefixExtractor and this will segfault
 	if opts.ccf != nil {
 		C.rocksdb_compactionfilter_destroy(opts.ccf)
 	}

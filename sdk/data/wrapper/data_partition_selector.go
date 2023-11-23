@@ -38,6 +38,9 @@ type DataPartitionSelector interface {
 
 	// RemoveDP removes specified data partition.
 	RemoveDP(partitionID uint64)
+
+	// Count return number of data partitions held by selector.
+	Count() int
 }
 
 var (
@@ -85,10 +88,10 @@ func (w *Wrapper) initDpSelector() (err error) {
 }
 
 func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
-	w.RLock()
+	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	dpSelectorChanged := w.dpSelectorChanged
-	w.RUnlock()
+	w.Lock.RUnlock()
 
 	if dpSelectorChanged {
 		var selectorName = w.dpSelectorName
@@ -102,12 +105,12 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 				" use last valid selector. Please change dpSelector config through master.",
 				w.dpSelectorName, w.dpSelectorParm, err)
 		} else {
-			w.Lock()
+			w.Lock.Lock()
 			log.LogInfof("refreshDpSelector: change dpSelector to [%v %v]", w.dpSelectorName, w.dpSelectorParm)
 			w.dpSelector = newDpSelector
 			w.dpSelectorChanged = false
 			dpSelector = newDpSelector
-			w.Unlock()
+			w.Lock.Unlock()
 		}
 	}
 
@@ -116,17 +119,21 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 
 // getDataPartitionForWrite returns an available data partition for write.
 func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}) (*DataPartition, error) {
-	w.RLock()
+	w.Lock.RLock()
 	dpSelector := w.dpSelector
-	w.RUnlock()
+	w.Lock.RUnlock()
 
 	return dpSelector.Select(exclude)
 }
 
 func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
-	w.RLock()
+	w.Lock.RLock()
 	dpSelector := w.dpSelector
-	w.RUnlock()
+	w.Lock.RUnlock()
+
+	if dpSelector.Count() <= 1 {
+		return
+	}
 
 	dpSelector.RemoveDP(partitionID)
 }

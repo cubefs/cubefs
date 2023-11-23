@@ -15,20 +15,20 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"bufio"
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"io"
 )
 
 const (
@@ -98,18 +98,6 @@ type request struct {
 	body   []byte
 }
 
-func (r *request) addParam(key, value string) {
-	r.params[key] = value
-}
-
-func (r *request) addHeader(key, value string) {
-	r.header[key] = value
-}
-
-func (r *request) addBody(body []byte) {
-	r.body = body
-}
-
 func newAPIRequest(method string, path string) *request {
 	return &request{
 		method: method,
@@ -119,8 +107,7 @@ func newAPIRequest(method string, path string) *request {
 	}
 }
 
-type RespBody struct {
-}
+type RespBody struct{}
 
 func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	var resp *http.Response
@@ -130,7 +117,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	} else {
 		schema = "http"
 	}
-	var url = fmt.Sprintf("%s://%s%s", schema, c.host,
+	url := fmt.Sprintf("%s://%s%s", schema, c.host,
 		r.path)
 	resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
 	log.LogInfof("resp %v,err %v", resp, err)
@@ -147,7 +134,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	switch stateCode {
 	case http.StatusOK:
-		var body = &struct {
+		body := &struct {
 			Code int32           `json:"code"`
 			Msg  string          `json:"msg"`
 			Data json.RawMessage `json:"data"`
@@ -155,7 +142,6 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 
 		if err := json.Unmarshal(respData, body); err != nil {
 			return nil, fmt.Errorf("unmarshal response body err:%v", err)
-
 		}
 		// o represent proto.ErrCodeSuccess
 		if body.Code != 200 {
@@ -189,7 +175,7 @@ func (c *MetaHttpClient) httpRequest(method, url string, param, header map[strin
 }
 
 func (c *MetaHttpClient) mergeRequestUrl(url string, params map[string]string) string {
-	if params != nil && len(params) > 0 {
+	if len(params) > 0 {
 		buff := bytes.NewBuffer([]byte(url))
 		isFirstParam := true
 		for k, v := range params {
@@ -237,7 +223,7 @@ func (mc *MetaHttpClient) GetAllDentry(pid uint64) (dentryMap map[string]*metano
 			log.LogErrorf("action[GetAllDentry],pid:%v,err:%v", pid, err)
 		}
 	}()
-	dentryMap = make(map[string]*metanode.Dentry, 0)
+	dentryMap = make(map[string]*metanode.Dentry)
 	request := newAPIRequest(http.MethodGet, "/getAllDentry")
 	request.params["pid"] = fmt.Sprintf("%v", pid)
 	respData, err := mc.serveRequest(request)
@@ -293,6 +279,7 @@ func (mc *MetaHttpClient) GetAllInodes(pid uint64) (rstMap map[uint64]*Inode, er
 	if err != nil {
 		return
 	}
+	defer resp.Body.Close()
 	return unmarshalInodes(resp)
 }
 

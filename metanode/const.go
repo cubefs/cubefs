@@ -72,6 +72,8 @@ type (
 	LookupResp = proto.LookupResponse
 	// Client -> MetaNode
 	InodeGetReq = proto.InodeGetRequest
+	// Tool -> MetaNode
+	InodeGetSplitReq = proto.InodeGetSplitRequest
 	// Client -> MetaNode
 	InodeGetReqBatch = proto.BatchInodeGetRequest
 	// Master -> MetaNode
@@ -87,52 +89,104 @@ type (
 	BatchEvictInodeReq = proto.BatchEvictInodeRequest
 	// Client -> MetaNode
 	SetattrRequest = proto.SetAttrRequest
+
+	// Client -> MetaNode
+	GetUniqIDResp = proto.GetUniqIDResponse
 )
 
+// op code should be fixed, order change will cause raft fsm log apply fail
 const (
-	opFSMCreateInode uint32 = iota
-	opFSMUnlinkInode
-	opFSMCreateDentry
-	opFSMDeleteDentry
-	opFSMDeletePartition
-	opFSMUpdatePartition
-	opFSMDecommissionPartition
-	opFSMExtentsAdd
-	opFSMStoreTick
-	startStoreTick
-	stopStoreTick
-	opFSMUpdateDentry
-	opFSMExtentTruncate
-	opFSMCreateLinkInode
-	opFSMEvictInode
-	opFSMInternalDeleteInode
-	opFSMSetAttr
-	opFSMInternalDelExtentFile
-	opFSMInternalDelExtentCursor
-	opExtentFileSnapshot
-	opFSMSetXAttr
-	opFSMRemoveXAttr
-	opFSMCreateMultipart
-	opFSMRemoveMultipart
-	opFSMAppendMultipart
-	opFSMSyncCursor
+	opFSMCreateInode             = 0
+	opFSMUnlinkInode             = 1
+	opFSMCreateDentry            = 2
+	opFSMDeleteDentry            = 3
+	opFSMDeletePartition         = 4
+	opFSMUpdatePartition         = 5
+	opFSMDecommissionPartition   = 6
+	opFSMExtentsAdd              = 7
+	opFSMStoreTick               = 8
+	startStoreTick               = 9
+	stopStoreTick                = 10
+	opFSMUpdateDentry            = 11
+	opFSMExtentTruncate          = 12
+	opFSMCreateLinkInode         = 13
+	opFSMEvictInode              = 14
+	opFSMInternalDeleteInode     = 15
+	opFSMSetAttr                 = 16
+	opFSMInternalDelExtentFile   = 17
+	opFSMInternalDelExtentCursor = 18
+	opExtentFileSnapshot         = 19
+	opFSMSetXAttr                = 20
+	opFSMRemoveXAttr             = 21
+	opFSMCreateMultipart         = 22
+	opFSMRemoveMultipart         = 23
+	opFSMAppendMultipart         = 24
+	opFSMSyncCursor              = 25
 
 	//supplement action
-	opFSMInternalDeleteInodeBatch
-	opFSMDeleteDentryBatch
-	opFSMUnlinkInodeBatch
-	opFSMEvictInodeBatch
+	opFSMInternalDeleteInodeBatch = 26
+	opFSMDeleteDentryBatch        = 27
+	opFSMUnlinkInodeBatch         = 28
+	opFSMEvictInodeBatch          = 29
 
-	opFSMExtentsAddWithCheck
+	opFSMExtentsAddWithCheck = 30
 
-	opFSMUpdateSummaryInfo
-	opFSMUpdateXAttr
-	opFSMObjExtentsAdd
+	opFSMUpdateSummaryInfo = 31
+	opFSMUpdateXAttr       = 32
+	opFSMObjExtentsAdd     = 33
 	// opFSMExtentsDel
-	opFSMExtentsEmpty
+	opFSMExtentsEmpty = 34
 
-	opFSMClearInodeCache
-	opFSMSentToChan
+	opFSMClearInodeCache = 35
+	opFSMSentToChan      = 36
+
+	// transaction
+	opFSMSyncTxID           = 37
+	opFSMTxCreateInode      = 38
+	opFSMTxCreateInodeQuota = 39
+	opFSMTxCreateDentry     = 40
+	opFSMTxSetState         = 41
+	opFSMTxCommit           = 42
+	opFSMTxCommitRM         = 43
+	opFSMTxRollbackRM       = 44
+	opFSMTxRollback         = 45
+	opFSMTxInit             = 46
+	opFSMTxDelete           = 47
+	opFSMTxDeleteDentry     = 48
+	opFSMTxUnlinkInode      = 49
+	opFSMTxUpdateDentry     = 50
+	opFSMTxCreateLinkInode  = 51
+	// transaction snapshot
+	opFSMTxSnapshot         = 52
+	opFSMTxRbInodeSnapshot  = 53
+	opFSMTxRbDentrySnapshot = 54
+
+	//quota
+	opFSMCreateInodeQuota      = 55
+	opFSMSetInodeQuotaBatch    = 56
+	opFSMDeleteInodeQuotaBatch = 57
+
+	opFSMSnapFormatVersion = 58
+	opFSMApplyId           = 59
+	opFSMTxId              = 60
+	opFSMCursor            = 61
+
+	// uniq checker
+	opFSMUniqID              = 62
+	opFSMUniqIDSnap          = 63
+	opFSMUniqCheckerSnap     = 64
+	opFSMUniqCheckerEvict    = 65
+	opFSMUnlinkInodeOnce     = 66
+	opFSMCreateLinkInodeOnce = 67
+
+	opFSMVersionOp   = 68
+	opFSMExtentSplit = 69
+	opFSMDelVer      = 70
+
+	opFSMSentToChanV1 = 71
+	opFSMStoreTickV1  = 72
+
+	opFSMVerListSnapShot = 73
 )
 
 var (
@@ -153,25 +207,29 @@ const (
 
 // Configuration keys
 const (
-	cfgLocalIP           = "localIP"
-	cfgListen            = "listen"
-	cfgMetadataDir       = "metadataDir"
-	cfgRaftDir           = "raftDir"
-	cfgMasterAddrs       = "masterAddrs" // will be deprecated
-	cfgRaftHeartbeatPort = "raftHeartbeatPort"
-	cfgRaftReplicaPort   = "raftReplicaPort"
-	cfgDeleteBatchCount  = "deleteBatchCount"
-	cfgTotalMem          = "totalMem"
-	cfgMemRatio          = "memRatio"
-	cfgZoneName          = "zoneName"
-	cfgTickInterval      = "tickInterval"
-	cfgRaftRecvBufSize   = "raftRecvBufSize"
-	cfgSmuxPortShift     = "smuxPortShift"     //int
-	cfgSmuxMaxConn       = "smuxMaxConn"       //int
-	cfgSmuxStreamPerConn = "smuxStreamPerConn" //int
-	cfgSmuxMaxBuffer     = "smuxMaxBuffer"     //int
+	cfgLocalIP                   = "localIP"
+	cfgListen                    = "listen"
+	cfgMetadataDir               = "metadataDir"
+	cfgRaftDir                   = "raftDir"
+	cfgMasterAddrs               = "masterAddrs" // will be deprecated
+	cfgRaftHeartbeatPort         = "raftHeartbeatPort"
+	cfgRaftReplicaPort           = "raftReplicaPort"
+	cfgDeleteBatchCount          = "deleteBatchCount"
+	cfgTotalMem                  = "totalMem"
+	cfgMemRatio                  = "memRatio"
+	cfgZoneName                  = "zoneName"
+	cfgTickInterval              = "tickInterval"
+	cfgRaftRecvBufSize           = "raftRecvBufSize"
+	cfgSmuxPortShift             = "smuxPortShift"             //int
+	cfgSmuxMaxConn               = "smuxMaxConn"               //int
+	cfgSmuxStreamPerConn         = "smuxStreamPerConn"         //int
+	cfgSmuxMaxBuffer             = "smuxMaxBuffer"             //int
+	cfgRetainLogs                = "retainLogs"                //string, raft RetainLogs
+	cfgRaftSyncSnapFormatVersion = "raftSyncSnapFormatVersion" //int, format version of snapshot that raft leader sent to follower
+	cfgServiceIDKey              = "serviceIDKey"
 
 	metaNodeDeleteBatchCountKey = "batchCount"
+	configNameResolveInterval   = "nameResolveInterval" // int
 )
 
 const (
@@ -179,7 +237,11 @@ const (
 	intervalToPersistData = time.Minute * 5
 	intervalToSyncCursor  = time.Minute * 1
 
-	defaultDelExtentsCnt = 100000
+	defaultDelExtentsCnt         = 100000
+	defaultMaxQuotaGoroutine     = 5
+	defaultQuotaSwitch           = true
+	DefaultNameResolveInterval   = 1 // minutes
+	DefaultRaftNumOfLogsToRetain = 20000 * 2
 )
 
 const (

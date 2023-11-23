@@ -59,11 +59,12 @@ func (mw *MetaWrapper) putConn(mc *MetaConn, err error) {
 
 func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet) (*proto.Packet, error) {
 	var (
-		resp  *proto.Packet
-		err   error
-		addr  string
-		mc    *MetaConn
-		start time.Time
+		resp    *proto.Packet
+		err     error
+		addr    string
+		mc      *MetaConn
+		start   time.Time
+		lastSeq uint64
 	)
 	var sendTimeLimit int
 	if mw.metaSendTimeout < 20 {
@@ -71,8 +72,11 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	} else {
 		sendTimeLimit = int(mw.metaSendTimeout) * 1000 // ms
 	}
+
 	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
 	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms", mw.metaSendTimeout, sendTimeLimit, delta)
+
+	req.ExtentType |= proto.MultiVersionFlag
 
 	errs := make(map[int]error, len(mp.Members))
 	var j int
@@ -87,13 +91,29 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 		log.LogWarnf("sendToMetaPartition: getConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 		goto retry
 	}
-	resp, err = mc.send(req)
-	mw.putConn(mc, err)
-	if err == nil && !resp.ShouldRetry() {
+
+	if mw.Client != nil { // compatible lcNode not init Client
+		lastSeq = mw.Client.GetLatestVer()
+	}
+
+sendWithList:
+	resp, err = mc.send(req, lastSeq)
+	if err == nil && !resp.ShouldRetry() && !resp.ShouldRetryWithVersionList() {
+		mw.putConn(mc, err)
 		goto out
 	}
-	log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
-
+	if resp != nil && resp.ShouldRetryWithVersionList() {
+		// already send with list, must be a issue happened
+		if req.ExtentType&proto.VersionListFlag == proto.VersionListFlag {
+			mw.putConn(mc, err)
+			goto out
+		}
+		req.ExtentType |= proto.VersionListFlag
+		req.VerList = mw.Client.GetVerMgr().VerList
+		log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
+		goto sendWithList
+	}
+	mw.putConn(mc, err)
 retry:
 	start = time.Now()
 	for i := 0; i <= SendRetryLimit; i++ {
@@ -104,7 +124,7 @@ retry:
 				log.LogWarnf("sendToMetaPartition: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 				continue
 			}
-			resp, err = mc.send(req)
+			resp, err = mc.send(req, lastSeq)
 			mw.putConn(mc, err)
 			if err == nil && !resp.ShouldRetry() {
 				goto out
@@ -131,16 +151,22 @@ out:
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartition failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
 	}
 	log.LogDebugf("sendToMetaPartition: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
+	if mw.Client != nil { // compatible lcNode not init Client
+		mw.checkVerFromMeta(resp)
+	}
 	return resp, nil
 }
 
-func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
+func (mc *MetaConn) send(req *proto.Packet, verSeq uint64) (resp *proto.Packet, err error) {
+	req.ExtentType |= proto.MultiVersionFlag
+	req.VerSeq = verSeq
+
 	err = req.WriteToConn(mc.conn)
 	if err != nil {
 		return nil, errors.Trace(err, "Failed to write to conn, req(%v)", req)
 	}
 	resp = proto.NewPacket()
-	err = resp.ReadFromConn(mc.conn, proto.ReadDeadlineTime)
+	err = resp.ReadFromConnWithVer(mc.conn, proto.ReadDeadlineTime)
 	if err != nil {
 		return nil, errors.Trace(err, "Failed to read from conn, req(%v)", req)
 	}

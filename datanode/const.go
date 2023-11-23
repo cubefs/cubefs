@@ -62,6 +62,8 @@ const (
 	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
 	ActionStreamReadTinyExtentRepair = "ActionStreamReadTinyExtentRepair"
 	ActionBatchMarkDelete            = "ActionBatchMarkDelete"
+	ActionUpdateVersion              = "ActionUpdateVersion"
+	ActionStopDataPartitionRepair    = "ActionStopDataPartitionRepair"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.
@@ -90,15 +92,6 @@ const (
 
 const (
 	BufferWrite = false
-)
-
-const (
-	DecommsionEnter         = 1
-	DecommsionWaitAddRes    = 2
-	DecommsionWaitAddResFin = 3
-	DecommsionRemoveNew     = 4
-	DecommsionRemoveOld     = 5
-	DecommsionErr           = 6
 )
 
 const (

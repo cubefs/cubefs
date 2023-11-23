@@ -11,4 +11,7 @@ type Monitor interface {
 	MonitorZombie(id uint64, peer proto.Peer, replicasMsg string, du time.Duration)
 	//If raft election failed continuously. MonitorElection will be called
 	MonitorElection(id uint64, replicaMsg string, du time.Duration)
+
+	RemovePeer(id uint64, peer proto.Peer)
+	RemovePartition(id uint64, peers []proto.Peer)
 }

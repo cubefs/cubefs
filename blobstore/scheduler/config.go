@@ -15,11 +15,14 @@
 package scheduler
 
 import (
+	"github.com/Shopify/sarama"
+
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/cmd"
+	"github.com/cubefs/cubefs/blobstore/common/kafka"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
@@ -41,13 +44,16 @@ const (
 	defaultInspectBatch      = 1000
 	defaultInspectTimeoutMs  = 10000
 
-	defaultTaskPoolSize             = 10
-	defaultHandleBatchCnt           = 100
-	defaultDeleteHourRangeTo        = 24
-	defaultFailMsgConsumeIntervalMs = int64(10000)
-	defaultDeleteLogChunkSize       = uint(29)
-	defaultDeleteDelayH             = int64(72)
-	defaultDeleteNoDelay            = int64(0)
+	defaultTaskPoolSize           = 10
+	defaultDeleteHourRangeTo      = 24
+	defaultMessagePunishThreshold = 3
+	defaultMessagePunishTimeM     = 4
+	defaultSlowDownTimeS          = 3
+	defaultDeleteLogChunkSize     = uint(29)
+	defaultDeleteDelayH           = int64(72)
+	defaultDeleteNoDelay          = int64(0)
+	defaultMaxBatchSize           = 10
+	defaultBatchIntervalSec       = 2
 
 	defaultTickInterval   = uint32(1)
 	defaultHeartbeatTicks = uint32(30)
@@ -102,33 +108,33 @@ type ServiceRegisterConfig struct {
 
 // ShardRepairKafkaConfig is kafka config of shard repair
 type ShardRepairKafkaConfig struct {
-	BrokerList             []string    `json:"-"`
-	FailMsgSenderTimeoutMs int64       `json:"-"`
-	Normal                 TopicConfig `json:"normal"`
-	Failed                 TopicConfig `json:"failed"`
-	Priority               TopicConfig `json:"priority"`
+	BrokerList             []string
+	TopicNormals           []string
+	TopicFailed            string
+	FailMsgSenderTimeoutMs int64
 }
 
 // BlobDeleteKafkaConfig is kafka config of blob delete
 type BlobDeleteKafkaConfig struct {
-	BrokerList             []string    `json:"-"`
-	FailMsgSenderTimeoutMs int64       `json:"-"`
-	Normal                 TopicConfig `json:"normal"`
-	Failed                 TopicConfig `json:"failed"`
+	BrokerList             []string
+	FailMsgSenderTimeoutMs int64
+	TopicNormal            string
+	TopicFailed            string
+}
+
+type Topics struct {
+	ShardRepair       []string `json:"shard_repair"`
+	ShardRepairFailed string   `json:"shard_repair_failed"`
+	BlobDelete        string   `json:"blob_delete"`
+	BlobDeleteFailed  string   `json:"blob_delete_failed"`
 }
 
 // KafkaConfig kafka config
 type KafkaConfig struct {
-	BrokerList             []string               `json:"broker_list"`
-	FailMsgSenderTimeoutMs int64                  `json:"fail_msg_sender_timeout_ms"`
-	ShardRepair            ShardRepairKafkaConfig `json:"shard_repair"`
-	BlobDelete             BlobDeleteKafkaConfig  `json:"blob_delete"`
-}
-
-// TopicConfig topic config
-type TopicConfig struct {
-	Topic      string  `json:"topic"`
-	Partitions []int32 `json:"partitions"`
+	BrokerList             []string `json:"broker_list"`
+	Topics                 Topics   `json:"topics"`
+	FailMsgSenderTimeoutMs int64    `json:"fail_msg_sender_timeout_ms"`
+	Version                string   `json:"version"`
 }
 
 type Services struct {
@@ -179,7 +185,9 @@ func (c *Config) fixConfig() (err error) {
 	defaulter.LessOrEqual(&c.VolumeCacheUpdateIntervalS, defaultVolumeCacheUpdateIntervalS)
 	defaulter.LessOrEqual(&c.TaskLog.ChunkBits, defaultDeleteLogChunkSize)
 	c.fixClientConfig()
-	c.fixKafkaConfig()
+	if err := c.fixKafkaConfig(); err != nil {
+		return errInvalidKafka
+	}
 	c.fixBalanceConfig()
 	c.fixDiskDropConfig()
 	c.fixDiskRepairConfig()
@@ -202,17 +210,22 @@ func (c *Config) fixClientConfig() {
 	defaulter.LessOrEqual(&c.Scheduler.HostRetry, defaultRetryHostsCnt)
 }
 
-func (c *Config) fixKafkaConfig() {
-	defaulter.Empty(&c.Kafka.BlobDelete.Normal.Topic, defaultBlobDeleteNormalTopic)
-	defaulter.Empty(&c.Kafka.BlobDelete.Failed.Topic, defaultBlobDeleteFailedTopic)
-	defaulter.Empty(&c.Kafka.ShardRepair.Normal.Topic, defaultShardRepairNormalTopic)
-	defaulter.Empty(&c.Kafka.ShardRepair.Priority.Topic, defaultShardRepairPriorityTopic)
-	defaulter.Empty(&c.Kafka.ShardRepair.Failed.Topic, defaultShardRepairFailedTopic)
+func (c *Config) fixKafkaConfig() (err error) {
+	defaulter.Empty(&c.Kafka.Topics.BlobDelete, defaultBlobDeleteNormalTopic)
+	defaulter.Empty(&c.Kafka.Topics.BlobDeleteFailed, defaultBlobDeleteFailedTopic)
+	defaulter.Empty(&c.Kafka.Topics.ShardRepairFailed, defaultShardRepairFailedTopic)
 	defaulter.LessOrEqual(&c.Kafka.FailMsgSenderTimeoutMs, defaultClientTimeoutMs)
-	c.BlobDelete.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
-	c.ShardRepair.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
-	c.Kafka.ShardRepair.BrokerList = c.Kafka.BrokerList
-	c.Kafka.BlobDelete.BrokerList = c.Kafka.BrokerList
+	if len(c.Kafka.Topics.ShardRepair) == 0 {
+		c.Kafka.Topics.ShardRepair = []string{defaultShardRepairNormalTopic, defaultShardRepairPriorityTopic}
+	}
+	if c.Kafka.Version != "" {
+		kafkaVersion, err := sarama.ParseKafkaVersion(c.Kafka.Version)
+		if err != nil {
+			return err
+		}
+		kafka.DefaultKafkaVersion = kafkaVersion
+	}
+	return nil
 }
 
 func (c *Config) fixBalanceConfig() {
@@ -251,11 +264,13 @@ func (c *Config) fixInspectConfig() {
 func (c *Config) fixShardRepairConfig() {
 	c.ShardRepair.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.ShardRepair.TaskPoolSize, defaultTaskPoolSize)
-	defaulter.LessOrEqual(&c.ShardRepair.NormalHandleBatchCnt, defaultHandleBatchCnt)
-	defaulter.LessOrEqual(&c.ShardRepair.FailHandleBatchCnt, defaultHandleBatchCnt)
 	defaulter.LessOrEqual(&c.ShardRepair.OrphanShardLog.ChunkBits, defaultDeleteLogChunkSize)
-	defaulter.LessOrEqual(&c.ShardRepair.FailMsgConsumeIntervalMs, defaultFailMsgConsumeIntervalMs)
-	c.ShardRepair.Kafka = c.Kafka.ShardRepair
+	defaulter.LessOrEqual(&c.ShardRepair.MessagePunishThreshold, defaultMessagePunishThreshold)
+	defaulter.LessOrEqual(&c.ShardRepair.MessagePunishTimeM, defaultMessagePunishTimeM)
+	c.ShardRepair.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
+	c.ShardRepair.Kafka.BrokerList = c.Kafka.BrokerList
+	c.ShardRepair.Kafka.TopicNormals = c.Kafka.Topics.ShardRepair
+	c.ShardRepair.Kafka.TopicFailed = c.Kafka.Topics.ShardRepairFailed
 }
 
 func (c *Config) fixBlobDeleteConfig() error {
@@ -267,13 +282,18 @@ func (c *Config) fixBlobDeleteConfig() error {
 	}
 	c.BlobDelete.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.BlobDelete.TaskPoolSize, defaultTaskPoolSize)
-	defaulter.LessOrEqual(&c.BlobDelete.NormalHandleBatchCnt, defaultHandleBatchCnt)
-	defaulter.LessOrEqual(&c.BlobDelete.FailHandleBatchCnt, defaultHandleBatchCnt)
-	defaulter.LessOrEqual(&c.BlobDelete.FailMsgConsumeIntervalMs, defaultFailMsgConsumeIntervalMs)
 	defaulter.LessOrEqual(&c.BlobDelete.DeleteLog.ChunkBits, defaultDeleteLogChunkSize)
+	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishThreshold, defaultMessagePunishThreshold)
+	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishTimeM, defaultMessagePunishTimeM)
+	defaulter.LessOrEqual(&c.BlobDelete.MessageSlowDownTimeS, defaultSlowDownTimeS)
 	defaulter.Equal(&c.BlobDelete.SafeDelayTimeH, defaultDeleteDelayH)
 	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
-	c.BlobDelete.Kafka = c.Kafka.BlobDelete
+	defaulter.Equal(&c.BlobDelete.MaxBatchSize, defaultMaxBatchSize)
+	defaulter.Equal(&c.BlobDelete.BatchIntervalS, defaultBatchIntervalSec)
+	c.BlobDelete.Kafka.BrokerList = c.Kafka.BrokerList
+	c.BlobDelete.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
+	c.BlobDelete.Kafka.TopicNormal = c.Kafka.Topics.BlobDelete
+	c.BlobDelete.Kafka.TopicFailed = c.Kafka.Topics.BlobDeleteFailed
 	return nil
 }
 

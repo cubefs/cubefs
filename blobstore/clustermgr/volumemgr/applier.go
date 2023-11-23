@@ -144,7 +144,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			)
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -171,7 +171,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &CreateVolumeCtx{}
 			err := args.Decode(datas[idx])
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -192,7 +192,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &ChangeVolStatusCtx{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -207,7 +207,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &clustermgr.RetainVolumes{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -223,7 +223,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &clustermgr.UpdateVolumeArgs{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -239,7 +239,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &clustermgr.ReportChunkArgs{}
 			err := args.Decode(bytes.NewReader(datas[idx]))
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -259,7 +259,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &clustermgr.SetCompactChunkArgs{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -274,7 +274,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := make([]proto.VuidPrefix, 0)
 			err := json.Unmarshal(datas[idx], &args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -290,7 +290,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &allocVolumeUnitCtx{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -305,7 +305,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			var args DeleteTaskCtx
 			err := json.Unmarshal(datas[idx], &args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -320,7 +320,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := make([]proto.Vid, 0)
 			err := json.Unmarshal(datas[idx], &args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -335,7 +335,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &clustermgr.VolumeInfoBase{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -350,7 +350,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &clustermgr.AdminUpdateUnitArgs{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -365,7 +365,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := &CreateVolumeCtx{}
 			err := args.Decode(datas[idx])
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -386,7 +386,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 			args := make([]*volumedb.VolumeUnitRecord, 0)
 			err := json.Unmarshal(datas[idx], &args)
 			if err != nil {
-				errs[idx] = errors.Info(err, "json unmarshal failed, data: ", datas[idx]).Detail(err)
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()
 				continue
 			}
@@ -456,6 +456,7 @@ func (v *VolumeMgr) Flush(ctx context.Context) error {
 
 // Switch manager work when leader change
 func (v *VolumeMgr) NotifyLeaderChange(ctx context.Context, leader uint64, host string) {
+	// Do nothing.
 }
 
 func (v *VolumeMgr) getTaskIdx(vid proto.Vid) int {

@@ -1,10 +1,10 @@
 # gorocksdb, a Go wrapper for RocksDB
 
-[![Build Status](https://travis-ci.org/tecbot/gorocksdb.png)](https://travis-ci.org/tecbot/gorocksdb) [![GoDoc](https://godoc.org/github.com/tecbot/gorocksdb?status.png)](http://godoc.org/github.com/tecbot/gorocksdb)
+[![Build Status](https://travis-ci.org/tecbot/gorocksdb.svg)](https://travis-ci.org/tecbot/gorocksdb) [![GoDoc](https://godoc.org/github.com/tecbot/gorocksdb?status.svg)](http://godoc.org/github.com/tecbot/gorocksdb)
 
 ## Install
 
-You'll need to build [RocksDB](https://github.com/facebook/rocksdb) v5.5+ on your machine.
+You'll need to build [RocksDB](https://github.com/facebook/rocksdb) v5.16+ on your machine.
 
 After that, you can install gorocksdb using the following command:
 

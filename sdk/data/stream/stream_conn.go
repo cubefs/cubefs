@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"net"
 	"sync/atomic"
 	"time"
@@ -28,6 +29,7 @@ import (
 
 var (
 	TryOtherAddrError = errors.New("TryOtherAddrError")
+	DpDiscardError    = errors.New("DpDiscardError")
 )
 
 const (
@@ -103,10 +105,10 @@ func (sc *StreamConn) String() string {
 
 // Send send the given packet over the network through the stream connection until success
 // or the maximum number of retries is reached.
-func (sc *StreamConn) Send(retry bool, req *Packet, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToPartition(req, retry, getReply)
-		if err == nil || !retry {
+		if err == nil || err == proto.ErrCodeVersionOp || !*retry || err == TryOtherAddrError {
 			return
 		}
 		log.LogWarnf("StreamConn Send: err(%v)", err)
@@ -115,9 +117,10 @@ func (sc *StreamConn) Send(retry bool, req *Packet, getReply GetReplyFunc) (err 
 	return errors.New(fmt.Sprintf("StreamConn Send: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req))
 }
 
-func (sc *StreamConn) sendToPartition(req *Packet, retry bool, getReply GetReplyFunc) (err error) {
+func (sc *StreamConn) sendToPartition(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
+		log.LogDebugf("req opcode %v, conn %v", req.Opcode, conn)
 		err = sc.sendToConn(conn, req, getReply)
 		if err == nil {
 			StreamConnPool.PutConnect(conn, false)
@@ -125,7 +128,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, retry bool, getReply GetReply
 		}
 		log.LogWarnf("sendToPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnect(conn, true)
-		if err != TryOtherAddrError || !retry {
+		if err != TryOtherAddrError || !*retry {
 			return
 		}
 	} else {

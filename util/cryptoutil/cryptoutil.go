@@ -53,7 +53,7 @@ func AesEncryptCBC(key, plaintext []byte) (ciphertext []byte, err error) {
 		block cipher.Block
 	)
 
-	if plaintext == nil || len(plaintext) == 0 {
+	if len(plaintext) == 0 {
 		err = fmt.Errorf("input for encryption is invalid")
 		return
 	}
@@ -145,6 +145,9 @@ func Base64Decode(encodedText string) (text []byte, err error) {
 func EncodeMessage(plaintext []byte, key []byte) (message string, err error) {
 	var cipher []byte
 
+	if len(plaintext) > MaxAllocSize {
+		return "too max packet", fmt.Errorf("too max packet len %v", len(plaintext))
+	}
 	// 8 for random number; 16 for md5 hash
 	buffer := make([]byte, RandomNumberSize+CheckSumSize+len(plaintext))
 
@@ -199,7 +202,7 @@ func DecodeMessage(message string, key []byte) (plaintext []byte, err error) {
 	newChecksum := md5.Sum(decodedText)
 
 	// verify checksum
-	if bytes.Compare(msgChecksum, newChecksum[:]) != 0 {
+	if !bytes.Equal(msgChecksum, newChecksum[:]) {
 		err = fmt.Errorf("checksum not match")
 	}
 
@@ -235,7 +238,7 @@ func CreateClientX(cert *[]byte) (client *http.Client, err error) {
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				RootCAs:            caCertPool,
-				InsecureSkipVerify: true,
+				InsecureSkipVerify: false,
 			},
 		},
 	}

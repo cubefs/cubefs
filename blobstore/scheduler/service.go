@@ -63,8 +63,9 @@ func (svr *Service) mgrByType(typ proto.TaskType) (Migrator, error) {
 		return svr.diskDropMgr, nil
 	case proto.TaskTypeManualMigrate:
 		return svr.manualMigMgr, nil
+	default:
+		return nil, errIllegalTaskType
 	}
-	return nil, errIllegalTaskType
 }
 
 func (svr *Service) diskMgrByType(typ proto.TaskType) (IDisKMigrator, error) {
@@ -73,8 +74,9 @@ func (svr *Service) diskMgrByType(typ proto.TaskType) (IDisKMigrator, error) {
 		return svr.diskDropMgr, nil
 	case proto.TaskTypeDiskRepair:
 		return svr.diskRepairMgr, nil
+	default:
+		return nil, errIllegalTaskType
 	}
-	return nil, errIllegalTaskType
 }
 
 // HTTPTaskAcquire acquire task

@@ -15,13 +15,10 @@
 package base
 
 import (
-	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/Shopify/sarama"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
@@ -29,11 +26,8 @@ import (
 
 const testTopic = "test_topic"
 
-var errMock = errors.New("mock error")
-
 func newBroker(t *testing.T) *sarama.MockBroker {
 	mockFetchResponse := sarama.NewMockFetchResponse(t, 1)
-	mockFetchResponse.SetVersion(1)
 	var msg sarama.ByteEncoder = []byte("FOO")
 	for i := 0; i < 1000; i++ {
 		mockFetchResponse.SetMessage(testTopic, 0, int64(i), msg)
@@ -51,27 +45,4 @@ func newBroker(t *testing.T) *sarama.MockBroker {
 	})
 
 	return broker
-}
-
-type mockAccess struct {
-	offsets map[string]int64
-	err     error
-}
-
-func newMockAccess(err error) *mockAccess {
-	return &mockAccess{
-		offsets: make(map[string]int64),
-		err:     err,
-	}
-}
-
-func (m *mockAccess) SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) error {
-	key := fmt.Sprintf("%s_%d", topic, partition)
-	m.offsets[key] = offset
-	return m.err
-}
-
-func (m *mockAccess) GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (int64, error) {
-	key := fmt.Sprintf("%s_%d", topic, partition)
-	return m.offsets[key], m.err
 }

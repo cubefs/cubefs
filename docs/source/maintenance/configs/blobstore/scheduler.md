@@ -72,49 +72,39 @@ The configuration of the Scheduler is based on the [public configuration](./base
 
 ### kafka
 
+::: tip Note
+Starting from v3.3.0, consumer groups are supported. For previous versions, please refer to the corresponding configuration file.
+:::
+
 * broker_list, Kafka node list
 * fail_msg_sender_timeout_ms, timeout for resending messages to the failed topic after message consumption fails, default is 1000ms
-* shard_repair, repair message topic and consumption partition specification (if the partition is not specified, all partitions will be consumed), which contains three types of topics:
-  * normal, normal topic, default is shard_repair
-  * failed, failed topic (after normal message consumption fails, the message will be resent to this topic), default is shard_repair_prior
-  * priority, priority consumption topic, mainly used to store repair messages that need to be consumed with high priority, default is shard_repair_failed
-* blob_delete, deletion message topic and consumption partition specification, which contains two types of topics
-  * normal, normal topic, default is blob_delete
-  * failed, failed topic (after normal message consumption fails, the message will be resent to this topic), default is blob_delete_failed
+* version, kafka version, default is 2.1.0
+* topics，consume topics
+  * shard_repair, normal topic, default are `shard_repair` and `shard_repair_prior`
+  * shard_repair_failed, failed topic, default is `shard_repair_failed`
+  * blob_delete, normal topic, default is `blob_delete`
+  * blob_delete_failed, failed topic, default is `blob_delete_failed`
+
 ```json
 {
   "broker_list": ["127.0.0.1:9095","127.0.0.1:9095","127.0.0.1:9095"],
   "fail_msg_sender_timeout_ms": 1000,
-  "shard_repair": {
-    "normal": {
-      "topic": "shard_repair",
-      "partitions": [0,1]
-    },
-    "failed": {
-      "topic": "shard_repair_failed",
-      "partitions": [0,1]
-    },
-    "priority": {
-      "topic": "shard_repair_prior",
-      "partitions": [0,1]
-    }
-  },
-  "blob_delete": {
-    "normal": {
-      "topic": "blob_delete",
-      "partitions": [0,1]
-    },
-    "failed": {
-      "topic": "blob_delete_failed",
-      "partitions": [0,1]
-    }
+  "version": "0.10.2.0",
+  "topics": {
+    "shard_repair": [
+      "shard_repair",
+      "shard_repair_prior"
+    ],
+    "shard_repair_failed": "shard_repair_failed",
+    "blob_delete": "blob_delete",
+    "blob_delete_failed": "blob_delete_failed"
   }
 }
 ```
 
 ### balance
 
-* disk_concurrency, the maximum number of disks allowed to be balanced simultaneously, default is 1 (before v3.2.2, this value was balance_disk_cnt_limit, default is 100)
+* disk_concurrency, the maximum number of disks allowed to be balanced simultaneously, default is 1 (before v3.3.0, this value was balance_disk_cnt_limit, default is 100)
 * max_disk_free_chunk_cnt, when balancing, it will be judged whether there are disks with freechunk greater than or equal to this value in the current IDC. If not, no balance will be initiated. The default is 1024.
 * min_disk_free_chunk_cnt, disks with freechunk less than this value will be balanced, default is 20
 * prepare_queue_retry_delay_s, retry interval for the preparation queue when a task in the preparation queue fails to execute, default is 10
@@ -139,7 +129,7 @@ The configuration of the Scheduler is based on the [public configuration](./base
 ### disk_drop
 
 ::: tip Note
-Starting from version v3.2.2, concurrent disk offline is supported.
+Starting from version v3.3.0, concurrent disk offline is supported.
 :::
 
 * prepare_queue_retry_delay_s, retry interval for the preparation queue when a task in the preparation queue fails to execute, default is 10
@@ -164,7 +154,7 @@ Starting from version v3.2.2, concurrent disk offline is supported.
 ### disk_repair
 
 ::: tip Note
-Starting from version v3.2.2, concurrent disk repair is supported.
+Starting from version v3.3.0, concurrent disk repair is supported.
 :::
 
 * prepare_queue_retry_delay_s, retry interval for the preparation queue when a task in the preparation queue fails to execute, default is 10
@@ -205,16 +195,14 @@ Starting from version v3.2.2, concurrent disk repair is supported.
 ### shard_repair
 
 * task_pool_size, concurrency of repair tasks, default is 10
-* normal_handle_batch_cnt, batch consumption size of normal messages, default is 100
-* fail_handle_batch_cnt, batch consumption size of failed messages, default is 100
-* fail_msg_consume_interval_ms, time interval for consuming failed messages, default is 10000ms
+* message_punish_threshold, Punishment threshold, if the corresponding number of failed attempts to consume a message exceeds this value, a punishment will be imposed for a period of time to avoid excessive retries within a short period. The default value is 3.
+* message_punish_time_m, punishment time, default 10 minutes
 * orphan_shard_log, record information of orphan data repair failures, directory needs to be configured, chunkbits is the log file rotation size, default is 29 (2^29 bytes)
 ```json
 {
   "task_pool_size": 10,
-  "normal_handle_batch_cnt": 500,
-  "fail_handle_batch_cnt": 100,
-  "fail_msg_consume_interval_ms": 10000,
+  "message_punish_threshold": 3,
+  "message_punish_time_m": 10,
   "orphan_shard_log": {
     "dir": "/home/service/scheduler/_package/orphan_shard_log",
     "chunkbits": 29
@@ -225,27 +213,31 @@ Starting from version v3.2.2, concurrent disk repair is supported.
 ### blob_delete
 
 ::: tip Note
-Starting from version v3.2.2, it is supported to configure the data deletion time period.
+Starting from version v3.3.0, it is supported to configure the data deletion time period.
 :::
 
 * task_pool_size, concurrency of deletion tasks, default is 10
-* normal_handle_batch_cnt, batch consumption size of normal messages, default is 100
-* fail_handle_batch_cnt, batch consumption size of failed messages, default is 100
-* fail_msg_consume_interval_ms, time interval for consuming failed messages, default is 10000ms
 * safe_delay_time_h, deletion protection period, default is 72h. If a negative value is configured, the data will be deleted directly.
+* message_punish_threshold, Punishment threshold, if the corresponding number of failed attempts to consume a message exceeds this value, a punishment will be imposed for a period of time to avoid excessive retries within a short period. The default value is 3.
+* message_punish_time_m, punishment time, default 10 minutes
+* message_slow_down_time_s, slow down when it overload, default 3 second
 * delete_log, directory for storing deletion logs, needs to be configured, chunkbits default is 29
 * delete_hour_range, supports configuring the deletion time period in 24-hour format. For example, the following configuration indicates that deletion requests will only be initiated during the time period between 1:00 a.m. and 3:00 a.m. If not configured, deletion will be performed all day.
+* max_batch_size, batch consumption size of kafka messages, default is 10. If the batch is full or the time interval is reached, consume the Kafka messages accumulated during this period
+* batch_interval_s, time interval for consuming kafka messages, default is 2s
 ```json
 {
   "task_pool_size": 400,
-  "normal_handle_batch_cnt": 1000,
-  "fail_handle_batch_cnt": 1000,
-  "fail_msg_consume_interval_ms": 6000,
+  "message_punish_threshold": 3,
+  "message_punish_time_m": 10,
+  "message_slow_down_time_s": 3,
   "safe_delay_time_h": 12,
   "delete_hour_range": {
     "from": 1,
     "to": 3
   },
+  "max_batch_size": 10,
+  "batch_interval_s": 2,
   "delete_log": {
     "dir": "/home/service/scheduler/_package/delete_log",
     "chunkbits": 29

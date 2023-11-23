@@ -16,11 +16,14 @@ package master
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore"
-	"github.com/cubefs/cubefs/util/log"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // IDAllocator generates and allocates ids
@@ -29,14 +32,19 @@ type IDAllocator struct {
 	metaPartitionID uint64
 	commonID        uint64
 	clientID        uint64
-	store           *raftstore.RocksDBStore
+	clientIDLimit   uint64
+	quotaID         uint32
+	store           *raftstore_db.RocksDBStore
 	partition       raftstore.Partition
 	dpIDLock        sync.RWMutex
 	mpIDLock        sync.RWMutex
 	mnIDLock        sync.RWMutex
+	qaIDLock        sync.RWMutex
 }
 
-func newIDAllocator(store *raftstore.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
+const clientIDBatchCount = 1000
+
+func newIDAllocator(store *raftstore_db.RocksDBStore, partition raftstore.Partition) (alloc *IDAllocator) {
 	alloc = new(IDAllocator)
 	alloc.store = store
 	alloc.partition = partition
@@ -47,25 +55,8 @@ func (alloc *IDAllocator) restore() {
 	alloc.restoreMaxDataPartitionID()
 	alloc.restoreMaxMetaPartitionID()
 	alloc.restoreMaxCommonID()
+	alloc.restoreMaxQuotaID()
 	alloc.restoreClientID()
-}
-
-func (alloc *IDAllocator) restoreClientID() {
-	value, err := alloc.store.Get(maxClientIDKey)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to restore maxClientID,err:%v ", err.Error()))
-	}
-	bytes := value.([]byte)
-	if len(bytes) == 0 {
-		alloc.clientID = 0
-		return
-	}
-	clientID, err := strconv.ParseUint(string(bytes), 10, 64)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to restore maxClientID,err:%v ", err.Error()))
-	}
-	alloc.clientID = clientID
-	log.LogInfof("action[restoreClientID] maxClientID[%v]", alloc.clientID)
 }
 
 func (alloc *IDAllocator) restoreMaxDataPartitionID() {
@@ -123,6 +114,30 @@ func (alloc *IDAllocator) restoreMaxCommonID() {
 	log.LogInfof("action[restoreMaxCommonID] maxCommonID[%v]", alloc.commonID)
 }
 
+func (alloc *IDAllocator) restoreMaxQuotaID() {
+	value, err := alloc.store.Get(maxQuotaIDKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to restore maxQuotaID,err:%v ", err.Error()))
+	}
+	bytes := value.([]byte)
+	if len(bytes) == 0 {
+		alloc.quotaID = 0
+		return
+	}
+	maxQuotaID, err := strconv.ParseUint(string(bytes), 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to restore maxQuotaID,err:%v ", err.Error()))
+	}
+
+	if maxQuotaID > 0 && maxQuotaID <= math.MaxInt32 {
+		alloc.quotaID = uint32(maxQuotaID)
+	} else {
+		alloc.quotaID = math.MaxInt32
+	}
+
+	log.LogInfof("action[restoreMaxCommonID] maxQuotaID[%v]", alloc.quotaID)
+}
+
 func (alloc *IDAllocator) setDataPartitionID(id uint64) {
 	atomic.StoreUint64(&alloc.dataPartitionID, id)
 }
@@ -135,8 +150,26 @@ func (alloc *IDAllocator) setCommonID(id uint64) {
 	atomic.StoreUint64(&alloc.commonID, id)
 }
 
-func (alloc *IDAllocator) setClientID(id uint64) {
-	atomic.StoreUint64(&alloc.clientID, id)
+func (alloc *IDAllocator) restoreClientID() {
+	alloc.mpIDLock.Lock()
+	defer alloc.mpIDLock.Unlock()
+	value, err := alloc.store.Get(maxClientIDKey)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to restore maxClientID,err:%v ", err.Error()))
+	}
+	bytes := value.([]byte)
+	if len(bytes) != 0 {
+		alloc.clientID, err = strconv.ParseUint(string(bytes), 10, 64)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to restore maxClientID,err:%v ", err.Error()))
+		}
+	}
+	alloc.clientIDLimit = alloc.clientID
+	alloc.clientID += clientIDBatchCount
+}
+
+func (alloc *IDAllocator) setQuotaID(id uint32) {
+	atomic.StoreUint32(&alloc.quotaID, id)
 }
 
 func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err error) {
@@ -190,21 +223,25 @@ errHandler:
 func (alloc *IDAllocator) allocateClientID() (clientID uint64, err error) {
 	alloc.mpIDLock.Lock()
 	defer alloc.mpIDLock.Unlock()
-	var cmd []byte
-	metadata := new(RaftCmd)
-	metadata.Op = opSyncAllocClientID
-	metadata.K = maxClientIDKey
-	clientID = atomic.LoadUint64(&alloc.clientID) + 1
-	value := strconv.FormatUint(uint64(clientID), 10)
-	metadata.V = []byte(value)
-	cmd, err = metadata.Marshal()
-	if err != nil {
-		goto errHandler
+	clientID = alloc.clientID + 1
+	if alloc.clientIDLimit < clientID {
+		var cmd []byte
+		metadata := new(RaftCmd)
+		metadata.Op = opSyncAllocClientID
+		metadata.K = maxClientIDKey
+		// sync clientID - 1
+		value := strconv.FormatUint(uint64(alloc.clientID), 10)
+		metadata.V = []byte(value)
+		cmd, err = metadata.Marshal()
+		if err != nil {
+			goto errHandler
+		}
+		if _, err = alloc.partition.Submit(cmd); err != nil {
+			goto errHandler
+		}
+		alloc.clientIDLimit = alloc.clientID + clientIDBatchCount
 	}
-	if _, err = alloc.partition.Submit(cmd); err != nil {
-		goto errHandler
-	}
-	alloc.setClientID(clientID)
+	alloc.clientID = clientID
 	return
 errHandler:
 	log.LogErrorf("action[allocateClientID] err:%v", err.Error())
@@ -232,5 +269,29 @@ func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	return
 errHandler:
 	log.LogErrorf("action[allocateCommonID] err:%v", err.Error())
+	return
+}
+
+func (alloc *IDAllocator) allocateQuotaID() (id uint32, err error) {
+	alloc.qaIDLock.Lock()
+	defer alloc.qaIDLock.Unlock()
+	var cmd []byte
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncAllocQuotaID
+	metadata.K = maxQuotaIDKey
+	id = atomic.LoadUint32(&alloc.quotaID) + 1
+	value := strconv.FormatUint(uint64(id), 10)
+	metadata.V = []byte(value)
+	cmd, err = metadata.Marshal()
+	if err != nil {
+		goto errHandler
+	}
+	if _, err = alloc.partition.Submit(cmd); err != nil {
+		goto errHandler
+	}
+	alloc.setQuotaID(id)
+	return
+errHandler:
+	log.LogErrorf("action[allocateQuotaID] err:%v", err.Error())
 	return
 }

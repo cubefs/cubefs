@@ -17,8 +17,6 @@ package blobstore
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data/manager"
-	"github.com/cubefs/cubefs/util/buf"
 	"hash"
 	"io"
 	"sort"
@@ -26,14 +24,15 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/cubefs/cubefs/util/stat"
-
 	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -94,7 +93,7 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.fileSize = config.FileSize
 	writer.cacheThreshold = config.CacheThreshold
 	writer.dirty = false
-	writer.AllocateCache()
+	writer.allocateCache()
 	writer.limitManager = writer.ec.LimitManager
 
 	return
@@ -170,8 +169,9 @@ func (writer *Writer) doParallelWrite(ctx context.Context, data []byte, offset i
 	}
 	writer.wg.Wait()
 	for i := 0; i < sliceSize; i++ {
-		if wErr, ok := <-writer.err; !ok || err != nil {
-			log.LogErrorf("slice write error,ino(%v) fileoffset(%v) sliceSize(%v) err(%v)", writer.ino, wErr.fileOffset, wErr.size, err)
+		if wErr := <-writer.err; wErr != nil {
+			log.LogErrorf("slice write error,ino(%v) fileoffset(%v) sliceSize(%v) err(%v)",
+				writer.ino, wErr.fileOffset, wErr.size, wErr.err)
 			return 0, wErr.err
 		}
 	}
@@ -207,10 +207,11 @@ func (writer *Writer) cacheLevel2(wSlice *rwSlice) {
 
 func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h hash.Hash) (size uint64, err error) {
 	var (
-		buf         = make([]byte, 2*writer.blockSize)
+		tmp         = buf.ReadBufPool.Get().([]byte)
 		exec        = NewExecutor(writer.wConcurrency)
 		leftToWrite int
 	)
+	defer buf.ReadBufPool.Put(tmp)
 
 	writer.fileOffset = 0
 	writer.err = make(chan *wSliceErr)
@@ -228,7 +229,6 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 			}
 			wSlice.Data = make([]byte, bufSize)
 			copy(wSlice.Data, writer.buf)
-			//writer.resetBuffer()
 			writer.buf = writer.buf[:0]
 			if (err == nil || err == io.EOF) && h != nil {
 				h.Write(wSlice.Data)
@@ -259,29 +259,9 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 				oeks = append(oeks, wSlice.objExtentKey)
 				oeksLock.Unlock()
 
-				/*oeks := make([]proto.ObjExtentKey, 0)
-				//update meta
-				oeks = append(oeks, wSlice.objExtentKey)
-				if err = writer.mw.AppendObjExtentKeys(writer.ino, oeks); err != nil {
-					log.LogErrorf("slice write error,meta append ebsc extent keys fail,ino(%v) fileOffset(%v) len(%v) err(%v)", writer.ino, wSlice.fileOffset, wSlice.size, err)
-					writer.Lock()
-					if len(writer.err) > 0 {
-						writer.Unlock()
-						return
-					}
-					wErr := &wSliceErr{
-						err:        err,
-						fileOffset: wSlice.fileOffset,
-						size:       wSlice.size,
-					}
-					writer.err <- wErr
-					writer.Unlock()
-					return
-				}*/
-
 				writer.cacheLevel2(wSlice)
 			}
-			//oeks = append(oeks, wSlice.objExtentKey)
+
 			exec.Run(write)
 		}
 	}
@@ -289,7 +269,7 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 LOOP:
 	for {
 		position := 0
-		leftToWrite, err = reader.Read(buf)
+		leftToWrite, err = reader.Read(tmp)
 		if err != nil && err != io.EOF {
 			return
 		}
@@ -305,7 +285,7 @@ LOOP:
 
 			freeSize := writer.blockSize - len(writer.buf)
 			writeSize := util.Min(leftToWrite, freeSize)
-			writer.buf = append(writer.buf, buf[position:position+writeSize]...)
+			writer.buf = append(writer.buf, tmp[position:position+writeSize]...)
 			position += writeSize
 			leftToWrite -= writeSize
 			writer.fileOffset += writeSize
@@ -316,10 +296,10 @@ LOOP:
 		}
 		if err == io.EOF {
 			log.LogDebugf("WriteFromReader: EOF")
-			err = nil
 			if len(writer.buf) > 0 {
 				writeBuff()
 			}
+			err = nil
 			writer.wg.Wait()
 			var wErr *wSliceErr
 			select {
@@ -532,7 +512,7 @@ func (writer *Writer) asyncCache(ino uint64, offset int, data []byte) {
 	}()
 
 	log.LogDebugf("TRACE asyncCache Enter,fileOffset(%v) len(%v)", offset, len(data))
-	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache)
+	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache, nil)
 	log.LogDebugf("TRACE asyncCache Exit,write(%v) err(%v)", write, err)
 
 }
@@ -637,13 +617,22 @@ func (writer *Writer) CacheFileSize() int {
 }
 
 func (writer *Writer) FreeCache() {
+	if writer == nil {
+		return
+	}
 	if buf.CachePool == nil {
 		return
 	}
-	buf.CachePool.Put(writer.buf)
+	writer.once.Do(func() {
+		tmpBuf := writer.buf
+		writer.buf = nil
+		if tmpBuf != nil {
+			buf.CachePool.Put(tmpBuf)
+		}
+	})
 }
 
-func (writer *Writer) AllocateCache() {
+func (writer *Writer) allocateCache() {
 	if buf.CachePool == nil {
 		return
 	}

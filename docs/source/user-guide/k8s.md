@@ -52,10 +52,10 @@ $ cd cubefs-csi
 
 #### Create CSI RBAC
 
-The content of cfs-rbac.yaml does not need to be modified. It mainly declares the role of the CSI component and the corresponding permissions, so execute the following command directly:
+The content of csi-rbac.yaml does not need to be modified. It mainly declares the role of the CSI component and the corresponding permissions, so execute the following command directly:
 
 ``` bash
-$ kubectl apply -f deploy/cfs-rbac.yaml
+$ kubectl apply -f deploy/csi-rbac.yaml
 ```
 
 #### Create StorageClass
@@ -236,7 +236,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: cubefs-sc
+  storageClassName: cfs-sc
 ```
 
 `storageClassName` needs to be consistent with the `name` attribute in the `metadata` of the StorageClass created just now. This will create a storage volume based on the parameters defined in `cubefs-sc`.
@@ -289,7 +289,7 @@ spec:
         app: cfs-csi-demo-pod
     spec:
       nodeSelector:
-        cubefs-csi-node: enabled
+        component.cubefs.io/csi: enabled
       containers:
         - name: cfs-csi-demo
           image: nginx:1.17.9
@@ -353,4 +353,4 @@ The PVC is bound to a PV, and the name of the bound PV is the name of the underl
 
 ### CubeFS Volume Management
 
-Please refer to the [cubefs cli tool usage guide](../maintenance/tool.md).
+Please refer to the [cubefs cli tool usage guide](../tools/cli.md).

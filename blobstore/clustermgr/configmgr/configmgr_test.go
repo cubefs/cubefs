@@ -33,7 +33,7 @@ func TestConfigMgr(t *testing.T) {
 	tmpKvDBPath := "/tmp/config/tmpKvDBPath" + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpKvDBPath)
 
-	kvDB, _ := kvdb.Open(tmpKvDBPath, false)
+	kvDB, _ := kvdb.Open(tmpKvDBPath)
 	kvMgr, err := kvmgr.NewKvMgr(kvDB)
 	require.NoError(t, err)
 

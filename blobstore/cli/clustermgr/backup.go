@@ -40,6 +40,10 @@ import (
 )
 
 const (
+	timeFormat = "2006-01-02"
+)
+
+const (
 	volumeDBPathName = "snapshot-volumedb"
 	normalDBPathName = "snapshot-normaldb"
 	raftDBPathName   = "snapshot-raftdb"
@@ -159,7 +163,7 @@ func cmdDumpSnapshot(c *grumble.Context) error {
 		log.Fatalf("parse snapshot index failed: %s", err.Error())
 	}
 
-	date := time.Now().Format("2006-01-02")
+	date := time.Now().Format(timeFormat)
 	tmpNormalDBPath := dbPath + "/" + date + "/" + normalDBPathName
 	tmpVolumeDBPath := dbPath + "/" + date + "/" + volumeDBPathName
 	tmpRaftDBPath := dbPath + "/" + date + "/" + raftDBPathName
@@ -173,31 +177,23 @@ func cmdDumpSnapshot(c *grumble.Context) error {
 	os.MkdirAll(tmpRaftDBPath, 0o755)
 	os.MkdirAll(tmpKvDBPath, 0o755)
 
-	normalDB, err := normaldb.OpenNormalDB(tmpNormalDBPath, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = false
-	})
+	normalDB, err := normaldb.OpenNormalDB(tmpNormalDBPath)
 	if err != nil {
 		return fmt.Errorf("open normal db failed: %s", err.Error())
 	}
 	defer normalDB.Close()
-	volumeDB, err := volumedb.Open(tmpVolumeDBPath, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = false
-	})
+	volumeDB, err := volumedb.Open(tmpVolumeDBPath)
 	if err != nil {
 		return fmt.Errorf("open volume db failed: %s", err.Error())
 	}
 	defer volumeDB.Close()
-	raftDB, err := raftdb.OpenRaftDB(tmpRaftDBPath, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = false
-	})
+	raftDB, err := raftdb.OpenRaftDB(tmpRaftDBPath)
 	if err != nil {
 		return fmt.Errorf("open raft db failed: %s", err.Error())
 	}
 	defer raftDB.Close()
 
-	kvDB, err := kvdb.Open(tmpKvDBPath, false, func(option *kvstore.RocksDBOption) {
-		option.ReadOnly = false
-	})
+	kvDB, err := kvdb.Open(tmpKvDBPath)
 	if err != nil {
 		return fmt.Errorf("open kv db failed: %s", err.Error())
 	}
@@ -244,7 +240,7 @@ func cmdDumpSnapshot(c *grumble.Context) error {
 	}
 	backups := make([]string, 0)
 	for i := range backupDirFiless {
-		if _, err := time.Parse("2006-01-02", backupDirFiless[i].Name()); err == nil {
+		if _, err := time.Parse(timeFormat, backupDirFiless[i].Name()); err == nil {
 			log.Infof("name: %s", backupDirFiless[i].Name())
 			backups = append(backups, backupDirFiless[i].Name())
 		}
@@ -255,16 +251,14 @@ func cmdDumpSnapshot(c *grumble.Context) error {
 		oldestT := time.Now()
 		oldestBackup := ""
 		for i := range backups {
-			t, err := time.Parse("2006-01-02", backups[i])
+			t, err := time.Parse(timeFormat, backups[i])
 			if err == nil && t.Before(oldestT) {
 				oldestT = t
 				oldestBackup = backups[i]
 			}
 		}
 		if oldestBackup != "" {
-			raftDB, err := raftdb.OpenRaftDB(dbPath+"/"+oldestBackup+"/"+raftDBPathName, false, func(option *kvstore.RocksDBOption) {
-				option.ReadOnly = false
-			})
+			raftDB, err := raftdb.OpenRaftDB(dbPath + "/" + oldestBackup + "/" + raftDBPathName)
 			if err != nil {
 				return fmt.Errorf("open oldest raft db failed: %s", err.Error())
 			}

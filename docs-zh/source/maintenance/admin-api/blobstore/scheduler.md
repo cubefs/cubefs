@@ -13,6 +13,10 @@ curl http://127.0.0.1:9800/stats # 查看本机的节点状态
 curl http://127.0.0.1:9800/stats/leader # 查看主节点状态
 ```
 
+::: tip Note
+v3.3.0 use `stats/leader` and older is `leader/stats`
+:::
+
 **响应示例**
 
 ```json

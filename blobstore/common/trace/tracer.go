@@ -28,9 +28,8 @@ import (
 )
 
 const (
-	defaultRootSpanName   = "defaultBlobnodeRootSpanName"
+	defaultRootSpanName   = ""
 	defaultMaxLogsPerSpan = 50
-	reqidKey              = "X-Reqid"
 )
 
 // ChildOf is the alias of opentracing.ChildOf
@@ -195,8 +194,9 @@ func (t *Tracer) Inject(sc opentracing.SpanContext, format interface{}, carrier 
 	switch format {
 	case TextMap, HTTPHeaders:
 		return defaultTexMapPropagator.Inject(s, carrier)
+	default:
+		return ErrUnsupportedFormat
 	}
-	return ErrUnsupportedFormat
 }
 
 // Extract implements Extract() method of opentracing.Tracer
@@ -204,8 +204,9 @@ func (t *Tracer) Extract(format interface{}, carrier interface{}) (opentracing.S
 	switch format {
 	case TextMap, HTTPHeaders:
 		return defaultTexMapPropagator.Extract(carrier)
+	default:
+		return nil, ErrUnsupportedFormat
 	}
-	return nil, ErrUnsupportedFormat
 }
 
 // Close releases all resources
@@ -233,11 +234,11 @@ func StartSpanFromContextWithTraceID(ctx context.Context, operationName string, 
 // StartSpanFromHTTPHeaderSafe starts and return a Span with `operationName` and http.Request
 func StartSpanFromHTTPHeaderSafe(r *http.Request, operationName string) (Span, context.Context) {
 	spanCtx, _ := Extract(HTTPHeaders, HTTPHeadersCarrier(r.Header))
-	traceID := r.Header.Get(reqidKey)
+	traceID := r.Header.Get(RequestIDKey)
 	if traceID == "" {
-		return StartSpanFromContext(context.Background(), operationName, ext.RPCServerOption(spanCtx))
+		return StartSpanFromContext(r.Context(), operationName, ext.RPCServerOption(spanCtx))
 	}
-	return StartSpanFromContextWithTraceID(context.Background(), operationName, traceID, ext.RPCServerOption(spanCtx))
+	return StartSpanFromContextWithTraceID(r.Context(), operationName, traceID, ext.RPCServerOption(spanCtx))
 }
 
 // ContextWithSpan returns a new `context.Context` that holds a reference to

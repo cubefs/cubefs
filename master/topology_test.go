@@ -14,7 +14,6 @@ func createDataNodeForTopo(addr, zoneName string, ns *nodeSet) (dn *DataNode) {
 	dn.Total = 1024 * util.GB
 	dn.Used = 10 * util.GB
 	dn.AvailableSpace = 1024 * util.GB
-	dn.Carry = 0.9
 	dn.ReportTime = time.Now()
 	dn.isActive = true
 	dn.NodeSetID = ns.ID
@@ -73,7 +72,7 @@ func TestAllocZones(t *testing.T) {
 	c := new(Cluster)
 	zoneCount := 3
 	//add three zones
-	zoneName1 := "zone1"
+	zoneName1 := testZone1
 	zone1 := newZone(zoneName1)
 	nodeSet1 := newNodeSet(c, 1, 6, zoneName1)
 
@@ -82,7 +81,7 @@ func TestAllocZones(t *testing.T) {
 	topo.putDataNode(createDataNodeForTopo(mds1Addr, zoneName1, nodeSet1))
 	topo.putDataNode(createDataNodeForTopo(mds2Addr, zoneName1, nodeSet1))
 
-	zoneName2 := "zone2"
+	zoneName2 := testZone2
 	zone2 := newZone(zoneName2)
 	nodeSet2 := newNodeSet(c, 2, 6, zoneName2)
 

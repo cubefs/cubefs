@@ -28,6 +28,14 @@ type MergeOperator interface {
 	// internal corruption. This will be treated as an error by the library.
 	FullMerge(key, existingValue []byte, operands [][]byte) ([]byte, bool)
 
+	// The name of the MergeOperator.
+	Name() string
+}
+
+// PartialMerger implements PartialMerge(key, leftOperand, rightOperand []byte) ([]byte, err)
+// When a MergeOperator implements this interface, PartialMerge will be called in addition
+// to FullMerge for compactions across levels
+type PartialMerger interface {
 	// This function performs merge(left_op, right_op)
 	// when both the operands are themselves merge operation types
 	// that you would have passed to a db.Merge() call in the same order
@@ -42,9 +50,28 @@ type MergeOperator interface {
 	// The library will internally keep track of the operations, and apply them in the
 	// correct order once a base-value (a Put/Delete/End-of-Database) is seen.
 	PartialMerge(key, leftOperand, rightOperand []byte) ([]byte, bool)
+}
 
-	// The name of the MergeOperator.
-	Name() string
+// MultiMerger implements PartialMergeMulti(key []byte, operands [][]byte) ([]byte, err)
+// When a MergeOperator implements this interface, PartialMergeMulti will be called in addition
+// to FullMerge for compactions across levels
+type MultiMerger interface {
+	// PartialMerge performs merge on multiple operands
+	// when all of the operands are themselves merge operation types
+	// that you would have passed to a db.Merge() call in the same order
+	// (i.e.: db.Merge(key,operand[0]), followed by db.Merge(key,operand[1]),
+	// ... db.Merge(key, operand[n])).
+	//
+	// PartialMerge should combine them into a single merge operation.
+	// The return value should be constructed such that a call to
+	// db.Merge(key, new_value) would yield the same result as a call
+	// to db.Merge(key,operand[0]), followed by db.Merge(key,operand[1]),
+	// ... db.Merge(key, operand[n])).
+	//
+	// If it is impossible or infeasible to combine the operations, return false.
+	// The library will internally keep track of the operations, and apply them in the
+	// correct order once a base-value (a Put/Delete/End-of-Database) is seen.
+	PartialMergeMulti(key []byte, operands [][]byte) ([]byte, bool)
 }
 
 // NewNativeMergeOperator creates a MergeOperator object.
@@ -67,8 +94,13 @@ func (mo nativeMergeOperator) Name() string { return "" }
 // Hold references to merge operators.
 var mergeOperators = NewCOWList()
 
+type mergeOperatorWrapper struct {
+	name          *C.char
+	mergeOperator MergeOperator
+}
+
 func registerMergeOperator(merger MergeOperator) int {
-	return mergeOperators.Append(merger)
+	return mergeOperators.Append(mergeOperatorWrapper{C.CString(merger.Name()), merger})
 }
 
 //export gorocksdb_mergeoperator_full_merge
@@ -82,7 +114,7 @@ func gorocksdb_mergeoperator_full_merge(idx int, cKey *C.char, cKeyLen C.size_t,
 		operands[i] = charToByte(rawOperands[i], len)
 	}
 
-	newValue, success := mergeOperators.Get(idx).(MergeOperator).FullMerge(key, existingValue, operands)
+	newValue, success := mergeOperators.Get(idx).(mergeOperatorWrapper).mergeOperator.FullMerge(key, existingValue, operands)
 	newValueLen := len(newValue)
 
 	*cNewValueLen = C.size_t(newValueLen)
@@ -104,14 +136,23 @@ func gorocksdb_mergeoperator_partial_merge_multi(idx int, cKey *C.char, cKeyLen 
 	var newValue []byte
 	success := true
 
-	merger := mergeOperators.Get(idx).(MergeOperator)
-	leftOperand := operands[0]
-	for i := 1; i < int(cNumOperands); i++ {
-		newValue, success = merger.PartialMerge(key, leftOperand, operands[i])
-		if !success {
-			break
+	merger := mergeOperators.Get(idx).(mergeOperatorWrapper).mergeOperator
+
+	// check if this MergeOperator supports partial or multi merges
+	switch v := merger.(type) {
+	case MultiMerger:
+		newValue, success = v.PartialMergeMulti(key, operands)
+	case PartialMerger:
+		leftOperand := operands[0]
+		for i := 1; i < int(cNumOperands); i++ {
+			newValue, success = v.PartialMerge(key, leftOperand, operands[i])
+			if !success {
+				break
+			}
+			leftOperand = newValue
 		}
-		leftOperand = newValue
+	default:
+		success = false
 	}
 
 	newValueLen := len(newValue)
@@ -123,5 +164,5 @@ func gorocksdb_mergeoperator_partial_merge_multi(idx int, cKey *C.char, cKeyLen 
 
 //export gorocksdb_mergeoperator_name
 func gorocksdb_mergeoperator_name(idx int) *C.char {
-	return stringToChar(mergeOperators.Get(idx).(MergeOperator).Name())
+	return mergeOperators.Get(idx).(mergeOperatorWrapper).name
 }

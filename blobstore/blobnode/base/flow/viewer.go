@@ -53,7 +53,9 @@ func (d *DiskViewer) WriteStat() *iostat.StatData {
 }
 
 func (d *DiskViewer) Update() {
+	// Do nothing.
 }
 
 func (d *DiskViewer) Close() {
+	// Do nothing.
 }

@@ -37,6 +37,18 @@ func (m *MockTaskRunner) EXPECT() *MockTaskRunnerMockRecorder {
 	return m.recorder
 }
 
+// Close mocks base method.
+func (m *MockTaskRunner) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockTaskRunnerMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockTaskRunner)(nil).Close))
+}
+
 // Enabled mocks base method.
 func (m *MockTaskRunner) Enabled() bool {
 	m.ctrl.T.Helper()
@@ -81,16 +93,16 @@ func (mr *MockTaskRunnerMockRecorder) GetTaskStats() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskStats", reflect.TypeOf((*MockTaskRunner)(nil).GetTaskStats))
 }
 
-// RunTask mocks base method.
-func (m *MockTaskRunner) RunTask() {
+// Run mocks base method.
+func (m *MockTaskRunner) Run() {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RunTask")
+	m.ctrl.Call(m, "Run")
 }
 
-// RunTask indicates an expected call of RunTask.
-func (mr *MockTaskRunnerMockRecorder) RunTask() *gomock.Call {
+// Run indicates an expected call of Run.
+func (mr *MockTaskRunnerMockRecorder) Run() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunTask", reflect.TypeOf((*MockTaskRunner)(nil).RunTask))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockTaskRunner)(nil).Run))
 }
 
 // MockVolumeCache is a mock of IVolumeCache interface.

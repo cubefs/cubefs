@@ -87,28 +87,29 @@ type pipeBuffer struct {
 }
 
 // Get read file
-//     required: location, readSize
-//     optional: offset(default is 0)
 //
-//     first return value is data transfer to copy data after argument checking
+//	required: location, readSize
+//	optional: offset(default is 0)
 //
-//  Read data shards firstly, if blob size is small or read few bytes
-//  then ec reconstruct-read, try to reconstruct from N+X to N+M
-//  Just read essential bytes in each shard when reconstruct-read.
+//	first return value is data transfer to copy data after argument checking
 //
-//  sorted N+X is, such as we use mode EC6P10L2, X=2 and Read from idc=2
-//  shards like this
-//              data N 6        |    parity M 10     | local L 2
-//        d1  d2  d3  d4  d5  d6  p1 .. p5  p6 .. p10  l1  l2
-//   idc   1   1   1   2   2   2     1         2        1   2
+//	Read data shards firstly, if blob size is small or read few bytes
+//	then ec reconstruct-read, try to reconstruct from N+X to N+M
+//	Just read essential bytes in each shard when reconstruct-read.
 //
-//sorted  d4  d5  d6  p6 .. p10  d1  d2  d3  p1 .. p5
-//read-1 [d4                p10]
-//read-2 [d4                p10  d1]
-//read-3 [d4                p10  d1  d2]
-//...
-//read-9 [d4                                       p5]
-//failed
+//	sorted N+X is, such as we use mode EC6P10L2, X=2 and Read from idc=2
+//	shards like this
+//	               data N 6        |    parity M 10     | local L 2
+//	        d1  d2  d3  d4  d5  d6  p1 .. p5  p6 .. p10  l1  l2
+//	  idc   1   1   1   2   2   2     1         2        1   2
+//
+// sorted  d4  d5  d6  p6 .. p10  d1  d2  d3  p1 .. p5
+// read-1 [d4                p10]
+// read-2 [d4                p10  d1]
+// read-3 [d4                p10  d1  d2]
+// ...
+// read-9 [d4                                       p5]
+// failed
 func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location, readSize, offset uint64) (func() error, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("get request cluster:%d size:%d offset:%d", location.ClusterID, readSize, offset)
@@ -501,7 +502,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 			span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
 			return shardResult
 		}
-		span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), errors.Detail(err))
+		span.Warnf("rpc read %s on %s: %s", blob.ID(), vuid.ID(), errors.Detail(err))
 		return shardResult
 	}
 	defer body.Close()
@@ -515,7 +516,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	_, err = io.ReadFull(body, buf[shardOffset:shardOffset+shardReadSize])
 	if err != nil {
 		h.memPool.Put(buf)
-		span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
+		span.Warnf("io read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
 		return shardResult
 	}
 
@@ -682,11 +683,15 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 
 			h.punishDiskWith(ctx, clusterID, diskID, host, "NotFound")
 			span.Warnf("punish threshold disk:%d cos:blobnode/%d", diskID, code)
+		default:
 		}
 
 		// do not retry on timeout then punish threshold this disk
 		if errorTimeout(err) {
 			h.punishDiskWith(ctx, clusterID, diskID, host, "Timeout")
+			return true, err
+		}
+		if errorConnectionRefused(err) {
 			return true, err
 		}
 		span.Debugf("read from disk:%d blobnode/%s", diskID, err.Error())

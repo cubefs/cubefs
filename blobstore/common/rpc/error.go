@@ -96,8 +96,9 @@ func DetectStatusCode(err error) int {
 		return http.StatusBadRequest
 	case context.Canceled:
 		return 499
+	default:
+		return http.StatusInternalServerError
 	}
-	return http.StatusInternalServerError
 }
 
 // DetectErrorCode returns error code
@@ -116,8 +117,9 @@ func DetectErrorCode(err error) string {
 		return "BadRequest"
 	case context.Canceled:
 		return "Canceled"
+	default:
+		return "InternalServerError"
 	}
-	return "InternalServerError"
 }
 
 // DetectError returns status code, error code, error

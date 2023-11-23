@@ -1,0 +1,4 @@
+# Always check-out / check-in files with LF line endings.
+* text=auto eol=lf
+# Do not modify line endings for binary files
+*.png binary

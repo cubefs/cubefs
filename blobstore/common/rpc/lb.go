@@ -17,6 +17,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	urllib "net/url"
 	"strings"
@@ -111,11 +112,7 @@ var defaultShouldRetry = func(code int, err error) bool {
 }
 
 func (c *lbClient) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
-	resp, err := c.doCtx(ctx, req)
-	if err != nil {
-		return resp, err
-	}
-	return resp, err
+	return c.doCtx(ctx, req)
 }
 
 func (c *lbClient) Form(ctx context.Context, method, url string, form map[string][]string) (resp *http.Response, err error) {
@@ -161,6 +158,7 @@ func (c *lbClient) DoWith(ctx context.Context, req *http.Request, ret interface{
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	err = serverCrcEncodeCheck(ctx, req, resp)
 	if err != nil {
 		return err
@@ -173,7 +171,7 @@ func (c *lbClient) GetWith(ctx context.Context, url string, ret interface{}) err
 	if err != nil {
 		return err
 	}
-	return ParseData(resp, ret)
+	return parseData(resp, ret)
 }
 
 func (c *lbClient) PutWith(ctx context.Context, url string, ret interface{}, params interface{}, opts ...Option) (err error) {
@@ -193,6 +191,7 @@ func (c *lbClient) PutWith(ctx context.Context, url string, ret interface{}, par
 	if err != nil {
 		return
 	}
+	defer resp.Body.Close()
 	err = serverCrcEncodeCheck(ctx, request, resp)
 	if err != nil {
 		return err
@@ -218,6 +217,7 @@ func (c *lbClient) PostWith(ctx context.Context, url string, ret interface{}, pa
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	// set Header and log errors
 	err = serverCrcEncodeCheck(ctx, request, resp)
@@ -262,6 +262,11 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 	)
 
 	for i := 0; i < tryTimes; i++ {
+		// close failed body
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+			resp = nil
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -295,29 +300,28 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 		if resp != nil {
 			code = resp.StatusCode
 		}
+		logInfo := fmt.Sprintf("try times: %d, code: %d, err: %v, host: %s", i+1, code, err, host)
 		if c.cfg.ShouldRetry(code, err) {
-			span.Infof("lb.doCtx: retry host, try times: %d, code: %d, err: %v, host: %s",
-				i+1, code, err, host)
+			span.Info("lb.doCtx: retry host,", logInfo)
 			index++
 			c.sel.SetFail(host)
 			if r.Body == nil {
 				continue
 			}
 			if r.GetBody != nil {
-				r.Body, err = r.GetBody()
-				if err != nil {
+				var _err error
+				r.Body, _err = r.GetBody()
+				if _err != nil {
 					span.Warnf("lb.doCtx: retry failed, try times: %d, code: %d, err: %v, host: %s",
-						i+1, code, err, host)
+						i+1, code, _err, host)
 					return
 				}
 				continue
 			}
-			span.Warnf("lb.doCtx: request not support retry, try times: %d, code: %d, err: %v, host: %s",
-				i+1, code, err, host)
+			span.Warn("lb.doCtx: request not support retry,", logInfo)
 			return
 		}
-		span.Debugf("lb.doCtx: the last host of request, try times: %d, code: %d, err: %v, host: %s",
-			i+1, code, err, host)
+		span.Debug("lb.doCtx: the last host of request,", logInfo)
 		return
 	}
 	return

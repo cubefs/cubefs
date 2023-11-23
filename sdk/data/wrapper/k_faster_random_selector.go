@@ -80,6 +80,7 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	s.RUnlock()
 
 	if len(partitions) == 0 {
+		log.LogError("KFasterRandomSelector: no writable data partition with empty partitions")
 		return nil, fmt.Errorf("no writable data partition")
 	}
 
@@ -117,7 +118,8 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 			return dp, nil
 		}
 	}
-
+	log.LogErrorf("KFasterRandomSelector: no writable data partition with %v partitions and exclude(%v)",
+		len(partitions), exclude)
 	return nil, fmt.Errorf("no writable data partition")
 }
 
@@ -142,6 +144,12 @@ func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
 	s.Refresh(newRwPartition)
 
 	return
+}
+
+func (s *KFasterRandomSelector) Count() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.partitions)
 }
 
 func swap(s []*DataPartition, i int, j int) {

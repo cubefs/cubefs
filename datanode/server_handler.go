@@ -17,18 +17,20 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"net/http"
+	"os"
+	"path"
 	"strconv"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/config"
 )
 
-var (
-	AutoRepairStatus = true
-)
+var AutoRepairStatus = true
 
 func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
@@ -153,6 +155,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		files                []*storage.ExtentInfo
 		err                  error
 		tinyDeleteRecordSize int64
+		raftSt               *raft.Status
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
@@ -174,6 +177,13 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	if partition.IsDataPartitionLoading() {
+		raftSt = &raft.Status{Stopped: true}
+	} else {
+		raftSt = partition.raftPartition.Status()
+	}
+
 	result := &struct {
 		VolName              string                `json:"volName"`
 		ID                   uint64                `json:"id"`
@@ -197,6 +207,7 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 		FileCount:            len(files),
 		Replicas:             partition.Replicas(),
 		TinyDeleteRecordSize: tinyDeleteRecordSize,
+		RaftStatus:           raftSt,
 	}
 
 	if partition.isNormalType() {
@@ -236,7 +247,6 @@ func (s *DataNode) getExtentAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.buildSuccessResp(w, extentInfo)
-	return
 }
 
 func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
@@ -269,7 +279,6 @@ func (s *DataNode) getBlockCrcAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.buildSuccessResp(w, blocks)
-	return
 }
 
 func (s *DataNode) getTinyDeleted(w http.ResponseWriter, r *http.Request) {
@@ -297,7 +306,6 @@ func (s *DataNode) getTinyDeleted(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.buildSuccessResp(w, extentInfo)
-	return
 }
 
 func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
@@ -325,7 +333,6 @@ func (s *DataNode) getNormalDeleted(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.buildSuccessResp(w, extentInfo)
-	return
 }
 
 func (s *DataNode) setQosEnable() func(http.ResponseWriter, *http.Request) {
@@ -359,7 +366,6 @@ func (s *DataNode) getSmuxPoolStat() func(http.ResponseWriter, *http.Request) {
 		}
 		stat := s.smuxConnPool.GetStat()
 		s.buildSuccessResp(w, stat)
-		return
 	}
 }
 
@@ -382,6 +388,29 @@ func (s *DataNode) setMetricsDegrade(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getMetricsDegrade(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("%v\n", atomic.LoadInt64(&s.metricsDegrade))))
+}
+
+func (s *DataNode) genClusterVersionFile(w http.ResponseWriter, r *http.Request) {
+	paths := make([]string, 0)
+	s.space.RangePartitions(func(partition *DataPartition) bool {
+		paths = append(paths, partition.disk.Path)
+		return true
+	})
+	paths = append(paths, s.raftDir)
+
+	for _, p := range paths {
+		if _, err := os.Stat(path.Join(p, config.ClusterVersionFile)); err == nil || os.IsExist(err) {
+			s.buildFailureResp(w, http.StatusCreated, "cluster version file already exists in "+p)
+			return
+		}
+	}
+	for _, p := range paths {
+		if err := config.CheckOrStoreClusterUuid(p, s.clusterUuid, true); err != nil {
+			s.buildFailureResp(w, http.StatusInternalServerError, "Failed to create cluster version file in "+p)
+			return
+		}
+	}
+	s.buildSuccessResp(w, "Generate cluster version file success")
 }
 
 func (s *DataNode) buildSuccessResp(w http.ResponseWriter, data interface{}) {
@@ -413,4 +442,48 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 		return
 	}
 	w.Write(jsonBody)
+}
+
+func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramDiskPath = "diskPath"
+	)
+	var (
+		err      error
+		diskPath string
+		disk     *Disk
+	)
+
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if diskPath = r.FormValue(paramDiskPath); diskPath == "" {
+		err = fmt.Errorf("param(%v) is empty", paramDiskPath)
+		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if disk, err = s.space.GetDisk(diskPath); err != nil {
+		err = fmt.Errorf("not exit such dissk, path: %v", diskPath)
+		log.LogErrorf("[setDiskBadAPI] %v", err.Error())
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if disk.Status == proto.Unavailable {
+		msg := fmt.Sprintf("disk(%v) status was already unavailable, nothing to do", disk.Path)
+		log.LogInfof("[setDiskBadAPI] %v", msg)
+		s.buildSuccessResp(w, msg)
+		return
+	}
+
+	log.LogWarnf("[setDiskBadAPI] set bad disk, path: %v", disk.Path)
+	disk.doDiskError()
+
+	s.buildSuccessResp(w, "OK")
 }

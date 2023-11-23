@@ -25,6 +25,16 @@ func Line(a *grumble.Args) {
 	a.Int("line", "show lines at the tail", grumble.Default(40))
 }
 
+// NodeHostRegister node host
+func NodeHostRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.String("host", "node host", opts...)
+}
+
+// NodeHost returns node host
+func NodeHost(a grumble.ArgMap) string {
+	return a.String("host")
+}
+
 // VidRegister vid
 func VidRegister(a *grumble.Args, opts ...grumble.ArgOption) {
 	a.Uint64("vid", "volume id", opts...)

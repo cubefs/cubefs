@@ -42,9 +42,7 @@ func TestTaskProc(t *testing.T) {
 	tmpTaskDb := path.Join(os.TempDir(), "taskDb-"+strconv.Itoa(rand.Intn(100)))
 	defer os.RemoveAll(tmpTaskDb)
 
-	db, err := volumedb.Open(tmpTaskDb, false, func(option *kvstore.RocksDBOption) {
-		option.WriteBufferSize = 1 << 22
-	})
+	db, err := volumedb.Open(tmpTaskDb, kvstore.WithWriteBufferSize(1<<22))
 	require.Nil(t, err)
 	volumeTbl, err := volumedb.OpenVolumeTable(db)
 	require.Nil(t, err)
