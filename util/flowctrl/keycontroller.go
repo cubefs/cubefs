@@ -57,10 +57,12 @@ func (k *KeyFlowCtrl) Release(key string) {
 	k.mutex.Lock()
 	ctrl, ok := k.current[key]
 	if !ok {
+		k.mutex.Unlock()
 		panic("key not in map. Possible reason: Release without Acquire.")
 	}
 	ctrl.refCount--
 	if ctrl.refCount < 0 {
+		k.mutex.Unlock()
 		panic("internal error: refs < 0")
 	}
 	if ctrl.refCount == 0 {
