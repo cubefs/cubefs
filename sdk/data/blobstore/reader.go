@@ -317,7 +317,8 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 		//check if dp is exist in preload sence
 		err = reader.ec.CheckDataPartitionExsit(rs.extentKey.PartitionId)
 		if err == nil || ctx.Value("objectnode") != nil {
-			readN, err, readLimitOn = reader.ec.ReadExtent(reader.ino, &rs.extentKey, buf, int(rs.rOffset), int(rs.rSize))
+			readN, err, readLimitOn = reader.ec.ReadExtent(reader.ino, &rs.extentKey, buf, int(rs.rOffset),
+				int(rs.rSize), proto.StorageClass_BlobStore)
 			if err == nil && readN == int(rs.rSize) {
 
 				// L2 cache hit.
@@ -391,9 +392,6 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 		if streamer == nil {
 			log.LogWarnf("[asyncCache(L2)] streamer for ino %v is nil ", reader.ino)
 			return
-		} else {
-			//for get cache key in future
-			streamer.WorkAsCache()
 		}
 
 		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil, reader.ec.CacheDpStorageClass, false)

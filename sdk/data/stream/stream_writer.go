@@ -374,7 +374,7 @@ begin:
 			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v] before compare seq",
 				s.inode, s.verSeq, req.ExtentKey.GetSeq(), req.ExtentKey)
 			if req.ExtentKey.GetSeq() == s.verSeq {
-				writeSize, err = s.doOverwrite(req, direct)
+				writeSize, err = s.doOverwrite(req, direct, storageClass)
 				if err == proto.ErrCodeVersionOp {
 					log.LogDebugf("action[streamer.write] write need version update")
 					if err = s.GetExtents(); err != nil {
@@ -476,7 +476,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	}
 
 	retry := true
-	if proto.IsCold(s.client.volumeType) {
+	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
 		retry = false
 	}
 	log.LogDebugf("action[doDirectWriteByAppend] inode %v  data process", s.inode)
@@ -603,7 +603,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 	return
 }
 
-func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err error) {
+func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uint32) (total int, err error) {
 	var dp *wrapper.DataPartition
 
 	err = s.flush()
@@ -631,7 +631,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	}
 
 	retry := true
-	if proto.IsCold(s.client.volumeType) {
+	if proto.IsCold(s.client.volumeType) || proto.IsStorageClassBlobStore(storageClass) {
 		retry = false
 	}
 
@@ -803,7 +803,7 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reU
 	storeMode = s.GetStoreMod(offset, size)
 
 	log.LogDebugf("doAppendWrite enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
-	if proto.IsHot(s.client.volumeType) {
+	if proto.IsHot(s.client.volumeType) || proto.IsStorageClassReplica(storageClass) {
 		if reUseEk {
 			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size); isLastEkVerNotEqual {
 				log.LogDebugf("doAppendWrite enter: ino(%v) tryInitExtentHandlerByLastEk worked but seq not equal", s.inode)
