@@ -37,6 +37,8 @@ var (
 	pathDumpFileName           string = "path.dump"
 	tinyDir                    string = "tiny"
 	normalDir                  string = "normal"
+	beforeTimeFile             string = "before_time"
+	verifyInfoFile             string = "verify_info"
 )
 
 type Inode struct {
