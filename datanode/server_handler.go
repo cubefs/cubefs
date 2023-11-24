@@ -22,7 +22,6 @@ import (
 	"path"
 	"strconv"
 	"sync/atomic"
-	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
@@ -567,12 +566,12 @@ func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	beforeTimeInt, err := strconv.ParseInt(r.FormValue("beforeTime"), 10, 64)
+	beforeTime, err := strconv.ParseInt(r.FormValue("beforeTime"), 10, 64)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	beforeTime := time.Unix(beforeTimeInt, 0)
+
 	if partitionID, err = strconv.ParseUint(r.FormValue("id"), 10, 64); err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
