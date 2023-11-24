@@ -823,12 +823,15 @@ func (c *Cluster) adjustMetaNode(metaNode *MetaNode) {
 		zone = newZone(metaNode.ZoneName)
 		c.t.putZone(zone)
 	}
+	c.nsMutex.Lock()
 	ns := zone.getAvailNodeSetForMetaNode()
 	if ns == nil {
 		if ns, err = zone.createNodeSet(c); err != nil {
+			c.nsMutex.Unlock()
 			return
 		}
 	}
+	c.nsMutex.Unlock()
 
 	metaNode.NodeSetID = ns.ID
 	if err = c.syncUpdateMetaNode(metaNode); err != nil {
@@ -999,12 +1002,16 @@ func (c *Cluster) adjustDataNode(dataNode *DataNode) {
 		zone = newZone(dataNode.ZoneName)
 		c.t.putZone(zone)
 	}
+
+	c.nsMutex.Lock()
 	ns := zone.getAvailNodeSetForDataNode()
 	if ns == nil {
 		if ns, err = zone.createNodeSet(c); err != nil {
+			c.nsMutex.Unlock()
 			return
 		}
 	}
+	c.nsMutex.Unlock()
 
 	dataNode.NodeSetID = ns.ID
 	if err = c.syncUpdateDataNode(dataNode); err != nil {

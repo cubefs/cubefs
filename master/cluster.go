@@ -49,6 +49,7 @@ type Cluster struct {
 	createVolMutex               sync.RWMutex // create volume mutex
 	mnMutex                      sync.RWMutex // meta node mutex
 	dnMutex                      sync.RWMutex // data node mutex
+	nsMutex                      sync.RWMutex // nodeset mutex
 	badPartitionMutex            sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 	leaderInfo                   *LeaderInfo
 	cfg                          *clusterConfig
@@ -879,12 +880,15 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 			return nodesetId, err
 		}
 	} else {
+		c.nsMutex.Lock()
 		ns = zone.getAvailNodeSetForMetaNode()
 		if ns == nil {
 			if ns, err = zone.createNodeSet(c); err != nil {
+				c.nsMutex.Unlock()
 				goto errHandler
 			}
 		}
+		c.nsMutex.Unlock()
 	}
 
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
@@ -939,12 +943,15 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 			return nodesetId, err
 		}
 	} else {
+		c.nsMutex.Lock()
 		ns = zone.getAvailNodeSetForDataNode()
 		if ns == nil {
 			if ns, err = zone.createNodeSet(c); err != nil {
+				c.nsMutex.Unlock()
 				goto errHandler
 			}
 		}
+		c.nsMutex.Unlock()
 	}
 	// allocate dataNode id
 	if id, err = c.idAlloc.allocateCommonID(); err != nil {
