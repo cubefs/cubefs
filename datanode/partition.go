@@ -57,8 +57,8 @@ const (
 	ApplyIndexFile                = "APPLY"
 	TempApplyIndexFile            = ".apply"
 	TimeLayout                    = "2006-01-02 15:04:05"
+	AcquireTokenMaxRetry          = 300
 	AcquireTokenInterval          = time.Millisecond * 100
-	AcquireTokenTimeout           = time.Second * 3
 )
 
 type FaultOccurredCheckLevel uint8
@@ -1182,10 +1182,10 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 }
 
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
-	var peers []proto.Peer
-	var offlinePeer uint64
+	var currentPeers []proto.Peer
+	var offlinePeerID uint64
 	for i := 0; i < 2; i++ {
-		if offlinePeer, peers, err = dp.topologyManager.GetPartitionRaftPeerFromMaster(dp.volumeID, dp.partitionID); err == nil {
+		if offlinePeerID, currentPeers, err = dp.topologyManager.GetPartitionRaftPeerFromMaster(dp.volumeID, dp.partitionID); err == nil {
 			break
 		}
 	}
@@ -1195,7 +1195,7 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	}
 	canRemove = false
 	var existInPeers bool
-	for _, peer := range peers {
+	for _, peer := range currentPeers {
 		if dp.config.NodeID == peer.ID {
 			existInPeers = true
 		}
@@ -1204,7 +1204,7 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 		canRemove = true
 		return
 	}
-	if dp.config.NodeID == offlinePeer {
+	if dp.config.NodeID == offlinePeerID {
 		canRemove = true
 		return
 	}
@@ -1394,7 +1394,8 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 	if dp.limiter == nil {
 		return ErrLimiterManagerNil
 	}
-	if dp.limiter.GetLimiter() == nil {
+	limiter := dp.limiter.GetLimiter()
+	if limiter == nil {
 		return ErrLimiterNil
 	}
 	propertyBuilder := multirate.NewPropertiesBuilder()
@@ -1404,22 +1405,20 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 	statBuilder.SetCount(1)
 	switch op {
 	case int(proto.OpWrite), int(proto.OpRandomWrite):
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
 	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead):
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
 	case int(proto.OpTinyExtentRepairRead), int(proto.OpTinyExtentAvaliRead), int(proto.OpExtentRepairRead), proto.OpExtentRepairReadToRollback_,
-		proto.OpExtentRepairReadToComputeCrc_, proto.OpExtentRepairReadByPolicy_, proto.OpExtentReadToGetCrc_:
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+		proto.OpExtentRepairReadToComputeCrc_, proto.OpExtentRepairWriteByPolicy_, proto.OpExtentReadToGetCrc_:
+		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
 	case proto.OpExtentRepairWrite_, proto.OpExtentRepairWriteToApplyTempFile_:
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
 	default:
-		return dp.limiter.GetLimiter().WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
+		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
 	}
 }
 
 func (dp *DataPartition) acquire(op int) (release func(), err error) {
-	var cancel context.CancelFunc
-	var ctx context.Context
 	if dp == nil {
 		return nil, ErrPartitionNil
 	}
@@ -1430,20 +1429,21 @@ func (dp *DataPartition) acquire(op int) (release func(), err error) {
 		return func() {}, nil
 	}
 	key := atomic.AddUint64(&tokenManagerKeyGen, 1)
-	tick := time.NewTicker(AcquireTokenInterval)
-	ctx, cancel = context.WithTimeout(context.Background(), AcquireTokenTimeout)
-	defer func() {
-		cancel()
-		tick.Stop()
-	}()
+	retry := 0
 	for {
 		select {
-		case <-tick.C:
-			if dp.limiter.GetTokenManager(op, dp.path).GetRunToken(key) {
+		case <-dp.stopC:
+			return nil, fmt.Errorf("partition stoped")
+		default:
+			tokenM := dp.limiter.GetTokenManager(op, dp.path)
+			if tokenM.GetRunToken(key) {
 				return func() { dp.limiter.GetTokenManager(op, dp.path).ReleaseToken(key) }, nil
 			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
+			retry++
+			if retry > AcquireTokenMaxRetry {
+				return nil, ErrGetTokenTimeout
+			}
+			time.Sleep(AcquireTokenInterval)
 		}
 	}
 }

@@ -156,8 +156,7 @@ func fakeDeleteDataReplica(w http.ResponseWriter, r *http.Request) {
 
 func fakeGetLimitInfo(w http.ResponseWriter, r *http.Request) {
 	limit := &proto.LimitInfo{
-		Cluster:                  TestCluster,
-		DataNodeNetworkFlowRatio: 90,
+		Cluster: TestCluster,
 	}
 	buildJSONResp(w, http.StatusOK, limit, Master, "")
 }

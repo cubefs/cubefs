@@ -146,7 +146,7 @@ func (p *Fixer) fixByFastTrustPolicy(hosts []string, hat proto.CrossRegionHAType
 			var extentWriteOffset = extentStartOffset + off
 			var extentWriteSize = int64(len(b))
 			var crc = crc32.ChecksumIEEE(b)
-			err = p.diskLimiter(context.Background(), proto.OpExtentRepairReadByPolicy_, uint32(extentWriteSize), multirate.FlowDisk)
+			err = p.diskLimiter(context.Background(), proto.OpExtentRepairWriteByPolicy_, uint32(extentWriteSize), multirate.FlowDisk)
 			if err != nil {
 				return
 			}
@@ -220,7 +220,7 @@ func (p *Fixer) fixByStdTrustPolicy(hosts []string, hat proto.CrossRegionHAType,
 			var extentWriteOffset = extentStartOffset + off
 			var extentWriteSize = int64(len(b))
 			var crc = crc32.ChecksumIEEE(b)
-			err = p.diskLimiter(context.Background(), proto.OpExtentRepairReadByPolicy_, uint32(extentWriteSize), multirate.FlowDisk)
+			err = p.diskLimiter(context.Background(), proto.OpExtentRepairWriteByPolicy_, uint32(extentWriteSize), multirate.FlowDisk)
 			if err != nil {
 				return
 			}

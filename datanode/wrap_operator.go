@@ -632,7 +632,11 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
-		err = partition.limit(context.Background(), action, currReadSize, multirate.FlowDisk)
+		err = partition.limit(context.Background(), int(p.Opcode), currReadSize, multirate.FlowNetwork)
+		if err != nil {
+			return
+		}
+		err = partition.limit(context.Background(), int(p.Opcode), currReadSize, multirate.FlowDisk)
 		if err != nil {
 			return
 		}
@@ -1814,5 +1818,5 @@ func (s *DataNode) checkLimit(pkg *repl.Packet) (err error) {
 }
 
 func isStreamOp(op int) bool {
-	return op == proto.OpExtentRepairWrite_ || op == int(proto.OpStreamRead) || op == int(proto.OpTinyExtentRepairRead) || op == int(proto.OpExtentRepairRead)
+	return op == proto.OpExtentRepairWrite_ || op == int(proto.OpStreamRead) || op == int(proto.OpStreamFollowerRead) || op == int(proto.OpTinyExtentRepairRead) || op == int(proto.OpExtentRepairRead)
 }

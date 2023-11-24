@@ -59,6 +59,7 @@ var (
 	ErrLimiterManagerNil        = errors.New("limiter manager is nil")
 	ErrLimiterNil               = errors.New("limiter is nil")
 	ErrPartitionNil             = errors.New("partition is nil")
+	ErrGetTokenTimeout          = fmt.Errorf("get token timeout")
 	LocalIP                     string
 	LocalServerPort             string
 	gConnPool                   = connpool.NewConnectPool()

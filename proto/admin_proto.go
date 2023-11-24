@@ -298,7 +298,6 @@ const (
 	NetworkFlowRatioKey           = "networkFlowRatio"
 	MetaNodeDelEKZoneRateLimitKey = "metaNodeDelEKZoneRateLimit"
 	MetaNodeDelEKVolRateLimitKey  = "metaNodeDelEKVolRateLimit"
-	DataNodeNetworkFlowRatioKey   = "dataNodeNetworkFlowRatio"
 	MetaNodeDumpSnapCountKey      = "metaNodeDumpSnapCount"
 	MetaNodeTruncateEKCountKey    = "truncateEKCountEveryTime"
 
@@ -580,7 +579,6 @@ type LimitInfo struct {
 	MetaNodeDeleteBatchCount         uint64
 	MetaNodeDeleteWorkerSleepMs      uint64
 	DataNodeNormalExtentDeleteExpire uint64
-	DataNodeNetworkFlowRatio         uint64
 	DataNodeReqVolOpRateLimitMap     map[string]map[uint8]uint64
 	MetaNodeReadDirLimitNum          uint64
 	MetaNodeReqRateLimit             uint64
