@@ -38,6 +38,8 @@ const (
 
 	// defaultTimeout = time.Second * 5 // from defaultTimeoutBlobnode
 	sampleNum = 1 * 1024 * 1024
+	p99       = 99.0
+	p50       = 50.0
 )
 
 type IoPoolTaskArgs struct {
@@ -103,7 +105,7 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 				"cluster_id": fmt.Sprintf("%d", conf.ClusterID),
 			},
 		},
-		[]string{"idc", "rack", "host", "disk_id", "pool_type"},
+		[]string{"idc", "rack", "host", "disk_id", "pool_type", "latency"},
 	)
 	if err := prometheus.Register(iopoolMetric); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -145,6 +147,7 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 	return pool
 }
 
+// Reservoir algorithm
 func (p *ioPoolSimple) addToSamples(d time.Duration) {
 	current := atomic.AddInt64(&p.count, 1)
 	if current <= sampleNum {
@@ -194,18 +197,17 @@ func (p *ioPoolSimple) reportLatency() {
 		case <-p.closed:
 		}
 
-		latency := p.getLatency()
-		p.metric.WithLabelValues(p.conf.IDC,
-			p.conf.Rack,
-			p.conf.Host,
-			p.conf.DiskID.ToString(),
-			p.conf.poolType.String()).Set(float64(latency))
+		latency99, latency50 := p.getLatency()
+		p.metric.WithLabelValues(p.conf.IDC, p.conf.Rack, p.conf.Host, p.conf.DiskID.ToString(),
+			p.conf.poolType.String(), "p99").Set(float64(latency99))
+		p.metric.WithLabelValues(p.conf.IDC, p.conf.Rack, p.conf.Host, p.conf.DiskID.ToString(),
+			p.conf.poolType.String(), "p50").Set(float64(latency50))
 	}
 }
 
-func (p *ioPoolSimple) getLatency() int64 {
+func (p *ioPoolSimple) getLatency() (int64, int64) {
 	if len(p.samples) == 0 {
-		return 0
+		return 0, 0
 	}
 
 	tmp := make([]time.Duration, len(p.samples))
@@ -215,9 +217,15 @@ func (p *ioPoolSimple) getLatency() int64 {
 		return tmp[i] < tmp[j]
 	})
 
-	rank := float64(99/100) * float64(len(tmp)-1)
+	rank := p99 / 100.0 * float64(len(tmp)-1)
 	lower := math.Floor(rank)
-	return int64(tmp[int(lower)])
+	p99Val := int64(tmp[int(lower)])
+
+	rank = p50 / 100.0 * float64(len(tmp)-1)
+	lower = math.Floor(rank)
+	p50Val := int64(tmp[int(lower)])
+
+	return p99Val, p50Val
 }
 
 // Close the pool, Submit task maybe concurrent unsafe
