@@ -333,10 +333,10 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		e  *Extent
 		ei *ExtentInfo
 	)
-	s.elMutex.Lock()
+	s.elMutex.RLock()
 	if isBackupWrite {
 		if _, ok := s.extentLockMap[extentID]; !ok {
-			s.elMutex.Unlock()
+			s.elMutex.RUnlock()
 			err = fmt.Errorf("extent(%v) is not locked", extentID)
 			log.LogErrorf("[Write] extent[%d] is not locked", extentID)
 			return
@@ -344,14 +344,14 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	} else {
 		if s.extentLock {
 			if _, ok := s.extentLockMap[extentID]; ok {
-				s.elMutex.Unlock()
+				s.elMutex.RUnlock()
 				err = fmt.Errorf("extent(%v) is locked", extentID)
 				log.LogErrorf("[Write] extent[%d] is locked", extentID)
 				return
 			}
 		}
 	}
-	s.elMutex.Unlock()
+	s.elMutex.RUnlock()
 	s.eiMutex.Lock()
 	ei, _ = s.extentInfoMap[extentID]
 	e, err = s.extentWithHeader(ei)
@@ -400,10 +400,10 @@ func IsTinyExtent(extentID uint64) bool {
 func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool, isBackupRead bool) (crc uint32, err error) {
 	var e *Extent
 
-	s.elMutex.Lock()
+	s.elMutex.RLock()
 	if isBackupRead {
 		if _, ok := s.extentLockMap[extentID]; !ok {
-			s.elMutex.Unlock()
+			s.elMutex.RUnlock()
 			err = fmt.Errorf("extent(%v) is not locked", extentID)
 			log.LogErrorf("[Read] extent[%d] is not locked", extentID)
 			return
@@ -411,14 +411,14 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	} else {
 		if s.extentLock {
 			if _, ok := s.extentLockMap[extentID]; ok {
-				s.elMutex.Unlock()
+				s.elMutex.RUnlock()
 				err = fmt.Errorf("extent(%v) is locked", extentID)
 				log.LogErrorf("[Read] extent[%d] is locked", extentID)
 				return
 			}
 		}
 	}
-	s.elMutex.Unlock()
+	s.elMutex.RUnlock()
 	log.LogInfof("[Read] extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v]", extentID, offset, size, isRepairRead, s.extentLock)
 	s.eiMutex.RLock()
 	ei := s.extentInfoMap[extentID]
@@ -1140,30 +1140,46 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 	return
 }
 
-func (s *ExtentStore) GetAllExtents(beforeTime time.Time) (extents []*ExtentInfo) {
+func (s *ExtentStore) GetAllExtents(beforeTime int64) (extents []*ExtentInfo) {
 	s.eiMutex.RLock()
 	defer s.eiMutex.RUnlock()
 	for _, ei := range s.extentInfoMap {
-		if ei.ModifyTime < beforeTime.Unix() {
+		if ei.ModifyTime < beforeTime {
 			extents = append(extents, ei)
 		}
 	}
 	return
 }
 
-func (s *ExtentStore) ExtentBatchLockNormalExtent(ext []*proto.ExtentKey, IsCreate bool) (err error) {
+func (s *ExtentStore) ExtentBatchLockNormalExtent(gcLockEks *proto.GcLockExtents) (err error) {
 	s.elMutex.Lock()
 	s.extentLock = true
 	s.elMutex.Unlock()
 
 	s.elMutex.Lock()
 	defer s.elMutex.Unlock()
-	for _, e := range ext {
-		if !IsCreate {
+	var beforeTime int64
+	if !gcLockEks.IsCreate {
+		beforeTime, err = strconv.ParseInt(gcLockEks.BeforeTime, 10, 64)
+		if err != nil {
+			log.LogWarnf("[ExtentBatchLockNormalExtent] parse beforeTime error(%v)", err)
+			return
+		}
+	}
+	for _, e := range gcLockEks.Eks {
+		if !gcLockEks.IsCreate {
 			extent, err := s.extentWithHeaderByExtentID(e.ExtentId)
 			if err != nil {
 				log.LogWarnf("[ExtentBatchLockNormalExtent] get extent error(%v)", err)
 				continue
+			}
+
+			if extent.ModifyTime() >= beforeTime {
+				log.LogWarnf("[ExtentBatchLockNormalExtent] extent modify time(%v) >= gcLockEks.BeforeTime(%v)",
+					extent.ModifyTime(), gcLockEks.BeforeTime)
+				err = fmt.Errorf("extent modify time(%v) >= gcLockEks.BeforeTime(%v)",
+					extent.ModifyTime(), gcLockEks.BeforeTime)
+				return err
 			}
 			if e.Size != uint32(extent.dataSize) {
 				log.LogErrorf("[ExtentBatchLockNormalExtent] extent size not match, extentID(%v), extentSize(%v), extentKeySize(%v)",

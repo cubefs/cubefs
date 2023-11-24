@@ -1316,7 +1316,7 @@ func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn)
 	store := partition.ExtentStore()
 
 	// In order to prevent users from writing extents, lock first and then create
-	err = store.ExtentBatchLockNormalExtent(gcLockEks.Eks, gcLockEks.IsCreate)
+	err = store.ExtentBatchLockNormalExtent(gcLockEks)
 	if err != nil {
 		log.LogErrorf("action[handleBatchLockNormalExtent] err %v", err)
 		return

@@ -226,6 +226,7 @@ type TinyExtentDeleteRecord struct {
 }
 
 type GcLockExtents struct {
-	IsCreate bool
-	Eks      []*ExtentKey
+	IsCreate   bool
+	BeforeTime string
+	Eks        []*ExtentKey
 }
