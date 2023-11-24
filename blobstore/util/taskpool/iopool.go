@@ -28,6 +28,9 @@ import (
 const (
 	iopoolTypeRead  = "read"
 	iopoolTypeWrite = "write"
+
+	opDequeue = "dequeue"
+	opOnDisk  = "disk"
 )
 
 type IoPoolTaskArgs struct {
@@ -90,9 +93,13 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 			Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001},
 			ConstLabels: map[string]string{
 				"cluster_id": fmt.Sprintf("%d", conf.ClusterID),
+				"idc":        conf.IDC,
+				"rack":       conf.Rack,
+				"host":       conf.Host,
+				"disk_id":    fmt.Sprintf("%d", conf.DiskID),
 			},
 		},
-		[]string{"idc", "rack", "host", "disk_id", "pool_type"},
+		[]string{"pool_type", "op_stage"},
 	)
 	if err := prometheus.Register(iopoolMetric); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -119,8 +126,9 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 		go func() {
 			defer pool.wg.Done()
 			for task := range pool.queue[idx] {
-				pool.reportMetric(time.Since(task.tm).Milliseconds())
+				pool.reportMetric(opDequeue, task.tm)
 				task.fn()
+				pool.reportMetric(opOnDisk, task.tm)
 				task.done <- struct{}{}
 			}
 			log.Debug("close io pool")
@@ -129,9 +137,9 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 	return pool
 }
 
-func (p *ioPoolSimple) reportMetric(costMs int64) {
-	p.metric.WithLabelValues(p.conf.IDC, p.conf.Rack, p.conf.Host, p.conf.DiskID.ToString(), p.conf.poolType).
-		Observe(float64(costMs))
+func (p *ioPoolSimple) reportMetric(opStage string, tm time.Time) {
+	costMs := time.Since(tm).Milliseconds()
+	p.metric.WithLabelValues(p.conf.poolType, opStage).Observe(float64(costMs))
 }
 
 func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
