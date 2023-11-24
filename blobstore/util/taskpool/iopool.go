@@ -25,16 +25,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-type iopoolType string
-
 const (
-	iopoolTypeRead  = iopoolType("read")
-	iopoolTypeWrite = iopoolType("write")
+	iopoolTypeRead  = "read"
+	iopoolTypeWrite = "write"
 )
-
-func (t iopoolType) String() string {
-	return string(t)
-}
 
 type IoPoolTaskArgs struct {
 	BucketId uint64
@@ -53,7 +47,7 @@ type IoPoolMetricConf struct {
 	Rack      string
 	Host      string
 	DiskID    proto.DiskID
-	poolType  iopoolType
+	poolType  string
 }
 
 type taskInfo struct {
@@ -136,8 +130,8 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 }
 
 func (p *ioPoolSimple) reportMetric(costMs int64) {
-	p.metric.WithLabelValues(p.conf.IDC, p.conf.Rack, p.conf.Host, p.conf.DiskID.ToString(),
-		p.conf.poolType.String()).Observe(float64(costMs))
+	p.metric.WithLabelValues(p.conf.IDC, p.conf.Rack, p.conf.Host, p.conf.DiskID.ToString(), p.conf.poolType).
+		Observe(float64(costMs))
 }
 
 func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
