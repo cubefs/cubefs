@@ -296,7 +296,7 @@ func (mw *MetaWrapper) updateRanges(mps []*proto.MetaPartitionView, needNewRange
 	mw.Lock()
 	defer mw.Unlock()
 
-	if len(newPartitions) > 0 {
+	if needNewRange {
 		mw.ranges = newRanges
 		mw.partitions = newPartitions
 	}
@@ -306,6 +306,7 @@ func (mw *MetaWrapper) updateRanges(mps []*proto.MetaPartitionView, needNewRange
 	mw.rwPartitions = rwPartitions
 	mw.unavailPartitions = unavailPartitions
 }
+
 func (mw *MetaWrapper) updateMetaPartitions() error {
 	vv, err := mw.fetchVolumeView()
 	if err != nil {
@@ -315,7 +316,11 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		log.LogWarnf("updateMetaPartitions: fetchVolumeView failed, err(%v) volNotExistCount(%v)", err, mw.volNotExistCount)
 		return err
 	}
-
+	var needClearRange bool
+	if mw.volCreateTime > 0 && mw.volCreateTime != vv.CreateTime {
+		needClearRange = true
+		log.LogWarnf("updateMetaPartitions: clear partitions, volCreateTime from old(%v) to new(%v)", mw.volCreateTime, vv.CreateTime)
+	}
 	mw.updateConfigByVolView(vv)
 
 	if !mw.isCredibleMetaPartitionView(vv.MetaPartitions) {
@@ -323,7 +328,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		return err
 	}
 
-	needNewRange := mw.volNotExistCount > VolNotExistClearViewThresholdMin
+	needNewRange := (mw.volNotExistCount > VolNotExistClearViewThresholdMin) || needClearRange
 	mw.updateRanges(vv.MetaPartitions, needNewRange)
 
 	log.LogInfof("updateMetaPartitions: len(rwPartitions)=%v", len(mw.rwPartitions))

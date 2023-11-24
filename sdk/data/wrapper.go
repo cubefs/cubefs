@@ -63,6 +63,7 @@ type Wrapper struct {
 	umpJmtpAddr           string
 	volNotExistCount      int32
 	partitions            *sync.Map //key: dpID; value: *DataPartition
+	volCreateTime         string
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
@@ -224,6 +225,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	LocalIP = dataState.LocalIP
 
 	view := dataState.VolView
+	w.volCreateTime = view.CreateTime
 	w.followerRead = view.FollowerRead
 	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
@@ -355,6 +357,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 		log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
+	w.volCreateTime = view.CreateTime
 	w.followerRead = view.FollowerRead
 	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
@@ -387,6 +390,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 
 func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
 	view := &proto.SimpleVolView{
+		CreateTime:           w.volCreateTime,
 		FollowerRead:         w.followerRead,
 		NearRead:             w.nearRead,
 		ForceROW:             w.forceROW,
@@ -519,6 +523,12 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	if view, err = w.mc.AdminAPI().GetVolumeSimpleInfo(w.volName); err != nil {
 		log.LogWarnf("updateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
+	}
+
+	if w.volCreateTime != "" && w.volCreateTime != view.CreateTime {
+		log.LogWarnf("updateSimpleVolView: update volCreateTime from old(%v) to new(%v) and clear data partitions", w.volCreateTime, view.CreateTime)
+		w.volCreateTime = view.CreateTime
+		w.partitions = new(sync.Map)
 	}
 
 	if w.followerRead != view.FollowerRead && !w.followerReadClientCfg {
