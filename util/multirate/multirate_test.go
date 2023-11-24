@@ -3,6 +3,7 @@ package multirate
 import (
 	"context"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +33,24 @@ func TestBaseRate(t *testing.T) {
 	defer cancel()
 	err = ml.Wait(ctx, Properties{{PropertyTypeVol, vol}})
 	assert.Nil(t, err)
+}
+
+func TestCancelRate(t *testing.T) {
+	ml := NewMultiLimiter()
+	ml.AddRule(NewRule(Properties{{PropertyTypeVol, ""}}, LimitGroup{statTypeCount: 1}, BurstGroup{statTypeCount: 1}))
+	ctx, cancel := context.WithCancel(context.Background())
+
+	err := ml.Wait(ctx, Properties{{PropertyTypeVol, "vol1"}})
+	assert.Nil(t, err)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		err = ml.WaitUseDefaultTimeout(ctx, Properties{{PropertyTypeVol, "vol1"}})
+		assert.Contains(t, err.Error(), "canceled")
+		wg.Done()
+	}()
+	cancel()
+	wg.Wait()
 }
 
 func TestMultiRate(t *testing.T) {

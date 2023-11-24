@@ -517,7 +517,7 @@ func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Sta
 			_, hasDeadline := ctx.Deadline()
 			var cancel context.CancelFunc
 			if !hasDeadline && useDefault {
-				ctx, cancel = context.WithTimeout(context.Background(), timeout)
+				ctx, cancel = context.WithTimeout(ctx, timeout)
 				defer cancel()
 			}
 			if err = limiter.WaitN(ctx, stat.val(statType(i))); err != nil {
