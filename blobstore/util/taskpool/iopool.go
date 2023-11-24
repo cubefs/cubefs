@@ -16,12 +16,7 @@ package taskpool
 
 import (
 	"fmt"
-	"math"
-	"math/rand"
-	"sort"
-	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,17 +25,16 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-type iopoolType int
+type iopoolType string
 
 const (
-	iopoolTypeRead iopoolType = iota + 1
-	iopoolTypeWrite
-
-	// defaultTimeout = time.Second * 5 // from defaultTimeoutBlobnode
-	sampleNum = 1 * 1024 * 1024
-	p99       = 99.0
-	p50       = 50.0
+	iopoolTypeRead  = iopoolType("read")
+	iopoolTypeWrite = iopoolType("write")
 )
+
+func (t iopoolType) String() string {
+	return string(t)
+}
 
 type IoPoolTaskArgs struct {
 	BucketId uint64
@@ -73,10 +67,8 @@ type ioPoolSimple struct {
 	wg     sync.WaitGroup
 	closed chan struct{}
 
-	conf    IoPoolMetricConf
-	metric  *prometheus.GaugeVec
-	samples []time.Duration
-	count   int64
+	conf   IoPoolMetricConf
+	metric *prometheus.SummaryVec
 }
 
 func NewWritePool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
@@ -95,32 +87,32 @@ func NewReadPool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
 // $threadCnt: The number of read/write work goroutine, it must be greater than $chanCnt
 // $queueDepth: The number of elements in the queue
 func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) *ioPoolSimple {
-	iopoolMetric := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: "blobstore",
-			Subsystem: "blobnode",
-			Name:      "iopool",
-			Help:      "blobnode iopool timeout",
+	iopoolMetric := prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Namespace:  "blobstore",
+			Subsystem:  "blobnode",
+			Name:       "iopool",
+			Help:       "blobnode iopool timeout",
+			Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001},
 			ConstLabels: map[string]string{
 				"cluster_id": fmt.Sprintf("%d", conf.ClusterID),
 			},
 		},
-		[]string{"idc", "rack", "host", "disk_id", "pool_type", "latency"},
+		[]string{"idc", "rack", "host", "disk_id", "pool_type"},
 	)
 	if err := prometheus.Register(iopoolMetric); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			iopoolMetric = are.ExistingCollector.(*prometheus.GaugeVec)
+			iopoolMetric = are.ExistingCollector.(*prometheus.SummaryVec)
 		} else {
 			panic(err)
 		}
 	}
 
 	pool := &ioPoolSimple{
-		queue:   make([]chan *taskInfo, chanCnt),
-		closed:  make(chan struct{}),
-		conf:    conf,
-		metric:  iopoolMetric,
-		samples: make([]time.Duration, 0, sampleNum),
+		queue:  make([]chan *taskInfo, chanCnt),
+		closed: make(chan struct{}),
+		conf:   conf,
+		metric: iopoolMetric,
 	}
 	for i := range pool.queue {
 		pool.queue[i] = make(chan *taskInfo, queueDepth)
@@ -133,34 +125,19 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 		go func() {
 			defer pool.wg.Done()
 			for task := range pool.queue[idx] {
-				//if time.Since(task.tm) > defaultTimeout {
-				//	pool.reportTimeoutTask()
-				//}
-				pool.addToSamples(time.Since(task.tm))
+				pool.reportMetric(time.Since(task.tm).Milliseconds())
 				task.fn()
 				task.done <- struct{}{}
 			}
 			log.Debug("close io pool")
 		}()
 	}
-	go pool.reportLatency()
 	return pool
 }
 
-// Reservoir algorithm
-func (p *ioPoolSimple) addToSamples(d time.Duration) {
-	current := atomic.AddInt64(&p.count, 1)
-	if current <= sampleNum {
-		p.samples = append(p.samples, d)
-		return
-	}
-
-	// todo: rotate array
-
-	i := rand.Int63n(current) // Uint64(current)
-	if i < sampleNum {
-		p.samples[i] = d
-	}
+func (p *ioPoolSimple) reportMetric(costMs int64) {
+	p.metric.WithLabelValues(p.conf.IDC, p.conf.Rack, p.conf.Host, p.conf.DiskID.ToString(),
+		p.conf.poolType.String()).Observe(float64(costMs))
 }
 
 func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
@@ -187,47 +164,6 @@ func (p *ioPoolSimple) generateTask(args IoPoolTaskArgs) (idx uint64, task *task
 	return idx, task
 }
 
-func (p *ioPoolSimple) reportLatency() {
-	tk := time.NewTicker(time.Second * 15)
-	defer tk.Stop()
-
-	for {
-		select {
-		case <-tk.C:
-		case <-p.closed:
-		}
-
-		latency99, latency50 := p.getLatency()
-		p.metric.WithLabelValues(p.conf.IDC, p.conf.Rack, p.conf.Host, p.conf.DiskID.ToString(),
-			p.conf.poolType.String(), "p99").Set(float64(latency99))
-		p.metric.WithLabelValues(p.conf.IDC, p.conf.Rack, p.conf.Host, p.conf.DiskID.ToString(),
-			p.conf.poolType.String(), "p50").Set(float64(latency50))
-	}
-}
-
-func (p *ioPoolSimple) getLatency() (int64, int64) {
-	if len(p.samples) == 0 {
-		return 0, 0
-	}
-
-	tmp := make([]time.Duration, len(p.samples))
-	copy(tmp, p.samples)
-
-	sort.Slice(tmp, func(i, j int) bool {
-		return tmp[i] < tmp[j]
-	})
-
-	rank := p99 / 100.0 * float64(len(tmp)-1)
-	lower := math.Floor(rank)
-	p99Val := int64(tmp[int(lower)])
-
-	rank = p50 / 100.0 * float64(len(tmp)-1)
-	lower = math.Floor(rank)
-	p50Val := int64(tmp[int(lower)])
-
-	return p99Val, p50Val
-}
-
 // Close the pool, Submit task maybe concurrent unsafe
 func (p *ioPoolSimple) Close() {
 	close(p.closed)
@@ -237,8 +173,4 @@ func (p *ioPoolSimple) Close() {
 
 	p.wg.Wait() // wait all io task done
 	log.Info("close all io pool, exit")
-}
-
-func (tp iopoolType) String() string {
-	return strconv.Itoa(int(tp))
 }
