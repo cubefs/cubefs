@@ -43,7 +43,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	if partition.IsManual {
 		partition.Status = proto.ReadOnly
 	} else if IsCrossRegionHATypeQuorum(crossRegionHAType) {
-		partition.checkStatusOfCrossRegionQuorumVol(liveReplicas, dpWriteableThreshold, c, quorum)
+		partition.SetCrossRegionQuorumVolStatus(liveReplicas, dpWriteableThreshold, c, quorum)
 	} else {
 		partition.Status = proto.ReadOnly
 		if len(liveReplicas) >= (int)(partition.ReplicaNum) {
@@ -75,7 +75,48 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	}
 }
 
-func (partition *DataPartition) checkStatusOfCrossRegionQuorumVol(liveReplicas []*DataReplica, dpWriteableThreshold float64, c *Cluster, quorum int) {
+func (partition *DataPartition) checkTransferStatus(dpTimeOutSec int64, dpWriteableThreshold float64, crossRegionHAType proto.CrossRegionHAType, c *Cluster, quorum int) {
+	partition.Lock()
+	defer partition.Unlock()
+	log.LogInfof("checkTransferStatus, dpTimeOutSec: %v, dpWriteableThreshold: %v, crossRegionHAType: %v, partitionID: %v",
+		dpTimeOutSec, dpWriteableThreshold, crossRegionHAType, partition.PartitionID)
+
+	if !partition.isFrozen() {
+		return
+	}
+
+	liveReplicas := partition.getLiveReplicasFromHosts(dpTimeOutSec)
+	log.LogInfof("checkTransferStatus, partitionID: %v, liveReplicasLength: %v, liveReplicas: %v",
+		partition.PartitionID, len(liveReplicas), liveReplicas)
+
+	if len(partition.Replicas) > len(partition.Hosts) {
+		partition.TransferStatus = proto.ReadOnly
+		log.LogInfof("checkTransferStatus, Replicas more then hosts, partitionID: %v, liveReplicas: %v",
+			partition.PartitionID, liveReplicas)
+		return
+	}
+	if partition.IsManual {
+		partition.TransferStatus = proto.ReadOnly
+	} else if IsCrossRegionHATypeQuorum(crossRegionHAType) {
+		partition.SetCrossRegionQuorumVolTransferStatus(liveReplicas, dpWriteableThreshold, c, quorum)
+	} else {
+		switch len(liveReplicas) {
+		case (int)(partition.ReplicaNum):
+			partition.TransferStatus = proto.ReadOnly
+			log.LogInfof("checkTransferStatus, partitionID: %v, checkReplicaStatusOnLiveNode: %v, canWrite: %v, canResetStatusToWrite: %v",
+				partition.PartitionID, partition.checkReplicaStatusOnLiveNode(liveReplicas), partition.canWrite(), partition.canResetStatusToWrite(dpWriteableThreshold))
+
+			if partition.checkReplicaStatusOnLiveNode(liveReplicas) == true &&
+				partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
+				partition.TransferStatus = proto.ReadWrite
+			}
+		default:
+			partition.TransferStatus = proto.ReadOnly
+		}
+	}
+}
+
+func (partition *DataPartition) SetCrossRegionQuorumVolStatus(liveReplicas []*DataReplica, dpWriteableThreshold float64, c *Cluster, quorum int) {
 	var (
 		masterRegionHosts []string
 		err               error
@@ -88,7 +129,7 @@ func (partition *DataPartition) checkStatusOfCrossRegionQuorumVol(liveReplicas [
 		masterRegionHosts = partition.Hosts[:quorum]
 	} else {
 		if masterRegionHosts, _, err = c.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(partition.Hosts); err != nil {
-			msg := fmt.Sprintf("action[checkStatusOfCrossRegionQuorumVol] partitionID[%v] hosts[%v],err[%v]",
+			msg := fmt.Sprintf("action[SetCrossRegionQuorumVolStatus] partitionID[%v] hosts[%v],err[%v]",
 				partition.PartitionID, partition.Hosts, err)
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpCheckStatus], msg)
 			return
@@ -97,6 +138,31 @@ func (partition *DataPartition) checkStatusOfCrossRegionQuorumVol(liveReplicas [
 	if partition.isAllMasterRegionReplicasWritable(liveReplicas, masterRegionHosts, quorum) &&
 		partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
 		partition.Status = proto.ReadWrite
+	}
+}
+
+func (partition *DataPartition) SetCrossRegionQuorumVolTransferStatus(liveReplicas []*DataReplica, dpWriteableThreshold float64, c *Cluster, quorum int) {
+	var (
+		masterRegionHosts []string
+		err               error
+	)
+	partition.TransferStatus = proto.ReadOnly
+	if quorum > maxQuorumVolDataPartitionReplicaNum || quorum < defaultQuorumDataPartitionMasterRegionCount {
+		quorum = defaultQuorumDataPartitionMasterRegionCount
+	}
+	if len(partition.Hosts) >= maxQuorumVolDataPartitionReplicaNum {
+		masterRegionHosts = partition.Hosts[:quorum]
+	} else {
+		if masterRegionHosts, _, err = c.getMasterAndSlaveRegionAddrsFromDataNodeAddrs(partition.Hosts); err != nil {
+			msg := fmt.Sprintf("action[SetCrossRegionQuorumVolTransferStatus] partitionID[%v] hosts[%v],err[%v]",
+				partition.PartitionID, partition.Hosts, err)
+			Warn(c.Name, msg)
+			return
+		}
+	}
+	if partition.isAllMasterRegionReplicasWritable(liveReplicas, masterRegionHosts, quorum) &&
+		partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
+		partition.TransferStatus = proto.ReadWrite
 	}
 }
 

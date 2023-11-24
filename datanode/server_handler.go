@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/ttlstore"
 	"io/fs"
 	"io/ioutil"
 	"net/http"
@@ -1269,4 +1270,51 @@ func (s *DataNode) getSfxStatus(w http.ResponseWriter, r *http.Request) {
 		Zone:  s.zoneName,
 	}
 	s.buildSuccessResp(w, diskReport)
+}
+
+func (s *DataNode) getExtentLockInfo(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID    uint64
+		extentID       uint64
+		extLockInfoMap = make(map[uint64]*proto.ExtentIdLockInfo)
+		err            error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if extentID, err = strconv.ParseUint(r.FormValue("extentID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	if extentID == 0 {
+		partition.ExtentStore().RangeExtentLockInfo(func(key interface{}, value *ttlstore.Val) bool {
+			eId := key.(uint64)
+			extLockInfoMap[eId] = &proto.ExtentIdLockInfo{
+				ExtentId:   eId,
+				ExpireTime: value.GetExpirationTime(),
+				TTL:        value.GetTTL(),
+			}
+			return true
+		})
+	} else {
+		if value, ok := partition.ExtentStore().LoadExtentLockInfo(extentID); ok {
+			extLockInfoMap[extentID] = &proto.ExtentIdLockInfo{
+				ExtentId:   extentID,
+				ExpireTime: value.GetExpirationTime(),
+				TTL:        value.GetTTL(),
+			}
+		}
+	}
+	s.buildSuccessResp(w, extLockInfoMap)
+	return
 }

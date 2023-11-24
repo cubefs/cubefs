@@ -1509,6 +1509,16 @@ func (c *Cluster) loadIDCs() (err error) {
 		log.LogInfof("action[loadIDCs], idc: %v, zones[%v]", idc.Name, idc.Zones)
 	}
 
+	// create the zone if not exist in topology and exist in idc
+	for zoneName, idc := range zones {
+		if _, ok := c.t.zoneMap.Load(zoneName); !ok {
+			zone := newZone(zoneName)
+			value, _ := idc.ZoneMap.Load(zoneName)
+			zone.MType = value.(bsProto.MediumType)
+			c.t.zoneMap.Store(zoneName, zone)
+		}
+	}
+
 	// set idc name, medium type of zones
 	c.t.zoneMap.Range(func(zoneName, value interface{}) bool {
 		zone, ok := value.(*Zone)

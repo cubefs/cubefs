@@ -1076,6 +1076,7 @@ func (c *Cluster) createDataPartition(volName, designatedZoneName string) (dp *D
 	default:
 		dp.total = unit.DefaultDataPartitionSize
 		dp.Status = proto.ReadWrite
+		dp.TransferStatus = proto.ReadWrite
 	}
 	if err = c.syncAddDataPartition(dp); err != nil {
 		goto errHandler

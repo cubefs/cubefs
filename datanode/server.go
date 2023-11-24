@@ -530,6 +530,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/fingerprint", s.getFingerprint)
 	http.HandleFunc("/resetFaultOccurredCheckLevel", s.resetFaultOccurredCheckLevel)
 	http.HandleFunc("/sfxStatus", s.getSfxStatus)
+	http.HandleFunc("/getExtentLockInfo", s.getExtentLockInfo)
 }
 
 func (s *DataNode) startTCPService() (err error) {

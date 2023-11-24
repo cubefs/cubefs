@@ -39,6 +39,7 @@ type DataPartition struct {
 	LastLoadedTime int64
 	ReplicaNum     uint8
 	Status         int8
+	TransferStatus int8
 	IsFrozen       bool
 	isRecover      bool
 	IsManual       bool
@@ -84,6 +85,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64)
 	partition.lastUpdateTimeMap = make(map[string]int64)
 
 	partition.Status = proto.ReadOnly
+	partition.TransferStatus = proto.ReadOnly
 	partition.VolName = volName
 	partition.VolID = volID
 	partition.modifyTime = time.Now().Unix()
@@ -351,6 +353,7 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	defer partition.Unlock()
 	dpr.PartitionID = partition.PartitionID
 	dpr.Status = partition.Status
+	dpr.TransferStatus = partition.TransferStatus
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
@@ -1548,4 +1551,13 @@ func (partition *DataPartition) unfreeze() {
 
 func (partition *DataPartition) isFrozen() bool {
 	return partition.IsFrozen
+}
+
+func (partition *DataPartition) isHddMedium() bool {
+	for _, replica := range partition.Replicas {
+		if replica.MType == proto.MediumSSDName {
+			return false
+		}
+	}
+	return true
 }

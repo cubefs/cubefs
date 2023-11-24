@@ -106,6 +106,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleBatchMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
+	case proto.OpLockOrUnlockExtent:
+		s.handleLockOrUnlockExtent(p, c)
 	case proto.OpNotifyReplicasToRepair:
 		s.handlePacketToNotifyExtentRepair(p)
 	case proto.OpGetAllWatermarks:
@@ -450,6 +452,11 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		return
 	}
 
+	if _, ok := partition.ExtentStore().LoadExtentLockInfo(p.ExtentID); ok {
+		err = storage.ExtentLockedError
+		return
+	}
+
 	if p.Size <= unit.BlockSize {
 		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.AppendWriteType, p.IsSyncWrite())
 		partition.checkIsDiskError(err)
@@ -495,6 +502,10 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = raft.ErrNotLeader
 		return
 	}
+	if _, ok := partition.ExtentStore().LoadExtentLockInfo(p.ExtentID); ok {
+		err = storage.ExtentLockedError
+		return
+	}
 	err = partition.RandomWriteSubmit(p)
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
 		err = raft.ErrNotLeader
@@ -505,6 +516,32 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = storage.TryAgainError
 		return
 	}
+}
+
+func (s *DataNode) handleLockOrUnlockExtent(p *repl.Packet, c net.Conn) {
+	var err error
+	defer func() {
+		if err != nil {
+			log.LogErrorf(fmt.Sprintf("(%v) error(%v) data(%v)", p.GetUniqueLogId(), err, string(p.Data)))
+			p.PackErrorBody(ActionLockOrUnlockExtent, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	remote := c.RemoteAddr().String()
+	partition := p.Object.(*DataPartition)
+	var extentLockInfo proto.ExtentLockInfo
+	if err = json.Unmarshal(p.Data[0:p.Size], &extentLockInfo); err != nil {
+		return
+	}
+	if extentLockInfo.LockStatus == proto.Lock {
+		err = partition.ExtentStore().LockExtents(extentLockInfo)
+	} else if extentLockInfo.LockStatus == proto.Unlock {
+		partition.ExtentStore().UnlockExtents(extentLockInfo)
+	}
+	log.LogInfof("handleLockOrUnlockExtent PartitionID(%v) LockStatus(%v) extentLockInfo(%v) from(%v) err(%v)",
+		p.PartitionID, extentLockInfo.LockStatus, extentLockInfo, remote, err)
+	return
 }
 
 //func (s *DataNode) handleRandomWritePacketV3(p *repl.Packet) {

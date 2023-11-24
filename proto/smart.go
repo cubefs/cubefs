@@ -36,6 +36,7 @@ type SmartVolume struct {
 	OSSSecure         *OSSSecure
 	OSSBucketPolicy   BucketAccessPolicy
 	LayerPolicies     map[LayerType][]interface{}
+	StoreMode         StoreMode
 }
 
 type ActionMetricsTaskInfo struct {

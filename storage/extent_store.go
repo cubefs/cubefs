@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/util/ttlstore"
 	"hash/crc32"
 	"io"
 	"math"
@@ -156,6 +157,9 @@ type ExtentStore struct {
 	deletionQueue *ExtentQueue
 
 	interceptors IOInterceptors
+
+	ttlStore      *ttlstore.TTLStore
+	ttlStoreMutex sync.Mutex
 }
 
 func MkdirAll(name string) (err error) {
@@ -169,6 +173,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	s.partitionID = partitionID
 	s.infoStore = NewExtentInfoStore(partitionID)
 	s.interceptors = ioi
+	s.ttlStore = ttlstore.NewTTLStore()
 	if err = MkdirAll(dataDir); err != nil {
 		return nil, fmt.Errorf("NewExtentStore [%v] err[%v]", dataDir, err)
 	}
@@ -1427,5 +1432,44 @@ func (s *ExtentStore) GetRealBlockCnt(extentID uint64) (block int64, err error) 
 		return
 	}
 	block = e.getRealBlockCnt()
+	return
+}
+
+func (s *ExtentStore) LockExtents(extentLockInfo proto.ExtentLockInfo) (err error) {
+	s.ttlStoreMutex.Lock()
+	defer s.ttlStoreMutex.Unlock()
+	for _, extentKey := range extentLockInfo.ExtentKeys {
+		if _, ok := s.ttlStore.Load(extentKey.ExtentId); ok {
+			err = fmt.Errorf("%v, extentId(%v)", ExtentLockedError, extentKey.ExtentId)
+			return
+		}
+	}
+	for _, extentKey := range extentLockInfo.ExtentKeys {
+		s.ttlStore.Store(extentKey.ExtentId, struct {}{}, extentLockInfo.LockTime)
+	}
+	return
+}
+
+func (s *ExtentStore) UnlockExtents(extentLockInfo proto.ExtentLockInfo) {
+	s.ttlStoreMutex.Lock()
+	defer s.ttlStoreMutex.Unlock()
+	for _, extentKey := range extentLockInfo.ExtentKeys {
+		s.ttlStore.Delete(extentKey.ExtentId)
+	}
+}
+
+func (s *ExtentStore) LoadExtentLockInfo(extentId uint64) (value *ttlstore.Val, ok bool) {
+	value, ok = s.ttlStore.Load(extentId)
+	return
+}
+
+func (s *ExtentStore) RangeExtentLockInfo(f func(key interface{}, value *ttlstore.Val) bool) {
+	s.ttlStore.Range(func(key interface{}, value *ttlstore.Val) bool {
+		return f(key, value)
+	})
+}
+
+func (s *ExtentStore) FreeExtentLockInfo() {
+	s.ttlStore.FreeLockInfo()
 	return
 }
