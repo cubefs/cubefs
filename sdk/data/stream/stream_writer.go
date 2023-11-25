@@ -358,7 +358,7 @@ begin:
 					}(cacheKey)
 				}
 			}
-			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v]",
+			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v] before compare seq",
 				s.inode, s.verSeq, req.ExtentKey.GetSeq(), req.ExtentKey)
 			if req.ExtentKey.GetSeq() == s.verSeq {
 				writeSize, err = s.doOverwrite(req, direct)
@@ -380,7 +380,7 @@ begin:
 				}
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
 			} else {
-				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
+				log.LogDebugf("action[streamer.write] ino %v do OverWriteByAppend extent key (%v) because seq not equal", s.inode, req.ExtentKey)
 				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct)
 			}
 			if s.client.bcacheEnable {
