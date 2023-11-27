@@ -317,6 +317,8 @@ func (mgr *ShardRepairMgr) recordOneResult(ctx context.Context, r shardRepairRet
 		span.Warnf("unexpected result: msg[%+v], err[%+v]", r.repairMsg, r.err)
 	case ShardRepairStatusUndo:
 		span.Warnf("repair message unconsume: msg[%+v]", r.repairMsg)
+	default:
+		// do nothing
 	}
 }
 

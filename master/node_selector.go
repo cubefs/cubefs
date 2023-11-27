@@ -177,6 +177,7 @@ func (s *CarryWeightNodeSelector) getTotalMax(nodes *sync.Map) (total uint64) {
 		total = s.getTotalMaxForDataNodes(nodes)
 	case MetaNodeType:
 		total = s.getTotalMaxForMetaNodes(nodes)
+	default:
 	}
 	return
 }
@@ -617,8 +618,9 @@ func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
 		return NewTicketNodeSelector(nodeType)
 	case AvailableSpaceFirstNodeSelectorName:
 		return NewAvailableSpaceFirstNodeSelector(nodeType)
+	default:
+		return NewCarryWeightNodeSelector(nodeType)
 	}
-	return NewCarryWeightNodeSelector(nodeType)
 }
 
 func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {

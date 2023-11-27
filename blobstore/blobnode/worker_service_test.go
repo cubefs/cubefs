@@ -105,6 +105,8 @@ func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireAr
 		task.TaskType = proto.TaskTypeDiskDrop
 		task.TaskID = fmt.Sprintf("disk_drop_%d", m.migrateID)
 		m.diskDropTaskCnt++
+	default:
+		// do nothing
 	}
 	return &task, nil
 }

@@ -5,6 +5,7 @@ import (
 )
 
 func init() {
+	// do nothing
 }
 
 func TestError01(t *testing.T) {

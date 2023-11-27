@@ -748,6 +748,8 @@ func TestAccessClientPutTimeout(t *testing.T) {
 			cfg.ClientTimeoutMs = linearTimeoutMs(3, float64(cs.size), 40)
 		case access.DefaultConnMode:
 			cfg.ClientTimeoutMs = linearTimeoutMs(30, float64(cs.size), 10)
+		default:
+			// do nothing
 		}
 		client, err := access.New(cfg)
 		require.NoError(t, err)

@@ -27,6 +27,10 @@ import (
 
 var ms100 = 100 * time.Millisecond
 
+var voidFunc = func(error) {
+	// do nothing
+}
+
 func TestRetryInsistBase(t *testing.T) {
 	var i int
 	cases := []struct {
@@ -40,7 +44,7 @@ func TestRetryInsistBase(t *testing.T) {
 		{
 			exp:  0,
 			f:    func() error { return nil },
-			on:   func(error) {},
+			on:   voidFunc,
 			d:    ms100,
 			mind: 0,
 			maxd: ms100,
@@ -54,7 +58,7 @@ func TestRetryInsistBase(t *testing.T) {
 				}
 				return nil
 			},
-			on:   func(error) {},
+			on:   voidFunc,
 			d:    5 * ms100,
 			mind: 10 * ms100,
 			maxd: 12 * ms100,
@@ -68,7 +72,7 @@ func TestRetryInsistBase(t *testing.T) {
 				}
 				return nil
 			},
-			on:   func(error) {},
+			on:   voidFunc,
 			d:    5 * ms100,
 			mind: 5 * ms100,
 			maxd: 7 * ms100,
@@ -116,7 +120,7 @@ func TestRetryInsistContext(t *testing.T) {
 		{
 			exp:  0,
 			f:    func() error { return nil },
-			on:   func(error) {},
+			on:   voidFunc,
 			d:    ms100,
 			mind: 0,
 			maxd: ms100,
@@ -130,7 +134,7 @@ func TestRetryInsistContext(t *testing.T) {
 				}
 				return nil
 			},
-			on:   func(error) {},
+			on:   voidFunc,
 			d:    2 * ms100,
 			mind: 2 * ms100,
 			maxd: ctxDuration + ms100,
@@ -144,7 +148,7 @@ func TestRetryInsistContext(t *testing.T) {
 				}
 				return nil
 			},
-			on:   func(error) {},
+			on:   voidFunc,
 			d:    5 * ms100,
 			mind: ctxDuration,
 			maxd: ctxDuration + ms100,

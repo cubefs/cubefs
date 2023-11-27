@@ -38,7 +38,9 @@ func TestTaskpoolBase(t *testing.T) {
 	runner.Run(func() {
 		time.Sleep(time.Second)
 	})
-	require.False(t, runner.TryRun(func() {}))
+	require.False(t, runner.TryRun(func() {
+		// do nothing
+	}))
 	runner.Close()
 }
 

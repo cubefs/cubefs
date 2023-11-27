@@ -366,31 +366,7 @@ func (s *instance) writeLoop() {
 				wb.DeleteRangeCF(rangeDeleteData.cf, rangeDeleteData.start, rangeDeleteData.end)
 			case batchEvent:
 				b := task.data.([]batch)
-				for _, item := range b {
-					switch item.typ {
-					case putEvent:
-						putData := item.data.(put)
-						wb.Put(putData.key, putData.value)
-					case deleteEvent:
-						delData := item.data.(del)
-						wb.Delete(delData.key)
-					case rangeDeleteEvent:
-						rangeDeleteData := item.data.(rangeDelete)
-						wb.DeleteRange(rangeDeleteData.start, rangeDeleteData.end)
-					case cfPutEvent:
-						putData := item.data.(cfPut)
-						wb.PutCF(putData.cf, putData.key, putData.value)
-					case cfDeleteEvent:
-						delData := item.data.(cfDel)
-						wb.DeleteCF(delData.cf, delData.key)
-					case cfRangeDeleteEvent:
-						rangeDeleteData := item.data.(cfRangeDelete)
-						wb.DeleteRangeCF(rangeDeleteData.cf, rangeDeleteData.start, rangeDeleteData.end)
-					default:
-						// never to here
-						panic("invalid type")
-					}
-				}
+				s.handleBatchEvent(b, wb)
 			case flushEvent:
 				if wb.Count() > 0 {
 					err := s.db.Write(s.wo, wb)
@@ -413,6 +389,34 @@ func (s *instance) writeLoop() {
 			}
 		}
 		wb.Destroy()
+	}
+}
+
+func (s *instance) handleBatchEvent(b []batch, wb *rdb.WriteBatch) {
+	for _, item := range b {
+		switch item.typ {
+		case putEvent:
+			putData := item.data.(put)
+			wb.Put(putData.key, putData.value)
+		case deleteEvent:
+			delData := item.data.(del)
+			wb.Delete(delData.key)
+		case rangeDeleteEvent:
+			rangeDeleteData := item.data.(rangeDelete)
+			wb.DeleteRange(rangeDeleteData.start, rangeDeleteData.end)
+		case cfPutEvent:
+			putData := item.data.(cfPut)
+			wb.PutCF(putData.cf, putData.key, putData.value)
+		case cfDeleteEvent:
+			delData := item.data.(cfDel)
+			wb.DeleteCF(delData.cf, delData.key)
+		case cfRangeDeleteEvent:
+			rangeDeleteData := item.data.(cfRangeDelete)
+			wb.DeleteRangeCF(rangeDeleteData.cf, rangeDeleteData.start, rangeDeleteData.end)
+		default:
+			// never to here
+			panic("invalid type")
+		}
 	}
 }
 
@@ -610,6 +614,7 @@ func (wb *WriteBatch) Count() int {
 }
 
 func (wb *WriteBatch) Destroy() {
+	// do nothing
 }
 
 func (wb *WriteBatch) Clear() {

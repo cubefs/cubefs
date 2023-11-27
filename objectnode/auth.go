@@ -152,9 +152,9 @@ func NewAuth(r *http.Request) (Auther, error) {
 		return NewQueryAuth(r)
 	case r.Method == http.MethodPost && strings.Contains(r.Header.Get(ContentType), ValueMultipartFormData):
 		return NewFormAuth(r)
+	default:
+		return nil, MissingSecurityElement
 	}
-
-	return nil, MissingSecurityElement
 }
 
 type Credential struct {

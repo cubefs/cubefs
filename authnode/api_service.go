@@ -275,6 +275,8 @@ func (m *Server) apiAccessEntry(w http.ResponseWriter, r *http.Request) {
 		newKeyInfo, err = m.handleDeleteCaps(&keyInfo)
 	case proto.MsgAuthGetCapsReq:
 		newKeyInfo, err = m.handleGetCaps(&keyInfo)
+	default:
+		// do nothing
 	}
 
 	if err != nil {
@@ -423,6 +425,8 @@ func (m *Server) osCapsOp(w http.ResponseWriter, r *http.Request) {
 		newAkCaps, err = m.handleOSDeleteCaps(&akCaps)
 	case proto.MsgAuthOSGetCapsReq:
 		newAkCaps, err = m.handleOSGetCaps(&akCaps)
+	default:
+		// do nothing
 	}
 
 	if err != nil {

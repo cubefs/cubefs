@@ -44,6 +44,7 @@ func getDiskIDFn(ctx context.Context) (proto.DiskID, error) {
 }
 
 func handleIOErrorFn(ctx context.Context, diskID proto.DiskID, diskErr error) {
+	// do nothing
 }
 
 func setChunkCompactFn(ctx context.Context, args *cmapi.SetCompactChunkArgs) (err error) {

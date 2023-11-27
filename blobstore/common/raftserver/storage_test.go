@@ -50,6 +50,7 @@ func (s *storeSnapshot) Read() ([]byte, error) {
 }
 
 func (s *storeSnapshot) Close() {
+	// do nothing
 }
 
 type storeSM struct {
@@ -79,6 +80,7 @@ func (sm *storeSM) ApplySnapshot(meta SnapshotMeta, st Snapshot) error {
 }
 
 func (sm *storeSM) LeaderChange(leader uint64, host string) {
+	// do nothing
 }
 
 func TestStorage(t *testing.T) {

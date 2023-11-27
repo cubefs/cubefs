@@ -276,7 +276,9 @@ func (s *LcScanner) scan() {
 					return
 				}
 				dentry := val.(*proto.ScanDentry)
-				job := func() {}
+				job := func() {
+					// do nothing
+				}
 				if s.dirChan.Len() > maxDirChanNum {
 					job = func() {
 						s.handleDirLimitDepthFirst(dentry)
@@ -290,6 +292,8 @@ func (s *LcScanner) scan() {
 				if err != nil {
 					log.LogErrorf("handleDir failed, err(%v)", err)
 				}
+			default:
+				// do nothing
 			}
 		}
 

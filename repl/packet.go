@@ -353,8 +353,9 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpRemoveDataPartitionRaftMember,
 		proto.OpDataPartitionTryToLeader:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 func (p *Packet) IsForwardPacket() bool {

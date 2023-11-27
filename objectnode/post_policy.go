@@ -331,8 +331,9 @@ func policyCondMatch(op, input, val string) bool {
 		return input == val
 	case condStartsWith:
 		return strings.HasPrefix(input, val)
+	default:
+		return false
 	}
-	return false
 }
 
 func parseToInt64(val interface{}) (int64, error) {

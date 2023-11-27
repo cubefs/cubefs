@@ -118,6 +118,7 @@ func (mock *diskMock) ListChunks(ctx context.Context) (chunks []core.VuidMeta, e
 }
 
 func (mock *diskMock) EnqueueCompact(ctx context.Context, vuid proto.Vuid) {
+	// do nothing
 }
 
 func (mock *diskMock) GcRubbishChunk(ctx context.Context) (mayBeLost []bnapi.ChunkId, err error) {
@@ -129,9 +130,11 @@ func (mock *diskMock) WalkChunksWithLock(ctx context.Context, fn func(cs core.Ch
 }
 
 func (mock *diskMock) ResetChunks(ctx context.Context) {
+	// do nothing
 }
 
 func (mock *diskMock) Close(ctx context.Context) {
+	// do nothing
 }
 
 func ensureTestDir(t *testing.T, diskRoot string) (root, meta, data string) {

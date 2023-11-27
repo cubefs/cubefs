@@ -228,6 +228,8 @@ func createVol(kv map[string]interface{}, t *testing.T) {
 		checkWithDefault(kv, cacheCapacity, 80)
 		checkWithDefault(kv, replicaNumKey, 1)
 		break
+	default:
+		// do nothing
 	}
 
 	processWithFatalV2(proto.AdminCreateVol, true, kv, t)

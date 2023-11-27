@@ -902,8 +902,9 @@ func QosTypeString(factorType uint32) string {
 		return "FlowRead"
 	case FlowWriteType:
 		return "FlowWrite"
+	default:
+		return "unkown"
 	}
-	return "unkown"
 }
 
 type ClientLimitInfo struct {

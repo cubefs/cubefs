@@ -99,6 +99,7 @@ func (c *ConsoleNode) writeError(err error, writer http.ResponseWriter) {
 }
 
 func (c ConsoleNode) Shutdown() {
+	// do nothing
 }
 
 func (c *ConsoleNode) Sync() {

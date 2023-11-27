@@ -166,6 +166,8 @@ func (s *StatementV2) MatchAction(action string) bool {
 				return true
 			}
 		}
+	default:
+		// do nothing
 	}
 	return false
 }
@@ -181,6 +183,8 @@ func (s *StatementV2) MatchResource(bucket, key string) bool {
 				return true
 			}
 		}
+	default:
+		// do nothing
 	}
 	return false
 }

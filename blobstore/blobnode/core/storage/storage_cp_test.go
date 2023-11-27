@@ -73,6 +73,7 @@ func (mm *mockBrokenMeta) Destroy(ctx context.Context) (err error) {
 }
 
 func (mm *mockBrokenMeta) Close() {
+	// do nothing
 }
 
 func (mm *mockBrokenData) Write(ctx context.Context, shard *core.Shard) error {
@@ -108,6 +109,7 @@ func (mm *mockBrokenData) Destroy(ctx context.Context) (err error) {
 }
 
 func (mm *mockBrokenData) Close() {
+	// do nothing
 }
 
 func TestReplStorage_Operations(t *testing.T) {

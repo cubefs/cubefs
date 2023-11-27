@@ -164,24 +164,34 @@ func (s *strictMetaLoader) loadPolicy() (p *Policy, err error) {
 	return s.v.loadBucketPolicy()
 }
 
-func (s *strictMetaLoader) storePolicy(p *Policy) {}
+func (s *strictMetaLoader) storePolicy(p *Policy) {
+	// do nothing
+}
 
 func (s *strictMetaLoader) loadACL() (acp *AccessControlPolicy, err error) {
 	return s.v.loadBucketACL()
 }
 
-func (s *strictMetaLoader) storeACL(p *AccessControlPolicy) {}
+func (s *strictMetaLoader) storeACL(p *AccessControlPolicy) {
+	// do nothing
+}
 
 func (s *strictMetaLoader) loadCORS() (cors *CORSConfiguration, err error) {
 	return s.v.loadBucketCors()
 }
 
-func (s *strictMetaLoader) storeCORS(cors *CORSConfiguration) {}
+func (s *strictMetaLoader) storeCORS(cors *CORSConfiguration) {
+	// do nothing
+}
 
 func (s *strictMetaLoader) loadObjectLock() (o *ObjectLockConfig, err error) {
 	return s.v.loadObjectLock()
 }
 
-func (s *strictMetaLoader) storeObjectLock(cors *ObjectLockConfig) {}
+func (s *strictMetaLoader) storeObjectLock(cors *ObjectLockConfig) {
+	// do nothing
+}
 
-func (s *strictMetaLoader) setSynced() {}
+func (s *strictMetaLoader) setSynced() {
+	// do nothing
+}

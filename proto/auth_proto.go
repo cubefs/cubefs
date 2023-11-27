@@ -463,6 +463,8 @@ func IsValidMsgReqType(serviceID string, msgType MsgType) (err error) {
 		if msgType|MsgAuthBase != 0 {
 			b = true
 		}
+	default:
+		// do nothing
 	}
 	if !b {
 		err = fmt.Errorf("invalid request type [%x] and serviceID[%s]", msgType, serviceID)

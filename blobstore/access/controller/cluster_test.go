@@ -166,7 +166,9 @@ func initCC() {
 		c, stop := newCCStop()
 		if cc == nil {
 			cc = c
-			stop = func() {}
+			stop = func() {
+				// do nothing
+			}
 		}
 
 		clusters := c.All()
@@ -174,16 +176,7 @@ func initCC() {
 		case 0:
 			cc0 = c
 		case 1:
-			switch clusters[0].ClusterID {
-			case 1:
-				cc1 = c
-			case 2:
-				cc2 = c
-			case 3:
-				cc3 = c
-			default:
-				stop()
-			}
+			cc1, cc2, cc3 = handleClusterId(c, cc1, cc2, cc3, clusters[0].ClusterID, stop)
 		default:
 			stop()
 		}
@@ -210,6 +203,21 @@ func initCC() {
 		stableCluster.Store(data)
 		cc19 = newCC()
 	}
+}
+
+func handleClusterId(c, cc1, cc2, cc3 controller.ClusterController, clusterId proto.ClusterID, stop func()) (c1, c2, c3 controller.ClusterController) {
+	c1, c2, c3 = cc1, cc2, cc3
+	switch clusterId {
+	case 1:
+		c1 = c
+	case 2:
+		c2 = c
+	case 3:
+		c3 = c
+	default:
+		stop()
+	}
+	return
 }
 
 func newCC() controller.ClusterController {

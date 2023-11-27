@@ -1515,4 +1515,6 @@ func (c *client) fileSize(ino uint64) (size int, gen uint64) {
 	return
 }
 
-func main() {}
+func main() {
+	// do nothing
+}

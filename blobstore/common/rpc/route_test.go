@@ -64,13 +64,17 @@ func TestServerRouterMaxHandlers(t *testing.T) {
 	{
 		router := New()
 		router.Use(make([]HandlerFunc, abortIndex-2)...)
-		router.Handle(http.MethodGet, "/", func(c *Context) {})
+		router.Handle(http.MethodGet, "/", func(c *Context) {
+			// do nothing
+		})
 	}
 	{
 		router := New()
 		router.Use(make([]HandlerFunc, abortIndex-1)...)
 		require.Panics(t, func() {
-			router.Handle(http.MethodGet, "/", func(c *Context) {})
+			router.Handle(http.MethodGet, "/", func(c *Context) {
+				// do nothing
+			})
 		})
 	}
 	{

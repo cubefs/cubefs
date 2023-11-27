@@ -46,6 +46,7 @@ func (s *testSnapshot) Read() ([]byte, error) {
 }
 
 func (s *testSnapshot) Close() {
+	// do nothing
 }
 
 func TestSnapshotter(t *testing.T) {

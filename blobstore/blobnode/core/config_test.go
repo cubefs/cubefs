@@ -38,7 +38,9 @@ func TestInitConfig(t *testing.T) {
 	err = InitConfig(conf)
 	require.Error(t, err)
 
-	conf.HandleIOError = func(ctx context.Context, diskID proto.DiskID, diskErr error) {}
+	conf.HandleIOError = func(ctx context.Context, diskID proto.DiskID, diskErr error) {
+		// do nothing
+	}
 	err = InitConfig(conf)
 	require.Error(t, err)
 }

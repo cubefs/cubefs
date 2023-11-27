@@ -53,9 +53,9 @@ func NewQueryAuth(r *http.Request) (Auther, error) {
 			return auth, auth.parseSignV4()
 		}
 		return nil, ErrInvalidAuthQueryParams
+	default:
+		return nil, MissingSecurityElement
 	}
-
-	return nil, MissingSecurityElement
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html#RESTAuthenticationQueryStringAuth
@@ -77,6 +77,8 @@ func (auth *QueryAuth) parseSignV2() error {
 			auth.credential.Expires = expires
 		case Signature:
 			auth.signature = val
+		default:
+			// do nothing
 		}
 	}
 
@@ -120,6 +122,8 @@ func (auth *QueryAuth) parseSignV4() error {
 			auth.credential.Request = cred[4]
 		case XAmzSignedHeaders:
 			auth.signedHeaders = strings.Split(val, ";")
+		default:
+			// do nothing
 		}
 	}
 
@@ -143,8 +147,9 @@ func (auth *QueryAuth) IsExpired() bool {
 		ltime := ts.Add(-MaxRequestSkewedSeconds * time.Second)
 		rtime := ts.Add(time.Duration(auth.credential.Expires) * time.Second)
 		return !(now.After(ltime) && now.Before(rtime))
+	default:
+		return true
 	}
-	return true
 }
 
 func (auth *QueryAuth) IsSkewed() bool {
@@ -185,8 +190,9 @@ func (auth *QueryAuth) SignatureMatch(secretKey string, wildcards Wildcards) boo
 		return auth.signature == auth.buildSignatureV2(secretKey, wildcards)
 	case signatureV4:
 		return auth.signature == auth.buildSignatureV4(secretKey)
+	default:
+		return false
 	}
-	return false
 }
 
 func (auth *QueryAuth) buildSignatureV2(secretKey string, wildcards Wildcards) string {

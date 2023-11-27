@@ -167,7 +167,9 @@ type mockWriter struct{}
 
 func (mockWriter) Write(data []byte) (int, error) { return len(data), nil }
 func (mockWriter) Header() http.Header            { return http.Header{} }
-func (mockWriter) WriteHeader(statusCode int)     {}
+func (mockWriter) WriteHeader(statusCode int) {
+	// do nothing
+}
 
 func TestNewService(t *testing.T) {
 	cfg := *testServiceCfg

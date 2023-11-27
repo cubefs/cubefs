@@ -46,9 +46,9 @@ func NewHeaderAuth(r *http.Request) (Auther, error) {
 		auth.version = signatureV4
 		auth.algorithm = authFields[0]
 		return auth, auth.parseSignV4(authFields[1])
+	default:
+		return nil, ErrInvalidAuthHeader
 	}
-
-	return nil, ErrInvalidAuthHeader
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html#ConstructingTheAuthenticationHeader
@@ -188,8 +188,9 @@ func (auth *HeaderAuth) SignatureMatch(secretKey string, wildcards Wildcards) bo
 			signature = auth.buildSignatureV4(secretKey)
 		}
 		return auth.signature == signature
+	default:
+		return false
 	}
-	return false
 }
 
 func (auth *HeaderAuth) buildSignatureV2(secretKey string, wildcards Wildcards) string {
