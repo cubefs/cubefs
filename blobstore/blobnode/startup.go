@@ -33,6 +33,7 @@ import (
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
@@ -256,6 +257,12 @@ func NewService(conf Config) (svr *Service, err error) {
 		closeCh: make(chan struct{}),
 	}
 
+	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
+	svr.inspectMgr, err = NewDataInspectMgr(svr, conf.InspectConf, switchMgr)
+	if err != nil {
+		return nil, err
+	}
+
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
 
 	wg := sync.WaitGroup{}
@@ -364,7 +371,7 @@ func NewService(conf Config) (svr *Service, err error) {
 	go svr.loopReportChunkInfoToClusterMgr()
 	go svr.loopGcRubbishChunkFile()
 	go svr.loopCleanExpiredStatFile()
-	go svr.loopDataInspect()
+	go svr.inspectMgr.loopDataInspect()
 
 	return
 }

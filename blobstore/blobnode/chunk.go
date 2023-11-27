@@ -122,7 +122,7 @@ func (s *Service) ChunkInspect(c *rpc.Context) {
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
-	badShards, err := startInspect(ctx, cs)
+	badShards, err := s.inspectMgr.inspectChunk(ctx, cs)
 	if err != nil {
 		c.RespondError(err)
 		return

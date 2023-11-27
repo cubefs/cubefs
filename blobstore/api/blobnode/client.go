@@ -61,6 +61,10 @@ type ConfigReloadArgs struct {
 	Value string `json:"value"`
 }
 
+type InspectRateArgs struct {
+	Rate int `json:"rate"`
+}
+
 type DiskStatArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 }
