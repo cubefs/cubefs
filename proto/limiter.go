@@ -8,4 +8,5 @@ const (
 	OpExtentRepairReadToComputeCrc_
 	OpExtentReadToGetCrc_
 	OpFlushDelete_
+	OpFetchDataPartitionView
 )

@@ -130,7 +130,11 @@ func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint6
 		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
 	}
 	var dataPartitionInfo *proto.DataPartitionInfo
-	dataPartitionInfo, err = f.masterDomainClient.AdminAPI().GetDataPartition(volName, dpID)
+	client := f.masterDomainClient
+	if client == nil {
+		client = f.masterClient
+	}
+	dataPartitionInfo, err = client.AdminAPI().GetDataPartition(volName, dpID)
 	if err != nil {
 		return
 	}
@@ -151,7 +155,11 @@ func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dp
 		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
 	}
 	var dataPartitionInfo *proto.DataPartitionInfo
-	dataPartitionInfo, err = f.masterDomainClient.AdminAPI().GetDataPartition(volName, dpID)
+	client := f.masterDomainClient
+	if client == nil {
+		client = f.masterClient
+	}
+	dataPartitionInfo, err = client.AdminAPI().GetDataPartition(volName, dpID)
 	if err != nil {
 		return
 	}

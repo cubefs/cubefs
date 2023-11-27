@@ -138,7 +138,7 @@ const (
 	OpSyncVirtualMetaPartitions       uint8 = 0x4E // Deprecated
 	//OpAddVirtualMetaPartition         uint8 = 0x4F // Deprecated
 
-	OpAddVirtualMetaPartition uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
+	OpAddVirtualMetaPartition          uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
 	OpMetaGetExtentsNoModifyAccessTime uint8 = 0x5B
 
 	// Operations client-->datanode
@@ -192,9 +192,9 @@ const (
 	OpMetaBatchEvictInode   uint8 = 0x93
 
 	//inode reset
-	OpMetaCursorReset   uint8 = 0x94
-	OpMetaGetCmpInode   uint8 = 0x95
-	OpMetaInodeMergeEks uint8 = 0x96
+	OpMetaCursorReset     uint8 = 0x94
+	OpMetaGetCmpInode     uint8 = 0x95
+	OpMetaInodeMergeEks   uint8 = 0x96
 	OpMetaFileMigMergeEks uint8 = 0x97
 
 	//Operations: Master -> CodecNode
@@ -225,9 +225,6 @@ const (
 	OpFlashNodeHeartbeat uint8 = 0xD0
 	OpCacheRead          uint8 = 0xD1
 	OpCachePrepare       uint8 = 0xD2
-
-	//just for rate limit code
-	OpFetchDataPartitionView uint8 = 0xDF
 
 	// Commons
 	OpInodeMergeErr    uint8 = 0xF1
