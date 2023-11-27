@@ -1347,7 +1347,7 @@ func TestOpCommitVersion(t *testing.T) {
 		assert.True(t, mList[0].Status == proto.VersionPrepare)
 	}
 	err = managerVersionPrepare(&proto.MultiVersionOpRequest{VolumeID: VolNameForTest, Op: proto.CreateVersionPrepare, VerSeq: 5000})
-	assert.True(t, err != nil)
+	assert.True(t, err == nil)
 	for _, m := range manager.partitions {
 		mList := m.GetVerList()
 		assert.True(t, len(mList) == 1)

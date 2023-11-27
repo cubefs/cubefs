@@ -1603,7 +1603,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 		param.mpId, param.mpVer, i.Inode, i.getVer(), param.ek, i.getLayerLen())
 
 	if param.mpVer != i.getVer() {
-		log.LogDebugf("action[AppendExtentWithCheck] mpId[%v].inode ver %v", param.mpId, i.getVer())
+		log.LogInfof("action[AppendExtentWithCheck] mpId[%v].inode ver %v", param.mpId, i.getVer())
 		i.CreateVer(param.mpVer)
 	}
 

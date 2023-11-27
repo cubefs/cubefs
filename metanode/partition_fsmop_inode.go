@@ -503,8 +503,8 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		return
 	}
 
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] mp %v ino %v isSplit %v ek %v hist len %v discardExtentKey %v",
-		mp.config.PartitionId, fsmIno.Inode, isSplit, eks[0], fsmIno.getLayerLen(), discardExtentKey)
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] mp %v ver %v ino %v isSplit %v ek %v hist len %v discardExtentKey %v",
+		mp.config.PartitionId, mp.verSeq, fsmIno.Inode, isSplit, eks[0], fsmIno.getLayerLen(), discardExtentKey)
 
 	appendExtParam := &AppendExtParam{
 		mpId:             mp.config.PartitionId,

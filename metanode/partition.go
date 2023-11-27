@@ -683,7 +683,7 @@ func (mp *metaPartition) versionInit(isCreate bool) (err error) {
 		mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, info)
 	}
 
-	log.LogDebugf("action[onStart] verList %v", mp.multiVersionList.VerList)
+	log.LogDebugf("action[onStart] mp %v verList %v", mp.config.PartitionId, mp.multiVersionList.VerList)
 	vlen := len(mp.multiVersionList.VerList)
 	if vlen > 0 {
 		mp.verSeq = mp.multiVersionList.VerList[vlen-1].Ver

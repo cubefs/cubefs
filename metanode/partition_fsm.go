@@ -479,9 +479,7 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		if cnt > 0 {
 			lastVersion := mp.multiVersionList.VerList[cnt-1]
 			if lastVersion.Ver > opData.VerSeq {
-				err = fmt.Errorf("reqeust seq %v less than last exist snapshot seq %v",
-					opData.VerSeq, lastVersion.Ver)
-				log.LogErrorf("action[HandleVersionOp] createVersionPrepare err %v", err)
+				log.LogWarnf("action[HandleVersionOp] createVersionPrepare reqeust seq %v less than last exist snapshot seq %v", opData.VerSeq, lastVersion.Ver)
 				return
 			} else if lastVersion.Ver == opData.VerSeq {
 				log.LogWarnf("action[HandleVersionOp] CreateVersionPrepare request seq %v already exist status %v", opData.VerSeq, lastVersion.Status)
@@ -500,13 +498,13 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		cnt := len(mp.multiVersionList.VerList)
 		if cnt > 0 {
 			if mp.multiVersionList.VerList[cnt-1].Ver > opData.VerSeq {
-				log.LogWarnf("action[HandleVersionOp] mp[%v] reqeust seq %v less than last exist snapshot seq %v", mp.config.PartitionId,
-					mp.multiVersionList.VerList[cnt-1].Ver, opData.VerSeq)
+				log.LogWarnf("action[fsmVersionOp] mp[%v] reqeust seq %v less than last exist snapshot seq %v", mp.config.PartitionId,
+					opData.VerSeq, mp.multiVersionList.VerList[cnt-1].Ver)
 				return
 			}
 			if mp.multiVersionList.VerList[cnt-1].Ver == opData.VerSeq {
 				if mp.multiVersionList.VerList[cnt-1].Status != proto.VersionPrepare {
-					log.LogWarnf("action[HandleVersionOp] reqeust seq %v Equal last exist snapshot seq %v but with status %v",
+					log.LogWarnf("action[fsmVersionOp] mp[%v] reqeust seq %v Equal last exist snapshot seq %v but with status %v", mp.config.PartitionId,
 						mp.multiVersionList.VerList[cnt-1].Ver, opData.VerSeq, mp.multiVersionList.VerList[cnt-1].Status)
 				}
 				mp.multiVersionList.VerList[cnt-1].Status = proto.VersionNormal
@@ -542,7 +540,6 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 		log.LogInfof("action[fsmVersionOp] mp %v before update:with seq %v verlist %v opData.VerList %v",
 			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList, opData.VerList)
 
-		mp.verSeq = opData.VerSeq
 		lastVer := mp.multiVersionList.GetLastVer()
 		for _, info := range opData.VerList {
 			if info.Ver > lastVer {
@@ -551,6 +548,7 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 					mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
 			}
 		}
+		mp.verSeq = mp.multiVersionList.GetLastVer()
 		log.LogInfof("action[fsmVersionOp] updateVerList mp %v after update:with seq %v verlist %v",
 			mp.config.PartitionId, mp.verSeq, mp.multiVersionList.VerList)
 	} else {
