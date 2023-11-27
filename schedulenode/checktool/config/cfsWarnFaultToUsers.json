@@ -1,0 +1,21 @@
+{
+  "WarnFaultToUsersCheckInterval": 600,
+  "WarnFaultToUsers": [
+    {
+      "ClusterDomain": "chubaofs.cluster.domain",
+      "Users": [
+        {
+          "UserName": "hbase",
+          "Zones": [
+            "lf_hbase_ssd",
+            "lf_hbase_hdd",
+            "rh_hbase_ssd",
+            "rh_hbase_hdd"
+          ],
+          "TargetGid": 111,
+          "AppName": "Storage-Bot"
+        }
+      ]
+    }
+  ]
+}

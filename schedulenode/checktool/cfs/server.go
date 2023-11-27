@@ -55,7 +55,7 @@ const (
 	UMPCFSInodeCountDiffWarnKey             = checktool.UmpKeyStorageBotPrefix + "cfs.inode.count.diff"
 	UMPCFSRapidMemIncreaseWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.rapid.mem.increase"
 	UMPCFSMySqlMemWarnKey                   = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
-	UMPCFSSparkFixPartitionKey              = checktool.UmpKeyStorageBotPrefix + "cfs.fix_lack_replica"
+	UMPCFSSparkFixPartitionKey              = checktool.UmpKeyStorageBotPrefix + "cfs.fix_bad_replica"
 	UMPCFSSparkFlashNodeVersionKey          = checktool.UmpKeyStorageBotPrefix + "cfs.flashnode.version"
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024

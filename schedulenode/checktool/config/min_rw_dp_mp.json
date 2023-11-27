@@ -1,0 +1,9 @@
+{
+  "MinRWDPAndMPVols": [
+    {
+      "host": "chubaofs.cluster.domain",
+      "volName": "ltptest",
+      "minRWMPCount": 30
+    }
+  ]
+}

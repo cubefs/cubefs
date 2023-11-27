@@ -1,0 +1,12 @@
+{
+  "intervalHour": 8,
+  "isEnable": false,
+  "cfsDomains": [
+    {
+      "host": "chubaofs.cluster.domain",
+      "isEnable": true,
+      "dataNodeHttpPort": "6001",
+      "timeLocation": "Europe/Amsterdam"
+    }
+  ]
+}
