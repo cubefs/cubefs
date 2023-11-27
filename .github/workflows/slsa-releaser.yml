@@ -1,0 +1,57 @@
+name: SLSA Releaser
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  args:
+    runs-on: ubuntu-latest
+    outputs:
+      build-time: ${{ steps.ldflags.outputs.build-time }}
+      commit-id: ${{ steps.ldflags.outputs.commit-id }}
+      version: ${{ steps.ldflags.outputs.version }}
+      branch-name: ${{ steps.ldflags.outputs.branch-name }}
+    steps:
+      - id: checkout
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+        with:
+          fetch-depth: 0
+      - id: setupgo
+        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.4.0
+        with:
+          go-version: 1.17
+      - id: ldflags
+        run: |
+          echo "build-time=$(date +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+          echo "commit-id=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$(git describe --abbrev=0 --tags)" >> "$GITHUB_OUTPUT"
+          echo "branch-name=$(git rev-parse --abbrev-ref HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    strategy:
+      matrix:
+        binary:
+          - authtool
+          - bcache
+          - client
+          - fdstore
+          - fsck
+          - preload
+        os:
+          - linux
+        arch:
+          - amd64
+    needs: args
+    uses: slsa-framework/slsa-github-generator/.github/workflows/builder_go_slsa3.yml@07e64b653f10a80b6510f4568f685f8b7b9ea830
+    with:
+      go-version: 1.17
+      config-file: .github/slsa/slsa-${{matrix.binary}}-${{matrix.os}}-${{matrix.arch}}.yml
+      evaluated-envs: "BUILD_TIME:${{needs.args.outputs.build-time}}, COMMIT_ID:${{needs.args.outputs.commit-id}}, VERSION:${{needs.args.outputs.version}}, BRANCH_NAME:${{needs.args.outputs.branch-name}}"
+      compile-builder: true
