@@ -1,0 +1,23 @@
+version: 1
+
+env:
+  - CGO_ENABLED=0
+
+flags:
+  - -trimpath
+
+goos: linux
+goarch: amd64
+
+# (Optional) Entrypoint to compile.
+main: ./fdstore/fdstore.go
+
+binary: fdstore-{{ .Os }}-{{ .Arch }}
+
+ldflags:
+  - "-X github.com/cubefs/cubefs/proto.Version={{ .Env.VERSION }}"
+  - "-X github.com/cubefs/cubefs/proto.CommitID={{ .Env.COMMIT_ID }}"
+  - "-X github.com/cubefs/cubefs/proto.BranchName={{ .Env.BRANCH_NAME }}"
+  - "-X github.com/cubefs/cubefs/proto.BuildTime={{ .Env.BUILD_TIME }}"
+  - "-X github.com/cubefs/cubefs/blobstore/util/version.version={{ .Env.BRANCH_NAME }}/{{ .Env.COMMIT_ID }}"
+  - "-w -s"
