@@ -1265,6 +1265,11 @@ int cfs_meta_delete(struct cfs_meta_client *mc, u64 parent_ino,
 		ret = ret < 0 ? ret : -ret;
 		goto unlock;
 	}
+	ret = cfs_meta_ievict_internal(mc, mp, ino);
+	if (ret != 0) {
+		ret = ret < 0 ? ret : -ret;
+		goto unlock;
+	}
 	if (ret_ino)
 		*ret_ino = ino;
 
