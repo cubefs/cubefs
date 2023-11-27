@@ -520,10 +520,25 @@ func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Sta
 				ctx, cancel = context.WithTimeout(ctx, timeout)
 				defer cancel()
 			}
-			if err = limiter.WaitN(ctx, stat.val(statType(i))); err != nil {
+			if err = waitN(limiter, ctx, stat.val(statType(i))); err != nil {
 				return
 			}
 		}
+	}
+	return
+}
+
+func waitN(lim *rate.Limiter, ctx context.Context, n int) (err error) {
+	if err = lim.WaitN(ctx, n); err == nil {
+		return
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return
+	}
+	now := time.Now()
+	if deadline.After(now) {
+		time.Sleep(deadline.Sub(now))
 	}
 	return
 }

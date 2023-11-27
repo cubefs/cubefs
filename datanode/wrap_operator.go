@@ -628,13 +628,11 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	offset := p.ExtentOffset
 	store := partition.ExtentStore()
 	if isRepairRead {
-		release, err := partition.acquire(int(proto.OpExtentRepairRead))
+		err = multirate.WaitConcurrency(context.Background(), int(proto.OpExtentRepairRead), partition.disk.Path)
 		if err != nil {
 			return
 		}
-		defer func() {
-			release()
-		}()
+		defer multirate.DoneConcurrency(int(proto.OpExtentRepairRead), partition.disk.Path)
 	}
 
 	// isForceRead 函数用来检查读请求包是否有强制读表示，强制读请求会不检查请求所读数据区域是否存在风险
@@ -974,13 +972,11 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 
 	partition := request.Object.(*DataPartition)
 
-	release, err := partition.acquire(int(proto.OpTinyExtentRepairRead))
+	err = multirate.WaitConcurrency(context.Background(), int(proto.OpTinyExtentRepairRead), partition.disk.Path)
 	if err != nil {
 		return
 	}
-	defer func() {
-		release()
-	}()
+	defer multirate.DoneConcurrency(int(proto.OpTinyExtentRepairRead), partition.disk.Path)
 
 	store := partition.ExtentStore()
 	tinyExtentFinfoSize, err = store.TinyExtentGetFinfoSize(request.ExtentID)

@@ -63,11 +63,14 @@ func TestMultiRate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 
-	var err error
+	var (
+		err error
+		ok  bool
+	)
 	err = ml.Wait(ctx, Properties{{PropertyTypeVol, restrictedVol}})
 	assert.Nil(t, err)
-	err = ml.Wait(ctx, Properties{{PropertyTypeVol, restrictedVol}})
-	assert.NotNil(t, err)
+	ok = ml.Allow(Properties{{PropertyTypeVol, restrictedVol}})
+	assert.False(t, ok)
 
 	err = ml.WaitN(ctx, Properties{{PropertyTypeVol, "vol1"}, {PropertyTypeOp, "read"}}, Stat{Count: 9})
 	assert.Nil(t, err)
@@ -99,17 +102,20 @@ func TestCompoundRate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 
-	var err error
+	var (
+		err error
+		ok  bool
+	)
 	err = ml.WaitN(ctx, Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, "write"}}, Stat{Count: 2})
 	assert.Nil(t, err)
 	err = ml.WaitN(ctx, Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, "read"}}, Stat{Count: 2})
 	assert.Nil(t, err)
-	err = ml.Wait(ctx, Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, "read"}})
-	assert.NotNil(t, err)
+	ok = ml.Allow(Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, "read"}})
+	assert.False(t, ok)
 	err = ml.WaitN(ctx, Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, "write"}}, Stat{Count: 3})
 	assert.Nil(t, err)
-	err = ml.Wait(ctx, Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, "write"}})
-	assert.NotNil(t, err)
+	ok = ml.Allow(Properties{{PropertyTypeVol, vol}, {PropertyTypeOp, "write"}})
+	assert.False(t, ok)
 	err = ml.Wait(ctx, Properties{{PropertyTypeVol, vol}})
 	assert.Nil(t, err)
 	// the previous two failed events may have not executed r1

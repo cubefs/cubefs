@@ -131,7 +131,7 @@ func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint6
 	}
 	var dataPartitionInfo *proto.DataPartitionInfo
 	client := f.masterDomainClient
-	if client == nil {
+	if client == nil || len(client.Nodes()) == 0 {
 		client = f.masterClient
 	}
 	dataPartitionInfo, err = client.AdminAPI().GetDataPartition(volName, dpID)
@@ -155,11 +155,7 @@ func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dp
 		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
 	}
 	var dataPartitionInfo *proto.DataPartitionInfo
-	client := f.masterDomainClient
-	if client == nil {
-		client = f.masterClient
-	}
-	dataPartitionInfo, err = client.AdminAPI().GetDataPartition(volName, dpID)
+	dataPartitionInfo, err = f.masterClient.AdminAPI().GetDataPartition(volName, dpID)
 	if err != nil {
 		return
 	}
@@ -408,7 +404,7 @@ func (f *FetchTopologyManager) updateVolumeConfSchedule() (err error) {
 }
 
 func (f *FetchTopologyManager) fetchDataPartitionsView(volumeName string, dpsID []uint64) (dataPartitions *proto.DataPartitionsView, err error) {
-	if f.masterDomainClient == nil {
+	if f.masterDomainClient == nil || len(f.masterDomainClient.Nodes()) == 0 {
 		return f.masterClient.ClientAPI().GetDataPartitions(volumeName, dpsID)
 	}
 
@@ -428,7 +424,7 @@ func (f *FetchTopologyManager) fetchDataPartitionsView(volumeName string, dpsID 
 }
 
 func (f *FetchTopologyManager) getVolsConf() (volsConf []*proto.VolInfo, err error) {
-	if f.masterDomainClient == nil {
+	if f.masterDomainClient == nil || len(f.masterDomainClient.Nodes()) == 0 {
 		return f.masterClient.AdminAPI().ListVols("")
 	}
 

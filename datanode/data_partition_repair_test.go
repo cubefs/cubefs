@@ -447,7 +447,6 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 		persistSync:             make(chan struct{}, 1),
 		inRepairExtents:         make(map[uint64]struct{}),
 		applyStatus:             NewWALApplyStatus(),
-		limiter:                 fakeNode.limiterManager,
 		config: &dataPartitionCfg{
 			VolHAType: proto.DefaultCrossRegionHAType,
 		},

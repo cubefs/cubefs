@@ -26,7 +26,6 @@ import (
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/async"
-	"github.com/cubefs/cubefs/util/concurrent"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -125,7 +124,6 @@ func (f WriterAtFunc) WriteAt(b []byte, off int64) (n int, err error) {
 type Fixer struct {
 	path            string
 	partitionID     uint64
-	diskLimiter     DiskLimiter
 	connPool        *connpool.ConnectPool
 	indexes         []*fragmentIndex
 	indexNextOffset int64
@@ -138,11 +136,11 @@ type Fixer struct {
 	persistSyncCh   chan struct{}
 	codecReuseBuf   []byte
 	persistFp       *os.File
-	fixLimiter      *concurrent.Limiter
-
-	workers    int32
-	workerStop func()
-	statusMu   sync.Mutex
+	diskLimiter     DiskLimiter
+	diskPath        string
+	workers         int32
+	workerStop      func()
+	statusMu        sync.Mutex
 }
 
 func (p *Fixer) Start() {
@@ -516,7 +514,7 @@ func (p *Fixer) applyTempFileToExtent(f *os.File, extentID, offset, size uint64)
 			return
 		}
 		var crc = crc32.ChecksumIEEE(buf[:readSize])
-		err = p.diskLimiter(context.Background(), proto.OpExtentRepairWriteToApplyTempFile_, uint32(readSize), multirate.FlowDisk)
+		err = p.diskLimiter(context.Background(), proto.OpExtentRepairWrite_, uint32(readSize), multirate.FlowDisk)
 		if err != nil {
 			return
 		}
@@ -577,10 +575,12 @@ func (p *Fixer) createRepairTmpFile(host string, extentID, offset, size uint64) 
 }
 
 func (p *Fixer) checkAndFixFragment(fragment *Fragment) FixResult {
-	if p.fixLimiter != nil {
-		p.fixLimiter.Add()
-		defer p.fixLimiter.Done()
+	err := multirate.WaitConcurrency(context.Background(), proto.OpExtentRepairWrite_, p.diskPath)
+	if err != nil {
+		return Retry
 	}
+	defer multirate.DoneConcurrency(proto.OpExtentRepairWrite_, p.diskPath)
+
 	var remoteHosts = p.getRemotes()
 	var haType = p.getHAType()
 
@@ -821,7 +821,7 @@ func (p *Fixer) closeFp() (err error) {
 }
 
 func NewFixer(partitionID uint64, path string, storage *storage.ExtentStore, getRemotes GetRemotesFunc, getHAType GetHATypeFunc,
-	fragments []*Fragment, limiter *concurrent.Limiter, connPool *connpool.ConnectPool, diskLimiter DiskLimiter) (*Fixer, error) {
+	fragments []*Fragment, connPool *connpool.ConnectPool, diskPath string) (*Fixer, error) {
 	var err error
 	var p = &Fixer{
 		partitionID:   partitionID,
@@ -830,13 +830,12 @@ func NewFixer(partitionID uint64, path string, storage *storage.ExtentStore, get
 		getRemotes:    getRemotes,
 		getHAType:     getHAType,
 		persistSyncCh: make(chan struct{}, 1),
-		fixLimiter:    limiter,
 		queue:         list.New(),
 		indexes:       make([]*fragmentIndex, 0, 16),
 		codecReuseBuf: make([]byte, fragmentBinaryLength),
 		connPool:      connPool,
 		persistFp:     nil,
-		diskLimiter:   diskLimiter,
+		diskPath:      diskPath,
 	}
 	if err = p.initFragments(); err != nil {
 		return nil, err

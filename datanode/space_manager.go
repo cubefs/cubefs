@@ -28,7 +28,6 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/tiglabs/raft/util"
 )
@@ -56,7 +55,6 @@ type SpaceManager struct {
 	flushFDIntervalSec             uint32
 	flushFDParallelismOnDisk       uint64
 	fetchTopoManager               *fetchtopology.FetchTopologyManager
-	limiter                        *multirate.LimiterManager
 }
 
 // NewSpaceManager creates a new space manager.
@@ -71,7 +69,6 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 		fixTinyDeleteRecordLimitOnDisk: DefaultFixTinyDeleteRecordLimitOnDisk,
 		repairTaskLimitOnDisk:          DefaultRepairTaskLimitOnDisk,
 		normalExtentDeleteExpireTime:   DefaultNormalExtentDeleteExpireTime,
-		limiter:                        dataNode.limiterManager,
 		fetchTopoManager:               dataNode.fetchTopoManager,
 	}
 	async.RunWorker(space.statUpdateScheduler, func(i interface{}) {
@@ -223,7 +220,7 @@ func (manager *SpaceManager) LoadDisk(path *DiskPath, expired CheckExpired) (err
 			RepairTaskLimit:          manager.repairTaskLimitOnDisk,
 		}
 		var startTime = time.Now()
-		if disk, err = OpenDisk(path.Path(), config, manager, DiskLoadPartitionParallelism, manager.limiter, manager.fetchTopoManager, expired); err != nil {
+		if disk, err = OpenDisk(path.Path(), config, manager, DiskLoadPartitionParallelism, manager.fetchTopoManager, expired); err != nil {
 			return
 		}
 		manager.putDisk(disk)

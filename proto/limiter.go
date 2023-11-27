@@ -9,4 +9,5 @@ const (
 	OpExtentReadToGetCrc_
 	OpFlushDelete_
 	OpFetchDataPartitionView
+	OpFixIssueFragments_
 )
