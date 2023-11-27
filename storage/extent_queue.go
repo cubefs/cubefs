@@ -517,6 +517,7 @@ func (q *ExtentQueue) openRecordFileReader(rf *recordFile, offset int64) (reader
 	}
 	if offset != 0 {
 		if _, err = fp.Seek(offset, queueRecordFileSeekWhence); err != nil {
+			_ = fp.Close()
 			return
 		}
 	}
@@ -659,11 +660,10 @@ func (q *ExtentQueue) __produce(recs ...*record) (err error) {
 			}
 			q.rfsMu.Lock()
 			var last = q.rfs.new()
+			q.rfsMu.Unlock()
 			if q.writer, err = q.openRecordFileWriter(last); err != nil {
-				q.rfsMu.Unlock()
 				return
 			}
-			q.rfsMu.Unlock()
 		}
 	}
 	err = q.writer.Flush()
@@ -726,6 +726,9 @@ func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) 
 	var rec = getRecord()
 	defer returnRecord(rec)
 	rfs.walk(func(rf *recordFile) bool {
+		if rf.size() == 0 {
+			return true
+		}
 		var seq = rf.seq()
 		if seq < si.seq {
 			return true
@@ -739,7 +742,6 @@ func (q *ExtentQueue) __walk(si recordIndex, visitor recordVisitor) (err error) 
 		}
 		reader, err = q.openRecordFileReader(rf, off)
 		if os.IsNotExist(err) || err == io.EOF {
-			_ = reader.Close()
 			err = nil
 			return true
 		}
