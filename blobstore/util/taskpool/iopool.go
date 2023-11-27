@@ -126,9 +126,10 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 		go func() {
 			defer pool.wg.Done()
 			for task := range pool.queue[idx] {
-				pool.reportMetric(opDequeue, task.tm)
+				start := time.Now()
+				pool.reportMetric(opDequeue, task.tm) // from enqueue to dequeue
 				task.fn()
-				pool.reportMetric(opOnDisk, task.tm)
+				pool.reportMetric(opOnDisk, start) // from dequeue to op done
 				task.done <- struct{}{}
 			}
 			log.Debug("close io pool")
