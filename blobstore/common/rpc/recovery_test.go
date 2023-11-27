@@ -31,7 +31,9 @@ func TestServerRecovery(t *testing.T) {
 		router.Use(func(c *Context) {
 			panic("in interceptor")
 		})
-		router.Handle(http.MethodGet, "/", func(c *Context) {})
+		router.Handle(http.MethodGet, "/", func(c *Context) {
+			// do nothing
+		})
 
 		w := new(mockResponseWriter)
 		req, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -42,7 +44,9 @@ func TestServerRecovery(t *testing.T) {
 	{
 		router := New()
 		router.Router.PanicHandler = defaultRecovery
-		router.Use(func(c *Context) {})
+		router.Use(func(c *Context) {
+			// do nothing
+		})
 		router.Handle(http.MethodGet, "/", func(c *Context) {
 			panic("in app")
 		})
@@ -56,7 +60,9 @@ func TestServerRecovery(t *testing.T) {
 	{
 		router := New()
 		router.Router.PanicHandler = defaultRecovery
-		router.Use(func(c *Context) {})
+		router.Use(func(c *Context) {
+			// do nothing
+		})
 		router.Handle(http.MethodGet, "/", func(c *Context) {
 			panic(&net.OpError{
 				Err: &os.SyscallError{
@@ -83,7 +89,9 @@ func TestServerRecovery(t *testing.T) {
 				},
 			})
 		})
-		router.Handle(http.MethodGet, "/", func(c *Context) {})
+		router.Handle(http.MethodGet, "/", func(c *Context) {
+			// do nothing
+		})
 
 		w := new(mockResponseWriter)
 		req, _ := http.NewRequest(http.MethodGet, "/", nil)

@@ -134,7 +134,9 @@ func TestServerAbortStatus(t *testing.T) {
 
 	{
 		router := New()
-		router.Use(func(c *Context) {})
+		router.Use(func(c *Context) {
+			// do nothing
+		})
 		router.Handle(http.MethodGet, "/", func(c *Context) { c.Respond() })
 		w := resp(router)
 		require.Equal(t, 200, w.status)
@@ -142,7 +144,9 @@ func TestServerAbortStatus(t *testing.T) {
 	}
 	{
 		router := New()
-		router.Use(func(c *Context) {})
+		router.Use(func(c *Context) {
+			// do nothing
+		})
 		router.Handle(http.MethodGet, "/", func(c *Context) { c.RespondStatus(200) })
 		w := resp(router)
 		require.Equal(t, 200, w.status)
@@ -150,8 +154,12 @@ func TestServerAbortStatus(t *testing.T) {
 	}
 	{
 		router := New()
-		router.Use(func(c *Context) {})
-		router.Handle(http.MethodGet, "/", func(c *Context) {})
+		router.Use(func(c *Context) {
+			// do nothing
+		})
+		router.Handle(http.MethodGet, "/", func(c *Context) {
+			// do nothing
+		})
 		w := resp(router)
 		require.Equal(t, 200, w.status)
 		require.Equal(t, "", w.Header().Get(HeaderContentLength))
@@ -363,7 +371,9 @@ func TestServerResponseWith(t *testing.T) {
 
 	{
 		router := New()
-		router.Use(func(c *Context) {})
+		router.Use(func(c *Context) {
+			// do nothing
+		})
 		router.Handle(http.MethodGet, "/", func(c *Context) { c.Respond() })
 		w := resp(router)
 		require.Equal(t, 0, len(w.body))
@@ -377,7 +387,9 @@ func TestServerResponseWith(t *testing.T) {
 	}
 	{
 		router := New()
-		router.Use(func(c *Context) {})
+		router.Use(func(c *Context) {
+			// do nothing
+		})
 		router.Handle(http.MethodGet, "/", func(c *Context) { c.RespondStatusData(255, nil) })
 		w := resp(router)
 		require.Equal(t, 255, w.status)
@@ -385,7 +397,9 @@ func TestServerResponseWith(t *testing.T) {
 	}
 	{
 		router := New()
-		router.Use(func(c *Context) {})
+		router.Use(func(c *Context) {
+			// do nothing
+		})
 		router.Handle(http.MethodGet, "/", func(c *Context) { c.RespondStatusData(255, NoneBody) })
 		w := resp(router)
 		require.Equal(t, 255, w.status)

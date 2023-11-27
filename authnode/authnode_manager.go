@@ -63,6 +63,8 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 	case proto.ConfRemoveNode:
 		m.raftStore.DeleteNode(confChange.Peer.ID)
 		msg = fmt.Sprintf("clusterID[%v] peerID:%v,nodeAddr[%v] has been removed", m.clusterName, confChange.Peer.ID, addr)
+	default:
+		// do nothing
 	}
 	log.LogWarnf(msg)
 	return

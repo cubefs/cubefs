@@ -1621,6 +1621,8 @@ func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPRe
 		dn := httpReply.Data.(*DataNode)
 		dn.RLock()
 		defer dn.RUnlock()
+	default:
+		// do nothing
 	}
 
 	reply, err := json.Marshal(httpReply)

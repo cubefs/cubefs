@@ -630,7 +630,7 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 	}()
 }
 func (c *Cluster) passAclCheck(ip string) {
-
+	// do nothing
 }
 
 func (c *Cluster) checkLeaderAddr() {

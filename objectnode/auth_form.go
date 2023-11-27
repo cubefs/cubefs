@@ -48,9 +48,9 @@ func NewFormAuth(r *http.Request) (Auther, error) {
 		auth.version = signatureV4
 		auth.algorithm = signV4Algorithm
 		return auth, auth.parseSignV4()
+	default:
+		return nil, MissingSecurityElement
 	}
-
-	return nil, MissingSecurityElement
 }
 
 // https://docs.aws.amazon.com/AmazonS3/latest/userguide/HTTPPOSTForms.html
@@ -111,6 +111,8 @@ func (auth *FormAuth) parseSignV4() error {
 				return ErrMalformedXAmzDate
 			}
 			auth.credential.TimeStamp = val
+		default:
+			// do nothing
 		}
 	}
 

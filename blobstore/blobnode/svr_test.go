@@ -656,9 +656,11 @@ func (mcm *mockClusterMgr) DiskSet(c *rpc.Context) {
 }
 
 func (mcm *mockClusterMgr) ChunkReport(c *rpc.Context) {
+	// do nothing
 }
 
 func (mcm *mockClusterMgr) ServiceRegister(c *rpc.Context) {
+	// do nothing
 }
 
 func (mcm *mockClusterMgr) VolumeGet(c *rpc.Context) {

@@ -39,6 +39,7 @@ func (sm *configSM) ApplySnapshot(meta SnapshotMeta, st Snapshot) error {
 }
 
 func (sm *configSM) LeaderChange(leader uint64, host string) {
+	// do nothing
 }
 
 func TestConfig(t *testing.T) {

@@ -647,6 +647,8 @@ func (m *Server) UidOperate(w http.ResponseWriter, r *http.Request) {
 		ok = vol.uidSpaceManager.removeUid(uid)
 	case util.AclListIP:
 		uidList = vol.uidSpaceManager.listAll()
+	default:
+		// do nothing
 	}
 
 	rsp := &proto.UidSpaceRsp{
@@ -722,6 +724,8 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("inner error")))
 			return
 		}
+	default:
+		// do nothing
 	}
 
 	rsp := &proto.AclRsp{
@@ -6220,6 +6224,8 @@ func (m *Server) S3QosGet(w http.ResponseWriter, r *http.Request) {
 			apiLimitConf[api].QPSQuota[uid] = v
 		case proto.ConcurrentLimit:
 			apiLimitConf[api].ConcurrentQuota[uid] = v
+		default:
+			// do nothing
 		}
 		return true
 	})

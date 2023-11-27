@@ -394,6 +394,7 @@ func NewNodesetSelector(name string, nodeType NodeType) NodesetSelector {
 		return NewTicketNodesetSelector(nodeType)
 	case AvailableSpaceFirstNodesetSelectorName:
 		return NewAvailableSpaceFirstNodesetSelector(nodeType)
+	default:
+		return NewRoundRobinNodesetSelector(nodeType)
 	}
-	return NewRoundRobinNodesetSelector(nodeType)
 }

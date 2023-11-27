@@ -97,6 +97,8 @@ func setBlobLogLevel(loglevel Level) {
 		blevel = blog.Lwarn
 	case ErrorLevel:
 		blevel = blog.Lerror
+	default:
+		blevel = blog.Lwarn
 	}
 	blog.SetOutputLevel(blevel)
 }

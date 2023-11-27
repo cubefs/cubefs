@@ -152,6 +152,8 @@ func (lw *LogWrite) backGroundWrite(umpType string) {
 			body = append(body, lw.bf.Bytes()...)
 			lw.bf.Reset()
 			AlarmPool.Put(alarm)
+		default:
+			// do nothing
 		}
 		if lw.backGroundCheckFile() != nil {
 			continue

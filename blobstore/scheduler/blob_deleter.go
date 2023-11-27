@@ -445,6 +445,8 @@ func (mgr *BlobDeleteMgr) recordAllResult(rets []delBlobRet) {
 			span.Warnf("unexpected result will ignore: msg[%+v], err[%+v]", delMsg, ret.err)
 		case DeleteStatusUndo:
 			span.Warnf("delete message unconsume: msg[%+v]", delMsg)
+		default:
+			// do nothing
 		}
 	}
 }

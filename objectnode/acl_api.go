@@ -171,6 +171,8 @@ func addGrants(acl *AccessControlPolicy, grants []grant, permission string) {
 			acl.AddGrant(g.value, TypeCanonicalUser, permission)
 		case "uri":
 			acl.AddGrant(g.value, TypeGroup, permission)
+		default:
+			// do nothing
 		}
 	}
 }

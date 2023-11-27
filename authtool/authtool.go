@@ -404,6 +404,8 @@ func accessAuthServer() {
 			panic(err)
 		}
 		fmt.Printf(res + "\n")
+	default:
+		// do nothing
 	}
 
 	return

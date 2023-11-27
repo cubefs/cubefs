@@ -236,6 +236,8 @@ func parse(operation, field, value string) (condFunc, error) {
 		getIntField = func(log *AuditLog) int64 { return log.RespLength }
 	case "duration", "Duration":
 		getIntField = func(log *AuditLog) int64 { return log.Duration }
+	default:
+		// do nothing
 	}
 
 	if getStrField != nil {

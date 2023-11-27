@@ -269,6 +269,8 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 			case POLICY_UNKNOW:
 				// policy check result is unknown so that acl should be checked
 				log.LogWarnf("bucket policy check: policy unknown: requestID(%v) ", GetRequestID(r))
+			default:
+				// do nothing
 			}
 		}
 
@@ -358,6 +360,8 @@ func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string
 		case POLICY_UNKNOW:
 			// policy check result is unknown so that acl should be checked
 			log.LogWarnf("srcBucket policy check: policy unknown: requestID(%v) ", GetRequestID(paramCopy.r))
+		default:
+			// do nothing
 		}
 	}
 

@@ -193,6 +193,7 @@ func (si *ItemIterator) ApplyIndex() uint64 {
 
 // Close Closes the iterator.
 func (si *ItemIterator) Close() {
+	// do nothing
 }
 
 // Next returns the next item in the iterator.

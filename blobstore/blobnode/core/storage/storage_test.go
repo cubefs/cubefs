@@ -113,6 +113,7 @@ func (mm *mockmeta) Destroy(ctx context.Context) (err error) {
 }
 
 func (mm *mockmeta) Close() {
+	// do nothing
 }
 
 func (mm *mockdata) Write(ctx context.Context, shard *core.Shard) error {
@@ -145,6 +146,7 @@ func (mm *mockdata) Destroy(ctx context.Context) (err error) {
 }
 
 func (mm *mockdata) Close() {
+	// do nothing
 }
 
 func TestNewStorage(t *testing.T) {

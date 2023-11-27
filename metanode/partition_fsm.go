@@ -443,6 +443,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		err = mp.fsmUniqCheckerEvict(req)
 	case opFSMVersionOp:
 		err = mp.fsmVersionOp(msg.V)
+	default:
+		// do nothing
 	}
 
 	return
@@ -584,6 +586,8 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		updated, err = mp.confRemoveNode(req, index)
 	case raftproto.ConfUpdateNode:
 		//updated, err = mp.confUpdateNode(req, index)
+	default:
+		// do nothing
 	}
 	if err != nil {
 		return

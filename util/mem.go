@@ -64,6 +64,8 @@ func GetMemInfo() (total, used uint64, err error) {
 			buffer = val * KB
 		case "Cached":
 			cached = val * KB
+		default:
+			// do nothing
 		}
 	}
 	used = total - free - buffer - cached

@@ -76,9 +76,9 @@ func (v Value) MarshalJSON() ([]byte, error) {
 		return json.Marshal(v.i)
 	case reflect.Bool:
 		return json.Marshal(v.b)
+	default:
+		return nil, fmt.Errorf("unknown value kind %v", v.t)
 	}
-
-	return nil, fmt.Errorf("unknown value kind %v", v.t)
 }
 
 //  stores bool value.
@@ -105,9 +105,9 @@ func (v Value) String() string {
 		return strconv.Itoa(v.i)
 	case reflect.Bool:
 		return strconv.FormatBool(v.b)
+	default:
+		return ""
 	}
-
-	return ""
 }
 
 // decodes JSON data.

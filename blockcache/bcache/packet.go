@@ -99,6 +99,8 @@ func (p *BlockCachePacket) GetOpMsg() (m string) {
 		m = "OpBlockCacheGet"
 	case OpBlockCacheDel:
 		m = "OpBlockCacheDel"
+	default:
+		// do nothing
 	}
 	return
 }

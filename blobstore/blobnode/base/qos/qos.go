@@ -293,6 +293,8 @@ func (qos *IoQueueQos) TryAcquireIO(ctx context.Context, chunkId uint64, rwType 
 		ret = qos.writeDiscard[idx].tryAcquire(ctx)
 	case ReadType:
 		ret = qos.readDiscard.tryAcquire(ctx)
+	default:
+		// do nothing
 	}
 	return ret
 }
@@ -304,6 +306,8 @@ func (qos *IoQueueQos) ReleaseIO(chunkId uint64, rwType IOTypeRW) {
 		qos.writeDiscard[idx].release()
 	case ReadType:
 		qos.readDiscard.release()
+	default:
+		// do nothing
 	}
 	qos.Release()
 }

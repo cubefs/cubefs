@@ -582,6 +582,8 @@ func (n *node) iterate(dir direction, start, stop Item, includeStart bool, hit b
 				return hit, false
 			}
 		}
+	default:
+		// do nothing
 	}
 	return hit, true
 }
