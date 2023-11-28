@@ -371,6 +371,8 @@ static int cfs_write_begin(struct file *file, struct address_space *mapping,
 	if (!page)
 		return -ENOMEM;
 
+	wait_on_page_writeback(page);
+
 	*pagep = page;
 
 	/**
@@ -553,12 +555,16 @@ static int cfs_flush(struct file *file, fl_owner_t id)
 
 	cfs_log_debug(cmi->log, "file=" fmt_file "\n", pr_file(file));
 	ret = write_inode_now(inode, 1);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "write inode(%llu) error\n",
+			      inode->i_ino, ret);
 		return ret;
-	ret = filemap_fdatawait(file->f_mapping);
+	}
+	ret = cfs_extent_stream_flush(ci->es);
 	if (ret < 0)
-		return ret;
-	return cfs_extent_stream_flush(ci->es);
+		cfs_log_error(cmi->log, "flush inode(%llu) error\n",
+			      inode->i_ino, ret);
+	return ret;
 }
 
 static int cfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
@@ -570,13 +576,17 @@ static int cfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 	int ret;
 
 	cfs_log_debug(cmi->log, "file=" fmt_file "\n", pr_file(file));
-	ret = write_inode_now(inode, 1);
-	if (ret < 0)
+	ret = filemap_write_and_wait_range(file->f_mapping, start, end);
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "write inode(%llu) error\n",
+			      inode->i_ino, ret);
 		return ret;
-	ret = filemap_fdatawait_range(file->f_mapping, start, end);
+	}
+	ret = cfs_extent_stream_flush(ci->es);
 	if (ret < 0)
-		return ret;
-	return cfs_extent_stream_flush(ci->es);
+		cfs_log_error(cmi->log, "flush inode(%llu) error\n",
+			      inode->i_ino, ret);
+	return ret;
 }
 
 #define READDIR_NUM 1024
@@ -1331,6 +1341,7 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 	int ret;
 
 	sb->s_fs_info = cmi;
+	sb->s_bdi = &cmi->bdi;
 	sb->s_blocksize = CFS_BLOCK_SIZE;
 	sb->s_blocksize_bits = CFS_BLOCK_SIZE_SHIFT;
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
@@ -1605,6 +1616,7 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 {
 	struct cfs_mount_info *cmi;
 	void *err_ptr;
+	int ret;
 
 	cmi = kzalloc(sizeof(*cmi), GFP_NOFS);
 	if (!cmi)
@@ -1621,6 +1633,17 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 	if (init_proc(cmi) < 0) {
 		err_ptr = ERR_PTR(-ENOMEM);
 		goto err_proc;
+	}
+	ret = bdi_init(&cmi->bdi);
+	if (ret < 0) {
+		err_ptr = ERR_PTR(ret);
+		goto err_bdi;
+	}
+	cmi->bdi.ra_pages = (VM_MAX_READAHEAD * 1024) / PAGE_SIZE;
+	ret = bdi_register(&cmi->bdi, NULL, "cubefs-%s", options->volume);
+	if (ret < 0) {
+		err_ptr = ERR_PTR(ret);
+		goto err_bdi2;
 	}
 	cmi->master = cfs_master_client_new(&options->addrs, options->volume,
 					    options->owner, cmi->log);
@@ -1647,6 +1670,10 @@ err_ec:
 err_meta:
 	cfs_master_client_release(cmi->master);
 err_master:
+	bdi_unregister(&cmi->bdi);
+err_bdi2:
+	bdi_destroy(&cmi->bdi);
+err_bdi:
 	unint_proc(cmi);
 err_proc:
 	cfs_log_release(cmi->log);
@@ -1663,6 +1690,7 @@ void cfs_mount_info_release(struct cfs_mount_info *cmi)
 	cfs_extent_client_release(cmi->ec);
 	cfs_meta_client_release(cmi->meta);
 	cfs_master_client_release(cmi->master);
+	bdi_destroy(&cmi->bdi);
 	unint_proc(cmi);
 	cfs_log_release(cmi->log);
 	cfs_options_release(cmi->options);

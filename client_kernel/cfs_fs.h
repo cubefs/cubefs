@@ -30,6 +30,7 @@ struct cfs_mount_info {
 	struct cfs_extent_client *ec;
 	atomic_long_t links_limit;
 	struct delayed_work update_limit_work;
+	struct backing_dev_info bdi;
 };
 
 struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options);

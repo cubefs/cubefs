@@ -3,6 +3,7 @@
 
 #include <crypto/hash.h>
 #include <crypto/md5.h>
+#include <linux/backing-dev.h>
 #include <linux/crc32.h>
 #include <linux/fs.h>
 #include <linux/hashtable.h>
