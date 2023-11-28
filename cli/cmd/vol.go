@@ -290,6 +290,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optReplicaNum string
 	var optDeleteLockTime int64
 	var optEnableQuota string
+	var optVolStorageClass int
+
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
 	cmd := &cobra.Command{
@@ -574,6 +576,21 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
 
+			if optVolStorageClass != 0 {
+				if !proto.IsValidStorageClass(uint32(optVolStorageClass)) {
+					err = fmt.Errorf("invalid param VolStorageClass: %v\n", optVolStorageClass)
+					return
+				}
+
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  VolStorageClass : %v -> %v\n",
+					vv.VolStorageClass, optVolStorageClass))
+				vv.VolStorageClass = uint32(optVolStorageClass)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  VolStorageClass : %v\n",
+					proto.StorageClassString(vv.VolStorageClass)))
+			}
+
 			if err != nil {
 				return
 			}
@@ -631,6 +648,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().IntVar(&optVolStorageClass, CliFlagVolStorageClass, 0, "specify volStorageClass")
 
 	return cmd
 }
