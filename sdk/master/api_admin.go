@@ -299,6 +299,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("trashInterval", strconv.FormatInt(vv.TrashInterval, 10))
 	request.addParam("accessTimeValidInterval", strconv.FormatInt(vv.AccessTimeInterval, 10))
 	request.addParam("enablePersistAccessTime", strconv.FormatBool(vv.EnablePersistAccessTime))
+	request.addParam("volStorageClass", strconv.FormatUint(uint64(vv.VolStorageClass), 10))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)

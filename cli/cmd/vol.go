@@ -304,6 +304,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optTrashInterval int64
 	var optAccessTimeValidInterval int64
 	var optEnablePersistAccessTime string
+	var optVolStorageClass int
+
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
 	cmd := &cobra.Command{
@@ -662,6 +664,21 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair : %v", vv.EnableAutoDpMetaRepair))
 			}
 
+			if optVolStorageClass != 0 {
+				if !proto.IsValidStorageClass(uint32(optVolStorageClass)) {
+					err = fmt.Errorf("invalid param VolStorageClass: %v\n", optVolStorageClass)
+					return
+				}
+
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  VolStorageClass : %v -> %v\n",
+					vv.VolStorageClass, optVolStorageClass))
+				vv.VolStorageClass = uint32(optVolStorageClass)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  VolStorageClass : %v\n",
+					proto.StorageClassString(vv.VolStorageClass)))
+			}
+
 			if err != nil {
 				return
 			}
@@ -721,6 +738,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
+	cmd.Flags().IntVar(&optVolStorageClass, CliFlagVolStorageClass, 0, "specify volStorageClass")
 
 	cmd.Flags().Int64Var(&optTrashInterval, CliFlagTrashInterval, -1, "The retention period for files in trash")
 	cmd.Flags().Int64Var(&optAccessTimeValidInterval, CliFlagAccessTimeValidInterval, -1, "Effective time interval for accesstime, at least 1800 [Unit: second]")
