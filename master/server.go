@@ -92,6 +92,18 @@ func NewServer() *Server {
 	return &Server{}
 }
 
+func (m *Server) checkClusterName() (err error){
+	var cv *clusterValue
+	if cv, err = m.cluster.getFsmClusterCfg(m.rocksDBStore); err != nil {
+		return
+	}
+	if len(cv.ClusterName) != 0 &&  cv.ClusterName != m.clusterName {
+		err = fmt.Errorf("cfg cluster name err, expect:%s, but now:%s", cv.ClusterName, m.clusterName)
+	}
+
+	return
+}
+
 // Start starts a server
 func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
@@ -105,6 +117,11 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 
 	if m.rocksDBStore, err = raftstore.NewRocksDBStore(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+		return
+	}
+
+	if err = m.checkClusterName(); err != nil {
+		log.LogErrorf(errors.Stack(err))
 		return
 	}
 

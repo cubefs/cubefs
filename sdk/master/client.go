@@ -22,6 +22,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	netUrl "net/url"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -368,4 +370,44 @@ func NewMasterClientFromString(masterAddr string, useSSL bool) *MasterClient {
 		}
 	}
 	return NewMasterClient(masters, useSSL)
+}
+
+func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
+	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
+		err = fmt.Errorf("invalid para, role or auth key path is nil")
+		return
+	}
+	var clusterInfo *proto.ClusterInfo
+	var req         *request
+	var data        []byte
+
+	clusterInfo, err = mc.adminAPI.GetClusterInfo()
+	if err != nil {
+		log.LogErrorf("[RegNodeInfo] %s", err.Error())
+		return
+	}
+
+	authFilePath := path.Join(authKeyPath, AuthFileName)
+	if _, stErr := os.Stat(authFilePath); stErr != nil {
+		//first start
+		req, err = mc.NodeAPI().buildRegReq(regInfo, "", clusterInfo.Ip)
+	} else {
+		authKeyBuf, _ := ioutil.ReadFile(authFilePath)
+		req, err = mc.NodeAPI().buildRegReq(regInfo, string(authKeyBuf), clusterInfo.Ip)
+	}
+
+	if err != nil || req == nil {
+		return
+	}
+
+	if data, _, err = mc.serveRequest(req); err != nil {
+		return
+	}
+
+	rsp = &proto.RegNodeRsp{}
+	err = json.Unmarshal(data, rsp)
+	if err == nil && rsp.AuthKey != "" {
+		_ = ioutil.WriteFile(authFilePath, []byte(rsp.AuthKey), 0655)
+	}
+	return
 }

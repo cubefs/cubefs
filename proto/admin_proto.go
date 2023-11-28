@@ -129,6 +129,7 @@ const (
 	RemoveRaftNode = "/raftNode/remove"
 
 	// Node APIs
+	RegNode          = "/node/reg"
 	AddDataNode                    = "/dataNode/add"
 	DecommissionDataNode           = "/dataNode/decommission"
 	DecommissionDisk               = "/disk/decommission"
@@ -239,6 +240,8 @@ const (
 	AdminListFlashGroups           = "/flashGroup/list"
 	ClientFlashGroups              = "/client/flashGroups"
 
+	AdminSetClusterName            = "/admin/setClusterName"
+
 	//graphql api for header
 	HeadAuthorized  = "Authorization"
 	ParamAuthorized = "_authorization"
@@ -301,6 +304,7 @@ const (
 	MetaNodeDelEKVolRateLimitKey  = "metaNodeDelEKVolRateLimit"
 	MetaNodeDumpSnapCountKey      = "metaNodeDumpSnapCount"
 	MetaNodeTruncateEKCountKey    = "truncateEKCountEveryTime"
+	ClusterNameKey                 = "clusterName"
 
 	IDsKey = "ids"
 )
@@ -572,6 +576,13 @@ type ClusterInfo struct {
 	// MUST keep for old version client
 	ClientReadLimitRate  uint64
 	ClientWriteLimitRate uint64
+}
+
+type RegNodeRsp struct {
+	Addr    string
+	Id 	    uint64
+	Cluster string
+	AuthKey string
 }
 
 type AllLimitGroup [11]int64

@@ -25,9 +25,66 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	pb "github.com/gogo/protobuf/proto"
 )
-
+const (
+	AuthFileName = ".clusterAuth"
+)
 type NodeAPI struct {
 	mc *MasterClient
+}
+
+type RegNodeInfoReq struct {
+	Role     string
+	ZoneName string
+	Version  string
+	ProfPort string
+	SrvPort  string
+}
+
+func getReqPathByRole(role string) string{
+	switch role {
+	case proto.RoleData:
+		return proto.AddDataNode
+	case proto.RoleMeta:
+		return proto.AddMetaNode
+	case proto.RoleCodec:
+		return proto.AddCodecNode
+	case proto.RoleEc:
+		return proto.AddEcNode
+	case proto.RoleFlash:
+		return proto.AddFlashNode
+	default :
+		return ""
+	}
+	return ""
+}
+
+func (api *NodeAPI) buildRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (req *request, err error){
+	reqPath := getReqPathByRole(regInfo.Role)
+	if reqPath == "" {
+		err = fmt.Errorf("invalid para, role[%s] invalid", regInfo.Role)
+		return
+	}
+
+	req = newAPIRequest(http.MethodGet, proto.RegNode)
+	req.addParam("module", regInfo.Role)
+	req.addParam("addr", addr + ":" + regInfo.SrvPort)
+	if regInfo.ZoneName != "" {
+		req.addParam("zoneName", regInfo.ZoneName)
+	}
+
+	if regInfo.Version != "" {
+		req.addParam("version", regInfo.Version)
+	}
+
+	if regInfo.ProfPort != "" {
+		req.addParam("httpPort", regInfo.ProfPort)
+	}
+
+	if authKey != "" {
+		req.addParam("authenticate", authKey)
+	}
+
+	return
 }
 
 func (api *NodeAPI) AddDataNode(serverAddr, zoneName, version string) (id uint64, err error) {

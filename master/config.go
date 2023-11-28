@@ -174,6 +174,7 @@ type clusterConfig struct {
 	RemoteReadConnTimeoutMs             int64
 	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
 	MetaNodeDumpSnapCountByZone			map[string]uint64
+	ClusterName							string
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

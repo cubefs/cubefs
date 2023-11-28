@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	cfsProto "github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft/proto"
 	"strings"
@@ -110,6 +111,11 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 }
 
 func (m *Server) handleApplySnapshot() {
+	if err := m.checkClusterName(); err != nil {
+		log.LogErrorf(errors.Stack(err))
+		panic("cfg cluster name failed")
+		return
+	}
 	m.fsm.restore()
 	m.restoreIDAlloc()
 	return

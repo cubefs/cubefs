@@ -15,7 +15,6 @@ const (
 	RoleCompactWorker       = "compact"
 	RoleDPReBalanceWorker   = "dpReBalance"
 	RoleDiskReBalanceWorker = "diskReBalance"
-	RoleCrcWorker           = "crcworker"
 )
 
 const (

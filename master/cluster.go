@@ -5874,6 +5874,29 @@ func (c *Cluster) setClientPkgAddr(addr string) (err error) {
 	return
 }
 
+func (c *Cluster) setClusterName(clusterName string) (err error) {
+	if c.cfg.ClusterName == c.Name {
+		err = fmt.Errorf("cluster name already set[%s], no need reset", c.Name)
+		log.LogErrorf(err.Error())
+		return
+	}
+
+	if clusterName != c.Name {
+		err = fmt.Errorf("cluster name expect[%s], but now[%s]", c.Name, clusterName)
+		log.LogErrorf(err.Error())
+		return
+	}
+
+	c.cfg.ClusterName = clusterName
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClusterName] err[%v]", err)
+		c.cfg.ClusterName = ""
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setNodeSetCapacity(capacity int) (err error) {
 	if capacity < 64 {
 		err = proto.ErrInvalidNodeSetCapacity

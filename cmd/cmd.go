@@ -69,44 +69,6 @@ const (
 )
 
 const (
-	RoleMaster    = "master"
-	RoleMeta      = "metanode"
-	RoleData      = "datanode"
-	RoleFlash     = "flashnode"
-	RoleObject    = "objectnode"
-	RoleConsole   = "console"
-	RoleMonitor   = "monitor"
-	RoleConvert   = "convert"
-	RoleSchedule  = "schedulenode"
-	RoleSmart     = "smartvolume"
-	RoleCompact   = "compact"
-	RoleCrcWorker = "crcworker"
-	RoleCodec     = "codecnode"
-	RoleEc        = "ecnode"
-	RoleReBalance = "rebalance"
-	RoleChecktool = "checktool"
-)
-
-const (
-	ModuleMaster    = "master"
-	ModuleMeta      = "metaNode"
-	ModuleData      = "dataNode"
-	ModuleFlash     = "flashNode"
-	ModuleObject    = "objectNode"
-	ModuleConsole   = "console"
-	ModuleMonitor   = "monitor"
-	ModuleConvert   = "convert"
-	ModuleSchedule  = "scheduleNode"
-	ModuleSmart     = "smartVolume"
-	ModuleCompact   = "compact"
-	ModuleCrcWorker = "crcworker"
-	ModuleCodec     = "codecNode"
-	ModuleEc        = "ecNode"
-	ModuleReBalance = "rebalance"
-	ModuleChecktool = "checktool"
-)
-
-const (
 	LoggerOutput = "output.log"
 )
 
@@ -224,54 +186,54 @@ func run() error {
 		module string
 	)
 	switch role {
-	case RoleMeta:
+	case proto.RoleMeta:
 		server = metanode.NewServer()
-		module = ModuleMeta
-	case RoleMaster:
+		module = proto.ModuleMeta
+	case proto.RoleMaster:
 		server = master.NewServer()
-		module = ModuleMaster
-	case RoleData:
+		module = proto.ModuleMaster
+	case proto.RoleData:
 		server = datanode.NewServer()
-		module = ModuleData
-	case RoleFlash:
+		module = proto.ModuleData
+	case proto.RoleFlash:
 		server = flashnode.NewServer()
-		module = ModuleFlash
-	case RoleObject:
+		module = proto.ModuleFlash
+	case proto.RoleObject:
 		server = objectnode.NewServer()
-		module = ModuleObject
-	case RoleConsole:
+		module = proto.ModuleObject
+	case proto.RoleConsole:
 		server = console.NewServer()
-		module = ModuleConsole
-	case RoleMonitor:
+		module = proto.ModuleConsole
+	case proto.RoleMonitor:
 		server = monitor.NewServer()
-		module = ModuleMonitor
-	case RoleConvert:
+		module = proto.ModuleMonitor
+	case proto.RoleConvert:
 		server = convertnode.NewServer()
-		module = ModuleConvert
-	case RoleSchedule:
+		module = proto.ModuleConvert
+	case proto.RoleSchedule:
 		server = scheduler.NewScheduleNode()
-		module = ModuleSchedule
-	case RoleSmart:
+		module = proto.ModuleSchedule
+	case proto.RoleSmart:
 		server = smart.NewSmartVolumeWorker()
-		module = ModuleSmart
-	case RoleCompact:
+		module = proto.ModuleSmart
+	case proto.RoleCompact:
 		server = compact.NewCompactWorker()
-		module = ModuleCompact
-	case RoleCrcWorker:
+		module = proto.ModuleCompact
+	case proto.RoleCrcWorker:
 		server = crcworker.NewCrcWorker()
-		module = ModuleCrcWorker
-	case RoleCodec:
+		module = proto.ModuleCrcWorker
+	case proto.RoleCodec:
 		server = codecnode.NewServer()
-		module = ModuleCodec
-	case RoleEc:
+		module = proto.ModuleCodec
+	case proto.RoleEc:
 		server = ecnode.NewServer()
-		module = ModuleEc
-	case RoleReBalance:
+		module = proto.ModuleEc
+	case proto.RoleReBalance:
 		server = rebalance.NewReBalanceWorker()
-		module = ModuleReBalance
-	case RoleChecktool:
+		module = proto.ModuleReBalance
+	case proto.RoleChecktool:
 		server = checktool.NewChecktoolWorker()
-		module = ModuleChecktool
+		module = proto.ModuleChecktool
 
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))

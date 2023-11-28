@@ -158,7 +158,7 @@ func (m *Server) addEcNode(w http.ResponseWriter, r *http.Request) {
 
 	metrics := exporter.NewModuleTP(proto.AddEcNodeUmpKey)
 	defer func() { metrics.Set(err) }()
-	if nodeAddr, httpPort, zoneName, version, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, httpPort, zoneName, version, _, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}

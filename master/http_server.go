@@ -150,6 +150,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetBadNodes).
 		HandlerFunc(m.getBadNodes)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetClusterName).
+		HandlerFunc(m.setClusterName)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -382,6 +385,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		HandlerFunc(m.setMetaNodeMemModeRocksDBDiskUsedThreshold)
 
 	// data node management APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RegNode).
+		HandlerFunc(m.regNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddDataNode).
 		HandlerFunc(m.addDataNode)

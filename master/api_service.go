@@ -15,6 +15,8 @@
 package master
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -2302,6 +2304,63 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	}
 }
 
+func (m *Server) regNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr string
+		httpPort string
+		zoneName string
+		id       uint64
+		version  string
+		authKey  string
+		checkKey string
+		err      error
+	)
+	if nodeAddr, httpPort, zoneName, version, authKey, err = parseRequestForAddNode(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if m.cluster.cfg.ClusterName != "" {
+		checkKey = hex.EncodeToString(md5.New().Sum([]byte(m.cluster.cfg.ClusterName)))
+	}
+
+	if authKey != ""  && m.cluster.cfg.ClusterName != "" {
+		if authKey != checkKey {
+			err = fmt.Errorf("invalid auth key, may be other cluster, expect[%s], but now[%s]", checkKey, authKey)
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	role := r.FormValue(moduleKey)
+	switch role {
+	case proto.RoleData:
+		id, err = m.cluster.addDataNode(nodeAddr, httpPort, zoneName, version)
+	case proto.RoleMeta:
+		id, err = m.cluster.addMetaNode(nodeAddr, zoneName, version)
+	case proto.RoleCodec:
+		id, err = m.cluster.addCodecNode(nodeAddr, zoneName, version)
+	case proto.RoleEc:
+		id, err = m.cluster.addEcNode(nodeAddr, httpPort, zoneName, version)
+	case proto.RoleFlash:
+		id, err = m.cluster.addFlashNode(nodeAddr, zoneName, version)
+	default :
+		err = fmt.Errorf("unknow node type[%s]", role)
+	}
+
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(&proto.RegNodeRsp{
+		Addr: nodeAddr,
+		Id: id,
+		Cluster: m.cluster.cfg.ClusterName,
+		AuthKey: checkKey}))
+	return
+}
+
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr string
@@ -2313,7 +2372,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	)
 	metrics := exporter.NewModuleTP(proto.AddDataNodeUmpKey)
 	defer func() { metrics.Set(err) }()
-	if nodeAddr, httpPort, zoneName, version, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, httpPort, zoneName, version, _, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2907,7 +2966,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 	)
 	metrics := exporter.NewModuleTP(proto.AddMetaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
-	if nodeAddr, _, zoneName, version, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, _, zoneName, version, _, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3356,7 +3415,7 @@ func parseRequestForUpdateMetaNode(r *http.Request) (nodeAddr string, id uint64,
 	return
 }
 
-func parseRequestForAddNode(r *http.Request) (nodeAddr, httpPort, zoneName, version string, err error) {
+func parseRequestForAddNode(r *http.Request) (nodeAddr, httpPort, zoneName, version, authKey string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3374,6 +3433,7 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, httpPort, zoneName, vers
 	if httpPort = r.FormValue(dataNodeHttpPortKey); httpPort == "" {
 		httpPort = defaultDataNodeHttpPort
 	}
+	authKey = r.FormValue(authenticateKey)
 	return
 }
 
@@ -6566,6 +6626,27 @@ func (m *Server) getBadNodes(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 	sendOkReply(w, r, newSuccessHTTPReply(append(metaNodes, dataNodes...)))
+	return
+}
+
+func (m *Server) setClusterName(w http.ResponseWriter, r *http.Request) {
+	var (
+		clusterName string
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if clusterName = r.FormValue(proto.ClusterNameKey); clusterName == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: keyNotFound(proto.ClusterNameKey).Error()})
+		return
+	}
+	if err = m.cluster.setClusterName(clusterName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set clusterName to %s successfully", clusterName)))
 	return
 }
 

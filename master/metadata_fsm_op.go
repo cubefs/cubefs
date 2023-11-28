@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/raftstore"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -113,6 +114,7 @@ type clusterValue struct {
 	RemoteReadConnTimeoutMs             int64
 	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
 	MetaNodeDumpSnapCountByZone			map[string]uint64
+	ClusterName							string
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -195,6 +197,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		RemoteReadConnTimeoutMs:             c.cfg.RemoteReadConnTimeoutMs,
 		ZoneNetConnConfig:                   c.cfg.ZoneNetConnConfig,
 		MetaNodeDumpSnapCountByZone:         c.cfg.MetaNodeDumpSnapCountByZone,
+		ClusterName:						 c.cfg.ClusterName,
 	}
 	return cv
 }
@@ -1192,6 +1195,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if c.cfg.MetaNodeDumpSnapCountByZone == nil {
 			c.cfg.MetaNodeDumpSnapCountByZone = make(map[string]uint64)
 		}
+
+		c.cfg.ClusterName = cv.ClusterName
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
@@ -1534,5 +1539,22 @@ func (c *Cluster) loadIDCs() (err error) {
 		zone.MType = mType
 		return true
 	})
+	return
+}
+
+func (c *Cluster) getFsmClusterCfg(store *raftstore.RocksDBStore) (cv *clusterValue, err error) {
+	result, err := store.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadClusterValue],err:%v", err.Error())
+		return
+	}
+	cv = &clusterValue{}
+	for _, value := range result {
+		if err = json.Unmarshal(value, cv); err != nil {
+			log.LogErrorf("action[loadClusterValue], unmarshal err:%v", err.Error())
+			return nil, err
+		}
+		break
+	}
 	return
 }

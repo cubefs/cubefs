@@ -350,31 +350,23 @@ func (m *MetaNode) stopMetaManager() {
 }
 
 func (m *MetaNode) register() (err error) {
-	step := 0
-	var nodeAddress string
-	for {
-		if step < 1 {
-			clusterInfo, err = getClusterInfo()
-			if err != nil {
-				log.LogErrorf("[register] %s", err.Error())
-				continue
-			}
-			if m.localAddr == "" {
-				m.localAddr = clusterInfo.Ip
-			}
-			m.clusterId = clusterInfo.Cluster
-			nodeAddress = m.localAddr + ":" + m.listen
-			step++
-		}
-		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddMetaNode(nodeAddress, m.zoneName, MetaNodeLatestVersion); err != nil {
-			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		m.nodeId = nodeID
+	var rsp *proto.RegNodeRsp
+	regReq := &masterSDK.RegNodeInfoReq{
+		Role: proto.RoleMeta,
+		ZoneName: m.zoneName,
+		Version: MetaNodeLatestVersion,
+		SrvPort: m.listen,
+	}
+	rsp, err = masterClient.RegNodeInfo(m.metadataDir, regReq)
+	if err != nil {
 		return
 	}
+	if m.localAddr == "" {
+		m.localAddr = strings.Split(rsp.Addr, ":")[0]
+	}
+	m.clusterId = rsp.Cluster
+	m.nodeId = rsp.Id
+	return
 }
 
 func (m *MetaNode) startMetaPartitions() error {
