@@ -2118,6 +2118,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 	newArgs.dpReplicaNum = uint8(req.replicaNum)
 	newArgs.dpReadOnlyWhenVolFull = req.dpReadOnlyWhenVolFull
+	newArgs.volStorageClass = req.volStorageClass
 
 	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v]", req.name, req.zoneName, vol.Name, req.replicaNum)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
