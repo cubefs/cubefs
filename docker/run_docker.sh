@@ -24,6 +24,17 @@ EOF
     exit 0
 }
 
+check_image() {
+  count=$(docker images | grep "chubaofs/cfs-base" | awk '{print$2}' | grep -c "1.5")
+  if [[ ${count} -eq 0 ]]; then
+    wget "http://storage.jd.local/dpgimage/dockerimage/chubaofs_cfs-base_1.5.tar" -O chubaofs_cfs-base_1.5.tar;
+    docker load < chubaofs_cfs-base_1.5.tar;
+    rm chubaofs_cfs-base_1.5.tar;
+  fi
+}
+
+check_image
+
 clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
     docker-compose -f ${RootPath}/docker/docker-compose-test.yml down
@@ -36,22 +47,12 @@ run_unit_test() {
 
 # build
 build() {
-    if [[ `docker images | grep "chubaofs/cfs-runtime-alter" | grep "1.0" | wc -l` -eq 0 ]]; then
-        wget "http://storage.jd.local/dpgimage/cfs_spark/myy/client_upgrade/cfs-runtime-alter-1.0.tar" -O cfs-runtime-alter-1.0.tar;
-        docker load < cfs-runtime-alter-1.0.tar;
-        rm cfs-runtime-alter-1.0.tar;
-    fi
     docker-compose -f ${RootPath}/docker/docker-compose.yml run build
 }
 
 # Build for CI tests
 # In this mode, application ELF will be built by using 'go test -c' command instead of orginal 'go build' command
 build_test() {
-    if [[ `docker images | grep "chubaofs/cfs-runtime-alter" | grep "1.0" | wc -l` -eq 0 ]]; then
-        wget "http://storage.jd.local/dpgimage/cfs_spark/myy/client_upgrade/cfs-runtime-alter-1.0.tar" -O cfs-runtime-alter-1.0.tar;
-        docker load < cfs-runtime-alter-1.0.tar;
-        rm cfs-runtime-alter-1.0.tar;
-    fi
     docker-compose -f ${RootPath}/docker/docker-compose-test.yml run build_test
 }
 

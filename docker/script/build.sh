@@ -13,13 +13,25 @@ case $1 in
 		echo Build mode: NORMAL	
 esac
 
+use_original_golang() {
+  rm -f /usr/local/go
+  ln -s /usr/local/go1.21.4 /usr/local/go
+}
+
+use_alternative_golang() {
+  rm -f /usr/local/go
+  ln -s /usr/local/go1.17.3-alternative /usr/local/go
+}
+
 cd /go/src/github.com/cubefs/cubefs
+git config --global --add safe.directory .
 BranchName=`git rev-parse --abbrev-ref HEAD`
 CommitID=`git rev-parse HEAD`
 echo "Branch: ${BranchName}"
 echo "Commit: ${CommitID}"
 
 echo -n 'Building ChubaoFS Server ... ';
+use_original_golang
 cd /go/src/github.com/cubefs/cubefs/cmd;
 bash ./build.sh ${build_opt} &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
@@ -32,6 +44,7 @@ fi
 
 
 echo -n 'Building ChubaoFS Client ... ' ;
+use_alternative_golang
 cd /go/src/github.com/cubefs/cubefs/client;
 bash ./build.sh -d ${build_opt} &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
@@ -53,6 +66,7 @@ else
 fi
 
 echo -n 'Building ChubaoFS CLI    ... ';
+use_original_golang
 cd /go/src/github.com/cubefs/cubefs/cli;
 bash ./build.sh ${build_opt} &>> /tmp/cfs_build_output;
 if [[ $? -eq 0 ]]; then
@@ -65,6 +79,7 @@ fi
 
 
 echo -n 'Building ChubaoFS repair server    ... ';
+use_original_golang
 cd /go/src/github.com/cubefs/cubefs/cli/repaircrc;
 bash ./build.sh ${build_opt} &>> /tmp/cfs_build_output;
 if [[ $? -eq 0 ]]; then

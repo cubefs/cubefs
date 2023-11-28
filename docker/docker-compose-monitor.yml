@@ -9,7 +9,7 @@ networks:
 
 services:
     monitor:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         depends_on:
             - consul
             - prometheus
@@ -18,7 +18,7 @@ services:
             extnetwork:
 
     servers:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         depends_on:
             - master1
             - master2
@@ -43,7 +43,7 @@ services:
             extnetwork:
 
     master1:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "5901"
             - "5902"
@@ -64,7 +64,7 @@ services:
                 ipv4_address: 192.168.0.11
 
     master2:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "5901"
             - "5902"
@@ -84,7 +84,7 @@ services:
             extnetwork:
                 ipv4_address: 192.168.0.12
     master3:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "5901"
             - "5902"
@@ -105,7 +105,7 @@ services:
                 ipv4_address: 192.168.0.13
 
     metanode1:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "17210"
             - "17220"
@@ -127,7 +127,7 @@ services:
                 ipv4_address: 192.168.0.21
 
     metanode2:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "17210"
             - "17220"
@@ -149,7 +149,7 @@ services:
                 ipv4_address: 192.168.0.22
 
     metanode3:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "17210"
             - "17220"
@@ -171,7 +171,7 @@ services:
                 ipv4_address: 192.168.0.23
 
     metanode4:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "17210"
             - "17220"
@@ -193,7 +193,7 @@ services:
                 ipv4_address: 192.168.0.24
 
     datanode1:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "17310"
             - "17320"
@@ -215,7 +215,7 @@ services:
                 ipv4_address: 192.168.0.31
 
     datanode2:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "17310"
             - "17320"
@@ -237,7 +237,7 @@ services:
                 ipv4_address: 192.168.0.32
 
     datanode3:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "17310"
             - "17320"
@@ -259,7 +259,7 @@ services:
                 ipv4_address: 192.168.0.33
 
     datanode4:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "17310"
             - "17320"
@@ -281,7 +281,7 @@ services:
                 ipv4_address: 192.168.0.34
 
     objectnode1:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "80"
             - 9500
@@ -300,7 +300,7 @@ services:
                 ipv4_address: 192.168.0.41
 
     objectnode2:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "80"
             - 9500
@@ -319,7 +319,7 @@ services:
                 ipv4_address: 192.168.0.42
 
     objectnode3:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "80"
             - 9500
@@ -338,7 +338,7 @@ services:
                 ipv4_address: 192.168.0.43
 
     monitornode1:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
           - "81"
           - 9500
@@ -357,7 +357,7 @@ services:
                 ipv4_address: 192.168.0.61
 
     monitornode2:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "81"
             - 9500
@@ -376,7 +376,7 @@ services:
                 ipv4_address: 192.168.0.62
 
     monitornode3:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - "81"
             - 9500
@@ -395,7 +395,7 @@ services:
                 ipv4_address: 192.168.0.63
 
     console1:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
           - "80"
         volumes:
@@ -411,7 +411,7 @@ services:
             ipv4_address: 192.168.0.50
 
     client:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         ports:
             - 9500
         volumes:
@@ -484,7 +484,7 @@ services:
                 ipv4_address: 192.168.0.104
 
     build:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         volumes:
             - ../:/go/src/github.com/cubefs/cubefs
         command:
@@ -493,7 +493,7 @@ services:
             extnetwork:
 
     unit_test:
-        image: chubaofs/cfs-base:1.1
+        image: chubaofs/cfs-base:1.5
         volumes:
             - ../:/go/src/github.com/cubefs/cubefs
         command:
