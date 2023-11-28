@@ -19,7 +19,9 @@ package objectnode
 import (
 	"net/http"
 	"syscall"
+	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -112,6 +114,8 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		err error
 		erc *ErrorCode
 	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, erc)
 	}()
@@ -132,8 +136,11 @@ func (o *ObjectNode) getObjectACLHandler(w http.ResponseWriter, r *http.Request)
 			GetRequestID(r), param.bucket, err)
 		return
 	}
-	var acl *AccessControlPolicy
-	if acl, err = getObjectACL(vol, param.object, true); err != nil {
+
+	start := time.Now()
+	acl, err := getObjectACL(vol, param.object, true)
+	span.AppendTrackLog("xattr.r", start, err)
+	if err != nil {
 		log.LogErrorf("getObjectACLHandler: get acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), param.bucket, param.object, err)
 		if err == syscall.ENOENT {
@@ -158,6 +165,8 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		err error
 		erc *ErrorCode
 	)
+
+	span := trace.SpanFromContextSafe(r.Context())
 	defer func() {
 		o.errorResponse(w, r, err, erc)
 	}()
@@ -183,7 +192,10 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var acl, oldAcl *AccessControlPolicy
-	if oldAcl, err = getObjectACL(vol, param.object, false); err != nil {
+	start := time.Now()
+	oldAcl, err = getObjectACL(vol, param.object, false)
+	span.AppendTrackLog("xattr.r", start, err)
+	if err != nil {
 		log.LogErrorf("putObjectACLHandler: get acl fail: requestID(%v) volume(%v) path(%v) err(%v)",
 			GetRequestID(r), param.bucket, param.object, err)
 		if err == syscall.ENOENT {
@@ -212,7 +224,11 @@ func (o *ObjectNode) putObjectACLHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	if err = putObjectACL(vol, param.object, acl); err != nil {
+
+	start = time.Now()
+	err = putObjectACL(vol, param.object, acl)
+	span.AppendTrackLog("xattr.w", start, err)
+	if err != nil {
 		log.LogErrorf("putObjectACLHandler: store acl fail: requestID(%v) volume(%v) path(%v) acl(%+v) err(%v)",
 			GetRequestID(r), param.bucket, param.object, acl, err)
 		if err == syscall.ENOENT {

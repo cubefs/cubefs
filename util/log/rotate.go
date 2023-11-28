@@ -15,10 +15,10 @@
 package log
 
 const (
-	// DefaultRollingSize Specifies at what size to roll the output log at
+	// DefaultRotateSize Specifies at what size to rotate the output log at
 	// Units: byte
-	DefaultRollingSize    = 1 * 1024 * 1024 * 1024
-	DefaultMinRollingSize = 200 * 1024 * 1024
+	DefaultRotateSize    = 1 * 1024 * 1024 * 1024
+	DefaultMinRotateSize = 200 * 1024 * 1024
 	// DefaultHeadRoom The tolerance for the log space limit (in megabytes)
 	DefaultHeadRoom = 50 * 1024
 	// DefaultHeadRatio The disk reserve space ratio
@@ -26,23 +26,20 @@ const (
 	DefaultLogLeftSpaceLimit = 5 * 1024
 )
 
-// A log can be rotated by the size or time.
+// LogRotate A log can be rotated by the size or time.
 type LogRotate struct {
-	rollingSize int64 // the size of the rotated log // TODO we should either call rotate or rolling, but not both.
-	headRoom    int64 // capacity reserved for writing the next log on the disk
+	rotateSize int64 // the size of the rotated log
+	headRoom   int64 // capacity reserved for writing the next log on the disk
 }
 
 // NewLogRotate returns a new LogRotate instance.
 func NewLogRotate() *LogRotate {
-	return &LogRotate{
-		rollingSize: DefaultRollingSize,
-		headRoom:    DefaultHeadRoom,
-	}
+	return &LogRotate{}
 }
 
-// SetRollingSizeMb sets the rolling size in terms of MB.
-func (r *LogRotate) SetRollingSizeMb(size int64) {
-	r.rollingSize = size
+// SetRotateSizeMb sets the rotate size in terms of MB.
+func (r *LogRotate) SetRotateSizeMb(size int64) {
+	r.rotateSize = size
 }
 
 // SetHeadRoomMb sets the headroom in terms of MB.

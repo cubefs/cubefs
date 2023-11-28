@@ -358,7 +358,7 @@ begin:
 					}(cacheKey)
 				}
 			}
-			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v]",
+			log.LogDebugf("action[streamer.write] inode [%v] latest seq [%v] extentkey seq [%v]  info [%v] before compare seq",
 				s.inode, s.verSeq, req.ExtentKey.GetSeq(), req.ExtentKey)
 			if req.ExtentKey.GetSeq() == s.verSeq {
 				writeSize, err = s.doOverwrite(req, direct)
@@ -380,7 +380,7 @@ begin:
 				}
 				log.LogDebugf("action[streamer.write] err %v retryTimes %v", err, retryTimes)
 			} else {
-				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
+				log.LogDebugf("action[streamer.write] ino %v do OverWriteByAppend extent key (%v) because seq not equal", s.inode, req.ExtentKey)
 				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct)
 			}
 			if s.client.bcacheEnable {
@@ -534,6 +534,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 			status = int32(replyPacket.ResultCode)
 			err = errors.New(fmt.Sprintf("doOverwrite: failed or reply NOK: err(%v) ino(%v) req(%v) replyPacket(%v)", err, s.inode, req, replyPacket))
 			log.LogErrorf("action[doDirectWriteByAppend] data process err %v", err)
+			s.handler.key = nil // direct write key cann't be used again in flush process
 			break
 		}
 
@@ -700,7 +701,8 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 		}
 		return nil
 	}
-	initExtentHandlerFunc := func(currentEK *proto.ExtentKey) {
+
+	checkVerFunc := func(currentEK *proto.ExtentKey) {
 		if currentEK.GetSeq() != s.verSeq {
 			log.LogDebugf("tryInitExtentHandlerByLastEk. exist ek seq %v vs request seq %v", currentEK.GetSeq(), s.verSeq)
 			if int(currentEK.ExtentOffset)+int(currentEK.Size)+size > util.ExtentSize {
@@ -709,7 +711,10 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 			}
 			isLastEkVerNotEqual = true
 		}
+	}
 
+	initExtentHandlerFunc := func(currentEK *proto.ExtentKey) {
+		checkVerFunc(currentEK)
 		log.LogDebugf("tryInitExtentHandlerByLastEk: found ek in ExtentCache, extent_id(%v) req_offset(%v) req_size(%v), currentEK [%v] streamer seq %v",
 			currentEK.ExtentId, offset, size, currentEK, s.verSeq)
 		_, pidErr := s.client.dataWrapper.GetDataPartition(currentEK.PartitionId)
@@ -754,12 +759,9 @@ func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNo
 			}
 		} else {
 			if s.handler.fileOffset+s.handler.size == offset {
-				if s.extents.Max().GetSeq() == s.verSeq {
-					log.LogDebugf("tryInitExtentHandlerByLastEk: seq %vequal", s.verSeq)
-					return
+				if s.handler.key != nil {
+					checkVerFunc(s.handler.key)
 				}
-				log.LogDebugf("tryInitExtentHandlerByLastEk: seq not equal %v:%v", s.extents.Max().GetSeq(), s.verSeq)
-				initExtentHandlerFunc(s.extents.Max())
 				return
 			} else {
 				if ek := getEndEkFunc(); ek != nil {
@@ -807,9 +809,8 @@ func (s *Streamer) doAppendWrite(data []byte, offset, size int, direct bool, reU
 				continue
 			}
 			ek, err = s.handler.write(data, offset, size, direct)
-			ek.SetSeq(s.verSeq)
-
 			if err == nil && ek != nil {
+				ek.SetSeq(s.verSeq)
 				if !s.dirty {
 					s.dirtylist.Put(s.handler)
 					s.dirty = true

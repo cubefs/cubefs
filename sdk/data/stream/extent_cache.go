@@ -67,6 +67,14 @@ func NewExtentCache(inode uint64) *ExtentCache {
 	}
 }
 
+func (cache *ExtentCache) LogOutPut() {
+	cache.root.Ascend(func(bi btree.Item) bool {
+		ek := bi.(*proto.ExtentKey)
+		log.LogDebugf("ExtentCache update: local ino(%v) ek(%v)", cache.inode, ek)
+		return true
+	})
+}
+
 func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) error {
 	gen, size, extents, err := getExtents(inode)
 	if err != nil {
@@ -130,6 +138,8 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	cache.Lock()
 	defer cache.Unlock()
 
+	//log.LogDebugf("before cache output")
+	//cache.LogOutPut()
 	// When doing the append, we do not care about the data after the file offset.
 	// Those data will be overwritten by the current extent anyway.
 	var ekFind *proto.ExtentKey
@@ -138,17 +148,17 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	cache.root.DescendLessOrEqual(ekPivot, func(i btree.Item) bool {
 		if ekFind == nil {
 			ekFind = i.(*proto.ExtentKey)
-			log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ek [%v]", inodeID, ekFind)
+			log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ek [%v]", inodeID, ekFind)
 			return true
 		}
 		ekLeft = i.(*proto.ExtentKey)
-		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ekLeft [%v]", inodeID, ekLeft)
+		log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ekLeft [%v]", inodeID, ekLeft)
 		return false
 	})
 
 	cache.root.AscendGreaterThan(ekPivot, func(i btree.Item) bool {
 		ekRight = i.(*proto.ExtentKey)
-		log.LogDebugf("action[ExtentCache.PrepareWriteRequests] inode %v ekRight [%v]", inodeID, ekRight)
+		log.LogDebugf("action[ExtentCache.SplitExtentKey] inode %v ekRight [%v]", inodeID, ekRight)
 		return false
 	})
 
@@ -220,6 +230,8 @@ func (cache *ExtentCache) SplitExtentKey(inodeID uint64, ekPivot *proto.ExtentKe
 	log.LogDebugf("action[SplitExtentKey] inode %v ek [%v], ekPivot[%v]", inodeID, ek, ekPivot)
 	cache.gen++
 
+	//log.LogDebugf("before cache output")
+	//cache.LogOutPut()
 	return
 }
 

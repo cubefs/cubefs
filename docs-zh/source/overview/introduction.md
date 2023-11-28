@@ -6,7 +6,7 @@ CubeFS是新一代云原生存储产品，目前是[云原生计算基金会](ht
 多AZ部署以及跨区域复制等多种特性，广泛应用于大数据、AI、容器平台、数据库、中间件存算分离、数据共享以及数据保护等场景。
 
 <video width="100%" height="300" controls>
-    <source src="https://ocs-cn-north1.heytapcs.com/cubefs/community/video1657061611.mp4" type="video/mp4">
+    <source src="https://ocs-cn-north1.heytapcs.com/cubefs/website-file/cubefsintro.mp4" type="video/mp4">
 </video>
 
 ## 为什么选择CubeFS ？

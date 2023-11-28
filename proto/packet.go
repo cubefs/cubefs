@@ -203,7 +203,6 @@ const (
 	OpNotPerm            uint8 = 0xFD
 	OpNotEmpty           uint8 = 0xFE
 	OpOk                 uint8 = 0xF0
-	OpTryOtherExtent     uint8 = 0xE0
 	OpAgainVerionList    uint8 = 0xEF
 
 	OpPing                  uint8 = 0xFF
@@ -242,6 +241,7 @@ const (
 	// multiVersion to dp/mp
 	OpVersionOperation uint8 = 0xD5
 	OpSplitMarkDelete  uint8 = 0xD6
+	OpTryOtherExtent   uint8 = 0xD7
 )
 
 const (

@@ -55,6 +55,8 @@ const (
 	ConfigKeyRole              = "role"
 	ConfigKeyLogDir            = "logDir"
 	ConfigKeyLogLevel          = "logLevel"
+	ConfigKeyLogRotateSize     = "logRotateSize"
+	ConfigKeyLogRotateHeadRoom = "logRotateHeadRoom"
 	ConfigKeyProfPort          = "prof"
 	ConfigKeyWarnLogDir        = "warnLogDir"
 	ConfigKeyBuffersTotalLimit = "buffersTotalLimit"
@@ -161,6 +163,8 @@ func main() {
 	role := cfg.GetString(ConfigKeyRole)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
+	logRotateSize := cfg.GetInt64(ConfigKeyLogRotateSize)
+	logRotateHeadRoom := cfg.GetInt64(ConfigKeyLogRotateHeadRoom)
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
@@ -222,8 +226,14 @@ func main() {
 	default:
 		level = log.ErrorLevel
 	}
-
-	_, err = log.InitLog(logDir, module, level, nil, logLeftSpaceLimit)
+	rotate := log.NewLogRotate()
+	if logRotateSize > 0 {
+		rotate.SetRotateSizeMb(logRotateSize)
+	}
+	if logRotateHeadRoom > 0 {
+		rotate.SetHeadRoomMb(logRotateHeadRoom)
+	}
+	_, err = log.InitLog(logDir, module, level, rotate, logLeftSpaceLimit)
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to init log - %v", err)
 		fmt.Println(err)
@@ -257,12 +267,6 @@ func main() {
 		}()
 
 		syslog.SetOutput(outputFile)
-		if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
-			err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
-			syslog.Println(err)
-			daemonize.SignalOutcome(err)
-			os.Exit(1)
-		}
 		if err = sysutil.RedirectFD(int(outputFile.Fd()), int(os.Stderr.Fd())); err != nil {
 			err = errors.NewErrorf("Fatal: failed to redirect fd - %v", err)
 			syslog.Println(err)

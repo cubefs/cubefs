@@ -58,6 +58,7 @@ func (k *KeyRateLimit) Acquire(key string, rate int) *ratelimit.RateLimiter {
 func (k *KeyRateLimit) Release(key string) {
 
 	k.mutex.Lock()
+	defer k.mutex.Unlock()
 	limit, ok := k.current[key]
 	if !ok {
 		panic("key not in map. Possible reason: Release without Acquire.")
@@ -69,5 +70,4 @@ func (k *KeyRateLimit) Release(key string) {
 	if limit.refCount == 0 {
 		delete(k.current, key)
 	}
-	k.mutex.Unlock()
 }

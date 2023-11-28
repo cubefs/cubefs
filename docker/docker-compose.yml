@@ -352,7 +352,7 @@ services:
                 ipv4_address: 192.168.0.43
 
     lcnode1:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17410"
             - 9500
@@ -372,7 +372,7 @@ services:
 
 
     lcnode2:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17410"
             - 9500
@@ -391,7 +391,7 @@ services:
                 ipv4_address: 192.168.0.62
 
     lcnode3:
-        image: ghcr.io/cubefs/cbfs-base:1.0-golang-1.16.12
+        image: ${IMAGE}
         ports:
             - "17410"
             - 9500
