@@ -57,7 +57,10 @@ type ExtentInfo struct {
 }
 
 func (ei *ExtentInfo) TotalSize() uint64 {
-	return ei.Size + (ei.SnapshotDataOff - util.ExtentSize)
+	if ei.SnapshotDataOff > util.ExtentSize {
+		return ei.Size + (ei.SnapshotDataOff - util.ExtentSize)
+	}
+	return ei.Size
 }
 
 func (ei *ExtentInfo) String() (m string) {
