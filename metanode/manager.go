@@ -434,6 +434,12 @@ func (m *metadataManager) onStart() (err error) {
 }
 
 func (m *metadataManager) syncMetaPartitionsRocksDBWalLog() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("sync rocks db wal log panic, %v", r)
+			exporter.WarningPanicAppendKey(PanicBackGroundKey, "sync rocks db wal log panic")
+		}
+	}()
 	pidArray := make([]uint64, 0)
 	//get all pid
 	m.Range(func(i uint64, p MetaPartition) bool {
@@ -499,6 +505,12 @@ func (m *metadataManager) cleanOldDeleteEKRecordFileSchedule() {
 }
 
 func (m *metadataManager) doCleanOldDeleteEKRecordFile() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("clean del ek record file panic, %v", r)
+			exporter.WarningPanicAppendKey(PanicBackGroundKey, "clean del ek record file panic")
+		}
+	}()
 	mpIDs := make([]uint64, 0)
 	m.Range(func(i uint64, p MetaPartition) bool {
 		mpIDs = append(mpIDs, p.GetBaseConfig().PartitionId)

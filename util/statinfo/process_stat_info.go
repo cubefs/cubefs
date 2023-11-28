@@ -2,6 +2,8 @@ package statinfo
 
 import (
 	"github.com/cubefs/cubefs/util/cpu"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/memory"
 	"github.com/cubefs/cubefs/util/unit"
 	"os"
@@ -45,6 +47,14 @@ func (s *ProcessStatInfo) UpdateStatInfoSchedule() {
 }
 
 func (s *ProcessStatInfo) DoUpdateStatInfo() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("update sys info, recover: %v", r)
+			exporter.WarningPanicAppendKey("RecoverPanic", "update sys info panic")
+			return
+		}
+	}()
+
 	pid := os.Getpid()
 	s.UpdateMemoryInfo(pid)
 	s.UpdateCPUUsageInfo(pid)

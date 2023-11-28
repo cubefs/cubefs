@@ -1,6 +1,7 @@
 package metanode
 
 import (
+	"github.com/cubefs/cubefs/util/exporter"
 	"golang.org/x/time/rate"
 	"strings"
 	"sync/atomic"
@@ -406,6 +407,12 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 }
 
 func (m *MetaNode) updateDeleteLimitInfo() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("update node info panic, recover: %v", r)
+			exporter.WarningPanicAppendKey(PanicBackGroundKey, "update node info panic")
+		}
+	}()
 	info, err := masterClient.AdminAPI().GetLimitInfo("")
 	if err != nil {
 		log.LogErrorf("[updateDeleteLimitInfo] %s", err.Error())
@@ -439,6 +446,12 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 }
 
 func (m *MetaNode) updateClusterMap() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("update node info panic, recover: %v", r)
+			exporter.WarningPanicAppendKey(PanicBackGroundKey, "update node info panic")
+		}
+	}()
 	cv, err := masterClient.AdminAPI().GetCluster()
 	if err != nil {
 		return

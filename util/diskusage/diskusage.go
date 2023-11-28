@@ -2,6 +2,7 @@ package diskusage
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/shirou/gopsutil/disk"
@@ -99,6 +100,12 @@ func (d *FsCapMon) UpdateReversedSpace(space uint64) {
 
 // Compute the disk usage
 func (d *FsCapMon) ComputeUsage() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("update space info panic, recover: %v", r)
+			exporter.WarningPanicAppendKey("RecoverPanic", "update space info panic")
+		}
+	}()
 	fs := syscall.Statfs_t{}
 	err = syscall.Statfs(d.Path, &fs)
 	if err != nil {
@@ -149,6 +156,12 @@ func (d *FsCapMon) updateCheckTick() {
 }
 
 func (d *FsCapMon) UpdateDiskTick() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("update space info panic, recover: %v", r)
+			exporter.WarningPanicAppendKey("RecoverPanic", "update space info panic")
+		}
+	}()
 	var err error
 	var fp *os.File
 	defer func() {
@@ -179,6 +192,12 @@ func (d *FsCapMon) UpdateDiskTick() {
 }
 
 func (d *FsCapMon) CheckDiskStatus(interval time.Duration) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("update space info panic, recover: %v", r)
+			exporter.WarningPanicAppendKey("RecoverPanic", "update space info panic")
+		}
+	}()
 	d.RLock()
 	defer d.RUnlock()
 	timeOutCnt := time.Since(d.lastUpdate) / interval
