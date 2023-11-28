@@ -58,6 +58,7 @@ type VolVarargs struct {
 	enableAutoDpMetaRepair  bool
 	accessTimeValidInterval int64
 	enablePersistAccessTime bool
+	volStorageClass         uint32
 }
 
 type CacheSubItem struct {
@@ -1719,6 +1720,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.AccessTimeInterval = args.accessTimeInterval
 	vol.EnableAutoMetaRepair.Store(args.enableAutoDpMetaRepair)
 	vol.EnablePersistAccessTime = args.enablePersistAccessTime
+	vol.volStorageClass = args.volStorageClass
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1761,6 +1763,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		trashInterval:           vol.TrashInterval,
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
 		enableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
+		volStorageClass:         vol.volStorageClass,
 	}
 }
 

@@ -431,6 +431,7 @@ type updateVolReq struct {
 	enableAutoDpMetaRepair  bool
 	accessTimeValidInterval int64
 	enablePersistAccessTime bool
+	volStorageClass         uint32
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -589,6 +590,31 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	} else if req.dpSelectorParm == "" && req.dpSelectorName == "" {
 		req.dpSelectorName = vol.dpSelectorName
 		req.dpSelectorParm = vol.dpSelectorParm
+	}
+
+	if req.volStorageClass, err = extractUint32WithDefault(r, volStorageClassKey, vol.volStorageClass); err != nil {
+		err = fmt.Errorf("failed to extract key: %v", volStorageClassKey)
+		log.LogErrorf("[parseVolUpdateReq] err: %v", err.Error())
+		return
+	}
+	if vol.volStorageClass == proto.StorageClass_BlobStore {
+		if req.volStorageClass != vol.volStorageClass {
+			err = fmt.Errorf(" vol.volStorageClass is StorageClass_BlobStore, not allow to change it")
+			log.LogErrorf("[parseVolUpdateReq] err: %v", err.Error())
+			return
+		}
+	} else if proto.IsStorageClassReplica(vol.volStorageClass) {
+		if !proto.IsStorageClassReplica(req.volStorageClass) {
+			err = fmt.Errorf(" vol.volStorageClass is replica, not allow to change to: %v",
+				proto.StorageClassString(req.volStorageClass))
+			log.LogErrorf("[parseVolUpdateReq] err: %v", err.Error())
+			return
+		}
+
+		if req.volStorageClass != vol.volStorageClass {
+			log.LogInfof("[parseVolUpdateReq] vol.volStorageClass(%v) will be changed to: %v",
+				proto.StorageClassString(vol.volStorageClass), proto.StorageClassString(req.volStorageClass))
+		}
 	}
 
 	if proto.IsCold(vol.VolType) {
