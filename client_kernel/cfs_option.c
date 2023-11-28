@@ -1,4 +1,7 @@
 
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_option.h"
 
 #define DENTRY_CACHE_VALID_MS 5 * 1000u

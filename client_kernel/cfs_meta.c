@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_meta.h"
 
 #define META_RECV_TIMEOUT_MS 5000u

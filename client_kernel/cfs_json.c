@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_json.h"
 
 #define JSMN_PARENT_LINKS

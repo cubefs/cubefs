@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_page.h"
 
 static struct kmem_cache *cpage_cache;

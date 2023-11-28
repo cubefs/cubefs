@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_extent.h"
 
 #define EXTENT_UPDATE_DP_INTERVAL_MS 5 * 60 * 1000u

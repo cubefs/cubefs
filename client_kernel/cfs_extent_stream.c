@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_extent.h"
 
 #define EXTENT_RECV_TIMEOUT_MS 5000u

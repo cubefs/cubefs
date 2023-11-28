@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_buffer.h"
 
 #define CFS_BUFFER_SIZE 1024

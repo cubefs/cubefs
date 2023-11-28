@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_socket.h"
 
 #define SOCK_POOL_BUCKET_COUNT 128

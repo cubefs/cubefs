@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_fs.h"
 
 #define CFS_FS_MAGIC 0x20230705

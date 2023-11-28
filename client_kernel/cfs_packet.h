@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #ifndef __CFS_PACKET_H__
 #define __CFS_PACKET_H__
 

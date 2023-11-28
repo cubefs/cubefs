@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_extent.h"
 
 extern struct workqueue_struct *extent_work_queue;

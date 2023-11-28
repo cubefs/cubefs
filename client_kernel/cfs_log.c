@@ -1,3 +1,6 @@
+/*
+ * Copyright 2023 The CubeFS Authors.
+ */
 #include "cfs_log.h"
 
 struct cfs_log *cfs_log_new(void)
