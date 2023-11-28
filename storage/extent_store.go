@@ -89,7 +89,7 @@ var (
 	NormalExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(ei *ExtentInfo) bool {
-			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && !ei.IsDeleted && ei.Size > 0
+			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && !ei.IsDeleted && ei.TotalSize() > 0
 		}
 	}
 
@@ -811,7 +811,7 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	}
 	s.eiMutex.RUnlock()
 	for _, extentInfo := range extentInfos {
-		totalSize += extentInfo.Size + (extentInfo.SnapshotDataOff - uint64(util.ExtentSize))
+		totalSize += extentInfo.TotalSize()
 	}
 
 	return totalSize
@@ -829,7 +829,7 @@ func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize u
 		if extentInfo.FileID > maxExtentID {
 			maxExtentID = extentInfo.FileID
 		}
-		totalSize += extentInfo.Size + extentInfo.SnapshotDataOff - uint64(util.ExtentSize)
+		totalSize += extentInfo.TotalSize()
 	}
 	return maxExtentID, totalSize
 }
