@@ -411,7 +411,7 @@ func (m *MetaNode) delVolFromFetchTopologyManager(name string) {
 
 func (m *MetaNode) initFetchTopologyManager() {
 	m.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, masterClient, masterDomainClient,
-		true, true, m.limitManager.GetLimiter())
+		true, true)
 	return
 }
 
@@ -426,9 +426,9 @@ func (m *MetaNode) stopFetchTopologyManager() {
 }
 
 func (m *MetaNode) initMultiLimiterManager() (err error) {
-	m.limitManager = multirate.NewLimiterManager(multirate.ModuleMetaNode, m.zoneName, masterClient.AdminAPI().GetLimitInfo)
-	if m.limitManager == nil {
-		err = errors.New("Init limit manager failed!")
+	_, err =  multirate.InitLimiterManager(multirate.ModuleMetaNode, m.zoneName, masterClient.AdminAPI().GetLimitInfo)
+	if err != nil {
+		err = fmt.Errorf("init limit manager failed[%s]", err.Error())
 		return
 	}
 	return

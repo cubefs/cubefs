@@ -43,12 +43,11 @@ type FetchTopologyManager struct {
 	masterDomainRequestErrorCount uint64
 	needFetchVolAllDPView         bool
 	needUpdateVolsConf            bool
-	limiter                       *multirate.MultiLimiter
 	forceFetchTimerInterval       time.Duration
 }
 
 func NewFetchTopoManager(forceFetchTimerInterval time.Duration, masterClient, masterDomainClient *master.MasterClient,
-	needFetchVolAllDPView, needUpdateVolsConf bool, limiter *multirate.MultiLimiter) *FetchTopologyManager {
+	needFetchVolAllDPView, needUpdateVolsConf bool) *FetchTopologyManager {
 	if forceFetchTimerInterval == 0 {
 		forceFetchTimerInterval = defIntervalForceFetchDataPartitionView
 	}
@@ -61,7 +60,6 @@ func NewFetchTopoManager(forceFetchTimerInterval time.Duration, masterClient, ma
 		masterDomainClient:      masterDomainClient,
 		needFetchVolAllDPView:   needFetchVolAllDPView,
 		needUpdateVolsConf:      needUpdateVolsConf,
-		limiter:                 limiter,
 	}
 }
 
@@ -126,9 +124,7 @@ func (f *FetchTopologyManager) GetPartition(volName string, dpID uint64) (dataPa
 
 // 调用master接口立即获取一次partition的信息,仅给data node使用
 func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint64) (dataPartition *DataPartition, err error) {
-	if f.limiter != nil {
-		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
-	}
+	multirate.Wait(context.Background(), rateLimitProperties)
 	var dataPartitionInfo *proto.DataPartitionInfo
 	client := f.masterDomainClient
 	if client == nil || len(client.Nodes()) == 0 {
@@ -151,9 +147,7 @@ func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint6
 
 // 调用master接口立即获取一次partition raft peer的信息,仅给data node使用
 func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dpID uint64) (offlinePeerID uint64, peers []proto.Peer, err error) {
-	if f.limiter != nil {
-		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
-	}
+	multirate.Wait(context.Background(), rateLimitProperties)
 	var dataPartitionInfo *proto.DataPartitionInfo
 	dataPartitionInfo, err = f.masterClient.AdminAPI().GetDataPartition(volName, dpID)
 	if err != nil {

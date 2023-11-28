@@ -250,7 +250,7 @@ func (mp *metaPartition) deleteEKWithRateLimit(delEKCount int) {
 	stat := multirate.Stat{
 		Count: delEKCount,
 	}
-	mp.manager.limiter.WaitN(context.Background(), ps, stat)
+	multirate.WaitN(context.Background(), ps, stat)
 	return
 }
 

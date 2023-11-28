@@ -157,12 +157,12 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.register(cfg)
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
 
-	limiter, err := multirate.InitLimiterManager(multirate.ModuleDataNode, s.zoneName, MasterClient.AdminAPI().GetLimitInfo)
+	_, err = multirate.InitLimiterManager(multirate.ModuleDataNode, s.zoneName, MasterClient.AdminAPI().GetLimitInfo)
 	if err != nil {
 		return err
 	}
 	s.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, MasterClient, MasterDomainClient,
-		true, false, limiter.GetLimiter())
+		true, false)
 	if err = s.fetchTopoManager.Start(); err != nil {
 		return
 	}
