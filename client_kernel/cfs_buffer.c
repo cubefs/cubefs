@@ -9,23 +9,17 @@ struct cfs_buffer *cfs_buffer_new(size_t size)
 {
 	struct cfs_buffer *buffer;
 
-	buffer = kzalloc(sizeof(*buffer), GFP_NOFS);
+	buffer = kvzalloc(sizeof(*buffer), GFP_KERNEL);
 	if (!buffer)
 		return NULL;
-	size = (size % CFS_BUFFER_SIZE + 1) * CFS_BUFFER_SIZE;
-	buffer->data = kmalloc(size, GFP_NOFS | __GFP_NOWARN);
+	size = max_t(size_t, size, CFS_BUFFER_SIZE);
+	buffer->data = kvmalloc(size, GFP_KERNEL);
 	if (!buffer->data) {
-		buffer->data = vmalloc(size);
-		if (buffer->data) {
-			kfree(buffer);
-			return NULL;
-		}
-		buffer->is_vmalloc = true;
+		kvfree(buffer);
+		return NULL;
 	}
-
 	buffer->capacity = size;
 	buffer->pos = 0;
-
 	return buffer;
 }
 
@@ -33,39 +27,23 @@ void cfs_buffer_release(struct cfs_buffer *buffer)
 {
 	if (!buffer)
 		return;
-
-	if (buffer->is_vmalloc)
-		kvfree(buffer->data);
-	else
-		kfree(buffer->data);
-	kfree(buffer);
+	kvfree(buffer->data);
+	kvfree(buffer);
 }
 
 int cfs_buffer_resize(struct cfs_buffer *buffer, size_t n)
 {
 	char *data;
-	bool is_vmalloc;
 
-	n = (n % CFS_BUFFER_SIZE + 1) * CFS_BUFFER_SIZE;
-	if (n != buffer->capacity) {
-		data = kmalloc(n, GFP_NOFS | __GFP_NOWARN);
-		if (!data) {
-			data = vmalloc(n);
-			if (!data)
-				return -ENOMEM;
-			is_vmalloc = true;
-		} else {
-			is_vmalloc = false;
-		}
-
-		if (buffer->is_vmalloc)
-			kvfree(buffer->data);
-		else
-			kfree(buffer->data);
-		buffer->is_vmalloc = is_vmalloc;
+	n = max_t(size_t, n, CFS_BUFFER_SIZE);
+	if (n > buffer->capacity) {
+		data = kvmalloc(n, GFP_KERNEL);
+		if (!data)
+			return -ENOMEM;
+		kvfree(buffer->data);
 		buffer->data = data;
+		buffer->capacity = n;
 	}
-	buffer->capacity = n;
 	buffer->pos = 0;
 	return 0;
 }
@@ -74,26 +52,12 @@ int cfs_buffer_grow(struct cfs_buffer *buffer, size_t n)
 {
 	char *data;
 
-	n = (n % CFS_BUFFER_SIZE + 1) * CFS_BUFFER_SIZE;
-
-	if (buffer->is_vmalloc) {
-		//TODO  vrealloc()
-		data = vmalloc(buffer->capacity + n);
-		if (!data)
-			return -ENOMEM;
-		memcpy(data, buffer->data, buffer->capacity);
-	} else {
-		data = krealloc(buffer->data, buffer->capacity + n, GFP_NOFS);
-		if (!data) {
-			//TODO  vrealloc()
-			data = vmalloc(buffer->capacity + n);
-			if (!data)
-				return -ENOMEM;
-			memcpy(data, buffer->data, buffer->capacity);
-			kfree(buffer->data);
-			buffer->is_vmalloc = true;
-		}
-	}
+	n = max_t(size_t, n, CFS_BUFFER_SIZE);
+	data = kvmalloc(buffer->capacity + n, GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+	memcpy(data, buffer->data, buffer->pos);
+	kvfree(buffer->data);
 	buffer->data = data;
 	buffer->capacity += n;
 	return 0;

@@ -10,7 +10,6 @@ struct cfs_buffer {
 	size_t capacity;
 	size_t pos;
 	char *data;
-	bool is_vmalloc;
 };
 
 struct cfs_buffer *cfs_buffer_new(size_t size);

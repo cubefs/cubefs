@@ -1,6 +1,3 @@
-/*
- * Copyright 2023 The CubeFS Authors.
- */
 import os
 import select
 import signal
