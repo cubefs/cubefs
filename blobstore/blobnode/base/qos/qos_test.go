@@ -9,18 +9,36 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
-	"github.com/cubefs/cubefs/blobstore/common/iostat"
 	"github.com/dustin/go-humanize"
-
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
+	"github.com/cubefs/cubefs/blobstore/common/iostat"
 )
 
 func TestNewQosManager(t *testing.T) {
 	ctx := context.Background()
 	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
+
+	{
+		conf := Config{ReadQueueDepth: 1}
+		InitAndFixQosConfig(&conf)
+		qos, err := NewIoQueueQos(conf)
+		require.NoError(t, err)
+		defer qos.Close()
+		qos.ResetQosLimit(Config{})
+		require.Equal(t, conf.NormalMBPS*humanize.MiByte, qos.(*IoQueueQos).conf.NormalMBPS)
+		require.Equal(t, conf.BackgroundMBPS*humanize.MiByte, qos.(*IoQueueQos).conf.BackgroundMBPS)
+
+		conf.BackgroundMBPS = 4
+		InitAndFixQosConfig(&conf)
+		conf.NormalMBPS = 0
+		qos.ResetQosLimit(conf)
+		require.NotEqual(t, int64(0), qos.(*IoQueueQos).conf.NormalMBPS)
+		require.Equal(t, conf.BackgroundMBPS*humanize.MiByte, qos.(*IoQueueQos).conf.BackgroundMBPS)
+	}
+
 	// statGet, _ := flow.NewIOFlowStat("110", true)
 	ioStat, _ := iostat.StatInit("", 0, true)
 	iostat1, _ := iostat.StatInit("", 0, true)
@@ -29,14 +47,14 @@ func TestNewQosManager(t *testing.T) {
 	iom[1] = iostat1
 	diskView := flow.NewDiskViewer(iom)
 	conf := Config{
-		DiskBandwidthMBPS: 200,
-		BackgroundMBPS:    1,
-		DiskViewer:        diskView,
-		StatGetter:        iom,
-		ReadQueueDepth:    100,
-		WriteQueueDepth:   100,
-		WriteChanQueCnt:   2,
-		MaxWaitCount:      2 * 100,
+		NormalMBPS:      200,
+		BackgroundMBPS:  1,
+		DiskViewer:      diskView,
+		StatGetter:      iom,
+		ReadQueueDepth:  100,
+		WriteQueueDepth: 100,
+		WriteChanQueCnt: 2,
+		MaxWaitCount:    2 * 100,
 	}
 	qos, err := NewIoQueueQos(conf)
 	require.NoError(t, err)
@@ -100,9 +118,9 @@ func TestNewQosManager(t *testing.T) {
 	{
 		require.Equal(t, int64(1*humanize.MiByte), q.conf.BackgroundMBPS)
 		conf.BackgroundMBPS = defaultBackgroundBandwidthMBPS
-		conf.DiskBandwidthMBPS = defaultMaxBandwidthMBPS
+		conf.NormalMBPS = defaultMaxBandwidthMBPS
 		qos.ResetQosLimit(conf)
-		require.Equal(t, int64(defaultMaxBandwidthMBPS*humanize.MiByte), q.conf.DiskBandwidthMBPS)
+		require.Equal(t, int64(defaultMaxBandwidthMBPS*humanize.MiByte), q.conf.NormalMBPS)
 		require.Equal(t, int64(defaultBackgroundBandwidthMBPS*humanize.MiByte), q.conf.BackgroundMBPS)
 	}
 }
@@ -112,14 +130,14 @@ func TestQosTryAcquire(t *testing.T) {
 	statGet, _ := flow.NewIOFlowStat("110", true)
 	diskView := flow.NewDiskViewer(statGet)
 	conf := Config{
-		DiskBandwidthMBPS: 100,
-		BackgroundMBPS:    10,
-		DiskViewer:        diskView,
-		StatGetter:        statGet,
-		ReadQueueDepth:    2,
-		WriteQueueDepth:   2,
-		WriteChanQueCnt:   2,
-		MaxWaitCount:      2 * 2,
+		NormalMBPS:      100,
+		BackgroundMBPS:  10,
+		DiskViewer:      diskView,
+		StatGetter:      statGet,
+		ReadQueueDepth:  2,
+		WriteQueueDepth: 2,
+		WriteChanQueCnt: 2,
+		MaxWaitCount:    2 * 2,
 	}
 	qos, err := NewIoQueueQos(conf)
 	require.NoError(t, err)

@@ -182,13 +182,13 @@ func NewIoQueueQos(conf Config) (Qos, error) {
 func (qos *IoQueueQos) initBpsLimiters() {
 	qos.bpsLimiters = make([]*rate.Limiter, bnapi.IOTypeMax)
 	qos.conf.BackgroundMBPS *= humanize.MiByte
-	qos.conf.DiskBandwidthMBPS *= humanize.MiByte
-	qos.initBpsLimiter(bnapi.NormalIO, qos.conf.DiskBandwidthMBPS)
+	qos.conf.NormalMBPS *= humanize.MiByte
+	qos.initBpsLimiter(bnapi.NormalIO, qos.conf.NormalMBPS)
 	qos.initBpsLimiter(bnapi.BackgroundIO, qos.conf.BackgroundMBPS)
 }
 
 func (qos *IoQueueQos) initBpsLimiter(idx bnapi.IOType, bps int64) {
-	if bps != 0 {
+	if bps > 0 {
 		qos.bpsLimiters[idx] = rate.NewLimiter(rate.Limit(bps), 2*int(bps))
 	}
 }
@@ -268,7 +268,7 @@ func (qos *IoQueueQos) Reader(ctx context.Context, ioType bnapi.IOType, reader i
 	return r
 }
 
-// whether beyond max wait num
+// Allow whether beyond max wait num
 func (qos *IoQueueQos) Allow() bool {
 	if atomic.AddInt32(&qos.ioCnt, 1) > qos.maxWaitCnt {
 		atomic.AddInt32(&qos.ioCnt, -1)
@@ -321,13 +321,22 @@ func (qos *IoQueueQos) Close() {
 }
 
 func (qos *IoQueueQos) ResetQosLimit(conf Config) {
-	qos.conf.DiskBandwidthMBPS = conf.DiskBandwidthMBPS * humanize.MiByte
-	qos.conf.BackgroundMBPS = conf.BackgroundMBPS * humanize.MiByte
-	qos.resetLimit(bnapi.NormalIO, qos.conf.DiskBandwidthMBPS)
-	qos.resetLimit(bnapi.BackgroundIO, qos.conf.BackgroundMBPS)
+	if conf.NormalMBPS > 0 {
+		qos.conf.NormalMBPS = conf.NormalMBPS * humanize.MiByte
+		qos.resetLimit(bnapi.NormalIO, qos.conf.NormalMBPS)
+	}
+
+	if conf.BackgroundMBPS > 0 {
+		qos.conf.BackgroundMBPS = conf.BackgroundMBPS * humanize.MiByte
+		qos.resetLimit(bnapi.BackgroundIO, qos.conf.BackgroundMBPS)
+	}
 }
 
 func (qos *IoQueueQos) resetLimit(idx bnapi.IOType, bps int64) {
 	qos.bpsLimiters[idx].SetLimit(rate.Limit(bps))
 	qos.bpsLimiters[idx].SetBurst(2 * int(bps))
+}
+
+func (qos *IoQueueQos) GetConf() Config {
+	return qos.conf
 }
