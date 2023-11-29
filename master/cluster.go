@@ -1000,17 +1000,17 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	if node, ok := c.dataNodes.Load(nodeAddr); ok {
 		dataNode = node.(*DataNode)
 		if nodesetId > 0 && nodesetId != dataNode.NodeSetID {
-			msg := fmt.Sprintf("datanode(%v) already in cluster, but nodesetId not match, existNodeSetID(%v) toAdd(%v)",
+			err = fmt.Errorf("datanode(%v) already in cluster, but nodesetId not match, existNodeSetID(%v) toAdd(%v)",
 				nodeAddr, dataNode.NodeSetID, nodesetId)
-			log.LogErrorf("[addDataNode] %v", msg)
-			return dataNode.ID, fmt.Errorf(msg)
+			log.LogErrorf("[addDataNode] %v", err.Error())
+			return dataNode.ID, err
 		}
 
 		if dataNode.MediaType != mediaType {
-			msg := fmt.Sprintf("datanode(%v) already in cluster, but datanode mediaType not match, existMediaType(%v) toAdd(%v)",
+			err = fmt.Errorf("datanode(%v) already in cluster, but datanode mediaType not match, existMediaType(%v) toAdd(%v)",
 				nodeAddr, proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(mediaType))
-			log.LogErrorf("[addDataNode] %v", msg)
-			return dataNode.ID, fmt.Errorf(msg)
+			log.LogErrorf("[addDataNode] %v", err.Error())
+			return dataNode.ID, err
 		}
 
 		log.LogInfof("[addDataNode] already exist: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
@@ -1019,9 +1019,9 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	}
 
 	if !proto.IsValidMediaType(mediaType) {
-		msg := fmt.Sprintf("invalid mediaType(%v) when adding datanode(%v)", mediaType, nodeAddr)
-		log.LogErrorf("[addDataNode] %v", msg)
-		return dataNode.ID, fmt.Errorf(msg)
+		err = fmt.Errorf("invalid mediaType(%v) when adding datanode(%v)", mediaType, nodeAddr)
+		log.LogErrorf("[addDataNode] %v", err.Error())
+		return
 	}
 
 	dataNode = newDataNode(nodeAddr, zoneName, c.Name, mediaType)
@@ -1036,12 +1036,11 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	zoneMediaType := zone.GetDataMediaType()
 	if zoneMediaType != mediaType {
 		if zoneMediaType != proto.MediaType_Unspecified {
-			// zone.dataMediaType is proto.MediaType_Unspecified means has no datanode added into the zone yet
-
-			msg := fmt.Sprintf("datanode(%v) already in zone(%v) mediaType not match, existMediaType(%v) toAdd(%v)",
+			// zone.dataMediaType == proto.MediaType_Unspecified means has no datanode added into the zone yet
+			err = fmt.Errorf("datanode(%v) already in zone(%v) mediaType not match, existMediaType(%v) toAdd(%v)",
 				nodeAddr, zoneName, proto.MediaTypeString(zoneMediaType), proto.MediaTypeString(mediaType))
-			log.LogErrorf("[addDataNode] %v", msg)
-			return dataNode.ID, fmt.Errorf(msg)
+			log.LogErrorf("[addDataNode] %v", err.Error())
+			return
 		} else {
 			zone.SetDataMediaType(mediaType)
 			log.LogInfof("[addDataNode] set zone(%v) mediaType(%v) by datanode(%v)",
@@ -1053,9 +1052,9 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	if needPersistZone {
 		persistErr := c.sycnPutZoneInfo(zone)
 		if persistErr != nil {
-			msg := fmt.Sprintf("persist zone(%v) failed when adding datanode(%v)", zoneName, nodeAddr)
-			log.LogErrorf("[addDataNode] %v", msg)
-			return dataNode.ID, fmt.Errorf(msg)
+			err = fmt.Errorf("persist zone(%v) failed when adding datanode(%v)", zoneName, nodeAddr)
+			log.LogErrorf("[addDataNode] %v", err.Error())
+			return
 		}
 	}
 	c.t.putZoneIfAbsent(zone) // put if the above code creates zone
