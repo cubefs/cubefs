@@ -390,8 +390,8 @@ func testGetlastVer() (verSeq uint64) {
 var tm = time.Now().Unix()
 
 func testCreateVer() (verSeq uint64) {
-	mp.multiVersionList.Lock()
-	defer mp.multiVersionList.Unlock()
+	mp.multiVersionList.RWLock.Lock()
+	defer mp.multiVersionList.RWLock.Unlock()
 
 	tm = tm + 1
 	verInfo := &proto.VolVersionInfo{

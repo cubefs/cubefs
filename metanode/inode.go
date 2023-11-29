@@ -1154,8 +1154,8 @@ func (inode *Inode) dirUnlinkVerInlist(ino *Inode, mpVer uint64, verlist *proto.
 		inode.Inode, mIdx, dIno.getVer(), endSeq)
 
 	doWork := func() bool {
-		verlist.RLock()
-		defer verlist.RUnlock()
+		verlist.RWLock.RLock()
+		defer verlist.RWLock.RUnlock()
 
 		for vidx, info := range verlist.VerList {
 			if info.Ver >= dIno.getVer() && info.Ver < endSeq {
@@ -1224,8 +1224,8 @@ func (inode *Inode) unlinkVerInList(mpId uint64, ino *Inode, mpVer uint64, verli
 }
 
 func (i *Inode) getLastestVer(reqVerSeq uint64, commit bool, verlist *proto.VolVersionInfoList) (uint64, bool) {
-	verlist.RLock()
-	defer verlist.RUnlock()
+	verlist.RWLock.RLock()
+	defer verlist.RWLock.RUnlock()
 
 	if len(verlist.VerList) == 0 {
 		return 0, false
@@ -1340,8 +1340,8 @@ func (ino *Inode) getInoByVer(verSeq uint64, equal bool) (i *Inode, idx int) {
 
 func (i *Inode) getAndDelVer(mpId uint64, dVer uint64, mpVer uint64, verlist *proto.VolVersionInfoList) (delExtents []proto.ExtentKey, ino *Inode) {
 	var err error
-	verlist.RLock()
-	defer verlist.RUnlock()
+	verlist.RWLock.RLock()
+	defer verlist.RWLock.RUnlock()
 
 	log.LogDebugf("action[getAndDelVer] ino %v verSeq %v request del ver %v hist len %v isTmpFile %v",
 		i.Inode, i.getVer(), dVer, i.getLayerLen(), i.IsTempFile())
@@ -1437,8 +1437,8 @@ func (i *Inode) getAndDelVer(mpId uint64, dVer uint64, mpVer uint64, verlist *pr
 }
 
 func (i *Inode) getNextOlderVer(ver uint64, verlist *proto.VolVersionInfoList) (verSeq uint64, err error) {
-	verlist.RLock()
-	defer verlist.RUnlock()
+	verlist.RWLock.RLock()
+	defer verlist.RWLock.RUnlock()
 	log.LogDebugf("getNextOlderVer inode %v ver %v", i.Inode, ver)
 	for idx, info := range verlist.VerList {
 		log.LogDebugf("getNextOlderVer inode %v id %v ver %v info %v", i.Inode, idx, info.Ver, info)
@@ -1548,8 +1548,8 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 
 // try to create version between curVer and seq of multiSnap.multiVersions[0] in verList
 func (i *Inode) CreateLowerVersion(curVer uint64, verlist *proto.VolVersionInfoList) (err error) {
-	verlist.RLock()
-	defer verlist.RUnlock()
+	verlist.RWLock.RLock()
+	defer verlist.RWLock.RUnlock()
 
 	log.LogDebugf("CreateLowerVersion inode %v curVer %v", i.Inode, curVer)
 	if len(verlist.VerList) <= 1 {
