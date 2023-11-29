@@ -490,11 +490,13 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 
 	// setting io pools
 	metricConf := taskpool.IoPoolMetricConf{
-		ClusterID: conf.HostInfo.ClusterID,
+		ClusterID: uint32(conf.HostInfo.ClusterID),
 		IDC:       conf.HostInfo.IDC,
 		Rack:      conf.HostInfo.Rack,
 		Host:      conf.HostInfo.Host,
-		DiskID:    dm.DiskID,
+		DiskID:    uint32(dm.DiskID),
+		Namespace: "blobstore",
+		Subsystem: "blobnode",
 	}
 	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, conf.WriteQueueDepth, metricConf)
 	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, conf.ReadQueueDepth, metricConf)

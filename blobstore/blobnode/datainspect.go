@@ -301,7 +301,7 @@ func (mgr *DataInspectMgr) setAllDiskRateForce(newLimit int) {
 	mgr.conf.RateLimit = newLimit
 }
 
-func (s *Service) setInspectRate(c *rpc.Context) {
+func (s *Service) SetInspectRate(c *rpc.Context) {
 	args := new(bnapi.InspectRateArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
@@ -321,7 +321,7 @@ func (s *Service) setInspectRate(c *rpc.Context) {
 	c.Respond()
 }
 
-func (s *Service) getInspectStat(c *rpc.Context) {
+func (s *Service) GetInspectStat(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
