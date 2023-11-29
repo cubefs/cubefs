@@ -21,7 +21,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -45,11 +44,13 @@ type IoPool interface {
 }
 
 type IoPoolMetricConf struct {
-	ClusterID proto.ClusterID
+	ClusterID uint32
+	DiskID    uint32
 	IDC       string
 	Rack      string
 	Host      string
-	DiskID    proto.DiskID
+	Namespace string
+	Subsystem string
 	poolType  string
 }
 
@@ -86,10 +87,10 @@ func NewReadPool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
 func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) *ioPoolSimple {
 	iopoolMetric := prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
-			Namespace:  "blobstore",
-			Subsystem:  "blobnode",
+			Namespace:  conf.Namespace,
+			Subsystem:  conf.Subsystem,
 			Name:       "iopool",
-			Help:       "blobnode iopool timeout",
+			Help:       "iopool latency",
 			Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001},
 			ConstLabels: map[string]string{
 				"cluster_id": fmt.Sprintf("%d", conf.ClusterID),
@@ -119,23 +120,39 @@ func newCommonIoPool(chanCnt, threadCnt, queueDepth int, conf IoPoolMetricConf) 
 		pool.queue[i] = make(chan *taskInfo, queueDepth)
 	}
 
+	pool.backgroundExecute(chanCnt, threadCnt)
+	return pool
+}
+
+func (p *ioPoolSimple) backgroundExecute(chanCnt, threadCnt int) {
 	for j := 0; j < threadCnt; j++ {
-		pool.wg.Add(1)
+		p.wg.Add(1)
 		idx := j % chanCnt
 		// do work
 		go func() {
-			defer pool.wg.Done()
-			for task := range pool.queue[idx] {
-				start := time.Now()
-				pool.reportMetric(opDequeue, task.tm) // from enqueue to dequeue
-				task.fn()
-				pool.reportMetric(opOnDisk, start) // from dequeue to op done
-				task.done <- struct{}{}
+			defer func() {
+				log.Debug("close io pool")
+				p.wg.Done()
+			}()
+
+			for {
+				select {
+				case <-p.closed:
+					return
+				case task := <-p.queue[idx]:
+					p.doWork(task)
+				}
 			}
-			log.Debug("close io pool")
 		}()
 	}
-	return pool
+}
+
+func (p *ioPoolSimple) doWork(task *taskInfo) {
+	start := time.Now()
+	p.reportMetric(opDequeue, task.tm) // from enqueue to dequeue
+	task.fn()
+	p.reportMetric(opOnDisk, start) // from dequeue to op done
+	task.done <- struct{}{}
 }
 
 func (p *ioPoolSimple) reportMetric(opStage string, tm time.Time) {
@@ -144,15 +161,15 @@ func (p *ioPoolSimple) reportMetric(opStage string, tm time.Time) {
 }
 
 func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
+	idx, task := p.generateTask(args)
+
 	select {
 	case <-p.closed:
+		args.TaskFn()
 		return
-	default:
+	case p.queue[idx] <- task:
+		<-task.done
 	}
-
-	idx, task := p.generateTask(args)
-	p.queue[idx] <- task
-	<-task.done
 }
 
 func (p *ioPoolSimple) generateTask(args IoPoolTaskArgs) (idx uint64, task *taskInfo) {
@@ -170,10 +187,23 @@ func (p *ioPoolSimple) generateTask(args IoPoolTaskArgs) (idx uint64, task *task
 // Close the pool, Submit task maybe concurrent unsafe
 func (p *ioPoolSimple) Close() {
 	close(p.closed)
-	for i := range p.queue {
-		close(p.queue[i])
+	p.wg.Wait() // wait all io task done
+
+	for _, val := range p.queue {
+		go func(queue chan *taskInfo) {
+			waitTimer := time.NewTimer(time.Minute)
+			defer waitTimer.Stop()
+			for {
+				select {
+				case task := <-queue:
+					p.doWork(task)
+					waitTimer.Reset(time.Minute)
+				case <-waitTimer.C:
+					return
+				}
+			}
+		}(val)
 	}
 
-	p.wg.Wait() // wait all io task done
 	log.Info("close all io pool, exit")
 }

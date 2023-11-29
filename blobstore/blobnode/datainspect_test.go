@@ -109,7 +109,7 @@ func TestDataInspect(t *testing.T) {
 
 	{
 		rc := &rpc.Context{Request: &http.Request{}, Writer: &httptest.ResponseRecorder{}}
-		mgr.svr.getInspectStat(rc)
+		mgr.svr.GetInspectStat(rc)
 		require.Equal(t, cfg.IntervalSec, mgr.conf.IntervalSec)
 	}
 }

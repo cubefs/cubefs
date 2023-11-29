@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
@@ -17,11 +15,13 @@ import (
 
 func TestIoPoolSimple(t *testing.T) {
 	metricConf := IoPoolMetricConf{
-		ClusterID: proto.ClusterID(1),
+		ClusterID: 1,
 		IDC:       "idc",
 		Rack:      "rack",
 		Host:      "host",
-		DiskID:    proto.DiskID(101),
+		DiskID:    101,
+		Namespace: "bs",
+		Subsystem: "bn",
 	}
 
 	writePool := NewWritePool(4, 16, metricConf)
@@ -60,7 +60,7 @@ func TestIoPoolSimple(t *testing.T) {
 		time.Sleep(time.Second)
 		closePool.Close()
 		closePool.Submit(task3)
-		require.Equal(t, 2, n) // two task func
+		require.Equal(t, 3, n) // two task func
 	}
 
 	// alloc
