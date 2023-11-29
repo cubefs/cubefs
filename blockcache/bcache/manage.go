@@ -400,6 +400,7 @@ func (bm *bcacheManager) freeSpace(store *DiskStore, free float32, files int64) 
 
 		element := bm.lrulist.Front()
 		if element == nil {
+			bm.Unlock()
 			return
 		}
 		item := element.Value.(*cacheItem)
