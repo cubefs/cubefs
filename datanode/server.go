@@ -212,6 +212,7 @@ func doShutdown(server common.Server) {
 	if gHasFinishedLoadDisks {
 		deleteSysStartTimeFile()
 	}
+	multirate.Stop()
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
