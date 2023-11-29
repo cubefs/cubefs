@@ -92,7 +92,8 @@ const (
 	AdminSetNodeSetCapacity        = "/admin/nodeSetCapacity/set"
 	AdminGetBadNodes               = "/admin/getBadNodes"
 
-	AdminSmartVolList = "/admin/smartVol/list"
+	AdminSmartVolList 			   = "/admin/smartVol/list"
+	AdminHddPartitions 			   = "/admin/hddPartitions"
 
 	AdminSetMNRocksDBDiskThreshold        = "/rocksdbDiskThreshold/set"
 	AdminSetMNMemModeRocksDBDiskThreshold = "/memModeRocksdbDiskThreshold/set"
@@ -980,6 +981,7 @@ type MetaPartitionLoadResponse struct {
 type DataPartitionResponse struct {
 	PartitionID     uint64
 	Status          int8
+	TransferStatus  int8
 	ReplicaNum      uint8
 	Hosts           []string
 	LeaderAddr      AtomicString
@@ -1266,13 +1268,14 @@ type VolInfo struct {
 	CleanTrashMaxDurationEachTime int32
 	CleanTrashMaxCountEachTime    int32
 	TruncateEKCountEveryTime      int
+	StoreMode                     StoreMode
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,
 	remainingDays uint32, childFileMaxCnt uint32, isSmart bool, rules []string, forceRow bool, compactTag uint8,
 	trashCleanInterval uint64, enableToken, enableWriteCache bool, batchDelIndeCnt, delInodeInterval uint32,
 	cleanTrashDurationEachTime, cleanTrashCountEachTime int32, enableBitMapAllocator bool, enableRemoveDupReq bool,
-	truncateEKCountEveryTime int) *VolInfo {
+	truncateEKCountEveryTime int, storeMode StoreMode) *VolInfo {
 	var usedRatio float64
 	if totalSize != 0 {
 		usedRatio = float64(usedSize) / float64(totalSize)
@@ -1301,6 +1304,7 @@ func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, u
 		CleanTrashMaxDurationEachTime: cleanTrashDurationEachTime,
 		EnableRemoveDupReq:            enableRemoveDupReq,
 		TruncateEKCountEveryTime:      truncateEKCountEveryTime,
+		StoreMode:                     storeMode,
 	}
 }
 

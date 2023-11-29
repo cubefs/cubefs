@@ -197,6 +197,33 @@ func (t *topology) putMetaNodeToCache(metaNode *MetaNode) {
 	t.metaNodes.Store(metaNode.Addr, metaNode)
 }
 
+func (t *topology) getHddZoneInSameIdc(ssdZoneName string) (zoneName string, err error) {
+	var zone *Zone
+	if zone, err = t.getZone(ssdZoneName); err != nil {
+		return
+	}
+	if zone.MType != proto.MediumSSD {
+		return "", fmt.Errorf("zone medium type is not SSD")
+	}
+	value, ok := t.idcMap.Load(zone.idcName)
+	if !ok {
+		return "", fmt.Errorf("idc %v not exist", zone.idcName)
+	}
+	idc := value.(*IDCInfo)
+	idc.ZoneMap.Range(func(key, value interface{}) bool {
+		mt := value.(proto.MediumType)
+		if mt == proto.MediumHDD {
+			zoneName = key.(string)
+			return false
+		}
+		return true
+	})
+	if len(zoneName)> 0 {
+		return
+	}
+	return "", fmt.Errorf("hdd zone not found")
+}
+
 type nodeSetCollection []*nodeSet
 
 func (nsc nodeSetCollection) Len() int {

@@ -691,6 +691,21 @@ func (api *AdminAPI) ListVolsByKeywordsAndSmart(keywords, smart string) (volsInf
 	return
 }
 
+func (api *AdminAPI) GetHDDDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
+	path := proto.AdminHddPartitions
+	var request = newAPIRequest(http.MethodGet, path)
+	request.addParam("name", volName)
+	var data []byte
+	if data, _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	view = &proto.DataPartitionsView{}
+	if err = json.Unmarshal(data, view); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) IsFreezeCluster(isFreeze bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminClusterFreeze)
 	request.addParam("enable", strconv.FormatBool(isFreeze))

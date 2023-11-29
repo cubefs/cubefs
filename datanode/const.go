@@ -86,6 +86,7 @@ const (
 	ActionSyncDataPartitionReplicas  = "ActionSyncDataPartitionReplicas"
 	ActionGetPartitionSize           = "ActionGetPartitionSize"
 	GetMaxExtentIDAndPartitionSize   = "GetMaxExtentIDAndPartitionSize"
+	ActionLockOrUnlockExtent         = "ActionLockOrUnlockExtent"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.

@@ -382,6 +382,7 @@ func TestGetVol(t *testing.T) {
 
 	dpsJson := make(map[uint64]*proto.DataPartitionResponse, len(vv.DataPartitions))
 	for _, v := range vv.DataPartitions {
+		v.TransferStatus = 0
 		dpsJson[v.PartitionID] = v
 	}
 	vv.DataPartitions = nil
@@ -3950,6 +3951,49 @@ func TestSetRemoteCacheHandler(t *testing.T) {
 		t.Errorf("remoteCacheEnableState expect:true,real:%v", limitInfo.RemoteCacheBoostEnable)
 	}
 
+}
+
+func TestGetHddDataPartitions(t *testing.T)  {
+	volName := "test_vol_ssd"
+	idcName := "test_idc"
+	c := server.cluster
+	_, err := c.t.createIDC(idcName, c)
+	if err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	if err = c.setZoneIDC(testZone2, idcName, proto.MediumSSD); err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+	if err = c.setZoneIDC(testZone6, idcName, proto.MediumHDD); err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+	defer log.LogFlush()
+	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+	if err != nil {
+		t.Errorf("CreateVolume err:%v", err)
+		t.FailNow()
+	}
+
+	var view *proto.DataPartitionsView
+	if view, err = mc.AdminAPI().GetHDDDataPartitions(volName); err != nil {
+		t.Log(err.Error())
+		t.FailNow()
+	}
+
+
+	var hddDprs []*proto.DataPartitionResponse
+	for _, dp := range view.DataPartitions {
+		if dp.MediumType == proto.MediumHDDName && dp.TransferStatus == proto.ReadWrite {
+			hddDprs = append(hddDprs, dp)
+		}
+	}
+	assert.Truef(t, len(hddDprs) > 0, "wriatale hdd data partition is empty")
 }
 
 func TestSetOfflineState(t *testing.T) {

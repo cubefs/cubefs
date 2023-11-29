@@ -649,6 +649,50 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) createHddDataPartition(volName string, dpNum int) (dps []*DataPartition, err error) {
+	var (
+		vol         *Vol
+		dp          *DataPartition
+		hddZonArray []string
+		hddZones    string
+	)
+	if vol, err = m.cluster.getVol(volName); err != nil {
+		return
+	}
+	if !vol.isSmart {
+		err = errors.NewErrorf("vol: %v is not smart", volName)
+		return
+	}
+
+	zoneNames := strings.Split(vol.zoneName, ",")
+	for _, name := range zoneNames {
+		hddZone, e := m.cluster.t.getHddZoneInSameIdc(name)
+		if e != nil {
+			return nil, e
+		}
+		hddZonArray = append(hddZonArray, hddZone)
+	}
+	hddZones = strings.Join(hddZonArray, ",")
+
+	// create data partition and freeze it
+	for i := 0; i < dpNum; i++ {
+		if dp, err = m.cluster.createDataPartition(vol.Name, hddZones); err != nil {
+			log.LogErrorf("createHDDDataPartition: create data partition failed, volumeName(%v), hddZoneNames(%v), index(%v), err(%v)",
+				volName, hddZones, i, err.Error())
+			return
+		}
+		if err = m.cluster.freezeDataPartition(volName, dp.PartitionID); err != nil {
+			log.LogErrorf("createHDDDataPartition: freeze data partition failed, volumeName(%v), dpId(%v), hddZoneNames(%v), index(%v), err(%v)",
+				volName, dp.PartitionID, hddZones, i, err.Error())
+			return
+		}
+		dps = append(dps, dp)
+		log.LogInfof("createHDDDataPartition: create hdd data partition success, volumeName(%v), destZoneNames(%v), reqCount(%v), index(%v), dpId(%v)",
+			volName, zoneNames, dpNum, i, dp.PartitionID)
+	}
+	return
+}
+
 func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
 		dp          *DataPartition
@@ -5412,11 +5456,60 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
-				vol.TruncateEKCountEveryTime)
+				vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))
+}
+
+func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request) {
+	var (
+		name   string
+		vol    *Vol
+		err    error
+		hddDPs []*DataPartition
+		dprs   []*proto.DataPartitionResponse
+	)
+	currentLeaderVersion := m.getCurrentLeaderVersion(r)
+	metrics := exporter.NewModuleTP(proto.AdminGetHddDataPartitionsUmpKey)
+	defer func() { metrics.Set(err) }()
+
+	if name, err = parseAndExtractName(r); err != nil {
+		m.sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}, currentLeaderVersion)
+		return
+	}
+	if vol, err = m.cluster.getVol(name); err != nil {
+		m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+		return
+	}
+
+	for _, dp := range vol.dataPartitions.partitionMap {
+		dprs = append(dprs, dp.convertToDataPartitionResponse())
+		if !dp.isHddMedium() {
+			continue
+		}
+		if dp.TransferStatus != proto.ReadWrite {
+			continue
+		}
+		hddDPs = append(hddDPs, dp)
+	}
+
+	// create data partition in hdd datanode if no writable hdd data partitions
+	if len(hddDPs) <= 0 {
+		var dps []*DataPartition
+		if dps, err = m.createHddDataPartition(vol.Name, 10); err != nil {
+			m.sendErrReply(w, r, newErrHTTPReply(err), currentLeaderVersion)
+			return
+		}
+		for _, dp := range dps {
+			dprs = append(dprs, dp.convertToDataPartitionResponse())
+		}
+	}
+
+	cv := proto.NewDataPartitionsView()
+	cv.DataPartitions = dprs
+	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
 
 func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
@@ -5448,7 +5541,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 				vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
-				vol.TruncateEKCountEveryTime)
+				vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5478,7 +5571,7 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
-			vol.TruncateEKCountEveryTime)
+			vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

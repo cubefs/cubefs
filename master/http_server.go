@@ -204,6 +204,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminSmartVolList).
 		HandlerFunc(m.listSmartVols)
 	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminHddPartitions).
+		HandlerFunc(m.getDataPartitionsWithHdd)
+	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminCompactVolList).
 		HandlerFunc(m.listCompactVols)
 	router.NewRoute().Methods(http.MethodGet).

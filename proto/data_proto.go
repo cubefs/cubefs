@@ -169,3 +169,22 @@ type HardState struct {
 	Commit uint64
 	Vote   uint64
 }
+
+type LockStatus uint8
+
+const (
+	Lock LockStatus = iota
+	Unlock
+)
+
+type ExtentLockInfo struct {
+	ExtentKeys []ExtentKey
+	LockStatus LockStatus
+	LockTime   int64
+}
+
+type ExtentIdLockInfo struct {
+	ExtentId   uint64
+	ExpireTime int64
+	TTL        int64
+}

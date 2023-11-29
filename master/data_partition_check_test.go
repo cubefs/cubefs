@@ -45,8 +45,8 @@ func TestCheckStatusOfCrossRegionQuorumVol(t *testing.T) {
 	}
 
 	for no, case_ := range caseList {
-		case_.dp.checkStatusOfCrossRegionQuorumVol(case_.liveReplicas, case_.dpWriteableThreshold, nil, 3)
+		case_.dp.SetCrossRegionQuorumVolStatus(case_.liveReplicas, case_.dpWriteableThreshold, nil, 3)
 		res := case_.dp.Status
-		assert.Equalf(t, case_.res, res, "checkStatusOfCrossRegionQuorumVol failed, no=[%d] res=[%v] expectRes=[%v]", no, res, case_.res)
+		assert.Equalf(t, case_.res, res, "SetCrossRegionQuorumVolStatus failed, no=[%d] res=[%v] expectRes=[%v]", no, res, case_.res)
 	}
 }

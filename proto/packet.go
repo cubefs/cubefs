@@ -84,6 +84,7 @@ const (
 	OpGetAllWatermarksV3             uint8 = 0x1b
 	OpFingerprint                    uint8 = 0x1c
 	OpEcTinyDelInfoRead                    = OpReadTinyDeleteRecord
+	OpLockOrUnlockExtent             uint8 = 0x1d
 
 	// Operations: Client -> MetaNode.
 	OpMetaCreateInode   uint8 = 0x20
@@ -595,6 +596,8 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpCacheRead"
 	case OpCachePrepare:
 		m = "OpCachePrepare"
+	case OpLockOrUnlockExtent:
+		m = "OpLockOrUnlockExtent"
 	}
 	return
 }
@@ -638,6 +641,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "DirNotEmpty"
 	case OpDisabled:
 		m = "Disabled"
+	case OpInodeMergeErr:
+		m = "OpInodeMergeErr"
 	default:
 		m = fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}

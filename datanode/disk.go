@@ -524,6 +524,7 @@ func (d *Disk) managementScheduler() {
 		evictFDTicker                = time.NewTicker(time.Minute * 5)
 		forceEvictFDTicker           = time.NewTicker(time.Second * 10)
 		evictExtentDeleteCacheTicker = time.NewTicker(time.Minute * 10)
+		freeExtentLockInfoTicker     = time.NewTicker(time.Second * 20)
 	)
 	defer func() {
 		updateSpaceInfoTicker.Stop()
@@ -531,6 +532,7 @@ func (d *Disk) managementScheduler() {
 		evictFDTicker.Stop()
 		forceEvictFDTicker.Stop()
 		evictExtentDeleteCacheTicker.Stop()
+		freeExtentLockInfoTicker.Stop()
 	}()
 	for {
 		select {
@@ -547,6 +549,8 @@ func (d *Disk) managementScheduler() {
 			d.forceEvictFileDescriptor()
 		case <-evictExtentDeleteCacheTicker.C:
 			d.evictExpiredExtentDeleteCache()
+		case <-freeExtentLockInfoTicker.C:
+			d.freeExtentLockInfo()
 		}
 	}
 }
@@ -1202,4 +1206,18 @@ func (d *Disk) loadLatestFlushTime() (err error) {
 		return
 	}
 	return
+}
+
+func (d *Disk) freeExtentLockInfo() {
+	log.LogDebugf("action[freeExtentLockInfo] disk(%v) free start", d.Path)
+	d.RLock()
+	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
+	for _, partition := range d.partitionMap {
+		partitions = append(partitions, partition)
+	}
+	d.RUnlock()
+	for _, partition := range partitions {
+		partition.ExtentStore().FreeExtentLockInfo()
+	}
+	log.LogDebugf("action[freeExtentLockInfo] disk(%v) free end", d.Path)
 }
