@@ -191,8 +191,8 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 		verMapMaster[ver.Ver] = ver
 	}
 	log.LogDebugf("checkVerList. vol %v mp %v masterVerList %v mpVerList.VerList %v", mp.config.VolName, mp.config.PartitionId, masterVerList, mpVerList.VerList)
-	mp.multiVersionList.Lock()
-	defer mp.multiVersionList.Unlock()
+	mp.multiVersionList.RWLock.Lock()
+	defer mp.multiVersionList.RWLock.Unlock()
 	vlen := len(mpVerList.VerList)
 	for id, info2 := range mpVerList.VerList {
 		if id == vlen-1 {
@@ -230,7 +230,7 @@ func (mp *metaPartition) checkByMasterVerlist(mpVerList *proto.VolVersionInfoLis
 }
 
 func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, sync bool) (needUpdate bool, err error) {
-	mp.multiVersionList.RLock()
+	mp.multiVersionList.RWLock.RLock()
 	verMapLocal := make(map[uint64]*proto.VolVersionInfo)
 	verMapReq := make(map[uint64]*proto.VolVersionInfo)
 	for _, ver := range reqVerListInfo.VerList {
@@ -258,7 +258,7 @@ func (mp *metaPartition) checkVerList(reqVerListInfo *proto.VolVersionInfoList, 
 			VerList = append(VerList, info2)
 		}
 	}
-	mp.multiVersionList.RUnlock()
+	mp.multiVersionList.RWLock.RUnlock()
 
 	for _, vInfo := range reqVerListInfo.VerList {
 		if vInfo.Status != proto.VersionNormal {

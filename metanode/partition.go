@@ -552,8 +552,8 @@ func (mp *metaPartition) acucumUidSizeByLoad(ino *Inode) {
 }
 
 func (mp *metaPartition) GetVerList() []*proto.VolVersionInfo {
-	mp.multiVersionList.RLock()
-	defer mp.multiVersionList.RUnlock()
+	mp.multiVersionList.RWLock.RLock()
+	defer mp.multiVersionList.RWLock.RUnlock()
 
 	verList := make([]*proto.VolVersionInfo, len(mp.multiVersionList.VerList))
 	copy(verList, mp.multiVersionList.VerList)
@@ -563,8 +563,8 @@ func (mp *metaPartition) GetVerList() []*proto.VolVersionInfo {
 
 // include TemporaryVerMap or else cann't recycle temporary version after restart
 func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
-	mp.multiVersionList.RLock()
-	defer mp.multiVersionList.RUnlock()
+	mp.multiVersionList.RWLock.RLock()
+	defer mp.multiVersionList.RWLock.RUnlock()
 
 	verList = make([]*proto.VolVersionInfo, len(mp.multiVersionList.VerList))
 	copy(verList, mp.multiVersionList.VerList)
@@ -1395,7 +1395,7 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 		select {
 		case <-ttl.C:
 			log.LogDebugf("[multiVersionTTLWork] begin cache ttl, mp[%v]", mp.config.PartitionId)
-			mp.multiVersionList.RLock()
+			mp.multiVersionList.RWLock.RLock()
 			var volVersionInfoList = &proto.VolVersionInfoList{
 				TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 			}
@@ -1405,7 +1405,7 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 				volVersionInfoList.TemporaryVerMap[key] = &copiedValue
 			}
 
-			mp.multiVersionList.RUnlock()
+			mp.multiVersionList.RWLock.RUnlock()
 			for _, version := range volVersionInfoList.TemporaryVerMap {
 				if version.Status == proto.VersionDeleting {
 					continue
@@ -1414,9 +1414,9 @@ func (mp *metaPartition) multiVersionTTLWork(dur time.Duration) {
 				version.Status = proto.VersionDeleting
 				go func(verSeq uint64) {
 					mp.delPartitionVersion(verSeq)
-					mp.multiVersionList.Lock()
+					mp.multiVersionList.RWLock.Lock()
 					delete(mp.multiVersionList.TemporaryVerMap, verSeq)
-					mp.multiVersionList.Unlock()
+					mp.multiVersionList.RWLock.Unlock()
 					<-snapQueue
 				}(version.Ver)
 			}
@@ -1549,6 +1549,8 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 			Inode:  inode.Inode,
 			VerSeq: verSeq,
 		}
+		inode.RUnlock()
+
 		mp.UnlinkInode(req, p, localAddrForAudit)
 		// check empty result.
 		// if result is OpAgain, means the extDelCh maybe full,
@@ -1557,7 +1559,6 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 			needSleep = true
 		}
 
-		inode.RUnlock()
 		// every 1000 inode sleep 1s
 		if count > 1000 || needSleep {
 			count %= 1000

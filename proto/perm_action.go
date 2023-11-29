@@ -170,7 +170,7 @@ const (
 	POSIXReadAction  Action = POSIXActionPrefix + "Read"
 	POSIXWriteAction Action = POSIXActionPrefix + "Write"
 
-	// Object lock actions
+	// Object Lock actions
 	OSSPutObjectLockConfigurationAction Action = OSSActionPrefix + "PutObjectLockConfiguration"
 	OSSGetObjectLockConfigurationAction Action = OSSActionPrefix + "GetObjectLockConfiguration"
 
