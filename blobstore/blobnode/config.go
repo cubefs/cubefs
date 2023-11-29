@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -128,7 +127,7 @@ func (s *Service) changeQos(ctx context.Context, c Config) error {
 }
 
 // key:disk_bandwidth_MBPS,disk_iops,level0.bandwidth_MBPS,level1.iops ...
-func (s *Service) configReload(c *rpc.Context) {
+func (s *Service) ConfigReload(c *rpc.Context) {
 	args := new(bnapi.ConfigReloadArgs)
 	err := c.ParseArgs(args)
 	if err != nil {
@@ -139,24 +138,13 @@ func (s *Service) configReload(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("config reload args:%v", args)
 
-	levelKeys := strings.Split(args.Key, ".")
-	switch len(levelKeys) {
-	case 1:
-		err := s.reloadDiskConf(ctx, args)
-		if err != nil {
-			c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
-			return
-		}
-	case 2:
-		err := s.reloadLevelConf(ctx, args)
-		if err != nil {
-			c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
-			return
-		}
-	default:
-		c.RespondWith(http.StatusBadRequest, "", []byte(ErrNotSupportKey.Error()))
+	err = s.reloadDataQos(ctx, args)
+	if err != nil {
+		c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
 		return
 	}
+
+	c.Respond()
 }
 
 func (s *Service) reloadQos(ctx context.Context, qosConf qos.Config) error {
@@ -167,8 +155,8 @@ func (s *Service) reloadQos(ctx context.Context, qosConf qos.Config) error {
 	return nil
 }
 
-func (s *Service) reloadDiskConf(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
-	qosConf := s.Conf.DiskConfig.DataQos
+func (s *Service) reloadDataQos(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
+	qosConf := &s.Conf.DiskConfig.DataQos
 	value, err := strconv.ParseInt(args.Value, 10, 64)
 	if err != nil {
 		return ErrValueType
@@ -177,33 +165,12 @@ func (s *Service) reloadDiskConf(ctx context.Context, args *bnapi.ConfigReloadAr
 		return ErrValueOutOfLimit
 	}
 	switch args.Key {
-	case "disk_bandwidth_MBPS":
-		qosConf.DiskBandwidthMBPS = value
-	default:
-		return ErrNotSupportKey
-	}
-	return s.reloadQos(ctx, qosConf)
-}
-
-func (s *Service) reloadLevelConf(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
-	var value int64
-	qosConf := s.Conf.DiskConfig.DataQos
-	levelKeys := strings.Split(args.Key, ".")
-	_, item := levelKeys[0], levelKeys[1]
-
-	value, err = strconv.ParseInt(args.Value, 10, 64)
-	if err != nil {
-		return ErrValueType
-	}
-	if value <= 0 || value > 10000 {
-		return ErrValueOutOfLimit
-	}
-
-	switch item {
-	case "bandwidth_MBPS":
+	case "normal_mbps":
+		qosConf.NormalMBPS = value
+	case "background_mbps":
 		qosConf.BackgroundMBPS = value
 	default:
 		return ErrNotSupportKey
 	}
-	return s.reloadQos(ctx, qosConf)
+	return s.reloadQos(ctx, *qosConf)
 }
