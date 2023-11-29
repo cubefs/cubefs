@@ -33,7 +33,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -117,7 +117,7 @@ type DataNode struct {
 	fixTinyDeleteRecordLimit uint64
 	control                  common.Control
 	processStatInfo          *statinfo.ProcessStatInfo
-	fetchTopoManager         *fetchtopology.FetchTopologyManager
+	topoManager              *topology.TopologyManager
 }
 
 func NewServer() *DataNode {
@@ -161,9 +161,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err != nil {
 		return err
 	}
-	s.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, MasterClient, MasterDomainClient,
-		true, false)
-	if err = s.fetchTopoManager.Start(); err != nil {
+	s.topoManager = topology.NewTopologyManager(time.Minute*5, MasterClient, MasterDomainClient,
+		false, false)
+	if err = s.topoManager.Start(); err != nil {
 		return
 	}
 

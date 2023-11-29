@@ -20,7 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 	"io/ioutil"
 	"net"
 	"os"
@@ -372,7 +372,7 @@ type metaPartition struct {
 	status                      int8
 	raftFSMLock                 sync.Mutex
 	reqRecords                  *RequestRecords
-	fetchTopoManager            *fetchtopology.FetchTopologyManager
+	topoManager                 *topology.TopologyManager
 }
 
 // Start starts a meta partition.
@@ -591,17 +591,17 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		freeList:            newFreeList(),
 		needRetryFreeInodes: make(map[uint64]byte, 0),
 		extDelCh:            make(chan []proto.MetaDelExtentKey, 10000),
-		extReset:            make(chan struct{}),
-		vol:                 NewVol(),
-		manager:             manager,
-		monitorData:         statistics.InitMonitorData(statistics.ModelMetaNode),
-		marshalVersion:      MetaPartitionMarshVersion2,
-		extDelCursor:        make(chan uint64, 1),
-		db:                  NewRocksDb(),
-		CreationType:        conf.CreationType,
-		stopChState:         mpStopChOpenState,
-		reqRecords:          NewRequestRecords(),
-		fetchTopoManager:    manager.metaNode.fetchTopoManager,
+		extReset:       make(chan struct{}),
+		vol:            NewVol(),
+		manager:        manager,
+		monitorData:    statistics.InitMonitorData(statistics.ModelMetaNode),
+		marshalVersion: MetaPartitionMarshVersion2,
+		extDelCursor:   make(chan uint64, 1),
+		db:             NewRocksDb(),
+		CreationType:   conf.CreationType,
+		stopChState:    mpStopChOpenState,
+		reqRecords:     NewRequestRecords(),
+		topoManager:    manager.metaNode.topoManager,
 	}
 	return mp
 }

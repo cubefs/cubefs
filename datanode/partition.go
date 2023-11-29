@@ -18,7 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -239,7 +239,7 @@ type DataPartition struct {
 	DataPartitionCreateType       int
 	finishPlayBackTinyDelete      bool
 	monitorData                   []*statistics.MonitorData
-	topologyManager               *fetchtopology.FetchTopologyManager
+	topologyManager               *topology.TopologyManager
 	persistSync                   chan struct{}
 
 	inRepairExtents  map[uint64]struct{}
@@ -273,7 +273,7 @@ type DataPartitionViewInfo struct {
 
 func (d *Disk) createPartition(dpCfg *dataPartitionCfg, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, d, true, d.fetchtopoManager, d.interceptors); err != nil {
+	if dp, err = newDataPartition(dpCfg, d, true, d.topoManager, d.interceptors); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -359,7 +359,7 @@ func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error)
 		VolHAType: meta.VolumeHAType,
 		Mode:      meta.ConsistencyMode,
 	}
-	if dp, err = newDataPartition(dpCfg, d, false, d.fetchtopoManager, d.interceptors); err != nil {
+	if dp, err = newDataPartition(dpCfg, d, false, d.topoManager, d.interceptors); err != nil {
 		return
 	}
 	// dp.PersistMetadata()
@@ -444,7 +444,7 @@ func (dp *DataPartition) maybeUpdateFaultOccurredCheckLevel() {
 	}
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, fetchtopoManager *fetchtopology.FetchTopologyManager, interceptors storage.IOInterceptors) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, fetchtopoManager *topology.TopologyManager, interceptors storage.IOInterceptors) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	partition := &DataPartition{
@@ -1406,7 +1406,7 @@ func (dp *DataPartition) backendRefreshCacheView() {
 	dp.topologyManager.FetchDataPartitionView(dp.volumeID, dp.partitionID)
 }
 
-func (dp *DataPartition) getCacheView() (dataPartition *fetchtopology.DataPartition, err error) {
+func (dp *DataPartition) getCacheView() (dataPartition *topology.DataPartition, err error) {
 	if dp.topologyManager == nil {
 		return nil, fmt.Errorf("topo manager is nil")
 	}

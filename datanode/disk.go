@@ -17,7 +17,7 @@ package datanode
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 	"io/ioutil"
 	"math"
 	"os"
@@ -146,7 +146,7 @@ type Disk struct {
 
 	latestFlushTimeOnInit int64 // Disk 实例初始化时加载到的该磁盘最近一次Flush数据的时间
 
-	fetchtopoManager *fetchtopology.FetchTopologyManager
+	topoManager      *topology.TopologyManager
 	monitorData      []*statistics.MonitorData
 	interceptors     storage.IOInterceptors
 
@@ -159,7 +159,7 @@ type Disk struct {
 
 type CheckExpired func(id uint64) bool
 
-func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism int, fetchTopoManager *fetchtopology.FetchTopologyManager, expired CheckExpired) (d *Disk, err error) {
+func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism int, topoManager *topology.TopologyManager, expired CheckExpired) (d *Disk, err error) {
 	_, err = os.Stat(path)
 	if err != nil {
 		return
@@ -183,7 +183,7 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 		maxFDLimit:               config.MaxFDLimit,
 		forceEvictFDRatio:        config.ForceFDEvictRatio,
 		forceFlushFDParallelism:  DefaultForceFlushFDParallelismOnDisk,
-		fetchtopoManager:         fetchTopoManager,
+		topoManager:              topoManager,
 		monitorData:              statistics.InitMonitorData(statistics.ModelDataNode),
 	}
 

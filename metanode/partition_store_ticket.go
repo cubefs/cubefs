@@ -271,7 +271,7 @@ func (mp *metaPartition) startCleanTrashScheduler() {
 }
 
 func (mp *metaPartition) getTrashDaysByVol(vol string) (days int32) {
-	if volTopo := mp.fetchTopoManager.GetVolume(vol); volTopo.Config() == nil {
+	if volTopo := mp.topoManager.GetVolume(vol); volTopo.Config() == nil {
 		days = -1
 	} else {
 		days = volTopo.Config().GetTrashDays()
@@ -304,7 +304,7 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 				if mp.trashExpiresFirstUpdateTime.IsZero() {
 					mp.trashExpiresFirstUpdateTime = time.Now()
 				}
-				volTopo := mp.fetchTopoManager.GetVolume(mp.config.VolName)
+				volTopo := mp.topoManager.GetVolume(mp.config.VolName)
 				if volTopo.Config() == nil {
 					continue
 				}
