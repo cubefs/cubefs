@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -238,18 +239,18 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		ioFlowStat, _ := flow.NewIOFlowStat("default", false)
 		ioview := flow.NewDiskViewer(ioFlowStat)
 		conf.DiskConfig.DataQos = qos.Config{
-			DiskBandwidthMBPS: 20,
-			DiskViewer:        ioview,
-			StatGetter:        ioFlowStat,
+			NormalMBPS: 20,
+			DiskViewer: ioview,
+			StatGetter: ioFlowStat,
 		}
 	}
 	if path == "bpslimit" {
 		ioFlowStat, _ := flow.NewIOFlowStat("default", false)
 		ioview := flow.NewDiskViewer(ioFlowStat)
 		conf.DiskConfig.DataQos = qos.Config{
-			DiskBandwidthMBPS: 1,
-			DiskViewer:        ioview,
-			StatGetter:        ioFlowStat,
+			NormalMBPS: 1,
+			DiskViewer: ioview,
+			StatGetter: ioFlowStat,
 		}
 	}
 	service, err := NewService(conf)
@@ -715,4 +716,91 @@ func (mcm *mockClusterMgr) VolumeGet(c *rpc.Context) {
 		return
 	}
 	c.RespondError(errors.New("not implement"))
+}
+
+func TestService_ConfigReload(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ds1 := NewMockDiskAPI(ctr)
+	ds2 := NewMockDiskAPI(ctr)
+	svr := &Service{
+		Disks: map[proto.DiskID]core.DiskAPI{101: ds1, 202: ds2},
+		Conf:  &Config{DiskConfig: core.RuntimeConfig{DataQos: qos.Config{}}},
+	}
+	testServer := httptest.NewServer(NewHandler(svr))
+
+	{
+		// error
+		totalUrl := testServer.URL + "/config/reload?background_mbps=10"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 400, resp.StatusCode)
+	}
+
+	q1, err := qos.NewIoQueueQos(qos.Config{
+		NormalMBPS:     2,
+		BackgroundMBPS: 1,
+		ReadQueueDepth: 1,
+	})
+	require.NoError(t, err)
+	q2, err := qos.NewIoQueueQos(qos.Config{
+		NormalMBPS:     4,
+		BackgroundMBPS: 3,
+		ReadQueueDepth: 1,
+	})
+	require.NoError(t, err)
+
+	{
+		// normal mbps is 0
+		ds1.EXPECT().GetIoQos().Return(q1)
+		ds2.EXPECT().GetIoQos().Return(q2)
+		totalUrl := testServer.URL + "/config/reload?key=background_mbps&value=10"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+
+		conf1 := q1.(*qos.IoQueueQos).GetConf()
+		require.NotEqual(t, int64(0), conf1.NormalMBPS)
+		require.Equal(t, int64(2*1024*1024), conf1.NormalMBPS)
+		require.Equal(t, int64(10*1024*1024), conf1.BackgroundMBPS)
+	}
+
+	{
+		// background_mbps
+		svr.Conf.DiskConfig.DataQos.NormalMBPS = 2
+		svr.Conf.DiskConfig.DataQos.BackgroundMBPS = 1
+		ds1.EXPECT().GetIoQos().Return(q1)
+		ds2.EXPECT().GetIoQos().Return(q2)
+		totalUrl := testServer.URL + "/config/reload?key=background_mbps&value=10"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+
+		conf1 := q1.(*qos.IoQueueQos).GetConf()
+		conf2 := q2.(*qos.IoQueueQos).GetConf()
+		require.Equal(t, svr.Conf.DiskConfig.DataQos.NormalMBPS*1024*1024, conf1.NormalMBPS)
+		require.Equal(t, int64(10*1024*1024), conf1.BackgroundMBPS)
+		require.Equal(t, svr.Conf.DiskConfig.DataQos.NormalMBPS*1024*1024, conf2.NormalMBPS)
+		require.Equal(t, int64(10*1024*1024), conf2.BackgroundMBPS)
+	}
+
+	{
+		// normal_mbps
+		ds1.EXPECT().GetIoQos().Return(q1)
+		ds2.EXPECT().GetIoQos().Return(q2)
+		totalUrl := testServer.URL + "/config/reload?key=normal_mbps&value=20"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+
+		conf1 := q1.(*qos.IoQueueQos).GetConf()
+		conf2 := q2.(*qos.IoQueueQos).GetConf()
+		require.Equal(t, int64(20*1024*1024), conf1.NormalMBPS)
+		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, conf1.BackgroundMBPS)
+		require.Equal(t, int64(20*1024*1024), conf2.NormalMBPS)
+		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, conf2.BackgroundMBPS)
+	}
 }

@@ -27,14 +27,14 @@ const (
 )
 
 type Config struct {
-	StatGetter        flow.StatGetter `json:"-"` // Identify: a io flow
-	DiskViewer        iostat.IOViewer `json:"-"` // Identify: io viewer
-	ReadQueueDepth    int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
-	WriteQueueDepth   int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
-	WriteChanQueCnt   int             `json:"-"` // The number of chan queues, equal $chanCnt of write io pool
-	MaxWaitCount      int             `json:"max_wait_count"`
-	DiskBandwidthMBPS int64           `json:"disk_bandwidth_mbps"`
-	BackgroundMBPS    int64           `json:"background_mbps"`
+	StatGetter      flow.StatGetter `json:"-"` // Identify: a io flow
+	DiskViewer      iostat.IOViewer `json:"-"` // Identify: io viewer
+	ReadQueueDepth  int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue, must not zero
+	WriteQueueDepth int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
+	WriteChanQueCnt int             `json:"-"` // The number of chan queues, equal $chanCnt of write io pool
+	MaxWaitCount    int             `json:"max_wait_count"`
+	NormalMBPS      int64           `json:"normal_mbps"`
+	BackgroundMBPS  int64           `json:"background_mbps"`
 }
 
 type ParaConfig struct {
@@ -45,10 +45,11 @@ type ParaConfig struct {
 type LevelConfig map[string]ParaConfig
 
 func InitAndFixQosConfig(raw *Config) {
+	defaulter.LessOrEqual(&raw.NormalMBPS, int64(defaultMaxBandwidthMBPS))
 	defaulter.LessOrEqual(&raw.BackgroundMBPS, int64(defaultBackgroundBandwidthMBPS))
 	defaulter.LessOrEqual(&raw.MaxWaitCount, defaultMaxWaitCount)
 
-	if raw.BackgroundMBPS > raw.DiskBandwidthMBPS && raw.DiskBandwidthMBPS > 0 {
-		raw.BackgroundMBPS = raw.DiskBandwidthMBPS // fix background
+	if raw.BackgroundMBPS > raw.NormalMBPS {
+		raw.BackgroundMBPS = raw.NormalMBPS // fix background
 	}
 }
