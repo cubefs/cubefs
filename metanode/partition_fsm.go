@@ -464,8 +464,8 @@ func (mp *metaPartition) runVersionOp() {
 }
 
 func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
-	mp.multiVersionList.Lock()
-	defer mp.multiVersionList.Unlock()
+	mp.multiVersionList.RWLock.Lock()
+	defer mp.multiVersionList.RWLock.Unlock()
 
 	var opData VerOpData
 	if err = json.Unmarshal(reqData, &opData); err != nil {
