@@ -444,7 +444,7 @@ services:
                 ipv4_address: 192.168.0.101
 
     prometheus:
-        image: prom/prometheus
+        image: prom/prometheus:v2.28.0
         ports:
             - 9090:9090
         volumes:
