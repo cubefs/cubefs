@@ -1470,7 +1470,7 @@ func (m *Server) changeDataPartitionLeader(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	rstMsg := fmt.Sprintf(" changeDataPartitionLeader command sucess send to dest host but need check. ")
+	rstMsg := fmt.Sprintf(" changeDataPartitionLeader command success send to dest host but need check. ")
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -1740,7 +1740,7 @@ func (m *Server) changeMetaPartitionLeader(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	rstMsg := fmt.Sprintf(" changeMetaPartitionLeader command sucess send to dest host but need check. ")
+	rstMsg := fmt.Sprintf(" changeMetaPartitionLeader command success send to dest host but need check. ")
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -4906,7 +4906,7 @@ func (m *Server) changeMasterLeader(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	rstMsg := fmt.Sprintf(" changeMasterLeader. command sucess send to dest host but need check. ")
+	rstMsg := fmt.Sprintf(" changeMasterLeader. command success send to dest host but need check. ")
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -4928,7 +4928,7 @@ func (m *Server) OpFollowerPartitionsRead(w http.ResponseWriter, r *http.Request
 	}
 	m.cluster.followerReadManager.needCheck = enableFollower
 
-	rstMsg := fmt.Sprintf(" OpFollowerPartitionsRead. set needCheck %v command sucess. ", enableFollower)
+	rstMsg := fmt.Sprintf(" OpFollowerPartitionsRead. set needCheck %v command success. ", enableFollower)
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
