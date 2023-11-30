@@ -74,15 +74,15 @@ func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	return
 }
 
-func (s *KFasterRandomSelector) Select(exclude map[string]struct{}, mediaType uint32) (dp *DataPartition, err error) {
+func (s *KFasterRandomSelector) Select(exclude map[string]struct{}, mediaType uint32, ehID uint64) (dp *DataPartition, err error) {
 	s.RLock()
 	partitions := s.partitions
 	kValue := s.kValue
 	s.RUnlock()
 
 	if len(partitions) == 0 {
-		log.LogError("KFasterRandomSelector: no writable data partition with empty partitions")
-		return nil, fmt.Errorf("no writable data partition")
+		log.LogErrorf("KFasterRandomSelector: eh(%v) no writable data partition with empty partitions", ehID)
+		return nil, fmt.Errorf("eh(%v) no writable data partition", ehID)
 	}
 
 	// select random dataPartition from fasterRwPartitions
@@ -91,38 +91,39 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	dp = partitions[index]
 
 	if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
-		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)， mediaType(%v)",
-			dp, index, kValue, len(partitions), proto.MediaTypeString(mediaType))
+		log.LogDebugf("KFasterRandomSelector: eh(%v)select faster dp[%v], index %v, kValue(%v/%v)， mediaType(%v)",
+			ehID, dp, index, kValue, len(partitions), proto.MediaTypeString(mediaType))
 		return dp, nil
 	}
 
-	log.LogWarnf("KFasterRandomSelector: first random fasterRwPartition was excluded, get partition from other faster")
+	log.LogWarnf("KFasterRandomSelector: eh(%v)first random fasterRwPartition was excluded, "+
+		"get partition from other faster", ehID)
 
 	// if partitions[index] is excluded, select next in fasterRwPartitions
 	for i := 1; i < kValue; i++ {
 		dp = partitions[(index+i)%kValue]
 		if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
-			log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
-				dp, (index+i)%kValue, kValue, len(partitions))
+			log.LogDebugf("KFasterRandomSelector:eh(%v) select faster dp[%v], index %v, kValue(%v/%v)",
+				ehID, dp, (index+i)%kValue, kValue, len(partitions))
 			return dp, nil
 		}
 	}
 
-	log.LogWarnf("KFasterRandomSelector: all fasterRwPartitions were excluded, get partition from slower")
+	log.LogWarnf("KFasterRandomSelector: eh(%v)all fasterRwPartitions were excluded, get partition from slower", ehID)
 
 	// if all fasterRwPartitions are excluded, select random dataPartition in slowerRwPartitions
 	slowerRwPartitionsNum := len(partitions) - kValue
 	for i := 0; i < slowerRwPartitionsNum; i++ {
 		dp = partitions[(index+i)%slowerRwPartitionsNum+kValue]
 		if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
-			log.LogDebugf("KFasterRandomSelector: select slower dp[%v], index %v, kValue(%v/%v)",
-				dp, (index+i)%slowerRwPartitionsNum+kValue, kValue, len(partitions))
+			log.LogDebugf("KFasterRandomSelector: eh(%v)select slower dp[%v], index %v, kValue(%v/%v)",
+				ehID, dp, (index+i)%slowerRwPartitionsNum+kValue, kValue, len(partitions))
 			return dp, nil
 		}
 	}
-	log.LogErrorf("KFasterRandomSelector: no writable data partition with %v partitions and exclude(%v)",
-		len(partitions), exclude)
-	return nil, fmt.Errorf("no writable data partition")
+	log.LogErrorf("KFasterRandomSelector: eh(%v)no writable data partition with %v partitions and exclude(%v)",
+		ehID, len(partitions), exclude)
+	return nil, fmt.Errorf("eh(%v) no writable data partition", ehID)
 }
 
 func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {

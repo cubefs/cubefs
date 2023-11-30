@@ -747,7 +747,7 @@ func (client *ExtentClient) CheckDataPartitionExsit(partitionID uint64) error {
 
 func (client *ExtentClient) GetDataPartitionForWrite(mediaType uint32) error {
 	exclude := make(map[string]struct{})
-	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude, mediaType)
+	_, err := client.dataWrapper.GetDataPartitionForWrite(exclude, mediaType, 0)
 	return err
 }
 
