@@ -76,6 +76,14 @@ const (
 	mms13Addr     = "127.0.0.1:8113"
 	mms14Addr     = "127.0.0.1:8114"
 	mms15Addr     = "127.0.0.1:8115"
+
+	//use reg test after offline
+	mms16Addr     = "127.0.0.1:8116"
+	mms17Addr     = "127.0.0.1:8117"
+	mms18Addr     = "127.0.0.1:8118"
+	mms19Addr     = "127.0.0.1:8119"
+	mms20Addr     = "127.0.0.1:8120"
+
 	commonVolName = "commonVol"
 	quorumVolName = "quorumVol"
 	smartVolName  = "smartVol"
@@ -123,6 +131,7 @@ const (
 	mfs7Addr = "127.0.0.1:10507"
 
 	readConntimeout = 3 * int64(time.Second)
+	metaNodeDataRootDir = "/tmp/chubaofs/MetaNode"
 )
 
 var server = createDefaultMasterServerForTest()
@@ -130,8 +139,18 @@ var commonVol *Vol
 var quorumVol *Vol
 var cfsUser *proto.UserInfo
 var mc = master.NewMasterClient([]string{"127.0.0.1:8080"}, false)
+var mtMap map[string] *mocktest.MockMetaServer
+
+func cleanLastDataForTest() {
+	os.RemoveAll("/tmp/chubaofs/Logs")
+	os.RemoveAll("/tmp/chubaofs/raft")
+	os.RemoveAll("/tmp/chubaofs/rocksdbstore")
+	os.RemoveAll(metaNodeDataRootDir)
+}
 
 func createDefaultMasterServerForTest() *Server {
+	cleanLastDataForTest()
+	mtMap = make(map[string] *mocktest.MockMetaServer)
 	cfgJSON := `{
 		"role": "master",
 		"ip": "127.0.0.1",
@@ -170,18 +189,18 @@ func createDefaultMasterServerForTest() *Server {
 	addDataServer(mds16Addr, testZone9)
 	addDataServer(mds17Addr, testZone9)
 	// add meta node
-	addMetaServer(mms1Addr, testZone1)
-	addMetaServer(mms2Addr, testZone1)
-	addMetaServer(mms3Addr, testZone2)
-	addMetaServer(mms4Addr, testZone2)
-	addMetaServer(mms5Addr, testZone2)
-	addMetaServer(mms7Addr, testZone3)
-	addMetaServer(mms8Addr, testZone3)
-	addMetaServer(mms11Addr, testZone6)
-	addMetaServer(mms12Addr, testZone6)
-	addMetaServer(mms13Addr, testZone6)
-	addMetaServer(mms14Addr, testZone9)
-	addMetaServer(mms15Addr, testZone9)
+	mtMap[mms1Addr] = addMetaServer(mms1Addr, testZone1)
+	mtMap[mms2Addr] = addMetaServer(mms2Addr, testZone1)
+	mtMap[mms3Addr] = addMetaServer(mms3Addr, testZone2)
+	mtMap[mms4Addr] = addMetaServer(mms4Addr, testZone2)
+	mtMap[mms5Addr] = addMetaServer(mms5Addr, testZone2)
+	mtMap[mms7Addr] = addMetaServer(mms7Addr, testZone3)
+	mtMap[mms8Addr] = addMetaServer(mms8Addr, testZone3)
+	mtMap[mms11Addr] = addMetaServer(mms11Addr, testZone6)
+	mtMap[mms12Addr] = addMetaServer(mms12Addr, testZone6)
+	mtMap[mms13Addr] = addMetaServer(mms13Addr, testZone6)
+	mtMap[mms14Addr] = addMetaServer(mms14Addr, testZone9)
+	mtMap[mms15Addr] = addMetaServer(mms15Addr, testZone9)
 
 	// add ec node
 	addEcServer(ecs1Addr, httpPort, testZone1)
@@ -308,7 +327,7 @@ func stopDataServer(mds *mocktest.MockDataServer) {
 }
 
 func addMetaServer(addr, zoneName string) (mms *mocktest.MockMetaServer) {
-	mms = mocktest.NewMockMetaServer(addr, zoneName)
+	mms = mocktest.NewMockMetaServer(addr, zoneName, metaNodeDataRootDir)
 	mms.Start()
 	return mms
 }
@@ -546,6 +565,27 @@ func process(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
 		return
 	}
 	if !assert.Zerof(t, reply.Code, "failed,msg[%v],data[%v]", reply.Msg, reply.Data) {
+		return
+	}
+	return
+}
+
+func processWithError(reqURL string, t *testing.T) (reply *proto.HTTPReply) {
+	resp, err := http.Get(reqURL)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Equalf(t, http.StatusOK, resp.StatusCode, "status code[%v]", resp.StatusCode) {
+		return
+	}
+	reply = &proto.HTTPReply{}
+	err = json.Unmarshal(body, reply)
+	if !assert.NoError(t, err) {
 		return
 	}
 	return
@@ -4166,6 +4206,150 @@ func TestDecommissionTwoDpReplicaZone(t *testing.T) {
 		err = mc.AdminAPI().DecommissionDataPartition(dp.PartitionID, mds1Addr, mds3Addr)
 		assert.Error(t, err)
 	})
+}
+
+func TestSetClusterName(t *testing.T) {
+	if err := server.checkClusterName(); err != nil || server.cluster.cfg.ClusterName != ""{
+		assert.NoError(t, err)
+		t.Errorf("expect success, but failed:%s", err.Error())
+		return
+	}
+
+	reqURL := fmt.Sprintf("%v%v?%s=%s",
+		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName + "_error")
+	processWithError(reqURL, t)
+	if server.cluster.cfg.ClusterName != "" {
+		err := fmt.Errorf("expect set cluster name failed, but success")
+		assert.NoError(t, err)
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	reqURL = fmt.Sprintf("%v%v?%s=%s",
+		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName)
+	process(reqURL, t)
+
+	if err := server.checkClusterName(); err !=nil || server.cluster.cfg.ClusterName == "" {
+		assert.NoError(t, err)
+		t.Errorf("expect success, but failed:%s", err.Error())
+		return
+	}
+
+	server.clusterName += "_test"
+	if err := server.checkClusterName(); err == nil {
+		err = fmt.Errorf("expect check cluster name failed, but success, local(%s), cluster(%s)", server.cluster.Name, server.cluster.cfg.ClusterName)
+		assert.NoError(t, err)
+		t.Errorf("%s", err.Error())
+		return
+	}
+	server.clusterName = server.cluster.Name
+
+	reqURL = fmt.Sprintf("%v%v?%s=%s",
+		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName + "_error")
+	processWithError(reqURL, t)
+	if server.cluster.cfg.ClusterName != server.clusterName {
+		err := fmt.Errorf("expect set cluster name failed, but success")
+		assert.NoError(t, err)
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	reqURL = fmt.Sprintf("%v%v?%s=%s",
+		hostAddr, proto.AdminSetClusterName, forceKey, "true")
+	process(reqURL, t)
+	if err := server.checkClusterName(); err !=nil || server.cluster.cfg.ClusterName != "" {
+		assert.NoError(t, err)
+		t.Errorf("expect success, but failed:%s", err.Error())
+		return
+	}
+}
+
+func releaseRegMetanode(t *testing.T) {
+	for _, addr := range []string{mms16Addr, mms17Addr, mms18Addr, mms19Addr, mms20Addr} {
+
+		reqURL := fmt.Sprintf("%v%v?%s=%s",
+			hostAddr, proto.DecommissionMetaNode, addrKey, addr)
+		processWithError(reqURL, t)
+	}
+	time.Sleep(time.Second * 5)
+
+	for _, addr := range []string{mms16Addr, mms17Addr, mms18Addr, mms19Addr, mms20Addr} {
+		mt, _ := mtMap[addr]
+		if mt == nil {
+			continue
+		}
+		mt.Stop()
+		delete(mtMap, addr)
+	}
+}
+
+func TestMetaNodeReg(t *testing.T) {
+	defer func() {
+		releaseRegMetanode(t)
+		reqURL := fmt.Sprintf("%v%v?%s=%s",
+			hostAddr, proto.AdminSetClusterName, forceKey, "true")
+		process(reqURL, t)
+	}()
+
+	mt := mocktest.NewMockMetaServer(mms16Addr, testZone1, metaNodeDataRootDir)
+	mtMap[mms16Addr] = mt
+	//cluster name empty, old reg// do not test
+	//cluster name empty, new reg
+	mt.SetNewRegFlag(true)
+	if err := mt.Start(); err != nil {
+		assert.NoError(t, err)
+		t.Errorf("expect success, but failed, cluster name %s, local auth key:%s", err.Error(), mt.GetAuthKey())
+		return
+	}
+
+	reqURL := fmt.Sprintf("%v%v?%s=%s",
+		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName)
+	process(reqURL, t)
+
+	//cluster name, old reg
+	mt = mocktest.NewMockMetaServer(mms17Addr, testZone1, metaNodeDataRootDir)
+	mtMap[mms17Addr] = mt
+	if err := mt.Start(); err != nil {
+		assert.NoError(t, err)
+		t.Errorf("expect success, but failed, cluster name %s, local auth key:%s", err.Error(), mt.GetAuthKey())
+		return
+	}
+
+	//cluster name, new reg; loc auth ""
+	mt = mocktest.NewMockMetaServer(mms18Addr, testZone1, metaNodeDataRootDir)
+	mtMap[mms18Addr] = mt
+	mt.SetNewRegFlag(true)
+	if err := mt.Start(); err != nil {
+		assert.NoError(t, err)
+		t.Errorf("expect success, but failed, cluster name %s, local auth key:%s", err.Error(), mt.GetAuthKey())
+		return
+	}
+
+	//cluster name, new reg; loc auth
+	mt = mocktest.NewMockMetaServer(mms19Addr, testZone1, metaNodeDataRootDir)
+	mtMap[mms19Addr] = mt
+	mt.WriteRightAuthKey(hex.EncodeToString(md5.New().Sum([]byte(server.cluster.cfg.ClusterName))))
+	mt.SetNewRegFlag(true)
+	if err := mt.Start(); err != nil {
+		assert.NoError(t, err)
+		t.Errorf("expect success, but failed, cluster name %s, local auth key:%s", err.Error(), mt.GetAuthKey())
+		return
+	}
+
+	//cluster name, err reg
+	mt = mocktest.NewMockMetaServer(mms20Addr, testZone1, metaNodeDataRootDir)
+	mtMap[mms20Addr] = mt
+	mt.SetNewRegFlag(true)
+	mt.WriteErrorAuthKey()
+	if err := mt.Start(); err == nil {
+		err := fmt.Errorf("expect failed, but success, cluster name %s, local auth key:%s", server.cluster.cfg.ClusterName, mt.GetAuthKey())
+		assert.NoError(t, err)
+		t.Errorf("expect success, but failed, cluster name %s, local auth key:%s", err.Error(), mt.GetAuthKey())
+		return
+	} else {
+		t.Logf("reg metanode failed, %s", err.Error())
+	}
+
 }
 
 //func TestDecommissionDisk(t *testing.T) {

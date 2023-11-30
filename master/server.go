@@ -122,6 +122,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 
 	if err = m.checkClusterName(); err != nil {
 		log.LogErrorf(errors.Stack(err))
+		log.LogFlush()
 		return
 	}
 

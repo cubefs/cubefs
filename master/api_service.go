@@ -6632,15 +6632,22 @@ func (m *Server) getBadNodes(w http.ResponseWriter, r *http.Request) {
 func (m *Server) setClusterName(w http.ResponseWriter, r *http.Request) {
 	var (
 		clusterName string
+		forceReset  bool
 		err         error
 	)
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if clusterName = r.FormValue(proto.ClusterNameKey); clusterName == "" {
+	clusterName    = r.FormValue(proto.ClusterNameKey)
+	forceReset, _  = extractForce(r)
+	if !forceReset && clusterName == "" {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: keyNotFound(proto.ClusterNameKey).Error()})
 		return
+	}
+
+	if forceReset {
+		clusterName = ""
 	}
 	if err = m.cluster.setClusterName(clusterName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))

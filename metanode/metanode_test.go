@@ -1,0 +1,226 @@
+package metanode
+
+import (
+    "crypto/md5"
+    "encoding/hex"
+    "encoding/json"
+    "fmt"
+    "github.com/cubefs/cubefs/proto"
+    masterSDK "github.com/cubefs/cubefs/sdk/master"
+    "github.com/cubefs/cubefs/util/log"
+    "net"
+    "net/http"
+    "os"
+    "path"
+    "strconv"
+    "testing"
+)
+
+var ClusterHasAuthKey bool
+var RegErrorFlag      bool
+var GetIpErrorFlag    bool
+
+func newSuccessHTTPReply(data interface{}) *proto.HTTPReply {
+    return &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: proto.ErrSuc.Error(), Data: data}
+}
+
+func mockSend(w http.ResponseWriter, r *http.Request, reply []byte, contentType string) {
+    w.Header().Set("content-type", contentType)
+    w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
+    if _, err := w.Write(reply); err != nil {
+        log.LogErrorf("fail to write http reply len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
+        return
+    }
+    log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
+    return
+}
+
+func mockSendReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {
+    reply, err := json.Marshal(httpReply)
+    if err != nil {
+        log.LogErrorf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
+        http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+        return
+    }
+    mockSend(w, r, reply, proto.JsonType)
+    return
+}
+
+func mockGetIp(w http.ResponseWriter, r *http.Request) {
+    if GetIpErrorFlag {
+        mockSendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "get ip failed"})
+        return
+    }
+    cInfo := &proto.ClusterInfo{
+        Cluster:              "test",
+        Ip:                   "127.0.0.1",
+        ClientReadLimitRate:  0,
+        ClientWriteLimitRate: 0,
+    }
+    mockSendReply(w, r, newSuccessHTTPReply(cInfo))
+}
+
+func mockRegNode(w http.ResponseWriter, r *http.Request) {
+    var checkKey string
+    if ClusterHasAuthKey {
+        checkKey = hex.EncodeToString(md5.New().Sum([]byte("test")))
+    }
+
+    if RegErrorFlag {
+        mockSendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "invalid auth key"})
+        return
+    }
+    mockSendReply(w, r, newSuccessHTTPReply(&proto.RegNodeRsp{
+        Addr: "127.0.0.1:9092",
+        Id: 10,
+        Cluster: "test",
+        AuthKey: checkKey}))
+}
+
+func mockInitHttpListen(port int) net.Listener{
+    profNetListener, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
+    if err != nil {
+        return nil
+    }
+    // 在prof端口监听上启动http API.
+    go func() {
+        _ = http.Serve(profNetListener, http.DefaultServeMux)
+    }()
+
+    return profNetListener
+}
+
+func mockRegHttpReq() {
+    http.HandleFunc("/admin/getIp", mockGetIp)
+    http.HandleFunc("/node/reg",    mockRegNode)
+}
+
+func ClusterNotLocNot(mt *MetaNode, t *testing.T) {
+    defer func() {
+        os.RemoveAll(mt.metadataDir)
+    }()
+    os.Mkdir(mt.metadataDir, 0655)
+    if err := mt.register(); err != nil {
+        t.Fatalf("reg metanode failed, %s", err.Error())
+    }
+}
+
+func ClusterNotLocHas(mt *MetaNode, t *testing.T) {
+    defer func() {
+        os.RemoveAll(mt.metadataDir)
+    }()
+    os.Mkdir(mt.metadataDir, 0655)
+    os.WriteFile(path.Join(mt.metadataDir, ".clusterAuth"), []byte("test"), 0655)
+
+    if err := mt.register(); err != nil {
+        t.Fatalf("reg metanode failed, %s", err.Error())
+    }
+}
+
+func ClusterHasLocNot(mt *MetaNode, t *testing.T) {
+    defer func() {
+        os.RemoveAll(mt.metadataDir)
+        ClusterHasAuthKey = false
+    }()
+    ClusterHasAuthKey = true
+    os.Mkdir(mt.metadataDir, 0655)
+
+    if err := mt.register(); err != nil {
+        t.Fatalf("reg metanode failed, %s", err.Error())
+    }
+}
+
+func ClusterHasLocHas(mt *MetaNode, t *testing.T) {
+    defer func() {
+        os.RemoveAll(mt.metadataDir)
+        ClusterHasAuthKey = false
+    }()
+    ClusterHasAuthKey = true
+    os.Mkdir(mt.metadataDir, 0655)
+    os.WriteFile(path.Join(mt.metadataDir, ".clusterAuth"),
+                    []byte(hex.EncodeToString(md5.New().Sum([]byte("test")))), 0655)
+
+    if err := mt.register(); err != nil {
+        t.Fatalf("reg metanode failed, %s", err.Error())
+    }
+}
+
+func GetIpFailed(mt *MetaNode, t *testing.T) {
+    defer func() {
+        os.RemoveAll(mt.metadataDir)
+        ClusterHasAuthKey = false
+        GetIpErrorFlag = false
+    }()
+    ClusterHasAuthKey = true
+    GetIpErrorFlag = true
+
+    os.Mkdir(mt.metadataDir, 0655)
+    os.WriteFile(path.Join(mt.metadataDir, ".clusterAuth"), []byte("test"), 0655)
+    if err := mt.register(); err == nil {
+        t.Fatalf("local failed: reg metanode expect failed, but now success")
+    } else {
+        t.Logf("reg metanode failed:%s", err.Error())
+    }
+
+}
+
+func LocCheckFailed(mt *MetaNode, t *testing.T) {
+    defer func() {
+        os.RemoveAll(mt.metadataDir)
+        ClusterHasAuthKey = false
+    }()
+    ClusterHasAuthKey = true
+
+    os.Mkdir(mt.metadataDir, 0655)
+    os.WriteFile(path.Join(mt.metadataDir, ".clusterAuth"), []byte("test"), 0655)
+    if err := mt.register(); err == nil {
+        t.Fatalf("local failed: reg metanode expect failed, but now success")
+    } else {
+        t.Logf("reg metanode failed:%s", err.Error())
+    }
+
+}
+
+func ClusterCheckError(mt *MetaNode, t *testing.T) {
+    defer func() {
+        os.RemoveAll(mt.metadataDir)
+        RegErrorFlag = false
+        ClusterHasAuthKey = false
+    }()
+    ClusterHasAuthKey = true
+    RegErrorFlag = true
+    os.Mkdir(mt.metadataDir, 0655)
+
+    if err := mt.register(); err == nil {
+        t.Fatalf("cluster failed: reg metanode expect failed, but now success")
+    } else {
+        t.Logf("reg metanode failed:%s", err.Error())
+    }
+}
+
+func TestRegMetaNode(t *testing.T) {
+    var httpListenner net.Listener
+    defer func() {
+        if httpListenner != nil {
+            httpListenner.Close()
+        }
+    }()
+    httpListenner = mockInitHttpListen(18000)
+    mockRegHttpReq()
+    masterClient = masterSDK.NewMasterClient([]string{"127.0.0.1:18000"}, false)
+
+    ClusterHasAuthKey = false
+    mt := &MetaNode{
+        zoneName: "zone",
+        listen: "9092",
+        metadataDir: "./test_mt1/",
+    }
+
+    ClusterNotLocNot(mt, t)
+    ClusterNotLocHas(mt, t)
+    ClusterHasLocNot(mt, t)
+    ClusterHasLocHas(mt, t)
+    GetIpFailed(mt, t)
+    LocCheckFailed(mt, t)
+    ClusterCheckError(mt, t)
+}

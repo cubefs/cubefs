@@ -89,6 +89,59 @@ func snapshotTest(t *testing.T) {
 	mdSnapshot.Close()
 }
 
+func TestSnapshotWithClusterName(t *testing.T) {
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?%s=%s",
+			hostAddr, proto.AdminSetClusterName, forceKey, "true")
+		process(reqURL, t)
+	}()
+	var err error
+	reqURL := fmt.Sprintf("%v%v?%s=%s",
+		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName)
+	processWithError(reqURL, t)
+	mdSnapshot, err := server.cluster.fsm.Snapshot(0)
+	if !assert.NoError(t, err) {
+		return
+	}
+	s := &Server{}
+
+	var dbStore *raftstore.RocksDBStore
+	dbStore, err = raftstore.NewRocksDBStore("/tmp/chubaofs/raft3", LRUCacheSize, WriteBufferSize)
+	assert.NoErrorf(t, err, "init rocks db store fail cause: %v", err)
+	fsm := &MetadataFsm{
+		rs:    server.fsm.rs,
+		store: dbStore,
+	}
+	fsm.registerApplySnapshotHandler(func() {
+		fsm.restore()
+	})
+	s.fsm = fsm
+	peers := make([]rproto.Peer, 0, len(server.config.peers))
+	for _, peer := range server.config.peers {
+		peers = append(peers, peer.Peer)
+	}
+	err = fsm.ApplySnapshot(peers, mdSnapshot, 0)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Equalf(t, mdSnapshot.ApplyIndex(), fsm.applied, "applied not equal,applied[%v],snapshot applied[%v]\n", fsm.applied, mdSnapshot.ApplyIndex()) {
+		return
+	}
+	//check cluster name exist?
+	var cv *clusterValue
+	if cv, err = server.cluster.getFsmClusterCfg(fsm.store); err != nil {
+		assert.NoError(t, err)
+		t.Errorf("get cluster name failed,%s", err.Error())
+		return
+	}
+	if len(cv.ClusterName) == 0 ||  cv.ClusterName != server.cluster.cfg.ClusterName {
+		err = fmt.Errorf("cfg cluster name err, expect:%s, but now:%s", server.cluster.cfg.ClusterName, cv.ClusterName)
+		assert.NoError(t, err)
+		t.Errorf("%s", err.Error())
+	}
+	mdSnapshot.Close()
+}
+
 func addRaftServerTest(addRaftAddr string, id uint64, t *testing.T) {
 	//don't pass id test
 	reqURL := fmt.Sprintf("%v%v?id=&addr=%v", hostAddr, proto.AddRaftNode, addRaftAddr)

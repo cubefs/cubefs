@@ -113,6 +113,7 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 func (m *Server) handleApplySnapshot() {
 	if err := m.checkClusterName(); err != nil {
 		log.LogErrorf(errors.Stack(err))
+		log.LogFlush()
 		panic("cfg cluster name failed")
 		return
 	}

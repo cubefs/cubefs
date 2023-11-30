@@ -20,6 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -37,29 +39,53 @@ type MockMetaServer struct {
 	partitions map[uint64]*MockMetaPartition // Key: metaRangeId, Val: metaPartition
 	sync.RWMutex
 	stopC chan bool
+	newRegEnable bool
+	metaDataDir string
 }
 
-func NewMockMetaServer(addr string, zoneName string) *MockMetaServer {
+func NewMockMetaServer(addr string, zoneName string, metaDataDir string) *MockMetaServer {
 	mms := &MockMetaServer{
 		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
 		ZoneName: zoneName,
 		mc:       master.NewMasterClient([]string{hostAddr}, false),
 		stopC:    make(chan bool),
+		metaDataDir: path.Join(metaDataDir, "metanode_" + strings.Split(addr, ":")[1]),
 	}
+	os.MkdirAll(mms.metaDataDir, 06555)
 	return mms
 }
 
-func (mms *MockMetaServer) Start() {
-	mms.register()
+func (mms *MockMetaServer) SetNewRegFlag(regFlag bool) {
+	mms.newRegEnable = regFlag
+}
+
+func (mms *MockMetaServer) Start() (err error){
+	if err = mms.register(); err != nil {
+		return
+	}
 	go mms.start()
+	return
 }
 
 func (mms *MockMetaServer) Stop() {
 	close(mms.stopC)
 }
 
-func (mms *MockMetaServer) register() {
-	var err error
+func (mms *MockMetaServer) WriteErrorAuthKey() {
+	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName), []byte("test"), 06555)
+}
+
+func (mms *MockMetaServer) WriteRightAuthKey(authKey string) {
+	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName), []byte(authKey), 06555)
+}
+
+func (mms *MockMetaServer) GetAuthKey() string {
+	buff, _ := os.ReadFile(path.Join(mms.metaDataDir, master.AuthFileName))
+	return string(buff)
+}
+
+func (mms *MockMetaServer) oldRegister() (err error){
+
 	var nodeID uint64
 	var retry int
 	for retry < 3 {
@@ -74,15 +100,48 @@ func (mms *MockMetaServer) register() {
 		panic(err)
 	}
 	mms.NodeID = nodeID
+	return
+}
+
+func (mms *MockMetaServer) newRegister() (err error){
+	var rsp *proto.RegNodeRsp
+	regReq := &master.RegNodeInfoReq{
+		Role: proto.RoleMeta,
+		ZoneName: mms.ZoneName,
+		Version: "2.0.0",
+		SrvPort: strings.Split(mms.TcpAddr, ":")[1],
+	}
+	if rsp, err = mms.mc.RegNodeInfoWithAddr(mms.metaDataDir, strings.Split(mms.TcpAddr, ":")[0],  regReq); err != nil {
+		return
+	}
+
+	mms.NodeID = rsp.Id
+	return
+}
+
+func (mms *MockMetaServer) register() error{
+	if mms.newRegEnable {
+		return mms.newRegister()
+	} else {
+		return mms.oldRegister()
+	}
 }
 
 func (mms *MockMetaServer) start() {
 	s := strings.Split(mms.TcpAddr, ColonSeparator)
 	listener, err := net.Listen("tcp", ":"+s[1])
+	connArr := make([]net.Conn, 0)
 	if err != nil {
 		panic(err)
 	}
-	defer listener.Close()
+	defer func() {
+		for _, conn := range connArr {
+			if conn != nil {
+				conn.Close()
+			}
+		}
+		listener.Close()
+	}()
 	go func() {
 		for {
 			select {
@@ -94,6 +153,7 @@ func (mms *MockMetaServer) start() {
 	}()
 	for {
 		conn, err := listener.Accept()
+		connArr = append(connArr, conn)
 		if err != nil {
 			fmt.Printf("accept conn occurred error,err is [%v]", err)
 		}
