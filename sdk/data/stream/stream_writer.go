@@ -838,7 +838,8 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 	// store only for the first write operation.
 	storeMode = s.GetStoreMod(offset, size)
 
-	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
+	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v) storageClass(%v)",
+		s.inode, offset, size, storeMode, storageClass)
 	if proto.IsHot(s.client.volumeType) || proto.IsStorageClassReplica(storageClass) {
 		if reUseEk {
 			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size); isLastEkVerNotEqual {
