@@ -2,11 +2,16 @@ package storage
 
 import (
 	"container/list"
+	"context"
 	"os"
 	"sort"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/util/async"
 
 	"github.com/cubefs/cubefs/util/testutil"
 	"github.com/stretchr/testify/assert"
@@ -224,4 +229,86 @@ func validRecordFileList(t *testing.T, path string, expected []string) {
 		}
 	}
 	assert.Equal(t, expected, actual)
+}
+
+func TestExtentQueue_ConsumingWithProducing(t *testing.T) {
+	var testpath = testutil.InitTempTestPath(t)
+	t.Logf("TestPath: %v", testpath.Path())
+	//defer testpath.Cleanup()
+
+	type __item struct {
+		ino       uint64
+		extent    uint64
+		offset    int64
+		size      int64
+		timestamp int64
+	}
+
+	var (
+		gen     uint64 = 0
+		genitem        = func() *__item {
+			item := &__item{
+				ino:       gen + 1,
+				extent:    gen + 1024,
+				offset:    0,
+				size:      0,
+				timestamp: time.Now().Unix(),
+			}
+			gen++
+			return item
+		}
+	)
+
+	var err error
+	var queue *ExtentQueue
+	queue, err = OpenExtentQueue(testpath.Path(), 4*1024*1024, -1)
+	assert.Nil(t, err)
+
+	var ctx, stop = context.WithCancel(context.Background())
+	var wg = new(sync.WaitGroup)
+	var producers int32
+	var produced int64
+	var produce async.WorkerFunc = func() {
+		atomic.AddInt32(&producers, 1)
+		defer atomic.AddInt32(&producers, -1)
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			var item = genitem()
+			assert.Nil(t, queue.Produce(item.ino, item.extent, item.offset, item.size, item.timestamp))
+			atomic.AddInt64(&produced, 1)
+		}
+	}
+	var consumed int64
+	var consume async.WorkerFunc = func() {
+		defer wg.Done()
+		var ticker = time.NewTicker(time.Millisecond * 100)
+		defer ticker.Stop()
+		for {
+			<-ticker.C
+			if ctx.Err() != nil && atomic.LoadInt32(&producers) == 0 && queue.Remain() == 0 {
+				return
+			}
+			assert.Nil(t, queue.Consume(func(ino, extent uint64, offset, size, timestamp int64) (goon bool, err error) {
+				atomic.AddInt64(&consumed, 1)
+				return true, nil
+			}))
+		}
+	}
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		async.RunWorker(produce)
+	}
+	wg.Add(1)
+	async.RunWorker(consume)
+
+	time.Sleep(time.Second * 10)
+	stop()
+	wg.Wait()
+
+	assert.Equal(t, atomic.LoadInt64(&produced), atomic.LoadInt64(&consumed))
 }
