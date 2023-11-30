@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/util/ttlstore"
 	"hash/crc32"
 	"io"
 	"math"
@@ -37,6 +36,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ttlstore"
 	"github.com/cubefs/cubefs/util/unit"
 	"golang.org/x/time/rate"
 )
@@ -617,10 +617,12 @@ func (s *ExtentStore) FlushDelete(interceptor Interceptor, count int) (deleted, 
 		}
 	}()
 
+	var maybeGoon = func() bool {
+		// Check if meets count limitation
+		return !(count > 0 && deleted >= count)
+	}
+
 	err = s.deletionQueue.Consume(func(ino, extent uint64, offset, size, timestamp int64) (bool, error) {
-		if count > 0 && deleted >= count {
-			return false, nil
-		}
 		var err error
 		if interceptor != nil {
 			var ctx context.Context
@@ -638,11 +640,11 @@ func (s *ExtentStore) FlushDelete(interceptor Interceptor, count int) (deleted, 
 			}
 			var info, ok = s.getExtentInfoByExtentID(extent)
 			if !ok {
-				return true, nil
+				return maybeGoon(), nil
 			}
 			var e *Extent
 			if e, err = s.ExtentWithHeader(info); err != nil {
-				return true, nil
+				return maybeGoon(), nil
 			}
 			if err = s.tinyDelete(e, offset, size); err != nil && log.IsWarnEnabled() {
 				log.LogWarnf("Store(%v) delete TinyExtent data failed: ino=%v, extent=%v, offset=%v, size=%v, error=%v",
@@ -650,7 +652,7 @@ func (s *ExtentStore) FlushDelete(interceptor Interceptor, count int) (deleted, 
 				return true, nil
 			}
 			deleted++
-			return true, nil
+			return maybeGoon(), nil
 		}
 		if log.IsDebugEnabled() {
 			log.LogDebugf("Store(%v) flush delete NormalExtent: ino=%v, extent=%v, timestamp=%v",
@@ -668,12 +670,11 @@ func (s *ExtentStore) FlushDelete(interceptor Interceptor, count int) (deleted, 
 		}
 		interceptor.After(ctx, 0, err)
 
+		deleted++
 		if err = s.removeExtentHeader(extent); err != nil && log.IsWarnEnabled() {
 			log.LogWarnf("Store(%v) remove block CRC info failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
-			return true, nil
 		}
-		deleted++
-		return true, nil
+		return maybeGoon(), nil
 	})
 	remain = s.deletionQueue.Remain()
 	return
@@ -1445,7 +1446,7 @@ func (s *ExtentStore) LockExtents(extentLockInfo proto.ExtentLockInfo) (err erro
 		}
 	}
 	for _, extentKey := range extentLockInfo.ExtentKeys {
-		s.ttlStore.Store(extentKey.ExtentId, struct {}{}, extentLockInfo.LockTime)
+		s.ttlStore.Store(extentKey.ExtentId, struct{}{}, extentLockInfo.LockTime)
 	}
 	return
 }
