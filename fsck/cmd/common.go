@@ -26,9 +26,11 @@ var (
 	MetaPort   string
 	InodeID    uint64
 	DataPort   string
+	CleanS     bool
+	CleanStr   string
 )
 
-var (
+const (
 	inodeDumpFileName          string = "inode.dump"
 	dentryDumpFileName         string = "dentry.dump"
 	inodeUpdateDumpFileName    string = "inode.dump.update"

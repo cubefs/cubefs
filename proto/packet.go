@@ -158,7 +158,8 @@ const (
 	OpListMultiparts   uint8 = 0x74
 
 	OpBatchDeleteExtent   uint8 = 0x75 // SDK to MetaNode
-	OpGetExpiredMultipart uint8 = 0x76
+	OpGcBatchDeleteExtent uint8 = 0x76 // SDK to MetaNode
+	OpGetExpiredMultipart uint8 = 0x77
 
 	// Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaBatchDeleteInode  uint8 = 0x90
@@ -572,6 +573,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpListMultiparts"
 	case OpBatchDeleteExtent:
 		m = "OpBatchDeleteExtent"
+	case OpGcBatchDeleteExtent:
+		m = "OpGcBatchDeleteExtent"
 	case OpMetaClearInodeCache:
 		m = "OpMetaClearInodeCache"
 	case OpMetaTxCreateInode:
@@ -1101,7 +1104,7 @@ func (p *Packet) GetUniqueLogId() (m string) {
 			return m
 		}
 	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
-		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent {
+		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent || p.Opcode == OpGcBatchDeleteExtent {
 		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return
 	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
@@ -1132,7 +1135,7 @@ func (p *Packet) setPacketPrefix() {
 			return
 		}
 	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
-		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent {
+		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent || p.Opcode == OpGcBatchDeleteExtent {
 		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
 		return
 	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
@@ -1179,7 +1182,7 @@ func (p *Packet) ShouldRetry() bool {
 }
 
 func (p *Packet) IsBatchDeleteExtents() bool {
-	return p.Opcode == OpBatchDeleteExtent
+	return p.Opcode == OpBatchDeleteExtent || p.Opcode == OpGcBatchDeleteExtent
 }
 
 func InitBufferPool(bufLimit int64) {
