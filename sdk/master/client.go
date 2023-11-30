@@ -381,9 +381,10 @@ func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *R
 	var data         []byte
 	var localAuthKey string
 
-	authFilePath := path.Join(authKeyPath, AuthFileName)
+	authFilePath := path.Join(authKeyPath, AuthFileName + regInfo.Role)
 	if _, stErr := os.Stat(authFilePath); stErr != nil {
 		//first start
+		os.MkdirAll(authKeyPath, 0666)
 		req, err = mc.NodeAPI().buildRegReq(regInfo, "", addr)
 	} else {
 		authKeyBuf, _ := os.ReadFile(authFilePath)
@@ -408,7 +409,7 @@ func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *R
 	}
 
 	if err == nil && rsp.AuthKey != "" {
-		_ = os.WriteFile(authFilePath, []byte(rsp.AuthKey), 0655)
+		_ = os.WriteFile(authFilePath, []byte(rsp.AuthKey), 0666)
 	}
 	return
 }
@@ -429,9 +430,10 @@ func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)
 		return
 	}
 
-	authFilePath := path.Join(authKeyPath, AuthFileName)
+	authFilePath := path.Join(authKeyPath, AuthFileName + regInfo.Role)
 	if _, stErr := os.Stat(authFilePath); stErr != nil {
 		//first start
+		os.MkdirAll(authKeyPath, 0666)
 		req, err = mc.NodeAPI().buildRegReq(regInfo, "", clusterInfo.Ip)
 	} else {
 		authKeyBuf, _ := os.ReadFile(authFilePath)
@@ -456,7 +458,7 @@ func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)
 	}
 
 	if err == nil && rsp.AuthKey != "" {
-		_ = os.WriteFile(authFilePath, []byte(rsp.AuthKey), 0655)
+		_ = os.WriteFile(authFilePath, []byte(rsp.AuthKey), 0666)
 	}
 	return
 }

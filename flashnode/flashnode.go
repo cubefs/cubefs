@@ -208,29 +208,23 @@ func (f *FlashNode) initLimiter() {
 }
 
 func (f *FlashNode) register() (err error) {
-	step := 0
-	var nodeAddress string
-	for {
-		if step < 1 {
-			clusterInfo, err = masterClient.AdminAPI().GetClusterInfo()
-			if err != nil {
-				log.LogErrorf("[register] %s", err.Error())
-				continue
-			}
-			if f.localAddr == "" {
-				f.localAddr = clusterInfo.Ip
-			}
-			f.clusterId = clusterInfo.Cluster
-			nodeAddress = f.localAddr + ":" + f.listen
-			step++
+	var (
+		regInfo = &masterSDK.RegNodeInfoReq{
+			Role:     proto.RoleFlash,
+			ZoneName: f.zoneName,
+			Version:  NodeLatestVersion,
+			SrvPort:  f.listen,
 		}
-		var nodeID uint64
-		if nodeID, err = masterClient.NodeAPI().AddFlashNode(nodeAddress, f.zoneName, NodeLatestVersion); err != nil {
-			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		f.nodeId = nodeID
+		regRsp *proto.RegNodeRsp
+	)
+
+	if regRsp, err = masterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
 		return
 	}
+
+	f.nodeId = regRsp.Id
+	ipAddr := strings.Split(regRsp.Addr, ":")[0]
+	f.localAddr = ipAddr
+	f.clusterId = regRsp.Cluster
+	return
 }

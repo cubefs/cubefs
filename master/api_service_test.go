@@ -4344,7 +4344,7 @@ func TestMetaNodeReg(t *testing.T) {
 	if err := mt.Start(); err == nil {
 		err := fmt.Errorf("expect failed, but success, cluster name %s, local auth key:%s", server.cluster.cfg.ClusterName, mt.GetAuthKey())
 		assert.NoError(t, err)
-		t.Errorf("expect success, but failed, cluster name %s, local auth key:%s", err.Error(), mt.GetAuthKey())
+		t.Errorf("expect failed, but success,  local auth key:%s, %s", mt.GetAuthKey(), err.Error())
 		return
 	} else {
 		t.Logf("reg metanode failed, %s", err.Error())

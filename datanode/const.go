@@ -145,9 +145,3 @@ const (
 	errorGetConnectMsg       = "get connection failed"
 	errorPartitionRecoverMsg = "partition is recovering"
 )
-
-// Constants for auth key storage
-const (
-	authKeyDir      = "/usr/local/cubefs"
-	authKeyFilename = "datanode.authkey"
-)

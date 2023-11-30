@@ -72,15 +72,15 @@ func (mms *MockMetaServer) Stop() {
 }
 
 func (mms *MockMetaServer) WriteErrorAuthKey() {
-	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName), []byte("test"), 06555)
+	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName + proto.RoleMeta), []byte("test"), 06555)
 }
 
 func (mms *MockMetaServer) WriteRightAuthKey(authKey string) {
-	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName), []byte(authKey), 06555)
+	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName + proto.RoleMeta), []byte(authKey), 06555)
 }
 
 func (mms *MockMetaServer) GetAuthKey() string {
-	buff, _ := os.ReadFile(path.Join(mms.metaDataDir, master.AuthFileName))
+	buff, _ := os.ReadFile(path.Join(mms.metaDataDir, master.AuthFileName + proto.RoleMeta))
 	return string(buff)
 }
 

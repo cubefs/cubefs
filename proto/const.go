@@ -37,3 +37,7 @@ const (
     ModuleReBalance = "rebalance"
     ModuleChecktool = "checktool"
 )
+
+const (
+    AuthFilePath = "/usr/local/cubefs/"
+)

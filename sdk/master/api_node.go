@@ -26,7 +26,7 @@ import (
 	pb "github.com/gogo/protobuf/proto"
 )
 const (
-	AuthFileName = ".clusterAuth"
+	AuthFileName = ".clusterAuth_"
 )
 type NodeAPI struct {
 	mc *MasterClient

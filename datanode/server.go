@@ -451,21 +451,18 @@ func (s *DataNode) register() (err error) {
 		regRsp *proto.RegNodeRsp
 	)
 
-	if err = os.MkdirAll(authKeyDir, 0755); err != nil {
-		err = fmt.Errorf("access authkey directory failed: %v", err)
-		return
-	}
 
-	if regRsp, err = MasterClient.RegNodeInfo(path.Join(authKeyDir, authKeyFilename), regInfo); err != nil {
+	if regRsp, err = MasterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
 		return
 	}
-	if !unit.IsIPV4(regRsp.Addr) {
-		err = fmt.Errorf("got invalid local IP %v fetched from Master", LocalIP)
+	ipAddr := strings.Split(regRsp.Addr, ":")[0]
+	if !unit.IsIPV4(ipAddr) {
+		err = fmt.Errorf("got invalid local IP %v fetched from Master", ipAddr)
 		return
 	}
 	s.clusterID = regRsp.Cluster
 	if LocalIP == "" {
-		LocalIP = regRsp.Addr
+		LocalIP = ipAddr
 	}
 	s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 	s.nodeID = regRsp.Id

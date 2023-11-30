@@ -357,7 +357,7 @@ func (m *MetaNode) register() (err error) {
 		Version: MetaNodeLatestVersion,
 		SrvPort: m.listen,
 	}
-	rsp, err = masterClient.RegNodeInfo(m.metadataDir, regReq)
+	rsp, err = masterClient.RegNodeInfo(proto.AuthFilePath, regReq)
 	if err != nil {
 		return
 	}
