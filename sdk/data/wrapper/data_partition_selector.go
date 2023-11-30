@@ -34,7 +34,7 @@ type DataPartitionSelector interface {
 	Refresh(partitions []*DataPartition) error
 
 	// Select returns an data partition picked by selector.
-	Select(excludes map[string]struct{}, mediaType uint32) (*DataPartition, error)
+	Select(excludes map[string]struct{}, mediaType uint32, ehID uint64) (*DataPartition, error)
 
 	// RemoveDP removes specified data partition.
 	RemoveDP(partitionID uint64)
@@ -118,12 +118,12 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 }
 
 // getDataPartitionForWrite returns an available data partition for write.
-func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}, mediaType uint32) (*DataPartition, error) {
+func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}, mediaType uint32, ehID uint64) (*DataPartition, error) {
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	w.Lock.RUnlock()
 
-	return dpSelector.Select(exclude, mediaType)
+	return dpSelector.Select(exclude, mediaType, ehID)
 }
 
 func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
