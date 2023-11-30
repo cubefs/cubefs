@@ -10,6 +10,7 @@ build/out/
 docker/bin
 docker/docker_data
 docker/log
+docker/dist
 docs/build
 tmp/
 console/html

@@ -539,6 +539,29 @@ services:
                 mkdir -p ${CFSROOT}/docker/bin &&
                 cd ${CFSROOT} && make testcover
 
+    build_libsdkpre:
+        image: ${IMAGE}
+        volumes:
+            - ../:${CFSROOT}
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                cd ${CFSROOT} && make libsdkpre
+
+    goreleaser:
+        image: ${IMAGE}
+        volumes:
+            - ../:${CFSROOT}
+        command:
+            - bash
+            - "-c"
+            - >-
+                set -e;
+                cd ${CFSROOT} &&
+                /go/bin/goreleaser release --skip-publish --clean
+
     bs_gofumpt:
         image: ${IMAGE}
         volumes:
