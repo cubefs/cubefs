@@ -2308,8 +2308,6 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 	}
 
 	if m.HasMultiReplicaStorageClass(req.allowedStorageClass) {
-		req.hasMultiReplicaStorageClass = true
-
 		if m.cluster.FaultDomain {
 			err = fmt.Errorf("cluster.FaultDomain is true, can not create vol with req.allowedStorageClass has multi replica storageClass")
 			log.LogErrorf("[checkStorageClassForCreateVol] vol(%v) err: %v", req.name, err.Error())

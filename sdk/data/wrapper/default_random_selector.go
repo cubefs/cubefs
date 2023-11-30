@@ -92,7 +92,7 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	}
 
 	log.LogErrorf("DefaultRandomSelector: ehID(%v) no writable data partition with %v partitions and exclude(%v)mediaType(%v)",
-		ehID, len(partitions), exclude, mediaType)
+		ehID, len(partitions), exclude, proto.MediaTypeString(mediaType))
 	return nil, fmt.Errorf("en(%v) no writable data partition", ehID)
 }
 
