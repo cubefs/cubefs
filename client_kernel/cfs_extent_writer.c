@@ -5,7 +5,8 @@
 
 extern struct workqueue_struct *extent_work_queue;
 
-static void extent_writer_work_cb(struct work_struct *work);
+static void extent_writer_tx_work_cb(struct work_struct *work);
+static void extent_writer_rx_work_cb(struct work_struct *work);
 
 struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 						struct cfs_data_partition *dp,
@@ -32,11 +33,16 @@ struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 	writer->ext_offset = ext_offset;
 	writer->ext_size = ext_size;
 	writer->w_size = ext_size;
-	mutex_init(&writer->lock);
-	INIT_LIST_HEAD(&writer->requests);
-	INIT_WORK(&writer->work, extent_writer_work_cb);
-	init_waitqueue_head(&writer->wq);
-	atomic_set(&writer->inflight, 0);
+	spin_lock_init(&writer->lock_tx);
+	spin_lock_init(&writer->lock_rx);
+	INIT_LIST_HEAD(&writer->tx_packets);
+	INIT_LIST_HEAD(&writer->rx_packets);
+	INIT_WORK(&writer->tx_work, extent_writer_tx_work_cb);
+	INIT_WORK(&writer->rx_work, extent_writer_rx_work_cb);
+	init_waitqueue_head(&writer->tx_wq);
+	init_waitqueue_head(&writer->rx_wq);
+	atomic_set(&writer->tx_inflight, 0);
+	atomic_set(&writer->rx_inflight, 0);
 	return writer;
 }
 
@@ -44,7 +50,8 @@ void cfs_extent_writer_release(struct cfs_extent_writer *writer)
 {
 	if (!writer)
 		return;
-	cancel_work_sync(&writer->work);
+	cancel_work_sync(&writer->tx_work);
+	cancel_work_sync(&writer->rx_work);
 	cfs_data_partition_release(writer->dp);
 	cfs_socket_release(writer->sock, true);
 	kfree(writer);
@@ -61,7 +68,8 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 
 	if (!cfs_extent_writer_test_dirty(writer))
 		return 0;
-	wait_event(writer->wq, atomic_read(&writer->inflight) == 0);
+	wait_event(writer->tx_wq, atomic_read(&writer->tx_inflight) == 0);
+	wait_event(writer->rx_wq, atomic_read(&writer->rx_inflight) == 0);
 	cfs_packet_extent_init(&ext, writer->file_offset, dp->id,
 			       writer->ext_id, 0, writer->ext_size);
 	ret = cfs_extent_cache_append(&es->cache, &ext, true, &discard_extents);
@@ -88,26 +96,55 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 void cfs_extent_writer_request(struct cfs_extent_writer *writer,
 			       struct cfs_packet *packet)
 {
-	if (!(writer->flags &
-	      (EXTENT_WRITER_F_ERROR | EXTENT_WRITER_F_RECOVER))) {
-		int ret = cfs_socket_send_packet(writer->sock, packet);
-		if (ret < 0)
-			writer->flags |= EXTENT_WRITER_F_RECOVER;
-	}
-	mutex_lock(&writer->lock);
-	list_add_tail(&packet->list, &writer->requests);
-	mutex_unlock(&writer->lock);
-	atomic_inc(&writer->inflight);
 	cfs_extent_writer_set_dirty(writer);
 	cfs_extent_writer_write_bytes(writer,
 				      be32_to_cpu(packet->request.hdr.size));
-	queue_work(extent_work_queue, &writer->work);
+	spin_lock(&writer->lock_tx);
+	list_add_tail(&packet->list, &writer->tx_packets);
+	spin_unlock(&writer->lock_tx);
+	atomic_inc(&writer->tx_inflight);
+	queue_work(extent_work_queue, &writer->tx_work);
 }
 
-static void extent_writer_work_cb(struct work_struct *work)
+static void extent_writer_tx_work_cb(struct work_struct *work)
 {
 	struct cfs_extent_writer *writer =
-		container_of(work, struct cfs_extent_writer, work);
+		container_of(work, struct cfs_extent_writer, tx_work);
+	struct cfs_packet *packet;
+	int cnt = 0;
+
+	while (true) {
+		spin_lock(&writer->lock_tx);
+		packet = list_first_entry_or_null(&writer->tx_packets,
+						  struct cfs_packet, list);
+		if (packet) {
+			list_del(&packet->list);
+			cnt++;
+		}
+		spin_unlock(&writer->lock_tx);
+		if (!packet)
+			break;
+
+		if (!(writer->flags &
+		      (EXTENT_WRITER_F_ERROR | EXTENT_WRITER_F_RECOVER))) {
+			int ret = cfs_socket_send_packet(writer->sock, packet);
+			if (ret < 0)
+				writer->flags |= EXTENT_WRITER_F_RECOVER;
+		}
+		spin_lock(&writer->lock_rx);
+		list_add_tail(&packet->list, &writer->rx_packets);
+		spin_unlock(&writer->lock_rx);
+		atomic_inc(&writer->rx_inflight);
+		queue_work(extent_work_queue, &writer->rx_work);
+	}
+	atomic_sub(cnt, &writer->tx_inflight);
+	wake_up(&writer->tx_wq);
+}
+
+static void extent_writer_rx_work_cb(struct work_struct *work)
+{
+	struct cfs_extent_writer *writer =
+		container_of(work, struct cfs_extent_writer, rx_work);
 	struct cfs_extent_stream *es = writer->es;
 	struct cfs_extent_writer *recover = writer->recover;
 	struct cfs_packet *packet;
@@ -115,14 +152,14 @@ static void extent_writer_work_cb(struct work_struct *work)
 	int ret;
 
 	while (true) {
-		mutex_lock(&writer->lock);
-		packet = list_first_entry_or_null(&writer->requests,
+		spin_lock(&writer->lock_rx);
+		packet = list_first_entry_or_null(&writer->rx_packets,
 						  struct cfs_packet, list);
 		if (packet) {
 			list_del(&packet->list);
 			cnt++;
 		}
-		mutex_unlock(&writer->lock);
+		spin_unlock(&writer->lock_rx);
 		if (!packet)
 			break;
 
@@ -197,6 +234,6 @@ handle_packet:
 			packet->handle_reply(packet);
 		cfs_packet_release(packet);
 	}
-	atomic_sub(cnt, &writer->inflight);
-	wake_up(&writer->wq);
+	atomic_sub(cnt, &writer->rx_inflight);
+	wake_up(&writer->rx_wq);
 }

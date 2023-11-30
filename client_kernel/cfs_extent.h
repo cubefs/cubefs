@@ -70,11 +70,16 @@ struct cfs_extent_writer {
 	struct cfs_extent_stream *es;
 	struct cfs_data_partition *dp;
 	struct cfs_socket *sock;
-	struct list_head requests;
-	struct mutex lock; /* lock requests */
-	struct work_struct work;
-	wait_queue_head_t wq;
-	atomic_t inflight;
+	struct list_head tx_packets;
+	struct list_head rx_packets;
+	spinlock_t lock_tx;
+	spinlock_t lock_rx;
+	struct work_struct tx_work;
+	struct work_struct rx_work;
+	wait_queue_head_t tx_wq;
+	wait_queue_head_t rx_wq;
+	atomic_t tx_inflight;
+	atomic_t rx_inflight;
 	u64 ext_id;
 	u64 file_offset; /* extent file offset */
 	u64 ext_offset;
@@ -89,11 +94,16 @@ struct cfs_extent_reader {
 	struct cfs_extent_stream *es;
 	struct cfs_data_partition *dp;
 	struct cfs_socket *sock;
-	struct list_head requests;
-	struct mutex lock_requests;
-	struct work_struct work;
-	wait_queue_head_t wq;
-	atomic_t inflight;
+	struct list_head tx_packets;
+	struct list_head rx_packets;
+	spinlock_t lock_tx;
+	spinlock_t lock_rx;
+	struct work_struct tx_work;
+	struct work_struct rx_work;
+	wait_queue_head_t rx_wq;
+	wait_queue_head_t tx_wq;
+	atomic_t rx_inflight;
+	atomic_t tx_inflight;
 	u64 ext_id;
 	volatile unsigned flags;
 	struct cfs_extent_reader *recover;
