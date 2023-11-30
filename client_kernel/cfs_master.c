@@ -415,8 +415,10 @@ int cfs_master_get_volume(struct cfs_master_client *mc,
 	request.h_skip_owner_validation = false;
 
 	ret = do_http_request(mc, &request, &response);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(mc->log, "do_http_request() error %d\n", ret);
 		return ret;
+	}
 
 	if (!response.json_body) {
 		http_response_clear(&response);
@@ -453,8 +455,10 @@ int cfs_master_get_volume_stat(struct cfs_master_client *mc,
 	request.p_version = "1";
 
 	ret = do_http_request(mc, &request, &response);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(mc->log, "do_http_request() error %d\n", ret);
 		return ret;
+	}
 
 	if (!response.json_body) {
 		http_response_clear(&response);
@@ -492,8 +496,10 @@ int cfs_master_get_data_partitions(
 	request.p_name = mc->volume;
 
 	ret = do_http_request(mc, &request, &response);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(mc->log, "do_http_request() error %d\n", ret);
 		return ret;
+	}
 
 	if (!response.json_body) {
 		ret = -EBADMSG;
@@ -545,8 +551,10 @@ int cfs_master_get_cluster_info(struct cfs_master_client *mc,
 	request.path = "/admin/getIp";
 
 	ret = do_http_request(mc, &request, &response);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(mc->log, "do_http_request() error %d\n", ret);
 		return ret;
+	}
 
 	if (!response.json_body) {
 		ret = -EBADMSG;

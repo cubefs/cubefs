@@ -109,7 +109,7 @@ struct cfs_extent_stream {
 	u32 nr_writers;
 	u32 max_writers;
 	struct mutex lock_writers;
-	struct mutex lock_dio;
+	struct mutex lock_io;
 	struct list_head readers;
 	u32 nr_readers;
 	u32 max_readers;

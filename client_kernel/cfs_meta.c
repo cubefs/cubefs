@@ -334,11 +334,14 @@ static int cfs_meta_get_uniqid_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -371,11 +374,16 @@ static int cfs_meta_get_uniqid(struct cfs_meta_client *mc,
 	ret = cfs_meta_get_uniqid_internal(mc, mp, &start);
 	if (ret != 0) {
 		mutex_unlock(&mc->uniqid_lock);
-		return ret < 0 ? ret : -ret;
+		ret = ret < 0 ? ret : -ret;
+		cfs_log_error(mc->log,
+			      "failed to get uniqid from server, error %d\n",
+			      ret);
+		return ret;
 	}
 	range = cfs_uniqid_range_new(mp->id, start, start + META_UNIQID_NUM);
 	if (!range) {
 		mutex_unlock(&mc->uniqid_lock);
+		cfs_log_error(mc->log, "oom\n");
 		return -ENOMEM;
 	}
 	hash_add(mc->uniqid_ranges, &range->hash, mp->id);
@@ -408,11 +416,14 @@ static int cfs_meta_get_quota_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -457,11 +468,14 @@ static int cfs_meta_icreate_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -497,11 +511,14 @@ static int cfs_meta_iget_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -539,11 +556,14 @@ static int cfs_meta_batch_iget_internal(
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -582,11 +602,15 @@ static int cfs_meta_lookup_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		if (packet->reply.hdr.result_code != CFS_STATUS_NOT_EXIST)
+			cfs_log_error(mc->log, "server return error 0x%x\n",
+				      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -630,11 +654,14 @@ static int cfs_meta_dcreate_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -668,11 +695,14 @@ static int cfs_meta_ddelete_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -711,11 +741,14 @@ static int cfs_meta_dupdate_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -757,11 +790,14 @@ static int cfs_meta_ilink_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -806,11 +842,14 @@ static int cfs_meta_iunlink_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -848,11 +887,14 @@ static int cfs_meta_ievict_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -885,11 +927,14 @@ static int cfs_meta_readdir_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -929,11 +974,16 @@ static int cfs_meta_set_attr_internal(struct cfs_meta_client *mc,
 	request_data->valid = ia_valid_to_u32(attr->ia_valid);
 
 	ret = do_meta_request(mc, mp, packet);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		goto out;
+	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
-	if (ret > 0)
+	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		goto out;
+	}
 
 out:
 	cfs_packet_release(packet);
@@ -967,11 +1017,14 @@ static int cfs_meta_set_xattr_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -1007,11 +1060,14 @@ static int cfs_meta_get_xattr_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -1059,11 +1115,14 @@ static int cfs_meta_list_xattr_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -1112,11 +1171,14 @@ static int cfs_meta_remove_xattr_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -1774,11 +1836,14 @@ static int cfs_meta_list_extent_internal(
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -1847,11 +1912,14 @@ cfs_meta_append_extent_internal(struct cfs_meta_client *mc,
 
 	ret = do_meta_request(mc, mp, packet);
 	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		cfs_packet_release(packet);
 		return ret;
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}
@@ -1904,12 +1972,17 @@ static int cfs_meta_truncate_internal(struct cfs_meta_client *mc,
 	request_data->size = size;
 
 	ret = do_meta_request(mc, mp, packet);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(mc->log, "do_meta_request() error %d\n", ret);
 		goto out;
+	}
 
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
-	if (ret > 0)
+	if (ret > 0) {
+		cfs_log_error(mc->log, "server return error 0x%x\n",
+			      packet->reply.hdr.result_code);
 		goto out;
+	}
 
 out:
 	cfs_packet_release(packet);

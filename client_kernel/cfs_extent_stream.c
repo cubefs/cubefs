@@ -492,6 +492,7 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL);
 		if (unlikely(ret < 0)) {
 			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
+			cfs_packet_release(packet);
 			return ret;
 		}
 		cfs_extent_writer_request(writer, packet);
@@ -568,10 +569,12 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 			      es->ino, ret);
 		goto err_page;
 	}
+	mutex_lock(&es->lock_io);
 	ret = cfs_prepare_extent_io_list(&es->cache, file_offset,
 					 cfs_page_iter_count(&iter),
 					 &io_info_list);
 	if (ret < 0) {
+		mutex_unlock(&es->lock_io);
 		cfs_log_error(
 			es->ec->log,
 			"ino(%llu) prepare extent write request error %d\n",
@@ -596,12 +599,14 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 		list_del(&io_info->list);
 		cfs_extent_io_info_release(io_info);
 		if (ret < 0) {
+			mutex_unlock(&es->lock_io);
 			cfs_log_error(es->ec->log,
 				      "ino(%llu) write page error %d\n",
 				      es->ino, ret);
 			goto err_page;
 		}
 	}
+	mutex_unlock(&es->lock_io);
 	return 0;
 
 err_page:
@@ -871,8 +876,13 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 	size_t i;
 	int ret;
 
+#ifdef DEBUG
+	cfs_pr_debug(
+		"ino(%llu) nr_pages=%lu, file_offset=%llu, first_page_offset=%lu, end_page_size=%lu\n",
+		es->ino, nr_pages, file_offset, first_page_offset,
+		end_page_size);
+#endif
 	BUG_ON(nr_pages == 0);
-
 	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
 	if (!cpages) {
 		for (i = 0; i < nr_pages; i++) {
@@ -914,10 +924,12 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 			      es->ino, ret);
 		goto err_page;
 	}
+	mutex_lock(&es->lock_io);
 	ret = cfs_prepare_extent_io_list(&es->cache, file_offset,
 					 cfs_page_iter_count(&iter),
 					 &io_info_list);
 	if (ret < 0) {
+		mutex_unlock(&es->lock_io);
 		cfs_log_error(
 			es->ec->log,
 			"ino(%llu) prepare extent write request error %d\n",
@@ -952,6 +964,7 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 		else
 			ret = extent_read_pages_async(es, io_info, &iter);
 		if (ret < 0) {
+			mutex_unlock(&es->lock_io);
 			cfs_log_error(es->ec->log,
 				      "ino(%llu) read pages error %d\n",
 				      es->ino, ret);
@@ -962,6 +975,7 @@ next:
 		list_del(&io_info->list);
 		cfs_extent_io_info_release(io_info);
 	}
+	mutex_unlock(&es->lock_io);
 
 err_page:
 	while (!list_empty(&io_info_list)) {
@@ -1113,7 +1127,7 @@ struct cfs_extent_stream *cfs_extent_stream_new(struct cfs_extent_client *ec,
 	hash_add(ec->streams, &es->hash, ino);
 	mutex_init(&es->lock_writers);
 	mutex_init(&es->lock_readers);
-	mutex_init(&es->lock_dio);
+	mutex_init(&es->lock_io);
 	return es;
 }
 
