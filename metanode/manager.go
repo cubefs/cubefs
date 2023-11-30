@@ -87,7 +87,6 @@ type metadataManager struct {
 	flDeleteBatchCount atomic.Value
 	stopC              chan bool
 	tokenM             *tokenmanager.TokenManager
-	limiter            *multirate.MultiLimiter
 }
 
 type VolumeConfig struct {
@@ -173,13 +172,18 @@ func (m *metadataManager) statisticsOpTimeDelay(p *Packet, startTime time.Time, 
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	metric := exporter.NewModuleTPWithStart(p.GetOpMsg(), start)
-	m.rateLimit(conn, p, remoteAddr)
-
 	defer func() {
 		cost := time.Since(start)
 		metric.SetWithCost(int64(cost/time.Millisecond), err)
 		m.statisticsOpTimeDelay(p, start, int(cost/time.Microsecond))
 	}()
+
+	if err = m.rateLimit(conn, p, remoteAddr); err != nil{
+		err = fmt.Errorf("limit time out")
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
 
 	switch p.Opcode {
 	case proto.OpMetaCreateInode:
@@ -930,18 +934,18 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 	return json.Marshal(m.partitions)
 }
 
-func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) {
+func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) (error){
 	// ignore rate limit if request is from cluster internal nodes
 	addrSlice := strings.Split(remoteAddr, ":")
 	_, isInternal := clusterMap[addrSlice[0]]
 	if isInternal {
-		return
+		return nil
 	}
 
 	pid := p.PartitionID
 	mp, err := m.GetPartition(pid)
 	if err != nil {
-		return
+		return nil
 	}
 
 	vol := mp.GetBaseConfig().VolName
@@ -954,8 +958,7 @@ func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 		Count: 1,
 		InBytes: int(unit.PacketHeaderSize + p.ArgLen + p.Size),
 	}
-	m.limiter.WaitN(context.Background(), ps, stat)
-	return
+	return multirate.WaitNUseDefaultTimeout(context.Background(), ps, stat)
 }
 
 func (m *metadataManager) RangeMonitorData(deal func(data *statistics.MonitorData, volName, diskPath string, pid uint64)) {
@@ -1093,7 +1096,6 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		stopC:       make(chan bool, 0),
 		rocksDBDirs: metaNode.rocksDirs,
 		tokenM:      tokenmanager.NewTokenManager(10),
-		limiter:     metaNode.limitManager.GetLimiter(),
 	}
 
 	if err := mm.loadPartitions(); err != nil {

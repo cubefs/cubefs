@@ -18,7 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 	"hash/crc32"
 	"io/ioutil"
 	"math"
@@ -30,7 +30,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/datanode/riskdata"
@@ -57,8 +56,6 @@ const (
 	ApplyIndexFile                = "APPLY"
 	TempApplyIndexFile            = ".apply"
 	TimeLayout                    = "2006-01-02 15:04:05"
-	AcquireTokenMaxRetry          = 300
-	AcquireTokenInterval          = time.Millisecond * 100
 )
 
 type FaultOccurredCheckLevel uint8
@@ -242,8 +239,7 @@ type DataPartition struct {
 	DataPartitionCreateType       int
 	finishPlayBackTinyDelete      bool
 	monitorData                   []*statistics.MonitorData
-	limiter                       *multirate.LimiterManager
-	topologyManager               *fetchtopology.FetchTopologyManager
+	topologyManager               *topology.TopologyManager
 	persistSync                   chan struct{}
 
 	inRepairExtents  map[uint64]struct{}
@@ -277,7 +273,7 @@ type DataPartitionViewInfo struct {
 
 func (d *Disk) createPartition(dpCfg *dataPartitionCfg, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 
-	if dp, err = newDataPartition(dpCfg, d, true, d.limiter, d.fetchtopoManager, d.interceptors); err != nil {
+	if dp, err = newDataPartition(dpCfg, d, true, d.topoManager, d.interceptors); err != nil {
 		return
 	}
 	dp.ForceLoadHeader()
@@ -363,7 +359,7 @@ func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error)
 		VolHAType: meta.VolumeHAType,
 		Mode:      meta.ConsistencyMode,
 	}
-	if dp, err = newDataPartition(dpCfg, d, false, d.limiter, d.fetchtopoManager, d.interceptors); err != nil {
+	if dp, err = newDataPartition(dpCfg, d, false, d.topoManager, d.interceptors); err != nil {
 		return
 	}
 	// dp.PersistMetadata()
@@ -427,8 +423,7 @@ func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err erro
 	var getHAType riskdata.GetHATypeFunc = func() proto.CrossRegionHAType {
 		return dp.config.VolHAType
 	}
-	if dp.dataFixer, err = riskdata.NewFixer(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments,
-		dp.disk.issueFixConcurrentLimiter, gConnPool, dp.limit); err != nil {
+	if dp.dataFixer, err = riskdata.NewFixer(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments, gConnPool, dp.disk.Path); err != nil {
 		return
 	}
 	return
@@ -449,7 +444,7 @@ func (dp *DataPartition) maybeUpdateFaultOccurredCheckLevel() {
 	}
 }
 
-func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, limiter *multirate.LimiterManager, fetchtopoManager *fetchtopology.FetchTopologyManager, interceptors storage.IOInterceptors) (dp *DataPartition, err error) {
+func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition bool, fetchtopoManager *topology.TopologyManager, interceptors storage.IOInterceptors) (dp *DataPartition, err error) {
 	partitionID := dpCfg.PartitionID
 	dataPath := path.Join(disk.Path, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, dpCfg.PartitionSize))
 	partition := &DataPartition{
@@ -471,7 +466,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		monitorData:             statistics.InitMonitorData(statistics.ModelDataNode),
 		persistSync:             make(chan struct{}, 1),
 		inRepairExtents:         make(map[uint64]struct{}),
-		limiter:                 limiter,
 		topologyManager:         fetchtopoManager,
 		applyStatus:             NewWALApplyStatus(),
 		actionHolder:            holder.NewActionHolder(),
@@ -1391,60 +1385,17 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 	if dp == nil {
 		return ErrPartitionNil
 	}
-	if dp.limiter == nil {
-		return ErrLimiterManagerNil
-	}
-	limiter := dp.limiter.GetLimiter()
-	if limiter == nil {
-		return ErrLimiterNil
-	}
-	propertyBuilder := multirate.NewPropertiesBuilder()
-	statBuilder := multirate.NewStatBuilder()
+	propertyBuilder := multirate.NewPropertiesBuilder().SetOp(strconv.Itoa(op)).SetVol(dp.volumeID).SetDisk(dp.disk.Path)
+	statBuilder := multirate.NewStatBuilder().SetCount(1)
 
-	propertyBuilder.SetOp(strconv.Itoa(op)).SetVol(dp.volumeID).SetDisk(dp.disk.Path)
-	statBuilder.SetCount(1)
 	switch op {
-	case int(proto.OpWrite), int(proto.OpRandomWrite):
-		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
-	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead):
-		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
-	case int(proto.OpTinyExtentRepairRead), int(proto.OpTinyExtentAvaliRead), int(proto.OpExtentRepairRead), proto.OpExtentRepairReadToRollback_,
-		proto.OpExtentRepairReadToComputeCrc_, proto.OpExtentRepairWriteByPolicy_, proto.OpExtentReadToGetCrc_:
-		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
-	case proto.OpExtentRepairWrite_, proto.OpExtentRepairWriteToApplyTempFile_:
-		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+	case int(proto.OpWrite), int(proto.OpRandomWrite), proto.OpExtentRepairWrite_, proto.OpExtentRepairWriteToApplyTempFile_:
+		return multirate.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead), int(proto.OpTinyExtentRepairRead), int(proto.OpTinyExtentAvaliRead),
+		int(proto.OpExtentRepairRead), proto.OpExtentRepairReadToRollback_, proto.OpExtentRepairReadToComputeCrc_, proto.OpExtentReadToGetCrc_:
+		return multirate.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
 	default:
-		return limiter.WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
-	}
-}
-
-func (dp *DataPartition) acquire(op int) (release func(), err error) {
-	if dp == nil {
-		return nil, ErrPartitionNil
-	}
-	if dp.limiter == nil {
-		return nil, ErrLimiterManagerNil
-	}
-	if dp.limiter.GetTokenManager(op, dp.path) == nil {
-		return func() {}, nil
-	}
-	key := atomic.AddUint64(&tokenManagerKeyGen, 1)
-	retry := 0
-	for {
-		select {
-		case <-dp.stopC:
-			return nil, fmt.Errorf("partition stoped")
-		default:
-			tokenM := dp.limiter.GetTokenManager(op, dp.path)
-			if tokenM.GetRunToken(key) {
-				return func() { dp.limiter.GetTokenManager(op, dp.path).ReleaseToken(key) }, nil
-			}
-			retry++
-			if retry > AcquireTokenMaxRetry {
-				return nil, ErrGetTokenTimeout
-			}
-			time.Sleep(AcquireTokenInterval)
-		}
+		return multirate.WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
 	}
 }
 
@@ -1455,7 +1406,7 @@ func (dp *DataPartition) backendRefreshCacheView() {
 	dp.topologyManager.FetchDataPartitionView(dp.volumeID, dp.partitionID)
 }
 
-func (dp *DataPartition) getCacheView() (dataPartition *fetchtopology.DataPartition, err error) {
+func (dp *DataPartition) getCacheView() (dataPartition *topology.DataPartition, err error) {
 	if dp.topologyManager == nil {
 		return nil, fmt.Errorf("topo manager is nil")
 	}

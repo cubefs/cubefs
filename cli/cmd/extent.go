@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 	"io"
 	"io/ioutil"
 	"math"
@@ -814,7 +814,7 @@ func batchDeleteExtent(partitionId uint64, extents []uint64) (err error) {
 		stdout("get conn from pool error: %v, partitionId: %d\n", err, partitionId)
 		return
 	}
-	dp := &fetchtopology.DataPartition{
+	dp := &topology.DataPartition{
 		PartitionID: partitionId,
 		Hosts:       partition.Hosts,
 	}

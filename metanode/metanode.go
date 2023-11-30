@@ -16,12 +16,12 @@ package metanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/topology"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/cubefs/cubefs/util/fetchtopology"
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/statinfo"
 
@@ -69,7 +69,7 @@ type MetaNode struct {
 	rocksDirs         []string
 	diskStopCh        chan struct{}
 	disks             map[string]*diskusage.FsCapMon
-	fetchTopoManager  *fetchtopology.FetchTopologyManager
+	topoManager       *topology.TopologyManager
 	control           common.Control
 	limitManager      *multirate.LimiterManager
 }
@@ -392,7 +392,7 @@ func (m *MetaNode) getProcessMemUsed() (memUsed uint64, err error) {
 }
 
 func (m *MetaNode) addVolToFetchTopologyManager(name string) {
-	m.fetchTopoManager.AddVolume(name)
+	m.topoManager.AddVolume(name)
 }
 
 func (m *MetaNode) delVolFromFetchTopologyManager(name string) {
@@ -405,30 +405,30 @@ func (m *MetaNode) delVolFromFetchTopologyManager(name string) {
 		return true
 	})
 	if canDel {
-		m.fetchTopoManager.DeleteVolume(name)
+		m.topoManager.DeleteVolume(name)
 	}
 }
 
 func (m *MetaNode) initFetchTopologyManager() {
-	m.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, masterClient, masterDomainClient,
-		true, true, m.limitManager.GetLimiter())
+	m.topoManager = topology.NewTopologyManager(time.Minute*5, masterClient, masterDomainClient,
+		true, true)
 	return
 }
 
 func (m *MetaNode) startFetchTopologyManager() (err error) {
-	return m.fetchTopoManager.Start()
+	return m.topoManager.Start()
 }
 
 func (m *MetaNode) stopFetchTopologyManager() {
-	if m.fetchTopoManager != nil {
-		m.fetchTopoManager.Stop()
+	if m.topoManager != nil {
+		m.topoManager.Stop()
 	}
 }
 
 func (m *MetaNode) initMultiLimiterManager() (err error) {
-	m.limitManager = multirate.NewLimiterManager(multirate.ModuleMetaNode, m.zoneName, masterClient.AdminAPI().GetLimitInfo)
-	if m.limitManager == nil {
-		err = errors.New("Init limit manager failed!")
+	_, err =  multirate.InitLimiterManager(multirate.ModuleMetaNode, m.zoneName, masterClient.AdminAPI().GetLimitInfo)
+	if err != nil {
+		err = fmt.Errorf("init limit manager failed[%s]", err.Error())
 		return
 	}
 	return

@@ -1,4 +1,4 @@
-package fetchtopology
+package topology
 
 import (
 	"github.com/cubefs/cubefs/proto"

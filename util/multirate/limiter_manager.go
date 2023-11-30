@@ -1,6 +1,7 @@
 package multirate
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/tokenmanager"
 	"golang.org/x/time/rate"
 )
 
@@ -32,6 +32,7 @@ const (
 	bond0        = "bond0"
 	eth0         = "eth0"
 	defaultSpeed = 1250 // 10Gb/s
+	minSpeed     = 128  // 1Gb/s
 )
 
 type indexType int
@@ -58,6 +59,10 @@ const (
 	IndexMax // count of indexes
 )
 
+var (
+	limiterManager *LimiterManager
+)
+
 var indexNameMap = map[string]int{
 	"timeout":              indexTimeout,
 	"count":                indexCount,
@@ -79,7 +84,7 @@ type LimiterManager struct {
 	zoneName     string
 	getLimitInfo GetLimitInfoFunc
 	ml           *MultiLimiter
-	mt           *MultiTokenManager
+	mc           *MultiConcurrency
 	stopC        chan struct{}
 	wg           sync.WaitGroup
 
@@ -162,30 +167,103 @@ func GetIndexByName(name string) int {
 	return index
 }
 
-func NewLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc) *LimiterManager {
+func InitLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc) (lm *LimiterManager, err error) {
+	if lm, err = newLimiterManager(module, zoneName, getLimitInfo); err == nil {
+		limiterManager = lm
+	}
+	return
+}
+
+func GetLimiterManager() *LimiterManager {
+	return limiterManager
+}
+
+func Wait(ctx context.Context, ps Properties) error {
+	if limiterManager == nil {
+		return nil
+	}
+	return limiterManager.ml.Wait(ctx, ps)
+}
+
+func WaitN(ctx context.Context, ps Properties, stat Stat) error {
+	if limiterManager == nil {
+		return nil
+	}
+	return limiterManager.ml.WaitN(ctx, ps, stat)
+}
+
+func Allow(ps Properties) bool {
+	if limiterManager == nil {
+		return true
+	}
+	return limiterManager.ml.Allow(ps)
+}
+
+func AllowN(ps Properties, stat Stat) bool {
+	if limiterManager == nil {
+		return true
+	}
+	return limiterManager.ml.AllowN(ps, stat)
+}
+
+func WaitUseDefaultTimeout(ctx context.Context, ps Properties) error {
+	if limiterManager == nil {
+		return nil
+	}
+	return limiterManager.ml.WaitUseDefaultTimeout(ctx, ps)
+}
+
+func WaitNUseDefaultTimeout(ctx context.Context, ps Properties, stat Stat) error {
+	if limiterManager == nil {
+		return nil
+	}
+	return limiterManager.ml.WaitNUseDefaultTimeout(ctx, ps, stat)
+}
+
+func WaitConcurrency(ctx context.Context, op int, disk string) error {
+	if limiterManager == nil {
+		return nil
+	}
+	return limiterManager.mc.WaitUseDefaultTimeout(ctx, op, disk)
+}
+
+func DoneConcurrency(op int, disk string) {
+	if limiterManager != nil {
+		limiterManager.mc.Done(op, disk)
+	}
+}
+
+func Stop() {
+	if limiterManager != nil {
+		close(limiterManager.stopC)
+		limiterManager.wg.Wait()
+	}
+}
+
+func newLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc) (*LimiterManager, error) {
 	m := new(LimiterManager)
 	m.module = module
 	m.zoneName = zoneName
 	m.getLimitInfo = getLimitInfo
 	m.ml = NewMultiLimiterWithHandler()
-	m.mt = NewMultiTokenManager()
+	m.mc = NewMultiConcurrency()
 	m.stopC = make(chan struct{})
 	m.oldOpRateLimitMap = make(map[int]proto.AllLimitGroup)
 	m.oldVolOpRateLimitMap = make(map[string]map[int]proto.AllLimitGroup)
 	if err := m.updateLimitInfo(); err != nil {
-		return nil
+		return nil, err
 	}
 	m.wg.Add(1)
 	go m.update()
-	return m
+	return m, nil
 }
 
 func (m *LimiterManager) GetLimiter() *MultiLimiter {
 	return m.ml
 }
 
-func (m *LimiterManager) GetTokenManager(op int, disk string) *tokenmanager.TokenManager {
-	return m.mt.GetTokenManager(op, disk)
+func (m *LimiterManager) GetConcurrency() *MultiConcurrency {
+	return m.mc
 }
 
 func (m *LimiterManager) Stop() {
@@ -270,7 +348,7 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			m.ml.ClearRule(p)
 		}
 		if oldGroup[indexConcurrency] > 0 && (!ok || group[indexConcurrency] <= 0) {
-			m.mt.addRule(op, 0)
+			m.mc.addRule(op, 0, 0)
 		}
 	}
 
@@ -290,7 +368,7 @@ func (m *LimiterManager) updateOpLimit(limitInfo *proto.LimitInfo) {
 			m.ml.AddRule(rule)
 		}
 		if group[indexConcurrency] > 0 {
-			m.mt.addRule(op, uint64(group[indexConcurrency]))
+			m.mc.addRule(op, uint64(group[indexConcurrency]), time.Duration(group[indexTimeout]))
 		}
 	}
 	m.oldOpRateLimitMap = opRateLimitMap
@@ -394,9 +472,12 @@ func getSpeed() (speed int) {
 }
 
 func getEthSpeed(eth string) int {
-	if data, err := os.ReadFile(fmt.Sprintf(speedFile, eth)); err == nil {
+	if data, err := os.ReadFile(fmt.Sprintf(speedFile, eth)); err != nil {
 		speed, _ := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 		if speed > 0 {
+			if speed/8 < minSpeed {
+				speed = minSpeed * 8
+			}
 			return int(speed / 8)
 		}
 	}

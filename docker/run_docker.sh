@@ -44,7 +44,7 @@ check_docker_images() {
   for image in "${images[@]}"; do
     name=$(echo ${image} | awk -F ':' '{print$1}')
     version=$(echo ${image} | awk -F ':' '{print$2}')
-    count=$(docker images | grep "$name" | awk '{print$2}' | grep -c "$version")
+    count=$(docker images | grep -F "$name" | awk '{print$2}' | grep -c "$version")
     if [[ ${count} -eq 0 ]]; then
       echo -n "Fetching ${name}:${version} ... "
       wget "http://storage.jd.local/dpgimage/dockerimage/${name}-${version}.tar" -O image.tar 2>1 > /dev/null;

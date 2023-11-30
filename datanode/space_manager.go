@@ -16,7 +16,7 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 	"math"
 	"runtime/debug"
 	"sync"
@@ -28,7 +28,6 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/tiglabs/raft/util"
 )
@@ -55,8 +54,7 @@ type SpaceManager struct {
 	normalExtentDeleteExpireTime   uint64
 	flushFDIntervalSec             uint32
 	flushFDParallelismOnDisk       uint64
-	fetchTopoManager               *fetchtopology.FetchTopologyManager
-	limiter                        *multirate.LimiterManager
+	topoManager                    *topology.TopologyManager
 }
 
 // NewSpaceManager creates a new space manager.
@@ -71,8 +69,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 		fixTinyDeleteRecordLimitOnDisk: DefaultFixTinyDeleteRecordLimitOnDisk,
 		repairTaskLimitOnDisk:          DefaultRepairTaskLimitOnDisk,
 		normalExtentDeleteExpireTime:   DefaultNormalExtentDeleteExpireTime,
-		limiter:                        dataNode.limiterManager,
-		fetchTopoManager:               dataNode.fetchTopoManager,
+		topoManager:                    dataNode.topoManager,
 	}
 	async.RunWorker(space.statUpdateScheduler, func(i interface{}) {
 		log.LogCriticalf("SPCMGR: stat update scheduler occurred panic: %v\nCallstack:\n%v",
@@ -223,7 +220,7 @@ func (manager *SpaceManager) LoadDisk(path *DiskPath, expired CheckExpired) (err
 			RepairTaskLimit:          manager.repairTaskLimitOnDisk,
 		}
 		var startTime = time.Now()
-		if disk, err = OpenDisk(path.Path(), config, manager, DiskLoadPartitionParallelism, manager.limiter, manager.fetchTopoManager, expired); err != nil {
+		if disk, err = OpenDisk(path.Path(), config, manager, DiskLoadPartitionParallelism, manager.topoManager, expired); err != nil {
 			return
 		}
 		manager.putDisk(disk)

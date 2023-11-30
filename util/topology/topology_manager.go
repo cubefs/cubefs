@@ -1,4 +1,4 @@
-package fetchtopology
+package topology
 
 import (
 	"context"
@@ -34,7 +34,7 @@ type ForceFetchDataPartition struct {
 
 type BatchFetchDataPartitionsMap map[string][]uint64
 
-type FetchTopologyManager struct {
+type TopologyManager struct {
 	vols                          *sync.Map
 	forceFetchDPViewCh            chan *ForceFetchDataPartition
 	stopCh                        chan bool
@@ -43,16 +43,15 @@ type FetchTopologyManager struct {
 	masterDomainRequestErrorCount uint64
 	needFetchVolAllDPView         bool
 	needUpdateVolsConf            bool
-	limiter                       *multirate.MultiLimiter
 	forceFetchTimerInterval       time.Duration
 }
 
-func NewFetchTopoManager(forceFetchTimerInterval time.Duration, masterClient, masterDomainClient *master.MasterClient,
-	needFetchVolAllDPView, needUpdateVolsConf bool, limiter *multirate.MultiLimiter) *FetchTopologyManager {
+func NewTopologyManager(forceFetchTimerInterval time.Duration, masterClient, masterDomainClient *master.MasterClient,
+	needFetchVolAllDPView, needUpdateVolsConf bool) *TopologyManager {
 	if forceFetchTimerInterval == 0 {
 		forceFetchTimerInterval = defIntervalForceFetchDataPartitionView
 	}
-	return &FetchTopologyManager{
+	return &TopologyManager{
 		vols:                    new(sync.Map),
 		forceFetchDPViewCh:      make(chan *ForceFetchDataPartition, forceFetchDataPartitionViewChSize),
 		stopCh:                  make(chan bool),
@@ -61,35 +60,34 @@ func NewFetchTopoManager(forceFetchTimerInterval time.Duration, masterClient, ma
 		masterDomainClient:      masterDomainClient,
 		needFetchVolAllDPView:   needFetchVolAllDPView,
 		needUpdateVolsConf:      needUpdateVolsConf,
-		limiter:                 limiter,
 	}
 }
 
-func (f *FetchTopologyManager) Start() (err error) {
+func (f *TopologyManager) Start() (err error) {
 	if err = f.updateVolumeConfSchedule(); err != nil {
-		err = fmt.Errorf("FetchTopologyManager Start updateVolumeConfSchedule failed: %v", err)
+		err = fmt.Errorf("TopologyManager Start updateVolumeConfSchedule failed: %v", err)
 		return
 	}
 	go f.backGroundFetchDataPartitions()
 	return
 }
 
-func (f *FetchTopologyManager) AddVolume(name string) {
+func (f *TopologyManager) AddVolume(name string) {
 	f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	return
 }
 
-func (f *FetchTopologyManager) DeleteVolume(name string) {
+func (f *TopologyManager) DeleteVolume(name string) {
 	f.vols.Delete(name)
 }
 
-func (f *FetchTopologyManager) GetVolume(name string) (volumeTopo *VolumeTopologyInfo) {
+func (f *TopologyManager) GetVolume(name string) (volumeTopo *VolumeTopologyInfo) {
 	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	volumeTopo = value.(*VolumeTopologyInfo)
 	return
 }
 
-func (f *FetchTopologyManager) FetchDataPartitionView(volName string, dpID uint64) {
+func (f *TopologyManager) FetchDataPartitionView(volName string, dpID uint64) {
 	select {
 	case f.forceFetchDPViewCh <- &ForceFetchDataPartition{volumeName: volName, dataPartitionID: dpID}:
 		log.LogDebugf("ForceFetchDataPartitionView volumeName: %s, dataPartitionID: %v", volName, dpID)
@@ -99,7 +97,7 @@ func (f *FetchTopologyManager) FetchDataPartitionView(volName string, dpID uint6
 }
 
 // 获取缓存中的partition视图信息
-func (f *FetchTopologyManager) GetPartitionFromCache(volName string, dpID uint64) *DataPartition {
+func (f *TopologyManager) GetPartitionFromCache(volName string, dpID uint64) *DataPartition {
 	topoInfoValue, ok := f.vols.Load(volName)
 	if !ok {
 		return nil
@@ -115,7 +113,7 @@ func (f *FetchTopologyManager) GetPartitionFromCache(volName string, dpID uint64
 }
 
 // 缓存中partition的视图信息不存在立即通过接口从master获取一次
-func (f *FetchTopologyManager) GetPartition(volName string, dpID uint64) (dataPartition *DataPartition, err error) {
+func (f *TopologyManager) GetPartition(volName string, dpID uint64) (dataPartition *DataPartition, err error) {
 	dataPartition = f.GetPartitionFromCache(volName, dpID)
 	if dataPartition != nil {
 		return
@@ -125,13 +123,11 @@ func (f *FetchTopologyManager) GetPartition(volName string, dpID uint64) (dataPa
 }
 
 // 调用master接口立即获取一次partition的信息,仅给data node使用
-func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint64) (dataPartition *DataPartition, err error) {
-	if f.limiter != nil {
-		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
-	}
+func (f *TopologyManager) GetPartitionFromMaster(volName string, dpID uint64) (dataPartition *DataPartition, err error) {
+	_ = multirate.Wait(context.Background(), rateLimitProperties)
 	var dataPartitionInfo *proto.DataPartitionInfo
 	client := f.masterDomainClient
-	if client == nil {
+	if client == nil || len(client.Nodes()) == 0 {
 		client = f.masterClient
 	}
 	dataPartitionInfo, err = client.AdminAPI().GetDataPartition(volName, dpID)
@@ -150,16 +146,10 @@ func (f *FetchTopologyManager) GetPartitionFromMaster(volName string, dpID uint6
 }
 
 // 调用master接口立即获取一次partition raft peer的信息,仅给data node使用
-func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dpID uint64) (offlinePeerID uint64, peers []proto.Peer, err error) {
-	if f.limiter != nil {
-		_ = f.limiter.Wait(context.Background(), rateLimitProperties)
-	}
+func (f *TopologyManager) GetPartitionRaftPeerFromMaster(volName string, dpID uint64) (offlinePeerID uint64, peers []proto.Peer, err error) {
+	_ = multirate.Wait(context.Background(), rateLimitProperties)
 	var dataPartitionInfo *proto.DataPartitionInfo
-	client := f.masterDomainClient
-	if client == nil {
-		client = f.masterClient
-	}
-	dataPartitionInfo, err = client.AdminAPI().GetDataPartition(volName, dpID)
+	dataPartitionInfo, err = f.masterClient.AdminAPI().GetDataPartition(volName, dpID)
 	if err != nil {
 		return
 	}
@@ -176,13 +166,13 @@ func (f *FetchTopologyManager) GetPartitionRaftPeerFromMaster(volName string, dp
 	return
 }
 
-func (f *FetchTopologyManager) GetVolConf(name string) *VolumeConfig {
+func (f *TopologyManager) GetVolConf(name string) *VolumeConfig {
 	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	volumeTopo := value.(*VolumeTopologyInfo)
 	return volumeTopo.config
 }
 
-func (f *FetchTopologyManager) GetBatchDelInodeCntConf(name string) (batchDelInodeCnt uint64) {
+func (f *TopologyManager) GetBatchDelInodeCntConf(name string) (batchDelInodeCnt uint64) {
 	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	volumeTopo := value.(*VolumeTopologyInfo)
 	if volumeTopo.config == nil {
@@ -193,7 +183,7 @@ func (f *FetchTopologyManager) GetBatchDelInodeCntConf(name string) (batchDelIno
 	return
 }
 
-func (f *FetchTopologyManager) GetDelInodeIntervalConf(name string) (interval uint64) {
+func (f *TopologyManager) GetDelInodeIntervalConf(name string) (interval uint64) {
 	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	volumeTopo := value.(*VolumeTopologyInfo)
 	if volumeTopo.config == nil {
@@ -204,7 +194,7 @@ func (f *FetchTopologyManager) GetDelInodeIntervalConf(name string) (interval ui
 	return
 }
 
-func (f *FetchTopologyManager) GetBitMapAllocatorEnableFlag(name string) (enableState bool, err error) {
+func (f *TopologyManager) GetBitMapAllocatorEnableFlag(name string) (enableState bool, err error) {
 	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	volumeTopo := value.(*VolumeTopologyInfo)
 	if volumeTopo.config == nil {
@@ -215,7 +205,7 @@ func (f *FetchTopologyManager) GetBitMapAllocatorEnableFlag(name string) (enable
 	return
 }
 
-func (f *FetchTopologyManager) GetCleanTrashItemMaxDurationEachTimeConf(name string) (durationTime int32) {
+func (f *TopologyManager) GetCleanTrashItemMaxDurationEachTimeConf(name string) (durationTime int32) {
 	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	volumeTopo := value.(*VolumeTopologyInfo)
 	if volumeTopo.config == nil {
@@ -227,7 +217,7 @@ func (f *FetchTopologyManager) GetCleanTrashItemMaxDurationEachTimeConf(name str
 	return
 }
 
-func (f *FetchTopologyManager) GetCleanTrashItemMaxCountEachTimeConf(name string) (maxCount int32) {
+func (f *TopologyManager) GetCleanTrashItemMaxCountEachTimeConf(name string) (maxCount int32) {
 	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	volumeTopo := value.(*VolumeTopologyInfo)
 	if volumeTopo.config == nil {
@@ -239,7 +229,7 @@ func (f *FetchTopologyManager) GetCleanTrashItemMaxCountEachTimeConf(name string
 	return
 }
 
-func (f *FetchTopologyManager) GetTruncateEKCountConf(name string) (count int) {
+func (f *TopologyManager) GetTruncateEKCountConf(name string) (count int) {
 	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
 	volumeTopo := value.(*VolumeTopologyInfo)
 	if volumeTopo.config == nil {
@@ -250,11 +240,11 @@ func (f *FetchTopologyManager) GetTruncateEKCountConf(name string) (count int) {
 	return
 }
 
-func (f *FetchTopologyManager) Stop() {
+func (f *TopologyManager) Stop() {
 	close(f.stopCh)
 }
 
-func (f *FetchTopologyManager) getAllVolumesName() []string {
+func (f *TopologyManager) getAllVolumesName() []string {
 	allVolsName := make([]string, 0)
 	f.vols.Range(func(key, value interface{}) bool {
 		allVolsName = append(allVolsName, key.(string))
@@ -263,7 +253,7 @@ func (f *FetchTopologyManager) getAllVolumesName() []string {
 	return allVolsName
 }
 
-func (f *FetchTopologyManager) updateDataPartitions(volName string, dpIDs []uint64) {
+func (f *TopologyManager) updateDataPartitions(volName string, dpIDs []uint64) {
 	partitionsInfo, err := f.fetchDataPartitionsView(volName, dpIDs)
 	if err != nil {
 		log.LogErrorf("fetch vol(%s) data partition(%v) view failed: %v", volName, dpIDs, err)
@@ -283,7 +273,7 @@ func (f *FetchTopologyManager) updateDataPartitions(volName string, dpIDs []uint
 	volTopologyInfo.updateDataPartitionsView(partitions)
 }
 
-func (f *FetchTopologyManager) backGroundFetchDataPartitions() {
+func (f *TopologyManager) backGroundFetchDataPartitions() {
 	timer := time.NewTimer(0)
 	ticker := time.NewTicker(f.forceFetchTimerInterval)
 	var needForceFetchDataPartitionsMap = make(map[string]map[uint64]bool, 0)
@@ -330,7 +320,7 @@ func (f *FetchTopologyManager) backGroundFetchDataPartitions() {
 	}
 }
 
-func (f *FetchTopologyManager) updateVolumeConf() (err error) {
+func (f *TopologyManager) updateVolumeConf() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("updateVolumeConf panic: err(%v) stack(%v)", r, string(debug.Stack()))
@@ -376,7 +366,7 @@ func (f *FetchTopologyManager) updateVolumeConf() (err error) {
 	return
 }
 
-func (f *FetchTopologyManager) updateVolumeConfSchedule() (err error) {
+func (f *TopologyManager) updateVolumeConfSchedule() (err error) {
 	if !f.needUpdateVolsConf {
 		return
 	}
@@ -407,8 +397,8 @@ func (f *FetchTopologyManager) updateVolumeConfSchedule() (err error) {
 	return
 }
 
-func (f *FetchTopologyManager) fetchDataPartitionsView(volumeName string, dpsID []uint64) (dataPartitions *proto.DataPartitionsView, err error) {
-	if f.masterDomainClient == nil {
+func (f *TopologyManager) fetchDataPartitionsView(volumeName string, dpsID []uint64) (dataPartitions *proto.DataPartitionsView, err error) {
+	if f.masterDomainClient == nil || len(f.masterDomainClient.Nodes()) == 0 {
 		return f.masterClient.ClientAPI().GetDataPartitions(volumeName, dpsID)
 	}
 
@@ -427,8 +417,8 @@ func (f *FetchTopologyManager) fetchDataPartitionsView(volumeName string, dpsID 
 	return
 }
 
-func (f *FetchTopologyManager) getVolsConf() (volsConf []*proto.VolInfo, err error) {
-	if f.masterDomainClient == nil {
+func (f *TopologyManager) getVolsConf() (volsConf []*proto.VolInfo, err error) {
+	if f.masterDomainClient == nil || len(f.masterDomainClient.Nodes()) == 0 {
 		return f.masterClient.AdminAPI().ListVols("")
 	}
 

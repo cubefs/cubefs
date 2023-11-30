@@ -361,7 +361,7 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 }
 
 func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor uint64, err error) {
-	dpsView := mp.fetchTopoManager.GetVolume(mp.config.VolName).DataPartitionsView()
+	dpsView := mp.topoManager.GetVolume(mp.config.VolName).DataPartitionsView()
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
 	cur := generalDateKey()

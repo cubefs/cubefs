@@ -835,13 +835,11 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		return
 	}
 
-	release1, err := dp.acquire(proto.OpExtentRepairWrite_)
+	err = multirate.WaitConcurrency(context.Background(), proto.OpExtentRepairWrite_, dp.disk.Path)
 	if err != nil {
 		return
 	}
-	defer func() {
-		release1()
-	}()
+	defer multirate.DoneConcurrency(proto.OpExtentRepairWrite_, dp.disk.Path)
 
 	var release2, success = dp.tryLockExtentRepair(extentID)
 	if !success {

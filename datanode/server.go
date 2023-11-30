@@ -33,7 +33,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -56,10 +56,7 @@ var (
 	ErrIncorrectStoreType       = errors.New("Incorrect store type")
 	ErrNoSpaceToCreatePartition = errors.New("No disk space to create a data partition")
 	ErrNewSpaceManagerFailed    = errors.New("Creater new space manager failed")
-	ErrLimiterManagerNil        = errors.New("limiter manager is nil")
-	ErrLimiterNil               = errors.New("limiter is nil")
 	ErrPartitionNil             = errors.New("partition is nil")
-	ErrGetTokenTimeout          = fmt.Errorf("get token timeout")
 	LocalIP                     string
 	LocalServerPort             string
 	gConnPool                   = connpool.NewConnectPool()
@@ -69,7 +66,6 @@ var (
 	gHasFinishedLoadDisks       bool
 
 	maybeServerFaultOccurred bool // 是否判定当前节点大概率出现过系统断电
-	tokenManagerKeyGen       uint64
 )
 
 const (
@@ -121,8 +117,7 @@ type DataNode struct {
 	fixTinyDeleteRecordLimit uint64
 	control                  common.Control
 	processStatInfo          *statinfo.ProcessStatInfo
-	limiterManager           *multirate.LimiterManager
-	fetchTopoManager         *fetchtopology.FetchTopologyManager
+	topoManager              *topology.TopologyManager
 }
 
 func NewServer() *DataNode {
@@ -164,15 +159,14 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
-	s.limiterManager = multirate.NewLimiterManager(multirate.ModuleDataNode, "", MasterClient.AdminAPI().GetLimitInfo)
-	if s.limiterManager == nil {
-		err = fmt.Errorf("doStart NewLimiterManager fail")
-		return
-	}
 
-	s.fetchTopoManager = fetchtopology.NewFetchTopoManager(time.Minute*5, MasterClient, MasterDomainClient,
-		true, false, s.limiterManager.GetLimiter())
-	if err = s.fetchTopoManager.Start(); err != nil {
+	_, err = multirate.InitLimiterManager(multirate.ModuleDataNode, s.zoneName, MasterClient.AdminAPI().GetLimitInfo)
+	if err != nil {
+		return err
+	}
+	s.topoManager = topology.NewTopologyManager(time.Minute*5, MasterClient, MasterDomainClient,
+		false, false)
+	if err = s.topoManager.Start(); err != nil {
 		return
 	}
 
@@ -218,10 +212,10 @@ func doShutdown(server common.Server) {
 	s.stopUpdateNodeInfo()
 	s.stopTCPService()
 	s.stopRaftServer()
-	s.limiterManager.Stop()
 	if gHasFinishedLoadDisks {
 		deleteSysStartTimeFile()
 	}
+	multirate.Stop()
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {

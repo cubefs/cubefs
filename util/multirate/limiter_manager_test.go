@@ -36,7 +36,7 @@ func TestLimiterManager(t *testing.T) {
 		}
 		return
 	}
-	m := NewLimiterManager(ModuleDataNode, zone, getLimitInfo)
+	m, _ := newLimiterManager(ModuleDataNode, zone, getLimitInfo)
 	m.Stop()
 	m.updateLimitInfo()
 	ml := m.GetLimiter()
@@ -56,7 +56,7 @@ func TestLimiterManager(t *testing.T) {
 		{statTypeCount: rate.Limit(limit[3])},
 	}
 	check(t, ml, property, expect)
-	assert.Equal(t, concurrency, m.GetTokenManager(int(proto.OpRead), "").GetConfCnt())
+	assert.Equal(t, concurrency, m.GetConcurrency().Count(int(proto.OpRead)))
 
 	ratio = 90
 	concurrency = 5
@@ -88,7 +88,7 @@ func TestLimiterManager(t *testing.T) {
 	m.setGetLimitInfoFunc(getLimitInfo1)
 	m.updateLimitInfo()
 	check(t, ml, property, expect)
-	assert.Equal(t, concurrency, m.GetTokenManager(int(proto.OpRead), "").GetConfCnt())
+	assert.Equal(t, concurrency, m.GetConcurrency().Count(int(proto.OpRead)))
 }
 
 func check(t *testing.T, ml *MultiLimiter, property []Properties, limit []LimitGroup) {

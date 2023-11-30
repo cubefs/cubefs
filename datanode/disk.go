@@ -17,7 +17,7 @@ package datanode
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/fetchtopology"
+	"github.com/cubefs/cubefs/util/topology"
 	"io/ioutil"
 	"math"
 	"os"
@@ -35,11 +35,9 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/async"
-	"github.com/cubefs/cubefs/util/concurrent"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/shirou/gopsutil/load"
@@ -148,11 +146,9 @@ type Disk struct {
 
 	latestFlushTimeOnInit int64 // Disk 实例初始化时加载到的该磁盘最近一次Flush数据的时间
 
-	issueFixConcurrentLimiter *concurrent.Limiter // 修复服务器故障导致的不安全数据的并发限制器
-	limiter                   *multirate.LimiterManager
-	fetchtopoManager          *fetchtopology.FetchTopologyManager
-	monitorData               []*statistics.MonitorData
-	interceptors              storage.IOInterceptors
+	topoManager      *topology.TopologyManager
+	monitorData      []*statistics.MonitorData
+	interceptors     storage.IOInterceptors
 
 	// sfx compressible ssd attribute
 	IsSfx             bool
@@ -163,7 +159,7 @@ type Disk struct {
 
 type CheckExpired func(id uint64) bool
 
-func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism int, limiter *multirate.LimiterManager, fetchTopoManager *fetchtopology.FetchTopologyManager, expired CheckExpired) (d *Disk, err error) {
+func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism int, topoManager *topology.TopologyManager, expired CheckExpired) (d *Disk, err error) {
 	_, err = os.Stat(path)
 	if err != nil {
 		return
@@ -175,22 +171,20 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 	}()
 
 	d = &Disk{
-		Path:                      path,
-		ReservedSpace:             config.Reserved,
-		MaxErrCnt:                 config.MaxErrCnt,
-		RejectWrite:               false,
-		space:                     space,
-		partitionMap:              make(map[uint64]*DataPartition),
-		fixTinyDeleteRecordLimit:  config.FixTinyDeleteRecordLimit,
-		repairTaskLimit:           config.RepairTaskLimit,
-		fdCount:                   0,
-		maxFDLimit:                config.MaxFDLimit,
-		forceEvictFDRatio:         config.ForceFDEvictRatio,
-		forceFlushFDParallelism:   DefaultForceFlushFDParallelismOnDisk,
-		issueFixConcurrentLimiter: concurrent.NewLimiter(DefaultIssueFixConcurrencyOnDisk),
-		limiter:                   limiter,
-		fetchtopoManager:          fetchTopoManager,
-		monitorData:               statistics.InitMonitorData(statistics.ModelDataNode),
+		Path:                     path,
+		ReservedSpace:            config.Reserved,
+		MaxErrCnt:                config.MaxErrCnt,
+		RejectWrite:              false,
+		space:                    space,
+		partitionMap:             make(map[uint64]*DataPartition),
+		fixTinyDeleteRecordLimit: config.FixTinyDeleteRecordLimit,
+		repairTaskLimit:          config.RepairTaskLimit,
+		fdCount:                  0,
+		maxFDLimit:               config.MaxFDLimit,
+		forceEvictFDRatio:        config.ForceFDEvictRatio,
+		forceFlushFDParallelism:  DefaultForceFlushFDParallelismOnDisk,
+		topoManager:              topoManager,
+		monitorData:              statistics.InitMonitorData(statistics.ModelDataNode),
 	}
 
 	d.initInterceptors()

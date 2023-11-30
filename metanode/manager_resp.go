@@ -91,7 +91,7 @@ func (m *metadataManager) responseRateLimit(p *Packet) {
 	stat := multirate.Stat{
 		OutBytes: int(unit.PacketHeaderSize + p.ArgLen + p.Size),
 	}
-	m.limiter.WaitN(context.Background(), ps, stat)
+	multirate.WaitN(context.Background(), ps, stat)
 	return
 }
 
