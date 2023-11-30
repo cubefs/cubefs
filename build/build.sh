@@ -10,7 +10,7 @@ VendorPath=${RootPath}/vendor
 DependsPath=${RootPath}/depends
 use_clang=$(echo ${CC} | grep "clang" | grep -v "grep")
 cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lstdc++"
-if [ "${use_clang}" != "" ]; then 
+if [ "${use_clang}" != "" ]; then
     cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lc++"
 fi
 cgo_cflags="-I${BuildDependsIncludePath}"
@@ -340,6 +340,22 @@ build_fsck() {
     popd >/dev/null
 }
 
+build_libsdkpre() {
+    case `uname` in
+        Linux)
+            TargetFile=${1:-${BuildBinPath}/libcfs.so}
+            ;;
+        *)
+            echo "Unsupported platform"
+            exit 1
+            ;;
+    esac
+    pushd $SrcPath > /dev/null
+    echo -n "build libsdk: libcfs.so"
+    CGO_ENABLED=1 go build $MODFLAGS -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/libsdk/*.go && echo "success" || echo "failed"
+    popd > /dev/null
+}
+
 build_libsdk() {
     case `uname` in
         Linux)
@@ -438,6 +454,9 @@ case "$cmd" in
         ;;
     "fsck")
         build_fsck
+        ;;
+    "libsdkpre")
+        build_libsdkpre
         ;;
     "libsdk")
         build_libsdk

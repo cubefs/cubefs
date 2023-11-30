@@ -1,0 +1,288 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+
+# The lines below are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/need to use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 1
+
+env:
+  - PROTO=github.com/cubefs/cubefs/proto
+  - VV=github.com/cubefs/cubefs/blobstore/util/version.version
+
+before:
+  hooks:
+    - go version
+    - sh -c 'pwd'
+
+dist: docker/dist
+
+builds:
+  - id: "authtool"
+    main: ./authtool
+    binary: cfs-authtool
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.PROTO}}.Version={{.Version}}
+      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
+      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
+      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "bcache"
+    main: ./blockcache
+    binary: cfs-bcache
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.PROTO}}.Version={{.Version}}
+      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
+      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
+      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "client"
+    main: ./client
+    binary: cfs-client
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.PROTO}}.Version={{.Version}}
+      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
+      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
+      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "fdstore"
+    main: ./fdstore
+    binary: fdstore
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.PROTO}}.Version={{.Version}}
+      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
+      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
+      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "fsck"
+    main: ./fsck
+    binary: cfs-fsck
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.PROTO}}.Version={{.Version}}
+      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
+      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
+      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "preload"
+    main: ./preload
+    binary: cfs-preload
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.PROTO}}.Version={{.Version}}
+      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
+      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
+      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+
+  - id: "server"
+    main: ./cmd
+    binary: cfs-server
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.PROTO}}.Version={{.Version}}
+      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
+      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
+      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "cli"
+    main: ./cli
+    binary: cfs-cli
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.PROTO}}.Version={{.Version}}
+      - -X {{.Env.PROTO}}.CommitID={{.FullCommit}}
+      - -X {{.Env.PROTO}}.BranchName={{.Branch}}
+      - -X {{.Env.PROTO}}.BuildTime={{.Date}}
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+
+  - id: "clustermgr"
+    main: ./blobstore/cmd/clustermgr
+    binary:  ./blobstore/clustermgr
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "blobnode"
+    main: ./blobstore/cmd/blobnode
+    binary:  ./blobstore/blobnode
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "access"
+    main: ./blobstore/cmd/access
+    binary:  ./blobstore/access
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "scheduler"
+    main: ./blobstore/cmd/scheduler
+    binary:  ./blobstore/scheduler
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "proxy"
+    main: ./blobstore/cmd/proxy
+    binary:  ./blobstore/proxy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+  - id: "blobstore-cli"
+    main: ./blobstore/cli/cli
+    binary:  ./blobstore/blobstore-cli
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -X {{.Env.VV}}={{.Branch}}/{{.Date}}
+      - -w -s
+
+archives:
+  - format: tar.gz
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - src: ./build/bin/libcfs*
+        dst: ./
+      - src: ./build/bin/libcubefs*.jar
+        dst: ./
+
+checksum:
+  name_template: '{{.ProjectName}}_{{.Version}}_checksums.txt'
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+report_sizes: true
+
+# signs:
+#   - artifacts: archive
