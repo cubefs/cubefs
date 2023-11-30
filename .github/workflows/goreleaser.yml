@@ -1,0 +1,41 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Goreleaser
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+
+      - name: Make libcfs.so
+        run: |
+          docker/run_docker.sh --buildlibsdkpre
+
+      - name: Make libcubefs jar
+        run: |
+          cp -rf ./build/bin/libcfs.so  ./java/src/main/resources/
+          echo -n "build java libcubefs jar"
+          pushd ./java
+          mvn clean package
+          popd
+          sudo cp -rf ./java/target/*.jar ./build/bin/
+          ls -l ./build/bin/
+
+      - name: Release
+        run: |
+          docker/run_docker.sh --goreleaser
+
+      - name: Upload Archive
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
+        with:
+          name: cubefs
+          path: docker/dist/cubefs_*
+          retention-days: 7

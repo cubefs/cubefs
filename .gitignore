@@ -10,6 +10,7 @@ docker/docker_data
 docs/build
 tmp/
 docker/log
+docker/dist
 console/html
 vendor/dep
 java/target
