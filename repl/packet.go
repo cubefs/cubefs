@@ -404,7 +404,7 @@ func (p *Packet) IsMarkSplitExtentOperation() bool {
 }
 
 func (p *Packet) IsBatchDeleteExtents() bool {
-	return p.Opcode == proto.OpBatchDeleteExtent
+	return p.Opcode == proto.OpBatchDeleteExtent || p.Opcode == proto.OpGcBatchDeleteExtent
 }
 
 func (p *Packet) IsBroadcastMinAppliedID() bool {

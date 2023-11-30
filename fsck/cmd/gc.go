@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"hash/fnv"
 	"io"
 	"io/ioutil"
+	slog "log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -37,17 +39,16 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
 )
 
 const (
-	MaxBloomFilterSize uint64 = 25 * 1024 * 1024 * 1024
-	//MaxBloomFilterSize uint64 = 25 * 1024 * 1024
-	MpDir  string = "mp"
-	DpDir  string = "dp"
-	BadDir string = "bad"
+	// MaxBloomFilterSize uint64 = 50 * 1024 * 1024 * 1024
+	MaxBloomFilterSize uint64 = 50 * 1024 * 1024 * 1024
+	MpDir              string = "mp"
+	DpDir              string = "dp"
+	BadDir             string = "bad"
 )
 
 var (
@@ -73,6 +74,45 @@ type VerifyInfo struct {
 	VolName     string
 }
 
+var hostLimit = make(map[string]chan struct{})
+var cntLimit = 1
+
+func setHostCntLimit(cnt int) {
+	clearChan()
+	cntLimit = cnt
+}
+
+func getToken(host string) {
+	ch, ok := hostLimit[host]
+	if !ok {
+		ch = make(chan struct{}, cntLimit)
+		hostLimit[host] = ch
+	}
+
+	ch <- struct{}{}
+}
+
+func releaseToken(host string) {
+	ch, ok := hostLimit[host]
+	if !ok {
+		slog.Fatalf("not find chan for host %s, can't release", host)
+	}
+
+	select {
+	case <-ch:
+		return
+	default:
+		slog.Fatalf("there is not token in chan, host %s", host)
+	}
+
+}
+
+func clearChan() {
+	for k := range hostLimit {
+		delete(hostLimit, k)
+	}
+}
+
 func newGCCommand() *cobra.Command {
 	var c = &cobra.Command{
 		Use:   "gc",
@@ -93,9 +133,23 @@ func newGCCommand() *cobra.Command {
 	return c
 }
 
+func setCleanStatus() {
+	switch CleanStr {
+	case "true":
+		CleanS = true
+		return
+	case "false":
+		CleanS = false
+	default:
+		slog.Fatalf("clean arg is not legal, clean %s", CleanStr)
+	}
+}
+
 func newGetMpExtentsCmd() *cobra.Command {
 	var mpId string
-	var fromMpId string
+	// var fromMpId string
+	var concurrency uint64
+
 	var cmd = &cobra.Command{
 		Use:   "getMpExtents [VOLNAME] [DIR]",
 		Short: "get extents of mp",
@@ -104,30 +158,22 @@ func newGetMpExtentsCmd() *cobra.Command {
 			volname := args[0]
 			dir := args[1]
 
-			if fromMpId != "" {
-				getExtentsFromMp(dir, volname, fromMpId)
-				writeNormalVerifyInfo(dir, volname, MpDir)
-				return
-			}
-
 			if mpId != "" {
-				err := getExtentsByMpId(dir, volname, mpId)
-				if err != nil {
-					log.LogErrorf("Get extents by mpId %s failed, err: %v", mpId, err)
-					fmt.Printf("Get extents by mpId %s failed, err: %v\n", mpId, err)
-					return
-				}
-				writeNormalVerifyInfo(dir, volname, MpDir)
-				fmt.Printf("Get extents by mpId %s success\n", mpId)
+				getExtentsByMpId(dir, volname, mpId)
+				slog.Printf("Get extents by mpId %s success\n", mpId)
 				return
 			}
 
-			log.LogErrorf("mpId and fromMpId is empty")
+			start := time.Now()
+			getExtentsFromMp(dir, volname, int(concurrency))
+			writeNormalVerifyInfo(dir, volname, MpDir)
+			slog.Printf("get all extents for vol %s success after write verify info, cost %d ms",
+				volname, time.Since(start).Milliseconds())
 		},
 	}
 
 	cmd.Flags().StringVar(&mpId, "mp", "", "get extents in mp id")
-	cmd.Flags().StringVar(&fromMpId, "from-mp", "", "get extents from mp id")
+	cmd.Flags().Uint64Var(&concurrency, "concurrency", 0, "clean bad dp concurrency")
 	return cmd
 }
 
@@ -170,39 +216,133 @@ func getMpInfoById(mpId string) (mpInfo *proto.MetaPartitionInfo, err error) {
 		return nil, err
 	}
 
+	if mpInfo.Status != 1 && mpInfo.Status != 2 {
+		log.LogErrorf("mp status is unavailable, mpInfo %v", mpInfo)
+		return nil, fmt.Errorf("mp status is unavailable, mp %s", mpId)
+	}
+
 	return mpInfo, nil
 }
 
-func getExtentsFromMp(dir string, volname string, fromMpId string) {
-	mpvs, err := getMetaPartitions(MasterAddr, volname)
-	if err != nil {
-		log.LogErrorf("Get meta partitions failed, err: %v", err)
-		return
+func initCnt(cnt int) int {
+	if cnt == 0 {
+		return 1
 	}
-	fromMp, err := strconv.ParseUint(fromMpId, 10, 64)
-	if err != nil {
-		log.LogErrorf("Parse fromMpId failed, err: %v", err)
-		return
-	}
-	for _, mpv := range mpvs {
-		if mpv.PartitionID >= fromMp {
-			err := getExtentsByMpId(dir, volname, strconv.FormatUint(mpv.PartitionID, 10))
-			if err != nil {
-				log.LogErrorf("Get extents by mpId %v failed, err: %v", mpv.PartitionID, err)
-				fmt.Printf("Get extents by mpId %v failed, err: %v\n", mpv.PartitionID, err)
-				return
-			}
-		}
-	}
-	fmt.Printf("Get extents from mpId %v success\n", fromMpId)
+
+	// if cnt > max {
+	// 	slog.Printf("concurrency %d is too big, use max %d")
+	// 	return max
+	// }
+
+	return cnt
 }
 
-func getExtentsByMpId(dir string, volname string, mpId string) (err error) {
+type taskPool struct {
+	queue chan func()
+	stop  chan struct{}
+}
+
+func newTaskPool(cnt int) *taskPool {
+	p := &taskPool{
+		queue: make(chan func(), cnt*10),
+		stop:  make(chan struct{}),
+	}
+
+	for idx := 0; idx < cnt; idx++ {
+		go func() {
+			for {
+				select {
+				case <-p.stop:
+					return
+				case fn := <-p.queue:
+					fn()
+				}
+			}
+		}()
+	}
+	return p
+}
+
+func (p *taskPool) addTask(f func()) {
+	p.queue <- f
+}
+
+func (p *taskPool) close() {
+	close(p.stop)
+}
+
+func getExtentsFromMp(dir string, volname string, cnt int) {
+	// allow 3 thread to get snapshot from one host
+	setHostCntLimit(3)
+	start := time.Now()
+	mpvs, err := getMetaPartitions(MasterAddr, volname)
+	if err != nil {
+		slog.Fatalf("Get meta partitions failed, err: %v", err)
+	}
+
+	// fromMp, err := strconv.ParseUint(fromMpId, 10, 64)
+	// if err != nil {
+	// 	slog.Fatalf("Parse fromMpId failed, err: %v", err)
+	// }
+
+	cnt = initCnt(cnt)
+	if cnt > len(mpvs) {
+		cnt = len(mpvs)
+	}
+
+	wg := sync.WaitGroup{}
+	pool := newTaskPool(cnt)
+	defer pool.close()
+
+	for _, mpv := range mpvs {
+		wg.Add(1)
+		mpId := mpv.PartitionID
+
+		pool.addTask(func() {
+			defer wg.Done()
+			getExtentsByMpId(dir, volname, strconv.FormatUint(mpId, 10))
+		})
+	}
+	wg.Wait()
+
+	slog.Printf("Get extents from vol %v success, cost %d ms\n", volname, time.Since(start).Milliseconds())
+	return
+}
+
+func getExtentsByMpId(dir string, volname string, mpId string) {
+	start := time.Now()
+	defer func() {
+		log.LogWarnf("getExtentsByMpId: get extents by mp %s, vol %s, cost %d ms", mpId, volname, time.Since(start).Milliseconds())
+	}()
+
 	mpInfo, err := getMpInfoById(mpId)
 	if err != nil {
-		log.LogErrorf("Get meta partition info failed, err: %v", err)
-		return err
+		slog.Fatalf("Get meta partition info failed, err: %v", err)
 	}
+
+	_, NormalFilePath, err := InitLocalDir(dir, volname, mpId, MpDir)
+	if err != nil {
+		slog.Fatalf("Init local dir failed, mpId %s, err: %v", mpId, err)
+	}
+
+	normalFile, err := os.OpenFile(NormalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		slog.Fatalf("Open file failed, mp %s, err: %v", mpId, err)
+	}
+	defer func() {
+		err = normalFile.Sync()
+		if err != nil {
+			slog.Fatalf("sync file failed, mp %s, err %s", mpId, err.Error())
+		}
+		err = normalFile.Close()
+		if err != nil {
+			slog.Fatalf("sync file failed, mp %s, err %s", mpId, err.Error())
+		}
+	}()
+
+	normalData := make([]byte, 0)
+	// tinyBuf := bytes.NewBuffer(make([]byte, 0, 1024*1024*256))
+
 	var leaderAddr string
 	for _, mr := range mpInfo.Replicas {
 		if mr.IsLeader {
@@ -212,152 +352,156 @@ func getExtentsByMpId(dir string, volname string, mpId string) (err error) {
 	}
 
 	if leaderAddr == "" {
-		log.LogErrorf("Get leader address failed mpId %v", mpId)
-		err = fmt.Errorf("Get leader address failed mpId %v", mpId)
-		return err
+		slog.Fatalf("Get leader address failed mpId %v", mpId)
 	}
 
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/getInodeSnapshot?pid=%s", strings.Split(leaderAddr, ":")[0], MetaPort, mpId))
-	if err != nil {
-		log.LogErrorf("Get inode snapshot failed, err: %v", err)
-		err = fmt.Errorf("Get inode snapshot failed, err: %v", err)
-		return err
-	}
-	defer resp.Body.Close()
+	loadExtByHost := func(addr string) {
+		getToken(addr)
+		defer releaseToken(addr)
 
-	if resp.StatusCode != http.StatusOK {
-		log.LogErrorf("Invalid status code: %v", resp.StatusCode)
-		err = fmt.Errorf("Invalid status code: %v", resp.StatusCode)
-		return err
-	}
-
-	reader := bufio.NewReaderSize(resp.Body, 4*1024*1024)
-	inoBuf := make([]byte, 4)
-
-	tinyFilePath, NormalFilePath, err := InitLocalDir(dir, volname, mpId, MpDir)
-	if err != nil {
-		log.LogErrorf("Init local dir failed, err: %v", err)
-		return err
-	}
-
-	tinyFile, err := os.OpenFile(tinyFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.LogErrorf("Open file failed, err: %v", err)
-		return err
-	}
-	defer tinyFile.Close()
-	normalFile, err := os.OpenFile(NormalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.LogErrorf("Open file failed, err: %v", err)
-		return err
-	}
-	defer normalFile.Close()
-	for {
-		inoBuf = inoBuf[:4]
-		// first read length
-		_, err := io.ReadFull(reader, inoBuf)
+		startIn := time.Now()
+		normalBuf := bytes.NewBuffer(make([]byte, 0, 1024*1024*32))
+		resp, err := http.Get(fmt.Sprintf("http://%s:%s/getInodeSnapshot?pid=%s", strings.Split(addr, ":")[0], MetaPort, mpId))
 		if err != nil {
-			if err == io.EOF {
-				err = nil
-				return err
-			}
-			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
-			return err
+			slog.Fatalf("Get inode snapshot failed, mp %s, addr %s, err: %v", mpId, addr, err)
 		}
-		length := binary.BigEndian.Uint32(inoBuf)
+		defer resp.Body.Close()
 
-		// then read inode
-		if uint32(cap(inoBuf)) >= length {
-			inoBuf = inoBuf[:length]
-		} else {
-			inoBuf = make([]byte, length)
+		if resp.StatusCode != http.StatusOK {
+			slog.Fatalf("Invalid status code: %v, mpId %s, addr %s", resp.StatusCode, mpId, addr)
 		}
 
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
-			return err
-		}
-		ino := &metanode.Inode{
-			Inode:                       0,
-			Type:                        0,
-			Generation:                  1,
-			CreateTime:                  0,
-			AccessTime:                  0,
-			ModifyTime:                  0,
-			NLink:                       1,
-			Extents:                     metanode.NewSortedExtents(),
-			StorageClass:                proto.StorageClass_Unspecified,
-			HybridCouldExtents:          metanode.NewSortedHybridCloudExtents(),
-			HybridCouldExtentsMigration: metanode.NewSortedHybridCloudExtentsMigration(),
-		}
-		if err = ino.Unmarshal(inoBuf); err != nil {
-			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
-			return err
-		}
-		eks := ino.Extents.CopyExtents()
-		log.LogInfof("inode:%v, extent:%v", ino.Inode, eks)
-		for _, ek := range eks {
-			var eksForGc ExtentForGc
-			eksForGc.Id = strconv.FormatUint(ek.PartitionId, 10) + "_" + strconv.FormatUint(ek.ExtentId, 10)
-			eksForGc.Offset = ek.ExtentOffset
-			eksForGc.Size = ek.Size
-			data, err := json.Marshal(eksForGc)
+		reader := bufio.NewReaderSize(resp.Body, 16*1024*1024)
+		inoBuf := make([]byte, 4)
+		for {
+			inoBuf = inoBuf[:4]
+			// first read length
+			_, err := io.ReadFull(reader, inoBuf)
 			if err != nil {
-				log.LogErrorf("Marshal extents failed, err: %v", err)
-				return err
-			}
-			if !storage.IsTinyExtent(ek.ExtentId) {
-				log.LogInfof("normal extent:%v, data:%v", ek.ExtentId, len(data))
-				_, err = normalFile.Write(append(data, '\n'))
-				if err != nil {
-					log.LogErrorf("Write normal extent to file failed, err: %v", err)
-					return err
+				if err == io.EOF {
+					if len(normalData) < normalBuf.Len() {
+						normalData = normalBuf.Bytes()
+					}
+					log.LogWarnf("read snapshot from mp success, mp %s, host %s, cost %d ms",
+						mpId, addr, time.Since(startIn).Milliseconds())
+					err = nil
+					break
 				}
+				slog.Fatalf("loadInode failed, read header error, mp %s, host %s, err %s", mpId, addr, err.Error())
+			}
+
+			length := binary.BigEndian.Uint32(inoBuf)
+			// then read inode
+			if uint32(cap(inoBuf)) >= length {
+				inoBuf = inoBuf[:length]
 			} else {
-				_, err = tinyFile.Write(append(data, '\n'))
-				if err != nil {
-					log.LogErrorf("Write tiny extent to file failed, err: %v", err)
-					return err
-				}
+				inoBuf = make([]byte, length)
 			}
+
+			_, err = io.ReadFull(reader, inoBuf)
+			if err != nil {
+				slog.Fatalf("loadInode failed, read body error, mp %s, host %s, err %s", mpId, addr, err.Error())
+			}
+			ino := &metanode.Inode{
+				Inode:                       0,
+				Type:                        0,
+				Generation:                  1,
+				CreateTime:                  0,
+				AccessTime:                  0,
+				ModifyTime:                  0,
+				NLink:                       1,
+				Extents:                     metanode.NewSortedExtents(),
+				StorageClass:                proto.StorageClass_Unspecified,
+				HybridCouldExtents:          metanode.NewSortedHybridCloudExtents(),
+				HybridCouldExtentsMigration: metanode.NewSortedHybridCloudExtentsMigration(),
+			}
+			if err = ino.Unmarshal(inoBuf); err != nil {
+				slog.Fatalf("loadInode failed, unmarshal error, mp %s, host %s, err %s", mpId, addr, err.Error())
+			}
+
+			if log.EnableDebug() {
+				eks := ino.Extents.CopyExtents()
+				log.LogDebugf("inode:%v, extent:%v", ino.Inode, eks)
+			}
+
+			walkFunc := func(ek proto.ExtentKey) bool {
+				if storage.IsTinyExtent(ek.ExtentId) {
+					return true
+				}
+
+				var eksForGc ExtentForGc
+				eksForGc.Id = strconv.FormatUint(ek.PartitionId, 10) + "_" + strconv.FormatUint(ek.ExtentId, 10)
+				eksForGc.Offset = ek.ExtentOffset
+				eksForGc.Size = ek.Size
+				data, err := json.Marshal(eksForGc)
+				if err != nil {
+					slog.Fatalf("Marshal extents failed,  mp %s, host %s, err: %v", mpId, addr, err)
+				}
+				log.LogDebugf("normal extent:%v, data:%v", ek.ExtentId, len(data))
+				normalBuf.Write(append(data, '\n'))
+				return true
+			}
+
+			ino.Extents.Range(walkFunc)
 		}
+	}
+
+	for _, addr := range mpInfo.Hosts {
+		loadExtByHost(addr)
+	}
+
+	_, err = normalFile.Write(normalData)
+	if err != nil {
+		slog.Fatalf("write normal extent file failed, mp %s, err %s", mpId, err.Error())
 	}
 }
 
+var renameOnce = sync.Once{}
+
 func InitLocalDir(dir string, volname string, partitionId string, dirType string) (tinyFilePath string, normalFilePath string, err error) {
-	tinyPath := filepath.Join(dir, volname, dirType, tinyDir)
-	if _, err = os.Stat(tinyPath); os.IsNotExist(err) {
-		if err = os.MkdirAll(tinyPath, 0755); err != nil {
-			log.LogErrorf("create dir failed: %v", err)
-			return
-		}
-	}
+	// tinyPath := filepath.Join(dir, volname, dirType, tinyDir)
+	// if _, err = os.Stat(tinyPath); os.IsNotExist(err) {
+	// 	if err = os.MkdirAll(tinyPath, 0755); err != nil {
+	// 		log.LogErrorf("create dir failed: %v", err)
+	// 		return
+	// 	}
+	// }
 
 	normalPath := filepath.Join(dir, volname, dirType, normalDir)
-	if _, err = os.Stat(normalPath); os.IsNotExist(err) {
-		if err = os.MkdirAll(normalPath, 0755); err != nil {
-			log.LogErrorf("create dir failed: %v", err)
-			return
-		}
+	_, err = os.Stat(normalPath)
+	if err == nil {
+		renameOnce.Do(func() {
+			backDir := fmt.Sprintf("%s_%d", normalPath, time.Now().Unix())
+			err = os.Rename(normalPath, backDir)
+			if err != nil {
+				slog.Fatalf("reanme dir failed, old %s, new %s, err %s", normalFilePath, backDir, err.Error())
+			}
+		})
+	} else if !os.IsNotExist(err) {
+		slog.Fatalf("stat path %s failed, err %s", normalFilePath, err.Error())
 	}
 
-	tinyFilePath = filepath.Join(tinyPath, partitionId)
-	if _, err = os.Stat(tinyFilePath); os.IsNotExist(err) {
-		file, err := os.Create(tinyFilePath)
-		if err != nil {
-			log.LogErrorf("create tiny file failed:%v", err)
-			return "", "", err
-		}
-		defer file.Close()
-	} else {
-		err = ioutil.WriteFile(tinyFilePath, []byte{}, os.ModePerm)
-		if err != nil {
-			log.LogErrorf("clear tiny file failed:%v", err)
-			return "", "", err
-		}
-		log.LogInfof("tiny file contents have been cleared successfully: %v", tinyFilePath)
+	if err = os.MkdirAll(normalPath, 0755); err != nil {
+		slog.Fatalf("create dir failed, path %s, err : %v", normalFilePath, err)
+		return
 	}
+
+	// tinyFilePath = filepath.Join(tinyPath, partitionId)
+	// if _, err = os.Stat(tinyFilePath); os.IsNotExist(err) {
+	// 	file, err := os.Create(tinyFilePath)
+	// 	if err != nil {
+	// 		log.LogErrorf("create tiny file failed:%v", err)
+	// 		return "", "", err
+	// 	}
+	// 	defer file.Close()
+	// } else {
+	// 	err = os.WriteFile(tinyFilePath, []byte{}, os.ModePerm)
+	// 	if err != nil {
+	// 		log.LogErrorf("clear tiny file failed:%v", err)
+	// 		return "", "", err
+	// 	}
+	// 	log.LogInfof("tiny file contents have been cleared successfully: %v", tinyFilePath)
+	// }
 
 	normalFilePath = filepath.Join(normalPath, partitionId)
 	if _, err = os.Stat(normalFilePath); os.IsNotExist(err) {
@@ -368,7 +512,7 @@ func InitLocalDir(dir string, volname string, partitionId string, dirType string
 		}
 		defer file.Close()
 	} else {
-		err = ioutil.WriteFile(normalFilePath, []byte{}, os.ModePerm)
+		err = os.WriteFile(normalFilePath, []byte{}, os.ModePerm)
 		if err != nil {
 			log.LogErrorf("clear normal file failed:%v", err)
 			return "", "", err
@@ -396,38 +540,48 @@ func newGetDpExtentsCmd() *cobra.Command {
 
 			location, err := time.LoadLocation("Asia/Shanghai")
 			if err != nil {
-				log.LogErrorf("load location failed: %v", err)
+				slog.Fatalf("load location failed: %v", err)
 				return
 			}
 			t, err := time.ParseInLocation(layout, beforeTime, location)
 			if err != nil {
-				log.LogErrorf("parse time failed: %v", err)
+				slog.Fatalf("parse time failed: %v", err)
 				return
 			}
 			beforeTime = strconv.FormatInt(t.Unix(), 10)
 			log.LogInfof("beforeTime: %v", beforeTime)
 			currentTimeUnix := time.Now().Unix()
 			beforeTimeUnix := t.Unix()
-			threeHours := int64(3 * 60 * 60)
+			threeHours := int64(60)
 
 			if currentTimeUnix-beforeTimeUnix < threeHours {
-				log.LogError("beforeTime should be at least 3 hours earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
+				slog.Fatalf("beforeTime should be at least 3 hours earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
 				return
 			}
 
-			if fromDpId != "" {
-				getExtentsFromDpId(dir, volname, fromDpId, beforeTime)
-				writeNormalVerifyInfo(dir, volname, DpDir)
-				return
-			}
+			start := time.Now()
 
 			if dpId != "" {
-				getExtentsByDpId(dir, volname, dpId, beforeTime)
+				err = getExtentsByDpId(dir, volname, dpId, beforeTime)
+				if err != nil {
+					slog.Fatalf("get extent by dpId failed, vol %s, dp %s, err %s", volname, dpId, err.Error())
+				}
 				writeNormalVerifyInfo(dir, volname, DpDir)
+				slog.Printf("get extent by dpId success, vol %s, dp %s, cost %d ms",
+					volname, dpId, time.Since(start).Milliseconds())
 				return
 			}
 
-			log.LogErrorf("dpId and fromDpId is empty")
+			err = getExtentsFromDpId(dir, volname, fromDpId, beforeTime)
+			if err != nil {
+				slog.Fatalf("get extents from dp failed, vol %s, from-dp %s, err %s",
+					volname, fromDpId, err.Error())
+			}
+
+			writeNormalVerifyInfo(dir, volname, DpDir)
+			slog.Printf("get extent from dpId success, vol %s, cost %d ms",
+				volname, time.Since(start).Milliseconds())
+			return
 		},
 	}
 
@@ -449,7 +603,7 @@ func getDpInfoById(dpId string) (dpInfo *proto.DataPartitionInfo, err error) {
 		return
 	}
 
-	respData, err := ioutil.ReadAll(resp.Body)
+	respData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.LogErrorf("Read response body failed, err: %v", err)
 		return
@@ -475,12 +629,26 @@ func getDpInfoById(dpId string) (dpInfo *proto.DataPartitionInfo, err error) {
 	return dpInfo, nil
 }
 
-func getExtentsByDpId(dir string, volname string, dpId string, time string) {
+func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string) (err error) {
+	start := time.Now()
+	totalCnt := 0
+	totalSize := 0
+
+	defer func() {
+		log.LogWarnf("getExtentsByDpId: get extents by dp success, vol %s, dp %s, time %s, cost %d ms, totalCnt %d, totalSize %d, err %v",
+			volname, dpId, beforeTime, time.Since(start).Milliseconds(), totalCnt, totalSize, err)
+	}()
+
 	dpInfo, err := getDpInfoById(dpId)
 	if err != nil {
-		log.LogErrorf("Get dp info failed, err: %v", err)
-		return
+		log.LogErrorf("Get dp info failed, dp %s, err: %v", dpId, err)
+		return err
 	}
+
+	if dpInfo.VolName != volname {
+		slog.Fatalf("datapartition %d is not in vol %s, got vol %s", dpInfo.PartitionID, volname, dpInfo.VolName)
+	}
+
 	var leaderAddr string
 	for _, dr := range dpInfo.Replicas {
 		if dr.IsLeader {
@@ -490,27 +658,24 @@ func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 	}
 
 	if leaderAddr == "" {
-		log.LogErrorf("Get leader addr failed, err: %v", err)
-		return
+		return fmt.Errorf("Get leader addr failed, dpId %s, err: %v", dpId, err)
 	}
 
 	resp, err := http.Get(fmt.Sprintf("http://%s:%s/getAllExtent?id=%s&beforeTime=%s",
-		strings.Split(leaderAddr, ":")[0], DataPort, dpId, time))
+		strings.Split(leaderAddr, ":")[0], DataPort, dpId, beforeTime))
 	if err != nil {
-		log.LogErrorf("Get all extents failed, err: %v", err)
+		log.LogErrorf("Get all extents failed, dpId %s, err: %v", dpId, err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.LogErrorf("Invalid status id %v, code: %v", dpId, resp.StatusCode)
-		return
+		return fmt.Errorf("Invalid status, dp id %s, code: %v", dpId, resp.StatusCode)
 	}
 
-	respData, err := ioutil.ReadAll(resp.Body)
+	respData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.LogErrorf("Read response body failed, err: %v", err)
-		return
+		return fmt.Errorf("Read response body failed, err: %v", err)
 	}
 
 	var body = &struct {
@@ -518,29 +683,25 @@ func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
 	}{}
-	if err := json.Unmarshal(respData, body); err != nil {
-		log.LogErrorf("Unmarshal response body err:%v", err)
+
+	if err = json.Unmarshal(respData, body); err != nil {
+		log.LogErrorf("Unmarshal response body dp %s, err:%v", dpId, err.Error())
 		return
 	}
 
 	extents := make([]*storage.ExtentInfo, 0)
 	err = json.Unmarshal(body.Data, &extents)
 	if err != nil {
-		log.LogErrorf("Unmarshal response body err:%v", err)
+		log.LogErrorf("Unmarshal response body dp %s, err:%v", dpId, err)
 		return
 	}
 
-	tinyFilePath, normalFilePath, err := InitLocalDir(dir, volname, dpId, DpDir)
+	_, normalFilePath, err := InitLocalDir(dir, volname, dpId, DpDir)
 	if err != nil {
-		log.LogErrorf("Init local dir failed, err: %v", err)
+		log.LogErrorf("Init local dir failed, dpId %s, err: %v", dpId, err)
 		return
 	}
-	tinyFile, err := os.OpenFile(tinyFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.LogErrorf("Open tinyFile failed, err: %v", err)
-		return
-	}
-	defer tinyFile.Close()
+
 	normalFile, err := os.OpenFile(normalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.LogErrorf("Open normalFile failed, err: %v", err)
@@ -549,29 +710,28 @@ func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 	defer normalFile.Close()
 
 	for _, extent := range extents {
+		if storage.IsTinyExtent(extent.FileID) {
+			continue
+		}
+
 		var eksForGc ExtentForGc
 		eksForGc.Id = dpId + "_" + strconv.FormatUint(extent.FileID, 10)
 		eksForGc.Offset = 0
 		eksForGc.Size = uint32(extent.Size)
+		totalCnt++
+		totalSize += int(extent.Size)
 		data, err := json.Marshal(eksForGc)
 		if err != nil {
 			log.LogErrorf("Marshal extents failed, err: %v", err)
-			return
+			return err
 		}
-		if !storage.IsTinyExtent(extent.FileID) {
-			_, err = normalFile.Write(append(data, '\n'))
-			if err != nil {
-				log.LogErrorf("Write normal extent to file failed, err: %v", err)
-				return
-			}
-		} else {
-			_, err = tinyFile.Write(append(data, '\n'))
-			if err != nil {
-				log.LogErrorf("Write tiny extent to file failed, err: %v", err)
-				return
-			}
+		_, err = normalFile.Write(append(data, '\n'))
+		if err != nil {
+			log.LogErrorf("Write normal extent to file failed, err: %v", err)
+			return err
 		}
 	}
+
 	beforeTimeFilePath := filepath.Join(dir, volname, "dp", normalDir, beforeTimeFile)
 	if _, err = os.Stat(beforeTimeFilePath); os.IsNotExist(err) {
 		_, err = os.Create(beforeTimeFilePath)
@@ -580,30 +740,46 @@ func getExtentsByDpId(dir string, volname string, dpId string, time string) {
 			return
 		}
 	}
-	err = ioutil.WriteFile(beforeTimeFilePath, []byte(time), 0644)
+	err = os.WriteFile(beforeTimeFilePath, []byte(beforeTime), 0644)
 	if err != nil {
 		log.LogErrorf("Write before time file failed, err: %v", err)
 		return
 	}
+
+	return nil
 }
 
-func getExtentsFromDpId(dir string, volname string, fromDpId string, time string) {
+func getExtentsFromDpId(dir string, volname string, fromDpId string, beforeTime string) (err error) {
 	dps, err := getDataPartitions(MasterAddr, volname)
 	if err != nil {
-		log.LogErrorf("Get data partitions failed, err: %v", err)
-		return
+		return fmt.Errorf("Get data partitions failed, err: %v", err)
 	}
 
-	fromDp, err := strconv.ParseUint(fromDpId, 10, 64)
-	if err != nil {
-		log.LogErrorf("Parse from dp id failed, err: %v", err)
-		return
-	}
+	// fromDp, err := strconv.ParseUint(fromDpId, 10, 64)
+	// if err != nil {
+	// 	log.LogErrorf("Parse from dp id failed, err: %v", err)
+	// 	return err
+	// }
+
+	start := time.Now()
+	pool := newTaskPool(10)
+	defer pool.close()
+	wg := sync.WaitGroup{}
 	for _, dp := range dps {
-		if dp.PartitionID >= fromDp {
-			getExtentsByDpId(dir, volname, strconv.FormatUint(dp.PartitionID, 10), time)
-		}
+		wg.Add(1)
+		dpId := dp.PartitionID
+		pool.addTask(func() {
+			defer wg.Done()
+			err = getExtentsByDpId(dir, volname, strconv.FormatUint(dpId, 10), beforeTime)
+			if err != nil {
+				slog.Fatalf("get extent by dpId failed, vol %s, dp %d, time %s, err %s",
+					volname, dp.PartitionID, beforeTime, err.Error())
+			}
+		})
 	}
+	wg.Wait()
+	log.LogWarnf("get all dp extents success, vol %s, cost %d ms", volname, time.Since(start).Milliseconds())
+	return nil
 }
 
 func getClusterInfo() (clusterView *proto.ClusterView, err error) {
@@ -647,7 +823,7 @@ func getClusterInfo() (clusterView *proto.ClusterView, err error) {
 func writeNormalVerifyInfo(dir, volname, dirType string) {
 	cluster, err := getClusterInfo()
 	if err != nil {
-		log.LogErrorf("Get cluster info failed, err: %v", err)
+		slog.Fatalf("Get cluster info failed, err: %v", err)
 		return
 	}
 	var verifyInfo VerifyInfo
@@ -655,7 +831,7 @@ func writeNormalVerifyInfo(dir, volname, dirType string) {
 	verifyInfo.VolName = volname
 	data, err := json.Marshal(verifyInfo)
 	if err != nil {
-		log.LogErrorf("Marshal verify info failed, err: %v", err)
+		slog.Fatalf("Marshal verify info failed, err: %v", err)
 		return
 	}
 
@@ -663,15 +839,16 @@ func writeNormalVerifyInfo(dir, volname, dirType string) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		_, err = os.Create(filePath)
 		if err != nil {
-			log.LogErrorf("Create verify info file failed, err: %v", err)
+			slog.Fatalf("Create verify info file failed, err: %v", err)
 			return
 		}
 	}
-	err = ioutil.WriteFile(filePath, data, 0644)
+	err = os.WriteFile(filePath, data, 0644)
 	if err != nil {
-		log.LogErrorf("Write verify info file failed, err: %v", err)
+		slog.Fatalf("Write verify info file failed, err: %v", err)
 		return
 	}
+	log.LogWarnf("writeNormalVerifyInfo: vol %s, write normal verifyInfo success, type %s", volname, dirType)
 }
 
 func checkNormalVerfyInfo(dir, volname, dirType string) (err error) {
@@ -681,7 +858,7 @@ func checkNormalVerfyInfo(dir, volname, dirType string) (err error) {
 		err = fmt.Errorf("verify info file not exist")
 		return
 	}
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		log.LogErrorf("Read verify info file failed, err: %v", err)
 		return
@@ -721,28 +898,30 @@ func newCalcBadExtentsCmd() *cobra.Command {
 			extType := args[1]
 			dir := args[2]
 
+			start := time.Now()
 			if extType == "normal" {
 				err := checkNormalVerfyInfo(dir, volname, MpDir)
 				if err != nil {
-					log.LogErrorf("Check normal verify info failed, err: %v", err)
+					slog.Fatalf("Check normal verify info failed, err: %v", err)
 					return
 				}
 				err = checkNormalVerfyInfo(dir, volname, DpDir)
 				if err != nil {
-					log.LogErrorf("Check normal verify info failed, err: %v", err)
+					slog.Fatalf("Check normal verify info failed, err: %v", err)
 					return
 				}
 				err = calcBadNormalExtents(volname, dir)
 				if err != nil {
-					log.LogErrorf("Calc bad normal extents failed, err: %v", err)
+					slog.Fatalf("Calc bad normal extents failed, err: %v", err)
 					return
 				}
 				writeNormalVerifyInfo(dir, volname, BadDir)
+				slog.Printf("calc bad extents success, vol %s, cost %d ms", volname, time.Since(start).Milliseconds())
 			} else if extType == "tiny" {
-				log.LogErrorf("tiny is not supported now")
+				slog.Fatalf("tiny is not supported now")
 				return
 			} else {
-				log.LogErrorf("Invalid extent type: %s", extType)
+				slog.Fatalf("Invalid extent type: %s", extType)
 				return
 			}
 
@@ -767,117 +946,158 @@ func calcBadNormalExtents(volname, dir string) (err error) {
 
 	err = addMpExtentToBF(normalMpDir)
 	if err != nil {
-		log.LogErrorf("Add normal extents to bloom filter failed, err: %v", err)
-		return
+		slog.Fatalf("Add normal extents to bloom filter failed, dir %s, err: %v", normalMpDir, err.Error())
 	}
 
 	normalDpDir := filepath.Join(dir, volname, DpDir, normalDir)
 	destDir := filepath.Join(dir, volname, BadDir, normalDir)
-	if _, err = os.Stat(destDir); os.IsNotExist(err) {
-		err = os.MkdirAll(destDir, 0755)
+	_, err = os.Stat(destDir)
+	if err == nil {
+		backPath := fmt.Sprintf("%s_%d", destDir, time.Now().Unix())
+		err = os.Rename(destDir, backPath)
 		if err != nil {
-			log.LogErrorf("Mkdir dest dir failed, err: %v", err)
-			return
+			slog.Fatalf("rename dir failed, destDir %s, backDir %s, err %s", destDir, backPath, err.Error())
 		}
 	}
+
+	err = os.MkdirAll(destDir, 0755)
+	if err != nil {
+		slog.Fatalf("Mkdir dest dir failed, err: %v", err)
+		return
+	}
+
 	err = calcDpBadNormalExtentByBF(normalDpDir, destDir)
 	return err
 }
 
 func addMpExtentToBF(mpDir string) (err error) {
-	fileInfos, err := ioutil.ReadDir(mpDir)
+	totalStart := time.Now()
+	defer func() {
+		log.LogWarnf("addMpExtentToBF: add all mp to BF success, dir %s, cost %d ms", mpDir, time.Since(totalStart).Milliseconds())
+	}()
+
+	fileInfos, err := os.ReadDir(mpDir)
 	if err != nil {
-		log.LogErrorf("Read mp dir failed, err: %v", err)
+		slog.Fatalf("Read mp dir failed, dir %s, err: %v", mpDir, err)
 		return
 	}
 
-	for _, fileInfo := range fileInfos {
-		if !fileInfo.IsDir() {
-			fileName := fileInfo.Name()
-			if fileName == verifyInfoFile {
-				continue
-			}
-			filePath := filepath.Join(mpDir, fileName)
-			file, err := os.Open(filePath)
-			if err != nil {
-				log.LogErrorf("Open file failed, err: %v", err)
-				return err
-			}
-			defer file.Close()
-
-			reader := bufio.NewReader(file)
-			for {
-				line, err := reader.ReadBytes('\n')
-				if err != nil {
-					if err == io.EOF {
-						break
-					}
-					log.LogErrorf("Read line failed, err: %v", err)
-					return err
-				}
-				var eksForGc ExtentForGc
-				err = json.Unmarshal(line, &eksForGc)
-				if err != nil {
-					log.LogErrorf("Unmarshal extent failed, err: %v", err)
-					return err
-				}
-
-				gBloomFilter.Add([]byte(eksForGc.Id)) // add extent id to bloom filter
-			}
+	walkMp := func(fileName string) {
+		stat := time.Now()
+		filePath := filepath.Join(mpDir, fileName)
+		file, err := os.Open(filePath)
+		if err != nil {
+			slog.Fatalf("Open file failed, path %s, err: %v", filePath, err.Error())
 		}
+		defer file.Close()
+
+		cnt := 0
+		defer func() {
+			log.LogWarnf("addMpExtentToBF： add mp %s success, cnt %d, cost %d ms",
+				filePath, cnt, time.Since(stat).Milliseconds())
+		}()
+
+		reader := bufio.NewReaderSize(file, 16*1024*1024)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err == io.EOF {
+					err = nil
+					break
+				}
+				slog.Fatalf("Read line failed, path %s, err: %v", filePath, err)
+			}
+
+			var eksForGc ExtentForGc
+			err = json.Unmarshal(line, &eksForGc)
+			if err != nil {
+				slog.Fatalf("Unmarshal extent failed, err: %v", err)
+			}
+
+			gBloomFilter.Add([]byte(eksForGc.Id)) // add extent id to bloom filter
+			cnt++
+		}
+	}
+
+	for _, fileInfo := range fileInfos {
+		if fileInfo.IsDir() {
+			continue
+		}
+
+		fileName := fileInfo.Name()
+		if fileName == verifyInfoFile {
+			continue
+		}
+
+		walkMp(fileName)
 	}
 	return
 }
 
 func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
-	fileInfos, err := ioutil.ReadDir(dpDir)
+	fileInfos, err := os.ReadDir(dpDir)
 	if err != nil {
-		log.LogErrorf("Read dp dir failed, err: %v", err)
+		slog.Fatalf("Read dp dir failed, err: %v", err)
 		return
 	}
 
+	badSize := 0
+	badCount := 0
+	start := time.Now()
+	defer func() {
+		slog.Printf("finally get total bad extent count %d, size %d, cost %d ms",
+			badCount, badSize, time.Since(start).Milliseconds())
+	}()
+
 	for _, fileInfo := range fileInfos {
-		if !fileInfo.IsDir() {
-			fileName := fileInfo.Name()
-			if fileName == beforeTimeFile || fileName == verifyInfoFile {
-				continue
-			}
-			filePath := filepath.Join(dpDir, fileName)
-			file, err := os.Open(filePath)
+		if fileInfo.IsDir() {
+			continue
+		}
+
+		fileName := fileInfo.Name()
+		if fileName == beforeTimeFile || fileName == verifyInfoFile {
+			continue
+		}
+
+		filePath := filepath.Join(dpDir, fileName)
+		file, err := os.Open(filePath)
+		if err != nil {
+			slog.Fatalf("Open file failed, path %s, err: %v", filePath, err.Error())
+		}
+		defer file.Close()
+
+		size := 512 * 1024
+		reader := bufio.NewReaderSize(file, size)
+		for {
+			line, err := reader.ReadBytes('\n')
 			if err != nil {
-				log.LogErrorf("Open file failed, err: %v", err)
-				return err
+				if err == io.EOF {
+					err = nil
+					break
+				}
+				slog.Fatalf("Read line failed, path %s, err: %v", filePath, err)
 			}
-			defer file.Close()
 
-			reader := bufio.NewReader(file)
-			for {
-				line, err := reader.ReadBytes('\n')
-				if err != nil {
-					if err == io.EOF {
-						break
-					}
-					log.LogErrorf("Read line failed, err: %v", err)
-					return err
-				}
-				var eksForGc ExtentForGc
-				err = json.Unmarshal(line, &eksForGc)
-				if err != nil {
-					log.LogErrorf("Unmarshal extent failed, err: %v", err)
-					return err
-				}
-				if !gBloomFilter.Contains([]byte(eksForGc.Id)) {
-					var badExtent BadNornalExtent
-					parts := strings.Split(eksForGc.Id, "_")
-					dpId := parts[0]
-					badExtent.ExtentId = parts[1]
-					badExtent.Size = eksForGc.Size
+			var eksForGc ExtentForGc
+			err = json.Unmarshal(line, &eksForGc)
+			if err != nil {
+				slog.Fatalf("Unmarshal extent failed, path %s, err: %v", filePath, err)
+			}
 
-					err = writeBadNormalExtentoLocal(dpId, badDir, badExtent)
-					if err != nil {
-						log.LogErrorf("Write bad extent failed, err: %v", err)
-						return err
-					}
+			if !gBloomFilter.Contains([]byte(eksForGc.Id)) {
+				badCount++
+				badSize += int(eksForGc.Size)
+
+				var badExtent BadNornalExtent
+				parts := strings.Split(eksForGc.Id, "_")
+				dpId := parts[0]
+				badExtent.ExtentId = parts[1]
+				badExtent.Size = eksForGc.Size
+
+				err = writeBadNormalExtentoLocal(dpId, badDir, badExtent)
+				if err != nil {
+					slog.Fatalf("Write bad extent failed, err: %v", err)
+					return err
 				}
 			}
 		}
@@ -887,23 +1107,25 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 
 // write bad extent to local
 func writeBadNormalExtentoLocal(dpId, badDir string, badExtent BadNornalExtent) (err error) {
-	log.LogInfof("Write dpId: %s bad extent: %v", dpId, badExtent)
+	log.LogInfof("Write dir %s, dpId: %s bad extent: %v", badDir, dpId, badExtent)
 
 	filePath := filepath.Join(badDir, dpId)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		log.LogErrorf("Open file failed, err: %v", err)
+		slog.Fatalf("Open file failed, path %s, err: %v", filePath, err)
 		return err
 	}
+
 	defer file.Close()
 	data, err := json.Marshal(&badExtent)
 	if err != nil {
-		log.LogErrorf("Marshal bad extent failed, err: %v", err)
+		slog.Fatalf("Marshal bad extent failed, path %s, err: %v", filePath, err)
 		return err
 	}
+
 	_, err = file.Write(append(data, '\n'))
 	if err != nil {
-		log.LogErrorf("Write bad extent failed, err: %v", err)
+		slog.Fatalf("Write bad extent failed, path %s, err: %v", filePath, err.Error())
 		return err
 	}
 	return
@@ -923,10 +1145,10 @@ func newCheckBadExtentsCmd() *cobra.Command {
 			if extType == "normal" {
 				checkBadNormalExtents(volname, dir, dpId)
 			} else if extType == "tiny" {
-				log.LogErrorf("tiny is not supported now")
+				slog.Fatalf("tiny is not supported now")
 				return
 			} else {
-				log.LogErrorf("Invalid extent type: %s", extType)
+				slog.Fatalf("Invalid extent type: %s", extType)
 				return
 			}
 		},
@@ -938,95 +1160,105 @@ func checkBadNormalExtents(volname, dir, checkDpId string) {
 	normalMpDir := filepath.Join(dir, volname, MpDir, normalDir)
 	badExtentPath := filepath.Join(dir, volname, BadDir, normalDir, checkDpId)
 
-	fileInfos, err := ioutil.ReadDir(normalMpDir)
+	start := time.Now()
+	fileInfos, err := os.ReadDir(normalMpDir)
 	if err != nil {
 		log.LogErrorf("Read mp dir failed, err: %v", err)
 		return
 	}
 
+	readBadExtent := func() []BadNornalExtent {
+		file, err := os.Open(badExtentPath)
+		if err != nil {
+			slog.Fatalf("Open file failed, path %s, err: %v", badExtentPath, err)
+		}
+		defer file.Close()
+
+		exts := make([]BadNornalExtent, 0, 10240)
+
+		reader := bufio.NewReader(file)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err == io.EOF {
+					err = nil
+					break
+				}
+				slog.Fatalf("Read line failed, path %s, err: %v", badExtentPath, err)
+			}
+			var badExt BadNornalExtent
+			err = json.Unmarshal(line, &badExt)
+			if err != nil {
+				slog.Fatalf("Unmarshal extent failed, path %s, err: %v", badExtentPath, err)
+			}
+
+			exts = append(exts, badExt)
+		}
+		return exts
+	}
+
+	exts := readBadExtent()
+	badExtMap := make(map[string]struct{}, len(exts))
+	for _, e := range exts {
+		badExtMap[e.ExtentId] = struct{}{}
+	}
+
 	for _, fileInfo := range fileInfos {
-		if !fileInfo.IsDir() {
-			fileName := fileInfo.Name()
-			if fileName == verifyInfoFile {
+		if fileInfo.IsDir() {
+			continue
+		}
+
+		fileName := fileInfo.Name()
+		if fileName == verifyInfoFile {
+			continue
+		}
+
+		filePath := filepath.Join(normalMpDir, fileName)
+		file, err := os.Open(filePath)
+		if err != nil {
+			slog.Fatalf("Open file failed, err: %v", err)
+			return
+		}
+		defer file.Close()
+
+		reader := bufio.NewReader(file)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				if err == io.EOF {
+					err = nil
+					break
+				}
+				slog.Fatalf("Read line failed, path %s, err: %v", filePath, err)
+			}
+			var eksForGc ExtentForGc
+			err = json.Unmarshal(line, &eksForGc)
+			if err != nil {
+				slog.Fatalf("Unmarshal extent failed, path %s, err: %v", filePath, err)
+			}
+
+			parts := strings.Split(eksForGc.Id, "_")
+			dpId := parts[0]
+			extentId := parts[1]
+			if dpId != checkDpId {
 				continue
 			}
-			filePath := filepath.Join(normalMpDir, fileName)
-			file, err := os.Open(filePath)
-			if err != nil {
-				log.LogErrorf("Open file failed, err: %v", err)
-				return
-			}
-			defer file.Close()
 
-			reader := bufio.NewReader(file)
-			for {
-				line, err := reader.ReadBytes('\n')
-				if err != nil {
-					if err == io.EOF {
-						break
-					}
-					log.LogErrorf("Read line failed, err: %v", err)
-					return
-				}
-				var eksForGc ExtentForGc
-				err = json.Unmarshal(line, &eksForGc)
-				if err != nil {
-					log.LogErrorf("Unmarshal extent failed, err: %v", err)
-					return
-				}
-				parts := strings.Split(eksForGc.Id, "_")
-				dpId := parts[0]
-				extentId := parts[1]
-				if dpId != checkDpId {
-					continue
-				}
-				if checkMpExtent(extentId, badExtentPath) {
-					log.LogErrorf("Find bad extent in mp: %s", eksForGc.Id)
-					return
-				}
+			_, ok := badExtMap[extentId]
+			if ok {
+				slog.Fatalf("some thing may be wrong, find extent in mp list, ext %s, path %s, dp %s",
+					extentId, filePath, dpId)
 			}
 		}
 	}
-	log.LogInfo("check success")
+	slog.Printf("finally check success, no wrong bad extents vol %s, dp %s, cost %d ms", volname, checkDpId, time.Since(start).Milliseconds())
 	return
-}
-
-func checkMpExtent(extentId, badExtentPath string) (isFind bool) {
-	log.LogInfof("check extent: %s", extentId)
-	file, err := os.Open(badExtentPath)
-	if err != nil {
-		log.LogErrorf("Open file failed, err: %v", err)
-		return
-	}
-	defer file.Close()
-	reader := bufio.NewReader(file)
-	for {
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.LogErrorf("Read line failed, err: %v", err)
-			return
-		}
-		line = line[:len(line)-1]
-		var badExtent BadNornalExtent
-		err = json.Unmarshal(line, &badExtent)
-		if err != nil {
-			log.LogErrorf("Unmarshal bad extent failed, err: %v", err)
-			return
-		}
-		if badExtent.ExtentId == extentId {
-			return true
-		}
-	}
-	return false
 }
 
 func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate bool, beforeTime string) (err error) {
 	dpInfo, err := getDpInfoById(dpIdStr)
 	if err != nil {
-		log.LogErrorf("Get dp %v info failed, err: %v", dpIdStr, err)
+		slog.Fatalf("Get dp %v info failed, err: %v", dpIdStr, err)
 		return
 	}
 
@@ -1034,7 +1266,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 	for _, ext := range exts {
 		extentId, err := strconv.ParseUint(ext.ExtentId, 10, 64)
 		if err != nil {
-			log.LogErrorf("Parse extent id failed, err: %v", err)
+			log.LogErrorf("batchLockBadNormalExtent：Parse extent id failed, err: %v", err)
 			return err
 		}
 		ek := &proto.ExtentKey{
@@ -1053,15 +1285,19 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 		BeforeTime: beforeTime,
 		Eks:        eks,
 	}
-	conn, err := streamConnPool.GetConnect(dpInfo.Hosts[0])
+
+	addr := dpInfo.Hosts[0]
+	getToken(addr)
+	defer releaseToken(addr)
+
+	conn, err := streamConnPool.GetConnect(addr)
 	defer func() {
 		streamConnPool.PutConnect(conn, true)
 		log.LogInfof("batchLockBadNormalExtent PutConnect (%v)", dpInfo.Hosts[0])
 	}()
 
 	if err != nil {
-		log.LogErrorf("Get connect failed, err: %v", err)
-		return
+		log.LogErrorf("batchLockBadNormalExtent：Parse Get connect failed, err: %v", err)
 	}
 
 	p := new(proto.Packet)
@@ -1071,9 +1307,10 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 	p.PartitionID = dpInfo.PartitionID
 	p.Data, err = json.Marshal(gcLockEks)
 	if err != nil {
-		log.LogErrorf("Marshal extent keys failed, err: %v", err)
+		slog.Fatalf("Marshal extent keys failed, err: %v", err)
 		return
 	}
+
 	p.Size = uint32(len(p.Data))
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = uint8(len(dpInfo.Hosts) - 1)
@@ -1084,6 +1321,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 		log.LogErrorf("WriteToConn dp %v failed, err: %v", dpIdStr, err)
 		return
 	}
+
 	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
 		log.LogErrorf("ReadFromConn dp %v failed, err: %v", dpIdStr, err)
 		return
@@ -1124,7 +1362,11 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 		eks = append(eks, ek)
 	}
 
-	conn, err := streamConnPool.GetConnect(dpInfo.Hosts[0])
+	addr := dpInfo.Hosts[0]
+	getToken(addr)
+	defer releaseToken(addr)
+
+	conn, err := streamConnPool.GetConnect(addr)
 	defer func() {
 		streamConnPool.PutConnect(conn, true)
 		log.LogInfof("batchUnlockBadNormalExtent PutConnect (%v)", dpInfo.Hosts[0])
@@ -1188,35 +1430,50 @@ func newCleanBadExtentsCmd() *cobra.Command {
 			dir := args[2]
 			backupDir := args[3]
 
+			setCleanStatus()
+			start := time.Now()
 			if extType == "normal" {
 				err := checkNormalVerfyInfo(dir, volname, BadDir)
 				if err != nil {
-					log.LogErrorf("Check normal verfy info failed, err: %v", err)
+					slog.Fatalf("Check normal verfy info failed, err: %v", err)
 					return
 				}
+
 				if fromDpId != "" {
 					fromDpIdNum, err := strconv.ParseUint(fromDpId, 10, 64)
 					if err != nil {
-						log.LogErrorf("Parse from dp id failed, err: %v", err)
+						slog.Fatalf("Parse from dp id failed, err: %v", err)
 						return
 					}
 
 					cleanBadNormalExtentFromDp(volname, dir, backupDir, fromDpIdNum, concurrency)
 					return
 				}
+
 				if dpId != "" {
 					if extent != "" {
-						cleanBadNormalExtent(volname, dir, backupDir, dpId, extent)
-					} else {
-						cleanBadNormalExtentOfDp(volname, dir, backupDir, dpId)
+						err = cleanBadNormalExtent(volname, dir, backupDir, dpId, extent)
+						if err != nil {
+							slog.Fatalf("clean bad normal extent failed, name %s, dp %s, ext %s, err %s",
+								volname, dpId, extent, err.Error())
+						}
+						return
 					}
+
+					err = cleanBadNormalExtentOfDp(volname, dir, backupDir, dpId)
+					if err != nil {
+						slog.Fatalf("clean dp normal extent failed, vol %s, dp %s, err %s", volname, dpId, err.Error())
+					}
+					slog.Printf("cleanBadNormalExtentOfDp success, vol %s, dp %s, cost %d ms",
+						volname, dpId, time.Since(start).Milliseconds())
 					return
 				}
+				slog.Fatalf("from-dp and dpId can't be both empty")
 			} else if extType == "tiny" {
-				log.LogErrorf("tiny is not supported now")
+				slog.Fatalln("tiny is not supported now")
 				return
 			} else {
-				log.LogErrorf("Invalid extent type: %s", extType)
+				slog.Fatalf("Invalid extent type: %s", extType)
 				return
 			}
 		},
@@ -1230,53 +1487,66 @@ func newCleanBadExtentsCmd() *cobra.Command {
 }
 
 func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (err error) {
-	log.LogInfof("Clean bad normal volname: %s, dir: %s, backupDir: %s, dpId: %s, extent: %s", volname, dir, backupDir, dpIdStr, extentStr)
-	badNornalDpFile := filepath.Join(dir, volname, BadDir, normalDir, dpIdStr)
-	file, err := os.Open(badNornalDpFile)
+	log.LogWarnf("Clean bad normal volname: %s, dir: %s, backupDir: %s, dpId: %s, extent: %s", volname, dir, backupDir, dpIdStr, extentStr)
+	badNormalDpFile := filepath.Join(dir, volname, BadDir, normalDir, dpIdStr)
+	file, err := os.Open(badNormalDpFile)
 	if err != nil {
 		log.LogErrorf("Open bad normal dp file failed, err: %v", err)
 		return
 	}
 	defer file.Close()
 
-	reader := bufio.NewReader(file)
+	start := time.Now()
+	defer func() {
+		slog.Printf("cleanBadNormalExtent: after clean bad ext, name %s, dp %s, ext %s, cost %d ms, err %v",
+			volname, dpIdStr, extentStr, time.Since(start).Milliseconds(), err)
+	}()
+
+	reader := bufio.NewReaderSize(file, 512*1024)
 	for {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if err == io.EOF {
+				err = nil
+				slog.Fatalf("extent %s is not in target dp %s bad file", extentStr, dpIdStr)
 				break
 			}
-			log.LogErrorf("Read line failed, err: %v", err)
+			slog.Fatalf("Read line failed, path %s, err: %v", badNormalDpFile, err)
 			return err
 		}
+
 		line = line[:len(line)-1]
 		var badExtent BadNornalExtent
 		err = json.Unmarshal(line, &badExtent)
 		if err != nil {
-			log.LogErrorf("Unmarshal bad extent failed, err: %v", err)
+			slog.Fatalf("Unmarshal bad extent failed, path %s, err: %v", badNormalDpFile, err)
 			return err
 		}
-		if badExtent.ExtentId == extentStr {
-			var exts = []*BadNornalExtent{&badExtent}
-			beforeTimeFilePath := filepath.Join(dir, volname, "dp", normalDir, beforeTimeFile)
-			data, err := ioutil.ReadFile(beforeTimeFilePath)
-			if err != nil {
-				log.LogErrorf("Read before time file failed, err: %v", err)
-				return err
-			}
 
-			err = batchLockBadNormalExtent(dpIdStr, exts, false, string(data))
-			if err != nil {
-				log.LogErrorf("Batch lock bad normal extent failed, err: %v", err)
-				return err
-			}
+		if badExtent.ExtentId != extentStr {
+			continue
+		}
 
-			err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, badExtent)
-			if err != nil {
-				log.LogErrorf("Copy bad extent failed, err: %v", err)
-				return err
-			}
+		var exts = []*BadNornalExtent{&badExtent}
+		beforeTimeFilePath := filepath.Join(dir, volname, "dp", normalDir, beforeTimeFile)
+		data, err := os.ReadFile(beforeTimeFilePath)
+		if err != nil {
+			slog.Fatalf("Read before time file failed, path %s, err: %v", badNormalDpFile, err)
+		}
 
+		err = batchLockBadNormalExtent(dpIdStr, exts, false, string(data))
+		if err != nil {
+			slog.Fatalf("Batch lock bad normal extent failed, err: %v", err)
+		}
+
+		err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, badExtent)
+		if err != nil {
+			log.LogErrorf("Copy bad extent failed, err: %v", err)
+			return err
+		}
+
+		if CleanS {
+			slog.Printf("gc clean switch is open, start clean data, dp %s, ext %s", dpIdStr, extentStr)
 			err = batchDeleteBadExtent(dpIdStr, exts)
 			if err != nil {
 				log.LogErrorf("Delete bad extent failed, err: %v", err)
@@ -1288,16 +1558,17 @@ func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (e
 				log.LogErrorf("Batch unlock bad normal extent failed, err: %v", err)
 				return err
 			}
-			log.LogInfof("cleanBadNormalExtent extent: %s", extentStr)
-			return nil
 		}
+
+		log.LogInfof("cleanBadNormalExtent extent: %s", extentStr)
+		return nil
 	}
 	log.LogErrorf("Can not find bad extent: %s", extentStr)
 	return
 }
 
 func copyBadNormalExtentToBackup(volname, backupDir, dpIdStr string, badExtent BadNornalExtent) (err error) {
-	log.LogInfof("Clean bad normal extent Internal backupDir: %s, dpIdStr: %s, badExtent:%v",
+	log.LogInfof("copyBadNormalExtentToBackup: clean bad normal extent Internal backupDir: %s, dpIdStr: %s, badExtent:%v",
 		backupDir, dpIdStr, badExtent.ExtentId)
 
 	extentId, err := strconv.ParseUint(badExtent.ExtentId, 10, 64)
@@ -1349,6 +1620,9 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	addr := util.ShiftAddrPort(dpInfo.Hosts[0], util.DefaultSmuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
 
+	getToken(addr)
+	defer releaseToken(addr)
+
 	defer func() {
 		smuxPool.PutConnect(conn, true)
 		log.LogInfof("batchDeleteBadExtent PutConnect (%v)", addr)
@@ -1361,7 +1635,7 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 
 	p := new(proto.Packet)
 	p.Magic = proto.ProtoMagic
-	p.Opcode = proto.OpBatchDeleteExtent
+	p.Opcode = proto.OpGcBatchDeleteExtent
 	p.ExtentType = proto.NormalExtentType
 	p.PartitionID = dpInfo.PartitionID
 	p.Data, _ = json.Marshal(eks)
@@ -1418,11 +1692,15 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 	p.ReqID = proto.GenerateRequestID()
 	p.RemainingFollowers = 0
 
+	getToken(leaderAddr)
+	defer releaseToken(leaderAddr)
+
 	conn, err := streamConnPool.GetConnect(leaderAddr)
 	if err != nil {
 		log.LogErrorf("GetConnect failed %v", err)
 		return
 	}
+
 	err = p.WriteToConn(conn)
 	if err != nil {
 		log.LogErrorf("WriteToConn failed %v", err)
@@ -1453,21 +1731,31 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 }
 
 func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent BadNornalExtent, data []byte, readBytes int) (err error) {
+
 	dpDir := filepath.Join(backupDir, volname, normalDir, dpIdStr)
 	log.LogInfof("Write bad extent to dest dir: %s", dpDir)
-	if _, err = os.Stat(dpDir); os.IsNotExist(err) {
-		err = os.MkdirAll(dpDir, 0755)
-		if err != nil {
-			log.LogErrorf("Mkdir failed, err: %v", err)
-			return
-		}
+
+	backDir := filepath.Join(backupDir, volname, normalDir)
+	_, err = os.Stat(backDir)
+	if err == nil {
+		renameOnce.Do(func() {
+			backPath := fmt.Sprintf("%s_%d", backDir, time.Now().Unix())
+			err = os.Rename(backDir, backPath)
+			if err != nil {
+				slog.Fatalf("reanme dir failed, old %s, new %s, err %s", backDir, backPath, err.Error())
+			}
+		})
+	}
+
+	err = os.MkdirAll(dpDir, 0755)
+	if err != nil {
+		slog.Fatalf("Mkdir failed, dir %s, err: %v", dpDir, err.Error())
 	}
 
 	extentFile := filepath.Join(dpDir, badExtent.ExtentId)
 	file, err := os.Create(extentFile)
 	if err != nil {
-		log.LogErrorf("Create extent file failed, err: %v", err)
-		return
+		slog.Fatalf("Create extent file failed, filePath %s, err: %v", extentFile, err)
 	}
 	defer file.Close()
 
@@ -1481,15 +1769,16 @@ func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent 
 }
 
 func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err error) {
-	log.LogInfof("Clean bad normal extents in dpId: %s", dpIdStr)
+	log.LogInfof("cleanBadNormalExtentOfDp: Clean bad normal extents in dpId: %s", dpIdStr)
 	badNormalDpFile := filepath.Join(dir, volname, BadDir, normalDir, dpIdStr)
 	file, err := os.Open(badNormalDpFile)
 	if err != nil {
-		log.LogErrorf("Open bad normal dp file failed, err: %v", err)
+		log.LogErrorf("cleanBadNormalExtentOfDp: Open bad normal dp file failed, path %s, err: %v", badNormalDpFile, err)
 		return
 	}
 	defer file.Close()
 
+	start := time.Now()
 	reader := bufio.NewReader(file)
 	exts := make([]*BadNornalExtent, 0)
 	for {
@@ -1498,24 +1787,25 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 			if err == io.EOF {
 				break
 			}
-			log.LogErrorf("Read line failed, err: %v", err)
+			log.LogErrorf("cleanBadNormalExtentOfDp: Read line failed, err: %v", err)
 			return err
 		}
 		line = line[:len(line)-1]
 		var badExtent BadNornalExtent
 		err = json.Unmarshal(line, &badExtent)
 		if err != nil {
-			log.LogErrorf("Unmarshal bad extent failed, err: %v", err)
+			log.LogErrorf("cleanBadNormalExtentOfDp: Unmarshal bad extent failed, err: %v", err)
 			return err
 		}
 
 		exts = append(exts, &badExtent)
 	}
+	log.LogInfof("cleanBadNormalExtentOfDp: read bad extent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
 
 	beforeTimeFilePath := filepath.Join(dir, volname, "dp", normalDir, beforeTimeFile)
-	data, err := ioutil.ReadFile(beforeTimeFilePath)
+	data, err := os.ReadFile(beforeTimeFilePath)
 	if err != nil {
-		log.LogErrorf("Read before time file failed, err: %v", err)
+		log.LogErrorf("cleanBadNormalExtentOfDp: Read before time file failed, err: %v", err)
 		return err
 	}
 
@@ -1525,6 +1815,8 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 		return err
 	}
 
+	log.LogInfof("cleanBadNormalExtentOfDp: batchLockBadNormalExtent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
+
 	for _, badExtent := range exts {
 		err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, *badExtent)
 		if err != nil {
@@ -1532,16 +1824,21 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 			return err
 		}
 	}
-	err = batchDeleteBadExtent(dpIdStr, exts)
-	if err != nil {
-		log.LogErrorf("Batch delete bad extent failed, dp %v, err: %v", dpIdStr, err)
-		return err
-	}
 
-	err = batchUnlockBadNormalExtent(dpIdStr, exts)
-	if err != nil {
-		log.LogErrorf("Batch unlock bad normal extent failed, err: %v", err)
-		return err
+	if CleanS {
+		log.LogWarnf("cleanBadNormalExtentOfDp: clean switch is open, start delete gc data, dp %s", dpIdStr)
+		err = batchDeleteBadExtent(dpIdStr, exts)
+		if err != nil {
+			log.LogErrorf("Batch delete bad extent failed, dp %v, err: %v", dpIdStr, err)
+			return err
+		}
+		log.LogInfof("cleanBadNormalExtentOfDp: batchDeleteBadExtent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
+		err = batchUnlockBadNormalExtent(dpIdStr, exts)
+		if err != nil {
+			log.LogErrorf("Batch unlock bad normal extent failed, err: %v", err)
+			return err
+		}
+		log.LogInfof("cleanBadNormalExtentOfDp: batchUnlockBadNormalExtent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
 	}
 	return
 }
@@ -1549,54 +1846,46 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 func cleanBadNormalExtentFromDp(volname, dir, backupDir string, fromDpId uint64, concurrency uint64) {
 	badNormalDir := filepath.Join(dir, volname, BadDir, normalDir)
 
-	fileInfos, err := ioutil.ReadDir(badNormalDir)
+	fileInfos, err := os.ReadDir(badNormalDir)
 	if err != nil {
-		log.LogErrorf("Read bad normal dir failed, err: %v", err)
+		slog.Fatalf("Read bad normal dir failed, path %s, err: %v", badNormalDir, err)
 		return
 	}
 
-	totalDpLen := len(fileInfos)
+	cnt := int(concurrency)
+	if concurrency <= 0 {
+		cnt = 1
+	}
+
+	setHostCntLimit(3)
 	var wg sync.WaitGroup
-	wg.Add(totalDpLen)
-	semaphore := make(chan struct{}, concurrency)
+	pool := newTaskPool(cnt)
 	for _, fileInfo := range fileInfos {
 		dpIdStr := fileInfo.Name()
 		if dpIdStr == verifyInfoFile {
-			wg.Done()
 			continue
 		}
+
 		dpId, err := strconv.ParseUint(dpIdStr, 10, 64)
 		if err != nil {
-			wg.Done()
-			log.LogErrorf("Parse dp id failed, err: %v", err)
-			continue
+			slog.Fatalf("Parse dp id failed, dpId %s err: %v", dpIdStr, err)
 		}
-		if dpId < fromDpId {
-			wg.Done()
-			continue
-		}
-		if concurrency > 0 {
-			semaphore <- struct{}{}
-			go func() {
-				defer func() {
-					wg.Done()
-					<-semaphore
-				}()
-				err = cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr)
-				if err != nil {
-					log.LogErrorf("Clean bad normal extents in dp id failed, err: %v", err)
-					return
-				}
-			}()
 
-		} else {
-			err = cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr)
-			wg.Done()
-			if err != nil {
-				log.LogErrorf("Clean bad normal extents in dp id failed, err: %v", err)
-				continue
-			}
+		if dpId < fromDpId {
+			continue
 		}
+
+		wg.Add(1)
+		pool.addTask(func() {
+			defer wg.Done()
+			err1 := cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr)
+			if err1 != nil {
+				err = fmt.Errorf("cleanBadNormalExtentFromDp: clean bad normal ext failed, dp %s, err %s", dpIdStr, err1.Error())
+				log.LogError(err.Error())
+				slog.Printf(err.Error())
+				return
+			}
+		})
 	}
 	wg.Wait()
 	return
@@ -1616,16 +1905,25 @@ func newRollbackBadExtentsCmd() *cobra.Command {
 			volname := args[0]
 			extType := args[1]
 			backupDir := args[2]
+			start := time.Now()
+			setCleanStatus()
 
 			if extType == "normal" {
 				if dpId != "" {
 					if extent != "" {
-						rollbackBadNormalExtent(volname, backupDir, dpId, extent)
+						err := rollbackBadNormalExtent(volname, backupDir, dpId, extent)
+						if err != nil {
+							slog.Fatalf("rollbackBadNormalExtent failed, vol %s, dp %s, ext %s, err %s",
+								volname, dpId, extent, err.Error())
+						}
+						slog.Printf("rollbackBadNormalExtent success, vol %s, dp %s, ext %s, cost %d ms",
+							volname, dpId, extent, time.Since(start).Milliseconds())
 					} else {
 						rollbackBadNormalExtentInDpId(volname, backupDir, dpId)
+						return
 					}
 				}
-
+				slog.Fatalf("dp Id can't be empty")
 			} else if extType == "tiny" {
 				log.LogErrorf("tiny is not supported now")
 				return
@@ -1644,17 +1942,23 @@ func newRollbackBadExtentsCmd() *cobra.Command {
 func rollbackBadNormalExtentInDpId(volname, backupDir, dpId string) {
 	rollbackDpDir := filepath.Join(backupDir, volname, normalDir, dpId)
 	log.LogInfof("Rollback bad normal extents in dp: %s", rollbackDpDir)
-	fileInfos, err := ioutil.ReadDir(rollbackDpDir)
+	fileInfos, err := os.ReadDir(rollbackDpDir)
 	if err != nil {
-		log.LogErrorf("Read rollback dp %v dir failed, err: %v", dpId, err)
+		slog.Fatalf("Read rollback dp %v dir failed, err: %v", dpId, err)
 		return
 	}
+	start := time.Now()
+	defer func() {
+		slog.Printf("rollback dp finish, vol %s, dp %s, cost %d ms", volname, dpId, time.Since(start).Milliseconds())
+	}()
 
 	for _, fileInfo := range fileInfos {
 		extent := fileInfo.Name()
 		err := rollbackBadNormalExtent(volname, backupDir, dpId, extent)
 		if err != nil {
-			log.LogErrorf("Rollback bad normal dp %v extent %v failed, err: %v", dpId, extent, err)
+			err = fmt.Errorf("Rollback bad normal dp %v extent %v failed, err: %v", dpId, extent, err.Error())
+			log.LogError(err)
+			slog.Println(err.Error())
 			continue
 		}
 	}
@@ -1663,24 +1967,28 @@ func rollbackBadNormalExtentInDpId(volname, backupDir, dpId string) {
 func rollbackBadNormalExtent(volname, backupDir, dpId, extent string) (err error) {
 	rollbackFilePath := filepath.Join(backupDir, volname, normalDir, dpId, extent)
 	log.LogInfof("Rollback bad normal extent: %s", rollbackFilePath)
-	data, err := ioutil.ReadFile(rollbackFilePath)
+	data, err := os.ReadFile(rollbackFilePath)
 	if err != nil {
 		log.LogErrorf("Read bad extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
 		return
 	}
+
 	var badExtent BadNornalExtent
 	badExtent.ExtentId = extent
 	badExtent.Size = uint32(len(data))
-	err = batchLockBadNormalExtent(dpId, []*BadNornalExtent{&badExtent}, true, "")
-	if err != nil {
-		log.LogErrorf("Batch lock bad normal extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
-		return
-	}
 
-	err = writeBadNormalExtentToDp(data, volname, dpId, extent)
-	if err != nil {
-		log.LogErrorf("Write bad extent to dp failed, dp %v, extent %v, err: %v", dpId, extent, err)
-		return
+	if CleanS {
+		err = batchLockBadNormalExtent(dpId, []*BadNornalExtent{&badExtent}, true, "")
+		if err != nil {
+			log.LogErrorf("Batch lock bad normal extent failed, dp %v, extent %v, err: %v", dpId, extent, err)
+			return
+		}
+
+		err = writeBadNormalExtentToDp(data, volname, dpId, extent)
+		if err != nil {
+			log.LogErrorf("Write bad extent to dp failed, dp %v, extent %v, err: %v", dpId, extent, err)
+			return
+		}
 	}
 
 	err = batchUnlockBadNormalExtent(dpId, []*BadNornalExtent{&badExtent})
