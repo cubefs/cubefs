@@ -157,7 +157,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	}
 	sb.WriteString(fmt.Sprintf("  VolStorageClass                 : %v\n", proto.StorageClassString(svv.VolStorageClass)))
 	sb.WriteString(fmt.Sprintf("  AllowedStorageClass             : %v\n", allowedStorageClassStr))
-	sb.WriteString(fmt.Sprintf("  CacheDpStorageClass             : %v\n", svv.CacheDpStorageClass))
+	sb.WriteString(fmt.Sprintf("  CacheDpStorageClass             : %v\n", proto.StorageClassString(svv.CacheDpStorageClass)))
 
 	if svv.VolType == 1 {
 		sb.WriteString(fmt.Sprintf("  ObjBlockSize         : %v byte\n", svv.ObjBlockSize))

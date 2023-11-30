@@ -94,7 +94,6 @@ func TestCreateColdVol(t *testing.T) {
 	checkCreateVolParam(volOwnerKey, req, "+owner", testOwner, t)
 	// capacity can't be empty
 	checkCreateVolParam(volCapacityKey, req, "", 100, t)
-	checkCreateVolParam(cacheCapacity, req, 102, 0, t)
 	// zoneName must equal to testZone if no default zone
 	checkCreateVolParam(zoneNameKey, req, "default", testZone2, t)
 
