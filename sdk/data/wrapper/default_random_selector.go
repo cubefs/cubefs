@@ -67,11 +67,13 @@ func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error)
 
 	s.localLeaderPartitions = localLeaderPartitions
 	s.partitions = partitions
+	log.LogDebugf("DefaultRandomSelector[Refresh] complete: localLeaderPartitions(%v) partitions(%v)",
+		len(s.localLeaderPartitions), len(s.partitions))
 	return
 }
 
-func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType uint32) (dp *DataPartition, err error) {
-	dp = s.getLocalLeaderDataPartition(exclude, mediaType)
+func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType uint32, ehID uint64) (dp *DataPartition, err error) {
+	dp = s.getLocalLeaderDataPartition(exclude, mediaType, ehID)
 	if dp != nil {
 		return dp, nil
 	}
@@ -80,18 +82,18 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}, mediaType ui
 	partitions := s.partitions
 	s.RUnlock()
 
-	dp = s.getRandomDataPartition(partitions, exclude, mediaType)
+	dp = s.getRandomDataPartition(partitions, exclude, mediaType, ehID)
 
 	if dp != nil {
 		//TODO:tangjingyu test only
-		log.LogInfof("############ DefaultRandomSelector[Select]: targetMediaType(%v), selected dpId(%v) mediaType(%v)",
-			proto.MediaTypeString(mediaType), dp.PartitionID, proto.MediaTypeString(dp.MediaType))
+		log.LogInfof("############ DefaultRandomSelector[Select]: eh(%v) targetMediaType(%v), selected dpId(%v) mediaType(%v)",
+			ehID, proto.MediaTypeString(mediaType), dp.PartitionID, proto.MediaTypeString(dp.MediaType))
 		return dp, nil
 	}
 
-	log.LogErrorf("DefaultRandomSelector: no writable data partition with %v partitions and exclude(%v)",
-		len(partitions), exclude)
-	return nil, fmt.Errorf("no writable data partition")
+	log.LogErrorf("DefaultRandomSelector: ehID(%v) no writable data partition with %v partitions and exclude(%v)mediaType(%v)",
+		ehID, len(partitions), exclude, mediaType)
+	return nil, fmt.Errorf("en(%v) no writable data partition", ehID)
 }
 
 func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
@@ -144,14 +146,15 @@ func (s *DefaultRandomSelector) Count() int {
 	return len(s.partitions)
 }
 
-func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}, mediaType uint32) *DataPartition {
+func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}, mediaType uint32, ehID uint64) *DataPartition {
 	s.RLock()
 	localLeaderPartitions := s.localLeaderPartitions
 	s.RUnlock()
-	return s.getRandomDataPartition(localLeaderPartitions, exclude, mediaType)
+	return s.getRandomDataPartition(localLeaderPartitions, exclude, mediaType, ehID)
 }
 
-func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}, mediaType uint32) (
+func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{},
+	mediaType uint32, ehID uint64) (
 	dp *DataPartition) {
 	length := len(partitions)
 	if length == 0 {
@@ -162,17 +165,18 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	index := rand.Intn(length)
 	dp = partitions[index]
 	if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
-		log.LogDebugf("DefaultRandomSelector: select dp[%v] address[%p], index %v", dp, dp, index)
+		log.LogDebugf("DefaultRandomSelector: eh(%v) select dp[%v] address[%p], index %v", ehID, dp, dp, index)
 		return dp
 	}
 
-	log.LogWarnf("DefaultRandomSelector: first random partition was excluded, get partition from others")
+	log.LogDebugf("DefaultRandomSelector: eh(%v)first random partition was excluded, get partition from others", ehID)
 
 	var currIndex int
 	for i := 0; i < length; i++ {
 		currIndex = (index + i) % length
-		if !isExcluded(partitions[currIndex], exclude) && dp.MediaType == mediaType {
-			log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", partitions[currIndex], currIndex)
+		dp = partitions[currIndex]
+		if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
+			log.LogDebugf("DefaultRandomSelector: eh(%v) select dp[%v], index %v", ehID, partitions[currIndex], currIndex)
 			return partitions[currIndex]
 		}
 	}
