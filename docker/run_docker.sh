@@ -24,16 +24,39 @@ EOF
     exit 0
 }
 
-check_image() {
-  count=$(docker images | grep "chubaofs/cfs-base" | awk '{print$2}' | grep -c "1.5")
-  if [[ ${count} -eq 0 ]]; then
-    wget "http://storage.jd.local/dpgimage/dockerimage/chubaofs_cfs-base_1.5.tar" -O chubaofs_cfs-base_1.5.tar;
-    docker load < chubaofs_cfs-base_1.5.tar;
-    rm chubaofs_cfs-base_1.5.tar;
+check_docker_images() {
+  curl "http://storage.jd.local" 2>1 > /dev/null
+  ret=$?
+  if [[ ${ret} -ne 0 ]]; then
+    return
   fi
-}
 
-check_image
+  images=(
+    "chubaofs/cfs-base:1.5"
+    "consul:1.5"
+    "grafana/grafana:6.4.4"
+    "nginx:1.17.8"
+    "prom/prometheus:v2.28.0"
+  )
+
+  for image in "${images[@]}"; do
+    name=$(echo ${image} | awk -F ':' '{print$1}')
+    version=$(echo ${image} | awk -F ':' '{print$2}')
+    count=$(docker images | grep "$name" | awk '{print$2}' | grep -c "$version")
+    if [[ ${count} -eq 0 ]]; then
+      echo -n "Fetching ${name}:${version} ... "
+      wget "http://storage.jd.local/dpgimage/dockerimage/${name}-${version}.tar" -O image.tar 2>1 > /dev/null;
+      ret=$?
+      if [[ ${ret} -eq 0 ]]; then
+        docker load -i image.tar 2>1 > /dev/null
+        rm image.tar
+        echo -e "\033[32mdone\033[0m";
+      else
+        echo -e "\033[31mfail\033[0m";
+      fi
+    fi
+  done
+}
 
 clean() {
     docker-compose -f ${RootPath}/docker/docker-compose.yml down
@@ -42,17 +65,20 @@ clean() {
 
 # unit test
 run_unit_test() {
+    check_docker_images
     docker-compose -f ${RootPath}/docker/docker-compose-test.yml run unit_test
 }
 
 # build
 build() {
+    check_docker_images
     docker-compose -f ${RootPath}/docker/docker-compose.yml run build
 }
 
 # Build for CI tests
 # In this mode, application ELF will be built by using 'go test -c' command instead of orginal 'go build' command
 build_test() {
+    check_docker_images
     docker-compose -f ${RootPath}/docker/docker-compose-test.yml run build_test
 }
 
@@ -100,6 +126,7 @@ cover_analyze() {
 }
 
 run_ci_tests() {
+    check_docker_images
     build_test
     start_servers_test
     ls $RootPath/ecnode &>/dev/null

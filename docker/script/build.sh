@@ -23,8 +23,9 @@ use_alternative_golang() {
   ln -s /usr/local/go1.17.3-alternative /usr/local/go
 }
 
-cd /go/src/github.com/cubefs/cubefs
-git config --global --add safe.directory .
+PROJECT_ROOT=/go/src/github.com/cubefs/cubefs
+git config --global --add safe.directory ${PROJECT_ROOT}
+cd ${PROJECT_ROOT}
 BranchName=`git rev-parse --abbrev-ref HEAD`
 CommitID=`git rev-parse HEAD`
 echo "Branch: ${BranchName}"
@@ -41,7 +42,6 @@ else
     echo -e "\033[31mfail\033[0m";
     failed=1
 fi
-
 
 echo -n 'Building ChubaoFS Client ... ' ;
 use_alternative_golang
