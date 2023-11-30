@@ -27,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 var (
@@ -508,6 +507,11 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 	w.Write(jsonBody)
 }
 
+type GcExtent struct {
+	*storage.ExtentInfo
+	GcStatus string `json:"gc_status"`
+}
+
 func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID uint64
@@ -518,6 +522,7 @@ func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
 	beforeTime, err := strconv.ParseInt(r.FormValue("beforeTime"), 10, 64)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -533,8 +538,29 @@ func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	extents = partition.ExtentStore().GetAllExtents(beforeTime)
-	log.LogInfof("getAllExtent: partitionID:%v, beforeTime:%v, extents len:%v", partitionID, beforeTime, len(extents))
-	s.buildSuccessResp(w, extents)
+
+	store := partition.ExtentStore()
+	extents, err = store.GetAllExtents(beforeTime)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusInternalServerError, "get all extents failed")
+		return
+	}
+
+	getGcStatus := func(extId uint64) string {
+		if store.IsMarkGc(extId) {
+			return "mark_gc"
+		}
+		return "normal"
+	}
+
+	gcExtents := make([]*GcExtent, len(extents))
+	for idx, e := range extents {
+		gcExtents[idx] = &GcExtent{
+			ExtentInfo: e,
+			GcStatus:   getGcStatus(e.FileID),
+		}
+	}
+
+	s.buildSuccessResp(w, gcExtents)
 	return
 }

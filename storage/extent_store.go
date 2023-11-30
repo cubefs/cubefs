@@ -338,7 +338,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		if _, ok := s.extentLockMap[extentID]; !ok {
 			s.elMutex.RUnlock()
 			err = fmt.Errorf("extent(%v) is not locked", extentID)
-			log.LogErrorf("[Write] extent[%d] is not locked", extentID)
+			log.LogErrorf("[Write] gc_extent[%d] is not locked", extentID)
 			return
 		}
 	} else {
@@ -346,12 +346,13 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 			if _, ok := s.extentLockMap[extentID]; ok {
 				s.elMutex.RUnlock()
 				err = fmt.Errorf("extent(%v) is locked", extentID)
-				log.LogErrorf("[Write] extent[%d] is locked", extentID)
+				log.LogErrorf("[Write] gc_extent[%d] is locked", extentID)
 				return
 			}
 		}
 	}
 	s.elMutex.RUnlock()
+
 	s.eiMutex.Lock()
 	ei, _ = s.extentInfoMap[extentID]
 	e, err = s.extentWithHeader(ei)
@@ -405,7 +406,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		if _, ok := s.extentLockMap[extentID]; !ok {
 			s.elMutex.RUnlock()
 			err = fmt.Errorf("extent(%v) is not locked", extentID)
-			log.LogErrorf("[Read] extent[%d] is not locked", extentID)
+			log.LogErrorf("[Read] gc_extent[%d] is not locked", extentID)
 			return
 		}
 	} else {
@@ -413,7 +414,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 			if _, ok := s.extentLockMap[extentID]; ok {
 				s.elMutex.RUnlock()
 				err = fmt.Errorf("extent(%v) is locked", extentID)
-				log.LogErrorf("[Read] extent[%d] is locked", extentID)
+				log.LogErrorf("[Read] gc_extent[%d] is locked", extentID)
 				return
 			}
 		}
@@ -473,6 +474,14 @@ func (s *ExtentStore) tinyDelete(extentID uint64, offset, size int64) (err error
 		return
 	}
 	return
+}
+
+func (s *ExtentStore) IsMarkGc(extId uint64) bool {
+	s.elMutex.RLock()
+	defer s.elMutex.RUnlock()
+
+	_, ok := s.extentLockMap[extId]
+	return ok
 }
 
 // MarkDelete marks the given extent as deleted.
@@ -1140,14 +1149,42 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 	return
 }
 
-func (s *ExtentStore) GetAllExtents(beforeTime int64) (extents []*ExtentInfo) {
-	s.eiMutex.RLock()
-	defer s.eiMutex.RUnlock()
-	for _, ei := range s.extentInfoMap {
-		if ei.ModifyTime < beforeTime {
-			extents = append(extents, ei)
-		}
+func (s *ExtentStore) GetAllExtents(beforeTime int64) (extents []*ExtentInfo, err error) {
+	start := time.Now()
+	files, err := os.ReadDir(s.dataPath)
+	if err != nil {
+		log.LogErrorf("GetAllExtents: read dir extents failed, path %s, err %s", s.dataPath, err.Error())
+		return nil, err
 	}
+
+	extents = make([]*ExtentInfo, 0, len(files))
+	for _, f := range files {
+		extId, isExtent := s.ExtentID(f.Name())
+		if !isExtent {
+			continue
+		}
+
+		ifo, err1 := f.Info()
+		if err1 != nil {
+			log.LogWarnf("GetAllExtents: get extent info failed, path %s, ext %s, err %s", s.dataPath, f.Name(), err1.Error())
+			continue
+		}
+
+		modTime := ifo.ModTime().Unix()
+		if modTime >= beforeTime {
+			continue
+		}
+
+		extents = append(extents, &ExtentInfo{
+			FileID:     extId,
+			Size:       uint64(ifo.Size()),
+			ModifyTime: modTime,
+		})
+	}
+
+	log.LogWarnf("GetAllExtents: path:%v, beforeTime:%v, extents len:%v, cost %s",
+		s.dataPath, beforeTime, len(extents), time.Since(start).Milliseconds())
+
 	return
 }
 
@@ -1158,38 +1195,57 @@ func (s *ExtentStore) ExtentBatchLockNormalExtent(gcLockEks *proto.GcLockExtents
 
 	s.elMutex.Lock()
 	defer s.elMutex.Unlock()
-	var beforeTime int64
-	if !gcLockEks.IsCreate {
-		beforeTime, err = strconv.ParseInt(gcLockEks.BeforeTime, 10, 64)
-		if err != nil {
-			log.LogWarnf("[ExtentBatchLockNormalExtent] parse beforeTime error(%v)", err)
-			return
-		}
-	}
-	for _, e := range gcLockEks.Eks {
-		if !gcLockEks.IsCreate {
-			extent, err := s.extentWithHeaderByExtentID(e.ExtentId)
-			if err != nil {
-				log.LogWarnf("[ExtentBatchLockNormalExtent] get extent error(%v)", err)
-				continue
-			}
 
-			if extent.ModifyTime() >= beforeTime {
-				log.LogWarnf("[ExtentBatchLockNormalExtent] extent modify time(%v) >= gcLockEks.BeforeTime(%v)",
-					extent.ModifyTime(), gcLockEks.BeforeTime)
-				err = fmt.Errorf("extent modify time(%v) >= gcLockEks.BeforeTime(%v)",
-					extent.ModifyTime(), gcLockEks.BeforeTime)
-				return err
-			}
-			if e.Size != uint32(extent.dataSize) {
-				log.LogErrorf("[ExtentBatchLockNormalExtent] extent size not match, extentID(%v), extentSize(%v), extentKeySize(%v)",
-					e.ExtentId, extent.dataSize, e.Size)
-				err = fmt.Errorf("extent size not match, extentID(%v), extentSize(%v), extentKeySize(%v)", e.ExtentId, extent.dataSize, e.Size)
-				return err
-			}
+	if gcLockEks.IsCreate {
+		for _, e := range gcLockEks.Eks {
+			s.extentLockMap[e.ExtentId] = true
+			log.LogDebugf("[ExtentBatchLockNormalExtent] lock extent(%v)", e.ExtentId)
 		}
+		return nil
+	}
+
+	beforeTime, err := strconv.ParseInt(gcLockEks.BeforeTime, 10, 64)
+	if err != nil {
+		log.LogWarnf("[ExtentBatchLockNormalExtent] parse beforeTime error(%v)", err)
+		return
+	}
+
+	// return all extents
+	exts, err := s.GetAllExtents(time.Now().Unix() + 1000)
+	if err != nil {
+		return err
+	}
+
+	extMap := make(map[uint64]*ExtentInfo, len(exts))
+	for _, e := range exts {
+		extMap[e.FileID] = e
+	}
+
+	for _, e := range gcLockEks.Eks {
+		extent, ok := extMap[e.ExtentId]
+		if !ok {
+			log.LogWarnf("[ExtentBatchLockNormalExtent] extent already not exist %s, eId %d", s.dataPath, e.ExtentId)
+			continue
+		}
+
+		if extent.ModifyTime > beforeTime {
+			err = fmt.Errorf("extent modify time(%v) >= gcLockEks.BeforeTime(%v), path %s, id %d",
+				extent.ModifyTime, gcLockEks.BeforeTime, s.dataPath, e.ExtentId)
+			log.LogWarnf("[ExtentBatchLockNormalExtent] %s", err.Error())
+			return err
+		}
+
+		if e.Size != uint32(extent.Size) {
+			err = fmt.Errorf("extent size not match, path %s, extentID(%v), extentSize(%v), extentKeySize(%v)",
+				s.dataPath, e.ExtentId, extent.Size, e.Size)
+			log.LogErrorf("[ExtentBatchLockNormalExtent] msg %s", err.Error())
+			return err
+		}
+
 		s.extentLockMap[e.ExtentId] = true
-		log.LogDebugf("[ExtentBatchLockNormalExtent] lock extent(%v)", e.ExtentId)
+		if log.EnableDebug() {
+			log.LogDebugf("[ExtentBatchLockNormalExtent] path %s, lock extent(%v)", s.dataPath, e.ExtentId)
+		}
 	}
 	return
 }

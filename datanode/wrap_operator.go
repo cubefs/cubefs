@@ -135,7 +135,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleTinyExtentRepairReadPacket(p, c)
 	case proto.OpMarkDelete:
 		s.handleMarkDeletePacket(p, c)
-	case proto.OpBatchDeleteExtent:
+	case proto.OpBatchDeleteExtent, proto.OpGcBatchDeleteExtent:
 		s.handleBatchMarkDeletePacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
@@ -465,6 +465,12 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	store := partition.ExtentStore()
 	if err == nil {
 		for _, ext := range exts {
+			if !store.IsMarkGc(ext.ExtentId) && p.Opcode == proto.OpGcBatchDeleteExtent {
+				log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete", ext.ExtentId)
+				err = storage.ParameterMismatchError
+				return
+			}
+
 			if deleteLimiteRater.Allow() {
 				log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
@@ -1322,6 +1328,7 @@ func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn)
 		return
 	}
 
+	start := time.Now()
 	if gcLockEks.IsCreate {
 		for _, ek := range gcLockEks.Eks {
 			err = store.Create(ek.ExtentId)
@@ -1330,12 +1337,14 @@ func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn)
 				continue
 			}
 			if err != nil {
-				log.LogErrorf("action[handleBatchLockNormalExtent] create extent err %v", err)
+				log.LogErrorf("action[handleBatchLockNormalExtent] create path %s, id %d, extent err %v",
+					partition.Path(), ek.ExtentId, err)
 				return
 			}
 		}
 	}
-	log.LogInfof("action[handleBatchLockNormalExtent] success len: %v, isCreate: %v", len(gcLockEks.Eks), gcLockEks.IsCreate)
+	log.LogInfof("action[handleBatchLockNormalExtent] dp %d, success len: %v, isCreate: %v, cost %s ms",
+		partition.partitionID, len(gcLockEks.Eks), gcLockEks.IsCreate, time.Since(start).Milliseconds())
 	return
 }
 
