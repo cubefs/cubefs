@@ -722,10 +722,9 @@ type createVolReq struct {
 	coldArgs coldVolArgs
 
 	//hybrid cloud
-	volStorageClass             uint32
-	allowedStorageClass         []uint32 // format is uint32 Separated by commas: "StorageClass1, StorageClass2, ..."
-	hasMultiReplicaStorageClass bool
-	cacheDpStorageClass         uint32
+	volStorageClass     uint32
+	allowedStorageClass []uint32 // format is uint32 Separated by commas: "StorageClass1, StorageClass2, ..."
+	cacheDpStorageClass uint32
 }
 
 func checkCacheAction(action int) error {
