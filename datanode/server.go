@@ -159,7 +159,10 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	repl.SetConnectPool(gConnPool)
-	s.register(cfg)
+	if err = s.register(); err != nil {
+		err = fmt.Errorf("regiter failed: %v", err)
+		return
+	}
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
 	s.limiterManager = multirate.NewLimiterManager(multirate.ModuleDataNode, "", MasterClient.AdminAPI().GetLimitInfo)
 	if s.limiterManager == nil {
@@ -442,53 +445,37 @@ func (s *DataNode) fetchPersistPartitionIDsFromMaster() (ids []uint64, err error
 
 // registers the data node on the master to report the information such as IsIPV4 address.
 // The startup of a data node will be blocked until the registration succeeds.
-func (s *DataNode) register(cfg *config.Config) {
+func (s *DataNode) register() (err error) {
 	var (
-		err error
+		regInfo = &masterSDK.RegNodeInfoReq{
+			Role:     proto.RoleData,
+			ZoneName: s.zoneName,
+			Version:  DataNodeLatestVersion,
+			ProfPort: s.httpPort,
+			SrvPort:  s.port,
+		}
+		regRsp *proto.RegNodeRsp
 	)
 
-	timer := time.NewTimer(0)
-
-	// get the IsIPV4 address, cluster ID and node ID from the master
-	for {
-		select {
-		case <-timer.C:
-			var ci *proto.ClusterInfo
-			if ci, err = MasterClient.AdminAPI().GetClusterInfo(); err != nil {
-				log.LogErrorf("DataNode: cannot get ip from master %v: %v",
-					MasterClient.Leader(), err)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-			masterAddr := MasterClient.Leader()
-			s.clusterID = ci.Cluster
-			if LocalIP == "" {
-				LocalIP = string(ci.Ip)
-			}
-			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
-			if !unit.IsIPV4(LocalIP) {
-				log.LogErrorf("DataNode: got an invalid local ip %v from master %v",
-					LocalIP, masterAddr)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-
-			// register this data node on the master
-			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.zoneName, DataNodeLatestVersion); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master(%v) err(%v).",
-					masterAddr, err)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-			s.nodeID = nodeID
-			log.LogDebugf("DataNode: register success, nodeID %v", s.nodeID)
-			return
-		case <-s.stopC:
-			timer.Stop()
-			return
-		}
+	if err = os.MkdirAll(authKeyDir, 0755); err != nil {
+		err = fmt.Errorf("access authkey directory failed: %v", err)
+		return
 	}
+
+	if regRsp, err = MasterClient.RegNodeInfo(path.Join(authKeyDir, authKeyFilename), regInfo); err != nil {
+		return
+	}
+	if !unit.IsIPV4(regRsp.Addr) {
+		err = fmt.Errorf("got invalid local IP %v fetched from Master", LocalIP)
+		return
+	}
+	s.clusterID = regRsp.Cluster
+	if LocalIP == "" {
+		LocalIP = regRsp.Addr
+	}
+	s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
+	s.nodeID = regRsp.Id
+	return
 }
 
 type DataNodeInfo struct {

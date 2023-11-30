@@ -25,9 +25,11 @@ EOF
 }
 
 check_docker_images() {
+  set +e
   curl "http://storage.jd.local" 2>1 > /dev/null
   ret=$?
   if [[ ${ret} -ne 0 ]]; then
+    set -e
     return
   fi
 
@@ -56,6 +58,7 @@ check_docker_images() {
       fi
     fi
   done
+  set -e
 }
 
 clean() {
