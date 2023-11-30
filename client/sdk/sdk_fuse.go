@@ -54,6 +54,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/jacobsa/daemonize"
+	"github.com/shirou/gopsutil/disk"
 
 	"github.com/cubefs/cubefs/util/version"
 )
@@ -581,7 +582,13 @@ func checkMountPoint(mountPoint string) error {
 		return err
 	}
 	if stat.Sys().(*syscall.Stat_t).Dev != rootStat.Sys().(*syscall.Stat_t).Dev {
-		return fmt.Errorf("Multiple mount are not supported: %s", mountPoint)
+		var mountPointFS syscall.Statfs_t
+		if err = syscall.Statfs(mountPoint, &mountPointFS); err != nil {
+			return err
+		}
+		if mountPointFS.Type == disk.FUSE_SUPER_MAGIC {
+			return fmt.Errorf("Multiple mount are not supported: %s", mountPoint)
+		}
 	}
 	return nil
 }
