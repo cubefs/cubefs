@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const TestMasterHost = "192.0.1.69:19201"
+const TestMasterHost = "127.0.0.1:19201"
 
 var mockMasterServer *mockMaster
 
