@@ -266,6 +266,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 	request.QosIopsWriteLimit = dataNode.QosIopsWLimit
 	request.QosFlowReadLimit = dataNode.QosFlowRLimit
 	request.QosFlowWriteLimit = dataNode.QosFlowWLimit
+	request.DecommissionDisks = dataNode.getDecommissionedDisks()
 
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return

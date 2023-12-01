@@ -50,6 +50,10 @@ const (
 	ExpiredPartitionExistTime = time.Hour * time.Duration(24*7)
 )
 
+const (
+	DecommissionDiskMark = "decommissionDiskMark"
+)
+
 // Disk represents the structure of the disk
 type Disk struct {
 	sync.RWMutex
@@ -81,6 +85,7 @@ type Disk struct {
 	// diskPartition info
 	diskPartition       *disk.PartitionStat
 	DiskErrPartitionSet map[uint64]struct{}
+	decommission        bool
 }
 
 const (
@@ -126,7 +131,54 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.limitWrite = newIOLimiter(space.dataNode.diskWriteFlow, space.dataNode.diskWriteIocc)
 
 	d.DiskErrPartitionSet = make(map[uint64]struct{}, 0)
+
+	err = d.initDecommissionStatus()
+	if err != nil {
+		log.LogErrorf("action[NewDisk]: failed to load disk decommission status")
+		// NOTE: continue execution
+		err = nil
+	}
 	return
+}
+
+func (d *Disk) MarkDecommissionStatus(decommission bool) {
+	probePath := path.Join(d.Path, DecommissionDiskMark)
+	var err error
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[MarkDecommissionStatus]: %v", err)
+			return
+		}
+	}()
+	if decommission {
+		file, err := os.Create(probePath)
+		if err == nil {
+			file.Close()
+		}
+	} else {
+		err = os.Remove(probePath)
+		if os.IsNotExist(err) {
+			err = nil
+		}
+	}
+	d.decommission = decommission
+}
+
+func (d *Disk) GetDecommissionStatus() bool {
+	return d.decommission
+}
+
+func (d *Disk) initDecommissionStatus() error {
+	probePath := path.Join(d.Path, DecommissionDiskMark)
+	_, err := os.Stat(probePath)
+	if err == nil {
+		d.decommission = true
+		return nil
+	}
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 func (d *Disk) GetDiskPartition() *disk.PartitionStat {
@@ -447,6 +499,12 @@ func (d *Disk) GetDataPartition(partitionID uint64) (partition *DataPartition) {
 	d.RLock()
 	defer d.RUnlock()
 	return d.partitionMap[partitionID]
+}
+
+func (d *Disk) GetDataPartitionCount() int {
+	d.RLock()
+	defer d.RUnlock()
+	return len(d.partitionMap)
 }
 
 func (d *Disk) ForceExitRaftStore() {

@@ -431,7 +431,6 @@ func (manager *SpaceManager) DeletePartition(dpID uint64) {
 
 	delete(manager.partitions, dpID)
 	manager.partitionMutex.Unlock()
-
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 	os.RemoveAll(dp.Path())

@@ -472,6 +472,26 @@ func (s *DataNode) checkVolumeForbidden(volNames []string) {
 	})
 }
 
+func (s *DataNode) checkDecommissionDisks(decommissionDisks []string) {
+	decommissionDiskSet := util.NewSet()
+	for _, disk := range decommissionDisks {
+		decommissionDiskSet.Add(disk)
+	}
+	disks := s.space.GetDisks()
+	for _, disk := range disks {
+		if disk.GetDecommissionStatus() && !decommissionDiskSet.Has(disk.Path) {
+			log.LogDebugf("action[checkDecommissionDisks] mark %v to be undecommissioned", disk.Path)
+			disk.MarkDecommissionStatus(false)
+			continue
+		}
+		if !disk.GetDecommissionStatus() && decommissionDiskSet.Has(disk.Path) {
+			log.LogDebugf("action[checkDecommissionDisks] mark %v to be decommissioned", disk.Path)
+			disk.MarkDecommissionStatus(true)
+			continue
+		}
+	}
+}
+
 // Handle OpHeartbeat packet.
 func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 	var err error
@@ -505,7 +525,8 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 
 			// set volume forbidden
 			s.checkVolumeForbidden(request.ForbiddenVols)
-
+			// set decommission disks
+			s.checkDecommissionDisks(request.DecommissionDisks)
 			s.diskQosEnableFromMaster = request.EnableDiskQos
 
 			var needUpdate bool
