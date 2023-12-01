@@ -833,6 +833,16 @@ func (api *AdminAPI) QueryBadDisks() (badDisks *proto.BadDiskInfos, err error) {
 	return
 }
 
+func (api *AdminAPI) DecommissionDisk(addr string, disk string) (err error) {
+	request := newAPIRequest(http.MethodPost, proto.DecommissionDisk)
+	request.params["addr"] = addr
+	request.params["disk"] = disk
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) ListQuotaAll() (volsInfo []*proto.VolInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.QuotaListAll)
 	var data []byte

@@ -22,6 +22,7 @@ func newDiskCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListBadDiskCmd(client),
+		newDecommissionDiskCmd(client),
 	)
 	return cmd
 }
@@ -54,6 +55,29 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 			for _, disk := range infos.BadDisks {
 				stdout("%v\n", formatBadDiskInfoRow(disk))
 			}
+		},
+	}
+	return cmd
+}
+
+const (
+	cmdDecommissionDisksShort = "Decommission disk on datanode"
+)
+
+func newDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpDecommission + " [DATA NODE ADDR] [DISK]",
+		Short: cmdDecommissionDisksShort,
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			if err = client.AdminAPI().DecommissionDisk(args[0], args[1]); err != nil {
+				return
+			}
+			stdout("Mark disk %v:%v to be decommissioned", args[0], args[1])
 		},
 	}
 	return cmd
