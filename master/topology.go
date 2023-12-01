@@ -2267,6 +2267,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsMarkDecommission() && dp.TryAcquireDecommissionToken(c) {
+					// TODO: decommission in here
 					go func(dp *DataPartition) {
 						if !dp.TryToDecommission(c) {
 							//retry should release token
