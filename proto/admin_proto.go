@@ -601,8 +601,9 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
-	ForbiddenVols    []string
-	DisableAuditVols []string
+	ForbiddenVols     []string
+	DisableAuditVols  []string
+	DecommissionDisks []string // NOTE: for datanode
 }
 
 // DataPartitionReport defines the partition report.
