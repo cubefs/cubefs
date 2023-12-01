@@ -107,8 +107,8 @@ func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
 			delete(host.offlineMetaNodesIn24Hour, addr)
 		}
 	}
-	if len(host.offlineMetaNodesIn24Hour) < defaultMaxOfflineMetaNodes {
-		log.LogWarnf("action[checkMetaNodeAlive] %v has offline %v inactive meta nodes in latest 24 hours", host.host, len(host.offlineMetaNodesIn24Hour))
+	if len(host.offlineMetaNodesIn24Hour) > defaultMaxOfflineMetaNodes {
+		log.LogWarnf("action[checkMetaNodeAlive] %v has offline %v inactive meta nodes in latest 24 hours", host.host, defaultMaxOfflineMetaNodes)
 		return
 	}
 	for _, inactiveMn := range inactiveMetaNodes {
