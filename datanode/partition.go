@@ -851,6 +851,7 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 			}
 			if err := dp.updateReplicas(); err != nil {
 				log.LogWarnf("DP[%v] update replicas failed: %v", dp.partitionID, err)
+				repairTimer.Reset(time.Minute)
 				continue
 			}
 			if index%2 == 0 {

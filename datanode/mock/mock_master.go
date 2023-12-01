@@ -1,6 +1,8 @@
 package mock
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
@@ -18,6 +20,7 @@ const (
 )
 
 var mockMasterServer *mockMaster
+var ClusterHasAuthKey bool
 
 type mockDataNode struct {
 	HttpPort                  string
@@ -56,6 +59,7 @@ func NewMockMaster() {
 		http.HandleFunc(proto.AdminCreateDataPartition, fakeCreateDataPartition)
 		http.HandleFunc(proto.AdminDeleteDataReplica, fakeDeleteDataReplica)
 		http.HandleFunc(proto.AdminGetLimitInfo, fakeGetLimitInfo)
+		http.HandleFunc(proto.RegNode, fakeRegNode)
 	}()
 }
 
@@ -159,6 +163,35 @@ func fakeGetLimitInfo(w http.ResponseWriter, r *http.Request) {
 		Cluster: TestCluster,
 	}
 	buildJSONResp(w, http.StatusOK, limit, Master, "")
+}
+
+func fakeRegNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		checkKey string
+		httpPort string
+		zoneName string
+		version  string
+		nodeAddr string
+		err      error
+	)
+	if nodeAddr, httpPort, zoneName, version, err = parseRequestForAddNode(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	mockMasterServer.DataNodeMap[nodeAddr] = &mockDataNode{
+		ID:                        uint64(mockMasterServer.CurNodeID.Add(1)),
+		Host:                      nodeAddr,
+		HttpPort:                  httpPort,
+		ZoneName:                  zoneName,
+		Version:                   version,
+		PersistenceDataPartitions: make([]uint64, 0),
+	}
+	checkKey = hex.EncodeToString(md5.New().Sum([]byte(TestCluster)))
+	buildJSONResp(w, http.StatusOK, proto.RegNodeRsp{
+		Addr:    nodeAddr,
+		Id:      uint64(mockMasterServer.CurNodeID.Add(1)),
+		Cluster: TestCluster,
+		AuthKey: checkKey}, Master, "")
 }
 
 func buildJSONResp(w http.ResponseWriter, stateCode int, data interface{}, send, msg string) {

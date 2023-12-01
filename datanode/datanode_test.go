@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	mockClusterName   = "datanode-cluster"
+	mockClusterName   = mock.TestCluster
 	testLogDir        = "/cfs/log"
-	testDiskPath      = "/data1/mock_disk1"
+	testDiskPath      = "/cfs/mockdisk/data1"
 	localIP           = "127.0.0.1"
 	localNodeAddress  = localIP + ":" + tcpProtoPort
 	raftHeartBeatPort = "17331"

@@ -2,6 +2,8 @@ package ecnode
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
@@ -9,20 +11,26 @@ import (
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/jacobsa/daemonize"
+	"go.uber.org/atomic"
 	"hash/crc32"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
 const (
-	testDiskPath = "/cfs/testDisk/"
+	testCluster  = "ecnode-cluster"
+	testLogDir   = "/cfs/log"
+	testDiskPath = "/cfs/mockdisk/ecdata1"
 	Master       = "master"
 )
 
@@ -43,7 +51,7 @@ type fakeEcNode struct {
 func newFakeEcNode(t *testing.T) *fakeEcNode {
 	e := &fakeEcNode{
 		EcNode: EcNode{
-			clusterID:       "ecnode-cluster",
+			clusterID:       testCluster,
 			port:            "11310",
 			cellName:        "cell-01",
 			localIP:         "127.0.0.1",
@@ -75,8 +83,14 @@ func newFakeEcNode(t *testing.T) *fakeEcNode {
 	masters := []string{
 		"127.0.0.1:6666",
 	}
+	_, err := log.InitLog(testLogDir, testCluster, log.DebugLevel, nil)
+	if err != nil {
+		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v ", err))
+		panic(err.Error())
+	}
+	defer log.LogFlush()
 	MasterClient = masterSDK.NewMasterClient(masters, false)
-	cfgStr := "{\n\t\t\t\"cell\": \"test-cell\",\n\t\t\t\"disks\": [\"/cfs/testDisk:5368709120\"],\n\t\t\t\"listen\": \"11310\",\n\t\t\t\"logDir\":\"/cfs/log\",\n\t\t\t\"masterAddr\": [\"127.0.0.1:12310\", \"127.0.0.1:12311\", \"127.0.0.1:12312\"],\n\t\t\t\"prof\": \"11410\"}"
+	cfgStr := "{\n\t\t\t\"cell\": \"test-cell\",\n\t\t\t\"disks\": [\"/cfs/mockdisk/ecdata1:5368709120\"],\n\t\t\t\"listen\": \"11310\",\n\t\t\t\"logDir\":\"/cfs/log\",\n\t\t\t\"masterAddr\": [\"127.0.0.1:6666\"],\n\t\t\t\"prof\": \"11410\"}"
 	cfg := config.LoadConfigString(cfgStr)
 	e.EcNode.Start(cfg)
 
@@ -1264,6 +1278,8 @@ func buildJSONResp(w http.ResponseWriter, stateCode int, data interface{}, send,
 	w.Write(jsonBody)
 }
 
+var curNodeID = new(atomic.Int64)
+
 func runMasterHttp(t *testing.T) {
 	if !startMasterHttp {
 		profNetListener, err := net.Listen("tcp", fmt.Sprintf(":%v", 6666))
@@ -1280,11 +1296,57 @@ func runMasterHttp(t *testing.T) {
 			http.HandleFunc(proto.AddEcNode, fakeAddEcNode)
 			http.HandleFunc(proto.AdminGetEcPartition, fakeGetEcPartition)
 			http.HandleFunc(proto.GetEcNode, fakeGetEcNode)
+			http.HandleFunc(proto.RegNode, fakeRegNode)
 		}()
 		startMasterHttp = true
 	}
 }
 
+func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
+	if nodeAddr = r.FormValue("addr"); nodeAddr == "" {
+		err = keyNotFound("addr")
+		return
+	}
+	return
+}
+
+func keyNotFound(name string) (err error) {
+	return fmt.Errorf("parameter %v not found", name)
+}
+
+func fakeRegNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		checkKey string
+		nodeAddr string
+		err      error
+	)
+	if nodeAddr, err = extractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	checkKey = hex.EncodeToString(md5.New().Sum([]byte(testCluster)))
+	buildJSONResp(w, http.StatusOK, proto.RegNodeRsp{
+		Addr:    nodeAddr,
+		Id:      uint64(curNodeID.Add(1)),
+		Cluster: testCluster,
+		AuthKey: checkKey}, Master, "")
+}
+
+func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
+	// fmt.Printf("URL[%v],remoteAddr[%v],response err[%v]", r.URL, r.RemoteAddr, httpReply)
+	reply, err := json.Marshal(httpReply)
+	if err != nil {
+		// fmt.Printf("fail to marshal http reply[%v]. URL[%v],remoteAddr[%v] err:[%v]", httpReply, r.URL, r.RemoteAddr, err)
+		http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(reply)))
+	if _, err = w.Write(reply); err != nil {
+		// fmt.Printf("fail to write http reply[%s] len[%d].URL[%v],remoteAddr[%v] err:[%v]", string(reply), len(reply), r.URL, r.RemoteAddr, err)
+	}
+	return
+}
 func fakeGetClusterInfo(w http.ResponseWriter, r *http.Request) {
 	info := &proto.ClusterInfo{
 		Cluster: "chubaofs",

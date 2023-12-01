@@ -631,6 +631,7 @@ services:
             - ./conf/bypass.ini:/usr/lib64/bypass.ini:ro
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
+            - ${DiskPath:-./docker_data}/mockdisk:/cfs/mockdisk
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
@@ -664,6 +665,7 @@ services:
             - ./conf/bypass.ini:/usr/lib64/bypass.ini:ro
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
+            - ${DiskPath:-./docker_data}/mockdisk:/cfs/mockdisk
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
             - ./ltp/runtest/fs:/opt/ltp/runtest/fs
@@ -755,6 +757,7 @@ services:
         volumes:
             - ../:/go/src/github.com/cubefs/cubefs
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
+            - ${DiskPath:-./docker_data}/mockdisk:/cfs/mockdisk
         command:
             - bash
             - "-c"

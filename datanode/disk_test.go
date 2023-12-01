@@ -384,6 +384,10 @@ func TestIncWriteErrCnt(t *testing.T) {
 
 func TestTriggerDiskError(t *testing.T) {
 	disk.triggerDiskError(syscall.EIO)
+	defer func() {
+		//recover status
+		disk.Status = proto.ReadWrite
+	}()
 	if disk.Status != proto.Unavailable {
 		t.Fatalf("disk triggerDiskError mismatch, disk status except:%v, actual:%v", proto.Unavailable, disk.Status)
 	}

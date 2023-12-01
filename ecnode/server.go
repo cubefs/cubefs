@@ -258,10 +258,10 @@ func (e *EcNode) registerHandler() {
 	server.ListenAndServe()
 }
 
-func (e *EcNode) register() (err error){
+func (e *EcNode) register() (err error) {
 	var (
 		regInfo = &masterSDK.RegNodeInfoReq{
-			Role:     proto.RoleCodec,
+			Role:     proto.RoleEc,
 			Version:  EcNodeLatestVersion,
 			ZoneName: e.cellName,
 			SrvPort:  e.port,
@@ -269,7 +269,6 @@ func (e *EcNode) register() (err error){
 		}
 		regRsp *proto.RegNodeRsp
 	)
-
 
 	if regRsp, err = MasterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
 		return

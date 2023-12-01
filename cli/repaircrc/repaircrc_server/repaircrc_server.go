@@ -159,7 +159,7 @@ func (s *RepairServer) parseConfig(cfg *config.Config) (err error) {
 		task := NewRepairTask()
 		json.Unmarshal(bytes, task)
 		if err = task.validTask(); err != nil {
-			log.LogError("illegal task: %v, err: %v", task.TaskId, err)
+			log.LogErrorf("illegal task: %v, err: %v", task.TaskId, err)
 			continue
 		}
 		s.repairTaskMap[task.TaskId] = task
@@ -304,7 +304,7 @@ func executeTask(t *RepairCrcTask) {
 	var err error
 	defer func() {
 		if err != nil {
-			log.LogError("executeTask: failed, err:%v", err)
+			log.LogErrorf("executeTask: failed, err:%v", err)
 		}
 		log.LogInfof("executeTask stop, taskID:%v", t.TaskId)
 	}()

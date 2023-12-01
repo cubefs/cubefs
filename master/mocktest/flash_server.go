@@ -106,7 +106,6 @@ func (mfs *MockFlashNodeServer) serveConn(rc net.Conn) {
 	switch req.Opcode {
 	case proto.OpFlashNodeHeartbeat:
 		err = responseAckOKToMaster(conn, req, nil)
-		fmt.Printf("flash node [%v] report heartbeat to master,err:%v\n", mfs.TcpAddr, err)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}

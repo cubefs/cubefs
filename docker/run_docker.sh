@@ -19,6 +19,7 @@ Usage: ./run_docker.sh [ -h | --help ] [ -d | --disk </disk/path> ] [ -l | --ltp
     -m, --monitor           start monitor web ui
     --ci-tests              run ci tests, include ltp tests and s3 tests
     -r, --run               run servers, client and monitor
+    -t, --test              run unit test
     --clean                 cleanup old docker image
 EOF
     exit 0
