@@ -172,7 +172,7 @@ func LocCheckFailed(mt *MetaNode, t *testing.T) {
     ClusterHasAuthKey = true
 
     os.Mkdir(mt.metadataDir, 0655)
-    os.WriteFile(path.Join(mt.metadataDir, ".clusterAuth"), []byte("test"), 0655)
+    os.WriteFile(path.Join(proto.AuthFilePath, masterSDK.AuthFileName + proto.RoleMeta), []byte("test"), 0655)
     if err := mt.register(); err == nil {
         t.Fatalf("local failed: reg metanode expect failed, but now success")
     } else {

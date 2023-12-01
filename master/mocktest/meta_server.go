@@ -140,12 +140,13 @@ func (mms *MockMetaServer) start() {
 				conn.Close()
 			}
 		}
-		listener.Close()
+
 	}()
 	go func() {
 		for {
 			select {
 			case <-mms.stopC:
+				listener.Close()
 				return
 			default:
 			}
@@ -153,10 +154,11 @@ func (mms *MockMetaServer) start() {
 	}()
 	for {
 		conn, err := listener.Accept()
-		connArr = append(connArr, conn)
 		if err != nil {
 			fmt.Printf("accept conn occurred error,err is [%v]", err)
+			return
 		}
+		connArr = append(connArr, conn)
 		go mms.serveConn(conn)
 	}
 }
