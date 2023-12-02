@@ -65,6 +65,7 @@ func newClusterHost(host string) *ClusterHost {
 		deadFlashNodes:            make(map[string]*DeadNode, 0),
 		dataNodeBadDisk:           make(map[string]time.Time, 0),
 		offlineDisksIn24Hour:      make(map[string]time.Time, 0),
+		offlineMetaNodesIn24Hour:  make(map[string]time.Time, 0),
 		offlineDataNodesIn24Hour:  make(map[string]time.Time, 0),
 		offlineFlashNodesIn24Hour: make(map[string]time.Time, 0),
 		inOfflineDiskDataNodes:    make(map[string]time.Time, 0),
@@ -324,7 +325,7 @@ type MinRWDPAndMPVolInfo struct {
 }
 
 type ClusterConfigCheck struct {
-	Interval   int `json:"interval"`
+	Interval   int                 `json:"interval"`
 	CfsCluster []map[string]string `json:"cfsCluster"`
 }
 
