@@ -16,12 +16,14 @@ package master
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -32,6 +34,8 @@ const CarryWeightNodeSelectorName = "CarryWeight"
 const AvailableSpaceFirstNodeSelectorName = "AvailableSpaceFirst"
 
 const TicketNodeSelectorName = "Ticket"
+
+const StrawNodeSelectorName = "Straw"
 
 const DefaultNodeSelectorName = CarryWeightNodeSelectorName
 
@@ -607,6 +611,98 @@ func NewTicketNodeSelector(nodeType NodeType) *TicketNodeSelector {
 	}
 }
 
+const (
+	StrawNodeSelectorRandMax = 65536
+)
+
+// NOTE: this node selector inspired by Straw2 algorithm, which is widely used in ceph
+type StrawNodeSelector struct {
+	rand     *rand.Rand
+	nodeType NodeType
+}
+
+func (s *StrawNodeSelector) GetName() string {
+	return StrawNodeSelectorName
+}
+
+func (s *StrawNodeSelector) getWeight(node Node) float64 {
+	switch s.nodeType {
+	case DataNodeType:
+		dataNode := node.(*DataNode)
+		return float64(dataNode.AvailableSpace) / util.GB
+	case MetaNodeType:
+		metaNode := node.(*MetaNode)
+		return float64(metaNode.Total-metaNode.Used) / util.GB
+	default:
+		panic("unkown node type")
+	}
+}
+
+func (s *StrawNodeSelector) selectOneNode(nodes []Node) (index int, maxNode Node) {
+	maxStraw := float64(0)
+	index = -1
+	for i, node := range nodes {
+		straw := float64(s.rand.Intn(StrawNodeSelectorRandMax))
+		straw = math.Log(straw/float64(StrawNodeSelectorRandMax)) / s.getWeight(node)
+		if index == -1 || straw > maxStraw {
+			maxStraw = straw
+			maxNode = node
+			index = i
+		}
+	}
+	return
+}
+
+func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
+
+	nodes := make([]Node, 0)
+	ns.getNodes(s.nodeType).Range(func(key, value interface{}) bool {
+		node := asNodeWrap(value, s.nodeType)
+		if !contains(excludeHosts, node.GetAddr()) {
+			nodes = append(nodes, node)
+		}
+		return true
+	})
+	orderHosts := make([]string, 0)
+	for len(orderHosts) < replicaNum {
+		if len(nodes)+len(orderHosts) < replicaNum {
+			break
+		}
+		index, node := s.selectOneNode(nodes)
+		if index != 0 {
+			nodes[0], nodes[index] = node, nodes[0]
+		}
+		nodes = nodes[1:]
+		if !canAllocPartition(node, s.nodeType) {
+			continue
+		}
+		orderHosts = append(orderHosts, node.GetAddr())
+		node.SelectNodeForWrite()
+		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
+		peers = append(peers, peer)
+	}
+	// if we cannot get enough writable nodes, return error
+	if len(orderHosts) < replicaNum {
+		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+			s.GetName(), replicaNum, len(orderHosts))
+		return
+	}
+	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	// reshuffle for primary-backup replication
+	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
+		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
+		return
+	}
+	return
+}
+
+func NewStrawNodeSelector(nodeType NodeType) *StrawNodeSelector {
+	return &StrawNodeSelector{
+		rand:     rand.New(rand.NewSource(time.Now().UnixMicro())),
+		nodeType: nodeType,
+	}
+}
+
 func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
 	switch name {
 	case RoundRobinNodeSelectorName:
@@ -617,6 +713,8 @@ func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
 		return NewTicketNodeSelector(nodeType)
 	case AvailableSpaceFirstNodeSelectorName:
 		return NewAvailableSpaceFirstNodeSelector(nodeType)
+	case StrawNodeSelectorName:
+		return NewStrawNodeSelector(nodeType)
 	default:
 		return NewCarryWeightNodeSelector(nodeType)
 	}
