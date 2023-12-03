@@ -98,6 +98,13 @@ func TestAvailableSpaceFirstNodesetSelector(t *testing.T) {
 	NodesetSelectorTest(t, selector)
 }
 
+func TestStrawNodesetSelector(t *testing.T) {
+	selector := NewStrawNodesetSelector(DataNodeType)
+	NodesetSelectorTest(t, selector)
+	selector = NewStrawNodesetSelector(MetaNodeType)
+	NodesetSelectorTest(t, selector)
+}
+
 func prepareDataNodesetForBench(count int, initTotal uint64, grow uint64) (nsc nodeSetCollection) {
 	nsc = make(nodeSetCollection, 0, count)
 	for i := 0; i < count; i++ {
@@ -230,6 +237,21 @@ func TestBenchmarkTicketNodesetSelector(t *testing.T) {
 		return
 	}
 	selector = NewTicketNodesetSelector(MetaNodeType)
+	err = metaNodesetSelectorBench(t, selector)
+	if err != nil {
+		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)
+		return
+	}
+}
+
+func TestBenchmarkStrawNodesetSelector(t *testing.T) {
+	selector := NewStrawNodesetSelector(DataNodeType)
+	err := dataNodesetSelectorBench(t, selector)
+	if err != nil {
+		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)
+		return
+	}
+	selector = NewStrawNodesetSelector(MetaNodeType)
 	err = metaNodesetSelectorBench(t, selector)
 	if err != nil {
 		t.Errorf("%v nodeset selector failed to benchmark %v", selector.GetName(), err)

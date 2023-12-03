@@ -422,6 +422,67 @@ func TestAvailableSpaceFirstNodeSelector(t *testing.T) {
 	metaNode.Total = tmp
 }
 
+func TestStrawNodeSelector(t *testing.T) {
+	// get first node
+	dataNode := getFirstDataNodeForTest(t, testZone2)
+	metaNode := getFirstMetaNodeForTest(t, testZone2)
+	dataSelectTimes := make(map[uint64]int)
+	metaSelectTimes := make(map[uint64]int)
+	// prepare for datanode
+	tmp := dataNode.AvailableSpace
+	dataNode.Total += dataNode.AvailableSpace
+	dataNode.AvailableSpace *= 2
+	// select test
+	selector := NewStrawNodeSelector(DataNodeType)
+	for i := 0; i != loopNodeSelectorTestCount; i++ {
+		node := DataNodeSelectorTest(t, selector, nil)
+		if node == nil {
+			return
+		}
+		count, _ := dataSelectTimes[node.ID]
+		count += 1
+		dataSelectTimes[node.ID] = count
+	}
+	t.Logf("%v data node select times:\n", selector.GetName())
+	printNodeSelectTimes(t, dataSelectTimes)
+	count, _ := dataSelectTimes[dataNode.ID]
+	for _, c := range dataSelectTimes {
+		if count < c {
+			t.Errorf("%v failed to select data nodes", selector.GetName())
+			return
+		}
+	}
+	// restore status
+	dataNode.Total -= tmp
+	dataNode.AvailableSpace = tmp
+
+	// prepare for metanode
+	tmp = metaNode.Total
+	metaNode.Total *= 2
+	// select test
+	selector = NewStrawNodeSelector(MetaNodeType)
+	for i := 0; i != loopNodeSelectorTestCount; i++ {
+		node := MetaNodeSelectorTest(t, selector, nil)
+		if node == nil {
+			return
+		}
+		count, _ := metaSelectTimes[node.ID]
+		count += 1
+		metaSelectTimes[node.ID] = count
+	}
+	t.Logf("%v meta node select times:\n", selector.GetName())
+	printNodeSelectTimes(t, metaSelectTimes)
+	count, _ = metaSelectTimes[metaNode.ID]
+	for _, c := range metaSelectTimes {
+		if count < c {
+			t.Errorf("%v failed to select meta nodes", selector.GetName())
+			return
+		}
+	}
+	// restore status
+	metaNode.Total = tmp
+}
+
 func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nodeSet) {
 	ns = &nodeSet{
 		ID:               1,
@@ -478,12 +539,13 @@ func nodeSelectorBench(selector NodeSelector, nset *nodeSet, onSelect func(addr 
 		if err != nil {
 			return nil, err
 		}
-		peer := peers[0]
-		count, _ := times[peer.ID]
-		count += 1
-		times[peer.ID] = count
-		if onSelect != nil {
-			onSelect(peer.Addr)
+		for _, peer := range peers {
+			count, _ := times[peer.ID]
+			count += 1
+			times[peer.ID] = count
+			if onSelect != nil {
+				onSelect(peer.Addr)
+			}
 		}
 	}
 	return times, nil
@@ -542,5 +604,12 @@ func TestBenchCarryWeightNodeSelector(t *testing.T) {
 	selector := NewCarryWeightNodeSelector(DataNodeType)
 	dataNodeSelectorBench(t, selector)
 	selector = NewCarryWeightNodeSelector(MetaNodeType)
+	metaNodeSelectorBench(t, selector)
+}
+
+func TestBenchStrawNodeSelector(t *testing.T) {
+	selector := NewStrawNodeSelector(DataNodeType)
+	dataNodeSelectorBench(t, selector)
+	selector = NewStrawNodeSelector(MetaNodeType)
 	metaNodeSelectorBench(t, selector)
 }

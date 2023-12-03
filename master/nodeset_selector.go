@@ -15,6 +15,7 @@
 package master
 
 import (
+	"math"
 	"math/rand"
 	"sort"
 	"time"
@@ -30,6 +31,8 @@ const CarryWeightNodesetSelectorName = "CarryWeight"
 const AvailableSpaceFirstNodesetSelectorName = "AvailableSpaceFirst"
 
 const TicketNodesetSelectorName = "Ticket"
+
+const StrawNodesetSelectorName = "Straw"
 
 const DefaultNodesetSelectorName = RoundRobinNodeSelectorName
 
@@ -384,6 +387,58 @@ func NewTicketNodesetSelector(nodeType NodeType) *TicketNodesetSelector {
 	}
 }
 
+const (
+	StrawNodesetSelectorRandMax = 65536
+)
+
+// NOTE: this nodeset selector inspired by Straw2 algorithm, which is widely used in ceph
+type StrawNodesetSelector struct {
+	nodeType NodeType
+	rand     *rand.Rand
+}
+
+func (s *StrawNodesetSelector) GetName() string {
+	return StrawNodesetSelectorName
+}
+
+func (s *StrawNodesetSelector) Select(nsc nodeSetCollection, excludeNodeSets []uint64, replicaNum uint8) (ns *nodeSet, err error) {
+	tmp := make(nodeSetCollection, 0)
+	for _, nodeset := range nsc {
+		if nodeset.canWriteFor(s.nodeType, int(replicaNum)) && !containsID(excludeNodeSets, nodeset.ID) {
+			tmp = append(tmp, nodeset)
+		}
+	}
+	nsc = tmp
+	if len(nsc) < 1 {
+		switch s.nodeType {
+		case DataNodeType:
+			err = errors.NewError(proto.ErrNoNodeSetToCreateDataPartition)
+		case MetaNodeType:
+			err = errors.NewError(proto.ErrNoNodeSetToCreateMetaPartition)
+		default:
+			panic("unknow node type")
+		}
+		return
+	}
+	maxStraw := float64(0)
+	for _, nodeset := range nsc {
+		straw := float64(s.rand.Intn(StrawNodesetSelectorRandMax))
+		straw = math.Log(straw/float64(StrawNodesetSelectorRandMax)) / float64(nodeset.getTotalAvailableSpaceOf(s.nodeType))
+		if ns == nil || straw > maxStraw {
+			ns = nodeset
+			maxStraw = straw
+		}
+	}
+	return
+}
+
+func NewStrawNodesetSelector(nodeType NodeType) *StrawNodesetSelector {
+	return &StrawNodesetSelector{
+		nodeType: nodeType,
+		rand:     rand.New(rand.NewSource(time.Now().Unix())),
+	}
+}
+
 func NewNodesetSelector(name string, nodeType NodeType) NodesetSelector {
 	switch name {
 	case CarryWeightNodesetSelectorName:
@@ -394,6 +449,8 @@ func NewNodesetSelector(name string, nodeType NodeType) NodesetSelector {
 		return NewTicketNodesetSelector(nodeType)
 	case AvailableSpaceFirstNodesetSelectorName:
 		return NewAvailableSpaceFirstNodesetSelector(nodeType)
+	case StrawNodesetSelectorName:
+		return NewStrawNodesetSelector(nodeType)
 	default:
 		return NewRoundRobinNodesetSelector(nodeType)
 	}
