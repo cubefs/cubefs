@@ -243,15 +243,24 @@ func main() {
 
 	if profPort != "" {
 		go func() {
+			mainMux := http.NewServeMux()
 			mux := http.NewServeMux()
-			mux.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
 			mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
 			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
 			mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 			mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 			mux.Handle("/debug/", http.HandlerFunc(pprof.Index))
-			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mux)
+			mainHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if strings.HasPrefix(req.URL.Path, "/debug/") {
+					mux.ServeHTTP(w, req)
+				} else {
+					http.DefaultServeMux.ServeHTTP(w, req)
+				}
+			})
+			mainMux.Handle("/", mainHandler)
+			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mainMux)
 			if e != nil {
 				log.LogFlush()
 				err = errors.NewErrorf("cannot listen pprof %v err %v", profPort, err)
