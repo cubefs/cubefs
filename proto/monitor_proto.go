@@ -42,9 +42,11 @@ const (
 	ActionMarkDelete
 	ActionBatchMarkDelete
 	ActionFlushDelete
+	ActionDiskIOCreate
 	ActionDiskIOWrite
 	ActionDiskIORead
-	ActionDiskIODelete
+	ActionDiskIORemove
+	ActionDiskIOPunch
 	ActionDiskIOSync
 )
 
@@ -57,10 +59,12 @@ var ActionDataMap = map[int]string{
 	ActionMarkDelete:      "markDelete",
 	ActionBatchMarkDelete: "batchMarkDelete",
 	ActionFlushDelete:     "flushDelete",
-	ActionDiskIOWrite:     "DiskIOWrite",
-	ActionDiskIORead:      "DiskIORead",
-	ActionDiskIODelete:    "DiskIODelete",
-	ActionDiskIOSync:      "DiskIOSync",
+	ActionDiskIOCreate:    "diskIOCreate",
+	ActionDiskIOWrite:     "diskIOWrite",
+	ActionDiskIORead:      "diskIORead",
+	ActionDiskIORemove:    "diskIORemove",
+	ActionDiskIOPunch:     "diskIOPunch",
+	ActionDiskIOSync:      "diskIOSync",
 }
 
 const (

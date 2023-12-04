@@ -278,7 +278,7 @@ func (s *ExtentStore) Create(extentID, inode uint64, putCache bool) (err error) 
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 
 	var headerHandler = s.getExtentHeaderHandler(extentID)
-	if e, err = CreateExtent(name, extentID, headerHandler); err != nil {
+	if e, err = CreateExtent(name, extentID, headerHandler, e.interceptors); err != nil {
 		return err
 	}
 	if putCache {
@@ -430,7 +430,7 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	err = e.Write(data, offset, size, crc, writeType, isSync, s.interceptors.Get(IOWrite))
+	err = e.Write(data, offset, size, crc, writeType, isSync)
 	if err != nil {
 		return err
 	}
@@ -465,7 +465,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return
 	}
-	crc, err = e.Read(nbuf, offset, size, isRepairRead, force, s.interceptors.Get(IORead))
+	crc, err = e.Read(nbuf, offset, size, isRepairRead, force)
 
 	return
 }
@@ -493,7 +493,7 @@ func (s *ExtentStore) tinyDelete(e *Extent, offset, size int64) (err error) {
 	var (
 		hasDelete bool
 	)
-	if hasDelete, err = e.DeleteTiny(offset, size, s.interceptors.Get(IORemove)); err != nil {
+	if hasDelete, err = e.DeleteTiny(offset, size); err != nil {
 		return
 	}
 	if hasDelete {
@@ -707,7 +707,7 @@ func (s *ExtentStore) Close() {
 
 	// Release cache
 	s.deletionQueue.Close()
-	s.cache.Flush(nil, s.interceptors.Get(IOSync))
+	s.cache.Flush(nil)
 	s.cache.Close()
 	s.tinyExtentDeleteFp.Sync()
 	s.tinyExtentDeleteFp.Close()
@@ -1238,7 +1238,7 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 		return nil
 	}
 
-	if err = e.TinyExtentRecover(data, offset, size, crc, isEmptyPacket); err != nil {
+	if err = e.TinyExtentRecover(data, offset, size, isEmptyPacket); err != nil {
 		return err
 	}
 	s.infoStore.UpdateInfoFromExtent(e, 0)
@@ -1363,7 +1363,7 @@ func (s *ExtentStore) Flush(limiter *rate.Limiter) (err error) {
 	if err = s.metadataFp.Sync(); err != nil {
 		return
 	}
-	s.cache.Flush(limiter, s.interceptors.Get(IOSync))
+	s.cache.Flush(limiter)
 	return
 }
 
@@ -1419,7 +1419,7 @@ func (s *ExtentStore) PlaybackTinyDelete() (err error) {
 		if e, err = s.ExtentWithHeader(ei); err != nil {
 			return
 		}
-		if _, err = e.DeleteTiny(int64(offset), int64(size), s.interceptors.Get(IORemove)); err != nil {
+		if _, err = e.DeleteTiny(int64(offset), int64(size)); err != nil {
 			return
 		}
 	}

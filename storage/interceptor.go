@@ -42,9 +42,11 @@ var noopInterceptor = NewFuncInterceptor(nil, nil)
 type IOType int
 
 const (
-	IOWrite IOType = iota
+	IOCreate IOType = iota
+	IOWrite
 	IORead
 	IORemove
+	IOPunch
 	IOSync
 	__types
 )

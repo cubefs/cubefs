@@ -162,14 +162,16 @@ type Extent struct {
 	sync.Mutex
 
 	headerHandler HeaderHandler
+	interceptors  IOInterceptors
 }
 
 // CreateExtent create an new Extent to disk.
-func CreateExtent(name string, extentID uint64, handler HeaderHandler) (*Extent, error) {
+func CreateExtent(name string, extentID uint64, handler HeaderHandler, interceptors IOInterceptors) (*Extent, error) {
 	var e = &Extent{
 		extentID:      extentID,
 		filePath:      name,
 		headerHandler: handler,
+		interceptors:  interceptors,
 	}
 	if err := e.create(); err != nil {
 		return nil, err
@@ -219,7 +221,14 @@ func (e *Extent) Exist() (exist bool) {
 // create init extent data info filesystem. If entry file exist and overwrite is true,
 // this operation will clear all data of exist entry file and initialize extent header data.
 func (e *Extent) create() (err error) {
-	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0666); err != nil {
+	var interceptor = e.interceptors.Get(IOCreate)
+	var ctx context.Context
+	if ctx, err = interceptor.Before(); err != nil {
+		return
+	}
+	e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0666)
+	interceptor.After(ctx, 0, err)
+	if err != nil {
 		return err
 	}
 
@@ -295,7 +304,7 @@ func IsAppendWrite(writeType int) bool {
 }
 
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, interceptor Interceptor) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
 	e.Lock()
 	defer e.Unlock()
 	index := offset + size
@@ -303,6 +312,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 	if IsAppendWrite(writeType) && offset != e.dataSize {
 		return ParameterMismatchError
 	}
+	var interceptor = e.interceptors.Get(IOWrite)
 	var ctx context.Context
 	if ctx, err = interceptor.Before(); err != nil {
 		return
@@ -331,7 +341,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, interceptor Interceptor) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
 	defer func() {
 		if err == nil {
 			atomic.StoreInt32(&e.modified, 1)
@@ -339,7 +349,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		}
 	}()
 	if proto.IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, writeType, isSync, interceptor)
+		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
 		return
 	}
 
@@ -349,6 +359,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 	if err = e.checkWriteParameter(offset, size, writeType); err != nil {
 		return
 	}
+	var interceptor = e.interceptors.Get(IOWrite)
 	var ctx context.Context
 	if ctx, err = interceptor.Before(); err != nil {
 		return
@@ -398,13 +409,14 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 }
 
 // Read reads data from an extent.
-func (e *Extent) Read(data []byte, offset, size int64, isRepairRead, force bool, interceptor Interceptor) (crc uint32, err error) {
+func (e *Extent) Read(data []byte, offset, size int64, isRepairRead, force bool) (crc uint32, err error) {
 	if proto.IsTinyExtent(e.extentID) {
-		return e.readTiny(data, offset, size, isRepairRead, interceptor)
+		return e.readTiny(data, offset, size, isRepairRead)
 	}
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
+	var interceptor = e.interceptors.Get(IORead)
 	var ctx context.Context
 	if ctx, err = interceptor.Before(); err != nil {
 		return
@@ -438,7 +450,8 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead, force bool,
 }
 
 // readTiny read data from a tiny extent.
-func (e *Extent) readTiny(data []byte, offset, size int64, isRepairRead bool, interceptor Interceptor) (crc uint32, err error) {
+func (e *Extent) readTiny(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
+	var interceptor = e.interceptors.Get(IORead)
 	var ctx context.Context
 	if ctx, err = interceptor.Before(); err != nil {
 		return
@@ -550,7 +563,7 @@ func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
 }
 
 // Flush synchronizes data to the disk.
-func (e *Extent) Flush(limiter *rate.Limiter, interceptor Interceptor) (err error) {
+func (e *Extent) Flush(limiter *rate.Limiter) (err error) {
 	if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
 		var modifies = int(atomic.LoadInt64(&e.modifies))
 		if limiter != nil {
@@ -560,6 +573,7 @@ func (e *Extent) Flush(limiter *rate.Limiter, interceptor Interceptor) (err erro
 			}
 			_ = limiter.WaitN(context.Background(), modifies)
 		}
+		var interceptor = e.interceptors.Get(IOSync)
 		var ctx context.Context
 		if ctx, err = interceptor.Before(); err != nil {
 			return
@@ -632,7 +646,7 @@ const (
 )
 
 // DeleteTiny deletes a tiny extent.
-func (e *Extent) DeleteTiny(offset, size int64, interceptor Interceptor) (hasDelete bool, err error) {
+func (e *Extent) DeleteTiny(offset, size int64) (hasDelete bool, err error) {
 	if int(offset)%PageSize != 0 {
 		return false, ParameterMismatchError
 	}
@@ -655,6 +669,7 @@ func (e *Extent) DeleteTiny(offset, size int64, interceptor Interceptor) (hasDel
 		hasDelete = true
 		return true, nil
 	}
+	var interceptor = e.interceptors.Get(IOPunch)
 	var ctx context.Context
 	if ctx, err = interceptor.Before(); err != nil {
 		return
@@ -670,7 +685,7 @@ func (e *Extent) getRealBlockCnt() (blockNum int64) {
 	return stat.Blocks
 }
 
-func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, isEmptyPacket bool) (err error) {
+func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, isEmptyPacket bool) (err error) {
 	e.Lock()
 	defer e.Unlock()
 	if !proto.IsTinyExtent(e.extentID) {
@@ -680,10 +695,13 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		return fmt.Errorf("error empty packet on (%v) offset(%v) size(%v)"+
 			" isEmptyPacket(%v)  e.dataSize(%v)", e.file.Name(), offset, size, isEmptyPacket, e.dataSize)
 	}
-	log.LogDebugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
-		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("before file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+			"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+	}
 	if isEmptyPacket {
-		finfo, err := e.file.Stat()
+		var finfo os.FileInfo
+		finfo, err = e.file.Stat()
 		if err != nil {
 			return err
 		}
@@ -694,9 +712,22 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		if err = syscall.Ftruncate(int(e.file.Fd()), offset+size); err != nil {
 			return err
 		}
+		var interceptor = e.interceptors.Get(IOPunch)
+		var ctx context.Context
+		if ctx, err = interceptor.Before(); err != nil {
+			return
+		}
 		err = fallocate(int(e.file.Fd()), FallocFLPunchHole|FallocFLKeepSize, offset, size)
+		interceptor.After(ctx, 0, err)
 	} else {
-		_, err = e.file.WriteAt(data[:size], int64(offset))
+		var interceptor = e.interceptors.Get(IOWrite)
+		var ctx context.Context
+		if ctx, err = interceptor.Before(); err != nil {
+			return
+		}
+		var n int
+		n, err = e.file.WriteAt(data[:size], int64(offset))
+		interceptor.After(ctx, int64(n), err)
 	}
 	if err != nil {
 		return
@@ -706,8 +737,10 @@ func (e *Extent) TinyExtentRecover(data []byte, offset, size int64, crc uint32, 
 		watermark = watermark + (PageSize - watermark%PageSize)
 	}
 	e.dataSize = watermark
-	log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
-		"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("after file (%v) getRealBlockNo (%v) isEmptyPacket(%v)"+
+			"offset(%v) size(%v) e.datasize(%v)", e.filePath, e.getRealBlockCnt(), isEmptyPacket, offset, size, e.dataSize)
+	}
 
 	return
 }

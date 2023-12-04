@@ -17,7 +17,6 @@ package datanode
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/topology"
 	"io/ioutil"
 	"math"
 	"os"
@@ -31,6 +30,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/topology"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
@@ -146,9 +147,9 @@ type Disk struct {
 
 	latestFlushTimeOnInit int64 // Disk 实例初始化时加载到的该磁盘最近一次Flush数据的时间
 
-	topoManager      *topology.TopologyManager
-	monitorData      []*statistics.MonitorData
-	interceptors     storage.IOInterceptors
+	topoManager  *topology.TopologyManager
+	monitorData  []*statistics.MonitorData
+	interceptors storage.IOInterceptors
 
 	// sfx compressible ssd attribute
 	IsSfx             bool
@@ -227,70 +228,63 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 }
 
 func (d *Disk) initInterceptors() {
-	var (
-		unifiedDiskPath = strings.Trim(strings.ReplaceAll(d.Path, "/", "_"), "_")
-
-		tpKeyDiskIOWrite  = fmt.Sprintf("diskwrite_%s", unifiedDiskPath)
-		tpKeyDiskIORead   = fmt.Sprintf("diskread_%s", unifiedDiskPath)
-		tpKeyDiskIODelete = fmt.Sprintf("diskdelete_%s", unifiedDiskPath)
-		tpKeyDiskIOSync   = fmt.Sprintf("disksync_%s", unifiedDiskPath)
-	)
 	const (
-		ctxKeyExporterTPObject = byte(0)
-		ctxKeyMonitorTPObject  = byte(1)
+		ctxKeyExporterTP byte = 0x00
+		ctxKeyMonitorTP  byte = 0x01
 	)
-	d.interceptors.Register(storage.IOWrite,
-		storage.NewFuncInterceptor(
-			func() (ctx context.Context, err error) {
-				ctx = context.Background()
-				ctx = context.WithValue(ctx, ctxKeyExporterTPObject, exporter.NewModuleTPUs(tpKeyDiskIOWrite))
-				ctx = context.WithValue(ctx, ctxKeyMonitorTPObject, d.monitorData[proto.ActionDiskIOWrite].BeforeTp())
-				return
-			},
-			func(ctx context.Context, n int64, err error) {
-				d.triggerDiskError(err)
-				ctx.Value(ctxKeyExporterTPObject).(exporter.TP).Set(nil)
-				ctx.Value(ctxKeyMonitorTPObject).(*statistics.TpObject).AfterTp(uint64(n))
-			}))
-	d.interceptors.Register(storage.IORead,
-		storage.NewFuncInterceptor(
-			func() (ctx context.Context, err error) {
-				ctx = context.Background()
-				ctx = context.WithValue(ctx, ctxKeyExporterTPObject, exporter.NewModuleTPUs(tpKeyDiskIORead))
-				ctx = context.WithValue(ctx, ctxKeyMonitorTPObject, d.monitorData[proto.ActionDiskIORead].BeforeTp())
-				return
-			},
-			func(ctx context.Context, n int64, err error) {
-				d.triggerDiskError(err)
-				ctx.Value(ctxKeyExporterTPObject).(exporter.TP).Set(nil)
-				ctx.Value(ctxKeyMonitorTPObject).(*statistics.TpObject).AfterTp(uint64(n))
-			}))
-	d.interceptors.Register(storage.IORemove,
-		storage.NewFuncInterceptor(
-			func() (ctx context.Context, err error) {
-				ctx = context.Background()
-				ctx = context.WithValue(ctx, ctxKeyExporterTPObject, exporter.NewModuleTPUs(tpKeyDiskIODelete))
-				ctx = context.WithValue(ctx, ctxKeyMonitorTPObject, d.monitorData[proto.ActionDiskIODelete].BeforeTp())
-				return
-			},
-			func(ctx context.Context, n int64, err error) {
-				d.triggerDiskError(err)
-				ctx.Value(ctxKeyExporterTPObject).(exporter.TP).Set(nil)
-				ctx.Value(ctxKeyMonitorTPObject).(*statistics.TpObject).AfterTp(uint64(n))
-			}))
-	d.interceptors.Register(storage.IOSync,
-		storage.NewFuncInterceptor(
-			func() (ctx context.Context, err error) {
-				ctx = context.Background()
-				ctx = context.WithValue(ctx, ctxKeyExporterTPObject, exporter.NewModuleTPUs(tpKeyDiskIOSync))
-				ctx = context.WithValue(ctx, ctxKeyMonitorTPObject, d.monitorData[proto.ActionDiskIOSync].BeforeTp())
-				return
-			},
-			func(ctx context.Context, n int64, err error) {
-				d.triggerDiskError(err)
-				ctx.Value(ctxKeyExporterTPObject).(exporter.TP).Set(nil)
-				ctx.Value(ctxKeyMonitorTPObject).(*statistics.TpObject).AfterTp(uint64(n))
-			}))
+	type __pair struct {
+		Typ         storage.IOType
+		ExporterKey string
+		MonitorAct  int
+	}
+	var unifiedDiskPath = strings.Trim(strings.ReplaceAll(d.Path, "/", "_"), "_")
+	var pairs = []__pair{
+		{
+			Typ:         storage.IOCreate,
+			ExporterKey: fmt.Sprintf("diskcreate_%s", unifiedDiskPath),
+			MonitorAct:  proto.ActionDiskIOCreate,
+		},
+		{
+			Typ:         storage.IOWrite,
+			ExporterKey: fmt.Sprintf("diskwrite_%s", unifiedDiskPath),
+			MonitorAct:  proto.ActionDiskIOWrite,
+		},
+		{
+			Typ:         storage.IORead,
+			ExporterKey: fmt.Sprintf("diskread_%s", unifiedDiskPath),
+			MonitorAct:  proto.ActionDiskIORead,
+		},
+		{
+			Typ:         storage.IORemove,
+			ExporterKey: fmt.Sprintf("diskremove_%s", unifiedDiskPath),
+			MonitorAct:  proto.ActionDiskIORemove,
+		},
+		{
+			Typ:         storage.IOPunch,
+			ExporterKey: fmt.Sprintf("diskpunch_%s", unifiedDiskPath),
+			MonitorAct:  proto.ActionDiskIOPunch,
+		},
+		{
+			Typ:         storage.IOSync,
+			ExporterKey: fmt.Sprintf("disksync_%s", unifiedDiskPath),
+			MonitorAct:  proto.ActionDiskIOSync,
+		},
+	}
+	for _, keys := range pairs {
+		d.interceptors.Register(keys.Typ,
+			storage.NewFuncInterceptor(
+				func() (ctx context.Context, err error) {
+					ctx = context.Background()
+					ctx = context.WithValue(ctx, ctxKeyExporterTP, exporter.NewModuleTPUs(keys.ExporterKey))
+					ctx = context.WithValue(ctx, ctxKeyMonitorTP, d.monitorData[keys.MonitorAct].BeforeTp())
+					return
+				},
+				func(ctx context.Context, n int64, err error) {
+					d.triggerDiskError(err)
+					ctx.Value(ctxKeyExporterTP).(exporter.TP).Set(nil)
+					ctx.Value(ctxKeyMonitorTP).(*statistics.TpObject).AfterTp(uint64(n))
+				}))
+	}
 }
 
 func (d *Disk) SetForceFlushFDParallelism(parallelism uint64) {
