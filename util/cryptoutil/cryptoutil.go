@@ -237,6 +237,7 @@ func CreateClientX(cert *[]byte) (client *http.Client, err error) {
 	client = &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
+				MinVersion:         tls.VersionTLS12,
 				RootCAs:            caCertPool,
 				InsecureSkipVerify: false,
 			},

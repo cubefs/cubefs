@@ -19,7 +19,6 @@ import (
 	"fmt"
 	syslog "log"
 	"net"
-	_ "net/http/pprof"
 	"os"
 	"path"
 	"strconv"
