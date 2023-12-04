@@ -125,7 +125,7 @@ func ClusterNotLocHas(mt *MetaNode, t *testing.T) {
         os.RemoveAll(mt.metadataDir)
     }()
     os.Mkdir(mt.metadataDir, 0655)
-    os.WriteFile(path.Join(mt.metadataDir, ".clusterAuth"), []byte("test"), 0655)
+    os.WriteFile(path.Join(proto.AuthFilePath, masterSDK.AuthFileName + proto.RoleMeta), []byte("test"), 0655)
 
     if err := mt.register(); err != nil {
         t.Fatalf("reg metanode failed, %s", err.Error())
@@ -152,7 +152,7 @@ func ClusterHasLocHas(mt *MetaNode, t *testing.T) {
     }()
     ClusterHasAuthKey = true
     os.Mkdir(mt.metadataDir, 0655)
-    os.WriteFile(path.Join(mt.metadataDir, ".clusterAuth"),
+    os.WriteFile(path.Join(proto.AuthFilePath, masterSDK.AuthFileName + proto.RoleMeta),
                     []byte(hex.EncodeToString(md5.New().Sum([]byte("test")))), 0655)
 
     if err := mt.register(); err != nil {
@@ -170,7 +170,7 @@ func GetIpFailed(mt *MetaNode, t *testing.T) {
     GetIpErrorFlag = true
 
     os.Mkdir(mt.metadataDir, 0655)
-    os.WriteFile(path.Join(mt.metadataDir, ".clusterAuth"), []byte("test"), 0655)
+    os.WriteFile(path.Join(proto.AuthFilePath, masterSDK.AuthFileName + proto.RoleMeta), []byte("test"), 0655)
     if err := mt.register(); err == nil {
         t.Fatalf("local failed: reg metanode expect failed, but now success")
     } else {

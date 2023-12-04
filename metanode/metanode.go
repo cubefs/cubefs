@@ -40,7 +40,6 @@ import (
 )
 
 var (
-	clusterInfo        *proto.ClusterInfo
 	masterClient       *masterSDK.MasterClient
 	masterDomainClient *masterSDK.MasterClient
 	configTotalMem     uint64

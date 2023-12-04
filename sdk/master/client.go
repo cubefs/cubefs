@@ -440,7 +440,7 @@ func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *R
 	rsp = &proto.RegNodeRsp{}
 	rsp, err = mc.innerRegNodeWithNewInterface(authKeyPath, addr, regInfo)
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
+		if strings.Contains(err.Error(), http.StatusText(http.StatusNotFound)) {
 			if rsp, err = mc.innerRegNodeWithOldInterface(authKeyPath, addr, regInfo); err == nil {
 				//rsp.Cluster = clusterInfo.Cluster
 				rsp.Addr = addr + ":" + regInfo.SrvPort
