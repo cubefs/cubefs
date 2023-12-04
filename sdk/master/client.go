@@ -229,8 +229,8 @@ func (c *MasterClient) serveRequest(r *request) (respData []byte, contentType st
 			}
 			log.LogWarnf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
 				resp.Request.URL.String(), host, stateCode, strings.Replace(string(respData), "\n", "", -1))
-			err = fmt.Errorf("serveRequest: unknown status(%v) host(%v) uri(%v) body(%s)", stateCode, resp.Request.URL.String(),
-				host, strings.Replace(string(respData), "\n", "", -1))
+			err = fmt.Errorf("serveRequest: unknown status(%v) host(%v) uri(%v) body(%s), errMsg(%s)", stateCode, host, resp.Request.URL.String(),
+				 strings.Replace(string(respData), "\n", "", -1), http.StatusText(stateCode))
 			continue
 		}
 	}
@@ -372,24 +372,21 @@ func NewMasterClientFromString(masterAddr string, useSSL bool) *MasterClient {
 	return NewMasterClient(masters, useSSL)
 }
 
-func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
-	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
-		err = fmt.Errorf("invalid para, role or auth key path is nil")
-		return
-	}
+func (mc *MasterClient) innerRegNodeWithNewInterface(authKeyPath, ip string, regInfo *RegNodeInfoReq) (rsp *proto.RegNodeRsp, err error) {
 	var req          *request
 	var data         []byte
 	var localAuthKey string
 
+	rsp = &proto.RegNodeRsp{}
 	authFilePath := path.Join(authKeyPath, AuthFileName + regInfo.Role)
 	if _, stErr := os.Stat(authFilePath); stErr != nil {
 		//first start
 		os.MkdirAll(authKeyPath, 0666)
-		req, err = mc.NodeAPI().buildRegReq(regInfo, "", addr)
+		req, err = mc.NodeAPI().buildNewRegReq(regInfo, "", ip)
 	} else {
 		authKeyBuf, _ := os.ReadFile(authFilePath)
 		localAuthKey = string(authKeyBuf)
-		req, err = mc.NodeAPI().buildRegReq(regInfo, localAuthKey, addr)
+		req, err = mc.NodeAPI().buildNewRegReq(regInfo, localAuthKey, ip)
 	}
 
 	if err != nil || req == nil {
@@ -400,7 +397,7 @@ func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *R
 		return
 	}
 
-	rsp = &proto.RegNodeRsp{}
+
 	err = json.Unmarshal(data, rsp)
 
 	if rsp.AuthKey != "" && localAuthKey != "" && rsp.AuthKey != localAuthKey {
@@ -414,32 +411,13 @@ func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *R
 	return
 }
 
-func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
-	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
-		err = fmt.Errorf("invalid para, role or auth key path is nil")
-		return
-	}
-	var clusterInfo  *proto.ClusterInfo
+func (mc *MasterClient) innerRegNodeWithOldInterface(authKeyPath, ip string, regInfo *RegNodeInfoReq) (rsp *proto.RegNodeRsp, err error) {
 	var req          *request
 	var data         []byte
 	var localAuthKey string
 
-	clusterInfo, err = mc.adminAPI.GetClusterInfo()
-	if err != nil {
-		log.LogErrorf("[RegNodeInfo] %s", err.Error())
-		return
-	}
-
-	authFilePath := path.Join(authKeyPath, AuthFileName + regInfo.Role)
-	if _, stErr := os.Stat(authFilePath); stErr != nil {
-		//first start
-		os.MkdirAll(authKeyPath, 0666)
-		req, err = mc.NodeAPI().buildRegReq(regInfo, "", clusterInfo.Ip)
-	} else {
-		authKeyBuf, _ := os.ReadFile(authFilePath)
-		localAuthKey = string(authKeyBuf)
-		req, err = mc.NodeAPI().buildRegReq(regInfo, localAuthKey, clusterInfo.Ip)
-	}
+	rsp = &proto.RegNodeRsp{}
+	req, err = mc.NodeAPI().buildOldRegReq(regInfo, localAuthKey, ip)
 
 	if err != nil || req == nil {
 		return
@@ -449,16 +427,53 @@ func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)
 		return
 	}
 
-	rsp = &proto.RegNodeRsp{}
-	err = json.Unmarshal(data, rsp)
+	rsp.Id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
 
-	if rsp.AuthKey != "" && localAuthKey != "" && rsp.AuthKey != localAuthKey {
-		err = fmt.Errorf("auth key check failed, cluster:%s, local:%s", rsp.AuthKey, localAuthKey)
-		return nil, err
+func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
+	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
+		err = fmt.Errorf("invalid para, role or auth key path is nil")
+		return
 	}
 
-	if err == nil && rsp.AuthKey != "" {
-		_ = os.WriteFile(authFilePath, []byte(rsp.AuthKey), 0666)
+	rsp = &proto.RegNodeRsp{}
+	rsp, err = mc.innerRegNodeWithNewInterface(authKeyPath, addr, regInfo)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			if rsp, err = mc.innerRegNodeWithOldInterface(authKeyPath, addr, regInfo); err == nil {
+				//rsp.Cluster = clusterInfo.Cluster
+				rsp.Addr = addr + ":" + regInfo.SrvPort
+			}
+			return
+		}
+	}
+	return
+}
+
+func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
+	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
+		err = fmt.Errorf("invalid para, role or auth key path is nil")
+		return
+	}
+	var clusterInfo  *proto.ClusterInfo
+
+	clusterInfo, err = mc.adminAPI.GetClusterInfo()
+	if err != nil {
+		log.LogErrorf("[RegNodeInfo] %s", err.Error())
+		return
+	}
+
+	rsp = &proto.RegNodeRsp{}
+	rsp, err = mc.innerRegNodeWithNewInterface(authKeyPath, clusterInfo.Ip, regInfo)
+	if err != nil {
+		if strings.Contains(err.Error(), http.StatusText(http.StatusNotFound)) {
+			if rsp, err = mc.innerRegNodeWithOldInterface(authKeyPath, clusterInfo.Ip, regInfo); err == nil {
+				rsp.Cluster = clusterInfo.Cluster
+				rsp.Addr = clusterInfo.Ip + ":" + regInfo.SrvPort
+			}
+			return
+		}
 	}
 	return
 }

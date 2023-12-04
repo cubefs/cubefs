@@ -58,14 +58,7 @@ func getReqPathByRole(role string) string{
 	return ""
 }
 
-func (api *NodeAPI) buildRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (req *request, err error){
-	reqPath := getReqPathByRole(regInfo.Role)
-	if reqPath == "" {
-		err = fmt.Errorf("invalid para, role[%s] invalid", regInfo.Role)
-		return
-	}
-
-	req = newAPIRequest(http.MethodGet, proto.RegNode)
+func (api *NodeAPI) addRegParam(regInfo *RegNodeInfoReq, authKey, addr string, req *request) {
 	req.addParam("module", regInfo.Role)
 	req.addParam("addr", addr + ":" + regInfo.SrvPort)
 	if regInfo.ZoneName != "" {
@@ -84,6 +77,29 @@ func (api *NodeAPI) buildRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (
 		req.addParam("authenticate", authKey)
 	}
 
+}
+
+func (api *NodeAPI) buildNewRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (req *request, err error){
+	reqPath := getReqPathByRole(regInfo.Role)
+	if reqPath == "" {
+		err = fmt.Errorf("invalid para, role[%s] invalid", regInfo.Role)
+		return
+	}
+
+	req = newAPIRequest(http.MethodGet, proto.RegNode)
+	api.addRegParam(regInfo, authKey, addr, req)
+	return
+}
+
+func (api *NodeAPI) buildOldRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (req *request, err error){
+	reqPath := getReqPathByRole(regInfo.Role)
+	if reqPath == "" {
+		err = fmt.Errorf("invalid para, role[%s] invalid", regInfo.Role)
+		return
+	}
+
+	req = newAPIRequest(http.MethodGet, reqPath)
+	api.addRegParam(regInfo, authKey, addr, req)
 	return
 }
 

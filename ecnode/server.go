@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"regexp"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -128,7 +129,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 	repl.SetConnectPool(gConnPool)
 	// register to master
-	e.register()
+	if err = e.register(); err != nil {
+		return
+	}
 
 	// TODO create space manager
 	e.startSpaceManager(cfg)
@@ -255,49 +258,34 @@ func (e *EcNode) registerHandler() {
 	server.ListenAndServe()
 }
 
-func (e *EcNode) register() {
-	timer := time.NewTimer(0)
-
-	for {
-		select {
-		case <-timer.C:
-			ci, err := MasterClient.AdminAPI().GetClusterInfo()
-			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).",
-					MasterClient.Leader(), err)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-
-			masterAddr := MasterClient.Leader()
-			e.clusterID = ci.Cluster
-			if localIP == "" {
-				localIP = string(ci.Ip)
-			}
-			e.localServerAddr = fmt.Sprintf("%s:%s", localIP, e.port)
-			if !unit.IsIPV4(localIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
-					localIP, masterAddr)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-
-			nodeID, err := MasterClient.NodeAPI().AddEcNode(e.localServerAddr, e.httpPort, e.cellName, EcNodeLatestVersion)
-			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
-					masterAddr, err)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-
-			e.nodeID = nodeID
-			log.LogDebugf("register: register EcNode: nodeID(%v)", e.nodeID)
-			return
-		case <-e.stopC:
-			timer.Stop()
-			return
+func (e *EcNode) register() (err error){
+	var (
+		regInfo = &masterSDK.RegNodeInfoReq{
+			Role:     proto.RoleCodec,
+			Version:  EcNodeLatestVersion,
+			ZoneName: e.cellName,
+			SrvPort:  e.port,
+			ProfPort: e.httpPort,
 		}
+		regRsp *proto.RegNodeRsp
+	)
+
+
+	if regRsp, err = MasterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
+		return
 	}
+	ipAddr := strings.Split(regRsp.Addr, ":")[0]
+	if !unit.IsIPV4(ipAddr) {
+		err = fmt.Errorf("got invalid local IP %v fetched from Master", ipAddr)
+		return
+	}
+	e.clusterID = regRsp.Cluster
+	if localIP == "" {
+		localIP = ipAddr
+	}
+	e.localServerAddr = fmt.Sprintf("%s:%v", localIP, e.port)
+	e.nodeID = regRsp.Id
+	return
 }
 
 func (e *EcNode) getEcScrubInfo() {

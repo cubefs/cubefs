@@ -77,6 +77,16 @@ func mockRegNode(w http.ResponseWriter, r *http.Request) {
         AuthKey: checkKey}))
 }
 
+func mockMetaNodeAdd(w http.ResponseWriter, r *http.Request) {
+    if RegErrorFlag {
+        mockSendReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "invalid auth key"})
+        return
+    }
+    id := 10
+
+    mockSendReply(w, r, newSuccessHTTPReply(id))
+}
+
 func mockInitHttpListen(port int) net.Listener{
     profNetListener, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
     if err != nil {
@@ -90,9 +100,14 @@ func mockInitHttpListen(port int) net.Listener{
     return profNetListener
 }
 
-func mockRegHttpReq() {
-    http.HandleFunc("/admin/getIp", mockGetIp)
-    http.HandleFunc("/node/reg",    mockRegNode)
+func mockNewMasterHttpReq() {
+    http.HandleFunc(proto.AdminGetIP, mockGetIp)
+    http.HandleFunc(proto.RegNode,    mockRegNode)
+}
+
+func mockOldMasterHttpReq() {
+    http.HandleFunc(proto.AdminGetIP, mockGetIp)
+    http.HandleFunc(proto.AddMetaNode, mockMetaNodeAdd)
 }
 
 func ClusterNotLocNot(mt *MetaNode, t *testing.T) {
@@ -198,22 +213,44 @@ func ClusterCheckError(mt *MetaNode, t *testing.T) {
     }
 }
 
-func TestRegMetaNode(t *testing.T) {
-    var httpListenner net.Listener
+func TestRegMetaNodeOld(t *testing.T) {
+    var oldMaster net.Listener
     defer func() {
-        if httpListenner != nil {
-            httpListenner.Close()
+        if oldMaster != nil {
+            oldMaster.Close()
         }
     }()
-    httpListenner = mockInitHttpListen(18000)
-    mockRegHttpReq()
+    oldMaster = mockInitHttpListen(18001)
+    mockOldMasterHttpReq()
+    masterClient = masterSDK.NewMasterClient([]string{"127.0.0.1:18001"}, false)
+    ClusterHasAuthKey = false
+    mt := &MetaNode{
+        zoneName: "zone",
+        listen: "9092",
+        metadataDir: proto.AuthFilePath,
+    }
+
+    ClusterNotLocNot(mt, t)
+    ClusterCheckError(mt, t)
+}
+
+func TestRegMetaNodeNew(t *testing.T) {
+    var newMaster net.Listener
+
+    defer func() {
+        if newMaster != nil {
+            newMaster.Close()
+        }
+    }()
+    newMaster = mockInitHttpListen(18000)
+    mockNewMasterHttpReq()
     masterClient = masterSDK.NewMasterClient([]string{"127.0.0.1:18000"}, false)
 
     ClusterHasAuthKey = false
     mt := &MetaNode{
         zoneName: "zone",
         listen: "9092",
-        metadataDir: "./test_mt1/",
+        metadataDir: proto.AuthFilePath,
     }
 
     ClusterNotLocNot(mt, t)

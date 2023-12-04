@@ -16,17 +16,16 @@ package codecnode
 
 import (
 	"fmt"
-	"net"
-	"regexp"
-	"sync"
-	"time"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"net"
+	"regexp"
+	"strings"
+	"sync"
 )
 
 var (
@@ -68,7 +67,9 @@ func (s *CodecServer) Start(cfg *config.Config) (err error) {
 	}
 
 	s.stopC = make(chan bool, 0)
-	s.register(cfg)
+	if err = s.register(cfg); err != nil {
+		return
+	}
 
 	s.wg.Add(1)
 
@@ -153,49 +154,31 @@ func (s *CodecServer) serverConn(conn net.Conn) {
 	packetProcessor.ServerConn()
 }
 
-func (s *CodecServer) register(cfg *config.Config) {
-	timer := time.NewTimer(0)
-
-	for {
-		select {
-		case <-timer.C:
-			// Get cluster info
-			ci, err := MasterClient.AdminAPI().GetClusterInfo()
-			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot get ip from master(%v) err(%v).", MasterClient.Leader(), err)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-
-			masterAddr := MasterClient.Leader()
-			s.clusterID = ci.Cluster
-
-			// Get local ip address
-			if LocalIP == "" {
-				LocalIP = string(ci.Ip)
-			}
-			if !unit.IsIPV4(LocalIP) {
-				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).", LocalIP, masterAddr)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
-
-			// Get node id allocated by master
-			nodeID, err := MasterClient.NodeAPI().AddCodecNode(fmt.Sprintf("%s:%v", LocalIP, s.port), codecNodeLastVersion)
-			if err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master(%v) err(%v).", masterAddr, err)
-				timer.Reset(2 * time.Second)
-				continue
-			}
-			s.nodeID = nodeID
-
-			// Success
-			log.LogDebugf("register: register CodecNode: nodeID(%v)", s.nodeID)
-			return
-		case <-s.stopC:
-			timer.Stop()
-			return
+func (s *CodecServer) register(cfg *config.Config) (err error){
+	var (
+		regInfo = &masterSDK.RegNodeInfoReq{
+			Role:     proto.RoleCodec,
+			Version:  codecNodeLastVersion,
+			SrvPort:  s.port,
 		}
+		regRsp *proto.RegNodeRsp
+	)
+
+
+	if regRsp, err = MasterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
+		return
 	}
+	ipAddr := strings.Split(regRsp.Addr, ":")[0]
+	if !unit.IsIPV4(ipAddr) {
+		err = fmt.Errorf("got invalid local IP %v fetched from Master", ipAddr)
+		return
+	}
+	s.clusterID = regRsp.Cluster
+	if LocalIP == "" {
+		LocalIP = ipAddr
+	}
+	s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
+	s.nodeID = regRsp.Id
+
+	return
 }
