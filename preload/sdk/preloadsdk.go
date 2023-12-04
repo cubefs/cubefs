@@ -19,7 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	"net/http/pprof"
 	"path"
 	gopath "path"
 	"sync"
@@ -94,8 +94,15 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 
 	if config.ProfPort != "" {
 		go func() {
-			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
-			e := http.ListenAndServe(fmt.Sprintf(":%v", config.ProfPort), nil)
+			mux := http.NewServeMux()
+			mux.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+			mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
+			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+			mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+			mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+			mux.Handle("/debug/", http.HandlerFunc(pprof.Index))
+			e := http.ListenAndServe(fmt.Sprintf(":%v", config.ProfPort), mux)
 			if e != nil {
 				log.LogWarnf("newClient newEBSClient cannot listen pprof (%v)", config.ProfPort)
 			}

@@ -19,7 +19,7 @@ import (
 	"fmt"
 	syslog "log"
 	"net/http"
-	_ "net/http/pprof"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"path"
@@ -288,11 +288,18 @@ func main() {
 
 	if profPort != "" {
 		go func() {
-			http.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
-			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
+			mux := http.NewServeMux()
+			mux.HandleFunc(log.SetLogLevelPath, log.SetLogLevel)
+			mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
+			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+			mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+			mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+			mux.Handle("/debug/", http.HandlerFunc(pprof.Index))
+			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mux)
 			if e != nil {
 				log.LogFlush()
-				err = errors.NewErrorf("cannot listen pprof %v err %v", profPort, err)
+				err = errors.NewErrorf("cannot listen pprof %v err %v", profPort, e)
 				syslog.Println(err)
 				daemonize.SignalOutcome(err)
 				os.Exit(1)

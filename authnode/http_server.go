@@ -31,6 +31,7 @@ func (m *Server) startHTTPService() {
 			// not use PKI to verify client certificate
 			// Instead, we use client secret key for authentication
 			cfg := &tls.Config{
+				MinVersion: tls.VersionTLS12,
 				//ClientAuth: tls.RequireAndVerifyClientCert,
 				//ClientCAs:  caCertPool,
 			}

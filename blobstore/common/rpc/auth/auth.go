@@ -27,6 +27,7 @@ const (
 	// md5 need 16 byte
 	TokenKeyLenth = 16
 
+	// #nosec G101
 	TokenHeaderKey = "BLOB-STORE-AUTH-TOKEN"
 )
 
