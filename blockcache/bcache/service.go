@@ -24,7 +24,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"net"
-	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"regexp"
