@@ -278,7 +278,7 @@ func (s *ExtentStore) Create(extentID, inode uint64, putCache bool) (err error) 
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 
 	var headerHandler = s.getExtentHeaderHandler(extentID)
-	if e, err = CreateExtent(name, extentID, headerHandler, e.interceptors); err != nil {
+	if e, err = CreateExtent(name, extentID, headerHandler, s.interceptors); err != nil {
 		return err
 	}
 	if putCache {
@@ -1141,7 +1141,7 @@ func (s *ExtentStore) GetExtentCount() (count int) {
 func (s *ExtentStore) loadExtentFromDisk(extentID uint64, putCache bool) (e *Extent, err error) {
 	name := path.Join(s.dataPath, strconv.Itoa(int(extentID)))
 	var headerHandler = s.getExtentHeaderHandler(extentID)
-	if e, err = OpenExtent(name, extentID, headerHandler); err != nil {
+	if e, err = OpenExtent(name, extentID, headerHandler, s.interceptors); err != nil {
 		return
 	}
 	if !putCache {

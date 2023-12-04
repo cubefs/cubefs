@@ -180,11 +180,12 @@ func CreateExtent(name string, extentID uint64, handler HeaderHandler, intercept
 }
 
 // OpenExtent open an exists Extent from disk.
-func OpenExtent(name string, extentID uint64, handler HeaderHandler) (*Extent, error) {
+func OpenExtent(name string, extentID uint64, handler HeaderHandler, interceptors IOInterceptors) (*Extent, error) {
 	var e = &Extent{
 		extentID:      extentID,
 		filePath:      name,
 		headerHandler: handler,
+		interceptors:  interceptors,
 	}
 	if err := e.open(); err != nil {
 		return nil, err
