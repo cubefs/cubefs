@@ -45,7 +45,7 @@ import (
 
 const (
 	// MaxBloomFilterSize uint64 = 50 * 1024 * 1024 * 1024
-	MaxBloomFilterSize uint64 = 50 * 1024 * 1024 * 1024
+	MaxBloomFilterSize uint64 = 50 * 1024 * 1024
 	MpDir              string = "mp"
 	DpDir              string = "dp"
 	BadDir             string = "bad"
@@ -145,6 +145,21 @@ func setCleanStatus() {
 	}
 }
 
+func backOldDir(dir, volname, dirType string) {
+	normalPath := filepath.Join(dir, volname, dirType, normalDir)
+	_, err := os.Stat(normalPath)
+	if err == nil {
+		backDir := fmt.Sprintf("%s_%d", normalPath, time.Now().Unix())
+		err = os.Rename(normalPath, backDir)
+		if err != nil {
+			slog.Fatalf("reanme dir failed, old %s, new %s, err %s", normalPath, backDir, err.Error())
+		}
+		slog.Printf("backOldDir success, old %s, back dir %s", normalPath, backDir)
+	} else if !os.IsNotExist(err) {
+		slog.Fatalf("stat path %s failed, err %s", normalPath, err.Error())
+	}
+}
+
 func newGetMpExtentsCmd() *cobra.Command {
 	var mpId string
 	// var fromMpId string
@@ -157,6 +172,8 @@ func newGetMpExtentsCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			volname := args[0]
 			dir := args[1]
+
+			backOldDir(dir, volname, MpDir)
 
 			if mpId != "" {
 				getExtentsByMpId(dir, volname, mpId)
@@ -454,8 +471,6 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 	}
 }
 
-var renameOnce = sync.Once{}
-
 func InitLocalDir(dir string, volname string, partitionId string, dirType string) (tinyFilePath string, normalFilePath string, err error) {
 	// tinyPath := filepath.Join(dir, volname, dirType, tinyDir)
 	// if _, err = os.Stat(tinyPath); os.IsNotExist(err) {
@@ -467,21 +482,11 @@ func InitLocalDir(dir string, volname string, partitionId string, dirType string
 
 	normalPath := filepath.Join(dir, volname, dirType, normalDir)
 	_, err = os.Stat(normalPath)
-	if err == nil {
-		renameOnce.Do(func() {
-			backDir := fmt.Sprintf("%s_%d", normalPath, time.Now().Unix())
-			err = os.Rename(normalPath, backDir)
-			if err != nil {
-				slog.Fatalf("reanme dir failed, old %s, new %s, err %s", normalFilePath, backDir, err.Error())
-			}
-		})
-	} else if !os.IsNotExist(err) {
-		slog.Fatalf("stat path %s failed, err %s", normalFilePath, err.Error())
-	}
-
-	if err = os.MkdirAll(normalPath, 0755); err != nil {
-		slog.Fatalf("create dir failed, path %s, err : %v", normalFilePath, err)
-		return
+	if os.IsNotExist(err) {
+		if err = os.MkdirAll(normalPath, 0755); err != nil {
+			slog.Fatalf("create dir failed, path %s, err : %v", normalFilePath, err)
+			return
+		}
 	}
 
 	// tinyFilePath = filepath.Join(tinyPath, partitionId)
@@ -556,6 +561,8 @@ func newGetDpExtentsCmd() *cobra.Command {
 				slog.Fatalf("beforeTime should be at least 3 hours earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
 				return
 			}
+
+			backOldDir(dir, volname, DpDir)
 
 			start := time.Now()
 
@@ -951,6 +958,7 @@ func calcBadNormalExtents(volname, dir string) (err error) {
 	destDir := filepath.Join(dir, volname, BadDir, normalDir)
 	_, err = os.Stat(destDir)
 	if err == nil {
+		// back up old dir
 		backPath := fmt.Sprintf("%s_%d", destDir, time.Now().Unix())
 		err = os.Rename(destDir, backPath)
 		if err != nil {
@@ -1436,6 +1444,18 @@ func newCleanBadExtentsCmd() *cobra.Command {
 					return
 				}
 
+				// back up old dir
+				backDir := filepath.Join(backupDir, volname, normalDir)
+				_, err = os.Stat(backDir)
+				if err == nil {
+					backPath := fmt.Sprintf("%s_%d", backDir, time.Now().Unix())
+					err = os.Rename(backDir, backPath)
+					if err != nil {
+						slog.Fatalf("reanme dir failed, old %s, new %s, err %s", backDir, backPath, err.Error())
+					}
+					slog.Printf("ackOldDir success, old %s, back dir %s", backDir, backPath)
+				}
+
 				if fromDpId != "" {
 					fromDpIdNum, err := strconv.ParseUint(fromDpId, 10, 64)
 					if err != nil {
@@ -1730,23 +1750,19 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent BadNornalExtent, data []byte, readBytes int) (err error) {
 
 	dpDir := filepath.Join(backupDir, volname, normalDir, dpIdStr)
-	log.LogInfof("Write bad extent to dest dir: %s", dpDir)
-
-	backDir := filepath.Join(backupDir, volname, normalDir)
-	_, err = os.Stat(backDir)
-	if err == nil {
-		renameOnce.Do(func() {
-			backPath := fmt.Sprintf("%s_%d", backDir, time.Now().Unix())
-			err = os.Rename(backDir, backPath)
-			if err != nil {
-				slog.Fatalf("reanme dir failed, old %s, new %s, err %s", backDir, backPath, err.Error())
-			}
-		})
-	}
-
-	err = os.MkdirAll(dpDir, 0755)
-	if err != nil {
-		slog.Fatalf("Mkdir failed, dir %s, err: %v", dpDir, err.Error())
+	start := time.Now()
+	defer func() {
+		log.LogInfof("writeBadNormalExtentToBackup: after Write bad extent to dest dir: %s, cost %d ms",
+			dpDir, time.Since(start).Milliseconds())
+	}()
+	_, err = os.Stat(dpDir)
+	if os.IsNotExist(err) {
+		err = os.MkdirAll(dpDir, 0755)
+		if err != nil {
+			slog.Fatalf("Mkdir failed, dir %s, err: %v", dpDir, err.Error())
+		}
+	} else if err != nil {
+		slog.Fatalf("mkdir failed, dir %s, err %s", dpDir, err.Error())
 	}
 
 	extentFile := filepath.Join(dpDir, badExtent.ExtentId)
@@ -1842,6 +1858,12 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 
 func cleanBadNormalExtentFromDp(volname, dir, backupDir string, fromDpId uint64, concurrency uint64) {
 	badNormalDir := filepath.Join(dir, volname, BadDir, normalDir)
+
+	start := time.Now()
+	defer func ()  {
+		slog.Printf("cleanBadNormalExtentFromDp finish, from-dp %d, vol %s, cost %d ms",
+		fromDpId, volname, time.Since(start).Milliseconds())	
+	}()
 
 	fileInfos, err := os.ReadDir(badNormalDir)
 	if err != nil {
