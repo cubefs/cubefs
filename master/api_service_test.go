@@ -1060,9 +1060,9 @@ func TestVolumeEnableAuditLog(t *testing.T) {
 	enableUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, enableKey)
 	disableUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, enableKey)
 	process(disableUrl, t)
-	require.False(t, vol.EnableAuditLog)
+	require.True(t, vol.DisableAuditLog)
 	require.True(t, checkVolAuditLog(name, false))
 	process(enableUrl, t)
-	require.True(t, vol.EnableAuditLog)
+	require.False(t, vol.DisableAuditLog)
 	require.True(t, checkVolAuditLog(name, true))
 }

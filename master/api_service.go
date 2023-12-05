@@ -212,11 +212,11 @@ func (m *Server) setEnableAuditLogForVolume(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	oldEnable := vol.EnableAuditLog
-	vol.EnableAuditLog = status
+	oldStatus := vol.DisableAuditLog
+	vol.DisableAuditLog = !status
 	defer func() {
 		if err != nil {
-			vol.EnableAuditLog = oldEnable
+			vol.DisableAuditLog = oldStatus
 		}
 	}()
 	if err = m.cluster.syncUpdateVol(vol); err != nil {
@@ -2251,7 +2251,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		CacheRule:               vol.CacheRule,
 		PreloadCapacity:         vol.getPreloadCapacity(),
 		TrashInterval:           vol.TrashInterval,
-		EnableAuditLog:          vol.EnableAuditLog,
+		DisableAuditLog:         vol.DisableAuditLog,
 	}
 
 	vol.uidSpaceManager.RLock()

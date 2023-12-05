@@ -110,7 +110,7 @@ type Vol struct {
 	quotaManager            *MasterQuotaManager
 	enableQuota             bool
 	TrashInterval           int64
-	EnableAuditLog          bool
+	DisableAuditLog         bool
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -177,7 +177,7 @@ func newVol(vv volValue) (vol *Vol) {
 	}
 	vol.qosManager.volUpdateMagnify(magnifyQosVal)
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
-	vol.EnableAuditLog = true
+	vol.DisableAuditLog = false
 	return
 }
 
@@ -199,7 +199,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vol.txConflictRetryInterval = proto.DefaultTxConflictRetryInterval
 	}
 	vol.TrashInterval = vv.TrashInterval
-	vol.EnableAuditLog = vv.EnableAuditLog
+	vol.DisableAuditLog = vv.DisableAuditLog
 	return vol
 }
 

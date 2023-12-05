@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"math"
 	"sort"
 	"strconv"
@@ -25,6 +24,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 
@@ -629,7 +630,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			if vol.FollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
 			}
-			if !vol.EnableAuditLog {
+			if vol.DisableAuditLog {
 				hbReq.DisableAuditVols = append(hbReq.DisableAuditVols, vol.Name)
 			}
 
