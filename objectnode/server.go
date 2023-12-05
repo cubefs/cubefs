@@ -77,7 +77,8 @@ const (
 	//		{
 	//			"strict": true
 	//		}
-	configStrict = "strict"
+	configStrict            = "strict"
+	disableCreateBucketByS3 = "disableCreateBucketByS3"
 
 	// The character creation array configuration item is used to configure the domain name bound to the object
 	// storage interface. You can bind multiple. ObjectNode uses this configuration to implement automatic
@@ -199,9 +200,10 @@ type ObjectNode struct {
 	disabledActions         proto.Actions // disabled actions
 	stsNotAllowedActions    proto.Actions // actions that are not accessible to STS users
 
-	control    common.Control
-	rateLimit  RateLimiter
-	limitMutex sync.RWMutex
+	control                 common.Control
+	rateLimit               RateLimiter
+	limitMutex              sync.RWMutex
+	disableCreateBucketByS3 bool
 }
 
 func (o *ObjectNode) Start(cfg *config.Config) (err error) {
@@ -286,6 +288,7 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	// parse strict config
 	strict := cfg.GetBool(configStrict)
 	log.LogInfof("loadConfig: strict: %v", strict)
+	o.disableCreateBucketByS3 = cfg.GetBool(disableCreateBucketByS3)
 
 	o.mc = master.NewMasterClient(masters, false)
 	o.vm = NewVolumeManager(masters, strict)
