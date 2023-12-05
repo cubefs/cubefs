@@ -114,10 +114,10 @@ type Vol struct {
 	quotaManager            *MasterQuotaManager
 	enableQuota             bool
 	TrashInterval           int64
+	DisableAuditLog         bool
 	VersionMgr              *VolVersionManager
 	Forbidden               bool
 	mpsLock                 *mpsLockManager
-	EnableAuditLog          bool
 	preloadCapacity         uint64
 	authKey                 string
 	DeleteExecTime          time.Time
@@ -189,8 +189,8 @@ func newVol(vv volValue) (vol *Vol) {
 	}
 	vol.qosManager.volUpdateMagnify(magnifyQosVal)
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
+	vol.DisableAuditLog = false
 	vol.mpsLock = newMpsLockManager(vol)
-	vol.EnableAuditLog = true
 	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
 	vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	return
@@ -214,8 +214,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vol.txConflictRetryInterval = proto.DefaultTxConflictRetryInterval
 	}
 	vol.TrashInterval = vv.TrashInterval
+	vol.DisableAuditLog = vv.DisableAuditLog
 	vol.Forbidden = vv.Forbidden
-	vol.EnableAuditLog = vv.EnableAuditLog
 	vol.authKey = vv.AuthKey
 	vol.DeleteExecTime = vv.DeleteExecTime
 	vol.user = vv.User

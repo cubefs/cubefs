@@ -2667,9 +2667,9 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		CacheRule:               vol.CacheRule,
 		PreloadCapacity:         vol.getPreloadCapacity(),
 		TrashInterval:           vol.TrashInterval,
+		DisableAuditLog:         vol.DisableAuditLog,
 		LatestVer:               vol.VersionMgr.getLatestVer(),
 		Forbidden:               vol.Forbidden,
-		EnableAuditLog:          vol.EnableAuditLog,
 		DeleteExecTime:          vol.DeleteExecTime,
 		DpRepairBlockSize:       vol.dpRepairBlockSize,
 	}
