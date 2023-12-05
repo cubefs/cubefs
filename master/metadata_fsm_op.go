@@ -303,9 +303,9 @@ type volValue struct {
 	IopsRMagnify, IopsWMagnify, FlowRMagnify, FlowWMagnify uint32
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
 	TrashInterval                                          int64
+	DisableAuditLog                                        bool
 
 	Forbidden         bool
-	EnableAuditLog    bool
 	DpRepairBlockSize uint64
 }
 
@@ -368,13 +368,13 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		ClientHitTriggerCnt: vol.qosManager.ClientHitTriggerCnt,
 
 		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
+		TrashInterval:         vol.TrashInterval,
+		DisableAuditLog:       vol.DisableAuditLog,
 		Forbidden:             vol.Forbidden,
-		EnableAuditLog:        vol.EnableAuditLog,
 		AuthKey:               vol.authKey,
 		DeleteExecTime:        vol.DeleteExecTime,
 		User:                  vol.user,
 		DpRepairBlockSize:     vol.dpRepairBlockSize,
-		TrashInterval:         vol.TrashInterval,
 	}
 
 	return
