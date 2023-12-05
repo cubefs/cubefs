@@ -432,12 +432,26 @@ func (mc *MasterClient) innerRegNodeWithOldInterface(authKeyPath, ip string, reg
 }
 
 func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
+	var clusterInfo  *proto.ClusterInfo
+	rsp = &proto.RegNodeRsp{}
+
+	defer func() {
+		if rsp != nil && rsp.Cluster == "" && clusterInfo != nil {
+			rsp.Cluster = clusterInfo.Cluster
+		}
+	}()
+
 	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
 		err = fmt.Errorf("invalid para, role or auth key path is nil")
 		return
 	}
 
-	rsp = &proto.RegNodeRsp{}
+	clusterInfo, err = mc.adminAPI.GetClusterInfo()
+	if err != nil {
+		log.LogErrorf("[RegNodeInfo] %s", err.Error())
+		return
+	}
+
 	rsp, err = mc.innerRegNodeWithNewInterface(authKeyPath, addr, regInfo)
 	if err != nil {
 		if strings.Contains(err.Error(), http.StatusText(http.StatusNotFound)) {
@@ -452,11 +466,19 @@ func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *R
 }
 
 func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
+	var clusterInfo  *proto.ClusterInfo
+	rsp = &proto.RegNodeRsp{}
+
+	defer func() {
+		if rsp != nil && rsp.Cluster == "" && clusterInfo != nil {
+			rsp.Cluster = clusterInfo.Cluster
+		}
+	}()
+
 	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
 		err = fmt.Errorf("invalid para, role or auth key path is nil")
 		return
 	}
-	var clusterInfo  *proto.ClusterInfo
 
 	clusterInfo, err = mc.adminAPI.GetClusterInfo()
 	if err != nil {
@@ -464,7 +486,6 @@ func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)
 		return
 	}
 
-	rsp = &proto.RegNodeRsp{}
 	rsp, err = mc.innerRegNodeWithNewInterface(authKeyPath, clusterInfo.Ip, regInfo)
 	if err != nil {
 		if strings.Contains(err.Error(), http.StatusText(http.StatusNotFound)) {

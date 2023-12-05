@@ -73,6 +73,14 @@ func (m *Server) doLeaderChange(leader uint64) {
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.isLeader.Store(true)
 		m.metaReady.Store(true)
+
+		//new node, snapshot success, but set cluster name after snapshot apply;
+		if m.cluster.cfg.ClusterName != "" && m.cluster.cfg.ClusterName != m.clusterName {
+			msg = fmt.Sprintf("clusterID[%v] leader[%v] check conf cluster name failed; conf[%s], expect[%s].",
+				m.clusterName, m.leaderInfo.addr, m.clusterName, m.cluster.cfg.ClusterName)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyLoadClusterMetadata], msg)
+		}
+
 	} else {
 		msg := fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr)
