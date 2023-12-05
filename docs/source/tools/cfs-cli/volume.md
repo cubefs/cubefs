@@ -77,7 +77,7 @@ cfs-cli volume list
 Transfer the volume [VOLUME NAME] to another user [USER ID].
 
 ```bash
-cfs-cli volume transfer [VOLUME NAME] [USER ID] [flags]   
+cfs-cli volume transfer [VOLUME NAME] [USER ID] [flags]
 ```
 
 ```bash
@@ -110,4 +110,32 @@ Flags:
     --follower-read string     Enable read form replica follower (default false)
     -y, --yes               Answer yes for all questions
     --zonename string   Specify volume zone name
+```
+
+## Forbid Volume
+
+Set volume forbidden mark
+
+```bash
+cfs-cli vol set-forbidden [VOLUME] [FORBIDDEN]
+```
+
+The following commands forbid volume `ltptest`:
+
+```bash
+cfs-cli vol set-forbidden ltptest true
+```
+
+## Enable/Disable Volume Auditlog
+
+Enable or disable auditlog of volume
+
+```bash
+cfs-cli volume set-auditlog [VOLUME] [STATUS]
+```
+
+The following commands disable auditlog for `ltptest`:
+
+```bash
+cfs-cli volume set-auditlog ltptest false
 ```

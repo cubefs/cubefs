@@ -94,7 +94,7 @@ Flags:
 cfs-cli volume update
 ```
 
-```bash                                    
+```bash
 Flags:
     --cache-action string      Specify low volume cacheAction (default 0)
     --cache-capacity string    Specify low volume capacity[Unit: GB]
@@ -110,4 +110,28 @@ Flags:
     --follower-read string     Enable read form replica follower (default false)
     -y, --yes               Answer yes for all questions
     --zonename string   Specify volume zone name
+```
+
+## 禁用卷
+
+```bash
+cfs-cli vol set-forbidden [VOLUME] [FORBIDDEN]
+```
+
+以下命令禁用卷`ltptest`:
+
+```bash
+cfs-cli vol set-forbidden ltptest true
+```
+
+## 开启/关闭卷审计日志
+
+```bash
+cfs-cli volume set-auditlog [VOLUME] [STATUS]
+```
+
+以下命令关闭卷`ltptest`的审计日志:
+
+```bash
+cfs-cli volume set-auditlog ltptest false
 ```
