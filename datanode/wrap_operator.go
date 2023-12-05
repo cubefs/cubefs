@@ -712,7 +712,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	if err == nil {
 		for _, ext := range exts {
 			if !store.IsMarkGc(ext.ExtentId) && p.Opcode == proto.OpGcBatchDeleteExtent {
-				log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete", ext.ExtentId)
+				log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
 				err = storage.ParameterMismatchError
 				return
 			}
@@ -1629,7 +1629,7 @@ func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn)
 			}
 		}
 	}
-	log.LogInfof("action[handleBatchLockNormalExtent] dp %d, success len: %v, isCreate: %v, cost %s ms",
+	log.LogInfof("action[handleBatchLockNormalExtent] dp %d, success len: %v, isCreate: %v, cost %d ms",
 		partition.partitionID, len(gcLockEks.Eks), gcLockEks.IsCreate, time.Since(start).Milliseconds())
 	return
 }
