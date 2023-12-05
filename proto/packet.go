@@ -971,6 +971,9 @@ func (p *Packet) LogMessage(action, remote string, start int64, err error) (m st
 // As meta can not reentrant the unlink op, so unlink can not retry.
 // Meta can not reentran ops [create dentry\ update dentry\ create indoe\ link inode\ unlink inode\]
 func (p *Packet) ShouldRetry() bool {
+	if p.ResultCode == OpTryOtherAddr {
+		return true
+	}
 	return p.Opcode != OpMetaUnlinkInode && (p.ResultCode == OpAgain || p.ResultCode == OpErr)
 }
 
