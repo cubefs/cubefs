@@ -77,6 +77,14 @@ func (b *MemSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, error)
 	panic("out of type")
 }
 
+func (b *MemSnapShot) RangeDentryTreeWithPrefix(prefix, start, end *Dentry, cb func(item *Dentry) (bool, error)) error {
+	return b.dentry.RangeWithPrefix(prefix, start, end, cb)
+}
+
+func (b *MemSnapShot) RangeDelDentryTreeWithPrefix(prefix, start, end *DeletedDentry, cb func(item *DeletedDentry) (bool, error)) error {
+	return b.delDentry.RangeWithPrefix(prefix, start, end, cb)
+}
+
 func (b *MemSnapShot) Close() {}
 
 func (b *MemSnapShot) Count(tp TreeType) uint64 {

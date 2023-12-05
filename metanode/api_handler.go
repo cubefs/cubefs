@@ -130,6 +130,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getReqRecordsInRocksDB", m.getRequestRecordsInRocksDB)
 	http.HandleFunc("/setDelEKRateLimit", m.setLocalDeleteExtentRateLimit)
 	http.HandleFunc("/setDumpSnapCount", m.setDumpSnapCount)
+
+	http.HandleFunc("/getAllDentryByParentIno", m.getAllDentriesByParentInoHandler)
 	return
 }
 
@@ -947,6 +949,18 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isBatch := false
+	isBatchStr := r.FormValue("isBatch")
+	if isBatchStr != "" {
+		isBatch, err = strconv.ParseBool(isBatchStr)
+		if err != nil {
+			resp.Msg = err.Error()
+			return
+		}
+	}
+
+	marker := r.FormValue("marker")
+
 	mp, err := m.metadataManager.GetPartition(pid)
 	if err != nil {
 		resp.Code = http.StatusNotFound
@@ -955,6 +969,8 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	req := ReadDirReq{
 		ParentID: pIno,
+		Marker:   marker,
+		IsBatch:  isBatch,
 	}
 	p := NewPacket(r.Context())
 	if err = mp.ReadDir(&req, p); err != nil {
@@ -1036,6 +1052,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"dumpSnapConfCount":                 m.GetDumpSnapCount(),
 		"dumpSnapRunningCount":              m.GetDumpSnapRunningCount(),
 		"dumpSnapMpIDS":					 m.GetDumpSnapMPID(),
+		"delExtentRateLimitLocalValue":      atomic.LoadUint64(&delExtentRateLimitLocal),
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -2946,6 +2963,91 @@ func (m *MetaNode) setDumpSnapCount(w http.ResponseWriter, r *http.Request) {
 	}{
 		Count:   m.GetDumpSnapCount(),
 		RunningCount: m.GetDumpSnapRunningCount(),
+	}
+	return
+}
+
+func (m *MetaNode) getAllDentriesByParentInoHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusSeeOther, "")
+	shouldSkip := false
+	defer func() {
+		if !shouldSkip {
+			data, _ := resp.Marshal()
+			if _, err := w.Write(data); err != nil {
+				log.LogErrorf("[getAllDentriesByParentInoHandler] response %s", err)
+			}
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	parentIno, err := strconv.ParseUint(r.FormValue("parentIno"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	snap := NewSnapshot(mp.(*metaPartition))
+	if snap == nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("Can not get mp[%d] snap shot", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer snap.Close()
+
+	buff := bytes.NewBufferString(`{"data":[`)
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	buff.Reset()
+	var (
+		val       []byte
+		delimiter = []byte{',', '\n'}
+		isFirst   = true
+		start     = &Dentry{ParentId: parentIno}
+		end       = &Dentry{ParentId: parentIno+1}
+		prefix    = &Dentry{ParentId: parentIno}
+	)
+	err = snap.RangeDentryTreeWithPrefix(prefix, start, end, func(den *Dentry) (bool, error) {
+		val, err = json.Marshal(den)
+		if err != nil {
+			return false, err
+		}
+
+		if !isFirst {
+			if _, err = w.Write(delimiter); err != nil {
+				return false, err
+			}
+		} else {
+			isFirst = false
+		}
+		if _, err = w.Write(val); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+	shouldSkip = true
+	if err != nil {
+		buff.WriteString(fmt.Sprintf(`], "code": %v, "msg": "%s"}`, http.StatusInternalServerError, err.Error()))
+	} else {
+		buff.WriteString(`], "code": 200, "msg": "OK"}`)
+	}
+	if _, err = w.Write(buff.Bytes()); err != nil {
+		log.LogErrorf("[getAllDentriesByParentInoHandler] response %s", err)
 	}
 	return
 }
