@@ -246,6 +246,10 @@ func (o *ObjectNode) listBucketsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var output listBucketsOutput
+	authVos := userInfo.Policy.AuthorizedVols
+	for vol := range authVos {
+		ownVols = append(ownVols, vol)
+	}
 	for _, ownVol := range userInfo.Policy.OwnVols {
 		var vol *Volume
 		if vol, err = o.getVol(ownVol); err != nil {
