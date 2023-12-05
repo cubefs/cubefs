@@ -117,6 +117,7 @@ type Audit struct {
 	stopC            chan struct{}
 	resetWriterBuffC chan int
 	pid              int
+	mu               sync.Mutex
 }
 
 var gAdt *Audit = nil
@@ -556,10 +557,16 @@ func (a *Audit) Stop() {
 }
 
 func (a *Audit) logAudit(content string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if err := a.shiftFiles(); err != nil {
 		return err
 	}
 
+	if a.writer == nil {
+		log.LogErrorf("write is nil, logFileName: %s\n", a.logFileName)
+		return fmt.Errorf("write is nil, logFileName: %s\n", a.logFileName)
+	}
 	fmt.Fprintf(a.writer, "%s\n", content)
 	if a.writerBufSize <= 0 {
 		a.writer.Flush()
