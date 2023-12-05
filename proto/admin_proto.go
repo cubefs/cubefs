@@ -1133,7 +1133,7 @@ type SimpleVolView struct {
 	// multi version snapshot
 	LatestVer         uint64
 	Forbidden         bool
-	EnableAuditLog    bool
+	DisableAuditLog  bool
 	DeleteExecTime    time.Time
 	DpRepairBlockSize uint64
 }
