@@ -872,7 +872,7 @@ type SimpleVolView struct {
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
 	TrashInterval    int64
-	EnableAuditLog   bool
+	DisableAuditLog  bool
 }
 
 type NodeSetInfo struct {
