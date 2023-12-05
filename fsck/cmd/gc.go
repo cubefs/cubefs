@@ -1345,7 +1345,7 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	dpInfo, err := getDpInfoById(dpIdStr)
 	if err != nil {
-		log.LogErrorf("Get dp info failed, err: %v", err)
+		log.LogErrorf("Get dp info failed, dp %s, err: %v", dpIdStr, err)
 		return
 	}
 
@@ -1378,7 +1378,7 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 	}()
 
 	if err != nil {
-		log.LogErrorf("Get connect failed, err: %v", err)
+		log.LogErrorf("Get connect failed, addr %s, err: %v", addr, err)
 		return
 	}
 
@@ -1389,7 +1389,7 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 	p.PartitionID = dpInfo.PartitionID
 	p.Data, err = json.Marshal(eks)
 	if err != nil {
-		log.LogErrorf("Marshal extent keys failed, err: %v", err)
+		log.LogErrorf("Marshal extent keys failed, addr %s, err: %v", addr, err)
 		return
 	}
 	p.Size = uint32(len(p.Data))
@@ -1399,17 +1399,17 @@ func batchUnlockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent) (err er
 	p.ArgLen = uint32(len(p.Arg))
 
 	if err = p.WriteToConn(conn); err != nil {
-		log.LogErrorf("WriteToConn failed, err: %v", err)
+		log.LogErrorf("WriteToConn failed, addr %s, err: %v", addr, err)
 		return
 	}
 	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
-		log.LogErrorf("ReadFromConn failed, err: %v", err)
+		log.LogErrorf("ReadFromConn failed, addr %s, err: %v", addr, err)
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		log.LogErrorf("batchUnlockBadNormalExtent failed, ResultCode: %v", p.ResultCode)
-		err = fmt.Errorf("batchUnlockBadNormalExtent failed, ResultCode: %v", p.ResultCode)
+		err = fmt.Errorf("batchUnlockBadNormalExtent failed, addr %s, ResultCode: %v", addr, p.String())
+		log.LogError(err.Error())
 		return
 	}
 
@@ -1600,6 +1600,10 @@ func copyBadNormalExtentToBackup(volname, backupDir, dpIdStr string, badExtent B
 		return
 	}
 
+	if data == nil {
+		return
+	}
+
 	err = writeBadNormalExtentToBackup(backupDir, volname, dpIdStr, badExtent, data, readBytes)
 	if err != nil {
 		log.LogErrorf("Write bad extent to dest dir failed, err: %v", err)
@@ -1646,7 +1650,7 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	}()
 
 	if err != nil {
-		log.LogInfof("Get connect failed, err: %v", err)
+		log.LogInfof("Get connect failed, addr %s, err: %v", addr, err)
 		return
 	}
 
@@ -1662,20 +1666,27 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	p.Arg = []byte(strings.Join(dpInfo.Hosts[1:], proto.AddrSplit) + proto.AddrSplit)
 	p.ArgLen = uint32(len(p.Arg))
 	if err = p.WriteToConn(conn); err != nil {
-		log.LogErrorf("WriteToConn failed, err: %v", err)
+		log.LogErrorf("WriteToConn failed, addr %s, err: %v", addr, err)
 		return
 	}
+
 	if err = p.ReadFromConn(conn, proto.BatchDeleteExtentReadDeadLineTime); err != nil {
-		log.LogErrorf("ReadFromConn failed, err: %v", err)
+		log.LogErrorf("ReadFromConn failed, addr %s, err: %v", addr, err)
 		return
 	}
 
 	if p.ResultCode != proto.OpOk {
-		log.LogErrorf("BatchDeleteExtent failed, ResultCode: %v", p.ResultCode)
-		err = fmt.Errorf("BatchDeleteExtent failed, ResultCode: %v", p.ResultCode)
+		err = fmt.Errorf("BatchDeleteExtent failed, addr %d, ResultCode: %v", addr, p.String())
+		log.LogError(err.Error())
 		return
 	}
 	return
+}
+
+func getOpStr(code uint8) string {
+	p := proto.NewPacket()
+	p.ResultCode = code
+	return fmt.Sprintf("%s_%d", p.String(), p.ResultCode)
 }
 
 func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []byte, readBytes int, err error) {
@@ -1714,13 +1725,13 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 
 	conn, err := streamConnPool.GetConnect(leaderAddr)
 	if err != nil {
-		log.LogErrorf("GetConnect failed %v", err)
+		log.LogErrorf("GetConnect failed, addr %s, %v", leaderAddr, err.Error())
 		return
 	}
 
 	err = p.WriteToConn(conn)
 	if err != nil {
-		log.LogErrorf("WriteToConn failed %v", err)
+		log.LogErrorf("WriteToConn failed, addr %s, %v", leaderAddr, err)
 		return
 	}
 	data = make([]byte, size)
@@ -1731,13 +1742,18 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 		replyPacket.Size = uint32(bufSize)
 		err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 		if err != nil {
-			log.LogErrorf("ReadFromConn failed %v", err)
+			log.LogErrorf("ReadFromConn failed, addr %s, %v", leaderAddr, err)
 			return
 		}
 
+		if replyPacket.ResultCode == proto.OpNotExistErr {
+			log.LogInfof("extent may be already been deleted, dp %d, extId %d, pkt %s", dpId, extentId, replyPacket.String())
+			return nil, 0, nil
+		}
+
 		if replyPacket.ResultCode != proto.OpOk {
-			log.LogErrorf("ReadFromConn failed ResultCode %v", replyPacket.ResultCode)
-			err = fmt.Errorf("ReadFromConn failed ResultCode %v", replyPacket.ResultCode)
+			err = fmt.Errorf("ReadFromConn failed ResultCode, addr %s, %v", leaderAddr, replyPacket.String())
+			log.LogError(err.Error())
 			return
 		}
 		copy(data[readBytes:readBytes+bufSize], replyPacket.Data)
@@ -1830,21 +1846,28 @@ func cleanBadNormalExtentOfDp(volname, dir, backupDir, dpIdStr string) (err erro
 
 	log.LogInfof("cleanBadNormalExtentOfDp: batchLockBadNormalExtent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
 
+	succExts := make([]*BadNornalExtent, 0, len(exts))
 	for _, badExtent := range exts {
 		err = copyBadNormalExtentToBackup(volname, backupDir, dpIdStr, *badExtent)
 		if err != nil {
 			log.LogErrorf("Clean bad normal extent failed, dp %v, extent %v, err: %v", dpIdStr, badExtent.ExtentId, err)
-			return err
+			err = nil
+			continue
 		}
+		succExts = append(succExts, badExtent)
 	}
+
+	log.LogInfof("cleanBadNormalExtentOfDp: copyBadNormalExtentToBackup success, dp %s, cost %d ms, befor %d, after %d",
+		dpIdStr, len(exts), len(succExts), time.Since(start).Milliseconds())
 
 	if CleanS {
 		log.LogWarnf("cleanBadNormalExtentOfDp: clean switch is open, start delete gc data, dp %s", dpIdStr)
-		err = batchDeleteBadExtent(dpIdStr, exts)
+		err = batchDeleteBadExtent(dpIdStr, succExts)
 		if err != nil {
 			log.LogErrorf("Batch delete bad extent failed, dp %v, err: %v", dpIdStr, err)
 			return err
 		}
+
 		log.LogInfof("cleanBadNormalExtentOfDp: batchDeleteBadExtent success, dp %s, cost %d ms", dpIdStr, time.Since(start).Milliseconds())
 		err = batchUnlockBadNormalExtent(dpIdStr, exts)
 		if err != nil {
@@ -1860,9 +1883,9 @@ func cleanBadNormalExtentFromDp(volname, dir, backupDir string, fromDpId uint64,
 	badNormalDir := filepath.Join(dir, volname, BadDir, normalDir)
 
 	start := time.Now()
-	defer func ()  {
+	defer func() {
 		slog.Printf("cleanBadNormalExtentFromDp finish, from-dp %d, vol %s, cost %d ms",
-		fromDpId, volname, time.Since(start).Milliseconds())	
+			fromDpId, volname, time.Since(start).Milliseconds())
 	}()
 
 	fileInfos, err := os.ReadDir(badNormalDir)
@@ -2077,7 +2100,8 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 		return
 	}
 	if p.ResultCode != proto.OpOk {
-		log.LogErrorf("writeBadNormalExtentToDp failed, dp %v, extent %v, ResultCode: %v", dpId, extent, p.ResultCode)
+		log.LogErrorf("writeBadNormalExtentToDp failed, addr, host %s, dp %v, extent %v, ResultCode: %v",
+			leaderAddr, dpId, extent, p.String())
 		return
 	}
 	return

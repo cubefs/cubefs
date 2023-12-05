@@ -388,6 +388,15 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 		e  *Extent
 		ei *ExtentInfo
 	)
+
+	s.eiMutex.Lock()
+	ei, _ = s.extentInfoMap[extentID]
+	e, err = s.extentWithHeader(ei)
+	s.eiMutex.Unlock()
+	if err != nil {
+		return err
+	}
+
 	s.elMutex.RLock()
 	if isBackupWrite {
 		if _, ok := s.extentLockMap[extentID]; !ok {
@@ -468,6 +477,15 @@ func IsTinyExtent(extentID uint64) bool {
 func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool, isBackupRead bool) (crc uint32, err error) {
 	var e *Extent
 
+	log.LogInfof("[Read] extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v]", extentID, offset, size, isRepairRead, s.extentLock)
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extentID]
+	s.eiMutex.RUnlock()
+
+	if ei == nil {
+		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] extent[%d] is already been deleted", extentID)
+	}
+
 	s.elMutex.RLock()
 	if isBackupRead {
 		if _, ok := s.extentLockMap[extentID]; !ok {
@@ -487,14 +505,6 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		}
 	}
 	s.elMutex.RUnlock()
-	log.LogInfof("[Read] extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v]", extentID, offset, size, isRepairRead, s.extentLock)
-	s.eiMutex.RLock()
-	ei := s.extentInfoMap[extentID]
-	s.eiMutex.RUnlock()
-
-	if ei == nil {
-		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] extent[%d] is already been deleted", extentID)
-	}
 
 	// update extent access time
 	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
@@ -544,6 +554,13 @@ func (s *ExtentStore) punchDelete(extentID uint64, offset, size int64) (err erro
 }
 
 func (s *ExtentStore) IsMarkGc(extId uint64) bool {
+	s.eiMutex.RLock()
+	ei := s.extentInfoMap[extId]
+	s.eiMutex.RUnlock()
+	if ei == nil || ei.IsDeleted {
+		return true
+	}
+
 	s.elMutex.RLock()
 	defer s.elMutex.RUnlock()
 
@@ -1383,7 +1400,7 @@ func (s *ExtentStore) GetAllExtents(beforeTime int64) (extents []*ExtentInfo, er
 		})
 	}
 
-	log.LogWarnf("GetAllExtents: path:%v, beforeTime:%v, extents len:%v, cost %s",
+	log.LogWarnf("GetAllExtents: path:%v, beforeTime:%v, extents len:%v, cost %d",
 		s.dataPath, beforeTime, len(extents), time.Since(start).Milliseconds())
 
 	return
