@@ -423,7 +423,7 @@ func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err erro
 	var getHAType riskdata.GetHATypeFunc = func() proto.CrossRegionHAType {
 		return dp.config.VolHAType
 	}
-	if dp.dataFixer, err = riskdata.NewFixer(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments, gConnPool, dp.disk.Path); err != nil {
+	if dp.dataFixer, err = riskdata.NewFixer(dp.partitionID, dp.path, dp.extentStore, getRemotes, getHAType, fragments, gConnPool, dp.disk.Path, dp.limit); err != nil {
 		return
 	}
 	return
@@ -432,10 +432,6 @@ func (dp *DataPartition) initIssueProcessor(latestFlushTimeUnix int64) (err erro
 func (dp *DataPartition) CheckRisk(extentID, offset, size uint64) bool {
 	return dp.dataFixer.FindOverlap(extentID, offset, size)
 }
-
-const (
-	DelayFullSyncTinyDeleteTimeRandom = 6 * 60 * 60
-)
 
 func (dp *DataPartition) maybeUpdateFaultOccurredCheckLevel() {
 	if maybeServerFaultOccurred {
@@ -1386,18 +1382,20 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 	if dp == nil {
 		return ErrPartitionNil
 	}
-	propertyBuilder := multirate.NewPropertiesBuilder().SetOp(strconv.Itoa(op)).SetVol(dp.volumeID).SetDisk(dp.disk.Path)
-	statBuilder := multirate.NewStatBuilder().SetCount(1)
+	prBuilder := multirate.NewPropertiesBuilder().SetOp(strconv.Itoa(op)).SetVol(dp.volumeID).SetDisk(dp.disk.Path)
+	stBuilder := multirate.NewStatBuilder().SetCount(1)
 
 	switch op {
-	case int(proto.OpWrite), int(proto.OpRandomWrite), proto.OpExtentRepairWrite_, proto.OpExtentRepairWriteToApplyTempFile_:
-		return multirate.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetInBytes(int(size)).Stat())
+	case int(proto.OpWrite), int(proto.OpSyncWrite), int(proto.OpRandomWrite), int(proto.OpSyncRandomWrite), proto.OpExtentRepairWrite_, proto.OpExtentRepairWriteToApplyTempFile_:
+		prBuilder.SetBandType(bandType)
+		stBuilder.SetInBytes(int(size))
 	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead), int(proto.OpTinyExtentRepairRead), int(proto.OpTinyExtentAvaliRead),
 		int(proto.OpExtentRepairRead), proto.OpExtentRepairReadToRollback_, proto.OpExtentRepairReadToComputeCrc_, proto.OpExtentReadToGetCrc_:
-		return multirate.WaitNUseDefaultTimeout(ctx, propertyBuilder.SetBandType(bandType).Properties(), statBuilder.SetOutBytes(int(size)).Stat())
+		prBuilder.SetBandType(bandType).Properties()
+		stBuilder.SetOutBytes(int(size)).Stat()
 	default:
-		return multirate.WaitNUseDefaultTimeout(ctx, propertyBuilder.Properties(), statBuilder.Stat())
 	}
+	return multirate.WaitNUseDefaultTimeout(ctx, prBuilder.Properties(), stBuilder.Stat())
 }
 
 func (dp *DataPartition) backendRefreshCacheView() {

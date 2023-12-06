@@ -51,7 +51,7 @@ const (
 
 type GetRemotesFunc func() []string
 type GetHATypeFunc func() proto.CrossRegionHAType
-type DiskLimiter func(ctx context.Context, op int, size uint32, bandType string) (err error)
+type LimiterFunc func(ctx context.Context, op int, size uint32, bandType string) (err error)
 
 var (
 	emptyFragmentBinary = []byte{
@@ -137,7 +137,7 @@ type Fixer struct {
 	persistSyncCh   chan struct{}
 	codecReuseBuf   []byte
 	persistFp       *os.File
-	diskLimiter     DiskLimiter
+	limiter         LimiterFunc
 	diskPath        string
 	workers         int32
 	workerStop      func()
@@ -338,7 +338,7 @@ func (p *Fixer) computeLocalCRC(fragment *Fragment) (crc uint32, err error) {
 
 	for remain > 0 {
 		var readSize = int64(math.Min(float64(remain), float64(unit.BlockSize)))
-		err = p.diskLimiter(context.Background(), proto.OpExtentRepairReadToComputeCrc_, uint32(readSize), multirate.FlowDisk)
+		err = p.limiter(context.Background(), proto.OpExtentRepairReadToComputeCrc_, uint32(readSize), multirate.FlowDisk)
 		if err != nil {
 			return
 		}
@@ -515,7 +515,7 @@ func (p *Fixer) applyTempFileToExtent(f *os.File, extentID, offset, size uint64)
 			return
 		}
 		var crc = crc32.ChecksumIEEE(buf[:readSize])
-		err = p.diskLimiter(context.Background(), proto.OpExtentRepairWrite_, uint32(readSize), multirate.FlowDisk)
+		err = p.limiter(context.Background(), proto.OpExtentRepairWrite_, uint32(readSize), multirate.FlowDisk)
 		if err != nil {
 			return
 		}
@@ -822,7 +822,7 @@ func (p *Fixer) closeFp() (err error) {
 }
 
 func NewFixer(partitionID uint64, path string, storage *storage.ExtentStore, getRemotes GetRemotesFunc, getHAType GetHATypeFunc,
-	fragments []*Fragment, connPool *connpool.ConnectPool, diskPath string) (*Fixer, error) {
+	fragments []*Fragment, connPool *connpool.ConnectPool, diskPath string, limiter LimiterFunc) (*Fixer, error) {
 	var err error
 	var p = &Fixer{
 		partitionID:   partitionID,
@@ -835,6 +835,7 @@ func NewFixer(partitionID uint64, path string, storage *storage.ExtentStore, get
 		indexes:       make([]*fragmentIndex, 0, 16),
 		codecReuseBuf: make([]byte, fragmentBinaryLength),
 		connPool:      connPool,
+		limiter:       limiter,
 		persistFp:     nil,
 		diskPath:      diskPath,
 	}
