@@ -332,7 +332,7 @@ func (m *metadataManager) opMetaUnlinkInode(conn net.Conn, p *Packet,
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		p.PacketErrorWithBody(proto.OpTryOtherAddr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
