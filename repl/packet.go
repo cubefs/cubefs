@@ -410,12 +410,6 @@ func (p *Packet) IsBroadcastMinAppliedID() bool {
 	return p.Opcode == proto.OpBroadcastMinAppliedID
 }
 
-func (p *Packet) IsReadOperation() bool {
-	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead ||
-		p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDeleteRecord ||
-		p.Opcode == proto.OpTinyExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead
-}
-
 func (p *Packet) IsRandomWrite() bool {
 	return p.Opcode == proto.OpRandomWrite || p.Opcode == proto.OpSyncRandomWrite ||
 		p.Opcode == proto.OpRandomWriteVer || p.Opcode == proto.OpSyncRandomWriteVer
