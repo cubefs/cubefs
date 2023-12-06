@@ -303,10 +303,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		return
 	}
 
-	topLayerEmpty := inode.IsTopLayerEmptyDir()
-
 	resp.Msg = inode
-
 	if !mp.uniqChecker.legalIn(uniqID) {
 		log.LogWarnf("fsmUnlinkInode repeat, mp %v ino %v uniqID %v nlink %v", mp.config.PartitionId, ino.Inode, uniqID, ino.GetNLink())
 		return
@@ -335,17 +332,13 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		return
 	}
 
-	if ino.getVer() == 0 && topLayerEmpty && inode.IsEmptyDirAndNoSnapshot() { // normal deletion
-		log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v really be deleted, empty dir", mp.config.PartitionId, inode)
-		mp.inodeTree.Delete(inode)
-	} else if ino.getVer() > 0 && inode.IsEmptyDirAndNoSnapshot() { // snapshot deletion
-		log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v really be deleted, empty dir", mp.config.PartitionId, inode)
-		mp.inodeTree.Delete(inode)
-		mp.updateUsedInfo(0, -1, inode.Inode)
-	}
-
-	//Fix#760: when nlink == 0, push into freeList and delay delete inode after 7 days
-	if inode.IsTempFile() {
+	if inode.IsEmptyDirAndNoSnapshot() {
+		if ino.NLink < 2 { // snapshot deletion
+			log.LogDebugf("action[fsmUnlinkInode] mp %v ino %v really be deleted, empty dir", mp.config.PartitionId, inode)
+			mp.inodeTree.Delete(inode)
+			mp.updateUsedInfo(0, -1, inode.Inode)
+		}
+	} else if inode.IsTempFile() {
 		// all snapshot between create to last deletion cleaned
 		if inode.NLink == 0 && inode.getLayerLen() == 0 {
 			mp.updateUsedInfo(-1*int64(inode.Size), -1, inode.Inode)
