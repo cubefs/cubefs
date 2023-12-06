@@ -1336,8 +1336,8 @@ func batchLockBadNormalExtent(dpIdStr string, exts []*BadNornalExtent, IsCreate 
 	}
 
 	if p.ResultCode != proto.OpOk {
-		log.LogErrorf("batchLockBadNormalExtent dp %v failed, ResultCode: %v", dpIdStr, p.ResultCode)
-		err = fmt.Errorf("batchLockBadNormalExtent dp %v failed, ResultCode: %v", dpIdStr, p.ResultCode)
+		log.LogErrorf("batchLockBadNormalExtent dp %v failed, ResultCode: %v", dpIdStr, p.String())
+		err = fmt.Errorf("batchLockBadNormalExtent dp %v failed, ResultCode: %v", dpIdStr, p.String())
 		return
 	}
 
