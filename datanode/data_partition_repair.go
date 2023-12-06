@@ -208,7 +208,7 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		return
 	}
 	reply := new(repl.Packet)
-	err = reply.ReadFromConn(conn, proto.GetAllWatermarksDeadLineTime) // read the response
+	err = reply.ReadFromConnWithVer(conn, proto.GetAllWatermarksDeadLineTime) // read the response
 	if err != nil {
 		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) read from host(%v)", dp.partitionID, target)
 		return
@@ -429,7 +429,7 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	if err = p.WriteToConn(conn); err != nil {
 		return err
 	}
-	if err = p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
 		return err
 	}
 	return err
@@ -539,7 +539,7 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 			reply := repl.NewPacket()
 
 			// read 64k streaming repair packet
-			if err = reply.ReadFromConn(conn, 60); err != nil {
+			if err = reply.ReadFromConnWithVer(conn, 60); err != nil {
 				err = errors.Trace(err, "streamRepairExtent receive data error,localExtentSize(%v) remoteExtentSize(%v)", currFixOffset, dstOffset)
 				return
 			}
