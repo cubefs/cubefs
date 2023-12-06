@@ -17,6 +17,8 @@ package auditlog_test
 import (
 	"os"
 	"path"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -92,4 +94,31 @@ func TestGlobalAuditLog(t *testing.T) {
 	}
 	require.NotEqualValues(t, 1, len(dentries))
 	auditlog.ResetWriterBufferSize(testResetBufSize)
+}
+
+const (
+	concurrentCoNumber = 1000
+	concurrentTestTime = 60 * time.Second
+)
+
+func TestConcurrentWrite(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	audit, err := auditlog.NewAuditWithPrefix(tmpDir, testLogModule, testLogMax, auditlog.NewAuditPrefix(testPrefix))
+	require.NoError(t, err)
+	defer audit.Stop()
+	stop := int32(0)
+	sw := sync.WaitGroup{}
+	for i := 0; i < concurrentCoNumber; i++ {
+		sw.Add(1)
+		go func() {
+			defer sw.Done()
+			for atomic.LoadInt32(&stop) != 1 {
+				audit.AddLog("Testing")
+			}
+		}()
+	}
+	time.Sleep(concurrentTestTime)
+	atomic.StoreInt32(&stop, 1)
+	sw.Wait()
 }

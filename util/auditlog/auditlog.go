@@ -117,7 +117,6 @@ type Audit struct {
 	stopC            chan struct{}
 	resetWriterBuffC chan int
 	pid              int
-	mu               sync.Mutex
 }
 
 var gAdt *Audit = nil
@@ -450,15 +449,22 @@ func (a *Audit) flushAuditLog() {
 		select {
 		case <-a.stopC:
 			// NOTE: shoule we cleanup bufferC?
-			a.writer.Flush()
-			a.logFile.Close()
+			if a.writer != nil {
+				a.writer.Flush()
+			}
+			if a.logFile != nil {
+				a.logFile.Close()
+			}
 			a.stopC <- struct{}{}
 			return
 		case bufSize := <-a.resetWriterBuffC:
 			a.writerBufSize = bufSize
 			a.newWriterSize(bufSize)
 		case aLog := <-a.bufferC:
-			a.logAudit(aLog)
+			err := a.logAudit(aLog)
+			if err != nil {
+				log.LogErrorf("action[logAudit]: error occured during logging %v", err)
+			}
 		case <-cleanTimer.C:
 			a.removeLogFile()
 			cleanTimer.Reset(DefaultCleanInterval)
@@ -556,23 +562,25 @@ func (a *Audit) Stop() {
 	close(a.stopC)
 }
 
-func (a *Audit) logAudit(content string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if err := a.shiftFiles(); err != nil {
-		return err
+func (a *Audit) logAudit(content string) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[logAudit]: failed to log, %v", err)
+			log.LogErrorf("action[logAudit]: audit[%v]", content)
+		}
+	}()
+	if err = a.shiftFiles(); err != nil {
+		return
 	}
-
 	if a.writer == nil {
-		log.LogErrorf("write is nil, logFileName: %s\n", a.logFileName)
-		return fmt.Errorf("write is nil, logFileName: %s\n", a.logFileName)
+		err = fmt.Errorf("write is nil, logFileName: %s\n", a.logFileName)
+		return
 	}
 	fmt.Fprintf(a.writer, "%s\n", content)
 	if a.writerBufSize <= 0 {
 		a.writer.Flush()
 	}
-
-	return nil
+	return
 }
 
 func (a *Audit) shiftFiles() error {
