@@ -1214,11 +1214,11 @@ func (s *ExtentStore) ExtentBatchLockNormalExtent(gcLockEks *proto.GcLockExtents
 		return nil
 	}
 
-	beforeTime, err := strconv.ParseInt(gcLockEks.BeforeTime, 10, 64)
-	if err != nil {
-		log.LogWarnf("[ExtentBatchLockNormalExtent] parse beforeTime error(%v)", err)
-		return
-	}
+	// beforeTime, err := strconv.ParseInt(gcLockEks.BeforeTime, 10, 64)
+	// if err != nil {
+	// 	log.LogWarnf("[ExtentBatchLockNormalExtent] parse beforeTime error(%v)", err)
+	// 	return
+	// }
 
 	// return all extents
 	exts, err := s.GetAllExtents(time.Now().Unix() + 1000)
@@ -1238,12 +1238,12 @@ func (s *ExtentStore) ExtentBatchLockNormalExtent(gcLockEks *proto.GcLockExtents
 			continue
 		}
 
-		if extent.ModifyTime > beforeTime {
-			err = fmt.Errorf("extent modify time(%v) >= gcLockEks.BeforeTime(%v), path %s, id %d",
-				extent.ModifyTime, gcLockEks.BeforeTime, s.dataPath, e.ExtentId)
-			log.LogWarnf("[ExtentBatchLockNormalExtent] %s", err.Error())
-			return err
-		}
+		// if extent.ModifyTime > beforeTime {
+		// 	err = fmt.Errorf("extent modify time(%v) >= gcLockEks.BeforeTime(%v), path %s, id %d",
+		// 		extent.ModifyTime, gcLockEks.BeforeTime, s.dataPath, e.ExtentId)
+		// 	log.LogWarnf("[ExtentBatchLockNormalExtent] %s", err.Error())
+		// 	return err
+		// }
 
 		if e.Size != uint32(extent.Size) {
 			err = fmt.Errorf("extent size not match, path %s, extentID(%v), extentSize(%v), extentKeySize(%v)",
