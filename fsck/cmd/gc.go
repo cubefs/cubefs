@@ -76,6 +76,7 @@ type VerifyInfo struct {
 
 var hostLimit = make(map[string]chan struct{})
 var cntLimit = 1
+var hostLk = sync.RWMutex{}
 
 func setHostCntLimit(cnt int) {
 	clearChan()
@@ -83,17 +84,25 @@ func setHostCntLimit(cnt int) {
 }
 
 func getToken(host string) {
+	hostLk.RLock()
 	ch, ok := hostLimit[host]
+	hostLk.RUnlock()
+
 	if !ok {
 		ch = make(chan struct{}, cntLimit)
+		hostLk.Lock()
 		hostLimit[host] = ch
+		hostLk.Unlock()
 	}
 
 	ch <- struct{}{}
 }
 
 func releaseToken(host string) {
+	hostLk.RLock()
 	ch, ok := hostLimit[host]
+	hostLk.RUnlock()
+
 	if !ok {
 		slog.Fatalf("not find chan for host %s, can't release", host)
 	}
@@ -1676,17 +1685,11 @@ func batchDeleteBadExtent(dpIdStr string, exts []*BadNornalExtent) (err error) {
 	}
 
 	if p.ResultCode != proto.OpOk {
-		err = fmt.Errorf("BatchDeleteExtent failed, addr %d, ResultCode: %v", addr, p.String())
+		err = fmt.Errorf("BatchDeleteExtent failed, addr %s, ResultCode: %v", addr, p.String())
 		log.LogError(err.Error())
 		return
 	}
 	return
-}
-
-func getOpStr(code uint8) string {
-	p := proto.NewPacket()
-	p.ResultCode = code
-	return fmt.Sprintf("%s_%d", p.String(), p.ResultCode)
 }
 
 func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []byte, readBytes int, err error) {
