@@ -2336,7 +2336,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 	c.syncUpdateDataPartition(dp)
 	dp.RUnlock()
 
-	log.LogWarnf("clusterID[%v] partitionID:%v  on node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
+	log.LogWarnf("[migrateDataPartition] clusterID[%v] partitionID:%v  on node:%v offline success,newHost[%v],PersistenceHosts:[%v]",
 		c.Name, dp.PartitionID, srcAddr, newAddr, dp.Hosts)
 	dp.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	return
@@ -2426,7 +2426,7 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string) (err error) {
 	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
 
 	if !proto.IsNormalDp(dp.PartitionType) {
-		return fmt.Errorf("[%d] is not normal dp, not support add or delete replica", dp.PartitionID)
+		return fmt.Errorf("action[addDataReplica] [%d] is not normal dp, not support add or delete replica", dp.PartitionID)
 	}
 
 	log.LogInfof("action[addDataReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, dataNode.ID)

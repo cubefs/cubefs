@@ -985,6 +985,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		partition.checkIsDiskError(err, ReadFlag)
 		p.CRC = reply.CRC
 		if err != nil {
+			log.LogErrorf("action[operatePacket] err %v", err)
 			return
 		}
 		reply.Size = currReadSize

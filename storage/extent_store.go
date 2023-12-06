@@ -394,7 +394,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	}
 	// update access time
 	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
-	log.LogDebugf("action[Write] extentID %v offset %v size %v writeTYPE %v", extentID, offset, size, writeType)
+	log.LogDebugf("action[Write] dp %v extentID %v offset %v size %v writeTYPE %v", s.partitionID, extentID, offset, size, writeType)
 	if err = s.checkOffsetAndSize(extentID, offset, size, writeType); err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
 		return status, err
@@ -606,7 +606,6 @@ func (s *ExtentStore) GetExtentSnapshotModOffset(extentID uint64, allocSize uint
 	}
 	log.LogDebugf("action[ExtentStore.GetExtentSnapshotModOffset] extId %v SnapshotDataOff %v SnapPreAllocDataOff %v allocSize %v",
 		extentID, einfo.SnapshotDataOff, einfo.SnapPreAllocDataOff, allocSize)
-	// snapshot write may in sequence
 
 	if einfo.SnapPreAllocDataOff == 0 {
 		einfo.SnapPreAllocDataOff = einfo.SnapshotDataOff
@@ -812,6 +811,7 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	s.eiMutex.RUnlock()
 	for _, extentInfo := range extentInfos {
 		totalSize += extentInfo.TotalSize()
+		log.LogDebugf("ExtentStore.StoreSizeExtentID dp %v extentInfo %v totalSize %v", s.partitionID, extentInfo, extentInfo.TotalSize())
 	}
 
 	return totalSize
