@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"io"
 	"math"
@@ -28,6 +27,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/multirate"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
@@ -695,7 +696,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 					return storeErr
 				}
 			}
-			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead, isForceRead)
+			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead)
 			return storeErr
 		}()
 		partition.checkIsDiskError(err)
@@ -1026,7 +1027,7 @@ func (s *DataNode) handleTinyExtentRepairRead(request *repl.Packet, connect net.
 		}
 		reply.ExtentOffset = offset
 		var tpObject = partition.monitorData[proto.ActionRepairRead].BeforeTp()
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false, false)
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
 		if err != nil {
 			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
@@ -1127,7 +1128,7 @@ func (s *DataNode) handleTinyExtentAvaliRead(request *repl.Packet, connect net.C
 			reply.Data = make([]byte, currReadSize)
 		}
 		reply.ExtentOffset = offset
-		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false, false)
+		reply.CRC, err = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data, false)
 		if err != nil {
 			if currReadSize == unit.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)

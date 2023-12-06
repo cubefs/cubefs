@@ -109,7 +109,7 @@ func (s *ExtentStore) GetExtentCrc(extentId uint64) (crc uint32, err error) {
 			currReadSize = uint32(unit.Min(int(needReadSize), 128*unit.MB))
 		}
 		data := make([]byte, currReadSize)
-		dataCrc, err = s.Read(extentId, offset, int64(currReadSize), data, false, false)
+		dataCrc, err = s.Read(extentId, offset, int64(currReadSize), data, false)
 		if err != nil {
 			return
 		}
