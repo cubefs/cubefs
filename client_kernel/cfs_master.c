@@ -259,7 +259,7 @@ static int do_http_request(struct cfs_master_client *mc,
 {
 	struct sockaddr_storage *host;
 	struct cfs_socket *csk;
-	int ret;
+	int ret = -1;
 	u32 max = mc->hosts.num;
 	u32 i = prandom_u32() % mc->hosts.num;
 
@@ -297,10 +297,9 @@ static int do_http_request(struct cfs_master_client *mc,
 		}
 
 		cfs_socket_release(csk, true);
-		return ret;
+		return 0;
 	}
-
-	return -1;
+	return ret;
 }
 
 static int calculate_md5(const unsigned char *input, size_t ilen,

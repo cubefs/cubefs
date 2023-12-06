@@ -282,9 +282,6 @@ static inline void cfs_packet_set_write_data(struct cfs_packet *packet,
 	packet->request.data.write.frags = packet->rw.frags;
 	packet->request.data.write.nr = cfs_page_iter_get_frags(
 		pi, packet->request.data.write.frags, CFS_PAGE_VEC_NUM, size);
-	packet->request.hdr.crc = cpu_to_be32(
-		cfs_page_frags_crc32(packet->request.data.write.frags,
-				     packet->request.data.write.nr));
 	packet->request.hdr.size = cpu_to_be32(*size);
 }
 

@@ -232,7 +232,8 @@ int cfs_extent_module_init(void)
 {
 	if (extent_work_queue)
 		return 0;
-	extent_work_queue = alloc_workqueue("extent_wq", WQ_MEM_RECLAIM, 0);
+	extent_work_queue =
+		alloc_workqueue("extent_wq", WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
 	if (!extent_work_queue) {
 		return -ENOMEM;
 	}
