@@ -241,6 +241,8 @@ message SimpleVolViewPb {
     string                    RemoteCacheBoostPath   = 87;
     bool                      RemoteCacheAutoPrepare = 88;
     int64                     RemoteCacheTTL         = 89;
+    int32                     TruncateEKCount        = 90;
+    bool                      EnableRemoveDupReq     = 91;
 }
 
 message NodeStatInfoPb {
