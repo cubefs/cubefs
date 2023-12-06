@@ -115,6 +115,10 @@ func (e *Extent) String() string {
 	return fmt.Sprintf("%v_%v_%v", e.filePath, e.dataSize, e.snapshotDataOff)
 }
 
+func (e *Extent) GetSize() (int64, uint64) {
+	return e.dataSize, e.snapshotDataOff
+}
+
 func (e *Extent) HasClosed() bool {
 	return atomic.LoadInt32(&e.hasClose) == ExtentHasClose
 }
@@ -136,6 +140,10 @@ func (e *Extent) Exist() (exsit bool) {
 		return os.IsExist(err)
 	}
 	return true
+}
+
+func (e *Extent) GetFile() *os.File {
+	return e.file
 }
 
 // InitToFS init extent data info filesystem. If entry file exist and overwrite is true,
@@ -162,9 +170,7 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 		curOff    int64
 		err       error
 	)
-	if statSize <= util.ExtentSize {
-		return statSize
-	}
+
 	for {
 		// curOff if the hold start and the data end
 		curOff, err = e.file.Seek(holStart, SEEK_DATA)
@@ -184,12 +190,13 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 		holStart = curOff
 	}
 	log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
-	dataSize = util.ExtentSize
-	if holStart > dataStart { // data cann't move forward only hole include value util.ExtentSize
-		dataSize = holStart
+	if holStart == 0 {
+		if statSize > util.ExtentSize {
+			return util.ExtentSize
+		}
+		return statSize
 	}
-	log.LogDebugf("GetDataSize statSize %v curOff %v dataStart %v holStart %v, err %v,path %v", statSize, curOff, dataStart, holStart, err, e.filePath)
-	return
+	return holStart
 }
 
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
@@ -315,7 +322,15 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		status = proto.OpTryOtherExtent
 		return
 	}
-
+	if IsAppendRandomWrite(writeType) {
+		if e.snapshotDataOff <= util.ExtentSize {
+			log.LogInfof("action[Extent.Write] truncate extent %v offset %v size %v writeType %v truncate err %v", e, offset, size, writeType, err)
+			if err = e.file.Truncate(util.ExtentSize); err != nil {
+				log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v truncate err %v", offset, size, writeType, err)
+				return
+			}
+		}
+	}
 	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
 		log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
 		return
@@ -331,11 +346,7 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 			log.LogDebugf("action[Extent.Write] e %v offset %v size %v writeType %v", e, offset, size, writeType)
 		} else if IsAppendRandomWrite(writeType) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
-			index := int64(math.Max(float64(e.snapshotDataOff), float64(offset+size)))
-			if index%util.PageSize != 0 {
-				index = index + (util.PageSize - index%util.PageSize)
-			}
-			e.snapshotDataOff = uint64(index)
+			e.snapshotDataOff = uint64(math.Max(float64(e.snapshotDataOff), float64(offset+size)))
 		}
 		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v dataSize %v snapshotDataOff %v",
 			offset, size, writeType, e.dataSize, e.snapshotDataOff)

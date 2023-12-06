@@ -15,9 +15,14 @@
 package storage_test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"syscall"
 	"testing"
+
+	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
@@ -195,4 +200,104 @@ func TestNormalExtent(t *testing.T) {
 	defer clean()
 	normalExtentCreateTest(t, name)
 	normalExtentRecoveryTest(t, name)
+}
+
+func TestSeekHole(t *testing.T) {
+	var (
+		info     os.FileInfo
+		filePath = "./filename"
+		err      error
+		size     int64
+	)
+
+	os.Remove(filePath)
+	e := storage.NewExtentInCore(filePath, 0)
+	err = e.InitToFS()
+	require.NoError(t, err)
+
+	file := e.GetFile()
+	info, err = file.Stat()
+	require.NoError(t, err)
+
+	size = e.GetDataSize(info.Size())
+	t.Logf("data size %v, file stat size %v", size, info.Size())
+	blockSize := info.Sys().(*syscall.Stat_t).Blksize
+	t.Logf("blockSize %v", blockSize)
+	headSize := 10 * 1024 * 1024
+	file.Truncate(util.ExtentSize) // this necessary or else hole position not stable
+
+	var size_ int
+	data := bytes.Repeat([]byte("s"), headSize)
+
+	// write at begin
+	size_, err = file.Write(data)
+	require.NoError(t, err)
+	info, err = file.Stat()
+	require.NoError(t, err)
+	t.Logf("err %v,size %v, file stat size %v", err, size_, info.Size())
+
+	// puch hole at the begin
+	err = sys.Fallocate(file.Fd(), util.FallocFLPunchHole|util.FallocFLKeepSize, 4*1024, blockSize)
+	require.NoError(t, err)
+
+	midDataOffset := int64(util.ExtentSize / 4)
+	_, err = file.WriteAt(data[:1024], midDataOffset)
+	require.NoError(t, err)
+
+	// write at middle
+	midDataOffset = int64(util.ExtentSize / 2)
+	size_, err = file.WriteAt(data[:1024], midDataOffset)
+	require.NoError(t, err)
+	info, err = file.Stat()
+	t.Logf("err %v,size %v, file stat size %v", err, size_, info.Size())
+
+	// calc last hole in 128M
+	lastHole := midDataOffset + 1024
+	alignlastHole := lastHole + (blockSize - lastHole%blockSize)
+	t.Logf("write at %v size %v last hole off %v ,aligned off %v", midDataOffset, size_, lastHole, alignlastHole)
+
+	// write after 128M
+	_, err = file.WriteAt(data[:1024], int64(util.ExtentSize))
+	require.NoError(t, err)
+
+	// seek last hole in 128M
+	info, err = file.Stat()
+	size = e.GetDataSize(info.Size())
+	t.Logf("datasize %v alignLastOff %v lastHoleOfData %v size %v", size, alignlastHole, lastHole, info.Size())
+	require.NoError(t, err)
+
+	file.Close()
+
+	err = e.RestoreFromFS()
+	require.NoError(t, err)
+
+	dataSize, snapSize := e.GetSize()
+	t.Logf("dataSize %v, snapSize %v", dataSize, snapSize)
+	assert.True(t, dataSize == alignlastHole)
+}
+
+func TestExtentRecovery(t *testing.T) {
+	filePath := "./1025"
+	os.Remove(filePath)
+	e := storage.NewExtentInCore(filePath, 1025)
+	err := e.InitToFS()
+	require.NoError(t, err)
+
+	headSize := 128 * 1024
+
+	data := bytes.Repeat([]byte("s"), headSize)
+	for i := 0; i < 10; i++ {
+		_, err := e.Write(data, int64(i)*util.BlockSize, int64(headSize), 0, storage.AppendWriteType, true, getMockCrcPersist(t), nil)
+		require.NoError(t, err)
+	}
+	for i := 0; i < 10; i++ {
+		_, err := e.Write(data, int64(i)*util.BlockSize+util.ExtentSize, int64(headSize), 0, storage.AppendRandomWriteType, true, getMockCrcPersist(t), nil)
+		require.NoError(t, err)
+	}
+	e.GetFile().Close()
+	err = e.RestoreFromFS()
+	require.NoError(t, err)
+	dataSize, snapSize := e.GetSize()
+	t.Logf("dataSize %v, snapSize %v", dataSize, snapSize)
+	assert.True(t, util.BlockSize*10 == dataSize)
 }

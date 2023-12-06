@@ -482,6 +482,7 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 	for _, addr := range partition.Hosts {
 		replica, err := partition.getReplica(addr)
 		if err != nil {
+			log.LogInfof("action[checkLoadResponse] partitionID:%v getReplica addr %v error %v", partition.PartitionID, addr, err)
 			return
 		}
 		timePassed := time.Now().Unix() - partition.LastLoadedTime
@@ -492,6 +493,7 @@ func (partition *DataPartition) checkLoadResponse(timeOutSec int64) (isResponse 
 			return
 		}
 		if replica.isLive(timeOutSec) == false || replica.HasLoadResponse == false {
+			log.LogInfof("action[checkLoadResponse] partitionID:%v getReplica addr %v replica.isLive(timeOutSec) %v", partition.PartitionID, addr, replica.isLive(timeOutSec))
 			return
 		}
 	}
