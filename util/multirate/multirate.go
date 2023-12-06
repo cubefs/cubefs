@@ -529,10 +529,24 @@ func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Sta
 }
 
 func waitN(lim *rate.Limiter, ctx context.Context, n int) (err error) {
+	deadline, ok := ctx.Deadline()
+	if n > lim.Burst() {
+		var sleepTime time.Duration
+		if ok {
+			now := time.Now()
+			if deadline.After(now) {
+				sleepTime = deadline.Sub(now)
+			}
+		} else {
+			sleepTime = time.Duration(float64(n) / float64(lim.Limit()) * float64(time.Second))
+		}
+		time.Sleep(sleepTime)
+		return
+	}
+
 	if err = lim.WaitN(ctx, n); err == nil {
 		return
 	}
-	deadline, ok := ctx.Deadline()
 	if !ok {
 		return
 	}
