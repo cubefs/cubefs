@@ -875,6 +875,12 @@ func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	return
 }
 
+func (p *Packet) IsReadOperation() bool {
+	return p.Opcode == OpStreamRead || p.Opcode == OpRead ||
+		p.Opcode == OpExtentRepairRead || p.Opcode == OpReadTinyDeleteRecord ||
+		p.Opcode == OpTinyExtentRepairRead || p.Opcode == OpStreamFollowerRead
+}
+
 // ReadFromConn reads the data from the given connection.
 // Recognize the version bit and parse out version,
 // to avoid version field rsp back , the rsp of random write from datanode with replace OpRandomWriteVer to OpRandomWriteVerRsp
@@ -941,7 +947,7 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 		return syscall.EBADMSG
 	}
 	size := p.Size
-	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+	if p.IsReadOperation() && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
 	p.Data = make([]byte, size)
