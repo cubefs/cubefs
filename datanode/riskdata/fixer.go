@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
 	"hash/crc32"
 	"io"
 	"math"
@@ -21,6 +20,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/multirate"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
@@ -341,7 +342,7 @@ func (p *Fixer) computeLocalCRC(fragment *Fragment) (crc uint32, err error) {
 		if err != nil {
 			return
 		}
-		_, err = p.storage.Read(extentID, readOffset, readSize, buf[:readSize], false, true)
+		_, err = p.storage.Read(extentID, readOffset, readSize, buf[:readSize], false)
 		if log.IsDebugEnabled() {
 			log.LogDebugf("Fixer[%v] read storage: extent=%v, offset=%v, size=%v, error=%v",
 				p.partitionID, extentID, readOffset, readSize, err)

@@ -456,7 +456,7 @@ func (s *ExtentStore) checkOffsetAndSize(extentID uint64, offset, size int64) er
 }
 
 // Read reads the extent based on the given id.
-func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead, force bool) (crc uint32, err error) {
+func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool) (crc uint32, err error) {
 	var e *Extent
 	ei, _ := s.getExtentInfoByExtentID(extentID)
 	if e, err = s.ExtentWithHeader(ei); err != nil {
@@ -465,7 +465,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return
 	}
-	crc, err = e.Read(nbuf, offset, size, isRepairRead, force)
+	crc, err = e.Read(nbuf, offset, size, isRepairRead)
 
 	return
 }

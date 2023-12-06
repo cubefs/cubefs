@@ -390,27 +390,25 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		blkNo     = int(offset / unit.BlockSize)
 		blkOffset = offset % unit.BlockSize
 	)
-
-	switch {
-	case blkOffset == 0 && size == unit.BlockSize:
-		// 当本次写入的数据位置完全对齐整个Block(128KB), 更新该Block的CRC记录信息
+	if blkOffset == 0 && size == unit.BlockSize {
+		// 当本次写入的数据位置完全对齐一个完整的Block(128KB), 更新该Block的CRC记录信息
 		e.setBlkCRC(blkNo, crc)
 		err = e.saveHeader(blkNo)
-	case blkOffset+size <= unit.BlockSize:
-		// 本次写入的数据未完全对齐整个Block(128KB)且数据范围未跨Block(128KB), 将该Block的CRC信息置0
-		e.setBlkCRC(blkNo, 0)
-		err = e.saveHeader(blkNo)
-	default:
-		// 本次写入的数据未完全对齐整个Block(128KB)且数据范围跨Block(128KB), 将涉及的Block CRC信息置0
-		e.setBlkCRC(blkNo, 0)
-		e.setBlkCRC(blkNo+1, 0)
-		err = e.saveHeader(blkNo, blkNo+1)
+		return
+	}
+
+	// 将数据变更涉及Block的CRC信息置0以触发重新计算
+	for cursor := blkNo; cursor <= int(offset+size-1)/unit.BlockSize; cursor++ {
+		e.setBlkCRC(cursor, 0)
+		if err = e.saveHeader(cursor); err != nil {
+			return
+		}
 	}
 	return
 }
 
 // Read reads data from an extent.
-func (e *Extent) Read(data []byte, offset, size int64, isRepairRead, force bool) (crc uint32, err error) {
+func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
 	if proto.IsTinyExtent(e.extentID) {
 		return e.readTiny(data, offset, size, isRepairRead)
 	}
@@ -429,23 +427,6 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead, force bool)
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
-
-	if force {
-		return
-	}
-
-	var (
-		blkNo     = int(offset / unit.BlockSize)
-		blkOffset = offset % unit.BlockSize
-	)
-
-	if blkOffset == 0 && size == unit.BlockSize {
-		// 当本次写入的数据位置完全对齐整个Block(128KB), 尝试直接读取该Block的CRC信息，若CRC信息有效则进行校验
-		if expected := e.getBlkCRC(blkNo); expected != 0 && expected != crc {
-			err = NewParameterMismatchErr(fmt.Sprintf("crc mismatch: expected %v, actual %v", expected, crc))
-			return
-		}
-	}
 
 	return
 }
