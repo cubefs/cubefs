@@ -1532,6 +1532,63 @@ func (r *RocksSnapShot) Range(tp TreeType, cb func(item interface{}) (bool, erro
 	return r.tree.db.RangeWithSnap([]byte{byte(tableType)}, []byte{byte(tableType) + 1}, r.snap, callbackFunc)
 }
 
+func (b *RocksSnapShot) RangeDentryTreeWithPrefix(prefix, start, end *Dentry, cb func(item *Dentry) (bool, error)) error {
+	var (
+		startByte, endByte, prefixByte []byte
+		cbFunc    func(k, v []byte) (bool, error)
+	)
+	prefixByte, startByte, endByte = []byte{byte(DentryTable)}, []byte{byte(DentryTable)}, []byte{byte(DentryTable) + 1}
+	if end != nil {
+		endByte = dentryEncodingKey(end.ParentId, end.Name)
+	}
+
+	if start != nil && start.ParentId != 0 {
+		startByte = dentryEncodingKey(start.ParentId, start.Name)
+	}
+
+	if prefix != nil {
+		prefixByte = dentryEncodingPrefix(prefix.ParentId, prefix.Name)
+	}
+
+	cbFunc = func(k, v []byte) (bool, error) {
+		d := new(Dentry)
+		if err := d.Unmarshal(v); err != nil {
+			return false, err
+		}
+		return cb(d)
+	}
+	return b.tree.db.RangeWithSnapByPrefix(prefixByte, startByte, endByte, b.snap, cbFunc)
+}
+
+func (b *RocksSnapShot) RangeDelDentryTreeWithPrefix(prefix, start, end *DeletedDentry, cb func(item *DeletedDentry) (bool, error)) error {
+	var (
+		startByte, endByte, prefixByte []byte
+		callBackFunc                   func(k, v []byte) (bool, error)
+	)
+
+	prefixByte, startByte, endByte = []byte{byte(DelDentryTable)}, []byte{byte(DelDentryTable)}, []byte{byte(DelDentryTable) + 1}
+	if end != nil {
+		endByte = deletedDentryEncodingKey(end.ParentId, end.Name, end.Timestamp)
+	}
+
+	if start != nil {
+		startByte = deletedDentryEncodingKey(start.ParentId, start.Name, start.Timestamp)
+	}
+
+	if prefix != nil {
+		prefixByte = deletedDentryEncodingPrefix(prefix.ParentId, prefix.Name, prefix.Timestamp)
+	}
+
+	callBackFunc = func(k, v []byte) (bool, error) {
+		dd := new(DeletedDentry)
+		if err := dd.Unmarshal(v); err != nil {
+			return false, err
+		}
+		return cb(dd)
+	}
+	return b.tree.db.RangeWithSnapByPrefix(prefixByte, startByte, endByte, b.snap, callBackFunc)
+}
+
 func (r *RocksSnapShot) Close() {
 	if r.snap == nil {
 		return

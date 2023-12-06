@@ -86,6 +86,8 @@ type Snapshot interface {
 	Count(tp TreeType) uint64
 	CrcSum(tp TreeType) (uint32, error)
 	ApplyID() uint64
+	RangeDentryTreeWithPrefix(prefix, start, end *Dentry, cb func(item *Dentry) (bool, error)) error
+	RangeDelDentryTreeWithPrefix(prefix, start, end *DeletedDentry, cb func(item *DeletedDentry) (bool, error)) error
 }
 
 type Tree interface {

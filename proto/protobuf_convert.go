@@ -337,6 +337,8 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		RemoteCacheAutoPrepare: vv.RemoteCacheAutoPrepare,
 		RemoteCacheBoostPath:   vv.RemoteCacheBoostPath,
 		RemoteCacheTTL:         vv.RemoteCacheTTL,
+		EnableRemoveDupReq:     vv.EnableRemoveDupReq,
+		TruncateEKCountEveryTime: int(vv.TruncateEKCount),
 	}
 	if vv.SmartRules != nil {
 		simpleVolView.SmartRules = vv.SmartRules
@@ -435,6 +437,8 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		RemoteCacheAutoPrepare: vv.RemoteCacheAutoPrepare,
 		RemoteCacheBoostPath:   vv.RemoteCacheBoostPath,
 		RemoteCacheTTL:         vv.RemoteCacheTTL,
+		TruncateEKCount:        int32(vv.TruncateEKCountEveryTime),
+		EnableRemoveDupReq:     vv.EnableRemoveDupReq,
 	}
 }
 
