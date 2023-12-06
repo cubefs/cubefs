@@ -335,7 +335,7 @@ func (r *Rule) String() string {
 }
 
 func (r *Rule) match(ps Properties) (bool, string) {
-	var eventPs [statTypeMax]string
+	var eventPs [propertyTypeMax]string
 	for _, p := range ps {
 		if p.Type >= propertyTypeMax {
 			continue

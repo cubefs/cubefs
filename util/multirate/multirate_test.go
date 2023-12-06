@@ -72,7 +72,7 @@ func TestMultiRate(t *testing.T) {
 	ok = ml.Allow(Properties{{PropertyTypeVol, restrictedVol}})
 	assert.False(t, ok)
 
-	err = ml.WaitN(ctx, Properties{{PropertyTypeVol, "vol1"}, {PropertyTypeOp, "read"}}, Stat{Count: 9})
+	err = ml.WaitN(ctx, Properties{{PropertyTypeVol, "vol1"}, {PropertyTypeOp, "read"}, {PropertyTypeFlow, FlowNetwork}}, Stat{Count: 9})
 	assert.Nil(t, err)
 	err = ml.Wait(ctx, Properties{{PropertyTypeVol, "vol1"}, {PropertyTypeOp, "read"}})
 	assert.Nil(t, err)
