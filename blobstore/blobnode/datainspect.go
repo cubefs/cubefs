@@ -72,7 +72,7 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 
 func (mgr *DataInspectMgr) loopDataInspect() {
 	span, ctx := trace.StartSpanFromContext(mgr.svr.ctx, "")
-	t := time.NewTimer(time.Second * 5) // wait switch
+	t := time.NewTicker(time.Second * 5) // wait switch
 	defer t.Stop()
 
 	for {
@@ -82,7 +82,6 @@ func (mgr *DataInspectMgr) loopDataInspect() {
 				continue
 			}
 			mgr.inspectAllDisks(ctx)
-			t.Reset(time.Second * 5)
 
 		case <-mgr.svr.closeCh:
 			span.Warnf("loop inspect data closed.")
