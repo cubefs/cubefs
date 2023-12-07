@@ -34,8 +34,8 @@ func (m *Monitor) collect(w http.ResponseWriter, r *http.Request) {
 	if log.IsDebugEnabled() {
 		detailBuilder := strings.Builder{}
 		for _, data := range reportInfo.Infos {
-			detailBuilder.WriteString(fmt.Sprintf("\tdata[time: %v, volume: %v, partition: %v, action: %v(%v), count: %v, size: %v]\n",
-				time.Unix(data.ReportTime, 0).Format("2006-01-02 15:04:05"), data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size))
+			detailBuilder.WriteString(fmt.Sprintf("\t[time: %v, data: %v]\n",
+				time.Unix(data.ReportTime, 0).Format("2006-01-02 15:04:05"), data))
 		}
 		log.LogDebugf("collect report[cluster: %v, module: %v, addr: %v]:\n%v",
 			reportInfo.Cluster, reportInfo.Module, reportInfo.Addr, detailBuilder.String())

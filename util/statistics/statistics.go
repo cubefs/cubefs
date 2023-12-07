@@ -60,7 +60,6 @@ type ReportData struct {
 	Max         uint64
 	ReportTime  int64
 	TimeStr     string
-	IsTotal     bool
 	DiskPath    string // disk of dp
 }
 
@@ -81,8 +80,8 @@ func (data *MonitorData) String() string {
 }
 
 func (data *ReportData) String() string {
-	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)Tp99(%v)Max(%v)Avg(%v)Disk(%v)ReportTime(%v)IsTotal(%v)}",
-		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.Tp99, data.Max, data.Avg, data.DiskPath, data.ReportTime, data.IsTotal)
+	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)Tp99(%v)Max(%v)Avg(%v)Disk(%v)ReportTime(%v)}",
+		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.Tp99, data.Max, data.Avg, data.DiskPath, data.ReportTime)
 }
 
 func newStatistics(monitorAddr, cluster, moduleName, nodeAddr string) *Statistics {

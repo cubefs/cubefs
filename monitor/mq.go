@@ -80,9 +80,6 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 				proMsgs[i] = make([]*sarama.ProducerMessage, 0)
 			}
 			for _, info := range reportInfo.Infos {
-				if info.IsTotal {
-					continue
-				}
 				mqMsg := constructMQMessage(reportInfo.Cluster, reportInfo.Module, reportInfo.Addr, info)
 				for topicID, topic := range mqProducer.topic {
 					if len(topic) <= 0 {
@@ -111,7 +108,8 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 }
 
 func constructMQMessage(cluster, module, ip string, data *statistics.ReportData) []byte {
-	msg := fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v", data.ReportTime, cluster, module, ip, data.Action, data.VolName, data.PartitionID,
-		data.Size, data.Count, data.Max, data.Avg, data.Tp99)
+	msg := fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v",
+		data.ReportTime, cluster, module, ip, data.Action, data.VolName, data.PartitionID,
+		data.Size, data.Count, data.Max, data.Avg, data.Tp99, data.DiskPath)
 	return []byte(msg)
 }

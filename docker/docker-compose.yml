@@ -142,6 +142,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json
         restart: on-failure
         privileged: true
@@ -166,6 +167,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json
         restart: on-failure
         privileged: true
@@ -190,6 +192,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json
         restart: on-failure
         privileged: true
@@ -214,6 +217,7 @@ services:
             - ${DiskPath:-./docker_data}/coverage:/cfs/coverage 
             - ./conf/metanode.json:/cfs/conf/metanode.json
             - ./script/start_meta.sh:/cfs/script/start.sh
+            - ./conf/hosts:/etc/hosts:ro
         command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json
         restart: on-failure
         privileged: true
