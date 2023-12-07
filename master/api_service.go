@@ -2247,11 +2247,12 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		}
 	}
 
-	if req.dpReplicaNum == 0 {
+	if req.dpReplicaNum == 0 && req.coldArgs.cacheCap > 0 {
 		req.dpReplicaNum = 1
 	}
 
 	req.followerRead = true
+
 	args := req.coldArgs
 
 	if args.objBlockSize == 0 {
