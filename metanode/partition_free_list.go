@@ -390,7 +390,8 @@ func (mp *metaPartition) deleteMarkedEBSInodes(inoSlice []uint64) {
 			continue
 		}
 
-		log.LogDebugf("deleteMarkedEBSInodes. mp %v inode [%v] inode.Extents %v, ino verlist %v", mp.config.PartitionId, ino, inode.Extents, inode.multiSnap.multiVersions)
+		log.LogDebugf("deleteMarkedEBSInodes. mp %v inode [%v] inode.Extents %v, ino verlist %v",
+			mp.config.PartitionId, ino, inode.Extents, inode.GetMultiVerString())
 		if inode.getLayerLen() > 1 {
 			log.LogErrorf("deleteMarkedEBSInodes. mp %v inode [%v] verlist len %v should not drop",
 				mp.config.PartitionId, ino, inode.getLayerLen())
