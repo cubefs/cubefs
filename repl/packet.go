@@ -100,6 +100,8 @@ func (p *FollowerPacket) IsErrPacket() bool {
 func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg string) {
 	if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
+		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -109,8 +111,6 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 	} else if strings.Contains(errMsg, proto.ExtentNotFoundError.Error()) ||
 		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		p.ResultCode = proto.OpNotExistErr
-	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
-		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
@@ -705,6 +705,8 @@ var (
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	if strings.Contains(errMsg, proto.ErrDataPartitionNotExists.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
+		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -714,8 +716,6 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, proto.ExtentNotFoundError.Error()) ||
 		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		p.ResultCode = proto.OpNotExistErr
-	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
-		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {

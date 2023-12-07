@@ -115,6 +115,9 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		if partition.GetExtentCount() >= storage.MaxExtentCount*3 {
 			return fmt.Errorf("addExtentInfo partition %v has reached maxExtentId", p.PartitionID)
 		}
+		if partition.disk.Status == proto.ReadOnly || partition.IsRejectWrite() {
+			return storage.NoSpaceError
+		}
 		p.ExtentID, err = partition.AllocateExtentID()
 		if err != nil {
 			return fmt.Errorf("addExtentInfo partition %v alloc NextExtentId error %v", p.PartitionID, err)
