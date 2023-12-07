@@ -126,7 +126,7 @@ func TestCreateColdVol(t *testing.T) {
 	assert.True(t, vol.CacheCapacity == 0)
 	assert.True(t, vol.CacheAction == proto.NoCache)
 	assert.True(t, vol.CacheThreshold == defaultCacheThreshold)
-	assert.True(t, vol.dpReplicaNum == 1)
+	assert.True(t, vol.dpReplicaNum == 0)
 	assert.True(t, vol.FollowerRead)
 	assert.True(t, vol.CacheTTL == defaultCacheTtl)
 	assert.True(t, vol.CacheHighWater == defaultCacheHighWater)
