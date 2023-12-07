@@ -166,8 +166,6 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				lastCursor = curCursor
 				timerCursor.Reset(intervalToSyncCursor)
-			default:
-				// do nothing
 			}
 		}
 	}(mp.stopC)
