@@ -21,7 +21,7 @@ var rateLimitProperties = multirate.Properties{
 const (
 	sleepForUpdateVolConf                  = time.Second * 1
 	intervalToUpdateVolConf                = time.Minute * 5
-	intervalFetchDataPartitionView         = time.Hour * 24
+	intervalFetchDataPartitionView         = time.Hour * 1
 	defIntervalForceFetchDataPartitionView = time.Minute * 5
 	forceFetchDataPartitionViewChSize      = 1024
 	defPostByDomainMaxErrorCount           = 1000
