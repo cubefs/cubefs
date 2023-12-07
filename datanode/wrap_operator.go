@@ -1663,9 +1663,7 @@ func (s *DataNode) handlePacketToRecoverDataReplicaMeta(p *repl.Packet) {
 }
 
 func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn) {
-	var (
-		err error
-	)
+	var err error
 
 	defer func() {
 		if err != nil {
@@ -1714,9 +1712,7 @@ func (s *DataNode) handleBatchLockNormalExtent(p *repl.Packet, connect net.Conn)
 }
 
 func (s *DataNode) handleBatchUnlockNormalExtent(p *repl.Packet, connect net.Conn) {
-	var (
-		err error
-	)
+	var err error
 
 	defer func() {
 		if err != nil {

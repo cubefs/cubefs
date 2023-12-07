@@ -22,7 +22,6 @@ import (
 	"path"
 	"strconv"
 	"sync/atomic"
-	"time"
 	"syscall"
 
 	"github.com/cubefs/cubefs/cmd/common"
@@ -30,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 var parseArgs = common.ParseArguments

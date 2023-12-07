@@ -304,9 +304,9 @@ type volValue struct {
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
 	TrashInterval                                          int64
 
-	Forbidden                                              bool
-	EnableAuditLog                                         bool
-	DpRepairBlockSize                                      uint64
+	Forbidden         bool
+	EnableAuditLog    bool
+	DpRepairBlockSize uint64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {

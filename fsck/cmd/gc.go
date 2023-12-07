@@ -74,9 +74,11 @@ type VerifyInfo struct {
 	VolName     string
 }
 
-var hostLimit = make(map[string]chan struct{})
-var cntLimit = 1
-var hostLk = sync.RWMutex{}
+var (
+	hostLimit = make(map[string]chan struct{})
+	cntLimit  = 1
+	hostLk    = sync.RWMutex{}
+)
 
 func setHostCntLimit(cnt int) {
 	clearChan()
@@ -113,7 +115,6 @@ func releaseToken(host string) {
 	default:
 		slog.Fatalf("there is not token in chan, host %s", host)
 	}
-
 }
 
 func clearChan() {
@@ -123,7 +124,7 @@ func clearChan() {
 }
 
 func newGCCommand() *cobra.Command {
-	var c = &cobra.Command{
+	c := &cobra.Command{
 		Use:   "gc",
 		Short: "gc specified volume",
 		Args:  cobra.MinimumNArgs(0),
@@ -174,7 +175,7 @@ func newGetMpExtentsCmd() *cobra.Command {
 	// var fromMpId string
 	var concurrency uint64
 
-	var cmd = &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "getMpExtents [VOLNAME] [DIR]",
 		Short: "get extents of mp",
 		Args:  cobra.MinimumNArgs(2),
@@ -224,7 +225,7 @@ func getMpInfoById(mpId string) (mpInfo *proto.MetaPartitionInfo, err error) {
 		return nil, err
 	}
 
-	var body = &struct {
+	body := &struct {
 		Code int32           `json:"code"`
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
@@ -351,7 +352,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 		slog.Fatalf("Init local dir failed, mpId %s, err: %v", mpId, err)
 	}
 
-	normalFile, err := os.OpenFile(NormalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	normalFile, err := os.OpenFile(NormalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		slog.Fatalf("Open file failed, mp %s, err: %v", mpId, err)
 	}
@@ -448,7 +449,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				log.LogDebugf("inode:%v, extent:%v", ino.Inode, eks)
 			}
 
-			walkFunc := func(ek proto.ExtentKey) bool {
+			walkFunc := func(i int, ek proto.ExtentKey) bool {
 				if storage.IsTinyExtent(ek.ExtentId) {
 					return true
 				}
@@ -492,7 +493,7 @@ func InitLocalDir(dir string, volname string, partitionId string, dirType string
 	normalPath := filepath.Join(dir, volname, dirType, normalDir)
 	_, err = os.Stat(normalPath)
 	if os.IsNotExist(err) {
-		if err = os.MkdirAll(normalPath, 0755); err != nil {
+		if err = os.MkdirAll(normalPath, 0o755); err != nil {
 			slog.Fatalf("create dir failed, path %s, err : %v", normalFilePath, err)
 			return
 		}
@@ -623,7 +624,7 @@ func getDpInfoById(dpId string) (dpInfo *proto.DataPartitionInfo, err error) {
 		return
 	}
 
-	var body = &struct {
+	body := &struct {
 		Code int32           `json:"code"`
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
@@ -692,7 +693,7 @@ func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string
 		return fmt.Errorf("Read response body failed, err: %v", err)
 	}
 
-	var body = &struct {
+	body := &struct {
 		Code int32           `json:"code"`
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
@@ -716,7 +717,7 @@ func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string
 		return
 	}
 
-	normalFile, err := os.OpenFile(normalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	normalFile, err := os.OpenFile(normalFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.LogErrorf("Open normalFile failed, err: %v", err)
 		return
@@ -754,7 +755,7 @@ func getExtentsByDpId(dir string, volname string, dpId string, beforeTime string
 			return
 		}
 	}
-	err = os.WriteFile(beforeTimeFilePath, []byte(beforeTime), 0644)
+	err = os.WriteFile(beforeTimeFilePath, []byte(beforeTime), 0o644)
 	if err != nil {
 		log.LogErrorf("Write before time file failed, err: %v", err)
 		return
@@ -814,7 +815,7 @@ func getClusterInfo() (clusterView *proto.ClusterView, err error) {
 		return
 	}
 
-	var body = &struct {
+	body := &struct {
 		Code int32           `json:"code"`
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
@@ -857,7 +858,7 @@ func writeNormalVerifyInfo(dir, volname, dirType string) {
 			return
 		}
 	}
-	err = os.WriteFile(filePath, data, 0644)
+	err = os.WriteFile(filePath, data, 0o644)
 	if err != nil {
 		slog.Fatalf("Write verify info file failed, err: %v", err)
 		return
@@ -938,7 +939,6 @@ func newCalcBadExtentsCmd() *cobra.Command {
 				slog.Fatalf("Invalid extent type: %s", extType)
 				return
 			}
-
 		},
 	}
 	return cmd
@@ -975,7 +975,7 @@ func calcBadNormalExtents(volname, dir string) (err error) {
 		}
 	}
 
-	err = os.MkdirAll(destDir, 0755)
+	err = os.MkdirAll(destDir, 0o755)
 	if err != nil {
 		slog.Fatalf("Mkdir dest dir failed, err: %v", err)
 		return
@@ -1124,7 +1124,7 @@ func calcDpBadNormalExtentByBF(dpDir, badDir string) (err error) {
 func writeBadNormalExtentoLocal(dpId, badDir string, badExtent BadNornalExtent) (err error) {
 	log.LogInfof("Write dir %s, dpId: %s bad extent: %v", badDir, dpId, badExtent)
 	filePath := filepath.Join(badDir, dpId)
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		slog.Fatalf("Open file failed, path %s, err: %v", filePath, err)
 		return err
@@ -1553,7 +1553,7 @@ func cleanBadNormalExtent(volname, dir, backupDir, dpIdStr, extentStr string) (e
 			continue
 		}
 
-		var exts = []*BadNornalExtent{&badExtent}
+		exts := []*BadNornalExtent{&badExtent}
 		beforeTimeFilePath := filepath.Join(dir, volname, "dp", normalDir, beforeTimeFile)
 		data, err := os.ReadFile(beforeTimeFilePath)
 		if err != nil {
@@ -1741,7 +1741,7 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 	for readBytes < int(size) {
 		replyPacket := stream.NewReply(p.ReqID, dpId, extentId)
 		bufSize := util.Min(util.ReadBlockSize, int(size)-readBytes)
-		//replyPacket.Data = data[readBytes : readBytes+bufSize]
+		// replyPacket.Data = data[readBytes : readBytes+bufSize]
 		replyPacket.Size = uint32(bufSize)
 		err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)
 		if err != nil {
@@ -1767,7 +1767,6 @@ func readBadExtentFromDp(dpIdStr string, extentId uint64, size uint32) (data []b
 }
 
 func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent BadNornalExtent, data []byte, readBytes int) (err error) {
-
 	dpDir := filepath.Join(backupDir, volname, normalDir, dpIdStr)
 	start := time.Now()
 	defer func() {
@@ -1776,7 +1775,7 @@ func writeBadNormalExtentToBackup(backupDir, volname, dpIdStr string, badExtent 
 	}()
 	_, err = os.Stat(dpDir)
 	if os.IsNotExist(err) {
-		err = os.MkdirAll(dpDir, 0755)
+		err = os.MkdirAll(dpDir, 0o755)
 		if err != nil {
 			slog.Fatalf("Mkdir failed, dir %s, err: %v", dpDir, err.Error())
 		}
@@ -2069,7 +2068,7 @@ func writeBadNormalExtentToDp(data []byte, volname, dpId, extent string) (err er
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpBackupWrite
 	length := len(data)
-	//length := util.BlockSize
+	// length := util.BlockSize
 	p.Data = make([]byte, length)
 	copy(p.Data, data)
 	p.Size = uint32(length)
