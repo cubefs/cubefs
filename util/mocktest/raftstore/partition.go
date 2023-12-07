@@ -18,6 +18,10 @@ type MockPartition struct {
 	recorder *MockPartitionMockRecorder
 }
 
+func (m *MockPartition) IsRestoring() bool {
+	return true
+}
+
 // MockPartitionMockRecorder is the mock recorder for MockPartition.
 type MockPartitionMockRecorder struct {
 	mock *MockPartition

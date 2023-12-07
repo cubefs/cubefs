@@ -391,7 +391,7 @@ func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, cr
 	e, err = s.extentWithHeader(ei)
 	s.eiMutex.Unlock()
 	if err != nil {
-		return err
+		return status, err
 	}
 
 	s.elMutex.RLock()
@@ -510,9 +510,9 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		return
 	}
 
-	//if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
+	// if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 	//	return
-	//}
+	// }
 	log.LogDebugf("action[Extent.read]extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v",
 		extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
@@ -703,9 +703,9 @@ func (s *ExtentStore) GetExtentSnapshotModOffset(extentID uint64, allocSize uint
 		einfo.SnapPreAllocDataOff = einfo.SnapshotDataOff
 	}
 	watermark = int64(einfo.SnapPreAllocDataOff)
-	//if watermark%util.PageSize != 0 {
+	// if watermark%util.PageSize != 0 {
 	//	watermark = watermark + (util.PageSize - watermark%util.PageSize)
-	//}
+	// }
 	einfo.SnapPreAllocDataOff += uint64(allocSize)
 
 	return

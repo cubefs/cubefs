@@ -129,7 +129,7 @@ const (
 	OpLcNodeScan           uint8 = 0x56
 	OpLcNodeSnapshotVerDel uint8 = 0x5B
 
-	//backUp
+	// backUp
 	OpBatchLockNormalExtent   uint8 = 0x57
 	OpBatchUnlockNormalExtent uint8 = 0x58
 	OpBackupRead              uint8 = 0x59

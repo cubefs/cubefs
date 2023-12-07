@@ -242,7 +242,7 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
-	//trash
+	// trash
 	AdminSetTrashInterval = "/vol/setTrashInterval"
 
 	// s3 qos api
@@ -293,15 +293,15 @@ var GApiInfo map[string]string = map[string]string{
 	"adminsetdpdiscard":                  AdminSetDpDiscard,
 	"admingetdiscarddp":                  AdminGetDiscardDp,
 
-	//"adminclusterapi":                 AdminClusterAPI,
-	//"adminuserapi":                    AdminUserAPI,
-	//"adminvolumeapi":                  AdminVolumeAPI,
-	//"consoleiql":                      ConsoleIQL,
-	//"consoleloginapi":                 ConsoleLoginAPI,
-	//"consolemonitorapi":               ConsoleMonitorAPI,
-	//"consolefile":                     ConsoleFile,
-	//"consolefiledown":                 ConsoleFileDown,
-	//"consolefileupload":               ConsoleFileUpload,
+	// "adminclusterapi":                 AdminClusterAPI,
+	// "adminuserapi":                    AdminUserAPI,
+	// "adminvolumeapi":                  AdminVolumeAPI,
+	// "consoleiql":                      ConsoleIQL,
+	// "consoleloginapi":                 ConsoleLoginAPI,
+	// "consolemonitorapi":               ConsoleMonitorAPI,
+	// "consolefile":                     ConsoleFile,
+	// "consolefiledown":                 ConsoleFileDown,
+	// "consolefileupload":               ConsoleFileUpload,
 	"clientdatapartitions":   ClientDataPartitions,
 	"clientvol":              ClientVol,
 	"clientmetapartition":    ClientMetaPartition,
@@ -311,7 +311,7 @@ var GApiInfo map[string]string = map[string]string{
 	"qosgetclientslimitinfo": QosGetClientsLimitInfo,
 	"qosgetzonelimitinfo":    QosGetZoneLimitInfo,
 	"qosupdate":              QosUpdate,
-	//"qosupdatemagnify":               QosUpdateMagnify,
+	// "qosupdatemagnify":               QosUpdateMagnify,
 	"qosupdateclientparam":            QosUpdateClientParam,
 	"qosupdatezonelimit":              QosUpdateZoneLimit,
 	"qosupload":                       QosUpload,

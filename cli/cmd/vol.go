@@ -1034,7 +1034,7 @@ func newVolSetAuditLogCmd(client *master.MasterClient) *cobra.Command {
 			var err error
 			defer func() {
 				if err != nil {
-					errout("Error:%v", err)
+					errout(err)
 				}
 			}()
 			enable, err := strconv.ParseBool(settingStr)
