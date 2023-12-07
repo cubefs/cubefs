@@ -134,7 +134,6 @@ func (rp *ReplProtocol) ServerConn() {
 				rp.remote, r, string(debug.Stack()))
 			log.LogCritical(msg)
 			exporter.WarningPanic(msg)
-			rp.exitGoRoutine(0)
 		}
 	}()
 	defer func() {
@@ -298,10 +297,16 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	var currRequest *Packet
 	defer func() {
 		if r := recover(); r != nil {
+			var reqMsg string
+			if currRequest != nil {
+				reqMsg = currRequest.GetUniqueLogId()
+			} else {
+				reqMsg = "nil"
+			}
 			msg := fmt.Sprintf("ReplProtocol(%v): dealRequest(%v) OperatorAndForwardPktGoRoutine: occurred panic. \n"+
 				"message: %v\n"+
 				"stack:\n%v",
-				rp.remote, currRequest.GetUniqueLogId(), r, string(debug.Stack()))
+				rp.remote, reqMsg, r, string(debug.Stack()))
 			log.LogCritical(msg)
 			exporter.WarningPanic(msg)
 			rp.exitGoRoutine(1)
