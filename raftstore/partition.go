@@ -140,7 +140,13 @@ func (p *partition) ResetMember(peers []proto.Peer, learners []proto.Learner, co
 
 // Stop removes the raft partition from raft server and shuts down this partition.
 func (p *partition) Stop() (err error) {
-	err = p.raft.RemoveRaft(p.id)
+	if p.raft.Has(p.id) {
+		err = p.raft.RemoveRaft(p.id)
+	} else {
+		if p.ws != nil {
+			p.ws.Close()
+		}
+	}
 	return
 }
 
@@ -294,6 +300,10 @@ func (p *partition) Start() (err error) {
 		peers = append(peers, peerAddress.Peer)
 	}
 	var applied = p.config.GetStartIndex.Get(fi, li)
+	if p.config.LastIndexCheck && applied > li {
+		err = raft.ErrLackOfRaftLog
+		return
+	}
 	var consistencyMode = func() raft.ConsistencyMode {
 		switch p.config.Mode {
 		case cfsproto.StandardMode:

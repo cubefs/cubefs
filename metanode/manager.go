@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/tokenmanager"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/tiglabs/raft"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -62,6 +63,7 @@ type MetadataManager interface {
 	ResetDumpSnapShotConfCount(confCount uint64)
 	GetDumpSnapRunningCount() uint64
 	GetDumpSnapMPID() []uint64
+	GetStartFailedPartitions() []uint64
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -73,20 +75,21 @@ type MetadataManagerConfig struct {
 }
 
 type metadataManager struct {
-	nodeId             uint64
-	zoneName           string
-	rootDir            string
-	rocksDBDirs        []string
-	raftStore          raftstore.RaftStore
-	connPool           *connpool.ConnectPool
-	state              uint32
-	mu                 sync.RWMutex
-	createMu           sync.RWMutex
-	partitions         map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
-	metaNode           *MetaNode
-	flDeleteBatchCount atomic.Value
-	stopC              chan bool
-	tokenM             *tokenmanager.TokenManager
+	nodeId                uint64
+	zoneName              string
+	rootDir               string
+	rocksDBDirs           []string
+	raftStore             raftstore.RaftStore
+	connPool              *connpool.ConnectPool
+	state                 uint32
+	mu                    sync.RWMutex
+	createMu              sync.RWMutex
+	partitions            map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
+	startFailedPartitions sync.Map
+	metaNode              *MetaNode
+	flDeleteBatchCount    atomic.Value
+	stopC                 chan bool
+	tokenM                *tokenmanager.TokenManager
 }
 
 type VolumeConfig struct {
@@ -777,8 +780,12 @@ func (m *metadataManager) startPartitions() (err error) {
 				}
 				if pErr := partition.Start(); pErr != nil {
 					log.LogErrorf("partition[%v] start failed: %v", mpId, pErr)
-					atomic.AddUint64(&failCnt, 1)
-					return
+					if strings.Contains(pErr.Error(), raft.ErrLackOfRaftLog.Error()) {
+						m.startFailedPartitions.Store(mpId, true)
+					} else {
+						atomic.AddUint64(&failCnt, 1)
+					}
+					continue
 				}
 				log.LogInfof("partition[%v] start success", mpId)
 			}
@@ -790,6 +797,13 @@ func (m *metadataManager) startPartitions() (err error) {
 		log.LogErrorf("start %d partitions failed", failCnt)
 		return errors.NewErrorf("start %d partitions failed", failCnt)
 	}
+
+	ids := m.GetStartFailedPartitions()
+	if len(ids) != 0 {
+		exporter.WarningAppendKey(PartitionStartFailed, fmt.Sprintf("start failed meta partitions: %v", ids))
+		log.LogErrorf("start failed partitions: %v", ids)
+	}
+
 	log.LogInfof("start %d partitions cost :%v", len(m.partitions), time.Since(start))
 	return
 }
@@ -833,6 +847,11 @@ func (m *metadataManager) partitionIDs() (pids []uint64) {
 func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
 	m.createMu.Lock()
 	defer m.createMu.Unlock()
+
+	if _, ok := m.startFailedPartitions.Load(request.PartitionID); ok {
+		err = errors.NewErrorf("[createPartition]->partition %v exist in startFailedPartitions", request.PartitionID)
+		return
+	}
 
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
@@ -1028,11 +1047,17 @@ func (m *metadataManager) StartPartition(id uint64) (err error) {
 	err = partition.Start()
 	if err != nil {
 		m.detachPartition(id)
+		return
 	}
+	m.startFailedPartitions.Delete(id)
 	return
 }
 
 func (m *metadataManager) StopPartition(id uint64) (err error) {
+	if _, ok := m.startFailedPartitions.Load(id); ok {
+		return
+	}
+
 	var partition MetaPartition
 	if partition, err = m.getPartition(id); err != nil {
 		err = fmt.Errorf("MP[%d] already stopped", id)
@@ -1081,6 +1106,45 @@ func (m *metadataManager) GetDumpSnapMPID() []uint64 {
 
 	_, mpIds := m.tokenM.GetRunningIds()
 	return mpIds
+}
+
+func (m *metadataManager) GetStartFailedPartitions() (ids []uint64) {
+	ids = make([]uint64, 0)
+	m.startFailedPartitions.Range(func(key, value interface{}) bool {
+		ids = append(ids, key.(uint64))
+		return true
+	})
+	return
+}
+
+func (m *metadataManager) expiredStartFailedPartition(mpID uint64) (err error) {
+	//expired raft path
+	var currentPath = path.Clean(path.Join(m.raftStore.RaftPath(), strconv.FormatUint(mpID, 10)))
+	var newPath = path.Join(path.Dir(currentPath),
+		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+	if err = os.Rename(currentPath, newPath); err != nil {
+		log.LogErrorf("Expired: mark expired raft path fail: partitionID(%v) path(%v) newPath(%v) err(%v)",
+			mpID, currentPath, newPath, err)
+		return
+	}
+	log.LogInfof("ExpiredStartFailedPartition: mark expired raft path: partitionID(%v) path(%v) newPath(%v)",
+		mpID, currentPath, newPath)
+
+	//expired partition path
+	currentPath = path.Clean(path.Join(m.rootDir, partitionPrefix+strconv.FormatUint(mpID, 10)))
+	newPath = path.Join(path.Dir(currentPath),
+		ExpiredPartitionPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+
+	if err = os.Rename(currentPath, newPath); err != nil {
+		log.LogErrorf("ExpiredPartition: mark expired partition fail: partitionID(%v) path(%v) newPath(%v) err(%v)",
+			mpID, currentPath, newPath, err)
+		return err
+	}
+	log.LogInfof("ExpiredPartition: mark expired partition: partitionID(%v) path(%v) newPath(%v)",
+		mpID, currentPath, newPath)
+
+	m.startFailedPartitions.Delete(mpID)
+	return
 }
 
 // NewMetadataManager returns a new metadata manager.

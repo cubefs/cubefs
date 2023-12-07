@@ -36,6 +36,8 @@ var (
 	ErrRollbackFailed  = errors.New("rollback failed")
 
 	ErrSnapshotDoesNotReadCompleted = errors.New("snapshot does not read completed")
+
+	ErrLackOfRaftLog = errors.New("lack of raft log")
 )
 
 type FatalError struct {
