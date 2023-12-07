@@ -432,7 +432,7 @@ func (mp *metaPartition) notifyRaftFollowerToFreeInodes(ctx context.Context, wg 
 
 func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, dataPartitionsView topology.DataPartitionsView, ext *proto.MetaDelExtentKey) (err error) {
 	// get the data node view
-	tpObj := exporter.NewVolumeTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
+	tpObj := exporter.NewNodeAndVolTP(MetaPartitionDeleteEKUmpKey, mp.config.VolName)
 	defer tpObj.SetWithCount(1, err)
 	log.LogDebugf("doDeleteMarkedInodes mp(%v) ext(%v)", mp.config.PartitionId, ext)
 	dp, ok := dataPartitionsView[ext.PartitionId]

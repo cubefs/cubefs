@@ -50,7 +50,7 @@ func (s *ProcessStatInfo) DoUpdateStatInfo() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("update sys info, recover: %v", r)
-			exporter.WarningPanicAppendKey("RecoverPanic", "update sys info panic")
+			exporter.WarningAppendKey("RecoverPanic", "update sys info panic")
 			return
 		}
 	}()

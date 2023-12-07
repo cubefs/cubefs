@@ -410,7 +410,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("update node info panic, recover: %v", r)
-			exporter.WarningPanicAppendKey(PanicBackGroundKey, "update node info panic")
+			exporter.WarningAppendKey(PanicBackGroundKey, "update node info panic")
 		}
 	}()
 	info, err := masterClient.AdminAPI().GetLimitInfo("")
@@ -449,7 +449,7 @@ func (m *MetaNode) updateClusterMap() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("update node info panic, recover: %v", r)
-			exporter.WarningPanicAppendKey(PanicBackGroundKey, "update node info panic")
+			exporter.WarningAppendKey(PanicBackGroundKey, "update node info panic")
 		}
 	}()
 	cv, err := masterClient.AdminAPI().GetCluster()

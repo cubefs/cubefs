@@ -70,12 +70,10 @@ func WarningRocksdbError(detail string) {
 	return
 }
 
-func WarningPanicAppendKey(key, detail string) {
-	if warnPanicKey == "" {
-		warnPanicKey = fmt.Sprintf("%v_%v_%v_panic", clusterName, moduleName, key)
-	}
-	ump.Alarm(warnPanicKey, detail)
-	log.LogCritical(warnPanicKey, detail)
+func WarningAppendKey(key, detail string) {
+	warnKey := fmt.Sprintf("%v_%v_%v", clusterName, moduleName, key)
+	ump.Alarm(warnKey, detail)
+	log.LogCritical(warnKey, detail)
 	return
 }
 

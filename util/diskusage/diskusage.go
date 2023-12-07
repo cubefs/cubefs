@@ -103,7 +103,7 @@ func (d *FsCapMon) ComputeUsage() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("update space info panic, recover: %v", r)
-			exporter.WarningPanicAppendKey("RecoverPanic", "update space info panic")
+			exporter.WarningAppendKey("RecoverPanic", "update space info panic")
 		}
 	}()
 	fs := syscall.Statfs_t{}
@@ -159,7 +159,7 @@ func (d *FsCapMon) UpdateDiskTick() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("update space info panic, recover: %v", r)
-			exporter.WarningPanicAppendKey("RecoverPanic", "update space info panic")
+			exporter.WarningAppendKey("RecoverPanic", "update space info panic")
 		}
 	}()
 	var err error
@@ -195,7 +195,7 @@ func (d *FsCapMon) CheckDiskStatus(interval time.Duration) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("update space info panic, recover: %v", r)
-			exporter.WarningPanicAppendKey("RecoverPanic", "update space info panic")
+			exporter.WarningAppendKey("RecoverPanic", "update space info panic")
 		}
 	}()
 	d.RLock()
