@@ -128,11 +128,10 @@ func (s *LcScanner) Start() (err error) {
 	if err != nil {
 		log.LogErrorf("startScan err(%v): volume(%v), rule id(%v), scanning done!",
 			err, s.Volume, s.rule.ID)
-		t := time.Now()
 		response.ID = s.ID
-		response.EndTime = &t
-		response.Status = proto.TaskSucceeds
-		response.Done = true
+		response.LcNode = s.lcnode.localServerAddr
+		response.Status = proto.TaskFailed
+		response.Result = err.Error()
 
 		s.lcnode.scannerMutex.Lock()
 		delete(s.lcnode.lcScanners, s.ID)
@@ -522,6 +521,7 @@ func (s *LcScanner) checkScanning() {
 					response.Status = proto.TaskSucceeds
 					response.Done = true
 					response.ID = s.ID
+					response.LcNode = s.lcnode.localServerAddr
 					response.Volume = s.Volume
 					response.RuleId = s.rule.ID
 					response.ExpiredNum = s.currentStat.ExpiredNum

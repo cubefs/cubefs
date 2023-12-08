@@ -195,6 +195,21 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configLcScanLimitPerSecondStr, lcScanLimitPerSecond)
 
+	// parse lcNodeTaskCount
+	var count int64
+	countStr := cfg.GetString(configLcNodeTaskCountLimit)
+	if countStr != "" {
+		if count, err = strconv.ParseInt(countStr, 10, 64); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+	if count <= 0 {
+		lcNodeTaskCountLimit = defaultLcNodeTaskCountLimit
+	} else {
+		lcNodeTaskCountLimit = int(count)
+	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
+
 	return
 }
 

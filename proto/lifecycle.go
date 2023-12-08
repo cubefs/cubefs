@@ -83,12 +83,14 @@ type RuleTask struct {
 }
 
 type LcNodeRuleTaskResponse struct {
-	ID        string
-	StartTime *time.Time
-	EndTime   *time.Time
-	Done      bool
-	Status    uint8
-	Result    string
+	ID         string
+	LcNode     string
+	StartTime  *time.Time
+	EndTime    *time.Time
+	UpdateTime *time.Time
+	Done       bool
+	Status     uint8
+	Result     string
 	LcNodeRuleTaskStatistics
 }
 

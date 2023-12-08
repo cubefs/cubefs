@@ -418,6 +418,8 @@ func (s *SnapshotScanner) checkScanning(report bool) {
 					response.Status = proto.TaskSucceeds
 					response.Done = true
 					response.ID = s.ID
+					response.LcNode = s.lcnode.localServerAddr
+					response.SnapshotVerDelTask = s.verDelReq.Task
 					response.VolName = s.Volume
 					response.VerSeq = s.getTaskVerSeq()
 					response.FileNum = s.currentStat.FileNum
