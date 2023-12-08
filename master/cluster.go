@@ -3739,7 +3739,7 @@ func (c *Cluster) clearMetaNodes() {
 func (c *Cluster) scheduleToCheckDecommissionDataNode() {
 	go func() {
 		for {
-			if c.partition.IsRaftLeader() {
+			if c.partition.IsRaftLeader() && c.metaReady {
 				c.checkDecommissionDataNode()
 			}
 			time.Sleep(10 * time.Second)
@@ -3881,7 +3881,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 			break
 		}
 		if left-dpCnt >= 0 {
-			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dpCnt, false, ManualDecommission)
+			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dpCnt, true, ManualDecommission)
 			if err != nil {
 				log.LogWarnf("action[TryDecommissionDataNode] %v failed", err)
 				continue
@@ -3889,7 +3889,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 			decommissionDpTotal += dpCnt
 			left = left - dpCnt
 		} else {
-			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, left, false, ManualDecommission)
+			err = c.migrateDisk(dataNode.Addr, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, left, true, ManualDecommission)
 			if err != nil {
 				log.LogWarnf("action[TryDecommissionDataNode] %v failed", err)
 				continue
@@ -3988,7 +3988,7 @@ func (c *Cluster) restoreStoppedAutoDecommissionDisk(nodeAddr, diskPath string) 
 func (c *Cluster) scheduleToCheckDecommissionDisk() {
 	go func() {
 		for {
-			if c.partition.IsRaftLeader() {
+			if c.partition.IsRaftLeader() && c.metaReady {
 				c.checkDecommissionDisk()
 			}
 			time.Sleep(10 * time.Second)
