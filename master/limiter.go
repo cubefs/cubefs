@@ -691,6 +691,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 	qosManager.RLock()
 	if !qosManager.qosEnable {
+		qosManager.RUnlock()
 		return
 	}
 	serverLimit := qosManager.serverFactorLimitMap[factorType]
