@@ -34,8 +34,8 @@ type snapshotDelManager struct {
 func newSnapshotManager() *snapshotDelManager {
 	log.LogInfof("action[newSnapshotManager] construct")
 	snapshotMgr := &snapshotDelManager{
-		lcSnapshotTaskStatus: NewLcSnapshotVerStatus(),
-		lcNodeStatus:         NewLcNodeStatus(),
+		lcSnapshotTaskStatus: newLcSnapshotVerStatus(),
+		lcNodeStatus:         newLcNodeStatus(),
 		idleNodeCh:           make(chan struct{}),
 		exitCh:               make(chan struct{}),
 	}
@@ -51,33 +51,28 @@ func (m *snapshotDelManager) process() {
 		case <-m.idleNodeCh:
 			log.LogDebug("idleLcNodeCh notified")
 
-			taskId := m.lcSnapshotTaskStatus.GetOneTask()
-			if taskId == "" {
-				log.LogDebugf("no snapshot ver del task available")
+			task := m.lcSnapshotTaskStatus.GetOneTask()
+			if task == nil {
+				log.LogDebugf("lcSnapshotTaskStatus.GetOneTask, no task")
 				continue
 			}
 
-			nodeAddr := m.lcNodeStatus.GetIdleNode(taskId)
+			nodeAddr := m.lcNodeStatus.GetIdleNode()
 			if nodeAddr == "" {
 				log.LogWarn("no idle lcnode, redo task")
-				m.lcSnapshotTaskStatus.RedoTask(taskId)
+				m.lcSnapshotTaskStatus.RedoTask(task)
 				continue
 			}
 
 			val, ok := m.cluster.lcNodes.Load(nodeAddr)
 			if !ok {
 				log.LogErrorf("lcNodes.Load, nodeAddr(%v) is not available, redo task", nodeAddr)
-				m.lcSnapshotTaskStatus.RedoTask(m.lcNodeStatus.RemoveNode(nodeAddr))
+				m.lcNodeStatus.RemoveNode(nodeAddr)
+				m.lcSnapshotTaskStatus.RedoTask(task)
 				continue
 			}
 
 			node := val.(*LcNode)
-			task := m.lcSnapshotTaskStatus.GetTaskFromScanning(taskId)
-			if task == nil {
-				log.LogErrorf("task is nil, release node(%v)", nodeAddr)
-				m.lcNodeStatus.ReleaseNode(nodeAddr)
-				continue
-			}
 			adminTask := node.createSnapshotVerDelTask(m.cluster.masterAddr(), task)
 			m.cluster.addLcNodeTasks([]*proto.AdminTask{adminTask})
 			log.LogDebugf("add snapshot version del task(%v) to lcnode(%v)", *task, nodeAddr)
@@ -103,20 +98,18 @@ func (m *snapshotDelManager) notifyIdleLcNode() {
 
 type lcSnapshotVerStatus struct {
 	sync.RWMutex
-	VerInfos           map[string]*proto.SnapshotVerDelTask
-	ProcessingVerInfos map[string]*proto.SnapshotVerDelTask
-	TaskResults        map[string]*proto.SnapshotVerDelTaskResponse
+	VerInfos    map[string]*proto.SnapshotVerDelTask
+	TaskResults map[string]*proto.SnapshotVerDelTaskResponse
 }
 
-func NewLcSnapshotVerStatus() *lcSnapshotVerStatus {
+func newLcSnapshotVerStatus() *lcSnapshotVerStatus {
 	return &lcSnapshotVerStatus{
-		VerInfos:           make(map[string]*proto.SnapshotVerDelTask, 0),
-		ProcessingVerInfos: make(map[string]*proto.SnapshotVerDelTask, 0),
-		TaskResults:        make(map[string]*proto.SnapshotVerDelTaskResponse, 0),
+		VerInfos:    make(map[string]*proto.SnapshotVerDelTask, 0),
+		TaskResults: make(map[string]*proto.SnapshotVerDelTaskResponse, 0),
 	}
 }
 
-func (vs *lcSnapshotVerStatus) GetOneTask() (taskId string) {
+func (vs *lcSnapshotVerStatus) GetOneTask() (task *proto.SnapshotVerDelTask) {
 	var min int64 = math.MaxInt64
 
 	vs.Lock()
@@ -128,52 +121,32 @@ func (vs *lcSnapshotVerStatus) GetOneTask() (taskId string) {
 	for _, i := range vs.VerInfos {
 		if i.VolVersionInfo.DelTime < min {
 			min = i.VolVersionInfo.DelTime
-			taskId = i.Id
+			task = i
 		}
 	}
 
-	info := vs.VerInfos[taskId]
-	delete(vs.VerInfos, taskId)
-	info.UpdateTime = time.Now().Unix()
-	vs.ProcessingVerInfos[taskId] = info
+	delete(vs.VerInfos, task.Id)
 	return
 }
 
-func (vs *lcSnapshotVerStatus) RedoTask(taskId string) {
+func (vs *lcSnapshotVerStatus) RedoTask(task *proto.SnapshotVerDelTask) {
 	vs.Lock()
 	defer vs.Unlock()
-	if taskId == "" {
+	if task == nil {
 		return
 	}
 
-	if pInfo, ok := vs.ProcessingVerInfos[taskId]; ok {
-		vs.VerInfos[taskId] = pInfo
-		delete(vs.ProcessingVerInfos, taskId)
-	}
-}
-
-func (vs *lcSnapshotVerStatus) DeleteScanningTask(taskId string) {
-	vs.Lock()
-	defer vs.Unlock()
-	if taskId == "" {
-		return
-	}
-
-	delete(vs.ProcessingVerInfos, taskId)
+	vs.VerInfos[task.Id] = task
 }
 
 func (vs *lcSnapshotVerStatus) AddVerInfo(task *proto.SnapshotVerDelTask) {
 	vs.Lock()
 	defer vs.Unlock()
-	if pInfo, ok := vs.ProcessingVerInfos[task.Id]; ok {
-		if time.Since(time.Unix(pInfo.UpdateTime, 0)) < time.Second*time.Duration(5*defaultIntervalToCheck) {
-			log.LogDebugf("VerInfo: %v is already in processing", task)
-			return
-		} else {
-			log.LogWarnf("VerInfo: %v is in processing, but expired", task)
-		}
-	}
 
+	if _, ok := vs.TaskResults[task.Id]; ok {
+		log.LogDebugf("VerInfo: %v is in TaskResults, already in processing", task)
+		return
+	}
 	vs.VerInfos[task.Id] = task
 	log.LogDebugf("Add VerInfo task: %v", task)
 }
@@ -188,15 +161,15 @@ func (vs *lcSnapshotVerStatus) DeleteOldResult() {
 	vs.Lock()
 	defer vs.Unlock()
 	for k, v := range vs.TaskResults {
-		if v.Done == true && time.Now().After(v.EndTime.Add(time.Hour*1)) {
+		// delete result that already done
+		if v.Done == true && time.Now().After(v.EndTime.Add(time.Minute*10)) {
 			delete(vs.TaskResults, k)
-			log.LogDebugf("delete old result: %v", v)
+			log.LogDebugf("delete result already done: %v", v)
+		}
+		// delete result that not done but no updating
+		if v.Done != true && time.Now().After(v.UpdateTime.Add(time.Minute*10)) {
+			delete(vs.TaskResults, k)
+			log.LogWarnf("delete result that not done but no updating: %v", v)
 		}
 	}
-}
-
-func (vs *lcSnapshotVerStatus) GetTaskFromScanning(taskId string) *proto.SnapshotVerDelTask {
-	vs.Lock()
-	defer vs.Unlock()
-	return vs.ProcessingVerInfos[taskId]
 }

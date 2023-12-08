@@ -13,17 +13,19 @@ type SnapshotVerDelTaskRequest struct {
 type SnapshotVerDelTask struct {
 	Id             string
 	VolName        string
-	UpdateTime     int64
 	VolVersionInfo *VolVersionInfo
 }
 
 type SnapshotVerDelTaskResponse struct {
-	ID        string
-	StartTime *time.Time
-	EndTime   *time.Time
-	Done      bool
-	Status    uint8
-	Result    string
+	ID                 string
+	LcNode             string
+	StartTime          *time.Time
+	EndTime            *time.Time
+	UpdateTime         *time.Time
+	Done               bool
+	Status             uint8
+	Result             string
+	SnapshotVerDelTask *SnapshotVerDelTask
 	SnapshotStatistics
 }
 
