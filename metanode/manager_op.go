@@ -732,6 +732,21 @@ func (m *metadataManager) opExpiredMetaPartition(conn net.Conn,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	//expired start failed partition
+	if _, ok := m.startFailedPartitions.Load(req.PartitionID); ok {
+		err = m.expiredStartFailedPartition(req.PartitionID)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		} else {
+			p.PacketOkReply()
+		}
+		_ = m.respondToClient(conn, p)
+		log.LogInfof("%s [opDeleteMetaPartition] expiredStartFailedPartition req: %d - %v, resp: %v",
+			remoteAddr, p.GetReqID(), req, err)
+		return
+	}
+
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
 		p.PacketOkReply()

@@ -95,6 +95,8 @@ type PartitionConfig struct {
 	Mode cfsproto.ConsistencyMode
 
 	StorageListener StorageListener
+
+	LastIndexCheck bool
 }
 
 func (p PeerAddress) String() string {

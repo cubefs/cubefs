@@ -37,6 +37,8 @@ type RaftStore interface {
 
 	SetSyncWALOnUnstable(enable bool)
 	IsSyncWALOnUnstable() (enabled bool)
+
+	RaftPath() string
 }
 
 type raftStore struct {
@@ -50,6 +52,10 @@ type raftStore struct {
 // RaftConfig returns the raft configuration.
 func (s *raftStore) RaftConfig() *raft.Config {
 	return s.raftConfig
+}
+
+func (s *raftStore) RaftPath() string {
+	return s.raftPath
 }
 
 func (s *raftStore) RaftStatus(raftID uint64) (raftStatus *raft.Status) {

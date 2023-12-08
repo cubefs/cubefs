@@ -132,6 +132,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/setDumpSnapCount", m.setDumpSnapCount)
 
 	http.HandleFunc("/getAllDentryByParentIno", m.getAllDentriesByParentInoHandler)
+
+	http.HandleFunc("/getStartFailedPartitions", m.getStartFailedPartitions)
 	return
 }
 
@@ -3049,5 +3051,25 @@ func (m *MetaNode) getAllDentriesByParentInoHandler(w http.ResponseWriter, r *ht
 	if _, err = w.Write(buff.Bytes()); err != nil {
 		log.LogErrorf("[getAllDentriesByParentInoHandler] response %s", err)
 	}
+	return
+}
+
+func (m *MetaNode) getStartFailedPartitions(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[getRequestRecordsInRocksDB] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	resp.Data = m.metadataManager.GetStartFailedPartitions()
 	return
 }

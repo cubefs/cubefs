@@ -423,6 +423,9 @@ func (mp *metaPartition) onStart() (err error) {
 			return
 		}
 		mp.onStop()
+		if mp.config.AfterStop != nil {
+			mp.config.AfterStop()
+		}
 	}()
 	mp.startSchedule(mp.applyID)
 	if err = mp.startFreeList(); err != nil {
@@ -499,6 +502,8 @@ func (mp *metaPartition) startRaft() (err error) {
 		SM:       fsm,
 
 		GetStartIndex: func(firstIndex, lastIndex uint64) (startIndex uint64) { return mp.applyID },
+
+		LastIndexCheck: true, //if mp.applyID more than raft log last index, don't start meta partition
 	}
 	mp.raftPartition = mp.config.RaftStore.CreatePartition(pc)
 	/*meta node set raft log, default 4 files, 8MB per file*/

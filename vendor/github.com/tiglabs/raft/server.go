@@ -193,6 +193,13 @@ func (rs *RaftServer) RemoveRaft(id uint64) error {
 	return nil
 }
 
+func (rs *RaftServer) Has(id uint64) (ok bool) {
+	rs.mu.Lock()
+	_, ok = rs.rafts[id]
+	rs.mu.Unlock()
+	return
+}
+
 func (rs *RaftServer) Submit(ctx context.Context, id uint64, cmd []byte) (future *Future) {
 
 	rs.mu.RLock()

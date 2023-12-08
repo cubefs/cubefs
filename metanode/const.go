@@ -264,6 +264,7 @@ const (
 
 const (
 	PanicBackGroundKey     = "RecoverPanic"
+	PartitionStartFailed   = "MPStartFailed"
 )
 
 const (
