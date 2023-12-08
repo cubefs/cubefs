@@ -187,13 +187,12 @@ func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHost
 	dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
 		if contains(excludeHosts, dataNode.Addr) {
-			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
-			log.LogDebugf("contains return")
+			//log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
 			return true
 		}
 		if !dataNode.canAllocDp() {
-			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable, offline %v, dpCnt %d", dataNode.Addr, dataNode.ToBeOffline, dataNode.DataPartitionCount)
-			log.LogDebugf("isWritable return")
+			log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable, offline %v, dpCnt %d",
+				dataNode.Addr, dataNode.ToBeOffline, dataNode.DataPartitionCount)
 			return true
 		}
 
