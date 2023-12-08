@@ -64,13 +64,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.parseConfig(cfg); err != nil {
 		return
 	}
-	// start hbase table management
-	if m.thriftAddr != "" {
-		if err = m.initHBaseTable(); err != nil {
-			return
-		}
-	}
-	//
+
 	if m.jmqConfig != nil {
 		if m.mqProducer, err = initMQProducer(m.jmqConfig); err != nil {
 			return

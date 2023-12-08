@@ -104,6 +104,7 @@ func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, toke
 func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.ClientVolStat)
 	request.addParam("name", volName)
+	request.addParam("baseVersion", proto.BaseVersion)
 	var data []byte
 	if data, _, err = api.mc.serveRequest(request); err != nil {
 		return
