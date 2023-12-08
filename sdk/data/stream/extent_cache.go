@@ -405,7 +405,7 @@ func (cache *ExtentCache) GetEndForAppendWrite(offset uint64, verSeq uint64, nee
 				}
 				//?? should not have the neighbor extent in the next
 				if lastExistEk != nil && ek.IsFileInSequence(lastExistEk) {
-					log.LogErrorf("action[ExtentCache.GetEndForAppendWrite] exist sequence extent %v", lastExistEk)
+					log.LogErrorf("action[ExtentCache.GetEndForAppendWrite] ek %v is InSequence exist sequence extent %v", ek, lastExistEk)
 					ret = nil
 					return false
 				}
