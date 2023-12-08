@@ -203,7 +203,6 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 	log.LogDebugf("action[deleteVerSnapshot] enter.dentry %v delVerSeq %v mpVer %v verList %v", d, delVerSeq, mpVerSeq, verlist)
 	// create denParm version
 	if !isInitSnapVer(delVerSeq) && delVerSeq > mpVerSeq {
-
 		panic(fmt.Sprintf("Dentry version %v large than mp %v", delVerSeq, mpVerSeq))
 	}
 
