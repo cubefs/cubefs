@@ -30,6 +30,7 @@ const (
 	configLcScanLimitPerSecondStr    = "lcScanLimitPerSecond"
 
 	configSnapshotRoutineNumPerTaskStr = "snapshotRoutineNumPerTask"
+	configLcNodeTaskCountLimit         = "lcNodeTaskCountLimit"
 )
 
 // Default of configuration value
@@ -53,6 +54,7 @@ const (
 	defaultIntervalToCheckRegister        = 2 * defaultLcNodeTimeOutSec
 
 	defaultUnboundedChanInitCapacity = 10000
+	defaultLcNodeTaskCountLimit      = 1
 )
 
 var (
@@ -65,4 +67,5 @@ var (
 	lcScanLimitPerSecond    rate.Limit
 
 	snapshotRoutineNumPerTask int
+	lcNodeTaskCountLimit      int
 )

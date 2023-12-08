@@ -4297,13 +4297,13 @@ func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
 		goto errHandler
 	}
 	c.lcNodes.Store(nodeAddr, ln)
+
 	c.lcMgr.lcNodeStatus.Lock()
-	delete(c.lcMgr.lcNodeStatus.WorkingNodes, nodeAddr)
-	c.lcMgr.lcNodeStatus.IdleNodes[nodeAddr] = nodeAddr
+	c.lcMgr.lcNodeStatus.WorkingCount[nodeAddr] = 0
 	c.lcMgr.lcNodeStatus.Unlock()
+
 	c.snapshotMgr.lcNodeStatus.Lock()
-	delete(c.snapshotMgr.lcNodeStatus.WorkingNodes, nodeAddr)
-	c.snapshotMgr.lcNodeStatus.IdleNodes[nodeAddr] = nodeAddr
+	c.snapshotMgr.lcNodeStatus.WorkingCount[nodeAddr] = 0
 	c.snapshotMgr.lcNodeStatus.Unlock()
 	log.LogInfof("action[addLcNode], clusterID[%v], lcNodeAddr: %v, id: %v, add idleNodes", c.Name, nodeAddr, ln.ID)
 	return ln.ID, nil
@@ -4356,8 +4356,8 @@ func (c *Cluster) clearLcNodes() {
 }
 
 func (c *Cluster) delLcNode(nodeAddr string) (err error) {
-	c.lcMgr.lcRuleTaskStatus.RedoTask(c.lcMgr.lcNodeStatus.RemoveNode(nodeAddr))
-	c.snapshotMgr.lcSnapshotTaskStatus.RedoTask(c.snapshotMgr.lcNodeStatus.RemoveNode(nodeAddr))
+	c.lcMgr.lcNodeStatus.RemoveNode(nodeAddr)
+	c.snapshotMgr.lcNodeStatus.RemoveNode(nodeAddr)
 
 	lcNode, err := c.lcNode(nodeAddr)
 	if err != nil {

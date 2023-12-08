@@ -689,6 +689,7 @@ type MetaNodeHeartbeatResponse struct {
 type LcNodeHeartbeatResponse struct {
 	Status                uint8
 	Result                string
+	LcTaskCountLimit      int
 	LcScanningTasks       map[string]*LcNodeRuleTaskResponse
 	SnapshotScanningTasks map[string]*SnapshotVerDelTaskResponse
 }
