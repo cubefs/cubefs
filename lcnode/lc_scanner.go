@@ -292,8 +292,6 @@ func (s *LcScanner) scan() {
 				if err != nil {
 					log.LogErrorf("handleDir failed, err(%v)", err)
 				}
-			default:
-				// do nothing
 			}
 		}
 
