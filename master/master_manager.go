@@ -40,7 +40,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 
 	oldLeaderAddr := m.leaderInfo.addr
 	m.leaderInfo.addr = AddrDatabase[leader]
-	log.LogWarnf("action[handleLeaderChange] change leader to [%v] ", m.leaderInfo.addr)
+	log.LogWarnf("action[handleLeaderChange]  [%v] ", m.leaderInfo.addr)
 	m.reverseProxy = m.newReverseProxy()
 
 	if m.id == leader {
