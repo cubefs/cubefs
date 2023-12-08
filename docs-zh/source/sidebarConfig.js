@@ -62,6 +62,7 @@ module.exports = [
             'maintenance/zone.md',
             'maintenance/log.md',
             'maintenance/code.md',
+	        'maintenance/security_practice.md',
             {
                 text: '服务管理',
                 children: [
