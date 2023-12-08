@@ -443,6 +443,10 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
 		statistics.StatisticsModule.UpdateMonitorReportTime(limitInfo.MonitorReportSec)
 	}
+
+	if m.topoManager != nil {
+		m.topoManager.UpdateFetchTimerIntervalMin(limitInfo.TopologyFetchIntervalMin, limitInfo.TopologyForceFetchIntervalSec)
+	}
 }
 
 func (m *MetaNode) updateClusterMap() {

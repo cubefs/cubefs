@@ -256,55 +256,57 @@ const (
 )
 
 const (
-	RocksDBDiskReservedSpaceKey   = "rocksDBDiskReservedSpace"
-	LogMaxMB                      = "logMaxMB"
-	MetaRockDBWalFileMaxMB        = "metaRockDBWalFileMaxMB"
-	MetaRocksDBWalMemMaxMB        = "metaRocksDBWalMemMaxMB"
-	MetaRocksDBLogMaxMB           = "metaRocksDBLogMaxMB"
-	MetaRocksLogReservedDay       = "metaRocksLogReservedDay"
-	MetaRocksLogReservedCnt       = "metaRocksLogReservedCnt"
-	MetaRocksWalFlushIntervalKey  = "metaRocksWalFlushInterval"
-	MetaRocksDisableFlushWalKey   = "metaRocksDisableFlushWal"
-	MetaRocksWalTTLKey            = "metaRocksWalTTL"
-	ChildFileMaxCountKey          = "childFileMaxCount"
-	NameKey                       = "name"
-	MetaDelEKRecordFileMaxMB      = "metaDelEKRecordFileMaxMB"
-	MetaTrashCleanIntervalKey     = "metaTrashCleanInterval"
-	MetaRaftLogSizeKey            = "metaRaftLogSize"
-	MetaRaftLogCapKey             = "metaRaftLogCap"
-	MetaSyncWalEnableStateKey     = "metaWalSyncEnableState"
-	DataSyncWalEnableStateKey     = "dataWalSyncEnableState"
-	DisableStrictVolZoneKey       = "disableStrictVolZone"
-	AutoUpPartitionReplicaNumKey  = "autoUpdatePartitionReplicaNum"
-	EnableBitMapAllocatorKey      = "enableBitMapAllocator"
-	AllocatorMaxUsedFactorKey     = "allocatorMaxUsedFactor"
-	AllocatorMinFreeFactorKey     = "allocatorMinFreeFactor"
-	TrashItemCleanMaxCountKey     = "trashItemCleanMaxCount"
-	TrashCleanDurationKey         = "trashItemCleanDuration"
-	DeleteMarkDelVolIntervalKey   = "deleteMarkDelVolInterval"
-	RemoteCacheBoostEnableKey     = "remoteCacheBoostEnable"
-	RemoteReadConnTimeoutKey      = "remoteReadTimeoutMs"
-	ReadConnTimeoutMsKey          = "readConnTimeoutMs"
-	WriteConnTimeoutMsKey         = "writeConnTimeoutMs"
-	FlashNodeRateKey              = "flashNodeRate"
-	FlashNodeVolRateKey           = "flashNodeVolRate"
-	DataNodeReqVolPartRateKey     = "dataNodeReqVolPartRate"
-	DataNodeReqVolOpPartRateKey   = "dataNodeReqVolOpPartRate"
-	RateLimitKey                  = "rateLimit"
-	RateLimitIndexKey             = "rateLimitIndex"
-	DataNodeMarkDeleteRateKey     = "markDeleteRate"
-	DpTimeoutCntThreshold         = "dpTimeoutCntThreshold"
-	NodeSetCapacityKey            = "nodeSetCapacity"
-	ClientReqRecordReservedCntKey = "reqReservedCount"
-	ClientReqRecordReservedMinKey = "reqReservedMin"
-	ClientReqRemoveDupFlagKey     = "reqRemoveDupKey"
-	VolRemoveDupFlagKey           = "volRemoveDupReqKey"
-	NetworkFlowRatioKey           = "networkFlowRatio"
-	MetaNodeDelEKZoneRateLimitKey = "metaNodeDelEKZoneRateLimit"
-	MetaNodeDelEKVolRateLimitKey  = "metaNodeDelEKVolRateLimit"
-	MetaNodeDumpSnapCountKey      = "metaNodeDumpSnapCount"
-	MetaNodeTruncateEKCountKey    = "truncateEKCountEveryTime"
-	ClusterNameKey                 = "clusterName"
+	RocksDBDiskReservedSpaceKey      = "rocksDBDiskReservedSpace"
+	LogMaxMB                         = "logMaxMB"
+	MetaRockDBWalFileMaxMB           = "metaRockDBWalFileMaxMB"
+	MetaRocksDBWalMemMaxMB           = "metaRocksDBWalMemMaxMB"
+	MetaRocksDBLogMaxMB              = "metaRocksDBLogMaxMB"
+	MetaRocksLogReservedDay          = "metaRocksLogReservedDay"
+	MetaRocksLogReservedCnt          = "metaRocksLogReservedCnt"
+	MetaRocksWalFlushIntervalKey     = "metaRocksWalFlushInterval"
+	MetaRocksDisableFlushWalKey      = "metaRocksDisableFlushWal"
+	MetaRocksWalTTLKey               = "metaRocksWalTTL"
+	ChildFileMaxCountKey             = "childFileMaxCount"
+	NameKey                          = "name"
+	MetaDelEKRecordFileMaxMB         = "metaDelEKRecordFileMaxMB"
+	MetaTrashCleanIntervalKey        = "metaTrashCleanInterval"
+	MetaRaftLogSizeKey               = "metaRaftLogSize"
+	MetaRaftLogCapKey                = "metaRaftLogCap"
+	MetaSyncWalEnableStateKey        = "metaWalSyncEnableState"
+	DataSyncWalEnableStateKey        = "dataWalSyncEnableState"
+	DisableStrictVolZoneKey          = "disableStrictVolZone"
+	AutoUpPartitionReplicaNumKey     = "autoUpdatePartitionReplicaNum"
+	EnableBitMapAllocatorKey         = "enableBitMapAllocator"
+	AllocatorMaxUsedFactorKey        = "allocatorMaxUsedFactor"
+	AllocatorMinFreeFactorKey        = "allocatorMinFreeFactor"
+	TrashItemCleanMaxCountKey        = "trashItemCleanMaxCount"
+	TrashCleanDurationKey            = "trashItemCleanDuration"
+	DeleteMarkDelVolIntervalKey      = "deleteMarkDelVolInterval"
+	RemoteCacheBoostEnableKey        = "remoteCacheBoostEnable"
+	RemoteReadConnTimeoutKey         = "remoteReadTimeoutMs"
+	ReadConnTimeoutMsKey             = "readConnTimeoutMs"
+	WriteConnTimeoutMsKey            = "writeConnTimeoutMs"
+	FlashNodeRateKey                 = "flashNodeRate"
+	FlashNodeVolRateKey              = "flashNodeVolRate"
+	DataNodeReqVolPartRateKey        = "dataNodeReqVolPartRate"
+	DataNodeReqVolOpPartRateKey      = "dataNodeReqVolOpPartRate"
+	RateLimitKey                     = "rateLimit"
+	RateLimitIndexKey                = "rateLimitIndex"
+	DataNodeMarkDeleteRateKey        = "markDeleteRate"
+	DpTimeoutCntThreshold            = "dpTimeoutCntThreshold"
+	NodeSetCapacityKey               = "nodeSetCapacity"
+	ClientReqRecordReservedCntKey    = "reqReservedCount"
+	ClientReqRecordReservedMinKey    = "reqReservedMin"
+	ClientReqRemoveDupFlagKey        = "reqRemoveDupKey"
+	VolRemoveDupFlagKey              = "volRemoveDupReqKey"
+	NetworkFlowRatioKey              = "networkFlowRatio"
+	MetaNodeDelEKZoneRateLimitKey    = "metaNodeDelEKZoneRateLimit"
+	MetaNodeDelEKVolRateLimitKey     = "metaNodeDelEKVolRateLimit"
+	MetaNodeDumpSnapCountKey         = "metaNodeDumpSnapCount"
+	MetaNodeTruncateEKCountKey       = "truncateEKCountEveryTime"
+	ClusterNameKey                   = "clusterName"
+	TopologyFetchIntervalMinKey      = "topoFetchIntervalMin"
+	TopologyForceFetchIntervalSecKey = "topoForceFetchIntervalSec"
 
 	IDsKey = "ids"
 )
@@ -672,6 +674,9 @@ type LimitInfo struct {
 	ClientReqRecordsReservedMin   int32
 	ClientReqRemoveDupFlag        bool
 	MetaNodeDumpSnapCountByZone   map[string]uint64
+
+	TopologyFetchIntervalMin      int64
+	TopologyForceFetchIntervalSec int64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1391,6 +1396,8 @@ type RateLimitInfo struct {
 	MetaNodeDelEKVolumeRate          int64
 	MetaNodeDelEKZoneRate            int64
 	MetaNodeDumpSnapCount            int64
+	TopologyFetchIntervalMin         int64
+	TopologyForceFetchIntervalSec    int64
 }
 
 type ConvertMode uint8
