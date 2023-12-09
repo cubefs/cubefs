@@ -237,6 +237,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer log.LogFlush()
+	if errors.SupportPanicHook() {
+		err = errors.AtPanic(func() {
+			log.LogFlush()
+		})
+		if err != nil {
+			log.LogErrorf("failed to hook go panic")
+			err = nil
+		}
+	}
 
 	_, err = auditlog.InitAudit(logDir, module, auditlog.DefaultAuditLogSize)
 	if err != nil {
