@@ -6,7 +6,7 @@ Join the [security@cubefs.groups.io](mailto:security@cubefs.groups.io) group for
 
 We’re extremely grateful for security researchers and users that report vulnerabilities to the CubeFS Open Source Community. All reports are thoroughly investigated by a dedicated committee of community volunteers called [Product Security Committee](./security/security-release-process.md#product-security-committee).
 
-To make a report, please email the private [security@cubefs.groups.io](mailto:security@cubefs.groups.io) list with the security details and the details expected for [all CubeFS bug reports](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md#bug-reports).
+To make a report, please email the private [security@cubefs.groups.io](mailto:security@cubefs.groups.io) list with the security details and the details expected for [all CubeFS bug reports](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md#bug-reports).Note: (Groups.io requires users to subscribe to relevant email groups before sending emails. This is to ensure that only group members can send and receive emails within the group, maintaining the security and privacy of the group. Therefore, according to Groups.io's regulations, you need to subscribe to an email group before being able to send emails)
 
 ### When Should I Report a Vulnerability?
 
