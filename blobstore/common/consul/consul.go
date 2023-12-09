@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -213,7 +214,10 @@ func startHttpServerForHealthyCheck(ip, patten string, checkPorts [2]int) (srv *
 		log.Fatalf("server listen error: %v", err)
 	}
 
-	srv = &http.Server{}
+	srv = &http.Server{
+		ReadTimeout:  5 * time.Minute,
+		WriteTimeout: 5 * time.Minute,
+	}
 	srv.Addr = ln.Addr().String()
 	port = ln.Addr().(*net.TCPAddr).Port
 	log.Info("start health check server on: ", srv.Addr)
