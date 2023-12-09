@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blockcache/bcache"
@@ -331,8 +332,10 @@ func (o *ObjectNode) startMuxRestAPI() (err error) {
 	)
 
 	var server = &http.Server{
-		Addr:    ":" + o.listen,
-		Handler: router,
+		Addr:         ":" + o.listen,
+		Handler:      router,
+		ReadTimeout:  5 * time.Minute,
+		WriteTimeout: 5 * time.Minute,
 	}
 
 	go func() {
