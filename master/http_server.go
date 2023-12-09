@@ -21,7 +21,6 @@ import (
 	"html"
 	"net/http"
 	"net/http/httputil"
-	"strings"
 	"time"
 
 	"github.com/samsarahq/thunder/graphql"
