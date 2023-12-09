@@ -706,6 +706,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 		log.LogFatalf("action[MarshalValue] inode %v current verseq %v, hist len (%v) stack(%v)", i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
 	}
 	if err = binary.Write(buff, binary.BigEndian, int32(i.getLayerLen())); err != nil {
+		i.RUnlock()
 		panic(err)
 	}
 
