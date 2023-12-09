@@ -17,6 +17,7 @@ package objectnode
 import (
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -193,6 +194,9 @@ func getObjectACL(vol *Volume, path string, needDefault bool) (*AccessControlPol
 	if len(data) > 0 {
 		if err = json.Unmarshal(data, &acp); err != nil {
 			err = xml.Unmarshal(data, &acp)
+		}
+		if err == nil && acp == nil {
+			err = fmt.Errorf("data unmarshal failed")
 		}
 	} else if needDefault {
 		acp = CreateDefaultACL(vol.owner)
