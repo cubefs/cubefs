@@ -18,6 +18,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httputil"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/cryptoutil"
@@ -36,13 +37,16 @@ func (m *Server) startHTTPService() {
 				//ClientCAs:  caCertPool,
 			}
 			srv := &http.Server{
-				Addr:      colonSplit + m.port,
-				TLSConfig: cfg,
+				Addr:         colonSplit + m.port,
+				TLSConfig:    cfg,
+				ReadTimeout:  5 * time.Minute,
+				WriteTimeout: 5 * time.Minute,
 			}
 			if err := srv.ListenAndServeTLS("/app/server.crt", "/app/server.key"); err != nil {
 				log.LogErrorf("action[startHTTPService] failed,err[%v]", err)
 				panic(err)
 			}
+
 		} else {
 			if err := http.ListenAndServe(colonSplit+m.port, nil); err != nil {
 				log.LogErrorf("action[startHTTPService] failed,err[%v]", err)
