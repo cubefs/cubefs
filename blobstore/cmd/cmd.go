@@ -137,8 +137,10 @@ func Main(args []string) {
 			router, handlers := mod.SetUp()
 
 			httpServer := &http.Server{
-				Addr:    cfg.BindAddr,
-				Handler: reorderMiddleWareHandlers(router, lh, cfg.BindAddr, cfg.Auth, handlers),
+				Addr:         cfg.BindAddr,
+				Handler:      reorderMiddleWareHandlers(router, lh, cfg.BindAddr, cfg.Auth, handlers),
+				ReadTimeout:  5 * time.Minute,
+				WriteTimeout: 5 * time.Minute,
 			}
 
 			log.Info("server is running at:", cfg.BindAddr)
@@ -169,8 +171,10 @@ func Main(args []string) {
 	router, handlers := mod.SetUp()
 
 	httpServer := &http.Server{
-		Addr:    cfg.BindAddr,
-		Handler: reorderMiddleWareHandlers(router, lh, cfg.BindAddr, cfg.Auth, handlers),
+		Addr:         cfg.BindAddr,
+		Handler:      reorderMiddleWareHandlers(router, lh, cfg.BindAddr, cfg.Auth, handlers),
+		ReadTimeout:  5 * time.Minute,
+		WriteTimeout: 5 * time.Minute,
 	}
 
 	log.Info("Server is running at", cfg.BindAddr)
