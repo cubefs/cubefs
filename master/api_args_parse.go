@@ -22,6 +22,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -830,6 +831,11 @@ func parseAllowedStorageClass(r *http.Request) (allowedStorageClass []uint32, er
 			log.LogDebugf("[parseAllowedStorageClass] pick allowedStorageClass(%v)", proto.StorageClassString(ascUint32))
 		}
 	}
+
+	sort.Slice(allowedStorageClass, func(i, j int) bool {
+		return allowedStorageClass[i] < allowedStorageClass[j]
+	})
+
 	return
 }
 
