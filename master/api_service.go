@@ -2286,7 +2286,7 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		// If volStorageClass is replica, will not create cache/preload dp even blobStore contained in allowedStorageClass
 		// if volStorageClass is blobStore, replica storage class can not be supported
 		if proto.IsStorageClassBlobStore(req.volStorageClass) && proto.IsStorageClassReplica(asc) {
-			err = fmt.Errorf("volStorageClass is blobStore, in tis case not support replica storage class")
+			err = fmt.Errorf("volStorageClass is blobStore, in this case not support replica storage class")
 			log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
 			return
 		}
