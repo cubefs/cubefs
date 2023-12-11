@@ -26,6 +26,7 @@ const (
 	CliOpSet                  = "set"
 	CliOpUpdate               = "update"
 	CliOpDecommission         = "decommission"
+	CliOpRecommission         = "recommission"
 	CliOpMigrate              = "migrate"
 	CliOpDownloadZip          = "load"
 	CliOpMetaCompatibility    = "meta"
