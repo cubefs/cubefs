@@ -36,6 +36,10 @@ const (
 // the new leader.
 func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	p *Packet, req interface{}) (ok bool) {
+	p.proxyStartTimestamp = time.Now().Unix()
+	defer func() {
+		p.proxyFinishTimestamp = time.Now().Unix()
+	}()
 	var (
 		mConn           *net.TCPConn
 		leaderAddr      string

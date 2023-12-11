@@ -21,6 +21,7 @@ import (
 	"net"
 	"runtime/debug"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -64,12 +65,14 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 
 	m.responseRateLimit(p)
 
+	p.finishedTimestamp = time.Now().Unix()
 	// process data and send reply though specified tcp connection.
 	err = p.WriteToConn(conn, proto.WriteDeadlineTime)
 	if err != nil {
-		log.LogErrorf("response to client[%s], "+
-			"request[%s], response packet[%s]",
-			err.Error(), p.GetOpMsg(), p.GetResultMsg())
+		log.LogErrorf("response to client[%s], request[op: %s, partitionID: %v, reqID: %v]," +
+			" response packet[%s], remote addr[%s], statistics time[receive: %v, proxyStart: %v, " +
+			"proxyFinish: %v finished: %v]", err.Error(), p.GetOpMsg(), p.PartitionID, p.ReqID, p.GetResultMsg(), p.Remote(),
+			p.receiveTimestamp, p.proxyStartTimestamp, p.proxyFinishTimestamp, p.finishedTimestamp)
 	}
 	return
 }
@@ -99,7 +102,9 @@ func (m *metadataManager) responseAckOKToMaster(conn net.Conn, p *Packet) {
 	go func() {
 		p.PacketOkReply()
 		if err := p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
+			log.LogErrorf("ack master response: %s, request[%s], remote addr[%s], statistics time[receive: %v," +
+				" proxyStart: %v, proxyFinish: %v, finished: %v]", err.Error(), p.GetOpMsg(), p.Remote(),
+				p.receiveTimestamp, p.proxyStartTimestamp, p.proxyFinishTimestamp, p.finishedTimestamp)
 		}
 	}()
 }

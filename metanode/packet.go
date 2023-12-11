@@ -29,7 +29,11 @@ import (
 
 type Packet struct {
 	proto.Packet
-	remote string
+	remote               string
+	receiveTimestamp     int64
+	proxyStartTimestamp  int64
+	proxyFinishTimestamp int64
+	finishedTimestamp    int64
 }
 
 func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
