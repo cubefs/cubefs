@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/datanode"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -180,6 +181,13 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 	partition.Lock()
 	defer partition.Unlock()
 
+	id := strconv.FormatUint(partition.PartitionID, 10)
+	_, ok := WarnMetrics.dpMissingReplicaInfo[id]
+	oldMissingReplicaNum := 0
+	if ok {
+		oldMissingReplicaNum = len(WarnMetrics.dpMissingReplicaInfo[id].addrs)
+	}
+
 	for _, replica := range partition.Replicas {
 		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) && !partition.IsDiscard {
 			if partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
@@ -205,6 +213,28 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 	}
 
 	WarnMetrics.CleanObsoleteDpMissing(clusterID, partition)
+
+	WarnMetrics.dpMissingReplicaMutex.Lock()
+	replicaInfo, ok := WarnMetrics.dpMissingReplicaInfo[id]
+	if ok {
+		MissingReplicaNum := len(replicaInfo.addrs)
+		oldDpReplicaAliveNum := ""
+		if MissingReplicaNum != oldMissingReplicaNum && oldMissingReplicaNum != 0 {
+			oldDpReplicaAliveNum = WarnMetrics.dpMissingReplicaInfo[id].replicaAlive
+		}
+		dpReplicaMissingNum := uint8(len(WarnMetrics.dpMissingReplicaInfo[id].addrs))
+		dpReplicaAliveNum := partition.ReplicaNum - dpReplicaMissingNum
+		replicaInfo.replicaNum = strconv.FormatUint(uint64(partition.ReplicaNum), 10)
+		replicaInfo.replicaAlive = strconv.FormatUint(uint64(dpReplicaAliveNum), 10)
+		WarnMetrics.dpMissingReplicaInfo[id] = replicaInfo
+		for missingReplicaAddr, _ := range WarnMetrics.dpMissingReplicaInfo[id].addrs {
+			if oldDpReplicaAliveNum != "" {
+				WarnMetrics.missingDp.DeleteLabelValues(clusterID, id, missingReplicaAddr, oldDpReplicaAliveNum, replicaInfo.replicaNum)
+			}
+			WarnMetrics.missingDp.SetWithLabelValues(1, clusterID, id, missingReplicaAddr, replicaInfo.replicaAlive, replicaInfo.replicaNum)
+		}
+	}
+	WarnMetrics.dpMissingReplicaMutex.Unlock()
 
 	if !proto.IsNormalDp(partition.PartitionType) {
 		return
