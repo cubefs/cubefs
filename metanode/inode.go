@@ -354,6 +354,7 @@ func (i *Inode) MarshalValue() (val []byte) {
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	buff.Grow(64)
 	i.RLock()
+	defer i.RUnlock()
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
 		panic(err)
 	}
@@ -435,7 +436,6 @@ func (i *Inode) MarshalValue() (val []byte) {
 	}
 
 	val = buff.Bytes()
-	i.RUnlock()
 	return
 }
 
