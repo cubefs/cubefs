@@ -94,7 +94,7 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 		p := NewPacket(context.Background())
 		if err := p.ReadFromConn(conn, MetaNodeServerTimeOut); err != nil {
 			if err != io.EOF {
-				log.LogErrorf("conn (remote: %v) serve MetaNode: %v", conn.RemoteAddr().String(), err.Error())
+				log.LogErrorf("conn (remote: %v) serve MetaNode: %v", remoteAddr, err.Error())
 			}
 			return
 		}

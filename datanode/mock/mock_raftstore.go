@@ -154,6 +154,10 @@ func (m mockRaftStore) IsSyncWALOnUnstable() (enabled bool) {
 	return m.cfg.SyncWALOnUnstable
 }
 
+func (m mockRaftStore) RaftPath() string {
+	return ""
+}
+
 func NewMockRaftStore() raftstore.RaftStore {
 	return &mockRaftStore{
 		cfg: raft.DefaultConfig(),
