@@ -44,11 +44,11 @@ import (
 )
 
 const (
-	// MaxBloomFilterSize uint64 = 50 * 1024 * 1024 * 1024
-	MaxBloomFilterSize uint64 = 50 * 1024 * 1024
-	MpDir              string = "mp"
-	DpDir              string = "dp"
-	BadDir             string = "bad"
+	MaxBloomFilterSize uint64 = 50 * 1024 * 1024 * 1024
+	// MaxBloomFilterSize uint64 = 50 * 1024 * 1024
+	MpDir  string = "mp"
+	DpDir  string = "dp"
+	BadDir string = "bad"
 )
 
 var (
@@ -143,15 +143,15 @@ func newGCCommand() *cobra.Command {
 }
 
 func setCleanStatus() {
-	switch CleanStr {
-	case "true":
-		CleanS = true
-		return
-	case "false":
-		CleanS = false
-	default:
-		slog.Fatalf("clean arg is not legal, clean %s", CleanStr)
-	}
+	// switch CleanStr {
+	// case "true":
+	// 	CleanS = true
+	// 	return
+	// case "false":
+	// 	CleanS = false
+	// default:
+	// 	slog.Fatalf("clean arg is not legal, clean %s", CleanStr)
+	// }
 }
 
 func backOldDir(dir, volname, dirType string) {
@@ -564,7 +564,7 @@ func newGetDpExtentsCmd() *cobra.Command {
 			log.LogInfof("beforeTime: %v", beforeTime)
 			currentTimeUnix := time.Now().Unix()
 			beforeTimeUnix := t.Unix()
-			threeHours := int64(60)
+			threeHours := int64(3600 * 3)
 
 			if currentTimeUnix-beforeTimeUnix < threeHours {
 				slog.Fatalf("beforeTime should be at least 3 hours earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
