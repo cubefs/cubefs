@@ -186,7 +186,7 @@ func doReleaseDataNodePartitions(dataNodeHttpAddr, timeLocation string) (err err
 	} else {
 		key = generateAuthKeyWithTimeZone(timeLocation)
 	}
-	reqURL = fmt.Sprintf("http://%v/releasePartitions?key=%s", dataNodeHttpAddr, key)
+	reqURL = fmt.Sprintf("http://%v/releasePartitions?key=%s&keepTimeSec=60", dataNodeHttpAddr, key)
 	data, err = doRequest(reqURL, false)
 	if err != nil {
 		return fmt.Errorf("url[%v],err %v resp[%v]", reqURL, err, string(data))
