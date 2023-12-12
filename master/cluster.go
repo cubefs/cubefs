@@ -3255,34 +3255,36 @@ func (c *Cluster) GetFastReplicaStorageClassFromCluster(resourceChecker *Storage
 	return
 }
 
-func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, mediaType uint32) (readWriteDataPartitions int, err error) {
-	for retryCount := 0; readWriteDataPartitions < defaultInitMetaPartitionCount && retryCount < 3; retryCount++ {
+func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, mediaType uint32) (readWriteDpCountOfMediaType int, err error) {
+	for retryCount := 0; readWriteDpCountOfMediaType < defaultInitMetaPartitionCount && retryCount < 3; retryCount++ {
 		err = vol.initDataPartitions(c, mediaType)
+		readWriteDpCountOfMediaType = vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
 		if err != nil {
-			log.LogError("action[initDataPartitionsForCreateVol] init dataPartition error:",
-				err.Error(), retryCount, len(vol.dataPartitions.partitionMap))
+			log.LogError("[initDataPartitionsForCreateVol] init dataPartition failed, vol(%v) mediaType(%v)"+
+				" retryCount(%v) readWriteDpCountOfMediaType(%v), error:",
+				vol.Name, proto.MediaTypeString(mediaType), retryCount, readWriteDpCountOfMediaType, err.Error())
 		}
-
-		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
 	}
 
-	if len(vol.dataPartitions.partitionMap) < defaultInitMetaPartitionCount {
-		err = fmt.Errorf("action[initDataPartitionsForCreateVol] vol[%v] initDataPartitions failed, less than %d",
-			vol.Name, defaultInitMetaPartitionCount)
+	if readWriteDpCountOfMediaType < defaultInitMetaPartitionCount {
+		err = fmt.Errorf("[initDataPartitionsForCreateVol] init dataPartition failed, vol(%v) mediaType(%v),                                     "+
+			"readWriteDpCountOfMediaType(%v) less than %d",
+			vol.Name, proto.MediaTypeString(mediaType), readWriteDpCountOfMediaType, defaultInitMetaPartitionCount)
+		log.LogError(err.Error())
 
 		oldVolStatus := vol.Status
 		vol.Status = markDelete
 		if errSync := c.syncUpdateVol(vol); errSync != nil {
-			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] after init dataPartition error, mark vol delete persist failed", vol.Name)
+			log.LogErrorf("[initDataPartitionsForCreateVol] vol[%v] after init dataPartition error, mark vol delete persist failed", vol.Name)
 			vol.Status = oldVolStatus
 		} else {
-			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] mark vol delete after init dataPartition error", vol.Name)
+			log.LogErrorf("[initDataPartitionsForCreateVol] vol[%v] mark vol delete after init dataPartition error", vol.Name)
 		}
 
-		return readWriteDataPartitions, err
+		return readWriteDpCountOfMediaType, err
 	}
 
-	return readWriteDataPartitions, nil
+	return readWriteDpCountOfMediaType, nil
 }
 
 // Create a new volume.
@@ -3294,7 +3296,7 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 	}
 
 	var (
-		readWriteDataPartitions int
+		readWriteDpCountOfMediaType int
 	)
 
 	if req.zoneName, err = c.checkZoneName(req.name, req.crossZone, req.normalZonesFirst, req.zoneName, req.domainId); err != nil {
@@ -3332,22 +3334,22 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 			}
 
 			chosenMediaType := proto.GetMediaTypeByStorageClass(acs)
-			if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
+			if readWriteDpCountOfMediaType, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
 				goto errHandler
 			}
 			log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for replica",
-				req.name, readWriteDataPartitions, proto.MediaTypeString(chosenMediaType))
+				req.name, readWriteDpCountOfMediaType, proto.MediaTypeString(chosenMediaType))
 		}
 	} else if proto.IsStorageClassBlobStore(vol.volStorageClass) && vol.CacheCapacity > 0 {
 		chosenMediaType := proto.GetMediaTypeByStorageClass(vol.cacheDpStorageClass)
 
 		log.LogInfof("action[createVol] vol[%v] to create cache dp with storageClass(%v) for blobStore",
 			req.name, proto.StorageClassString(vol.cacheDpStorageClass))
-		if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
+		if readWriteDpCountOfMediaType, err = c.initDataPartitionsForCreateVol(vol, chosenMediaType); err != nil {
 			goto errHandler
 		}
 		log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for blobStore",
-			req.name, readWriteDataPartitions, proto.MediaTypeString(chosenMediaType))
+			req.name, readWriteDpCountOfMediaType, proto.MediaTypeString(chosenMediaType))
 	}
 
 	vol.updateViewCache(c)

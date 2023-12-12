@@ -30,7 +30,7 @@ type DataPartitionMap struct {
 	sync.RWMutex
 	partitionMap            map[uint64]*DataPartition
 	readableAndWritableCnt  int                            // number of readable and writable partitionMap
-	partitionMapByMediaType map[uint32]map[uint64]struct{} //level-1 key: mediaType, level-2 key: dpId
+	partitionMapByMediaType map[uint32]map[uint64]struct{} // level-1 key: mediaType, level-2 key: dpId
 	rwCntByMediaType        map[uint32]int                 // readable and writable dp count by mediaType
 	lastLoadedIndex         uint64                         // last loaded partition index
 	lastReleasedIndex       uint64                         // last released partition index
