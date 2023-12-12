@@ -39,6 +39,7 @@ const (
 	defaultHeartbeatExpireIntervalS = 60
 	defaultFlushIntervalS           = 600
 	defaultApplyConcurrency         = 10
+	defaultRWPollConcurrency        = 1000
 	defaultListDiskMaxCount         = 200
 )
 
@@ -106,6 +107,7 @@ type DiskMgrConfig struct {
 	BlobNodeConfig           blobnode.Config `json:"blob_node_config"`
 	AllocTolerateBuffer      int64           `json:"alloc_tolerate_buffer"`
 	EnsureIndex              bool            `json:"ensure_index"`
+	RWPoolConcurrency        uint32          `json:"rw_pool_concurrency"`
 
 	IDC       []string            `json:"-"`
 	CodeModes []codemode.CodeMode `json:"-"`
@@ -117,6 +119,7 @@ type DiskMgr struct {
 	allDisks       map[proto.DiskID]*diskItem
 	allocators     map[string]*atomic.Value
 	taskPool       *base.TaskDistribution
+	rwPool         *base.TaskDistribution
 	hostPathFilter sync.Map
 
 	scopeMgr       scopemgr.ScopeMgrAPI
@@ -132,12 +135,14 @@ type DiskMgr struct {
 }
 
 type diskItem struct {
-	diskID         proto.DiskID
-	info           *blobnode.DiskInfo
-	expireTime     time.Time
-	lastExpireTime time.Time
-	dropping       bool
-	lock           sync.RWMutex
+	diskID            proto.DiskID
+	info              *blobnode.DiskInfo
+	expireTime        time.Time
+	lastExpireTime    time.Time
+	dropping          bool
+	lock              sync.RWMutex
+	rwPool            *base.TaskDistribution
+	rwPoolConcurrency uint32
 }
 
 func (d *diskItem) isExpire() bool {
@@ -201,6 +206,9 @@ func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig
 	if cfg.ApplyConcurrency == 0 {
 		cfg.ApplyConcurrency = defaultApplyConcurrency
 	}
+	if cfg.RWPoolConcurrency == 0 {
+		cfg.RWPoolConcurrency = defaultRWPollConcurrency
+	}
 	if cfg.AllocTolerateBuffer >= 0 {
 		defaultAllocTolerateBuff = cfg.AllocTolerateBuffer
 	}
@@ -213,6 +221,7 @@ func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig
 	dm := &DiskMgr{
 		allocators: allocators,
 		taskPool:   base.NewTaskDistribution(int(cfg.ApplyConcurrency), 1),
+		rwPool:     base.NewTaskDistribution(int(cfg.RWPoolConcurrency), 1),
 
 		scopeMgr:       scopeMgr,
 		diskTbl:        diskTbl,
@@ -338,17 +347,20 @@ func (d *DiskMgr) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 		return apierrors.ErrCMDiskNotFound
 	}
 
-	diskInfo.lock.RLock()
-	if diskInfo.info.Status == status {
-		diskInfo.lock.RUnlock()
-		return nil
-	}
-	beforeSeq, ok = validSetStatus[diskInfo.info.Status]
-	diskInfo.lock.RUnlock()
-	if !ok {
-		panic(fmt.Sprintf("invalid disk status in disk table, diskid: %d, state: %d", id, status))
-	}
-
+	var err1 error
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	diskInfo.rwPool.Run(getRWPoolIdx(diskInfo.diskID, diskInfo.rwPoolConcurrency), func() {
+		defer wg.Done()
+		if diskInfo.info.Status == status {
+			return
+		}
+		beforeSeq, ok = validSetStatus[diskInfo.info.Status]
+		if !ok {
+			panic(fmt.Sprintf("invalid disk status in disk table, diskid: %d, state: %d", id, status))
+		}
+	})
+	wg.Wait()
 	// can't change status back or change status more than 2 motion
 	if beforeSeq > afterSeq || (afterSeq-beforeSeq > 1 && status != proto.DiskStatusDropped) {
 		// return error in pre set request
@@ -363,25 +375,26 @@ func (d *DiskMgr) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 		return nil
 	}
 
-	diskInfo.lock.Lock()
-	defer diskInfo.lock.Unlock()
-	// concurrent double check
-	if diskInfo.info.Status == status {
-		return nil
-	}
+	wg.Add(1)
+	diskInfo.rwPool.Run(getRWPoolIdx(diskInfo.diskID, diskInfo.rwPoolConcurrency), func() {
+		defer wg.Done()
+		// concurrent double check
+		if diskInfo.info.Status == status {
+			return
+		}
+		err := d.diskTbl.UpdateDiskStatus(id, status)
+		if err != nil {
+			err1 = errors.Info(err, "diskMgr.SetStatus update disk info failed").Detail(err)
+			span.Error(errors.Detail(err1))
+		}
+		diskInfo.info.Status = status
+		if !diskInfo.needFilter() {
+			d.hostPathFilter.Delete(diskInfo.genFilterKey())
+		}
+	})
+	wg.Wait()
 
-	err := d.diskTbl.UpdateDiskStatus(id, status)
-	if err != nil {
-		err = errors.Info(err, "diskMgr.SetStatus update disk info failed").Detail(err)
-		span.Error(errors.Detail(err))
-		return err
-	}
-	diskInfo.info.Status = status
-	if !diskInfo.needFilter() {
-		d.hostPathFilter.Delete(diskInfo.genFilterKey())
-	}
-
-	return nil
+	return err1
 }
 
 func (d *DiskMgr) IsDroppingDisk(ctx context.Context, id proto.DiskID) (bool, error) {
@@ -620,7 +633,10 @@ func (d *DiskMgr) addDisk(ctx context.Context, info blobnode.DiskInfo) error {
 		span.Error("diskMgr.addDisk add disk failed: ", err)
 		return errors.Info(err, "diskMgr.addDisk add disk failed").Detail(err)
 	}
-	diskItem := &diskItem{diskID: info.DiskID, info: &info, expireTime: time.Now().Add(time.Duration(d.HeartbeatExpireIntervalS) * time.Second)}
+	diskItem := &diskItem{
+		diskID: info.DiskID, info: &info, expireTime: time.Now().Add(time.Duration(d.HeartbeatExpireIntervalS) * time.Second),
+		rwPool: d.rwPool, rwPoolConcurrency: d.RWPoolConcurrency,
+	}
 	d.allDisks[info.DiskID] = diskItem
 	d.hostPathFilter.Store(diskItem.genFilterKey(), 1)
 
@@ -806,4 +822,8 @@ func diskInfoRecordToDiskInfo(infoDB *normaldb.DiskInfoRecord) *blobnode.DiskInf
 			FreeChunkCnt: infoDB.FreeChunkCnt,
 		},
 	}
+}
+
+func getRWPoolIdx(diskID proto.DiskID, RWPoolConcurrency uint32) int {
+	return int(uint32(diskID) % RWPoolConcurrency)
 }

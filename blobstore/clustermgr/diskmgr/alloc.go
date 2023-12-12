@@ -17,6 +17,7 @@ package diskmgr
 import (
 	"context"
 	"math/rand"
+	"sync"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -78,20 +79,29 @@ func (d *blobNodeStorage) allocDisk(ctx context.Context, excludes map[proto.Disk
 				randTotal--
 			}()
 			disk := disks[randNum]
-			disk.lock.RLock()
-			defer disk.lock.RUnlock()
-			freeChunk := disk.info.FreeChunkCnt
-			if freeChunk <= 0 {
-				return nil
-			}
-			// ignore not writable disk
-			if !disk.isWritable() {
-				span.Debugf("disk %d is not writable, is it expired: %v", disk.diskID, disk.isExpire())
-				return nil
-			}
+			chosen := false
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			disk.rwPool.Run(getRWPoolIdx(disk.diskID, disk.rwPoolConcurrency), func() {
+				defer wg.Done()
+				freeChunk := disk.info.FreeChunkCnt
+				if freeChunk <= 0 {
+					return
+				}
+				// ignore not writable disk
+				if !disk.isWritable() {
+					span.Debugf("disk %d is not writable, is it expired: %v", disk.diskID, disk.isExpire())
+					return
+				}
 
-			if _, ok := excludes[disk.diskID]; !ok {
-				span.Debugf("chosen disk: %#v", disk.info)
+				if _, ok := excludes[disk.diskID]; !ok {
+					chosen = true
+					span.Debugf("chosen disk: %#v", disk.info)
+					return
+				}
+			})
+			wg.Wait()
+			if chosen {
 				return disk
 			}
 			return nil
