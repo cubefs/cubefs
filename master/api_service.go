@@ -508,6 +508,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 			repairTaskCount = ssdZoneRepairTaskCount
 		}
 	}
+	topoFetchIntervalMin := atomic.LoadInt64(&m.cluster.cfg.TopologyFetchIntervalMin)
+	topoForceFetchIntervalSec := atomic.LoadInt64(&m.cluster.cfg.TopologyForceFetchIntervalSec)
 	cInfo := &proto.LimitInfo{
 		Cluster:                                m.cluster.Name,
 		MetaNodeDeleteBatchCount:               batchCount,
@@ -577,6 +579,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		RemoteReadConnTimeout:                  m.cluster.cfg.RemoteReadConnTimeoutMs,
 		ZoneNetConnConfig:                      m.cluster.cfg.ZoneNetConnConfig,
 		MetaNodeDumpSnapCountByZone:            m.cluster.cfg.MetaNodeDumpSnapCountByZone,
+		TopologyFetchIntervalMin:               topoFetchIntervalMin,
+		TopologyForceFetchIntervalSec:          topoForceFetchIntervalSec,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -4971,7 +4975,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
 		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
-		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey}
+		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey,
+		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return

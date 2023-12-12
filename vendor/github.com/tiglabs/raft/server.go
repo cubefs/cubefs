@@ -194,9 +194,9 @@ func (rs *RaftServer) RemoveRaft(id uint64) error {
 }
 
 func (rs *RaftServer) Has(id uint64) (ok bool) {
-	rs.mu.Lock()
+	rs.mu.RLock()
 	_, ok = rs.rafts[id]
-	rs.mu.Unlock()
+	rs.mu.RUnlock()
 	return
 }
 

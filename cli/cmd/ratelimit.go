@@ -321,13 +321,19 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 				msg += fmt.Sprintf("Client Req Remove Dup        : enable, ")
 			}
 			if info.MetaNodeDelEKZoneRate >= 0 {
-				msg += fmt.Sprintf("MetaNodeDelEKZoneRate, Zone: %s, Rate: %v ", info.ZoneName, info.MetaNodeDelEKZoneRate)
+				msg += fmt.Sprintf("MetaNodeDelEKZoneRate, Zone: %s, Rate: %v, ", info.ZoneName, info.MetaNodeDelEKZoneRate)
 			}
 			if info.MetaNodeDelEKVolumeRate >= 0 {
-				msg += fmt.Sprintf("MetaNodeDelEKVolRate, Vol: %s, Rate: %v ", info.Volume, info.MetaNodeDelEKVolumeRate)
+				msg += fmt.Sprintf("MetaNodeDelEKVolRate, Vol: %s, Rate: %v, ", info.Volume, info.MetaNodeDelEKVolumeRate)
 			}
 			if info.MetaNodeDumpSnapCount != -1 {
 				msg += fmt.Sprintf("Metanode Dump Snap Count     : %d, ", info.MetaNodeDumpSnapCount)
+			}
+			if info.TopologyFetchIntervalMin > 0 {
+				msg += fmt.Sprintf("Topology Fetch Interval: %v min, ", info.TopologyFetchIntervalMin)
+			}
+			if info.TopologyForceFetchIntervalSec > 0 {
+				msg += fmt.Sprintf("Topology Force Fetch Interval: %v second, ", info.TopologyForceFetchIntervalSec)
 			}
 			if msg == "" {
 				stdout("No valid parameters\n")
@@ -411,6 +417,8 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.MetaNodeDelEKVolumeRate, "metaNodeDelEKVolRate", -1, "del ek rate limit for volume")
 	cmd.Flags().Int64Var(&info.MetaNodeDelEKZoneRate, "metaNodeDelEKZoneRate", -1, "del ek rate limit for zone")
 	cmd.Flags().Int64Var(&info.MetaNodeDumpSnapCount, proto.MetaNodeDumpSnapCountKey, -1, "set metanode dump snap count")
+	cmd.Flags().Int64Var(&info.TopologyFetchIntervalMin, proto.TopologyFetchIntervalMinKey, 0, "topology fetch interval, unit: min")
+	cmd.Flags().Int64Var(&info.TopologyForceFetchIntervalSec, proto.TopologyForceFetchIntervalSecKey, 0, "topology force fetch interval, unit: second")
 	return cmd
 }
 
@@ -495,6 +503,8 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("   (map[volName]limit of delete ek)\n"))
 	sb.WriteString(fmt.Sprintf("  MetaDumpSnapCount                : %v\n", info.MetaNodeDumpSnapCountByZone))
 	sb.WriteString(fmt.Sprintf("    (map[zoneName]SnapCount of specified zone)\n"))
+	sb.WriteString(fmt.Sprintf("  TopologyFetchInterval            : %v Min\n", info.TopologyFetchIntervalMin))
+	sb.WriteString(fmt.Sprintf("  TopologyFroceFetchInterval       : %v Sec\n", info.TopologyForceFetchIntervalSec))
 	return sb.String()
 }
 

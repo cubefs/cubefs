@@ -19,12 +19,12 @@ var rateLimitProperties = multirate.Properties{
 }
 
 const (
-	sleepForUpdateVolConf                  = time.Second * 1
-	intervalToUpdateVolConf                = time.Minute * 5
-	intervalFetchDataPartitionView         = time.Hour * 1
-	defIntervalForceFetchDataPartitionView = time.Minute * 5
-	forceFetchDataPartitionViewChSize      = 1024
-	defPostByDomainMaxErrorCount           = 1000
+	sleepForUpdateVolConf                       = time.Second * 1
+	intervalToUpdateVolConf                     = time.Minute * 5
+	defIntervalMinToFetchDataPartitionView      = 60  //min
+	defIntervalSecToForceFetchDataPartitionView = 300 //second
+	forceFetchDataPartitionViewChSize           = 1024
+	defPostByDomainMaxErrorCount                = 1000
 )
 
 type ForceFetchDataPartition struct {
@@ -43,23 +43,28 @@ type TopologyManager struct {
 	masterDomainRequestErrorCount uint64
 	needFetchVolAllDPView         bool
 	needUpdateVolsConf            bool
-	forceFetchTimerInterval       time.Duration
+	fetchTimerIntervalMin         int64
+	forceFetchTimerIntervalSec    int64
 }
 
-func NewTopologyManager(forceFetchTimerInterval time.Duration, masterClient, masterDomainClient *master.MasterClient,
+func NewTopologyManager(fetchTimerIntervalMin, forceFetchTimerIntervalSec int64, masterClient, masterDomainClient *master.MasterClient,
 	needFetchVolAllDPView, needUpdateVolsConf bool) *TopologyManager {
-	if forceFetchTimerInterval == 0 {
-		forceFetchTimerInterval = defIntervalForceFetchDataPartitionView
+	if fetchTimerIntervalMin == 0 {
+		fetchTimerIntervalMin = defIntervalMinToFetchDataPartitionView
+	}
+	if forceFetchTimerIntervalSec == 0 {
+		forceFetchTimerIntervalSec = defIntervalSecToForceFetchDataPartitionView
 	}
 	return &TopologyManager{
-		vols:                    new(sync.Map),
-		forceFetchDPViewCh:      make(chan *ForceFetchDataPartition, forceFetchDataPartitionViewChSize),
-		stopCh:                  make(chan bool),
-		forceFetchTimerInterval: forceFetchTimerInterval,
-		masterClient:            masterClient,
-		masterDomainClient:      masterDomainClient,
-		needFetchVolAllDPView:   needFetchVolAllDPView,
-		needUpdateVolsConf:      needUpdateVolsConf,
+		vols:                       new(sync.Map),
+		forceFetchDPViewCh:         make(chan *ForceFetchDataPartition, forceFetchDataPartitionViewChSize),
+		stopCh:                     make(chan bool),
+		fetchTimerIntervalMin:      fetchTimerIntervalMin,
+		forceFetchTimerIntervalSec: forceFetchTimerIntervalSec,
+		masterClient:               masterClient,
+		masterDomainClient:         masterDomainClient,
+		needFetchVolAllDPView:      needFetchVolAllDPView,
+		needUpdateVolsConf:         needUpdateVolsConf,
 	}
 }
 
@@ -244,6 +249,18 @@ func (f *TopologyManager) Stop() {
 	close(f.stopCh)
 }
 
+func (f *TopologyManager) UpdateFetchTimerIntervalMin(fetchIntervalMin, forceFetchIntervalSec int64) {
+	if fetchIntervalMin > 0 && atomic.LoadInt64(&f.fetchTimerIntervalMin) != fetchIntervalMin {
+		log.LogDebugf("fetch timer new value: %v Min", fetchIntervalMin)
+		atomic.StoreInt64(&f.fetchTimerIntervalMin, fetchIntervalMin)
+	}
+
+	if forceFetchIntervalSec > 0 && atomic.LoadInt64(&f.forceFetchTimerIntervalSec) != forceFetchIntervalSec {
+		log.LogDebugf("force fetch timer new value: %v Sec", forceFetchIntervalSec)
+		atomic.StoreInt64(&f.forceFetchTimerIntervalSec, forceFetchIntervalSec)
+	}
+}
+
 func (f *TopologyManager) getAllVolumesName() []string {
 	allVolsName := make([]string, 0)
 	f.vols.Range(func(key, value interface{}) bool {
@@ -261,12 +278,14 @@ func (f *TopologyManager) updateDataPartitions(volName string, dpIDs []uint64) {
 	}
 	partitions := make([]*DataPartition, 0, len(partitionsInfo.DataPartitions))
 	for _, item := range partitionsInfo.DataPartitions {
-		partitions = append(partitions, &DataPartition{
+		info := &DataPartition{
 			PartitionID:     item.PartitionID,
 			Hosts:           item.Hosts,
 			EcHosts:         item.EcHosts,
 			EcMigrateStatus: item.EcMigrateStatus,
-		})
+		}
+		partitions = append(partitions, info)
+		log.LogDebugf("fetch vol(%s) data partition info: %v", volName, info)
 	}
 	value, _ := f.vols.LoadOrStore(volName, NewVolumeTopologyInfo(volName))
 	volTopologyInfo := value.(*VolumeTopologyInfo)
@@ -275,7 +294,8 @@ func (f *TopologyManager) updateDataPartitions(volName string, dpIDs []uint64) {
 
 func (f *TopologyManager) backGroundFetchDataPartitions() {
 	timer := time.NewTimer(0)
-	ticker := time.NewTicker(f.forceFetchTimerInterval)
+	tickerValue := atomic.LoadInt64(&f.forceFetchTimerIntervalSec)
+	ticker := time.NewTicker(time.Second * time.Duration(tickerValue))
 	var needForceFetchDataPartitionsMap = make(map[string]map[uint64]bool, 0)
 	for {
 
@@ -286,12 +306,14 @@ func (f *TopologyManager) backGroundFetchDataPartitions() {
 			return
 
 		case <-timer.C:
-			timer.Reset(intervalFetchDataPartitionView)
 			if !f.needFetchVolAllDPView {
 				continue
 			}
+			interval := atomic.LoadInt64(&f.fetchTimerIntervalMin)
+			timer.Reset(time.Duration(interval) * time.Minute)
 			allVolsName := f.getAllVolumesName()
 			for _, volName := range allVolsName {
+				log.LogDebugf("backGroundFetchDataPartitions start fetch volume(%s) view", volName)
 				f.updateDataPartitions(volName, nil)
 			}
 
@@ -310,6 +332,13 @@ func (f *TopologyManager) backGroundFetchDataPartitions() {
 				f.updateDataPartitions(volName, dpsID)
 			}
 			needForceFetchDataPartitionsMap = make(map[string]map[uint64]bool, 0)
+
+			newTickerValue := atomic.LoadInt64(&f.forceFetchTimerIntervalSec)
+			if newTickerValue > 0 && tickerValue != newTickerValue {
+				log.LogDebugf("backGroundFetchDataPartitions force fetch ticker change from (%v Sec) to (%v Sec)", tickerValue, newTickerValue)
+				ticker.Reset(time.Second * time.Duration(newTickerValue))
+				tickerValue = newTickerValue
+			}
 
 		case fetchInfo := <-f.forceFetchDPViewCh:
 			if _, ok := needForceFetchDataPartitionsMap[fetchInfo.volumeName]; !ok {

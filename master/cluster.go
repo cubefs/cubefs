@@ -4022,6 +4022,26 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.ClientReqRemoveDup = val.(bool)
 	}
 
+	oldTopologyFetchIntervalMin := atomic.LoadInt64(&c.cfg.TopologyFetchIntervalMin)
+	if val, ok := params[proto.TopologyFetchIntervalMinKey]; ok {
+		v := val.(int64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.TopologyFetchIntervalMinKey)
+			return
+		}
+		atomic.StoreInt64(&c.cfg.TopologyFetchIntervalMin, v)
+	}
+
+	oldTopologyForceFetchIntervalSec := atomic.LoadInt64(&c.cfg.TopologyForceFetchIntervalSec)
+	if val, ok := params[proto.TopologyForceFetchIntervalSecKey]; ok {
+		v := val.(int64)
+		if v <= 0 {
+			err = errors.NewErrorf("parameter %s must be greater than 0", proto.TopologyForceFetchIntervalSecKey)
+			return
+		}
+		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, v)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -4070,6 +4090,8 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, oldClientReqReservedMin)
 		c.cfg.ClientReqRemoveDup = oldClientReqRemoveDup
 		atomic.StoreInt64(&c.cfg.RemoteReadConnTimeoutMs, oldRemoteReadConnTimeout)
+		atomic.StoreInt64(&c.cfg.TopologyFetchIntervalMin, oldTopologyFetchIntervalMin)
+		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, oldTopologyForceFetchIntervalSec)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

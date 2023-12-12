@@ -164,7 +164,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err != nil {
 		return err
 	}
-	s.topoManager = topology.NewTopologyManager(time.Minute*5, MasterClient, MasterDomainClient,
+	s.topoManager = topology.NewTopologyManager(0, 0, MasterClient, MasterDomainClient,
 		false, false)
 	if err = s.topoManager.Start(); err != nil {
 		return

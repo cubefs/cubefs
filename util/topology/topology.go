@@ -1,6 +1,7 @@
 package topology
 
 import (
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"strings"
 	"sync"
@@ -11,6 +12,11 @@ type DataPartition struct {
 	Hosts           []string
 	EcHosts         []string
 	EcMigrateStatus uint8
+}
+
+func (dp *DataPartition) String() string {
+	return fmt.Sprintf("DataPartitionID: %v, Hosts: %v, EcHosts: %v, EcMigrateStatus: %v", dp.PartitionID, dp.Hosts,
+		dp.EcHosts, dp.EcMigrateStatus)
 }
 
 func (dp *DataPartition) GetAllAddrs() (m string) {

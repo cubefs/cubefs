@@ -436,7 +436,7 @@ var VolsConf = map[string]*proto.VolInfo{
 }
 
 func TestFetchTopologyManager_FetchDPView(t *testing.T) {
-	topoManager := NewTopologyManager(time.Second*5, masterClient, masterClient,
+	topoManager := NewTopologyManager(0, 1, masterClient, masterClient,
 		true, false)
 	for volName := range volumes {
 		topoManager.AddVolume(volName)
@@ -471,7 +471,7 @@ func TestFetchTopologyManager_FetchDPView(t *testing.T) {
 		topoManager.FetchDataPartitionView("test_vol1", newDataPartition.PartitionID)
 	}
 
-	time.Sleep(topoManager.forceFetchTimerInterval)
+	time.Sleep(time.Duration(topoManager.forceFetchTimerIntervalSec) * time.Second)
 
 	//get
 	if partition := topoManager.GetPartitionFromCache("test_vol1", maxPartitionID+1); partition == nil {
@@ -540,7 +540,7 @@ func TestFetchTopologyManager_FetchDPView(t *testing.T) {
 }
 
 func TestFetchTopologyManager_UpdateVolConf(t *testing.T) {
-	topoManager := NewTopologyManager(time.Duration(0), masterClient, masterClient, false, true)
+	topoManager := NewTopologyManager(0, 0, masterClient, masterClient, false, true)
 	for volName := range volumes {
 		topoManager.AddVolume(volName)
 	}

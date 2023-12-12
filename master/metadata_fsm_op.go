@@ -115,6 +115,8 @@ type clusterValue struct {
 	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
 	MetaNodeDumpSnapCountByZone			map[string]uint64
 	ClusterName							string
+	TopologyFetchIntervalMin            int64
+	TopologyForceFetchIntervalSec       int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -198,6 +200,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ZoneNetConnConfig:                   c.cfg.ZoneNetConnConfig,
 		MetaNodeDumpSnapCountByZone:         c.cfg.MetaNodeDumpSnapCountByZone,
 		ClusterName:						 c.cfg.ClusterName,
+		TopologyFetchIntervalMin:            c.cfg.TopologyFetchIntervalMin,
+		TopologyForceFetchIntervalSec:       c.cfg.TopologyForceFetchIntervalSec,
 	}
 	return cv
 }
@@ -1197,6 +1201,9 @@ func (c *Cluster) loadClusterValue() (err error) {
 		}
 
 		c.cfg.ClusterName = cv.ClusterName
+
+		c.cfg.TopologyFetchIntervalMin = cv.TopologyFetchIntervalMin
+		c.cfg.TopologyForceFetchIntervalSec = cv.TopologyForceFetchIntervalSec
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

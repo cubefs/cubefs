@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	pb "github.com/gogo/protobuf/proto"
 	"net/http"
 	"net/url"
@@ -198,13 +199,16 @@ func (api *ClientAPI) GetDataPartitions(volName string, dpIDs []uint64) (view *p
 	if contentType == proto.ProtobufType {
 		viewPb := &proto.DataPartitionsViewPb{}
 		if err = pb.Unmarshal(data, viewPb); err != nil {
+			log.LogErrorf("unmarshal data partitions view pb data(%v) failed: %v", data, err)
 			return
 		}
 		view = proto.ConvertDataPartitionsViewPb(viewPb)
 
 	} else {
 		view = &proto.DataPartitionsView{}
-		err = json.Unmarshal(data, view)
+		if err = json.Unmarshal(data, view); err != nil {
+			log.LogErrorf("unmarshal data partitions view json data(%s) failed: %v", string(data), err)
+		}
 	}
 
 	return

@@ -409,7 +409,7 @@ func (m *MetaNode) delVolFromFetchTopologyManager(name string) {
 }
 
 func (m *MetaNode) initFetchTopologyManager() {
-	m.topoManager = topology.NewTopologyManager(time.Minute*5, masterClient, masterDomainClient,
+	m.topoManager = topology.NewTopologyManager(0, 0, masterClient, masterDomainClient,
 		true, true)
 	return
 }

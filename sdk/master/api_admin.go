@@ -944,6 +944,12 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.MetaNodeDumpSnapCount >= 0 {
 		request.addParam(proto.MetaNodeDumpSnapCountKey, strconv.Itoa(int(info.MetaNodeDumpSnapCount)))
 	}
+	if info.TopologyFetchIntervalMin > 0 {
+		request.addParam(proto.TopologyFetchIntervalMinKey, strconv.Itoa(int(info.TopologyFetchIntervalMin)))
+	}
+	if info.TopologyForceFetchIntervalSec > 0 {
+		request.addParam(proto.TopologyForceFetchIntervalSecKey, strconv.Itoa(int(info.TopologyForceFetchIntervalSec)))
+	}
 	request.addParam("volume", info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, _, err = api.mc.serveRequest(request); err != nil {
