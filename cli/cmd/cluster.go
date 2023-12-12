@@ -306,11 +306,12 @@ func newClusterSetNodeState(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   CliOpSetNodeState,
 		Short: cmdCLusterSetNodeState,
-		Args:  cobra.MinimumNArgs(4),
+		Args:  cobra.MinimumNArgs(0),
 		Run: func(cmd *cobra.Command, args []string) {
 			if err = client.AdminAPI().SetNodeToOfflineState(addrList, nodeType, zoneName, state); err != nil {
 				errout("Failed: %v\n", err)
 			}
+			stdout("nodetype:%s \t zonename:%s \t state:%s \t addr:%s success\n", nodeType, zoneName, state, addrList)
 		},
 	}
 
