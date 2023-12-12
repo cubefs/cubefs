@@ -226,15 +226,15 @@ func formatVerInfoTableRow(verInfo *proto.VolVersionInfo) string {
 }
 
 var (
-	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-18v    %-18v"
+	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v     %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
-		"ID", "REPLICAS", "STATUS", "ISRECOVER", "LEADER", "MEMBERS")
+		"ID", "REPLICAS", "STATUS", "ISRECOVER", "MEDIA", "LEADER", "MEMBERS")
 )
 
 func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 	return fmt.Sprintf(dataPartitionTablePattern,
-		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), view.IsRecover, view.LeaderAddr,
-		strings.Join(view.Hosts, ","))
+		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), view.IsRecover,
+		proto.MediaTypeString(view.MediaType), view.LeaderAddr, strings.Join(view.Hosts, ","))
 }
 
 var (
