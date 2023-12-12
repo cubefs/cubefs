@@ -39,7 +39,7 @@ type DataPartitionMap struct {
 	lastAutoCreateTime      time.Time
 	volName                 string
 	readMutex               sync.RWMutex
-	partitionMapByMediaType map[uint32]map[uint64]struct{} //level-1 key: mediaType, level-2 key: dpId
+	partitionMapByMediaType map[uint32]map[uint64]struct{} // level-1 key: mediaType, level-2 key: dpId
 	rwCntByMediaType        map[uint32]int                 // readable and writable dp count by mediaType
 }
 
