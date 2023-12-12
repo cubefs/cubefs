@@ -738,7 +738,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Bad disks           : %v\n", dn.BadDisks))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", dn.PersistenceDataPartitions))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", dn.CpuUtil))
-	sb.WriteString("  IoUtils              :\n")
+	sb.WriteString("  IoUtils             :\n")
 	for device, used := range dn.IoUtils {
 		sb.WriteString(fmt.Sprintf("                       %v:%.1f%%\n", device, used))
 	}
