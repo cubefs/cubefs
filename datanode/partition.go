@@ -771,15 +771,19 @@ func (dp *DataPartition) Load() (response *proto.LoadDataPartitionResponse) {
 // 2. if the extent does not even exist, create the extent first, and then repair.
 func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask) {
 	store := dp.extentStore
+	log.LogDebugf("DoExtentStoreRepair dp %v len extents %v type %v",
+		dp.partitionID, len(repairTask.ExtentsToBeCreated), repairTask.TaskType)
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		if storage.IsTinyExtent(extentInfo.FileID) {
 			continue
 		}
 		if store.HasExtent(uint64(extentInfo.FileID)) {
+			log.LogWarnf("DoExtentStoreRepair dp %v, extent(%v) is exist", dp.partitionID, extentInfo.FileID)
 			continue
 		}
 		if !AutoRepairStatus {
-			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
+			log.LogWarnf("DoExtentStoreRepair dp %v, AutoRepairStatus is False,so cannot Create extent(%v)",
+				dp.partitionID, extentInfo.FileID)
 			continue
 		}
 
@@ -787,6 +791,8 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 
 		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
+			log.LogWarnf("DoExtentStoreRepair dp %v extent %v failed, err:%v",
+				dp.partitionID, extentInfo.FileID, err.Error())
 			continue
 		}
 	}
@@ -922,7 +928,6 @@ func (dp *DataPartition) ChangeRaftMember(changeType raftProto.ConfChangeType, p
 	return
 }
 
-//
 func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 	var partition *proto.DataPartitionInfo
 	if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
