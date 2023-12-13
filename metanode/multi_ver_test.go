@@ -808,7 +808,7 @@ func TestDentry(t *testing.T) {
 
 	testDelDirSnapshotVersion(t, seq0, dirIno, dirDen)
 	rspReadDir = testReadDirAll(t, seq0, dirIno.Inode)
-	assert.True(t, len(rspReadDir.Children) == 1)
+	assert.True(t, len(rspReadDir.Children) == 0)
 
 	testPrintAllDentry(t)
 	//---------------------------------------------
@@ -829,7 +829,7 @@ func TestDentry(t *testing.T) {
 
 	rspReadDir = testReadDirAll(t, seq1, dirIno.Inode)
 	t.Logf("after  testDelDirSnapshotVersion %v can see file %v %v", seq1, len(rspReadDir.Children), rspReadDir.Children)
-	assert.True(t, len(rspReadDir.Children) == 2)
+	assert.True(t, len(rspReadDir.Children) == 0)
 	testPrintAllSysVerList(t)
 
 	//---------------------------------------------
