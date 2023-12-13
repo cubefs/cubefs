@@ -20,6 +20,7 @@ import (
 
 	"os"
 
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/tecbot/gorocksdb"
@@ -210,8 +211,8 @@ func (rs *RocksDBStore) Replace(key string, value interface{}, isSync bool) (res
 	return result, nil
 }
 
-// BatchPut puts the key-value pairs in batch.
-func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte, isSync bool) error {
+// BatchDeleteAndPut delete the keys in set and put the kvs in batch
+func (rs *RocksDBStore) BatchDeleteAndPut(deleteSet map[string]util.Null, cmdMap map[string][]byte, isSync bool) error {
 	wo := gorocksdb.NewDefaultWriteOptions()
 	wo.SetSync(isSync)
 	wb := gorocksdb.NewWriteBatch()
@@ -219,7 +220,17 @@ func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte, isSync bool) error {
 		wo.Destroy()
 		wb.Destroy()
 	}()
+	for key := range deleteSet {
+		wb.Delete([]byte(key))
+	}
 	for key, value := range cmdMap {
+		// NOTE: skip if the key in delete set
+		if deleteSet != nil {
+			_, ok := deleteSet[key]
+			if ok {
+				continue
+			}
+		}
 		wb.Put([]byte(key), value)
 	}
 	if err := rs.db.Write(wo, wb); err != nil {
@@ -227,6 +238,11 @@ func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte, isSync bool) error {
 		return err
 	}
 	return nil
+}
+
+// BatchPut puts the key-value pairs in batch.
+func (rs *RocksDBStore) BatchPut(cmdMap map[string][]byte, isSync bool) error {
+	return rs.BatchDeleteAndPut(nil, cmdMap, isSync)
 }
 
 // SeekForPrefix seeks for the place where the prefix is located in the snapshots.

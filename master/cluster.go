@@ -893,12 +893,19 @@ func (c *Cluster) updateDataNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	if dataNode.ID == id {
 		return
 	}
-
-	if err = c.syncDeleteDataNode(dataNode); err != nil {
+	cmds := make(map[string]*RaftCmd)
+	metadata, err := c.buildDeleteDataNodeCmd(dataNode)
+	if err != nil {
 		return
 	}
+	cmds[metadata.K] = metadata
 	dataNode.ID = id
-	if err = c.syncUpdateDataNode(dataNode); err != nil {
+	metadata, err = c.buildUpdateDataNodeCmd(dataNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	if err = c.syncBatchCommitCmd(cmds); err != nil {
 		return
 	}
 	//partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)
@@ -917,11 +924,19 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	if metaNode.ID == id {
 		return
 	}
-	if err = c.syncDeleteMetaNode(metaNode); err != nil {
+	cmds := make(map[string]*RaftCmd)
+	metadata, err := c.buildDeleteMetaNodeCmd(metaNode)
+	if err != nil {
 		return
 	}
+	cmds[metadata.K] = metadata
 	metaNode.ID = id
-	if err = c.syncUpdateMetaNode(metaNode); err != nil {
+	metadata, err = c.buildUpdateMetaNodeCmd(metaNode)
+	if err != nil {
+		return
+	}
+	cmds[metadata.K] = metadata
+	if err = c.syncBatchCommitCmd(cmds); err != nil {
 		return
 	}
 	//partitions := c.getAllMetaPartitionsByMetaNode(nodeAddr)

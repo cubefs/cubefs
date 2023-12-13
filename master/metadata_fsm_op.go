@@ -857,12 +857,32 @@ func (c *Cluster) syncUpdateMetaNode(metaNode *MetaNode) (err error) {
 	return c.syncPutMetaNode(opSyncUpdateMetaNode, metaNode)
 }
 
-func (c *Cluster) syncPutMetaNode(opType uint32, metaNode *MetaNode) (err error) {
-	metadata := new(RaftCmd)
+func (c *Cluster) buildPutMetaNodeCmd(opType uint32, metaNode *MetaNode) (metadata *RaftCmd, err error) {
+	metadata = new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = metaNodePrefix + strconv.FormatUint(metaNode.ID, 10) + keySeparator + metaNode.Addr
 	mnv := newMetaNodeValue(metaNode)
 	metadata.V, err = json.Marshal(mnv)
+	return
+}
+
+func (c *Cluster) buildAddMetaNodeCmd(metaNode *MetaNode) (metadata *RaftCmd, err error) {
+	metadata, err = c.buildPutMetaNodeCmd(opSyncAddMetaNode, metaNode)
+	return
+}
+
+func (c *Cluster) buildDeleteMetaNodeCmd(metaNode *MetaNode) (metadata *RaftCmd, err error) {
+	metadata, err = c.buildPutMetaNodeCmd(opSyncDeleteMetaNode, metaNode)
+	return
+}
+
+func (c *Cluster) buildUpdateMetaNodeCmd(metaNode *MetaNode) (metadata *RaftCmd, err error) {
+	metadata, err = c.buildPutMetaNodeCmd(opSyncUpdateMetaNode, metaNode)
+	return
+}
+
+func (c *Cluster) syncPutMetaNode(opType uint32, metaNode *MetaNode) (err error) {
+	metadata, err := c.buildPutMetaNodeCmd(opType, metaNode)
 	if err != nil {
 		return errors.New(err.Error())
 	}
@@ -871,25 +891,48 @@ func (c *Cluster) syncPutMetaNode(opType uint32, metaNode *MetaNode) (err error)
 
 // key=#dn#id#Addr,value = json.Marshal(dnv)
 func (c *Cluster) syncAddDataNode(dataNode *DataNode) (err error) {
-	return c.syncPutDataNodeInfo(opSyncAddDataNode, dataNode)
+	return c.syncPutDataNode(opSyncAddDataNode, dataNode)
 }
 
 func (c *Cluster) syncDeleteDataNode(dataNode *DataNode) (err error) {
-	return c.syncPutDataNodeInfo(opSyncDeleteDataNode, dataNode)
+	return c.syncPutDataNode(opSyncDeleteDataNode, dataNode)
 }
 
 func (c *Cluster) syncUpdateDataNode(dataNode *DataNode) (err error) {
-	return c.syncPutDataNodeInfo(opSyncUpdateDataNode, dataNode)
+	return c.syncPutDataNode(opSyncUpdateDataNode, dataNode)
 }
 
-func (c *Cluster) syncPutDataNodeInfo(opType uint32, dataNode *DataNode) (err error) {
-	metadata := new(RaftCmd)
+func (c *Cluster) buildAddDataNodeCmd(dataNode *DataNode) (metadata *RaftCmd, err error) {
+	metadata, err = c.buildPutDataNodeCmd(opSyncAddDataNode, dataNode)
+	return
+}
+
+func (c *Cluster) buildDeleteDataNodeCmd(dataNode *DataNode) (metadata *RaftCmd, err error) {
+	metadata, err = c.buildPutDataNodeCmd(opSyncDeleteDataNode, dataNode)
+	return
+}
+
+func (c *Cluster) buildUpdateDataNodeCmd(dataNode *DataNode) (metadata *RaftCmd, err error) {
+	metadata, err = c.buildPutDataNodeCmd(opSyncUpdateDataNode, dataNode)
+	return
+}
+
+func (c *Cluster) buildPutDataNodeCmd(opType uint32, dataNode *DataNode) (metadata *RaftCmd, err error) {
+	metadata = new(RaftCmd)
 	metadata.Op = opType
 	metadata.K = dataNodePrefix + strconv.FormatUint(dataNode.ID, 10) + keySeparator + dataNode.Addr
 	dnv := newDataNodeValue(dataNode)
 	metadata.V, err = json.Marshal(dnv)
 	if err != nil {
-		return errors.New(err.Error())
+		return
+	}
+	return
+}
+
+func (c *Cluster) syncPutDataNode(opType uint32, dataNode *DataNode) (err error) {
+	metadata, err := c.buildPutDataNodeCmd(opType, dataNode)
+	if err != nil {
+		return
 	}
 	return c.submit(metadata)
 }
@@ -1323,6 +1366,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
+				log.LogDebugf("action[loadDataNodes]: skip addr %v old %v current %v", dataNode.Addr, olddn.(*DataNode).ID, dataNode.ID)
 				continue
 			}
 		}
