@@ -112,6 +112,7 @@ var (
 	ErrNoSupportStorageClass                   = errors.New("Lifecycle storage class not allowed")
 	ErrDataNodeAdd                             = errors.New("DataNode mediaType not match")
 	ErrNeedForbidVer0                          = errors.New("Need set volume ForbidWriteOpOfProtoVer0 first")
+	ErrTmpfsNoSpace                            = errors.New("no space left on device")
 )
 
 // http response error code and error message definitions
