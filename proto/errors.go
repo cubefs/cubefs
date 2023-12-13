@@ -108,6 +108,7 @@ var (
 	ErrVolNameRegExpNotMatch                   = errors.New("name can only be number and letters")
 	ErrSnapshotNotEnabled                      = errors.New("cluster not enable snapshot")
 	ErrMemberChange                            = errors.New("raft prev member change is not finished.")
+	ErrTmpfsNoSpace                            = errors.New("no space left on device")
 )
 
 // http response error code and error message definitions
