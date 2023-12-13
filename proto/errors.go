@@ -100,6 +100,7 @@ var (
 	ErrNodeSetNotExists                        = errors.New("node set not exists")
 	ErrCompressFailed                          = errors.New("compress data failed")
 	ErrDecompressFailed                        = errors.New("decompress data failed")
+	ErrTmpfsNoSpace                            = errors.New("no space left on device")
 )
 
 // http response error code and error message definitions

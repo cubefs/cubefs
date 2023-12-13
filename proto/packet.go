@@ -27,6 +27,8 @@ import (
 	"syscall"
 	"time"
 
+	pb "github.com/gogo/protobuf/proto"
+
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
@@ -246,6 +248,11 @@ const (
 	OpSplitMarkDelete       uint8 = 0xD6
 	OpTryOtherExtent        uint8 = 0xD7
 	OpReadRepairExtentAgain uint8 = 0xEF
+
+	// Distributed cache related OP codes.
+	OpFlashNodeHeartbeat uint8 = 0xDA
+	OpCachePrepare       uint8 = 0xDB
+	OpCacheRead          uint8 = 0xDC
 )
 
 const (
@@ -811,6 +818,20 @@ func (p *Packet) MarshalData(v interface{}) error {
 // UnmarshalData unmarshals the packet data.
 func (p *Packet) UnmarshalData(v interface{}) error {
 	return json.Unmarshal(p.Data, v)
+}
+
+func (p *Packet) MarshalDataPb(m pb.Message) error {
+	data, err := pb.Marshal(m)
+	if err == nil {
+		p.Data = data
+		p.Size = uint32(len(p.Data))
+		// p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+	}
+	return err
+}
+
+func (p *Packet) UnmarshalDataPb(m pb.Message) error {
+	return pb.Unmarshal(p.Data, m)
 }
 
 // WriteToNoDeadLineConn writes through the connection without deadline.
