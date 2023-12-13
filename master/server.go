@@ -17,13 +17,14 @@ package master
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
 	"strconv"
 	"sync"
+
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 
 	"github.com/cubefs/cubefs/util/stat"
 
@@ -336,7 +337,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 
 	m.config.MonitorPushAddr = cfg.GetString(cfgMonitorPushAddr)
 
-	m.config.volForceDeletion = cfg.GetBoolWithDefault(cfgVolForceDeletion, true)
+	// m.config.volForceDeletion = cfg.GetBoolWithDefault(cfgVolForceDeletion, true)
 
 	threshold := cfg.GetInt64WithDefault(cfgVolDeletionDentryThreshold, 0)
 	if threshold < 0 {
