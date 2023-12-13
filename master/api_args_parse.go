@@ -1033,7 +1033,7 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, volName stri
 	if countStr := r.FormValue(countKey); countStr == "" {
 		err = keyNotFound(countKey)
 		return
-	} else if count, err = strconv.Atoi(countStr); err != nil || count == 0 {
+	} else if count, err = strconv.Atoi(countStr); err != nil || count == 0 || count > 32 {
 		err = unmatchedKey(countKey)
 		return
 	}
