@@ -17,13 +17,14 @@ package master
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
 	"strconv"
 	"sync"
+
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 
 	"github.com/cubefs/cubefs/util/stat"
 
@@ -72,7 +73,7 @@ var (
 	ownerRegexp   = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_]{0,20}$")
 
 	useConnPool           = true //for test
-	enableDirectDeleteVol = true
+	enableDirectDeleteVol = false
 	gConfig               *clusterConfig
 )
 
@@ -358,7 +359,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	m.config.volDeletionDentryThreshold = uint64(threshold)
 
-	enableDirectDeleteVol = cfg.GetBoolWithDefault(cfgEnableDirectDeleteVol, true)
+	enableDirectDeleteVol = cfg.GetBoolWithDefault(cfgEnableDirectDeleteVol, false)
 
 	return
 }
