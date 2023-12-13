@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	raftstore "github.com/cubefs/cubefs/raftstore/raftstore_db"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
@@ -113,6 +114,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	}
 
 	cmdMap := make(map[string][]byte)
+	deleteSet := make(map[string]util.Null)
 	if cmd.Op != opSyncBatchPut {
 		cmdMap[cmd.K] = cmd.V
 		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
@@ -123,7 +125,14 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 		for cmdK, cmd := range nestedCmdMap {
-			cmdMap[cmdK] = cmd.V
+			switch cmd.Op {
+			case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
+				opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser, opSyncDeleteQuota, opSyncDeleteLcNode, opSyncDeleteLcConf, opSyncS3QosDelete:
+				deleteSet[cmdK] = util.Null{}
+			// NOTE: opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo need special handle?
+			default:
+				cmdMap[cmdK] = cmd.V
+			}
 		}
 		cmdMap[applied] = []byte(strconv.FormatUint(uint64(index), 10))
 	}
@@ -144,7 +153,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		}
 	default:
 		// sync put data
-		if err = mf.store.BatchPut(cmdMap, true); err != nil {
+		if err = mf.store.BatchDeleteAndPut(deleteSet, cmdMap, true); err != nil {
 			panic(err)
 		}
 	}
