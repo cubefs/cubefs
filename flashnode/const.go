@@ -32,6 +32,8 @@ const (
 	ServerTimeOut                = 60 * 5
 	ConnectPoolIdleConnTimeout   = 60 * time.Second
 	DefaultBurst                 = 512
+	registerMaxRetryCount        = 3
+	registerRetryWaitInterval    = time.Second * 5
 )
 
 // Configuration keys

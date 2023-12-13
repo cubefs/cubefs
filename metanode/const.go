@@ -256,6 +256,9 @@ const (
 
 	defParallelismDumpCount        = 128
 	intervalDumpSnap              = time.Second * 5
+
+	registerMaxRetryCount     = 3
+	registerRetryWaitInterval = time.Second * 5
 )
 
 const (

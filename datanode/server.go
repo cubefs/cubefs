@@ -451,8 +451,16 @@ func (s *DataNode) register() (err error) {
 		regRsp *proto.RegNodeRsp
 	)
 
+	for retryCount := registerMaxRetryCount; retryCount > 0; retryCount-- {
+		regRsp, err = MasterClient.RegNodeInfo(proto.AuthFilePath, regInfo)
+		if err == nil {
+			break
+		}
+		time.Sleep(registerRetryWaitInterval)
+	}
 
-	if regRsp, err = MasterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
+	if err != nil {
+		log.LogErrorf("DataNode register failed: %v", err)
 		return
 	}
 	ipAddr := strings.Split(regRsp.Addr, ":")[0]

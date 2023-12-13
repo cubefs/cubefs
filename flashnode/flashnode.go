@@ -218,7 +218,15 @@ func (f *FlashNode) register() (err error) {
 		regRsp *proto.RegNodeRsp
 	)
 
-	if regRsp, err = masterClient.RegNodeInfo(proto.AuthFilePath, regInfo); err != nil {
+	for retryCount := registerMaxRetryCount; retryCount > 0; retryCount-- {
+		regRsp, err = masterClient.RegNodeInfo(proto.AuthFilePath, regInfo)
+		if err == nil {
+			break
+		}
+		time.Sleep(registerRetryWaitInterval)
+	}
+	if err != nil {
+		log.LogErrorf("FlashNode register failed: %v", err)
 		return
 	}
 

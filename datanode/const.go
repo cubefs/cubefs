@@ -145,3 +145,8 @@ const (
 	errorGetConnectMsg       = "get connection failed"
 	errorPartitionRecoverMsg = "partition is recovering"
 )
+
+const (
+	registerMaxRetryCount     = 3
+	registerRetryWaitInterval = time.Second * 5
+)
