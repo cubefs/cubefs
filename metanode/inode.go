@@ -152,11 +152,18 @@ func (i *Inode) insertEkRefMap(mpId uint64, ek *proto.ExtentKey) {
 	storeEkSplit(mpId, i.Inode, i.multiSnap.ekRefMap, ek)
 }
 
-func (i *Inode) getEkRefMap() *sync.Map {
+func (i *Inode) isEkInRefMap(mpId uint64, ek *proto.ExtentKey) (ok bool) {
 	if i.multiSnap == nil {
-		return nil
+		return
 	}
-	return i.multiSnap.ekRefMap
+	if i.multiSnap.ekRefMap == nil {
+		log.LogErrorf("[storeEkSplit] mpId [%v] inodeID %v ekRef nil", mpId, i.Inode)
+		return
+	}
+	log.LogDebugf("[storeEkSplit] mpId [%v] inode %v mp %v extent id %v ek %v", mpId, i.Inode, ek.PartitionId, ek.ExtentId, ek)
+	id := ek.PartitionId<<32 | ek.ExtentId
+	_, ok = i.multiSnap.ekRefMap.Load(id)
+	return
 }
 
 func (i *Inode) getVer() uint64 {

@@ -368,7 +368,9 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 		ek.ExtentOffset = ek.ExtentOffset + uint64(lastKey.Size)
 		ek.Size = ek.Size - lastKey.Size
 		log.LogDebugf("action[AppendWithCheck] after split append key %v", ek)
-		addRefFunc(lastKey)
+		if !lastKey.IsSplit() {
+			addRefFunc(lastKey)
+		}
 		addRefFunc(&ek)
 		se.eks = append(se.eks, ek)
 		return
@@ -425,6 +427,18 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 		log.LogDebugf("action[AppendWithCheck] OpConflictExtentsErr error. inode %v deleteExtents [%v]", inodeID, deleteExtents)
 		return deleteExtents, proto.OpConflictExtentsErr
 	}
+
+	defer func() {
+		if startIndex == 0 {
+			return
+		}
+		if se.eks[startIndex-1].IsSequenceWithDiffSeq(&se.eks[startIndex]) {
+			if !se.eks[startIndex-1].IsSplit() {
+				addRefFunc(&se.eks[startIndex-1])
+			}
+			addRefFunc(&se.eks[startIndex])
+		}
+	}()
 
 	if len(invalidExtents) == 0 {
 		se.insert(ek, startIndex)
