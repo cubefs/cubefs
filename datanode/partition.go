@@ -858,17 +858,20 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		return
 	}
 	store := dp.extentStore
-	log.LogDebugf("DoExtentStoreRepair.dp %v len extents %v", dp.partitionID, len(repairTask.ExtentsToBeCreated))
+	log.LogDebugf("DoExtentStoreRepair dp %v len extents %v type %v",
+		dp.partitionID, len(repairTask.ExtentsToBeCreated), repairTask.TaskType)
 	for _, extentInfo := range repairTask.ExtentsToBeCreated {
 		log.LogDebugf("DoExtentStoreRepair.dp %v len extentInfo %v", dp.partitionID, extentInfo)
 		if storage.IsTinyExtent(extentInfo.FileID) {
 			continue
 		}
 		if store.HasExtent(uint64(extentInfo.FileID)) {
+			log.LogWarnf("DoExtentStoreRepair dp %v, extent(%v) is exist", dp.partitionID, extentInfo.FileID)
 			continue
 		}
 		if !AutoRepairStatus {
-			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
+			log.LogWarnf("DoExtentStoreRepair dp %v, AutoRepairStatus is False,so cannot Create extent(%v)",
+				dp.partitionID, extentInfo.FileID)
 			continue
 		}
 
@@ -876,6 +879,8 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 
 		err := store.Create(uint64(extentInfo.FileID))
 		if err != nil {
+			log.LogWarnf("DoExtentStoreRepair dp %v extent %v failed, err:%v",
+				dp.partitionID, extentInfo.FileID, err.Error())
 			continue
 		}
 	}
