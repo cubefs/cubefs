@@ -343,7 +343,7 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 
 		log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode %v try drop multiVersion idx %v", delVerSeq, den.Inode, realIdx)
 		d.multiSnap.dentryList = append(d.multiSnap.dentryList[:realIdx], d.multiSnap.dentryList[realIdx+1:]...)
-		if d.cleanDeleteVersion(realIdx) {
+		if d.cleanDeletedVersion(realIdx) {
 			return den, true, true
 		}
 		return den, false, false
