@@ -162,6 +162,7 @@ type ClusterView struct {
 	ForbidWriteOpOfProtoVer0                  bool
 	LegacyDataMediaType                       uint32
 	RaftPartitionCanUsingDifferentPortEnabled bool
+	FlashNodes                                []NodeView
 }
 
 // ClusterNode defines the structure of a cluster node

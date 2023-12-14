@@ -157,6 +157,10 @@ const (
 	quotaClass                      = "quotaClass"
 	quotaOfClass                    = "quotaOfStorageClass"
 	dataMediaTypeKey                = "dataMediaType"
+
+	stateKey   = "state"
+	versionKey = "version"
+	fgSlotsKey = "slots"
 )
 
 const (
@@ -240,6 +244,9 @@ const (
 	unavailableZone      = 1
 	metaNodesUnAvailable = 2
 	dataNodesUnAvailable = 3
+
+	unusedFlashNodeFlashGroupID = 0
+	defaultFlashGroupSlotsCount = 128
 )
 
 const (
@@ -310,6 +317,13 @@ const (
 	opSyncAddLcResult    uint32 = 0x3a
 	opSyncDeleteLcResult uint32 = 0x3b
 
+	opSyncAddFlashNode     uint32 = 0x3A
+	opSyncDeleteFlashNode  uint32 = 0x3B
+	opSyncUpdateFlashNode  uint32 = 0x3C
+	opSyncAddFlashGroup    uint32 = 0x3D
+	opSyncDeleteFlashGroup uint32 = 0x3E
+	opSyncUpdateFlashGroup uint32 = 0x3F
+
 	opSyncAllocQuotaID uint32 = 0x40
 	opSyncSetQuota     uint32 = 0x41
 	opSyncDeleteQuota  uint32 = 0x42
@@ -371,6 +385,9 @@ const (
 	lcTaskPrefix     = keySeparator + lcTaskAcronym + keySeparator
 	lcResultPrefix   = keySeparator + lcResultAcronym + keySeparator
 	S3QoSPrefix      = keySeparator + S3QoS + keySeparator
+
+	flashNodePrefix  = keySeparator + "fn" + keySeparator
+	flashGroupPrefix = keySeparator + "fg" + keySeparator
 )
 
 // selector enum
