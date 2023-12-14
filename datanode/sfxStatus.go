@@ -121,14 +121,7 @@ func GetDevCheckSfx(path string) (isSfx bool, devName string) {
 	ioctlCmd.cdw10 = 1
 	ioctlCmd.cdw11 = 0
 	err = nvmeAdminPassthru(fd, ioctlCmd)
-	if err != nil {
-		log.LogErrorf("get %s Vid fail %s\n", devName, err.Error())
-		return
-	}
-	//sfx vendor id
-	if PCI_VENDOR_ID_SFX == idctl.vId {
-		isSfx = true
-	}
+	isSfx = err == nil && PCI_VENDOR_ID_SFX == idctl.vId
 	return
 }
 /**

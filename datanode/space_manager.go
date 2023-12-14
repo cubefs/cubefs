@@ -16,12 +16,13 @@ package datanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/topology"
-	atomic2 "go.uber.org/atomic"
 	"math"
 	"runtime/debug"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util/topology"
+	atomic2 "go.uber.org/atomic"
 
 	"github.com/cubefs/cubefs/util/async"
 
@@ -208,13 +209,13 @@ func (manager *SpaceManager) Stats() *Stats {
 	return manager.stats
 }
 
-func (manager *SpaceManager) LoadDisk(path *DiskPath, expired CheckExpired) (err error) {
+func (manager *SpaceManager) LoadDisk(path string, expired CheckExpired) (err error) {
 	var (
 		disk *Disk
 	)
 	if _, exists := manager.GetDisk(path); !exists {
 		var config = &DiskConfig{
-			Reserved:          path.Reserved(),
+			GetReservedRatio:  manager.GetDiskReservedRatio,
 			MaxErrCnt:         DefaultDiskMaxErr,
 			MaxFDLimit:        DiskMaxFDLimit,
 			ForceFDEvictRatio: DiskForceEvictFDRatio,
@@ -223,7 +224,7 @@ func (manager *SpaceManager) LoadDisk(path *DiskPath, expired CheckExpired) (err
 			RepairTaskLimit:          manager.repairTaskLimitOnDisk,
 		}
 		var startTime = time.Now()
-		if disk, err = OpenDisk(path.Path(), config, manager, DiskLoadPartitionParallelism, manager.topoManager, expired); err != nil {
+		if disk, err = OpenDisk(path, config, manager, DiskLoadPartitionParallelism, manager.topoManager, expired); err != nil {
 			return
 		}
 		manager.putDisk(disk)
@@ -271,10 +272,10 @@ func (manager *SpaceManager) StartPartitions() {
 	wg.Wait()
 }
 
-func (manager *SpaceManager) GetDisk(path *DiskPath) (d *Disk, exists bool) {
+func (manager *SpaceManager) GetDisk(path string) (d *Disk, exists bool) {
 	manager.diskMutex.RLock()
 	defer manager.diskMutex.RUnlock()
-	disk, has := manager.disks[path.Path()]
+	disk, has := manager.disks[path]
 	if has && disk != nil {
 		d = disk
 		exists = true
@@ -652,20 +653,19 @@ func (manager *SpaceManager) SetNormalExtentDeleteExpireTime(newValue uint64) {
 	}
 }
 
-func (manager *SpaceManager) SetDiskReservedRatio(newValue float64) {
-	if newValue < proto.DataNodeDiskReservedMinRatio || newValue > proto.DataNodeDiskReservedMaxRatio {
+func (manager *SpaceManager) SetDiskReservedRatio(ratio float64) {
+	if ratio < proto.DataNodeDiskReservedMinRatio || ratio > proto.DataNodeDiskReservedMaxRatio {
 		return
 	}
 
-	oldValue := manager.diskReservedRatio.Load()
-	if newValue >= 0 && oldValue != newValue {
-		log.LogInfof("action[spaceManager] change diskReservedRatio from(%v) to(%v)", oldValue, newValue)
-		manager.diskReservedRatio.Store(newValue)
-		manager.WalkDisks(func(disk *Disk) bool {
-			disk.updateReservedSpace()
-			return true
-		})
+	if current := manager.diskReservedRatio.Load(); ratio >= 0 && ratio != current {
+		log.LogInfof("action[spaceManager] change diskReservedRatio from(%v) to(%v)", current, ratio)
+		manager.diskReservedRatio.Store(ratio)
 	}
+}
+
+func (manager *SpaceManager) GetDiskReservedRatio() float64 {
+	return manager.diskReservedRatio.Load()
 }
 
 func (s *DataNode) buildHeartBeatResponsePb(response *proto.DataNodeHeartbeatResponsePb) {

@@ -331,14 +331,6 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		devID = stat.Dev
 		return
 	}
-	var getDeviceCapacity = func(path string) (capacity uint64, err error) {
-		var statfs = new(syscall.Statfs_t)
-		if err = syscall.Statfs(path, statfs); err != nil {
-			return
-		}
-		capacity = statfs.Blocks * uint64(statfs.Bsize)
-		return
-	}
 
 	var rootDevID uint64
 	if rootDevID, err = getDeviceID("/"); err != nil {
@@ -365,12 +357,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			err = fmt.Errorf("dependent device in disks configuration: [%v,%v]", d, p.Path())
 			return
 		}
-		var capacity uint64
-		if capacity, err = getDeviceCapacity(diskPath.Path()); err != nil {
-			return
-		}
-		diskPath.SetReserved(uint64(float64(capacity)*unit.NewRatio(s.space.diskReservedRatio.Load()).Float64()))
-		log.LogInfof("disk device: %v, path %v, device %v, capacity %v, reserved %v", d, diskPath.Path(), devID, capacity, diskPath.Reserved())
+
+		log.LogInfof("disk device: %v, path %v, device %v", d, diskPath.Path(), devID)
 		diskPaths[devID] = diskPath
 	}
 
@@ -393,13 +381,13 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	var futures []*async.Future
 	for devID, diskPath := range diskPaths {
 		var future = async.NewFuture()
-		go func(path *DiskPath, future *async.Future) {
+		go func(path string, future *async.Future) {
 			if log.IsInfoEnabled() {
 				log.LogInfof("SPCMGR: loading disk: devID=%v, path=%v", devID, diskPath)
 			}
 			var err = s.space.LoadDisk(path, checkExpired)
 			future.Respond(nil, err)
-		}(diskPath, future)
+		}(diskPath.Path(), future)
 		futures = append(futures, future)
 	}
 	for _, future := range futures {

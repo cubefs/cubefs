@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/ttlstore"
 	"io/fs"
 	"io/ioutil"
 	"net/http"
@@ -36,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/util/cpu"
 	"github.com/cubefs/cubefs/util/diskusage"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ttlstore"
 	"github.com/cubefs/cubefs/util/unit"
 	raftProto "github.com/tiglabs/raft/proto"
 )
@@ -776,7 +776,7 @@ func (s *DataNode) reloadPartitionByName(partitionPath, disk string) (err error)
 		return
 	}
 
-	var d, exists = s.space.GetDisk(diskPath)
+	var d, exists = s.space.GetDisk(diskPath.Path())
 	if !exists {
 		err = fmt.Errorf("disk no exists: %v", disk)
 		return
