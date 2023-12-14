@@ -150,6 +150,10 @@ const (
 	trashIntervalKey                = "trashInterval"
 	accessTimeIntervalKey           = "accessTimeValidInterval"
 	enablePersistAccessTimeKey      = "enablePersistAccessTime"
+
+	stateKey                   = "state"
+    versionKey                 = "version"
+    fgSlotsKey                 = "slots"
 )
 
 const (
@@ -236,6 +240,9 @@ const (
 	unavailableZone      = 1
 	metaNodesUnAvailable = 2
 	dataNodesUnAvailable = 3
+
+	unusedFlashNodeFlashGroupID = 0
+	defaultFlashGroupSlotsCount = 128
 )
 
 const (
@@ -303,6 +310,13 @@ const (
 	opSyncAcl          uint32 = 0x36
 	opSyncUid          uint32 = 0x37
 
+	opSyncAddFlashNode     uint32 = 0x3A
+	opSyncDeleteFlashNode  uint32 = 0x3B
+	opSyncUpdateFlashNode  uint32 = 0x3C
+	opSyncAddFlashGroup    uint32 = 0x3D
+	opSyncDeleteFlashGroup uint32 = 0x3E
+	opSyncUpdateFlashGroup uint32 = 0x3F
+
 	opSyncAllocQuotaID uint32 = 0x40
 	opSyncSetQuota     uint32 = 0x41
 	opSyncDeleteQuota  uint32 = 0x42
@@ -363,6 +377,9 @@ const (
 	lcNodePrefix     = keySeparator + lcNodeAcronym + keySeparator
 	lcConfPrefix     = keySeparator + lcConfigurationAcronym + keySeparator
 	S3QoSPrefix      = keySeparator + S3QoS + keySeparator
+
+	flashNodePrefix  = keySeparator + "fn" + keySeparator
+	flashGroupPrefix = keySeparator + "fg" + keySeparator
 )
 
 // selector enum

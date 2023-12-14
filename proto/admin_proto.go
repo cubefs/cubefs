@@ -260,6 +260,23 @@ const (
 	S3QoSGet                     = "/s3/qos/get"
 	S3QoSDelete                  = "/s3/qos/delete"
 	AdminEnablePersistAccessTime = "/vol/enablePersistAccessTime"
+
+	// FlashNode API
+	FlashNodeAdd    = "/flashNode/add"
+	FlashNodeSet    = "/flashNode/set"
+	FlashNodeRemove = "/flashNode/remove"
+	FlashNodeGet    = "/flashNode/get"
+	FlashNodeList   = "/flashNode/list"
+
+	// FlashGroup API
+	AdminFlashGroupCreate     = "/flashGroup/create"
+	AdminFlashGroupSet        = "/flashGroup/set"
+	AdminFlashGroupRemove     = "/flashGroup/remove"
+	AdminFlashGroupNodeAdd    = "/flashGroup/addFlashNode"
+	AdminFlashGroupNodeRemove = "/flashGroup/removeFlashNode"
+	AdminFlashGroupGet        = "/flashGroup/get"
+	AdminFlashGroupList       = "/flashGroup/list"
+	ClientFlashGroups         = "/client/flashGroups"
 )
 
 var GApiInfo map[string]string = map[string]string{

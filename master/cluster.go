@@ -133,6 +133,9 @@ type Cluster struct {
 
 	ac           *authSDK.AuthClient
 	masterClient *masterSDK.MasterClient
+
+	flashNodeTopo *flashNodeTopology
+	flashGroupRespCache atomic.Value // []byte
 }
 
 type cTask struct {
@@ -420,6 +423,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.MarkDiskBrokenThreshold.Store(defaultMarkDiskBrokenThreshold)
 	c.EnableAutoDpMetaRepair.Store(defaultEnableDpMetaRepair)
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
+	c.flashNodeTopo = newFlashNodeTopology()
 	return
 }
 
@@ -446,6 +450,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToBadDisk()
 	c.scheduleToCheckVolUid()
 	c.scheduleToCheckDataReplicaMeta()
+	c.scheduleToUpdateFlashGroupRespCache()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -3755,6 +3760,21 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		metaNodes = append(metaNodes, proto.NodeView{
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
 			IsActive: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(),
+		})
+		return true
+	})
+	return
+}
+
+func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
+	flashNodes = make([]proto.NodeView, 0)
+	c.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
+		flashNode := node.(*FlashNode)
+		flashNodes = append(flashNodes, proto.NodeView{
+			ID:         flashNode.ID,
+			Addr:       flashNode.Addr,
+			IsActive:   flashNode.IsActive,
+			IsWritable: flashNode.isWriteAble(),
 		})
 		return true
 	})
