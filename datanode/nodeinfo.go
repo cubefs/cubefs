@@ -86,6 +86,8 @@ func (s *DataNode) updateNodeBaseInfo() {
 	if s.topoManager != nil {
 		s.topoManager.UpdateFetchTimerIntervalMin(limitInfo.TopologyFetchIntervalMin, limitInfo.TopologyForceFetchIntervalSec)
 	}
+
+	s.space.SetDiskReservedRatio(limitInfo.DataNodeDiskReservedRatio)
 }
 
 func (s *DataNode) updateLogMaxSize(val uint64) {

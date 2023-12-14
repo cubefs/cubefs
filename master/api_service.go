@@ -581,6 +581,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		MetaNodeDumpSnapCountByZone:            m.cluster.cfg.MetaNodeDumpSnapCountByZone,
 		TopologyFetchIntervalMin:               topoFetchIntervalMin,
 		TopologyForceFetchIntervalSec:          topoForceFetchIntervalSec,
+		DataNodeDiskReservedRatio:              m.cluster.cfg.DataNodeDiskReservedRatio,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -4982,7 +4983,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	floatKeys := []string{proto.AllocatorMaxUsedFactorKey, proto.AllocatorMinFreeFactorKey}
+	floatKeys := []string{proto.AllocatorMaxUsedFactorKey, proto.AllocatorMinFreeFactorKey, proto.DataNodeDiskReservedRatioKey}
 	for _, key := range floatKeys {
 		if err = parseFloatKey(params, key, r); err != nil {
 			return

@@ -17,6 +17,7 @@ package datanode
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/topology"
+	atomic2 "go.uber.org/atomic"
 	"math"
 	"runtime/debug"
 	"sync"
@@ -55,6 +56,7 @@ type SpaceManager struct {
 	flushFDIntervalSec             uint32
 	flushFDParallelismOnDisk       uint64
 	topoManager                    *topology.TopologyManager
+	diskReservedRatio              *atomic2.Float64
 }
 
 // NewSpaceManager creates a new space manager.
@@ -70,6 +72,7 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 		repairTaskLimitOnDisk:          DefaultRepairTaskLimitOnDisk,
 		normalExtentDeleteExpireTime:   DefaultNormalExtentDeleteExpireTime,
 		topoManager:                    dataNode.topoManager,
+		diskReservedRatio:              atomic2.NewFloat64(DefaultDiskReservedRatio),
 	}
 	async.RunWorker(space.statUpdateScheduler, func(i interface{}) {
 		log.LogCriticalf("SPCMGR: stat update scheduler occurred panic: %v\nCallstack:\n%v",
@@ -646,6 +649,22 @@ func (manager *SpaceManager) SetNormalExtentDeleteExpireTime(newValue uint64) {
 	if newValue > 0 && manager.normalExtentDeleteExpireTime != newValue {
 		log.LogInfof("action[spaceManager] change normalExtentDeleteExpireTime from(%v) to(%v)", manager.normalExtentDeleteExpireTime, newValue)
 		manager.normalExtentDeleteExpireTime = newValue
+	}
+}
+
+func (manager *SpaceManager) SetDiskReservedRatio(newValue float64) {
+	if newValue < proto.DataNodeDiskReservedMinRatio || newValue > proto.DataNodeDiskReservedMaxRatio {
+		return
+	}
+
+	oldValue := manager.diskReservedRatio.Load()
+	if newValue >= 0 && oldValue != newValue {
+		log.LogInfof("action[spaceManager] change diskReservedRatio from(%v) to(%v)", oldValue, newValue)
+		manager.diskReservedRatio.Store(newValue)
+		manager.WalkDisks(func(disk *Disk) bool {
+			disk.updateReservedSpace()
+			return true
+		})
 	}
 }
 

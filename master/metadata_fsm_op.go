@@ -117,6 +117,7 @@ type clusterValue struct {
 	ClusterName							string
 	TopologyFetchIntervalMin            int64
 	TopologyForceFetchIntervalSec       int64
+	DataNodeDiskReservedRatio           float64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -202,6 +203,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ClusterName:						 c.cfg.ClusterName,
 		TopologyFetchIntervalMin:            c.cfg.TopologyFetchIntervalMin,
 		TopologyForceFetchIntervalSec:       c.cfg.TopologyForceFetchIntervalSec,
+		DataNodeDiskReservedRatio:           c.cfg.DataNodeDiskReservedRatio,
 	}
 	return cv
 }
@@ -1204,6 +1206,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 
 		c.cfg.TopologyFetchIntervalMin = cv.TopologyFetchIntervalMin
 		c.cfg.TopologyForceFetchIntervalSec = cv.TopologyForceFetchIntervalSec
+		c.cfg.DataNodeDiskReservedRatio = cv.DataNodeDiskReservedRatio
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

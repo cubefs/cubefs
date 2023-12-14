@@ -1209,3 +1209,12 @@ func (d *Disk) freeExtentLockInfo() {
 	}
 	log.LogDebugf("action[freeExtentLockInfo] disk(%v) free end", d.Path)
 }
+
+func (d *Disk) updateReservedSpace() {
+	reservedRatio := d.space.diskReservedRatio.Load()
+
+	d.Lock()
+	defer d.Unlock()
+	capacity := d.Total + d.ReservedSpace
+	d.ReservedSpace = uint64(float64(capacity)*unit.NewRatio(reservedRatio).Float64())
+}

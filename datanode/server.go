@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -311,6 +310,12 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		return
 	}
 
+	var limitInfo *proto.LimitInfo
+	limitInfo, err = MasterClient.AdminAPI().GetLimitInfo("")
+	if err == nil && limitInfo != nil {
+		s.space.SetDiskReservedRatio(limitInfo.DataNodeDiskReservedRatio)
+	}
+
 	s.space.SetRaftStore(s.raftStore)
 	s.space.SetNodeID(s.nodeID)
 	s.space.SetClusterID(s.clusterID)
@@ -364,7 +369,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if capacity, err = getDeviceCapacity(diskPath.Path()); err != nil {
 			return
 		}
-		diskPath.SetReserved(uint64(math.Max(float64(capacity)*unit.NewRatio(DefaultDiskReservedRatio).Float64(), float64(diskPath.Reserved()))))
+		diskPath.SetReserved(uint64(float64(capacity)*unit.NewRatio(s.space.diskReservedRatio.Load()).Float64()))
 		log.LogInfof("disk device: %v, path %v, device %v, capacity %v, reserved %v", d, diskPath.Path(), devID, capacity, diskPath.Reserved())
 		diskPaths[devID] = diskPath
 	}
