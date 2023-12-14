@@ -157,6 +157,7 @@ type ClusterView struct {
 	StatMigrateStorageClass      []*StatOfStorageClass
 	ForbidWriteOpOfProtoVer0     bool
 	LegacyDataMediaType          uint32
+	FlashNodes                   []NodeView
 }
 
 // ClusterNode defines the structure of a cluster node
