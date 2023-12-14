@@ -586,6 +586,22 @@ func cfs_close(id C.int64_t, fd C.int) {
 	}
 }
 
+//export cfs_truncate
+func cfs_truncate(id C.int64_t, fd C.int, size C.size_t) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+	f := c.getFile(uint(fd))
+	if f == nil {
+		return statusEBADFD
+	}
+	if err := c.truncate(f, int(size)); err != nil {
+		return statusEIO
+	}
+	return statusOK
+}
+
 //export cfs_write
 func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.off_t) C.ssize_t {
 	c, exist := getClient(int64(id))
