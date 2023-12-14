@@ -103,7 +103,11 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 			if d.getVerSeq() == dentry.getVerSeq() {
 				d.setVerSeq(dentry.getSeqFiled())
 			} else {
-				d.addVersion(dentry.getSeqFiled())
+				if d.getSnapListLen() > 0 && d.multiSnap.dentryList[0].isDeleted() {
+					d.setVerSeq(dentry.getSeqFiled())
+				} else {
+					d.addVersion(dentry.getSeqFiled())
+				}
 			}
 			d.Type = dentry.Type
 			d.ParentId = dentry.ParentId
@@ -387,7 +391,7 @@ func (mp *metaPartition) getDentryTree() *BTree {
 }
 
 func (mp *metaPartition) getDentryByVerSeq(dy *Dentry, verSeq uint64) (d *Dentry) {
-	d, _ = dy.getDentryFromVerList(verSeq)
+	d, _ = dy.getDentryFromVerList(verSeq, false)
 	return
 }
 

@@ -147,7 +147,8 @@ func (d *Dentry) isEffective(verSeq uint64) bool {
 	return verSeq >= d.minimizeSeq()
 }
 
-func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
+// isHit return the right version or else return the version can be seen
+func (d *Dentry) getDentryFromVerList(verSeq uint64, isHit bool) (den *Dentry, idx int) {
 	if verSeq == 0 || (verSeq >= d.getVerSeq() && !isInitSnapVer(verSeq)) {
 		if d.isDeleted() {
 			log.LogDebugf("action[getDentryFromVerList] tmp dentry %v, is deleted, seq %v", d, d.getVerSeq())
@@ -182,6 +183,10 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 				log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil due to latest is deleted", lDen)
 				return
 			}
+			if isHit && lDen.getVerSeq() != verSeq {
+				log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil due to ver not equal %v vs %v", lDen, lDen.getVerSeq(), verSeq)
+				return
+			}
 			return lDen, id + 1
 		}
 	}
@@ -207,6 +212,77 @@ func (d *Dentry) getLastestVer(reqVerSeq uint64, commit bool, verlist []*proto.V
 	return 0, false
 }
 
+func (d *Dentry) deleteTopLayer(mpVerSeq uint64) (rd *Dentry, dmore bool, clean bool) {
+	if d.isDeleted() {
+		log.LogDebugf("action[deleteTopLayer.delSeq_0] do noting dentry %v seq 0 be deleted before", d)
+		return nil, false, false
+	}
+
+	// if there's no snapshot itself, nor have snapshot after dentry's ver then need unlink directly and make no snapshot
+	// just move to upper layer,the request snapshot be dropped
+	if d.getSnapListLen() == 0 {
+		if d.getVerSeq() == mpVerSeq {
+			// operate dentry directly
+			log.LogDebugf("action[deleteTopLayer.delSeq_0] no snapshot depend on this dentry,could drop seq 0 dentry %v", d)
+			return d, true, true
+		}
+	}
+
+	if d.getVerSeq() < mpVerSeq {
+		dn := d.CopyDirectly()
+		dn.(*Dentry).setVerSeq(d.getVerSeq())
+		d.setVerSeq(mpVerSeq)
+		d.multiSnap.dentryList = append([]*Dentry{dn.(*Dentry)}, d.multiSnap.dentryList...)
+		log.LogDebugf("action[deleteTopLayer.delSeq_0] create version and push to dentry list. dentry %v", dn.(*Dentry))
+	} else {
+		d.setVerSeq(mpVerSeq)
+	}
+	d.setVerSeq(mpVerSeq)
+	d.setDeleted() // denParm create at the same version.no need to push to history list
+	log.LogDebugf("action[deleteTopLayer.delSeq_0] den %v be set deleted at version seq %v", d, mpVerSeq)
+
+	return d, true, false
+}
+
+func (d *Dentry) updateTopLayerSeq(delVerSeq uint64, verlist []*proto.VolVersionInfo) (rd *Dentry, dmore bool, clean bool) {
+	if !isSeqEqual(delVerSeq, d.getVerSeq()) {
+		// header layer do nothing and be depends on should not be dropped
+		log.LogDebugf("action[updateTopLayerSeq.inSnapList_del_%v] den %v first layer do nothing", delVerSeq, d)
+		return d, false, false
+	}
+	for _, info := range verlist {
+		if info.Ver > d.getVerSeq() {
+			d.setVerSeq(info.Ver)
+			return d, false, false
+		}
+	}
+	return d, true, true
+}
+
+func (d *Dentry) cleanDeletedVersion(index int) (bDrop bool) {
+	if index == 0 {
+		if len(d.multiSnap.dentryList) == 0 && d.isDeleted() {
+			bDrop = true
+		}
+		return
+	}
+	delIdx := index - 1
+	if !d.multiSnap.dentryList[delIdx].isDeleted() {
+		return
+	}
+
+	// del the dentry before
+	log.LogDebugf("ction[cleanDeleteVersion] dentry (%v) delete the last seq %v which set deleted before",
+		d, d.multiSnap.dentryList[delIdx].getVerSeq())
+	d.multiSnap.dentryList = append(d.multiSnap.dentryList[:delIdx], d.multiSnap.dentryList[:delIdx+1]...)
+
+	if len(d.multiSnap.dentryList) == 0 && d.isDeleted() {
+		log.LogDebugf("ction[cleanDeleteVersion] dentry (%v) require to be deleted", d)
+		bDrop = true
+	}
+	return
+}
+
 // the lastest dentry may be deleted before and set status DentryDeleted,
 // the scope of  deleted happened from the DentryDeleted flag owner(include in) to the file with the same name be created is invisible,
 // if create anther dentry with larger verSeq, put the deleted dentry to the history list.
@@ -219,61 +295,19 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 	}
 
 	if delVerSeq == 0 {
-		if d.isDeleted() {
-			log.LogDebugf("action[deleteVerSnapshot.delSeq_0] do noting dentry %v seq %v be deleted before", d, delVerSeq)
-			return nil, false, false
-		}
-
-		// if there's no snapshot itself, nor have snapshot after dentry's ver then need unlink directly and make no snapshot
-		// just move to upper layer,the request snapshot be dropped
-		if d.getSnapListLen() == 0 {
-			if d.getVerSeq() == mpVerSeq {
-				// operate dentry directly
-				log.LogDebugf("action[deleteVerSnapshot.delSeq_0] no snapshot depend on this dentry,could drop seq %v dentry %v", delVerSeq, d)
-				return d, true, true
-			}
-		}
-
-		if d.getVerSeq() < mpVerSeq {
-			dn := d.CopyDirectly()
-			dn.(*Dentry).setVerSeq(d.getVerSeq())
-			d.setVerSeq(mpVerSeq)
-			d.multiSnap.dentryList = append([]*Dentry{dn.(*Dentry)}, d.multiSnap.dentryList...)
-			log.LogDebugf("action[deleteVerSnapshot.delSeq_0] create version and push to dentry list. dentry %v", dn.(*Dentry))
-		} else {
-			d.setVerSeq(mpVerSeq)
-		}
-		d.setVerSeq(mpVerSeq)
-		d.setDeleted() // denParm create at the same version.no need to push to history list
-		log.LogDebugf("action[deleteVerSnapshot.delSeq_0] den %v be set deleted at version seq %v", d, mpVerSeq)
-
-		return d, true, false
-
+		return d.deleteTopLayer(mpVerSeq)
 	} else {
 		var (
 			idx    int
 			den    *Dentry
 			endSeq uint64
 		)
-		if den, idx = d.getDentryFromVerList(delVerSeq); den == nil {
+		if den, idx = d.getDentryFromVerList(delVerSeq, true); den == nil {
 			log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v not found", delVerSeq, d)
 			return nil, false, false
 		}
 		if idx == 0 { // top layer
-			if !isSeqEqual(delVerSeq, d.getVerSeq()) {
-				t1 := delVerSeq & math.MaxInt64
-				t2 := d.getVerSeq() & math.MaxInt64
-				// header layer do nothing and be depends on should not be dropped
-				log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v first layer do nothing t1 %v t2 %v", delVerSeq, d, t1, t2)
-				return d, false, false
-			}
-			for _, info := range verlist {
-				if info.Ver > d.getVerSeq() {
-					d.setVerSeq(info.Ver)
-					return d, false, false
-				}
-			}
-			return d, true, true
+			return d.updateTopLayerSeq(delVerSeq, verlist)
 		}
 		// if any alive snapshot in mp dimension exist in seq scope from den to next ascend neighbor, dio snapshot be keep or else drop
 		startSeq := den.getVerSeq()
@@ -283,7 +317,7 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 		} else {
 			endSeq = d.multiSnap.dentryList[realIdx-1].getVerSeq()
 			if d.multiSnap.dentryList[realIdx-1].isDeleted() {
-				log.LogErrorf("action[deleteVerSnapshot.inSnapList_del_%v] inode %v layer %v name %v be deleted already!",
+				log.LogInfof("action[deleteVerSnapshot.inSnapList_del_%v] inode %v layer %v name %v be deleted already!",
 					delVerSeq, d.Inode, realIdx, d.multiSnap.dentryList[realIdx-1].Name)
 			}
 		}
@@ -309,9 +343,11 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 
 		log.LogDebugf("action[deleteVerSnapshotInList.inSnapList_del_%v] inode %v try drop multiVersion idx %v", delVerSeq, den.Inode, realIdx)
 		d.multiSnap.dentryList = append(d.multiSnap.dentryList[:realIdx], d.multiSnap.dentryList[realIdx+1:]...)
+		if d.cleanDeleteVersion(realIdx) {
+			return den, true, true
+		}
 		return den, false, false
 	}
-
 }
 
 func (d *Dentry) String() string {
