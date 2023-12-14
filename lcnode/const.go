@@ -66,7 +66,7 @@ var (
 	scanCheckInterval       int64
 	lcScanRoutineNumPerTask int
 	lcScanLimitPerSecond    rate.Limit
-g
+
 	snapshotRoutineNumPerTask int
 	lcNodeTaskCountLimit      int
 	maxDirChanNum             = 1000000
