@@ -27,6 +27,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -307,6 +308,8 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 			return fmt.Errorf("Exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", dp.partitionID, dp.config.Hosts, request.Hosts)
 		}
 	}
+	sp := sortedPeers(dp.config.Peers)
+	sort.Sort(sp)
 	for index, peer := range dp.config.Peers {
 		requestPeer := request.Members[index]
 		if requestPeer.ID != peer.ID || requestPeer.Addr != peer.Addr {
