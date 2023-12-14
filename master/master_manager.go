@@ -159,34 +159,25 @@ func (m *Server) loadMetadata() {
 		}
 	}
 
-	if err = m.cluster.loadDataNodes(); err != nil {
-		panic(err)
-	}
+	func(funcs ...func() error) {
+		for _, f := range funcs {
+			if err = f(); err != nil {
+				panic(err)
+			}
+		}
+	}(
+		m.cluster.loadDataNodes,
+		m.cluster.loadMetaNodes,
+		m.cluster.loadFlashGroups,
+		m.cluster.loadFlashNodes,
+		m.cluster.loadZoneValue,
+		m.cluster.loadVols,
+		m.cluster.loadMetaPartitions,
+		m.cluster.loadDataPartitions,
+		m.cluster.loadDecommissionDiskList,
+		m.cluster.startDecommissionListTraverse,
+	)
 
-	if err = m.cluster.loadMetaNodes(); err != nil {
-		panic(err)
-	}
-
-	if err = m.cluster.loadZoneValue(); err != nil {
-		panic(err)
-	}
-
-	if err = m.cluster.loadVols(); err != nil {
-		panic(err)
-	}
-
-	if err = m.cluster.loadMetaPartitions(); err != nil {
-		panic(err)
-	}
-	if err = m.cluster.loadDataPartitions(); err != nil {
-		panic(err)
-	}
-	if err = m.cluster.loadDecommissionDiskList(); err != nil {
-		panic(err)
-	}
-	if err = m.cluster.startDecommissionListTraverse(); err != nil {
-		panic(err)
-	}
 	log.LogInfo("action[loadMetadata] end")
 
 	log.LogInfo("action[loadUserInfo] begin")
@@ -255,6 +246,10 @@ func (m *Server) clearMetadata() {
 
 	m.cluster.t = newTopology()
 	// m.cluster.apiLimiter.Clear()
+
+	m.cluster.flashNodeTopo.clear()
+	m.cluster.clearFlashGroupResponseCache()
+	m.cluster.flashNodeTopo = newFlashNodeTopology()
 }
 
 func (m *Server) refreshUser() (err error) {

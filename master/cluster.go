@@ -102,6 +102,9 @@ type Cluster struct {
 	snapshotMgr                  *snapshotDelManager
 	DecommissionDiskFactor       float64
 	S3ApiQosQuota                *sync.Map // (api,uid,limtType) -> limitQuota
+
+	flashNodeTopo       *flashNodeTopology
+	flashGroupRespCache atomic.Value // []byte
 }
 
 type delayDeleteVolInfo struct {
@@ -361,6 +364,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.snapshotMgr = newSnapshotManager()
 	c.snapshotMgr.cluster = c
 	c.S3ApiQosQuota = new(sync.Map)
+	c.flashNodeTopo = newFlashNodeTopology()
+	c.flashGroupRespCache.Store([]byte(nil))
 	return
 }
 
@@ -387,6 +392,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToLcScan()
 	c.scheduleToSnapshotDelVerScan()
 	c.scheduleToBadDisk()
+	c.scheduleToUpdateFlashGroupRespCache()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -697,6 +703,17 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 				c.checkLcNodeHeartbeat()
 			}
 			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(time.Second * defaultIntervalToCheckHeartbeat)
+		defer ticker.Stop()
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkFlashNodeHeartbeat()
+			}
+			<-ticker.C
 		}
 	}()
 }
@@ -3501,6 +3518,21 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		metaNodes = append(metaNodes, proto.NodeView{
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
 			IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(),
+		})
+		return true
+	})
+	return
+}
+
+func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
+	flashNodes = make([]proto.NodeView, 0)
+	c.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
+		flashNode := node.(*FlashNode)
+		flashNodes = append(flashNodes, proto.NodeView{
+			ID:         flashNode.ID,
+			Addr:       flashNode.Addr,
+			IsActive:   flashNode.IsActive,
+			IsWritable: flashNode.isWriteAble(),
 		})
 		return true
 	})

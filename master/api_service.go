@@ -788,6 +788,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MasterNodes:              make([]proto.NodeView, 0),
 		MetaNodes:                make([]proto.NodeView, 0),
 		DataNodes:                make([]proto.NodeView, 0),
+		FlashNodes:               make([]proto.NodeView, 0),
 		VolStatInfo:              make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:          make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:      make([]proto.BadPartitionView, 0),
@@ -797,6 +798,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	cv.MasterNodes = m.cluster.allMasterNodes()
 	cv.MetaNodes = m.cluster.allMetaNodes()
 	cv.DataNodes = m.cluster.allDataNodes()
+	cv.FlashNodes = m.cluster.allFlashNodes()
 	cv.DataNodeStatInfo = m.cluster.dataNodeStatInfo
 	cv.MetaNodeStatInfo = m.cluster.metaNodeStatInfo
 	for _, name := range vols {
