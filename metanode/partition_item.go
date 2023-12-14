@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/errors"
 	"io"
 	"os"
 	"path"
@@ -139,10 +140,7 @@ type MetaItemIterator struct {
 	uniqID            uint64
 	txId              uint64
 	cursor            uint64
-	inodeTree         *BTree
-	dentryTree        *BTree
-	extendTree        *BTree
-	multipartTree     *BTree
+	treeSnap          Snapshot
 	txTree            *BTree
 	txRbInodeTree     *BTree
 	txRbDentryTree    *BTree
@@ -194,16 +192,17 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.txId = mp.txProcessor.txManager.txIdAlloc.getTransactionID()
 	si.cursor = mp.GetCursor()
 	si.uniqID = mp.GetUniqId()
-	si.inodeTree = mp.inodeTree.GetTree()
-	si.dentryTree = mp.dentryTree.GetTree()
-	si.extendTree = mp.extendTree.GetTree()
-	si.multipartTree = mp.multipartTree.GetTree()
+	si.treeSnap = NewSnapshot(mp)
 	si.txTree = mp.txProcessor.txManager.txTree.GetTree()
 	si.txRbInodeTree = mp.txProcessor.txResource.txRbInodeTree.GetTree()
 	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
 	si.uniqChecker = mp.uniqChecker.clone()
 	si.verList = mp.GetAllVerList()
 	mp.nonIdempotent.Unlock()
+
+	if si.treeSnap == nil {
+		return nil, errors.NewErrorf("get mp[%v] tree snap failed", mp.config.PartitionId)
+	}
 
 	si.dataCh = make(chan interface{})
 	si.errorCh = make(chan error, 1)
@@ -231,6 +230,7 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		defer func() {
 			close(iter.dataCh)
 			close(iter.errorCh)
+			si.treeSnap.Close()
 		}()
 		produceItem := func(item interface{}) (success bool) {
 			select {
@@ -293,30 +293,54 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 		}
 
 		// process inodes
-		iter.inodeTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(InodeType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Inode)); !ok {
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 		// process dentries
-		iter.dentryTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(DentryType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Dentry)); !ok {
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 		// process extends
-		iter.extendTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(ExtendType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Extend)); !ok {
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}
 		// process multiparts
-		iter.multipartTree.Ascend(func(i BtreeItem) bool {
-			return produceItem(i)
-		})
+		if err = iter.treeSnap.Range(MultipartType, func(v interface{}) (bool, error) {
+			if ok := produceItem(v.(*Multipart)); !ok {
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+			produceError(err)
+			return
+		}
 		if checkClose() {
 			return
 		}

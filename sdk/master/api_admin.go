@@ -262,11 +262,14 @@ func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr 
 	return
 }
 
-func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, clientIDKey string) (err error) {
+func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr, clientIDKey string, storeMode int) (err error) {
 	request := newAPIRequest(http.MethodGet, proto.AdminDecommissionMetaPartition)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
+	if storeMode != 0 {
+		request.addParam("storeMode", strconv.Itoa(storeMode))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -306,11 +309,14 @@ func (api *AdminAPI) DeleteMetaReplica(metaPartitionID uint64, nodeAddr string, 
 	return
 }
 
-func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string) (err error) {
+func (api *AdminAPI) AddMetaReplica(metaPartitionID uint64, nodeAddr string, clientIDKey string, storeMode int) (err error) {
 	request := newAPIRequest(http.MethodGet, proto.AdminAddMetaReplica)
 	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
+	if storeMode != 0 {
+		request.addParam("storeMode", strconv.Itoa(storeMode))
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -1007,6 +1013,37 @@ func (api *AdminAPI) DelBucketLifecycle(volume string) (err error) {
 func (api *AdminAPI) GetS3QoSInfo() (data []byte, err error) {
 	request := newAPIRequest(http.MethodGet, proto.S3QoSGet)
 	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SelectMetaReplicaReplaceNodeAddr(metaPartitionID uint64, nodeAddr string, storeMode int) (info *proto.SelectMetaNodeInfo, err error) {
+	var buf []byte
+	var request = newAPIRequest(http.MethodGet, proto.AdminSelectMetaReplicaNode)
+
+	request.addParam("id", strconv.FormatUint(metaPartitionID, 10))
+	request.addParam("addr", nodeAddr)
+	if storeMode != 0 {
+		request.addParam("storeMode", strconv.Itoa(storeMode))
+	}
+
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	info = &proto.SelectMetaNodeInfo{}
+	if err = json.Unmarshal(buf, info); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetVolConvertSt)
+	request.addParam("name", volName)
+	request.addParam("authKey", authKey)
+	request.addParam("state", strconv.Itoa(st))
+	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 	return

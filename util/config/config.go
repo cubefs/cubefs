@@ -333,3 +333,15 @@ func CheckOrStoreClusterUuid(dirPath, id string, force bool) (err error) {
 	}
 	return
 }
+
+func (c *Config) GetJsonObjectBytes(key string) []byte {
+	x, present := c.data[key]
+	if !present {
+		return nil
+	}
+	result, err := json.Marshal(x.(map[string]interface{}))
+	if err != nil {
+		return nil
+	}
+	return result
+}

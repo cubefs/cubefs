@@ -14,35 +14,50 @@
 
 package metanode
 
-import "github.com/cubefs/cubefs/proto"
+import (
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+)
 
-func (mp *metaPartition) fsmCreateMultipart(multipart *Multipart) (status uint8) {
-	_, ok := mp.multipartTree.ReplaceOrInsert(multipart, false)
+func (mp *metaPartition) fsmCreateMultipart(dbHandle interface{}, multipart *Multipart) (status uint8, err error) {
+	var ok bool
+	_, ok, err = mp.multipartTree.Create(dbHandle, multipart, false)
+	if err != nil {
+		status = proto.OpErr
+		return
+	}
 	if !ok {
-		return proto.OpExistErr
+		return proto.OpExistErr, nil
 	}
-	return proto.OpOk
+	return proto.OpOk, nil
 }
 
-func (mp *metaPartition) fsmRemoveMultipart(multipart *Multipart) (status uint8) {
-	deletedItem := mp.multipartTree.Delete(multipart)
-	if deletedItem == nil {
-		return proto.OpNotExistErr
+func (mp *metaPartition) fsmRemoveMultipart(dbHandle interface{}, multipart *Multipart) (status uint8, err error) {
+	var ok bool
+	ok, err = mp.multipartTree.Delete(dbHandle, multipart.key, multipart.id)
+	if err != nil {
+		status = proto.OpErr
+		return
 	}
-	return proto.OpOk
+	if !ok {
+		status =  proto.OpNotExistErr
+	}
+	return proto.OpOk, nil
 }
 
-func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.AppendMultipartResponse) {
-	storedItem := mp.multipartTree.CopyGet(multipart)
-	if storedItem == nil {
+func (mp *metaPartition) fsmAppendMultipart(dbHandle interface{}, multipart *Multipart) (resp proto.AppendMultipartResponse, err error) {
+	var storedMultipart *Multipart
+	resp.Status = proto.OpOk
+	storedMultipart, err = mp.multipartTree.Get(multipart.key, multipart.id)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
+	if storedMultipart == nil {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	storedMultipart, is := storedItem.(*Multipart)
-	if !is {
-		resp.Status = proto.OpNotExistErr
-		return
-	}
+
 	for _, part := range multipart.Parts() {
 		oldInode, updated, conflict := storedMultipart.UpdateOrStorePart(part)
 		if conflict {
@@ -55,5 +70,10 @@ func (mp *metaPartition) fsmAppendMultipart(multipart *Multipart) (resp proto.Ap
 		}
 	}
 	resp.Status = proto.OpOk
+	if err = mp.multipartTree.Put(dbHandle, storedMultipart); err != nil {
+		resp.Status = proto.OpErr
+		log.LogErrorf("[fsmAppendMultipart] update multipart info failed, multipart id:%s, multipart key:%s, error:%v",
+			multipart.id, multipart.key, err)
+	}
 	return
 }

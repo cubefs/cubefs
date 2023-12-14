@@ -261,9 +261,9 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 			respIno = rbIno.inode
 			status = proto.OpOk
 
-			item := mp.inodeTree.Get(NewInode(req.Inode, 0))
+			item, _ := mp.inodeTree.RefGet(req.Inode)
 			if item != nil {
-				respIno = item.(*Inode)
+				respIno = item
 			}
 
 			p.ResultCode = status
@@ -341,7 +341,14 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		p.PacketErrorWithBody(status, reply)
 	}
 	ino := NewInode(req.Inode, 0)
-	if item := mp.inodeTree.Get(ino); item == nil {
+	var inode *Inode
+
+	inode, err = mp.inodeTree.RefGet(req.Inode)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if inode == nil {
 		err = fmt.Errorf("mp[%v] inode[%v] reqeust cann't found", mp.config.PartitionId, ino)
 		log.LogErrorf("action[UnlinkInode] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
@@ -769,11 +776,6 @@ func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet)
 	log.LogDebugf("action[SetAttr] inode[%v] ver [%v] exit", req.Inode, req.VerSeq)
 	p.PacketOkReply()
 	return
-}
-
-// GetInodeTree returns the inode tree.
-func (mp *metaPartition) GetInodeTree() *BTree {
-	return mp.inodeTree.GetTree()
 }
 
 // GetInodeTreeLen returns the inode tree length.

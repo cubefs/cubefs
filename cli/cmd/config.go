@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"github.com/cubefs/cubefs/convertnode"
 	"math"
 	"os"
 	"path"
@@ -45,9 +46,11 @@ var (
 )
 
 type Config struct {
-	MasterAddr  []string `json:"masterAddr"`
-	Timeout     uint16   `json:"timeout"`
-	ClientIDKey string   `json:"clientIDKey"`
+	MasterAddr          []string             `json:"masterAddr"`
+	Timeout             uint16               `json:"timeout"`
+	ClientIDKey         string               `json:"clientIDKey"`
+	ConvertAddr         string               `json:"convertAddr"`
+	ConvertNodeDBConfig convertnode.DBConfig `json:"convertNodeDBConfig"`
 }
 
 func newConfigCmd() *cobra.Command {
@@ -68,6 +71,11 @@ const (
 func newConfigSetCmd() *cobra.Command {
 	var optMasterHosts string
 	var optTimeout string
+	var optConvertHost string
+	var optConvertNodeDBAddr string
+	var optConvertNodeDBName string
+	var optConvertNodeDBUserName string
+	var optConvertNodeDBPassword string
 	cmd := &cobra.Command{
 		Use:   CliOpSet,
 		Short: cmdConfigSetShort,
@@ -93,7 +101,7 @@ func newConfigSetCmd() *cobra.Command {
 				return
 			}
 
-			if err = setConfig(optMasterHosts, timeOut); err != nil {
+			if err = setConfig(optMasterHosts, timeOut, optConvertHost, optConvertNodeDBAddr, optConvertNodeDBName, optConvertNodeDBUserName, optConvertNodeDBPassword); err != nil {
 				return
 			}
 			stdout("Config has been set successfully!\n")
@@ -102,6 +110,11 @@ func newConfigSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&optMasterHosts, "addr", "",
 		"Specify master address {HOST}:{PORT}[,{HOST}:{PORT}]")
 	cmd.Flags().StringVar(&optTimeout, "timeout", "60", "Specify timeout for requests [Unit: s]")
+	cmd.Flags().StringVar(&optConvertHost, "convertAddr", "", "Specify convert address [{HOST}:{PORT}]")
+	cmd.Flags().StringVar(&optConvertNodeDBAddr, "convertNodeDBAddr", "", "Specify convert node database address")
+	cmd.Flags().StringVar(&optConvertNodeDBName, "convertNodeDBName", "", "Specify convert node database name")
+	cmd.Flags().StringVar(&optConvertNodeDBUserName, "convertNodeDBUserName", "", "Specify convert node database user name")
+	cmd.Flags().StringVar(&optConvertNodeDBPassword, "convertNodeDBPassword", "", "Specify convert node database password")
 	return cmd
 }
 
@@ -128,7 +141,7 @@ func printConfigInfo(config *Config) {
 	stdout("  Request Timeout [s]: %v\n", config.Timeout)
 }
 
-func setConfig(masterHosts string, timeout uint16) (err error) {
+func setConfig(masterHosts string, timeout uint16, optConvertHost, optConvertNodeDBAddr, optConvertNodeDBName, optConvertNodeDBUserName, optConvertNodeDBPassword string) (err error) {
 	var config *Config
 	if config, err = LoadConfig(); err != nil {
 		return
@@ -140,6 +153,23 @@ func setConfig(masterHosts string, timeout uint16) (err error) {
 	if timeout != 0 {
 		config.Timeout = timeout
 	}
+
+	if len(optConvertHost) > 0 {
+		config.ConvertAddr = optConvertHost
+	}
+	if optConvertNodeDBAddr != "" {
+		config.ConvertNodeDBConfig.Path = optConvertNodeDBAddr
+	}
+	if optConvertNodeDBName != "" {
+		config.ConvertNodeDBConfig.Dbname = optConvertNodeDBName
+	}
+	if optConvertNodeDBUserName != "" {
+		config.ConvertNodeDBConfig.Username = optConvertNodeDBUserName
+	}
+	if optConvertNodeDBPassword != "" {
+		config.ConvertNodeDBConfig.Password = optConvertNodeDBPassword
+	}
+
 	var configData []byte
 	if configData, err = json.Marshal(config); err != nil {
 		return

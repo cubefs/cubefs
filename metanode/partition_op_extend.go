@@ -30,9 +30,13 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
-	if treeItem != nil {
-		extend := treeItem.(*Extend)
+	var extend *Extend
+	extend, err = mp.extendTree.RefGet(req.Inode)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if extend != nil {
 		if value, exist := extend.Get([]byte(req.Key)); exist {
 			oldValueList := strings.Split(string(value), ",")
 			oldFiles, _ := strconv.ParseInt(oldValueList[0], 10, 64)
@@ -105,9 +109,13 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 		Inode:       req.Inode,
 		Key:         req.Key,
 	}
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
+	var treeItem *Extend
+	if treeItem, err = mp.extendTree.RefGet(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	if treeItem != nil {
-		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+		if extend := treeItem.GetExtentByVersion(req.VerSeq); extend != nil {
 			if value, exist := extend.Get([]byte(req.Key)); exist {
 				response.Value = string(value)
 			}
@@ -130,9 +138,13 @@ func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (
 		Inode:       req.Inode,
 		Attrs:       make(map[string]string),
 	}
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
+	var treeItem *Extend
+	if treeItem, err = mp.extendTree.RefGet(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	if treeItem != nil {
-		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+		if extend := treeItem.GetExtentByVersion(req.VerSeq); extend != nil {
 			for key, val := range extend.dataMap {
 				response.Attrs[key] = string(val)
 			}
@@ -155,7 +167,11 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 		XAttrs:      make([]*proto.XAttrInfo, 0, len(req.Inodes)),
 	}
 	for _, inode := range req.Inodes {
-		treeItem := mp.extendTree.Get(NewExtend(inode))
+		var treeItem *Extend
+		if treeItem, err = mp.extendTree.RefGet(inode); err != nil {
+			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+			return
+		}
 		if treeItem != nil {
 			info := &proto.XAttrInfo{
 				Inode:  inode,
@@ -163,7 +179,7 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 			}
 
 			var extend *Extend
-			if extend = treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+			if extend = treeItem.GetExtentByVersion(req.VerSeq); extend != nil {
 				for _, key := range req.Keys {
 					if val, exist := extend.Get([]byte(key)); exist {
 						info.XAttrs[key] = string(val)
@@ -200,9 +216,13 @@ func (mp *metaPartition) ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err 
 		Inode:       req.Inode,
 		XAttrs:      make([]string, 0),
 	}
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
+	var treeItem *Extend
+	if treeItem, err = mp.extendTree.RefGet(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
 	if treeItem != nil {
-		if extend := treeItem.(*Extend).GetExtentByVersion(req.VerSeq); extend != nil {
+		if extend := treeItem.GetExtentByVersion(req.VerSeq); extend != nil {
 			extend.Range(func(key, value []byte) bool {
 				response.XAttrs = append(response.XAttrs, string(key))
 				return true

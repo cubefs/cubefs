@@ -48,6 +48,12 @@ type MetaNode struct {
 	RdOnly                    bool
 	MigrateLock               sync.RWMutex
 	CpuUtil                   atomicutil.Float64 `json:"-"`
+
+	RocksdbDisks                []*proto.MetaNodeDiskInfo
+	RocksdbHostSelectCount      uint64
+	RocksdbHostSelectCarry      float64
+	RocksdbDiskThreshold        float32
+	MemModeRocksdbDiskThreshold float32
 }
 
 func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
@@ -83,9 +89,38 @@ func (metaNode *MetaNode) SelectNodeForWrite() {
 	metaNode.SelectCount++
 }
 
-func (metaNode *MetaNode) isWritable() (ok bool) {
+func (metaNode *MetaNode) reachesRocksdbDisksThreshold(storeMode proto.StoreMode) bool {
+	var total, used uint64 = 0, 0
+	if metaNode.RocksdbDiskThreshold <= 0 {
+		metaNode.RocksdbDiskThreshold = defaultRocksdbDiskUsageThreshold
+	}
+	if metaNode.MemModeRocksdbDiskThreshold <= 0 {
+		metaNode.MemModeRocksdbDiskThreshold = defaultMemModeRocksdbDiskUsageThreshold
+	}
+	if len(metaNode.RocksdbDisks) == 0 {
+		return true
+	}
+	for _, disk := range metaNode.RocksdbDisks {
+		total += disk.Total
+		used += disk.Used
+	}
+	if total == 0 {
+		return true
+	}
+	threshold := metaNode.MemModeRocksdbDiskThreshold
+	if storeMode == proto.StoreModeRocksDb {
+		threshold = metaNode.RocksdbDiskThreshold
+	}
+	return float32(used)/float32(total) > threshold
+}
+
+func (metaNode *MetaNode) isWritable(storeMode proto.StoreMode) (ok bool) {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
+
+	if metaNode.reachesRocksdbDisksThreshold(storeMode) {
+
+	}
 	if metaNode.IsActive && metaNode.MaxMemAvailWeight > gConfig.metaNodeReservedMem &&
 		!metaNode.reachesThreshold() && metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
 		!metaNode.RdOnly {
@@ -101,7 +136,14 @@ func (metaNode *MetaNode) setNodeActive() {
 	metaNode.IsActive = true
 }
 
-func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold float32) {
+func (metaNode *MetaNode) updateRocksdbDisks(resp *proto.MetaNodeHeartbeatResponse) {
+	metaNode.Lock()
+	defer metaNode.Unlock()
+	metaNode.RocksdbDisks = resp.RocksDBDiskInfo
+}
+
+
+func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, threshold, rocksdbDiskThreshold, memModeRocksDBDiskThreshold float32) {
 	metaNode.Lock()
 	defer metaNode.Unlock()
 
@@ -123,6 +165,8 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	}
 	metaNode.ZoneName = resp.ZoneName
 	metaNode.Threshold = threshold
+	metaNode.RocksdbDiskThreshold = rocksdbDiskThreshold
+	metaNode.MemModeRocksdbDiskThreshold = memModeRocksDBDiskThreshold
 }
 
 func (metaNode *MetaNode) reachesThreshold() bool {

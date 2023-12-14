@@ -91,6 +91,8 @@ type metadataManager struct {
 	stopC                chan struct{}
 	volUpdating          *sync.Map // map[string]*verOp2Phase
 	verUpdateChan        chan string
+
+	rocksDBDirs []string
 }
 
 func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) {
@@ -540,6 +542,7 @@ func (m *metadataManager) detachPartition(id uint64) (err error) {
 }
 
 func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequest) (err error) {
+	var oldMp MetaPartition
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 	log.LogInfof("start create meta Partition, partition %s", partitionId)
 
@@ -556,9 +559,15 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		RootDir:     path.Join(m.rootDir, partitionPrefix+partitionId),
 		ConnPool:    m.connPool,
 		VerSeq:      request.VerSeq,
+		StoreMode:   request.StoreMode,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
+	}
+
+	if oldMp, err = m.GetPartition(request.PartitionID); err == nil {
+		err = oldMp.IsEquareCreateMetaPartitionRequst(request)
+		return
 	}
 
 	partition := NewMetaPartition(mpc, m)
@@ -585,14 +594,6 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if oldMp, ok := m.partitions[request.PartitionID]; ok {
-		err = oldMp.IsEquareCreateMetaPartitionRequst(request)
-		partition.Stop()
-		partition.DeleteRaft()
-		os.RemoveAll(mpc.RootDir)
-		return
-	}
-
 	m.partitions[request.PartitionID] = partition
 	log.LogInfof("load meta partition %v success", request.PartitionID)
 
@@ -674,6 +675,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		metaNode:             metaNode,
 		maxQuotaGoroutineNum: defaultMaxQuotaGoroutine,
 		volUpdating:          new(sync.Map),
+		rocksDBDirs:          metaNode.rocksDirs,
 	}
 }
 

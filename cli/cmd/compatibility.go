@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"reflect"
 	"strconv"
 
@@ -103,26 +104,40 @@ func verifyDentry(client *api.MetaHttpClient, mp metanode.MetaPartition) (err er
 	if err != nil {
 		return
 	}
-	mp.GetDentryTree().Ascend(func(d metanode.BtreeItem) bool {
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer func() {
+		if snap != nil {
+			mp.ReleaseSnapShot(snap)
+		}
+		if err != nil {
+			log.LogErrorf("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
+		}
+	}()
+
+	err = snap.Range(metanode.DentryType, func(d interface{}) (bool, error){
 		dentry, ok := d.(*metanode.Dentry)
 		if !ok {
 			stdout("item type is not *metanode.Dentry \n")
 			err = fmt.Errorf("item type is not *metanode.Dentry")
-			return true
+			return true, nil
 		}
 		key := fmt.Sprintf("%v_%v", dentry.ParentId, dentry.Name)
 		oldDentry, ok := dentryMap[key]
 		if !ok {
 			stdout("dentry %v is not in old version \n", key)
 			err = fmt.Errorf("dentry %v is not in old version", key)
-			return false
+			return false, err
 		}
 		if !reflect.DeepEqual(dentry, oldDentry) {
 			stdout("dentry %v is not equal with old version \n", key)
 			err = fmt.Errorf("dentry %v is not equal with old version,dentry[%v],oldDentry[%v]", key, dentry, oldDentry)
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
 	if err == nil {
 		stdout("The number of dentry is %v, all dentry are consistent \n", mp.GetDentryTreeLen())
@@ -136,18 +151,32 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		return
 	}
 	var localInode *api.Inode
-	mp.GetInodeTree().Ascend(func(d metanode.BtreeItem) bool {
+	snap := mp.GetSnapShot()
+	if snap == nil {
+		log.LogErrorf("mp[%d] create snap shot failed", mp.GetBaseConfig().PartitionId)
+		return
+	}
+	defer func() {
+		if snap != nil {
+			mp.ReleaseSnapShot(snap)
+		}
+		if err != nil {
+			log.LogErrorf("mp[%d] range dentry failed", mp.GetBaseConfig().PartitionId)
+		}
+	}()
+
+	err = snap.Range(metanode.InodeType, func(d interface{}) (bool, error){
 		inode, ok := d.(*metanode.Inode)
 		if !ok {
 			stdout("item type is not *metanode.Inode \n")
 			err = fmt.Errorf("item type is not *metanode.Inode")
-			return true
+			return true, nil
 		}
 		oldInode, ok := inodesMap[inode.Inode]
 		if !ok {
 			stdout("inode %v is not in old version \n", inode.Inode)
 			err = fmt.Errorf("inode %v is not in old version", inode.Inode)
-			return false
+			return false, err
 		}
 		localInode = &api.Inode{
 			Inode:      inode.Inode,
@@ -172,9 +201,9 @@ func verifyInode(client *api.MetaHttpClient, mp metanode.MetaPartition) (err err
 		if !reflect.DeepEqual(oldInode, localInode) {
 			stdout("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
 			err = fmt.Errorf("inode %v is not equal with old version,inode[%v],oldInode[%v]\n", inode.Inode, inode, oldInode)
-			return false
+			return false, err
 		}
-		return true
+		return true, nil
 	})
 	if err == nil {
 		stdout("The number of inodes is %v, all inodes are consistent \n", mp.GetInodeTreeLen())

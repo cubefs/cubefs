@@ -285,6 +285,9 @@ type volValue struct {
 	ClientReqPeriod, ClientHitTriggerCnt                   uint32
 	Forbidden                                              bool
 	EnableAuditLog                                         bool
+
+	DefaultStoreMode           bsProto.StoreMode
+	MpLayout                   bsProto.MetaPartitionLayout
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {

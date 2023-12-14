@@ -39,13 +39,16 @@ func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, in
 		return
 	}
 
-	item := mp.inodeTree.Get(iParm)
-	if item == nil {
+	if inode, err = mp.inodeTree.RefGet(inodeId); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
+	if inode == nil {
 		err = fmt.Errorf("inode[%v] not exist", iParm)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	inode = item.(*Inode)
 	mp.uidManager.acLock.Lock()
 	if mp.uidManager.getUidAcl(inode.Uid) {
 		log.LogWarnf("CheckQuota UidSpace.volname [%v] mp[%v] uid %v be set full", mp.uidManager.mpID, mp.uidManager.volName, inode.Uid)
@@ -479,13 +482,16 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 		}()
 	}
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
-	item := mp.inodeTree.CopyGet(ino)
-	if item == nil {
+	var i *Inode
+	if i, err = mp.inodeTree.RefGet(req.Inode); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	if i == nil {
 		err = fmt.Errorf("inode[%v] is not exist", req.Inode)
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	i := item.(*Inode)
 	status := mp.isOverQuota(req.Inode, req.Size > i.Size, false)
 	if status != 0 {
 		log.LogErrorf("ExtentsTruncate fail status [%v]", status)

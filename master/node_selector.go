@@ -89,7 +89,7 @@ func canAllocPartition(node interface{}, nodeType NodeType) bool {
 		return dataNode.canAlloc() && dataNode.canAllocDp()
 	case MetaNodeType:
 		metaNode := node.(*MetaNode)
-		return metaNode.isWritable()
+		return metaNode.isWritable(proto.StoreModeMem)
 	default:
 		panic("unknown node type")
 	}
@@ -222,7 +222,7 @@ func (s *CarryWeightNodeSelector) getCarryMetaNodes(maxTotal uint64, excludeHost
 		if contains(excludeHosts, metaNode.Addr) {
 			return true
 		}
-		if !metaNode.isWritable() {
+		if !metaNode.isWritable(proto.StoreModeMem) {
 			return true
 		}
 		if s.carry[metaNode.ID] >= 1.0 {

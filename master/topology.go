@@ -384,7 +384,7 @@ func (nsgm *DomainManager) checkGrpState(domainGrpManager *DomainNodeSetGrpManag
 			}
 			domainGrpManager.nodeSetGrpMap[i].nodeSets[j].metaNodes.Range(func(key, value interface{}) bool {
 				node := value.(*MetaNode)
-				if node.isWritable() {
+				if node.isWritable(proto.StoreModeMem) {
 					metaWorked = true
 					log.LogInfof("action[checkGrpState] nodeset[%v] zonename[%v] used [%v] total [%v] threshold [%v] got available metanode",
 						node.ID, node.ZoneName, node.Used, node.Total, node.Threshold)
@@ -1063,7 +1063,7 @@ func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	var count int
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		node := value.(*MetaNode)
-		if node.isWritable() {
+		if node.isWritable(proto.StoreModeMem) {
 			count++
 		}
 		if count >= replicaNum {
@@ -1786,7 +1786,7 @@ func (zone *Zone) isUsedRatio(ratio float64) (can bool) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive == true && metaNode.isWritable() == true {
+		if metaNode.IsActive == true && metaNode.isWritable(proto.StoreModeMem) == true {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -1826,7 +1826,7 @@ func (zone *Zone) getMetaUsed() (metaNodeUsed uint64, metaNodeTotal uint64) {
 
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive == true && metaNode.isWritable() == true {
+		if metaNode.IsActive == true && metaNode.isWritable(proto.StoreModeMem) == true {
 			metaNodeUsed += metaNode.Used
 		} else {
 			metaNodeUsed += metaNode.Total
@@ -1853,7 +1853,7 @@ func (zone *Zone) canWriteForMetaNode(replicaNum uint8) (can bool) {
 	var leastAlive uint8
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
-		if metaNode.IsActive == true && metaNode.isWritable() == true {
+		if metaNode.IsActive == true && metaNode.isWritable(proto.StoreModeMem) == true {
 			leastAlive++
 		}
 		if leastAlive >= replicaNum {

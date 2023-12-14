@@ -29,13 +29,13 @@ func (mp *metaPartition) fsmTxDelete(txID string) (status uint8) {
 	return
 }
 
-func (mp *metaPartition) fsmTxInodeRollback(req *proto.TxInodeApplyRequest) (status uint8) {
-	status, _ = mp.txProcessor.txResource.rollbackInode(req)
+func (mp *metaPartition) fsmTxInodeRollback(dbHandle interface{}, req *proto.TxInodeApplyRequest) (status uint8) {
+	status, _ = mp.txProcessor.txResource.rollbackInode(dbHandle, req)
 	return
 }
 
-func (mp *metaPartition) fsmTxDentryRollback(req *proto.TxDentryApplyRequest) (status uint8) {
-	status, _ = mp.txProcessor.txResource.rollbackDentry(req)
+func (mp *metaPartition) fsmTxDentryRollback(dbHandle interface{}, req *proto.TxDentryApplyRequest) (status uint8) {
+	status, _ = mp.txProcessor.txResource.rollbackDentry(dbHandle, req)
 	return
 }
 
@@ -65,13 +65,13 @@ func (mp *metaPartition) fsmTxInodeCommit(txID string, inode uint64) (status uin
 	return
 }
 
-func (mp *metaPartition) fsmTxDentryCommit(txID string, pId uint64, name string) (status uint8) {
-	// var err error
-	status, _ = mp.txProcessor.txResource.commitDentry(txID, pId, name)
+func (mp *metaPartition) fsmTxDentryCommit(dbHandle interface{}, txID string, pId uint64, name string) (status uint8) {
+	//var err error
+	status, _ = mp.txProcessor.txResource.commitDentry(dbHandle, txID, pId, name)
 	return
 }
 
-func (mp *metaPartition) fsmTxCommitRM(txInfo *proto.TransactionInfo) (status uint8) {
+func (mp *metaPartition) fsmTxCommitRM(dbHandle interface{}, txInfo *proto.TransactionInfo) (status uint8) {
 	status = proto.OpOk
 	ifo := mp.txProcessor.txManager.copyGetTx(txInfo.TxID)
 	if ifo == nil || ifo.Finish() {
@@ -93,14 +93,14 @@ func (mp *metaPartition) fsmTxCommitRM(txInfo *proto.TransactionInfo) (status ui
 			continue
 		}
 
-		mp.fsmTxDentryCommit(ifo.TxID, ifo.ParentId, ifo.Name)
+		mp.fsmTxDentryCommit(dbHandle, ifo.TxID, ifo.ParentId, ifo.Name)
 	}
 
 	ifo.SetFinish()
 	return proto.OpOk
 }
 
-func (mp *metaPartition) fsmTxRollbackRM(txInfo *proto.TransactionInfo) (status uint8) {
+func (mp *metaPartition) fsmTxRollbackRM(dbHandle interface{}, txInfo *proto.TransactionInfo) (status uint8) {
 	status = proto.OpOk
 	ifo := mp.txProcessor.txManager.copyGetTx(txInfo.TxID)
 	if ifo == nil || ifo.Finish() {
@@ -118,7 +118,7 @@ func (mp *metaPartition) fsmTxRollbackRM(txInfo *proto.TransactionInfo) (status 
 			TxID:  ifo.TxID,
 			Inode: ifo.Ino,
 		}
-		mp.fsmTxInodeRollback(req)
+		mp.fsmTxInodeRollback(dbHandle, req)
 	}
 
 	// delete from rb tree
@@ -132,7 +132,7 @@ func (mp *metaPartition) fsmTxRollbackRM(txInfo *proto.TransactionInfo) (status 
 			Pid:  ifo.ParentId,
 			Name: ifo.Name,
 		}
-		mp.fsmTxDentryRollback(req)
+		mp.fsmTxDentryRollback(dbHandle, req)
 	}
 
 	ifo.SetFinish()

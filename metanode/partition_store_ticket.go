@@ -30,10 +30,7 @@ type storeMsg struct {
 	command        uint32
 	applyIndex     uint64
 	txId           uint64
-	inodeTree      *BTree
-	dentryTree     *BTree
-	extendTree     *BTree
-	multipartTree  *BTree
+	snap           Snapshot
 	txTree         *BTree
 	txRbInodeTree  *BTree
 	txRbDentryTree *BTree
@@ -103,19 +100,26 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				)
 				for _, msg := range msgs {
 					if curIndex >= msg.applyIndex {
+						if msg.snap != nil {
+							msg.snap.Close()
+						}
 						continue
 					}
 					if maxIdx < msg.applyIndex {
+						if maxMsg != nil && maxMsg.snap != nil {
+							maxMsg.snap.Close()
+						}
 						maxIdx = msg.applyIndex
 						maxMsg = msg
+					} else {
+						if msg.snap != nil {
+							msg.snap.Close()
+						}
 					}
 				}
 				if maxMsg != nil {
 					go dumpFunc(maxMsg)
 				} else {
-					if _, ok := mp.IsLeader(); ok {
-						timer.Reset(intervalToPersistData)
-					}
 					atomic.StoreUint32(&scheduleState, common.StateStopped)
 				}
 				msgs = msgs[:0]

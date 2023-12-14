@@ -159,7 +159,7 @@ func (mp *metaPartition) deleteWorker() {
 			}
 
 			// check inode nlink == 0 and deleteMarkFlag unset
-			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
+			if inode, err := mp.inodeTree.RefGet(ino); err == nil {
 				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
 				if inode.ShouldDelayDelete() || inTx {
 					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0, inTx %v", inode, inTx)
@@ -250,10 +250,9 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
-		ref := &Inode{Inode: ino}
-		inode, ok := mp.inodeTree.Get(ref).(*Inode)
-		if !ok {
-			log.LogDebugf("[deleteMarkedInodes] . mp[%v] inode[%v] not found", mp.config.PartitionId, ino)
+		inode, err := mp.inodeTree.RefGet(ino)
+		if err != nil {
+			log.LogDebugf("[deleteMarkedInodes] . mp %v inode [%v] not found", mp.config.PartitionId, ino)
 			continue
 		}
 
@@ -310,9 +309,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	}
 
 	for _, inode := range shouldCommit {
-		if err == nil {
-			mp.internalDeleteInode(inode)
-		} else {
+		if err != nil {
 			mp.freeList.Push(inode.Inode)
 		}
 	}

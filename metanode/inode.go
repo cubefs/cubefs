@@ -34,6 +34,7 @@ import (
 const (
 	DeleteMarkFlag = 1 << 0
 	InodeDelTop    = 1 << 1
+	AccessTimeOffset     = 52
 )
 
 var (

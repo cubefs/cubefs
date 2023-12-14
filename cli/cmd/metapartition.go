@@ -256,6 +256,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	var optStoreMode int
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionDecommissionShort,
@@ -270,7 +271,7 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, clientIDKey); err != nil {
+			if err = client.AdminAPI().DecommissionMetaPartition(partitionID, address, clientIDKey, optStoreMode); err != nil {
 				return
 			}
 			stdout("Decommission meta partition successfully\n")
@@ -283,11 +284,13 @@ func newMetaPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 	return cmd
 }
 
 func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	var optStoreMode int
 	cmd := &cobra.Command{
 		Use:   CliOpReplicate + " [ADDRESS] [META PARTITION ID]",
 		Short: cmdMetaPartitionReplicateShort,
@@ -302,7 +305,12 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			address := args[0]
 			partitionID, err = strconv.ParseUint(args[1], 10, 64)
-			if err = client.AdminAPI().AddMetaReplica(partitionID, address, clientIDKey); err != nil {
+			if optStoreMode != 0 {
+				if optStoreMode < int(proto.StoreModeMem) || optStoreMode > int(proto.StoreModeMax-1) {
+					errout(fmt.Errorf("input store mode err\n"))
+				}
+			}
+			if err = client.AdminAPI().AddMetaReplica(partitionID, address, clientIDKey, optStoreMode); err != nil {
 				return
 			}
 			stdout("Add replication successfully\n")
@@ -315,6 +323,7 @@ func newMetaPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().IntVar(&optStoreMode, CliFlagStoreMode, 0, "specify volume default store mode [1:Mem, 2:Rocks]")
 	return cmd
 }
 

@@ -128,6 +128,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				FreeListLen:      uint64(partition.GetFreeListLen()),
 				UidInfo:          partition.GetUidInfo(),
 				QuotaReportInfos: partition.getQuotaReportInfos(),
+				StoreMode:         mConf.StoreMode,
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 
@@ -148,6 +149,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			return true
 		})
 		resp.ZoneName = m.zoneName
+		resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStat()
 		resp.Status = proto.TaskSucceeds
 	end:
 		adminTask.Request = nil
@@ -333,14 +335,15 @@ func (m *metadataManager) opMetaLinkInode(conn net.Conn, p *Packet,
 // Handle OpCreate
 func (m *metadataManager) opFreeInodeOnRaftFollower(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
-	mp, err := m.getPartition(p.PartitionID)
+	_, err = m.getPartition(p.PartitionID)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
 		err = errors.NewErrorf("[%v],err[%v]", p.GetOpMsgWithReqAndResult(), string(p.Data))
 		return
 	}
-	mp.(*metaPartition).internalDelete(p.Data[:p.Size])
+
+	//todo: del interface
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
 

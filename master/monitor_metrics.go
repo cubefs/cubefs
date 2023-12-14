@@ -791,7 +791,7 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.Used), MetricRoleMetaNode, metaNode.Addr, "memUsed")
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.MetaPartitionCount), MetricRoleMetaNode, metaNode.Addr, "mpCount")
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.Threshold), MetricRoleMetaNode, metaNode.Addr, "threshold")
-		mm.nodeStat.SetBoolWithLabelValues(metaNode.isWritable(), MetricRoleMetaNode, metaNode.Addr, "writable")
+		mm.nodeStat.SetBoolWithLabelValues(metaNode.isWritable(proto.StoreModeMem), MetricRoleMetaNode, metaNode.Addr, "writable")
 		mm.nodeStat.SetBoolWithLabelValues(metaNode.IsActive, MetricRoleMetaNode, metaNode.Addr, "active")
 
 		return true
@@ -868,7 +868,7 @@ func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
 		if !ok {
 			return true
 		}
-		if !metaNode.isWritable() {
+		if !metaNode.isWritable(proto.StoreModeMem) {
 			notWritabelMetaNodesCount++
 		}
 		return true

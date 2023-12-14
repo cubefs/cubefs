@@ -109,7 +109,7 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend) {
 	return
 }
 
-func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree) {
+func (mp *metaPartition) statisticExtendByStore(extend *Extend) {
 	mqMgr := mp.mqMgr
 	ino := NewInode(extend.GetInode(), 0)
 
@@ -164,13 +164,13 @@ func (mp *metaPartition) updateUsedInfo(size int64, files int64, ino uint64) {
 }
 
 func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind bool) {
-	extend := NewExtend(ino)
-	treeItem := mp.extendTree.Get(extend)
+extend:
+	*Extend
+	treeItem, _ := mp.extendTree.RefGet(ino)
 	if treeItem == nil {
 		isFind = false
 		return
 	}
-	extend = treeItem.(*Extend)
 	value, exist := extend.Get([]byte(proto.QuotaKey))
 	if !exist {
 		isFind = false
@@ -209,7 +209,8 @@ func (mp *metaPartition) isOverQuota(ino uint64, size bool, files bool) (status 
 }
 
 func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
-	extend := NewExtend(inode)
+extend:
+	*Extend
 	quotaInfos := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
@@ -217,11 +218,10 @@ func (mp *metaPartition) getInodeQuota(inode uint64, p *Packet) (err error) {
 		value []byte
 		exist bool
 	)
-	treeItem := mp.extendTree.CopyGet(extend)
-	if treeItem == nil {
+	extend, _ = mp.extendTree.RefGet(inode)
+	if extend == nil {
 		goto handleRsp
 	}
-	extend = treeItem.(*Extend)
 
 	value, exist = extend.Get([]byte(proto.QuotaKey))
 	if exist {
@@ -247,11 +247,10 @@ handleRsp:
 
 func (mp *metaPartition) getInodeQuotaInfos(inode uint64) (quotaInfos map[uint32]*proto.MetaQuotaInfo, err error) {
 	log.LogInfof("getInodeQuotaInfos mp[%v] treeLen[%v]", mp.config.PartitionId, mp.extendTree.Len())
-	treeItem := mp.extendTree.Get(NewExtend(inode))
-	if treeItem == nil {
+	extend, _ := mp.extendTree.RefGet(inode)
+	if extend == nil {
 		return
 	}
-	extend := treeItem.(*Extend)
 	info := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 	}
@@ -267,7 +266,7 @@ func (mp *metaPartition) getInodeQuotaInfos(inode uint64) (quotaInfos map[uint32
 	return
 }
 
-func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
+func (mp *metaPartition) setInodeQuota(dbHandle interface{}, quotaIds []uint32, inode uint64) {
 	extend := NewExtend(inode)
 	quotaInfos := &proto.MetaQuotaInfos{
 		QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
@@ -284,13 +283,12 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 		return
 	}
 	extend.Put([]byte(proto.QuotaKey), value, mp.verSeq)
-	treeItem := mp.extendTree.CopyGet(extend)
-	var e *Extend
-	if treeItem == nil {
-		mp.extendTree.ReplaceOrInsert(extend, true)
+	e, _ := mp.extendTree.Get(extend.inode)
+	if e == nil {
+		mp.extendTree.Create(dbHandle, extend, true)
 	} else {
-		e = treeItem.(*Extend)
 		e.Merge(extend, true)
+		mp.extendTree.Put(dbHandle, e)
 	}
 
 	log.LogInfof("setInodeQuota inode[%v] quota [%v] success.", inode, quotaIds)

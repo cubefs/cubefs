@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -26,42 +27,56 @@ type ExtendOpResult struct {
 	Extend *Extend
 }
 
-func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
+func (mp *metaPartition) fsmSetXAttr(dbHandle interface{}, extend *Extend) (resp *proto.XAttrRaftResponse, err error) {
 	extend.verSeq = mp.GetVerSeq()
-	treeItem := mp.extendTree.CopyGet(extend)
+	resp = &proto.XAttrRaftResponse{Inode: extend.inode, Status: proto.OpOk}
 	var e *Extend
-	if treeItem == nil {
-		mp.extendTree.ReplaceOrInsert(extend, true)
-	} else {
-		// attr multi-ver copy all attr for simplify management
-		e = treeItem.(*Extend)
-		if e.verSeq != extend.verSeq {
-			if extend.verSeq < e.verSeq {
-				return fmt.Errorf("seq error assign %v but less than %v", extend.verSeq, e.verSeq)
-			}
-			e.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiVers...)
-			e.verSeq = extend.verSeq
-		}
-		e.Merge(extend, true)
+	e, err = mp.extendTree.Get(extend.inode)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
 	}
-
+	if e == nil {
+		e = NewExtend(extend.inode)
+		goto submit
+	}
+	if e.verSeq != extend.verSeq {
+		if extend.verSeq < e.verSeq {
+			resp.Status = proto.OpNotPerm
+			err = fmt.Errorf("seq error assign %v but less than %v", extend.verSeq, e.verSeq)
+			return
+		}
+		e.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiVers...)
+		e.verSeq = extend.verSeq
+	}
+	e.Merge(extend, true)
+submit:
+	if err = mp.extendTree.Put(dbHandle, e); err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
 	return
 }
 
 // todo(leon chang):check snapshot delete relation with attr
-func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
-	treeItem := mp.extendTree.CopyGet(reqExtend)
-	if treeItem == nil {
+func (mp *metaPartition) fsmRemoveXAttr(dbHandle interface{}, reqExtend *Extend) (resp *proto.XAttrRaftResponse, err error) {
+	var e *Extend
+	resp = &proto.XAttrRaftResponse{Inode: reqExtend.inode, Status: proto.OpOk}
+	e, err = mp.extendTree.Get(reqExtend.inode)
+	if err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
+	if e == nil {
 		return
 	}
 
-	e := treeItem.(*Extend)
 	if mp.GetVerSeq() == 0 || (e.verSeq == mp.GetVerSeq() && reqExtend.verSeq == 0) {
 		reqExtend.Range(func(key, value []byte) bool {
 			e.Remove(key)
 			return true
 		})
-		return
+		goto submit
 	}
 
 	if reqExtend.verSeq == 0 {
@@ -91,7 +106,8 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 		var globalNewVer uint64
 		if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(reqExtend.verSeq); err != nil {
 			log.LogErrorf("fsmRemoveXAttr. mp[%v] seq [%v] req ver [%v] not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.verSeq)
-			return err
+			resp.Status = proto.OpNotPerm
+			return
 		}
 		e.verSeq = globalNewVer
 	} else {
@@ -101,23 +117,29 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 				innerLastVer = ele.verSeq
 				continue
 			} else if ele.verSeq < reqExtend.verSeq {
-				return
+				break
 			} else {
 				var globalNewVer uint64
 				if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(ele.verSeq); err != nil {
-					return err
+					//todo: err code ?
+					resp.Status = proto.OpNotPerm
+					return
 				}
 				if globalNewVer < innerLastVer {
 					log.LogDebugf("mp[%v] inode[%v] extent layer %v update seq [%v] to %v",
 						mp.config.PartitionId, ele.inode, id, ele.verSeq, globalNewVer)
 					ele.verSeq = globalNewVer
-					return
+					break
 				}
 				e.multiVers = append(e.multiVers[:id], e.multiVers[id+1:]...)
-				return
+				break
 			}
 		}
 	}
-
+submit:
+	if err = mp.extendTree.Put(dbHandle, e); err != nil {
+		resp.Status = proto.OpErr
+		return
+	}
 	return
 }

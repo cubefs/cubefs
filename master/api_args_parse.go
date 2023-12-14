@@ -400,6 +400,8 @@ type updateVolReq struct {
 	coldArgs                *coldVolArgs
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
+	storeMode               int
+	mpLayout                proto.MetaPartitionLayout
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -575,6 +577,29 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authent
 	return
 }
 
+func parseRocksDbFieldToUpdateVol(r *http.Request, vol *Vol) (storeMode int, layout proto.MetaPartitionLayout, err error) {
+	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
+		if storeMode, err = strconv.Atoi(storeModeStr); err != nil {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+	} else {
+		storeMode = int(vol.DefaultStoreMode)
+	}
+
+	if mpLayoutStr := r.FormValue(volMetaLayoutKey); mpLayoutStr != "" {
+		num, tmpErr := fmt.Sscanf(mpLayoutStr, "%d,%d", &layout.PercentOfMP, &layout.PercentOfReplica)
+		if tmpErr != nil || num != 2 {
+			err = unmatchedKey(volMetaLayoutKey)
+			return
+		}
+	} else {
+		layout = vol.MpLayout
+	}
+
+	return
+}
+
 func parseRequestToSetApiQpsLimit(r *http.Request) (name string, limit uint32, timeout uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -616,6 +641,25 @@ func parseRequestToSetVolCapacity(r *http.Request) (name, authKey string, capaci
 		return
 	}
 
+	return
+}
+
+func parseRequestToSetVolConvertSt(r *http.Request) (name, authKey string, newState int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	if stateStr := r.FormValue(stateKey); stateStr != "" {
+		if newState, err = strconv.Atoi(stateStr); err != nil {
+			err = unmatchedKey(stateKey)
+			return
+		}
+	}
 	return
 }
 
@@ -672,6 +716,8 @@ type createVolReq struct {
 	clientReqPeriod, clientHitTriggerCnt uint32
 	// cold vol args
 	coldArgs coldVolArgs
+	storeMode                            proto.StoreMode
+	layout								 proto.MetaPartitionLayout
 }
 
 func checkCacheAction(action int) error {
@@ -838,6 +884,23 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 
 	if req.enableQuota, err = extractBoolWithDefault(r, enableQuota, false); err != nil {
 		return
+	}
+
+	storeMode := int(proto.StoreModeMem)
+	if storeModeStr := r.FormValue(StoreModeKey); storeModeStr != "" {
+		if storeMode, err = strconv.Atoi(storeModeStr); err != nil {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
+	}
+	req.storeMode = proto.StoreMode(storeMode)
+
+	if mpLayoutStr := r.FormValue(volMetaLayoutKey); mpLayoutStr != "" {
+		num, tmpErr := fmt.Sscanf(mpLayoutStr, "%d,%d", &req.layout.PercentOfMP, &req.layout.PercentOfReplica)
+		if tmpErr != nil || num != 2 {
+			err = unmatchedKey(StoreModeKey)
+			return
+		}
 	}
 
 	return
@@ -1036,6 +1099,19 @@ func extractStatus(r *http.Request) (status bool, err error) {
 	}
 	if status, err = strconv.ParseBool(value); err != nil {
 		return
+	}
+	return
+}
+
+func extractStoreMode(r *http.Request) (storeMode int, err error) {
+	storeModeStr := r.FormValue(StoreModeKey)
+	if storeModeStr == "" {
+		return
+	}
+
+	storeMode, err = strconv.Atoi(storeModeStr)
+	if err != nil {
+		err = fmt.Errorf("convert storeMode[%v] to num failed; err:%v", storeModeStr, err.Error())
 	}
 	return
 }

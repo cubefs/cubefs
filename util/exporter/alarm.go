@@ -54,3 +54,17 @@ func Warning(detail string) (a *Alarm) {
 	a.Add(1)
 	return
 }
+
+func WarningRocksdbError(detail string) {
+	key := fmt.Sprintf("%v_metanode_rocksdb_error_warning", clustername)
+	ump.Alarm(key, detail)
+	log.LogCritical(key, detail)
+	return
+}
+
+
+func WarningAppendKey(key, detail string) {
+	ump.Alarm(fmt.Sprintf("%v_%v_%v", clustername, modulename, key), detail)
+	log.LogCritical(fmt.Sprintf("%v_%v_%v", clustername, modulename, key), detail)
+	return
+}

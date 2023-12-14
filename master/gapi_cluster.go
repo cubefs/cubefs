@@ -269,7 +269,7 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp); err != nil {
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, proto.StoreModeMem); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)
@@ -315,7 +315,7 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable()})
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{ID: metaNode.ID, Addr: metaNode.Addr, IsActive: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem)})
 				return true
 			})
 		}

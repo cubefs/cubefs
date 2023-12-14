@@ -15,160 +15,183 @@
 package metanode
 
 import (
-	"sync"
-
-	"github.com/cubefs/cubefs/util/btree"
+	"fmt"
+	"github.com/cubefs/cubefs/proto"
+	_ "github.com/cubefs/cubefs/proto"
 )
-
-const defaultBTreeDegree = 32
 
 type (
 	// BtreeItem type alias google btree Item
-	BtreeItem = btree.Item
+	TreeType  uint8
+	CountType uint8
 )
 
-// BTree is the wrapper of Google's btree.
-type BTree struct {
-	sync.RWMutex
-	tree *btree.BTree
-}
+const (
+	BaseInfoType TreeType = iota
+	DentryType
+	InodeType
+	ExtendType
+	MultipartType
+	MaxType
+)
 
-// NewBtree creates a new btree.
-func NewBtree() *BTree {
-	return &BTree{
-		tree: btree.New(defaultBTreeDegree),
+func (t TreeType) String() string {
+	switch t {
+	case DentryType:
+		return "dentry tree"
+	case InodeType:
+		return "inode tree"
+	case ExtendType:
+		return "extend tree"
+	case MultipartType:
+		return "multipart tree"
+	default:
+		return "unknown"
 	}
 }
 
-// Get returns the object of the given key in the btree.
-func (b *BTree) Get(key BtreeItem) (item BtreeItem) {
-	b.RLock()
-	item = b.tree.Get(key)
-	b.RUnlock()
-	return
-}
+var (
+	existsError    = fmt.Errorf("exists error")
+	baseInfoKey    = []byte{byte(BaseInfoType)}
+)
 
-func (b *BTree) CopyGet(key BtreeItem) (item BtreeItem) {
-	b.Lock()
-	item = b.tree.CopyGet(key)
-	b.Unlock()
-	return
-}
-
-// Find searches for the given key in the btree.
-func (b *BTree) Find(key BtreeItem, fn func(i BtreeItem)) {
-	b.RLock()
-	item := b.tree.Get(key)
-	b.RUnlock()
-	if item == nil {
-		return
+func NewSnapshot(mp *metaPartition) Snapshot {
+	if mp.HasMemStore() {
+		return &MemSnapShot{
+			applyID:   mp.GetAppliedID(),
+			inode:     &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree()},
+			dentry:    &DentryBTree{mp.dentryTree.(*DentryBTree).GetTree()},
+			extend:    &ExtendBTree{mp.extendTree.(*ExtendBTree).GetTree()},
+			multipart: &MultipartBTree{mp.multipartTree.(*MultipartBTree).GetTree()},
+		}
 	}
-	fn(item)
-}
-
-func (b *BTree) CopyFind(key BtreeItem, fn func(i BtreeItem)) {
-	b.Lock()
-	item := b.tree.CopyGet(key)
-	fn(item)
-	b.Unlock()
-}
-
-// Has checks if the key exists in the btree.
-func (b *BTree) Has(key BtreeItem) (ok bool) {
-	b.RLock()
-	ok = b.tree.Has(key)
-	b.RUnlock()
-	return
-}
-
-// Delete deletes the object by the given key.
-func (b *BTree) Delete(key BtreeItem) (item BtreeItem) {
-	b.Lock()
-	item = b.tree.Delete(key)
-	b.Unlock()
-	return
-}
-
-func (b *BTree) Execute(fn func(tree *btree.BTree) interface{}) interface{} {
-	b.Lock()
-	defer b.Unlock()
-	return fn(b.tree)
-}
-
-// ReplaceOrInsert is the wrapper of google's btree ReplaceOrInsert.
-func (b *BTree) ReplaceOrInsert(key BtreeItem, replace bool) (item BtreeItem, ok bool) {
-	b.Lock()
-	if replace {
-		item = b.tree.ReplaceOrInsert(key)
-		b.Unlock()
-		ok = true
-		return
+	if mp.HasRocksDBStore() {
+		return NewRocksSnapShot(mp)
 	}
 
-	item = b.tree.Get(key)
-	if item == nil {
-		item = b.tree.ReplaceOrInsert(key)
-		b.Unlock()
-		ok = true
-		return
+	return nil
+}
+
+type Snapshot interface {
+	Range(tp TreeType, cb func(item interface{}) (bool, error)) error
+	Close()
+	Count(tp TreeType) uint64
+	CrcSum(tp TreeType) (uint32, error)
+	ApplyID() uint64
+}
+
+type Tree interface {
+	Release()
+	SetApplyID(index uint64)
+	GetApplyID() uint64
+	Flush() error
+	Execute(fn func(tree interface{}) interface{}) interface{}
+	CreateBatchWriteHandle() (interface{}, error)
+	CommitBatchWrite(handle interface{}, needCommitApplyID bool) error
+	CommitAndReleaseBatchWriteHandle(handle interface{}, needCommitApplyID bool) error
+	ReleaseBatchWriteHandle(handle interface{}) error
+	BatchWriteCount(handle interface{}) (int, error)
+	ClearBatchWriteHandle(handle interface{}) error
+	PersistBaseInfo() error
+	GetPersistentApplyID() uint64
+	SetCursor(cursor uint64)
+	GetCursor() uint64
+}
+
+type InodeTree interface {
+	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
+	RefGet(ino uint64) (*Inode, error)
+	Get(ino uint64) (*Inode, error)
+	Put(dbHandle interface{}, inode *Inode) error
+	Update(dbHandle interface{}, inode *Inode) error
+	Create(dbHandle interface{}, inode *Inode, replace bool) (*Inode, bool, error)
+	Delete(dbHandle interface{}, ino uint64) (bool, error)
+	Range(start, end *Inode, cb func(i *Inode) (bool, error)) error
+	Count() uint64
+	Len() int
+	RealCount() uint64
+	MaxItem() *Inode
+	GetMaxInode() (uint64, error)
+}
+
+type DentryTree interface {
+	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
+	RefGet(ino uint64, name string) (*Dentry, error)
+	Get(pino uint64, name string) (*Dentry, error)
+	Update(dbHandle interface{}, dentry *Dentry) error
+	Put(dbHandle interface{}, dentry *Dentry) error
+	Create(dbHandle interface{}, dentry *Dentry, replace bool) (*Dentry, bool, error)
+	Delete(dbHandle interface{}, pid uint64, name string) (bool, error)
+	Range(start, end *Dentry, cb func(d *Dentry) (bool, error)) error
+	RangeWithPrefix(prefix, start, end *Dentry, cb func(d *Dentry) (bool, error)) error
+	RealCount() uint64
+	Count() uint64
+	Len() int
+}
+
+type ExtendTree interface {
+	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
+	RefGet(ino uint64) (*Extend, error)
+	Get(ino uint64) (*Extend, error)
+	Put(dbHandle interface{}, extend *Extend) error
+	Update(dbHandle interface{}, extend *Extend) error
+	Create(dbHandle interface{}, ext *Extend, replace bool) (*Extend, bool, error)
+	Delete(dbHandle interface{}, ino uint64) (bool, error)
+	Range(start, end *Extend, cb func(e *Extend) (bool, error)) error
+	RealCount() uint64
+	Count() uint64
+	Len() int
+}
+
+type MultipartTree interface {
+	Tree
+	//RefGet, Get: error always is nil when mem mode, whether the item is nil needs to be determined
+	RefGet(key, id string) (*Multipart, error)
+	Get(key, id string) (*Multipart, error)
+	Put(dbHandle interface{}, mutipart *Multipart) error
+	Update(dbHandle interface{}, mutipart *Multipart) error
+	Create(dbHandle interface{}, mul *Multipart, replace bool) (*Multipart, bool, error)
+	Delete(dbHandle interface{}, key, id string) (bool, error)
+	Range(start, end *Multipart, cb func(m *Multipart) (bool, error)) error
+	RangeWithPrefix(prefix, start, end *Multipart, cb func(m *Multipart) (bool, error)) error
+	RealCount() uint64
+	Count() uint64
+	Len() int
+}
+
+
+type MetaTree struct {
+	InodeTree
+	DentryTree
+	ExtendTree
+	MultipartTree
+}
+
+func newMetaTree(storeMode proto.StoreMode, db *RocksDbInfo) *MetaTree {
+	if (storeMode & proto.StoreModeMem) != 0 {
+		return &MetaTree{
+			InodeTree:         &InodeBTree{NewBtree()},
+			DentryTree:        &DentryBTree{NewBtree()},
+			ExtendTree:        &ExtendBTree{NewBtree()},
+			MultipartTree:     &MultipartBTree{NewBtree()},
+		}
+	} else {
+		tree, err := DefaultRocksTree(db)
+		if err != nil {
+			return nil
+		}
+		inodeTree, _ := NewInodeRocks(tree)
+		dentryTree, _ := NewDentryRocks(tree)
+		extendTree, _ := NewExtendRocks(tree)
+		multipartTree, _ := NewMultipartRocks(tree)
+		return &MetaTree{
+			InodeTree:         inodeTree,
+			DentryTree:        dentryTree,
+			ExtendTree:        extendTree,
+			MultipartTree:     multipartTree,
+		}
 	}
-	ok = false
-	b.Unlock()
-	return
-}
-
-// Ascend is the wrapper of the google's btree Ascend.
-// This function scans the entire btree. When the data is huge, it is not recommended to use this function online.
-// Instead, it is recommended to call GetTree to obtain the snapshot of the current btree, and then do the scan on the snapshot.
-func (b *BTree) Ascend(fn func(i BtreeItem) bool) {
-	b.RLock()
-	b.tree.Ascend(fn)
-	b.RUnlock()
-}
-
-// AscendRange is the wrapper of the google's btree AscendRange.
-func (b *BTree) AscendRange(greaterOrEqual, lessThan BtreeItem, iterator func(i BtreeItem) bool) {
-	b.RLock()
-	b.tree.AscendRange(greaterOrEqual, lessThan, iterator)
-	b.RUnlock()
-}
-
-// AscendGreaterOrEqual is the wrapper of the google's btree AscendGreaterOrEqual
-func (b *BTree) AscendGreaterOrEqual(pivot BtreeItem, iterator func(i BtreeItem) bool) {
-	b.RLock()
-	b.tree.AscendGreaterOrEqual(pivot, iterator)
-	b.RUnlock()
-}
-
-// GetTree returns the snapshot of a btree.
-func (b *BTree) GetTree() *BTree {
-	b.Lock()
-	t := b.tree.Clone()
-	b.Unlock()
-	nb := NewBtree()
-	nb.tree = t
-	return nb
-}
-
-// Reset resets the current btree.
-func (b *BTree) Reset() {
-	b.Lock()
-	b.tree.Clear(true)
-	b.Unlock()
-}
-
-// Len returns the total number of items in the btree.
-func (b *BTree) Len() (size int) {
-	b.RLock()
-	size = b.tree.Len()
-	b.RUnlock()
-	return
-}
-
-// MaxItem returns the largest item in the btree.
-func (b *BTree) MaxItem() BtreeItem {
-	b.RLock()
-	item := b.tree.Max()
-	b.RUnlock()
-	return item
 }

@@ -1026,3 +1026,10 @@ type GetUniqIDRequest struct {
 type GetUniqIDResponse struct {
 	Start uint64 `json:"start"`
 }
+
+type XAttrRaftResponse struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+	Status      uint8  `json:"status"`
+}

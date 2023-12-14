@@ -36,9 +36,40 @@ const (
 	prefixDelExtentV2   = "EXTENT_DEL_V2"
 	prefixMultiVer      = verdataFile
 	maxDeleteExtentSize = 10 * MB
+
+	dbExtentKeySize = 48 // 1 +   5   +   2    +  8   +   8  +  8  +   8  +    4    + 4
+	//type  time   reversed   foff    pid   ekid   ekoff  size    reversed2
+	//time:YY YY MM DD HH
+	centuryKeyIndex = 1
+	yearKeyIndex    = 2
+	monthKeyIndex   = 3
+	dayKeyIndex     = 4
+	hourKeyIndex    = 5
+
+	defAdjustHourMinuet			= 50
+	defEKDelDelaySecond         = 60 * 10		//10min
 )
 
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
+
+func updateKeyToNowWithAdjust(data []byte, addHourFlag bool) {
+	now := time.Now()
+	now.Add(24 * time.Hour)
+	//YY YY MM DD HH
+	data[0] = byte(ExtentDelTable)
+	data[centuryKeyIndex] = (byte)(now.Year() / 100)
+	data[yearKeyIndex] = (byte)(now.Year() % 100)
+	data[monthKeyIndex] = (byte)(now.Month())
+	data[dayKeyIndex] = (byte)(now.Day())
+	data[hourKeyIndex] = (byte)(now.Hour())
+	if addHourFlag && now.Minute() > defAdjustHourMinuet {
+		data[hourKeyIndex] += 1
+	}
+	return
+}
+func updateKeyToNow(data []byte) {
+	updateKeyToNowWithAdjust(data, false)
+}
 
 /// start metapartition delete extents work
 ///
