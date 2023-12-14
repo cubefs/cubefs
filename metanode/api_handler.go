@@ -632,7 +632,7 @@ func (m *MetaNode) getAllDentriesHandler(w http.ResponseWriter, r *http.Request)
 	)
 
 	mp.GetDentryTree().Ascend(func(i BtreeItem) bool {
-		den, _ := i.(*Dentry).getDentryFromVerList(verSeq)
+		den, _ := i.(*Dentry).getDentryFromVerList(verSeq, false)
 		if den == nil || den.isDeleted() {
 			return true
 		}
