@@ -293,6 +293,10 @@ func (m *Server) clearMetadata() {
 
 	m.cluster.t = newTopology()
 	// m.cluster.apiLimiter.Clear()
+
+	m.cluster.flashNodeTopo.clear()
+	m.cluster.clearFlashGroupResponseCache()
+	m.cluster.flashNodeTopo = newFlashNodeTopology()
 }
 
 func (m *Server) refreshUser() (err error) {

@@ -184,6 +184,7 @@ const (
 	ErrCodeNodeSetNotExists
 	ErrCodeNoSuchLifecycleConfiguration
 	ErrCodeNoSupportStorageClass
+	ErrCodeTmpfsNoSpace
 )
 
 // Err2CodeMap error map to code
@@ -251,6 +252,7 @@ var Err2CodeMap = map[error]int32{
 	ErrNodeSetNotExists:                ErrCodeNodeSetNotExists,
 	ErrNoSuchLifecycleConfiguration:    ErrCodeNoSuchLifecycleConfiguration,
 	ErrNoSupportStorageClass:           ErrCodeNoSupportStorageClass,
+	ErrTmpfsNoSpace:                    ErrCodeTmpfsNoSpace,
 }
 
 func ParseErrorCode(code int32) error {
@@ -327,6 +329,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeVolHasDeleted:                   ErrVolHasDeleted,
 	ErrCodeNoSuchLifecycleConfiguration:    ErrNoSuchLifecycleConfiguration,
 	ErrCodeNoSupportStorageClass:           ErrNoSupportStorageClass,
+	ErrCodeTmpfsNoSpace:                    ErrTmpfsNoSpace,
 }
 
 type GeneralResp struct {
