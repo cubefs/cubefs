@@ -96,6 +96,16 @@ func (d *Dentry) getSeqFiled() (verSeq uint64) {
 	return d.multiSnap.VerSeq
 }
 
+func isSeqEqual(ver_1 uint64, ver_2 uint64) bool {
+	if isInitSnapVer(ver_1) {
+		ver_1 = 0
+	}
+	if isInitSnapVer(ver_2) {
+		ver_2 = 0
+	}
+	return (ver_1 & math.MaxInt64) == (ver_2 & math.MaxInt64)
+}
+
 func (d *Dentry) getVerSeq() (verSeq uint64) {
 	if d.multiSnap == nil {
 		return 0
@@ -161,7 +171,9 @@ func (d *Dentry) getDentryFromVerList(verSeq uint64) (den *Dentry, idx int) {
 		}
 		return den, denListLen
 	}
-
+	if d.multiSnap == nil {
+		return
+	}
 	for id, lDen := range d.multiSnap.dentryList {
 		if verSeq < lDen.getVerSeq() {
 			log.LogDebugf("action[getDentryFromVerList] den in ver list %v, return nil, request seq %v, history ver seq %v", lDen, verSeq, lDen.getVerSeq())
@@ -215,10 +227,7 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 		// if there's no snapshot itself, nor have snapshot after dentry's ver then need unlink directly and make no snapshot
 		// just move to upper layer,the request snapshot be dropped
 		if d.getSnapListLen() == 0 {
-			var found bool
-			// no matter verSeq of dentry is larger than zero,if not be depended then dropped
-			_, found = d.getLastestVer(d.getVerSeq(), true, verlist)
-			if !found { // no snapshot depend on this dentry,could drop it
+			if d.getVerSeq() == mpVerSeq {
 				// operate dentry directly
 				log.LogDebugf("action[deleteVerSnapshot.delSeq_0] no snapshot depend on this dentry,could drop seq %v dentry %v", delVerSeq, d)
 				return d, true, true
@@ -251,9 +260,20 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 			return nil, false, false
 		}
 		if idx == 0 { // top layer
-			// header layer do nothing and be depends on should not be dropped
-			log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v first layer do nothing", delVerSeq, d)
-			return d, false, false
+			if !isSeqEqual(delVerSeq, d.getVerSeq()) {
+				t1 := delVerSeq & math.MaxInt64
+				t2 := d.getVerSeq() & math.MaxInt64
+				// header layer do nothing and be depends on should not be dropped
+				log.LogDebugf("action[deleteVerSnapshot.inSnapList_del_%v] den %v first layer do nothing t1 %v t2 %v", delVerSeq, d, t1, t2)
+				return d, false, false
+			}
+			for _, info := range verlist {
+				if info.Ver > d.getVerSeq() {
+					d.setVerSeq(info.Ver)
+					return d, false, false
+				}
+			}
+			return d, true, true
 		}
 		// if any alive snapshot in mp dimension exist in seq scope from den to next ascend neighbor, dio snapshot be keep or else drop
 		startSeq := den.getVerSeq()
@@ -277,6 +297,7 @@ func (d *Dentry) deleteVerSnapshot(delVerSeq uint64, mpVerSeq uint64, verlist []
 				// there's some snapshot depends on the version trying to be deleted,
 				// keep it,all the snapshots which depends on this version will reach here when make snapshot delete, and found the scope is minimized
 				// other versions depends upon this version will be found zero finally after deletions and do clean
+				den.setVerSeq(info.Ver)
 				return den, false, false
 			}
 			if info.Ver >= endSeq {
