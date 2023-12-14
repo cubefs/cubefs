@@ -495,10 +495,10 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	if len(ino.Extents.eks) != 0 {
 		isCache = true
 		eks = ino.Extents.CopyExtents()
-	} else if len(ino.HybridCouldExtents.sortedEks.(*SortedExtents).eks) != 0 {
+	} else if ino.HybridCouldExtents.sortedEks != nil && len(ino.HybridCouldExtents.sortedEks.(*SortedExtents).eks) != 0 {
 		isCache = false
 		eks = ino.HybridCouldExtents.sortedEks.(*SortedExtents).CopyExtents()
-	} else {
+	} else if ino.HybridCouldExtentsMigration.sortedEks != nil && len(ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).eks) != 0 {
 		isMigration = true
 		eks = ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).CopyExtents()
 	}
