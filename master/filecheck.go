@@ -101,7 +101,14 @@ func (partition *DataPartition) checkExtentFile(fc *FileInCore, liveReplicas []*
 		return
 	}
 	fms, needRepair := fc.needCrcRepair(liveReplicas, getInfoCallback)
-
+	if !hasSameSize(fms) {
+		msg := fmt.Sprintf("CheckFileError size not match,cluster[%v],dpID[%v],", clusterID, partition.PartitionID)
+		for _, fm := range fms {
+			msg = msg + fmt.Sprintf("fm[%v]:size[%v]\n", fm.locIndex, fm.Size)
+		}
+		log.LogWarn(msg)
+		return
+	}
 	if len(fms) < len(liveReplicas) && (time.Now().Unix()-fc.LastModify) > intervalToCheckMissingReplica {
 		lastReportTime, ok := partition.FilesWithMissingReplica[fc.Name]
 		if len(partition.FilesWithMissingReplica) > 400 {
