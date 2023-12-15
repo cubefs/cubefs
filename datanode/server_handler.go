@@ -36,27 +36,29 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
 	for _, diskItem := range s.space.GetDisks() {
 		disk := &struct {
-			Path        string `json:"path"`
-			Total       uint64 `json:"total"`
-			Used        uint64 `json:"used"`
-			Available   uint64 `json:"available"`
-			Unallocated uint64 `json:"unallocated"`
-			Allocated   uint64 `json:"allocated"`
-			Status      int    `json:"status"`
-			RestSize    uint64 `json:"restSize"`
-			DiskRdoSize uint64 `json:"diskRdoSize"`
-			Partitions  int    `json:"partitions"`
+			Path         string `json:"path"`
+			Total        uint64 `json:"total"`
+			Used         uint64 `json:"used"`
+			Available    uint64 `json:"available"`
+			Unallocated  uint64 `json:"unallocated"`
+			Allocated    uint64 `json:"allocated"`
+			Status       int    `json:"status"`
+			RestSize     uint64 `json:"restSize"`
+			DiskRdoSize  uint64 `json:"diskRdoSize"`
+			Partitions   int    `json:"partitions"`
+			Decommission bool   `json:"decommission"`
 		}{
-			Path:        diskItem.Path,
-			Total:       diskItem.Total,
-			Used:        diskItem.Used,
-			Available:   diskItem.Available,
-			Unallocated: diskItem.Unallocated,
-			Allocated:   diskItem.Allocated,
-			Status:      diskItem.Status,
-			RestSize:    diskItem.ReservedSpace,
-			DiskRdoSize: diskItem.DiskRdonlySpace,
-			Partitions:  diskItem.PartitionCount(),
+			Path:         diskItem.Path,
+			Total:        diskItem.Total,
+			Used:         diskItem.Used,
+			Available:    diskItem.Available,
+			Unallocated:  diskItem.Unallocated,
+			Allocated:    diskItem.Allocated,
+			Status:       diskItem.Status,
+			RestSize:     diskItem.ReservedSpace,
+			DiskRdoSize:  diskItem.DiskRdonlySpace,
+			Partitions:   diskItem.PartitionCount(),
+			Decommission: diskItem.GetDecommissionStatus(),
 		}
 		disks = append(disks, disk)
 	}

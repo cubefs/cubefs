@@ -2758,7 +2758,6 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode) (err 
 		dp.Unlock()
 		return
 	}
-
 	task := dp.createTaskToDeleteDataPartition(dataNode.Addr)
 	dp.Unlock()
 
