@@ -2256,10 +2256,18 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 
 		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v)  volStorageClass(%v) set cacheDpStorageClass: %v",
 			req.name, proto.StorageClassString(req.volStorageClass), proto.StorageClassString(req.cacheDpStorageClass))
-	} else if !proto.IsValidStorageClass(req.volStorageClass) {
+	}
+
+	if !proto.IsValidStorageClass(req.volStorageClass) {
 		err = fmt.Errorf("invalid volStorageClass: %v", req.volStorageClass)
 		log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 		return err
+	}
+
+	if !resourceChecker.HasResourceOfStorageClass(req.volStorageClass) {
+		err = fmt.Errorf("cluster has no resoure to support volStorageClass(%v)", proto.StorageClassString(req.volStorageClass))
+		log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
+		return
 	}
 
 	log.LogInfof("[checkStorageClassForCreateVol] volStorageClass: %v", proto.StorageClassString(req.volStorageClass))
@@ -2315,7 +2323,8 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		}
 	}
 
-	log.LogInfof("[checkStorageClassForCreateVol] vol(%v) volStorageClass(%v) allowedStorageClass: %v", req.name, req.volStorageClass, req.allowedStorageClass)
+	log.LogInfof("[checkStorageClassForCreateVol] vol(%v) volStorageClass(%v) allowedStorageClass: %v",
+		req.name, req.volStorageClass, req.allowedStorageClass)
 	return nil
 }
 
