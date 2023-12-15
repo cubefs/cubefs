@@ -926,7 +926,7 @@ func (dp *DataPartition) canRemoveSelf() (canRemove bool, err error) {
 		if partition, err = MasterClient.AdminAPI().GetDataPartition(dp.volumeID, dp.partitionID); err != nil {
 			log.LogErrorf("action[canRemoveSelf] err[%v]", err)
 			retry++
-			if retry > 5 {
+			if retry > 60 {
 				return
 			}
 		} else {
