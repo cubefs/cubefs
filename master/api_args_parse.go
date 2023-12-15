@@ -571,26 +571,39 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 
 	if req.volStorageClass, err = extractUint32WithDefault(r, volStorageClassKey, vol.volStorageClass); err != nil {
 		err = fmt.Errorf("failed to extract key: %v", volStorageClassKey)
-		log.LogErrorf("[parseVolUpdateReq] err: %v", err.Error())
+		log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 		return
 	}
 	if vol.volStorageClass == proto.StorageClass_BlobStore {
 		if req.volStorageClass != vol.volStorageClass {
-			err = fmt.Errorf(" vol.volStorageClass is StorageClass_BlobStore, not allow to change it")
-			log.LogErrorf("[parseVolUpdateReq] err: %v", err.Error())
+			err = fmt.Errorf("volStorageClass is StorageClass_BlobStore, not allow to change it")
+			log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 			return
 		}
 	} else if proto.IsStorageClassReplica(vol.volStorageClass) {
 		if !proto.IsStorageClassReplica(req.volStorageClass) {
 			err = fmt.Errorf(" vol.volStorageClass is replica, not allow to change to: %v",
 				proto.StorageClassString(req.volStorageClass))
-			log.LogErrorf("[parseVolUpdateReq] err: %v", err.Error())
+			log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
+			return
+		}
+
+		volStorageClassAllowed := false
+		for _, asc := range vol.allowedStorageClass {
+			if asc == req.volStorageClass {
+				volStorageClassAllowed = true
+			}
+		}
+		if !volStorageClassAllowed {
+			err = fmt.Errorf(" req.volStorageClass(%v) not in vol.allowedStorageClass",
+				proto.StorageClassString(req.volStorageClass))
+			log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 			return
 		}
 
 		if req.volStorageClass != vol.volStorageClass {
-			log.LogInfof("[parseVolUpdateReq] vol.volStorageClass(%v) will be changed to: %v",
-				proto.StorageClassString(vol.volStorageClass), proto.StorageClassString(req.volStorageClass))
+			log.LogInfof("[parseVolUpdateReq] vol(%v) volStorageClass(%v) will be changed to: %v",
+				vol.Name, proto.StorageClassString(vol.volStorageClass), proto.StorageClassString(req.volStorageClass))
 		}
 	}
 
