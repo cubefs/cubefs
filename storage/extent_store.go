@@ -80,7 +80,7 @@ var (
 	NormalExtentFilter = func() ExtentFilter {
 		now := time.Now()
 		return func(ei *ExtentInfo) bool {
-			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && !ei.IsDeleted && ei.Size > 0
+			return !IsTinyExtent(ei.FileID) && now.Unix()-ei.ModifyTime > RepairInterval && !ei.IsDeleted
 		}
 	}
 
